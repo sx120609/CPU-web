@@ -89,6 +89,9 @@ EOF
 do_install() {
   log "安装依赖（root + server + web）..."
   npm install --no-audit --no-fund
+  # 显式 prisma generate（npm install 不会触发 schema 变化的 generate）
+  log "生成 Prisma Client"
+  npm run prisma:generate --prefix server
 }
 
 do_build() {

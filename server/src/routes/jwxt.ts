@@ -13,7 +13,7 @@ import {
   sessionStats,
   fetchIServiceApps,
 } from "../services/jwxtClient";
-import { parseSchedule, parseGrades, parseExams, parseProgress, parsePyfa, parseCalendar, parseTextbook } from "../services/jwxtParser";
+import { parseSchedule, parseGrades, parseExams, parseProgress, parsePyfa, parseCalendar } from "../services/jwxtParser";
 
 export const jwxtRouter = Router();
 
@@ -185,25 +185,6 @@ jwxtRouter.get("/iapps", async (req, res, next) => {
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const apps = await fetchIServiceApps(t);
     ok(res, { apps });
-  } catch (e) { next(e); }
-});
-
-/** 我的教材 */
-jwxtRouter.get("/textbook", async (req, res, next) => {
-  try {
-    const t = getToken(req);
-    if (!t) throw Errors.unauthorized("请先登录教务系统");
-    const semester = req.query.semester ? String(req.query.semester) : "";
-    // 尝试两种常见路径：先 jcgl_list POST，失败回退到 jcgl_query GET
-    let html = "";
-    try {
-      html = await jwxtPostForm(t, "/zgykdx/jcgl/jcgl_list", { xnxqid: semester, kksj: semester });
-    } catch { /* fallback */ }
-    if (!html || /非法访问|404|页面不存在/.test(html)) {
-      html = await jwxtFetchHtml(t, "/zgykdx/jcgl/jcgl_query?Ves632DSdyV=NEW-XSD-JCGL");
-    }
-    const parsed = parseTextbook(html);
-    ok(res, { parsed });
   } catch (e) { next(e); }
 });
 
