@@ -21,7 +21,7 @@ async function getOrCreateKey(): Promise<CryptoKey> {
   } else {
     bytes = b64decode(raw);
   }
-  return crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"]);
+  return crypto.subtle.importKey("raw", bytes as unknown as BufferSource, "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 
 function b64encode(b: Uint8Array): string {
@@ -40,7 +40,7 @@ export async function saveCreds(username: string, password: string): Promise<voi
   const key = await getOrCreateKey();
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const plain = new TextEncoder().encode(JSON.stringify({ username, password, savedAt: Date.now() }));
-  const cipher = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plain);
+  const cipher = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv as unknown as BufferSource }, key, plain as unknown as BufferSource);
   const payload = { iv: b64encode(iv), data: b64encode(new Uint8Array(cipher)) };
   localStorage.setItem(CRED_STORAGE, JSON.stringify(payload));
 }
@@ -52,9 +52,9 @@ export async function loadCreds(): Promise<{ username: string; password: string 
     const { iv, data } = JSON.parse(raw);
     const key = await getOrCreateKey();
     const decrypted = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: b64decode(iv) },
+      { name: "AES-GCM", iv: b64decode(iv) as unknown as BufferSource },
       key,
-      b64decode(data)
+      b64decode(data) as unknown as BufferSource
     );
     const obj = JSON.parse(new TextDecoder().decode(decrypted));
     if (!obj.username || !obj.password) return null;

@@ -18,7 +18,7 @@
     <!-- 分类筛选 chips -->
     <div v-if="categories.length" class="cats">
       <el-tag
-        :type="activeCat === '' ? '' : 'info'"
+        :type="activeCat === '' ? undefined : 'info'"
         :effect="activeCat === '' ? 'dark' : 'plain'"
         @click="activeCat = ''"
         class="cat-tag"
@@ -28,7 +28,7 @@
       <el-tag
         v-for="c in categories"
         :key="c.name"
-        :type="activeCat === c.name ? '' : 'info'"
+        :type="activeCat === c.name ? undefined : 'info'"
         :effect="activeCat === c.name ? 'dark' : 'plain'"
         @click="activeCat = c.name"
         class="cat-tag"
