@@ -31,6 +31,11 @@ instance.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // 同时注入教务 token（如果存在），便于后端跨域请求（如 /courses/sync 需要拉教务数据）
+  const jwxtToken = sessionStorage.getItem("cpu-jwxt-token");
+  if (jwxtToken) {
+    config.headers["X-Jwxt-Token"] = jwxtToken;
+  }
   return config;
 });
 

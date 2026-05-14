@@ -2,14 +2,33 @@
   <div class="cr-page">
     <div class="head">
       <h2>📊 课程点评</h2>
-      <el-button v-if="auth.isLoggedIn" type="primary" @click="$router.push({ name: 'post', query: { board: 'coursereview' } })">
-        <el-icon><Plus /></el-icon> 写课评
-      </el-button>
+      <div class="head-right">
+        <el-button v-if="auth.isLoggedIn" :loading="syncing" @click="onSync">
+          <el-icon><Refresh /></el-icon> 同步我的课程
+        </el-button>
+        <el-button v-if="auth.isLoggedIn" type="primary" @click="$router.push({ name: 'post', query: { board: 'coursereview' } })">
+          <el-icon><Plus /></el-icon> 写课评
+        </el-button>
+      </div>
     </div>
 
-    <el-input v-model="q" placeholder="搜课程名 / 课程代码 / 教师" clearable style="max-width:360px" @keyup.enter="reload">
-      <template #prefix><el-icon><Search /></el-icon></template>
-    </el-input>
+    <div class="filter-bar">
+      <el-radio-group v-model="scope" size="default" @change="reload">
+        <el-radio-button value="all">全部课程</el-radio-button>
+        <el-radio-button value="mine" :disabled="!auth.isLoggedIn">⭐ 我学过的</el-radio-button>
+      </el-radio-group>
+      <el-input v-model="q" placeholder="搜课程名 / 代码 / 教师" clearable style="max-width:300px" @keyup.enter="reload">
+        <template #prefix><el-icon><Search /></el-icon></template>
+      </el-input>
+    </div>
+
+    <div v-if="scope === 'mine' && !list.length && !loading" class="empty-mine">
+      <p>还没有同步过教务系统的课程</p>
+      <el-button type="primary" :loading="syncing" @click="onSync">
+        <el-icon><Refresh /></el-icon> 立即同步
+      </el-button>
+      <p class="sub">需要先在「教务直连」页登录学校账号。会从成绩 + 培养方案里把你修过 / 要修的课加进来。</p>
+    </div>
 
     <div class="course-grid" v-loading="loading">
       <div v-for="c in list" :key="c.id" class="course" @click="$router.push(`/coursereview/${c.id}`)">
@@ -17,7 +36,7 @@
           <div>
             <div class="code">{{ c.code }}</div>
             <div class="name">{{ c.name }}</div>
-            <div class="teacher">{{ c.teacher }}</div>
+            <div class="teacher">{{ c.teacher || "—" }}</div>
           </div>
           <div class="score-block" v-if="c.ratingCount">
             <div class="score">{{ c.avgScore.toFixed(1) }}</div>
@@ -37,35 +56,95 @@
           <span v-if="c.college">{{ c.college }}</span>
         </div>
       </div>
-      <el-empty v-if="!loading && !list.length" description="没有匹配课程" />
+      <el-empty v-if="!loading && !list.length && scope !== 'mine'" description="没有匹配课程" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
-import { Plus, Search } from "@element-plus/icons-vue";
+import { ref, onMounted, watch } from "vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { Plus, Search, Refresh } from "@element-plus/icons-vue";
 import { courseApi, type Course } from "@/api/course";
 import { useAuthStore } from "@/stores/auth";
 
 const auth = useAuthStore();
 const list = ref<Course[]>([]);
 const q = ref("");
+const scope = ref<"all" | "mine">("all");
 const loading = ref(false);
+const syncing = ref(false);
 
 onMounted(reload);
+watch(() => auth.isLoggedIn, (v) => { if (!v) scope.value = "all"; });
 
 async function reload() {
   loading.value = true;
-  try { list.value = await courseApi.list(q.value); }
-  finally { loading.value = false; }
+  try {
+    list.value = await courseApi.list(q.value, scope.value === "mine");
+  } finally { loading.value = false; }
+}
+
+async function onSync() {
+  if (!auth.isLoggedIn) {
+    ElMessage.warning("请先登录站内账号");
+    return;
+  }
+  const jwxtToken = sessionStorage.getItem("cpu-jwxt-token");
+  if (!jwxtToken) {
+    try {
+      await ElMessageBox.confirm(
+        "同步课程需要先登录学校教务系统。是否前往「教务直连」页？",
+        "未登录教务",
+        { confirmButtonText: "前往登录", cancelButtonText: "取消" }
+      );
+      window.location.href = "/jwxt";
+    } catch { /* 取消 */ }
+    return;
+  }
+  syncing.value = true;
+  try {
+    const r = await courseApi.sync();
+    ElMessage.success(
+      `同步完成：新建 ${r.coursesCreated} 门，已有 ${r.coursesExisting} 门；关联 ${r.linksCreated} 条`
+    );
+    scope.value = "mine";
+    await reload();
+  } catch (e: any) {
+    // 拦截器已弹错；这里兜底（教务 session 失效会显示 401 → 让用户重登）
+    if (e?.response?.status === 401) {
+      ElMessage.error("教务会话已失效，请去「教务直连」重新登录");
+    }
+  } finally { syncing.value = false; }
 }
 </script>
 
 <style scoped>
 .cr-page { display: flex; flex-direction: column; gap: 16px; }
-.head { display: flex; justify-content: space-between; align-items: center; }
+.head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
 .head h2 { margin: 0; font-size: 22px; }
+.head-right { display: flex; gap: 8px; }
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.empty-mine {
+  background: linear-gradient(135deg, #ecfdf5, #d1fae5);
+  border-radius: 12px;
+  padding: 32px 24px;
+  text-align: center;
+  color: #4b5563;
+}
+.empty-mine p { margin: 0 0 10px; }
+.empty-mine .sub { font-size: 12px; color: #6b7280; margin-top: 14px; }
 
 .course-grid {
   display: grid;

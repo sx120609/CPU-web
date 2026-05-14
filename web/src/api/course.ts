@@ -28,7 +28,19 @@ export interface CourseRating {
   createdAt: string;
 }
 
+export interface CourseSyncResult {
+  examined: number;
+  coursesCreated: number;
+  coursesExisting: number;
+  linksCreated: number;
+  linksUpdated: number;
+  breakdown: { fromGrade: number; fromPyfa: number };
+}
+
 export const courseApi = {
-  list: (q?: string) => request.get<Course[]>("/courses", q ? { q } : {}),
+  list: (q?: string, mine = false) =>
+    request.get<Course[]>("/courses", { ...(q ? { q } : {}), ...(mine ? { mine: 1 } : {}) }),
   detail: (id: number) => request.get<{ course: Course; ratings: CourseRating[] }>(`/courses/${id}`),
+  /** 同步当前用户的教务课程（X-Jwxt-Token 由全局拦截器自动注入） */
+  sync: () => request.post<CourseSyncResult>("/courses/sync"),
 };

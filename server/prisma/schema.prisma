@@ -41,6 +41,7 @@ model User {
   notificationReads NotificationRead[]
   messageSetting    MessageSetting?
   feedSources       SchoolFeedSource[] @relation("BotUser")
+  userCourses       UserCourse[]
 }
 
 // ============ 论坛核心 ============
@@ -175,6 +176,25 @@ model Course {
   avgReward     Float @default(0)
   avgRecommend  Float @default(0)
   avgScore      Float @default(0)
+
+  userCourses UserCourse[]
+}
+
+// 学生与课程的关联（来自同步教务系统）
+model UserCourse {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  courseId  Int
+  source    String   // 'grade' (有成绩) / 'pyfa' (培养方案里)
+  semester  String?  // 学期，仅 grade 来源时有
+  score     String?  // 成绩，仅 grade 来源时有
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@index([userId])
 }
 
 // 一个学生对一门课的评分（与 Topic 1:1 关联）
