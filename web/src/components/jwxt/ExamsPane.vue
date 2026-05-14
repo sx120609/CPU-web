@@ -1,0 +1,161 @@
+<template>
+  <div class="exams-pane">
+    <div class="ctrl-bar">
+      <div class="ctrl-left">
+        <span class="lbl">学期</span>
+        <el-select v-model="semester" size="small" placeholder="选择学期" style="width:160px" @change="reload">
+          <el-option v-for="s in semesterOptions" :key="s" :value="s" :label="s" />
+        </el-select>
+        <span class="lbl">类型</span>
+        <el-select v-model="type" size="small" clearable placeholder="全部" style="width:120px" @change="reload">
+          <el-option label="期初" value="1" />
+          <el-option label="期中" value="2" />
+          <el-option label="期末" value="3" />
+        </el-select>
+      </div>
+      <div class="ctrl-right" v-if="parsed">
+        <span class="stat">{{ parsed.list?.length ?? 0 }} 场考试</span>
+      </div>
+    </div>
+
+    <div v-loading="loading">
+      <el-alert
+        v-if="needSemester"
+        type="info"
+        :closable="false"
+        show-icon
+        title="请先选择学期"
+      >
+        学校教务系统的考试查询接口要求<b>必填学期</b>，请在上方选择一个学期后查看考试安排。
+      </el-alert>
+      <div v-else-if="parsed && !parsed.list?.length" class="empty-card">
+        <el-icon size="48" color="#cbd5e1"><Calendar /></el-icon>
+        <h3>该学期没有考试安排</h3>
+        <p>
+          这不一定是本站的问题 —— 教务系统对很多学期是不放考试数据的。
+          如果你确信本学期应该有，可以：
+        </p>
+        <ul>
+          <li>切换上方<b>学期</b>或<b>类型</b>（期末/期中/期初）重新查询</li>
+          <li>
+            <a href="http://jsxsd.cpu.edu.cn/zgykdx/xsks/xsksap_query?Ves632DSdyV=NEW_XSD_KSBM" target="_blank">
+              去学校教务系统原站
+            </a>
+            查看是否有数据
+          </li>
+        </ul>
+      </div>
+      <div v-else class="exam-list">
+        <div v-for="(e, i) in parsed?.list ?? []" :key="i" class="exam-card">
+          <div class="left">
+            <div class="cname">{{ e.courseName }}</div>
+            <div class="meta">
+              <span v-if="e.courseCode">{{ e.courseCode }}</span>
+              <span v-if="e.examType">· {{ e.examType }}</span>
+            </div>
+          </div>
+          <div class="middle">
+            <div class="time" v-if="e.examTime">🕒 {{ e.examTime }}</div>
+            <div class="loc" v-if="e.location">📍 {{ e.location }}</div>
+            <div class="seat" v-if="e.seat">座位：{{ e.seat }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, watch } from "vue";
+import { Calendar } from "@element-plus/icons-vue";
+
+const props = defineProps<{ data: any; loading?: boolean }>();
+const parsed = ref<any>(props.data?.parsed ?? null);
+const loading = ref(props.loading ?? false);
+const semester = ref<string>("");
+const type = ref<string>("");
+
+watch(() => props.data, (v) => {
+  parsed.value = v?.parsed ?? null;
+  if (parsed.value?.currentSemester && !semester.value) {
+    semester.value = parsed.value.currentSemester;
+  }
+}, { immediate: true });
+
+const semesterOptions = computed(() => {
+  // 优先用 parsed 返回的；如果没有就用一组常见近期学期作为兜底
+  const fromApi = (parsed.value?.semesters ?? []).map((s: any) => s.value).filter(Boolean);
+  if (fromApi.length) return fromApi;
+  // 当前年作为基准，倒推
+  const y = new Date().getFullYear();
+  const list: string[] = [];
+  for (let i = 0; i < 4; i++) {
+    list.push(`${y - i}-${y - i + 1}-2`);
+    list.push(`${y - i}-${y - i + 1}-1`);
+  }
+  return list;
+});
+
+const needSemester = computed(() => parsed.value?.needSemester === true);
+
+async function reload() {
+  if (!semester.value) return;
+  loading.value = true;
+  try {
+    const tk = sessionStorage.getItem("cpu-jwxt-token") ?? "";
+    const u = new URL("/api/jwxt/exams", window.location.origin);
+    u.searchParams.set("semester", semester.value);
+    if (type.value) u.searchParams.set("type", type.value);
+    const resp = await fetch(u, { headers: { "X-Jwxt-Token": tk } });
+    const body = await resp.json();
+    if (body.code === 0) parsed.value = body.data.parsed;
+  } finally { loading.value = false; }
+}
+</script>
+
+<style scoped>
+.exams-pane { display: flex; flex-direction: column; gap: 12px; }
+.ctrl-bar { display: flex; justify-content: space-between; align-items: center; }
+.ctrl-left { display: flex; gap: 8px; align-items: center; }
+.lbl { font-size: 12px; color: #6b7280; }
+.stat { font-size: 13px; color: var(--cpu-primary); font-weight: 500; }
+
+.exam-list { display: flex; flex-direction: column; gap: 10px; }
+.exam-card {
+  display: flex;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid #eef0f4;
+  border-radius: 10px;
+  background: #fff;
+  align-items: center;
+}
+.cname { font-size: 15px; font-weight: 600; color: #1f2937; }
+.meta { font-size: 12px; color: #6b7280; margin-top: 2px; display: flex; gap: 6px; }
+.left { flex: 1; min-width: 0; }
+.middle { font-size: 13px; color: #4b5563; text-align: right; }
+.time { font-weight: 500; color: #b45309; }
+.loc { margin-top: 3px; }
+.seat { font-size: 12px; color: #9ca3af; margin-top: 3px; }
+
+.empty-card {
+  background: #f9fafb;
+  border: 1px dashed #e5e7eb;
+  border-radius: 12px;
+  padding: 32px 24px;
+  text-align: center;
+  color: #6b7280;
+}
+.empty-card h3 { margin: 12px 0 6px; font-size: 16px; color: #1f2937; }
+.empty-card p { margin: 0 0 8px; font-size: 13px; }
+.empty-card ul {
+  text-align: left;
+  display: inline-block;
+  margin: 0 auto;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.empty-card ul b { color: var(--cpu-primary); }
+.empty-card a { color: var(--cpu-primary); }
+</style>

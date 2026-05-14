@@ -1,0 +1,23 @@
+{
+  "name": "cpu-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "中国药科大学学生便捷服务站点 — Web 前台 + 最小可用后端的 MVP 原型",
+  "scripts": {
+    "install:all": "npm install && npm install --prefix server && npm install --prefix web",
+    "postinstall": "npm install --prefix server && npm install --prefix web",
+    "db:setup": "npm run db:migrate --prefix server && npm run db:seed --prefix server",
+    "db:reset": "npm run db:reset --prefix server",
+    "dev": "concurrently -k -n server,web -c blue,green \"npm run dev --prefix server\" \"npm run dev --prefix web\"",
+    "dev:server": "npm run dev --prefix server",
+    "dev:web": "npm run dev --prefix web",
+    "build": "npm run build --prefix server && npm run build --prefix web",
+    "start": "npm run start --prefix server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

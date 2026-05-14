@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.db-journal
+server/prisma/migrations/
+
+# 教务代登录调试快照（可能含 session cookie / 真实 HTML）
+server/.debug/
+.debug/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+install.log
+
+# Editor & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Cache
+.cache/
+.parcel-cache/
+.eslintcache
+.vite/
+
+# Misc
+coverage/
+.nyc_output/

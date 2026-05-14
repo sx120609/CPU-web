@@ -1,0 +1,79 @@
+import { Router } from "express";
+import { z } from "zod";
+import { prisma } from "../prisma";
+import { Errors, ok } from "../utils/response";
+import { authRequired } from "../middleware/auth";
+import { validate } from "../middleware/validate";
+
+export const replyRouter = Router();
+
+const createSchema = z.object({
+  topicId: z.number().int().positive(),
+  content: z.string().min(1).max(10000),
+  parentReplyId: z.number().int().positive().optional(),
+});
+
+replyRouter.post("/", authRequired, validate(createSchema), async (req, res, next) => {
+  try {
+    const userId = req.user!.userId;
+    const { topicId, content, parentReplyId } = req.body;
+    const topic = await prisma.topic.findUnique({ where: { id: topicId } });
+    if (!topic || topic.hidden) throw Errors.notFound("帖子不存在");
+    if (topic.locked) throw Errors.forbidden("帖子已锁定，无法回复");
+
+    // 当前楼层
+    const last = await prisma.reply.findFirst({
+      where: { topicId },
+      orderBy: { floor: "desc" },
+      select: { floor: true },
+    });
+    const floor = (last?.floor ?? 0) + 1;
+
+    const reply = await prisma.reply.create({
+      data: { topicId, authorId: userId, content, parentReplyId, floor },
+      include: {
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true } },
+      },
+    });
+
+    await prisma.topic.update({
+      where: { id: topicId },
+      data: {
+        replyCount: { increment: 1 },
+        lastReplyAt: reply.createdAt,
+        lastReplyById: userId,
+      },
+    });
+    await prisma.user.update({ where: { id: userId }, data: { replyCount: { increment: 1 } } });
+
+    // 通知被回复人
+    if (topic.authorId !== userId) {
+      await prisma.notification.create({
+        data: {
+          userId: topic.authorId,
+          category: "reply",
+          level: "normal",
+          title: `有人回复了你的帖子`,
+          content: content.slice(0, 80),
+          link: `/forum/topic/${topicId}`,
+          source: "论坛",
+        },
+      });
+    }
+
+    ok(res, reply);
+  } catch (e) { next(e); }
+});
+
+replyRouter.delete("/:id", authRequired, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const r = await prisma.reply.findUnique({ where: { id } });
+    if (!r) throw Errors.notFound();
+    const isOwner = r.authorId === req.user!.userId;
+    const isMod = req.user!.role === "mod" || req.user!.role === "admin";
+    if (!isOwner && !isMod) throw Errors.forbidden();
+    await prisma.reply.update({ where: { id }, data: { hidden: true } });
+    ok(res, { ok: true });
+  } catch (e) { next(e); }
+});

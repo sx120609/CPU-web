@@ -1,0 +1,83 @@
+@use "sass:color";
+@use "./variables.scss" as *;
+
+:root {
+  --cpu-primary: #{$cpu-primary};
+  --cpu-primary-light: #{$cpu-primary-light};
+  --cpu-primary-dark: #{$cpu-primary-dark};
+  --cpu-gold: #{$cpu-gold};
+  --cpu-bg: #f5f7fb;
+  --cpu-card: #ffffff;
+  --cpu-text: #1f2937;
+  --cpu-text-secondary: #6b7280;
+  --el-color-primary: #{$cpu-primary};
+  --el-color-primary-light-3: #{color.adjust($cpu-primary, $lightness: 8%)};
+  --el-color-primary-light-5: #{color.adjust($cpu-primary, $lightness: 16%)};
+  --el-color-primary-light-7: #{color.adjust($cpu-primary, $lightness: 24%)};
+  --el-color-primary-light-8: #{color.adjust($cpu-primary, $lightness: 28%)};
+  --el-color-primary-light-9: #{color.adjust($cpu-primary, $lightness: 32%)};
+  --el-color-primary-dark-2: #{color.adjust($cpu-primary, $lightness: -6%)};
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  background: var(--cpu-bg);
+  color: var(--cpu-text);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.cpu-page {
+  padding: 20px;
+  max-width: 1320px;
+  margin: 0 auto;
+}
+
+.cpu-card {
+  background: var(--cpu-card);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.cpu-card + .cpu-card {
+  margin-top: 16px;
+}
+
+.cpu-section-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cpu-section-title::before {
+  content: "";
+  width: 4px;
+  height: 16px;
+  background: var(--cpu-primary);
+  border-radius: 2px;
+}
+
+.cpu-muted {
+  color: var(--cpu-text-secondary);
+  font-size: 13px;
+}
+
+.el-button--primary {
+  --el-button-bg-color: var(--cpu-primary);
+  --el-button-border-color: var(--cpu-primary);
+  --el-button-hover-bg-color: #{$cpu-primary-light};
+  --el-button-hover-border-color: #{$cpu-primary-light};
+}
+
+.el-menu-item.is-active,
+.el-sub-menu.is-active > .el-sub-menu__title {
+  color: var(--cpu-primary) !important;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #9ca3af; }

@@ -1,0 +1,222 @@
+import { Router } from "express";
+import { z } from "zod";
+import { prisma } from "../prisma";
+import { Errors, ok } from "../utils/response";
+import { authRequired } from "../middleware/auth";
+import { validate } from "../middleware/validate";
+
+export const topicRouter = Router();
+
+/**
+ * 列表：?board=slug&page=1&size=20&sort=hot|new
+ */
+topicRouter.get("/", async (req, res, next) => {
+  try {
+    const boardSlug = req.query.board ? String(req.query.board) : undefined;
+    const page = Math.max(1, Number(req.query.page ?? 1));
+    const size = Math.min(50, Math.max(5, Number(req.query.size ?? 20)));
+    const sort = String(req.query.sort ?? "new");
+
+    let boardId: number | undefined;
+    if (boardSlug && boardSlug !== "all") {
+      const b = await prisma.board.findUnique({ where: { slug: boardSlug } });
+      if (!b) throw Errors.notFound("板块不存在");
+      boardId = b.id;
+    }
+
+    const where: any = { hidden: false };
+    if (boardId) where.boardId = boardId;
+
+    const orderBy: any = sort === "hot"
+      ? [{ pinned: "desc" }, { likeCount: "desc" }, { lastReplyAt: "desc" }]
+      : [{ pinned: "desc" }, { lastReplyAt: "desc" }, { createdAt: "desc" }];
+
+    const [list, total] = await Promise.all([
+      prisma.topic.findMany({
+        where,
+        orderBy,
+        skip: (page - 1) * size,
+        take: size,
+        include: {
+          author: { select: { id: true, username: true, nickname: true, avatar: true, role: true } },
+          board: { select: { id: true, slug: true, name: true, color: true, type: true } },
+        },
+      }),
+      prisma.topic.count({ where }),
+    ]);
+
+    ok(res, {
+      page, size, total,
+      list: list.map(decodeTopic),
+    });
+  } catch (e) { next(e); }
+});
+
+topicRouter.get("/:id", async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const topic = await prisma.topic.findUnique({
+      where: { id },
+      include: {
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, bio: true } },
+        board: { select: { id: true, slug: true, name: true, type: true, readOnly: true } },
+      },
+    });
+    if (!topic || topic.hidden) throw Errors.notFound();
+    // 浏览数 +1（异步，失败也无所谓）
+    prisma.topic.update({ where: { id }, data: { viewCount: { increment: 1 } } }).catch(() => {});
+    ok(res, decodeTopic(topic));
+  } catch (e) { next(e); }
+});
+
+const createSchema = z.object({
+  boardSlug: z.string().min(1),
+  title: z.string().min(2).max(120),
+  content: z.string().min(1).max(20000),
+  metadata: z.record(z.any()).optional(),
+  tags: z.array(z.string().max(20)).optional(),
+});
+
+topicRouter.post("/", authRequired, validate(createSchema), async (req, res, next) => {
+  try {
+    const userId = req.user!.userId;
+    const { boardSlug, title, content, metadata, tags } = req.body;
+    const board = await prisma.board.findUnique({ where: { slug: boardSlug } });
+    if (!board) throw Errors.notFound("板块不存在");
+    if (board.readOnly && req.user!.role !== "bot" && req.user!.role !== "admin") {
+      throw Errors.forbidden("该板块为只读公告板，禁止发帖");
+    }
+
+    const now = new Date();
+    const topic = await prisma.topic.create({
+      data: {
+        boardId: board.id,
+        authorId: userId,
+        title,
+        content,
+        metadata: JSON.stringify(metadata ?? {}),
+        lastReplyAt: now,
+        lastReplyById: userId,
+      },
+    });
+
+    if (tags?.length) {
+      for (const name of tags) {
+        const tag = await prisma.tag.upsert({
+          where: { name },
+          create: { name },
+          update: {},
+        });
+        await prisma.topicTag.create({ data: { topicId: topic.id, tagId: tag.id } }).catch(() => {});
+      }
+    }
+
+    // 课评：写入 CourseRating 派生表
+    if (board.type === "coursereview" && metadata?.courseId && metadata?.ratings) {
+      const r = metadata.ratings;
+      await prisma.courseRating.create({
+        data: {
+          topicId: topic.id,
+          courseId: Number(metadata.courseId),
+          authorId: userId,
+          difficulty: clampInt(r.difficulty, 1, 5),
+          reward: clampInt(r.reward, 1, 5),
+          recommend: clampInt(r.recommend, 1, 5),
+          givingScore: clampInt(r.givingScore ?? r.score, 1, 5),
+          semester: metadata.semester ?? null,
+        },
+      }).catch(() => {});
+      await refreshCourseStats(Number(metadata.courseId));
+    }
+
+    await prisma.user.update({ where: { id: userId }, data: { postCount: { increment: 1 } } });
+    await prisma.board.update({ where: { id: board.id }, data: { topicCount: { increment: 1 } } });
+
+    ok(res, decodeTopic({ ...topic, board: { slug: board.slug } }));
+  } catch (e) { next(e); }
+});
+
+topicRouter.patch("/:id", authRequired, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const t = await prisma.topic.findUnique({ where: { id } });
+    if (!t) throw Errors.notFound();
+    const isOwner = t.authorId === req.user!.userId;
+    const isMod = req.user!.role === "mod" || req.user!.role === "admin";
+    if (!isOwner && !isMod) throw Errors.forbidden();
+
+    const body = req.body as any;
+    const data: any = {};
+    if (typeof body.title === "string" && isOwner) data.title = body.title;
+    if (typeof body.content === "string" && isOwner) data.content = body.content;
+    if (typeof body.metadata === "object" && body.metadata) data.metadata = JSON.stringify(body.metadata);
+    if (typeof body.pinned === "boolean" && isMod) data.pinned = body.pinned;
+    if (typeof body.locked === "boolean" && isMod) data.locked = body.locked;
+    if (typeof body.hidden === "boolean" && isMod) data.hidden = body.hidden;
+
+    const u = await prisma.topic.update({ where: { id }, data });
+    ok(res, decodeTopic(u));
+  } catch (e) { next(e); }
+});
+
+topicRouter.delete("/:id", authRequired, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const t = await prisma.topic.findUnique({ where: { id } });
+    if (!t) throw Errors.notFound();
+    const isOwner = t.authorId === req.user!.userId;
+    const isMod = req.user!.role === "mod" || req.user!.role === "admin";
+    if (!isOwner && !isMod) throw Errors.forbidden();
+    await prisma.topic.update({ where: { id }, data: { hidden: true } });
+    ok(res, { ok: true });
+  } catch (e) { next(e); }
+});
+
+/** 帖子的回复列表 */
+topicRouter.get("/:id/replies", async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const list = await prisma.reply.findMany({
+      where: { topicId: id, hidden: false },
+      orderBy: { floor: "asc" },
+      include: {
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true } },
+      },
+    });
+    ok(res, list);
+  } catch (e) { next(e); }
+});
+
+function decodeTopic(t: any) {
+  return {
+    ...t,
+    metadata: safeJson(t.metadata),
+  };
+}
+function safeJson(s: string | null | undefined) {
+  if (!s) return {};
+  try { return JSON.parse(s); } catch { return {}; }
+}
+function clampInt(v: any, min: number, max: number) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return min;
+  return Math.max(min, Math.min(max, Math.round(n)));
+}
+
+async function refreshCourseStats(courseId: number) {
+  const agg = await prisma.courseRating.aggregate({
+    where: { courseId },
+    _count: true,
+    _avg: { difficulty: true, reward: true, recommend: true, givingScore: true },
+  });
+  await prisma.course.update({
+    where: { id: courseId },
+    data: {
+      ratingCount: agg._count,
+      avgDifficulty: agg._avg.difficulty ?? 0,
+      avgReward: agg._avg.reward ?? 0,
+      avgRecommend: agg._avg.recommend ?? 0,
+      avgScore: agg._avg.givingScore ?? 0,
+    },
+  });
+}

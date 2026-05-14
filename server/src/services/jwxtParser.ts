@@ -1,0 +1,639 @@
+/**
+ * 强智 jsxsd（中国药科大学 /zgykdx/）页面解析器
+ */
+import * as cheerio from "cheerio";
+
+// ============ 通用：学期下拉解析 ============
+
+export interface SemesterOption {
+  value: string;
+  label: string;
+  current: boolean;
+}
+
+function parseSelectOptions($: cheerio.CheerioAPI, selectId: string): SemesterOption[] {
+  const opts: SemesterOption[] = [];
+  $(`#${selectId} option`).each((_, el) => {
+    const $o = $(el);
+    const value = $o.attr("value") ?? "";
+    if (!value) return;
+    opts.push({
+      value,
+      label: $o.text().trim(),
+      current: $o.attr("selected") !== undefined,
+    });
+  });
+  return opts;
+}
+
+// ============ 课表（学期理论课表）============
+
+export interface ScheduleCourse {
+  /** 课程名 */
+  name: string;
+  /** 任课教师 */
+  teacher?: string;
+  /** 1-17(周) / 1-17(单周) / 1-17(双周) 原始文本 */
+  weeks: string;
+  /** 解析后的周次数组：[1,2,3,...,17] */
+  weekList: number[];
+  /** "D109" 教室 */
+  location?: string;
+  /** "01-02节" 备注（实际占用的小节） */
+  slotNote?: string;
+  /** 小节起 / 小节止（解析自 slotNote） */
+  startSlot?: number;
+  endSlot?: number;
+}
+
+export interface ScheduleCell {
+  /** 周几 1=周一 ... 7=周日 */
+  day: number;
+  /** 大节 1=第一大节 ... */
+  bigSlot: number;
+  courses: ScheduleCourse[];
+}
+
+export interface ScheduleResult {
+  title: string;
+  semesters: SemesterOption[];
+  /** 当前选中的学期 */
+  currentSemester: string;
+  weeks: SemesterOption[];     // 周次下拉
+  currentWeek: string;
+  /** 单元格列表（已展开） */
+  cells: ScheduleCell[];
+  /** 调试：原表头 */
+  headers?: string[];
+}
+
+export function parseSchedule(html: string): ScheduleResult {
+  const $ = cheerio.load(html);
+  const title = $("title").text().trim();
+  const semesters = parseSelectOptions($, "xnxq01id");
+  const weeks = parseSelectOptions($, "zc");
+  const currentSemester = semesters.find((s) => s.current)?.value ?? "";
+  const currentWeek = weeks.find((s) => s.current)?.value ?? "";
+
+  const $tbl = $("table#kbtable");
+  const cells: ScheduleCell[] = [];
+  let bigSlot = 0;
+  $tbl.find("> tbody > tr, > tr").each((_, tr) => {
+    const $tr = $(tr);
+    const $th = $tr.find("> th");
+    // 跳过表头行
+    if ($th.length >= 7 && $tr.find("> td").length === 0) return;
+    // 大节行：左侧 th 含"第X大节"
+    const slotLabel = $th.first().text().trim();
+    if (!/大节/.test(slotLabel)) return;
+    bigSlot++;
+    $tr.find("> td").each((dayIdx, td) => {
+      const $td = $(td);
+      const day = dayIdx + 1;
+      // 取 hover 版本（含老师）的 div.kbcontent
+      const $contents = $td.find("div.kbcontent");
+      const courses: ScheduleCourse[] = [];
+      $contents.each((_, c) => {
+        const html = $(c).html() ?? "";
+        if (!html.trim()) return;
+        // 多门课用 "----------------------" 分隔（实际看到的是 <br/>---------------------<br>）
+        const parts = html.split(/<br\s*\/?\s*>\s*-{5,}\s*<br\s*\/?\s*>/i);
+        for (const seg of parts) {
+          const c2 = cheerio.load(`<div>${seg}</div>`);
+          // 课程名 = 首个文本节点（在第一个 <font> 之前）
+          const root = c2("div").first();
+          const firstFont = root.find("font").first();
+          let courseName = "";
+          if (firstFont.length) {
+            // 用首个 font 之前的文本
+            const before = root.html()?.split(/<font/i)[0] ?? "";
+            courseName = cheerio.load(`<div>${before}</div>`)("div").text().trim();
+          } else {
+            courseName = root.text().trim();
+          }
+          if (!courseName) continue;
+          const teacher = root.find('font[title="老师"]').text().trim() || undefined;
+          const weeksText = root.find('font[title="周次(节次)"]').text().trim();
+          const location = root.find('font[title="教室"]').text().trim() || undefined;
+          const slotNote = root.find('font[title="节次备注"]').text().trim() || undefined;
+          courses.push({
+            name: courseName,
+            teacher,
+            weeks: weeksText,
+            weekList: parseWeeks(weeksText),
+            location,
+            slotNote,
+            ...parseSlotRange(slotNote),
+          });
+        }
+      });
+      if (courses.length) cells.push({ day, bigSlot, courses });
+    });
+  });
+
+  return {
+    title,
+    semesters,
+    currentSemester,
+    weeks,
+    currentWeek,
+    cells,
+  };
+}
+
+/** "1-17(周)" → [1,2,...,17]； "1-17(单周)" → 奇数； "1-17(双周)" → 偶数 */
+function parseWeeks(text: string): number[] {
+  const m = text.match(/(\d+)-(\d+)\((周|单周|双周)\)/);
+  if (!m) {
+    const single = text.match(/^(\d+)\(/);
+    if (single) return [Number(single[1])];
+    return [];
+  }
+  const [, a, b, kind] = m;
+  const start = Number(a), end = Number(b);
+  const out: number[] = [];
+  for (let i = start; i <= end; i++) {
+    if (kind === "单周" && i % 2 === 0) continue;
+    if (kind === "双周" && i % 2 === 1) continue;
+    out.push(i);
+  }
+  return out;
+}
+
+/** "(01-02节)" → { startSlot: 1, endSlot: 2 } */
+function parseSlotRange(note?: string): { startSlot?: number; endSlot?: number } {
+  if (!note) return {};
+  const nums = (note.match(/\d{1,2}/g) ?? []).map(Number).filter((n) => n >= 1 && n <= 14);
+  if (!nums.length) return {};
+  return { startSlot: nums[0], endSlot: nums[nums.length - 1] };
+}
+
+// ============ 成绩 ============
+
+export interface GradeRow {
+  semester: string;
+  courseCode?: string;
+  courseName: string;
+  /** 总成绩（原始字符串，可能含 "及格"/"不及格"/数字） */
+  score: string;
+  /** 总成绩数值，无法解析时为 null */
+  scoreNum: number | null;
+  usual?: string;     // 平时成绩
+  midterm?: string;   // 期中成绩
+  final?: string;     // 期末成绩
+  credits?: number;
+  hours?: number;
+  /** 学校列表不返回绩点，由总成绩计算（4.0 制） */
+  gpa?: number;
+  /** 课程性质（必修/选修/任选） */
+  courseAttr?: string;
+  examType?: string;
+  remark?: string;
+}
+
+export interface GradesResult {
+  semesters: SemesterOption[];
+  list: GradeRow[];
+}
+
+/**
+ * 5.0 制绩点公式（中国药科大学使用）
+ *   gpa = max(0, (score - 50) / 10)，封顶 5.0
+ *   ≥ 60 → 1.0；70 → 2.0；80 → 3.0；90 → 4.0；100 → 5.0
+ *   < 60 → 0
+ */
+function scoreToGpa(s: number): number {
+  if (!Number.isFinite(s) || s < 60) return 0;
+  const g = (s - 50) / 10;
+  return Math.min(5.0, Math.max(0, Math.round(g * 100) / 100));
+}
+
+export function parseGrades(html: string): GradesResult {
+  const $ = cheerio.load(html);
+  // 优先从 select 拿（query 页有）；list 页没有，后面从数据聚合兜底
+  let semesters = parseSelectOptions($, "kksj");
+  const list: GradeRow[] = [];
+  $("table").each((_, tbl) => {
+    const $tbl = $(tbl);
+    const headRow = $tbl.find("tr").first();
+    const headers = headRow.find("th,td").map((_, c) => $(c).text().trim()).get();
+    // 必含"课程名称"且至少有"总成绩"或"成绩"列才认为是成绩表
+    if (!headers.some((h) => /课程名称/.test(h))) return;
+    if (!headers.some((h) => /总成绩|^成绩$/.test(h))) return;
+
+    const find = (...kws: (string | RegExp)[]) =>
+      headers.findIndex((h) => kws.some((k) => typeof k === "string" ? h.includes(k) : k.test(h)));
+    const idxSem    = find("开课学期");
+    const idxCode   = find("课程编号", "课程代码");
+    const idxName   = find("课程名称");
+    const idxScore  = find("总成绩", /^成绩$/);
+    const idxUsual  = find("平时成绩", "平时");
+    const idxMid    = find("期中成绩", "期中");
+    const idxFinal  = find("期末成绩", "期末");
+    const idxCredit = find("学分");
+    const idxHours  = find("总学时", "学时");
+    const idxAttr   = find("课程属性", "课程性质");
+    const idxExam   = find("考试性质", "考试类型");
+    const idxRemark = find("备注");
+
+    $tbl.find("tr").slice(1).each((_, tr) => {
+      const cells = $(tr).find("td").map((_, c) => $(c).text().replace(/ /g, " ").trim()).get();
+      if (!cells.length) return;
+      const courseName = idxName >= 0 ? cells[idxName] : "";
+      if (!courseName) return;
+      const score = idxScore >= 0 ? cells[idxScore] : "";
+      const scoreNum = parseFloat(score);
+      const credits = idxCredit >= 0 ? parseFloat(cells[idxCredit]) : NaN;
+      list.push({
+        semester: idxSem >= 0 ? cells[idxSem] : "",
+        courseCode: idxCode >= 0 ? cells[idxCode] : undefined,
+        courseName,
+        score,
+        scoreNum: Number.isFinite(scoreNum) ? scoreNum : null,
+        usual: idxUsual >= 0 ? cells[idxUsual] : undefined,
+        midterm: idxMid >= 0 ? cells[idxMid] : undefined,
+        final: idxFinal >= 0 ? cells[idxFinal] : undefined,
+        credits: Number.isFinite(credits) ? credits : undefined,
+        hours: idxHours >= 0 ? (parseFloat(cells[idxHours]) || undefined) : undefined,
+        gpa: Number.isFinite(scoreNum) ? scoreToGpa(scoreNum) : undefined,
+        courseAttr: idxAttr >= 0 ? cells[idxAttr] : undefined,
+        examType: idxExam >= 0 ? cells[idxExam] : undefined,
+        remark: idxRemark >= 0 ? cells[idxRemark] : undefined,
+      });
+    });
+  });
+
+  // 兜底：list 页通常没有 select，从结果数据聚合出学期
+  if (!semesters.length) {
+    const semSet = new Set<string>();
+    for (const g of list) if (g.semester) semSet.add(g.semester);
+    semesters = Array.from(semSet)
+      .sort()
+      .reverse() // 最新学期排前面
+      .map((value) => ({ value, label: value, current: false }));
+  }
+
+  return { semesters, list };
+}
+
+// ============ 考试 ============
+
+export interface ExamRow {
+  semester?: string;
+  examName?: string;
+  courseCode?: string;
+  courseName: string;
+  examTime?: string;
+  location?: string;
+  seat?: string;
+  examType?: string;
+}
+
+export interface ExamsResult {
+  semesters: SemesterOption[];
+  list: ExamRow[];
+}
+
+export function parseExams(html: string): ExamsResult {
+  const $ = cheerio.load(html);
+  const semesters = parseSelectOptions($, "xnxqid");
+  const list: ExamRow[] = [];
+  $("table").each((_, tbl) => {
+    const $tbl = $(tbl);
+    const headers = $tbl.find("tr").first().find("th,td").map((_, c) => $(c).text().trim()).get();
+    if (!headers.some((h) => /课程名称|考试时间|考试地点|考场/.test(h))) return;
+    const colIdx = (kw: string | RegExp) => headers.findIndex((h) => typeof kw === "string" ? h.includes(kw) : kw.test(h));
+    const idxName = colIdx("课程名称");
+    const idxCode = colIdx("课程编号");
+    const idxTime = colIdx(/考试时间|考试日期/);
+    const idxLoc = colIdx(/考试地点|考场/);
+    const idxSeat = colIdx(/座位号|座号/);
+    const idxType = colIdx(/考试性质|考试类型/);
+    const idxSem = colIdx("学期");
+    $tbl.find("tr").slice(1).each((_, tr) => {
+      const cells = $(tr).find("td").map((_, c) => $(c).text().trim().replace(/\s+/g, " ")).get();
+      if (!cells.length) return;
+      const name = idxName >= 0 ? cells[idxName] : "";
+      if (!name) return;
+      list.push({
+        semester: idxSem >= 0 ? cells[idxSem] : undefined,
+        courseCode: idxCode >= 0 ? cells[idxCode] : undefined,
+        courseName: name,
+        examTime: idxTime >= 0 ? cells[idxTime] : undefined,
+        location: idxLoc >= 0 ? cells[idxLoc] : undefined,
+        seat: idxSeat >= 0 ? cells[idxSeat] : undefined,
+        examType: idxType >= 0 ? cells[idxType] : undefined,
+      });
+    });
+  });
+  return { semesters, list };
+}
+
+// ============ 教学周历（calendar）============
+
+export interface CalendarWeek {
+  week: number;
+  days: string[];
+  monday: string;
+  sunday: string;
+  note?: string;
+}
+
+export interface CalendarResult {
+  semesters: SemesterOption[];
+  currentSemester: string;
+  semesterStart: string;
+  semesterEnd: string;
+  weeks: CalendarWeek[];
+  currentWeek: number;
+  today: string;
+}
+
+export function parseCalendar(html: string): CalendarResult {
+  const $ = cheerio.load(html);
+  const semesters = parseSelectOptions($, "xnxqid")
+    .concat(parseSelectOptions($, "xnxq01id"))
+    .concat(parseSelectOptions($, "xqdm"));
+  const currentSemester = semesters.find((s) => s.current)?.value ?? "";
+
+  // 推算学期基准年份
+  let baseYear = new Date().getFullYear();
+  const m = currentSemester.match(/(\d{4})-(\d{4})-(\d)/);
+  if (m) baseYear = m[3] === "1" ? parseInt(m[1]) : parseInt(m[2]);
+
+  // 找到含星期表头的 table（取最深的内层）
+  let foundTable: any = null;
+  let maxDepth = -1;
+  $("table").each((_, t) => {
+    const text = $(t).text();
+    if (!text.includes("星期一") || !text.includes("星期日")) return;
+    const depth = $(t).parents("table").length;
+    if (depth > maxDepth) { maxDepth = depth; foundTable = t; }
+  });
+  if (!foundTable) return emptyCalendar(semesters, currentSemester);
+
+  const $tbl = $(foundTable);
+  const weeks: CalendarWeek[] = [];
+  let lastSeenMonth = currentSemester.endsWith("-2") ? 3 : 9;
+
+  $tbl.find("> tbody > tr, > tr").each((_, tr) => {
+    const tds = $(tr).find("> th, > td").map((_, c) => $(c).text().replace(/ /g, " ").trim()).get();
+    if (tds.length < 8) return;
+    const wk = parseInt(tds[0]);
+    if (!Number.isFinite(wk) || wk < 1 || wk > 30) return;
+    let curYear = baseYear;
+    let curMonth = lastSeenMonth;
+    let lastDay = 0;
+    const days: string[] = [];
+    for (let k = 1; k <= 7; k++) {
+      const cell = tds[k] ?? "";
+      const mMD = cell.match(/(\d{1,2})月\s*(\d{1,2})/);
+      const mD = cell.match(/^(\d{1,2})$/);
+      if (mMD) {
+        const mo = parseInt(mMD[1]);
+        const da = parseInt(mMD[2]);
+        if (mo < curMonth) curYear += 1;
+        curMonth = mo;
+        lastDay = da;
+        days.push(`${curYear}-${String(mo).padStart(2, "0")}-${String(da).padStart(2, "0")}`);
+      } else if (mD) {
+        const da = parseInt(mD[1]);
+        // 如果日期突然变小，说明月份切了
+        if (da < lastDay) {
+          curMonth = curMonth % 12 + 1;
+          if (curMonth === 1) curYear += 1;
+        }
+        lastDay = da;
+        days.push(`${curYear}-${String(curMonth).padStart(2, "0")}-${String(da).padStart(2, "0")}`);
+      } else {
+        days.push("");
+      }
+    }
+    lastSeenMonth = curMonth;
+    weeks.push({
+      week: wk,
+      days,
+      monday: days[1] || "",
+      sunday: days[0] || days[6] || "",
+      note: tds[8] || undefined,
+    });
+  });
+
+  const firstWeek = weeks[0];
+  const lastWeek = weeks[weeks.length - 1];
+  const semesterStart = firstWeek?.days.find(Boolean) ?? "";
+  const semesterEnd = [...(lastWeek?.days ?? [])].reverse().find(Boolean) ?? "";
+
+  // 本地时区今天
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  let currentWeek = 0;
+  for (const w of weeks) {
+    if (!w.monday) continue;
+    const monday = new Date(w.monday + "T00:00:00");
+    const nextMonday = new Date(monday);
+    nextMonday.setDate(nextMonday.getDate() + 7);
+    const todayD = new Date(todayStr + "T12:00:00");
+    if (todayD >= monday && todayD < nextMonday) {
+      currentWeek = w.week;
+      break;
+    }
+  }
+
+  return { semesters, currentSemester, semesterStart, semesterEnd, weeks, currentWeek, today: todayStr };
+}
+
+function emptyCalendar(semesters: SemesterOption[], currentSemester: string): CalendarResult {
+  return {
+    semesters, currentSemester,
+    semesterStart: "", semesterEnd: "",
+    weeks: [], currentWeek: 0,
+    today: new Date().toISOString().slice(0, 10),
+  };
+}
+
+// ============ 学业完成情况（xywcqk）============
+
+export interface ProgressSummaryRow {
+  name: string;
+  requiredMust: number;
+  requiredOpt: number;
+  earnedMust: number;
+  earnedOpt: number;
+  leftMust: number;
+  leftOpt: number;
+}
+
+export interface ProgressCourseRow {
+  courseName: string;
+  courseCode?: string;
+  semester?: string;
+  hours?: number;
+  credits?: number;
+  attr?: string;
+  score?: string;
+  passed: boolean;
+}
+
+export interface ProgressResult {
+  summary: ProgressSummaryRow[];
+  totals: { requiredMust: number; requiredOpt: number; earnedMust: number; earnedOpt: number; leftMust: number; leftOpt: number };
+  completed: ProgressCourseRow[];
+  uncompleted: ProgressCourseRow[];
+}
+
+export function parseProgress(html: string): ProgressResult {
+  const $ = cheerio.load(html);
+  const summary: ProgressSummaryRow[] = [];
+  const completed: ProgressCourseRow[] = [];
+  const uncompleted: ProgressCourseRow[] = [];
+
+  $("table").each((_, tbl) => {
+    const $tbl = $(tbl);
+    const allRows = $tbl.find("tr");
+    if (allRows.length < 2) return;
+    const firstRowText = allRows.eq(0).text().trim();
+
+    if (/课程体系名称/.test(firstRowText)) {
+      // 跳过两级表头，从第 3 行起取数据
+      allRows.slice(2).each((_, tr) => {
+        const cells = $(tr).find("th, td").map((_, c) => $(c).text().trim()).get();
+        if (cells.length < 7) return;
+        const name = cells[0];
+        if (!name) return;
+        summary.push({
+          name,
+          requiredMust: parseFloat(cells[1]) || 0,
+          requiredOpt:  parseFloat(cells[2]) || 0,
+          earnedMust:   parseFloat(cells[3]) || 0,
+          earnedOpt:    parseFloat(cells[4]) || 0,
+          leftMust:     parseFloat(cells[5]) || 0,
+          leftOpt:      parseFloat(cells[6]) || 0,
+        });
+      });
+      return;
+    }
+
+    if (/已完成必修课程|未完成必修课程/.test(firstRowText)) {
+      const isCompleted = /已完成/.test(firstRowText);
+      const headers = allRows.eq(1).find("th, td").map((_, c) => $(c).text().trim()).get();
+      const find = (kw: string | RegExp) =>
+        headers.findIndex((h) => typeof kw === "string" ? h.includes(kw) : kw.test(h));
+      const idxName    = find("课程名称");
+      const idxCode    = find("课程编号");
+      const idxSem     = find("学年学期");
+      const idxHours   = find("学时");
+      const idxCredits = find("学分");
+      const idxAttr    = find("课程属性");
+      const idxScore   = find("成绩");
+      allRows.slice(2).each((_, tr) => {
+        // 学校把数据行也用 <th>，所以同时查 th + td
+        const cells = $(tr).find("th, td").map((_, c) => $(c).text().trim()).get();
+        if (!cells.length) return;
+        const name = idxName >= 0 ? cells[idxName] : "";
+        if (!name) return;
+        const score = idxScore >= 0 ? cells[idxScore] : "";
+        const passed = isCompleted && score !== "未通过" && score !== "";
+        const row: ProgressCourseRow = {
+          courseName: name,
+          courseCode: idxCode >= 0 ? cells[idxCode] : undefined,
+          semester: idxSem >= 0 ? cells[idxSem] : undefined,
+          hours: idxHours >= 0 ? (parseFloat(cells[idxHours]) || undefined) : undefined,
+          credits: idxCredits >= 0 ? (parseFloat(cells[idxCredits]) || undefined) : undefined,
+          attr: idxAttr >= 0 ? cells[idxAttr] : undefined,
+          score: score || undefined,
+          passed,
+        };
+        if (isCompleted) completed.push(row);
+        else uncompleted.push(row);
+      });
+    }
+  });
+
+  const totals = summary.reduce((t, r) => ({
+    requiredMust: t.requiredMust + r.requiredMust,
+    requiredOpt:  t.requiredOpt  + r.requiredOpt,
+    earnedMust:   t.earnedMust   + r.earnedMust,
+    earnedOpt:    t.earnedOpt    + r.earnedOpt,
+    leftMust:     t.leftMust     + r.leftMust,
+    leftOpt:      t.leftOpt      + r.leftOpt,
+  }), { requiredMust: 0, requiredOpt: 0, earnedMust: 0, earnedOpt: 0, leftMust: 0, leftOpt: 0 });
+
+  return { summary, totals, completed, uncompleted };
+}
+
+// ============ 培养方案（执行计划）pyfa ============
+
+export interface PyfaCourse {
+  index?: number;
+  semester?: string;
+  courseCode?: string;
+  courseName: string;
+  unit?: string;
+  credits?: number;
+  hours?: number;
+  examMethod?: string;
+  attr?: string;
+  isExam?: string;
+}
+
+export interface PyfaResult {
+  list: PyfaCourse[];
+  bySemester: { semester: string; courses: number; credits: number }[];
+}
+
+export function parsePyfa(html: string): PyfaResult {
+  const $ = cheerio.load(html);
+  const list: PyfaCourse[] = [];
+
+  $("table").each((_, tbl) => {
+    const $tbl = $(tbl);
+    const headers = $tbl.find("tr").first().find("th, td").map((_, c) => $(c).text().trim()).get();
+    if (!headers.some((h) => /课程名称/.test(h))) return;
+    const find = (kw: string | RegExp) =>
+      headers.findIndex((h) => typeof kw === "string" ? h.includes(kw) : kw.test(h));
+    const idxIndex   = find(/^序号$/);
+    const idxSem     = find("开课学期");
+    const idxCode    = find("课程编号");
+    const idxName    = find("课程名称");
+    const idxUnit    = find("开课单位");
+    const idxCredits = find("学分");
+    const idxHours   = find("总学时");
+    const idxExam    = find("考核方式");
+    const idxAttr    = find("课程属性");
+    const idxIsExam  = find("是否考试");
+
+    $tbl.find("tr").slice(1).each((_, tr) => {
+      const cells = $(tr).find("td").map((_, c) => $(c).text().trim()).get();
+      if (!cells.length) return;
+      const name = idxName >= 0 ? cells[idxName] : "";
+      if (!name) return;
+      list.push({
+        index: idxIndex >= 0 ? (parseInt(cells[idxIndex]) || undefined) : undefined,
+        semester: idxSem >= 0 ? cells[idxSem] : undefined,
+        courseCode: idxCode >= 0 ? cells[idxCode] : undefined,
+        courseName: name,
+        unit: idxUnit >= 0 ? cells[idxUnit] : undefined,
+        credits: idxCredits >= 0 ? (parseFloat(cells[idxCredits]) || undefined) : undefined,
+        hours: idxHours >= 0 ? (parseFloat(cells[idxHours]) || undefined) : undefined,
+        examMethod: idxExam >= 0 ? cells[idxExam] : undefined,
+        attr: idxAttr >= 0 ? cells[idxAttr] : undefined,
+        isExam: idxIsExam >= 0 ? cells[idxIsExam] : undefined,
+      });
+    });
+  });
+
+  const semMap = new Map<string, { courses: number; credits: number }>();
+  for (const c of list) {
+    const k = c.semester || "未指定";
+    const cur = semMap.get(k) ?? { courses: 0, credits: 0 };
+    cur.courses += 1;
+    cur.credits += c.credits ?? 0;
+    semMap.set(k, cur);
+  }
+  const bySemester = Array.from(semMap.entries())
+    .map(([semester, v]) => ({ semester, courses: v.courses, credits: v.credits }))
+    .sort((a, b) => a.semester.localeCompare(b.semester));
+
+  return { list, bySemester };
+}

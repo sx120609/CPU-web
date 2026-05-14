@@ -1,0 +1,301 @@
+// 药大垎坊 数据模型
+// 民间学生论坛 + 学校公告爬虫聚合
+// SQLite + Prisma 5
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============ 用户（站内独立账号，不接学校账号） ============
+
+model User {
+  id            Int      @id @default(autoincrement())
+  username      String   @unique // 登录名
+  passwordHash  String
+  nickname      String   // 显示名
+  email         String?  @unique
+  avatar        String?
+  bio           String?  // 自我介绍
+  college       String?  // 自报院系（可选，仅展示用）
+  enrollYear    Int?     // 自报入学年份（可选）
+  role          String   @default("user") // user / mod / admin / bot
+  status        String   @default("active") // active / banned / muted
+  postCount     Int      @default(0)
+  replyCount    Int      @default(0)
+  reputation    Int      @default(0) // 声望（被赞-被点踩 等）
+  lastSeenAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  topics            Topic[]
+  replies           Reply[]
+  likes             Like[]
+  notifications     Notification[]
+  notificationReads NotificationRead[]
+  messageSetting    MessageSetting?
+  feedSources       SchoolFeedSource[] @relation("BotUser")
+}
+
+// ============ 论坛核心 ============
+
+model Board {
+  id          Int      @id @default(autoincrement())
+  slug        String   @unique // 路由用 slug，如 hot / question / market / coursereview / news-jwc
+  name        String
+  description String?
+  icon        String?  // emoji 或 element icon name
+  color       String?  // 板块色（hex）
+  order       Int      @default(0)
+  // type 控制板块特殊行为：
+  //   normal      普通板块
+  //   announce    只读公告板（爬虫机器人发帖）
+  //   market      二手市场（topic.metadata 含 price/condition/images）
+  //   question    提问广场（topic.metadata 含 resolved/bounty）
+  //   coursereview 课程点评（topic.metadata 含 courseId/ratings）
+  type        String   @default("normal")
+  // 只读板块发帖人必须是 bot
+  readOnly    Boolean  @default(false)
+  topicCount  Int      @default(0)
+  // 关联爬虫源（announce 类型板块独有）
+  feedSourceId Int?    @unique
+  feedSource  SchoolFeedSource? @relation(fields: [feedSourceId], references: [id])
+
+  topics Topic[]
+
+  @@index([order])
+}
+
+model Topic {
+  id          Int       @id @default(autoincrement())
+  boardId     Int
+  authorId    Int
+  title       String
+  // 正文内容（Markdown 源码）
+  content     String
+  // 板块特化字段，JSON 字符串。
+  //   market:       {"price": 100, "condition":"九成新", "images":["..."], "tradeMode":"当面"}
+  //   question:     {"resolved":false, "bounty":0, "tags":["数据结构"]}
+  //   coursereview: {"courseId":12,"ratings":{"difficulty":3,"reward":5,"recommend":4,"score":2}}
+  //   announce:     {"sourceUrl":"...", "publishedAt":"2026-05-14"}
+  metadata    String    @default("{}")
+  pinned      Boolean   @default(false)
+  locked      Boolean   @default(false) // 锁帖后不能回复
+  hidden      Boolean   @default(false) // 被管理员隐藏
+  viewCount   Int       @default(0)
+  replyCount  Int       @default(0)
+  likeCount   Int       @default(0)
+  lastReplyAt DateTime? // 用于排序
+  lastReplyById Int?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  board   Board   @relation(fields: [boardId], references: [id])
+  author  User    @relation(fields: [authorId], references: [id])
+  replies Reply[]
+  likes   Like[]
+  tags    TopicTag[]
+
+  @@index([boardId, lastReplyAt])
+  @@index([authorId])
+}
+
+model Reply {
+  id            Int      @id @default(autoincrement())
+  topicId       Int
+  authorId      Int
+  content       String   // Markdown
+  // 楼中楼：parentReplyId 指向父级回复，null 表示直接对主帖
+  parentReplyId Int?
+  // 排序楼层号
+  floor         Int      @default(0)
+  likeCount     Int      @default(0)
+  hidden        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  topic       Topic   @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  author      User    @relation(fields: [authorId], references: [id])
+  parentReply Reply?  @relation("ReplyToReply", fields: [parentReplyId], references: [id])
+  children    Reply[] @relation("ReplyToReply")
+  likes       Like[]
+
+  @@index([topicId, floor])
+}
+
+model Like {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  topicId   Int?
+  replyId   Int?
+  createdAt DateTime @default(now())
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic Topic? @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  reply Reply? @relation(fields: [replyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, topicId, replyId])
+}
+
+model Tag {
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+  topics TopicTag[]
+}
+
+model TopicTag {
+  topicId Int
+  tagId   Int
+
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  tag   Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([topicId, tagId])
+}
+
+// ============ 课程点评聚合（衍生于 coursereview 板块的 Topic） ============
+
+model Course {
+  id       Int    @id @default(autoincrement())
+  code     String @unique
+  name     String
+  teacher  String
+  credits  Float?
+  category String? // 必修/选修/通识
+  college  String?
+
+  // 聚合统计（由 CourseRating 计算后回写）
+  ratingCount   Int   @default(0)
+  avgDifficulty Float @default(0)
+  avgReward     Float @default(0)
+  avgRecommend  Float @default(0)
+  avgScore      Float @default(0)
+}
+
+// 一个学生对一门课的评分（与 Topic 1:1 关联）
+model CourseRating {
+  id         Int   @id @default(autoincrement())
+  topicId    Int   @unique
+  courseId   Int
+  authorId   Int
+  // 评分维度（1-5）
+  difficulty Int   // 难度
+  reward     Int   // 收获
+  recommend  Int   // 推荐度
+  givingScore Int  // 给分（1=低 5=高）
+  // 上学期 / 学年
+  semester   String?
+
+  createdAt  DateTime @default(now())
+
+  @@index([courseId])
+}
+
+// ============ 学校爬虫源 ============
+
+model SchoolFeedSource {
+  id          Int     @id @default(autoincrement())
+  slug        String  @unique
+  name        String  // 显示名："教务通知" "学工动态"
+  homepage    String  // 学校原始入口（用于"查看原文"）
+  listUrl     String  // 列表 URL，可包含 {page} 占位符
+  pageSize    Int     @default(14) // 每页条数（学校 CMS 通常 14）
+  maxPages    Int     @default(2) // 抓多少页
+  // 解析规则（JSON，预留扩展。MVP 用硬编码 selector）
+  parser      String  @default("school-cms-v1")
+  cronMinutes Int     @default(15) // 每 N 分钟抓一次
+  enabled     Boolean @default(true)
+  // 机器人账号（自动发帖用）
+  botUserId   Int
+  lastRunAt   DateTime?
+  lastRunOk   Boolean? // 上次是否成功
+  lastError   String?
+
+  botUser User   @relation("BotUser", fields: [botUserId], references: [id])
+  board   Board?
+}
+
+// 已经抓取过的官方公告（去重用）
+model SchoolFeedItem {
+  id          Int      @id @default(autoincrement())
+  sourceId    Int
+  externalId  String   // URL 中的 c{boardId}a{infoId} 部分，唯一
+  url         String   // 详情页全 URL
+  title       String
+  publishedAt DateTime
+  topicId     Int?     // 对应在论坛中创建的 Topic
+  createdAt   DateTime @default(now())
+
+  @@unique([sourceId, externalId])
+  @@index([sourceId])
+}
+
+// ============ 服务导航卡片（学校原入口外链） ============
+
+model ServiceCard {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique
+  name        String
+  category    String   // 教务 / 卡务 / 健康 / 生活 / 就业 / 信息化
+  owner       String   // 责任部门
+  icon        String?
+  description String?
+  url         String   // 学校原入口
+  materials   String?  // 所需材料
+  duration    String?  // 办理时长
+  contact     String?  // 咨询方式
+  needSso     Boolean  @default(false) // 是否需要先登录学校 SSO
+  // 排序权重
+  order       Int      @default(0)
+  hidden      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+// ============ 通知与待办（保留，但语义改为论坛事件） ============
+
+model Notification {
+  id        Int       @id @default(autoincrement())
+  userId    Int?      // null = 全局广播
+  // 事件类型：reply / mention / like / system / school-feed
+  category  String
+  level     String    @default("normal") // strong / normal / weak
+  title     String
+  content   String
+  link      String?   // 站内路由
+  source    String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user  User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reads NotificationRead[]
+
+  @@index([userId, readAt])
+}
+
+model NotificationRead {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  notificationId Int
+  readAt         DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, notificationId])
+}
+
+model MessageSetting {
+  id              Int     @id @default(autoincrement())
+  userId          Int     @unique
+  quietStart      String  @default("23:00")
+  quietEnd        String  @default("07:00")
+  subscribeReply  Boolean @default(true)
+  subscribeLike   Boolean @default(true)
+  subscribeSchool Boolean @default(true)
+  subscribeSystem Boolean @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

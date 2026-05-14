@@ -1,0 +1,30 @@
+<template>
+  <div class="not-found">
+    <div class="content">
+      <div class="logo">404</div>
+      <p>页面走失了。也许它正在某个药学楼的电梯里...</p>
+      <el-button type="primary" @click="$router.push('/home')">返回首页</el-button>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.not-found {
+  height: 100vh;
+  display: grid;
+  place-items: center;
+  background: #f5f7fb;
+}
+.content { text-align: center; }
+.logo {
+  font-size: 96px;
+  font-weight: 800;
+  color: #1d4d8a;
+  letter-spacing: 4px;
+  margin-bottom: 12px;
+}
+.content p {
+  color: #6b7280;
+  margin-bottom: 16px;
+}
+</style>
