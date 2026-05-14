@@ -33,12 +33,19 @@ SERVICE_NAME="cpu-web"
 PORT="${PORT:-23333}"
 
 # ---------- 环境检查与安装 ----------
+NODE_MIN_MAJOR=20  # undici / 现代 fetch 依赖 Node 20+ 的 File 全局
+
 ensure_node() {
   if command -v node >/dev/null 2>&1; then
     local v=$(node -v | sed 's/v//')
     local major=${v%%.*}
-    if [ "$major" -lt 18 ]; then
-      warn "检测到 Node $v 版本过低，尝试升级到 20 LTS"
+    if [ "$major" -lt "$NODE_MIN_MAJOR" ]; then
+      warn "检测到 Node $v ，本项目需要 Node $NODE_MIN_MAJOR+（undici 依赖 File 全局，Node 18 默认不开启）"
+      # 杀掉所有 pm2 进程（旧 Node 二进制要被替换）
+      if command -v pm2 >/dev/null 2>&1; then
+        log "停止现有 pm2 进程，准备升级 Node"
+        pm2 kill || true
+      fi
       install_node
     else
       log "Node $v ✓"
@@ -51,11 +58,16 @@ ensure_node() {
 
 install_node() {
   if ! command -v sudo >/dev/null 2>&1; then
-    err "需要 sudo 才能安装 Node.js。请手动安装或以 root 运行此脚本"
+    err "需要 sudo 才能安装/升级 Node.js。请手动安装 Node 20+ 或以 root 运行此脚本"
   fi
   curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
   sudo apt-get install -y nodejs
   log "Node 已安装：$(node -v)"
+  # 升级 Node 后 pm2 也要重装到新 Node 下
+  if command -v pm2 >/dev/null 2>&1; then
+    log "重装 pm2 到新 Node 下"
+    npm install -g pm2 2>/dev/null || sudo npm install -g pm2 || true
+  fi
 }
 
 ensure_pm2() {
