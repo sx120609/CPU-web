@@ -185,4 +185,61 @@ async function onAddTeacher() {
   gap: 8px;
 }
 .goto { color: var(--cpu-primary); margin-left: auto; }
+
+@media (max-width: 700px) {
+  .cpu-card {
+    border-radius: 10px;
+    padding: 14px;
+  }
+
+  .head {
+    flex-direction: column;
+  }
+
+  .name {
+    font-size: 21px;
+    line-height: 1.35;
+  }
+
+  .right {
+    width: 100%;
+    text-align: left;
+    padding-top: 10px;
+    border-top: 1px dashed #eef0f4;
+  }
+
+  .score {
+    font-size: 38px;
+  }
+
+  .dim {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .head-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .head-row .el-button {
+    width: 100%;
+  }
+
+  .r-bars {
+    grid-template-columns: 1fr;
+  }
+
+  .r-meta {
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .goto {
+    width: 100%;
+    margin-left: 0;
+  }
+}
 </style>

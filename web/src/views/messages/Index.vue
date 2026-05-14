@@ -103,4 +103,42 @@ async function saveSettings() {
 .hint { font-size: 12px; color: #6b7280; margin: 0 0 10px; }
 .row { display: flex; gap: 10px; align-items: center; }
 .switches { display: flex; flex-direction: column; gap: 12px; }
+
+@media (max-width: 640px) {
+  .page-title {
+    font-size: 20px;
+  }
+
+  .cpu-card {
+    border-radius: 10px;
+    padding: 12px;
+  }
+
+  .row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .row > span {
+    align-self: center;
+  }
+
+  .row :deep(.el-select),
+  .row :deep(.el-input) {
+    width: 100% !important;
+  }
+
+  .settings .el-button {
+    width: 100%;
+  }
+
+  .bar {
+    justify-content: stretch;
+  }
+
+  .bar .el-button {
+    width: 100%;
+  }
+}
 </style>

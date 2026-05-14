@@ -381,4 +381,104 @@ async function onDelete() {
 
 .cpu-section-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
 .cpu-muted { font-size: 12px; color: #9ca3af; }
+
+@media (max-width: 700px) {
+  .topic-page {
+    gap: 12px;
+  }
+
+  .cpu-card {
+    border-radius: 10px;
+    padding: 14px;
+  }
+
+  .main-post {
+    .post-head {
+      align-items: flex-start;
+      gap: 8px;
+      flex-direction: column;
+    }
+
+    .actions {
+      width: 100%;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .actions::-webkit-scrollbar {
+      display: none;
+    }
+
+    .post-title {
+      font-size: 20px;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+
+    .post-meta {
+      align-items: flex-start;
+      gap: 10px;
+      flex-wrap: wrap;
+
+      .meta-author {
+        min-width: 0;
+      }
+
+      .name,
+      .meta {
+        flex-wrap: wrap;
+        line-height: 1.5;
+      }
+
+      .meta-price {
+        width: 100%;
+        font-size: 20px;
+      }
+    }
+
+    .source-bar {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px;
+    }
+
+    .src-link {
+      width: 100%;
+      justify-content: center;
+    }
+
+    .extra-bar {
+      gap: 8px;
+      padding: 10px 12px;
+    }
+
+    .post-foot {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  .replies {
+    .reply {
+      gap: 10px;
+      padding: 12px 0;
+    }
+
+    .reply-meta {
+      flex-wrap: wrap;
+      line-height: 1.5;
+    }
+  }
+
+  .reply-form-actions {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .reply-form-actions .el-button {
+    width: 100%;
+  }
+}
 </style>

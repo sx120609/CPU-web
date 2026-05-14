@@ -101,4 +101,35 @@ const filteredList = computed(() => {
   font-size: 11px;
   color: #9ca3af;
 }
+
+@media (max-width: 640px) {
+  .head {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .head h2 {
+    font-size: 20px;
+  }
+
+  .head .el-button {
+    width: 100%;
+  }
+
+  .goods-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .goods {
+    border-radius: 10px;
+  }
+
+  .g-foot {
+    justify-content: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+}
 </style>

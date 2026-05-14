@@ -244,4 +244,41 @@ async function onDevSubmit() {
   margin-top: 6px;
 }
 .dev-accounts span { cursor: pointer; text-decoration: underline; }
+
+@media (max-width: 640px) {
+  .auth-wrap {
+    min-height: 100dvh;
+    align-items: start;
+    padding: calc(18px + env(safe-area-inset-top)) 12px 18px;
+  }
+
+  .auth-card {
+    width: 100%;
+    border-radius: 14px;
+    padding: 22px 18px 18px;
+  }
+
+  .brand {
+    margin-bottom: 16px;
+  }
+
+  .brand-logo {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    font-size: 22px;
+  }
+
+  .welcome {
+    font-size: 17px;
+  }
+
+  .vcode-row {
+    gap: 6px;
+  }
+
+  .vcode-img {
+    max-width: 108px;
+  }
+}
 </style>

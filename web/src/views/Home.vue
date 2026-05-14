@@ -244,4 +244,91 @@ function openUrl(url: string) {
   border-radius: 4px;
 }
 .cpu-muted { font-size: 12px; color: #9ca3af; }
+
+@media (max-width: 768px) {
+  .home {
+    gap: 14px;
+  }
+
+  .hero {
+    border-radius: 12px;
+    padding: 22px 18px;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .hero h1 {
+    font-size: 28px;
+  }
+
+  .hero p {
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .hero-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .hero-actions .el-button {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .hero-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .stat {
+    text-align: left;
+    padding: 10px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .stat .num {
+    font-size: 22px;
+  }
+
+  .grid {
+    gap: 14px;
+  }
+
+  .col-left,
+  .col-right {
+    gap: 14px;
+  }
+
+  .block {
+    border-radius: 10px;
+    padding: 14px 12px 10px;
+  }
+
+  .block-head {
+    align-items: center;
+  }
+
+  .service-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .svc {
+    min-height: 82px;
+    padding: 9px 7px;
+  }
+
+  .svc-icon {
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 420px) {
+  .service-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 </style>

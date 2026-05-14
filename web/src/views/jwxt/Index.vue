@@ -322,4 +322,67 @@ async function onProbe() {
 .snap-list { font-size: 12px; color: #4b5563; list-style: none; padding: 0; margin: 10px 0; }
 .snap-list li { padding: 2px 0; font-family: monospace; }
 .cpu-muted { font-size: 12px; color: #9ca3af; }
+
+@media (max-width: 700px) {
+  .jwxt-page {
+    gap: 14px;
+  }
+
+  .page-head h2 {
+    font-size: 20px;
+  }
+
+  .cpu-card {
+    border-radius: 10px;
+    padding: 14px;
+  }
+
+  .login-card {
+    max-width: none;
+  }
+
+  .login-head {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .lock-icon {
+    font-size: 24px;
+    padding: 10px;
+    border-radius: 10px;
+  }
+
+  .safety {
+    padding-left: 18px;
+  }
+
+  .vcode-row {
+    gap: 6px;
+  }
+
+  .vcode-img {
+    max-width: 108px;
+  }
+
+  .session-info {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .session-info > span:first-of-type {
+    flex-basis: calc(100% - 28px);
+  }
+
+  .session-info .el-button {
+    margin-left: 0;
+  }
+
+  :deep(.el-tabs__content) {
+    overflow: visible;
+  }
+
+  .debug-pane :deep(.el-input__wrapper) {
+    min-width: 0;
+  }
+}
 </style>

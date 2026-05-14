@@ -25,6 +25,37 @@ body {
   color: var(--cpu-text);
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+  touch-action: pan-y manipulation;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  overscroll-behavior: none;
+  touch-action: pan-y manipulation;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+a,
+[role="button"],
+.el-button,
+.el-radio-button__inner,
+.el-tabs__item,
+.el-dropdown,
+.el-select,
+.el-input__wrapper {
+  touch-action: manipulation;
+}
+
+img,
+svg,
+canvas {
+  -webkit-user-drag: none;
 }
 
 .cpu-page {
@@ -81,3 +112,80 @@ body {
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+@media (max-width: 768px) {
+  body {
+    font-size: 13px;
+  }
+
+  .cpu-page {
+    padding: 12px;
+  }
+
+  .cpu-card {
+    border-radius: 10px;
+    padding: 14px;
+    box-shadow: 0 1px 8px rgba(0, 0, 0, 0.035);
+  }
+
+  .el-button {
+    min-height: 38px;
+  }
+
+  .el-button--small {
+    min-height: 32px;
+  }
+
+  .el-input__wrapper,
+  .el-select__wrapper {
+    min-height: 40px;
+  }
+
+  .el-radio-group {
+    max-width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .el-radio-group::-webkit-scrollbar {
+    display: none;
+  }
+
+  .el-radio-button__inner {
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+  }
+
+  .el-tabs__nav-wrap {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .el-tabs__nav-wrap::-webkit-scrollbar {
+    display: none;
+  }
+
+  .el-table {
+    --el-table-row-hover-bg-color: #fff;
+  }
+
+  .el-table__body-wrapper,
+  .el-table__header-wrapper,
+  .el-scrollbar__wrap {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .el-dialog {
+    width: calc(100vw - 24px) !important;
+    max-width: 520px;
+  }
+
+  .el-message-box {
+    width: calc(100vw - 24px) !important;
+    max-width: 420px;
+  }
+}

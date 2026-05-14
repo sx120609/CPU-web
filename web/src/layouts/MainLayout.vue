@@ -22,13 +22,10 @@
           </el-input>
         </div>
 
-        <nav class="top-nav">
-          <router-link to="/home">首页</router-link>
-          <router-link to="/forum">论坛</router-link>
-          <router-link to="/jwxt">教务直连</router-link>
-          <router-link to="/coursereview">课评</router-link>
-          <router-link to="/market">二手</router-link>
-          <router-link to="/services">服务导航</router-link>
+        <nav class="top-nav" aria-label="主导航">
+          <router-link v-for="item in desktopNavItems" :key="item.to" :to="item.to">
+            {{ item.label }}
+          </router-link>
         </nav>
 
         <div class="top-right">
@@ -64,6 +61,21 @@
             <el-button type="primary" @click="$router.push('/register')">注册</el-button>
           </template>
         </div>
+
+        <div class="mobile-actions">
+          <el-button v-if="auth.isLoggedIn" text class="touch-icon-btn" aria-label="发帖" @click="$router.push('/post')">
+            <el-icon><Edit /></el-icon>
+          </el-button>
+          <el-button v-if="auth.isLoggedIn" text class="touch-icon-btn" aria-label="消息" @click="$router.push('/messages')">
+            <el-badge :value="msg.unreadCount" :hidden="msg.unreadCount === 0">
+              <el-icon><Bell /></el-icon>
+            </el-badge>
+          </el-button>
+          <el-button v-else text class="mobile-login-btn" @click="$router.push('/login')">登录</el-button>
+          <el-button text class="touch-icon-btn" aria-label="更多" @click="mobileMenuOpen = true">
+            <el-icon><Menu /></el-icon>
+          </el-button>
+        </div>
       </div>
     </header>
 
@@ -93,6 +105,54 @@
       <span class="dot">·</span>
       <span>本站不存储任何学校账号</span>
     </footer>
+
+    <nav class="mobile-tabbar" aria-label="移动端主导航">
+      <router-link
+        v-for="item in mobileNavItems"
+        :key="item.to"
+        :to="resolveMobileTo(item)"
+        class="mobile-tab"
+        :class="{ active: isMobileRouteActive(item) }"
+      >
+        <el-icon><component :is="item.icon" /></el-icon>
+        <span>{{ item.label }}</span>
+      </router-link>
+    </nav>
+
+    <el-drawer
+      v-model="mobileMenuOpen"
+      direction="btt"
+      size="auto"
+      class="mobile-drawer"
+      title="快捷入口"
+    >
+      <div class="drawer-grid">
+        <button
+          v-for="item in drawerItems"
+          :key="item.to"
+          type="button"
+          class="drawer-link"
+          @click="goDrawer(item.to)"
+        >
+          <el-icon><component :is="item.icon" /></el-icon>
+          <span>{{ item.label }}</span>
+        </button>
+      </div>
+      <div class="drawer-account">
+        <template v-if="auth.isLoggedIn">
+          <el-avatar :size="34" class="user-avatar">{{ auth.user?.nickname?.[0] ?? "U" }}</el-avatar>
+          <div class="drawer-user">
+            <div>{{ auth.user?.nickname }}</div>
+            <button type="button" @click="goDrawer('/profile')">个人中心</button>
+          </div>
+          <el-button text type="danger" @click="onMobileLogout">退出</el-button>
+        </template>
+        <template v-else>
+          <el-button type="primary" @click="goDrawer('/login')">登录</el-button>
+          <el-button @click="goDrawer('/register')">注册</el-button>
+        </template>
+      </div>
+    </el-drawer>
 
     <!-- 首次登录设昵称（强制） -->
     <el-dialog
@@ -128,16 +188,58 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
-import { Search, Edit, Bell, ArrowDown, WarningFilled } from "@element-plus/icons-vue";
+import {
+  Search,
+  Edit,
+  Bell,
+  ArrowDown,
+  WarningFilled,
+  Menu,
+  House,
+  ChatLineRound,
+  Calendar,
+  Reading,
+  UserFilled,
+  Goods,
+  Service,
+  Message,
+} from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
 
 const auth = useAuthStore();
 const msg = useMessageStore();
 const router = useRouter();
+const route = useRoute();
 const q = ref("");
+const mobileMenuOpen = ref(false);
+
+const desktopNavItems = [
+  { to: "/home", label: "首页" },
+  { to: "/forum", label: "论坛" },
+  { to: "/jwxt", label: "教务直连" },
+  { to: "/coursereview", label: "课评" },
+  { to: "/market", label: "二手" },
+  { to: "/services", label: "服务导航" },
+];
+
+const mobileNavItems = [
+  { to: "/home", label: "首页", icon: House, match: ["/home"] },
+  { to: "/forum", label: "论坛", icon: ChatLineRound, match: ["/forum"] },
+  { to: "/jwxt", label: "教务", icon: Calendar, match: ["/jwxt"] },
+  { to: "/coursereview", label: "课评", icon: Reading, match: ["/coursereview"] },
+  { to: "/profile", label: "我的", icon: UserFilled, match: ["/profile", "/messages", "/u/"], auth: true },
+];
+
+const drawerItems = [
+  { to: "/post", label: "发帖", icon: Edit },
+  { to: "/messages", label: "消息", icon: Message },
+  { to: "/market", label: "二手市场", icon: Goods },
+  { to: "/services", label: "服务导航", icon: Service },
+  { to: "/search", label: "搜索", icon: Search },
+];
 
 // 首次登录设昵称
 const showNicknameDialog = ref(false);
@@ -172,6 +274,31 @@ function goSearch() {
   if (q.value.trim()) router.push({ name: "search", query: { q: q.value.trim() } });
 }
 
+function resolveMobileTo(item: { to: string; auth?: boolean }) {
+  if (item.auth && !auth.isLoggedIn) return "/login";
+  return item.to;
+}
+
+function isMobileRouteActive(item: { match: string[]; auth?: boolean }) {
+  if (item.auth && !auth.isLoggedIn && route.path === "/login") return true;
+  return item.match.some((prefix) => route.path === prefix || route.path.startsWith(`${prefix}/`));
+}
+
+function goDrawer(to: string) {
+  mobileMenuOpen.value = false;
+  if ((to === "/post" || to === "/messages") && !auth.isLoggedIn) {
+    router.push({ name: "login", query: { redirect: to } });
+    return;
+  }
+  router.push(to);
+}
+
+async function onMobileLogout() {
+  mobileMenuOpen.value = false;
+  await auth.logout();
+  router.push("/login");
+}
+
 async function onUserCmd(cmd: string) {
   if (cmd === "profile") router.push("/profile");
   else if (cmd === "settings") router.push("/messages?tab=settings");
@@ -185,7 +312,7 @@ async function onUserCmd(cmd: string) {
 
 <style scoped lang="scss">
 .layout-root {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   background: var(--cpu-bg);
@@ -197,6 +324,7 @@ async function onUserCmd(cmd: string) {
   position: sticky;
   top: 0;
   z-index: 100;
+  padding-top: env(safe-area-inset-top);
 }
 
 .topbar-inner {
@@ -278,6 +406,32 @@ async function onUserCmd(cmd: string) {
   gap: 10px;
 }
 
+.mobile-actions {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.touch-icon-btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 10px;
+  color: #374151;
+}
+
+.touch-icon-btn .el-icon {
+  font-size: 20px;
+}
+
+.mobile-login-btn {
+  min-width: 52px;
+  height: 40px;
+  padding: 0 10px;
+  color: var(--cpu-primary);
+}
+
 .user-info {
   display: flex;
   align-items: center;
@@ -335,6 +489,60 @@ async function onUserCmd(cmd: string) {
 .footer a { color: var(--cpu-primary); text-decoration: none; }
 .footer .dot { margin: 0 8px; }
 
+.mobile-tabbar {
+  display: none;
+}
+
+.drawer-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.drawer-link {
+  border: 1px solid #eef0f4;
+  background: #fff;
+  border-radius: 10px;
+  min-height: 72px;
+  color: #374151;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font: inherit;
+}
+
+.drawer-link .el-icon {
+  font-size: 22px;
+  color: var(--cpu-primary);
+}
+
+.drawer-account {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #eef0f4;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.drawer-user {
+  flex: 1;
+  min-width: 0;
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.drawer-user button {
+  border: none;
+  background: none;
+  padding: 2px 0 0;
+  color: var(--cpu-primary);
+  font: inherit;
+  font-size: 12px;
+}
+
 .fade-enter-active, .fade-leave-active { transition: opacity 0.15s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
@@ -346,5 +554,136 @@ async function onUserCmd(cmd: string) {
 @media (max-width: 900px) {
   .top-nav { display: none; }
   .top-search { width: 200px; }
+}
+
+@media (max-width: 768px) {
+  .topbar {
+    box-shadow: 0 1px 10px rgba(15, 23, 42, 0.05);
+  }
+
+  .topbar-inner {
+    height: auto;
+    min-height: 58px;
+    padding: 8px 12px 10px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-logo {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    font-size: 19px;
+  }
+
+  .brand-name {
+    font-size: 16px;
+  }
+
+  .brand-sub {
+    display: none;
+  }
+
+  .top-search {
+    order: 10;
+    width: 100%;
+    max-width: none;
+  }
+
+  .top-search :deep(.el-input__wrapper) {
+    border-radius: 12px;
+  }
+
+  .top-right {
+    display: none;
+  }
+
+  .mobile-actions {
+    display: flex;
+  }
+
+  .disclaimer {
+    justify-content: flex-start;
+    align-items: flex-start;
+    padding: 8px 12px;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .disclaimer .el-icon {
+    margin-top: 2px;
+    flex-shrink: 0;
+  }
+
+  .main {
+    padding: 14px 12px calc(88px + env(safe-area-inset-bottom));
+    max-width: none;
+  }
+
+  .footer {
+    display: none;
+  }
+
+  .mobile-tabbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 200;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    border-top: 1px solid #e5e7eb;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.08);
+  }
+
+  .mobile-tab {
+    min-width: 0;
+    height: 50px;
+    border-radius: 12px;
+    color: #6b7280;
+    text-decoration: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    font-size: 11px;
+    font-weight: 500;
+    touch-action: manipulation;
+  }
+
+  .mobile-tab .el-icon {
+    font-size: 20px;
+  }
+
+  .mobile-tab.active {
+    color: var(--cpu-primary);
+    background: #ecfdf5;
+  }
+
+  :deep(.mobile-drawer) {
+    border-radius: 18px 18px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  :deep(.mobile-drawer .el-drawer__header) {
+    margin-bottom: 8px;
+  }
+
+  .dlg-tip {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 420px) {
+  .drawer-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .touch-icon-btn {
+    width: 38px;
+  }
 }
 </style>

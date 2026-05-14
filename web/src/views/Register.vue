@@ -156,4 +156,29 @@ async function submit() {
 }
 
 ol { padding-left: 20px; line-height: 1.8; color: #4b5563; font-size: 13px; }
+
+@media (max-width: 640px) {
+  .auth-wrap {
+    min-height: 100dvh;
+    align-items: start;
+    padding: calc(18px + env(safe-area-inset-top)) 12px 18px;
+  }
+
+  .auth-card {
+    width: 100%;
+    border-radius: 14px;
+    padding: 22px 18px 18px;
+  }
+
+  .brand {
+    margin-bottom: 16px;
+  }
+
+  .brand-logo {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    font-size: 22px;
+  }
+}
 </style>

@@ -183,4 +183,54 @@ async function onSync() {
   border-top: 1px dashed #f1f5f9;
   padding-top: 8px;
 }
+
+@media (max-width: 700px) {
+  .head {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .head h2 {
+    font-size: 20px;
+  }
+
+  .head-right {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .head-right .el-button {
+    margin-left: 0;
+  }
+
+  .filter-bar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .filter-bar .el-input {
+    max-width: none !important;
+  }
+
+  .course-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .course {
+    border-radius: 10px;
+    padding: 14px;
+  }
+
+  .c-head {
+    gap: 8px;
+  }
+
+  .c-foot {
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+}
 </style>

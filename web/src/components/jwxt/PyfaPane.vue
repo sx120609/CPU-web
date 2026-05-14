@@ -153,4 +153,45 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
   transition: width 0.3s;
 }
 .sem-val { color: #6b7280; white-space: nowrap; }
+
+@media (max-width: 760px) {
+  .ctrl-bar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .ctrl-left {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ctrl-left :deep(.el-select),
+  .ctrl-left :deep(.el-input) {
+    width: 100% !important;
+  }
+
+  .ctrl-right {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .sem-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .sem-stat {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .sem-val {
+    white-space: normal;
+  }
+
+  :deep(.el-table) {
+    font-size: 12px;
+  }
+}
 </style>

@@ -317,4 +317,50 @@ async function submit() {
 }
 .preview h4 { margin: 0 0 8px; color: #6b7280; font-size: 12px; font-weight: 500; }
 .cpu-muted { font-size: 12px; color: #9ca3af; }
+
+@media (max-width: 700px) {
+  .page-title {
+    font-size: 20px;
+  }
+
+  .cpu-card {
+    border-radius: 10px;
+    padding: 14px;
+  }
+
+  .meta-row {
+    gap: 0;
+  }
+
+  .meta-row .el-form-item {
+    min-width: 100%;
+  }
+
+  .rate-row {
+    grid-template-columns: 1fr;
+  }
+
+  .teacher-pick-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .or-text {
+    align-self: center;
+  }
+
+  .preview {
+    padding: 12px;
+  }
+
+  :deep(.el-form-item:last-child .el-form-item__content) {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  :deep(.el-form-item:last-child .el-button) {
+    margin-left: 0;
+  }
+}
 </style>

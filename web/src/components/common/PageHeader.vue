@@ -32,4 +32,16 @@ defineProps<{ title: string; subtitle?: string }>();
   font-size: 13px;
   color: #6b7280;
 }
+
+@media (max-width: 640px) {
+  .page-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .page-title h2 {
+    font-size: 20px;
+  }
+}
 </style>

@@ -253,4 +253,68 @@ function openApp(a: IServiceApp) {
   right: 6px;
   font-size: 12px;
 }
+
+@media (max-width: 700px) {
+  .ctrl-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ctrl-left {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ctrl-left :deep(.el-input) {
+    width: 100% !important;
+  }
+
+  .cats {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .cats::-webkit-scrollbar {
+    display: none;
+  }
+
+  .cat-tag {
+    flex: 0 0 auto;
+  }
+
+  .app-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .app-card {
+    min-height: 118px;
+    border-radius: 10px;
+    padding: 12px 8px 10px;
+  }
+
+  .app-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+  }
+
+  .app-icon img {
+    width: 34px;
+    height: 34px;
+  }
+
+  .app-name {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 390px) {
+  .app-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 </style>

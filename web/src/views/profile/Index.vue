@@ -154,4 +154,34 @@ async function onLogout() {
 .meta { font-size: 12px; color: #9ca3af; flex-shrink: 0; }
 
 .cpu-section-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
+
+@media (max-width: 640px) {
+  .cpu-card {
+    border-radius: 10px;
+    padding: 14px;
+  }
+
+  .profile-card .el-button {
+    width: calc(50% - 5px);
+    margin-left: 0;
+  }
+
+  .topic-line {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 2px;
+  }
+
+  .title {
+    flex-basis: 100%;
+    order: 3;
+    white-space: normal;
+    line-height: 1.45;
+  }
+
+  .meta {
+    margin-left: auto;
+  }
+}
 </style>

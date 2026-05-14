@@ -130,4 +130,54 @@ function goPost() {
 .cpu-card { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
 
 .pager { padding: 12px; display: flex; justify-content: center; }
+
+@media (max-width: 700px) {
+  .board-head {
+    flex-direction: column;
+  }
+
+  .head-left {
+    width: 100%;
+  }
+
+  .head-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    font-size: 24px;
+  }
+
+  .head-name {
+    font-size: 20px;
+  }
+
+  .head-desc {
+    line-height: 1.55;
+  }
+
+  .head-meta {
+    gap: 8px;
+    flex-wrap: wrap;
+    line-height: 1.5;
+  }
+
+  .head-right {
+    width: 100%;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .head-right .el-button {
+    flex: 1;
+  }
+
+  .topic-list {
+    border-radius: 10px;
+    padding: 4px;
+  }
+
+  .pager {
+    padding: 10px 0 6px;
+  }
+}
 </style>

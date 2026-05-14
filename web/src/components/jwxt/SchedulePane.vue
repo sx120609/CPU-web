@@ -295,4 +295,61 @@ async function jumpThisWeek() {
 .grid > .slot-label:last-of-type ~ .cell {
   border-bottom: none;
 }
+
+@media (max-width: 760px) {
+  .ctrl-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ctrl-left {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .ctrl-left .lbl {
+    align-self: center;
+  }
+
+  .ctrl-left :deep(.el-select) {
+    flex: 1 1 140px;
+    width: auto !important;
+  }
+
+  .ctrl-right {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .weekinfo {
+    margin-right: 0;
+    line-height: 1.5;
+  }
+
+  .grid {
+    grid-template-columns: 76px repeat(7, minmax(96px, 1fr));
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .corner,
+  .day-head {
+    padding: 9px 3px;
+    font-size: 12px;
+  }
+
+  .slot-label {
+    padding: 10px 6px;
+  }
+
+  .course {
+    padding: 6px;
+  }
+
+  .cn {
+    font-size: 11px;
+  }
+}
 </style>

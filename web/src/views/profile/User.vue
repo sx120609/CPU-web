@@ -77,4 +77,38 @@ async function load() {
 .title { font-size: 14px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .meta { font-size: 12px; color: #9ca3af; flex-shrink: 0; }
 .cpu-section-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
+
+@media (max-width: 640px) {
+  .cpu-card {
+    border-radius: 10px;
+    padding: 14px;
+  }
+
+  .profile-card {
+    gap: 12px;
+  }
+
+  .name {
+    font-size: 19px;
+    flex-wrap: wrap;
+  }
+
+  .topic-line {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 2px;
+  }
+
+  .title {
+    flex-basis: 100%;
+    order: 3;
+    white-space: normal;
+    line-height: 1.45;
+  }
+
+  .topic-line .meta {
+    margin-left: auto;
+  }
+}
 </style>

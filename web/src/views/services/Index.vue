@@ -110,4 +110,45 @@ onMounted(async () => {
   background: #f0fdf4;
 }
 .fb-icon { font-size: 22px; }
+
+@media (max-width: 700px) {
+  .services-page {
+    gap: 14px;
+  }
+
+  .page-head h2 {
+    font-size: 20px;
+  }
+
+  .cpu-card,
+  .fallback {
+    border-radius: 10px;
+    padding: 14px;
+  }
+
+  .login-hint {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .big-icon {
+    font-size: 30px;
+    padding: 10px;
+    border-radius: 12px;
+  }
+
+  .hint-body .el-button {
+    width: 100%;
+  }
+
+  .fb-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fb-card {
+    min-height: 56px;
+    padding: 10px;
+  }
+}
 </style>

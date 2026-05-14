@@ -86,4 +86,27 @@ function onClick(n: any) {
 }
 .meta { font-size: 11px; color: #94a3b8; margin-top: 2px; }
 .arrow { color: #cbd5e1; }
+
+@media (max-width: 640px) {
+  .row {
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 2px;
+  }
+
+  .tag {
+    width: auto;
+    min-width: 44px;
+    padding: 0 7px;
+  }
+
+  .content {
+    -webkit-line-clamp: 2;
+    line-height: 1.5;
+  }
+
+  .arrow {
+    margin-top: 3px;
+  }
+}
 </style>

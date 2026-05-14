@@ -328,4 +328,54 @@ function scoreColor(s: string) {
 .title.ok { color: #16a34a; }
 .cnt { font-size: 12px; color: #9ca3af; }
 .cpu-muted { color: #9ca3af; }
+
+@media (max-width: 760px) {
+  .progress-pane {
+    gap: 12px;
+  }
+
+  .overall {
+    border-radius: 12px;
+    padding: 18px 16px;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .overall-main {
+    min-width: 0;
+    text-align: left;
+    border-right: none;
+    border-bottom: 1px solid rgba(255,255,255,0.2);
+    padding-right: 0;
+    padding-bottom: 12px;
+  }
+
+  .big-num {
+    font-size: 34px;
+  }
+
+  .overall-bar-info {
+    gap: 8px;
+    line-height: 1.6;
+  }
+
+  .summary {
+    grid-template-columns: 1fr;
+  }
+
+  .block-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  :deep(.el-card__header),
+  :deep(.el-card__body) {
+    padding: 12px;
+  }
+
+  :deep(.el-table) {
+    font-size: 12px;
+  }
+}
 </style>

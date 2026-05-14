@@ -87,4 +87,41 @@ const metaRating = computed(() => {
   margin-left: 8px;
 }
 .rating { white-space: nowrap; }
+
+@media (max-width: 640px) {
+  .topic-row {
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 8px;
+  }
+
+  .avatar {
+    width: 32px !important;
+    height: 32px !important;
+    font-size: 13px;
+  }
+
+  .line1 {
+    gap: 5px;
+  }
+
+  .title {
+    width: 100%;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  .line2 {
+    gap: 7px;
+    flex-wrap: wrap;
+    line-height: 1.5;
+  }
+
+  .price,
+  .rating {
+    margin-left: 0;
+    align-self: flex-start;
+    font-size: 15px;
+  }
+}
 </style>

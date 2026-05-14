@@ -219,4 +219,43 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
 }
 .sem-head h3 { margin: 0; font-size: 15px; color: var(--cpu-primary); font-weight: 600; }
 .sem-sum { font-size: 12px; color: #9ca3af; }
+
+@media (max-width: 760px) {
+  .ctrl-bar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .ctrl-left,
+  .ctrl-right {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .ctrl-left .lbl {
+    align-self: center;
+  }
+
+  .ctrl-left :deep(.el-select),
+  .ctrl-left :deep(.el-input) {
+    flex: 1 1 150px;
+    width: auto !important;
+  }
+
+  .ctrl-right {
+    gap: 6px;
+    line-height: 1.6;
+  }
+
+  .sem-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  :deep(.el-table) {
+    font-size: 12px;
+  }
+}
 </style>

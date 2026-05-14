@@ -125,4 +125,27 @@ function shortHost(url?: string) {
   color: #9ca3af;
   margin-top: 4px;
 }
+
+@media (max-width: 640px) {
+  .forum-index {
+    gap: 18px;
+  }
+
+  .page-title {
+    font-size: 20px;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .board-card {
+    border-radius: 10px;
+    padding: 12px;
+  }
+
+  .desc {
+    -webkit-line-clamp: 2;
+  }
+}
 </style>

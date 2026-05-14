@@ -102,4 +102,29 @@ function open(s: any) {
 .icon { font-size: 20px; }
 
 .empty { text-align: center; }
+
+@media (max-width: 640px) {
+  .head h2 {
+    font-size: 18px;
+    line-height: 1.4;
+    word-break: break-word;
+  }
+
+  .cpu-card {
+    border-radius: 10px;
+    padding: 14px 12px;
+  }
+
+  .course-row,
+  .svc-row {
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 2px;
+  }
+
+  .c-meta,
+  .s-desc {
+    line-height: 1.5;
+  }
+}
 </style>
