@@ -41,6 +41,10 @@ const KNOWN_MIGRATIONS = [
     name: "20260514190351_add_user_course",
     test: (tables) => tables.has("UserCourse"),
   },
+  {
+    name: "20260515090000_add_teachers",
+    test: (tables) => tables.has("Teacher") && tables.has("CourseTeacher"),
+  },
 ];
 const KNOWN_NAMES = new Set(KNOWN_MIGRATIONS.map((m) => m.name));
 

@@ -20,7 +20,7 @@
         <div v-for="c in result.courses" :key="c.id" class="course-row" @click="$router.push(`/coursereview/${c.id}`)">
           <div>
             <div class="c-name">{{ c.code }} · {{ c.name }}</div>
-            <div class="c-meta">{{ c.teacher }} · {{ c.ratingCount }} 评价</div>
+            <div class="c-meta">{{ c.teachers?.length ? c.teachers.map((t: any) => t.name).join("、") : (c.teacher || "—") }} · {{ c.ratingCount }} 评价</div>
           </div>
           <el-icon><Right /></el-icon>
         </div>

@@ -60,12 +60,51 @@
         <!-- 课程点评特化 -->
         <template v-if="boardType === 'coursereview'">
           <el-form-item label="评价的课程" required>
-            <el-select v-model="meta.courseId" filterable placeholder="搜课程名 / 教师">
-              <el-option v-for="c in courses" :key="c.id" :value="c.id" :label="`${c.code} ${c.name} - ${c.teacher}`">
+            <el-select v-model="meta.courseId" filterable placeholder="搜课程名 / 代码" @change="onCourseChange">
+              <el-option
+                v-for="c in courses"
+                :key="c.id"
+                :value="c.id"
+                :label="`${c.code} ${c.name}${c.teachers?.length ? ' - ' + c.teachers.map((t: any) => t.name).join('、') : ''}`"
+              >
                 <span>{{ c.code }} · {{ c.name }}</span>
-                <span style="float:right;color:#9ca3af;font-size:12px">{{ c.teacher }}</span>
+                <span style="float:right;color:#9ca3af;font-size:12px">
+                  {{ c.teachers?.length ? c.teachers.map((t: any) => t.name).join('、') : '暂无老师' }}
+                </span>
               </el-option>
             </el-select>
+          </el-form-item>
+          <el-form-item label="授课老师" required>
+            <div class="teacher-pick-row">
+              <el-select
+                v-model="meta.courseTeacherId"
+                placeholder="先选已知老师"
+                clearable
+                filterable
+                style="flex:1; min-width:160px"
+                :disabled="!meta.courseId"
+                @change="onPickKnownTeacher"
+              >
+                <el-option
+                  v-for="t in teacherOptions"
+                  :key="t.courseTeacherId"
+                  :value="t.courseTeacherId"
+                  :label="t.name"
+                />
+              </el-select>
+              <span class="or-text">或</span>
+              <el-input
+                v-model="meta.teacherName"
+                placeholder="输入新老师姓名（自助添加）"
+                maxlength="40"
+                style="flex:1; min-width:160px"
+                :disabled="!meta.courseId"
+                @input="onTypeNewTeacher"
+              />
+            </div>
+            <div class="cpu-muted" style="margin-top:4px">
+              二选一。课表里没列出来的老师，直接在右侧输入即可，发布时自动加入这门课的授课记录。
+            </div>
           </el-form-item>
           <div class="rate-row">
             <el-form-item label="难度"><el-rate v-model="meta.ratings.difficulty" /></el-form-item>
@@ -138,12 +177,17 @@ const meta = reactive<any>({
   tradeMode: "当面",
   bounty: 0,
   courseId: undefined,
+  courseTeacherId: undefined,
+  teacherName: "",
   ratings: { difficulty: 3, reward: 3, recommend: 3, givingScore: 3 },
   semester: "",
 });
 
 const currentBoard = computed(() => boards.value.find((b) => b.slug === form.boardSlug));
 const boardType = computed(() => currentBoard.value?.type ?? "normal");
+
+const selectedCourse = computed(() => courses.value.find((c) => c.id === meta.courseId));
+const teacherOptions = computed(() => selectedCourse.value?.teachers ?? []);
 
 const groupedBoards = computed(() => {
   const groups: Record<string, Board[]> = { "💬 综合讨论": [], "🎒 UGC": [], "📢 公告（只读）": [] };
@@ -175,6 +219,18 @@ watch(boardType, () => {
 
 function onBoardChange() { /* 切换时不重置 meta，让用户自由 */ }
 
+function onCourseChange() {
+  // 换课程时清掉老师选择，避免把上一门课的 courseTeacherId 误带过去
+  meta.courseTeacherId = undefined;
+  meta.teacherName = "";
+}
+function onPickKnownTeacher(v: number | undefined) {
+  if (v) meta.teacherName = ""; // 选了已有老师 → 清掉手输
+}
+function onTypeNewTeacher(v: string) {
+  if (v && v.trim()) meta.courseTeacherId = undefined; // 开始手输 → 清掉已选
+}
+
 async function submit() {
   if (!form.boardSlug) { ElMessage.warning("请选择板块"); return; }
   if (form.title.trim().length < 2) { ElMessage.warning("标题至少 2 字"); return; }
@@ -192,7 +248,13 @@ async function submit() {
     metadata.resolved = false;
   } else if (boardType.value === "coursereview") {
     if (!meta.courseId) { ElMessage.warning("请选择课程"); return; }
+    if (!meta.courseTeacherId && !meta.teacherName?.trim()) {
+      ElMessage.warning("请选择或填写授课老师");
+      return;
+    }
     metadata.courseId = meta.courseId;
+    if (meta.courseTeacherId) metadata.courseTeacherId = meta.courseTeacherId;
+    else metadata.teacherName = meta.teacherName.trim();
     metadata.ratings = meta.ratings;
     if (meta.semester) metadata.semester = meta.semester;
   }
@@ -236,6 +298,15 @@ async function submit() {
   gap: 10px;
 }
 @media (max-width: 700px) { .rate-row { grid-template-columns: 1fr 1fr; } }
+
+.teacher-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.or-text { color: #9ca3af; font-size: 12px; }
 
 .preview {
   background: #f9fafb;

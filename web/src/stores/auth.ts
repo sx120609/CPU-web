@@ -2,7 +2,7 @@ import { defineStore } from "pinia";
 import { authApi, type UserInfo, type RegisterPayload } from "@/api/auth";
 import { clearToken, getToken, setToken } from "@/api/request";
 import { setJwxtToken, clearJwxtToken } from "@/api/jwxt";
-import { saveCreds, clearCreds } from "@/utils/credCrypto";
+import { saveCreds } from "@/utils/credCrypto";
 
 export const useAuthStore = defineStore("auth", {
   state: () => ({
@@ -96,10 +96,12 @@ export const useAuthStore = defineStore("auth", {
     async logout() {
       try { await authApi.logout(); } catch { /* ignore */ }
       clearToken(); this.token = ""; this.user = null; this.ready = false;
-      // 同时清掉本地保存的学校账号凭据 + 教务 token，
-      // 否则回到 /login 时 onMounted 会读 hasCreds() 立刻自动登录
-      clearCreds();
       clearJwxtToken();
+      // 主动退出 → 设一个本会话级标记，避免回到 /login 时被 onMounted 立即自动重登；
+      // 但**保留** credCrypto 里"记住的密码"——这样关闭浏览器再打开还能自动登录，
+      // 符合"记住此账号"checkbox 的字面承诺。
+      // 真正想擦凭据请去 /jwxt 点"忘记账号"。
+      try { sessionStorage.setItem("cpu-just-logged-out", "1"); } catch { /* ignore */ }
     },
   },
 });

@@ -1,11 +1,25 @@
 import { Router } from "express";
+import { z } from "zod";
 import { prisma } from "../prisma";
 import { ok, Errors } from "../utils/response";
 import { authRequired } from "../middleware/auth";
+import { validate } from "../middleware/validate";
 import { jwxtFetchHtml, jwxtPostForm } from "../services/jwxtClient";
 import { parseGrades, parsePyfa } from "../services/jwxtParser";
 
 export const courseRouter = Router();
+
+/** 把 Course 的 courseTeachers 关联展开成 teachers: { id, name, courseTeacherId }[] */
+function withTeachers(course: any) {
+  if (!course) return course;
+  const teachers = (course.courseTeachers ?? []).map((ct: any) => ({
+    id: ct.teacher.id,
+    name: ct.teacher.name,
+    courseTeacherId: ct.id,
+  }));
+  const { courseTeachers, ...rest } = course;
+  return { ...rest, teachers };
+}
 
 courseRouter.get("/", async (req, res, next) => {
   try {
@@ -28,29 +42,73 @@ courseRouter.get("/", async (req, res, next) => {
     if (q) where.OR = [
       { name: { contains: q } },
       { code: { contains: q } },
-      { teacher: { contains: q } },
+      { teacher: { contains: q } }, // 兼容旧字段
+      { courseTeachers: { some: { teacher: { name: { contains: q } } } } },
     ];
 
     const list = await prisma.course.findMany({
       where,
       orderBy: [{ ratingCount: "desc" }, { id: "asc" }],
       take: 200,
+      include: {
+        courseTeachers: { include: { teacher: true } },
+      },
     });
-    ok(res, list);
+    ok(res, list.map(withTeachers));
   } catch (e) { next(e); }
 });
 
 courseRouter.get("/:id", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const course = await prisma.course.findUnique({ where: { id } });
+    const course = await prisma.course.findUnique({
+      where: { id },
+      include: {
+        courseTeachers: { include: { teacher: true } },
+      },
+    });
     if (!course) return res.status(404).json({ code: 4004, data: null, message: "课程不存在" });
     const ratings = await prisma.courseRating.findMany({
       where: { courseId: id },
       orderBy: { createdAt: "desc" },
       take: 50,
+      include: {
+        courseTeacher: { include: { teacher: true } },
+      },
     });
-    ok(res, { course, ratings });
+    // 评分上也把老师名展开，前端可显示"@王老师"
+    const ratingsOut = ratings.map((r: any) => ({
+      ...r,
+      teacherName: r.courseTeacher?.teacher?.name ?? null,
+      teacherId: r.courseTeacher?.teacher?.id ?? null,
+      courseTeacher: undefined,
+    }));
+    ok(res, { course: withTeachers(course), ratings: ratingsOut });
+  } catch (e) { next(e); }
+});
+
+/** 为某门课添加授课老师；登录用户即可，重复时返回已有 */
+const addTeacherSchema = z.object({
+  name: z.string().trim().min(1).max(40),
+});
+courseRouter.post("/:id/teachers", authRequired, validate(addTeacherSchema), async (req, res, next) => {
+  try {
+    const courseId = Number(req.params.id);
+    const name = String(req.body.name).trim();
+    const course = await prisma.course.findUnique({ where: { id: courseId } });
+    if (!course) throw Errors.notFound("课程不存在");
+
+    const teacher = await prisma.teacher.upsert({
+      where: { name },
+      update: {},
+      create: { name, createdById: req.user!.userId },
+    });
+    const ct = await prisma.courseTeacher.upsert({
+      where: { courseId_teacherId: { courseId, teacherId: teacher.id } },
+      update: {},
+      create: { courseId, teacherId: teacher.id, source: "user-add" },
+    });
+    ok(res, { id: teacher.id, name: teacher.name, courseTeacherId: ct.id });
   } catch (e) { next(e); }
 });
 

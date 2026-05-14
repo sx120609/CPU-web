@@ -25,6 +25,8 @@ async function clean() {
   await prisma.schoolFeedItem.deleteMany();
   await prisma.schoolFeedSource.deleteMany();
   await prisma.board.deleteMany();
+  await prisma.courseTeacher.deleteMany();
+  await prisma.teacher.deleteMany();
   await prisma.course.deleteMany();
   await prisma.serviceCard.deleteMany();
   await prisma.user.deleteMany();
@@ -150,14 +152,45 @@ async function main() {
 
   // ============ 课程（点评板块附属） ============
   console.log("📚 创建课程...");
-  const courses = await Promise.all([
-    prisma.course.create({ data: { code: "PHA101", name: "药理学", teacher: "王明远", credits: 4, category: "必修", college: "药学院" } }),
-    prisma.course.create({ data: { code: "PHA102", name: "药物化学", teacher: "刘静怡", credits: 3.5, category: "必修", college: "药学院" } }),
-    prisma.course.create({ data: { code: "PHA103", name: "药剂学", teacher: "周晓东", credits: 3, category: "必修", college: "药学院" } }),
-    prisma.course.create({ data: { code: "ENG201", name: "学术英语", teacher: "Anna Lee", credits: 2, category: "通识" } }),
-    prisma.course.create({ data: { code: "MAT101", name: "高等数学（下）", teacher: "孙立群", credits: 4, category: "通识" } }),
-    prisma.course.create({ data: { code: "GED105", name: "中国近现代史纲要", teacher: "高文博", credits: 2, category: "通识" } }),
-  ]);
+  // 每条 (code, name, teacherNames[], credits, category, college)
+  // teacherNames 用数组形式，方便表达多老师授课
+  const courseDefs: {
+    code: string; name: string; teachers: string[];
+    credits?: number; category?: string; college?: string;
+  }[] = [
+    { code: "PHA101", name: "药理学",       teachers: ["王明远"],          credits: 4,   category: "必修", college: "药学院" },
+    { code: "PHA102", name: "药物化学",     teachers: ["刘静怡"],          credits: 3.5, category: "必修", college: "药学院" },
+    { code: "PHA103", name: "药剂学",       teachers: ["周晓东"],          credits: 3,   category: "必修", college: "药学院" },
+    { code: "ENG201", name: "学术英语",     teachers: ["Anna Lee"],        credits: 2,   category: "通识" },
+    { code: "MAT101", name: "高等数学（下）", teachers: ["孙立群", "陈一鸣"], credits: 4, category: "通识" },
+    { code: "GED105", name: "中国近现代史纲要", teachers: ["高文博"],       credits: 2,   category: "通识" },
+  ];
+  const courses: any[] = [];
+  // courseTeachers[i][teacherName] = CourseTeacher 关联 id
+  const courseTeachers: Record<string, number>[] = [];
+  for (const def of courseDefs) {
+    const c = await prisma.course.create({
+      data: {
+        code: def.code, name: def.name,
+        teacher: def.teachers.join("、"), // 旧字段：用分隔符拼接，方便回滚
+        credits: def.credits, category: def.category, college: def.college,
+      },
+    });
+    courses.push(c);
+    const ctMap: Record<string, number> = {};
+    for (const tn of def.teachers) {
+      const t = await prisma.teacher.upsert({
+        where: { name: tn },
+        update: {},
+        create: { name: tn },
+      });
+      const ct = await prisma.courseTeacher.create({
+        data: { courseId: c.id, teacherId: t.id, source: "seed" },
+      });
+      ctMap[tn] = ct.id;
+    }
+    courseTeachers.push(ctMap);
+  }
 
   // ============ 服务导航卡片（外链） ============
   console.log("🧭 创建服务卡片...");
@@ -275,13 +308,16 @@ async function main() {
     "## 总评\n王老师上课节奏快但条理清晰，期末是闭卷但题目偏向理解。\n\n## 体验\n- PPT 制作非常用心\n- 期末重点会在最后一次课点到\n- 给分中等偏上",
     12, {
       courseId: courses[0].id,
+      courseTeacherId: courseTeachers[0]["王明远"],
       ratings: { difficulty: 3, reward: 5, recommend: 5, givingScore: 4 },
       semester: "2024-2025-1",
     });
   // 课评要写入派生表 CourseRating
   await prisma.courseRating.create({
     data: {
-      topicId: cr1.id, courseId: courses[0].id, authorId: bob.id,
+      topicId: cr1.id, courseId: courses[0].id,
+      courseTeacherId: courseTeachers[0]["王明远"],
+      authorId: bob.id,
       difficulty: 3, reward: 5, recommend: 5, givingScore: 4, semester: "2024-2025-1",
     },
   });
@@ -291,12 +327,15 @@ async function main() {
     "节奏太快，难度大。期末挂科率高，建议提前预习。",
     30, {
       courseId: courses[4].id,
+      courseTeacherId: courseTeachers[4]["孙立群"],
       ratings: { difficulty: 5, reward: 4, recommend: 2, givingScore: 2 },
       semester: "2024-2025-2",
     });
   await prisma.courseRating.create({
     data: {
-      topicId: cr2.id, courseId: courses[4].id, authorId: alice.id,
+      topicId: cr2.id, courseId: courses[4].id,
+      courseTeacherId: courseTeachers[4]["孙立群"],
+      authorId: alice.id,
       difficulty: 5, reward: 4, recommend: 2, givingScore: 2, semester: "2024-2025-2",
     },
   });

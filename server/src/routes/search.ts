@@ -29,9 +29,13 @@ searchRouter.get("/", async (req, res, next) => {
             { name: { contains: q } },
             { code: { contains: q } },
             { teacher: { contains: q } },
+            { courseTeachers: { some: { teacher: { name: { contains: q } } } } },
           ],
         },
         take: 5,
+        include: {
+          courseTeachers: { include: { teacher: true } },
+        },
       }),
       prisma.serviceCard.findMany({
         where: {
@@ -47,6 +51,18 @@ searchRouter.get("/", async (req, res, next) => {
       }),
     ]);
 
-    ok(res, { topics, courses, services });
+    ok(res, {
+      topics,
+      courses: courses.map((c: any) => ({
+        ...c,
+        teachers: (c.courseTeachers ?? []).map((ct: any) => ({
+          id: ct.teacher.id,
+          name: ct.teacher.name,
+          courseTeacherId: ct.id,
+        })),
+        courseTeachers: undefined,
+      })),
+      services,
+    });
   } catch (e) { next(e); }
 });

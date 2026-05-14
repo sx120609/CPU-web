@@ -165,6 +165,8 @@ model Course {
   id       Int    @id @default(autoincrement())
   code     String @unique
   name     String
+  // 旧字段：保留以兼容历史数据。新代码请通过 courseTeachers 读取多老师。
+  // 数据迁移见 migrations/20260515090000_add_teachers。
   teacher  String
   credits  Float?
   category String? // 必修/选修/通识
@@ -177,7 +179,38 @@ model Course {
   avgRecommend  Float @default(0)
   avgScore      Float @default(0)
 
-  userCourses UserCourse[]
+  userCourses    UserCourse[]
+  courseTeachers CourseTeacher[]
+}
+
+// 老师（与课程多对多，由 CourseTeacher 关联）
+model Teacher {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique // 同名老师暂归为同一人；后续 admin 后台可拆分
+  college   String?
+  // 用户自助添加来源标记：留作后续审核合并用
+  createdById Int?
+  createdAt DateTime @default(now())
+
+  courseTeachers CourseTeacher[]
+}
+
+// 课程-老师 关联（一个老师在一门课上的"授课记录"，可跨学期累计）
+model CourseTeacher {
+  id        Int    @id @default(autoincrement())
+  courseId  Int
+  teacherId Int
+  // 来源：'jwxt-pyfa' | 'jwxt-grade' | 'user-add' | 'seed' | 'backfill'
+  source    String @default("user-add")
+  createdAt DateTime @default(now())
+
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  ratings CourseRating[]
+
+  @@unique([courseId, teacherId])
+  @@index([courseId])
+  @@index([teacherId])
 }
 
 // 学生与课程的关联（来自同步教务系统）
@@ -202,6 +235,8 @@ model CourseRating {
   id         Int   @id @default(autoincrement())
   topicId    Int   @unique
   courseId   Int
+  // 关联到具体的"课程-老师"组合；旧数据 nullable
+  courseTeacherId Int?
   authorId   Int
   // 评分维度（1-5）
   difficulty Int   // 难度
@@ -213,7 +248,10 @@ model CourseRating {
 
   createdAt  DateTime @default(now())
 
+  courseTeacher CourseTeacher? @relation(fields: [courseTeacherId], references: [id], onDelete: SetNull)
+
   @@index([courseId])
+  @@index([courseTeacherId])
 }
 
 // ============ 学校爬虫源 ============

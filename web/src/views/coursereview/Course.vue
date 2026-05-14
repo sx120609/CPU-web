@@ -4,7 +4,25 @@
       <div class="left">
         <div class="code">{{ data.course.code }}</div>
         <h2 class="name">{{ data.course.name }}</h2>
-        <div class="teacher">教师：{{ data.course.teacher }}</div>
+        <div class="teacher-row">
+          <span class="teacher-label">授课老师：</span>
+          <template v-if="data.course.teachers?.length">
+            <el-tag
+              v-for="t in data.course.teachers"
+              :key="t.courseTeacherId"
+              size="small"
+              effect="plain"
+              class="teacher-tag"
+            >{{ t.name }}</el-tag>
+          </template>
+          <span v-else class="muted">暂无（点击下方"+ 添加"或在写点评时录入）</span>
+          <el-button
+            v-if="auth.isLoggedIn"
+            text size="small"
+            class="add-teacher-btn"
+            @click="onAddTeacher"
+          >+ 添加老师</el-button>
+        </div>
         <div class="meta">
           <el-tag v-if="data.course.credits">{{ data.course.credits }} 学分</el-tag>
           <el-tag v-if="data.course.category">{{ data.course.category }}</el-tag>
@@ -38,8 +56,9 @@
           <div>给分 <el-rate :model-value="r.givingScore" disabled size="small" /></div>
         </div>
         <div class="r-meta">
+          <span v-if="r.teacherName" class="teacher-pill">@{{ r.teacherName }}</span>
           <span v-if="r.semester">{{ r.semester }}</span>
-          <span>·</span>
+          <span v-if="r.semester || r.teacherName">·</span>
           <span>{{ fmtDate(r.createdAt, "YYYY-MM-DD") }}</span>
           <span class="goto">查看完整点评 →</span>
         </div>
@@ -51,6 +70,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { Edit } from "@element-plus/icons-vue";
 import { courseApi } from "@/api/course";
 import { useAuthStore } from "@/stores/auth";
@@ -62,15 +82,33 @@ const auth = useAuthStore();
 const data = ref<any>(null);
 const loading = ref(false);
 
-onMounted(async () => {
+onMounted(reload);
+
+async function reload() {
   loading.value = true;
   try {
     data.value = await courseApi.detail(Number(route.params.id));
   } finally { loading.value = false; }
-});
+}
 
 function goReview() {
   router.push({ name: "post", query: { board: "coursereview", courseId: route.params.id } });
+}
+
+async function onAddTeacher() {
+  const { value } = await ElMessageBox.prompt(
+    "请输入这位老师的姓名（与教务系统一致更好）",
+    "添加授课老师",
+    {
+      inputPlaceholder: "如：王明远",
+      inputValidator: (v) => !!v && v.trim().length >= 1 && v.trim().length <= 40,
+      inputErrorMessage: "1-40 个字",
+    }
+  ).catch(() => ({ value: null as any }));
+  if (!value) return;
+  await courseApi.addTeacher(Number(route.params.id), value.trim());
+  ElMessage.success("已添加");
+  await reload();
 }
 </script>
 
@@ -86,7 +124,26 @@ function goReview() {
 }
 .code { font-size: 12px; color: #9ca3af; }
 .name { margin: 4px 0 6px; font-size: 24px; }
-.teacher { font-size: 14px; color: #4b5563; margin-bottom: 8px; }
+.teacher-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  color: #4b5563;
+  margin-bottom: 8px;
+}
+.teacher-label { color: #6b7280; }
+.teacher-tag { margin: 2px 0; }
+.add-teacher-btn { margin-left: 4px; }
+.muted { color: #9ca3af; font-size: 13px; }
+.teacher-pill {
+  background: #eef6f4;
+  color: var(--cpu-primary);
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+}
 .meta { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .right { text-align: right; }

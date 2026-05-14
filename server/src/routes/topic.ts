@@ -114,10 +114,38 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     // 课评：写入 CourseRating 派生表
     if (board.type === "coursereview" && metadata?.courseId && metadata?.ratings) {
       const r = metadata.ratings;
+      const courseId = Number(metadata.courseId);
+
+      // 解析"针对哪位老师"：
+      //   - 优先用 metadata.courseTeacherId（前端已选的 CourseTeacher 关联 id）
+      //   - 否则若给了 teacherName 字符串，自助 upsert Teacher + CourseTeacher
+      //   - 都没给则 null（旧行为兼容）
+      let courseTeacherId: number | null = null;
+      if (metadata.courseTeacherId) {
+        const ct = await prisma.courseTeacher.findFirst({
+          where: { id: Number(metadata.courseTeacherId), courseId },
+        });
+        if (ct) courseTeacherId = ct.id;
+      } else if (typeof metadata.teacherName === "string" && metadata.teacherName.trim()) {
+        const name = metadata.teacherName.trim().slice(0, 40);
+        const teacher = await prisma.teacher.upsert({
+          where: { name },
+          update: {},
+          create: { name, createdById: userId },
+        });
+        const ct = await prisma.courseTeacher.upsert({
+          where: { courseId_teacherId: { courseId, teacherId: teacher.id } },
+          update: {},
+          create: { courseId, teacherId: teacher.id, source: "user-add" },
+        });
+        courseTeacherId = ct.id;
+      }
+
       await prisma.courseRating.create({
         data: {
           topicId: topic.id,
-          courseId: Number(metadata.courseId),
+          courseId,
+          courseTeacherId,
           authorId: userId,
           difficulty: clampInt(r.difficulty, 1, 5),
           reward: clampInt(r.reward, 1, 5),
@@ -126,7 +154,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
           semester: metadata.semester ?? null,
         },
       }).catch(() => {});
-      await refreshCourseStats(Number(metadata.courseId));
+      await refreshCourseStats(courseId);
     }
 
     await prisma.user.update({ where: { id: userId }, data: { postCount: { increment: 1 } } });

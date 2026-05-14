@@ -100,8 +100,15 @@ const dev = reactive({ username: "", password: "", loading: false });
 onMounted(async () => {
   // 准备 CAS 登录页（拿 lt/execution + 验证码）
   await auth.ssoBegin();
+  // "刚主动退出"标记：本次进入 /login 不自动登录，标记一次性消耗掉；
+  // 关闭浏览器（sessionStorage 失效）后下次再访问就会照常自动登录。
+  let justLoggedOut = false;
+  try {
+    justLoggedOut = sessionStorage.getItem("cpu-just-logged-out") === "1";
+    if (justLoggedOut) sessionStorage.removeItem("cpu-just-logged-out");
+  } catch { /* ignore */ }
   // 若本地保存了凭据 → 静默自动登录
-  if (hasCreds()) {
+  if (!justLoggedOut && hasCreds()) {
     const creds = await loadCreds().catch(() => null);
     if (creds && !auth.ssoNeedCaptcha) {
       ElMessage.info("尝试自动登录…");

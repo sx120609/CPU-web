@@ -36,7 +36,7 @@
           <div>
             <div class="code">{{ c.code }}</div>
             <div class="name">{{ c.name }}</div>
-            <div class="teacher">{{ c.teacher || "—" }}</div>
+            <div class="teacher">{{ c.teachers?.length ? c.teachers.map((t) => t.name).join("、") : "—" }}</div>
           </div>
           <div class="score-block" v-if="c.ratingCount">
             <div class="score">{{ c.avgScore.toFixed(1) }}</div>
