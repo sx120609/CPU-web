@@ -117,7 +117,11 @@ do_db_init() {
   if [ -f server/prisma/dev.db ]; then
     warn "已存在数据库 server/prisma/dev.db —— 跳过 seed，仅应用待执行的 migration"
     cd server
-    npx prisma migrate deploy
+    if ! npx prisma migrate deploy; then
+      warn "migrate deploy 失败（多半是历史遗留：旧 db push / 旧 init migration 与 git 来的 migration 冲突）"
+      warn "调用 heal-migrations.js 自动修复 migration 历史 ..."
+      node scripts/heal-migrations.js
+    fi
     cd ..
   else
     log "首次初始化数据库（migrate + seed）"
