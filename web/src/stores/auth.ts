@@ -1,8 +1,8 @@
 import { defineStore } from "pinia";
 import { authApi, type UserInfo, type RegisterPayload } from "@/api/auth";
 import { clearToken, getToken, setToken } from "@/api/request";
-import { setJwxtToken } from "@/api/jwxt";
-import { saveCreds } from "@/utils/credCrypto";
+import { setJwxtToken, clearJwxtToken } from "@/api/jwxt";
+import { saveCreds, clearCreds } from "@/utils/credCrypto";
 
 export const useAuthStore = defineStore("auth", {
   state: () => ({
@@ -96,6 +96,10 @@ export const useAuthStore = defineStore("auth", {
     async logout() {
       try { await authApi.logout(); } catch { /* ignore */ }
       clearToken(); this.token = ""; this.user = null; this.ready = false;
+      // 同时清掉本地保存的学校账号凭据 + 教务 token，
+      // 否则回到 /login 时 onMounted 会读 hasCreds() 立刻自动登录
+      clearCreds();
+      clearJwxtToken();
     },
   },
 });

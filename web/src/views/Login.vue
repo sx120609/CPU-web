@@ -54,16 +54,16 @@
         </el-form-item>
       </el-form>
 
-      <!-- 演示账号（仅 dev 模式可见） -->
-      <details v-if="isDev" class="dev-fallback">
-        <summary>🛠️ 开发者 / 演示账号</summary>
-        <div class="dev-tip">仅开发模式可用。生产环境只能用学校账号登录。</div>
+      <!-- 站内独立账号（站务 / 管理员；开发演示账号） -->
+      <details class="dev-fallback">
+        <summary>🔑 站务 / 管理员账号登录</summary>
+        <div class="dev-tip">非学生账号入口，使用站内独立用户名/密码。学生请用上方学校 SSO 登录。</div>
         <el-form size="default" class="dev-form" @keyup.enter="onDevSubmit">
-          <el-input v-model="dev.username" placeholder="用户名（如 alice / admin）" />
-          <el-input v-model="dev.password" type="password" placeholder="密码" />
-          <el-button :loading="dev.loading" @click="onDevSubmit">登录演示账号</el-button>
+          <el-input v-model="dev.username" placeholder="用户名" />
+          <el-input v-model="dev.password" type="password" show-password placeholder="密码" />
+          <el-button :loading="dev.loading" @click="onDevSubmit">登录</el-button>
         </el-form>
-        <div class="dev-accounts">
+        <div v-if="isDev" class="dev-accounts">
           <span @click="fillDev('alice', '123456')">alice / 123456</span>
           <span @click="fillDev('bob', '123456')">bob / 123456</span>
           <span @click="fillDev('carol', '123456')">carol / 123456</span>
