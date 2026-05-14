@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import bcrypt from "bcryptjs";
 import { prisma } from "../../prisma";
 import { Errors, ok } from "../../utils/response";
 import { adminOnly, modOrAbove } from "../../middleware/admin";
@@ -64,6 +65,38 @@ adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (re
     }
     const u = await prisma.user.update({ where: { id }, data: req.body });
     ok(res, { id: u.id, role: u.role, status: u.status, nickname: u.nickname });
+  } catch (e) { next(e); }
+});
+
+// 新建用户（仅 admin）—— 用于给新生 / 毕业生 / 站务 等无法走 SSO 的用户开站内账号
+const userCreateSchema = z.object({
+  username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_]+$/, "用户名仅允许英文/数字/下划线"),
+  password: z.string().min(6).max(64),
+  nickname: z.string().min(1).max(20),
+  role: z.enum(["user", "mod", "admin", "bot"]).optional(),
+  college: z.string().max(40).optional(),
+  enrollYear: z.number().int().min(2000).max(2100).optional(),
+});
+
+adminRouter.post("/users", adminOnly, validate(userCreateSchema), async (req, res, next) => {
+  try {
+    const { username, password, nickname, role, college, enrollYear } = req.body;
+    const exists = await prisma.user.findUnique({ where: { username } });
+    if (exists) throw Errors.conflict("该用户名已被占用");
+    const passwordHash = await bcrypt.hash(password, 10);
+    const u = await prisma.user.create({
+      data: {
+        username, passwordHash, nickname,
+        role: role ?? "user",
+        college, enrollYear,
+        // studentSso 留 false：让该用户走站内独立账号密码登录
+      },
+    });
+    await prisma.messageSetting.create({ data: { userId: u.id } }).catch(() => {});
+    ok(res, {
+      id: u.id, username: u.username, nickname: u.nickname, role: u.role,
+      college: u.college, enrollYear: u.enrollYear, createdAt: u.createdAt,
+    });
   } catch (e) { next(e); }
 });
 

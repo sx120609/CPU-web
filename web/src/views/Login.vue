@@ -6,7 +6,6 @@
           <el-icon><ArrowLeft /></el-icon>
           返回首页
         </el-button>
-        <el-button text class="nav-btn" @click="goRegister">注册账号</el-button>
       </div>
 
       <div class="brand">
@@ -84,7 +83,7 @@
       <div class="alt-actions">
         <button type="button" @click="goHome">暂不登录，继续浏览</button>
         <span>·</span>
-        <button type="button" @click="goRegister">没有账号？去注册</button>
+        <span class="muted-note">没有账号？请联系管理员开通</span>
       </div>
     </div>
   </div>
@@ -119,7 +118,12 @@ onMounted(async () => {
     return;
   }
   // 准备 CAS 登录页（拿 lt/execution + 验证码）
-  await auth.ssoBegin().catch(() => undefined);
+  // 失败时显式回显，避免移动端用户看到一个能填但提交失败的表单
+  try {
+    await auth.ssoBegin();
+  } catch (e: any) {
+    auth.ssoError = "无法连接学校登录系统，请检查网络后刷新重试。若你是新生/毕业生/站务，请展开下方「其他登录」用站内账号登录。";
+  }
   // "刚主动退出"标记：本次进入 /login 不自动登录，标记一次性消耗掉；
   // 关闭浏览器（sessionStorage 失效）后下次再访问就会照常自动登录。
   let justLoggedOut = false;
@@ -128,7 +132,7 @@ onMounted(async () => {
     if (justLoggedOut) sessionStorage.removeItem("cpu-just-logged-out");
   } catch { /* ignore */ }
   // 若本地保存了凭据 → 静默自动登录
-  if (!justLoggedOut && hasCreds()) {
+  if (!justLoggedOut && hasCreds() && !auth.ssoError) {
     const creds = await loadCreds().catch(() => null);
     if (creds && !auth.ssoNeedCaptcha) {
       ElMessage.info("尝试自动登录…");
@@ -142,7 +146,11 @@ onMounted(async () => {
 });
 
 async function reloadCaptcha() {
-  await auth.ssoBegin().catch(() => undefined);
+  try {
+    await auth.ssoBegin();
+  } catch {
+    auth.ssoError = "无法连接学校登录系统，请稍后重试";
+  }
   form.captcha = "";
 }
 
@@ -156,10 +164,6 @@ function redirectTarget() {
 
 function goHome() {
   router.replace("/home");
-}
-
-function goRegister() {
-  router.push({ name: "register", query: route.query.redirect ? { redirect: redirectTarget() } : undefined });
 }
 
 async function onSubmit() {
@@ -310,6 +314,10 @@ async function onDevSubmit() {
   color: var(--cpu-primary);
   font: inherit;
   cursor: pointer;
+}
+
+.alt-actions .muted-note {
+  color: #9ca3af;
 }
 
 @media (max-width: 640px) {

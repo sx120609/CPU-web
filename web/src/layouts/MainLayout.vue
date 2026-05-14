@@ -58,7 +58,6 @@
           </template>
           <template v-else>
             <el-button text @click="goAuth('login')">登录</el-button>
-            <el-button type="primary" @click="goAuth('register')">注册</el-button>
           </template>
         </div>
 
@@ -92,7 +91,7 @@
     <!-- 主内容 -->
     <main class="main">
       <router-view v-slot="{ Component }">
-        <transition name="fade">
+        <transition name="fade" mode="out-in">
           <component :is="Component" />
         </transition>
       </router-view>
@@ -149,7 +148,6 @@
         </template>
         <template v-else>
           <el-button type="primary" @click="goDrawerAuth('login')">登录</el-button>
-          <el-button @click="goDrawerAuth('register')">注册</el-button>
         </template>
       </div>
     </el-drawer>
@@ -229,13 +227,14 @@ const mobileNavItems = [
   { to: "/home", label: "首页", icon: House, match: ["/home"] },
   { to: "/forum", label: "论坛", icon: ChatLineRound, match: ["/forum"] },
   { to: "/jwxt", label: "教务", icon: Calendar, match: ["/jwxt"] },
-  { to: "/coursereview", label: "课评", icon: Reading, match: ["/coursereview"] },
+  { to: "/services", label: "服务", icon: Service, match: ["/services"] },
   { to: "/profile", label: "我的", icon: UserFilled, match: ["/profile", "/messages", "/u/"], auth: true },
 ];
 
 const drawerItems = [
   { to: "/post", label: "发帖", icon: Edit },
   { to: "/messages", label: "消息", icon: Message },
+  { to: "/coursereview", label: "课评", icon: Reading },
   { to: "/market", label: "二手市场", icon: Goods },
   { to: "/services", label: "服务导航", icon: Service },
   { to: "/search", label: "搜索", icon: Search },
@@ -646,13 +645,14 @@ async function onUserCmd(cmd: string) {
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 200;
+    z-index: 1100;
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
     border-top: 1px solid #e5e7eb;
     background: rgba(255, 255, 255, 0.96);
     box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.08);
+    pointer-events: auto;
   }
 
   .mobile-tab {
@@ -669,6 +669,8 @@ async function onUserCmd(cmd: string) {
     font-size: 11px;
     font-weight: 500;
     touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(22, 135, 118, 0.18);
+    cursor: pointer;
   }
 
   .mobile-tab .el-icon {

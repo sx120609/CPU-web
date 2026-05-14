@@ -23,15 +23,16 @@ const registerSchema = z.object({
   enrollYear: z.number().int().min(2000).max(2100).optional(),
 });
 
-// 旧式登录（保留给 alice/bob/admin 示例账号 + dev 模式）
+// 站内独立账号登录入口：
+//   - 走过学校 SSO 的账号（studentSso=true）禁用此入口，避免与统一身份认证混淆
+//   - 其他账号（新生 / 毕业生 / 站务 / 管理员等）允许凭密码登录
+//   - 公开注册已禁用，账号统一由 admin 后台开通，所以放开 role 限制是安全的
 authRouter.post("/login", validate(loginSchema), async (req, res, next) => {
   try {
     const { username, password } = req.body;
     const user = await prisma.user.findUnique({ where: { username } });
     if (!user) throw Errors.badRequest("用户名或密码错误");
-    // 强制：仅 dev 环境 + 非 SSO 用户允许密码登录
     if (user.studentSso) throw Errors.badRequest("该账号已绑定学校认证，请用「学校账号登录」入口");
-    if (!isDev && user.role !== "admin") throw Errors.forbidden("仅支持学校账号登录");
     const ok2 = await verifyPassword(password, user.passwordHash);
     if (!ok2) throw Errors.badRequest("用户名或密码错误");
     if (user.status === "banned") throw Errors.forbidden("账号已被封禁");

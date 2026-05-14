@@ -17,33 +17,52 @@
         </div>
       </div>
 
-      <el-form ref="formRef" :model="form" :rules="rules" size="large" label-position="top" @keyup.enter="submit">
-        <el-form-item label="用户名（登录用）" prop="username">
-          <el-input v-model="form.username" placeholder="3-20 位英文/数字/下划线" />
-        </el-form-item>
-        <el-form-item label="昵称（显示用）" prop="nickname">
-          <el-input v-model="form.nickname" placeholder="支持中文" maxlength="20" show-word-limit />
-        </el-form-item>
-        <el-form-item label="密码" prop="password">
-          <el-input v-model="form.password" type="password" show-password placeholder="至少 6 位" />
-        </el-form-item>
-        <el-form-item label="院系（选填）">
-          <el-input v-model="form.college" placeholder="例如 药学院" maxlength="40" />
-        </el-form-item>
-        <el-form-item label="入学年份（选填）">
-          <el-input-number v-model="form.enrollYear" :min="2010" :max="2030" :step="1" style="width:100%" />
-        </el-form-item>
-        <el-form-item>
-          <el-checkbox v-model="agree">我已阅读并同意 <a href="javascript:" @click.prevent="showTerms = true">用户协议</a></el-checkbox>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" class="btn-submit" :loading="loading" :disabled="!agree" @click="submit">注 册</el-button>
-        </el-form-item>
-      </el-form>
+      <!-- 生产模式：公开注册已关闭 -->
+      <template v-if="!isDev">
+        <el-alert type="info" :closable="false" show-icon class="closed-tip">
+          <div style="line-height:1.7">
+            <p style="margin:0 0 6px"><b>公开注册已关闭。</b></p>
+            <p style="margin:0">
+              药大学生请在 <a href="javascript:" @click.prevent="goLogin">登录页</a> 用<b>学校账号</b>登录，论坛账号会自动创建。<br>
+              新生、毕业生、站务等无法走统一身份认证的账号，请联系管理员人工开通。
+            </p>
+          </div>
+        </el-alert>
+        <div class="alt" style="margin-top:18px">
+          <button type="button" @click="goLogin">去登录页</button>
+        </div>
+      </template>
 
-      <div class="alt">
-        已有账号？<button type="button" @click="goLogin">直接登录</button>
-      </div>
+      <!-- 开发模式：保留旧的注册表单便于自测 -->
+      <template v-else>
+        <el-form ref="formRef" :model="form" :rules="rules" size="large" label-position="top" @keyup.enter="submit">
+          <el-form-item label="用户名（登录用）" prop="username">
+            <el-input v-model="form.username" placeholder="3-20 位英文/数字/下划线" />
+          </el-form-item>
+          <el-form-item label="昵称（显示用）" prop="nickname">
+            <el-input v-model="form.nickname" placeholder="支持中文" maxlength="20" show-word-limit />
+          </el-form-item>
+          <el-form-item label="密码" prop="password">
+            <el-input v-model="form.password" type="password" show-password placeholder="至少 6 位" />
+          </el-form-item>
+          <el-form-item label="院系（选填）">
+            <el-input v-model="form.college" placeholder="例如 药学院" maxlength="40" />
+          </el-form-item>
+          <el-form-item label="入学年份（选填）">
+            <el-input-number v-model="form.enrollYear" :min="2010" :max="2030" :step="1" style="width:100%" />
+          </el-form-item>
+          <el-form-item>
+            <el-checkbox v-model="agree">我已阅读并同意 <a href="javascript:" @click.prevent="showTerms = true">用户协议</a></el-checkbox>
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" class="btn-submit" :loading="loading" :disabled="!agree" @click="submit">注 册</el-button>
+          </el-form-item>
+        </el-form>
+
+        <div class="alt">
+          已有账号？<button type="button" @click="goLogin">直接登录</button>
+        </div>
+      </template>
     </div>
 
     <el-dialog v-model="showTerms" title="药大垎坊 用户协议" width="500">
@@ -64,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from "vue";
+import { ref, reactive, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, type FormInstance, type FormRules } from "element-plus";
 import { ArrowLeft } from "@element-plus/icons-vue";
@@ -77,6 +96,7 @@ const formRef = ref<FormInstance>();
 const loading = ref(false);
 const agree = ref(false);
 const showTerms = ref(false);
+const isDev = computed(() => import.meta.env.DEV);
 
 const form = reactive({
   username: "", password: "", nickname: "",
@@ -207,6 +227,8 @@ async function submit() {
 }
 
 ol { padding-left: 20px; line-height: 1.8; color: #4b5563; font-size: 13px; }
+.closed-tip { font-size: 13px; line-height: 1.6; }
+.closed-tip a { color: var(--cpu-primary); text-decoration: underline; }
 
 @media (max-width: 640px) {
   .auth-wrap {
