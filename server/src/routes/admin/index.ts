@@ -100,6 +100,24 @@ adminRouter.post("/users", adminOnly, validate(userCreateSchema), async (req, re
   } catch (e) { next(e); }
 });
 
+// 重置某用户密码（仅 admin）—— 用户忘记密码时由管理员介入
+const resetPasswordSchema = z.object({
+  newPassword: z.string().min(6).max(64),
+});
+adminRouter.patch("/users/:id/password", adminOnly, validate(resetPasswordSchema), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const target = await prisma.user.findUnique({ where: { id } });
+    if (!target) throw Errors.notFound("用户不存在");
+    if (target.studentSso) {
+      throw Errors.badRequest("该账号走学校认证，无站内密码可重置");
+    }
+    const passwordHash = await bcrypt.hash(req.body.newPassword, 10);
+    await prisma.user.update({ where: { id }, data: { passwordHash } });
+    ok(res, { ok: true });
+  } catch (e) { next(e); }
+});
+
 // ============ 帖子管理 ============
 
 adminRouter.get("/topics", modOrAbove, async (req, res, next) => {

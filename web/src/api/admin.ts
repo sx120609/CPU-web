@@ -12,6 +12,8 @@ export const adminApi = {
     username: string; password: string; nickname: string;
     role?: string; college?: string; enrollYear?: number;
   }) => request.post<any>("/admin/users", data),
+  resetUserPassword: (id: number, newPassword: string) =>
+    request.patch<{ ok: true }>(`/admin/users/${id}/password`, { newPassword }),
   // 帖子
   topics: (params: { q?: string; board?: string; hidden?: "0" | "1"; page?: number; size?: number }) =>
     request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/topics", params),

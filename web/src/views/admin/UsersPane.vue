@@ -47,12 +47,13 @@
       <el-table-column label="注册时间" width="160">
         <template #default="{ row }">{{ fmtDate(row.createdAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="260">
+      <el-table-column label="操作" width="340">
         <template #default="{ row }">
           <el-button v-if="row.status === 'active'" text type="danger" size="small" @click="ban(row)">封禁</el-button>
           <el-button v-else text type="success" size="small" @click="unban(row)">解禁</el-button>
           <el-button text size="small" @click="rename(row)">改名</el-button>
           <el-button v-if="auth.isAdmin" text type="warning" size="small" @click="changeRole(row)">改角色</el-button>
+          <el-button v-if="auth.isAdmin && !row.studentSso" text size="small" @click="resetPw(row)">重置密码</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -212,6 +213,22 @@ async function changeRole(row: any) {
   await adminApi.updateUser(row.id, { role: value });
   ElMessage.success("已修改");
   reload();
+}
+
+async function resetPw(row: any) {
+  const { value } = await ElMessageBox.prompt(
+    `为 ${row.nickname}（${row.username}）设置新密码（至少 6 位）`,
+    "重置密码",
+    {
+      inputType: "password",
+      inputValidator: (v) => !!v && v.length >= 6 && v.length <= 64,
+      inputErrorMessage: "密码 6-64 位",
+      confirmButtonText: "重置",
+    }
+  ).catch(() => ({ value: null as any }));
+  if (!value) return;
+  await adminApi.resetUserPassword(row.id, value);
+  ElMessage.success(`已重置 ${row.username} 的密码，请妥善告知本人`);
 }
 </script>
 

@@ -1,6 +1,9 @@
 import { Router } from "express";
+import { z } from "zod";
+import bcrypt from "bcryptjs";
 import { prisma } from "../prisma";
 import { authRequired } from "../middleware/auth";
+import { validate } from "../middleware/validate";
 import { Errors, ok } from "../utils/response";
 
 export const userRouter = Router();
@@ -22,6 +25,28 @@ userRouter.patch("/me", authRequired, async (req, res, next) => {
     }
     const u = await prisma.user.update({ where: { id: req.user!.userId }, data: allowed });
     ok(res, pubUser(u));
+  } catch (e) { next(e); }
+});
+
+// 修改自己的密码 —— SSO 账号无站内密码，拒绝
+const passwordSchema = z.object({
+  oldPassword: z.string().min(1, "请输入原密码"),
+  newPassword: z.string().min(6, "新密码至少 6 位").max(64),
+});
+userRouter.patch("/password", authRequired, validate(passwordSchema), async (req, res, next) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    const user = await prisma.user.findUnique({ where: { id: req.user!.userId } });
+    if (!user) throw Errors.notFound("用户不存在");
+    if (user.studentSso) {
+      throw Errors.badRequest("该账号通过学校认证登录，无需设置站内密码");
+    }
+    const okOld = await bcrypt.compare(oldPassword, user.passwordHash);
+    if (!okOld) throw Errors.badRequest("原密码错误");
+    if (oldPassword === newPassword) throw Errors.badRequest("新密码不能与原密码相同");
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+    ok(res, { ok: true });
   } catch (e) { next(e); }
 });
 

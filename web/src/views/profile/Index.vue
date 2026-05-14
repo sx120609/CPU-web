@@ -17,6 +17,7 @@
         <li><span>声望</span><span>{{ user?.reputation }}</span></li>
       </ul>
       <el-button type="primary" plain @click="editing = true">编辑资料</el-button>
+      <el-button v-if="!user?.studentSso" plain @click="passwordDialog = true">修改密码</el-button>
       <el-button type="danger" plain @click="onLogout">退出登录</el-button>
     </div>
 
@@ -50,6 +51,24 @@
         <el-button type="primary" :loading="saving" @click="saveEdit">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="passwordDialog" title="修改密码" width="420" :close-on-click-modal="false">
+      <el-form label-position="top" :model="pwForm" @keyup.enter="savePassword">
+        <el-form-item label="原密码" required>
+          <el-input v-model="pwForm.oldPassword" type="password" show-password autocomplete="current-password" />
+        </el-form-item>
+        <el-form-item label="新密码（至少 6 位）" required>
+          <el-input v-model="pwForm.newPassword" type="password" show-password autocomplete="new-password" maxlength="64" />
+        </el-form-item>
+        <el-form-item label="再次输入新密码" required>
+          <el-input v-model="pwForm.confirm" type="password" show-password autocomplete="new-password" maxlength="64" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="passwordDialog = false">取消</el-button>
+        <el-button type="primary" :loading="savingPw" @click="savePassword">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -70,6 +89,14 @@ const editing = ref(false);
 const saving = ref(false);
 
 const editForm = reactive({ nickname: "", bio: "", college: "", enrollYear: undefined as any });
+
+const passwordDialog = ref(false);
+const savingPw = ref(false);
+const pwForm = reactive({ oldPassword: "", newPassword: "", confirm: "" });
+
+watch(passwordDialog, (v) => {
+  if (!v) { pwForm.oldPassword = ""; pwForm.newPassword = ""; pwForm.confirm = ""; }
+});
 
 onMounted(async () => {
   if (!auth.user) await auth.fetchMe();
@@ -95,6 +122,18 @@ async function saveEdit() {
     ElMessage.success("已保存");
     editing.value = false;
   } finally { saving.value = false; }
+}
+
+async function savePassword() {
+  if (pwForm.newPassword.length < 6) { ElMessage.warning("新密码至少 6 位"); return; }
+  if (pwForm.newPassword !== pwForm.confirm) { ElMessage.warning("两次输入的新密码不一致"); return; }
+  if (pwForm.newPassword === pwForm.oldPassword) { ElMessage.warning("新密码不能与原密码相同"); return; }
+  savingPw.value = true;
+  try {
+    await authApi.changePassword(pwForm.oldPassword, pwForm.newPassword);
+    ElMessage.success("密码已修改");
+    passwordDialog.value = false;
+  } finally { savingPw.value = false; }
 }
 
 async function onLogout() {

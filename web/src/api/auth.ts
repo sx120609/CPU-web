@@ -45,4 +45,6 @@ export const authApi = {
   logout: () => request.post<{ ok: true }>("/auth/logout"),
   me: () => request.get<UserInfo>("/user/me"),
   updateMe: (payload: Partial<UserInfo>) => request.patch<UserInfo>("/user/me", payload),
+  changePassword: (oldPassword: string, newPassword: string) =>
+    request.patch<{ ok: true }>("/user/password", { oldPassword, newPassword }),
 };
