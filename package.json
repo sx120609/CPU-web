@@ -12,6 +12,7 @@
     "dev:server": "npm run dev --prefix server",
     "dev:web": "npm run dev --prefix web",
     "build": "npm run build --prefix server && npm run build --prefix web",
+    "typecheck": "npm run build --prefix server && npm run type-check --prefix web",
     "start": "npm run start --prefix server"
   },
   "devDependencies": {

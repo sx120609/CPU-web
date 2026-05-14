@@ -487,7 +487,10 @@ export async function jwxtDebugSnapshot(token: string): Promise<{ saved: string[
   }
   for (const p of postProbes) {
     try {
-      const body = new URLSearchParams(p.body as Record<string, string>);
+      const body = new URLSearchParams();
+      for (const [k, v] of Object.entries(p.body)) {
+        if (v !== undefined) body.set(k, String(v));
+      }
       const { res, finalUrl } = await followRedirects(sess.jar, p.url, {
         method: "POST",
         body,
