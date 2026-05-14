@@ -62,10 +62,12 @@
         </el-form-item>
       </el-form>
 
-      <!-- 站内独立账号（站务 / 管理员；开发演示账号） -->
+      <!-- 站内独立账号：新生 / 毕业生 / 站务 / 管理员 -->
       <details class="dev-fallback">
-        <summary>🔑 站务 / 管理员账号登录</summary>
-        <div class="dev-tip">非学生账号入口，使用站内独立用户名/密码。学生请用上方学校 SSO 登录。</div>
+        <summary>🔑 其他登录</summary>
+        <div class="dev-tip">
+          主要供走不了统一身份认证的账号使用：新生（学号还没下发）、毕业生（统认证已失效）、站务 / 管理员等。使用站内独立用户名 + 密码。
+        </div>
         <el-form size="default" class="dev-form" @keyup.enter="onDevSubmit">
           <el-input v-model="dev.username" placeholder="用户名" />
           <el-input v-model="dev.password" type="password" show-password placeholder="密码" />
