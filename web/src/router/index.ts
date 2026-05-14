@@ -36,6 +36,7 @@ export const router = createRouter({
         { path: "messages", name: "messages", component: () => import("@/views/messages/Index.vue"), meta: { title: "消息中心" } },
         { path: "profile", name: "profile", component: () => import("@/views/profile/Index.vue"), meta: { title: "我的" } },
         { path: "u/:id", name: "user", component: () => import("@/views/profile/User.vue"), meta: { title: "用户", public: true } },
+        { path: "admin", name: "admin", component: () => import("@/views/admin/Index.vue"), meta: { title: "管理后台", requireMod: true } },
       ],
     },
     { path: "/:pathMatch(.*)*", component: () => import("@/views/NotFound.vue"), meta: { public: true } },
@@ -59,5 +60,11 @@ router.beforeEach(async (to) => {
     if (!auth.user) return { name: "login", query: { redirect: to.fullPath } };
   }
   if (to.meta.title) document.title = `${to.meta.title} · 药大垎坊`;
+  // 管理后台：仅 mod / admin 可进
+  if (to.meta.requireMod) {
+    if (auth.user?.role !== "admin" && auth.user?.role !== "mod") {
+      return { name: "home" };
+    }
+  }
   return true;
 });

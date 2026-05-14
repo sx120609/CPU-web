@@ -53,7 +53,8 @@
                 <el-dropdown-menu>
                   <el-dropdown-item command="profile">个人中心</el-dropdown-item>
                   <el-dropdown-item command="settings">消息设置</el-dropdown-item>
-                  <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
+                  <el-dropdown-item v-if="auth.isMod" command="admin" divided>🛠 管理后台</el-dropdown-item>
+                  <el-dropdown-item command="logout" :divided="!auth.isMod">退出登录</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -174,6 +175,7 @@ function goSearch() {
 async function onUserCmd(cmd: string) {
   if (cmd === "profile") router.push("/profile");
   else if (cmd === "settings") router.push("/messages?tab=settings");
+  else if (cmd === "admin") router.push("/admin");
   else if (cmd === "logout") {
     await auth.logout();
     router.push("/login");

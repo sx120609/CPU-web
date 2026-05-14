@@ -1,0 +1,107 @@
+<template>
+  <div class="ann-pane">
+    <el-card shadow="never" class="composer">
+      <template #header><h3 style="margin:0;font-size:15px">📣 发布全站公告</h3></template>
+      <el-form :model="form" label-position="top">
+        <el-form-item label="标题">
+          <el-input v-model="form.title" maxlength="120" placeholder="公告标题" show-word-limit />
+        </el-form-item>
+        <el-form-item label="内容">
+          <el-input v-model="form.content" type="textarea" :rows="4" maxlength="2000" placeholder="公告内容，所有用户都会在消息中心看到" show-word-limit />
+        </el-form-item>
+        <el-form-item label="级别">
+          <el-radio-group v-model="form.level">
+            <el-radio-button value="weak">弱（资讯）</el-radio-button>
+            <el-radio-button value="normal">普通</el-radio-button>
+            <el-radio-button value="strong">强（强提醒，跳静默时段）</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="附带链接（选填）">
+          <el-input v-model="form.link" placeholder="例如 /forum/topic/123 或 https://..." />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="publishing" :disabled="!form.title || !form.content" @click="publish">
+            发布公告
+          </el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
+    <el-card shadow="never">
+      <template #header>
+        <div class="hdr">
+          <h3 style="margin:0;font-size:15px">📜 历史公告</h3>
+          <el-button text @click="reload">刷新</el-button>
+        </div>
+      </template>
+      <el-empty v-if="!list.length" description="还没发布过公告" />
+      <div v-for="a in list" :key="a.id" class="ann-row">
+        <div class="ann-main">
+          <div class="ann-title">
+            <el-tag size="small" :type="a.level === 'strong' ? 'danger' : a.level === 'normal' ? 'primary' : 'info'" effect="plain">
+              {{ a.level }}
+            </el-tag>
+            {{ a.title }}
+          </div>
+          <div class="ann-content">{{ a.content }}</div>
+          <div class="ann-meta">{{ fmtDate(a.createdAt) }} · {{ a.source }}</div>
+        </div>
+        <el-button text type="danger" size="small" @click="removeAnn(a)">删除</el-button>
+      </div>
+    </el-card>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, onMounted } from "vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { adminApi } from "@/api/admin";
+import { fmtDate } from "@/utils/format";
+
+const list = ref<any[]>([]);
+const form = reactive({ title: "", content: "", level: "normal", link: "" });
+const publishing = ref(false);
+
+onMounted(reload);
+async function reload() { list.value = await adminApi.announcements(); }
+
+async function publish() {
+  publishing.value = true;
+  try {
+    await adminApi.createAnnouncement({
+      title: form.title.trim(),
+      content: form.content.trim(),
+      level: form.level,
+      link: form.link.trim() || undefined,
+    });
+    ElMessage.success("公告已发布");
+    form.title = ""; form.content = ""; form.link = "";
+    reload();
+  } finally { publishing.value = false; }
+}
+
+async function removeAnn(a: any) {
+  await ElMessageBox.confirm(`删除公告《${a.title}》？`, "确认", { type: "warning" });
+  await adminApi.deleteAnnouncement(a.id);
+  ElMessage.success("已删除");
+  reload();
+}
+</script>
+
+<style scoped>
+.ann-pane { display: flex; flex-direction: column; gap: 14px; }
+.composer .el-card__header { padding-bottom: 0; }
+.hdr { display: flex; justify-content: space-between; align-items: center; }
+.ann-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-bottom: 1px dashed #f1f5f9;
+}
+.ann-row:last-child { border-bottom: none; }
+.ann-main { flex: 1; min-width: 0; }
+.ann-title { font-size: 14px; font-weight: 600; color: #1f2937; display: flex; gap: 6px; align-items: center; }
+.ann-content { font-size: 13px; color: #4b5563; margin: 4px 0 4px; }
+.ann-meta { font-size: 11px; color: #9ca3af; }
+</style>

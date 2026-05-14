@@ -12,6 +12,7 @@ import { servicesRouter } from "./services";
 import { messageRouter } from "./message";
 import { searchRouter } from "./search";
 import { jwxtRouter } from "./jwxt";
+import { adminRouter } from "./admin";
 
 export const router = Router();
 
@@ -23,7 +24,7 @@ router.use("/replies", replyRouter);
 router.use("/services", servicesRouter);
 router.use("/courses", courseRouter);
 router.use("/search", searchRouter);
-router.use("/home", homeRouter);              // 游客也能看热帖/最新/公告（内部按 token 决定 identity）
+router.use("/home", homeRouter);
 
 // 教务代登录：begin-login / login 公开，其余 handler 内部验 token
 router.use("/jwxt", jwxtRouter);
@@ -32,3 +33,6 @@ router.use("/jwxt", jwxtRouter);
 router.use("/user", authRequired, userRouter);
 router.use("/likes", authRequired, likeRouter);
 router.use("/messages", authRequired, messageRouter);
+
+// 管理后台：需登录 + 内部按 role 分级
+router.use("/admin", authRequired, adminRouter);
