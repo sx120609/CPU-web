@@ -45,6 +45,7 @@ export const router = createRouter({
 
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
+  if (to.meta.title) document.title = `${to.meta.title} · 药大垎坊`;
   // 公开页：游客也能看
   if (to.meta.public) {
     // 但若已登录，主动恢复用户信息
@@ -59,7 +60,6 @@ router.beforeEach(async (to) => {
     await auth.fetchMe();
     if (!auth.user) return { name: "login", query: { redirect: to.fullPath } };
   }
-  if (to.meta.title) document.title = `${to.meta.title} · 药大垎坊`;
   // 管理后台：仅 mod / admin 可进
   if (to.meta.requireMod) {
     if (auth.user?.role !== "admin" && auth.user?.role !== "mod") {

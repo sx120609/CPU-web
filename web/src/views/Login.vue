@@ -1,6 +1,14 @@
 <template>
   <div class="auth-wrap">
     <div class="auth-card">
+      <div class="auth-nav">
+        <el-button text class="nav-btn" @click="goHome">
+          <el-icon><ArrowLeft /></el-icon>
+          返回首页
+        </el-button>
+        <el-button text class="nav-btn" @click="goRegister">注册账号</el-button>
+      </div>
+
       <div class="brand">
         <div class="brand-logo">药</div>
         <div>
@@ -70,6 +78,12 @@
           <span @click="fillDev('admin', 'admin123')">admin / admin123</span>
         </div>
       </details>
+
+      <div class="alt-actions">
+        <button type="button" @click="goHome">暂不登录，继续浏览</button>
+        <span>·</span>
+        <button type="button" @click="goRegister">没有账号？去注册</button>
+      </div>
     </div>
   </div>
 </template>
@@ -78,7 +92,7 @@
 import { ref, reactive, computed, onMounted } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { ElMessage, type FormInstance, type FormRules } from "element-plus";
-import { User, Lock, Refresh } from "@element-plus/icons-vue";
+import { User, Lock, Refresh, ArrowLeft } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { loadCreds, hasCreds } from "@/utils/credCrypto";
 
@@ -98,8 +112,12 @@ const rules: FormRules = {
 const dev = reactive({ username: "", password: "", loading: false });
 
 onMounted(async () => {
+  if (auth.isLoggedIn) {
+    router.replace(redirectTarget());
+    return;
+  }
   // 准备 CAS 登录页（拿 lt/execution + 验证码）
-  await auth.ssoBegin();
+  await auth.ssoBegin().catch(() => undefined);
   // "刚主动退出"标记：本次进入 /login 不自动登录，标记一次性消耗掉；
   // 关闭浏览器（sessionStorage 失效）后下次再访问就会照常自动登录。
   let justLoggedOut = false;
@@ -115,15 +133,31 @@ onMounted(async () => {
       const ok = await auth.ssoLogin(creds.username, creds.password, undefined, true);
       if (ok) {
         ElMessage.success(`欢迎，${auth.user?.nickname || creds.username}`);
-        router.push((route.query.redirect as string) || "/home");
+        router.replace(redirectTarget());
       }
     }
   }
 });
 
 async function reloadCaptcha() {
-  await auth.ssoBegin();
+  await auth.ssoBegin().catch(() => undefined);
   form.captcha = "";
+}
+
+function redirectTarget() {
+  const redirect = route.query.redirect;
+  if (typeof redirect === "string" && redirect.startsWith("/") && !redirect.startsWith("//")) {
+    return redirect;
+  }
+  return "/home";
+}
+
+function goHome() {
+  router.replace("/home");
+}
+
+function goRegister() {
+  router.push({ name: "register", query: route.query.redirect ? { redirect: redirectTarget() } : undefined });
 }
 
 async function onSubmit() {
@@ -136,7 +170,7 @@ async function onSubmit() {
   form.password = ""; // 凭据送出后立刻清空
   if (ok) {
     ElMessage.success(`欢迎，${auth.user?.nickname || form.username}`);
-    router.push((route.query.redirect as string) || "/home");
+    router.replace(redirectTarget());
   } else if (auth.ssoNeedCaptcha) {
     form.captcha = "";
   }
@@ -156,7 +190,7 @@ async function onDevSubmit() {
   try {
     await auth.login(dev.username, dev.password);
     ElMessage.success(`欢迎，${auth.user?.nickname}`);
-    router.push((route.query.redirect as string) || "/home");
+    router.replace(redirectTarget());
   } catch { /* 拦截器已提示 */ }
   finally { dev.loading = false; }
 }
@@ -178,6 +212,19 @@ async function onDevSubmit() {
   border-radius: 16px;
   padding: 32px 36px 24px;
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.1);
+}
+
+.auth-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: -12px -10px 18px;
+}
+
+.nav-btn {
+  min-height: 34px;
+  padding: 0 10px;
+  color: var(--cpu-primary);
 }
 
 .brand {
@@ -245,6 +292,24 @@ async function onDevSubmit() {
 }
 .dev-accounts span { cursor: pointer; text-decoration: underline; }
 
+.alt-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
+.alt-actions button {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--cpu-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
 @media (max-width: 640px) {
   .auth-wrap {
     min-height: 100dvh;
@@ -260,6 +325,10 @@ async function onDevSubmit() {
 
   .brand {
     margin-bottom: 16px;
+  }
+
+  .auth-nav {
+    margin: -8px -8px 16px;
   }
 
   .brand-logo {

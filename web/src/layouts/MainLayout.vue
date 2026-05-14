@@ -57,8 +57,8 @@
             </el-dropdown>
           </template>
           <template v-else>
-            <el-button text @click="$router.push('/login')">登录</el-button>
-            <el-button type="primary" @click="$router.push('/register')">注册</el-button>
+            <el-button text @click="goAuth('login')">登录</el-button>
+            <el-button type="primary" @click="goAuth('register')">注册</el-button>
           </template>
         </div>
 
@@ -71,7 +71,7 @@
               <el-icon><Bell /></el-icon>
             </el-badge>
           </el-button>
-          <el-button v-else text class="mobile-login-btn" @click="$router.push('/login')">登录</el-button>
+          <el-button v-else text class="mobile-login-btn" @click="goAuth('login')">登录</el-button>
           <el-button text class="touch-icon-btn" aria-label="更多" @click="mobileMenuOpen = true">
             <el-icon><Menu /></el-icon>
           </el-button>
@@ -148,8 +148,8 @@
           <el-button text type="danger" @click="onMobileLogout">退出</el-button>
         </template>
         <template v-else>
-          <el-button type="primary" @click="goDrawer('/login')">登录</el-button>
-          <el-button @click="goDrawer('/register')">注册</el-button>
+          <el-button type="primary" @click="goDrawerAuth('login')">登录</el-button>
+          <el-button @click="goDrawerAuth('register')">注册</el-button>
         </template>
       </div>
     </el-drawer>
@@ -275,7 +275,9 @@ function goSearch() {
 }
 
 function resolveMobileTo(item: { to: string; auth?: boolean }) {
-  if (item.auth && !auth.isLoggedIn) return "/login";
+  if (item.auth && !auth.isLoggedIn) {
+    return { name: "login", query: { redirect: item.to } };
+  }
   return item.to;
 }
 
@@ -291,6 +293,21 @@ function goDrawer(to: string) {
     return;
   }
   router.push(to);
+}
+
+function authRedirectTarget() {
+  if (route.path === "/home") return undefined;
+  return route.fullPath;
+}
+
+function goAuth(name: "login" | "register") {
+  const redirect = authRedirectTarget();
+  router.push({ name, query: redirect ? { redirect } : undefined });
+}
+
+function goDrawerAuth(name: "login" | "register") {
+  mobileMenuOpen.value = false;
+  goAuth(name);
 }
 
 async function onMobileLogout() {

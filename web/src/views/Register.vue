@@ -1,6 +1,14 @@
 <template>
   <div class="auth-wrap">
     <div class="auth-card">
+      <div class="auth-nav">
+        <el-button text class="nav-btn" @click="goHome">
+          <el-icon><ArrowLeft /></el-icon>
+          返回首页
+        </el-button>
+        <el-button text class="nav-btn" @click="goLogin">直接登录</el-button>
+      </div>
+
       <div class="brand">
         <div class="brand-logo">药</div>
         <div>
@@ -34,7 +42,7 @@
       </el-form>
 
       <div class="alt">
-        已有账号？<router-link to="/login">直接登录</router-link>
+        已有账号？<button type="button" @click="goLogin">直接登录</button>
       </div>
     </div>
 
@@ -56,12 +64,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from "vue";
-import { useRouter } from "vue-router";
+import { ref, reactive, onMounted } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { ElMessage, type FormInstance, type FormRules } from "element-plus";
+import { ArrowLeft } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 
 const router = useRouter();
+const route = useRoute();
 const auth = useAuthStore();
 const formRef = ref<FormInstance>();
 const loading = ref(false);
@@ -85,6 +95,26 @@ const rules: FormRules = {
   ],
 };
 
+onMounted(() => {
+  if (auth.isLoggedIn) router.replace(redirectTarget());
+});
+
+function redirectTarget() {
+  const redirect = route.query.redirect;
+  if (typeof redirect === "string" && redirect.startsWith("/") && !redirect.startsWith("//")) {
+    return redirect;
+  }
+  return "/home";
+}
+
+function goHome() {
+  router.replace("/home");
+}
+
+function goLogin() {
+  router.push({ name: "login", query: route.query.redirect ? { redirect: redirectTarget() } : undefined });
+}
+
 async function submit() {
   try { await formRef.value?.validate(); } catch { return; }
   if (!agree.value) { ElMessage.warning("请先同意用户协议"); return; }
@@ -98,7 +128,7 @@ async function submit() {
       enrollYear: form.enrollYear,
     });
     ElMessage.success(`欢迎，${auth.user?.nickname}！注册成功`);
-    router.push("/home");
+    router.replace(redirectTarget());
   } catch { /* 拦截器已提示 */ }
   finally { loading.value = false; }
 }
@@ -120,6 +150,19 @@ async function submit() {
   border-radius: 16px;
   padding: 32px 36px 24px;
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.1);
+}
+
+.auth-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: -12px -10px 18px;
+}
+
+.nav-btn {
+  min-height: 34px;
+  padding: 0 10px;
+  color: var(--cpu-primary);
 }
 
 .brand {
@@ -152,7 +195,15 @@ async function submit() {
   font-size: 13px;
   color: #6b7280;
   margin-top: 8px;
-  a { color: var(--cpu-primary); margin-left: 4px; }
+  button {
+    border: none;
+    background: none;
+    padding: 0;
+    color: var(--cpu-primary);
+    font: inherit;
+    cursor: pointer;
+    margin-left: 4px;
+  }
 }
 
 ol { padding-left: 20px; line-height: 1.8; color: #4b5563; font-size: 13px; }
@@ -172,6 +223,10 @@ ol { padding-left: 20px; line-height: 1.8; color: #4b5563; font-size: 13px; }
 
   .brand {
     margin-bottom: 16px;
+  }
+
+  .auth-nav {
+    margin: -8px -8px 16px;
   }
 
   .brand-logo {
