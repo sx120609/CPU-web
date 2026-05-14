@@ -23,12 +23,12 @@ router.use("/replies", replyRouter);
 router.use("/services", servicesRouter);
 router.use("/courses", courseRouter);
 router.use("/search", searchRouter);
+router.use("/home", homeRouter);              // 游客也能看热帖/最新/公告（内部按 token 决定 identity）
 
 // 教务代登录：begin-login / login 公开，其余 handler 内部验 token
 router.use("/jwxt", jwxtRouter);
 
 // 站内登录后
 router.use("/user", authRequired, userRouter);
-router.use("/home", authRequired, homeRouter);
 router.use("/likes", authRequired, likeRouter);
 router.use("/messages", authRequired, messageRouter);

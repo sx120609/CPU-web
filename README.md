@@ -25,7 +25,30 @@ CPU-web/
     └── src/              # 视图、组件、路由、store、API 封装
 ```
 
-## 快速开始
+## 部署到 Debian / Ubuntu 服务器
+
+仓库根目录有一个 `deploy.sh` 一键脚本：
+
+```bash
+# 首次部署：装 Node + 装依赖 + 建数据库 + 构建 + 后台启动
+chmod +x deploy.sh
+./deploy.sh
+
+# 后续更新代码：拉新代码 + 重建 + 平滑重启
+./deploy.sh update
+
+# 其他命令
+./deploy.sh start | stop | restart | logs | status
+./deploy.sh reset-db   # 重建数据库（会清空所有论坛数据）
+```
+
+- 端口默认 `23333`（避开 3000 / 8000 / 8080 等常见冲突），可通过环境变量 `PORT=12345 ./deploy.sh` 覆盖
+- 进程由 `pm2` 守护，断开 SSH 后继续运行
+- 开机自启：跑一次 `pm2 startup`（按提示执行返回的 sudo 命令）+ `pm2 save`
+- 日志文件：`~/.pm2/logs/cpu-web-*.log`
+- 首次会自动生成 `server/.env`，含随机 JWT_SECRET（请妥善保管）
+
+## 快速开始（开发环境）
 
 ### 环境要求
 

@@ -11,6 +11,7 @@ export interface UserInfo {
   college?: string | null;
   enrollYear?: number | null;
   role: string;
+  studentSso?: boolean;
   postCount: number;
   replyCount: number;
   reputation: number;
@@ -18,9 +19,29 @@ export interface UserInfo {
   createdAt: string;
 }
 
+export interface SsoBeginResult {
+  pendingId: string;
+  needCaptcha: boolean;
+  captchaImage?: string;
+}
+
+export interface SsoLoginResult {
+  ok: boolean;
+  siteToken?: string;
+  jwxtToken?: string;
+  user?: UserInfo;
+  needNickname?: boolean;
+  error?: string;
+  needCaptcha?: boolean;
+  captcha?: { image: string; pendingId: string };
+}
+
 export const authApi = {
   login: (payload: LoginPayload) => request.post<{ token: string; user: UserInfo }>("/auth/login", payload),
   register: (payload: RegisterPayload) => request.post<{ token: string; user: UserInfo }>("/auth/register", payload),
+  ssoBegin: () => request.post<SsoBeginResult>("/auth/sso-begin"),
+  ssoLogin: (p: { pendingId: string; username: string; password: string; captcha?: string }) =>
+    request.post<SsoLoginResult>("/auth/sso-login", p),
   logout: () => request.post<{ ok: true }>("/auth/logout"),
   me: () => request.get<UserInfo>("/user/me"),
   updateMe: (payload: Partial<UserInfo>) => request.patch<UserInfo>("/user/me", payload),

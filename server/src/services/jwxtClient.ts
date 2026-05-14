@@ -18,6 +18,7 @@ import crypto from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { isDev } from "../config";
+import { Errors } from "../utils/response";
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
@@ -331,12 +332,12 @@ export function getSession(token: string | undefined | null): ActiveSession | nu
 /** 用一个 session 访问任意 jsxsd 路径，返回 HTML 文本 */
 export async function jwxtFetchHtml(token: string, path: string): Promise<string> {
   const sess = getSession(token);
-  if (!sess) throw new Error("教务会话已失效，请重新登录");
+  if (!sess) throw Errors.unauthorized("教务会话已失效，请重新登录");
   const url = new URL(path, "http://jsxsd.cpu.edu.cn").toString();
   const { res, finalUrl } = await followRedirects(sess.jar, url);
   if (new URL(finalUrl).host !== "jsxsd.cpu.edu.cn") {
     sessions.delete(token);
-    throw new Error("教务会话已失效（被学校 SSO 踢出），请重新登录");
+    throw Errors.unauthorized("教务会话已失效（被学校 SSO 踢出），请重新登录");
   }
   return res.text();
 }
@@ -347,15 +348,15 @@ export async function jwxtFetchHtml(token: string, path: string): Promise<string
  */
 export async function fetchAnyCpu(token: string, url: string, opts?: { allowSso?: boolean }): Promise<string> {
   const sess = getSession(token);
-  if (!sess) throw new Error("教务会话已失效，请重新登录");
+  if (!sess) throw Errors.unauthorized("教务会话已失效，请重新登录");
   const { res, finalUrl } = await followRedirects(sess.jar, url);
   const finalHost = new URL(finalUrl).host;
   if (finalHost === "id.cpu.edu.cn" && !opts?.allowSso) {
     sessions.delete(token);
-    throw new Error("学校 SSO 会话已失效，请重新登录");
+    throw Errors.unauthorized("学校 SSO 会话已失效，请重新登录");
   }
   if (!finalHost.endsWith("cpu.edu.cn")) {
-    throw new Error(`意外的最终域名: ${finalHost}`);
+    throw Errors.badRequest(`意外的最终域名: ${finalHost}`);
   }
   return res.text();
 }
@@ -387,10 +388,10 @@ export async function fetchIServiceApps(token: string): Promise<IServiceApp[]> {
   try {
     json = JSON.parse(text);
   } catch {
-    throw new Error("i 服务接口返回非 JSON");
+    throw Errors.badRequest("i 服务接口返回非 JSON");
   }
   if (json.result !== "1") {
-    throw new Error("i 服务接口异常: " + (json.reason || "result≠1"));
+    throw Errors.badRequest("i 服务接口异常: " + (json.reason || "result≠1"));
   }
   const raw = (json.data || []) as any[];
   return raw
@@ -421,7 +422,7 @@ export async function fetchIServiceApps(token: string): Promise<IServiceApp[]> {
 /** POST form 到 jsxsd 路径，返回 HTML */
 export async function jwxtPostForm(token: string, path: string, fields: Record<string, string>): Promise<string> {
   const sess = getSession(token);
-  if (!sess) throw new Error("教务会话已失效，请重新登录");
+  if (!sess) throw Errors.unauthorized("教务会话已失效，请重新登录");
   const url = new URL(path, "http://jsxsd.cpu.edu.cn").toString();
   const body = new URLSearchParams(fields);
   const { res, finalUrl } = await followRedirects(sess.jar, url, {
@@ -434,7 +435,7 @@ export async function jwxtPostForm(token: string, path: string, fields: Record<s
   });
   if (new URL(finalUrl).host !== "jsxsd.cpu.edu.cn") {
     sessions.delete(token);
-    throw new Error("教务会话已失效，请重新登录");
+    throw Errors.unauthorized("教务会话已失效，请重新登录");
   }
   return res.text();
 }
@@ -451,7 +452,7 @@ async function saveDebug(name: string, content: string) {
 /** 调试模式：登录后批量抓取若干预设页面用于解析器开发 */
 export async function jwxtDebugSnapshot(token: string): Promise<{ saved: string[]; errors: string[] }> {
   const sess = getSession(token);
-  if (!sess) throw new Error("教务会话已失效");
+  if (!sess) throw Errors.unauthorized("教务会话已失效");
   const base = "http://jsxsd.cpu.edu.cn";
   // GET 类型的探针
   const getProbes = [

@@ -92,12 +92,43 @@
       <span class="dot">·</span>
       <span>本站不存储任何学校账号</span>
     </footer>
+
+    <!-- 首次登录设昵称（强制） -->
+    <el-dialog
+      v-model="showNicknameDialog"
+      title="给自己起个昵称"
+      width="420"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      :show-close="false"
+    >
+      <p class="dlg-tip">
+        欢迎来到药大垎坊，<b>{{ auth.user?.username }}</b> 同学 👋
+      </p>
+      <p class="dlg-hint">
+        论坛里大家用昵称称呼你，<b>不会显示你的学号</b>。
+      </p>
+      <el-input
+        v-model="newNickname"
+        size="large"
+        placeholder="2-20 个字符，支持中文"
+        maxlength="20"
+        show-word-limit
+        @keyup.enter="saveNickname"
+      />
+      <template #footer>
+        <el-button type="primary" size="large" :loading="savingNickname" @click="saveNickname">
+          完成设置
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
+import { ElMessage } from "element-plus";
 import { Search, Edit, Bell, ArrowDown, WarningFilled } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
@@ -106,6 +137,30 @@ const auth = useAuthStore();
 const msg = useMessageStore();
 const router = useRouter();
 const q = ref("");
+
+// 首次登录设昵称
+const showNicknameDialog = ref(false);
+const newNickname = ref("");
+const savingNickname = ref(false);
+
+const shouldAskNickname = computed(() => auth.isLoggedIn && auth.needSetupNickname);
+watch(shouldAskNickname, (v) => {
+  if (v) showNicknameDialog.value = true;
+  else showNicknameDialog.value = false;
+}, { immediate: true });
+
+async function saveNickname() {
+  const nick = newNickname.value.trim();
+  if (nick.length < 2) { ElMessage.warning("昵称至少 2 个字"); return; }
+  if (nick.length > 20) { ElMessage.warning("昵称最多 20 个字"); return; }
+  savingNickname.value = true;
+  try {
+    await auth.updateProfile({ nickname: nick });
+    ElMessage.success(`欢迎，${nick}`);
+    showNicknameDialog.value = false;
+    newNickname.value = "";
+  } finally { savingNickname.value = false; }
+}
 
 onMounted(async () => {
   if (auth.token && !auth.user) await auth.fetchMe();
@@ -280,6 +335,11 @@ async function onUserCmd(cmd: string) {
 
 .fade-enter-active, .fade-leave-active { transition: opacity 0.15s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+.dlg-tip { font-size: 15px; color: #1f2937; margin: 0 0 6px; }
+.dlg-tip b { color: var(--cpu-primary); }
+.dlg-hint { font-size: 13px; color: #6b7280; margin: 0 0 14px; }
+.dlg-hint b { color: #b45309; }
 
 @media (max-width: 900px) {
   .top-nav { display: none; }

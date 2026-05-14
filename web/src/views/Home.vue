@@ -102,17 +102,11 @@ const auth = useAuthStore();
 const summary = ref<HomeSummary | null>(null);
 
 onMounted(async () => {
-  if (auth.isLoggedIn) {
+  // 不区分游客 / 登录态，统一调 home/summary —— 后端按 token 自动决定 identity 是否返回
+  try {
     summary.value = await homeApi.summary();
-  } else {
-    // 游客也能看，调一个临时端点；这里直接调登录后端点会 401，所以游客版降级为空
+  } catch {
     summary.value = { identity: null, hotTopics: [], latestTopics: [], announce: [], services: [] };
-    // 但游客也能看服务卡片
-    try {
-      const { servicesApi } = await import("@/api/services");
-      const list = await servicesApi.list();
-      summary.value.services = list.slice(0, 8) as any;
-    } catch { /* ignore */ }
   }
 });
 

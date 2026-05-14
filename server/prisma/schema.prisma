@@ -15,19 +15,21 @@ datasource db {
 
 model User {
   id            Int      @id @default(autoincrement())
-  username      String   @unique // 登录名
+  username      String   @unique // 登录名（学校账号登录时即为学号）
   passwordHash  String
-  nickname      String   // 显示名
+  nickname      String   // 显示名（学校账号首次登录时为空，强制设置）
   email         String?  @unique
   avatar        String?
   bio           String?  // 自我介绍
   college       String?  // 自报院系（可选，仅展示用）
   enrollYear    Int?     // 自报入学年份（可选）
   role          String   @default("user") // user / mod / admin / bot
+  // 是否通过学校 SSO 登录认证（学号身份已验证）。alice 等示例账号为 false
+  studentSso    Boolean  @default(false)
   status        String   @default("active") // active / banned / muted
   postCount     Int      @default(0)
   replyCount    Int      @default(0)
-  reputation    Int      @default(0) // 声望（被赞-被点踩 等）
+  reputation    Int      @default(0)
   lastSeenAt    DateTime @default(now())
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
