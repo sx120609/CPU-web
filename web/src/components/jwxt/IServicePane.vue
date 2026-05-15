@@ -61,7 +61,16 @@
         <div v-if="a.types.length" class="app-types">
           <span v-for="t in a.types.slice(0, 1)" :key="t" class="type-pill">{{ t }}</span>
         </div>
-        <div v-if="a.favorite" class="fav-mark">⭐</div>
+        <button
+          class="fav-btn"
+          :class="{ active: a.favorite }"
+          type="button"
+          :aria-label="a.favorite ? '取消收藏' : '收藏服务'"
+          :title="a.favorite ? '取消收藏' : '收藏服务'"
+          @click.stop="toggleFavorite(a)"
+        >
+          <el-icon><StarFilled v-if="a.favorite" /><Star v-else /></el-icon>
+        </button>
       </div>
     </div>
 
@@ -83,7 +92,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onBeforeUnmount, onMounted } from "vue";
-import { Refresh, Search } from "@element-plus/icons-vue";
+import { Refresh, Search, Star, StarFilled } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { jwxtApi } from "@/api/jwxt";
 
@@ -111,6 +120,7 @@ const activeCat = ref("");
 const filterFav = ref<"" | "fav">("");
 const MAX_RETRIES = 3;
 const RETRY_DELAYS = [1000, 2200, 4200];
+const FAVORITES_KEY = "cpu-iservice-favorite-overrides";
 let retryTimer: number | null = null;
 
 onMounted(() => {
@@ -136,12 +146,12 @@ async function loadApps() {
   retrying.value = retryCount.value > 0;
   try {
     const r: any = await jwxtApi.iapps();
-    apps.value = r.apps ?? [];
-    // 按收藏优先 + 热度排序
-    apps.value.sort((a, b) => {
-      if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
-      return (b.clickNum ?? 0) - (a.clickNum ?? 0);
-    });
+    const overrides = loadFavoriteOverrides();
+    apps.value = (r.apps ?? []).map((a: IServiceApp) => ({
+      ...a,
+      favorite: favoriteFor(a, overrides),
+    }));
+    sortApps();
     error.value = "";
   } catch (e: any) {
     error.value = e?.message || "网络请求失败";
@@ -196,6 +206,46 @@ function proxiedIcon(url: string): string {
 function onIconError(e: Event) {
   const img = e.target as HTMLImageElement;
   img.style.display = "none";
+}
+
+function favoriteKey(a: IServiceApp) {
+  return String(a.id || a.url || a.name);
+}
+
+function loadFavoriteOverrides(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(FAVORITES_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveFavoriteOverrides(overrides: Record<string, boolean>) {
+  localStorage.setItem(FAVORITES_KEY, JSON.stringify(overrides));
+}
+
+function favoriteFor(a: IServiceApp, overrides = loadFavoriteOverrides()) {
+  const key = favoriteKey(a);
+  return Object.prototype.hasOwnProperty.call(overrides, key) ? overrides[key] : Boolean(a.favorite);
+}
+
+function sortApps() {
+  apps.value.sort((a, b) => {
+    if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
+    return (b.clickNum ?? 0) - (a.clickNum ?? 0);
+  });
+}
+
+function toggleFavorite(a: IServiceApp) {
+  const overrides = loadFavoriteOverrides();
+  const next = !a.favorite;
+  overrides[favoriteKey(a)] = next;
+  saveFavoriteOverrides(overrides);
+  a.favorite = next;
+  sortApps();
+  ElMessage.success(next ? "已加入我的收藏" : "已取消收藏");
 }
 
 async function openApp(a: IServiceApp) {
@@ -357,11 +407,35 @@ async function openApp(a: IServiceApp) {
   padding: 1px 5px;
 }
 
-.fav-mark {
+.fav-btn {
   position: absolute;
-  top: 6px;
-  right: 6px;
-  font-size: 12px;
+  top: 8px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #9ca3af;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  touch-action: manipulation;
+}
+.fav-btn:hover {
+  border-color: #f59e0b;
+  color: #d97706;
+  background: #fffbeb;
+}
+.fav-btn.active {
+  border-color: #fcd34d;
+  color: #f59e0b;
+  background: #fffbeb;
+}
+.fav-btn :deep(.el-icon) {
+  font-size: 15px;
 }
 
 @media (max-width: 700px) {
@@ -445,7 +519,7 @@ async function openApp(a: IServiceApp) {
   .app-card {
     min-height: 118px;
     border-radius: 10px;
-    padding: 12px 8px 10px;
+    padding: 14px 8px 10px;
   }
 
   .app-icon {
@@ -461,6 +535,13 @@ async function openApp(a: IServiceApp) {
 
   .app-name {
     font-size: 12px;
+  }
+
+  .fav-btn {
+    top: 6px;
+    right: 6px;
+    width: 32px;
+    height: 32px;
   }
 }
 
