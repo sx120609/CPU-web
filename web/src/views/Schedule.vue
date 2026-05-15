@@ -11,6 +11,10 @@
         <el-option v-for="s in semesters" :key="s.value" :value="s.value" :label="s.label" />
       </el-select>
       <div class="top-actions">
+        <div v-if="parsed" class="view-switch" aria-label="切换课表视图">
+          <button type="button" :class="{ active: viewMode === 'day' }" @click="setViewMode('day')">日</button>
+          <button type="button" :class="{ active: viewMode === 'week' }" @click="setViewMode('week')">周</button>
+        </div>
         <button
           v-if="installPromptRef && (installPromptRef as any).canShow"
           type="button"
@@ -55,7 +59,7 @@
       </button>
     </section>
 
-    <section v-if="parsed" class="week-strip">
+    <section v-if="parsed && viewMode === 'day'" class="week-strip">
       <button
         v-for="d in dayTabs"
         :key="d.day"
@@ -106,7 +110,50 @@
         <em>{{ dayCourses.length }} 节课</em>
       </div>
 
-      <transition :name="slideName" mode="out-in">
+      <section v-if="viewMode === 'week'" class="week-overview" aria-label="整周课表">
+        <div class="week-grid-head">
+          <div class="time-head">节次</div>
+          <div
+            v-for="d in dayTabs"
+            :key="d.day"
+            class="week-day-head"
+            :class="{ today: d.isToday }"
+            @click="onDayClick(d.day)"
+          >
+            <span>{{ d.label.replace("周", "") }}</span>
+            <b>{{ d.date || "--" }}</b>
+          </div>
+        </div>
+        <div class="week-grid-body">
+          <template v-for="slot in weekSlots" :key="slot">
+            <div class="slot-axis">
+              <b>第{{ slot }}</b>
+              <span>{{ bigSlotTimeCompact(slot) }}</span>
+            </div>
+            <div
+              v-for="day in 7"
+              :key="`${slot}-${day}`"
+              class="week-slot-cell"
+              :class="{ today: dayTabs[day - 1]?.isToday }"
+            >
+              <article
+                v-for="(course, index) in coursesAt(day, slot)"
+                :key="`${day}-${slot}-${index}-${course.name}`"
+                class="week-course"
+                :style="{ '--accent': colorFor(course.name) }"
+                :title="courseTitle(course)"
+                @click="openDayFromWeek(day)"
+              >
+                <strong>{{ course.name }}</strong>
+                <span v-if="course.location">@{{ course.location }}</span>
+                <em v-if="course.slotNote || course.weeks">{{ course.slotNote || course.weeks }}</em>
+              </article>
+            </div>
+          </template>
+        </div>
+      </section>
+
+      <transition v-else :name="slideName" mode="out-in">
         <div :key="activeDay" class="day-pane">
           <div v-if="dayCourses.length" class="course-list">
             <article v-for="item in dayCourses" :key="`${item.bigSlot}-${item.index}`" class="course-card" :style="{ '--accent': colorFor(item.course.name) }">
@@ -189,7 +236,8 @@ interface CalendarWeek { week: number; days: string[]; monday: string; sunday: s
 interface CalendarResult { currentWeek: number; semesterStart: string; semesterEnd: string; weeks: CalendarWeek[] }
 interface FlatCourse { bigSlot: number; index: number; course: ScheduleCourse }
 interface CacheEnvelope<T> { savedAt: number; data: T }
-interface LastState { semester: string; week: string; activeDay: number }
+type ViewMode = "day" | "week";
+interface LastState { semester: string; week: string; activeDay: number; viewMode?: ViewMode }
 
 const jwxt = useJwxtStore();
 const parsed = ref<ScheduleResult | null>(null);
@@ -197,6 +245,7 @@ const calendar = ref<CalendarResult | null>(null);
 const semester = ref("");
 const week = ref("");
 const activeDay = ref(dayOfWeek());
+const viewMode = ref<ViewMode>("day");
 const loading = ref(false);
 const autoLoading = ref(false);
 const hasCreds = ref(false);
@@ -310,6 +359,15 @@ const dayCourses = computed<FlatCourse[]>(() => {
   }
   return list.sort((a, b) => a.bigSlot - b.bigSlot);
 });
+const weekSlots = computed(() => {
+  const slots = new Set<number>();
+  for (const cell of parsed.value?.cells ?? []) slots.add(cell.bigSlot);
+  return Array.from(slots).sort((a, b) => a - b);
+});
+
+function coursesAt(day: number, slot: number) {
+  return parsed.value?.cells.find((cell) => cell.day === day && cell.bigSlot === slot)?.courses ?? [];
+}
 
 // 滑动切日时记录方向，给 transition 用不同动画
 const slideDirection = ref<"next" | "prev">("next");
@@ -404,6 +462,16 @@ function onDayClick(day: number) {
   saveLastState();
 }
 
+function setViewMode(mode: ViewMode) {
+  viewMode.value = mode;
+  saveLastState();
+}
+
+function openDayFromWeek(day: number) {
+  onDayClick(day);
+  setViewMode("day");
+}
+
 async function reloadCaptcha() {
   captchaInput.value = "";
   captchaError.value = "";
@@ -488,6 +556,21 @@ function bigSlotTime(slot: number) {
   return ["08:00-09:35", "10:00-11:35", "13:30-15:05", "15:25-17:00", "18:30-20:05"][slot - 1] ?? "";
 }
 
+function bigSlotTimeCompact(slot: number) {
+  const value = bigSlotTime(slot);
+  return value ? value.replace("-", "\n") : "";
+}
+
+function courseTitle(course: ScheduleCourse) {
+  return [
+    course.name,
+    course.teacher ? `教师：${course.teacher}` : "",
+    course.location ? `地点：${course.location}` : "",
+    course.weeks,
+    course.slotNote,
+  ].filter(Boolean).join("\n");
+}
+
 const colors = ["#168776", "#2563eb", "#c2410c", "#7c3aed", "#0f766e", "#be123c", "#4d7c0f", "#0369a1"];
 function colorFor(name: string) {
   let h = 0;
@@ -538,6 +621,7 @@ function restoreLastState() {
     if (state.semester) semester.value = state.semester;
     if (state.week) week.value = state.week;
     if (state.activeDay >= 1 && state.activeDay <= 7) activeDay.value = state.activeDay;
+    if (state.viewMode === "day" || state.viewMode === "week") viewMode.value = state.viewMode;
   } catch {
     /* ignore */
   }
@@ -549,6 +633,7 @@ function saveLastState() {
       semester: semester.value,
       week: week.value,
       activeDay: activeDay.value,
+      viewMode: viewMode.value,
     }));
   } catch {
     /* ignore */
@@ -633,6 +718,32 @@ function saveScheduleCache() {
   display: flex;
   gap: 6px;
   flex-shrink: 0;
+}
+.view-switch {
+  height: 38px;
+  padding: 3px;
+  border: 1px solid #dde4ee;
+  border-radius: 10px;
+  background: #fff;
+  display: inline-grid;
+  grid-template-columns: repeat(2, 34px);
+  gap: 2px;
+}
+.view-switch button {
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #5c6677;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(22, 135, 118, 0.18);
+}
+.view-switch button.active {
+  background: #168776;
+  color: #fff;
 }
 .icon-btn {
   width: 38px;
@@ -890,6 +1001,144 @@ function saveScheduleCache() {
   color: #8a94a6;
   font-size: 12px;
 }
+.week-overview {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  touch-action: pan-y;
+}
+.week-grid-head,
+.week-grid-body {
+  display: grid;
+  grid-template-columns: 44px repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.week-grid-head {
+  position: sticky;
+  top: calc(env(safe-area-inset-top) + 2px);
+  z-index: 3;
+  margin-bottom: 6px;
+  padding: 3px 0;
+  background: #f6f8fb;
+}
+.time-head,
+.week-day-head {
+  min-width: 0;
+  height: 38px;
+  border-radius: 10px;
+  color: #667085;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.1;
+}
+.time-head {
+  font-size: 11px;
+}
+.week-day-head {
+  background: #fff;
+  border: 1px solid #e4eaf2;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.week-day-head span {
+  font-size: 12px;
+  font-weight: 700;
+}
+.week-day-head b {
+  margin-top: 3px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.week-day-head.today {
+  border-color: #168776;
+  background: #e8f6f3;
+  color: #116b5f;
+}
+.week-grid-body {
+  align-items: stretch;
+}
+.slot-axis {
+  min-width: 0;
+  min-height: 124px;
+  padding-top: 8px;
+  color: #667085;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+.slot-axis b {
+  color: #172033;
+  font-size: 14px;
+}
+.slot-axis span {
+  white-space: pre-line;
+  text-align: center;
+  font-size: 10px;
+  line-height: 1.25;
+}
+.week-slot-cell {
+  min-width: 0;
+  min-height: 124px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid #e9eef5;
+  padding: 3px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.week-slot-cell.today {
+  background: rgba(232, 246, 243, 0.68);
+}
+.week-course {
+  min-width: 0;
+  flex: 1 1 0;
+  min-height: 46px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  padding: 6px 4px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28), 0 4px 12px rgba(24, 34, 51, 0.08);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.week-course strong,
+.week-course span,
+.week-course em {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
+  text-align: center;
+}
+.week-course strong {
+  -webkit-line-clamp: 4;
+  font-size: 11px;
+  line-height: 1.22;
+  font-weight: 800;
+}
+.week-course span {
+  -webkit-line-clamp: 2;
+  font-size: 10px;
+  line-height: 1.15;
+  font-weight: 700;
+  opacity: 0.95;
+}
+.week-course em {
+  -webkit-line-clamp: 1;
+  font-size: 9px;
+  line-height: 1.15;
+  font-style: normal;
+  opacity: 0.82;
+}
 .empty-day {
   min-height: 220px;
   display: grid;
@@ -968,6 +1217,78 @@ function saveScheduleCache() {
   .summary { display: none; }
   .schedule-page {
     padding-top: calc(env(safe-area-inset-top) + 8px);
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .top {
+    gap: 6px;
+  }
+
+  .sem-select {
+    max-width: none;
+  }
+
+  .view-switch {
+    grid-template-columns: repeat(2, 30px);
+  }
+
+  .week-grid-head,
+  .week-grid-body {
+    grid-template-columns: 38px repeat(7, minmax(0, 1fr));
+    gap: 3px;
+  }
+
+  .week-grid-head {
+    top: calc(env(safe-area-inset-top) + 0px);
+  }
+
+  .week-day-head {
+    height: 34px;
+    border-radius: 8px;
+  }
+
+  .week-day-head span {
+    font-size: 11px;
+  }
+
+  .week-day-head b {
+    font-size: 9px;
+  }
+
+  .slot-axis,
+  .week-slot-cell {
+    min-height: 112px;
+  }
+
+  .slot-axis b {
+    font-size: 13px;
+  }
+
+  .slot-axis span {
+    font-size: 9px;
+  }
+
+  .week-slot-cell {
+    border-radius: 8px;
+    padding: 2px;
+  }
+
+  .week-course {
+    border-radius: 7px;
+    padding: 5px 3px;
+  }
+
+  .week-course strong {
+    font-size: 10px;
+  }
+
+  .week-course span {
+    font-size: 9px;
+  }
+
+  .week-course em {
+    display: none;
   }
 }
 
@@ -979,8 +1300,8 @@ function saveScheduleCache() {
 
 @media (max-width: 390px) {
   .schedule-page {
-    padding-left: 10px;
-    padding-right: 10px;
+    padding-left: 6px;
+    padding-right: 6px;
   }
   .course-card {
     grid-template-columns: 78px minmax(0, 1fr);
@@ -995,6 +1316,38 @@ function saveScheduleCache() {
   }
   .week-btn {
     font-size: 12px;
+  }
+  .view-switch {
+    grid-template-columns: repeat(2, 28px);
+    height: 36px;
+  }
+  .view-switch button {
+    font-size: 12px;
+  }
+  .icon-btn {
+    width: 36px;
+    height: 36px;
+  }
+  .week-grid-head,
+  .week-grid-body {
+    grid-template-columns: 34px repeat(7, minmax(0, 1fr));
+    gap: 2px;
+  }
+  .slot-axis,
+  .week-slot-cell {
+    min-height: 104px;
+  }
+  .slot-axis b {
+    font-size: 12px;
+  }
+  .slot-axis span {
+    font-size: 8px;
+  }
+  .week-course strong {
+    font-size: 9px;
+  }
+  .week-course span {
+    font-size: 8px;
   }
 }
 </style>
