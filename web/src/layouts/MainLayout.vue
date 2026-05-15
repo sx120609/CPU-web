@@ -121,7 +121,7 @@
     <el-drawer
       v-model="mobileMenuOpen"
       direction="btt"
-      size="auto"
+      size="420px"
       class="mobile-drawer"
       title="快捷入口"
     >
@@ -769,11 +769,17 @@ async function onUserCmd(cmd: string) {
 
   :deep(.mobile-drawer) {
     border-radius: 18px 18px 0 0;
+    height: min(420px, calc(100dvh - 16px)) !important;
     padding-bottom: env(safe-area-inset-bottom);
   }
 
   :deep(.mobile-drawer .el-drawer__header) {
     margin-bottom: 8px;
+  }
+
+  :deep(.mobile-drawer .el-drawer__body) {
+    display: flex;
+    flex-direction: column;
   }
 
   .dlg-tip {
@@ -783,7 +789,7 @@ async function onUserCmd(cmd: string) {
 
 @media (max-width: 420px) {
   .drawer-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
   }
 
   .touch-icon-btn {

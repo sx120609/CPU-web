@@ -51,12 +51,35 @@
       </div>
     </div>
   </el-dialog>
+
+  <el-dialog
+    v-model="rechargeConfirmOpen"
+    title="前往官方充值页面"
+    width="420"
+    append-to-body
+    class="recharge-dialog"
+  >
+    <div class="recharge-confirm">
+      <p>即将打开中国药科大学官方校园卡 / 电费充值页面。</p>
+      <ul>
+        <li>该电费站点受学校系统影响加载较慢，建议使用外部浏览器打开，并耐心等候。</li>
+        <li>如果页面加载不出来，请尝试连接校园网后再访问。</li>
+        <li>登录用户名通常为学号，默认密码通常为身份证后六位数字。</li>
+        <li>如果身份证末位是 X，请向前多取一位，输入倒数 6 个数字。</li>
+        <li>充值、支付、交易记录等均发生在学校官方页面，所有交易与本站无关。</li>
+        <li>建议不要在该页面修改默认密码，避免后续遗忘影响使用。</li>
+      </ul>
+    </div>
+    <template #footer>
+      <el-button @click="rechargeConfirmOpen = false">取消</el-button>
+      <el-button type="primary" @click="openRecharge">继续前往充值</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { h, ref, watch } from "vue";
+import { ref, watch } from "vue";
 import { Loading, WarningFilled, Refresh } from "@element-plus/icons-vue";
-import { ElMessageBox } from "element-plus";
 import { servicesApi, type DormElectricResult } from "@/api/services";
 
 const props = defineProps<{ modelValue: boolean }>();
@@ -67,6 +90,7 @@ const RECHARGE_URL = "https://vcard.cpu.edu.cn/plat/shouyeUser";
 const loading = ref(false);
 const error = ref("");
 const data = ref<DormElectricResult | null>(null);
+const rechargeConfirmOpen = ref(false);
 
 watch(() => props.modelValue, (v) => {
   if (v) refresh();
@@ -83,29 +107,13 @@ async function refresh() {
   } finally { loading.value = false; }
 }
 
-async function confirmRecharge() {
-  try {
-    await ElMessageBox.confirm(
-      h("div", { class: "recharge-confirm" }, [
-        h("p", "即将打开中国药科大学官方校园卡 / 电费充值页面。"),
-        h("ul", [
-          h("li", "如果页面加载不出来，请尝试连接校园网后再访问。"),
-          h("li", "登录用户名通常为学号，默认密码通常为身份证后六位数字；如果身份证末位是 X，请向前多取一位，输入最后 6 个数字。"),
-          h("li", "充值、支付、交易记录等均发生在学校官方页面，所有交易与本站无关。"),
-          h("li", "建议不要在该页面修改默认密码，避免后续遗忘影响使用。"),
-        ]),
-      ]),
-      "前往官方充值页面",
-      {
-        type: "warning",
-        confirmButtonText: "继续前往充值",
-        cancelButtonText: "取消",
-      }
-    );
-    window.open(RECHARGE_URL, "_blank", "noopener");
-  } catch {
-    /* 用户取消 */
-  }
+function confirmRecharge() {
+  rechargeConfirmOpen.value = true;
+}
+
+function openRecharge() {
+  rechargeConfirmOpen.value = false;
+  window.open(RECHARGE_URL, "_blank", "noopener,noreferrer");
 }
 </script>
 
@@ -190,19 +198,25 @@ async function confirmRecharge() {
 }
 .link-btn:hover { text-decoration: underline; }
 
-:global(.recharge-confirm) {
+.recharge-confirm {
   color: #374151;
   font-size: 13px;
   line-height: 1.6;
 }
-:global(.recharge-confirm p) {
+.recharge-confirm p {
   margin: 0 0 8px;
 }
-:global(.recharge-confirm ul) {
+.recharge-confirm ul {
   margin: 0;
   padding-left: 18px;
 }
-:global(.recharge-confirm li + li) {
+.recharge-confirm li + li {
   margin-top: 4px;
+}
+
+@media (max-width: 480px) {
+  :global(.recharge-dialog) {
+    --el-dialog-width: calc(100vw - 24px);
+  }
 }
 </style>
