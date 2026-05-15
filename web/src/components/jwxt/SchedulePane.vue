@@ -24,11 +24,6 @@
           </span>
         </span>
         <span class="stat">{{ totalCourses }} 节课</span>
-        <el-radio-group v-model="viewMode" size="small" class="view-toggle">
-          <el-radio-button value="auto">自动</el-radio-button>
-          <el-radio-button value="grid">网格</el-radio-button>
-          <el-radio-button value="list">列表</el-radio-button>
-        </el-radio-group>
       </div>
     </div>
 
@@ -148,17 +143,36 @@ const semester = ref<string>("");
 const week = ref<string>("");
 const cal = ref<CalendarResult | null>(null);
 
-// 视图模式：auto 跟随屏幕宽度，grid / list 强制
-const viewMode = ref<"auto" | "grid" | "list">("auto");
+// 视图模式按屏宽自动切换：≤ 760px 列表，否则网格
 const screenIsNarrow = ref(false);
 function updateNarrow() {
   screenIsNarrow.value = window.matchMedia("(max-width: 760px)").matches;
 }
-const effectiveView = computed<"grid" | "list">(() => {
-  if (viewMode.value === "grid") return "grid";
-  if (viewMode.value === "list") return "list";
-  return screenIsNarrow.value ? "list" : "grid";
-});
+const effectiveView = computed<"grid" | "list">(() => screenIsNarrow.value ? "list" : "grid");
+
+// ---- 本地缓存：与 views/Schedule.vue 共用 key 前缀，互通 ----
+const CACHE_PREFIX = "cpu-schedule-cache-v1";
+const LAST_CACHE_KEY = `${CACHE_PREFIX}:last`;
+function cacheKeyFor(sem: string, wk: string | number) {
+  return `${CACHE_PREFIX}:${sem || "current"}:${wk || "current"}`;
+}
+function loadFromCache(): ScheduleResult | null {
+  try {
+    const last = localStorage.getItem(LAST_CACHE_KEY);
+    if (!last) return null;
+    const raw = localStorage.getItem(last);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    return obj?.data ?? null;
+  } catch { return null; }
+}
+function saveToCache(p: ScheduleResult) {
+  try {
+    const key = cacheKeyFor(p.currentSemester || semester.value, week.value || p.currentWeek);
+    localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), data: p }));
+    localStorage.setItem(LAST_CACHE_KEY, key);
+  } catch { /* ignore */ }
+}
 
 // 选中的日（1-7，1=周一）
 const selectedDay = ref(1);
@@ -172,12 +186,22 @@ watch(() => props.data, (v) => {
   if (parsed.value && !semester.value) {
     semester.value = parsed.value.currentSemester;
   }
+  // 父组件拿到新数据 → 写入本地缓存
+  if (parsed.value) saveToCache(parsed.value);
 }, { immediate: true });
 
 onMounted(async () => {
   updateNarrow();
   window.addEventListener("resize", updateNarrow);
   selectedDay.value = defaultSelectedDay();
+  // 首次挂载时：如果父组件 props.data 还没到（教务 tab 还在拉），先用本地缓存渲染
+  if (!parsed.value) {
+    const cached = loadFromCache();
+    if (cached) {
+      parsed.value = cached;
+      if (!semester.value) semester.value = cached.currentSemester || "";
+    }
+  }
   try {
     const r: any = await jwxtApi.calendar();
     cal.value = r.parsed;
@@ -210,11 +234,8 @@ const weekDates = computed<string[]>(() => {
   if (!week.value || !cal.value) return Array(7).fill("");
   const w = cal.value.weeks.find((x) => x.week === Number(week.value));
   if (!w) return Array(7).fill("");
-  // w.days: [周日, 周一, ..., 周六] → [周一 ~ 周六, 周日]
-  const arr = [...w.days];
-  const mondayToSat = arr.slice(1);
-  const sunday = arr[0];
-  return [...mondayToSat, sunday].map(shortDate);
+  // 服务端 days 已经是周一→周日顺序，之前的 slice+push 是错的（周日被错位成周一前一天）
+  return w.days.map(shortDate);
 });
 
 function getCourses(day: number, bs: number): ScheduleCourse[] {
@@ -273,7 +294,10 @@ async function reload() {
     if (week.value) u.searchParams.set("week", week.value);
     const resp = await fetch(u, { headers: { "X-Jwxt-Token": tk } });
     const body = await resp.json();
-    if (body.code === 0) parsed.value = body.data.parsed;
+    if (body.code === 0) {
+      parsed.value = body.data.parsed;
+      if (parsed.value) saveToCache(parsed.value);
+    }
   } finally { loading.value = false; }
 }
 

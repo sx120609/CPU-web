@@ -230,17 +230,14 @@ const desktopNavItems = computed(() => {
 });
 
 const mobileNavItems = computed(() => {
-  // 动态项数（4-5 项）：tabbar 的 grid 列数会跟着收敛，不会出现空槽
-  const items: { to: string; label: string; icon: any; match: string[]; auth?: boolean }[] = [
+  // 固定 5 项：首页 / 教务 / 课表 / 服务 / 我的（论坛进 drawer）
+  return [
     { to: "/home", label: "首页", icon: House, match: ["/home"] },
-    { to: "/jwxt", label: "教务", icon: Calendar, match: ["/jwxt"] },
-  ];
-  if (site.features.forum) {
-    items.push({ to: "/forum", label: "论坛", icon: ChatLineRound, match: ["/forum"] });
-  }
-  items.push({ to: "/services", label: "服务", icon: Service, match: ["/services"] });
-  items.push({ to: "/profile", label: "我的", icon: UserFilled, match: ["/profile", "/messages", "/u/"], auth: true });
-  return items;
+    { to: "/jwxt", label: "教务", icon: Reading, match: ["/jwxt"] },
+    { to: "/schedule", label: "课表", icon: Calendar, match: ["/schedule"] },
+    { to: "/services", label: "服务", icon: Service, match: ["/services"] },
+    { to: "/profile", label: "我的", icon: UserFilled, match: ["/profile", "/messages", "/u/"], auth: true },
+  ] as { to: string; label: string; icon: any; match: string[]; auth?: boolean }[];
 });
 
 const drawerItems = computed(() => {

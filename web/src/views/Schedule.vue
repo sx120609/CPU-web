@@ -46,7 +46,7 @@
         type="button"
         class="day-pill"
         :class="{ active: activeDay === d.day, today: d.isToday }"
-        @click="activeDay = d.day"
+        @click="onDayClick(d.day)"
       >
         <span>{{ d.label }}</span>
         <b>{{ d.date || "--" }}</b>
@@ -90,31 +90,29 @@
         <em>{{ dayCourses.length }} 节课</em>
       </div>
 
-      <div v-if="dayCourses.length" class="course-list">
-        <article v-for="item in dayCourses" :key="`${item.bigSlot}-${item.index}`" class="course-card" :style="{ '--accent': colorFor(item.course.name) }">
-          <div class="time">
-            <b>第 {{ item.bigSlot }} 大节</b>
-            <span>{{ bigSlotTime(item.bigSlot) }}</span>
+      <transition :name="slideName" mode="out-in">
+        <div :key="activeDay" class="day-pane">
+          <div v-if="dayCourses.length" class="course-list">
+            <article v-for="item in dayCourses" :key="`${item.bigSlot}-${item.index}`" class="course-card" :style="{ '--accent': colorFor(item.course.name) }">
+              <div class="time">
+                <b>第 {{ item.bigSlot }} 大节</b>
+                <span>{{ bigSlotTime(item.bigSlot) }}</span>
+              </div>
+              <div class="course-main">
+                <h2>{{ item.course.name }}</h2>
+                <p v-if="item.course.location"><el-icon><Location /></el-icon>{{ item.course.location }}</p>
+                <p v-if="item.course.teacher"><el-icon><User /></el-icon>{{ item.course.teacher }}</p>
+                <p class="muted">{{ item.course.weeks }}<span v-if="item.course.slotNote"> · {{ item.course.slotNote }}</span></p>
+              </div>
+            </article>
           </div>
-          <div class="course-main">
-            <h2>{{ item.course.name }}</h2>
-            <p v-if="item.course.location"><el-icon><Location /></el-icon>{{ item.course.location }}</p>
-            <p v-if="item.course.teacher"><el-icon><User /></el-icon>{{ item.course.teacher }}</p>
-            <p class="muted">{{ item.course.weeks }}<span v-if="item.course.slotNote"> · {{ item.course.slotNote }}</span></p>
+
+          <div v-else class="empty-day">
+            <el-icon><Moon /></el-icon>
+            <p>这一天没有课程</p>
           </div>
-        </article>
-      </div>
-
-      <div v-else class="empty-day">
-        <el-icon><Moon /></el-icon>
-        <p>这一天没有课程</p>
-      </div>
-
-      <div v-if="nextCourse" class="next-card">
-        <span>下一节</span>
-        <b>{{ nextCourse.course.name }}</b>
-        <em>第 {{ nextCourse.bigSlot }} 大节 · {{ bigSlotTime(nextCourse.bigSlot) }}</em>
-      </div>
+        </div>
+      </transition>
     </section>
   </main>
 </template>
@@ -197,7 +195,8 @@ const currentWeekRange = computed(() => {
 });
 const dayTabs = computed(() => {
   const labels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
-  const days = currentWeekInfo.value ? [...currentWeekInfo.value.days.slice(1), currentWeekInfo.value.days[0]] : [];
+  // 服务端返回的 days 已经是周一→周日顺序，直接用；之前的 slice+push 把周日错位成周一前一天
+  const days = currentWeekInfo.value?.days ?? [];
   const today = todayKey();
   return labels.map((label, i) => ({
     day: i + 1,
@@ -216,12 +215,10 @@ const dayCourses = computed<FlatCourse[]>(() => {
   }
   return list.sort((a, b) => a.bigSlot - b.bigSlot);
 });
-const nextCourse = computed(() => {
-  if (activeDay.value !== dayOfWeek()) return null;
-  const now = new Date();
-  const minutes = now.getHours() * 60 + now.getMinutes();
-  return dayCourses.value.find((item) => bigSlotStart(item.bigSlot) >= minutes) ?? dayCourses.value[0] ?? null;
-});
+
+// 滑动切日时记录方向，给 transition 用不同动画
+const slideDirection = ref<"next" | "prev">("next");
+const slideName = computed(() => slideDirection.value === "next" ? "slide-left" : "slide-right");
 
 async function loadCalendar() {
   restoreCachedCalendar();
@@ -268,6 +265,7 @@ async function changeWeek(delta: number) {
 }
 
 async function prevDay() {
+  slideDirection.value = "prev";
   if (activeDay.value > 1) {
     activeDay.value -= 1;
     saveLastState();
@@ -279,6 +277,7 @@ async function prevDay() {
 }
 
 async function nextDay() {
+  slideDirection.value = "next";
   if (activeDay.value < 7) {
     activeDay.value += 1;
     saveLastState();
@@ -287,6 +286,12 @@ async function nextDay() {
   if (!canChangeWeek(1)) return;
   activeDay.value = 1;
   await changeWeek(1);
+}
+
+function onDayClick(day: number) {
+  slideDirection.value = day > activeDay.value ? "next" : "prev";
+  activeDay.value = day;
+  saveLastState();
 }
 
 function onTouchStart(e: TouchEvent) {
@@ -378,10 +383,6 @@ function nextWeekValue(delta: number) {
 
 function bigSlotTime(slot: number) {
   return ["08:00-09:35", "10:00-11:35", "13:30-15:05", "15:25-17:00", "18:30-20:05"][slot - 1] ?? "";
-}
-
-function bigSlotStart(slot: number) {
-  return [480, 600, 810, 925, 1110][slot - 1] ?? 0;
 }
 
 const colors = ["#168776", "#2563eb", "#c2410c", "#7c3aed", "#0f766e", "#be123c", "#4d7c0f", "#0369a1"];
@@ -749,23 +750,38 @@ h1 {
 .empty-day .el-icon {
   font-size: 36px;
 }
-.next-card {
-  margin-top: 14px;
-  padding: 13px 14px;
-  border-radius: 14px;
-  background: #e8f6f3;
-  color: #116b5f;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+
+/* 滑动切日动画 */
+.day-pane {
+  will-change: transform, opacity;
 }
+.slide-left-enter-active,
+.slide-left-leave-active,
+.slide-right-enter-active,
+.slide-right-leave-active {
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.22s;
+}
+.slide-left-enter-from {
+  transform: translateX(24%);
+  opacity: 0;
+}
+.slide-left-leave-to {
+  transform: translateX(-24%);
+  opacity: 0;
+}
+.slide-right-enter-from {
+  transform: translateX(-24%);
+  opacity: 0;
+}
+.slide-right-leave-to {
+  transform: translateX(24%);
+  opacity: 0;
+}
+.next-card,
 .next-card span,
-.next-card em {
-  font-size: 12px;
-  font-style: normal;
-}
+.next-card em,
 .next-card b {
-  font-size: 15px;
+  display: none;
 }
 
 @media (min-width: 760px) {
