@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../prisma";
 import { ok } from "../utils/response";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
+import { getFeatures } from "../services/siteSettings";
 
 export const searchRouter = Router();
 
@@ -10,11 +11,17 @@ searchRouter.get("/", async (req, res, next) => {
   try {
     const q = String(req.query.q ?? "").trim();
     if (!q) return ok(res, { topics: [], courses: [], services: [] });
+    const features = getFeatures();
+    const searchableBoardTypes = ["announce"];
+    if (features.forum) searchableBoardTypes.push("normal", "question");
+    if (features.market) searchableBoardTypes.push("market");
+    if (features.coursereview) searchableBoardTypes.push("coursereview");
 
     const [topics, courses, services] = await Promise.all([
       prisma.topic.findMany({
         where: {
           hidden: false,
+          board: { type: { in: searchableBoardTypes } },
           OR: [{ title: { contains: q } }, { content: { contains: q } }],
         },
         orderBy: { lastReplyAt: "desc" },
@@ -24,7 +31,7 @@ searchRouter.get("/", async (req, res, next) => {
           author: { select: { nickname: true } },
         },
       }),
-      prisma.course.findMany({
+      features.coursereview ? prisma.course.findMany({
         where: {
           OR: [
             { name: { contains: q } },
@@ -37,7 +44,7 @@ searchRouter.get("/", async (req, res, next) => {
         include: {
           courseTeachers: { include: { teacher: true } },
         },
-      }),
+      }) : Promise.resolve([]),
       prisma.serviceCard.findMany({
         where: visibleServiceWhere({
           OR: [
