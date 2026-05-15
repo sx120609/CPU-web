@@ -71,21 +71,23 @@
           <span class="cnt">{{ parsed.uncompleted.length }} 门 · {{ totalUncompletedCredits.toFixed(1) }} 学分</span>
         </div>
       </template>
-      <el-table :data="parsed.uncompleted" stripe size="small" max-height="500">
-        <el-table-column prop="semester" label="学期" width="120" />
-        <el-table-column prop="courseCode" label="课程编号" width="120" />
-        <el-table-column prop="courseName" label="课程名称" min-width="200" />
-        <el-table-column prop="credits" label="学分" width="70" align="right" />
-        <el-table-column prop="hours" label="学时" width="70" align="right" />
-        <el-table-column prop="attr" label="性质" width="80" />
-        <el-table-column label="成绩" width="100">
-          <template #default="{ row }">
-            <el-tag v-if="row.score === '未通过'" type="info" size="small">未通过</el-tag>
-            <el-tag v-else-if="row.score" type="danger" size="small">{{ row.score }}</el-tag>
-            <span v-else class="cpu-muted">未修</span>
-          </template>
-        </el-table-column>
-      </el-table>
+      <div class="table-scroll">
+        <el-table :data="parsed.uncompleted" stripe size="small" max-height="500">
+          <el-table-column prop="semester" label="学期" width="120" />
+          <el-table-column prop="courseCode" label="课程编号" width="120" />
+          <el-table-column prop="courseName" label="课程名称" min-width="200" />
+          <el-table-column prop="credits" label="学分" width="70" align="right" />
+          <el-table-column prop="hours" label="学时" width="70" align="right" />
+          <el-table-column prop="attr" label="性质" width="80" />
+          <el-table-column label="成绩" width="100">
+            <template #default="{ row }">
+              <el-tag v-if="row.score === '未通过'" type="info" size="small">未通过</el-tag>
+              <el-tag v-else-if="row.score" type="danger" size="small">{{ row.score }}</el-tag>
+              <span v-else class="cpu-muted">未修</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
     </el-card>
 
     <!-- 已完成必修课程 -->
@@ -96,19 +98,21 @@
           <span class="cnt">{{ parsed.completed.length }} 门 · {{ totalCompletedCredits.toFixed(1) }} 学分</span>
         </div>
       </template>
-      <el-table :data="parsed.completed" stripe size="small" max-height="500">
-        <el-table-column prop="semester" label="学期" width="120" />
-        <el-table-column prop="courseCode" label="课程编号" width="120" />
-        <el-table-column prop="courseName" label="课程名称" min-width="200" />
-        <el-table-column prop="credits" label="学分" width="70" align="right" />
-        <el-table-column prop="hours" label="学时" width="70" align="right" />
-        <el-table-column prop="attr" label="性质" width="80" />
-        <el-table-column label="成绩" width="80" align="right">
-          <template #default="{ row }">
-            <span :style="{ color: scoreColor(row.score) }">{{ row.score }}</span>
-          </template>
-        </el-table-column>
-      </el-table>
+      <div class="table-scroll">
+        <el-table :data="parsed.completed" stripe size="small" max-height="500">
+          <el-table-column prop="semester" label="学期" width="120" />
+          <el-table-column prop="courseCode" label="课程编号" width="120" />
+          <el-table-column prop="courseName" label="课程名称" min-width="200" />
+          <el-table-column prop="credits" label="学分" width="70" align="right" />
+          <el-table-column prop="hours" label="学时" width="70" align="right" />
+          <el-table-column prop="attr" label="性质" width="80" />
+          <el-table-column label="成绩" width="80" align="right">
+            <template #default="{ row }">
+              <span :style="{ color: scoreColor(row.score) }">{{ row.score }}</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
     </el-card>
 
     <el-empty v-if="parsed && !parsed.summary?.length && !parsed.completed?.length" description="没有学业完成数据" />
@@ -328,6 +332,14 @@ function scoreColor(s: string) {
 .title.ok { color: #16a34a; }
 .cnt { font-size: 12px; color: #9ca3af; }
 .cpu-muted { color: #9ca3af; }
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.table-scroll :deep(.el-table) {
+  min-width: 760px;
+}
 
 @media (max-width: 760px) {
   .progress-pane {

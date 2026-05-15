@@ -2,16 +2,20 @@
   <div class="exams-pane">
     <div class="ctrl-bar">
       <div class="ctrl-left">
-        <span class="lbl">学期</span>
-        <el-select v-model="semester" size="small" placeholder="选择学期" style="width:160px" @change="reload">
-          <el-option v-for="s in semesterOptions" :key="s" :value="s" :label="s" />
-        </el-select>
-        <span class="lbl">类型</span>
-        <el-select v-model="type" size="small" clearable placeholder="全部" style="width:120px" @change="reload">
-          <el-option label="期初" value="1" />
-          <el-option label="期中" value="2" />
-          <el-option label="期末" value="3" />
-        </el-select>
+        <label class="filter-field">
+          <span class="lbl">学期</span>
+          <el-select v-model="semester" size="small" placeholder="选择学期" @change="reload">
+            <el-option v-for="s in semesterOptions" :key="s" :value="s" :label="s" />
+          </el-select>
+        </label>
+        <label class="filter-field compact">
+          <span class="lbl">类型</span>
+          <el-select v-model="type" size="small" clearable placeholder="全部" @change="reload">
+            <el-option label="期初" value="1" />
+            <el-option label="期中" value="2" />
+            <el-option label="期末" value="3" />
+          </el-select>
+        </label>
       </div>
       <div class="ctrl-right" v-if="parsed">
         <span class="stat">{{ parsed.list?.length ?? 0 }} 场考试</span>
@@ -115,8 +119,23 @@ async function reload() {
 
 <style scoped>
 .exams-pane { display: flex; flex-direction: column; gap: 12px; }
-.ctrl-bar { display: flex; justify-content: space-between; align-items: center; }
-.ctrl-left { display: flex; gap: 8px; align-items: center; }
+.ctrl-bar { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+.ctrl-left {
+  display: grid;
+  grid-template-columns: minmax(150px, 180px) minmax(110px, 130px);
+  gap: 10px;
+  align-items: end;
+  min-width: 0;
+}
+.filter-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.filter-field :deep(.el-select) {
+  width: 100%;
+}
 .lbl { font-size: 12px; color: #6b7280; }
 .stat { font-size: 13px; color: var(--cpu-primary); font-weight: 500; }
 
@@ -158,4 +177,42 @@ async function reload() {
 }
 .empty-card ul b { color: var(--cpu-primary); }
 .empty-card a { color: var(--cpu-primary); }
+
+@media (max-width: 640px) {
+  .ctrl-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ctrl-left {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .exam-card {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+    padding: 13px 12px;
+  }
+
+  .middle {
+    text-align: left;
+    line-height: 1.5;
+  }
+
+  .meta {
+    flex-wrap: wrap;
+    line-height: 1.5;
+  }
+
+  .empty-card {
+    padding: 24px 16px;
+  }
+}
+
+@media (max-width: 430px) {
+  .ctrl-left {
+    grid-template-columns: 1fr;
+  }
+}
 </style>

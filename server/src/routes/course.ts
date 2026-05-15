@@ -6,8 +6,13 @@ import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { jwxtFetchHtml, jwxtPostForm } from "../services/jwxtClient";
 import { parseGrades, parsePyfa } from "../services/jwxtParser";
+import { isFeatureOn } from "../services/siteSettings";
 
 export const courseRouter = Router();
+
+function assertCourseReviewEnabled() {
+  if (!isFeatureOn("coursereview")) throw Errors.forbidden("课程点评当前已关闭");
+}
 
 /** 把 Course 的 courseTeachers 关联展开成 teachers: { id, name, courseTeacherId }[] */
 function withTeachers(course: any) {
@@ -23,6 +28,7 @@ function withTeachers(course: any) {
 
 courseRouter.get("/", async (req, res, next) => {
   try {
+    assertCourseReviewEnabled();
     const q = String(req.query.q ?? "").trim();
     const mine = req.query.mine === "1";
     const where: any = {};
@@ -60,6 +66,7 @@ courseRouter.get("/", async (req, res, next) => {
 
 courseRouter.get("/:id", async (req, res, next) => {
   try {
+    assertCourseReviewEnabled();
     const id = Number(req.params.id);
     const course = await prisma.course.findUnique({
       where: { id },
@@ -93,6 +100,7 @@ const addTeacherSchema = z.object({
 });
 courseRouter.post("/:id/teachers", authRequired, validate(addTeacherSchema), async (req, res, next) => {
   try {
+    assertCourseReviewEnabled();
     const courseId = Number(req.params.id);
     const name = String(req.body.name).trim();
     const course = await prisma.course.findUnique({ where: { id: courseId } });
@@ -119,6 +127,7 @@ courseRouter.post("/:id/teachers", authRequired, validate(addTeacherSchema), asy
  */
 courseRouter.post("/sync", authRequired, async (req, res, next) => {
   try {
+    assertCourseReviewEnabled();
     const userId = req.user!.userId;
     const jwxtToken = (req.headers["x-jwxt-token"] as string) || "";
     if (!jwxtToken) throw Errors.badRequest("需要 X-Jwxt-Token，请先登录教务直连");

@@ -8,10 +8,7 @@ const MainLayout = () => import("@/layouts/MainLayout.vue");
 
 /**
  * 受功能开关控制的路由名 → feature key。
- *
- * 注意：只 gate **入口**，不 gate 帖子详情 (`/forum/topic/:id`) 或板块详情 (`/forum/b/:slug`)。
- * 后两者对所有类型板块通用（包括公告 / 二手 / 课评），通过分享链接进入应当一直可达；
- * "关闭论坛"应理解为"撤掉入口和发新帖"，而非"硬下架已发布内容"。
+ * 动态板块 / 帖子详情由服务端根据所属板块类型继续拦截，避免直接输入 URL 绕过。
  */
 const FEATURE_GATED: Record<string, FeatureKey> = {
   forum: "forum",
@@ -19,6 +16,7 @@ const FEATURE_GATED: Record<string, FeatureKey> = {
   "edit-post": "forum",
   market: "market",
   coursereview: "coursereview",
+  course: "coursereview",
 };
 
 export const router = createRouter({

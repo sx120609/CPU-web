@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { Errors, ok } from "../utils/response";
+import { featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettings";
 
 export const likeRouter = Router();
 
@@ -8,8 +9,12 @@ likeRouter.post("/topic/:id", async (req, res, next) => {
   try {
     const userId = req.user!.userId;
     const topicId = Number(req.params.id);
-    const t = await prisma.topic.findUnique({ where: { id: topicId } });
-    if (!t) throw Errors.notFound();
+    const t = await prisma.topic.findUnique({
+      where: { id: topicId },
+      include: { board: { select: { type: true } } },
+    });
+    if (!t || t.hidden) throw Errors.notFound();
+    if (!isBoardTypeEnabled(t.board?.type)) throw Errors.forbidden(featureClosedMessage(t.board?.type));
     const existing = await prisma.like.findFirst({ where: { userId, topicId } });
     if (existing) {
       await prisma.like.delete({ where: { id: existing.id } });
@@ -26,8 +31,12 @@ likeRouter.post("/reply/:id", async (req, res, next) => {
   try {
     const userId = req.user!.userId;
     const replyId = Number(req.params.id);
-    const r = await prisma.reply.findUnique({ where: { id: replyId } });
+    const r = await prisma.reply.findUnique({
+      where: { id: replyId },
+      include: { topic: { include: { board: { select: { type: true } } } } },
+    });
     if (!r) throw Errors.notFound();
+    if (!isBoardTypeEnabled(r.topic?.board?.type)) throw Errors.forbidden(featureClosedMessage(r.topic?.board?.type));
     const existing = await prisma.like.findFirst({ where: { userId, replyId } });
     if (existing) {
       await prisma.like.delete({ where: { id: existing.id } });

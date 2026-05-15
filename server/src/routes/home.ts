@@ -3,6 +3,7 @@ import { prisma } from "../prisma";
 import { ok } from "../utils/response";
 import { verifyToken } from "../utils/jwt";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
+import { enabledBoardTypes } from "../services/siteSettings";
 
 export const homeRouter = Router();
 const HOME_HIDDEN_SERVICE_CODES = ["DORM_REPAIR"];
@@ -21,10 +22,11 @@ homeRouter.get("/summary", async (req, res, next) => {
       try { userId = verifyToken(auth.slice(7)).userId; } catch { /* token 无效，按游客处理 */ }
     }
 
+    const readableBoardTypes = enabledBoardTypes();
     const [user, hotTopics, latestTopics, announce, services, personalUnread, globalReads, globalCount] = await Promise.all([
       userId ? prisma.user.findUnique({ where: { id: userId } }) : Promise.resolve(null),
       prisma.topic.findMany({
-        where: { hidden: false },
+        where: { hidden: false, board: { type: { in: readableBoardTypes } } },
         orderBy: [{ pinned: "desc" }, { likeCount: "desc" }, { replyCount: "desc" }],
         take: 6,
         include: {
@@ -33,7 +35,7 @@ homeRouter.get("/summary", async (req, res, next) => {
         },
       }),
       prisma.topic.findMany({
-        where: { hidden: false, board: { readOnly: false } },
+        where: { hidden: false, board: { readOnly: false, type: { in: readableBoardTypes } } },
         orderBy: { lastReplyAt: "desc" },
         take: 10,
         include: {

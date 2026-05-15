@@ -1,16 +1,86 @@
 <template>
   <el-config-provider :locale="zhCn">
     <router-view />
+    <el-dialog
+      v-model="inAppTipOpen"
+      title="建议使用外部浏览器打开"
+      width="420"
+      class="in-app-tip-dialog"
+      append-to-body
+    >
+      <div class="in-app-tip">
+        <p>
+          当前可能正在{{ inAppBrowserLabel }}内打开本站。部分学校系统、统一认证或外部跳转页面可能无法正常加载。
+        </p>
+        <p>
+          建议点击右上角菜单，选择“在浏览器打开”或“用默认浏览器打开”后继续使用。
+        </p>
+        <p class="muted">
+          如果只是浏览站内内容，也可以继续使用当前页面。
+        </p>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="dismissInAppTip">我知道了</el-button>
+      </template>
+    </el-dialog>
   </el-config-provider>
 </template>
 
 <script setup lang="ts">
+import { onMounted, ref } from "vue";
 import zhCn from "element-plus/es/locale/lang/zh-cn";
+import { detectInAppBrowser } from "@/utils/inAppBrowser";
+
+const IN_APP_TIP_KEY = "cpu-in-app-browser-tip-dismissed-v1";
+const inAppTipOpen = ref(false);
+const inAppBrowserLabel = ref("微信 / QQ");
+
+onMounted(() => {
+  const info = detectInAppBrowser();
+  if (!info.isInApp) return;
+  inAppBrowserLabel.value = info.label;
+  try {
+    if (localStorage.getItem(IN_APP_TIP_KEY) === "1") return;
+  } catch {
+    return;
+  }
+  inAppTipOpen.value = true;
+});
+
+function dismissInAppTip() {
+  inAppTipOpen.value = false;
+  try {
+    localStorage.setItem(IN_APP_TIP_KEY, "1");
+  } catch {
+    /* ignore */
+  }
+}
 </script>
 
 <style lang="scss">
 html, body, #app {
   height: 100%;
   margin: 0;
+}
+
+.in-app-tip {
+  color: #374151;
+  font-size: 14px;
+  line-height: 1.7;
+
+  p {
+    margin: 0 0 8px;
+  }
+
+  .muted {
+    color: #6b7280;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 480px) {
+  .in-app-tip-dialog {
+    --el-dialog-width: calc(100vw - 24px);
+  }
 }
 </style>

@@ -4,6 +4,7 @@ import { prisma } from "../prisma";
 import { Errors, ok } from "../utils/response";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
+import { featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettings";
 
 export const replyRouter = Router();
 
@@ -17,8 +18,12 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
   try {
     const userId = req.user!.userId;
     const { topicId, content, parentReplyId } = req.body;
-    const topic = await prisma.topic.findUnique({ where: { id: topicId } });
+    const topic = await prisma.topic.findUnique({
+      where: { id: topicId },
+      include: { board: { select: { type: true } } },
+    });
     if (!topic || topic.hidden) throw Errors.notFound("帖子不存在");
+    if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
     if (topic.locked) throw Errors.forbidden("帖子已锁定，无法回复");
 
     // 当前楼层
@@ -68,11 +73,15 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
 replyRouter.delete("/:id", authRequired, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const r = await prisma.reply.findUnique({ where: { id } });
+    const r = await prisma.reply.findUnique({
+      where: { id },
+      include: { topic: { include: { board: { select: { type: true } } } } },
+    });
     if (!r) throw Errors.notFound();
     const isOwner = r.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
     if (!isOwner && !isMod) throw Errors.forbidden();
+    if (!isMod && !isBoardTypeEnabled(r.topic?.board?.type)) throw Errors.forbidden(featureClosedMessage(r.topic?.board?.type));
     await prisma.reply.update({ where: { id }, data: { hidden: true } });
     ok(res, { ok: true });
   } catch (e) { next(e); }

@@ -42,6 +42,34 @@ export function isFeatureOn(f: FeatureKey): boolean {
   return cache[f];
 }
 
+export function featureForBoardType(type: string | null | undefined): FeatureKey | null {
+  if (type === "announce") return null;
+  if (type === "market") return "market";
+  if (type === "coursereview") return "coursereview";
+  return "forum";
+}
+
+export function isBoardTypeEnabled(type: string | null | undefined): boolean {
+  const feature = featureForBoardType(type);
+  return !feature || isFeatureOn(feature);
+}
+
+export function enabledBoardTypes(): string[] {
+  const types = ["announce"];
+  if (isFeatureOn("forum")) types.push("normal", "question");
+  if (isFeatureOn("market")) types.push("market");
+  if (isFeatureOn("coursereview")) types.push("coursereview");
+  return types;
+}
+
+export function featureClosedMessage(type: string | null | undefined): string {
+  const feature = featureForBoardType(type);
+  if (feature === "market") return "二手市场当前已关闭";
+  if (feature === "coursereview") return "课程点评当前已关闭";
+  if (feature === "forum") return "论坛当前已关闭";
+  return "该功能当前不可用";
+}
+
 export async function setFeature(f: FeatureKey, on: boolean): Promise<void> {
   const value = on ? "on" : "off";
   await prisma.siteSetting.upsert({

@@ -4,7 +4,13 @@ import { prisma } from "../prisma";
 import { Errors, ok } from "../utils/response";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
-import { isFeatureOn } from "../services/siteSettings";
+import {
+  enabledBoardTypes,
+  featureClosedMessage,
+  featureForBoardType,
+  isBoardTypeEnabled,
+  isFeatureOn,
+} from "../services/siteSettings";
 
 export const topicRouter = Router();
 
@@ -22,11 +28,13 @@ topicRouter.get("/", async (req, res, next) => {
     if (boardSlug && boardSlug !== "all") {
       const b = await prisma.board.findUnique({ where: { slug: boardSlug } });
       if (!b) throw Errors.notFound("板块不存在");
+      if (!isBoardTypeEnabled(b.type)) throw Errors.forbidden(featureClosedMessage(b.type));
       boardId = b.id;
     }
 
     const where: any = { hidden: false };
     if (boardId) where.boardId = boardId;
+    else where.board = { type: { in: enabledBoardTypes() } };
 
     const orderBy: any = sort === "hot"
       ? [{ pinned: "desc" }, { likeCount: "desc" }, { lastReplyAt: "desc" }]
@@ -64,6 +72,7 @@ topicRouter.get("/:id", async (req, res, next) => {
       },
     });
     if (!topic || topic.hidden) throw Errors.notFound();
+    if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
     // 浏览数 +1（异步，失败也无所谓）
     prisma.topic.update({ where: { id }, data: { viewCount: { increment: 1 } } }).catch(() => {});
     ok(res, decodeTopic(topic));
@@ -90,10 +99,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     // 功能开关：admin 可一键关闭论坛 / 二手 / 课评 整块功能
     // type=announce 由系统/爬虫机器人发，不受用户开关约束
     if (board.type !== "announce" && req.user!.role !== "admin") {
-      const featureKey =
-        board.type === "market" ? "market" :
-        board.type === "coursereview" ? "coursereview" :
-        "forum";
+      const featureKey = featureForBoardType(board.type) ?? "forum";
       if (!isFeatureOn(featureKey)) {
         throw Errors.forbidden("该板块当前不可发帖，已被站方临时关闭");
       }
@@ -179,11 +185,15 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
 topicRouter.patch("/:id", authRequired, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const t = await prisma.topic.findUnique({ where: { id } });
+    const t = await prisma.topic.findUnique({
+      where: { id },
+      include: { board: { select: { type: true } } },
+    });
     if (!t) throw Errors.notFound();
     const isOwner = t.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
     if (!isOwner && !isMod) throw Errors.forbidden();
+    if (!isMod && !isBoardTypeEnabled(t.board?.type)) throw Errors.forbidden(featureClosedMessage(t.board?.type));
 
     const body = req.body as any;
     const data: any = {};
@@ -202,11 +212,15 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
 topicRouter.delete("/:id", authRequired, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const t = await prisma.topic.findUnique({ where: { id } });
+    const t = await prisma.topic.findUnique({
+      where: { id },
+      include: { board: { select: { type: true } } },
+    });
     if (!t) throw Errors.notFound();
     const isOwner = t.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
     if (!isOwner && !isMod) throw Errors.forbidden();
+    if (!isMod && !isBoardTypeEnabled(t.board?.type)) throw Errors.forbidden(featureClosedMessage(t.board?.type));
     await prisma.topic.update({ where: { id }, data: { hidden: true } });
     ok(res, { ok: true });
   } catch (e) { next(e); }
@@ -216,6 +230,12 @@ topicRouter.delete("/:id", authRequired, async (req, res, next) => {
 topicRouter.get("/:id/replies", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    const topic = await prisma.topic.findUnique({
+      where: { id },
+      include: { board: { select: { type: true } } },
+    });
+    if (!topic || topic.hidden) throw Errors.notFound("帖子不存在");
+    if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
     const list = await prisma.reply.findMany({
       where: { topicId: id, hidden: false },
       orderBy: { floor: "asc" },

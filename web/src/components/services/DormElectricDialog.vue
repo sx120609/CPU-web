@@ -60,6 +60,10 @@
     class="recharge-dialog"
   >
     <div class="recharge-confirm">
+      <div v-if="inAppBrowser.isInApp" class="in-app-warning">
+        检测到当前可能在{{ inAppBrowser.label }}内打开。电费充值页面在内置浏览器中可能无法正常加载，
+        请点击右上角菜单，选择“在浏览器打开”后再继续。
+      </div>
       <p>即将打开中国药科大学官方校园卡 / 电费充值页面。</p>
       <ul>
         <li>该电费站点受学校系统影响加载较慢，建议使用外部浏览器打开，并耐心等候。</li>
@@ -78,9 +82,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { Loading, WarningFilled, Refresh } from "@element-plus/icons-vue";
 import { servicesApi, type DormElectricResult } from "@/api/services";
+import { detectInAppBrowser } from "@/utils/inAppBrowser";
 
 const props = defineProps<{ modelValue: boolean }>();
 defineEmits<{ (e: "update:modelValue", v: boolean): void }>();
@@ -91,6 +96,7 @@ const loading = ref(false);
 const error = ref("");
 const data = ref<DormElectricResult | null>(null);
 const rechargeConfirmOpen = ref(false);
+const inAppBrowser = computed(() => detectInAppBrowser());
 
 watch(() => props.modelValue, (v) => {
   if (v) refresh();
@@ -212,6 +218,16 @@ function openRecharge() {
 }
 .recharge-confirm li + li {
   margin-top: 4px;
+}
+.in-app-warning {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 @media (max-width: 480px) {

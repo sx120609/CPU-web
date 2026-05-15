@@ -5,6 +5,7 @@ import { prisma } from "../prisma";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { Errors, ok } from "../utils/response";
+import { enabledBoardTypes } from "../services/siteSettings";
 
 export const userRouter = Router();
 
@@ -63,7 +64,7 @@ userRouter.get("/:id/topics", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const list = await prisma.topic.findMany({
-      where: { authorId: id, hidden: false },
+      where: { authorId: id, hidden: false, board: { type: { in: enabledBoardTypes() } } },
       orderBy: { createdAt: "desc" },
       take: 30,
       include: { board: { select: { slug: true, name: true } } },

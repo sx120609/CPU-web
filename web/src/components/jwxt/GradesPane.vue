@@ -2,16 +2,22 @@
   <div class="grades-pane">
     <div class="ctrl-bar" v-if="parsed">
       <div class="ctrl-left">
-        <span class="lbl">学期</span>
-        <el-select v-model="semester" size="small" clearable placeholder="全部学期" style="width:140px" @change="reload">
-          <el-option v-for="s in parsed.semesters" :key="s.value" :value="s.value" :label="s.label" />
-        </el-select>
-        <span class="lbl">性质</span>
-        <el-select v-model="attrFilter" size="small" multiple collapse-tags collapse-tags-tooltip placeholder="全部" style="width:200px">
-          <el-option v-for="a in attrOptions" :key="a" :value="a" :label="a" />
-        </el-select>
-        <span class="lbl">关键词</span>
-        <el-input v-model="keyword" size="small" placeholder="课程名 / 代码" clearable style="width:180px" />
+        <label class="filter-field compact">
+          <span class="lbl">学期</span>
+          <el-select v-model="semester" size="small" clearable placeholder="全部学期" @change="reload">
+            <el-option v-for="s in parsed.semesters" :key="s.value" :value="s.value" :label="s.label" />
+          </el-select>
+        </label>
+        <label class="filter-field wide">
+          <span class="lbl">性质</span>
+          <el-select v-model="attrFilter" size="small" multiple collapse-tags collapse-tags-tooltip placeholder="全部">
+            <el-option v-for="a in attrOptions" :key="a" :value="a" :label="a" />
+          </el-select>
+        </label>
+        <label class="filter-field">
+          <span class="lbl">关键词</span>
+          <el-input v-model="keyword" size="small" placeholder="课程名 / 代码" clearable />
+        </label>
       </div>
       <div class="ctrl-right">
         <span class="stat">📚 {{ filteredList.length }} / {{ parsed.list.length }} 门</span>
@@ -38,39 +44,41 @@
             <h3>{{ semKey }}</h3>
             <span class="sem-sum">{{ rows.length }} 门 · {{ semCredits(rows).toFixed(1) }} 学分 · 平均 GPA {{ semGpa(rows).toFixed(2) }}</span>
           </div>
-          <el-table :data="rows" stripe size="default">
-            <el-table-column prop="courseCode" label="课程代码" width="110" />
-            <el-table-column prop="courseName" label="课程名称" min-width="200" />
-            <el-table-column prop="credits" label="学分" width="70" align="right" />
-            <el-table-column prop="hours" label="学时" width="70" align="right" />
-            <el-table-column label="平时" width="60" align="right">
-              <template #default="{ row }">{{ row.usual || "—" }}</template>
-            </el-table-column>
-            <el-table-column label="期中" width="60" align="right">
-              <template #default="{ row }">{{ row.midterm || "—" }}</template>
-            </el-table-column>
-            <el-table-column label="期末" width="60" align="right">
-              <template #default="{ row }">{{ row.final || "—" }}</template>
-            </el-table-column>
-            <el-table-column label="总成绩" width="80" align="right">
-              <template #default="{ row }">
-                <span :style="{ color: scoreColor(row.scoreNum), fontWeight: 600 }">{{ row.score }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="绩点" width="70" align="right">
-              <template #default="{ row }">
-                <span :style="{ color: gpaColor(row.gpa) }">{{ row.gpa?.toFixed(1) ?? "—" }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="性质" width="80">
-              <template #default="{ row }">
-                <el-tag v-if="row.courseAttr" size="small" :type="attrTagType(row.courseAttr)" effect="plain">
-                  {{ row.courseAttr }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="examType" label="考试" width="100" />
-          </el-table>
+          <div class="table-scroll">
+            <el-table :data="rows" stripe size="default">
+              <el-table-column prop="courseCode" label="课程代码" width="110" />
+              <el-table-column prop="courseName" label="课程名称" min-width="200" />
+              <el-table-column prop="credits" label="学分" width="70" align="right" />
+              <el-table-column prop="hours" label="学时" width="70" align="right" />
+              <el-table-column label="平时" width="60" align="right">
+                <template #default="{ row }">{{ row.usual || "—" }}</template>
+              </el-table-column>
+              <el-table-column label="期中" width="60" align="right">
+                <template #default="{ row }">{{ row.midterm || "—" }}</template>
+              </el-table-column>
+              <el-table-column label="期末" width="60" align="right">
+                <template #default="{ row }">{{ row.final || "—" }}</template>
+              </el-table-column>
+              <el-table-column label="总成绩" width="80" align="right">
+                <template #default="{ row }">
+                  <span :style="{ color: scoreColor(row.scoreNum), fontWeight: 600 }">{{ row.score }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="绩点" width="70" align="right">
+                <template #default="{ row }">
+                  <span :style="{ color: gpaColor(row.gpa) }">{{ row.gpa?.toFixed(1) ?? "—" }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="性质" width="80">
+                <template #default="{ row }">
+                  <el-tag v-if="row.courseAttr" size="small" :type="attrTagType(row.courseAttr)" effect="plain">
+                    {{ row.courseAttr }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="examType" label="考试" width="100" />
+            </el-table>
+          </div>
         </div>
       </div>
     </div>
@@ -201,9 +209,25 @@ async function reload() {
 
 <style scoped>
 .grades-pane { display: flex; flex-direction: column; gap: 12px; }
-.ctrl-bar { display: flex; justify-content: space-between; align-items: center; }
-.ctrl-left { display: flex; gap: 8px; align-items: center; }
+.ctrl-bar { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+.ctrl-left {
+  display: grid;
+  grid-template-columns: minmax(130px, 150px) minmax(170px, 220px) minmax(150px, 190px);
+  gap: 10px;
+  align-items: end;
+  min-width: 0;
+}
 .ctrl-right { display: flex; gap: 8px; align-items: center; }
+.filter-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.filter-field :deep(.el-select),
+.filter-field :deep(.el-input) {
+  width: 100%;
+}
 .lbl { font-size: 12px; color: #6b7280; }
 .stat { font-size: 13px; color: #6b7280; }
 .stat b { color: var(--cpu-primary); font-size: 15px; }
@@ -219,6 +243,14 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
 }
 .sem-head h3 { margin: 0; font-size: 15px; color: var(--cpu-primary); font-weight: 600; }
 .sem-sum { font-size: 12px; color: #9ca3af; }
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.table-scroll :deep(.el-table) {
+  min-width: 1000px;
+}
 
 @media (max-width: 760px) {
   .ctrl-bar {
@@ -227,25 +259,18 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
     gap: 10px;
   }
 
-  .ctrl-left,
-  .ctrl-right {
-    align-items: stretch;
-    flex-wrap: wrap;
+  .ctrl-left {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .ctrl-left .lbl {
-    align-self: center;
-  }
-
-  .ctrl-left :deep(.el-select),
-  .ctrl-left :deep(.el-input) {
-    flex: 1 1 150px;
-    width: auto !important;
+  .ctrl-left .wide {
+    grid-column: span 2;
   }
 
   .ctrl-right {
     gap: 6px;
     line-height: 1.6;
+    flex-wrap: wrap;
   }
 
   .sem-head {
@@ -256,6 +281,16 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
 
   :deep(.el-table) {
     font-size: 12px;
+  }
+}
+
+@media (max-width: 430px) {
+  .ctrl-left {
+    grid-template-columns: 1fr;
+  }
+
+  .ctrl-left .wide {
+    grid-column: auto;
   }
 }
 </style>

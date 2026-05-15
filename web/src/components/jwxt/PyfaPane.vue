@@ -2,16 +2,22 @@
   <div class="pyfa-pane" v-loading="loading">
     <div class="ctrl-bar" v-if="parsed">
       <div class="ctrl-left">
-        <span class="lbl">学期</span>
-        <el-select v-model="filterSem" size="small" multiple collapse-tags collapse-tags-tooltip placeholder="全部" style="width:240px">
-          <el-option v-for="s in semesterOptions" :key="s" :value="s" :label="s" />
-        </el-select>
-        <span class="lbl">性质</span>
-        <el-select v-model="filterAttr" size="small" multiple collapse-tags collapse-tags-tooltip placeholder="全部" style="width:200px">
-          <el-option v-for="a in attrOptions" :key="a" :value="a" :label="a" />
-        </el-select>
-        <span class="lbl">关键词</span>
-        <el-input v-model="keyword" size="small" placeholder="课程名 / 单位" clearable style="width:160px" />
+        <label class="filter-field wide">
+          <span class="lbl">学期</span>
+          <el-select v-model="filterSem" size="small" multiple collapse-tags collapse-tags-tooltip placeholder="全部">
+            <el-option v-for="s in semesterOptions" :key="s" :value="s" :label="s" />
+          </el-select>
+        </label>
+        <label class="filter-field">
+          <span class="lbl">性质</span>
+          <el-select v-model="filterAttr" size="small" multiple collapse-tags collapse-tags-tooltip placeholder="全部">
+            <el-option v-for="a in attrOptions" :key="a" :value="a" :label="a" />
+          </el-select>
+        </label>
+        <label class="filter-field">
+          <span class="lbl">关键词</span>
+          <el-input v-model="keyword" size="small" placeholder="课程名 / 单位" clearable />
+        </label>
       </div>
       <div class="ctrl-right">
         <span class="stat">📚 {{ filtered.length }} / {{ parsed.list.length }} 门</span>
@@ -31,21 +37,23 @@
     </div>
 
     <el-empty v-if="!filtered.length && parsed" description="没有符合条件的课程" />
-    <el-table v-else :data="filtered" stripe size="default" max-height="600">
-      <el-table-column prop="semester" label="开课学期" width="120" sortable />
-      <el-table-column prop="courseCode" label="课程编号" width="120" />
-      <el-table-column prop="courseName" label="课程名称" min-width="200" />
-      <el-table-column prop="unit" label="开课单位" width="160" />
-      <el-table-column prop="credits" label="学分" width="70" align="right" sortable />
-      <el-table-column prop="hours" label="学时" width="70" align="right" />
-      <el-table-column prop="examMethod" label="考核" width="100" />
-      <el-table-column label="性质" width="80">
-        <template #default="{ row }">
-          <el-tag v-if="row.attr" size="small" :type="attrTagType(row.attr)" effect="plain">{{ row.attr }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="isExam" label="考试" width="80" />
-    </el-table>
+    <div v-else class="table-scroll">
+      <el-table :data="filtered" stripe size="default" max-height="600">
+        <el-table-column prop="semester" label="开课学期" width="120" sortable />
+        <el-table-column prop="courseCode" label="课程编号" width="120" />
+        <el-table-column prop="courseName" label="课程名称" min-width="200" />
+        <el-table-column prop="unit" label="开课单位" width="160" />
+        <el-table-column prop="credits" label="学分" width="70" align="right" sortable />
+        <el-table-column prop="hours" label="学时" width="70" align="right" />
+        <el-table-column prop="examMethod" label="考核" width="100" />
+        <el-table-column label="性质" width="80">
+          <template #default="{ row }">
+            <el-tag v-if="row.attr" size="small" :type="attrTagType(row.attr)" effect="plain">{{ row.attr }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="isExam" label="考试" width="80" />
+      </el-table>
+    </div>
   </div>
 </template>
 
@@ -124,8 +132,24 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
 
 <style scoped>
 .pyfa-pane { display: flex; flex-direction: column; gap: 12px; }
-.ctrl-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
-.ctrl-left { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ctrl-bar { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
+.ctrl-left {
+  display: grid;
+  grid-template-columns: minmax(190px, 250px) minmax(160px, 210px) minmax(150px, 190px);
+  gap: 10px;
+  align-items: end;
+  min-width: 0;
+}
+.filter-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.filter-field :deep(.el-select),
+.filter-field :deep(.el-input) {
+  width: 100%;
+}
 .lbl { font-size: 12px; color: #6b7280; }
 .stat { font-size: 13px; color: var(--cpu-primary); font-weight: 500; }
 
@@ -153,6 +177,14 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
   transition: width 0.3s;
 }
 .sem-val { color: #6b7280; white-space: nowrap; }
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.table-scroll :deep(.el-table) {
+  min-width: 1000px;
+}
 
 @media (max-width: 760px) {
   .ctrl-bar {
@@ -162,13 +194,11 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
   }
 
   .ctrl-left {
-    align-items: stretch;
-    flex-direction: column;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .ctrl-left :deep(.el-select),
-  .ctrl-left :deep(.el-input) {
-    width: 100% !important;
+  .ctrl-left .wide {
+    grid-column: span 2;
   }
 
   .ctrl-right {
@@ -192,6 +222,16 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
 
   :deep(.el-table) {
     font-size: 12px;
+  }
+}
+
+@media (max-width: 430px) {
+  .ctrl-left {
+    grid-template-columns: 1fr;
+  }
+
+  .ctrl-left .wide {
+    grid-column: auto;
   }
 }
 </style>

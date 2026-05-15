@@ -2,15 +2,19 @@
   <div class="schedule-pane">
     <div class="ctrl-bar">
       <div class="ctrl-left">
-        <span class="lbl">学期</span>
-        <el-select v-model="semester" size="small" style="width:160px" @change="reload">
-          <el-option v-for="s in semesters" :key="s.value" :value="s.value" :label="s.label" />
-        </el-select>
-        <span class="lbl">周次</span>
-        <el-select v-model="week" size="small" clearable style="width:140px" placeholder="全部" @change="reload">
-          <el-option v-for="w in weeks" :key="w.value" :value="w.value" :label="w.label" />
-        </el-select>
-        <el-button v-if="cal?.currentWeek" size="small" text type="primary" @click="jumpThisWeek">📍 跳到本周</el-button>
+        <label class="filter-field">
+          <span class="lbl">学期</span>
+          <el-select v-model="semester" size="small" @change="reload">
+            <el-option v-for="s in semesters" :key="s.value" :value="s.value" :label="s.label" />
+          </el-select>
+        </label>
+        <label class="filter-field compact">
+          <span class="lbl">周次</span>
+          <el-select v-model="week" size="small" clearable placeholder="全部" @change="reload">
+            <el-option v-for="w in weeks" :key="w.value" :value="w.value" :label="w.label" />
+          </el-select>
+        </label>
+        <el-button v-if="cal?.currentWeek" size="small" plain type="primary" class="this-week-btn" @click="jumpThisWeek">跳到本周</el-button>
       </div>
       <div class="ctrl-right" v-if="parsed">
         <span v-if="cal?.currentWeek" class="weekinfo">
@@ -192,11 +196,29 @@ async function jumpThisWeek() {
 .ctrl-bar {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-end;
   flex-wrap: wrap;
   gap: 10px;
 }
-.ctrl-left { display: flex; gap: 8px; align-items: center; }
+.ctrl-left {
+  display: grid;
+  grid-template-columns: minmax(150px, 180px) minmax(120px, 150px) auto;
+  gap: 10px;
+  align-items: end;
+  min-width: 0;
+}
+.filter-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.filter-field :deep(.el-select) {
+  width: 100%;
+}
+.this-week-btn {
+  min-width: 92px;
+}
 .lbl { font-size: 12px; color: #6b7280; }
 .stat { font-size: 12px; color: var(--cpu-primary); font-weight: 500; }
 .weekinfo {
@@ -303,17 +325,7 @@ async function jumpThisWeek() {
   }
 
   .ctrl-left {
-    align-items: stretch;
-    flex-wrap: wrap;
-  }
-
-  .ctrl-left .lbl {
-    align-self: center;
-  }
-
-  .ctrl-left :deep(.el-select) {
-    flex: 1 1 140px;
-    width: auto !important;
+    grid-template-columns: 1fr 1fr;
   }
 
   .ctrl-right {
@@ -325,6 +337,11 @@ async function jumpThisWeek() {
   .weekinfo {
     margin-right: 0;
     line-height: 1.5;
+  }
+
+  .this-week-btn {
+    grid-column: span 2;
+    width: 100%;
   }
 
   .grid {
@@ -350,6 +367,16 @@ async function jumpThisWeek() {
 
   .cn {
     font-size: 11px;
+  }
+}
+
+@media (max-width: 430px) {
+  .ctrl-left {
+    grid-template-columns: 1fr;
+  }
+
+  .this-week-btn {
+    grid-column: auto;
   }
 }
 </style>
