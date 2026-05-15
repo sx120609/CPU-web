@@ -6,7 +6,7 @@
         <h2 class="name">
           {{ user.nickname }}
           <el-tag v-if="user.role === 'admin'" size="small" type="danger">管理员</el-tag>
-          <el-tag v-else-if="user.role === 'bot'" size="small" type="warning">机器人</el-tag>
+          <el-tag v-else-if="user.role === 'bot'" size="small" type="warning">系统账号</el-tag>
         </h2>
         <p class="username">@{{ user.username }}</p>
         <p class="bio">{{ user.bio || "—" }}</p>

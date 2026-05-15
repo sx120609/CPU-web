@@ -7,7 +7,7 @@
           <span class="brand-logo">药</span>
           <span class="brand-text">
             <span class="brand-name">药大垎坊</span>
-            <span class="brand-sub">CPU 民间学生论坛</span>
+            <span class="brand-sub">CPU 校园互助服务</span>
           </span>
         </router-link>
 
@@ -83,8 +83,8 @@
       <el-icon><WarningFilled /></el-icon>
       <span>
         药大垎坊为学生自发聚合站，<b>与中国药科大学官方无关</b>。
-        登录账号系本站独立账号，<b>请勿使用学校账号密码</b>。
-        本站内容由用户发布，仅代表个人观点。
+        学校统一认证仅用于登录与授权取数，<b>本站不保存学校账号密码</b>。
+        用户内容仅代表发布者个人观点。
       </span>
     </div>
 
@@ -98,11 +98,11 @@
     </main>
 
     <footer class="footer">
-      <span>© 2026 药大垎坊 · 民间学生论坛</span>
+      <span>© 2026 药大垎坊 · 校园互助与服务平台</span>
       <span class="dot">·</span>
       <a href="https://github.com" target="_blank">GitHub</a>
       <span class="dot">·</span>
-      <span>本站不存储任何学校账号</span>
+      <span>非学校官方站点</span>
     </footer>
 
     <nav class="mobile-tabbar" aria-label="移动端主导航">
@@ -155,17 +155,17 @@
     <!-- 首次登录设昵称（强制） -->
     <el-dialog
       v-model="showNicknameDialog"
-      title="给自己起个昵称"
+      title="设置展示昵称"
       width="420"
       :close-on-click-modal="false"
       :close-on-press-escape="false"
       :show-close="false"
     >
       <p class="dlg-tip">
-        欢迎来到药大垎坊，<b>{{ auth.user?.username }}</b> 同学 👋
+        欢迎来到药大垎坊，<b>{{ auth.user?.username }}</b> 同学
       </p>
       <p class="dlg-hint">
-        论坛里大家用昵称称呼你，<b>不会显示你的学号</b>。
+        后续发帖、回复和课程点评都会显示昵称，<b>不会展示你的学号</b>。
       </p>
       <el-input
         v-model="newNickname"
@@ -217,10 +217,10 @@ const mobileMenuOpen = ref(false);
 const desktopNavItems = [
   { to: "/home", label: "首页" },
   { to: "/forum", label: "论坛" },
-  { to: "/jwxt", label: "教务直连" },
+  { to: "/jwxt", label: "教务数据" },
   { to: "/coursereview", label: "课评" },
   { to: "/market", label: "二手" },
-  { to: "/services", label: "服务导航" },
+  { to: "/services", label: "校园服务" },
 ];
 
 const mobileNavItems = [
@@ -236,7 +236,7 @@ const drawerItems = [
   { to: "/messages", label: "消息", icon: Message },
   { to: "/coursereview", label: "课评", icon: Reading },
   { to: "/market", label: "二手市场", icon: Goods },
-  { to: "/services", label: "服务导航", icon: Service },
+  { to: "/services", label: "校园服务", icon: Service },
   { to: "/search", label: "搜索", icon: Search },
 ];
 

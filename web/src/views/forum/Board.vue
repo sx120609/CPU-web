@@ -8,8 +8,8 @@
           <p class="head-desc">{{ board.description }}</p>
           <div class="head-meta">
             <span>{{ board.topicCount }} 帖</span>
-            <span v-if="board.readOnly" class="ro-tag">只读 · 由爬虫机器人发帖</span>
-            <a v-if="board.feedSource?.homepage" :href="board.feedSource.homepage" target="_blank" class="ro-link">查看学校原入口 →</a>
+            <span v-if="board.readOnly" class="ro-tag">只读 · 自动同步公开来源</span>
+            <a v-if="board.feedSource?.homepage" :href="board.feedSource.homepage" target="_blank" class="ro-link">查看原始来源 →</a>
           </div>
         </div>
       </div>

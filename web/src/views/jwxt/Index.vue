@@ -1,11 +1,10 @@
 <template>
   <div class="jwxt-page">
     <div class="page-head">
-      <h2>🎓 教务直连</h2>
+      <h2>🎓 教务数据</h2>
       <p class="hint">
-        通过 <b>代登录</b> 帮你访问学校教务系统（jsxsd），把课表/成绩/考试做成更好看的视图。
-        <b>你的学校账号仅在你登录的那一刻经过我们后端转发给学校 SSO</b>，
-        永远不写入任何数据库或日志。会话仅保留在内存中，关闭浏览器即清空。
+        通过学校统一认证授权读取教务数据，把课表、成绩和培养方案整理成更易查看的视图。
+        <b>账号密码仅用于本次认证</b>，不会写入数据库、文件或日志；会话保存在内存中，关闭浏览器即清空。
       </p>
     </div>
 
@@ -14,8 +13,8 @@
       <div class="login-head">
         <el-icon class="lock-icon"><Lock /></el-icon>
         <div>
-          <h3>登录学校账号</h3>
-          <p>使用 <b>统一身份认证</b> 账号（id.cpu.edu.cn）登录</p>
+          <h3>授权读取教务数据</h3>
+          <p>使用学校 <b>统一身份认证</b> 账号完成授权</p>
         </div>
       </div>
 
@@ -26,9 +25,9 @@
         show-icon
       >
         <ul class="safety">
-          <li>账号密码 <b>仅在本次提交时</b> 经过我们后端转发到学校 SSO</li>
-          <li>登录成功后，仅保留学校颁发的会话 cookie 在 server 内存中（30 分钟不活动自动失效）</li>
-          <li>本站<b>从不存储</b>账号密码到数据库 / 文件 / 日志</li>
+          <li>账号密码 <b>仅用于本次统一认证</b></li>
+          <li>授权成功后，仅保留学校颁发的会话 cookie 在服务端内存中（30 分钟不活动自动失效）</li>
+          <li>本站<b>不保存</b>账号密码到数据库、文件或日志</li>
           <li>随时可以点击「立即清除会话」一键销毁</li>
         </ul>
       </el-alert>
@@ -43,12 +42,12 @@
         class="form"
       >
         <el-form-item label="学号 / 工号" prop="username">
-          <el-input v-model="form.username" placeholder="学校账号" autocomplete="off">
+          <el-input v-model="form.username" placeholder="学号 / 工号" autocomplete="off">
             <template #prefix><el-icon><User /></el-icon></template>
           </el-input>
         </el-form-item>
         <el-form-item label="密码" prop="password">
-          <el-input v-model="form.password" type="password" show-password placeholder="学校密码" autocomplete="off">
+          <el-input v-model="form.password" type="password" show-password placeholder="统一认证密码" autocomplete="off">
             <template #prefix><el-icon><Lock /></el-icon></template>
           </el-input>
         </el-form-item>
@@ -62,19 +61,19 @@
 
         <el-form-item>
           <el-checkbox v-model="remember">
-            记住此账号（加密保存到本机浏览器）
+            记住账号（加密保存到本机浏览器）
           </el-checkbox>
           <el-tooltip placement="top">
             <template #content>
               账号会用 AES-GCM 加密后存到 localStorage，<br/>
               <b>不会上传任何服务器</b>。<br/>
-              下次打开此站可自动登录。<br/>
+              下次打开此站可自动完成授权。<br/>
               <b>共享电脑请勿勾选</b>。
             </template>
             <el-icon class="hint-icon"><InfoFilled /></el-icon>
           </el-tooltip>
           <el-button v-if="jwxt.rememberSaved" text type="danger" size="small" @click="jwxt.forgetSavedCreds()" style="margin-left:auto">
-            忘记已保存的账号
+            忘记已保存账号
           </el-button>
         </el-form-item>
 
@@ -84,13 +83,13 @@
 
         <el-form-item>
           <el-button type="primary" :loading="jwxt.loading" @click="onSubmit" class="btn-submit">
-            登 录 教 务
+            授权并读取数据
           </el-button>
         </el-form-item>
       </el-form>
 
       <div class="alt-link">
-        不想授权？也可以 <a href="http://jsxsd.cpu.edu.cn/zgykdx/tyrz.jsp" target="_blank">直接前往学校教务系统</a>
+        暂不授权？也可以 <a href="http://jsxsd.cpu.edu.cn/zgykdx/tyrz.jsp" target="_blank">前往学校教务系统原站</a>
       </div>
     </div>
 
@@ -98,15 +97,15 @@
     <div v-else>
       <div class="cpu-card session-info">
         <el-icon style="color:#16a34a"><CircleCheckFilled /></el-icon>
-        <span>已通过代登录连接到学校教务系统。会话将在 30 分钟无活动后自动失效。</span>
+        <span>已连接学校教务系统。会话将在 30 分钟无活动后自动失效。</span>
         <el-tag v-if="jwxt.rememberSaved" size="small" type="warning" style="margin-right:8px">
           🔐 已记住账号
         </el-tag>
         <el-button v-if="jwxt.rememberSaved" text type="warning" size="small" @click="onForget">
-          忘记账号
+          忘记保存账号
         </el-button>
         <el-button text type="danger" @click="onLogout">
-          <el-icon><CircleClose /></el-icon> 清除会话
+          <el-icon><CircleClose /></el-icon> 断开连接
         </el-button>
       </div>
 
@@ -161,7 +160,7 @@ const formRef = ref<FormInstance>();
 const form = reactive({ username: "", password: "", captcha: "" });
 const remember = ref(true); // 默认勾选"记住"
 const rules: FormRules = {
-  username: [{ required: true, message: "请输入学校账号" }],
+  username: [{ required: true, message: "请输入学号或工号" }],
   password: [{ required: true, message: "请输入密码" }],
 };
 
@@ -186,10 +185,10 @@ onMounted(async () => {
   if (!jwxt.isLoggedIn) {
     // 1. 先尝试自动登录（用本地保存的账号）
     if (jwxt.rememberSaved) {
-      ElMessage.info("尝试自动登录…");
+      ElMessage.info("正在尝试自动授权…");
       const ok = await jwxt.tryAutoLogin();
       if (ok) {
-        ElMessage.success("自动登录成功");
+        ElMessage.success("已完成自动授权");
         loadCurrentTab();
         return;
       }
@@ -213,7 +212,7 @@ async function onSubmit() {
   const ok = await jwxt.submitLogin(form.username, form.password, form.captcha || undefined, remember.value);
   form.password = ""; // 立刻清掉密码字段
   if (ok) {
-    ElMessage.success("已连接到学校教务系统");
+    ElMessage.success("已完成教务数据授权");
     loadCurrentTab();
   } else if (jwxt.needCaptcha) {
     form.captcha = "";
@@ -221,17 +220,17 @@ async function onSubmit() {
 }
 
 async function onLogout() {
-  await ElMessageBox.confirm("清除当前教务会话？\n如果勾选了「记住登录」，下次打开仍会自动登录。", "确认", { type: "warning" });
+  await ElMessageBox.confirm("断开当前教务连接？\n如果勾选了「记住账号」，下次打开仍可自动授权。", "确认", { type: "warning" });
   await jwxt.logout();
-  ElMessage.success("会话已清除");
+  ElMessage.success("已断开教务连接");
   schedule.value = grades.value = progress.value = pyfa.value = null;
   await jwxt.beginLogin();
 }
 
 async function onForget() {
-  await ElMessageBox.confirm("忘记已保存的账号？后续不再自动登录。", "确认", { type: "warning" });
+  await ElMessageBox.confirm("忘记已保存的账号？后续不再自动授权。", "确认", { type: "warning" });
   jwxt.forgetSavedCreds();
-  ElMessage.success("已忘记保存的账号");
+  ElMessage.success("已忘记保存账号");
 }
 
 async function loadCurrentTab() {

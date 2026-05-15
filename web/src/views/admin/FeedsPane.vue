@@ -2,7 +2,7 @@
   <div class="feeds-pane">
     <div class="ctrl-bar">
       <el-button type="primary" :loading="runningAll" @click="runAll">
-        <el-icon><Refresh /></el-icon> 全量重跑
+        <el-icon><Refresh /></el-icon> 全量同步
       </el-button>
       <el-button @click="reload">刷新</el-button>
     </div>
@@ -36,7 +36,7 @@
       </el-table-column>
       <el-table-column label="操作" width="140" fixed="right">
         <template #default="{ row }">
-          <el-button text type="primary" size="small" :loading="runningId === row.id" @click="runOne(row)">立即跑一次</el-button>
+          <el-button text type="primary" size="small" :loading="runningId === row.id" @click="runOne(row)">立即同步</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -72,7 +72,7 @@ async function runOne(row: any) {
   runningId.value = row.id;
   try {
     const r = await adminApi.runFeed(row.id);
-    ElMessage.success(`抓取完成，新增 ${r?.newCount ?? 0} 条`);
+    ElMessage.success(`同步完成，新增 ${r?.newCount ?? 0} 条`);
     reload();
   } finally { runningId.value = null; }
 }
@@ -82,7 +82,7 @@ async function runAll() {
   try {
     const r = await adminApi.runAllFeeds();
     const total = (r as any[]).reduce((s, x) => s + (x.newCount ?? 0), 0);
-    ElMessage.success(`全部跑完，共新增 ${total} 条`);
+    ElMessage.success(`全量同步完成，共新增 ${total} 条`);
     reload();
   } finally { runningAll.value = false; }
 }

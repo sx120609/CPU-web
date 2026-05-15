@@ -109,6 +109,14 @@ canvas {
   color: var(--cpu-primary) !important;
 }
 
+.el-message {
+  left: auto !important;
+  right: 18px !important;
+  transform: none !important;
+  max-width: min(420px, calc(100vw - 32px));
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+}
+
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
@@ -187,5 +195,10 @@ canvas {
   .el-message-box {
     width: calc(100vw - 24px) !important;
     max-width: 420px;
+  }
+
+  .el-message {
+    right: 12px !important;
+    max-width: calc(100vw - 24px);
   }
 }

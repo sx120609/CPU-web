@@ -2,10 +2,9 @@
   <div class="services-page">
     <div class="page-head">
       <div>
-        <h2>🎯 服务导航</h2>
+        <h2>🎯 校园服务</h2>
         <p class="hint">
-          药大融合门户（<a href="https://i.cpu.edu.cn" target="_blank">i.cpu.edu.cn</a>）的 50+ 应用直通。
-          点击任一卡片在新窗口打开，学校 SSO 自动透传登录。
+          整理常用校园入口与融合门户应用。完成教务数据授权后，可查看更完整的应用列表并直接跳转。
         </p>
       </div>
     </div>
@@ -14,15 +13,15 @@
     <div v-if="!jwxt.isLoggedIn" class="cpu-card login-hint">
       <el-icon class="big-icon"><Lock /></el-icon>
       <div class="hint-body">
-        <h3>登录学校账号解锁完整服务列表</h3>
-        <p>登录后将看到融合门户的全部应用（含你的收藏、热度排序、所属部门）。账号仅在本地浏览器内存中使用，<b>不会上传服务器</b>。</p>
-        <el-button type="primary" size="large" @click="$router.push('/jwxt')">前往登录学校账号</el-button>
+        <h3>授权教务数据后显示完整服务列表</h3>
+        <p>授权后可查看融合门户应用、收藏和热度信息。认证凭据仅用于本次授权，<b>本站不保存学校账号密码</b>。</p>
+        <el-button type="primary" size="large" @click="$router.push('/jwxt')">前往教务数据授权</el-button>
       </div>
     </div>
 
     <!-- 未登录的兜底：少量基础外链 -->
     <div v-if="!jwxt.isLoggedIn" class="fallback">
-      <h4 class="fb-title">无需登录也可访问</h4>
+      <h4 class="fb-title">常用公开入口</h4>
       <div class="fb-grid">
         <a href="http://lib.cpu.edu.cn" target="_blank" class="fb-card"><span class="fb-icon">📚</span><span>图书馆</span></a>
         <a href="http://opac.cpu.edu.cn" target="_blank" class="fb-card"><span class="fb-icon">🔍</span><span>馆藏检索</span></a>

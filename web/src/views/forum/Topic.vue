@@ -25,7 +25,7 @@
         <div class="meta-author">
           <div class="name">
             <router-link v-if="topic.author?.id" :to="`/u/${topic.author.id}`">{{ topic.author?.nickname }}</router-link>
-            <el-tag v-if="topic.author?.role === 'bot'" size="small" type="warning">机器人</el-tag>
+            <el-tag v-if="topic.author?.role === 'bot'" size="small" type="warning">系统同步</el-tag>
             <el-tag v-else-if="topic.author?.role === 'admin'" size="small" type="danger">管理员</el-tag>
           </div>
           <div class="meta">

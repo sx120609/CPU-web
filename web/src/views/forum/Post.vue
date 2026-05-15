@@ -190,10 +190,10 @@ const selectedCourse = computed(() => courses.value.find((c) => c.id === meta.co
 const teacherOptions = computed(() => selectedCourse.value?.teachers ?? []);
 
 const groupedBoards = computed(() => {
-  const groups: Record<string, Board[]> = { "💬 综合讨论": [], "🎒 UGC": [], "📢 公告（只读）": [] };
+  const groups: Record<string, Board[]> = { "💬 综合讨论": [], "🎒 学生共建": [], "📢 校园公告（只读）": [] };
   for (const b of boards.value) {
-    if (b.type === "announce") groups["📢 公告（只读）"].push(b);
-    else if (["market", "question", "coursereview"].includes(b.type)) groups["🎒 UGC"].push(b);
+    if (b.type === "announce") groups["📢 校园公告（只读）"].push(b);
+    else if (["market", "question", "coursereview"].includes(b.type)) groups["🎒 学生共建"].push(b);
     else groups["💬 综合讨论"].push(b);
   }
   return groups;

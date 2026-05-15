@@ -23,11 +23,11 @@
     </div>
 
     <div v-if="scope === 'mine' && !list.length && !loading" class="empty-mine">
-      <p>还没有同步过教务系统的课程</p>
+      <p>还没有导入你的课程</p>
       <el-button type="primary" :loading="syncing" @click="onSync">
         <el-icon><Refresh /></el-icon> 立即同步
       </el-button>
-      <p class="sub">需要先在「教务直连」页登录学校账号。会从成绩 + 培养方案里把你修过 / 要修的课加进来。</p>
+      <p class="sub">需要先在「教务数据」页完成统一认证授权。系统会从成绩与培养方案中整理你修过或计划修读的课程。</p>
     </div>
 
     <div class="course-grid" v-loading="loading">
@@ -87,16 +87,16 @@ async function reload() {
 
 async function onSync() {
   if (!auth.isLoggedIn) {
-    ElMessage.warning("请先登录站内账号");
+    ElMessage.warning("请先登录药大垎坊账号");
     return;
   }
   const jwxtToken = sessionStorage.getItem("cpu-jwxt-token");
   if (!jwxtToken) {
     try {
       await ElMessageBox.confirm(
-        "同步课程需要先登录学校教务系统。是否前往「教务直连」页？",
-        "未登录教务",
-        { confirmButtonText: "前往登录", cancelButtonText: "取消" }
+        "导入课程需要先完成教务数据授权。是否前往「教务数据」页？",
+        "需要授权",
+        { confirmButtonText: "前往授权", cancelButtonText: "取消" }
       );
       window.location.href = "/jwxt";
     } catch { /* 取消 */ }
@@ -113,7 +113,7 @@ async function onSync() {
   } catch (e: any) {
     // 拦截器已弹错；这里兜底（教务 session 失效会显示 401 → 让用户重登）
     if (e?.response?.status === 401) {
-      ElMessage.error("教务会话已失效，请去「教务直连」重新登录");
+      ElMessage.error("教务授权已失效，请到「教务数据」页重新授权");
     }
   } finally { syncing.value = false; }
 }

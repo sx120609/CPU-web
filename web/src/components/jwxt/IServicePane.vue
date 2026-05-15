@@ -66,7 +66,7 @@
     </div>
 
     <el-empty v-if="!loading && apps.length && !filtered.length" description="没有符合条件的应用" />
-    <el-empty v-else-if="!loading && !apps.length" description="未拿到应用列表 — 教务会话可能已失效" />
+    <el-empty v-else-if="!loading && !apps.length" description="暂未获取到应用列表，教务授权可能已失效" />
   </div>
 </template>
 

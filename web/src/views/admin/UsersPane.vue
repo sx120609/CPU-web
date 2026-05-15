@@ -37,7 +37,7 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="SSO" width="80">
+      <el-table-column label="统一认证" width="90">
         <template #default="{ row }">
           <el-tag v-if="row.studentSso" type="primary" size="small" effect="plain">✓</el-tag>
         </template>
@@ -70,7 +70,7 @@
 
     <!-- 新增用户弹窗（仅 admin） -->
     <el-dialog v-model="createOpen" title="新增站内账号" width="460" :close-on-click-modal="false">
-      <p class="dlg-tip">用于给新生 / 毕业生 / 站务等无法走学校 SSO 的用户开通账号。</p>
+      <p class="dlg-tip">用于给新生、毕业生、站务等无法使用统一认证的用户开通账号。</p>
       <el-form :model="createForm" label-position="top" size="default">
         <el-form-item label="用户名（登录用，唯一）" required>
           <el-input v-model="createForm.username" placeholder="3-20 位英文/数字/下划线" maxlength="20" />
@@ -86,7 +86,7 @@
             <el-option label="user（普通用户）" value="user" />
             <el-option label="mod（版主）" value="mod" />
             <el-option label="admin（管理员）" value="admin" />
-            <el-option label="bot（机器人）" value="bot" />
+            <el-option label="bot（系统账号）" value="bot" />
           </el-select>
         </el-form-item>
         <el-form-item label="院系（选填）">

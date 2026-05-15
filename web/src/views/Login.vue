@@ -12,15 +12,15 @@
         <div class="brand-logo">药</div>
         <div>
           <h1>药大垎坊</h1>
-          <p>中国药科大学 · 民间学生论坛</p>
+          <p>中国药科大学 · 校园互助与服务平台</p>
         </div>
       </div>
 
-      <p class="welcome">使用 <strong>学校账号</strong> 登录</p>
-      <p class="hint">通过统一身份认证验证你是真正的药大学生 · 论坛账号自动创建</p>
+      <p class="welcome">使用 <strong>学校统一认证</strong> 登录</p>
+      <p class="hint">完成身份确认后自动创建站内账号，可用于发帖、课评和消息通知。</p>
 
       <el-alert type="warning" :closable="false" show-icon class="safety">
-        账号密码<b>仅在登录瞬间</b>经我们后端转发到学校 SSO，永远不写数据库
+        账号密码<b>仅用于本次统一认证</b>，本站不写入数据库、文件或日志
       </el-alert>
 
       <el-form
@@ -65,7 +65,7 @@
       <details class="dev-fallback">
         <summary>🔑 其他登录</summary>
         <div class="dev-tip">
-          主要供走不了统一身份认证的账号使用：新生（学号还没下发）、毕业生（统认证已失效）、站务 / 管理员等。使用站内独立用户名 + 密码。
+          主要供无法使用统一认证的账号使用：新生、毕业生、站务 / 管理员等。使用站内独立用户名和密码。
         </div>
         <el-form size="default" class="dev-form" @keyup.enter="onDevSubmit">
           <el-input v-model="dev.username" placeholder="用户名" />
@@ -122,7 +122,7 @@ onMounted(async () => {
   try {
     await auth.ssoBegin();
   } catch (e: any) {
-    auth.ssoError = "无法连接学校登录系统，请检查网络后刷新重试。若你是新生/毕业生/站务，请展开下方「其他登录」用站内账号登录。";
+    auth.ssoError = "暂时无法连接统一认证服务，请稍后刷新重试。若你无法使用统一认证，请展开下方「其他登录」。";
   }
   // "刚主动退出"标记：本次进入 /login 不自动登录，标记一次性消耗掉；
   // 关闭浏览器（sessionStorage 失效）后下次再访问就会照常自动登录。
@@ -149,7 +149,7 @@ async function reloadCaptcha() {
   try {
     await auth.ssoBegin();
   } catch {
-    auth.ssoError = "无法连接学校登录系统，请稍后重试";
+    auth.ssoError = "暂时无法连接统一认证服务，请稍后重试";
   }
   form.captcha = "";
 }

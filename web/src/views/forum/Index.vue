@@ -1,10 +1,10 @@
 <template>
   <div class="forum-index">
-    <h2 class="page-title">论坛板块</h2>
+    <h2 class="page-title">讨论板块</h2>
 
-    <!-- 公告板（爬虫聚合） -->
+    <!-- 公告板（自动聚合） -->
     <div class="cluster">
-      <h3 class="cluster-title">📢 学校公告（自动同步）</h3>
+      <h3 class="cluster-title">📢 校园公告</h3>
       <div class="grid">
         <div v-for="b in announces" :key="b.slug" class="board-card readonly" @click="$router.push(`/forum/b/${b.slug}`)">
           <div class="icon" :style="{ background: b.color || '#1d4d8a' }">{{ b.icon || '📢' }}</div>
@@ -32,9 +32,9 @@
       </div>
     </div>
 
-    <!-- UGC 三件套 -->
+    <!-- 学生共建板块 -->
     <div class="cluster" v-if="ugc.length">
-      <h3 class="cluster-title">🎒 UGC 板块</h3>
+      <h3 class="cluster-title">🎒 学生共建</h3>
       <div class="grid">
         <div v-for="b in ugc" :key="b.slug" class="board-card" @click="$router.push(`/forum/b/${b.slug}`)">
           <div class="icon" :style="{ background: b.color || '#168776' }">{{ b.icon || '🎒' }}</div>

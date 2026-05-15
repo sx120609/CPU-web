@@ -28,7 +28,7 @@
           <div class="switches">
             <div><el-switch v-model="settings.subscribeReply" /> 收到回复时</div>
             <div><el-switch v-model="settings.subscribeLike" /> 收到点赞时</div>
-            <div><el-switch v-model="settings.subscribeSchool" /> 学校公告新条目</div>
+            <div><el-switch v-model="settings.subscribeSchool" /> 校园公告更新</div>
             <div><el-switch v-model="settings.subscribeSystem" /> 系统 / 站务通知</div>
           </div>
           <el-button type="primary" :loading="saving" @click="saveSettings" style="margin-top:14px">保存设置</el-button>

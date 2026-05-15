@@ -4,14 +4,14 @@
     <section class="hero">
       <div class="hero-text">
         <h1>药大垎坊</h1>
-        <p>药学问答 · 二手交易 · 课程点评 · 学校公告聚合 —— 一群药大学生的自留地。</p>
+        <p>校园讨论、课程点评、二手交易、公告聚合与常用校园服务，给药大学生一个更顺手的信息入口。</p>
         <div class="hero-actions">
           <el-button type="primary" size="large" @click="$router.push('/forum')">
             <el-icon><ChatLineRound /></el-icon> 进入论坛
           </el-button>
-          <el-button v-if="!auth.isLoggedIn" size="large" @click="$router.push('/register')">注册账号</el-button>
+          <el-button v-if="!auth.isLoggedIn" size="large" @click="$router.push('/login')">登录参与</el-button>
           <el-button v-else size="large" @click="$router.push('/post')">
-            <el-icon><Edit /></el-icon> 发个新帖
+            <el-icon><Edit /></el-icon> 发布内容
           </el-button>
         </div>
       </div>
@@ -57,8 +57,8 @@
       <div class="col-right">
         <section class="block">
           <div class="block-head">
-            <h3>📢 学校公告</h3>
-            <span class="cpu-muted">来自爬虫机器人</span>
+            <h3>📢 校园公告</h3>
+            <span class="cpu-muted">自动同步公开来源</span>
           </div>
           <ul v-if="summary?.announce?.length" class="announce-list">
             <li v-for="t in summary.announce" :key="'ann-' + t.id" @click="$router.push(`/forum/topic/${t.id}`)">
@@ -69,12 +69,12 @@
               </div>
             </li>
           </ul>
-          <el-empty v-else description="暂无公告（爬虫将在 5 秒后启动）" />
+          <el-empty v-else description="暂无公告，稍后再来看看" />
         </section>
 
         <section class="block">
           <div class="block-head">
-            <h3>🧭 服务直达</h3>
+            <h3>🧭 校园服务</h3>
             <router-link to="/services" class="more">全部 →</router-link>
           </div>
           <div class="service-grid">

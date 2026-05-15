@@ -32,14 +32,14 @@
       </div>
       <div class="ov-card">
         <div class="ov-num">{{ overview.feeds }} / {{ overview.boards }}</div>
-        <div class="ov-lbl">爬虫源 / 板块</div>
+        <div class="ov-lbl">同步源 / 板块</div>
       </div>
     </div>
 
     <el-tabs v-model="tab" class="cpu-card">
       <el-tab-pane label="👥 用户" name="users"><UsersPane v-if="tab === 'users'" /></el-tab-pane>
       <el-tab-pane label="📝 帖子" name="topics"><TopicsPane v-if="tab === 'topics'" /></el-tab-pane>
-      <el-tab-pane label="🕷 爬虫" name="feeds" v-if="auth.isAdmin"><FeedsPane v-if="tab === 'feeds'" /></el-tab-pane>
+      <el-tab-pane label="🔄 同步源" name="feeds" v-if="auth.isAdmin"><FeedsPane v-if="tab === 'feeds'" /></el-tab-pane>
       <el-tab-pane label="📣 公告" name="announcements"><AnnouncementsPane v-if="tab === 'announcements'" /></el-tab-pane>
     </el-tabs>
   </div>
