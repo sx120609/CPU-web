@@ -12,17 +12,6 @@
       </el-select>
       <div class="top-actions">
         <button
-          v-if="parsed"
-          type="button"
-          class="icon-btn"
-          :class="{ active: viewMode === 'week' }"
-          :aria-label="viewMode === 'day' ? '切到周课表总览' : '切回单日视图'"
-          :title="viewMode === 'day' ? '周课表总览' : '单日视图'"
-          @click="toggleView"
-        >
-          <el-icon><Grid /></el-icon>
-        </button>
-        <button
           v-if="installPromptRef && (installPromptRef as any).canShow"
           type="button"
           class="icon-btn install-btn"
@@ -66,7 +55,7 @@
       </button>
     </section>
 
-    <section v-if="parsed && viewMode === 'day'" class="week-strip">
+    <section v-if="parsed" class="week-strip">
       <button
         v-for="d in dayTabs"
         :key="d.day"
@@ -107,7 +96,7 @@
       </el-button>
     </section>
 
-    <section v-else-if="viewMode === 'day'" class="content" v-loading="loading && !parsed">
+    <section v-else class="content" v-loading="loading && !parsed">
       <div class="summary">
         <div>
           <span>第 {{ week || parsed?.currentWeek || "--" }} 周</span>
@@ -142,38 +131,6 @@
       </transition>
     </section>
 
-    <!-- 周课表总览：天作为行（7 行），大节作为列（5 列），一屏宽度内就能看完整周 -->
-    <section v-else-if="parsed && viewMode === 'week'" class="week-grid-view" v-loading="loading && !parsed">
-      <div class="wgv">
-        <div class="wgv-corner"></div>
-        <div v-for="bs in bigSlots" :key="`wh-${bs}`" class="wgv-head">
-          <div class="dn">第 {{ bs }} 节</div>
-        </div>
-        <template v-for="d in dayTabs" :key="`wr-${d.day}`">
-          <div class="wgv-day" :class="{ today: d.isToday }">
-            <div class="dy">{{ d.label.replace('周', '') }}</div>
-            <div class="dt">{{ d.date || '--' }}</div>
-          </div>
-          <div
-            v-for="bs in bigSlots"
-            :key="`wc-${d.day}-${bs}`"
-            class="wgv-cell"
-            :class="{ 'has-course': getCoursesAt(d.day, bs).length > 0 }"
-          >
-            <div
-              v-for="(c, i) in getCoursesAt(d.day, bs)"
-              :key="i"
-              class="wgv-course"
-              :style="{ background: colorForBg(c.name) }"
-              :title="`${c.name}${c.location ? ' @ ' + c.location : ''}${c.teacher ? ' · ' + c.teacher : ''}`"
-            >
-              <div class="cn">{{ c.name }}</div>
-            </div>
-          </div>
-        </template>
-      </div>
-    </section>
-
     <!-- 周次选择弹窗 -->
     <el-dialog
       v-model="weekDialogOpen"
@@ -205,7 +162,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { ArrowLeft, ArrowRight, Download, Grid, House, Loading, Lock, Location, Moon, Picture, Refresh, User } from "@element-plus/icons-vue";
+import { ArrowLeft, ArrowRight, Download, House, Loading, Lock, Location, Moon, Picture, Refresh, User } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
@@ -251,10 +208,6 @@ const CALENDAR_CACHE_KEY = "cpu-schedule-calendar-v1";
 const LAST_STATE_KEY = "cpu-schedule-last-state-v1";
 const LAST_CACHE_KEY = "cpu-schedule-last-cache-key-v1";
 
-// 视图模式：day = 单日列表（默认）；week = 全周网格总览
-const viewMode = ref<"day" | "week">("day");
-function toggleView() { viewMode.value = viewMode.value === "day" ? "week" : "day"; }
-
 // 周次选择弹窗
 const weekDialogOpen = ref(false);
 function selectWeek(v: string | number) {
@@ -272,30 +225,6 @@ function selectWeek(v: string | number) {
 async function onJumpAndClose() {
   weekDialogOpen.value = false;
   await jumpToCurrentWeek();
-}
-
-// 周课表总览：5 大节 × 7 天网格
-const bigSlots = [1, 2, 3, 4, 5];
-function getCoursesAt(day: number, bs: number): ScheduleCourse[] {
-  for (const cell of parsed.value?.cells ?? []) {
-    if (cell.day === day && cell.bigSlot === bs) return cell.courses;
-  }
-  return [];
-}
-const bgPalette = [
-  "linear-gradient(135deg,#dbeafe,#bfdbfe)",
-  "linear-gradient(135deg,#fce7f3,#fbcfe8)",
-  "linear-gradient(135deg,#dcfce7,#bbf7d0)",
-  "linear-gradient(135deg,#fef3c7,#fde68a)",
-  "linear-gradient(135deg,#ede9fe,#ddd6fe)",
-  "linear-gradient(135deg,#cffafe,#a5f3fc)",
-  "linear-gradient(135deg,#fee2e2,#fecaca)",
-  "linear-gradient(135deg,#d1fae5,#a7f3d0)",
-];
-function colorForBg(name: string): string {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
-  return bgPalette[h % bgPalette.length];
 }
 
 // 添加到主屏幕引导
@@ -991,98 +920,6 @@ function saveScheduleCache() {
 .next-card em,
 .next-card b {
   display: none;
-}
-
-/* ===== 周课表总览（转置：天=行，节=列；一屏宽度容下整周）===== */
-.week-grid-view {
-  max-width: 720px;
-  margin: 0 auto;
-  background: #fff;
-  border: 1px solid #eef0f4;
-  border-radius: 12px;
-  overflow: hidden;
-}
-.wgv {
-  display: grid;
-  /* 第一列 = 日标签；后 5 列 = 第 1-5 大节 */
-  grid-template-columns: 56px repeat(5, 1fr);
-}
-.wgv-corner,
-.wgv-head {
-  background: #f8fafc;
-  border-bottom: 1px solid #eef0f4;
-  padding: 8px 4px;
-  text-align: center;
-  font-size: 12px;
-  font-weight: 500;
-  color: #374151;
-}
-.wgv-head + .wgv-head,
-.wgv-corner + .wgv-head { border-left: 1px solid #eef0f4; }
-.wgv-head .dn { font-weight: 600; }
-
-.wgv-day {
-  background: #f9fafb;
-  border-bottom: 1px solid #eef0f4;
-  padding: 8px 4px;
-  font-size: 11px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 1px;
-}
-.wgv-day .dy { font-weight: 600; color: #374151; font-size: 13px; }
-.wgv-day .dt { color: #9ca3af; font-size: 10px; }
-.wgv-day.today { background: #d1fae5; }
-.wgv-day.today .dy { color: #065f46; }
-.wgv-day.today .dt { color: #047857; }
-
-.wgv-cell {
-  border-bottom: 1px solid #eef0f4;
-  border-left: 1px solid #eef0f4;
-  padding: 3px;
-  min-height: 52px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.wgv-course {
-  border-radius: 5px;
-  padding: 4px 5px;
-  flex: 1;
-  min-height: 38px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-}
-.wgv-course .cn {
-  font-size: 11px;
-  font-weight: 600;
-  color: #1f2937;
-  line-height: 1.2;
-  word-break: break-word;
-  /* 单元格小，限制 2 行 */
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-/* 最后一行不要 border-bottom */
-.wgv > .wgv-day:last-of-type,
-.wgv > .wgv-day:last-of-type ~ .wgv-cell {
-  border-bottom: none;
-}
-
-@media (max-width: 430px) {
-  .wgv { grid-template-columns: 44px repeat(5, 1fr); }
-  .wgv-corner, .wgv-head { padding: 6px 2px; font-size: 11px; }
-  .wgv-day { padding: 6px 2px; }
-  .wgv-day .dy { font-size: 12px; }
-  .wgv-cell { padding: 2px; min-height: 48px; }
-  .wgv-course { padding: 3px 4px; min-height: 36px; }
-  .wgv-course .cn { font-size: 10px; }
 }
 
 /* ===== 周次选择 dialog 里的网格 ===== */

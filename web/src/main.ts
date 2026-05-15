@@ -58,6 +58,16 @@ function installMessagePositionGuard() {
 installTouchGuards();
 installMessagePositionGuard();
 
+// 注册 Service Worker —— Chrome PWA "installable" 条件之一（manifest + SW + HTTPS）
+// 不满足时 beforeinstallprompt 不会触发，"添加到主屏幕"按钮就不会出现
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch((err) => {
+      console.warn("[sw] 注册失败：", err?.message);
+    });
+  });
+}
+
 const app = createApp(App);
 app.use(createPinia());
 useAuthStore().hydrate();

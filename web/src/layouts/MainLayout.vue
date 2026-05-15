@@ -89,7 +89,7 @@
     </div>
 
     <!-- 主内容 -->
-    <main class="main">
+    <main class="main" :class="{ 'main--bare': hideChrome }">
       <router-view v-slot="{ Component }">
         <transition name="fade" mode="out-in">
           <component :is="Component" />
@@ -348,6 +348,8 @@ async function onUserCmd(cmd: string) {
   display: flex;
   flex-direction: column;
   background: var(--cpu-bg);
+  /* 防 iOS Safari 整页橡皮筋拉动 */
+  overscroll-behavior-y: none;
 }
 
 .topbar {
@@ -532,6 +534,12 @@ async function onUserCmd(cmd: string) {
   max-width: 1280px;
   margin: 0 auto;
   box-sizing: border-box;
+}
+
+/* hideChrome 模式：内容页（如课表）自己管 padding；这里只为 mobile tabbar 留底部空间 */
+.main--bare {
+  padding: 0 !important;
+  max-width: none;
 }
 
 .footer {
@@ -720,6 +728,11 @@ async function onUserCmd(cmd: string) {
   .main {
     padding: 14px 12px calc(88px + env(safe-area-inset-bottom));
     max-width: none;
+  }
+
+  /* 移动端裸壳模式：去掉 top/side padding，仅保留 tabbar 底部空间，让子组件自己管 */
+  .main--bare {
+    padding: 0 0 calc(88px + env(safe-area-inset-bottom)) !important;
   }
 
   .footer {
