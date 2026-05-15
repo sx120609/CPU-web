@@ -28,7 +28,7 @@
       <ol class="steps">
         <li>
           <span class="num">1</span>
-          点底部 <strong>分享按钮</strong>
+          点击右下角 <strong>三个点</strong>，再点 <strong>共享按钮</strong>
           <svg class="ic" viewBox="0 0 16 16" aria-hidden="true">
             <path d="M8 1.5l3 3-1 1-1.3-1.3V10H7.3V4.2L6 5.5l-1-1z" fill="currentColor"/>
             <path d="M3 7h2v6h6V7h2v8H3z" fill="currentColor"/>
@@ -36,11 +36,11 @@
         </li>
         <li>
           <span class="num">2</span>
-          在弹出菜单里找到 <strong>「添加到主屏幕」</strong>
+          选择 <strong>「查看更多」</strong>
         </li>
         <li>
           <span class="num">3</span>
-          右上角点 <strong>「添加」</strong>
+          选择 <strong>「添加到主屏幕」</strong>
         </li>
       </ol>
       <p class="muted">必须使用 Safari 浏览器；微信/QQ 等内置浏览器不支持。</p>
