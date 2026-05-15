@@ -12,7 +12,17 @@
       <p class="muted">当前已经在独立应用环境中打开。</p>
     </div>
 
-    <!-- Android 浏览器：优先提供 APK -->
+    <!-- 微信 / QQ 内置浏览器：先引导外部浏览器 -->
+    <div v-else-if="inAppBrowser.isInApp" class="content">
+      <p>检测到当前可能在 <b>{{ inAppBrowser.label }}</b> 内打开。内置浏览器通常无法正常下载 APK，也可能拦截安装流程。</p>
+      <ul class="bullets">
+        <li>请点击右上角菜单</li>
+        <li>选择“在浏览器打开”或“用默认浏览器打开”</li>
+        <li>进入外部浏览器后再下载 Android 版课表</li>
+      </ul>
+    </div>
+
+    <!-- Android 普通浏览器：优先提供 APK -->
     <div v-else-if="platform === 'android'" class="content">
       <p>建议安装 <b>药大垎坊课表</b> Android 版，下次可从桌面图标直接打开课表。</p>
       <ul class="bullets">
@@ -56,7 +66,7 @@
     <template #footer>
       <div class="footer">
         <el-button
-          v-if="platform === 'android' && !isNativeApp"
+          v-if="platform === 'android' && !isNativeApp && !inAppBrowser.isInApp"
           type="primary"
           size="default"
           @click="downloadApk"
@@ -93,6 +103,7 @@ const open = ref(false);
 const deferredPrompt = ref<BeforeInstallPromptEvent | null>(null);
 const isStandalone = ref(false);
 const isNativeApp = ref(false);
+const inAppBrowser = computed(() => detectInAppBrowser());
 
 const platform = computed<"ios" | "android" | "desktop">(() => {
   const ua = navigator.userAgent.toLowerCase();
@@ -126,7 +137,7 @@ function detectNativeApp() {
     || params.get("client") === "android-app";
   const isAndroidWebView = /android/.test(ua)
     && (ua.includes("; wv") || /version\/\d+(\.\d+)? chrome\//.test(ua))
-    && !detectInAppBrowser().isInApp;
+    && !inAppBrowser.value.isInApp;
   isNativeApp.value = isMarkedApp || isAndroidWebView;
 }
 
