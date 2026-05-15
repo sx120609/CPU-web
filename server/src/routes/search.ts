@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { ok } from "../utils/response";
+import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
 
 export const searchRouter = Router();
 
@@ -38,15 +39,14 @@ searchRouter.get("/", async (req, res, next) => {
         },
       }),
       prisma.serviceCard.findMany({
-        where: {
-          hidden: false,
+        where: visibleServiceWhere({
           OR: [
             { name: { contains: q } },
             { category: { contains: q } },
             { owner: { contains: q } },
             { description: { contains: q } },
           ],
-        },
+        }),
         take: 8,
       }),
     ]);
@@ -62,7 +62,7 @@ searchRouter.get("/", async (req, res, next) => {
         })),
         courseTeachers: undefined,
       })),
-      services,
+      services: services.map(normalizeServiceCard),
     });
   } catch (e) { next(e); }
 });

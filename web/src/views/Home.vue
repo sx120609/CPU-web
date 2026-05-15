@@ -98,6 +98,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
 import { ChatLineRound, Edit, Bell, Service } from "@element-plus/icons-vue";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import { homeApi, type HomeSummary } from "@/api/home";
@@ -107,6 +108,7 @@ import { fmtRelative } from "@/utils/format";
 
 const auth = useAuthStore();
 const site = useSiteStore();
+const router = useRouter();
 const summary = ref<HomeSummary | null>(null);
 
 const hasStats = computed(() => {
@@ -127,7 +129,9 @@ onMounted(async () => {
 });
 
 function openUrl(url: string) {
-  if (url.startsWith("tel:")) {
+  if (url.startsWith("/")) {
+    router.push(url);
+  } else if (url.startsWith("tel:")) {
     window.location.href = url;
   } else {
     window.open(url, "_blank", "noopener");

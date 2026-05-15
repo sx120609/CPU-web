@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../prisma";
 import { ok } from "../utils/response";
 import { verifyToken } from "../utils/jwt";
+import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
 
 export const homeRouter = Router();
 
@@ -46,7 +47,7 @@ homeRouter.get("/summary", async (req, res, next) => {
         include: { board: { select: { slug: true, name: true } } },
       }),
       prisma.serviceCard.findMany({
-        where: { hidden: false },
+        where: visibleServiceWhere(),
         orderBy: [{ order: "asc" }, { id: "asc" }],
         take: 8,
       }),
@@ -72,7 +73,7 @@ homeRouter.get("/summary", async (req, res, next) => {
       hotTopics: hotTopics.map(decode),
       latestTopics: latestTopics.map(decode),
       announce: announce.map(decode),
-      services,
+      services: services.map(normalizeServiceCard),
     });
   } catch (e) { next(e); }
 });

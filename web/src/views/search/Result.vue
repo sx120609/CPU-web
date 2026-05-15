@@ -47,12 +47,13 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { Right } from "@element-plus/icons-vue";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import { searchApi, type SearchResult } from "@/api/search";
 
 const route = useRoute();
+const router = useRouter();
 const q = ref((route.query.q as string) ?? "");
 const result = ref<SearchResult | null>(null);
 
@@ -73,7 +74,8 @@ async function reload() {
 }
 
 function open(s: any) {
-  if (s.url.startsWith("tel:")) window.location.href = s.url;
+  if (s.url.startsWith("/")) router.push(s.url);
+  else if (s.url.startsWith("tel:")) window.location.href = s.url;
   else window.open(s.url, "_blank", "noopener");
 }
 </script>
