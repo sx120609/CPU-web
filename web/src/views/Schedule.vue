@@ -161,11 +161,12 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowLeft, ArrowRight, Download, House, Loading, Lock, Location, Moon, Picture, Refresh, User } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
+import { detectInAppBrowser } from "@/utils/inAppBrowser";
 import InstallPromptDialog from "@/components/install/InstallPromptDialog.vue";
 
 interface ScheduleCourse {
@@ -229,7 +230,19 @@ async function onJumpAndClose() {
 
 // 添加到主屏幕引导
 const installPromptRef = ref<InstanceType<typeof InstallPromptDialog> | null>(null);
-function openInstallPrompt() {
+async function openInstallPrompt() {
+  const inApp = detectInAppBrowser();
+  if (inApp.isInApp) {
+    await ElMessageBox.alert(
+      `检测到当前可能在${inApp.label}内打开。内置浏览器通常不支持把课表添加到主屏幕，请点击右上角菜单，选择“在浏览器打开”或“用默认浏览器打开”后再操作。`,
+      "请使用外部浏览器打开",
+      {
+        confirmButtonText: "我知道了",
+        type: "warning",
+      }
+    );
+    return;
+  }
   installPromptRef.value?.openDialog();
 }
 
