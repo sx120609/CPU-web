@@ -105,7 +105,7 @@ onMounted(async () => {
   // 只要本地存了学校账号就尝试，不再要求"rememberSaved"
   if (hasCreds.value) {
     autoLoading.value = true;
-    try { await jwxt.tryAutoLogin(); }
+    try { await jwxt.tryAutoLogin({ force: true }); }
     finally { autoLoading.value = false; }
     // 如果 tryAutoLogin 命中 captcha，模板会自动切到 captcha-card；用户输入完点按钮 submitCaptcha
   }

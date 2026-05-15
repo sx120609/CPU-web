@@ -43,10 +43,6 @@
         <el-icon><WarningFilled /></el-icon>
         余额不足，建议尽快充值。充值将跳转到学校官方页面办理。
       </div>
-      <details v-if="data.raw" class="raw-fold">
-        <summary>📦 显示原始响应（调试用）</summary>
-        <pre class="raw">{{ JSON.stringify(data.raw, null, 2) }}</pre>
-      </details>
       <div class="actions">
         <el-button text @click="refresh">
           <el-icon><Refresh /></el-icon> 刷新
@@ -193,33 +189,6 @@ async function confirmRecharge() {
   cursor: pointer;
 }
 .link-btn:hover { text-decoration: underline; }
-
-.raw-fold {
-  background: #f9fafb;
-  border: 1px dashed #e5e7eb;
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 12px;
-}
-.raw-fold summary {
-  cursor: pointer;
-  color: #6b7280;
-  user-select: none;
-}
-.raw {
-  font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
-  background: #fff;
-  padding: 8px 10px;
-  border-radius: 6px;
-  margin: 8px 0 4px;
-  white-space: pre-wrap;
-  word-break: break-all;
-  max-height: 200px;
-  overflow-y: auto;
-  color: #1f2937;
-}
-.raw-hint { font-size: 11px; color: #9ca3af; margin: 0; line-height: 1.5; }
 
 :global(.recharge-confirm) {
   color: #374151;

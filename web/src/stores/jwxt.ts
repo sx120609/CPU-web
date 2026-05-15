@@ -85,8 +85,8 @@ export const useJwxtStore = defineStore("jwxt", {
       } finally { this.loading = false; }
     },
     /** 尝试自动登录：用本地保存的账号悄悄走一遍代登录 */
-    async tryAutoLogin(): Promise<boolean> {
-      if (this.autoLoginTried) return false;
+    async tryAutoLogin(options?: { force?: boolean }): Promise<boolean> {
+      if (this.autoLoginTried && !options?.force) return false;
       this.autoLoginTried = true;
       if (this.active) return true;
       const creds = await loadCreds().catch(() => null);
