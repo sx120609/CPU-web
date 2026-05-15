@@ -1,7 +1,7 @@
 <template>
   <div class="layout-root">
     <!-- 顶栏 -->
-    <header class="topbar">
+    <header v-if="!hideChrome" class="topbar">
       <div class="topbar-inner">
         <router-link to="/home" class="brand">
           <span class="brand-logo">药</span>
@@ -79,7 +79,7 @@
     </header>
 
     <!-- disclaimer -->
-    <div class="disclaimer">
+    <div v-if="!hideChrome" class="disclaimer">
       <el-icon><WarningFilled /></el-icon>
       <span>
         药大垎坊为学生自发聚合站，<b>与中国药科大学官方无关</b>。
@@ -97,7 +97,7 @@
       </router-view>
     </main>
 
-    <footer class="footer">
+    <footer v-if="!hideChrome" class="footer">
       <span>© 2026 药大垎坊 · 校园互助与服务平台</span>
       <span class="dot">·</span>
       <a href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener">GitHub</a>
@@ -215,6 +215,9 @@ const router = useRouter();
 const route = useRoute();
 const q = ref("");
 const mobileMenuOpen = ref(false);
+
+/** 某些路由（如 /schedule）希望"裸壳"渲染，没有顶栏/免责声明/footer，仅保留 main + tabbar */
+const hideChrome = computed(() => Boolean(route.meta?.hideChrome));
 
 const desktopNavItems = computed(() => {
   const items: { to: string; label: string }[] = [];

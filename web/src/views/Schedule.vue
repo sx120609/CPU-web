@@ -29,10 +29,16 @@
         <el-icon><ArrowLeft /></el-icon>
         上一周
       </button>
-      <div class="week-title">
+      <button
+        type="button"
+        class="week-title"
+        :class="{ clickable: canJumpToCurrentWeek }"
+        :disabled="!canJumpToCurrentWeek"
+        @click="jumpToCurrentWeek"
+      >
         <b>第 {{ week || parsed?.currentWeek || "--" }} 周</b>
         <span v-if="currentWeekRange">{{ currentWeekRange }}</span>
-      </div>
+      </button>
       <button type="button" class="week-btn" :disabled="!canChangeWeek(1)" @click="changeWeek(1)">
         下一周
         <el-icon><ArrowRight /></el-icon>
@@ -80,7 +86,12 @@
       </el-button>
     </section>
 
-    <section v-else class="content" v-loading="loading && !parsed" @touchstart.passive="onTouchStart" @touchend.passive="onTouchEnd">
+    <section v-else class="content" v-loading="loading && !parsed"
+      @touchstart.passive="onTouchStart"
+      @touchmove.passive="onTouchMove"
+      @touchend.passive="onTouchEnd"
+      @touchcancel.passive="onTouchEnd"
+    >
       <div class="summary">
         <div>
           <span>第 {{ week || parsed?.currentWeek || "--" }} 周</span>
@@ -91,7 +102,11 @@
       </div>
 
       <transition :name="slideName" mode="out-in">
-        <div :key="activeDay" class="day-pane">
+        <div
+          :key="activeDay"
+          class="day-pane"
+          :style="paneStyle"
+        >
           <div v-if="dayCourses.length" class="course-list">
             <article v-for="item in dayCourses" :key="`${item.bigSlot}-${item.index}`" class="course-card" :style="{ '--accent': colorFor(item.course.name) }">
               <div class="time">
@@ -164,8 +179,6 @@ const CACHE_TTL = 12 * 60 * 60 * 1000;
 const CALENDAR_CACHE_KEY = "cpu-schedule-calendar-v1";
 const LAST_STATE_KEY = "cpu-schedule-last-state-v1";
 const LAST_CACHE_KEY = "cpu-schedule-last-cache-key-v1";
-let touchStartX = 0;
-let touchStartY = 0;
 
 onMounted(async () => {
   jwxt.hydrate();
@@ -196,8 +209,11 @@ const weeks = computed(() => parsed.value?.weeks ?? []);
 const currentWeekInfo = computed(() => calendar.value?.weeks.find((w) => w.week === Number(week.value)) ?? null);
 const currentWeekRange = computed(() => {
   const w = currentWeekInfo.value;
-  if (!w) return "";
-  return `${shortDate(w.monday)} - ${shortDate(w.sunday)}`;
+  if (!w || w.days.length < 7) return "";
+  // 服务端 sunday: days[0] 实际是周一前一天，不是末尾的周日；这里自己用周六+1天算
+  const monday = w.days[1];
+  const sunday = plusOneDay(w.days[6]);
+  return `${shortDate(monday)} - ${shortDate(sunday)}`;
 });
 const dayTabs = computed(() => {
   const labels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
@@ -229,6 +245,21 @@ const dayCourses = computed<FlatCourse[]>(() => {
 // 滑动切日时记录方向，给 transition 用不同动画
 const slideDirection = ref<"next" | "prev">("next");
 const slideName = computed(() => slideDirection.value === "next" ? "slide-left" : "slide-right");
+
+// 触摸拖动：dragOffset 给 day-pane 实时 translateX，让滑动跟手
+const dragOffset = ref(0);
+const dragging = ref(false); // 横向拖动已经锁定（避免与垂直滚动冲突）
+let touchStartX = 0;
+let touchStartY = 0;
+const SWIPE_THRESHOLD = 50; // 释放时横移超过这个 → 切日；否则弹回
+
+/** day-pane 的样式：拖动中 transform 跟手 + 关 transition；松手归零时启用 transition 让它平滑回弹 */
+const paneStyle = computed(() => {
+  if (dragging.value) {
+    return { transform: `translateX(${dragOffset.value}px)`, transition: "none" };
+  }
+  return { transform: "translateX(0)", transition: "transform 0.22s cubic-bezier(0.4, 0, 0.2, 1)" };
+});
 
 async function loadCalendar() {
   restoreCachedCalendar();
@@ -274,6 +305,21 @@ async function changeWeek(delta: number) {
   await loadSchedule(false);
 }
 
+const canJumpToCurrentWeek = computed(() => {
+  const cur = calendar.value?.currentWeek;
+  return Boolean(cur && String(cur) !== week.value);
+});
+
+async function jumpToCurrentWeek() {
+  const cur = calendar.value?.currentWeek;
+  if (!cur || String(cur) === week.value) return;
+  slideDirection.value = Number(week.value || cur) > cur ? "prev" : "next";
+  week.value = String(cur);
+  activeDay.value = dayOfWeek();
+  saveLastState();
+  await loadSchedule(false);
+}
+
 async function prevDay() {
   slideDirection.value = "prev";
   if (activeDay.value > 1) {
@@ -308,15 +354,41 @@ function onTouchStart(e: TouchEvent) {
   const t = e.changedTouches[0];
   touchStartX = t.clientX;
   touchStartY = t.clientY;
+  dragging.value = false;
+  dragOffset.value = 0;
 }
 
-function onTouchEnd(e: TouchEvent) {
+function onTouchMove(e: TouchEvent) {
   const t = e.changedTouches[0];
   const dx = t.clientX - touchStartX;
   const dy = t.clientY - touchStartY;
-  if (Math.abs(dx) < 54 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
-  if (dx < 0) void nextDay();
-  else void prevDay();
+  if (!dragging.value) {
+    // 还没锁横向意图：纵向移动就放弃（让浏览器滚动）；横向移动且明确才锁
+    if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) return; // 用户在上下滚
+    if (Math.abs(dx) < 8) return; // 还没动够，等
+    dragging.value = true;
+  }
+  // 横向跟随；适度阻尼让小拖动不显得太敏感
+  dragOffset.value = dx;
+}
+
+function onTouchEnd(e: TouchEvent) {
+  if (!dragging.value) {
+    dragOffset.value = 0;
+    return;
+  }
+  const t = e.changedTouches[0];
+  const dx = t.clientX - touchStartX;
+  dragging.value = false;
+  if (Math.abs(dx) >= SWIPE_THRESHOLD) {
+    // 触发切日；先把 offset 归零（vue transition 接管切日动画）
+    dragOffset.value = 0;
+    if (dx < 0) void nextDay();
+    else void prevDay();
+  } else {
+    // 弹回（transition 在 0 时启用，平滑回原位）
+    dragOffset.value = 0;
+  }
 }
 
 async function reloadCaptcha() {
@@ -579,6 +651,7 @@ h1 {
 .week-title {
   min-width: 0;
   height: 42px;
+  border: none;
   border-radius: 13px;
   background: #e8f6f3;
   color: #116b5f;
@@ -587,6 +660,21 @@ h1 {
   align-items: center;
   justify-content: center;
   gap: 1px;
+  padding: 0 10px;
+  font: inherit;
+  cursor: default;
+}
+.week-title.clickable {
+  cursor: pointer;
+  -webkit-tap-highlight-color: rgba(22, 135, 118, 0.18);
+  transition: background 0.15s;
+}
+.week-title.clickable:hover,
+.week-title.clickable:active {
+  background: #d3eee8;
+}
+.week-title:disabled {
+  cursor: default;
 }
 .week-title b {
   font-size: 15px;
