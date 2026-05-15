@@ -1,6 +1,6 @@
 <template>
   <div class="jwxt-page">
-    <div class="page-head">
+    <div class="page-head" :class="{ centered: !jwxt.isLoggedIn }">
       <h2>🎓 教务数据</h2>
       <p class="hint">
         通过学校统一认证授权读取教务数据，把课表、成绩和培养方案整理成更易查看的视图。
@@ -262,14 +262,33 @@ async function onProbe() {
 </script>
 
 <style scoped lang="scss">
-.jwxt-page { display: flex; flex-direction: column; gap: 16px; }
+.jwxt-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.page-head {
+  width: 100%;
+}
+
+.page-head.centered {
+  max-width: 760px;
+  margin: 0 auto;
+  text-align: center;
+}
+
 .page-head h2 { margin: 0; font-size: 22px; }
-.page-head .hint { font-size: 13px; color: #6b7280; margin: 4px 0 0; line-height: 1.7; }
+.page-head .hint { font-size: 13px; color: #6b7280; margin: 6px 0 0; line-height: 1.7; }
 .page-head .hint b { color: #b45309; }
 
 .cpu-card { background: #fff; border-radius: 12px; padding: 20px 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
 
-.login-card { max-width: 580px; }
+.login-card {
+  width: min(100%, 620px);
+  margin: 0 auto;
+  padding: 24px 28px;
+}
 
 .login-head { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
 .lock-icon {
