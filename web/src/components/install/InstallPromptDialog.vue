@@ -154,6 +154,16 @@ function openDialog() {
   open.value = true;
 }
 
+/** 父组件主动调用：用户点安装按钮时，安卓优先直接唤起系统安装面板 */
+async function requestInstall() {
+  if (isStandalone.value) return;
+  if (platform.value === "android" && deferredPrompt.value) {
+    await installNow();
+    return;
+  }
+  open.value = true;
+}
+
 /**
  * 父组件主动调用：自动提示。规则：
  *  - 已 standalone 不弹
@@ -179,7 +189,7 @@ function autoPromptIfEligible() {
 
 const canShow = computed(() => !isStandalone.value);
 
-defineExpose({ openDialog, autoPromptIfEligible, canShow, platform, isStandalone });
+defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platform, isStandalone });
 </script>
 
 <style scoped>
