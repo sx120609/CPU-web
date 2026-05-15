@@ -7,6 +7,9 @@
       width="420"
       class="in-app-tip-dialog"
       append-to-body
+      :close-on-click-modal="inAppReadSeconds <= 0"
+      :close-on-press-escape="inAppReadSeconds <= 0"
+      :show-close="inAppReadSeconds <= 0"
     >
       <div class="in-app-tip">
         <p>
@@ -20,20 +23,24 @@
         </p>
       </div>
       <template #footer>
-        <el-button type="primary" @click="dismissInAppTip">我知道了</el-button>
+        <el-button type="primary" :disabled="inAppReadSeconds > 0" @click="dismissInAppTip">
+          {{ inAppReadSeconds > 0 ? `请先阅读 ${inAppReadSeconds}s` : "我知道了" }}
+        </el-button>
       </template>
     </el-dialog>
   </el-config-provider>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import zhCn from "element-plus/es/locale/lang/zh-cn";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 
 const IN_APP_TIP_KEY = "cpu-in-app-browser-tip-dismissed-v1";
 const inAppTipOpen = ref(false);
 const inAppBrowserLabel = ref("微信 / QQ");
+const inAppReadSeconds = ref(0);
+let inAppReadTimer: number | null = null;
 
 onMounted(() => {
   const info = detectInAppBrowser();
@@ -47,13 +54,42 @@ onMounted(() => {
   inAppTipOpen.value = true;
 });
 
+watch(inAppTipOpen, (open) => {
+  if (open) startInAppReadTimer();
+  else clearInAppReadTimer();
+});
+
+onBeforeUnmount(() => {
+  clearInAppReadTimer();
+});
+
 function dismissInAppTip() {
+  if (inAppReadSeconds.value > 0) return;
   inAppTipOpen.value = false;
   try {
     localStorage.setItem(IN_APP_TIP_KEY, "1");
   } catch {
     /* ignore */
   }
+}
+
+function startInAppReadTimer() {
+  clearInAppReadTimer();
+  inAppReadSeconds.value = 3;
+  inAppReadTimer = window.setInterval(() => {
+    inAppReadSeconds.value -= 1;
+    if (inAppReadSeconds.value <= 0) {
+      clearInAppReadTimer();
+    }
+  }, 1000);
+}
+
+function clearInAppReadTimer() {
+  if (inAppReadTimer) {
+    window.clearInterval(inAppReadTimer);
+    inAppReadTimer = null;
+  }
+  if (!inAppTipOpen.value) inAppReadSeconds.value = 0;
 }
 </script>
 

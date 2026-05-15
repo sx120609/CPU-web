@@ -76,13 +76,15 @@
     </div>
     <template #footer>
       <el-button @click="rechargeConfirmOpen = false">取消</el-button>
-      <el-button type="primary" @click="openRecharge">继续前往充值</el-button>
+      <el-button type="primary" :disabled="rechargeReadSeconds > 0" @click="openRecharge">
+        {{ rechargeReadSeconds > 0 ? `请先阅读 ${rechargeReadSeconds}s` : "继续前往充值" }}
+      </el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { Loading, WarningFilled, Refresh } from "@element-plus/icons-vue";
 import { servicesApi, type DormElectricResult } from "@/api/services";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
@@ -96,10 +98,21 @@ const loading = ref(false);
 const error = ref("");
 const data = ref<DormElectricResult | null>(null);
 const rechargeConfirmOpen = ref(false);
+const rechargeReadSeconds = ref(0);
 const inAppBrowser = computed(() => detectInAppBrowser());
+let rechargeReadTimer: number | null = null;
 
 watch(() => props.modelValue, (v) => {
   if (v) refresh();
+});
+
+watch(rechargeConfirmOpen, (open) => {
+  if (open) startRechargeReadTimer();
+  else clearRechargeReadTimer();
+});
+
+onBeforeUnmount(() => {
+  clearRechargeReadTimer();
 });
 
 async function refresh() {
@@ -118,8 +131,28 @@ function confirmRecharge() {
 }
 
 function openRecharge() {
+  if (rechargeReadSeconds.value > 0) return;
   rechargeConfirmOpen.value = false;
   window.open(RECHARGE_URL, "_blank", "noopener,noreferrer");
+}
+
+function startRechargeReadTimer() {
+  clearRechargeReadTimer();
+  rechargeReadSeconds.value = 5;
+  rechargeReadTimer = window.setInterval(() => {
+    rechargeReadSeconds.value -= 1;
+    if (rechargeReadSeconds.value <= 0) {
+      clearRechargeReadTimer();
+    }
+  }, 1000);
+}
+
+function clearRechargeReadTimer() {
+  if (rechargeReadTimer) {
+    window.clearInterval(rechargeReadTimer);
+    rechargeReadTimer = null;
+  }
+  if (!rechargeConfirmOpen.value) rechargeReadSeconds.value = 0;
 }
 </script>
 
