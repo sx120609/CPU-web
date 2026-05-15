@@ -84,6 +84,7 @@
 <script setup lang="ts">
 import { ref, computed, onBeforeUnmount, onMounted } from "vue";
 import { Refresh, Search } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
 import { jwxtApi } from "@/api/jwxt";
 
 interface IServiceApp {
@@ -197,9 +198,22 @@ function onIconError(e: Event) {
   img.style.display = "none";
 }
 
-function openApp(a: IServiceApp) {
+async function openApp(a: IServiceApp) {
   if (!a.url) return;
-  window.open(a.url, "_blank", "noopener");
+  const win = window.open("about:blank", "_blank");
+  try {
+    const r = await jwxtApi.launchUrl(a.url);
+    if (win) {
+      win.opener = null;
+      win.location.href = r.url;
+    } else {
+      window.open(r.url, "_blank", "noopener");
+    }
+  } catch {
+    if (win) win.close();
+    ElMessage.warning("免登录跳转暂不可用，已打开学校原始服务地址");
+    window.open(a.url, "_blank", "noopener");
+  }
 }
 </script>
 

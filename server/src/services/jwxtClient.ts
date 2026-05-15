@@ -361,6 +361,53 @@ export async function fetchAnyCpu(token: string, url: string, opts?: { allowSso?
   return res.text();
 }
 
+function isCpuHost(host: string) {
+  const lower = host.toLowerCase();
+  return lower === "cpu.edu.cn" || lower.endsWith(".cpu.edu.cn");
+}
+
+/**
+ * 为浏览器生成一次性的学校 SSO 跳转地址。
+ * 后端只使用内存中的 CAS cookie 向 id.cpu.edu.cn 申请 ticket，不访问最终 service，
+ * 避免把 ticket 在服务端消费掉，浏览器打开后由学校系统写入自己的登录态。
+ */
+export async function createIServiceLaunchUrl(token: string, targetUrl: string): Promise<string> {
+  const sess = getSession(token);
+  if (!sess) throw Errors.unauthorized("教务会话已失效，请重新登录");
+
+  let target: URL;
+  try {
+    target = new URL(targetUrl);
+  } catch {
+    throw Errors.badRequest("服务地址无效");
+  }
+  if (!["http:", "https:"].includes(target.protocol) || !isCpuHost(target.host) || target.host === "id.cpu.edu.cn") {
+    throw Errors.badRequest("仅支持跳转到学校官方服务");
+  }
+
+  const ssoUrl = new URL("https://id.cpu.edu.cn/sso/login");
+  ssoUrl.searchParams.set("service", target.toString());
+
+  let current = ssoUrl.toString();
+  for (let i = 0; i < 8; i++) {
+    const res = await fetchWithJar(sess.jar, current, {
+      headers: { Referer: "https://id.cpu.edu.cn/" },
+    });
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get("location");
+      if (!loc) break;
+      const next = new URL(loc, current);
+      if (!isCpuHost(next.host)) throw Errors.badRequest("学校 SSO 返回了非官方服务地址");
+      if (next.host !== "id.cpu.edu.cn") return next.toString();
+      current = next.toString();
+      continue;
+    }
+    break;
+  }
+
+  throw Errors.unauthorized("学校统一认证会话已失效，请重新授权后再打开服务");
+}
+
 // ============ i.cpu.edu.cn 融合门户（sudy/sopplus 平台）============
 
 export interface IServiceApp {

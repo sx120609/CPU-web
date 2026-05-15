@@ -102,6 +102,7 @@ export const jwxtApi = {
   pyfa: () => inst.get<unknown, { parsed: any }>("/pyfa"),
   calendar: () => inst.get<unknown, { parsed: any }>("/calendar"),
   iapps: () => inst.get<unknown, { apps: any[] }>("/iapps"),
+  launchUrl: (url: string) => inst.get<unknown, { url: string }>("/launch-url", { params: { url } }),
   textbook: () => inst.get<unknown, { parsed: any }>("/textbook"),
   debugSnapshot: () => inst.post<unknown, { saved: string[]; errors: string[] }>("/debug/snapshot"),
   probe: (path: string) => inst.get<unknown, { html: string }>("/probe", { params: { path } }),
