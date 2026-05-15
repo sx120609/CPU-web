@@ -38,14 +38,17 @@
       <!-- 板块特化 metadata -->
       <div v-if="topic.metadata?.sourceUrl" class="source-bar" :class="{ wechat: topic.metadata?.externalType === 'wechat' }">
         <span class="src-icon">{{ topic.metadata?.externalType === 'wechat' ? '💬' : '📢' }}</span>
-        <span class="src-text">
-          <template v-if="topic.metadata?.externalType === 'wechat'">
-            原文发布于 <b>微信公众号</b> · {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
-          </template>
-          <template v-else>
-            来自 <b>{{ topic.metadata.sourceName || topic.board?.name }}</b>
-            · 发布于 {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
-          </template>
+        <span class="src-text-wrap">
+          <span class="src-text">
+            <template v-if="topic.metadata?.externalType === 'wechat'">
+              原文发布于 <b>微信公众号</b> · {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
+            </template>
+            <template v-else>
+              来自 <b>{{ topic.metadata.sourceName || topic.board?.name }}</b>
+              · 发布于 {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
+            </template>
+          </span>
+          <span v-if="sourceNotice" class="src-notice">{{ sourceNotice }}</span>
         </span>
         <a :href="topic.metadata.sourceUrl" target="_blank" class="src-link">
           <el-icon><Link /></el-icon>
@@ -63,7 +66,7 @@
         <span v-if="topic.metadata.tradeMode">🤝 {{ topic.metadata.tradeMode }}</span>
       </div>
 
-      <MarkdownView :content="topic.content" class="post-body" />
+      <MarkdownView :content="displayContent" class="post-body" />
 
       <footer class="post-foot">
         <el-button :type="liked ? 'primary' : 'default'" :icon="Star" @click="onLike">
@@ -140,6 +143,22 @@ const metaPrice = computed(() => topic.value?.metadata?.price);
 const isReadOnly = computed(() => topic.value?.board?.readOnly);
 const canEdit = computed(() => auth.user?.id === topic.value?.authorId || auth.isAdmin);
 const canPin = computed(() => auth.isMod);
+const displayContent = computed(() => {
+  const content = topic.value?.content ?? "";
+  if (!topic.value?.metadata?.sourceUrl) return content;
+  return stripCrawlerSourceHeader(content);
+});
+const sourceNotice = computed(() => {
+  if (!topic.value?.metadata?.sourceUrl) return "";
+  if (topic.value?.metadata?.externalType === "wechat") {
+    return "微信文章可能无法在站内完整展示，建议前往微信阅读全文。";
+  }
+  const compact = displayContent.value.replace(/\s/g, "");
+  if (!compact || /未能提取正文|正文为微信公众号文章/.test(displayContent.value)) {
+    return "如果正文为空、排版异常或无法查看正常内容，建议前往学校原站查看。";
+  }
+  return "如遇正文缺失、附件打不开或排版异常，可前往学校原站查看。";
+});
 
 onMounted(async () => { await load(); });
 
@@ -199,6 +218,13 @@ async function submitReply() {
 
 function scrollToReply() {
   repliesEl.value?.scrollIntoView({ behavior: "smooth", block: "end" });
+}
+
+function stripCrawlerSourceHeader(content: string) {
+  return content.replace(
+    /^>\s*📢\s+\*\*.*?\*\*\s*·\s*发布于\s*\d{4}-\d{2}-\d{2}\s*\n>\s*\n>\s*🔗\s*\[.*?\]\([^)]+\)\s*\n\s*---\s*\n+/s,
+    ""
+  ).trim();
 }
 
 function onEdit() {
@@ -305,8 +331,22 @@ async function onDelete() {
   .source-bar.wechat .src-link:hover { background: #dcfce7; }
   .source-bar.wechat .src-text b { color: #15803d; }
   .src-icon { font-size: 18px; }
-  .src-text { flex: 1; }
+  .src-text-wrap {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .src-text { display: block; }
   .src-text b { color: #b45309; }
+  .src-notice {
+    display: block;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #a16207;
+  }
+  .source-bar.wechat .src-notice { color: #15803d; }
   .src-link {
     background: #fff;
     color: #b45309 !important;

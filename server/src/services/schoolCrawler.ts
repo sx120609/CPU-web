@@ -190,10 +190,7 @@ async function runOnce(sourceId: number, opts: { dryRun?: boolean } = {}) {
         const detail = await fetchDetail(it.url);
         const realUrl = detail.effectiveUrl;
         const isExt = detail.isExternal;
-        const srcLabel = isExt ? "微信公众号文章" : source.name;
-        const linkLabel = isExt ? "👉 前往微信公众号阅读全文" : "👉 点击查看学校原文";
-        const header = `> 📢 **${srcLabel}** · 发布于 ${it.publishedAt.toISOString().slice(0, 10)}\n>\n> 🔗 [${linkLabel}](${realUrl})\n\n---\n\n`;
-        const fullContent = header + (detail.content || "_未能提取正文，请点击上方链接查看_");
+        const fullContent = detail.content || "_未能提取正文，请点击帖子顶部原文入口查看_";
 
         // 创建 Topic（机器人发帖）
         const topic = await prisma.topic.create({
