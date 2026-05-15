@@ -9,12 +9,14 @@
     <div v-if="loading" class="loading">
       <el-icon class="is-loading" :size="32"><Loading /></el-icon>
       <p>正在向校园侧查询…</p>
+      <p class="sub-hint">需要校内网络才能拉到数据，首次查询约 3-6 秒</p>
     </div>
 
     <div v-else-if="error" class="error">
       <el-icon :size="32" color="#dc2626"><WarningFilled /></el-icon>
       <p class="msg">{{ error }}</p>
-      <p class="hint">校园电费接口仅在校园网内可达。如果你正使用校园 VPN，确认 VPN 已连接。</p>
+      <p class="hint">校园电费接口只在校园网内可达。如果你在校外，可以连校园 VPN 后再试。<br/>
+      （站点服务器需要也在校园网或能 VPN 到校园网，本功能才会工作。）</p>
       <el-button @click="refresh">重试</el-button>
     </div>
 
@@ -22,7 +24,7 @@
       <div class="balance-row">
         <span class="lbl">剩余电费</span>
         <span class="num" :class="{ low: (data.balance ?? 0) < 10 }">
-          ¥{{ data.balance?.toFixed(2) ?? "—" }}
+          {{ data.balance !== null ? `¥${data.balance.toFixed(2)}` : "—" }}
         </span>
       </div>
       <div class="kv">
@@ -30,10 +32,18 @@
         <div v-if="data.room"><span>房间</span><span>{{ data.room }}</span></div>
         <div v-if="data.lastUpdate"><span>更新</span><span>{{ data.lastUpdate }}</span></div>
       </div>
-      <div v-if="(data.balance ?? 100) < 10" class="warn">
+      <div v-if="(data.balance ?? 100) < 10 && data.balance !== null" class="warn">
         <el-icon><WarningFilled /></el-icon>
         余额不足，建议尽快充值。可通过融合门户「电费充值」办理。
       </div>
+      <details v-if="data.raw" class="raw-fold">
+        <summary>📦 显示原始响应（调试用）</summary>
+        <pre class="raw">{{ JSON.stringify(data.raw, null, 2) }}</pre>
+        <p class="raw-hint">
+          如果上方"剩余电费"等字段显示 — 或不准，说明字段映射没匹配上。
+          把这段 JSON 贴给开发者，可以校准字段名。
+        </p>
+      </details>
       <div class="actions">
         <el-button text @click="refresh">
           <el-icon><Refresh /></el-icon> 刷新
@@ -82,6 +92,7 @@ async function refresh() {
   text-align: center;
 }
 .loading p { margin: 0; font-size: 13px; color: #6b7280; }
+.loading .sub-hint { font-size: 11px; color: #9ca3af; }
 .is-loading { animation: spin 1.2s linear infinite; color: var(--cpu-primary); }
 @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
 
@@ -138,4 +149,31 @@ async function refresh() {
   font-size: 13px;
 }
 .link-btn:hover { text-decoration: underline; }
+
+.raw-fold {
+  background: #f9fafb;
+  border: 1px dashed #e5e7eb;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.raw-fold summary {
+  cursor: pointer;
+  color: #6b7280;
+  user-select: none;
+}
+.raw {
+  font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  background: #fff;
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin: 8px 0 4px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+  color: #1f2937;
+}
+.raw-hint { font-size: 11px; color: #9ca3af; margin: 0; line-height: 1.5; }
 </style>
