@@ -1,7 +1,26 @@
 import { createRouter, createWebHistory } from "vue-router";
+import { ElMessage } from "element-plus";
 import { useAuthStore } from "@/stores/auth";
+import { useSiteStore } from "@/stores/site";
+import type { FeatureKey } from "@/api/site";
 
 const MainLayout = () => import("@/layouts/MainLayout.vue");
+
+/**
+ * 受功能开关控制的路由名 → feature key。
+ * 当 admin 关闭该 feature 时，未登录或非 admin 用户访问会被重定向到 /home。
+ * admin / mod 始终能进入这些页面，便于在关闭期间巡查内容。
+ */
+const FEATURE_GATED: Record<string, FeatureKey> = {
+  forum: "forum",
+  board: "forum",
+  topic: "forum",
+  post: "forum",
+  "edit-post": "forum",
+  market: "market",
+  coursereview: "coursereview",
+  course: "coursereview",
+};
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -45,10 +64,21 @@ export const router = createRouter({
 
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
+  const site = useSiteStore();
   if (to.meta.title) document.title = `${to.meta.title} · 药大垎坊`;
+
+  // 功能开关 gate：admin / mod 不受限（便于在关闭期间巡查）
+  const featureName = to.name ? FEATURE_GATED[String(to.name)] : undefined;
+  if (featureName && !site.features[featureName]) {
+    const isStaff = auth.user?.role === "admin" || auth.user?.role === "mod";
+    if (!isStaff) {
+      ElMessage.info("该功能当前不可用");
+      return { name: "home" };
+    }
+  }
+
   // 公开页：游客也能看
   if (to.meta.public) {
-    // 但若已登录，主动恢复用户信息
     if (auth.token && !auth.user) auth.fetchMe();
     return true;
   }

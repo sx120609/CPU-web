@@ -30,6 +30,7 @@ async function clean() {
   await prisma.course.deleteMany();
   await prisma.serviceCard.deleteMany();
   await prisma.user.deleteMany();
+  await prisma.siteSetting.deleteMany();
 }
 
 async function main() {
@@ -406,6 +407,16 @@ async function main() {
       { userId: alice.id, category: "reply", level: "normal", title: "有人回复了你的帖子", content: "@夜归人 回复了「欢迎来到药大垎坊」", link: `/forum/topic/${t1.id}`, source: "论坛" },
       { userId: null, category: "system", level: "weak", title: "「药大垎坊」上线公测", content: "欢迎试用！本站为民间学生站，与学校官方无关。", source: "站务组" },
       { userId: null, category: "system", level: "normal", title: "版规公示", content: "请理性发言、不传播敏感内容、不发布违法信息。", source: "站务组" },
+    ],
+  });
+
+  // 站点功能开关：默认全开，admin 可在管理后台一键关闭
+  console.log("⚙️  初始化功能开关...");
+  await prisma.siteSetting.createMany({
+    data: [
+      { key: "feature.forum",        value: "on" },
+      { key: "feature.market",       value: "on" },
+      { key: "feature.coursereview", value: "on" },
     ],
   });
 

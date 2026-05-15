@@ -6,11 +6,14 @@
         <h1>药大垎坊</h1>
         <p>校园讨论、课程点评、二手交易、公告聚合与常用校园服务，给药大学生一个更顺手的信息入口。</p>
         <div class="hero-actions">
-          <el-button type="primary" size="large" @click="$router.push('/forum')">
+          <el-button v-if="site.features.forum" type="primary" size="large" @click="$router.push('/forum')">
             <el-icon><ChatLineRound /></el-icon> 进入论坛
           </el-button>
+          <el-button v-else type="primary" size="large" @click="$router.push('/services')">
+            <el-icon><ChatLineRound /></el-icon> 校园服务
+          </el-button>
           <el-button v-if="!auth.isLoggedIn" size="large" @click="$router.push('/login')">登录参与</el-button>
-          <el-button v-else size="large" @click="$router.push('/post')">
+          <el-button v-else-if="site.features.forum" size="large" @click="$router.push('/post')">
             <el-icon><Edit /></el-icon> 发布内容
           </el-button>
         </div>
@@ -33,7 +36,7 @@
 
     <div class="grid">
       <!-- 左：热帖 + 最新 -->
-      <div class="col-left">
+      <div class="col-left" v-if="site.features.forum">
         <section class="block">
           <div class="block-head">
             <h3>🔥 热议</h3>
@@ -96,9 +99,11 @@ import { ChatLineRound, Edit } from "@element-plus/icons-vue";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import { homeApi, type HomeSummary } from "@/api/home";
 import { useAuthStore } from "@/stores/auth";
+import { useSiteStore } from "@/stores/site";
 import { fmtRelative } from "@/utils/format";
 
 const auth = useAuthStore();
+const site = useSiteStore();
 const summary = ref<HomeSummary | null>(null);
 
 onMounted(async () => {

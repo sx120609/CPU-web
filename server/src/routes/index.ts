@@ -13,6 +13,7 @@ import { messageRouter } from "./message";
 import { searchRouter } from "./search";
 import { jwxtRouter } from "./jwxt";
 import { adminRouter } from "./admin";
+import { siteRouter } from "./site";
 
 export const router = Router();
 
@@ -25,6 +26,7 @@ router.use("/services", servicesRouter);
 router.use("/courses", courseRouter);
 router.use("/search", searchRouter);
 router.use("/home", homeRouter);
+router.use("/site", siteRouter);
 
 // 教务代登录：begin-login / login 公开，其余 handler 内部验 token
 router.use("/jwxt", jwxtRouter);

@@ -6,6 +6,7 @@ import { Errors, ok } from "../../utils/response";
 import { adminOnly, modOrAbove } from "../../middleware/admin";
 import { validate } from "../../middleware/validate";
 import { runAllOnce } from "../../services/schoolCrawler";
+import { getFeatures, setFeature, ALL_FEATURES, type FeatureKey } from "../../services/siteSettings";
 
 export const adminRouter = Router();
 
@@ -303,5 +304,28 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       prisma.board.count(),
     ]);
     ok(res, { users, banned, topics, hiddenTopics, replies, todayTopics, feeds, boards });
+  } catch (e) { next(e); }
+});
+
+// ============ 站点功能开关 ============
+
+adminRouter.get("/features", adminOnly, (_req, res) => {
+  ok(res, getFeatures());
+});
+
+const featurePatchSchema = z.object({
+  forum: z.boolean().optional(),
+  market: z.boolean().optional(),
+  coursereview: z.boolean().optional(),
+});
+
+adminRouter.patch("/features", adminOnly, validate(featurePatchSchema), async (req, res, next) => {
+  try {
+    for (const f of ALL_FEATURES) {
+      if (typeof req.body[f] === "boolean") {
+        await setFeature(f as FeatureKey, req.body[f]);
+      }
+    }
+    ok(res, getFeatures());
   } catch (e) { next(e); }
 });

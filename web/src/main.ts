@@ -3,6 +3,7 @@ import { createPinia } from "pinia";
 import App from "./App.vue";
 import { router } from "./router";
 import { useAuthStore } from "./stores/auth";
+import { useSiteStore } from "./stores/site";
 
 import "element-plus/dist/index.css";
 import "./styles/index.scss";
@@ -60,5 +61,7 @@ installMessagePositionGuard();
 const app = createApp(App);
 app.use(createPinia());
 useAuthStore().hydrate();
+// 站点功能开关：尽早拉一次，不阻塞挂载（导航默认乐观显示，拿到结果后自动收敛）
+useSiteStore().fetch();
 app.use(router);
 app.mount("#app");

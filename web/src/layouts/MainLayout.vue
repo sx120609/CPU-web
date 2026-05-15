@@ -206,39 +206,51 @@ import {
 } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
+import { useSiteStore } from "@/stores/site";
 
 const auth = useAuthStore();
 const msg = useMessageStore();
+const site = useSiteStore();
 const router = useRouter();
 const route = useRoute();
 const q = ref("");
 const mobileMenuOpen = ref(false);
 
-const desktopNavItems = [
-  { to: "/home", label: "首页" },
-  { to: "/forum", label: "论坛" },
-  { to: "/jwxt", label: "教务数据" },
-  { to: "/coursereview", label: "课评" },
-  { to: "/market", label: "二手" },
-  { to: "/services", label: "校园服务" },
-];
+const desktopNavItems = computed(() => {
+  const items: { to: string; label: string }[] = [];
+  items.push({ to: "/home", label: "首页" });
+  if (site.features.forum) items.push({ to: "/forum", label: "论坛" });
+  items.push({ to: "/jwxt", label: "教务数据" });
+  if (site.features.coursereview) items.push({ to: "/coursereview", label: "课评" });
+  if (site.features.market) items.push({ to: "/market", label: "二手" });
+  items.push({ to: "/services", label: "校园服务" });
+  return items;
+});
 
-const mobileNavItems = [
-  { to: "/home", label: "首页", icon: House, match: ["/home"] },
-  { to: "/forum", label: "论坛", icon: ChatLineRound, match: ["/forum"] },
-  { to: "/jwxt", label: "教务", icon: Calendar, match: ["/jwxt"] },
-  { to: "/services", label: "服务", icon: Service, match: ["/services"] },
-  { to: "/profile", label: "我的", icon: UserFilled, match: ["/profile", "/messages", "/u/"], auth: true },
-];
+const mobileNavItems = computed(() => {
+  // 5 个位置：首页 + 服务 + 我的 是固定锚点；中间两个按开关填
+  const items: { to: string; label: string; icon: any; match: string[]; auth?: boolean }[] = [
+    { to: "/home", label: "首页", icon: House, match: ["/home"] },
+  ];
+  if (site.features.forum) {
+    items.push({ to: "/forum", label: "论坛", icon: ChatLineRound, match: ["/forum"] });
+  }
+  items.push({ to: "/jwxt", label: "教务", icon: Calendar, match: ["/jwxt"] });
+  items.push({ to: "/services", label: "服务", icon: Service, match: ["/services"] });
+  items.push({ to: "/profile", label: "我的", icon: UserFilled, match: ["/profile", "/messages", "/u/"], auth: true });
+  return items;
+});
 
-const drawerItems = [
-  { to: "/post", label: "发帖", icon: Edit },
-  { to: "/messages", label: "消息", icon: Message },
-  { to: "/coursereview", label: "课评", icon: Reading },
-  { to: "/market", label: "二手市场", icon: Goods },
-  { to: "/services", label: "校园服务", icon: Service },
-  { to: "/search", label: "搜索", icon: Search },
-];
+const drawerItems = computed(() => {
+  const items: { to: string; label: string; icon: any }[] = [];
+  if (site.features.forum) items.push({ to: "/post", label: "发帖", icon: Edit });
+  items.push({ to: "/messages", label: "消息", icon: Message });
+  if (site.features.coursereview) items.push({ to: "/coursereview", label: "课评", icon: Reading });
+  if (site.features.market) items.push({ to: "/market", label: "二手市场", icon: Goods });
+  items.push({ to: "/services", label: "校园服务", icon: Service });
+  items.push({ to: "/search", label: "搜索", icon: Search });
+  return items;
+});
 
 // 首次登录设昵称
 const showNicknameDialog = ref(false);

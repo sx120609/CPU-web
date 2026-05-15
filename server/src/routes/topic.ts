@@ -4,6 +4,7 @@ import { prisma } from "../prisma";
 import { Errors, ok } from "../utils/response";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
+import { isFeatureOn } from "../services/siteSettings";
 
 export const topicRouter = Router();
 
@@ -85,6 +86,17 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     if (!board) throw Errors.notFound("板块不存在");
     if (board.readOnly && req.user!.role !== "bot" && req.user!.role !== "admin") {
       throw Errors.forbidden("该板块为只读公告板，禁止发帖");
+    }
+    // 功能开关：admin 可一键关闭论坛 / 二手 / 课评 整块功能
+    // type=announce 由系统/爬虫机器人发，不受用户开关约束
+    if (board.type !== "announce" && req.user!.role !== "admin") {
+      const featureKey =
+        board.type === "market" ? "market" :
+        board.type === "coursereview" ? "coursereview" :
+        "forum";
+      if (!isFeatureOn(featureKey)) {
+        throw Errors.forbidden("该板块当前不可发帖，已被站方临时关闭");
+      }
     }
 
     const now = new Date();

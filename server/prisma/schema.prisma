@@ -359,3 +359,16 @@ model MessageSetting {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+// ============ 站点功能开关 ============
+// KV 风格存储。当前用法：
+//   feature.forum         = 'on' | 'off'  控制论坛通用板块（包括 /forum 入口、发帖）
+//   feature.market        = 'on' | 'off'  控制二手市场
+//   feature.coursereview  = 'on' | 'off'  控制课程点评
+// 出于"言论敏感时一键下架"的考虑，admin 可在管理后台随时切换。
+model SiteSetting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
