@@ -16,15 +16,30 @@
     </header>
 
     <section v-if="jwxt.isLoggedIn" class="toolbar">
-      <el-select v-model="semester" size="large" placeholder="学期" @change="loadSchedule(true)">
+      <el-select v-model="semester" size="large" placeholder="学期" @change="loadSchedule(false)">
         <el-option v-for="s in semesters" :key="s.value" :value="s.value" :label="s.label" />
       </el-select>
-      <el-select v-model="week" size="large" placeholder="周次" @change="loadSchedule(true)">
+      <el-select v-model="week" size="large" placeholder="周次" @change="loadSchedule(false)">
         <el-option v-for="w in weeks" :key="w.value" :value="w.value" :label="w.label" />
       </el-select>
     </section>
 
-    <section v-if="jwxt.isLoggedIn && currentWeekInfo" class="week-strip">
+    <section v-if="jwxt.isLoggedIn" class="week-switcher">
+      <button type="button" class="week-btn" :disabled="!canChangeWeek(-1)" @click="changeWeek(-1)">
+        <el-icon><ArrowLeft /></el-icon>
+        上一周
+      </button>
+      <div class="week-title">
+        <b>第 {{ week || parsed?.currentWeek || "--" }} 周</b>
+        <span v-if="currentWeekRange">{{ currentWeekRange }}</span>
+      </div>
+      <button type="button" class="week-btn" :disabled="!canChangeWeek(1)" @click="changeWeek(1)">
+        下一周
+        <el-icon><ArrowRight /></el-icon>
+      </button>
+    </section>
+
+    <section v-if="jwxt.isLoggedIn" class="week-strip">
       <button
         v-for="d in dayTabs"
         :key="d.day"
@@ -65,11 +80,12 @@
       </el-button>
     </section>
 
-    <section v-else class="content" v-loading="loading">
+    <section v-else class="content" v-loading="loading" @touchstart.passive="onTouchStart" @touchend.passive="onTouchEnd">
       <div class="summary">
         <div>
           <span>第 {{ week || parsed?.currentWeek || "--" }} 周</span>
           <b>{{ activeDayLabel }}</b>
+          <small v-if="cacheText">{{ cacheText }}</small>
         </div>
         <em>{{ dayCourses.length }} 节课</em>
       </div>
@@ -106,7 +122,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { House, Loading, Lock, Location, Moon, Picture, Refresh, User } from "@element-plus/icons-vue";
+import { ArrowLeft, ArrowRight, House, Loading, Lock, Location, Moon, Picture, Refresh, User } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
@@ -130,6 +146,8 @@ interface ScheduleResult {
 interface CalendarWeek { week: number; days: string[]; monday: string; sunday: string }
 interface CalendarResult { currentWeek: number; semesterStart: string; semesterEnd: string; weeks: CalendarWeek[] }
 interface FlatCourse { bigSlot: number; index: number; course: ScheduleCourse }
+interface CacheEnvelope<T> { savedAt: number; data: T }
+interface LastState { semester: string; week: string; activeDay: number }
 
 const jwxt = useJwxtStore();
 const parsed = ref<ScheduleResult | null>(null);
@@ -143,6 +161,13 @@ const hasCreds = ref(false);
 const captchaInput = ref("");
 const captchaSubmitting = ref(false);
 const captchaError = ref("");
+const scheduleSavedAt = ref(0);
+const CACHE_TTL = 12 * 60 * 60 * 1000;
+const CALENDAR_CACHE_KEY = "cpu-schedule-calendar-v1";
+const LAST_STATE_KEY = "cpu-schedule-last-state-v1";
+const LAST_CACHE_KEY = "cpu-schedule-last-cache-key-v1";
+let touchStartX = 0;
+let touchStartY = 0;
 
 onMounted(async () => {
   jwxt.hydrate();
@@ -154,6 +179,9 @@ onMounted(async () => {
     finally { autoLoading.value = false; }
   }
   if (jwxt.isLoggedIn) {
+    restoreLastState();
+    restoreCachedCalendar();
+    restoreLastScheduleCache();
     await loadCalendar();
     await loadSchedule();
   }
@@ -162,6 +190,11 @@ onMounted(async () => {
 const semesters = computed(() => parsed.value?.semesters ?? []);
 const weeks = computed(() => parsed.value?.weeks ?? []);
 const currentWeekInfo = computed(() => calendar.value?.weeks.find((w) => w.week === Number(week.value)) ?? null);
+const currentWeekRange = computed(() => {
+  const w = currentWeekInfo.value;
+  if (!w) return "";
+  return `${shortDate(w.monday)} - ${shortDate(w.sunday)}`;
+});
 const dayTabs = computed(() => {
   const labels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
   const days = currentWeekInfo.value ? [...currentWeekInfo.value.days.slice(1), currentWeekInfo.value.days[0]] : [];
@@ -174,6 +207,7 @@ const dayTabs = computed(() => {
   }));
 });
 const activeDayLabel = computed(() => dayTabs.value.find((d) => d.day === activeDay.value)?.label ?? "今日");
+const cacheText = computed(() => scheduleSavedAt.value ? `本地缓存 ${formatCacheTime(scheduleSavedAt.value)}` : "");
 const dayCourses = computed<FlatCourse[]>(() => {
   const list: FlatCourse[] = [];
   for (const cell of parsed.value?.cells ?? []) {
@@ -190,24 +224,84 @@ const nextCourse = computed(() => {
 });
 
 async function loadCalendar() {
+  restoreCachedCalendar();
   try {
     const r: any = await jwxtApi.calendar();
     calendar.value = r.parsed;
+    writeCache(CALENDAR_CACHE_KEY, calendar.value);
     if (calendar.value?.currentWeek && !week.value) week.value = String(calendar.value.currentWeek);
   } catch { /* calendar is best effort */ }
 }
 
 async function loadSchedule(force = false) {
   if (!jwxt.isLoggedIn || (loading.value && !force)) return;
-  loading.value = true;
+  const hadCache = !force && restoreScheduleCache();
+  if (hadCache) {
+    saveLastState();
+    if (!isStale(scheduleSavedAt.value)) return;
+  }
+  loading.value = !parsed.value || force || !hadCache;
   try {
     const r: any = await jwxtApi.schedule({ semester: semester.value, week: week.value });
     parsed.value = r.parsed;
     if (!semester.value) semester.value = parsed.value?.currentSemester ?? "";
     if (!week.value) week.value = String(calendar.value?.currentWeek || parsed.value?.currentWeek || "");
+    scheduleSavedAt.value = Date.now();
+    saveScheduleCache();
+    saveLastState();
   } finally {
     loading.value = false;
   }
+}
+
+function canChangeWeek(delta: number) {
+  const next = nextWeekValue(delta);
+  return Boolean(next && next !== week.value);
+}
+
+async function changeWeek(delta: number) {
+  const next = nextWeekValue(delta);
+  if (!next) return;
+  week.value = next;
+  saveLastState();
+  await loadSchedule(false);
+}
+
+async function prevDay() {
+  if (activeDay.value > 1) {
+    activeDay.value -= 1;
+    saveLastState();
+    return;
+  }
+  if (!canChangeWeek(-1)) return;
+  activeDay.value = 7;
+  await changeWeek(-1);
+}
+
+async function nextDay() {
+  if (activeDay.value < 7) {
+    activeDay.value += 1;
+    saveLastState();
+    return;
+  }
+  if (!canChangeWeek(1)) return;
+  activeDay.value = 1;
+  await changeWeek(1);
+}
+
+function onTouchStart(e: TouchEvent) {
+  const t = e.changedTouches[0];
+  touchStartX = t.clientX;
+  touchStartY = t.clientY;
+}
+
+function onTouchEnd(e: TouchEvent) {
+  const t = e.changedTouches[0];
+  const dx = t.clientX - touchStartX;
+  const dy = t.clientY - touchStartY;
+  if (Math.abs(dx) < 54 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+  if (dx < 0) void nextDay();
+  else void prevDay();
 }
 
 async function reloadCaptcha() {
@@ -236,6 +330,9 @@ async function submitCaptcha() {
       return;
     }
     ElMessage.success("授权成功");
+    restoreLastState();
+    restoreCachedCalendar();
+    restoreLastScheduleCache();
     await loadCalendar();
     await loadSchedule(true);
   } finally {
@@ -261,6 +358,24 @@ function shortDate(value: string) {
   return m ? `${m[1]}/${m[2]}` : "";
 }
 
+function formatCacheTime(ts: number) {
+  const d = new Date(ts);
+  const h = String(d.getHours()).padStart(2, "0");
+  const m = String(d.getMinutes()).padStart(2, "0");
+  return `${h}:${m}`;
+}
+
+function nextWeekValue(delta: number) {
+  const values = weeks.value.map((w) => String(w.value)).filter(Boolean);
+  const current = week.value || String(calendar.value?.currentWeek || parsed.value?.currentWeek || "");
+  const index = values.indexOf(current);
+  if (index >= 0) return values[index + delta] || "";
+  const next = Number(current) + delta;
+  if (!Number.isFinite(next) || next < 1) return "";
+  if (calendar.value?.weeks.length && next > calendar.value.weeks.length) return "";
+  return String(next);
+}
+
 function bigSlotTime(slot: number) {
   return ["08:00-09:35", "10:00-11:35", "13:30-15:05", "15:25-17:00", "18:30-20:05"][slot - 1] ?? "";
 }
@@ -274,6 +389,98 @@ function colorFor(name: string) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
   return colors[h % colors.length];
+}
+
+function scheduleCacheKey(sem = semester.value, wk = week.value) {
+  const s = sem || parsed.value?.currentSemester || "current";
+  const w = wk || calendar.value?.currentWeek || parsed.value?.currentWeek || "current";
+  return `cpu-schedule-cache-v1:${s}:${w}`;
+}
+
+function readCache<T>(key: string): CacheEnvelope<T> | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsedValue = JSON.parse(raw);
+    if (!parsedValue || typeof parsedValue.savedAt !== "number") return null;
+    return parsedValue as CacheEnvelope<T>;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache<T>(key: string, data: T) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), data }));
+  } catch {
+    /* ignore */
+  }
+}
+
+function isStale(savedAt: number) {
+  return !savedAt || Date.now() - savedAt > CACHE_TTL;
+}
+
+function restoreCachedCalendar() {
+  const cached = readCache<CalendarResult>(CALENDAR_CACHE_KEY);
+  if (cached?.data) calendar.value = cached.data;
+}
+
+function restoreLastState() {
+  try {
+    const raw = localStorage.getItem(LAST_STATE_KEY);
+    if (!raw) return;
+    const state = JSON.parse(raw) as LastState;
+    if (state.semester) semester.value = state.semester;
+    if (state.week) week.value = state.week;
+    if (state.activeDay >= 1 && state.activeDay <= 7) activeDay.value = state.activeDay;
+  } catch {
+    /* ignore */
+  }
+}
+
+function saveLastState() {
+  try {
+    localStorage.setItem(LAST_STATE_KEY, JSON.stringify({
+      semester: semester.value,
+      week: week.value,
+      activeDay: activeDay.value,
+    }));
+  } catch {
+    /* ignore */
+  }
+}
+
+function restoreLastScheduleCache() {
+  try {
+    const key = localStorage.getItem(LAST_CACHE_KEY);
+    if (!key) return false;
+    return applyScheduleCache(key);
+  } catch {
+    return false;
+  }
+}
+
+function restoreScheduleCache() {
+  const key = scheduleCacheKey();
+  return applyScheduleCache(key) || (!parsed.value && restoreLastScheduleCache());
+}
+
+function applyScheduleCache(key: string) {
+  const cached = readCache<ScheduleResult>(key);
+  if (!cached?.data) return false;
+  parsed.value = cached.data;
+  scheduleSavedAt.value = cached.savedAt;
+  if (!semester.value) semester.value = cached.data.currentSemester || "";
+  if (!week.value) week.value = String(cached.data.currentWeek || "");
+  return true;
+}
+
+function saveScheduleCache() {
+  if (!parsed.value) return;
+  const key = scheduleCacheKey(parsed.value.currentSemester || semester.value, week.value || parsed.value.currentWeek);
+  writeCache(key, parsed.value);
+  try { localStorage.setItem(LAST_CACHE_KEY, key); } catch { /* ignore */ }
 }
 </script>
 
@@ -325,6 +532,49 @@ h1 {
   max-width: 720px;
   margin: 0 auto 12px;
 }
+.week-switcher {
+  max-width: 720px;
+  margin: 0 auto 12px;
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) 96px;
+  align-items: center;
+  gap: 8px;
+}
+.week-btn {
+  height: 42px;
+  border: 1px solid #dde4ee;
+  border-radius: 13px;
+  background: #fff;
+  color: #172033;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 13px;
+  touch-action: manipulation;
+}
+.week-btn:disabled {
+  color: #b7bfcc;
+  background: #f9fafb;
+}
+.week-title {
+  min-width: 0;
+  height: 42px;
+  border-radius: 13px;
+  background: #e8f6f3;
+  color: #116b5f;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+}
+.week-title b {
+  font-size: 15px;
+}
+.week-title span {
+  font-size: 11px;
+}
 .week-strip {
   max-width: 720px;
   margin: 0 auto 14px;
@@ -368,6 +618,9 @@ h1 {
 .state-card {
   max-width: 720px;
   margin: 0 auto;
+}
+.content {
+  touch-action: pan-y;
 }
 .state-card {
   min-height: calc(100dvh - 180px);
@@ -425,6 +678,10 @@ h1 {
 .summary b {
   color: #172033;
   font-size: 20px;
+}
+.summary small {
+  color: #98a2b3;
+  font-size: 11px;
 }
 .summary em {
   font-style: normal;
@@ -528,6 +785,13 @@ h1 {
   }
   .course-main h2 {
     font-size: 16px;
+  }
+  .week-switcher {
+    grid-template-columns: 82px minmax(0, 1fr) 82px;
+    gap: 6px;
+  }
+  .week-btn {
+    font-size: 12px;
   }
 }
 </style>
