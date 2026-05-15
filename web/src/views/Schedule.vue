@@ -1,28 +1,38 @@
 <template>
   <main class="schedule-page">
     <header class="top">
-      <div>
-        <div class="eyebrow">药大垎坊</div>
-        <h1>课表</h1>
-      </div>
+      <el-select
+        v-if="parsed"
+        v-model="semester"
+        size="small"
+        class="sem-select"
+        @change="loadSchedule(false)"
+      >
+        <el-option v-for="s in semesters" :key="s.value" :value="s.value" :label="s.label" />
+      </el-select>
       <div class="top-actions">
-        <button type="button" class="icon-btn" aria-label="刷新课表" @click="loadSchedule(true)">
-          <el-icon><Refresh /></el-icon>
+        <button
+          v-if="parsed"
+          type="button"
+          class="icon-btn"
+          :class="{ active: viewMode === 'week' }"
+          :aria-label="viewMode === 'day' ? '切到周课表总览' : '切回单日视图'"
+          :title="viewMode === 'day' ? '周课表总览' : '单日视图'"
+          @click="toggleView"
+        >
+          <el-icon><Grid /></el-icon>
         </button>
-        <button type="button" class="icon-btn" aria-label="返回首页" @click="$router.push('/home')">
-          <el-icon><House /></el-icon>
+        <button
+          type="button"
+          class="icon-btn"
+          :class="{ spinning: loading }"
+          aria-label="刷新课表"
+          @click="loadSchedule(true)"
+        >
+          <el-icon><Refresh /></el-icon>
         </button>
       </div>
     </header>
-
-    <section v-if="parsed" class="toolbar">
-      <el-select v-model="semester" size="large" placeholder="学期" @change="loadSchedule(false)">
-        <el-option v-for="s in semesters" :key="s.value" :value="s.value" :label="s.label" />
-      </el-select>
-      <el-select v-model="week" size="large" placeholder="周次" @change="loadSchedule(false)">
-        <el-option v-for="w in weeks" :key="w.value" :value="w.value" :label="w.label" />
-      </el-select>
-    </section>
 
     <section v-if="parsed" class="week-switcher">
       <button type="button" class="week-btn" :disabled="!canChangeWeek(-1)" @click="changeWeek(-1)">
@@ -31,10 +41,8 @@
       </button>
       <button
         type="button"
-        class="week-title"
-        :class="{ clickable: canJumpToCurrentWeek }"
-        :disabled="!canJumpToCurrentWeek"
-        @click="jumpToCurrentWeek"
+        class="week-title clickable"
+        @click="weekDialogOpen = true"
       >
         <b>第 {{ week || parsed?.currentWeek || "--" }} 周</b>
         <span v-if="currentWeekRange">{{ currentWeekRange }}</span>
@@ -45,7 +53,7 @@
       </button>
     </section>
 
-    <section v-if="parsed" class="week-strip">
+    <section v-if="parsed && viewMode === 'day'" class="week-strip">
       <button
         v-for="d in dayTabs"
         :key="d.day"
@@ -86,7 +94,7 @@
       </el-button>
     </section>
 
-    <section v-else class="content" v-loading="loading && !parsed"
+    <section v-else-if="viewMode === 'day'" class="content" v-loading="loading && !parsed"
       @touchstart.passive="onTouchStart"
       @touchmove.passive="onTouchMove"
       @touchend.passive="onTouchEnd"
@@ -129,13 +137,67 @@
         </div>
       </transition>
     </section>
+
+    <!-- 周课表总览 -->
+    <section v-else-if="parsed && viewMode === 'week'" class="week-grid-view" v-loading="loading && !parsed">
+      <div class="wgv">
+        <div class="wgv-corner"></div>
+        <div v-for="d in dayTabs" :key="`wh-${d.day}`" class="wgv-head" :class="{ today: d.isToday }">
+          <div class="dn">{{ d.label }}</div>
+          <div class="dt">{{ d.date || '--' }}</div>
+        </div>
+        <template v-for="bs in bigSlots" :key="`wr-${bs}`">
+          <div class="wgv-slot">
+            <div class="bs">{{ bs }}</div>
+            <div class="bst">{{ bigSlotTime(bs) }}</div>
+          </div>
+          <div v-for="d in dayTabs" :key="`wc-${bs}-${d.day}`" class="wgv-cell">
+            <div
+              v-for="(c, i) in getCoursesAt(d.day, bs)"
+              :key="i"
+              class="wgv-course"
+              :style="{ background: colorForBg(c.name) }"
+            >
+              <div class="cn">{{ c.name }}</div>
+              <div v-if="c.location" class="cl">{{ c.location }}</div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </section>
+
+    <!-- 周次选择弹窗 -->
+    <el-dialog
+      v-model="weekDialogOpen"
+      title="选择周次"
+      :width="320"
+      align-center
+      :show-close="true"
+    >
+      <div class="week-grid-pick">
+        <button
+          v-for="w in weeks"
+          :key="w.value"
+          type="button"
+          class="week-cell"
+          :class="{ active: String(w.value) === week, current: Number(w.value) === calendar?.currentWeek }"
+          @click="selectWeek(w.value)"
+        >
+          {{ w.value }}
+        </button>
+      </div>
+      <template #footer>
+        <el-button v-if="canJumpToCurrentWeek" type="primary" @click="onJumpAndClose">回到本周</el-button>
+        <el-button @click="weekDialogOpen = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </main>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { ArrowLeft, ArrowRight, House, Loading, Lock, Location, Moon, Picture, Refresh, User } from "@element-plus/icons-vue";
+import { ArrowLeft, ArrowRight, Grid, House, Loading, Lock, Location, Moon, Picture, Refresh, User } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
@@ -179,6 +241,53 @@ const CACHE_TTL = 12 * 60 * 60 * 1000;
 const CALENDAR_CACHE_KEY = "cpu-schedule-calendar-v1";
 const LAST_STATE_KEY = "cpu-schedule-last-state-v1";
 const LAST_CACHE_KEY = "cpu-schedule-last-cache-key-v1";
+
+// 视图模式：day = 单日列表（默认）；week = 全周网格总览
+const viewMode = ref<"day" | "week">("day");
+function toggleView() { viewMode.value = viewMode.value === "day" ? "week" : "day"; }
+
+// 周次选择弹窗
+const weekDialogOpen = ref(false);
+function selectWeek(v: string | number) {
+  const next = String(v);
+  if (next === week.value) {
+    weekDialogOpen.value = false;
+    return;
+  }
+  slideDirection.value = Number(next) > Number(week.value || 0) ? "next" : "prev";
+  week.value = next;
+  saveLastState();
+  weekDialogOpen.value = false;
+  void loadSchedule(false);
+}
+async function onJumpAndClose() {
+  weekDialogOpen.value = false;
+  await jumpToCurrentWeek();
+}
+
+// 周课表总览：5 大节 × 7 天网格
+const bigSlots = [1, 2, 3, 4, 5];
+function getCoursesAt(day: number, bs: number): ScheduleCourse[] {
+  for (const cell of parsed.value?.cells ?? []) {
+    if (cell.day === day && cell.bigSlot === bs) return cell.courses;
+  }
+  return [];
+}
+const bgPalette = [
+  "linear-gradient(135deg,#dbeafe,#bfdbfe)",
+  "linear-gradient(135deg,#fce7f3,#fbcfe8)",
+  "linear-gradient(135deg,#dcfce7,#bbf7d0)",
+  "linear-gradient(135deg,#fef3c7,#fde68a)",
+  "linear-gradient(135deg,#ede9fe,#ddd6fe)",
+  "linear-gradient(135deg,#cffafe,#a5f3fc)",
+  "linear-gradient(135deg,#fee2e2,#fecaca)",
+  "linear-gradient(135deg,#d1fae5,#a7f3d0)",
+];
+function colorForBg(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
+  return bgPalette[h % bgPalette.length];
+}
 
 onMounted(async () => {
   jwxt.hydrate();
@@ -577,7 +686,7 @@ function saveScheduleCache() {
 
 <style scoped lang="scss">
 .schedule-page {
-  min-height: 100dvh;
+  /* 不强制撑满视口高，避免内容短时多出可滚区 */
   padding: calc(env(safe-area-inset-top) + 14px) 14px calc(env(safe-area-inset-bottom) + 18px);
   background: #f6f8fb;
   color: #172033;
@@ -590,20 +699,15 @@ function saveScheduleCache() {
   margin: 0 auto 14px;
   max-width: 720px;
 }
-.eyebrow {
-  color: #168776;
-  font-size: 12px;
-  font-weight: 700;
-}
-h1 {
-  margin: 2px 0 0;
-  font-size: 30px;
-  line-height: 1.1;
-  letter-spacing: 0;
+.sem-select {
+  flex: 1;
+  min-width: 0;
+  max-width: 260px;
 }
 .top-actions {
   display: flex;
   gap: 8px;
+  flex-shrink: 0;
 }
 .icon-btn {
   width: 42px;
@@ -615,7 +719,20 @@ h1 {
   display: grid;
   place-items: center;
   touch-action: manipulation;
+  cursor: pointer;
+  -webkit-tap-highlight-color: rgba(22, 135, 118, 0.18);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
+.icon-btn:active { background: #f3f4f6; }
+.icon-btn.active {
+  background: #168776;
+  border-color: #168776;
+  color: #fff;
+}
+.icon-btn.spinning .el-icon {
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
 .toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
@@ -890,13 +1007,115 @@ h1 {
   display: none;
 }
 
-/* ===== 移动端极简：手机上只看课表 ===== */
+/* ===== 周课表总览（grid 视图）===== */
+.week-grid-view {
+  max-width: 100vw;
+  margin: 0 auto;
+  background: #fff;
+  border: 1px solid #eef0f4;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.wgv {
+  display: grid;
+  grid-template-columns: 56px repeat(7, minmax(78px, 1fr));
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+.wgv-corner,
+.wgv-head {
+  background: #f8fafc;
+  border-bottom: 1px solid #eef0f4;
+  padding: 8px 4px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: #374151;
+}
+.wgv-head + .wgv-head,
+.wgv-corner + .wgv-head { border-left: 1px solid #eef0f4; }
+.wgv-head .dn { font-weight: 600; }
+.wgv-head .dt { font-size: 10px; color: #9ca3af; margin-top: 2px; }
+.wgv-head.today { background: #d1fae5; color: #065f46; }
+.wgv-head.today .dt { color: #047857; }
+.wgv-slot {
+  background: #f9fafb;
+  border-bottom: 1px solid #eef0f4;
+  padding: 8px 4px;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+.wgv-slot .bs { font-weight: 600; color: #374151; }
+.wgv-slot .bst { color: #9ca3af; font-size: 9px; margin-top: 2px; }
+.wgv-cell {
+  border-bottom: 1px solid #eef0f4;
+  border-left: 1px solid #eef0f4;
+  padding: 3px;
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wgv-course {
+  border-radius: 5px;
+  padding: 5px 6px;
+  flex: 1;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.wgv-course .cn {
+  font-size: 11px;
+  font-weight: 600;
+  color: #1f2937;
+  line-height: 1.25;
+  word-break: break-word;
+}
+.wgv-course .cl {
+  font-size: 10px;
+  color: #4b5563;
+}
+/* 最后一行不要 border-bottom */
+.wgv > .wgv-slot:last-of-type,
+.wgv > .wgv-slot:last-of-type ~ .wgv-cell {
+  border-bottom: none;
+}
+
+/* ===== 周次选择 dialog 里的网格 ===== */
+.week-grid-pick {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+.week-cell {
+  border: 1px solid #dde4ee;
+  background: #fff;
+  border-radius: 10px;
+  padding: 10px 4px;
+  font: inherit;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: rgba(22, 135, 118, 0.18);
+}
+.week-cell:active { background: #f3f4f6; }
+.week-cell.current { border-color: #168776; color: #168776; }
+.week-cell.active {
+  background: #168776;
+  border-color: #168776;
+  color: #fff;
+}
+
+/* ===== 移动端：恢复显示 top（紧凑学期+刷新+视图切换） + 仍隐藏旧 toolbar/summary ===== */
 @media (max-width: 760px) {
-  /* 隐藏顶部标题、刷新/回首页按钮（用户用底部 tabbar 跳） */
-  .top { display: none; }
-  /* 隐藏学期选择器（学生几乎不切学期；要切的去 /jwxt 桌面端） */
+  /* toolbar 旧的双选择器已经从模板移除，但保险起见仍 hide 类 */
   .toolbar { display: none; }
-  /* 隐藏 cacheText 与上方 summary（信息冗余，week-switcher 已经显示周次了） */
   .summary { display: none; }
   .schedule-page {
     padding-top: calc(env(safe-area-inset-top) + 8px);

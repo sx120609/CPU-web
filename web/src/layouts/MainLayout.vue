@@ -222,7 +222,6 @@ const hideChrome = computed(() => Boolean(route.meta?.hideChrome));
 const desktopNavItems = computed(() => {
   const items: { to: string; label: string }[] = [];
   items.push({ to: "/home", label: "首页" });
-  items.push({ to: "/schedule", label: "课表" });
   if (site.features.forum) items.push({ to: "/forum", label: "论坛" });
   items.push({ to: "/announcements", label: "公告" });
   items.push({ to: "/jwxt", label: "教务数据" });
@@ -247,7 +246,6 @@ const drawerItems = computed(() => {
   const items: { to: string; label: string; icon: any }[] = [];
   if (site.features.forum) items.push({ to: "/post", label: "发帖", icon: Edit });
   items.push({ to: "/messages", label: "消息", icon: Message });
-  items.push({ to: "/schedule", label: "课表", icon: Calendar });
   if (site.features.forum) items.push({ to: "/forum", label: "论坛", icon: ChatLineRound });
   items.push({ to: "/announcements", label: "校园公告", icon: Bell });
   items.push({ to: "/jwxt", label: "教务数据", icon: Calendar });
