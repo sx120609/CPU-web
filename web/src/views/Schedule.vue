@@ -615,26 +615,20 @@ function courseMatchesWeek(course: ScheduleCourse, wk: number) {
   return true;
 }
 
+/**
+ * 课程卡片用色 —— 改为单一绿色调（之前 9 种花花绿绿太丰富）。
+ * 保留数组结构，将来想恢复多色只需把条目扩回去。
+ */
 const weekTones = [
-  { bg: "linear-gradient(135deg, rgba(222,120,148,0.34), rgba(255,255,255,0.62))", border: "#de7894", text: "#5a2434" },
-  { bg: "linear-gradient(135deg, rgba(159,130,233,0.32), rgba(255,255,255,0.62))", border: "#9f82e9", text: "#36266a" },
-  { bg: "linear-gradient(135deg, rgba(232,109,75,0.32), rgba(255,255,255,0.62))", border: "#e86d4b", text: "#67301f" },
-  { bg: "linear-gradient(135deg, rgba(112,215,186,0.34), rgba(255,255,255,0.62))", border: "#52bfa4", text: "#195448" },
-  { bg: "linear-gradient(135deg, rgba(233,170,76,0.32), rgba(255,255,255,0.62))", border: "#e3a13e", text: "#654415" },
-  { bg: "linear-gradient(135deg, rgba(79,128,191,0.32), rgba(255,255,255,0.62))", border: "#4f80bf", text: "#203f68" },
-  { bg: "linear-gradient(135deg, rgba(223,74,105,0.30), rgba(255,255,255,0.64))", border: "#df4a69", text: "#6a2031" },
-  { bg: "linear-gradient(135deg, rgba(143,188,232,0.34), rgba(255,255,255,0.64))", border: "#79aee0", text: "#244b70" },
-  { bg: "linear-gradient(135deg, rgba(231,223,69,0.30), rgba(255,255,255,0.66))", border: "#d6cb2d", text: "#5a5418" },
+  { bg: "#f4fbf8", border: "#168776", text: "#0f5d52" },
 ];
 
-function hashName(name: string) {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
-  return h;
+function hashName(_name: string) {
+  return 0;
 }
 
-function toneFor(name: string) {
-  return weekTones[hashName(name) % weekTones.length];
+function toneFor(_name: string) {
+  return weekTones[0];
 }
 
 function normalizeSlotRange(bigSlot: number, course: ScheduleCourse) {
