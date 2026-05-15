@@ -6,11 +6,20 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
+android/.gradle/
+android/**/build/
+*.apk
+!web/public/downloads/
+!web/public/downloads/CPU-Web.apk
+*.aab
 
 # Environment
 .env
 .env.local
 .env.*.local
+local.properties
+*.jks
+*.keystore
 
 # Database
 *.db

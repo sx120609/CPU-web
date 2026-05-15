@@ -44,6 +44,7 @@
 
 ```text
 CPU-web/
+├── android/               # Android WebView APK 壳工程，默认打开移动端课表
 ├── deploy.sh              # Debian / Ubuntu 一键部署与更新脚本
 ├── package.json           # 根脚本：安装、开发、构建、数据库初始化
 ├── server/
@@ -168,6 +169,29 @@ PORT=12345 ./deploy.sh
 ```
 
 脚本会自动安装依赖、创建 `server/.env`、初始化数据库、构建前后端，并用 `pm2` 守护后端进程。
+
+## Android APK
+
+`android/` 目录提供一个轻量 WebView 壳，默认打开：
+
+```text
+https://cpu.lizmt.cn/schedule
+```
+
+这个 APK 主要面向“把课表固定到桌面、快速打开查看”的移动端场景。它不会把教务数据打包进本地，实际数据仍由已部署的 Web 服务读取和缓存。
+
+构建方式：
+
+1. 安装 Android Studio 和 Android SDK Platform 35。
+2. 用 Android Studio 打开 `android/` 目录，等待 Gradle 同步。
+3. 运行 `app` 模块调试，或在安装 Gradle / 生成 Gradle Wrapper 后执行 `gradle :app:assembleDebug` 生成调试包。
+4. 发布前配置自己的 Android 签名证书，再执行 `gradle :app:assembleRelease`。
+
+可通过 Gradle 参数覆盖启动地址：
+
+```bash
+gradle :app:assembleRelease -PappUrl=https://cpu.lizmt.cn/schedule
+```
 
 ## 开发注意事项
 

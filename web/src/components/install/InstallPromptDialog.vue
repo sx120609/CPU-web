@@ -7,19 +7,20 @@
     :close-on-click-modal="true"
     class="install-dialog"
   >
-    <!-- 已安装：理论上 standalone 模式下根本看不到这个组件，但保险起见 -->
-    <div v-if="isStandalone" class="content">
-      <p class="muted">本应用已经在桌面/独立窗口模式下打开。</p>
+    <!-- 已安装 / App 内打开：理论上根本看不到这个组件，但保险起见 -->
+    <div v-if="isStandalone || isNativeApp" class="content">
+      <p class="muted">当前已经在独立应用环境中打开。</p>
     </div>
 
-    <!-- Android / 支持 beforeinstallprompt 的浏览器 -->
-    <div v-else-if="platform === 'android' && deferredPrompt" class="content">
-      <p>把"<b>课表</b>"添加到主屏幕，下次像 app 一样秒开，免登录直接看课表。</p>
+    <!-- Android 浏览器：优先提供 APK -->
+    <div v-else-if="platform === 'android'" class="content">
+      <p>建议安装 <b>药大垎坊课表</b> Android 版，下次可从桌面图标直接打开课表。</p>
       <ul class="bullets">
-        <li>不会跳到应用商店</li>
-        <li>不占多少空间</li>
-        <li>随时长按图标卸载</li>
+        <li>安装包很小，只是课表页的轻量 App 壳</li>
+        <li>网站正常访问时，App 内容会同步更新</li>
+        <li>下载完成后打开 APK，按系统提示安装</li>
       </ul>
+      <p class="muted">如果系统提示“未知来源”，需要允许当前浏览器安装应用。</p>
     </div>
 
     <!-- iOS Safari：必须手动通过分享菜单 -->
@@ -55,7 +56,15 @@
     <template #footer>
       <div class="footer">
         <el-button
-          v-if="platform === 'android' && deferredPrompt"
+          v-if="platform === 'android' && !isNativeApp"
+          type="primary"
+          size="default"
+          @click="downloadApk"
+        >
+          下载 APK
+        </el-button>
+        <el-button
+          v-else-if="deferredPrompt"
           type="primary"
           size="default"
           @click="installNow"
@@ -70,6 +79,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { detectInAppBrowser } from "@/utils/inAppBrowser";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -77,10 +87,12 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 const DISMISS_KEY = "cpu-install-dismissed-v1";
+const APK_DOWNLOAD_URL = "/downloads/CPU-Web.apk";
 
 const open = ref(false);
 const deferredPrompt = ref<BeforeInstallPromptEvent | null>(null);
 const isStandalone = ref(false);
+const isNativeApp = ref(false);
 
 const platform = computed<"ios" | "android" | "desktop">(() => {
   const ua = navigator.userAgent.toLowerCase();
@@ -93,6 +105,7 @@ const platform = computed<"ios" | "android" | "desktop">(() => {
 });
 
 const title = computed(() => {
+  if (platform.value === "android") return "安装 Android 版课表";
   if (platform.value === "ios") return "添加到主屏幕";
   return "把课表加到主屏幕";
 });
@@ -104,6 +117,17 @@ const dialogWidth = computed(() => {
 function detectStandalone() {
   isStandalone.value = window.matchMedia?.("(display-mode: standalone)").matches
     || (navigator as any).standalone === true;
+}
+
+function detectNativeApp() {
+  const ua = navigator.userAgent.toLowerCase();
+  const params = new URLSearchParams(window.location.search);
+  const isMarkedApp = ua.includes("cpuwebscheduleapp")
+    || params.get("client") === "android-app";
+  const isAndroidWebView = /android/.test(ua)
+    && (ua.includes("; wv") || /version\/\d+(\.\d+)? chrome\//.test(ua))
+    && !detectInAppBrowser().isInApp;
+  isNativeApp.value = isMarkedApp || isAndroidWebView;
 }
 
 function onBeforeInstall(e: Event) {
@@ -121,6 +145,7 @@ function onAppInstalled() {
 
 onMounted(() => {
   detectStandalone();
+  detectNativeApp();
   window.addEventListener("beforeinstallprompt", onBeforeInstall);
   window.addEventListener("appinstalled", onAppInstalled);
 });
@@ -143,6 +168,11 @@ async function installNow() {
   }
 }
 
+function downloadApk() {
+  window.location.href = APK_DOWNLOAD_URL;
+  open.value = false;
+}
+
 function dismissDialog() {
   open.value = false;
   try { localStorage.setItem(DISMISS_KEY, String(Date.now())); } catch { /* ignore */ }
@@ -150,14 +180,20 @@ function dismissDialog() {
 
 /** 父组件主动调用：手动打开 install 引导（任何平台都打开） */
 function openDialog() {
-  if (isStandalone.value) return;
+  detectNativeApp();
+  if (isStandalone.value || isNativeApp.value) return;
   open.value = true;
 }
 
-/** 父组件主动调用：用户点安装按钮时，安卓优先直接唤起系统安装面板 */
+/** 父组件主动调用：用户点安装按钮时，安卓显示 APK 下载提示，其他平台走系统安装/手动引导 */
 async function requestInstall() {
-  if (isStandalone.value) return;
-  if (platform.value === "android" && deferredPrompt.value) {
+  detectNativeApp();
+  if (isStandalone.value || isNativeApp.value) return;
+  if (platform.value === "android") {
+    open.value = true;
+    return;
+  }
+  if (deferredPrompt.value) {
     await installNow();
     return;
   }
@@ -172,7 +208,9 @@ async function requestInstall() {
  *  - 否则延迟 1.5s 后弹（让页面先有内容）
  */
 function autoPromptIfEligible() {
-  if (isStandalone.value) return;
+  detectNativeApp();
+  if (isStandalone.value || isNativeApp.value) return;
+  if (platform.value === "android") return;
   if (platform.value === "desktop") return;
   const last = (() => { try { return localStorage.getItem(DISMISS_KEY); } catch { return null; } })();
   if (last === "installed") return;
@@ -183,13 +221,14 @@ function autoPromptIfEligible() {
   setTimeout(() => {
     // 重新核对 standalone（用户可能在等待期间已经手动加了）
     detectStandalone();
-    if (!isStandalone.value) open.value = true;
+    detectNativeApp();
+    if (!isStandalone.value && !isNativeApp.value) open.value = true;
   }, 1500);
 }
 
-const canShow = computed(() => !isStandalone.value);
+const canShow = computed(() => !isStandalone.value && !isNativeApp.value);
 
-defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platform, isStandalone });
+defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platform, isStandalone, isNativeApp });
 </script>
 
 <style scoped>
