@@ -6,8 +6,19 @@
     </header>
 
     <div v-loading="loading" class="cluster">
-      <el-empty v-if="!loading && !boards.length" description="暂无公告来源" />
-      <div v-for="b in boards" :key="b.slug" class="board-card" @click="$router.push(`/forum/b/${b.slug}`)">
+      <!-- 错误态：网络失败 / 后端 5xx -->
+      <el-empty v-if="!loading && error" :description="error">
+        <el-button type="primary" @click="reload">重试</el-button>
+      </el-empty>
+      <!-- 空态 -->
+      <el-empty v-else-if="!loading && !boards.length" description="暂无公告来源" />
+      <!-- 列表：router-link 直接跳转，避免 div+click 在移动端偶尔不响应 -->
+      <router-link
+        v-for="b in boards"
+        :key="b.slug"
+        :to="`/forum/b/${b.slug}`"
+        class="board-card"
+      >
         <div class="icon" :style="{ background: b.color || '#1d4d8a' }">{{ b.icon || '📢' }}</div>
         <div class="body">
           <div class="name-row">
@@ -21,7 +32,7 @@
           </div>
         </div>
         <el-icon class="arrow"><Right /></el-icon>
-      </div>
+      </router-link>
     </div>
   </div>
 </template>
@@ -34,13 +45,24 @@ import { fmtRelative } from "@/utils/format";
 
 const all = ref<Board[]>([]);
 const loading = ref(false);
+const error = ref("");
 const hiddenAnnouncementSlugs = new Set(["xinli-notice"]);
 
-onMounted(async () => {
+onMounted(reload);
+
+async function reload() {
   loading.value = true;
-  try { all.value = await boardApi.list(); }
-  finally { loading.value = false; }
-});
+  error.value = "";
+  try {
+    all.value = await boardApi.list();
+  } catch (e: any) {
+    // 之前是裸 try-finally，错误被吞，用户看到的就是"卡死"——现在显式反馈
+    error.value = e?.message || "公告加载失败，请稍后重试";
+    all.value = [];
+  } finally {
+    loading.value = false;
+  }
+}
 
 const boards = computed(() => all.value.filter((b) =>
   b.type === "announce" &&
@@ -75,6 +97,8 @@ function shortHost(url?: string) {
   align-items: center;
   gap: 14px;
   transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  color: inherit;
+  text-decoration: none;
 }
 .board-card:hover {
   border-color: var(--cpu-primary);
