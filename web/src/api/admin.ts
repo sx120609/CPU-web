@@ -15,9 +15,9 @@ export const adminApi = {
   resetUserPassword: (id: number, newPassword: string) =>
     request.patch<{ ok: true }>(`/admin/users/${id}/password`, { newPassword }),
   // 站点功能开关
-  features: () => request.get<{ forum: boolean; market: boolean; coursereview: boolean }>("/admin/features"),
-  updateFeatures: (patch: { forum?: boolean; market?: boolean; coursereview?: boolean }) =>
-    request.patch<{ forum: boolean; market: boolean; coursereview: boolean }>("/admin/features", patch),
+  features: () => request.get<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>("/admin/features"),
+  updateFeatures: (patch: { forum?: boolean; market?: boolean; coursereview?: boolean; electric?: boolean }) =>
+    request.patch<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>("/admin/features", patch),
   // 帖子
   topics: (params: { q?: string; board?: string; hidden?: "0" | "1"; page?: number; size?: number }) =>
     request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/topics", params),

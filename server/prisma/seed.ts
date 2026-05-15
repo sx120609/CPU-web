@@ -395,6 +395,7 @@ async function main() {
       { key: "feature.forum",        value: "on" },
       { key: "feature.market",       value: "on" },
       { key: "feature.coursereview", value: "on" },
+      { key: "feature.electric",     value: "on" },
     ],
   });
 

@@ -11,8 +11,8 @@
 
     <!-- 已登录：完整 i 服务面板 -->
     <template v-if="jwxt.isLoggedIn">
-      <!-- 快速查询：站内代理，不外跳 -->
-      <div class="quick-row">
+      <!-- 快速查询：站内代理，不外跳。按功能开关显示 -->
+      <div v-if="site.features.electric" class="quick-row">
         <button type="button" class="quick-card" @click="electricOpen = true">
           <span class="quick-icon">💡</span>
           <div class="quick-body">
@@ -82,11 +82,13 @@ import { ref, onMounted } from "vue";
 import { Lock, Loading, Picture, Refresh, Right } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { useJwxtStore } from "@/stores/jwxt";
+import { useSiteStore } from "@/stores/site";
 import { loadCreds, hasCreds as hasSavedCreds } from "@/utils/credCrypto";
 import IServicePane from "@/components/jwxt/IServicePane.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 
 const jwxt = useJwxtStore();
+const site = useSiteStore();
 const autoLoading = ref(false);
 const hasCreds = ref(false);
 const captchaInput = ref("");

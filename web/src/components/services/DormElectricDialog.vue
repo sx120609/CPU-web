@@ -22,15 +22,24 @@
 
     <div v-else-if="data" class="result">
       <div class="balance-row">
-        <span class="lbl">剩余电费</span>
-        <span class="num" :class="{ low: (data.balance ?? 0) < 10 }">
-          {{ data.balance !== null ? `¥${data.balance.toFixed(2)}` : "—" }}
-        </span>
+        <div class="balance-main">
+          <span class="lbl">剩余金额</span>
+          <span class="num" :class="{ low: (data.balance ?? 0) < 10 }">
+            {{ data.balance !== null ? `¥${data.balance.toFixed(2)}` : "—" }}
+          </span>
+        </div>
+        <div class="balance-sub" v-if="data.remainKwh !== null">
+          ≈ {{ data.remainKwh.toFixed(2) }} 度
+          <span v-if="data.price" class="muted">（{{ data.price.toFixed(4) }} 元/度）</span>
+        </div>
       </div>
       <div class="kv">
-        <div v-if="data.building"><span>楼栋</span><span>{{ data.building }}</span></div>
-        <div v-if="data.room"><span>房间</span><span>{{ data.room }}</span></div>
-        <div v-if="data.lastUpdate"><span>更新</span><span>{{ data.lastUpdate }}</span></div>
+        <div v-if="data.area || data.building || data.floor || data.room">
+          <span>地址</span>
+          <span>{{ [data.area, data.building, data.floor, data.room].filter(Boolean).join(" · ") }}</span>
+        </div>
+        <div v-if="data.usedKwh !== null"><span>累计用电</span><span>{{ data.usedKwh.toFixed(2) }} 度</span></div>
+        <div v-if="data.lastUpdate"><span>抄表时间</span><span>{{ data.lastUpdate }}</span></div>
       </div>
       <div v-if="(data.balance ?? 100) < 10 && data.balance !== null" class="warn">
         <el-icon><WarningFilled /></el-icon>
@@ -39,10 +48,6 @@
       <details v-if="data.raw" class="raw-fold">
         <summary>📦 显示原始响应（调试用）</summary>
         <pre class="raw">{{ JSON.stringify(data.raw, null, 2) }}</pre>
-        <p class="raw-hint">
-          如果上方"剩余电费"等字段显示 — 或不准，说明字段映射没匹配上。
-          把这段 JSON 贴给开发者，可以校准字段名。
-        </p>
       </details>
       <div class="actions">
         <el-button text @click="refresh">
@@ -101,19 +106,28 @@ async function refresh() {
 
 .result { display: flex; flex-direction: column; gap: 14px; }
 .balance-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
   padding: 18px 0;
   border-bottom: 1px dashed #f1f5f9;
 }
-.balance-row .lbl { font-size: 13px; color: #6b7280; }
-.balance-row .num {
+.balance-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.balance-main .lbl { font-size: 13px; color: #6b7280; }
+.balance-main .num {
   font-size: 32px;
   font-weight: 700;
   color: var(--cpu-primary);
 }
-.balance-row .num.low { color: #dc2626; }
+.balance-main .num.low { color: #dc2626; }
+.balance-sub {
+  margin-top: 6px;
+  text-align: right;
+  font-size: 13px;
+  color: #4b5563;
+}
+.balance-sub .muted { color: #9ca3af; font-size: 12px; }
 
 .kv { display: flex; flex-direction: column; gap: 6px; }
 .kv > div {

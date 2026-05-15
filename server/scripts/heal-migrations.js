@@ -55,6 +55,11 @@ const KNOWN_MIGRATIONS = [
     name: "20260515200000_disable_xinli_feed",
     test: () => false,
   },
+  {
+    // 同上：纯 INSERT OR IGNORE，幂等
+    name: "20260515210000_add_electric_feature",
+    test: () => false,
+  },
 ];
 const KNOWN_NAMES = new Set(KNOWN_MIGRATIONS.map((m) => m.name));
 

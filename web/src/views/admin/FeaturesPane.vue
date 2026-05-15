@@ -40,13 +40,13 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { adminApi } from "@/api/admin";
 import { useSiteStore } from "@/stores/site";
 
-type FKey = "forum" | "market" | "coursereview";
+type FKey = "forum" | "market" | "coursereview" | "electric";
 
 const site = useSiteStore();
 const loading = ref(false);
 const pendingKey = ref<FKey | null>(null);
-const features = reactive<{ forum: boolean; market: boolean; coursereview: boolean }>({
-  forum: true, market: true, coursereview: true,
+const features = reactive<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>({
+  forum: true, market: true, coursereview: true, electric: true,
 });
 
 const featureMeta: { key: FKey; icon: string; title: string; desc: string; paths: string[] }[] = [
@@ -64,6 +64,11 @@ const featureMeta: { key: FKey; icon: string; title: string; desc: string; paths
     key: "coursereview", icon: "📊", title: "课程点评",
     desc: "评老师 / 课程的板块。",
     paths: ["/coursereview", "/coursereview/:id"],
+  },
+  {
+    key: "electric", icon: "💡", title: "宿舍电费查询",
+    desc: "校园侧电费接口仅校园网可达。若部署服务器在公网（无法访问 10.200.13.18），请关掉此项避免学生看到错误。",
+    paths: ["/api/services/dorm-electric", "首页电费卡片"],
   },
 ];
 

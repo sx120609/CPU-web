@@ -4,6 +4,7 @@ import { ok, Errors } from "../utils/response";
 import { authRequired } from "../middleware/auth";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
 import { queryDormElectric } from "../services/dormElectric";
+import { isFeatureOn } from "../services/siteSettings";
 
 export const servicesRouter = Router();
 
@@ -24,13 +25,14 @@ servicesRouter.get("/", async (req, res, next) => {
  */
 servicesRouter.get("/dorm-electric", authRequired, async (req, res, next) => {
   try {
-    // username 即学号（SSO 登录建账号时 username = studentId）
+    if (!isFeatureOn("electric")) {
+      throw Errors.forbidden("宿舍电费查询当前未开放");
+    }
     const studentNo = (req.user!.studentId || "").trim();
     if (!studentNo) throw Errors.badRequest("当前账号未关联学号");
     const result = await queryDormElectric(studentNo);
     ok(res, result);
   } catch (e: any) {
-    // 把 service 抛出的中文错误透出给前端
     next(e?.message ? Errors.badRequest(e.message) : e);
   }
 });

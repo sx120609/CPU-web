@@ -17,7 +17,20 @@
  */
 import { createHash } from "node:crypto";
 
-const TARGET_URL = "http://10.200.13.18:8899/api/wxapp/my3";
+/**
+ * 校园侧 API base URL。
+ *
+ * 默认指向校内私网 IP——仅当部署服务器**也在校园网**时可用。
+ * 公网部署时可用 frp 内网穿透：把 10.200.13.18:8899 暴露成公网域名/端口，
+ * 然后设环境变量 DORM_ELECTRIC_BASE 覆盖。例如：
+ *   DORM_ELECTRIC_BASE=http://electric.lizmt.cn
+ *   DORM_ELECTRIC_BASE=https://cpu-tunnel.example.com:23456
+ *
+ * 注意：sign 算法和 SALT 与 host 无关，所以替换 base 不需要改任何其他代码。
+ * 但学校原始服务器可能根据 Host header 校验，frp 用 type=tcp 转发最稳。
+ */
+const ELECTRIC_BASE = (process.env.DORM_ELECTRIC_BASE || "http://10.200.13.18:8899").replace(/\/$/, "");
+const TARGET_URL = `${ELECTRIC_BASE}/api/wxapp/my3`;
 const APP_ID = "XzJ0YzzEtk0HbVOk";
 const SIGN_SALT = "ruGQQlUhZxJhQqKY8lYGYcN6UJWwNRL3";
 
@@ -40,11 +53,26 @@ function computeSign(body: Record<string, unknown>): string {
 const CACHE_TTL_MS = 30_000;
 
 export interface DormElectricResult {
+  /** 剩余金额（元） */
   balance: number | null;
-  room?: string | null;
-  building?: string | null;
-  lastUpdate?: string | null;
-  raw?: Record<string, unknown>;
+  /** 剩余电量（度 / kWh） */
+  remainKwh: number | null;
+  /** 累计已用电量（度） */
+  usedKwh: number | null;
+  /** 电价（元/度） */
+  price: number | null;
+  /** 房间，如 "0313房间" */
+  room: string | null;
+  /** 楼栋，如 "H6" */
+  building: string | null;
+  /** 楼层，如 "第3层" */
+  floor: string | null;
+  /** 校区，如 "江宁校区" */
+  area: string | null;
+  /** 抄表时间，如 "2026-05-15 13:05" */
+  lastUpdate: string | null;
+  /** 原始响应（调试用） */
+  raw?: unknown;
 }
 
 const cache = new Map<string, { at: number; result: DormElectricResult }>();
@@ -102,33 +130,47 @@ export async function queryDormElectric(studentNo: string): Promise<DormElectric
 }
 
 /**
- * 把 SPA 后端返回的 JSON 拍平成 DormElectricResult。
+ * 校园侧响应结构（实测）：
+ *   [{
+ *     rid, name: "0313房间", areaName: "江宁校区",
+ *     buiName: "H6", floorName: "第3层",
+ *     meters: [{ val, remain, amount, price, readTime, ... }],
+ *     waters: [], errCode: 0, errMsg: null
+ *   }]
  *
- * 字段名当前是按常见命名猜的；首次查询成功后看 raw 实际字段再精修。
+ * 学号没绑宿舍时返回 [] 或带 errCode != 0。
  */
-function normalize(j: Record<string, unknown>): DormElectricResult {
-  const data: any = (j as any).data ?? j;
+function normalize(j: unknown): DormElectricResult {
+  const arr = Array.isArray(j) ? (j as any[]) : null;
+  const room: any = arr ? arr[0] : (j as any);
+  if (!room || (typeof room.errCode === "number" && room.errCode !== 0)) {
+    return {
+      balance: null, remainKwh: null, usedKwh: null, price: null,
+      room: null, building: null, floor: null, area: null, lastUpdate: null,
+      raw: j,
+    };
+  }
+  const meter = Array.isArray(room.meters) ? room.meters[0] : null;
 
-  const num = (v: unknown): number | null => {
+  const n = (v: unknown): number | null => {
     if (typeof v === "number" && Number.isFinite(v)) return v;
     if (typeof v === "string") {
-      const n = parseFloat(v);
-      return Number.isFinite(n) ? n : null;
+      const x = parseFloat(v);
+      return Number.isFinite(x) ? x : null;
     }
     return null;
   };
 
   return {
-    balance:
-      num(data?.balance) ??
-      num(data?.surplus) ??
-      num(data?.余额) ??
-      num(data?.electricity) ??
-      num(data?.kwh) ??
-      null,
-    room: data?.room ?? data?.roomNo ?? data?.房间 ?? data?.roomName ?? null,
-    building: data?.building ?? data?.楼栋 ?? data?.buildingName ?? null,
-    lastUpdate: data?.lastUpdate ?? data?.updateTime ?? data?.time ?? data?.更新时间 ?? null,
+    balance: n(meter?.amount),
+    remainKwh: n(meter?.remain),
+    usedKwh: n(meter?.val),
+    price: n(meter?.price),
+    room: room?.name ?? null,
+    building: room?.buiName ?? null,
+    floor: room?.floorName ?? null,
+    area: room?.areaName ?? null,
+    lastUpdate: meter?.readTime ?? null,
     raw: j,
   };
 }

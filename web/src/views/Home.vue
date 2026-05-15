@@ -85,7 +85,7 @@
           </div>
           <div class="service-grid">
             <div
-              v-if="auth.isLoggedIn"
+              v-if="auth.isLoggedIn && site.features.electric"
               class="svc svc-special"
               @click="electricOpen = true"
             >

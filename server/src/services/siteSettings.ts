@@ -8,14 +8,15 @@
  */
 import { prisma } from "../prisma";
 
-export type FeatureKey = "forum" | "market" | "coursereview";
+export type FeatureKey = "forum" | "market" | "coursereview" | "electric";
 
-export const ALL_FEATURES: FeatureKey[] = ["forum", "market", "coursereview"];
+export const ALL_FEATURES: FeatureKey[] = ["forum", "market", "coursereview", "electric"];
 
 const cache: Record<FeatureKey, boolean> = {
   forum: true,
   market: true,
   coursereview: true,
+  electric: true,
 };
 
 function keyOf(f: FeatureKey) {

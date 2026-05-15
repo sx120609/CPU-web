@@ -17,11 +17,26 @@ export interface ServiceCard {
 }
 
 export interface DormElectricResult {
+  /** 剩余金额（元） */
   balance: number | null;
-  room?: string | null;
-  building?: string | null;
-  lastUpdate?: string | null;
-  raw?: Record<string, unknown>;
+  /** 剩余电量（度） */
+  remainKwh: number | null;
+  /** 累计已用电量（度） */
+  usedKwh: number | null;
+  /** 电价（元/度） */
+  price: number | null;
+  /** 房间名，如 "0313房间" */
+  room: string | null;
+  /** 楼栋，如 "H6" */
+  building: string | null;
+  /** 楼层，如 "第3层" */
+  floor: string | null;
+  /** 校区 */
+  area: string | null;
+  /** 抄表时间 */
+  lastUpdate: string | null;
+  /** 原始响应（调试用） */
+  raw?: unknown;
 }
 
 export const servicesApi = {
