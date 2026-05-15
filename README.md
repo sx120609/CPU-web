@@ -1,87 +1,107 @@
-# 中国药科大学学生便捷服务站点 (CPU-web)
+# CPU-web
 
-面向中国药科大学（China Pharmaceutical University）学生的一站式服务平台 MVP 原型。基于 `D:\OneDrive\Desktop\deep-research-report.md` 调研报告设计，将分散的教务、卡务、后勤、健康、就业等高频服务聚合到一个"按任务组织"的学生前台。
+药大垎坊是面向中国药科大学学生的校园互助与服务聚合站点。项目把校园公告、论坛讨论、课程点评、二手信息、教务数据和常用校园服务整理到一个 Web 入口，重点解决“信息分散、移动端查看不顺手、常用入口难找”的问题。
 
-> ⚠️ 本项目是方案可视化与可交互的工程原型。所有教务、卡务、门诊等数据由 SQLite 内的种子数据模拟，**不连接学校真实业务系统**。接口与前台交互按真实链路设计，便于后续切换到真实接口。
+仓库地址：[https://github.com/sx120609/CPU-web](https://github.com/sx120609/CPU-web)
+
+> 说明：本站为学生自发聚合站，非中国药科大学官方平台。教务数据通过学校统一身份认证授权读取；学号 / 工号会用于创建或关联站内账号，本站不保存学校密码和验证码。校园卡、电费充值等外部业务均跳转学校官方页面，交易与本站无关。
+
+## 功能概览
+
+| 模块 | 路径 | 说明 |
+|---|---|---|
+| 首页 | `/home` | 汇总热帖、最新公告、校园服务与常用入口 |
+| 校园公告 | `/announcements`、`/forum/topic/:id` | 定时同步学校公开公告源，正文展示失败时提供原文入口 |
+| 论坛 | `/forum`、`/forum/b/:slug` | 普通讨论、提问、只读公告板块，支持发帖、回复、点赞、置顶、锁帖 |
+| 教务数据 | `/jwxt` | 通过统一身份认证授权后查看课表、成绩、考试、培养方案、门户应用等 |
+| 课程点评 | `/coursereview` | 课程搜索、教师关联、课程评价与评分维度 |
+| 二手市场 | `/market` | 二手信息列表和交易字段展示 |
+| 校园服务 | `/services` | 融合门户应用、图书馆、就业、心理援助、宿舍电费查询等常用服务入口 |
+| 消息中心 | `/messages` | 回复、全站公告、学校公告订阅设置 |
+| 个人中心 | `/profile`、`/u/:id` | 昵称、简介、个人发帖记录 |
+| 管理后台 | `/admin` | 用户、帖子、公告源、全站公告、功能开关管理 |
+
+## 当前特性
+
+- 移动端优先的响应式布局，包含底部导航、快捷入口抽屉、触屏按钮和禁用页面缩放相关体验优化。
+- 站点功能开关支持关闭论坛、二手市场、课程点评、宿舍电费等入口；搜索接口会同步尊重这些开关。
+- 学校公告爬虫会同步公开来源，自动处理学校 CMS 页面、微信跳转壳、表格和相对链接。
+- 教务授权会在内存中保存短期会话，支持自动授权、退出授权、调试快照和多项教务数据解析。
+- 宿舍电费查询走站内代理；充值入口跳转官方页面，并在跳转前提示校园网、默认密码、交易边界等注意事项。
+- 管理端支持用户管理、内容管理、公告源运行、全站公告发布和功能开关。
 
 ## 技术栈
 
 | 层 | 技术 |
 |---|---|
-| 前端 | Vue 3 + Vite + TypeScript + Element Plus + Vue Router + Pinia + Axios + ECharts |
-| 后端 | Node 18+ + Express 4 + TypeScript + Prisma + SQLite |
-| 鉴权 | JWT（模拟统一身份认证） + bcryptjs |
-| 校验 | Zod |
+| 前端 | Vue 3、Vite、TypeScript、Element Plus、Vue Router、Pinia、Axios、ECharts |
+| 后端 | Node.js、Express、TypeScript、Prisma、SQLite |
+| 内容解析 | Cheerio、Turndown、iconv-lite、DOMPurify、marked |
+| 鉴权 | JWT、bcryptjs、学校统一认证授权会话 |
+| 校验与工具 | Zod、dayjs、tsx、pm2 部署脚本 |
 
 ## 目录结构
 
-```
+```text
 CPU-web/
-├── package.json          # 根脚本（dev / build / db:setup）
-├── server/               # Express 后端（端口 3000）
-│   ├── prisma/           # Prisma schema 与种子数据
-│   └── src/              # 路由、中间件、工具
-└── web/                  # Vue 3 前端（端口 5173）
-    └── src/              # 视图、组件、路由、store、API 封装
+├── deploy.sh              # Debian / Ubuntu 一键部署与更新脚本
+├── package.json           # 根脚本：安装、开发、构建、数据库初始化
+├── server/
+│   ├── prisma/            # Prisma schema、迁移与种子数据
+│   └── src/
+│       ├── routes/        # REST API 路由
+│       ├── services/      # 教务客户端、公告爬虫、电费查询、站点配置等
+│       ├── middleware/    # 鉴权、校验、中间件
+│       └── utils/         # 响应、JWT 等工具
+└── web/
+    └── src/
+        ├── api/           # 前端 API 封装
+        ├── components/    # 通用组件与业务组件
+        ├── layouts/       # 主布局、导航、页脚
+        ├── router/        # 路由与功能开关守卫
+        ├── stores/        # Pinia 状态
+        ├── styles/        # 全局样式
+        └── views/         # 页面视图
 ```
 
-## 部署到 Debian / Ubuntu 服务器
-
-仓库根目录有一个 `deploy.sh` 一键脚本：
-
-```bash
-# 首次部署：装 Node + 装依赖 + 建数据库 + 构建 + 后台启动
-chmod +x deploy.sh
-./deploy.sh
-
-# 后续更新代码：拉新代码 + 重建 + 平滑重启
-./deploy.sh update
-
-# 其他命令
-./deploy.sh start | stop | restart | logs | status
-./deploy.sh reset-db   # 重建数据库（会清空所有论坛数据）
-```
-
-- 端口默认 `23333`（避开 3000 / 8000 / 8080 等常见冲突），可通过环境变量 `PORT=12345 ./deploy.sh` 覆盖
-- 进程由 `pm2` 守护，断开 SSH 后继续运行
-- 开机自启：跑一次 `pm2 startup`（按提示执行返回的 sudo 命令）+ `pm2 save`
-- 日志文件：`~/.pm2/logs/cpu-web-*.log`
-- 首次会自动生成 `server/.env`，含随机 JWT_SECRET（请妥善保管）
-
-## 快速开始（开发环境）
+## 快速开始
 
 ### 环境要求
 
-- Node.js ≥ 18 （推荐 LTS 20 或 22）
-- npm ≥ 9
+- Node.js >= 18
+- npm >= 9
 
-### 1. 安装依赖
+### 安装依赖
 
 ```bash
 npm install
 ```
 
-根目录的 `postinstall` 会自动同时安装 `server/` 与 `web/` 的依赖。
+根目录 `postinstall` 会自动安装 `server/` 和 `web/` 的依赖。
 
-### 2. 初始化数据库
+### 初始化数据库
+
+首次运行前需要准备 `server/.env`：
+
+```env
+DATABASE_URL="file:./dev.db"
+JWT_SECRET="please-change-this-in-production"
+PORT=3000
+```
+
+然后执行：
 
 ```bash
 npm run db:setup
 ```
 
-此命令会：
-
-1. 在 `server/prisma/dev.db` 创建 SQLite 数据库
-2. 应用 Prisma migration（自动生成 `migrations/` 目录与表）
-3. 注入种子数据（账号、课程、卡务、报修、招聘、通知等）
-
-如需重置数据库：
+如需清空并重建数据库：
 
 ```bash
 npm run db:reset
 ```
 
-### 3. 启动开发服务器
+### 启动开发环境
 
 ```bash
 npm run dev
@@ -91,46 +111,79 @@ npm run dev
 - 后端：<http://localhost:3000>
 - 健康检查：<http://localhost:3000/api/health>
 
-Vite 已配置代理，前端的 `/api/*` 请求会转发到后端，无需关心跨域。
+Vite 已配置 `/api` 代理到后端，开发时不需要额外处理跨域。
 
-### 测试账号
+## 常用脚本
 
-| 学号 | 密码 | 身份 | 校区 |
-|---|---|---|---|
-| `20230001` | `123456` | 本科生（药学院·三年级） | 江宁 |
-| `20230002` | `123456` | 研究生（中药学院·二年级） | 玄武门 |
-| `admin` | `admin123` | 管理员 | — |
+| 命令 | 说明 |
+|---|---|
+| `npm run dev` | 同时启动后端和前端开发服务器 |
+| `npm run dev:server` | 只启动后端 |
+| `npm run dev:web` | 只启动前端 |
+| `npm run build` | 构建后端和前端 |
+| `npm run typecheck` | 后端构建 + 前端类型检查 |
+| `npm run db:setup` | 执行 Prisma migration 并写入种子数据 |
+| `npm run db:reset` | 重置数据库并重新写入种子数据 |
+| `npm run start` | 启动已构建的后端服务 |
 
-## 已实现模块
+## 配置项
 
-按报告推荐的 7 大 MVP 场景 + 跨场景能力：
+后端读取 `server/.env`：
 
-| 模块 | 路径 | 关键能力 |
+| 变量 | 默认值 | 说明 |
 |---|---|---|
-| 登录 | `/login` | 模拟统一身份认证 |
-| 首页 | `/home` | 全局搜索、身份卡片、关键待办、九宫格服务、今日校园、通知 |
-| 教务学业 | `/academic` | 课表周视图、成绩 |
-| 校园卡 | `/card` | 余额、流水、充值、电费购买 |
-| 图书馆 | `/library` | 馆藏检索、当前借阅、座位预约 |
-| 宿舍后勤 | `/dorm` | 报修提交与进度查看 |
-| 健康服务 | `/health` | 门诊预约、心理预约（敏感域脱敏）、医保入口 |
-| 校园生活 | `/life` | 校车班次、食堂高峰、快递待取 |
-| 就业发展 | `/career` | 药企岗位、投递记录、推荐表入口 |
-| 消息中心 | `/messages` | 分级、分类、订阅偏好、静默时段 |
-| 我的 | `/profile` | 个人信息、收藏、设置 |
+| `DATABASE_URL` | 无 | Prisma 数据库地址，开发默认使用 SQLite |
+| `JWT_SECRET` | `cpu-web-dev-secret` | JWT 签名密钥，生产环境必须改为强随机值 |
+| `JWT_EXPIRES_IN` | `7d` | 站内登录 token 有效期 |
+| `PORT` | `3000` | 后端服务端口 |
+| `NODE_ENV` | `development` | 生产环境应设为 `production` |
+| `DORM_ELECTRIC_BASE` | `http://sz.weicheng.wang:8899` | 宿舍电费查询代理地址 |
 
-## 设计要点
+## 账号与角色
 
-- **任务导向首页**：先任务、后服务、再资讯，对应报告 4.4 节的首页线框图
-- **角色化展示**：按 `role / grade` 决定卡片优先级（新生/在校生/毕业生）
-- **敏感域隔离**：心理咨询在列表与首页待办中弱化呈现；详情需二次确认
-- **统一消息中心**：分强/普通/弱三级，默认 23:00–07:00 静默
-- **服务目录与全局搜索**：50+ 服务条目，搜索结果分栏展示，每项含"所需材料 / 办理时长 / 咨询方式"
+种子数据会创建普通用户、管理员、机器人账号、课程、服务卡片、板块和公告源。具体账号以 `server/prisma/seed.ts` 为准。
 
-## 范围之外（后续阶段）
+站内登录分两类：
 
-按报告分期规划，以下能力**不**在 MVP 内：原生 App、企业微信工作台、小程序、AI 助手、真实支付、人脸识别、复杂工作流引擎、多租户、SSR。
+- 普通站内账号：用于开发、管理和非学校身份账号。
+- 学校统一认证账号：登录成功后创建或关联站内账号，后续用于发帖、课评、消息和教务授权。
 
-## 许可
+## 部署
 
-仅供学习与方案验证使用，未授权用于生产环境。
+仓库提供 `deploy.sh`，面向 Debian / Ubuntu 服务器：
+
+```bash
+chmod +x deploy.sh
+./deploy.sh          # 首次部署
+./deploy.sh update   # 拉取代码、安装依赖、构建并重启
+./deploy.sh restart  # 重启服务
+./deploy.sh logs     # 查看日志
+./deploy.sh status   # 查看状态
+```
+
+部署脚本默认使用端口 `23333`，可用环境变量覆盖：
+
+```bash
+PORT=12345 ./deploy.sh
+```
+
+脚本会自动安装依赖、创建 `server/.env`、初始化数据库、构建前后端，并用 `pm2` 守护后端进程。
+
+## 开发注意事项
+
+- 功能开关由 `server/src/services/siteSettings.ts` 管理；前端入口隐藏和后端搜索过滤需要同时尊重开关。
+- 公告详情页顶部统一展示原文入口，爬虫不再向正文写入重复跳转链接。
+- 教务授权会话保存在后端内存中，默认 30 分钟无活动失效；浏览器关闭后前端教务 token 会清空。
+- 电费充值只提供官方页面跳转和风险提示，支付、交易和密码修改均不经过本站。
+- `server npm run build` 会执行 `prisma generate`；Windows 下如果 Prisma DLL 被正在运行的服务占用，可能需要先停掉后端进程再构建。
+
+## 安全与边界
+
+- 本项目不是学校官方系统，不应声称代表学校发布信息。
+- 不保存学校密码和验证码；教务授权数据只用于当前会话。
+- 用户内容仅代表发布者个人观点，管理端可隐藏、锁定、删除违规内容。
+- 外部官方系统的可用性、登录、支付和交易记录由对应官方系统负责。
+
+## License
+
+仅供学习、交流和校园信息聚合实践使用。生产部署前请自行评估合规、隐私、安全和运维风险。

@@ -100,7 +100,7 @@
     <footer class="footer">
       <span>© 2026 药大垎坊 · 校园互助与服务平台</span>
       <span class="dot">·</span>
-      <a href="https://github.com" target="_blank">GitHub</a>
+      <a href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener">GitHub</a>
       <span class="dot">·</span>
       <span>非学校官方站点</span>
     </footer>
