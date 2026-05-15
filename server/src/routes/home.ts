@@ -5,6 +5,7 @@ import { verifyToken } from "../utils/jwt";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
 
 export const homeRouter = Router();
+const HOME_HIDDEN_SERVICE_CODES = ["DORM_REPAIR"];
 
 /**
  * 首页摘要：热帖 + 板块最新 + 学校公告 + 服务卡片 + 个人未读
@@ -73,7 +74,9 @@ homeRouter.get("/summary", async (req, res, next) => {
       hotTopics: hotTopics.map(decode),
       latestTopics: latestTopics.map(decode),
       announce: announce.map(decode),
-      services: services.map(normalizeServiceCard),
+      services: services
+        .filter((s) => !HOME_HIDDEN_SERVICE_CODES.includes(s.code))
+        .map(normalizeServiceCard),
     });
   } catch (e) { next(e); }
 });
