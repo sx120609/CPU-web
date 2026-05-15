@@ -156,20 +156,32 @@
 
       <transition v-else :name="slideName" mode="out-in">
         <div :key="activeDay" class="day-pane">
-          <div v-if="dayCourses.length" class="course-list">
-            <article v-for="item in dayCourses" :key="`${item.bigSlot}-${item.index}`" class="course-card" :style="{ '--accent': colorFor(item.course.name) }">
-              <div class="time">
-                <b>第 {{ item.bigSlot }} 大节</b>
-                <span>{{ bigSlotTime(item.bigSlot) }}</span>
-              </div>
-              <div class="course-main">
-                <h2>{{ item.course.name }}</h2>
-                <p v-if="item.course.location"><el-icon><Location /></el-icon>{{ item.course.location }}</p>
-                <p v-if="item.course.teacher"><el-icon><User /></el-icon>{{ item.course.teacher }}</p>
-                <p class="muted">{{ item.course.weeks }}<span v-if="item.course.slotNote"> · {{ item.course.slotNote }}</span></p>
-              </div>
-            </article>
-          </div>
+          <section v-if="dayCourseBlocks.length" class="day-timeline" aria-label="当日课表">
+            <div class="day-grid-body">
+              <template v-for="slot in smallSlots" :key="`day-axis-${slot.no}`">
+                <div class="slot-axis day-axis" :style="{ gridRow: `${slot.no} / ${slot.no + 1}` }">
+                  <b>{{ slot.no }}</b>
+                  <span>{{ slot.start }}</span>
+                  <span>{{ slot.end }}</span>
+                </div>
+                <div class="day-slot-cell" :style="{ gridColumn: '2 / 3', gridRow: `${slot.no} / ${slot.no + 1}` }" />
+              </template>
+              <article
+                v-for="block in dayCourseBlocks"
+                :key="`${block.startSlot}-${block.endSlot}-${block.index}-${block.course.name}`"
+                class="day-course-block"
+                :style="dayCourseBlockStyle(block)"
+                :title="courseTitle(block.course)"
+              >
+                <div class="day-course-name">{{ block.course.name }}</div>
+                <div class="day-course-meta">
+                  <span v-if="block.course.location">@{{ block.course.location }}</span>
+                  <span v-if="block.course.teacher">{{ block.course.teacher }}</span>
+                </div>
+                <div class="day-course-note">{{ block.course.slotNote || block.course.weeks }}</div>
+              </article>
+            </div>
+          </section>
 
           <div v-else class="empty-day">
             <el-icon><Moon /></el-icon>
@@ -210,7 +222,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { ArrowLeft, ArrowRight, Download, House, Loading, Lock, Location, Moon, Picture, Refresh, User } from "@element-plus/icons-vue";
+import { ArrowLeft, ArrowRight, Download, Loading, Lock, Moon, Picture, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
@@ -375,6 +387,9 @@ const dayCourses = computed<FlatCourse[]>(() => {
   }
   return list.sort((a, b) => a.bigSlot - b.bigSlot);
 });
+const dayCourseBlocks = computed<WeekCourseBlock[]>(() => (
+  weekCourseBlocks.value.filter((block) => block.day === activeDay.value)
+));
 const weekCourseBlocks = computed<WeekCourseBlock[]>(() => {
   const blocks: WeekCourseBlock[] = [];
   for (const cell of parsed.value?.cells ?? []) {
@@ -585,14 +600,15 @@ function courseTitle(course: ScheduleCourse) {
 
 const colors = ["#168776", "#2563eb", "#c2410c", "#7c3aed", "#0f766e", "#be123c", "#4d7c0f", "#0369a1"];
 const weekTones = [
-  { bg: "#dff4ee", border: "#8fd8c5", text: "#0f4f46" },
-  { bg: "#e4eefc", border: "#9bbcf2", text: "#173b73" },
-  { bg: "#fff0d8", border: "#f2bd72", text: "#70410b" },
-  { bg: "#f3e8ff", border: "#c7a5ee", text: "#4a2879" },
-  { bg: "#fee4e9", border: "#f4a3b6", text: "#7a1f34" },
-  { bg: "#e2f4ff", border: "#9bd2f4", text: "#17496b" },
-  { bg: "#edf7dc", border: "#b9d987", text: "#385514" },
-  { bg: "#f4eadf", border: "#d7b996", text: "#5c3d1f" },
+  { bg: "#de7894", border: "#f4b2c4", text: "#ffffff" },
+  { bg: "#9f82e9", border: "#c7b6fb", text: "#ffffff" },
+  { bg: "#e86d4b", border: "#f4aa92", text: "#ffffff" },
+  { bg: "#70d7ba", border: "#acebdc", text: "#ffffff" },
+  { bg: "#e9aa4c", border: "#f4cf8a", text: "#ffffff" },
+  { bg: "#4f80bf", border: "#8eb4e5", text: "#ffffff" },
+  { bg: "#df4a69", border: "#f19aaa", text: "#ffffff" },
+  { bg: "#8fbce8", border: "#c2dcf5", text: "#ffffff" },
+  { bg: "#e7df45", border: "#f3ee93", text: "#ffffff" },
 ];
 
 function hashName(name: string) {
@@ -623,6 +639,17 @@ function courseBlockStyle(block: WeekCourseBlock) {
   const tone = toneFor(block.course.name);
   return {
     gridColumn: `${block.day + 1} / ${block.day + 2}`,
+    gridRow: `${block.startSlot} / ${block.endSlot + 1}`,
+    "--course-bg": tone.bg,
+    "--course-border": tone.border,
+    "--course-text": tone.text,
+  };
+}
+
+function dayCourseBlockStyle(block: WeekCourseBlock) {
+  const tone = toneFor(block.course.name);
+  return {
+    gridColumn: "2 / 3",
     gridRow: `${block.startSlot} / ${block.endSlot + 1}`,
     "--course-bg": tone.bg,
     "--course-border": tone.border,
@@ -1053,6 +1080,71 @@ function saveScheduleCache() {
   color: #8a94a6;
   font-size: 12px;
 }
+.day-timeline {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  touch-action: pan-y;
+}
+.day-grid-body {
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr);
+  grid-template-rows: repeat(10, minmax(58px, 6.2dvh));
+  gap: 5px;
+  position: relative;
+}
+.day-axis {
+  padding-top: 0;
+}
+.day-slot-cell {
+  min-width: 0;
+  min-height: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid #e7edf5;
+}
+.day-course-block {
+  z-index: 2;
+  margin: 1px;
+  border-radius: 14px;
+  border: 1px solid var(--course-border);
+  background: var(--course-bg);
+  color: var(--course-text);
+  padding: 12px 14px;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18), 0 10px 20px rgba(24, 34, 51, 0.12);
+}
+.day-course-name {
+  font-size: 18px;
+  line-height: 1.25;
+  font-weight: 800;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.16);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+.day-course-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 13px;
+  line-height: 1.3;
+  font-weight: 700;
+  opacity: 0.94;
+}
+.day-course-note {
+  font-size: 12px;
+  line-height: 1.25;
+  opacity: 0.86;
+}
 .week-overview {
   width: 100%;
   max-width: 720px;
@@ -1158,7 +1250,7 @@ function saveScheduleCache() {
   justify-content: center;
   gap: 2px;
   overflow: hidden;
-  box-shadow: 0 4px 10px rgba(24, 34, 51, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18), 0 4px 10px rgba(24, 34, 51, 0.12);
   cursor: pointer;
   touch-action: manipulation;
 }
@@ -1176,20 +1268,23 @@ function saveScheduleCache() {
   font-size: 10px;
   line-height: 1.2;
   font-weight: 800;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.16);
 }
 .week-course span {
   -webkit-line-clamp: 2;
   font-size: 9px;
   line-height: 1.12;
   font-weight: 700;
-  opacity: 0.9;
+  opacity: 0.94;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.12);
 }
 .week-course em {
   -webkit-line-clamp: 1;
   font-size: 8px;
   line-height: 1.1;
   font-style: normal;
-  opacity: 0.72;
+  opacity: 0.86;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.12);
 }
 .empty-day {
   min-height: 220px;
@@ -1283,6 +1378,35 @@ function saveScheduleCache() {
 
   .view-switch {
     grid-template-columns: repeat(2, 30px);
+  }
+
+  .day-grid-body {
+    grid-template-columns: 42px minmax(0, 1fr);
+    grid-template-rows: repeat(10, minmax(52px, 6dvh));
+    gap: 4px;
+  }
+
+  .day-slot-cell {
+    border-radius: 10px;
+  }
+
+  .day-course-block {
+    border-radius: 12px;
+    padding: 10px 12px;
+    gap: 5px;
+  }
+
+  .day-course-name {
+    font-size: 16px;
+    -webkit-line-clamp: 3;
+  }
+
+  .day-course-meta {
+    font-size: 12px;
+  }
+
+  .day-course-note {
+    font-size: 11px;
   }
 
   .week-grid-head,
@@ -1382,6 +1506,23 @@ function saveScheduleCache() {
   .week-grid-body {
     grid-template-columns: 34px repeat(7, minmax(0, 1fr));
     gap: 2px;
+  }
+  .day-grid-body {
+    grid-template-columns: 36px minmax(0, 1fr);
+    grid-template-rows: repeat(10, minmax(48px, 5.6dvh));
+    gap: 3px;
+  }
+  .day-course-block {
+    padding: 9px 10px;
+  }
+  .day-course-name {
+    font-size: 15px;
+  }
+  .day-course-meta {
+    font-size: 11px;
+  }
+  .day-course-note {
+    font-size: 10px;
   }
   .week-grid-body {
     grid-template-rows: repeat(10, minmax(40px, 5.2dvh));
