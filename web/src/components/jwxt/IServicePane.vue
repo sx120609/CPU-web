@@ -66,13 +66,24 @@
     </div>
 
     <el-empty v-if="!loading && apps.length && !filtered.length" description="没有符合条件的应用" />
-    <el-empty v-else-if="!loading && !apps.length" description="暂未获取到应用列表，教务授权可能已失效" />
+    <div v-else-if="retrying" class="retry-card">
+      <el-icon class="is-loading"><Refresh /></el-icon>
+      <span>应用列表拉取失败，正在自动重试（{{ retryCount }} / {{ MAX_RETRIES }}）…</span>
+    </div>
+    <div v-else-if="!loading && error" class="error-card">
+      <div>
+        <h3>应用列表暂时拉取失败</h3>
+        <p>{{ error }}。可能是融合门户响应较慢或教务授权临时失效。</p>
+      </div>
+      <el-button type="primary" plain :loading="loading" @click="reload">重新拉取</el-button>
+    </div>
+    <el-empty v-else-if="!loading && !apps.length" description="暂未获取到应用列表，正在等待融合门户响应" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
-import { Search } from "@element-plus/icons-vue";
+import { ref, computed, onBeforeUnmount, onMounted } from "vue";
+import { Refresh, Search } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 
 interface IServiceApp {
@@ -91,12 +102,37 @@ interface IServiceApp {
 
 const apps = ref<IServiceApp[]>([]);
 const loading = ref(false);
+const retrying = ref(false);
+const retryCount = ref(0);
+const error = ref("");
 const keyword = ref("");
 const activeCat = ref("");
 const filterFav = ref<"" | "fav">("");
+const MAX_RETRIES = 3;
+const RETRY_DELAYS = [1000, 2200, 4200];
+let retryTimer: number | null = null;
 
-onMounted(async () => {
+onMounted(() => {
+  reload();
+});
+
+onBeforeUnmount(() => {
+  if (retryTimer) window.clearTimeout(retryTimer);
+});
+
+async function reload() {
+  if (retryTimer) {
+    window.clearTimeout(retryTimer);
+    retryTimer = null;
+  }
+  retryCount.value = 0;
+  error.value = "";
+  await loadApps();
+}
+
+async function loadApps() {
   loading.value = true;
+  retrying.value = retryCount.value > 0;
   try {
     const r: any = await jwxtApi.iapps();
     apps.value = r.apps ?? [];
@@ -105,8 +141,24 @@ onMounted(async () => {
       if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
       return (b.clickNum ?? 0) - (a.clickNum ?? 0);
     });
-  } finally { loading.value = false; }
-});
+    error.value = "";
+  } catch (e: any) {
+    error.value = e?.message || "网络请求失败";
+    if (retryCount.value < MAX_RETRIES) {
+      retryCount.value += 1;
+      retrying.value = true;
+      const delay = RETRY_DELAYS[retryCount.value - 1] ?? RETRY_DELAYS[RETRY_DELAYS.length - 1];
+      retryTimer = window.setTimeout(() => {
+        retryTimer = null;
+        loadApps();
+      }, delay);
+    } else {
+      retrying.value = false;
+    }
+  } finally {
+    loading.value = false;
+  }
+}
 
 const categories = computed(() => {
   const m = new Map<string, number>();
@@ -163,6 +215,44 @@ function openApp(a: IServiceApp) {
   white-space: nowrap;
 }
 .stat { font-size: 13px; color: var(--cpu-primary); font-weight: 500; }
+.retry-card,
+.error-card {
+  border: 1px solid #eef0f4;
+  border-radius: 12px;
+  background: #fff;
+}
+.retry-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 18px 14px;
+  color: #6b7280;
+  font-size: 13px;
+}
+.retry-card .is-loading {
+  color: var(--cpu-primary);
+  animation: spin 1.2s linear infinite;
+}
+.error-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px;
+}
+.error-card h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  color: #1f2937;
+}
+.error-card p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.6;
+}
+@keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
 
 .cats {
   display: flex;
@@ -306,6 +396,15 @@ function openApp(a: IServiceApp) {
   .ctrl-right {
     display: flex;
     justify-content: flex-end;
+  }
+
+  .error-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .error-card .el-button {
+    width: 100%;
   }
 
   .cats {
