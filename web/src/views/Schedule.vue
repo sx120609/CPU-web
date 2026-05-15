@@ -23,6 +23,16 @@
           <el-icon><Grid /></el-icon>
         </button>
         <button
+          v-if="installPromptRef && (installPromptRef as any).canShow"
+          type="button"
+          class="icon-btn install-btn"
+          aria-label="把课表添加到桌面"
+          title="添加到桌面"
+          @click="openInstallPrompt"
+        >
+          <el-icon><Download /></el-icon>
+        </button>
+        <button
           type="button"
           class="icon-btn"
           :class="{ spinning: loading }"
@@ -33,6 +43,9 @@
         </button>
       </div>
     </header>
+
+    <!-- PWA 添加到桌面引导 -->
+    <InstallPromptDialog ref="installPromptRef" />
 
     <section v-if="parsed" class="week-switcher">
       <button type="button" class="week-btn" :disabled="!canChangeWeek(-1)" @click="changeWeek(-1)">
@@ -192,10 +205,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { ArrowLeft, ArrowRight, Grid, House, Loading, Lock, Location, Moon, Picture, Refresh, User } from "@element-plus/icons-vue";
+import { ArrowLeft, ArrowRight, Download, Grid, House, Loading, Lock, Location, Moon, Picture, Refresh, User } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
+import InstallPromptDialog from "@/components/install/InstallPromptDialog.vue";
 
 interface ScheduleCourse {
   name: string;
@@ -284,6 +298,12 @@ function colorForBg(name: string): string {
   return bgPalette[h % bgPalette.length];
 }
 
+// 添加到主屏幕引导
+const installPromptRef = ref<InstanceType<typeof InstallPromptDialog> | null>(null);
+function openInstallPrompt() {
+  installPromptRef.value?.openDialog();
+}
+
 onMounted(async () => {
   jwxt.hydrate();
   hasCreds.value = hasSavedCreds();
@@ -292,6 +312,9 @@ onMounted(async () => {
   restoreLastState();
   restoreCachedCalendar();
   restoreLastScheduleCache();
+
+  // 自动检测是否值得弹"添加到桌面"（首次进 / 非 standalone / 没 dismiss 过 / 移动端）
+  installPromptRef.value?.autoPromptIfEligible();
 
   // 后台静默：刷新会话状态 + 自动登录 + 重新拉数据。失败也不影响已显示的缓存。
   void (async () => {
