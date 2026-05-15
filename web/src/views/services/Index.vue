@@ -1,6 +1,6 @@
 <template>
   <div class="services-page">
-    <div class="page-head">
+    <div class="page-head" :class="{ centered: !jwxt.isLoggedIn }">
       <div>
         <h2>🎯 校园服务</h2>
         <p class="hint">
@@ -14,7 +14,7 @@
       <el-icon class="big-icon"><Lock /></el-icon>
       <div class="hint-body">
         <h3>授权教务数据后显示完整服务列表</h3>
-        <p>授权后可查看融合门户应用、收藏和热度信息。认证凭据仅用于本次授权，<b>本站不保存学校账号密码</b>。</p>
+        <p>授权后可查看融合门户应用、收藏和热度信息。学号 / 工号会用于创建或关联站内账号，<b>本站不保存学校密码和验证码</b>。</p>
         <el-button type="primary" size="large" @click="$router.push('/jwxt')">前往教务数据授权</el-button>
       </div>
     </div>
@@ -57,6 +57,12 @@ onMounted(async () => {
 
 <style scoped>
 .services-page { display: flex; flex-direction: column; gap: 18px; }
+.page-head { width: 100%; }
+.page-head.centered {
+  max-width: 760px;
+  margin: 0 auto;
+  text-align: center;
+}
 .page-head h2 { margin: 0; font-size: 22px; }
 .page-head .hint { font-size: 13px; color: #6b7280; margin: 4px 0 0; line-height: 1.7; }
 .page-head .hint a { color: var(--cpu-primary); }
@@ -67,6 +73,8 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 20px;
+  width: min(100%, 680px);
+  margin: 0 auto;
   background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
 }
 .big-icon {
@@ -85,6 +93,8 @@ onMounted(async () => {
   background: #fff;
   border-radius: 12px;
   padding: 18px 22px;
+  width: min(100%, 760px);
+  margin: 0 auto;
   box-shadow: 0 2px 12px rgba(0,0,0,0.04);
 }
 .fb-title { margin: 0 0 12px; font-size: 14px; color: #6b7280; font-weight: 500; }

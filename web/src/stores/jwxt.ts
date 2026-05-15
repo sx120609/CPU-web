@@ -29,7 +29,7 @@ export const useJwxtStore = defineStore("jwxt", {
         return;
       }
       try {
-        const r = await jwxtApi.status();
+        const r = await jwxtApi.status({ silent: true });
         this.active = r.active;
         if (!r.active) { clearJwxtToken(); this.token = ""; }
       } catch { this.active = false; }
@@ -38,7 +38,7 @@ export const useJwxtStore = defineStore("jwxt", {
       this.loading = true;
       this.error = "";
       try {
-        const r = await jwxtApi.beginLogin();
+        const r = await jwxtApi.beginLogin({ silent: true });
         this.pendingId = r.pendingId;
         this.needCaptcha = r.needCaptcha;
         this.captchaImage = r.captchaImage ?? "";
@@ -78,6 +78,9 @@ export const useJwxtStore = defineStore("jwxt", {
           this.captchaImage = r.captcha.image;
           this.needCaptcha = true;
         }
+        return false;
+      } catch (e: any) {
+        this.error = e?.message || "教务数据授权失败，请稍后重试";
         return false;
       } finally { this.loading = false; }
     },

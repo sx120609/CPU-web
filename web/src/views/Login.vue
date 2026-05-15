@@ -20,7 +20,7 @@
       <p class="hint">完成身份确认后自动创建站内账号，可用于发帖、课评和消息通知。</p>
 
       <el-alert type="warning" :closable="false" show-icon class="safety">
-        账号密码<b>仅用于本次统一认证</b>，本站不写入数据库、文件或日志
+        学号 / 工号会用于创建或关联站内账号，<b>学校密码和验证码不保存</b>
       </el-alert>
 
       <el-form

@@ -22,6 +22,18 @@ export function clearJwxtToken() {
 
 const inst = axios.create({ baseURL: "/api/jwxt", timeout: 30000 });
 
+function normalizeJwxtError(message?: string) {
+  const raw = (message || "").trim();
+  if (!raw || /fetch failed|network error/i.test(raw)) {
+    return "暂时无法连接教务服务，请稍后重试";
+  }
+  return raw;
+}
+
+function shouldSuppressErrorMessage(config: unknown) {
+  return Boolean((config as { suppressErrorMessage?: boolean } | undefined)?.suppressErrorMessage);
+}
+
 inst.interceptors.request.use((cfg) => {
   const tk = getJwxtToken();
   if (tk) cfg.headers["X-Jwxt-Token"] = tk;
@@ -36,17 +48,22 @@ inst.interceptors.response.use(
     const body = resp.data;
     if (body && typeof body.code === "number") {
       if (body.code !== 0) {
-        ElMessage.error(body.message || "请求失败");
-        return Promise.reject(new Error(body.message));
+        const message = normalizeJwxtError(body.message || "请求失败");
+        if (!shouldSuppressErrorMessage(resp.config)) {
+          ElMessage.error(message);
+        }
+        return Promise.reject(new Error(message));
       }
       return body.data;
     }
     return resp.data;
   },
   (err) => {
-    const msg = err.response?.data?.message ?? err.message ?? "教务请求失败";
-    ElMessage.error(msg);
-    return Promise.reject(err);
+    const msg = normalizeJwxtError(err.response?.data?.message ?? err.message);
+    if (!shouldSuppressErrorMessage(err.config)) {
+      ElMessage.error(msg);
+    }
+    return Promise.reject(new Error(msg));
   }
 );
 
@@ -64,11 +81,20 @@ export interface LoginResult {
 }
 
 export const jwxtApi = {
-  beginLogin: () => inst.post<unknown, BeginLoginResult>("/begin-login"),
+  beginLogin: (options?: { silent?: boolean }) =>
+    inst.post<unknown, BeginLoginResult>(
+      "/begin-login",
+      undefined,
+      options?.silent ? ({ suppressErrorMessage: true } as any) : undefined
+    ),
   login: (p: { pendingId: string; username: string; password: string; captcha?: string }) =>
     inst.post<unknown, LoginResult>("/login", p),
   logout: () => inst.post<unknown, { ok: boolean }>("/logout"),
-  status: () => inst.get<unknown, { active: boolean; since?: number }>("/status"),
+  status: (options?: { silent?: boolean }) =>
+    inst.get<unknown, { active: boolean; since?: number }>(
+      "/status",
+      options?.silent ? ({ suppressErrorMessage: true } as any) : undefined
+    ),
   schedule: () => inst.get<unknown, { html: string; parsed: any }>("/schedule"),
   grades: () => inst.get<unknown, { html: string; parsed: any }>("/grades"),
   exams: () => inst.get<unknown, { html: string; parsed: any }>("/exams"),
