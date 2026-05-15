@@ -8,15 +8,13 @@
   >
     <div v-if="loading" class="loading">
       <el-icon class="is-loading" :size="32"><Loading /></el-icon>
-      <p>正在向校园侧查询…</p>
-      <p class="sub-hint">需要校内网络才能拉到数据，首次查询约 3-6 秒</p>
+      <p>正在查询电费…</p>
     </div>
 
     <div v-else-if="error" class="error">
       <el-icon :size="32" color="#dc2626"><WarningFilled /></el-icon>
       <p class="msg">{{ error }}</p>
-      <p class="hint">校园电费接口只在校园网内可达。如果你在校外，可以连校园 VPN 后再试。<br/>
-      （站点服务器需要也在校园网或能 VPN 到校园网，本功能才会工作。）</p>
+      <p class="hint">如果一直查不到，可能是学号未关联宿舍、或校园电费系统临时不可用。</p>
       <el-button @click="refresh">重试</el-button>
     </div>
 

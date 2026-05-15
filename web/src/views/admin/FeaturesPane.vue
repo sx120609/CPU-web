@@ -67,7 +67,7 @@ const featureMeta: { key: FKey; icon: string; title: string; desc: string; paths
   },
   {
     key: "electric", icon: "💡", title: "宿舍电费查询",
-    desc: "校园侧电费接口仅校园网可达。若部署服务器在公网（无法访问 10.200.13.18），请关掉此项避免学生看到错误。",
+    desc: "首页与校园服务页的电费快捷卡片；如果隧道不通、不想暴露这个功能时关掉。",
     paths: ["/api/services/dorm-electric", "首页电费卡片"],
   },
 ];

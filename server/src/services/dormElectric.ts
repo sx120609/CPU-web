@@ -13,31 +13,20 @@
  *
  * SALT 与 appId 来自 SPA 源码硬编码，所有学号共用。
  *
- * ⚠️ 仅校园网可达：10.200.13.18 是内网 IP。**部署服务器必须在校园网**或能 VPN 到校园网。
+ * 接口走校内 frp 穿透出来的公网地址（默认 http://sz.weicheng.wang:8899），
+ * 不依赖部署服务器是否在校园网。如要换隧道地址，在 .env 设 DORM_ELECTRIC_BASE。
  */
 import { createHash } from "node:crypto";
 
 /**
- * 校园侧 API base URL。
- *
- * 默认指向校内私网 IP——仅当部署服务器**也在校园网**时可用。
- * 公网部署时可用 frp 内网穿透：把 10.200.13.18:8899 暴露成公网域名/端口，
- * 然后设环境变量 DORM_ELECTRIC_BASE 覆盖。例如：
- *   DORM_ELECTRIC_BASE=http://electric.lizmt.cn
- *   DORM_ELECTRIC_BASE=https://cpu-tunnel.example.com:23456
- *
- * 注意：sign 算法和 SALT 与 host 无关，所以替换 base 不需要改任何其他代码。
- * 但学校原始服务器可能根据 Host header 校验，frp 用 type=tcp 转发最稳。
- */
-/**
  * 校园侧 API base URL —— **每次调用读 env**，避免模块加载顺序与 dotenv.config()
  * 竞速时拿到 undefined 退回默认值。
  *
- * 默认 http://10.200.13.18:8899 仅校园网可达。公网部署时设 .env：
- *   DORM_ELECTRIC_BASE=http://sz.weicheng.wang:8899
+ * 默认是 frp 穿透出来的公网地址；想直连内网 IP（仅校园网内部署有意义）可设：
+ *   DORM_ELECTRIC_BASE=http://10.200.13.18:8899
  */
 function getBaseUrl(): string {
-  return (process.env.DORM_ELECTRIC_BASE || "http://10.200.13.18:8899").replace(/\/$/, "");
+  return (process.env.DORM_ELECTRIC_BASE || "http://sz.weicheng.wang:8899").replace(/\/$/, "");
 }
 
 const APP_ID = "XzJ0YzzEtk0HbVOk";
@@ -115,8 +104,8 @@ export async function queryDormElectric(studentNo: string): Promise<DormElectric
       });
     } finally { clearTimeout(timer); }
   } catch (e: any) {
-    if (e?.name === "AbortError") throw new Error(`查询超时（${targetUrl}），请稍后重试`);
-    throw new Error(`无法访问宿舍电费接口（实际请求 ${targetUrl}）：${e?.message || e}`);
+    if (e?.name === "AbortError") throw new Error("查询超时，校园侧响应过慢，请稍后重试");
+    throw new Error(`电费查询失败：${e?.message || e}`);
   }
 
   if (!resp.ok) {

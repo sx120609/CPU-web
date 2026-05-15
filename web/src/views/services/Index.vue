@@ -17,7 +17,7 @@
           <span class="quick-icon">💡</span>
           <div class="quick-body">
             <div class="quick-title">宿舍电费查询</div>
-            <div class="quick-sub">站内查询本宿舍剩余电量与近期用电 · 仅校园网可达</div>
+            <div class="quick-sub">站内查询本宿舍剩余电量、剩余金额与抄表时间</div>
           </div>
           <el-icon class="quick-arrow"><Right /></el-icon>
         </button>
