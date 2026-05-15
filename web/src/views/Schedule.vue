@@ -94,12 +94,7 @@
       </el-button>
     </section>
 
-    <section v-else-if="viewMode === 'day'" class="content" v-loading="loading && !parsed"
-      @touchstart.passive="onTouchStart"
-      @touchmove.passive="onTouchMove"
-      @touchend.passive="onTouchEnd"
-      @touchcancel.passive="onTouchEnd"
-    >
+    <section v-else-if="viewMode === 'day'" class="content" v-loading="loading && !parsed">
       <div class="summary">
         <div>
           <span>第 {{ week || parsed?.currentWeek || "--" }} 周</span>
@@ -110,11 +105,7 @@
       </div>
 
       <transition :name="slideName" mode="out-in">
-        <div
-          :key="activeDay"
-          class="day-pane"
-          :style="paneStyle"
-        >
+        <div :key="activeDay" class="day-pane">
           <div v-if="dayCourses.length" class="course-list">
             <article v-for="item in dayCourses" :key="`${item.bigSlot}-${item.index}`" class="course-card" :style="{ '--accent': colorFor(item.course.name) }">
               <div class="time">
@@ -138,28 +129,32 @@
       </transition>
     </section>
 
-    <!-- 周课表总览 -->
+    <!-- 周课表总览：天作为行（7 行），大节作为列（5 列），一屏宽度内就能看完整周 -->
     <section v-else-if="parsed && viewMode === 'week'" class="week-grid-view" v-loading="loading && !parsed">
       <div class="wgv">
         <div class="wgv-corner"></div>
-        <div v-for="d in dayTabs" :key="`wh-${d.day}`" class="wgv-head" :class="{ today: d.isToday }">
-          <div class="dn">{{ d.label }}</div>
-          <div class="dt">{{ d.date || '--' }}</div>
+        <div v-for="bs in bigSlots" :key="`wh-${bs}`" class="wgv-head">
+          <div class="dn">第 {{ bs }} 节</div>
         </div>
-        <template v-for="bs in bigSlots" :key="`wr-${bs}`">
-          <div class="wgv-slot">
-            <div class="bs">{{ bs }}</div>
-            <div class="bst">{{ bigSlotTime(bs) }}</div>
+        <template v-for="d in dayTabs" :key="`wr-${d.day}`">
+          <div class="wgv-day" :class="{ today: d.isToday }">
+            <div class="dy">{{ d.label.replace('周', '') }}</div>
+            <div class="dt">{{ d.date || '--' }}</div>
           </div>
-          <div v-for="d in dayTabs" :key="`wc-${bs}-${d.day}`" class="wgv-cell">
+          <div
+            v-for="bs in bigSlots"
+            :key="`wc-${d.day}-${bs}`"
+            class="wgv-cell"
+            :class="{ 'has-course': getCoursesAt(d.day, bs).length > 0 }"
+          >
             <div
               v-for="(c, i) in getCoursesAt(d.day, bs)"
               :key="i"
               class="wgv-course"
               :style="{ background: colorForBg(c.name) }"
+              :title="`${c.name}${c.location ? ' @ ' + c.location : ''}${c.teacher ? ' · ' + c.teacher : ''}`"
             >
               <div class="cn">{{ c.name }}</div>
-              <div v-if="c.location" class="cl">{{ c.location }}</div>
             </div>
           </div>
         </template>
@@ -355,21 +350,6 @@ const dayCourses = computed<FlatCourse[]>(() => {
 const slideDirection = ref<"next" | "prev">("next");
 const slideName = computed(() => slideDirection.value === "next" ? "slide-left" : "slide-right");
 
-// 触摸拖动：dragOffset 给 day-pane 实时 translateX，让滑动跟手
-const dragOffset = ref(0);
-const dragging = ref(false); // 横向拖动已经锁定（避免与垂直滚动冲突）
-let touchStartX = 0;
-let touchStartY = 0;
-const SWIPE_THRESHOLD = 50; // 释放时横移超过这个 → 切日；否则弹回
-
-/** day-pane 的样式：拖动中 transform 跟手 + 关 transition；松手归零时启用 transition 让它平滑回弹 */
-const paneStyle = computed(() => {
-  if (dragging.value) {
-    return { transform: `translateX(${dragOffset.value}px)`, transition: "none" };
-  }
-  return { transform: "translateX(0)", transition: "transform 0.22s cubic-bezier(0.4, 0, 0.2, 1)" };
-});
-
 async function loadCalendar() {
   restoreCachedCalendar();
   try {
@@ -457,47 +437,6 @@ function onDayClick(day: number) {
   slideDirection.value = day > activeDay.value ? "next" : "prev";
   activeDay.value = day;
   saveLastState();
-}
-
-function onTouchStart(e: TouchEvent) {
-  const t = e.changedTouches[0];
-  touchStartX = t.clientX;
-  touchStartY = t.clientY;
-  dragging.value = false;
-  dragOffset.value = 0;
-}
-
-function onTouchMove(e: TouchEvent) {
-  const t = e.changedTouches[0];
-  const dx = t.clientX - touchStartX;
-  const dy = t.clientY - touchStartY;
-  if (!dragging.value) {
-    // 还没锁横向意图：纵向移动就放弃（让浏览器滚动）；横向移动且明确才锁
-    if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) return; // 用户在上下滚
-    if (Math.abs(dx) < 8) return; // 还没动够，等
-    dragging.value = true;
-  }
-  // 横向跟随；适度阻尼让小拖动不显得太敏感
-  dragOffset.value = dx;
-}
-
-function onTouchEnd(e: TouchEvent) {
-  if (!dragging.value) {
-    dragOffset.value = 0;
-    return;
-  }
-  const t = e.changedTouches[0];
-  const dx = t.clientX - touchStartX;
-  dragging.value = false;
-  if (Math.abs(dx) >= SWIPE_THRESHOLD) {
-    // 触发切日；先把 offset 归零（vue transition 接管切日动画）
-    dragOffset.value = 0;
-    if (dx < 0) void nextDay();
-    else void prevDay();
-  } else {
-    // 弹回（transition 在 0 时启用，平滑回原位）
-    dragOffset.value = 0;
-  }
 }
 
 async function reloadCaptcha() {
@@ -695,7 +634,7 @@ function saveScheduleCache() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
   margin: 0 auto 14px;
   max-width: 720px;
 }
@@ -704,16 +643,37 @@ function saveScheduleCache() {
   min-width: 0;
   max-width: 260px;
 }
+/* 把 el-select 撑成 38px 高（默认 size=small 是 28-32px，太矮），跟 icon-btn 对齐 */
+.sem-select :deep(.el-select__wrapper) {
+  min-height: 38px;
+  border-radius: 10px;
+  border: 1px solid #dde4ee;
+  box-shadow: none;
+  background: #fff;
+  padding: 4px 10px;
+}
+.sem-select :deep(.el-select__wrapper:hover) {
+  border-color: #c2cdda;
+}
+.sem-select :deep(.el-select__wrapper.is-focused) {
+  border-color: #168776;
+  box-shadow: none;
+}
+.sem-select :deep(.el-select__placeholder),
+.sem-select :deep(.el-select__selected-item) {
+  font-size: 13px;
+  color: #172033;
+}
 .top-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
 }
 .icon-btn {
-  width: 42px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
   border: 1px solid #dde4ee;
-  border-radius: 12px;
+  border-radius: 10px;
   background: #fff;
   color: #172033;
   display: grid;
@@ -731,6 +691,9 @@ function saveScheduleCache() {
 }
 .icon-btn.spinning .el-icon {
   animation: spin 0.9s linear infinite;
+}
+.icon-btn .el-icon {
+  font-size: 18px;
 }
 @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
 .toolbar {
@@ -1007,9 +970,9 @@ function saveScheduleCache() {
   display: none;
 }
 
-/* ===== 周课表总览（grid 视图）===== */
+/* ===== 周课表总览（转置：天=行，节=列；一屏宽度容下整周）===== */
 .week-grid-view {
-  max-width: 100vw;
+  max-width: 720px;
   margin: 0 auto;
   background: #fff;
   border: 1px solid #eef0f4;
@@ -1018,10 +981,8 @@ function saveScheduleCache() {
 }
 .wgv {
   display: grid;
-  grid-template-columns: 56px repeat(7, minmax(78px, 1fr));
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
+  /* 第一列 = 日标签；后 5 列 = 第 1-5 大节 */
+  grid-template-columns: 56px repeat(5, 1fr);
 }
 .wgv-corner,
 .wgv-head {
@@ -1036,10 +997,8 @@ function saveScheduleCache() {
 .wgv-head + .wgv-head,
 .wgv-corner + .wgv-head { border-left: 1px solid #eef0f4; }
 .wgv-head .dn { font-weight: 600; }
-.wgv-head .dt { font-size: 10px; color: #9ca3af; margin-top: 2px; }
-.wgv-head.today { background: #d1fae5; color: #065f46; }
-.wgv-head.today .dt { color: #047857; }
-.wgv-slot {
+
+.wgv-day {
   background: #f9fafb;
   border-bottom: 1px solid #eef0f4;
   padding: 8px 4px;
@@ -1048,42 +1007,59 @@ function saveScheduleCache() {
   flex-direction: column;
   justify-content: center;
   align-items: center;
+  gap: 1px;
 }
-.wgv-slot .bs { font-weight: 600; color: #374151; }
-.wgv-slot .bst { color: #9ca3af; font-size: 9px; margin-top: 2px; }
+.wgv-day .dy { font-weight: 600; color: #374151; font-size: 13px; }
+.wgv-day .dt { color: #9ca3af; font-size: 10px; }
+.wgv-day.today { background: #d1fae5; }
+.wgv-day.today .dy { color: #065f46; }
+.wgv-day.today .dt { color: #047857; }
+
 .wgv-cell {
   border-bottom: 1px solid #eef0f4;
   border-left: 1px solid #eef0f4;
   padding: 3px;
-  min-height: 64px;
+  min-height: 52px;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 .wgv-course {
   border-radius: 5px;
-  padding: 5px 6px;
+  padding: 4px 5px;
   flex: 1;
-  min-height: 44px;
+  min-height: 38px;
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 .wgv-course .cn {
   font-size: 11px;
   font-weight: 600;
   color: #1f2937;
-  line-height: 1.25;
+  line-height: 1.2;
   word-break: break-word;
-}
-.wgv-course .cl {
-  font-size: 10px;
-  color: #4b5563;
+  /* 单元格小，限制 2 行 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 /* 最后一行不要 border-bottom */
-.wgv > .wgv-slot:last-of-type,
-.wgv > .wgv-slot:last-of-type ~ .wgv-cell {
+.wgv > .wgv-day:last-of-type,
+.wgv > .wgv-day:last-of-type ~ .wgv-cell {
   border-bottom: none;
+}
+
+@media (max-width: 430px) {
+  .wgv { grid-template-columns: 44px repeat(5, 1fr); }
+  .wgv-corner, .wgv-head { padding: 6px 2px; font-size: 11px; }
+  .wgv-day { padding: 6px 2px; }
+  .wgv-day .dy { font-size: 12px; }
+  .wgv-cell { padding: 2px; min-height: 48px; }
+  .wgv-course { padding: 3px 4px; min-height: 36px; }
+  .wgv-course .cn { font-size: 10px; }
 }
 
 /* ===== 周次选择 dialog 里的网格 ===== */
