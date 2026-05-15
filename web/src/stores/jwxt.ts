@@ -1,21 +1,45 @@
 import { defineStore } from "pinia";
-import { jwxtApi, getJwxtToken, setJwxtToken, clearJwxtToken } from "@/api/jwxt";
-import { saveCreds, loadCreds, clearCreds, hasCreds } from "@/utils/credCrypto";
+import { jwxtApi, getJwxtToken, clearJwxtToken } from "@/api/jwxt";
+import { clearCreds, hasCreds, loadCreds } from "@/utils/credCrypto";
+import { useAuthStore } from "@/stores/auth";
 
+/**
+ * 教务 jwxt store —— 现在是 auth store 的薄包装。
+ *
+ * 原本两套登录（/auth/sso-login 与 /jwxt/login）是分开的：在教务页登录后，
+ * 站内账号并不会同步登录，用户得再去 /login 走一次，体验割裂。
+ * 现在统一改成 **复用 useAuthStore 的 ssoLogin** —— 一次操作同时拿到：
+ *   • 站内 JWT（auth.token）+ 自动建/查 User
+ *   • 教务 session token（写到 sessionStorage 由 jwxt API 拦截器自动带）
+ * 本 store 保留主要是为了让 /jwxt 页面、SchedulePane、IServicePane 等老组件
+ * 不用大改：它们读 jwxt.isLoggedIn / jwxt.error / jwxt.needCaptcha / jwxt.captchaImage
+ * 等状态，本 store 把这些代理到 auth store。
+ */
 export const useJwxtStore = defineStore("jwxt", {
   state: () => ({
     token: "",
     active: false,
-    pendingId: "",
-    needCaptcha: false,
-    captchaImage: "",
-    error: "",
-    loading: false,
     autoLoginTried: false,
-    rememberSaved: false, // 是否本地已保存账号
+    rememberSaved: false,
   }),
   getters: {
     isLoggedIn: (s) => s.active && !!s.token,
+    // 把 auth store 的 SSO 流程态代理出来，供模板 v-if / v-model 直接绑定
+    error(): string {
+      return useAuthStore().ssoError;
+    },
+    loading(): boolean {
+      return useAuthStore().ssoLoading;
+    },
+    needCaptcha(): boolean {
+      return useAuthStore().ssoNeedCaptcha;
+    },
+    captchaImage(): string {
+      return useAuthStore().ssoCaptchaImage;
+    },
+    pendingId(): string {
+      return useAuthStore().ssoPendingId;
+    },
   },
   actions: {
     hydrate() {
@@ -31,70 +55,45 @@ export const useJwxtStore = defineStore("jwxt", {
       try {
         const r = await jwxtApi.status({ silent: true });
         this.active = r.active;
-        if (!r.active) { clearJwxtToken(); this.token = ""; }
-      } catch { this.active = false; }
+        if (!r.active) {
+          clearJwxtToken();
+          this.token = "";
+        }
+      } catch {
+        this.active = false;
+      }
     },
     async beginLogin() {
-      this.loading = true;
-      this.error = "";
-      try {
-        const r = await jwxtApi.beginLogin({ silent: true });
-        this.pendingId = r.pendingId;
-        this.needCaptcha = r.needCaptcha;
-        this.captchaImage = r.captchaImage ?? "";
-      } finally { this.loading = false; }
+      // 复用 auth store：拿 lt/execution + 可能的验证码
+      await useAuthStore().ssoBegin();
     },
-    async submitLogin(username: string, password: string, captcha: string | undefined, remember: boolean) {
-      this.loading = true;
-      this.error = "";
-      try {
-        const r = await jwxtApi.login({ pendingId: this.pendingId, username, password, captcha });
-        if (r.token) {
-          setJwxtToken(r.token);
-          this.token = r.token;
-          this.active = true;
-          this.needCaptcha = false;
-          this.captchaImage = "";
-          this.pendingId = "";
-          if (remember) {
-            try {
-              await saveCreds(username, password);
-              this.rememberSaved = true;
-            } catch (e) {
-              console.warn("[jwxt] 保存登录失败:", e);
-            }
-          } else {
-            // 如果之前记住过但这次取消勾选，清掉旧的
-            if (this.rememberSaved) {
-              clearCreds();
-              this.rememberSaved = false;
-            }
-          }
-          return true;
-        }
-        this.error = r.error || "登录失败";
-        if (r.needCaptcha && r.captcha) {
-          this.pendingId = r.captcha.pendingId;
-          this.captchaImage = r.captcha.image;
-          this.needCaptcha = true;
-        }
-        return false;
-      } catch (e: any) {
-        this.error = e?.message || "教务数据授权失败，请稍后重试";
-        return false;
-      } finally { this.loading = false; }
+    /**
+     * 提交账号密码：走 auth.ssoLogin —— 一次同时完成站内登录 + 教务授权
+     */
+    async submitLogin(username: string, password: string, captcha: string | undefined, remember: boolean): Promise<boolean> {
+      const auth = useAuthStore();
+      const ok = await auth.ssoLogin(username, password, captcha, remember);
+      if (ok) {
+        // jwxt token 已经被 auth.ssoLogin 写入 sessionStorage；这里同步本地 state
+        this.token = getJwxtToken();
+        this.active = !!this.token;
+        if (remember) this.rememberSaved = hasCreds();
+        return true;
+      }
+      // 失败：auth store 已经把错误/验证码状态 setattr 好，本 store 的 getter 会代理出来
+      return false;
     },
-    /** 尝试自动登录：用本地保存的账号悄悄走一遍代登录 */
+    /** 用本地保存的账号悄悄走一遍统一登录 */
     async tryAutoLogin(options?: { force?: boolean }): Promise<boolean> {
       if (this.autoLoginTried && !options?.force) return false;
       this.autoLoginTried = true;
-      if (this.active) return true;
+      if (this.active && useAuthStore().isLoggedIn) return true;
       const creds = await loadCreds().catch(() => null);
       if (!creds) return false;
       try {
         await this.beginLogin();
         if (this.needCaptcha) {
-          // 自动登录无法过验证码，留给用户手工补
+          // 自动登录无法过验证码，让用户手工补
           return false;
         }
         return await this.submitLogin(creds.username, creds.password, undefined, true);
@@ -112,6 +111,7 @@ export const useJwxtStore = defineStore("jwxt", {
       this.token = "";
       this.active = false;
       // 注意：默认不删 saved creds，下次还能自动登录
+      // 站内会话由 useAuthStore().logout() 单独处理（这里不动）
     },
   },
 });
