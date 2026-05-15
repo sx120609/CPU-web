@@ -552,6 +552,8 @@ async function onUserCmd(cmd: string) {
 .drawer-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: 76px;
+  align-items: stretch;
   gap: 10px;
 }
 
@@ -559,19 +561,38 @@ async function onUserCmd(cmd: string) {
   border: 1px solid #eef0f4;
   background: #fff;
   border-radius: 10px;
-  min-height: 72px;
+  height: 76px;
+  min-height: 76px;
+  padding: 10px 8px;
   color: #374151;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  line-height: 1;
   font: inherit;
+  overflow: hidden;
 }
 
 .drawer-link .el-icon {
   font-size: 22px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
   color: var(--cpu-primary);
+}
+
+.drawer-link span {
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .drawer-account {
@@ -659,7 +680,15 @@ async function onUserCmd(cmd: string) {
   .top-search {
     order: 10;
     width: 100%;
+    flex: 0 0 100%;
     max-width: none;
+    min-width: 0;
+    display: flex;
+    justify-content: center;
+  }
+
+  .top-search :deep(.el-input) {
+    width: min(100%, 520px);
   }
 
   .top-search :deep(.el-input__wrapper) {
