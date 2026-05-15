@@ -219,6 +219,7 @@ const mobileMenuOpen = ref(false);
 const desktopNavItems = computed(() => {
   const items: { to: string; label: string }[] = [];
   items.push({ to: "/home", label: "首页" });
+  items.push({ to: "/schedule", label: "课表" });
   if (site.features.forum) items.push({ to: "/forum", label: "论坛" });
   items.push({ to: "/announcements", label: "公告" });
   items.push({ to: "/jwxt", label: "教务数据" });
@@ -232,11 +233,11 @@ const mobileNavItems = computed(() => {
   // 动态项数（4-5 项）：tabbar 的 grid 列数会跟着收敛，不会出现空槽
   const items: { to: string; label: string; icon: any; match: string[]; auth?: boolean }[] = [
     { to: "/home", label: "首页", icon: House, match: ["/home"] },
+    { to: "/schedule", label: "课表", icon: Calendar, match: ["/schedule"] },
   ];
   if (site.features.forum) {
     items.push({ to: "/forum", label: "论坛", icon: ChatLineRound, match: ["/forum"] });
   }
-  items.push({ to: "/jwxt", label: "教务", icon: Calendar, match: ["/jwxt"] });
   items.push({ to: "/services", label: "服务", icon: Service, match: ["/services"] });
   items.push({ to: "/profile", label: "我的", icon: UserFilled, match: ["/profile", "/messages", "/u/"], auth: true });
   return items;
@@ -246,8 +247,10 @@ const drawerItems = computed(() => {
   const items: { to: string; label: string; icon: any }[] = [];
   if (site.features.forum) items.push({ to: "/post", label: "发帖", icon: Edit });
   items.push({ to: "/messages", label: "消息", icon: Message });
+  items.push({ to: "/schedule", label: "课表", icon: Calendar });
   if (site.features.forum) items.push({ to: "/forum", label: "论坛", icon: ChatLineRound });
   items.push({ to: "/announcements", label: "校园公告", icon: Bell });
+  items.push({ to: "/jwxt", label: "教务数据", icon: Calendar });
   if (site.features.coursereview) items.push({ to: "/coursereview", label: "课评", icon: Reading });
   if (site.features.market) items.push({ to: "/market", label: "二手市场", icon: Goods });
   items.push({ to: "/services", label: "校园服务", icon: Service });

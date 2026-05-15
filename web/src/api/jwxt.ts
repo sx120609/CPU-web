@@ -95,7 +95,8 @@ export const jwxtApi = {
       "/status",
       options?.silent ? ({ suppressErrorMessage: true } as any) : undefined
     ),
-  schedule: () => inst.get<unknown, { html: string; parsed: any }>("/schedule"),
+  schedule: (params?: { semester?: string; week?: string }) =>
+    inst.get<unknown, { html: string; parsed: any }>("/schedule", { params }),
   grades: () => inst.get<unknown, { html: string; parsed: any }>("/grades"),
   exams: () => inst.get<unknown, { html: string; parsed: any }>("/exams"),
   progress: () => inst.get<unknown, { parsed: any }>("/progress"),

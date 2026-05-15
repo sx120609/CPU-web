@@ -1,0 +1,18 @@
+{
+  "name": "药大垎坊课表",
+  "short_name": "课表",
+  "description": "面向中国药科大学学生的无广告课表快捷入口",
+  "start_url": "/schedule",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f8fb",
+  "theme_color": "#168776",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
