@@ -120,9 +120,6 @@
           <el-tag v-if="jwxt.rememberSaved" size="small" type="warning" class="remember-tag">
             已记住账号
           </el-tag>
-          <el-button plain type="primary" size="small" :loading="tabLoading" @click="loadCurrentTab(true)">
-            <el-icon><Refresh /></el-icon> 刷新当前
-          </el-button>
           <el-button v-if="jwxt.rememberSaved" plain type="warning" size="small" @click="onForget">
             忘记账号
           </el-button>
