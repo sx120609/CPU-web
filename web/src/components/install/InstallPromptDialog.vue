@@ -210,7 +210,6 @@ async function requestInstall() {
 function autoPromptIfEligible() {
   detectNativeApp();
   if (isStandalone.value || isNativeApp.value) return;
-  if (platform.value === "android") return;
   if (platform.value === "desktop") return;
   const last = (() => { try { return localStorage.getItem(DISMISS_KEY); } catch { return null; } })();
   if (last === "installed") return;
