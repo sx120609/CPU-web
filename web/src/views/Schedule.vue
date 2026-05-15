@@ -125,31 +125,32 @@
           </div>
         </div>
         <div class="week-grid-body">
-          <template v-for="slot in weekSlots" :key="slot">
-            <div class="slot-axis">
-              <b>第{{ slot }}</b>
-              <span>{{ bigSlotTimeCompact(slot) }}</span>
+          <template v-for="slot in smallSlots" :key="`axis-${slot.no}`">
+            <div class="slot-axis" :style="{ gridRow: `${slot.no} / ${slot.no + 1}` }">
+              <b>{{ slot.no }}</b>
+              <span>{{ slot.start }}</span>
+              <span>{{ slot.end }}</span>
             </div>
             <div
               v-for="day in 7"
-              :key="`${slot}-${day}`"
+              :key="`bg-${slot.no}-${day}`"
               class="week-slot-cell"
+              :style="{ gridColumn: `${day + 1} / ${day + 2}`, gridRow: `${slot.no} / ${slot.no + 1}` }"
               :class="{ today: dayTabs[day - 1]?.isToday }"
-            >
-              <article
-                v-for="(course, index) in coursesAt(day, slot)"
-                :key="`${day}-${slot}-${index}-${course.name}`"
-                class="week-course"
-                :style="{ '--accent': colorFor(course.name) }"
-                :title="courseTitle(course)"
-                @click="openDayFromWeek(day)"
-              >
-                <strong>{{ course.name }}</strong>
-                <span v-if="course.location">@{{ course.location }}</span>
-                <em v-if="course.slotNote || course.weeks">{{ course.slotNote || course.weeks }}</em>
-              </article>
-            </div>
+            />
           </template>
+          <article
+            v-for="block in weekCourseBlocks"
+            :key="`${block.day}-${block.startSlot}-${block.endSlot}-${block.index}-${block.course.name}`"
+            class="week-course"
+            :style="courseBlockStyle(block)"
+            :title="courseTitle(block.course)"
+            @click="openDayFromWeek(block.day)"
+          >
+            <strong>{{ block.course.name }}</strong>
+            <span v-if="block.course.location">@{{ block.course.location }}</span>
+            <em>{{ block.course.slotNote || block.course.weeks }}</em>
+          </article>
         </div>
       </section>
 
@@ -223,6 +224,8 @@ interface ScheduleCourse {
   weekList: number[];
   location?: string;
   slotNote?: string;
+  startSlot?: number;
+  endSlot?: number;
 }
 interface ScheduleCell { day: number; bigSlot: number; courses: ScheduleCourse[] }
 interface ScheduleResult {
@@ -238,6 +241,7 @@ interface FlatCourse { bigSlot: number; index: number; course: ScheduleCourse }
 interface CacheEnvelope<T> { savedAt: number; data: T }
 type ViewMode = "day" | "week";
 interface LastState { semester: string; week: string; activeDay: number; viewMode?: ViewMode }
+interface WeekCourseBlock { day: number; startSlot: number; endSlot: number; index: number; course: ScheduleCourse }
 
 const jwxt = useJwxtStore();
 const parsed = ref<ScheduleResult | null>(null);
@@ -257,6 +261,18 @@ const CACHE_TTL = 12 * 60 * 60 * 1000;
 const CALENDAR_CACHE_KEY = "cpu-schedule-calendar-v1";
 const LAST_STATE_KEY = "cpu-schedule-last-state-v1";
 const LAST_CACHE_KEY = "cpu-schedule-last-cache-key-v1";
+const smallSlots = [
+  { no: 1, start: "08:00", end: "08:45" },
+  { no: 2, start: "08:55", end: "09:40" },
+  { no: 3, start: "09:55", end: "10:40" },
+  { no: 4, start: "10:50", end: "11:35" },
+  { no: 5, start: "13:30", end: "14:15" },
+  { no: 6, start: "14:25", end: "15:10" },
+  { no: 7, start: "15:25", end: "16:10" },
+  { no: 8, start: "16:20", end: "17:05" },
+  { no: 9, start: "18:30", end: "19:15" },
+  { no: 10, start: "19:25", end: "20:10" },
+];
 
 // 周次选择弹窗
 const weekDialogOpen = ref(false);
@@ -359,15 +375,16 @@ const dayCourses = computed<FlatCourse[]>(() => {
   }
   return list.sort((a, b) => a.bigSlot - b.bigSlot);
 });
-const weekSlots = computed(() => {
-  const slots = new Set<number>();
-  for (const cell of parsed.value?.cells ?? []) slots.add(cell.bigSlot);
-  return Array.from(slots).sort((a, b) => a - b);
+const weekCourseBlocks = computed<WeekCourseBlock[]>(() => {
+  const blocks: WeekCourseBlock[] = [];
+  for (const cell of parsed.value?.cells ?? []) {
+    cell.courses.forEach((course, index) => {
+      const range = normalizeSlotRange(cell.bigSlot, course);
+      blocks.push({ day: cell.day, startSlot: range.start, endSlot: range.end, index, course });
+    });
+  }
+  return blocks.sort((a, b) => a.startSlot - b.startSlot || a.day - b.day || a.index - b.index);
 });
-
-function coursesAt(day: number, slot: number) {
-  return parsed.value?.cells.find((cell) => cell.day === day && cell.bigSlot === slot)?.courses ?? [];
-}
 
 // 滑动切日时记录方向，给 transition 用不同动画
 const slideDirection = ref<"next" | "prev">("next");
@@ -556,11 +573,6 @@ function bigSlotTime(slot: number) {
   return ["08:00-09:35", "10:00-11:35", "13:30-15:05", "15:25-17:00", "18:30-20:05"][slot - 1] ?? "";
 }
 
-function bigSlotTimeCompact(slot: number) {
-  const value = bigSlotTime(slot);
-  return value ? value.replace("-", "\n") : "";
-}
-
 function courseTitle(course: ScheduleCourse) {
   return [
     course.name,
@@ -572,10 +584,50 @@ function courseTitle(course: ScheduleCourse) {
 }
 
 const colors = ["#168776", "#2563eb", "#c2410c", "#7c3aed", "#0f766e", "#be123c", "#4d7c0f", "#0369a1"];
-function colorFor(name: string) {
+const weekTones = [
+  { bg: "#dff4ee", border: "#8fd8c5", text: "#0f4f46" },
+  { bg: "#e4eefc", border: "#9bbcf2", text: "#173b73" },
+  { bg: "#fff0d8", border: "#f2bd72", text: "#70410b" },
+  { bg: "#f3e8ff", border: "#c7a5ee", text: "#4a2879" },
+  { bg: "#fee4e9", border: "#f4a3b6", text: "#7a1f34" },
+  { bg: "#e2f4ff", border: "#9bd2f4", text: "#17496b" },
+  { bg: "#edf7dc", border: "#b9d987", text: "#385514" },
+  { bg: "#f4eadf", border: "#d7b996", text: "#5c3d1f" },
+];
+
+function hashName(name: string) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
-  return colors[h % colors.length];
+  return h;
+}
+
+function colorFor(name: string) {
+  return colors[hashName(name) % colors.length];
+}
+
+function toneFor(name: string) {
+  return weekTones[hashName(name) % weekTones.length];
+}
+
+function normalizeSlotRange(bigSlot: number, course: ScheduleCourse) {
+  const fallbackStart = Math.max(1, Math.min(10, bigSlot * 2 - 1));
+  const fallbackEnd = Math.max(fallbackStart, Math.min(10, bigSlot * 2));
+  const start = Number.isFinite(course.startSlot) ? Number(course.startSlot) : fallbackStart;
+  const end = Number.isFinite(course.endSlot) ? Number(course.endSlot) : fallbackEnd;
+  const safeStart = Math.max(1, Math.min(10, start));
+  const safeEnd = Math.max(safeStart, Math.min(10, end));
+  return { start: safeStart, end: safeEnd };
+}
+
+function courseBlockStyle(block: WeekCourseBlock) {
+  const tone = toneFor(block.course.name);
+  return {
+    gridColumn: `${block.day + 1} / ${block.day + 2}`,
+    gridRow: `${block.startSlot} / ${block.endSlot + 1}`,
+    "--course-bg": tone.bg,
+    "--course-border": tone.border,
+    "--course-text": tone.text,
+  };
 }
 
 function scheduleCacheKey(sem = semester.value, wk = week.value) {
@@ -1057,56 +1109,56 @@ function saveScheduleCache() {
   color: #116b5f;
 }
 .week-grid-body {
+  position: relative;
+  grid-template-rows: repeat(10, minmax(48px, 5.8dvh));
   align-items: stretch;
 }
 .slot-axis {
   min-width: 0;
-  min-height: 124px;
-  padding-top: 8px;
+  min-height: 0;
+  padding-top: 4px;
   color: #667085;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
+  justify-content: center;
+  gap: 2px;
 }
 .slot-axis b {
   color: #172033;
-  font-size: 14px;
+  font-size: 13px;
 }
 .slot-axis span {
-  white-space: pre-line;
   text-align: center;
-  font-size: 10px;
-  line-height: 1.25;
+  font-size: 9px;
+  line-height: 1.12;
 }
 .week-slot-cell {
   min-width: 0;
-  min-height: 124px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.58);
+  min-height: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.52);
   border: 1px solid #e9eef5;
-  padding: 3px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
 }
 .week-slot-cell.today {
   background: rgba(232, 246, 243, 0.68);
 }
 .week-course {
   min-width: 0;
-  flex: 1 1 0;
-  min-height: 46px;
+  min-height: 0;
+  z-index: 2;
+  margin: 1px;
   border-radius: 8px;
-  background: var(--accent);
-  color: #fff;
-  padding: 6px 4px;
+  border: 1px solid var(--course-border);
+  background: var(--course-bg);
+  color: var(--course-text);
+  padding: 5px 3px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 2px;
   overflow: hidden;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28), 0 4px 12px rgba(24, 34, 51, 0.08);
+  box-shadow: 0 4px 10px rgba(24, 34, 51, 0.07);
   cursor: pointer;
   touch-action: manipulation;
 }
@@ -1121,23 +1173,23 @@ function saveScheduleCache() {
 }
 .week-course strong {
   -webkit-line-clamp: 4;
-  font-size: 11px;
-  line-height: 1.22;
+  font-size: 10px;
+  line-height: 1.2;
   font-weight: 800;
 }
 .week-course span {
   -webkit-line-clamp: 2;
-  font-size: 10px;
-  line-height: 1.15;
+  font-size: 9px;
+  line-height: 1.12;
   font-weight: 700;
-  opacity: 0.95;
+  opacity: 0.9;
 }
 .week-course em {
   -webkit-line-clamp: 1;
-  font-size: 9px;
-  line-height: 1.15;
+  font-size: 8px;
+  line-height: 1.1;
   font-style: normal;
-  opacity: 0.82;
+  opacity: 0.72;
 }
 .empty-day {
   min-height: 220px;
@@ -1256,35 +1308,33 @@ function saveScheduleCache() {
     font-size: 9px;
   }
 
-  .slot-axis,
-  .week-slot-cell {
-    min-height: 112px;
+  .week-grid-body {
+    grid-template-rows: repeat(10, minmax(44px, 5.5dvh));
   }
 
   .slot-axis b {
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .slot-axis span {
-    font-size: 9px;
+    font-size: 8px;
   }
 
   .week-slot-cell {
     border-radius: 8px;
-    padding: 2px;
   }
 
   .week-course {
     border-radius: 7px;
-    padding: 5px 3px;
+    padding: 4px 2px;
   }
 
   .week-course strong {
-    font-size: 10px;
+    font-size: 9px;
   }
 
   .week-course span {
-    font-size: 9px;
+    font-size: 8px;
   }
 
   .week-course em {
@@ -1333,21 +1383,20 @@ function saveScheduleCache() {
     grid-template-columns: 34px repeat(7, minmax(0, 1fr));
     gap: 2px;
   }
-  .slot-axis,
-  .week-slot-cell {
-    min-height: 104px;
+  .week-grid-body {
+    grid-template-rows: repeat(10, minmax(40px, 5.2dvh));
   }
   .slot-axis b {
-    font-size: 12px;
+    font-size: 11px;
   }
   .slot-axis span {
-    font-size: 8px;
+    font-size: 7px;
   }
   .week-course strong {
-    font-size: 9px;
+    font-size: 8px;
   }
   .week-course span {
-    font-size: 8px;
+    font-size: 7px;
   }
 }
 </style>
