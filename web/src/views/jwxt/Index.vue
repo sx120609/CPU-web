@@ -96,17 +96,24 @@
     <!-- 已登录：功能 Tab -->
     <div v-else>
       <div class="cpu-card session-info">
-        <el-icon style="color:#16a34a"><CircleCheckFilled /></el-icon>
-        <span>已连接学校教务系统。会话将在 30 分钟无活动后自动失效。</span>
-        <el-tag v-if="jwxt.rememberSaved" size="small" type="warning" style="margin-right:8px">
-          🔐 已记住账号
-        </el-tag>
-        <el-button v-if="jwxt.rememberSaved" text type="warning" size="small" @click="onForget">
-          忘记保存账号
-        </el-button>
-        <el-button text type="danger" @click="onLogout">
-          <el-icon><CircleClose /></el-icon> 断开连接
-        </el-button>
+        <div class="session-main">
+          <el-icon class="session-ok"><CircleCheckFilled /></el-icon>
+          <div class="session-copy">
+            <div class="session-title">已连接学校教务系统</div>
+            <div class="session-sub">会话将在 30 分钟无活动后自动失效。</div>
+          </div>
+        </div>
+        <div class="session-actions">
+          <el-tag v-if="jwxt.rememberSaved" size="small" type="warning" class="remember-tag">
+            已记住账号
+          </el-tag>
+          <el-button v-if="jwxt.rememberSaved" plain type="warning" size="small" @click="onForget">
+            忘记账号
+          </el-button>
+          <el-button plain type="danger" size="small" @click="onLogout">
+            <el-icon><CircleClose /></el-icon> 断开连接
+          </el-button>
+        </div>
       </div>
 
       <el-tabs v-model="tab" class="cpu-card" @tab-change="onTabChange">
@@ -327,13 +334,47 @@ async function onProbe() {
 .session-info {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 14px;
   font-size: 13px;
   color: #166534;
   background: #ecfdf5 !important;
   margin-bottom: 16px;
 }
-.session-info > span:first-of-type { flex: 1; }
+.session-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.session-ok {
+  color: #16a34a;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.session-copy {
+  min-width: 0;
+}
+.session-title {
+  font-weight: 600;
+  color: #14532d;
+}
+.session-sub {
+  margin-top: 2px;
+  color: #4b5563;
+  font-size: 12px;
+}
+.session-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.remember-tag {
+  margin-right: 0;
+}
 .hint-icon { color: #6b7280; cursor: help; margin-left: 4px; }
 
 .debug-pane { padding: 8px 0; }
@@ -384,15 +425,30 @@ async function onProbe() {
 
   .session-info {
     align-items: flex-start;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: 12px;
   }
 
-  .session-info > span:first-of-type {
-    flex-basis: calc(100% - 28px);
+  .session-main {
+    width: 100%;
   }
 
-  .session-info .el-button {
+  .session-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    gap: 8px;
+  }
+
+  .session-actions .remember-tag {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .session-actions :deep(.el-button) {
+    width: 100%;
     margin-left: 0;
+    min-height: 36px;
   }
 
   :deep(.el-tabs__content) {

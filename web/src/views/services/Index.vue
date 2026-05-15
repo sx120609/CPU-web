@@ -46,7 +46,7 @@
           <el-button text @click="reloadCaptcha"><el-icon><Refresh /></el-icon></el-button>
         </div>
         <div v-if="captchaError" class="captcha-err">{{ captchaError }}</div>
-        <el-button type="primary" :loading="captchaSubmitting" size="large" style="margin-top:10px" @click="submitCaptcha">完成授权</el-button>
+        <el-button class="captcha-submit" type="primary" :loading="captchaSubmitting" size="large" @click="submitCaptcha">完成授权</el-button>
       </div>
     </div>
 
@@ -56,7 +56,7 @@
       <div class="hint-body">
         <h3>授权教务数据后显示完整服务列表</h3>
         <p>授权后可查看融合门户应用、收藏和热度信息。学号 / 工号会用于创建或关联站内账号，<b>本站不保存学校密码和验证码</b>。</p>
-        <el-button type="primary" size="large" @click="$router.push('/jwxt')">前往教务数据授权</el-button>
+        <el-button class="hint-action" type="primary" size="large" @click="$router.push('/jwxt')">前往教务数据授权</el-button>
       </div>
     </div>
 
@@ -179,6 +179,13 @@ async function submitCaptcha() {
 .hint-body h3 { margin: 0 0 6px; font-size: 17px; color: #1f2937; }
 .hint-body p { margin: 0 0 12px; font-size: 13px; color: #4b5563; line-height: 1.7; }
 .hint-body b { color: #b45309; }
+.hint-action,
+.captcha-submit {
+  min-width: 180px;
+}
+.captcha-submit {
+  margin-top: 10px;
+}
 
 .captcha-row {
   display: flex;
@@ -291,6 +298,11 @@ async function submitCaptcha() {
     width: 100%;
   }
 
+  .hint-action,
+  .captcha-submit {
+    min-width: 0;
+  }
+
   .captcha-row {
     flex-wrap: wrap;
   }
@@ -303,6 +315,18 @@ async function submitCaptcha() {
     min-height: 56px;
     padding: 10px;
   }
+
+  .quick-card {
+    align-items: flex-start;
+    padding: 13px 14px;
+  }
+
+  .quick-icon {
+    font-size: 24px;
+  }
+
+  .quick-arrow {
+    margin-top: 3px;
+  }
 }
 </style>
-

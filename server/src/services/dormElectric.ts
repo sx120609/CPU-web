@@ -29,8 +29,17 @@ import { createHash } from "node:crypto";
  * 注意：sign 算法和 SALT 与 host 无关，所以替换 base 不需要改任何其他代码。
  * 但学校原始服务器可能根据 Host header 校验，frp 用 type=tcp 转发最稳。
  */
-const ELECTRIC_BASE = (process.env.DORM_ELECTRIC_BASE || "http://10.200.13.18:8899").replace(/\/$/, "");
-const TARGET_URL = `${ELECTRIC_BASE}/api/wxapp/my3`;
+/**
+ * 校园侧 API base URL —— **每次调用读 env**，避免模块加载顺序与 dotenv.config()
+ * 竞速时拿到 undefined 退回默认值。
+ *
+ * 默认 http://10.200.13.18:8899 仅校园网可达。公网部署时设 .env：
+ *   DORM_ELECTRIC_BASE=http://sz.weicheng.wang:8899
+ */
+function getBaseUrl(): string {
+  return (process.env.DORM_ELECTRIC_BASE || "http://10.200.13.18:8899").replace(/\/$/, "");
+}
+
 const APP_ID = "XzJ0YzzEtk0HbVOk";
 const SIGN_SALT = "ruGQQlUhZxJhQqKY8lYGYcN6UJWwNRL3";
 
@@ -90,12 +99,15 @@ export async function queryDormElectric(studentNo: string): Promise<DormElectric
   };
   payload.sign = computeSign(payload);
 
+  const base = getBaseUrl();
+  const targetUrl = `${base}/api/wxapp/my3`;
+
   let resp: Response;
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 10_000);
     try {
-      resp = await fetch(TARGET_URL, {
+      resp = await fetch(targetUrl, {
         method: "POST",
         headers: { "accept": "*/*", "content-type": "application/json" },
         body: JSON.stringify(payload),
@@ -103,8 +115,8 @@ export async function queryDormElectric(studentNo: string): Promise<DormElectric
       });
     } finally { clearTimeout(timer); }
   } catch (e: any) {
-    if (e?.name === "AbortError") throw new Error("查询超时，请稍后重试");
-    throw new Error("无法访问宿舍电费接口（仅校园网可达，请确认服务器在校园网或已 VPN）");
+    if (e?.name === "AbortError") throw new Error(`查询超时（${targetUrl}），请稍后重试`);
+    throw new Error(`无法访问宿舍电费接口（实际请求 ${targetUrl}）：${e?.message || e}`);
   }
 
   if (!resp.ok) {

@@ -156,6 +156,12 @@ function openApp(a: IServiceApp) {
 
 .ctrl-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
 .ctrl-left { display: flex; gap: 10px; align-items: center; }
+.ctrl-left :deep(.el-radio-group) {
+  flex-shrink: 0;
+}
+.ctrl-left :deep(.el-radio-button__inner) {
+  white-space: nowrap;
+}
 .stat { font-size: 13px; color: var(--cpu-primary); font-weight: 500; }
 
 .cats {
@@ -267,6 +273,39 @@ function openApp(a: IServiceApp) {
 
   .ctrl-left :deep(.el-input) {
     width: 100% !important;
+  }
+
+  .ctrl-left :deep(.el-radio-group) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    gap: 8px;
+    overflow: visible;
+  }
+
+  .ctrl-left :deep(.el-radio-button) {
+    width: 100%;
+  }
+
+  .ctrl-left :deep(.el-radio-button__inner) {
+    width: 100%;
+    min-height: 38px;
+    justify-content: center;
+    border: 1px solid #dcdfe6;
+    border-radius: 10px !important;
+    box-shadow: none !important;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 10px;
+  }
+
+  .ctrl-left :deep(.el-radio-button.is-active .el-radio-button__inner) {
+    border-color: var(--cpu-primary);
+  }
+
+  .ctrl-right {
+    display: flex;
+    justify-content: flex-end;
   }
 
   .cats {

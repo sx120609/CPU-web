@@ -365,7 +365,8 @@ async function onUserCmd(cmd: string) {
   padding: 0 20px;
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 18px;
+  min-width: 0;
 }
 
 .brand {
@@ -411,20 +412,33 @@ async function onUserCmd(cmd: string) {
 .top-search {
   width: 320px;
   max-width: 30%;
+  flex: 0 1 320px;
+  min-width: 180px;
 }
 
 .top-nav {
   display: flex;
   gap: 4px;
   flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.top-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .top-nav a {
+  flex: 0 0 auto;
   padding: 8px 12px;
   border-radius: 6px;
   color: #4b5563;
   text-decoration: none;
   font-size: 14px;
+  line-height: 1;
+  white-space: nowrap;
   transition: background 0.15s, color 0.15s;
 }
 
@@ -435,6 +449,7 @@ async function onUserCmd(cmd: string) {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 .mobile-actions {
@@ -489,6 +504,10 @@ async function onUserCmd(cmd: string) {
 .user-name {
   font-size: 13px;
   color: #374151;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .disclaimer {
@@ -588,7 +607,23 @@ async function onUserCmd(cmd: string) {
 .dlg-hint { font-size: 13px; color: #6b7280; margin: 0 0 14px; }
 .dlg-hint b { color: #b45309; }
 
-@media (max-width: 900px) {
+@media (max-width: 1120px) {
+  .topbar-inner {
+    gap: 12px;
+  }
+
+  .top-nav a {
+    padding: 8px 9px;
+  }
+
+  .top-search {
+    width: 240px;
+    flex-basis: 240px;
+    max-width: 24%;
+  }
+}
+
+@media (max-width: 960px) {
   .top-nav { display: none; }
   .top-search { width: 200px; }
 }
