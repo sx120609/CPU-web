@@ -243,7 +243,7 @@ async function openInstallPrompt() {
     );
     return;
   }
-  installPromptRef.value?.openDialog();
+  await installPromptRef.value?.requestInstall();
 }
 
 onMounted(async () => {
