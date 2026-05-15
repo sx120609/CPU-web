@@ -84,7 +84,7 @@
         <h3>应用列表暂时拉取失败</h3>
         <p>{{ error }}。可能是融合门户响应较慢或教务授权临时失效。</p>
       </div>
-      <el-button type="primary" plain :loading="loading" @click="reload">重新拉取</el-button>
+      <el-button type="primary" plain :loading="loading" @click="reload()">重新拉取</el-button>
     </div>
     <el-empty v-else-if="!loading && !apps.length" description="暂未获取到应用列表，正在等待融合门户响应" />
   </div>
@@ -121,37 +121,43 @@ const filterFav = ref<"" | "fav">("");
 const MAX_RETRIES = 3;
 const RETRY_DELAYS = [1000, 2200, 4200];
 const FAVORITES_KEY = "cpu-iservice-favorite-overrides";
+const APPS_CACHE_KEY = "cpu-iservice-apps-cache-v1";
+const CACHE_TTL = 12 * 60 * 60 * 1000;
 let retryTimer: number | null = null;
+let activeRequest: Promise<any> | null = null;
 
 onMounted(() => {
-  reload();
+  reload(false);
 });
 
 onBeforeUnmount(() => {
   if (retryTimer) window.clearTimeout(retryTimer);
 });
 
-async function reload() {
+async function reload(force = true) {
   if (retryTimer) {
     window.clearTimeout(retryTimer);
     retryTimer = null;
   }
   retryCount.value = 0;
   error.value = "";
-  await loadApps();
+  await loadApps(force);
 }
 
-async function loadApps() {
-  loading.value = true;
+async function loadApps(force = false) {
+  const cached = restoreAppsCache();
+  if (cached && !force && !isStale(cached.savedAt)) return;
+  loading.value = force || !apps.value.length;
   retrying.value = retryCount.value > 0;
   try {
-    const r: any = await jwxtApi.iapps();
+    const r: any = await fetchApps();
     const overrides = loadFavoriteOverrides();
     apps.value = (r.apps ?? []).map((a: IServiceApp) => ({
       ...a,
       favorite: favoriteFor(a, overrides),
     }));
     sortApps();
+    writeAppsCache(r.apps ?? []);
     error.value = "";
   } catch (e: any) {
     error.value = e?.message || "网络请求失败";
@@ -161,7 +167,7 @@ async function loadApps() {
       const delay = RETRY_DELAYS[retryCount.value - 1] ?? RETRY_DELAYS[RETRY_DELAYS.length - 1];
       retryTimer = window.setTimeout(() => {
         retryTimer = null;
-        loadApps();
+        loadApps(false);
       }, delay);
     } else {
       retrying.value = false;
@@ -169,6 +175,49 @@ async function loadApps() {
   } finally {
     loading.value = false;
   }
+}
+
+function fetchApps() {
+  if (activeRequest) return activeRequest;
+  activeRequest = jwxtApi.iapps();
+  activeRequest.then(
+    () => { activeRequest = null; },
+    () => { activeRequest = null; }
+  );
+  return activeRequest;
+}
+
+function isStale(savedAt: number) {
+  return !savedAt || Date.now() - savedAt > CACHE_TTL;
+}
+
+function readAppsCache(): { savedAt: number; apps: IServiceApp[] } | null {
+  try {
+    const raw = localStorage.getItem(APPS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed.savedAt !== "number" || !Array.isArray(parsed.apps)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeAppsCache(list: IServiceApp[]) {
+  try {
+    localStorage.setItem(APPS_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), apps: list }));
+  } catch {
+    /* ignore */
+  }
+}
+
+function restoreAppsCache() {
+  const cached = readAppsCache();
+  if (!cached?.apps.length || apps.value.length) return cached;
+  const overrides = loadFavoriteOverrides();
+  apps.value = cached.apps.map((a) => ({ ...a, favorite: favoriteFor(a, overrides) }));
+  sortApps();
+  return cached;
 }
 
 const categories = computed(() => {

@@ -30,6 +30,11 @@
 
         <div class="top-right">
           <template v-if="auth.isLoggedIn">
+            <el-tooltip content="刷新页面">
+              <el-button text @click="reloadPage">
+                <el-icon size="20"><Refresh /></el-icon>
+              </el-button>
+            </el-tooltip>
             <el-button type="primary" size="default" @click="$router.push('/post')">
               <el-icon><Edit /></el-icon> 发帖
             </el-button>
@@ -62,6 +67,9 @@
         </div>
 
         <div class="mobile-actions">
+          <el-button text class="touch-icon-btn" aria-label="刷新页面" @click="reloadPage">
+            <el-icon><Refresh /></el-icon>
+          </el-button>
           <el-button v-if="auth.isLoggedIn" text class="touch-icon-btn" aria-label="发帖" @click="$router.push('/post')">
             <el-icon><Edit /></el-icon>
           </el-button>
@@ -136,6 +144,10 @@
           <el-icon><component :is="item.icon" /></el-icon>
           <span>{{ item.label }}</span>
         </button>
+        <button type="button" class="drawer-link" @click="reloadPage">
+          <el-icon><Refresh /></el-icon>
+          <span>刷新页面</span>
+        </button>
       </div>
       <div class="drawer-account">
         <template v-if="auth.isLoggedIn">
@@ -203,6 +215,7 @@ import {
   Goods,
   Service,
   Message,
+  Refresh,
 } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
@@ -218,6 +231,10 @@ const mobileMenuOpen = ref(false);
 
 /** 某些路由（如 /schedule）希望"裸壳"渲染，没有顶栏/免责声明/footer，仅保留 main + tabbar */
 const hideChrome = computed(() => Boolean(route.meta?.hideChrome));
+
+function reloadPage() {
+  window.location.reload();
+}
 
 const desktopNavItems = computed(() => {
   const items: { to: string; label: string }[] = [];

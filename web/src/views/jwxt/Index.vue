@@ -107,6 +107,9 @@
           <el-tag v-if="jwxt.rememberSaved" size="small" type="warning" class="remember-tag">
             已记住账号
           </el-tag>
+          <el-button plain type="primary" size="small" :loading="tabLoading" @click="loadCurrentTab(true)">
+            <el-icon><Refresh /></el-icon> 刷新当前
+          </el-button>
           <el-button v-if="jwxt.rememberSaved" plain type="warning" size="small" @click="onForget">
             忘记账号
           </el-button>
@@ -172,11 +175,15 @@ const rules: FormRules = {
 };
 
 const tab = ref<"schedule" | "grades" | "progress" | "pyfa" | "debug">("schedule");
+type DataTab = "schedule" | "grades" | "progress" | "pyfa";
 const schedule = ref<any>(null);
 const grades = ref<any>(null);
 const progress = ref<any>(null);
 const pyfa = ref<any>(null);
 const tabLoading = ref(false);
+const CACHE_TTL = 12 * 60 * 60 * 1000;
+const CACHE_PREFIX = "cpu-jwxt-tab-cache-v1";
+const activeRequests = new Map<DataTab, Promise<any>>();
 
 const probePath = ref("/zgykdx/framework/xsMain.jsp");
 const probeHtml = ref("");
@@ -188,6 +195,7 @@ const isDev = computed(() => import.meta.env.DEV);
 
 onMounted(async () => {
   jwxt.hydrate();
+  restoreAllTabCaches();
   await jwxt.refreshStatus();
   if (!jwxt.isLoggedIn) {
     // 1. 先尝试自动登录（用本地保存的账号）
@@ -207,6 +215,75 @@ onMounted(async () => {
     loadCurrentTab();
   }
 });
+
+function cacheKey(t: DataTab) {
+  return `${CACHE_PREFIX}:${t}`;
+}
+
+function readCache(t: DataTab): { savedAt: number; data: any } | null {
+  try {
+    const raw = localStorage.getItem(cacheKey(t));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed.savedAt !== "number") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(t: DataTab, data: any) {
+  try {
+    localStorage.setItem(cacheKey(t), JSON.stringify({ savedAt: Date.now(), data }));
+  } catch {
+    /* ignore */
+  }
+}
+
+function isStale(savedAt: number) {
+  return !savedAt || Date.now() - savedAt > CACHE_TTL;
+}
+
+function getTabData(t: DataTab) {
+  if (t === "schedule") return schedule.value;
+  if (t === "grades") return grades.value;
+  if (t === "progress") return progress.value;
+  return pyfa.value;
+}
+
+function setTabData(t: DataTab, data: any) {
+  if (t === "schedule") schedule.value = data;
+  else if (t === "grades") grades.value = data;
+  else if (t === "progress") progress.value = data;
+  else pyfa.value = data;
+}
+
+function restoreCachedTab(t: DataTab) {
+  const cached = readCache(t);
+  if (!cached?.data) return null;
+  if (!getTabData(t)) setTabData(t, cached.data);
+  return cached;
+}
+
+function restoreAllTabCaches() {
+  (["schedule", "grades", "progress", "pyfa"] as DataTab[]).forEach((t) => restoreCachedTab(t));
+}
+
+function fetchTab(t: DataTab) {
+  if (activeRequests.has(t)) return activeRequests.get(t)!;
+  const request = (async () => {
+    if (t === "schedule") return jwxtApi.schedule();
+    if (t === "grades") return jwxtApi.grades();
+    if (t === "progress") return jwxtApi.progress();
+    return jwxtApi.pyfa();
+  })();
+  activeRequests.set(t, request);
+  request.then(
+    () => activeRequests.delete(t),
+    () => activeRequests.delete(t)
+  );
+  return request;
+}
 
 async function reloadCaptcha() {
   await jwxt.beginLogin();
@@ -240,17 +317,22 @@ async function onForget() {
   ElMessage.success("已忘记保存账号");
 }
 
-async function loadCurrentTab() {
-  tabLoading.value = true;
+async function loadCurrentTab(force = false) {
+  if (tab.value === "debug") return;
+  const current = tab.value as DataTab;
+  const cached = restoreCachedTab(current);
+  if (cached && !force && !isStale(cached.savedAt)) return;
+  tabLoading.value = force || !getTabData(current);
   try {
-    if (tab.value === "schedule" && !schedule.value) schedule.value = await jwxtApi.schedule();
-    else if (tab.value === "grades" && !grades.value) grades.value = await jwxtApi.grades();
-    else if (tab.value === "progress" && !progress.value) progress.value = await jwxtApi.progress();
-    else if (tab.value === "pyfa" && !pyfa.value) pyfa.value = await jwxtApi.pyfa();
+    const data = await fetchTab(current);
+    setTabData(current, data);
+    writeCache(current, data);
+  } catch {
+    // 已有缓存时保留旧数据；错误提示由 API 拦截器统一处理。
   } finally { tabLoading.value = false; }
 }
 
-function onTabChange() { loadCurrentTab(); }
+function onTabChange() { loadCurrentTab(false); }
 
 async function onSnapshot() {
   snapping.value = true;
