@@ -220,15 +220,27 @@ const days = [
   { idx: 4, label: "周四" }, { idx: 5, label: "周五" }, { idx: 6, label: "周六" }, { idx: 7, label: "周日" },
 ];
 const bigSlots = [1, 2, 3, 4, 5];
+const activeWeekNumber = computed(() => {
+  const value = Number(week.value || parsed.value?.currentWeek || cal.value?.currentWeek || 0);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+});
+const filteredCells = computed<ScheduleCell[]>(() => {
+  const wk = activeWeekNumber.value;
+  return (parsed.value?.cells ?? [])
+    .map((cell) => ({
+      ...cell,
+      courses: wk ? cell.courses.filter((course) => courseMatchesWeek(course, wk)) : cell.courses,
+    }))
+    .filter((cell) => cell.courses.length);
+});
 
 const cellsByPos = computed(() => {
   const map = new Map<string, ScheduleCell>();
-  if (!parsed.value) return map;
-  for (const c of parsed.value.cells) map.set(`${c.day}-${c.bigSlot}`, c);
+  for (const c of filteredCells.value) map.set(`${c.day}-${c.bigSlot}`, c);
   return map;
 });
 
-const totalCourses = computed(() => parsed.value?.cells.reduce((s, c) => s + c.courses.length, 0) ?? 0);
+const totalCourses = computed(() => filteredCells.value.reduce((s, c) => s + c.courses.length, 0));
 
 const weekDates = computed<string[]>(() => {
   if (!week.value || !cal.value) return Array(7).fill("");
@@ -249,6 +261,14 @@ function plusOneDay(ymd: string): string {
 
 function getCourses(day: number, bs: number): ScheduleCourse[] {
   return cellsByPos.value.get(`${day}-${bs}`)?.courses ?? [];
+}
+
+function courseMatchesWeek(course: ScheduleCourse, wk: number) {
+  if (!wk) return true;
+  if (Array.isArray(course.weekList) && course.weekList.length) {
+    return course.weekList.includes(wk);
+  }
+  return true;
 }
 
 function dayCourseCount(day: number): number {

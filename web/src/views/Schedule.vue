@@ -379,9 +379,22 @@ const dayTabs = computed(() => {
 });
 const activeDayLabel = computed(() => dayTabs.value.find((d) => d.day === activeDay.value)?.label ?? "今日");
 const cacheText = computed(() => scheduleSavedAt.value ? `本地缓存 ${formatCacheTime(scheduleSavedAt.value)}` : "");
+const activeWeekNumber = computed(() => {
+  const value = Number(week.value || parsed.value?.currentWeek || calendar.value?.currentWeek || 0);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+});
+const currentCells = computed<ScheduleCell[]>(() => {
+  const wk = activeWeekNumber.value;
+  return (parsed.value?.cells ?? [])
+    .map((cell) => ({
+      ...cell,
+      courses: wk ? cell.courses.filter((course) => courseMatchesWeek(course, wk)) : cell.courses,
+    }))
+    .filter((cell) => cell.courses.length);
+});
 const dayCourses = computed<FlatCourse[]>(() => {
   const list: FlatCourse[] = [];
-  for (const cell of parsed.value?.cells ?? []) {
+  for (const cell of currentCells.value) {
     if (cell.day !== activeDay.value) continue;
     cell.courses.forEach((course, index) => list.push({ bigSlot: cell.bigSlot, index, course }));
   }
@@ -392,7 +405,7 @@ const dayCourseBlocks = computed<WeekCourseBlock[]>(() => (
 ));
 const weekCourseBlocks = computed<WeekCourseBlock[]>(() => {
   const blocks: WeekCourseBlock[] = [];
-  for (const cell of parsed.value?.cells ?? []) {
+  for (const cell of currentCells.value) {
     cell.courses.forEach((course, index) => {
       const range = normalizeSlotRange(cell.bigSlot, course);
       blocks.push({ day: cell.day, startSlot: range.start, endSlot: range.end, index, course });
@@ -584,10 +597,6 @@ function nextWeekValue(delta: number) {
   return String(next);
 }
 
-function bigSlotTime(slot: number) {
-  return ["08:00-09:35", "10:00-11:35", "13:30-15:05", "15:25-17:00", "18:30-20:05"][slot - 1] ?? "";
-}
-
 function courseTitle(course: ScheduleCourse) {
   return [
     course.name,
@@ -598,27 +607,30 @@ function courseTitle(course: ScheduleCourse) {
   ].filter(Boolean).join("\n");
 }
 
-const colors = ["#168776", "#2563eb", "#c2410c", "#7c3aed", "#0f766e", "#be123c", "#4d7c0f", "#0369a1"];
+function courseMatchesWeek(course: ScheduleCourse, wk: number) {
+  if (!wk) return true;
+  if (Array.isArray(course.weekList) && course.weekList.length) {
+    return course.weekList.includes(wk);
+  }
+  return true;
+}
+
 const weekTones = [
-  { bg: "#de7894", border: "#f4b2c4", text: "#ffffff" },
-  { bg: "#9f82e9", border: "#c7b6fb", text: "#ffffff" },
-  { bg: "#e86d4b", border: "#f4aa92", text: "#ffffff" },
-  { bg: "#70d7ba", border: "#acebdc", text: "#ffffff" },
-  { bg: "#e9aa4c", border: "#f4cf8a", text: "#ffffff" },
-  { bg: "#4f80bf", border: "#8eb4e5", text: "#ffffff" },
-  { bg: "#df4a69", border: "#f19aaa", text: "#ffffff" },
-  { bg: "#8fbce8", border: "#c2dcf5", text: "#ffffff" },
-  { bg: "#e7df45", border: "#f3ee93", text: "#ffffff" },
+  { bg: "linear-gradient(135deg, rgba(222,120,148,0.34), rgba(255,255,255,0.62))", border: "#de7894", text: "#5a2434" },
+  { bg: "linear-gradient(135deg, rgba(159,130,233,0.32), rgba(255,255,255,0.62))", border: "#9f82e9", text: "#36266a" },
+  { bg: "linear-gradient(135deg, rgba(232,109,75,0.32), rgba(255,255,255,0.62))", border: "#e86d4b", text: "#67301f" },
+  { bg: "linear-gradient(135deg, rgba(112,215,186,0.34), rgba(255,255,255,0.62))", border: "#52bfa4", text: "#195448" },
+  { bg: "linear-gradient(135deg, rgba(233,170,76,0.32), rgba(255,255,255,0.62))", border: "#e3a13e", text: "#654415" },
+  { bg: "linear-gradient(135deg, rgba(79,128,191,0.32), rgba(255,255,255,0.62))", border: "#4f80bf", text: "#203f68" },
+  { bg: "linear-gradient(135deg, rgba(223,74,105,0.30), rgba(255,255,255,0.64))", border: "#df4a69", text: "#6a2031" },
+  { bg: "linear-gradient(135deg, rgba(143,188,232,0.34), rgba(255,255,255,0.64))", border: "#79aee0", text: "#244b70" },
+  { bg: "linear-gradient(135deg, rgba(231,223,69,0.30), rgba(255,255,255,0.66))", border: "#d6cb2d", text: "#5a5418" },
 ];
 
 function hashName(name: string) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
   return h;
-}
-
-function colorFor(name: string) {
-  return colors[hashName(name) % colors.length];
 }
 
 function toneFor(name: string) {
@@ -756,7 +768,10 @@ function saveScheduleCache() {
 .schedule-page {
   /* 不强制撑满视口高，避免内容短时多出可滚区 */
   padding: calc(env(safe-area-inset-top) + 14px) 14px calc(env(safe-area-inset-bottom) + 18px);
-  background: #f6f8fb;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(174, 211, 255, 0.36), transparent 32%),
+    radial-gradient(circle at 88% 14%, rgba(183, 232, 219, 0.32), transparent 30%),
+    linear-gradient(180deg, #edf4ff 0%, #f7fbff 42%, #f8fafc 100%);
   color: #172033;
 }
 .top {
@@ -921,20 +936,16 @@ function saveScheduleCache() {
   max-width: 720px;
   margin: 0 auto 14px;
   display: grid;
-  grid-template-columns: repeat(7, minmax(54px, 1fr));
-  gap: 7px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.week-strip::-webkit-scrollbar {
-  display: none;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  overflow: hidden;
 }
 .day-pill {
-  min-width: 54px;
+  min-width: 0;
   border: 1px solid #dde4ee;
   border-radius: 13px;
   background: #fff;
-  padding: 8px 4px;
+  padding: 8px 3px;
   color: #5c6677;
   display: flex;
   flex-direction: column;
@@ -944,9 +955,13 @@ function saveScheduleCache() {
 }
 .day-pill span {
   font-size: 12px;
+  line-height: 1.15;
+  white-space: nowrap;
 }
 .day-pill b {
   font-size: 13px;
+  line-height: 1.15;
+  white-space: nowrap;
 }
 .day-pill.today {
   border-color: #9fd9cf;
@@ -1030,56 +1045,6 @@ function saveScheduleCache() {
   color: #168776;
   font-weight: 700;
 }
-.course-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.course-card {
-  display: grid;
-  grid-template-columns: 92px minmax(0, 1fr);
-  gap: 12px;
-  background: #fff;
-  border: 1px solid #e8edf4;
-  border-left: 5px solid var(--accent);
-  border-radius: 14px;
-  padding: 13px 12px;
-  box-shadow: 0 6px 18px rgba(24, 34, 51, 0.05);
-}
-.time {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  color: #667085;
-}
-.time b {
-  color: var(--accent);
-  font-size: 13px;
-}
-.time span {
-  font-size: 12px;
-}
-.course-main {
-  min-width: 0;
-}
-.course-main h2 {
-  margin: 0 0 7px;
-  font-size: 17px;
-  line-height: 1.35;
-}
-.course-main p {
-  margin: 4px 0 0;
-  color: #475467;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  line-height: 1.45;
-  word-break: break-word;
-}
-.course-main .muted {
-  color: #8a94a6;
-  font-size: 12px;
-}
 .day-timeline {
   width: 100%;
   max-width: 720px;
@@ -1100,14 +1065,15 @@ function saveScheduleCache() {
   min-width: 0;
   min-height: 0;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.62);
-  border: 1px solid #e7edf5;
+  background: rgba(255, 255, 255, 0.36);
+  border: 1px solid rgba(218, 227, 239, 0.82);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.46);
 }
 .day-course-block {
   z-index: 2;
   margin: 1px;
-  border-radius: 14px;
-  border: 1px solid var(--course-border);
+  border-radius: 16px;
+  border: 1.5px solid var(--course-border);
   background: var(--course-bg);
   color: var(--course-text);
   padding: 12px 14px;
@@ -1118,13 +1084,17 @@ function saveScheduleCache() {
   justify-content: center;
   gap: 7px;
   overflow: hidden;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18), 0 10px 20px rgba(24, 34, 51, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.58),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.22),
+    0 10px 24px rgba(24, 34, 51, 0.08);
+  backdrop-filter: blur(14px) saturate(145%);
+  -webkit-backdrop-filter: blur(14px) saturate(145%);
 }
 .day-course-name {
   font-size: 18px;
   line-height: 1.25;
   font-weight: 800;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.16);
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
@@ -1163,7 +1133,9 @@ function saveScheduleCache() {
   z-index: 3;
   margin-bottom: 6px;
   padding: 3px 0;
-  background: #f6f8fb;
+  background: rgba(247, 251, 255, 0.86);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 .time-head,
 .week-day-head {
@@ -1181,8 +1153,9 @@ function saveScheduleCache() {
   font-size: 11px;
 }
 .week-day-head {
-  background: #fff;
-  border: 1px solid #e4eaf2;
+  background: rgba(255, 255, 255, 0.56);
+  border: 1px solid rgba(218, 227, 239, 0.88);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
   cursor: pointer;
   touch-action: manipulation;
 }
@@ -1229,19 +1202,20 @@ function saveScheduleCache() {
   min-width: 0;
   min-height: 0;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.52);
-  border: 1px solid #e9eef5;
+  background: rgba(255, 255, 255, 0.30);
+  border: 1px solid rgba(226, 234, 244, 0.78);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38);
 }
 .week-slot-cell.today {
-  background: rgba(232, 246, 243, 0.68);
+  background: rgba(232, 246, 243, 0.48);
 }
 .week-course {
   min-width: 0;
   min-height: 0;
   z-index: 2;
   margin: 1px;
-  border-radius: 8px;
-  border: 1px solid var(--course-border);
+  border-radius: 9px;
+  border: 1.5px solid var(--course-border);
   background: var(--course-bg);
   color: var(--course-text);
   padding: 5px 3px;
@@ -1250,7 +1224,11 @@ function saveScheduleCache() {
   justify-content: center;
   gap: 2px;
   overflow: hidden;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18), 0 4px 10px rgba(24, 34, 51, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.58),
+    0 6px 14px rgba(24, 34, 51, 0.08);
+  backdrop-filter: blur(12px) saturate(145%);
+  -webkit-backdrop-filter: blur(12px) saturate(145%);
   cursor: pointer;
   touch-action: manipulation;
 }
@@ -1268,7 +1246,6 @@ function saveScheduleCache() {
   font-size: 10px;
   line-height: 1.2;
   font-weight: 800;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.16);
 }
 .week-course span {
   -webkit-line-clamp: 2;
@@ -1276,7 +1253,6 @@ function saveScheduleCache() {
   line-height: 1.12;
   font-weight: 700;
   opacity: 0.94;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.12);
 }
 .week-course em {
   -webkit-line-clamp: 1;
@@ -1284,7 +1260,6 @@ function saveScheduleCache() {
   line-height: 1.1;
   font-style: normal;
   opacity: 0.86;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.12);
 }
 .empty-day {
   min-height: 220px;
@@ -1477,12 +1452,19 @@ function saveScheduleCache() {
     padding-left: 6px;
     padding-right: 6px;
   }
-  .course-card {
-    grid-template-columns: 78px minmax(0, 1fr);
-    padding: 12px 10px;
+  .week-strip {
+    gap: 3px;
   }
-  .course-main h2 {
-    font-size: 16px;
+  .day-pill {
+    border-radius: 10px;
+    padding: 7px 1px;
+    gap: 1px;
+  }
+  .day-pill span {
+    font-size: 11px;
+  }
+  .day-pill b {
+    font-size: 11px;
   }
   .week-switcher {
     grid-template-columns: 82px minmax(0, 1fr) 82px;
