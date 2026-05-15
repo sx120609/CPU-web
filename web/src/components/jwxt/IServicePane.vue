@@ -93,7 +93,7 @@
 <script setup lang="ts">
 import { ref, computed, onBeforeUnmount, onMounted } from "vue";
 import { Refresh, Search, Star, StarFilled } from "@element-plus/icons-vue";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage } from "element-plus";
 import { jwxtApi } from "@/api/jwxt";
 
 interface IServiceApp {
@@ -250,39 +250,7 @@ function toggleFavorite(a: IServiceApp) {
 
 async function openApp(a: IServiceApp) {
   if (!a.url) return;
-  try {
-    await ElMessageBox.confirm(
-      "部分学校服务不兼容统一认证跳转。如果免登录方式无法打开，可以选择原始地址。",
-      `打开「${a.name}」`,
-      {
-        confirmButtonText: "免登录打开",
-        cancelButtonText: "原始地址打开",
-        distinguishCancelAndClose: true,
-        closeOnClickModal: true,
-        type: "info",
-      }
-    );
-    await openWithLaunchUrl(a);
-  } catch (action) {
-    if (action === "cancel") openRawApp(a);
-  }
-}
-
-async function openWithLaunchUrl(a: IServiceApp) {
-  const win = window.open("about:blank", "_blank");
-  try {
-    const r = await jwxtApi.launchUrl(a.url);
-    if (win) {
-      win.opener = null;
-      win.location.href = r.url;
-    } else {
-      window.open(r.url, "_blank", "noopener");
-    }
-  } catch {
-    if (win) win.close();
-    ElMessage.warning("免登录跳转暂不可用，已打开学校原始服务地址");
-    openRawApp(a);
-  }
+  openRawApp(a);
 }
 
 function openRawApp(a: IServiceApp) {

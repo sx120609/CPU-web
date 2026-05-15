@@ -12,7 +12,6 @@ import {
   jwxtDebugSnapshot,
   sessionStats,
   fetchIServiceApps,
-  createIServiceLaunchUrl,
 } from "../services/jwxtClient";
 import { parseSchedule, parseGrades, parseExams, parseProgress, parsePyfa, parseCalendar } from "../services/jwxtParser";
 
@@ -188,20 +187,6 @@ jwxtRouter.get("/iapps", async (req, res, next) => {
     ok(res, { apps });
   } catch (e) { next(e); }
 });
-
-/** 生成融合门户应用免二次登录跳转地址 */
-jwxtRouter.get(
-  "/launch-url",
-  validate(z.object({ url: z.string().min(1).max(3000) }), "query"),
-  async (req, res, next) => {
-    try {
-      const t = getToken(req);
-      if (!t) throw Errors.unauthorized("请先登录教务系统");
-      const url = await createIServiceLaunchUrl(t, String(req.query.url));
-      ok(res, { url });
-    } catch (e) { next(e); }
-  }
-);
 
 /** 学业完成情况（xywcqk） */
 jwxtRouter.get("/progress", async (req, res, next) => {
