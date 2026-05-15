@@ -9,32 +9,35 @@
           <el-button v-if="site.features.forum" type="primary" size="large" @click="$router.push('/forum')">
             <el-icon><ChatLineRound /></el-icon> 进入论坛
           </el-button>
-          <el-button v-else type="primary" size="large" @click="$router.push('/services')">
-            <el-icon><ChatLineRound /></el-icon> 校园服务
+          <el-button v-else type="primary" size="large" @click="$router.push('/announcements')">
+            <el-icon><Bell /></el-icon> 看校园公告
           </el-button>
           <el-button v-if="!auth.isLoggedIn" size="large" @click="$router.push('/login')">登录参与</el-button>
           <el-button v-else-if="site.features.forum" size="large" @click="$router.push('/post')">
             <el-icon><Edit /></el-icon> 发布内容
           </el-button>
+          <el-button v-else size="large" @click="$router.push('/services')">
+            <el-icon><Service /></el-icon> 校园服务
+          </el-button>
         </div>
       </div>
-      <div class="hero-stats">
-        <div class="stat">
-          <div class="num">{{ summary?.hotTopics?.length ?? 0 }}+</div>
+      <div class="hero-stats" v-if="hasStats">
+        <div class="stat" v-if="site.features.forum && (summary?.hotTopics?.length ?? 0)">
+          <div class="num">{{ summary?.hotTopics?.length }}</div>
           <div class="lbl">热帖</div>
         </div>
-        <div class="stat">
-          <div class="num">{{ summary?.services?.length ?? 0 }}</div>
+        <div class="stat" v-if="summary?.services?.length">
+          <div class="num">{{ summary?.services?.length }}</div>
           <div class="lbl">服务直达</div>
         </div>
-        <div class="stat">
-          <div class="num">{{ summary?.announce?.length ?? 0 }}</div>
+        <div class="stat" v-if="summary?.announce?.length">
+          <div class="num">{{ summary?.announce?.length }}</div>
           <div class="lbl">最新公告</div>
         </div>
       </div>
     </section>
 
-    <div class="grid">
+    <div class="grid" :class="{ 'single-col': !site.features.forum }">
       <!-- 左：热帖 + 最新 -->
       <div class="col-left" v-if="site.features.forum">
         <section class="block">
@@ -94,8 +97,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
-import { ChatLineRound, Edit } from "@element-plus/icons-vue";
+import { ref, computed, onMounted } from "vue";
+import { ChatLineRound, Edit, Bell, Service } from "@element-plus/icons-vue";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import { homeApi, type HomeSummary } from "@/api/home";
 import { useAuthStore } from "@/stores/auth";
@@ -105,6 +108,14 @@ import { fmtRelative } from "@/utils/format";
 const auth = useAuthStore();
 const site = useSiteStore();
 const summary = ref<HomeSummary | null>(null);
+
+const hasStats = computed(() => {
+  if (!summary.value) return false;
+  const hot = site.features.forum && (summary.value.hotTopics?.length ?? 0) > 0;
+  const svc = (summary.value.services?.length ?? 0) > 0;
+  const ann = (summary.value.announce?.length ?? 0) > 0;
+  return hot || svc || ann;
+});
 
 onMounted(async () => {
   // 不区分游客 / 登录态，统一调 home/summary —— 后端按 token 自动决定 identity 是否返回
@@ -172,6 +183,10 @@ function openUrl(url: string) {
   display: grid;
   grid-template-columns: 2fr 1fr;
   gap: 16px;
+}
+/* 论坛被关掉时，左栏隐藏 → 右栏单独占满整行，避免出现 1/3 宽的"孤儿" */
+.grid.single-col {
+  grid-template-columns: 1fr;
 }
 @media (max-width: 1100px) {
   .grid { grid-template-columns: 1fr; }

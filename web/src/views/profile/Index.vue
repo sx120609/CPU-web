@@ -16,9 +16,11 @@
         <li><span>回复</span><span>{{ user?.replyCount }}</span></li>
         <li><span>声望</span><span>{{ user?.reputation }}</span></li>
       </ul>
-      <el-button type="primary" plain @click="editing = true">编辑资料</el-button>
-      <el-button v-if="!user?.studentSso" plain @click="passwordDialog = true">修改密码</el-button>
-      <el-button type="danger" plain @click="onLogout">退出登录</el-button>
+      <div class="profile-actions">
+        <el-button type="primary" plain @click="editing = true">编辑资料</el-button>
+        <el-button v-if="!user?.studentSso" plain @click="passwordDialog = true">修改密码</el-button>
+        <el-button type="danger" plain @click="onLogout">退出登录</el-button>
+      </div>
     </div>
 
     <div class="cpu-card">
@@ -177,6 +179,14 @@ async function onLogout() {
 .kv li span:first-child { color: #6b7280; }
 .kv li span:last-child { color: #1f2937; font-weight: 500; }
 
+.profile-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.profile-actions .el-button { flex: 1 1 auto; min-width: 100px; margin-left: 0 !important; }
+
 .topic-line {
   display: flex;
   align-items: center;
@@ -200,9 +210,12 @@ async function onLogout() {
     padding: 14px;
   }
 
-  .profile-card .el-button {
-    width: calc(50% - 5px);
-    margin-left: 0;
+  .profile-actions {
+    gap: 6px;
+  }
+  .profile-actions .el-button {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
   }
 
   .topic-line {

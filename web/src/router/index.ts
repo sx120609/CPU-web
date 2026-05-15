@@ -8,18 +8,17 @@ const MainLayout = () => import("@/layouts/MainLayout.vue");
 
 /**
  * 受功能开关控制的路由名 → feature key。
- * 当 admin 关闭该 feature 时，未登录或非 admin 用户访问会被重定向到 /home。
- * admin / mod 始终能进入这些页面，便于在关闭期间巡查内容。
+ *
+ * 注意：只 gate **入口**，不 gate 帖子详情 (`/forum/topic/:id`) 或板块详情 (`/forum/b/:slug`)。
+ * 后两者对所有类型板块通用（包括公告 / 二手 / 课评），通过分享链接进入应当一直可达；
+ * "关闭论坛"应理解为"撤掉入口和发新帖"，而非"硬下架已发布内容"。
  */
 const FEATURE_GATED: Record<string, FeatureKey> = {
   forum: "forum",
-  board: "forum",
-  topic: "forum",
   post: "forum",
   "edit-post": "forum",
   market: "market",
   coursereview: "coursereview",
-  course: "coursereview",
 };
 
 export const router = createRouter({
@@ -50,6 +49,7 @@ export const router = createRouter({
         { path: "coursereview", name: "coursereview", component: () => import("@/views/coursereview/Index.vue"), meta: { title: "课程点评", public: true } },
         { path: "coursereview/:id", name: "course", component: () => import("@/views/coursereview/Course.vue"), meta: { title: "课程", public: true } },
         { path: "services", name: "services", component: () => import("@/views/services/Index.vue"), meta: { title: "校园服务", public: true } },
+        { path: "announcements", name: "announcements", component: () => import("@/views/announcements/Index.vue"), meta: { title: "校园公告", public: true } },
         { path: "jwxt", name: "jwxt", component: () => import("@/views/jwxt/Index.vue"), meta: { title: "教务数据", public: true } },
         { path: "search", name: "search", component: () => import("@/views/search/Result.vue"), meta: { title: "搜索结果", public: true } },
         { path: "messages", name: "messages", component: () => import("@/views/messages/Index.vue"), meta: { title: "消息中心" } },

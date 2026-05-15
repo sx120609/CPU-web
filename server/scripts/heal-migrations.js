@@ -49,6 +49,12 @@ const KNOWN_MIGRATIONS = [
     name: "20260515150000_add_site_settings",
     test: (tables) => tables.has("SiteSetting"),
   },
+  {
+    // 数据迁移类（UPDATE 一行数据）：没法从 schema 推断"是否已生效"，
+    // 让 heal 把它当未应用，留给 migrate deploy 执行（UPDATE 幂等，重跑也无害）。
+    name: "20260515200000_disable_xinli_feed",
+    test: () => false,
+  },
 ];
 const KNOWN_NAMES = new Set(KNOWN_MIGRATIONS.map((m) => m.name));
 

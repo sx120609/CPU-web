@@ -105,7 +105,7 @@
       <span>非学校官方站点</span>
     </footer>
 
-    <nav class="mobile-tabbar" aria-label="移动端主导航">
+    <nav class="mobile-tabbar" aria-label="移动端主导航" :style="{ gridTemplateColumns: `repeat(${mobileNavItems.length}, 1fr)` }">
       <router-link
         v-for="item in mobileNavItems"
         :key="item.to"
@@ -220,6 +220,7 @@ const desktopNavItems = computed(() => {
   const items: { to: string; label: string }[] = [];
   items.push({ to: "/home", label: "首页" });
   if (site.features.forum) items.push({ to: "/forum", label: "论坛" });
+  items.push({ to: "/announcements", label: "公告" });
   items.push({ to: "/jwxt", label: "教务数据" });
   if (site.features.coursereview) items.push({ to: "/coursereview", label: "课评" });
   if (site.features.market) items.push({ to: "/market", label: "二手" });
@@ -228,7 +229,7 @@ const desktopNavItems = computed(() => {
 });
 
 const mobileNavItems = computed(() => {
-  // 5 个位置：首页 + 服务 + 我的 是固定锚点；中间两个按开关填
+  // 动态项数（4-5 项）：tabbar 的 grid 列数会跟着收敛，不会出现空槽
   const items: { to: string; label: string; icon: any; match: string[]; auth?: boolean }[] = [
     { to: "/home", label: "首页", icon: House, match: ["/home"] },
   ];
@@ -245,6 +246,8 @@ const drawerItems = computed(() => {
   const items: { to: string; label: string; icon: any }[] = [];
   if (site.features.forum) items.push({ to: "/post", label: "发帖", icon: Edit });
   items.push({ to: "/messages", label: "消息", icon: Message });
+  if (site.features.forum) items.push({ to: "/forum", label: "论坛", icon: ChatLineRound });
+  items.push({ to: "/announcements", label: "校园公告", icon: Bell });
   if (site.features.coursereview) items.push({ to: "/coursereview", label: "课评", icon: Reading });
   if (site.features.market) items.push({ to: "/market", label: "二手市场", icon: Goods });
   items.push({ to: "/services", label: "校园服务", icon: Service });
@@ -437,16 +440,21 @@ async function onUserCmd(cmd: string) {
 .mobile-actions {
   display: none;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   margin-left: auto;
 }
 
 .touch-icon-btn {
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   padding: 0;
   border-radius: 10px;
   color: #374151;
+  -webkit-tap-highlight-color: rgba(22, 135, 118, 0.18);
+}
+
+.touch-icon-btn:active {
+  background: #f3f4f6;
 }
 
 .touch-icon-btn .el-icon {
@@ -454,10 +462,11 @@ async function onUserCmd(cmd: string) {
 }
 
 .mobile-login-btn {
-  min-width: 52px;
-  height: 40px;
-  padding: 0 10px;
+  min-width: 60px;
+  height: 42px;
+  padding: 0 12px;
   color: var(--cpu-primary);
+  font-weight: 500;
 }
 
 .user-info {
@@ -659,7 +668,7 @@ async function onUserCmd(cmd: string) {
     bottom: 0;
     z-index: 1100;
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    /* 列数由 inline style 提供（mobileNavItems.length），保证关闭某项后剩余项仍均匀分布 */
     padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
     border-top: 1px solid #e5e7eb;
     background: rgba(255, 255, 255, 0.96);

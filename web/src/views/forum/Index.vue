@@ -2,21 +2,6 @@
   <div class="forum-index">
     <h2 class="page-title">讨论板块</h2>
 
-    <!-- 公告板（自动聚合） -->
-    <div class="cluster">
-      <h3 class="cluster-title">📢 校园公告</h3>
-      <div class="grid">
-        <div v-for="b in announces" :key="b.slug" class="board-card readonly" @click="$router.push(`/forum/b/${b.slug}`)">
-          <div class="icon" :style="{ background: b.color || '#1d4d8a' }">{{ b.icon || '📢' }}</div>
-          <div class="body">
-            <div class="name">{{ b.name }}</div>
-            <div class="desc">{{ b.description }}</div>
-            <div class="meta">{{ b.topicCount }} 条 · 同步自 {{ shortHost(b.feedSource?.homepage) }}</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- 综合 / 生活 / 新生 -->
     <div class="cluster" v-if="general.length">
       <h3 class="cluster-title">💬 综合讨论</h3>
@@ -46,11 +31,17 @@
         </div>
       </div>
     </div>
+
+    <div class="footer-tip">
+      <el-icon><InfoFilled /></el-icon>
+      <span>查看学校官方公告？<router-link to="/announcements">→ 校园公告</router-link></span>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
+import { InfoFilled } from "@element-plus/icons-vue";
 import { boardApi, type Board } from "@/api/board";
 
 const all = ref<Board[]>([]);
@@ -58,17 +49,8 @@ onMounted(async () => {
   all.value = await boardApi.list();
 });
 
-const announces = computed(() => all.value.filter((b) => b.type === "announce"));
 const general = computed(() => all.value.filter((b) => b.type === "normal"));
 const ugc = computed(() => all.value.filter((b) => ["market", "question", "coursereview"].includes(b.type)));
-
-function shortHost(url?: string) {
-  if (!url) return "";
-  try {
-    const u = new URL(url);
-    return u.hostname.replace(/^www\./, "");
-  } catch { return url; }
-}
 </script>
 
 <style scoped>
@@ -97,6 +79,24 @@ function shortHost(url?: string) {
   box-shadow: 0 4px 14px rgba(22, 135, 118, 0.08);
 }
 .board-card.readonly { background: linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%); }
+
+.footer-tip {
+  margin-top: 8px;
+  padding: 10px 14px;
+  background: #f9fafb;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.footer-tip a {
+  color: var(--cpu-primary);
+  text-decoration: none;
+  font-weight: 500;
+}
+.footer-tip a:hover { text-decoration: underline; }
 
 .icon {
   width: 42px;

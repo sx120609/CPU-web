@@ -98,13 +98,6 @@ async function main() {
     }),
     prisma.schoolFeedSource.create({
       data: {
-        slug: "xinli-notice", name: "心理动态",
-        homepage: "http://xinli.cpu.edu.cn/", listUrl: "http://xinli.cpu.edu.cn/14204/list{page}.htm",
-        pageSize: 14, maxPages: 1, cronMinutes: 30, botUserId: bot.id,
-      },
-    }),
-    prisma.schoolFeedSource.create({
-      data: {
         slug: "yjsy-notice", name: "研究生院通知",
         homepage: "http://yjsy.cpu.edu.cn/", listUrl: "http://yjsy.cpu.edu.cn/6305/list{page}.htm",
         pageSize: 14, maxPages: 2, cronMinutes: 20, botUserId: bot.id,
