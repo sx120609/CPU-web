@@ -8,6 +8,19 @@
       </p>
     </div>
 
+    <!-- 适用范围提示（未授权时显示，避免对已登录的本科生造成视觉噪音） -->
+    <el-alert
+      v-if="!jwxt.isLoggedIn"
+      type="info"
+      :closable="false"
+      show-icon
+      class="scope-tip"
+    >
+      <template #title>
+        目前教务数据 / 课表暂仅支持<b>本科生</b>。研究生 / 教职工 / 留学生 等账号即便授权成功，教务接口可能返回空数据或报错。
+      </template>
+    </el-alert>
+
     <!-- 未登录：显示登录卡片 -->
     <div v-if="!jwxt.isLoggedIn" class="cpu-card login-card">
       <div class="login-head">

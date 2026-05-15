@@ -95,6 +95,7 @@
       <el-icon class="big"><Lock /></el-icon>
       <h2>需要先授权教务数据</h2>
       <p>授权后可把这个页面添加到桌面书签，之后快速打开查看课表。本站不保存学校密码和验证码。</p>
+      <p class="scope-note">目前教务 / 课表数据暂仅支持<b>本科生</b>，研究生 / 教职工 / 留学生授权后可能拿不到课表。</p>
       <el-button type="primary" size="large" @click="$router.push({ name: 'jwxt', query: { redirect: '/schedule' } })">
         前往授权
       </el-button>
@@ -996,6 +997,16 @@ function saveScheduleCache() {
   color: #667085;
   line-height: 1.7;
 }
+.state-card .scope-note {
+  font-size: 12px;
+  color: #b45309;
+  background: #fef3c7;
+  padding: 8px 12px;
+  border-radius: 8px;
+  line-height: 1.6;
+  max-width: 320px;
+}
+.state-card .scope-note b { color: #92400e; }
 .captcha-row {
   display: flex;
   gap: 10px;
