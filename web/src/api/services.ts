@@ -35,8 +35,6 @@ export interface DormElectricResult {
   area: string | null;
   /** 抄表时间 */
   lastUpdate: string | null;
-  /** 原始响应（调试用） */
-  raw?: unknown;
 }
 
 export const servicesApi = {
