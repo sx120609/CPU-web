@@ -41,7 +41,7 @@
       </div>
       <div v-if="(data.balance ?? 100) < 10 && data.balance !== null" class="warn">
         <el-icon><WarningFilled /></el-icon>
-        余额不足，建议尽快充值。可通过融合门户「电费充值」办理。
+        余额不足，建议尽快充值。充值将跳转到学校官方页面办理。
       </div>
       <details v-if="data.raw" class="raw-fold">
         <summary>📦 显示原始响应（调试用）</summary>
@@ -51,19 +51,22 @@
         <el-button text @click="refresh">
           <el-icon><Refresh /></el-icon> 刷新
         </el-button>
-        <a href="https://i.cpu.edu.cn" target="_blank" class="link-btn">前往充值 →</a>
+        <button type="button" class="link-btn" @click="confirmRecharge">前往充值 →</button>
       </div>
     </div>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { h, ref, watch } from "vue";
 import { Loading, WarningFilled, Refresh } from "@element-plus/icons-vue";
+import { ElMessageBox } from "element-plus";
 import { servicesApi, type DormElectricResult } from "@/api/services";
 
 const props = defineProps<{ modelValue: boolean }>();
 defineEmits<{ (e: "update:modelValue", v: boolean): void }>();
+
+const RECHARGE_URL = "https://vcard.cpu.edu.cn/plat/shouyeUser";
 
 const loading = ref(false);
 const error = ref("");
@@ -82,6 +85,31 @@ async function refresh() {
     error.value = e?.message || "查询失败";
     data.value = null;
   } finally { loading.value = false; }
+}
+
+async function confirmRecharge() {
+  try {
+    await ElMessageBox.confirm(
+      h("div", { class: "recharge-confirm" }, [
+        h("p", "即将打开中国药科大学官方校园卡 / 电费充值页面。"),
+        h("ul", [
+          h("li", "如果页面加载不出来，请尝试连接校园网后再访问。"),
+          h("li", "登录用户名通常为学号，默认密码通常为身份证后六位。"),
+          h("li", "充值、支付、交易记录等均发生在学校官方页面，所有交易与本站无关。"),
+          h("li", "建议不要在该页面修改默认密码，避免后续遗忘影响使用。"),
+        ]),
+      ]),
+      "前往官方充值页面",
+      {
+        type: "warning",
+        confirmButtonText: "继续前往充值",
+        cancelButtonText: "取消",
+      }
+    );
+    window.open(RECHARGE_URL, "_blank", "noopener");
+  } catch {
+    /* 用户取消 */
+  }
 }
 </script>
 
@@ -156,9 +184,13 @@ async function refresh() {
   border-top: 1px solid #f1f5f9;
 }
 .link-btn {
+  border: none;
+  background: none;
+  padding: 8px 0;
   color: var(--cpu-primary);
-  text-decoration: none;
   font-size: 13px;
+  font: inherit;
+  cursor: pointer;
 }
 .link-btn:hover { text-decoration: underline; }
 
@@ -188,4 +220,20 @@ async function refresh() {
   color: #1f2937;
 }
 .raw-hint { font-size: 11px; color: #9ca3af; margin: 0; line-height: 1.5; }
+
+:global(.recharge-confirm) {
+  color: #374151;
+  font-size: 13px;
+  line-height: 1.6;
+}
+:global(.recharge-confirm p) {
+  margin: 0 0 8px;
+}
+:global(.recharge-confirm ul) {
+  margin: 0;
+  padding-left: 18px;
+}
+:global(.recharge-confirm li + li) {
+  margin-top: 4px;
+}
 </style>
