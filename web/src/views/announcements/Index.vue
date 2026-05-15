@@ -34,6 +34,7 @@ import { fmtRelative } from "@/utils/format";
 
 const all = ref<Board[]>([]);
 const loading = ref(false);
+const hiddenAnnouncementSlugs = new Set(["xinli-notice"]);
 
 onMounted(async () => {
   loading.value = true;
@@ -41,7 +42,11 @@ onMounted(async () => {
   finally { loading.value = false; }
 });
 
-const boards = computed(() => all.value.filter((b) => b.type === "announce"));
+const boards = computed(() => all.value.filter((b) =>
+  b.type === "announce" &&
+  !hiddenAnnouncementSlugs.has(b.slug) &&
+  !b.name.includes("心理动态")
+));
 
 function shortHost(url?: string) {
   if (!url) return "";

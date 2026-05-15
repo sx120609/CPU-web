@@ -84,6 +84,15 @@
             <router-link to="/services" class="more">全部 →</router-link>
           </div>
           <div class="service-grid">
+            <div
+              v-if="auth.isLoggedIn"
+              class="svc svc-special"
+              @click="electricOpen = true"
+            >
+              <div class="svc-icon">💡</div>
+              <div class="svc-name">宿舍电费</div>
+              <div class="svc-tag svc-tag-fresh">站内查</div>
+            </div>
             <div v-for="s in summary?.services ?? []" :key="s.id" class="svc" @click="openUrl(s.url)">
               <div class="svc-icon">{{ s.icon || "🔗" }}</div>
               <div class="svc-name">{{ s.name }}</div>
@@ -93,6 +102,8 @@
         </section>
       </div>
     </div>
+
+    <DormElectricDialog v-model="electricOpen" />
   </div>
 </template>
 
@@ -101,6 +112,7 @@ import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ChatLineRound, Edit, Bell, Service } from "@element-plus/icons-vue";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
+import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 import { homeApi, type HomeSummary } from "@/api/home";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
@@ -110,6 +122,7 @@ const auth = useAuthStore();
 const site = useSiteStore();
 const router = useRouter();
 const summary = ref<HomeSummary | null>(null);
+const electricOpen = ref(false);
 
 const hasStats = computed(() => {
   if (!summary.value) return false;
@@ -267,6 +280,15 @@ function openUrl(url: string) {
   padding: 1px 5px;
   border-radius: 4px;
 }
+.svc-special {
+  background: linear-gradient(135deg, #fff7ed 0%, #fef3c7 100%);
+  border-color: #fde68a;
+}
+.svc-special:hover {
+  border-color: #f59e0b;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+}
+.svc-tag-fresh { background: #fbbf24; color: #78350f; font-weight: 500; }
 .cpu-muted { font-size: 12px; color: #9ca3af; }
 
 @media (max-width: 768px) {

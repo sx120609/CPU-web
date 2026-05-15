@@ -16,6 +16,15 @@ export interface ServiceCard {
   order: number;
 }
 
+export interface DormElectricResult {
+  balance: number | null;
+  room?: string | null;
+  building?: string | null;
+  lastUpdate?: string | null;
+  raw?: Record<string, unknown>;
+}
+
 export const servicesApi = {
   list: (category?: string) => request.get<ServiceCard[]>("/services", category ? { category } : {}),
+  dormElectric: () => request.get<DormElectricResult>("/services/dorm-electric"),
 };
