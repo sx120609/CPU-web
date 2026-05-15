@@ -15,7 +15,7 @@
       </div>
     </header>
 
-    <section v-if="jwxt.isLoggedIn" class="toolbar">
+    <section v-if="parsed" class="toolbar">
       <el-select v-model="semester" size="large" placeholder="学期" @change="loadSchedule(false)">
         <el-option v-for="s in semesters" :key="s.value" :value="s.value" :label="s.label" />
       </el-select>
@@ -24,7 +24,7 @@
       </el-select>
     </section>
 
-    <section v-if="jwxt.isLoggedIn" class="week-switcher">
+    <section v-if="parsed" class="week-switcher">
       <button type="button" class="week-btn" :disabled="!canChangeWeek(-1)" @click="changeWeek(-1)">
         <el-icon><ArrowLeft /></el-icon>
         上一周
@@ -39,7 +39,7 @@
       </button>
     </section>
 
-    <section v-if="jwxt.isLoggedIn" class="week-strip">
+    <section v-if="parsed" class="week-strip">
       <button
         v-for="d in dayTabs"
         :key="d.day"
@@ -53,13 +53,13 @@
       </button>
     </section>
 
-    <section v-if="autoLoading" class="state-card">
+    <section v-if="autoLoading && !parsed" class="state-card">
       <el-icon class="big is-loading"><Loading /></el-icon>
       <h2>正在自动授权</h2>
       <p>使用本机保存的学校账号读取课表。</p>
     </section>
 
-    <section v-else-if="jwxt.needCaptcha && hasCreds" class="state-card">
+    <section v-else-if="jwxt.needCaptcha && hasCreds && !parsed" class="state-card">
       <el-icon class="big"><Picture /></el-icon>
       <h2>输入验证码</h2>
       <p>本机已保存学校账号，补充验证码后即可查看课表。</p>
@@ -71,7 +71,7 @@
       <el-button type="primary" size="large" :loading="captchaSubmitting" @click="submitCaptcha">完成授权</el-button>
     </section>
 
-    <section v-else-if="!jwxt.isLoggedIn" class="state-card">
+    <section v-else-if="!jwxt.isLoggedIn && !parsed" class="state-card">
       <el-icon class="big"><Lock /></el-icon>
       <h2>需要先授权教务数据</h2>
       <p>授权后可把这个页面添加到桌面书签，之后快速打开查看课表。本站不保存学校密码和验证码。</p>
@@ -80,7 +80,7 @@
       </el-button>
     </section>
 
-    <section v-else class="content" v-loading="loading" @touchstart.passive="onTouchStart" @touchend.passive="onTouchEnd">
+    <section v-else class="content" v-loading="loading && !parsed" @touchstart.passive="onTouchStart" @touchend.passive="onTouchEnd">
       <div class="summary">
         <div>
           <span>第 {{ week || parsed?.currentWeek || "--" }} 周</span>
@@ -170,19 +170,25 @@ let touchStartY = 0;
 onMounted(async () => {
   jwxt.hydrate();
   hasCreds.value = hasSavedCreds();
-  await jwxt.refreshStatus();
-  if (!jwxt.isLoggedIn && hasCreds.value) {
-    autoLoading.value = true;
-    try { await jwxt.tryAutoLogin({ force: true }); }
-    finally { autoLoading.value = false; }
-  }
-  if (jwxt.isLoggedIn) {
-    restoreLastState();
-    restoreCachedCalendar();
-    restoreLastScheduleCache();
-    await loadCalendar();
-    await loadSchedule();
-  }
+
+  // 第一时间从 localStorage 还原缓存，让画面"秒开"——不等任何网络请求
+  restoreLastState();
+  restoreCachedCalendar();
+  restoreLastScheduleCache();
+
+  // 后台静默：刷新会话状态 + 自动登录 + 重新拉数据。失败也不影响已显示的缓存。
+  void (async () => {
+    try { await jwxt.refreshStatus(); } catch { /* ignore */ }
+    if (!jwxt.isLoggedIn && hasCreds.value) {
+      autoLoading.value = true;
+      try { await jwxt.tryAutoLogin({ force: true }); }
+      finally { autoLoading.value = false; }
+    }
+    if (jwxt.isLoggedIn) {
+      await loadCalendar();
+      await loadSchedule();
+    }
+  })();
 });
 
 const semesters = computed(() => parsed.value?.semesters ?? []);
@@ -195,14 +201,18 @@ const currentWeekRange = computed(() => {
 });
 const dayTabs = computed(() => {
   const labels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
-  // 服务端返回的 days 已经是周一→周日顺序，直接用；之前的 slice+push 把周日错位成周一前一天
-  const days = currentWeekInfo.value?.days ?? [];
+  // 学校 days = [周日(N周开始), 周一, 周二, ..., 周六]。
+  // 我们要按"周一开头"展示，且末尾的"周日"实际是 days[6](周六) 的下一天。
+  const raw = currentWeekInfo.value?.days ?? [];
+  const dates = raw.length >= 7
+    ? [...raw.slice(1, 7), plusOneDay(raw[6])]
+    : [];
   const today = todayKey();
   return labels.map((label, i) => ({
     day: i + 1,
     label,
-    date: shortDate(days[i] ?? ""),
-    isToday: days[i] === today,
+    date: shortDate(dates[i] ?? ""),
+    isToday: dates[i] === today,
   }));
 });
 const activeDayLabel = computed(() => dayTabs.value.find((d) => d.day === activeDay.value)?.label ?? "今日");
@@ -361,6 +371,14 @@ function todayKey() {
 function shortDate(value: string) {
   const m = value.match(/-(\d{2})-(\d{2})$/);
   return m ? `${m[1]}/${m[2]}` : "";
+}
+
+/** 给 "YYYY-MM-DD" 加一天 */
+function plusOneDay(ymd: string): string {
+  if (!ymd) return "";
+  const d = new Date(ymd + "T00:00:00");
+  d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function formatCacheTime(ts: number) {
@@ -782,6 +800,19 @@ h1 {
 .next-card em,
 .next-card b {
   display: none;
+}
+
+/* ===== 移动端极简：手机上只看课表 ===== */
+@media (max-width: 760px) {
+  /* 隐藏顶部标题、刷新/回首页按钮（用户用底部 tabbar 跳） */
+  .top { display: none; }
+  /* 隐藏学期选择器（学生几乎不切学期；要切的去 /jwxt 桌面端） */
+  .toolbar { display: none; }
+  /* 隐藏 cacheText 与上方 summary（信息冗余，week-switcher 已经显示周次了） */
+  .summary { display: none; }
+  .schedule-page {
+    padding-top: calc(env(safe-area-inset-top) + 8px);
+  }
 }
 
 @media (min-width: 760px) {

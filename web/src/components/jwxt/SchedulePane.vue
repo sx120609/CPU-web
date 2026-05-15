@@ -233,10 +233,19 @@ const totalCourses = computed(() => parsed.value?.cells.reduce((s, c) => s + c.c
 const weekDates = computed<string[]>(() => {
   if (!week.value || !cal.value) return Array(7).fill("");
   const w = cal.value.weeks.find((x) => x.week === Number(week.value));
-  if (!w) return Array(7).fill("");
-  // 服务端 days 已经是周一→周日顺序，之前的 slice+push 是错的（周日被错位成周一前一天）
-  return w.days.map(shortDate);
+  if (!w || w.days.length < 7) return Array(7).fill("");
+  // 学校 days = [周日(N周开始), 周一, 周二, ..., 周六]
+  // 重排为 [周一..周六, 末尾周日(=周六+1天)]
+  const dates = [...w.days.slice(1, 7), plusOneDay(w.days[6])];
+  return dates.map(shortDate);
 });
+
+function plusOneDay(ymd: string): string {
+  if (!ymd) return "";
+  const d = new Date(ymd + "T00:00:00");
+  d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 function getCourses(day: number, bs: number): ScheduleCourse[] {
   return cellsByPos.value.get(`${day}-${bs}`)?.courses ?? [];
