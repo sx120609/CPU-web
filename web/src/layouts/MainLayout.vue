@@ -233,7 +233,7 @@ const mobileNavItems = computed(() => {
   // 动态项数（4-5 项）：tabbar 的 grid 列数会跟着收敛，不会出现空槽
   const items: { to: string; label: string; icon: any; match: string[]; auth?: boolean }[] = [
     { to: "/home", label: "首页", icon: House, match: ["/home"] },
-    { to: "/schedule", label: "课表", icon: Calendar, match: ["/schedule"] },
+    { to: "/jwxt", label: "教务", icon: Calendar, match: ["/jwxt"] },
   ];
   if (site.features.forum) {
     items.push({ to: "/forum", label: "论坛", icon: ChatLineRound, match: ["/forum"] });

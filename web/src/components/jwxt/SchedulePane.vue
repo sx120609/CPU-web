@@ -24,10 +24,64 @@
           </span>
         </span>
         <span class="stat">{{ totalCourses }} 节课</span>
+        <el-radio-group v-model="viewMode" size="small" class="view-toggle">
+          <el-radio-button value="auto">自动</el-radio-button>
+          <el-radio-button value="grid">网格</el-radio-button>
+          <el-radio-button value="list">列表</el-radio-button>
+        </el-radio-group>
       </div>
     </div>
 
-    <div class="grid" v-loading="loading">
+    <!-- ===== 列表视图（移动端默认）===== -->
+    <div v-if="effectiveView === 'list'" class="list-view" v-loading="loading">
+      <!-- 周内日 chip 选择 -->
+      <div class="day-chips">
+        <button
+          v-for="d in days"
+          :key="d.idx"
+          type="button"
+          class="day-chip"
+          :class="{ active: selectedDay === d.idx, today: weekDates[d.idx - 1] && isTodayLabel(weekDates[d.idx - 1]) }"
+          @click="selectedDay = d.idx"
+        >
+          <div class="d-name">{{ d.label }}</div>
+          <div class="d-date">{{ weekDates[d.idx - 1] || '—' }}</div>
+          <div v-if="dayCourseCount(d.idx)" class="d-count">{{ dayCourseCount(d.idx) }} 节</div>
+        </button>
+      </div>
+
+      <!-- 当日课程卡片 -->
+      <div class="day-courses">
+        <template v-for="bs in bigSlots" :key="'l-' + bs">
+          <div
+            v-for="(c, i) in getCourses(selectedDay, bs)"
+            :key="`l-${bs}-${i}`"
+            class="list-course"
+            :style="{ borderLeftColor: accentFor(c.name) }"
+          >
+            <div class="lc-time">
+              <div class="lc-bs">第 {{ bs }} 大节</div>
+              <div class="lc-clock">{{ bigSlotTime(bs) }}</div>
+            </div>
+            <div class="lc-body">
+              <div class="lc-name">{{ c.name }}</div>
+              <div class="lc-meta">
+                <span v-if="c.teacher">👨‍🏫 {{ c.teacher }}</span>
+                <span v-if="c.location">📍 {{ c.location }}</span>
+              </div>
+              <div class="lc-week">
+                <span>{{ c.weeks }}</span>
+                <span v-if="c.slotNote">· {{ c.slotNote }}</span>
+              </div>
+            </div>
+          </div>
+        </template>
+        <el-empty v-if="!loading && dayCourseCount(selectedDay) === 0" :image-size="80" description="这一天没课，休息一下" />
+      </div>
+    </div>
+
+    <!-- ===== 网格视图（桌面默认）===== -->
+    <div v-else class="grid" v-loading="loading">
       <div class="corner"></div>
       <div v-for="d in days" :key="'h-' + d.idx" class="day-head">
         <div>{{ d.label }}</div>
@@ -64,7 +118,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { jwxtApi } from "@/api/jwxt";
 
 interface ScheduleCourse {
@@ -94,6 +148,25 @@ const semester = ref<string>("");
 const week = ref<string>("");
 const cal = ref<CalendarResult | null>(null);
 
+// 视图模式：auto 跟随屏幕宽度，grid / list 强制
+const viewMode = ref<"auto" | "grid" | "list">("auto");
+const screenIsNarrow = ref(false);
+function updateNarrow() {
+  screenIsNarrow.value = window.matchMedia("(max-width: 760px)").matches;
+}
+const effectiveView = computed<"grid" | "list">(() => {
+  if (viewMode.value === "grid") return "grid";
+  if (viewMode.value === "list") return "list";
+  return screenIsNarrow.value ? "list" : "grid";
+});
+
+// 选中的日（1-7，1=周一）
+const selectedDay = ref(1);
+function defaultSelectedDay(): number {
+  const jsDay = new Date().getDay(); // 0=Sun
+  return jsDay === 0 ? 7 : jsDay;
+}
+
 watch(() => props.data, (v) => {
   parsed.value = v?.parsed ?? null;
   if (parsed.value && !semester.value) {
@@ -102,6 +175,9 @@ watch(() => props.data, (v) => {
 }, { immediate: true });
 
 onMounted(async () => {
+  updateNarrow();
+  window.addEventListener("resize", updateNarrow);
+  selectedDay.value = defaultSelectedDay();
   try {
     const r: any = await jwxtApi.calendar();
     cal.value = r.parsed;
@@ -111,6 +187,7 @@ onMounted(async () => {
     }
   } catch { /* ignore */ }
 });
+onBeforeUnmount(() => window.removeEventListener("resize", updateNarrow));
 
 const semesters = computed(() => parsed.value?.semesters ?? []);
 const weeks = computed(() => parsed.value?.weeks ?? []);
@@ -144,6 +221,12 @@ function getCourses(day: number, bs: number): ScheduleCourse[] {
   return cellsByPos.value.get(`${day}-${bs}`)?.courses ?? [];
 }
 
+function dayCourseCount(day: number): number {
+  let n = 0;
+  for (const bs of bigSlots) n += getCourses(day, bs).length;
+  return n;
+}
+
 function bigSlotTime(bs: number): string {
   return ["08:00–09:35", "10:00–11:35", "13:30–15:05", "15:25–17:00", "18:30–20:05"][bs - 1] ?? "";
 }
@@ -152,6 +235,13 @@ function shortDate(d: string): string {
   if (!d) return "";
   const m = d.match(/-(\d{2})-(\d{2})$/);
   return m ? `${m[1]}/${m[2]}` : d;
+}
+
+function isTodayLabel(mmdd: string): boolean {
+  const now = new Date();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return mmdd === `${m}/${d}`;
 }
 
 const palette = [
@@ -164,11 +254,15 @@ const palette = [
   "linear-gradient(135deg,#fee2e2,#fecaca)",
   "linear-gradient(135deg,#d1fae5,#a7f3d0)",
 ];
-function colorFor(name: string): string {
+const accentPalette = ["#3b82f6", "#ec4899", "#10b981", "#f59e0b", "#8b5cf6", "#06b6d4", "#ef4444", "#14b8a6"];
+
+function hashName(name: string): number {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
-  return palette[h % palette.length];
+  return h;
 }
+function colorFor(name: string): string { return palette[hashName(name) % palette.length]; }
+function accentFor(name: string): string { return accentPalette[hashName(name) % accentPalette.length]; }
 
 async function reload() {
   loading.value = true;
@@ -187,6 +281,7 @@ async function jumpThisWeek() {
   if (!cal.value?.currentWeek) return;
   week.value = String(cal.value.currentWeek);
   await reload();
+  selectedDay.value = defaultSelectedDay();
 }
 </script>
 
@@ -228,6 +323,7 @@ async function jumpThisWeek() {
 }
 .weekinfo b { color: var(--cpu-primary); font-size: 15px; margin: 0 4px; }
 .cpu-muted { color: #9ca3af; font-size: 12px; }
+.view-toggle { margin-left: auto; }
 
 .day-head .date-sub {
   font-size: 11px;
@@ -236,6 +332,87 @@ async function jumpThisWeek() {
   margin-top: 2px;
 }
 
+/* ===== 列表视图 ===== */
+.list-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.day-chips {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  padding: 6px;
+  background: #f8fafc;
+  border-radius: 10px;
+}
+.day-chip {
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 8px;
+  padding: 6px 2px;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font: inherit;
+  min-height: 56px;
+  -webkit-tap-highlight-color: rgba(22, 135, 118, 0.18);
+}
+.day-chip:hover { background: #fff; }
+.day-chip.active {
+  background: var(--cpu-primary);
+  color: #fff;
+}
+.day-chip.active .d-date,
+.day-chip.active .d-count { color: rgba(255, 255, 255, 0.85); }
+.day-chip.today:not(.active) {
+  border-color: var(--cpu-primary);
+  color: var(--cpu-primary);
+}
+.d-name { font-size: 12px; font-weight: 600; }
+.d-date { font-size: 11px; color: #6b7280; }
+.d-count { font-size: 10px; color: #9ca3af; }
+
+.day-courses {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.list-course {
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid #eef0f4;
+  border-left: 4px solid #3b82f6;
+  border-radius: 10px;
+}
+.lc-time {
+  flex-shrink: 0;
+  min-width: 78px;
+  border-right: 1px dashed #f1f5f9;
+  padding-right: 12px;
+}
+.lc-bs { font-size: 12px; font-weight: 600; color: #374151; }
+.lc-clock { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+.lc-body { flex: 1; min-width: 0; }
+.lc-name { font-size: 15px; font-weight: 600; color: #1f2937; }
+.lc-meta {
+  font-size: 12px;
+  color: #4b5563;
+  margin-top: 4px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.lc-week { font-size: 11px; color: #9ca3af; margin-top: 3px; }
+
+/* ===== 网格视图 ===== */
 .grid {
   display: grid;
   grid-template-columns: 90px repeat(7, minmax(120px, 1fr));
@@ -332,7 +509,9 @@ async function jumpThisWeek() {
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
+    align-items: center;
   }
+  .view-toggle { margin-left: 0; }
 
   .weekinfo {
     margin-right: 0;
@@ -344,6 +523,7 @@ async function jumpThisWeek() {
     width: 100%;
   }
 
+  /* 网格视图在 mobile 还是保留（用户选 grid 强制时也要能横滚） */
   .grid {
     grid-template-columns: 76px repeat(7, minmax(96px, 1fr));
     overflow-x: auto;
@@ -368,6 +548,25 @@ async function jumpThisWeek() {
   .cn {
     font-size: 11px;
   }
+
+  /* 列表视图样式微调 */
+  .day-chips {
+    /* 周六周日太挤的话允许内容收紧 */
+    gap: 2px;
+    padding: 4px;
+  }
+  .d-name { font-size: 11px; }
+  .d-date { font-size: 10px; }
+  .d-count { display: none; } /* 移动端节省垂直空间 */
+
+  .list-course {
+    padding: 10px 12px;
+  }
+  .lc-time {
+    min-width: 64px;
+    padding-right: 10px;
+  }
+  .lc-name { font-size: 14px; }
 }
 
 @media (max-width: 430px) {
