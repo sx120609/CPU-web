@@ -111,13 +111,10 @@
           <el-icon class="session-ok"><CircleCheckFilled /></el-icon>
           <div class="session-copy">
             <div class="session-title">已连接学校教务系统</div>
-            <div class="session-sub">如果数据加载异常或显示不完整，可以点击刷新当前数据重试。</div>
+            <div class="session-sub">如果数据加载异常或显示不完整，可以点击页面右上角的统一刷新按钮重试。</div>
           </div>
         </div>
         <div class="session-actions">
-          <el-button plain type="primary" size="small" :loading="tabLoading" @click="loadCurrentTab(true)">
-            <el-icon><Refresh /></el-icon> 刷新当前数据
-          </el-button>
           <el-tag v-if="jwxt.rememberSaved" size="small" type="warning" class="remember-tag">
             已记住账号
           </el-tag>
