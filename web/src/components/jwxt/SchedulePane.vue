@@ -1,5 +1,5 @@
 <template>
-  <div class="schedule-pane">
+  <div class="schedule-pane" :class="{ 'theme-color-glass': scheduleTheme === 'color-glass' }">
     <header class="top">
       <el-select
         v-if="parsed"
@@ -17,6 +17,17 @@
           <button type="button" :class="{ active: viewMode === 'day' }" @click="setViewMode('day')">日</button>
           <button type="button" :class="{ active: viewMode === 'week' }" @click="setViewMode('week')">周</button>
         </div>
+        <button
+          v-if="parsed"
+          type="button"
+          class="icon-btn"
+          :class="{ active: scheduleTheme === 'color-glass' }"
+          :aria-label="scheduleTheme === 'color-glass' ? '切换为简洁课表主题' : '切换为彩色课表主题'"
+          :title="scheduleTheme === 'color-glass' ? '简洁主题' : '彩色主题'"
+          @click="toggleScheduleTheme"
+        >
+          <el-icon><Brush /></el-icon>
+        </button>
         <button
           v-if="parsed"
           type="button"
@@ -211,7 +222,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { ArrowLeft, ArrowRight, ChatDotRound, Moon, Refresh } from "@element-plus/icons-vue";
+import { ArrowLeft, ArrowRight, Brush, ChatDotRound, Moon, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { copyText, openUserGroup, USER_QQ_GROUP, USER_QQ_GROUP_HINT_KEY } from "@/utils/userGroup";
 
@@ -239,6 +250,7 @@ interface CalendarResult { currentWeek: number; semesterStart: string; semesterE
 interface FlatCourse { bigSlot: number; index: number; course: ScheduleCourse }
 interface CacheEnvelope<T> { savedAt: number; data: T }
 type ViewMode = "day" | "week";
+type ScheduleTheme = "simple" | "color-glass";
 interface LastState { semester: string; week: string; activeDay: number; viewMode?: ViewMode }
 interface WeekCourseBlock { day: number; startSlot: number; endSlot: number; index: number; course: ScheduleCourse }
 interface SchedulePageModel {
@@ -261,12 +273,14 @@ const semester = ref("");
 const week = ref("");
 const activeDay = ref(dayOfWeek());
 const viewMode = ref<ViewMode>("day");
+const scheduleTheme = ref<ScheduleTheme>("simple");
 const loading = ref(Boolean(props.loading));
 const scheduleSavedAt = ref(0);
 const CACHE_TTL = 12 * 60 * 60 * 1000;
 const CALENDAR_CACHE_KEY = "cpu-schedule-calendar-v1";
 const LAST_STATE_KEY = "cpu-jwxt-schedule-view-state-v1";
 const LAST_CACHE_KEY = "cpu-schedule-last-cache-key-v1";
+const THEME_KEY = "cpu-schedule-theme-v1";
 const scheduleCacheStore = new Map<string, CacheEnvelope<ScheduleResult>>();
 const prewarmingScheduleKeys = new Set<string>();
 const smallSlots = [
@@ -331,6 +345,7 @@ watch(() => props.data, (v) => {
 }, { immediate: true });
 
 onMounted(async () => {
+  restoreScheduleTheme();
   restoreLastState();
   restoreCachedCalendar();
   if (!parsed.value) restoreLastScheduleCache();
@@ -963,12 +978,48 @@ function selectedScheduleDiffers(data: ScheduleResult) {
   return semesterDiffers || weekDiffers;
 }
 
-const weekTones = [
-  { bg: "#f4fbf8", border: "#168776", text: "#0f5d52" },
+const simpleTone = { bg: "#f4fbf8", border: "#168776", text: "#0f5d52" };
+const colorGlassTones = [
+  { bg: "rgba(255, 228, 230, 0.76)", border: "rgba(244, 63, 94, 0.58)", text: "#8f1230" },
+  { bg: "rgba(255, 237, 213, 0.76)", border: "rgba(249, 115, 22, 0.56)", text: "#8a3412" },
+  { bg: "rgba(254, 243, 199, 0.78)", border: "rgba(245, 158, 11, 0.58)", text: "#7a4c09" },
+  { bg: "rgba(220, 252, 231, 0.78)", border: "rgba(34, 197, 94, 0.54)", text: "#14532d" },
+  { bg: "rgba(204, 251, 241, 0.78)", border: "rgba(20, 184, 166, 0.54)", text: "#115e59" },
+  { bg: "rgba(219, 234, 254, 0.78)", border: "rgba(59, 130, 246, 0.54)", text: "#1e3a8a" },
+  { bg: "rgba(224, 231, 255, 0.78)", border: "rgba(99, 102, 241, 0.54)", text: "#3730a3" },
+  { bg: "rgba(243, 232, 255, 0.78)", border: "rgba(168, 85, 247, 0.54)", text: "#6b21a8" },
+  { bg: "rgba(252, 231, 243, 0.78)", border: "rgba(236, 72, 153, 0.52)", text: "#9d174d" },
 ];
 
-function toneFor(_name: string) {
-  return weekTones[0];
+function hashName(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i += 1) {
+    hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
+
+function toneFor(name: string) {
+  if (scheduleTheme.value !== "color-glass") return simpleTone;
+  return colorGlassTones[hashName(name) % colorGlassTones.length];
+}
+
+function restoreScheduleTheme() {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === "color-glass" || saved === "simple") scheduleTheme.value = saved;
+  } catch {
+    /* ignore */
+  }
+}
+
+function toggleScheduleTheme() {
+  scheduleTheme.value = scheduleTheme.value === "color-glass" ? "simple" : "color-glass";
+  try {
+    localStorage.setItem(THEME_KEY, scheduleTheme.value);
+  } catch {
+    /* ignore */
+  }
 }
 
 function normalizeSlotRange(bigSlot: number, course: ScheduleCourse) {
@@ -1245,12 +1296,46 @@ function prewarmScheduleCacheForWeek(wk: string) {
 
 .icon-btn:active { background: #f3f4f6; }
 
+.icon-btn.active {
+  background: #168776;
+  border-color: #168776;
+  color: #fff;
+}
+
 .icon-btn.spinning .el-icon {
   animation: spin 0.9s linear infinite;
 }
 
 .icon-btn .el-icon {
   font-size: 18px;
+}
+
+.schedule-pane.theme-color-glass {
+  color: #172033;
+}
+.theme-color-glass .sem-select :deep(.el-select__wrapper),
+.theme-color-glass .view-switch,
+.theme-color-glass .icon-btn,
+.theme-color-glass .week-btn,
+.theme-color-glass .week-title,
+.theme-color-glass .day-pill {
+  border-color: rgba(255, 255, 255, 0.64);
+  background: rgba(255, 255, 255, 0.58);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.70),
+    0 10px 28px rgba(36, 58, 91, 0.08);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+}
+.theme-color-glass .view-switch button.active,
+.theme-color-glass .day-pill.active,
+.theme-color-glass .icon-btn.active {
+  border-color: rgba(255, 255, 255, 0.56);
+  background: linear-gradient(135deg, rgba(22, 135, 118, 0.92), rgba(59, 130, 246, 0.82));
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    0 12px 28px rgba(22, 135, 118, 0.20);
 }
 
 @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
@@ -1644,6 +1729,27 @@ function prewarmScheduleCacheForWeek(wk: string) {
   box-shadow: 0 4px 10px rgba(24, 34, 51, 0.06);
   cursor: pointer;
   touch-action: pan-y;
+}
+
+.theme-color-glass .day-slot-cell,
+.theme-color-glass .week-slot-cell,
+.theme-color-glass .week-day-head {
+  border-color: rgba(255, 255, 255, 0.56);
+  background: rgba(255, 255, 255, 0.42);
+}
+.theme-color-glass .week-day-head.today,
+.theme-color-glass .week-slot-cell.today {
+  background: rgba(204, 251, 241, 0.54);
+}
+.theme-color-glass .day-course-block,
+.theme-color-glass .week-course {
+  border-width: 1px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.24),
+    0 12px 30px rgba(44, 62, 94, 0.12);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
 }
 
 @supports (-webkit-touch-callout: none) {
