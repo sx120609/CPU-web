@@ -12,6 +12,27 @@
       <p class="muted">当前已经在独立应用环境中打开。</p>
     </div>
 
+    <!-- 微信 / QQ 内置浏览器：先引导外部浏览器 -->
+    <div v-else-if="inAppBrowser.isInApp" class="content">
+      <p>检测到当前可能在 <b>{{ inAppBrowser.label }}</b> 内打开。内置浏览器通常无法正常下载 APK，也可能拦截安装流程。</p>
+      <ul class="bullets">
+        <li>请点击右上角菜单</li>
+        <li>选择“在浏览器打开”或“用默认浏览器打开”</li>
+        <li>进入外部浏览器后再下载 Android 版课表</li>
+      </ul>
+    </div>
+
+    <!-- Android 普通浏览器：优先提供 APK -->
+    <div v-else-if="platform === 'android'" class="content">
+      <p>建议安装 <b>药大垎坊课表</b> Android 版，下次可从桌面图标直接打开课表。</p>
+      <ul class="bullets">
+        <li>安装包很小，只是课表页的轻量 App 壳</li>
+        <li>网站正常访问时，App 内容会同步更新</li>
+        <li>下载完成后打开 APK，按系统提示安装</li>
+      </ul>
+      <p class="muted">如果系统提示“未知来源”，需要允许当前浏览器安装应用。</p>
+    </div>
+
     <!-- iOS Safari：必须手动通过分享菜单 -->
     <div v-else-if="platform === 'ios'" class="content">
       <p>iOS 的"添加到主屏幕"必须手动操作，三步即可：</p>
@@ -34,27 +55,6 @@
         </li>
       </ol>
       <p class="muted">必须使用 Safari 浏览器；微信/QQ 等内置浏览器不支持。</p>
-    </div>
-
-    <!-- 微信 / QQ 内置浏览器：先引导外部浏览器 -->
-    <div v-else-if="inAppBrowser.isInApp" class="content">
-      <p>检测到当前可能在 <b>{{ inAppBrowser.label }}</b> 内打开。内置浏览器通常无法正常下载 APK，也可能拦截安装流程。</p>
-      <ul class="bullets">
-        <li>请点击右上角菜单</li>
-        <li>选择“在浏览器打开”或“用默认浏览器打开”</li>
-        <li>进入外部浏览器后再下载 Android 版课表</li>
-      </ul>
-    </div>
-
-    <!-- Android 普通浏览器：优先提供 APK -->
-    <div v-else-if="platform === 'android'" class="content">
-      <p>建议安装 <b>药大垎坊课表</b> Android 版，下次可从桌面图标直接打开课表。</p>
-      <ul class="bullets">
-        <li>安装包很小，只是课表页的轻量 App 壳</li>
-        <li>网站正常访问时，App 内容会同步更新</li>
-        <li>下载完成后打开 APK，按系统提示安装</li>
-      </ul>
-      <p class="muted">如果系统提示“未知来源”，需要允许当前浏览器安装应用。</p>
     </div>
 
     <!-- 其他情况（Android 但浏览器没触发 prompt / 桌面浏览器 / 不支持） -->
@@ -115,6 +115,7 @@ const platform = computed<"ios" | "android" | "desktop">(() => {
 });
 
 const title = computed(() => {
+  if (inAppBrowser.value.isInApp) return "建议使用外部浏览器打开";
   if (platform.value === "android") return "安装 Android 版课表";
   if (platform.value === "ios") return "添加到主屏幕";
   return "把课表加到主屏幕";
@@ -220,6 +221,7 @@ async function requestInstall() {
 function autoPromptIfEligible() {
   detectNativeApp();
   if (isStandalone.value || isNativeApp.value) return;
+  if (inAppBrowser.value.isInApp) return;
   if (platform.value === "desktop") return;
   setTimeout(() => {
     // 重新核对 standalone（用户可能在等待期间已经手动加了）
