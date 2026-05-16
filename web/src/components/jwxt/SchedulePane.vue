@@ -56,7 +56,7 @@
           >
             <div class="lc-time">
               <div class="lc-bs">第 {{ bs }} 大节</div>
-              <div class="lc-clock">{{ bigSlotTime(bs) }}</div>
+              <div class="lc-clock">{{ courseTime(c, bs) }}</div>
             </div>
             <div class="lc-body">
               <div class="lc-name">{{ c.name }}</div>
@@ -98,7 +98,7 @@
             :key="i"
             class="course"
             :style="{ background: colorFor(c.name) }"
-            :title="`${c.name}\n${c.teacher ?? ''}\n${c.weeks} ${c.slotNote ?? ''}\n@ ${c.location ?? ''}`"
+            :title="`${c.name}\n${courseTime(c, bs)}\n${c.teacher ?? ''}\n${c.weeks} ${c.slotNote ?? ''}\n@ ${c.location ?? ''}`"
           >
             <div class="cn">{{ c.name }}</div>
             <div v-if="c.teacher" class="meta">👨‍🏫 {{ c.teacher }}</div>
@@ -123,6 +123,8 @@ interface ScheduleCourse {
   weekList: number[];
   location?: string;
   slotNote?: string;
+  startSlot?: number;
+  endSlot?: number;
 }
 interface ScheduleCell { day: number; bigSlot: number; courses: ScheduleCourse[] }
 interface ScheduleResult {
@@ -219,7 +221,28 @@ const days = [
   { idx: 1, label: "周一" }, { idx: 2, label: "周二" }, { idx: 3, label: "周三" },
   { idx: 4, label: "周四" }, { idx: 5, label: "周五" }, { idx: 6, label: "周六" }, { idx: 7, label: "周日" },
 ];
-const bigSlots = [1, 2, 3, 4, 5];
+const defaultBigSlots = [1, 2, 3, 4, 5];
+const smallSlotTimes: Record<number, { start: string; end: string }> = {
+  1: { start: "08:00", end: "08:45" },
+  2: { start: "08:55", end: "09:40" },
+  3: { start: "09:55", end: "10:40" },
+  4: { start: "10:50", end: "11:35" },
+  5: { start: "13:30", end: "14:15" },
+  6: { start: "14:25", end: "15:10" },
+  7: { start: "15:25", end: "16:10" },
+  8: { start: "16:20", end: "17:05" },
+  9: { start: "18:30", end: "19:15" },
+  10: { start: "19:25", end: "20:10" },
+  11: { start: "20:20", end: "21:05" },
+};
+const bigSlotTimes: Record<number, string> = {
+  1: "08:00–09:35",
+  2: "10:00–11:35",
+  3: "13:30–15:05",
+  4: "15:25–17:00",
+  5: "18:30–21:05",
+  6: "20:20–21:05",
+};
 const activeWeekNumber = computed(() => {
   const value = Number(week.value || parsed.value?.currentWeek || cal.value?.currentWeek || 0);
   return Number.isFinite(value) && value > 0 ? value : 0;
@@ -238,6 +261,14 @@ const cellsByPos = computed(() => {
   const map = new Map<string, ScheduleCell>();
   for (const c of filteredCells.value) map.set(`${c.day}-${c.bigSlot}`, c);
   return map;
+});
+
+const bigSlots = computed(() => {
+  const slots = new Set(defaultBigSlots);
+  for (const cell of filteredCells.value) {
+    if (Number.isFinite(cell.bigSlot) && cell.bigSlot > 0) slots.add(cell.bigSlot);
+  }
+  return Array.from(slots).sort((a, b) => a - b);
 });
 
 const totalCourses = computed(() => filteredCells.value.reduce((s, c) => s + c.courses.length, 0));
@@ -273,12 +304,18 @@ function courseMatchesWeek(course: ScheduleCourse, wk: number) {
 
 function dayCourseCount(day: number): number {
   let n = 0;
-  for (const bs of bigSlots) n += getCourses(day, bs).length;
+  for (const bs of bigSlots.value) n += getCourses(day, bs).length;
   return n;
 }
 
 function bigSlotTime(bs: number): string {
-  return ["08:00–09:35", "10:00–11:35", "13:30–15:05", "15:25–17:00", "18:30–20:05"][bs - 1] ?? "";
+  return bigSlotTimes[bs] ?? "";
+}
+
+function courseTime(course: ScheduleCourse, bs: number): string {
+  const start = course.startSlot ? smallSlotTimes[course.startSlot]?.start : "";
+  const end = course.endSlot ? smallSlotTimes[course.endSlot]?.end : "";
+  return start && end ? `${start}–${end}` : bigSlotTime(bs);
 }
 
 function shortDate(d: string): string {

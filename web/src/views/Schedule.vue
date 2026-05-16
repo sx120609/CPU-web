@@ -285,7 +285,9 @@ const smallSlots = [
   { no: 8, start: "16:20", end: "17:05" },
   { no: 9, start: "18:30", end: "19:15" },
   { no: 10, start: "19:25", end: "20:10" },
+  { no: 11, start: "20:20", end: "21:05" },
 ];
+const MAX_SMALL_SLOT = smallSlots[smallSlots.length - 1]?.no ?? 10;
 
 // 周次选择弹窗
 const weekDialogOpen = ref(false);
@@ -633,12 +635,12 @@ function toneFor(_name: string) {
 }
 
 function normalizeSlotRange(bigSlot: number, course: ScheduleCourse) {
-  const fallbackStart = Math.max(1, Math.min(10, bigSlot * 2 - 1));
-  const fallbackEnd = Math.max(fallbackStart, Math.min(10, bigSlot * 2));
+  const fallbackStart = Math.max(1, Math.min(MAX_SMALL_SLOT, bigSlot * 2 - 1));
+  const fallbackEnd = Math.max(fallbackStart, Math.min(MAX_SMALL_SLOT, bigSlot * 2));
   const start = Number.isFinite(course.startSlot) ? Number(course.startSlot) : fallbackStart;
   const end = Number.isFinite(course.endSlot) ? Number(course.endSlot) : fallbackEnd;
-  const safeStart = Math.max(1, Math.min(10, start));
-  const safeEnd = Math.max(safeStart, Math.min(10, end));
+  const safeStart = Math.max(1, Math.min(MAX_SMALL_SLOT, start));
+  const safeEnd = Math.max(safeStart, Math.min(MAX_SMALL_SLOT, end));
   return { start: safeStart, end: safeEnd };
 }
 
@@ -1059,7 +1061,7 @@ function saveScheduleCache() {
 .day-grid-body {
   display: grid;
   grid-template-columns: 50px minmax(0, 1fr);
-  grid-template-rows: repeat(10, minmax(58px, 6.2dvh));
+  grid-template-rows: repeat(11, minmax(58px, 6.2dvh));
   gap: 5px;
   position: relative;
 }
@@ -1180,7 +1182,7 @@ function saveScheduleCache() {
 }
 .week-grid-body {
   position: relative;
-  grid-template-rows: repeat(10, minmax(48px, 5.8dvh));
+  grid-template-rows: repeat(11, minmax(48px, 5.8dvh));
   align-items: stretch;
 }
 .slot-axis {
@@ -1362,7 +1364,7 @@ function saveScheduleCache() {
 
   .day-grid-body {
     grid-template-columns: 42px minmax(0, 1fr);
-    grid-template-rows: repeat(10, minmax(52px, 6dvh));
+    grid-template-rows: repeat(11, minmax(52px, 6dvh));
     gap: 4px;
   }
 
@@ -1413,7 +1415,7 @@ function saveScheduleCache() {
   }
 
   .week-grid-body {
-    grid-template-rows: repeat(10, minmax(44px, 5.5dvh));
+    grid-template-rows: repeat(11, minmax(44px, 5.5dvh));
   }
 
   .slot-axis b {
@@ -1496,7 +1498,7 @@ function saveScheduleCache() {
   }
   .day-grid-body {
     grid-template-columns: 36px minmax(0, 1fr);
-    grid-template-rows: repeat(10, minmax(48px, 5.6dvh));
+    grid-template-rows: repeat(11, minmax(48px, 5.6dvh));
     gap: 3px;
   }
   .day-course-block {
@@ -1512,7 +1514,7 @@ function saveScheduleCache() {
     font-size: 10px;
   }
   .week-grid-body {
-    grid-template-rows: repeat(10, minmax(40px, 5.2dvh));
+    grid-template-rows: repeat(11, minmax(40px, 5.2dvh));
   }
   .slot-axis b {
     font-size: 11px;
