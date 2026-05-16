@@ -36,7 +36,6 @@ import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import zhCn from "element-plus/es/locale/lang/zh-cn";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 
-const IN_APP_TIP_KEY = "cpu-in-app-browser-tip-dismissed-v1";
 const inAppTipOpen = ref(false);
 const inAppBrowserLabel = ref("微信 / QQ");
 const inAppReadSeconds = ref(0);
@@ -46,11 +45,6 @@ onMounted(() => {
   const info = detectInAppBrowser();
   if (!info.isInApp) return;
   inAppBrowserLabel.value = info.label;
-  try {
-    if (localStorage.getItem(IN_APP_TIP_KEY) === "1") return;
-  } catch {
-    return;
-  }
   inAppTipOpen.value = true;
 });
 
@@ -66,11 +60,6 @@ onBeforeUnmount(() => {
 function dismissInAppTip() {
   if (inAppReadSeconds.value > 0) return;
   inAppTipOpen.value = false;
-  try {
-    localStorage.setItem(IN_APP_TIP_KEY, "1");
-  } catch {
-    /* ignore */
-  }
 }
 
 function startInAppReadTimer() {

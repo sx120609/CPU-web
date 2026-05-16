@@ -96,7 +96,6 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
-const DISMISS_KEY = "cpu-install-dismissed-v1";
 const APK_DOWNLOAD_URL = "/downloads/CPU-Web.apk";
 
 const open = ref(false);
@@ -156,7 +155,6 @@ function onAppInstalled() {
   deferredPrompt.value = null;
   open.value = false;
   isStandalone.value = true;
-  try { localStorage.setItem(DISMISS_KEY, "installed"); } catch { /* ignore */ }
 }
 
 onMounted(() => {
@@ -174,10 +172,7 @@ async function installNow() {
   if (!deferredPrompt.value) return;
   try {
     await deferredPrompt.value.prompt();
-    const { outcome } = await deferredPrompt.value.userChoice;
-    if (outcome === "dismissed") {
-      try { localStorage.setItem(DISMISS_KEY, String(Date.now())); } catch { /* ignore */ }
-    }
+    await deferredPrompt.value.userChoice;
   } finally {
     deferredPrompt.value = null;
     open.value = false;
@@ -191,7 +186,6 @@ function downloadApk() {
 
 function dismissDialog() {
   open.value = false;
-  try { localStorage.setItem(DISMISS_KEY, String(Date.now())); } catch { /* ignore */ }
 }
 
 /** 父组件主动调用：手动打开 install 引导（任何平台都打开） */
@@ -220,19 +214,13 @@ async function requestInstall() {
  * 父组件主动调用：自动提示。规则：
  *  - 已 standalone 不弹
  *  - desktop 不弹（桌面用户不太关心"加到桌面"，太骚扰）
- *  - 用户主动 dismiss 过 → 3 天内不重弹
- *  - 否则延迟 1.5s 后弹（让页面先有内容）
+ *  - 每次进入页面都可重新提示
+ *  - 延迟 1.5s 后弹（让页面先有内容）
  */
 function autoPromptIfEligible() {
   detectNativeApp();
   if (isStandalone.value || isNativeApp.value) return;
   if (platform.value === "desktop") return;
-  const last = (() => { try { return localStorage.getItem(DISMISS_KEY); } catch { return null; } })();
-  if (last === "installed") return;
-  if (last && last !== "installed") {
-    const t = Number(last);
-    if (Number.isFinite(t) && Date.now() - t < 3 * 24 * 3600 * 1000) return;
-  }
   setTimeout(() => {
     // 重新核对 standalone（用户可能在等待期间已经手动加了）
     detectStandalone();
