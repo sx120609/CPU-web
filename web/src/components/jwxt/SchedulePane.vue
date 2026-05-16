@@ -139,7 +139,7 @@
                 </template>
                 <article
                   v-for="block in page.weekCourseBlocks"
-                  :key="`${page.key}-${block.day}-${block.startSlot}-${block.endSlot}-${block.index}-${block.course.name}`"
+                  :key="`${page.weekValue}-${block.day}-${block.startSlot}-${block.endSlot}-${block.index}-${block.course.name}`"
                   class="week-course"
                   :style="courseBlockStyle(block)"
                   :title="courseTitle(block.course)"
@@ -165,7 +165,7 @@
                   </template>
                   <article
                     v-for="block in page.dayCourseBlocks"
-                    :key="`${page.key}-${block.startSlot}-${block.endSlot}-${block.index}-${block.course.name}`"
+                    :key="`${page.weekValue}-${page.day}-${block.startSlot}-${block.endSlot}-${block.index}-${block.course.name}`"
                     class="day-course-block"
                     :style="dayCourseBlockStyle(block)"
                     :title="courseTitle(block.course)"
@@ -876,9 +876,14 @@ function dayCoursesFor(wk: number, day: number, source: ScheduleResult | null = 
 
 function weekCourseBlocksFor(wk: number, source: ScheduleResult | null = parsed.value) {
   const blocks: WeekCourseBlock[] = [];
+  const seen = new Set<string>();
   for (const cell of cellsForWeek(wk, source)) {
     cell.courses.forEach((course, index) => {
       const range = normalizeSlotRange(cell.bigSlot, course);
+      // 去重兜底：同一格子里同名/同地点/同节次的课只保留一次，避免后端返回重复时 DOM 重叠
+      const dedupKey = `${cell.day}-${range.start}-${range.end}-${course.name}-${course.location ?? ""}`;
+      if (seen.has(dedupKey)) return;
+      seen.add(dedupKey);
       blocks.push({ day: cell.day, startSlot: range.start, endSlot: range.end, index, course });
     });
   }
