@@ -80,31 +80,38 @@ export function sessionStats(): ReturnType<typeof local.sessionStats> {
 }
 
 export function getSchedule(token: string, args?: Parameters<typeof local.getSchedule>[1]): ReturnType<typeof local.getSchedule> {
-  return call("/v1/schedule", { token, ...(args ?? {}) });
+  return call<{ parsed: Awaited<ReturnType<typeof local.getSchedule>> }>("/v1/schedule", { token, ...(args ?? {}) })
+    .then((r) => r.parsed) as ReturnType<typeof local.getSchedule>;
 }
 
 export function getGrades(token: string, args?: Parameters<typeof local.getGrades>[1]): ReturnType<typeof local.getGrades> {
-  return call("/v1/grades", { token, ...(args ?? {}) });
+  return call<{ parsed: Awaited<ReturnType<typeof local.getGrades>> }>("/v1/grades", { token, ...(args ?? {}) })
+    .then((r) => r.parsed) as ReturnType<typeof local.getGrades>;
 }
 
 export function getExams(token: string, args?: Parameters<typeof local.getExams>[1]): ReturnType<typeof local.getExams> {
-  return call("/v1/exams", { token, ...(args ?? {}) });
+  return call<{ parsed: Awaited<ReturnType<typeof local.getExams>> }>("/v1/exams", { token, ...(args ?? {}) })
+    .then((r) => r.parsed) as ReturnType<typeof local.getExams>;
 }
 
 export function getCalendar(token: string): ReturnType<typeof local.getCalendar> {
-  return call("/v1/calendar", { token });
+  return call<{ parsed: Awaited<ReturnType<typeof local.getCalendar>> }>("/v1/calendar", { token })
+    .then((r) => r.parsed) as ReturnType<typeof local.getCalendar>;
 }
 
 export function getProgress(token: string): ReturnType<typeof local.getProgress> {
-  return call("/v1/progress", { token });
+  return call<{ parsed: Awaited<ReturnType<typeof local.getProgress>> }>("/v1/progress", { token })
+    .then((r) => r.parsed) as ReturnType<typeof local.getProgress>;
 }
 
 export function getPyfa(token: string): ReturnType<typeof local.getPyfa> {
-  return call("/v1/pyfa", { token });
+  return call<{ parsed: Awaited<ReturnType<typeof local.getPyfa>> }>("/v1/pyfa", { token })
+    .then((r) => r.parsed) as ReturnType<typeof local.getPyfa>;
 }
 
 export function getIApps(token: string): ReturnType<typeof local.getIApps> {
-  return call("/v1/iapps", { token });
+  return call<{ apps: Awaited<ReturnType<typeof local.getIApps>> }>("/v1/iapps", { token })
+    .then((r) => r.apps) as ReturnType<typeof local.getIApps>;
 }
 
 export function debugSnapshot(token: string): ReturnType<typeof local.debugSnapshot> {

@@ -18,6 +18,7 @@ import {
   getIApps,
   debugSnapshot,
 } from "../services/jwxtFacade";
+import { crawlSchoolFeedSource } from "../services/schoolCrawlerCore";
 
 export const proxyJwxtRouter = Router();
 
@@ -134,3 +135,22 @@ proxyJwxtRouter.get("/v1/stats", async (_req, res, next) => {
     ok(res, await sessionStats());
   } catch (e) { next(e); }
 });
+
+proxyJwxtRouter.post(
+  "/v1/school-feed/crawl",
+  validate(z.object({
+    source: z.object({
+      slug: z.string().min(1),
+      listUrl: z.string().min(1),
+      maxPages: z.number().int().min(1).max(10),
+    }),
+    skipExternalIds: z.array(z.string()).optional(),
+    dryRun: z.boolean().optional(),
+  })),
+  async (req, res, next) => {
+    try {
+      const { source, skipExternalIds, dryRun } = req.body;
+      ok(res, await crawlSchoolFeedSource(source, { skipExternalIds, dryRun }));
+    } catch (e) { next(e); }
+  },
+);
