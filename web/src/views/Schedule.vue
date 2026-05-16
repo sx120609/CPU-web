@@ -300,10 +300,13 @@ const captchaInput = ref("");
 const captchaSubmitting = ref(false);
 const captchaError = ref("");
 const scheduleSavedAt = ref(0);
+const scheduleCacheVersion = ref(0);
 const CACHE_TTL = 12 * 60 * 60 * 1000;
 const CALENDAR_CACHE_KEY = "cpu-schedule-calendar-v1";
 const LAST_STATE_KEY = "cpu-schedule-last-state-v1";
 const LAST_CACHE_KEY = "cpu-schedule-last-cache-key-v1";
+const scheduleCacheStore = new Map<string, CacheEnvelope<ScheduleResult>>();
+const prewarmingScheduleKeys = new Set<string>();
 const smallSlots = [
   { no: 1, start: "08:00", end: "08:45" },
   { no: 2, start: "08:55", end: "09:40" },
@@ -394,12 +397,12 @@ const activeWeekNumber = computed(() => {
   const value = Number(week.value || parsed.value?.currentWeek || calendar.value?.currentWeek || 0);
   return Number.isFinite(value) && value > 0 ? value : 0;
 });
-const currentCells = computed<ScheduleCell[]>(() => cellsForWeek(activeWeekNumber.value));
-const dayCourses = computed<FlatCourse[]>(() => dayCoursesFor(activeWeekNumber.value, activeDay.value));
+const currentCells = computed<ScheduleCell[]>(() => cellsForWeek(activeWeekNumber.value, parsed.value));
+const dayCourses = computed<FlatCourse[]>(() => dayCoursesFor(activeWeekNumber.value, activeDay.value, parsed.value));
 const dayCourseBlocks = computed<WeekCourseBlock[]>(() => (
-  dayCourseBlocksFor(activeWeekNumber.value, activeDay.value)
+  dayCourseBlocksFor(activeWeekNumber.value, activeDay.value, parsed.value)
 ));
-const weekCourseBlocks = computed<WeekCourseBlock[]>(() => weekCourseBlocksFor(activeWeekNumber.value));
+const weekCourseBlocks = computed<WeekCourseBlock[]>(() => weekCourseBlocksFor(activeWeekNumber.value, parsed.value));
 
 // 横向轨道始终渲染：上一页 / 当前页 / 下一页，拖动时只移动轨道。
 const slideDirection = ref<"next" | "prev">("next");
@@ -452,6 +455,7 @@ async function loadSchedule(force = false) {
     scheduleSavedAt.value = Date.now();
     saveScheduleCache();
     saveLastState();
+    prewarmAdjacentWeekCaches();
   } finally {
     loading.value = false;
   }
@@ -468,6 +472,7 @@ async function changeWeek(delta: number) {
   week.value = next;
   saveLastState();
   await loadSchedule(false);
+  prewarmAdjacentWeekCaches();
 }
 
 const canJumpToCurrentWeek = computed(() => {
@@ -785,8 +790,21 @@ function dayTabsForWeek(value: string | number) {
   }));
 }
 
-function cellsForWeek(wk: number) {
-  return (parsed.value?.cells ?? [])
+function scheduleForWeek(weekValue: string | number) {
+  scheduleCacheVersion.value;
+  const requested = String(weekValue || "");
+  if (requested && requested === currentWeekValue() && parsed.value) return parsed.value;
+  const cached = cachedScheduleEnvelopeForWeek(requested);
+  return cached?.data ?? (requested === currentWeekValue() ? parsed.value : null);
+}
+
+function cachedScheduleEnvelopeForWeek(weekValue: string | number) {
+  const key = scheduleCacheKey(semester.value || parsed.value?.currentSemester, String(weekValue || ""));
+  return scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
+}
+
+function cellsForWeek(wk: number, source: ScheduleResult | null = parsed.value) {
+  return (source?.cells ?? [])
     .map((cell) => ({
       ...cell,
       courses: wk ? cell.courses.filter((course) => courseMatchesWeek(course, wk)) : cell.courses,
@@ -794,18 +812,18 @@ function cellsForWeek(wk: number) {
     .filter((cell) => cell.courses.length);
 }
 
-function dayCoursesFor(wk: number, day: number) {
+function dayCoursesFor(wk: number, day: number, source: ScheduleResult | null = parsed.value) {
   const list: FlatCourse[] = [];
-  for (const cell of cellsForWeek(wk)) {
+  for (const cell of cellsForWeek(wk, source)) {
     if (cell.day !== day) continue;
     cell.courses.forEach((course, index) => list.push({ bigSlot: cell.bigSlot, index, course }));
   }
   return list.sort((a, b) => a.bigSlot - b.bigSlot);
 }
 
-function weekCourseBlocksFor(wk: number) {
+function weekCourseBlocksFor(wk: number, source: ScheduleResult | null = parsed.value) {
   const blocks: WeekCourseBlock[] = [];
-  for (const cell of cellsForWeek(wk)) {
+  for (const cell of cellsForWeek(wk, source)) {
     cell.courses.forEach((course, index) => {
       const range = normalizeSlotRange(cell.bigSlot, course);
       blocks.push({ day: cell.day, startSlot: range.start, endSlot: range.end, index, course });
@@ -814,14 +832,15 @@ function weekCourseBlocksFor(wk: number) {
   return blocks.sort((a, b) => a.startSlot - b.startSlot || a.day - b.day || a.index - b.index);
 }
 
-function dayCourseBlocksFor(wk: number, day: number) {
-  return weekCourseBlocksFor(wk).filter((block) => block.day === day);
+function dayCourseBlocksFor(wk: number, day: number, source: ScheduleResult | null = parsed.value) {
+  return weekCourseBlocksFor(wk, source).filter((block) => block.day === day);
 }
 
 function weekPageModel(delta: number): SchedulePageModel {
   const weekValue = delta === 0 ? currentWeekValue() : nextWeekValueFrom(currentWeekValue(), delta) || currentWeekValue();
   const weekNo = Number(weekValue || 0);
-  const blocks = weekCourseBlocksFor(weekNo);
+  const source = scheduleForWeek(weekValue);
+  const blocks = weekCourseBlocksFor(weekNo, source);
   return {
     delta,
     key: `week-${delta}-${weekValue || "current"}`,
@@ -830,7 +849,7 @@ function weekPageModel(delta: number): SchedulePageModel {
     title: "整周",
     dayTabs: dayTabsForWeek(weekValue),
     courseCount: blocks.length,
-    dayCourseBlocks: dayCourseBlocksFor(weekNo, activeDay.value),
+    dayCourseBlocks: dayCourseBlocksFor(weekNo, activeDay.value, source),
     weekCourseBlocks: blocks,
   };
 }
@@ -838,7 +857,8 @@ function weekPageModel(delta: number): SchedulePageModel {
 function dayPageModel(delta: number): SchedulePageModel {
   const target = dayTarget(delta);
   const weekNo = Number(target.weekValue || 0);
-  const blocks = dayCourseBlocksFor(weekNo, target.day);
+  const source = scheduleForWeek(target.weekValue);
+  const blocks = dayCourseBlocksFor(weekNo, target.day, source);
   const tabs = dayTabsForWeek(target.weekValue);
   return {
     delta,
@@ -849,7 +869,7 @@ function dayPageModel(delta: number): SchedulePageModel {
     dayTabs: tabs,
     courseCount: blocks.length,
     dayCourseBlocks: blocks,
-    weekCourseBlocks: weekCourseBlocksFor(weekNo),
+    weekCourseBlocks: weekCourseBlocksFor(weekNo, source),
   };
 }
 
@@ -973,6 +993,21 @@ function writeCache<T>(key: string, data: T) {
   }
 }
 
+function writeScheduleCache(key: string, data: ScheduleResult) {
+  const envelope = { savedAt: Date.now(), data };
+  rememberScheduleCache(key, envelope);
+  try {
+    localStorage.setItem(key, JSON.stringify(envelope));
+  } catch {
+    /* ignore */
+  }
+}
+
+function rememberScheduleCache(key: string, envelope: CacheEnvelope<ScheduleResult>) {
+  scheduleCacheStore.set(key, envelope);
+  scheduleCacheVersion.value += 1;
+}
+
 function isStale(savedAt: number) {
   return !savedAt || Date.now() - savedAt > CACHE_TTL;
 }
@@ -1027,18 +1062,47 @@ function restoreScheduleCache() {
 function applyScheduleCache(key: string) {
   const cached = readCache<ScheduleResult>(key);
   if (!cached?.data) return false;
+  rememberScheduleCache(key, cached);
   parsed.value = cached.data;
   scheduleSavedAt.value = cached.savedAt;
   if (!semester.value) semester.value = cached.data.currentSemester || "";
   if (!week.value) week.value = String(cached.data.currentWeek || "");
+  prewarmAdjacentWeekCaches();
   return true;
 }
 
 function saveScheduleCache() {
   if (!parsed.value) return;
   const key = scheduleCacheKey(parsed.value.currentSemester || semester.value, week.value || parsed.value.currentWeek);
-  writeCache(key, parsed.value);
+  writeScheduleCache(key, parsed.value);
   try { localStorage.setItem(LAST_CACHE_KEY, key); } catch { /* ignore */ }
+}
+
+function prewarmAdjacentWeekCaches() {
+  if (!parsed.value || !semester.value) return;
+  const current = currentWeekValue();
+  [nextWeekValueFrom(current, -1), nextWeekValueFrom(current, 1)]
+    .filter(Boolean)
+    .forEach((wk) => prewarmScheduleCacheForWeek(wk));
+}
+
+function prewarmScheduleCacheForWeek(wk: string) {
+  if (!jwxt.isLoggedIn) return;
+  const key = scheduleCacheKey(parsed.value?.currentSemester || semester.value, wk);
+  const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
+  if (cached?.data && !isStale(cached.savedAt)) {
+    if (!scheduleCacheStore.has(key)) rememberScheduleCache(key, cached);
+    return;
+  }
+  if (prewarmingScheduleKeys.has(key)) return;
+  prewarmingScheduleKeys.add(key);
+  void jwxtApi.schedule({ semester: semester.value, week: wk })
+    .then((r: any) => {
+      if (r?.parsed) writeScheduleCache(key, r.parsed);
+    })
+    .finally(() => {
+      prewarmingScheduleKeys.delete(key);
+    });
 }
 </script>
 
