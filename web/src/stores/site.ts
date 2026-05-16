@@ -2,12 +2,12 @@ import { defineStore } from "pinia";
 import { siteApi, type FeatureMap } from "@/api/site";
 
 /**
- * 站点级开关：默认乐观地认为全开（避免拉接口前导航闪烁消失）。
- * 拉到真实开关后再覆盖。
+ * 站点级开关：默认关闭可选功能，拉到后台真实开关后再展示入口。
+ * 避免接口返回前短暂露出未开放功能。
  */
 export const useSiteStore = defineStore("site", {
   state: () => ({
-    features: { forum: true, market: true, coursereview: true, electric: true } as FeatureMap,
+    features: { forum: false, market: false, coursereview: false, electric: false } as FeatureMap,
     loaded: false,
   }),
   actions: {
@@ -16,7 +16,7 @@ export const useSiteStore = defineStore("site", {
         const r = await siteApi.features();
         this.features = r;
       } catch {
-        // 接口失败：维持乐观默认，避免误关功能
+        // 接口失败：维持默认关闭可选功能，避免误展示后台未开放入口。
       } finally {
         this.loaded = true;
       }

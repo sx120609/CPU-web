@@ -14,7 +14,7 @@
         <div class="top-search">
           <el-input
             v-model="q"
-            placeholder="搜索帖子 / 课程 / 服务"
+            :placeholder="searchPlaceholder"
             clearable
             @keyup.enter="goSearch"
           >
@@ -35,7 +35,7 @@
                 <el-icon size="20"><Refresh /></el-icon>
               </el-button>
             </el-tooltip>
-            <el-button type="primary" size="default" @click="$router.push('/post')">
+            <el-button v-if="site.features.forum" type="primary" size="default" @click="$router.push('/post')">
               <el-icon><Edit /></el-icon> 发帖
             </el-button>
             <el-tooltip content="消息">
@@ -70,7 +70,7 @@
           <el-button text class="touch-icon-btn" aria-label="刷新页面" @click="reloadPage">
             <el-icon><Refresh /></el-icon>
           </el-button>
-          <el-button v-if="auth.isLoggedIn" text class="touch-icon-btn" aria-label="发帖" @click="$router.push('/post')">
+          <el-button v-if="auth.isLoggedIn && site.features.forum" text class="touch-icon-btn" aria-label="发帖" @click="$router.push('/post')">
             <el-icon><Edit /></el-icon>
           </el-button>
           <el-button v-if="auth.isLoggedIn" text class="touch-icon-btn" aria-label="消息" @click="$router.push('/messages')">
@@ -85,16 +85,6 @@
         </div>
       </div>
     </header>
-
-    <!-- disclaimer -->
-    <div v-if="!hideChrome" class="disclaimer">
-      <el-icon><WarningFilled /></el-icon>
-      <span>
-        药大垎坊为学生自发聚合站，<b>与中国药科大学官方无关</b>。
-        学号 / 工号会用于创建或关联站内账号，<b>本站不保存学校密码和验证码</b>。
-        用户内容仅代表发布者个人观点。
-      </span>
-    </div>
 
     <!-- 主内容 -->
     <main class="main" :class="{ 'main--bare': hideChrome }">
@@ -177,7 +167,7 @@
         欢迎来到药大垎坊，<b>{{ auth.user?.username }}</b> 同学
       </p>
       <p class="dlg-hint">
-        后续发帖、回复和课程点评都会显示昵称，<b>不会展示你的学号</b>。
+        {{ nicknameHint }}，<b>不会展示你的学号</b>。
       </p>
       <el-input
         v-model="newNickname"
@@ -205,7 +195,6 @@ import {
   Edit,
   Bell,
   ArrowDown,
-  WarningFilled,
   Menu,
   House,
   ChatLineRound,
@@ -231,6 +220,22 @@ const mobileMenuOpen = ref(false);
 
 /** 某些路由（如 /schedule）希望"裸壳"渲染，没有顶栏/免责声明/footer，仅保留 main + tabbar */
 const hideChrome = computed(() => Boolean(route.meta?.hideChrome));
+
+const searchPlaceholder = computed(() => {
+  const scopes: string[] = [];
+  if (site.features.forum) scopes.push("帖子");
+  if (site.features.coursereview) scopes.push("课程");
+  scopes.push("服务");
+  return `搜索${scopes.join(" / ")}`;
+});
+
+const nicknameHint = computed(() => {
+  const actions: string[] = [];
+  if (site.features.forum) actions.push("发帖、回复");
+  if (site.features.coursereview) actions.push("课程点评");
+  if (!actions.length) return "后续使用站内功能时会显示昵称";
+  return `后续${actions.join("和")}都会显示昵称`;
+});
 
 function reloadPage() {
   window.location.reload();
@@ -530,20 +535,6 @@ async function onUserCmd(cmd: string) {
   white-space: nowrap;
 }
 
-.disclaimer {
-  background: #fef3c7;
-  color: #92400e;
-  font-size: 12px;
-  padding: 8px 20px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-  border-bottom: 1px solid #fde68a;
-}
-
-.disclaimer b { color: #b45309; }
-
 .main {
   flex: 1;
   padding: 24px 20px 40px;
@@ -727,19 +718,6 @@ async function onUserCmd(cmd: string) {
 
   .mobile-actions {
     display: flex;
-  }
-
-  .disclaimer {
-    justify-content: flex-start;
-    align-items: flex-start;
-    padding: 8px 12px;
-    font-size: 11px;
-    line-height: 1.5;
-  }
-
-  .disclaimer .el-icon {
-    margin-top: 2px;
-    flex-shrink: 0;
   }
 
   .main {

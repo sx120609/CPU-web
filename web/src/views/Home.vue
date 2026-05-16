@@ -4,7 +4,7 @@
     <section class="hero">
       <div class="hero-text">
         <h1>药大垎坊</h1>
-        <p>校园讨论、课程点评、二手交易、公告聚合与常用校园服务，给药大学生一个更顺手的信息入口。</p>
+        <p>{{ heroIntro }}</p>
         <div class="hero-actions">
           <el-button v-if="site.features.forum" type="primary" size="large" @click="$router.push('/forum')">
             <el-icon><ChatLineRound /></el-icon> 进入论坛
@@ -12,7 +12,7 @@
           <el-button v-else type="primary" size="large" @click="$router.push('/announcements')">
             <el-icon><Bell /></el-icon> 看校园公告
           </el-button>
-          <el-button v-if="!auth.isLoggedIn" size="large" @click="$router.push('/login')">登录参与</el-button>
+          <el-button v-if="!auth.isLoggedIn" size="large" @click="$router.push('/login')">{{ loginActionText }}</el-button>
           <el-button v-else-if="site.features.forum" size="large" @click="$router.push('/post')">
             <el-icon><Edit /></el-icon> 发布内容
           </el-button>
@@ -123,6 +123,23 @@ const site = useSiteStore();
 const router = useRouter();
 const summary = ref<HomeSummary | null>(null);
 const electricOpen = ref(false);
+
+const enabledFeatureLabels = computed(() => {
+  const labels = ["公告聚合", "教务数据", "常用校园服务"];
+  if (site.features.coursereview) labels.splice(2, 0, "课程点评");
+  if (site.features.market) labels.splice(labels.length - 1, 0, "二手交易");
+  if (site.features.electric) labels.push("宿舍电费查询");
+  if (site.features.forum) labels.unshift("校园讨论");
+  return labels;
+});
+
+const heroIntro = computed(() => {
+  const labels = enabledFeatureLabels.value;
+  const text = labels.length > 1 ? `${labels.slice(0, -1).join("、")}与${labels.at(-1)}` : labels[0];
+  return `${text}，给药大学生一个更顺手的信息入口。`;
+});
+
+const loginActionText = computed(() => site.features.forum ? "登录参与" : "登录使用");
 
 const hasStats = computed(() => {
   if (!summary.value) return false;

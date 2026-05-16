@@ -4,7 +4,7 @@
       <h2>🎓 教务数据</h2>
       <p class="hint">
         通过学校统一认证授权读取教务数据，把课表、成绩和培养方案整理成更易查看的视图。
-        学号 / 工号会用于创建或关联站内账号，<b>学校密码和验证码不保存</b>；会话保存在内存中，关闭浏览器即清空。
+        学号 / 工号会用于创建或关联站内账号，<b>学校密码和验证码不保存</b>。
       </p>
     </div>
 
@@ -39,9 +39,7 @@
       >
         <ul class="safety">
           <li>学号 / 工号会用于创建或关联站内账号</li>
-          <li>授权成功后，仅保留学校颁发的会话 cookie 在服务端内存中（30 分钟不活动自动失效）</li>
           <li>本站<b>不保存</b>学校密码和验证码到数据库、文件或日志</li>
-          <li>随时可以点击「立即清除会话」一键销毁</li>
         </ul>
       </el-alert>
 
@@ -113,7 +111,6 @@
           <el-icon class="session-ok"><CircleCheckFilled /></el-icon>
           <div class="session-copy">
             <div class="session-title">已连接学校教务系统</div>
-            <div class="session-sub">会话将在 30 分钟无活动后自动失效。</div>
           </div>
         </div>
         <div class="session-actions">

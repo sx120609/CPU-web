@@ -69,6 +69,7 @@ router.beforeEach(async (to) => {
 
   // 功能开关 gate：admin / mod 不受限（便于在关闭期间巡查）
   const featureName = to.name ? FEATURE_GATED[String(to.name)] : undefined;
+  if (featureName && !site.loaded) await site.fetch();
   if (featureName && !site.features[featureName]) {
     const isStaff = auth.user?.role === "admin" || auth.user?.role === "mod";
     if (!isStaff) {

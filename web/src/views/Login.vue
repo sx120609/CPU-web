@@ -17,7 +17,7 @@
       </div>
 
       <p class="welcome">使用 <strong>学校统一认证</strong> 登录</p>
-      <p class="hint">完成身份确认后自动创建站内账号，可用于发帖、课评和消息通知。</p>
+      <p class="hint">{{ loginHint }}</p>
 
       <el-alert type="warning" :closable="false" show-icon class="safety">
         学号 / 工号会用于创建或关联站内账号，<b>学校密码和验证码不保存</b>
@@ -95,11 +95,13 @@ import { useRouter, useRoute } from "vue-router";
 import { ElMessage, type FormInstance, type FormRules } from "element-plus";
 import { User, Lock, Refresh, ArrowLeft } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
+import { useSiteStore } from "@/stores/site";
 import { loadCreds, hasCreds } from "@/utils/credCrypto";
 
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
+const site = useSiteStore();
 const formRef = ref<FormInstance>();
 const remember = ref(true);
 const isDev = computed(() => import.meta.env.DEV);
@@ -111,6 +113,14 @@ const rules: FormRules = {
 };
 
 const dev = reactive({ username: "", password: "", loading: false });
+
+const loginHint = computed(() => {
+  const uses: string[] = [];
+  if (site.features.forum) uses.push("发帖");
+  if (site.features.coursereview) uses.push("课评");
+  uses.push("消息通知");
+  return `完成身份确认后自动创建站内账号，可用于${uses.join("、")}。`;
+});
 
 onMounted(async () => {
   if (auth.isLoggedIn) {
