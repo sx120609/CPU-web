@@ -97,7 +97,10 @@
             v-for="page in carouselPages"
             :key="page.key"
             class="schedule-panel"
-            :class="{ active: page.delta === 0 }"
+            :class="[
+              { active: page.delta === 0 },
+              page.delta === 0 && useStaticWeekSwipe ? staticWeekAnimationClass : '',
+            ]"
             :aria-hidden="page.delta !== 0"
           >
             <div class="summary">
@@ -334,6 +337,8 @@ let pendingTrackOffset = 0;
 let dragCommitDelta = 0;
 let dragCommitTimer = 0;
 let dragCaptureTarget: HTMLElement | null = null;
+const staticWeekAnimationClass = ref<"" | "week-slide-in-next" | "week-slide-in-prev">("");
+let staticWeekAnimationTimer = 0;
 
 watch(() => props.loading, (v) => {
   loading.value = Boolean(v);
@@ -379,6 +384,7 @@ onBeforeUnmount(() => {
   window.removeEventListener("resize", updateViewportHeight);
   window.visualViewport?.removeEventListener("resize", updateViewportHeight);
   window.visualViewport?.removeEventListener("scroll", updateViewportHeight);
+  clearStaticWeekAnimation();
 });
 
 const semesters = computed(() => parsed.value?.semesters ?? []);
@@ -658,17 +664,12 @@ async function onSchedulePointerEnd(event: PointerEvent) {
   const fastSwipe = Math.abs(dragVelocityX) >= 0.42 && Math.abs(offset) >= 22;
   const shouldChange = (Math.abs(offset) >= threshold || fastSwipe) && canChangeByDrag(direction);
   if (!shouldChange) {
-    if (useStaticWeekSwipe.value) {
-      resetDrag();
-      return;
-    }
     animateDragTo(0);
     window.setTimeout(resetDrag, 180);
     return;
   }
   if (useStaticWeekSwipe.value) {
-    dragCommitDelta = direction;
-    await flushDragCommit();
+    await applyStaticWeekSwipe(direction);
     return;
   }
   dragCommitDelta = direction;
@@ -722,6 +723,34 @@ async function flushDragCommit() {
   }
 }
 
+async function applyStaticWeekSwipe(delta: number) {
+  dragCommitDelta = 0;
+  if (dragCommitTimer) {
+    window.clearTimeout(dragCommitTimer);
+    dragCommitTimer = 0;
+  }
+  clearStaticWeekAnimation();
+  dragState.tracking = false;
+  dragState.dragging = false;
+  dragState.settling = true;
+  setDragClasses(false, true);
+  setStaticWeekOffset(0);
+  try {
+    await applyDragChange(delta);
+    await nextTick();
+    setStaticWeekOffset(0);
+    staticWeekAnimationClass.value = delta > 0 ? "week-slide-in-next" : "week-slide-in-prev";
+    staticWeekAnimationTimer = window.setTimeout(() => {
+      staticWeekAnimationTimer = 0;
+      staticWeekAnimationClass.value = "";
+      resetDrag();
+    }, 220);
+  } catch (error) {
+    resetDrag();
+    throw error;
+  }
+}
+
 function onCarouselTrackTransitionEnd(event: TransitionEvent) {
   if (event.propertyName !== "transform" || !dragState.settling || !dragCommitDelta) return;
   void flushDragCommit();
@@ -750,6 +779,7 @@ function resetDrag() {
     window.clearTimeout(dragCommitTimer);
     dragCommitTimer = 0;
   }
+  clearStaticWeekAnimation();
   dragCommitDelta = 0;
   dragState.tracking = false;
   dragState.dragging = false;
@@ -799,7 +829,6 @@ function setDragClasses(dragging: boolean, settling: boolean) {
 }
 
 function scheduleTrackOffset(offsetX: number) {
-  if (useStaticWeekSwipe.value) return;
   pendingTrackOffset = offsetX;
   if (dragFrame) return;
   dragFrame = window.requestAnimationFrame(() => {
@@ -809,17 +838,45 @@ function scheduleTrackOffset(offsetX: number) {
 }
 
 function setTrackOffset(offsetX: number) {
-  if (useStaticWeekSwipe.value) return;
+  if (useStaticWeekSwipe.value) {
+    setStaticWeekOffset(easeStaticWeekOffset(offsetX));
+    return;
+  }
   const track = carouselTrackRef.value;
   if (!track) return;
   track.style.transform = `translate3d(calc(-33.333333% + ${offsetX}px), 0, 0)`;
 }
 
 function clearTrackOffset() {
-  if (useStaticWeekSwipe.value) return;
+  if (useStaticWeekSwipe.value) {
+    clearStaticWeekOffset();
+    return;
+  }
   const track = carouselTrackRef.value;
   if (!track) return;
   track.style.transform = "";
+}
+
+function easeStaticWeekOffset(offsetX: number) {
+  const maxOffset = Math.min(58, Math.max(30, dragState.width * 0.16));
+  const eased = offsetX * 0.36;
+  return Math.max(-maxOffset, Math.min(maxOffset, eased));
+}
+
+function setStaticWeekOffset(offsetX: number) {
+  contentRef.value?.style.setProperty("--static-week-offset", `${offsetX}px`);
+}
+
+function clearStaticWeekOffset() {
+  contentRef.value?.style.removeProperty("--static-week-offset");
+}
+
+function clearStaticWeekAnimation() {
+  if (staticWeekAnimationTimer) {
+    window.clearTimeout(staticWeekAnimationTimer);
+    staticWeekAnimationTimer = 0;
+  }
+  staticWeekAnimationClass.value = "";
 }
 
 function maybeShowUserGroupHint() {
@@ -1363,8 +1420,8 @@ function prewarmScheduleCacheForWeek(wk: string) {
   border-color: rgba(255, 255, 255, 0.64);
   background: rgba(255, 255, 255, 0.70);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.64),
-    0 6px 18px rgba(36, 58, 91, 0.06);
+    inset 0 1px 0 rgba(255, 255, 255, 0.56),
+    0 4px 12px rgba(36, 58, 91, 0.045);
   backdrop-filter: blur(12px) saturate(135%);
   -webkit-backdrop-filter: blur(12px) saturate(135%);
 }
@@ -1375,8 +1432,8 @@ function prewarmScheduleCacheForWeek(wk: string) {
   background: linear-gradient(135deg, rgba(22, 135, 118, 0.88), rgba(59, 130, 246, 0.78));
   color: #fff;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.30),
-    0 8px 20px rgba(22, 135, 118, 0.14);
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 5px 14px rgba(22, 135, 118, 0.10);
 }
 
 @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
@@ -1558,6 +1615,9 @@ function prewarmScheduleCacheForWeek(wk: string) {
 .content.settling .carousel-track {
   transition: transform 0.18s cubic-bezier(0.2, 0, 0.2, 1);
 }
+.schedule-pane.is-static-week-swipe.view-week .content.settling .schedule-panel.active {
+  transition: transform 0.18s cubic-bezier(0.2, 0, 0.2, 1);
+}
 
 .schedule-panel {
   min-width: 0;
@@ -1588,6 +1648,48 @@ function prewarmScheduleCacheForWeek(wk: string) {
 }
 .schedule-pane.is-static-week-swipe.view-week .schedule-panel.active {
   pointer-events: auto;
+  transform: translate3d(var(--static-week-offset, 0), 0, 0);
+}
+.schedule-pane.is-static-week-swipe.view-week .schedule-panel.week-slide-in-next,
+.schedule-pane.is-static-week-swipe.view-week .schedule-panel.week-slide-in-prev {
+  animation-duration: 220ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0.2, 1);
+  animation-fill-mode: both;
+}
+.schedule-pane.is-static-week-swipe.view-week .schedule-panel.week-slide-in-next {
+  animation-name: weekSlideInNext;
+}
+.schedule-pane.is-static-week-swipe.view-week .schedule-panel.week-slide-in-prev {
+  animation-name: weekSlideInPrev;
+}
+
+@keyframes weekSlideInNext {
+  from {
+    opacity: 0.9;
+    transform: translate3d(22px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes weekSlideInPrev {
+  from {
+    opacity: 0.9;
+    transform: translate3d(-22px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .schedule-pane.is-static-week-swipe.view-week .schedule-panel.week-slide-in-next,
+  .schedule-pane.is-static-week-swipe.view-week .schedule-panel.week-slide-in-prev {
+    animation: none;
+  }
 }
 
 .day-timeline {
@@ -1816,7 +1918,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.58),
     inset 0 -1px 0 rgba(255, 255, 255, 0.16),
-    0 5px 14px rgba(44, 62, 94, 0.07);
+    0 3px 10px rgba(44, 62, 94, 0.05);
   backdrop-filter: blur(10px) saturate(130%);
   -webkit-backdrop-filter: blur(10px) saturate(130%);
 }

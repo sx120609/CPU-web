@@ -100,15 +100,18 @@ onBeforeUnmount(() => {
   top: calc(100% + 8px);
   right: 0;
   z-index: 30;
-  width: 184px;
+  width: 244px;
+  max-height: min(360px, calc(100vh - 92px));
+  overflow-y: auto;
   padding: 8px;
   border: 1px solid rgba(222, 229, 239, 0.92);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 12px 30px rgba(24, 34, 51, 0.12);
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
+  overscroll-behavior: contain;
 }
 
 .theme-choice {
@@ -122,9 +125,10 @@ onBeforeUnmount(() => {
   font-weight: 700;
   line-height: 1.2;
   padding: 8px 6px;
-  display: flex;
+  display: grid;
+  justify-items: center;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   cursor: pointer;
 }
 
@@ -181,7 +185,8 @@ onBeforeUnmount(() => {
   }
 
   .theme-panel {
-    width: 170px;
+    width: 216px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 </style>
