@@ -70,7 +70,7 @@
       @pointercancel="onSchedulePointerCancel"
     >
       <div class="carousel-viewport">
-        <div class="carousel-track" :style="dragTrackStyle">
+        <div ref="carouselTrackRef" class="carousel-track">
           <article
             v-for="page in carouselPages"
             :key="page.key"
@@ -199,7 +199,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
 import { ArrowLeft, ArrowRight, Moon, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 
@@ -272,6 +272,7 @@ const MAX_SMALL_SLOT = smallSlots[smallSlots.length - 1]?.no ?? 10;
 
 const weekDialogOpen = ref(false);
 const slideDirection = ref<"next" | "prev">("next");
+const carouselTrackRef = ref<HTMLElement | null>(null);
 const dragState = reactive({
   tracking: false,
   dragging: false,
@@ -283,12 +284,12 @@ const dragState = reactive({
   width: 0,
   suppressClick: false,
 });
-const dragTrackStyle = computed(() => {
-  if (!dragState.dragging && !dragState.settling) return undefined;
-  return {
-    transform: `translate3d(calc(-33.333333% + ${dragState.offsetX}px), 0, 0)`,
-  };
-});
+let dragOffsetX = 0;
+let dragLastX = 0;
+let dragLastTime = 0;
+let dragVelocityX = 0;
+let dragFrame = 0;
+let pendingTrackOffset = 0;
 
 watch(() => props.loading, (v) => {
   loading.value = Boolean(v);
@@ -492,25 +493,36 @@ function onSchedulePointerDown(event: PointerEvent) {
   dragState.startY = event.clientY;
   dragState.offsetX = 0;
   dragState.width = (event.currentTarget as HTMLElement | null)?.clientWidth || window.innerWidth || 1;
+  dragOffsetX = 0;
+  dragVelocityX = 0;
+  dragLastX = event.clientX;
+  dragLastTime = performance.now();
+  clearTrackOffset();
   (event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId);
 }
 
 function onSchedulePointerMove(event: PointerEvent) {
   if (!dragState.tracking || event.pointerId !== dragState.pointerId) return;
+  const now = performance.now();
   const dx = event.clientX - dragState.startX;
   const dy = event.clientY - dragState.startY;
+  const dt = Math.max(1, now - dragLastTime);
+  dragVelocityX = (event.clientX - dragLastX) / dt;
+  dragLastX = event.clientX;
+  dragLastTime = now;
   if (!dragState.dragging) {
-    if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
+    if (Math.abs(dy) > 16 && Math.abs(dy) > Math.abs(dx) * 1.35) {
       resetDrag();
       return;
     }
-    if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy) * 1.15) return;
+    if (Math.abs(dx) < 6 || Math.abs(dx) < Math.abs(dy) * 1.05) return;
     dragState.dragging = true;
     dragState.suppressClick = true;
   }
   if (event.cancelable) event.preventDefault();
   const canMove = dx > 0 ? canChangeByDrag(-1) : canChangeByDrag(1);
-  dragState.offsetX = canMove ? dx : dx * 0.28;
+  dragOffsetX = canMove ? dx : dx * 0.28;
+  scheduleTrackOffset(dragOffsetX);
 }
 
 async function onSchedulePointerEnd(event: PointerEvent) {
@@ -520,10 +532,11 @@ async function onSchedulePointerEnd(event: PointerEvent) {
     resetDrag();
     return;
   }
-  const offset = dragState.offsetX;
-  const threshold = Math.min(110, Math.max(56, dragState.width * 0.22));
+  const offset = dragOffsetX;
+  const threshold = Math.min(72, Math.max(34, dragState.width * 0.14));
   const direction = offset > 0 ? -1 : 1;
-  const shouldChange = Math.abs(offset) >= threshold && canChangeByDrag(direction);
+  const fastSwipe = Math.abs(dragVelocityX) >= 0.42 && Math.abs(offset) >= 22;
+  const shouldChange = (Math.abs(offset) >= threshold || fastSwipe) && canChangeByDrag(direction);
   if (!shouldChange) {
     animateDragTo(0);
     window.setTimeout(resetDrag, 180);
@@ -563,18 +576,47 @@ function animateDragTo(targetX: number) {
   dragState.tracking = false;
   dragState.dragging = false;
   dragState.settling = true;
-  dragState.offsetX = targetX;
+  dragOffsetX = targetX;
+  void nextTick(() => setTrackOffset(targetX));
 }
 
 function resetDrag() {
+  if (dragFrame) {
+    window.cancelAnimationFrame(dragFrame);
+    dragFrame = 0;
+  }
   dragState.tracking = false;
   dragState.dragging = false;
   dragState.settling = false;
   dragState.pointerId = -1;
   dragState.offsetX = 0;
+  dragOffsetX = 0;
+  dragVelocityX = 0;
+  clearTrackOffset();
   window.setTimeout(() => {
     dragState.suppressClick = false;
   }, 220);
+}
+
+function scheduleTrackOffset(offsetX: number) {
+  pendingTrackOffset = offsetX;
+  if (dragFrame) return;
+  dragFrame = window.requestAnimationFrame(() => {
+    dragFrame = 0;
+    setTrackOffset(pendingTrackOffset);
+  });
+}
+
+function setTrackOffset(offsetX: number) {
+  const track = carouselTrackRef.value;
+  if (!track) return;
+  track.style.transform = `translate3d(calc(-33.333333% + ${offsetX}px), 0, 0)`;
+}
+
+function clearTrackOffset() {
+  const track = carouselTrackRef.value;
+  if (!track) return;
+  track.style.transform = "";
 }
 
 function dayOfWeek() {
