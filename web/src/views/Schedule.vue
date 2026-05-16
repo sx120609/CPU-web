@@ -48,6 +48,16 @@
           <el-icon><Download /></el-icon>
         </button>
         <button
+          v-if="isNativeScheduleApp"
+          type="button"
+          class="icon-btn"
+          aria-label="清除缓存并重新加载"
+          title="清除缓存"
+          @click="clearDebugCache"
+        >
+          <el-icon><Delete /></el-icon>
+        </button>
+        <button
           type="button"
           class="icon-btn"
           :class="{ spinning: loading }"
@@ -264,7 +274,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Aim, ArrowLeft, ArrowRight, Brush, Download, Loading, Lock, Moon, Picture, Refresh } from "@element-plus/icons-vue";
+import { Aim, ArrowLeft, ArrowRight, Brush, Delete, Download, Loading, Lock, Moon, Picture, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
@@ -309,6 +319,13 @@ interface SchedulePageModel {
   dayCourseBlocks: WeekCourseBlock[];
   weekCourseBlocks: WeekCourseBlock[];
 }
+declare global {
+  interface Window {
+    CPUWebScheduleApp?: {
+      clearCache?: () => void;
+    };
+  }
+}
 
 const jwxt = useJwxtStore();
 const parsed = ref<ScheduleResult | null>(null);
@@ -333,6 +350,7 @@ const LAST_CACHE_KEY = "cpu-schedule-last-cache-key-v1";
 const THEME_KEY = "cpu-schedule-theme-v1";
 const scheduleCacheStore = new Map<string, CacheEnvelope<ScheduleResult>>();
 const prewarmingScheduleKeys = new Set<string>();
+const isNativeScheduleApp = /cpuwebscheduleapp/i.test(navigator.userAgent);
 const smallSlots = [
   { no: 1, start: "08:00", end: "08:45" },
   { no: 2, start: "08:55", end: "09:40" },
@@ -390,6 +408,36 @@ async function openInstallPrompt() {
     return;
   }
   await installPromptRef.value?.requestInstall();
+}
+
+async function clearDebugCache() {
+  try {
+    await ElMessageBox.confirm(
+      "将清除课表本地缓存、页面缓存和安卓 WebView 缓存，然后重新加载页面。学校账号不会被主动删除。",
+      "清除缓存",
+      {
+        confirmButtonText: "清除并重载",
+        cancelButtonText: "取消",
+        type: "warning",
+      }
+    );
+  } catch {
+    return;
+  }
+
+  clearScheduleLocalCache();
+  await clearBrowserRuntimeCache();
+
+  try {
+    window.CPUWebScheduleApp?.clearCache?.();
+  } catch {
+    /* ignore */
+  }
+
+  ElMessage.success("缓存已清除，正在重新加载");
+  setTimeout(() => {
+    window.location.reload();
+  }, 250);
 }
 
 onMounted(async () => {
@@ -1212,6 +1260,48 @@ function writeScheduleCache(key: string, data: ScheduleResult) {
 
 function rememberScheduleCache(key: string, envelope: CacheEnvelope<ScheduleResult>) {
   scheduleCacheStore.set(key, envelope);
+}
+
+function clearScheduleLocalCache() {
+  scheduleCacheStore.clear();
+  prewarmingScheduleKeys.clear();
+  scheduleSavedAt.value = 0;
+  const keysToRemove: string[] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      if (
+        key.startsWith("cpu-schedule-cache-v1:")
+        || key === CALENDAR_CACHE_KEY
+        || key === LAST_CACHE_KEY
+      ) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((key) => localStorage.removeItem(key));
+  } catch {
+    /* ignore */
+  }
+}
+
+async function clearBrowserRuntimeCache() {
+  const tasks: Promise<unknown>[] = [];
+  if ("caches" in window) {
+    tasks.push(
+      caches.keys()
+        .then((names) => Promise.all(names.map((name) => caches.delete(name))))
+        .catch(() => undefined)
+    );
+  }
+  if ("serviceWorker" in navigator) {
+    tasks.push(
+      navigator.serviceWorker.getRegistrations()
+        .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+        .catch(() => undefined)
+    );
+  }
+  await Promise.all(tasks);
 }
 
 function isStale(savedAt: number) {

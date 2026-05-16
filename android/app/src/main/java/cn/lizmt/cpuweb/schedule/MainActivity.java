@@ -12,6 +12,7 @@ import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -22,6 +23,7 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 public final class MainActivity extends Activity {
     private WebView webView;
@@ -80,6 +82,7 @@ public final class MainActivity extends Activity {
         }
 
         webView.setWebChromeClient(new WebChromeClient());
+        webView.addJavascriptInterface(new AppBridge(), "CPUWebScheduleApp");
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -194,6 +197,19 @@ public final class MainActivity extends Activity {
     private void showWebView() {
         errorView.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
+    }
+
+    private final class AppBridge {
+        @JavascriptInterface
+        public void clearCache() {
+            runOnUiThread(() -> {
+                if (webView != null) {
+                    webView.clearCache(true);
+                    webView.clearFormData();
+                }
+                Toast.makeText(MainActivity.this, "缓存已清除", Toast.LENGTH_SHORT).show();
+            });
+        }
     }
 
     @Override
