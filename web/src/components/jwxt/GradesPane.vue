@@ -36,6 +36,22 @@
       </div>
     </div>
 
+    <div class="service-reco">
+      <div>
+        <span class="reco-kicker">服务推荐</span>
+        <b>成绩证明办理</b>
+        <p>需要开具成绩相关证明时，可前往学校电子证明平台办理。</p>
+      </div>
+      <a
+        class="reco-link"
+        href="https://dzpzstu.cpu.edu.cn/student/"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        前往办理
+      </a>
+    </div>
+
     <div v-loading="loading">
       <el-empty v-if="!filteredList.length" description="没有符合条件的成绩" />
       <div v-else>
@@ -250,6 +266,55 @@ async function reload() {
 .hint-icon { color: #6b7280; cursor: help; margin-left: 4px; font-size: 14px; }
 code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px; }
 
+.service-reco {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid #d8eee9;
+  border-radius: 8px;
+  background: #f5fbf9;
+}
+
+.service-reco b {
+  display: block;
+  margin-top: 2px;
+  color: #172033;
+  font-size: 14px;
+}
+
+.service-reco p {
+  margin: 3px 0 0;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.reco-kicker {
+  color: var(--cpu-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.reco-link {
+  flex: 0 0 auto;
+  border: 1px solid var(--cpu-primary);
+  border-radius: 8px;
+  padding: 7px 12px;
+  color: var(--cpu-primary);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.reco-link:hover {
+  background: var(--cpu-primary);
+  color: #fff;
+}
+
 .sem-block { margin-bottom: 20px; }
 .sem-head {
   display: flex;
@@ -287,6 +352,15 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
     gap: 6px;
     line-height: 1.6;
     flex-wrap: wrap;
+  }
+
+  .service-reco {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .reco-link {
+    text-align: center;
   }
 
   .sem-head {
