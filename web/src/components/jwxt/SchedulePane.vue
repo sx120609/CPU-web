@@ -32,11 +32,12 @@
           v-if="parsed"
           type="button"
           class="icon-btn"
-          aria-label="加入用户QQ群"
-          title="加入用户QQ群"
-          @click="joinUserGroup"
+          :class="{ active: isViewingToday }"
+          aria-label="跳转到当日"
+          title="跳转到当日"
+          @click="jumpToToday"
         >
-          <el-icon><ChatDotRound /></el-icon>
+          <el-icon><Aim /></el-icon>
         </button>
         <button
           type="button"
@@ -221,10 +222,10 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
-import { ElMessage, ElMessageBox } from "element-plus";
-import { ArrowLeft, ArrowRight, Brush, ChatDotRound, Moon, Refresh } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
+import { Aim, ArrowLeft, ArrowRight, Brush, Moon, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
-import { copyText, openUserGroup, USER_QQ_GROUP, USER_QQ_GROUP_HINT_KEY } from "@/utils/userGroup";
+import { USER_QQ_GROUP, USER_QQ_GROUP_HINT_KEY } from "@/utils/userGroup";
 
 interface ScheduleCourse {
   name: string;
@@ -370,6 +371,10 @@ const activeWeekNumber = computed(() => {
   const value = Number(week.value || parsed.value?.currentWeek || calendar.value?.currentWeek || 0);
   return Number.isFinite(value) && value > 0 ? value : 0;
 });
+const isViewingToday = computed(() => {
+  const cur = calendar.value?.currentWeek;
+  return Boolean(cur && String(cur) === currentWeekValue() && activeDay.value === dayOfWeek() && viewMode.value === "day");
+});
 const currentCells = computed<ScheduleCell[]>(() => cellsForWeek(activeWeekNumber.value, parsed.value));
 const dayCourses = computed<FlatCourse[]>(() => dayCoursesFor(activeWeekNumber.value, activeDay.value, parsed.value));
 const weekCourseBlocks = computed<WeekCourseBlock[]>(() => weekCourseBlocksFor(activeWeekNumber.value, parsed.value));
@@ -470,12 +475,30 @@ async function changeWeek(delta: number) {
   prewarmAdjacentWeekCaches();
 }
 
+async function jumpToToday() {
+  viewMode.value = "day";
+  if (!calendar.value?.currentWeek) {
+    slideDirection.value = dayOfWeek() >= activeDay.value ? "next" : "prev";
+    activeDay.value = dayOfWeek();
+    saveLastState();
+    return;
+  }
+  await jumpToCurrentWeek();
+}
+
 async function jumpToCurrentWeek() {
   const cur = calendar.value?.currentWeek;
-  if (!cur || String(cur) === week.value) return;
+  if (!cur) return;
+  const today = dayOfWeek();
+  if (String(cur) === week.value) {
+    slideDirection.value = today >= activeDay.value ? "next" : "prev";
+    activeDay.value = today;
+    saveLastState();
+    return;
+  }
   slideDirection.value = Number(week.value || cur) > cur ? "prev" : "next";
   week.value = String(cur);
-  activeDay.value = dayOfWeek();
+  activeDay.value = today;
   saveLastState();
   const key = scheduleCacheKey(semester.value || parsed.value?.currentSemester, week.value);
   const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
@@ -753,24 +776,6 @@ function clearTrackOffset() {
   const track = carouselTrackRef.value;
   if (!track) return;
   track.style.transform = "";
-}
-
-async function copyUserGroup() {
-  await copyText(USER_QQ_GROUP);
-  ElMessage.success(`已复制QQ群号 ${USER_QQ_GROUP}`);
-}
-
-async function joinUserGroup() {
-  try {
-    await ElMessageBox.confirm(
-      `即将跳转加入用户QQ群 ${USER_QQ_GROUP}，用于反馈课表问题和接收公告。是否继续？`,
-      "加入用户群",
-      { confirmButtonText: "去加群", cancelButtonText: "再想想", type: "info" },
-    );
-  } catch {
-    return;
-  }
-  openUserGroup();
 }
 
 function maybeShowUserGroupHint() {
