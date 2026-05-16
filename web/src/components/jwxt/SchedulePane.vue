@@ -33,8 +33,8 @@
           type="button"
           class="icon-btn"
           :class="{ active: isViewingToday }"
-          aria-label="跳转到当日"
-          title="跳转到当日"
+          :aria-label="viewMode === 'week' ? '回到本周' : '跳转到当日'"
+          :title="viewMode === 'week' ? '回到本周' : '跳转到当日'"
           @click="jumpToToday"
         >
           <el-icon><Aim /></el-icon>
@@ -373,7 +373,8 @@ const activeWeekNumber = computed(() => {
 });
 const isViewingToday = computed(() => {
   const cur = calendar.value?.currentWeek;
-  return Boolean(cur && String(cur) === currentWeekValue() && activeDay.value === dayOfWeek() && viewMode.value === "day");
+  if (!cur || String(cur) !== currentWeekValue()) return false;
+  return viewMode.value === "week" || activeDay.value === dayOfWeek();
 });
 const currentCells = computed<ScheduleCell[]>(() => cellsForWeek(activeWeekNumber.value, parsed.value));
 const dayCourses = computed<FlatCourse[]>(() => dayCoursesFor(activeWeekNumber.value, activeDay.value, parsed.value));
@@ -476,6 +477,10 @@ async function changeWeek(delta: number) {
 }
 
 async function jumpToToday() {
+  if (viewMode.value === "week") {
+    await jumpToCurrentWeek();
+    return;
+  }
   viewMode.value = "day";
   if (!calendar.value?.currentWeek) {
     slideDirection.value = dayOfWeek() >= activeDay.value ? "next" : "prev";
