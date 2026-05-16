@@ -205,6 +205,7 @@ import {
   Service,
   Message,
   Refresh,
+  Tools,
 } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
@@ -260,7 +261,7 @@ const mobileNavItems = computed(() => {
     { to: "/jwxt", label: "教务", icon: Reading, match: ["/jwxt"] },
     { to: "/schedule", label: "课表", icon: Calendar, match: ["/schedule"] },
     { to: "/services", label: "服务", icon: Service, match: ["/services"] },
-    { to: "/profile", label: "我的", icon: UserFilled, match: ["/profile", "/messages", "/u/"], auth: true },
+    { to: "/profile", label: "我的", icon: UserFilled, match: ["/profile", "/messages", "/admin", "/u/"], auth: true },
   ] as { to: string; label: string; icon: any; match: string[]; auth?: boolean }[];
 });
 
@@ -268,6 +269,7 @@ const drawerItems = computed(() => {
   const items: { to: string; label: string; icon: any }[] = [];
   if (site.features.forum) items.push({ to: "/post", label: "发帖", icon: Edit });
   items.push({ to: "/messages", label: "消息", icon: Message });
+  if (auth.isMod) items.push({ to: "/admin", label: "管理后台", icon: Tools });
   if (site.features.forum) items.push({ to: "/forum", label: "论坛", icon: ChatLineRound });
   items.push({ to: "/announcements", label: "校园公告", icon: Bell });
   items.push({ to: "/jwxt", label: "教务数据", icon: Calendar });
