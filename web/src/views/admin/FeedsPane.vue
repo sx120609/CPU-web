@@ -34,9 +34,10 @@
           <span v-if="row.lastError" style="font-size:11px;color:#dc2626">{{ row.lastError.slice(0, 80) }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="140" fixed="right">
+      <el-table-column label="操作" width="240" fixed="right">
         <template #default="{ row }">
           <el-button text type="primary" size="small" :loading="runningId === row.id" @click="runOne(row)">立即同步</el-button>
+          <el-button text type="danger" size="small" :loading="resettingId === row.id" @click="resetRun(row)">删除重爬</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -45,7 +46,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { Refresh } from "@element-plus/icons-vue";
 import { adminApi } from "@/api/admin";
 import { fmtRelative } from "@/utils/format";
@@ -54,6 +55,7 @@ const list = ref<any[]>([]);
 const loading = ref(false);
 const runningAll = ref(false);
 const runningId = ref<number | null>(null);
+const resettingId = ref<number | null>(null);
 
 onMounted(reload);
 async function reload() {
@@ -75,6 +77,20 @@ async function runOne(row: any) {
     ElMessage.success(`同步完成，新增 ${r?.newCount ?? 0} 条`);
     reload();
   } finally { runningId.value = null; }
+}
+
+async function resetRun(row: any) {
+  await ElMessageBox.confirm(
+    `删除「${row.name}」已抓取的 ${row.board?.topicCount ?? 0} 篇文章并重新抓取？\n用于切换到代理后重新获取正文，删除后不可恢复。`,
+    "删除并重爬",
+    { type: "warning", confirmButtonText: "删除重爬", cancelButtonText: "取消" }
+  );
+  resettingId.value = row.id;
+  try {
+    const r = await adminApi.resetRunFeed(row.id);
+    ElMessage.success(`重爬完成，新增 ${r?.newCount ?? 0} 条`);
+    reload();
+  } finally { resettingId.value = null; }
 }
 
 async function runAll() {

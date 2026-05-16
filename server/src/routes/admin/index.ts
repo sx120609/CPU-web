@@ -5,7 +5,7 @@ import { prisma } from "../../prisma";
 import { Errors, ok } from "../../utils/response";
 import { adminOnly, modOrAbove } from "../../middleware/admin";
 import { validate } from "../../middleware/validate";
-import { runAllOnce } from "../../services/schoolCrawler";
+import { resetSourceAndRun, runAllOnce } from "../../services/schoolCrawler";
 import { getFeatures, setFeature, ALL_FEATURES, type FeatureKey } from "../../services/siteSettings";
 
 export const adminRouter = Router();
@@ -185,7 +185,22 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
 adminRouter.delete("/topics/:id", modOrAbove, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    await prisma.topic.update({ where: { id }, data: { hidden: true } });
+    const hard = req.query.hard === "1" || req.query.hard === "true";
+    const topic = await prisma.topic.findUnique({ where: { id }, select: { boardId: true, hidden: true } });
+    if (!topic) throw Errors.notFound("帖子不存在");
+    if (hard) {
+      await prisma.$transaction(async (tx) => {
+        await tx.schoolFeedItem.deleteMany({ where: { topicId: id } });
+        await tx.topic.delete({ where: { id } });
+        const count = await tx.topic.count({ where: { boardId: topic.boardId, hidden: false } });
+        await tx.board.update({ where: { id: topic.boardId }, data: { topicCount: count } });
+      });
+    } else {
+      await prisma.topic.update({ where: { id }, data: { hidden: true } });
+      if (!topic.hidden) {
+        await prisma.board.update({ where: { id: topic.boardId }, data: { topicCount: { decrement: 1 } } }).catch(() => {});
+      }
+    }
     ok(res, { ok: true });
   } catch (e) { next(e); }
 });
@@ -238,6 +253,14 @@ adminRouter.post("/feeds/:id/run", adminOnly, async (req, res, next) => {
       data: { enabled: true },
     });
     ok(res, r.find((x) => x.slug === all.find((s) => s.id === id)?.slug) ?? r);
+  } catch (e) { next(e); }
+});
+
+adminRouter.post("/feeds/:id/reset-run", adminOnly, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const r = await resetSourceAndRun(id);
+    ok(res, r);
   } catch (e) { next(e); }
 });
 

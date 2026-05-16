@@ -73,14 +73,19 @@ interface PyfaCourse {
 }
 
 const props = defineProps<{ data: any; loading?: boolean }>();
-const parsed = ref<any>(props.data?.parsed ?? null);
+const parsed = ref<any>(normalizePyfa(props.data));
 const loading = ref(props.loading ?? false);
 
 const filterSem = ref<string[]>([]);
 const filterAttr = ref<string[]>([]);
 const keyword = ref("");
 
-watch(() => props.data, (v) => { parsed.value = v?.parsed ?? null; }, { immediate: true });
+watch(() => props.data, (v) => { parsed.value = normalizePyfa(v); }, { immediate: true });
+
+function normalizePyfa(v: any) {
+  const p = v?.parsed ?? v ?? null;
+  return p?.parsed ?? p;
+}
 
 const semesterOptions = computed<string[]>(() => {
   if (!parsed.value) return [];

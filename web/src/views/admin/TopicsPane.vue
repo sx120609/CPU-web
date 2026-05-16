@@ -36,13 +36,14 @@
       <el-table-column label="时间" width="160">
         <template #default="{ row }">{{ fmtDate(row.createdAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="290" fixed="right">
+      <el-table-column label="操作" width="350" fixed="right">
         <template #default="{ row }">
           <el-button text size="small" @click="togglePin(row)">{{ row.pinned ? '取消置顶' : '置顶' }}</el-button>
           <el-button text size="small" @click="toggleLock(row)">{{ row.locked ? '解锁' : '锁定' }}</el-button>
           <el-button v-if="!row.hidden" text type="danger" size="small" @click="hideRow(row)">隐藏</el-button>
           <el-button v-else text type="success" size="small" @click="unhide(row)">恢复</el-button>
           <el-button text type="warning" size="small" @click="moveBoard(row)">转版</el-button>
+          <el-button text type="danger" size="small" @click="destroyRow(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -110,6 +111,16 @@ async function hideRow(row: any) {
   await ElMessageBox.confirm(`隐藏帖子《${row.title.slice(0, 30)}》？`, "确认", { type: "warning" });
   await adminApi.updateTopic(row.id, { hidden: true });
   ElMessage.success("已隐藏");
+  reload();
+}
+async function destroyRow(row: any) {
+  await ElMessageBox.confirm(
+    `永久删除帖子《${row.title.slice(0, 30)}》？\n该操作会删除回复、点赞以及爬虫去重记录，无法恢复。`,
+    "永久删除",
+    { type: "error", confirmButtonText: "删除", cancelButtonText: "取消" }
+  );
+  await adminApi.destroyTopic(row.id);
+  ElMessage.success("已删除");
   reload();
 }
 async function unhide(row: any) {

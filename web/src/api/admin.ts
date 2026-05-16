@@ -24,11 +24,13 @@ export const adminApi = {
   updateTopic: (id: number, patch: { hidden?: boolean; pinned?: boolean; locked?: boolean; boardSlug?: string }) =>
     request.patch<any>(`/admin/topics/${id}`, patch),
   deleteTopic: (id: number) => request.delete<any>(`/admin/topics/${id}`),
+  destroyTopic: (id: number) => request.delete<any>(`/admin/topics/${id}?hard=1`),
   // 爬虫
   feeds: () => request.get<any[]>("/admin/feeds"),
   updateFeed: (id: number, patch: { enabled?: boolean; cronMinutes?: number; maxPages?: number }) =>
     request.patch<any>(`/admin/feeds/${id}`, patch),
   runFeed: (id: number) => request.post<any>(`/admin/feeds/${id}/run`),
+  resetRunFeed: (id: number) => request.post<any>(`/admin/feeds/${id}/reset-run`),
   runAllFeeds: () => request.post<any>("/admin/feeds/run-all"),
   // 公告
   announcements: () => request.get<any[]>("/admin/announcements"),

@@ -9,7 +9,7 @@ import { isDev } from "../config";
 import { crawlSchoolFeedSource } from "./schoolCrawlerTransport";
 
 /** 单次抓取某个源 */
-async function runOnce(sourceId: number, opts: { dryRun?: boolean } = {}) {
+export async function runOnce(sourceId: number, opts: { dryRun?: boolean } = {}) {
   const source = await prisma.schoolFeedSource.findUnique({ where: { id: sourceId }, include: { board: true } });
   if (!source) return { ok: false, error: "source not found" };
   if (!source.enabled) return { ok: false, error: "disabled" };
@@ -105,6 +105,30 @@ export async function runAllOnce(opts: { dryRun?: boolean } = {}) {
     results.push({ slug: s.slug, ...r });
   }
   return results;
+}
+
+export async function resetSourceAndRun(sourceId: number) {
+  const source = await prisma.schoolFeedSource.findUnique({ where: { id: sourceId }, include: { board: true } });
+  if (!source) return { ok: false, error: "source not found" };
+  const board = source.board;
+  if (!board) return { ok: false, error: "board not bound" };
+
+  const items = await prisma.schoolFeedItem.findMany({
+    where: { sourceId: source.id },
+    select: { topicId: true },
+  });
+  const topicIds = items.map((x) => x.topicId).filter((x): x is number => typeof x === "number");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.schoolFeedItem.deleteMany({ where: { sourceId: source.id } });
+    if (topicIds.length) {
+      await tx.topic.deleteMany({ where: { id: { in: topicIds }, boardId: board.id } });
+    }
+    const count = await tx.topic.count({ where: { boardId: board.id, hidden: false } });
+    await tx.board.update({ where: { id: board.id }, data: { topicCount: count } });
+  });
+
+  return runOnce(source.id);
 }
 
 /** 启动定时任务（每分钟检查一次，按 cronMinutes 决定是否运行） */
