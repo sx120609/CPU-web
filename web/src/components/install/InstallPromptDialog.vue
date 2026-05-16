@@ -14,11 +14,15 @@
 
     <!-- 微信 / QQ 内置浏览器：先引导外部浏览器 -->
     <div v-else-if="inAppBrowser.isInApp" class="content">
-      <p>检测到当前可能在 <b>{{ inAppBrowser.label }}</b> 内打开。内置浏览器通常无法正常下载 APK，也可能拦截安装流程。</p>
+      <p>
+        检测到当前可能在 <b>{{ inAppBrowser.label }}</b> 内打开。
+        内置浏览器通常不支持{{ platform === "ios" ? "添加到主屏幕" : "下载 APK 或安装流程" }}。
+      </p>
       <ul class="bullets">
         <li>请点击右上角菜单</li>
         <li>选择“在浏览器打开”或“用默认浏览器打开”</li>
-        <li>进入外部浏览器后再下载 Android 版课表</li>
+        <li v-if="platform === 'ios'">进入 Safari 后再添加到主屏幕</li>
+        <li v-else>进入外部浏览器后再下载 Android 版课表</li>
       </ul>
     </div>
 
@@ -221,6 +225,7 @@ async function requestInstall() {
 function autoPromptIfEligible() {
   detectNativeApp();
   if (isStandalone.value || isNativeApp.value) return;
+  if (inAppBrowser.value.isInApp) return;
   if (platform.value === "desktop") return;
   setTimeout(() => {
     // 重新核对 standalone（用户可能在等待期间已经手动加了）

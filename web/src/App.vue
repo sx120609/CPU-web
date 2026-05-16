@@ -42,6 +42,7 @@ const inAppReadSeconds = ref(0);
 let inAppReadTimer: number | null = null;
 
 onMounted(() => {
+  if (isSchedulePage()) return;
   const info = detectInAppBrowser();
   if (!info.isInApp) return;
   inAppBrowserLabel.value = info.label;
@@ -60,6 +61,10 @@ onBeforeUnmount(() => {
 function dismissInAppTip() {
   if (inAppReadSeconds.value > 0) return;
   inAppTipOpen.value = false;
+}
+
+function isSchedulePage() {
+  return window.location.pathname.replace(/\/+$/, "") === "/schedule";
 }
 
 function startInAppReadTimer() {

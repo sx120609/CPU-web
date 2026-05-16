@@ -50,6 +50,7 @@ declare module 'vue' {
     IServicePane: typeof import('./src/components/jwxt/IServicePane.vue')['default']
     MarkdownView: typeof import('./src/components/forum/MarkdownView.vue')['default']
     MessageList: typeof import('./src/components/messages/MessageList.vue')['default']
+    OpenBrowserPromptDialog: typeof import('./src/components/install/OpenBrowserPromptDialog.vue')['default']
     PageHeader: typeof import('./src/components/common/PageHeader.vue')['default']
     ProgressPane: typeof import('./src/components/jwxt/ProgressPane.vue')['default']
     PyfaPane: typeof import('./src/components/jwxt/PyfaPane.vue')['default']

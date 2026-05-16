@@ -63,7 +63,8 @@
       </div>
     </header>
 
-    <!-- PWA 添加到桌面引导 -->
+    <!-- 内置浏览器打开引导 / PWA 添加到桌面引导 -->
+    <OpenBrowserPromptDialog ref="openBrowserPromptRef" />
     <InstallPromptDialog ref="installPromptRef" />
 
     <section v-if="parsed" class="week-switcher">
@@ -270,7 +271,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage } from "element-plus";
 import { Aim, ArrowLeft, ArrowRight, Download, Loading, Lock, Moon, Picture, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
@@ -278,6 +279,7 @@ import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 import { USER_QQ_GROUP, USER_QQ_GROUP_HINT_KEY } from "@/utils/userGroup";
 import InstallPromptDialog from "@/components/install/InstallPromptDialog.vue";
+import OpenBrowserPromptDialog from "@/components/install/OpenBrowserPromptDialog.vue";
 import ScheduleCustomizePicker from "@/components/jwxt/ScheduleCustomizePicker.vue";
 import {
   getColorGlassCourseTone,
@@ -393,17 +395,11 @@ async function onJumpAndClose() {
 
 // 添加到主屏幕引导
 const installPromptRef = ref<InstanceType<typeof InstallPromptDialog> | null>(null);
+const openBrowserPromptRef = ref<InstanceType<typeof OpenBrowserPromptDialog> | null>(null);
 async function openInstallPrompt() {
   const inApp = detectInAppBrowser();
   if (inApp.isInApp) {
-    await ElMessageBox.alert(
-      `检测到当前可能在${inApp.label}内打开。内置浏览器通常不支持把课表添加到主屏幕，请点击右上角菜单，选择“在浏览器打开”或“用默认浏览器打开”后再操作。`,
-      "请使用外部浏览器打开",
-      {
-        confirmButtonText: "我知道了",
-        type: "warning",
-      }
-    );
+    openBrowserPromptRef.value?.openDialog();
     return;
   }
   await installPromptRef.value?.requestInstall();
@@ -423,7 +419,8 @@ onMounted(async () => {
   restoreCachedCalendar();
   restoreLastScheduleCache();
 
-  // 自动检测是否值得弹"添加到桌面"（首次进 / 非 standalone / 没 dismiss 过 / 移动端）
+  // 内置浏览器先提示跳外部浏览器；普通移动浏览器再提示安装 / 添加桌面。
+  openBrowserPromptRef.value?.autoPromptIfEligible();
   installPromptRef.value?.autoPromptIfEligible();
 
   // 后台静默：刷新会话状态 + 自动登录 + 重新拉数据。失败也不影响已显示的缓存。
