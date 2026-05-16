@@ -262,10 +262,4 @@ function clearRechargeReadTimer() {
   font-size: 13px;
   line-height: 1.6;
 }
-
-@media (max-width: 480px) {
-  :global(.recharge-dialog) {
-    --el-dialog-width: calc(100vw - 24px);
-  }
-}
 </style>

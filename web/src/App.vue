@@ -107,10 +107,4 @@ html, body, #app {
     font-size: 13px;
   }
 }
-
-@media (max-width: 480px) {
-  .in-app-tip-dialog {
-    --el-dialog-width: calc(100vw - 24px);
-  }
-}
 </style>

@@ -82,14 +82,6 @@ defineExpose({ openDialog, autoPromptIfEligible });
 </script>
 
 <style scoped>
-:deep(.open-browser-dialog) {
-  max-width: calc(100vw - 24px);
-}
-
-:deep(.open-browser-dialog .el-dialog__body) {
-  min-width: 0;
-}
-
 .content {
   color: #1f2937;
   font-size: 14px;
