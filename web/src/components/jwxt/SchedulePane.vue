@@ -1,5 +1,5 @@
 <template>
-  <div class="schedule-pane" :class="{ 'theme-color-glass': scheduleTheme === 'color-glass' }">
+<div class="schedule-pane" :class="{ 'theme-color-glass': scheduleTheme === 'color-glass' }" :style="pageStyle">
     <header class="top">
       <el-select
         v-if="parsed"
@@ -221,7 +221,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { Aim, ArrowLeft, ArrowRight, Brush, Moon, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
@@ -277,6 +277,7 @@ const viewMode = ref<ViewMode>("day");
 const scheduleTheme = ref<ScheduleTheme>("simple");
 const loading = ref(Boolean(props.loading));
 const scheduleSavedAt = ref(0);
+const viewportHeight = ref(0);
 const CACHE_TTL = 12 * 60 * 60 * 1000;
 const CALENDAR_CACHE_KEY = "cpu-schedule-calendar-v1";
 const LAST_STATE_KEY = "cpu-jwxt-schedule-view-state-v1";
@@ -347,6 +348,10 @@ watch(() => props.data, (v) => {
 
 onMounted(async () => {
   restoreScheduleTheme();
+  updateViewportHeight();
+  window.addEventListener("resize", updateViewportHeight);
+  window.visualViewport?.addEventListener("resize", updateViewportHeight);
+  window.visualViewport?.addEventListener("scroll", updateViewportHeight);
   restoreLastState();
   restoreCachedCalendar();
   if (!parsed.value) restoreLastScheduleCache();
@@ -358,6 +363,12 @@ onMounted(async () => {
   } else if (!parsed.value) {
     await loadSchedule(false);
   }
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("resize", updateViewportHeight);
+  window.visualViewport?.removeEventListener("resize", updateViewportHeight);
+  window.visualViewport?.removeEventListener("scroll", updateViewportHeight);
 });
 
 const semesters = computed(() => parsed.value?.semesters ?? []);
@@ -376,6 +387,9 @@ const isViewingToday = computed(() => {
   if (!cur || String(cur) !== currentWeekValue()) return false;
   return viewMode.value === "week" || activeDay.value === dayOfWeek();
 });
+const pageStyle = computed(() => (
+  viewportHeight.value ? { "--schedule-vh": `${viewportHeight.value / 100}px` } : undefined
+));
 const currentCells = computed<ScheduleCell[]>(() => cellsForWeek(activeWeekNumber.value, parsed.value));
 const dayCourses = computed<FlatCourse[]>(() => dayCoursesFor(activeWeekNumber.value, activeDay.value, parsed.value));
 const weekCourseBlocks = computed<WeekCourseBlock[]>(() => weekCourseBlocksFor(activeWeekNumber.value, parsed.value));
@@ -800,6 +814,11 @@ function maybeShowUserGroupHint() {
 function dayOfWeek() {
   const d = new Date().getDay();
   return d === 0 ? 7 : d;
+}
+
+function updateViewportHeight() {
+  const height = window.visualViewport?.height ?? window.innerHeight;
+  viewportHeight.value = Math.max(0, Math.round(height || 0));
 }
 
 function todayKey() {
@@ -1554,7 +1573,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
 .day-grid-body {
   display: grid;
   grid-template-columns: 50px minmax(0, 1fr);
-  grid-template-rows: repeat(11, minmax(58px, 6.2dvh));
+  grid-template-rows: repeat(11, minmax(58px, calc(var(--schedule-vh, 1vh) * 6.2)));
   gap: 5px;
   position: relative;
 }
@@ -1686,7 +1705,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
 
 .week-grid-body {
   position: relative;
-  grid-template-rows: repeat(11, minmax(48px, 5.8dvh));
+  grid-template-rows: repeat(11, minmax(48px, calc(var(--schedule-vh, 1vh) * 5.8)));
   align-items: stretch;
 }
 
@@ -1889,7 +1908,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
 
   .day-grid-body {
     grid-template-columns: 42px minmax(0, 1fr);
-    grid-template-rows: repeat(11, minmax(52px, 6dvh));
+    grid-template-rows: repeat(11, minmax(52px, calc(var(--schedule-vh, 1vh) * 6)));
     gap: 4px;
   }
 
@@ -1936,7 +1955,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   }
 
   .week-grid-body {
-    grid-template-rows: repeat(11, minmax(44px, 5.5dvh));
+    grid-template-rows: repeat(11, minmax(44px, calc(var(--schedule-vh, 1vh) * 5.5)));
   }
 
   .slot-axis b {
@@ -2019,7 +2038,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
 
   .day-grid-body {
     grid-template-columns: 36px minmax(0, 1fr);
-    grid-template-rows: repeat(11, minmax(48px, 5.6dvh));
+    grid-template-rows: repeat(11, minmax(48px, calc(var(--schedule-vh, 1vh) * 5.6)));
     gap: 3px;
   }
 
@@ -2040,7 +2059,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   }
 
   .week-grid-body {
-    grid-template-rows: repeat(11, minmax(40px, 5.2dvh));
+    grid-template-rows: repeat(11, minmax(40px, calc(var(--schedule-vh, 1vh) * 5.2)));
   }
 
   .slot-axis b {
