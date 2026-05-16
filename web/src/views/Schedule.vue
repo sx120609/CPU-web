@@ -907,7 +907,8 @@ function dayOfWeek() {
 }
 
 function updateViewportHeight() {
-  const height = window.visualViewport?.height ?? window.innerHeight;
+  const nativeApp = document.body.dataset.cpuNativeApp === "1";
+  const height = nativeApp ? window.innerHeight : (window.visualViewport?.height ?? window.innerHeight);
   viewportHeight.value = Math.max(0, Math.round(height || 0));
 }
 
@@ -1763,6 +1764,13 @@ function prewarmScheduleCacheForWeek(wk: string) {
   background: rgba(247, 251, 255, 0.86);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
+}
+:global(body[data-cpu-native-app="1"]) .schedule-page .week-grid-head {
+  position: static;
+  top: auto;
+  background: #f7fbff;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 .time-head,
 .week-day-head {
