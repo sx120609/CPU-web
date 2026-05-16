@@ -58,8 +58,8 @@ function parseList(html: string, listUrlBase: string): ParsedItem[] {
   const items: ParsedItem[] = [];
   $("li").each((_, el) => {
     const $li = $(el);
-    const $a = $li.find("span.news_title a").first();
-    const $meta = $li.find("span.news_meta").first();
+    const $a = $li.find(".news_title a").first();
+    const $meta = $li.find(".news_meta").first();
     if (!$a.length || !$meta.length) return;
     const href = $a.attr("href") ?? "";
     const title = ($a.attr("title") ?? $a.text() ?? "").trim();

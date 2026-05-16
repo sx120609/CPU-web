@@ -103,6 +103,13 @@ async function main() {
         pageSize: 14, maxPages: 2, cronMinutes: 20, botUserId: bot.id,
       },
     }),
+    prisma.schoolFeedSource.create({
+      data: {
+        slug: "yjszs-notice", name: "研究生招生网通知",
+        homepage: "https://yjszs.cpu.edu.cn/", listUrl: "https://yjszs.cpu.edu.cn/",
+        pageSize: 12, maxPages: 1, cronMinutes: 20, botUserId: bot.id,
+      },
+    }),
   ]);
 
   // ============ 板块 ============
@@ -401,7 +408,7 @@ async function main() {
 
   console.log("✅ 种子数据生成完成。");
   console.log(`  用户: alice/bob/carol (123456), admin (admin123), school-bot`);
-  console.log(`  板块: 5 个公告板（爬虫）+ 6 个 UGC 板块`);
+  console.log(`  板块: ${feeds.length} 个公告板（爬虫）+ 6 个 UGC 板块`);
   console.log(`  课程: 6 门`);
   console.log(`  服务卡片: ${services.length} 项`);
   console.log(`  示例话题已发`);
