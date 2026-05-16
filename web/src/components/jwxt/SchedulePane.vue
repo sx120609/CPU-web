@@ -63,101 +63,110 @@
       v-if="parsed"
       class="content"
       :class="{ dragging: dragState.dragging, settling: dragState.settling }"
-      :style="dragPaneStyle"
       v-loading="loading && !parsed"
       @pointerdown="onSchedulePointerDown"
       @pointermove="onSchedulePointerMove"
       @pointerup="onSchedulePointerEnd"
       @pointercancel="onSchedulePointerCancel"
     >
-      <div class="summary">
-        <div>
-          <span>第 {{ week || parsed?.currentWeek || "--" }} 周</span>
-          <b>{{ activeDayLabel }}</b>
-          <small v-if="cacheText">{{ cacheText }}</small>
-        </div>
-        <em>{{ dayCourses.length }} 节课</em>
-      </div>
-
-      <section v-if="viewMode === 'week'" class="week-overview" aria-label="整周课表">
-        <div class="week-grid-head">
-          <div class="time-head">节次</div>
-          <div
-            v-for="d in dayTabs"
-            :key="d.day"
-            class="week-day-head"
-            :class="{ today: d.isToday }"
-            @click="onDayClick(d.day)"
-          >
-            <span>{{ d.label.replace("周", "") }}</span>
-            <b>{{ d.date || "--" }}</b>
-          </div>
-        </div>
-        <div class="week-grid-body">
-          <template v-for="slot in smallSlots" :key="`axis-${slot.no}`">
-            <div class="slot-axis" :style="{ gridRow: `${slot.no} / ${slot.no + 1}` }">
-              <b>{{ slot.no }}</b>
-              <span>{{ slot.start }}</span>
-              <span>{{ slot.end }}</span>
-            </div>
-            <div
-              v-for="day in 7"
-              :key="`bg-${slot.no}-${day}`"
-              class="week-slot-cell"
-              :style="{ gridColumn: `${day + 1} / ${day + 2}`, gridRow: `${slot.no} / ${slot.no + 1}` }"
-              :class="{ today: dayTabs[day - 1]?.isToday }"
-            />
-          </template>
+      <div class="carousel-viewport">
+        <div class="carousel-track" :style="dragTrackStyle">
           <article
-            v-for="block in weekCourseBlocks"
-            :key="`${block.day}-${block.startSlot}-${block.endSlot}-${block.index}-${block.course.name}`"
-            class="week-course"
-            :style="courseBlockStyle(block)"
-            :title="courseTitle(block.course)"
-            @click="onWeekCourseClick($event, block.day)"
+            v-for="page in carouselPages"
+            :key="page.key"
+            class="schedule-panel"
+            :class="{ active: page.delta === 0 }"
+            :aria-hidden="page.delta !== 0"
           >
-            <strong>{{ block.course.name }}</strong>
-            <span v-if="block.course.location">@{{ block.course.location }}</span>
-            <em>{{ block.course.slotNote || block.course.weeks }}</em>
+            <div class="summary">
+              <div>
+                <span>第 {{ page.weekValue || parsed?.currentWeek || "--" }} 周</span>
+                <b>{{ page.title }}</b>
+                <small v-if="cacheText">{{ cacheText }}</small>
+              </div>
+              <em>{{ page.courseCount }} 节课</em>
+            </div>
+
+            <section v-if="viewMode === 'week'" class="week-overview" aria-label="整周课表">
+              <div class="week-grid-head">
+                <div class="time-head">节次</div>
+                <div
+                  v-for="d in page.dayTabs"
+                  :key="d.day"
+                  class="week-day-head"
+                  :class="{ today: d.isToday }"
+                  @click="page.delta === 0 && onDayClick(d.day)"
+                >
+                  <span>{{ d.label.replace("周", "") }}</span>
+                  <b>{{ d.date || "--" }}</b>
+                </div>
+              </div>
+              <div class="week-grid-body">
+                <template v-for="slot in smallSlots" :key="`axis-${page.key}-${slot.no}`">
+                  <div class="slot-axis" :style="{ gridRow: `${slot.no} / ${slot.no + 1}` }">
+                    <b>{{ slot.no }}</b>
+                    <span>{{ slot.start }}</span>
+                    <span>{{ slot.end }}</span>
+                  </div>
+                  <div
+                    v-for="day in 7"
+                    :key="`bg-${page.key}-${slot.no}-${day}`"
+                    class="week-slot-cell"
+                    :style="{ gridColumn: `${day + 1} / ${day + 2}`, gridRow: `${slot.no} / ${slot.no + 1}` }"
+                    :class="{ today: page.dayTabs[day - 1]?.isToday }"
+                  />
+                </template>
+                <article
+                  v-for="block in page.weekCourseBlocks"
+                  :key="`${page.key}-${block.day}-${block.startSlot}-${block.endSlot}-${block.index}-${block.course.name}`"
+                  class="week-course"
+                  :style="courseBlockStyle(block)"
+                  :title="courseTitle(block.course)"
+                  @click="onWeekCourseClick($event, block.day, page.weekValue)"
+                >
+                  <strong>{{ block.course.name }}</strong>
+                  <span v-if="block.course.location">@{{ block.course.location }}</span>
+                  <em>{{ block.course.slotNote || block.course.weeks }}</em>
+                </article>
+              </div>
+            </section>
+
+            <div v-else class="day-pane">
+              <section v-if="page.dayCourseBlocks.length" class="day-timeline" aria-label="当日课表">
+                <div class="day-grid-body">
+                  <template v-for="slot in smallSlots" :key="`day-axis-${page.key}-${slot.no}`">
+                    <div class="slot-axis day-axis" :style="{ gridRow: `${slot.no} / ${slot.no + 1}` }">
+                      <b>{{ slot.no }}</b>
+                      <span>{{ slot.start }}</span>
+                      <span>{{ slot.end }}</span>
+                    </div>
+                    <div class="day-slot-cell" :style="{ gridColumn: '2 / 3', gridRow: `${slot.no} / ${slot.no + 1}` }" />
+                  </template>
+                  <article
+                    v-for="block in page.dayCourseBlocks"
+                    :key="`${page.key}-${block.startSlot}-${block.endSlot}-${block.index}-${block.course.name}`"
+                    class="day-course-block"
+                    :style="dayCourseBlockStyle(block)"
+                    :title="courseTitle(block.course)"
+                  >
+                    <div class="day-course-name">{{ block.course.name }}</div>
+                    <div class="day-course-meta">
+                      <span v-if="block.course.location">@{{ block.course.location }}</span>
+                      <span v-if="block.course.teacher">{{ block.course.teacher }}</span>
+                    </div>
+                    <div class="day-course-note">{{ block.course.slotNote || block.course.weeks }}</div>
+                  </article>
+                </div>
+              </section>
+
+              <div v-else class="empty-day">
+                <el-icon><Moon /></el-icon>
+                <p>这一天没有课程</p>
+              </div>
+            </div>
           </article>
         </div>
-      </section>
-
-      <transition v-else :name="slideName" mode="out-in">
-        <div :key="activeDay" class="day-pane">
-          <section v-if="dayCourseBlocks.length" class="day-timeline" aria-label="当日课表">
-            <div class="day-grid-body">
-              <template v-for="slot in smallSlots" :key="`day-axis-${slot.no}`">
-                <div class="slot-axis day-axis" :style="{ gridRow: `${slot.no} / ${slot.no + 1}` }">
-                  <b>{{ slot.no }}</b>
-                  <span>{{ slot.start }}</span>
-                  <span>{{ slot.end }}</span>
-                </div>
-                <div class="day-slot-cell" :style="{ gridColumn: '2 / 3', gridRow: `${slot.no} / ${slot.no + 1}` }" />
-              </template>
-              <article
-                v-for="block in dayCourseBlocks"
-                :key="`${block.startSlot}-${block.endSlot}-${block.index}-${block.course.name}`"
-                class="day-course-block"
-                :style="dayCourseBlockStyle(block)"
-                :title="courseTitle(block.course)"
-              >
-                <div class="day-course-name">{{ block.course.name }}</div>
-                <div class="day-course-meta">
-                  <span v-if="block.course.location">@{{ block.course.location }}</span>
-                  <span v-if="block.course.teacher">{{ block.course.teacher }}</span>
-                </div>
-                <div class="day-course-note">{{ block.course.slotNote || block.course.weeks }}</div>
-              </article>
-            </div>
-          </section>
-
-          <div v-else class="empty-day">
-            <el-icon><Moon /></el-icon>
-            <p>这一天没有课程</p>
-          </div>
-        </div>
-      </transition>
+      </div>
     </section>
 
     <el-empty v-else-if="!loading" :image-size="80" description="暂无课表数据" />
@@ -220,6 +229,17 @@ interface CacheEnvelope<T> { savedAt: number; data: T }
 type ViewMode = "day" | "week";
 interface LastState { semester: string; week: string; activeDay: number; viewMode?: ViewMode }
 interface WeekCourseBlock { day: number; startSlot: number; endSlot: number; index: number; course: ScheduleCourse }
+interface SchedulePageModel {
+  delta: number;
+  key: string;
+  weekValue: string;
+  day: number;
+  title: string;
+  dayTabs: Array<{ day: number; label: string; date: string; isToday: boolean }>;
+  courseCount: number;
+  dayCourseBlocks: WeekCourseBlock[];
+  weekCourseBlocks: WeekCourseBlock[];
+}
 
 const props = defineProps<{ data: any; loading?: boolean }>();
 
@@ -252,7 +272,6 @@ const MAX_SMALL_SLOT = smallSlots[smallSlots.length - 1]?.no ?? 10;
 
 const weekDialogOpen = ref(false);
 const slideDirection = ref<"next" | "prev">("next");
-const slideName = computed(() => slideDirection.value === "next" ? "slide-left" : "slide-right");
 const dragState = reactive({
   tracking: false,
   dragging: false,
@@ -264,10 +283,10 @@ const dragState = reactive({
   width: 0,
   suppressClick: false,
 });
-const dragPaneStyle = computed(() => {
+const dragTrackStyle = computed(() => {
   if (!dragState.dragging && !dragState.settling) return undefined;
   return {
-    transform: `translate3d(${dragState.offsetX}px, 0, 0)`,
+    transform: `translate3d(calc(-100% + ${dragState.offsetX}px), 0, 0)`,
   };
 });
 
@@ -307,62 +326,24 @@ onMounted(async () => {
 
 const semesters = computed(() => parsed.value?.semesters ?? []);
 const weeks = computed(() => parsed.value?.weeks ?? []);
-const currentWeekInfo = computed(() => calendar.value?.weeks.find((w) => w.week === Number(week.value)) ?? null);
-const currentWeekRange = computed(() => {
-  const w = currentWeekInfo.value;
-  if (!w || w.days.length < 7) return "";
-  const monday = w.days[1];
-  const sunday = plusOneDay(w.days[6]);
-  return `${shortDate(monday)} - ${shortDate(sunday)}`;
-});
-const dayTabs = computed(() => {
-  const labels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
-  const raw = currentWeekInfo.value?.days ?? [];
-  const dates = raw.length >= 7 ? [...raw.slice(1, 7), plusOneDay(raw[6])] : [];
-  const today = todayKey();
-  return labels.map((label, i) => ({
-    day: i + 1,
-    label,
-    date: shortDate(dates[i] ?? ""),
-    isToday: dates[i] === today,
-  }));
-});
+const currentWeekInfo = computed(() => weekInfoFor(week.value));
+const currentWeekRange = computed(() => weekRangeFor(week.value));
+const dayTabs = computed(() => dayTabsForWeek(week.value));
 const activeDayLabel = computed(() => dayTabs.value.find((d) => d.day === activeDay.value)?.label ?? "今日");
 const cacheText = computed(() => scheduleSavedAt.value ? `本地缓存 ${formatCacheTime(scheduleSavedAt.value)}` : "");
 const activeWeekNumber = computed(() => {
   const value = Number(week.value || parsed.value?.currentWeek || calendar.value?.currentWeek || 0);
   return Number.isFinite(value) && value > 0 ? value : 0;
 });
-const currentCells = computed<ScheduleCell[]>(() => {
-  const wk = activeWeekNumber.value;
-  return (parsed.value?.cells ?? [])
-    .map((cell) => ({
-      ...cell,
-      courses: wk ? cell.courses.filter((course) => courseMatchesWeek(course, wk)) : cell.courses,
-    }))
-    .filter((cell) => cell.courses.length);
-});
-const dayCourses = computed<FlatCourse[]>(() => {
-  const list: FlatCourse[] = [];
-  for (const cell of currentCells.value) {
-    if (cell.day !== activeDay.value) continue;
-    cell.courses.forEach((course, index) => list.push({ bigSlot: cell.bigSlot, index, course }));
-  }
-  return list.sort((a, b) => a.bigSlot - b.bigSlot);
-});
-const weekCourseBlocks = computed<WeekCourseBlock[]>(() => {
-  const blocks: WeekCourseBlock[] = [];
-  for (const cell of currentCells.value) {
-    cell.courses.forEach((course, index) => {
-      const range = normalizeSlotRange(cell.bigSlot, course);
-      blocks.push({ day: cell.day, startSlot: range.start, endSlot: range.end, index, course });
-    });
-  }
-  return blocks.sort((a, b) => a.startSlot - b.startSlot || a.day - b.day || a.index - b.index);
-});
+const currentCells = computed<ScheduleCell[]>(() => cellsForWeek(activeWeekNumber.value));
+const dayCourses = computed<FlatCourse[]>(() => dayCoursesFor(activeWeekNumber.value, activeDay.value));
+const weekCourseBlocks = computed<WeekCourseBlock[]>(() => weekCourseBlocksFor(activeWeekNumber.value));
 const dayCourseBlocks = computed<WeekCourseBlock[]>(() => (
-  weekCourseBlocks.value.filter((block) => block.day === activeDay.value)
+  dayCourseBlocksFor(activeWeekNumber.value, activeDay.value)
 ));
+const carouselPages = computed<SchedulePageModel[]>(() => [-1, 0, 1].map((delta) => (
+  viewMode.value === "week" ? weekPageModel(delta) : dayPageModel(delta)
+)));
 const canJumpToCurrentWeek = computed(() => {
   const cur = calendar.value?.currentWeek;
   return Boolean(cur && String(cur) !== week.value);
@@ -487,11 +468,15 @@ function openDayFromWeek(day: number) {
   setViewMode("day");
 }
 
-function onWeekCourseClick(event: MouseEvent, day: number) {
+function onWeekCourseClick(event: MouseEvent, day: number, targetWeek = week.value) {
   if (dragState.suppressClick || dragState.dragging || dragState.settling) {
     event.preventDefault();
     event.stopPropagation();
     return;
+  }
+  if (targetWeek && targetWeek !== week.value) {
+    week.value = targetWeek;
+    saveLastState();
   }
   openDayFromWeek(day);
 }
@@ -540,19 +525,21 @@ async function onSchedulePointerEnd(event: PointerEvent) {
   const direction = offset > 0 ? -1 : 1;
   const shouldChange = Math.abs(offset) >= threshold && canChangeByDrag(direction);
   if (!shouldChange) {
-    settleDrag(0);
+    animateDragTo(0);
+    window.setTimeout(resetDrag, 180);
     return;
   }
-  settleDrag(direction > 0 ? -dragState.width : dragState.width);
+  animateDragTo(direction > 0 ? -dragState.width : dragState.width);
   window.setTimeout(() => {
-    resetDrag();
     void applyDragChange(direction);
-  }, 120);
+    resetDrag();
+  }, 180);
 }
 
 function onSchedulePointerCancel() {
   if (!dragState.tracking) return;
-  settleDrag(0);
+  animateDragTo(0);
+  window.setTimeout(resetDrag, 180);
 }
 
 function canChangeDay(delta: number) {
@@ -572,12 +559,11 @@ async function applyDragChange(delta: number) {
   await (delta > 0 ? nextDay() : prevDay());
 }
 
-function settleDrag(targetX: number) {
+function animateDragTo(targetX: number) {
   dragState.tracking = false;
   dragState.dragging = false;
   dragState.settling = true;
   dragState.offsetX = targetX;
-  window.setTimeout(resetDrag, targetX === 0 ? 180 : 140);
 }
 
 function resetDrag() {
@@ -623,9 +609,119 @@ function formatCacheTime(ts: number) {
   return `${h}:${m}`;
 }
 
+function weekInfoFor(value: string | number) {
+  return calendar.value?.weeks.find((w) => w.week === Number(value)) ?? null;
+}
+
+function weekRangeFor(value: string | number) {
+  const w = weekInfoFor(value);
+  if (!w || w.days.length < 7) return "";
+  const monday = w.days[1];
+  const sunday = plusOneDay(w.days[6]);
+  return `${shortDate(monday)} - ${shortDate(sunday)}`;
+}
+
+function dayTabsForWeek(value: string | number) {
+  const labels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+  const raw = weekInfoFor(value)?.days ?? [];
+  const dates = raw.length >= 7 ? [...raw.slice(1, 7), plusOneDay(raw[6])] : [];
+  const today = todayKey();
+  return labels.map((label, i) => ({
+    day: i + 1,
+    label,
+    date: shortDate(dates[i] ?? ""),
+    isToday: dates[i] === today,
+  }));
+}
+
+function cellsForWeek(wk: number) {
+  return (parsed.value?.cells ?? [])
+    .map((cell) => ({
+      ...cell,
+      courses: wk ? cell.courses.filter((course) => courseMatchesWeek(course, wk)) : cell.courses,
+    }))
+    .filter((cell) => cell.courses.length);
+}
+
+function dayCoursesFor(wk: number, day: number) {
+  const list: FlatCourse[] = [];
+  for (const cell of cellsForWeek(wk)) {
+    if (cell.day !== day) continue;
+    cell.courses.forEach((course, index) => list.push({ bigSlot: cell.bigSlot, index, course }));
+  }
+  return list.sort((a, b) => a.bigSlot - b.bigSlot);
+}
+
+function weekCourseBlocksFor(wk: number) {
+  const blocks: WeekCourseBlock[] = [];
+  for (const cell of cellsForWeek(wk)) {
+    cell.courses.forEach((course, index) => {
+      const range = normalizeSlotRange(cell.bigSlot, course);
+      blocks.push({ day: cell.day, startSlot: range.start, endSlot: range.end, index, course });
+    });
+  }
+  return blocks.sort((a, b) => a.startSlot - b.startSlot || a.day - b.day || a.index - b.index);
+}
+
+function dayCourseBlocksFor(wk: number, day: number) {
+  return weekCourseBlocksFor(wk).filter((block) => block.day === day);
+}
+
+function weekPageModel(delta: number): SchedulePageModel {
+  const weekValue = delta === 0 ? currentWeekValue() : nextWeekValueFrom(currentWeekValue(), delta) || currentWeekValue();
+  const weekNo = Number(weekValue || 0);
+  const blocks = weekCourseBlocksFor(weekNo);
+  return {
+    delta,
+    key: `week-${delta}-${weekValue || "current"}`,
+    weekValue,
+    day: activeDay.value,
+    title: "整周",
+    dayTabs: dayTabsForWeek(weekValue),
+    courseCount: blocks.length,
+    dayCourseBlocks: dayCourseBlocksFor(weekNo, activeDay.value),
+    weekCourseBlocks: blocks,
+  };
+}
+
+function dayPageModel(delta: number): SchedulePageModel {
+  const target = dayTarget(delta);
+  const weekNo = Number(target.weekValue || 0);
+  const blocks = dayCourseBlocksFor(weekNo, target.day);
+  const tabs = dayTabsForWeek(target.weekValue);
+  return {
+    delta,
+    key: `day-${delta}-${target.weekValue || "current"}-${target.day}`,
+    weekValue: target.weekValue,
+    day: target.day,
+    title: tabs.find((d) => d.day === target.day)?.label ?? "今日",
+    dayTabs: tabs,
+    courseCount: blocks.length,
+    dayCourseBlocks: blocks,
+    weekCourseBlocks: weekCourseBlocksFor(weekNo),
+  };
+}
+
+function dayTarget(delta: number) {
+  if (delta === 0) return { weekValue: currentWeekValue(), day: activeDay.value };
+  if (delta < 0) {
+    if (activeDay.value > 1) return { weekValue: currentWeekValue(), day: activeDay.value - 1 };
+    return { weekValue: nextWeekValueFrom(currentWeekValue(), -1) || currentWeekValue(), day: 7 };
+  }
+  if (activeDay.value < 7) return { weekValue: currentWeekValue(), day: activeDay.value + 1 };
+  return { weekValue: nextWeekValueFrom(currentWeekValue(), 1) || currentWeekValue(), day: 1 };
+}
+
+function currentWeekValue() {
+  return week.value || String(calendar.value?.currentWeek || parsed.value?.currentWeek || "");
+}
+
 function nextWeekValue(delta: number) {
+  return nextWeekValueFrom(currentWeekValue(), delta);
+}
+
+function nextWeekValueFrom(current: string, delta: number) {
   const values = weeks.value.map((w) => String(w.value)).filter(Boolean);
-  const current = week.value || String(calendar.value?.currentWeek || parsed.value?.currentWeek || "");
   const index = values.indexOf(current);
   if (index >= 0) return values[index + delta] || "";
   const next = Number(current) + delta;
@@ -1021,17 +1117,11 @@ function saveScheduleCache() {
   margin: 0 auto;
   touch-action: pan-y;
   min-height: calc(100dvh - 190px);
-  will-change: transform;
 }
 
 .content.dragging {
   cursor: grabbing;
-  transition: none;
   user-select: none;
-}
-
-.content.settling {
-  transition: transform 0.16s cubic-bezier(0.2, 0, 0.2, 1);
 }
 
 .summary {
@@ -1062,6 +1152,36 @@ function saveScheduleCache() {
   font-style: normal;
   color: #168776;
   font-weight: 700;
+}
+
+.carousel-viewport {
+  width: 100%;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+
+.carousel-track {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 100%));
+  transform: translate3d(-100%, 0, 0);
+  will-change: transform;
+}
+
+.content.dragging .carousel-track {
+  transition: none;
+}
+
+.content.settling .carousel-track {
+  transition: transform 0.18s cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+.schedule-panel {
+  min-width: 0;
+  width: 100%;
+}
+
+.schedule-panel:not(.active) {
+  pointer-events: none;
 }
 
 .day-timeline {
@@ -1324,33 +1444,6 @@ function saveScheduleCache() {
 
 .day-pane {
   will-change: transform, opacity;
-}
-
-.slide-left-enter-active,
-.slide-left-leave-active,
-.slide-right-enter-active,
-.slide-right-leave-active {
-  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.22s;
-}
-
-.slide-left-enter-from {
-  transform: translateX(24%);
-  opacity: 0;
-}
-
-.slide-left-leave-to {
-  transform: translateX(-24%);
-  opacity: 0;
-}
-
-.slide-right-enter-from {
-  transform: translateX(-24%);
-  opacity: 0;
-}
-
-.slide-right-leave-to {
-  transform: translateX(24%);
-  opacity: 0;
 }
 
 .week-grid-pick {
