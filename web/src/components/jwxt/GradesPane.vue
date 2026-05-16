@@ -46,10 +46,10 @@
           </div>
           <div class="table-scroll">
             <el-table :data="rows" stripe size="default">
-              <el-table-column prop="courseCode" label="课程代码" width="110" />
+              <el-table-column v-if="!isMobile" prop="courseCode" label="课程代码" width="110" />
               <el-table-column prop="courseName" label="课程名称" min-width="200" />
-              <el-table-column prop="credits" label="学分" width="70" align="right" />
-              <el-table-column prop="hours" label="学时" width="70" align="right" />
+              <el-table-column v-if="!isMobile" prop="credits" label="学分" width="70" align="right" />
+              <el-table-column v-if="!isMobile" prop="hours" label="学时" width="70" align="right" />
               <el-table-column label="平时" width="60" align="right">
                 <template #default="{ row }">{{ row.usual || "—" }}</template>
               </el-table-column>
@@ -86,7 +86,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { InfoFilled } from "@element-plus/icons-vue";
 
 interface GradeRow {
@@ -112,6 +112,22 @@ const loading = ref(props.loading ?? false);
 const semester = ref<string>("");
 const attrFilter = ref<string[]>([]);
 const keyword = ref<string>("");
+
+const isMobile = ref(false);
+let mql: MediaQueryList | null = null;
+function onMqlChange(e: MediaQueryListEvent) {
+  isMobile.value = e.matches;
+}
+onMounted(() => {
+  if (typeof window === "undefined" || !window.matchMedia) return;
+  mql = window.matchMedia("(max-width: 760px)");
+  isMobile.value = mql.matches;
+  mql.addEventListener?.("change", onMqlChange);
+});
+onBeforeUnmount(() => {
+  mql?.removeEventListener?.("change", onMqlChange);
+  mql = null;
+});
 
 watch(() => props.data, (v) => { parsed.value = v?.parsed ?? null; }, { immediate: true });
 
@@ -279,7 +295,8 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
     gap: 4px;
   }
 
-  :deep(.el-table) {
+  .table-scroll :deep(.el-table) {
+    min-width: 0;
     font-size: 12px;
   }
 }

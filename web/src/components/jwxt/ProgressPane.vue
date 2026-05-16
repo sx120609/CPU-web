@@ -74,10 +74,10 @@
       <div class="table-scroll">
         <el-table :data="parsed.uncompleted" stripe size="small" max-height="500">
           <el-table-column prop="semester" label="学期" width="120" />
-          <el-table-column prop="courseCode" label="课程编号" width="120" />
+          <el-table-column v-if="!isMobile" prop="courseCode" label="课程编号" width="120" />
           <el-table-column prop="courseName" label="课程名称" min-width="200" />
-          <el-table-column prop="credits" label="学分" width="70" align="right" />
-          <el-table-column prop="hours" label="学时" width="70" align="right" />
+          <el-table-column v-if="!isMobile" prop="credits" label="学分" width="70" align="right" />
+          <el-table-column v-if="!isMobile" prop="hours" label="学时" width="70" align="right" />
           <el-table-column prop="attr" label="性质" width="80" />
           <el-table-column label="成绩" width="100">
             <template #default="{ row }">
@@ -101,10 +101,10 @@
       <div class="table-scroll">
         <el-table :data="parsed.completed" stripe size="small" max-height="500">
           <el-table-column prop="semester" label="学期" width="120" />
-          <el-table-column prop="courseCode" label="课程编号" width="120" />
+          <el-table-column v-if="!isMobile" prop="courseCode" label="课程编号" width="120" />
           <el-table-column prop="courseName" label="课程名称" min-width="200" />
-          <el-table-column prop="credits" label="学分" width="70" align="right" />
-          <el-table-column prop="hours" label="学时" width="70" align="right" />
+          <el-table-column v-if="!isMobile" prop="credits" label="学分" width="70" align="right" />
+          <el-table-column v-if="!isMobile" prop="hours" label="学时" width="70" align="right" />
           <el-table-column prop="attr" label="性质" width="80" />
           <el-table-column label="成绩" width="80" align="right">
             <template #default="{ row }">
@@ -120,11 +120,27 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 
 const props = defineProps<{ data: any; loading?: boolean }>();
 const parsed = ref<any>(props.data?.parsed ?? null);
 const loading = ref(props.loading ?? false);
+
+const isMobile = ref(false);
+let mql: MediaQueryList | null = null;
+function onMqlChange(e: MediaQueryListEvent) {
+  isMobile.value = e.matches;
+}
+onMounted(() => {
+  if (typeof window === "undefined" || !window.matchMedia) return;
+  mql = window.matchMedia("(max-width: 760px)");
+  isMobile.value = mql.matches;
+  mql.addEventListener?.("change", onMqlChange);
+});
+onBeforeUnmount(() => {
+  mql?.removeEventListener?.("change", onMqlChange);
+  mql = null;
+});
 
 watch(() => props.data, (v) => { parsed.value = v?.parsed ?? null; }, { immediate: true });
 
@@ -388,6 +404,10 @@ function scoreColor(s: string) {
 
   :deep(.el-table) {
     font-size: 12px;
+  }
+
+  .table-scroll :deep(.el-table) {
+    min-width: 0;
   }
 }
 </style>
