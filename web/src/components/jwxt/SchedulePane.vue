@@ -209,7 +209,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowLeft, ArrowRight, ChatDotRound, Moon, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
@@ -635,6 +635,7 @@ async function flushDragCommit() {
   }
   try {
     await applyDragChange(delta);
+    await nextTick();
   } finally {
     resetDrag();
   }
@@ -851,7 +852,7 @@ function weekPageModel(delta: number): SchedulePageModel {
   const blocks = weekCourseBlocksFor(weekNo, source);
   return {
     delta,
-    key: `week-${delta}-${weekValue || "current"}`,
+    key: `week-${delta}`,
     weekValue,
     day: activeDay.value,
     title: "整周",
@@ -870,7 +871,7 @@ function dayPageModel(delta: number): SchedulePageModel {
   const tabs = dayTabsForWeek(target.weekValue);
   return {
     delta,
-    key: `day-${delta}-${target.weekValue || "current"}-${target.day}`,
+    key: `day-${delta}`,
     weekValue: target.weekValue,
     day: target.day,
     title: tabs.find((d) => d.day === target.day)?.label ?? "今日",
