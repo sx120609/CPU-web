@@ -10,9 +10,15 @@
 #   ./deploy.sh logs             # 查看日志
 #   ./deploy.sh status           # 查看进程状态
 #   ./deploy.sh reset-db         # 重建数据库（⚠️ 删除所有论坛数据）
+#   ./deploy.sh proxy-init       # 代理端首次部署：装依赖 + 构建后端 + 启动教务代理
+#   ./deploy.sh proxy-update     # 代理端更新：git pull + 重装 + 重建后端 + 重启教务代理
+#   ./deploy.sh proxy-start      # 启动教务代理
+#   ./deploy.sh proxy-restart    # 重启教务代理
+#   ./deploy.sh proxy-logs       # 查看教务代理日志
 #
 # 默认监听端口：23333（避开 3000 / 8000 / 8080 等常见端口冲突）
 # 自定义端口：PORT=12345 ./deploy.sh
+# 代理默认端口：23334；自定义端口：PROXY_PORT=12345 ./deploy.sh proxy-init
 # 后台进程：pm2 管理；开机自启需要再跑一次 `pm2 startup` + `pm2 save`
 
 set -euo pipefail
@@ -30,7 +36,9 @@ err()  { echo "${R}[deploy]${N} $*" >&2; exit 1; }
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 SERVICE_NAME="cpu-web"
+PROXY_SERVICE_NAME="cpu-jwxt-proxy"
 PORT="${PORT:-23333}"
+PROXY_PORT="${PROXY_PORT:-23334}"
 
 # ---------- 环境检查与安装 ----------
 NODE_MIN_MAJOR=20  # undici / 现代 fetch 依赖 Node 20+ 的 File 全局
@@ -97,6 +105,21 @@ EOF
   fi
 }
 
+ensure_proxy_env() {
+  if [ ! -f server/.env ]; then
+    log "代理端首次部署，创建 server/.env"
+    cat > server/.env <<EOF
+NODE_ENV=production
+PROXY_PORT=$PROXY_PORT
+PROXY_AUTH="$(openssl rand -hex 32 2>/dev/null || echo "please-change-proxy-auth-$(date +%s)")"
+EOF
+    log "已生成随机 PROXY_AUTH；请把同一个值配置到主服务 JWXT_PROXY_AUTH"
+  fi
+  if ! grep -q '^PROXY_AUTH=' server/.env 2>/dev/null; then
+    warn "server/.env 中未配置 PROXY_AUTH；代理会跳过鉴权，仅建议本地调试使用"
+  fi
+}
+
 # ---------- 子步骤 ----------
 do_install() {
   log "安装依赖（root + server + web）..."
@@ -111,6 +134,11 @@ do_build() {
   npm run build --prefix server
   log "构建前端 Vite → web/dist"
   npm run build --prefix web
+}
+
+do_build_proxy() {
+  log "构建代理端后端 TypeScript → server/dist"
+  npm run build --prefix server
 }
 
 do_db_init() {
@@ -172,10 +200,42 @@ do_start() {
   echo ""
 }
 
+do_proxy_start() {
+  ensure_pm2
+  log "通过 pm2 启动 $PROXY_SERVICE_NAME（端口 $PROXY_PORT）"
+  cd server
+  if pm2 describe "$PROXY_SERVICE_NAME" >/dev/null 2>&1; then
+    pm2 restart "$PROXY_SERVICE_NAME" --update-env
+  else
+    NODE_ENV=production PROXY_PORT=$PROXY_PORT pm2 start "node dist/proxy.js" \
+      --name "$PROXY_SERVICE_NAME" \
+      --time \
+      --max-memory-restart 600M \
+      --log-date-format "YYYY-MM-DD HH:mm:ss" \
+      --merge-logs
+  fi
+  cd ..
+  pm2 save >/dev/null
+  echo ""
+  log "✅ 教务代理部署完成"
+  echo ""
+  echo "   健康检查：${B}http://$(hostname -I 2>/dev/null | awk '{print $1}'):$PROXY_PORT/health${N}"
+  echo "   本机检查：${B}curl http://127.0.0.1:$PROXY_PORT/health${N}"
+  echo ""
+  echo "   主服务需配置："
+  echo "     JWXT_PROXY_URL=http://代理或frp地址:$PROXY_PORT"
+  echo "     JWXT_PROXY_AUTH=代理端 server/.env 里的 PROXY_AUTH"
+  echo ""
+}
+
 do_stop()    { ensure_pm2; pm2 stop "$SERVICE_NAME"; }
 do_restart() { ensure_pm2; pm2 restart "$SERVICE_NAME" --update-env; }
 do_logs()    { ensure_pm2; pm2 logs "$SERVICE_NAME"; }
 do_status()  { ensure_pm2; pm2 status; }
+
+do_proxy_stop()    { ensure_pm2; pm2 stop "$PROXY_SERVICE_NAME"; }
+do_proxy_restart() { ensure_pm2; pm2 restart "$PROXY_SERVICE_NAME" --update-env; }
+do_proxy_logs()    { ensure_pm2; pm2 logs "$PROXY_SERVICE_NAME"; }
 
 do_update() {
   if [ -d .git ]; then
@@ -188,6 +248,19 @@ do_update() {
   do_db_init   # 自动应用新 migration（不会动既有数据）
   do_build
   do_restart || do_start
+}
+
+do_proxy_update() {
+  if [ -d .git ]; then
+    log "拉取最新代码"
+    git pull --ff-only || warn "git pull 失败，继续部署当前代码"
+  else
+    warn "非 git 仓库，跳过 git pull"
+  fi
+  ensure_proxy_env
+  do_install
+  do_build_proxy
+  do_proxy_restart || do_proxy_start
 }
 
 # ---------- 主入口 ----------
@@ -207,11 +280,28 @@ case "$CMD" in
     ensure_node
     do_update
     ;;
+  proxy-init)
+    log "=== 教务代理首次部署模式 ==="
+    ensure_node
+    ensure_proxy_env
+    do_install
+    do_build_proxy
+    do_proxy_start
+    ;;
+  proxy-update)
+    log "=== 教务代理更新部署 ==="
+    ensure_node
+    do_proxy_update
+    ;;
   start)        do_start ;;
   stop)         do_stop ;;
   restart)      do_restart ;;
   logs)         do_logs ;;
   status)       do_status ;;
+  proxy-start)   do_proxy_start ;;
+  proxy-stop)    do_proxy_stop ;;
+  proxy-restart) do_proxy_restart ;;
+  proxy-logs)    do_proxy_logs ;;
   reset-db)     do_db_reset && do_restart ;;
   help|-h|--help)
     sed -n '2,20p' "$0"
