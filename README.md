@@ -24,9 +24,11 @@
 ## 当前特性
 
 - 移动端优先的响应式布局，包含底部导航、快捷入口抽屉、触屏按钮和禁用页面缩放相关体验优化。
+- 课表支持周 / 日双视图、左右滑动翻周、本地缓存与相邻周预热，并提供 PWA 清单与 Service Worker，可"添加到桌面"独立打开。
 - 站点功能开关支持关闭论坛、二手市场、课程点评、宿舍电费等入口；搜索接口会同步尊重这些开关。
 - 学校公告爬虫会同步公开来源，自动处理学校 CMS 页面、微信跳转壳、表格和相对链接。
 - 教务授权会在内存中保存短期会话，支持自动授权、退出授权、调试快照和多项教务数据解析。
+- 教务接入支持本地直连 / 远端代理两种模式：通过独立的代理服务承担与校内系统的网络出口，主服务无需暴露在校园网内（详见"教务代理"章节）。
 - 宿舍电费查询走站内代理；充值入口跳转官方页面，并在跳转前提示校园网、默认密码、交易边界等注意事项。
 - 管理端支持用户管理、内容管理、公告源运行、全站公告发布和功能开关。
 
@@ -45,31 +47,36 @@
 ```text
 CPU-web/
 ├── android/               # Android WebView APK 壳工程，默认打开移动端课表
-├── deploy.sh              # Debian / Ubuntu 一键部署与更新脚本
+├── deploy.sh              # Debian / Ubuntu 一键部署与更新脚本（含教务代理）
 ├── package.json           # 根脚本：安装、开发、构建、数据库初始化
 ├── server/
 │   ├── prisma/            # Prisma schema、迁移与种子数据
 │   └── src/
-│       ├── routes/        # REST API 路由
+│       ├── app.ts         # Express 应用组装
+│       ├── index.ts       # 主服务入口（含公告爬虫调度）
+│       ├── proxy.ts       # 教务代理入口（独立部署时使用）
+│       ├── routes/        # REST API 路由（auth/forum/jwxt/admin 等）
 │       ├── services/      # 教务客户端、公告爬虫、电费查询、站点配置等
-│       ├── middleware/    # 鉴权、校验、中间件
+│       ├── middleware/    # 鉴权、校验、错误处理
 │       └── utils/         # 响应、JWT 等工具
 └── web/
+    ├── public/            # PWA manifest / service worker / 图标
     └── src/
         ├── api/           # 前端 API 封装
-        ├── components/    # 通用组件与业务组件
+        ├── components/    # 通用组件与业务组件（含 install 引导）
         ├── layouts/       # 主布局、导航、页脚
         ├── router/        # 路由与功能开关守卫
         ├── stores/        # Pinia 状态
         ├── styles/        # 全局样式
-        └── views/         # 页面视图
+        ├── utils/         # 凭证加密、Markdown、应用内浏览器探测等
+        └── views/         # 页面视图（含独立的 /schedule 全屏课表）
 ```
 
 ## 快速开始
 
 ### 环境要求
 
-- Node.js >= 18
+- Node.js >= 20（`undici` / 现代 fetch 依赖 Node 20 起默认开启的 `File` 全局；`deploy.sh` 在低版本上会自动升级）
 - npm >= 9
 
 ### 安装依赖
@@ -126,19 +133,55 @@ Vite 已配置 `/api` 代理到后端，开发时不需要额外处理跨域。
 | `npm run db:setup` | 执行 Prisma migration 并写入种子数据 |
 | `npm run db:reset` | 重置数据库并重新写入种子数据 |
 | `npm run start` | 启动已构建的后端服务 |
+| `npm run proxy --prefix server` | 启动教务代理（生产，需先 build） |
+| `npm run proxy:dev --prefix server` | 启动教务代理（开发，热重载） |
 
 ## 配置项
 
-后端读取 `server/.env`：
+后端读取 `server/.env`（参考根目录 `.env.example` 或 `server/.env.example`）：
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
 | `DATABASE_URL` | 无 | Prisma 数据库地址，开发默认使用 SQLite |
 | `JWT_SECRET` | `cpu-web-dev-secret` | JWT 签名密钥，生产环境必须改为强随机值 |
 | `JWT_EXPIRES_IN` | `7d` | 站内登录 token 有效期 |
-| `PORT` | `3000` | 后端服务端口 |
+| `PORT` | `3000` | 后端服务端口（`deploy.sh` 部署时默认 `23333`） |
 | `NODE_ENV` | `development` | 生产环境应设为 `production` |
 | `DORM_ELECTRIC_BASE` | `http://sz.weicheng.wang:8899` | 宿舍电费查询代理地址 |
+| `JWXT_PROXY_URL` | 空 | 设置后主服务通过该地址访问教务代理；留空则本地直连 |
+| `JWXT_PROXY_AUTH` | 空 | 主服务调用代理时携带的共享密钥，需与代理端 `PROXY_AUTH` 一致 |
+| `JWXT_PROXY_TIMEOUT_MS` | `15000` | 主服务调用代理的超时（毫秒） |
+| `PROXY_AUTH` | 空 | 代理端校验调用方时使用的共享密钥 |
+| `PROXY_PORT` | `23334` | 代理服务监听端口（仅运行代理时生效） |
+
+## 教务代理
+
+教务系统位于校园网内，公网部署的主服务直接访问会受 IP 限制。仓库提供"主服务 + 教务代理"双服务模式：
+
+```text
+浏览器 ──HTTPS──► 主服务 (server/src/index.ts)
+                       │
+                       │ JWXT_PROXY_URL（带 JWXT_PROXY_AUTH）
+                       ▼
+              校内机器 / frp 隧道
+                       │
+                       ▼
+              教务代理 (server/src/proxy.ts) ──► 教务系统 / 学校 CMS
+```
+
+- 不配置 `JWXT_PROXY_URL` 时，主服务退回到本地直连模式，整套行为与单实例部署一致。
+- 配置后，主服务不再持有教务 cookie 或拉取学校 CMS 页面；教务登录、课表、成绩查询以及公告爬虫的 HTML 抓取全部走代理。
+- 主服务与代理之间通过共享密钥 (`JWXT_PROXY_AUTH` ↔ `PROXY_AUTH`) 鉴权，建议用 `openssl rand -hex 32` 生成。
+- 代理端只暴露 JSON 接口，生产建议通过 HTTPS 或 frp 隧道访问，避免对公网开放明文端口。
+
+`deploy.sh` 已经内置代理生命周期管理：
+
+```bash
+./deploy.sh proxy-init      # 代理端首次部署
+./deploy.sh proxy-update    # 代理端 git pull + 重装 + 重建 + 重启
+./deploy.sh proxy-restart   # 重启代理
+./deploy.sh proxy-logs      # 查看代理日志
+```
 
 ## 账号与角色
 
@@ -160,6 +203,7 @@ chmod +x deploy.sh
 ./deploy.sh restart  # 重启服务
 ./deploy.sh logs     # 查看日志
 ./deploy.sh status   # 查看状态
+./deploy.sh reset-db # 重建数据库（会清空论坛数据，谨慎使用）
 ```
 
 部署脚本默认使用端口 `23333`，可用环境变量覆盖：
@@ -168,7 +212,15 @@ chmod +x deploy.sh
 PORT=12345 ./deploy.sh
 ```
 
-脚本会自动安装依赖、创建 `server/.env`、初始化数据库、构建前后端，并用 `pm2` 守护后端进程。
+脚本会自动检查并安装 Node 20+、创建 `server/.env`、初始化数据库、构建前后端，并用 `pm2` 守护后端进程。教务代理部署用 `./deploy.sh proxy-init` 等命令（默认端口 `23334`，可通过 `PROXY_PORT` 覆盖），具体见上文"教务代理"一节。
+
+## PWA / 添加到桌面
+
+`web/public/` 提供 `manifest-v2.webmanifest` 和 `sw.js`，独立课表页 `/schedule` 已经按 PWA 配置：
+
+- `start_url` 设为 `/schedule`，`display: standalone`，添加到桌面后以独立窗口打开。
+- 课表页内有"添加到桌面"引导（`InstallPromptDialog.vue`）；检测到微信 / QQ 等应用内浏览器时，会提示先在系统浏览器打开。
+- 课表数据走 localStorage 缓存（学期 + 周次为 key，12 小时 TTL），断网情况下也能直接展示上次内容。
 
 ## Android APK
 
@@ -197,9 +249,11 @@ gradle :app:assembleRelease -PappUrl=https://cpu.lizmt.cn/schedule
 
 - 功能开关由 `server/src/services/siteSettings.ts` 管理；前端入口隐藏和后端搜索过滤需要同时尊重开关。
 - 公告详情页顶部统一展示原文入口，爬虫不再向正文写入重复跳转链接。
-- 教务授权会话保存在后端内存中，默认 30 分钟无活动失效；浏览器关闭后前端教务 token 会清空。
+- 教务授权会话保存在后端内存中，默认 30 分钟无活动失效；浏览器关闭后前端教务 token（存放在 `sessionStorage`）也会清空。
+- 课表页（`/schedule` 和 `/jwxt` 内的课表 pane）采用 carousel 设计左右翻周；inner v-for 的 `:key` 必须带上 `weekValue`，否则跨周翻页可能复用相同 DOM 造成"每周都有的课"文字越翻越浓。
 - 电费充值只提供官方页面跳转和风险提示，支付、交易和密码修改均不经过本站。
 - `server npm run build` 会执行 `prisma generate`；Windows 下如果 Prisma DLL 被正在运行的服务占用，可能需要先停掉后端进程再构建。
+- 配置教务代理时确保主服务与代理使用相同的 `JWXT_PROXY_AUTH` / `PROXY_AUTH`，不一致会被代理直接 401。
 
 ## 安全与边界
 
