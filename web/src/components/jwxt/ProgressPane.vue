@@ -1,5 +1,9 @@
 <template>
   <div class="progress-pane" v-loading="loading">
+    <div class="data-note">
+      学业完成情况由教务页面数据解析整理，仅供参考；毕业审核、培养要求等请以学校教务系统和学院通知为准。
+    </div>
+
     <!-- 总览大卡 -->
     <div v-if="parsed" class="overall">
       <div class="overall-main">
@@ -233,6 +237,16 @@ function scoreColor(s: string) {
 
 <style scoped>
 .progress-pane { display: flex; flex-direction: column; gap: 16px; }
+
+.data-note {
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 10px 12px;
+}
 
 /* 顶部总览大卡 */
 .overall {

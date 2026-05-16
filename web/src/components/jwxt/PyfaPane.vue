@@ -1,5 +1,9 @@
 <template>
   <div class="pyfa-pane" v-loading="loading">
+    <div class="data-note">
+      培养方案数据由教务页面解析整理，仅供参考；课程计划、毕业要求和最终认定请以学校教务系统及学院通知为准。
+    </div>
+
     <div class="ctrl-bar" v-if="parsed">
       <div class="ctrl-left">
         <label class="filter-field wide">
@@ -137,6 +141,17 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
 
 <style scoped>
 .pyfa-pane { display: flex; flex-direction: column; gap: 12px; }
+
+.data-note {
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 10px 12px;
+}
+
 .ctrl-bar { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
 .ctrl-left {
   display: grid;

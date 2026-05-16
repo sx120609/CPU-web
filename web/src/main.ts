@@ -17,32 +17,62 @@ function installTouchGuards() {
   }, { passive: false });
 }
 
-function installMessagePositionGuard() {
-  const positionMessage = (el: Element) => {
-    const message = el as HTMLElement;
-    if (!message.classList.contains("el-message")) return;
-    const top = parseFloat(message.style.top || "20");
-    if (!Number.isFinite(top)) return;
-    const baseTop = Number(message.dataset.cpuBaseTop ?? top);
-    message.dataset.cpuBaseTop = String(baseTop);
-    const headerOffset = window.matchMedia("(max-width: 768px)").matches ? 118 : 72;
-    const nextTop = `${baseTop + headerOffset}px`;
-    if (message.style.top !== nextTop) {
-      message.style.top = nextTop;
+function installFeedbackLayerGuard() {
+  let frame = 0;
+  const scheduleReflow = () => {
+    if (frame) return;
+    frame = window.requestAnimationFrame(() => {
+      frame = 0;
+      reflowMessages();
+      reflowNotifications();
+    });
+  };
+
+  const reflowMessages = () => {
+    const messages = Array.from(document.querySelectorAll<HTMLElement>(".el-message"));
+    if (!messages.length) return;
+
+    const topBase = window.matchMedia("(max-width: 768px)").matches ? 132 : 86;
+    const gap = 10;
+    let nextTop = topBase;
+
+    for (const message of messages) {
+      const top = `${nextTop}px`;
+      if (message.style.top !== top) message.style.top = top;
+      message.style.left = "auto";
+      message.style.right = window.matchMedia("(max-width: 768px)").matches ? "12px" : "18px";
+      message.style.transform = "none";
+      nextTop += message.offsetHeight + gap;
+    }
+  };
+
+  const reflowNotifications = () => {
+    const notifications = Array.from(document.querySelectorAll<HTMLElement>(".el-notification.right"));
+    if (!notifications.length) return;
+
+    const topBase = window.matchMedia("(max-width: 768px)").matches ? 132 : 86;
+    const gap = 12;
+    let nextTop = topBase;
+
+    for (const item of notifications) {
+      const top = `${nextTop}px`;
+      if (item.style.top !== top) item.style.top = top;
+      nextTop += item.offsetHeight + gap;
     }
   };
 
   const observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
       if (mutation.type === "childList") {
-        mutation.addedNodes.forEach((node) => {
-          if (node instanceof HTMLElement) {
-            positionMessage(node);
-            node.querySelectorAll(".el-message").forEach(positionMessage);
-          }
-        });
-      } else if (mutation.type === "attributes" && mutation.target instanceof HTMLElement) {
-        positionMessage(mutation.target);
+        scheduleReflow();
+      } else if (mutation.type === "attributes") {
+        const target = mutation.target;
+        if (
+          target instanceof HTMLElement &&
+          (target.classList.contains("el-message") || target.classList.contains("el-notification"))
+        ) {
+          scheduleReflow();
+        }
       }
     }
   });
@@ -53,6 +83,8 @@ function installMessagePositionGuard() {
     attributes: true,
     attributeFilter: ["style"],
   });
+
+  window.addEventListener("resize", scheduleReflow);
 }
 
 function installNativeAppMarker() {
@@ -61,7 +93,7 @@ function installNativeAppMarker() {
 }
 
 installTouchGuards();
-installMessagePositionGuard();
+installFeedbackLayerGuard();
 installNativeAppMarker();
 
 // 注册 Service Worker —— Chrome PWA "installable" 条件之一（manifest + SW + HTTPS）
