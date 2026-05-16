@@ -300,7 +300,6 @@ const captchaInput = ref("");
 const captchaSubmitting = ref(false);
 const captchaError = ref("");
 const scheduleSavedAt = ref(0);
-const scheduleCacheVersion = ref(0);
 const CACHE_TTL = 12 * 60 * 60 * 1000;
 const CALENDAR_CACHE_KEY = "cpu-schedule-calendar-v1";
 const LAST_STATE_KEY = "cpu-schedule-last-state-v1";
@@ -334,6 +333,13 @@ function selectWeek(v: string | number) {
   week.value = next;
   saveLastState();
   weekDialogOpen.value = false;
+  const key = scheduleCacheKey(semester.value || parsed.value?.currentSemester, next);
+  const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
+  if (cached?.data) {
+    applyScheduleCache(key);
+    if (isStale(cached.savedAt)) void loadSchedule(false, true);
+    return;
+  }
   void loadSchedule(false);
 }
 async function onJumpAndClose() {
@@ -439,14 +445,14 @@ async function loadCalendar() {
   } catch { /* calendar is best effort */ }
 }
 
-async function loadSchedule(force = false) {
-  if (!jwxt.isLoggedIn || (loading.value && !force)) return;
+async function loadSchedule(force = false, background = false) {
+  if (!jwxt.isLoggedIn || (loading.value && !force && !background)) return;
   const hadCache = !force && restoreScheduleCache();
   if (hadCache) {
     saveLastState();
     if (!isStale(scheduleSavedAt.value)) return;
   }
-  loading.value = !parsed.value || force || !hadCache;
+  if (!background) loading.value = !parsed.value || force || !hadCache;
   try {
     const r: any = await jwxtApi.schedule({ semester: semester.value, week: week.value });
     parsed.value = r.parsed;
@@ -457,7 +463,7 @@ async function loadSchedule(force = false) {
     saveLastState();
     prewarmAdjacentWeekCaches();
   } finally {
-    loading.value = false;
+    if (!background) loading.value = false;
   }
 }
 
@@ -471,6 +477,13 @@ async function changeWeek(delta: number) {
   if (!next) return;
   week.value = next;
   saveLastState();
+  const key = scheduleCacheKey(semester.value || parsed.value?.currentSemester, next);
+  const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
+  if (cached?.data) {
+    applyScheduleCache(key);
+    if (isStale(cached.savedAt)) void loadSchedule(false, true);
+    return;
+  }
   await loadSchedule(false);
   prewarmAdjacentWeekCaches();
 }
@@ -487,6 +500,13 @@ async function jumpToCurrentWeek() {
   week.value = String(cur);
   activeDay.value = dayOfWeek();
   saveLastState();
+  const key = scheduleCacheKey(semester.value || parsed.value?.currentSemester, week.value);
+  const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
+  if (cached?.data) {
+    applyScheduleCache(key);
+    if (isStale(cached.savedAt)) void loadSchedule(false, true);
+    return;
+  }
   await loadSchedule(false);
 }
 
@@ -791,7 +811,6 @@ function dayTabsForWeek(value: string | number) {
 }
 
 function scheduleForWeek(weekValue: string | number) {
-  scheduleCacheVersion.value;
   const requested = String(weekValue || "");
   if (requested && requested === currentWeekValue() && parsed.value) return parsed.value;
   const cached = cachedScheduleEnvelopeForWeek(requested);
@@ -1005,7 +1024,6 @@ function writeScheduleCache(key: string, data: ScheduleResult) {
 
 function rememberScheduleCache(key: string, envelope: CacheEnvelope<ScheduleResult>) {
   scheduleCacheStore.set(key, envelope);
-  scheduleCacheVersion.value += 1;
 }
 
 function isStale(savedAt: number) {
@@ -1320,7 +1338,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
 }
 .content {
   touch-action: pan-y;
-  min-height: calc(100dvh - 190px);
+  min-height: 0;
 }
 .content.dragging {
   cursor: grabbing;
@@ -1648,7 +1666,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   opacity: 0.86;
 }
 .empty-day {
-  min-height: max(360px, calc(100dvh - 280px));
+  min-height: 240px;
   display: grid;
   place-items: center;
   align-content: center;
