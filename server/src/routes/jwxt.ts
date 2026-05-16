@@ -6,14 +6,18 @@ import {
   beginLogin,
   submitLogin,
   logout,
-  getSession,
-  jwxtFetchHtml,
-  jwxtPostForm,
-  jwxtDebugSnapshot,
+  getStatus,
+  getSchedule,
+  getGrades,
+  getExams,
+  getCalendar,
+  getProgress,
+  getPyfa,
+  getIApps,
+  debugSnapshot,
   sessionStats,
-  fetchIServiceApps,
-} from "../services/jwxtClient";
-import { parseSchedule, parseGrades, parseExams, parseProgress, parsePyfa, parseCalendar } from "../services/jwxtParser";
+  isRemoteMode,
+} from "../services/jwxtTransport";
 
 export const jwxtRouter = Router();
 
@@ -58,16 +62,18 @@ jwxtRouter.post(
 );
 
 /** 立即清除会话 */
-jwxtRouter.post("/logout", (req, res) => {
-  const t = getToken(req);
-  ok(res, { ok: t ? logout(t) : true });
+jwxtRouter.post("/logout", async (req, res, next) => {
+  try {
+    const t = getToken(req);
+    ok(res, { ok: t ? await logout(t) : true });
+  } catch (e) { next(e); }
 });
 
 /** 当前会话信息（不暴露用户名） */
-jwxtRouter.get("/status", (req, res) => {
-  const t = getToken(req);
-  const s = getSession(t);
-  ok(res, s ? { active: true, since: s.createdAt } : { active: false });
+jwxtRouter.get("/status", async (req, res, next) => {
+  try {
+    ok(res, await getStatus(getToken(req)));
+  } catch (e) { next(e); }
 });
 
 /** 课表（GET） */
@@ -77,15 +83,7 @@ jwxtRouter.get("/schedule", async (req, res, next) => {
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const semester = req.query.semester ? String(req.query.semester) : "";
     const week = req.query.week ? String(req.query.week) : "";
-    let path = "/zgykdx/xskb/xskb_list.do";
-    if (semester || week) {
-      const qs = new URLSearchParams();
-      if (semester) qs.set("xnxq01id", semester);
-      if (week) qs.set("zc", week);
-      path += "?" + qs.toString();
-    }
-    const html = await jwxtFetchHtml(t, path);
-    const parsed = parseSchedule(html);
+    const parsed = await getSchedule(t, { semester, week });
     ok(res, { parsed });
   } catch (e) { next(e); }
 });
@@ -96,12 +94,7 @@ jwxtRouter.get("/grades", async (req, res, next) => {
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const semester = req.query.semester ? String(req.query.semester) : "";
-    const html = await jwxtPostForm(t, "/zgykdx/kscj/cjcx_list", {
-      kksj: semester,
-      kcxz: "",
-      kcmc: "",
-    });
-    const parsed = parseGrades(html);
+    const parsed = await getGrades(t, { semester });
     ok(res, { parsed });
   } catch (e) { next(e); }
 });
@@ -111,32 +104,9 @@ jwxtRouter.get("/exams", async (req, res, next) => {
   try {
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
-    let semester = req.query.semester ? String(req.query.semester) : "";
+    const semester = req.query.semester ? String(req.query.semester) : "";
     const type = req.query.type ? String(req.query.type) : "";
-    // 学校 POST cjcx_list 学期可为空（返回全部成绩），但 xsksap_list 学期必填
-    // —— 否则后端返回 "非法访问！" 错误页。
-    // 如果用户没传，先去 query 页拿到学期下拉，取最新的（第一个非空 option）兜底
-    if (!semester) {
-      try {
-        const queryHtml = await jwxtFetchHtml(t, "/zgykdx/xsks/xsksap_query?Ves632DSdyV=NEW_XSD_KSBM");
-        const m = queryHtml.match(/<select[^>]*id="xnxqid"[^>]*>([\s\S]*?)<\/select>/);
-        if (m) {
-          const opts = Array.from(m[1].matchAll(/<option[^>]*value="([^"]+)"/g)).map((x) => x[1]).filter(Boolean);
-          // 取最新（按学期字符串排序，202x-202x-N 越大越新）
-          opts.sort().reverse();
-          semester = opts[0] ?? "";
-        }
-      } catch { /* ignore */ }
-    }
-    if (!semester) {
-      return ok(res, { parsed: { semesters: [], list: [], needSemester: true } });
-    }
-    const html = await jwxtPostForm(t, "/zgykdx/xsks/xsksap_list", {
-      xnxqid: semester,
-      xqlb: type,
-    });
-    const parsed = parseExams(html);
-    ok(res, { parsed: { ...parsed, currentSemester: semester } });
+    ok(res, { parsed: await getExams(t, { semester, type }) });
   } catch (e) { next(e); }
 });
 
@@ -147,7 +117,7 @@ jwxtRouter.post("/debug/snapshot", async (req, res, next) => {
   try {
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
-    const r = await jwxtDebugSnapshot(t);
+    const r = await debugSnapshot(t);
     ok(res, r);
   } catch (e) { next(e); }
 });
@@ -156,24 +126,29 @@ jwxtRouter.post("/debug/snapshot", async (req, res, next) => {
 jwxtRouter.get("/probe", async (req, res, next) => {
   try {
     if (process.env.NODE_ENV === "production") throw Errors.forbidden();
+    if (isRemoteMode) throw Errors.badRequest("远端模式不支持 probe");
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const p = String(req.query.path ?? "");
     if (!p.startsWith("/")) throw Errors.badRequest("path 必须以 / 开头");
+    const { jwxtFetchHtml } = await import("../services/jwxtClient");
     const html = await jwxtFetchHtml(t, p);
     ok(res, { html });
   } catch (e) { next(e); }
 });
 
-jwxtRouter.get("/stats", (_req, res) => ok(res, sessionStats()));
+jwxtRouter.get("/stats", async (_req, res, next) => {
+  try {
+    ok(res, await sessionStats());
+  } catch (e) { next(e); }
+});
 
 /** 教学周历 — 用于推算当前是第几周、学期始末 */
 jwxtRouter.get("/calendar", async (req, res, next) => {
   try {
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
-    const html = await jwxtFetchHtml(t, "/zgykdx/jxzl/jxzl_query?Ves632DSdyV=NEW_XSD_WDZM");
-    const parsed = parseCalendar(html);
+    const parsed = await getCalendar(t);
     ok(res, { parsed });
   } catch (e) { next(e); }
 });
@@ -183,7 +158,7 @@ jwxtRouter.get("/iapps", async (req, res, next) => {
   try {
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
-    const apps = await fetchIServiceApps(t);
+    const apps = await getIApps(t);
     ok(res, { apps });
   } catch (e) { next(e); }
 });
@@ -193,8 +168,7 @@ jwxtRouter.get("/progress", async (req, res, next) => {
   try {
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
-    const html = await jwxtFetchHtml(t, "/zgykdx/xywcqk/cxxywcqk?Ves632DSdyV=NEW-XSD-XYWCQK");
-    const parsed = parseProgress(html);
+    const parsed = await getProgress(t);
     ok(res, { parsed });
   } catch (e) { next(e); }
 });
@@ -204,8 +178,7 @@ jwxtRouter.get("/pyfa", async (req, res, next) => {
   try {
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
-    const html = await jwxtFetchHtml(t, "/zgykdx/pyfa/pyfa_query?Ves632DSdyV=NEW_XSD_PYGL");
-    const parsed = parsePyfa(html);
+    const parsed = await getPyfa(t);
     ok(res, { parsed });
   } catch (e) { next(e); }
 });

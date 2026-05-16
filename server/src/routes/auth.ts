@@ -5,7 +5,7 @@ import { signToken } from "../utils/jwt";
 import { hashPassword, verifyPassword } from "../utils/password";
 import { Errors, ok } from "../utils/response";
 import { validate } from "../middleware/validate";
-import { beginLogin, submitLogin } from "../services/jwxtClient";
+import { beginLogin, submitLogin } from "../services/jwxtTransport";
 import { isDev } from "../config";
 
 export const authRouter = Router();

@@ -4,8 +4,8 @@ import { prisma } from "../prisma";
 import { ok, Errors } from "../utils/response";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
-import { jwxtFetchHtml, jwxtPostForm } from "../services/jwxtClient";
-import { parseGrades, parsePyfa } from "../services/jwxtParser";
+import { getGrades, getPyfa } from "../services/jwxtTransport";
+import type { GradeRow, PyfaCourse } from "../services/jwxtParser";
 import { isFeatureOn } from "../services/siteSettings";
 
 export const courseRouter = Router();
@@ -133,19 +133,15 @@ courseRouter.post("/sync", authRequired, async (req, res, next) => {
     if (!jwxtToken) throw Errors.badRequest("需要 X-Jwxt-Token，请先登录教务直连");
 
     // 1) 拉成绩
-    let gradesList: ReturnType<typeof parseGrades>["list"] = [];
+    let gradesList: GradeRow[] = [];
     try {
-      const html = await jwxtPostForm(jwxtToken, "/zgykdx/kscj/cjcx_list", {
-        kksj: "", kcxz: "", kcmc: "",
-      });
-      gradesList = parseGrades(html).list;
+      gradesList = (await getGrades(jwxtToken, { semester: "" })).list;
     } catch { /* 教务 token 失效或接口异常，跳过 */ }
 
     // 2) 拉培养方案
-    let pyfaList: ReturnType<typeof parsePyfa>["list"] = [];
+    let pyfaList: PyfaCourse[] = [];
     try {
-      const html = await jwxtFetchHtml(jwxtToken, "/zgykdx/pyfa/pyfa_query?Ves632DSdyV=NEW_XSD_PYGL");
-      pyfaList = parsePyfa(html).list;
+      pyfaList = (await getPyfa(jwxtToken)).list;
     } catch { /* 同上 */ }
 
     if (!gradesList.length && !pyfaList.length) {

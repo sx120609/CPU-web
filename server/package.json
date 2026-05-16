@@ -8,6 +8,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "prisma generate && tsc -p tsconfig.json",
     "start": "node dist/index.js",
+    "proxy": "node dist/proxy.js",
+    "proxy:dev": "tsx watch src/proxy.ts",
     "db:migrate": "prisma migrate dev --name init",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --force --skip-seed && npm run db:seed",
