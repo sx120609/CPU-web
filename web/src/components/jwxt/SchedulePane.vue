@@ -4,6 +4,7 @@
   :class="{
     'theme-color-glass': scheduleTheme === 'color-glass',
     'is-native-app': isNativeScheduleApp,
+    'is-static-week-swipe': useStaticWeekSwipe,
     'view-day': viewMode === 'day',
     'view-week': viewMode === 'week',
   }"
@@ -287,6 +288,7 @@ const scheduleTheme = ref<ScheduleTheme>("simple");
 const loading = ref(Boolean(props.loading));
 const scheduleSavedAt = ref(0);
 const viewportHeight = ref(0);
+const compactViewport = ref(false);
 const CACHE_TTL = 12 * 60 * 60 * 1000;
 const CALENDAR_CACHE_KEY = "cpu-schedule-calendar-v1";
 const LAST_STATE_KEY = "cpu-jwxt-schedule-view-state-v1";
@@ -400,15 +402,17 @@ const isViewingToday = computed(() => {
 const pageStyle = computed(() => (
   viewportHeight.value ? { "--schedule-vh": `${viewportHeight.value / 100}px` } : undefined
 ));
+const useStaticWeekSwipe = computed(() => viewMode.value === "week" && (compactViewport.value || isNativeScheduleApp));
 const currentCells = computed<ScheduleCell[]>(() => cellsForWeek(activeWeekNumber.value, parsed.value));
 const dayCourses = computed<FlatCourse[]>(() => dayCoursesFor(activeWeekNumber.value, activeDay.value, parsed.value));
 const weekCourseBlocks = computed<WeekCourseBlock[]>(() => weekCourseBlocksFor(activeWeekNumber.value, parsed.value));
 const dayCourseBlocks = computed<WeekCourseBlock[]>(() => (
   dayCourseBlocksFor(activeWeekNumber.value, activeDay.value, parsed.value)
 ));
-const carouselPages = computed<SchedulePageModel[]>(() => [-1, 0, 1].map((delta) => (
-  viewMode.value === "week" ? weekPageModel(delta) : dayPageModel(delta)
-)));
+const carouselPages = computed<SchedulePageModel[]>(() => {
+  const deltas = useStaticWeekSwipe.value ? [0] : [-1, 0, 1];
+  return deltas.map((delta) => (viewMode.value === "week" ? weekPageModel(delta) : dayPageModel(delta)));
+});
 const canJumpToCurrentWeek = computed(() => {
   const cur = calendar.value?.currentWeek;
   return Boolean(cur && String(cur) !== week.value);
@@ -655,8 +659,17 @@ async function onSchedulePointerEnd(event: PointerEvent) {
   const fastSwipe = Math.abs(dragVelocityX) >= 0.42 && Math.abs(offset) >= 22;
   const shouldChange = (Math.abs(offset) >= threshold || fastSwipe) && canChangeByDrag(direction);
   if (!shouldChange) {
+    if (useStaticWeekSwipe.value) {
+      resetDrag();
+      return;
+    }
     animateDragTo(0);
     window.setTimeout(resetDrag, 180);
+    return;
+  }
+  if (useStaticWeekSwipe.value) {
+    dragCommitDelta = direction;
+    await flushDragCommit();
     return;
   }
   dragCommitDelta = direction;
@@ -787,6 +800,7 @@ function setDragClasses(dragging: boolean, settling: boolean) {
 }
 
 function scheduleTrackOffset(offsetX: number) {
+  if (useStaticWeekSwipe.value) return;
   pendingTrackOffset = offsetX;
   if (dragFrame) return;
   dragFrame = window.requestAnimationFrame(() => {
@@ -796,12 +810,14 @@ function scheduleTrackOffset(offsetX: number) {
 }
 
 function setTrackOffset(offsetX: number) {
+  if (useStaticWeekSwipe.value) return;
   const track = carouselTrackRef.value;
   if (!track) return;
   track.style.transform = `translate3d(calc(-33.333333% + ${offsetX}px), 0, 0)`;
 }
 
 function clearTrackOffset() {
+  if (useStaticWeekSwipe.value) return;
   const track = carouselTrackRef.value;
   if (!track) return;
   track.style.transform = "";
@@ -830,6 +846,7 @@ function updateViewportHeight() {
   const visualHeight = window.visualViewport?.height ?? window.innerHeight;
   const height = Math.min(visualHeight, window.innerHeight);
   viewportHeight.value = Math.max(0, Math.round(height || 0));
+  compactViewport.value = window.matchMedia?.("(max-width: 760px)").matches ?? window.innerWidth <= 760;
 }
 
 function todayKey() {
@@ -1573,11 +1590,11 @@ function prewarmScheduleCacheForWeek(wk: string) {
 .schedule-panel:not(.active) {
   pointer-events: none;
 }
-.schedule-pane.is-native-app.view-week .carousel-viewport {
+.schedule-pane.is-static-week-swipe.view-week .carousel-viewport {
   overflow: visible;
   contain: none;
 }
-.schedule-pane.is-native-app.view-week .carousel-track {
+.schedule-pane.is-static-week-swipe.view-week .carousel-track {
   display: block;
   width: 100%;
   transform: none !important;
@@ -1586,13 +1603,11 @@ function prewarmScheduleCacheForWeek(wk: string) {
   backface-visibility: visible;
   transform-style: flat;
 }
-.schedule-pane.is-native-app.view-week .schedule-panel {
-  display: none;
+.schedule-pane.is-static-week-swipe.view-week .schedule-panel {
   contain: none;
   transform: none;
 }
-.schedule-pane.is-native-app.view-week .schedule-panel.active {
-  display: block;
+.schedule-pane.is-static-week-swipe.view-week .schedule-panel.active {
   pointer-events: auto;
 }
 
