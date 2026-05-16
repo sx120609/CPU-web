@@ -36,6 +36,8 @@
       body {
         min-height: 100vh;
         min-height: 100dvh;
+      }
+      body:not([data-cpu-app-ready="1"]) {
         overflow: hidden;
       }
       #app {
