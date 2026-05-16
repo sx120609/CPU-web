@@ -16,13 +16,12 @@
     <div v-else-if="inAppBrowser.isInApp" class="content">
       <p>
         检测到当前可能在 <b>{{ inAppBrowser.label }}</b> 内打开。
-        内置浏览器通常不支持{{ platform === "ios" ? "添加到主屏幕" : "下载 APK 或安装流程" }}。
+        内置浏览器通常不支持完整的添加桌面或安装流程。
       </p>
       <ul class="bullets">
         <li>请点击右上角菜单</li>
         <li>选择“在浏览器打开”或“用默认浏览器打开”</li>
-        <li v-if="platform === 'ios'">进入 Safari 后再添加到主屏幕</li>
-        <li v-else>进入外部浏览器后再下载 Android 版课表</li>
+        <li>进入外部浏览器后，再按页面提示继续</li>
       </ul>
     </div>
 

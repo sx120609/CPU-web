@@ -15,20 +15,23 @@
       <ol class="steps">
         <li>
           <span class="num">1</span>
-          点击右上角菜单
+          <span class="step-text">点击右上角菜单</span>
         </li>
         <li>
           <span class="num">2</span>
-          选择 <strong>“在浏览器打开”</strong> 或 <strong>“用默认浏览器打开”</strong>
+          <span class="step-text">
+            选择 <strong>“在浏览器打开”</strong> 或 <strong>“用默认浏览器打开”</strong>
+          </span>
         </li>
         <li>
           <span class="num">3</span>
-          <template v-if="platform === 'ios'">进入 Safari 后，再使用添加到主屏幕功能</template>
-          <template v-else>进入外部浏览器后，再下载或安装课表</template>
+          <span class="step-text">
+            进入外部浏览器后，再按页面提示继续
+          </span>
         </li>
       </ol>
       <p class="muted">
-        iOS 需要在 Safari 中添加到主屏幕；微信 / QQ 内置浏览器不支持这一步。
+        微信 / QQ 内置浏览器不支持完整的添加桌面或安装流程。
       </p>
     </div>
 
@@ -46,15 +49,6 @@ import { detectInAppBrowser } from "@/utils/inAppBrowser";
 
 const open = ref(false);
 const inAppBrowser = computed(() => detectInAppBrowser());
-
-const platform = computed<"ios" | "android" | "desktop">(() => {
-  const ua = navigator.userAgent.toLowerCase();
-  if (/iphone|ipod/.test(ua) || /ipad/.test(ua) || (ua.includes("mac") && navigator.maxTouchPoints > 1)) {
-    return "ios";
-  }
-  if (/android/.test(ua)) return "android";
-  return "desktop";
-});
 
 const dialogWidth = computed(() => window.innerWidth < 480 ? "92vw" : "380px");
 
@@ -78,7 +72,7 @@ function openDialog() {
 }
 
 function autoPromptIfEligible() {
-  if (!inAppBrowser.value.isInApp || platform.value === "desktop" || isStandalone() || isNativeApp()) return;
+  if (!inAppBrowser.value.isInApp || isStandalone() || isNativeApp()) return;
   setTimeout(() => {
     if (detectInAppBrowser().isInApp && !isStandalone() && !isNativeApp()) open.value = true;
   }, 1500);
@@ -88,10 +82,21 @@ defineExpose({ openDialog, autoPromptIfEligible });
 </script>
 
 <style scoped>
+:deep(.open-browser-dialog) {
+  max-width: calc(100vw - 24px);
+}
+
+:deep(.open-browser-dialog .el-dialog__body) {
+  min-width: 0;
+}
+
 .content {
   color: #1f2937;
   font-size: 14px;
   line-height: 1.7;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .content p {
@@ -117,6 +122,15 @@ defineExpose({ openDialog, autoPromptIfEligible });
   align-items: start;
   gap: 8px;
   color: #374151;
+  min-width: 0;
+}
+
+.step-text {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .num {
