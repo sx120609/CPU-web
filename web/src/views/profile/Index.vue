@@ -23,6 +23,24 @@
       </div>
     </div>
 
+    <div class="cpu-card user-group-card">
+      <div>
+        <h3 class="cpu-section-title">加入用户 QQ 群</h3>
+        <p>遇到课表显示问题，或想反馈建议，可以加入用户群。</p>
+        <strong>{{ USER_QQ_GROUP }}</strong>
+      </div>
+      <div class="user-group-actions">
+        <el-button type="primary" @click="joinUserGroup">
+          <el-icon><ChatDotRound /></el-icon>
+          加入群聊
+        </el-button>
+        <el-button plain @click="copyUserGroup">
+          <el-icon><CopyDocument /></el-icon>
+          复制群号
+        </el-button>
+      </div>
+    </div>
+
     <div class="cpu-card">
       <h3 class="cpu-section-title">我发布的帖子</h3>
       <el-empty v-if="!myTopics.length" description="还没有发过帖子" />
@@ -78,10 +96,12 @@
 import { ref, reactive, computed, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { ChatDotRound, CopyDocument } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { authApi } from "@/api/auth";
 import { request } from "@/api/request";
 import { fmtRelative } from "@/utils/format";
+import { copyText, openUserGroup, USER_QQ_GROUP } from "@/utils/userGroup";
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -143,6 +163,15 @@ async function onLogout() {
   await auth.logout();
   router.push("/login");
 }
+
+async function copyUserGroup() {
+  await copyText(USER_QQ_GROUP);
+  ElMessage.success(`已复制QQ群号 ${USER_QQ_GROUP}`);
+}
+
+function joinUserGroup() {
+  openUserGroup();
+}
 </script>
 
 <style scoped>
@@ -187,6 +216,32 @@ async function onLogout() {
 }
 .profile-actions .el-button { flex: 1 1 auto; min-width: 100px; margin-left: 0 !important; }
 
+.user-group-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.user-group-card p {
+  margin: 4px 0 8px;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.user-group-card strong {
+  color: #168776;
+  font-size: 20px;
+  letter-spacing: 0;
+}
+.user-group-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.user-group-actions .el-button {
+  margin-left: 0 !important;
+}
+
 .topic-line {
   display: flex;
   align-items: center;
@@ -216,6 +271,15 @@ async function onLogout() {
   .profile-actions .el-button {
     flex: 1 1 calc(50% - 4px);
     min-width: 0;
+  }
+
+  .user-group-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .user-group-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .topic-line {

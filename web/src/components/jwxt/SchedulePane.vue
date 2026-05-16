@@ -18,6 +18,16 @@
           <button type="button" :class="{ active: viewMode === 'week' }" @click="setViewMode('week')">周</button>
         </div>
         <button
+          v-if="parsed"
+          type="button"
+          class="icon-btn"
+          aria-label="加入用户QQ群"
+          title="加入用户QQ群"
+          @click="joinUserGroup"
+        >
+          <el-icon><ChatDotRound /></el-icon>
+        </button>
+        <button
           type="button"
           class="icon-btn"
           :class="{ spinning: loading }"
@@ -200,8 +210,10 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { ArrowLeft, ArrowRight, Moon, Refresh } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
+import { ArrowLeft, ArrowRight, ChatDotRound, Moon, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
+import { copyText, openUserGroup, USER_QQ_GROUP, USER_QQ_GROUP_HINT_KEY } from "@/utils/userGroup";
 
 interface ScheduleCourse {
   name: string;
@@ -385,6 +397,7 @@ async function loadSchedule(force = false, background = false) {
     saveScheduleCache();
     saveLastState();
     prewarmAdjacentWeekCaches();
+    maybeShowUserGroupHint();
   } finally {
     if (!background) loading.value = false;
   }
@@ -695,6 +708,29 @@ function clearTrackOffset() {
   const track = carouselTrackRef.value;
   if (!track) return;
   track.style.transform = "";
+}
+
+async function copyUserGroup() {
+  await copyText(USER_QQ_GROUP);
+  ElMessage.success(`已复制QQ群号 ${USER_QQ_GROUP}`);
+}
+
+function joinUserGroup() {
+  openUserGroup();
+}
+
+function maybeShowUserGroupHint() {
+  try {
+    if (localStorage.getItem(USER_QQ_GROUP_HINT_KEY)) return;
+    localStorage.setItem(USER_QQ_GROUP_HINT_KEY, "1");
+  } catch {
+    return;
+  }
+  ElMessage.info({
+    message: `课表加载成功。遇到问题或想提建议，可以加入用户QQ群 ${USER_QQ_GROUP}`,
+    duration: 6000,
+    showClose: true,
+  });
 }
 
 function dayOfWeek() {
@@ -1028,6 +1064,7 @@ function applyScheduleCache(key: string) {
   if (!semester.value) semester.value = cached.data.currentSemester || "";
   if (!week.value) week.value = String(cached.data.currentWeek || "");
   prewarmAdjacentWeekCaches();
+  maybeShowUserGroupHint();
   return true;
 }
 

@@ -75,3 +75,11 @@ useAuthStore().hydrate();
 useSiteStore().fetch();
 app.use(router);
 app.mount("#app");
+
+router.isReady().finally(() => {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      document.body.dataset.cpuAppReady = "1";
+    });
+  });
+});
