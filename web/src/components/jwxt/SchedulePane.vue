@@ -1,5 +1,9 @@
 <template>
-<div class="schedule-pane" :class="{ 'theme-color-glass': scheduleTheme === 'color-glass' }" :style="pageStyle">
+<div
+  class="schedule-pane"
+  :class="{ 'theme-color-glass': scheduleTheme === 'color-glass', 'is-native-app': isNativeScheduleApp }"
+  :style="pageStyle"
+>
     <header class="top">
       <el-select
         v-if="parsed"
@@ -285,6 +289,7 @@ const LAST_CACHE_KEY = "cpu-schedule-last-cache-key-v1";
 const THEME_KEY = "cpu-schedule-theme-v1";
 const scheduleCacheStore = new Map<string, CacheEnvelope<ScheduleResult>>();
 const prewarmingScheduleKeys = new Set<string>();
+const isNativeScheduleApp = /cpuwebscheduleapp/i.test(navigator.userAgent);
 const smallSlots = [
   { no: 1, start: "08:00", end: "08:45" },
   { no: 2, start: "08:55", end: "09:40" },
@@ -1563,6 +1568,28 @@ function prewarmScheduleCacheForWeek(wk: string) {
 .schedule-panel:not(.active) {
   pointer-events: none;
 }
+.schedule-pane.is-native-app .carousel-viewport {
+  overflow: visible;
+  contain: none;
+}
+.schedule-pane.is-native-app .carousel-track {
+  display: block;
+  width: 100%;
+  transform: none !important;
+  transition: none !important;
+  will-change: auto;
+  backface-visibility: visible;
+  transform-style: flat;
+}
+.schedule-pane.is-native-app .schedule-panel {
+  display: none;
+  contain: none;
+  transform: none;
+}
+.schedule-pane.is-native-app .schedule-panel.active {
+  display: block;
+  pointer-events: auto;
+}
 
 .day-timeline {
   width: 100%;
@@ -1660,6 +1687,14 @@ function prewarmScheduleCacheForWeek(wk: string) {
 .week-grid-head {
   margin-bottom: 8px;
   padding: 2px 0;
+}
+.schedule-pane.is-native-app .week-grid-head {
+  position: static;
+  top: auto;
+  z-index: auto;
+  background: #f7fbff;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .time-head,

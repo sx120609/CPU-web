@@ -1,5 +1,9 @@
 <template>
-<main class="schedule-page" :class="{ 'theme-color-glass': scheduleTheme === 'color-glass' }" :style="pageStyle">
+<main
+  class="schedule-page"
+  :class="{ 'theme-color-glass': scheduleTheme === 'color-glass', 'is-native-app': isNativeScheduleApp }"
+  :style="pageStyle"
+>
     <header class="top">
       <el-select
         v-if="parsed"
@@ -46,16 +50,6 @@
           @click="openInstallPrompt"
         >
           <el-icon><Download /></el-icon>
-        </button>
-        <button
-          v-if="isNativeScheduleApp"
-          type="button"
-          class="icon-btn"
-          aria-label="清除缓存并重新加载"
-          title="清除缓存"
-          @click="clearDebugCache"
-        >
-          <el-icon><Delete /></el-icon>
         </button>
         <button
           type="button"
@@ -274,7 +268,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Aim, ArrowLeft, ArrowRight, Brush, Delete, Download, Loading, Lock, Moon, Picture, Refresh } from "@element-plus/icons-vue";
+import { Aim, ArrowLeft, ArrowRight, Brush, Download, Loading, Lock, Moon, Picture, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
@@ -318,13 +312,6 @@ interface SchedulePageModel {
   courseCount: number;
   dayCourseBlocks: WeekCourseBlock[];
   weekCourseBlocks: WeekCourseBlock[];
-}
-declare global {
-  interface Window {
-    CPUWebScheduleApp?: {
-      clearCache?: () => void;
-    };
-  }
 }
 
 const jwxt = useJwxtStore();
@@ -408,36 +395,6 @@ async function openInstallPrompt() {
     return;
   }
   await installPromptRef.value?.requestInstall();
-}
-
-async function clearDebugCache() {
-  try {
-    await ElMessageBox.confirm(
-      "将清除课表本地缓存、页面缓存和安卓 WebView 缓存，然后重新加载页面。学校账号不会被主动删除。",
-      "清除缓存",
-      {
-        confirmButtonText: "清除并重载",
-        cancelButtonText: "取消",
-        type: "warning",
-      }
-    );
-  } catch {
-    return;
-  }
-
-  clearScheduleLocalCache();
-  await clearBrowserRuntimeCache();
-
-  try {
-    window.CPUWebScheduleApp?.clearCache?.();
-  } catch {
-    /* ignore */
-  }
-
-  ElMessage.success("缓存已清除，正在重新加载");
-  setTimeout(() => {
-    window.location.reload();
-  }, 250);
 }
 
 onMounted(async () => {
@@ -1262,48 +1219,6 @@ function rememberScheduleCache(key: string, envelope: CacheEnvelope<ScheduleResu
   scheduleCacheStore.set(key, envelope);
 }
 
-function clearScheduleLocalCache() {
-  scheduleCacheStore.clear();
-  prewarmingScheduleKeys.clear();
-  scheduleSavedAt.value = 0;
-  const keysToRemove: string[] = [];
-  try {
-    for (let i = 0; i < localStorage.length; i += 1) {
-      const key = localStorage.key(i);
-      if (!key) continue;
-      if (
-        key.startsWith("cpu-schedule-cache-v1:")
-        || key === CALENDAR_CACHE_KEY
-        || key === LAST_CACHE_KEY
-      ) {
-        keysToRemove.push(key);
-      }
-    }
-    keysToRemove.forEach((key) => localStorage.removeItem(key));
-  } catch {
-    /* ignore */
-  }
-}
-
-async function clearBrowserRuntimeCache() {
-  const tasks: Promise<unknown>[] = [];
-  if ("caches" in window) {
-    tasks.push(
-      caches.keys()
-        .then((names) => Promise.all(names.map((name) => caches.delete(name))))
-        .catch(() => undefined)
-    );
-  }
-  if ("serviceWorker" in navigator) {
-    tasks.push(
-      navigator.serviceWorker.getRegistrations()
-        .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
-        .catch(() => undefined)
-    );
-  }
-  await Promise.all(tasks);
-}
-
 function isStale(savedAt: number) {
   return !savedAt || Date.now() - savedAt > CACHE_TTL;
 }
@@ -1762,6 +1677,28 @@ function prewarmScheduleCacheForWeek(wk: string) {
 .schedule-panel:not(.active) {
   pointer-events: none;
 }
+.schedule-page.is-native-app .carousel-viewport {
+  overflow: visible;
+  contain: none;
+}
+.schedule-page.is-native-app .carousel-track {
+  display: block;
+  width: 100%;
+  transform: none !important;
+  transition: none !important;
+  will-change: auto;
+  backface-visibility: visible;
+  transform-style: flat;
+}
+.schedule-page.is-native-app .schedule-panel {
+  display: none;
+  contain: none;
+  transform: none;
+}
+.schedule-page.is-native-app .schedule-panel.active {
+  display: block;
+  pointer-events: auto;
+}
 .day-timeline {
   width: 100%;
   max-width: 720px;
@@ -1858,6 +1795,15 @@ function prewarmScheduleCacheForWeek(wk: string) {
 :global(body[data-cpu-native-app="1"]) .schedule-page .week-grid-head {
   position: static;
   top: auto;
+  z-index: auto;
+  background: #f7fbff;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.schedule-page.is-native-app .week-grid-head {
+  position: static;
+  top: auto;
+  z-index: auto;
   background: #f7fbff;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
