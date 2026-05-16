@@ -59,7 +59,17 @@
       </button>
     </section>
 
-    <section v-if="parsed" class="content" v-loading="loading && !parsed">
+    <section
+      v-if="parsed"
+      class="content"
+      :class="{ dragging: dragState.dragging, settling: dragState.settling }"
+      :style="dragPaneStyle"
+      v-loading="loading && !parsed"
+      @pointerdown="onSchedulePointerDown"
+      @pointermove="onSchedulePointerMove"
+      @pointerup="onSchedulePointerEnd"
+      @pointercancel="onSchedulePointerCancel"
+    >
       <div class="summary">
         <div>
           <span>第 {{ week || parsed?.currentWeek || "--" }} 周</span>
@@ -104,7 +114,7 @@
             class="week-course"
             :style="courseBlockStyle(block)"
             :title="courseTitle(block.course)"
-            @click="openDayFromWeek(block.day)"
+            @click="onWeekCourseClick($event, block.day)"
           >
             <strong>{{ block.course.name }}</strong>
             <span v-if="block.course.location">@{{ block.course.location }}</span>
@@ -180,7 +190,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ArrowLeft, ArrowRight, Moon, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 
@@ -243,6 +253,23 @@ const MAX_SMALL_SLOT = smallSlots[smallSlots.length - 1]?.no ?? 10;
 const weekDialogOpen = ref(false);
 const slideDirection = ref<"next" | "prev">("next");
 const slideName = computed(() => slideDirection.value === "next" ? "slide-left" : "slide-right");
+const dragState = reactive({
+  tracking: false,
+  dragging: false,
+  settling: false,
+  pointerId: -1,
+  startX: 0,
+  startY: 0,
+  offsetX: 0,
+  width: 0,
+  suppressClick: false,
+});
+const dragPaneStyle = computed(() => {
+  if (!dragState.dragging && !dragState.settling) return undefined;
+  return {
+    transform: `translate3d(${dragState.offsetX}px, 0, 0)`,
+  };
+});
 
 watch(() => props.loading, (v) => {
   loading.value = Boolean(v);
@@ -420,6 +447,30 @@ async function jumpToCurrentWeek() {
   await loadSchedule(false);
 }
 
+async function prevDay() {
+  slideDirection.value = "prev";
+  if (activeDay.value > 1) {
+    activeDay.value -= 1;
+    saveLastState();
+    return;
+  }
+  if (!canChangeWeek(-1)) return;
+  activeDay.value = 7;
+  await changeWeek(-1);
+}
+
+async function nextDay() {
+  slideDirection.value = "next";
+  if (activeDay.value < 7) {
+    activeDay.value += 1;
+    saveLastState();
+    return;
+  }
+  if (!canChangeWeek(1)) return;
+  activeDay.value = 1;
+  await changeWeek(1);
+}
+
 function onDayClick(day: number) {
   slideDirection.value = day > activeDay.value ? "next" : "prev";
   activeDay.value = day;
@@ -434,6 +485,110 @@ function setViewMode(mode: ViewMode) {
 function openDayFromWeek(day: number) {
   onDayClick(day);
   setViewMode("day");
+}
+
+function onWeekCourseClick(event: MouseEvent, day: number) {
+  if (dragState.suppressClick || dragState.dragging || dragState.settling) {
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+  openDayFromWeek(day);
+}
+
+function onSchedulePointerDown(event: PointerEvent) {
+  if ((viewMode.value !== "day" && viewMode.value !== "week") || loading.value) return;
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+  dragState.tracking = true;
+  dragState.dragging = false;
+  dragState.settling = false;
+  dragState.pointerId = event.pointerId;
+  dragState.startX = event.clientX;
+  dragState.startY = event.clientY;
+  dragState.offsetX = 0;
+  dragState.width = (event.currentTarget as HTMLElement | null)?.clientWidth || window.innerWidth || 1;
+  (event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId);
+}
+
+function onSchedulePointerMove(event: PointerEvent) {
+  if (!dragState.tracking || event.pointerId !== dragState.pointerId) return;
+  const dx = event.clientX - dragState.startX;
+  const dy = event.clientY - dragState.startY;
+  if (!dragState.dragging) {
+    if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
+      resetDrag();
+      return;
+    }
+    if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy) * 1.15) return;
+    dragState.dragging = true;
+    dragState.suppressClick = true;
+  }
+  if (event.cancelable) event.preventDefault();
+  const canMove = dx > 0 ? canChangeByDrag(-1) : canChangeByDrag(1);
+  dragState.offsetX = canMove ? dx : dx * 0.28;
+}
+
+async function onSchedulePointerEnd(event: PointerEvent) {
+  if (!dragState.tracking || event.pointerId !== dragState.pointerId) return;
+  (event.currentTarget as HTMLElement | null)?.releasePointerCapture?.(event.pointerId);
+  if (!dragState.dragging) {
+    resetDrag();
+    return;
+  }
+  const offset = dragState.offsetX;
+  const threshold = Math.min(110, Math.max(56, dragState.width * 0.22));
+  const direction = offset > 0 ? -1 : 1;
+  const shouldChange = Math.abs(offset) >= threshold && canChangeByDrag(direction);
+  if (!shouldChange) {
+    settleDrag(0);
+    return;
+  }
+  settleDrag(direction > 0 ? -dragState.width : dragState.width);
+  window.setTimeout(() => {
+    resetDrag();
+    void applyDragChange(direction);
+  }, 120);
+}
+
+function onSchedulePointerCancel() {
+  if (!dragState.tracking) return;
+  settleDrag(0);
+}
+
+function canChangeDay(delta: number) {
+  if (delta < 0) return activeDay.value > 1 || canChangeWeek(-1);
+  return activeDay.value < 7 || canChangeWeek(1);
+}
+
+function canChangeByDrag(delta: number) {
+  return viewMode.value === "week" ? canChangeWeek(delta) : canChangeDay(delta);
+}
+
+async function applyDragChange(delta: number) {
+  if (viewMode.value === "week") {
+    await changeWeek(delta);
+    return;
+  }
+  await (delta > 0 ? nextDay() : prevDay());
+}
+
+function settleDrag(targetX: number) {
+  dragState.tracking = false;
+  dragState.dragging = false;
+  dragState.settling = true;
+  dragState.offsetX = targetX;
+  window.setTimeout(resetDrag, targetX === 0 ? 180 : 140);
+}
+
+function resetDrag() {
+  dragState.tracking = false;
+  dragState.dragging = false;
+  dragState.settling = false;
+  dragState.pointerId = -1;
+  dragState.offsetX = 0;
+  window.setTimeout(() => {
+    dragState.suppressClick = false;
+  }, 220);
 }
 
 function dayOfWeek() {
@@ -865,6 +1020,18 @@ function saveScheduleCache() {
   max-width: 720px;
   margin: 0 auto;
   touch-action: pan-y;
+  min-height: calc(100dvh - 190px);
+  will-change: transform;
+}
+
+.content.dragging {
+  cursor: grabbing;
+  transition: none;
+  user-select: none;
+}
+
+.content.settling {
+  transition: transform 0.16s cubic-bezier(0.2, 0, 0.2, 1);
 }
 
 .summary {
@@ -946,6 +1113,7 @@ function saveScheduleCache() {
     0 10px 24px rgba(24, 34, 51, 0.08);
   backdrop-filter: blur(14px) saturate(145%);
   -webkit-backdrop-filter: blur(14px) saturate(145%);
+  touch-action: pan-y;
 }
 
 .day-course-name {
@@ -1105,7 +1273,7 @@ function saveScheduleCache() {
   backdrop-filter: blur(12px) saturate(145%);
   -webkit-backdrop-filter: blur(12px) saturate(145%);
   cursor: pointer;
-  touch-action: manipulation;
+  touch-action: pan-y;
 }
 
 .week-course strong,
@@ -1142,7 +1310,7 @@ function saveScheduleCache() {
 }
 
 .empty-day {
-  min-height: 220px;
+  min-height: max(360px, calc(100dvh - 280px));
   display: grid;
   place-items: center;
   align-content: center;

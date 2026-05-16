@@ -101,7 +101,17 @@
       </el-button>
     </section>
 
-    <section v-else class="content" v-loading="loading && !parsed">
+    <section
+      v-else
+      class="content"
+      :class="{ dragging: dragState.dragging, settling: dragState.settling }"
+      :style="dragPaneStyle"
+      v-loading="loading && !parsed"
+      @pointerdown="onSchedulePointerDown"
+      @pointermove="onSchedulePointerMove"
+      @pointerup="onSchedulePointerEnd"
+      @pointercancel="onSchedulePointerCancel"
+    >
       <div class="summary">
         <div>
           <span>第 {{ week || parsed?.currentWeek || "--" }} 周</span>
@@ -146,7 +156,7 @@
             class="week-course"
             :style="courseBlockStyle(block)"
             :title="courseTitle(block.course)"
-            @click="openDayFromWeek(block.day)"
+            @click="onWeekCourseClick($event, block.day)"
           >
             <strong>{{ block.course.name }}</strong>
             <span v-if="block.course.location">@{{ block.course.location }}</span>
@@ -159,12 +169,6 @@
         <div
           :key="activeDay"
           class="day-pane"
-          :class="{ dragging: dragState.dragging, settling: dragState.settling }"
-          :style="dragPaneStyle"
-          @pointerdown="onDayPointerDown"
-          @pointermove="onDayPointerMove"
-          @pointerup="onDayPointerEnd"
-          @pointercancel="onDayPointerCancel"
         >
           <section v-if="dayCourseBlocks.length" class="day-timeline" aria-label="当日课表">
             <div class="day-grid-body">
@@ -438,6 +442,7 @@ const dragState = reactive({
   startY: 0,
   offsetX: 0,
   width: 0,
+  suppressClick: false,
 });
 const dragPaneStyle = computed(() => {
   if (!dragState.dragging && !dragState.settling) return undefined;
@@ -545,8 +550,17 @@ function openDayFromWeek(day: number) {
   setViewMode("day");
 }
 
-function onDayPointerDown(event: PointerEvent) {
-  if (viewMode.value !== "day" || loading.value) return;
+function onWeekCourseClick(event: MouseEvent, day: number) {
+  if (dragState.suppressClick || dragState.dragging || dragState.settling) {
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+  openDayFromWeek(day);
+}
+
+function onSchedulePointerDown(event: PointerEvent) {
+  if ((viewMode.value !== "day" && viewMode.value !== "week") || loading.value) return;
   if (event.pointerType === "mouse" && event.button !== 0) return;
   dragState.tracking = true;
   dragState.dragging = false;
@@ -559,7 +573,7 @@ function onDayPointerDown(event: PointerEvent) {
   (event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId);
 }
 
-function onDayPointerMove(event: PointerEvent) {
+function onSchedulePointerMove(event: PointerEvent) {
   if (!dragState.tracking || event.pointerId !== dragState.pointerId) return;
   const dx = event.clientX - dragState.startX;
   const dy = event.clientY - dragState.startY;
@@ -570,13 +584,14 @@ function onDayPointerMove(event: PointerEvent) {
     }
     if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy) * 1.15) return;
     dragState.dragging = true;
+    dragState.suppressClick = true;
   }
   if (event.cancelable) event.preventDefault();
-  const canMove = dx > 0 ? canChangeDay(-1) : canChangeDay(1);
+  const canMove = dx > 0 ? canChangeByDrag(-1) : canChangeByDrag(1);
   dragState.offsetX = canMove ? dx : dx * 0.28;
 }
 
-async function onDayPointerEnd(event: PointerEvent) {
+async function onSchedulePointerEnd(event: PointerEvent) {
   if (!dragState.tracking || event.pointerId !== dragState.pointerId) return;
   (event.currentTarget as HTMLElement | null)?.releasePointerCapture?.(event.pointerId);
   if (!dragState.dragging) {
@@ -586,7 +601,7 @@ async function onDayPointerEnd(event: PointerEvent) {
   const offset = dragState.offsetX;
   const threshold = Math.min(110, Math.max(56, dragState.width * 0.22));
   const direction = offset > 0 ? -1 : 1;
-  const shouldChange = Math.abs(offset) >= threshold && canChangeDay(direction);
+  const shouldChange = Math.abs(offset) >= threshold && canChangeByDrag(direction);
   if (!shouldChange) {
     settleDrag(0);
     return;
@@ -594,11 +609,11 @@ async function onDayPointerEnd(event: PointerEvent) {
   settleDrag(direction > 0 ? -dragState.width : dragState.width);
   window.setTimeout(() => {
     resetDrag();
-    void (direction > 0 ? nextDay() : prevDay());
+    void applyDragChange(direction);
   }, 120);
 }
 
-function onDayPointerCancel() {
+function onSchedulePointerCancel() {
   if (!dragState.tracking) return;
   settleDrag(0);
 }
@@ -606,6 +621,19 @@ function onDayPointerCancel() {
 function canChangeDay(delta: number) {
   if (delta < 0) return activeDay.value > 1 || canChangeWeek(-1);
   return activeDay.value < 7 || canChangeWeek(1);
+}
+
+function canChangeByDrag(delta: number) {
+  return viewMode.value === "week" ? canChangeWeek(delta) : canChangeDay(delta);
+}
+
+async function applyDragChange(delta: number) {
+  if (viewMode.value === "week") {
+    slideDirection.value = delta > 0 ? "next" : "prev";
+    await changeWeek(delta);
+    return;
+  }
+  await (delta > 0 ? nextDay() : prevDay());
 }
 
 function settleDrag(targetX: number) {
@@ -622,6 +650,9 @@ function resetDrag() {
   dragState.settling = false;
   dragState.pointerId = -1;
   dragState.offsetX = 0;
+  window.setTimeout(() => {
+    dragState.suppressClick = false;
+  }, 220);
 }
 
 async function reloadCaptcha() {
@@ -1079,6 +1110,16 @@ function saveScheduleCache() {
 }
 .content {
   touch-action: pan-y;
+  min-height: calc(100dvh - 190px);
+  will-change: transform;
+}
+.content.dragging {
+  cursor: grabbing;
+  transition: none;
+  user-select: none;
+}
+.content.settling {
+  transition: transform 0.16s cubic-bezier(0.2, 0, 0.2, 1);
 }
 .state-card {
   min-height: calc(100dvh - 180px);
@@ -1201,6 +1242,7 @@ function saveScheduleCache() {
     0 10px 24px rgba(24, 34, 51, 0.08);
   backdrop-filter: blur(14px) saturate(145%);
   -webkit-backdrop-filter: blur(14px) saturate(145%);
+  touch-action: pan-y;
 }
 .day-course-name {
   font-size: 18px;
@@ -1341,7 +1383,7 @@ function saveScheduleCache() {
   backdrop-filter: blur(12px) saturate(145%);
   -webkit-backdrop-filter: blur(12px) saturate(145%);
   cursor: pointer;
-  touch-action: manipulation;
+  touch-action: pan-y;
 }
 .week-course strong,
 .week-course span,
@@ -1373,7 +1415,7 @@ function saveScheduleCache() {
   opacity: 0.86;
 }
 .empty-day {
-  min-height: 220px;
+  min-height: max(360px, calc(100dvh - 280px));
   display: grid;
   place-items: center;
   align-content: center;
@@ -1387,15 +1429,6 @@ function saveScheduleCache() {
 /* 滑动切日动画 */
 .day-pane {
   will-change: transform, opacity;
-  touch-action: pan-y;
-}
-.day-pane.dragging {
-  cursor: grabbing;
-  transition: none;
-  user-select: none;
-}
-.day-pane.settling {
-  transition: transform 0.16s cubic-bezier(0.2, 0, 0.2, 1);
 }
 .slide-left-enter-active,
 .slide-left-leave-active,
