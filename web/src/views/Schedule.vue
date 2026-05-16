@@ -769,7 +769,16 @@ async function copyUserGroup() {
   ElMessage.success(`已复制QQ群号 ${USER_QQ_GROUP}`);
 }
 
-function joinUserGroup() {
+async function joinUserGroup() {
+  try {
+    await ElMessageBox.confirm(
+      `即将跳转加入用户QQ群 ${USER_QQ_GROUP}，用于反馈课表问题和接收公告。是否继续？`,
+      "加入用户群",
+      { confirmButtonText: "去加群", cancelButtonText: "再想想", type: "info" },
+    );
+  } catch {
+    return;
+  }
   openUserGroup();
 }
 

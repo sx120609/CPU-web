@@ -210,7 +210,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowLeft, ArrowRight, ChatDotRound, Moon, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { copyText, openUserGroup, USER_QQ_GROUP, USER_QQ_GROUP_HINT_KEY } from "@/utils/userGroup";
@@ -715,7 +715,16 @@ async function copyUserGroup() {
   ElMessage.success(`已复制QQ群号 ${USER_QQ_GROUP}`);
 }
 
-function joinUserGroup() {
+async function joinUserGroup() {
+  try {
+    await ElMessageBox.confirm(
+      `即将跳转加入用户QQ群 ${USER_QQ_GROUP}，用于反馈课表问题和接收公告。是否继续？`,
+      "加入用户群",
+      { confirmButtonText: "去加群", cancelButtonText: "再想想", type: "info" },
+    );
+  } catch {
+    return;
+  }
   openUserGroup();
 }
 
