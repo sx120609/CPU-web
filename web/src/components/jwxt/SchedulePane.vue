@@ -70,7 +70,7 @@
       @pointercancel="onSchedulePointerCancel"
     >
       <div class="carousel-viewport">
-        <div ref="carouselTrackRef" class="carousel-track">
+        <div ref="carouselTrackRef" class="carousel-track" @transitionend="onCarouselTrackTransitionEnd">
           <article
             v-for="page in carouselPages"
             :key="page.key"
@@ -293,6 +293,8 @@ let dragLastTime = 0;
 let dragVelocityX = 0;
 let dragFrame = 0;
 let pendingTrackOffset = 0;
+let dragCommitDelta = 0;
+let dragCommitTimer = 0;
 
 watch(() => props.loading, (v) => {
   loading.value = Boolean(v);
@@ -511,6 +513,7 @@ function onWeekCourseClick(event: MouseEvent, day: number, targetWeek = week.val
 
 function onSchedulePointerDown(event: PointerEvent) {
   if ((viewMode.value !== "day" && viewMode.value !== "week") || loading.value) return;
+  if (dragState.settling) return;
   if (event.pointerType === "mouse" && event.button !== 0) return;
   dragState.tracking = true;
   dragState.dragging = false;
@@ -534,16 +537,20 @@ function onSchedulePointerMove(event: PointerEvent) {
   const now = performance.now();
   const dx = event.clientX - dragState.startX;
   const dy = event.clientY - dragState.startY;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  const likelyHorizontal = absDx >= 4 && absDx >= absDy * 0.55;
   const dt = Math.max(1, now - dragLastTime);
   dragVelocityX = (event.clientX - dragLastX) / dt;
   dragLastX = event.clientX;
   dragLastTime = now;
+  if (likelyHorizontal && event.cancelable) event.preventDefault();
   if (!dragState.dragging) {
-    if (Math.abs(dy) > 16 && Math.abs(dy) > Math.abs(dx) * 1.35) {
+    if (absDy > 18 && absDy > absDx * 1.8) {
       resetDrag();
       return;
     }
-    if (Math.abs(dx) < 6 || Math.abs(dx) < Math.abs(dy) * 1.05) return;
+    if (absDx < 5 || !likelyHorizontal) return;
     dragState.dragging = true;
     dragState.suppressClick = true;
     setDragClasses(true, false);
@@ -571,11 +578,15 @@ async function onSchedulePointerEnd(event: PointerEvent) {
     window.setTimeout(resetDrag, 180);
     return;
   }
+  dragCommitDelta = direction;
+  if (dragCommitTimer) {
+    window.clearTimeout(dragCommitTimer);
+    dragCommitTimer = 0;
+  }
+  dragCommitTimer = window.setTimeout(() => {
+    void flushDragCommit();
+  }, 260);
   animateDragTo(direction > 0 ? -dragState.width : dragState.width);
-  window.setTimeout(() => {
-    void applyDragChange(direction);
-    resetDrag();
-  }, 180);
 }
 
 function onSchedulePointerCancel() {
@@ -601,6 +612,26 @@ async function applyDragChange(delta: number) {
   await (delta > 0 ? nextDay() : prevDay());
 }
 
+async function flushDragCommit() {
+  if (!dragCommitDelta) return;
+  const delta = dragCommitDelta;
+  dragCommitDelta = 0;
+  if (dragCommitTimer) {
+    window.clearTimeout(dragCommitTimer);
+    dragCommitTimer = 0;
+  }
+  try {
+    await applyDragChange(delta);
+  } finally {
+    resetDrag();
+  }
+}
+
+function onCarouselTrackTransitionEnd(event: TransitionEvent) {
+  if (event.propertyName !== "transform" || !dragState.settling || !dragCommitDelta) return;
+  void flushDragCommit();
+}
+
 function animateDragTo(targetX: number) {
   if (dragFrame) {
     window.cancelAnimationFrame(dragFrame);
@@ -619,6 +650,11 @@ function resetDrag() {
     window.cancelAnimationFrame(dragFrame);
     dragFrame = 0;
   }
+  if (dragCommitTimer) {
+    window.clearTimeout(dragCommitTimer);
+    dragCommitTimer = 0;
+  }
+  dragCommitDelta = 0;
   dragState.tracking = false;
   dragState.dragging = false;
   dragState.settling = false;
