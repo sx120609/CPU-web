@@ -1,7 +1,12 @@
 <template>
 <main
   class="schedule-page"
-  :class="{ 'theme-color-glass': scheduleTheme === 'color-glass', 'is-native-app': isNativeScheduleApp }"
+  :class="{
+    'theme-color-glass': scheduleTheme === 'color-glass',
+    'is-native-app': isNativeScheduleApp,
+    'view-day': viewMode === 'day',
+    'view-week': viewMode === 'week',
+  }"
   :style="pageStyle"
 >
     <header class="top">
@@ -1677,11 +1682,11 @@ function prewarmScheduleCacheForWeek(wk: string) {
 .schedule-panel:not(.active) {
   pointer-events: none;
 }
-.schedule-page.is-native-app .carousel-viewport {
+.schedule-page.is-native-app.view-week .carousel-viewport {
   overflow: visible;
   contain: none;
 }
-.schedule-page.is-native-app .carousel-track {
+.schedule-page.is-native-app.view-week .carousel-track {
   display: block;
   width: 100%;
   transform: none !important;
@@ -1690,12 +1695,12 @@ function prewarmScheduleCacheForWeek(wk: string) {
   backface-visibility: visible;
   transform-style: flat;
 }
-.schedule-page.is-native-app .schedule-panel {
+.schedule-page.is-native-app.view-week .schedule-panel {
   display: none;
   contain: none;
   transform: none;
 }
-.schedule-page.is-native-app .schedule-panel.active {
+.schedule-page.is-native-app.view-week .schedule-panel.active {
   display: block;
   pointer-events: auto;
 }
@@ -1800,7 +1805,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
-.schedule-page.is-native-app .week-grid-head {
+.schedule-page.is-native-app.view-week .week-grid-head {
   position: static;
   top: auto;
   z-index: auto;
