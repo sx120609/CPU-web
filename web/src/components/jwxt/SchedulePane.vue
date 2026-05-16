@@ -1495,20 +1495,14 @@ function prewarmScheduleCacheForWeek(wk: string) {
 }
 
 .week-grid-head {
-  position: sticky;
-  top: calc(env(safe-area-inset-top) + 2px);
-  z-index: 3;
-  margin-bottom: 6px;
-  padding: 3px 0;
-  background: rgba(255, 255, 255, 0.86);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  margin-bottom: 8px;
+  padding: 2px 0;
 }
 
 .time-head,
 .week-day-head {
   min-width: 0;
-  height: 38px;
+  height: 46px;
   border-radius: 10px;
   color: #667085;
   display: flex;
@@ -1531,13 +1525,13 @@ function prewarmScheduleCacheForWeek(wk: string) {
 }
 
 .week-day-head span {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
 .week-day-head b {
   margin-top: 3px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -1604,11 +1598,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   justify-content: center;
   gap: 2px;
   overflow: hidden;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.58),
-    0 6px 14px rgba(24, 34, 51, 0.08);
-  backdrop-filter: blur(12px) saturate(145%);
-  -webkit-backdrop-filter: blur(12px) saturate(145%);
+  box-shadow: 0 4px 10px rgba(24, 34, 51, 0.06);
   cursor: pointer;
   touch-action: pan-y;
 }
@@ -1741,21 +1731,17 @@ function prewarmScheduleCacheForWeek(wk: string) {
     gap: 3px;
   }
 
-  .week-grid-head {
-    top: calc(env(safe-area-inset-top) + 0px);
-  }
-
   .week-day-head {
-    height: 34px;
+    height: 42px;
     border-radius: 8px;
   }
 
   .week-day-head span {
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .week-day-head b {
-    font-size: 9px;
+    font-size: 10px;
   }
 
   .week-grid-body {
