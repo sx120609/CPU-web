@@ -21,7 +21,7 @@
       </h1>
 
       <div class="post-meta">
-        <el-avatar :size="36" class="avatar">{{ topic.author?.nickname?.[0] }}</el-avatar>
+        <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" alt="作者头像" />
         <div class="meta-author">
           <div class="name">
             <router-link v-if="topic.author?.id" :to="`/u/${topic.author.id}`">{{ topic.author?.nickname }}</router-link>
@@ -81,7 +81,7 @@
       <h3 class="cpu-section-title">{{ topic.replyCount }} 条回复</h3>
       <el-empty v-if="!replies.length" description="还没有回复，沙发坐等" />
       <div v-for="r in replies" :key="r.id" class="reply">
-        <el-avatar :size="32" class="avatar">{{ r.author?.nickname?.[0] }}</el-avatar>
+        <UserAvatar :size="32" class="avatar" :src="r.author?.avatar" :name="r.author?.nickname" alt="回复头像" />
         <div class="reply-body">
           <div class="reply-meta">
             <span class="floor">#{{ r.floor }}</span>
@@ -122,6 +122,7 @@ import { ref, computed, onMounted, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowLeft, Star, ChatLineRound, Link } from "@element-plus/icons-vue";
+import UserAvatar from "@/components/common/UserAvatar.vue";
 import MarkdownView from "@/components/forum/MarkdownView.vue";
 import { topicApi, replyApi, likeApi, type Topic, type Reply } from "@/api/topic";
 import { useAuthStore } from "@/stores/auth";

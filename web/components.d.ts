@@ -55,9 +55,11 @@ declare module 'vue' {
     PyfaPane: typeof import('./src/components/jwxt/PyfaPane.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    ScheduleBackdropPicker: typeof import('./src/components/jwxt/ScheduleBackdropPicker.vue')['default']
     SchedulePane: typeof import('./src/components/jwxt/SchedulePane.vue')['default']
     ScheduleThemePicker: typeof import('./src/components/jwxt/ScheduleThemePicker.vue')['default']
     TopicListItem: typeof import('./src/components/forum/TopicListItem.vue')['default']
+    UserAvatar: typeof import('./src/components/common/UserAvatar.vue')['default']
   }
   export interface ComponentCustomProperties {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']

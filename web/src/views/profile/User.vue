@@ -1,7 +1,7 @@
 <template>
   <div class="user-page" v-if="user">
     <div class="cpu-card profile-card">
-      <el-avatar :size="64" class="avatar">{{ user.nickname?.[0] }}</el-avatar>
+      <UserAvatar :size="64" class="avatar" :src="user.avatar" :name="user.nickname" alt="用户头像" />
       <div>
         <h2 class="name">
           {{ user.nickname }}
@@ -35,6 +35,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from "vue";
 import { useRoute } from "vue-router";
+import UserAvatar from "@/components/common/UserAvatar.vue";
 import { request } from "@/api/request";
 import { fmtRelative } from "@/utils/format";
 
@@ -56,7 +57,7 @@ async function load() {
 .user-page { display: flex; flex-direction: column; gap: 16px; }
 .cpu-card { background: #fff; border-radius: 12px; padding: 20px 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
 .profile-card { display: flex; align-items: flex-start; gap: 16px; }
-.avatar { background: linear-gradient(135deg, #168776, #0f6557); color: #fff; font-size: 24px; font-weight: 600; flex-shrink: 0; }
+.avatar { font-size: 24px; font-weight: 600; flex-shrink: 0; }
 .name { margin: 0; font-size: 20px; display: flex; align-items: center; gap: 8px; }
 .username { font-size: 12px; color: #9ca3af; margin: 2px 0 6px; }
 .bio { font-size: 13px; color: #4b5563; margin: 0 0 8px; }

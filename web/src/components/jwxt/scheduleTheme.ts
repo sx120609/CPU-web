@@ -2,17 +2,9 @@ export type ScheduleThemeKey =
   | "green"
   | "blue"
   | "teal"
-  | "cyan"
-  | "sky"
   | "indigo"
-  | "purple"
-  | "violet"
-  | "pink"
   | "orange"
-  | "amber"
-  | "lime"
   | "rose"
-  | "red"
   | "slate"
   | "color-glass";
 
@@ -48,15 +40,15 @@ export interface CourseTone {
 
 const pageBg = "linear-gradient(180deg, #edf4ff 0%, #f7fbff 42%, #f8fafc 100%)";
 const colorGlassCourseTones: CourseTone[] = [
-  { bg: "rgba(255, 228, 230, 0.70)", border: "rgba(244, 63, 94, 0.44)", text: "#8f1230" },
-  { bg: "rgba(255, 237, 213, 0.70)", border: "rgba(249, 115, 22, 0.42)", text: "#8a3412" },
-  { bg: "rgba(254, 243, 199, 0.72)", border: "rgba(245, 158, 11, 0.44)", text: "#7a4c09" },
-  { bg: "rgba(220, 252, 231, 0.72)", border: "rgba(34, 197, 94, 0.40)", text: "#14532d" },
-  { bg: "rgba(204, 251, 241, 0.72)", border: "rgba(20, 184, 166, 0.40)", text: "#115e59" },
-  { bg: "rgba(219, 234, 254, 0.72)", border: "rgba(59, 130, 246, 0.40)", text: "#1e3a8a" },
-  { bg: "rgba(224, 231, 255, 0.72)", border: "rgba(99, 102, 241, 0.40)", text: "#3730a3" },
-  { bg: "rgba(243, 232, 255, 0.72)", border: "rgba(168, 85, 247, 0.40)", text: "#6b21a8" },
-  { bg: "rgba(252, 231, 243, 0.72)", border: "rgba(236, 72, 153, 0.38)", text: "#9d174d" },
+  { bg: "rgba(255, 228, 230, 0.84)", border: "rgba(244, 63, 94, 0.42)", text: "#8f1230" },
+  { bg: "rgba(255, 237, 213, 0.84)", border: "rgba(249, 115, 22, 0.40)", text: "#8a3412" },
+  { bg: "rgba(254, 243, 199, 0.86)", border: "rgba(245, 158, 11, 0.42)", text: "#7a4c09" },
+  { bg: "rgba(220, 252, 231, 0.84)", border: "rgba(34, 197, 94, 0.38)", text: "#14532d" },
+  { bg: "rgba(204, 251, 241, 0.84)", border: "rgba(20, 184, 166, 0.38)", text: "#115e59" },
+  { bg: "rgba(219, 234, 254, 0.84)", border: "rgba(59, 130, 246, 0.38)", text: "#1e3a8a" },
+  { bg: "rgba(224, 231, 255, 0.84)", border: "rgba(99, 102, 241, 0.38)", text: "#3730a3" },
+  { bg: "rgba(243, 232, 255, 0.84)", border: "rgba(168, 85, 247, 0.38)", text: "#6b21a8" },
+  { bg: "rgba(252, 231, 243, 0.84)", border: "rgba(236, 72, 153, 0.36)", text: "#9d174d" },
 ];
 
 function simpleTheme(
@@ -139,36 +131,6 @@ export const scheduleThemePalettes: Record<ScheduleThemeKey, ScheduleThemePalett
     "#0f766e",
     "#115e59",
   ),
-  cyan: simpleTheme(
-    "cyan",
-    "湖蓝",
-    "linear-gradient(135deg, #0891b2 0%, #cffafe 100%)",
-    "#0891b2",
-    "#155e75",
-    "rgba(8, 145, 178, 0.12)",
-    "rgba(8, 145, 178, 0.18)",
-    "#ecfeff",
-    "#cffafe",
-    "#67e8f9",
-    "#effcff",
-    "#0891b2",
-    "#155e75",
-  ),
-  sky: simpleTheme(
-    "sky",
-    "天蓝",
-    "linear-gradient(135deg, #0284c7 0%, #e0f2fe 100%)",
-    "#0284c7",
-    "#075985",
-    "rgba(2, 132, 199, 0.12)",
-    "rgba(2, 132, 199, 0.18)",
-    "#f0f9ff",
-    "#e0f2fe",
-    "#7dd3fc",
-    "#f3faff",
-    "#0284c7",
-    "#075985",
-  ),
   indigo: simpleTheme(
     "indigo",
     "靛蓝",
@@ -183,51 +145,6 @@ export const scheduleThemePalettes: Record<ScheduleThemeKey, ScheduleThemePalett
     "#f5f7ff",
     "#4f46e5",
     "#3730a3",
-  ),
-  purple: simpleTheme(
-    "purple",
-    "紫色",
-    "linear-gradient(135deg, #7c3aed 0%, #ede9fe 100%)",
-    "#7c3aed",
-    "#5b21b6",
-    "rgba(124, 58, 237, 0.12)",
-    "rgba(124, 58, 237, 0.18)",
-    "#f5f3ff",
-    "#ede9fe",
-    "#c4b5fd",
-    "#f7f3ff",
-    "#7c3aed",
-    "#6b21a8",
-  ),
-  violet: simpleTheme(
-    "violet",
-    "堇紫",
-    "linear-gradient(135deg, #8b5cf6 0%, #ede9fe 100%)",
-    "#8b5cf6",
-    "#6d28d9",
-    "rgba(139, 92, 246, 0.12)",
-    "rgba(139, 92, 246, 0.18)",
-    "#f5f3ff",
-    "#ede9fe",
-    "#c4b5fd",
-    "#f8f5ff",
-    "#8b5cf6",
-    "#6d28d9",
-  ),
-  pink: simpleTheme(
-    "pink",
-    "粉色",
-    "linear-gradient(135deg, #db2777 0%, #fce7f3 100%)",
-    "#db2777",
-    "#9d174d",
-    "rgba(219, 39, 119, 0.12)",
-    "rgba(219, 39, 119, 0.18)",
-    "#fdf2f8",
-    "#fce7f3",
-    "#f9a8d4",
-    "#fff5fa",
-    "#db2777",
-    "#9d174d",
   ),
   orange: simpleTheme(
     "orange",
@@ -244,36 +161,6 @@ export const scheduleThemePalettes: Record<ScheduleThemeKey, ScheduleThemePalett
     "#ea580c",
     "#9a3412",
   ),
-  amber: simpleTheme(
-    "amber",
-    "琥珀",
-    "linear-gradient(135deg, #d97706 0%, #fef3c7 100%)",
-    "#d97706",
-    "#92400e",
-    "rgba(217, 119, 6, 0.12)",
-    "rgba(217, 119, 6, 0.18)",
-    "#fffbeb",
-    "#fef3c7",
-    "#fcd34d",
-    "#fffaf0",
-    "#d97706",
-    "#92400e",
-  ),
-  lime: simpleTheme(
-    "lime",
-    "柠绿",
-    "linear-gradient(135deg, #65a30d 0%, #ecfccb 100%)",
-    "#65a30d",
-    "#3f6212",
-    "rgba(101, 163, 13, 0.12)",
-    "rgba(101, 163, 13, 0.18)",
-    "#f7fee7",
-    "#ecfccb",
-    "#bef264",
-    "#fbfff1",
-    "#65a30d",
-    "#3f6212",
-  ),
   rose: simpleTheme(
     "rose",
     "玫红",
@@ -288,21 +175,6 @@ export const scheduleThemePalettes: Record<ScheduleThemeKey, ScheduleThemePalett
     "#fff5f7",
     "#e11d48",
     "#9f1239",
-  ),
-  red: simpleTheme(
-    "red",
-    "红色",
-    "linear-gradient(135deg, #dc2626 0%, #fee2e2 100%)",
-    "#dc2626",
-    "#991b1b",
-    "rgba(220, 38, 38, 0.12)",
-    "rgba(220, 38, 38, 0.18)",
-    "#fef2f2",
-    "#fee2e2",
-    "#fca5a5",
-    "#fff5f5",
-    "#dc2626",
-    "#991b1b",
   ),
   slate: simpleTheme(
     "slate",
@@ -343,17 +215,9 @@ export const scheduleThemeOptions: ScheduleThemeOption[] = [
   scheduleThemePalettes.green,
   scheduleThemePalettes.blue,
   scheduleThemePalettes.teal,
-  scheduleThemePalettes.cyan,
-  scheduleThemePalettes.sky,
   scheduleThemePalettes.indigo,
-  scheduleThemePalettes.purple,
-  scheduleThemePalettes.violet,
-  scheduleThemePalettes.pink,
   scheduleThemePalettes.orange,
-  scheduleThemePalettes.amber,
-  scheduleThemePalettes.lime,
   scheduleThemePalettes.rose,
-  scheduleThemePalettes.red,
   scheduleThemePalettes.slate,
   scheduleThemePalettes["color-glass"],
 ].map(({ key, label, preview }) => ({ key, label, preview }));
@@ -371,6 +235,12 @@ export function normalizeScheduleTheme(value?: string | null): ScheduleThemeKey 
   if (!next) return "green";
   if (next === "simple") return "green";
   if (next === "colorful") return "color-glass";
+  if (next === "cyan") return "teal";
+  if (next === "sky") return "blue";
+  if (next === "purple" || next === "violet") return "indigo";
+  if (next === "amber") return "orange";
+  if (next === "lime") return "green";
+  if (next === "pink" || next === "red") return "rose";
   if (next in scheduleThemePalettes) return next as ScheduleThemeKey;
   return "green";
 }

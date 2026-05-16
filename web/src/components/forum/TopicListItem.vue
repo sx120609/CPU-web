@@ -1,6 +1,6 @@
 <template>
   <div class="topic-row" @click="$router.push(`/forum/topic/${topic.id}`)">
-    <el-avatar :size="36" class="avatar">{{ topic.author?.nickname?.[0] ?? "?" }}</el-avatar>
+    <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" alt="作者头像" />
     <div class="main">
       <div class="line1">
         <el-tag v-if="topic.pinned" size="small" type="danger" effect="plain" class="tag">置顶</el-tag>
@@ -34,6 +34,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { View, ChatLineRound, Star } from "@element-plus/icons-vue";
+import UserAvatar from "@/components/common/UserAvatar.vue";
 import { fmtRelative } from "@/utils/format";
 
 const props = defineProps<{ topic: any }>();

@@ -1,7 +1,11 @@
 <template>
   <div class="profile">
     <div class="cpu-card profile-card">
-      <el-avatar :size="80" class="avatar">{{ user?.nickname?.[0] ?? "U" }}</el-avatar>
+      <UserAvatar :size="80" class="avatar" :src="user?.avatar" :name="user?.nickname" alt="用户头像" />
+      <div class="avatar-actions">
+        <el-button size="small" plain :loading="avatarSaving" @click="pickAvatar">上传头像</el-button>
+        <el-button v-if="user?.avatar" size="small" text :loading="avatarSaving" @click="removeAvatar">移除头像</el-button>
+      </div>
       <h3 class="name">
         {{ user?.nickname }}
         <el-tag v-if="user?.role === 'admin'" size="small" type="danger">管理员</el-tag>
@@ -89,6 +93,14 @@
         <el-button type="primary" :loading="savingPw" @click="savePassword">保存</el-button>
       </template>
     </el-dialog>
+
+    <input
+      ref="avatarInputRef"
+      class="hidden-file-input"
+      type="file"
+      accept="image/*"
+      @change="onAvatarChange"
+    />
   </div>
 </template>
 
@@ -100,7 +112,9 @@ import { ChatDotRound, CopyDocument } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { authApi } from "@/api/auth";
 import { request } from "@/api/request";
+import UserAvatar from "@/components/common/UserAvatar.vue";
 import { fmtRelative } from "@/utils/format";
+import { compressImageFile } from "@/utils/imageUpload";
 import { copyText, openUserGroup, USER_QQ_GROUP } from "@/utils/userGroup";
 
 const auth = useAuthStore();
@@ -109,6 +123,8 @@ const user = computed(() => auth.user);
 const myTopics = ref<any[]>([]);
 const editing = ref(false);
 const saving = ref(false);
+const avatarSaving = ref(false);
+const avatarInputRef = ref<HTMLInputElement | null>(null);
 
 const editForm = reactive({ nickname: "", bio: "", college: "", enrollYear: undefined as any });
 
@@ -172,6 +188,44 @@ async function copyUserGroup() {
 function joinUserGroup() {
   openUserGroup();
 }
+
+function pickAvatar() {
+  avatarInputRef.value?.click();
+}
+
+async function onAvatarChange(event: Event) {
+  const target = event.target as HTMLInputElement | null;
+  const file = target?.files?.[0];
+  if (!file) return;
+
+  avatarSaving.value = true;
+  try {
+    const avatar = await compressImageFile(file, {
+      maxWidth: 320,
+      maxHeight: 320,
+      quality: 0.78,
+      mimeType: "image/jpeg",
+      maxBytes: 140 * 1024,
+    });
+    await auth.updateProfile({ avatar });
+    ElMessage.success("头像已更新");
+  } catch (error: any) {
+    ElMessage.error(error?.message || "头像上传失败");
+  } finally {
+    avatarSaving.value = false;
+    if (target) target.value = "";
+  }
+}
+
+async function removeAvatar() {
+  avatarSaving.value = true;
+  try {
+    await auth.updateProfile({ avatar: null });
+    ElMessage.success("头像已移除");
+  } finally {
+    avatarSaving.value = false;
+  }
+}
 </script>
 
 <style scoped>
@@ -179,7 +233,15 @@ function joinUserGroup() {
 .cpu-card { background: #fff; border-radius: 12px; padding: 20px 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
 
 .profile-card { text-align: center; }
-.avatar { background: linear-gradient(135deg, #168776, #0f6557); color: #fff; font-size: 28px; font-weight: 600; }
+.avatar { font-size: 28px; font-weight: 600; }
+.avatar-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .name {
   margin: 12px 0 4px;
   font-size: 20px;
@@ -258,6 +320,7 @@ function joinUserGroup() {
 .meta { font-size: 12px; color: #9ca3af; flex-shrink: 0; }
 
 .cpu-section-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
+.hidden-file-input { display: none; }
 
 @media (max-width: 640px) {
   .cpu-card {
@@ -271,6 +334,10 @@ function joinUserGroup() {
   .profile-actions .el-button {
     flex: 1 1 calc(50% - 4px);
     min-width: 0;
+  }
+
+  .avatar-actions {
+    gap: 6px;
   }
 
   .user-group-card {

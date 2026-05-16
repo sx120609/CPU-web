@@ -47,7 +47,7 @@
             </el-tooltip>
             <el-dropdown @command="onUserCmd">
               <span class="user-info">
-                <el-avatar :size="30" class="user-avatar">{{ auth.user?.nickname?.[0] ?? "U" }}</el-avatar>
+                <UserAvatar :size="30" class="user-avatar" :src="auth.user?.avatar" :name="auth.user?.nickname" alt="用户头像" />
                 <span class="user-name">{{ auth.user?.nickname }}</span>
                 <el-icon><ArrowDown /></el-icon>
               </span>
@@ -141,7 +141,7 @@
       </div>
       <div class="drawer-account">
         <template v-if="auth.isLoggedIn">
-          <el-avatar :size="34" class="user-avatar">{{ auth.user?.nickname?.[0] ?? "U" }}</el-avatar>
+          <UserAvatar :size="34" class="user-avatar" :src="auth.user?.avatar" :name="auth.user?.nickname" alt="用户头像" />
           <div class="drawer-user">
             <div>{{ auth.user?.nickname }}</div>
             <button type="button" @click="goDrawer('/profile')">个人中心</button>
@@ -207,6 +207,7 @@ import {
   Refresh,
   Tools,
 } from "@element-plus/icons-vue";
+import UserAvatar from "@/components/common/UserAvatar.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
 import { useSiteStore } from "@/stores/site";

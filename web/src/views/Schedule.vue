@@ -3,6 +3,7 @@
   class="schedule-page"
   :class="{
     'theme-color-glass': scheduleTheme === 'color-glass',
+    'has-custom-bg': hasCustomBackdrop,
     'is-native-app': isNativeScheduleApp,
     'is-static-week-swipe': useStaticWeekSwipe,
     'view-day': viewMode === 'day',
@@ -26,6 +27,7 @@
           <button type="button" :class="{ active: viewMode === 'week' }" @click="setViewMode('week')">周</button>
         </div>
         <ScheduleThemePicker v-if="parsed" v-model="scheduleTheme" @update:model-value="persistScheduleTheme" />
+        <ScheduleBackdropPicker v-if="parsed" v-model="scheduleBackdrop" @update:model-value="persistScheduleBackdrop" />
         <button
           v-if="parsed"
           type="button"
@@ -274,7 +276,13 @@ import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 import { USER_QQ_GROUP, USER_QQ_GROUP_HINT_KEY } from "@/utils/userGroup";
 import InstallPromptDialog from "@/components/install/InstallPromptDialog.vue";
+import ScheduleBackdropPicker from "@/components/jwxt/ScheduleBackdropPicker.vue";
 import ScheduleThemePicker from "@/components/jwxt/ScheduleThemePicker.vue";
+import {
+  readScheduleBackdrop,
+  scheduleBackdropCssVars,
+  writeScheduleBackdrop,
+} from "@/components/jwxt/scheduleBackdrop";
 import {
   getColorGlassCourseTone,
   getScheduleThemePalette,
@@ -329,6 +337,7 @@ const week = ref("");
 const activeDay = ref(dayOfWeek());
 const viewMode = ref<ViewMode>("day");
 const scheduleTheme = ref<ScheduleThemeKey>("green");
+const scheduleBackdrop = ref("");
 const loading = ref(false);
 const autoLoading = ref(false);
 const hasCreds = ref(false);
@@ -409,6 +418,7 @@ onMounted(async () => {
   jwxt.hydrate();
   hasCreds.value = hasSavedCreds();
   restoreScheduleTheme();
+  restoreScheduleBackdrop();
   updateViewportHeight();
   window.addEventListener("resize", updateViewportHeight);
   window.visualViewport?.addEventListener("resize", updateViewportHeight);
@@ -460,8 +470,10 @@ const isViewingToday = computed(() => {
   if (!cur || String(cur) !== currentWeekValue()) return false;
   return viewMode.value === "week" || activeDay.value === dayOfWeek();
 });
+const hasCustomBackdrop = computed(() => Boolean(scheduleBackdrop.value));
 const pageStyle = computed(() => ({
   ...scheduleThemeCssVars(scheduleTheme.value),
+  ...scheduleBackdropCssVars(scheduleBackdrop.value),
   ...(viewportHeight.value ? { "--schedule-vh": `${viewportHeight.value / 100}px` } : {}),
 }));
 const useStaticWeekSwipe = computed(() => viewMode.value === "week" && (compactViewport.value || isNativeScheduleApp));
@@ -1205,6 +1217,15 @@ function persistScheduleTheme(value = scheduleTheme.value) {
   }
 }
 
+function restoreScheduleBackdrop() {
+  scheduleBackdrop.value = readScheduleBackdrop();
+}
+
+function persistScheduleBackdrop(value = scheduleBackdrop.value) {
+  scheduleBackdrop.value = (value ?? "").trim();
+  writeScheduleBackdrop(scheduleBackdrop.value);
+}
+
 function normalizeSlotRange(bigSlot: number, course: ScheduleCourse) {
   const fallbackStart = Math.max(1, Math.min(MAX_SMALL_SLOT, bigSlot * 2 - 1));
   const fallbackEnd = Math.max(fallbackStart, Math.min(MAX_SMALL_SLOT, bigSlot * 2));
@@ -1378,6 +1399,9 @@ function prewarmScheduleCacheForWeek(wk: string) {
 
 <style scoped lang="scss">
 .schedule-page {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   /* 不强制撑满视口高，避免内容短时多出可滚区 */
   padding: calc(env(safe-area-inset-top) + 14px) 14px calc(env(safe-area-inset-bottom) + 18px);
   background:
@@ -1385,6 +1409,43 @@ function prewarmScheduleCacheForWeek(wk: string) {
     radial-gradient(circle at 88% 14%, rgba(183, 232, 219, 0.32), transparent 30%),
     var(--schedule-page-bg);
   color: #172033;
+}
+.schedule-page > * {
+  position: relative;
+  z-index: 1;
+}
+.schedule-page::before,
+.schedule-page::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.schedule-page::before {
+  inset: -22px;
+  background-image: var(--schedule-custom-bg-image);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  opacity: 0;
+  transform: scale(1.06);
+  filter: blur(18px) saturate(0.92) brightness(0.72);
+  transition: opacity 0.22s ease;
+}
+.schedule-page::after {
+  background:
+    radial-gradient(circle at 18% 0%, rgba(174, 211, 255, 0.36), transparent 32%),
+    radial-gradient(circle at 88% 14%, rgba(183, 232, 219, 0.32), transparent 30%),
+    linear-gradient(180deg, rgba(245, 249, 253, 0.82) 0%, rgba(248, 251, 255, 0.84) 44%, rgba(250, 252, 255, 0.94) 100%);
+}
+.schedule-page.has-custom-bg::before {
+  opacity: 1;
+}
+.schedule-page.has-custom-bg::after {
+  background:
+    linear-gradient(180deg, rgba(13, 22, 38, 0.28) 0%, rgba(245, 249, 253, 0.42) 18%, rgba(248, 251, 255, 0.82) 46%, rgba(250, 252, 255, 0.94) 100%),
+    radial-gradient(circle at 14% 4%, rgba(142, 226, 255, 0.28), transparent 26%),
+    radial-gradient(circle at 88% 12%, rgba(187, 247, 208, 0.22), transparent 28%);
 }
 .top {
   display: flex;
@@ -1471,7 +1532,8 @@ function prewarmScheduleCacheForWeek(wk: string) {
   border-color: var(--schedule-accent);
   color: var(--schedule-accent-contrast);
 }
-.theme-color-glass {
+.theme-color-glass,
+.has-custom-bg {
   background: var(--schedule-page-bg);
 }
 .theme-color-glass .sem-select :deep(.el-select__wrapper),
@@ -1479,7 +1541,13 @@ function prewarmScheduleCacheForWeek(wk: string) {
 .theme-color-glass .icon-btn,
 .theme-color-glass .week-btn,
 .theme-color-glass .week-title,
-.theme-color-glass .day-pill {
+.theme-color-glass .day-pill,
+.has-custom-bg .sem-select :deep(.el-select__wrapper),
+.has-custom-bg .view-switch,
+.has-custom-bg .icon-btn,
+.has-custom-bg .week-btn,
+.has-custom-bg .week-title,
+.has-custom-bg .day-pill {
   border-color: rgba(255, 255, 255, 0.64);
   background: rgba(255, 255, 255, 0.70);
   box-shadow:
@@ -1490,7 +1558,10 @@ function prewarmScheduleCacheForWeek(wk: string) {
 }
 .theme-color-glass .view-switch button.active,
 .theme-color-glass .day-pill.active,
-.theme-color-glass .icon-btn.active {
+.theme-color-glass .icon-btn.active,
+.has-custom-bg .view-switch button.active,
+.has-custom-bg .day-pill.active,
+.has-custom-bg .icon-btn.active {
   border-color: rgba(255, 255, 255, 0.56);
   background: linear-gradient(135deg, rgba(22, 135, 118, 0.88), rgba(59, 130, 246, 0.78));
   color: #fff;
@@ -2004,19 +2075,27 @@ function prewarmScheduleCacheForWeek(wk: string) {
 
 .theme-color-glass .day-slot-cell,
 .theme-color-glass .week-slot-cell,
-.theme-color-glass .week-day-head {
+.theme-color-glass .week-day-head,
+.has-custom-bg .day-slot-cell,
+.has-custom-bg .week-slot-cell,
+.has-custom-bg .week-day-head {
   border-color: rgba(255, 255, 255, 0.56);
   background: rgba(255, 255, 255, 0.42);
 }
-.theme-color-glass .week-grid-head {
+.theme-color-glass .week-grid-head,
+.has-custom-bg .week-grid-head {
   background: rgba(248, 251, 255, 0.70);
 }
 .theme-color-glass .week-day-head.today,
-.theme-color-glass .week-slot-cell.today {
+.theme-color-glass .week-slot-cell.today,
+.has-custom-bg .week-day-head.today,
+.has-custom-bg .week-slot-cell.today {
   background: rgba(204, 251, 241, 0.54);
 }
 .theme-color-glass .day-course-block,
-.theme-color-glass .week-course {
+.theme-color-glass .week-course,
+.has-custom-bg .day-course-block,
+.has-custom-bg .week-course {
   border-width: 1px;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.58),
