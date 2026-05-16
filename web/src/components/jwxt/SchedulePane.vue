@@ -817,8 +817,8 @@ function dayOfWeek() {
 }
 
 function updateViewportHeight() {
-  const nativeApp = document.body.dataset.cpuNativeApp === "1";
-  const height = nativeApp ? window.innerHeight : (window.visualViewport?.height ?? window.innerHeight);
+  const visualHeight = window.visualViewport?.height ?? window.innerHeight;
+  const height = Math.min(visualHeight, window.innerHeight);
   viewportHeight.value = Math.max(0, Math.round(height || 0));
 }
 
