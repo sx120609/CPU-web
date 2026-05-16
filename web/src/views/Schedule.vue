@@ -26,8 +26,13 @@
           <button type="button" :class="{ active: viewMode === 'day' }" @click="setViewMode('day')">日</button>
           <button type="button" :class="{ active: viewMode === 'week' }" @click="setViewMode('week')">周</button>
         </div>
-        <ScheduleThemePicker v-if="parsed" v-model="scheduleTheme" @update:model-value="persistScheduleTheme" />
-        <ScheduleBackdropPicker v-if="parsed" v-model="scheduleBackdrop" @update:model-value="persistScheduleBackdrop" />
+        <ScheduleCustomizePicker
+          v-if="parsed"
+          v-model:theme="scheduleTheme"
+          v-model:backdrop="scheduleBackdrop"
+          @update:theme="persistScheduleTheme"
+          @update:backdrop="persistScheduleBackdrop"
+        />
         <button
           v-if="parsed"
           type="button"
@@ -276,8 +281,7 @@ import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 import { USER_QQ_GROUP, USER_QQ_GROUP_HINT_KEY } from "@/utils/userGroup";
 import InstallPromptDialog from "@/components/install/InstallPromptDialog.vue";
-import ScheduleBackdropPicker from "@/components/jwxt/ScheduleBackdropPicker.vue";
-import ScheduleThemePicker from "@/components/jwxt/ScheduleThemePicker.vue";
+import ScheduleCustomizePicker from "@/components/jwxt/ScheduleCustomizePicker.vue";
 import {
   readScheduleBackdrop,
   scheduleBackdropCssVars,
@@ -476,7 +480,7 @@ const pageStyle = computed(() => ({
   ...scheduleBackdropCssVars(scheduleBackdrop.value),
   ...(viewportHeight.value ? { "--schedule-vh": `${viewportHeight.value / 100}px` } : {}),
 }));
-const useStaticWeekSwipe = computed(() => viewMode.value === "week" && (compactViewport.value || isNativeScheduleApp));
+const useStaticWeekSwipe = computed(() => false);
 const currentCells = computed<ScheduleCell[]>(() => cellsForWeek(activeWeekNumber.value, parsed.value));
 const dayCourses = computed<FlatCourse[]>(() => dayCoursesFor(activeWeekNumber.value, activeDay.value, parsed.value));
 const dayCourseBlocks = computed<WeekCourseBlock[]>(() => (

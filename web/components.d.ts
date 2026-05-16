@@ -56,6 +56,7 @@ declare module 'vue' {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     ScheduleBackdropPicker: typeof import('./src/components/jwxt/ScheduleBackdropPicker.vue')['default']
+    ScheduleCustomizePicker: typeof import('./src/components/jwxt/ScheduleCustomizePicker.vue')['default']
     SchedulePane: typeof import('./src/components/jwxt/SchedulePane.vue')['default']
     ScheduleThemePicker: typeof import('./src/components/jwxt/ScheduleThemePicker.vue')['default']
     TopicListItem: typeof import('./src/components/forum/TopicListItem.vue')['default']
