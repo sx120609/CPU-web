@@ -417,7 +417,7 @@ const dragState = reactive({
 const dragTrackStyle = computed(() => {
   if (!dragState.dragging && !dragState.settling) return undefined;
   return {
-    transform: `translate3d(calc(-100% + ${dragState.offsetX}px), 0, 0)`,
+    transform: `translate3d(calc(-33.333333% + ${dragState.offsetX}px), 0, 0)`,
   };
 });
 const carouselPages = computed<SchedulePageModel[]>(() => [-1, 0, 1].map((delta) => (
@@ -1287,8 +1287,9 @@ function saveScheduleCache() {
 }
 .carousel-track {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 100%));
-  transform: translate3d(-100%, 0, 0);
+  width: 300%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  transform: translate3d(-33.333333%, 0, 0);
   will-change: transform;
 }
 .content.dragging .carousel-track {
