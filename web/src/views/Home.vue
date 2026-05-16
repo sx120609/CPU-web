@@ -21,20 +21,6 @@
           </el-button>
         </div>
       </div>
-      <div class="hero-stats" v-if="hasStats">
-        <div class="stat" v-if="site.features.forum && (summary?.hotTopics?.length ?? 0)">
-          <div class="num">{{ summary?.hotTopics?.length }}</div>
-          <div class="lbl">热帖</div>
-        </div>
-        <div class="stat" v-if="summary?.services?.length">
-          <div class="num">{{ summary?.services?.length }}</div>
-          <div class="lbl">服务直达</div>
-        </div>
-        <div class="stat" v-if="summary?.announce?.length">
-          <div class="num">{{ summary?.announce?.length }}</div>
-          <div class="lbl">最新公告</div>
-        </div>
-      </div>
     </section>
 
     <div class="grid" :class="{ 'single-col': !site.features.forum }">
@@ -141,14 +127,6 @@ const heroIntro = computed(() => {
 
 const loginActionText = computed(() => site.features.forum ? "登录参与" : "登录使用");
 
-const hasStats = computed(() => {
-  if (!summary.value) return false;
-  const hot = site.features.forum && (summary.value.hotTopics?.length ?? 0) > 0;
-  const svc = (summary.value.services?.length ?? 0) > 0;
-  const ann = (summary.value.announce?.length ?? 0) > 0;
-  return hot || svc || ann;
-});
-
 onMounted(async () => {
   // 不区分游客 / 登录态，统一调 home/summary —— 后端按 token 自动决定 identity 是否返回
   try {
@@ -207,11 +185,6 @@ function openUrl(url: string) {
 .hero-actions .el-button { background: rgba(255,255,255,0.9); border: none; color: #168776; }
 .hero-actions .el-button:hover { background: #fff; }
 .hero-actions .el-button--primary { background: #fff; color: #168776; }
-
-.hero-stats { display: flex; gap: 28px; z-index: 1; }
-.stat { text-align: right; }
-.stat .num { font-size: 26px; font-weight: 700; }
-.stat .lbl { font-size: 12px; opacity: 0.7; }
 
 .grid {
   display: grid;
@@ -338,23 +311,6 @@ function openUrl(url: string) {
   .hero-actions .el-button {
     width: 100%;
     margin-left: 0;
-  }
-
-  .hero-stats {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-  }
-
-  .stat {
-    text-align: left;
-    padding: 10px;
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.12);
-  }
-
-  .stat .num {
-    font-size: 22px;
   }
 
   .grid {
