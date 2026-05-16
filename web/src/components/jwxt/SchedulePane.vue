@@ -2,8 +2,6 @@
 <div
   class="schedule-pane"
   :class="{
-    'theme-color-glass': scheduleTheme === 'color-glass',
-    'has-custom-bg': hasCustomBackdrop,
     'is-native-app': isNativeScheduleApp,
     'is-static-week-swipe': useStaticWeekSwipe,
     'view-day': viewMode === 'day',
@@ -28,13 +26,6 @@
           <button type="button" :class="{ active: viewMode === 'day' }" @click="setViewMode('day')">日</button>
           <button type="button" :class="{ active: viewMode === 'week' }" @click="setViewMode('week')">周</button>
         </div>
-        <ScheduleCustomizePicker
-          v-if="parsed"
-          v-model:theme="scheduleTheme"
-          v-model:backdrop="scheduleBackdrop"
-          @update:theme="persistScheduleTheme"
-          @update:backdrop="persistScheduleBackdrop"
-        />
         <button
           v-if="parsed"
           type="button"
@@ -236,19 +227,10 @@ import { ElMessage } from "element-plus";
 import { Aim, ArrowLeft, ArrowRight, Moon, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { USER_QQ_GROUP, USER_QQ_GROUP_HINT_KEY } from "@/utils/userGroup";
-import ScheduleCustomizePicker from "./ScheduleCustomizePicker.vue";
 import {
-  readScheduleBackdrop,
-  scheduleBackdropCssVars,
-  writeScheduleBackdrop,
-} from "./scheduleBackdrop";
-import {
-  getColorGlassCourseTone,
   getScheduleThemePalette,
-  normalizeScheduleTheme,
   scheduleThemeCssVars,
   type CourseTone,
-  type ScheduleThemeKey,
 } from "./scheduleTheme";
 
 interface ScheduleCourse {
@@ -297,8 +279,6 @@ const semester = ref("");
 const week = ref("");
 const activeDay = ref(dayOfWeek());
 const viewMode = ref<ViewMode>("day");
-const scheduleTheme = ref<ScheduleThemeKey>("green");
-const scheduleBackdrop = ref("");
 const loading = ref(Boolean(props.loading));
 const scheduleSavedAt = ref(0);
 const viewportHeight = ref(0);
@@ -307,7 +287,6 @@ const CACHE_TTL = 12 * 60 * 60 * 1000;
 const CALENDAR_CACHE_KEY = "cpu-schedule-calendar-v1";
 const LAST_STATE_KEY = "cpu-jwxt-schedule-view-state-v1";
 const LAST_CACHE_KEY = "cpu-schedule-last-cache-key-v1";
-const THEME_KEY = "cpu-schedule-theme-v1";
 const scheduleCacheStore = new Map<string, CacheEnvelope<ScheduleResult>>();
 const prewarmingScheduleKeys = new Set<string>();
 const isNativeScheduleApp = /cpuwebscheduleapp/i.test(navigator.userAgent);
@@ -375,8 +354,6 @@ watch(() => props.data, (v) => {
 }, { immediate: true });
 
 onMounted(async () => {
-  restoreScheduleTheme();
-  restoreScheduleBackdrop();
   updateViewportHeight();
   window.addEventListener("resize", updateViewportHeight);
   window.visualViewport?.addEventListener("resize", updateViewportHeight);
@@ -417,10 +394,8 @@ const isViewingToday = computed(() => {
   if (!cur || String(cur) !== currentWeekValue()) return false;
   return viewMode.value === "week" || activeDay.value === dayOfWeek();
 });
-const hasCustomBackdrop = computed(() => Boolean(scheduleBackdrop.value));
 const pageStyle = computed(() => ({
-  ...scheduleThemeCssVars(scheduleTheme.value),
-  ...scheduleBackdropCssVars(scheduleBackdrop.value),
+  ...scheduleThemeCssVars("green"),
   ...(viewportHeight.value ? { "--schedule-vh": `${viewportHeight.value / 100}px` } : {}),
 }));
 const useStaticWeekSwipe = computed(() => false);
@@ -1113,36 +1088,8 @@ function selectedScheduleDiffers(data: ScheduleResult) {
 }
 
 function toneFor(name: string): CourseTone {
-  if (scheduleTheme.value === "color-glass") return getColorGlassCourseTone(name);
-  const theme = getScheduleThemePalette(scheduleTheme.value);
+  const theme = getScheduleThemePalette("green");
   return { bg: theme.courseBg, border: theme.courseBorder, text: theme.courseText };
-}
-
-function restoreScheduleTheme() {
-  try {
-    const saved = localStorage.getItem(THEME_KEY);
-    scheduleTheme.value = normalizeScheduleTheme(saved);
-  } catch {
-    /* ignore */
-  }
-}
-
-function persistScheduleTheme(value = scheduleTheme.value) {
-  scheduleTheme.value = normalizeScheduleTheme(value);
-  try {
-    localStorage.setItem(THEME_KEY, scheduleTheme.value);
-  } catch {
-    /* ignore */
-  }
-}
-
-function restoreScheduleBackdrop() {
-  scheduleBackdrop.value = readScheduleBackdrop();
-}
-
-function persistScheduleBackdrop(value = scheduleBackdrop.value) {
-  scheduleBackdrop.value = (value ?? "").trim();
-  writeScheduleBackdrop(scheduleBackdrop.value);
 }
 
 function normalizeSlotRange(bigSlot: number, course: ScheduleCourse) {
@@ -1318,46 +1265,8 @@ function prewarmScheduleCacheForWeek(wk: string) {
 <style scoped lang="scss">
 .schedule-pane {
   position: relative;
-  isolation: isolate;
   overflow: hidden;
   color: #172033;
-}
-.schedule-pane > * {
-  position: relative;
-  z-index: 1;
-}
-.schedule-pane::before,
-.schedule-pane::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-.schedule-pane::before {
-  inset: -22px;
-  background-image: var(--schedule-custom-bg-image);
-  background-position: center;
-  background-size: cover;
-  background-repeat: no-repeat;
-  opacity: 0;
-  transform: scale(1.06);
-  filter: blur(18px) saturate(0.92) brightness(0.72);
-  transition: opacity 0.22s ease;
-}
-.schedule-pane::after {
-  background:
-    radial-gradient(circle at 18% 0%, rgba(174, 211, 255, 0.36), transparent 32%),
-    radial-gradient(circle at 88% 14%, rgba(183, 232, 219, 0.32), transparent 30%),
-    linear-gradient(180deg, rgba(245, 249, 253, 0.74) 0%, rgba(248, 251, 255, 0.78) 44%, rgba(250, 252, 255, 0.90) 100%);
-}
-.schedule-pane.has-custom-bg::before {
-  opacity: 1;
-}
-.schedule-pane.has-custom-bg::after {
-  background:
-    linear-gradient(180deg, rgba(13, 22, 38, 0.28) 0%, rgba(245, 249, 253, 0.42) 18%, rgba(248, 251, 255, 0.82) 46%, rgba(250, 252, 255, 0.94) 100%),
-    radial-gradient(circle at 14% 4%, rgba(142, 226, 255, 0.28), transparent 26%),
-    radial-gradient(circle at 88% 12%, rgba(187, 247, 208, 0.22), transparent 28%);
 }
 
 .top {
@@ -1471,44 +1380,6 @@ function prewarmScheduleCacheForWeek(wk: string) {
 
 .icon-btn .el-icon {
   font-size: 18px;
-}
-
-.schedule-pane.theme-color-glass,
-.schedule-pane.has-custom-bg {
-  color: #172033;
-}
-.theme-color-glass .sem-select :deep(.el-select__wrapper),
-.theme-color-glass .view-switch,
-.theme-color-glass .icon-btn,
-.theme-color-glass .week-btn,
-.theme-color-glass .week-title,
-.theme-color-glass .day-pill,
-.has-custom-bg .sem-select :deep(.el-select__wrapper),
-.has-custom-bg .view-switch,
-.has-custom-bg .icon-btn,
-.has-custom-bg .week-btn,
-.has-custom-bg .week-title,
-.has-custom-bg .day-pill {
-  border-color: rgba(255, 255, 255, 0.64);
-  background: rgba(255, 255, 255, 0.70);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.56),
-    0 4px 12px rgba(36, 58, 91, 0.045);
-  backdrop-filter: blur(12px) saturate(135%);
-  -webkit-backdrop-filter: blur(12px) saturate(135%);
-}
-.theme-color-glass .view-switch button.active,
-.theme-color-glass .day-pill.active,
-.theme-color-glass .icon-btn.active,
-.has-custom-bg .view-switch button.active,
-.has-custom-bg .day-pill.active,
-.has-custom-bg .icon-btn.active {
-  border-color: rgba(255, 255, 255, 0.56);
-  background: linear-gradient(135deg, rgba(22, 135, 118, 0.88), rgba(59, 130, 246, 0.78));
-  color: #fff;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.24),
-    0 5px 14px rgba(22, 135, 118, 0.10);
 }
 
 @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
@@ -1975,65 +1846,6 @@ function prewarmScheduleCacheForWeek(wk: string) {
   box-shadow: 0 4px 10px rgba(24, 34, 51, 0.06);
   cursor: pointer;
   touch-action: pan-y;
-}
-
-.theme-color-glass .day-slot-cell,
-.theme-color-glass .week-slot-cell,
-.theme-color-glass .week-day-head,
-.has-custom-bg .day-slot-cell,
-.has-custom-bg .week-slot-cell,
-.has-custom-bg .week-day-head {
-  border-color: rgba(255, 255, 255, 0.56);
-  background: rgba(255, 255, 255, 0.42);
-}
-.theme-color-glass .week-grid-head,
-.has-custom-bg .week-grid-head {
-  background: rgba(248, 251, 255, 0.70);
-}
-.theme-color-glass .week-day-head.today,
-.theme-color-glass .week-slot-cell.today,
-.has-custom-bg .week-day-head.today,
-.has-custom-bg .week-slot-cell.today {
-  background: rgba(204, 251, 241, 0.54);
-}
-.theme-color-glass .day-course-block,
-.theme-color-glass .week-course,
-.has-custom-bg .day-course-block,
-.has-custom-bg .week-course {
-  border-width: 1px;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.58),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.16),
-    0 3px 10px rgba(44, 62, 94, 0.05);
-  backdrop-filter: blur(10px) saturate(130%);
-  -webkit-backdrop-filter: blur(10px) saturate(130%);
-}
-
-@supports (-webkit-touch-callout: none) {
-  @media (max-width: 760px) {
-    .carousel-viewport,
-    .schedule-panel {
-      contain: layout;
-    }
-
-    .day-slot-cell,
-    .week-slot-cell,
-    .week-day-head {
-      box-shadow: none;
-    }
-
-    .day-course-block,
-    .week-course {
-      backdrop-filter: none;
-      -webkit-backdrop-filter: none;
-      box-shadow: 0 2px 7px rgba(24, 34, 51, 0.06);
-    }
-
-    .content.dragging .day-course-block,
-    .content.dragging .week-course {
-      box-shadow: none;
-    }
-  }
 }
 
 .week-course strong,

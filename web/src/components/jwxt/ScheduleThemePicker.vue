@@ -151,8 +151,7 @@ onBeforeUnmount(() => {
   flex: 0 0 auto;
 }
 
-:global(.theme-color-glass) .icon-btn,
-:global(.has-custom-bg) .icon-btn {
+:global(.theme-color-glass) .icon-btn {
   border-color: rgba(255, 255, 255, 0.62);
   background: rgba(255, 255, 255, 0.70);
   box-shadow:
@@ -162,8 +161,7 @@ onBeforeUnmount(() => {
   -webkit-backdrop-filter: blur(12px) saturate(135%);
 }
 
-:global(.theme-color-glass) .icon-btn.active,
-:global(.has-custom-bg) .icon-btn.active {
+:global(.theme-color-glass) .icon-btn.active {
   border-color: rgba(255, 255, 255, 0.62);
   background: linear-gradient(135deg, rgba(22, 135, 118, 0.88), rgba(59, 130, 246, 0.76));
   color: #fff;
@@ -172,8 +170,7 @@ onBeforeUnmount(() => {
     0 8px 20px rgba(22, 135, 118, 0.14);
 }
 
-:global(.theme-color-glass) .theme-panel,
-:global(.has-custom-bg) .theme-panel {
+:global(.theme-color-glass) .theme-panel {
   border-color: rgba(255, 255, 255, 0.68);
   background: rgba(255, 255, 255, 0.88);
   box-shadow: 0 14px 34px rgba(36, 58, 91, 0.12);
