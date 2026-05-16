@@ -221,7 +221,6 @@ async function requestInstall() {
 function autoPromptIfEligible() {
   detectNativeApp();
   if (isStandalone.value || isNativeApp.value) return;
-  if (inAppBrowser.value.isInApp) return;
   if (platform.value === "desktop") return;
   setTimeout(() => {
     // 重新核对 standalone（用户可能在等待期间已经手动加了）
