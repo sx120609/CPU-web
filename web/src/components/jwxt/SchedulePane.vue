@@ -307,6 +307,7 @@ let dragFrame = 0;
 let pendingTrackOffset = 0;
 let dragCommitDelta = 0;
 let dragCommitTimer = 0;
+let dragCaptureTarget: HTMLElement | null = null;
 
 watch(() => props.loading, (v) => {
   loading.value = Boolean(v);
@@ -542,7 +543,6 @@ function onSchedulePointerDown(event: PointerEvent) {
   dragLastTime = performance.now();
   setDragClasses(false, false);
   clearTrackOffset();
-  (event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId);
 }
 
 function onSchedulePointerMove(event: PointerEvent) {
@@ -566,6 +566,7 @@ function onSchedulePointerMove(event: PointerEvent) {
     if (absDx < 5 || !likelyHorizontal) return;
     dragState.dragging = true;
     dragState.suppressClick = true;
+    captureDragPointer(event);
     setDragClasses(true, false);
   }
   if (event.cancelable) event.preventDefault();
@@ -576,7 +577,7 @@ function onSchedulePointerMove(event: PointerEvent) {
 
 async function onSchedulePointerEnd(event: PointerEvent) {
   if (!dragState.tracking || event.pointerId !== dragState.pointerId) return;
-  (event.currentTarget as HTMLElement | null)?.releasePointerCapture?.(event.pointerId);
+  releaseDragPointer(event.pointerId);
   if (!dragState.dragging) {
     resetDrag();
     return;
@@ -604,6 +605,7 @@ async function onSchedulePointerEnd(event: PointerEvent) {
 
 function onSchedulePointerCancel() {
   if (!dragState.tracking) return;
+  releaseDragPointer();
   animateDragTo(0);
   window.setTimeout(resetDrag, 180);
 }
@@ -660,6 +662,7 @@ function animateDragTo(targetX: number) {
 }
 
 function resetDrag() {
+  releaseDragPointer();
   if (dragFrame) {
     window.cancelAnimationFrame(dragFrame);
     dragFrame = 0;
@@ -681,6 +684,32 @@ function resetDrag() {
   window.setTimeout(() => {
     dragState.suppressClick = false;
   }, 220);
+}
+
+function captureDragPointer(event: PointerEvent) {
+  const target = event.currentTarget as HTMLElement | null;
+  if (!target || dragCaptureTarget === target) return;
+  try {
+    target.setPointerCapture?.(event.pointerId);
+    dragCaptureTarget = target;
+  } catch {
+    dragCaptureTarget = null;
+  }
+}
+
+function releaseDragPointer(pointerId = dragState.pointerId) {
+  if (!dragCaptureTarget || pointerId < 0) {
+    dragCaptureTarget = null;
+    return;
+  }
+  try {
+    if (!dragCaptureTarget.hasPointerCapture || dragCaptureTarget.hasPointerCapture(pointerId)) {
+      dragCaptureTarget.releasePointerCapture?.(pointerId);
+    }
+  } catch {
+    // Safari can drop pointer capture before pointercancel reaches Vue.
+  }
+  dragCaptureTarget = null;
 }
 
 function setDragClasses(dragging: boolean, settling: boolean) {
@@ -1339,6 +1368,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   max-width: 720px;
   margin: 0 auto;
   touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
   min-height: 0;
 }
 
@@ -1381,6 +1411,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   width: 100%;
   overflow: hidden;
   touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
   contain: layout paint;
 }
 
@@ -1391,6 +1422,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   transform: translate3d(-33.333333%, 0, 0);
   will-change: transform;
   backface-visibility: hidden;
+  transform-style: preserve-3d;
 }
 
 .content.dragging .carousel-track {
@@ -1405,6 +1437,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   min-width: 0;
   width: 100%;
   contain: layout paint;
+  transform: translateZ(0);
 }
 
 .schedule-panel:not(.active) {
@@ -1611,6 +1644,33 @@ function prewarmScheduleCacheForWeek(wk: string) {
   box-shadow: 0 4px 10px rgba(24, 34, 51, 0.06);
   cursor: pointer;
   touch-action: pan-y;
+}
+
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 760px) {
+    .carousel-viewport,
+    .schedule-panel {
+      contain: layout;
+    }
+
+    .day-slot-cell,
+    .week-slot-cell,
+    .week-day-head {
+      box-shadow: none;
+    }
+
+    .day-course-block,
+    .week-course {
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      box-shadow: 0 2px 7px rgba(24, 34, 51, 0.06);
+    }
+
+    .content.dragging .day-course-block,
+    .content.dragging .week-course {
+      box-shadow: none;
+    }
+  }
 }
 
 .week-course strong,
