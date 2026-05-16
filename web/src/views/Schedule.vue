@@ -165,7 +165,6 @@
           @pointermove="onDayPointerMove"
           @pointerup="onDayPointerEnd"
           @pointercancel="onDayPointerCancel"
-          @lostpointercapture="onDayPointerCancel"
         >
           <section v-if="dayCourseBlocks.length" class="day-timeline" aria-label="当日课表">
             <div class="day-grid-body">
@@ -547,7 +546,8 @@ function openDayFromWeek(day: number) {
 }
 
 function onDayPointerDown(event: PointerEvent) {
-  if (viewMode.value !== "day" || loading.value || event.pointerType === "mouse") return;
+  if (viewMode.value !== "day" || loading.value) return;
+  if (event.pointerType === "mouse" && event.button !== 0) return;
   dragState.tracking = true;
   dragState.dragging = false;
   dragState.settling = false;
@@ -556,6 +556,7 @@ function onDayPointerDown(event: PointerEvent) {
   dragState.startY = event.clientY;
   dragState.offsetX = 0;
   dragState.width = (event.currentTarget as HTMLElement | null)?.clientWidth || window.innerWidth || 1;
+  (event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId);
 }
 
 function onDayPointerMove(event: PointerEvent) {
@@ -569,9 +570,8 @@ function onDayPointerMove(event: PointerEvent) {
     }
     if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy) * 1.15) return;
     dragState.dragging = true;
-    (event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId);
   }
-  event.preventDefault();
+  if (event.cancelable) event.preventDefault();
   const canMove = dx > 0 ? canChangeDay(-1) : canChangeDay(1);
   dragState.offsetX = canMove ? dx : dx * 0.28;
 }
