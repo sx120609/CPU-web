@@ -103,8 +103,8 @@
 
     <section
       v-else
+      ref="contentRef"
       class="content"
-      :class="{ dragging: dragState.dragging, settling: dragState.settling }"
       v-loading="loading && !parsed"
       @pointerdown="onSchedulePointerDown"
       @pointermove="onSchedulePointerMove"
@@ -240,7 +240,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowLeft, ArrowRight, Download, Loading, Lock, Moon, Picture, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
@@ -403,6 +403,7 @@ const weekCourseBlocks = computed<WeekCourseBlock[]>(() => weekCourseBlocksFor(a
 
 // 横向轨道始终渲染：上一页 / 当前页 / 下一页，拖动时只移动轨道。
 const slideDirection = ref<"next" | "prev">("next");
+const contentRef = ref<HTMLElement | null>(null);
 const carouselTrackRef = ref<HTMLElement | null>(null);
 const dragState = reactive({
   tracking: false,
@@ -552,6 +553,7 @@ function onSchedulePointerDown(event: PointerEvent) {
   dragVelocityX = 0;
   dragLastX = event.clientX;
   dragLastTime = performance.now();
+  setDragClasses(false, false);
   clearTrackOffset();
   (event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId);
 }
@@ -573,6 +575,7 @@ function onSchedulePointerMove(event: PointerEvent) {
     if (Math.abs(dx) < 6 || Math.abs(dx) < Math.abs(dy) * 1.05) return;
     dragState.dragging = true;
     dragState.suppressClick = true;
+    setDragClasses(true, false);
   }
   if (event.cancelable) event.preventDefault();
   const canMove = dx > 0 ? canChangeByDrag(-1) : canChangeByDrag(1);
@@ -629,11 +632,16 @@ async function applyDragChange(delta: number) {
 }
 
 function animateDragTo(targetX: number) {
+  if (dragFrame) {
+    window.cancelAnimationFrame(dragFrame);
+    dragFrame = 0;
+  }
   dragState.tracking = false;
   dragState.dragging = false;
   dragState.settling = true;
   dragOffsetX = targetX;
-  void nextTick(() => setTrackOffset(targetX));
+  setDragClasses(false, true);
+  window.requestAnimationFrame(() => setTrackOffset(targetX));
 }
 
 function resetDrag() {
@@ -648,10 +656,18 @@ function resetDrag() {
   dragState.offsetX = 0;
   dragOffsetX = 0;
   dragVelocityX = 0;
+  setDragClasses(false, false);
   clearTrackOffset();
   window.setTimeout(() => {
     dragState.suppressClick = false;
   }, 220);
+}
+
+function setDragClasses(dragging: boolean, settling: boolean) {
+  const content = contentRef.value;
+  if (!content) return;
+  content.classList.toggle("dragging", dragging);
+  content.classList.toggle("settling", settling);
 }
 
 function scheduleTrackOffset(offsetX: number) {
@@ -1326,6 +1342,7 @@ function saveScheduleCache() {
   width: 100%;
   overflow: hidden;
   touch-action: pan-y;
+  contain: layout paint;
 }
 .carousel-track {
   display: grid;
@@ -1333,6 +1350,7 @@ function saveScheduleCache() {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   transform: translate3d(-33.333333%, 0, 0);
   will-change: transform;
+  backface-visibility: hidden;
 }
 .content.dragging .carousel-track {
   transition: none;
@@ -1343,6 +1361,7 @@ function saveScheduleCache() {
 .schedule-panel {
   min-width: 0;
   width: 100%;
+  contain: layout paint;
 }
 .schedule-panel:not(.active) {
   pointer-events: none;
