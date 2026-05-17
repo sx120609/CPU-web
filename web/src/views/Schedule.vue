@@ -52,8 +52,9 @@
           trigger="click"
           placement="bottom-end"
           :width="268"
-          :teleported="false"
+          :teleported="true"
           popper-class="schedule-more-popover"
+          @show="moreMenuView = 'menu'"
         >
           <template #reference>
             <button
@@ -65,26 +66,41 @@
               <el-icon><MoreFilled /></el-icon>
             </button>
           </template>
-          <div class="more-panel">
-            <div class="more-theme-grid" role="radiogroup" aria-label="选择课表主题">
-              <button
-                v-for="themeOption in scheduleThemeOptions"
-                :key="themeOption.key"
-                type="button"
-                class="more-theme-choice"
-                :class="{ active: themeOption.key === scheduleTheme }"
-                role="radio"
-                :aria-checked="themeOption.key === scheduleTheme"
-                @click="selectScheduleTheme(themeOption.key)"
-              >
-                <span class="more-theme-swatch" :style="{ background: themeOption.preview }" />
-                <span>{{ themeOption.label }}</span>
+          <div class="more-panel" :style="pageStyle">
+            <template v-if="moreMenuView === 'menu'">
+              <button type="button" class="more-action" @click="moreMenuView = 'theme'">
+                <span class="more-theme-swatch current" :style="{ background: currentThemePreview }" />
+                <span>主题选择</span>
+                <el-icon class="more-chevron"><ArrowRight /></el-icon>
               </button>
-            </div>
-            <button type="button" class="more-action" @click="openWidgetDialog">
-              <el-icon><Iphone /></el-icon>
-              <span>导入小组件</span>
-            </button>
+              <button type="button" class="more-action" @click="openWidgetDialog">
+                <el-icon><Iphone /></el-icon>
+                <span>导入小组件</span>
+                <el-icon class="more-chevron"><ArrowRight /></el-icon>
+              </button>
+            </template>
+
+            <template v-else>
+              <button type="button" class="more-back" @click="moreMenuView = 'menu'">
+                <el-icon><ArrowLeft /></el-icon>
+                <span>主题选择</span>
+              </button>
+              <div class="more-theme-grid" role="radiogroup" aria-label="选择课表主题">
+                <button
+                  v-for="themeOption in scheduleThemeOptions"
+                  :key="themeOption.key"
+                  type="button"
+                  class="more-theme-choice"
+                  :class="{ active: themeOption.key === scheduleTheme }"
+                  role="radio"
+                  :aria-checked="themeOption.key === scheduleTheme"
+                  @click="selectScheduleTheme(themeOption.key)"
+                >
+                  <span class="more-theme-swatch" :style="{ background: themeOption.preview }" />
+                  <span>{{ themeOption.label }}</span>
+                </button>
+              </div>
+            </template>
           </div>
         </el-popover>
         <button
@@ -609,6 +625,7 @@ const installPromptRef = ref<InstanceType<typeof InstallPromptDialog> | null>(nu
 const openBrowserPromptRef = ref<InstanceType<typeof OpenBrowserPromptDialog> | null>(null);
 const widgetDialogOpen = ref(false);
 const moreMenuOpen = ref(false);
+const moreMenuView = ref<"menu" | "theme">("menu");
 const widgetConfigCopying = ref(false);
 const widgetConfigCopied = ref(false);
 const scriptableWidgetScript = ref("");
@@ -845,6 +862,9 @@ const activeWeekNumber = computed(() => {
   const value = Number(week.value || parsed.value?.currentWeek || calendar.value?.currentWeek || 0);
   return Number.isFinite(value) && value > 0 ? value : 0;
 });
+const currentThemePreview = computed(() => (
+  scheduleThemeOptions.find((item) => item.key === scheduleTheme.value)?.preview ?? scheduleThemeOptions[0]?.preview ?? "#22c55e"
+));
 const isViewingToday = computed(() => {
   const cur = calendar.value?.currentWeek;
   if (!cur || String(cur) !== currentWeekValue()) return false;
@@ -2387,14 +2407,14 @@ function prewarmScheduleCacheForWeek(wk: string) {
 }
 .more-action {
   width: 100%;
-  min-height: 38px;
+  min-height: 42px;
   border: 1px solid #e5eaf2;
   border-radius: 10px;
   background: #fff;
   color: #172033;
-  display: flex;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 18px;
   align-items: center;
-  justify-content: flex-start;
   gap: 8px;
   padding: 0 10px;
   font: inherit;
@@ -2408,7 +2428,37 @@ function prewarmScheduleCacheForWeek(wk: string) {
 .more-action .el-icon {
   color: var(--schedule-accent);
 }
-:deep(.schedule-more-popover.el-popper) {
+.more-action span:not(.more-theme-swatch) {
+  min-width: 0;
+  text-align: left;
+}
+.more-chevron {
+  color: #98a2b3 !important;
+  font-size: 14px;
+}
+.more-back {
+  min-height: 34px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #172033;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.more-back:active {
+  background: #f3f4f6;
+}
+.more-theme-swatch.current {
+  justify-self: center;
+}
+:global(.schedule-more-popover.el-popper) {
+  z-index: 4200 !important;
   padding: 8px;
   border-radius: 13px;
   border-color: rgba(222, 229, 239, 0.92);
@@ -2635,6 +2685,8 @@ function prewarmScheduleCacheForWeek(wk: string) {
   height: 100%;
   width: 300%;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
   transform: translate3d(-33.333333%, 0, 0);
   will-change: transform;
   backface-visibility: hidden;
@@ -2735,13 +2787,15 @@ function prewarmScheduleCacheForWeek(wk: string) {
 }
 .schedule-body-scroll {
   flex: 1 1 auto;
+  height: 100%;
+  max-height: 100%;
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
-  padding-bottom: 2px;
+  padding-bottom: calc(14px + env(safe-area-inset-bottom));
 }
 .day-grid-body {
   display: grid;
