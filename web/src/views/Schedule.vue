@@ -25,11 +25,6 @@
           <button type="button" :class="{ active: viewMode === 'day' }" @click="setViewMode('day')">日</button>
           <button type="button" :class="{ active: viewMode === 'week' }" @click="setViewMode('week')">周</button>
         </div>
-        <ScheduleCustomizePicker
-          v-if="parsed"
-          v-model:theme="scheduleTheme"
-          @update:theme="persistScheduleTheme"
-        />
         <button
           v-if="parsed"
           type="button"
@@ -51,16 +46,47 @@
         >
           <el-icon><Download /></el-icon>
         </button>
-        <button
+        <el-popover
           v-if="parsed"
-          type="button"
-          class="icon-btn"
-          aria-label="导入 iOS 小组件"
-          title="iOS 小组件"
-          @click="widgetDialogOpen = true"
+          v-model:visible="moreMenuOpen"
+          trigger="click"
+          placement="bottom-end"
+          :width="268"
+          :teleported="false"
+          popper-class="schedule-more-popover"
         >
-          <el-icon><Iphone /></el-icon>
-        </button>
+          <template #reference>
+            <button
+              type="button"
+              class="icon-btn"
+              aria-label="更多"
+              title="更多"
+            >
+              <el-icon><MoreFilled /></el-icon>
+            </button>
+          </template>
+          <div class="more-panel">
+            <div class="more-theme-grid" role="radiogroup" aria-label="选择课表主题">
+              <button
+                v-for="themeOption in scheduleThemeOptions"
+                :key="themeOption.key"
+                type="button"
+                class="more-theme-choice"
+                :class="{ active: themeOption.key === scheduleTheme }"
+                role="radio"
+                :aria-checked="themeOption.key === scheduleTheme"
+                @click="selectScheduleTheme(themeOption.key)"
+              >
+                <span class="more-theme-swatch" :style="{ background: themeOption.preview }" />
+                <span>{{ themeOption.label }}</span>
+              </button>
+            </div>
+            <button type="button" class="more-action" @click="openWidgetDialog">
+              <el-icon><Iphone /></el-icon>
+              <span>导入小组件</span>
+            </button>
+          </div>
+        </el-popover>
         <button
           type="button"
           class="icon-btn"
@@ -169,87 +195,89 @@
               <em>{{ page.courseCount }} 节课</em>
             </div>
 
-            <section v-if="viewMode === 'week'" class="week-overview" aria-label="整周课表">
-              <div class="week-grid-head">
-                <div class="time-head">节次</div>
-                <div
-                  v-for="d in page.dayTabs"
-                  :key="d.day"
-                  class="week-day-head"
-                  :class="{ today: d.isToday }"
-                  @click="page.delta === 0 && onDayClick(d.day)"
-                >
-                  <span>{{ d.label.replace("周", "") }}</span>
-                  <b>{{ d.date || "--" }}</b>
-                </div>
-              </div>
-              <div class="week-grid-body">
-                <template v-for="slot in smallSlots" :key="`axis-${page.key}-${slot.no}`">
-                  <div class="slot-axis" :style="{ gridRow: `${slot.no} / ${slot.no + 1}` }">
-                    <b>{{ slot.no }}</b>
-                    <span>{{ slot.start }}</span>
-                    <span>{{ slot.end }}</span>
-                  </div>
+            <div class="schedule-body-scroll">
+              <section v-if="viewMode === 'week'" class="week-overview" aria-label="整周课表">
+                <div class="week-grid-head">
+                  <div class="time-head">节次</div>
                   <div
-                    v-for="day in 7"
-                    :key="`bg-${page.key}-${slot.no}-${day}`"
-                    class="week-slot-cell"
-                    :style="{ gridColumn: `${day + 1} / ${day + 2}`, gridRow: `${slot.no} / ${slot.no + 1}` }"
-                    :class="{ today: page.dayTabs[day - 1]?.isToday }"
-                    @click="onWeekSlotClick($event, day, slot.no, page.weekValue)"
-                  />
-                </template>
-                <article
-                  v-for="block in page.weekCourseBlocks"
-                  :key="`${page.weekValue}-${block.day}-${block.startSlot}-${block.endSlot}-${block.index}-${block.course.name}`"
-                  class="week-course"
-                  :style="courseBlockStyle(block)"
-                  :title="courseTitle(block.course)"
-                  @click.stop="onCourseBlockClick($event, block, page.weekValue)"
-                >
-                  <strong>{{ block.course.name }}</strong>
-                  <span v-if="block.course.location">@{{ block.course.location }}</span>
-                  <em>{{ block.course.slotNote || block.course.weeks }}</em>
-                </article>
-              </div>
-            </section>
-
-            <div v-else class="day-pane">
-              <section v-if="page.dayCourseBlocks.length" class="day-timeline" aria-label="当日课表">
-                <div class="day-grid-body">
-                  <template v-for="slot in smallSlots" :key="`day-axis-${page.key}-${slot.no}`">
-                    <div class="slot-axis day-axis" :style="{ gridRow: `${slot.no} / ${slot.no + 1}` }">
+                    v-for="d in page.dayTabs"
+                    :key="d.day"
+                    class="week-day-head"
+                    :class="{ today: d.isToday }"
+                    @click="page.delta === 0 && onDayClick(d.day)"
+                  >
+                    <span>{{ d.label.replace("周", "") }}</span>
+                    <b>{{ d.date || "--" }}</b>
+                  </div>
+                </div>
+                <div class="week-grid-body">
+                  <template v-for="slot in smallSlots" :key="`axis-${page.key}-${slot.no}`">
+                    <div class="slot-axis" :style="{ gridRow: `${slot.no} / ${slot.no + 1}` }">
                       <b>{{ slot.no }}</b>
                       <span>{{ slot.start }}</span>
                       <span>{{ slot.end }}</span>
                     </div>
                     <div
-                      class="day-slot-cell"
-                      :style="{ gridColumn: '2 / 3', gridRow: `${slot.no} / ${slot.no + 1}` }"
-                      @click="onDaySlotClick($event, page.day, slot.no, page.weekValue)"
+                      v-for="day in 7"
+                      :key="`bg-${page.key}-${slot.no}-${day}`"
+                      class="week-slot-cell"
+                      :style="{ gridColumn: `${day + 1} / ${day + 2}`, gridRow: `${slot.no} / ${slot.no + 1}` }"
+                      :class="{ today: page.dayTabs[day - 1]?.isToday }"
+                      @click="onWeekSlotClick($event, day, slot.no, page.weekValue)"
                     />
                   </template>
                   <article
-                    v-for="block in page.dayCourseBlocks"
-                    :key="`${page.weekValue}-${page.day}-${block.startSlot}-${block.endSlot}-${block.index}-${block.course.name}`"
-                    class="day-course-block"
-                    :style="dayCourseBlockStyle(block)"
+                    v-for="block in page.weekCourseBlocks"
+                    :key="`${page.weekValue}-${block.day}-${block.startSlot}-${block.endSlot}-${block.index}-${block.course.name}`"
+                    class="week-course"
+                    :style="courseBlockStyle(block)"
                     :title="courseTitle(block.course)"
                     @click.stop="onCourseBlockClick($event, block, page.weekValue)"
                   >
-                    <div class="day-course-name">{{ block.course.name }}</div>
-                    <div class="day-course-meta">
-                      <span v-if="block.course.location">@{{ block.course.location }}</span>
-                      <span v-if="block.course.teacher">{{ block.course.teacher }}</span>
-                    </div>
-                    <div class="day-course-note">{{ block.course.slotNote || block.course.weeks }}</div>
+                    <strong>{{ block.course.name }}</strong>
+                    <span v-if="block.course.location">@{{ block.course.location }}</span>
+                    <em>{{ block.course.slotNote || block.course.weeks }}</em>
                   </article>
                 </div>
               </section>
 
-              <div v-else class="empty-day">
-                <el-icon><Moon /></el-icon>
-                <p>这一天没有课程</p>
+              <div v-else class="day-pane">
+                <section v-if="page.dayCourseBlocks.length" class="day-timeline" aria-label="当日课表">
+                  <div class="day-grid-body">
+                    <template v-for="slot in smallSlots" :key="`day-axis-${page.key}-${slot.no}`">
+                      <div class="slot-axis day-axis" :style="{ gridRow: `${slot.no} / ${slot.no + 1}` }">
+                        <b>{{ slot.no }}</b>
+                        <span>{{ slot.start }}</span>
+                        <span>{{ slot.end }}</span>
+                      </div>
+                      <div
+                        class="day-slot-cell"
+                        :style="{ gridColumn: '2 / 3', gridRow: `${slot.no} / ${slot.no + 1}` }"
+                        @click="onDaySlotClick($event, page.day, slot.no, page.weekValue)"
+                      />
+                    </template>
+                    <article
+                      v-for="block in page.dayCourseBlocks"
+                      :key="`${page.weekValue}-${page.day}-${block.startSlot}-${block.endSlot}-${block.index}-${block.course.name}`"
+                      class="day-course-block"
+                      :style="dayCourseBlockStyle(block)"
+                      :title="courseTitle(block.course)"
+                      @click.stop="onCourseBlockClick($event, block, page.weekValue)"
+                    >
+                      <div class="day-course-name">{{ block.course.name }}</div>
+                      <div class="day-course-meta">
+                        <span v-if="block.course.location">@{{ block.course.location }}</span>
+                        <span v-if="block.course.teacher">{{ block.course.teacher }}</span>
+                      </div>
+                      <div class="day-course-note">{{ block.course.slotNote || block.course.weeks }}</div>
+                    </article>
+                  </div>
+                </section>
+
+                <div v-else class="empty-day">
+                  <el-icon><Moon /></el-icon>
+                  <p>这一天没有课程</p>
+                </div>
               </div>
             </div>
           </article>
@@ -419,7 +447,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Aim, ArrowLeft, ArrowRight, Download, Iphone, Loading, Lock, Moon, Picture, Refresh } from "@element-plus/icons-vue";
+import { Aim, ArrowLeft, ArrowRight, Download, Iphone, Loading, Lock, Moon, MoreFilled, Picture, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
@@ -428,11 +456,11 @@ import { detectClientPlatform } from "@/utils/clientInfo";
 import { USER_QQ_GROUP, USER_QQ_GROUP_HINT_KEY } from "@/utils/userGroup";
 import InstallPromptDialog from "@/components/install/InstallPromptDialog.vue";
 import OpenBrowserPromptDialog from "@/components/install/OpenBrowserPromptDialog.vue";
-import ScheduleCustomizePicker from "@/components/jwxt/ScheduleCustomizePicker.vue";
 import {
   getColorGlassCourseTone,
   getScheduleThemePalette,
   normalizeScheduleTheme,
+  scheduleThemeOptions,
   scheduleThemeCssVars,
   type CourseTone,
   type ScheduleThemeKey,
@@ -576,6 +604,7 @@ async function onJumpAndClose() {
 const installPromptRef = ref<InstanceType<typeof InstallPromptDialog> | null>(null);
 const openBrowserPromptRef = ref<InstanceType<typeof OpenBrowserPromptDialog> | null>(null);
 const widgetDialogOpen = ref(false);
+const moreMenuOpen = ref(false);
 const widgetConfigCopying = ref(false);
 const widgetConfigCopied = ref(false);
 const scriptableWidgetScript = ref("");
@@ -586,6 +615,16 @@ async function openInstallPrompt() {
     return;
   }
   await installPromptRef.value?.requestInstall();
+}
+
+function selectScheduleTheme(value: ScheduleThemeKey) {
+  persistScheduleTheme(value);
+  moreMenuOpen.value = false;
+}
+
+function openWidgetDialog() {
+  moreMenuOpen.value = false;
+  widgetDialogOpen.value = true;
 }
 
 async function copyScriptableWidgetScript() {
@@ -2102,8 +2141,12 @@ function prewarmScheduleCacheForWeek(wk: string) {
 .schedule-page {
   position: relative;
   isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  height: calc(var(--schedule-vh, 1vh) * 100);
+  min-height: calc(var(--schedule-vh, 1vh) * 100);
+  box-sizing: border-box;
   overflow: hidden;
-  /* 不强制撑满视口高，避免内容短时多出可滚区 */
   padding: calc(env(safe-area-inset-top) + 14px) 14px calc(env(safe-area-inset-bottom) + 18px);
   background:
     radial-gradient(circle at 18% 0%, rgba(174, 211, 255, 0.36), transparent 32%),
@@ -2128,6 +2171,8 @@ function prewarmScheduleCacheForWeek(wk: string) {
     linear-gradient(180deg, rgba(245, 249, 253, 0.82) 0%, rgba(248, 251, 255, 0.84) 44%, rgba(250, 252, 255, 0.94) 100%);
 }
 .top {
+  flex: 0 0 auto;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2253,6 +2298,85 @@ function prewarmScheduleCacheForWeek(wk: string) {
 .icon-btn .el-icon {
   font-size: 18px;
 }
+.more-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.more-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.more-theme-choice {
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #374151;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 8px 5px;
+  display: grid;
+  justify-items: center;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+.more-theme-choice:active {
+  background: #f3f4f6;
+}
+.more-theme-choice.active {
+  border-color: var(--schedule-accent-border);
+  background: var(--schedule-accent-pale);
+  color: var(--schedule-accent-strong);
+}
+.theme-color-glass .more-theme-choice.active {
+  border-color: transparent;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.84)) padding-box,
+    var(--schedule-colorful-control-ring) border-box;
+  color: var(--schedule-colorful-control-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
+}
+.more-theme-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  box-shadow: inset 0 0 0 1px rgba(24, 34, 51, 0.08);
+}
+.more-action {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #e5eaf2;
+  border-radius: 10px;
+  background: #fff;
+  color: #172033;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.more-action:active {
+  background: #f3f4f6;
+}
+.more-action .el-icon {
+  color: var(--schedule-accent);
+}
+:deep(.schedule-more-popover.el-popper) {
+  padding: 8px;
+  border-radius: 13px;
+  border-color: rgba(222, 229, 239, 0.92);
+  box-shadow: 0 18px 44px rgba(24, 34, 51, 0.18);
+}
 @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
 .toolbar {
   display: grid;
@@ -2262,6 +2386,8 @@ function prewarmScheduleCacheForWeek(wk: string) {
   margin: 0 auto 12px;
 }
 .week-switcher {
+  flex: 0 0 auto;
+  width: 100%;
   max-width: 720px;
   margin: 0 auto 12px;
   display: grid;
@@ -2321,6 +2447,8 @@ function prewarmScheduleCacheForWeek(wk: string) {
   font-size: 11px;
 }
 .week-strip {
+  flex: 0 0 auto;
+  width: 100%;
   max-width: 720px;
   margin: 0 auto 14px;
   display: grid;
@@ -2365,9 +2493,14 @@ function prewarmScheduleCacheForWeek(wk: string) {
   margin: 0 auto;
 }
 .content {
+  flex: 1 1 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
   min-height: 0;
+  overflow: hidden;
 }
 .content.dragging {
   cursor: grabbing;
@@ -2425,6 +2558,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   font-size: 13px;
 }
 .summary {
+  flex: 0 0 auto;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -2450,6 +2584,9 @@ function prewarmScheduleCacheForWeek(wk: string) {
   font-weight: 700;
 }
 .carousel-viewport {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
   width: 100%;
   overflow: hidden;
   touch-action: pan-y;
@@ -2458,6 +2595,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
 }
 .carousel-track {
   display: grid;
+  height: 100%;
   width: 300%;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   transform: translate3d(-33.333333%, 0, 0);
@@ -2475,8 +2613,12 @@ function prewarmScheduleCacheForWeek(wk: string) {
   transition: transform 0.18s cubic-bezier(0.2, 0, 0.2, 1);
 }
 .schedule-panel {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
   width: 100%;
+  height: 100%;
   contain: layout paint;
   transform: translateZ(0);
 }
@@ -2497,6 +2639,8 @@ function prewarmScheduleCacheForWeek(wk: string) {
   transform-style: flat;
 }
 .schedule-page.is-static-week-swipe.view-week .schedule-panel {
+  min-height: 0;
+  height: 100%;
   contain: none;
   transform: none;
 }
@@ -2551,6 +2695,16 @@ function prewarmScheduleCacheForWeek(wk: string) {
   max-width: 720px;
   margin: 0 auto;
   touch-action: pan-y;
+}
+.schedule-body-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  padding-bottom: 2px;
 }
 .day-grid-body {
   display: grid;
@@ -2633,7 +2787,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
 }
 .week-grid-head {
   position: sticky;
-  top: calc(env(safe-area-inset-top) + 2px);
+  top: 0;
   z-index: 3;
   margin-bottom: 6px;
   padding: 3px 0;
@@ -3467,7 +3621,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   }
 
   .week-grid-head {
-    top: calc(env(safe-area-inset-top) + 0px);
+    top: 0;
   }
 
   .week-day-head {
