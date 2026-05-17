@@ -336,44 +336,77 @@
 
     <el-dialog
       v-model="widgetDialogOpen"
-      title="导入 iOS 课表小组件"
       :width="420"
       align-center
       :show-close="true"
       append-to-body
     >
+      <template #header>
+        <div class="widget-dialog-title">
+          <span>导入 iOS 课表小组件</span>
+          <el-popover trigger="click" placement="bottom" :width="286" popper-class="widget-help-popover">
+            <p class="widget-help-text">
+              会生成一个只读 token，小组件仅能读取你的课表；如果教务会话失效，会先显示上次成功缓存。回到本站完成授权后会自动续上，不需要重新添加小组件。
+            </p>
+            <template #reference>
+              <button type="button" class="widget-help-btn" aria-label="查看小组件安全说明">
+                <el-icon><QuestionFilled /></el-icon>
+              </button>
+            </template>
+          </el-popover>
+        </div>
+      </template>
       <div class="widget-guide">
         <a class="widget-step" href="https://apps.apple.com/app/scriptable/id1405459188" target="_blank" rel="noreferrer">
           <b>1</b>
           <span>安装 Scriptable</span>
+          <el-icon class="widget-step-arrow"><ArrowRight /></el-icon>
         </a>
         <button type="button" class="widget-step" :disabled="widgetConfigCopying" @click="copyScriptableWidgetScript">
           <b>2</b>
-          <span>{{ widgetConfigCopied ? "配置已复制" : "复制配置" }}</span>
+          <span>{{ widgetConfigCopied ? "已复制，继续第 3 步" : "复制配置" }}</span>
+          <el-icon class="widget-step-arrow"><ArrowRight /></el-icon>
         </button>
-        <a class="widget-step" href="https://open.scriptable.app/add" target="_blank" rel="noreferrer">
+        <button type="button" class="widget-step" @click="openScriptableInstruction">
           <b>3</b>
           <span>打开 Scriptable 导入</span>
-        </a>
+          <el-icon class="widget-step-arrow"><ArrowRight /></el-icon>
+        </button>
       </div>
-      <p class="widget-note">
-        会生成一个只读 token，小组件仅能读取你的课表；如果教务会话失效，会先显示上次成功缓存。回到本站完成授权后会自动续上，不需要重新添加小组件。
-      </p>
       <p v-if="widgetCopyMessage" class="widget-copy-message" :class="{ warn: !widgetConfigCopied }">
         {{ widgetCopyMessage }}
       </p>
-      <textarea
-        v-if="scriptableWidgetScript"
-        ref="widgetScriptPreviewRef"
-        class="widget-script-preview"
-        readonly
-        :value="scriptableWidgetScript"
-        @focus="selectWidgetScript"
-      />
       <template #footer>
         <el-button @click="widgetDialogOpen = false">关闭</el-button>
         <el-button type="primary" :loading="widgetConfigCopying" @click="copyScriptableWidgetScript">
           {{ scriptableWidgetScript ? "复制配置" : "生成并复制" }}
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="widgetInstructionOpen"
+      title="导入后请先完成测试"
+      :width="420"
+      align-center
+      :show-close="true"
+      append-to-body
+      @open="startWidgetInstructionCountdown"
+      @closed="stopWidgetInstructionCountdown"
+    >
+      <ol class="widget-instruction-list">
+        <li>打开 Scriptable 导入脚本后，先点击右下角三角形运行测试，确认能看到课表预览。</li>
+        <li>测试完成后回到桌面，长按空白处，进入编辑模式并选择添加小组件。</li>
+        <li>找到 Scriptable 小组件并添加到桌面。</li>
+        <li>添加后长按小组件，选择编辑小组件，把 Script 设为刚才导入的课表脚本。</li>
+      </ol>
+      <p class="widget-countdown">
+        {{ widgetInstructionCountdown > 0 ? `请先阅读说明，${widgetInstructionCountdown} 秒后可继续。` : "已可继续打开 Scriptable。" }}
+      </p>
+      <template #footer>
+        <el-button @click="widgetInstructionOpen = false">再看看</el-button>
+        <el-button type="primary" :disabled="widgetInstructionCountdown > 0" @click="continueToScriptable">
+          {{ widgetInstructionCountdown > 0 ? `${widgetInstructionCountdown}s` : "继续打开 Scriptable" }}
         </el-button>
       </template>
     </el-dialog>
@@ -475,7 +508,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Aim, ArrowLeft, ArrowRight, Download, Iphone, Loading, Lock, Moon, MoreFilled, Picture, Refresh } from "@element-plus/icons-vue";
+import { Aim, ArrowLeft, ArrowRight, Download, Iphone, Loading, Lock, Moon, MoreFilled, Picture, QuestionFilled, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
@@ -639,6 +672,8 @@ async function onJumpAndClose() {
 const installPromptRef = ref<InstanceType<typeof InstallPromptDialog> | null>(null);
 const openBrowserPromptRef = ref<InstanceType<typeof OpenBrowserPromptDialog> | null>(null);
 const widgetDialogOpen = ref(false);
+const widgetInstructionOpen = ref(false);
+const widgetInstructionCountdown = ref(10);
 const moreMenuOpen = ref(false);
 const moreMenuView = ref<"menu" | "theme">("menu");
 const widgetConfigCopying = ref(false);
@@ -646,7 +681,9 @@ const widgetConfigCopied = ref(false);
 const androidWidgetInstalling = ref(false);
 const scriptableWidgetScript = ref("");
 const widgetCopyMessage = ref("");
-const widgetScriptPreviewRef = ref<HTMLTextAreaElement | null>(null);
+const APK_DOWNLOAD_URL = "/downloads/CPU-Web.apk";
+const SCRIPTABLE_ADD_URL = "https://open.scriptable.app/add";
+let widgetInstructionTimer = 0;
 type WidgetMenuPlatform = "ios" | "android" | "android-old";
 interface AndroidWidgetBridge {
   getVersionCode?: () => number;
@@ -728,11 +765,17 @@ async function installAndroidWidget() {
 function showAndroidUpdateRequired() {
   moreMenuOpen.value = false;
   const currentVersion = getAndroidNativeVersionCode();
-  void ElMessageBox.alert(
+  void ElMessageBox.confirm(
     `当前安卓客户端版本过低，暂不支持桌面小组件。请先卸载旧版，再安装最新版。${currentVersion ? `（当前版本：${currentVersion}，需要：${ANDROID_WIDGET_MIN_VERSION_CODE}+）` : ""}`,
     "需要更新安卓客户端",
-    { confirmButtonText: "我知道了" },
-  );
+    {
+      confirmButtonText: "下载最新版",
+      cancelButtonText: "稍后",
+      type: "warning",
+    },
+  ).then(() => {
+    window.location.href = APK_DOWNLOAD_URL;
+  }).catch(() => undefined);
 }
 
 async function copyScriptableWidgetScript() {
@@ -747,38 +790,64 @@ async function copyScriptableWidgetScript() {
       scriptableWidgetScript.value = buildScriptableWidgetScript(token.endpoint);
       await nextTick();
     }
-    const copied = await writeClipboard(scriptableWidgetScript.value, widgetScriptPreviewRef.value);
+    const copied = await writeClipboard(scriptableWidgetScript.value);
     widgetConfigCopied.value = copied;
     widgetCopyMessage.value = copied
-      ? "配置已复制到剪切板。"
-      : "浏览器拦截了剪切板写入，请长按下方文本全选复制，或再点一次“复制配置”。";
+      ? "配置已复制到剪切板，可以继续第 3 步。"
+      : "系统暂时拦截了剪切板写入。请保持弹窗打开，再点一次“复制配置”。";
     if (copied) ElMessage.success("已复制 Scriptable 配置");
-    else ElMessage.warning("已生成配置，但剪切板写入被浏览器拦截");
+    else ElMessage.warning("已生成配置，请再点一次复制配置");
   } finally {
     widgetConfigCopying.value = false;
   }
 }
 
-async function writeClipboard(text: string, visibleTextarea?: HTMLTextAreaElement | null): Promise<boolean> {
+async function openScriptableInstruction() {
+  if (!widgetConfigCopied.value) {
+    await copyScriptableWidgetScript();
+  }
+  if (!widgetConfigCopied.value) return;
+  widgetInstructionOpen.value = true;
+}
+
+function startWidgetInstructionCountdown() {
+  stopWidgetInstructionCountdown();
+  widgetInstructionCountdown.value = 10;
+  widgetInstructionTimer = window.setInterval(() => {
+    widgetInstructionCountdown.value = Math.max(0, widgetInstructionCountdown.value - 1);
+    if (widgetInstructionCountdown.value <= 0) stopWidgetInstructionCountdown();
+  }, 1000);
+}
+
+function stopWidgetInstructionCountdown() {
+  if (!widgetInstructionTimer) return;
+  window.clearInterval(widgetInstructionTimer);
+  widgetInstructionTimer = 0;
+}
+
+function continueToScriptable() {
+  if (widgetInstructionCountdown.value > 0) return;
+  widgetInstructionOpen.value = false;
+  window.location.href = SCRIPTABLE_ADD_URL;
+}
+
+async function writeClipboard(text: string): Promise<boolean> {
   const legacyCopy = () => {
-    const textarea = visibleTextarea ?? document.createElement("textarea");
-    const temporary = !visibleTextarea;
-    if (temporary) {
-      textarea.value = text;
-      textarea.setAttribute("readonly", "true");
-      textarea.style.position = "fixed";
-      textarea.style.left = "0";
-      textarea.style.top = "0";
-      textarea.style.width = "1px";
-      textarea.style.height = "1px";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-    }
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "true");
+    textarea.style.position = "fixed";
+    textarea.style.left = "0";
+    textarea.style.top = "0";
+    textarea.style.width = "1px";
+    textarea.style.height = "1px";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
     textarea.focus({ preventScroll: true });
     textarea.select();
     textarea.setSelectionRange(0, textarea.value.length);
     const ok = document.execCommand("copy");
-    if (temporary) textarea.remove();
+    textarea.remove();
     return ok;
   };
 
@@ -797,11 +866,6 @@ async function writeClipboard(text: string, visibleTextarea?: HTMLTextAreaElemen
     }
   }
   return false;
-}
-
-function selectWidgetScript(event: FocusEvent) {
-  const target = event.target as HTMLTextAreaElement | null;
-  target?.select();
 }
 
 function buildScriptableWidgetScript(endpoint: string) {
@@ -934,6 +998,7 @@ onBeforeUnmount(() => {
   window.visualViewport?.removeEventListener("resize", updateViewportHeight);
   window.visualViewport?.removeEventListener("scroll", updateViewportHeight);
   clearStaticWeekAnimation();
+  stopWidgetInstructionCountdown();
   if (scheduleEditsSaveTimer) {
     window.clearTimeout(scheduleEditsSaveTimer);
     scheduleEditsSaveTimer = 0;
@@ -3223,11 +3288,43 @@ function prewarmScheduleCacheForWeek(wk: string) {
   gap: 10px;
 }
 
+.widget-dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #172033;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.widget-help-btn {
+  width: 24px;
+  height: 24px;
+  border: 1px solid #dde4ee;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--schedule-accent-strong);
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+:global(.widget-help-popover) {
+  line-height: 1.65;
+}
+
+.widget-help-text {
+  margin: 0;
+  color: #475467;
+  font-size: 12px;
+}
+
 .widget-step {
   width: 100%;
   min-height: 48px;
   border: 1px solid #dde4ee;
-  border-radius: 12px;
+  border-radius: 10px;
   background: #fff;
   color: #172033;
   display: flex;
@@ -3237,6 +3334,18 @@ function prewarmScheduleCacheForWeek(wk: string) {
   font: inherit;
   text-decoration: none;
   cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s, transform 0.15s;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.widget-step:hover {
+  border-color: var(--schedule-accent);
+  background: var(--schedule-accent-pale);
+  box-shadow: 0 6px 16px rgba(24, 34, 51, 0.08);
+}
+
+.widget-step:active {
+  transform: translateY(1px);
 }
 
 .widget-step:disabled {
@@ -3256,8 +3365,15 @@ function prewarmScheduleCacheForWeek(wk: string) {
 }
 
 .widget-step span {
+  flex: 1;
+  min-width: 0;
   font-size: 14px;
   font-weight: 650;
+}
+
+.widget-step-arrow {
+  color: #98a2b3;
+  font-size: 14px;
 }
 
 .widget-note {
@@ -3278,17 +3394,26 @@ function prewarmScheduleCacheForWeek(wk: string) {
   color: #b45309;
 }
 
-.widget-script-preview {
-  width: 100%;
-  height: 128px;
-  margin-top: 12px;
-  border: 1px solid #dde4ee;
+.widget-instruction-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #1f2937;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.widget-instruction-list li + li {
+  margin-top: 8px;
+}
+
+.widget-countdown {
+  margin: 14px 0 0;
+  padding: 10px 12px;
   border-radius: 10px;
   background: #f8fafc;
-  color: #475467;
-  padding: 10px;
-  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  resize: vertical;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.5;
 }
 .week-cell {
   border: 1px solid #dde4ee;
