@@ -141,6 +141,7 @@ const strongNoticeReadSeconds = ref(0);
 let strongNoticeTimer: number | null = null;
 let strongNoticePoller: number | null = null;
 let strongNoticeLoading = false;
+let pendingStrongNoticeOpen = false;
 
 const currentStrongNotice = computed(() => strongNoticeQueue.value[0] ?? null);
 
@@ -160,7 +161,7 @@ watch(inAppTipOpen, (open) => {
       openDataAuth();
     }
     if (strongNoticeQueue.value.length && !strongNoticeOpen.value) {
-      openStrongNotice();
+      requestStrongNoticeOpen();
     }
   }
 });
@@ -205,6 +206,7 @@ watch(
   () => {
     if (auth.isLoggedIn) {
       if (auth.needDataAuthAgreement) {
+        suspendStrongNotice();
         if (!inAppTipOpen.value) {
           openDataAuth();
         } else {
@@ -222,12 +224,22 @@ watch(
       clearDataAuthTimer();
       strongNoticeQueue.value = [];
       strongNoticeOpen.value = false;
+      pendingStrongNoticeOpen = false;
       clearStrongNoticeTimer();
       clearStrongNoticePoller();
     }
   },
   { immediate: true }
 );
+
+watch(dataAuthOpen, async (open) => {
+  if (open) {
+    suspendStrongNotice();
+    return;
+  }
+  await nextTick();
+  requestStrongNoticeOpen();
+});
 
 function openDataAuth() {
   if (inAppTipOpen.value) return;
@@ -261,9 +273,7 @@ async function acceptDataAuth() {
   dataAuthOpen.value = false;
   clearDataAuthTimer();
   await nextTick();
-  if (strongNoticeQueue.value.length && !strongNoticeOpen.value) {
-    openStrongNotice();
-  }
+  requestStrongNoticeOpen();
 }
 
 async function loadStrongNotices() {
@@ -277,15 +287,14 @@ async function loadStrongNotices() {
     if (settings && settings.subscribeSystem === false) {
       strongNoticeQueue.value = [];
       strongNoticeOpen.value = false;
+      pendingStrongNoticeOpen = false;
       clearStrongNoticeTimer();
       return;
     }
     strongNoticeQueue.value = (list as NoticeRow[])
       .filter((n) => n.level === "strong" && !n.readAt)
       .sort((a, b) => (new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()));
-    if (strongNoticeQueue.value.length && !strongNoticeOpen.value) {
-      openStrongNotice();
-    }
+    requestStrongNoticeOpen();
   } finally {
     strongNoticeLoading = false;
   }
@@ -297,6 +306,33 @@ function openStrongNotice() {
   if (!currentStrongNotice.value) return;
   strongNoticeOpen.value = true;
   startStrongNoticeTimer();
+}
+
+function requestStrongNoticeOpen() {
+  if (!currentStrongNotice.value) {
+    pendingStrongNoticeOpen = false;
+    return;
+  }
+  if (auth.needDataAuthAgreement || inAppTipOpen.value || dataAuthOpen.value) {
+    pendingStrongNoticeOpen = true;
+    return;
+  }
+  if (strongNoticeOpen.value) {
+    pendingStrongNoticeOpen = false;
+    return;
+  }
+  pendingStrongNoticeOpen = false;
+  openStrongNotice();
+}
+
+function suspendStrongNotice() {
+  if (currentStrongNotice.value) {
+    pendingStrongNoticeOpen = true;
+  }
+  if (strongNoticeOpen.value) {
+    strongNoticeOpen.value = false;
+    clearStrongNoticeTimer();
+  }
 }
 
 function startStrongNoticeTimer() {
@@ -343,9 +379,10 @@ async function ackStrongNotice() {
     if (strongNoticeQueue.value.length) {
       strongNoticeOpen.value = false;
       await nextTick();
-      openStrongNotice();
+      requestStrongNoticeOpen();
     } else {
       strongNoticeOpen.value = false;
+      pendingStrongNoticeOpen = false;
       clearStrongNoticeTimer();
     }
   } catch {

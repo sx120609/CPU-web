@@ -369,7 +369,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { Aim, ArrowLeft, ArrowRight, Download, Loading, Lock, Moon, Picture, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
@@ -1387,7 +1387,16 @@ function ensureScheduleEditEnabled() {
   return canUseScheduleEdit();
 }
 
-function restoreHiddenCourse(key: string) {
+async function restoreHiddenCourse(key: string) {
+  try {
+    await ElMessageBox.confirm("确定恢复这门已编辑课程吗？恢复后会重新出现在课表里。", "恢复已编辑课程", {
+      confirmButtonText: "恢复",
+      cancelButtonText: "取消",
+      type: "warning",
+    });
+  } catch {
+    return;
+  }
   scheduleEdits.value = {
     ...scheduleEdits.value,
     hidden: scheduleEdits.value.hidden.filter((item) => item !== key),
