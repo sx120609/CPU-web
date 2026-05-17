@@ -192,8 +192,7 @@ export const scheduleThemePalettes: Record<ScheduleThemeKey, ScheduleThemePalett
     accentPaleHover: "#d3eee8",
     accentBorder: "#9fd9cf",
     accentContrast: "#ffffff",
-    pageBg:
-      "radial-gradient(circle at 16% 2%, rgba(125, 211, 252, 0.26), transparent 28%), radial-gradient(circle at 88% 10%, rgba(196, 181, 253, 0.20), transparent 30%), radial-gradient(circle at 46% 98%, rgba(134, 239, 172, 0.16), transparent 34%), linear-gradient(180deg, #eef7ff 0%, #fbfdff 46%, #f8fafc 100%)",
+    pageBg,
     courseBg: "#f4fbf8",
     courseBorder: "#168776",
     courseText: "#0f5d52",

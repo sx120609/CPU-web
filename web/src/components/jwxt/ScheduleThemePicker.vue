@@ -151,33 +151,6 @@ onBeforeUnmount(() => {
   flex: 0 0 auto;
 }
 
-:global(.theme-color-glass) .icon-btn {
-  border-color: rgba(255, 255, 255, 0.62);
-  background: rgba(255, 255, 255, 0.70);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.66),
-    0 6px 18px rgba(36, 58, 91, 0.06);
-  backdrop-filter: blur(12px) saturate(135%);
-  -webkit-backdrop-filter: blur(12px) saturate(135%);
-}
-
-:global(.theme-color-glass) .icon-btn.active {
-  border-color: rgba(255, 255, 255, 0.62);
-  background: linear-gradient(135deg, rgba(22, 135, 118, 0.88), rgba(59, 130, 246, 0.76));
-  color: #fff;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.30),
-    0 8px 20px rgba(22, 135, 118, 0.14);
-}
-
-:global(.theme-color-glass) .theme-panel {
-  border-color: rgba(255, 255, 255, 0.68);
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 14px 34px rgba(36, 58, 91, 0.12);
-  backdrop-filter: blur(16px) saturate(140%);
-  -webkit-backdrop-filter: blur(16px) saturate(140%);
-}
-
 @media (max-width: 390px) {
   .icon-btn {
     width: 36px;

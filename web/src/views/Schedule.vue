@@ -2034,33 +2034,6 @@ function prewarmScheduleCacheForWeek(wk: string) {
   border-color: var(--schedule-accent);
   color: var(--schedule-accent-contrast);
 }
-.theme-color-glass {
-  background: var(--schedule-page-bg);
-}
-.theme-color-glass .sem-select :deep(.el-select__wrapper),
-.theme-color-glass .view-switch,
-.theme-color-glass .icon-btn,
-.theme-color-glass .week-btn,
-.theme-color-glass .week-title,
-.theme-color-glass .day-pill {
-  border-color: rgba(255, 255, 255, 0.64);
-  background: rgba(255, 255, 255, 0.70);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.56),
-    0 4px 12px rgba(36, 58, 91, 0.045);
-  backdrop-filter: blur(12px) saturate(135%);
-  -webkit-backdrop-filter: blur(12px) saturate(135%);
-}
-.theme-color-glass .view-switch button.active,
-.theme-color-glass .day-pill.active,
-.theme-color-glass .icon-btn.active {
-  border-color: rgba(255, 255, 255, 0.56);
-  background: linear-gradient(135deg, rgba(22, 135, 118, 0.88), rgba(59, 130, 246, 0.78));
-  color: #fff;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.24),
-    0 5px 14px rgba(22, 135, 118, 0.10);
-}
 .icon-btn.spinning .el-icon {
   animation: spin 0.9s linear infinite;
 }
@@ -2569,19 +2542,6 @@ function prewarmScheduleCacheForWeek(wk: string) {
   touch-action: pan-y;
 }
 
-.theme-color-glass .day-slot-cell,
-.theme-color-glass .week-slot-cell,
-.theme-color-glass .week-day-head {
-  border-color: rgba(255, 255, 255, 0.56);
-  background: rgba(255, 255, 255, 0.42);
-}
-.theme-color-glass .week-grid-head {
-  background: rgba(248, 251, 255, 0.70);
-}
-.theme-color-glass .week-day-head.today,
-.theme-color-glass .week-slot-cell.today {
-  background: rgba(204, 251, 241, 0.54);
-}
 .theme-color-glass .day-course-block,
 .theme-color-glass .week-course {
   border-width: 1px;
