@@ -2326,7 +2326,9 @@ function prewarmScheduleCacheForWeek(wk: string) {
 
 .course-editor-panel {
   width: 100%;
-  height: min(72dvh, 620px);
+  height: auto;
+  max-height: calc(100vh - 14px);
+  max-height: calc(100svh - 14px);
   max-width: 720px;
   background: #f3f4f8;
   color: #0f172a;
@@ -2397,6 +2399,8 @@ function prewarmScheduleCacheForWeek(wk: string) {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  max-height: calc(100vh - 102px);
+  max-height: calc(100svh - 102px);
   padding: 0 16px calc(24px + env(safe-area-inset-bottom));
 }
 
@@ -2502,6 +2506,8 @@ function prewarmScheduleCacheForWeek(wk: string) {
 
 .editor-week-picker {
   display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  align-items: start;
   gap: 12px;
   margin: 0 18px;
   padding: 15px 0;
@@ -2512,23 +2518,27 @@ function prewarmScheduleCacheForWeek(wk: string) {
   font-size: 16px;
   font-weight: 650;
   color: #0b1220;
+  padding-top: 5px;
 }
 
 .week-chip-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
+  max-height: 130px;
+  overflow-y: auto;
+  padding-right: 2px;
 }
 
 .week-chip-grid button {
   min-width: 0;
-  min-height: 34px;
+  min-height: 30px;
   border: 1px solid #d8dee8;
-  border-radius: 10px;
+  border-radius: 9px;
   background: #fff;
   color: #475467;
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
 }
 
@@ -2564,8 +2574,20 @@ function prewarmScheduleCacheForWeek(wk: string) {
   }
 
   .course-editor-panel {
-    height: min(760px, 90vh);
+    height: auto;
+    max-height: min(760px, 90vh);
     border-radius: 24px;
+  }
+}
+
+@media (max-width: 380px) {
+  .editor-week-picker {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .editor-week-picker > span {
+    padding-top: 0;
   }
 }
 
