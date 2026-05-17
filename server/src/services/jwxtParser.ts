@@ -141,23 +141,48 @@ export function parseSchedule(html: string): ScheduleResult {
   };
 }
 
-/** "1-17(周)" → [1,2,...,17]； "1-17(单周)" → 奇数； "1-17(双周)" → 偶数 */
+/** 解析教务周次文本：1-17(周)、1-17(单周)、1-8周,10-12周、1、3、5周 等。 */
 function parseWeeks(text: string): number[] {
-  const m = text.match(/(\d+)-(\d+)\((周|单周|双周)\)/);
-  if (!m) {
-    const single = text.match(/^(\d+)\(/);
-    if (single) return [Number(single[1])];
-    return [];
+  const source = normalizeWeekText(text);
+  if (!source) return [];
+  const out = new Set<number>();
+  const clauses = source.split(/[,，、;；]+/).map((item) => item.trim()).filter(Boolean);
+
+  for (const clause of clauses.length ? clauses : [source]) {
+    const kind = parseWeekKind(clause);
+    const matches = [...clause.matchAll(/(\d{1,2})\s*(?:[-~至到]\s*(\d{1,2}))?/g)];
+    for (const match of matches) {
+      const start = Number(match[1]);
+      const end = Number(match[2] || match[1]);
+      if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+      const min = Math.max(1, Math.min(start, end));
+      const max = Math.min(64, Math.max(start, end));
+      for (let i = min; i <= max; i++) {
+        if (kind === "odd" && i % 2 === 0) continue;
+        if (kind === "even" && i % 2 === 1) continue;
+        out.add(i);
+      }
+    }
   }
-  const [, a, b, kind] = m;
-  const start = Number(a), end = Number(b);
-  const out: number[] = [];
-  for (let i = start; i <= end; i++) {
-    if (kind === "单周" && i % 2 === 0) continue;
-    if (kind === "双周" && i % 2 === 1) continue;
-    out.push(i);
-  }
-  return out;
+
+  return [...out].sort((a, b) => a - b);
+}
+
+function normalizeWeekText(text: string) {
+  return String(text ?? "")
+    .replace(/[０-９]/g, (char) => String(char.charCodeAt(0) - 0xff10))
+    .replace(/[（]/g, "(")
+    .replace(/[）]/g, ")")
+    .replace(/[－–—~～]/g, "-")
+    .replace(/第/g, "")
+    .replace(/\s+/g, "");
+}
+
+function parseWeekKind(text: string): "all" | "odd" | "even" {
+  if (/单双周/.test(text)) return "all";
+  if (/单周|\(单\)|[^双]单/.test(text)) return "odd";
+  if (/双周|\(双\)|双/.test(text)) return "even";
+  return "all";
 }
 
 /** "(01-02节)" → { startSlot: 1, endSlot: 2 } */

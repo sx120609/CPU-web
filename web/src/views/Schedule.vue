@@ -396,6 +396,7 @@ import {
   type CustomScheduleItem,
   type ScheduleEditState,
 } from "@/utils/scheduleEdits";
+import { courseMatchesWeek, normalizedCourseWeekList } from "@/utils/scheduleWeeks";
 
 interface ScheduleCourse {
   name: string;
@@ -1357,14 +1358,6 @@ function courseTitle(course: ScheduleCourse) {
   ].filter(Boolean).join("\n");
 }
 
-function courseMatchesWeek(course: ScheduleCourse, wk: number) {
-  if (!wk) return true;
-  if (Array.isArray(course.weekList) && course.weekList.length) {
-    return course.weekList.includes(wk);
-  }
-  return true;
-}
-
 function courseFamilyKey(day: number, bigSlot: number, course: ScheduleCourse) {
   const range = normalizeSlotRange(bigSlot, course);
   return [
@@ -1592,7 +1585,7 @@ async function restoreOriginalCourse() {
 }
 
 function setFormWeeksFromCourse(course: ScheduleCourse) {
-  const list = Array.isArray(course.weekList) ? [...course.weekList].filter(Boolean).sort((a, b) => a - b) : [];
+  const list = normalizedCourseWeekList(course);
   const all = weekNumberOptions.value;
   const current = Number(editingWeekValue.value || activeWeekNumber.value || week.value || 1);
   if (!list.length || (all.length > 0 && list.length === all.length && all.every((w) => list.includes(w)))) {
