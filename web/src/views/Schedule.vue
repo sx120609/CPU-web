@@ -2034,6 +2034,37 @@ function prewarmScheduleCacheForWeek(wk: string) {
   border-color: var(--schedule-accent);
   color: var(--schedule-accent-contrast);
 }
+.theme-color-glass {
+  --schedule-colorful-control: linear-gradient(135deg, #f43f5e 0%, #f97316 22%, #22c55e 48%, #3b82f6 74%, #8b5cf6 100%);
+  --schedule-colorful-control-soft: linear-gradient(135deg, rgba(244, 63, 94, 0.12), rgba(34, 197, 94, 0.10) 46%, rgba(59, 130, 246, 0.14) 72%, rgba(139, 92, 246, 0.12));
+  --schedule-colorful-control-border: rgba(118, 105, 255, 0.34);
+}
+.theme-color-glass .view-switch button.active,
+.theme-color-glass .day-pill.active,
+.theme-color-glass .icon-btn.active,
+.theme-color-glass .week-cell.active {
+  border-color: transparent;
+  background: var(--schedule-colorful-control);
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.26),
+    0 5px 14px rgba(78, 99, 188, 0.13);
+}
+.theme-color-glass .week-title,
+.theme-color-glass .week-day-head.today {
+  border: 1px solid var(--schedule-colorful-control-border);
+  background: var(--schedule-colorful-control-soft);
+  color: #3b2f9a;
+}
+.theme-color-glass .week-title.clickable:hover,
+.theme-color-glass .week-title.clickable:active {
+  background: linear-gradient(135deg, rgba(244, 63, 94, 0.16), rgba(34, 197, 94, 0.13) 46%, rgba(59, 130, 246, 0.18) 72%, rgba(139, 92, 246, 0.16));
+}
+.theme-color-glass .day-pill.today,
+.theme-color-glass .week-cell.current {
+  border-color: var(--schedule-colorful-control-border);
+  color: #3b2f9a;
+}
 .icon-btn.spinning .el-icon {
   animation: spin 0.9s linear infinite;
 }

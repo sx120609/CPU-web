@@ -17,6 +17,7 @@
         v-if="open"
         ref="panelRef"
         class="theme-panel"
+        :class="{ 'is-colorful': theme === 'color-glass' }"
         :style="[panelStyle, panelThemeVars]"
         role="menu"
         aria-label="选择课表主题"
@@ -147,6 +148,15 @@ onBeforeUnmount(() => {
   color: var(--schedule-accent-contrast);
 }
 
+:global(.theme-color-glass) .icon-trigger.active {
+  border-color: transparent;
+  background: linear-gradient(135deg, #f43f5e 0%, #f97316 22%, #22c55e 48%, #3b82f6 74%, #8b5cf6 100%);
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.26),
+    0 5px 14px rgba(78, 99, 188, 0.13);
+}
+
 .icon-trigger .el-icon {
   font-size: 18px;
 }
@@ -193,6 +203,13 @@ onBeforeUnmount(() => {
   border-color: var(--schedule-accent-border);
   background: var(--schedule-accent-pale);
   color: var(--schedule-accent-strong);
+}
+
+.theme-panel.is-colorful .theme-choice.active {
+  border-color: transparent;
+  background: linear-gradient(135deg, #f43f5e 0%, #f97316 22%, #22c55e 48%, #3b82f6 74%, #8b5cf6 100%);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
 }
 
 .theme-swatch {
