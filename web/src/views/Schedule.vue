@@ -2643,8 +2643,8 @@ function prewarmScheduleCacheForWeek(wk: string) {
 .course-editor-panel {
   width: 100%;
   height: auto;
-  max-height: min(76vh, 620px);
-  max-height: min(76svh, 620px);
+  max-height: min(92svh, 760px);
+  max-height: min(92dvh, 760px);
   max-width: 720px;
   background: #f6f7fb;
   color: #0f172a;
@@ -2715,8 +2715,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  max-height: calc(76vh - 54px);
-  max-height: calc(76svh - 54px);
+  max-height: none;
   padding: 0 12px calc(12px + env(safe-area-inset-bottom));
 }
 
