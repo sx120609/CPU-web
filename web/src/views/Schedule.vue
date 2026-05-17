@@ -1405,6 +1405,10 @@ function ensureScheduleEditEnabled() {
   return canUseScheduleEdit();
 }
 
+function showEditorMessage(type: "success" | "warning", message: string) {
+  ElMessage({ type, message, offset: 96 });
+}
+
 async function restoreHiddenCourse(key: string) {
   await loadScheduleEdits();
   try {
@@ -1474,14 +1478,14 @@ async function openCourseEditor(block: WeekCourseBlock, targetWeek = currentWeek
 function saveCourseEdit() {
   const name = customCourseForm.name.trim();
   if (!name) {
-    ElMessage.warning("请填写课程名称");
+    showEditorMessage("warning", "请填写课程名称");
     return;
   }
   const startSlot = clampSlot(customCourseForm.startSlot);
   const endSlot = Math.max(startSlot, clampSlot(customCourseForm.endSlot));
   const weekList = customCourseWeekList();
   if (customCourseForm.weekMode === "custom" && !weekList.length) {
-    ElMessage.warning("请选择周次");
+    showEditorMessage("warning", "请选择周次");
     return;
   }
   const existing = editingCourseBlock.value?.course.customId
@@ -1514,7 +1518,7 @@ function saveCourseEdit() {
   scheduleEdits.value = { hidden, custom: [...custom, item] };
   persistScheduleEdits();
   editDialogOpen.value = false;
-  ElMessage.success(editingCourseBlock.value ? "已保存课程" : "已添加到课表");
+  showEditorMessage("success", editingCourseBlock.value ? "已保存课程" : "已添加到课表");
 }
 
 async function deleteEditingCourse() {
@@ -1547,7 +1551,7 @@ async function deleteEditingCourse() {
   scheduleEdits.value = next;
   persistScheduleEdits();
   editDialogOpen.value = false;
-  ElMessage.success("已从课表隐藏");
+  showEditorMessage("success", "已从课表隐藏");
 }
 
 async function restoreOriginalCourse() {
@@ -1561,7 +1565,7 @@ async function restoreOriginalCourse() {
   };
   persistScheduleEdits();
   editDialogOpen.value = false;
-  ElMessage.success("已恢复原始课程");
+  showEditorMessage("success", "已恢复原始课程");
 }
 
 function setFormWeeksFromCourse(course: ScheduleCourse) {
