@@ -1417,7 +1417,7 @@ async function deleteEditingCourse() {
     };
   } else {
     next = {
-      hidden: next.hidden.filter((key) => !hiddenKeysToRemove.has(key)),
+      hidden: [...new Set([...next.hidden, ...hiddenKeysToRemove])],
       custom: next.custom.filter((item) => courseFamilyKey(item.day, item.bigSlot, item.course) !== targetFamilyKey),
     };
   }
