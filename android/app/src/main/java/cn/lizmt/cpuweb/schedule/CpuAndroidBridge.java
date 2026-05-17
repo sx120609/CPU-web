@@ -3,6 +3,8 @@ package cn.lizmt.cpuweb.schedule;
 import android.app.Activity;
 import android.appwidget.AppWidgetManager;
 import android.content.ComponentName;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Build;
 import android.webkit.JavascriptInterface;
 import android.widget.Toast;
@@ -24,6 +26,18 @@ final class CpuAndroidBridge {
     @JavascriptInterface
     public boolean supportsScheduleWidget() {
         return true;
+    }
+
+    @JavascriptInterface
+    public void openExternalUrl(String url) {
+        activity.runOnUiThread(() -> {
+            try {
+                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                activity.startActivity(intent);
+            } catch (Exception ignored) {
+                Toast.makeText(activity, "无法打开系统浏览器", Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
     @JavascriptInterface

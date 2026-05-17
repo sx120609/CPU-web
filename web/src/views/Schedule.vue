@@ -395,7 +395,8 @@
       @closed="stopWidgetInstructionCountdown"
     >
       <ol class="widget-instruction-list">
-        <li>打开 Scriptable 导入脚本后，先点击右下角三角形运行测试，确认能看到课表预览。</li>
+        <li>打开 Scriptable 后，先按提示授予软件权限，再把刚才复制的内容粘贴到打开的文本框里。</li>
+        <li>粘贴完成后，点击右下角三角形运行测试，确认能看到课表预览。</li>
         <li>测试完成后回到桌面，长按空白处，进入编辑模式并选择添加小组件。</li>
         <li>找到 Scriptable 小组件并添加到桌面。</li>
         <li>添加后长按小组件，选择编辑小组件，把 Script 设为刚才导入的课表脚本。</li>
@@ -407,6 +408,33 @@
         <el-button @click="widgetInstructionOpen = false">再看看</el-button>
         <el-button type="primary" :disabled="widgetInstructionCountdown > 0" @click="continueToScriptable">
           {{ widgetInstructionCountdown > 0 ? `${widgetInstructionCountdown}s` : "继续打开 Scriptable" }}
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="androidUpdateOpen"
+      title="更新安卓客户端"
+      :width="420"
+      align-center
+      :show-close="true"
+      append-to-body
+      @open="startAndroidUpdateCountdown"
+      @closed="stopAndroidUpdateCountdown"
+    >
+      <div class="android-update-panel">
+        <p>
+          当前安卓客户端版本过低，桌面小组件不可用。
+          请先卸载旧版，再安装最新版。
+        </p>
+        <p class="widget-countdown">
+          {{ androidUpdateCountdown > 0 ? `请先阅读说明，${androidUpdateCountdown} 秒后可继续。` : "已可继续下载最新版。" }}
+        </p>
+      </div>
+      <template #footer>
+        <el-button @click="androidUpdateOpen = false">稍后</el-button>
+        <el-button type="primary" :disabled="androidUpdateCountdown > 0" @click="openAndroidDownload">
+          {{ androidUpdateCountdown > 0 ? `${androidUpdateCountdown}s` : "打开系统浏览器下载" }}
         </el-button>
       </template>
     </el-dialog>
@@ -674,6 +702,8 @@ const openBrowserPromptRef = ref<InstanceType<typeof OpenBrowserPromptDialog> | 
 const widgetDialogOpen = ref(false);
 const widgetInstructionOpen = ref(false);
 const widgetInstructionCountdown = ref(10);
+const androidUpdateOpen = ref(false);
+const androidUpdateCountdown = ref(5);
 const moreMenuOpen = ref(false);
 const moreMenuView = ref<"menu" | "theme">("menu");
 const widgetConfigCopying = ref(false);
@@ -684,11 +714,13 @@ const widgetCopyMessage = ref("");
 const APK_DOWNLOAD_URL = "/downloads/CPU-Web.apk";
 const SCRIPTABLE_ADD_URL = "https://open.scriptable.app/add";
 let widgetInstructionTimer = 0;
+let androidUpdateTimer = 0;
 type WidgetMenuPlatform = "ios" | "android" | "android-old";
 interface AndroidWidgetBridge {
   getVersionCode?: () => number;
   supportsScheduleWidget?: () => boolean;
   installScheduleWidget?: (payload: string) => void;
+  openExternalUrl?: (url: string) => void;
 }
 async function openInstallPrompt() {
   const inApp = detectInAppBrowser();
@@ -764,18 +796,33 @@ async function installAndroidWidget() {
 
 function showAndroidUpdateRequired() {
   moreMenuOpen.value = false;
-  const currentVersion = getAndroidNativeVersionCode();
-  void ElMessageBox.confirm(
-    `当前安卓客户端版本过低，暂不支持桌面小组件。请先卸载旧版，再安装最新版。${currentVersion ? `（当前版本：${currentVersion}，需要：${ANDROID_WIDGET_MIN_VERSION_CODE}+）` : ""}`,
-    "需要更新安卓客户端",
-    {
-      confirmButtonText: "下载最新版",
-      cancelButtonText: "稍后",
-      type: "warning",
-    },
-  ).then(() => {
-    window.location.href = APK_DOWNLOAD_URL;
-  }).catch(() => undefined);
+  androidUpdateOpen.value = true;
+}
+
+function openAndroidDownload() {
+  androidUpdateOpen.value = false;
+  const bridge = getAndroidWidgetBridge();
+  const absoluteUrl = new URL(APK_DOWNLOAD_URL, window.location.origin).toString();
+  if (bridge?.openExternalUrl) {
+    bridge.openExternalUrl(absoluteUrl);
+    return;
+  }
+  window.open(absoluteUrl, "_blank", "noopener,noreferrer");
+}
+
+function startAndroidUpdateCountdown() {
+  stopAndroidUpdateCountdown();
+  androidUpdateCountdown.value = 5;
+  androidUpdateTimer = window.setInterval(() => {
+    androidUpdateCountdown.value = Math.max(0, androidUpdateCountdown.value - 1);
+    if (androidUpdateCountdown.value <= 0) stopAndroidUpdateCountdown();
+  }, 1000);
+}
+
+function stopAndroidUpdateCountdown() {
+  if (!androidUpdateTimer) return;
+  window.clearInterval(androidUpdateTimer);
+  androidUpdateTimer = 0;
 }
 
 async function copyScriptableWidgetScript() {
@@ -999,6 +1046,7 @@ onBeforeUnmount(() => {
   window.visualViewport?.removeEventListener("scroll", updateViewportHeight);
   clearStaticWeekAnimation();
   stopWidgetInstructionCountdown();
+  stopAndroidUpdateCountdown();
   if (scheduleEditsSaveTimer) {
     window.clearTimeout(scheduleEditsSaveTimer);
     scheduleEditsSaveTimer = 0;
@@ -3327,7 +3375,8 @@ function prewarmScheduleCacheForWeek(wk: string) {
   border-radius: 10px;
   background: #fff;
   color: #172033;
-  display: flex;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) 16px;
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
@@ -3369,6 +3418,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   min-width: 0;
   font-size: 14px;
   font-weight: 650;
+  text-align: center;
 }
 
 .widget-step-arrow {
@@ -3414,6 +3464,20 @@ function prewarmScheduleCacheForWeek(wk: string) {
   color: #667085;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.android-update-panel {
+  color: #1f2937;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.android-update-panel p {
+  margin: 0;
+}
+
+.android-update-panel p + p {
+  margin-top: 10px;
 }
 .week-cell {
   border: 1px solid #dde4ee;
