@@ -58,6 +58,8 @@ export const useJwxtStore = defineStore("jwxt", {
         if (!r.active) {
           clearJwxtToken();
           this.token = "";
+        } else {
+          void this.refreshWidgetTokens();
         }
       } catch {
         this.active = false;
@@ -78,6 +80,7 @@ export const useJwxtStore = defineStore("jwxt", {
         this.token = getJwxtToken();
         this.active = !!this.token;
         if (remember) this.rememberSaved = hasCreds();
+        void this.refreshWidgetTokens();
         return true;
       }
       // 失败：auth store 已经把错误/验证码状态 setattr 好，本 store 的 getter 会代理出来
@@ -100,6 +103,11 @@ export const useJwxtStore = defineStore("jwxt", {
       } catch {
         return false;
       }
+    },
+    async refreshWidgetTokens() {
+      if (!this.token || !this.active || !useAuthStore().isLoggedIn) return;
+      try { await jwxtApi.refreshScheduleWidgetTokens({ silent: true }); }
+      catch { /* 小组件续期是兜底能力，不影响主流程 */ }
     },
     forgetSavedCreds() {
       clearCreds();

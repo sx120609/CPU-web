@@ -123,6 +123,16 @@ function absoluteWidgetEndpoint(req: any, token: string) {
   return `${base}/api/jwxt/schedule-widget?token=${encodeURIComponent(token)}`;
 }
 
+function parseWidgetCache(payload?: string | null) {
+  if (!payload) return null;
+  try {
+    const parsed = JSON.parse(payload);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeSlotRange(bigSlot: number, course: any) {
   const fallbackStart = Math.max(1, Math.min(MAX_SMALL_SLOT, bigSlot * 2 - 1));
   const fallbackEnd = Math.max(fallbackStart, Math.min(MAX_SMALL_SLOT, bigSlot * 2));
@@ -379,6 +389,23 @@ jwxtRouter.post(
   }
 );
 
+jwxtRouter.post("/schedule-widget-tokens/refresh", authRequired, async (req: any, res, next) => {
+  try {
+    const jwxtToken = getToken(req);
+    if (!jwxtToken) throw Errors.unauthorized("请先登录教务系统");
+    const status = await getStatus(jwxtToken);
+    if (!status?.active) throw Errors.unauthorized("教务会话已失效，请重新授权");
+    const result = await prisma.scheduleWidgetToken.updateMany({
+      where: { userId: req.user.userId, revokedAt: null },
+      data: {
+        jwxtToken,
+        expiresAt: new Date(Date.now() + WIDGET_TOKEN_TTL_MS),
+      },
+    });
+    ok(res, { updated: result.count });
+  } catch (e) { next(e); }
+});
+
 jwxtRouter.delete("/schedule-widget-tokens/:id", authRequired, async (req: any, res, next) => {
   try {
     const id = Number(req.params.id);
@@ -401,6 +428,8 @@ jwxtRouter.get("/schedule-widget", async (req, res, next) => {
         id: true,
         userId: true,
         jwxtToken: true,
+        cachedPayload: true,
+        cachedAt: true,
         expiresAt: true,
         revokedAt: true,
       },
@@ -411,23 +440,43 @@ jwxtRouter.get("/schedule-widget", async (req, res, next) => {
     }
 
     const requestedWeek = req.query.week ? String(req.query.week) : "";
-    const [calendar, parsed] = await Promise.all([
-      getCalendar(row.jwxtToken).catch(() => null),
-      getSchedule(row.jwxtToken, { week: requestedWeek }),
-    ]);
-    const semester = parsed.currentSemester || "current";
-    const edits = await readScheduleEditsForWidget(row.userId, semester);
-    const payload = buildWidgetPayload(
-      { ...parsed, cells: applyScheduleEditsToCells(parsed.cells ?? [], edits) },
-      calendar,
-      requestedWeek,
-    );
-    await prisma.scheduleWidgetToken.update({
-      where: { id: row.id },
-      data: { lastUsedAt: new Date() },
-    });
-    res.setHeader("Cache-Control", "private, max-age=120");
-    ok(res, payload);
+    try {
+      const [calendar, parsed] = await Promise.all([
+        getCalendar(row.jwxtToken).catch(() => null),
+        getSchedule(row.jwxtToken, { week: requestedWeek }),
+      ]);
+      const semester = parsed.currentSemester || "current";
+      const edits = await readScheduleEditsForWidget(row.userId, semester);
+      const payload = buildWidgetPayload(
+        { ...parsed, cells: applyScheduleEditsToCells(parsed.cells ?? [], edits) },
+        calendar,
+        requestedWeek,
+      );
+      await prisma.scheduleWidgetToken.update({
+        where: { id: row.id },
+        data: {
+          lastUsedAt: new Date(),
+          cachedPayload: JSON.stringify(payload),
+          cachedAt: new Date(),
+        },
+      });
+      res.setHeader("Cache-Control", "private, max-age=120");
+      ok(res, payload);
+    } catch (e: any) {
+      const cached = parseWidgetCache(row.cachedPayload);
+      if (!cached) throw e;
+      await prisma.scheduleWidgetToken.update({
+        where: { id: row.id },
+        data: { lastUsedAt: new Date() },
+      }).catch(() => undefined);
+      res.setHeader("Cache-Control", "private, max-age=60");
+      ok(res, {
+        ...cached,
+        stale: true,
+        cachedAt: row.cachedAt?.toISOString() ?? cached.generatedAt,
+        errorMessage: "教务会话暂时失效，已显示上次成功缓存。回到本站完成授权后会自动恢复更新。",
+      });
+    }
   } catch (e) { next(e); }
 });
 

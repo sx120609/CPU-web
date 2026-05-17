@@ -333,10 +333,14 @@
         </a>
       </div>
       <p class="widget-note">
-        会生成一个只读 token，小组件仅能读取你的课表；如果教务会话失效，请回到本站重新授权并再次复制配置。
+        会生成一个只读 token，小组件仅能读取你的课表；如果教务会话失效，会先显示上次成功缓存。回到本站完成授权后会自动续上，不需要重新添加小组件。
+      </p>
+      <p v-if="widgetCopyMessage" class="widget-copy-message" :class="{ warn: !widgetConfigCopied }">
+        {{ widgetCopyMessage }}
       </p>
       <textarea
         v-if="scriptableWidgetScript"
+        ref="widgetScriptPreviewRef"
         class="widget-script-preview"
         readonly
         :value="scriptableWidgetScript"
@@ -345,7 +349,7 @@
       <template #footer>
         <el-button @click="widgetDialogOpen = false">关闭</el-button>
         <el-button type="primary" :loading="widgetConfigCopying" @click="copyScriptableWidgetScript">
-          {{ widgetConfigCopied ? "重新生成并复制" : "复制配置" }}
+          {{ scriptableWidgetScript ? "复制配置" : "生成并复制" }}
         </el-button>
       </template>
     </el-dialog>
@@ -608,6 +612,8 @@ const moreMenuOpen = ref(false);
 const widgetConfigCopying = ref(false);
 const widgetConfigCopied = ref(false);
 const scriptableWidgetScript = ref("");
+const widgetCopyMessage = ref("");
+const widgetScriptPreviewRef = ref<HTMLTextAreaElement | null>(null);
 async function openInstallPrompt() {
   const inApp = detectInAppBrowser();
   if (inApp.isInApp) {
@@ -628,37 +634,67 @@ function openWidgetDialog() {
 }
 
 async function copyScriptableWidgetScript() {
-  if (!jwxt.isLoggedIn) {
+  if (!jwxt.isLoggedIn && !scriptableWidgetScript.value) {
     ElMessage.warning("请先完成教务授权，再生成小组件配置");
     return;
   }
   widgetConfigCopying.value = true;
   try {
-    const token = await jwxtApi.createScheduleWidgetToken({ name: "iOS 小组件" });
-    const script = buildScriptableWidgetScript(token.endpoint);
-    scriptableWidgetScript.value = script;
-    await writeClipboard(script);
-    widgetConfigCopied.value = true;
-    ElMessage.success("已复制 Scriptable 配置");
+    if (!scriptableWidgetScript.value) {
+      const token = await jwxtApi.createScheduleWidgetToken({ name: "iOS 小组件" });
+      scriptableWidgetScript.value = buildScriptableWidgetScript(token.endpoint);
+      await nextTick();
+    }
+    const copied = await writeClipboard(scriptableWidgetScript.value, widgetScriptPreviewRef.value);
+    widgetConfigCopied.value = copied;
+    widgetCopyMessage.value = copied
+      ? "配置已复制到剪切板。"
+      : "浏览器拦截了剪切板写入，请长按下方文本全选复制，或再点一次“复制配置”。";
+    if (copied) ElMessage.success("已复制 Scriptable 配置");
+    else ElMessage.warning("已生成配置，但剪切板写入被浏览器拦截");
   } finally {
     widgetConfigCopying.value = false;
   }
 }
 
-async function writeClipboard(text: string) {
-  if (navigator.clipboard?.writeText && window.isSecureContext) {
-    await navigator.clipboard.writeText(text);
-    return;
+async function writeClipboard(text: string, visibleTextarea?: HTMLTextAreaElement | null): Promise<boolean> {
+  const legacyCopy = () => {
+    const textarea = visibleTextarea ?? document.createElement("textarea");
+    const temporary = !visibleTextarea;
+    if (temporary) {
+      textarea.value = text;
+      textarea.setAttribute("readonly", "true");
+      textarea.style.position = "fixed";
+      textarea.style.left = "0";
+      textarea.style.top = "0";
+      textarea.style.width = "1px";
+      textarea.style.height = "1px";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+    }
+    textarea.focus({ preventScroll: true });
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+    const ok = document.execCommand("copy");
+    if (temporary) textarea.remove();
+    return ok;
+  };
+
+  try {
+    if (legacyCopy()) return true;
+  } catch {
+    /* continue to async clipboard */
   }
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.setAttribute("readonly", "true");
-  textarea.style.position = "fixed";
-  textarea.style.left = "-9999px";
-  document.body.appendChild(textarea);
-  textarea.select();
-  document.execCommand("copy");
-  textarea.remove();
+
+  if (navigator.clipboard?.writeText && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
 }
 
 function selectWidgetScript(event: FocusEvent) {
@@ -725,8 +761,9 @@ async function render() {
   }
 
   widget.addSpacer();
-  const updated = new Date(data.generatedAt || Date.now());
-  addLine(widget, "更新 " + updated.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }), Font.systemFont(9), color("#98a2b3", "#94a3b8"));
+  const updated = new Date(data.cachedAt || data.generatedAt || Date.now());
+  const updatePrefix = data.stale ? "缓存 " : "更新 ";
+  addLine(widget, updatePrefix + updated.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }), Font.systemFont(9), color("#98a2b3", "#94a3b8"));
   return widget;
 }
 
@@ -3058,6 +3095,17 @@ function prewarmScheduleCacheForWeek(wk: string) {
   color: #667085;
   font-size: 12px;
   line-height: 1.65;
+}
+
+.widget-copy-message {
+  margin: 8px 0 0;
+  color: var(--schedule-accent-strong);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.widget-copy-message.warn {
+  color: #b45309;
 }
 
 .widget-script-preview {

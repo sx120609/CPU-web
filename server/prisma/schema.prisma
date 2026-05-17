@@ -252,7 +252,7 @@ model UserScheduleEdit {
 }
 
 // iOS Scriptable 小组件只读 token。
-// 注意：这里保存的是服务端教务会话 token，不保存学校账号密码；教务会话仍会按服务端内存 session 失效。
+// 注意：这里保存的是服务端教务会话 token 和最近一次成功的小组件课表缓存，不保存学校账号密码。
 model ScheduleWidgetToken {
   id        Int      @id @default(autoincrement())
   userId    Int
@@ -260,6 +260,8 @@ model ScheduleWidgetToken {
   tokenHash String   @unique
   tokenSuffix String
   jwxtToken String
+  cachedPayload String?
+  cachedAt DateTime?
   lastUsedAt DateTime?
   expiresAt DateTime?
   revokedAt DateTime?

@@ -150,6 +150,12 @@ export const jwxtApi = {
   ),
   createScheduleWidgetToken: (payload?: { name?: string }) =>
     inst.post<unknown, ScheduleWidgetTokenResult>("/schedule-widget-tokens", payload ?? {}),
+  refreshScheduleWidgetTokens: (options?: { silent?: boolean }) =>
+    inst.post<unknown, { updated: number }>(
+      "/schedule-widget-tokens/refresh",
+      undefined,
+      options?.silent ? ({ suppressErrorMessage: true } as any) : undefined
+    ),
   listScheduleWidgetTokens: () =>
     inst.get<unknown, Array<Omit<ScheduleWidgetTokenResult, "token" | "endpoint">>>("/schedule-widget-tokens"),
   revokeScheduleWidgetToken: (id: number) =>
