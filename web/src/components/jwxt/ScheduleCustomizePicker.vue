@@ -150,11 +150,11 @@ onBeforeUnmount(() => {
 
 :global(.theme-color-glass) .icon-trigger.active {
   border-color: transparent;
-  background: linear-gradient(135deg, #f43f5e 0%, #f97316 22%, #22c55e 48%, #3b82f6 74%, #8b5cf6 100%);
+  background: linear-gradient(135deg, rgba(244, 63, 94, 0.76) 0%, rgba(249, 115, 22, 0.76) 22%, rgba(34, 197, 94, 0.70) 48%, rgba(59, 130, 246, 0.76) 74%, rgba(139, 92, 246, 0.76) 100%);
   color: #fff;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.26),
-    0 5px 14px rgba(78, 99, 188, 0.13);
+    0 4px 12px rgba(78, 99, 188, 0.09);
 }
 
 .icon-trigger .el-icon {
@@ -207,7 +207,7 @@ onBeforeUnmount(() => {
 
 .theme-panel.is-colorful .theme-choice.active {
   border-color: transparent;
-  background: linear-gradient(135deg, #f43f5e 0%, #f97316 22%, #22c55e 48%, #3b82f6 74%, #8b5cf6 100%);
+  background: linear-gradient(135deg, rgba(244, 63, 94, 0.76) 0%, rgba(249, 115, 22, 0.76) 22%, rgba(34, 197, 94, 0.70) 48%, rgba(59, 130, 246, 0.76) 74%, rgba(139, 92, 246, 0.76) 100%);
   color: #fff;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
 }
