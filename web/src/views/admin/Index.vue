@@ -108,15 +108,40 @@ onMounted(async () => {
   }
   .cpu-card :deep(.el-tabs__header) {
     margin-bottom: 10px;
+    overflow: hidden;
   }
   .cpu-card :deep(.el-tabs__nav-wrap) {
-    overflow: auto;
+    height: 40px;
+    max-height: 40px;
+    overflow-x: auto;
+    overflow-y: hidden;
     scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    overscroll-behavior-y: none;
+    touch-action: pan-x;
   }
   .cpu-card :deep(.el-tabs__nav-wrap::-webkit-scrollbar) {
     display: none;
   }
+  .cpu-card :deep(.el-tabs__nav-scroll) {
+    height: 40px;
+    max-height: 40px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    overscroll-behavior-y: none;
+    touch-action: pan-x;
+  }
+  .cpu-card :deep(.el-tabs__nav-scroll::-webkit-scrollbar) {
+    display: none;
+  }
   .cpu-card :deep(.el-tabs__nav) {
+    float: none;
+    width: max-content;
+    min-width: 100%;
     white-space: nowrap;
   }
   .cpu-card :deep(.el-tabs__item) {
