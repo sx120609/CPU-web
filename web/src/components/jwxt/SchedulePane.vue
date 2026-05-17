@@ -1278,6 +1278,20 @@ function courseFamilyKey(day: number, bigSlot: number, course: ScheduleCourse) {
   ].join("|");
 }
 
+function courseFamilySourceKeys(day: number, bigSlot: number, course: ScheduleCourse) {
+  const targetFamilyKey = courseFamilyKey(day, bigSlot, course);
+  const keys = new Set<string>();
+  for (const source of allKnownScheduleSources()) {
+    for (const cell of source.cells ?? []) {
+      for (const sourceCourse of cell.courses ?? []) {
+        if (courseFamilyKey(cell.day, cell.bigSlot, sourceCourse) !== targetFamilyKey) continue;
+        keys.add(courseEditKey(cell.day, cell.bigSlot, sourceCourse));
+      }
+    }
+  }
+  return keys;
+}
+
 function dayLabel(day: number) {
   return ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][day - 1] ?? `周${day}`;
 }
@@ -1401,14 +1415,23 @@ function saveCourseEdit() {
       slotNote: customCourseForm.note.trim() || `第 ${startSlot}-${endSlot} 节`,
     },
   };
+  const editingBlock = editingCourseBlock.value;
+  const editingFamilyKey = editingBlock ? courseFamilyKey(editingBlock.day, editingBlock.bigSlot, editingBlock.course) : "";
+  const hiddenSourceKeys = new Set<string>();
+  if (editingBlock && !editingBlock.course.customId) {
+    for (const key of courseFamilySourceKeys(editingBlock.day, editingBlock.bigSlot, editingBlock.course)) {
+      hiddenSourceKeys.add(key);
+    }
+    if (item.sourceKey) hiddenSourceKeys.add(item.sourceKey);
+    if (editingCourseKey.value) hiddenSourceKeys.add(editingCourseKey.value);
+  }
   const custom = scheduleEdits.value.custom.filter((entry) => {
     if (entry.id === item.id) return false;
-    return Boolean(item.sourceKey) && entry.sourceKey === item.sourceKey ? false : true;
+    if (Boolean(item.sourceKey) && entry.sourceKey === item.sourceKey) return false;
+    if (editingFamilyKey && courseFamilyKey(entry.day, entry.bigSlot, entry.course) === editingFamilyKey) return false;
+    return true;
   });
-  const hidden = [...scheduleEdits.value.hidden];
-  if (editingCourseBlock.value && !editingCourseBlock.value.course.customId && item.sourceKey && !hidden.includes(item.sourceKey)) {
-    hidden.push(item.sourceKey);
-  }
+  const hidden = [...new Set([...scheduleEdits.value.hidden, ...hiddenSourceKeys])];
   scheduleEdits.value = { hidden, custom: [...custom, item] };
   persistScheduleEdits();
   editDialogOpen.value = false;
@@ -1421,15 +1444,7 @@ async function deleteEditingCourse() {
   if (!block) return;
   let next = { ...scheduleEdits.value };
   const targetFamilyKey = courseFamilyKey(block.day, block.bigSlot, block.course);
-  const hiddenKeysToRemove = new Set<string>();
-  for (const source of allKnownScheduleSources()) {
-    for (const cell of source.cells ?? []) {
-      for (const course of cell.courses ?? []) {
-        if (courseFamilyKey(cell.day, cell.bigSlot, course) !== targetFamilyKey) continue;
-        hiddenKeysToRemove.add(courseEditKey(cell.day, cell.bigSlot, course));
-      }
-    }
-  }
+  const hiddenKeysToRemove = courseFamilySourceKeys(block.day, block.bigSlot, block.course);
   hiddenKeysToRemove.add(editingCourseKey.value || courseEditKey(block.day, block.bigSlot, block.course));
   if (block.course.customId) {
     next = {
@@ -1450,12 +1465,20 @@ async function deleteEditingCourse() {
 
 async function restoreOriginalCourse() {
   await loadScheduleEdits();
-  const sourceKey = editingCourseBlock.value?.course.sourceKey;
-  const customId = editingCourseBlock.value?.course.customId;
+  const block = editingCourseBlock.value;
+  const sourceKey = block?.course.sourceKey;
+  const customId = block?.course.customId;
   if (!sourceKey) return;
+  const keysToRestore = block ? courseFamilySourceKeys(block.day, block.bigSlot, block.course) : new Set<string>();
+  keysToRestore.add(sourceKey);
+  const familyKey = block ? courseFamilyKey(block.day, block.bigSlot, block.course) : "";
   scheduleEdits.value = {
-    hidden: scheduleEdits.value.hidden.filter((key) => key !== sourceKey),
-    custom: scheduleEdits.value.custom.filter((item) => item.id !== customId && item.sourceKey !== sourceKey),
+    hidden: scheduleEdits.value.hidden.filter((key) => !keysToRestore.has(key)),
+    custom: scheduleEdits.value.custom.filter((item) => (
+      item.id !== customId &&
+      item.sourceKey !== sourceKey &&
+      (!familyKey || courseFamilyKey(item.day, item.bigSlot, item.course) !== familyKey)
+    )),
   };
   persistScheduleEdits();
   editDialogOpen.value = false;
