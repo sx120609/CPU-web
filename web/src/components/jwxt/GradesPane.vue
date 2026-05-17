@@ -30,7 +30,7 @@
             筛选后的 GPA 仅基于上方筛选条件计算<br/>
             <code>GPA = max(0, (成绩 − 50) ÷ 10)</code>，封顶 5.0<br/>
             60→1.0 · 70→2.0 · 80→3.0 · 90→4.0 · 100→5.0<br/>
-            等级成绩：优秀 4.5 · 良好 3.5 · 中等 2.5 · 及格 1.5 · 不及格 0
+            等级成绩：优秀/优 4.5 · 良好/良 3.5 · 中等/中 2.5 · 及格/合格 1.5 · 不及格/不合格 0
           </template>
           <el-icon class="hint-icon"><InfoFilled /></el-icon>
         </el-tooltip>
@@ -154,10 +154,18 @@ function scoreToGpa(score?: string): number | undefined {
   const level = raw.replace(/\s+/g, "");
   const levelMap: Record<string, number> = {
     优秀: 4.5,
+    优: 4.5,
     良好: 3.5,
+    良: 3.5,
     中等: 2.5,
+    中: 2.5,
     及格: 1.5,
+    合格: 1.5,
+    通过: 1.5,
     不及格: 0,
+    不合格: 0,
+    不通过: 0,
+    未通过: 0,
   };
   if (Object.prototype.hasOwnProperty.call(levelMap, level)) return levelMap[level];
 

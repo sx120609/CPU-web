@@ -174,7 +174,7 @@ export interface GradeRow {
   semester: string;
   courseCode?: string;
   courseName: string;
-  /** 总成绩（原始字符串，可能含 "及格"/"不及格"/数字） */
+  /** 总成绩（原始字符串，可能含 "优"/"良"/"及格"/数字） */
   score: string;
   /** 总成绩数值，无法解析时为 null */
   scoreNum: number | null;
@@ -199,16 +199,24 @@ export interface GradesResult {
 /**
  * 5.0 制绩点换算（中国药科大学使用）
  *   数字成绩：gpa = max(0, (score - 50) / 10)，封顶 5.0
- *   等级成绩：优秀 4.5；良好 3.5；中等 2.5；及格 1.5；不及格 0
+ *   等级成绩：优秀/优 4.5；良好/良 3.5；中等/中 2.5；及格/合格 1.5；不及格/不合格 0
  */
 export function scoreToGpa(score: string): number | undefined {
   const level = score.replace(/\s+/g, "");
   const levelMap: Record<string, number> = {
     优秀: 4.5,
+    优: 4.5,
     良好: 3.5,
+    良: 3.5,
     中等: 2.5,
+    中: 2.5,
     及格: 1.5,
+    合格: 1.5,
+    通过: 1.5,
     不及格: 0,
+    不合格: 0,
+    不通过: 0,
+    未通过: 0,
   };
   if (Object.prototype.hasOwnProperty.call(levelMap, level)) return levelMap[level];
 
