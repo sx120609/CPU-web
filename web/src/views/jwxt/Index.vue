@@ -526,9 +526,12 @@ async function onProbe() {
 
   .jwxt-page > div:last-child > .cpu-card :deep(.el-tabs__header) {
     margin-bottom: 10px;
+    overflow: hidden;
   }
 
   .jwxt-page > div:last-child > .cpu-card :deep(.el-tabs__nav-wrap) {
+    height: 40px;
+    max-height: 40px;
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none;
@@ -543,10 +546,15 @@ async function onProbe() {
   }
 
   .jwxt-page > div:last-child > .cpu-card :deep(.el-tabs__nav-scroll) {
+    height: 40px;
+    max-height: 40px;
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    overscroll-behavior-y: none;
+    touch-action: pan-x;
   }
 
   .jwxt-page > div:last-child > .cpu-card :deep(.el-tabs__nav-scroll::-webkit-scrollbar) {
