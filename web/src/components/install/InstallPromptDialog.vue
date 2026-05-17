@@ -100,7 +100,7 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
-const APK_DOWNLOAD_URL = "/downloads/CPU-Web.apk";
+const APK_DOWNLOAD_URL = "/downloads/CPU-Web-V2.apk";
 
 const open = ref(false);
 const deferredPrompt = ref<BeforeInstallPromptEvent | null>(null);
@@ -185,7 +185,14 @@ async function installNow() {
 }
 
 function downloadApk() {
-  window.location.href = APK_DOWNLOAD_URL;
+  const absoluteUrl = new URL(APK_DOWNLOAD_URL, window.location.origin).toString();
+  const link = document.createElement("a");
+  link.href = absoluteUrl;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
   open.value = false;
 }
 

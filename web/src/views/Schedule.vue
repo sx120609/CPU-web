@@ -711,7 +711,7 @@ const widgetConfigCopied = ref(false);
 const androidWidgetInstalling = ref(false);
 const scriptableWidgetScript = ref("");
 const widgetCopyMessage = ref("");
-const APK_DOWNLOAD_URL = "/downloads/CPU-Web.apk";
+const APK_DOWNLOAD_URL = "/downloads/CPU-Web-V2.apk";
 const SCRIPTABLE_ADD_URL = "https://open.scriptable.app/add";
 let widgetInstructionTimer = 0;
 let androidUpdateTimer = 0;
@@ -807,7 +807,13 @@ function openAndroidDownload() {
     bridge.openExternalUrl(absoluteUrl);
     return;
   }
-  window.location.href = absoluteUrl;
+  const link = document.createElement("a");
+  link.href = absoluteUrl;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 function startAndroidUpdateCountdown() {
