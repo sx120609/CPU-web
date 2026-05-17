@@ -47,13 +47,14 @@
       <el-table-column label="注册时间" width="160">
         <template #default="{ row }">{{ fmtDate(row.createdAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="340">
+      <el-table-column label="操作" width="400">
         <template #default="{ row }">
           <el-button v-if="row.status === 'active'" text type="danger" size="small" @click="ban(row)">封禁</el-button>
           <el-button v-else text type="success" size="small" @click="unban(row)">解禁</el-button>
           <el-button text size="small" @click="rename(row)">改名</el-button>
           <el-button v-if="auth.isAdmin" text type="warning" size="small" @click="changeRole(row)">改角色</el-button>
           <el-button v-if="auth.isAdmin && !row.studentSso" text size="small" @click="resetPw(row)">重置密码</el-button>
+          <el-button v-if="auth.isAdmin && row.id !== auth.user?.id" text type="danger" size="small" @click="deleteUser(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -229,6 +230,26 @@ async function resetPw(row: any) {
   if (!value) return;
   await adminApi.resetUserPassword(row.id, value);
   ElMessage.success(`已重置 ${row.username} 的密码，请妥善告知本人`);
+}
+
+async function deleteUser(row: any) {
+  const { value } = await ElMessageBox.prompt(
+    `此操作会永久删除用户 ${row.nickname || row.username}（${row.username}）及其帖子、回复、点赞、课程评分和消息记录。\n请输入账号 ${row.username} 确认删除。`,
+    "删除用户",
+    {
+      inputPlaceholder: row.username,
+      inputValidator: (v) => v.trim() === row.username,
+      inputErrorMessage: "请输入完整账号以确认删除",
+      confirmButtonText: "永久删除",
+      cancelButtonText: "取消",
+      type: "warning",
+    }
+  ).catch(() => ({ value: null as any }));
+  if (!value) return;
+  const result = await adminApi.deleteUser(row.id);
+  ElMessage.success(`已删除 ${row.username}，同时删除 ${result.deletedTopics} 个帖子、${result.deletedReplies} 条回复`);
+  if (list.value.length === 1 && page.value > 1) page.value -= 1;
+  await reload();
 }
 </script>
 

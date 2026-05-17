@@ -14,6 +14,8 @@ export const adminApi = {
   }) => request.post<any>("/admin/users", data),
   resetUserPassword: (id: number, newPassword: string) =>
     request.patch<{ ok: true }>(`/admin/users/${id}/password`, { newPassword }),
+  deleteUser: (id: number) =>
+    request.delete<{ deletedUserId: number; deletedTopics: number; deletedReplies: number }>(`/admin/users/${id}`),
   // 站点功能开关
   features: () => request.get<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>("/admin/features"),
   updateFeatures: (patch: { forum?: boolean; market?: boolean; coursereview?: boolean; electric?: boolean }) =>

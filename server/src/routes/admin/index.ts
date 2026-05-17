@@ -119,6 +119,117 @@ adminRouter.patch("/users/:id/password", adminOnly, validate(resetPasswordSchema
   } catch (e) { next(e); }
 });
 
+adminRouter.delete("/users/:id", adminOnly, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) throw Errors.badRequest("用户 ID 不合法");
+    if (id === req.user!.userId) throw Errors.badRequest("不能删除当前登录的自己");
+
+    const target = await prisma.user.findUnique({ where: { id } });
+    if (!target) throw Errors.notFound("用户不存在");
+    if (target.role === "admin") {
+      const adminCount = await prisma.user.count({ where: { role: "admin" } });
+      if (adminCount <= 1) throw Errors.badRequest("不能删除最后一个管理员");
+    }
+    const feedCount = await prisma.schoolFeedSource.count({ where: { botUserId: id } });
+    if (feedCount > 0) throw Errors.badRequest("该账号仍被学校公告爬虫源使用，请先更换爬虫机器人账号");
+
+    const result = await prisma.$transaction(async (tx) => {
+      const topics = await tx.topic.findMany({ where: { authorId: id }, select: { id: true, boardId: true } });
+      const topicIds = topics.map((t) => t.id);
+      const boardIds = Array.from(new Set(topics.map((t) => t.boardId)));
+      const ratings = await tx.courseRating.findMany({
+        where: topicIds.length ? { OR: [{ authorId: id }, { topicId: { in: topicIds } }] } : { authorId: id },
+        select: { courseId: true },
+      });
+      const affectedCourseIds = Array.from(new Set(ratings.map((r) => r.courseId)));
+
+      const replies = await tx.reply.findMany({ where: { authorId: id }, select: { id: true, topicId: true } });
+      const replyIds = replies.map((r) => r.id);
+      const affectedTopicIds = Array.from(new Set(replies.map((r) => r.topicId).filter((topicId) => !topicIds.includes(topicId))));
+
+      if (replyIds.length) {
+        await tx.reply.updateMany({
+          where: { parentReplyId: { in: replyIds } },
+          data: { parentReplyId: null },
+        });
+      }
+
+      if (topicIds.length) {
+        await tx.courseRating.deleteMany({ where: { OR: [{ authorId: id }, { topicId: { in: topicIds } }] } });
+        await tx.schoolFeedItem.deleteMany({ where: { topicId: { in: topicIds } } });
+      } else {
+        await tx.courseRating.deleteMany({ where: { authorId: id } });
+      }
+
+      if (replyIds.length) {
+        await tx.reply.deleteMany({ where: { id: { in: replyIds } } });
+      }
+      if (topicIds.length) {
+        await tx.topic.deleteMany({ where: { id: { in: topicIds } } });
+      }
+
+      await tx.notificationRead.deleteMany({ where: { userId: id } });
+      await tx.notification.deleteMany({ where: { userId: id } });
+      await tx.messageSetting.deleteMany({ where: { userId: id } });
+      await tx.userCourse.deleteMany({ where: { userId: id } });
+      await tx.like.deleteMany({ where: { userId: id } });
+
+      for (const topicId of affectedTopicIds) {
+        const [replyCount, lastReply] = await Promise.all([
+          tx.reply.count({ where: { topicId, hidden: false } }),
+          tx.reply.findFirst({
+            where: { topicId, hidden: false },
+            orderBy: { createdAt: "desc" },
+            select: { createdAt: true, authorId: true },
+          }),
+        ]);
+        await tx.topic.update({
+          where: { id: topicId },
+          data: {
+            replyCount,
+            lastReplyAt: lastReply?.createdAt ?? null,
+            lastReplyById: lastReply?.authorId ?? null,
+          },
+        });
+      }
+
+      for (const boardId of boardIds) {
+        const count = await tx.topic.count({ where: { boardId, hidden: false } });
+        await tx.board.update({ where: { id: boardId }, data: { topicCount: count } });
+      }
+
+      for (const courseId of affectedCourseIds) {
+        const agg = await tx.courseRating.aggregate({
+          where: { courseId },
+          _count: true,
+          _avg: { difficulty: true, reward: true, recommend: true, givingScore: true },
+        });
+        await tx.course.update({
+          where: { id: courseId },
+          data: {
+            ratingCount: agg._count,
+            avgDifficulty: agg._avg.difficulty ?? 0,
+            avgReward: agg._avg.reward ?? 0,
+            avgRecommend: agg._avg.recommend ?? 0,
+            avgScore: agg._avg.givingScore ?? 0,
+          },
+        });
+      }
+
+      await tx.user.delete({ where: { id } });
+
+      return {
+        deletedUserId: id,
+        deletedTopics: topicIds.length,
+        deletedReplies: replyIds.length,
+      };
+    });
+
+    ok(res, result);
+  } catch (e) { next(e); }
+});
+
 // ============ 帖子管理 ============
 
 adminRouter.get("/topics", modOrAbove, async (req, res, next) => {
