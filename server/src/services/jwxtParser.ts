@@ -183,7 +183,7 @@ export interface GradeRow {
   final?: string;     // 期末成绩
   credits?: number;
   hours?: number;
-  /** 学校列表不返回绩点，由总成绩计算（4.0 制） */
+  /** 学校列表不返回绩点，由总成绩计算（5.0 制） */
   gpa?: number;
   /** 课程性质（必修/选修/任选） */
   courseAttr?: string;
@@ -197,13 +197,24 @@ export interface GradesResult {
 }
 
 /**
- * 5.0 制绩点公式（中国药科大学使用）
- *   gpa = max(0, (score - 50) / 10)，封顶 5.0
- *   ≥ 60 → 1.0；70 → 2.0；80 → 3.0；90 → 4.0；100 → 5.0
- *   < 60 → 0
+ * 5.0 制绩点换算（中国药科大学使用）
+ *   数字成绩：gpa = max(0, (score - 50) / 10)，封顶 5.0
+ *   等级成绩：优秀 4.5；良好 3.5；中等 2.5；及格 1.5；不及格 0
  */
-function scoreToGpa(s: number): number {
-  if (!Number.isFinite(s) || s < 60) return 0;
+function scoreToGpa(score: string): number | undefined {
+  const level = score.replace(/\s+/g, "");
+  const levelMap: Record<string, number> = {
+    优秀: 4.5,
+    良好: 3.5,
+    中等: 2.5,
+    及格: 1.5,
+    不及格: 0,
+  };
+  if (Object.prototype.hasOwnProperty.call(levelMap, level)) return levelMap[level];
+
+  const s = parseFloat(score);
+  if (!Number.isFinite(s)) return undefined;
+  if (s < 60) return 0;
   const g = (s - 50) / 10;
   return Math.min(5.0, Math.max(0, Math.round(g * 100) / 100));
 }
@@ -255,7 +266,7 @@ export function parseGrades(html: string): GradesResult {
         final: idxFinal >= 0 ? cells[idxFinal] : undefined,
         credits: Number.isFinite(credits) ? credits : undefined,
         hours: idxHours >= 0 ? (parseFloat(cells[idxHours]) || undefined) : undefined,
-        gpa: Number.isFinite(scoreNum) ? scoreToGpa(scoreNum) : undefined,
+        gpa: scoreToGpa(score),
         courseAttr: idxAttr >= 0 ? cells[idxAttr] : undefined,
         examType: idxExam >= 0 ? cells[idxExam] : undefined,
         remark: idxRemark >= 0 ? cells[idxRemark] : undefined,
