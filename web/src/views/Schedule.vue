@@ -308,6 +308,7 @@
       :width="320"
       align-center
       :show-close="true"
+      append-to-body
     >
       <div class="week-grid-pick">
         <button
@@ -333,6 +334,7 @@
       :width="420"
       align-center
       :show-close="true"
+      append-to-body
     >
       <div class="widget-guide">
         <a class="widget-step" href="https://apps.apple.com/app/scriptable/id1405459188" target="_blank" rel="noreferrer">
@@ -807,6 +809,8 @@ Script.complete();
 }
 
 onMounted(async () => {
+  document.documentElement.classList.add("schedule-scroll-lock");
+  document.body.classList.add("schedule-scroll-lock");
   jwxt.hydrate();
   hasCreds.value = hasSavedCreds();
   restoreScheduleTheme();
@@ -841,6 +845,8 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  document.documentElement.classList.remove("schedule-scroll-lock");
+  document.body.classList.remove("schedule-scroll-lock");
   window.removeEventListener("resize", updateViewportHeight);
   window.visualViewport?.removeEventListener("resize", updateViewportHeight);
   window.visualViewport?.removeEventListener("scroll", updateViewportHeight);
@@ -2195,6 +2201,29 @@ function prewarmScheduleCacheForWeek(wk: string) {
 </script>
 
 <style scoped lang="scss">
+:global(html.schedule-scroll-lock),
+:global(body.schedule-scroll-lock) {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+:global(body.schedule-scroll-lock #app) {
+  height: 100%;
+  overflow: hidden;
+}
+
+:global(body.schedule-scroll-lock .layout-root),
+:global(body.schedule-scroll-lock .main--bare) {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+:global(body.schedule-scroll-lock .main--bare) {
+  padding: 0 !important;
+}
+
 .schedule-page {
   position: relative;
   isolation: isolate;
@@ -2682,6 +2711,8 @@ function prewarmScheduleCacheForWeek(wk: string) {
 }
 .carousel-track {
   display: grid;
+  min-height: 0;
+  max-height: 100%;
   height: 100%;
   width: 300%;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2708,6 +2739,8 @@ function prewarmScheduleCacheForWeek(wk: string) {
   min-height: 0;
   width: 100%;
   height: 100%;
+  max-height: 100%;
+  overflow: hidden;
   contain: layout paint;
   transform: translateZ(0);
 }
@@ -2815,7 +2848,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   border: 1px solid rgba(218, 227, 239, 0.82);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.46);
   cursor: pointer;
-  touch-action: manipulation;
+  touch-action: pan-y;
 }
 .day-course-block {
   z-index: 2;
@@ -2971,7 +3004,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   border: 1px solid rgba(226, 234, 244, 0.78);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38);
   cursor: pointer;
-  touch-action: manipulation;
+  touch-action: pan-y;
 }
 .week-slot-cell.today {
   background: rgba(232, 246, 243, 0.48);
