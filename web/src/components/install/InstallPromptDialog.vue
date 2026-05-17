@@ -68,6 +68,12 @@
       <p class="muted">部分浏览器（微信/QQ 内置 / 较老 Chrome）不支持安装。</p>
     </div>
 
+    <p v-if="!isStandalone && !isNativeApp" class="support-note">
+      仍有疑问，建议
+      <button type="button" @click="openUserGroup">加入用户 QQ 群 {{ USER_QQ_GROUP }}</button>
+      咨询。
+    </p>
+
     <template #footer>
       <div class="footer">
         <el-button
@@ -95,6 +101,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
+import { USER_QQ_GROUP, openUserGroup } from "@/utils/userGroup";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -315,5 +322,23 @@ defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platfo
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.support-note {
+  margin: 12px 0 0;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.support-note button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #168776;
+  font: inherit;
+  font-weight: 650;
+  padding: 0;
+  cursor: pointer;
 }
 </style>

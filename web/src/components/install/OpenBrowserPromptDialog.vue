@@ -33,6 +33,11 @@
       <p class="muted">
         微信 / QQ 内置浏览器不支持完整的添加桌面或安装流程。
       </p>
+      <p class="support-note">
+        仍有疑问，建议
+        <button type="button" @click="openUserGroup">加入用户 QQ 群 {{ USER_QQ_GROUP }}</button>
+        咨询。
+      </p>
     </div>
 
     <template #footer>
@@ -46,6 +51,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
+import { USER_QQ_GROUP, openUserGroup } from "@/utils/userGroup";
 
 const open = ref(false);
 const inAppBrowser = computed(() => detectInAppBrowser());
@@ -141,6 +147,23 @@ defineExpose({ openDialog, autoPromptIfEligible });
 .muted {
   color: #6b7280;
   font-size: 12px;
+}
+
+.support-note {
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.support-note button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #168776;
+  font: inherit;
+  font-weight: 650;
+  padding: 0;
+  cursor: pointer;
 }
 
 .footer {

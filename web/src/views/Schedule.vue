@@ -376,6 +376,11 @@
       <p v-if="widgetCopyMessage" class="widget-copy-message" :class="{ warn: !widgetConfigCopied }">
         {{ widgetCopyMessage }}
       </p>
+      <p class="support-note">
+        仍有疑问，建议
+        <button type="button" @click="openUserGroup">加入用户 QQ 群 {{ USER_QQ_GROUP }}</button>
+        咨询。
+      </p>
       <template #footer>
         <el-button @click="widgetDialogOpen = false">关闭</el-button>
         <el-button type="primary" :loading="widgetConfigCopying" @click="copyScriptableWidgetScript">
@@ -404,6 +409,11 @@
       <p class="widget-countdown">
         {{ widgetInstructionCountdown > 0 ? `请先阅读说明，${widgetInstructionCountdown} 秒后可继续。` : "已可继续打开 Scriptable。" }}
       </p>
+      <p class="support-note">
+        仍有疑问，建议
+        <button type="button" @click="openUserGroup">加入用户 QQ 群 {{ USER_QQ_GROUP }}</button>
+        咨询。
+      </p>
       <template #footer>
         <el-button @click="widgetInstructionOpen = false">再看看</el-button>
         <el-button type="primary" :disabled="widgetInstructionCountdown > 0" @click="continueToScriptable">
@@ -429,6 +439,11 @@
         </p>
         <p class="widget-countdown">
           {{ androidUpdateCountdown > 0 ? `请先阅读说明，${androidUpdateCountdown} 秒后可继续。` : "已可复制下载链接。" }}
+        </p>
+        <p class="support-note">
+          仍有疑问，建议
+          <button type="button" @click="openUserGroup">加入用户 QQ 群 {{ USER_QQ_GROUP }}</button>
+          咨询。
         </p>
       </div>
       <template #footer>
@@ -456,6 +471,11 @@
       </ol>
       <p class="widget-countdown">
         部分国内系统会拦截 App 主动拉起小组件添加面板，手动添加是更稳定的方式。
+      </p>
+      <p class="support-note">
+        仍有疑问，建议
+        <button type="button" @click="openUserGroup">加入用户 QQ 群 {{ USER_QQ_GROUP }}</button>
+        咨询。
       </p>
       <template #footer>
         <el-button type="primary" @click="androidWidgetGuideOpen = false">我知道了</el-button>
@@ -572,7 +592,7 @@ import {
   isIosStandalone,
   supportsAndroidScheduleWidget,
 } from "@/utils/clientInfo";
-import { USER_QQ_GROUP, USER_QQ_GROUP_HINT_KEY } from "@/utils/userGroup";
+import { USER_QQ_GROUP, USER_QQ_GROUP_HINT_KEY, openUserGroup } from "@/utils/userGroup";
 import InstallPromptDialog from "@/components/install/InstallPromptDialog.vue";
 import OpenBrowserPromptDialog from "@/components/install/OpenBrowserPromptDialog.vue";
 import {
@@ -3456,6 +3476,24 @@ function prewarmScheduleCacheForWeek(wk: string) {
   color: #667085;
   font-size: 12px;
   line-height: 1.65;
+}
+
+.support-note {
+  margin: 12px 0 0;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.support-note button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--schedule-accent-strong);
+  font: inherit;
+  font-weight: 650;
+  padding: 0;
+  cursor: pointer;
 }
 
 .widget-copy-message {
