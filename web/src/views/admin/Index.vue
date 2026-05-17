@@ -94,7 +94,39 @@ onMounted(async () => {
 }
 
 @media (max-width: 720px) {
+  .admin-page { gap: 12px; }
   .admin-head { align-items: flex-start; gap: 10px; flex-direction: column; }
+  .title { font-size: 21px; }
+  .user-tag { width: 100%; justify-content: space-between; }
   .overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ov-card { padding: 12px; }
+  .ov-num { font-size: 21px; }
+  .cpu-card {
+    margin: 0 -4px;
+    padding: 8px 8px 12px;
+    border-radius: 10px;
+  }
+  .cpu-card :deep(.el-tabs__header) {
+    margin-bottom: 10px;
+  }
+  .cpu-card :deep(.el-tabs__nav-wrap) {
+    overflow: auto;
+    scrollbar-width: none;
+  }
+  .cpu-card :deep(.el-tabs__nav-wrap::-webkit-scrollbar) {
+    display: none;
+  }
+  .cpu-card :deep(.el-tabs__nav) {
+    white-space: nowrap;
+  }
+  .cpu-card :deep(.el-tabs__item) {
+    height: 38px;
+    padding: 0 12px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 420px) {
+  .overview { grid-template-columns: 1fr; }
 }
 </style>

@@ -104,4 +104,35 @@ async function removeAnn(a: any) {
 .ann-title { font-size: 14px; font-weight: 600; color: #1f2937; display: flex; gap: 6px; align-items: center; }
 .ann-content { font-size: 13px; color: #4b5563; margin: 4px 0 4px; }
 .ann-meta { font-size: 11px; color: #9ca3af; }
+
+@media (max-width: 768px) {
+  .ann-pane :deep(.el-card__body) {
+    padding: 12px;
+  }
+  .ann-pane :deep(.el-radio-group) {
+    display: grid;
+    width: 100%;
+    gap: 8px;
+  }
+  .ann-pane :deep(.el-radio-button__inner) {
+    width: 100%;
+    border-left: var(--el-border);
+    border-radius: var(--el-border-radius-base);
+  }
+  .ann-pane :deep(.el-form-item:last-child .el-button) {
+    width: 100%;
+  }
+  .ann-row {
+    gap: 10px;
+    flex-direction: column;
+  }
+  .ann-title {
+    align-items: flex-start;
+    line-height: 1.5;
+  }
+  .ann-row > .el-button {
+    align-self: stretch;
+    margin-left: 0;
+  }
+}
 </style>

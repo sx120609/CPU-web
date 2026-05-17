@@ -49,7 +49,7 @@
       </div>
     </div>
 
-    <el-table :data="list" v-loading="loading" stripe size="default">
+    <el-table :data="list" v-loading="loading" stripe size="default" class="admin-table">
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column label="用户" min-width="190">
         <template #default="{ row }">
@@ -115,6 +115,52 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <div class="mobile-list" v-loading="loading">
+      <article v-for="row in list" :key="row.id" class="mobile-card">
+        <div class="mobile-card-head">
+          <div class="user-cell">
+            <b>{{ row.nickname || "未设置昵称" }}</b>
+            <span>{{ row.username }} · ID {{ row.id }}</span>
+          </div>
+          <el-tag :type="row.status === 'active' ? 'success' : row.status === 'banned' ? 'danger' : 'warning'" size="small" effect="plain">
+            {{ row.status }}
+          </el-tag>
+        </div>
+        <div class="tag-stack">
+          <el-tag :type="roleTag(row.role)" size="small">{{ row.role }}</el-tag>
+          <el-tag v-if="row.studentSso" type="primary" size="small" effect="plain">统一认证</el-tag>
+          <el-tag :type="clientTagType(row.lastLoginClient)" size="small" effect="plain">
+            {{ clientLabel(row.lastLoginClient) }}
+          </el-tag>
+          <el-tag v-if="row.usedIosClient" type="info" size="small" effect="plain">iOS</el-tag>
+          <el-tag v-if="row.usedAndroidClient" type="success" size="small" effect="plain">安卓</el-tag>
+        </div>
+        <div class="mobile-meta">
+          <span>登录：{{ row.lastLoginAt ? fmtDate(row.lastLoginAt) : "未登录" }}</span>
+          <span>注册：{{ fmtDate(row.createdAt) }}</span>
+          <span>{{ row.postCount }} 帖 / {{ row.replyCount }} 回</span>
+        </div>
+        <div class="mobile-actions">
+          <el-button v-if="row.status === 'active'" type="danger" plain size="small" @click="ban(row)">封禁</el-button>
+          <el-button v-else type="success" plain size="small" @click="unban(row)">解禁</el-button>
+          <el-button plain size="small" @click="rename(row)">改名</el-button>
+          <el-dropdown v-if="auth.isAdmin" trigger="click" @command="handleCommand($event, row)">
+            <el-button plain size="small">
+              更多<el-icon class="more-icon"><MoreFilled /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="role">改角色</el-dropdown-item>
+                <el-dropdown-item v-if="!row.studentSso" command="password">重置密码</el-dropdown-item>
+                <el-dropdown-item v-if="row.id !== auth.user?.id" command="delete" divided>删除用户</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+      </article>
+      <el-empty v-if="!loading && !list.length" description="没有符合条件的用户" />
+    </div>
 
     <el-pagination
       v-if="total > size"
@@ -398,6 +444,7 @@ async function deleteUser(row: any) {
 .content-count,
 .muted-date { font-size: 12px; color: #4b5563; }
 .more-icon { margin-left: 2px; transform: rotate(90deg); }
+.mobile-list { display: none; }
 
 @media (max-width: 768px) {
   .filter-panel { padding: 10px; }
@@ -408,5 +455,48 @@ async function deleteUser(row: any) {
   .sort-select,
   .date-range { width: 100%; }
   .actions { justify-content: flex-start; margin-left: 0; }
+  .actions :deep(.el-button) { flex: 1; min-width: 96px; margin-left: 0; }
+  .admin-table { display: none; }
+  .mobile-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 120px;
+  }
+  .mobile-card {
+    padding: 12px;
+    border: 1px solid #eef0f4;
+    border-radius: 8px;
+    background: #fff;
+  }
+  .mobile-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .mobile-meta {
+    display: grid;
+    gap: 4px;
+    margin-top: 10px;
+    font-size: 12px;
+    color: #6b7280;
+  }
+  .mobile-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+  .mobile-actions :deep(.el-button) {
+    flex: 1;
+    min-width: 76px;
+    margin-left: 0;
+  }
+  .pager { overflow-x: auto; justify-content: flex-start; padding-bottom: 2px; }
+  .users-pane :deep(.el-dialog) {
+    width: calc(100vw - 24px) !important;
+    margin-top: 5vh;
+  }
 }
 </style>
