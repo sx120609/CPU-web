@@ -34,16 +34,6 @@
           v-if="parsed"
           type="button"
           class="icon-btn"
-          aria-label="编辑课表"
-          title="编辑课表"
-          @click="openEditDialog"
-        >
-          <el-icon><EditPen /></el-icon>
-        </button>
-        <button
-          v-if="parsed"
-          type="button"
-          class="icon-btn"
           :class="{ active: isViewingToday }"
           :aria-label="viewMode === 'week' ? '回到本周' : '跳转到当日'"
           :title="viewMode === 'week' ? '回到本周' : '跳转到当日'"
@@ -366,7 +356,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { Aim, ArrowLeft, ArrowRight, Download, EditPen, Loading, Lock, Moon, Picture, Refresh } from "@element-plus/icons-vue";
+import { Aim, ArrowLeft, ArrowRight, Download, Loading, Lock, Moon, Picture, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
@@ -1150,10 +1140,6 @@ async function submitCaptcha() {
 function dayOfWeek() {
   const d = new Date().getDay();
   return d === 0 ? 7 : d;
-}
-
-function openEditDialog() {
-  openAddCourse(activeDay.value, 1, currentWeekValue());
 }
 
 function updateViewportHeight() {
@@ -2505,9 +2491,24 @@ function prewarmScheduleCacheForWeek(wk: string) {
   margin-bottom: 16px;
 }
 
-.schedule-edit-dialog :deep(.el-dialog__body) {
-  max-height: min(68vh, 620px);
+:global(.schedule-edit-dialog.el-dialog),
+:global(.schedule-edit-dialog .el-dialog) {
+  max-height: min(86vh, 680px);
+  display: flex;
+  flex-direction: column;
+}
+
+:global(.schedule-edit-dialog.el-dialog .el-dialog__body),
+:global(.schedule-edit-dialog .el-dialog__body) {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
   overflow: auto;
+}
+
+:global(.schedule-edit-dialog.el-dialog .el-dialog__footer),
+:global(.schedule-edit-dialog .el-dialog__footer) {
+  flex: none;
 }
 
 .edit-section:last-child {
@@ -2589,6 +2590,15 @@ function prewarmScheduleCacheForWeek(wk: string) {
   gap: 2px;
 }
 
+.custom-course-form :deep(.el-form-item) {
+  margin-bottom: 12px;
+}
+
+.custom-course-form :deep(.el-form-item__label) {
+  margin-bottom: 4px;
+  line-height: 1.25;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2632,13 +2642,50 @@ function prewarmScheduleCacheForWeek(wk: string) {
     gap: 0;
   }
 
-  .schedule-edit-dialog :deep(.el-dialog) {
-    width: 94vw !important;
-    margin: 0 auto;
+  :global(.schedule-edit-dialog.el-dialog),
+  :global(.schedule-edit-dialog .el-dialog) {
+    position: fixed;
+    inset: auto 0 0 0;
+    width: 100vw !important;
+    max-width: 100vw;
+    max-height: min(88dvh, calc(100vh - env(safe-area-inset-top) - 12px));
+    margin: 0 !important;
+    border-radius: 18px 18px 0 0;
+    overflow: hidden;
   }
 
-  .schedule-edit-dialog :deep(.el-dialog__body) {
-    max-height: calc(100vh - 190px);
+  :global(.schedule-edit-dialog.el-dialog .el-dialog__header),
+  :global(.schedule-edit-dialog .el-dialog__header) {
+    flex: none;
+    padding: 14px 16px 8px;
+    margin-right: 0;
+  }
+
+  :global(.schedule-edit-dialog.el-dialog .el-dialog__body),
+  :global(.schedule-edit-dialog .el-dialog__body) {
+    padding: 6px 14px 10px;
+  }
+
+  :global(.schedule-edit-dialog.el-dialog .el-dialog__footer),
+  :global(.schedule-edit-dialog .el-dialog__footer) {
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+    border-top: 1px solid #eef0f4;
+    background: #fff;
+  }
+
+  :global(.schedule-edit-dialog.el-dialog .el-dialog__footer .el-button),
+  :global(.schedule-edit-dialog .el-dialog__footer .el-button) {
+    min-width: 72px;
+    margin-left: 6px;
+  }
+
+  .edit-section {
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .custom-course-form :deep(.el-form-item) {
+    margin-bottom: 8px;
   }
 
   .week-list-form-item {
