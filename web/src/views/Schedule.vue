@@ -375,6 +375,7 @@ import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
+import { detectClientPlatform } from "@/utils/clientInfo";
 import { USER_QQ_GROUP, USER_QQ_GROUP_HINT_KEY } from "@/utils/userGroup";
 import InstallPromptDialog from "@/components/install/InstallPromptDialog.vue";
 import OpenBrowserPromptDialog from "@/components/install/OpenBrowserPromptDialog.vue";
@@ -462,7 +463,6 @@ const THEME_KEY = "cpu-schedule-theme-v1";
 const scheduleCacheStore = new Map<string, CacheEnvelope<ScheduleResult>>();
 const prewarmingScheduleKeys = new Set<string>();
 const isNativeScheduleApp = /cpuwebscheduleapp/i.test(navigator.userAgent);
-let editDeniedHintAt = 0;
 let scheduleEditsSaveTimer = 0;
 const smallSlots = [
   { no: 1, start: "08:00", end: "08:45" },
@@ -1379,20 +1379,12 @@ function hasScheduleEditAuth() {
 }
 
 function canUseScheduleEdit() {
-  return isNativeScheduleApp && hasScheduleEditAuth();
+  const client = detectClientPlatform();
+  return (client === "android" || client === "ios") && hasScheduleEditAuth();
 }
 
 function ensureScheduleEditEnabled() {
-  if (canUseScheduleEdit()) return true;
-  const now = Date.now();
-  if (now - editDeniedHintAt < 1600) return false;
-  editDeniedHintAt = now;
-  if (!isNativeScheduleApp) {
-    ElMessage.warning("课表编辑仅客户端可用");
-  } else {
-    ElMessage.warning("请先登录站内账号后再编辑课表");
-  }
-  return false;
+  return canUseScheduleEdit();
 }
 
 function restoreHiddenCourse(key: string) {
@@ -1589,10 +1581,6 @@ function clampSlot(value: number) {
 
 function loadScheduleEdits() {
   const sem = semester.value || parsed.value?.currentSemester || "current";
-  if (!canUseScheduleEdit()) {
-    scheduleEdits.value = emptyScheduleEdits();
-    return;
-  }
   void (async () => {
     try {
       const r = await jwxtApi.getScheduleEdits(sem, { silent: true });

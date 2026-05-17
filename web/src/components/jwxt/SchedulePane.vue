@@ -324,6 +324,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { ElMessage } from "element-plus";
 import { Aim, ArrowLeft, ArrowRight, Moon, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
+import { detectClientPlatform } from "@/utils/clientInfo";
 import { USER_QQ_GROUP, USER_QQ_GROUP_HINT_KEY } from "@/utils/userGroup";
 import {
   getScheduleThemePalette,
@@ -400,7 +401,6 @@ const LAST_CACHE_KEY = "cpu-schedule-last-cache-key-v1";
 const scheduleCacheStore = new Map<string, CacheEnvelope<ScheduleResult>>();
 const prewarmingScheduleKeys = new Set<string>();
 const isNativeScheduleApp = /cpuwebscheduleapp/i.test(navigator.userAgent);
-let editDeniedHintAt = 0;
 let scheduleEditsSaveTimer = 0;
 const smallSlots = [
   { no: 1, start: "08:00", end: "08:45" },
@@ -1273,20 +1273,12 @@ function hasScheduleEditAuth() {
 }
 
 function canUseScheduleEdit() {
-  return isNativeScheduleApp && hasScheduleEditAuth();
+  const client = detectClientPlatform();
+  return (client === "android" || client === "ios") && hasScheduleEditAuth();
 }
 
 function ensureScheduleEditEnabled() {
-  if (canUseScheduleEdit()) return true;
-  const now = Date.now();
-  if (now - editDeniedHintAt < 1600) return false;
-  editDeniedHintAt = now;
-  if (!isNativeScheduleApp) {
-    ElMessage.warning("课表编辑仅客户端可用");
-  } else {
-    ElMessage.warning("请先登录站内账号后再编辑课表");
-  }
-  return false;
+  return canUseScheduleEdit();
 }
 
 function restoreHiddenCourse(key: string) {
@@ -1483,10 +1475,6 @@ function clampSlot(value: number) {
 
 function loadScheduleEdits() {
   const sem = semester.value || parsed.value?.currentSemester || "current";
-  if (!canUseScheduleEdit()) {
-    scheduleEdits.value = emptyScheduleEdits();
-    return;
-  }
   void (async () => {
     try {
       const r = await jwxtApi.getScheduleEdits(sem, { silent: true });

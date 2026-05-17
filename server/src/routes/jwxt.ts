@@ -77,9 +77,9 @@ function normalizeScheduleEdits(input: unknown) {
   return { hidden, custom };
 }
 
-function ensureNativeClient(req: any) {
+function ensureEditClient(req: any) {
   const client = detectLoginClient(req).client;
-  if (client !== "android") throw Errors.forbidden("课表编辑仅客户端可用");
+  if (client !== "android" && client !== "ios") throw Errors.forbidden("课表编辑仅客户端可用");
 }
 
 /** 第一步：获取登录页（拿 lt/execution + 可能的验证码） */
@@ -238,7 +238,6 @@ jwxtRouter.get("/pyfa", async (req, res, next) => {
 
 jwxtRouter.get("/schedule-edits", authRequired, async (req: any, res, next) => {
   try {
-    ensureNativeClient(req);
     const semester = String(req.query.semester || "").trim() || "current";
     const row = await prisma.userScheduleEdit.findUnique({
       where: { userId_semester: { userId: req.user.userId, semester } },
@@ -265,7 +264,7 @@ jwxtRouter.put(
   })),
   async (req: any, res, next) => {
     try {
-      ensureNativeClient(req);
+      ensureEditClient(req);
       const semester = String(req.body.semester || "").trim() || "current";
       const edits = normalizeScheduleEdits(req.body.edits);
       await prisma.userScheduleEdit.upsert({
