@@ -41,7 +41,25 @@
     </div>
 
     <el-empty v-if="!filtered.length && parsed" description="没有符合条件的课程" />
-    <div v-else class="table-scroll">
+    <div v-else class="mobile-course-list">
+      <article v-for="row in filtered" :key="`${row.semester || ''}-${row.courseCode || row.courseName}`" class="pyfa-card">
+        <div class="pyfa-card-head">
+          <div>
+            <b>{{ row.courseName }}</b>
+            <span>{{ row.semester || "未标注学期" }}<template v-if="row.courseCode"> · {{ row.courseCode }}</template></span>
+          </div>
+          <el-tag v-if="row.attr" size="small" :type="attrTagType(row.attr)" effect="plain">{{ row.attr }}</el-tag>
+        </div>
+        <div class="pyfa-meta">
+          <span v-if="row.unit">{{ row.unit }}</span>
+          <span v-if="row.credits">{{ row.credits }} 学分</span>
+          <span v-if="row.hours">{{ row.hours }} 学时</span>
+          <span v-if="row.examMethod">{{ row.examMethod }}</span>
+          <span v-if="row.isExam">{{ row.isExam }}</span>
+        </div>
+      </article>
+    </div>
+    <div v-if="filtered.length" class="table-scroll">
       <el-table :data="filtered" stripe size="default" max-height="600">
         <el-table-column prop="semester" label="开课学期" width="120" sortable />
         <el-table-column prop="courseCode" label="课程编号" width="120" />
@@ -85,6 +103,7 @@ const filterAttr = ref<string[]>([]);
 const keyword = ref("");
 
 watch(() => props.data, (v) => { parsed.value = normalizePyfa(v); }, { immediate: true });
+watch(() => props.loading, (v) => { loading.value = Boolean(v); }, { immediate: true });
 
 function normalizePyfa(v: any) {
   const p = v?.parsed ?? v ?? null;
@@ -205,6 +224,7 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
 .table-scroll :deep(.el-table) {
   min-width: 1000px;
 }
+.mobile-course-list { display: none; }
 
 @media (max-width: 760px) {
   .ctrl-bar {
@@ -240,8 +260,55 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
     white-space: normal;
   }
 
-  :deep(.el-table) {
+  .table-scroll { display: none; }
+
+  .mobile-course-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .pyfa-card {
+    padding: 12px;
+    border: 1px solid #eef0f4;
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  .pyfa-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .pyfa-card-head b {
+    display: block;
+    color: #111827;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  .pyfa-card-head span {
+    display: block;
+    margin-top: 3px;
+    color: #6b7280;
     font-size: 12px;
+  }
+
+  .pyfa-card-head :deep(.el-tag) {
+    flex-shrink: 0;
+    max-width: 72px;
+  }
+
+  .pyfa-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    margin-top: 10px;
+    color: #6b7280;
+    font-size: 12px;
+    line-height: 1.4;
   }
 }
 

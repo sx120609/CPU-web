@@ -15,7 +15,7 @@
       <el-button @click="reload">刷新</el-button>
     </div>
 
-    <el-table :data="list" v-loading="loading" stripe size="default">
+    <el-table :data="list" v-loading="loading" stripe size="default" class="admin-table">
       <el-table-column prop="id" label="ID" width="60" />
       <el-table-column label="板块" width="120">
         <template #default="{ row }">{{ row.board.name }}</template>
@@ -47,6 +47,32 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <div class="mobile-list" v-loading="loading">
+      <article v-for="row in list" :key="row.id" class="topic-card">
+        <div class="topic-title">
+          <span v-if="row.pinned" class="state danger">置顶</span>
+          <span v-if="row.locked" class="state">锁定</span>
+          <span v-if="row.hidden" class="state muted-state">已隐</span>
+          <a :class="{ hidden: row.hidden }" :href="`/forum/topic/${row.id}`" target="_blank">{{ row.title }}</a>
+        </div>
+        <div class="topic-meta">
+          <span>{{ row.board.name }}</span>
+          <span>{{ row.author.nickname }}</span>
+          <span>{{ row.replyCount }} 回 / {{ row.likeCount }} 赞</span>
+          <span>{{ fmtDate(row.createdAt) }}</span>
+        </div>
+        <div class="mobile-actions">
+          <el-button plain size="small" @click="togglePin(row)">{{ row.pinned ? '取消置顶' : '置顶' }}</el-button>
+          <el-button plain size="small" @click="toggleLock(row)">{{ row.locked ? '解锁' : '锁定' }}</el-button>
+          <el-button v-if="!row.hidden" plain type="danger" size="small" @click="hideRow(row)">隐藏</el-button>
+          <el-button v-else plain type="success" size="small" @click="unhide(row)">恢复</el-button>
+          <el-button plain type="warning" size="small" @click="moveBoard(row)">转版</el-button>
+          <el-button plain type="danger" size="small" @click="destroyRow(row)">删除</el-button>
+        </div>
+      </article>
+      <el-empty v-if="!loading && !list.length" description="没有符合条件的帖子" />
+    </div>
 
     <el-pagination
       v-if="total > size"
@@ -148,4 +174,81 @@ async function moveBoard(row: any) {
 .pager { display: flex; justify-content: center; padding-top: 12px; }
 a { color: var(--cpu-primary); text-decoration: none; }
 a:hover { text-decoration: underline; }
+.mobile-list { display: none; }
+
+@media (max-width: 768px) {
+  .ctrl-bar { align-items: stretch; }
+  .ctrl-bar :deep(.el-input),
+  .ctrl-bar :deep(.el-select),
+  .ctrl-bar :deep(.el-radio-group),
+  .ctrl-bar :deep(.el-button) {
+    width: 100% !important;
+  }
+  .ctrl-bar :deep(.el-radio-group) {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .ctrl-bar :deep(.el-radio-button__inner) {
+    width: 100%;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .admin-table { display: none; }
+  .mobile-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 120px;
+  }
+  .topic-card {
+    padding: 12px;
+    border: 1px solid #eef0f4;
+    border-radius: 8px;
+    background: #fff;
+  }
+  .topic-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-weight: 600;
+    line-height: 1.5;
+  }
+  .topic-title a {
+    flex: 1 1 100%;
+    color: #111827;
+  }
+  .topic-title a.hidden {
+    color: #9ca3af;
+    text-decoration: line-through;
+  }
+  .state {
+    border-radius: 4px;
+    background: #f3f4f6;
+    color: #4b5563;
+    padding: 1px 5px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .state.danger { color: #dc2626; background: #fef2f2; }
+  .muted-state { color: #9ca3af; }
+  .topic-meta {
+    display: grid;
+    gap: 4px;
+    margin-top: 8px;
+    color: #6b7280;
+    font-size: 12px;
+  }
+  .mobile-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .mobile-actions :deep(.el-button) {
+    width: 100%;
+    margin-left: 0;
+  }
+  .pager { overflow-x: auto; justify-content: flex-start; padding-bottom: 2px; }
+}
 </style>

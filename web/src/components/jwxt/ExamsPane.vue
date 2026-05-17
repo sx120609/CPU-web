@@ -85,6 +85,7 @@ watch(() => props.data, (v) => {
     semester.value = parsed.value.currentSemester;
   }
 }, { immediate: true });
+watch(() => props.loading, (v) => { loading.value = Boolean(v); }, { immediate: true });
 
 const semesterOptions = computed(() => {
   // 优先用 parsed 返回的；如果没有就用一组常见近期学期作为兜底
@@ -188,6 +189,10 @@ async function reload() {
     grid-template-columns: 1fr 1fr;
   }
 
+  .ctrl-right {
+    align-self: flex-start;
+  }
+
   .exam-card {
     align-items: stretch;
     flex-direction: column;
@@ -213,6 +218,10 @@ async function reload() {
 @media (max-width: 430px) {
   .ctrl-left {
     grid-template-columns: 1fr;
+  }
+
+  .filter-field :deep(.el-select) {
+    min-height: 36px;
   }
 }
 </style>

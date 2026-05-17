@@ -130,4 +130,23 @@ async function toggle(key: FKey, on: boolean) {
 .desc { font-size: 12px; color: #6b7280; margin-top: 4px; line-height: 1.6; }
 .paths { font-size: 11px; color: #9ca3af; margin-top: 4px; }
 .paths code { background: #f3f4f6; padding: 1px 5px; border-radius: 3px; }
+
+@media (max-width: 768px) {
+  .feature-row {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 12px;
+  }
+  .feature-row :deep(.el-switch) {
+    align-self: flex-start;
+  }
+  .title {
+    line-height: 1.45;
+  }
+  .paths code {
+    display: inline;
+    white-space: normal;
+    word-break: break-all;
+  }
+}
 </style>

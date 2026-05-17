@@ -75,6 +75,24 @@
           <span class="cnt">{{ parsed.uncompleted.length }} 门 · {{ totalUncompletedCredits.toFixed(1) }} 学分</span>
         </div>
       </template>
+      <div class="course-card-list">
+        <article v-for="row in parsed.uncompleted" :key="`todo-${row.courseCode || row.courseName}-${row.semester}`" class="course-card">
+          <div class="course-card-head">
+            <div>
+              <b>{{ row.courseName }}</b>
+              <span>{{ row.semester || "未知学期" }}<template v-if="row.courseCode"> · {{ row.courseCode }}</template></span>
+            </div>
+            <el-tag v-if="row.score === '未通过'" type="info" size="small">未通过</el-tag>
+            <el-tag v-else-if="row.score" type="danger" size="small">{{ row.score }}</el-tag>
+            <span v-else class="cpu-muted">未修</span>
+          </div>
+          <div class="course-card-meta">
+            <span v-if="row.credits">{{ row.credits }} 学分</span>
+            <span v-if="row.hours">{{ row.hours }} 学时</span>
+            <span v-if="row.attr">{{ row.attr }}</span>
+          </div>
+        </article>
+      </div>
       <div class="table-scroll">
         <el-table :data="parsed.uncompleted" stripe size="small" max-height="500">
           <el-table-column prop="semester" label="学期" width="120" />
@@ -102,6 +120,22 @@
           <span class="cnt">{{ parsed.completed.length }} 门 · {{ totalCompletedCredits.toFixed(1) }} 学分</span>
         </div>
       </template>
+      <div class="course-card-list">
+        <article v-for="row in parsed.completed" :key="`done-${row.courseCode || row.courseName}-${row.semester}`" class="course-card">
+          <div class="course-card-head">
+            <div>
+              <b>{{ row.courseName }}</b>
+              <span>{{ row.semester || "未知学期" }}<template v-if="row.courseCode"> · {{ row.courseCode }}</template></span>
+            </div>
+            <strong :style="{ color: scoreColor(row.score) }">{{ row.score || "—" }}</strong>
+          </div>
+          <div class="course-card-meta">
+            <span v-if="row.credits">{{ row.credits }} 学分</span>
+            <span v-if="row.hours">{{ row.hours }} 学时</span>
+            <span v-if="row.attr">{{ row.attr }}</span>
+          </div>
+        </article>
+      </div>
       <div class="table-scroll">
         <el-table :data="parsed.completed" stripe size="small" max-height="500">
           <el-table-column prop="semester" label="学期" width="120" />
@@ -147,6 +181,7 @@ onBeforeUnmount(() => {
 });
 
 watch(() => props.data, (v) => { parsed.value = v?.parsed ?? null; }, { immediate: true });
+watch(() => props.loading, (v) => { loading.value = Boolean(v); }, { immediate: true });
 
 const totalEarned = computed(() => {
   if (!parsed.value) return 0;
@@ -370,6 +405,7 @@ function scoreColor(s: string) {
 .table-scroll :deep(.el-table) {
   min-width: 760px;
 }
+.course-card-list { display: none; }
 
 @media (max-width: 760px) {
   .progress-pane {
@@ -416,12 +452,54 @@ function scoreColor(s: string) {
     padding: 12px;
   }
 
-  :deep(.el-table) {
+  .table-scroll { display: none; }
+
+  .course-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .course-card {
+    border: 1px solid #eef0f4;
+    border-radius: 8px;
+    background: #fff;
+    padding: 12px;
+  }
+
+  .course-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .course-card-head b {
+    display: block;
+    color: #111827;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  .course-card-head span {
+    display: block;
+    margin-top: 3px;
+    color: #6b7280;
     font-size: 12px;
   }
 
-  .table-scroll :deep(.el-table) {
-    min-width: 0;
+  .course-card-head strong {
+    flex-shrink: 0;
+    font-size: 15px;
+  }
+
+  .course-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    margin-top: 10px;
+    color: #6b7280;
+    font-size: 12px;
   }
 }
 </style>
