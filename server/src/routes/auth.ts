@@ -5,6 +5,7 @@ import { signToken } from "../utils/jwt";
 import { hashPassword, verifyPassword } from "../utils/password";
 import { Errors, ok } from "../utils/response";
 import { validate } from "../middleware/validate";
+import { authLimiter } from "../middleware/rateLimit";
 import { beginLogin, submitLogin } from "../services/jwxtTransport";
 import { isDev } from "../config";
 import { detectLoginClient } from "../utils/loginClient";
@@ -28,7 +29,7 @@ const registerSchema = z.object({
 //   - 走过学校 SSO 的账号（studentSso=true）禁用此入口，避免与统一身份认证混淆
 //   - 其他账号（新生 / 毕业生 / 站务 / 管理员等）允许凭密码登录
 //   - 公开注册已禁用，账号统一由 admin 后台开通，所以放开 role 限制是安全的
-authRouter.post("/login", validate(loginSchema), async (req, res, next) => {
+authRouter.post("/login", authLimiter, validate(loginSchema), async (req, res, next) => {
   try {
     const { username, password } = req.body;
     const user = await prisma.user.findUnique({ where: { username } });
@@ -60,7 +61,7 @@ authRouter.post("/login", validate(loginSchema), async (req, res, next) => {
 });
 
 // 旧式注册（保留给开发，前端不暴露入口）
-authRouter.post("/register", validate(registerSchema), async (req, res, next) => {
+authRouter.post("/register", authLimiter, validate(registerSchema), async (req, res, next) => {
   try {
     if (!isDev) throw Errors.forbidden("仅支持学校账号登录");
     const { username, password, nickname, college, enrollYear } = req.body;
@@ -91,7 +92,7 @@ authRouter.post("/register", validate(registerSchema), async (req, res, next) =>
 // ============ 学校 SSO 登录（主路径）============
 
 /** 第一步：拿登录页 + 可能的验证码 */
-authRouter.post("/sso-begin", async (_req, res, next) => {
+authRouter.post("/sso-begin", authLimiter, async (_req, res, next) => {
   try {
     const r = await beginLogin();
     ok(res, r);
@@ -103,6 +104,7 @@ authRouter.post("/sso-begin", async (_req, res, next) => {
  */
 authRouter.post(
   "/sso-login",
+  authLimiter,
   validate(z.object({
     pendingId: z.string().min(8),
     username: z.string().min(1),
