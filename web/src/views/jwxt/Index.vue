@@ -134,6 +134,9 @@
         <el-tab-pane label="📊 成绩" name="grades">
           <GradesPane :data="grades" :loading="tabLoading" />
         </el-tab-pane>
+        <el-tab-pane label="📝 考试" name="exams">
+          <ExamsPane :data="exams" :loading="tabLoading" />
+        </el-tab-pane>
         <el-tab-pane label="🎓 学业完成情况" name="progress">
           <ProgressPane :data="progress" :loading="tabLoading" />
         </el-tab-pane>
@@ -170,6 +173,7 @@ import { useJwxtStore } from "@/stores/jwxt";
 import { jwxtApi } from "@/api/jwxt";
 import SchedulePane from "@/components/jwxt/SchedulePane.vue";
 import GradesPane from "@/components/jwxt/GradesPane.vue";
+import ExamsPane from "@/components/jwxt/ExamsPane.vue";
 import ProgressPane from "@/components/jwxt/ProgressPane.vue";
 import PyfaPane from "@/components/jwxt/PyfaPane.vue";
 
@@ -182,10 +186,11 @@ const rules: FormRules = {
   password: [{ required: true, message: "请输入密码" }],
 };
 
-const tab = ref<"schedule" | "grades" | "progress" | "pyfa" | "debug">("schedule");
-type DataTab = "schedule" | "grades" | "progress" | "pyfa";
+const tab = ref<"schedule" | "grades" | "exams" | "progress" | "pyfa" | "debug">("schedule");
+type DataTab = "schedule" | "grades" | "exams" | "progress" | "pyfa";
 const schedule = ref<any>(null);
 const grades = ref<any>(null);
+const exams = ref<any>(null);
 const progress = ref<any>(null);
 const pyfa = ref<any>(null);
 const tabLoading = ref(false);
@@ -255,6 +260,7 @@ function isStale(savedAt: number) {
 function getTabData(t: DataTab) {
   if (t === "schedule") return schedule.value;
   if (t === "grades") return grades.value;
+  if (t === "exams") return exams.value;
   if (t === "progress") return progress.value;
   return pyfa.value;
 }
@@ -263,6 +269,7 @@ function setTabData(t: DataTab, data: any) {
   const normalized = normalizeTabData(t, data);
   if (t === "schedule") schedule.value = normalized;
   else if (t === "grades") grades.value = normalized;
+  else if (t === "exams") exams.value = normalized;
   else if (t === "progress") progress.value = normalized;
   else pyfa.value = normalized;
 }
@@ -307,7 +314,7 @@ function normalizeTabData(t: DataTab, data: any) {
 }
 
 function restoreAllTabCaches() {
-  (["schedule", "grades", "progress", "pyfa"] as DataTab[]).forEach((t) => restoreCachedTab(t));
+  (["schedule", "grades", "exams", "progress", "pyfa"] as DataTab[]).forEach((t) => restoreCachedTab(t));
 }
 
 function fetchTab(t: DataTab) {
@@ -315,6 +322,7 @@ function fetchTab(t: DataTab) {
   const request = (async () => {
     if (t === "schedule") return jwxtApi.schedule();
     if (t === "grades") return jwxtApi.grades();
+    if (t === "exams") return jwxtApi.exams();
     if (t === "progress") return jwxtApi.progress();
     return jwxtApi.pyfa();
   })();
@@ -348,7 +356,7 @@ async function onLogout() {
   await ElMessageBox.confirm("断开当前教务连接？\n如果勾选了「记住账号」，下次打开仍可自动授权。", "确认", { type: "warning" });
   await jwxt.logout();
   ElMessage.success("已断开教务连接");
-  schedule.value = grades.value = progress.value = pyfa.value = null;
+  schedule.value = grades.value = exams.value = progress.value = pyfa.value = null;
   await jwxt.beginLogin();
 }
 
@@ -519,6 +527,34 @@ async function onProbe() {
     padding: 14px;
   }
 
+  .jwxt-page > div:last-child > .cpu-card {
+    margin: 0 -6px;
+    padding: 8px 8px 12px;
+  }
+
+  .jwxt-page > div:last-child > .cpu-card :deep(.el-tabs__header) {
+    margin-bottom: 10px;
+  }
+
+  .jwxt-page > div:last-child > .cpu-card :deep(.el-tabs__nav-wrap) {
+    overflow: auto;
+    scrollbar-width: none;
+  }
+
+  .jwxt-page > div:last-child > .cpu-card :deep(.el-tabs__nav-wrap::-webkit-scrollbar) {
+    display: none;
+  }
+
+  .jwxt-page > div:last-child > .cpu-card :deep(.el-tabs__nav) {
+    white-space: nowrap;
+  }
+
+  .jwxt-page > div:last-child > .cpu-card :deep(.el-tabs__item) {
+    height: 38px;
+    padding: 0 12px;
+    font-size: 13px;
+  }
+
   .login-card {
     max-width: none;
   }
@@ -580,6 +616,10 @@ async function onProbe() {
 
   .debug-pane :deep(.el-input__wrapper) {
     min-width: 0;
+  }
+
+  .debug-pane > div[style] {
+    flex-direction: column;
   }
 }
 </style>

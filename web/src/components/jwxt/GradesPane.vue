@@ -61,6 +61,31 @@
             <h3>{{ semKey }}</h3>
             <span class="sem-sum">{{ rows.length }} 门 · {{ semCredits(rows).toFixed(1) }} 学分 · 平均 GPA {{ semGpa(rows).toFixed(2) }}</span>
           </div>
+          <div class="mobile-grade-list">
+            <article v-for="row in rows" :key="`${row.semester}-${row.courseCode || row.courseName}`" class="grade-card">
+              <div class="grade-main">
+                <div class="course-title">{{ row.courseName }}</div>
+                <div class="course-sub">
+                  <span v-if="row.courseCode">{{ row.courseCode }}</span>
+                  <span v-if="row.credits">{{ row.credits }} 学分</span>
+                  <span v-if="row.hours">{{ row.hours }} 学时</span>
+                  <span v-if="row.examType">{{ row.examType }}</span>
+                </div>
+              </div>
+              <div class="score-badges">
+                <span class="score-pill" :style="{ color: scoreColor(row.scoreNum) }">总评 {{ row.score || "—" }}</span>
+                <span class="score-pill" :style="{ color: gpaColor(row.gpa) }">GPA {{ row.gpa?.toFixed(1) ?? "—" }}</span>
+              </div>
+              <div class="grade-detail">
+                <span>平时 {{ row.usual || "—" }}</span>
+                <span>期中 {{ row.midterm || "—" }}</span>
+                <span>期末 {{ row.final || "—" }}</span>
+              </div>
+              <el-tag v-if="row.courseAttr" class="grade-tag" size="small" :type="attrTagType(row.courseAttr)" effect="plain">
+                {{ row.courseAttr }}
+              </el-tag>
+            </article>
+          </div>
           <div class="table-scroll">
             <el-table :data="rows" stripe size="default">
               <el-table-column v-if="!isMobile" prop="courseCode" label="课程代码" width="110" />
@@ -147,6 +172,7 @@ onBeforeUnmount(() => {
 });
 
 watch(() => props.data, (v) => { parsed.value = normalizeParsedGrades(v?.parsed ?? null); }, { immediate: true });
+watch(() => props.loading, (v) => { loading.value = Boolean(v); }, { immediate: true });
 
 function scoreToGpa(score?: string): number | undefined {
   const raw = String(score ?? "").trim();
@@ -372,6 +398,7 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
 .table-scroll :deep(.el-table) {
   min-width: 1000px;
 }
+.mobile-grade-list { display: none; }
 
 @media (max-width: 760px) {
   .ctrl-bar {
@@ -409,9 +436,62 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
     gap: 4px;
   }
 
-  .table-scroll :deep(.el-table) {
-    min-width: 0;
+  .table-scroll { display: none; }
+
+  .mobile-grade-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .grade-card {
+    position: relative;
+    padding: 12px;
+    border: 1px solid #eef0f4;
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  .course-title {
+    padding-right: 72px;
+    color: #111827;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.45;
+  }
+
+  .course-sub,
+  .grade-detail {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    margin-top: 7px;
+    color: #6b7280;
     font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .score-badges {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .score-pill {
+    border-radius: 6px;
+    background: #f9fafb;
+    padding: 7px 8px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .grade-tag {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    max-width: 68px;
   }
 }
 
