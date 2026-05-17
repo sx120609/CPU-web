@@ -2,6 +2,45 @@
   <el-config-provider :locale="zhCn">
     <router-view />
     <el-dialog
+      v-model="strongNoticeOpen"
+      title="站务强提醒"
+      width="420"
+      class="strong-notice-dialog"
+      append-to-body
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      :show-close="false"
+    >
+      <div v-if="currentStrongNotice" class="strong-notice">
+        <div class="notice-head">
+          <el-tag size="small" type="danger" effect="plain">强提醒</el-tag>
+          <span class="notice-source">{{ currentStrongNotice.source || "站务组" }}</span>
+        </div>
+        <h3 class="notice-title">{{ currentStrongNotice.title }}</h3>
+        <div class="notice-content">{{ currentStrongNotice.content }}</div>
+        <div v-if="currentStrongNotice.link" class="notice-link">
+          <span>相关链接：</span>
+          <a :href="currentStrongNotice.link" target="_blank" rel="noopener noreferrer">{{ currentStrongNotice.link }}</a>
+        </div>
+      </div>
+      <template #footer>
+        <div class="strong-notice-footer">
+          <el-button
+            v-if="currentStrongNotice?.link"
+            plain
+            type="primary"
+            :disabled="strongNoticeReadSeconds > 0"
+            @click="openStrongNoticeLink"
+          >
+            查看详情
+          </el-button>
+          <el-button type="primary" :disabled="strongNoticeReadSeconds > 0" @click="ackStrongNotice">
+            {{ strongNoticeReadSeconds > 0 ? `请先阅读 ${strongNoticeReadSeconds}s` : "我知道了" }}
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+    <el-dialog
       v-model="inAppTipOpen"
       title="建议使用外部浏览器打开"
       width="420"
@@ -32,14 +71,41 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import zhCn from "element-plus/es/locale/lang/zh-cn";
+import { ElMessage } from "element-plus";
+import { useAuthStore } from "@/stores/auth";
+import { useMessageStore } from "@/stores/message";
+import { router } from "@/router";
+import { messageApi } from "@/api/message";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 
+const auth = useAuthStore();
+const msg = useMessageStore();
 const inAppTipOpen = ref(false);
 const inAppBrowserLabel = ref("微信 / QQ");
 const inAppReadSeconds = ref(0);
 let inAppReadTimer: number | null = null;
+
+type NoticeRow = {
+  id: number;
+  title: string;
+  content: string;
+  link?: string | null;
+  source?: string | null;
+  level?: string;
+  readAt?: string | null;
+  createdAt?: string;
+};
+
+const strongNoticeQueue = ref<NoticeRow[]>([]);
+const strongNoticeOpen = ref(false);
+const strongNoticeReadSeconds = ref(0);
+let strongNoticeTimer: number | null = null;
+let strongNoticePoller: number | null = null;
+let strongNoticeLoading = false;
+
+const currentStrongNotice = computed(() => strongNoticeQueue.value[0] ?? null);
 
 onMounted(() => {
   if (isSchedulePage()) return;
@@ -51,11 +117,18 @@ onMounted(() => {
 
 watch(inAppTipOpen, (open) => {
   if (open) startInAppReadTimer();
-  else clearInAppReadTimer();
+  else {
+    clearInAppReadTimer();
+    if (strongNoticeQueue.value.length && !strongNoticeOpen.value) {
+      openStrongNotice();
+    }
+  }
 });
 
 onBeforeUnmount(() => {
   clearInAppReadTimer();
+  clearStrongNoticeTimer();
+  clearStrongNoticePoller();
 });
 
 function dismissInAppTip() {
@@ -85,6 +158,118 @@ function clearInAppReadTimer() {
   }
   if (!inAppTipOpen.value) inAppReadSeconds.value = 0;
 }
+
+watch(
+  () => [auth.token, auth.user?.id],
+  () => {
+    if (auth.isLoggedIn) {
+      void loadStrongNotices();
+      startStrongNoticePoller();
+    } else {
+      strongNoticeQueue.value = [];
+      strongNoticeOpen.value = false;
+      clearStrongNoticeTimer();
+      clearStrongNoticePoller();
+    }
+  },
+  { immediate: true }
+);
+
+async function loadStrongNotices() {
+  if (!auth.isLoggedIn || strongNoticeLoading) return;
+  strongNoticeLoading = true;
+  try {
+    const [list, settings] = await Promise.all([
+      messageApi.list("system").catch(() => []),
+      messageApi.settings().catch(() => null),
+    ]);
+    if (settings && settings.subscribeSystem === false) {
+      strongNoticeQueue.value = [];
+      strongNoticeOpen.value = false;
+      clearStrongNoticeTimer();
+      return;
+    }
+    strongNoticeQueue.value = (list as NoticeRow[])
+      .filter((n) => n.level === "strong" && !n.readAt)
+      .sort((a, b) => (new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()));
+    if (strongNoticeQueue.value.length && !strongNoticeOpen.value) {
+      openStrongNotice();
+    }
+  } finally {
+    strongNoticeLoading = false;
+  }
+}
+
+function openStrongNotice() {
+  if (inAppTipOpen.value) return;
+  if (!currentStrongNotice.value) return;
+  strongNoticeOpen.value = true;
+  startStrongNoticeTimer();
+}
+
+function startStrongNoticeTimer() {
+  clearStrongNoticeTimer();
+  strongNoticeReadSeconds.value = 3;
+  strongNoticeTimer = window.setInterval(() => {
+    strongNoticeReadSeconds.value -= 1;
+    if (strongNoticeReadSeconds.value <= 0) {
+      clearStrongNoticeTimer();
+    }
+  }, 1000);
+}
+
+function clearStrongNoticeTimer() {
+  if (strongNoticeTimer) {
+    window.clearInterval(strongNoticeTimer);
+    strongNoticeTimer = null;
+  }
+  if (!strongNoticeOpen.value) strongNoticeReadSeconds.value = 0;
+}
+
+function startStrongNoticePoller() {
+  if (strongNoticePoller || !auth.isLoggedIn) return;
+  strongNoticePoller = window.setInterval(() => {
+    void loadStrongNotices();
+  }, 60_000);
+}
+
+function clearStrongNoticePoller() {
+  if (strongNoticePoller) {
+    window.clearInterval(strongNoticePoller);
+    strongNoticePoller = null;
+  }
+}
+
+async function ackStrongNotice() {
+  if (strongNoticeReadSeconds.value > 0) return;
+  const current = currentStrongNotice.value;
+  if (!current) return;
+  try {
+    await messageApi.read(current.id);
+    msg.refresh();
+    strongNoticeQueue.value.shift();
+    if (strongNoticeQueue.value.length) {
+      strongNoticeOpen.value = false;
+      await nextTick();
+      openStrongNotice();
+    } else {
+      strongNoticeOpen.value = false;
+      clearStrongNoticeTimer();
+    }
+  } catch {
+    ElMessage.error("已读标记失败，请稍后重试");
+  }
+}
+
+function openStrongNoticeLink() {
+  const current = currentStrongNotice.value;
+  if (!current?.link) return;
+  if (current.link.startsWith("/")) {
+    router.push(current.link);
+  } else {
+    window.open(current.link, "_blank", "noopener");
+  }
+}
 </script>
 
 <style lang="scss">
@@ -106,5 +291,53 @@ html, body, #app {
     color: #6b7280;
     font-size: 13px;
   }
+}
+
+.strong-notice {
+  color: #1f2937;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.notice-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.notice-source {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.notice-title {
+  margin: 0 0 10px;
+  font-size: 18px;
+  line-height: 1.45;
+  color: #111827;
+}
+
+.notice-content {
+  white-space: pre-wrap;
+  color: #374151;
+  font-size: 14px;
+}
+
+.notice-link {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #6b7280;
+  word-break: break-all;
+}
+
+.notice-link a {
+  color: var(--cpu-primary);
+}
+
+.strong-notice-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 </style>
