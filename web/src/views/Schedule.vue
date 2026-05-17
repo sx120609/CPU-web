@@ -703,7 +703,7 @@ const widgetDialogOpen = ref(false);
 const widgetInstructionOpen = ref(false);
 const widgetInstructionCountdown = ref(10);
 const androidUpdateOpen = ref(false);
-const androidUpdateCountdown = ref(5);
+const androidUpdateCountdown = ref(3);
 const moreMenuOpen = ref(false);
 const moreMenuView = ref<"menu" | "theme">("menu");
 const widgetConfigCopying = ref(false);
@@ -807,12 +807,12 @@ function openAndroidDownload() {
     bridge.openExternalUrl(absoluteUrl);
     return;
   }
-  window.open(absoluteUrl, "_blank", "noopener,noreferrer");
+  window.location.href = absoluteUrl;
 }
 
 function startAndroidUpdateCountdown() {
   stopAndroidUpdateCountdown();
-  androidUpdateCountdown.value = 5;
+  androidUpdateCountdown.value = 3;
   androidUpdateTimer = window.setInterval(() => {
     androidUpdateCountdown.value = Math.max(0, androidUpdateCountdown.value - 1);
     if (androidUpdateCountdown.value <= 0) stopAndroidUpdateCountdown();

@@ -125,6 +125,10 @@ public final class MainActivity extends Activity {
         }
 
         if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
+            if (isApkDownload(uri)) {
+                openExternal(uri);
+                return true;
+            }
             String host = uri.getHost();
             if (host != null && host.equalsIgnoreCase(appHost)) {
                 return false;
@@ -139,6 +143,14 @@ public final class MainActivity extends Activity {
             openExternal(uri);
         }
         return true;
+    }
+
+    private boolean isApkDownload(Uri uri) {
+        String path = uri.getPath();
+        if (path == null) {
+            return false;
+        }
+        return path.endsWith(".apk") || path.contains("/downloads/");
     }
 
     private void openExternal(Uri uri) {
