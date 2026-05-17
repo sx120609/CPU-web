@@ -7,6 +7,7 @@ export interface EditableScheduleCourse {
   slotNote?: string;
   startSlot?: number;
   endSlot?: number;
+  sourceKey?: string;
   customId?: string;
   custom?: boolean;
 }
@@ -91,6 +92,7 @@ export function applyScheduleEditsToCells<T extends EditableScheduleCell>(
     const list = byCell.get(key) ?? [];
     list.push({
       ...item.course,
+      sourceKey: item.sourceKey,
       custom: true,
       customId: item.id,
     });

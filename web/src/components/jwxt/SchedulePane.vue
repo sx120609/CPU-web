@@ -226,80 +226,95 @@
     </el-dialog>
 
     <Teleport to="body">
-      <div v-if="editDialogOpen" class="course-editor-overlay" @click.self="editDialogOpen = false">
-        <section class="course-editor-panel" role="dialog" aria-modal="true">
-          <header class="course-editor-nav">
-            <button type="button" @click="editDialogOpen = false">取消</button>
-            <h2>{{ editingCourseBlock ? "修改课程" : "添加课程" }}</h2>
-            <button type="button" class="primary" @click="saveCourseEdit">保存</button>
-          </header>
+      <Transition name="course-editor">
+        <div v-if="editDialogOpen" class="course-editor-overlay" @click.self="editDialogOpen = false">
+          <section class="course-editor-panel" role="dialog" aria-modal="true">
+            <header class="course-editor-nav">
+              <button type="button" @click="editDialogOpen = false">取消</button>
+              <h2>{{ editingCourseBlock ? "修改课程" : "添加课程" }}</h2>
+              <button type="button" class="primary" @click="saveCourseEdit">保存</button>
+            </header>
 
-          <div class="course-editor-scroll">
-            <section class="editor-card">
-              <label class="editor-row">
-                <span>课程</span>
-                <input v-model="customCourseForm.name" maxlength="40" placeholder="课程名称" />
-              </label>
-              <label class="editor-row">
-                <span>老师</span>
-                <input v-model="customCourseForm.teacher" maxlength="40" placeholder="选填" />
-              </label>
-              <label class="editor-row">
-                <span>地点</span>
-                <input v-model="customCourseForm.location" maxlength="40" placeholder="选填" />
-              </label>
-              <label class="editor-row">
-                <span>备注</span>
-                <input v-model="customCourseForm.note" maxlength="60" placeholder="选填" />
-              </label>
-            </section>
+            <div class="course-editor-scroll">
+              <section class="editor-card">
+                <label class="editor-row">
+                  <span>课程</span>
+                  <input v-model="customCourseForm.name" maxlength="40" placeholder="课程名称" />
+                </label>
+                <label class="editor-row">
+                  <span>老师</span>
+                  <input v-model="customCourseForm.teacher" maxlength="40" placeholder="选填" />
+                </label>
+                <label class="editor-row">
+                  <span>地点</span>
+                  <input v-model="customCourseForm.location" maxlength="40" placeholder="选填" />
+                </label>
+                <label class="editor-row">
+                  <span>备注</span>
+                  <input v-model="customCourseForm.note" maxlength="60" placeholder="选填" />
+                </label>
+              </section>
 
-            <div class="editor-section-title">
-              <span>时间段</span>
-              <button v-if="editingCourseBlock" type="button" @click="deleteEditingCourse">删除</button>
-            </div>
-
-            <section class="editor-card">
-              <label class="editor-row">
-                <span>周数</span>
-                <select v-model="customCourseForm.weekMode">
-                  <option value="current">本周</option>
-                  <option value="all">全部周</option>
-                  <option value="custom">指定周次</option>
-                </select>
-              </label>
-              <label v-if="customCourseForm.weekMode === 'custom'" class="editor-row">
-                <span>指定周</span>
-                <input v-model="customCourseForm.weekText" placeholder="如 1-4,6,8" />
-              </label>
-              <label class="editor-row">
-                <span>星期</span>
-                <select v-model.number="customCourseForm.day">
-                  <option v-for="d in 7" :key="d" :value="d">{{ dayLabel(d) }}</option>
-                </select>
-              </label>
-              <div class="editor-row">
-                <span>时间</span>
-                <div class="slot-range-input">
-                  <input v-model.number="customCourseForm.startSlot" type="number" min="1" :max="MAX_SMALL_SLOT" />
-                  <em>-</em>
-                  <input v-model.number="customCourseForm.endSlot" type="number" :min="customCourseForm.startSlot" :max="MAX_SMALL_SLOT" />
-                  <b>节</b>
+              <div class="editor-section-title">
+                <span>时间段</span>
+                <div class="editor-actions">
+                  <button v-if="canRestoreOriginalCourse" type="button" @click="restoreOriginalCourse">恢复原始</button>
+                  <button v-if="editingCourseBlock" type="button" class="danger" @click="deleteEditingCourse">删除</button>
                 </div>
               </div>
-            </section>
 
-            <section v-if="hiddenCourseItems.length" class="editor-card hidden-restore-card">
-              <div class="editor-card-title">已隐藏课程</div>
-              <div class="hidden-list">
-                <button v-for="item in hiddenCourseItems" :key="item.key" type="button" @click="restoreHiddenCourse(item.key)">
-                  {{ item.label }}
-                </button>
-              </div>
-            </section>
-          </div>
-        </section>
-      </div>
+              <section class="editor-card">
+                <label class="editor-row">
+                  <span>周数</span>
+                  <select v-model="customCourseForm.weekMode">
+                    <option value="current">本周</option>
+                    <option value="all">全部周</option>
+                    <option value="custom">指定周次</option>
+                  </select>
+                </label>
+                <div v-if="customCourseForm.weekMode === 'custom'" class="editor-week-picker">
+                  <span>指定周</span>
+                  <div class="week-chip-grid">
+                    <button
+                      v-for="w in weekNumberOptions"
+                      :key="w"
+                      type="button"
+                      :class="{ active: customCourseForm.weekList.includes(w) }"
+                      @click="toggleCustomWeek(w)"
+                    >
+                      {{ w }}
+                    </button>
+                  </div>
+                </div>
+                <label class="editor-row">
+                  <span>星期</span>
+                  <select v-model.number="customCourseForm.day">
+                    <option v-for="d in 7" :key="d" :value="d">{{ dayLabel(d) }}</option>
+                  </select>
+                </label>
+                <div class="editor-row">
+                  <span>时间</span>
+                  <div class="slot-range-input">
+                    <input v-model.number="customCourseForm.startSlot" type="number" min="1" :max="MAX_SMALL_SLOT" />
+                    <em>-</em>
+                    <input v-model.number="customCourseForm.endSlot" type="number" :min="customCourseForm.startSlot" :max="MAX_SMALL_SLOT" />
+                    <b>节</b>
+                  </div>
+                </div>
+              </section>
+
+              <section v-if="hiddenCourseItems.length" class="editor-card hidden-restore-card">
+                <div class="editor-card-title">已隐藏课程</div>
+                <div class="hidden-list">
+                  <button v-for="item in hiddenCourseItems" :key="item.key" type="button" @click="restoreHiddenCourse(item.key)">
+                    {{ item.label }}
+                  </button>
+                </div>
+              </section>
+            </div>
+          </section>
+        </div>
+      </Transition>
     </Teleport>
   </div>
 </template>
@@ -335,6 +350,7 @@ interface ScheduleCourse {
   slotNote?: string;
   startSlot?: number;
   endSlot?: number;
+  sourceKey?: string;
   customId?: string;
   custom?: boolean;
 }
@@ -529,6 +545,7 @@ const weekNumberOptions = computed(() => {
   if (values.length) return values;
   return Array.from({ length: maxWeekNumber.value }, (_, i) => i + 1);
 });
+const canRestoreOriginalCourse = computed(() => Boolean(editingCourseBlock.value?.course.sourceKey));
 const hiddenCourseItems = computed(() => {
   const hidden = new Set(scheduleEdits.value.hidden);
   const items: Array<{ key: string; label: string }> = [];
@@ -1292,7 +1309,7 @@ function saveCourseEdit() {
   const endSlot = Math.max(startSlot, clampSlot(customCourseForm.endSlot));
   const weekList = customCourseWeekList();
   if (customCourseForm.weekMode === "custom" && !weekList.length) {
-    ElMessage.warning("请填写周次，例如 1-4,6");
+    ElMessage.warning("请选择周次");
     return;
   }
   const existing = editingCourseBlock.value?.course.customId
@@ -1347,6 +1364,19 @@ function deleteEditingCourse() {
   ElMessage.success("已从课表隐藏");
 }
 
+function restoreOriginalCourse() {
+  const sourceKey = editingCourseBlock.value?.course.sourceKey;
+  const customId = editingCourseBlock.value?.course.customId;
+  if (!sourceKey) return;
+  scheduleEdits.value = {
+    hidden: scheduleEdits.value.hidden.filter((key) => key !== sourceKey),
+    custom: scheduleEdits.value.custom.filter((item) => item.id !== customId && item.sourceKey !== sourceKey),
+  };
+  persistScheduleEdits();
+  editDialogOpen.value = false;
+  ElMessage.success("已恢复原始课程");
+}
+
 function setFormWeeksFromCourse(course: ScheduleCourse) {
   const list = Array.isArray(course.weekList) ? [...course.weekList].filter(Boolean).sort((a, b) => a - b) : [];
   const all = weekNumberOptions.value;
@@ -1371,9 +1401,17 @@ function setFormWeeksFromCourse(course: ScheduleCourse) {
 function customCourseWeekList() {
   if (customCourseForm.weekMode === "all") return weekNumberOptions.value;
   if (customCourseForm.weekMode === "custom") {
-    return parseWeekText(customCourseForm.weekText);
+    return [...new Set(customCourseForm.weekList.map(Number).filter(Boolean))].sort((a, b) => a - b);
   }
   return [Number(editingWeekValue.value || activeWeekNumber.value || week.value) || 1];
+}
+
+function toggleCustomWeek(weekNo: number) {
+  const set = new Set(customCourseForm.weekList);
+  if (set.has(weekNo)) set.delete(weekNo);
+  else set.add(weekNo);
+  customCourseForm.weekList = [...set].sort((a, b) => a - b);
+  customCourseForm.weekText = customCourseWeeksText(customCourseForm.weekList);
 }
 
 function customCourseWeeksLabel(weekList: number[]) {
@@ -1398,22 +1436,6 @@ function customCourseWeeksLabel(weekList: number[]) {
 
 function customCourseWeeksText(weekList: number[]) {
   return [...new Set(weekList.map(Number).filter(Boolean))].sort((a, b) => a - b).join(",");
-}
-
-function parseWeekText(value: string) {
-  const weeks = new Set<number>();
-  for (const part of value.split(/[,\s，、]+/).map((item) => item.trim()).filter(Boolean)) {
-    const range = part.match(/^(\d+)\s*[-~至]\s*(\d+)$/);
-    if (range) {
-      const start = Math.min(Number(range[1]), Number(range[2]));
-      const end = Math.max(Number(range[1]), Number(range[2]));
-      for (let current = start; current <= end; current += 1) weeks.add(current);
-      continue;
-    }
-    const weekNo = Number(part);
-    if (Number.isFinite(weekNo) && weekNo > 0) weeks.add(weekNo);
-  }
-  return [...weeks].sort((a, b) => a - b);
 }
 
 function noteFromCourse(course: ScheduleCourse) {
@@ -2296,21 +2318,44 @@ function prewarmScheduleCacheForWeek(wk: string) {
   position: fixed;
   inset: 0;
   z-index: 4000;
-  background: rgba(16, 24, 40, 0.16);
+  background: rgba(16, 24, 40, 0.08);
   display: flex;
-  align-items: stretch;
+  align-items: flex-end;
   justify-content: center;
 }
 
 .course-editor-panel {
   width: 100%;
-  height: 100%;
+  height: min(72dvh, 620px);
   max-width: 720px;
   background: #f3f4f8;
   color: #0f172a;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  border-radius: 24px 24px 0 0;
+  box-shadow: 0 -12px 34px rgba(15, 23, 42, 0.12);
+}
+
+.course-editor-enter-active,
+.course-editor-leave-active {
+  transition: background-color 0.22s ease;
+}
+
+.course-editor-enter-active .course-editor-panel,
+.course-editor-leave-active .course-editor-panel {
+  transition: transform 0.24s cubic-bezier(0.2, 0, 0.2, 1), opacity 0.2s ease;
+}
+
+.course-editor-enter-from,
+.course-editor-leave-to {
+  background: rgba(16, 24, 40, 0);
+}
+
+.course-editor-enter-from .course-editor-panel,
+.course-editor-leave-to .course-editor-panel {
+  opacity: 0.98;
+  transform: translateY(100%);
 }
 
 .course-editor-nav {
@@ -2327,7 +2372,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   text-align: center;
   font-size: 19px;
   line-height: 1.2;
-  font-weight: 850;
+  font-weight: 700;
   color: #0b1220;
 }
 
@@ -2340,7 +2385,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   padding: 0 18px;
   font: inherit;
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 600;
   box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
 }
 
@@ -2380,7 +2425,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
 .editor-card-title,
 .editor-section-title span {
   font-size: 17px;
-  font-weight: 850;
+  font-weight: 650;
   color: #0b1220;
 }
 
@@ -2394,7 +2439,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   color: #0b1220;
   font: inherit;
   font-size: 17px;
-  font-weight: 760;
+  font-weight: 500;
   text-align: right;
 }
 
@@ -2426,7 +2471,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   font-style: normal;
   color: #0b1220;
   font-size: 17px;
-  font-weight: 760;
+  font-weight: 500;
 }
 
 .editor-section-title {
@@ -2436,13 +2481,61 @@ function prewarmScheduleCacheForWeek(wk: string) {
   padding: 22px 18px 10px;
 }
 
+.editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
 .editor-section-title button {
   border: 0;
   background: transparent;
-  color: #f04455;
+  color: #0f766e;
   font: inherit;
-  font-size: 17px;
-  font-weight: 850;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.editor-section-title button.danger {
+  color: #f04455;
+}
+
+.editor-week-picker {
+  display: grid;
+  gap: 12px;
+  margin: 0 18px;
+  padding: 15px 0;
+  border-bottom: 1px solid #e7e9ee;
+}
+
+.editor-week-picker > span {
+  font-size: 16px;
+  font-weight: 650;
+  color: #0b1220;
+}
+
+.week-chip-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.week-chip-grid button {
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid #d8dee8;
+  border-radius: 10px;
+  background: #fff;
+  color: #475467;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.week-chip-grid button.active {
+  border-color: var(--schedule-accent);
+  background: var(--schedule-accent-pale);
+  color: var(--schedule-accent-strong);
 }
 
 .hidden-restore-card {
