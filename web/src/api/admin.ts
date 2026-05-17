@@ -4,7 +4,18 @@ export const adminApi = {
   // 概览
   overview: () => request.get<any>("/admin/overview"),
   // 用户
-  users: (params: { q?: string; role?: string; status?: string; page?: number; size?: number }) =>
+  users: (params: {
+    q?: string;
+    role?: string;
+    status?: string;
+    loginClient?: string;
+    usedIosClient?: string;
+    usedAndroidClient?: string;
+    loginFrom?: string;
+    loginTo?: string;
+    page?: number;
+    size?: number;
+  }) =>
     request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/users", params),
   updateUser: (id: number, patch: { status?: string; role?: string; nickname?: string }) =>
     request.patch<any>(`/admin/users/${id}`, patch),

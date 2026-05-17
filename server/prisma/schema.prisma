@@ -31,6 +31,10 @@ model User {
   replyCount    Int      @default(0)
   reputation    Int      @default(0)
   lastSeenAt    DateTime @default(now())
+  lastLoginAt   DateTime?
+  lastLoginClient String?
+  usedIosClient Boolean  @default(false)
+  usedAndroidClient Boolean @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

@@ -31,6 +31,18 @@
         <div class="ov-lbl">回复</div>
       </div>
       <div class="ov-card">
+        <div class="ov-num">{{ overview.iosClients }}</div>
+        <div class="ov-lbl">iOS 登录过</div>
+      </div>
+      <div class="ov-card">
+        <div class="ov-num">{{ overview.androidClients }}</div>
+        <div class="ov-lbl">安卓登录过</div>
+      </div>
+      <div class="ov-card">
+        <div class="ov-num">{{ overview.recentLogins }}</div>
+        <div class="ov-lbl">近 30 天登录</div>
+      </div>
+      <div class="ov-card">
         <div class="ov-num">{{ overview.feeds }} / {{ overview.boards }}</div>
         <div class="ov-lbl">同步源 / 板块</div>
       </div>

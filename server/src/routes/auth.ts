@@ -7,6 +7,7 @@ import { Errors, ok } from "../utils/response";
 import { validate } from "../middleware/validate";
 import { beginLogin, submitLogin } from "../services/jwxtTransport";
 import { isDev } from "../config";
+import { detectLoginClient } from "../utils/loginClient";
 
 export const authRouter = Router();
 
@@ -36,7 +37,17 @@ authRouter.post("/login", validate(loginSchema), async (req, res, next) => {
     const ok2 = await verifyPassword(password, user.passwordHash);
     if (!ok2) throw Errors.badRequest("用户名或密码错误");
     if (user.status === "banned") throw Errors.forbidden("账号已被封禁");
-    await prisma.user.update({ where: { id: user.id }, data: { lastSeenAt: new Date() } });
+    const client = detectLoginClient(req);
+    const logged = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        lastSeenAt: new Date(),
+        lastLoginAt: new Date(),
+        lastLoginClient: client.client,
+        usedIosClient: client.client === "ios" ? true : undefined,
+        usedAndroidClient: client.client === "android" ? true : undefined,
+      },
+    });
 
     const token = signToken({
       userId: user.id,
@@ -44,7 +55,7 @@ authRouter.post("/login", validate(loginSchema), async (req, res, next) => {
       role: user.role,
       campus: "",
     });
-    ok(res, { token, user: pubUser(user) });
+    ok(res, { token, user: pubUser(logged) });
   } catch (e) { next(e); }
 });
 
@@ -56,8 +67,20 @@ authRouter.post("/register", validate(registerSchema), async (req, res, next) =>
     const exists = await prisma.user.findUnique({ where: { username } });
     if (exists) throw Errors.conflict("该用户名已被占用");
     const passwordHash = await hashPassword(password);
+    const client = detectLoginClient(req);
     const user = await prisma.user.create({
-      data: { username, passwordHash, nickname, college, enrollYear },
+      data: {
+        username,
+        passwordHash,
+        nickname,
+        college,
+        enrollYear,
+        lastSeenAt: new Date(),
+        lastLoginAt: new Date(),
+        lastLoginClient: client.client,
+        usedIosClient: client.client === "ios",
+        usedAndroidClient: client.client === "android",
+      },
     });
     await prisma.messageSetting.create({ data: { userId: user.id } });
     const token = signToken({ userId: user.id, studentId: user.username, role: user.role, campus: "" });
@@ -120,10 +143,21 @@ authRouter.post(
         if (!user.studentSso) {
           user = await prisma.user.update({ where: { id: user.id }, data: { studentSso: true } });
         }
-        await prisma.user.update({ where: { id: user.id }, data: { lastSeenAt: new Date() } });
       }
 
       if (user.status === "banned") throw Errors.forbidden("账号已被封禁");
+
+      const client = detectLoginClient(req);
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          lastSeenAt: new Date(),
+          lastLoginAt: new Date(),
+          lastLoginClient: client.client,
+          usedIosClient: client.client === "ios" ? true : undefined,
+          usedAndroidClient: client.client === "android" ? true : undefined,
+        },
+      });
 
       const siteToken = signToken({
         userId: user.id,
@@ -158,6 +192,11 @@ function pubUser(u: any) {
     postCount: u.postCount,
     replyCount: u.replyCount,
     reputation: u.reputation,
+    lastSeenAt: u.lastSeenAt,
+    lastLoginAt: u.lastLoginAt,
+    lastLoginClient: u.lastLoginClient,
+    usedIosClient: u.usedIosClient,
+    usedAndroidClient: u.usedAndroidClient,
     createdAt: u.createdAt,
   };
 }

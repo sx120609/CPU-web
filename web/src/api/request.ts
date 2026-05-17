@@ -1,5 +1,6 @@
 import axios, { AxiosError, type AxiosInstance } from "axios";
 import { ElMessage } from "element-plus";
+import { detectClientPlatform } from "@/utils/clientInfo";
 
 export interface ApiResponse<T> {
   code: number;
@@ -31,6 +32,7 @@ instance.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  config.headers["X-CPU-Client"] = detectClientPlatform();
   // 同时注入教务 token（如果存在），便于后端跨域请求（如 /courses/sync 需要拉教务数据）
   const jwxtToken = sessionStorage.getItem("cpu-jwxt-token");
   if (jwxtToken) {

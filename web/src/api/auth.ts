@@ -16,6 +16,10 @@ export interface UserInfo {
   replyCount: number;
   reputation: number;
   lastSeenAt?: string;
+  lastLoginAt?: string | null;
+  lastLoginClient?: string | null;
+  usedIosClient?: boolean;
+  usedAndroidClient?: boolean;
   createdAt: string;
 }
 

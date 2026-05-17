@@ -17,6 +17,11 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
     const q = String(req.query.q ?? "").trim();
     const role = req.query.role ? String(req.query.role) : undefined;
     const status = req.query.status ? String(req.query.status) : undefined;
+    const loginClient = req.query.loginClient ? String(req.query.loginClient) : undefined;
+    const usedIosClient = req.query.usedIosClient === "1" ? true : req.query.usedIosClient === "0" ? false : undefined;
+    const usedAndroidClient = req.query.usedAndroidClient === "1" ? true : req.query.usedAndroidClient === "0" ? false : undefined;
+    const loginFrom = String(req.query.loginFrom ?? "").trim();
+    const loginTo = String(req.query.loginTo ?? "").trim();
     const page = Math.max(1, Number(req.query.page ?? 1));
     const size = Math.min(100, Math.max(10, Number(req.query.size ?? 30)));
 
@@ -28,18 +33,37 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
     ];
     if (role) where.role = role;
     if (status) where.status = status;
+    if (loginClient && loginClient !== "all") {
+      if (loginClient === "none") where.lastLoginAt = null;
+      else if (["ios", "android", "web", "unknown"].includes(loginClient)) where.lastLoginClient = loginClient;
+    }
+    if (typeof usedIosClient === "boolean") where.usedIosClient = usedIosClient;
+    if (typeof usedAndroidClient === "boolean") where.usedAndroidClient = usedAndroidClient;
+    if (loginFrom || loginTo) {
+      const loginAtFilter: any = where.lastLoginAt && typeof where.lastLoginAt === "object" ? where.lastLoginAt : {};
+      if (loginFrom) {
+        const start = new Date(`${loginFrom}T00:00:00`);
+        if (!Number.isNaN(start.getTime())) loginAtFilter.gte = start;
+      }
+      if (loginTo) {
+        const end = new Date(`${loginTo}T23:59:59.999`);
+        if (!Number.isNaN(end.getTime())) loginAtFilter.lte = end;
+      }
+      if (Object.keys(loginAtFilter).length) where.lastLoginAt = loginAtFilter;
+    }
 
     const [list, total] = await Promise.all([
       prisma.user.findMany({
         where,
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ lastLoginAt: "desc" }, { createdAt: "desc" }],
         skip: (page - 1) * size,
         take: size,
         select: {
           id: true, username: true, nickname: true, email: true, avatar: true,
           college: true, enrollYear: true, role: true, studentSso: true, status: true,
           postCount: true, replyCount: true, reputation: true,
-          lastSeenAt: true, createdAt: true,
+          lastSeenAt: true, lastLoginAt: true, lastLoginClient: true, usedIosClient: true, usedAndroidClient: true,
+          createdAt: true,
         },
       }),
       prisma.user.count({ where }),
@@ -425,6 +449,7 @@ adminRouter.delete("/announcements/:id", modOrAbove, async (req, res, next) => {
 
 adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
   try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const [users, banned, topics, hiddenTopics, replies, todayTopics, feeds, boards] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({ where: { status: "banned" } }),
@@ -437,7 +462,12 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       prisma.schoolFeedSource.count({ where: { enabled: true } }),
       prisma.board.count(),
     ]);
-    ok(res, { users, banned, topics, hiddenTopics, replies, todayTopics, feeds, boards });
+    const [iosClients, androidClients, recentLogins] = await Promise.all([
+      prisma.user.count({ where: { usedIosClient: true } }),
+      prisma.user.count({ where: { usedAndroidClient: true } }),
+      prisma.user.count({ where: { lastLoginAt: { gte: thirtyDaysAgo } } }),
+    ]);
+    ok(res, { users, banned, topics, hiddenTopics, replies, todayTopics, feeds, boards, iosClients, androidClients, recentLogins });
   } catch (e) { next(e); }
 });
 

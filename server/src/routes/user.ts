@@ -87,6 +87,10 @@ function pubUser(u: any) {
     replyCount: u.replyCount,
     reputation: u.reputation,
     lastSeenAt: u.lastSeenAt,
+    lastLoginAt: u.lastLoginAt,
+    lastLoginClient: u.lastLoginClient,
+    usedIosClient: u.usedIosClient,
+    usedAndroidClient: u.usedAndroidClient,
     createdAt: u.createdAt,
   };
 }

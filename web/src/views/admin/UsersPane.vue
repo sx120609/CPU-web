@@ -1,21 +1,48 @@
 <template>
   <div class="users-pane">
     <div class="ctrl-bar">
-      <el-input v-model="q" placeholder="搜用户名 / 昵称 / 邮箱" clearable style="width:240px" @keyup.enter="reload">
+      <el-input v-model="q" placeholder="搜用户名 / 昵称 / 邮箱" clearable style="width:240px" @keyup.enter="search">
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
-      <el-select v-model="role" clearable placeholder="所有角色" style="width:140px" @change="reload">
+      <el-select v-model="role" clearable placeholder="所有角色" style="width:140px" @change="applyFilters">
         <el-option label="user" value="user" />
         <el-option label="mod" value="mod" />
         <el-option label="admin" value="admin" />
         <el-option label="bot" value="bot" />
       </el-select>
-      <el-select v-model="status" clearable placeholder="所有状态" style="width:140px" @change="reload">
+      <el-select v-model="status" clearable placeholder="所有状态" style="width:140px" @change="applyFilters">
         <el-option label="active" value="active" />
         <el-option label="banned" value="banned" />
         <el-option label="muted" value="muted" />
       </el-select>
+      <el-select v-model="loginClient" clearable placeholder="最近登录客户端" style="width:160px" @change="applyFilters">
+        <el-option label="iOS" value="ios" />
+        <el-option label="安卓" value="android" />
+        <el-option label="网页" value="web" />
+        <el-option label="未知" value="unknown" />
+        <el-option label="未登录" value="none" />
+      </el-select>
+      <el-select v-model="usedIosClient" clearable placeholder="iOS 使用过" style="width:140px" @change="applyFilters">
+        <el-option label="是" value="1" />
+        <el-option label="否" value="0" />
+      </el-select>
+      <el-select v-model="usedAndroidClient" clearable placeholder="安卓使用过" style="width:140px" @change="applyFilters">
+        <el-option label="是" value="1" />
+        <el-option label="否" value="0" />
+      </el-select>
+      <el-date-picker
+        v-model="loginRange"
+        type="daterange"
+        range-separator="至"
+        start-placeholder="最近登录起"
+        end-placeholder="最近登录止"
+        value-format="YYYY-MM-DD"
+        format="YYYY-MM-DD"
+        style="width: 260px"
+        @change="applyFilters"
+      />
       <el-button @click="reload">刷新</el-button>
+      <el-button @click="resetFilters">重置筛选</el-button>
       <el-button v-if="auth.isAdmin" type="primary" @click="openCreate">
         <el-icon><Plus /></el-icon> 新增用户
       </el-button>
@@ -40,6 +67,23 @@
       <el-table-column label="统一认证" width="90">
         <template #default="{ row }">
           <el-tag v-if="row.studentSso" type="primary" size="small" effect="plain">✓</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="登录信息" min-width="220">
+        <template #default="{ row }">
+          <div class="login-info">
+            <div class="login-main">
+              <el-tag :type="clientTagType(row.lastLoginClient)" size="small" effect="plain">
+                {{ clientLabel(row.lastLoginClient) }}
+              </el-tag>
+              <span class="login-time">{{ row.lastLoginAt ? fmtDate(row.lastLoginAt) : "未登录" }}</span>
+            </div>
+            <div class="login-flags">
+              <el-tag v-if="row.usedIosClient" type="info" size="small" effect="plain">iOS</el-tag>
+              <el-tag v-if="row.usedAndroidClient" type="success" size="small" effect="plain">安卓</el-tag>
+              <span v-if="!row.usedIosClient && !row.usedAndroidClient" class="login-empty">暂无足迹</span>
+            </div>
+          </div>
         </template>
       </el-table-column>
       <el-table-column prop="postCount" label="帖" width="60" align="right" />
@@ -123,6 +167,10 @@ const loading = ref(false);
 const q = ref("");
 const role = ref("");
 const status = ref("");
+const loginClient = ref("");
+const usedIosClient = ref("");
+const usedAndroidClient = ref("");
+const loginRange = ref<[string, string] | [] | null>([]);
 
 const createOpen = ref(false);
 const creating = ref(false);
@@ -140,13 +188,46 @@ onMounted(reload);
 async function reload() {
   loading.value = true;
   try {
-    const r = await adminApi.users({ q: q.value, role: role.value, status: status.value, page: page.value, size: size.value });
+    const r = await adminApi.users({
+      q: q.value,
+      role: role.value,
+      status: status.value,
+      loginClient: loginClient.value || undefined,
+      usedIosClient: usedIosClient.value || undefined,
+      usedAndroidClient: usedAndroidClient.value || undefined,
+      loginFrom: Array.isArray(loginRange.value) && loginRange.value.length === 2 ? loginRange.value[0] : undefined,
+      loginTo: Array.isArray(loginRange.value) && loginRange.value.length === 2 ? loginRange.value[1] : undefined,
+      page: page.value,
+      size: size.value,
+    });
     list.value = r.list;
     total.value = r.total;
   } finally { loading.value = false; }
 }
 
 function onPage(p: number) { page.value = p; reload(); }
+
+function search() {
+  page.value = 1;
+  reload();
+}
+
+function applyFilters() {
+  page.value = 1;
+  reload();
+}
+
+function resetFilters() {
+  q.value = "";
+  role.value = "";
+  status.value = "";
+  loginClient.value = "";
+  usedIosClient.value = "";
+  usedAndroidClient.value = "";
+  loginRange.value = [];
+  page.value = 1;
+  reload();
+}
 
 function openCreate() {
   Object.assign(createForm, {
@@ -182,6 +263,22 @@ function roleTag(r: string): "danger" | "warning" | "primary" | "info" {
   if (r === "mod") return "warning";
   if (r === "bot") return "info";
   return "primary";
+}
+
+function clientLabel(client?: string | null) {
+  if (client === "ios") return "iOS";
+  if (client === "android") return "安卓";
+  if (client === "web") return "网页";
+  if (client === "unknown") return "未知";
+  return "未登录";
+}
+
+function clientTagType(client?: string | null): "success" | "warning" | "info" | "danger" | "primary" {
+  if (client === "ios") return "success";
+  if (client === "android") return "warning";
+  if (client === "web") return "primary";
+  if (client === "unknown") return "info";
+  return "info";
 }
 
 async function ban(row: any) {
@@ -258,4 +355,9 @@ async function deleteUser(row: any) {
 .ctrl-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .pager { display: flex; justify-content: center; padding-top: 12px; }
 .dlg-tip { font-size: 12px; color: #6b7280; margin: 0 0 12px; }
+.login-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.login-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.login-flags { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-width: 0; }
+.login-time { font-size: 12px; color: #4b5563; }
+.login-empty { font-size: 12px; color: #9ca3af; }
 </style>
