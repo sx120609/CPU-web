@@ -2,6 +2,7 @@ import { config } from "../config";
 import { Errors, HttpError } from "../utils/response";
 import type * as local from "./jwxtFacade";
 import type { LoginAttempt } from "./jwxtClient";
+import { normalizeGradesResult } from "./jwxtParser";
 
 type ApiEnvelope<T> = {
   code: number;
@@ -86,7 +87,7 @@ export function getSchedule(token: string, args?: Parameters<typeof local.getSch
 
 export function getGrades(token: string, args?: Parameters<typeof local.getGrades>[1]): ReturnType<typeof local.getGrades> {
   return call<{ parsed: Awaited<ReturnType<typeof local.getGrades>> }>("/v1/grades", { token, ...(args ?? {}) })
-    .then((r) => r.parsed) as ReturnType<typeof local.getGrades>;
+    .then((r) => normalizeGradesResult(r.parsed)) as ReturnType<typeof local.getGrades>;
 }
 
 export function getExams(token: string, args?: Parameters<typeof local.getExams>[1]): ReturnType<typeof local.getExams> {

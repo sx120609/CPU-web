@@ -201,7 +201,7 @@ export interface GradesResult {
  *   数字成绩：gpa = max(0, (score - 50) / 10)，封顶 5.0
  *   等级成绩：优秀 4.5；良好 3.5；中等 2.5；及格 1.5；不及格 0
  */
-function scoreToGpa(score: string): number | undefined {
+export function scoreToGpa(score: string): number | undefined {
   const level = score.replace(/\s+/g, "");
   const levelMap: Record<string, number> = {
     优秀: 4.5,
@@ -217,6 +217,16 @@ function scoreToGpa(score: string): number | undefined {
   if (s < 60) return 0;
   const g = (s - 50) / 10;
   return Math.min(5.0, Math.max(0, Math.round(g * 100) / 100));
+}
+
+export function normalizeGradesResult(result: GradesResult): GradesResult {
+  return {
+    ...result,
+    list: result.list.map((row) => {
+      if (typeof row.gpa === "number") return row;
+      return { ...row, gpa: scoreToGpa(row.score) };
+    }),
+  };
 }
 
 export function parseGrades(html: string): GradesResult {
@@ -284,7 +294,7 @@ export function parseGrades(html: string): GradesResult {
       .map((value) => ({ value, label: value, current: false }));
   }
 
-  return { semesters, list };
+  return normalizeGradesResult({ semesters, list });
 }
 
 // ============ 考试 ============

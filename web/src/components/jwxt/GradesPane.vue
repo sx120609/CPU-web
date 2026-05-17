@@ -29,7 +29,8 @@
           <template #content>
             筛选后的 GPA 仅基于上方筛选条件计算<br/>
             <code>GPA = max(0, (成绩 − 50) ÷ 10)</code>，封顶 5.0<br/>
-            60→1.0 · 70→2.0 · 80→3.0 · 90→4.0 · 100→5.0
+            60→1.0 · 70→2.0 · 80→3.0 · 90→4.0 · 100→5.0<br/>
+            等级成绩：优秀 4.5 · 良好 3.5 · 中等 2.5 · 及格 1.5 · 不及格 0
           </template>
           <el-icon class="hint-icon"><InfoFilled /></el-icon>
         </el-tooltip>
@@ -145,7 +146,38 @@ onBeforeUnmount(() => {
   mql = null;
 });
 
-watch(() => props.data, (v) => { parsed.value = v?.parsed ?? null; }, { immediate: true });
+watch(() => props.data, (v) => { parsed.value = normalizeParsedGrades(v?.parsed ?? null); }, { immediate: true });
+
+function scoreToGpa(score?: string): number | undefined {
+  const raw = String(score ?? "").trim();
+  if (!raw) return undefined;
+  const level = raw.replace(/\s+/g, "");
+  const levelMap: Record<string, number> = {
+    优秀: 4.5,
+    良好: 3.5,
+    中等: 2.5,
+    及格: 1.5,
+    不及格: 0,
+  };
+  if (Object.prototype.hasOwnProperty.call(levelMap, level)) return levelMap[level];
+
+  const scoreNum = parseFloat(raw);
+  if (!Number.isFinite(scoreNum)) return undefined;
+  if (scoreNum < 60) return 0;
+  const gpa = (scoreNum - 50) / 10;
+  return Math.min(5, Math.max(0, Math.round(gpa * 100) / 100));
+}
+
+function normalizeGradeRow(row: GradeRow): GradeRow {
+  const gpa = typeof row.gpa === "number" ? row.gpa : Number(row.gpa);
+  if (Number.isFinite(gpa)) return { ...row, gpa };
+  return { ...row, gpa: scoreToGpa(row.score) };
+}
+
+function normalizeParsedGrades(data: any) {
+  if (!data || !Array.isArray(data.list)) return data;
+  return { ...data, list: (data.list as GradeRow[]).map(normalizeGradeRow) };
+}
 
 /** 数据里出现过的全部课程性质（含空字符串过滤）— 动态生成 */
 const attrOptions = computed<string[]>(() => {
@@ -234,7 +266,7 @@ async function reload() {
     if (semester.value) u.searchParams.set("semester", semester.value);
     const resp = await fetch(u, { headers: { "X-Jwxt-Token": tk } });
     const body = await resp.json();
-    if (body.code === 0) parsed.value = body.data.parsed;
+    if (body.code === 0) parsed.value = normalizeParsedGrades(body.data.parsed);
   } finally { loading.value = false; }
 }
 </script>
