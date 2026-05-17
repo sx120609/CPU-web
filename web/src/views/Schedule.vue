@@ -620,12 +620,16 @@ const canRestoreOriginalCourse = computed(() => Boolean(editingCourseBlock.value
 const hiddenCourseItems = computed(() => {
   const hidden = new Set(scheduleEdits.value.hidden);
   const items: Array<{ key: string; label: string }> = [];
+  const seenFamilies = new Set<string>();
   for (const source of allKnownScheduleSources()) {
     for (const cell of source.cells ?? []) {
       for (const course of cell.courses ?? []) {
         const key = courseEditKey(cell.day, cell.bigSlot, course);
-        if (!hidden.has(key) || items.some((item) => item.key === key)) continue;
-        items.push({ key, label: `${course.name} · ${dayLabel(cell.day)}` });
+        if (!hidden.has(key)) continue;
+        const familyKey = courseFamilyKey(cell.day, cell.bigSlot, course);
+        if (seenFamilies.has(familyKey)) continue;
+        seenFamilies.add(familyKey);
+        items.push({ key: familyKey, label: `${course.name} · ${dayLabel(cell.day)}` });
       }
     }
   }
@@ -1362,12 +1366,12 @@ function courseMatchesWeek(course: ScheduleCourse, wk: number) {
 }
 
 function courseFamilyKey(day: number, bigSlot: number, course: ScheduleCourse) {
+  const range = normalizeSlotRange(bigSlot, course);
   return [
     "jwxt-family",
     day,
-    bigSlot,
-    course.startSlot ?? "",
-    course.endSlot ?? "",
+    range.start,
+    range.end,
     normalizeKeyPart(course.name),
     normalizeKeyPart(course.teacher),
     normalizeKeyPart(course.location),
@@ -1412,9 +1416,21 @@ async function restoreHiddenCourse(key: string) {
   } catch {
     return;
   }
+  const keysToRestore = new Set<string>();
+  for (const source of allKnownScheduleSources()) {
+    for (const cell of source.cells ?? []) {
+      for (const course of cell.courses ?? []) {
+        const sourceKey = courseEditKey(cell.day, cell.bigSlot, course);
+        if (sourceKey === key || courseFamilyKey(cell.day, cell.bigSlot, course) === key) {
+          keysToRestore.add(sourceKey);
+        }
+      }
+    }
+  }
+  keysToRestore.add(key);
   scheduleEdits.value = {
     ...scheduleEdits.value,
-    hidden: scheduleEdits.value.hidden.filter((item) => item !== key),
+    hidden: scheduleEdits.value.hidden.filter((item) => !keysToRestore.has(item)),
   };
   persistScheduleEdits();
 }
@@ -1516,6 +1532,7 @@ async function deleteEditingCourse() {
       }
     }
   }
+  hiddenKeysToRemove.add(editingCourseKey.value || courseEditKey(block.day, block.bigSlot, block.course));
   if (block.course.customId) {
     next = {
       ...next,
