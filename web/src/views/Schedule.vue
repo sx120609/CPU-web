@@ -1361,6 +1361,19 @@ function courseMatchesWeek(course: ScheduleCourse, wk: number) {
   return true;
 }
 
+function courseFamilyKey(day: number, bigSlot: number, course: ScheduleCourse) {
+  return [
+    "jwxt-family",
+    day,
+    bigSlot,
+    course.startSlot ?? "",
+    course.endSlot ?? "",
+    normalizeKeyPart(course.name),
+    normalizeKeyPart(course.teacher),
+    normalizeKeyPart(course.location),
+  ].join("|");
+}
+
 function toneFor(name: string): CourseTone {
   if (scheduleTheme.value === "color-glass") return getColorGlassCourseTone(name);
   const theme = getScheduleThemePalette(scheduleTheme.value);
@@ -1493,13 +1506,25 @@ async function deleteEditingCourse() {
   const block = editingCourseBlock.value;
   if (!block) return;
   let next = { ...scheduleEdits.value };
+  const targetFamilyKey = courseFamilyKey(block.day, block.bigSlot, block.course);
+  const hiddenKeysToRemove = new Set<string>();
+  for (const source of allKnownScheduleSources()) {
+    for (const cell of source.cells ?? []) {
+      for (const course of cell.courses ?? []) {
+        if (courseFamilyKey(cell.day, cell.bigSlot, course) !== targetFamilyKey) continue;
+        hiddenKeysToRemove.add(courseEditKey(cell.day, cell.bigSlot, course));
+      }
+    }
+  }
   if (block.course.customId) {
-    next = { ...next, custom: next.custom.filter((item) => item.id !== block.course.customId) };
-  } else {
-    const key = editingCourseKey.value || courseEditKey(block.day, block.bigSlot, block.course);
     next = {
-      hidden: next.hidden.includes(key) ? next.hidden : [...next.hidden, key],
-      custom: next.custom.filter((item) => item.sourceKey !== key),
+      ...next,
+      custom: next.custom.filter((item) => courseFamilyKey(item.day, item.bigSlot, item.course) !== targetFamilyKey),
+    };
+  } else {
+    next = {
+      hidden: next.hidden.filter((key) => !hiddenKeysToRemove.has(key)),
+      custom: next.custom.filter((item) => courseFamilyKey(item.day, item.bigSlot, item.course) !== targetFamilyKey),
     };
   }
   scheduleEdits.value = next;
@@ -1690,6 +1715,10 @@ function normalizeSlotRange(bigSlot: number, course: ScheduleCourse) {
   const safeStart = Math.max(1, Math.min(MAX_SMALL_SLOT, start));
   const safeEnd = Math.max(safeStart, Math.min(MAX_SMALL_SLOT, end));
   return { start: safeStart, end: safeEnd };
+}
+
+function normalizeKeyPart(value?: string) {
+  return String(value ?? "").trim().replace(/\s+/g, " ");
 }
 
 function courseBlockStyle(block: WeekCourseBlock) {
