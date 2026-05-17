@@ -425,16 +425,16 @@
       <div class="android-update-panel">
         <p>
           当前安卓客户端版本过低，桌面小组件不可用。
-          请先卸载旧版，再安装最新版。
+          请先复制下载链接，到系统浏览器粘贴打开，卸载旧版后再安装最新版。
         </p>
         <p class="widget-countdown">
-          {{ androidUpdateCountdown > 0 ? `请先阅读说明，${androidUpdateCountdown} 秒后可继续。` : "已可继续下载最新版。" }}
+          {{ androidUpdateCountdown > 0 ? `请先阅读说明，${androidUpdateCountdown} 秒后可继续。` : "已可复制下载链接。" }}
         </p>
       </div>
       <template #footer>
         <el-button @click="androidUpdateOpen = false">稍后</el-button>
         <el-button type="primary" :disabled="androidUpdateCountdown > 0" @click="openAndroidDownload">
-          {{ androidUpdateCountdown > 0 ? `${androidUpdateCountdown}s` : "打开系统浏览器下载" }}
+          {{ androidUpdateCountdown > 0 ? `${androidUpdateCountdown}s` : "复制下载链接" }}
         </el-button>
       </template>
     </el-dialog>
@@ -711,7 +711,7 @@ const widgetConfigCopied = ref(false);
 const androidWidgetInstalling = ref(false);
 const scriptableWidgetScript = ref("");
 const widgetCopyMessage = ref("");
-const APK_DOWNLOAD_URL = "/downloads/CPU-Web-V2.apk";
+const APK_DOWNLOAD_URL = "/downloads/CPU-Web-V3.apk";
 const SCRIPTABLE_ADD_URL = "https://open.scriptable.app/add";
 let widgetInstructionTimer = 0;
 let androidUpdateTimer = 0;
@@ -799,19 +799,15 @@ function showAndroidUpdateRequired() {
   androidUpdateOpen.value = true;
 }
 
-function openAndroidDownload() {
-  androidUpdateOpen.value = false;
+async function openAndroidDownload() {
   const absoluteUrl = new URL(APK_DOWNLOAD_URL, window.location.origin).toString();
-  const opened = window.open(absoluteUrl, "_blank", "noopener");
-  if (opened) return;
-
-  const link = document.createElement("a");
-  link.href = absoluteUrl;
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
+  const copied = await writeClipboard(absoluteUrl);
+  if (copied) {
+    androidUpdateOpen.value = false;
+    ElMessage.success("下载链接已复制，请到系统浏览器粘贴打开");
+    return;
+  }
+  ElMessage.warning("复制失败，请再点击一次复制下载链接");
 }
 
 function startAndroidUpdateCountdown() {
