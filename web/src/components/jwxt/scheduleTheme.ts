@@ -39,17 +39,6 @@ export interface CourseTone {
 }
 
 const pageBg = "linear-gradient(180deg, #edf4ff 0%, #f7fbff 42%, #f8fafc 100%)";
-const colorGlassCourseTones: CourseTone[] = [
-  { bg: "rgba(255, 228, 230, 0.84)", border: "rgba(244, 63, 94, 0.42)", text: "#8f1230" },
-  { bg: "rgba(255, 237, 213, 0.84)", border: "rgba(249, 115, 22, 0.40)", text: "#8a3412" },
-  { bg: "rgba(254, 243, 199, 0.86)", border: "rgba(245, 158, 11, 0.42)", text: "#7a4c09" },
-  { bg: "rgba(220, 252, 231, 0.84)", border: "rgba(34, 197, 94, 0.38)", text: "#14532d" },
-  { bg: "rgba(204, 251, 241, 0.84)", border: "rgba(20, 184, 166, 0.38)", text: "#115e59" },
-  { bg: "rgba(219, 234, 254, 0.84)", border: "rgba(59, 130, 246, 0.38)", text: "#1e3a8a" },
-  { bg: "rgba(224, 231, 255, 0.84)", border: "rgba(99, 102, 241, 0.38)", text: "#3730a3" },
-  { bg: "rgba(243, 232, 255, 0.84)", border: "rgba(168, 85, 247, 0.38)", text: "#6b21a8" },
-  { bg: "rgba(252, 231, 243, 0.84)", border: "rgba(236, 72, 153, 0.36)", text: "#9d174d" },
-];
 
 function simpleTheme(
   key: Exclude<ScheduleThemeKey, "color-glass">,
@@ -224,10 +213,20 @@ export const scheduleThemeOptions: ScheduleThemeOption[] = [
 
 export function getColorGlassCourseTone(name: string): CourseTone {
   let hash = 0;
-  for (let i = 0; i < name.length; i += 1) {
-    hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  const seed = name.trim().replace(/\s+/g, " ");
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
   }
-  return colorGlassCourseTones[hash % colorGlassCourseTones.length];
+  const hue = hash % 360;
+  const saturation = 58 + ((hash >>> 8) % 18);
+  const bgLightness = 89 + ((hash >>> 16) % 5);
+  const borderLightness = 48 + ((hash >>> 20) % 10);
+  const textLightness = 25 + ((hash >>> 24) % 8);
+  return {
+    bg: `hsla(${hue}, ${saturation}%, ${bgLightness}%, 0.86)`,
+    border: `hsla(${hue}, ${Math.min(82, saturation + 8)}%, ${borderLightness}%, 0.48)`,
+    text: `hsl(${hue}, ${Math.min(76, saturation + 4)}%, ${textLightness}%)`,
+  };
 }
 
 export function normalizeScheduleTheme(value?: string | null): ScheduleThemeKey {
