@@ -27,13 +27,39 @@
             android:name=".ScheduleWidgetProvider"
             android:icon="@drawable/ic_launcher"
             android:label="@string/widget_schedule_name"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/schedule_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".ScheduleWidgetProviderWide"
+            android:icon="@drawable/ic_launcher"
+            android:label="@string/widget_schedule_name_wide"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/schedule_widget_info_wide" />
+        </receiver>
+
+        <receiver
+            android:name=".ScheduleWidgetProviderLarge"
+            android:icon="@drawable/ic_launcher"
+            android:label="@string/widget_schedule_name_large"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/schedule_widget_info_large" />
         </receiver>
     </application>
 

@@ -439,6 +439,28 @@
       </template>
     </el-dialog>
 
+    <el-dialog
+      v-model="androidWidgetGuideOpen"
+      title="添加安卓小组件"
+      :width="420"
+      align-center
+      :show-close="true"
+      append-to-body
+    >
+      <ol class="widget-instruction-list">
+        <li>如果系统弹出添加小组件确认，请直接确认添加。</li>
+        <li>如果没有弹出，请回到桌面，长按空白处，选择“小组件”或“卡片”。</li>
+        <li>在列表里找到“药大课表小组件”，可选择 2x2、4x2 或 4x4 尺寸添加到桌面。</li>
+        <li>刚才的课表配置已保存，添加后会自动读取课程。</li>
+      </ol>
+      <p class="widget-countdown">
+        部分国内系统会拦截 App 主动拉起小组件添加面板，手动添加是更稳定的方式。
+      </p>
+      <template #footer>
+        <el-button type="primary" @click="androidWidgetGuideOpen = false">我知道了</el-button>
+      </template>
+    </el-dialog>
+
     <Teleport to="body">
       <Transition name="course-editor">
         <div v-if="editDialogOpen" class="course-editor-overlay" @click.self="editDialogOpen = false">
@@ -703,6 +725,7 @@ const widgetDialogOpen = ref(false);
 const widgetInstructionOpen = ref(false);
 const widgetInstructionCountdown = ref(10);
 const androidUpdateOpen = ref(false);
+const androidWidgetGuideOpen = ref(false);
 const androidUpdateCountdown = ref(3);
 const moreMenuOpen = ref(false);
 const moreMenuView = ref<"menu" | "theme">("menu");
@@ -788,7 +811,8 @@ async function installAndroidWidget() {
       endpoint: token.endpoint,
       title: "药大课表",
     }));
-    ElMessage.success("已发送到安卓客户端，请按系统提示添加小组件");
+    androidWidgetGuideOpen.value = true;
+    ElMessage.success("小组件配置已保存");
   } finally {
     androidWidgetInstalling.value = false;
   }

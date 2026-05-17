@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.net.Uri;
 import android.view.View;
 import android.widget.RemoteViews;
+import android.widget.Toast;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -26,9 +27,24 @@ import java.util.TimeZone;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public final class ScheduleWidgetProvider extends AppWidgetProvider {
+public class ScheduleWidgetProvider extends AppWidgetProvider {
+    static final String ACTION_WIDGET_PINNED = BuildConfig.APPLICATION_ID + ".ACTION_WIDGET_PINNED";
+    private static final Class<?>[] PROVIDERS = {
+            ScheduleWidgetProvider.class,
+            ScheduleWidgetProviderWide.class,
+            ScheduleWidgetProviderLarge.class,
+    };
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
     private static final int LINE_COUNT = 4;
+
+    @Override
+    public void onReceive(Context context, Intent intent) {
+        super.onReceive(context, intent);
+        if (intent != null && ACTION_WIDGET_PINNED.equals(intent.getAction())) {
+            Toast.makeText(context, "课表小组件已添加", Toast.LENGTH_SHORT).show();
+            updateAll(context);
+        }
+    }
 
     @Override
     public void onUpdate(Context context, AppWidgetManager manager, int[] appWidgetIds) {
@@ -40,9 +56,11 @@ public final class ScheduleWidgetProvider extends AppWidgetProvider {
     static void updateAll(Context context) {
         Context appContext = context.getApplicationContext();
         AppWidgetManager manager = AppWidgetManager.getInstance(appContext);
-        int[] ids = manager.getAppWidgetIds(new ComponentName(appContext, ScheduleWidgetProvider.class));
-        for (int id : ids) {
-            updateWidget(appContext, manager, id);
+        for (Class<?> provider : PROVIDERS) {
+            int[] ids = manager.getAppWidgetIds(new ComponentName(appContext, provider));
+            for (int id : ids) {
+                updateWidget(appContext, manager, id);
+            }
         }
     }
 

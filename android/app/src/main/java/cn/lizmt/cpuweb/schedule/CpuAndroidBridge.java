@@ -1,6 +1,7 @@
 package cn.lizmt.cpuweb.schedule;
 
 import android.app.Activity;
+import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
 import android.content.ComponentName;
 import android.content.Intent;
@@ -60,13 +61,27 @@ final class CpuAndroidBridge {
             AppWidgetManager manager = activity.getSystemService(AppWidgetManager.class);
             ComponentName provider = new ComponentName(activity, ScheduleWidgetProvider.class);
             if (manager != null && manager.isRequestPinAppWidgetSupported()) {
-                manager.requestPinAppWidget(provider, null, null);
-                Toast.makeText(activity, "请选择添加课表小组件", Toast.LENGTH_SHORT).show();
-                return;
+                boolean requestSent = manager.requestPinAppWidget(provider, null, widgetPinnedCallback());
+                if (requestSent) {
+                    Toast.makeText(activity, "已请求系统添加小组件；如未弹出，请长按桌面手动添加", Toast.LENGTH_LONG).show();
+                    return;
+                }
             }
         }
 
         Toast.makeText(activity, "配置已保存，请长按桌面添加课表小组件", Toast.LENGTH_LONG).show();
+    }
+
+    private PendingIntent widgetPinnedCallback() {
+        Intent intent = new Intent(activity, ScheduleWidgetProvider.class)
+                .setAction(ScheduleWidgetProvider.ACTION_WIDGET_PINNED);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            flags |= PendingIntent.FLAG_MUTABLE;
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags |= PendingIntent.FLAG_IMMUTABLE;
+        }
+        return PendingIntent.getBroadcast(activity, 1001, intent, flags);
     }
 
     private String parseEndpoint(String payload) {

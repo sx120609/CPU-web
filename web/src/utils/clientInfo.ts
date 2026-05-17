@@ -1,6 +1,6 @@
 export type ClientPlatform = "ios" | "android" | "web" | "unknown";
 
-export const ANDROID_WIDGET_MIN_VERSION_CODE = 2;
+export const ANDROID_WIDGET_MIN_VERSION_CODE = 4;
 
 export function detectClientPlatform(ua = navigator.userAgent): ClientPlatform {
   const source = (ua || "").toLowerCase();
