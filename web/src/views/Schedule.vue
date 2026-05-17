@@ -2035,20 +2035,23 @@ function prewarmScheduleCacheForWeek(wk: string) {
   color: var(--schedule-accent-contrast);
 }
 .theme-color-glass {
-  --schedule-colorful-control: linear-gradient(135deg, rgba(244, 63, 94, 0.76) 0%, rgba(249, 115, 22, 0.76) 22%, rgba(34, 197, 94, 0.70) 48%, rgba(59, 130, 246, 0.76) 74%, rgba(139, 92, 246, 0.76) 100%);
-  --schedule-colorful-control-soft: linear-gradient(135deg, rgba(244, 63, 94, 0.08), rgba(34, 197, 94, 0.07) 46%, rgba(59, 130, 246, 0.10) 72%, rgba(139, 92, 246, 0.09));
+  --schedule-colorful-control-ring: linear-gradient(135deg, rgba(244, 63, 94, 0.58) 0%, rgba(249, 115, 22, 0.50) 22%, rgba(34, 197, 94, 0.45) 48%, rgba(59, 130, 246, 0.54) 74%, rgba(139, 92, 246, 0.52) 100%);
+  --schedule-colorful-control-soft: linear-gradient(135deg, rgba(244, 63, 94, 0.09), rgba(249, 115, 22, 0.07) 24%, rgba(34, 197, 94, 0.07) 48%, rgba(59, 130, 246, 0.10) 74%, rgba(139, 92, 246, 0.09));
   --schedule-colorful-control-border: rgba(118, 105, 255, 0.22);
+  --schedule-colorful-control-text: #334155;
 }
 .theme-color-glass .view-switch button.active,
 .theme-color-glass .day-pill.active,
 .theme-color-glass .icon-btn.active,
 .theme-color-glass .week-cell.active {
-  border-color: transparent;
-  background: var(--schedule-colorful-control);
-  color: #fff;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.84)) padding-box,
+    var(--schedule-colorful-control-ring) border-box;
+  color: var(--schedule-colorful-control-text);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.26),
-    0 4px 12px rgba(78, 99, 188, 0.09);
+    inset 0 1px 0 rgba(255, 255, 255, 0.56),
+    0 3px 10px rgba(78, 99, 188, 0.07);
 }
 .theme-color-glass .week-title,
 .theme-color-glass .week-day-head.today {
@@ -2059,7 +2062,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
 }
 .theme-color-glass .week-title.clickable:hover,
 .theme-color-glass .week-title.clickable:active {
-  background: linear-gradient(135deg, rgba(244, 63, 94, 0.11), rgba(34, 197, 94, 0.09) 46%, rgba(59, 130, 246, 0.13) 72%, rgba(139, 92, 246, 0.12));
+  background: linear-gradient(135deg, rgba(244, 63, 94, 0.12), rgba(249, 115, 22, 0.09) 24%, rgba(34, 197, 94, 0.09) 48%, rgba(59, 130, 246, 0.13) 74%, rgba(139, 92, 246, 0.12));
 }
 .theme-color-glass .day-pill.today,
 .theme-color-glass .week-cell.current {

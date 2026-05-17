@@ -1,5 +1,5 @@
 <template>
-  <div ref="pickerRef" class="customize-picker">
+  <div ref="pickerRef" class="customize-picker" :class="{ 'is-colorful': theme === 'color-glass' }">
     <button
       ref="triggerRef"
       type="button"
@@ -148,13 +148,15 @@ onBeforeUnmount(() => {
   color: var(--schedule-accent-contrast);
 }
 
-:global(.theme-color-glass) .icon-trigger.active {
-  border-color: transparent;
-  background: linear-gradient(135deg, rgba(244, 63, 94, 0.76) 0%, rgba(249, 115, 22, 0.76) 22%, rgba(34, 197, 94, 0.70) 48%, rgba(59, 130, 246, 0.76) 74%, rgba(139, 92, 246, 0.76) 100%);
-  color: #fff;
+.customize-picker.is-colorful .icon-trigger.active {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.84)) padding-box,
+    linear-gradient(135deg, rgba(244, 63, 94, 0.58) 0%, rgba(249, 115, 22, 0.50) 22%, rgba(34, 197, 94, 0.45) 48%, rgba(59, 130, 246, 0.54) 74%, rgba(139, 92, 246, 0.52) 100%) border-box;
+  color: #334155;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.26),
-    0 4px 12px rgba(78, 99, 188, 0.09);
+    inset 0 1px 0 rgba(255, 255, 255, 0.56),
+    0 3px 10px rgba(78, 99, 188, 0.07);
 }
 
 .icon-trigger .el-icon {
@@ -207,9 +209,11 @@ onBeforeUnmount(() => {
 
 .theme-panel.is-colorful .theme-choice.active {
   border-color: transparent;
-  background: linear-gradient(135deg, rgba(244, 63, 94, 0.76) 0%, rgba(249, 115, 22, 0.76) 22%, rgba(34, 197, 94, 0.70) 48%, rgba(59, 130, 246, 0.76) 74%, rgba(139, 92, 246, 0.76) 100%);
-  color: #fff;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.84)) padding-box,
+    linear-gradient(135deg, rgba(244, 63, 94, 0.58) 0%, rgba(249, 115, 22, 0.50) 22%, rgba(34, 197, 94, 0.45) 48%, rgba(59, 130, 246, 0.54) 74%, rgba(139, 92, 246, 0.52) 100%) border-box;
+  color: #334155;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
 }
 
 .theme-swatch {
