@@ -2551,21 +2551,22 @@ function prewarmScheduleCacheForWeek(wk: string) {
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  padding: 0 8px 8px;
 }
 
 .course-editor-panel {
   width: 100%;
   height: auto;
-  max-height: calc(100vh - 14px);
-  max-height: calc(100svh - 14px);
+  max-height: min(76vh, 620px);
+  max-height: min(76svh, 620px);
   max-width: 720px;
-  background: #f3f4f8;
+  background: #f6f7fb;
   color: #0f172a;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-radius: 24px 24px 0 0;
-  box-shadow: 0 -12px 34px rgba(15, 23, 42, 0.12);
+  border-radius: 22px;
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.16);
 }
 
 .course-editor-enter-active,
@@ -2592,32 +2593,32 @@ function prewarmScheduleCacheForWeek(wk: string) {
 .course-editor-nav {
   flex: none;
   display: grid;
-  grid-template-columns: 90px minmax(0, 1fr) 90px;
+  grid-template-columns: 68px minmax(0, 1fr) 68px;
   align-items: center;
-  gap: 8px;
-  padding: calc(env(safe-area-inset-top) + 14px) 14px 16px;
+  gap: 6px;
+  padding: 10px 12px 8px;
 }
 
 .course-editor-nav h2 {
   margin: 0;
   text-align: center;
-  font-size: 19px;
+  font-size: 17px;
   line-height: 1.2;
-  font-weight: 700;
+  font-weight: 650;
   color: #0b1220;
 }
 
 .course-editor-nav button {
   border: 0;
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.88);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.76);
   color: #111827;
-  min-height: 44px;
-  padding: 0 18px;
+  min-height: 36px;
+  padding: 0 10px;
   font: inherit;
-  font-size: 16px;
-  font-weight: 600;
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+  font-size: 14px;
+  font-weight: 560;
+  box-shadow: none;
 }
 
 .course-editor-nav button.primary {
@@ -2628,25 +2629,25 @@ function prewarmScheduleCacheForWeek(wk: string) {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  max-height: calc(100vh - 102px);
-  max-height: calc(100svh - 102px);
-  padding: 0 16px calc(24px + env(safe-area-inset-bottom));
+  max-height: calc(76vh - 54px);
+  max-height: calc(76svh - 54px);
+  padding: 0 12px calc(12px + env(safe-area-inset-bottom));
 }
 
 .editor-card {
   overflow: hidden;
-  border-radius: 22px;
+  border-radius: 16px;
   background: #fff;
   box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
 }
 
 .editor-row {
-  min-height: 60px;
+  min-height: 52px;
   display: grid;
   grid-template-columns: 86px minmax(0, 1fr);
   align-items: center;
   gap: 12px;
-  margin: 0 18px;
+  margin: 0 14px;
   border-bottom: 1px solid #e7e9ee;
 }
 
@@ -2658,7 +2659,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
 .editor-card-title,
 .editor-section-title span {
   font-size: 17px;
-  font-weight: 650;
+  font-weight: 560;
   color: #0b1220;
 }
 
@@ -2711,7 +2712,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 22px 18px 10px;
+  padding: 16px 14px 8px;
 }
 
 .editor-actions {
