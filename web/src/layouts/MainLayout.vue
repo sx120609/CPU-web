@@ -286,7 +286,7 @@ const showNicknameDialog = ref(false);
 const newNickname = ref("");
 const savingNickname = ref(false);
 
-const shouldAskNickname = computed(() => auth.isLoggedIn && auth.needSetupNickname);
+const shouldAskNickname = computed(() => auth.isLoggedIn && auth.needSetupNickname && !auth.needDataAuthAgreement);
 watch(shouldAskNickname, (v) => {
   if (v) showNicknameDialog.value = true;
   else showNicknameDialog.value = false;

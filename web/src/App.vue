@@ -2,6 +2,40 @@
   <el-config-provider :locale="zhCn">
     <router-view />
     <el-dialog
+      v-model="dataAuthOpen"
+      title="数据授权安全协议"
+      width="480"
+      class="data-auth-dialog"
+      append-to-body
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      :show-close="false"
+    >
+      <div class="data-auth">
+        <div class="auth-head">
+          <el-tag size="small" type="warning" effect="plain">首登必读</el-tag>
+          <span class="auth-sub">请先阅读后再继续使用</span>
+        </div>
+        <p>
+          你正在使用学校统一身份认证进入本站，本站会在授权后读取课表、成绩、考试、培养方案等教务数据，仅用于展示给当前登录账号本人查看。
+        </p>
+        <p>
+          学校密码和验证码不会保存到服务器；教务 token 仅保留在当前会话中。请勿在公共设备上勾选“记住账号”，也不要与他人共享本机浏览器数据。
+        </p>
+        <p>
+          若你不同意该授权方式，可关闭页面后不继续使用；继续点击同意，表示你已阅读并理解上述内容。
+        </p>
+      </div>
+      <template #footer>
+        <div class="data-auth-footer">
+          <span class="read-hint">请先阅读 {{ dataAuthReadSeconds }}s</span>
+          <el-button type="primary" :disabled="dataAuthReadSeconds > 0" @click="acceptDataAuth">
+            {{ dataAuthReadSeconds > 0 ? `请先阅读 ${dataAuthReadSeconds}s` : "同意并继续" }}
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+    <el-dialog
       v-model="strongNoticeOpen"
       title="站务强提醒"
       width="420"
@@ -82,10 +116,13 @@ import { detectInAppBrowser } from "@/utils/inAppBrowser";
 
 const auth = useAuthStore();
 const msg = useMessageStore();
+const dataAuthOpen = ref(false);
+const dataAuthReadSeconds = ref(0);
 const inAppTipOpen = ref(false);
 const inAppBrowserLabel = ref("微信 / QQ");
 const inAppReadSeconds = ref(0);
 let inAppReadTimer: number | null = null;
+let dataAuthTimer: number | null = null;
 
 type NoticeRow = {
   id: number;
@@ -119,6 +156,9 @@ watch(inAppTipOpen, (open) => {
   if (open) startInAppReadTimer();
   else {
     clearInAppReadTimer();
+    if (auth.needDataAuthAgreement && !dataAuthOpen.value) {
+      openDataAuth();
+    }
     if (strongNoticeQueue.value.length && !strongNoticeOpen.value) {
       openStrongNotice();
     }
@@ -127,6 +167,7 @@ watch(inAppTipOpen, (open) => {
 
 onBeforeUnmount(() => {
   clearInAppReadTimer();
+  clearDataAuthTimer();
   clearStrongNoticeTimer();
   clearStrongNoticePoller();
 });
@@ -160,12 +201,25 @@ function clearInAppReadTimer() {
 }
 
 watch(
-  () => [auth.token, auth.user?.id],
+  () => [auth.token, auth.user?.id, auth.needDataAuthAgreement],
   () => {
     if (auth.isLoggedIn) {
-      void loadStrongNotices();
-      startStrongNoticePoller();
+      if (auth.needDataAuthAgreement) {
+        if (!inAppTipOpen.value) {
+          openDataAuth();
+        } else {
+          dataAuthOpen.value = false;
+          clearDataAuthTimer();
+        }
+        clearStrongNoticeTimer();
+        clearStrongNoticePoller();
+      } else {
+        void loadStrongNotices();
+        startStrongNoticePoller();
+      }
     } else {
+      dataAuthOpen.value = false;
+      clearDataAuthTimer();
       strongNoticeQueue.value = [];
       strongNoticeOpen.value = false;
       clearStrongNoticeTimer();
@@ -175,8 +229,45 @@ watch(
   { immediate: true }
 );
 
+function openDataAuth() {
+  if (inAppTipOpen.value) return;
+  if (!auth.needDataAuthAgreement) return;
+  dataAuthOpen.value = true;
+  startDataAuthTimer();
+}
+
+function startDataAuthTimer() {
+  clearDataAuthTimer();
+  dataAuthReadSeconds.value = 10;
+  dataAuthTimer = window.setInterval(() => {
+    dataAuthReadSeconds.value -= 1;
+    if (dataAuthReadSeconds.value <= 0) {
+      clearDataAuthTimer();
+    }
+  }, 1000);
+}
+
+function clearDataAuthTimer() {
+  if (dataAuthTimer) {
+    window.clearInterval(dataAuthTimer);
+    dataAuthTimer = null;
+  }
+  if (!dataAuthOpen.value) dataAuthReadSeconds.value = 0;
+}
+
+async function acceptDataAuth() {
+  if (dataAuthReadSeconds.value > 0) return;
+  auth.acceptDataAuthAgreement();
+  dataAuthOpen.value = false;
+  clearDataAuthTimer();
+  await nextTick();
+  if (strongNoticeQueue.value.length && !strongNoticeOpen.value) {
+    openStrongNotice();
+  }
+}
+
 async function loadStrongNotices() {
-  if (!auth.isLoggedIn || strongNoticeLoading) return;
+  if (!auth.isLoggedIn || auth.needDataAuthAgreement || strongNoticeLoading) return;
   strongNoticeLoading = true;
   try {
     const [list, settings] = await Promise.all([
@@ -201,6 +292,7 @@ async function loadStrongNotices() {
 }
 
 function openStrongNotice() {
+  if (auth.needDataAuthAgreement) return;
   if (inAppTipOpen.value) return;
   if (!currentStrongNotice.value) return;
   strongNoticeOpen.value = true;
@@ -291,6 +383,40 @@ html, body, #app {
     color: #6b7280;
     font-size: 13px;
   }
+}
+
+.data-auth {
+  color: #374151;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.auth-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.auth-sub {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.data-auth p {
+  margin: 0 0 10px;
+}
+
+.data-auth-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.read-hint {
+  font-size: 12px;
+  color: #9ca3af;
 }
 
 .strong-notice {
