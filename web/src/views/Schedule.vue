@@ -52,6 +52,16 @@
           <el-icon><Download /></el-icon>
         </button>
         <button
+          v-if="parsed"
+          type="button"
+          class="icon-btn"
+          aria-label="导入 iOS 小组件"
+          title="iOS 小组件"
+          @click="widgetDialogOpen = true"
+        >
+          <el-icon><Iphone /></el-icon>
+        </button>
+        <button
           type="button"
           class="icon-btn"
           :class="{ spinning: loading }"
@@ -273,6 +283,45 @@
       </template>
     </el-dialog>
 
+    <el-dialog
+      v-model="widgetDialogOpen"
+      title="导入 iOS 课表小组件"
+      :width="420"
+      align-center
+      :show-close="true"
+    >
+      <div class="widget-guide">
+        <a class="widget-step" href="https://apps.apple.com/app/scriptable/id1405459188" target="_blank" rel="noreferrer">
+          <b>1</b>
+          <span>安装 Scriptable</span>
+        </a>
+        <button type="button" class="widget-step" :disabled="widgetConfigCopying" @click="copyScriptableWidgetScript">
+          <b>2</b>
+          <span>{{ widgetConfigCopied ? "配置已复制" : "复制配置" }}</span>
+        </button>
+        <a class="widget-step" href="https://open.scriptable.app/add" target="_blank" rel="noreferrer">
+          <b>3</b>
+          <span>打开 Scriptable 导入</span>
+        </a>
+      </div>
+      <p class="widget-note">
+        会生成一个只读 token，小组件仅能读取你的课表；如果教务会话失效，请回到本站重新授权并再次复制配置。
+      </p>
+      <textarea
+        v-if="scriptableWidgetScript"
+        class="widget-script-preview"
+        readonly
+        :value="scriptableWidgetScript"
+        @focus="selectWidgetScript"
+      />
+      <template #footer>
+        <el-button @click="widgetDialogOpen = false">关闭</el-button>
+        <el-button type="primary" :loading="widgetConfigCopying" @click="copyScriptableWidgetScript">
+          {{ widgetConfigCopied ? "重新生成并复制" : "复制配置" }}
+        </el-button>
+      </template>
+    </el-dialog>
+
     <Teleport to="body">
       <Transition name="course-editor">
         <div v-if="editDialogOpen" class="course-editor-overlay" @click.self="editDialogOpen = false">
@@ -370,7 +419,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Aim, ArrowLeft, ArrowRight, Download, Loading, Lock, Moon, Picture, Refresh } from "@element-plus/icons-vue";
+import { Aim, ArrowLeft, ArrowRight, Download, Iphone, Loading, Lock, Moon, Picture, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
@@ -526,6 +575,10 @@ async function onJumpAndClose() {
 // 添加到主屏幕引导
 const installPromptRef = ref<InstanceType<typeof InstallPromptDialog> | null>(null);
 const openBrowserPromptRef = ref<InstanceType<typeof OpenBrowserPromptDialog> | null>(null);
+const widgetDialogOpen = ref(false);
+const widgetConfigCopying = ref(false);
+const widgetConfigCopied = ref(false);
+const scriptableWidgetScript = ref("");
 async function openInstallPrompt() {
   const inApp = detectInAppBrowser();
   if (inApp.isInApp) {
@@ -533,6 +586,131 @@ async function openInstallPrompt() {
     return;
   }
   await installPromptRef.value?.requestInstall();
+}
+
+async function copyScriptableWidgetScript() {
+  if (!jwxt.isLoggedIn) {
+    ElMessage.warning("请先完成教务授权，再生成小组件配置");
+    return;
+  }
+  widgetConfigCopying.value = true;
+  try {
+    const token = await jwxtApi.createScheduleWidgetToken({ name: "iOS 小组件" });
+    const script = buildScriptableWidgetScript(token.endpoint);
+    scriptableWidgetScript.value = script;
+    await writeClipboard(script);
+    widgetConfigCopied.value = true;
+    ElMessage.success("已复制 Scriptable 配置");
+  } finally {
+    widgetConfigCopying.value = false;
+  }
+}
+
+async function writeClipboard(text: string) {
+  if (navigator.clipboard?.writeText && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+}
+
+function selectWidgetScript(event: FocusEvent) {
+  const target = event.target as HTMLTextAreaElement | null;
+  target?.select();
+}
+
+function buildScriptableWidgetScript(endpoint: string) {
+  return `// 药大垎坊课表小组件
+// 复制到 Scriptable 后，添加桌面小组件并选择本脚本。
+const API_ENDPOINT = ${JSON.stringify(endpoint)};
+
+async function loadSchedule() {
+  const req = new Request(API_ENDPOINT);
+  req.timeoutInterval = 20;
+  const body = await req.loadJSON();
+  if (!body || body.code !== 0) {
+    throw new Error(body?.message || "课表读取失败");
+  }
+  return body.data;
+}
+
+function color(light, dark) {
+  return Color.dynamic(new Color(light), new Color(dark));
+}
+
+function addLine(widget, text, font, colorValue) {
+  const line = widget.addText(text);
+  line.font = font;
+  line.textColor = colorValue;
+  line.lineLimit = 1;
+  return line;
+}
+
+function courseText(course) {
+  const place = course.location ? " @" + course.location : "";
+  return course.startTime + " " + course.name + place;
+}
+
+async function render() {
+  const data = await loadSchedule();
+  const widget = new ListWidget();
+  widget.backgroundColor = color("#f8fbff", "#111827");
+  widget.setPadding(12, 12, 12, 12);
+
+  addLine(widget, "药大课表", Font.boldSystemFont(15), color("#172033", "#f8fafc"));
+  const sub = "第 " + data.week + " 周 · " + (data.today?.label || "今日");
+  addLine(widget, sub, Font.systemFont(11), color("#64748b", "#cbd5e1"));
+  widget.addSpacer(8);
+
+  const todayCourses = data.today?.courses || [];
+  const courses = todayCourses.length ? todayCourses : (data.upcoming || []);
+  if (!courses.length) {
+    addLine(widget, "今天没有课程", Font.mediumSystemFont(13), color("#475467", "#e2e8f0"));
+  } else {
+    const limit = config.widgetFamily === "large" ? 8 : config.widgetFamily === "medium" ? 5 : 3;
+    for (const course of courses.slice(0, limit)) {
+      addLine(widget, courseText(course), Font.mediumSystemFont(12), color("#1f2937", "#f8fafc"));
+      if (course.teacher || course.note) {
+        addLine(widget, [course.teacher, course.note].filter(Boolean).join(" · "), Font.systemFont(9), color("#7a8496", "#94a3b8"));
+      }
+      widget.addSpacer(4);
+    }
+  }
+
+  widget.addSpacer();
+  const updated = new Date(data.generatedAt || Date.now());
+  addLine(widget, "更新 " + updated.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }), Font.systemFont(9), color("#98a2b3", "#94a3b8"));
+  return widget;
+}
+
+try {
+  const widget = await render();
+  if (config.runsInWidget) {
+    Script.setWidget(widget);
+  } else {
+    await widget.presentMedium();
+  }
+} catch (error) {
+  const widget = new ListWidget();
+  widget.backgroundColor = color("#fff7ed", "#1f2937");
+  widget.setPadding(12, 12, 12, 12);
+  addLine(widget, "课表读取失败", Font.boldSystemFont(14), color("#9a3412", "#fed7aa"));
+  widget.addSpacer(6);
+  addLine(widget, String(error.message || error), Font.systemFont(11), color("#7c2d12", "#fdba74"));
+  if (config.runsInWidget) Script.setWidget(widget);
+  else await widget.presentMedium();
+}
+
+Script.complete();
+`;
 }
 
 onMounted(async () => {
@@ -2677,6 +2855,68 @@ function prewarmScheduleCacheForWeek(wk: string) {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 8px;
+}
+
+.widget-guide {
+  display: grid;
+  gap: 10px;
+}
+
+.widget-step {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #dde4ee;
+  border-radius: 12px;
+  background: #fff;
+  color: #172033;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.widget-step:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.widget-step b {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--schedule-accent-pale);
+  color: var(--schedule-accent-strong);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+}
+
+.widget-step span {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.widget-note {
+  margin: 12px 0 0;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.widget-script-preview {
+  width: 100%;
+  height: 128px;
+  margin-top: 12px;
+  border: 1px solid #dde4ee;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #475467;
+  padding: 10px;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  resize: vertical;
 }
 .week-cell {
   border: 1px solid #dde4ee;

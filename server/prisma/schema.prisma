@@ -47,6 +47,7 @@ model User {
   feedSources       SchoolFeedSource[] @relation("BotUser")
   userCourses       UserCourse[]
   scheduleEdits     UserScheduleEdit[]
+  scheduleWidgetTokens ScheduleWidgetToken[]
 }
 
 // ============ 论坛核心 ============
@@ -248,6 +249,27 @@ model UserScheduleEdit {
 
   @@unique([userId, semester])
   @@index([userId, updatedAt])
+}
+
+// iOS Scriptable 小组件只读 token。
+// 注意：这里保存的是服务端教务会话 token，不保存学校账号密码；教务会话仍会按服务端内存 session 失效。
+model ScheduleWidgetToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  name      String?
+  tokenHash String   @unique
+  tokenSuffix String
+  jwxtToken String
+  lastUsedAt DateTime?
+  expiresAt DateTime?
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([lastUsedAt])
 }
 
 // 一个学生对一门课的评分（与 Topic 1:1 关联）

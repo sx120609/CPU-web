@@ -102,6 +102,16 @@ export interface CloudScheduleEdits {
   }>;
 }
 
+export interface ScheduleWidgetTokenResult {
+  id: number;
+  name?: string;
+  tokenSuffix: string;
+  expiresAt?: string;
+  createdAt: string;
+  token: string;
+  endpoint: string;
+}
+
 export const jwxtApi = {
   beginLogin: (options?: { silent?: boolean }) =>
     inst.post<unknown, BeginLoginResult>(
@@ -138,6 +148,12 @@ export const jwxtApi = {
     payload,
     options?.silent ? ({ suppressErrorMessage: true } as any) : undefined
   ),
+  createScheduleWidgetToken: (payload?: { name?: string }) =>
+    inst.post<unknown, ScheduleWidgetTokenResult>("/schedule-widget-tokens", payload ?? {}),
+  listScheduleWidgetTokens: () =>
+    inst.get<unknown, Array<Omit<ScheduleWidgetTokenResult, "token" | "endpoint">>>("/schedule-widget-tokens"),
+  revokeScheduleWidgetToken: (id: number) =>
+    inst.delete<unknown, { ok: boolean }>(`/schedule-widget-tokens/${id}`),
   textbook: () => inst.get<unknown, { parsed: any }>("/textbook"),
   debugSnapshot: () => inst.post<unknown, { saved: string[]; errors: string[] }>("/debug/snapshot"),
   probe: (path: string) => inst.get<unknown, { html: string }>("/probe", { params: { path } }),
