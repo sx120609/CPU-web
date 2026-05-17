@@ -6,7 +6,14 @@ import { Errors, ok } from "../../utils/response";
 import { adminOnly, modOrAbove } from "../../middleware/admin";
 import { validate } from "../../middleware/validate";
 import { resetSourceAndRun, runAllOnce } from "../../services/schoolCrawler";
-import { getFeatures, setFeature, ALL_FEATURES, type FeatureKey } from "../../services/siteSettings";
+import {
+  getFeatures,
+  getSiteConfig,
+  setFeature,
+  setSiteOrigin,
+  ALL_FEATURES,
+  type FeatureKey,
+} from "../../services/siteSettings";
 
 export const adminRouter = Router();
 
@@ -483,6 +490,27 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
 
 // ============ 站点功能开关 ============
 
+adminRouter.get("/site-config", adminOnly, (_req, res) => {
+  ok(res, getSiteConfig());
+});
+
+const siteConfigPatchSchema = z.object({
+  siteOrigin: z.string().trim().max(240).optional(),
+});
+
+adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), async (req, res, next) => {
+  try {
+    const config = await setSiteOrigin(req.body.siteOrigin ?? "");
+    ok(res, config);
+  } catch (e: any) {
+    if (e?.message === "网站域名格式不正确" || e?.message === "网站域名仅支持 http 或 https") {
+      next(Errors.badRequest(e.message));
+      return;
+    }
+    next(e);
+  }
+});
+
 adminRouter.get("/features", adminOnly, (_req, res) => {
   ok(res, getFeatures());
 });
@@ -491,6 +519,7 @@ const featurePatchSchema = z.object({
   forum: z.boolean().optional(),
   market: z.boolean().optional(),
   coursereview: z.boolean().optional(),
+  electric: z.boolean().optional(),
 });
 
 adminRouter.patch("/features", adminOnly, validate(featurePatchSchema), async (req, res, next) => {

@@ -6,6 +6,7 @@ import { validate } from "../middleware/validate";
 import { authRequired } from "../middleware/auth";
 import { prisma } from "../prisma";
 import { detectLoginClient } from "../utils/loginClient";
+import { getSiteOrigin } from "../services/siteSettings";
 import {
   beginLogin,
   submitLogin,
@@ -112,6 +113,10 @@ function hashWidgetToken(token: string) {
 }
 
 function absoluteWidgetEndpoint(req: any, token: string) {
+  const configuredOrigin = getSiteOrigin();
+  if (configuredOrigin) {
+    return `${configuredOrigin}/api/jwxt/schedule-widget?token=${encodeURIComponent(token)}`;
+  }
   const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0].trim();
   const host = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
   const base = `${proto}://${host}`;

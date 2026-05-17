@@ -11,6 +11,23 @@
       </div>
     </el-alert>
 
+    <div class="site-config" v-loading="configLoading">
+      <div class="config-copy">
+        <div class="title">网站域名</div>
+        <div class="desc">用于生成 iOS / Android 小组件 API 地址。留空时会回退到当前请求的 Host，开发环境可能显示 127.0.0.1。</div>
+      </div>
+      <div class="config-form">
+        <el-input
+          v-model="siteOrigin"
+          clearable
+          maxlength="240"
+          placeholder="https://cpu.example.com"
+          @keyup.enter="saveSiteConfig"
+        />
+        <el-button type="primary" :loading="savingConfig" @click="saveSiteConfig">保存</el-button>
+      </div>
+    </div>
+
     <div class="feature-grid" v-loading="loading">
       <div v-for="f in featureMeta" :key="f.key" class="feature-row">
         <div class="left">
@@ -44,7 +61,10 @@ type FKey = "forum" | "market" | "coursereview" | "electric";
 
 const site = useSiteStore();
 const loading = ref(false);
+const configLoading = ref(false);
+const savingConfig = ref(false);
 const pendingKey = ref<FKey | null>(null);
+const siteOrigin = ref("");
 const features = reactive<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>({
   forum: true, market: true, coursereview: true, electric: true,
 });
@@ -76,11 +96,27 @@ onMounted(reload);
 
 async function reload() {
   loading.value = true;
+  configLoading.value = true;
   try {
-    const r = await adminApi.features();
+    const [r, config] = await Promise.all([adminApi.features(), adminApi.siteConfig()]);
     Object.assign(features, r);
     site.apply(r);
-  } finally { loading.value = false; }
+    siteOrigin.value = config.siteOrigin;
+  } finally {
+    loading.value = false;
+    configLoading.value = false;
+  }
+}
+
+async function saveSiteConfig() {
+  savingConfig.value = true;
+  try {
+    const config = await adminApi.updateSiteConfig({ siteOrigin: siteOrigin.value });
+    siteOrigin.value = config.siteOrigin;
+    ElMessage.success(config.siteOrigin ? "网站域名已保存" : "已清空网站域名");
+  } finally {
+    savingConfig.value = false;
+  }
 }
 
 async function toggle(key: FKey, on: boolean) {
@@ -113,6 +149,29 @@ async function toggle(key: FKey, on: boolean) {
 <style scoped>
 .features-pane { display: flex; flex-direction: column; gap: 14px; }
 .warn :deep(.el-alert__title) { font-size: 14px; }
+.site-config {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid #e6edf7;
+  border-radius: 10px;
+  background: #fff;
+}
+.config-copy {
+  flex: 1;
+  min-width: 0;
+}
+.config-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(520px, 52%);
+}
+.config-form :deep(.el-input) {
+  flex: 1;
+}
 .feature-grid { display: flex; flex-direction: column; gap: 10px; }
 .feature-row {
   display: flex;
@@ -132,10 +191,16 @@ async function toggle(key: FKey, on: boolean) {
 .paths code { background: #f3f4f6; padding: 1px 5px; border-radius: 3px; }
 
 @media (max-width: 768px) {
+  .site-config,
   .feature-row {
     align-items: stretch;
     flex-direction: column;
     padding: 12px;
+  }
+  .config-form {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
   }
   .feature-row :deep(.el-switch) {
     align-self: flex-start;

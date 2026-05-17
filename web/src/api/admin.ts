@@ -1,5 +1,9 @@
 import { request } from "./request";
 
+export type SiteConfig = {
+  siteOrigin: string;
+};
+
 export const adminApi = {
   // 概览
   overview: () => request.get<any>("/admin/overview"),
@@ -30,6 +34,9 @@ export const adminApi = {
   deleteUser: (id: number) =>
     request.delete<{ deletedUserId: number; deletedTopics: number; deletedReplies: number }>(`/admin/users/${id}`),
   // 站点功能开关
+  siteConfig: () => request.get<SiteConfig>("/admin/site-config"),
+  updateSiteConfig: (patch: { siteOrigin?: string }) =>
+    request.patch<SiteConfig>("/admin/site-config", patch),
   features: () => request.get<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>("/admin/features"),
   updateFeatures: (patch: { forum?: boolean; market?: boolean; coursereview?: boolean; electric?: boolean }) =>
     request.patch<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>("/admin/features", patch),
