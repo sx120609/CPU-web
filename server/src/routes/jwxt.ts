@@ -2,6 +2,9 @@ import { Router } from "express";
 import { z } from "zod";
 import { ok, Errors } from "../utils/response";
 import { validate } from "../middleware/validate";
+import { authRequired } from "../middleware/auth";
+import { prisma } from "../prisma";
+import { detectLoginClient } from "../utils/loginClient";
 import {
   beginLogin,
   submitLogin,
@@ -27,6 +30,56 @@ export const jwxtRouter = Router();
  */
 function getToken(req: any): string | null {
   return (req.headers["x-jwxt-token"] as string) || null;
+}
+
+const scheduleEditCourseSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  teacher: z.string().trim().max(80).optional(),
+  weeks: z.string().trim().max(120),
+  weekList: z.array(z.number().int().min(1).max(64)).max(64),
+  location: z.string().trim().max(80).optional(),
+  slotNote: z.string().trim().max(120).optional(),
+  startSlot: z.number().int().min(1).max(20).optional(),
+  endSlot: z.number().int().min(1).max(20).optional(),
+});
+
+const scheduleEditItemSchema = z.object({
+  id: z.string().trim().min(1).max(80),
+  sourceKey: z.string().trim().max(180).optional(),
+  day: z.number().int().min(1).max(7),
+  bigSlot: z.number().int().min(1).max(20),
+  course: scheduleEditCourseSchema,
+});
+
+const scheduleEditStateSchema = z.object({
+  hidden: z.array(z.string().trim().min(1).max(180)).max(1200),
+  custom: z.array(scheduleEditItemSchema).max(1200),
+});
+
+function emptyScheduleEdits() {
+  return { hidden: [] as string[], custom: [] as Array<z.infer<typeof scheduleEditItemSchema>> };
+}
+
+function normalizeScheduleEdits(input: unknown) {
+  const parsed = scheduleEditStateSchema.parse(input);
+  const hidden = Array.from(new Set(parsed.hidden.map((item) => item.trim()).filter(Boolean)));
+  const custom = parsed.custom.map((item) => ({
+    ...item,
+    sourceKey: item.sourceKey?.trim() || undefined,
+    course: {
+      ...item.course,
+      weekList: Array.from(new Set(item.course.weekList)).sort((a, b) => a - b),
+      teacher: item.course.teacher?.trim() || undefined,
+      location: item.course.location?.trim() || undefined,
+      slotNote: item.course.slotNote?.trim() || undefined,
+    },
+  }));
+  return { hidden, custom };
+}
+
+function ensureNativeClient(req: any) {
+  const client = detectLoginClient(req).client;
+  if (client !== "android") throw Errors.forbidden("课表编辑仅客户端可用");
 }
 
 /** 第一步：获取登录页（拿 lt/execution + 可能的验证码） */
@@ -182,3 +235,51 @@ jwxtRouter.get("/pyfa", async (req, res, next) => {
     ok(res, { parsed });
   } catch (e) { next(e); }
 });
+
+jwxtRouter.get("/schedule-edits", authRequired, async (req: any, res, next) => {
+  try {
+    ensureNativeClient(req);
+    const semester = String(req.query.semester || "").trim() || "current";
+    const row = await prisma.userScheduleEdit.findUnique({
+      where: { userId_semester: { userId: req.user.userId, semester } },
+      select: { payload: true },
+    });
+    if (!row?.payload) {
+      ok(res, { semester, edits: emptyScheduleEdits() });
+      return;
+    }
+    try {
+      ok(res, { semester, edits: normalizeScheduleEdits(JSON.parse(row.payload)) });
+    } catch {
+      ok(res, { semester, edits: emptyScheduleEdits() });
+    }
+  } catch (e) { next(e); }
+});
+
+jwxtRouter.put(
+  "/schedule-edits",
+  authRequired,
+  validate(z.object({
+    semester: z.string().trim().min(1).max(64),
+    edits: scheduleEditStateSchema,
+  })),
+  async (req: any, res, next) => {
+    try {
+      ensureNativeClient(req);
+      const semester = String(req.body.semester || "").trim() || "current";
+      const edits = normalizeScheduleEdits(req.body.edits);
+      await prisma.userScheduleEdit.upsert({
+        where: { userId_semester: { userId: req.user.userId, semester } },
+        create: {
+          userId: req.user.userId,
+          semester,
+          payload: JSON.stringify(edits),
+        },
+        update: {
+          payload: JSON.stringify(edits),
+        },
+      });
+      ok(res, { semester, edits });
+    } catch (e) { next(e); }
+  }
+);

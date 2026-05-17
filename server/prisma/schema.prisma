@@ -46,6 +46,7 @@ model User {
   messageSetting    MessageSetting?
   feedSources       SchoolFeedSource[] @relation("BotUser")
   userCourses       UserCourse[]
+  scheduleEdits     UserScheduleEdit[]
 }
 
 // ============ 论坛核心 ============
@@ -232,6 +233,21 @@ model UserCourse {
 
   @@unique([userId, courseId])
   @@index([userId])
+}
+
+// 课表编辑上云（按用户 + 学期存一份编辑状态）
+model UserScheduleEdit {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  semester  String
+  payload   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, semester])
+  @@index([userId, updatedAt])
 }
 
 // 一个学生对一门课的评分（与 Topic 1:1 关联）

@@ -7,6 +7,7 @@
  */
 import axios from "axios";
 import { ElMessage } from "element-plus";
+import { detectClientPlatform } from "@/utils/clientInfo";
 
 const JWXT_TOKEN_KEY = "cpu-jwxt-token";
 
@@ -37,6 +38,7 @@ function shouldSuppressErrorMessage(config: unknown) {
 inst.interceptors.request.use((cfg) => {
   const tk = getJwxtToken();
   if (tk) cfg.headers["X-Jwxt-Token"] = tk;
+  cfg.headers["X-CPU-Client"] = detectClientPlatform();
   // 站内登录 token 也带上，便于后端识别用户
   const siteToken = localStorage.getItem("cpu-web-token");
   if (siteToken) cfg.headers.Authorization = `Bearer ${siteToken}`;
@@ -80,6 +82,26 @@ export interface LoginResult {
   captcha?: { image: string; pendingId: string };
 }
 
+export interface CloudScheduleEdits {
+  hidden: string[];
+  custom: Array<{
+    id: string;
+    sourceKey?: string;
+    day: number;
+    bigSlot: number;
+    course: {
+      name: string;
+      teacher?: string;
+      weeks: string;
+      weekList: number[];
+      location?: string;
+      slotNote?: string;
+      startSlot?: number;
+      endSlot?: number;
+    };
+  }>;
+}
+
 export const jwxtApi = {
   beginLogin: (options?: { silent?: boolean }) =>
     inst.post<unknown, BeginLoginResult>(
@@ -103,6 +125,19 @@ export const jwxtApi = {
   pyfa: () => inst.get<unknown, { parsed: any }>("/pyfa"),
   calendar: () => inst.get<unknown, { parsed: any }>("/calendar"),
   iapps: () => inst.get<unknown, { apps: any[] }>("/iapps"),
+  getScheduleEdits: (semester: string, options?: { silent?: boolean }) =>
+    inst.get<unknown, { semester: string; edits: CloudScheduleEdits }>("/schedule-edits", {
+      params: { semester },
+      ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
+    }),
+  saveScheduleEdits: (
+    payload: { semester: string; edits: CloudScheduleEdits },
+    options?: { silent?: boolean },
+  ) => inst.put<unknown, { semester: string; edits: CloudScheduleEdits }>(
+    "/schedule-edits",
+    payload,
+    options?.silent ? ({ suppressErrorMessage: true } as any) : undefined
+  ),
   textbook: () => inst.get<unknown, { parsed: any }>("/textbook"),
   debugSnapshot: () => inst.post<unknown, { saved: string[]; errors: string[] }>("/debug/snapshot"),
   probe: (path: string) => inst.get<unknown, { html: string }>("/probe", { params: { path } }),

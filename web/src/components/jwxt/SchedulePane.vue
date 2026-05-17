@@ -304,7 +304,7 @@
               </section>
 
               <section v-if="hiddenCourseItems.length" class="editor-card hidden-restore-card">
-                <div class="editor-card-title">已隐藏课程</div>
+                <div class="editor-card-title">已编辑课程</div>
                 <div class="hidden-list">
                   <button v-for="item in hiddenCourseItems" :key="item.key" type="button" @click="restoreHiddenCourse(item.key)">
                     {{ item.label }}
@@ -335,8 +335,6 @@ import {
   courseEditKey,
   createCustomCourseId,
   emptyScheduleEdits,
-  readScheduleEdits,
-  writeScheduleEdits,
   type CustomScheduleItem,
   type ScheduleEditState,
 } from "@/utils/scheduleEdits";
@@ -402,6 +400,8 @@ const LAST_CACHE_KEY = "cpu-schedule-last-cache-key-v1";
 const scheduleCacheStore = new Map<string, CacheEnvelope<ScheduleResult>>();
 const prewarmingScheduleKeys = new Set<string>();
 const isNativeScheduleApp = /cpuwebscheduleapp/i.test(navigator.userAgent);
+let editDeniedHintAt = 0;
+let scheduleEditsSaveTimer = 0;
 const smallSlots = [
   { no: 1, start: "08:00", end: "08:45" },
   { no: 2, start: "08:55", end: "09:40" },
@@ -506,6 +506,10 @@ onBeforeUnmount(() => {
   window.visualViewport?.removeEventListener("resize", updateViewportHeight);
   window.visualViewport?.removeEventListener("scroll", updateViewportHeight);
   clearStaticWeekAnimation();
+  if (scheduleEditsSaveTimer) {
+    window.clearTimeout(scheduleEditsSaveTimer);
+    scheduleEditsSaveTimer = 0;
+  }
 });
 
 const semesters = computed(() => parsed.value?.semesters ?? []);
@@ -741,6 +745,7 @@ function onCourseBlockClick(event: MouseEvent, block: WeekCourseBlock, targetWee
     week.value = targetWeek;
     saveLastState();
   }
+  if (!ensureScheduleEditEnabled()) return;
   openCourseEditor(block, targetWeek);
 }
 
@@ -753,6 +758,7 @@ function onWeekSlotClick(event: MouseEvent, day: number, slot: number, targetWee
     week.value = targetWeek;
     saveLastState();
   }
+  if (!ensureScheduleEditEnabled()) return;
   openAddCourse(day, slot, targetWeek);
 }
 
@@ -761,6 +767,7 @@ function onDaySlotClick(event: MouseEvent, day: number, slot: number, targetWeek
     event.preventDefault();
     return;
   }
+  if (!ensureScheduleEditEnabled()) return;
   openAddCourse(day, slot, targetWeek);
 }
 
@@ -1257,6 +1264,31 @@ function dayLabel(day: number) {
   return ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][day - 1] ?? `周${day}`;
 }
 
+function hasScheduleEditAuth() {
+  try {
+    return Boolean(localStorage.getItem("cpu-web-token"));
+  } catch {
+    return false;
+  }
+}
+
+function canUseScheduleEdit() {
+  return isNativeScheduleApp && hasScheduleEditAuth();
+}
+
+function ensureScheduleEditEnabled() {
+  if (canUseScheduleEdit()) return true;
+  const now = Date.now();
+  if (now - editDeniedHintAt < 1600) return false;
+  editDeniedHintAt = now;
+  if (!isNativeScheduleApp) {
+    ElMessage.warning("课表编辑仅客户端可用");
+  } else {
+    ElMessage.warning("请先登录站内账号后再编辑课表");
+  }
+  return false;
+}
+
 function restoreHiddenCourse(key: string) {
   scheduleEdits.value = {
     ...scheduleEdits.value,
@@ -1266,6 +1298,7 @@ function restoreHiddenCourse(key: string) {
 }
 
 function openAddCourse(day = activeDay.value, slot = 1, targetWeek = currentWeekValue()) {
+  if (!ensureScheduleEditEnabled()) return;
   loadScheduleEdits();
   editingCourseBlock.value = null;
   editingCourseKey.value = "";
@@ -1284,6 +1317,7 @@ function openAddCourse(day = activeDay.value, slot = 1, targetWeek = currentWeek
 }
 
 function openCourseEditor(block: WeekCourseBlock, targetWeek = currentWeekValue()) {
+  if (!ensureScheduleEditEnabled()) return;
   loadScheduleEdits();
   editingCourseBlock.value = block;
   editingCourseKey.value = courseEditKey(block.day, block.bigSlot, block.course);
@@ -1448,11 +1482,66 @@ function clampSlot(value: number) {
 }
 
 function loadScheduleEdits() {
-  scheduleEdits.value = readScheduleEdits(semester.value || parsed.value?.currentSemester);
+  const sem = semester.value || parsed.value?.currentSemester || "current";
+  if (!canUseScheduleEdit()) {
+    scheduleEdits.value = emptyScheduleEdits();
+    return;
+  }
+  void (async () => {
+    try {
+      const r = await jwxtApi.getScheduleEdits(sem, { silent: true });
+      scheduleEdits.value = normalizeScheduleEditsState(r.edits);
+    } catch {
+      scheduleEdits.value = emptyScheduleEdits();
+    }
+  })();
 }
 
 function persistScheduleEdits() {
-  writeScheduleEdits(semester.value || parsed.value?.currentSemester, scheduleEdits.value);
+  if (!canUseScheduleEdit()) return;
+  const sem = semester.value || parsed.value?.currentSemester || "current";
+  scheduleEdits.value = normalizeScheduleEditsState(scheduleEdits.value);
+  if (scheduleEditsSaveTimer) window.clearTimeout(scheduleEditsSaveTimer);
+  scheduleEditsSaveTimer = window.setTimeout(() => {
+    scheduleEditsSaveTimer = 0;
+    const payload = normalizeScheduleEditsState(scheduleEdits.value);
+    void jwxtApi.saveScheduleEdits({ semester: sem, edits: payload }, { silent: true });
+  }, 160);
+}
+
+function normalizeScheduleEditsState(input: ScheduleEditState | null | undefined): ScheduleEditState {
+  const hidden = Array.isArray(input?.hidden)
+    ? [...new Set(input.hidden.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim()))]
+    : [];
+  const custom = Array.isArray(input?.custom)
+    ? input.custom
+      .filter((item) => Boolean(
+        item &&
+        typeof item.id === "string" &&
+        Number.isFinite(item.day) &&
+        Number.isFinite(item.bigSlot) &&
+        item.course &&
+        typeof item.course.name === "string" &&
+        Array.isArray(item.course.weekList)
+      ))
+      .map((item) => ({
+        ...item,
+        id: String(item.id).trim(),
+        sourceKey: item.sourceKey?.trim() || undefined,
+        course: {
+          ...item.course,
+          name: String(item.course.name || "").trim(),
+          teacher: item.course.teacher?.trim() || undefined,
+          location: item.course.location?.trim() || undefined,
+          weeks: String(item.course.weeks || "").trim() || "全部周",
+          weekList: [...new Set(item.course.weekList.map((w) => Number(w)).filter((w) => Number.isFinite(w) && w > 0))].sort((a, b) => a - b),
+          slotNote: item.course.slotNote?.trim() || undefined,
+          startSlot: Number.isFinite(item.course.startSlot) ? Number(item.course.startSlot) : undefined,
+          endSlot: Number.isFinite(item.course.endSlot) ? Number(item.course.endSlot) : undefined,
+        },
+      }))
+    : [];
+  return { hidden, custom };
 }
 
 function allKnownScheduleSources() {
