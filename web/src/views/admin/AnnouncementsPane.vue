@@ -19,6 +19,13 @@
         <el-form-item label="附带链接（选填）">
           <el-input v-model="form.link" placeholder="例如 /forum/topic/123 或 https://..." />
         </el-form-item>
+        <el-form-item label="投放平台">
+          <el-radio-group v-model="form.targetClient">
+            <el-radio-button value="all">全部</el-radio-button>
+            <el-radio-button value="ios">仅 iOS</el-radio-button>
+            <el-radio-button value="android">仅安卓</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" :loading="publishing" :disabled="!form.title || !form.content" @click="publish">
             发布公告
@@ -41,6 +48,9 @@
             <el-tag size="small" :type="a.level === 'strong' ? 'danger' : a.level === 'normal' ? 'primary' : 'info'" effect="plain">
               {{ a.level }}
             </el-tag>
+            <el-tag v-if="targetLabel(a.targetClient) !== '全部'" size="small" effect="plain">
+              {{ targetLabel(a.targetClient) }}
+            </el-tag>
             {{ a.title }}
           </div>
           <div class="ann-content">{{ a.content }}</div>
@@ -59,11 +69,17 @@ import { adminApi } from "@/api/admin";
 import { fmtDate } from "@/utils/format";
 
 const list = ref<any[]>([]);
-const form = reactive({ title: "", content: "", level: "normal", link: "" });
+const form = reactive({ title: "", content: "", level: "normal", link: "", targetClient: "all" });
 const publishing = ref(false);
 
 onMounted(reload);
 async function reload() { list.value = await adminApi.announcements(); }
+
+function targetLabel(value?: string | null) {
+  if (value === "ios") return "仅 iOS";
+  if (value === "android") return "仅安卓";
+  return "全部";
+}
 
 async function publish() {
   publishing.value = true;
@@ -73,9 +89,10 @@ async function publish() {
       content: form.content.trim(),
       level: form.level,
       link: form.link.trim() || undefined,
+      targetClient: form.targetClient as "all" | "ios" | "android",
     });
     ElMessage.success("公告已发布");
-    form.title = ""; form.content = ""; form.link = "";
+    form.title = ""; form.content = ""; form.link = ""; form.targetClient = "all";
     reload();
   } finally { publishing.value = false; }
 }

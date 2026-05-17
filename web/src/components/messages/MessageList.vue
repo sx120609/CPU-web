@@ -9,6 +9,9 @@
       @click="onClick(n)"
     >
       <span class="tag" :class="[`tag-${n.category}`, `lv-${n.level}`]">{{ n.category }}</span>
+      <span v-if="platformTag(n.targetClient)" class="tag tag-target" :class="`tag-target-${n.targetClient}`">
+        {{ platformTag(n.targetClient) }}
+      </span>
       <div class="info">
         <div class="title">{{ n.title }}</div>
         <div class="content">{{ n.content }}</div>
@@ -31,6 +34,12 @@ defineProps<{ list: any[] }>();
 function onClick(n: any) {
   if (!n.readAt) emit("read", n.id);
   if (n.link) router.push(n.link);
+}
+
+function platformTag(targetClient?: string | null) {
+  if (targetClient === "ios") return "iOS";
+  if (targetClient === "android") return "安卓";
+  return "";
 }
 </script>
 
@@ -57,11 +66,18 @@ function onClick(n: any) {
   line-height: 22px;
   flex-shrink: 0;
 }
+.tag-target {
+  width: auto;
+  min-width: 44px;
+  padding: 0 6px;
+}
 .tag-事务 { background: #fee2e2; color: #dc2626; }
 .tag-通知 { background: #dbeafe; color: #1d4ed8; }
 .tag-服务 { background: #dcfce7; color: #15803d; }
 .tag-资讯 { background: #f3e8ff; color: #7c3aed; }
 .lv-strong { box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.18); }
+.tag-target-ios { background: #e0e7ff; color: #4338ca; }
+.tag-target-android { background: #dcfce7; color: #15803d; }
 
 .info { flex: 1; min-width: 0; }
 .title { font-size: 14px; color: #1f2937; }

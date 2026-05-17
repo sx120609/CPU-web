@@ -28,6 +28,7 @@
     <!-- Android 普通浏览器：优先提供 APK -->
     <div v-else-if="platform === 'android'" class="content">
       <p>建议安装 <b>药大垎坊课表</b> Android 版，下次可从桌面图标直接打开课表。</p>
+      <p class="muted">如果手机里已经装过旧版，请先卸载旧版，再安装新版。</p>
       <ul class="bullets">
         <li>安装包很小，只是课表页的轻量 App 壳</li>
         <li>网站正常访问时，App 内容会同步更新</li>

@@ -67,7 +67,10 @@ public final class MainActivity extends Activity {
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
-        settings.setUserAgentString(settings.getUserAgentString() + " CPUWebScheduleApp/1.0");
+        settings.setUserAgentString(settings.getUserAgentString()
+                + " CPUWebScheduleApp/" + BuildConfig.VERSION_CODE
+                + " CPUWebScheduleAppVersion/" + BuildConfig.VERSION_NAME);
+        webView.addJavascriptInterface(new CpuAndroidBridge(this), "CPUAndroid");
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);

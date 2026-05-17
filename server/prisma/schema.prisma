@@ -365,6 +365,8 @@ model Notification {
   userId    Int?      // null = 全局广播
   // 事件类型：reply / mention / like / system / school-feed
   category  String
+  // 目标客户端：null = 全部；仅对对应客户端可见
+  targetClient String?
   level     String    @default("normal") // strong / normal / weak
   title     String
   content   String

@@ -56,7 +56,7 @@ export const adminApi = {
   runAllFeeds: () => request.post<any>("/admin/feeds/run-all"),
   // 公告
   announcements: () => request.get<any[]>("/admin/announcements"),
-  createAnnouncement: (p: { title: string; content: string; level?: string; link?: string }) =>
+  createAnnouncement: (p: { title: string; content: string; level?: string; link?: string; targetClient?: "all" | "ios" | "android" }) =>
     request.post<any>("/admin/announcements", p),
   deleteAnnouncement: (id: number) => request.delete<any>(`/admin/announcements/${id}`),
 };

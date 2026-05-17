@@ -1,20 +1,62 @@
 export type ClientPlatform = "ios" | "android" | "web" | "unknown";
 
+export const ANDROID_WIDGET_MIN_VERSION_CODE = 2;
+
 export function detectClientPlatform(ua = navigator.userAgent): ClientPlatform {
   const source = (ua || "").toLowerCase();
   const params = new URLSearchParams(window.location.search);
-  const isNativeApp = source.includes("cpuwebscheduleapp") || params.get("client") === "android-app";
-  const isStandalone = window.matchMedia?.("(display-mode: standalone)").matches
-    || (navigator as any).standalone === true;
 
-  if (isNativeApp) return "android";
-  if (isStandalone && source.includes("android")) return "android";
-  if (
-    isStandalone &&
-    (source.includes("iphone") || source.includes("ipad") || source.includes("ipod") || (source.includes("macintosh") && navigator.maxTouchPoints > 1))
-  ) return "ios";
+  if (isAndroidNativeApp(ua)) return "android";
+  if (isStandaloneMode() && source.includes("android")) return "android";
+  if (isIosStandalone(ua)) return "ios";
   if (source) return "web";
   return "unknown";
+}
+
+export function isStandaloneMode() {
+  return window.matchMedia?.("(display-mode: standalone)").matches
+    || (navigator as any).standalone === true;
+}
+
+export function isIosStandalone(ua = navigator.userAgent) {
+  const source = (ua || "").toLowerCase();
+  const looksLikeIos = source.includes("iphone")
+    || source.includes("ipad")
+    || source.includes("ipod")
+    || (source.includes("macintosh") && navigator.maxTouchPoints > 1);
+  return isStandaloneMode() && looksLikeIos;
+}
+
+export function isAndroidNativeApp(ua = navigator.userAgent) {
+  const source = (ua || "").toLowerCase();
+  const params = new URLSearchParams(window.location.search);
+  return source.includes("cpuwebscheduleapp") || params.get("client") === "android-app";
+}
+
+export function getAndroidNativeVersionCode(ua = navigator.userAgent) {
+  const bridge = (window as any).CPUAndroid;
+  const bridgeVersion = Number(typeof bridge?.getVersionCode === "function" ? bridge.getVersionCode() : 0);
+  if (Number.isFinite(bridgeVersion) && bridgeVersion > 0) return Math.floor(bridgeVersion);
+
+  const params = new URLSearchParams(window.location.search);
+  const queryVersion = Number(params.get("androidVersionCode") || params.get("appVersionCode") || 0);
+  if (Number.isFinite(queryVersion) && queryVersion > 0) return Math.floor(queryVersion);
+
+  const source = ua || "";
+  const vcMatch = source.match(/CPUWebScheduleApp[^;\s)]*(?:vc|versionCode)[=/](\d+)/i);
+  if (vcMatch) return Number(vcMatch[1]) || 0;
+
+  const versionMatch = source.match(/CPUWebScheduleApp\/(\d+(?:\.\d+)?)/i);
+  if (versionMatch) return Number(versionMatch[1].split(".")[0]) || 0;
+
+  return isAndroidNativeApp(ua) ? 1 : 0;
+}
+
+export function supportsAndroidScheduleWidget(ua = navigator.userAgent) {
+  if (!isAndroidNativeApp(ua)) return false;
+  const bridge = (window as any).CPUAndroid;
+  return getAndroidNativeVersionCode(ua) >= ANDROID_WIDGET_MIN_VERSION_CODE
+    && typeof bridge?.installScheduleWidget === "function";
 }
 
 export function clientPlatformLabel(platform: ClientPlatform) {

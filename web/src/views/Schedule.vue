@@ -73,9 +73,15 @@
                 <span>主题选择</span>
                 <el-icon class="more-chevron"><ArrowRight /></el-icon>
               </button>
-              <button type="button" class="more-action" @click="openWidgetDialog">
+              <button
+                v-if="widgetMenuPlatform"
+                type="button"
+                class="more-action"
+                :disabled="androidWidgetInstalling"
+                @click="handleWidgetMenuAction"
+              >
                 <el-icon><Iphone /></el-icon>
-                <span>导入小组件</span>
+                <span>{{ widgetMenuLabel }}</span>
                 <el-icon class="more-chevron"><ArrowRight /></el-icon>
               </button>
             </template>
@@ -474,7 +480,14 @@ import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
-import { detectClientPlatform } from "@/utils/clientInfo";
+import {
+  ANDROID_WIDGET_MIN_VERSION_CODE,
+  detectClientPlatform,
+  getAndroidNativeVersionCode,
+  isAndroidNativeApp,
+  isIosStandalone,
+  supportsAndroidScheduleWidget,
+} from "@/utils/clientInfo";
 import { USER_QQ_GROUP, USER_QQ_GROUP_HINT_KEY } from "@/utils/userGroup";
 import InstallPromptDialog from "@/components/install/InstallPromptDialog.vue";
 import OpenBrowserPromptDialog from "@/components/install/OpenBrowserPromptDialog.vue";
@@ -630,9 +643,16 @@ const moreMenuOpen = ref(false);
 const moreMenuView = ref<"menu" | "theme">("menu");
 const widgetConfigCopying = ref(false);
 const widgetConfigCopied = ref(false);
+const androidWidgetInstalling = ref(false);
 const scriptableWidgetScript = ref("");
 const widgetCopyMessage = ref("");
 const widgetScriptPreviewRef = ref<HTMLTextAreaElement | null>(null);
+type WidgetMenuPlatform = "ios" | "android" | "android-old";
+interface AndroidWidgetBridge {
+  getVersionCode?: () => number;
+  supportsScheduleWidget?: () => boolean;
+  installScheduleWidget?: (payload: string) => void;
+}
 async function openInstallPrompt() {
   const inApp = detectInAppBrowser();
   if (inApp.isInApp) {
@@ -647,9 +667,72 @@ function selectScheduleTheme(value: ScheduleThemeKey) {
   moreMenuOpen.value = false;
 }
 
+function getAndroidWidgetBridge(): AndroidWidgetBridge | null {
+  return ((window as any).CPUAndroid ?? null) as AndroidWidgetBridge | null;
+}
+
+const widgetMenuPlatform = computed<WidgetMenuPlatform | null>(() => {
+  if (isIosStandalone()) return "ios";
+  if (!isAndroidNativeApp()) return null;
+  return supportsAndroidScheduleWidget() ? "android" : "android-old";
+});
+
+const widgetMenuLabel = computed(() => {
+  if (widgetMenuPlatform.value === "android") return "添加安卓小组件";
+  if (widgetMenuPlatform.value === "android-old") return "更新安卓客户端";
+  return "导入 iOS 小组件";
+});
+
+function handleWidgetMenuAction() {
+  if (widgetMenuPlatform.value === "ios") {
+    openWidgetDialog();
+    return;
+  }
+  if (widgetMenuPlatform.value === "android") {
+    void installAndroidWidget();
+    return;
+  }
+  showAndroidUpdateRequired();
+}
+
 function openWidgetDialog() {
   moreMenuOpen.value = false;
   widgetDialogOpen.value = true;
+}
+
+async function installAndroidWidget() {
+  moreMenuOpen.value = false;
+  const bridge = getAndroidWidgetBridge();
+  if (!supportsAndroidScheduleWidget() || !bridge?.installScheduleWidget) {
+    showAndroidUpdateRequired();
+    return;
+  }
+  if (!jwxt.isLoggedIn) {
+    ElMessage.warning("请先完成教务授权，再添加安卓小组件");
+    return;
+  }
+
+  androidWidgetInstalling.value = true;
+  try {
+    const token = await jwxtApi.createScheduleWidgetToken({ name: "Android 小组件" });
+    bridge.installScheduleWidget(JSON.stringify({
+      endpoint: token.endpoint,
+      title: "药大课表",
+    }));
+    ElMessage.success("已发送到安卓客户端，请按系统提示添加小组件");
+  } finally {
+    androidWidgetInstalling.value = false;
+  }
+}
+
+function showAndroidUpdateRequired() {
+  moreMenuOpen.value = false;
+  const currentVersion = getAndroidNativeVersionCode();
+  void ElMessageBox.alert(
+    `当前安卓客户端版本过低，暂不支持桌面小组件。请先卸载旧版，再安装最新版。${currentVersion ? `（当前版本：${currentVersion}，需要：${ANDROID_WIDGET_MIN_VERSION_CODE}+）` : ""}`,
+    "需要更新安卓客户端",
+    { confirmButtonText: "我知道了" },
+  );
 }
 
 async function copyScriptableWidgetScript() {

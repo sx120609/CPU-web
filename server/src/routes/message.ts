@@ -3,13 +3,22 @@ import { z } from "zod";
 import { prisma } from "../prisma";
 import { Errors, ok } from "../utils/response";
 import { validate } from "../middleware/validate";
+import { detectLoginClient } from "../utils/loginClient";
 
 export const messageRouter = Router();
+
+function notificationVisibleToClient(notification: { targetClient?: string | null }, client: string) {
+  if (!notification.targetClient || notification.targetClient === "all") return true;
+  if (notification.targetClient === "ios") return client === "ios";
+  if (notification.targetClient === "android") return client === "android";
+  return true;
+}
 
 messageRouter.get("/", async (req, res, next) => {
   try {
     const userId = req.user!.userId;
     const category = req.query.category ? String(req.query.category) : undefined;
+    const client = detectLoginClient(req).client;
     const [list, reads] = await Promise.all([
       prisma.notification.findMany({
         where: {
@@ -25,7 +34,7 @@ messageRouter.get("/", async (req, res, next) => {
     ]);
     const readSet = new Map<number, Date>();
     reads.forEach((r) => readSet.set(r.notificationId, r.readAt));
-    ok(res, list.map((n) => ({
+    ok(res, list.filter((n) => notificationVisibleToClient(n, client)).map((n) => ({
       ...n,
       readAt: n.userId === null ? readSet.get(n.id) ?? null : n.readAt,
     })));
@@ -36,8 +45,10 @@ messageRouter.post("/:id/read", async (req, res, next) => {
   try {
     const userId = req.user!.userId;
     const id = Number(req.params.id);
+    const client = detectLoginClient(req).client;
     const n = await prisma.notification.findUnique({ where: { id } });
     if (!n) throw Errors.notFound();
+    if (!notificationVisibleToClient(n, client)) throw Errors.forbidden("该通知仅对当前客户端可见");
     if (n.userId === null) {
       const r = await prisma.notificationRead.upsert({
         where: { userId_notificationId: { userId, notificationId: id } },
@@ -55,13 +66,29 @@ messageRouter.post("/:id/read", async (req, res, next) => {
 messageRouter.post("/read-all", async (req, res, next) => {
   try {
     const userId = req.user!.userId;
+    const client = detectLoginClient(req).client;
     const now = new Date();
     await prisma.notification.updateMany({
-      where: { userId, readAt: null },
+      where: {
+        userId,
+        readAt: null,
+        OR: [
+          { targetClient: null },
+          { targetClient: "all" },
+          { targetClient: client },
+        ],
+      },
       data: { readAt: now },
     });
     const globals = await prisma.notification.findMany({
-      where: { userId: null },
+      where: {
+        userId: null,
+        OR: [
+          { targetClient: null },
+          { targetClient: "all" },
+          { targetClient: client },
+        ],
+      },
       select: { id: true },
     });
     if (globals.length) {

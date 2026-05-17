@@ -434,12 +434,14 @@ adminRouter.post("/announcements", modOrAbove, validate(z.object({
   content: z.string().min(1).max(2000),
   level: z.enum(["strong", "normal", "weak"]).optional(),
   link: z.string().max(500).optional(),
+  targetClient: z.enum(["all", "ios", "android"]).optional(),
 })), async (req, res, next) => {
   try {
     const n = await prisma.notification.create({
       data: {
         userId: null, // 全站广播
         category: "system",
+        targetClient: req.body.targetClient && req.body.targetClient !== "all" ? req.body.targetClient : null,
         level: req.body.level ?? "normal",
         title: req.body.title,
         content: req.body.content,
