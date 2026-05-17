@@ -33,6 +33,7 @@ final class CpuAndroidBridge {
         activity.runOnUiThread(() -> {
             try {
                 Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                intent.addCategory(Intent.CATEGORY_BROWSABLE);
                 activity.startActivity(intent);
             } catch (Exception ignored) {
                 Toast.makeText(activity, "无法打开系统浏览器", Toast.LENGTH_SHORT).show();

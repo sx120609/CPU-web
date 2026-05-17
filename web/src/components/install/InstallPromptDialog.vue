@@ -4,6 +4,7 @@
     :title="title"
     :width="dialogWidth"
     align-center
+    append-to-body
     :close-on-click-modal="true"
     class="install-dialog"
   >

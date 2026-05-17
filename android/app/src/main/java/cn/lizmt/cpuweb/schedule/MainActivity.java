@@ -9,6 +9,7 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Message;
 import android.view.Gravity;
 import android.view.View;
 import android.webkit.CookieManager;
@@ -68,6 +69,8 @@ public final class MainActivity extends Activity {
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
+        settings.setJavaScriptCanOpenWindowsAutomatically(true);
+        settings.setSupportMultipleWindows(true);
         settings.setUserAgentString(settings.getUserAgentString()
                 + " CPUWebScheduleApp/" + BuildConfig.VERSION_CODE
                 + " CPUWebScheduleAppVersion/" + BuildConfig.VERSION_NAME);
@@ -83,7 +86,44 @@ public final class MainActivity extends Activity {
             cookieManager.setAcceptThirdPartyCookies(webView, true);
         }
 
-        webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
+                WebView popup = new WebView(view.getContext());
+                popup.setWebViewClient(new WebViewClient() {
+                    private boolean opened;
+
+                    @Override
+                    public boolean shouldOverrideUrlLoading(WebView popupView, WebResourceRequest request) {
+                        openOnce(popupView, request.getUrl());
+                        return true;
+                    }
+
+                    @SuppressWarnings("deprecation")
+                    @Override
+                    public boolean shouldOverrideUrlLoading(WebView popupView, String url) {
+                        openOnce(popupView, Uri.parse(url));
+                        return true;
+                    }
+
+                    @Override
+                    public void onPageStarted(WebView popupView, String url, Bitmap favicon) {
+                        openOnce(popupView, Uri.parse(url));
+                    }
+
+                    private void openOnce(WebView popupView, Uri uri) {
+                        if (opened) return;
+                        opened = true;
+                        openExternal(uri);
+                        popupView.destroy();
+                    }
+                });
+                WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
+                transport.setWebView(popup);
+                resultMsg.sendToTarget();
+                return true;
+            }
+        });
         webView.setDownloadListener(new DownloadListener() {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
@@ -162,7 +202,9 @@ public final class MainActivity extends Activity {
 
     private void openExternal(Uri uri) {
         try {
-            startActivity(new Intent(Intent.ACTION_VIEW, uri));
+            Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+            intent.addCategory(Intent.CATEGORY_BROWSABLE);
+            startActivity(intent);
         } catch (ActivityNotFoundException ignored) {
             // Ignore unsupported schemes instead of breaking the schedule WebView.
         }

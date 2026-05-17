@@ -801,12 +801,10 @@ function showAndroidUpdateRequired() {
 
 function openAndroidDownload() {
   androidUpdateOpen.value = false;
-  const bridge = getAndroidWidgetBridge();
   const absoluteUrl = new URL(APK_DOWNLOAD_URL, window.location.origin).toString();
-  if (bridge?.openExternalUrl) {
-    bridge.openExternalUrl(absoluteUrl);
-    return;
-  }
+  const opened = window.open(absoluteUrl, "_blank", "noopener");
+  if (opened) return;
+
   const link = document.createElement("a");
   link.href = absoluteUrl;
   link.target = "_blank";
