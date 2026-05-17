@@ -22,8 +22,7 @@ export function detectLoginClient(req: Request): LoginClientInfo {
   if (explicit) return toInfo(explicit);
 
   const ua = (req.get("user-agent") ?? "").toLowerCase();
-  if (ua.includes("cpuwebscheduleapp") || ua.includes("android")) return toInfo("android");
-  if (ua.includes("iphone") || ua.includes("ipad") || ua.includes("ipod")) return toInfo("ios");
+  if (ua.includes("cpuwebscheduleapp")) return toInfo("android");
   if (ua) return toInfo("web");
   return toInfo("unknown");
 }

@@ -18,10 +18,12 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
     const role = req.query.role ? String(req.query.role) : undefined;
     const status = req.query.status ? String(req.query.status) : undefined;
     const loginClient = req.query.loginClient ? String(req.query.loginClient) : undefined;
+    const usedClient = req.query.usedClient ? String(req.query.usedClient) : undefined;
     const usedIosClient = req.query.usedIosClient === "1" ? true : req.query.usedIosClient === "0" ? false : undefined;
     const usedAndroidClient = req.query.usedAndroidClient === "1" ? true : req.query.usedAndroidClient === "0" ? false : undefined;
     const loginFrom = String(req.query.loginFrom ?? "").trim();
     const loginTo = String(req.query.loginTo ?? "").trim();
+    const sort = String(req.query.sort ?? "login-desc");
     const page = Math.max(1, Number(req.query.page ?? 1));
     const size = Math.min(100, Math.max(10, Number(req.query.size ?? 30)));
 
@@ -37,6 +39,8 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
       if (loginClient === "none") where.lastLoginAt = null;
       else if (["ios", "android", "web", "unknown"].includes(loginClient)) where.lastLoginClient = loginClient;
     }
+    if (usedClient === "ios") where.usedIosClient = true;
+    if (usedClient === "android") where.usedAndroidClient = true;
     if (typeof usedIosClient === "boolean") where.usedIosClient = usedIosClient;
     if (typeof usedAndroidClient === "boolean") where.usedAndroidClient = usedAndroidClient;
     if (loginFrom || loginTo) {
@@ -52,10 +56,16 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
       if (Object.keys(loginAtFilter).length) where.lastLoginAt = loginAtFilter;
     }
 
+    const orderBy = sort === "id-asc"
+      ? [{ id: "asc" as const }]
+      : sort === "id-desc"
+        ? [{ id: "desc" as const }]
+        : [{ lastLoginAt: "desc" as const }, { id: "desc" as const }];
+
     const [list, total] = await Promise.all([
       prisma.user.findMany({
         where,
-        orderBy: [{ lastLoginAt: "desc" }, { createdAt: "desc" }],
+        orderBy,
         skip: (page - 1) * size,
         take: size,
         select: {

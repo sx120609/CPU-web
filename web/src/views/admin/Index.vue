@@ -15,32 +15,20 @@
       <div class="ov-card">
         <div class="ov-num">{{ overview.users }}</div>
         <div class="ov-lbl">用户</div>
-        <div class="ov-sub" v-if="overview.banned">{{ overview.banned }} 封禁</div>
+        <div class="ov-sub">{{ overview.banned || 0 }} 封禁 · {{ overview.recentLogins || 0 }} 近 30 天登录</div>
       </div>
       <div class="ov-card">
         <div class="ov-num">{{ overview.topics }}</div>
         <div class="ov-lbl">帖子</div>
-        <div class="ov-sub" v-if="overview.hiddenTopics">{{ overview.hiddenTopics }} 已隐</div>
-      </div>
-      <div class="ov-card">
-        <div class="ov-num">{{ overview.todayTopics }}</div>
-        <div class="ov-lbl">今日新帖</div>
+        <div class="ov-sub">{{ overview.todayTopics }} 今日新帖 · {{ overview.hiddenTopics || 0 }} 已隐</div>
       </div>
       <div class="ov-card">
         <div class="ov-num">{{ overview.replies }}</div>
         <div class="ov-lbl">回复</div>
       </div>
       <div class="ov-card">
-        <div class="ov-num">{{ overview.iosClients }}</div>
-        <div class="ov-lbl">iOS 登录过</div>
-      </div>
-      <div class="ov-card">
-        <div class="ov-num">{{ overview.androidClients }}</div>
-        <div class="ov-lbl">安卓登录过</div>
-      </div>
-      <div class="ov-card">
-        <div class="ov-num">{{ overview.recentLogins }}</div>
-        <div class="ov-lbl">近 30 天登录</div>
+        <div class="ov-num">{{ overview.iosClients }} / {{ overview.androidClients }}</div>
+        <div class="ov-lbl">iOS / 安卓客户端</div>
       </div>
       <div class="ov-card">
         <div class="ov-num">{{ overview.feeds }} / {{ overview.boards }}</div>
@@ -86,17 +74,27 @@ onMounted(async () => {
 
 .overview {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
 }
 .ov-card {
   background: #fff;
   border: 1px solid #eef0f4;
-  border-radius: 10px;
-  padding: 16px 18px;
+  border-radius: 8px;
+  padding: 14px 16px;
+  min-width: 0;
 }
-.ov-num { font-size: 26px; font-weight: 700; color: var(--cpu-primary); line-height: 1; }
+.ov-num { font-size: 24px; font-weight: 700; color: var(--cpu-primary); line-height: 1; white-space: nowrap; }
 .ov-lbl { font-size: 12px; color: #6b7280; margin-top: 4px; }
-.ov-sub { font-size: 11px; color: #b45309; margin-top: 3px; }
+.ov-sub { font-size: 11px; color: #6b7280; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cpu-card { background: #fff; border-radius: 12px; padding: 12px 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
+
+@media (max-width: 1100px) {
+  .overview { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .admin-head { align-items: flex-start; gap: 10px; flex-direction: column; }
+  .overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 </style>

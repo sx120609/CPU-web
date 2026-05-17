@@ -1,75 +1,76 @@
 <template>
   <div class="users-pane">
-    <div class="ctrl-bar">
-      <el-input v-model="q" placeholder="搜用户名 / 昵称 / 邮箱" clearable style="width:240px" @keyup.enter="search">
-        <template #prefix><el-icon><Search /></el-icon></template>
-      </el-input>
-      <el-select v-model="role" clearable placeholder="所有角色" style="width:140px" @change="applyFilters">
-        <el-option label="user" value="user" />
-        <el-option label="mod" value="mod" />
-        <el-option label="admin" value="admin" />
-        <el-option label="bot" value="bot" />
-      </el-select>
-      <el-select v-model="status" clearable placeholder="所有状态" style="width:140px" @change="applyFilters">
-        <el-option label="active" value="active" />
-        <el-option label="banned" value="banned" />
-        <el-option label="muted" value="muted" />
-      </el-select>
-      <el-select v-model="loginClient" clearable placeholder="最近登录客户端" style="width:160px" @change="applyFilters">
-        <el-option label="iOS" value="ios" />
-        <el-option label="安卓" value="android" />
-        <el-option label="网页" value="web" />
-        <el-option label="未知" value="unknown" />
-        <el-option label="未登录" value="none" />
-      </el-select>
-      <el-select v-model="usedIosClient" clearable placeholder="iOS 使用过" style="width:140px" @change="applyFilters">
-        <el-option label="是" value="1" />
-        <el-option label="否" value="0" />
-      </el-select>
-      <el-select v-model="usedAndroidClient" clearable placeholder="安卓使用过" style="width:140px" @change="applyFilters">
-        <el-option label="是" value="1" />
-        <el-option label="否" value="0" />
-      </el-select>
-      <el-date-picker
-        v-model="loginRange"
-        type="daterange"
-        range-separator="至"
-        start-placeholder="最近登录起"
-        end-placeholder="最近登录止"
-        value-format="YYYY-MM-DD"
-        format="YYYY-MM-DD"
-        style="width: 260px"
-        @change="applyFilters"
-      />
-      <el-button @click="reload">刷新</el-button>
-      <el-button @click="resetFilters">重置筛选</el-button>
-      <el-button v-if="auth.isAdmin" type="primary" @click="openCreate">
-        <el-icon><Plus /></el-icon> 新增用户
-      </el-button>
+    <div class="filter-panel">
+      <div class="filter-row main-row">
+        <el-input v-model="q" placeholder="搜用户名 / 昵称 / 邮箱" clearable class="search-input" @keyup.enter="search">
+          <template #prefix><el-icon><Search /></el-icon></template>
+        </el-input>
+        <el-select v-model="role" clearable placeholder="角色" class="filter-select" @change="applyFilters">
+          <el-option label="user" value="user" />
+          <el-option label="mod" value="mod" />
+          <el-option label="admin" value="admin" />
+          <el-option label="bot" value="bot" />
+        </el-select>
+        <el-select v-model="status" clearable placeholder="状态" class="filter-select" @change="applyFilters">
+          <el-option label="active" value="active" />
+          <el-option label="banned" value="banned" />
+          <el-option label="muted" value="muted" />
+        </el-select>
+        <el-select v-model="usedClient" clearable placeholder="客户端" class="filter-select" @change="applyFilters">
+          <el-option label="iOS 客户端" value="ios" />
+          <el-option label="安卓客户端" value="android" />
+        </el-select>
+        <el-select v-model="sort" placeholder="排序" class="sort-select" @change="applyFilters">
+          <el-option label="最近登录优先" value="login-desc" />
+          <el-option label="ID 从大到小" value="id-desc" />
+          <el-option label="ID 从小到大" value="id-asc" />
+        </el-select>
+      </div>
+
+      <div class="filter-row sub-row">
+        <el-date-picker
+          v-model="loginRange"
+          type="daterange"
+          range-separator="至"
+          start-placeholder="登录起"
+          end-placeholder="登录止"
+          value-format="YYYY-MM-DD"
+          format="YYYY-MM-DD"
+          class="date-range"
+          @change="applyFilters"
+        />
+        <div class="actions">
+          <el-button @click="reload">刷新</el-button>
+          <el-button @click="resetFilters">重置</el-button>
+          <el-button v-if="auth.isAdmin" type="primary" @click="openCreate">
+            <el-icon><Plus /></el-icon> 新增用户
+          </el-button>
+        </div>
+      </div>
     </div>
 
     <el-table :data="list" v-loading="loading" stripe size="default">
-      <el-table-column prop="id" label="ID" width="60" />
-      <el-table-column prop="username" label="账号" width="140" />
-      <el-table-column prop="nickname" label="昵称" min-width="140" />
-      <el-table-column label="角色" width="100">
+      <el-table-column prop="id" label="ID" width="70" />
+      <el-table-column label="用户" min-width="190">
         <template #default="{ row }">
-          <el-tag :type="roleTag(row.role)" size="small">{{ row.role }}</el-tag>
+          <div class="user-cell">
+            <b>{{ row.nickname || "未设置昵称" }}</b>
+            <span>{{ row.username }}</span>
+          </div>
         </template>
       </el-table-column>
-      <el-table-column label="状态" width="100">
+      <el-table-column label="身份" width="170">
         <template #default="{ row }">
-          <el-tag :type="row.status === 'active' ? 'success' : row.status === 'banned' ? 'danger' : 'warning'" size="small">
-            {{ row.status }}
-          </el-tag>
+          <div class="tag-stack">
+            <el-tag :type="roleTag(row.role)" size="small">{{ row.role }}</el-tag>
+            <el-tag :type="row.status === 'active' ? 'success' : row.status === 'banned' ? 'danger' : 'warning'" size="small" effect="plain">
+              {{ row.status }}
+            </el-tag>
+            <el-tag v-if="row.studentSso" type="primary" size="small" effect="plain">统一认证</el-tag>
+          </div>
         </template>
       </el-table-column>
-      <el-table-column label="统一认证" width="90">
-        <template #default="{ row }">
-          <el-tag v-if="row.studentSso" type="primary" size="small" effect="plain">✓</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="登录信息" min-width="220">
+      <el-table-column label="客户端 / 登录" min-width="220">
         <template #default="{ row }">
           <div class="login-info">
             <div class="login-main">
@@ -86,19 +87,31 @@
           </div>
         </template>
       </el-table-column>
-      <el-table-column prop="postCount" label="帖" width="60" align="right" />
-      <el-table-column prop="replyCount" label="回" width="60" align="right" />
-      <el-table-column label="注册时间" width="160">
-        <template #default="{ row }">{{ fmtDate(row.createdAt) }}</template>
+      <el-table-column label="内容" width="90">
+        <template #default="{ row }">
+          <span class="content-count">{{ row.postCount }} 帖 / {{ row.replyCount }} 回</span>
+        </template>
       </el-table-column>
-      <el-table-column label="操作" width="400">
+      <el-table-column label="注册时间" width="150">
+        <template #default="{ row }"><span class="muted-date">{{ fmtDate(row.createdAt) }}</span></template>
+      </el-table-column>
+      <el-table-column label="操作" width="210" fixed="right">
         <template #default="{ row }">
           <el-button v-if="row.status === 'active'" text type="danger" size="small" @click="ban(row)">封禁</el-button>
           <el-button v-else text type="success" size="small" @click="unban(row)">解禁</el-button>
           <el-button text size="small" @click="rename(row)">改名</el-button>
-          <el-button v-if="auth.isAdmin" text type="warning" size="small" @click="changeRole(row)">改角色</el-button>
-          <el-button v-if="auth.isAdmin && !row.studentSso" text size="small" @click="resetPw(row)">重置密码</el-button>
-          <el-button v-if="auth.isAdmin && row.id !== auth.user?.id" text type="danger" size="small" @click="deleteUser(row)">删除</el-button>
+          <el-dropdown v-if="auth.isAdmin" trigger="click" @command="handleCommand($event, row)">
+            <el-button text size="small">
+              更多<el-icon class="more-icon"><MoreFilled /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="role">改角色</el-dropdown-item>
+                <el-dropdown-item v-if="!row.studentSso" command="password">重置密码</el-dropdown-item>
+                <el-dropdown-item v-if="row.id !== auth.user?.id" command="delete" divided>删除用户</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </template>
       </el-table-column>
     </el-table>
@@ -152,7 +165,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Search, Plus } from "@element-plus/icons-vue";
+import { Search, Plus, MoreFilled } from "@element-plus/icons-vue";
 import { adminApi } from "@/api/admin";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate } from "@/utils/format";
@@ -167,9 +180,8 @@ const loading = ref(false);
 const q = ref("");
 const role = ref("");
 const status = ref("");
-const loginClient = ref("");
-const usedIosClient = ref("");
-const usedAndroidClient = ref("");
+const usedClient = ref("");
+const sort = ref("login-desc");
 const loginRange = ref<[string, string] | [] | null>([]);
 
 const createOpen = ref(false);
@@ -192,11 +204,10 @@ async function reload() {
       q: q.value,
       role: role.value,
       status: status.value,
-      loginClient: loginClient.value || undefined,
-      usedIosClient: usedIosClient.value || undefined,
-      usedAndroidClient: usedAndroidClient.value || undefined,
+      usedClient: usedClient.value || undefined,
       loginFrom: Array.isArray(loginRange.value) && loginRange.value.length === 2 ? loginRange.value[0] : undefined,
       loginTo: Array.isArray(loginRange.value) && loginRange.value.length === 2 ? loginRange.value[1] : undefined,
+      sort: sort.value,
       page: page.value,
       size: size.value,
     });
@@ -221,9 +232,8 @@ function resetFilters() {
   q.value = "";
   role.value = "";
   status.value = "";
-  loginClient.value = "";
-  usedIosClient.value = "";
-  usedAndroidClient.value = "";
+  usedClient.value = "";
+  sort.value = "login-desc";
   loginRange.value = [];
   page.value = 1;
   reload();
@@ -266,8 +276,8 @@ function roleTag(r: string): "danger" | "warning" | "primary" | "info" {
 }
 
 function clientLabel(client?: string | null) {
-  if (client === "ios") return "iOS";
-  if (client === "android") return "安卓";
+  if (client === "ios") return "iOS 客户端";
+  if (client === "android") return "安卓客户端";
   if (client === "web") return "网页";
   if (client === "unknown") return "未知";
   return "未登录";
@@ -279,6 +289,12 @@ function clientTagType(client?: string | null): "success" | "warning" | "info" |
   if (client === "web") return "primary";
   if (client === "unknown") return "info";
   return "info";
+}
+
+function handleCommand(command: string, row: any) {
+  if (command === "role") return changeRole(row);
+  if (command === "password") return resetPw(row);
+  if (command === "delete") return deleteUser(row);
 }
 
 async function ban(row: any) {
@@ -352,12 +368,45 @@ async function deleteUser(row: any) {
 
 <style scoped>
 .users-pane { display: flex; flex-direction: column; gap: 12px; }
-.ctrl-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.filter-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #eef0f4;
+  border-radius: 8px;
+  background: #fafbfc;
+}
+.filter-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.main-row { align-items: stretch; }
+.sub-row { justify-content: space-between; }
+.search-input { width: 240px; }
+.filter-select { width: 132px; }
+.sort-select { width: 150px; }
+.date-range { width: 250px; }
+.actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-left: auto; }
 .pager { display: flex; justify-content: center; padding-top: 12px; }
 .dlg-tip { font-size: 12px; color: #6b7280; margin: 0 0 12px; }
+.user-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.user-cell b { font-size: 14px; color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-cell span { font-size: 12px; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag-stack { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .login-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .login-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .login-flags { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-width: 0; }
 .login-time { font-size: 12px; color: #4b5563; }
 .login-empty { font-size: 12px; color: #9ca3af; }
+.content-count,
+.muted-date { font-size: 12px; color: #4b5563; }
+.more-icon { margin-left: 2px; transform: rotate(90deg); }
+
+@media (max-width: 768px) {
+  .filter-panel { padding: 10px; }
+  .filter-row,
+  .actions { width: 100%; }
+  .search-input,
+  .filter-select,
+  .sort-select,
+  .date-range { width: 100%; }
+  .actions { justify-content: flex-start; margin-left: 0; }
+}
 </style>

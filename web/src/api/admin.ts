@@ -9,10 +9,12 @@ export const adminApi = {
     role?: string;
     status?: string;
     loginClient?: string;
+    usedClient?: string;
     usedIosClient?: string;
     usedAndroidClient?: string;
     loginFrom?: string;
     loginTo?: string;
+    sort?: string;
     page?: number;
     size?: number;
   }) =>
