@@ -3,7 +3,9 @@ import { z } from "zod";
 import { ok, Errors } from "../utils/response";
 import { validate } from "../middleware/validate";
 import { authRequired } from "../middleware/auth";
+import { jwxtLoginLimiter } from "../middleware/rateLimit";
 import { prisma } from "../prisma";
+import { isDev } from "../config";
 import { detectLoginClient } from "../utils/loginClient";
 import {
   beginLogin,
@@ -83,7 +85,7 @@ function ensureEditClient(req: any) {
 }
 
 /** 第一步：获取登录页（拿 lt/execution + 可能的验证码） */
-jwxtRouter.post("/begin-login", async (_req, res, next) => {
+jwxtRouter.post("/begin-login", jwxtLoginLimiter, async (_req, res, next) => {
   try {
     const r = await beginLogin();
     ok(res, r);
@@ -93,6 +95,7 @@ jwxtRouter.post("/begin-login", async (_req, res, next) => {
 /** 第二步：提交账号密码（凭据**仅这一刻**经过后端，不写盘） */
 jwxtRouter.post(
   "/login",
+  jwxtLoginLimiter,
   validate(z.object({
     pendingId: z.string().min(8),
     username: z.string().min(1),
@@ -168,6 +171,7 @@ jwxtRouter.get("/exams", async (req, res, next) => {
  */
 jwxtRouter.post("/debug/snapshot", async (req, res, next) => {
   try {
+    if (!isDev) throw Errors.forbidden();
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const r = await debugSnapshot(t);
@@ -178,12 +182,12 @@ jwxtRouter.post("/debug/snapshot", async (req, res, next) => {
 /** 任意自定义路径（仅 dev 用，用于摸索新页面） */
 jwxtRouter.get("/probe", async (req, res, next) => {
   try {
-    if (process.env.NODE_ENV === "production") throw Errors.forbidden();
+    if (!isDev) throw Errors.forbidden();
     if (isRemoteMode) throw Errors.badRequest("远端模式不支持 probe");
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const p = String(req.query.path ?? "");
-    if (!p.startsWith("/")) throw Errors.badRequest("path 必须以 / 开头");
+    if (!p.startsWith("/") || p.includes("..")) throw Errors.badRequest("非法路径");
     const { jwxtFetchHtml } = await import("../services/jwxtClient");
     const html = await jwxtFetchHtml(t, p);
     ok(res, { html });
@@ -192,6 +196,7 @@ jwxtRouter.get("/probe", async (req, res, next) => {
 
 jwxtRouter.get("/stats", async (_req, res, next) => {
   try {
+    if (!isDev) throw Errors.forbidden();
     ok(res, await sessionStats());
   } catch (e) { next(e); }
 });

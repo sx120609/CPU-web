@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { config } from "../config";
+import { config, isDev } from "../config";
 import { validate } from "../middleware/validate";
 import { Errors, ok } from "../utils/response";
 import {
@@ -29,7 +29,10 @@ proxyJwxtRouter.get("/health", (_req, res) => {
 });
 
 proxyJwxtRouter.use((req, _res, next) => {
-  if (!config.proxyAuth) return next();
+  if (!config.proxyAuth) {
+    if (isDev) return next();
+    return next(Errors.server("代理服务未配置鉴权密钥"));
+  }
   if (req.get("X-Proxy-Auth") !== config.proxyAuth) return next(Errors.unauthorized("代理鉴权失败"));
   return next();
 });

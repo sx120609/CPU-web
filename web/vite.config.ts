@@ -40,4 +40,12 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      onwarn(warning, warn) {
+        if (warning.code === "INVALID_ANNOTATION") return;
+        warn(warning);
+      },
+    },
+  },
 });

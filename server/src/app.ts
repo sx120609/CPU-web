@@ -5,12 +5,24 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { errorHandler } from "./middleware/error";
 import { router } from "./routes";
-import { isDev } from "./config";
+import { isDev, config } from "./config";
 
 export function createApp() {
   const app = express();
 
-  app.use(cors());
+  const allowedOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(",").map((s) => s.trim()).filter(Boolean)
+    : ["http://localhost:5173"];
+
+  app.use(cors({
+    origin: (origin, cb) => {
+      // 允许无 origin 的请求（同源、curl、服务端调用）
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      cb(new Error("CORS 策略拒绝了该请求来源"));
+    },
+    credentials: true,
+  }));
   app.use(express.json({ limit: "1mb" }));
   if (isDev) app.use(morgan("dev"));
 
