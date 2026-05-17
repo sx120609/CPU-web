@@ -1,0 +1,16 @@
+node_modules
+server/node_modules
+web/node_modules
+server/dist
+web/dist
+server/.env
+server/.env.*
+server/prisma/*.db
+server/prisma/*.db-journal
+server/.debug
+.git
+*.md
+deploy.sh
+.vscode
+.idea
+.DS_Store
