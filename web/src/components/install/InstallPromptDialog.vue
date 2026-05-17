@@ -101,7 +101,7 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
-const APK_DOWNLOAD_URL = "/downloads/CPU-Web-V3.apk";
+const APK_DOWNLOAD_URL = "/downloads/CPU-Web-V4.apk";
 
 const open = ref(false);
 const deferredPrompt = ref<BeforeInstallPromptEvent | null>(null);
