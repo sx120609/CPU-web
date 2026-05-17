@@ -23,11 +23,11 @@
         <span class="stat">📚 {{ filteredList.length }} / {{ parsed.list.length }} 门</span>
         <span class="stat" v-if="totalCredits">· {{ totalCredits.toFixed(1) }} 学分</span>
         <span class="stat" v-if="avgGpa">
-          · 平均 GPA <b>{{ avgGpa.toFixed(2) }}</b> / 5.0
+          · 加权 GPA <b>{{ avgGpa.toFixed(2) }}</b> / 5.0
         </span>
         <el-tooltip placement="top">
           <template #content>
-            筛选后的 GPA 仅基于上方筛选条件计算<br/>
+            筛选后的 GPA 仅基于上方筛选条件计算，并按课程学分加权平均<br/>
             <code>GPA = max(0, (成绩 − 50) ÷ 10)</code>，封顶 5.0<br/>
             60→1.0 · 70→2.0 · 80→3.0 · 90→4.0 · 100→5.0<br/>
             等级成绩：优秀/优 4.5 · 良好/良 3.5 · 中等/中 2.5 · 及格/合格 1.5 · 不及格/不合格 0
@@ -59,7 +59,7 @@
         <div v-for="(rows, semKey) in groupedBySem" :key="semKey" class="sem-block">
           <div class="sem-head">
             <h3>{{ semKey }}</h3>
-            <span class="sem-sum">{{ rows.length }} 门 · {{ semCredits(rows).toFixed(1) }} 学分 · 平均 GPA {{ semGpa(rows).toFixed(2) }}</span>
+            <span class="sem-sum">{{ rows.length }} 门 · {{ semCredits(rows).toFixed(1) }} 学分 · 加权 GPA {{ semGpa(rows).toFixed(2) }}</span>
           </div>
           <div class="mobile-grade-list">
             <article v-for="row in rows" :key="`${row.semester}-${row.courseCode || row.courseName}`" class="grade-card">

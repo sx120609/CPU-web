@@ -134,9 +134,6 @@
         <el-tab-pane label="📊 成绩" name="grades">
           <GradesPane :data="grades" :loading="tabLoading" />
         </el-tab-pane>
-        <el-tab-pane label="📝 考试" name="exams">
-          <ExamsPane :data="exams" :loading="tabLoading" />
-        </el-tab-pane>
         <el-tab-pane label="🎓 学业完成情况" name="progress">
           <ProgressPane :data="progress" :loading="tabLoading" />
         </el-tab-pane>
@@ -145,7 +142,7 @@
         </el-tab-pane>
         <el-tab-pane label="🛠 调试" name="debug" v-if="isDev">
           <div class="debug-pane">
-            <p class="cpu-muted">开发模式：点击「拉取调试快照」后端会把课表/成绩/考试等页面 HTML 落到 <code>server/.debug/</code>，供解析器开发用。</p>
+            <p class="cpu-muted">开发模式：点击「拉取调试快照」后端会把教务页面 HTML 落到 <code>server/.debug/</code>，供解析器开发用。</p>
             <el-button type="primary" :loading="snapping" @click="onSnapshot">📸 拉取调试快照</el-button>
             <ul v-if="snapResult?.saved?.length" class="snap-list">
               <li v-for="s in snapResult.saved" :key="s">✅ {{ s }}</li>
@@ -173,7 +170,6 @@ import { useJwxtStore } from "@/stores/jwxt";
 import { jwxtApi } from "@/api/jwxt";
 import SchedulePane from "@/components/jwxt/SchedulePane.vue";
 import GradesPane from "@/components/jwxt/GradesPane.vue";
-import ExamsPane from "@/components/jwxt/ExamsPane.vue";
 import ProgressPane from "@/components/jwxt/ProgressPane.vue";
 import PyfaPane from "@/components/jwxt/PyfaPane.vue";
 
@@ -186,11 +182,10 @@ const rules: FormRules = {
   password: [{ required: true, message: "请输入密码" }],
 };
 
-const tab = ref<"schedule" | "grades" | "exams" | "progress" | "pyfa" | "debug">("schedule");
-type DataTab = "schedule" | "grades" | "exams" | "progress" | "pyfa";
+const tab = ref<"schedule" | "grades" | "progress" | "pyfa" | "debug">("schedule");
+type DataTab = "schedule" | "grades" | "progress" | "pyfa";
 const schedule = ref<any>(null);
 const grades = ref<any>(null);
-const exams = ref<any>(null);
 const progress = ref<any>(null);
 const pyfa = ref<any>(null);
 const tabLoading = ref(false);
@@ -260,7 +255,6 @@ function isStale(savedAt: number) {
 function getTabData(t: DataTab) {
   if (t === "schedule") return schedule.value;
   if (t === "grades") return grades.value;
-  if (t === "exams") return exams.value;
   if (t === "progress") return progress.value;
   return pyfa.value;
 }
@@ -269,7 +263,6 @@ function setTabData(t: DataTab, data: any) {
   const normalized = normalizeTabData(t, data);
   if (t === "schedule") schedule.value = normalized;
   else if (t === "grades") grades.value = normalized;
-  else if (t === "exams") exams.value = normalized;
   else if (t === "progress") progress.value = normalized;
   else pyfa.value = normalized;
 }
@@ -314,7 +307,7 @@ function normalizeTabData(t: DataTab, data: any) {
 }
 
 function restoreAllTabCaches() {
-  (["schedule", "grades", "exams", "progress", "pyfa"] as DataTab[]).forEach((t) => restoreCachedTab(t));
+  (["schedule", "grades", "progress", "pyfa"] as DataTab[]).forEach((t) => restoreCachedTab(t));
 }
 
 function fetchTab(t: DataTab) {
@@ -322,7 +315,6 @@ function fetchTab(t: DataTab) {
   const request = (async () => {
     if (t === "schedule") return jwxtApi.schedule();
     if (t === "grades") return jwxtApi.grades();
-    if (t === "exams") return jwxtApi.exams();
     if (t === "progress") return jwxtApi.progress();
     return jwxtApi.pyfa();
   })();
@@ -356,7 +348,7 @@ async function onLogout() {
   await ElMessageBox.confirm("断开当前教务连接？\n如果勾选了「记住账号」，下次打开仍可自动授权。", "确认", { type: "warning" });
   await jwxt.logout();
   ElMessage.success("已断开教务连接");
-  schedule.value = grades.value = exams.value = progress.value = pyfa.value = null;
+  schedule.value = grades.value = progress.value = pyfa.value = null;
   await jwxt.beginLogin();
 }
 
@@ -537,15 +529,34 @@ async function onProbe() {
   }
 
   .jwxt-page > div:last-child > .cpu-card :deep(.el-tabs__nav-wrap) {
-    overflow: auto;
+    overflow-x: auto;
+    overflow-y: hidden;
     scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    overscroll-behavior-y: none;
+    touch-action: pan-x;
   }
 
   .jwxt-page > div:last-child > .cpu-card :deep(.el-tabs__nav-wrap::-webkit-scrollbar) {
     display: none;
   }
 
+  .jwxt-page > div:last-child > .cpu-card :deep(.el-tabs__nav-scroll) {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .jwxt-page > div:last-child > .cpu-card :deep(.el-tabs__nav-scroll::-webkit-scrollbar) {
+    display: none;
+  }
+
   .jwxt-page > div:last-child > .cpu-card :deep(.el-tabs__nav) {
+    float: none;
+    width: max-content;
+    min-width: 100%;
     white-space: nowrap;
   }
 
