@@ -3,6 +3,7 @@ export type ScheduleThemeKey =
   | "blue"
   | "teal"
   | "indigo"
+  | "violet"
   | "orange"
   | "rose"
   | "slate"
@@ -107,18 +108,18 @@ export const scheduleThemePalettes: Record<ScheduleThemeKey, ScheduleThemePalett
   ),
   teal: simpleTheme(
     "teal",
-    "青色",
-    "linear-gradient(135deg, #0f766e 0%, #ccfbf1 100%)",
-    "#0f766e",
-    "#115e59",
-    "rgba(15, 118, 110, 0.12)",
-    "rgba(15, 118, 110, 0.18)",
-    "#eefcf9",
-    "#ccfbf1",
-    "#5eead4",
-    "#f0fbf9",
-    "#0f766e",
-    "#115e59",
+    "湖蓝",
+    "linear-gradient(135deg, #0891b2 0%, #cffafe 100%)",
+    "#0891b2",
+    "#155e75",
+    "rgba(8, 145, 178, 0.12)",
+    "rgba(8, 145, 178, 0.18)",
+    "#ecfeff",
+    "#cffafe",
+    "#67e8f9",
+    "#f0fbff",
+    "#0891b2",
+    "#164e63",
   ),
   indigo: simpleTheme(
     "indigo",
@@ -134,6 +135,21 @@ export const scheduleThemePalettes: Record<ScheduleThemeKey, ScheduleThemePalett
     "#f5f7ff",
     "#4f46e5",
     "#3730a3",
+  ),
+  violet: simpleTheme(
+    "violet",
+    "紫色",
+    "linear-gradient(135deg, #7c3aed 0%, #ede9fe 100%)",
+    "#7c3aed",
+    "#5b21b6",
+    "rgba(124, 58, 237, 0.12)",
+    "rgba(124, 58, 237, 0.18)",
+    "#f5f3ff",
+    "#ede9fe",
+    "#c4b5fd",
+    "#faf7ff",
+    "#7c3aed",
+    "#5b21b6",
   ),
   orange: simpleTheme(
     "orange",
@@ -184,13 +200,13 @@ export const scheduleThemePalettes: Record<ScheduleThemeKey, ScheduleThemePalett
     key: "color-glass",
     label: "彩色",
     preview: "linear-gradient(135deg, #f43f5e 0%, #f97316 17%, #f59e0b 34%, #22c55e 51%, #14b8a6 68%, #3b82f6 84%, #a855f7 100%)",
-    accent: "#168776",
-    accentStrong: "#116b5f",
-    accentSoft: "rgba(22, 135, 118, 0.12)",
-    accentSoftHover: "rgba(22, 135, 118, 0.18)",
-    accentPale: "#e8f6f3",
-    accentPaleHover: "#d3eee8",
-    accentBorder: "#9fd9cf",
+    accent: "#6d5dfc",
+    accentStrong: "#4736c8",
+    accentSoft: "rgba(109, 93, 252, 0.12)",
+    accentSoftHover: "rgba(109, 93, 252, 0.18)",
+    accentPale: "#f0efff",
+    accentPaleHover: "#e3e0ff",
+    accentBorder: "#bbb5ff",
     accentContrast: "#ffffff",
     pageBg,
     courseBg: "#f4fbf8",
@@ -204,6 +220,7 @@ export const scheduleThemeOptions: ScheduleThemeOption[] = [
   scheduleThemePalettes.blue,
   scheduleThemePalettes.teal,
   scheduleThemePalettes.indigo,
+  scheduleThemePalettes.violet,
   scheduleThemePalettes.orange,
   scheduleThemePalettes.rose,
   scheduleThemePalettes.slate,
@@ -235,7 +252,7 @@ export function normalizeScheduleTheme(value?: string | null): ScheduleThemeKey 
   if (next === "colorful") return "color-glass";
   if (next === "cyan") return "teal";
   if (next === "sky") return "blue";
-  if (next === "purple" || next === "violet") return "indigo";
+  if (next === "purple" || next === "violet") return "violet";
   if (next === "amber") return "orange";
   if (next === "lime") return "green";
   if (next === "pink" || next === "red") return "rose";
