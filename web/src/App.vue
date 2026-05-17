@@ -1,5 +1,5 @@
 <template>
-  <el-config-provider :locale="zhCn">
+  <el-config-provider :locale="zhCn" :z-index="5000">
     <router-view />
     <el-dialog
       v-model="dataAuthOpen"

@@ -402,6 +402,7 @@ const scheduleCacheStore = new Map<string, CacheEnvelope<ScheduleResult>>();
 const prewarmingScheduleKeys = new Set<string>();
 const isNativeScheduleApp = /cpuwebscheduleapp/i.test(navigator.userAgent);
 let scheduleEditsSaveTimer = 0;
+let scheduleEditsLoadPromise: Promise<void> | null = null;
 const smallSlots = [
   { no: 1, start: "08:00", end: "08:45" },
   { no: 2, start: "08:55", end: "09:40" },
@@ -1282,6 +1283,7 @@ function ensureScheduleEditEnabled() {
 }
 
 async function restoreHiddenCourse(key: string) {
+  await loadScheduleEdits();
   try {
     await ElMessageBox.confirm("确定恢复这门已编辑课程吗？恢复后会重新出现在课表里。", "恢复已编辑课程", {
       confirmButtonText: "恢复",
@@ -1298,9 +1300,9 @@ async function restoreHiddenCourse(key: string) {
   persistScheduleEdits();
 }
 
-function openAddCourse(day = activeDay.value, slot = 1, targetWeek = currentWeekValue()) {
+async function openAddCourse(day = activeDay.value, slot = 1, targetWeek = currentWeekValue()) {
   if (!ensureScheduleEditEnabled()) return;
-  loadScheduleEdits();
+  await loadScheduleEdits();
   editingCourseBlock.value = null;
   editingCourseKey.value = "";
   editingWeekValue.value = String(targetWeek || currentWeekValue());
@@ -1317,9 +1319,9 @@ function openAddCourse(day = activeDay.value, slot = 1, targetWeek = currentWeek
   editDialogOpen.value = true;
 }
 
-function openCourseEditor(block: WeekCourseBlock, targetWeek = currentWeekValue()) {
+async function openCourseEditor(block: WeekCourseBlock, targetWeek = currentWeekValue()) {
   if (!ensureScheduleEditEnabled()) return;
-  loadScheduleEdits();
+  await loadScheduleEdits();
   editingCourseBlock.value = block;
   editingCourseKey.value = courseEditKey(block.day, block.bigSlot, block.course);
   editingWeekValue.value = String(targetWeek || currentWeekValue());
@@ -1380,7 +1382,8 @@ function saveCourseEdit() {
   ElMessage.success(editingCourseBlock.value ? "已保存课程" : "已添加到课表");
 }
 
-function deleteEditingCourse() {
+async function deleteEditingCourse() {
+  await loadScheduleEdits();
   const block = editingCourseBlock.value;
   if (!block) return;
   let next = { ...scheduleEdits.value };
@@ -1399,7 +1402,8 @@ function deleteEditingCourse() {
   ElMessage.success("已从课表隐藏");
 }
 
-function restoreOriginalCourse() {
+async function restoreOriginalCourse() {
+  await loadScheduleEdits();
   const sourceKey = editingCourseBlock.value?.course.sourceKey;
   const customId = editingCourseBlock.value?.course.customId;
   if (!sourceKey) return;
@@ -1483,15 +1487,19 @@ function clampSlot(value: number) {
 }
 
 function loadScheduleEdits() {
+  if (scheduleEditsLoadPromise) return scheduleEditsLoadPromise;
   const sem = semester.value || parsed.value?.currentSemester || "current";
-  void (async () => {
+  scheduleEditsLoadPromise = (async () => {
     try {
       const r = await jwxtApi.getScheduleEdits(sem, { silent: true });
       scheduleEdits.value = normalizeScheduleEditsState(r.edits);
     } catch {
       scheduleEdits.value = emptyScheduleEdits();
+    } finally {
+      scheduleEditsLoadPromise = null;
     }
   })();
+  return scheduleEditsLoadPromise;
 }
 
 function persistScheduleEdits() {
