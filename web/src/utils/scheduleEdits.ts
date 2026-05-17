@@ -19,6 +19,7 @@ export interface EditableScheduleCell {
 
 export interface CustomScheduleItem {
   id: string;
+  sourceKey?: string;
   day: number;
   bigSlot: number;
   course: EditableScheduleCourse;
@@ -129,6 +130,7 @@ function isCustomScheduleItem(value: unknown): value is CustomScheduleItem {
   return Boolean(
     item &&
     typeof item.id === "string" &&
+    (item.sourceKey === undefined || typeof item.sourceKey === "string") &&
     Number.isFinite(item.day) &&
     Number.isFinite(item.bigSlot) &&
     item.course &&

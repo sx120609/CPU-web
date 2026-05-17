@@ -196,6 +196,7 @@
                     class="week-slot-cell"
                     :style="{ gridColumn: `${day + 1} / ${day + 2}`, gridRow: `${slot.no} / ${slot.no + 1}` }"
                     :class="{ today: page.dayTabs[day - 1]?.isToday }"
+                    @click="onWeekSlotClick($event, day, slot.no, page.weekValue)"
                   />
                 </template>
                 <article
@@ -204,7 +205,7 @@
                   class="week-course"
                   :style="courseBlockStyle(block)"
                   :title="courseTitle(block.course)"
-                  @click="onWeekCourseClick($event, block.day, page.weekValue)"
+                  @click.stop="onCourseBlockClick($event, block, page.weekValue)"
                 >
                   <strong>{{ block.course.name }}</strong>
                   <span v-if="block.course.location">@{{ block.course.location }}</span>
@@ -222,7 +223,11 @@
                       <span>{{ slot.start }}</span>
                       <span>{{ slot.end }}</span>
                     </div>
-                    <div class="day-slot-cell" :style="{ gridColumn: '2 / 3', gridRow: `${slot.no} / ${slot.no + 1}` }" />
+                    <div
+                      class="day-slot-cell"
+                      :style="{ gridColumn: '2 / 3', gridRow: `${slot.no} / ${slot.no + 1}` }"
+                      @click="onDaySlotClick($event, page.day, slot.no, page.weekValue)"
+                    />
                   </template>
                   <article
                     v-for="block in page.dayCourseBlocks"
@@ -230,6 +235,7 @@
                     class="day-course-block"
                     :style="dayCourseBlockStyle(block)"
                     :title="courseTitle(block.course)"
+                    @click.stop="onCourseBlockClick($event, block, page.weekValue)"
                   >
                     <div class="day-course-name">{{ block.course.name }}</div>
                     <div class="day-course-meta">
@@ -279,69 +285,15 @@
 
     <el-dialog
       v-model="editDialogOpen"
-      title="编辑课表"
+      :title="editingCourseBlock ? '编辑课程' : '添加课程'"
       :width="editDialogWidth"
       align-center
       class="schedule-edit-dialog"
     >
       <section class="edit-section">
         <div class="edit-section-head">
-          <b>本周显示</b>
-          <span>隐藏后仅影响你的本机课表</span>
-        </div>
-        <div v-if="editableWeekBlocks.length" class="edit-course-list">
-          <div v-for="block in editableWeekBlocks" :key="editableBlockKey(block)" class="edit-course-row">
-            <div>
-              <b>{{ block.course.name }}</b>
-              <span>{{ dayLabel(block.day) }} · 第 {{ block.startSlot }}-{{ block.endSlot }} 节</span>
-              <em>{{ block.course.location || "未填写地点" }}</em>
-            </div>
-            <el-button
-              v-if="block.course.customId"
-              text
-              type="danger"
-              size="small"
-              @click="removeCustomCourse(block.course.customId)"
-            >
-              删除
-            </el-button>
-            <el-button
-              v-else
-              text
-              type="warning"
-              size="small"
-              @click="hideCourse(block)"
-            >
-              隐藏
-            </el-button>
-          </div>
-        </div>
-        <el-empty v-else :image-size="60" description="本周暂无课程" />
-      </section>
-
-      <section class="edit-section" v-if="hiddenCourseItems.length">
-        <div class="edit-section-head">
-          <b>已隐藏</b>
-          <span>可随时恢复显示</span>
-        </div>
-        <div class="hidden-list">
-          <el-tag
-            v-for="item in hiddenCourseItems"
-            :key="item.key"
-            closable
-            type="info"
-            effect="plain"
-            @close="restoreHiddenCourse(item.key)"
-          >
-            {{ item.label }}
-          </el-tag>
-        </div>
-      </section>
-
-      <section class="edit-section">
-        <div class="edit-section-head">
-          <b>添加额外课程</b>
-          <span>适合讲座、实验、临时课程</span>
+          <b>{{ editingCourseBlock ? editingCourseBlock.course.name : "新增一节课" }}</b>
+          <span>仅保存在本机</span>
         </div>
         <el-form :model="customCourseForm" label-position="top" class="custom-course-form">
           <el-form-item label="课程名称" required>
@@ -365,14 +317,13 @@
               <el-select v-model="customCourseForm.weekMode">
                 <el-option label="本周" value="current" />
                 <el-option label="全部周" value="all" />
-                <el-option label="周次范围" value="range" />
+                <el-option label="指定周次" value="custom" />
               </el-select>
             </el-form-item>
-            <el-form-item v-if="customCourseForm.weekMode === 'range'" label="开始周">
-              <el-input-number v-model="customCourseForm.startWeek" :min="1" :max="maxWeekNumber" :step="1" />
-            </el-form-item>
-            <el-form-item v-if="customCourseForm.weekMode === 'range'" label="结束周">
-              <el-input-number v-model="customCourseForm.endWeek" :min="customCourseForm.startWeek" :max="maxWeekNumber" :step="1" />
+            <el-form-item v-if="customCourseForm.weekMode === 'custom'" label="选择周次" class="week-list-form-item">
+              <el-select v-model="customCourseForm.weekList" multiple collapse-tags collapse-tags-tooltip>
+                <el-option v-for="w in weekNumberOptions" :key="w" :label="`第 ${w} 周`" :value="w" />
+              </el-select>
             </el-form-item>
           </div>
           <el-form-item label="地点">
@@ -384,12 +335,29 @@
         </el-form>
       </section>
 
+      <section class="edit-section compact" v-if="hiddenCourseItems.length">
+        <div class="edit-section-head">
+          <b>已隐藏课程</b>
+          <span>点标签恢复</span>
+        </div>
+        <div class="hidden-list">
+          <el-tag
+            v-for="item in hiddenCourseItems"
+            :key="item.key"
+            closable
+            type="info"
+            effect="plain"
+            @close="restoreHiddenCourse(item.key)"
+          >
+            {{ item.label }}
+          </el-tag>
+        </div>
+      </section>
+
       <template #footer>
         <el-button @click="editDialogOpen = false">关闭</el-button>
-        <el-button type="primary" @click="addCustomCourse">
-          <el-icon><Plus /></el-icon>
-          添加
-        </el-button>
+        <el-button v-if="editingCourseBlock" type="danger" plain @click="deleteEditingCourse">删除</el-button>
+        <el-button type="primary" @click="saveCourseEdit">{{ editingCourseBlock ? "保存" : "添加" }}</el-button>
       </template>
     </el-dialog>
   </main>
@@ -398,7 +366,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { Aim, ArrowLeft, ArrowRight, Download, EditPen, Loading, Lock, Moon, Picture, Plus, Refresh } from "@element-plus/icons-vue";
+import { Aim, ArrowLeft, ArrowRight, Download, EditPen, Loading, Lock, Moon, Picture, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
@@ -422,6 +390,7 @@ import {
   emptyScheduleEdits,
   readScheduleEdits,
   writeScheduleEdits,
+  type CustomScheduleItem,
   type ScheduleEditState,
 } from "@/utils/scheduleEdits";
 
@@ -510,12 +479,14 @@ const customCourseForm = reactive({
   day: dayOfWeek(),
   startSlot: 1,
   endSlot: 2,
-  weekMode: "current" as "current" | "all" | "range",
-  startWeek: 1,
-  endWeek: 1,
+  weekMode: "current" as "current" | "all" | "custom",
+  weekList: [] as number[],
   location: "",
   teacher: "",
 });
+const editingCourseBlock = ref<WeekCourseBlock | null>(null);
+const editingCourseKey = ref("");
+const editingWeekValue = ref("");
 
 // 周次选择弹窗
 const weekDialogOpen = ref(false);
@@ -623,11 +594,15 @@ const dayCourseBlocks = computed<WeekCourseBlock[]>(() => (
   dayCourseBlocksFor(activeWeekNumber.value, activeDay.value, parsed.value)
 ));
 const weekCourseBlocks = computed<WeekCourseBlock[]>(() => weekCourseBlocksFor(activeWeekNumber.value, parsed.value));
-const editableWeekBlocks = computed(() => weekCourseBlocks.value);
 const editDialogWidth = computed(() => compactViewport.value ? "92vw" : "560px");
 const maxWeekNumber = computed(() => {
   const values = weeks.value.map((w) => Number(w.value)).filter((v) => Number.isFinite(v) && v > 0);
   return values.length ? Math.max(...values) : 20;
+});
+const weekNumberOptions = computed(() => {
+  const values = weeks.value.map((w) => Number(w.value)).filter((v) => Number.isFinite(v) && v > 0);
+  if (values.length) return values;
+  return Array.from({ length: maxWeekNumber.value }, (_, i) => i + 1);
 });
 const hiddenCourseItems = computed(() => {
   const hidden = new Set(scheduleEdits.value.hidden);
@@ -809,22 +784,38 @@ function setViewMode(mode: ViewMode) {
   saveLastState();
 }
 
-function openDayFromWeek(day: number) {
-  onDayClick(day);
-  setViewMode("day");
-}
-
-function onWeekCourseClick(event: MouseEvent, day: number, targetWeek = week.value) {
+function onCourseBlockClick(event: MouseEvent, block: WeekCourseBlock, targetWeek = week.value) {
   if (dragState.suppressClick || dragState.dragging || dragState.settling) {
     event.preventDefault();
     event.stopPropagation();
+    return;
+  }
+  event.stopPropagation();
+  if (targetWeek && targetWeek !== week.value) {
+    week.value = targetWeek;
+    saveLastState();
+  }
+  openCourseEditor(block, targetWeek);
+}
+
+function onWeekSlotClick(event: MouseEvent, day: number, slot: number, targetWeek = week.value) {
+  if (dragState.suppressClick || dragState.dragging || dragState.settling) {
+    event.preventDefault();
     return;
   }
   if (targetWeek && targetWeek !== week.value) {
     week.value = targetWeek;
     saveLastState();
   }
-  openDayFromWeek(day);
+  openAddCourse(day, slot, targetWeek);
+}
+
+function onDaySlotClick(event: MouseEvent, day: number, slot: number, targetWeek = week.value) {
+  if (dragState.suppressClick || dragState.dragging || dragState.settling) {
+    event.preventDefault();
+    return;
+  }
+  openAddCourse(day, slot, targetWeek);
 }
 
 function onSchedulePointerDown(event: PointerEvent) {
@@ -1162,11 +1153,7 @@ function dayOfWeek() {
 }
 
 function openEditDialog() {
-  loadScheduleEdits();
-  customCourseForm.day = activeDay.value;
-  customCourseForm.startWeek = activeWeekNumber.value || 1;
-  customCourseForm.endWeek = activeWeekNumber.value || 1;
-  editDialogOpen.value = true;
+  openAddCourse(activeDay.value, 1, currentWeekValue());
 }
 
 function updateViewportHeight() {
@@ -1372,19 +1359,6 @@ function dayLabel(day: number) {
   return ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][day - 1] ?? `周${day}`;
 }
 
-function editableBlockKey(block: WeekCourseBlock) {
-  return `${block.day}-${block.startSlot}-${block.endSlot}-${block.index}-${block.course.customId || block.course.name}`;
-}
-
-function hideCourse(block: WeekCourseBlock) {
-  const key = courseEditKey(block.day, block.bigSlot, block.course);
-  if (!scheduleEdits.value.hidden.includes(key)) {
-    scheduleEdits.value = { ...scheduleEdits.value, hidden: [...scheduleEdits.value.hidden, key] };
-    persistScheduleEdits();
-  }
-  ElMessage.success("已隐藏该课程");
-}
-
 function restoreHiddenCourse(key: string) {
   scheduleEdits.value = {
     ...scheduleEdits.value,
@@ -1393,7 +1367,38 @@ function restoreHiddenCourse(key: string) {
   persistScheduleEdits();
 }
 
-function addCustomCourse() {
+function openAddCourse(day = activeDay.value, slot = 1, targetWeek = currentWeekValue()) {
+  loadScheduleEdits();
+  editingCourseBlock.value = null;
+  editingCourseKey.value = "";
+  editingWeekValue.value = String(targetWeek || currentWeekValue());
+  customCourseForm.name = "";
+  customCourseForm.day = day;
+  customCourseForm.startSlot = clampSlot(slot);
+  customCourseForm.endSlot = Math.min(MAX_SMALL_SLOT, customCourseForm.startSlot + 1);
+  customCourseForm.weekMode = "current";
+  customCourseForm.weekList = [Number(editingWeekValue.value || activeWeekNumber.value || week.value || 1)].filter(Boolean);
+  customCourseForm.location = "";
+  customCourseForm.teacher = "";
+  editDialogOpen.value = true;
+}
+
+function openCourseEditor(block: WeekCourseBlock, targetWeek = currentWeekValue()) {
+  loadScheduleEdits();
+  editingCourseBlock.value = block;
+  editingCourseKey.value = courseEditKey(block.day, block.bigSlot, block.course);
+  editingWeekValue.value = String(targetWeek || currentWeekValue());
+  customCourseForm.name = block.course.name;
+  customCourseForm.day = block.day;
+  customCourseForm.startSlot = block.startSlot;
+  customCourseForm.endSlot = block.endSlot;
+  customCourseForm.location = block.course.location || "";
+  customCourseForm.teacher = block.course.teacher || "";
+  setFormWeeksFromCourse(block.course);
+  editDialogOpen.value = true;
+}
+
+function saveCourseEdit() {
   const name = customCourseForm.name.trim();
   if (!name) {
     ElMessage.warning("请填写课程名称");
@@ -1402,8 +1407,12 @@ function addCustomCourse() {
   const startSlot = clampSlot(customCourseForm.startSlot);
   const endSlot = Math.max(startSlot, clampSlot(customCourseForm.endSlot));
   const weekList = customCourseWeekList();
-  const item = {
-    id: createCustomCourseId(),
+  const existing = editingCourseBlock.value?.course.customId
+    ? scheduleEdits.value.custom.find((item) => item.id === editingCourseBlock.value?.course.customId)
+    : null;
+  const item: CustomScheduleItem = {
+    id: existing?.id || createCustomCourseId(),
+    sourceKey: existing?.sourceKey || editingCourseKey.value || undefined,
     day: customCourseForm.day,
     bigSlot: Math.ceil(startSlot / 2),
     course: {
@@ -1417,38 +1426,83 @@ function addCustomCourse() {
       slotNote: `第 ${startSlot}-${endSlot} 节`,
     },
   };
-  scheduleEdits.value = { ...scheduleEdits.value, custom: [...scheduleEdits.value.custom, item] };
+  const custom = scheduleEdits.value.custom.filter((entry) => {
+    if (entry.id === item.id) return false;
+    return Boolean(item.sourceKey) && entry.sourceKey === item.sourceKey ? false : true;
+  });
+  const hidden = [...scheduleEdits.value.hidden];
+  if (editingCourseBlock.value && !editingCourseBlock.value.course.customId && item.sourceKey && !hidden.includes(item.sourceKey)) {
+    hidden.push(item.sourceKey);
+  }
+  scheduleEdits.value = { hidden, custom: [...custom, item] };
   persistScheduleEdits();
-  customCourseForm.name = "";
-  customCourseForm.location = "";
-  customCourseForm.teacher = "";
-  ElMessage.success("已添加到课表");
+  editDialogOpen.value = false;
+  ElMessage.success(editingCourseBlock.value ? "已保存课程" : "已添加到课表");
 }
 
-function removeCustomCourse(id: string) {
-  scheduleEdits.value = {
-    ...scheduleEdits.value,
-    custom: scheduleEdits.value.custom.filter((item) => item.id !== id),
-  };
+function deleteEditingCourse() {
+  const block = editingCourseBlock.value;
+  if (!block) return;
+  let next = { ...scheduleEdits.value };
+  if (block.course.customId) {
+    next = { ...next, custom: next.custom.filter((item) => item.id !== block.course.customId) };
+  } else {
+    const key = editingCourseKey.value || courseEditKey(block.day, block.bigSlot, block.course);
+    next = {
+      hidden: next.hidden.includes(key) ? next.hidden : [...next.hidden, key],
+      custom: next.custom.filter((item) => item.sourceKey !== key),
+    };
+  }
+  scheduleEdits.value = next;
   persistScheduleEdits();
-  ElMessage.success("已删除自定义课程");
+  editDialogOpen.value = false;
+  ElMessage.success("已从课表隐藏");
+}
+
+function setFormWeeksFromCourse(course: ScheduleCourse) {
+  const list = Array.isArray(course.weekList) ? [...course.weekList].filter(Boolean).sort((a, b) => a - b) : [];
+  const all = weekNumberOptions.value;
+  const current = Number(editingWeekValue.value || activeWeekNumber.value || week.value || 1);
+  if (!list.length || (all.length > 0 && list.length === all.length && all.every((w) => list.includes(w)))) {
+    customCourseForm.weekMode = "all";
+    customCourseForm.weekList = [...all];
+    return;
+  }
+  if (list.length === 1 && list[0] === current) {
+    customCourseForm.weekMode = "current";
+    customCourseForm.weekList = list;
+    return;
+  }
+  customCourseForm.weekMode = "custom";
+  customCourseForm.weekList = list;
 }
 
 function customCourseWeekList() {
-  if (customCourseForm.weekMode === "all") return weeks.value.map((w) => Number(w.value)).filter(Boolean);
-  if (customCourseForm.weekMode === "range") {
-    const start = Math.max(1, Math.min(customCourseForm.startWeek, customCourseForm.endWeek));
-    const end = Math.max(start, Math.max(customCourseForm.startWeek, customCourseForm.endWeek));
-    return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+  if (customCourseForm.weekMode === "all") return weekNumberOptions.value;
+  if (customCourseForm.weekMode === "custom") {
+    return [...new Set(customCourseForm.weekList.map(Number).filter(Boolean))].sort((a, b) => a - b);
   }
-  return [activeWeekNumber.value || Number(week.value) || 1];
+  return [Number(editingWeekValue.value || activeWeekNumber.value || week.value) || 1];
 }
 
 function customCourseWeeksLabel(weekList: number[]) {
   if (!weekList.length) return "全部周";
   if (weekList.length === 1) return `第 ${weekList[0]} 周`;
   const sorted = [...weekList].sort((a, b) => a - b);
-  return `第 ${sorted[0]}-${sorted[sorted.length - 1]} 周`;
+  const ranges: string[] = [];
+  let start = sorted[0];
+  let prev = sorted[0];
+  for (const value of sorted.slice(1)) {
+    if (value === prev + 1) {
+      prev = value;
+      continue;
+    }
+    ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
+    start = value;
+    prev = value;
+  }
+  ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
+  return `第 ${ranges.join("、")} 周`;
 }
 
 function clampSlot(value: number) {
@@ -2125,6 +2179,8 @@ function prewarmScheduleCacheForWeek(wk: string) {
   background: rgba(255, 255, 255, 0.36);
   border: 1px solid rgba(218, 227, 239, 0.82);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.46);
+  cursor: pointer;
+  touch-action: manipulation;
 }
 .day-course-block {
   z-index: 2;
@@ -2279,6 +2335,8 @@ function prewarmScheduleCacheForWeek(wk: string) {
   background: rgba(255, 255, 255, 0.30);
   border: 1px solid rgba(226, 234, 244, 0.78);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38);
+  cursor: pointer;
+  touch-action: manipulation;
 }
 .week-slot-cell.today {
   background: rgba(232, 246, 243, 0.48);
@@ -2447,8 +2505,18 @@ function prewarmScheduleCacheForWeek(wk: string) {
   margin-bottom: 16px;
 }
 
+.schedule-edit-dialog :deep(.el-dialog__body) {
+  max-height: min(68vh, 620px);
+  overflow: auto;
+}
+
 .edit-section:last-child {
   margin-bottom: 0;
+}
+
+.edit-section.compact {
+  padding-top: 4px;
+  border-top: 1px solid #eef0f4;
 }
 
 .edit-section-head {
@@ -2532,6 +2600,10 @@ function prewarmScheduleCacheForWeek(wk: string) {
   width: 100%;
 }
 
+.week-list-form-item {
+  grid-column: span 2;
+}
+
 /* ===== 移动端：恢复显示 top（紧凑学期+刷新+视图切换） + 仍隐藏旧 toolbar/summary ===== */
 @media (max-width: 760px) {
   /* toolbar 旧的双选择器已经从模板移除，但保险起见仍 hide 类 */
@@ -2558,6 +2630,19 @@ function prewarmScheduleCacheForWeek(wk: string) {
   .form-grid {
     grid-template-columns: 1fr;
     gap: 0;
+  }
+
+  .schedule-edit-dialog :deep(.el-dialog) {
+    width: 94vw !important;
+    margin: 0 auto;
+  }
+
+  .schedule-edit-dialog :deep(.el-dialog__body) {
+    max-height: calc(100vh - 190px);
+  }
+
+  .week-list-form-item {
+    grid-column: auto;
   }
 
   .day-grid-body {
