@@ -763,7 +763,7 @@ const installPromptRef = ref<InstanceType<typeof InstallPromptDialog> | null>(nu
 const openBrowserPromptRef = ref<InstanceType<typeof OpenBrowserPromptDialog> | null>(null);
 const widgetDialogOpen = ref(false);
 const widgetInstructionOpen = ref(false);
-const widgetInstructionCountdown = ref(10);
+const widgetInstructionCountdown = ref(6);
 const androidUpdateOpen = ref(false);
 const androidWidgetGuideOpen = ref(false);
 const androidUpdateCountdown = ref(3);
@@ -981,7 +981,7 @@ async function openScriptableInstruction() {
 
 function startWidgetInstructionCountdown() {
   stopWidgetInstructionCountdown();
-  widgetInstructionCountdown.value = 10;
+  widgetInstructionCountdown.value = 6;
   widgetInstructionTimer = window.setInterval(() => {
     widgetInstructionCountdown.value = Math.max(0, widgetInstructionCountdown.value - 1);
     if (widgetInstructionCountdown.value <= 0) stopWidgetInstructionCountdown();

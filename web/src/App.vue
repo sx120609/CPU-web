@@ -250,7 +250,7 @@ function openDataAuth() {
 
 function startDataAuthTimer() {
   clearDataAuthTimer();
-  dataAuthReadSeconds.value = 10;
+  dataAuthReadSeconds.value = 6;
   dataAuthTimer = window.setInterval(() => {
     dataAuthReadSeconds.value -= 1;
     if (dataAuthReadSeconds.value <= 0) {
