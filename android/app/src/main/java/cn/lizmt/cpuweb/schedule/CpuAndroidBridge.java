@@ -3,7 +3,10 @@ package cn.lizmt.cpuweb.schedule;
 import android.app.Activity;
 import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
@@ -25,8 +28,25 @@ final class CpuAndroidBridge {
     }
 
     @JavascriptInterface
+    public String getVersionName() {
+        return BuildConfig.VERSION_NAME;
+    }
+
+    @JavascriptInterface
     public boolean supportsScheduleWidget() {
         return true;
+    }
+
+    @JavascriptInterface
+    public boolean copyText(String text) {
+        try {
+            ClipboardManager manager = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+            if (manager == null) return false;
+            manager.setPrimaryClip(ClipData.newPlainText("CPU Web", text == null ? "" : text));
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     @JavascriptInterface

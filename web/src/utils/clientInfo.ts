@@ -1,5 +1,8 @@
 export type ClientPlatform = "ios" | "android" | "web" | "unknown";
 
+export const ANDROID_APP_LATEST_VERSION_CODE = 5;
+export const ANDROID_APP_LATEST_VERSION_NAME = "1.4.0";
+export const ANDROID_APP_DOWNLOAD_URL = "/downloads/CPU-Web-V4.apk";
 export const ANDROID_WIDGET_MIN_VERSION_CODE = 5;
 
 export function detectClientPlatform(ua = navigator.userAgent): ClientPlatform {
@@ -50,6 +53,27 @@ export function getAndroidNativeVersionCode(ua = navigator.userAgent) {
   if (versionMatch) return Number(versionMatch[1].split(".")[0]) || 0;
 
   return isAndroidNativeApp(ua) ? 1 : 0;
+}
+
+export function getAndroidNativeVersionName(ua = navigator.userAgent) {
+  const bridge = (window as any).CPUAndroid;
+  const bridgeVersion = typeof bridge?.getVersionName === "function" ? String(bridge.getVersionName() || "") : "";
+  if (bridgeVersion) return bridgeVersion;
+
+  const params = new URLSearchParams(window.location.search);
+  const queryVersion = params.get("androidVersionName") || params.get("appVersionName");
+  if (queryVersion) return queryVersion;
+
+  const source = ua || "";
+  const versionNameMatch = source.match(/CPUWebScheduleAppVersion\/([^;\s)]+)/i);
+  if (versionNameMatch) return versionNameMatch[1];
+
+  const versionMatch = source.match(/CPUWebScheduleApp\/([^;\s)]+)/i);
+  return versionMatch?.[1] ?? "";
+}
+
+export function isAndroidAppUpdateAvailable(ua = navigator.userAgent) {
+  return isAndroidNativeApp(ua) && getAndroidNativeVersionCode(ua) < ANDROID_APP_LATEST_VERSION_CODE;
 }
 
 export function supportsAndroidScheduleWidget(ua = navigator.userAgent) {

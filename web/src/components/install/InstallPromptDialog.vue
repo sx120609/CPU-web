@@ -102,13 +102,14 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 import { USER_QQ_GROUP, openUserGroup } from "@/utils/userGroup";
+import { ANDROID_APP_DOWNLOAD_URL } from "@/utils/clientInfo";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
-const APK_DOWNLOAD_URL = "/downloads/CPU-Web-V4.apk";
+const APK_DOWNLOAD_URL = ANDROID_APP_DOWNLOAD_URL;
 
 const open = ref(false);
 const deferredPrompt = ref<BeforeInstallPromptEvent | null>(null);

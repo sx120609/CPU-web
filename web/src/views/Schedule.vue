@@ -84,6 +84,16 @@
                 <span>{{ widgetMenuLabel }}</span>
                 <el-icon class="more-chevron"><ArrowRight /></el-icon>
               </button>
+              <button
+                v-if="isAndroidNativeApp()"
+                type="button"
+                class="more-action"
+                @click="checkAndroidAppUpdate"
+              >
+                <el-icon><Download /></el-icon>
+                <span>{{ androidUpdateMenuLabel }}</span>
+                <el-icon class="more-chevron"><ArrowRight /></el-icon>
+              </button>
             </template>
 
             <template v-else>
@@ -433,9 +443,13 @@
       @closed="stopAndroidUpdateCountdown"
     >
       <div class="android-update-panel">
-        <p>
+        <p v-if="androidUpdateKind === 'app'">
+          当前客户端版本为 {{ androidCurrentVersionLabel }}，最新版本为 {{ androidLatestVersionLabel }}。
+          请复制下载链接，到系统浏览器粘贴打开并安装更新。
+        </p>
+        <p v-else>
           当前安卓客户端版本过低，桌面小组件不可用。
-          请先复制下载链接，到系统浏览器粘贴打开，卸载旧版后再安装最新版。
+          请先复制下载链接，到系统浏览器粘贴打开并安装最新版 {{ androidLatestVersionLabel }}。
         </p>
         <p class="widget-countdown">
           {{ androidUpdateCountdown > 0 ? `请先阅读说明，${androidUpdateCountdown} 秒后可继续。` : "已可复制下载链接。" }}
@@ -585,9 +599,14 @@ import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 import {
+  ANDROID_APP_DOWNLOAD_URL,
+  ANDROID_APP_LATEST_VERSION_CODE,
+  ANDROID_APP_LATEST_VERSION_NAME,
   ANDROID_WIDGET_MIN_VERSION_CODE,
   detectClientPlatform,
   getAndroidNativeVersionCode,
+  getAndroidNativeVersionName,
+  isAndroidAppUpdateAvailable,
   isAndroidNativeApp,
   isIosStandalone,
   supportsAndroidScheduleWidget,
@@ -753,15 +772,20 @@ const moreMenuView = ref<"menu" | "theme">("menu");
 const widgetConfigCopying = ref(false);
 const widgetConfigCopied = ref(false);
 const androidWidgetInstalling = ref(false);
+const androidUpdateKind = ref<"app" | "widget">("widget");
 const scriptableWidgetScript = ref("");
 const widgetCopyMessage = ref("");
-const APK_DOWNLOAD_URL = "/downloads/CPU-Web-V4.apk";
+const APK_DOWNLOAD_URL = ANDROID_APP_DOWNLOAD_URL;
 const SCRIPTABLE_ADD_URL = "https://open.scriptable.app/add";
+const ANDROID_APP_UPDATE_PROMPT_KEY = "cpu-android-app-update-prompt-v1";
 let widgetInstructionTimer = 0;
 let androidUpdateTimer = 0;
+let androidAppUpdatePromptTimer = 0;
 type WidgetMenuPlatform = "ios" | "android" | "android-old";
 interface AndroidWidgetBridge {
   getVersionCode?: () => number;
+  getVersionName?: () => string;
+  copyText?: (text: string) => boolean;
   supportsScheduleWidget?: () => boolean;
   installScheduleWidget?: (payload: string) => void;
   openExternalUrl?: (url: string) => void;
@@ -795,6 +819,21 @@ const widgetMenuLabel = computed(() => {
   if (widgetMenuPlatform.value === "android-old") return "更新安卓客户端";
   return "导入 iOS 小组件";
 });
+const androidCurrentVersionCode = computed(() => getAndroidNativeVersionCode());
+const androidCurrentVersionName = computed(() => getAndroidNativeVersionName());
+const androidCurrentVersionLabel = computed(() => {
+  const code = androidCurrentVersionCode.value;
+  const name = androidCurrentVersionName.value;
+  if (name && code) return `${name} (${code})`;
+  if (name) return name;
+  if (code) return `版本 ${code}`;
+  return "未知版本";
+});
+const androidLatestVersionLabel = computed(() => `${ANDROID_APP_LATEST_VERSION_NAME} (${ANDROID_APP_LATEST_VERSION_CODE})`);
+const androidAppUpdateAvailable = computed(() => isAndroidAppUpdateAvailable());
+const androidUpdateMenuLabel = computed(() => (
+  androidAppUpdateAvailable.value ? "更新安卓客户端" : "检查客户端更新"
+));
 
 function handleWidgetMenuAction() {
   if (widgetMenuPlatform.value === "ios") {
@@ -805,7 +844,7 @@ function handleWidgetMenuAction() {
     void installAndroidWidget();
     return;
   }
-  showAndroidUpdateRequired();
+  showAndroidUpdateRequired("widget");
 }
 
 function openWidgetDialog() {
@@ -817,7 +856,7 @@ async function installAndroidWidget() {
   moreMenuOpen.value = false;
   const bridge = getAndroidWidgetBridge();
   if (!supportsAndroidScheduleWidget() || !bridge?.installScheduleWidget) {
-    showAndroidUpdateRequired();
+    showAndroidUpdateRequired("widget");
     return;
   }
   if (!jwxt.isLoggedIn) {
@@ -839,20 +878,58 @@ async function installAndroidWidget() {
   }
 }
 
-function showAndroidUpdateRequired() {
+function showAndroidUpdateRequired(kind: "app" | "widget" = "widget") {
   moreMenuOpen.value = false;
+  androidUpdateKind.value = kind;
   androidUpdateOpen.value = true;
 }
 
 async function openAndroidDownload() {
   const absoluteUrl = new URL(APK_DOWNLOAD_URL, window.location.origin).toString();
-  const copied = await writeClipboard(absoluteUrl);
+  let copied = false;
+  const bridge = getAndroidWidgetBridge();
+  try {
+    if (typeof bridge?.copyText === "function") {
+      copied = bridge.copyText(absoluteUrl) !== false;
+    }
+  } catch {
+    copied = false;
+  }
+  if (!copied) {
+    copied = await writeClipboard(absoluteUrl);
+  }
   if (copied) {
     androidUpdateOpen.value = false;
     ElMessage.success("下载链接已复制，请到系统浏览器粘贴打开");
     return;
   }
   ElMessage.warning("复制失败，请再点击一次复制下载链接");
+}
+
+function checkAndroidAppUpdate() {
+  moreMenuOpen.value = false;
+  if (!isAndroidNativeApp()) return;
+  if (androidAppUpdateAvailable.value) {
+    showAndroidUpdateRequired("app");
+    return;
+  }
+  ElMessage.success(`当前已是最新版 ${androidCurrentVersionLabel.value}`);
+}
+
+function autoPromptAndroidAppUpdate() {
+  if (!androidAppUpdateAvailable.value) return;
+  const latestVersion = String(ANDROID_APP_LATEST_VERSION_CODE);
+  try {
+    if (localStorage.getItem(ANDROID_APP_UPDATE_PROMPT_KEY) === latestVersion) return;
+    localStorage.setItem(ANDROID_APP_UPDATE_PROMPT_KEY, latestVersion);
+  } catch {
+    /* localStorage may be blocked in some WebViews */
+  }
+  androidAppUpdatePromptTimer = window.setTimeout(() => {
+    if (!androidUpdateOpen.value && androidAppUpdateAvailable.value) {
+      showAndroidUpdateRequired("app");
+    }
+  }, 1600);
 }
 
 function startAndroidUpdateCountdown() {
@@ -1066,6 +1143,7 @@ onMounted(async () => {
   // 内置浏览器先提示跳外部浏览器；普通移动浏览器再提示安装 / 添加桌面。
   openBrowserPromptRef.value?.autoPromptIfEligible();
   installPromptRef.value?.autoPromptIfEligible();
+  autoPromptAndroidAppUpdate();
 
   // 后台静默：刷新会话状态 + 自动登录 + 重新拉数据。失败也不影响已显示的缓存。
   void (async () => {
@@ -1091,6 +1169,10 @@ onBeforeUnmount(() => {
   clearStaticWeekAnimation();
   stopWidgetInstructionCountdown();
   stopAndroidUpdateCountdown();
+  if (androidAppUpdatePromptTimer) {
+    window.clearTimeout(androidAppUpdatePromptTimer);
+    androidAppUpdatePromptTimer = 0;
+  }
   if (scheduleEditsSaveTimer) {
     window.clearTimeout(scheduleEditsSaveTimer);
     scheduleEditsSaveTimer = 0;
