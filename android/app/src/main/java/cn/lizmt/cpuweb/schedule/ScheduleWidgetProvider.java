@@ -134,9 +134,6 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
     private static void renderSchedule(RemoteViews views, JSONObject data) {
         JSONObject today = data.optJSONObject("today");
         JSONArray courses = today != null ? today.optJSONArray("courses") : null;
-        if (courses == null || courses.length() == 0) {
-            courses = data.optJSONArray("upcoming");
-        }
 
         String week = data.optString("week", "");
         String dayLabel = today != null ? today.optString("label", "") : "";

@@ -467,8 +467,8 @@ export function parseCalendar(html: string): CalendarResult {
     weeks.push({
       week: wk,
       days,
-      monday: days[1] || "",
-      sunday: days[0] || days[6] || "",
+      monday: days[0] || "",
+      sunday: days[6] || "",
       note: tds[8] || undefined,
     });
   });

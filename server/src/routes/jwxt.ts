@@ -250,9 +250,31 @@ function courseMatchesWeek(course: any, week: number) {
   return list.length ? list.includes(week) : true;
 }
 
-function dayOfWeek() {
-  const d = new Date().getDay();
+function chinaDateParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  const year = Number(value("year"));
+  const month = Number(value("month"));
+  const day = Number(value("day"));
+  return { year, month, day, ymd: `${value("year")}-${value("month")}-${value("day")}` };
+}
+
+function chinaDayOfWeek(parts = chinaDateParts()) {
+  const d = new Date(Date.UTC(parts.year, parts.month - 1, parts.day)).getUTCDay();
   return d === 0 ? 7 : d;
+}
+
+function calendarWeekForDate(calendar: any | null, ymd: string) {
+  for (const item of calendar?.weeks ?? []) {
+    const index = Array.isArray(item?.days) ? item.days.indexOf(ymd) : -1;
+    if (index >= 0) return { week: Number(item.week) || 0, day: index + 1 };
+  }
+  return { week: 0, day: 0 };
 }
 
 function dayLabel(day: number) {
@@ -276,9 +298,13 @@ async function readScheduleEditsForWidget(userId: number, semester: string) {
 }
 
 function buildWidgetPayload(parsed: any, calendar: any | null, queryWeek?: string) {
-  const calendarWeek = calendar?.currentWeek ? Number(calendar.currentWeek) : 0;
-  const week = Number(queryWeek || parsed?.currentWeek || calendarWeek || 0);
-  const activeDay = dayOfWeek();
+  const today = chinaDateParts();
+  const calendarToday = calendarWeekForDate(calendar, today.ymd);
+  const calendarWeek = calendarToday.week || (calendar?.currentWeek ? Number(calendar.currentWeek) : 0);
+  const week = Number(queryWeek || calendarToday.week || parsed?.currentWeek || calendarWeek || 0);
+  const activeDay = queryWeek && Number(queryWeek) !== calendarToday.week
+    ? 1
+    : (calendarToday.day || chinaDayOfWeek(today));
   const calendarDays = (calendar?.weeks ?? []).find((item: any) => Number(item.week) === week)?.days ?? [];
   const cells = (parsed?.cells ?? [])
     .flatMap((cell: any) => (cell.courses ?? [])
@@ -308,14 +334,21 @@ function buildWidgetPayload(parsed: any, calendar: any | null, queryWeek?: strin
       day,
       label: dayLabel(day),
       date: calendarDays[index] || "",
-      isToday: day === activeDay && (!calendarWeek || calendarWeek === week),
+      isToday: day === activeDay && (!calendarWeek || calendarWeek === week) && (!calendarDays[index] || calendarDays[index] === today.ymd),
       courses: cells.filter((course: any) => course.day === day),
     };
   });
-  const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+  const nowParts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Shanghai",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
+  const hour = Number(nowParts.find((part) => part.type === "hour")?.value ?? 0);
+  const minute = Number(nowParts.find((part) => part.type === "minute")?.value ?? 0);
+  const nowMinutes = hour * 60 + minute;
   const upcoming = cells.filter((course: any) => {
-    if (course.day > activeDay) return true;
-    if (course.day < activeDay) return false;
+    if (course.day !== activeDay) return false;
     const [h, m] = String(course.endTime || "00:00").split(":").map(Number);
     return h * 60 + m >= nowMinutes;
   });
@@ -329,6 +362,7 @@ function buildWidgetPayload(parsed: any, calendar: any | null, queryWeek?: strin
     today: days[activeDay - 1],
     days,
     upcoming: upcoming.slice(0, 6),
+    strictDate: true,
   };
 }
 
@@ -675,6 +709,10 @@ jwxtRouter.put(
         update: {
           payload: JSON.stringify(edits),
         },
+      });
+      await prisma.scheduleWidgetToken.updateMany({
+        where: { userId: req.user.userId, revokedAt: null },
+        data: { cachedPayload: null, cachedAt: null },
       });
       ok(res, { semester, edits });
     } catch (e) { next(e); }

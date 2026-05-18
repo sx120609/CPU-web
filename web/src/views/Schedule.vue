@@ -1003,8 +1003,7 @@ async function render() {
   addLine(widget, sub, Font.systemFont(11), color("#64748b", "#cbd5e1"));
   widget.addSpacer(8);
 
-  const todayCourses = data.today?.courses || [];
-  const courses = todayCourses.length ? todayCourses : (data.upcoming || []);
+  const courses = data.today?.courses || [];
   if (!courses.length) {
     addLine(widget, "今天没有课程", Font.mediumSystemFont(13), color("#475467", "#e2e8f0"));
   } else {
