@@ -20,4 +20,25 @@
         <item name="android:textColor">#27364A</item>
         <item name="android:textSize">12sp</item>
     </style>
+
+    <style name="WidgetScheduleLineDense">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginBottom">4dp</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:textColor">#27364A</item>
+        <item name="android:textSize">11sp</item>
+    </style>
+
+    <style name="WidgetScheduleSectionTitle">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginBottom">5dp</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:textColor">#168776</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
 </resources>
