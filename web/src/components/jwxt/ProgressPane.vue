@@ -26,7 +26,7 @@
         />
         <div class="overall-detail">
           <span class="dim-pill must">
-            必修 {{ parsed.totals.earnedMust.toFixed(1) }} / {{ mustRequiredFinal.toFixed(1) }}
+            必修 {{ earnedMustFinal.toFixed(1) }} / {{ mustRequiredFinal.toFixed(1) }}
           </span>
           <span class="dim-pill opt">
             选修 {{ parsed.totals.earnedOpt.toFixed(1) }}<span v-if="parsed.totals.requiredOpt > 0"> / {{ parsed.totals.requiredOpt.toFixed(1) }}</span>
@@ -185,14 +185,24 @@ watch(() => props.loading, (v) => { loading.value = Boolean(v); }, { immediate: 
 
 const totalEarned = computed(() => {
   if (!parsed.value) return 0;
-  return (parsed.value.summary ?? []).reduce((sum: number, s: any) => {
-    return sum + (s.earnedMust ?? 0) + (s.earnedOpt ?? 0);
-  }, 0);
+  return earnedMustFinal.value + earnedOptFinal.value;
 });
 
 /** 必修要求总学分 —— 学校汇总表通常填 0，但我们有「已完成 + 未完成必修」两个完整表，自己加 */
 const mustRequiredDerived = computed(() => {
   return totalCompletedCredits.value + totalUncompletedCredits.value;
+});
+
+/** 必修已获学分 —— 学校汇总表可能漏算，优先使用「已完成必修课程」明细合计 */
+const earnedMustFinal = computed(() => {
+  if (!parsed.value) return 0;
+  return totalCompletedCredits.value > 0 ? totalCompletedCredits.value : (parsed.value.totals.earnedMust ?? 0);
+});
+
+/** 选修已获学分 —— 学业完成页没有选修明细，使用课程体系汇总表的选修已获合计 */
+const earnedOptFinal = computed(() => {
+  if (!parsed.value) return 0;
+  return (parsed.value.summary ?? []).reduce((sum: number, s: any) => sum + (s.earnedOpt ?? 0), 0);
 });
 
 const totalRequired = computed(() => {
