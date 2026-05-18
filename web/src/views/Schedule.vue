@@ -55,6 +55,7 @@
           :teleported="true"
           popper-class="schedule-more-popover"
           @show="moreMenuView = 'menu'"
+          @hide="moreMenuView = 'menu'"
         >
           <template #reference>
             <button
@@ -62,6 +63,7 @@
               class="icon-btn"
               aria-label="更多"
               title="更多"
+              @click="openMoreMenu"
             >
               <el-icon><MoreFilled /></el-icon>
             </button>
@@ -802,7 +804,12 @@ async function openInstallPrompt() {
 
 function selectScheduleTheme(value: ScheduleThemeKey) {
   persistScheduleTheme(value);
+  moreMenuView.value = "menu";
   moreMenuOpen.value = false;
+}
+
+function openMoreMenu() {
+  moreMenuView.value = "menu";
 }
 
 function getAndroidWidgetBridge(): AndroidWidgetBridge | null {
