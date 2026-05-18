@@ -123,7 +123,7 @@ export const jwxtApi = {
     inst.post<unknown, LoginResult>("/login", p),
   logout: () => inst.post<unknown, { ok: boolean }>("/logout"),
   status: (options?: { silent?: boolean }) =>
-    inst.get<unknown, { active: boolean; since?: number }>(
+    inst.get<unknown, { active: boolean; since?: number; username?: string }>(
       "/status",
       options?.silent ? ({ suppressErrorMessage: true } as any) : undefined
     ),

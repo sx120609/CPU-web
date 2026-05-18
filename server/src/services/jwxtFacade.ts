@@ -30,7 +30,7 @@ export async function sessionStats() {
 
 export async function getStatus(token: string | undefined | null) {
   const session = getSession(token);
-  return session ? { active: true, since: session.createdAt } : { active: false };
+  return session ? { active: true, since: session.createdAt, username: session.username } : { active: false };
 }
 
 export async function getSchedule(token: string, args: { semester?: string; week?: string } = {}) {

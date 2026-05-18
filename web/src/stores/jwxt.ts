@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { jwxtApi, getJwxtToken, clearJwxtToken } from "@/api/jwxt";
 import { clearCreds, hasCreds, loadCreds } from "@/utils/credCrypto";
 import { useAuthStore } from "@/stores/auth";
+import { clearJwxtDataCaches } from "@/utils/jwxtCache";
 
 /**
  * 教务 jwxt store —— 现在是 auth store 的薄包装。
@@ -53,10 +54,21 @@ export const useJwxtStore = defineStore("jwxt", {
         return;
       }
       try {
+        const auth = useAuthStore();
+        if (auth.token && !auth.user) await auth.fetchMe();
         const r = await jwxtApi.status({ silent: true });
+        const currentUsername = auth.user?.username;
+        if (r.username && currentUsername && r.username !== currentUsername) {
+          clearJwxtToken();
+          clearJwxtDataCaches();
+          this.token = "";
+          this.active = false;
+          return;
+        }
         this.active = r.active;
         if (!r.active) {
           clearJwxtToken();
+          clearJwxtDataCaches();
           this.token = "";
         } else {
           void this.refreshWidgetTokens();
@@ -116,6 +128,7 @@ export const useJwxtStore = defineStore("jwxt", {
     async logout() {
       try { await jwxtApi.logout(); } catch { /* ignore */ }
       clearJwxtToken();
+      clearJwxtDataCaches();
       this.token = "";
       this.active = false;
       // 注意：默认不删 saved creds，下次还能自动登录

@@ -185,8 +185,9 @@ watch(() => props.loading, (v) => { loading.value = Boolean(v); }, { immediate: 
 
 const totalEarned = computed(() => {
   if (!parsed.value) return 0;
-  const t = parsed.value.totals;
-  return (t.earnedMust ?? 0) + (t.earnedOpt ?? 0);
+  return (parsed.value.summary ?? []).reduce((sum: number, s: any) => {
+    return sum + (s.earnedMust ?? 0) + (s.earnedOpt ?? 0);
+  }, 0);
 });
 
 /** 必修要求总学分 —— 学校汇总表通常填 0，但我们有「已完成 + 未完成必修」两个完整表，自己加 */
@@ -202,11 +203,7 @@ const totalRequired = computed(() => {
 });
 
 const totalLeft = computed(() => {
-  if (!parsed.value) return 0;
-  const t = parsed.value.totals;
-  // 必修未获得：用未完成必修学分（最准）
-  const leftMust = totalUncompletedCredits.value > 0 ? totalUncompletedCredits.value : (t.leftMust ?? 0);
-  return leftMust + (t.leftOpt ?? 0);
+  return Math.max(0, totalRequired.value - totalEarned.value);
 });
 
 const mustRequiredFinal = computed(() => {

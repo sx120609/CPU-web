@@ -597,6 +597,7 @@ import { Aim, ArrowLeft, ArrowRight, Download, Iphone, Loading, Lock, Moon, More
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
+import { jwxtScopedStorageKey } from "@/utils/jwxtCache";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 import {
   ANDROID_APP_DOWNLOAD_URL,
@@ -692,9 +693,9 @@ const scheduleEdits = ref<ScheduleEditState>(emptyScheduleEdits());
 const viewportHeight = ref(0);
 const compactViewport = ref(false);
 const CACHE_TTL = 12 * 60 * 60 * 1000;
-const CALENDAR_CACHE_KEY = "cpu-schedule-calendar-v1";
-const LAST_STATE_KEY = "cpu-schedule-last-state-v1";
-const LAST_CACHE_KEY = "cpu-schedule-last-cache-key-v1";
+const CALENDAR_CACHE_BASE = "cpu-schedule-calendar-v1";
+const LAST_STATE_BASE = "cpu-schedule-last-state-v1";
+const LAST_CACHE_BASE = "cpu-schedule-last-cache-key-v1";
 const THEME_KEY = "cpu-schedule-theme-v1";
 const scheduleCacheStore = new Map<string, CacheEnvelope<ScheduleResult>>();
 const prewarmingScheduleKeys = new Set<string>();
@@ -1281,7 +1282,7 @@ async function loadCalendar() {
   try {
     const r: any = await jwxtApi.calendar();
     calendar.value = r.parsed;
-    writeCache(CALENDAR_CACHE_KEY, calendar.value);
+    writeCache(jwxtScopedStorageKey(CALENDAR_CACHE_BASE), calendar.value);
     if (calendar.value?.currentWeek && !week.value) week.value = String(calendar.value.currentWeek);
   } catch { /* calendar is best effort */ }
 }
@@ -2376,10 +2377,11 @@ function dayCourseBlockStyle(block: WeekCourseBlock) {
 function scheduleCacheKey(sem = semester.value, wk = week.value) {
   const s = sem || parsed.value?.currentSemester || "current";
   const w = wk || calendar.value?.currentWeek || parsed.value?.currentWeek || "current";
-  return `cpu-schedule-cache-v1:${s}:${w}`;
+  return jwxtScopedStorageKey("cpu-schedule-cache-v1", s, w);
 }
 
 function readCache<T>(key: string): CacheEnvelope<T> | null {
+  if (!key) return null;
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
@@ -2392,6 +2394,7 @@ function readCache<T>(key: string): CacheEnvelope<T> | null {
 }
 
 function writeCache<T>(key: string, data: T) {
+  if (!key) return;
   try {
     localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), data }));
   } catch {
@@ -2400,6 +2403,7 @@ function writeCache<T>(key: string, data: T) {
 }
 
 function writeScheduleCache(key: string, data: ScheduleResult) {
+  if (!key) return;
   const envelope = { savedAt: Date.now(), data };
   rememberScheduleCache(key, envelope);
   try {
@@ -2418,13 +2422,15 @@ function isStale(savedAt: number) {
 }
 
 function restoreCachedCalendar() {
-  const cached = readCache<CalendarResult>(CALENDAR_CACHE_KEY);
+  const cached = readCache<CalendarResult>(jwxtScopedStorageKey(CALENDAR_CACHE_BASE));
   if (cached?.data) calendar.value = cached.data;
 }
 
 function restoreLastState() {
   try {
-    const raw = localStorage.getItem(LAST_STATE_KEY);
+    const key = jwxtScopedStorageKey(LAST_STATE_BASE);
+    if (!key) return;
+    const raw = localStorage.getItem(key);
     if (!raw) return;
     const state = JSON.parse(raw) as LastState;
     if (state.semester) semester.value = state.semester;
@@ -2438,7 +2444,9 @@ function restoreLastState() {
 
 function saveLastState() {
   try {
-    localStorage.setItem(LAST_STATE_KEY, JSON.stringify({
+    const key = jwxtScopedStorageKey(LAST_STATE_BASE);
+    if (!key) return;
+    localStorage.setItem(key, JSON.stringify({
       semester: semester.value,
       week: week.value,
       activeDay: activeDay.value,
@@ -2451,7 +2459,9 @@ function saveLastState() {
 
 function restoreLastScheduleCache() {
   try {
-    const key = localStorage.getItem(LAST_CACHE_KEY);
+    const lastKey = jwxtScopedStorageKey(LAST_CACHE_BASE);
+    if (!lastKey) return false;
+    const key = localStorage.getItem(lastKey);
     if (!key) return false;
     return applyScheduleCache(key);
   } catch {
@@ -2465,6 +2475,7 @@ function restoreScheduleCache() {
 }
 
 function applyScheduleCache(key: string) {
+  if (!key) return false;
   const cached = readCache<ScheduleResult>(key);
   if (!cached?.data) return false;
   rememberScheduleCache(key, cached);
@@ -2481,7 +2492,8 @@ function saveScheduleCache() {
   if (!parsed.value) return;
   const key = scheduleCacheKey(parsed.value.currentSemester || semester.value, week.value || parsed.value.currentWeek);
   writeScheduleCache(key, parsed.value);
-  try { localStorage.setItem(LAST_CACHE_KEY, key); } catch { /* ignore */ }
+  const lastKey = jwxtScopedStorageKey(LAST_CACHE_BASE);
+  try { if (lastKey && key) localStorage.setItem(lastKey, key); } catch { /* ignore */ }
 }
 
 function prewarmAdjacentWeekCaches() {
@@ -2495,6 +2507,7 @@ function prewarmAdjacentWeekCaches() {
 function prewarmScheduleCacheForWeek(wk: string) {
   if (!jwxt.isLoggedIn) return;
   const key = scheduleCacheKey(parsed.value?.currentSemester || semester.value, wk);
+  if (!key) return;
   const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
   if (cached?.data && !isStale(cached.savedAt)) {
     if (!scheduleCacheStore.has(key)) rememberScheduleCache(key, cached);

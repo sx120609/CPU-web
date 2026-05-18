@@ -3,6 +3,7 @@ import { authApi, type UserInfo, type RegisterPayload } from "@/api/auth";
 import { clearToken, getToken, setToken } from "@/api/request";
 import { setJwxtToken, clearJwxtToken } from "@/api/jwxt";
 import { saveCreds } from "@/utils/credCrypto";
+import { clearJwxtDataCaches } from "@/utils/jwxtCache";
 
 const DATA_AUTH_KEY_PREFIX = "cpu-data-auth-agreement-v1";
 
@@ -71,11 +72,15 @@ export const useAuthStore = defineStore("auth", {
 
     async login(username: string, password: string) {
       const { token, user } = await authApi.login({ username, password });
+      clearJwxtToken();
+      clearJwxtDataCaches();
       setToken(token); this.token = token; this.user = user; this.syncDataAuthAgreement(user); this.ready = true;
     },
 
     async register(p: RegisterPayload) {
       const { token, user } = await authApi.register(p);
+      clearJwxtToken();
+      clearJwxtDataCaches();
       setToken(token); this.token = token; this.user = user; this.syncDataAuthAgreement(user); this.ready = true;
     },
 
@@ -113,7 +118,11 @@ export const useAuthStore = defineStore("auth", {
         this.syncDataAuthAgreement(r.user);
         this.ready = true;
         // 教务 token 同步存到 sessionStorage（用户进入 /jwxt /services 自动可用）
-        if (r.jwxtToken) setJwxtToken(r.jwxtToken);
+        if (r.jwxtToken) {
+          clearJwxtToken();
+          clearJwxtDataCaches();
+          setJwxtToken(r.jwxtToken);
+        }
         // 记住凭据（本地加密，下次自动登录）
         if (remember) {
           try { await saveCreds(username, password); } catch { /* ignore */ }
@@ -144,6 +153,7 @@ export const useAuthStore = defineStore("auth", {
       try { await authApi.logout(); } catch { /* ignore */ }
       clearToken(); this.token = ""; this.user = null; this.dataAuthAgreed = false; this.ready = false;
       clearJwxtToken();
+      clearJwxtDataCaches();
       // 主动退出 → 设一个本会话级标记，避免回到 /login 时被 onMounted 立即自动重登；
       // 但**保留** credCrypto 里"记住的密码"——这样关闭浏览器再打开还能自动登录，
       // 符合"记住此账号"checkbox 的字面承诺。

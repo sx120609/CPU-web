@@ -1,6 +1,7 @@
 import axios, { AxiosError, type AxiosInstance } from "axios";
 import { ElMessage } from "element-plus";
 import { detectClientPlatform } from "@/utils/clientInfo";
+import { clearJwxtDataCaches } from "@/utils/jwxtCache";
 
 export interface ApiResponse<T> {
   code: number;
@@ -56,6 +57,8 @@ instance.interceptors.response.use(
   (err: AxiosError<ApiResponse<unknown>>) => {
     if (err.response?.status === 401) {
       clearToken();
+      sessionStorage.removeItem("cpu-jwxt-token");
+      clearJwxtDataCaches();
       ElMessage.warning("登录已过期，请重新登录");
       if (window.location.pathname !== "/login") {
         const redirect = encodeURIComponent(window.location.pathname + window.location.search);

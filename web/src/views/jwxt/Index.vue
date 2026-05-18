@@ -168,6 +168,7 @@ import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from "elem
 import { Lock, User, Refresh, CircleCheckFilled, CircleClose, InfoFilled } from "@element-plus/icons-vue";
 import { useJwxtStore } from "@/stores/jwxt";
 import { jwxtApi } from "@/api/jwxt";
+import { jwxtScopedStorageKey } from "@/utils/jwxtCache";
 import SchedulePane from "@/components/jwxt/SchedulePane.vue";
 import GradesPane from "@/components/jwxt/GradesPane.vue";
 import ProgressPane from "@/components/jwxt/ProgressPane.vue";
@@ -225,12 +226,14 @@ onMounted(async () => {
 });
 
 function cacheKey(t: DataTab) {
-  return `${CACHE_PREFIX}:${t}`;
+  return jwxtScopedStorageKey(CACHE_PREFIX, t);
 }
 
 function readCache(t: DataTab): { savedAt: number; data: any } | null {
   try {
-    const raw = localStorage.getItem(cacheKey(t));
+    const key = cacheKey(t);
+    if (!key) return null;
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed.savedAt !== "number") return null;
@@ -242,7 +245,9 @@ function readCache(t: DataTab): { savedAt: number; data: any } | null {
 
 function writeCache(t: DataTab, data: any) {
   try {
-    localStorage.setItem(cacheKey(t), JSON.stringify({ savedAt: Date.now(), data: normalizeTabData(t, data) }));
+    const key = cacheKey(t);
+    if (!key) return;
+    localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), data: normalizeTabData(t, data) }));
   } catch {
     /* ignore */
   }
