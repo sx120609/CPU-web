@@ -2,4 +2,8 @@
 <resources>
     <color name="teal_700">#0F8F7F</color>
     <color name="teal_800">#0B766A</color>
+    <color name="launch_bg">#EDF4FF</color>
+    <color name="launch_bg_bottom">#F8FAFC</color>
+    <color name="launch_text">#172033</color>
+    <color name="launch_subtitle">#667085</color>
 </resources>

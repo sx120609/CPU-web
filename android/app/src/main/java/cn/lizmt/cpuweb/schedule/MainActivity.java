@@ -6,12 +6,14 @@ import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Message;
 import android.view.Gravity;
 import android.view.View;
+import android.view.Window;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
 import android.webkit.ValueCallback;
@@ -31,6 +33,7 @@ public final class MainActivity extends Activity {
 
     private WebView webView;
     private LinearLayout errorView;
+    private LinearLayout launchView;
     private String appHost;
     private boolean mainFrameLoadFailed;
     private ValueCallback<Uri[]> filePathCallback;
@@ -41,10 +44,12 @@ public final class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
 
         appHost = Uri.parse(BuildConfig.APP_URL).getHost();
+        configureSystemBars();
 
         FrameLayout root = new FrameLayout(this);
         webView = new WebView(this);
         errorView = createErrorView();
+        launchView = createLaunchView();
 
         root.addView(webView, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -54,10 +59,27 @@ public final class MainActivity extends Activity {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
         ));
+        root.addView(launchView, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+        ));
 
         setContentView(root);
         configureWebView();
         webView.loadUrl(BuildConfig.APP_URL);
+    }
+
+    private void configureSystemBars() {
+        Window window = getWindow();
+        window.setStatusBarColor(Color.rgb(237, 244, 255));
+        window.setNavigationBarColor(Color.rgb(248, 250, 252));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            int flags = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            }
+            window.getDecorView().setSystemUiVisibility(flags);
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -298,12 +320,66 @@ public final class MainActivity extends Activity {
         return layout;
     }
 
+    private LinearLayout createLaunchView() {
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setGravity(Gravity.CENTER);
+        layout.setPadding(dp(24), dp(24), dp(24), dp(24));
+        layout.setBackgroundResource(R.drawable.launch_background);
+
+        TextView logo = new TextView(this);
+        logo.setText("药");
+        logo.setTextColor(Color.WHITE);
+        logo.setTextSize(34);
+        logo.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        logo.setGravity(Gravity.CENTER);
+        logo.setBackgroundResource(R.drawable.launch_logo_background);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            logo.setElevation(dp(8));
+        }
+        LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(dp(84), dp(84));
+        logoParams.setMargins(0, 0, 0, dp(18));
+
+        TextView title = new TextView(this);
+        title.setText("药大垎坊");
+        title.setTextColor(Color.rgb(23, 32, 51));
+        title.setTextSize(28);
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        title.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        titleParams.setMargins(0, 0, 0, dp(10));
+
+        TextView subtitle = new TextView(this);
+        subtitle.setText("正在打开你的校园服务");
+        subtitle.setTextColor(Color.rgb(102, 112, 133));
+        subtitle.setTextSize(15);
+        subtitle.setGravity(Gravity.CENTER);
+
+        layout.addView(logo, logoParams);
+        layout.addView(title, titleParams);
+        layout.addView(subtitle);
+        return layout;
+    }
+
     private void showErrorView() {
+        if (launchView != null) {
+            launchView.setVisibility(View.GONE);
+        }
         webView.setVisibility(View.GONE);
         errorView.setVisibility(View.VISIBLE);
     }
 
     private void showWebView() {
+        if (launchView != null) {
+            launchView.animate()
+                    .alpha(0f)
+                    .setDuration(180)
+                    .withEndAction(() -> launchView.setVisibility(View.GONE))
+                    .start();
+        }
         errorView.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
     }
