@@ -77,6 +77,7 @@ const scheduleEditStateSchema = z.object({
 const scheduleWidgetTokenSchema = z.object({
   name: z.string().trim().max(40).optional(),
 });
+const WIDGET_PAYLOAD_VERSION = 2;
 
 function emptyScheduleEdits() {
   return { hidden: [] as string[], custom: [] as Array<z.infer<typeof scheduleEditItemSchema>> };
@@ -129,6 +130,7 @@ function parseWidgetCache(payload?: string | null) {
     const parsed = JSON.parse(payload);
     if (!parsed || typeof parsed !== "object") return null;
     if ((parsed as any).strictDate !== true) return null;
+    if ((parsed as any).payloadVersion !== WIDGET_PAYLOAD_VERSION) return null;
     return parsed;
   } catch {
     return null;
@@ -271,9 +273,25 @@ function chinaDayOfWeek(parts = chinaDateParts()) {
   return d === 0 ? 7 : d;
 }
 
+function dayOfWeekForYmd(ymd: string) {
+  const match = String(ymd || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return 0;
+  const d = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  const day = d.getUTCDay();
+  return day === 0 ? 7 : day;
+}
+
+function addDaysToYmd(ymd: string, days: number) {
+  const match = String(ymd || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return "";
+  const d = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + days));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
 function calendarWeekForDate(calendar: any | null, ymd: string) {
   for (const item of calendar?.weeks ?? []) {
-    const index = Array.isArray(item?.days) ? item.days.indexOf(ymd) : -1;
+    const days = normalizeCalendarDays(Array.isArray(item?.days) ? item.days : []);
+    const index = days.indexOf(ymd);
     if (index >= 0) return { week: Number(item.week) || 0, day: index + 1 };
   }
   return { week: 0, day: 0 };
@@ -281,6 +299,20 @@ function calendarWeekForDate(calendar: any | null, ymd: string) {
 
 function dayLabel(day: number) {
   return ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][day - 1] ?? `周${day}`;
+}
+
+function normalizeCalendarDays(calendarDays: string[]) {
+  const raw = (calendarDays ?? []).map((item) => String(item || "").trim());
+  if (raw.length >= 7 && dayOfWeekForYmd(raw[0]) === 7 && dayOfWeekForYmd(raw[1]) === 1) {
+    return [...raw.slice(1, 7), addDaysToYmd(raw[6], 1)];
+  }
+
+  const normalized = Array.from({ length: 7 }, () => "");
+  for (const date of raw) {
+    const day = dayOfWeekForYmd(date);
+    if (day >= 1 && day <= 7) normalized[day - 1] = date;
+  }
+  return normalized.some(Boolean) ? normalized : raw;
 }
 
 async function readScheduleEditsForWidget(userId: number, semester: string) {
@@ -307,7 +339,8 @@ function buildWidgetPayload(parsed: any, calendar: any | null, queryWeek?: strin
   const activeDay = queryWeek && Number(queryWeek) !== calendarToday.week
     ? 1
     : (calendarToday.day || chinaDayOfWeek(today));
-  const calendarDays = (calendar?.weeks ?? []).find((item: any) => Number(item.week) === week)?.days ?? [];
+  const rawCalendarDays = (calendar?.weeks ?? []).find((item: any) => Number(item.week) === week)?.days ?? [];
+  const calendarDays = normalizeCalendarDays(rawCalendarDays);
   const cells = (parsed?.cells ?? [])
     .flatMap((cell: any) => (cell.courses ?? [])
       .filter((course: any) => courseMatchesWeek(course, week))
@@ -365,6 +398,7 @@ function buildWidgetPayload(parsed: any, calendar: any | null, queryWeek?: strin
     days,
     upcoming: upcoming.slice(0, 6),
     strictDate: true,
+    payloadVersion: WIDGET_PAYLOAD_VERSION,
   };
 }
 
