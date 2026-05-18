@@ -611,7 +611,7 @@ import {
   isIosStandalone,
   supportsAndroidScheduleWidget,
 } from "@/utils/clientInfo";
-import { USER_QQ_GROUP, USER_QQ_GROUP_HINT_KEY, openUserGroup } from "@/utils/userGroup";
+import { USER_QQ_GROUP, openUserGroup } from "@/utils/userGroup";
 import InstallPromptDialog from "@/components/install/InstallPromptDialog.vue";
 import OpenBrowserPromptDialog from "@/components/install/OpenBrowserPromptDialog.vue";
 import {
@@ -1069,6 +1069,11 @@ function courseText(course) {
   return course.startTime + " " + course.name + place;
 }
 
+function shortDate(value) {
+  const match = String(value || "").match(/-(\\d{2})-(\\d{2})$/);
+  return match ? match[1] + "/" + match[2] : "";
+}
+
 async function render() {
   const data = await loadSchedule();
   const widget = new ListWidget();
@@ -1076,7 +1081,8 @@ async function render() {
   widget.setPadding(12, 12, 12, 12);
 
   addLine(widget, "药大课表", Font.boldSystemFont(15), color("#172033", "#f8fafc"));
-  const sub = "第 " + data.week + " 周 · " + (data.today?.label || "今日");
+  const dateText = shortDate(data.today?.date);
+  const sub = "第 " + data.week + " 周 · " + (data.today?.label || "今日") + (dateText ? " " + dateText : "");
   addLine(widget, sub, Font.systemFont(11), color("#64748b", "#cbd5e1"));
   widget.addSpacer(8);
 
@@ -1298,7 +1304,6 @@ async function loadSchedule(force = false, background = false) {
     saveScheduleCache();
     saveLastState();
     prewarmAdjacentWeekCaches();
-    maybeShowUserGroupHint();
   } finally {
     if (!background) loading.value = false;
   }
@@ -1718,20 +1723,6 @@ function clearStaticWeekAnimation() {
     staticWeekAnimationTimer = 0;
   }
   staticWeekAnimationClass.value = "";
-}
-
-function maybeShowUserGroupHint() {
-  try {
-    if (localStorage.getItem(USER_QQ_GROUP_HINT_KEY)) return;
-    localStorage.setItem(USER_QQ_GROUP_HINT_KEY, "1");
-  } catch {
-    return;
-  }
-  ElMessage.info({
-    message: `课表加载成功。遇到问题或想提建议，可以加入用户QQ群 ${USER_QQ_GROUP}`,
-    duration: 6000,
-    showClose: true,
-  });
 }
 
 async function reloadCaptcha() {
@@ -2483,7 +2474,6 @@ function applyScheduleCache(key: string) {
   if (!week.value) week.value = String(cached.data.currentWeek || "");
   loadScheduleEdits();
   prewarmAdjacentWeekCaches();
-  maybeShowUserGroupHint();
   return true;
 }
 

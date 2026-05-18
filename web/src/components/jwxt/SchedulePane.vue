@@ -325,7 +325,6 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { Aim, ArrowLeft, ArrowRight, Moon, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { detectClientPlatform } from "@/utils/clientInfo";
-import { USER_QQ_GROUP, USER_QQ_GROUP_HINT_KEY } from "@/utils/userGroup";
 import {
   getScheduleThemePalette,
   scheduleThemeCssVars,
@@ -609,7 +608,6 @@ async function loadSchedule(force = false, background = false) {
     saveScheduleCache();
     saveLastState();
     prewarmAdjacentWeekCaches();
-    maybeShowUserGroupHint();
   } finally {
     if (!background) loading.value = false;
   }
@@ -1053,20 +1051,6 @@ function clearStaticWeekAnimation() {
     staticWeekAnimationTimer = 0;
   }
   staticWeekAnimationClass.value = "";
-}
-
-function maybeShowUserGroupHint() {
-  try {
-    if (localStorage.getItem(USER_QQ_GROUP_HINT_KEY)) return;
-    localStorage.setItem(USER_QQ_GROUP_HINT_KEY, "1");
-  } catch {
-    return;
-  }
-  ElMessage.info({
-    message: `课表加载成功。遇到问题或想提建议，可以加入用户QQ群 ${USER_QQ_GROUP}`,
-    duration: 6000,
-    showClose: true,
-  });
 }
 
 function dayOfWeek() {
@@ -1768,7 +1752,6 @@ function applyScheduleCache(key: string) {
   if (!week.value) week.value = String(cached.data.currentWeek || "");
   loadScheduleEdits();
   prewarmAdjacentWeekCaches();
-  maybeShowUserGroupHint();
   return true;
 }
 
