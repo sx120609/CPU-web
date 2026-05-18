@@ -14,6 +14,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -26,10 +27,13 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 public final class MainActivity extends Activity {
+    private static final int REQUEST_FILE_CHOOSER = 2001;
+
     private WebView webView;
     private LinearLayout errorView;
     private String appHost;
     private boolean mainFrameLoadFailed;
+    private ValueCallback<Uri[]> filePathCallback;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -87,6 +91,36 @@ public final class MainActivity extends Activity {
         }
 
         webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(
+                    WebView view,
+                    ValueCallback<Uri[]> filePathCallback,
+                    FileChooserParams fileChooserParams
+            ) {
+                if (MainActivity.this.filePathCallback != null) {
+                    MainActivity.this.filePathCallback.onReceiveValue(null);
+                }
+                MainActivity.this.filePathCallback = filePathCallback;
+
+                Intent intent;
+                try {
+                    intent = fileChooserParams.createIntent();
+                } catch (Exception ignored) {
+                    intent = new Intent(Intent.ACTION_GET_CONTENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType("image/*");
+                }
+
+                try {
+                    startActivityForResult(intent, REQUEST_FILE_CHOOSER);
+                    return true;
+                } catch (ActivityNotFoundException ignored) {
+                    MainActivity.this.filePathCallback = null;
+                    filePathCallback.onReceiveValue(null);
+                    return false;
+                }
+            }
+
             @Override
             public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
                 WebView popup = new WebView(view.getContext());
@@ -163,6 +197,20 @@ public final class MainActivity extends Activity {
                 }
             }
         });
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_FILE_CHOOSER) return;
+        if (filePathCallback == null) return;
+
+        Uri[] results = null;
+        if (resultCode == RESULT_OK) {
+            results = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+        }
+        filePathCallback.onReceiveValue(results);
+        filePathCallback = null;
     }
 
     private boolean handleUrl(Uri uri) {
@@ -271,6 +319,10 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (filePathCallback != null) {
+            filePathCallback.onReceiveValue(null);
+            filePathCallback = null;
+        }
         if (webView != null) {
             webView.destroy();
         }

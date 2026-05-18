@@ -21,6 +21,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.Locale;
 import java.util.TimeZone;
@@ -128,10 +129,13 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
     }
 
     private static JSONObject fetchSchedule(String endpoint) throws Exception {
-        HttpURLConnection connection = (HttpURLConnection) new URL(endpoint).openConnection();
+        HttpURLConnection connection = (HttpURLConnection) new URL(cacheBustedEndpoint(endpoint)).openConnection();
         connection.setConnectTimeout(10000);
         connection.setReadTimeout(15000);
         connection.setRequestMethod("GET");
+        connection.setUseCaches(false);
+        connection.setRequestProperty("Cache-Control", "no-cache");
+        connection.setRequestProperty("Pragma", "no-cache");
         int status = connection.getResponseCode();
         InputStream stream = status >= 200 && status < 300
                 ? connection.getInputStream()
@@ -147,12 +151,12 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
     }
 
     private static void renderSchedule(RemoteViews views, JSONObject data) {
-        JSONObject today = data.optJSONObject("today");
+        JSONObject today = resolveToday(data);
         JSONArray courses = today != null ? today.optJSONArray("courses") : null;
 
         String week = data.optString("week", "");
-        String dayLabel = today != null ? today.optString("label", "") : "";
-        String date = today != null ? today.optString("date", "") : "";
+        String dayLabel = today != null ? today.optString("label", "") : chinaDayLabel();
+        String date = today != null ? today.optString("date", "") : chinaToday();
         String subtitle = "第 " + (week.isEmpty() ? "--" : week) + " 周";
         if (!dayLabel.isEmpty()) subtitle += " · " + dayLabel;
         if (!date.isEmpty()) subtitle += " " + date;
@@ -173,6 +177,56 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         views.setTextViewText(R.id.widget_footer, prefix + formatTime(
                 data.optString("cachedAt", data.optString("generatedAt", ""))
         ));
+    }
+
+    private static JSONObject resolveToday(JSONObject data) {
+        String currentDate = chinaToday();
+        JSONObject today = data.optJSONObject("today");
+        if (dateMatches(today, currentDate)) return today;
+
+        JSONArray days = data.optJSONArray("days");
+        if (days != null) {
+            for (int i = 0; i < days.length(); i++) {
+                JSONObject day = days.optJSONObject(i);
+                if (dateMatches(day, currentDate)) return day;
+            }
+        }
+
+        if (today != null && today.optString("date", "").trim().isEmpty()) {
+            return today;
+        }
+        return null;
+    }
+
+    private static boolean dateMatches(JSONObject day, String currentDate) {
+        return day != null && currentDate.equals(day.optString("date", "").trim());
+    }
+
+    private static String chinaToday() {
+        SimpleDateFormat output = new SimpleDateFormat("yyyy-MM-dd", Locale.CHINA);
+        output.setTimeZone(TimeZone.getTimeZone("Asia/Shanghai"));
+        return output.format(new Date());
+    }
+
+    private static String chinaDayLabel() {
+        Calendar calendar = Calendar.getInstance(TimeZone.getTimeZone("Asia/Shanghai"), Locale.CHINA);
+        int day = calendar.get(Calendar.DAY_OF_WEEK);
+        switch (day) {
+            case Calendar.MONDAY: return "周一";
+            case Calendar.TUESDAY: return "周二";
+            case Calendar.WEDNESDAY: return "周三";
+            case Calendar.THURSDAY: return "周四";
+            case Calendar.FRIDAY: return "周五";
+            case Calendar.SATURDAY: return "周六";
+            default: return "周日";
+        }
+    }
+
+    private static String cacheBustedEndpoint(String endpoint) {
+        Uri uri = Uri.parse(endpoint).buildUpon()
+                .appendQueryParameter("_widgetRefresh", String.valueOf(System.currentTimeMillis()))
+                .build();
+        return uri.toString();
     }
 
     private static String courseLine(JSONObject course) {

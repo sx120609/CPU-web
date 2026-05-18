@@ -2,7 +2,7 @@ export type ClientPlatform = "ios" | "android" | "web" | "unknown";
 
 export const ANDROID_APP_LATEST_VERSION_CODE = 5;
 export const ANDROID_APP_LATEST_VERSION_NAME = "1.4.0";
-export const ANDROID_APP_DOWNLOAD_URL = "/downloads/CPU-Web-V4.apk";
+export const ANDROID_APP_DOWNLOAD_URL = "/downloads/CPU-Web-V5.apk";
 export const ANDROID_WIDGET_MIN_VERSION_CODE = 5;
 
 export function detectClientPlatform(ua = navigator.userAgent): ClientPlatform {
