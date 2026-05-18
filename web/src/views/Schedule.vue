@@ -1858,17 +1858,25 @@ function dayCoursesFor(wk: number, day: number, source: ScheduleResult | null = 
 }
 
 function weekCourseBlocksFor(wk: number, source: ScheduleResult | null = parsed.value) {
-  const blocks: WeekCourseBlock[] = [];
-  const seen = new Set<string>();
+  const byCourse = new Map<string, WeekCourseBlock[]>();
   for (const cell of cellsForWeek(wk, source)) {
     cell.courses.forEach((course, index) => {
-      const range = normalizeSlotRange(cell.bigSlot, course);
-      // 去重兜底：同一格子里同名/同地点/同节次的课只保留一次，避免后端返回重复时 DOM 重叠
-      const dedupKey = `${cell.day}-${range.start}-${range.end}-${course.name}-${course.location ?? ""}`;
-      if (seen.has(dedupKey)) return;
-      seen.add(dedupKey);
-      blocks.push({ day: cell.day, bigSlot: cell.bigSlot, startSlot: range.start, endSlot: range.end, index, course });
+      const range = normalizeSlotRangeForTablePosition(cell.bigSlot, course);
+      const key = [
+        cell.day,
+        normalizeKeyPart(course.name),
+        normalizeKeyPart(course.teacher),
+        normalizeKeyPart(course.location),
+        normalizeKeyPart(course.weeks),
+      ].join("|");
+      const list = byCourse.get(key) ?? [];
+      list.push({ day: cell.day, bigSlot: cell.bigSlot, startSlot: range.start, endSlot: range.end, index, course });
+      byCourse.set(key, list);
     });
+  }
+  const blocks: WeekCourseBlock[] = [];
+  for (const list of byCourse.values()) {
+    for (const block of mergeContinuousCourseBlocks(list)) blocks.push(block);
   }
   return blocks.sort((a, b) => a.startSlot - b.startSlot || a.day - b.day || a.index - b.index);
 }
@@ -2348,6 +2356,50 @@ function normalizeSlotRange(bigSlot: number, course: ScheduleCourse) {
   return { start: safeStart, end: safeEnd };
 }
 
+function normalizeSlotRangeForTablePosition(bigSlot: number, course: ScheduleCourse) {
+  const range = normalizeSlotRange(bigSlot, course);
+  const fallbackStart = Math.max(1, Math.min(MAX_SMALL_SLOT, bigSlot * 2 - 1));
+  const fallbackEnd = Math.max(fallbackStart, Math.min(MAX_SMALL_SLOT, bigSlot * 2));
+  const overlapsCurrentBigSlot = range.end >= fallbackStart && range.start <= fallbackEnd;
+  return overlapsCurrentBigSlot ? range : { start: fallbackStart, end: fallbackEnd };
+}
+
+function mergeContinuousCourseBlocks(list: WeekCourseBlock[]) {
+  const sorted = [...list].sort((a, b) => a.day - b.day || a.startSlot - b.startSlot || a.endSlot - b.endSlot);
+  const merged: WeekCourseBlock[] = [];
+  for (const block of sorted) {
+    const prev = merged[merged.length - 1];
+    if (prev && block.startSlot <= prev.endSlot + 1) {
+      prev.startSlot = Math.min(prev.startSlot, block.startSlot);
+      prev.endSlot = Math.max(prev.endSlot, block.endSlot);
+      prev.bigSlot = Math.max(1, Math.ceil(prev.startSlot / 2));
+      prev.course = {
+        ...prev.course,
+        startSlot: prev.startSlot,
+        endSlot: prev.endSlot,
+        slotNote: formatSlotNote(prev.startSlot, prev.endSlot),
+      };
+    } else {
+      merged.push({
+        ...block,
+        bigSlot: Math.max(1, Math.ceil(block.startSlot / 2)),
+        course: {
+          ...block.course,
+          startSlot: block.startSlot,
+          endSlot: block.endSlot,
+          slotNote: formatSlotNote(block.startSlot, block.endSlot),
+        },
+      });
+    }
+  }
+  return merged;
+}
+
+function formatSlotNote(start: number, end: number) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return start === end ? `${pad(start)}节` : `${pad(start)}-${pad(end)}节`;
+}
+
 function normalizeKeyPart(value?: string) {
   return String(value ?? "").trim().replace(/\s+/g, " ");
 }
@@ -2377,7 +2429,7 @@ function dayCourseBlockStyle(block: WeekCourseBlock) {
 function scheduleCacheKey(sem = semester.value, wk = week.value) {
   const s = sem || parsed.value?.currentSemester || "current";
   const w = wk || calendar.value?.currentWeek || parsed.value?.currentWeek || "current";
-  return jwxtScopedStorageKey("cpu-schedule-cache-v2", s, w);
+  return jwxtScopedStorageKey("cpu-schedule-cache-v3", s, w);
 }
 
 function readCache<T>(key: string): CacheEnvelope<T> | null {

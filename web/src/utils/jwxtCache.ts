@@ -5,6 +5,7 @@ const DATA_CACHE_PREFIXES = [
   "cpu-jwxt-tab-cache-v4:",
   "cpu-schedule-cache-v1:",
   "cpu-schedule-cache-v2:",
+  "cpu-schedule-cache-v3:",
   "cpu-schedule-calendar-v1:",
   "cpu-schedule-last-cache-key-v1:",
   "cpu-jwxt-schedule-view-state-v1:",
