@@ -1187,7 +1187,7 @@ function renderSmall(widget, data) {
   } else {
     const next = courses[0];
     const time = (next.startTime || "") + (next.endTime ? "-" + next.endTime : "");
-    addLine(widget, (preferTomorrow ? "明日 " : "接下来 ") + time, Font.systemFont(10), color("#168776", "#5eead4"));
+    addLine(widget, (preferTomorrow ? "明日下节 " : "下节 ") + time, Font.systemFont(10), color("#168776", "#5eead4"));
     addLine(widget, next.name || "课程", Font.boldSystemFont(13), color("#172033", "#f8fafc"));
     addLine(widget, courseMetaText(next) || "地点待确认", Font.systemFont(10), color("#667085", "#cbd5e1"));
   }

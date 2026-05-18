@@ -195,7 +195,7 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
             setLineVisibility(views, 1);
         } else {
             JSONObject first = courses.get(0);
-            views.setTextViewText(R.id.widget_line_1, compactLabel(first, preferTomorrow ? "明日" : "接下来"));
+            views.setTextViewText(R.id.widget_line_1, compactLabel(first, preferTomorrow ? "明日下节" : "下节"));
             views.setTextViewText(R.id.widget_line_2, first.optString("name", "课程"));
             String meta = courseMetaLine(first);
             views.setTextViewText(R.id.widget_line_3, meta.isEmpty() ? "地点待确认" : meta);
