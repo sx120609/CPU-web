@@ -29,6 +29,7 @@ import java.util.concurrent.Executors;
 
 public class ScheduleWidgetProvider extends AppWidgetProvider {
     static final String ACTION_WIDGET_PINNED = BuildConfig.APPLICATION_ID + ".ACTION_WIDGET_PINNED";
+    static final String ACTION_WIDGET_REFRESH = BuildConfig.APPLICATION_ID + ".ACTION_WIDGET_REFRESH";
     private static final Class<?>[] PROVIDERS = {
             ScheduleWidgetProvider.class,
             ScheduleWidgetProviderWide.class,
@@ -42,6 +43,9 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         super.onReceive(context, intent);
         if (intent != null && ACTION_WIDGET_PINNED.equals(intent.getAction())) {
             Toast.makeText(context, "课表小组件已添加", Toast.LENGTH_SHORT).show();
+            updateAll(context);
+        } else if (intent != null && ACTION_WIDGET_REFRESH.equals(intent.getAction())) {
+            Toast.makeText(context, "正在刷新课表", Toast.LENGTH_SHORT).show();
             updateAll(context);
         }
     }
@@ -108,8 +112,19 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         }
         PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, flags);
         views.setOnClickPendingIntent(R.id.widget_root, pendingIntent);
+        views.setOnClickPendingIntent(R.id.widget_refresh, refreshPendingIntent(context));
         views.setTextViewText(R.id.widget_title, "药大课表");
         return views;
+    }
+
+    private static PendingIntent refreshPendingIntent(Context context) {
+        Intent intent = new Intent(context, ScheduleWidgetProvider.class)
+                .setAction(ACTION_WIDGET_REFRESH);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            flags |= PendingIntent.FLAG_IMMUTABLE;
+        }
+        return PendingIntent.getBroadcast(context, 2001, intent, flags);
     }
 
     private static JSONObject fetchSchedule(String endpoint) throws Exception {

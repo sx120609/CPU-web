@@ -127,7 +127,9 @@ function parseWidgetCache(payload?: string | null) {
   if (!payload) return null;
   try {
     const parsed = JSON.parse(payload);
-    return parsed && typeof parsed === "object" ? parsed : null;
+    if (!parsed || typeof parsed !== "object") return null;
+    if ((parsed as any).strictDate !== true) return null;
+    return parsed;
   } catch {
     return null;
   }

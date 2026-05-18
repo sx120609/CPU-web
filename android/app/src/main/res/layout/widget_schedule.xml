@@ -30,9 +30,20 @@
             android:textStyle="bold" />
 
         <TextView
-            android:layout_width="8dp"
-            android:layout_height="8dp"
-            android:background="@drawable/widget_header_dot" />
+            android:id="@+id/widget_refresh"
+            android:layout_width="wrap_content"
+            android:layout_height="28dp"
+            android:background="@drawable/widget_refresh_background"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:minWidth="44dp"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:text="刷新"
+            android:textColor="#168776"
+            android:textSize="11sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
     <TextView
