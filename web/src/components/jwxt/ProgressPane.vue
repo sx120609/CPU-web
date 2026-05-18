@@ -39,30 +39,29 @@
     </div>
 
     <!-- 课程体系学分卡片 -->
-    <div v-if="parsed?.summary?.length" class="summary">
-      <div v-for="s in parsed.summary" :key="s.name" class="summary-card">
+    <div v-if="summaryCards.length" class="summary">
+      <div v-for="s in summaryCards" :key="s.name" class="summary-card">
         <div class="card-title">{{ s.name }}</div>
         <div class="card-stat">
-          <span class="big">{{ (s.earnedMust + s.earnedOpt).toFixed(1) }}</span>
-          <template v-if="cardRequired(s) > 0">
+          <span class="big">{{ s.earned.toFixed(1) }}</span>
+          <template v-if="s.required > 0">
             <span class="sep">/</span>
-            <span class="goal">{{ cardRequired(s).toFixed(1) }}</span>
+            <span class="goal">{{ s.required.toFixed(1) }}</span>
           </template>
           <span class="lbl">学分</span>
         </div>
         <el-progress
-          v-if="cardRequired(s) > 0"
-          :percentage="percent(s.earnedMust + s.earnedOpt, cardRequired(s))"
-          :status="progressStatus(s.earnedMust + s.earnedOpt, cardRequired(s))"
+          v-if="s.required > 0"
+          :percentage="percent(s.earned, s.required)"
+          :status="progressStatus(s.earned, s.required)"
           :stroke-width="6"
         />
         <div v-else class="card-note">暂无要求学分数据</div>
         <div class="card-detail">
-          <span v-if="s.requiredMust > 0">必修 {{ s.earnedMust }}/{{ s.requiredMust }}</span>
-          <span v-else-if="s.earnedMust > 0">必修 {{ s.earnedMust }}</span>
-          <span v-if="s.requiredOpt > 0">选修 {{ s.earnedOpt }}/{{ s.requiredOpt }}</span>
-          <span v-else-if="s.earnedOpt > 0">选修 {{ s.earnedOpt }}</span>
-          <span v-if="(s.leftMust + s.leftOpt) > 0" class="left-warn">还差 {{ (s.leftMust + s.leftOpt).toFixed(1) }}</span>
+          <span v-if="s.required > 0">{{ s.kind }} {{ s.earned.toFixed(1) }}/{{ s.required.toFixed(1) }}</span>
+          <span v-else>{{ s.kind }} {{ s.earned.toFixed(1) }}</span>
+          <span v-if="s.extra">{{ s.extra }}</span>
+          <span v-if="s.left > 0" class="left-warn">还差 {{ s.left.toFixed(1) }}</span>
         </div>
       </div>
     </div>
@@ -241,22 +240,39 @@ const totalCompletedCredits = computed(() => {
   return (parsed.value?.completed ?? []).reduce((s: number, c: any) => s + (c.credits ?? 0), 0);
 });
 
+const summaryCards = computed(() => {
+  if (!parsed.value) return [];
+  const mustLeft = Math.max(0, mustRequiredFinal.value - earnedMustFinal.value);
+  const cards = [{
+    name: "必修课程",
+    kind: "必修",
+    earned: earnedMustFinal.value,
+    required: mustRequiredFinal.value,
+    left: mustLeft,
+    extra: parsed.value.uncompleted?.length ? `待修 ${parsed.value.uncompleted.length} 门` : "",
+  }];
+
+  for (const row of parsed.value.summary ?? []) {
+    const earned = row.earnedOpt ?? 0;
+    const required = (row.requiredOpt ?? 0) || ((row.leftOpt ?? 0) > 0 ? earned + (row.leftOpt ?? 0) : 0);
+    if (!/选修/.test(row.name) && required <= 0 && earned <= 0) continue;
+    if (required <= 0 && earned <= 0) continue;
+    cards.push({
+      name: row.name,
+      kind: "选修",
+      earned,
+      required,
+      left: Math.max(0, required - earned),
+      extra: "",
+    });
+  }
+
+  return cards;
+});
+
 function percent(earned: number, required: number): number {
   if (required <= 0) return earned > 0 ? 100 : 0;
   return Math.min(100, Math.round((earned / required) * 100));
-}
-
-/** 单卡片的"要求总学分"
- *  优先用学校汇总值；若学校没填且 left=0，意味着学校认定已修满，要求 = earned；
- *  若学校没填但 left>0，要求 = earned + left
- */
-function cardRequired(s: any): number {
-  const reqFromSchool = (s.requiredMust ?? 0) + (s.requiredOpt ?? 0);
-  if (reqFromSchool > 0) return reqFromSchool;
-  const left = (s.leftMust ?? 0) + (s.leftOpt ?? 0);
-  const earned = (s.earnedMust ?? 0) + (s.earnedOpt ?? 0);
-  if (left > 0) return earned + left;
-  return 0; // 没有要求数据，且 left=0，前端按"已修满 / 无强制"展示
 }
 
 function progressStatus(earned: number, required: number): "success" | "warning" | "exception" | "" {

@@ -2377,7 +2377,7 @@ function dayCourseBlockStyle(block: WeekCourseBlock) {
 function scheduleCacheKey(sem = semester.value, wk = week.value) {
   const s = sem || parsed.value?.currentSemester || "current";
   const w = wk || calendar.value?.currentWeek || parsed.value?.currentWeek || "current";
-  return jwxtScopedStorageKey("cpu-schedule-cache-v1", s, w);
+  return jwxtScopedStorageKey("cpu-schedule-cache-v2", s, w);
 }
 
 function readCache<T>(key: string): CacheEnvelope<T> | null {

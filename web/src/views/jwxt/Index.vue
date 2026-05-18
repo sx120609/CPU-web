@@ -191,7 +191,7 @@ const progress = ref<any>(null);
 const pyfa = ref<any>(null);
 const tabLoading = ref(false);
 const CACHE_TTL = 12 * 60 * 60 * 1000;
-const CACHE_PREFIX = "cpu-jwxt-tab-cache-v3";
+const CACHE_PREFIX = "cpu-jwxt-tab-cache-v4";
 const activeRequests = new Map<DataTab, Promise<any>>();
 
 const probePath = ref("/zgykdx/framework/xsMain.jsp");

@@ -137,8 +137,116 @@ export function parseSchedule(html: string): ScheduleResult {
     currentSemester,
     weeks,
     currentWeek,
-    cells,
+    cells: normalizeScheduleCells(cells),
   };
+}
+
+function normalizeScheduleCells(cells: ScheduleCell[]): ScheduleCell[] {
+  type CourseEntry = { day: number; bigSlot: number; course: ScheduleCourse };
+  const groups = new Map<string, CourseEntry[]>();
+
+  for (const cell of cells) {
+    for (const course of cell.courses) {
+      const range = slotRangeForTablePosition(course, cell.bigSlot);
+      const normalized: ScheduleCourse = {
+        ...course,
+        startSlot: range.startSlot,
+        endSlot: range.endSlot,
+        slotNote: formatSlotRange(range.startSlot, range.endSlot),
+      };
+      const key = [
+        cell.day,
+        normalizeKeyPart(normalized.name),
+        normalizeKeyPart(normalized.teacher),
+        normalizeKeyPart(normalized.location),
+        normalizeKeyPart(normalized.weeks),
+      ].join("|");
+      const list = groups.get(key) ?? [];
+      list.push({ day: cell.day, bigSlot: cell.bigSlot, course: normalized });
+      groups.set(key, list);
+    }
+  }
+
+  const mergedCells = new Map<string, ScheduleCourse[]>();
+
+  for (const list of groups.values()) {
+    const sorted = list.sort((a, b) => {
+      const aStart = a.course.startSlot ?? (a.bigSlot * 2 - 1);
+      const bStart = b.course.startSlot ?? (b.bigSlot * 2 - 1);
+      return a.day - b.day || aStart - bStart;
+    });
+    const merged: CourseEntry[] = [];
+
+    for (const entry of sorted) {
+      const prev = merged[merged.length - 1];
+      const start = entry.course.startSlot ?? (entry.bigSlot * 2 - 1);
+      const end = entry.course.endSlot ?? Math.max(start, entry.bigSlot * 2);
+      if (prev && start <= (prev.course.endSlot ?? start) + 1) {
+        const nextStart = Math.min(prev.course.startSlot ?? start, start);
+        const nextEnd = Math.max(prev.course.endSlot ?? end, end);
+        prev.bigSlot = Math.max(1, Math.ceil(nextStart / 2));
+        prev.course = {
+          ...prev.course,
+          startSlot: nextStart,
+          endSlot: nextEnd,
+          slotNote: formatSlotRange(nextStart, nextEnd),
+          weekList: mergeNumberLists(prev.course.weekList, entry.course.weekList),
+        };
+      } else {
+        merged.push({
+          ...entry,
+          bigSlot: Math.max(1, Math.ceil(start / 2)),
+          course: {
+            ...entry.course,
+            startSlot: start,
+            endSlot: end,
+            slotNote: formatSlotRange(start, end),
+          },
+        });
+      }
+    }
+
+    for (const entry of merged) {
+      const key = `${entry.day}:${entry.bigSlot}`;
+      const courses = mergedCells.get(key) ?? [];
+      courses.push(entry.course);
+      mergedCells.set(key, courses);
+    }
+  }
+
+  return [...mergedCells.entries()]
+    .map(([key, courses]) => {
+      const [day, bigSlot] = key.split(":").map(Number);
+      return { day, bigSlot, courses };
+    })
+    .sort((a, b) => a.bigSlot - b.bigSlot || a.day - b.day);
+}
+
+function slotRangeForTablePosition(course: ScheduleCourse, bigSlot: number) {
+  const fallbackStart = Math.max(1, bigSlot * 2 - 1);
+  const fallbackEnd = Math.max(fallbackStart, bigSlot * 2);
+  const parsedStart = course.startSlot;
+  const parsedEnd = course.endSlot;
+  if (Number.isFinite(parsedStart) && Number.isFinite(parsedEnd)) {
+    const start = Number(parsedStart);
+    const end = Number(parsedEnd);
+    const overlapsCurrentBigSlot = end >= fallbackStart && start <= fallbackEnd;
+    if (overlapsCurrentBigSlot) return { startSlot: start, endSlot: end };
+  }
+  return { startSlot: fallbackStart, endSlot: fallbackEnd };
+}
+
+function formatSlotRange(start: number, end: number) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return start === end ? `${pad(start)}节` : `${pad(start)}-${pad(end)}节`;
+}
+
+function normalizeKeyPart(value?: string) {
+  return String(value ?? "").replace(/\s+/g, "").trim();
+}
+
+function mergeNumberLists(a: number[] = [], b: number[] = []) {
+  return [...new Set([...a, ...b])].sort((x, y) => x - y);
 }
 
 /** 解析教务周次文本：1-17(周)、1-17(单周)、1-8周,10-12周、1、3、5周 等。 */
