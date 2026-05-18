@@ -1073,11 +1073,18 @@ function addLine(stack, text, font, colorValue) {
   return line;
 }
 
-function courseText(course, withEnd) {
-  const place = course.location ? " @" + course.location : "";
+function coursePrimaryText(course, withEnd) {
   const end = withEnd && course.endTime ? "-" + course.endTime : "";
   const time = course.startTime ? course.startTime + end + " " : "";
-  return time + course.name + place;
+  return time + (course.name || "课程");
+}
+
+function courseMetaText(course) {
+  const parts = [];
+  if (course.location) parts.push("@" + course.location);
+  if (course.teacher) parts.push(course.teacher);
+  if (course.note) parts.push(course.note);
+  return parts.join(" · ");
 }
 
 function shortDate(value) {
@@ -1174,15 +1181,15 @@ function renderSmall(widget, data) {
     day = resolveDay(data, 1);
     courses = firstCourses(day, 1);
   }
-  header(widget, data, day, preferTomorrow ? "明日下一节" : "下一节");
+  header(widget, data, day, preferTomorrow ? "明日课程" : "今日课程");
   if (!courses.length) {
-    addLine(widget, preferTomorrow ? "明天没有课程" : "暂无下一节课", Font.mediumSystemFont(13), color("#475467", "#e2e8f0"));
+    addLine(widget, preferTomorrow ? "明天没有课程" : "今日暂无课程", Font.mediumSystemFont(13), color("#475467", "#e2e8f0"));
   } else {
     const next = courses[0];
     const time = (next.startTime || "") + (next.endTime ? "-" + next.endTime : "");
-    addLine(widget, (preferTomorrow ? "明日 " : "下一节 ") + time, Font.systemFont(10), color("#168776", "#5eead4"));
+    addLine(widget, (preferTomorrow ? "明日 " : "接下来 ") + time, Font.systemFont(10), color("#168776", "#5eead4"));
     addLine(widget, next.name || "课程", Font.boldSystemFont(13), color("#172033", "#f8fafc"));
-    addLine(widget, next.location ? "@" + next.location : (next.teacher || "地点待确认"), Font.systemFont(10), color("#667085", "#cbd5e1"));
+    addLine(widget, courseMetaText(next) || "地点待确认", Font.systemFont(10), color("#667085", "#cbd5e1"));
   }
   footer(widget, data);
 }
@@ -1195,9 +1202,10 @@ function renderCourseList(stack, title, courses, emptyText) {
     return;
   }
   for (const course of courses) {
-    addLine(stack, courseText(course, true), Font.mediumSystemFont(11), color("#1f2937", "#f8fafc"));
-    if (course.teacher || course.note) {
-      addLine(stack, [course.teacher, course.note].filter(Boolean).join(" · "), Font.systemFont(8), color("#7a8496", "#94a3b8"));
+    addLine(stack, coursePrimaryText(course, true), Font.mediumSystemFont(11), color("#1f2937", "#f8fafc"));
+    const meta = courseMetaText(course);
+    if (meta) {
+      addLine(stack, meta, Font.systemFont(8), color("#7a8496", "#94a3b8"));
     }
     stack.addSpacer(4);
   }

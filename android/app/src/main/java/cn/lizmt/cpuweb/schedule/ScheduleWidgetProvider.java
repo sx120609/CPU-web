@@ -189,15 +189,16 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
             preferTomorrow = true;
         }
 
-        setSubtitle(views, data, primaryDay, preferTomorrow ? "明日下一节" : "下一节");
+        setSubtitle(views, data, primaryDay, preferTomorrow ? "明日课程" : "今日课程");
         if (courses.isEmpty()) {
-            views.setTextViewText(R.id.widget_line_1, preferTomorrow ? "明天没有课程" : "暂无下一节课");
+            views.setTextViewText(R.id.widget_line_1, preferTomorrow ? "明天没有课程" : "今日暂无课程");
             setLineVisibility(views, 1);
         } else {
             JSONObject first = courses.get(0);
-            views.setTextViewText(R.id.widget_line_1, compactLabel(first, preferTomorrow ? "明日" : "下一节"));
+            views.setTextViewText(R.id.widget_line_1, compactLabel(first, preferTomorrow ? "明日" : "接下来"));
             views.setTextViewText(R.id.widget_line_2, first.optString("name", "课程"));
-            views.setTextViewText(R.id.widget_line_3, locationLine(first));
+            String meta = courseMetaLine(first);
+            views.setTextViewText(R.id.widget_line_3, meta.isEmpty() ? "地点待确认" : meta);
             setLineVisibility(views, 3);
         }
         setFooter(views, data);
@@ -344,12 +345,22 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
             }
             return;
         }
-        int count = Math.min(ids.length, courses.size());
-        for (int i = 0; i < count; i++) {
-            views.setTextViewText(ids[i], courseLine(courses.get(i), true));
-            views.setViewVisibility(ids[i], View.VISIBLE);
+        int cursor = 0;
+        for (JSONObject course : courses) {
+            if (cursor >= ids.length) break;
+
+            views.setTextViewText(ids[cursor], coursePrimaryLine(course, true));
+            views.setViewVisibility(ids[cursor], View.VISIBLE);
+            cursor++;
+
+            String meta = courseMetaLine(course);
+            if (!meta.isEmpty() && cursor < ids.length) {
+                views.setTextViewText(ids[cursor], meta);
+                views.setViewVisibility(ids[cursor], View.VISIBLE);
+                cursor++;
+            }
         }
-        for (int i = count; i < ids.length; i++) {
+        for (int i = cursor; i < ids.length; i++) {
             views.setViewVisibility(ids[i], View.GONE);
         }
     }
@@ -405,14 +416,23 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         return time.isEmpty() ? fallback : fallback + " " + time;
     }
 
-    private static String courseLine(JSONObject course, boolean includeEndTime) {
+    private static String coursePrimaryLine(JSONObject course, boolean includeEndTime) {
         if (course == null) return "";
         String time = includeEndTime ? timeRange(course) : course.optString("startTime", "");
         String name = course.optString("name", "课程");
+        return time.isEmpty() ? name : time + " " + name;
+    }
+
+    private static String courseMetaLine(JSONObject course) {
+        if (course == null) return "";
+        List<String> parts = new ArrayList<>();
         String location = course.optString("location", "");
-        String text = time.isEmpty() ? name : time + " " + name;
-        if (!location.isEmpty()) text += " @" + location;
-        return text;
+        String teacher = course.optString("teacher", "");
+        String note = course.optString("note", course.optString("slotNote", ""));
+        if (!location.isEmpty()) parts.add("@" + location);
+        if (!teacher.isEmpty()) parts.add(teacher);
+        if (!note.isEmpty()) parts.add(note);
+        return joinParts(parts);
     }
 
     private static String timeRange(JSONObject course) {
@@ -430,6 +450,16 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         if (!location.isEmpty()) return "@" + location;
         if (!teacher.isEmpty()) return teacher;
         return "地点待确认";
+    }
+
+    private static String joinParts(List<String> parts) {
+        StringBuilder builder = new StringBuilder();
+        for (String part : parts) {
+            if (part == null || part.isEmpty()) continue;
+            if (builder.length() > 0) builder.append(" · ");
+            builder.append(part);
+        }
+        return builder.toString();
     }
 
     private static int courseStartMinutes(JSONObject course) {
