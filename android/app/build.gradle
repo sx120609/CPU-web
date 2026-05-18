@@ -5,7 +5,7 @@ plugins {
 def defaultAppUrl = "https://cpu.lizmt.cn/schedule"
 def resolvedAppUrl = (project.findProperty("appUrl") ?: defaultAppUrl).toString()
 def resolvedApplicationId = (project.findProperty("applicationId") ?: "cn.lizmt.cpuweb.schedule").toString()
-def resolvedAppName = (project.findProperty("appName") ?: "药大垎坊课表").toString()
+def resolvedAppName = (project.findProperty("appName") ?: "药大垎坊").toString()
 
 def escapeJavaString = { value ->
     value.replace("\\", "\\\\").replace("\"", "\\\"")
@@ -19,8 +19,8 @@ android {
         applicationId resolvedApplicationId
         minSdk 23
         targetSdk 35
-        versionCode 6
-        versionName "1.5.0"
+        versionCode 7
+        versionName "1.6.0"
 
         buildConfigField "String", "APP_URL", "\"${escapeJavaString(resolvedAppUrl)}\""
         resValue "string", "app_name", resolvedAppName
