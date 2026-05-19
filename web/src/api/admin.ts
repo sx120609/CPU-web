@@ -8,6 +8,7 @@ export type SiteConfig = {
   aiReviewApiKey: string;
   aiReviewAutoPassScore: number;
   aiReviewBlockScore: number;
+  aiEditSimilarityThreshold: number;
 };
 
 export const adminApi = {
@@ -49,6 +50,7 @@ export const adminApi = {
     aiReviewApiKey?: string;
     aiReviewAutoPassScore?: number;
     aiReviewBlockScore?: number;
+    aiEditSimilarityThreshold?: number;
   }) =>
     request.patch<SiteConfig>("/admin/site-config", patch),
   features: () => request.get<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>("/admin/features"),

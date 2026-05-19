@@ -18,6 +18,7 @@ export type SiteConfig = {
   aiReviewAutoPassScore: number;
   aiReviewBlockScore: number;
   aiReviewForceBlockScore: number;
+  aiEditSimilarityThreshold: number;
 };
 
 export const ALL_FEATURES: FeatureKey[] = ["forum", "market", "coursereview", "electric"];
@@ -29,6 +30,7 @@ const AI_REVIEW_API_KEY = "ai.review.apiKey";
 const AI_REVIEW_AUTO_PASS_SCORE_KEY = "ai.review.autoPassScore";
 const AI_REVIEW_BLOCK_SCORE_KEY = "ai.review.blockScore";
 const AI_REVIEW_FORCE_BLOCK_SCORE_KEY = "ai.review.forceBlockScore";
+const AI_EDIT_SIMILARITY_THRESHOLD_KEY = "ai.review.editSimilarityThreshold";
 
 const cache: Record<FeatureKey, boolean> = {
   forum: true,
@@ -46,6 +48,7 @@ const configCache: SiteConfig = {
   aiReviewAutoPassScore: 24,
   aiReviewBlockScore: 70,
   aiReviewForceBlockScore: 90,
+  aiEditSimilarityThreshold: 0,
 };
 
 function keyOf(f: FeatureKey) {
@@ -84,6 +87,7 @@ export async function loadFeatures(): Promise<void> {
           AI_REVIEW_AUTO_PASS_SCORE_KEY,
           AI_REVIEW_BLOCK_SCORE_KEY,
           AI_REVIEW_FORCE_BLOCK_SCORE_KEY,
+          AI_EDIT_SIMILARITY_THRESHOLD_KEY,
         ],
       },
     },
@@ -123,6 +127,10 @@ export async function loadFeatures(): Promise<void> {
     }
     if (r.key === AI_REVIEW_FORCE_BLOCK_SCORE_KEY) {
       configCache.aiReviewForceBlockScore = normalizeAiScore(r.value, 90);
+      continue;
+    }
+    if (r.key === AI_EDIT_SIMILARITY_THRESHOLD_KEY) {
+      configCache.aiEditSimilarityThreshold = normalizeAiRatio(r.value, 0);
       continue;
     }
     const f = r.key.replace(/^feature\./, "") as FeatureKey;
@@ -202,10 +210,17 @@ function normalizeAiScore(input: string | number | null | undefined, fallback: n
   return Math.max(0, Math.min(100, Math.round(n)));
 }
 
+function normalizeAiRatio(input: string | number | null | undefined, fallback: number) {
+  const n = Number(input);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(1, Number(n.toFixed(2))));
+}
+
 function sanitizeAiReviewConfig() {
   configCache.aiReviewAutoPassScore = normalizeAiScore(configCache.aiReviewAutoPassScore, 24);
   configCache.aiReviewBlockScore = normalizeAiScore(configCache.aiReviewBlockScore, 70);
   configCache.aiReviewForceBlockScore = normalizeAiScore(configCache.aiReviewForceBlockScore, 90);
+  configCache.aiEditSimilarityThreshold = normalizeAiRatio(configCache.aiEditSimilarityThreshold, 0);
   if (configCache.aiReviewBlockScore < configCache.aiReviewAutoPassScore) {
     configCache.aiReviewBlockScore = configCache.aiReviewAutoPassScore;
   }
@@ -226,6 +241,7 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
     aiReviewAutoPassScore: normalizeAiScore(input.aiReviewAutoPassScore, configCache.aiReviewAutoPassScore),
     aiReviewBlockScore: normalizeAiScore(input.aiReviewBlockScore, configCache.aiReviewBlockScore),
     aiReviewForceBlockScore: normalizeAiScore(input.aiReviewForceBlockScore, configCache.aiReviewForceBlockScore),
+    aiEditSimilarityThreshold: normalizeAiRatio(input.aiEditSimilarityThreshold, configCache.aiEditSimilarityThreshold),
   };
   if (next.aiReviewBlockScore < next.aiReviewAutoPassScore) {
     throw new Error("AI 自动拦截阈值不能低于自动通过阈值");
@@ -268,6 +284,11 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       where: { key: AI_REVIEW_FORCE_BLOCK_SCORE_KEY },
       update: { value: String(next.aiReviewForceBlockScore) },
       create: { key: AI_REVIEW_FORCE_BLOCK_SCORE_KEY, value: String(next.aiReviewForceBlockScore) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: AI_EDIT_SIMILARITY_THRESHOLD_KEY },
+      update: { value: String(next.aiEditSimilarityThreshold) },
+      create: { key: AI_EDIT_SIMILARITY_THRESHOLD_KEY, value: String(next.aiEditSimilarityThreshold) },
     }),
   ]);
   Object.assign(configCache, next);

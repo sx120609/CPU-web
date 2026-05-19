@@ -58,6 +58,10 @@
           <span class="ai-label">自动拦截</span>
           <el-input-number v-model="aiReviewBlockScore" :min="0" :max="100" />
         </div>
+        <div class="ai-row">
+          <span class="ai-label">编辑相似度下限</span>
+          <el-input-number v-model="aiEditSimilarityPercent" :min="0" :max="100" />
+        </div>
         <el-button type="primary" :loading="savingConfig" @click="saveAiReviewConfig">保存 AI 审核配置</el-button>
       </div>
     </div>
@@ -105,6 +109,7 @@ const aiReviewModel = ref("deepseek-v4-flash");
 const aiReviewApiKey = ref("");
 const aiReviewAutoPassScore = ref(24);
 const aiReviewBlockScore = ref(70);
+const aiEditSimilarityPercent = ref(0);
 const features = reactive<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>({
   forum: true, market: true, coursereview: true, electric: true,
 });
@@ -148,6 +153,7 @@ async function reload() {
     aiReviewApiKey.value = config.aiReviewApiKey;
     aiReviewAutoPassScore.value = config.aiReviewAutoPassScore;
     aiReviewBlockScore.value = config.aiReviewBlockScore;
+    aiEditSimilarityPercent.value = Math.round((config.aiEditSimilarityThreshold ?? 0) * 100);
   } finally {
     loading.value = false;
     configLoading.value = false;
@@ -175,6 +181,7 @@ async function saveAiReviewConfig() {
       aiReviewApiKey: aiReviewApiKey.value,
       aiReviewAutoPassScore: aiReviewAutoPassScore.value,
       aiReviewBlockScore: aiReviewBlockScore.value,
+      aiEditSimilarityThreshold: aiEditSimilarityPercent.value / 100,
     });
     aiReviewEnabled.value = config.aiReviewEnabled;
     aiReviewProvider.value = config.aiReviewProvider;
@@ -182,6 +189,7 @@ async function saveAiReviewConfig() {
     aiReviewApiKey.value = config.aiReviewApiKey;
     aiReviewAutoPassScore.value = config.aiReviewAutoPassScore;
     aiReviewBlockScore.value = config.aiReviewBlockScore;
+    aiEditSimilarityPercent.value = Math.round((config.aiEditSimilarityThreshold ?? 0) * 100);
     ElMessage.success("AI 审核配置已保存");
   } finally {
     savingConfig.value = false;

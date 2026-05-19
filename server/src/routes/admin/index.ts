@@ -544,6 +544,7 @@ const siteConfigPatchSchema = z.object({
   aiReviewApiKey: z.string().trim().max(240).optional(),
   aiReviewAutoPassScore: z.number().int().min(0).max(100).optional(),
   aiReviewBlockScore: z.number().int().min(0).max(100).optional(),
+  aiEditSimilarityThreshold: z.number().min(0).max(1).optional(),
 });
 
 adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), async (req, res, next) => {
@@ -554,7 +555,8 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       req.body.aiReviewModel !== undefined ||
       req.body.aiReviewApiKey !== undefined ||
       req.body.aiReviewAutoPassScore !== undefined ||
-      req.body.aiReviewBlockScore !== undefined
+      req.body.aiReviewBlockScore !== undefined ||
+      req.body.aiEditSimilarityThreshold !== undefined
     ) {
       await setAiReviewConfig(req.body);
     }

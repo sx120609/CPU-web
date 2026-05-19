@@ -241,8 +241,8 @@ const meta = reactive<any>({
 
 const currentBoard = computed(() => boards.value.find((b) => b.slug === form.boardSlug));
 const boardType = computed(() => currentBoard.value?.type ?? "normal");
-const formDraftKey = computed(() => editingId.value ? `cpu-post-edit-draft-${editingId.value}` : "cpu-post-new-draft");
-const contentDraftKey = computed(() => `${formDraftKey.value}-content`);
+const formDraftKey = computed(() => editingId.value ? "" : "cpu-post-new-draft");
+const contentDraftKey = computed(() => formDraftKey.value ? `${formDraftKey.value}-content` : "");
 
 const selectedCourse = computed(() => courses.value.find((c) => c.id === meta.courseId));
 const teacherOptions = computed(() => selectedCourse.value?.teachers ?? []);
@@ -264,11 +264,12 @@ onMounted(async () => {
     const t = await topicApi.detail(editingId.value);
     form.boardSlug = t.board?.slug ?? "";
     form.title = t.title;
-    if (!hasSavedDraft(contentDraftKey.value)) form.content = t.content;
+    form.content = t.content;
     if (t.metadata) Object.assign(meta, t.metadata);
     normalizeSelectedBoard();
+  } else {
+    restoreFormDraft();
   }
-  restoreFormDraft();
   normalizeSelectedBoard();
   if (boardType.value === "coursereview") await loadCoursesForReview();
 });
@@ -321,6 +322,7 @@ function onContentDraftRestored(value: string) {
 }
 
 function restoreFormDraft() {
+  if (!formDraftKey.value) return;
   try {
     const raw = localStorage.getItem(formDraftKey.value);
     if (!raw) return;
@@ -334,6 +336,7 @@ function restoreFormDraft() {
 }
 
 function hasSavedDraft(key: string) {
+  if (!key) return false;
   try {
     return Boolean(localStorage.getItem(key));
   } catch {
@@ -342,6 +345,7 @@ function hasSavedDraft(key: string) {
 }
 
 function scheduleFormDraftSave() {
+  if (!formDraftKey.value) return;
   window.clearTimeout(formDraftTimer);
   formDraftTimer = window.setTimeout(() => {
     try {
@@ -358,6 +362,7 @@ function scheduleFormDraftSave() {
 }
 
 function clearDrafts() {
+  if (!formDraftKey.value) return;
   localStorage.removeItem(formDraftKey.value);
   editorRef.value?.clearDraft();
 }
