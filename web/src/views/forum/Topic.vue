@@ -136,8 +136,8 @@
       </template>
     </el-dialog>
 
-    <div v-else-if="topic.locked" class="locked-tip cpu-card">🔒 该帖已锁定，无法回复</div>
-    <div v-else class="login-tip cpu-card">
+    <div v-if="topic.locked" class="locked-tip cpu-card">🔒 该帖已锁定，无法回复</div>
+    <div v-if="!auth.isLoggedIn" class="login-tip cpu-card">
       <router-link to="/login">登录</router-link> 或 <router-link to="/register">注册</router-link> 后参与回复
     </div>
   </div>
