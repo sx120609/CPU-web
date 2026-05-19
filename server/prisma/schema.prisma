@@ -105,6 +105,7 @@ model Topic {
   manualReviewedById Int?
   manualReviewedAt DateTime?
   manualReviewNote String?
+  editCount    Int       @default(0)
   pinned      Boolean   @default(false)
   locked      Boolean   @default(false) // 锁帖后不能回复
   hidden      Boolean   @default(false) // 被管理员隐藏

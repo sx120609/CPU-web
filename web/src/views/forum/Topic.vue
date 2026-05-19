@@ -29,7 +29,9 @@
             <el-tag v-else-if="topic.author?.role === 'admin'" size="small" type="danger">管理员</el-tag>
           </div>
           <div class="meta">
-            发表于 {{ fmtDate(topic.createdAt) }} · 浏览 {{ topic.viewCount }} · 回复 {{ topic.replyCount }}
+            发表于 {{ fmtDate(topic.createdAt) }}
+            <template v-if="topic.editCount && topic.editCount > 0"> · 已编辑 {{ topic.editCount }} 次</template>
+            · 浏览 {{ topic.viewCount }} · 回复 {{ topic.replyCount }}
           </div>
         </div>
         <div v-if="metaPrice !== undefined" class="meta-price">¥ {{ metaPrice }}</div>

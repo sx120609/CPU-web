@@ -47,6 +47,9 @@
           <span>{{ activeNotice.source || "校内" }} · {{ activeNotice.createdAt }}</span>
         </div>
         <p class="notice-content">{{ activeNotice.content }}</p>
+        <div v-if="reviewStateText" class="review-state" :class="{ done: !canReviewActiveNotice }">
+          {{ reviewStateText }}
+        </div>
 
         <div v-if="activeNotice.payload?.riskScore !== undefined || activeNotice.payload?.reason" class="notice-risk">
           <span v-if="activeNotice.payload?.riskScore !== undefined">风险分：{{ activeNotice.payload.riskScore }}</span>
@@ -61,20 +64,20 @@
       <template #footer>
         <el-button v-if="activeNotice?.link" @click="goNoticeLink">前往查看</el-button>
         <el-button
-          v-if="canReviewActiveNotice && activeNotice?.payload?.topicId"
+          v-if="canReviewActiveNotice"
           type="success"
           :loading="reviewing"
           @click="approveFromNotice"
         >
-          审核通过
+          {{ reviewActionLabel }}通过
         </el-button>
         <el-button
-          v-if="canReviewActiveNotice && activeNotice?.payload?.topicId"
+          v-if="canReviewActiveNotice"
           type="warning"
           :loading="reviewing"
           @click="rejectFromNotice"
         >
-          驳回
+          {{ reviewActionLabel }}驳回
         </el-button>
         <el-button @click="detailOpen = false">关闭</el-button>
       </template>
@@ -104,6 +107,8 @@ const saving = ref(false);
 const detailOpen = ref(false);
 const activeNotice = ref<any | null>(null);
 const reviewing = ref(false);
+const reviewTarget = ref<{ kind: "topic" | "reply"; id: number; title: string; aiReviewStatus: string; hidden: boolean; topicId?: number; reviewable: boolean } | null>(null);
+const reviewTargetLoading = ref(false);
 
 onMounted(async () => {
   [list.value, settings.value] = await Promise.all([messageApi.list(), messageApi.settings()]);
@@ -138,14 +143,32 @@ async function saveSettings() {
   } finally { saving.value = false; }
 }
 
-function openNotification(item: any) {
+async function openNotification(item: any) {
   activeNotice.value = item;
+  reviewTarget.value = null;
   detailOpen.value = true;
+  const target = getReviewTargetFromNotice(item);
+  if (!target || !auth.isMod) return;
+  reviewTargetLoading.value = true;
+  try {
+    reviewTarget.value = await adminApi.reviewTarget(target.kind, target.id);
+  } catch {
+    reviewTarget.value = null;
+  } finally {
+    reviewTargetLoading.value = false;
+  }
 }
 
 const canReviewActiveNotice = computed(() => {
-  if (!auth.isMod || !activeNotice.value?.payload?.type) return false;
-  return activeNotice.value.payload.type === "topic-manual-review-admin";
+  return Boolean(auth.isMod && reviewTarget.value?.reviewable);
+});
+const reviewActionLabel = computed(() => reviewTarget.value?.kind === "reply" ? "回复" : "帖子");
+const reviewStateText = computed(() => {
+  if (reviewTargetLoading.value) return "正在检查当前审核状态...";
+  if (!reviewTarget.value) return "";
+  return reviewTarget.value.reviewable
+    ? `${reviewActionLabel.value}当前仍在待人工审核状态，可直接处理。`
+    : `${reviewActionLabel.value}当前状态为「${reviewLabel(reviewTarget.value.aiReviewStatus)}」，不需要再次审核。`;
 });
 
 function goNoticeLink() {
@@ -155,13 +178,20 @@ function goNoticeLink() {
 }
 
 async function approveFromNotice() {
-  if (!activeNotice.value?.payload?.topicId) return;
+  if (!reviewTarget.value?.reviewable) return;
   reviewing.value = true;
   try {
-    await adminApi.updateTopic(activeNotice.value.payload.topicId, {
-      aiReviewStatus: "approved_manual",
-      manualReviewNote: "管理员通过消息中心审核通过",
-    });
+    if (reviewTarget.value.kind === "reply") {
+      await adminApi.updateReply(reviewTarget.value.id, {
+        aiReviewStatus: "approved_manual",
+        manualReviewNote: "管理员通过消息中心审核通过",
+      });
+    } else {
+      await adminApi.updateTopic(reviewTarget.value.id, {
+        aiReviewStatus: "approved_manual",
+        manualReviewNote: "管理员通过消息中心审核通过",
+      });
+    }
     ElMessage.success("已审核通过");
     detailOpen.value = false;
     [list.value, settings.value] = await Promise.all([messageApi.list(), messageApi.settings()]);
@@ -172,16 +202,23 @@ async function approveFromNotice() {
 }
 
 async function rejectFromNotice() {
-  if (!activeNotice.value?.payload?.topicId) return;
+  if (!reviewTarget.value?.reviewable) return;
   const { value } = await ElMessageBox.prompt("填写驳回说明（选填）", "人工驳回", {
     inputPlaceholder: "例如：存在明显人身攻击 / 泄露隐私信息",
   }).catch(() => ({ value: "" }));
   reviewing.value = true;
   try {
-    await adminApi.updateTopic(activeNotice.value.payload.topicId, {
-      aiReviewStatus: "rejected_manual",
-      manualReviewNote: value || "管理员通过消息中心人工驳回",
-    });
+    if (reviewTarget.value.kind === "reply") {
+      await adminApi.updateReply(reviewTarget.value.id, {
+        aiReviewStatus: "rejected_manual",
+        manualReviewNote: value || "管理员通过消息中心人工驳回",
+      });
+    } else {
+      await adminApi.updateTopic(reviewTarget.value.id, {
+        aiReviewStatus: "rejected_manual",
+        manualReviewNote: value || "管理员通过消息中心人工驳回",
+      });
+    }
     ElMessage.success("已驳回");
     detailOpen.value = false;
     [list.value, settings.value] = await Promise.all([messageApi.list(), messageApi.settings()]);
@@ -189,6 +226,27 @@ async function rejectFromNotice() {
   } finally {
     reviewing.value = false;
   }
+}
+
+function getReviewTargetFromNotice(item: any): { kind: "topic" | "reply"; id: number } | null {
+  const type = item?.payload?.type;
+  if (type === "topic-manual-review-admin" && item?.payload?.topicId) {
+    return { kind: "topic", id: Number(item.payload.topicId) };
+  }
+  if (type === "reply-manual-review-admin" && item?.payload?.replyId) {
+    return { kind: "reply", id: Number(item.payload.replyId) };
+  }
+  return null;
+}
+
+function reviewLabel(status?: string) {
+  if (status === "manual_requested") return "申请人工审核";
+  if (status === "manual_reviewing") return "人工审核中";
+  if (status === "approved_manual") return "人工已通过";
+  if (status === "rejected_manual") return "人工已驳回";
+  if (status === "blocked_ai") return "AI 拦截";
+  if (status === "auto_passed") return "自动通过";
+  return "未审核";
 }
 </script>
 
@@ -202,6 +260,8 @@ async function rejectFromNotice() {
 .notice-head h3 { margin: 0; font-size: 18px; color: #1f2937; }
 .notice-head span { font-size: 12px; color: #94a3b8; }
 .notice-content { margin: 0; color: #374151; line-height: 1.75; white-space: pre-wrap; }
+.review-state { font-size: 13px; color: #166534; background: #ecfdf5; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 12px; }
+.review-state.done { color: #6b7280; background: #f8fafc; border-color: #e2e8f0; }
 .notice-risk { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #92400e; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 10px 12px; }
 .notice-draft { border: 1px solid #e5e7eb; border-radius: 8px; background: #f9fafb; padding: 12px; }
 .draft-title { font-size: 14px; font-weight: 600; color: #111827; }

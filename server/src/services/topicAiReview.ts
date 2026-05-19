@@ -468,3 +468,91 @@ export async function notifyManualReviewDecision(input: {
     },
   }).catch(() => {});
 }
+
+export async function notifyManualReplyReviewDecision(input: {
+  replyId: number;
+  topicId: number;
+  userId: number;
+  approved: boolean;
+  content: string;
+  note?: string | null;
+}) {
+  await prisma.notification.create({
+    data: {
+      userId: input.userId,
+      category: "system",
+      level: input.approved ? "normal" : "warning",
+      title: input.approved ? "你的回复已通过人工审核" : "你的回复未通过人工审核",
+      content: input.note?.trim() || input.content.slice(0, 80),
+      source: "站务审核",
+      link: input.approved ? `/forum/topic/${input.topicId}` : null,
+      payload: JSON.stringify({
+        type: "reply-manual-review-result",
+        replyId: input.replyId,
+        topicId: input.topicId,
+        approved: input.approved,
+        note: input.note || "",
+      }),
+    },
+  }).catch(() => {});
+}
+
+export async function resolveTopicManualReviewAdminNotifications(input: {
+  topicId: number;
+  approved: boolean;
+  note?: string | null;
+}) {
+  const payload = JSON.stringify({
+    type: "topic-manual-review-admin-resolved",
+    topicId: input.topicId,
+    approved: input.approved,
+    note: input.note || "",
+  });
+  await prisma.notification.updateMany({
+    where: {
+      category: "system",
+      source: "AI 审核",
+      title: "有新的稿件待人工审核",
+      AND: [
+        { payload: { contains: "\"type\":\"topic-manual-review-admin\"" } },
+        { payload: { contains: `"topicId":${input.topicId}` } },
+      ],
+    },
+    data: {
+      level: "normal",
+      title: input.approved ? "待审稿件已处理" : "待审稿件已驳回",
+      readAt: new Date(),
+      payload,
+    },
+  }).catch(() => {});
+}
+
+export async function resolveReplyManualReviewAdminNotifications(input: {
+  replyId: number;
+  approved: boolean;
+  note?: string | null;
+}) {
+  const payload = JSON.stringify({
+    type: "reply-manual-review-admin-resolved",
+    replyId: input.replyId,
+    approved: input.approved,
+    note: input.note || "",
+  });
+  await prisma.notification.updateMany({
+    where: {
+      category: "system",
+      source: "AI 审核",
+      title: "有新的回复待人工审核",
+      AND: [
+        { payload: { contains: "\"type\":\"reply-manual-review-admin\"" } },
+        { payload: { contains: `"replyId":${input.replyId}` } },
+      ],
+    },
+    data: {
+      level: "normal",
+      title: input.approved ? "待审回复已处理" : "待审回复已驳回",
+      readAt: new Date(),
+      payload,
+    },
+  }).catch(() => {});
+}

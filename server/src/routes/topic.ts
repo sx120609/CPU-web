@@ -266,9 +266,10 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     const data: any = {};
     const nextTitle = typeof body.title === "string" && isOwner ? body.title : t.title;
     const nextContent = typeof body.content === "string" && isOwner ? body.content : t.content;
+    const nextMetadataRaw = typeof body.metadata === "object" && body.metadata ? JSON.stringify(body.metadata) : t.metadata;
     if (typeof body.title === "string" && isOwner) data.title = body.title;
     if (typeof body.content === "string" && isOwner) data.content = body.content;
-    if (typeof body.metadata === "object" && body.metadata) data.metadata = JSON.stringify(body.metadata);
+    if (typeof body.metadata === "object" && body.metadata) data.metadata = nextMetadataRaw;
     if (typeof body.pinned === "boolean" && isMod) data.pinned = body.pinned;
     if (typeof body.locked === "boolean" && isMod) data.locked = body.locked;
     if (typeof body.hidden === "boolean" && isMod) data.hidden = body.hidden;
@@ -316,6 +317,18 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
         data.aiModel = aiResult.model;
         data.aiReviewedAt = new Date();
       }
+    }
+
+    if (
+      isOwner &&
+      Object.keys(data).length &&
+      (
+        (typeof body.title === "string" && body.title !== t.title) ||
+        (typeof body.content === "string" && body.content !== t.content) ||
+        (typeof body.metadata === "object" && body.metadata && nextMetadataRaw !== t.metadata)
+      )
+    ) {
+      data.editCount = { increment: 1 };
     }
 
     const u = await prisma.topic.update({ where: { id }, data });

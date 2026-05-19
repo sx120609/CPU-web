@@ -68,6 +68,13 @@ export const adminApi = {
     manualReviewNote?: string;
   }) =>
     request.patch<any>(`/admin/topics/${id}`, patch),
+  updateReply: (id: number, patch: {
+    aiReviewStatus?: "manual_reviewing" | "approved_manual" | "rejected_manual";
+    manualReviewNote?: string;
+  }) =>
+    request.patch<any>(`/admin/replies/${id}`, patch),
+  reviewTarget: (kind: "topic" | "reply", id: number) =>
+    request.get<{ kind: "topic" | "reply"; id: number; title: string; aiReviewStatus: string; hidden: boolean; topicId?: number; reviewable: boolean }>(`/admin/review-targets/${kind}/${id}`),
   deleteTopic: (id: number) => request.delete<any>(`/admin/topics/${id}`),
   destroyTopic: (id: number) => request.delete<any>(`/admin/topics/${id}?hard=1`),
   // 爬虫

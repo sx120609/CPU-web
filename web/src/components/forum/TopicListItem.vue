@@ -17,6 +17,7 @@
         <span v-if="topic.author?.role === 'bot'" class="bot">🤖 自动同步</span>
         <span class="dot">·</span>
         <span>{{ fmtRelative(topic.lastReplyAt || topic.createdAt) }}</span>
+        <span v-if="topic.editCount && topic.editCount > 0" class="edited">已编辑 {{ topic.editCount }} 次</span>
         <span class="dot">·</span>
         <span><el-icon><View /></el-icon> {{ topic.viewCount }}</span>
         <span><el-icon><ChatLineRound /></el-icon> {{ topic.replyCount }}</span>
@@ -78,6 +79,7 @@ const metaRating = computed(() => {
 .line2 span { display: inline-flex; align-items: center; gap: 3px; }
 .line2 .author { color: var(--cpu-primary); }
 .line2 .bot { color: #ef4444; }
+.line2 .edited { color: #b45309; }
 .line2 .dot { color: #d1d5db; }
 
 .price {

@@ -16,7 +16,12 @@ import {
   type FeatureKey,
 } from "../../services/siteSettings";
 import { refreshTopicSubmissionLock } from "../../services/topicAiReview";
-import { notifyManualReviewDecision } from "../../services/topicAiReview";
+import {
+  notifyManualReplyReviewDecision,
+  notifyManualReviewDecision,
+  resolveReplyManualReviewAdminNotifications,
+  resolveTopicManualReviewAdminNotifications,
+} from "../../services/topicAiReview";
 
 export const adminRouter = Router();
 
@@ -319,6 +324,46 @@ adminRouter.get("/topics", modOrAbove, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+adminRouter.get("/review-targets/:kind/:id", modOrAbove, async (req, res, next) => {
+  try {
+    const kind = String(req.params.kind);
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) throw Errors.badRequest("审核对象 ID 不合法");
+    if (kind === "topic") {
+      const topic = await prisma.topic.findUnique({
+        where: { id },
+        select: { id: true, title: true, aiReviewStatus: true, hidden: true, boardId: true },
+      });
+      if (!topic) throw Errors.notFound("帖子不存在");
+      return ok(res, {
+        kind,
+        id: topic.id,
+        title: topic.title,
+        aiReviewStatus: topic.aiReviewStatus,
+        hidden: topic.hidden,
+        reviewable: topic.aiReviewStatus === "manual_requested" || topic.aiReviewStatus === "manual_reviewing",
+      });
+    }
+    if (kind === "reply") {
+      const reply = await prisma.reply.findUnique({
+        where: { id },
+        select: { id: true, content: true, aiReviewStatus: true, hidden: true, topicId: true },
+      });
+      if (!reply) throw Errors.notFound("回复不存在");
+      return ok(res, {
+        kind,
+        id: reply.id,
+        title: reply.content.slice(0, 80),
+        aiReviewStatus: reply.aiReviewStatus,
+        hidden: reply.hidden,
+        topicId: reply.topicId,
+        reviewable: reply.aiReviewStatus === "manual_requested" || reply.aiReviewStatus === "manual_reviewing",
+      });
+    }
+    throw Errors.badRequest("不支持的审核对象类型");
+  } catch (e) { next(e); }
+});
+
 const topicPatchSchema = z.object({
   hidden: z.boolean().optional(),
   pinned: z.boolean().optional(),
@@ -328,9 +373,19 @@ const topicPatchSchema = z.object({
   manualReviewNote: z.string().max(500).optional(),
 });
 
+const replyPatchSchema = z.object({
+  aiReviewStatus: z.enum(["manual_reviewing", "approved_manual", "rejected_manual"]).optional(),
+  manualReviewNote: z.string().max(500).optional(),
+});
+
 adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    const existing = await prisma.topic.findUnique({
+      where: { id },
+      select: { id: true, authorId: true, boardId: true, title: true, hidden: true, aiReviewStatus: true },
+    });
+    if (!existing) throw Errors.notFound("帖子不存在");
     const data: any = {};
     if (typeof req.body.hidden === "boolean") data.hidden = req.body.hidden;
     if (typeof req.body.pinned === "boolean") data.pinned = req.body.pinned;
@@ -342,6 +397,9 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
       data.boardId = target.id;
     }
     if (req.body.aiReviewStatus) {
+      if (!["manual_requested", "manual_reviewing"].includes(existing.aiReviewStatus)) {
+        throw Errors.badRequest("该帖子当前不处于待人工审核状态");
+      }
       data.aiReviewStatus = req.body.aiReviewStatus;
       data.manualReviewedById = req.user!.userId;
       data.manualReviewedAt = new Date();
@@ -356,7 +414,7 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
     const u = await prisma.topic.update({ where: { id }, data });
     if (req.body.aiReviewStatus) {
       await refreshTopicSubmissionLock(u.authorId);
-      if (req.body.aiReviewStatus === "approved_manual" && u.hidden === false) {
+      if (req.body.aiReviewStatus === "approved_manual" && existing.hidden === true && u.hidden === false) {
         await prisma.user.update({ where: { id: u.authorId }, data: { postCount: { increment: 1 } } }).catch(() => {});
         await prisma.board.update({ where: { id: u.boardId }, data: { topicCount: { increment: 1 } } }).catch(() => {});
       }
@@ -366,6 +424,11 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
           userId: u.authorId,
           approved: req.body.aiReviewStatus === "approved_manual",
           title: u.title,
+          note: req.body.manualReviewNote ?? "",
+        });
+        await resolveTopicManualReviewAdminNotifications({
+          topicId: u.id,
+          approved: req.body.aiReviewStatus === "approved_manual",
           note: req.body.manualReviewNote ?? "",
         });
       }
@@ -394,6 +457,75 @@ adminRouter.delete("/topics/:id", modOrAbove, async (req, res, next) => {
       }
     }
     ok(res, { ok: true });
+  } catch (e) { next(e); }
+});
+
+adminRouter.patch("/replies/:id", modOrAbove, validate(replyPatchSchema), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const existing = await prisma.reply.findUnique({
+      where: { id },
+      select: { id: true, topicId: true, authorId: true, content: true, hidden: true, floor: true, aiReviewStatus: true, createdAt: true },
+    });
+    if (!existing) throw Errors.notFound("回复不存在");
+    const data: any = {};
+    if (req.body.aiReviewStatus) {
+      if (!["manual_requested", "manual_reviewing"].includes(existing.aiReviewStatus)) {
+        throw Errors.badRequest("该回复当前不处于待人工审核状态");
+      }
+      data.aiReviewStatus = req.body.aiReviewStatus;
+      data.aiReviewedAt = new Date();
+      if (req.body.aiReviewStatus === "approved_manual") {
+        const last = await prisma.reply.findFirst({
+          where: { topicId: existing.topicId, hidden: false },
+          orderBy: { floor: "desc" },
+          select: { floor: true },
+        });
+        data.hidden = false;
+        data.floor = (last?.floor ?? 0) + 1;
+      }
+      if (req.body.aiReviewStatus === "rejected_manual") {
+        data.hidden = true;
+      }
+    }
+    const updated = await prisma.reply.update({ where: { id }, data });
+    if (req.body.aiReviewStatus === "approved_manual" && existing.hidden) {
+      const now = new Date();
+      await prisma.topic.update({
+        where: { id: existing.topicId },
+        data: {
+          replyCount: { increment: 1 },
+          lastReplyAt: now,
+          lastReplyById: existing.authorId,
+        },
+      }).catch(() => {});
+      await prisma.user.update({
+        where: { id: existing.authorId },
+        data: { replyCount: { increment: 1 } },
+      }).catch(() => {});
+    }
+    if (req.body.aiReviewStatus === "approved_manual" || req.body.aiReviewStatus === "rejected_manual") {
+      await notifyManualReplyReviewDecision({
+        replyId: updated.id,
+        topicId: updated.topicId,
+        userId: updated.authorId,
+        approved: req.body.aiReviewStatus === "approved_manual",
+        content: updated.content,
+        note: req.body.manualReviewNote ?? "",
+      });
+      await resolveReplyManualReviewAdminNotifications({
+        replyId: updated.id,
+        approved: req.body.aiReviewStatus === "approved_manual",
+        note: req.body.manualReviewNote ?? "",
+      });
+    }
+    ok(res, {
+      id: updated.id,
+      topicId: updated.topicId,
+      hidden: updated.hidden,
+      floor: updated.floor,
+      aiReviewStatus: updated.aiReviewStatus,
+    });
   } catch (e) { next(e); }
 });
 

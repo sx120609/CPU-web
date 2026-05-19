@@ -13,6 +13,7 @@ export interface Topic {
   viewCount: number;
   replyCount: number;
   likeCount: number;
+  editCount?: number;
   lastReplyAt?: string;
   aiReviewStatus?: string;
   aiRiskLevel?: string | null;
