@@ -19,6 +19,12 @@ export type SiteConfig = {
   aiReviewBlockScore: number;
   aiReviewForceBlockScore: number;
   aiEditSimilarityThreshold: number;
+  aiTopicReviewSystemPrompt: string;
+  aiTopicReviewUserPrompt: string;
+  aiReplyReviewSystemPrompt: string;
+  aiReplyReviewUserPrompt: string;
+  aiEditSimilaritySystemPrompt: string;
+  aiEditSimilarityUserPrompt: string;
 };
 
 export const ALL_FEATURES: FeatureKey[] = ["forum", "market", "coursereview", "electric"];
@@ -31,6 +37,47 @@ const AI_REVIEW_AUTO_PASS_SCORE_KEY = "ai.review.autoPassScore";
 const AI_REVIEW_BLOCK_SCORE_KEY = "ai.review.blockScore";
 const AI_REVIEW_FORCE_BLOCK_SCORE_KEY = "ai.review.forceBlockScore";
 const AI_EDIT_SIMILARITY_THRESHOLD_KEY = "ai.review.editSimilarityThreshold";
+const AI_TOPIC_REVIEW_SYSTEM_PROMPT_KEY = "ai.review.topic.systemPrompt";
+const AI_TOPIC_REVIEW_USER_PROMPT_KEY = "ai.review.topic.userPrompt";
+const AI_REPLY_REVIEW_SYSTEM_PROMPT_KEY = "ai.review.reply.systemPrompt";
+const AI_REPLY_REVIEW_USER_PROMPT_KEY = "ai.review.reply.userPrompt";
+const AI_EDIT_SIMILARITY_SYSTEM_PROMPT_KEY = "ai.review.editSimilarity.systemPrompt";
+const AI_EDIT_SIMILARITY_USER_PROMPT_KEY = "ai.review.editSimilarity.userPrompt";
+
+export const DEFAULT_AI_PROMPTS = {
+  topicReviewSystem: "你是校园社区内容安全审核助手。你需要根据用户稿件判断风险，只返回 JSON。请关注违法、辱骂、人身攻击、隐私泄露、联系方式引流、诈骗、色情、诽谤、校园敏感舆情等风险。",
+  topicReviewUser: [
+    "请审核以下校园社区稿件，输出 JSON：",
+    "{\"risk_score\":0-100,\"risk_level\":\"low|medium|high\",\"decision\":\"auto_pass|manual_review|block\",\"reason\":\"一句短原因\",\"detail\":\"补充说明\",\"categories\":{\"violence\":0-100,\"porn\":0-100,\"abuse\":0-100,\"privacy\":0-100,\"fraud\":0-100,\"political\":0-100,\"defamation\":0-100,\"spam\":0-100}}",
+    "",
+    "板块名称：{{boardName}}",
+    "板块类型：{{boardType}}",
+    "标题：{{title}}",
+    "正文：{{content}}",
+    "补充 metadata：{{metadataJson}}",
+  ].join("\n"),
+  replyReviewSystem: "你是校园社区内容安全审核助手。你需要根据用户回复判断风险，只返回 JSON。请关注违法、辱骂、人身攻击、隐私泄露、联系方式引流、诈骗、色情、诽谤、校园敏感舆情等风险。",
+  replyReviewUser: [
+    "请审核以下校园社区回复，输出 JSON：",
+    "{\"risk_score\":0-100,\"risk_level\":\"low|medium|high\",\"decision\":\"auto_pass|manual_review|block\",\"reason\":\"一句短原因\",\"detail\":\"补充说明\",\"categories\":{\"violence\":0-100,\"porn\":0-100,\"abuse\":0-100,\"privacy\":0-100,\"fraud\":0-100,\"political\":0-100,\"defamation\":0-100,\"spam\":0-100}}",
+    "",
+    "所属帖子标题：{{topicTitle}}",
+    "板块名称：{{boardName}}",
+    "板块类型：{{boardType}}",
+    "引用/上文：{{parentContent}}",
+    "回复内容：{{content}}",
+  ].join("\n"),
+  editSimilaritySystem: "你是校园社区帖子编辑相似度判断助手。你需要判断用户修改后的帖子，是否仍然是在编辑同一篇帖子，而不是借编辑入口改成另一篇新帖子。允许润色、扩写、缩写、重写表达；重点关注主题、对象、交易信息、课程/事件、核心诉求和结论是否仍一致。只返回 JSON。",
+  editSimilarityUser: [
+    "请比较以下校园社区帖子编辑前后的语义相似度，输出 JSON：",
+    "{\"similarity_score\":0-100,\"same_topic\":true,\"reason\":\"一句短原因\",\"detail\":\"补充说明\"}",
+    "",
+    "原标题：{{originalTitle}}",
+    "原正文：{{originalContent}}",
+    "新标题：{{updatedTitle}}",
+    "新正文：{{updatedContent}}",
+  ].join("\n"),
+} as const;
 
 const cache: Record<FeatureKey, boolean> = {
   forum: true,
@@ -49,6 +96,12 @@ const configCache: SiteConfig = {
   aiReviewBlockScore: 70,
   aiReviewForceBlockScore: 90,
   aiEditSimilarityThreshold: 0,
+  aiTopicReviewSystemPrompt: DEFAULT_AI_PROMPTS.topicReviewSystem,
+  aiTopicReviewUserPrompt: DEFAULT_AI_PROMPTS.topicReviewUser,
+  aiReplyReviewSystemPrompt: DEFAULT_AI_PROMPTS.replyReviewSystem,
+  aiReplyReviewUserPrompt: DEFAULT_AI_PROMPTS.replyReviewUser,
+  aiEditSimilaritySystemPrompt: DEFAULT_AI_PROMPTS.editSimilaritySystem,
+  aiEditSimilarityUserPrompt: DEFAULT_AI_PROMPTS.editSimilarityUser,
 };
 
 function keyOf(f: FeatureKey) {
@@ -88,6 +141,12 @@ export async function loadFeatures(): Promise<void> {
           AI_REVIEW_BLOCK_SCORE_KEY,
           AI_REVIEW_FORCE_BLOCK_SCORE_KEY,
           AI_EDIT_SIMILARITY_THRESHOLD_KEY,
+          AI_TOPIC_REVIEW_SYSTEM_PROMPT_KEY,
+          AI_TOPIC_REVIEW_USER_PROMPT_KEY,
+          AI_REPLY_REVIEW_SYSTEM_PROMPT_KEY,
+          AI_REPLY_REVIEW_USER_PROMPT_KEY,
+          AI_EDIT_SIMILARITY_SYSTEM_PROMPT_KEY,
+          AI_EDIT_SIMILARITY_USER_PROMPT_KEY,
         ],
       },
     },
@@ -131,6 +190,30 @@ export async function loadFeatures(): Promise<void> {
     }
     if (r.key === AI_EDIT_SIMILARITY_THRESHOLD_KEY) {
       configCache.aiEditSimilarityThreshold = normalizeAiRatio(r.value, 0);
+      continue;
+    }
+    if (r.key === AI_TOPIC_REVIEW_SYSTEM_PROMPT_KEY) {
+      configCache.aiTopicReviewSystemPrompt = normalizePromptTemplate(r.value, DEFAULT_AI_PROMPTS.topicReviewSystem);
+      continue;
+    }
+    if (r.key === AI_TOPIC_REVIEW_USER_PROMPT_KEY) {
+      configCache.aiTopicReviewUserPrompt = normalizePromptTemplate(r.value, DEFAULT_AI_PROMPTS.topicReviewUser);
+      continue;
+    }
+    if (r.key === AI_REPLY_REVIEW_SYSTEM_PROMPT_KEY) {
+      configCache.aiReplyReviewSystemPrompt = normalizePromptTemplate(r.value, DEFAULT_AI_PROMPTS.replyReviewSystem);
+      continue;
+    }
+    if (r.key === AI_REPLY_REVIEW_USER_PROMPT_KEY) {
+      configCache.aiReplyReviewUserPrompt = normalizePromptTemplate(r.value, DEFAULT_AI_PROMPTS.replyReviewUser);
+      continue;
+    }
+    if (r.key === AI_EDIT_SIMILARITY_SYSTEM_PROMPT_KEY) {
+      configCache.aiEditSimilaritySystemPrompt = normalizePromptTemplate(r.value, DEFAULT_AI_PROMPTS.editSimilaritySystem);
+      continue;
+    }
+    if (r.key === AI_EDIT_SIMILARITY_USER_PROMPT_KEY) {
+      configCache.aiEditSimilarityUserPrompt = normalizePromptTemplate(r.value, DEFAULT_AI_PROMPTS.editSimilarityUser);
       continue;
     }
     const f = r.key.replace(/^feature\./, "") as FeatureKey;
@@ -216,11 +299,27 @@ function normalizeAiRatio(input: string | number | null | undefined, fallback: n
   return Math.max(0, Math.min(1, Number(n.toFixed(2))));
 }
 
+function normalizePromptTemplate(input: string | null | undefined, fallback: string) {
+  const raw = String(input ?? "").replace(/\r\n/g, "\n").trim();
+  return raw || fallback;
+}
+
+function resolvePromptTemplate(input: string | null | undefined, current: string, fallback: string) {
+  if (input === undefined) return current;
+  return normalizePromptTemplate(input, fallback);
+}
+
 function sanitizeAiReviewConfig() {
   configCache.aiReviewAutoPassScore = normalizeAiScore(configCache.aiReviewAutoPassScore, 24);
   configCache.aiReviewBlockScore = normalizeAiScore(configCache.aiReviewBlockScore, 70);
   configCache.aiReviewForceBlockScore = normalizeAiScore(configCache.aiReviewForceBlockScore, 90);
   configCache.aiEditSimilarityThreshold = normalizeAiRatio(configCache.aiEditSimilarityThreshold, 0);
+  configCache.aiTopicReviewSystemPrompt = normalizePromptTemplate(configCache.aiTopicReviewSystemPrompt, DEFAULT_AI_PROMPTS.topicReviewSystem);
+  configCache.aiTopicReviewUserPrompt = normalizePromptTemplate(configCache.aiTopicReviewUserPrompt, DEFAULT_AI_PROMPTS.topicReviewUser);
+  configCache.aiReplyReviewSystemPrompt = normalizePromptTemplate(configCache.aiReplyReviewSystemPrompt, DEFAULT_AI_PROMPTS.replyReviewSystem);
+  configCache.aiReplyReviewUserPrompt = normalizePromptTemplate(configCache.aiReplyReviewUserPrompt, DEFAULT_AI_PROMPTS.replyReviewUser);
+  configCache.aiEditSimilaritySystemPrompt = normalizePromptTemplate(configCache.aiEditSimilaritySystemPrompt, DEFAULT_AI_PROMPTS.editSimilaritySystem);
+  configCache.aiEditSimilarityUserPrompt = normalizePromptTemplate(configCache.aiEditSimilarityUserPrompt, DEFAULT_AI_PROMPTS.editSimilarityUser);
   if (configCache.aiReviewBlockScore < configCache.aiReviewAutoPassScore) {
     configCache.aiReviewBlockScore = configCache.aiReviewAutoPassScore;
   }
@@ -242,6 +341,12 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
     aiReviewBlockScore: normalizeAiScore(input.aiReviewBlockScore, configCache.aiReviewBlockScore),
     aiReviewForceBlockScore: normalizeAiScore(input.aiReviewForceBlockScore, configCache.aiReviewForceBlockScore),
     aiEditSimilarityThreshold: normalizeAiRatio(input.aiEditSimilarityThreshold, configCache.aiEditSimilarityThreshold),
+    aiTopicReviewSystemPrompt: resolvePromptTemplate(input.aiTopicReviewSystemPrompt, configCache.aiTopicReviewSystemPrompt, DEFAULT_AI_PROMPTS.topicReviewSystem),
+    aiTopicReviewUserPrompt: resolvePromptTemplate(input.aiTopicReviewUserPrompt, configCache.aiTopicReviewUserPrompt, DEFAULT_AI_PROMPTS.topicReviewUser),
+    aiReplyReviewSystemPrompt: resolvePromptTemplate(input.aiReplyReviewSystemPrompt, configCache.aiReplyReviewSystemPrompt, DEFAULT_AI_PROMPTS.replyReviewSystem),
+    aiReplyReviewUserPrompt: resolvePromptTemplate(input.aiReplyReviewUserPrompt, configCache.aiReplyReviewUserPrompt, DEFAULT_AI_PROMPTS.replyReviewUser),
+    aiEditSimilaritySystemPrompt: resolvePromptTemplate(input.aiEditSimilaritySystemPrompt, configCache.aiEditSimilaritySystemPrompt, DEFAULT_AI_PROMPTS.editSimilaritySystem),
+    aiEditSimilarityUserPrompt: resolvePromptTemplate(input.aiEditSimilarityUserPrompt, configCache.aiEditSimilarityUserPrompt, DEFAULT_AI_PROMPTS.editSimilarityUser),
   };
   if (next.aiReviewBlockScore < next.aiReviewAutoPassScore) {
     throw new Error("AI 自动拦截阈值不能低于自动通过阈值");
@@ -289,6 +394,36 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       where: { key: AI_EDIT_SIMILARITY_THRESHOLD_KEY },
       update: { value: String(next.aiEditSimilarityThreshold) },
       create: { key: AI_EDIT_SIMILARITY_THRESHOLD_KEY, value: String(next.aiEditSimilarityThreshold) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: AI_TOPIC_REVIEW_SYSTEM_PROMPT_KEY },
+      update: { value: next.aiTopicReviewSystemPrompt },
+      create: { key: AI_TOPIC_REVIEW_SYSTEM_PROMPT_KEY, value: next.aiTopicReviewSystemPrompt },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: AI_TOPIC_REVIEW_USER_PROMPT_KEY },
+      update: { value: next.aiTopicReviewUserPrompt },
+      create: { key: AI_TOPIC_REVIEW_USER_PROMPT_KEY, value: next.aiTopicReviewUserPrompt },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: AI_REPLY_REVIEW_SYSTEM_PROMPT_KEY },
+      update: { value: next.aiReplyReviewSystemPrompt },
+      create: { key: AI_REPLY_REVIEW_SYSTEM_PROMPT_KEY, value: next.aiReplyReviewSystemPrompt },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: AI_REPLY_REVIEW_USER_PROMPT_KEY },
+      update: { value: next.aiReplyReviewUserPrompt },
+      create: { key: AI_REPLY_REVIEW_USER_PROMPT_KEY, value: next.aiReplyReviewUserPrompt },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: AI_EDIT_SIMILARITY_SYSTEM_PROMPT_KEY },
+      update: { value: next.aiEditSimilaritySystemPrompt },
+      create: { key: AI_EDIT_SIMILARITY_SYSTEM_PROMPT_KEY, value: next.aiEditSimilaritySystemPrompt },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: AI_EDIT_SIMILARITY_USER_PROMPT_KEY },
+      update: { value: next.aiEditSimilarityUserPrompt },
+      create: { key: AI_EDIT_SIMILARITY_USER_PROMPT_KEY, value: next.aiEditSimilarityUserPrompt },
     }),
   ]);
   Object.assign(configCache, next);

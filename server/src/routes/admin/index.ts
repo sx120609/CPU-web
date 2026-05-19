@@ -677,6 +677,12 @@ const siteConfigPatchSchema = z.object({
   aiReviewAutoPassScore: z.number().int().min(0).max(100).optional(),
   aiReviewBlockScore: z.number().int().min(0).max(100).optional(),
   aiEditSimilarityThreshold: z.number().min(0).max(1).optional(),
+  aiTopicReviewSystemPrompt: z.string().max(8000).optional(),
+  aiTopicReviewUserPrompt: z.string().max(12000).optional(),
+  aiReplyReviewSystemPrompt: z.string().max(8000).optional(),
+  aiReplyReviewUserPrompt: z.string().max(12000).optional(),
+  aiEditSimilaritySystemPrompt: z.string().max(8000).optional(),
+  aiEditSimilarityUserPrompt: z.string().max(12000).optional(),
 });
 
 adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), async (req, res, next) => {
@@ -688,7 +694,13 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       req.body.aiReviewApiKey !== undefined ||
       req.body.aiReviewAutoPassScore !== undefined ||
       req.body.aiReviewBlockScore !== undefined ||
-      req.body.aiEditSimilarityThreshold !== undefined
+      req.body.aiEditSimilarityThreshold !== undefined ||
+      req.body.aiTopicReviewSystemPrompt !== undefined ||
+      req.body.aiTopicReviewUserPrompt !== undefined ||
+      req.body.aiReplyReviewSystemPrompt !== undefined ||
+      req.body.aiReplyReviewUserPrompt !== undefined ||
+      req.body.aiEditSimilaritySystemPrompt !== undefined ||
+      req.body.aiEditSimilarityUserPrompt !== undefined
     ) {
       await setAiReviewConfig(req.body);
     }
@@ -701,7 +713,8 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
     if (
       e?.message === "网站域名格式不正确" ||
       e?.message === "网站域名仅支持 http 或 https" ||
-      e?.message === "AI 自动拦截阈值不能低于自动通过阈值"
+      e?.message === "AI 自动拦截阈值不能低于自动通过阈值" ||
+      e?.message === "AI 强制拦截阈值不能低于自动拦截阈值"
     ) {
       next(Errors.badRequest(e.message));
       return;

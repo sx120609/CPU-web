@@ -33,6 +33,13 @@ type DeepSeekReviewResponse = {
   categories?: Record<string, number>;
 };
 
+type DeepSeekEditSimilarityResponse = {
+  similarity_score?: number;
+  same_topic?: boolean;
+  reason?: string;
+  detail?: string;
+};
+
 const REVIEW_API_URL = "https://api.deepseek.com/chat/completions";
 
 export function shouldBypassAiReview(role: string | null | undefined) {
@@ -63,6 +70,34 @@ export function shouldRunAiReview() {
   return Boolean(config.aiReviewEnabled && config.aiReviewApiKey.trim());
 }
 
+type AiJsonMessage = {
+  role: "system" | "user";
+  content: string;
+};
+
+async function requestAiJson(messages: AiJsonMessage[]) {
+  const config = getSiteConfig();
+  const response = await fetch(REVIEW_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${config.aiReviewApiKey}`,
+    },
+    body: JSON.stringify({
+      model: config.aiReviewModel,
+      temperature: 0.1,
+      response_format: { type: "json_object" },
+      messages,
+    }),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw Errors.server(`AI 审核请求失败：${response.status}${text ? ` ${text.slice(0, 120)}` : ""}`);
+  }
+  const json: any = await response.json();
+  return json?.choices?.[0]?.message?.content;
+}
+
 export async function reviewTopicContent(input: {
   title: string;
   content: string;
@@ -82,34 +117,22 @@ export async function reviewTopicContent(input: {
     };
   }
 
-  const prompt = buildReviewPrompt(input);
-  const response = await fetch(REVIEW_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.aiReviewApiKey}`,
+  const content = await requestAiJson([
+    {
+      role: "system",
+      content: config.aiTopicReviewSystemPrompt,
     },
-    body: JSON.stringify({
-      model: config.aiReviewModel,
-      temperature: 0.1,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content:
-            "你是校园社区内容安全审核助手。你需要根据用户稿件判断风险，只返回 JSON。请关注违法、辱骂、人身攻击、隐私泄露、联系方式引流、诈骗、色情、诽谤、校园敏感舆情等风险。",
-        },
-        { role: "user", content: prompt },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw Errors.server(`AI 审核请求失败：${response.status}${text ? ` ${text.slice(0, 120)}` : ""}`);
-  }
-  const json: any = await response.json();
-  const content = json?.choices?.[0]?.message?.content;
+    {
+      role: "user",
+      content: renderPromptTemplate(config.aiTopicReviewUserPrompt, {
+        boardName: input.boardName,
+        boardType: input.boardType,
+        title: input.title,
+        content: input.content,
+        metadataJson: JSON.stringify(input.metadata ?? {}),
+      }),
+    },
+  ]);
   const parsed = parseReviewJson(content);
   const riskScore = clampScore(parsed.risk_score);
   const riskLevel = normalizeRiskLevel(parsed.risk_level, riskScore);
@@ -148,44 +171,22 @@ export async function reviewReplyContent(input: {
     };
   }
 
-  const prompt = [
-    "请审核以下校园社区回复，输出 JSON：",
-    `{"risk_score":0-100,"risk_level":"low|medium|high","decision":"auto_pass|manual_review|block","reason":"一句短原因","detail":"补充说明","categories":{"violence":0-100,"porn":0-100,"abuse":0-100,"privacy":0-100,"fraud":0-100,"political":0-100,"defamation":0-100,"spam":0-100}}`,
-    "",
-    `所属帖子标题：${input.topicTitle || ""}`,
-    `板块名称：${input.boardName || ""}`,
-    `板块类型：${input.boardType || ""}`,
-    `引用/上文：${input.parentContent || ""}`,
-    `回复内容：${input.content}`,
-  ].join("\n");
-
-  const response = await fetch(REVIEW_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.aiReviewApiKey}`,
+  const content = await requestAiJson([
+    {
+      role: "system",
+      content: config.aiReplyReviewSystemPrompt,
     },
-    body: JSON.stringify({
-      model: config.aiReviewModel,
-      temperature: 0.1,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content:
-            "你是校园社区内容安全审核助手。你需要根据用户回复判断风险，只返回 JSON。请关注违法、辱骂、人身攻击、隐私泄露、联系方式引流、诈骗、色情、诽谤、校园敏感舆情等风险。",
-        },
-        { role: "user", content: prompt },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw Errors.server(`AI 审核请求失败：${response.status}${text ? ` ${text.slice(0, 120)}` : ""}`);
-  }
-  const json: any = await response.json();
-  const content = json?.choices?.[0]?.message?.content;
+    {
+      role: "user",
+      content: renderPromptTemplate(config.aiReplyReviewUserPrompt, {
+        topicTitle: input.topicTitle,
+        boardName: input.boardName,
+        boardType: input.boardType,
+        parentContent: input.parentContent,
+        content: input.content,
+      }),
+    },
+  ]);
   const parsed = parseReviewJson(content);
   const riskScore = clampScore(parsed.risk_score);
   const riskLevel = normalizeRiskLevel(parsed.risk_level, riskScore);
@@ -205,23 +206,48 @@ export async function reviewReplyContent(input: {
   };
 }
 
-function buildReviewPrompt(input: {
-  title: string;
-  content: string;
-  boardName?: string | null;
-  boardType?: string | null;
-  metadata?: Record<string, any> | null;
+export async function evaluateTopicEditSimilarity(input: {
+  originalTitle: string;
+  originalContent: string;
+  updatedTitle: string;
+  updatedContent: string;
 }) {
-  return [
-    "请审核以下校园社区稿件，输出 JSON：",
-    `{"risk_score":0-100,"risk_level":"low|medium|high","decision":"auto_pass|manual_review|block","reason":"一句短原因","detail":"补充说明","categories":{"violence":0-100,"porn":0-100,"abuse":0-100,"privacy":0-100,"fraud":0-100,"political":0-100,"defamation":0-100,"spam":0-100}}`,
-    "",
-    `板块名称：${input.boardName || ""}`,
-    `板块类型：${input.boardType || ""}`,
-    `标题：${input.title}`,
-    `正文：${input.content}`,
-    `补充 metadata：${JSON.stringify(input.metadata ?? {})}`,
-  ].join("\n");
+  const config = getSiteConfig();
+  if (!config.aiReviewApiKey.trim()) {
+    return {
+      similarity: fallbackEditSimilarity(
+        `${input.originalTitle}\n${input.originalContent}`,
+        `${input.updatedTitle}\n${input.updatedContent}`,
+      ),
+      reason: "AI 未配置，已回退到本地相似度判定",
+      detail: "",
+      model: config.aiReviewModel,
+      sameTopic: true,
+    };
+  }
+  const content = await requestAiJson([
+    {
+      role: "system",
+      content: config.aiEditSimilaritySystemPrompt,
+    },
+    {
+      role: "user",
+      content: renderPromptTemplate(config.aiEditSimilarityUserPrompt, {
+        originalTitle: input.originalTitle,
+        originalContent: input.originalContent,
+        updatedTitle: input.updatedTitle,
+        updatedContent: input.updatedContent,
+      }),
+    },
+  ]);
+  const parsed = parseEditSimilarityJson(content);
+  return {
+    similarity: clampRatio(parsed.similarity_score),
+    reason: String(parsed.reason || "AI 未提供原因").slice(0, 120),
+    detail: String(parsed.detail || "").slice(0, 1000),
+    model: config.aiReviewModel,
+    sameTopic: Boolean(parsed.same_topic),
+  };
 }
 
 function parseReviewJson(content: string): DeepSeekReviewResponse {
@@ -243,6 +269,25 @@ function parseReviewJson(content: string): DeepSeekReviewResponse {
   }
 }
 
+function parseEditSimilarityJson(content: string): DeepSeekEditSimilarityResponse {
+  if (!content || typeof content !== "string") {
+    throw Errors.server("AI 相似度判定返回为空");
+  }
+  try {
+    return JSON.parse(content);
+  } catch {
+    const match = content.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        return JSON.parse(match[0]);
+      } catch {
+        /* ignore */
+      }
+    }
+    throw Errors.server("AI 相似度判定返回格式异常");
+  }
+}
+
 function clampScore(value: unknown) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 50;
@@ -260,6 +305,64 @@ function decideByThreshold(score: number, autoPassScore: number, blockScore: num
   if (score < autoPassScore) return "auto_pass";
   if (score >= blockScore) return "block";
   return "manual_review";
+}
+
+function renderPromptTemplate(template: string, vars: Record<string, unknown>) {
+  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => stringifyPromptValue(vars[key]));
+}
+
+function stringifyPromptValue(value: unknown) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function clampRatio(value: unknown) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0.5;
+  return Math.max(0, Math.min(1, Number((n / 100).toFixed(2))));
+}
+
+function fallbackEditSimilarity(a: string, b: string) {
+  const sa = normalizeSimilaritySource(a);
+  const sb = normalizeSimilaritySource(b);
+  if (!sa && !sb) return 1;
+  if (!sa || !sb) return 0;
+  if (sa === sb) return 1;
+  const aBigrams = buildBigrams(sa);
+  const bBigrams = buildBigrams(sb);
+  if (!aBigrams.length || !bBigrams.length) {
+    return sa === sb ? 1 : 0;
+  }
+  const counts = new Map<string, number>();
+  for (const item of aBigrams) counts.set(item, (counts.get(item) ?? 0) + 1);
+  let intersection = 0;
+  for (const item of bBigrams) {
+    const count = counts.get(item) ?? 0;
+    if (count > 0) {
+      intersection += 1;
+      counts.set(item, count - 1);
+    }
+  }
+  return (2 * intersection) / (aBigrams.length + bBigrams.length);
+}
+
+function normalizeSimilaritySource(value: string) {
+  return value.replace(/\s+/g, "").trim().toLowerCase();
+}
+
+function buildBigrams(value: string) {
+  if (value.length < 2) return value ? [value] : [];
+  const grams: string[] = [];
+  for (let i = 0; i < value.length - 1; i += 1) {
+    grams.push(value.slice(i, i + 2));
+  }
+  return grams;
 }
 
 function fallbackReason(level: TopicAiRiskLevel) {

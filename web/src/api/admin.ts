@@ -9,6 +9,12 @@ export type SiteConfig = {
   aiReviewAutoPassScore: number;
   aiReviewBlockScore: number;
   aiEditSimilarityThreshold: number;
+  aiTopicReviewSystemPrompt: string;
+  aiTopicReviewUserPrompt: string;
+  aiReplyReviewSystemPrompt: string;
+  aiReplyReviewUserPrompt: string;
+  aiEditSimilaritySystemPrompt: string;
+  aiEditSimilarityUserPrompt: string;
 };
 
 export const adminApi = {
@@ -51,6 +57,12 @@ export const adminApi = {
     aiReviewAutoPassScore?: number;
     aiReviewBlockScore?: number;
     aiEditSimilarityThreshold?: number;
+    aiTopicReviewSystemPrompt?: string;
+    aiTopicReviewUserPrompt?: string;
+    aiReplyReviewSystemPrompt?: string;
+    aiReplyReviewUserPrompt?: string;
+    aiEditSimilaritySystemPrompt?: string;
+    aiEditSimilarityUserPrompt?: string;
   }) =>
     request.patch<SiteConfig>("/admin/site-config", patch),
   features: () => request.get<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>("/admin/features"),

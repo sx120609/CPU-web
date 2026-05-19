@@ -62,6 +62,30 @@
           <span class="ai-label">编辑相似度下限</span>
           <el-input-number v-model="aiEditSimilarityPercent" :min="0" :max="100" />
         </div>
+        <div class="ai-row ai-row--stretch">
+          <span class="ai-label">帖子审核 System Prompt</span>
+          <el-input v-model="aiTopicReviewSystemPrompt" type="textarea" :rows="3" placeholder="可使用后台自定义 AI 审核系统提示词" />
+        </div>
+        <div class="ai-row ai-row--stretch">
+          <span class="ai-label">帖子审核 User Prompt</span>
+          <el-input v-model="aiTopicReviewUserPrompt" type="textarea" :rows="6" placeholder="支持 {{title}} / {{content}} / {{boardName}} / {{boardType}} / {{metadataJson}}" />
+        </div>
+        <div class="ai-row ai-row--stretch">
+          <span class="ai-label">回复审核 System Prompt</span>
+          <el-input v-model="aiReplyReviewSystemPrompt" type="textarea" :rows="3" placeholder="可使用后台自定义 AI 回复审核系统提示词" />
+        </div>
+        <div class="ai-row ai-row--stretch">
+          <span class="ai-label">回复审核 User Prompt</span>
+          <el-input v-model="aiReplyReviewUserPrompt" type="textarea" :rows="6" placeholder="支持 {{topicTitle}} / {{content}} / {{parentContent}} / {{boardName}} / {{boardType}}" />
+        </div>
+        <div class="ai-row ai-row--stretch">
+          <span class="ai-label">编辑相似度 System Prompt</span>
+          <el-input v-model="aiEditSimilaritySystemPrompt" type="textarea" :rows="3" placeholder="可使用后台自定义编辑相似度判定系统提示词" />
+        </div>
+        <div class="ai-row ai-row--stretch">
+          <span class="ai-label">编辑相似度 User Prompt</span>
+          <el-input v-model="aiEditSimilarityUserPrompt" type="textarea" :rows="6" placeholder="支持 {{originalTitle}} / {{originalContent}} / {{updatedTitle}} / {{updatedContent}}" />
+        </div>
         <el-button type="primary" :loading="savingConfig" @click="saveAiReviewConfig">保存 AI 审核配置</el-button>
       </div>
     </div>
@@ -110,6 +134,12 @@ const aiReviewApiKey = ref("");
 const aiReviewAutoPassScore = ref(24);
 const aiReviewBlockScore = ref(70);
 const aiEditSimilarityPercent = ref(0);
+const aiTopicReviewSystemPrompt = ref("");
+const aiTopicReviewUserPrompt = ref("");
+const aiReplyReviewSystemPrompt = ref("");
+const aiReplyReviewUserPrompt = ref("");
+const aiEditSimilaritySystemPrompt = ref("");
+const aiEditSimilarityUserPrompt = ref("");
 const features = reactive<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>({
   forum: true, market: true, coursereview: true, electric: true,
 });
@@ -154,6 +184,12 @@ async function reload() {
     aiReviewAutoPassScore.value = config.aiReviewAutoPassScore;
     aiReviewBlockScore.value = config.aiReviewBlockScore;
     aiEditSimilarityPercent.value = Math.round((config.aiEditSimilarityThreshold ?? 0) * 100);
+    aiTopicReviewSystemPrompt.value = config.aiTopicReviewSystemPrompt ?? "";
+    aiTopicReviewUserPrompt.value = config.aiTopicReviewUserPrompt ?? "";
+    aiReplyReviewSystemPrompt.value = config.aiReplyReviewSystemPrompt ?? "";
+    aiReplyReviewUserPrompt.value = config.aiReplyReviewUserPrompt ?? "";
+    aiEditSimilaritySystemPrompt.value = config.aiEditSimilaritySystemPrompt ?? "";
+    aiEditSimilarityUserPrompt.value = config.aiEditSimilarityUserPrompt ?? "";
   } finally {
     loading.value = false;
     configLoading.value = false;
@@ -182,6 +218,12 @@ async function saveAiReviewConfig() {
       aiReviewAutoPassScore: aiReviewAutoPassScore.value,
       aiReviewBlockScore: aiReviewBlockScore.value,
       aiEditSimilarityThreshold: aiEditSimilarityPercent.value / 100,
+      aiTopicReviewSystemPrompt: aiTopicReviewSystemPrompt.value,
+      aiTopicReviewUserPrompt: aiTopicReviewUserPrompt.value,
+      aiReplyReviewSystemPrompt: aiReplyReviewSystemPrompt.value,
+      aiReplyReviewUserPrompt: aiReplyReviewUserPrompt.value,
+      aiEditSimilaritySystemPrompt: aiEditSimilaritySystemPrompt.value,
+      aiEditSimilarityUserPrompt: aiEditSimilarityUserPrompt.value,
     });
     aiReviewEnabled.value = config.aiReviewEnabled;
     aiReviewProvider.value = config.aiReviewProvider;
@@ -190,6 +232,12 @@ async function saveAiReviewConfig() {
     aiReviewAutoPassScore.value = config.aiReviewAutoPassScore;
     aiReviewBlockScore.value = config.aiReviewBlockScore;
     aiEditSimilarityPercent.value = Math.round((config.aiEditSimilarityThreshold ?? 0) * 100);
+    aiTopicReviewSystemPrompt.value = config.aiTopicReviewSystemPrompt ?? "";
+    aiTopicReviewUserPrompt.value = config.aiTopicReviewUserPrompt ?? "";
+    aiReplyReviewSystemPrompt.value = config.aiReplyReviewSystemPrompt ?? "";
+    aiReplyReviewUserPrompt.value = config.aiReplyReviewUserPrompt ?? "";
+    aiEditSimilaritySystemPrompt.value = config.aiEditSimilaritySystemPrompt ?? "";
+    aiEditSimilarityUserPrompt.value = config.aiEditSimilarityUserPrompt ?? "";
     ElMessage.success("AI 审核配置已保存");
   } finally {
     savingConfig.value = false;

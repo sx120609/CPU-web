@@ -13,6 +13,7 @@ import {
   isFeatureOn,
 } from "../services/siteSettings";
 import {
+  evaluateTopicEditSimilarity,
   ensureUserCanSubmitTopic,
   notifyTopicAiBlocked,
   refreshTopicSubmissionLock,
@@ -259,17 +260,18 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     if (!t) throw Errors.notFound();
     const isOwner = t.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
+    const canEditContent = isOwner || req.user!.role === "admin";
     if (!isOwner && !isMod) throw Errors.forbidden();
     if (!isMod && !isBoardTypeEnabled(t.board?.type)) throw Errors.forbidden(featureClosedMessage(t.board?.type));
 
     const body = req.body as any;
     const data: any = {};
-    const nextTitle = typeof body.title === "string" && isOwner ? body.title : t.title;
-    const nextContent = typeof body.content === "string" && isOwner ? body.content : t.content;
+    const nextTitle = typeof body.title === "string" && canEditContent ? body.title : t.title;
+    const nextContent = typeof body.content === "string" && canEditContent ? body.content : t.content;
     const nextMetadataRaw = typeof body.metadata === "object" && body.metadata ? JSON.stringify(body.metadata) : t.metadata;
-    if (typeof body.title === "string" && isOwner) data.title = body.title;
-    if (typeof body.content === "string" && isOwner) data.content = body.content;
-    if (typeof body.metadata === "object" && body.metadata) data.metadata = nextMetadataRaw;
+    if (typeof body.title === "string" && canEditContent) data.title = body.title;
+    if (typeof body.content === "string" && canEditContent) data.content = body.content;
+    if (typeof body.metadata === "object" && body.metadata && canEditContent) data.metadata = nextMetadataRaw;
     if (typeof body.pinned === "boolean" && isMod) data.pinned = body.pinned;
     if (typeof body.locked === "boolean" && isMod) data.locked = body.locked;
     if (typeof body.hidden === "boolean" && isMod) data.hidden = body.hidden;
@@ -277,12 +279,15 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     if (isOwner && (typeof body.title === "string" || typeof body.content === "string")) {
       const similarityThreshold = getSiteConfig().aiEditSimilarityThreshold ?? 0;
       if (similarityThreshold > 0) {
-        const similarity = computeEditSimilarity(
-          `${t.title}\n${t.content}`,
-          `${nextTitle}\n${nextContent}`
-        );
-        if (similarity < similarityThreshold) {
-          throw Errors.badRequest(`修改后的内容与原内容相似度过低（${Math.round(similarity * 100)}%），未达到站点要求`);
+        const similarity = await evaluateTopicEditSimilarity({
+          originalTitle: t.title,
+          originalContent: t.content,
+          updatedTitle: nextTitle,
+          updatedContent: nextContent,
+        });
+        if (similarity.similarity < similarityThreshold) {
+          const reasonSuffix = similarity.reason ? `：${similarity.reason}` : "";
+          throw Errors.badRequest(`修改后的内容与原内容相似度过低（${Math.round(similarity.similarity * 100)}%），未达到站点要求${reasonSuffix}`);
         }
       }
       const bypassAiReview = await shouldBypassAiReviewForUser(req.user!.userId, req.user!.role);
@@ -320,7 +325,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     }
 
     if (
-      isOwner &&
+      canEditContent &&
       Object.keys(data).length &&
       (
         (typeof body.title === "string" && body.title !== t.title) ||
@@ -391,43 +396,6 @@ function clampInt(v: any, min: number, max: number) {
   const n = Number(v);
   if (!Number.isFinite(n)) return min;
   return Math.max(min, Math.min(max, Math.round(n)));
-}
-
-function computeEditSimilarity(a: string, b: string) {
-  const sa = normalizeSimilaritySource(a);
-  const sb = normalizeSimilaritySource(b);
-  if (!sa && !sb) return 1;
-  if (!sa || !sb) return 0;
-  if (sa === sb) return 1;
-  const aBigrams = buildBigrams(sa);
-  const bBigrams = buildBigrams(sb);
-  if (!aBigrams.length || !bBigrams.length) {
-    return sa === sb ? 1 : 0;
-  }
-  const counts = new Map<string, number>();
-  for (const item of aBigrams) counts.set(item, (counts.get(item) ?? 0) + 1);
-  let intersection = 0;
-  for (const item of bBigrams) {
-    const count = counts.get(item) ?? 0;
-    if (count > 0) {
-      intersection += 1;
-      counts.set(item, count - 1);
-    }
-  }
-  return (2 * intersection) / (aBigrams.length + bBigrams.length);
-}
-
-function normalizeSimilaritySource(value: string) {
-  return value.replace(/\s+/g, "").trim().toLowerCase();
-}
-
-function buildBigrams(value: string) {
-  if (value.length < 2) return value ? [value] : [];
-  const grams: string[] = [];
-  for (let i = 0; i < value.length - 1; i += 1) {
-    grams.push(value.slice(i, i + 2));
-  }
-  return grams;
 }
 
 async function refreshCourseStats(courseId: number) {
