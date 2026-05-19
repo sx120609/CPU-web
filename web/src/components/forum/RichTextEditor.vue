@@ -14,6 +14,19 @@
       <button type="button" title="有序列表" :class="{ active: toolbarState.ol }" @click="runCommand('insertOrderedList')">编号</button>
       <button type="button" title="插入链接" @click="insertLink">链接</button>
       <span class="toolbar-divider" />
+      <span class="size-label">齐</span>
+      <button
+        v-for="item in alignOptions"
+        :key="item.value"
+        type="button"
+        class="align-btn"
+        :class="{ active: toolbarState.align === item.value }"
+        :title="item.title"
+        @click="applyAlignment(item.value)"
+      >
+        {{ item.label }}
+      </button>
+      <span class="toolbar-divider" />
       <span class="size-label">图</span>
       <button
         v-for="item in imageSizeOptions"
@@ -21,8 +34,8 @@
         type="button"
         class="size-btn"
         :class="{ active: imageSize === item.value }"
-        :title="`插入${item.label}`"
-        @click="imageSize = item.value"
+        :title="selectedImage ? `设为${item.label}图` : `插入${item.label}`"
+        @click="applyImageSize(item.value)"
       >
         {{ item.label }}
       </button>
@@ -40,6 +53,7 @@
       @paste="handleEditorPaste"
       @drop.prevent="handleEditorDrop"
       @dragover.prevent
+      @click="handleEditorClick"
       @mouseup="handleEditorSelectionChange"
       @keyup="handleEditorSelectionChange"
       @focus="handleEditorSelectionChange"
@@ -69,6 +83,7 @@ import { compressImageFile } from "@/utils/imageUpload";
 import { renderMarkdown } from "@/utils/markdown";
 
 type ImageSize = "small" | "medium" | "large";
+type Alignment = "left" | "center" | "right";
 
 const props = withDefaults(defineProps<{
   modelValue: string;
@@ -101,8 +116,10 @@ const toolbarState = reactive({
   ul: false,
   ol: false,
   block: "p",
+  align: "left" as Alignment,
 });
 let savedSelection: Range | null = null;
+let selectedImage: HTMLImageElement | null = null;
 let draftTimer = 0;
 let internalUpdate = false;
 
@@ -110,6 +127,12 @@ const imageSizeOptions: Array<{ value: ImageSize; label: string }> = [
   { value: "small", label: "小" },
   { value: "medium", label: "中" },
   { value: "large", label: "大" },
+];
+
+const alignOptions: Array<{ value: Alignment; label: string; title: string }> = [
+  { value: "left", label: "左齐", title: "靠左" },
+  { value: "center", label: "居中", title: "居中" },
+  { value: "right", label: "右齐", title: "靠右" },
 ];
 
 onMounted(async () => {
@@ -148,6 +171,7 @@ function contentLooksLikeHtml(value: string) {
 
 function syncEditorContent() {
   if (!editorRef.value) return;
+  normalizeAlignmentAttributes(editorRef.value);
   const value = normalizeEditorHtml(editorRef.value.innerHTML);
   internalUpdate = true;
   emit("update:modelValue", value);
@@ -178,15 +202,28 @@ function handleEditorSelectionChange() {
   updateToolbarState();
 }
 
+function handleEditorClick(event: MouseEvent) {
+  if (event.target instanceof HTMLImageElement) {
+    selectedImage = event.target;
+  } else {
+    selectedImage = null;
+  }
+  rememberSelection();
+  updateToolbarState();
+}
+
 function updateToolbarState() {
   const selection = window.getSelection();
-  const node = selection?.rangeCount ? selection.getRangeAt(0).commonAncestorContainer : null;
+  const node = selectedImage || (selection?.rangeCount ? selection.getRangeAt(0).commonAncestorContainer : null);
   if (!node || !editorRef.value?.contains(node)) return;
   toolbarState.bold = document.queryCommandState("bold");
   toolbarState.italic = document.queryCommandState("italic");
   toolbarState.ul = document.queryCommandState("insertUnorderedList");
   toolbarState.ol = document.queryCommandState("insertOrderedList");
   toolbarState.block = normalizeBlockName(String(document.queryCommandValue("formatBlock") || "p"));
+  toolbarState.align = readAlignment(node);
+  const activeImage = selectedImage && editorRef.value.contains(selectedImage) ? selectedImage : findImageNearSelection(node);
+  if (activeImage) imageSize.value = readImageSize(activeImage);
 }
 
 function normalizeBlockName(value: string) {
@@ -216,6 +253,22 @@ function applyFormat(tag: "p" | "h2" | "h3" | "blockquote") {
   runCommand("formatBlock", tag);
 }
 
+function applyAlignment(align: Alignment) {
+  restoreSelection();
+  const targets = getAlignmentTargets();
+  if (!targets.length && prepareEmptyAlignmentTarget(align)) {
+    toolbarState.align = align;
+    syncEditorContent();
+    rememberSelection();
+    return;
+  }
+  if (!targets.length) return;
+  targets.forEach((target) => setAlignment(target, align));
+  toolbarState.align = align;
+  syncEditorContent();
+  rememberSelection();
+}
+
 async function insertLink() {
   rememberSelection();
   const url = await ElMessageBox.prompt("输入链接地址", "插入链接", {
@@ -235,6 +288,14 @@ async function insertLink() {
 function pickContentImage() {
   rememberSelection();
   contentImageInputRef.value?.click();
+}
+
+function applyImageSize(size: ImageSize) {
+  imageSize.value = size;
+  if (!selectedImage || !editorRef.value?.contains(selectedImage)) return;
+  selectedImage.setAttribute("data-size", size);
+  syncEditorContent();
+  rememberSelection();
 }
 
 async function onContentImagePicked(event: Event) {
@@ -276,7 +337,7 @@ async function uploadAndInsertImages(files: File[]) {
       });
       const { url } = await uploadApi.image(compressed);
       insertHtmlAtCursor(
-        `<p><img src="${escapeAttr(url)}" alt="${escapeAttr(file.name || "图片")}" data-size="${imageSize.value}" /></p><p><br></p>`
+        `<p data-align="${toolbarState.align}"><img src="${escapeAttr(url)}" alt="${escapeAttr(file.name || "图片")}" data-size="${imageSize.value}" data-align="${toolbarState.align}" /></p><p><br></p>`
       );
     }
     ElMessage.success(files.length > 1 ? "图片已压缩并上传" : "图片已压缩并插入");
@@ -290,6 +351,108 @@ function insertHtmlAtCursor(html: string) {
   document.execCommand("insertHTML", false, html);
   syncEditorContent();
   rememberSelection();
+}
+
+function getAlignmentTargets() {
+  if (!editorRef.value) return [];
+  if (selectedImage && editorRef.value.contains(selectedImage)) {
+    return [selectedImage];
+  }
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return [];
+  const range = selection.getRangeAt(0);
+  if (!editorRef.value.contains(range.commonAncestorContainer)) return [];
+
+  const blocks = Array.from(editorRef.value.querySelectorAll<HTMLElement>("p,h1,h2,h3,h4,h5,h6,blockquote,li"));
+  const selectedBlocks = blocks.filter((block) => {
+    try {
+      return range.intersectsNode(block);
+    } catch {
+      return false;
+    }
+  });
+  if (selectedBlocks.length) return selectedBlocks;
+
+  const block = closestEditableBlock(range.startContainer);
+  return block ? [block] : [];
+}
+
+function prepareEmptyAlignmentTarget(align: Alignment) {
+  if (!editorRef.value || !isContentEmpty()) return false;
+  editorRef.value.innerHTML = `<p data-align="${align}"><br></p>`;
+  const paragraph = editorRef.value.querySelector("p");
+  if (!paragraph) return false;
+  const range = document.createRange();
+  range.selectNodeContents(paragraph);
+  range.collapse(true);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  savedSelection = range.cloneRange();
+  return true;
+}
+
+function closestEditableBlock(node: Node) {
+  if (!editorRef.value) return null;
+  const element = node instanceof HTMLElement ? node : node.parentNode instanceof HTMLElement ? node.parentNode : null;
+  const block = element?.closest<HTMLElement>("p,h1,h2,h3,h4,h5,h6,blockquote,li");
+  if (block && editorRef.value.contains(block)) return block;
+  return null;
+}
+
+function setAlignment(target: HTMLElement, align: Alignment) {
+  const block = target instanceof HTMLImageElement ? closestEditableBlock(target) : target;
+  block?.setAttribute("data-align", align);
+  if (target instanceof HTMLImageElement) target.setAttribute("data-align", align);
+  block?.querySelectorAll("img").forEach((img) => img.setAttribute("data-align", align));
+}
+
+function readAlignment(node: Node): Alignment {
+  const element = node instanceof HTMLElement ? node : node.parentElement;
+  const explicit = element?.closest<HTMLElement>("[data-align]")?.dataset.align;
+  if (explicit === "center" || explicit === "right" || explicit === "left") return explicit;
+  const block = closestEditableBlock(node);
+  const blockAlign = block?.dataset.align;
+  if (blockAlign === "center" || blockAlign === "right" || blockAlign === "left") return blockAlign;
+  return "left";
+}
+
+function readImageSize(img: HTMLImageElement): ImageSize {
+  const size = img.dataset.size;
+  if (size === "small" || size === "medium" || size === "large") return size;
+  return "large";
+}
+
+function findImageNearSelection(node: Node) {
+  const element = node instanceof HTMLElement ? node : node.parentNode instanceof HTMLElement ? node.parentNode : null;
+  if (element instanceof HTMLImageElement) return element;
+  return element?.closest("p")?.querySelector("img") ?? null;
+}
+
+function normalizeAlignmentAttributes(root: HTMLElement) {
+  root.querySelectorAll<HTMLElement>("[style]").forEach((el) => {
+    const align = normalizeTextAlign(el.style.textAlign);
+    if (align) el.setAttribute("data-align", align);
+    el.removeAttribute("style");
+  });
+  root.querySelectorAll<HTMLElement>("[align]").forEach((el) => {
+    const align = normalizeTextAlign(el.getAttribute("align") || "");
+    if (align) el.setAttribute("data-align", align);
+    el.removeAttribute("align");
+  });
+  root.querySelectorAll<HTMLElement>("[data-align]").forEach((el) => {
+    const align = normalizeTextAlign(el.dataset.align || "");
+    if (align) el.setAttribute("data-align", align);
+    else el.removeAttribute("data-align");
+  });
+}
+
+function normalizeTextAlign(value: string): Alignment | "" {
+  const normalized = value.toLowerCase();
+  if (normalized === "center") return "center";
+  if (normalized === "right" || normalized === "end") return "right";
+  if (normalized === "left" || normalized === "start") return "left";
+  return "";
 }
 
 function readDraft() {
@@ -435,7 +598,8 @@ defineExpose({ clearDraft, isContentEmpty });
   font-weight: 700;
 }
 
-.size-btn {
+.size-btn,
+.align-btn {
   min-width: 34px;
   padding: 0 8px !important;
 }
@@ -470,6 +634,9 @@ defineExpose({ clearDraft, isContentEmpty });
 .editor-surface :deep(h2) { font-size: 20px; }
 .editor-surface :deep(h3) { font-size: 17px; }
 .editor-surface :deep(p) { margin: 0.45em 0; }
+.editor-surface :deep([data-align="left"]) { text-align: left; }
+.editor-surface :deep([data-align="center"]) { text-align: center; }
+.editor-surface :deep([data-align="right"]) { text-align: right; }
 .editor-surface :deep(ul),
 .editor-surface :deep(ol) {
   margin: 0.45em 0;
@@ -499,6 +666,24 @@ defineExpose({ clearDraft, isContentEmpty });
   margin: 8px 0;
   padding: 4px;
   vertical-align: top;
+}
+
+.editor-surface :deep(img[data-align="center"]) {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.editor-surface :deep(img[data-align="right"]) {
+  display: block;
+  margin-left: auto;
+  margin-right: 0;
+}
+
+.editor-surface :deep(img[data-align="left"]) {
+  display: block;
+  margin-left: 0;
+  margin-right: auto;
 }
 
 .editor-surface :deep(img[data-size="small"]) {
