@@ -1,68 +1,84 @@
 <template>
   <div class="rich-editor">
-    <div class="editor-toolbar" @mousedown.prevent>
-      <span class="toolbar-title">{{ label }}</span>
-      <button type="button" title="正文" :class="{ active: toolbarState.block === 'p' }" @click="applyFormat('p')">正文</button>
-      <button type="button" title="二级标题" :class="{ active: toolbarState.block === 'h2' }" @click="applyFormat('h2')">标题</button>
-      <button type="button" title="三级标题" :class="{ active: toolbarState.block === 'h3' }" @click="applyFormat('h3')">小标题</button>
-      <span class="toolbar-divider" />
-      <button type="button" title="加粗" class="bold" :class="{ active: toolbarState.bold }" @click="runCommand('bold')">B</button>
-      <button type="button" title="斜体" class="italic" :class="{ active: toolbarState.italic }" @click="runCommand('italic')">I</button>
-      <button type="button" title="引用" :class="{ active: toolbarState.block === 'blockquote' }" @click="applyFormat('blockquote')">引用</button>
-      <span class="toolbar-divider" />
-      <button type="button" title="无序列表" :class="{ active: toolbarState.ul }" @click="runCommand('insertUnorderedList')">列表</button>
-      <button type="button" title="有序列表" :class="{ active: toolbarState.ol }" @click="runCommand('insertOrderedList')">编号</button>
-      <button type="button" title="插入链接" @click="insertLink">链接</button>
-      <span class="toolbar-divider" />
-      <span class="size-label">齐</span>
-      <button
-        v-for="item in alignOptions"
-        :key="item.value"
-        type="button"
-        class="align-btn"
-        :class="{ active: toolbarState.align === item.value }"
-        :title="item.title"
-        @click="applyAlignment(item.value)"
-      >
-        {{ item.label }}
-      </button>
-      <span class="toolbar-divider" />
-      <span class="size-label">图</span>
-      <button
-        v-for="item in imageSizeOptions"
-        :key="item.value"
-        type="button"
-        class="size-btn"
-        :class="{ active: imageSize === item.value }"
-        :title="hasSelectedImage ? `设为${item.label}图` : `插入${item.label}`"
-        @click="applyImageSize(item.value)"
-      >
-        {{ item.label }}
-      </button>
-      <button type="button" title="上传图片" :disabled="imageUploading" @click="pickContentImage">
-        {{ imageUploading ? "上传中" : "插图" }}
-      </button>
+    <div class="editor-toolbar" @mousedown.prevent @touchstart.passive="rememberSelection">
+      <div class="toolbar-head">
+        <span class="toolbar-title">{{ label }}</span>
+        <span class="toolbar-status">{{ toolbarStatusText }}</span>
+      </div>
+
+      <div class="toolbar-scroll">
+        <div class="toolbar-group">
+          <button type="button" title="正文" :class="{ active: toolbarState.block === 'p' }" @click="applyFormat('p')">正文</button>
+          <button type="button" title="二级标题" :class="{ active: toolbarState.block === 'h2' }" @click="applyFormat('h2')">标题</button>
+          <button type="button" title="三级标题" :class="{ active: toolbarState.block === 'h3' }" @click="applyFormat('h3')">小标题</button>
+        </div>
+
+        <div class="toolbar-group">
+          <button type="button" title="加粗" class="bold" :class="{ active: toolbarState.bold }" @click="runCommand('bold')">B</button>
+          <button type="button" title="斜体" class="italic" :class="{ active: toolbarState.italic }" @click="runCommand('italic')">I</button>
+          <button type="button" title="引用" :class="{ active: toolbarState.block === 'blockquote' }" @click="applyFormat('blockquote')">引用</button>
+        </div>
+
+        <div class="toolbar-group">
+          <button type="button" title="无序列表" :class="{ active: toolbarState.ul }" @click="runCommand('insertUnorderedList')">列表</button>
+          <button type="button" title="有序列表" :class="{ active: toolbarState.ol }" @click="runCommand('insertOrderedList')">编号</button>
+          <button type="button" title="插入链接" @click="insertLink">链接</button>
+        </div>
+
+        <div class="toolbar-group toolbar-group--compact">
+          <span class="size-label">齐</span>
+          <button
+            v-for="item in alignOptions"
+            :key="item.value"
+            type="button"
+            class="align-btn"
+            :class="{ active: toolbarState.align === item.value }"
+            :title="item.title"
+            @click="applyAlignment(item.value)"
+          >
+            {{ item.label }}
+          </button>
+        </div>
+
+        <div class="toolbar-group toolbar-group--compact">
+          <span class="size-label">图</span>
+          <button
+            v-for="item in imageSizeOptions"
+            :key="item.value"
+            type="button"
+            class="size-btn"
+            :class="{ active: imageSize === item.value }"
+            :title="hasSelectedImage ? `设为${item.label}图` : `插入${item.label}`"
+            @click="applyImageSize(item.value)"
+          >
+            {{ item.label }}
+          </button>
+          <button type="button" title="上传图片" :disabled="imageUploading" @click="pickContentImage">
+            {{ imageUploading ? "上传中" : "插图" }}
+          </button>
+        </div>
+      </div>
     </div>
 
     <div
       ref="editorRef"
       class="editor-surface"
       contenteditable="true"
-      :data-placeholder="placeholder"
+      :data-placeholder="resolvedPlaceholder"
       @input="syncEditorContent"
       @paste="handleEditorPaste"
       @drop.prevent="handleEditorDrop"
       @dragover.prevent
       @click="handleEditorClick"
-      @mouseup="handleEditorSelectionChange"
+      @pointerup="handleEditorSelectionChange"
       @keyup="handleEditorSelectionChange"
       @focus="handleEditorSelectionChange"
     ></div>
 
     <div class="editor-foot">
-      <span>{{ footerText }}</span>
-      <span class="draft-state">{{ draftHint }}</span>
-      <span :class="{ warn: modelValue.length > maxLength }">{{ modelValue.length }} / {{ maxLength }}</span>
+      <span class="foot-note">{{ resolvedFooterText }}</span>
+      <span class="draft-state">{{ draftHint || "自动保存草稿" }}</span>
+      <span class="foot-count" :class="{ warn: modelValue.length > maxLength }">{{ modelValue.length }} / {{ maxLength }}</span>
     </div>
 
     <input
@@ -76,7 +92,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { uploadApi } from "@/api/topic";
 import { compressImageFile } from "@/utils/imageUpload";
@@ -86,6 +102,11 @@ type ImageSize = "small" | "medium" | "large";
 type Alignment = "left" | "center" | "right";
 
 const EDITABLE_BLOCK_SELECTOR = "p,div,h1,h2,h3,h4,h5,h6,blockquote,li";
+const MOBILE_BREAKPOINT = "(max-width: 700px)";
+const DEFAULT_PLACEHOLDER = "写正文，可以用上方按钮排版，也可以直接粘贴图片。";
+const MOBILE_PLACEHOLDER = "写正文，可用上方工具栏排版和插图。";
+const DEFAULT_FOOTER = "支持直接粘贴图片；编辑区内图片会以小预览显示。";
+const MOBILE_FOOTER = "支持工具栏插图；编辑区内图片会以小预览显示。";
 
 const props = withDefaults(defineProps<{
   modelValue: string;
@@ -95,9 +116,9 @@ const props = withDefaults(defineProps<{
   maxLength?: number;
   draftKey?: string;
 }>(), {
-  placeholder: "写正文，可以用上方按钮排版，也可以直接粘贴图片。",
+  placeholder: DEFAULT_PLACEHOLDER,
   label: "可视化编辑",
-  footerText: "支持直接粘贴图片；编辑区内图片会以小预览显示。",
+  footerText: DEFAULT_FOOTER,
   maxLength: 20000,
   draftKey: "",
 });
@@ -113,6 +134,7 @@ const imageUploading = ref(false);
 const imageSize = ref<ImageSize>("large");
 const draftHint = ref("");
 const hasSelectedImage = ref(false);
+const isMobileViewport = ref(false);
 const toolbarState = reactive({
   bold: false,
   italic: false,
@@ -125,6 +147,7 @@ let savedSelection: Range | null = null;
 let selectedImage: HTMLImageElement | null = null;
 let draftTimer = 0;
 let internalUpdate = false;
+let mobileViewportQuery: MediaQueryList | null = null;
 
 const imageSizeOptions: Array<{ value: ImageSize; label: string }> = [
   { value: "small", label: "小" },
@@ -138,15 +161,57 @@ const alignOptions: Array<{ value: Alignment; label: string; title: string }> = 
   { value: "right", label: "右齐", title: "靠右" },
 ];
 
+const resolvedPlaceholder = computed(() => (
+  isMobileViewport.value && props.placeholder === DEFAULT_PLACEHOLDER
+    ? MOBILE_PLACEHOLDER
+    : props.placeholder
+));
+
+const resolvedFooterText = computed(() => (
+  isMobileViewport.value && props.footerText === DEFAULT_FOOTER
+    ? MOBILE_FOOTER
+    : props.footerText
+));
+
+const toolbarStatusText = computed(() => {
+  if (hasSelectedImage.value) return "已选图片，可调大小和对齐";
+  return isMobileViewport.value ? "支持排版、插图和草稿" : "支持排版、图片和草稿";
+});
+
 onMounted(async () => {
+  syncMobileViewport();
+  if (typeof window !== "undefined" && window.matchMedia) {
+    mobileViewportQuery = window.matchMedia(MOBILE_BREAKPOINT);
+    if (typeof mobileViewportQuery.addEventListener === "function") {
+      mobileViewportQuery.addEventListener("change", handleViewportChange);
+    } else {
+      mobileViewportQuery.addListener(handleViewportChange);
+    }
+  }
   hydrateEditor(readDraft() || props.modelValue);
   document.addEventListener("selectionchange", updateToolbarState);
 });
 
 onBeforeUnmount(() => {
   document.removeEventListener("selectionchange", updateToolbarState);
+  if (mobileViewportQuery) {
+    if (typeof mobileViewportQuery.removeEventListener === "function") {
+      mobileViewportQuery.removeEventListener("change", handleViewportChange);
+    } else {
+      mobileViewportQuery.removeListener(handleViewportChange);
+    }
+  }
   window.clearTimeout(draftTimer);
 });
+
+function handleViewportChange(event: { matches: boolean }) {
+  isMobileViewport.value = event.matches;
+}
+
+function syncMobileViewport() {
+  if (typeof window === "undefined") return;
+  isMobileViewport.value = window.matchMedia?.(MOBILE_BREAKPOINT).matches ?? window.innerWidth <= 700;
+}
 
 watch(() => props.modelValue, (value) => {
   if (internalUpdate) {
