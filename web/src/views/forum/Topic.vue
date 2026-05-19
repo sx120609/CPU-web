@@ -38,6 +38,14 @@
             <router-link v-if="topic.author?.id" :to="`/u/${topic.author.id}`">{{ topic.author?.nickname }}</router-link>
             <el-tag v-if="topic.author?.role === 'bot'" size="small" type="warning">系统同步</el-tag>
             <el-tag v-else-if="topic.author?.role === 'admin'" size="small" type="danger">管理员</el-tag>
+            <UserModerationActions
+              v-if="topic.author"
+              :user="topic.author"
+              display="dropdown"
+              text
+              label="管理"
+              @updated="applyTopicAuthorModeration"
+            />
           </div>
           <div class="meta">
             发表于 {{ fmtDate(topic.createdAt) }}
@@ -99,6 +107,14 @@
           <div class="reply-meta">
             <span class="floor">#{{ r.floor }}</span>
             <router-link v-if="r.author?.id" :to="`/u/${r.author.id}`" class="author">{{ r.author?.nickname }}</router-link>
+            <UserModerationActions
+              v-if="r.author"
+              :user="r.author"
+              display="dropdown"
+              text
+              label="管理"
+              @updated="applyReplyAuthorModeration(r, $event)"
+            />
             <span class="dot">·</span>
             <span>{{ fmtRelative(r.createdAt) }}</span>
           </div>
@@ -112,7 +128,7 @@
     </section>
 
     <!-- 回复表单 -->
-    <section class="cpu-card reply-form" v-if="auth.isLoggedIn && !topic.locked">
+    <section class="cpu-card reply-form" v-if="auth.isLoggedIn && !topic.locked && auth.user?.status !== 'muted'">
       <h3 class="cpu-section-title">回复</h3>
       <RichTextEditor
         ref="replyEditorRef"
@@ -131,6 +147,10 @@
         </el-button>
       </div>
     </section>
+
+    <div v-else-if="auth.isLoggedIn && !topic.locked && auth.user?.status === 'muted'" class="locked-tip cpu-card">
+      {{ currentMuteMessage }}
+    </div>
 
     <el-dialog
       v-model="replyReviewBlockedOpen"
@@ -169,6 +189,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowLeft, Star, ChatLineRound, Link } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
+import UserModerationActions from "@/components/common/UserModerationActions.vue";
 import MarkdownView from "@/components/forum/MarkdownView.vue";
 import RichTextEditor from "@/components/forum/RichTextEditor.vue";
 import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDialog.vue";
@@ -205,6 +226,7 @@ const canEdit = computed(() => auth.user?.id === topic.value?.authorId || auth.i
 const canPin = computed(() => auth.isMod);
 const replyDraftKey = computed(() => topic.value?.id ? `cpu-reply-draft-${topic.value.id}` : "");
 const replyIsEmpty = computed(() => replyEditorRef.value?.isContentEmpty() ?? !replyText.value.trim());
+const currentMuteMessage = computed(() => auth.user?.mutedUntil ? `你已被禁言至 ${fmtDate(auth.user.mutedUntil)}` : "你当前已被禁言，暂时无法回复");
 const displayContent = computed(() => {
   const content = topic.value?.content ?? "";
   if (!topic.value?.metadata?.sourceUrl) return content;
@@ -262,6 +284,7 @@ function quoteReply(r: Reply) {
 
 async function submitReply() {
   if (!auth.isLoggedIn) { router.push({ name: "login", query: { redirect: route.fullPath } }); return; }
+  if (auth.user?.status === "muted") { ElMessage.warning(currentMuteMessage.value); return; }
   if (replyEditorRef.value?.isContentEmpty()) { ElMessage.warning("请填写回复内容"); return; }
   if (replyText.value.length > REPLY_MAX) { ElMessage.warning("回复内容过长，请精简后再发布"); return; }
   replying.value = true;
@@ -316,6 +339,16 @@ function stripCrawlerSourceHeader(content: string) {
 
 function onEdit() {
   router.push({ name: "edit-post", params: { id: topic.value!.id } });
+}
+
+function applyTopicAuthorModeration(patch: Record<string, unknown>) {
+  if (!topic.value?.author) return;
+  Object.assign(topic.value.author, patch);
+}
+
+function applyReplyAuthorModeration(reply: any, patch: Record<string, unknown>) {
+  if (!reply?.author) return;
+  Object.assign(reply.author, patch);
 }
 
 async function onPin() {

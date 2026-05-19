@@ -27,6 +27,7 @@ model User {
   // 是否通过学校 SSO 登录认证（学号身份已验证）。alice 等示例账号为 false
   studentSso    Boolean  @default(false)
   status        String   @default("active") // active / banned / muted
+  mutedUntil    DateTime?
   postCount     Int      @default(0)
   replyCount    Int      @default(0)
   reputation    Int      @default(0)

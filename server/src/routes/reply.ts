@@ -6,6 +6,7 @@ import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettings";
 import { requestManualReplyReview, reviewReplyContent, shouldBypassAiReviewForUser, shouldRunAiReview } from "../services/topicAiReview";
+import { ensureUserCanSpeak } from "../services/userModeration";
 
 export const replyRouter = Router();
 
@@ -19,6 +20,7 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
   try {
     const userId = req.user!.userId;
     const { topicId, content, parentReplyId } = req.body;
+    await ensureUserCanSpeak(userId);
     const topic = await prisma.topic.findUnique({
       where: { id: topicId },
       include: { board: { select: { type: true, name: true } } },
@@ -95,7 +97,7 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
         aiReviewStatus: "auto_passed",
       },
       include: {
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
       },
     });
 

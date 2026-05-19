@@ -12,6 +12,8 @@ export interface UserInfo {
   enrollYear?: number | null;
   role: string;
   studentSso?: boolean;
+  status?: string;
+  mutedUntil?: string | null;
   postCount: number;
   replyCount: number;
   reputation: number;

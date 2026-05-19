@@ -22,6 +22,7 @@ import {
   resolveReplyManualReviewAdminNotifications,
   resolveTopicManualReviewAdminNotifications,
 } from "../../services/topicAiReview";
+import { parseMutedUntil, releaseExpiredMutes } from "../../services/userModeration";
 
 export const adminRouter = Router();
 
@@ -29,6 +30,7 @@ export const adminRouter = Router();
 
 adminRouter.get("/users", modOrAbove, async (req, res, next) => {
   try {
+    await releaseExpiredMutes();
     const q = String(req.query.q ?? "").trim();
     const role = req.query.role ? String(req.query.role) : undefined;
     const status = req.query.status ? String(req.query.status) : undefined;
@@ -86,6 +88,7 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
         select: {
           id: true, username: true, nickname: true, email: true, avatar: true,
           college: true, enrollYear: true, role: true, studentSso: true, status: true,
+          mutedUntil: true,
           postCount: true, replyCount: true, reputation: true,
           aiReviewWhitelisted: true,
           lastSeenAt: true, lastLoginAt: true, lastLoginClient: true, usedIosClient: true, usedAndroidClient: true,
@@ -103,11 +106,13 @@ const userPatchSchema = z.object({
   role: z.enum(["user", "mod", "admin", "bot"]).optional(),
   nickname: z.string().min(1).max(20).optional(),
   aiReviewWhitelisted: z.boolean().optional(),
+  mutedUntil: z.string().trim().max(64).nullable().optional(),
 });
 
 adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    await releaseExpiredMutes();
     if (id === req.user!.userId && req.body.role && req.body.role !== "admin") {
       throw Errors.badRequest("不能给自己降级");
     }
@@ -118,8 +123,42 @@ adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (re
     if (req.body.aiReviewWhitelisted !== undefined && req.user!.role !== "admin") {
       throw Errors.forbidden("仅管理员可修改 AI 审核白名单");
     }
-    const u = await prisma.user.update({ where: { id }, data: req.body });
-    ok(res, { id: u.id, role: u.role, status: u.status, nickname: u.nickname, aiReviewWhitelisted: u.aiReviewWhitelisted });
+    const current = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, status: true, mutedUntil: true },
+    });
+    if (!current) throw Errors.notFound("用户不存在");
+
+    const data: any = {};
+    if (req.body.role !== undefined) data.role = req.body.role;
+    if (req.body.nickname !== undefined) data.nickname = req.body.nickname;
+    if (req.body.aiReviewWhitelisted !== undefined) data.aiReviewWhitelisted = req.body.aiReviewWhitelisted;
+
+    const parsedMutedUntil = parseMutedUntil(req.body.mutedUntil);
+    if (req.body.status !== undefined || req.body.mutedUntil !== undefined) {
+      const nextStatus = req.body.status ?? current.status;
+      const nextMutedUntil = parsedMutedUntil !== undefined ? parsedMutedUntil : current.mutedUntil;
+      if (nextStatus === "muted") {
+        if (nextMutedUntil && nextMutedUntil.getTime() <= Date.now()) {
+          throw Errors.badRequest("禁言截止时间必须晚于当前时间");
+        }
+        data.status = "muted";
+        data.mutedUntil = nextMutedUntil ?? null;
+      } else {
+        data.status = nextStatus;
+        data.mutedUntil = null;
+      }
+    }
+
+    const u = await prisma.user.update({ where: { id }, data });
+    ok(res, {
+      id: u.id,
+      role: u.role,
+      status: u.status,
+      mutedUntil: u.mutedUntil,
+      nickname: u.nickname,
+      aiReviewWhitelisted: u.aiReviewWhitelisted,
+    });
   } catch (e) { next(e); }
 });
 

@@ -6,6 +6,7 @@ import { hashPassword, verifyPassword } from "../utils/password";
 import { Errors, ok } from "../utils/response";
 import { validate } from "../middleware/validate";
 import { beginLogin, submitLogin } from "../services/jwxtTransport";
+import { releaseExpiredMutes } from "../services/userModeration";
 import { isDev } from "../config";
 import { detectLoginClient } from "../utils/loginClient";
 
@@ -31,6 +32,7 @@ const registerSchema = z.object({
 authRouter.post("/login", validate(loginSchema), async (req, res, next) => {
   try {
     const { username, password } = req.body;
+    await releaseExpiredMutes();
     const user = await prisma.user.findUnique({ where: { username } });
     if (!user) throw Errors.badRequest("用户名或密码错误");
     if (user.studentSso) throw Errors.badRequest("该账号已绑定学校认证，请用「学校账号登录」入口");
@@ -145,6 +147,7 @@ authRouter.post(
         }
       }
 
+      await releaseExpiredMutes();
       if (user.status === "banned") throw Errors.forbidden("账号已被封禁");
 
       const client = detectLoginClient(req);
@@ -199,6 +202,8 @@ function pubUser(u: any) {
     usedAndroidClient: u.usedAndroidClient,
     topicSubmissionLocked: u.topicSubmissionLocked,
     aiReviewWhitelisted: u.aiReviewWhitelisted,
+    status: u.status,
+    mutedUntil: u.mutedUntil,
     createdAt: u.createdAt,
   };
 }

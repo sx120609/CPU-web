@@ -65,6 +65,7 @@ declare module 'vue' {
     ScheduleThemePicker: typeof import('./src/components/jwxt/ScheduleThemePicker.vue')['default']
     TopicListItem: typeof import('./src/components/forum/TopicListItem.vue')['default']
     UserAvatar: typeof import('./src/components/common/UserAvatar.vue')['default']
+    UserModerationActions: typeof import('./src/components/common/UserModerationActions.vue')['default']
   }
   export interface ComponentCustomProperties {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']

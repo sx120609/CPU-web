@@ -132,6 +132,14 @@
         </el-form-item>
 
         <el-alert
+          v-if="auth.user?.status === 'muted'"
+          type="error"
+          :closable="false"
+          show-icon
+          :title="mutedNotice"
+        />
+
+        <el-alert
           v-if="auth.user?.topicSubmissionLocked"
           type="warning"
           :closable="false"
@@ -140,7 +148,7 @@
         />
 
         <el-form-item>
-          <el-button type="primary" :loading="submitting" @click="submit">{{ editingId ? '预览并保存' : '预览并发布' }}</el-button>
+          <el-button type="primary" :loading="submitting" :disabled="auth.user?.status === 'muted' || auth.user?.topicSubmissionLocked" @click="submit">{{ editingId ? '预览并保存' : '预览并发布' }}</el-button>
           <el-button @click="$router.back()">取消</el-button>
         </el-form-item>
       </el-form>
@@ -206,6 +214,7 @@ import { boardApi, type Board } from "@/api/board";
 import { topicApi } from "@/api/topic";
 import { courseApi, type Course } from "@/api/course";
 import { useAuthStore } from "@/stores/auth";
+import { fmtDate } from "@/utils/format";
 
 const route = useRoute();
 const router = useRouter();
@@ -264,6 +273,7 @@ const groupedBoards = computed(() => {
   }
   return groups;
 });
+const mutedNotice = computed(() => auth.user?.mutedUntil ? `你已被禁言至 ${fmtDate(auth.user.mutedUntil)}，当前不能发帖或编辑发言内容` : "你当前已被禁言，暂时不能发帖或编辑发言内容");
 
 onMounted(async () => {
   boards.value = await boardApi.list();
@@ -376,6 +386,7 @@ function clearDrafts() {
 }
 
 async function submit() {
+  if (auth.user?.status === "muted") { ElMessage.warning(mutedNotice.value); return; }
   if (auth.user?.topicSubmissionLocked) { ElMessage.warning("你当前有稿件正在人工审核，暂时不能继续投稿"); return; }
   if (!form.boardSlug) { ElMessage.warning("请选择板块"); return; }
   if (form.title.trim().length < 2) { ElMessage.warning("标题至少 2 字"); return; }

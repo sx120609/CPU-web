@@ -63,6 +63,9 @@
             <el-tag :type="row.status === 'active' ? 'success' : row.status === 'banned' ? 'danger' : 'warning'" size="small" effect="plain">
               {{ row.status }}
             </el-tag>
+            <el-tag v-if="row.status === 'muted' && row.mutedUntil" type="warning" size="small" effect="plain">
+              至 {{ fmtDate(row.mutedUntil, "MM-DD HH:mm") }}
+            </el-tag>
             <el-tag v-if="row.studentSso" type="primary" size="small" effect="plain">统一认证</el-tag>
             <el-tag v-if="row.aiReviewWhitelisted" type="success" size="small" effect="plain">AI 白名单</el-tag>
           </div>
@@ -93,12 +96,9 @@
       <el-table-column label="注册时间" width="150">
         <template #default="{ row }"><span class="muted-date">{{ fmtDate(row.createdAt) }}</span></template>
       </el-table-column>
-      <el-table-column label="操作" width="210" fixed="right">
+      <el-table-column label="操作" width="260" fixed="right">
         <template #default="{ row }">
-          <el-button v-if="row.status !== 'banned'" text type="danger" size="small" @click="ban(row)">封禁</el-button>
-          <el-button v-else text type="success" size="small" @click="unban(row)">解禁</el-button>
-          <el-button v-if="row.status === 'active'" text type="warning" size="small" @click="mute(row)">禁言</el-button>
-          <el-button v-else-if="row.status === 'muted'" text type="success" size="small" @click="unmute(row)">取消禁言</el-button>
+          <UserModerationActions :user="row" display="inline" text @updated="applyUserUpdate(row, $event)" @changed="reload" />
           <el-button text size="small" @click="rename(row)">改名</el-button>
           <el-dropdown v-if="auth.isAdmin" trigger="click" @command="handleCommand($event, row)">
             <el-button text size="small">
@@ -132,6 +132,9 @@
           <el-tag :type="roleTag(row.role)" size="small">{{ roleLabel(row.role) }}</el-tag>
           <el-tag v-if="row.studentSso" type="primary" size="small" effect="plain">统一认证</el-tag>
           <el-tag v-if="row.aiReviewWhitelisted" type="success" size="small" effect="plain">AI 白名单</el-tag>
+          <el-tag v-if="row.status === 'muted' && row.mutedUntil" type="warning" size="small" effect="plain">
+            至 {{ fmtDate(row.mutedUntil, "MM-DD HH:mm") }}
+          </el-tag>
           <el-tag :type="clientTagType(row.lastLoginClient)" size="small" effect="plain">
             {{ clientLabel(row.lastLoginClient) }}
           </el-tag>
@@ -144,10 +147,7 @@
           <span>{{ row.postCount }} 帖 / {{ row.replyCount }} 回</span>
         </div>
         <div class="mobile-actions">
-          <el-button v-if="row.status !== 'banned'" type="danger" plain size="small" @click="ban(row)">封禁</el-button>
-          <el-button v-else type="success" plain size="small" @click="unban(row)">解禁</el-button>
-          <el-button v-if="row.status === 'active'" type="warning" plain size="small" @click="mute(row)">禁言</el-button>
-          <el-button v-else-if="row.status === 'muted'" type="success" plain size="small" @click="unmute(row)">取消禁言</el-button>
+          <UserModerationActions :user="row" display="inline" plain @updated="applyUserUpdate(row, $event)" @changed="reload" />
           <el-button plain size="small" @click="rename(row)">改名</el-button>
           <el-dropdown v-if="auth.isAdmin" trigger="click" @command="handleCommand($event, row)">
             <el-button plain size="small">
@@ -232,6 +232,7 @@ import { ref, reactive, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Search, Plus, MoreFilled } from "@element-plus/icons-vue";
 import { adminApi } from "@/api/admin";
+import UserModerationActions from "@/components/common/UserModerationActions.vue";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate } from "@/utils/format";
 
@@ -380,26 +381,8 @@ function handleCommand(command: string, row: any) {
   if (command === "delete") return deleteUser(row);
 }
 
-async function ban(row: any) {
-  await ElMessageBox.confirm(`封禁 ${row.nickname} (${row.username})？`, "确认", { type: "warning" });
-  await adminApi.updateUser(row.id, { status: "banned" });
-  ElMessage.success("已封禁");
-  reload();
-}
-async function unban(row: any) {
-  await adminApi.updateUser(row.id, { status: "active" });
-  ElMessage.success("已解禁");
-  reload();
-}
-async function mute(row: any) {
-  await adminApi.updateUser(row.id, { status: "muted" });
-  ElMessage.success("已禁言");
-  reload();
-}
-async function unmute(row: any) {
-  await adminApi.updateUser(row.id, { status: "active" });
-  ElMessage.success("已取消禁言");
-  reload();
+function applyUserUpdate(row: any, patch: Record<string, unknown>) {
+  Object.assign(row, patch);
 }
 async function rename(row: any) {
   const { value } = await ElMessageBox.prompt(`修改 ${row.username} 的昵称`, "改昵称", {

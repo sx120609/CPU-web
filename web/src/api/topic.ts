@@ -23,7 +23,7 @@ export interface Topic {
   tags?: Array<{ id: number; name: string }>;
   createdAt: string;
   updatedAt: string;
-  author?: { id: number; nickname: string; username: string; avatar?: string; role: string; bio?: string };
+  author?: { id: number; nickname: string; username: string; avatar?: string; role: string; bio?: string; status?: string; mutedUntil?: string | null };
   board?: { id?: number; slug: string; name: string; color?: string; type?: string; readOnly?: boolean };
 }
 
@@ -36,7 +36,7 @@ export interface Reply {
   floor: number;
   likeCount: number;
   createdAt: string;
-  author?: { id: number; nickname: string; username: string; avatar?: string; role: string };
+  author?: { id: number; nickname: string; username: string; avatar?: string; role: string; status?: string; mutedUntil?: string | null };
 }
 
 export const topicApi = {

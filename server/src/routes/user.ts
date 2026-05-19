@@ -6,11 +6,13 @@ import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { Errors, ok } from "../utils/response";
 import { enabledBoardTypes } from "../services/siteSettings";
+import { releaseExpiredMutes } from "../services/userModeration";
 
 export const userRouter = Router();
 
 userRouter.get("/me", authRequired, async (req, res, next) => {
   try {
+    await releaseExpiredMutes();
     const user = await prisma.user.findUnique({ where: { id: req.user!.userId } });
     if (!user) throw Errors.notFound("用户不存在");
     ok(res, pubUser(user));
@@ -54,6 +56,7 @@ userRouter.patch("/password", authRequired, validate(passwordSchema), async (req
 userRouter.get("/:id", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    await releaseExpiredMutes();
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) throw Errors.notFound();
     ok(res, pubUser(user));
@@ -99,6 +102,8 @@ function pubUser(u: any) {
     usedAndroidClient: u.usedAndroidClient,
     topicSubmissionLocked: u.topicSubmissionLocked,
     aiReviewWhitelisted: u.aiReviewWhitelisted,
+    status: u.status,
+    mutedUntil: u.mutedUntil,
     createdAt: u.createdAt,
   };
 }

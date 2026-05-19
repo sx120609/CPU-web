@@ -18,6 +18,12 @@
           <span>回复 {{ user.replyCount }}</span>
           <span>声望 {{ user.reputation }}</span>
         </div>
+        <div v-if="auth.isMod" class="staff-panel">
+          <UserModerationActions :user="user" display="inline" plain @updated="applyModerationUpdate" />
+          <span v-if="user.status === 'muted'" class="staff-note">
+            {{ user.mutedUntil ? `禁言至 ${fmtDate(user.mutedUntil)}` : "当前为禁言状态" }}
+          </span>
+        </div>
       </div>
     </div>
 
@@ -37,10 +43,13 @@
 import { ref, onMounted, watch } from "vue";
 import { useRoute } from "vue-router";
 import UserAvatar from "@/components/common/UserAvatar.vue";
+import UserModerationActions from "@/components/common/UserModerationActions.vue";
 import { request } from "@/api/request";
-import { fmtRelative } from "@/utils/format";
+import { useAuthStore } from "@/stores/auth";
+import { fmtDate, fmtRelative } from "@/utils/format";
 
 const route = useRoute();
+const auth = useAuthStore();
 const user = ref<any>(null);
 const topics = ref<any[]>([]);
 
@@ -51,6 +60,11 @@ async function load() {
   const id = Number(route.params.id);
   user.value = await request.get<any>(`/user/${id}`);
   topics.value = await request.get<any[]>(`/user/${id}/topics`);
+}
+
+function applyModerationUpdate(patch: Record<string, unknown>) {
+  if (!user.value) return;
+  Object.assign(user.value, patch);
 }
 </script>
 
@@ -63,6 +77,8 @@ async function load() {
 .username { font-size: 12px; color: #9ca3af; margin: 2px 0 6px; }
 .bio { font-size: 13px; color: #4b5563; margin: 0 0 8px; }
 .meta { display: flex; gap: 12px; font-size: 12px; color: #6b7280; flex-wrap: wrap; }
+.staff-panel { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.staff-note { font-size: 12px; color: #6b7280; }
 
 .topic-line {
   display: flex;
@@ -93,6 +109,11 @@ async function load() {
   .name {
     font-size: 19px;
     flex-wrap: wrap;
+  }
+
+  .staff-panel {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .topic-line {

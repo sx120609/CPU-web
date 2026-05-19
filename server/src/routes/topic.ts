@@ -24,6 +24,7 @@ import {
   shouldRunAiReview,
   syncTopicAiTags,
 } from "../services/topicAiReview";
+import { ensureUserCanSpeak, releaseExpiredMutes } from "../services/userModeration";
 
 export const topicRouter = Router();
 
@@ -60,7 +61,7 @@ topicRouter.get("/", async (req, res, next) => {
         skip: (page - 1) * size,
         take: size,
         include: {
-          author: { select: { id: true, username: true, nickname: true, avatar: true, role: true } },
+          author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
           board: { select: { id: true, slug: true, name: true, color: true, type: true } },
           tags: { include: { tag: true } },
         },
@@ -78,12 +79,13 @@ topicRouter.get("/", async (req, res, next) => {
 topicRouter.get("/:id", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    await releaseExpiredMutes();
     const requesterId = req.user?.userId ?? null;
     const requesterRole = req.user?.role ?? "";
     const topic = await prisma.topic.findUnique({
       where: { id },
       include: {
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, bio: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, bio: true, status: true, mutedUntil: true } },
         board: { select: { id: true, slug: true, name: true, type: true, readOnly: true } },
         tags: { include: { tag: true } },
       },
@@ -110,6 +112,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
   try {
     const userId = req.user!.userId;
     const { boardSlug, title, content, metadata, tags } = req.body;
+    await ensureUserCanSpeak(userId);
     await ensureUserCanSubmitTopic(userId);
     const board = await prisma.board.findUnique({ where: { slug: boardSlug } });
     if (!board) throw Errors.notFound("板块不存在");
@@ -183,7 +186,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       where: { id: topic.id },
       include: {
         board: { select: { slug: true, name: true, type: true, color: true } },
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
         tags: { include: { tag: true } },
       },
     });
@@ -299,6 +302,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     if (typeof body.hidden === "boolean" && isMod) data.hidden = body.hidden;
 
     if (isOwner && (typeof body.title === "string" || typeof body.content === "string")) {
+      await ensureUserCanSpeak(req.user!.userId);
       const similarityThreshold = getSiteConfig().aiEditSimilarityThreshold ?? 0;
       if (similarityThreshold > 0) {
         const similarity = await evaluateTopicEditSimilarity({
@@ -376,7 +380,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     const topicWithTags = await prisma.topic.findUnique({
       where: { id: u.id },
       include: {
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
         board: { select: { id: true, slug: true, name: true, color: true, type: true } },
         tags: { include: { tag: true } },
       },
@@ -409,6 +413,7 @@ topicRouter.delete("/:id", authRequired, async (req, res, next) => {
 topicRouter.get("/:id/replies", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    await releaseExpiredMutes();
     const topic = await prisma.topic.findUnique({
       where: { id },
       include: { board: { select: { type: true } } },
@@ -419,7 +424,7 @@ topicRouter.get("/:id/replies", async (req, res, next) => {
       where: { topicId: id, hidden: false },
       orderBy: { floor: "asc" },
       include: {
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
       },
     });
     ok(res, list);
