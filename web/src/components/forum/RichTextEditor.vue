@@ -1,9 +1,9 @@
 <template>
-  <div class="rich-editor">
+  <div class="rich-editor" :style="rootStyle">
     <div class="editor-toolbar" @mousedown.prevent @touchstart.passive="rememberSelection">
       <div class="toolbar-head">
         <span class="toolbar-title">{{ label }}</span>
-        <span class="toolbar-status">{{ toolbarStatusText }}</span>
+        <span v-if="toolbarStatusText" class="toolbar-status">{{ toolbarStatusText }}</span>
       </div>
 
       <div class="toolbar-scroll">
@@ -135,6 +135,7 @@ const imageSize = ref<ImageSize>("large");
 const draftHint = ref("");
 const hasSelectedImage = ref(false);
 const isMobileViewport = ref(false);
+const toolbarStickyOffset = ref(0);
 const toolbarState = reactive({
   bold: false,
   italic: false,
@@ -148,6 +149,7 @@ let selectedImage: HTMLImageElement | null = null;
 let draftTimer = 0;
 let internalUpdate = false;
 let mobileViewportQuery: MediaQueryList | null = null;
+let topbarResizeObserver: ResizeObserver | null = null;
 
 const imageSizeOptions: Array<{ value: ImageSize; label: string }> = [
   { value: "small", label: "小" },
@@ -169,14 +171,18 @@ const resolvedPlaceholder = computed(() => (
 
 const resolvedFooterText = computed(() => (
   isMobileViewport.value && props.footerText === DEFAULT_FOOTER
-    ? MOBILE_FOOTER
+    ? ""
     : props.footerText
 ));
 
 const toolbarStatusText = computed(() => {
-  if (hasSelectedImage.value) return "已选图片，可调大小和对齐";
-  return isMobileViewport.value ? "支持排版、插图和草稿" : "支持排版、图片和草稿";
+  if (hasSelectedImage.value) return isMobileViewport.value ? "已选图片" : "已选图片，可调大小和对齐";
+  return isMobileViewport.value ? "" : "支持排版、图片和草稿";
 });
+
+const rootStyle = computed(() => ({
+  "--editor-toolbar-top": `${toolbarStickyOffset.value}px`,
+}));
 
 onMounted(async () => {
   syncMobileViewport();
@@ -188,8 +194,14 @@ onMounted(async () => {
       mobileViewportQuery.addListener(handleViewportChange);
     }
   }
+  observeTopbarHeight();
+  syncToolbarStickyOffset();
   hydrateEditor(readDraft() || props.modelValue);
   document.addEventListener("selectionchange", updateToolbarState);
+  if (typeof window !== "undefined") {
+    window.addEventListener("resize", handleLayoutResize, { passive: true });
+    window.visualViewport?.addEventListener("resize", handleLayoutResize);
+  }
 });
 
 onBeforeUnmount(() => {
@@ -201,16 +213,45 @@ onBeforeUnmount(() => {
       mobileViewportQuery.removeListener(handleViewportChange);
     }
   }
+  topbarResizeObserver?.disconnect();
+  if (typeof window !== "undefined") {
+    window.removeEventListener("resize", handleLayoutResize);
+    window.visualViewport?.removeEventListener("resize", handleLayoutResize);
+  }
   window.clearTimeout(draftTimer);
 });
 
 function handleViewportChange(event: { matches: boolean }) {
   isMobileViewport.value = event.matches;
+  syncToolbarStickyOffset();
 }
 
 function syncMobileViewport() {
   if (typeof window === "undefined") return;
   isMobileViewport.value = window.matchMedia?.(MOBILE_BREAKPOINT).matches ?? window.innerWidth <= 700;
+}
+
+function handleLayoutResize() {
+  syncMobileViewport();
+  syncToolbarStickyOffset();
+}
+
+function observeTopbarHeight() {
+  if (typeof window === "undefined" || typeof ResizeObserver === "undefined") return;
+  const topbar = document.querySelector<HTMLElement>(".topbar");
+  if (!topbar) return;
+  topbarResizeObserver = new ResizeObserver(() => syncToolbarStickyOffset());
+  topbarResizeObserver.observe(topbar);
+}
+
+function syncToolbarStickyOffset() {
+  if (typeof window === "undefined") return;
+  if (!isMobileViewport.value) {
+    toolbarStickyOffset.value = 0;
+    return;
+  }
+  const topbar = document.querySelector<HTMLElement>(".topbar");
+  toolbarStickyOffset.value = topbar ? Math.ceil(topbar.getBoundingClientRect().height) : 0;
 }
 
 watch(() => props.modelValue, (value) => {
@@ -679,50 +720,94 @@ defineExpose({ clearDraft, isContentEmpty });
 
 <style scoped>
 .rich-editor {
+  --editor-toolbar-top: 0px;
   width: 100%;
-  border: 1px solid #cfdce8;
-  border-radius: 10px;
+  position: relative;
+  border: 1px solid #d8e2ec;
+  border-radius: 14px;
   background: #fff;
-  overflow: hidden;
-  box-shadow: 0 1px 5px rgba(15, 23, 42, 0.04);
+  overflow: visible;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
 }
 
 .editor-toolbar {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid #e6edf5;
+  border-radius: 14px 14px 0 0;
+  background: rgba(248, 250, 252, 0.96);
+  backdrop-filter: blur(14px);
+}
+
+.toolbar-head {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 8px;
-  border-bottom: 1px solid #edf0f5;
-  background: #f8fafc;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
 }
 
 .toolbar-title {
-  color: #168776;
-  font-size: 12px;
-  font-weight: 750;
-  line-height: 1.4;
-  margin: 0 0 2px;
+  color: #0f766e;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
   white-space: nowrap;
-  width: 100%;
+}
+
+.toolbar-status {
+  min-width: 0;
+  font-size: 12px;
+  color: #7b8794;
+  line-height: 1.3;
+  text-align: right;
+}
+
+.toolbar-scroll {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px;
+  border: 1px solid #dde6f0;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.toolbar-group--compact {
+  padding-inline: 8px;
 }
 
 .editor-toolbar button {
   appearance: none;
-  border: 1px solid #d8e3ec;
-  border-radius: 6px;
+  flex: 0 0 auto;
+  border: 1px solid #d5e1ec;
+  border-radius: 10px;
   background: #fff;
   color: #344054;
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
   line-height: 1;
-  min-height: 34px;
-  padding: 0 10px;
+  min-height: 36px;
+  padding: 0 12px;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(22, 135, 118, 0.16);
 }
 
 .editor-toolbar button:hover {
@@ -742,42 +827,46 @@ defineExpose({ clearDraft, isContentEmpty });
   opacity: 0.6;
 }
 
+.editor-toolbar button:active {
+  transform: translateY(1px);
+}
+
 .editor-toolbar .bold { font-weight: 800; }
 .editor-toolbar .italic { font-style: italic; }
 
-.toolbar-divider {
-  width: 1px;
-  height: 22px;
-  background: #dde5ee;
-}
-
 .size-label,
-.draft-state {
+.draft-state,
+.foot-note,
+.foot-count {
   color: #98a2b3;
   font-size: 12px;
 }
 
 .size-label {
+  flex: 0 0 auto;
   align-self: center;
   font-weight: 700;
 }
 
 .size-btn,
 .align-btn {
-  min-width: 34px;
-  padding: 0 8px !important;
+  min-width: 38px;
+  padding: 0 10px !important;
 }
 
 .editor-surface {
-  min-height: 280px;
+  min-height: 320px;
   max-height: 620px;
   overflow-y: auto;
-  padding: 14px 16px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px;
   color: #1f2937;
   font-size: 15px;
   line-height: 1.75;
   outline: none;
   word-break: break-word;
+  background: #fff;
 }
 
 .editor-surface:empty::before {
@@ -872,13 +961,15 @@ defineExpose({ clearDraft, isContentEmpty });
 }
 
 .editor-foot {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 8px;
-  padding: 7px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  padding: 9px 12px 10px;
   border-top: 1px solid #edf0f5;
-  color: #98a2b3;
-  font-size: 12px;
+  background: #fff;
+  border-radius: 0 0 14px 14px;
 }
 
 .editor-foot .warn {
@@ -886,22 +977,86 @@ defineExpose({ clearDraft, isContentEmpty });
   font-weight: 700;
 }
 
+.foot-note {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.draft-state,
+.foot-count {
+  flex: 0 0 auto;
+}
+
 .hidden-file {
   display: none;
 }
 
 @media (max-width: 700px) {
-  .editor-toolbar {
-    align-items: stretch;
+  .rich-editor {
+    border-radius: 14px;
   }
 
-  .toolbar-divider {
+  .editor-toolbar {
+    top: calc(var(--editor-toolbar-top, 0px) + 8px);
+    margin: 0 -1px;
+    padding: 10px 10px 8px;
+    border: 1px solid #dfe8f1;
+    border-bottom-color: #e6edf5;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  }
+
+  .toolbar-title {
+    font-size: 12px;
+  }
+
+  .toolbar-status {
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: #ecfdf5;
+    color: #0f766e;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .toolbar-scroll {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0 2px 2px;
+    margin: 0 -2px -2px;
+    scrollbar-width: none;
+  }
+
+  .toolbar-scroll::-webkit-scrollbar {
     display: none;
   }
 
+  .toolbar-group {
+    flex: 0 0 auto;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 12px;
+  }
+
+  .toolbar-group--compact {
+    padding-inline: 6px;
+  }
+
+  .editor-toolbar button {
+    min-height: 40px;
+    padding: 0 11px;
+    font-size: 13px;
+  }
+
+  .size-label {
+    min-width: 18px;
+    text-align: center;
+  }
+
   .editor-surface {
-    min-height: 220px;
-    padding: 12px;
+    min-height: min(46dvh, 360px);
+    max-height: min(62dvh, 520px);
+    padding: 14px 12px 18px;
   }
 
   .editor-surface :deep(img[data-size="small"]) {
@@ -921,7 +1076,17 @@ defineExpose({ clearDraft, isContentEmpty });
   }
 
   .editor-foot {
-    grid-template-columns: 1fr;
+    gap: 6px 10px;
+    padding: 8px 10px 10px;
+  }
+
+  .foot-note {
+    display: none;
+  }
+
+  .draft-state,
+  .foot-count {
+    font-size: 11px;
   }
 }
 </style>
