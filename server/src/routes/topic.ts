@@ -11,6 +11,14 @@ import {
   isBoardTypeEnabled,
   isFeatureOn,
 } from "../services/siteSettings";
+import {
+  ensureUserCanSubmitTopic,
+  refreshTopicSubmissionLock,
+  requestManualTopicReview,
+  reviewTopicContent,
+  shouldBypassAiReview,
+  shouldRunAiReview,
+} from "../services/topicAiReview";
 
 export const topicRouter = Router();
 
@@ -91,6 +99,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
   try {
     const userId = req.user!.userId;
     const { boardSlug, title, content, metadata, tags } = req.body;
+    await ensureUserCanSubmitTopic(userId);
     const board = await prisma.board.findUnique({ where: { slug: boardSlug } });
     if (!board) throw Errors.notFound("板块不存在");
     if (board.readOnly && req.user!.role !== "bot" && req.user!.role !== "admin") {
@@ -106,6 +115,18 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     }
 
     const now = new Date();
+    const shouldReview = shouldRunAiReview() && !shouldBypassAiReview(req.user!.role) && board.type !== "announce";
+    const aiResult = shouldReview
+      ? await reviewTopicContent({
+          title,
+          content,
+          boardName: board.name,
+          boardType: board.type,
+          metadata: metadata ?? {},
+        })
+      : null;
+    const hiddenByAi = aiResult?.status === "blocked_ai";
+    const manualLocked = aiResult?.riskLevel === "medium" || aiResult?.riskScore === undefined ? false : false;
     const topic = await prisma.topic.create({
       data: {
         boardId: board.id,
@@ -113,6 +134,14 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
         title,
         content,
         metadata: JSON.stringify(metadata ?? {}),
+        aiReviewStatus: aiResult?.status ?? "auto_passed",
+        aiRiskLevel: aiResult?.riskLevel ?? "low",
+        aiRiskScore: aiResult?.riskScore ?? 0,
+        aiReviewReason: aiResult?.reason ?? "",
+        aiReviewDetail: aiResult?.detail ?? "",
+        aiModel: aiResult?.model ?? null,
+        aiReviewedAt: aiResult ? now : null,
+        hidden: hiddenByAi,
         lastReplyAt: now,
         lastReplyById: userId,
       },
@@ -175,10 +204,33 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       await refreshCourseStats(courseId);
     }
 
-    await prisma.user.update({ where: { id: userId }, data: { postCount: { increment: 1 } } });
-    await prisma.board.update({ where: { id: board.id }, data: { topicCount: { increment: 1 } } });
+    if (!hiddenByAi) {
+      await prisma.user.update({ where: { id: userId }, data: { postCount: { increment: 1 } } });
+      await prisma.board.update({ where: { id: board.id }, data: { topicCount: { increment: 1 } } });
+    }
 
-    ok(res, decodeTopic({ ...topic, board: { slug: board.slug } }));
+    ok(res, {
+      ...decodeTopic({ ...topic, board: { slug: board.slug, name: board.name, type: board.type } }),
+      submissionResult: hiddenByAi
+        ? {
+            status: "blocked_ai",
+            riskLevel: aiResult?.riskLevel,
+            riskScore: aiResult?.riskScore,
+            reason: aiResult?.reason,
+          }
+        : {
+            status: "published",
+          },
+    });
+  } catch (e) { next(e); }
+});
+
+topicRouter.post("/:id/request-manual-review", authRequired, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) throw Errors.badRequest("稿件 ID 不合法");
+    await requestManualTopicReview(id, req.user!.userId);
+    ok(res, { ok: true });
   } catch (e) { next(e); }
 });
 

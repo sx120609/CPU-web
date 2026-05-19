@@ -131,6 +131,14 @@
           />
         </el-form-item>
 
+        <el-alert
+          v-if="auth.user?.topicSubmissionLocked"
+          type="warning"
+          :closable="false"
+          show-icon
+          title="你当前有稿件正在人工审核，暂时不能继续提交新稿"
+        />
+
         <el-form-item>
           <el-button type="primary" :loading="submitting" @click="submit">{{ editingId ? '预览并保存' : '预览并发布' }}</el-button>
           <el-button @click="$router.back()">取消</el-button>
@@ -160,6 +168,24 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="reviewBlockedOpen"
+      title="稿件未通过 AI 初审"
+      width="520px"
+      append-to-body
+    >
+      <div class="review-blocked">
+        <p>本次稿件暂未自动发送。</p>
+        <p v-if="blockedReviewInfo.reason">原因：{{ blockedReviewInfo.reason }}</p>
+        <p v-if="blockedReviewInfo.riskScore !== null">风险分：{{ blockedReviewInfo.riskScore }}</p>
+        <p class="cpu-muted">你可以修改内容后重试，或者申请人工审核。申请后，在审核完成前不能继续投稿。</p>
+      </div>
+      <template #footer>
+        <el-button @click="reviewBlockedOpen = false">返回修改</el-button>
+        <el-button type="warning" :loading="requestingManualReview" @click="requestManualReview">申请人工审核</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -172,9 +198,11 @@ import RichTextEditor from "@/components/forum/RichTextEditor.vue";
 import { boardApi, type Board } from "@/api/board";
 import { topicApi } from "@/api/topic";
 import { courseApi, type Course } from "@/api/course";
+import { useAuthStore } from "@/stores/auth";
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
 
 const boards = ref<Board[]>([]);
 const courses = ref<Course[]>([]);
@@ -184,6 +212,13 @@ const CONTENT_MAX = 20000;
 const editorRef = ref<InstanceType<typeof RichTextEditor> | null>(null);
 const previewOpen = ref(false);
 const pendingMetadata = ref<any>(null);
+const reviewBlockedOpen = ref(false);
+const requestingManualReview = ref(false);
+const blockedTopicId = ref<number | null>(null);
+const blockedReviewInfo = reactive<{ reason: string; riskScore: number | null }>({
+  reason: "",
+  riskScore: null,
+});
 let formDraftTimer = 0;
 
 const form = reactive({
@@ -328,6 +363,7 @@ function clearDrafts() {
 }
 
 async function submit() {
+  if (auth.user?.topicSubmissionLocked) { ElMessage.warning("你当前有稿件正在人工审核，暂时不能继续投稿"); return; }
   if (!form.boardSlug) { ElMessage.warning("请选择板块"); return; }
   if (form.title.trim().length < 2) { ElMessage.warning("标题至少 2 字"); return; }
   if (isEditorContentEmpty()) { ElMessage.warning("请填写正文"); return; }
@@ -385,6 +421,14 @@ async function confirmSubmit() {
         content: form.content,
         metadata,
       });
+      if (r.submissionResult?.status === "blocked_ai") {
+        blockedTopicId.value = r.id;
+        blockedReviewInfo.reason = r.submissionResult.reason || "检测到较高风险内容";
+        blockedReviewInfo.riskScore = r.submissionResult.riskScore ?? null;
+        reviewBlockedOpen.value = true;
+        ElMessage.warning("稿件未通过 AI 初审");
+        return;
+      }
       clearDrafts();
       ElMessage.success("已发布");
       router.replace(`/forum/topic/${r.id}`);
@@ -392,6 +436,21 @@ async function confirmSubmit() {
   } finally {
     submitting.value = false;
     previewOpen.value = false;
+  }
+}
+
+async function requestManualReview() {
+  if (!blockedTopicId.value) return;
+  requestingManualReview.value = true;
+  try {
+    await topicApi.requestManualReview(blockedTopicId.value);
+    await auth.fetchMe();
+    clearDrafts();
+    reviewBlockedOpen.value = false;
+    ElMessage.success("已提交人工审核申请");
+    router.replace("/forum");
+  } finally {
+    requestingManualReview.value = false;
   }
 }
 </script>
@@ -451,6 +510,8 @@ async function confirmSubmit() {
 }
 
 .cpu-muted { font-size: 12px; color: #9ca3af; }
+.review-blocked p { margin: 0 0 10px; line-height: 1.7; color: #374151; }
+.review-blocked p:last-child { margin-bottom: 0; }
 
 @media (max-width: 700px) {
   .page-title {

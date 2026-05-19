@@ -2,6 +2,12 @@ import { request } from "./request";
 
 export type SiteConfig = {
   siteOrigin: string;
+  aiReviewEnabled: boolean;
+  aiReviewProvider: string;
+  aiReviewModel: string;
+  aiReviewApiKey: string;
+  aiReviewAutoPassScore: number;
+  aiReviewBlockScore: number;
 };
 
 export const adminApi = {
@@ -35,15 +41,30 @@ export const adminApi = {
     request.delete<{ deletedUserId: number; deletedTopics: number; deletedReplies: number }>(`/admin/users/${id}`),
   // 站点功能开关
   siteConfig: () => request.get<SiteConfig>("/admin/site-config"),
-  updateSiteConfig: (patch: { siteOrigin?: string }) =>
+  updateSiteConfig: (patch: {
+    siteOrigin?: string;
+    aiReviewEnabled?: boolean;
+    aiReviewProvider?: string;
+    aiReviewModel?: string;
+    aiReviewApiKey?: string;
+    aiReviewAutoPassScore?: number;
+    aiReviewBlockScore?: number;
+  }) =>
     request.patch<SiteConfig>("/admin/site-config", patch),
   features: () => request.get<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>("/admin/features"),
   updateFeatures: (patch: { forum?: boolean; market?: boolean; coursereview?: boolean; electric?: boolean }) =>
     request.patch<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>("/admin/features", patch),
   // 帖子
-  topics: (params: { q?: string; board?: string; hidden?: "0" | "1"; page?: number; size?: number }) =>
+  topics: (params: { q?: string; board?: string; hidden?: "0" | "1"; reviewStatus?: string; page?: number; size?: number }) =>
     request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/topics", params),
-  updateTopic: (id: number, patch: { hidden?: boolean; pinned?: boolean; locked?: boolean; boardSlug?: string }) =>
+  updateTopic: (id: number, patch: {
+    hidden?: boolean;
+    pinned?: boolean;
+    locked?: boolean;
+    boardSlug?: string;
+    aiReviewStatus?: "manual_reviewing" | "approved_manual" | "rejected_manual";
+    manualReviewNote?: string;
+  }) =>
     request.patch<any>(`/admin/topics/${id}`, patch),
   deleteTopic: (id: number) => request.delete<any>(`/admin/topics/${id}`),
   destroyTopic: (id: number) => request.delete<any>(`/admin/topics/${id}?hard=1`),

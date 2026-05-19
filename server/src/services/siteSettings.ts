@@ -11,10 +11,22 @@ import { prisma } from "../prisma";
 export type FeatureKey = "forum" | "market" | "coursereview" | "electric";
 export type SiteConfig = {
   siteOrigin: string;
+  aiReviewEnabled: boolean;
+  aiReviewProvider: string;
+  aiReviewModel: string;
+  aiReviewApiKey: string;
+  aiReviewAutoPassScore: number;
+  aiReviewBlockScore: number;
 };
 
 export const ALL_FEATURES: FeatureKey[] = ["forum", "market", "coursereview", "electric"];
 const SITE_ORIGIN_KEY = "site.origin";
+const AI_REVIEW_ENABLED_KEY = "ai.review.enabled";
+const AI_REVIEW_PROVIDER_KEY = "ai.review.provider";
+const AI_REVIEW_MODEL_KEY = "ai.review.model";
+const AI_REVIEW_API_KEY = "ai.review.apiKey";
+const AI_REVIEW_AUTO_PASS_SCORE_KEY = "ai.review.autoPassScore";
+const AI_REVIEW_BLOCK_SCORE_KEY = "ai.review.blockScore";
 
 const cache: Record<FeatureKey, boolean> = {
   forum: true,
@@ -25,6 +37,12 @@ const cache: Record<FeatureKey, boolean> = {
 
 const configCache: SiteConfig = {
   siteOrigin: "",
+  aiReviewEnabled: false,
+  aiReviewProvider: "deepseek",
+  aiReviewModel: "deepseek-v4-flash",
+  aiReviewApiKey: "",
+  aiReviewAutoPassScore: 24,
+  aiReviewBlockScore: 70,
 };
 
 function keyOf(f: FeatureKey) {
@@ -51,7 +69,20 @@ export function normalizeSiteOrigin(input: string | null | undefined): string {
 /** 服务启动时加载一次；之后每次写入会同步更新缓存 */
 export async function loadFeatures(): Promise<void> {
   const rows = await prisma.siteSetting.findMany({
-    where: { key: { in: [...ALL_FEATURES.map(keyOf), SITE_ORIGIN_KEY] } },
+    where: {
+      key: {
+        in: [
+          ...ALL_FEATURES.map(keyOf),
+          SITE_ORIGIN_KEY,
+          AI_REVIEW_ENABLED_KEY,
+          AI_REVIEW_PROVIDER_KEY,
+          AI_REVIEW_MODEL_KEY,
+          AI_REVIEW_API_KEY,
+          AI_REVIEW_AUTO_PASS_SCORE_KEY,
+          AI_REVIEW_BLOCK_SCORE_KEY,
+        ],
+      },
+    },
   });
   for (const r of rows) {
     if (r.key === SITE_ORIGIN_KEY) {
@@ -62,9 +93,34 @@ export async function loadFeatures(): Promise<void> {
       }
       continue;
     }
+    if (r.key === AI_REVIEW_ENABLED_KEY) {
+      configCache.aiReviewEnabled = r.value === "on";
+      continue;
+    }
+    if (r.key === AI_REVIEW_PROVIDER_KEY) {
+      configCache.aiReviewProvider = String(r.value || "deepseek").trim() || "deepseek";
+      continue;
+    }
+    if (r.key === AI_REVIEW_MODEL_KEY) {
+      configCache.aiReviewModel = String(r.value || "deepseek-v4-flash").trim() || "deepseek-v4-flash";
+      continue;
+    }
+    if (r.key === AI_REVIEW_API_KEY) {
+      configCache.aiReviewApiKey = String(r.value || "");
+      continue;
+    }
+    if (r.key === AI_REVIEW_AUTO_PASS_SCORE_KEY) {
+      configCache.aiReviewAutoPassScore = normalizeAiScore(r.value, 24);
+      continue;
+    }
+    if (r.key === AI_REVIEW_BLOCK_SCORE_KEY) {
+      configCache.aiReviewBlockScore = normalizeAiScore(r.value, 70);
+      continue;
+    }
     const f = r.key.replace(/^feature\./, "") as FeatureKey;
     if (ALL_FEATURES.includes(f)) cache[f] = r.value === "on";
   }
+  sanitizeAiReviewConfig();
 }
 
 export function getFeatures(): Record<FeatureKey, boolean> {
@@ -129,5 +185,71 @@ export async function setSiteOrigin(input: string | null | undefined): Promise<S
     create: { key: SITE_ORIGIN_KEY, value: siteOrigin },
   });
   configCache.siteOrigin = siteOrigin;
+  return getSiteConfig();
+}
+
+function normalizeAiScore(input: string | number | null | undefined, fallback: number) {
+  const n = Number(input);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function sanitizeAiReviewConfig() {
+  configCache.aiReviewAutoPassScore = normalizeAiScore(configCache.aiReviewAutoPassScore, 24);
+  configCache.aiReviewBlockScore = normalizeAiScore(configCache.aiReviewBlockScore, 70);
+  if (configCache.aiReviewBlockScore < configCache.aiReviewAutoPassScore) {
+    configCache.aiReviewBlockScore = configCache.aiReviewAutoPassScore;
+  }
+  if (!configCache.aiReviewProvider) configCache.aiReviewProvider = "deepseek";
+  if (!configCache.aiReviewModel) configCache.aiReviewModel = "deepseek-v4-flash";
+}
+
+export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<SiteConfig> {
+  const next: SiteConfig = {
+    ...configCache,
+    aiReviewEnabled: input.aiReviewEnabled ?? configCache.aiReviewEnabled,
+    aiReviewProvider: String(input.aiReviewProvider ?? configCache.aiReviewProvider ?? "deepseek").trim() || "deepseek",
+    aiReviewModel: String(input.aiReviewModel ?? configCache.aiReviewModel ?? "deepseek-v4-flash").trim() || "deepseek-v4-flash",
+    aiReviewApiKey: String(input.aiReviewApiKey ?? configCache.aiReviewApiKey ?? "").trim(),
+    aiReviewAutoPassScore: normalizeAiScore(input.aiReviewAutoPassScore, configCache.aiReviewAutoPassScore),
+    aiReviewBlockScore: normalizeAiScore(input.aiReviewBlockScore, configCache.aiReviewBlockScore),
+  };
+  if (next.aiReviewBlockScore < next.aiReviewAutoPassScore) {
+    throw new Error("AI 自动拦截阈值不能低于自动通过阈值");
+  }
+  await prisma.$transaction([
+    prisma.siteSetting.upsert({
+      where: { key: AI_REVIEW_ENABLED_KEY },
+      update: { value: next.aiReviewEnabled ? "on" : "off" },
+      create: { key: AI_REVIEW_ENABLED_KEY, value: next.aiReviewEnabled ? "on" : "off" },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: AI_REVIEW_PROVIDER_KEY },
+      update: { value: next.aiReviewProvider },
+      create: { key: AI_REVIEW_PROVIDER_KEY, value: next.aiReviewProvider },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: AI_REVIEW_MODEL_KEY },
+      update: { value: next.aiReviewModel },
+      create: { key: AI_REVIEW_MODEL_KEY, value: next.aiReviewModel },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: AI_REVIEW_API_KEY },
+      update: { value: next.aiReviewApiKey },
+      create: { key: AI_REVIEW_API_KEY, value: next.aiReviewApiKey },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: AI_REVIEW_AUTO_PASS_SCORE_KEY },
+      update: { value: String(next.aiReviewAutoPassScore) },
+      create: { key: AI_REVIEW_AUTO_PASS_SCORE_KEY, value: String(next.aiReviewAutoPassScore) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: AI_REVIEW_BLOCK_SCORE_KEY },
+      update: { value: String(next.aiReviewBlockScore) },
+      create: { key: AI_REVIEW_BLOCK_SCORE_KEY, value: String(next.aiReviewBlockScore) },
+    }),
+  ]);
+  Object.assign(configCache, next);
+  sanitizeAiReviewConfig();
   return getSiteConfig();
 }

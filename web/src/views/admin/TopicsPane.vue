@@ -7,6 +7,15 @@
       <el-select v-model="boardSlug" clearable placeholder="所有板块" style="width:160px" @change="reload">
         <el-option v-for="b in boards" :key="b.slug" :value="b.slug" :label="b.name" />
       </el-select>
+      <el-select v-model="reviewStatus" clearable placeholder="审核状态" style="width:180px" @change="reload">
+        <el-option label="全部状态" value="" />
+        <el-option label="自动通过" value="auto_passed" />
+        <el-option label="AI 拦截" value="blocked_ai" />
+        <el-option label="申请人工审核" value="manual_requested" />
+        <el-option label="人工审核中" value="manual_reviewing" />
+        <el-option label="人工已通过" value="approved_manual" />
+        <el-option label="人工已驳回" value="rejected_manual" />
+      </el-select>
       <el-radio-group v-model="hidden" size="default" @change="reload">
         <el-radio-button value="">全部</el-radio-button>
         <el-radio-button value="0">正常</el-radio-button>
@@ -31,6 +40,14 @@
       <el-table-column label="作者" width="120">
         <template #default="{ row }">{{ row.author.nickname }}</template>
       </el-table-column>
+      <el-table-column label="审核" width="160">
+        <template #default="{ row }">
+          <span>{{ reviewLabel(row.aiReviewStatus) }}</span>
+          <div v-if="row.aiRiskScore !== null && row.aiRiskScore !== undefined" class="risk-note">
+            {{ row.aiRiskScore }} 分
+          </div>
+        </template>
+      </el-table-column>
       <el-table-column prop="replyCount" label="回" width="60" align="right" />
       <el-table-column prop="likeCount" label="赞" width="60" align="right" />
       <el-table-column label="时间" width="160">
@@ -40,6 +57,8 @@
         <template #default="{ row }">
           <el-button text size="small" @click="togglePin(row)">{{ row.pinned ? '取消置顶' : '置顶' }}</el-button>
           <el-button text size="small" @click="toggleLock(row)">{{ row.locked ? '解锁' : '锁定' }}</el-button>
+          <el-button v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'" text type="success" size="small" @click="approveReview(row)">审核通过</el-button>
+          <el-button v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'" text type="warning" size="small" @click="rejectReview(row)">驳回</el-button>
           <el-button v-if="!row.hidden" text type="danger" size="small" @click="hideRow(row)">隐藏</el-button>
           <el-button v-else text type="success" size="small" @click="unhide(row)">恢复</el-button>
           <el-button text type="warning" size="small" @click="moveBoard(row)">转版</el-button>
@@ -59,12 +78,15 @@
         <div class="topic-meta">
           <span>{{ row.board.name }}</span>
           <span>{{ row.author.nickname }}</span>
+          <span>{{ reviewLabel(row.aiReviewStatus) }}<template v-if="row.aiRiskScore !== null && row.aiRiskScore !== undefined"> · {{ row.aiRiskScore }} 分</template></span>
           <span>{{ row.replyCount }} 回 / {{ row.likeCount }} 赞</span>
           <span>{{ fmtDate(row.createdAt) }}</span>
         </div>
         <div class="mobile-actions">
           <el-button plain size="small" @click="togglePin(row)">{{ row.pinned ? '取消置顶' : '置顶' }}</el-button>
           <el-button plain size="small" @click="toggleLock(row)">{{ row.locked ? '解锁' : '锁定' }}</el-button>
+          <el-button v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'" plain type="success" size="small" @click="approveReview(row)">通过</el-button>
+          <el-button v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'" plain type="warning" size="small" @click="rejectReview(row)">驳回</el-button>
           <el-button v-if="!row.hidden" plain type="danger" size="small" @click="hideRow(row)">隐藏</el-button>
           <el-button v-else plain type="success" size="small" @click="unhide(row)">恢复</el-button>
           <el-button plain type="warning" size="small" @click="moveBoard(row)">转版</el-button>
@@ -103,6 +125,7 @@ const loading = ref(false);
 const q = ref("");
 const boardSlug = ref("");
 const hidden = ref<"" | "0" | "1">("");
+const reviewStatus = ref("");
 
 onMounted(async () => {
   boards.value = await boardApi.list();
@@ -115,6 +138,7 @@ async function reload() {
     const r = await adminApi.topics({
       q: q.value, board: boardSlug.value || undefined,
       hidden: hidden.value || undefined,
+      reviewStatus: reviewStatus.value || undefined,
       page: page.value, size: size.value,
     });
     list.value = r.list;
@@ -166,6 +190,31 @@ async function moveBoard(row: any) {
   ElMessage.success("已转移");
   reload();
 }
+
+function reviewLabel(status?: string) {
+  if (status === "auto_passed") return "自动通过";
+  if (status === "blocked_ai") return "AI 拦截";
+  if (status === "manual_requested") return "申请人工审核";
+  if (status === "manual_reviewing") return "人工审核中";
+  if (status === "approved_manual") return "人工已通过";
+  if (status === "rejected_manual") return "人工已驳回";
+  return "未审核";
+}
+
+async function approveReview(row: any) {
+  await adminApi.updateTopic(row.id, { aiReviewStatus: "approved_manual", manualReviewNote: "管理员人工审核通过" });
+  ElMessage.success("已审核通过");
+  reload();
+}
+
+async function rejectReview(row: any) {
+  const { value } = await ElMessageBox.prompt("填写驳回说明（选填）", "人工驳回", {
+    inputPlaceholder: "例如：存在明显人身攻击 / 泄露隐私信息",
+  }).catch(() => ({ value: "" }));
+  await adminApi.updateTopic(row.id, { aiReviewStatus: "rejected_manual", manualReviewNote: value || "管理员人工驳回" });
+  ElMessage.success("已驳回");
+  reload();
+}
 </script>
 
 <style scoped>
@@ -175,6 +224,7 @@ async function moveBoard(row: any) {
 a { color: var(--cpu-primary); text-decoration: none; }
 a:hover { text-decoration: underline; }
 .mobile-list { display: none; }
+.risk-note { font-size: 11px; color: #9ca3af; margin-top: 2px; }
 
 @media (max-width: 768px) {
   .ctrl-bar { align-items: stretch; }

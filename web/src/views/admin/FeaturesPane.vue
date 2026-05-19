@@ -28,6 +28,40 @@
       </div>
     </div>
 
+    <div class="site-config ai-config" v-loading="configLoading">
+      <div class="config-copy">
+        <div class="title">AI 稿件审核</div>
+        <div class="desc">使用 DeepSeek 对新投稿做风险判断。低于自动通过阈值直接发布，高于自动拦截阈值则拦下并允许申请人工审核。</div>
+      </div>
+      <div class="ai-form">
+        <div class="ai-row">
+          <span class="ai-label">启用审核</span>
+          <el-switch v-model="aiReviewEnabled" inline-prompt active-text="开" inactive-text="关" />
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">Provider</span>
+          <el-input v-model="aiReviewProvider" maxlength="40" placeholder="deepseek" />
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">模型</span>
+          <el-input v-model="aiReviewModel" maxlength="80" placeholder="deepseek-v4-flash" />
+        </div>
+        <div class="ai-row ai-row--stretch">
+          <span class="ai-label">API Key</span>
+          <el-input v-model="aiReviewApiKey" maxlength="240" show-password placeholder="sk-..." />
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">自动通过</span>
+          <el-input-number v-model="aiReviewAutoPassScore" :min="0" :max="100" />
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">自动拦截</span>
+          <el-input-number v-model="aiReviewBlockScore" :min="0" :max="100" />
+        </div>
+        <el-button type="primary" :loading="savingConfig" @click="saveAiReviewConfig">保存 AI 审核配置</el-button>
+      </div>
+    </div>
+
     <div class="feature-grid" v-loading="loading">
       <div v-for="f in featureMeta" :key="f.key" class="feature-row">
         <div class="left">
@@ -65,6 +99,12 @@ const configLoading = ref(false);
 const savingConfig = ref(false);
 const pendingKey = ref<FKey | null>(null);
 const siteOrigin = ref("");
+const aiReviewEnabled = ref(false);
+const aiReviewProvider = ref("deepseek");
+const aiReviewModel = ref("deepseek-v4-flash");
+const aiReviewApiKey = ref("");
+const aiReviewAutoPassScore = ref(24);
+const aiReviewBlockScore = ref(70);
 const features = reactive<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>({
   forum: true, market: true, coursereview: true, electric: true,
 });
@@ -102,6 +142,12 @@ async function reload() {
     Object.assign(features, r);
     site.apply(r);
     siteOrigin.value = config.siteOrigin;
+    aiReviewEnabled.value = config.aiReviewEnabled;
+    aiReviewProvider.value = config.aiReviewProvider;
+    aiReviewModel.value = config.aiReviewModel;
+    aiReviewApiKey.value = config.aiReviewApiKey;
+    aiReviewAutoPassScore.value = config.aiReviewAutoPassScore;
+    aiReviewBlockScore.value = config.aiReviewBlockScore;
   } finally {
     loading.value = false;
     configLoading.value = false;
@@ -114,6 +160,29 @@ async function saveSiteConfig() {
     const config = await adminApi.updateSiteConfig({ siteOrigin: siteOrigin.value });
     siteOrigin.value = config.siteOrigin;
     ElMessage.success(config.siteOrigin ? "网站域名已保存" : "已清空网站域名");
+  } finally {
+    savingConfig.value = false;
+  }
+}
+
+async function saveAiReviewConfig() {
+  savingConfig.value = true;
+  try {
+    const config = await adminApi.updateSiteConfig({
+      aiReviewEnabled: aiReviewEnabled.value,
+      aiReviewProvider: aiReviewProvider.value,
+      aiReviewModel: aiReviewModel.value,
+      aiReviewApiKey: aiReviewApiKey.value,
+      aiReviewAutoPassScore: aiReviewAutoPassScore.value,
+      aiReviewBlockScore: aiReviewBlockScore.value,
+    });
+    aiReviewEnabled.value = config.aiReviewEnabled;
+    aiReviewProvider.value = config.aiReviewProvider;
+    aiReviewModel.value = config.aiReviewModel;
+    aiReviewApiKey.value = config.aiReviewApiKey;
+    aiReviewAutoPassScore.value = config.aiReviewAutoPassScore;
+    aiReviewBlockScore.value = config.aiReviewBlockScore;
+    ElMessage.success("AI 审核配置已保存");
   } finally {
     savingConfig.value = false;
   }
@@ -169,6 +238,27 @@ async function toggle(key: FKey, on: boolean) {
   gap: 10px;
   width: min(520px, 52%);
 }
+.ai-config {
+  align-items: flex-start;
+}
+.ai-form {
+  width: min(640px, 58%);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+.ai-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ai-row--stretch {
+  grid-column: 1 / -1;
+}
+.ai-label {
+  font-size: 12px;
+  color: #6b7280;
+}
 .config-form :deep(.el-input) {
   flex: 1;
 }
@@ -201,6 +291,10 @@ async function toggle(key: FKey, on: boolean) {
     width: 100%;
     flex-direction: column;
     align-items: stretch;
+  }
+  .ai-form {
+    width: 100%;
+    grid-template-columns: 1fr;
   }
   .feature-row :deep(.el-switch) {
     align-self: flex-start;

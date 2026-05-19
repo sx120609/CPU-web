@@ -35,10 +35,12 @@ model User {
   lastLoginClient String?
   usedIosClient Boolean  @default(false)
   usedAndroidClient Boolean @default(false)
+  topicSubmissionLocked Boolean @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   topics            Topic[]
+  manualReviewedTopics Topic[] @relation("ManualReviewedTopics")
   replies           Reply[]
   likes             Like[]
   notifications     Notification[]
@@ -92,6 +94,16 @@ model Topic {
   //   coursereview: {"courseId":12,"ratings":{"difficulty":3,"reward":5,"recommend":4,"score":2}}
   //   announce:     {"sourceUrl":"...", "publishedAt":"2026-05-14"}
   metadata    String    @default("{}")
+  aiReviewStatus String @default("none") // none / checking / auto_passed / blocked_ai / manual_requested / manual_reviewing / approved_manual / rejected_manual
+  aiRiskLevel String? // low / medium / high
+  aiRiskScore Int? // 0-100
+  aiReviewReason String?
+  aiReviewDetail String?
+  aiModel String?
+  aiReviewedAt DateTime?
+  manualReviewedById Int?
+  manualReviewedAt DateTime?
+  manualReviewNote String?
   pinned      Boolean   @default(false)
   locked      Boolean   @default(false) // 锁帖后不能回复
   hidden      Boolean   @default(false) // 被管理员隐藏
@@ -108,9 +120,11 @@ model Topic {
   replies Reply[]
   likes   Like[]
   tags    TopicTag[]
+  manualReviewedBy User? @relation("ManualReviewedTopics", fields: [manualReviewedById], references: [id])
 
   @@index([boardId, lastReplyAt])
   @@index([authorId])
+  @@index([authorId, aiReviewStatus])
 }
 
 model Reply {

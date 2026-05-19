@@ -197,6 +197,7 @@ function pubUser(u: any) {
     lastLoginClient: u.lastLoginClient,
     usedIosClient: u.usedIosClient,
     usedAndroidClient: u.usedAndroidClient,
+    topicSubmissionLocked: u.topicSubmissionLocked,
     createdAt: u.createdAt,
   };
 }

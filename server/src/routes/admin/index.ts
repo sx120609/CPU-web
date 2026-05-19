@@ -10,10 +10,12 @@ import {
   getFeatures,
   getSiteConfig,
   setFeature,
+  setAiReviewConfig,
   setSiteOrigin,
   ALL_FEATURES,
   type FeatureKey,
 } from "../../services/siteSettings";
+import { refreshTopicSubmissionLock } from "../../services/topicAiReview";
 
 export const adminRouter = Router();
 
@@ -278,6 +280,7 @@ adminRouter.get("/topics", modOrAbove, async (req, res, next) => {
     const q = String(req.query.q ?? "").trim();
     const boardSlug = req.query.board ? String(req.query.board) : undefined;
     const hidden = req.query.hidden === "1" ? true : req.query.hidden === "0" ? false : undefined;
+    const reviewStatus = req.query.reviewStatus ? String(req.query.reviewStatus) : undefined;
     const page = Math.max(1, Number(req.query.page ?? 1));
     const size = Math.min(50, Math.max(10, Number(req.query.size ?? 20)));
 
@@ -287,6 +290,7 @@ adminRouter.get("/topics", modOrAbove, async (req, res, next) => {
       { content: { contains: q } },
     ];
     if (typeof hidden === "boolean") where.hidden = hidden;
+    if (reviewStatus) where.aiReviewStatus = reviewStatus;
     if (boardSlug) {
       const b = await prisma.board.findUnique({ where: { slug: boardSlug } });
       if (b) where.boardId = b.id;
@@ -314,6 +318,8 @@ const topicPatchSchema = z.object({
   pinned: z.boolean().optional(),
   locked: z.boolean().optional(),
   boardSlug: z.string().optional(), // 转板块
+  aiReviewStatus: z.enum(["manual_reviewing", "approved_manual", "rejected_manual"]).optional(),
+  manualReviewNote: z.string().max(500).optional(),
 });
 
 adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (req, res, next) => {
@@ -329,7 +335,26 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
       if (target.readOnly) throw Errors.badRequest("不能转入只读板块");
       data.boardId = target.id;
     }
+    if (req.body.aiReviewStatus) {
+      data.aiReviewStatus = req.body.aiReviewStatus;
+      data.manualReviewedById = req.user!.userId;
+      data.manualReviewedAt = new Date();
+      data.manualReviewNote = req.body.manualReviewNote ?? "";
+      if (req.body.aiReviewStatus === "approved_manual") {
+        data.hidden = false;
+      }
+      if (req.body.aiReviewStatus === "rejected_manual") {
+        data.hidden = true;
+      }
+    }
     const u = await prisma.topic.update({ where: { id }, data });
+    if (req.body.aiReviewStatus) {
+      await refreshTopicSubmissionLock(u.authorId);
+      if (req.body.aiReviewStatus === "approved_manual" && u.hidden === false) {
+        await prisma.user.update({ where: { id: u.authorId }, data: { postCount: { increment: 1 } } }).catch(() => {});
+        await prisma.board.update({ where: { id: u.boardId }, data: { topicCount: { increment: 1 } } }).catch(() => {});
+      }
+    }
     ok(res, { id: u.id, hidden: u.hidden, pinned: u.pinned, locked: u.locked, boardId: u.boardId });
   } catch (e) { next(e); }
 });
@@ -498,14 +523,37 @@ adminRouter.get("/site-config", adminOnly, (_req, res) => {
 
 const siteConfigPatchSchema = z.object({
   siteOrigin: z.string().trim().max(240).optional(),
+  aiReviewEnabled: z.boolean().optional(),
+  aiReviewProvider: z.string().trim().max(40).optional(),
+  aiReviewModel: z.string().trim().max(80).optional(),
+  aiReviewApiKey: z.string().trim().max(240).optional(),
+  aiReviewAutoPassScore: z.number().int().min(0).max(100).optional(),
+  aiReviewBlockScore: z.number().int().min(0).max(100).optional(),
 });
 
 adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), async (req, res, next) => {
   try {
-    const config = await setSiteOrigin(req.body.siteOrigin ?? "");
+    if (
+      req.body.aiReviewEnabled !== undefined ||
+      req.body.aiReviewProvider !== undefined ||
+      req.body.aiReviewModel !== undefined ||
+      req.body.aiReviewApiKey !== undefined ||
+      req.body.aiReviewAutoPassScore !== undefined ||
+      req.body.aiReviewBlockScore !== undefined
+    ) {
+      await setAiReviewConfig(req.body);
+    }
+    if (req.body.siteOrigin !== undefined) {
+      await setSiteOrigin(req.body.siteOrigin ?? "");
+    }
+    const config = getSiteConfig();
     ok(res, config);
   } catch (e: any) {
-    if (e?.message === "网站域名格式不正确" || e?.message === "网站域名仅支持 http 或 https") {
+    if (
+      e?.message === "网站域名格式不正确" ||
+      e?.message === "网站域名仅支持 http 或 https" ||
+      e?.message === "AI 自动拦截阈值不能低于自动通过阈值"
+    ) {
       next(Errors.badRequest(e.message));
       return;
     }

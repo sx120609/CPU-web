@@ -14,6 +14,11 @@ export interface Topic {
   replyCount: number;
   likeCount: number;
   lastReplyAt?: string;
+  aiReviewStatus?: string;
+  aiRiskLevel?: string | null;
+  aiRiskScore?: number | null;
+  aiReviewReason?: string | null;
+  aiModel?: string | null;
   createdAt: string;
   updatedAt: string;
   author?: { id: number; nickname: string; username: string; avatar?: string; role: string; bio?: string };
@@ -38,9 +43,10 @@ export const topicApi = {
   detail: (id: number) => request.get<Topic>(`/topics/${id}`),
   replies: (id: number) => request.get<Reply[]>(`/topics/${id}/replies`),
   create: (payload: { boardSlug: string; title: string; content: string; metadata?: any; tags?: string[] }) =>
-    request.post<Topic>("/topics", payload),
+    request.post<Topic & { submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string } }>("/topics", payload),
   update: (id: number, payload: Partial<Topic>) => request.patch<Topic>(`/topics/${id}`, payload),
   remove: (id: number) => request.delete<any>(`/topics/${id}`),
+  requestManualReview: (id: number) => request.post<{ ok: true }>(`/topics/${id}/request-manual-review`),
 };
 
 export const replyApi = {

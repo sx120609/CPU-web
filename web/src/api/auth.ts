@@ -20,6 +20,7 @@ export interface UserInfo {
   lastLoginClient?: string | null;
   usedIosClient?: boolean;
   usedAndroidClient?: boolean;
+  topicSubmissionLocked?: boolean;
   createdAt: string;
 }
 
