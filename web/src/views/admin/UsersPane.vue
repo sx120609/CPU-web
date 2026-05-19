@@ -6,10 +6,7 @@
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
         <el-select v-model="role" clearable placeholder="角色" class="filter-select" @change="applyFilters">
-          <el-option label="user" value="user" />
-          <el-option label="mod" value="mod" />
-          <el-option label="admin" value="admin" />
-          <el-option label="bot" value="bot" />
+          <el-option v-for="item in roleOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
         <el-select v-model="status" clearable placeholder="状态" class="filter-select" @change="applyFilters">
           <el-option label="active" value="active" />
@@ -62,7 +59,7 @@
       <el-table-column label="身份" width="170">
         <template #default="{ row }">
           <div class="tag-stack">
-            <el-tag :type="roleTag(row.role)" size="small">{{ row.role }}</el-tag>
+            <el-tag :type="roleTag(row.role)" size="small">{{ roleLabel(row.role) }}</el-tag>
             <el-tag :type="row.status === 'active' ? 'success' : row.status === 'banned' ? 'danger' : 'warning'" size="small" effect="plain">
               {{ row.status }}
             </el-tag>
@@ -98,16 +95,18 @@
       </el-table-column>
       <el-table-column label="操作" width="210" fixed="right">
         <template #default="{ row }">
-          <el-button v-if="row.status === 'active'" text type="danger" size="small" @click="ban(row)">封禁</el-button>
+          <el-button v-if="row.status !== 'banned'" text type="danger" size="small" @click="ban(row)">封禁</el-button>
           <el-button v-else text type="success" size="small" @click="unban(row)">解禁</el-button>
+          <el-button v-if="row.status === 'active'" text type="warning" size="small" @click="mute(row)">禁言</el-button>
+          <el-button v-else-if="row.status === 'muted'" text type="success" size="small" @click="unmute(row)">取消禁言</el-button>
           <el-button text size="small" @click="rename(row)">改名</el-button>
           <el-dropdown v-if="auth.isAdmin" trigger="click" @command="handleCommand($event, row)">
             <el-button text size="small">
               更多<el-icon class="more-icon"><MoreFilled /></el-icon>
             </el-button>
             <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="role">改角色</el-dropdown-item>
+            <el-dropdown-menu>
+                <el-dropdown-item command="role">改身份</el-dropdown-item>
                 <el-dropdown-item command="whitelist">{{ row.aiReviewWhitelisted ? "取消 AI 白名单" : "设为 AI 白名单" }}</el-dropdown-item>
                 <el-dropdown-item v-if="!row.studentSso" command="password">重置密码</el-dropdown-item>
                 <el-dropdown-item v-if="row.id !== auth.user?.id" command="delete" divided>删除用户</el-dropdown-item>
@@ -130,7 +129,7 @@
           </el-tag>
         </div>
         <div class="tag-stack">
-          <el-tag :type="roleTag(row.role)" size="small">{{ row.role }}</el-tag>
+          <el-tag :type="roleTag(row.role)" size="small">{{ roleLabel(row.role) }}</el-tag>
           <el-tag v-if="row.studentSso" type="primary" size="small" effect="plain">统一认证</el-tag>
           <el-tag v-if="row.aiReviewWhitelisted" type="success" size="small" effect="plain">AI 白名单</el-tag>
           <el-tag :type="clientTagType(row.lastLoginClient)" size="small" effect="plain">
@@ -145,16 +144,18 @@
           <span>{{ row.postCount }} 帖 / {{ row.replyCount }} 回</span>
         </div>
         <div class="mobile-actions">
-          <el-button v-if="row.status === 'active'" type="danger" plain size="small" @click="ban(row)">封禁</el-button>
+          <el-button v-if="row.status !== 'banned'" type="danger" plain size="small" @click="ban(row)">封禁</el-button>
           <el-button v-else type="success" plain size="small" @click="unban(row)">解禁</el-button>
+          <el-button v-if="row.status === 'active'" type="warning" plain size="small" @click="mute(row)">禁言</el-button>
+          <el-button v-else-if="row.status === 'muted'" type="success" plain size="small" @click="unmute(row)">取消禁言</el-button>
           <el-button plain size="small" @click="rename(row)">改名</el-button>
           <el-dropdown v-if="auth.isAdmin" trigger="click" @command="handleCommand($event, row)">
             <el-button plain size="small">
               更多<el-icon class="more-icon"><MoreFilled /></el-icon>
             </el-button>
             <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="role">改角色</el-dropdown-item>
+            <el-dropdown-menu>
+                <el-dropdown-item command="role">改身份</el-dropdown-item>
                 <el-dropdown-item command="whitelist">{{ row.aiReviewWhitelisted ? "取消 AI 白名单" : "设为 AI 白名单" }}</el-dropdown-item>
                 <el-dropdown-item v-if="!row.studentSso" command="password">重置密码</el-dropdown-item>
                 <el-dropdown-item v-if="row.id !== auth.user?.id" command="delete" divided>删除用户</el-dropdown-item>
@@ -191,10 +192,7 @@
         </el-form-item>
         <el-form-item label="角色">
           <el-select v-model="createForm.role" style="width:100%">
-            <el-option label="user（普通用户）" value="user" />
-            <el-option label="mod（版主）" value="mod" />
-            <el-option label="admin（管理员）" value="admin" />
-            <el-option label="bot（系统账号）" value="bot" />
+            <el-option v-for="item in createRoleOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="院系（选填）">
@@ -207,6 +205,23 @@
       <template #footer>
         <el-button @click="createOpen = false">取消</el-button>
         <el-button type="primary" :loading="creating" @click="submitCreate">创建</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="roleDialogOpen" title="修改身份" width="420" append-to-body>
+      <el-form label-position="top">
+        <el-form-item label="用户">
+          <div class="dlg-tip">{{ roleDialogTarget?.nickname }}（{{ roleDialogTarget?.username }}）</div>
+        </el-form-item>
+        <el-form-item label="身份">
+          <el-select v-model="selectedRole" style="width:100%">
+            <el-option v-for="item in roleOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="roleDialogOpen = false">取消</el-button>
+        <el-button type="primary" :loading="roleSaving" @click="submitRoleChange">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -236,6 +251,10 @@ const loginRange = ref<[string, string] | [] | null>([]);
 
 const createOpen = ref(false);
 const creating = ref(false);
+const roleDialogOpen = ref(false);
+const roleSaving = ref(false);
+const roleDialogTarget = ref<any | null>(null);
+const selectedRole = ref<"user" | "mod" | "admin" | "bot">("user");
 const createForm = reactive({
   username: "",
   password: "",
@@ -244,6 +263,15 @@ const createForm = reactive({
   college: "",
   enrollYear: undefined as number | undefined,
 });
+
+const roleOptions = [
+  { value: "user", label: "普通用户" },
+  { value: "mod", label: "论坛管理员" },
+  { value: "admin", label: "超级管理员" },
+  { value: "bot", label: "系统账号" },
+] as const;
+
+const createRoleOptions = roleOptions;
 
 onMounted(reload);
 
@@ -325,6 +353,10 @@ function roleTag(r: string): "danger" | "warning" | "primary" | "info" {
   return "primary";
 }
 
+function roleLabel(r: string) {
+  return roleOptions.find((item) => item.value === r)?.label ?? r;
+}
+
 function clientLabel(client?: string | null) {
   if (client === "ios") return "iOS 客户端";
   if (client === "android") return "安卓客户端";
@@ -359,6 +391,16 @@ async function unban(row: any) {
   ElMessage.success("已解禁");
   reload();
 }
+async function mute(row: any) {
+  await adminApi.updateUser(row.id, { status: "muted" });
+  ElMessage.success("已禁言");
+  reload();
+}
+async function unmute(row: any) {
+  await adminApi.updateUser(row.id, { status: "active" });
+  ElMessage.success("已取消禁言");
+  reload();
+}
 async function rename(row: any) {
   const { value } = await ElMessageBox.prompt(`修改 ${row.username} 的昵称`, "改昵称", {
     inputValue: row.nickname,
@@ -370,14 +412,22 @@ async function rename(row: any) {
   reload();
 }
 async function changeRole(row: any) {
-  const { value } = await ElMessageBox.prompt(
-    `修改 ${row.nickname} 的角色（当前 ${row.role}）。仅可填 user / mod / admin / bot`,
-    "改角色",
-    { inputValue: row.role, inputValidator: (v) => ["user", "mod", "admin", "bot"].includes(v) }
-  );
-  await adminApi.updateUser(row.id, { role: value });
-  ElMessage.success("已修改");
-  reload();
+  roleDialogTarget.value = row;
+  selectedRole.value = row.role;
+  roleDialogOpen.value = true;
+}
+
+async function submitRoleChange() {
+  if (!roleDialogTarget.value) return;
+  roleSaving.value = true;
+  try {
+    await adminApi.updateUser(roleDialogTarget.value.id, { role: selectedRole.value });
+    ElMessage.success("已修改身份");
+    roleDialogOpen.value = false;
+    await reload();
+  } finally {
+    roleSaving.value = false;
+  }
 }
 
 async function toggleAiWhitelist(row: any) {

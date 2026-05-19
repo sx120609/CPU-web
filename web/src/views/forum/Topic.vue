@@ -31,7 +31,7 @@
           <div class="meta">
             发表于 {{ fmtDate(topic.createdAt) }}
             <template v-if="topic.editCount && topic.editCount > 0"> · 已编辑 {{ topic.editCount }} 次</template>
-            · 浏览 {{ topic.viewCount }} · 回复 {{ topic.replyCount }}
+            · 热度 {{ hotScore }} · 浏览 {{ topic.viewCount }} · 回复 {{ topic.replyCount }}
           </div>
         </div>
         <div v-if="metaPrice !== undefined" class="meta-price">¥ {{ metaPrice }}</div>
@@ -188,6 +188,7 @@ const replyEditorRef = ref<InstanceType<typeof RichTextEditor> | null>(null);
 const REPLY_MAX = 10000;
 
 const metaPrice = computed(() => topic.value?.metadata?.price);
+const hotScore = computed(() => Math.round((topic.value?.likeCount ?? 0) * 5 + (topic.value?.replyCount ?? 0) * 3 + (topic.value?.viewCount ?? 0) * 0.03));
 const isReadOnly = computed(() => topic.value?.board?.readOnly);
 const canEdit = computed(() => auth.user?.id === topic.value?.authorId || auth.isAdmin);
 const canPin = computed(() => auth.isMod);

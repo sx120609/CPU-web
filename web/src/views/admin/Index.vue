@@ -4,7 +4,7 @@
       <h1 class="title">🛠 管理后台</h1>
       <div class="user-tag">
         <el-tag :type="auth.user?.role === 'admin' ? 'danger' : 'warning'" size="small">
-          {{ auth.user?.role === 'admin' ? '管理员' : '版主' }}
+          {{ auth.user?.role === 'admin' ? '超级管理员' : '论坛管理员' }}
         </el-tag>
         <span class="me">{{ auth.user?.nickname }}</span>
       </div>

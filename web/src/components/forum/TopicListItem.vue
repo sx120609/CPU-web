@@ -19,6 +19,8 @@
         <span>{{ fmtRelative(topic.lastReplyAt || topic.createdAt) }}</span>
         <span v-if="topic.editCount && topic.editCount > 0" class="edited">已编辑 {{ topic.editCount }} 次</span>
         <span class="dot">·</span>
+        <span class="heat">热度 {{ hotScore }}</span>
+        <span class="dot">·</span>
         <span><el-icon><View /></el-icon> {{ topic.viewCount }}</span>
         <span><el-icon><ChatLineRound /></el-icon> {{ topic.replyCount }}</span>
         <span><el-icon><Star /></el-icon> {{ topic.likeCount }}</span>
@@ -46,6 +48,7 @@ const metaRating = computed(() => {
   const r = props.topic.metadata?.ratings?.recommend;
   return typeof r === "number" ? r : 0;
 });
+const hotScore = computed(() => Math.round((props.topic.likeCount ?? 0) * 5 + (props.topic.replyCount ?? 0) * 3 + (props.topic.viewCount ?? 0) * 0.03));
 </script>
 
 <style scoped>
@@ -80,6 +83,7 @@ const metaRating = computed(() => {
 .line2 .author { color: var(--cpu-primary); }
 .line2 .bot { color: #ef4444; }
 .line2 .edited { color: #b45309; }
+.line2 .heat { color: #0f766e; font-weight: 600; }
 .line2 .dot { color: #d1d5db; }
 
 .price {

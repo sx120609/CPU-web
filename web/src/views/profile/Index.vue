@@ -9,7 +9,7 @@
       <h3 class="name">
         {{ user?.nickname }}
         <el-tag v-if="user?.role === 'admin'" size="small" type="danger">管理员</el-tag>
-        <el-tag v-else-if="user?.role === 'mod'" size="small">版主</el-tag>
+        <el-tag v-else-if="user?.role === 'mod'" size="small">论坛管理员</el-tag>
       </h3>
       <p class="username">@{{ user?.username }}</p>
       <p class="bio">{{ user?.bio || "这个人很懒，什么都没写" }}</p>
