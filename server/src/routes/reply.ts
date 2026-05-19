@@ -5,7 +5,7 @@ import { Errors, ok } from "../utils/response";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettings";
-import { reviewReplyContent, shouldBypassAiReviewForUser, shouldRunAiReview } from "../services/topicAiReview";
+import { requestManualReplyReview, reviewReplyContent, shouldBypassAiReviewForUser, shouldRunAiReview } from "../services/topicAiReview";
 
 export const replyRouter = Router();
 
@@ -47,7 +47,25 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
         parentContent,
       });
       if (aiResult.status === "blocked_ai") {
+        const blockedReply = await prisma.reply.create({
+          data: {
+            topicId,
+            authorId: userId,
+            content,
+            parentReplyId,
+            floor: 0,
+            hidden: true,
+            aiReviewStatus: "blocked_ai",
+            aiRiskLevel: aiResult.riskLevel,
+            aiRiskScore: aiResult.riskScore,
+            aiReviewReason: aiResult.reason,
+            aiReviewDetail: aiResult.detail,
+            aiModel: aiResult.model,
+            aiReviewedAt: new Date(),
+          },
+        });
         return ok(res, {
+          id: blockedReply.id,
           blocked: true,
           submissionResult: {
             status: "blocked_ai",
@@ -68,7 +86,14 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     const floor = (last?.floor ?? 0) + 1;
 
     const reply = await prisma.reply.create({
-      data: { topicId, authorId: userId, content, parentReplyId, floor },
+      data: {
+        topicId,
+        authorId: userId,
+        content,
+        parentReplyId,
+        floor,
+        aiReviewStatus: "auto_passed",
+      },
       include: {
         author: { select: { id: true, username: true, nickname: true, avatar: true, role: true } },
       },
@@ -100,6 +125,15 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     }
 
     ok(res, reply);
+  } catch (e) { next(e); }
+});
+
+replyRouter.post("/:id/request-manual-review", authRequired, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) throw Errors.badRequest("回复 ID 不合法");
+    await requestManualReplyReview(id, req.user!.userId);
+    ok(res, { ok: true });
   } catch (e) { next(e); }
 });
 

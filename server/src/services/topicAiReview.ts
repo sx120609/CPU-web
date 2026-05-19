@@ -7,6 +7,7 @@ export type TopicAiReviewStatus =
   | "checking"
   | "auto_passed"
   | "blocked_ai"
+  | "blocked_force"
   | "manual_requested"
   | "manual_reviewing"
   | "approved_manual"
@@ -296,6 +297,62 @@ export async function requestManualTopicReview(topicId: number, userId: number) 
     }),
   ]);
   await createAiReviewNotifications(topicId, userId);
+}
+
+export async function requestManualReplyReview(replyId: number, userId: number) {
+  const reply = await prisma.reply.findUnique({
+    where: { id: replyId },
+    select: { id: true, authorId: true, hidden: true, content: true, aiReviewStatus: true, aiReviewReason: true, aiRiskScore: true, topicId: true },
+  });
+  if (!reply) throw Errors.notFound("回复不存在");
+  if (reply.authorId !== userId) throw Errors.forbidden("只能申请人工审核自己的回复");
+  if (!reply.hidden) throw Errors.badRequest("当前回复无需申请人工审核");
+  if (reply.aiReviewStatus !== "blocked_ai") throw Errors.badRequest("当前回复不能申请人工审核");
+  await prisma.reply.update({
+    where: { id: replyId },
+    data: { aiReviewStatus: "manual_requested" },
+  });
+  await prisma.notification.create({
+    data: {
+      userId,
+      category: "system",
+      level: "normal",
+      title: "已提交回复人工审核申请",
+      content: "审核期间不能继续投递新稿件，请等待管理员处理。",
+      source: "AI 审核",
+      payload: JSON.stringify({
+        type: "reply-manual-review-pending",
+        replyId: reply.id,
+        topicId: reply.topicId,
+        reason: reply.aiReviewReason,
+        riskScore: reply.aiRiskScore,
+      }),
+    },
+  }).catch(() => {});
+
+  const reviewers = await prisma.user.findMany({
+    where: { role: { in: ["admin", "mod"] }, status: "active" },
+    select: { id: true },
+  });
+  if (reviewers.length) {
+    await prisma.notification.createMany({
+      data: reviewers.map((reviewer) => ({
+        userId: reviewer.id,
+        category: "system",
+        level: "strong",
+        title: "有新的回复待人工审核",
+        content: reply.content.slice(0, 80),
+        source: "AI 审核",
+        payload: JSON.stringify({
+          type: "reply-manual-review-admin",
+          replyId: reply.id,
+          topicId: reply.topicId,
+          reason: reply.aiReviewReason,
+          riskScore: reply.aiRiskScore,
+        }),
+      })),
+    }).catch(() => {});
+  }
 }
 
 export async function refreshTopicSubmissionLock(userId: number) {

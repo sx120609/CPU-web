@@ -54,6 +54,7 @@ export const replyApi = {
   create: (payload: { topicId: number; content: string; parentReplyId?: number }) =>
     request.post<Reply & { blocked?: boolean; submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string } }>("/replies", payload),
   remove: (id: number) => request.delete<any>(`/replies/${id}`),
+  requestManualReview: (id: number) => request.post<{ ok: true }>(`/replies/${id}/request-manual-review`),
 };
 
 export const likeApi = {

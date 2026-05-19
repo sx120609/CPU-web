@@ -465,40 +465,31 @@ async function requestManualReview() {
 }
 
 async function openManualReviewConfirm() {
-  let countdown = 3;
-  let timer = 0;
+  await ElMessageBox.alert(
+    "你将提交人工审核申请。审核期间不能继续投递新稿件，请先阅读 3 秒。",
+    "提交人工审核前确认",
+    {
+      type: "warning",
+      confirmButtonText: "继续",
+      autofocus: false,
+    }
+  ).catch(() => {});
+  await new Promise((resolve) => window.setTimeout(resolve, 3000));
   try {
-    const prompt = ElMessageBox.confirm(
-      `你将提交人工审核申请。\n审核期间不能继续投递新稿件。\n\n请阅读确认（${countdown}s）`,
-      "提交人工审核前确认",
+    await ElMessageBox.confirm(
+      "已阅读完毕，是否提交人工审核申请？审核期间不能继续投递新稿件。",
+      "再次确认",
       {
         type: "warning",
-        confirmButtonText: `我已知晓（${countdown}s）`,
+        confirmButtonText: "确认提交",
         cancelButtonText: "返回修改",
         autofocus: false,
-        beforeClose: (action, instance, done) => {
-          if (action !== "confirm" || countdown <= 0) {
-            window.clearInterval(timer);
-            done();
-            return;
-          }
-        },
-        callback: () => window.clearInterval(timer),
       }
     );
-    timer = window.setInterval(() => {
-      countdown -= 1;
-      const btn = document.querySelector<HTMLElement>(".el-message-box__btns .el-button--primary span");
-      if (btn) btn.textContent = countdown > 0 ? `我已知晓（${countdown}s）` : "我已知晓";
-      if (countdown <= 0) window.clearInterval(timer);
-    }, 1000);
-    await prompt;
+    return true;
   } catch {
-    window.clearInterval(timer);
     return false;
   }
-  window.clearInterval(timer);
-  return true;
 }
 </script>
 

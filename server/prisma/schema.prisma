@@ -133,6 +133,13 @@ model Reply {
   topicId       Int
   authorId      Int
   content       String   // Markdown
+  aiReviewStatus String  @default("none") // none / auto_passed / blocked_ai / manual_requested / manual_reviewing / approved_manual / rejected_manual
+  aiRiskLevel   String?
+  aiRiskScore   Int?
+  aiReviewReason String?
+  aiReviewDetail String?
+  aiModel       String?
+  aiReviewedAt  DateTime?
   // 楼中楼：parentReplyId 指向父级回复，null 表示直接对主帖
   parentReplyId Int?
   // 排序楼层号

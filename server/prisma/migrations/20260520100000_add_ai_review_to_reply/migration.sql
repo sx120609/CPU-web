@@ -1,0 +1,8 @@
+ALTER TABLE "Reply" ADD COLUMN "aiReviewStatus" TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE "Reply" ADD COLUMN "aiRiskLevel" TEXT;
+ALTER TABLE "Reply" ADD COLUMN "aiRiskScore" INTEGER;
+ALTER TABLE "Reply" ADD COLUMN "aiReviewReason" TEXT;
+ALTER TABLE "Reply" ADD COLUMN "aiReviewDetail" TEXT;
+ALTER TABLE "Reply" ADD COLUMN "aiModel" TEXT;
+ALTER TABLE "Reply" ADD COLUMN "aiReviewedAt" DATETIME;
+
