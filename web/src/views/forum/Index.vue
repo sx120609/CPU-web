@@ -49,6 +49,7 @@
         <div class="gate-points">
           <div>发帖、回复均使用 `DeepSeek V4 Flash` 模型进行 AI 审核。</div>
           <div>平台强绑定学号，请对自己的发言负责。</div>
+          <div>以前发生过类似事件，校方对此管控较严格，因此平台必须采取更审慎的管理方式。</div>
           <div>本平台并非学校官方平台，论坛内一切用户言论、交易、纠纷及其后果均与官方无关。</div>
         </div>
         <div class="gate-actions">
@@ -87,6 +88,7 @@
         <p>请特别注意：本平台强绑定学号。你在论坛中的发言，与现实身份存在明确对应关系。请谨慎表达，对自己发布的一切内容负责。</p>
         <p>对于违规内容，站方将视情况采取删帖、限制功能、禁言、封号等措施。情节严重、影响恶劣者，将被直接永久封禁，后续不得使用本平台相关功能。</p>
         <p>平台采取强审核、强绑定、默认关闭论坛的措施，并非出于苛刻管理，而是为了保证平台合规、降低风险、尽可能长期稳定运行。此为无奈之举，请予理解。</p>
+        <p>以前发生过类似事件，校方对此管控较严格，因此平台必须对论坛内容采取更审慎、更严格的管理方式。</p>
         <p>如因个别用户发布严重违规内容，造成恶劣传播影响，甚至引发大型公共安全问题，本平台可能被永久封禁，相关违规人员也可能被进一步查处。</p>
         <div class="forum-notice-disclaimer">
           <h3>免责声明</h3>
@@ -191,7 +193,7 @@ function closeEnableDialog(force = false) {
 function startReadTimer() {
   window.clearInterval(readTimer);
   readTimer = 0;
-  readSeconds.value = 5;
+  readSeconds.value = 10;
   readTimer = window.setInterval(() => {
     readSeconds.value -= 1;
     if (readSeconds.value <= 0) {
