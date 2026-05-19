@@ -11,110 +11,163 @@
       </div>
     </el-alert>
 
-    <div class="site-config" v-loading="configLoading">
-      <div class="config-copy">
-        <div class="title">网站域名</div>
-        <div class="desc">用于生成 iOS / Android 小组件 API 地址。留空时会回退到当前请求的 Host，开发环境可能显示 127.0.0.1。</div>
+    <section class="settings-card" v-loading="configLoading">
+      <div class="section-head">
+        <div>
+          <h3 class="section-title">基础配置</h3>
+          <p class="section-desc">把常用配置单独放前面，避免一进来就被大段 AI 表单淹没。</p>
+        </div>
       </div>
-      <div class="config-form">
-        <el-input
-          v-model="siteOrigin"
-          clearable
-          maxlength="240"
-          placeholder="https://cpu.example.com"
-          @keyup.enter="saveSiteConfig"
-        />
-        <el-button type="primary" :loading="savingConfig" @click="saveSiteConfig">保存</el-button>
-      </div>
-    </div>
 
-    <div class="site-config ai-config" v-loading="configLoading">
-      <div class="config-copy">
-        <div class="title">AI 稿件审核</div>
-        <div class="desc">使用 DeepSeek 对新投稿做风险判断。低于自动通过阈值直接发布，高于自动拦截阈值则拦下并允许申请人工审核。</div>
+      <div class="site-config">
+        <div class="config-copy">
+          <div class="card-title">网站域名</div>
+          <div class="desc">用于生成 iOS / Android 小组件 API 地址。留空时会回退到当前请求的 Host，开发环境可能显示 127.0.0.1。</div>
+        </div>
+        <div class="config-form">
+          <el-input
+            v-model="siteOrigin"
+            clearable
+            maxlength="240"
+            placeholder="https://cpu.example.com"
+            @keyup.enter="saveSiteConfig"
+          />
+          <el-button type="primary" :loading="savingConfig" @click="saveSiteConfig">保存</el-button>
+        </div>
       </div>
-      <div class="ai-form">
-        <div class="ai-row">
-          <span class="ai-label">启用审核</span>
-          <el-switch v-model="aiReviewEnabled" inline-prompt active-text="开" inactive-text="关" />
-        </div>
-        <div class="ai-row">
-          <span class="ai-label">Provider</span>
-          <el-input v-model="aiReviewProvider" maxlength="40" placeholder="deepseek" />
-        </div>
-        <div class="ai-row">
-          <span class="ai-label">模型</span>
-          <el-input v-model="aiReviewModel" maxlength="80" placeholder="deepseek-v4-flash" />
-        </div>
-        <div class="ai-row ai-row--stretch">
-          <span class="ai-label">API Key</span>
-          <el-input v-model="aiReviewApiKey" maxlength="240" show-password placeholder="sk-..." />
-        </div>
-        <div class="ai-row">
-          <span class="ai-label">自动通过</span>
-          <el-input-number v-model="aiReviewAutoPassScore" :min="0" :max="100" />
-        </div>
-        <div class="ai-row">
-          <span class="ai-label">自动拦截</span>
-          <el-input-number v-model="aiReviewBlockScore" :min="0" :max="100" />
-        </div>
-        <div class="ai-row">
-          <span class="ai-label">编辑相似度下限</span>
-          <el-input-number v-model="aiEditSimilarityPercent" :min="0" :max="100" />
-        </div>
-        <div class="ai-row ai-row--stretch">
-          <span class="ai-label">帖子审核 System Prompt</span>
-          <el-input v-model="aiTopicReviewSystemPrompt" type="textarea" :rows="3" placeholder="可使用后台自定义 AI 审核系统提示词" />
-        </div>
-        <div class="ai-row ai-row--stretch">
-          <span class="ai-label">帖子审核 User Prompt</span>
-          <el-input v-model="aiTopicReviewUserPrompt" type="textarea" :rows="6" placeholder="支持 {{title}} / {{content}} / {{boardName}} / {{boardType}} / {{metadataJson}}" />
-        </div>
-        <div class="ai-row ai-row--stretch">
-          <span class="ai-label">回复审核 System Prompt</span>
-          <el-input v-model="aiReplyReviewSystemPrompt" type="textarea" :rows="3" placeholder="可使用后台自定义 AI 回复审核系统提示词" />
-        </div>
-        <div class="ai-row ai-row--stretch">
-          <span class="ai-label">回复审核 User Prompt</span>
-          <el-input v-model="aiReplyReviewUserPrompt" type="textarea" :rows="6" placeholder="支持 {{topicTitle}} / {{content}} / {{parentContent}} / {{boardName}} / {{boardType}}" />
-        </div>
-        <div class="ai-row ai-row--stretch">
-          <span class="ai-label">编辑相似度 System Prompt</span>
-          <el-input v-model="aiEditSimilaritySystemPrompt" type="textarea" :rows="3" placeholder="可使用后台自定义编辑相似度判定系统提示词" />
-        </div>
-        <div class="ai-row ai-row--stretch">
-          <span class="ai-label">编辑相似度 User Prompt</span>
-          <el-input v-model="aiEditSimilarityUserPrompt" type="textarea" :rows="6" placeholder="支持 {{originalTitle}} / {{originalContent}} / {{updatedTitle}} / {{updatedContent}}" />
-        </div>
-        <el-button type="primary" :loading="savingConfig" @click="saveAiReviewConfig">保存 AI 审核配置</el-button>
-      </div>
-    </div>
+    </section>
 
-    <div class="feature-grid" v-loading="loading">
-      <div v-for="f in featureMeta" :key="f.key" class="feature-row">
-        <div class="left">
-          <div class="title">
-            <span class="icon">{{ f.icon }}</span> {{ f.title }}
+    <section class="settings-card" v-loading="configLoading">
+      <button type="button" class="section-toggle" :class="{ expanded: aiConfigExpanded }" @click="aiConfigExpanded = !aiConfigExpanded">
+        <div class="section-toggle-copy">
+          <div class="section-toggle-top">
+            <h3 class="section-title">AI 稿件审核</h3>
+            <span class="toggle-pill" :class="{ on: aiReviewEnabled }">{{ aiReviewEnabled ? "已启用" : "未启用" }}</span>
           </div>
-          <div class="desc">{{ f.desc }}</div>
+          <p class="section-desc">默认收起。需要时再展开调阈值、模型和提示词，管理面板会清爽很多。</p>
+          <div class="summary-row">
+            <span class="summary-pill">{{ aiReviewProvider || "deepseek" }}</span>
+            <span class="summary-pill">{{ aiReviewModel || "未设置模型" }}</span>
+            <span class="summary-pill">通过 {{ aiReviewAutoPassScore }}</span>
+            <span class="summary-pill">拦截 {{ aiReviewBlockScore }}</span>
+            <span class="summary-pill">编辑相似度 {{ aiEditSimilarityPercent }}%</span>
+          </div>
+        </div>
+        <span class="toggle-arrow" aria-hidden="true">▾</span>
+      </button>
+
+      <div v-if="aiConfigExpanded" class="ai-config">
+        <div class="ai-form">
+          <div class="ai-row ai-row--switch">
+            <span class="ai-label">启用审核</span>
+            <el-switch v-model="aiReviewEnabled" inline-prompt active-text="开" inactive-text="关" />
+          </div>
+          <div class="ai-row">
+            <span class="ai-label">Provider</span>
+            <el-input v-model="aiReviewProvider" maxlength="40" placeholder="deepseek" />
+          </div>
+          <div class="ai-row">
+            <span class="ai-label">模型</span>
+            <el-input v-model="aiReviewModel" maxlength="80" placeholder="deepseek-v4-flash" />
+          </div>
+          <div class="ai-row ai-row--stretch">
+            <span class="ai-label">API Key</span>
+            <el-input v-model="aiReviewApiKey" maxlength="240" show-password placeholder="sk-..." />
+          </div>
+          <div class="ai-row">
+            <span class="ai-label">自动通过</span>
+            <el-input-number v-model="aiReviewAutoPassScore" :min="0" :max="100" />
+          </div>
+          <div class="ai-row">
+            <span class="ai-label">自动拦截</span>
+            <el-input-number v-model="aiReviewBlockScore" :min="0" :max="100" />
+          </div>
+          <div class="ai-row">
+            <span class="ai-label">编辑相似度下限</span>
+            <el-input-number v-model="aiEditSimilarityPercent" :min="0" :max="100" />
+          </div>
+        </div>
+
+        <div class="prompt-card">
+          <button type="button" class="sub-toggle" :class="{ expanded: aiPromptsExpanded }" @click="aiPromptsExpanded = !aiPromptsExpanded">
+            <div>
+              <div class="card-title">Prompt 模板</div>
+              <div class="desc">高级项，默认继续收起。支持直接改帖子审核、回复审核和编辑相似度的提示词。</div>
+            </div>
+            <span class="toggle-arrow" aria-hidden="true">▾</span>
+          </button>
+
+          <div v-if="aiPromptsExpanded" class="prompt-grid">
+            <div class="ai-row ai-row--stretch">
+              <span class="ai-label">帖子审核 System Prompt</span>
+              <el-input v-model="aiTopicReviewSystemPrompt" type="textarea" :rows="3" placeholder="可使用后台自定义 AI 审核系统提示词" />
+            </div>
+            <div class="ai-row ai-row--stretch">
+              <span class="ai-label">帖子审核 User Prompt</span>
+              <el-input v-model="aiTopicReviewUserPrompt" type="textarea" :rows="6" placeholder="支持 {{title}} / {{content}} / {{boardName}} / {{boardType}} / {{metadataJson}}" />
+            </div>
+            <div class="ai-row ai-row--stretch">
+              <span class="ai-label">回复审核 System Prompt</span>
+              <el-input v-model="aiReplyReviewSystemPrompt" type="textarea" :rows="3" placeholder="可使用后台自定义 AI 回复审核系统提示词" />
+            </div>
+            <div class="ai-row ai-row--stretch">
+              <span class="ai-label">回复审核 User Prompt</span>
+              <el-input v-model="aiReplyReviewUserPrompt" type="textarea" :rows="6" placeholder="支持 {{topicTitle}} / {{content}} / {{parentContent}} / {{boardName}} / {{boardType}}" />
+            </div>
+            <div class="ai-row ai-row--stretch">
+              <span class="ai-label">编辑相似度 System Prompt</span>
+              <el-input v-model="aiEditSimilaritySystemPrompt" type="textarea" :rows="3" placeholder="可使用后台自定义编辑相似度判定系统提示词" />
+            </div>
+            <div class="ai-row ai-row--stretch">
+              <span class="ai-label">编辑相似度 User Prompt</span>
+              <el-input v-model="aiEditSimilarityUserPrompt" type="textarea" :rows="6" placeholder="支持 {{originalTitle}} / {{originalContent}} / {{updatedTitle}} / {{updatedContent}}" />
+            </div>
+          </div>
+        </div>
+
+        <div class="actions-row">
+          <el-button type="primary" :loading="savingConfig" @click="saveAiReviewConfig">保存 AI 审核配置</el-button>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-card" v-loading="loading">
+      <div class="section-head">
+        <div>
+          <h3 class="section-title">功能开启 / 关闭</h3>
+          <p class="section-desc">按模块开关，移动端下改成卡片堆叠，开关和说明不会再挤成一团。</p>
+        </div>
+        <div class="section-meta">当前开启 {{ enabledFeatureCount }} / {{ featureMeta.length }}</div>
+      </div>
+
+      <div class="feature-grid">
+        <div v-for="f in featureMeta" :key="f.key" class="feature-row">
+          <div class="feature-head">
+            <div class="left">
+              <div class="card-title">
+                <span class="icon">{{ f.icon }}</span> {{ f.title }}
+              </div>
+              <div class="desc">{{ f.desc }}</div>
+            </div>
+            <el-switch
+              :model-value="features[f.key]"
+              :loading="pendingKey === f.key"
+              size="large"
+              inline-prompt
+              active-text="开"
+              inactive-text="关"
+              @change="(v: boolean | string | number) => toggle(f.key, Boolean(v))"
+            />
+          </div>
           <div class="paths">影响入口：<code>{{ f.paths.join(" · ") }}</code></div>
         </div>
-        <el-switch
-          :model-value="features[f.key]"
-          :loading="pendingKey === f.key"
-          size="large"
-          inline-prompt
-          active-text="开"
-          inactive-text="关"
-          @change="(v: boolean | string | number) => toggle(f.key, Boolean(v))"
-        />
       </div>
-    </div>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, onMounted } from "vue";
+import { computed, reactive, ref, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { adminApi } from "@/api/admin";
 import { useSiteStore } from "@/stores/site";
@@ -126,6 +179,8 @@ const loading = ref(false);
 const configLoading = ref(false);
 const savingConfig = ref(false);
 const pendingKey = ref<FKey | null>(null);
+const aiConfigExpanded = ref(false);
+const aiPromptsExpanded = ref(false);
 const siteOrigin = ref("");
 const aiReviewEnabled = ref(false);
 const aiReviewProvider = ref("deepseek");
@@ -143,6 +198,7 @@ const aiEditSimilarityUserPrompt = ref("");
 const features = reactive<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>({
   forum: true, market: true, coursereview: true, electric: true,
 });
+const enabledFeatureCount = computed(() => featureMeta.filter((item) => features[item.key]).length);
 
 const featureMeta: { key: FKey; icon: string; title: string; desc: string; paths: string[] }[] = [
   {
@@ -274,19 +330,61 @@ async function toggle(key: FKey, on: boolean) {
 <style scoped>
 .features-pane { display: flex; flex-direction: column; gap: 14px; }
 .warn :deep(.el-alert__title) { font-size: 14px; }
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid #e7edf5;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.04);
+}
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.section-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+}
+.section-desc {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #667085;
+}
+.section-meta {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #eef6ff;
+  color: #2454a6;
+  font-size: 12px;
+  font-weight: 600;
+}
 .site-config {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 16px;
-  border: 1px solid #e6edf7;
-  border-radius: 10px;
-  background: #fff;
+  padding: 16px;
+  border: 1px solid #edf2f7;
+  border-radius: 14px;
+  background: #ffffff;
 }
 .config-copy {
   flex: 1;
   min-width: 0;
+}
+.card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1f2937;
 }
 .config-form {
   display: flex;
@@ -294,19 +392,87 @@ async function toggle(key: FKey, on: boolean) {
   gap: 10px;
   width: min(520px, 52%);
 }
-.ai-config {
+.section-toggle,
+.sub-toggle {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  display: flex;
   align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.section-toggle-copy {
+  flex: 1;
+  min-width: 0;
+}
+.section-toggle-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.toggle-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 600;
+}
+.toggle-pill.on {
+  background: #e8fff1;
+  color: #0f8a4b;
+}
+.summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.summary-pill {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #f7f9fc;
+  border: 1px solid #e9eef5;
+  color: #4b5563;
+  font-size: 12px;
+}
+.toggle-arrow {
+  flex-shrink: 0;
+  margin-top: 2px;
+  font-size: 18px;
+  color: #64748b;
+  transition: transform 0.2s ease;
+}
+.section-toggle.expanded .toggle-arrow,
+.sub-toggle.expanded .toggle-arrow {
+  transform: rotate(180deg);
+}
+.ai-config {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 .ai-form {
-  width: min(640px, 58%);
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 12px;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid #edf2f7;
 }
 .ai-row {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+.ai-row--switch {
+  justify-content: space-between;
 }
 .ai-row--stretch {
   grid-column: 1 / -1;
@@ -315,33 +481,70 @@ async function toggle(key: FKey, on: boolean) {
   font-size: 12px;
   color: #6b7280;
 }
+.prompt-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 14px;
+  background: #fcfdff;
+  border: 1px dashed #d7e2f0;
+}
+.prompt-grid {
+  display: grid;
+  gap: 12px;
+}
+.actions-row {
+  display: flex;
+  justify-content: flex-end;
+}
 .config-form :deep(.el-input) {
   flex: 1;
 }
-.feature-grid { display: flex; flex-direction: column; gap: 10px; }
+.feature-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .feature-row {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  padding: 14px 16px;
-  border: 1px solid #eef0f4;
-  border-radius: 10px;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #eef2f7;
+  border-radius: 14px;
   background: #fff;
+  min-width: 0;
+}
+.feature-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
 }
 .left { flex: 1; min-width: 0; }
-.title { font-size: 15px; font-weight: 600; color: #1f2937; }
 .icon { margin-right: 4px; }
 .desc { font-size: 12px; color: #6b7280; margin-top: 4px; line-height: 1.6; }
-.paths { font-size: 11px; color: #9ca3af; margin-top: 4px; }
+.paths { font-size: 11px; color: #9ca3af; }
 .paths code { background: #f3f4f6; padding: 1px 5px; border-radius: 3px; }
 
+@media (max-width: 960px) {
+  .feature-grid { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 768px) {
+  .settings-card {
+    gap: 14px;
+    padding: 14px;
+    border-radius: 14px;
+  }
+  .section-head,
   .site-config,
-  .feature-row {
+  .feature-head {
     align-items: stretch;
     flex-direction: column;
-    padding: 12px;
+  }
+  .site-config,
+  .feature-row,
+  .ai-form,
+  .prompt-card {
+    padding: 14px;
   }
   .config-form {
     width: 100%;
@@ -349,19 +552,34 @@ async function toggle(key: FKey, on: boolean) {
     align-items: stretch;
   }
   .ai-form {
-    width: 100%;
     grid-template-columns: 1fr;
   }
-  .feature-row :deep(.el-switch) {
+  .feature-head :deep(.el-switch),
+  .ai-row--switch :deep(.el-switch),
+  .actions-row :deep(.el-button) {
     align-self: flex-start;
   }
-  .title {
-    line-height: 1.45;
+  .section-toggle,
+  .sub-toggle {
+    gap: 10px;
+  }
+  .summary-row {
+    gap: 6px;
+  }
+  .summary-pill,
+  .section-meta {
+    font-size: 11px;
   }
   .paths code {
     display: inline;
     white-space: normal;
     word-break: break-all;
+  }
+  .actions-row {
+    justify-content: stretch;
+  }
+  .actions-row :deep(.el-button) {
+    width: 100%;
   }
 }
 </style>
