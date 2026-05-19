@@ -15,3 +15,18 @@ export function authRequired(req: Request, _res: Response, next: NextFunction) {
     next(Errors.unauthorized("登录已过期，请重新登录"));
   }
 }
+
+export function authOptional(req: Request, _res: Response, next: NextFunction) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith("Bearer ")) {
+    req.user = undefined;
+    return next();
+  }
+  const token = header.slice(7);
+  try {
+    req.user = verifyToken(token);
+  } catch {
+    req.user = undefined;
+  }
+  next();
+}

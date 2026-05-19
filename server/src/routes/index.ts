@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authRequired } from "../middleware/auth";
+import { authOptional, authRequired } from "../middleware/auth";
 import { authRouter } from "./auth";
 import { userRouter } from "./user";
 import { homeRouter } from "./home";
@@ -21,8 +21,8 @@ export const router = Router();
 // 公开路径
 router.use("/auth", authRouter);
 router.use("/boards", boardRouter);
-router.use("/topics", topicRouter);
-router.use("/replies", replyRouter);
+router.use("/topics", authOptional, topicRouter);
+router.use("/replies", authOptional, replyRouter);
 router.use("/services", servicesRouter);
 router.use("/courses", courseRouter);
 router.use("/search", searchRouter);

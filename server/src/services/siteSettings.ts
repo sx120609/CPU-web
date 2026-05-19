@@ -17,6 +17,7 @@ export type SiteConfig = {
   aiReviewApiKey: string;
   aiReviewAutoPassScore: number;
   aiReviewBlockScore: number;
+  aiReviewForceBlockScore: number;
 };
 
 export const ALL_FEATURES: FeatureKey[] = ["forum", "market", "coursereview", "electric"];
@@ -27,6 +28,7 @@ const AI_REVIEW_MODEL_KEY = "ai.review.model";
 const AI_REVIEW_API_KEY = "ai.review.apiKey";
 const AI_REVIEW_AUTO_PASS_SCORE_KEY = "ai.review.autoPassScore";
 const AI_REVIEW_BLOCK_SCORE_KEY = "ai.review.blockScore";
+const AI_REVIEW_FORCE_BLOCK_SCORE_KEY = "ai.review.forceBlockScore";
 
 const cache: Record<FeatureKey, boolean> = {
   forum: true,
@@ -43,6 +45,7 @@ const configCache: SiteConfig = {
   aiReviewApiKey: "",
   aiReviewAutoPassScore: 24,
   aiReviewBlockScore: 70,
+  aiReviewForceBlockScore: 90,
 };
 
 function keyOf(f: FeatureKey) {
@@ -80,6 +83,7 @@ export async function loadFeatures(): Promise<void> {
           AI_REVIEW_API_KEY,
           AI_REVIEW_AUTO_PASS_SCORE_KEY,
           AI_REVIEW_BLOCK_SCORE_KEY,
+          AI_REVIEW_FORCE_BLOCK_SCORE_KEY,
         ],
       },
     },
@@ -115,6 +119,10 @@ export async function loadFeatures(): Promise<void> {
     }
     if (r.key === AI_REVIEW_BLOCK_SCORE_KEY) {
       configCache.aiReviewBlockScore = normalizeAiScore(r.value, 70);
+      continue;
+    }
+    if (r.key === AI_REVIEW_FORCE_BLOCK_SCORE_KEY) {
+      configCache.aiReviewForceBlockScore = normalizeAiScore(r.value, 90);
       continue;
     }
     const f = r.key.replace(/^feature\./, "") as FeatureKey;
@@ -197,8 +205,12 @@ function normalizeAiScore(input: string | number | null | undefined, fallback: n
 function sanitizeAiReviewConfig() {
   configCache.aiReviewAutoPassScore = normalizeAiScore(configCache.aiReviewAutoPassScore, 24);
   configCache.aiReviewBlockScore = normalizeAiScore(configCache.aiReviewBlockScore, 70);
+  configCache.aiReviewForceBlockScore = normalizeAiScore(configCache.aiReviewForceBlockScore, 90);
   if (configCache.aiReviewBlockScore < configCache.aiReviewAutoPassScore) {
     configCache.aiReviewBlockScore = configCache.aiReviewAutoPassScore;
+  }
+  if (configCache.aiReviewForceBlockScore < configCache.aiReviewBlockScore) {
+    configCache.aiReviewForceBlockScore = configCache.aiReviewBlockScore;
   }
   if (!configCache.aiReviewProvider) configCache.aiReviewProvider = "deepseek";
   if (!configCache.aiReviewModel) configCache.aiReviewModel = "deepseek-v4-flash";
@@ -213,9 +225,13 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
     aiReviewApiKey: String(input.aiReviewApiKey ?? configCache.aiReviewApiKey ?? "").trim(),
     aiReviewAutoPassScore: normalizeAiScore(input.aiReviewAutoPassScore, configCache.aiReviewAutoPassScore),
     aiReviewBlockScore: normalizeAiScore(input.aiReviewBlockScore, configCache.aiReviewBlockScore),
+    aiReviewForceBlockScore: normalizeAiScore(input.aiReviewForceBlockScore, configCache.aiReviewForceBlockScore),
   };
   if (next.aiReviewBlockScore < next.aiReviewAutoPassScore) {
     throw new Error("AI 自动拦截阈值不能低于自动通过阈值");
+  }
+  if (next.aiReviewForceBlockScore < next.aiReviewBlockScore) {
+    throw new Error("AI 强制拦截阈值不能低于自动拦截阈值");
   }
   await prisma.$transaction([
     prisma.siteSetting.upsert({
@@ -247,6 +263,11 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       where: { key: AI_REVIEW_BLOCK_SCORE_KEY },
       update: { value: String(next.aiReviewBlockScore) },
       create: { key: AI_REVIEW_BLOCK_SCORE_KEY, value: String(next.aiReviewBlockScore) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: AI_REVIEW_FORCE_BLOCK_SCORE_KEY },
+      update: { value: String(next.aiReviewForceBlockScore) },
+      create: { key: AI_REVIEW_FORCE_BLOCK_SCORE_KEY, value: String(next.aiReviewForceBlockScore) },
     }),
   ]);
   Object.assign(configCache, next);

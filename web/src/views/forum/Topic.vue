@@ -113,7 +113,7 @@
       />
       <div class="reply-form-actions">
         <span class="cpu-muted">离开页面后会自动保留未发布草稿。</span>
-        <el-button type="primary" :loading="replying" :disabled="replyIsEmpty" @click="submitReply">
+        <el-button type="primary" :loading="replying" @click="submitReply">
           发布回复
         </el-button>
       </div>
@@ -237,7 +237,7 @@ function quoteReply(r: Reply) {
 
 async function submitReply() {
   if (!auth.isLoggedIn) { router.push({ name: "login", query: { redirect: route.fullPath } }); return; }
-  if (replyEditorRef.value?.isContentEmpty()) return;
+  if (replyEditorRef.value?.isContentEmpty()) { ElMessage.warning("请填写回复内容"); return; }
   if (replyText.value.length > REPLY_MAX) { ElMessage.warning("回复内容过长，请精简后再发布"); return; }
   replying.value = true;
   try {

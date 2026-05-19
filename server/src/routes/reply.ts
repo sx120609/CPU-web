@@ -23,7 +23,8 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       where: { id: topicId },
       include: { board: { select: { type: true, name: true } } },
     });
-    if (!topic || topic.hidden) throw Errors.notFound("帖子不存在");
+    const canSeeHiddenTopic = Boolean(req.user?.userId && (req.user.userId === topic?.authorId || req.user.role === "admin" || req.user.role === "mod"));
+    if (!topic || (topic.hidden && !canSeeHiddenTopic)) throw Errors.notFound("帖子不存在");
     if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
     if (topic.locked) throw Errors.forbidden("帖子已锁定，无法回复");
 

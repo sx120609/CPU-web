@@ -112,13 +112,14 @@ export async function reviewTopicContent(input: {
   const parsed = parseReviewJson(content);
   const riskScore = clampScore(parsed.risk_score);
   const riskLevel = normalizeRiskLevel(parsed.risk_level, riskScore);
-  const decision = normalizeDecision(parsed.decision, riskScore, config.aiReviewAutoPassScore, config.aiReviewBlockScore);
+  const decision = decideByThreshold(riskScore, config.aiReviewAutoPassScore, config.aiReviewBlockScore);
   return {
     status: decision === "auto_pass" ? "auto_passed" : decision === "block" ? "blocked_ai" : "blocked_ai",
     riskLevel,
     riskScore,
     reason: String(parsed.reason || fallbackReason(riskLevel)).slice(0, 120),
     detail: JSON.stringify({
+      modelDecision: parsed.decision ?? "",
       decision,
       categories: parsed.categories ?? {},
       detail: String(parsed.detail || "").slice(0, 1000),
@@ -187,13 +188,14 @@ export async function reviewReplyContent(input: {
   const parsed = parseReviewJson(content);
   const riskScore = clampScore(parsed.risk_score);
   const riskLevel = normalizeRiskLevel(parsed.risk_level, riskScore);
-  const decision = normalizeDecision(parsed.decision, riskScore, config.aiReviewAutoPassScore, config.aiReviewBlockScore);
+  const decision = decideByThreshold(riskScore, config.aiReviewAutoPassScore, config.aiReviewBlockScore);
   return {
     status: decision === "auto_pass" ? "auto_passed" : decision === "block" ? "blocked_ai" : "blocked_ai",
     riskLevel,
     riskScore,
     reason: String(parsed.reason || fallbackReason(riskLevel)).slice(0, 120),
     detail: JSON.stringify({
+      modelDecision: parsed.decision ?? "",
       decision,
       categories: parsed.categories ?? {},
       detail: String(parsed.detail || "").slice(0, 1000),
@@ -253,8 +255,7 @@ function normalizeRiskLevel(value: unknown, score: number): TopicAiRiskLevel {
   return "low";
 }
 
-function normalizeDecision(value: unknown, score: number, autoPassScore: number, blockScore: number) {
-  if (value === "auto_pass" || value === "manual_review" || value === "block") return value;
+function decideByThreshold(score: number, autoPassScore: number, blockScore: number) {
   if (score < autoPassScore) return "auto_pass";
   if (score >= blockScore) return "block";
   return "manual_review";
