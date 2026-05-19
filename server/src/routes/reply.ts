@@ -5,6 +5,7 @@ import { Errors, ok } from "../utils/response";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettings";
+import { reviewReplyContent, shouldBypassAiReviewForUser, shouldRunAiReview } from "../services/topicAiReview";
 
 export const replyRouter = Router();
 
@@ -20,11 +21,34 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     const { topicId, content, parentReplyId } = req.body;
     const topic = await prisma.topic.findUnique({
       where: { id: topicId },
-      include: { board: { select: { type: true } } },
+      include: { board: { select: { type: true, name: true } } },
     });
     if (!topic || topic.hidden) throw Errors.notFound("帖子不存在");
     if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
     if (topic.locked) throw Errors.forbidden("帖子已锁定，无法回复");
+
+    const bypassAiReview = await shouldBypassAiReviewForUser(userId, req.user!.role);
+    if (shouldRunAiReview() && !bypassAiReview) {
+      let parentContent = "";
+      if (parentReplyId) {
+        const parent = await prisma.reply.findUnique({
+          where: { id: parentReplyId },
+          select: { content: true, topicId: true },
+        });
+        if (!parent || parent.topicId !== topicId) throw Errors.badRequest("引用的回复不存在");
+        parentContent = parent.content;
+      }
+      const aiResult = await reviewReplyContent({
+        topicTitle: topic.title,
+        boardName: (topic as any).board?.name ?? "",
+        boardType: topic.board?.type ?? "",
+        content,
+        parentContent,
+      });
+      if (aiResult.status === "blocked_ai") {
+        throw Errors.forbidden(aiResult.reason || "回复内容未通过 AI 审核");
+      }
+    }
 
     // 当前楼层
     const last = await prisma.reply.findFirst({

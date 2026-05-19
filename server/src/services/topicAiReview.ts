@@ -38,6 +38,15 @@ export function shouldBypassAiReview(role: string | null | undefined) {
   return role === "admin" || role === "mod" || role === "bot";
 }
 
+export async function shouldBypassAiReviewForUser(userId: number, role: string | null | undefined) {
+  if (shouldBypassAiReview(role)) return true;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { aiReviewWhitelisted: true },
+  });
+  return Boolean(user?.aiReviewWhitelisted);
+}
+
 export async function ensureUserCanSubmitTopic(userId: number) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -88,6 +97,81 @@ export async function reviewTopicContent(input: {
           role: "system",
           content:
             "你是校园社区内容安全审核助手。你需要根据用户稿件判断风险，只返回 JSON。请关注违法、辱骂、人身攻击、隐私泄露、联系方式引流、诈骗、色情、诽谤、校园敏感舆情等风险。",
+        },
+        { role: "user", content: prompt },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw Errors.server(`AI 审核请求失败：${response.status}${text ? ` ${text.slice(0, 120)}` : ""}`);
+  }
+  const json: any = await response.json();
+  const content = json?.choices?.[0]?.message?.content;
+  const parsed = parseReviewJson(content);
+  const riskScore = clampScore(parsed.risk_score);
+  const riskLevel = normalizeRiskLevel(parsed.risk_level, riskScore);
+  const decision = normalizeDecision(parsed.decision, riskScore, config.aiReviewAutoPassScore, config.aiReviewBlockScore);
+  return {
+    status: decision === "auto_pass" ? "auto_passed" : decision === "block" ? "blocked_ai" : "blocked_ai",
+    riskLevel,
+    riskScore,
+    reason: String(parsed.reason || fallbackReason(riskLevel)).slice(0, 120),
+    detail: JSON.stringify({
+      decision,
+      categories: parsed.categories ?? {},
+      detail: String(parsed.detail || "").slice(0, 1000),
+    }),
+    model: config.aiReviewModel,
+  };
+}
+
+export async function reviewReplyContent(input: {
+  topicTitle?: string | null;
+  boardName?: string | null;
+  boardType?: string | null;
+  content: string;
+  parentContent?: string | null;
+}): Promise<TopicAiReviewResult> {
+  const config = getSiteConfig();
+  if (!config.aiReviewEnabled || !config.aiReviewApiKey.trim()) {
+    return {
+      status: "auto_passed",
+      riskLevel: "low",
+      riskScore: 0,
+      reason: "AI 审核未开启",
+      detail: "",
+      model: config.aiReviewModel,
+    };
+  }
+
+  const prompt = [
+    "请审核以下校园社区回复，输出 JSON：",
+    `{"risk_score":0-100,"risk_level":"low|medium|high","decision":"auto_pass|manual_review|block","reason":"一句短原因","detail":"补充说明","categories":{"violence":0-100,"porn":0-100,"abuse":0-100,"privacy":0-100,"fraud":0-100,"political":0-100,"defamation":0-100,"spam":0-100}}`,
+    "",
+    `所属帖子标题：${input.topicTitle || ""}`,
+    `板块名称：${input.boardName || ""}`,
+    `板块类型：${input.boardType || ""}`,
+    `引用/上文：${input.parentContent || ""}`,
+    `回复内容：${input.content}`,
+  ].join("\n");
+
+  const response = await fetch(REVIEW_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${config.aiReviewApiKey}`,
+    },
+    body: JSON.stringify({
+      model: config.aiReviewModel,
+      temperature: 0.1,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "你是校园社区内容安全审核助手。你需要根据用户回复判断风险，只返回 JSON。请关注违法、辱骂、人身攻击、隐私泄露、联系方式引流、诈骗、色情、诽谤、校园敏感舆情等风险。",
         },
         { role: "user", content: prompt },
       ],

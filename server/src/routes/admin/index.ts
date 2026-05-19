@@ -95,6 +95,7 @@ const userPatchSchema = z.object({
   status: z.enum(["active", "banned", "muted"]).optional(),
   role: z.enum(["user", "mod", "admin", "bot"]).optional(),
   nickname: z.string().min(1).max(20).optional(),
+  aiReviewWhitelisted: z.boolean().optional(),
 });
 
 adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (req, res, next) => {
@@ -107,8 +108,11 @@ adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (re
     if (req.body.role !== undefined && req.user!.role !== "admin") {
       throw Errors.forbidden("仅管理员可修改角色");
     }
+    if (req.body.aiReviewWhitelisted !== undefined && req.user!.role !== "admin") {
+      throw Errors.forbidden("仅管理员可修改 AI 审核白名单");
+    }
     const u = await prisma.user.update({ where: { id }, data: req.body });
-    ok(res, { id: u.id, role: u.role, status: u.status, nickname: u.nickname });
+    ok(res, { id: u.id, role: u.role, status: u.status, nickname: u.nickname, aiReviewWhitelisted: u.aiReviewWhitelisted });
   } catch (e) { next(e); }
 });
 

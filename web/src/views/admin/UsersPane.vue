@@ -67,6 +67,7 @@
               {{ row.status }}
             </el-tag>
             <el-tag v-if="row.studentSso" type="primary" size="small" effect="plain">统一认证</el-tag>
+            <el-tag v-if="row.aiReviewWhitelisted" type="success" size="small" effect="plain">AI 白名单</el-tag>
           </div>
         </template>
       </el-table-column>
@@ -107,6 +108,7 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="role">改角色</el-dropdown-item>
+                <el-dropdown-item command="whitelist">{{ row.aiReviewWhitelisted ? "取消 AI 白名单" : "设为 AI 白名单" }}</el-dropdown-item>
                 <el-dropdown-item v-if="!row.studentSso" command="password">重置密码</el-dropdown-item>
                 <el-dropdown-item v-if="row.id !== auth.user?.id" command="delete" divided>删除用户</el-dropdown-item>
               </el-dropdown-menu>
@@ -130,6 +132,7 @@
         <div class="tag-stack">
           <el-tag :type="roleTag(row.role)" size="small">{{ row.role }}</el-tag>
           <el-tag v-if="row.studentSso" type="primary" size="small" effect="plain">统一认证</el-tag>
+          <el-tag v-if="row.aiReviewWhitelisted" type="success" size="small" effect="plain">AI 白名单</el-tag>
           <el-tag :type="clientTagType(row.lastLoginClient)" size="small" effect="plain">
             {{ clientLabel(row.lastLoginClient) }}
           </el-tag>
@@ -152,6 +155,7 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="role">改角色</el-dropdown-item>
+                <el-dropdown-item command="whitelist">{{ row.aiReviewWhitelisted ? "取消 AI 白名单" : "设为 AI 白名单" }}</el-dropdown-item>
                 <el-dropdown-item v-if="!row.studentSso" command="password">重置密码</el-dropdown-item>
                 <el-dropdown-item v-if="row.id !== auth.user?.id" command="delete" divided>删除用户</el-dropdown-item>
               </el-dropdown-menu>
@@ -339,6 +343,7 @@ function clientTagType(client?: string | null): "success" | "warning" | "info" |
 
 function handleCommand(command: string, row: any) {
   if (command === "role") return changeRole(row);
+  if (command === "whitelist") return toggleAiWhitelist(row);
   if (command === "password") return resetPw(row);
   if (command === "delete") return deleteUser(row);
 }
@@ -372,6 +377,12 @@ async function changeRole(row: any) {
   );
   await adminApi.updateUser(row.id, { role: value });
   ElMessage.success("已修改");
+  reload();
+}
+
+async function toggleAiWhitelist(row: any) {
+  await adminApi.updateUser(row.id, { aiReviewWhitelisted: !row.aiReviewWhitelisted });
+  ElMessage.success(row.aiReviewWhitelisted ? "已取消 AI 白名单" : "已加入 AI 白名单");
   reload();
 }
 

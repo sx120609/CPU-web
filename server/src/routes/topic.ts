@@ -16,7 +16,7 @@ import {
   refreshTopicSubmissionLock,
   requestManualTopicReview,
   reviewTopicContent,
-  shouldBypassAiReview,
+  shouldBypassAiReviewForUser,
   shouldRunAiReview,
 } from "../services/topicAiReview";
 
@@ -115,7 +115,8 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     }
 
     const now = new Date();
-    const shouldReview = shouldRunAiReview() && !shouldBypassAiReview(req.user!.role) && board.type !== "announce";
+    const bypassAiReview = await shouldBypassAiReviewForUser(userId, req.user!.role);
+    const shouldReview = shouldRunAiReview() && !bypassAiReview && board.type !== "announce";
     const aiResult = shouldReview
       ? await reviewTopicContent({
           title,
@@ -249,12 +250,41 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
 
     const body = req.body as any;
     const data: any = {};
+    const nextTitle = typeof body.title === "string" && isOwner ? body.title : t.title;
+    const nextContent = typeof body.content === "string" && isOwner ? body.content : t.content;
     if (typeof body.title === "string" && isOwner) data.title = body.title;
     if (typeof body.content === "string" && isOwner) data.content = body.content;
     if (typeof body.metadata === "object" && body.metadata) data.metadata = JSON.stringify(body.metadata);
     if (typeof body.pinned === "boolean" && isMod) data.pinned = body.pinned;
     if (typeof body.locked === "boolean" && isMod) data.locked = body.locked;
     if (typeof body.hidden === "boolean" && isMod) data.hidden = body.hidden;
+
+    if (isOwner && (typeof body.title === "string" || typeof body.content === "string")) {
+      const bypassAiReview = await shouldBypassAiReviewForUser(req.user!.userId, req.user!.role);
+      const boardInfo = await prisma.board.findUnique({
+        where: { id: t.boardId },
+        select: { name: true, type: true },
+      });
+      if (shouldRunAiReview() && !bypassAiReview && boardInfo?.type !== "announce") {
+        const aiResult = await reviewTopicContent({
+          title: nextTitle,
+          content: nextContent,
+          boardName: boardInfo?.name,
+          boardType: boardInfo?.type,
+          metadata: typeof body.metadata === "object" && body.metadata ? body.metadata : safeJson(t.metadata),
+        });
+        if (aiResult.status === "blocked_ai") {
+          throw Errors.forbidden(aiResult.reason || "修改后的内容未通过 AI 审核");
+        }
+        data.aiReviewStatus = "auto_passed";
+        data.aiRiskLevel = aiResult.riskLevel;
+        data.aiRiskScore = aiResult.riskScore;
+        data.aiReviewReason = aiResult.reason;
+        data.aiReviewDetail = aiResult.detail;
+        data.aiModel = aiResult.model;
+        data.aiReviewedAt = new Date();
+      }
+    }
 
     const u = await prisma.topic.update({ where: { id }, data });
     ok(res, decodeTopic(u));

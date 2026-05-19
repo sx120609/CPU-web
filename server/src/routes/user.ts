@@ -92,6 +92,7 @@ function pubUser(u: any) {
     usedIosClient: u.usedIosClient,
     usedAndroidClient: u.usedAndroidClient,
     topicSubmissionLocked: u.topicSubmissionLocked,
+    aiReviewWhitelisted: u.aiReviewWhitelisted,
     createdAt: u.createdAt,
   };
 }

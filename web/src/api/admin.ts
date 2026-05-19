@@ -29,7 +29,7 @@ export const adminApi = {
     size?: number;
   }) =>
     request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/users", params),
-  updateUser: (id: number, patch: { status?: string; role?: string; nickname?: string }) =>
+  updateUser: (id: number, patch: { status?: string; role?: string; nickname?: string; aiReviewWhitelisted?: boolean }) =>
     request.patch<any>(`/admin/users/${id}`, patch),
   createUser: (data: {
     username: string; password: string; nickname: string;

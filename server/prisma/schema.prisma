@@ -36,6 +36,7 @@ model User {
   usedIosClient Boolean  @default(false)
   usedAndroidClient Boolean @default(false)
   topicSubmissionLocked Boolean @default(false)
+  aiReviewWhitelisted Boolean @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

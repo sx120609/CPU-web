@@ -21,6 +21,7 @@ export interface UserInfo {
   usedIosClient?: boolean;
   usedAndroidClient?: boolean;
   topicSubmissionLocked?: boolean;
+  aiReviewWhitelisted?: boolean;
   createdAt: string;
 }
 

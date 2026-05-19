@@ -1,0 +1,2 @@
+ALTER TABLE "User" ADD COLUMN "aiReviewWhitelisted" BOOLEAN NOT NULL DEFAULT false;
+
