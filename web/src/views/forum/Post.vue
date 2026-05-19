@@ -125,16 +125,16 @@
           <div class="rich-editor">
             <div class="editor-toolbar" @mousedown.prevent>
               <span class="toolbar-title">可视化编辑</span>
-              <button type="button" title="正文" @click="applyFormat('p')">正文</button>
-              <button type="button" title="二级标题" @click="applyFormat('h2')">标题</button>
-              <button type="button" title="三级标题" @click="applyFormat('h3')">小标题</button>
+              <button type="button" title="正文" :class="{ active: toolbarState.block === 'p' }" @click="applyFormat('p')">正文</button>
+              <button type="button" title="二级标题" :class="{ active: toolbarState.block === 'h2' }" @click="applyFormat('h2')">标题</button>
+              <button type="button" title="三级标题" :class="{ active: toolbarState.block === 'h3' }" @click="applyFormat('h3')">小标题</button>
               <span class="toolbar-divider" />
-              <button type="button" title="加粗" class="bold" @click="runCommand('bold')">B</button>
-              <button type="button" title="斜体" class="italic" @click="runCommand('italic')">I</button>
-              <button type="button" title="引用" @click="applyFormat('blockquote')">引用</button>
+              <button type="button" title="加粗" class="bold" :class="{ active: toolbarState.bold }" @click="runCommand('bold')">B</button>
+              <button type="button" title="斜体" class="italic" :class="{ active: toolbarState.italic }" @click="runCommand('italic')">I</button>
+              <button type="button" title="引用" :class="{ active: toolbarState.block === 'blockquote' }" @click="applyFormat('blockquote')">引用</button>
               <span class="toolbar-divider" />
-              <button type="button" title="无序列表" @click="runCommand('insertUnorderedList')">列表</button>
-              <button type="button" title="有序列表" @click="runCommand('insertOrderedList')">编号</button>
+              <button type="button" title="无序列表" :class="{ active: toolbarState.ul }" @click="runCommand('insertUnorderedList')">列表</button>
+              <button type="button" title="有序列表" :class="{ active: toolbarState.ol }" @click="runCommand('insertOrderedList')">编号</button>
               <button type="button" title="插入链接" @click="insertLink">链接</button>
               <button type="button" title="上传图片" :disabled="imageUploading" @click="pickContentImage">
                 {{ imageUploading ? "上传中" : "插图" }}
@@ -149,9 +149,9 @@
               @paste="handleEditorPaste"
               @drop.prevent="handleEditorDrop"
               @dragover.prevent
-              @mouseup="rememberSelection"
-              @keyup="rememberSelection"
-              @focus="rememberSelection"
+              @mouseup="handleEditorSelectionChange"
+              @keyup="handleEditorSelectionChange"
+              @focus="handleEditorSelectionChange"
             ></div>
             <div class="editor-foot">
               <span>支持直接粘贴图片；编辑区内图片会以小预览显示。</span>
@@ -168,18 +168,42 @@
         </el-form-item>
 
         <el-form-item>
-          <el-button type="primary" :loading="submitting" @click="submit">{{ editingId ? '保存修改' : '发布帖子' }}</el-button>
+          <el-button type="primary" :loading="submitting" @click="submit">{{ editingId ? '预览并保存' : '预览并发布' }}</el-button>
           <el-button @click="$router.back()">取消</el-button>
         </el-form-item>
       </el-form>
     </div>
+
+    <el-dialog
+      v-model="previewOpen"
+      :title="editingId ? '确认保存修改' : '确认发布帖子'"
+      width="720px"
+      class="publish-preview-dialog"
+      append-to-body
+    >
+      <div class="publish-preview">
+        <div class="preview-meta">
+          <span>{{ currentBoard?.name || "未选择板块" }}</span>
+          <span>{{ form.content.length }} / {{ CONTENT_MAX }}</span>
+        </div>
+        <h3>{{ form.title || "未填写标题" }}</h3>
+        <MarkdownView :content="form.content" />
+      </div>
+      <template #footer>
+        <el-button @click="previewOpen = false">返回修改</el-button>
+        <el-button type="primary" :loading="submitting" @click="confirmSubmit">
+          {{ editingId ? '确认保存' : '确认发布' }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref, reactive, computed, onMounted, watch } from "vue";
+import { nextTick, ref, reactive, computed, onBeforeUnmount, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
+import MarkdownView from "@/components/forum/MarkdownView.vue";
 import { boardApi, type Board } from "@/api/board";
 import { topicApi, uploadApi } from "@/api/topic";
 import { courseApi, type Course } from "@/api/course";
@@ -198,6 +222,15 @@ const editorPlaceholder = "写正文，可以用上方按钮排版，也可以�
 const editorRef = ref<HTMLElement | null>(null);
 const contentImageInputRef = ref<HTMLInputElement | null>(null);
 const imageUploading = ref(false);
+const previewOpen = ref(false);
+const pendingMetadata = ref<any>(null);
+const toolbarState = reactive({
+  bold: false,
+  italic: false,
+  ul: false,
+  ol: false,
+  block: "p",
+});
 let savedSelection: Range | null = null;
 
 const form = reactive({
@@ -236,7 +269,6 @@ const groupedBoards = computed(() => {
 
 onMounted(async () => {
   boards.value = await boardApi.list();
-  courses.value = await courseApi.list();
   if (editingId.value) {
     const t = await topicApi.detail(editingId.value);
     form.boardSlug = t.board?.slug ?? "";
@@ -246,17 +278,28 @@ onMounted(async () => {
     await nextTick();
     hydrateEditor();
   }
+  if (boardType.value === "coursereview") await loadCoursesForReview();
   await nextTick();
   hydrateEditor();
+  document.addEventListener("selectionchange", updateToolbarState);
 });
 
-watch(boardType, () => {
-  if (boardType.value === "coursereview" && !courses.value.length) {
-    courseApi.list().then((r) => (courses.value = r));
-  }
+onBeforeUnmount(() => {
+  document.removeEventListener("selectionchange", updateToolbarState);
 });
 
-function onBoardChange() { /* 切换时不重置 meta，让用户自由 */ }
+watch(boardType, async () => {
+  if (boardType.value === "coursereview") await loadCoursesForReview();
+});
+
+async function loadCoursesForReview() {
+  if (courses.value.length) return;
+  courses.value = await courseApi.list();
+}
+
+function onBoardChange() {
+  if (boardType.value === "coursereview") void loadCoursesForReview();
+}
 
 function onCourseChange() {
   // 换课程时清掉老师选择，避免把上一门课的 courseTeacherId 误带过去
@@ -283,6 +326,7 @@ function contentLooksLikeHtml(value: string) {
 function syncEditorContent() {
   if (!editorRef.value) return;
   form.content = normalizeEditorHtml(editorRef.value.innerHTML);
+  updateToolbarState();
 }
 
 function normalizeEditorHtml(value: string) {
@@ -300,6 +344,31 @@ function rememberSelection() {
   if (editorRef.value.contains(range.commonAncestorContainer)) {
     savedSelection = range.cloneRange();
   }
+  updateToolbarState();
+}
+
+function handleEditorSelectionChange() {
+  rememberSelection();
+  updateToolbarState();
+}
+
+function updateToolbarState() {
+  const selection = window.getSelection();
+  const node = selection?.rangeCount ? selection.getRangeAt(0).commonAncestorContainer : null;
+  if (!node || !editorRef.value?.contains(node)) return;
+  toolbarState.bold = document.queryCommandState("bold");
+  toolbarState.italic = document.queryCommandState("italic");
+  toolbarState.ul = document.queryCommandState("insertUnorderedList");
+  toolbarState.ol = document.queryCommandState("insertOrderedList");
+  toolbarState.block = normalizeBlockName(String(document.queryCommandValue("formatBlock") || "p"));
+}
+
+function normalizeBlockName(value: string) {
+  const normalized = value.toLowerCase().replace(/[<>]/g, "");
+  if (normalized === "h2" || normalized === "heading 2") return "h2";
+  if (normalized === "h3" || normalized === "heading 3") return "h3";
+  if (normalized === "blockquote") return "blockquote";
+  return "p";
 }
 
 function restoreSelection() {
@@ -315,6 +384,7 @@ function runCommand(command: string, value?: string) {
   document.execCommand(command, false, value);
   syncEditorContent();
   rememberSelection();
+  updateToolbarState();
 }
 
 function applyFormat(tag: "p" | "h2" | "h3" | "blockquote") {
@@ -419,11 +489,17 @@ async function submit() {
   syncEditorContent();
   if (isEditorContentEmpty()) { ElMessage.warning("请填写正文"); return; }
   if (form.content.length > CONTENT_MAX) { ElMessage.warning("正文内容过长，请精简后再发布"); return; }
+  const metadata = buildMetadata();
+  if (!metadata) return;
+  pendingMetadata.value = metadata;
+  previewOpen.value = true;
+}
 
+function buildMetadata() {
   // 组织 metadata
   const metadata: any = {};
   if (boardType.value === "market") {
-    if (!meta.price && meta.price !== 0) { ElMessage.warning("请填写价格"); return; }
+    if (!meta.price && meta.price !== 0) { ElMessage.warning("请填写价格"); return null; }
     metadata.price = meta.price;
     metadata.condition = meta.condition;
     metadata.tradeMode = meta.tradeMode;
@@ -431,10 +507,10 @@ async function submit() {
     metadata.bounty = meta.bounty;
     metadata.resolved = false;
   } else if (boardType.value === "coursereview") {
-    if (!meta.courseId) { ElMessage.warning("请选择课程"); return; }
+    if (!meta.courseId) { ElMessage.warning("请选择课程"); return null; }
     if (!meta.courseTeacherId && !meta.teacherName?.trim()) {
       ElMessage.warning("请选择或填写授课老师");
-      return;
+      return null;
     }
     metadata.courseId = meta.courseId;
     if (meta.courseTeacherId) metadata.courseTeacherId = meta.courseTeacherId;
@@ -442,7 +518,12 @@ async function submit() {
     metadata.ratings = meta.ratings;
     if (meta.semester) metadata.semester = meta.semester;
   }
+  return metadata;
+}
 
+async function confirmSubmit() {
+  const metadata = pendingMetadata.value;
+  if (!metadata) return;
   submitting.value = true;
   try {
     if (editingId.value) {
@@ -463,7 +544,10 @@ async function submit() {
       ElMessage.success("已发布");
       router.replace(`/forum/topic/${r.id}`);
     }
-  } finally { submitting.value = false; }
+  } finally {
+    submitting.value = false;
+    previewOpen.value = false;
+  }
 }
 </script>
 
@@ -494,10 +578,11 @@ async function submit() {
 
 .rich-editor {
   width: 100%;
-  border: 1px solid #dcdfe6;
+  border: 1px solid #cfdce8;
   border-radius: 10px;
   background: #fff;
   overflow: hidden;
+  box-shadow: 0 1px 5px rgba(15, 23, 42, 0.04);
 }
 
 .editor-toolbar {
@@ -517,9 +602,10 @@ async function submit() {
   color: #168776;
   font-size: 12px;
   font-weight: 750;
-  line-height: 30px;
-  margin-right: 2px;
+  line-height: 1.4;
+  margin: 0 0 2px;
   white-space: nowrap;
+  width: 100%;
 }
 
 .editor-toolbar button {
@@ -533,13 +619,20 @@ async function submit() {
   font-size: 12px;
   font-weight: 650;
   line-height: 1;
-  min-height: 30px;
-  padding: 0 9px;
+  min-height: 34px;
+  padding: 0 10px;
 }
 
 .editor-toolbar button:hover {
   border-color: var(--cpu-primary);
   color: var(--cpu-primary);
+}
+
+.editor-toolbar button.active {
+  border-color: #168776;
+  background: #e8f7f3;
+  color: #0f766e;
+  box-shadow: inset 0 0 0 1px rgba(22, 135, 118, 0.12);
 }
 
 .editor-toolbar button:disabled {
@@ -638,6 +731,35 @@ async function submit() {
   display: none;
 }
 
+.publish-preview {
+  color: #1f2937;
+}
+
+.preview-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: #667085;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.publish-preview h3 {
+  margin: 0 0 12px;
+  color: #111827;
+  font-size: 20px;
+  line-height: 1.35;
+}
+
+.publish-preview :deep(.md) {
+  max-height: min(58vh, 520px);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid #edf0f5;
+  border-radius: 8px;
+  background: #fff;
+}
+
 .preview {
   background: #f9fafb;
   padding: 16px 18px;
@@ -681,16 +803,6 @@ async function submit() {
 
   .editor-toolbar {
     align-items: stretch;
-  }
-
-  .toolbar-title {
-    width: 100%;
-    line-height: 1.4;
-    margin: 0 0 2px;
-  }
-
-  .editor-toolbar button {
-    min-height: 34px;
   }
 
   .toolbar-divider {
