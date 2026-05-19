@@ -51,7 +51,7 @@
           v-model:visible="moreMenuOpen"
           trigger="click"
           placement="bottom-end"
-          :width="268"
+          :width="296"
           :teleported="true"
           popper-class="schedule-more-popover"
           @show="moreMenuView = 'menu'"
@@ -73,6 +73,11 @@
               <button type="button" class="more-action" @click="moreMenuView = 'theme'">
                 <span class="more-theme-swatch current" :style="{ background: currentThemePreview }" />
                 <span>主题选择</span>
+                <el-icon class="more-chevron"><ArrowRight /></el-icon>
+              </button>
+              <button type="button" class="more-action" @click="moreMenuView = 'background'">
+                <el-icon><Picture /></el-icon>
+                <span>{{ hasScheduleBackground ? "背景自定义（已启用）" : "背景自定义" }}</span>
                 <el-icon class="more-chevron"><ArrowRight /></el-icon>
               </button>
               <button
@@ -98,7 +103,7 @@
               </button>
             </template>
 
-            <template v-else>
+            <template v-else-if="moreMenuView === 'theme'">
               <button type="button" class="more-back" @click="moreMenuView = 'menu'">
                 <el-icon><ArrowLeft /></el-icon>
                 <span>主题选择</span>
@@ -119,6 +124,71 @@
                 </button>
               </div>
             </template>
+
+            <template v-else>
+              <button type="button" class="more-back" @click="moreMenuView = 'menu'">
+                <el-icon><ArrowLeft /></el-icon>
+                <span>背景自定义</span>
+              </button>
+              <div class="background-panel">
+                <div
+                  class="background-preview"
+                  :class="{ empty: !hasScheduleBackground }"
+                  :style="backgroundPreviewStyle"
+                >
+                  <span v-if="!hasScheduleBackground">还没有设置背景图</span>
+                </div>
+                <p class="background-note">
+                  背景仅保存在当前设备，不会上传到服务器。建议使用浅色插画或照片，效果更像你发的参考图。
+                </p>
+                <div class="background-actions">
+                  <button
+                    type="button"
+                    class="more-subaction primary"
+                    :disabled="backgroundSaving"
+                    @click="pickScheduleBackground"
+                  >
+                    {{ backgroundSaving ? "处理中..." : hasScheduleBackground ? "更换图片" : "选择图片" }}
+                  </button>
+                  <button
+                    type="button"
+                    class="more-subaction"
+                    :disabled="!hasScheduleBackground || backgroundSaving"
+                    @click="clearScheduleBackground"
+                  >
+                    清除
+                  </button>
+                </div>
+                <label class="background-control">
+                  <span class="background-control-head">
+                    <b>背景显现</b>
+                    <em>{{ backgroundVisibility }}%</em>
+                  </span>
+                  <input
+                    type="range"
+                    min="22"
+                    max="88"
+                    :value="backgroundVisibility"
+                    :disabled="!hasScheduleBackground"
+                    @input="onBackgroundVisibilityInput"
+                  />
+                </label>
+                <label class="background-control">
+                  <span class="background-control-head">
+                    <b>柔化程度</b>
+                    <em>{{ scheduleBackground.blur }}px</em>
+                  </span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="18"
+                    :value="scheduleBackground.blur"
+                    :disabled="!hasScheduleBackground"
+                    @input="onBackgroundBlurInput"
+                  />
+                </label>
+              </div>
+            </template>
           </div>
         </el-popover>
         <button
@@ -136,6 +206,13 @@
     <!-- 内置浏览器打开引导 / PWA 添加到桌面引导 -->
     <OpenBrowserPromptDialog ref="openBrowserPromptRef" />
     <InstallPromptDialog ref="installPromptRef" />
+    <input
+      ref="backgroundImageInputRef"
+      type="file"
+      accept="image/*"
+      class="hidden-file-input"
+      @change="onScheduleBackgroundPicked"
+    />
 
     <section v-if="parsed" class="week-switcher">
       <button type="button" class="week-btn" :disabled="!canChangeWeek(-1)" @click="changeWeek(-1)">
@@ -599,6 +676,7 @@ import { Aim, ArrowLeft, ArrowRight, Download, Iphone, Loading, Lock, Moon, More
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
+import { compressImageFile } from "@/utils/imageUpload";
 import { jwxtScopedStorageKey } from "@/utils/jwxtCache";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 import {
@@ -664,6 +742,11 @@ interface CacheEnvelope<T> { savedAt: number; data: T }
 type ViewMode = "day" | "week";
 interface LastState { semester: string; week: string; activeDay: number; viewMode?: ViewMode }
 interface WeekCourseBlock { day: number; bigSlot: number; startSlot: number; endSlot: number; index: number; course: ScheduleCourse }
+interface ScheduleBackgroundSettings {
+  imageDataUrl: string;
+  overlayOpacity: number;
+  blur: number;
+}
 interface SchedulePageModel {
   delta: number;
   key: string;
@@ -699,6 +782,7 @@ const CALENDAR_CACHE_BASE = "cpu-schedule-calendar-v1";
 const LAST_STATE_BASE = "cpu-schedule-last-state-v1";
 const LAST_CACHE_BASE = "cpu-schedule-last-cache-key-v1";
 const THEME_KEY = "cpu-schedule-theme-v1";
+const BACKGROUND_KEY = "cpu-schedule-background-v1";
 const scheduleCacheStore = new Map<string, CacheEnvelope<ScheduleResult>>();
 const prewarmingScheduleKeys = new Set<string>();
 const isNativeScheduleApp = /cpuwebscheduleapp/i.test(navigator.userAgent);
@@ -771,10 +855,13 @@ const androidUpdateOpen = ref(false);
 const androidWidgetGuideOpen = ref(false);
 const androidUpdateCountdown = ref(3);
 const moreMenuOpen = ref(false);
-const moreMenuView = ref<"menu" | "theme">("menu");
+const moreMenuView = ref<"menu" | "theme" | "background">("menu");
 const widgetConfigCopying = ref(false);
 const widgetConfigCopied = ref(false);
 const androidWidgetInstalling = ref(false);
+const backgroundImageInputRef = ref<HTMLInputElement | null>(null);
+const backgroundSaving = ref(false);
+const scheduleBackground = reactive<ScheduleBackgroundSettings>(createDefaultScheduleBackground());
 const androidUpdateKind = ref<"app" | "widget">("widget");
 const scriptableWidgetScript = ref("");
 const widgetCopyMessage = ref("");
@@ -1278,6 +1365,7 @@ onMounted(async () => {
   jwxt.hydrate();
   hasCreds.value = hasSavedCreds();
   restoreScheduleTheme();
+  restoreScheduleBackground();
   updateViewportHeight();
   window.addEventListener("resize", updateViewportHeight);
   window.visualViewport?.addEventListener("resize", updateViewportHeight);
@@ -1342,6 +1430,15 @@ const activeWeekNumber = computed(() => {
 const currentThemePreview = computed(() => (
   scheduleThemeOptions.find((item) => item.key === scheduleTheme.value)?.preview ?? scheduleThemeOptions[0]?.preview ?? "#22c55e"
 ));
+const hasScheduleBackground = computed(() => Boolean(scheduleBackground.imageDataUrl));
+const backgroundVisibility = computed(() => Math.round((1 - scheduleBackground.overlayOpacity) * 100));
+const backgroundPreviewStyle = computed(() => (
+  hasScheduleBackground.value
+    ? {
+        backgroundImage: `linear-gradient(180deg, rgba(248, 251, 255, ${scheduleBackground.overlayOpacity}) 0%, rgba(248, 251, 255, ${Math.min(0.92, scheduleBackground.overlayOpacity + 0.1)}) 100%), url("${scheduleBackground.imageDataUrl}")`,
+      }
+    : {}
+));
 const isViewingToday = computed(() => {
   const cur = calendar.value?.currentWeek;
   if (!cur || String(cur) !== currentWeekValue()) return false;
@@ -1349,6 +1446,11 @@ const isViewingToday = computed(() => {
 });
 const pageStyle = computed(() => ({
   ...scheduleThemeCssVars(scheduleTheme.value),
+  "--schedule-bg-image": hasScheduleBackground.value ? `url("${scheduleBackground.imageDataUrl}")` : "none",
+  "--schedule-bg-overlay": `rgba(248, 251, 255, ${hasScheduleBackground.value ? scheduleBackground.overlayOpacity : 0.84})`,
+  "--schedule-bg-blur": `${scheduleBackground.blur}px`,
+  "--schedule-surface-bg": hasScheduleBackground.value ? "rgba(255, 255, 255, 0.72)" : "#ffffff",
+  "--schedule-surface-bg-soft": hasScheduleBackground.value ? "rgba(255, 255, 255, 0.84)" : "#f9fafb",
   ...(viewportHeight.value ? { "--schedule-vh": `${viewportHeight.value / 100}px` } : {}),
 }));
 const useStaticWeekSwipe = computed(() => false);
@@ -2470,6 +2572,37 @@ function allKnownScheduleSources() {
   return sources;
 }
 
+function createDefaultScheduleBackground(): ScheduleBackgroundSettings {
+  return {
+    imageDataUrl: "",
+    overlayOpacity: 0.34,
+    blur: 0,
+  };
+}
+
+function normalizeScheduleBackground(input: unknown): ScheduleBackgroundSettings {
+  const data = (input && typeof input === "object") ? input as Partial<ScheduleBackgroundSettings> : {};
+  return {
+    imageDataUrl: typeof data.imageDataUrl === "string" ? data.imageDataUrl : "",
+    overlayOpacity: clampNumber(data.overlayOpacity, 0.34, 0.12, 0.78),
+    blur: Math.round(clampNumber(data.blur, 0, 0, 18)),
+  };
+}
+
+function applyScheduleBackground(next: ScheduleBackgroundSettings) {
+  scheduleBackground.imageDataUrl = next.imageDataUrl;
+  scheduleBackground.overlayOpacity = next.overlayOpacity;
+  scheduleBackground.blur = next.blur;
+}
+
+function snapshotScheduleBackground(): ScheduleBackgroundSettings {
+  return {
+    imageDataUrl: scheduleBackground.imageDataUrl,
+    overlayOpacity: scheduleBackground.overlayOpacity,
+    blur: scheduleBackground.blur,
+  };
+}
+
 function restoreScheduleTheme() {
   try {
     const saved = localStorage.getItem(THEME_KEY);
@@ -2486,6 +2619,92 @@ function persistScheduleTheme(value = scheduleTheme.value) {
   } catch {
     /* ignore */
   }
+}
+
+function restoreScheduleBackground() {
+  try {
+    const raw = localStorage.getItem(BACKGROUND_KEY);
+    if (!raw) return;
+    applyScheduleBackground(normalizeScheduleBackground(JSON.parse(raw)));
+  } catch {
+    applyScheduleBackground(createDefaultScheduleBackground());
+  }
+}
+
+function persistScheduleBackground() {
+  const payload = JSON.stringify(snapshotScheduleBackground());
+  if (!scheduleBackground.imageDataUrl) {
+    localStorage.removeItem(BACKGROUND_KEY);
+    return;
+  }
+  localStorage.setItem(BACKGROUND_KEY, payload);
+}
+
+function persistScheduleBackgroundSafe(message = "背景保存失败，请换一张更小的图片后重试") {
+  try {
+    persistScheduleBackground();
+    return true;
+  } catch {
+    ElMessage.warning(message);
+    return false;
+  }
+}
+
+function pickScheduleBackground() {
+  backgroundImageInputRef.value?.click();
+}
+
+async function onScheduleBackgroundPicked(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  backgroundSaving.value = true;
+  const previous = snapshotScheduleBackground();
+  try {
+    const dataUrl = await compressImageFile(file, {
+      maxWidth: 1440,
+      maxHeight: 2400,
+      quality: 0.76,
+      mimeType: "image/webp",
+      maxBytes: 420 * 1024,
+    });
+    scheduleBackground.imageDataUrl = dataUrl;
+    if (!persistScheduleBackgroundSafe()) {
+      applyScheduleBackground(previous);
+      return;
+    }
+    ElMessage.success("已设置课表背景");
+  } catch (error: any) {
+    applyScheduleBackground(previous);
+    ElMessage.warning(String(error?.message || "背景图片处理失败"));
+  } finally {
+    backgroundSaving.value = false;
+  }
+}
+
+function clearScheduleBackground() {
+  applyScheduleBackground(createDefaultScheduleBackground());
+  persistScheduleBackgroundSafe("清除背景失败，请稍后重试");
+}
+
+function onBackgroundVisibilityInput(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const next = Math.max(22, Math.min(88, Number(target.value) || 0));
+  scheduleBackground.overlayOpacity = clampNumber(1 - next / 100, 0.34, 0.12, 0.78);
+  persistScheduleBackgroundSafe("背景设置保存失败");
+}
+
+function onBackgroundBlurInput(event: Event) {
+  const target = event.target as HTMLInputElement;
+  scheduleBackground.blur = Math.round(clampNumber(target.value, scheduleBackground.blur, 0, 18));
+  persistScheduleBackgroundSafe("背景设置保存失败");
+}
+
+function clampNumber(value: unknown, fallback: number, min: number, max: number) {
+  const next = Number(value);
+  if (!Number.isFinite(next)) return fallback;
+  return Math.max(min, Math.min(max, next));
 }
 
 function normalizeSlotRange(bigSlot: number, course: ScheduleCourse) {
@@ -2744,6 +2963,11 @@ function prewarmScheduleCacheForWeek(wk: string) {
 }
 
 .schedule-page {
+  --schedule-bg-image: none;
+  --schedule-bg-overlay: rgba(248, 251, 255, 0.84);
+  --schedule-bg-blur: 0px;
+  --schedule-surface-bg: #ffffff;
+  --schedule-surface-bg-soft: #f9fafb;
   position: relative;
   isolation: isolate;
   display: flex;
@@ -2763,14 +2987,26 @@ function prewarmScheduleCacheForWeek(wk: string) {
   position: relative;
   z-index: 1;
 }
+.schedule-page::before,
 .schedule-page::after {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
 }
+.schedule-page::before {
+  z-index: 0;
+  background-image: var(--schedule-bg-image);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  filter: blur(var(--schedule-bg-blur));
+  transform: scale(1.04);
+  transform-origin: center;
+}
 .schedule-page::after {
   background:
+    linear-gradient(180deg, var(--schedule-bg-overlay) 0%, var(--schedule-bg-overlay) 100%),
     radial-gradient(circle at 18% 0%, rgba(174, 211, 255, 0.36), transparent 32%),
     radial-gradient(circle at 88% 14%, rgba(183, 232, 219, 0.32), transparent 30%),
     linear-gradient(180deg, rgba(245, 249, 253, 0.82) 0%, rgba(248, 251, 255, 0.84) 44%, rgba(250, 252, 255, 0.94) 100%);
@@ -2796,7 +3032,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   border-radius: 10px;
   border: 1px solid #dde4ee;
   box-shadow: none;
-  background: #fff;
+  background: var(--schedule-surface-bg-soft);
   padding: 4px 10px;
 }
 .sem-select :deep(.el-select__wrapper:hover) {
@@ -2821,7 +3057,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   padding: 3px;
   border: 1px solid #dde4ee;
   border-radius: 10px;
-  background: #fff;
+  background: var(--schedule-surface-bg-soft);
   display: inline-grid;
   grid-template-columns: repeat(2, 34px);
   gap: 2px;
@@ -2847,7 +3083,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   height: 38px;
   border: 1px solid #dde4ee;
   border-radius: 10px;
-  background: #fff;
+  background: var(--schedule-surface-bg-soft);
   color: #172033;
   display: grid;
   place-items: center;
@@ -2907,6 +3143,91 @@ function prewarmScheduleCacheForWeek(wk: string) {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+.background-panel {
+  display: grid;
+  gap: 10px;
+}
+.background-preview {
+  min-height: 118px;
+  border: 1px solid #dbe4ee;
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(248, 251, 255, 0.86) 0%, rgba(248, 251, 255, 0.92) 100%),
+    var(--schedule-page-bg);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  display: grid;
+  place-items: center;
+  color: #667085;
+  font-size: 12px;
+  text-align: center;
+  padding: 12px;
+  overflow: hidden;
+}
+.background-preview.empty {
+  border-style: dashed;
+}
+.background-note {
+  margin: 0;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.background-actions {
+  display: flex;
+  gap: 8px;
+}
+.more-subaction {
+  flex: 1;
+  min-height: 38px;
+  border: 1px solid #dde4ee;
+  border-radius: 10px;
+  background: var(--schedule-surface-bg-soft);
+  color: #172033;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.more-subaction:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.more-subaction:active {
+  background: #f3f4f6;
+}
+.more-subaction.primary {
+  border-color: var(--schedule-accent);
+  background: var(--schedule-accent-pale);
+  color: var(--schedule-accent-strong);
+}
+.background-control {
+  display: grid;
+  gap: 6px;
+}
+.background-control-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.background-control-head b,
+.background-control-head em {
+  font-size: 12px;
+  line-height: 1.3;
+  font-style: normal;
+}
+.background-control-head b {
+  color: #172033;
+}
+.background-control-head em {
+  color: #667085;
+}
+.background-control input[type="range"] {
+  width: 100%;
+  accent-color: var(--schedule-accent);
 }
 .more-theme-grid {
   display: grid;
@@ -3012,6 +3333,9 @@ function prewarmScheduleCacheForWeek(wk: string) {
   border-color: rgba(222, 229, 239, 0.92);
   box-shadow: 0 18px 44px rgba(24, 34, 51, 0.18);
 }
+.hidden-file-input {
+  display: none;
+}
 @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
 .toolbar {
   display: grid;
@@ -3034,7 +3358,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   height: 42px;
   border: 1px solid #dde4ee;
   border-radius: 13px;
-  background: #fff;
+  background: var(--schedule-surface-bg);
   color: #172033;
   display: inline-flex;
   align-items: center;
@@ -3045,7 +3369,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
 }
 .week-btn:disabled {
   color: #b7bfcc;
-  background: #f9fafb;
+  background: var(--schedule-surface-bg-soft);
 }
 .week-title {
   min-width: 0;
@@ -3095,7 +3419,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   min-width: 0;
   border: 1px solid #dde4ee;
   border-radius: 13px;
-  background: #fff;
+  background: var(--schedule-surface-bg);
   padding: 8px 3px;
   color: #5c6677;
   display: flex;
@@ -3150,6 +3474,11 @@ function prewarmScheduleCacheForWeek(wk: string) {
   text-align: center;
   gap: 12px;
   padding: 20px;
+  border: 1px solid rgba(221, 228, 238, 0.72);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.66);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 .state-card .big {
   font-size: 44px;
@@ -3186,7 +3515,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   object-fit: contain;
   border: 1px solid #dde4ee;
   border-radius: 9px;
-  background: #fff;
+  background: var(--schedule-surface-bg-soft);
 }
 .error-text {
   color: #dc2626 !important;
