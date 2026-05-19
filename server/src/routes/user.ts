@@ -7,6 +7,7 @@ import { validate } from "../middleware/validate";
 import { Errors, ok } from "../utils/response";
 import { enabledBoardTypes } from "../services/siteSettings";
 import { releaseExpiredMutes } from "../services/userModeration";
+import { buildPublicUser, buildSelfUser } from "../utils/publicUser";
 
 export const userRouter = Router();
 
@@ -15,7 +16,7 @@ userRouter.get("/me", authRequired, async (req, res, next) => {
     await releaseExpiredMutes();
     const user = await prisma.user.findUnique({ where: { id: req.user!.userId } });
     if (!user) throw Errors.notFound("用户不存在");
-    ok(res, pubUser(user));
+    ok(res, buildSelfUser(user));
   } catch (e) { next(e); }
 });
 
@@ -27,7 +28,7 @@ userRouter.patch("/me", authRequired, async (req, res, next) => {
       if (body[k] !== undefined) allowed[k] = body[k];
     }
     const u = await prisma.user.update({ where: { id: req.user!.userId }, data: allowed });
-    ok(res, pubUser(u));
+    ok(res, buildSelfUser(u));
   } catch (e) { next(e); }
 });
 
@@ -59,7 +60,7 @@ userRouter.get("/:id", async (req, res, next) => {
     await releaseExpiredMutes();
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) throw Errors.notFound();
-    ok(res, pubUser(user));
+    ok(res, buildPublicUser(user, req.user));
   } catch (e) { next(e); }
 });
 
@@ -81,32 +82,6 @@ userRouter.get("/:id/topics", async (req, res, next) => {
     })));
   } catch (e) { next(e); }
 });
-
-function pubUser(u: any) {
-  return {
-    id: u.id,
-    username: u.username,
-    nickname: u.nickname,
-    avatar: u.avatar,
-    bio: u.bio,
-    college: u.college,
-    enrollYear: u.enrollYear,
-    role: u.role,
-    postCount: u.postCount,
-    replyCount: u.replyCount,
-    reputation: u.reputation,
-    lastSeenAt: u.lastSeenAt,
-    lastLoginAt: u.lastLoginAt,
-    lastLoginClient: u.lastLoginClient,
-    usedIosClient: u.usedIosClient,
-    usedAndroidClient: u.usedAndroidClient,
-    topicSubmissionLocked: u.topicSubmissionLocked,
-    aiReviewWhitelisted: u.aiReviewWhitelisted,
-    status: u.status,
-    mutedUntil: u.mutedUntil,
-    createdAt: u.createdAt,
-  };
-}
 
 function safeJson(s: string | null | undefined) {
   if (!s) return {};

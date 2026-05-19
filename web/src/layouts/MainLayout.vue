@@ -164,7 +164,7 @@
       :show-close="false"
     >
       <p class="dlg-tip">
-        欢迎来到药大垎坊，<b>{{ auth.user?.username }}</b> 同学
+        欢迎来到药大垎坊，先设置一个公开显示的昵称
       </p>
       <p class="dlg-hint">
         {{ nicknameHint }}，<b>不会展示你的学号</b>。

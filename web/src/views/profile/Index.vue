@@ -11,7 +11,7 @@
         <el-tag v-if="user?.role === 'admin'" size="small" type="danger">管理员</el-tag>
         <el-tag v-else-if="user?.role === 'mod'" size="small">论坛管理员</el-tag>
       </h3>
-      <p class="username">@{{ user?.username }}</p>
+      <p class="account-note">{{ user?.studentSso ? "学号仅用于登录和身份校验，不会公开展示" : "登录账号仅自己可见，不会公开展示" }}</p>
       <p class="bio">{{ user?.bio || "这个人很懒，什么都没写" }}</p>
       <ul class="kv">
         <li><span>院系</span><span>{{ user?.college || "—" }}</span></li>
@@ -250,7 +250,7 @@ async function removeAvatar() {
   align-items: center;
   gap: 8px;
 }
-.username { font-size: 12px; color: #9ca3af; margin: 0 0 8px; }
+.account-note { font-size: 12px; color: #9ca3af; margin: 0 0 8px; }
 .bio { font-size: 13px; color: #6b7280; margin: 0 0 16px; }
 
 .kv {

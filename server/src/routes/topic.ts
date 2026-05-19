@@ -25,6 +25,7 @@ import {
   syncTopicAiTags,
 } from "../services/topicAiReview";
 import { ensureUserCanSpeak, releaseExpiredMutes } from "../services/userModeration";
+import { buildUserPreview } from "../utils/publicUser";
 
 export const topicRouter = Router();
 
@@ -71,7 +72,7 @@ topicRouter.get("/", async (req, res, next) => {
 
     ok(res, {
       page, size, total,
-      list: list.map(decodeTopic),
+      list: list.map((item) => decodeTopic(item, req.user)),
     });
   } catch (e) { next(e); }
 });
@@ -96,7 +97,7 @@ topicRouter.get("/:id", async (req, res, next) => {
     if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
     // 浏览数 +1（异步，失败也无所谓）
     if (!topic.hidden) prisma.topic.update({ where: { id }, data: { viewCount: { increment: 1 } } }).catch(() => {});
-    ok(res, decodeTopic(topic));
+    ok(res, decodeTopic(topic, req.user));
   } catch (e) { next(e); }
 });
 
@@ -251,7 +252,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     }
 
     ok(res, {
-      ...decodeTopic(topicWithTags ?? { ...topic, board: { slug: board.slug, name: board.name, type: board.type }, tags: [] }),
+      ...decodeTopic(topicWithTags ?? { ...topic, board: { slug: board.slug, name: board.name, type: board.type }, tags: [] }, req.user),
       submissionResult: hiddenByAi
         ? {
             status: "blocked_ai",
@@ -331,7 +332,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
         });
         if (aiResult.status === "blocked_ai") {
           return ok(res, {
-            ...decodeTopic(t),
+            ...decodeTopic(t, req.user),
             submissionResult: {
               status: "blocked_ai",
               riskLevel: aiResult.riskLevel,
@@ -386,7 +387,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
       },
     });
     ok(res, {
-      ...decodeTopic(topicWithTags ?? u),
+      ...decodeTopic(topicWithTags ?? u, req.user),
       submissionResult: { status: "published" },
     });
   } catch (e) { next(e); }
@@ -427,19 +428,27 @@ topicRouter.get("/:id/replies", async (req, res, next) => {
         author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
       },
     });
-    ok(res, list);
+    ok(res, list.map((item) => decodeReply(item, req.user)));
   } catch (e) { next(e); }
 });
 
-function decodeTopic(t: any) {
+function decodeTopic(t: any, viewer?: { userId?: number | null; role?: string | null }) {
   return {
     ...t,
+    author: buildUserPreview(t.author, viewer),
     metadata: safeJson(t.metadata),
     tags: Array.isArray(t.tags)
       ? t.tags
           .map((item: any) => item?.tag ? { id: item.tag.id, name: item.tag.name } : item)
           .filter((item: any) => item?.name)
       : [],
+  };
+}
+
+function decodeReply(reply: any, viewer?: { userId?: number | null; role?: string | null }) {
+  return {
+    ...reply,
+    author: buildUserPreview(reply.author, viewer),
   };
 }
 function safeJson(s: string | null | undefined) {

@@ -7,6 +7,7 @@ import { validate } from "../middleware/validate";
 import { featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettings";
 import { requestManualReplyReview, reviewReplyContent, shouldBypassAiReviewForUser, shouldRunAiReview } from "../services/topicAiReview";
 import { ensureUserCanSpeak } from "../services/userModeration";
+import { buildUserPreview } from "../utils/publicUser";
 
 export const replyRouter = Router();
 
@@ -126,7 +127,10 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       });
     }
 
-    ok(res, reply);
+    ok(res, {
+      ...reply,
+      author: buildUserPreview(reply.author, req.user),
+    });
   } catch (e) { next(e); }
 });
 

@@ -9,6 +9,7 @@ import { beginLogin, submitLogin } from "../services/jwxtTransport";
 import { releaseExpiredMutes } from "../services/userModeration";
 import { isDev } from "../config";
 import { detectLoginClient } from "../utils/loginClient";
+import { buildSelfUser } from "../utils/publicUser";
 
 export const authRouter = Router();
 
@@ -57,7 +58,7 @@ authRouter.post("/login", validate(loginSchema), async (req, res, next) => {
       role: user.role,
       campus: "",
     });
-    ok(res, { token, user: pubUser(logged) });
+    ok(res, { token, user: buildSelfUser(logged) });
   } catch (e) { next(e); }
 });
 
@@ -86,7 +87,7 @@ authRouter.post("/register", validate(registerSchema), async (req, res, next) =>
     });
     await prisma.messageSetting.create({ data: { userId: user.id } });
     const token = signToken({ userId: user.id, studentId: user.username, role: user.role, campus: "" });
-    ok(res, { token, user: pubUser(user) });
+    ok(res, { token, user: buildSelfUser(user) });
   } catch (e) { next(e); }
 });
 
@@ -172,7 +173,7 @@ authRouter.post(
         ok: true,
         siteToken,
         jwxtToken: r.token,
-        user: pubUser(user),
+        user: buildSelfUser(user),
         needNickname: !user.nickname || user.nickname.trim() === "",
       });
     } catch (e) { next(e); }
@@ -180,30 +181,3 @@ authRouter.post(
 );
 
 authRouter.post("/logout", (_req, res) => ok(res, { ok: true }));
-
-function pubUser(u: any) {
-  return {
-    id: u.id,
-    username: u.username,
-    nickname: u.nickname,
-    avatar: u.avatar,
-    bio: u.bio,
-    college: u.college,
-    enrollYear: u.enrollYear,
-    role: u.role,
-    studentSso: u.studentSso,
-    postCount: u.postCount,
-    replyCount: u.replyCount,
-    reputation: u.reputation,
-    lastSeenAt: u.lastSeenAt,
-    lastLoginAt: u.lastLoginAt,
-    lastLoginClient: u.lastLoginClient,
-    usedIosClient: u.usedIosClient,
-    usedAndroidClient: u.usedAndroidClient,
-    topicSubmissionLocked: u.topicSubmissionLocked,
-    aiReviewWhitelisted: u.aiReviewWhitelisted,
-    status: u.status,
-    mutedUntil: u.mutedUntil,
-    createdAt: u.createdAt,
-  };
-}

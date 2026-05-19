@@ -9,7 +9,6 @@
           <el-tag v-else-if="user.role === 'mod'" size="small" type="warning">论坛管理员</el-tag>
           <el-tag v-else-if="user.role === 'bot'" size="small" type="warning">系统账号</el-tag>
         </h2>
-        <p class="username">@{{ user.username }}</p>
         <p class="bio">{{ user.bio || "—" }}</p>
         <div class="meta">
           <span v-if="user.college">{{ user.college }}</span>
@@ -74,7 +73,6 @@ function applyModerationUpdate(patch: Record<string, unknown>) {
 .profile-card { display: flex; align-items: flex-start; gap: 16px; }
 .avatar { font-size: 24px; font-weight: 600; flex-shrink: 0; }
 .name { margin: 0; font-size: 20px; display: flex; align-items: center; gap: 8px; }
-.username { font-size: 12px; color: #9ca3af; margin: 2px 0 6px; }
 .bio { font-size: 13px; color: #4b5563; margin: 0 0 8px; }
 .meta { display: flex; gap: 12px; font-size: 12px; color: #6b7280; flex-wrap: wrap; }
 .staff-panel { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
