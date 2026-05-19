@@ -719,7 +719,7 @@ adminRouter.post("/feeds/:id/reset-run", adminOnly, async (req, res, next) => {
 
 // ============ 站务公告 ============
 
-adminRouter.get("/announcements", modOrAbove, async (_req, res, next) => {
+adminRouter.get("/announcements", adminOnly, async (_req, res, next) => {
   try {
     const list = await prisma.notification.findMany({
       where: { userId: null, category: "system" },
@@ -730,7 +730,7 @@ adminRouter.get("/announcements", modOrAbove, async (_req, res, next) => {
   } catch (e) { next(e); }
 });
 
-adminRouter.post("/announcements", modOrAbove, validate(z.object({
+adminRouter.post("/announcements", adminOnly, validate(z.object({
   title: z.string().min(2).max(120),
   content: z.string().min(1).max(2000),
   level: z.enum(["strong", "normal", "weak"]).optional(),
@@ -754,7 +754,7 @@ adminRouter.post("/announcements", modOrAbove, validate(z.object({
   } catch (e) { next(e); }
 });
 
-adminRouter.delete("/announcements/:id", modOrAbove, async (req, res, next) => {
+adminRouter.delete("/announcements/:id", adminOnly, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const n = await prisma.notification.findUnique({ where: { id } });

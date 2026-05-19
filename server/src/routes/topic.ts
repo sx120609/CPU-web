@@ -298,7 +298,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     if (!t) throw Errors.notFound();
     const isOwner = t.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
-    const canEditContent = isOwner || req.user!.role === "admin";
+    const canEditContent = isOwner || req.user!.role === "admin" || (req.user!.role === "mod" && t.board?.type !== "announce");
     if (!isOwner && !isMod) throw Errors.forbidden();
     if (!isMod && !isBoardTypeEnabled(t.board?.type)) throw Errors.forbidden(featureClosedMessage(t.board?.type));
     if (isOwner) await ensureForumAccessEnabled(req.user!.userId, req.user!.role);

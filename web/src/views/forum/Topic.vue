@@ -223,7 +223,11 @@ const REPLY_MAX = 10000;
 const metaPrice = computed(() => topic.value?.metadata?.price);
 const hotScore = computed(() => Math.round((topic.value?.likeCount ?? 0) * 5 + (topic.value?.replyCount ?? 0) * 3 + (topic.value?.viewCount ?? 0) * 0.03));
 const isReadOnly = computed(() => topic.value?.board?.readOnly);
-const canEdit = computed(() => auth.user?.id === topic.value?.authorId || auth.isAdmin);
+const canEdit = computed(() =>
+  auth.user?.id === topic.value?.authorId ||
+  auth.isAdmin ||
+  (auth.isMod && !isReadOnly.value)
+);
 const canPin = computed(() => auth.isMod);
 const replyDraftKey = computed(() => topic.value?.id ? `cpu-reply-draft-${topic.value.id}` : "");
 const replyIsEmpty = computed(() => replyEditorRef.value?.isContentEmpty() ?? !replyText.value.trim());
