@@ -225,18 +225,7 @@ const editableFocused = ref(false);
 const editorFocused = ref(false);
 const mobileViewportBaseHeight = ref(0);
 const isMobileViewport = ref(false);
-let pageLockScrollY = 0;
-let pageLockActive = false;
 let focusOutTimer = 0;
-const pageLockState = {
-  bodyPosition: "",
-  bodyTop: "",
-  bodyLeft: "",
-  bodyRight: "",
-  bodyWidth: "",
-  bodyOverflow: "",
-  htmlOverflow: "",
-};
 
 /** 某些路由（如 /schedule）希望"裸壳"渲染，没有顶栏/免责声明/footer，仅保留 main + tabbar */
 const hideChrome = computed(() => Boolean(route.meta?.hideChrome));
@@ -343,7 +332,6 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.clearTimeout(focusOutTimer);
-  unlockPageScroll();
   if (typeof window !== "undefined") {
     window.removeEventListener("resize", handleViewportMetricsChange);
     window.visualViewport?.removeEventListener("resize", handleViewportMetricsChange);
@@ -358,7 +346,6 @@ watch(() => route.fullPath, () => {
   keyboardOpen.value = false;
   editableFocused.value = false;
   editorFocused.value = false;
-  unlockPageScroll();
   syncViewportMetrics();
 });
 
@@ -377,7 +364,6 @@ function handleFocusIn(event: FocusEvent) {
     keyboardOpen.value = true;
     requestAnimationFrame(() => {
       syncViewportMetrics();
-      lockPageScroll();
       updateKeyboardState();
     });
     return;
@@ -418,7 +404,6 @@ function updateKeyboardState() {
   if (typeof window === "undefined") return;
   if (editorFocused.value && isMobileViewport.value) {
     keyboardOpen.value = true;
-    lockPageScroll();
     return;
   }
   const currentHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
@@ -427,43 +412,7 @@ function updateKeyboardState() {
   keyboardOpen.value = keyboardLikelyOpen;
   if (!keyboardLikelyOpen) {
     mobileViewportBaseHeight.value = Math.max(currentHeight, window.innerHeight);
-    unlockPageScroll();
-    return;
   }
-  if (editorFocused.value) lockPageScroll();
-}
-
-function lockPageScroll() {
-  if (pageLockActive || typeof window === "undefined") return;
-  pageLockScrollY = window.scrollY;
-  pageLockState.bodyPosition = document.body.style.position;
-  pageLockState.bodyTop = document.body.style.top;
-  pageLockState.bodyLeft = document.body.style.left;
-  pageLockState.bodyRight = document.body.style.right;
-  pageLockState.bodyWidth = document.body.style.width;
-  pageLockState.bodyOverflow = document.body.style.overflow;
-  pageLockState.htmlOverflow = document.documentElement.style.overflow;
-  document.body.style.position = "fixed";
-  document.body.style.top = `-${pageLockScrollY}px`;
-  document.body.style.left = "0";
-  document.body.style.right = "0";
-  document.body.style.width = "100%";
-  document.body.style.overflow = "hidden";
-  document.documentElement.style.overflow = "hidden";
-  pageLockActive = true;
-}
-
-function unlockPageScroll() {
-  if (!pageLockActive || typeof window === "undefined") return;
-  document.body.style.position = pageLockState.bodyPosition;
-  document.body.style.top = pageLockState.bodyTop;
-  document.body.style.left = pageLockState.bodyLeft;
-  document.body.style.right = pageLockState.bodyRight;
-  document.body.style.width = pageLockState.bodyWidth;
-  document.body.style.overflow = pageLockState.bodyOverflow;
-  document.documentElement.style.overflow = pageLockState.htmlOverflow;
-  window.scrollTo(0, pageLockScrollY);
-  pageLockActive = false;
 }
 
 function goSearch() {
@@ -532,10 +481,6 @@ async function onUserCmd(cmd: string) {
   background: var(--cpu-bg);
   /* 防 iOS Safari 整页橡皮筋拉动 */
   overscroll-behavior-y: none;
-}
-
-.layout-root.keyboard-open {
-  overflow: hidden;
 }
 
 .topbar {
@@ -831,12 +776,7 @@ async function onUserCmd(cmd: string) {
 }
 
 @media (max-width: 768px) {
-  .layout-root.keyboard-open {
-    min-height: var(--layout-viewport-height, 100dvh);
-  }
-
   .layout-root.keyboard-open .main {
-    overflow: hidden;
     padding-bottom: 12px;
   }
 
