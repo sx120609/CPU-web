@@ -139,7 +139,7 @@
                   <span v-if="!hasScheduleBackground">还没有设置背景图</span>
                 </div>
                 <p class="background-note">
-                  背景仅保存在当前设备，不会上传到服务器。建议使用浅色插画或照片，效果更像你发的参考图。
+                  背景仅保存在当前设备，不会上传到服务器。现在默认直接保存本地图，是否能存下主要取决于浏览器本地空间；浅色插画或照片的效果会更接近参考图。
                 </p>
                 <div class="background-actions">
                   <button
@@ -676,9 +676,13 @@ import { Aim, ArrowLeft, ArrowRight, Download, Iphone, Loading, Lock, Moon, More
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
-import { compressImageFile } from "@/utils/imageUpload";
 import { jwxtScopedStorageKey } from "@/utils/jwxtCache";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
+import {
+  clearScheduleBackgroundBlob,
+  readScheduleBackgroundBlob,
+  saveScheduleBackgroundBlob,
+} from "@/utils/scheduleBackgroundStorage";
 import {
   ANDROID_APP_DOWNLOAD_URL,
   ANDROID_APP_LATEST_VERSION_CODE,
@@ -871,6 +875,7 @@ const ANDROID_APP_UPDATE_PROMPT_KEY = "cpu-android-app-update-prompt-v1";
 let widgetInstructionTimer = 0;
 let androidUpdateTimer = 0;
 let androidAppUpdatePromptTimer = 0;
+let scheduleBackgroundPreviewUrl = "";
 type WidgetMenuPlatform = "ios" | "android" | "android-old";
 interface AndroidWidgetBridge {
   getVersionCode?: () => number;
@@ -1365,7 +1370,7 @@ onMounted(async () => {
   jwxt.hydrate();
   hasCreds.value = hasSavedCreds();
   restoreScheduleTheme();
-  restoreScheduleBackground();
+  await restoreScheduleBackground();
   updateViewportHeight();
   window.addEventListener("resize", updateViewportHeight);
   window.visualViewport?.addEventListener("resize", updateViewportHeight);
@@ -1414,6 +1419,7 @@ onBeforeUnmount(() => {
     window.clearTimeout(scheduleEditsSaveTimer);
     scheduleEditsSaveTimer = 0;
   }
+  clearScheduleBackgroundPreview();
 });
 
 const semesters = computed(() => parsed.value?.semesters ?? []);
@@ -2595,12 +2601,25 @@ function applyScheduleBackground(next: ScheduleBackgroundSettings) {
   scheduleBackground.blur = next.blur;
 }
 
-function snapshotScheduleBackground(): ScheduleBackgroundSettings {
+function snapshotScheduleBackgroundSettings() {
   return {
-    imageDataUrl: scheduleBackground.imageDataUrl,
     overlayOpacity: scheduleBackground.overlayOpacity,
     blur: scheduleBackground.blur,
   };
+}
+
+function setScheduleBackgroundPreview(url: string) {
+  clearScheduleBackgroundPreview();
+  scheduleBackgroundPreviewUrl = url.startsWith("blob:") ? url : "";
+  scheduleBackground.imageDataUrl = url;
+}
+
+function clearScheduleBackgroundPreview() {
+  if (scheduleBackgroundPreviewUrl) {
+    URL.revokeObjectURL(scheduleBackgroundPreviewUrl);
+    scheduleBackgroundPreviewUrl = "";
+  }
+  scheduleBackground.imageDataUrl = "";
 }
 
 function restoreScheduleTheme() {
@@ -2621,26 +2640,55 @@ function persistScheduleTheme(value = scheduleTheme.value) {
   }
 }
 
-function restoreScheduleBackground() {
+async function restoreScheduleBackground() {
+  let legacyImageDataUrl = "";
   try {
     const raw = localStorage.getItem(BACKGROUND_KEY);
-    if (!raw) return;
-    applyScheduleBackground(normalizeScheduleBackground(JSON.parse(raw)));
+    if (raw) {
+      const normalized = normalizeScheduleBackground(JSON.parse(raw));
+      legacyImageDataUrl = normalized.imageDataUrl;
+      applyScheduleBackground({
+        imageDataUrl: "",
+        overlayOpacity: normalized.overlayOpacity,
+        blur: normalized.blur,
+      });
+    } else {
+      applyScheduleBackground(createDefaultScheduleBackground());
+    }
   } catch {
     applyScheduleBackground(createDefaultScheduleBackground());
+  }
+  try {
+    const storedBlob = await readScheduleBackgroundBlob();
+    if (storedBlob) {
+      setScheduleBackgroundPreview(URL.createObjectURL(storedBlob));
+      return;
+    }
+  } catch {
+    /* ignore */
+  }
+  if (!legacyImageDataUrl) return;
+  setScheduleBackgroundPreview(legacyImageDataUrl);
+  try {
+    const migratedBlob = await dataUrlToBlob(legacyImageDataUrl);
+    await saveScheduleBackgroundBlob(migratedBlob);
+    setScheduleBackgroundPreview(URL.createObjectURL(migratedBlob));
+    persistScheduleBackground();
+  } catch {
+    /* keep legacy preview */
   }
 }
 
 function persistScheduleBackground() {
-  const payload = JSON.stringify(snapshotScheduleBackground());
   if (!scheduleBackground.imageDataUrl) {
     localStorage.removeItem(BACKGROUND_KEY);
     return;
   }
+  const payload = JSON.stringify(snapshotScheduleBackgroundSettings());
   localStorage.setItem(BACKGROUND_KEY, payload);
 }
 
-function persistScheduleBackgroundSafe(message = "背景保存失败，请换一张更小的图片后重试") {
+function persistScheduleBackgroundSafe(message = "背景设置保存失败，请稍后重试") {
   try {
     persistScheduleBackground();
     return true;
@@ -2659,33 +2707,37 @@ async function onScheduleBackgroundPicked(event: Event) {
   const file = input.files?.[0];
   input.value = "";
   if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    ElMessage.warning("请选择图片文件");
+    return;
+  }
   backgroundSaving.value = true;
-  const previous = snapshotScheduleBackground();
   try {
-    const dataUrl = await compressImageFile(file, {
-      maxWidth: 1440,
-      maxHeight: 2400,
-      quality: 0.76,
-      mimeType: "image/webp",
-      maxBytes: 420 * 1024,
-    });
-    scheduleBackground.imageDataUrl = dataUrl;
-    if (!persistScheduleBackgroundSafe()) {
-      applyScheduleBackground(previous);
-      return;
-    }
-    ElMessage.success("已设置课表背景");
+    await saveScheduleBackgroundBlob(file);
+    setScheduleBackgroundPreview(URL.createObjectURL(file));
+    persistScheduleBackgroundSafe();
+    ElMessage.success(file.size > 6 * 1024 * 1024 ? "已设置课表背景，大图首次显示可能会稍慢" : "已设置课表背景");
   } catch (error: any) {
-    applyScheduleBackground(previous);
-    ElMessage.warning(String(error?.message || "背景图片处理失败"));
+    ElMessage.warning(String(error?.message || "背景保存失败，可能是浏览器本地空间不足"));
   } finally {
     backgroundSaving.value = false;
   }
 }
 
-function clearScheduleBackground() {
-  applyScheduleBackground(createDefaultScheduleBackground());
-  persistScheduleBackgroundSafe("清除背景失败，请稍后重试");
+async function clearScheduleBackground() {
+  if (!hasScheduleBackground.value || backgroundSaving.value) return;
+  backgroundSaving.value = true;
+  try {
+    await clearScheduleBackgroundBlob();
+    applyScheduleBackground(createDefaultScheduleBackground());
+    clearScheduleBackgroundPreview();
+    persistScheduleBackgroundSafe("清除背景失败，请稍后重试");
+    ElMessage.success("已清除课表背景");
+  } catch {
+    ElMessage.warning("清除背景失败，请稍后重试");
+  } finally {
+    backgroundSaving.value = false;
+  }
 }
 
 function onBackgroundVisibilityInput(event: Event) {
@@ -2699,6 +2751,11 @@ function onBackgroundBlurInput(event: Event) {
   const target = event.target as HTMLInputElement;
   scheduleBackground.blur = Math.round(clampNumber(target.value, scheduleBackground.blur, 0, 18));
   persistScheduleBackgroundSafe("背景设置保存失败");
+}
+
+async function dataUrlToBlob(dataUrl: string) {
+  const response = await fetch(dataUrl);
+  return response.blob();
 }
 
 function clampNumber(value: unknown, fallback: number, min: number, max: number) {
