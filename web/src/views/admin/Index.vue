@@ -38,6 +38,7 @@
 
     <el-tabs v-model="tab" class="cpu-card">
       <el-tab-pane label="👥 用户" name="users"><UsersPane v-if="tab === 'users'" /></el-tab-pane>
+      <el-tab-pane label="🧩 板块" name="boards" v-if="auth.isAdmin"><BoardsPane v-if="tab === 'boards'" /></el-tab-pane>
       <el-tab-pane label="📝 帖子" name="topics"><TopicsPane v-if="tab === 'topics'" /></el-tab-pane>
       <el-tab-pane label="🔄 同步源" name="feeds" v-if="auth.isAdmin"><FeedsPane v-if="tab === 'feeds'" /></el-tab-pane>
       <el-tab-pane label="📣 公告" name="announcements"><AnnouncementsPane v-if="tab === 'announcements'" /></el-tab-pane>
@@ -51,6 +52,7 @@ import { ref, onMounted } from "vue";
 import { useAuthStore } from "@/stores/auth";
 import { adminApi } from "@/api/admin";
 import UsersPane from "./UsersPane.vue";
+import BoardsPane from "./BoardsPane.vue";
 import TopicsPane from "./TopicsPane.vue";
 import FeedsPane from "./FeedsPane.vue";
 import AnnouncementsPane from "./AnnouncementsPane.vue";

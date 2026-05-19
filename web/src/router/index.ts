@@ -12,6 +12,8 @@ const MainLayout = () => import("@/layouts/MainLayout.vue");
  */
 const FEATURE_GATED: Record<string, FeatureKey> = {
   forum: "forum",
+  "forum-hot": "forum",
+  "forum-latest": "forum",
   post: "forum",
   "edit-post": "forum",
   market: "market",
@@ -40,6 +42,8 @@ export const router = createRouter({
       children: [
         { path: "home", name: "home", component: () => import("@/views/Home.vue"), meta: { title: "首页", public: true } },
         { path: "forum", name: "forum", component: () => import("@/views/forum/Index.vue"), meta: { title: "论坛", public: true } },
+        { path: "forum/hot", name: "forum-hot", component: () => import("@/views/forum/Feed.vue"), meta: { title: "热榜", public: true } },
+        { path: "forum/latest", name: "forum-latest", component: () => import("@/views/forum/Feed.vue"), meta: { title: "最新内容", public: true } },
         { path: "forum/b/:slug", name: "board", component: () => import("@/views/forum/Board.vue"), meta: { title: "板块", public: true } },
         { path: "forum/topic/:id", name: "topic", component: () => import("@/views/forum/Topic.vue"), meta: { title: "帖子", public: true } },
         { path: "post", name: "post", component: () => import("@/views/forum/Post.vue"), meta: { title: "发帖" } },

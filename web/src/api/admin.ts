@@ -89,6 +89,27 @@ export const adminApi = {
     request.get<{ kind: "topic" | "reply"; id: number; title: string; aiReviewStatus: string; hidden: boolean; topicId?: number; reviewable: boolean }>(`/admin/review-targets/${kind}/${id}`),
   deleteTopic: (id: number) => request.delete<any>(`/admin/topics/${id}`),
   destroyTopic: (id: number) => request.delete<any>(`/admin/topics/${id}?hard=1`),
+  // 板块
+  boards: () => request.get<any[]>("/admin/boards"),
+  createBoard: (payload: {
+    slug: string;
+    name: string;
+    description?: string;
+    icon?: string;
+    color?: string;
+    order?: number;
+    type: "normal" | "question" | "market" | "coursereview";
+  }) => request.post<any>("/admin/boards", payload),
+  updateBoard: (id: number, payload: Partial<{
+    slug: string;
+    name: string;
+    description: string;
+    icon: string;
+    color: string;
+    order: number;
+    type: "normal" | "question" | "market" | "coursereview";
+  }>) => request.patch<any>(`/admin/boards/${id}`, payload),
+  deleteBoard: (id: number) => request.delete<any>(`/admin/boards/${id}`),
   // 爬虫
   feeds: () => request.get<any[]>("/admin/feeds"),
   updateFeed: (id: number, patch: { enabled?: boolean; cronMinutes?: number; maxPages?: number }) =>

@@ -29,16 +29,25 @@
         <section class="block">
           <div class="block-head">
             <h3>🔥 热议</h3>
-            <router-link to="/forum?sort=hot" class="more">更多 →</router-link>
+            <router-link to="/forum/hot" class="more">更多 →</router-link>
           </div>
-          <TopicListItem v-for="t in summary?.hotTopics ?? []" :key="'hot-' + t.id" :topic="t" />
+          <div v-for="t in summary?.hotTopics ?? []" :key="'hot-' + t.id" class="hot-row" @click="$router.push(`/forum/topic/${t.id}`)">
+            <div class="hot-rank" :class="{ top3: t.rank <= 3 }">#{{ t.rank }}</div>
+            <div class="hot-main">
+              <div class="hot-title">{{ t.title }}</div>
+              <div class="hot-meta">
+                <span>{{ t.board?.name }}</span>
+                <span>{{ t.replyCount }} 回 / {{ t.likeCount }} 赞</span>
+              </div>
+            </div>
+          </div>
           <el-empty v-if="!summary?.hotTopics?.length" description="暂无内容" />
         </section>
 
         <section class="block">
           <div class="block-head">
             <h3>🆕 最新</h3>
-            <router-link to="/forum" class="more">更多 →</router-link>
+            <router-link to="/forum/latest" class="more">更多 →</router-link>
           </div>
           <TopicListItem v-for="t in summary?.latestTopics ?? []" :key="'new-' + t.id" :topic="t" />
           <el-empty v-if="!summary?.latestTopics?.length" description="暂无内容" />
@@ -243,6 +252,41 @@ function openUrl(url: string) {
   gap: 8px;
 }
 .ann-source { color: var(--cpu-primary); }
+
+.hot-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 10px 4px;
+  border-bottom: 1px dashed #f1f5f9;
+  cursor: pointer;
+}
+.hot-row:last-of-type { border-bottom: none; }
+.hot-rank {
+  min-width: 46px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #94a3b8;
+}
+.hot-rank.top3 { color: #dc2626; }
+.hot-title {
+  font-size: 14px;
+  color: #111827;
+  line-height: 1.5;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+.hot-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+  font-size: 12px;
+  color: #9ca3af;
+}
 
 .service-grid {
   display: grid;

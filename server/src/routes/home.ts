@@ -7,39 +7,33 @@ import { enabledBoardTypes } from "../services/siteSettings";
 
 export const homeRouter = Router();
 const HOME_HIDDEN_SERVICE_CODES = ["DORM_REPAIR"];
+const HOT_TOPIC_DEFAULT_SIZE = 10;
+const LATEST_FEED_DEFAULT_SIZE = 20;
 
 /**
- * 首页摘要：热帖 + 板块最新 + 学校公告 + 服务卡片 + 个人未读
+ * 首页摘要：热榜 + 最新聚合 + 学校公告 + 服务卡片 + 个人未读
  * - 已登录：返回 identity / unreadCount
  * - 游客：identity = null，其他公开内容仍返回
  */
 homeRouter.get("/summary", async (req, res, next) => {
   try {
-    // 软鉴权：尝试解析 token，失败/缺失不报错
     let userId: number | null = null;
     const auth = req.headers.authorization;
     if (auth?.startsWith("Bearer ")) {
-      try { userId = verifyToken(auth.slice(7)).userId; } catch { /* token 无效，按游客处理 */ }
+      try { userId = verifyToken(auth.slice(7)).userId; } catch { /* ignore */ }
     }
 
     const readableBoardTypes = enabledBoardTypes();
+    const contentBoardTypes = readableBoardTypes.filter((type) => type !== "announce");
     const [user, hotTopics, latestTopics, announce, services, personalUnread, globalReads, globalCount] = await Promise.all([
       userId ? prisma.user.findUnique({ where: { id: userId } }) : Promise.resolve(null),
+      listHotTopics(6, contentBoardTypes),
       prisma.topic.findMany({
-        where: { hidden: false, board: { type: { in: readableBoardTypes } } },
-        orderBy: [{ pinned: "desc" }, { likeCount: "desc" }, { replyCount: "desc" }],
-        take: 6,
-        include: {
-          board: { select: { slug: true, name: true, color: true } },
-          author: { select: { nickname: true, avatar: true } },
-        },
-      }),
-      prisma.topic.findMany({
-        where: { hidden: false, board: { readOnly: false, type: { in: readableBoardTypes } } },
-        orderBy: { lastReplyAt: "desc" },
+        where: { hidden: false, board: { type: { in: contentBoardTypes } } },
+        orderBy: { createdAt: "desc" },
         take: 10,
         include: {
-          board: { select: { slug: true, name: true, color: true } },
+          board: { select: { slug: true, name: true, color: true, type: true } },
           author: { select: { nickname: true, avatar: true } },
         },
       }),
@@ -73,7 +67,11 @@ homeRouter.get("/summary", async (req, res, next) => {
         reputation: user.reputation,
         unreadCount,
       } : null,
-      hotTopics: hotTopics.map(decode),
+      hotTopics: hotTopics.map((item, index) => ({
+        rank: index + 1,
+        hotScore: computeHotScore(item, isRecentTopic(item)),
+        ...decode(item),
+      })),
       latestTopics: latestTopics.map(decode),
       announce: announce.map(decode),
       services: services
@@ -83,9 +81,93 @@ homeRouter.get("/summary", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+homeRouter.get("/hot-ranking", async (_req, res, next) => {
+  try {
+    const contentBoardTypes = enabledBoardTypes().filter((type) => type !== "announce");
+    const list = await listHotTopics(HOT_TOPIC_DEFAULT_SIZE, contentBoardTypes);
+    ok(res, list.map((item, index) => ({
+      rank: index + 1,
+      hotScore: computeHotScore(item, isRecentTopic(item)),
+      ...decode(item),
+    })));
+  } catch (e) { next(e); }
+});
+
+homeRouter.get("/latest-feed", async (req, res, next) => {
+  try {
+    const page = Math.max(1, Number(req.query.page ?? 1));
+    const size = Math.min(50, Math.max(10, Number(req.query.size ?? LATEST_FEED_DEFAULT_SIZE)));
+    const contentBoardTypes = enabledBoardTypes().filter((type) => type !== "announce");
+    const where = { hidden: false, board: { type: { in: contentBoardTypes } } } as const;
+    const [list, total] = await Promise.all([
+      prisma.topic.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * size,
+        take: size,
+        include: {
+          board: { select: { slug: true, name: true, color: true, type: true } },
+          author: { select: { nickname: true, avatar: true } },
+        },
+      }),
+      prisma.topic.count({ where }),
+    ]);
+    ok(res, { page, size, total, list: list.map(decode) });
+  } catch (e) { next(e); }
+});
+
+async function listHotTopics(size: number, boardTypes: string[]) {
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const include = {
+    board: { select: { slug: true, name: true, color: true, type: true } },
+    author: { select: { nickname: true, avatar: true } },
+  } as const;
+  const [recent, older] = await Promise.all([
+    prisma.topic.findMany({
+      where: {
+        hidden: false,
+        board: { type: { in: boardTypes } },
+        lastReplyAt: { gte: cutoff },
+      },
+      orderBy: [{ pinned: "desc" }, { likeCount: "desc" }, { replyCount: "desc" }, { viewCount: "desc" }],
+      take: 60,
+      include,
+    }),
+    prisma.topic.findMany({
+      where: {
+        hidden: false,
+        board: { type: { in: boardTypes } },
+        OR: [{ lastReplyAt: null }, { lastReplyAt: { lt: cutoff } }],
+      },
+      orderBy: [{ pinned: "desc" }, { likeCount: "desc" }, { replyCount: "desc" }, { viewCount: "desc" }],
+      take: 60,
+      include,
+    }),
+  ]);
+
+  const recentSorted = [...recent].sort((a, b) => computeHotScore(b, true) - computeHotScore(a, true));
+  const olderSorted = [...older].sort((a, b) => computeHotScore(b, false) - computeHotScore(a, false));
+  const merged = recentSorted.slice(0, size);
+  if (merged.length < size) {
+    merged.push(...olderSorted.slice(0, size - merged.length));
+  }
+  return merged;
+}
+
+function computeHotScore(topic: any, recent: boolean) {
+  const raw = (topic.likeCount ?? 0) * 5 + (topic.replyCount ?? 0) * 3 + (topic.viewCount ?? 0) * 0.03;
+  return recent ? raw : raw * 0.72;
+}
+
+function isRecentTopic(topic: any) {
+  const last = topic.lastReplyAt ? new Date(topic.lastReplyAt).getTime() : 0;
+  return last >= Date.now() - 24 * 60 * 60 * 1000;
+}
+
 function decode(t: any) {
   return { ...t, metadata: safeJson(t.metadata) };
 }
+
 function safeJson(s: string | null | undefined) {
   if (!s) return {};
   try { return JSON.parse(s); } catch { return {}; }

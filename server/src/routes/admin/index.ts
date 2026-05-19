@@ -529,6 +529,96 @@ adminRouter.patch("/replies/:id", modOrAbove, validate(replyPatchSchema), async 
   } catch (e) { next(e); }
 });
 
+// ============ 板块管理 ============
+
+adminRouter.get("/boards", adminOnly, async (_req, res, next) => {
+  try {
+    const list = await prisma.board.findMany({
+      orderBy: [{ order: "asc" }, { id: "asc" }],
+      include: {
+        feedSource: { select: { id: true, name: true } },
+      },
+    });
+    ok(res, list);
+  } catch (e) { next(e); }
+});
+
+const boardTypeSchema = z.enum(["normal", "question", "market", "coursereview"]);
+const boardCreateSchema = z.object({
+  slug: z.string().trim().min(2).max(40).regex(/^[a-z0-9-]+$/, "slug 仅支持小写字母、数字和中划线"),
+  name: z.string().trim().min(1).max(40),
+  description: z.string().trim().max(140).optional(),
+  icon: z.string().trim().max(8).optional(),
+  color: z.string().trim().max(20).optional(),
+  order: z.number().int().min(0).max(9999).optional(),
+  type: boardTypeSchema,
+});
+
+adminRouter.post("/boards", adminOnly, validate(boardCreateSchema), async (req, res, next) => {
+  try {
+    const created = await prisma.board.create({
+      data: {
+        slug: req.body.slug,
+        name: req.body.name,
+        description: req.body.description || null,
+        icon: req.body.icon || null,
+        color: req.body.color || null,
+        order: req.body.order ?? 0,
+        type: req.body.type,
+        readOnly: false,
+      },
+    });
+    ok(res, created);
+  } catch (e) { next(e); }
+});
+
+const boardPatchSchema = z.object({
+  slug: z.string().trim().min(2).max(40).regex(/^[a-z0-9-]+$/, "slug 仅支持小写字母、数字和中划线").optional(),
+  name: z.string().trim().min(1).max(40).optional(),
+  description: z.string().trim().max(140).optional(),
+  icon: z.string().trim().max(8).optional(),
+  color: z.string().trim().max(20).optional(),
+  order: z.number().int().min(0).max(9999).optional(),
+  type: boardTypeSchema.optional(),
+});
+
+adminRouter.patch("/boards/:id", adminOnly, validate(boardPatchSchema), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const current = await prisma.board.findUnique({ where: { id }, include: { feedSource: true } });
+    if (!current) throw Errors.notFound("板块不存在");
+    if (current.readOnly || current.feedSourceId) {
+      throw Errors.badRequest("公告同步板块请通过公告源配置维护");
+    }
+    const updated = await prisma.board.update({
+      where: { id },
+      data: {
+        slug: req.body.slug,
+        name: req.body.name,
+        description: req.body.description,
+        icon: req.body.icon,
+        color: req.body.color,
+        order: req.body.order,
+        type: req.body.type,
+      },
+    });
+    ok(res, updated);
+  } catch (e) { next(e); }
+});
+
+adminRouter.delete("/boards/:id", adminOnly, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const board = await prisma.board.findUnique({ where: { id } });
+    if (!board) throw Errors.notFound("板块不存在");
+    if (board.readOnly || board.feedSourceId) throw Errors.badRequest("公告同步板块不能在这里删除");
+    const topicCount = await prisma.topic.count({ where: { boardId: id } });
+    if (topicCount > 0) throw Errors.badRequest("该板块下仍有帖子，不能删除");
+    await prisma.board.delete({ where: { id } });
+    ok(res, { ok: true });
+  } catch (e) { next(e); }
+});
+
 // ============ 爬虫管理 ============
 
 adminRouter.get("/feeds", adminOnly, async (_req, res, next) => {

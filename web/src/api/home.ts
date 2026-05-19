@@ -10,4 +10,7 @@ export interface HomeSummary {
 
 export const homeApi = {
   summary: () => request.get<HomeSummary>("/home/summary"),
+  hotRanking: () => request.get<any[]>("/home/hot-ranking"),
+  latestFeed: (params?: { page?: number; size?: number }) =>
+    request.get<{ page: number; size: number; total: number; list: any[] }>("/home/latest-feed", params),
 };
