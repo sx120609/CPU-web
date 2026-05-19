@@ -187,15 +187,15 @@ export async function requestManualTopicReview(topicId: number, userId: number) 
     where: { id: topicId },
     select: { id: true, authorId: true, aiReviewStatus: true, hidden: true },
   });
-  if (!topic || topic.hidden) throw Errors.notFound("稿件不存在");
+  if (!topic) throw Errors.notFound("稿件不存在");
   if (topic.authorId !== userId) throw Errors.forbidden("只能申请人工审核自己的稿件");
   if (topic.aiReviewStatus !== "blocked_ai") throw Errors.badRequest("当前稿件不能申请人工审核");
+  if (!topic.hidden) throw Errors.badRequest("当前稿件无需申请人工审核");
 
   const pendingCount = await prisma.topic.count({
     where: {
       authorId: userId,
       aiReviewStatus: { in: ["manual_requested", "manual_reviewing"] },
-      hidden: false,
     },
   });
   if (pendingCount > 0) throw Errors.badRequest("你已有稿件在人工审核中");
@@ -216,7 +216,6 @@ export async function refreshTopicSubmissionLock(userId: number) {
   const pending = await prisma.topic.count({
     where: {
       authorId: userId,
-      hidden: false,
       aiReviewStatus: { in: ["manual_requested", "manual_reviewing"] },
     },
   });
