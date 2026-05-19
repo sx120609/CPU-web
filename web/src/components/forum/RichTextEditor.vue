@@ -736,11 +736,11 @@ defineExpose({ clearDraft, isContentEmpty });
   z-index: 8;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   padding: 12px 14px 10px;
   border-bottom: 1px solid #e6edf5;
   border-radius: 14px 14px 0 0;
-  background: rgba(248, 250, 252, 0.96);
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(244, 247, 251, 0.94));
   backdrop-filter: blur(14px);
 }
 
@@ -772,8 +772,13 @@ defineExpose({ clearDraft, isContentEmpty });
 .toolbar-scroll {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 0;
   align-items: flex-start;
+  border: 1px solid #dde6f0;
+  border-radius: 14px;
+  background: #fff;
+  padding: 6px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .toolbar-group {
@@ -781,14 +786,18 @@ defineExpose({ clearDraft, isContentEmpty });
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-  padding: 6px;
-  border: 1px solid #dde6f0;
-  border-radius: 14px;
-  background: #fff;
+  padding: 4px 6px;
+  background: transparent;
+}
+
+.toolbar-group + .toolbar-group {
+  margin-left: 6px;
+  padding-left: 12px;
+  border-left: 1px solid #e7edf4;
 }
 
 .toolbar-group--compact {
-  padding-inline: 8px;
+  padding-inline: 6px;
 }
 
 .editor-toolbar button {
@@ -1022,8 +1031,8 @@ defineExpose({ clearDraft, isContentEmpty });
     flex-wrap: nowrap;
     overflow-x: auto;
     overflow-y: hidden;
-    padding: 0 2px 2px;
-    margin: 0 -2px -2px;
+    padding: 6px;
+    margin: 0;
     scrollbar-width: none;
   }
 
@@ -1034,12 +1043,12 @@ defineExpose({ clearDraft, isContentEmpty });
   .toolbar-group {
     flex: 0 0 auto;
     gap: 4px;
-    padding: 4px;
-    border-radius: 12px;
+    padding: 0 6px 0 0;
   }
 
-  .toolbar-group--compact {
-    padding-inline: 6px;
+  .toolbar-group + .toolbar-group {
+    margin-left: 4px;
+    padding-left: 10px;
   }
 
   .editor-toolbar button {

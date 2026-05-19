@@ -1,5 +1,5 @@
 <template>
-  <div class="layout-root">
+  <div class="layout-root" :class="{ 'keyboard-open': keyboardOpen }" :style="layoutStyle">
     <!-- 顶栏 -->
     <header v-if="!hideChrome" class="topbar">
       <div class="topbar-inner">
@@ -103,7 +103,7 @@
       <span>非学校官方站点</span>
     </footer>
 
-    <nav class="mobile-tabbar" aria-label="移动端主导航" :style="{ gridTemplateColumns: `repeat(${mobileNavItems.length}, 1fr)` }">
+    <nav class="mobile-tabbar" :class="{ 'is-hidden': keyboardOpen }" aria-label="移动端主导航" :style="{ gridTemplateColumns: `repeat(${mobileNavItems.length}, 1fr)` }">
       <router-link
         v-for="item in mobileNavItems"
         :key="item.to"
@@ -187,7 +187,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onBeforeUnmount, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import {
@@ -219,9 +219,31 @@ const router = useRouter();
 const route = useRoute();
 const q = ref("");
 const mobileMenuOpen = ref(false);
+const keyboardOpen = ref(false);
+const mobileViewportHeight = ref(0);
+const editableFocused = ref(false);
+const editorFocused = ref(false);
+const mobileViewportBaseHeight = ref(0);
+const isMobileViewport = ref(false);
+let pageLockScrollY = 0;
+let pageLockActive = false;
+const pageLockState = {
+  bodyPosition: "",
+  bodyTop: "",
+  bodyLeft: "",
+  bodyRight: "",
+  bodyWidth: "",
+  bodyOverflow: "",
+  htmlOverflow: "",
+};
 
 /** 某些路由（如 /schedule）希望"裸壳"渲染，没有顶栏/免责声明/footer，仅保留 main + tabbar */
 const hideChrome = computed(() => Boolean(route.meta?.hideChrome));
+const layoutStyle = computed(() => (
+  mobileViewportHeight.value
+    ? { "--layout-viewport-height": `${mobileViewportHeight.value}px` }
+    : {}
+));
 
 const searchPlaceholder = computed(() => {
   const scopes: string[] = [];
@@ -308,7 +330,122 @@ async function saveNickname() {
 onMounted(async () => {
   if (auth.token && !auth.user) await auth.fetchMe();
   if (auth.isLoggedIn) msg.refresh();
+  syncViewportMetrics();
+  if (typeof window !== "undefined") {
+    window.addEventListener("resize", handleViewportMetricsChange, { passive: true });
+    window.visualViewport?.addEventListener("resize", handleViewportMetricsChange);
+    window.visualViewport?.addEventListener("scroll", handleViewportMetricsChange);
+    document.addEventListener("focusin", handleFocusIn);
+    document.addEventListener("focusout", handleFocusOut);
+  }
 });
+
+onBeforeUnmount(() => {
+  unlockPageScroll();
+  if (typeof window !== "undefined") {
+    window.removeEventListener("resize", handleViewportMetricsChange);
+    window.visualViewport?.removeEventListener("resize", handleViewportMetricsChange);
+    window.visualViewport?.removeEventListener("scroll", handleViewportMetricsChange);
+    document.removeEventListener("focusin", handleFocusIn);
+    document.removeEventListener("focusout", handleFocusOut);
+  }
+});
+
+watch(() => route.fullPath, () => {
+  keyboardOpen.value = false;
+  editableFocused.value = false;
+  editorFocused.value = false;
+  unlockPageScroll();
+  syncViewportMetrics();
+});
+
+function handleViewportMetricsChange() {
+  syncViewportMetrics();
+  updateKeyboardState();
+}
+
+function handleFocusIn(event: FocusEvent) {
+  const target = event.target instanceof HTMLElement ? event.target : null;
+  editableFocused.value = isEditableElement(target);
+  editorFocused.value = Boolean(target?.closest(".rich-editor"));
+  syncViewportMetrics();
+  requestAnimationFrame(updateKeyboardState);
+}
+
+function handleFocusOut() {
+  requestAnimationFrame(() => {
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    editableFocused.value = isEditableElement(active);
+    editorFocused.value = Boolean(active?.closest(".rich-editor"));
+    syncViewportMetrics();
+    updateKeyboardState();
+  });
+}
+
+function isEditableElement(target: HTMLElement | null) {
+  if (!target) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || Boolean(target.closest("[contenteditable='true']"));
+}
+
+function syncViewportMetrics() {
+  if (typeof window === "undefined") return;
+  const visualHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
+  const visualWidth = Math.round(window.visualViewport?.width ?? window.innerWidth);
+  mobileViewportHeight.value = visualHeight;
+  isMobileViewport.value = visualWidth <= 768;
+  if (!keyboardOpen.value) {
+    mobileViewportBaseHeight.value = Math.max(mobileViewportBaseHeight.value, visualHeight, window.innerHeight);
+  }
+}
+
+function updateKeyboardState() {
+  if (typeof window === "undefined") return;
+  const currentHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
+  const baseHeight = Math.max(mobileViewportBaseHeight.value || 0, currentHeight, window.innerHeight);
+  const keyboardLikelyOpen = isMobileViewport.value && editableFocused.value && baseHeight - currentHeight > 120;
+  keyboardOpen.value = keyboardLikelyOpen;
+  if (!keyboardLikelyOpen) {
+    mobileViewportBaseHeight.value = Math.max(currentHeight, window.innerHeight);
+    unlockPageScroll();
+    return;
+  }
+  if (editorFocused.value) lockPageScroll();
+}
+
+function lockPageScroll() {
+  if (pageLockActive || typeof window === "undefined") return;
+  pageLockScrollY = window.scrollY;
+  pageLockState.bodyPosition = document.body.style.position;
+  pageLockState.bodyTop = document.body.style.top;
+  pageLockState.bodyLeft = document.body.style.left;
+  pageLockState.bodyRight = document.body.style.right;
+  pageLockState.bodyWidth = document.body.style.width;
+  pageLockState.bodyOverflow = document.body.style.overflow;
+  pageLockState.htmlOverflow = document.documentElement.style.overflow;
+  document.body.style.position = "fixed";
+  document.body.style.top = `-${pageLockScrollY}px`;
+  document.body.style.left = "0";
+  document.body.style.right = "0";
+  document.body.style.width = "100%";
+  document.body.style.overflow = "hidden";
+  document.documentElement.style.overflow = "hidden";
+  pageLockActive = true;
+}
+
+function unlockPageScroll() {
+  if (!pageLockActive || typeof window === "undefined") return;
+  document.body.style.position = pageLockState.bodyPosition;
+  document.body.style.top = pageLockState.bodyTop;
+  document.body.style.left = pageLockState.bodyLeft;
+  document.body.style.right = pageLockState.bodyRight;
+  document.body.style.width = pageLockState.bodyWidth;
+  document.body.style.overflow = pageLockState.bodyOverflow;
+  document.documentElement.style.overflow = pageLockState.htmlOverflow;
+  window.scrollTo(0, pageLockScrollY);
+  pageLockActive = false;
+}
 
 function goSearch() {
   if (q.value.trim()) router.push({ name: "search", query: { q: q.value.trim() } });
@@ -369,12 +506,17 @@ async function onUserCmd(cmd: string) {
 
 <style scoped lang="scss">
 .layout-root {
+  min-height: var(--layout-viewport-height, 100dvh);
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
   background: var(--cpu-bg);
   /* 防 iOS Safari 整页橡皮筋拉动 */
   overscroll-behavior-y: none;
+}
+
+.layout-root.keyboard-open {
+  overflow: hidden;
 }
 
 .topbar {
@@ -670,6 +812,18 @@ async function onUserCmd(cmd: string) {
 }
 
 @media (max-width: 768px) {
+  .layout-root.keyboard-open {
+    min-height: var(--layout-viewport-height, 100dvh);
+  }
+
+  .layout-root.keyboard-open .main {
+    padding-bottom: 12px;
+  }
+
+  .layout-root.keyboard-open .main--bare {
+    padding-bottom: 0 !important;
+  }
+
   .topbar {
     box-shadow: 0 1px 10px rgba(15, 23, 42, 0.05);
   }
@@ -750,6 +904,14 @@ async function onUserCmd(cmd: string) {
     background: rgba(255, 255, 255, 0.96);
     box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.08);
     pointer-events: auto;
+    transition: transform 0.18s ease, opacity 0.18s ease, visibility 0.18s ease;
+  }
+
+  .mobile-tabbar.is-hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(calc(100% + env(safe-area-inset-bottom)));
   }
 
   .mobile-tab {
