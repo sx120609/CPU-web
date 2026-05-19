@@ -69,6 +69,9 @@ watch(html, () => nextTick(wrapTables));
 .md :deep(pre code) { background: transparent; padding: 0; color: inherit; }
 .md :deep(a) { color: var(--cpu-primary); text-decoration: underline; }
 .md :deep(img) { max-width: 100%; border-radius: 8px; margin: 8px 0; }
+.md :deep(img[data-size="small"]) { max-width: min(100%, 220px); }
+.md :deep(img[data-size="medium"]) { max-width: min(100%, 520px); }
+.md :deep(img[data-size="large"]) { max-width: 100%; }
 
 /* 表格容器（由 JS 自动包装）：只在表格超宽时才出现水平滚动条 */
 .md :deep(.md-table-wrap) {

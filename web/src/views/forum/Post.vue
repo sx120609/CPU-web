@@ -122,49 +122,13 @@
         </el-form-item>
 
         <el-form-item label="正文" required>
-          <div class="rich-editor">
-            <div class="editor-toolbar" @mousedown.prevent>
-              <span class="toolbar-title">可视化编辑</span>
-              <button type="button" title="正文" :class="{ active: toolbarState.block === 'p' }" @click="applyFormat('p')">正文</button>
-              <button type="button" title="二级标题" :class="{ active: toolbarState.block === 'h2' }" @click="applyFormat('h2')">标题</button>
-              <button type="button" title="三级标题" :class="{ active: toolbarState.block === 'h3' }" @click="applyFormat('h3')">小标题</button>
-              <span class="toolbar-divider" />
-              <button type="button" title="加粗" class="bold" :class="{ active: toolbarState.bold }" @click="runCommand('bold')">B</button>
-              <button type="button" title="斜体" class="italic" :class="{ active: toolbarState.italic }" @click="runCommand('italic')">I</button>
-              <button type="button" title="引用" :class="{ active: toolbarState.block === 'blockquote' }" @click="applyFormat('blockquote')">引用</button>
-              <span class="toolbar-divider" />
-              <button type="button" title="无序列表" :class="{ active: toolbarState.ul }" @click="runCommand('insertUnorderedList')">列表</button>
-              <button type="button" title="有序列表" :class="{ active: toolbarState.ol }" @click="runCommand('insertOrderedList')">编号</button>
-              <button type="button" title="插入链接" @click="insertLink">链接</button>
-              <button type="button" title="上传图片" :disabled="imageUploading" @click="pickContentImage">
-                {{ imageUploading ? "上传中" : "插图" }}
-              </button>
-            </div>
-            <div
-              ref="editorRef"
-              class="editor-surface"
-              contenteditable="true"
-              :data-placeholder="editorPlaceholder"
-              @input="syncEditorContent"
-              @paste="handleEditorPaste"
-              @drop.prevent="handleEditorDrop"
-              @dragover.prevent
-              @mouseup="handleEditorSelectionChange"
-              @keyup="handleEditorSelectionChange"
-              @focus="handleEditorSelectionChange"
-            ></div>
-            <div class="editor-foot">
-              <span>支持直接粘贴图片；编辑区内图片会以小预览显示。</span>
-              <span :class="{ warn: form.content.length > CONTENT_MAX }">{{ form.content.length }} / {{ CONTENT_MAX }}</span>
-            </div>
-            <input
-              ref="contentImageInputRef"
-              type="file"
-              accept="image/*"
-              class="hidden-file"
-              @change="onContentImagePicked"
-            />
-          </div>
+          <RichTextEditor
+            ref="editorRef"
+            v-model="form.content"
+            :max-length="CONTENT_MAX"
+            :draft-key="contentDraftKey"
+            @draft-restored="onContentDraftRestored"
+          />
         </el-form-item>
 
         <el-form-item>
@@ -200,15 +164,14 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref, reactive, computed, onBeforeUnmount, onMounted, watch } from "vue";
+import { ref, reactive, computed, onBeforeUnmount, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage } from "element-plus";
 import MarkdownView from "@/components/forum/MarkdownView.vue";
+import RichTextEditor from "@/components/forum/RichTextEditor.vue";
 import { boardApi, type Board } from "@/api/board";
-import { topicApi, uploadApi } from "@/api/topic";
+import { topicApi } from "@/api/topic";
 import { courseApi, type Course } from "@/api/course";
-import { compressImageFile } from "@/utils/imageUpload";
-import { renderMarkdown } from "@/utils/markdown";
 
 const route = useRoute();
 const router = useRouter();
@@ -218,20 +181,10 @@ const courses = ref<Course[]>([]);
 const submitting = ref(false);
 const editingId = computed(() => (route.params.id ? Number(route.params.id) : null));
 const CONTENT_MAX = 20000;
-const editorPlaceholder = "写正文，可以用上方按钮排版，也可以直接粘贴图片。";
-const editorRef = ref<HTMLElement | null>(null);
-const contentImageInputRef = ref<HTMLInputElement | null>(null);
-const imageUploading = ref(false);
+const editorRef = ref<InstanceType<typeof RichTextEditor> | null>(null);
 const previewOpen = ref(false);
 const pendingMetadata = ref<any>(null);
-const toolbarState = reactive({
-  bold: false,
-  italic: false,
-  ul: false,
-  ol: false,
-  block: "p",
-});
-let savedSelection: Range | null = null;
+let formDraftTimer = 0;
 
 const form = reactive({
   boardSlug: (route.query.board as string) || "",
@@ -253,6 +206,8 @@ const meta = reactive<any>({
 
 const currentBoard = computed(() => boards.value.find((b) => b.slug === form.boardSlug));
 const boardType = computed(() => currentBoard.value?.type ?? "normal");
+const formDraftKey = computed(() => editingId.value ? `cpu-post-edit-draft-${editingId.value}` : "cpu-post-new-draft");
+const contentDraftKey = computed(() => `${formDraftKey.value}-content`);
 
 const selectedCourse = computed(() => courses.value.find((c) => c.id === meta.courseId));
 const teacherOptions = computed(() => selectedCourse.value?.teachers ?? []);
@@ -269,28 +224,31 @@ const groupedBoards = computed(() => {
 
 onMounted(async () => {
   boards.value = await boardApi.list();
+  normalizeSelectedBoard();
   if (editingId.value) {
     const t = await topicApi.detail(editingId.value);
     form.boardSlug = t.board?.slug ?? "";
     form.title = t.title;
-    form.content = t.content;
+    if (!hasSavedDraft(contentDraftKey.value)) form.content = t.content;
     if (t.metadata) Object.assign(meta, t.metadata);
-    await nextTick();
-    hydrateEditor();
+    normalizeSelectedBoard();
   }
+  restoreFormDraft();
+  normalizeSelectedBoard();
   if (boardType.value === "coursereview") await loadCoursesForReview();
-  await nextTick();
-  hydrateEditor();
-  document.addEventListener("selectionchange", updateToolbarState);
 });
 
 onBeforeUnmount(() => {
-  document.removeEventListener("selectionchange", updateToolbarState);
+  window.clearTimeout(formDraftTimer);
 });
 
 watch(boardType, async () => {
   if (boardType.value === "coursereview") await loadCoursesForReview();
 });
+
+watch(() => [form.boardSlug, form.title, meta.price, meta.condition, meta.tradeMode, meta.bounty, meta.courseId, meta.courseTeacherId, meta.teacherName, meta.semester], () => {
+  scheduleFormDraftSave();
+}, { deep: true });
 
 async function loadCoursesForReview() {
   if (courses.value.length) return;
@@ -299,6 +257,12 @@ async function loadCoursesForReview() {
 
 function onBoardChange() {
   if (boardType.value === "coursereview") void loadCoursesForReview();
+}
+
+function normalizeSelectedBoard() {
+  if (!form.boardSlug) return;
+  if (boards.value.some((b) => b.slug === form.boardSlug)) return;
+  form.boardSlug = "";
 }
 
 function onCourseChange() {
@@ -313,180 +277,59 @@ function onTypeNewTeacher(v: string) {
   if (v && v.trim()) meta.courseTeacherId = undefined; // 开始手输 → 清掉已选
 }
 
-function hydrateEditor() {
-  if (!editorRef.value) return;
-  editorRef.value.innerHTML = contentLooksLikeHtml(form.content) ? form.content : renderMarkdown(form.content);
-  syncEditorContent();
-}
-
-function contentLooksLikeHtml(value: string) {
-  return /<\/?(p|div|h[1-6]|ul|ol|li|blockquote|img|a|strong|em|br)\b/i.test(value);
-}
-
-function syncEditorContent() {
-  if (!editorRef.value) return;
-  form.content = normalizeEditorHtml(editorRef.value.innerHTML);
-  updateToolbarState();
-}
-
-function normalizeEditorHtml(value: string) {
-  return value
-    .replace(/<div><br><\/div>/g, "<p><br></p>")
-    .replace(/<div>/g, "<p>")
-    .replace(/<\/div>/g, "</p>")
-    .trim();
-}
-
-function rememberSelection() {
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0 || !editorRef.value) return;
-  const range = selection.getRangeAt(0);
-  if (editorRef.value.contains(range.commonAncestorContainer)) {
-    savedSelection = range.cloneRange();
-  }
-  updateToolbarState();
-}
-
-function handleEditorSelectionChange() {
-  rememberSelection();
-  updateToolbarState();
-}
-
-function updateToolbarState() {
-  const selection = window.getSelection();
-  const node = selection?.rangeCount ? selection.getRangeAt(0).commonAncestorContainer : null;
-  if (!node || !editorRef.value?.contains(node)) return;
-  toolbarState.bold = document.queryCommandState("bold");
-  toolbarState.italic = document.queryCommandState("italic");
-  toolbarState.ul = document.queryCommandState("insertUnorderedList");
-  toolbarState.ol = document.queryCommandState("insertOrderedList");
-  toolbarState.block = normalizeBlockName(String(document.queryCommandValue("formatBlock") || "p"));
-}
-
-function normalizeBlockName(value: string) {
-  const normalized = value.toLowerCase().replace(/[<>]/g, "");
-  if (normalized === "h2" || normalized === "heading 2") return "h2";
-  if (normalized === "h3" || normalized === "heading 3") return "h3";
-  if (normalized === "blockquote") return "blockquote";
-  return "p";
-}
-
-function restoreSelection() {
-  editorRef.value?.focus();
-  const selection = window.getSelection();
-  if (!selection || !savedSelection) return;
-  selection.removeAllRanges();
-  selection.addRange(savedSelection);
-}
-
-function runCommand(command: string, value?: string) {
-  restoreSelection();
-  document.execCommand(command, false, value);
-  syncEditorContent();
-  rememberSelection();
-  updateToolbarState();
-}
-
-function applyFormat(tag: "p" | "h2" | "h3" | "blockquote") {
-  runCommand("formatBlock", tag);
-}
-
-async function insertLink() {
-  rememberSelection();
-  const url = await ElMessageBox.prompt("输入链接地址", "插入链接", {
-    confirmButtonText: "插入",
-    cancelButtonText: "取消",
-    inputPlaceholder: "https://...",
-    inputPattern: /^https?:\/\/.+/i,
-    inputErrorMessage: "请输入 http 或 https 开头的链接",
-  }).then((r) => r.value).catch(() => "");
-  if (!url) return;
-  restoreSelection();
-  const selectedText = window.getSelection()?.toString();
-  if (selectedText) {
-    runCommand("createLink", url);
-  } else {
-    insertHtmlAtCursor(`<a href="${escapeAttr(url)}">${escapeHtml(url)}</a>`);
-  }
-}
-
-function pickContentImage() {
-  rememberSelection();
-  contentImageInputRef.value?.click();
-}
-
-async function onContentImagePicked(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const files = Array.from(input.files ?? []);
-  input.value = "";
-  await uploadAndInsertImages(files);
-}
-
-async function handleEditorPaste(event: ClipboardEvent) {
-  const files = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith("image/"));
-  if (!files.length) {
-    setTimeout(syncEditorContent, 0);
-    return;
-  }
-  event.preventDefault();
-  rememberSelection();
-  await uploadAndInsertImages(files);
-}
-
-async function handleEditorDrop(event: DragEvent) {
-  const files = Array.from(event.dataTransfer?.files ?? []).filter((file) => file.type.startsWith("image/"));
-  if (!files.length) return;
-  rememberSelection();
-  await uploadAndInsertImages(files);
-}
-
-async function uploadAndInsertImages(files: File[]) {
-  if (!files.length) return;
-  imageUploading.value = true;
-  try {
-    for (const file of files) {
-      const compressed = await compressImageFile(file, {
-        maxWidth: 1400,
-        maxHeight: 1400,
-        quality: 0.82,
-        mimeType: "image/jpeg",
-        maxBytes: 520 * 1024,
-      });
-      const { url } = await uploadApi.image(compressed);
-      insertHtmlAtCursor(`<p><img src="${escapeAttr(url)}" alt="${escapeAttr(file.name || "图片")}" /></p><p><br></p>`);
-    }
-    ElMessage.success(files.length > 1 ? "图片已压缩并上传" : "图片已压缩并插入");
-  } finally {
-    imageUploading.value = false;
-  }
-}
-
-function insertHtmlAtCursor(html: string) {
-  restoreSelection();
-  document.execCommand("insertHTML", false, html);
-  syncEditorContent();
-  rememberSelection();
-}
-
-function escapeAttr(value: string) {
-  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-}
-
-function escapeHtml(value: string) {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
 function isEditorContentEmpty() {
-  if (!editorRef.value) return !form.content.trim();
-  const text = editorRef.value.innerText.replace(/\u00a0/g, " ").trim();
-  const hasImage = Boolean(editorRef.value.querySelector("img"));
-  return !text && !hasImage;
+  return editorRef.value?.isContentEmpty() ?? !form.content.trim();
+}
+
+function onContentDraftRestored(value: string) {
+  form.content = value;
+}
+
+function restoreFormDraft() {
+  try {
+    const raw = localStorage.getItem(formDraftKey.value);
+    if (!raw) return;
+    const draft = JSON.parse(raw);
+    if (typeof draft.title === "string" && !form.title) form.title = draft.title;
+    if (typeof draft.boardSlug === "string" && !form.boardSlug) form.boardSlug = draft.boardSlug;
+    if (draft.meta && typeof draft.meta === "object") Object.assign(meta, draft.meta);
+  } catch {
+    /* ignore */
+  }
+}
+
+function hasSavedDraft(key: string) {
+  try {
+    return Boolean(localStorage.getItem(key));
+  } catch {
+    return false;
+  }
+}
+
+function scheduleFormDraftSave() {
+  window.clearTimeout(formDraftTimer);
+  formDraftTimer = window.setTimeout(() => {
+    try {
+      localStorage.setItem(formDraftKey.value, JSON.stringify({
+        boardSlug: form.boardSlug,
+        title: form.title,
+        meta,
+        savedAt: Date.now(),
+      }));
+    } catch {
+      /* ignore */
+    }
+  }, 400);
+}
+
+function clearDrafts() {
+  localStorage.removeItem(formDraftKey.value);
+  editorRef.value?.clearDraft();
 }
 
 async function submit() {
   if (!form.boardSlug) { ElMessage.warning("请选择板块"); return; }
   if (form.title.trim().length < 2) { ElMessage.warning("标题至少 2 字"); return; }
-  syncEditorContent();
   if (isEditorContentEmpty()) { ElMessage.warning("请填写正文"); return; }
   if (form.content.length > CONTENT_MAX) { ElMessage.warning("正文内容过长，请精简后再发布"); return; }
   const metadata = buildMetadata();
@@ -532,6 +375,7 @@ async function confirmSubmit() {
         content: form.content,
         metadata,
       });
+      clearDrafts();
       ElMessage.success("已保存");
       router.replace(`/forum/topic/${editingId.value}`);
     } else {
@@ -541,6 +385,7 @@ async function confirmSubmit() {
         content: form.content,
         metadata,
       });
+      clearDrafts();
       ElMessage.success("已发布");
       router.replace(`/forum/topic/${r.id}`);
     }
@@ -576,161 +421,6 @@ async function confirmSubmit() {
 }
 .or-text { color: #9ca3af; font-size: 12px; }
 
-.rich-editor {
-  width: 100%;
-  border: 1px solid #cfdce8;
-  border-radius: 10px;
-  background: #fff;
-  overflow: hidden;
-  box-shadow: 0 1px 5px rgba(15, 23, 42, 0.04);
-}
-
-.editor-toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 8px;
-  border-bottom: 1px solid #edf0f5;
-  background: #f8fafc;
-}
-
-.toolbar-title {
-  color: #168776;
-  font-size: 12px;
-  font-weight: 750;
-  line-height: 1.4;
-  margin: 0 0 2px;
-  white-space: nowrap;
-  width: 100%;
-}
-
-.editor-toolbar button {
-  appearance: none;
-  border: 1px solid #d8e3ec;
-  border-radius: 6px;
-  background: #fff;
-  color: #344054;
-  cursor: pointer;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 1;
-  min-height: 34px;
-  padding: 0 10px;
-}
-
-.editor-toolbar button:hover {
-  border-color: var(--cpu-primary);
-  color: var(--cpu-primary);
-}
-
-.editor-toolbar button.active {
-  border-color: #168776;
-  background: #e8f7f3;
-  color: #0f766e;
-  box-shadow: inset 0 0 0 1px rgba(22, 135, 118, 0.12);
-}
-
-.editor-toolbar button:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.editor-toolbar .bold { font-weight: 800; }
-.editor-toolbar .italic { font-style: italic; }
-
-.toolbar-divider {
-  width: 1px;
-  height: 22px;
-  background: #dde5ee;
-}
-
-.editor-surface {
-  min-height: 280px;
-  max-height: 620px;
-  overflow-y: auto;
-  padding: 14px 16px;
-  color: #1f2937;
-  font-size: 15px;
-  line-height: 1.75;
-  outline: none;
-  word-break: break-word;
-}
-
-.editor-surface:empty::before {
-  content: attr(data-placeholder);
-  color: #98a2b3;
-}
-
-.editor-surface:focus {
-  box-shadow: inset 0 0 0 1px rgba(22, 135, 118, 0.28);
-}
-
-.editor-surface :deep(h2),
-.editor-surface :deep(h3) {
-  margin: 0.7em 0 0.35em;
-  font-weight: 700;
-}
-
-.editor-surface :deep(h2) { font-size: 20px; }
-.editor-surface :deep(h3) { font-size: 17px; }
-.editor-surface :deep(p) { margin: 0.45em 0; }
-.editor-surface :deep(ul),
-.editor-surface :deep(ol) {
-  margin: 0.45em 0;
-  padding-left: 24px;
-}
-
-.editor-surface :deep(blockquote) {
-  margin: 0.6em 0;
-  padding: 6px 12px;
-  border-left: 3px solid var(--cpu-primary);
-  background: #ecfdf5;
-  color: #4b5563;
-}
-
-.editor-surface :deep(a) {
-  color: var(--cpu-primary);
-  text-decoration: underline;
-}
-
-.editor-surface :deep(img) {
-  display: inline-block;
-  width: auto;
-  max-width: min(100%, 360px);
-  max-height: 220px;
-  object-fit: contain;
-  border: 1px solid #dbe4ee;
-  border-radius: 8px;
-  background: #f8fafc;
-  margin: 8px 0;
-  padding: 4px;
-  vertical-align: top;
-}
-
-.editor-foot {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 7px 10px;
-  border-top: 1px solid #edf0f5;
-  color: #98a2b3;
-  font-size: 12px;
-}
-
-.editor-foot .warn {
-  color: #dc2626;
-  font-weight: 700;
-}
-
-.hidden-file {
-  display: none;
-}
-
 .publish-preview {
   color: #1f2937;
 }
@@ -760,14 +450,6 @@ async function confirmSubmit() {
   background: #fff;
 }
 
-.preview {
-  background: #f9fafb;
-  padding: 16px 18px;
-  border-radius: 8px;
-  border-left: 3px solid var(--cpu-primary);
-  width: 100%;
-}
-.preview h4 { margin: 0 0 8px; color: #6b7280; font-size: 12px; font-weight: 500; }
 .cpu-muted { font-size: 12px; color: #9ca3af; }
 
 @media (max-width: 700px) {
@@ -799,33 +481,6 @@ async function confirmSubmit() {
 
   .or-text {
     align-self: center;
-  }
-
-  .editor-toolbar {
-    align-items: stretch;
-  }
-
-  .toolbar-divider {
-    display: none;
-  }
-
-  .editor-surface {
-    min-height: 240px;
-    padding: 12px;
-  }
-
-  .editor-surface :deep(img) {
-    max-width: min(100%, 220px);
-    max-height: 140px;
-    margin: 6px 0;
-  }
-
-  .editor-foot {
-    flex-direction: column;
-  }
-
-  .preview {
-    padding: 12px;
   }
 
   :deep(.el-form-item:last-child .el-form-item__content) {

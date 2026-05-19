@@ -56,6 +56,7 @@ declare module 'vue' {
     PageHeader: typeof import('./src/components/common/PageHeader.vue')['default']
     ProgressPane: typeof import('./src/components/jwxt/ProgressPane.vue')['default']
     PyfaPane: typeof import('./src/components/jwxt/PyfaPane.vue')['default']
+    RichTextEditor: typeof import('./src/components/forum/RichTextEditor.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     ScheduleCustomizePicker: typeof import('./src/components/jwxt/ScheduleCustomizePicker.vue')['default']
