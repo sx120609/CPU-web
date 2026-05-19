@@ -124,9 +124,10 @@
         <el-form-item label="正文" required>
           <div class="rich-editor">
             <div class="editor-toolbar" @mousedown.prevent>
+              <span class="toolbar-title">可视化编辑</span>
               <button type="button" title="正文" @click="applyFormat('p')">正文</button>
-              <button type="button" title="二级标题" @click="applyFormat('h2')">H2</button>
-              <button type="button" title="三级标题" @click="applyFormat('h3')">H3</button>
+              <button type="button" title="二级标题" @click="applyFormat('h2')">标题</button>
+              <button type="button" title="三级标题" @click="applyFormat('h3')">小标题</button>
               <span class="toolbar-divider" />
               <button type="button" title="加粗" class="bold" @click="runCommand('bold')">B</button>
               <button type="button" title="斜体" class="italic" @click="runCommand('italic')">I</button>
@@ -136,7 +137,7 @@
               <button type="button" title="有序列表" @click="runCommand('insertOrderedList')">编号</button>
               <button type="button" title="插入链接" @click="insertLink">链接</button>
               <button type="button" title="上传图片" :disabled="imageUploading" @click="pickContentImage">
-                {{ imageUploading ? "上传中" : "图片" }}
+                {{ imageUploading ? "上传中" : "插图" }}
               </button>
             </div>
             <div
@@ -153,7 +154,7 @@
               @focus="rememberSelection"
             ></div>
             <div class="editor-foot">
-              <span>可直接排版，不需要手写 Markdown。</span>
+              <span>支持直接粘贴图片；编辑区内图片会以小预览显示。</span>
               <span :class="{ warn: form.content.length > CONTENT_MAX }">{{ form.content.length }} / {{ CONTENT_MAX }}</span>
             </div>
             <input
@@ -163,13 +164,6 @@
               class="hidden-file"
               @change="onContentImagePicked"
             />
-          </div>
-        </el-form-item>
-
-        <el-form-item v-if="form.content">
-          <div class="preview">
-            <h4>发布后效果</h4>
-            <MarkdownView :content="form.content" />
           </div>
         </el-form-item>
 
@@ -186,7 +180,6 @@
 import { nextTick, ref, reactive, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import MarkdownView from "@/components/forum/MarkdownView.vue";
 import { boardApi, type Board } from "@/api/board";
 import { topicApi, uploadApi } from "@/api/topic";
 import { courseApi, type Course } from "@/api/course";
@@ -390,7 +383,7 @@ async function uploadAndInsertImages(files: File[]) {
         maxBytes: 520 * 1024,
       });
       const { url } = await uploadApi.image(compressed);
-      insertHtmlAtCursor(`<p><img src="${escapeAttr(url)}" alt="${escapeAttr(file.name || "图片")}" /></p>`);
+      insertHtmlAtCursor(`<p><img src="${escapeAttr(url)}" alt="${escapeAttr(file.name || "图片")}" /></p><p><br></p>`);
     }
     ElMessage.success(files.length > 1 ? "图片已压缩并上传" : "图片已压缩并插入");
   } finally {
@@ -508,6 +501,9 @@ async function submit() {
 }
 
 .editor-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -515,6 +511,15 @@ async function submit() {
   padding: 8px;
   border-bottom: 1px solid #edf0f5;
   background: #f8fafc;
+}
+
+.toolbar-title {
+  color: #168776;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 30px;
+  margin-right: 2px;
+  white-space: nowrap;
 }
 
 .editor-toolbar button {
@@ -601,10 +606,17 @@ async function submit() {
 }
 
 .editor-surface :deep(img) {
-  display: block;
-  max-width: 100%;
+  display: inline-block;
+  width: auto;
+  max-width: min(100%, 360px);
+  max-height: 220px;
+  object-fit: contain;
+  border: 1px solid #dbe4ee;
   border-radius: 8px;
+  background: #f8fafc;
   margin: 8px 0;
+  padding: 4px;
+  vertical-align: top;
 }
 
 .editor-foot {
@@ -671,6 +683,12 @@ async function submit() {
     align-items: stretch;
   }
 
+  .toolbar-title {
+    width: 100%;
+    line-height: 1.4;
+    margin: 0 0 2px;
+  }
+
   .editor-toolbar button {
     min-height: 34px;
   }
@@ -682,6 +700,12 @@ async function submit() {
   .editor-surface {
     min-height: 240px;
     padding: 12px;
+  }
+
+  .editor-surface :deep(img) {
+    max-width: min(100%, 220px);
+    max-height: 140px;
+    margin: 6px 0;
   }
 
   .editor-foot {
