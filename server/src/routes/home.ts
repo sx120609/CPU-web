@@ -35,13 +35,14 @@ homeRouter.get("/summary", async (req, res, next) => {
         include: {
           board: { select: { slug: true, name: true, color: true, type: true } },
           author: { select: { nickname: true, avatar: true } },
+          tags: { include: { tag: true } },
         },
       }),
       prisma.topic.findMany({
         where: { hidden: false, board: { readOnly: true } },
         orderBy: { createdAt: "desc" },
         take: 8,
-        include: { board: { select: { slug: true, name: true } } },
+        include: { board: { select: { slug: true, name: true } }, tags: { include: { tag: true } } },
       }),
       prisma.serviceCard.findMany({
         where: visibleServiceWhere(),
@@ -108,6 +109,7 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
         include: {
           board: { select: { slug: true, name: true, color: true, type: true } },
           author: { select: { nickname: true, avatar: true } },
+          tags: { include: { tag: true } },
         },
       }),
       prisma.topic.count({ where }),
@@ -121,6 +123,7 @@ async function listHotTopics(size: number, boardTypes: string[]) {
   const include = {
     board: { select: { slug: true, name: true, color: true, type: true } },
     author: { select: { nickname: true, avatar: true } },
+    tags: { include: { tag: true } },
   } as const;
   const [recent, older] = await Promise.all([
     prisma.topic.findMany({
@@ -165,7 +168,15 @@ function isRecentTopic(topic: any) {
 }
 
 function decode(t: any) {
-  return { ...t, metadata: safeJson(t.metadata) };
+  return {
+    ...t,
+    metadata: safeJson(t.metadata),
+    tags: Array.isArray(t.tags)
+      ? t.tags
+          .map((item: any) => item?.tag ? { id: item.tag.id, name: item.tag.name } : item)
+          .filter((item: any) => item?.name)
+      : [],
+  };
 }
 
 function safeJson(s: string | null | undefined) {

@@ -24,6 +24,25 @@ export type TopicAiReviewResult = {
   model: string;
 };
 
+export const AI_TOPIC_LABEL_VOCAB = [
+  "日常闲聊",
+  "求助咨询",
+  "经验分享",
+  "课程学习",
+  "交易相关",
+  "校园生活",
+  "情绪表达",
+  "争议内容",
+  "容易不适",
+  "性相关",
+  "人身攻击",
+  "联系方式",
+  "医疗健康",
+  "剧透",
+] as const;
+
+type TopicAiLabel = typeof AI_TOPIC_LABEL_VOCAB[number];
+
 type DeepSeekReviewResponse = {
   risk_score?: number;
   risk_level?: string;
@@ -31,6 +50,10 @@ type DeepSeekReviewResponse = {
   reason?: string;
   detail?: string;
   categories?: Record<string, number>;
+};
+
+type DeepSeekTagResponse = {
+  tags?: string[];
 };
 
 type DeepSeekEditSimilarityResponse = {
@@ -319,6 +342,84 @@ function stringifyPromptValue(value: unknown) {
     return JSON.stringify(value);
   } catch {
     return String(value);
+  }
+}
+
+export async function generateTopicAiTags(input: {
+  title: string;
+  content: string;
+  boardName?: string | null;
+  boardType?: string | null;
+  metadata?: Record<string, any> | null;
+}) {
+  const config = getSiteConfig();
+  if (!config.aiReviewApiKey.trim()) return [] as TopicAiLabel[];
+  const content = await requestAiJson([
+    {
+      role: "system",
+      content:
+        "你是校园社区内容标签助手。你必须只从给定词库中选择 1-2 个最合适的标签。不要创造新标签。若内容没有特别明显特征，也应从较中性的标签中选择最合适的 1 个。只返回 JSON。",
+    },
+    {
+      role: "user",
+      content: [
+        "请从以下固定词库中为帖子选择 1-2 个标签：",
+        JSON.stringify(AI_TOPIC_LABEL_VOCAB),
+        "",
+        '输出格式：{"tags":["标签1","标签2"]}',
+        "",
+        `板块名称：${input.boardName || ""}`,
+        `板块类型：${input.boardType || ""}`,
+        `标题：${input.title}`,
+        `正文：${input.content}`,
+        `补充 metadata：${JSON.stringify(input.metadata ?? {})}`,
+      ].join("\n"),
+    },
+  ]);
+  const parsed = parseTagJson(content);
+  const allowed = new Set<string>(AI_TOPIC_LABEL_VOCAB);
+  const cleaned = Array.from(new Set((parsed.tags ?? []).map((tag) => String(tag).trim()).filter((tag) => allowed.has(tag))));
+  return cleaned.slice(0, 2) as TopicAiLabel[];
+}
+
+function parseTagJson(content: string): DeepSeekTagResponse {
+  if (!content || typeof content !== "string") return { tags: [] };
+  try {
+    return JSON.parse(content);
+  } catch {
+    const match = content.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        return JSON.parse(match[0]);
+      } catch {
+        return { tags: [] };
+      }
+    }
+    return { tags: [] };
+  }
+}
+
+export async function syncTopicAiTags(topicId: number, nextTags: string[]) {
+  const aiTagSet = new Set<string>(AI_TOPIC_LABEL_VOCAB);
+  const current = await prisma.topicTag.findMany({
+    where: { topicId },
+    include: { tag: true },
+  });
+  const currentAiTagIds = current.filter((item) => aiTagSet.has(item.tag.name)).map((item) => item.tagId);
+  if (currentAiTagIds.length) {
+    await prisma.topicTag.deleteMany({
+      where: { topicId, tagId: { in: currentAiTagIds } },
+    });
+  }
+  for (const name of nextTags) {
+    const tag = await prisma.tag.upsert({
+      where: { name },
+      create: { name },
+      update: {},
+    });
+    await prisma.topicTag.create({
+      data: { topicId, tagId: tag.id },
+    }).catch(() => {});
   }
 }
 

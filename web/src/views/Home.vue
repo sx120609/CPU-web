@@ -35,6 +35,9 @@
             <div class="hot-rank" :class="{ top3: t.rank <= 3 }">#{{ t.rank }}</div>
             <div class="hot-main">
               <div class="hot-title">{{ t.title }}</div>
+              <div v-if="t.tags?.length" class="hot-tags">
+                <span v-for="tag in t.tags.slice(0, 2)" :key="tag.name" class="hot-tag">{{ tag.name }}</span>
+              </div>
               <div class="hot-meta">
                 <span>{{ t.board?.name }}</span>
                 <span>{{ t.replyCount }} 回 / {{ t.likeCount }} 赞</span>
@@ -287,6 +290,24 @@ function openUrl(url: string) {
   margin-top: 2px;
   font-size: 12px;
   color: #9ca3af;
+}
+.hot-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.hot-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  color: #9a3412;
+  font-size: 11px;
+  font-weight: 600;
 }
 .hot-score {
   min-width: 44px;

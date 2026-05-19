@@ -15,12 +15,14 @@ import {
 import {
   evaluateTopicEditSimilarity,
   ensureUserCanSubmitTopic,
+  generateTopicAiTags,
   notifyTopicAiBlocked,
   refreshTopicSubmissionLock,
   requestManualTopicReview,
   reviewTopicContent,
   shouldBypassAiReviewForUser,
   shouldRunAiReview,
+  syncTopicAiTags,
 } from "../services/topicAiReview";
 
 export const topicRouter = Router();
@@ -60,6 +62,7 @@ topicRouter.get("/", async (req, res, next) => {
         include: {
           author: { select: { id: true, username: true, nickname: true, avatar: true, role: true } },
           board: { select: { id: true, slug: true, name: true, color: true, type: true } },
+          tags: { include: { tag: true } },
         },
       }),
       prisma.topic.count({ where }),
@@ -82,6 +85,7 @@ topicRouter.get("/:id", async (req, res, next) => {
       include: {
         author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, bio: true } },
         board: { select: { id: true, slug: true, name: true, type: true, readOnly: true } },
+        tags: { include: { tag: true } },
       },
     });
     if (!topic) throw Errors.notFound();
@@ -166,6 +170,24 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       }
     }
 
+    const aiTags = await generateTopicAiTags({
+      title,
+      content,
+      boardName: board.name,
+      boardType: board.type,
+      metadata: metadata ?? {},
+    }).catch(() => [] as string[]);
+    await syncTopicAiTags(topic.id, aiTags);
+
+    const topicWithTags = await prisma.topic.findUnique({
+      where: { id: topic.id },
+      include: {
+        board: { select: { slug: true, name: true, type: true, color: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true } },
+        tags: { include: { tag: true } },
+      },
+    });
+
     // 课评：写入 CourseRating 派生表
     if (board.type === "coursereview" && metadata?.courseId && metadata?.ratings) {
       const r = metadata.ratings;
@@ -226,7 +248,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     }
 
     ok(res, {
-      ...decodeTopic({ ...topic, board: { slug: board.slug, name: board.name, type: board.type } }),
+      ...decodeTopic(topicWithTags ?? { ...topic, board: { slug: board.slug, name: board.name, type: board.type }, tags: [] }),
       submissionResult: hiddenByAi
         ? {
             status: "blocked_ai",
@@ -322,6 +344,15 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
         data.aiModel = aiResult.model;
         data.aiReviewedAt = new Date();
       }
+
+      const aiTags = await generateTopicAiTags({
+        title: nextTitle,
+        content: nextContent,
+        boardName: boardInfo?.name,
+        boardType: boardInfo?.type,
+        metadata: typeof body.metadata === "object" && body.metadata ? body.metadata : safeJson(t.metadata),
+      }).catch(() => [] as string[]);
+      data.__aiTags = aiTags;
     }
 
     if (
@@ -336,9 +367,22 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
       data.editCount = { increment: 1 };
     }
 
+    const aiTags = Array.isArray(data.__aiTags) ? data.__aiTags : null;
+    delete data.__aiTags;
     const u = await prisma.topic.update({ where: { id }, data });
+    if (aiTags) {
+      await syncTopicAiTags(id, aiTags);
+    }
+    const topicWithTags = await prisma.topic.findUnique({
+      where: { id: u.id },
+      include: {
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true } },
+        board: { select: { id: true, slug: true, name: true, color: true, type: true } },
+        tags: { include: { tag: true } },
+      },
+    });
     ok(res, {
-      ...decodeTopic(u),
+      ...decodeTopic(topicWithTags ?? u),
       submissionResult: { status: "published" },
     });
   } catch (e) { next(e); }
@@ -386,6 +430,11 @@ function decodeTopic(t: any) {
   return {
     ...t,
     metadata: safeJson(t.metadata),
+    tags: Array.isArray(t.tags)
+      ? t.tags
+          .map((item: any) => item?.tag ? { id: item.tag.id, name: item.tag.name } : item)
+          .filter((item: any) => item?.name)
+      : [],
   };
 }
 function safeJson(s: string | null | undefined) {

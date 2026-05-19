@@ -20,6 +20,7 @@ export interface Topic {
   aiRiskScore?: number | null;
   aiReviewReason?: string | null;
   aiModel?: string | null;
+  tags?: Array<{ id: number; name: string }>;
   createdAt: string;
   updatedAt: string;
   author?: { id: number; nickname: string; username: string; avatar?: string; role: string; bio?: string };

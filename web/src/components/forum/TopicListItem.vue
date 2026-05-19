@@ -8,6 +8,16 @@
           {{ topic.board.name }}
         </el-tag>
         <span class="title">{{ topic.title }}</span>
+        <el-tag
+          v-for="tag in aiTags"
+          :key="tag.name"
+          size="small"
+          effect="plain"
+          type="warning"
+          class="tag ai-tag"
+        >
+          {{ tag.name }}
+        </el-tag>
         <el-tag v-if="topic.locked" size="small" type="info" class="tag">🔒</el-tag>
         <el-tag v-if="metaSolved" size="small" type="success" class="tag">已解决</el-tag>
         <el-tag v-if="metaBounty" size="small" type="warning" class="tag">悬赏 {{ metaBounty }}</el-tag>
@@ -49,6 +59,7 @@ const metaRating = computed(() => {
   return typeof r === "number" ? r : 0;
 });
 const hotScore = computed(() => Math.round((props.topic.likeCount ?? 0) * 5 + (props.topic.replyCount ?? 0) * 3 + (props.topic.viewCount ?? 0) * 0.03));
+const aiTags = computed(() => Array.isArray(props.topic.tags) ? props.topic.tags.slice(0, 2) : []);
 </script>
 
 <style scoped>
@@ -69,6 +80,7 @@ const hotScore = computed(() => Math.round((props.topic.likeCount ?? 0) * 5 + (p
 
 .line1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .tag { flex-shrink: 0; }
+.ai-tag { --el-tag-border-color: #fdba74; --el-tag-hover-color: #9a3412; }
 .title { font-size: 15px; color: #1f2937; font-weight: 500; }
 
 .line2 {

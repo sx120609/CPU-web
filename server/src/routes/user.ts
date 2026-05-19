@@ -67,9 +67,15 @@ userRouter.get("/:id/topics", async (req, res, next) => {
       where: { authorId: id, hidden: false, board: { type: { in: enabledBoardTypes() } } },
       orderBy: { createdAt: "desc" },
       take: 30,
-      include: { board: { select: { slug: true, name: true } } },
+      include: { board: { select: { slug: true, name: true } }, tags: { include: { tag: true } } },
     });
-    ok(res, list);
+    ok(res, list.map((topic: any) => ({
+      ...topic,
+      metadata: safeJson(topic.metadata),
+      tags: Array.isArray(topic.tags)
+        ? topic.tags.map((item: any) => item?.tag ? { id: item.tag.id, name: item.tag.name } : item).filter((item: any) => item?.name)
+        : [],
+    })));
   } catch (e) { next(e); }
 });
 
@@ -95,4 +101,9 @@ function pubUser(u: any) {
     aiReviewWhitelisted: u.aiReviewWhitelisted,
     createdAt: u.createdAt,
   };
+}
+
+function safeJson(s: string | null | undefined) {
+  if (!s) return {};
+  try { return JSON.parse(s); } catch { return {}; }
 }

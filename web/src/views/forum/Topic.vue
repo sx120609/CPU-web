@@ -19,6 +19,17 @@
         <span v-if="topic.locked" class="badge lock">🔒</span>
         {{ topic.title }}
       </h1>
+      <div v-if="topic.tags?.length" class="topic-tags">
+        <el-tag
+          v-for="tag in topic.tags.slice(0, 2)"
+          :key="tag.name"
+          size="small"
+          effect="plain"
+          type="warning"
+        >
+          {{ tag.name }}
+        </el-tag>
+      </div>
 
       <div class="post-meta">
         <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" alt="作者头像" />
@@ -349,6 +360,13 @@ async function onDelete() {
     font-size: 24px;
     color: #1f2937;
     line-height: 1.4;
+  }
+
+  .topic-tags {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: -4px 0 12px;
   }
 
   .badge {

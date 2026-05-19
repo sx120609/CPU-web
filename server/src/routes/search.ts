@@ -29,6 +29,7 @@ searchRouter.get("/", async (req, res, next) => {
         include: {
           board: { select: { slug: true, name: true } },
           author: { select: { nickname: true } },
+          tags: { include: { tag: true } },
         },
       }),
       features.coursereview ? prisma.course.findMany({
@@ -59,7 +60,13 @@ searchRouter.get("/", async (req, res, next) => {
     ]);
 
     ok(res, {
-      topics,
+      topics: topics.map((topic: any) => ({
+        ...topic,
+        metadata: safeJson(topic.metadata),
+        tags: Array.isArray(topic.tags)
+          ? topic.tags.map((item: any) => item?.tag ? { id: item.tag.id, name: item.tag.name } : item).filter((item: any) => item?.name)
+          : [],
+      })),
       courses: courses.map((c: any) => ({
         ...c,
         teachers: (c.courseTeachers ?? []).map((ct: any) => ({
@@ -73,3 +80,8 @@ searchRouter.get("/", async (req, res, next) => {
     });
   } catch (e) { next(e); }
 });
+
+function safeJson(s: string | null | undefined) {
+  if (!s) return {};
+  try { return JSON.parse(s); } catch { return {}; }
+}
