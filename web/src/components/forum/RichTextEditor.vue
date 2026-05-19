@@ -85,6 +85,8 @@ import { renderMarkdown } from "@/utils/markdown";
 type ImageSize = "small" | "medium" | "large";
 type Alignment = "left" | "center" | "right";
 
+const EDITABLE_BLOCK_SELECTOR = "p,div,h1,h2,h3,h4,h5,h6,blockquote,li";
+
 const props = withDefaults(defineProps<{
   modelValue: string;
   placeholder?: string;
@@ -163,6 +165,7 @@ watch(() => props.draftKey, () => {
 function hydrateEditor(value: string) {
   if (!editorRef.value) return;
   editorRef.value.innerHTML = contentLooksLikeHtml(value) ? value : renderMarkdown(value);
+  normalizeEditorStructure(editorRef.value);
   clearSelectedImage();
   syncEditorContent();
 }
@@ -173,6 +176,7 @@ function contentLooksLikeHtml(value: string) {
 
 function syncEditorContent() {
   if (!editorRef.value) return;
+  normalizeEditorStructure(editorRef.value);
   normalizeAlignmentAttributes(editorRef.value);
   const value = serializeEditorHtml(editorRef.value);
   internalUpdate = true;
@@ -340,9 +344,7 @@ async function uploadAndInsertImages(files: File[]) {
         maxBytes: 520 * 1024,
       });
       const { url } = await uploadApi.image(compressed);
-      insertHtmlAtCursor(
-        `<p data-align="${toolbarState.align}"><img src="${escapeAttr(url)}" alt="${escapeAttr(file.name || "图片")}" data-size="${imageSize.value}" data-align="${toolbarState.align}" /></p><p><br></p>`
-      );
+      insertUploadedImage(url, file.name || "图片");
     }
     ElMessage.success(files.length > 1 ? "图片已压缩并上传" : "图片已压缩并插入");
   } finally {
@@ -350,9 +352,22 @@ async function uploadAndInsertImages(files: File[]) {
   }
 }
 
-function insertHtmlAtCursor(html: string) {
+function insertUploadedImage(url: string, alt: string) {
+  const markerId = `image-caret-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  insertHtmlAtCursor(
+    `<p data-align="${toolbarState.align}"><img src="${escapeAttr(url)}" alt="${escapeAttr(alt)}" data-size="${imageSize.value}" data-align="${toolbarState.align}" /></p><p data-caret="${markerId}"><br></p>`,
+    markerId
+  );
+}
+
+function insertHtmlAtCursor(html: string, caretMarkerId = "") {
   restoreSelection();
   document.execCommand("insertHTML", false, html);
+  if (editorRef.value) {
+    normalizeEditorStructure(editorRef.value);
+    if (caretMarkerId) moveCaretToMarker(editorRef.value, caretMarkerId);
+  }
+  clearSelectedImage();
   syncEditorContent();
   rememberSelection();
 }
@@ -368,7 +383,7 @@ function getAlignmentTargets() {
   const range = selection.getRangeAt(0);
   if (!editorRef.value.contains(range.commonAncestorContainer)) return [];
 
-  const blocks = Array.from(editorRef.value.querySelectorAll<HTMLElement>("p,h1,h2,h3,h4,h5,h6,blockquote,li"));
+  const blocks = Array.from(editorRef.value.querySelectorAll<HTMLElement>(EDITABLE_BLOCK_SELECTOR));
   const selectedBlocks = blocks.filter((block) => {
     try {
       return range.intersectsNode(block);
@@ -400,16 +415,18 @@ function prepareEmptyAlignmentTarget(align: Alignment) {
 function closestEditableBlock(node: Node) {
   if (!editorRef.value) return null;
   const element = node instanceof HTMLElement ? node : node.parentNode instanceof HTMLElement ? node.parentNode : null;
-  const block = element?.closest<HTMLElement>("p,h1,h2,h3,h4,h5,h6,blockquote,li");
+  const block = element?.closest<HTMLElement>(EDITABLE_BLOCK_SELECTOR);
   if (block && editorRef.value.contains(block)) return block;
   return null;
 }
 
 function setAlignment(target: HTMLElement, align: Alignment) {
-  const block = target instanceof HTMLImageElement ? closestEditableBlock(target) : target;
-  block?.setAttribute("data-align", align);
-  if (target instanceof HTMLImageElement) target.setAttribute("data-align", align);
-  block?.querySelectorAll("img").forEach((img) => img.setAttribute("data-align", align));
+  if (target instanceof HTMLImageElement) {
+    target.setAttribute("data-align", align);
+    return;
+  }
+  target.setAttribute("data-align", align);
+  target.querySelectorAll("img").forEach((img) => img.setAttribute("data-align", align));
 }
 
 function readAlignment(node: Node): Alignment {
@@ -461,8 +478,54 @@ function serializeEditorHtml(root: HTMLElement) {
   clone.querySelectorAll("[data-editor-selected]").forEach((node) => {
     node.removeAttribute("data-editor-selected");
   });
+  clone.querySelectorAll("[data-caret]").forEach((node) => {
+    node.removeAttribute("data-caret");
+  });
+  normalizeEditorStructure(clone);
   normalizeAlignmentAttributes(clone);
   return normalizeEditorHtml(clone.innerHTML);
+}
+
+function normalizeEditorStructure(root: HTMLElement) {
+  const blocks = Array.from(root.querySelectorAll<HTMLElement>(EDITABLE_BLOCK_SELECTOR));
+  blocks.forEach((block) => {
+    if (!block.parentNode) return;
+    const images = Array.from(block.children).filter((child): child is HTMLImageElement => child instanceof HTMLImageElement);
+    if (images.length <= 1) return;
+    const hasMeaningfulContent = Array.from(block.childNodes).some((node) => {
+      if (node instanceof HTMLImageElement || node instanceof HTMLBRElement) return false;
+      return (node.textContent ?? "").replace(/\u00a0/g, " ").trim().length > 0;
+    });
+    if (hasMeaningfulContent) return;
+
+    const anchor = block.nextSibling;
+    const inheritedAlign = normalizeTextAlign(block.dataset.align || "");
+    images.forEach((img) => {
+      const paragraph = document.createElement("p");
+      const imageAlign = normalizeTextAlign(img.dataset.align || inheritedAlign || "");
+      if (imageAlign) {
+        paragraph.setAttribute("data-align", imageAlign);
+        img.setAttribute("data-align", imageAlign);
+      }
+      img.remove();
+      paragraph.appendChild(img);
+      block.parentNode?.insertBefore(paragraph, anchor);
+    });
+    block.remove();
+  });
+}
+
+function moveCaretToMarker(root: HTMLElement, markerId: string) {
+  const marker = root.querySelector<HTMLElement>(`[data-caret="${markerId}"]`);
+  if (!marker) return;
+  marker.removeAttribute("data-caret");
+  const range = document.createRange();
+  range.selectNodeContents(marker);
+  range.collapse(true);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  savedSelection = range.cloneRange();
 }
 
 function normalizeAlignmentAttributes(root: HTMLElement) {
