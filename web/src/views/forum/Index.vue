@@ -1,62 +1,292 @@
 <template>
   <div class="forum-index">
-    <h2 class="page-title">讨论板块</h2>
+    <template v-if="auth.canAccessForum">
+      <h2 class="page-title">讨论板块</h2>
 
-    <!-- 综合 / 生活 / 新生 -->
-    <div class="cluster" v-if="general.length">
-      <h3 class="cluster-title">💬 综合讨论</h3>
-      <div class="grid">
-        <div v-for="b in general" :key="b.slug" class="board-card" @click="$router.push(`/forum/b/${b.slug}`)">
-          <div class="icon" :style="{ background: b.color || '#168776' }">{{ b.icon || '💬' }}</div>
-          <div class="body">
-            <div class="name">{{ b.name }}</div>
-            <div class="desc">{{ b.description }}</div>
-            <div class="meta">{{ b.topicCount }} 帖</div>
+      <div class="cluster" v-if="general.length">
+        <h3 class="cluster-title">💬 综合讨论</h3>
+        <div class="grid">
+          <div v-for="b in general" :key="b.slug" class="board-card" @click="$router.push(`/forum/b/${b.slug}`)">
+            <div class="icon" :style="{ background: b.color || '#168776' }">{{ b.icon || "💬" }}</div>
+            <div class="body">
+              <div class="name">{{ b.name }}</div>
+              <div class="desc">{{ b.description }}</div>
+              <div class="meta">{{ b.topicCount }} 帖</div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- 学生共建板块 -->
-    <div class="cluster" v-if="ugc.length">
-      <h3 class="cluster-title">🎒 学生共建</h3>
-      <div class="grid">
-        <div v-for="b in ugc" :key="b.slug" class="board-card" @click="$router.push(`/forum/b/${b.slug}`)">
-          <div class="icon" :style="{ background: b.color || '#168776' }">{{ b.icon || '🎒' }}</div>
-          <div class="body">
-            <div class="name">{{ b.name }}</div>
-            <div class="desc">{{ b.description }}</div>
-            <div class="meta">{{ b.topicCount }} 帖</div>
+      <div class="cluster" v-if="ugc.length">
+        <h3 class="cluster-title">🎒 学生共建</h3>
+        <div class="grid">
+          <div v-for="b in ugc" :key="b.slug" class="board-card" @click="$router.push(`/forum/b/${b.slug}`)">
+            <div class="icon" :style="{ background: b.color || '#168776' }">{{ b.icon || "🎒" }}</div>
+            <div class="body">
+              <div class="name">{{ b.name }}</div>
+              <div class="desc">{{ b.description }}</div>
+              <div class="meta">{{ b.topicCount }} 帖</div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <div class="footer-tip">
-      <el-icon><InfoFilled /></el-icon>
-      <span>查看学校官方公告？<router-link to="/announcements">→ 校园公告</router-link></span>
-    </div>
+      <div class="footer-tip">
+        <el-icon><InfoFilled /></el-icon>
+        <span>查看学校官方公告？<router-link to="/announcements">→ 校园公告</router-link></span>
+      </div>
+    </template>
+
+    <template v-else>
+      <section class="gate-card">
+        <div class="gate-head">
+          <span class="gate-badge">默认关闭</span>
+          <h2>论坛功能未开启</h2>
+        </div>
+        <p class="gate-intro">
+          普通讨论区、二手交易、课程点评等社区内容默认不直接开放。你需要先阅读使用须知并主动确认，之后才能查看和参与相关内容。
+        </p>
+        <div class="gate-points">
+          <div>发帖、回复均使用 `DeepSeek V4 Flash` 模型进行 AI 审核。</div>
+          <div>平台强绑定学号，请对自己的发言负责。</div>
+          <div>本平台并非学校官方平台，论坛内一切用户言论、交易、纠纷及其后果均与官方无关。</div>
+        </div>
+        <div class="gate-actions">
+          <el-button v-if="!auth.isLoggedIn" type="primary" size="large" @click="goLogin">
+            登录后开启论坛
+          </el-button>
+          <el-button v-else type="primary" size="large" @click="openEnableDialog">
+            开启论坛功能
+          </el-button>
+          <el-button plain size="large" @click="$router.push('/announcements')">
+            先看校园公告
+          </el-button>
+        </div>
+      </section>
+
+      <div class="footer-tip">
+        <el-icon><InfoFilled /></el-icon>
+        <span>论坛未开启前，你仍可浏览 <router-link to="/announcements">校园公告</router-link> 与 <router-link to="/services">校园服务</router-link></span>
+      </div>
+    </template>
+
+    <el-dialog
+      v-model="enableDialogOpen"
+      title="开启论坛前必须阅读"
+      width="640px"
+      append-to-body
+      :close-on-click-modal="readSeconds <= 0"
+      :close-on-press-escape="readSeconds <= 0"
+      :show-close="readSeconds <= 0"
+    >
+      <div class="forum-notice">
+        <p>你即将主动开启并使用药大垎坊论坛功能。</p>
+        <p>论坛属于高风险互动内容区域，默认不向新用户直接开放。只有在你主动选择开启后，才可查看和参与相关内容。</p>
+        <p>本平台所有发帖、回复内容，均会使用 <b>DeepSeek V4 Flash</b> 模型进行 AI 审核。</p>
+        <p>这里不是“逛逛”平台，不是随意发泄情绪、发布低质量内容、恶意带节奏、挑动对立、阴阳怪气、攻击他人的地方。任何低质量、水贴、引战、制造群体不适、扰乱讨论秩序的内容，都会被记录并处理。</p>
+        <p>请特别注意：本平台强绑定学号。你在论坛中的发言，与现实身份存在明确对应关系。请谨慎表达，对自己发布的一切内容负责。</p>
+        <p>对于违规内容，站方将视情况采取删帖、限制功能、禁言、封号等措施。情节严重、影响恶劣者，将被直接永久封禁，后续不得使用本平台相关功能。</p>
+        <p>平台采取强审核、强绑定、默认关闭论坛的措施，并非出于苛刻管理，而是为了保证平台合规、降低风险、尽可能长期稳定运行。此为无奈之举，请予理解。</p>
+        <p>如因个别用户发布严重违规内容，造成恶劣传播影响，甚至引发大型公共安全问题，本平台可能被永久封禁，相关违规人员也可能被进一步查处。</p>
+        <div class="forum-notice-disclaimer">
+          <h3>免责声明</h3>
+          <p>1. 本平台为学生自建交流平台，<b>并非学校官方平台</b>，与学校官方机构、官方立场无关。</p>
+          <p>2. 本平台内出现的一切用户言论、观点、交易、纠纷及其后果，<b>均与官方无关</b>，也不代表官方态度。</p>
+          <p>3. 论坛内容由用户自行发布，仅代表发布者个人立场，不代表本平台立场。</p>
+          <p>4. 本平台不保证用户发布内容的真实性、完整性与准确性，请自行判断、谨慎辨别。</p>
+          <p>5. 因用户个人言论、交易、传播、纠纷或其他行为引发的责任，由相关用户本人承担。</p>
+          <p>6. 平台有权基于合规、安全、运营秩序等需要，对论坛内容和论坛功能进行审核、限制、调整或关闭。</p>
+        </div>
+      </div>
+      <el-form label-position="top" class="confirm-form">
+        <el-form-item label="确认文字">
+          <el-input v-model="confirmText" placeholder="请输入“我知道了”" maxlength="10" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer">
+          <span class="read-hint">{{ readSeconds > 0 ? `请先完整阅读 ${readSeconds}s` : "请输入“我知道了”后确认开启" }}</span>
+          <div class="dialog-actions">
+            <el-button :disabled="readSeconds > 0" @click="closeEnableDialog()">取消</el-button>
+            <el-button
+              type="primary"
+              :loading="enabling"
+              :disabled="readSeconds > 0 || confirmText.trim() !== '我知道了'"
+              @click="confirmEnable"
+            >
+              确认开启论坛
+            </el-button>
+          </div>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { ElMessage } from "element-plus";
+import { useRoute, useRouter } from "vue-router";
 import { InfoFilled } from "@element-plus/icons-vue";
 import { boardApi, type Board } from "@/api/board";
+import { useAuthStore } from "@/stores/auth";
+
+const auth = useAuthStore();
+const route = useRoute();
+const router = useRouter();
 
 const all = ref<Board[]>([]);
+const enableDialogOpen = ref(false);
+const enabling = ref(false);
+const readSeconds = ref(0);
+const confirmText = ref("");
+let readTimer = 0;
+
+watch(() => auth.canAccessForum, async (enabled) => {
+  if (enabled) {
+    confirmText.value = "";
+    closeEnableDialog(true);
+    await loadBoards();
+  } else {
+    all.value = [];
+  }
+}, { immediate: true });
+
 onMounted(async () => {
-  all.value = await boardApi.list();
+  if (auth.canAccessForum) await loadBoards();
+});
+
+onBeforeUnmount(() => {
+  window.clearInterval(readTimer);
 });
 
 const general = computed(() => all.value.filter((b) => b.type === "normal"));
 const ugc = computed(() => all.value.filter((b) => ["market", "question", "coursereview"].includes(b.type)));
+
+async function loadBoards() {
+  all.value = await boardApi.list();
+}
+
+function goLogin() {
+  const redirect = typeof route.query.redirect === "string" && route.query.redirect.startsWith("/")
+    ? route.query.redirect
+    : "/forum";
+  router.push({ name: "login", query: { redirect } });
+}
+
+function openEnableDialog() {
+  confirmText.value = "";
+  enableDialogOpen.value = true;
+  startReadTimer();
+}
+
+function closeEnableDialog(force = false) {
+  if (!force && readSeconds.value > 0) return;
+  enableDialogOpen.value = false;
+  window.clearInterval(readTimer);
+  readTimer = 0;
+  readSeconds.value = 0;
+}
+
+function startReadTimer() {
+  window.clearInterval(readTimer);
+  readTimer = 0;
+  readSeconds.value = 5;
+  readTimer = window.setInterval(() => {
+    readSeconds.value -= 1;
+    if (readSeconds.value <= 0) {
+      window.clearInterval(readTimer);
+      readTimer = 0;
+      readSeconds.value = 0;
+    }
+  }, 1000);
+}
+
+async function confirmEnable() {
+  if (readSeconds.value > 0) return;
+  if (confirmText.value.trim() !== "我知道了") {
+    ElMessage.warning("请输入“我知道了”后继续");
+    return;
+  }
+  enabling.value = true;
+  try {
+    await auth.enableForumAccess(confirmText.value.trim());
+    const redirect = typeof route.query.redirect === "string" && route.query.redirect.startsWith("/")
+      ? route.query.redirect
+      : "/forum";
+    ElMessage.success("论坛功能已开启");
+    await router.replace(redirect);
+  } finally {
+    enabling.value = false;
+  }
+}
 </script>
 
 <style scoped>
 .forum-index { display: flex; flex-direction: column; gap: 24px; }
 .page-title { margin: 0; font-size: 22px; }
 .cluster-title { margin: 0 0 12px; font-size: 16px; color: #1f2937; font-weight: 600; }
+
+.gate-card {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+
+.gate-head {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.gate-head h2 {
+  margin: 0;
+  font-size: 24px;
+  color: #111827;
+}
+
+.gate-badge {
+  width: fit-content;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.gate-intro {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.8;
+  color: #374151;
+}
+
+.gate-points {
+  margin-top: 16px;
+  display: grid;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #4b5563;
+}
+
+.gate-points > div {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+}
+
+.gate-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
 
 .grid {
   display: grid;
@@ -74,10 +304,12 @@ const ugc = computed(() => all.value.filter((b) => ["market", "question", "cours
   gap: 12px;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
+
 .board-card:hover {
   border-color: var(--cpu-primary);
   box-shadow: 0 4px 14px rgba(22, 135, 118, 0.08);
 }
+
 .board-card.readonly { background: linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%); }
 
 .footer-tip {
@@ -91,12 +323,67 @@ const ugc = computed(() => all.value.filter((b) => ["market", "question", "cours
   align-items: center;
   gap: 6px;
 }
+
 .footer-tip a {
   color: var(--cpu-primary);
   text-decoration: none;
   font-weight: 500;
 }
+
 .footer-tip a:hover { text-decoration: underline; }
+
+.forum-notice {
+  max-height: min(52vh, 520px);
+  overflow: auto;
+  padding-right: 4px;
+  color: #374151;
+}
+
+.forum-notice p {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.forum-notice-disclaimer {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+}
+
+.forum-notice-disclaimer h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  color: #9a3412;
+}
+
+.forum-notice-disclaimer p:last-child,
+.forum-notice p:last-child {
+  margin-bottom: 0;
+}
+
+.confirm-form {
+  margin-top: 16px;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.read-hint {
+  font-size: 12px;
+  color: #6b7280;
+}
 
 .icon {
   width: 42px;
@@ -111,6 +398,7 @@ const ugc = computed(() => all.value.filter((b) => ["market", "question", "cours
 
 .body { flex: 1; min-width: 0; }
 .name { font-size: 15px; font-weight: 600; color: #1f2937; }
+
 .desc {
   font-size: 12px;
   color: #6b7280;
@@ -120,6 +408,7 @@ const ugc = computed(() => all.value.filter((b) => ["market", "question", "cours
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
 }
+
 .meta {
   font-size: 11px;
   color: #9ca3af;
@@ -135,6 +424,21 @@ const ugc = computed(() => all.value.filter((b) => ["market", "question", "cours
     font-size: 20px;
   }
 
+  .gate-card {
+    border-radius: 12px;
+    padding: 18px 14px;
+  }
+
+  .gate-head h2 {
+    font-size: 21px;
+    line-height: 1.4;
+  }
+
+  .gate-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
   .grid {
     grid-template-columns: 1fr;
   }
@@ -146,6 +450,17 @@ const ugc = computed(() => all.value.filter((b) => ["market", "question", "cours
 
   .desc {
     -webkit-line-clamp: 2;
+  }
+
+  .dialog-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dialog-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 }
 </style>

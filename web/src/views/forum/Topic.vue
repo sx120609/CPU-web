@@ -186,6 +186,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { AxiosError } from "axios";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowLeft, Star, ChatLineRound, Link } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
@@ -250,8 +251,22 @@ async function load() {
   loading.value = true;
   try {
     const id = Number(route.params.id);
-    topic.value = await topicApi.detail(id);
-    replies.value = await topicApi.replies(id);
+    topic.value = await topicApi.detail(id).catch((error: AxiosError) => {
+      if (error.response?.status === 403) {
+        router.replace({ name: "forum", query: { redirect: route.fullPath } });
+      }
+      return null;
+    });
+    if (!topic.value) {
+      replies.value = [];
+      return;
+    }
+    replies.value = await topicApi.replies(id).catch((error: AxiosError) => {
+      if (error.response?.status === 403) {
+        router.replace({ name: "forum", query: { redirect: route.fullPath } });
+      }
+      return [];
+    });
     // 我是否赞过
     if (auth.isLoggedIn) {
       const mine = await likeApi.mine([id], replies.value.map((r) => r.id));

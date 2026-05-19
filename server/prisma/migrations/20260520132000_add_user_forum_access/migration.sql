@@ -1,0 +1,2 @@
+ALTER TABLE "User" ADD COLUMN "forumEnabled" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "User" ADD COLUMN "forumEnabledAt" DATETIME;

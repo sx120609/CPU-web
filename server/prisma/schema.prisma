@@ -38,6 +38,8 @@ model User {
   usedAndroidClient Boolean @default(false)
   topicSubmissionLocked Boolean @default(false)
   aiReviewWhitelisted Boolean @default(false)
+  forumEnabled  Boolean  @default(false)
+  forumEnabledAt DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

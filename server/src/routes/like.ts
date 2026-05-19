@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../prisma";
 import { Errors, ok } from "../utils/response";
 import { featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettings";
+import { ensureCanReadBoardType } from "../services/forumAccess";
 
 export const likeRouter = Router();
 
@@ -15,6 +16,7 @@ likeRouter.post("/topic/:id", async (req, res, next) => {
     });
     if (!t || t.hidden) throw Errors.notFound();
     if (!isBoardTypeEnabled(t.board?.type)) throw Errors.forbidden(featureClosedMessage(t.board?.type));
+    await ensureCanReadBoardType(t.board?.type, userId, req.user?.role);
     const existing = await prisma.like.findFirst({ where: { userId, topicId } });
     if (existing) {
       await prisma.like.delete({ where: { id: existing.id } });
@@ -37,6 +39,7 @@ likeRouter.post("/reply/:id", async (req, res, next) => {
     });
     if (!r) throw Errors.notFound();
     if (!isBoardTypeEnabled(r.topic?.board?.type)) throw Errors.forbidden(featureClosedMessage(r.topic?.board?.type));
+    await ensureCanReadBoardType(r.topic?.board?.type, userId, req.user?.role);
     const existing = await prisma.like.findFirst({ where: { userId, replyId } });
     if (existing) {
       await prisma.like.delete({ where: { id: existing.id } });

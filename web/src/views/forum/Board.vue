@@ -43,6 +43,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { AxiosError } from "axios";
 import { Edit } from "@element-plus/icons-vue";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import { boardApi, type Board } from "@/api/board";
@@ -61,7 +62,7 @@ const size = ref(20);
 const sort = ref<"new" | "hot">("new");
 const loading = ref(false);
 
-const canPost = computed(() => !!board.value && !board.value.readOnly && auth.isLoggedIn);
+const canPost = computed(() => !!board.value && !board.value.readOnly && auth.canAccessForum);
 
 watch(() => route.params.slug, async () => { await reload(); });
 onMounted(async () => { await reload(); });
@@ -70,8 +71,28 @@ async function reload() {
   loading.value = true;
   try {
     const slug = String(route.params.slug);
-    board.value = await boardApi.detail(slug).catch(() => null);
-    const r = await topicApi.list({ board: slug, page: page.value, size: size.value, sort: sort.value });
+    board.value = await boardApi.detail(slug).catch((error: AxiosError) => {
+      if (error.response?.status === 403) {
+        router.replace({ name: "forum", query: { redirect: route.fullPath } });
+      }
+      return null;
+    });
+    if (!board.value) {
+      list.value = [];
+      total.value = 0;
+      return;
+    }
+    const r = await topicApi.list({ board: slug, page: page.value, size: size.value, sort: sort.value }).catch((error: AxiosError) => {
+      if (error.response?.status === 403) {
+        router.replace({ name: "forum", query: { redirect: route.fullPath } });
+      }
+      return null;
+    });
+    if (!r) {
+      list.value = [];
+      total.value = 0;
+      return;
+    }
     list.value = r.list;
     total.value = r.total;
   } finally {

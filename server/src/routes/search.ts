@@ -3,6 +3,8 @@ import { prisma } from "../prisma";
 import { ok } from "../utils/response";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
 import { getFeatures } from "../services/siteSettings";
+import { resolveForumAccess } from "../services/forumAccess";
+import { verifyToken } from "../utils/jwt";
 
 export const searchRouter = Router();
 
@@ -11,11 +13,22 @@ searchRouter.get("/", async (req, res, next) => {
   try {
     const q = String(req.query.q ?? "").trim();
     if (!q) return ok(res, { topics: [], courses: [], services: [] });
+    let userId: number | null = null;
+    let role: string | null = null;
+    const auth = req.headers.authorization;
+    if (auth?.startsWith("Bearer ")) {
+      try {
+        const token = verifyToken(auth.slice(7));
+        userId = token.userId;
+        role = token.role;
+      } catch { /* ignore */ }
+    }
+    const forumAccessEnabled = await resolveForumAccess(userId, role);
     const features = getFeatures();
     const searchableBoardTypes = ["announce"];
-    if (features.forum) searchableBoardTypes.push("normal", "question");
-    if (features.market) searchableBoardTypes.push("market");
-    if (features.coursereview) searchableBoardTypes.push("coursereview");
+    if (forumAccessEnabled && features.forum) searchableBoardTypes.push("normal", "question");
+    if (forumAccessEnabled && features.market) searchableBoardTypes.push("market");
+    if (forumAccessEnabled && features.coursereview) searchableBoardTypes.push("coursereview");
 
     const [topics, courses, services] = await Promise.all([
       prisma.topic.findMany({
@@ -32,7 +45,7 @@ searchRouter.get("/", async (req, res, next) => {
           tags: { include: { tag: true } },
         },
       }),
-      features.coursereview ? prisma.course.findMany({
+      forumAccessEnabled && features.coursereview ? prisma.course.findMany({
         where: {
           OR: [
             { name: { contains: q } },

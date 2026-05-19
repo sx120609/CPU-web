@@ -24,6 +24,7 @@ import {
   shouldRunAiReview,
   syncTopicAiTags,
 } from "../services/topicAiReview";
+import { ensureCanReadBoardType, ensureForumAccessEnabled, resolveForumAccess } from "../services/forumAccess";
 import { ensureUserCanSpeak, releaseExpiredMutes } from "../services/userModeration";
 import { buildUserPreview } from "../utils/publicUser";
 
@@ -38,13 +39,21 @@ topicRouter.get("/", async (req, res, next) => {
     const page = Math.max(1, Number(req.query.page ?? 1));
     const size = Math.min(50, Math.max(5, Number(req.query.size ?? 20)));
     const sort = String(req.query.sort ?? "new");
+    const requesterId = req.user?.userId ?? null;
+    const requesterRole = req.user?.role ?? null;
 
     let boardId: number | undefined;
     if (boardSlug && boardSlug !== "all") {
       const b = await prisma.board.findUnique({ where: { slug: boardSlug } });
       if (!b) throw Errors.notFound("板块不存在");
       if (!isBoardTypeEnabled(b.type)) throw Errors.forbidden(featureClosedMessage(b.type));
+      await ensureCanReadBoardType(b.type, requesterId, requesterRole);
       boardId = b.id;
+    }
+
+    if (!boardId) {
+      const forumAccessEnabled = await resolveForumAccess(requesterId, requesterRole);
+      if (!forumAccessEnabled) throw Errors.forbidden(requesterId ? "请先开启论坛功能并确认使用须知" : "请先登录并开启论坛功能");
     }
 
     const where: any = { hidden: false };
@@ -95,6 +104,7 @@ topicRouter.get("/:id", async (req, res, next) => {
     const canSeeHidden = Boolean(requesterId && (requesterId === topic.authorId || requesterRole === "admin" || requesterRole === "mod"));
     if (topic.hidden && !canSeeHidden) throw Errors.notFound();
     if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
+    await ensureCanReadBoardType(topic.board?.type, requesterId, requesterRole);
     // 浏览数 +1（异步，失败也无所谓）
     if (!topic.hidden) prisma.topic.update({ where: { id }, data: { viewCount: { increment: 1 } } }).catch(() => {});
     ok(res, decodeTopic(topic, req.user));
@@ -113,6 +123,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
   try {
     const userId = req.user!.userId;
     const { boardSlug, title, content, metadata, tags } = req.body;
+    await ensureForumAccessEnabled(userId, req.user!.role);
     await ensureUserCanSpeak(userId);
     await ensureUserCanSubmitTopic(userId);
     const board = await prisma.board.findUnique({ where: { slug: boardSlug } });
@@ -271,6 +282,7 @@ topicRouter.post("/:id/request-manual-review", authRequired, async (req, res, ne
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id) || id <= 0) throw Errors.badRequest("稿件 ID 不合法");
+    await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
     await requestManualTopicReview(id, req.user!.userId);
     ok(res, { ok: true });
   } catch (e) { next(e); }
@@ -289,6 +301,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     const canEditContent = isOwner || req.user!.role === "admin";
     if (!isOwner && !isMod) throw Errors.forbidden();
     if (!isMod && !isBoardTypeEnabled(t.board?.type)) throw Errors.forbidden(featureClosedMessage(t.board?.type));
+    if (isOwner) await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
 
     const body = req.body as any;
     const data: any = {};
@@ -405,6 +418,7 @@ topicRouter.delete("/:id", authRequired, async (req, res, next) => {
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
     if (!isOwner && !isMod) throw Errors.forbidden();
     if (!isMod && !isBoardTypeEnabled(t.board?.type)) throw Errors.forbidden(featureClosedMessage(t.board?.type));
+    if (isOwner) await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
     await prisma.topic.update({ where: { id }, data: { hidden: true } });
     ok(res, { ok: true });
   } catch (e) { next(e); }
@@ -421,6 +435,7 @@ topicRouter.get("/:id/replies", async (req, res, next) => {
     });
     if (!topic || topic.hidden) throw Errors.notFound("帖子不存在");
     if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
+    await ensureCanReadBoardType(topic.board?.type, req.user?.userId ?? null, req.user?.role ?? null);
     const list = await prisma.reply.findMany({
       where: { topicId: id, hidden: false },
       orderBy: { floor: "asc" },

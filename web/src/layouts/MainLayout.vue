@@ -35,7 +35,7 @@
                 <el-icon size="20"><Refresh /></el-icon>
               </el-button>
             </el-tooltip>
-            <el-button v-if="site.features.forum" type="primary" size="default" @click="$router.push('/post')">
+            <el-button v-if="auth.canAccessForum && site.features.forum" type="primary" size="default" @click="$router.push('/post')">
               <el-icon><Edit /></el-icon> 发帖
             </el-button>
             <el-tooltip content="消息">
@@ -70,7 +70,7 @@
           <el-button text class="touch-icon-btn" aria-label="刷新页面" @click="reloadPage">
             <el-icon><Refresh /></el-icon>
           </el-button>
-          <el-button v-if="auth.isLoggedIn && site.features.forum" text class="touch-icon-btn" aria-label="发帖" @click="$router.push('/post')">
+          <el-button v-if="auth.canAccessForum && site.features.forum" text class="touch-icon-btn" aria-label="发帖" @click="$router.push('/post')">
             <el-icon><Edit /></el-icon>
           </el-button>
           <el-button v-if="auth.isLoggedIn" text class="touch-icon-btn" aria-label="消息" @click="$router.push('/messages')">
@@ -237,8 +237,9 @@ const layoutStyle = computed(() => (
 
 const searchPlaceholder = computed(() => {
   const scopes: string[] = [];
-  if (site.features.forum) scopes.push("帖子");
-  if (site.features.coursereview) scopes.push("课程");
+  if (site.features.forum && auth.canAccessForum) scopes.push("帖子");
+  if (site.features.coursereview && auth.canAccessForum) scopes.push("课程");
+  scopes.push("公告");
   scopes.push("服务");
   return `搜索${scopes.join(" / ")}`;
 });
@@ -261,8 +262,8 @@ const desktopNavItems = computed(() => {
   if (site.features.forum) items.push({ to: "/forum", label: "论坛" });
   items.push({ to: "/announcements", label: "公告" });
   items.push({ to: "/jwxt", label: "教务数据" });
-  if (site.features.coursereview) items.push({ to: "/coursereview", label: "课评" });
-  if (site.features.market) items.push({ to: "/market", label: "二手" });
+  if (site.features.coursereview && auth.canAccessForum) items.push({ to: "/coursereview", label: "课评" });
+  if (site.features.market && auth.canAccessForum) items.push({ to: "/market", label: "二手" });
   items.push({ to: "/services", label: "校园服务" });
   return items;
 });
@@ -280,14 +281,14 @@ const mobileNavItems = computed(() => {
 
 const drawerItems = computed(() => {
   const items: { to: string; label: string; icon: any }[] = [];
-  if (site.features.forum) items.push({ to: "/post", label: "发帖", icon: Edit });
+  if (auth.canAccessForum && site.features.forum) items.push({ to: "/post", label: "发帖", icon: Edit });
   items.push({ to: "/messages", label: "消息", icon: Message });
   if (auth.isMod) items.push({ to: "/admin", label: "管理后台", icon: Tools });
   if (site.features.forum) items.push({ to: "/forum", label: "论坛", icon: ChatLineRound });
   items.push({ to: "/announcements", label: "校园公告", icon: Bell });
   items.push({ to: "/jwxt", label: "教务数据", icon: Calendar });
-  if (site.features.coursereview) items.push({ to: "/coursereview", label: "课评", icon: Reading });
-  if (site.features.market) items.push({ to: "/market", label: "二手市场", icon: Goods });
+  if (site.features.coursereview && auth.canAccessForum) items.push({ to: "/coursereview", label: "课评", icon: Reading });
+  if (site.features.market && auth.canAccessForum) items.push({ to: "/market", label: "二手市场", icon: Goods });
   items.push({ to: "/services", label: "校园服务", icon: Service });
   items.push({ to: "/search", label: "搜索", icon: Search });
   return items;

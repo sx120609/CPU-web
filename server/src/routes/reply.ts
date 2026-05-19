@@ -5,6 +5,7 @@ import { Errors, ok } from "../utils/response";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettings";
+import { ensureCanReadBoardType, ensureForumAccessEnabled } from "../services/forumAccess";
 import { requestManualReplyReview, reviewReplyContent, shouldBypassAiReviewForUser, shouldRunAiReview } from "../services/topicAiReview";
 import { ensureUserCanSpeak } from "../services/userModeration";
 import { buildUserPreview } from "../utils/publicUser";
@@ -21,6 +22,7 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
   try {
     const userId = req.user!.userId;
     const { topicId, content, parentReplyId } = req.body;
+    await ensureForumAccessEnabled(userId, req.user!.role);
     await ensureUserCanSpeak(userId);
     const topic = await prisma.topic.findUnique({
       where: { id: topicId },
@@ -29,6 +31,7 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     const canSeeHiddenTopic = Boolean(req.user?.userId && (req.user.userId === topic?.authorId || req.user.role === "admin" || req.user.role === "mod"));
     if (!topic || (topic.hidden && !canSeeHiddenTopic)) throw Errors.notFound("帖子不存在");
     if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
+    await ensureCanReadBoardType(topic.board?.type, userId, req.user?.role);
     if (topic.locked) throw Errors.forbidden("帖子已锁定，无法回复");
 
     const bypassAiReview = await shouldBypassAiReviewForUser(userId, req.user!.role);
@@ -138,6 +141,7 @@ replyRouter.post("/:id/request-manual-review", authRequired, async (req, res, ne
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id) || id <= 0) throw Errors.badRequest("回复 ID 不合法");
+    await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
     await requestManualReplyReview(id, req.user!.userId);
     ok(res, { ok: true });
   } catch (e) { next(e); }
@@ -155,6 +159,7 @@ replyRouter.delete("/:id", authRequired, async (req, res, next) => {
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
     if (!isOwner && !isMod) throw Errors.forbidden();
     if (!isMod && !isBoardTypeEnabled(r.topic?.board?.type)) throw Errors.forbidden(featureClosedMessage(r.topic?.board?.type));
+    if (isOwner) await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
     await prisma.reply.update({ where: { id }, data: { hidden: true } });
     ok(res, { ok: true });
   } catch (e) { next(e); }

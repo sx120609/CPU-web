@@ -34,6 +34,8 @@ export function buildSelfUser(u: any) {
     usedAndroidClient: u.usedAndroidClient,
     topicSubmissionLocked: u.topicSubmissionLocked,
     aiReviewWhitelisted: u.aiReviewWhitelisted,
+    forumEnabled: u.forumEnabled,
+    forumEnabledAt: u.forumEnabledAt,
     status: u.status,
     mutedUntil: u.mutedUntil,
     createdAt: u.createdAt,

@@ -2,7 +2,7 @@
   <div class="market-page">
     <div class="head">
       <h2>🛒 二手市场</h2>
-      <el-button v-if="auth.isLoggedIn" type="primary" @click="$router.push({ name: 'post', query: { board: 'market' } })">
+      <el-button v-if="auth.canAccessForum" type="primary" @click="$router.push({ name: 'post', query: { board: 'market' } })">
         <el-icon><Plus /></el-icon> 发布商品
       </el-button>
     </div>

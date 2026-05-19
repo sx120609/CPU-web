@@ -12,6 +12,8 @@ export interface UserInfo {
   enrollYear?: number | null;
   role: string;
   studentSso?: boolean;
+  forumEnabled?: boolean;
+  forumEnabledAt?: string | null;
   status?: string;
   mutedUntil?: string | null;
   postCount: number;
@@ -53,6 +55,7 @@ export const authApi = {
   logout: () => request.post<{ ok: true }>("/auth/logout"),
   me: () => request.get<UserInfo>("/user/me"),
   updateMe: (payload: Partial<UserInfo>) => request.patch<UserInfo>("/user/me", payload),
+  enableForumAccess: (confirmText: string) => request.post<UserInfo>("/user/forum-access/enable", { confirmText }),
   changePassword: (oldPassword: string, newPassword: string) =>
     request.patch<{ ok: true }>("/user/password", { oldPassword, newPassword }),
 };

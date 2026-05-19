@@ -3,10 +3,10 @@
     <div class="head">
       <h2>📊 课程点评</h2>
       <div class="head-right">
-        <el-button v-if="auth.isLoggedIn" :loading="syncing" @click="onSync">
+        <el-button v-if="auth.canAccessForum" :loading="syncing" @click="onSync">
           <el-icon><Refresh /></el-icon> 同步我的课程
         </el-button>
-        <el-button v-if="auth.isLoggedIn" type="primary" @click="$router.push({ name: 'post', query: { board: 'coursereview' } })">
+        <el-button v-if="auth.canAccessForum" type="primary" @click="$router.push({ name: 'post', query: { board: 'coursereview' } })">
           <el-icon><Plus /></el-icon> 写课评
         </el-button>
       </div>
@@ -15,7 +15,7 @@
     <div class="filter-bar">
       <el-radio-group v-model="scope" size="default" @change="reload">
         <el-radio-button value="all">全部课程</el-radio-button>
-        <el-radio-button value="mine" :disabled="!auth.isLoggedIn">⭐ 我学过的</el-radio-button>
+        <el-radio-button value="mine" :disabled="!auth.canAccessForum">⭐ 我学过的</el-radio-button>
       </el-radio-group>
       <el-input v-model="q" placeholder="搜课程名 / 代码 / 教师" clearable style="max-width:300px" @keyup.enter="reload">
         <template #prefix><el-icon><Search /></el-icon></template>
@@ -76,7 +76,7 @@ const loading = ref(false);
 const syncing = ref(false);
 
 onMounted(reload);
-watch(() => auth.isLoggedIn, (v) => { if (!v) scope.value = "all"; });
+watch(() => auth.canAccessForum, (v) => { if (!v) scope.value = "all"; });
 
 async function reload() {
   loading.value = true;
@@ -86,8 +86,8 @@ async function reload() {
 }
 
 async function onSync() {
-  if (!auth.isLoggedIn) {
-    ElMessage.warning("请先登录药大垎坊账号");
+  if (!auth.canAccessForum) {
+    ElMessage.warning("请先登录并开启论坛功能");
     return;
   }
   const jwxtToken = sessionStorage.getItem("cpu-jwxt-token");

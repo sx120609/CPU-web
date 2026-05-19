@@ -47,6 +47,7 @@ export const useAuthStore = defineStore("auth", {
     nickname: (s) => s.user?.nickname ?? "",
     isAdmin: (s) => s.user?.role === "admin",
     isMod: (s) => s.user?.role === "admin" || s.user?.role === "mod",
+    canAccessForum: (s) => !!s.user && (s.user.role === "admin" || s.user.role === "mod" || s.user.role === "bot" || !!s.user.forumEnabled),
     needSetupNickname: (s) => !!s.user && (!s.user.nickname || s.user.nickname.trim() === ""),
     needDataAuthAgreement: (s) => !!s.user?.studentSso && !s.dataAuthAgreed,
   },
@@ -147,6 +148,12 @@ export const useAuthStore = defineStore("auth", {
       const u = await authApi.updateMe(patch);
       this.user = u;
       return u;
+    },
+
+    async enableForumAccess(confirmText: string) {
+      const user = await authApi.enableForumAccess(confirmText);
+      this.user = user;
+      return user;
     },
 
     async logout() {

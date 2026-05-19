@@ -21,6 +21,16 @@ const FEATURE_GATED: Record<string, FeatureKey> = {
   course: "coursereview",
 };
 
+const COMMUNITY_ACCESS_GATED = new Set([
+  "forum-hot",
+  "forum-latest",
+  "market",
+  "coursereview",
+  "course",
+  "post",
+  "edit-post",
+]);
+
 export const router = createRouter({
   history: createWebHistory(),
   scrollBehavior(to, from, savedPosition) {
@@ -79,6 +89,13 @@ router.beforeEach(async (to) => {
     if (!isStaff) {
       ElMessage.info("该功能当前不可用");
       return { name: "home" };
+    }
+  }
+
+  if (to.name && COMMUNITY_ACCESS_GATED.has(String(to.name))) {
+    if (auth.token && !auth.user) await auth.fetchMe();
+    if (!auth.canAccessForum) {
+      return { name: "forum", query: { redirect: to.fullPath } };
     }
   }
 

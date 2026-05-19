@@ -4,6 +4,7 @@ import { ok } from "../utils/response";
 import { verifyToken } from "../utils/jwt";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
 import { enabledBoardTypes } from "../services/siteSettings";
+import { isForumStaffRole, resolveForumAccess } from "../services/forumAccess";
 
 export const homeRouter = Router();
 const HOME_HIDDEN_SERVICE_CODES = ["DORM_REPAIR"];
@@ -18,9 +19,14 @@ const LATEST_FEED_DEFAULT_SIZE = 20;
 homeRouter.get("/summary", async (req, res, next) => {
   try {
     let userId: number | null = null;
+    let role: string | null = null;
     const auth = req.headers.authorization;
     if (auth?.startsWith("Bearer ")) {
-      try { userId = verifyToken(auth.slice(7)).userId; } catch { /* ignore */ }
+      try {
+        const token = verifyToken(auth.slice(7));
+        userId = token.userId;
+        role = token.role;
+      } catch { /* ignore */ }
     }
 
     const readableBoardTypes = enabledBoardTypes();
@@ -53,6 +59,7 @@ homeRouter.get("/summary", async (req, res, next) => {
       userId ? prisma.notificationRead.findMany({ where: { userId }, select: { notificationId: true } }) : Promise.resolve([]),
       userId ? prisma.notification.count({ where: { userId: null } }) : Promise.resolve(0),
     ]);
+    const forumAccessEnabled = user ? (isForumStaffRole(user.role) || user.forumEnabled) : await resolveForumAccess(userId, role);
 
     const unreadCount = personalUnread + (globalCount - (globalReads as any[]).length);
 
@@ -66,14 +73,15 @@ homeRouter.get("/summary", async (req, res, next) => {
         postCount: user.postCount,
         replyCount: user.replyCount,
         reputation: user.reputation,
+        forumEnabled: forumAccessEnabled,
         unreadCount,
       } : null,
-      hotTopics: hotTopics.map((item, index) => ({
+      hotTopics: forumAccessEnabled ? hotTopics.map((item, index) => ({
         rank: index + 1,
         hotScore: computeHotScore(item, isRecentTopic(item)),
         ...decode(item),
-      })),
-      latestTopics: latestTopics.map(decode),
+      })) : [],
+      latestTopics: forumAccessEnabled ? latestTopics.map(decode) : [],
       announce: announce.map(decode),
       services: services
         .filter((s) => !HOME_HIDDEN_SERVICE_CODES.includes(s.code))
@@ -84,6 +92,18 @@ homeRouter.get("/summary", async (req, res, next) => {
 
 homeRouter.get("/hot-ranking", async (_req, res, next) => {
   try {
+    let userId: number | null = null;
+    let role: string | null = null;
+    const auth = _req.headers.authorization;
+    if (auth?.startsWith("Bearer ")) {
+      try {
+        const token = verifyToken(auth.slice(7));
+        userId = token.userId;
+        role = token.role;
+      } catch { /* ignore */ }
+    }
+    const forumAccessEnabled = await resolveForumAccess(userId, role);
+    if (!forumAccessEnabled) return ok(res, []);
     const contentBoardTypes = enabledBoardTypes().filter((type) => type !== "announce");
     const list = await listHotTopics(HOT_TOPIC_DEFAULT_SIZE, contentBoardTypes);
     ok(res, list.map((item, index) => ({
@@ -96,6 +116,18 @@ homeRouter.get("/hot-ranking", async (_req, res, next) => {
 
 homeRouter.get("/latest-feed", async (req, res, next) => {
   try {
+    let userId: number | null = null;
+    let role: string | null = null;
+    const auth = req.headers.authorization;
+    if (auth?.startsWith("Bearer ")) {
+      try {
+        const token = verifyToken(auth.slice(7));
+        userId = token.userId;
+        role = token.role;
+      } catch { /* ignore */ }
+    }
+    const forumAccessEnabled = await resolveForumAccess(userId, role);
+    if (!forumAccessEnabled) return ok(res, { page: 1, size: LATEST_FEED_DEFAULT_SIZE, total: 0, list: [] });
     const page = Math.max(1, Number(req.query.page ?? 1));
     const size = Math.min(50, Math.max(10, Number(req.query.size ?? LATEST_FEED_DEFAULT_SIZE)));
     const contentBoardTypes = enabledBoardTypes().filter((type) => type !== "announce");

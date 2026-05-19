@@ -7,13 +7,13 @@
         <p>{{ heroIntro }}</p>
         <div class="hero-actions">
           <el-button v-if="site.features.forum" type="primary" size="large" @click="$router.push('/forum')">
-            <el-icon><ChatLineRound /></el-icon> 进入论坛
+            <el-icon><ChatLineRound /></el-icon> {{ forumActionLabel }}
           </el-button>
           <el-button v-else type="primary" size="large" @click="$router.push('/announcements')">
             <el-icon><Bell /></el-icon> 看校园公告
           </el-button>
           <el-button v-if="!auth.isLoggedIn" size="large" @click="$router.push('/login')">{{ loginActionText }}</el-button>
-          <el-button v-else-if="site.features.forum" size="large" @click="$router.push('/post')">
+          <el-button v-else-if="site.features.forum && auth.canAccessForum" size="large" @click="$router.push('/post')">
             <el-icon><Edit /></el-icon> 发布内容
           </el-button>
           <el-button v-else size="large" @click="$router.push('/services')">
@@ -23,9 +23,9 @@
       </div>
     </section>
 
-    <div class="grid" :class="{ 'single-col': !site.features.forum }">
+    <div class="grid" :class="{ 'single-col': !showForumContent }">
       <!-- 左：热帖 + 最新 -->
-      <div class="col-left" v-if="site.features.forum">
+      <div class="col-left" v-if="showForumContent">
         <section class="block">
           <div class="block-head">
             <h3>🔥 热议</h3>
@@ -125,11 +125,17 @@ const electricOpen = ref(false);
 
 const enabledFeatureLabels = computed(() => {
   const labels = ["公告聚合", "教务数据", "常用校园服务"];
-  if (site.features.coursereview) labels.splice(2, 0, "课程点评");
-  if (site.features.market) labels.splice(labels.length - 1, 0, "二手交易");
+  if (site.features.coursereview && auth.canAccessForum) labels.splice(2, 0, "课程点评");
+  if (site.features.market && auth.canAccessForum) labels.splice(labels.length - 1, 0, "二手交易");
   if (site.features.electric) labels.push("宿舍电费查询");
-  if (site.features.forum) labels.unshift("校园讨论");
+  if (site.features.forum && auth.canAccessForum) labels.unshift("校园讨论");
   return labels;
+});
+const showForumContent = computed(() => site.features.forum && auth.canAccessForum);
+const forumActionLabel = computed(() => {
+  if (!site.features.forum) return "看校园公告";
+  if (auth.canAccessForum) return "进入论坛";
+  return auth.isLoggedIn ? "开启论坛功能" : "论坛入口";
 });
 
 const heroIntro = computed(() => {
@@ -138,7 +144,7 @@ const heroIntro = computed(() => {
   return `${text}，给药大学生一个更顺手的信息入口。`;
 });
 
-const loginActionText = computed(() => site.features.forum ? "登录参与" : "登录使用");
+const loginActionText = computed(() => site.features.forum ? "登录账号" : "登录使用");
 
 onMounted(async () => {
   // 不区分游客 / 登录态，统一调 home/summary —— 后端按 token 自动决定 identity 是否返回

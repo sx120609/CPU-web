@@ -6,6 +6,7 @@ import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { Errors, ok } from "../utils/response";
 import { enabledBoardTypes } from "../services/siteSettings";
+import { FORUM_CONFIRM_TEXT, resolveForumAccess } from "../services/forumAccess";
 import { releaseExpiredMutes } from "../services/userModeration";
 import { buildPublicUser, buildSelfUser } from "../utils/publicUser";
 
@@ -54,6 +55,25 @@ userRouter.patch("/password", authRequired, validate(passwordSchema), async (req
   } catch (e) { next(e); }
 });
 
+const forumAccessEnableSchema = z.object({
+  confirmText: z.string().trim().min(1).max(20),
+});
+userRouter.post("/forum-access/enable", authRequired, validate(forumAccessEnableSchema), async (req, res, next) => {
+  try {
+    if (req.body.confirmText !== FORUM_CONFIRM_TEXT) {
+      throw Errors.badRequest(`请输入“${FORUM_CONFIRM_TEXT}”后再继续`);
+    }
+    const user = await prisma.user.update({
+      where: { id: req.user!.userId },
+      data: {
+        forumEnabled: true,
+        forumEnabledAt: new Date(),
+      },
+    });
+    ok(res, buildSelfUser(user));
+  } catch (e) { next(e); }
+});
+
 userRouter.get("/:id", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
@@ -67,6 +87,8 @@ userRouter.get("/:id", async (req, res, next) => {
 userRouter.get("/:id/topics", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    const forumAccessEnabled = await resolveForumAccess(req.user?.userId, req.user?.role);
+    if (!forumAccessEnabled) return ok(res, []);
     const list = await prisma.topic.findMany({
       where: { authorId: id, hidden: false, board: { type: { in: enabledBoardTypes() } } },
       orderBy: { createdAt: "desc" },

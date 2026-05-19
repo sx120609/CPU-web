@@ -17,7 +17,7 @@
           </template>
           <span v-else class="muted">暂无（点击下方"+ 添加"或在写点评时录入）</span>
           <el-button
-            v-if="auth.isLoggedIn"
+            v-if="auth.canAccessForum"
             text size="small"
             class="add-teacher-btn"
             @click="onAddTeacher"
@@ -43,7 +43,7 @@
     <div class="cpu-card">
       <div class="head-row">
         <h3 class="cpu-section-title">学生点评 ({{ data.ratings.length }})</h3>
-        <el-button v-if="auth.isLoggedIn" type="primary" size="small" @click="goReview">
+        <el-button v-if="auth.canAccessForum" type="primary" size="small" @click="goReview">
           <el-icon><Edit /></el-icon> 写一篇
         </el-button>
       </div>
