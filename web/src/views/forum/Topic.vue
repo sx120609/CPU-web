@@ -133,9 +133,15 @@
       </div>
       <template #footer>
         <el-button @click="replyReviewBlockedOpen = false">返回修改</el-button>
-        <el-button type="warning" :loading="requestingReplyManualReview" @click="requestReplyManualReview">申请人工审核</el-button>
+        <el-button type="warning" :loading="requestingReplyManualReview" @click="replyManualReviewConfirmOpen = true">申请人工审核</el-button>
       </template>
     </el-dialog>
+
+    <ManualReviewConfirmDialog
+      v-model="replyManualReviewConfirmOpen"
+      subject="回复"
+      @confirm="confirmReplyManualReviewRequest"
+    />
 
     <div v-if="topic.locked" class="locked-tip cpu-card">🔒 该帖已锁定，无法回复</div>
     <div v-if="!auth.isLoggedIn" class="login-tip cpu-card">
@@ -152,6 +158,7 @@ import { ArrowLeft, Star, ChatLineRound, Link } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import MarkdownView from "@/components/forum/MarkdownView.vue";
 import RichTextEditor from "@/components/forum/RichTextEditor.vue";
+import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDialog.vue";
 import { topicApi, replyApi, likeApi, type Topic, type Reply } from "@/api/topic";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate, fmtRelative } from "@/utils/format";
@@ -167,6 +174,7 @@ const replying = ref(false);
 const replyText = ref("");
 const replyReviewBlockedOpen = ref(false);
 const requestingReplyManualReview = ref(false);
+const replyManualReviewConfirmOpen = ref(false);
 const blockedReplyId = ref<number | null>(null);
 const blockedReplyInfo = reactive<{ reason: string; riskScore: number | null }>({
   reason: "",
@@ -262,10 +270,8 @@ async function submitReply() {
   } finally { replying.value = false; }
 }
 
-async function requestReplyManualReview() {
+async function confirmReplyManualReviewRequest() {
   if (!blockedReplyId.value) return;
-  const confirmed = await openReplyManualReviewConfirm();
-  if (!confirmed) return;
   requestingReplyManualReview.value = true;
   try {
     await replyApi.requestManualReview(blockedReplyId.value);
@@ -276,34 +282,6 @@ async function requestReplyManualReview() {
     ElMessage.success("已提交回复人工审核申请");
   } finally {
     requestingReplyManualReview.value = false;
-  }
-}
-
-async function openReplyManualReviewConfirm() {
-  await ElMessageBox.alert(
-    "你将提交回复人工审核申请。审核期间不能继续投递新稿件，请先阅读 3 秒。",
-    "提交人工审核前确认",
-    {
-      type: "warning",
-      confirmButtonText: "继续",
-      autofocus: false,
-    }
-  ).catch(() => {});
-  await new Promise((resolve) => window.setTimeout(resolve, 3000));
-  try {
-    await ElMessageBox.confirm(
-      "已阅读完毕，是否提交回复人工审核申请？审核期间不能继续投递新稿件。",
-      "再次确认",
-      {
-        type: "warning",
-        confirmButtonText: "确认提交",
-        cancelButtonText: "返回修改",
-        autofocus: false,
-      }
-    );
-    return true;
-  } catch {
-    return false;
   }
 }
 

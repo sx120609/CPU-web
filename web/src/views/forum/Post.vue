@@ -183,18 +183,25 @@
       </div>
       <template #footer>
         <el-button @click="reviewBlockedOpen = false">返回修改</el-button>
-        <el-button type="warning" :loading="requestingManualReview" @click="requestManualReview">申请人工审核</el-button>
+        <el-button type="warning" :loading="requestingManualReview" @click="manualReviewConfirmOpen = true">申请人工审核</el-button>
       </template>
     </el-dialog>
+
+    <ManualReviewConfirmDialog
+      v-model="manualReviewConfirmOpen"
+      subject="稿件"
+      @confirm="confirmManualReviewRequest"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onBeforeUnmount, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage } from "element-plus";
 import MarkdownView from "@/components/forum/MarkdownView.vue";
 import RichTextEditor from "@/components/forum/RichTextEditor.vue";
+import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDialog.vue";
 import { boardApi, type Board } from "@/api/board";
 import { topicApi } from "@/api/topic";
 import { courseApi, type Course } from "@/api/course";
@@ -214,6 +221,7 @@ const previewOpen = ref(false);
 const pendingMetadata = ref<any>(null);
 const reviewBlockedOpen = ref(false);
 const requestingManualReview = ref(false);
+const manualReviewConfirmOpen = ref(false);
 const blockedTopicId = ref<number | null>(null);
 const blockedReviewInfo = reactive<{ reason: string; riskScore: number | null }>({
   reason: "",
@@ -452,10 +460,8 @@ async function confirmSubmit() {
   }
 }
 
-async function requestManualReview() {
+async function confirmManualReviewRequest() {
   if (!blockedTopicId.value) return;
-  const confirmed = await openManualReviewConfirm();
-  if (!confirmed) return;
   requestingManualReview.value = true;
   try {
     await topicApi.requestManualReview(blockedTopicId.value);
@@ -466,34 +472,6 @@ async function requestManualReview() {
     router.replace("/forum");
   } finally {
     requestingManualReview.value = false;
-  }
-}
-
-async function openManualReviewConfirm() {
-  await ElMessageBox.alert(
-    "你将提交人工审核申请。审核期间不能继续投递新稿件，请先阅读 3 秒。",
-    "提交人工审核前确认",
-    {
-      type: "warning",
-      confirmButtonText: "继续",
-      autofocus: false,
-    }
-  ).catch(() => {});
-  await new Promise((resolve) => window.setTimeout(resolve, 3000));
-  try {
-    await ElMessageBox.confirm(
-      "已阅读完毕，是否提交人工审核申请？审核期间不能继续投递新稿件。",
-      "再次确认",
-      {
-        type: "warning",
-        confirmButtonText: "确认提交",
-        cancelButtonText: "返回修改",
-        autofocus: false,
-      }
-    );
-    return true;
-  } catch {
-    return false;
   }
 }
 </script>

@@ -50,6 +50,7 @@ declare module 'vue' {
     GradesPane: typeof import('./src/components/jwxt/GradesPane.vue')['default']
     InstallPromptDialog: typeof import('./src/components/install/InstallPromptDialog.vue')['default']
     IServicePane: typeof import('./src/components/jwxt/IServicePane.vue')['default']
+    ManualReviewConfirmDialog: typeof import('./src/components/forum/ManualReviewConfirmDialog.vue')['default']
     MarkdownView: typeof import('./src/components/forum/MarkdownView.vue')['default']
     MessageList: typeof import('./src/components/messages/MessageList.vue')['default']
     OpenBrowserPromptDialog: typeof import('./src/components/install/OpenBrowserPromptDialog.vue')['default']

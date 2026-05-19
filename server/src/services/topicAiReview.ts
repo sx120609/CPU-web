@@ -339,7 +339,7 @@ export async function requestManualReplyReview(replyId: number, userId: number) 
       data: reviewers.map((reviewer) => ({
         userId: reviewer.id,
         category: "system",
-        level: "strong",
+        level: "normal",
         title: "有新的回复待人工审核",
         content: reply.content.slice(0, 80),
         source: "AI 审核",
@@ -427,7 +427,7 @@ async function createAiReviewNotifications(topicId: number, userId: number) {
     data: reviewers.map((reviewer) => ({
       userId: reviewer.id,
       category: "system",
-      level: "strong",
+      level: "normal",
       title: "有新的稿件待人工审核",
       content: topic.title,
       source: "AI 审核",

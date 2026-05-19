@@ -152,7 +152,6 @@ const toolbarState = reactive({
 let savedSelection: Range | null = null;
 let selectedImage: HTMLImageElement | null = null;
 let draftTimer = 0;
-let internalUpdate = false;
 let mobileViewportQuery: MediaQueryList | null = null;
 let topbarResizeObserver: ResizeObserver | null = null;
 
@@ -302,12 +301,9 @@ function handleEditorTouchEnd() {
 }
 
 watch(() => props.modelValue, (value) => {
-  if (internalUpdate) {
-    internalUpdate = false;
-    return;
-  }
   if (!editorRef.value) return;
-  if (serializeEditorHtml(editorRef.value) === value) return;
+  const currentValue = serializeEditorHtml(editorRef.value);
+  if (currentValue === value) return;
   hydrateEditor(value);
 });
 
@@ -332,7 +328,6 @@ function syncEditorContent() {
   normalizeEditorStructure(editorRef.value);
   normalizeAlignmentAttributes(editorRef.value);
   const value = serializeEditorHtml(editorRef.value);
-  internalUpdate = true;
   emit("update:modelValue", value);
   scheduleDraftSave(value);
   updateToolbarState();
