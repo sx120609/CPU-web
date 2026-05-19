@@ -40,6 +40,7 @@
                 <span>{{ t.replyCount }} 回 / {{ t.likeCount }} 赞</span>
               </div>
             </div>
+            <div class="hot-score">{{ Math.round(t.hotScore || 0) }}</div>
           </div>
           <el-empty v-if="!summary?.hotTopics?.length" description="暂无内容" />
         </section>
@@ -255,7 +256,7 @@ function openUrl(url: string) {
 
 .hot-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
   padding: 10px 4px;
@@ -286,6 +287,13 @@ function openUrl(url: string) {
   margin-top: 2px;
   font-size: 12px;
   color: #9ca3af;
+}
+.hot-score {
+  min-width: 44px;
+  text-align: right;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--cpu-primary);
 }
 
 .service-grid {
@@ -386,6 +394,17 @@ function openUrl(url: string) {
 
   .svc-icon {
     font-size: 20px;
+  }
+
+  .hot-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .hot-score {
+    grid-column: 2;
+    text-align: left;
+    min-width: 0;
+    font-size: 13px;
   }
 }
 
