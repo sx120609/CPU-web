@@ -15,6 +15,12 @@ export function renderMarkdown(md: string): string {
 /** 从 Markdown 提取纯文本摘要 */
 export function mdSummary(md: string, max = 80): string {
   const text = md
+    .replace(/<img\b[^>]*>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
     .replace(/\[[^\]]*\]\([^)]*\)/g, "")
     .replace(/[#*`>_~\-]/g, "")

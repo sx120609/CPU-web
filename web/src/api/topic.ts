@@ -57,3 +57,7 @@ export const likeApi = {
       topics: topicIds.join(","), replies: replyIds.join(","),
     }),
 };
+
+export const uploadApi = {
+  image: (image: string) => request.post<{ url: string }>("/uploads/images", { image }),
+};

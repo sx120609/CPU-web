@@ -14,6 +14,7 @@ import { searchRouter } from "./search";
 import { jwxtRouter } from "./jwxt";
 import { adminRouter } from "./admin";
 import { siteRouter } from "./site";
+import { uploadRouter } from "./upload";
 
 export const router = Router();
 
@@ -35,6 +36,7 @@ router.use("/jwxt", jwxtRouter);
 router.use("/user", authRequired, userRouter);
 router.use("/likes", authRequired, likeRouter);
 router.use("/messages", authRequired, messageRouter);
+router.use("/uploads", uploadRouter);
 
 // 管理后台：需登录 + 内部按 role 分级
 router.use("/admin", authRequired, adminRouter);

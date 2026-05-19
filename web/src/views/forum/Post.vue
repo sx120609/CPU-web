@@ -121,20 +121,54 @@
           <el-input v-model="form.title" placeholder="一句话描述要点（2-120 字）" maxlength="120" show-word-limit />
         </el-form-item>
 
-        <el-form-item label="正文（支持 Markdown）" required>
-          <el-input
-            v-model="form.content"
-            type="textarea"
-            :rows="14"
-            placeholder="支持 **加粗**、*斜体*、`代码`、# 标题、- 列表、[链接](url)、行首 > 引用、表格…"
-            maxlength="20000"
-            show-word-limit
-          />
+        <el-form-item label="正文" required>
+          <div class="rich-editor">
+            <div class="editor-toolbar" @mousedown.prevent>
+              <button type="button" title="正文" @click="applyFormat('p')">正文</button>
+              <button type="button" title="二级标题" @click="applyFormat('h2')">H2</button>
+              <button type="button" title="三级标题" @click="applyFormat('h3')">H3</button>
+              <span class="toolbar-divider" />
+              <button type="button" title="加粗" class="bold" @click="runCommand('bold')">B</button>
+              <button type="button" title="斜体" class="italic" @click="runCommand('italic')">I</button>
+              <button type="button" title="引用" @click="applyFormat('blockquote')">引用</button>
+              <span class="toolbar-divider" />
+              <button type="button" title="无序列表" @click="runCommand('insertUnorderedList')">列表</button>
+              <button type="button" title="有序列表" @click="runCommand('insertOrderedList')">编号</button>
+              <button type="button" title="插入链接" @click="insertLink">链接</button>
+              <button type="button" title="上传图片" :disabled="imageUploading" @click="pickContentImage">
+                {{ imageUploading ? "上传中" : "图片" }}
+              </button>
+            </div>
+            <div
+              ref="editorRef"
+              class="editor-surface"
+              contenteditable="true"
+              :data-placeholder="editorPlaceholder"
+              @input="syncEditorContent"
+              @paste="handleEditorPaste"
+              @drop.prevent="handleEditorDrop"
+              @dragover.prevent
+              @mouseup="rememberSelection"
+              @keyup="rememberSelection"
+              @focus="rememberSelection"
+            ></div>
+            <div class="editor-foot">
+              <span>可直接排版，不需要手写 Markdown。</span>
+              <span :class="{ warn: form.content.length > CONTENT_MAX }">{{ form.content.length }} / {{ CONTENT_MAX }}</span>
+            </div>
+            <input
+              ref="contentImageInputRef"
+              type="file"
+              accept="image/*"
+              class="hidden-file"
+              @change="onContentImagePicked"
+            />
+          </div>
         </el-form-item>
 
         <el-form-item v-if="form.content">
           <div class="preview">
-            <h4>预览</h4>
+            <h4>发布后效果</h4>
             <MarkdownView :content="form.content" />
           </div>
         </el-form-item>
@@ -149,13 +183,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from "vue";
+import { nextTick, ref, reactive, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import MarkdownView from "@/components/forum/MarkdownView.vue";
 import { boardApi, type Board } from "@/api/board";
-import { topicApi } from "@/api/topic";
+import { topicApi, uploadApi } from "@/api/topic";
 import { courseApi, type Course } from "@/api/course";
+import { compressImageFile } from "@/utils/imageUpload";
+import { renderMarkdown } from "@/utils/markdown";
 
 const route = useRoute();
 const router = useRouter();
@@ -164,6 +200,12 @@ const boards = ref<Board[]>([]);
 const courses = ref<Course[]>([]);
 const submitting = ref(false);
 const editingId = computed(() => (route.params.id ? Number(route.params.id) : null));
+const CONTENT_MAX = 20000;
+const editorPlaceholder = "写正文，可以用上方按钮排版，也可以直接粘贴图片。";
+const editorRef = ref<HTMLElement | null>(null);
+const contentImageInputRef = ref<HTMLInputElement | null>(null);
+const imageUploading = ref(false);
+let savedSelection: Range | null = null;
 
 const form = reactive({
   boardSlug: (route.query.board as string) || "",
@@ -208,7 +250,11 @@ onMounted(async () => {
     form.title = t.title;
     form.content = t.content;
     if (t.metadata) Object.assign(meta, t.metadata);
+    await nextTick();
+    hydrateEditor();
   }
+  await nextTick();
+  hydrateEditor();
 });
 
 watch(boardType, () => {
@@ -231,10 +277,155 @@ function onTypeNewTeacher(v: string) {
   if (v && v.trim()) meta.courseTeacherId = undefined; // 开始手输 → 清掉已选
 }
 
+function hydrateEditor() {
+  if (!editorRef.value) return;
+  editorRef.value.innerHTML = contentLooksLikeHtml(form.content) ? form.content : renderMarkdown(form.content);
+  syncEditorContent();
+}
+
+function contentLooksLikeHtml(value: string) {
+  return /<\/?(p|div|h[1-6]|ul|ol|li|blockquote|img|a|strong|em|br)\b/i.test(value);
+}
+
+function syncEditorContent() {
+  if (!editorRef.value) return;
+  form.content = normalizeEditorHtml(editorRef.value.innerHTML);
+}
+
+function normalizeEditorHtml(value: string) {
+  return value
+    .replace(/<div><br><\/div>/g, "<p><br></p>")
+    .replace(/<div>/g, "<p>")
+    .replace(/<\/div>/g, "</p>")
+    .trim();
+}
+
+function rememberSelection() {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || !editorRef.value) return;
+  const range = selection.getRangeAt(0);
+  if (editorRef.value.contains(range.commonAncestorContainer)) {
+    savedSelection = range.cloneRange();
+  }
+}
+
+function restoreSelection() {
+  editorRef.value?.focus();
+  const selection = window.getSelection();
+  if (!selection || !savedSelection) return;
+  selection.removeAllRanges();
+  selection.addRange(savedSelection);
+}
+
+function runCommand(command: string, value?: string) {
+  restoreSelection();
+  document.execCommand(command, false, value);
+  syncEditorContent();
+  rememberSelection();
+}
+
+function applyFormat(tag: "p" | "h2" | "h3" | "blockquote") {
+  runCommand("formatBlock", tag);
+}
+
+async function insertLink() {
+  rememberSelection();
+  const url = await ElMessageBox.prompt("输入链接地址", "插入链接", {
+    confirmButtonText: "插入",
+    cancelButtonText: "取消",
+    inputPlaceholder: "https://...",
+    inputPattern: /^https?:\/\/.+/i,
+    inputErrorMessage: "请输入 http 或 https 开头的链接",
+  }).then((r) => r.value).catch(() => "");
+  if (!url) return;
+  restoreSelection();
+  const selectedText = window.getSelection()?.toString();
+  if (selectedText) {
+    runCommand("createLink", url);
+  } else {
+    insertHtmlAtCursor(`<a href="${escapeAttr(url)}">${escapeHtml(url)}</a>`);
+  }
+}
+
+function pickContentImage() {
+  rememberSelection();
+  contentImageInputRef.value?.click();
+}
+
+async function onContentImagePicked(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const files = Array.from(input.files ?? []);
+  input.value = "";
+  await uploadAndInsertImages(files);
+}
+
+async function handleEditorPaste(event: ClipboardEvent) {
+  const files = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith("image/"));
+  if (!files.length) {
+    setTimeout(syncEditorContent, 0);
+    return;
+  }
+  event.preventDefault();
+  rememberSelection();
+  await uploadAndInsertImages(files);
+}
+
+async function handleEditorDrop(event: DragEvent) {
+  const files = Array.from(event.dataTransfer?.files ?? []).filter((file) => file.type.startsWith("image/"));
+  if (!files.length) return;
+  rememberSelection();
+  await uploadAndInsertImages(files);
+}
+
+async function uploadAndInsertImages(files: File[]) {
+  if (!files.length) return;
+  imageUploading.value = true;
+  try {
+    for (const file of files) {
+      const compressed = await compressImageFile(file, {
+        maxWidth: 1400,
+        maxHeight: 1400,
+        quality: 0.82,
+        mimeType: "image/jpeg",
+        maxBytes: 520 * 1024,
+      });
+      const { url } = await uploadApi.image(compressed);
+      insertHtmlAtCursor(`<p><img src="${escapeAttr(url)}" alt="${escapeAttr(file.name || "图片")}" /></p>`);
+    }
+    ElMessage.success(files.length > 1 ? "图片已压缩并上传" : "图片已压缩并插入");
+  } finally {
+    imageUploading.value = false;
+  }
+}
+
+function insertHtmlAtCursor(html: string) {
+  restoreSelection();
+  document.execCommand("insertHTML", false, html);
+  syncEditorContent();
+  rememberSelection();
+}
+
+function escapeAttr(value: string) {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function isEditorContentEmpty() {
+  if (!editorRef.value) return !form.content.trim();
+  const text = editorRef.value.innerText.replace(/\u00a0/g, " ").trim();
+  const hasImage = Boolean(editorRef.value.querySelector("img"));
+  return !text && !hasImage;
+}
+
 async function submit() {
   if (!form.boardSlug) { ElMessage.warning("请选择板块"); return; }
   if (form.title.trim().length < 2) { ElMessage.warning("标题至少 2 字"); return; }
-  if (form.content.trim().length < 1) { ElMessage.warning("请填写正文"); return; }
+  syncEditorContent();
+  if (isEditorContentEmpty()) { ElMessage.warning("请填写正文"); return; }
+  if (form.content.length > CONTENT_MAX) { ElMessage.warning("正文内容过长，请精简后再发布"); return; }
 
   // 组织 metadata
   const metadata: any = {};
@@ -308,6 +499,133 @@ async function submit() {
 }
 .or-text { color: #9ca3af; font-size: 12px; }
 
+.rich-editor {
+  width: 100%;
+  border: 1px solid #dcdfe6;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid #edf0f5;
+  background: #f8fafc;
+}
+
+.editor-toolbar button {
+  appearance: none;
+  border: 1px solid #d8e3ec;
+  border-radius: 6px;
+  background: #fff;
+  color: #344054;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
+  min-height: 30px;
+  padding: 0 9px;
+}
+
+.editor-toolbar button:hover {
+  border-color: var(--cpu-primary);
+  color: var(--cpu-primary);
+}
+
+.editor-toolbar button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.editor-toolbar .bold { font-weight: 800; }
+.editor-toolbar .italic { font-style: italic; }
+
+.toolbar-divider {
+  width: 1px;
+  height: 22px;
+  background: #dde5ee;
+}
+
+.editor-surface {
+  min-height: 280px;
+  max-height: 620px;
+  overflow-y: auto;
+  padding: 14px 16px;
+  color: #1f2937;
+  font-size: 15px;
+  line-height: 1.75;
+  outline: none;
+  word-break: break-word;
+}
+
+.editor-surface:empty::before {
+  content: attr(data-placeholder);
+  color: #98a2b3;
+}
+
+.editor-surface:focus {
+  box-shadow: inset 0 0 0 1px rgba(22, 135, 118, 0.28);
+}
+
+.editor-surface :deep(h2),
+.editor-surface :deep(h3) {
+  margin: 0.7em 0 0.35em;
+  font-weight: 700;
+}
+
+.editor-surface :deep(h2) { font-size: 20px; }
+.editor-surface :deep(h3) { font-size: 17px; }
+.editor-surface :deep(p) { margin: 0.45em 0; }
+.editor-surface :deep(ul),
+.editor-surface :deep(ol) {
+  margin: 0.45em 0;
+  padding-left: 24px;
+}
+
+.editor-surface :deep(blockquote) {
+  margin: 0.6em 0;
+  padding: 6px 12px;
+  border-left: 3px solid var(--cpu-primary);
+  background: #ecfdf5;
+  color: #4b5563;
+}
+
+.editor-surface :deep(a) {
+  color: var(--cpu-primary);
+  text-decoration: underline;
+}
+
+.editor-surface :deep(img) {
+  display: block;
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+}
+
+.editor-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border-top: 1px solid #edf0f5;
+  color: #98a2b3;
+  font-size: 12px;
+}
+
+.editor-foot .warn {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.hidden-file {
+  display: none;
+}
+
 .preview {
   background: #f9fafb;
   padding: 16px 18px;
@@ -347,6 +665,27 @@ async function submit() {
 
   .or-text {
     align-self: center;
+  }
+
+  .editor-toolbar {
+    align-items: stretch;
+  }
+
+  .editor-toolbar button {
+    min-height: 34px;
+  }
+
+  .toolbar-divider {
+    display: none;
+  }
+
+  .editor-surface {
+    min-height: 240px;
+    padding: 12px;
+  }
+
+  .editor-foot {
+    flex-direction: column;
   }
 
   .preview {

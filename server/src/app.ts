@@ -11,8 +11,11 @@ export function createApp() {
   const app = express();
 
   app.use(cors());
-  app.use(express.json({ limit: "1mb" }));
+  app.use(express.json({ limit: "2mb" }));
   if (isDev) app.use(morgan("dev"));
+
+  const uploadDir = path.resolve(process.cwd(), "uploads");
+  app.use("/uploads", express.static(uploadDir, { maxAge: "30d", index: false }));
 
   app.get("/api/health", (_req, res) => {
     res.json({ code: 0, data: { ok: true, ts: Date.now() }, message: "" });
