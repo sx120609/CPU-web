@@ -227,6 +227,7 @@ const mobileViewportBaseHeight = ref(0);
 const isMobileViewport = ref(false);
 let pageLockScrollY = 0;
 let pageLockActive = false;
+let focusOutTimer = 0;
 const pageLockState = {
   bodyPosition: "",
   bodyTop: "",
@@ -341,6 +342,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  window.clearTimeout(focusOutTimer);
   unlockPageScroll();
   if (typeof window !== "undefined") {
     window.removeEventListener("resize", handleViewportMetricsChange);
@@ -352,6 +354,7 @@ onBeforeUnmount(() => {
 });
 
 watch(() => route.fullPath, () => {
+  window.clearTimeout(focusOutTimer);
   keyboardOpen.value = false;
   editableFocused.value = false;
   editorFocused.value = false;
@@ -365,21 +368,32 @@ function handleViewportMetricsChange() {
 }
 
 function handleFocusIn(event: FocusEvent) {
+  window.clearTimeout(focusOutTimer);
   const target = event.target instanceof HTMLElement ? event.target : null;
   editableFocused.value = isEditableElement(target);
   editorFocused.value = Boolean(target?.closest(".rich-editor"));
   syncViewportMetrics();
+  if (editorFocused.value && isMobileViewport.value) {
+    keyboardOpen.value = true;
+    requestAnimationFrame(() => {
+      syncViewportMetrics();
+      lockPageScroll();
+      updateKeyboardState();
+    });
+    return;
+  }
   requestAnimationFrame(updateKeyboardState);
 }
 
 function handleFocusOut() {
-  requestAnimationFrame(() => {
+  window.clearTimeout(focusOutTimer);
+  focusOutTimer = window.setTimeout(() => {
     const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     editableFocused.value = isEditableElement(active);
     editorFocused.value = Boolean(active?.closest(".rich-editor"));
     syncViewportMetrics();
     updateKeyboardState();
-  });
+  }, 120);
 }
 
 function isEditableElement(target: HTMLElement | null) {
@@ -402,6 +416,11 @@ function syncViewportMetrics() {
 
 function updateKeyboardState() {
   if (typeof window === "undefined") return;
+  if (editorFocused.value && isMobileViewport.value) {
+    keyboardOpen.value = true;
+    lockPageScroll();
+    return;
+  }
   const currentHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
   const baseHeight = Math.max(mobileViewportBaseHeight.value || 0, currentHeight, window.innerHeight);
   const keyboardLikelyOpen = isMobileViewport.value && editableFocused.value && baseHeight - currentHeight > 120;
@@ -817,6 +836,7 @@ async function onUserCmd(cmd: string) {
   }
 
   .layout-root.keyboard-open .main {
+    overflow: hidden;
     padding-bottom: 12px;
   }
 
