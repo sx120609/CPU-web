@@ -192,7 +192,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onBeforeUnmount, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import MarkdownView from "@/components/forum/MarkdownView.vue";
 import RichTextEditor from "@/components/forum/RichTextEditor.vue";
 import { boardApi, type Board } from "@/api/board";
@@ -406,11 +406,19 @@ async function confirmSubmit() {
   submitting.value = true;
   try {
     if (editingId.value) {
-      await topicApi.update(editingId.value, {
+      const r = await topicApi.update(editingId.value, {
         title: form.title,
         content: form.content,
         metadata,
       });
+      if (r.submissionResult?.status === "blocked_ai") {
+        blockedTopicId.value = editingId.value;
+        blockedReviewInfo.reason = r.submissionResult.reason || "检测到较高风险内容";
+        blockedReviewInfo.riskScore = r.submissionResult.riskScore ?? null;
+        reviewBlockedOpen.value = true;
+        ElMessage.warning("修改后的内容未通过 AI 审核");
+        return;
+      }
       clearDrafts();
       ElMessage.success("已保存");
       router.replace(`/forum/topic/${editingId.value}`);
@@ -441,6 +449,8 @@ async function confirmSubmit() {
 
 async function requestManualReview() {
   if (!blockedTopicId.value) return;
+  const confirmed = await openManualReviewConfirm();
+  if (!confirmed) return;
   requestingManualReview.value = true;
   try {
     await topicApi.requestManualReview(blockedTopicId.value);
@@ -452,6 +462,43 @@ async function requestManualReview() {
   } finally {
     requestingManualReview.value = false;
   }
+}
+
+async function openManualReviewConfirm() {
+  let countdown = 3;
+  let timer = 0;
+  try {
+    const prompt = ElMessageBox.confirm(
+      `你将提交人工审核申请。\n审核期间不能继续投递新稿件。\n\n请阅读确认（${countdown}s）`,
+      "提交人工审核前确认",
+      {
+        type: "warning",
+        confirmButtonText: `我已知晓（${countdown}s）`,
+        cancelButtonText: "返回修改",
+        autofocus: false,
+        beforeClose: (action, instance, done) => {
+          if (action !== "confirm" || countdown <= 0) {
+            window.clearInterval(timer);
+            done();
+            return;
+          }
+        },
+        callback: () => window.clearInterval(timer),
+      }
+    );
+    timer = window.setInterval(() => {
+      countdown -= 1;
+      const btn = document.querySelector<HTMLElement>(".el-message-box__btns .el-button--primary span");
+      if (btn) btn.textContent = countdown > 0 ? `我已知晓（${countdown}s）` : "我已知晓";
+      if (countdown <= 0) window.clearInterval(timer);
+    }, 1000);
+    await prompt;
+  } catch {
+    window.clearInterval(timer);
+    return false;
+  }
+  window.clearInterval(timer);
+  return true;
 }
 </script>
 

@@ -44,14 +44,15 @@ export const topicApi = {
   replies: (id: number) => request.get<Reply[]>(`/topics/${id}/replies`),
   create: (payload: { boardSlug: string; title: string; content: string; metadata?: any; tags?: string[] }) =>
     request.post<Topic & { submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string } }>("/topics", payload),
-  update: (id: number, payload: Partial<Topic>) => request.patch<Topic>(`/topics/${id}`, payload),
+  update: (id: number, payload: Partial<Topic>) =>
+    request.patch<Topic & { submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string } }>(`/topics/${id}`, payload),
   remove: (id: number) => request.delete<any>(`/topics/${id}`),
   requestManualReview: (id: number) => request.post<{ ok: true }>(`/topics/${id}/request-manual-review`),
 };
 
 export const replyApi = {
   create: (payload: { topicId: number; content: string; parentReplyId?: number }) =>
-    request.post<Reply>("/replies", payload),
+    request.post<Reply & { blocked?: boolean; submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string } }>("/replies", payload),
   remove: (id: number) => request.delete<any>(`/replies/${id}`),
 };
 

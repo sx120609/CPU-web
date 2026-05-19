@@ -16,6 +16,7 @@ import {
   type FeatureKey,
 } from "../../services/siteSettings";
 import { refreshTopicSubmissionLock } from "../../services/topicAiReview";
+import { notifyManualReviewDecision } from "../../services/topicAiReview";
 
 export const adminRouter = Router();
 
@@ -81,6 +82,7 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
           id: true, username: true, nickname: true, email: true, avatar: true,
           college: true, enrollYear: true, role: true, studentSso: true, status: true,
           postCount: true, replyCount: true, reputation: true,
+          aiReviewWhitelisted: true,
           lastSeenAt: true, lastLoginAt: true, lastLoginClient: true, usedIosClient: true, usedAndroidClient: true,
           createdAt: true,
         },
@@ -357,6 +359,15 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
       if (req.body.aiReviewStatus === "approved_manual" && u.hidden === false) {
         await prisma.user.update({ where: { id: u.authorId }, data: { postCount: { increment: 1 } } }).catch(() => {});
         await prisma.board.update({ where: { id: u.boardId }, data: { topicCount: { increment: 1 } } }).catch(() => {});
+      }
+      if (req.body.aiReviewStatus === "approved_manual" || req.body.aiReviewStatus === "rejected_manual") {
+        await notifyManualReviewDecision({
+          topicId: u.id,
+          userId: u.authorId,
+          approved: req.body.aiReviewStatus === "approved_manual",
+          title: u.title,
+          note: req.body.manualReviewNote ?? "",
+        });
       }
     }
     ok(res, { id: u.id, hidden: u.hidden, pinned: u.pinned, locked: u.locked, boardId: u.boardId });

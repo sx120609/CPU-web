@@ -7,6 +7,11 @@ import { detectLoginClient } from "../utils/loginClient";
 
 export const messageRouter = Router();
 
+function safeJson(value: string | null | undefined) {
+  if (!value) return {};
+  try { return JSON.parse(value); } catch { return {}; }
+}
+
 function notificationVisibleToClient(notification: { targetClient?: string | null }, client: string) {
   if (!notification.targetClient || notification.targetClient === "all") return true;
   if (notification.targetClient === "ios") return client === "ios";
@@ -36,6 +41,7 @@ messageRouter.get("/", async (req, res, next) => {
     reads.forEach((r) => readSet.set(r.notificationId, r.readAt));
     ok(res, list.filter((n) => notificationVisibleToClient(n, client)).map((n) => ({
       ...n,
+      payload: safeJson((n as any).payload),
       readAt: n.userId === null ? readSet.get(n.id) ?? null : n.readAt,
     })));
   } catch (e) { next(e); }
@@ -55,11 +61,11 @@ messageRouter.post("/:id/read", async (req, res, next) => {
         create: { userId, notificationId: id },
         update: { readAt: new Date() },
       });
-      return ok(res, { ...n, readAt: r.readAt });
+      return ok(res, { ...n, payload: safeJson((n as any).payload), readAt: r.readAt });
     }
     if (n.userId !== userId) throw Errors.forbidden();
     const u = await prisma.notification.update({ where: { id }, data: { readAt: new Date() } });
-    ok(res, u);
+    ok(res, { ...u, payload: safeJson((u as any).payload) });
   } catch (e) { next(e); }
 });
 

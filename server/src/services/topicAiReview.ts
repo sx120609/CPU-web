@@ -294,6 +294,7 @@ export async function requestManualTopicReview(topicId: number, userId: number) 
       data: { topicSubmissionLocked: true },
     }),
   ]);
+  await createAiReviewNotifications(topicId, userId);
 }
 
 export async function refreshTopicSubmissionLock(userId: number) {
@@ -306,5 +307,106 @@ export async function refreshTopicSubmissionLock(userId: number) {
   await prisma.user.update({
     where: { id: userId },
     data: { topicSubmissionLocked: pending > 0 },
+  }).catch(() => {});
+}
+
+export async function notifyTopicAiBlocked(input: {
+  topicId: number;
+  userId: number;
+  title: string;
+  reason: string;
+  riskScore: number;
+}) {
+  await prisma.notification.create({
+    data: {
+      userId: input.userId,
+      category: "system",
+      level: "warning",
+      title: "稿件未通过 AI 初审",
+      content: `${input.title}：${input.reason}`,
+      source: "AI 审核",
+      payload: JSON.stringify({
+        type: "topic-ai-blocked",
+        topicId: input.topicId,
+        title: input.title,
+        reason: input.reason,
+        riskScore: input.riskScore,
+      }),
+    },
+  }).catch(() => {});
+}
+
+async function createAiReviewNotifications(topicId: number, userId: number) {
+  const topic = await prisma.topic.findUnique({
+    where: { id: topicId },
+    select: { id: true, title: true, aiReviewReason: true, aiRiskScore: true },
+  });
+  if (!topic) return;
+  await prisma.notification.create({
+    data: {
+      userId,
+      category: "system",
+      level: "normal",
+      title: "已提交人工审核申请",
+      content: "审核期间不能继续投递新稿件，请等待管理员处理。",
+      source: "AI 审核",
+      payload: JSON.stringify({
+        type: "topic-manual-review-pending",
+        topicId: topic.id,
+        title: topic.title,
+        reason: topic.aiReviewReason,
+        riskScore: topic.aiRiskScore,
+      }),
+    },
+  }).catch(() => {});
+
+  const reviewers = await prisma.user.findMany({
+    where: { role: { in: ["admin", "mod"] }, status: "active" },
+    select: { id: true },
+  });
+  if (!reviewers.length) return;
+  await prisma.notification.createMany({
+    data: reviewers.map((reviewer) => ({
+      userId: reviewer.id,
+      category: "system",
+      level: "strong",
+      title: "有新的稿件待人工审核",
+      content: topic.title,
+      source: "AI 审核",
+      payload: JSON.stringify({
+        type: "topic-manual-review-admin",
+        topicId: topic.id,
+        title: topic.title,
+        reason: topic.aiReviewReason,
+        riskScore: topic.aiRiskScore,
+      }),
+    })),
+  }).catch(() => {});
+}
+
+export async function notifyManualReviewDecision(input: {
+  topicId: number;
+  userId: number;
+  approved: boolean;
+  title: string;
+  note?: string | null;
+}) {
+  await prisma.notification.create({
+    data: {
+      userId: input.userId,
+      category: "system",
+      level: input.approved ? "normal" : "warning",
+      title: input.approved ? "你的稿件已通过人工审核" : "你的稿件未通过人工审核",
+      content: input.note?.trim() || input.title,
+      source: "站务审核",
+      link: input.approved ? `/forum/topic/${input.topicId}` : null,
+      payload: JSON.stringify({
+        type: "topic-manual-review-result",
+        topicId: input.topicId,
+        title: input.title,
+        approved: input.approved,
+        note: input.note || "",
+      }),
+    },
   }).catch(() => {});
 }

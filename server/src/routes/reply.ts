@@ -46,7 +46,15 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
         parentContent,
       });
       if (aiResult.status === "blocked_ai") {
-        throw Errors.forbidden(aiResult.reason || "回复内容未通过 AI 审核");
+        return ok(res, {
+          blocked: true,
+          submissionResult: {
+            status: "blocked_ai",
+            riskLevel: aiResult.riskLevel,
+            riskScore: aiResult.riskScore,
+            reason: aiResult.reason,
+          },
+        } as any);
       }
     }
 

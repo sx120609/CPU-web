@@ -385,6 +385,7 @@ model Notification {
   level     String    @default("normal") // strong / normal / weak
   title     String
   content   String
+  payload   String    @default("{}")
   link      String?   // 站内路由
   source    String?
   readAt    DateTime?

@@ -24,16 +24,14 @@
 
 <script setup lang="ts">
 import { ArrowRight } from "@element-plus/icons-vue";
-import { useRouter } from "vue-router";
 import { fmtRelative } from "@/utils/format";
 
-const emit = defineEmits<{ (e: "read", id: number): void }>();
-const router = useRouter();
+const emit = defineEmits<{ (e: "read", id: number): void; (e: "open", item: any): void }>();
 defineProps<{ list: any[] }>();
 
 function onClick(n: any) {
   if (!n.readAt) emit("read", n.id);
-  if (n.link) router.push(n.link);
+  emit("open", n);
 }
 
 function platformTag(targetClient?: string | null) {

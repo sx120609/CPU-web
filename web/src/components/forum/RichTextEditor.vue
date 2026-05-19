@@ -136,6 +136,11 @@ const draftHint = ref("");
 const hasSelectedImage = ref(false);
 const isMobileViewport = ref(false);
 const toolbarStickyOffset = ref(0);
+const touchScrollState = reactive({
+  active: false,
+  startY: 0,
+  startScrollTop: 0,
+});
 const toolbarState = reactive({
   bold: false,
   italic: false,
@@ -202,6 +207,9 @@ onMounted(async () => {
     window.addEventListener("resize", handleLayoutResize, { passive: true });
     window.visualViewport?.addEventListener("resize", handleLayoutResize);
   }
+  editorRef.value?.addEventListener("touchstart", handleEditorTouchStart, { passive: true });
+  editorRef.value?.addEventListener("touchmove", handleEditorTouchMove, { passive: false });
+  editorRef.value?.addEventListener("touchend", handleEditorTouchEnd, { passive: true });
 });
 
 onBeforeUnmount(() => {
@@ -218,6 +226,9 @@ onBeforeUnmount(() => {
     window.removeEventListener("resize", handleLayoutResize);
     window.visualViewport?.removeEventListener("resize", handleLayoutResize);
   }
+  editorRef.value?.removeEventListener("touchstart", handleEditorTouchStart);
+  editorRef.value?.removeEventListener("touchmove", handleEditorTouchMove);
+  editorRef.value?.removeEventListener("touchend", handleEditorTouchEnd);
   window.clearTimeout(draftTimer);
 });
 
@@ -252,6 +263,42 @@ function syncToolbarStickyOffset() {
   }
   const topbar = document.querySelector<HTMLElement>(".topbar");
   toolbarStickyOffset.value = topbar ? Math.ceil(topbar.getBoundingClientRect().height) : 0;
+}
+
+function handleEditorTouchStart(event: TouchEvent) {
+  if (!isMobileViewport.value || !editorRef.value) return;
+  const touch = event.touches[0];
+  if (!touch) return;
+  touchScrollState.active = true;
+  touchScrollState.startY = touch.clientY;
+  touchScrollState.startScrollTop = editorRef.value.scrollTop;
+}
+
+function handleEditorTouchMove(event: TouchEvent) {
+  if (!touchScrollState.active || !isMobileViewport.value || !editorRef.value) return;
+  const touch = event.touches[0];
+  if (!touch) return;
+  const currentY = touch.clientY;
+  const deltaY = touchScrollState.startY - currentY;
+  const nextScrollTop = touchScrollState.startScrollTop + deltaY;
+  const maxScrollTop = editorRef.value.scrollHeight - editorRef.value.clientHeight;
+  const hasInternalScroll = maxScrollTop > 0;
+  if (!hasInternalScroll) return;
+
+  const movingDown = deltaY < 0;
+  const movingUp = deltaY > 0;
+  const atTop = editorRef.value.scrollTop <= 0;
+  const atBottom = Math.ceil(editorRef.value.scrollTop) >= maxScrollTop;
+  const shouldConsume = (movingUp && !atBottom) || (movingDown && !atTop) || (nextScrollTop > 0 && nextScrollTop < maxScrollTop);
+  if (shouldConsume) {
+    event.stopPropagation();
+    event.preventDefault();
+    editorRef.value.scrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop));
+  }
+}
+
+function handleEditorTouchEnd() {
+  touchScrollState.active = false;
 }
 
 watch(() => props.modelValue, (value) => {
@@ -869,6 +916,7 @@ defineExpose({ clearDraft, isContentEmpty });
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   padding: 16px;
   color: #1f2937;
   font-size: 15px;

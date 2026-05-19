@@ -119,6 +119,23 @@
       </div>
     </section>
 
+    <el-dialog
+      v-model="replyReviewBlockedOpen"
+      title="回复未通过 AI 初审"
+      width="520px"
+      append-to-body
+    >
+      <div class="review-blocked">
+        <p>这条回复暂未发送。</p>
+        <p v-if="blockedReplyInfo.reason">原因：{{ blockedReplyInfo.reason }}</p>
+        <p v-if="blockedReplyInfo.riskScore !== null">风险分：{{ blockedReplyInfo.riskScore }}</p>
+        <p class="cpu-muted">你可以修改后重试。</p>
+      </div>
+      <template #footer>
+        <el-button @click="replyReviewBlockedOpen = false">返回修改</el-button>
+      </template>
+    </el-dialog>
+
     <div v-else-if="topic.locked" class="locked-tip cpu-card">🔒 该帖已锁定，无法回复</div>
     <div v-else class="login-tip cpu-card">
       <router-link to="/login">登录</router-link> 或 <router-link to="/register">注册</router-link> 后参与回复
@@ -127,7 +144,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from "vue";
+import { ref, reactive, computed, onMounted, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowLeft, Star, ChatLineRound, Link } from "@element-plus/icons-vue";
@@ -147,6 +164,11 @@ const replies = ref<Reply[]>([]);
 const loading = ref(false);
 const replying = ref(false);
 const replyText = ref("");
+const replyReviewBlockedOpen = ref(false);
+const blockedReplyInfo = reactive<{ reason: string; riskScore: number | null }>({
+  reason: "",
+  riskScore: null,
+});
 const liked = ref(false);
 const repliesEl = ref<HTMLElement | null>(null);
 const replyEditorRef = ref<InstanceType<typeof RichTextEditor> | null>(null);
@@ -220,6 +242,13 @@ async function submitReply() {
   replying.value = true;
   try {
     const r = await replyApi.create({ topicId: topic.value!.id, content: replyText.value });
+    if ((r as any).submissionResult?.status === "blocked_ai") {
+      blockedReplyInfo.reason = (r as any).submissionResult.reason || "检测到较高风险内容";
+      blockedReplyInfo.riskScore = (r as any).submissionResult.riskScore ?? null;
+      replyReviewBlockedOpen.value = true;
+      ElMessage.warning("回复未通过 AI 审核");
+      return;
+    }
     replies.value.push({ ...r, _liked: false } as any);
     replyText.value = "";
     replyEditorRef.value?.clearDraft();
@@ -434,6 +463,16 @@ async function onDelete() {
   font-size: 14px;
   padding: 24px;
   a { color: var(--cpu-primary); margin: 0 4px; }
+}
+
+.review-blocked p {
+  margin: 0 0 10px;
+  line-height: 1.7;
+  color: #374151;
+}
+
+.review-blocked p:last-child {
+  margin-bottom: 0;
 }
 
 .cpu-section-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }

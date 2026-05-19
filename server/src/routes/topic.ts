@@ -13,6 +13,7 @@ import {
 } from "../services/siteSettings";
 import {
   ensureUserCanSubmitTopic,
+  notifyTopicAiBlocked,
   refreshTopicSubmissionLock,
   requestManualTopicReview,
   reviewTopicContent,
@@ -72,6 +73,8 @@ topicRouter.get("/", async (req, res, next) => {
 topicRouter.get("/:id", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    const requesterId = req.user?.userId ?? null;
+    const requesterRole = req.user?.role ?? "";
     const topic = await prisma.topic.findUnique({
       where: { id },
       include: {
@@ -79,10 +82,12 @@ topicRouter.get("/:id", async (req, res, next) => {
         board: { select: { id: true, slug: true, name: true, type: true, readOnly: true } },
       },
     });
-    if (!topic || topic.hidden) throw Errors.notFound();
+    if (!topic) throw Errors.notFound();
+    const canSeeHidden = Boolean(requesterId && (requesterId === topic.authorId || requesterRole === "admin" || requesterRole === "mod"));
+    if (topic.hidden && !canSeeHidden) throw Errors.notFound();
     if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
     // 浏览数 +1（异步，失败也无所谓）
-    prisma.topic.update({ where: { id }, data: { viewCount: { increment: 1 } } }).catch(() => {});
+    if (!topic.hidden) prisma.topic.update({ where: { id }, data: { viewCount: { increment: 1 } } }).catch(() => {});
     ok(res, decodeTopic(topic));
   } catch (e) { next(e); }
 });
@@ -208,6 +213,14 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     if (!hiddenByAi) {
       await prisma.user.update({ where: { id: userId }, data: { postCount: { increment: 1 } } });
       await prisma.board.update({ where: { id: board.id }, data: { topicCount: { increment: 1 } } });
+    } else if (aiResult) {
+      await notifyTopicAiBlocked({
+        topicId: topic.id,
+        userId,
+        title,
+        reason: aiResult.reason,
+        riskScore: aiResult.riskScore,
+      });
     }
 
     ok(res, {
@@ -274,7 +287,15 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
           metadata: typeof body.metadata === "object" && body.metadata ? body.metadata : safeJson(t.metadata),
         });
         if (aiResult.status === "blocked_ai") {
-          throw Errors.forbidden(aiResult.reason || "修改后的内容未通过 AI 审核");
+          return ok(res, {
+            ...decodeTopic(t),
+            submissionResult: {
+              status: "blocked_ai",
+              riskLevel: aiResult.riskLevel,
+              riskScore: aiResult.riskScore,
+              reason: aiResult.reason,
+            },
+          });
         }
         data.aiReviewStatus = "auto_passed";
         data.aiRiskLevel = aiResult.riskLevel;
@@ -287,7 +308,10 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     }
 
     const u = await prisma.topic.update({ where: { id }, data });
-    ok(res, decodeTopic(u));
+    ok(res, {
+      ...decodeTopic(u),
+      submissionResult: { status: "published" },
+    });
   } catch (e) { next(e); }
 });
 
