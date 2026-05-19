@@ -34,7 +34,7 @@
         type="button"
         class="size-btn"
         :class="{ active: imageSize === item.value }"
-        :title="selectedImage ? `设为${item.label}图` : `插入${item.label}`"
+        :title="hasSelectedImage ? `设为${item.label}图` : `插入${item.label}`"
         @click="applyImageSize(item.value)"
       >
         {{ item.label }}
@@ -110,6 +110,7 @@ const contentImageInputRef = ref<HTMLInputElement | null>(null);
 const imageUploading = ref(false);
 const imageSize = ref<ImageSize>("large");
 const draftHint = ref("");
+const hasSelectedImage = ref(false);
 const toolbarState = reactive({
   bold: false,
   italic: false,
@@ -151,7 +152,7 @@ watch(() => props.modelValue, (value) => {
     return;
   }
   if (!editorRef.value) return;
-  if (normalizeEditorHtml(editorRef.value.innerHTML) === value) return;
+  if (serializeEditorHtml(editorRef.value) === value) return;
   hydrateEditor(value);
 });
 
@@ -162,6 +163,7 @@ watch(() => props.draftKey, () => {
 function hydrateEditor(value: string) {
   if (!editorRef.value) return;
   editorRef.value.innerHTML = contentLooksLikeHtml(value) ? value : renderMarkdown(value);
+  clearSelectedImage();
   syncEditorContent();
 }
 
@@ -172,7 +174,7 @@ function contentLooksLikeHtml(value: string) {
 function syncEditorContent() {
   if (!editorRef.value) return;
   normalizeAlignmentAttributes(editorRef.value);
-  const value = normalizeEditorHtml(editorRef.value.innerHTML);
+  const value = serializeEditorHtml(editorRef.value);
   internalUpdate = true;
   emit("update:modelValue", value);
   scheduleDraftSave(value);
@@ -181,6 +183,7 @@ function syncEditorContent() {
 
 function normalizeEditorHtml(value: string) {
   return value
+    .replace(/\sdata-editor-selected="true"/g, "")
     .replace(/<div><br><\/div>/g, "<p><br></p>")
     .replace(/<div>/g, "<p>")
     .replace(/<\/div>/g, "</p>")
@@ -204,9 +207,9 @@ function handleEditorSelectionChange() {
 
 function handleEditorClick(event: MouseEvent) {
   if (event.target instanceof HTMLImageElement) {
-    selectedImage = event.target;
+    selectImage(event.target);
   } else {
-    selectedImage = null;
+    clearSelectedImage();
   }
   rememberSelection();
   updateToolbarState();
@@ -222,7 +225,7 @@ function updateToolbarState() {
   toolbarState.ol = document.queryCommandState("insertOrderedList");
   toolbarState.block = normalizeBlockName(String(document.queryCommandValue("formatBlock") || "p"));
   toolbarState.align = readAlignment(node);
-  const activeImage = selectedImage && editorRef.value.contains(selectedImage) ? selectedImage : findImageNearSelection(node);
+  const activeImage = getSelectedImage();
   if (activeImage) imageSize.value = readImageSize(activeImage);
 }
 
@@ -292,8 +295,9 @@ function pickContentImage() {
 
 function applyImageSize(size: ImageSize) {
   imageSize.value = size;
-  if (!selectedImage || !editorRef.value?.contains(selectedImage)) return;
-  selectedImage.setAttribute("data-size", size);
+  const image = getSelectedImage();
+  if (!image) return;
+  image.setAttribute("data-size", size);
   syncEditorContent();
   rememberSelection();
 }
@@ -355,8 +359,9 @@ function insertHtmlAtCursor(html: string) {
 
 function getAlignmentTargets() {
   if (!editorRef.value) return [];
-  if (selectedImage && editorRef.value.contains(selectedImage)) {
-    return [selectedImage];
+  const image = getSelectedImage();
+  if (image) {
+    return [image];
   }
   const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0) return [];
@@ -423,10 +428,41 @@ function readImageSize(img: HTMLImageElement): ImageSize {
   return "large";
 }
 
-function findImageNearSelection(node: Node) {
-  const element = node instanceof HTMLElement ? node : node.parentNode instanceof HTMLElement ? node.parentNode : null;
-  if (element instanceof HTMLImageElement) return element;
-  return element?.closest("p")?.querySelector("img") ?? null;
+function selectImage(image: HTMLImageElement) {
+  if (!editorRef.value?.contains(image)) return;
+  editorRef.value.querySelectorAll("img[data-editor-selected]").forEach((img) => {
+    img.removeAttribute("data-editor-selected");
+  });
+  selectedImage = image;
+  selectedImage.setAttribute("data-editor-selected", "true");
+  hasSelectedImage.value = true;
+  imageSize.value = readImageSize(selectedImage);
+  toolbarState.align = readAlignment(selectedImage);
+}
+
+function clearSelectedImage() {
+  editorRef.value?.querySelectorAll("img[data-editor-selected]").forEach((img) => {
+    img.removeAttribute("data-editor-selected");
+  });
+  selectedImage = null;
+  hasSelectedImage.value = false;
+}
+
+function getSelectedImage() {
+  if (selectedImage && editorRef.value?.contains(selectedImage)) return selectedImage;
+  const image = editorRef.value?.querySelector<HTMLImageElement>("img[data-editor-selected='true']") ?? null;
+  selectedImage = image;
+  hasSelectedImage.value = Boolean(image);
+  return image;
+}
+
+function serializeEditorHtml(root: HTMLElement) {
+  const clone = root.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll("[data-editor-selected]").forEach((node) => {
+    node.removeAttribute("data-editor-selected");
+  });
+  normalizeAlignmentAttributes(clone);
+  return normalizeEditorHtml(clone.innerHTML);
 }
 
 function normalizeAlignmentAttributes(root: HTMLElement) {
@@ -666,6 +702,11 @@ defineExpose({ clearDraft, isContentEmpty });
   margin: 8px 0;
   padding: 4px;
   vertical-align: top;
+}
+
+.editor-surface :deep(img[data-editor-selected="true"]) {
+  border-color: #168776;
+  box-shadow: 0 0 0 3px rgba(22, 135, 118, 0.16);
 }
 
 .editor-surface :deep(img[data-align="center"]) {
