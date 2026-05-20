@@ -90,6 +90,16 @@
             <el-table :data="rows" stripe size="default">
               <el-table-column v-if="!isMobile" prop="courseCode" label="课程代码" width="110" />
               <el-table-column prop="courseName" label="课程名称" min-width="200" />
+              <el-table-column label="总成绩" width="88" align="right">
+                <template #default="{ row }">
+                  <span :style="{ color: scoreColor(row.scoreNum), fontWeight: 600 }">{{ row.score || "—" }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="绩点" width="70" align="right">
+                <template #default="{ row }">
+                  <span :style="{ color: gpaColor(row.gpa) }">{{ row.gpa?.toFixed(1) ?? "—" }}</span>
+                </template>
+              </el-table-column>
               <el-table-column v-if="!isMobile" prop="credits" label="学分" width="70" align="right" />
               <el-table-column v-if="!isMobile" prop="hours" label="学时" width="70" align="right" />
               <el-table-column label="平时" width="60" align="right">
@@ -100,16 +110,6 @@
               </el-table-column>
               <el-table-column label="期末" width="60" align="right">
                 <template #default="{ row }">{{ row.final || "—" }}</template>
-              </el-table-column>
-              <el-table-column label="总成绩" width="80" align="right">
-                <template #default="{ row }">
-                  <span :style="{ color: scoreColor(row.scoreNum), fontWeight: 600 }">{{ row.score }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column label="绩点" width="70" align="right">
-                <template #default="{ row }">
-                  <span :style="{ color: gpaColor(row.gpa) }">{{ row.gpa?.toFixed(1) ?? "—" }}</span>
-                </template>
               </el-table-column>
               <el-table-column label="性质" width="80">
                 <template #default="{ row }">
@@ -246,6 +246,9 @@ const groupedBySem = computed(() => {
   const semesters = Array.from(new Set(list.map((g) => g.semester))).sort().reverse();
   for (const s of semesters) m[s] = [];
   for (const g of list) (m[g.semester || "未知学期"] ??= []).push(g);
+  for (const s of Object.keys(m)) {
+    m[s] = sortRowsByPublishedScore(m[s]);
+  }
   return m;
 });
 
@@ -269,6 +272,17 @@ const avgGpa = computed(() => {
 const totalCredits = computed(() => {
   return semCredits(filteredList.value);
 });
+
+function hasPublishedScore(row: GradeRow) {
+  return Boolean(String(row.score ?? "").trim());
+}
+
+function sortRowsByPublishedScore(rows: GradeRow[]) {
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((a, b) => Number(hasPublishedScore(b.row)) - Number(hasPublishedScore(a.row)) || a.index - b.index)
+    .map(({ row }) => row);
+}
 
 function scoreColor(n: number | null) {
   if (n === null) return "#1f2937";
