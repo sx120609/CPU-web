@@ -60,7 +60,7 @@
       <div v-if="activeNotice" class="notice-detail">
         <div class="notice-head">
           <h3>{{ activeNotice.title }}</h3>
-          <span>{{ activeNotice.source || "校内" }} · {{ activeNotice.createdAt }}</span>
+          <span>{{ activeNotice.source || "校内" }} · {{ formatNoticeTime(activeNotice.createdAt) }}</span>
         </div>
         <p class="notice-content">{{ activeNotice.content }}</p>
         <div v-if="reviewStateText" class="review-state" :class="{ done: !canReviewActiveNotice }">
@@ -78,24 +78,26 @@
         </div>
       </div>
       <template #footer>
-        <el-button v-if="activeNotice?.link" @click="goNoticeLink">前往查看</el-button>
-        <el-button
-          v-if="canReviewActiveNotice"
-          type="success"
-          :loading="reviewing"
-          @click="approveFromNotice"
-        >
-          {{ reviewActionLabel }}通过
-        </el-button>
-        <el-button
-          v-if="canReviewActiveNotice"
-          type="warning"
-          :loading="reviewing"
-          @click="rejectFromNotice"
-        >
-          {{ reviewActionLabel }}驳回
-        </el-button>
-        <el-button @click="detailOpen = false">关闭</el-button>
+        <div class="notice-actions">
+          <el-button v-if="activeNotice?.link" @click="goNoticeLink">前往查看</el-button>
+          <el-button
+            v-if="canReviewActiveNotice"
+            type="success"
+            :loading="reviewing"
+            @click="approveFromNotice"
+          >
+            {{ reviewActionLabel }}通过
+          </el-button>
+          <el-button
+            v-if="canReviewActiveNotice"
+            type="warning"
+            :loading="reviewing"
+            @click="rejectFromNotice"
+          >
+            {{ reviewActionLabel }}驳回
+          </el-button>
+          <el-button @click="detailOpen = false">关闭</el-button>
+        </div>
       </template>
     </el-dialog>
   </div>
@@ -110,6 +112,7 @@ import { messageApi } from "@/api/message";
 import { useMessageStore } from "@/stores/message";
 import { useAuthStore } from "@/stores/auth";
 import { adminApi } from "@/api/admin";
+import { fmtDate } from "@/utils/format";
 
 const route = useRoute();
 const router = useRouter();
@@ -266,6 +269,10 @@ function reviewLabel(status?: string) {
   if (status === "auto_passed") return "自动通过";
   return "未审核";
 }
+
+function formatNoticeTime(value?: string) {
+  return fmtDate(value, "YYYY-MM-DD HH:mm");
+}
 </script>
 
 <style scoped>
@@ -295,8 +302,14 @@ function reviewLabel(status?: string) {
   font-size: 13px;
 }
 .notice-detail { display: flex; flex-direction: column; gap: 12px; }
+.notice-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .notice-head h3 { margin: 0; font-size: 18px; color: #1f2937; }
-.notice-head span { font-size: 12px; color: #94a3b8; }
+.notice-head span { font-size: 12px; color: #94a3b8; line-height: 1.5; word-break: break-word; }
 .notice-content { margin: 0; color: #374151; line-height: 1.75; white-space: pre-wrap; }
 .review-state { font-size: 13px; color: #166534; background: #ecfdf5; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 12px; }
 .review-state.done { color: #6b7280; background: #f8fafc; border-color: #e2e8f0; }
@@ -376,12 +389,17 @@ function reviewLabel(status?: string) {
     display: none;
   }
 
+  .messages-tabs :deep(.el-tabs__nav-scroll) {
+    padding: 0 0 2px;
+  }
+
   .messages-tabs :deep(.el-tabs__nav) {
     float: none;
     width: max-content;
     min-width: max-content;
     white-space: nowrap;
     gap: 8px;
+    padding-inline: 4px;
     padding-right: 4px;
   }
 
@@ -448,17 +466,31 @@ function reviewLabel(status?: string) {
     margin-top: 4vh;
   }
 
+  :deep(.notice-dialog .el-dialog) {
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  :deep(.notice-dialog .el-dialog__header) {
+    padding: 16px 16px 8px;
+    margin-right: 0;
+  }
+
   :deep(.notice-dialog .el-dialog__body) {
-    padding-top: 10px;
+    padding: 10px 16px 12px;
   }
 
   :deep(.notice-dialog .el-dialog__footer) {
+    padding: 0 16px 16px;
+  }
+
+  .notice-actions {
     display: grid;
     grid-template-columns: 1fr;
     gap: 8px;
   }
 
-  :deep(.notice-dialog .el-dialog__footer .el-button) {
+  .notice-actions :deep(.el-button) {
     width: 100%;
     margin-left: 0;
   }

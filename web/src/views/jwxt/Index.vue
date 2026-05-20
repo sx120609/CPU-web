@@ -591,12 +591,13 @@ async function onProbe() {
 
   .jwxt-tabs :deep(.el-tabs__header) {
     margin-bottom: 10px;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .jwxt-tabs :deep(.el-tabs__nav-wrap) {
     height: 40px;
     max-height: 40px;
+    padding: 0 4px 2px;
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none;
@@ -618,6 +619,7 @@ async function onProbe() {
   .jwxt-tabs :deep(.el-tabs__nav-scroll) {
     height: 40px;
     max-height: 40px;
+    padding: 0 0 2px;
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none;
@@ -637,6 +639,7 @@ async function onProbe() {
     min-width: max-content;
     white-space: nowrap;
     gap: 8px;
+    padding-inline: 4px;
   }
 
   .jwxt-tabs :deep(.el-tabs__item) {
