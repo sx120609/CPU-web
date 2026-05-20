@@ -356,10 +356,11 @@ function reviewLabel(status?: string) {
 
   .messages-tabs :deep(.el-tabs__header) {
     margin-bottom: 12px;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .messages-tabs :deep(.el-tabs__nav-wrap) {
+    padding: 0 4px 2px;
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none;
@@ -381,6 +382,7 @@ function reviewLabel(status?: string) {
     min-width: max-content;
     white-space: nowrap;
     gap: 8px;
+    padding-right: 4px;
   }
 
   .messages-tabs :deep(.el-tabs__item) {
