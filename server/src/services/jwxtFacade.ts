@@ -13,6 +13,7 @@ import {
   parseCalendar,
   parseExams,
   parseGrades,
+  parseMidtermGrades,
   parseProgress,
   parsePyfa,
   parseSchedule,
@@ -52,6 +53,25 @@ export async function getGrades(token: string, args: { semester?: string } = {})
     kcxz: "",
     kcmc: "",
   }));
+}
+
+export async function getMidtermGrades(token: string, args: { semester?: string } = {}) {
+  let semesters = [] as ReturnType<typeof parseGrades>["semesters"];
+  try {
+    semesters = parseGrades(
+      await jwxtFetchHtml(token, "/zgykdx/kscj/qzcjcx_query?Ves632DSdyV=NEW_XSD_CJGL")
+    ).semesters;
+  } catch {
+    // 查询页失败时继续用列表结果兜底。
+  }
+
+  const parsed = parseMidtermGrades(await jwxtPostForm(token, "/zgykdx/kscj/qzcjcx_list", {
+    kksj: args.semester ?? "",
+    kcxz: "",
+    kcmc: "",
+    xsfs: "all",
+  }));
+  return parsed.semesters.length ? parsed : { ...parsed, semesters };
 }
 
 export async function getExams(token: string, args: { semester?: string; type?: string } = {}) {

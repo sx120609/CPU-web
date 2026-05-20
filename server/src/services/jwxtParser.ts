@@ -438,6 +438,71 @@ export function parseGrades(html: string): GradesResult {
   return normalizeGradesResult({ semesters, list });
 }
 
+export function parseMidtermGrades(html: string): GradesResult {
+  const $ = cheerio.load(html);
+  let semesters = parseSelectOptions($, "kksj");
+  const list: GradeRow[] = [];
+
+  $("table").each((_, tbl) => {
+    const $tbl = $(tbl);
+    const headers = $tbl.find("tr").first().find("th,td").map((_, c) => $(c).text().trim()).get();
+    if (!headers.some((h) => /课程名称/.test(h))) return;
+    if (!headers.some((h) => /期中成绩|期中/.test(h))) return;
+
+    const find = (...kws: (string | RegExp)[]) =>
+      headers.findIndex((h) => kws.some((k) => typeof k === "string" ? h.includes(k) : k.test(h)));
+    const idxSem = find("开课学期", "学期");
+    const idxCode = find("课程编号", "课程代码");
+    const idxName = find("课程名称");
+    const idxScore = find("总成绩", /^成绩$/);
+    const idxUsual = find("平时成绩", "平时");
+    const idxMid = find("期中成绩", /^期中$/);
+    const idxFinal = find("期末成绩", "期末");
+    const idxCredit = find("学分");
+    const idxHours = find("总学时", "学时");
+    const idxAttr = find("课程属性", "课程性质");
+    const idxExam = find("考试性质", "考试类型");
+    const idxRemark = find("备注");
+
+    $tbl.find("tr").slice(1).each((_, tr) => {
+      const cells = $(tr).find("td").map((_, c) => $(c).text().replace(/ /g, " ").trim()).get();
+      if (!cells.length) return;
+      const courseName = idxName >= 0 ? cells[idxName] : "";
+      if (!courseName) return;
+      const score = idxScore >= 0 ? cells[idxScore] : "";
+      const scoreNum = parseFloat(score);
+      const credits = idxCredit >= 0 ? parseFloat(cells[idxCredit]) : NaN;
+      list.push({
+        semester: idxSem >= 0 ? cells[idxSem] : "",
+        courseCode: idxCode >= 0 ? cells[idxCode] : undefined,
+        courseName,
+        score,
+        scoreNum: Number.isFinite(scoreNum) ? scoreNum : null,
+        usual: idxUsual >= 0 ? cells[idxUsual] : undefined,
+        midterm: idxMid >= 0 ? cells[idxMid] : undefined,
+        final: idxFinal >= 0 ? cells[idxFinal] : undefined,
+        credits: Number.isFinite(credits) ? credits : undefined,
+        hours: idxHours >= 0 ? (parseFloat(cells[idxHours]) || undefined) : undefined,
+        gpa: score ? scoreToGpa(score) : undefined,
+        courseAttr: idxAttr >= 0 ? cells[idxAttr] : undefined,
+        examType: idxExam >= 0 ? cells[idxExam] : undefined,
+        remark: idxRemark >= 0 ? cells[idxRemark] : undefined,
+      });
+    });
+  });
+
+  if (!semesters.length) {
+    const semSet = new Set<string>();
+    for (const g of list) if (g.semester) semSet.add(g.semester);
+    semesters = Array.from(semSet)
+      .sort()
+      .reverse()
+      .map((value) => ({ value, label: value, current: false }));
+  }
+
+  return normalizeGradesResult({ semesters, list });
+}
+
 // ============ 考试 ============
 
 export interface ExamRow {

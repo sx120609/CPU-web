@@ -459,6 +459,7 @@ export async function jwxtDebugSnapshot(token: string): Promise<{ saved: string[
     { name: "main-frame", url: `${base}/zgykdx/framework/xsMain.jsp` },
     { name: "schedule", url: `${base}/zgykdx/xskb/xskb_list.do` },
     { name: "grades-query", url: `${base}/zgykdx/kscj/cjcx_query?Ves632DSdyV=NEW_XSD_CJGL` },
+    { name: "midterm-grades-query", url: `${base}/zgykdx/kscj/qzcjcx_query?Ves632DSdyV=NEW_XSD_CJGL` },
     { name: "exam-query", url: `${base}/zgykdx/xsks/xsksap_query?Ves632DSdyV=NEW_XSD_KSBM` },
     { name: "pyfa", url: `${base}/zgykdx/pyfa/pyfa_query?Ves632DSdyV=NEW_XSD_PYGL` },
     { name: "xywcqk", url: `${base}/zgykdx/xywcqk/cxxywcqk?Ves632DSdyV=NEW-XSD-XYWCQK` },
@@ -470,6 +471,7 @@ export async function jwxtDebugSnapshot(token: string): Promise<{ saved: string[
   // POST 类型的探针（成绩/考试需要提交查询表单才有列表）
   const postProbes = [
     { name: "grades-list", url: `${base}/zgykdx/kscj/cjcx_list`, body: { kksj: "", kcxz: "", kcmc: "" } },
+    { name: "midterm-grades-list", url: `${base}/zgykdx/kscj/qzcjcx_list`, body: { kksj: "", kcxz: "", kcmc: "", xsfs: "all" } },
     { name: "exam-list", url: `${base}/zgykdx/xsks/xsksap_list`, body: { xnxqid: "", xqlb: "" } },
   ];
   const saved: string[] = []; const errors: string[] = [];

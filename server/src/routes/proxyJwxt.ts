@@ -11,6 +11,7 @@ import {
   sessionStats,
   getSchedule,
   getGrades,
+  getMidtermGrades,
   getExams,
   getCalendar,
   getProgress,
@@ -85,6 +86,17 @@ proxyJwxtRouter.post(
     try {
       const { token, semester } = req.body;
       ok(res, { parsed: await getGrades(token, { semester }) });
+    } catch (e) { next(e); }
+  },
+);
+
+proxyJwxtRouter.post(
+  "/v1/midterm-grades",
+  validate(tokenSchema.extend({ semester: z.string().optional() })),
+  async (req, res, next) => {
+    try {
+      const { token, semester } = req.body;
+      ok(res, { parsed: await getMidtermGrades(token, { semester }) });
     } catch (e) { next(e); }
   },
 );

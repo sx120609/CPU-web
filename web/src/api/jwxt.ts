@@ -129,8 +129,12 @@ export const jwxtApi = {
     ),
   schedule: (params?: { semester?: string; week?: string }) =>
     inst.get<unknown, { html: string; parsed: any }>("/schedule", { params }),
-  grades: () => inst.get<unknown, { html: string; parsed: any }>("/grades"),
-  exams: () => inst.get<unknown, { html: string; parsed: any }>("/exams"),
+  grades: (params?: { semester?: string }) =>
+    inst.get<unknown, { html: string; parsed: any }>("/grades", { params }),
+  midtermGrades: (params?: { semester?: string }) =>
+    inst.get<unknown, { html: string; parsed: any }>("/midterm-grades", { params }),
+  exams: (params?: { semester?: string; type?: string }) =>
+    inst.get<unknown, { html: string; parsed: any }>("/exams", { params }),
   progress: () => inst.get<unknown, { parsed: any }>("/progress"),
   pyfa: () => inst.get<unknown, { parsed: any }>("/pyfa"),
   calendar: () => inst.get<unknown, { parsed: any }>("/calendar"),

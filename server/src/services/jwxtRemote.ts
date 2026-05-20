@@ -90,6 +90,11 @@ export function getGrades(token: string, args?: Parameters<typeof local.getGrade
     .then((r) => normalizeGradesResult(r.parsed)) as ReturnType<typeof local.getGrades>;
 }
 
+export function getMidtermGrades(token: string, args?: Parameters<typeof local.getMidtermGrades>[1]): ReturnType<typeof local.getMidtermGrades> {
+  return call<{ parsed: Awaited<ReturnType<typeof local.getMidtermGrades>> }>("/v1/midterm-grades", { token, ...(args ?? {}) })
+    .then((r) => normalizeGradesResult(r.parsed)) as ReturnType<typeof local.getMidtermGrades>;
+}
+
 export function getExams(token: string, args?: Parameters<typeof local.getExams>[1]): ReturnType<typeof local.getExams> {
   return call<{ parsed: Awaited<ReturnType<typeof local.getExams>> }>("/v1/exams", { token, ...(args ?? {}) })
     .then((r) => r.parsed) as ReturnType<typeof local.getExams>;

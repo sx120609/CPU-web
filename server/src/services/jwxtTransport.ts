@@ -17,6 +17,7 @@ export const getStatus = impl.getStatus;
 export const sessionStats = impl.sessionStats;
 export const getSchedule = impl.getSchedule;
 export const getGrades = impl.getGrades;
+export const getMidtermGrades = impl.getMidtermGrades;
 export const getExams = impl.getExams;
 export const getCalendar = impl.getCalendar;
 export const getProgress = impl.getProgress;

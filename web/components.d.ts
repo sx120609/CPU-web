@@ -53,6 +53,7 @@ declare module 'vue' {
     ManualReviewConfirmDialog: typeof import('./src/components/forum/ManualReviewConfirmDialog.vue')['default']
     MarkdownView: typeof import('./src/components/forum/MarkdownView.vue')['default']
     MessageList: typeof import('./src/components/messages/MessageList.vue')['default']
+    MidtermGradesPane: typeof import('./src/components/jwxt/MidtermGradesPane.vue')['default']
     OpenBrowserPromptDialog: typeof import('./src/components/install/OpenBrowserPromptDialog.vue')['default']
     PageHeader: typeof import('./src/components/common/PageHeader.vue')['default']
     ProgressPane: typeof import('./src/components/jwxt/ProgressPane.vue')['default']

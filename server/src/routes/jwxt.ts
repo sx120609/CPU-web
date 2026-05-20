@@ -14,6 +14,7 @@ import {
   getStatus,
   getSchedule,
   getGrades,
+  getMidtermGrades,
   getExams,
   getCalendar,
   getProgress,
@@ -617,6 +618,16 @@ jwxtRouter.get("/grades", async (req, res, next) => {
     const semester = req.query.semester ? String(req.query.semester) : "";
     const parsed = await getGrades(t, { semester });
     ok(res, { parsed });
+  } catch (e) { next(e); }
+});
+
+/** 期中成绩（GET 接口，内部 POST 查询） */
+jwxtRouter.get("/midterm-grades", async (req, res, next) => {
+  try {
+    const t = getToken(req);
+    if (!t) throw Errors.unauthorized("请先登录教务系统");
+    const semester = req.query.semester ? String(req.query.semester) : "";
+    ok(res, { parsed: await getMidtermGrades(t, { semester }) });
   } catch (e) { next(e); }
 });
 
