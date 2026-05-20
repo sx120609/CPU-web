@@ -15,6 +15,7 @@ import {
   removeTopicFromGlobalPins,
   setTopicGlobalPinned,
 } from "../services/siteSettings";
+import { refreshBoardTopicCounts, refreshUserPostCount } from "../services/forumStats";
 import {
   evaluateTopicEditSimilarity,
   ensureUserCanSubmitTopic,
@@ -400,7 +401,17 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
 
     const aiTags = Array.isArray(data.__aiTags) ? data.__aiTags : null;
     delete data.__aiTags;
-    const u = await prisma.topic.update({ where: { id }, data });
+    const hiddenChanged = typeof data.hidden === "boolean" && data.hidden !== t.hidden;
+    const u = await prisma.$transaction(async (tx) => {
+      const updated = await tx.topic.update({ where: { id }, data });
+      if (hiddenChanged) {
+        await Promise.all([
+          refreshBoardTopicCounts([updated.boardId], tx),
+          refreshUserPostCount(updated.authorId, tx),
+        ]);
+      }
+      return updated;
+    });
     if (wantsGlobalPinned !== undefined) {
       await setTopicGlobalPinned(id, wantsGlobalPinned);
     } else if (u.hidden) {
@@ -437,7 +448,15 @@ topicRouter.delete("/:id", authRequired, async (req, res, next) => {
     if (!isOwner && !isMod) throw Errors.forbidden();
     if (!isMod && !isBoardTypeEnabled(t.board?.type)) throw Errors.forbidden(featureClosedMessage(t.board?.type));
     if (isOwner) await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
-    await prisma.topic.update({ where: { id }, data: { hidden: true } });
+    await prisma.$transaction(async (tx) => {
+      await tx.topic.update({ where: { id }, data: { hidden: true } });
+      if (!t.hidden) {
+        await Promise.all([
+          refreshBoardTopicCounts([t.boardId], tx),
+          refreshUserPostCount(t.authorId, tx),
+        ]);
+      }
+    });
     await removeTopicFromGlobalPins(id);
     ok(res, { ok: true });
   } catch (e) { next(e); }

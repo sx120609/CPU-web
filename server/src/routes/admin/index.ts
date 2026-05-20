@@ -19,6 +19,7 @@ import {
   type FeatureKey,
 } from "../../services/siteSettings";
 import { refreshTopicSubmissionLock } from "../../services/topicAiReview";
+import { refreshBoardTopicCounts, refreshUserPostCount } from "../../services/forumStats";
 import {
   notifyManualReplyReviewDecision,
   notifyManualReviewDecision,
@@ -485,7 +486,21 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
         data.hidden = true;
       }
     }
-    const u = await prisma.topic.update({ where: { id }, data });
+    const hiddenChanged = typeof data.hidden === "boolean" && data.hidden !== existing.hidden;
+    const boardChanged = typeof data.boardId === "number" && data.boardId !== existing.boardId;
+    const u = await prisma.$transaction(async (tx) => {
+      const updated = await tx.topic.update({ where: { id }, data });
+      if (hiddenChanged || boardChanged) {
+        const refreshJobs: Promise<unknown>[] = [
+          refreshBoardTopicCounts([existing.boardId, updated.boardId], tx),
+        ];
+        if (hiddenChanged) {
+          refreshJobs.push(refreshUserPostCount(updated.authorId, tx));
+        }
+        await Promise.all(refreshJobs);
+      }
+      return updated;
+    });
     if (wantsGlobalPinned !== undefined) {
       await setTopicGlobalPinned(u.id, wantsGlobalPinned);
     } else if (u.hidden) {
@@ -493,10 +508,6 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
     }
     if (req.body.aiReviewStatus) {
       await refreshTopicSubmissionLock(u.authorId);
-      if (req.body.aiReviewStatus === "approved_manual" && existing.hidden === true && u.hidden === false) {
-        await prisma.user.update({ where: { id: u.authorId }, data: { postCount: { increment: 1 } } }).catch(() => {});
-        await prisma.board.update({ where: { id: u.boardId }, data: { topicCount: { increment: 1 } } }).catch(() => {});
-      }
       if (req.body.aiReviewStatus === "approved_manual" || req.body.aiReviewStatus === "rejected_manual") {
         await notifyManualReviewDecision({
           topicId: u.id,
@@ -527,20 +538,27 @@ adminRouter.delete("/topics/:id", modOrAbove, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const hard = req.query.hard === "1" || req.query.hard === "true";
-    const topic = await prisma.topic.findUnique({ where: { id }, select: { boardId: true, hidden: true } });
+    const topic = await prisma.topic.findUnique({ where: { id }, select: { boardId: true, hidden: true, authorId: true } });
     if (!topic) throw Errors.notFound("帖子不存在");
     if (hard) {
       await prisma.$transaction(async (tx) => {
         await tx.schoolFeedItem.deleteMany({ where: { topicId: id } });
         await tx.topic.delete({ where: { id } });
-        const count = await tx.topic.count({ where: { boardId: topic.boardId, hidden: false } });
-        await tx.board.update({ where: { id: topic.boardId }, data: { topicCount: count } });
+        await Promise.all([
+          refreshBoardTopicCounts([topic.boardId], tx),
+          refreshUserPostCount(topic.authorId, tx),
+        ]);
       });
     } else {
-      await prisma.topic.update({ where: { id }, data: { hidden: true } });
-      if (!topic.hidden) {
-        await prisma.board.update({ where: { id: topic.boardId }, data: { topicCount: { decrement: 1 } } }).catch(() => {});
-      }
+      await prisma.$transaction(async (tx) => {
+        await tx.topic.update({ where: { id }, data: { hidden: true } });
+        if (!topic.hidden) {
+          await Promise.all([
+            refreshBoardTopicCounts([topic.boardId], tx),
+            refreshUserPostCount(topic.authorId, tx),
+          ]);
+        }
+      });
     }
     await removeTopicFromGlobalPins(id);
     ok(res, { ok: true });
