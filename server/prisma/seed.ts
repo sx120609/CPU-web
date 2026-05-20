@@ -7,6 +7,7 @@
  */
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { COMMUNITY_BOARD_DEFS } from "../src/services/defaultBoardCatalog";
 
 const prisma = new PrismaClient();
 
@@ -131,25 +132,28 @@ async function main() {
   }
 
   // 综合讨论区
-  const general = await prisma.board.create({
-    data: { slug: "general", name: "灌水广场", description: "无主题闲聊，怎么舒服怎么来", icon: "💬", color: "#10b981", order: inc(), type: "normal" },
-  });
-  const life = await prisma.board.create({
-    data: { slug: "life", name: "校园生活", description: "食堂 / 校车 / 快递 / 周边吃喝玩乐", icon: "🍜", color: "#f59e0b", order: inc(), type: "normal" },
-  });
-  const freshman = await prisma.board.create({
-    data: { slug: "freshman", name: "新生入学", description: "学长学姐答疑 + 入学攻略", icon: "🌱", color: "#84cc16", order: inc(), type: "normal" },
-  });
-  // UGC 三件套
-  const question = await prisma.board.create({
-    data: { slug: "question", name: "提问广场", description: "提问、悬赏、求助", icon: "❓", color: "#3b82f6", order: inc(), type: "question" },
-  });
-  const market = await prisma.board.create({
-    data: { slug: "market", name: "二手市场", description: "教材 / 自行车 / 数码 / 个人闲置", icon: "🛒", color: "#ef4444", order: inc(), type: "market" },
-  });
-  const coursereview = await prisma.board.create({
-    data: { slug: "coursereview", name: "课程点评", description: "选课参考：难度·给分·收获·推荐度", icon: "📊", color: "#8b5cf6", order: inc(), type: "coursereview" },
-  });
+  const communityBoards = new Map<string, any>();
+  for (const board of COMMUNITY_BOARD_DEFS) {
+    const created = await prisma.board.create({
+      data: {
+        slug: board.slug,
+        name: board.name,
+        description: board.description,
+        icon: board.icon,
+        color: board.color,
+        order: inc(),
+        type: board.type,
+      },
+    });
+    communityBoards.set(board.slug, created);
+  }
+  const general = communityBoards.get("general");
+  const treehole = communityBoards.get("treehole");
+  const life = communityBoards.get("life");
+  const freshman = communityBoards.get("freshman");
+  const question = communityBoards.get("question");
+  const market = communityBoards.get("market");
+  const coursereview = communityBoards.get("coursereview");
 
   // ============ 课程（点评板块附属） ============
   console.log("📚 创建课程...");
@@ -257,12 +261,16 @@ async function main() {
   // 灌水广场
   const t1 = await makeTopic(general.id, alice.id,
     "[置顶] 欢迎来到药大垎坊！请先看版规",
-    "## 欢迎\n\n这里是民间药大学生论坛，**与学校官方无关**。\n\n- 请理性发言，禁止人身攻击\n- 二手交易请到二手市场板块\n- 提问请到提问广场\n- 课程点评请到课程点评板块\n",
+    "## 欢迎\n\n这里是民间药大学生论坛，**与学校官方无关**。\n\n- 请理性发言，禁止人身攻击\n- 想发碎碎念或心情记录可以去树洞\n- 二手交易请到二手市场板块\n- 提问请到提问广场\n- 课程点评请到课程点评板块\n",
     72, undefined, { pinned: true, likes: 18, replies: 4 });
   const t2 = await makeTopic(general.id, bob.id,
     "今晚的月亮真好看",
     "走在玄武门校区，看到月亮特别圆。有人一起逛逛吗？",
     5, undefined, { likes: 6 });
+  await makeTopic(treehole.id, carol.id,
+    "有人也会在忙的时候突然想安静一下吗",
+    "最近事情有点多，就想找个地方留一句：大家都辛苦了。看到这条的人今晚早点休息。",
+    14, undefined, { likes: 4, replies: 1 });
   await makeTopic(life.id, carol.id,
     "新生第一周食堂避雷指南",
     "**第一食堂**：早上的鸡蛋灌饼 ⭐⭐⭐⭐⭐\n\n**第二食堂**：中午高峰排队 30 分钟起，建议 13:00 后再去\n\n**留学生餐厅**：菜单偏西餐，价格略高",
@@ -372,7 +380,7 @@ async function main() {
   // 更新各帖的 replyCount 与 lastReplyAt 已经在 makeTopic 时设置
 
   // 更新 board.topicCount
-  for (const slug of ["general", "life", "freshman", "question", "market", "coursereview"]) {
+  for (const slug of COMMUNITY_BOARD_DEFS.map((board) => board.slug)) {
     const b = await prisma.board.findUnique({ where: { slug } });
     if (!b) continue;
     const c = await prisma.topic.count({ where: { boardId: b.id, hidden: false } });
@@ -408,7 +416,7 @@ async function main() {
 
   console.log("✅ 种子数据生成完成。");
   console.log(`  用户: alice/bob/carol (123456), admin (admin123), school-bot`);
-  console.log(`  板块: ${feeds.length} 个公告板（爬虫）+ 6 个 UGC 板块`);
+  console.log(`  板块: ${feeds.length} 个公告板（爬虫）+ ${COMMUNITY_BOARD_DEFS.length} 个 UGC 板块`);
   console.log(`  课程: 6 门`);
   console.log(`  服务卡片: ${services.length} 项`);
   console.log(`  示例话题已发`);
