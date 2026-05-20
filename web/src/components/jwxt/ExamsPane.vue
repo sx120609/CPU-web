@@ -134,8 +134,13 @@ async function reload() {
   flex-direction: column;
   gap: 5px;
 }
-.filter-field :deep(.el-select) {
+.filter-field :deep(.el-select),
+.filter-field :deep(.el-input) {
   width: 100%;
+}
+.filter-field :deep(.el-select .el-select__wrapper),
+.filter-field :deep(.el-input .el-input__wrapper) {
+  min-height: 36px;
 }
 .lbl { font-size: 12px; color: #6b7280; }
 .stat { font-size: 13px; color: var(--cpu-primary); font-weight: 500; }
@@ -218,10 +223,6 @@ async function reload() {
 @media (max-width: 430px) {
   .ctrl-left {
     grid-template-columns: 1fr;
-  }
-
-  .filter-field :deep(.el-select) {
-    min-height: 36px;
   }
 }
 </style>

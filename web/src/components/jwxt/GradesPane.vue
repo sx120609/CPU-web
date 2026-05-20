@@ -326,6 +326,10 @@ async function reload() {
 .filter-field :deep(.el-input) {
   width: 100%;
 }
+.filter-field :deep(.el-select .el-select__wrapper),
+.filter-field :deep(.el-input .el-input__wrapper) {
+  min-height: 36px;
+}
 .lbl { font-size: 12px; color: #6b7280; }
 .stat { font-size: 13px; color: #6b7280; }
 .stat b { color: var(--cpu-primary); font-size: 15px; }

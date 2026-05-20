@@ -1,7 +1,10 @@
 <template>
   <div class="msg-page">
-    <h2 class="page-title">消息中心</h2>
-    <el-tabs v-model="tab" class="cpu-card">
+    <div class="page-head">
+      <h2 class="page-title">消息中心</h2>
+      <span v-if="tab !== 'settings' && unreadCount" class="page-sub">{{ unreadCount }} 条未读</span>
+    </div>
+    <el-tabs v-model="tab" class="cpu-card messages-tabs">
       <el-tab-pane label="全部" name="all">
         <MessageList :list="filtered('')" @read="onRead" @open="openNotification" />
       </el-tab-pane>
@@ -18,29 +21,42 @@
         <div v-if="settings" class="settings">
           <h4>静默时段</h4>
           <p class="hint">在此时段内，平台仅向您推送强提醒消息。</p>
-          <div class="row">
+          <div class="setting-block time-row">
             <el-time-select v-model="settings.quietStart" start="00:00" step="00:30" end="23:30" />
-            <span>至</span>
+            <span class="time-sep">至</span>
             <el-time-select v-model="settings.quietEnd" start="00:00" step="00:30" end="23:30" />
           </div>
           <el-divider />
           <h4>订阅偏好</h4>
           <div class="switches">
-            <div><el-switch v-model="settings.subscribeReply" /> 收到回复时</div>
-            <div><el-switch v-model="settings.subscribeLike" /> 收到点赞时</div>
-            <div><el-switch v-model="settings.subscribeSchool" /> 校园公告更新</div>
-            <div><el-switch v-model="settings.subscribeSystem" /> 系统 / 站务通知</div>
+            <label class="switch-item">
+              <span>收到回复时</span>
+              <el-switch v-model="settings.subscribeReply" />
+            </label>
+            <label class="switch-item">
+              <span>收到点赞时</span>
+              <el-switch v-model="settings.subscribeLike" />
+            </label>
+            <label class="switch-item">
+              <span>校园公告更新</span>
+              <el-switch v-model="settings.subscribeSchool" />
+            </label>
+            <label class="switch-item">
+              <span>系统 / 站务通知</span>
+              <el-switch v-model="settings.subscribeSystem" />
+            </label>
           </div>
-          <el-button type="primary" :loading="saving" @click="saveSettings" style="margin-top:14px">保存设置</el-button>
+          <el-button type="primary" :loading="saving" class="save-btn" @click="saveSettings">保存设置</el-button>
         </div>
       </el-tab-pane>
     </el-tabs>
 
     <div class="bar" v-if="tab !== 'settings'">
-      <el-button text @click="readAll">全部标为已读</el-button>
+      <span class="bar-meta">{{ unreadCount ? `${unreadCount} 条未读` : "当前全部已读" }}</span>
+      <el-button text :disabled="!unreadCount" @click="readAll">全部标为已读</el-button>
     </div>
 
-    <el-dialog v-model="detailOpen" title="通知详情" width="620px" append-to-body>
+    <el-dialog v-model="detailOpen" title="通知详情" width="620px" append-to-body class="notice-dialog">
       <div v-if="activeNotice" class="notice-detail">
         <div class="notice-head">
           <h3>{{ activeNotice.title }}</h3>
@@ -109,6 +125,8 @@ const activeNotice = ref<any | null>(null);
 const reviewing = ref(false);
 const reviewTarget = ref<{ kind: "topic" | "reply"; id: number; title: string; aiReviewStatus: string; hidden: boolean; topicId?: number; reviewable: boolean } | null>(null);
 const reviewTargetLoading = ref(false);
+
+const unreadCount = computed(() => list.value.filter((item) => !item.readAt).length);
 
 onMounted(async () => {
   [list.value, settings.value] = await Promise.all([messageApi.list(), messageApi.settings()]);
@@ -251,11 +269,31 @@ function reviewLabel(status?: string) {
 </script>
 
 <style scoped>
-.msg-page { display: flex; flex-direction: column; gap: 8px; }
+.msg-page { display: flex; flex-direction: column; gap: 10px; }
+.page-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
 .page-title { margin: 0; font-size: 22px; }
+.page-sub {
+  color: #6b7280;
+  font-size: 13px;
+}
 .cpu-card { background: #fff; border-radius: 12px; padding: 16px 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
 
-.bar { display: flex; justify-content: flex-end; margin-top: 8px; }
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+}
+.bar-meta {
+  color: #6b7280;
+  font-size: 13px;
+}
 .notice-detail { display: flex; flex-direction: column; gap: 12px; }
 .notice-head h3 { margin: 0; font-size: 18px; color: #1f2937; }
 .notice-head span { font-size: 12px; color: #94a3b8; }
@@ -269,10 +307,39 @@ function reviewLabel(status?: string) {
 
 .settings h4 { margin: 8px 0 6px; color: #1f2937; }
 .hint { font-size: 12px; color: #6b7280; margin: 0 0 10px; }
-.row { display: flex; gap: 10px; align-items: center; }
+.setting-block {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
 .switches { display: flex; flex-direction: column; gap: 12px; }
+.switch-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #eef0f4;
+  border-radius: 12px;
+  background: #fafbfc;
+  color: #374151;
+  font-size: 14px;
+}
+.save-btn {
+  margin-top: 14px;
+}
 
 @media (max-width: 640px) {
+  .msg-page {
+    gap: 12px;
+  }
+
+  .page-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
   .page-title {
     font-size: 20px;
   }
@@ -282,19 +349,77 @@ function reviewLabel(status?: string) {
     padding: 12px;
   }
 
-  .row {
+  .messages-tabs {
+    margin: 0 -4px;
+    padding: 10px 8px 12px;
+  }
+
+  .messages-tabs :deep(.el-tabs__header) {
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+
+  .messages-tabs :deep(.el-tabs__nav-wrap) {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .messages-tabs :deep(.el-tabs__nav-wrap::after),
+  .messages-tabs :deep(.el-tabs__active-bar) {
+    display: none;
+  }
+
+  .messages-tabs :deep(.el-tabs__nav-wrap::-webkit-scrollbar) {
+    display: none;
+  }
+
+  .messages-tabs :deep(.el-tabs__nav) {
+    float: none;
+    width: max-content;
+    min-width: max-content;
+    white-space: nowrap;
+    gap: 8px;
+  }
+
+  .messages-tabs :deep(.el-tabs__item) {
+    height: 34px;
+    padding: 0 12px;
+    font-size: 13px;
+    border-radius: 999px;
+    background: #f3f4f6;
+    color: #4b5563;
+  }
+
+  .messages-tabs :deep(.el-tabs__item.is-active) {
+    background: linear-gradient(135deg, var(--cpu-primary), var(--cpu-primary-dark));
+    color: #fff;
+  }
+
+  .messages-tabs :deep(.el-tabs__content) {
+    overflow: visible;
+  }
+
+  .time-row {
     align-items: stretch;
     flex-direction: column;
     gap: 8px;
   }
 
-  .row > span {
+  .time-sep {
     align-self: center;
+    color: #94a3b8;
+    font-size: 12px;
   }
 
-  .row :deep(.el-select),
-  .row :deep(.el-input) {
+  .time-row :deep(.el-select),
+  .time-row :deep(.el-input) {
     width: 100% !important;
+  }
+
+  .switch-item {
+    padding: 12px;
   }
 
   .settings .el-button {
@@ -302,11 +427,45 @@ function reviewLabel(status?: string) {
   }
 
   .bar {
-    justify-content: stretch;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
   }
 
   .bar .el-button {
     width: 100%;
+  }
+
+  .bar-meta {
+    font-size: 12px;
+  }
+
+  :deep(.notice-dialog) {
+    width: calc(100vw - 20px) !important;
+    max-width: calc(100vw - 20px) !important;
+    margin-top: 4vh;
+  }
+
+  :deep(.notice-dialog .el-dialog__body) {
+    padding-top: 10px;
+  }
+
+  :deep(.notice-dialog .el-dialog__footer) {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  :deep(.notice-dialog .el-dialog__footer .el-button) {
+    width: 100%;
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .switch-item {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 </style>
