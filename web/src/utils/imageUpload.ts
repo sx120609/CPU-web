@@ -49,6 +49,21 @@ export async function compressImageFile(file: File, options: CompressImageOption
   return dataUrl;
 }
 
+export function normalizeImageUploadError(error: unknown, fallback = "图片上传失败，请稍后重试") {
+  const message = error instanceof Error ? error.message : String(error ?? "").trim();
+  if (!message) return fallback;
+  if (/entity\.too\.large|payload too large|request entity too large/i.test(message)) {
+    return "上传内容过大，请压缩图片或更换更小的文件后重试";
+  }
+  if (/图片压缩后仍然过大|图片不能超过|请选择图片文件|图片读取失败|当前浏览器不支持图片处理/.test(message)) {
+    return message;
+  }
+  if (/network error|timeout/i.test(message)) {
+    return fallback;
+  }
+  return message;
+}
+
 function loadImage(file: File) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const url = URL.createObjectURL(file);

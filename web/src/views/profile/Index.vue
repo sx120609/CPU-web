@@ -114,7 +114,7 @@ import { authApi } from "@/api/auth";
 import { request } from "@/api/request";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import { fmtRelative } from "@/utils/format";
-import { compressImageFile } from "@/utils/imageUpload";
+import { compressImageFile, normalizeImageUploadError } from "@/utils/imageUpload";
 import { copyText, openUserGroup, USER_QQ_GROUP } from "@/utils/userGroup";
 
 const auth = useAuthStore();
@@ -209,8 +209,8 @@ async function onAvatarChange(event: Event) {
     });
     await auth.updateProfile({ avatar });
     ElMessage.success("头像已更新");
-  } catch (error: any) {
-    ElMessage.error(error?.message || "头像上传失败");
+  } catch (error) {
+    ElMessage.error(normalizeImageUploadError(error, "头像上传失败，请稍后重试"));
   } finally {
     avatarSaving.value = false;
     if (target) target.value = "";

@@ -95,7 +95,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { uploadApi } from "@/api/topic";
-import { compressImageFile } from "@/utils/imageUpload";
+import { compressImageFile, normalizeImageUploadError } from "@/utils/imageUpload";
 import { renderMarkdown } from "@/utils/markdown";
 
 type ImageSize = "small" | "medium" | "large";
@@ -495,6 +495,8 @@ async function uploadAndInsertImages(files: File[]) {
       insertUploadedImage(url, file.name || "图片");
     }
     ElMessage.success(files.length > 1 ? "图片已压缩并上传" : "图片已压缩并插入");
+  } catch (error) {
+    ElMessage.error(normalizeImageUploadError(error));
   } finally {
     imageUploading.value = false;
   }

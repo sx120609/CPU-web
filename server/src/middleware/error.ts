@@ -5,6 +5,18 @@ import { isDev } from "../config";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
+  const anyErr = err as { type?: string; status?: number; statusCode?: number; message?: string } | undefined;
+  if (
+    anyErr?.type === "entity.too.large" ||
+    anyErr?.status === 413 ||
+    anyErr?.statusCode === 413
+  ) {
+    return res.status(413).json({
+      code: 4013,
+      data: null,
+      message: "上传内容过大，请压缩图片或更换更小的文件后重试",
+    });
+  }
   if (err instanceof HttpError) {
     return res.status(err.status).json({ code: err.code, data: null, message: err.message });
   }
