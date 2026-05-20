@@ -68,8 +68,8 @@
         </div>
 
         <div v-if="activeNotice.payload?.riskScore !== undefined || activeNotice.payload?.reason" class="notice-risk">
-          <span v-if="activeNotice.payload?.riskScore !== undefined">风险分：{{ activeNotice.payload.riskScore }}</span>
-          <span v-if="activeNotice.payload?.reason">原因：{{ activeNotice.payload.reason }}</span>
+          <span v-if="activeNotice.payload?.reason">审核说明：{{ activeNotice.payload.reason }}</span>
+          <span v-else>系统判定这条内容需要进一步确认。</span>
         </div>
 
         <div v-if="activeNotice.payload?.title" class="notice-draft">

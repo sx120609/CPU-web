@@ -3,8 +3,8 @@
     <div class="page-head" :class="{ centered: !jwxt.isLoggedIn }">
       <h2>🎓 教务数据</h2>
       <p class="hint">
-        通过学校统一认证授权读取教务数据，把课表、成绩和培养方案整理成更易查看的视图。
-        学号 / 工号会用于创建或关联站内账号，<b>学校密码和验证码不保存</b>。
+        通过学校统一认证查看课表、成绩和培养方案，信息会整理成更方便阅读的样子。
+        学号 / 工号仅用于关联站内账号，<b>学校密码和验证码不会保存</b>。
       </p>
     </div>
 
@@ -17,7 +17,7 @@
       class="scope-tip"
     >
       <template #title>
-        目前教务数据 / 课表暂仅支持<b>本科生</b>。研究生 / 教职工 / 留学生 等账号即便授权成功，教务接口可能返回空数据或报错。
+        目前主要支持<b>本科生</b>账号。研究生、教职工、留学生等账号，暂时可能无法获取完整教务数据。
       </template>
     </el-alert>
 
@@ -27,7 +27,7 @@
         <el-icon class="lock-icon"><Lock /></el-icon>
         <div>
           <h3>授权读取教务数据</h3>
-          <p>使用学校 <b>统一身份认证</b> 账号完成授权</p>
+          <p>登录后可查看课表、成绩等信息</p>
         </div>
       </div>
 
@@ -39,7 +39,7 @@
       >
         <ul class="safety">
           <li>学号 / 工号会用于创建或关联站内账号</li>
-          <li>本站<b>不保存</b>学校密码和验证码到数据库、文件或日志</li>
+          <li>学校密码和验证码<b>不会保存</b>在本站</li>
         </ul>
       </el-alert>
 
@@ -76,13 +76,13 @@
           <div class="remember-row">
             <div class="remember-main">
               <el-checkbox v-model="remember">
-                记住账号（加密保存到本机浏览器）
+                记住账号（仅保存在当前设备）
               </el-checkbox>
               <el-tooltip placement="top">
                 <template #content>
-                  账号会用 AES-GCM 加密后存到 localStorage，<br/>
-                  <b>不会上传任何服务器</b>。<br/>
-                  下次打开此站可自动完成授权。<br/>
+                  账号只保存在当前设备浏览器，<br/>
+                  <b>不会上传到本站</b>。<br/>
+                  下次打开时可更快完成登录。<br/>
                   <b>共享电脑请勿勾选</b>。
                 </template>
                 <el-icon class="hint-icon"><InfoFilled /></el-icon>
@@ -100,7 +100,7 @@
 
         <el-form-item>
           <el-button type="primary" :loading="jwxt.loading" @click="onSubmit" class="btn-submit">
-            授权并读取数据
+            登录并查看
           </el-button>
         </el-form-item>
       </el-form>
@@ -117,7 +117,7 @@
           <el-icon class="session-ok"><CircleCheckFilled /></el-icon>
           <div class="session-copy">
             <div class="session-title">已连接学校教务系统</div>
-            <div class="session-sub">如果数据加载异常或显示不完整，可以点击页面右上角的统一刷新按钮重试。</div>
+            <div class="session-sub">如果数据不完整或显示异常，刷新后再试即可。</div>
           </div>
         </div>
         <div class="session-actions">
@@ -220,10 +220,10 @@ onMounted(async () => {
   if (!jwxt.isLoggedIn) {
     // 1. 先尝试自动登录（用本地保存的账号）
     if (jwxt.rememberSaved) {
-      ElMessage.info("正在尝试自动授权…");
+      ElMessage.info("正在尝试自动登录…");
       const ok = await jwxt.tryAutoLogin();
       if (ok) {
-        ElMessage.success("已完成自动授权");
+        ElMessage.success("已完成登录");
         loadCurrentTab();
         return;
       }
@@ -356,7 +356,7 @@ async function onSubmit() {
   const ok = await jwxt.submitLogin(form.username, form.password, form.captcha || undefined, remember.value);
   form.password = ""; // 立刻清掉密码字段
   if (ok) {
-    ElMessage.success("已完成教务数据授权");
+    ElMessage.success("登录成功");
     loadCurrentTab();
   } else if (jwxt.needCaptcha) {
     form.captcha = "";
@@ -364,7 +364,7 @@ async function onSubmit() {
 }
 
 async function onLogout() {
-  await ElMessageBox.confirm("断开当前教务连接？\n如果勾选了「记住账号」，下次打开仍可自动授权。", "确认", { type: "warning" });
+  await ElMessageBox.confirm("断开当前教务连接？\n如果勾选了“记住账号”，下次打开时仍可快速登录。", "确认", { type: "warning" });
   await jwxt.logout();
   ElMessage.success("已断开教务连接");
   schedule.value = grades.value = midtermGrades.value = progress.value = pyfa.value = null;
@@ -372,9 +372,9 @@ async function onLogout() {
 }
 
 async function onForget() {
-  await ElMessageBox.confirm("忘记已保存的账号？后续不再自动授权。", "确认", { type: "warning" });
+  await ElMessageBox.confirm("清除已保存的账号？之后将不再自动登录。", "确认", { type: "warning" });
   jwxt.forgetSavedCreds();
-  ElMessage.success("已忘记保存账号");
+  ElMessage.success("已清除保存的账号");
 }
 
 async function loadCurrentTab(force = false) {

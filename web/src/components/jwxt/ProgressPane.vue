@@ -1,7 +1,7 @@
 <template>
   <div class="progress-pane" v-loading="loading">
     <div class="data-note">
-      学业完成情况由教务页面数据解析整理，仅供参考；毕业审核、培养要求等请以学校教务系统和学院通知为准。
+      以下信息整理自教务系统，最终请以学校和学院通知为准。
     </div>
 
     <!-- 总览大卡 -->

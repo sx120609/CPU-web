@@ -38,7 +38,7 @@
         <div class="meta-author">
           <div class="name">
             <router-link v-if="topic.author?.id" :to="`/u/${topic.author.id}`">{{ topic.author?.nickname }}</router-link>
-            <el-tag v-if="topic.author?.role === 'bot'" size="small" type="warning">系统同步</el-tag>
+            <el-tag v-if="topic.author?.role === 'bot'" size="small" type="warning">公告同步</el-tag>
             <el-tag v-else-if="topic.author?.role === 'admin'" size="small" type="danger">管理员</el-tag>
             <UserModerationActions
               v-if="topic.author"
@@ -102,7 +102,7 @@
     <!-- 回复列表 -->
     <section class="replies cpu-card" ref="repliesEl">
       <h3 class="cpu-section-title">{{ topic.replyCount }} 条回复</h3>
-      <el-empty v-if="!replies.length" description="还没有回复，沙发坐等" />
+      <el-empty v-if="!replies.length" description="还没有回复，来聊两句吧" />
       <div v-for="r in replies" :key="r.id" class="reply">
         <UserAvatar :size="32" class="avatar" :src="r.author?.avatar" :name="r.author?.nickname" alt="回复头像" />
         <div class="reply-body">
@@ -137,13 +137,13 @@
         v-model="replyText"
         label="写回复"
         placeholder="写下你的回复，可以直接粘贴图片。"
-        footer-text="回复也支持排版、图片和草稿自动保存。"
+        footer-text="支持排版、图片和草稿保存。"
         :max-length="REPLY_MAX"
         :draft-key="replyDraftKey"
         @draft-restored="replyText = $event"
       />
       <div class="reply-form-actions">
-        <span class="cpu-muted">离开页面后会自动保留未发布草稿。</span>
+        <span class="cpu-muted">离开页面后会保留未发送的内容。</span>
         <el-button type="primary" :loading="replying" @click="submitReply">
           发布回复
         </el-button>
@@ -156,19 +156,18 @@
 
     <el-dialog
       v-model="replyReviewBlockedOpen"
-      title="回复未通过 AI 初审"
+      title="回复暂未通过审核"
       width="520px"
       append-to-body
     >
       <div class="review-blocked">
-        <p>这条回复暂未发送。</p>
-        <p v-if="blockedReplyInfo.reason">原因：{{ blockedReplyInfo.reason }}</p>
-        <p v-if="blockedReplyInfo.riskScore !== null">风险分：{{ blockedReplyInfo.riskScore }}</p>
-        <p class="cpu-muted">你可以修改后重试，或者申请人工审核。申请后，在审核完成前不能继续投递新稿件。</p>
+        <p>这条回复暂时还没有发出。</p>
+        <p v-if="blockedReplyInfo.reason">审核说明：{{ blockedReplyInfo.reason }}</p>
+        <p class="cpu-muted">你可以修改后再试，或申请人工复核。复核期间暂时不能继续提交新内容。</p>
       </div>
       <template #footer>
         <el-button @click="replyReviewBlockedOpen = false">返回修改</el-button>
-        <el-button type="warning" :loading="requestingReplyManualReview" @click="replyManualReviewConfirmOpen = true">申请人工审核</el-button>
+        <el-button type="warning" :loading="requestingReplyManualReview" @click="replyManualReviewConfirmOpen = true">申请人工复核</el-button>
       </template>
     </el-dialog>
 
@@ -316,7 +315,7 @@ async function submitReply() {
       blockedReplyInfo.reason = (r as any).submissionResult.reason || "检测到较高风险内容";
       blockedReplyInfo.riskScore = (r as any).submissionResult.riskScore ?? null;
       replyReviewBlockedOpen.value = true;
-      ElMessage.warning("回复未通过 AI 审核");
+      ElMessage.warning("回复暂未通过审核");
       return;
     }
     replies.value.push({ ...r, _liked: false } as any);
@@ -337,7 +336,7 @@ async function confirmReplyManualReviewRequest() {
     replyEditorRef.value?.clearDraft();
     replyText.value = "";
     replyReviewBlockedOpen.value = false;
-    ElMessage.success("已提交回复人工审核申请");
+    ElMessage.success("已提交回复人工复核申请");
   } finally {
     requestingReplyManualReview.value = false;
   }

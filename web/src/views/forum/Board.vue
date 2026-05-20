@@ -8,8 +8,8 @@
           <p class="head-desc">{{ board.description }}</p>
           <div class="head-meta">
             <span>{{ board.topicCount }} 帖</span>
-            <span v-if="board.readOnly" class="ro-tag">只读 · 自动同步公开来源</span>
-            <a v-if="board.feedSource?.homepage" :href="board.feedSource.homepage" target="_blank" class="ro-link">查看原始来源 →</a>
+            <span v-if="board.readOnly" class="ro-tag">公告板</span>
+            <a v-if="board.feedSource?.homepage" :href="board.feedSource.homepage" target="_blank" class="ro-link">查看来源 →</a>
           </div>
         </div>
       </div>
@@ -34,7 +34,7 @@
 
     <div class="topic-list cpu-card" v-loading="loading">
       <div class="section-head">
-        <h3>{{ sort === "hot" ? "普通帖子 · 最热排序" : "普通帖子 · 最新排序" }}</h3>
+        <h3>{{ sort === "hot" ? "按热度查看" : "按时间查看" }}</h3>
         <span>{{ total }} 条</span>
       </div>
       <TopicListItem v-for="t in list" :key="t.id" :topic="t" />

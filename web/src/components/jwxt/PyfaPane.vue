@@ -1,7 +1,7 @@
 <template>
   <div class="pyfa-pane" v-loading="loading">
     <div class="data-note">
-      培养方案数据由教务页面解析整理，仅供参考；课程计划、毕业要求和最终认定请以学校教务系统及学院通知为准。
+      以下信息整理自教务系统，最终请以学校和学院通知为准。
     </div>
 
     <div class="ctrl-bar" v-if="parsed">

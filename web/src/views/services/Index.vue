@@ -4,7 +4,7 @@
       <div>
         <h2>🎯 校园服务</h2>
         <p class="hint">
-          整理常用校园入口与融合门户应用。完成教务数据授权后，可查看更完整的应用列表并直接跳转。
+          整理常用校园入口。登录教务后，还可以查看更完整的应用列表。
         </p>
       </div>
     </div>
@@ -29,8 +29,8 @@
     <div v-else-if="autoLoading" class="cpu-card login-hint">
       <el-icon class="big-icon is-loading"><Loading /></el-icon>
       <div class="hint-body">
-        <h3>正在尝试自动授权…</h3>
-        <p>使用本地保存的学校账号悄悄完成教务数据授权。</p>
+        <h3>正在恢复登录状态…</h3>
+        <p>正在使用已保存的账号快速登录。</p>
       </div>
     </div>
 
@@ -38,8 +38,8 @@
     <div v-else-if="jwxt.needCaptcha && hasCreds" class="cpu-card login-hint captcha-card">
       <el-icon class="big-icon"><Picture /></el-icon>
       <div class="hint-body">
-        <h3>请补一个验证码完成授权</h3>
-        <p>本地已保存学校账号，只差最后一步验证码。</p>
+        <h3>输入验证码后继续</h3>
+        <p>账号已经准备好了，只需补一次验证码。</p>
         <div class="captcha-row">
           <el-input v-model="captchaInput" placeholder="看图输入验证码" maxlength="8" style="flex:1; min-width:160px" @keyup.enter="submitCaptcha" />
           <img v-if="jwxt.captchaImage" :src="jwxt.captchaImage" alt="captcha" class="vcode-img" @click="reloadCaptcha" />
@@ -54,15 +54,15 @@
     <div v-else class="cpu-card login-hint">
       <el-icon class="big-icon"><Lock /></el-icon>
       <div class="hint-body">
-        <h3>授权教务数据后显示完整服务列表</h3>
-        <p>授权后可查看融合门户应用、收藏和热度信息。学号 / 工号会用于创建或关联站内账号，<b>本站不保存学校密码和验证码</b>。</p>
-        <el-button class="hint-action" type="primary" size="large" @click="$router.push('/jwxt')">前往教务数据授权</el-button>
+        <h3>登录后可查看更完整的服务列表</h3>
+        <p>登录后可查看更多校园应用和常用入口。学号 / 工号仅用于关联站内账号，<b>学校密码和验证码不会保存</b>。</p>
+        <el-button class="hint-action" type="primary" size="large" @click="$router.push('/jwxt')">前往登录</el-button>
       </div>
     </div>
 
     <!-- 未登录的兜底：少量基础外链 -->
     <div v-if="!jwxt.isLoggedIn && !autoLoading" class="fallback">
-      <h4 class="fb-title">常用公开入口</h4>
+      <h4 class="fb-title">公开入口</h4>
       <div class="fb-grid">
         <a href="http://lib.cpu.edu.cn" target="_blank" class="fb-card"><span class="fb-icon">📚</span><span>图书馆</span></a>
         <a href="http://opac.cpu.edu.cn" target="_blank" class="fb-card"><span class="fb-icon">🔍</span><span>馆藏检索</span></a>

@@ -15,7 +15,7 @@
                 :disabled="b.readOnly"
               >
                 <span style="margin-right:6px">{{ b.icon }}</span>{{ b.name }}
-                <span style="float:right;color:#9ca3af;font-size:12px">{{ b.readOnly ? '只读' : '' }}</span>
+                <span style="float:right;color:#9ca3af;font-size:12px">{{ b.readOnly ? '不可发帖' : '' }}</span>
               </el-option>
             </el-option-group>
           </el-select>
@@ -95,7 +95,7 @@
               <span class="or-text">或</span>
               <el-input
                 v-model="meta.teacherName"
-                placeholder="输入新老师姓名（自助添加）"
+                placeholder="输入老师姓名"
                 maxlength="40"
                 style="flex:1; min-width:160px"
                 :disabled="!meta.courseId"
@@ -103,7 +103,7 @@
               />
             </div>
             <div class="cpu-muted" style="margin-top:4px">
-              二选一。课表里没列出来的老师，直接在右侧输入即可，发布时自动加入这门课的授课记录。
+              二选一。若列表里没有这位老师，直接在右侧输入即可。
             </div>
           </el-form-item>
           <div class="rate-row">
@@ -144,7 +144,7 @@
           type="warning"
           :closable="false"
           show-icon
-          title="你当前有稿件正在人工审核，暂时不能继续提交新稿"
+          title="你有内容正在人工复核，暂时不能继续提交新内容"
         />
 
         <el-form-item>
@@ -179,25 +179,24 @@
 
     <el-dialog
       v-model="reviewBlockedOpen"
-      title="稿件未通过 AI 初审"
+      title="内容暂未通过审核"
       width="520px"
       append-to-body
     >
       <div class="review-blocked">
-        <p>本次稿件暂未自动发送。</p>
-        <p v-if="blockedReviewInfo.reason">原因：{{ blockedReviewInfo.reason }}</p>
-        <p v-if="blockedReviewInfo.riskScore !== null">风险分：{{ blockedReviewInfo.riskScore }}</p>
-        <p class="cpu-muted">你可以修改内容后重试，或者申请人工审核。申请后，在审核完成前不能继续投稿。</p>
+        <p>这条内容暂时还没有发出。</p>
+        <p v-if="blockedReviewInfo.reason">审核说明：{{ blockedReviewInfo.reason }}</p>
+        <p class="cpu-muted">你可以修改后再试，或申请人工复核。复核期间暂时不能继续提交新内容。</p>
       </div>
       <template #footer>
         <el-button @click="reviewBlockedOpen = false">返回修改</el-button>
-        <el-button type="warning" :loading="requestingManualReview" @click="manualReviewConfirmOpen = true">申请人工审核</el-button>
+        <el-button type="warning" :loading="requestingManualReview" @click="manualReviewConfirmOpen = true">申请人工复核</el-button>
       </template>
     </el-dialog>
 
     <ManualReviewConfirmDialog
       v-model="manualReviewConfirmOpen"
-      subject="稿件"
+      subject="内容"
       @confirm="confirmManualReviewRequest"
     />
   </div>
@@ -265,9 +264,9 @@ const selectedCourse = computed(() => courses.value.find((c) => c.id === meta.co
 const teacherOptions = computed(() => selectedCourse.value?.teachers ?? []);
 
 const groupedBoards = computed(() => {
-  const groups: Record<string, Board[]> = { "💬 综合讨论": [], "🎒 学生共建": [], "📢 校园公告（只读）": [] };
+  const groups: Record<string, Board[]> = { "💬 综合讨论": [], "🎒 学生共建": [], "📢 校园公告": [] };
   for (const b of boards.value) {
-    if (b.type === "announce") groups["📢 校园公告（只读）"].push(b);
+    if (b.type === "announce") groups["📢 校园公告"].push(b);
     else if (["market", "question", "coursereview"].includes(b.type)) groups["🎒 学生共建"].push(b);
     else groups["💬 综合讨论"].push(b);
   }
@@ -387,7 +386,7 @@ function clearDrafts() {
 
 async function submit() {
   if (auth.user?.status === "muted") { ElMessage.warning(mutedNotice.value); return; }
-  if (auth.user?.topicSubmissionLocked) { ElMessage.warning("你当前有稿件正在人工审核，暂时不能继续投稿"); return; }
+  if (auth.user?.topicSubmissionLocked) { ElMessage.warning("你有内容正在人工复核，暂时不能继续提交新内容"); return; }
   if (!form.boardSlug) { ElMessage.warning("请选择板块"); return; }
   if (form.title.trim().length < 2) { ElMessage.warning("标题至少 2 字"); return; }
   if (isEditorContentEmpty()) { ElMessage.warning("请填写正文"); return; }
@@ -440,7 +439,7 @@ async function confirmSubmit() {
         blockedReviewInfo.reason = r.submissionResult.reason || "检测到较高风险内容";
         blockedReviewInfo.riskScore = r.submissionResult.riskScore ?? null;
         reviewBlockedOpen.value = true;
-        ElMessage.warning("修改后的内容未通过 AI 审核");
+        ElMessage.warning("修改后的内容暂未通过审核");
         return;
       }
       clearDrafts();
@@ -458,7 +457,7 @@ async function confirmSubmit() {
         blockedReviewInfo.reason = r.submissionResult.reason || "检测到较高风险内容";
         blockedReviewInfo.riskScore = r.submissionResult.riskScore ?? null;
         reviewBlockedOpen.value = true;
-        ElMessage.warning("稿件未通过 AI 初审");
+        ElMessage.warning("内容暂未通过审核");
         return;
       }
       clearDrafts();
@@ -479,7 +478,7 @@ async function confirmManualReviewRequest() {
     await auth.fetchMe();
     clearDrafts();
     reviewBlockedOpen.value = false;
-    ElMessage.success("已提交人工审核申请");
+    ElMessage.success("已提交人工复核申请");
     router.replace("/forum");
   } finally {
     requestingManualReview.value = false;

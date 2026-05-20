@@ -77,16 +77,16 @@
     <el-empty v-if="!loading && apps.length && !filtered.length" description="没有符合条件的应用" />
     <div v-else-if="retrying" class="retry-card">
       <el-icon class="is-loading"><Refresh /></el-icon>
-      <span>应用列表拉取失败，正在自动重试（{{ retryCount }} / {{ MAX_RETRIES }}）…</span>
+      <span>正在重新加载应用列表（{{ retryCount }} / {{ MAX_RETRIES }}）…</span>
     </div>
     <div v-else-if="!loading && error" class="error-card">
       <div>
-        <h3>应用列表暂时拉取失败</h3>
-        <p>{{ error }}。可能是融合门户响应较慢或教务授权临时失效。</p>
+        <h3>暂时没能加载出应用列表</h3>
+        <p>{{ error }}。你可以稍后再试。</p>
       </div>
-      <el-button type="primary" plain :loading="loading" @click="reload()">重新拉取</el-button>
+      <el-button type="primary" plain :loading="loading" @click="reload()">重新加载</el-button>
     </div>
-    <el-empty v-else-if="!loading && !apps.length" description="暂未获取到应用列表，正在等待融合门户响应" />
+    <el-empty v-else-if="!loading && !apps.length" description="暂时还没有拿到应用列表，请稍后再试" />
   </div>
 </template>
 

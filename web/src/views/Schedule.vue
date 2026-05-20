@@ -249,8 +249,8 @@
 
     <section v-if="autoLoading && !parsed" class="state-card">
       <el-icon class="big is-loading"><Loading /></el-icon>
-      <h2>正在自动授权</h2>
-      <p>使用本机保存的学校账号读取课表。</p>
+      <h2>正在恢复登录状态</h2>
+      <p>正在使用已保存的账号读取课表。</p>
     </section>
 
     <section v-else-if="jwxt.needCaptcha && hasCreds && !parsed" class="state-card">
@@ -267,11 +267,11 @@
 
     <section v-else-if="!jwxt.isLoggedIn && !parsed" class="state-card">
       <el-icon class="big"><Lock /></el-icon>
-      <h2>需要先授权教务数据</h2>
-      <p>授权后可把这个页面添加到桌面书签，之后快速打开查看课表。本站不保存学校密码和验证码。</p>
-      <p class="scope-note">目前教务 / 课表数据暂仅支持<b>本科生</b>，研究生 / 教职工 / 留学生授权后可能拿不到课表。</p>
+      <h2>需要先登录教务</h2>
+      <p>登录后可快速查看课表，也可以把这个页面加到桌面方便下次打开。学校密码和验证码不会保存。</p>
+      <p class="scope-note">目前课表功能主要支持<b>本科生</b>账号，其他账号暂时可能拿不到完整数据。</p>
       <el-button type="primary" size="large" @click="$router.push({ name: 'jwxt', query: { redirect: '/schedule' } })">
-        前往授权
+        前往登录
       </el-button>
     </section>
 
@@ -435,7 +435,7 @@
           <span>导入 iOS 课表小组件</span>
           <el-popover trigger="click" placement="bottom" :width="286" popper-class="widget-help-popover">
             <p class="widget-help-text">
-              会生成一个只读 token，小组件仅能读取你的课表；如果教务会话失效，会先显示上次成功缓存。回到本站完成授权后会自动续上，不需要重新添加小组件。
+              小组件只能读取你的课表；如果登录状态失效，会先显示最近一次成功加载的内容。重新登录后会自动恢复，不需要重新添加组件。
             </p>
             <template #reference>
               <button type="button" class="widget-help-btn" aria-label="查看小组件安全说明">
@@ -480,7 +480,7 @@
 
     <el-dialog
       v-model="widgetInstructionOpen"
-      title="导入后请先完成测试"
+      title="导入后请先确认能正常显示"
       :width="420"
       align-center
       :show-close="true"
@@ -490,8 +490,8 @@
     >
       <ol class="widget-instruction-list">
         <li>打开 Scriptable 后，先按提示授予软件权限，再把刚才复制的内容粘贴到打开的文本框里。</li>
-        <li>粘贴完成后，点击右下角三角形运行测试，确认能看到课表预览。</li>
-        <li>测试完成后回到桌面，长按空白处，进入编辑模式并选择添加小组件。</li>
+        <li>粘贴完成后，点击右下角三角形运行一次，确认能看到课表预览。</li>
+        <li>确认无误后回到桌面，长按空白处，进入编辑模式并选择添加小组件。</li>
         <li>找到 Scriptable 小组件并添加到桌面。</li>
         <li>添加后长按小组件，选择编辑小组件，把 Script 设为刚才导入的课表脚本。</li>
       </ol>

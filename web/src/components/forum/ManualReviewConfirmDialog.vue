@@ -1,15 +1,15 @@
 <template>
   <el-dialog
     :model-value="modelValue"
-    title="提交人工审核前确认"
+    title="提交人工复核前确认"
     width="460px"
     append-to-body
     @close="handleCancel"
   >
     <div class="manual-review-confirm">
-      <p>你将提交{{ subject }}人工审核申请。</p>
-      <p>审核期间不能继续投递新稿件，请先阅读说明后再确认。</p>
-      <p class="cpu-muted">倒计时结束前不能提交，避免误触。</p>
+      <p>你将提交{{ subject }}人工复核申请。</p>
+      <p>复核期间暂时不能继续提交新内容，请确认无误后再继续。</p>
+      <p class="cpu-muted">倒计时结束后才能提交，避免误触。</p>
     </div>
     <template #footer>
       <el-button @click="handleCancel">返回修改</el-button>
@@ -28,7 +28,7 @@ const props = withDefaults(defineProps<{
   subject?: string;
   countdown?: number;
 }>(), {
-  subject: "稿件",
+  subject: "内容",
   countdown: 3,
 });
 

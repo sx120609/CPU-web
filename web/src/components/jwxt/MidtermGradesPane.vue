@@ -27,7 +27,7 @@
       :closable="false"
       show-icon
       class="scope-tip"
-      title="该页使用学校独立的“课程期中成绩查询”接口；部分课程若未发布期中成绩，会显示为“—”。"
+      title="部分课程暂未公布期中成绩时，会显示为“—”。"
     />
 
     <div v-loading="loading">

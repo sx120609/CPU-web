@@ -77,7 +77,7 @@
 
     <div class="editor-foot">
       <span class="foot-note">{{ resolvedFooterText }}</span>
-      <span class="draft-state">{{ draftHint || "自动保存草稿" }}</span>
+      <span class="draft-state">{{ draftHint || "草稿会自动保存" }}</span>
       <span class="foot-count" :class="{ warn: modelValue.length > maxLength }">{{ modelValue.length }} / {{ maxLength }}</span>
     </div>
 
@@ -103,10 +103,10 @@ type Alignment = "left" | "center" | "right";
 
 const EDITABLE_BLOCK_SELECTOR = "p,div,h1,h2,h3,h4,h5,h6,blockquote,li";
 const MOBILE_BREAKPOINT = "(max-width: 700px)";
-const DEFAULT_PLACEHOLDER = "写正文，可以用上方按钮排版，也可以直接粘贴图片。";
-const MOBILE_PLACEHOLDER = "写正文，可用上方工具栏排版和插图。";
-const DEFAULT_FOOTER = "支持直接粘贴图片；编辑区内图片会以小预览显示。";
-const MOBILE_FOOTER = "支持工具栏插图；编辑区内图片会以小预览显示。";
+const DEFAULT_PLACEHOLDER = "写点什么，也可以直接插入图片。";
+const MOBILE_PLACEHOLDER = "写点什么，也可以用工具栏插图。";
+const DEFAULT_FOOTER = "支持排版、图片和草稿保存。";
+const MOBILE_FOOTER = "支持排版、图片和草稿保存。";
 
 const props = withDefaults(defineProps<{
   modelValue: string;

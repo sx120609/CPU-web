@@ -13,7 +13,7 @@
         <div class="brand-logo">药</div>
         <div>
           <h1>注册药大垎坊</h1>
-          <p>公开注册已关闭 · 请优先使用统一认证登录</p>
+          <p>暂不开放公开注册</p>
         </div>
       </div>
 
@@ -23,8 +23,8 @@
           <div style="line-height:1.7">
             <p style="margin:0 0 6px"><b>公开注册已关闭。</b></p>
             <p style="margin:0">
-              药大学生请在 <a href="javascript:" @click.prevent="goLogin">登录页</a> 使用<b>学校统一认证</b>登录，站内账号会自动创建。<br>
-              新生、毕业生、站务等无法走统一身份认证的账号，请联系管理员人工开通。
+              药大学生请在 <a href="javascript:" @click.prevent="goLogin">登录页</a> 使用<b>学校统一认证</b>登录，首次登录会自动创建账号。<br>
+              暂时无法使用统一认证的账号，可联系站务协助处理。
             </p>
           </div>
         </el-alert>
@@ -66,14 +66,14 @@
     </div>
 
     <el-dialog v-model="showTerms" title="药大垎坊 用户协议" width="500">
-      <p>本站为中国药科大学学生自发维护的校园互助与服务平台，<b>与学校官方无关</b>。</p>
+      <p>药大垎坊是面向校内同学的交流与服务平台。</p>
       <p>注册即表示你同意：</p>
       <ol>
         <li>不发布违法、违规、人身攻击内容</li>
         <li>所有发帖与回复内容版权归发布者本人</li>
         <li>学号 / 工号会用于创建或关联站内账号，本站不保存学校密码和验证码</li>
         <li>站方有权根据情节删除违规内容、封禁账号</li>
-        <li>本站功能仅供学习交流参考，不构成任何官方意见</li>
+        <li>请自行判断信息内容，重要事项以学校正式通知为准</li>
       </ol>
       <template #footer>
         <el-button type="primary" @click="agree = true; showTerms = false">我同意</el-button>

@@ -25,7 +25,7 @@
       </div>
       <div class="line2">
         <span class="author">{{ topic.author?.nickname ?? "—" }}</span>
-        <span v-if="topic.author?.role === 'bot'" class="bot">🤖 自动同步</span>
+        <span v-if="topic.author?.role === 'bot'" class="bot">🤖 公告同步</span>
         <span class="dot">·</span>
         <span>{{ fmtRelative(topic.lastReplyAt || topic.createdAt) }}</span>
         <span v-if="topic.editCount && topic.editCount > 0" class="edited">已编辑 {{ topic.editCount }} 次</span>

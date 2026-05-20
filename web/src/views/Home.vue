@@ -29,7 +29,7 @@
         <section class="block" v-if="summary?.pinnedTopics?.length">
           <div class="block-head">
             <h3>📌 全局置顶</h3>
-            <span class="cpu-muted">最新内容优先展示</span>
+            <span class="cpu-muted">重要内容</span>
           </div>
           <TopicListItem v-for="t in summary.pinnedTopics" :key="'pin-' + t.id" :topic="t" />
         </section>
@@ -71,7 +71,7 @@
         <section class="block">
           <div class="block-head">
             <h3>📢 校园公告</h3>
-            <span class="cpu-muted">自动同步公开来源</span>
+            <span class="cpu-muted">学校公开信息</span>
           </div>
           <ul v-if="summary?.announce?.length" class="announce-list">
             <li v-for="t in summary.announce" :key="'ann-' + t.id" @click="$router.push(`/forum/topic/${t.id}`)">
@@ -152,7 +152,7 @@ const heroIntro = computed(() => {
   return `${text}，给药大学生一个更顺手的信息入口。`;
 });
 
-const loginActionText = computed(() => site.features.forum ? "登录账号" : "登录使用");
+const loginActionText = computed(() => site.features.forum ? "登录" : "登录使用");
 
 onMounted(async () => {
   // 不区分游客 / 登录态，统一调 home/summary —— 后端按 token 自动决定 identity 是否返回

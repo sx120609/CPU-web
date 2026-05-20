@@ -20,7 +20,7 @@
       <p class="hint">{{ loginHint }}</p>
 
       <el-alert type="warning" :closable="false" show-icon class="safety">
-        学号 / 工号会用于创建或关联站内账号，<b>学校密码和验证码不保存</b>
+        学号 / 工号仅用于识别身份并关联账号，<b>学校密码和验证码不会保存</b>
       </el-alert>
 
       <el-form
@@ -52,7 +52,7 @@
           <el-alert :title="auth.ssoError" type="error" :closable="false" show-icon />
         </el-form-item>
         <el-form-item>
-          <el-checkbox v-model="remember">记住此账号（本地加密保存，下次自动登录）</el-checkbox>
+          <el-checkbox v-model="remember">记住此账号（仅保存在当前设备）</el-checkbox>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" class="btn-submit" :loading="auth.ssoLoading" @click="onSubmit">
@@ -63,9 +63,9 @@
 
       <!-- 站内独立账号：新生 / 毕业生 / 站务 / 管理员 -->
       <details class="dev-fallback">
-        <summary>🔑 其他登录</summary>
+        <summary>🔑 其他方式登录</summary>
         <div class="dev-tip">
-          主要供无法使用统一认证的账号使用：新生、毕业生、站务 / 管理员等。使用站内独立用户名和密码。
+          适用于暂时无法使用统一认证的账号，例如新生、毕业生或站务账号。
         </div>
         <el-form size="default" class="dev-form" @keyup.enter="onDevSubmit">
           <el-input v-model="dev.username" placeholder="用户名" />
@@ -83,7 +83,7 @@
       <div class="alt-actions">
         <button type="button" @click="goHome">暂不登录，继续浏览</button>
         <span>·</span>
-        <span class="muted-note">没有账号？请联系管理员开通</span>
+        <span class="muted-note">多数同学可直接使用统一认证登录</span>
       </div>
     </div>
   </div>
@@ -119,7 +119,7 @@ const loginHint = computed(() => {
   if (site.features.forum) uses.push("发帖");
   if (site.features.coursereview) uses.push("课评");
   uses.push("消息通知");
-  return `完成身份确认后自动创建站内账号，可用于${uses.join("、")}。`;
+  return `完成身份确认后会自动创建站内账号，可用于${uses.join("、")}。`;
 });
 
 onMounted(async () => {
@@ -132,7 +132,7 @@ onMounted(async () => {
   try {
     await auth.ssoBegin();
   } catch (e: any) {
-    auth.ssoError = "暂时无法连接统一认证服务，请稍后刷新重试。若你无法使用统一认证，请展开下方「其他登录」。";
+    auth.ssoError = "统一认证暂时不可用，请稍后再试。若你无法使用统一认证，可展开下方“其他方式登录”。";
   }
   // "刚主动退出"标记：本次进入 /login 不自动登录，标记一次性消耗掉；
   // 关闭浏览器（sessionStorage 失效）后下次再访问就会照常自动登录。
@@ -145,7 +145,7 @@ onMounted(async () => {
   if (!justLoggedOut && hasCreds() && !auth.ssoError) {
     const creds = await loadCreds().catch(() => null);
     if (creds && !auth.ssoNeedCaptcha) {
-      ElMessage.info("尝试自动登录…");
+      ElMessage.info("正在尝试自动登录…");
       const ok = await auth.ssoLogin(creds.username, creds.password, undefined, true);
       if (ok) {
         ElMessage.success(`欢迎，${auth.user?.nickname || creds.username}`);
@@ -159,7 +159,7 @@ async function reloadCaptcha() {
   try {
     await auth.ssoBegin();
   } catch {
-    auth.ssoError = "暂时无法连接统一认证服务，请稍后重试";
+    auth.ssoError = "统一认证暂时不可用，请稍后再试";
   }
   form.captcha = "";
 }
@@ -199,7 +199,7 @@ function fillDev(u: string, p: string) {
 
 async function onDevSubmit() {
   if (!dev.username || !dev.password) {
-    ElMessage.warning("请填写演示账号");
+    ElMessage.warning("请填写账号和密码");
     return;
   }
   dev.loading = true;

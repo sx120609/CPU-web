@@ -2,7 +2,7 @@
   <div class="announce-page">
     <header class="page-head">
       <h1 class="title">📢 校园公告</h1>
-      <p class="sub">来自学校官方公开站点的自动聚合 · 与本站言论无关</p>
+      <p class="sub">整理学校公开渠道的公告入口</p>
     </header>
 
     <div v-loading="loading" class="cluster">
@@ -28,7 +28,7 @@
           <div class="desc" v-if="b.description">{{ b.description }}</div>
           <div class="meta">
             <span v-if="b.feedSource?.homepage">同步自 {{ shortHost(b.feedSource.homepage) }}</span>
-            <span v-if="b.feedSource?.lastRunAt" class="time">· 最近抓取 {{ fmtRelative(b.feedSource.lastRunAt) }}</span>
+            <span v-if="b.feedSource?.lastRunAt" class="time">· 最近更新 {{ fmtRelative(b.feedSource.lastRunAt) }}</span>
           </div>
         </div>
         <el-icon class="arrow"><Right /></el-icon>
@@ -57,7 +57,7 @@ async function reload() {
     all.value = await boardApi.list();
   } catch (e: any) {
     // 之前是裸 try-finally，错误被吞，用户看到的就是"卡死"——现在显式反馈
-    error.value = e?.message || "公告加载失败，请稍后重试";
+    error.value = e?.message || "暂时加载失败，请稍后再试";
     all.value = [];
   } finally {
     loading.value = false;
