@@ -17,14 +17,33 @@ export type SiteConfig = {
   aiEditSimilarityUserPrompt: string;
 };
 
+export type AdminOverview = {
+  users: number;
+  banned: number;
+  recentLogins: number;
+  topics: number;
+  todayTopics: number;
+  hiddenTopics: number;
+  replies: number;
+  iosClients: number;
+  androidClients: number;
+  feeds: number;
+  boards: number;
+  forumEligibleUsers: number;
+  forumEnabledUsers: number;
+  forumPendingUsers: number;
+  forumEnabledToday: number;
+};
+
 export const adminApi = {
   // 概览
-  overview: () => request.get<any>("/admin/overview"),
+  overview: () => request.get<AdminOverview>("/admin/overview"),
   // 用户
   users: (params: {
     q?: string;
     role?: string;
     status?: string;
+    forumEnabled?: string;
     loginClient?: string;
     usedClient?: string;
     usedIosClient?: string;

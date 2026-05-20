@@ -18,6 +18,11 @@
         <div class="ov-sub">{{ overview.banned || 0 }} 封禁 · {{ overview.recentLogins || 0 }} 近 30 天登录</div>
       </div>
       <div class="ov-card">
+        <div class="ov-num">{{ overview.forumEnabledUsers }} / {{ overview.forumEligibleUsers }}</div>
+        <div class="ov-lbl">论坛已开启</div>
+        <div class="ov-sub">{{ overview.forumPendingUsers || 0 }} 未开启 · {{ overview.forumEnabledToday || 0 }} 今日新开</div>
+      </div>
+      <div class="ov-card">
         <div class="ov-num">{{ overview.topics }}</div>
         <div class="ov-lbl">帖子</div>
         <div class="ov-sub">{{ overview.todayTopics }} 今日新帖 · {{ overview.hiddenTopics || 0 }} 已隐</div>
@@ -50,7 +55,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { useAuthStore } from "@/stores/auth";
-import { adminApi } from "@/api/admin";
+import { adminApi, type AdminOverview } from "@/api/admin";
 import UsersPane from "./UsersPane.vue";
 import BoardsPane from "./BoardsPane.vue";
 import TopicsPane from "./TopicsPane.vue";
@@ -60,7 +65,7 @@ import FeaturesPane from "./FeaturesPane.vue";
 
 const auth = useAuthStore();
 const tab = ref("users");
-const overview = ref<any>(null);
+const overview = ref<AdminOverview | null>(null);
 
 onMounted(async () => {
   try { overview.value = await adminApi.overview(); } catch { /* ignore */ }

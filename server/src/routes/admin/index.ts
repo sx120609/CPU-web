@@ -38,6 +38,7 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
     const usedClient = req.query.usedClient ? String(req.query.usedClient) : undefined;
     const usedIosClient = req.query.usedIosClient === "1" ? true : req.query.usedIosClient === "0" ? false : undefined;
     const usedAndroidClient = req.query.usedAndroidClient === "1" ? true : req.query.usedAndroidClient === "0" ? false : undefined;
+    const forumEnabled = req.query.forumEnabled === "1" ? true : req.query.forumEnabled === "0" ? false : undefined;
     const loginFrom = String(req.query.loginFrom ?? "").trim();
     const loginTo = String(req.query.loginTo ?? "").trim();
     const sort = String(req.query.sort ?? "login-desc");
@@ -60,6 +61,7 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
     if (usedClient === "android") where.usedAndroidClient = true;
     if (typeof usedIosClient === "boolean") where.usedIosClient = usedIosClient;
     if (typeof usedAndroidClient === "boolean") where.usedAndroidClient = usedAndroidClient;
+    if (typeof forumEnabled === "boolean") where.forumEnabled = forumEnabled;
     if (loginFrom || loginTo) {
       const loginAtFilter: any = where.lastLoginAt && typeof where.lastLoginAt === "object" ? where.lastLoginAt : {};
       if (loginFrom) {
@@ -90,6 +92,7 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
           college: true, enrollYear: true, role: true, studentSso: true, status: true,
           mutedUntil: true,
           postCount: true, replyCount: true, reputation: true,
+          forumEnabled: true, forumEnabledAt: true,
           aiReviewWhitelisted: true,
           lastSeenAt: true, lastLoginAt: true, lastLoginClient: true, usedIosClient: true, usedAndroidClient: true,
           createdAt: true,
@@ -770,24 +773,61 @@ adminRouter.delete("/announcements/:id", adminOnly, async (req, res, next) => {
 adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
   try {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const [users, banned, topics, hiddenTopics, replies, todayTopics, feeds, boards] = await Promise.all([
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const regularUserWhere = { role: "user" as const };
+
+    const [
+      users,
+      banned,
+      topics,
+      hiddenTopics,
+      replies,
+      todayTopics,
+      feeds,
+      boards,
+      iosClients,
+      androidClients,
+      recentLogins,
+      forumEligibleUsers,
+      forumEnabledUsers,
+      forumEnabledToday,
+    ] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({ where: { status: "banned" } }),
       prisma.topic.count({ where: { hidden: false } }),
       prisma.topic.count({ where: { hidden: true } }),
       prisma.reply.count({ where: { hidden: false } }),
       prisma.topic.count({
-        where: { createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) }, hidden: false },
+        where: { createdAt: { gte: todayStart }, hidden: false },
       }),
       prisma.schoolFeedSource.count({ where: { enabled: true } }),
       prisma.board.count(),
-    ]);
-    const [iosClients, androidClients, recentLogins] = await Promise.all([
       prisma.user.count({ where: { usedIosClient: true } }),
       prisma.user.count({ where: { usedAndroidClient: true } }),
       prisma.user.count({ where: { lastLoginAt: { gte: thirtyDaysAgo } } }),
+      prisma.user.count({ where: regularUserWhere }),
+      prisma.user.count({ where: { ...regularUserWhere, forumEnabled: true } }),
+      prisma.user.count({ where: { ...regularUserWhere, forumEnabled: true, forumEnabledAt: { gte: todayStart } } }),
     ]);
-    ok(res, { users, banned, topics, hiddenTopics, replies, todayTopics, feeds, boards, iosClients, androidClients, recentLogins });
+    const forumPendingUsers = Math.max(0, forumEligibleUsers - forumEnabledUsers);
+    ok(res, {
+      users,
+      banned,
+      topics,
+      hiddenTopics,
+      replies,
+      todayTopics,
+      feeds,
+      boards,
+      iosClients,
+      androidClients,
+      recentLogins,
+      forumEligibleUsers,
+      forumEnabledUsers,
+      forumPendingUsers,
+      forumEnabledToday,
+    });
   } catch (e) { next(e); }
 });
 
