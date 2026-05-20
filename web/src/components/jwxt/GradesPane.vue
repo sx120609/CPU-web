@@ -315,7 +315,7 @@ async function reload() {
   align-items: end;
   min-width: 0;
 }
-.ctrl-right { display: flex; gap: 8px; align-items: center; }
+.ctrl-right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .filter-field {
   min-width: 0;
   display: flex;
@@ -382,6 +382,7 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
 }
 
 .sem-block { margin-bottom: 20px; }
+.sem-block:last-child { margin-bottom: 0; }
 .sem-head {
   display: flex;
   align-items: baseline;
@@ -416,14 +417,26 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
   }
 
   .ctrl-right {
+    width: 100%;
     gap: 6px;
     line-height: 1.6;
     flex-wrap: wrap;
   }
 
+  .stat {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #f5f7fb;
+    white-space: nowrap;
+  }
+
   .service-reco {
+    padding: 14px;
     align-items: stretch;
     flex-direction: column;
+    border-radius: 12px;
   }
 
   .reco-link {
@@ -446,10 +459,15 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
 
   .grade-card {
     position: relative;
-    padding: 12px;
+    padding: 14px;
     border: 1px solid #eef0f4;
-    border-radius: 8px;
+    border-radius: 12px;
     background: #fff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+
+  .grade-main {
+    min-width: 0;
   }
 
   .course-title {
@@ -491,7 +509,7 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
     position: absolute;
     top: 12px;
     right: 12px;
-    max-width: 68px;
+    max-width: 84px;
   }
 }
 
@@ -502,6 +520,22 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
 
   .ctrl-left .wide {
     grid-column: auto;
+  }
+}
+
+@media (max-width: 380px) {
+  .score-badges {
+    grid-template-columns: 1fr;
+  }
+
+  .course-title {
+    padding-right: 0;
+  }
+
+  .grade-tag {
+    position: static;
+    margin-top: 10px;
+    max-width: none;
   }
 }
 </style>

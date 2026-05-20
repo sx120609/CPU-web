@@ -64,28 +64,34 @@
         </el-form-item>
         <el-form-item v-if="jwxt.needCaptcha" label="验证码" prop="captcha">
           <div class="vcode-row">
-            <el-input v-model="form.captcha" placeholder="看图输入" maxlength="8" style="flex:1" />
-            <img v-if="jwxt.captchaImage" :src="jwxt.captchaImage" alt="captcha" class="vcode-img" @click="reloadCaptcha" :title="'点击换一张'" />
-            <el-button text @click="reloadCaptcha"><el-icon><Refresh /></el-icon></el-button>
+            <el-input v-model="form.captcha" placeholder="看图输入" maxlength="8" class="vcode-input" />
+            <div class="vcode-side">
+              <img v-if="jwxt.captchaImage" :src="jwxt.captchaImage" alt="captcha" class="vcode-img" @click="reloadCaptcha" :title="'点击换一张'" />
+              <el-button text class="vcode-refresh" @click="reloadCaptcha"><el-icon><Refresh /></el-icon></el-button>
+            </div>
           </div>
         </el-form-item>
 
         <el-form-item>
-          <el-checkbox v-model="remember">
-            记住账号（加密保存到本机浏览器）
-          </el-checkbox>
-          <el-tooltip placement="top">
-            <template #content>
-              账号会用 AES-GCM 加密后存到 localStorage，<br/>
-              <b>不会上传任何服务器</b>。<br/>
-              下次打开此站可自动完成授权。<br/>
-              <b>共享电脑请勿勾选</b>。
-            </template>
-            <el-icon class="hint-icon"><InfoFilled /></el-icon>
-          </el-tooltip>
-          <el-button v-if="jwxt.rememberSaved" text type="danger" size="small" @click="jwxt.forgetSavedCreds()" style="margin-left:auto">
-            忘记已保存账号
-          </el-button>
+          <div class="remember-row">
+            <div class="remember-main">
+              <el-checkbox v-model="remember">
+                记住账号（加密保存到本机浏览器）
+              </el-checkbox>
+              <el-tooltip placement="top">
+                <template #content>
+                  账号会用 AES-GCM 加密后存到 localStorage，<br/>
+                  <b>不会上传任何服务器</b>。<br/>
+                  下次打开此站可自动完成授权。<br/>
+                  <b>共享电脑请勿勾选</b>。
+                </template>
+                <el-icon class="hint-icon"><InfoFilled /></el-icon>
+              </el-tooltip>
+            </div>
+            <el-button v-if="jwxt.rememberSaved" text type="danger" size="small" class="forget-saved-btn" @click="jwxt.forgetSavedCreds()">
+              忘记已保存账号
+            </el-button>
+          </div>
         </el-form-item>
 
         <el-form-item v-if="jwxt.error">
@@ -105,7 +111,7 @@
     </div>
 
     <!-- 已登录：功能 Tab -->
-    <div v-else>
+    <div v-else class="jwxt-shell">
       <div class="cpu-card session-info">
         <div class="session-main">
           <el-icon class="session-ok"><CircleCheckFilled /></el-icon>
@@ -127,7 +133,7 @@
         </div>
       </div>
 
-      <el-tabs v-model="tab" class="cpu-card" @tab-change="onTabChange">
+      <el-tabs v-model="tab" class="cpu-card jwxt-tabs" @tab-change="onTabChange">
         <el-tab-pane label="📅 课表" name="schedule">
           <SchedulePane :data="schedule" :loading="tabLoading" />
         </el-tab-pane>
@@ -153,7 +159,7 @@
             </ul>
             <el-divider />
             <p class="cpu-muted">自定义路径探针（仅 dev）：</p>
-            <div style="display:flex;gap:8px">
+            <div class="probe-row">
               <el-input v-model="probePath" placeholder="例如 /jsxsd/xskb/xskb_list.do?xnxqid=2024-2025-2-1" />
               <el-button @click="onProbe" :loading="probing">GET</el-button>
             </div>
@@ -424,6 +430,15 @@ async function onProbe() {
 .page-head h2 { margin: 0; font-size: 22px; }
 .page-head .hint { font-size: 13px; color: #6b7280; margin: 6px 0 0; line-height: 1.7; }
 .page-head .hint b { color: #b45309; }
+.scope-tip {
+  max-width: 760px;
+  margin: 0 auto;
+}
+.jwxt-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
 
 .cpu-card { background: #fff; border-radius: 12px; padding: 20px 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
 
@@ -450,13 +465,41 @@ async function onProbe() {
 
 .form { margin-top: 16px; }
 .btn-submit { width: 100%; letter-spacing: 4px; }
+.remember-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+.remember-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.forget-saved-btn {
+  margin-left: auto;
+}
 
 .vcode-row { display: flex; gap: 8px; align-items: center; }
+.vcode-input {
+  flex: 1;
+  min-width: 0;
+}
+.vcode-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
 .vcode-img {
   height: 36px;
   border-radius: 4px;
   cursor: pointer;
   border: 1px solid #e5e7eb;
+}
+.vcode-refresh {
+  flex-shrink: 0;
 }
 
 .alt-link {
@@ -475,7 +518,7 @@ async function onProbe() {
   font-size: 13px;
   color: #166534;
   background: #ecfdf5 !important;
-  margin-bottom: 16px;
+  border: 1px solid #cdecdc;
 }
 .session-main {
   display: flex;
@@ -499,6 +542,7 @@ async function onProbe() {
   margin-top: 2px;
   color: #4b5563;
   font-size: 12px;
+  line-height: 1.6;
 }
 .session-actions {
   display: flex;
@@ -514,6 +558,10 @@ async function onProbe() {
 .hint-icon { color: #6b7280; cursor: help; margin-left: 4px; }
 
 .debug-pane { padding: 8px 0; }
+.probe-row {
+  display: flex;
+  gap: 8px;
+}
 .snap-list { font-size: 12px; color: #4b5563; list-style: none; padding: 0; margin: 10px 0; }
 .snap-list li { padding: 2px 0; font-family: monospace; }
 .cpu-muted { font-size: 12px; color: #9ca3af; }
@@ -532,17 +580,21 @@ async function onProbe() {
     padding: 14px;
   }
 
-  .jwxt-page > div:last-child > .cpu-card {
-    margin: 0 -6px;
-    padding: 8px 8px 12px;
+  .jwxt-shell {
+    gap: 12px;
   }
 
-  .jwxt-page > div:last-child > .cpu-card :deep(.el-tabs__header) {
+  .jwxt-tabs {
+    margin: 0 -6px;
+    padding: 10px 8px 12px;
+  }
+
+  .jwxt-tabs :deep(.el-tabs__header) {
     margin-bottom: 10px;
     overflow: hidden;
   }
 
-  .jwxt-page > div:last-child > .cpu-card :deep(.el-tabs__nav-wrap) {
+  .jwxt-tabs :deep(.el-tabs__nav-wrap) {
     height: 40px;
     max-height: 40px;
     overflow-x: auto;
@@ -554,11 +606,16 @@ async function onProbe() {
     touch-action: pan-x;
   }
 
-  .jwxt-page > div:last-child > .cpu-card :deep(.el-tabs__nav-wrap::-webkit-scrollbar) {
+  .jwxt-tabs :deep(.el-tabs__nav-wrap::after),
+  .jwxt-tabs :deep(.el-tabs__active-bar) {
     display: none;
   }
 
-  .jwxt-page > div:last-child > .cpu-card :deep(.el-tabs__nav-scroll) {
+  .jwxt-tabs :deep(.el-tabs__nav-wrap::-webkit-scrollbar) {
+    display: none;
+  }
+
+  .jwxt-tabs :deep(.el-tabs__nav-scroll) {
     height: 40px;
     max-height: 40px;
     overflow-x: auto;
@@ -570,21 +627,38 @@ async function onProbe() {
     touch-action: pan-x;
   }
 
-  .jwxt-page > div:last-child > .cpu-card :deep(.el-tabs__nav-scroll::-webkit-scrollbar) {
+  .jwxt-tabs :deep(.el-tabs__nav-scroll::-webkit-scrollbar) {
     display: none;
   }
 
-  .jwxt-page > div:last-child > .cpu-card :deep(.el-tabs__nav) {
+  .jwxt-tabs :deep(.el-tabs__nav) {
     float: none;
     width: max-content;
-    min-width: 100%;
+    min-width: max-content;
     white-space: nowrap;
+    gap: 8px;
   }
 
-  .jwxt-page > div:last-child > .cpu-card :deep(.el-tabs__item) {
-    height: 38px;
+  .jwxt-tabs :deep(.el-tabs__item) {
+    height: 34px;
     padding: 0 12px;
     font-size: 13px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    background: #f3f4f6;
+    color: #4b5563;
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  }
+
+  .jwxt-tabs :deep(.el-tabs__item.is-active) {
+    background: linear-gradient(135deg, var(--cpu-primary), var(--cpu-primary-dark));
+    color: #fff;
+    border-color: transparent;
+  }
+
+  .jwxt-tabs :deep(.el-tabs__content) {
+    overflow: visible;
+    padding-top: 2px;
   }
 
   .login-card {
@@ -612,6 +686,23 @@ async function onProbe() {
 
   .vcode-img {
     max-width: 108px;
+  }
+
+  .remember-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .remember-main {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .forget-saved-btn {
+    margin-left: 0;
+    justify-content: flex-start;
+    align-self: flex-start;
+    padding-left: 0;
   }
 
   .session-info {
@@ -642,16 +733,47 @@ async function onProbe() {
     min-height: 36px;
   }
 
-  :deep(.el-tabs__content) {
-    overflow: visible;
-  }
-
   .debug-pane :deep(.el-input__wrapper) {
     min-width: 0;
   }
 
-  .debug-pane > div[style] {
+  .probe-row {
     flex-direction: column;
+  }
+
+  .probe-row :deep(.el-button) {
+    width: 100%;
+  }
+}
+
+@media (max-width: 430px) {
+  .scope-tip {
+    max-width: none;
+  }
+
+  .vcode-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .vcode-side {
+    width: 100%;
+  }
+
+  .vcode-img {
+    width: 100%;
+    max-width: none;
+    object-fit: contain;
+    background: #fff;
+  }
+
+  .session-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .alt-link a {
+    display: inline-block;
+    margin-top: 4px;
   }
 }
 </style>

@@ -248,7 +248,9 @@ async function reload() {
 .stat { font-size: 13px; color: #6b7280; }
 .stat b { color: var(--cpu-primary); font-size: 15px; }
 .scope-tip { margin-top: -2px; }
+.scope-tip :deep(.el-alert__title) { line-height: 1.55; }
 .sem-block { margin-bottom: 20px; }
+.sem-block:last-child { margin-bottom: 0; }
 .sem-head {
   display: flex;
   align-items: baseline;
@@ -279,6 +281,27 @@ async function reload() {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .ctrl-right {
+    width: 100%;
+    gap: 8px;
+    line-height: 1.6;
+  }
+
+  .stat {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #f5f7fb;
+    white-space: nowrap;
+  }
+
+  .sem-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
   .mobile-grade-list {
     display: flex;
     flex-direction: column;
@@ -286,58 +309,66 @@ async function reload() {
   }
 
   .grade-card {
+    position: relative;
     border: 1px solid #eef0f4;
-    border-radius: 10px;
-    padding: 12px;
+    border-radius: 12px;
+    padding: 14px;
     background: #fff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   }
 
   .grade-main {
-    display: flex;
-    justify-content: space-between;
-    gap: 10px;
+    min-width: 0;
   }
 
   .course-title {
+    line-height: 1.45;
     font-size: 15px;
     font-weight: 600;
     color: #111827;
   }
 
-  .course-sub {
+  .course-sub,
+  .grade-detail {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 4px;
+    gap: 6px 10px;
+    margin-top: 8px;
     color: #6b7280;
     font-size: 12px;
+    line-height: 1.4;
   }
 
   .score-badges {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
-    flex-wrap: wrap;
     margin-top: 10px;
   }
 
   .score-pill {
     display: inline-flex;
     align-items: center;
-    padding: 4px 8px;
-    border-radius: 999px;
+    justify-content: center;
+    padding: 7px 8px;
+    border-radius: 8px;
     background: #f8fafc;
-    font-size: 12px;
-  }
-
-  .grade-detail {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 10px;
-    color: #6b7280;
-    font-size: 12px;
+    font-size: 13px;
+    font-weight: 700;
   }
 
   .table-scroll { display: none; }
+}
+
+@media (max-width: 430px) {
+  .ctrl-left {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 380px) {
+  .score-badges {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
