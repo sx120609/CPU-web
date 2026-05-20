@@ -54,11 +54,11 @@
                 </div>
               </div>
               <div class="score-badges">
-                <span class="score-pill" :style="{ color: midtermColor(midtermNum(row.midterm)), fontWeight: 600 }">
-                  期中 {{ row.midterm || "—" }}
-                </span>
                 <span class="score-pill" :style="{ color: totalColor(row.scoreNum) }">
                   总评 {{ row.score || "—" }}
+                </span>
+                <span class="score-pill" :style="{ color: midtermColor(midtermNum(row.midterm)), fontWeight: 600 }">
+                  期中 {{ row.midterm || "—" }}
                 </span>
               </div>
               <div class="grade-detail">
@@ -73,22 +73,22 @@
             <el-table :data="rows" stripe size="default">
               <el-table-column v-if="!isMobile" prop="courseCode" label="课程代码" width="110" />
               <el-table-column prop="courseName" label="课程名称" min-width="220" />
-              <el-table-column v-if="!isMobile" prop="credits" label="学分" width="70" align="right" />
-              <el-table-column label="平时" width="60" align="right">
-                <template #default="{ row }">{{ row.usual || "—" }}</template>
+              <el-table-column label="总评" width="80" align="right">
+                <template #default="{ row }">
+                  <span :style="{ color: totalColor(row.scoreNum), fontWeight: 600 }">{{ row.score || "—" }}</span>
+                </template>
               </el-table-column>
               <el-table-column label="期中" width="80" align="right">
                 <template #default="{ row }">
                   <span :style="{ color: midtermColor(midtermNum(row.midterm)), fontWeight: 600 }">{{ row.midterm || "—" }}</span>
                 </template>
               </el-table-column>
+              <el-table-column v-if="!isMobile" prop="credits" label="学分" width="70" align="right" />
+              <el-table-column label="平时" width="60" align="right">
+                <template #default="{ row }">{{ row.usual || "—" }}</template>
+              </el-table-column>
               <el-table-column label="期末" width="60" align="right">
                 <template #default="{ row }">{{ row.final || "—" }}</template>
-              </el-table-column>
-              <el-table-column label="总评" width="80" align="right">
-                <template #default="{ row }">
-                  <span :style="{ color: totalColor(row.scoreNum) }">{{ row.score || "—" }}</span>
-                </template>
               </el-table-column>
               <el-table-column prop="courseAttr" label="性质" width="90" />
               <el-table-column prop="examType" label="考试" width="100" />
@@ -179,11 +179,14 @@ const groupedBySem = computed(() => {
   const semesters = Array.from(new Set(filteredList.value.map((row) => row.semester || "未知学期"))).sort().reverse();
   for (const sem of semesters) out[sem] = [];
   for (const row of filteredList.value) (out[row.semester || "未知学期"] ??= []).push(row);
+  for (const sem of Object.keys(out)) {
+    out[sem] = sortRowsByPublishedMidterm(out[sem]);
+  }
   return out;
 });
 
 function publishedCountOf(rows: GradeRow[]) {
-  return rows.filter((row) => String(row.midterm ?? "").trim() !== "").length;
+  return rows.filter((row) => hasPublishedMidterm(row)).length;
 }
 
 function midtermAverageOf(rows: GradeRow[]) {
@@ -197,6 +200,25 @@ const midtermAverage = computed(() => midtermAverageOf(filteredList.value));
 const totalCredits = computed(() =>
   filteredList.value.reduce((sum, row) => sum + (typeof row.credits === "number" ? row.credits : 0), 0)
 );
+
+function hasPublishedMidterm(row: GradeRow) {
+  return Boolean(String(row.midterm ?? "").trim());
+}
+
+function hasPublishedTotal(row: GradeRow) {
+  return Boolean(String(row.score ?? "").trim());
+}
+
+function sortRowsByPublishedMidterm(rows: GradeRow[]) {
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((a, b) =>
+      Number(hasPublishedMidterm(b.row)) - Number(hasPublishedMidterm(a.row)) ||
+      Number(hasPublishedTotal(b.row)) - Number(hasPublishedTotal(a.row)) ||
+      a.index - b.index
+    )
+    .map(({ row }) => row);
+}
 
 function midtermColor(n: number | null) {
   if (n === null) return "#9ca3af";
