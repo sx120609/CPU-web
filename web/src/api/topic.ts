@@ -40,7 +40,7 @@ export interface Reply {
 }
 
 export const topicApi = {
-  list: (params: { board?: string; page?: number; size?: number; sort?: "new" | "hot" }) =>
+  list: (params: { board?: string; page?: number; size?: number; sort?: "new" | "hot"; pinned?: "only" | "exclude" }) =>
     request.get<{ page: number; size: number; total: number; list: Topic[] }>("/topics", params),
   detail: (id: number) => request.get<Topic>(`/topics/${id}`),
   replies: (id: number) => request.get<Reply[]>(`/topics/${id}/replies`),

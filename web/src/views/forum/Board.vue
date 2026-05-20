@@ -14,7 +14,7 @@
         </div>
       </div>
       <div class="head-right">
-        <el-radio-group v-model="sort" size="default" @change="reload">
+        <el-radio-group v-model="sort" size="default" @change="onSortChange">
           <el-radio-button value="new">最新</el-radio-button>
           <el-radio-button value="hot">最热</el-radio-button>
         </el-radio-group>
@@ -24,7 +24,19 @@
       </div>
     </div>
 
+    <div v-if="pinnedList.length" class="topic-list cpu-card pinned-list">
+      <div class="section-head">
+        <h3>置顶帖</h3>
+        <span>{{ pinnedList.length }} 条</span>
+      </div>
+      <TopicListItem v-for="t in pinnedList" :key="`pin-${t.id}`" :topic="t" />
+    </div>
+
     <div class="topic-list cpu-card" v-loading="loading">
+      <div class="section-head">
+        <h3>{{ sort === "hot" ? "普通帖子 · 最热排序" : "普通帖子 · 最新排序" }}</h3>
+        <span>{{ total }} 条</span>
+      </div>
       <TopicListItem v-for="t in list" :key="t.id" :topic="t" />
       <el-empty v-if="!loading && !list.length" description="还没有帖子" />
       <el-pagination
@@ -55,6 +67,7 @@ const router = useRouter();
 const auth = useAuthStore();
 
 const board = ref<Board | null>(null);
+const pinnedList = ref<any[]>([]);
 const list = ref<any[]>([]);
 const total = ref(0);
 const page = ref(1);
@@ -78,23 +91,34 @@ async function reload() {
       return null;
     });
     if (!board.value) {
+      pinnedList.value = [];
       list.value = [];
       total.value = 0;
       return;
     }
-    const r = await topicApi.list({ board: slug, page: page.value, size: size.value, sort: sort.value }).catch((error: AxiosError) => {
-      if (error.response?.status === 403) {
-        router.replace({ name: "forum", query: { redirect: route.fullPath } });
-      }
-      return null;
-    });
-    if (!r) {
+    const [pins, normal] = await Promise.all([
+      topicApi.list({ board: slug, size: 20, sort: "new", pinned: "only" }).catch((error: AxiosError) => {
+        if (error.response?.status === 403) {
+          router.replace({ name: "forum", query: { redirect: route.fullPath } });
+        }
+        return null;
+      }),
+      topicApi.list({ board: slug, page: page.value, size: size.value, sort: sort.value, pinned: "exclude" }).catch((error: AxiosError) => {
+        if (error.response?.status === 403) {
+          router.replace({ name: "forum", query: { redirect: route.fullPath } });
+        }
+        return null;
+      }),
+    ]);
+    if (!normal) {
+      pinnedList.value = [];
       list.value = [];
       total.value = 0;
       return;
     }
-    list.value = r.list;
-    total.value = r.total;
+    pinnedList.value = pins?.list ?? [];
+    list.value = normal.list;
+    total.value = normal.total;
   } finally {
     loading.value = false;
   }
@@ -102,6 +126,11 @@ async function reload() {
 
 function onPage(p: number) {
   page.value = p;
+  reload();
+}
+
+function onSortChange() {
+  page.value = 1;
   reload();
 }
 
@@ -149,6 +178,26 @@ function goPost() {
 
 .topic-list { padding: 8px 6px; }
 .cpu-card { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px 10px;
+}
+.section-head h3 {
+  margin: 0;
+  font-size: 15px;
+  color: #1f2937;
+}
+.section-head span {
+  font-size: 12px;
+  color: #9ca3af;
+}
+.pinned-list {
+  border: 1px solid #fee2e2;
+  background: linear-gradient(180deg, #fff9f9 0%, #ffffff 100%);
+}
 
 .pager { padding: 12px; display: flex; justify-content: center; }
 
@@ -195,6 +244,10 @@ function goPost() {
   .topic-list {
     border-radius: 10px;
     padding: 4px;
+  }
+
+  .section-head {
+    padding: 8px 8px 10px;
   }
 
   .pager {

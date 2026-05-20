@@ -39,6 +39,7 @@ topicRouter.get("/", async (req, res, next) => {
     const page = Math.max(1, Number(req.query.page ?? 1));
     const size = Math.min(50, Math.max(5, Number(req.query.size ?? 20)));
     const sort = String(req.query.sort ?? "new");
+    const pinnedMode = req.query.pinned ? String(req.query.pinned) : "include";
     const requesterId = req.user?.userId ?? null;
     const requesterRole = req.user?.role ?? null;
 
@@ -59,10 +60,14 @@ topicRouter.get("/", async (req, res, next) => {
     const where: any = { hidden: false };
     if (boardId) where.boardId = boardId;
     else where.board = { type: { in: enabledBoardTypes() } };
+    if (pinnedMode === "only") where.pinned = true;
+    else if (pinnedMode === "exclude") where.pinned = false;
 
-    const orderBy: any = sort === "hot"
-      ? [{ pinned: "desc" }, { likeCount: "desc" }, { lastReplyAt: "desc" }]
-      : [{ pinned: "desc" }, { lastReplyAt: "desc" }, { createdAt: "desc" }];
+    const orderBy: any = pinnedMode === "only"
+      ? [{ updatedAt: "desc" }, { createdAt: "desc" }]
+      : sort === "hot"
+        ? [{ pinned: "desc" }, { likeCount: "desc" }, { lastReplyAt: "desc" }]
+        : [{ pinned: "desc" }, { lastReplyAt: "desc" }, { createdAt: "desc" }];
 
     const [list, total] = await Promise.all([
       prisma.topic.findMany({
