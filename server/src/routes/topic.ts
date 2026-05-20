@@ -10,7 +10,10 @@ import {
   featureForBoardType,
   getSiteConfig,
   isBoardTypeEnabled,
+  isGlobalPinnedTopic,
   isFeatureOn,
+  removeTopicFromGlobalPins,
+  setTopicGlobalPinned,
 } from "../services/siteSettings";
 import {
   evaluateTopicEditSimilarity,
@@ -319,6 +322,11 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     if (typeof body.pinned === "boolean" && isMod) data.pinned = body.pinned;
     if (typeof body.locked === "boolean" && isMod) data.locked = body.locked;
     if (typeof body.hidden === "boolean" && isMod) data.hidden = body.hidden;
+    const wantsGlobalPinned = typeof body.globalPinned === "boolean" && isMod ? body.globalPinned : undefined;
+    if (wantsGlobalPinned) {
+      if (t.hidden || data.hidden === true) throw Errors.badRequest("隐藏帖子不能设为全局置顶");
+      if (t.board?.type === "announce") throw Errors.badRequest("公告板帖子不能设为全局置顶");
+    }
 
     if (isOwner && (typeof body.title === "string" || typeof body.content === "string")) {
       await ensureUserCanSpeak(req.user!.userId);
@@ -393,6 +401,11 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     const aiTags = Array.isArray(data.__aiTags) ? data.__aiTags : null;
     delete data.__aiTags;
     const u = await prisma.topic.update({ where: { id }, data });
+    if (wantsGlobalPinned !== undefined) {
+      await setTopicGlobalPinned(id, wantsGlobalPinned);
+    } else if (u.hidden) {
+      await removeTopicFromGlobalPins(id);
+    }
     if (aiTags) {
       await syncTopicAiTags(id, aiTags);
     }
@@ -425,6 +438,7 @@ topicRouter.delete("/:id", authRequired, async (req, res, next) => {
     if (!isMod && !isBoardTypeEnabled(t.board?.type)) throw Errors.forbidden(featureClosedMessage(t.board?.type));
     if (isOwner) await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
     await prisma.topic.update({ where: { id }, data: { hidden: true } });
+    await removeTopicFromGlobalPins(id);
     ok(res, { ok: true });
   } catch (e) { next(e); }
 });
@@ -455,6 +469,7 @@ topicRouter.get("/:id/replies", async (req, res, next) => {
 function decodeTopic(t: any, viewer?: { userId?: number | null; role?: string | null }) {
   return {
     ...t,
+    globalPinned: isGlobalPinnedTopic(Number(t.id)),
     author: buildUserPreview(t.author, viewer),
     metadata: safeJson(t.metadata),
     tags: Array.isArray(t.tags)

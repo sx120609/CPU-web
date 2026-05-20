@@ -3,7 +3,7 @@ import { prisma } from "../prisma";
 import { ok } from "../utils/response";
 import { verifyToken } from "../utils/jwt";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
-import { enabledBoardTypes } from "../services/siteSettings";
+import { enabledBoardTypes, getGlobalPinnedTopicIds, isGlobalPinnedTopic } from "../services/siteSettings";
 import { isForumStaffRole, resolveForumAccess } from "../services/forumAccess";
 
 export const homeRouter = Router();
@@ -31,11 +31,13 @@ homeRouter.get("/summary", async (req, res, next) => {
 
     const readableBoardTypes = enabledBoardTypes();
     const contentBoardTypes = readableBoardTypes.filter((type) => type !== "announce");
-    const [user, hotTopics, latestTopics, announce, services, personalUnread, globalReads, globalCount] = await Promise.all([
+    const globalPinnedIds = getGlobalPinnedTopicIds();
+    const [user, pinnedTopics, hotTopics, latestTopics, announce, services, personalUnread, globalReads, globalCount] = await Promise.all([
       userId ? prisma.user.findUnique({ where: { id: userId } }) : Promise.resolve(null),
+      listGlobalPinnedTopics(globalPinnedIds, contentBoardTypes, 6),
       listHotTopics(6, contentBoardTypes),
       prisma.topic.findMany({
-        where: { hidden: false, board: { type: { in: contentBoardTypes } } },
+        where: { hidden: false, id: { notIn: globalPinnedIds }, board: { type: { in: contentBoardTypes } } },
         orderBy: { createdAt: "desc" },
         take: 10,
         include: {
@@ -76,6 +78,7 @@ homeRouter.get("/summary", async (req, res, next) => {
         forumEnabled: forumAccessEnabled,
         unreadCount,
       } : null,
+      pinnedTopics: forumAccessEnabled ? pinnedTopics.map(decode) : [],
       hotTopics: forumAccessEnabled ? hotTopics.map((item, index) => ({
         rank: index + 1,
         hotScore: computeHotScore(item, isRecentTopic(item)),
@@ -127,12 +130,14 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
       } catch { /* ignore */ }
     }
     const forumAccessEnabled = await resolveForumAccess(userId, role);
-    if (!forumAccessEnabled) return ok(res, { page: 1, size: LATEST_FEED_DEFAULT_SIZE, total: 0, list: [] });
+    if (!forumAccessEnabled) return ok(res, { page: 1, size: LATEST_FEED_DEFAULT_SIZE, total: 0, pins: [], list: [] });
     const page = Math.max(1, Number(req.query.page ?? 1));
     const size = Math.min(50, Math.max(10, Number(req.query.size ?? LATEST_FEED_DEFAULT_SIZE)));
     const contentBoardTypes = enabledBoardTypes().filter((type) => type !== "announce");
-    const where = { hidden: false, board: { type: { in: contentBoardTypes } } } as const;
-    const [list, total] = await Promise.all([
+    const globalPinnedIds = getGlobalPinnedTopicIds();
+    const where = { hidden: false, id: { notIn: globalPinnedIds }, board: { type: { in: contentBoardTypes } } } as const;
+    const [pins, list, total] = await Promise.all([
+      listGlobalPinnedTopics(globalPinnedIds, contentBoardTypes, 20),
       prisma.topic.findMany({
         where,
         orderBy: { createdAt: "desc" },
@@ -146,9 +151,29 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
       }),
       prisma.topic.count({ where }),
     ]);
-    ok(res, { page, size, total, list: list.map(decode) });
+    ok(res, { page, size, total, pins: pins.map(decode), list: list.map(decode) });
   } catch (e) { next(e); }
 });
+
+async function listGlobalPinnedTopics(ids: number[], boardTypes: string[], limit = ids.length || 20) {
+  const orderedIds = ids.slice(0, Math.max(0, limit));
+  if (!orderedIds.length) return [];
+  const include = {
+    board: { select: { slug: true, name: true, color: true, type: true } },
+    author: { select: { nickname: true, avatar: true } },
+    tags: { include: { tag: true } },
+  } as const;
+  const rows = await prisma.topic.findMany({
+    where: {
+      id: { in: orderedIds },
+      hidden: false,
+      board: { type: { in: boardTypes } },
+    },
+    include,
+  });
+  const byId = new Map(rows.map((item) => [item.id, item]));
+  return orderedIds.map((id) => byId.get(id)).filter(Boolean) as typeof rows;
+}
 
 async function listHotTopics(size: number, boardTypes: string[]) {
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -202,6 +227,7 @@ function isRecentTopic(topic: any) {
 function decode(t: any) {
   return {
     ...t,
+    globalPinned: isGlobalPinnedTopic(Number(t.id)),
     metadata: safeJson(t.metadata),
     tags: Array.isArray(t.tags)
       ? t.tags

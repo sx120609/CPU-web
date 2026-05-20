@@ -28,6 +28,7 @@ export type SiteConfig = {
 };
 
 export const ALL_FEATURES: FeatureKey[] = ["forum", "market", "coursereview", "electric"];
+const GLOBAL_PINNED_TOPICS_KEY = "forum.globalPinnedTopics";
 const SITE_ORIGIN_KEY = "site.origin";
 const AI_REVIEW_ENABLED_KEY = "ai.review.enabled";
 const AI_REVIEW_PROVIDER_KEY = "ai.review.provider";
@@ -85,6 +86,7 @@ const cache: Record<FeatureKey, boolean> = {
   coursereview: true,
   electric: true,
 };
+let globalPinnedTopicIdsCache: number[] = [];
 
 const configCache: SiteConfig = {
   siteOrigin: "",
@@ -132,6 +134,7 @@ export async function loadFeatures(): Promise<void> {
       key: {
         in: [
           ...ALL_FEATURES.map(keyOf),
+          GLOBAL_PINNED_TOPICS_KEY,
           SITE_ORIGIN_KEY,
           AI_REVIEW_ENABLED_KEY,
           AI_REVIEW_PROVIDER_KEY,
@@ -216,6 +219,10 @@ export async function loadFeatures(): Promise<void> {
       configCache.aiEditSimilarityUserPrompt = normalizePromptTemplate(r.value, DEFAULT_AI_PROMPTS.editSimilarityUser);
       continue;
     }
+    if (r.key === GLOBAL_PINNED_TOPICS_KEY) {
+      globalPinnedTopicIdsCache = normalizeTopicIdList(r.value);
+      continue;
+    }
     const f = r.key.replace(/^feature\./, "") as FeatureKey;
     if (ALL_FEATURES.includes(f)) cache[f] = r.value === "on";
   }
@@ -224,6 +231,14 @@ export async function loadFeatures(): Promise<void> {
 
 export function getFeatures(): Record<FeatureKey, boolean> {
   return { ...cache };
+}
+
+export function getGlobalPinnedTopicIds(): number[] {
+  return [...globalPinnedTopicIdsCache];
+}
+
+export function isGlobalPinnedTopic(topicId: number): boolean {
+  return globalPinnedTopicIdsCache.includes(topicId);
 }
 
 export function isFeatureOn(f: FeatureKey): boolean {
@@ -276,6 +291,27 @@ export async function setFeature(f: FeatureKey, on: boolean): Promise<void> {
   cache[f] = on;
 }
 
+export async function setGlobalPinnedTopicIds(ids: number[]): Promise<number[]> {
+  const normalized = normalizeTopicIdList(JSON.stringify(ids));
+  await prisma.siteSetting.upsert({
+    where: { key: GLOBAL_PINNED_TOPICS_KEY },
+    update: { value: JSON.stringify(normalized) },
+    create: { key: GLOBAL_PINNED_TOPICS_KEY, value: JSON.stringify(normalized) },
+  });
+  globalPinnedTopicIdsCache = normalized;
+  return getGlobalPinnedTopicIds();
+}
+
+export async function setTopicGlobalPinned(topicId: number, pinned: boolean): Promise<number[]> {
+  const current = getGlobalPinnedTopicIds().filter((id) => id !== topicId);
+  if (pinned) current.unshift(topicId);
+  return setGlobalPinnedTopicIds(current);
+}
+
+export async function removeTopicFromGlobalPins(topicId: number): Promise<number[]> {
+  return setGlobalPinnedTopicIds(globalPinnedTopicIdsCache.filter((id) => id !== topicId));
+}
+
 export async function setSiteOrigin(input: string | null | undefined): Promise<SiteConfig> {
   const siteOrigin = normalizeSiteOrigin(input);
   await prisma.siteSetting.upsert({
@@ -291,6 +327,23 @@ function normalizeAiScore(input: string | number | null | undefined, fallback: n
   const n = Number(input);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function normalizeTopicIdList(input: string | number[] | null | undefined) {
+  let raw: unknown = input;
+  if (typeof input === "string") {
+    try {
+      raw = JSON.parse(input);
+    } catch {
+      raw = [];
+    }
+  }
+  if (!Array.isArray(raw)) return [];
+  return Array.from(new Set(
+    raw
+      .map((item) => Number(item))
+      .filter((item) => Number.isInteger(item) && item > 0)
+  ));
 }
 
 function normalizeAiRatio(input: string | number | null | undefined, fallback: number) {

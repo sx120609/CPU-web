@@ -3,7 +3,8 @@
     <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" alt="作者头像" />
     <div class="main">
       <div class="line1">
-        <el-tag v-if="topic.pinned" size="small" type="danger" effect="plain" class="tag">置顶</el-tag>
+        <el-tag v-if="topic.globalPinned" size="small" type="warning" effect="dark" class="tag">全局置顶</el-tag>
+        <el-tag v-if="topic.pinned" size="small" type="danger" effect="plain" class="tag">板块置顶</el-tag>
         <el-tag v-if="topic.board" size="small" :style="{ background: topic.board.color || '#168776', color: '#fff', border: 'none' }" class="tag">
           {{ topic.board.name }}
         </el-tag>

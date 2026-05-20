@@ -8,6 +8,7 @@ export interface Topic {
   content: string;
   metadata: Record<string, any>;
   pinned: boolean;
+  globalPinned?: boolean;
   locked: boolean;
   hidden: boolean;
   viewCount: number;

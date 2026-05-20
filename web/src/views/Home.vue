@@ -26,6 +26,14 @@
     <div class="grid" :class="{ 'single-col': !showForumContent }">
       <!-- 左：热帖 + 最新 -->
       <div class="col-left" v-if="showForumContent">
+        <section class="block" v-if="summary?.pinnedTopics?.length">
+          <div class="block-head">
+            <h3>📌 全局置顶</h3>
+            <span class="cpu-muted">最新内容优先展示</span>
+          </div>
+          <TopicListItem v-for="t in summary.pinnedTopics" :key="'pin-' + t.id" :topic="t" />
+        </section>
+
         <section class="block">
           <div class="block-head">
             <h3>🔥 热议</h3>
@@ -151,7 +159,7 @@ onMounted(async () => {
   try {
     summary.value = await homeApi.summary();
   } catch {
-    summary.value = { identity: null, hotTopics: [], latestTopics: [], announce: [], services: [] };
+    summary.value = { identity: null, pinnedTopics: [], hotTopics: [], latestTopics: [], announce: [], services: [] };
   }
 });
 

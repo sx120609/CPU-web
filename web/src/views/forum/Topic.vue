@@ -8,14 +8,16 @@
         </router-link>
         <div class="actions">
           <el-button v-if="canEdit" text @click="onEdit">编辑</el-button>
-          <el-button v-if="canPin && !isReadOnly" text @click="onPin">{{ topic.pinned ? '取消置顶' : '置顶' }}</el-button>
+          <el-button v-if="canPin && !isReadOnly" text @click="onPin">{{ topic.pinned ? '取消板块置顶' : '板块置顶' }}</el-button>
+          <el-button v-if="canPin && !isReadOnly" text @click="onGlobalPin">{{ topic.globalPinned ? '取消全局置顶' : '全局置顶' }}</el-button>
           <el-button v-if="canPin" text @click="onLock">{{ topic.locked ? '解锁' : '锁帖' }}</el-button>
           <el-button v-if="canEdit" text type="danger" @click="onDelete">删除</el-button>
         </div>
       </header>
 
       <h1 class="post-title">
-        <span v-if="topic.pinned" class="badge pin">置顶</span>
+        <span v-if="topic.globalPinned" class="badge global-pin">全局置顶</span>
+        <span v-if="topic.pinned" class="badge pin">板块置顶</span>
         <span v-if="topic.locked" class="badge lock">🔒</span>
         {{ topic.title }}
       </h1>
@@ -374,6 +376,10 @@ async function onPin() {
   await topicApi.update(topic.value!.id, { pinned: !topic.value!.pinned });
   topic.value!.pinned = !topic.value!.pinned;
 }
+async function onGlobalPin() {
+  await topicApi.update(topic.value!.id, { globalPinned: !topic.value!.globalPinned });
+  topic.value!.globalPinned = !topic.value!.globalPinned;
+}
 async function onLock() {
   await topicApi.update(topic.value!.id, { locked: !topic.value!.locked });
   topic.value!.locked = !topic.value!.locked;
@@ -428,6 +434,7 @@ async function onDelete() {
     margin-right: 6px;
     vertical-align: middle;
   }
+  .global-pin { background: #fef3c7; color: #b45309; }
   .pin { background: #fee2e2; color: #dc2626; }
   .lock { background: #f3f4f6; color: #6b7280; }
 

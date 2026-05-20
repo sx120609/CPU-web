@@ -27,6 +27,17 @@
       </template>
 
       <template v-else>
+        <div v-if="pinnedList.length" class="pin-section">
+          <div class="section-head">
+            <h3>全局置顶</h3>
+            <span>{{ pinnedList.length }} 条</span>
+          </div>
+          <TopicListItem v-for="t in pinnedList" :key="`pin-${t.id}`" :topic="t" />
+        </div>
+        <div class="section-head" v-if="latestList.length || latestTotal">
+          <h3>最新内容</h3>
+          <span>{{ latestTotal }} 条</span>
+        </div>
         <TopicListItem v-for="t in latestList" :key="t.id" :topic="t" />
         <el-pagination
           v-if="latestTotal > latestSize"
@@ -55,11 +66,12 @@ const route = useRoute();
 const isHot = computed(() => route.name === "forum-hot");
 const loading = ref(false);
 const hotList = ref<any[]>([]);
+const pinnedList = ref<any[]>([]);
 const latestList = ref<any[]>([]);
 const latestTotal = ref(0);
 const latestPage = ref(1);
 const latestSize = ref(20);
-const currentList = computed(() => isHot.value ? hotList.value : latestList.value);
+const currentList = computed(() => isHot.value ? hotList.value : [...pinnedList.value, ...latestList.value]);
 
 onMounted(load);
 
@@ -68,9 +80,11 @@ async function load() {
   try {
     if (isHot.value) {
       hotList.value = await homeApi.hotRanking();
+      pinnedList.value = [];
       return;
     }
     const res = await homeApi.latestFeed({ page: latestPage.value, size: latestSize.value });
+    pinnedList.value = res.pins ?? [];
     latestList.value = res.list;
     latestTotal.value = res.total;
   } finally {
@@ -90,6 +104,28 @@ async function onPage(page: number) {
 .title { margin: 0; font-size: 22px; color: #111827; }
 .desc { margin: 6px 0 0; font-size: 13px; color: #6b7280; line-height: 1.65; }
 .cpu-card { background: #fff; border-radius: 12px; padding: 14px 16px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04); }
+.pin-section {
+  margin-bottom: 12px;
+  border: 1px solid #fee2e2;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fff9f9 0%, #ffffff 100%);
+}
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 10px 8px;
+}
+.section-head h3 {
+  margin: 0;
+  font-size: 15px;
+  color: #111827;
+}
+.section-head span {
+  font-size: 12px;
+  color: #9ca3af;
+}
 
 .rank-row {
   display: grid;
@@ -130,6 +166,9 @@ async function onPage(page: number) {
   .feed-page { gap: 12px; }
   .title { font-size: 20px; }
   .cpu-card { border-radius: 10px; padding: 12px; }
+  .section-head {
+    padding: 8px 8px 6px;
+  }
   .rank-row {
     grid-template-columns: auto minmax(0, 1fr);
   }

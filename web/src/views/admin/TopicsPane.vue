@@ -31,6 +31,7 @@
       </el-table-column>
       <el-table-column label="标题" min-width="280">
         <template #default="{ row }">
+          <span v-if="row.globalPinned" style="color:#b45309;margin-right:4px">📍</span>
           <span v-if="row.pinned" style="color:#dc2626;margin-right:4px">📌</span>
           <span v-if="row.locked" style="margin-right:4px">🔒</span>
           <span v-if="row.hidden" style="color:#9ca3af;text-decoration:line-through">{{ row.title }}</span>
@@ -55,7 +56,8 @@
       </el-table-column>
       <el-table-column label="操作" width="350" fixed="right">
         <template #default="{ row }">
-          <el-button text size="small" @click="togglePin(row)">{{ row.pinned ? '取消置顶' : '置顶' }}</el-button>
+          <el-button text size="small" @click="togglePin(row)">{{ row.pinned ? '取消板块置顶' : '板块置顶' }}</el-button>
+          <el-button text size="small" @click="toggleGlobalPin(row)">{{ row.globalPinned ? '取消全局置顶' : '全局置顶' }}</el-button>
           <el-button text size="small" @click="toggleLock(row)">{{ row.locked ? '解锁' : '锁定' }}</el-button>
           <el-button v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'" text type="success" size="small" @click="approveReview(row)">审核通过</el-button>
           <el-button v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'" text type="warning" size="small" @click="rejectReview(row)">驳回</el-button>
@@ -70,7 +72,8 @@
     <div class="mobile-list" v-loading="loading">
       <article v-for="row in list" :key="row.id" class="topic-card">
         <div class="topic-title">
-          <span v-if="row.pinned" class="state danger">置顶</span>
+          <span v-if="row.globalPinned" class="state warning">全局置顶</span>
+          <span v-if="row.pinned" class="state danger">板块置顶</span>
           <span v-if="row.locked" class="state">锁定</span>
           <span v-if="row.hidden" class="state muted-state">已隐</span>
           <a :class="{ hidden: row.hidden }" :href="`/forum/topic/${row.id}`" target="_blank">{{ row.title }}</a>
@@ -83,7 +86,8 @@
           <span>{{ fmtDate(row.createdAt) }}</span>
         </div>
         <div class="mobile-actions">
-          <el-button plain size="small" @click="togglePin(row)">{{ row.pinned ? '取消置顶' : '置顶' }}</el-button>
+          <el-button plain size="small" @click="togglePin(row)">{{ row.pinned ? '取消板块置顶' : '板块置顶' }}</el-button>
+          <el-button plain type="warning" size="small" @click="toggleGlobalPin(row)">{{ row.globalPinned ? '取消全局置顶' : '全局置顶' }}</el-button>
           <el-button plain size="small" @click="toggleLock(row)">{{ row.locked ? '解锁' : '锁定' }}</el-button>
           <el-button v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'" plain type="success" size="small" @click="approveReview(row)">通过</el-button>
           <el-button v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'" plain type="warning" size="small" @click="rejectReview(row)">驳回</el-button>
@@ -149,7 +153,12 @@ function onPage(p: number) { page.value = p; reload(); }
 
 async function togglePin(row: any) {
   await adminApi.updateTopic(row.id, { pinned: !row.pinned });
-  ElMessage.success(row.pinned ? "已取消置顶" : "已置顶");
+  ElMessage.success(row.pinned ? "已取消板块置顶" : "已设为板块置顶");
+  reload();
+}
+async function toggleGlobalPin(row: any) {
+  await adminApi.updateTopic(row.id, { globalPinned: !row.globalPinned });
+  ElMessage.success(row.globalPinned ? "已取消全局置顶" : "已设为全局置顶");
   reload();
 }
 async function toggleLock(row: any) {

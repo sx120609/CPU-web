@@ -93,6 +93,7 @@ export const adminApi = {
   updateTopic: (id: number, patch: {
     hidden?: boolean;
     pinned?: boolean;
+    globalPinned?: boolean;
     locked?: boolean;
     boardSlug?: string;
     aiReviewStatus?: "manual_reviewing" | "approved_manual" | "rejected_manual";

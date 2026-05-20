@@ -8,8 +8,11 @@ import { validate } from "../../middleware/validate";
 import { resetSourceAndRun, runAllOnce } from "../../services/schoolCrawler";
 import {
   getFeatures,
+  isGlobalPinnedTopic,
   getSiteConfig,
+  removeTopicFromGlobalPins,
   setFeature,
+  setTopicGlobalPinned,
   setAiReviewConfig,
   setSiteOrigin,
   ALL_FEATURES,
@@ -362,7 +365,15 @@ adminRouter.get("/topics", modOrAbove, async (req, res, next) => {
       }),
       prisma.topic.count({ where }),
     ]);
-    ok(res, { page, size, total, list });
+    ok(res, {
+      page,
+      size,
+      total,
+      list: list.map((item: any) => ({
+        ...item,
+        globalPinned: isGlobalPinnedTopic(item.id),
+      })),
+    });
   } catch (e) { next(e); }
 });
 
@@ -409,6 +420,7 @@ adminRouter.get("/review-targets/:kind/:id", modOrAbove, async (req, res, next) 
 const topicPatchSchema = z.object({
   hidden: z.boolean().optional(),
   pinned: z.boolean().optional(),
+  globalPinned: z.boolean().optional(),
   locked: z.boolean().optional(),
   boardSlug: z.string().optional(), // 转板块
   aiReviewStatus: z.enum(["manual_reviewing", "approved_manual", "rejected_manual"]).optional(),
@@ -425,18 +437,38 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
     const id = Number(req.params.id);
     const existing = await prisma.topic.findUnique({
       where: { id },
-      select: { id: true, authorId: true, boardId: true, title: true, hidden: true, aiReviewStatus: true },
+      select: {
+        id: true,
+        authorId: true,
+        boardId: true,
+        title: true,
+        hidden: true,
+        aiReviewStatus: true,
+        pinned: true,
+        locked: true,
+        board: { select: { type: true } },
+      },
     });
     if (!existing) throw Errors.notFound("帖子不存在");
     const data: any = {};
     if (typeof req.body.hidden === "boolean") data.hidden = req.body.hidden;
     if (typeof req.body.pinned === "boolean") data.pinned = req.body.pinned;
     if (typeof req.body.locked === "boolean") data.locked = req.body.locked;
+    const wantsGlobalPinned = typeof req.body.globalPinned === "boolean" ? req.body.globalPinned : undefined;
     if (req.body.boardSlug) {
       const target = await prisma.board.findUnique({ where: { slug: req.body.boardSlug } });
       if (!target) throw Errors.notFound("目标板块不存在");
       if (target.readOnly) throw Errors.badRequest("不能转入只读板块");
       data.boardId = target.id;
+      if (wantsGlobalPinned && target.type === "announce") {
+        throw Errors.badRequest("公告板帖子不能设为全局置顶");
+      }
+    }
+    if (wantsGlobalPinned && (existing.hidden || data.hidden === true)) {
+      throw Errors.badRequest("隐藏帖子不能设为全局置顶");
+    }
+    if (wantsGlobalPinned && existing.board?.type === "announce") {
+      throw Errors.badRequest("公告板帖子不能设为全局置顶");
     }
     if (req.body.aiReviewStatus) {
       if (!["manual_requested", "manual_reviewing"].includes(existing.aiReviewStatus)) {
@@ -454,6 +486,11 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
       }
     }
     const u = await prisma.topic.update({ where: { id }, data });
+    if (wantsGlobalPinned !== undefined) {
+      await setTopicGlobalPinned(u.id, wantsGlobalPinned);
+    } else if (u.hidden) {
+      await removeTopicFromGlobalPins(u.id);
+    }
     if (req.body.aiReviewStatus) {
       await refreshTopicSubmissionLock(u.authorId);
       if (req.body.aiReviewStatus === "approved_manual" && existing.hidden === true && u.hidden === false) {
@@ -475,7 +512,14 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
         });
       }
     }
-    ok(res, { id: u.id, hidden: u.hidden, pinned: u.pinned, locked: u.locked, boardId: u.boardId });
+    ok(res, {
+      id: u.id,
+      hidden: u.hidden,
+      pinned: u.pinned,
+      globalPinned: isGlobalPinnedTopic(u.id),
+      locked: u.locked,
+      boardId: u.boardId,
+    });
   } catch (e) { next(e); }
 });
 
@@ -498,6 +542,7 @@ adminRouter.delete("/topics/:id", modOrAbove, async (req, res, next) => {
         await prisma.board.update({ where: { id: topic.boardId }, data: { topicCount: { decrement: 1 } } }).catch(() => {});
       }
     }
+    await removeTopicFromGlobalPins(id);
     ok(res, { ok: true });
   } catch (e) { next(e); }
 });
