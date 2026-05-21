@@ -864,6 +864,7 @@ adminRouter.post("/announcements", adminOnly, validate(z.object({
   content: z.string().min(1).max(2000),
   level: z.enum(["strong", "normal", "weak"]).optional(),
   link: z.string().max(500).optional(),
+  source: z.string().max(40).optional(),
   targetClient: z.enum(["all", "ios", "android"]).optional(),
 })), async (req, res, next) => {
   try {
@@ -876,10 +877,45 @@ adminRouter.post("/announcements", adminOnly, validate(z.object({
         title: req.body.title,
         content: req.body.content,
         link: req.body.link || null,
-        source: "站务组",
+        source: req.body.source?.trim() || "站务组",
       },
     });
     ok(res, n);
+  } catch (e) { next(e); }
+});
+
+const announcementPatchSchema = z.object({
+  title: z.string().min(2).max(120).optional(),
+  content: z.string().min(1).max(2000).optional(),
+  level: z.enum(["strong", "normal", "weak"]).optional(),
+  link: z.string().max(500).nullable().optional(),
+  source: z.string().max(40).nullable().optional(),
+  targetClient: z.enum(["all", "ios", "android"]).optional(),
+});
+
+adminRouter.patch("/announcements/:id", adminOnly, validate(announcementPatchSchema), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) throw Errors.badRequest("公告 ID 不合法");
+    const existing = await prisma.notification.findUnique({ where: { id } });
+    if (!existing) throw Errors.notFound("公告不存在");
+    if (existing.userId !== null || existing.category !== "system") {
+      throw Errors.badRequest("只能编辑全站公告");
+    }
+    const updated = await prisma.notification.update({
+      where: { id },
+      data: {
+        title: req.body.title,
+        content: req.body.content,
+        level: req.body.level,
+        link: req.body.link === undefined ? undefined : (req.body.link || null),
+        source: req.body.source === undefined ? undefined : (req.body.source?.trim() || "站务组"),
+        targetClient: req.body.targetClient === undefined
+          ? undefined
+          : (req.body.targetClient === "all" ? null : req.body.targetClient),
+      },
+    });
+    ok(res, updated);
   } catch (e) { next(e); }
 });
 

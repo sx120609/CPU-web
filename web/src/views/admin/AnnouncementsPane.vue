@@ -1,7 +1,7 @@
 <template>
   <div class="ann-pane">
     <el-card shadow="never" class="composer">
-      <template #header><h3 style="margin:0;font-size:15px">📣 发布全站公告</h3></template>
+      <template #header><h3 style="margin:0;font-size:15px">{{ editingId ? "✏️ 编辑全站公告" : "📣 发布全站公告" }}</h3></template>
       <el-form :model="form" label-position="top">
         <el-form-item label="标题">
           <el-input v-model="form.title" maxlength="120" placeholder="公告标题" show-word-limit />
@@ -19,6 +19,9 @@
         <el-form-item label="附带链接（选填）">
           <el-input v-model="form.link" placeholder="例如 /forum/topic/123 或 https://..." />
         </el-form-item>
+        <el-form-item label="发布者（展示名）">
+          <el-input v-model="form.source" maxlength="40" placeholder="默认显示为 站务组" />
+        </el-form-item>
         <el-form-item label="投放平台">
           <el-radio-group v-model="form.targetClient">
             <el-radio-button value="all">全部</el-radio-button>
@@ -28,8 +31,9 @@
         </el-form-item>
         <el-form-item>
           <el-button type="primary" :loading="publishing" :disabled="!form.title || !form.content" @click="publish">
-            发布公告
+            {{ editingId ? "保存修改" : "发布公告" }}
           </el-button>
+          <el-button v-if="editingId" @click="resetForm">取消编辑</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -54,7 +58,7 @@
             {{ a.title }}
           </div>
           <div class="ann-content">{{ a.content }}</div>
-          <div class="ann-meta">{{ fmtDate(a.createdAt) }} · {{ a.source }}</div>
+          <div class="ann-meta">{{ fmtDate(a.createdAt) }} · {{ a.source || "站务组" }}</div>
         </div>
         <el-dropdown trigger="click" @command="handleAnnouncementCommand($event, a)">
           <el-button text size="small" class="action-trigger">
@@ -62,6 +66,7 @@
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
+              <el-dropdown-item command="edit">编辑</el-dropdown-item>
               <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -79,7 +84,8 @@ import { adminApi } from "@/api/admin";
 import { fmtDate } from "@/utils/format";
 
 const list = ref<any[]>([]);
-const form = reactive({ title: "", content: "", level: "normal", link: "", targetClient: "all" });
+const editingId = ref<number | null>(null);
+const form = reactive({ title: "", content: "", level: "normal", link: "", source: "站务组", targetClient: "all" });
 const publishing = ref(false);
 
 onMounted(reload);
@@ -94,27 +100,63 @@ function targetLabel(value?: string | null) {
 async function publish() {
   publishing.value = true;
   try {
-    await adminApi.createAnnouncement({
-      title: form.title.trim(),
-      content: form.content.trim(),
-      level: form.level,
-      link: form.link.trim() || undefined,
-      targetClient: form.targetClient as "all" | "ios" | "android",
-    });
-    ElMessage.success("公告已发布");
-    form.title = ""; form.content = ""; form.link = ""; form.targetClient = "all";
-    reload();
+    if (editingId.value) {
+      await adminApi.updateAnnouncement(editingId.value, {
+        title: form.title.trim(),
+        content: form.content.trim(),
+        level: form.level,
+        link: form.link.trim() || null,
+        source: form.source.trim() || "站务组",
+        targetClient: form.targetClient as "all" | "ios" | "android",
+      });
+      ElMessage.success("公告已更新");
+    } else {
+      await adminApi.createAnnouncement({
+        title: form.title.trim(),
+        content: form.content.trim(),
+        level: form.level,
+        link: form.link.trim() || undefined,
+        source: form.source.trim() || "站务组",
+        targetClient: form.targetClient as "all" | "ios" | "android",
+      });
+      ElMessage.success("公告已发布");
+    }
+    resetForm();
+    await reload();
   } finally { publishing.value = false; }
 }
 
 function handleAnnouncementCommand(command: string, row: any) {
+  if (command === "edit") return startEdit(row);
   if (command === "delete") return removeAnn(row);
+}
+
+function startEdit(row: any) {
+  editingId.value = row.id;
+  form.title = row.title || "";
+  form.content = row.content || "";
+  form.level = row.level || "normal";
+  form.link = row.link || "";
+  form.source = row.source || "站务组";
+  form.targetClient = row.targetClient || "all";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function resetForm() {
+  editingId.value = null;
+  form.title = "";
+  form.content = "";
+  form.level = "normal";
+  form.link = "";
+  form.source = "站务组";
+  form.targetClient = "all";
 }
 
 async function removeAnn(a: any) {
   await ElMessageBox.confirm(`删除公告《${a.title}》？`, "确认", { type: "warning" });
   await adminApi.deleteAnnouncement(a.id);
   ElMessage.success("已删除");
+  if (editingId.value === a.id) resetForm();
   reload();
 }
 </script>

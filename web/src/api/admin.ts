@@ -173,7 +173,9 @@ export const adminApi = {
   runAllFeeds: () => request.post<any>("/admin/feeds/run-all"),
   // 公告
   announcements: () => request.get<any[]>("/admin/announcements"),
-  createAnnouncement: (p: { title: string; content: string; level?: string; link?: string; targetClient?: "all" | "ios" | "android" }) =>
+  createAnnouncement: (p: { title: string; content: string; level?: string; link?: string; source?: string; targetClient?: "all" | "ios" | "android" }) =>
     request.post<any>("/admin/announcements", p),
+  updateAnnouncement: (id: number, p: { title?: string; content?: string; level?: string; link?: string | null; source?: string | null; targetClient?: "all" | "ios" | "android" }) =>
+    request.patch<any>(`/admin/announcements/${id}`, p),
   deleteAnnouncement: (id: number) => request.delete<any>(`/admin/announcements/${id}`),
 };
