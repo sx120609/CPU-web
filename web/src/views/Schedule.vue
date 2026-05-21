@@ -1387,14 +1387,14 @@ onMounted(async () => {
   installPromptRef.value?.autoPromptIfEligible();
   autoPromptAndroidAppUpdate();
 
-  // 后台静默：刷新会话状态 + 自动登录 + 重新拉数据。失败也不影响已显示的缓存。
-  void (async () => {
-    try { await jwxt.refreshStatus(); } catch { /* ignore */ }
-    if (!jwxt.isLoggedIn && hasCreds.value) {
-      autoLoading.value = true;
-      try { await jwxt.tryAutoLogin({ force: true }); }
-      finally { autoLoading.value = false; }
-    }
+    // 后台静默：刷新会话状态 + 自动登录 + 重新拉数据。失败也不影响已显示的缓存。
+    void (async () => {
+      try { await jwxt.refreshStatus(); } catch { /* ignore */ }
+      if (!jwxt.isLoggedIn && hasCreds.value) {
+        autoLoading.value = !parsed.value;
+        try { await jwxt.tryAutoLogin({ force: true }); }
+        finally { autoLoading.value = false; }
+      }
     if (jwxt.isLoggedIn) {
       await loadCalendar();
       await loadSchedule();

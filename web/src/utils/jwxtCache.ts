@@ -1,4 +1,5 @@
 const JWXT_TOKEN_KEY = "cpu-jwxt-token";
+const SITE_TOKEN_KEY = "cpu-web-token";
 
 const DATA_CACHE_PREFIXES = [
   "cpu-jwxt-tab-cache-v3:",
@@ -29,8 +30,10 @@ function fingerprint(value: string) {
 
 export function jwxtCacheScope() {
   try {
+    const siteToken = localStorage.getItem(SITE_TOKEN_KEY) ?? "";
+    if (siteToken) return `u:${fingerprint(siteToken)}`;
     const token = sessionStorage.getItem(JWXT_TOKEN_KEY) ?? "";
-    return token ? fingerprint(token) : "";
+    return token ? `j:${fingerprint(token)}` : "";
   } catch {
     return "";
   }
