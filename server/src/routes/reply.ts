@@ -45,20 +45,32 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     }
 
     const bypassAiReview = await shouldBypassAiReviewForUser(userId, req.user!.role);
+    const existingAnonymousReply = anonymous
+      ? await prisma.reply.findFirst({
+          where: { topicId, authorId: userId, isAnonymous: true },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          select: { anonymousAlias: true },
+        })
+      : null;
     const reuseTopicAnonymousIdentity = Boolean(
       anonymous &&
       topic.isAnonymous &&
       topic.authorId === userId
     );
-    const shouldConsumeAnonymousCredit = Boolean(anonymous && !reuseTopicAnonymousIdentity);
-    if (anonymous && reuseTopicAnonymousIdentity) {
+    const reuseExistingAnonymousIdentity = Boolean(reuseTopicAnonymousIdentity || existingAnonymousReply);
+    const shouldConsumeAnonymousCredit = Boolean(anonymous && !reuseExistingAnonymousIdentity);
+    if (anonymous && reuseExistingAnonymousIdentity) {
       const { trust } = await refreshAnonymousCreditsIfNeeded(userId);
       if (trust.anonymousState.frozen) {
         throw Errors.forbidden("你的匿名积分当前已被冻结，请联系管理员");
       }
     }
     const anonymousAlias = anonymous
-      ? (reuseTopicAnonymousIdentity ? (topic.anonymousAlias || createAnonymousAlias()) : createAnonymousAlias())
+      ? (
+          reuseTopicAnonymousIdentity
+            ? (topic.anonymousAlias || createAnonymousAlias())
+            : (existingAnonymousReply?.anonymousAlias || createAnonymousAlias())
+        )
       : null;
     if (shouldRunAiReview() && !bypassAiReview) {
       let parentContent = "";

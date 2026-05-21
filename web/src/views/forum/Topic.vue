@@ -213,13 +213,38 @@
     >
       <div class="share-card-panel">
         <div v-if="shareCardRendering" class="share-card-loading">正在生成图片…</div>
-        <img v-else-if="shareCardRenderedUrl" :src="shareCardRenderedUrl" alt="分享卡片" class="share-card-image" />
+        <img
+          v-else-if="shareCardRenderedUrl"
+          :src="shareCardRenderedUrl"
+          alt="分享卡片"
+          class="share-card-image"
+          @click="openShareCardImagePreview"
+        />
+        <p v-if="isAndroidClient" class="share-card-tip">安卓客户端受 WebView 限制，建议点开图片后截图保存。</p>
         <div class="share-card-actions">
-          <button type="button" class="share-card-save-link" :disabled="shareCardSaving" @click="saveShareCardAsPng">
+          <button
+            v-if="!isAndroidClient"
+            type="button"
+            class="share-card-save-link"
+            :disabled="shareCardSaving"
+            @click="saveShareCardAsPng"
+          >
             保存图片
           </button>
+          <button v-else type="button" class="share-card-save-link" @click="openShareCardImagePreview">放大后截图</button>
         </div>
       </div>
+    </el-dialog>
+
+    <el-dialog
+      v-model="shareCardPreviewOpen"
+      title="分享卡片预览"
+      width="min(520px, calc(100vw - 24px))"
+      append-to-body
+      class="share-card-preview-dialog"
+    >
+      <img v-if="shareCardRenderedUrl" :src="shareCardRenderedUrl" alt="分享卡片大图" class="share-card-preview-image" />
+      <p v-if="isAndroidClient" class="share-card-tip">安卓客户端请放大后截图保存。</p>
     </el-dialog>
 
     <div class="share-card-export-shell" aria-hidden="true">
@@ -303,6 +328,7 @@ import { topicApi, replyApi, likeApi, type Topic, type Reply } from "@/api/topic
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate, fmtRelative } from "@/utils/format";
 import { copyText } from "@/utils/userGroup";
+import { isAndroidNativeApp } from "@/utils/clientInfo";
 
 const route = useRoute();
 const router = useRouter();
@@ -322,6 +348,7 @@ const shareCardDialogOpen = ref(false);
 const shareCardSaving = ref(false);
 const shareCardRendering = ref(false);
 const shareCardRenderedUrl = ref("");
+const shareCardPreviewOpen = ref(false);
 const replyReviewBlockedOpen = ref(false);
 const requestingReplyManualReview = ref(false);
 const replyManualReviewConfirmOpen = ref(false);
@@ -353,10 +380,14 @@ const replyAnonymousEnabled = computed(() => {
     topic.value?.isAnonymous &&
     topic.value?.realAuthor?.id === auth.user?.id
   );
+  const ownAnonymousReplyInTopic = Boolean(
+    replies.value.some((item) => item.isAnonymous && item.realAuthor?.id === auth.user?.id)
+  );
   return Boolean(
     topic.value?.board?.anonymousEnabled &&
     (
       ownAnonymousTopic ||
+      ownAnonymousReplyInTopic ||
       (
         anonymousState?.eligible &&
         !anonymousState?.frozen &&
@@ -370,6 +401,9 @@ const replyAnonymousHint = computed(() => {
   if (!topic.value?.board?.anonymousEnabled) return "当前板块暂不支持匿名回复。";
   if (topic.value?.isAnonymous && topic.value?.realAuthor?.id === auth.user?.id) {
     return "这是你的匿名主帖，在这里继续匿名回复不会消耗匿名积分。";
+  }
+  if (replies.value.some((item) => item.isAnonymous && item.realAuthor?.id === auth.user?.id)) {
+    return "你已经在这条帖子里匿名回复过，后续继续匿名不会再消耗匿名积分。";
   }
   if (!anonymousState?.eligible) return `信誉值达到 ${anonymousState?.minReputation ?? 30} 后才能匿名回复。`;
   if (anonymousState?.frozen) return "你的匿名积分当前已被冻结，请联系管理员处理。";
@@ -394,6 +428,7 @@ const canUseNativeShare = computed(() => (
   typeof navigator !== "undefined" &&
   typeof navigator.share === "function"
 ));
+const isAndroidClient = computed(() => typeof navigator !== "undefined" && isAndroidNativeApp());
 const shareCardDownloadName = computed(() => {
   const safeTitle = (topic.value?.title || "分享卡片").replace(/[\\/:*?"<>|]/g, "_").slice(0, 40);
   return `${safeTitle || "分享卡片"}-cpu-share.png`;
@@ -652,6 +687,11 @@ async function copyShareTitleAndLink() {
 function openShareCard() {
   shareCardDialogOpen.value = true;
   void ensureShareCardRendered();
+}
+
+function openShareCardImagePreview() {
+  if (!shareCardRenderedUrl.value) return;
+  shareCardPreviewOpen.value = true;
 }
 
 async function saveShareCardAsPng() {
@@ -1155,6 +1195,22 @@ async function onDelete() {
   place-items: center;
   color: #667085;
   font-size: 14px;
+}
+
+.share-card-tip {
+  margin: 0;
+  color: #b45309;
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.share-card-preview-image {
+  width: 100%;
+  display: block;
+  border-radius: 18px;
+  border: 1px solid #e6edf5;
+  background: #fff;
 }
 
 .share-card-top {
