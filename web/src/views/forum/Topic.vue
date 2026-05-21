@@ -95,7 +95,7 @@
         <el-button :type="liked ? 'primary' : 'default'" :icon="Star" @click="onLike">
           {{ liked ? '已点赞' : '点赞' }} · {{ topic.likeCount }}
         </el-button>
-        <el-button :icon="ChatLineRound" @click="scrollToReply">回复 · {{ topic.replyCount }}</el-button>
+        <el-button :icon="ChatLineRound" @click="openReplyDialog">回复 · {{ topic.replyCount }}</el-button>
       </footer>
     </article>
 
@@ -129,9 +129,15 @@
       </div>
     </section>
 
-    <!-- 回复表单 -->
-    <section class="cpu-card reply-form" v-if="auth.isLoggedIn && !topic.locked && auth.user?.status !== 'muted'">
-      <h3 class="cpu-section-title">回复</h3>
+    <el-dialog
+      v-if="canReply"
+      v-model="replyDialogOpen"
+      title="回复"
+      width="min(720px, calc(100vw - 24px))"
+      append-to-body
+      align-center
+      class="reply-dialog"
+    >
       <RichTextEditor
         ref="replyEditorRef"
         v-model="replyText"
@@ -142,13 +148,13 @@
         :draft-key="replyDraftKey"
         @draft-restored="replyText = $event"
       />
-      <div class="reply-form-actions">
+      <div class="reply-form-actions reply-dialog-actions">
         <span class="cpu-muted">离开页面后会保留未发送的内容。</span>
         <el-button type="primary" :loading="replying" @click="submitReply">
           发布回复
         </el-button>
       </div>
-    </section>
+    </el-dialog>
 
     <div v-else-if="auth.isLoggedIn && !topic.locked && auth.user?.status === 'muted'" class="locked-tip cpu-card">
       {{ currentMuteMessage }}
@@ -208,6 +214,7 @@ const replies = ref<Reply[]>([]);
 const loading = ref(false);
 const replying = ref(false);
 const replyText = ref("");
+const replyDialogOpen = ref(false);
 const replyReviewBlockedOpen = ref(false);
 const requestingReplyManualReview = ref(false);
 const replyManualReviewConfirmOpen = ref(false);
@@ -224,6 +231,9 @@ const REPLY_MAX = 10000;
 const metaPrice = computed(() => topic.value?.metadata?.price);
 const hotScore = computed(() => Math.round((topic.value?.likeCount ?? 0) * 5 + (topic.value?.replyCount ?? 0) * 3 + (topic.value?.viewCount ?? 0) * 0.03));
 const isReadOnly = computed(() => topic.value?.board?.readOnly);
+const canReply = computed(() =>
+  auth.isLoggedIn && !topic.value?.locked && auth.user?.status !== "muted"
+);
 const canEdit = computed(() =>
   auth.user?.id === topic.value?.authorId ||
   auth.isAdmin ||
@@ -231,7 +241,6 @@ const canEdit = computed(() =>
 );
 const canPin = computed(() => auth.isMod);
 const replyDraftKey = computed(() => topic.value?.id ? `cpu-reply-draft-${topic.value.id}` : "");
-const replyIsEmpty = computed(() => replyEditorRef.value?.isContentEmpty() ?? !replyText.value.trim());
 const currentMuteMessage = computed(() => auth.user?.mutedUntil ? `你已被禁言至 ${fmtDate(auth.user.mutedUntil)}` : "你当前已被禁言，暂时无法回复");
 const displayContent = computed(() => {
   const content = topic.value?.content ?? "";
@@ -298,8 +307,26 @@ async function onLikeReply(reply: any) {
 }
 
 function quoteReply(r: Reply) {
+  if (!openReplyDialog()) return;
   const quoted = `<blockquote><p>@${escapeHtml(r.author?.nickname || "同学")} 在 #${r.floor} 楼：</p>${r.content}</blockquote><p><br></p>`;
   replyText.value = `${replyText.value || ""}${quoted}`;
+}
+
+function openReplyDialog() {
+  if (!auth.isLoggedIn) {
+    router.push({ name: "login", query: { redirect: route.fullPath } });
+    return false;
+  }
+  if (topic.value?.locked) {
+    ElMessage.warning("该帖已锁定，无法回复");
+    return false;
+  }
+  if (auth.user?.status === "muted") {
+    ElMessage.warning(currentMuteMessage.value);
+    return false;
+  }
+  replyDialogOpen.value = true;
+  return true;
 }
 
 async function submitReply() {
@@ -320,6 +347,7 @@ async function submitReply() {
     }
     replies.value.push({ ...r, _liked: false } as any);
     replyText.value = "";
+    replyDialogOpen.value = false;
     replyEditorRef.value?.clearDraft();
     if (topic.value) topic.value.replyCount += 1;
     ElMessage.success("已发布");
@@ -335,6 +363,7 @@ async function confirmReplyManualReviewRequest() {
     await auth.fetchMe();
     replyEditorRef.value?.clearDraft();
     replyText.value = "";
+    replyDialogOpen.value = false;
     replyReviewBlockedOpen.value = false;
     ElMessage.success("已提交回复人工复核申请");
   } finally {
@@ -344,10 +373,6 @@ async function confirmReplyManualReviewRequest() {
 
 function escapeHtml(value: string) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function scrollToReply() {
-  repliesEl.value?.scrollIntoView({ behavior: "smooth", block: "end" });
 }
 
 function stripCrawlerSourceHeader(content: string) {
@@ -563,6 +588,10 @@ async function onDelete() {
   margin-top: 10px;
 }
 
+.reply-dialog-actions {
+  margin-top: 16px;
+}
+
 .locked-tip, .login-tip {
   text-align: center;
   color: #6b7280;
@@ -579,6 +608,14 @@ async function onDelete() {
 
 .review-blocked p:last-child {
   margin-bottom: 0;
+}
+
+:deep(.reply-dialog .el-dialog) {
+  border-radius: 18px;
+}
+
+:deep(.reply-dialog .el-dialog__body) {
+  padding-top: 12px;
 }
 
 .cpu-section-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
@@ -681,6 +718,15 @@ async function onDelete() {
 
   .reply-form-actions .el-button {
     width: 100%;
+  }
+
+  :deep(.reply-dialog) {
+    width: calc(100vw - 16px) !important;
+  }
+
+  :deep(.reply-dialog .el-dialog) {
+    margin: 0 auto;
+    border-radius: 16px;
   }
 }
 </style>

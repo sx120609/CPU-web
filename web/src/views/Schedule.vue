@@ -1522,9 +1522,19 @@ let dragCommitTimer = 0;
 let dragCaptureTarget: HTMLElement | null = null;
 const staticWeekAnimationClass = ref<"" | "week-slide-in-next" | "week-slide-in-prev">("");
 let staticWeekAnimationTimer = 0;
+const activePageScrollKey = computed(() => (
+  viewMode.value === "week"
+    ? `week:${currentWeekValue()}`
+    : `day:${currentWeekValue()}:${activeDay.value}`
+));
 const carouselPages = computed<SchedulePageModel[]>(() => {
   const deltas = useStaticWeekSwipe.value ? [0] : [-1, 0, 1];
   return deltas.map((delta) => (viewMode.value === "week" ? weekPageModel(delta) : dayPageModel(delta)));
+});
+
+watch(activePageScrollKey, (value, previousValue) => {
+  if (!previousValue || value === previousValue) return;
+  void nextTick(() => resetActiveScheduleBodyScroll());
 });
 
 async function loadCalendar() {
@@ -1974,6 +1984,12 @@ function clearStaticWeekAnimation() {
     staticWeekAnimationTimer = 0;
   }
   staticWeekAnimationClass.value = "";
+}
+
+function resetActiveScheduleBodyScroll() {
+  const scrollBody = contentRef.value?.querySelector<HTMLElement>(".schedule-panel.active .schedule-body-scroll");
+  if (!scrollBody) return;
+  scrollBody.scrollTop = 0;
 }
 
 async function reloadCaptcha() {
