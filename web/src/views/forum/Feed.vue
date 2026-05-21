@@ -36,18 +36,17 @@
         </div>
         <div class="section-head" v-if="latestList.length || latestTotal">
           <h3>最新内容</h3>
-          <span>{{ latestTotal }} 条</span>
+          <span>已显示 {{ latestList.length }} / {{ latestTotal }}</span>
         </div>
         <TopicListItem v-for="t in latestList" :key="t.id" :topic="t" />
-        <el-pagination
-          v-if="latestTotal > latestSize"
-          :current-page="latestPage"
-          :page-size="latestSize"
-          :total="latestTotal"
-          layout="prev, pager, next"
-          class="pager"
-          @current-change="onPage"
-        />
+        <div v-if="latestTotal > latestSize" class="latest-actions">
+          <el-button v-if="canLoadMore" :loading="loadingMore" @click="loadMore">
+            加载更多
+          </el-button>
+          <el-button v-if="latestList.length > latestSize" text @click="backToTop">
+            回到顶部
+          </el-button>
+        </div>
       </template>
 
       <el-empty v-if="!loading && !currentList.length" description="暂无内容" />
@@ -56,7 +55,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import { homeApi } from "@/api/home";
@@ -65,15 +64,20 @@ import { fmtRelative } from "@/utils/format";
 const route = useRoute();
 const isHot = computed(() => route.name === "forum-hot");
 const loading = ref(false);
+const loadingMore = ref(false);
 const hotList = ref<any[]>([]);
 const pinnedList = ref<any[]>([]);
 const latestList = ref<any[]>([]);
 const latestTotal = ref(0);
 const latestPage = ref(1);
-const latestSize = ref(20);
+const latestSize = ref(15);
 const currentList = computed(() => isHot.value ? hotList.value : [...pinnedList.value, ...latestList.value]);
+const canLoadMore = computed(() => !isHot.value && latestList.value.length < latestTotal.value);
 
-onMounted(load);
+watch(() => route.name, () => {
+  resetState();
+  void load();
+}, { immediate: true });
 
 async function load() {
   loading.value = true;
@@ -81,20 +85,44 @@ async function load() {
     if (isHot.value) {
       hotList.value = await homeApi.hotRanking();
       pinnedList.value = [];
+      latestList.value = [];
+      latestTotal.value = 0;
       return;
     }
     const res = await homeApi.latestFeed({ page: latestPage.value, size: latestSize.value });
     pinnedList.value = res.pins ?? [];
-    latestList.value = res.list;
+    latestList.value = res.list ?? [];
     latestTotal.value = res.total;
   } finally {
     loading.value = false;
   }
 }
 
-async function onPage(page: number) {
-  latestPage.value = page;
-  await load();
+function resetState() {
+  hotList.value = [];
+  pinnedList.value = [];
+  latestList.value = [];
+  latestTotal.value = 0;
+  latestPage.value = 1;
+}
+
+async function loadMore() {
+  if (!canLoadMore.value || loadingMore.value) return;
+  loadingMore.value = true;
+  const nextPage = latestPage.value + 1;
+  try {
+    const res = await homeApi.latestFeed({ page: nextPage, size: latestSize.value });
+    latestPage.value = nextPage;
+    pinnedList.value = res.pins ?? pinnedList.value;
+    latestTotal.value = res.total;
+    latestList.value = [...latestList.value, ...(res.list ?? [])];
+  } finally {
+    loadingMore.value = false;
+  }
+}
+
+function backToTop() {
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 </script>
 
@@ -160,7 +188,13 @@ async function onPage(page: number) {
   font-weight: 700;
   color: var(--cpu-primary);
 }
-.pager { display: flex; justify-content: center; padding-top: 12px; }
+.latest-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  padding-top: 14px;
+}
 
 @media (max-width: 700px) {
   .feed-page { gap: 12px; }
@@ -177,6 +211,11 @@ async function onPage(page: number) {
     text-align: left;
     min-width: 0;
     font-size: 14px;
+  }
+
+  .latest-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

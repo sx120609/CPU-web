@@ -37,9 +37,9 @@
         <section class="block">
           <div class="block-head">
             <h3>🔥 热议</h3>
-            <router-link to="/forum/hot" class="more">更多 →</router-link>
+            <router-link to="/forum/hot" class="more">查看前十 →</router-link>
           </div>
-          <div v-for="t in summary?.hotTopics ?? []" :key="'hot-' + t.id" class="hot-row" @click="$router.push(`/forum/topic/${t.id}`)">
+          <div v-for="t in hotPreview" :key="'hot-' + t.id" class="hot-row" @click="$router.push(`/forum/topic/${t.id}`)">
             <div class="hot-rank" :class="{ top3: t.rank <= 3 }">#{{ t.rank }}</div>
             <div class="hot-main">
               <div class="hot-title">{{ t.title }}</div>
@@ -53,7 +53,11 @@
             </div>
             <div class="hot-score">{{ Math.round(t.hotScore || 0) }}</div>
           </div>
-          <el-empty v-if="!summary?.hotTopics?.length" description="暂无内容" />
+          <div v-if="hotPreview.length" class="hot-foot">
+            <span class="cpu-muted">首页仅展示前三</span>
+            <router-link to="/forum/hot" class="more more-strong">进入热榜 Top 10 →</router-link>
+          </div>
+          <el-empty v-if="!hotPreview.length" description="暂无内容" />
         </section>
 
         <section class="block">
@@ -130,6 +134,7 @@ const site = useSiteStore();
 const router = useRouter();
 const summary = ref<HomeSummary | null>(null);
 const electricOpen = ref(false);
+const hotPreview = computed(() => (summary.value?.hotTopics ?? []).slice(0, 3));
 
 const enabledFeatureLabels = computed(() => {
   const labels = ["公告聚合", "教务数据", "常用校园服务"];
@@ -329,6 +334,16 @@ function openUrl(url: string) {
   font-size: 16px;
   font-weight: 700;
   color: var(--cpu-primary);
+}
+.hot-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding-top: 12px;
+}
+.more-strong {
+  font-weight: 600;
 }
 
 .service-grid {
