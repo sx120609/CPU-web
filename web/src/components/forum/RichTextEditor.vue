@@ -42,17 +42,6 @@
 
         <div class="toolbar-group toolbar-group--compact">
           <span class="size-label">图</span>
-          <button
-            v-for="item in imageSizeOptions"
-            :key="item.value"
-            type="button"
-            class="size-btn"
-            :class="{ active: imageSize === item.value }"
-            :title="hasSelectedImage ? `设为${item.label}图` : `插入${item.label}`"
-            @click="applyImageSize(item.value)"
-          >
-            {{ item.label }}
-          </button>
           <button type="button" title="上传图片" :disabled="imageUploading" @click="pickContentImage">
             {{ imageUploading ? "上传中" : "插图" }}
           </button>
@@ -107,17 +96,7 @@
             </template>
 
             <template v-else-if="activeMobileToolbar === 'image'">
-              <button
-                v-for="item in imageSizeOptions"
-                :key="item.value"
-                type="button"
-                class="size-btn"
-                :class="{ active: imageSize === item.value }"
-                @click="runMobileAction(() => applyImageSize(item.value), true)"
-              >
-                {{ item.label }}图
-              </button>
-              <button type="button" :disabled="imageUploading" @click="runMobileAction(() => pickContentImage(), true)">
+              <button type="button" :disabled="imageUploading" @click="runMobileAction(() => pickContentImage())">
                 {{ imageUploading ? "上传中" : "插图" }}
               </button>
             </template>
@@ -167,8 +146,6 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { uploadApi } from "@/api/topic";
 import { compressImageFile, normalizeImageUploadError } from "@/utils/imageUpload";
 import { renderMarkdown } from "@/utils/markdown";
-
-type ImageSize = "small" | "medium" | "large";
 type Alignment = "left" | "center" | "right";
 type MobileToolbarKey = "heading" | "format" | "tools" | "align" | "image";
 
@@ -204,7 +181,6 @@ const emit = defineEmits<{
 const editorRef = ref<HTMLElement | null>(null);
 const contentImageInputRef = ref<HTMLInputElement | null>(null);
 const imageUploading = ref(false);
-const imageSize = ref<ImageSize>("large");
 const draftHint = ref("");
 const hasSelectedImage = ref(false);
 const isMobileViewport = ref(false);
@@ -228,12 +204,6 @@ let selectedImage: HTMLImageElement | null = null;
 let draftTimer = 0;
 let mobileViewportQuery: MediaQueryList | null = null;
 let topbarResizeObserver: ResizeObserver | null = null;
-
-const imageSizeOptions: Array<{ value: ImageSize; label: string }> = [
-  { value: "small", label: "小" },
-  { value: "medium", label: "中" },
-  { value: "large", label: "大" },
-];
 
 const alignOptions: Array<{ value: Alignment; label: string; title: string }> = [
   { value: "left", label: "左齐", title: "靠左" },
@@ -262,7 +232,7 @@ const resolvedFooterText = computed(() => (
 ));
 
 const toolbarStatusText = computed(() => {
-  if (hasSelectedImage.value) return isMobileViewport.value ? "已选图片" : "已选图片，可调大小和对齐";
+  if (hasSelectedImage.value) return isMobileViewport.value ? "已选图片" : "已选图片，可调对齐";
   return isMobileViewport.value ? "" : "支持排版、图片和草稿";
 });
 const toolbarModeClass = computed(() => ({
@@ -473,8 +443,6 @@ function updateToolbarState() {
   toolbarState.ol = document.queryCommandState("insertOrderedList");
   toolbarState.block = normalizeBlockName(String(document.queryCommandValue("formatBlock") || "p"));
   toolbarState.align = readAlignment(node);
-  const activeImage = getSelectedImage();
-  if (activeImage) imageSize.value = readImageSize(activeImage);
 }
 
 function normalizeBlockName(value: string) {
@@ -541,15 +509,6 @@ function pickContentImage() {
   contentImageInputRef.value?.click();
 }
 
-function applyImageSize(size: ImageSize) {
-  imageSize.value = size;
-  const image = getSelectedImage();
-  if (!image) return;
-  image.setAttribute("data-size", size);
-  syncEditorContent();
-  rememberSelection();
-}
-
 async function onContentImagePicked(event: Event) {
   const input = event.target as HTMLInputElement;
   const files = Array.from(input.files ?? []);
@@ -601,7 +560,7 @@ async function uploadAndInsertImages(files: File[]) {
 function insertUploadedImage(url: string, alt: string) {
   const markerId = `image-caret-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   insertHtmlAtCursor(
-    `<p data-align="${toolbarState.align}"><img src="${escapeAttr(url)}" alt="${escapeAttr(alt)}" data-size="${imageSize.value}" data-align="${toolbarState.align}" /></p><p data-caret="${markerId}"><br></p>`,
+    `<p data-align="${toolbarState.align}"><img src="${escapeAttr(url)}" alt="${escapeAttr(alt)}" data-size="small" data-align="${toolbarState.align}" /></p><p data-caret="${markerId}"><br></p>`,
     markerId
   );
 }
@@ -685,12 +644,6 @@ function readAlignment(node: Node): Alignment {
   return "left";
 }
 
-function readImageSize(img: HTMLImageElement): ImageSize {
-  const size = img.dataset.size;
-  if (size === "small" || size === "medium" || size === "large") return size;
-  return "large";
-}
-
 function selectImage(image: HTMLImageElement) {
   if (!editorRef.value?.contains(image)) return;
   editorRef.value.querySelectorAll("img[data-editor-selected]").forEach((img) => {
@@ -699,7 +652,6 @@ function selectImage(image: HTMLImageElement) {
   selectedImage = image;
   selectedImage.setAttribute("data-editor-selected", "true");
   hasSelectedImage.value = true;
-  imageSize.value = readImageSize(selectedImage);
   toolbarState.align = readAlignment(selectedImage);
 }
 

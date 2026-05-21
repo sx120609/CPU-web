@@ -125,7 +125,13 @@ watch(() => props.clickableImages, () => nextTick(bindImagePreview));
 }
 .md :deep(pre code) { background: transparent; padding: 0; color: inherit; }
 .md :deep(a) { color: var(--cpu-primary); text-decoration: underline; }
-.md :deep(img) { max-width: 100%; border-radius: 8px; margin: 8px 0; }
+.md :deep(img) {
+  max-width: min(100%, 220px);
+  max-height: 180px;
+  border-radius: 8px;
+  margin: 8px 0;
+  object-fit: cover;
+}
 .md-clickable-images :deep(img) {
   cursor: zoom-in;
   transition: transform 0.18s ease, box-shadow 0.18s ease;
@@ -137,9 +143,13 @@ watch(() => props.clickableImages, () => nextTick(bindImagePreview));
 .md :deep([data-align="left"]) { text-align: left; }
 .md :deep([data-align="center"]) { text-align: center; }
 .md :deep([data-align="right"]) { text-align: right; }
-.md :deep(img[data-size="small"]) { max-width: min(100%, 220px); }
-.md :deep(img[data-size="medium"]) { max-width: min(100%, 520px); }
-.md :deep(img[data-size="large"]) { max-width: 100%; }
+.md :deep(img[data-size="small"]),
+.md :deep(img[data-size="medium"]),
+.md :deep(img[data-size="large"]),
+.md :deep(img:not([data-size])) {
+  max-width: min(100%, 220px) !important;
+  max-height: 180px !important;
+}
 .md :deep(img[data-align="left"]) { display: block; margin-left: 0; margin-right: auto; }
 .md :deep(img[data-align="center"]) { display: block; margin-left: auto; margin-right: auto; }
 .md :deep(img[data-align="right"]) { display: block; margin-left: auto; margin-right: 0; }

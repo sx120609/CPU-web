@@ -818,15 +818,6 @@ async function onDelete() {
   .author { color: var(--cpu-primary); text-decoration: none; font-weight: 500; }
   .dot { color: #d1d5db; }
   .reply-content { font-size: 14px; }
-  .topic-markdown :deep(img),
-  .topic-markdown :deep(img[data-size="small"]),
-  .topic-markdown :deep(img[data-size="medium"]),
-  .topic-markdown :deep(img[data-size="large"]) {
-    width: auto;
-    max-width: min(100%, 220px) !important;
-    max-height: 180px !important;
-    object-fit: cover;
-  }
   .reply-actions {
     margin-top: 6px;
     display: flex;
