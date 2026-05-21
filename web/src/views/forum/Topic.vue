@@ -212,34 +212,8 @@
       class="share-card-dialog"
     >
       <div class="share-card-panel">
-        <div class="share-card-dom" ref="shareCardRef">
-          <div class="share-card-top">
-            <div class="share-card-icon" :style="{ background: shareCardAccent }">
-              {{ topic?.board?.icon || "💬" }}
-            </div>
-            <div class="share-card-meta">
-              <div class="share-card-board">{{ topic?.board?.name || "药大垎坊" }}</div>
-              <div class="share-card-subtitle">{{ shareCardSubtitle }}</div>
-              <div class="share-card-stats">{{ shareCardStats }}</div>
-            </div>
-          </div>
-          <div class="share-card-hero" :style="{ background: shareCardSoftBg }">
-            <div class="share-card-hero-orb" :style="{ background: shareCardSoftOrb }"></div>
-            <div class="share-card-hero-line" :style="{ background: shareCardSoftLine }"></div>
-            <h3 class="share-card-title">{{ topic?.title }}</h3>
-            <p class="share-card-subcopy">{{ shareCardSubtitle }}</p>
-          </div>
-          <div class="share-card-bottom">
-            <div class="share-card-brand">
-              <div class="share-card-brand-title">药大垎坊</div>
-              <div class="share-card-brand-copy">扫描二维码，直接打开原帖</div>
-              <div class="share-card-brand-host">cpu.lizmt.cn</div>
-            </div>
-            <div class="share-card-qr-box">
-              <img :src="shareCardQrDataUrl" alt="分享二维码" class="share-card-qr" />
-            </div>
-          </div>
-        </div>
+        <div v-if="shareCardRendering" class="share-card-loading">正在生成图片…</div>
+        <img v-else-if="shareCardRenderedUrl" :src="shareCardRenderedUrl" alt="分享卡片" class="share-card-image" />
         <div class="share-card-actions">
           <button type="button" class="share-card-save-link" :disabled="shareCardSaving" @click="saveShareCardAsPng">
             保存图片
@@ -346,6 +320,8 @@ const shareDialogOpen = ref(false);
 const copyShareDialogOpen = ref(false);
 const shareCardDialogOpen = ref(false);
 const shareCardSaving = ref(false);
+const shareCardRendering = ref(false);
+const shareCardRenderedUrl = ref("");
 const replyReviewBlockedOpen = ref(false);
 const requestingReplyManualReview = ref(false);
 const replyManualReviewConfirmOpen = ref(false);
@@ -357,7 +333,6 @@ const blockedReplyInfo = reactive<{ reason: string; riskScore: number | null }>(
 const liked = ref(false);
 const repliesEl = ref<HTMLElement | null>(null);
 const replyEditorRef = ref<InstanceType<typeof RichTextEditor> | null>(null);
-const shareCardRef = ref<HTMLElement | null>(null);
 const shareCardExportRef = ref<HTMLElement | null>(null);
 const REPLY_MAX = 10000;
 
@@ -676,22 +651,14 @@ async function copyShareTitleAndLink() {
 
 function openShareCard() {
   shareCardDialogOpen.value = true;
+  void ensureShareCardRendered();
 }
 
 async function saveShareCardAsPng() {
-  const exportNode = shareCardExportRef.value || shareCardRef.value;
-  if (!exportNode) return;
+  const dataUrl = await ensureShareCardRendered();
+  if (!dataUrl) return;
   shareCardSaving.value = true;
   try {
-    const dataUrl = await toPng(exportNode, {
-      cacheBust: true,
-      pixelRatio: 2,
-      backgroundColor: "#ffffff",
-      canvasWidth: 720,
-      canvasHeight: 980,
-      width: 720,
-      height: 980,
-    });
     const link = document.createElement("a");
     link.href = dataUrl;
     link.download = shareCardDownloadName.value;
@@ -703,6 +670,32 @@ async function saveShareCardAsPng() {
     ElMessage.error("保存图片失败，请稍后重试");
   } finally {
     shareCardSaving.value = false;
+  }
+}
+
+async function ensureShareCardRendered() {
+  const exportNode = shareCardExportRef.value;
+  if (!exportNode) return "";
+  shareCardRendering.value = true;
+  try {
+    const width = 720;
+    const height = Math.ceil(exportNode.scrollHeight);
+    const dataUrl = await toPng(exportNode, {
+      cacheBust: true,
+      pixelRatio: 2,
+      backgroundColor: "#ffffff",
+      canvasWidth: width,
+      canvasHeight: height,
+      width,
+      height,
+    });
+    shareCardRenderedUrl.value = dataUrl;
+    return dataUrl;
+  } catch {
+    ElMessage.error("生成分享卡片失败，请稍后重试");
+    return "";
+  } finally {
+    shareCardRendering.value = false;
   }
 }
 
@@ -1142,7 +1135,6 @@ async function onDelete() {
 
 .share-card-dom--export {
   width: 720px;
-  min-height: 980px;
   border-radius: 0;
   box-shadow: none;
   border: none;
@@ -1153,10 +1145,16 @@ async function onDelete() {
   left: -99999px;
   top: -99999px;
   width: 720px;
-  height: 980px;
-  overflow: hidden;
   pointer-events: none;
   opacity: 0;
+}
+
+.share-card-loading {
+  min-height: 240px;
+  display: grid;
+  place-items: center;
+  color: #667085;
+  font-size: 14px;
 }
 
 .share-card-top {
