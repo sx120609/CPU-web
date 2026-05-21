@@ -274,6 +274,12 @@ public final class MainActivity extends Activity {
     }
 
     private void openExternal(Uri uri) {
+        if (isApkDownload(uri)) {
+            boolean started = new CpuAndroidBridge(this).downloadAndInstallApk(uri.toString(), "");
+            if (started) {
+                return;
+            }
+        }
         try {
             Intent intent = new Intent(Intent.ACTION_VIEW, uri);
             intent.addCategory(Intent.CATEGORY_BROWSABLE);

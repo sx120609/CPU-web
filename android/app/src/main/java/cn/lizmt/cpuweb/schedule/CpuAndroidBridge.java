@@ -71,6 +71,10 @@ final class CpuAndroidBridge {
     public void openExternalUrl(String url) {
         activity.runOnUiThread(() -> {
             try {
+                Uri uri = Uri.parse(url == null ? "" : url.trim());
+                if (looksLikeApkDownload(uri) && downloadAndInstallApk(uri.toString(), "")) {
+                    return;
+                }
                 Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                 intent.addCategory(Intent.CATEGORY_BROWSABLE);
                 activity.startActivity(intent);
@@ -84,7 +88,7 @@ final class CpuAndroidBridge {
     public boolean downloadAndInstallApk(String url, String fileName) {
         try {
             Uri uri = Uri.parse(url == null ? "" : url.trim());
-            if (!"http".equalsIgnoreCase(uri.getScheme()) && !"https".equalsIgnoreCase(uri.getScheme())) {
+            if (!isHttpUrl(uri)) {
                 return false;
             }
             DownloadManager manager = (DownloadManager) activity.getSystemService(Context.DOWNLOAD_SERVICE);
@@ -236,6 +240,18 @@ final class CpuAndroidBridge {
             raw += ".apk";
         }
         return raw;
+    }
+
+    private boolean isHttpUrl(Uri uri) {
+        String scheme = uri.getScheme();
+        return "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme);
+    }
+
+    private boolean looksLikeApkDownload(Uri uri) {
+        if (!isHttpUrl(uri)) return false;
+        String path = uri.getPath();
+        if (path == null) return false;
+        return path.endsWith(".apk") || path.contains("/downloads/");
     }
 
     private void waitAndOpenDownloadedApk(DownloadManager manager, long downloadId) {
