@@ -181,9 +181,37 @@
         <div class="share-link">{{ shareLandingUrl }}</div>
         <div class="share-actions">
           <el-button v-if="canUseNativeShare" type="primary" @click="shareViaSystem">系统分享</el-button>
-          <el-button @click="copyShareLink">复制链接</el-button>
-          <el-button @click="openQqShare">分享到 QQ</el-button>
-          <el-button @click="shareToWechat">微信使用说明</el-button>
+          <el-button @click="copyShareDialogOpen = true">分享链接</el-button>
+          <el-button @click="openShareCard">生成分享卡片</el-button>
+        </div>
+      </div>
+    </el-dialog>
+
+    <el-dialog
+      v-model="copyShareDialogOpen"
+      title="分享链接"
+      width="380px"
+      append-to-body
+      class="copy-share-dialog"
+    >
+      <div class="copy-share-panel">
+        <el-button @click="copyShareLinkOnly">只复制链接</el-button>
+        <el-button type="primary" plain @click="copyShareTitleAndLink">复制标题和链接</el-button>
+      </div>
+    </el-dialog>
+
+    <el-dialog
+      v-model="shareCardDialogOpen"
+      title="分享卡片"
+      width="min(720px, calc(100vw - 24px))"
+      append-to-body
+      class="share-card-dialog"
+    >
+      <div class="share-card-panel">
+        <img :src="shareCardImageUrl" alt="分享卡片" class="share-card-image" />
+        <div class="share-card-actions">
+          <el-button @click="copyShareCardImageLink">复制卡片图片链接</el-button>
+          <el-button @click="copyShareTitleAndLink">复制标题和链接</el-button>
         </div>
       </div>
     </el-dialog>
@@ -250,6 +278,8 @@ const replyText = ref("");
 const replyAnonymous = ref(false);
 const replyDialogOpen = ref(false);
 const shareDialogOpen = ref(false);
+const copyShareDialogOpen = ref(false);
+const shareCardDialogOpen = ref(false);
 const replyReviewBlockedOpen = ref(false);
 const requestingReplyManualReview = ref(false);
 const replyManualReviewConfirmOpen = ref(false);
@@ -316,7 +346,12 @@ const shareSummary = computed(() => {
   const raw = stripTextForShare(displayContent.value || topic.value?.content || "");
   return raw ? raw.slice(0, 80) : `来自 ${topic.value?.board?.name || "药大垎坊"} 的帖子`;
 });
-const canUseNativeShare = computed(() => typeof navigator !== "undefined" && typeof navigator.share === "function");
+const canUseNativeShare = computed(() => (
+  isIosDevice() &&
+  typeof navigator !== "undefined" &&
+  typeof navigator.share === "function"
+));
+const shareCardImageUrl = computed(() => topic.value ? new URL(`/share/topic/${topic.value.id}/card.svg`, window.location.origin).toString() : "");
 const displayContent = computed(() => {
   const content = topic.value?.content ?? "";
   if (!topic.value?.metadata?.sourceUrl) return content;
@@ -487,27 +522,29 @@ async function shareViaSystem() {
   }
 }
 
-async function copyShareLink() {
+async function copyShareLinkOnly() {
   if (!shareLandingUrl.value) return;
   await copyText(shareLandingUrl.value);
+  copyShareDialogOpen.value = false;
   ElMessage.success("已复制分享链接");
 }
 
-function openQqShare() {
+async function copyShareTitleAndLink() {
   if (!topic.value || !shareLandingUrl.value) return;
-  const params = new URLSearchParams({
-    url: shareLandingUrl.value,
-    title: topic.value.title,
-    summary: shareSummary.value,
-    desc: shareSummary.value,
-  });
-  window.open(`https://connect.qq.com/widget/shareqq/index.html?${params.toString()}`, "_blank", "noopener,noreferrer");
+  await copyText(`${topic.value.title}\n${shareLandingUrl.value}`);
+  copyShareDialogOpen.value = false;
+  ElMessage.success("已复制标题和链接");
 }
 
-async function shareToWechat() {
-  if (!shareLandingUrl.value) return;
-  await copyText(shareLandingUrl.value);
-  ElMessage.success("已复制链接，请在微信中粘贴发送，或使用右上角转发");
+function openShareCard() {
+  if (!shareCardImageUrl.value) return;
+  shareCardDialogOpen.value = true;
+}
+
+async function copyShareCardImageLink() {
+  if (!shareCardImageUrl.value) return;
+  await copyText(shareCardImageUrl.value);
+  ElMessage.success("已复制卡片图片链接");
 }
 
 function stripCrawlerSourceHeader(content: string) {
@@ -515,6 +552,15 @@ function stripCrawlerSourceHeader(content: string) {
     /^>\s*📢\s+\*\*.*?\*\*\s*·\s*发布于\s*\d{4}-\d{2}-\d{2}\s*\n>\s*\n>\s*🔗\s*\[.*?\]\([^)]+\)\s*\n\s*---\s*\n+/s,
     ""
   ).trim();
+}
+
+function isIosDevice() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent.toLowerCase();
+  return ua.includes("iphone")
+    || ua.includes("ipad")
+    || ua.includes("ipod")
+    || (ua.includes("macintosh") && navigator.maxTouchPoints > 1);
 }
 
 function onEdit() {
@@ -798,6 +844,13 @@ async function onDelete() {
   gap: 14px;
 }
 
+.copy-share-panel,
+.share-card-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .share-copy {
   margin: 0;
   color: #6b7280;
@@ -818,7 +871,20 @@ async function onDelete() {
 
 .share-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.share-card-image {
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.share-card-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -947,6 +1013,10 @@ async function onDelete() {
   }
 
   .share-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .share-card-actions {
     grid-template-columns: 1fr;
   }
 

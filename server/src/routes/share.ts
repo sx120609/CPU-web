@@ -204,6 +204,8 @@ function renderTopicCardSvg(topic: any) {
   const lines = wrapText(topic.title, 22, 2);
   const descLines = wrapText(description, 30, 2);
   const footer = [authorName, `${topic.replyCount || 0} 条回复`, ...tags].join(" · ");
+  const sharePath = `/share/topic/${topic.id}`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(sharePath)}`;
   const titleSvg = lines.map((line, index) => `<tspan x="72" dy="${index === 0 ? 0 : 54}">${escapeXml(line)}</tspan>`).join("");
   const descSvg = descLines.map((line, index) => `<tspan x="72" dy="${index === 0 ? 0 : 30}">${escapeXml(line)}</tspan>`).join("");
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -228,6 +230,9 @@ function renderTopicCardSvg(topic: any) {
   <rect x="60" y="504" width="1080" height="84" rx="24" fill="#ffffff" stroke="#e6edf5" />
   <text x="88" y="556" font-size="28" font-weight="700" fill="#172033">${escapeXml(footer)}</text>
   <text x="892" y="556" font-size="24" fill="#0f766e">药大垎坊 · 分享卡片</text>
+  <rect x="932" y="172" width="188" height="188" rx="22" fill="#ffffff" stroke="#dfe8f1" />
+  <image x="946" y="186" width="160" height="160" href="${escapeXml(qrUrl)}" />
+  <text x="948" y="390" font-size="20" fill="#667085">扫码查看原帖</text>
 </svg>`;
 }
 

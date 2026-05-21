@@ -1,12 +1,12 @@
 <template>
   <div class="rich-editor" :class="toolbarModeClass" :style="rootStyle">
     <div class="editor-toolbar" @mousedown.prevent @touchstart.passive="rememberSelection">
-      <div class="toolbar-head">
+      <div v-if="!isMobileViewport" class="toolbar-head">
         <span class="toolbar-title">{{ label }}</span>
         <span v-if="toolbarStatusText" class="toolbar-status">{{ toolbarStatusText }}</span>
       </div>
 
-      <div class="toolbar-scroll">
+      <div v-if="!isMobileViewport" class="toolbar-scroll">
         <div class="toolbar-group">
           <button type="button" title="正文" :class="{ active: toolbarState.block === 'p' }" @click="applyFormat('p')">正文</button>
           <button type="button" title="二级标题" :class="{ active: toolbarState.block === 'h2' }" @click="applyFormat('h2')">标题</button>
@@ -58,6 +58,76 @@
           </button>
         </div>
       </div>
+
+      <div v-else class="mobile-toolbar">
+        <div class="mobile-toolbar-tabs">
+          <button
+            v-for="section in mobileToolbarSections"
+            :key="section.key"
+            type="button"
+            class="mobile-toolbar-tab"
+            :class="{ active: activeMobileToolbar === section.key }"
+            @click="toggleMobileToolbar(section.key)"
+          >
+            {{ section.label }}
+          </button>
+        </div>
+
+        <div v-if="activeMobileToolbar" class="mobile-toolbar-panel">
+          <div class="mobile-toolbar-actions">
+            <template v-if="activeMobileToolbar === 'heading'">
+              <button type="button" :class="{ active: toolbarState.block === 'p' }" @click="runMobileAction(() => applyFormat('p'))">正文</button>
+              <button type="button" :class="{ active: toolbarState.block === 'h2' }" @click="runMobileAction(() => applyFormat('h2'))">标题</button>
+              <button type="button" :class="{ active: toolbarState.block === 'h3' }" @click="runMobileAction(() => applyFormat('h3'))">小标题</button>
+            </template>
+
+            <template v-else-if="activeMobileToolbar === 'format'">
+              <button type="button" class="bold" :class="{ active: toolbarState.bold }" @click="runMobileAction(() => runCommand('bold'))">加粗</button>
+              <button type="button" class="italic" :class="{ active: toolbarState.italic }" @click="runMobileAction(() => runCommand('italic'))">斜体</button>
+              <button type="button" :class="{ active: toolbarState.block === 'blockquote' }" @click="runMobileAction(() => applyFormat('blockquote'))">引用</button>
+            </template>
+
+            <template v-else-if="activeMobileToolbar === 'tools'">
+              <button type="button" :class="{ active: toolbarState.ul }" @click="runMobileAction(() => runCommand('insertUnorderedList'))">列表</button>
+              <button type="button" :class="{ active: toolbarState.ol }" @click="runMobileAction(() => runCommand('insertOrderedList'))">编号</button>
+              <button type="button" @click="runMobileAction(() => insertLink())">链接</button>
+            </template>
+
+            <template v-else-if="activeMobileToolbar === 'align'">
+              <button
+                v-for="item in alignOptions"
+                :key="item.value"
+                type="button"
+                class="align-btn"
+                :class="{ active: toolbarState.align === item.value }"
+                @click="runMobileAction(() => applyAlignment(item.value))"
+              >
+                {{ item.label }}
+              </button>
+            </template>
+
+            <template v-else-if="activeMobileToolbar === 'image'">
+              <button
+                v-for="item in imageSizeOptions"
+                :key="item.value"
+                type="button"
+                class="size-btn"
+                :class="{ active: imageSize === item.value }"
+                @click="runMobileAction(() => applyImageSize(item.value), true)"
+              >
+                {{ item.label }}图
+              </button>
+              <button type="button" :disabled="imageUploading" @click="runMobileAction(() => pickContentImage(), true)">
+                {{ imageUploading ? "上传中" : "插图" }}
+              </button>
+            </template>
+          </div>
+
+          <div v-if="activeMobileToolbar === 'image' && toolbarStatusText" class="mobile-toolbar-note">
+            {{ toolbarStatusText }}
+          </div>
+        </div>
+      </div>
     </div>
 
     <div
@@ -100,6 +170,7 @@ import { renderMarkdown } from "@/utils/markdown";
 
 type ImageSize = "small" | "medium" | "large";
 type Alignment = "left" | "center" | "right";
+type MobileToolbarKey = "heading" | "format" | "tools" | "align" | "image";
 
 const EDITABLE_BLOCK_SELECTOR = "p,div,h1,h2,h3,h4,h5,h6,blockquote,li";
 const MOBILE_BREAKPOINT = "(max-width: 700px)";
@@ -137,6 +208,7 @@ const imageSize = ref<ImageSize>("large");
 const draftHint = ref("");
 const hasSelectedImage = ref(false);
 const isMobileViewport = ref(false);
+const activeMobileToolbar = ref<MobileToolbarKey | "">("");
 const toolbarStickyOffset = ref(0);
 const touchScrollState = reactive({
   active: false,
@@ -167,6 +239,14 @@ const alignOptions: Array<{ value: Alignment; label: string; title: string }> = 
   { value: "left", label: "左齐", title: "靠左" },
   { value: "center", label: "居中", title: "居中" },
   { value: "right", label: "右齐", title: "靠右" },
+];
+
+const mobileToolbarSections: Array<{ key: MobileToolbarKey; label: string }> = [
+  { key: "heading", label: "标题" },
+  { key: "format", label: "格式" },
+  { key: "tools", label: "工具" },
+  { key: "align", label: "对齐" },
+  { key: "image", label: "图片" },
 ];
 
 const resolvedPlaceholder = computed(() => (
@@ -238,6 +318,7 @@ onBeforeUnmount(() => {
 
 function handleViewportChange(event: { matches: boolean }) {
   isMobileViewport.value = event.matches;
+  if (!event.matches) activeMobileToolbar.value = "";
   syncToolbarStickyOffset();
 }
 
@@ -248,7 +329,17 @@ function syncMobileViewport() {
 
 function handleLayoutResize() {
   syncMobileViewport();
+  if (!isMobileViewport.value) activeMobileToolbar.value = "";
   syncToolbarStickyOffset();
+}
+
+function toggleMobileToolbar(key: MobileToolbarKey) {
+  activeMobileToolbar.value = activeMobileToolbar.value === key ? "" : key;
+}
+
+async function runMobileAction(action: () => void | Promise<void>, keepOpen = false) {
+  await action();
+  if (!keepOpen) activeMobileToolbar.value = "";
 }
 
 function observeTopbarHeight() {
@@ -958,6 +1049,44 @@ defineExpose({ clearDraft, isContentEmpty });
 .editor-toolbar .bold { font-weight: 800; }
 .editor-toolbar .italic { font-style: italic; }
 
+.mobile-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mobile-toolbar-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.mobile-toolbar-tab {
+  min-width: 0;
+}
+
+.mobile-toolbar-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.mobile-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mobile-toolbar-note {
+  font-size: 11px;
+  color: #7b8794;
+  line-height: 1.4;
+}
+
 .size-label,
 .draft-state,
 .foot-note,
@@ -1138,6 +1267,35 @@ defineExpose({ clearDraft, isContentEmpty });
     font-size: 12px;
   }
 
+  .mobile-toolbar-tabs {
+    gap: 6px;
+  }
+
+  .mobile-toolbar-tab {
+    min-height: 34px;
+    padding: 0 4px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 700;
+    background: #f8fafc;
+  }
+
+  .mobile-toolbar-panel {
+    padding: 8px;
+    border-radius: 12px;
+  }
+
+  .mobile-toolbar-actions {
+    gap: 6px;
+  }
+
+  .mobile-toolbar-actions button {
+    min-height: 34px;
+    padding: 0 10px;
+    border-radius: 9px;
+    font-size: 12px;
+  }
+
   .toolbar-status {
     padding: 4px 8px;
     border-radius: 999px;
@@ -1242,31 +1400,9 @@ defineExpose({ clearDraft, isContentEmpty });
     text-align: left;
   }
 
-  .rich-editor.toolbar-static .toolbar-scroll {
-    flex-wrap: wrap;
-    overflow: visible;
-    gap: 8px;
-  }
-
-  .rich-editor.toolbar-static .toolbar-group {
-    flex: 1 1 100%;
-    gap: 6px;
-    padding: 8px;
-  }
-
-  .rich-editor.toolbar-static .toolbar-group + .toolbar-group {
-    padding-left: 8px;
-  }
-
-  .rich-editor.toolbar-static .editor-toolbar button {
-    min-height: 38px;
-    padding: 0 10px;
-    font-size: 12px;
-  }
-
-  .rich-editor.toolbar-static .size-label {
-    min-width: auto;
-    padding: 0 2px;
+  .rich-editor.toolbar-static .mobile-toolbar-panel {
+    background: rgba(255, 255, 255, 0.96);
+    border-color: #e6edf5;
   }
 
   .rich-editor.toolbar-static .editor-surface {
