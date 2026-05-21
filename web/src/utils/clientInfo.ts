@@ -1,8 +1,8 @@
 export type ClientPlatform = "ios" | "android" | "web" | "unknown";
 
-export const ANDROID_APP_LATEST_VERSION_CODE = 10;
-export const ANDROID_APP_LATEST_VERSION_NAME = "2.0.1";
-export const ANDROID_APP_DOWNLOAD_URL = "/downloads/CPU-Web-V9.apk";
+export const ANDROID_APP_LATEST_VERSION_CODE = 11;
+export const ANDROID_APP_LATEST_VERSION_NAME = "2.0.2";
+export const ANDROID_APP_DOWNLOAD_URL = "/api/site/downloads/android-app";
 export const ANDROID_WIDGET_MIN_VERSION_CODE = 5;
 
 export function detectClientPlatform(ua = navigator.userAgent): ClientPlatform {
@@ -81,6 +81,12 @@ export function supportsAndroidScheduleWidget(ua = navigator.userAgent) {
   const bridge = (window as any).CPUAndroid;
   return getAndroidNativeVersionCode(ua) >= ANDROID_WIDGET_MIN_VERSION_CODE
     && typeof bridge?.installScheduleWidget === "function";
+}
+
+export function supportsAndroidInAppApkDownload(ua = navigator.userAgent) {
+  if (!isAndroidNativeApp(ua)) return false;
+  const bridge = (window as any).CPUAndroid;
+  return typeof bridge?.downloadAndInstallApk === "function";
 }
 
 export function clientPlatformLabel(platform: ClientPlatform) {

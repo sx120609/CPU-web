@@ -524,14 +524,14 @@
       <div class="android-update-panel">
         <p v-if="androidUpdateKind === 'app'">
           当前客户端版本为 {{ androidCurrentVersionLabel }}，最新版本为 {{ androidLatestVersionLabel }}。
-          请复制下载链接，到系统浏览器粘贴打开并安装更新。
+          {{ androidCanInAppUpdate ? "可直接在应用内下载并安装更新。" : "请复制下载链接，到系统浏览器粘贴打开并安装更新。" }}
         </p>
         <p v-else>
           当前安卓客户端版本过低，桌面小组件不可用。
-          请先复制下载链接，到系统浏览器粘贴打开并安装最新版 {{ androidLatestVersionLabel }}。
+          {{ androidCanInAppUpdate ? `请先在应用内下载并安装最新版 ${androidLatestVersionLabel}。` : `请先复制下载链接，到系统浏览器粘贴打开并安装最新版 ${androidLatestVersionLabel}。` }}
         </p>
         <p class="widget-countdown">
-          {{ androidUpdateCountdown > 0 ? `请先阅读说明，${androidUpdateCountdown} 秒后可继续。` : "已可复制下载链接。" }}
+          {{ androidUpdateCountdown > 0 ? `请先阅读说明，${androidUpdateCountdown} 秒后可继续。` : androidCanInAppUpdate ? "已可开始应用内下载。" : "已可复制下载链接。" }}
         </p>
         <p class="support-note">
           仍有疑问，建议
@@ -542,7 +542,7 @@
       <template #footer>
         <el-button @click="androidUpdateOpen = false">稍后</el-button>
         <el-button type="primary" :disabled="androidUpdateCountdown > 0" @click="openAndroidDownload">
-          {{ androidUpdateCountdown > 0 ? `${androidUpdateCountdown}s` : "复制下载链接" }}
+          {{ androidUpdateCountdown > 0 ? `${androidUpdateCountdown}s` : androidCanInAppUpdate ? "立即更新" : "复制下载链接" }}
         </el-button>
       </template>
     </el-dialog>
@@ -694,6 +694,7 @@ import {
   isAndroidAppUpdateAvailable,
   isAndroidNativeApp,
   isIosStandalone,
+  supportsAndroidInAppApkDownload,
   supportsAndroidScheduleWidget,
 } from "@/utils/clientInfo";
 import { USER_QQ_GROUP, openUserGroup } from "@/utils/userGroup";
@@ -884,6 +885,8 @@ interface AndroidWidgetBridge {
   supportsScheduleWidget?: () => boolean;
   installScheduleWidget?: (payload: string) => void;
   openExternalUrl?: (url: string) => void;
+  supportsInAppApkDownload?: () => boolean;
+  downloadAndInstallApk?: (url: string, fileName: string) => boolean;
 }
 async function openInstallPrompt() {
   const inApp = detectInAppBrowser();
@@ -931,9 +934,10 @@ const androidCurrentVersionLabel = computed(() => {
 });
 const androidLatestVersionLabel = computed(() => `${ANDROID_APP_LATEST_VERSION_NAME} (${ANDROID_APP_LATEST_VERSION_CODE})`);
 const androidAppUpdateAvailable = computed(() => isAndroidAppUpdateAvailable());
+const androidCanInAppUpdate = computed(() => supportsAndroidInAppApkDownload());
 const androidUpdateMenuLabel = computed(() => (
   androidAppUpdateAvailable.value ? "更新安卓客户端" : "检查客户端更新"
-));
+ ));
 
 function handleWidgetMenuAction() {
   if (widgetMenuPlatform.value === "ios") {
@@ -986,8 +990,16 @@ function showAndroidUpdateRequired(kind: "app" | "widget" = "widget") {
 
 async function openAndroidDownload() {
   const absoluteUrl = new URL(APK_DOWNLOAD_URL, window.location.origin).toString();
-  let copied = false;
   const bridge = getAndroidWidgetBridge();
+  if (androidCanInAppUpdate.value && typeof bridge?.downloadAndInstallApk === "function") {
+    const started = bridge.downloadAndInstallApk(absoluteUrl, `CPU-Web-V${ANDROID_APP_LATEST_VERSION_CODE}.apk`);
+    if (started !== false) {
+      androidUpdateOpen.value = false;
+      ElMessage.success("已开始应用内下载更新");
+      return;
+    }
+  }
+  let copied = false;
   try {
     if (typeof bridge?.copyText === "function") {
       copied = bridge.copyText(absoluteUrl) !== false;
