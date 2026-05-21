@@ -177,12 +177,11 @@
       class="share-dialog"
     >
       <div class="share-panel">
-        <p class="share-copy">分享链接会先进入分享卡片页，再自动打开原帖，方便 QQ / 微信抓取预览。</p>
-        <div class="share-link">{{ shareLandingUrl }}</div>
+        <p class="share-copy">分享这里收成两件事：要么复制链接，要么直接保存一张分享卡片。</p>
         <div class="share-actions">
           <el-button v-if="canUseNativeShare" type="primary" @click="shareViaSystem">系统分享</el-button>
-          <el-button @click="copyShareDialogOpen = true">分享链接</el-button>
-          <el-button @click="openShareCard">生成分享卡片</el-button>
+          <el-button @click="copyShareDialogOpen = true">复制链接</el-button>
+          <el-button type="primary" plain @click="openShareCard">保存分享卡片</el-button>
         </div>
       </div>
     </el-dialog>
@@ -203,15 +202,16 @@
     <el-dialog
       v-model="shareCardDialogOpen"
       title="分享卡片"
-      width="min(720px, calc(100vw - 24px))"
+      width="min(460px, calc(100vw - 24px))"
       append-to-body
       class="share-card-dialog"
     >
       <div class="share-card-panel">
         <img :src="shareCardImageUrl" alt="分享卡片" class="share-card-image" />
         <div class="share-card-actions">
-          <el-button @click="copyShareCardImageLink">复制卡片图片链接</el-button>
-          <el-button @click="copyShareTitleAndLink">复制标题和链接</el-button>
+          <a :href="shareCardImageUrl" :download="shareCardDownloadName" class="share-card-save-link">
+            保存图片
+          </a>
         </div>
       </div>
     </el-dialog>
@@ -352,6 +352,10 @@ const canUseNativeShare = computed(() => (
   typeof navigator.share === "function"
 ));
 const shareCardImageUrl = computed(() => topic.value ? new URL(`/share/topic/${topic.value.id}/card.svg`, window.location.origin).toString() : "");
+const shareCardDownloadName = computed(() => {
+  const safeTitle = (topic.value?.title || "分享卡片").replace(/[\\/:*?"<>|]/g, "_").slice(0, 40);
+  return `${safeTitle || "分享卡片"}-cpu-share.svg`;
+});
 const displayContent = computed(() => {
   const content = topic.value?.content ?? "";
   if (!topic.value?.metadata?.sourceUrl) return content;
@@ -539,12 +543,6 @@ async function copyShareTitleAndLink() {
 function openShareCard() {
   if (!shareCardImageUrl.value) return;
   shareCardDialogOpen.value = true;
-}
-
-async function copyShareCardImageLink() {
-  if (!shareCardImageUrl.value) return;
-  await copyText(shareCardImageUrl.value);
-  ElMessage.success("已复制卡片图片链接");
 }
 
 function stripCrawlerSourceHeader(content: string) {
@@ -884,8 +882,22 @@ async function onDelete() {
 
 .share-card-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 10px;
+}
+
+.share-card-save-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: var(--cpu-primary);
+  color: #fff;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .locked-tip, .login-tip {

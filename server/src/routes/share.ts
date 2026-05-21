@@ -1,4 +1,5 @@
 import { Router, type Request } from "express";
+import QRCode from "qrcode";
 import { prisma } from "../prisma";
 import { getSiteOrigin, isBoardTypeEnabled } from "../services/siteSettings";
 
@@ -38,9 +39,10 @@ shareRouter.get("/topic/:id/card.svg", async (req, res, next) => {
       res.status(404).type("image/svg+xml").send(renderFallbackCardSvg("药大垎坊", "分享内容不存在或暂不可用"));
       return;
     }
+    const origin = resolvePublicOrigin(req);
     res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=600");
-    res.send(renderTopicCardSvg(topic));
+    res.send(await renderTopicCardSvg(topic, origin));
   } catch (error) {
     next(error);
   }
@@ -192,7 +194,7 @@ function renderTopicSharePage(input: {
 </html>`;
 }
 
-function renderTopicCardSvg(topic: any) {
+async function renderTopicCardSvg(topic: any, origin: string) {
   const boardName = topic.board?.name || "药大垎坊";
   const boardIcon = topic.board?.icon || "💬";
   const boardColor = topic.board?.color || "#168776";
@@ -201,47 +203,54 @@ function renderTopicCardSvg(topic: any) {
     ? topic.tags.map((item: any) => item?.tag?.name).filter(Boolean).slice(0, 2)
     : [];
   const description = buildTopicDescription(topic).replace(/^来自 .*? · /, "");
-  const lines = wrapText(topic.title, 22, 2);
-  const descLines = wrapText(description, 30, 2);
-  const footer = [authorName, `${topic.replyCount || 0} 条回复`, ...tags].join(" · ");
-  const sharePath = `/share/topic/${topic.id}`;
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(sharePath)}`;
-  const titleSvg = lines.map((line, index) => `<tspan x="72" dy="${index === 0 ? 0 : 54}">${escapeXml(line)}</tspan>`).join("");
-  const descSvg = descLines.map((line, index) => `<tspan x="72" dy="${index === 0 ? 0 : 30}">${escapeXml(line)}</tspan>`).join("");
+  const lines = wrapText(topic.title, 18, 3);
+  const descLines = wrapText(description, 20, 5);
+  const footer = [authorName, `${topic.replyCount || 0} 条回复`, `${topic.viewCount || 0} 浏览`].join(" · ");
+  const tagText = tags.join(" · ");
+  const qrDataUrl = await QRCode.toDataURL(`${origin}/share/topic/${topic.id}`, {
+    margin: 1,
+    width: 220,
+    color: { dark: "#111827", light: "#ffffff" },
+  });
+  const titleSvg = lines.map((line, index) => `<tspan x="52" dy="${index === 0 ? 0 : 52}">${escapeXml(line)}</tspan>`).join("");
+  const descSvg = descLines.map((line, index) => `<tspan x="52" dy="${index === 0 ? 0 : 28}">${escapeXml(line)}</tspan>`).join("");
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${escapeXml(topic.title)}">
+<svg width="720" height="1280" viewBox="0 0 720 1280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${escapeXml(topic.title)}">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#edf7ff" />
+      <stop offset="0%" stop-color="#f4fbff" />
       <stop offset="100%" stop-color="#ffffff" />
     </linearGradient>
-    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="cover" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="${escapeXml(boardColor)}" />
       <stop offset="100%" stop-color="#0f766e" />
     </linearGradient>
   </defs>
-  <rect width="1200" height="630" rx="40" fill="url(#bg)" />
-  <circle cx="1050" cy="110" r="120" fill="${escapeXml(withOpacity(boardColor, 0.14))}" />
-  <circle cx="1120" cy="40" r="60" fill="${escapeXml(withOpacity(boardColor, 0.08))}" />
-  <rect x="60" y="56" width="240" height="44" rx="22" fill="${escapeXml(withOpacity(boardColor, 0.12))}" />
-  <text x="84" y="84" font-size="24" font-weight="700" fill="${escapeXml(boardColor)}">${escapeXml(boardIcon)} ${escapeXml(boardName)}</text>
-  <text x="72" y="188" font-size="56" font-weight="800" fill="#172033">${titleSvg}</text>
-  <text x="72" y="332" font-size="28" fill="#667085">${descSvg}</text>
-  <rect x="60" y="504" width="1080" height="84" rx="24" fill="#ffffff" stroke="#e6edf5" />
-  <text x="88" y="556" font-size="28" font-weight="700" fill="#172033">${escapeXml(footer)}</text>
-  <text x="892" y="556" font-size="24" fill="#0f766e">药大垎坊 · 分享卡片</text>
-  <rect x="932" y="172" width="188" height="188" rx="22" fill="#ffffff" stroke="#dfe8f1" />
-  <image x="946" y="186" width="160" height="160" href="${escapeXml(qrUrl)}" />
-  <text x="948" y="390" font-size="20" fill="#667085">扫码查看原帖</text>
+  <rect width="720" height="1280" rx="36" fill="url(#bg)" />
+  <rect x="36" y="36" width="648" height="1208" rx="28" fill="#ffffff" stroke="#e6edf5" />
+  <rect x="36" y="36" width="648" height="340" rx="28" fill="url(#cover)" />
+  <circle cx="580" cy="118" r="132" fill="${escapeXml(withOpacity(boardColor, 0.18))}" />
+  <circle cx="650" cy="56" r="64" fill="${escapeXml(withOpacity(boardColor, 0.12))}" />
+  <rect x="72" y="84" width="220" height="42" rx="21" fill="rgba(255,255,255,0.18)" />
+  <text x="94" y="111" font-size="23" font-weight="700" fill="#ffffff">${escapeXml(boardIcon)} ${escapeXml(boardName)}</text>
+  <text x="52" y="458" font-size="54" font-weight="800" fill="#172033">${titleSvg}</text>
+  <text x="52" y="658" font-size="26" fill="#4b5563">${descSvg}</text>
+  <line x1="52" y1="850" x2="668" y2="850" stroke="#e7edf4" stroke-dasharray="8 8" />
+  <text x="52" y="908" font-size="24" font-weight="700" fill="#172033">${escapeXml(footer)}</text>
+  ${tagText ? `<text x="52" y="952" font-size="22" fill="#0f766e">${escapeXml(tagText)}</text>` : ""}
+  <text x="52" y="1036" font-size="28" font-weight="700" fill="#111827">药大垎坊</text>
+  <text x="52" y="1074" font-size="22" fill="#6b7280">保存这张卡片，扫码即可查看原帖</text>
+  <rect x="458" y="948" width="182" height="182" rx="20" fill="#ffffff" stroke="#dfe8f1" />
+  <image x="472" y="962" width="154" height="154" href="${escapeXml(qrDataUrl)}" />
 </svg>`;
 }
 
 function renderFallbackCardSvg(title: string, description: string) {
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1200" height="630" fill="#f8fafc" />
-  <text x="80" y="180" font-size="56" font-weight="800" fill="#172033">${escapeXml(title)}</text>
-  <text x="80" y="260" font-size="28" fill="#667085">${escapeXml(description)}</text>
+<svg width="720" height="1280" viewBox="0 0 720 1280" xmlns="http://www.w3.org/2000/svg">
+  <rect width="720" height="1280" fill="#f8fafc" />
+  <text x="56" y="180" font-size="46" font-weight="800" fill="#172033">${escapeXml(title)}</text>
+  <text x="56" y="254" font-size="24" fill="#667085">${escapeXml(description)}</text>
 </svg>`;
 }
 
