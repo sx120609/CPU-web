@@ -212,36 +212,45 @@ async function renderTopicCardSvg(topic: any, origin: string) {
     width: 220,
     color: { dark: "#111827", light: "#ffffff" },
   });
-  const titleSvg = lines.map((line, index) => `<tspan x="52" dy="${index === 0 ? 0 : 52}">${escapeXml(line)}</tspan>`).join("");
-  const descSvg = descLines.map((line, index) => `<tspan x="52" dy="${index === 0 ? 0 : 28}">${escapeXml(line)}</tspan>`).join("");
+  const titleSvg = lines.map((line, index) => `<tspan x="72" dy="${index === 0 ? 0 : 48}">${escapeXml(line)}</tspan>`).join("");
+  const descSvg = descLines.map((line, index) => `<tspan x="72" dy="${index === 0 ? 0 : 27}">${escapeXml(line)}</tspan>`).join("");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="720" height="1280" viewBox="0 0 720 1280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${escapeXml(topic.title)}">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#f4fbff" />
-      <stop offset="100%" stop-color="#ffffff" />
+      <stop offset="0%" stop-color="#f5f7fb" />
+      <stop offset="100%" stop-color="#eef3f9" />
     </linearGradient>
     <linearGradient id="cover" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="${escapeXml(boardColor)}" />
-      <stop offset="100%" stop-color="#0f766e" />
+      <stop offset="60%" stop-color="#167d72" />
+      <stop offset="100%" stop-color="#1f4d73" />
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.28)" />
+      <stop offset="100%" stop-color="rgba(255,255,255,0.02)" />
     </linearGradient>
   </defs>
-  <rect width="720" height="1280" rx="36" fill="url(#bg)" />
-  <rect x="36" y="36" width="648" height="1208" rx="28" fill="#ffffff" stroke="#e6edf5" />
-  <rect x="36" y="36" width="648" height="340" rx="28" fill="url(#cover)" />
-  <circle cx="580" cy="118" r="132" fill="${escapeXml(withOpacity(boardColor, 0.18))}" />
-  <circle cx="650" cy="56" r="64" fill="${escapeXml(withOpacity(boardColor, 0.12))}" />
-  <rect x="72" y="84" width="220" height="42" rx="21" fill="rgba(255,255,255,0.18)" />
-  <text x="94" y="111" font-size="23" font-weight="700" fill="#ffffff">${escapeXml(boardIcon)} ${escapeXml(boardName)}</text>
-  <text x="52" y="458" font-size="54" font-weight="800" fill="#172033">${titleSvg}</text>
-  <text x="52" y="658" font-size="26" fill="#4b5563">${descSvg}</text>
-  <line x1="52" y1="850" x2="668" y2="850" stroke="#e7edf4" stroke-dasharray="8 8" />
-  <text x="52" y="908" font-size="24" font-weight="700" fill="#172033">${escapeXml(footer)}</text>
-  ${tagText ? `<text x="52" y="952" font-size="22" fill="#0f766e">${escapeXml(tagText)}</text>` : ""}
-  <text x="52" y="1036" font-size="28" font-weight="700" fill="#111827">药大垎坊</text>
-  <text x="52" y="1074" font-size="22" fill="#6b7280">保存这张卡片，扫码即可查看原帖</text>
-  <rect x="458" y="948" width="182" height="182" rx="20" fill="#ffffff" stroke="#dfe8f1" />
-  <image x="472" y="962" width="154" height="154" href="${escapeXml(qrDataUrl)}" />
+  <rect width="720" height="1280" fill="url(#bg)" />
+  <rect x="42" y="42" width="636" height="1196" rx="34" fill="#ffffff" />
+  <rect x="42" y="42" width="636" height="334" rx="34" fill="url(#cover)" />
+  <circle cx="596" cy="126" r="122" fill="${escapeXml(withOpacity("#ffffff", 0.10))}" />
+  <circle cx="650" cy="72" r="58" fill="${escapeXml(withOpacity("#ffffff", 0.10))}" />
+  <rect x="74" y="86" width="180" height="40" rx="20" fill="rgba(255,255,255,0.18)" />
+  <text x="96" y="112" font-size="22" font-weight="700" fill="#ffffff">${escapeXml(boardIcon)} ${escapeXml(boardName)}</text>
+  <rect x="74" y="154" width="572" height="176" rx="28" fill="url(#glass)" />
+  <rect x="74" y="154" width="572" height="176" rx="28" fill="none" stroke="rgba(255,255,255,0.12)" />
+  <text x="74" y="462" font-size="50" font-weight="820" fill="#1b2a41">${titleSvg}</text>
+  <text x="74" y="644" font-size="25" fill="#4b5563">${descSvg}</text>
+  <line x1="74" y1="818" x2="646" y2="818" stroke="#e9edf4" stroke-dasharray="7 8" />
+  <text x="74" y="872" font-size="22" font-weight="700" fill="#172033">${escapeXml(footer)}</text>
+  ${tagText ? `<text x="74" y="910" font-size="20" fill="${escapeXml(boardColor)}">${escapeXml(tagText)}</text>` : ""}
+  <text x="74" y="1026" font-size="38" font-weight="820" fill="#172033">药大垎坊</text>
+  <text x="74" y="1070" font-size="21" fill="#667085">保存这张卡片，扫码即可查看原帖</text>
+  <rect x="476" y="936" width="138" height="138" rx="18" fill="#ffffff" stroke="#dfe5ee" />
+  <image x="488" y="948" width="114" height="114" href="${escapeXml(qrDataUrl)}" />
+  <rect x="74" y="1124" width="540" height="1" fill="#eef2f7" />
+  <text x="74" y="1168" font-size="18" fill="#98a2b3">cpu.lizmt.cn · 扫码查看原帖</text>
 </svg>`;
 }
 

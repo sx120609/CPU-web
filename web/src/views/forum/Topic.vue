@@ -839,7 +839,7 @@ async function onDelete() {
 .share-panel {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
 .copy-share-panel,
@@ -851,33 +851,23 @@ async function onDelete() {
 
 .share-copy {
   margin: 0;
-  color: #6b7280;
+  color: #667085;
   font-size: 13px;
   line-height: 1.6;
 }
 
-.share-link {
-  padding: 12px;
-  border-radius: 12px;
-  background: #f7f8fb;
-  border: 1px solid #eceff3;
-  color: #1f2937;
-  font-size: 12px;
-  line-height: 1.6;
-  word-break: break-all;
-}
-
 .share-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 10px;
 }
 
 .share-card-image {
   width: 100%;
-  border-radius: 16px;
-  border: 1px solid #e5e7eb;
+  border-radius: 22px;
+  border: 1px solid #e6edf5;
   background: #fff;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
 }
 
 .share-card-actions {
@@ -892,12 +882,22 @@ async function onDelete() {
   justify-content: center;
   min-height: 40px;
   padding: 0 14px;
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--cpu-primary);
   color: #fff;
   text-decoration: none;
   font-size: 14px;
   font-weight: 600;
+}
+
+:deep(.share-dialog .el-dialog),
+:deep(.copy-share-dialog .el-dialog),
+:deep(.share-card-dialog .el-dialog) {
+  border-radius: 22px;
+}
+
+:deep(.share-card-dialog .el-dialog__body) {
+  padding-top: 14px;
 }
 
 .locked-tip, .login-tip {
