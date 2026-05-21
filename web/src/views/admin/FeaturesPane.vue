@@ -36,7 +36,23 @@
         </div>
       </div>
 
-      <div class="site-config trust-config">
+      <button type="button" class="section-toggle" :class="{ expanded: trustConfigExpanded }" @click="trustConfigExpanded = !trustConfigExpanded">
+        <div class="section-toggle-copy">
+          <div class="section-toggle-top">
+            <h3 class="section-title">匿名与信誉规则</h3>
+            <span class="toggle-pill on">5 级规则</span>
+          </div>
+          <p class="section-desc">默认收起。需要时再展开调整匿名门槛、周额度、信誉积分公式和等级门槛，避免基础配置区太长。</p>
+          <div class="summary-row">
+            <span class="summary-pill">匿名门槛 {{ anonymousMinReputation }}</span>
+            <span class="summary-pill">论坛加成 {{ forumEnabledBonus }}</span>
+            <span class="summary-pill">Lv.5 {{ reputationLevels[4]?.minReputation ?? 0 }}</span>
+          </div>
+        </div>
+        <span class="toggle-arrow" aria-hidden="true">▾</span>
+      </button>
+
+      <div v-if="trustConfigExpanded" class="site-config trust-config">
         <div class="config-copy">
           <div class="card-title">匿名与信誉规则</div>
           <div class="desc">匿名最低信誉、周额度档位、信誉积分公式和 5 级信誉等级都可以在这里调整。匿名楼主在自己的匿名帖下匿名回复时会自动免扣点。</div>
@@ -256,6 +272,7 @@ const savingConfig = ref(false);
 const pendingKey = ref<FKey | null>(null);
 const aiConfigExpanded = ref(false);
 const aiPromptsExpanded = ref(false);
+const trustConfigExpanded = ref(false);
 const siteOrigin = ref("");
 const aiReviewEnabled = ref(false);
 const aiReviewProvider = ref("deepseek");

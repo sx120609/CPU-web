@@ -179,9 +179,9 @@
       <div class="share-panel">
         <p class="share-copy">分享这里收成两件事：要么复制链接，要么直接保存一张分享卡片。</p>
         <div class="share-actions">
-          <el-button v-if="canUseNativeShare" type="primary" @click="shareViaSystem">系统分享</el-button>
-          <el-button @click="copyShareDialogOpen = true">复制链接</el-button>
-          <el-button type="primary" plain @click="openShareCard">保存分享卡片</el-button>
+          <el-button v-if="canUseNativeShare" type="primary" class="share-action-btn" @click="shareViaSystem">系统分享</el-button>
+          <el-button class="share-action-btn" @click="copyShareDialogOpen = true">复制链接</el-button>
+          <el-button type="primary" plain class="share-action-btn" @click="openShareCard">保存分享卡片</el-button>
         </div>
       </div>
     </el-dialog>
@@ -194,8 +194,8 @@
       class="copy-share-dialog"
     >
       <div class="copy-share-panel">
-        <el-button @click="copyShareLinkOnly">只复制链接</el-button>
-        <el-button type="primary" plain @click="copyShareTitleAndLink">复制标题和链接</el-button>
+        <el-button class="share-action-btn" @click="copyShareLinkOnly">只复制链接</el-button>
+        <el-button type="primary" plain class="share-action-btn" @click="copyShareTitleAndLink">复制标题和链接</el-button>
       </div>
     </el-dialog>
 
@@ -862,6 +862,13 @@ async function onDelete() {
   gap: 10px;
 }
 
+.share-action-btn {
+  min-height: 44px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
 .share-card-image {
   width: 100%;
   border-radius: 22px;
@@ -880,14 +887,14 @@ async function onDelete() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 14px;
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--cpu-primary);
   color: #fff;
   text-decoration: none;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 :deep(.share-dialog .el-dialog),
