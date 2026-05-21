@@ -15,14 +15,18 @@ import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
+import android.provider.Settings;
 import android.provider.MediaStore;
 import android.util.Base64;
 import android.webkit.JavascriptInterface;
 import android.widget.Toast;
 
+import androidx.core.content.FileProvider;
+
 import org.json.JSONObject;
 
 import java.io.OutputStream;
+import java.io.File;
 
 final class CpuAndroidBridge {
     private final MainActivity activity;
@@ -244,7 +248,7 @@ final class CpuAndroidBridge {
                         if (status == DownloadManager.STATUS_SUCCESSFUL) {
                             String localUri = cursor.getString(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_LOCAL_URI));
                             if (localUri != null && !localUri.isEmpty()) {
-                                openExternalUrl(localUri);
+                                openDownloadedApk(Uri.parse(localUri));
                             }
                             return;
                         }
@@ -263,5 +267,49 @@ final class CpuAndroidBridge {
                     Toast.makeText(activity, "下载完成后请在系统下载列表中安装", Toast.LENGTH_SHORT).show()
             );
         }
+    }
+
+    private void openDownloadedApk(Uri localUri) {
+        activity.runOnUiThread(() -> {
+            try {
+                Uri installUri = resolveInstallUri(localUri);
+                if (installUri == null) throw new IllegalStateException("apk_uri_invalid");
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !activity.getPackageManager().canRequestPackageInstalls()) {
+                    Intent settingsIntent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES);
+                    settingsIntent.setData(Uri.parse("package:" + activity.getPackageName()));
+                    activity.startActivity(settingsIntent);
+                    Toast.makeText(activity, "请先允许安装未知来源应用，然后重新点击更新", Toast.LENGTH_LONG).show();
+                    return;
+                }
+
+                Intent installIntent = new Intent(Intent.ACTION_VIEW);
+                installIntent.setDataAndType(installUri, "application/vnd.android.package-archive");
+                installIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                installIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                activity.startActivity(installIntent);
+            } catch (Exception ignored) {
+                Toast.makeText(activity, "无法打开安装器，请到系统下载列表中手动安装", Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    private Uri resolveInstallUri(Uri localUri) {
+        if ("content".equalsIgnoreCase(localUri.getScheme())) {
+            return localUri;
+        }
+        if (!"file".equalsIgnoreCase(localUri.getScheme())) {
+            return null;
+        }
+        File file = new File(localUri.getPath() == null ? "" : localUri.getPath());
+        if (!file.exists()) return null;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            return FileProvider.getUriForFile(
+                    activity,
+                    activity.getPackageName() + ".fileprovider",
+                    file
+            );
+        }
+        return Uri.fromFile(file);
     }
 }

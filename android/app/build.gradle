@@ -2,6 +2,10 @@ plugins {
     id "com.android.application"
 }
 
+dependencies {
+    implementation "androidx.core:core:1.13.1"
+}
+
 def defaultAppUrl = "https://cpu.lizmt.cn/schedule"
 def resolvedAppUrl = (project.findProperty("appUrl") ?: defaultAppUrl).toString()
 def resolvedApplicationId = (project.findProperty("applicationId") ?: "cn.lizmt.cpuweb.schedule").toString()
