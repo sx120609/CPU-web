@@ -207,10 +207,10 @@
     <el-dialog
       v-model="shareCardDialogOpen"
       title="分享卡片"
-      width="min(460px, calc(100vw - 24px))"
-      append-to-body
-      class="share-card-dialog"
-    >
+    width="min(460px, calc(100vw - 24px))"
+    append-to-body
+    class="share-card-dialog"
+  >
       <div class="share-card-panel">
         <div v-if="shareCardRendering" class="share-card-loading">正在生成图片…</div>
         <img
@@ -220,15 +220,9 @@
           class="share-card-image"
           @click="openShareCardImagePreview"
         />
-        <p v-if="isAndroidClient" class="share-card-tip">安卓客户端受 WebView 限制，建议点开图片后截图保存。</p>
+        <p v-if="isAndroidClient && !hasAndroidSaveBridge" class="share-card-tip">安卓客户端受 WebView 限制，建议点开图片后截图保存。</p>
         <div class="share-card-actions">
-          <button
-            v-if="!isAndroidClient"
-            type="button"
-            class="share-card-save-link"
-            :disabled="shareCardSaving"
-            @click="saveShareCardAsPng"
-          >
+          <button v-if="!isAndroidClient || hasAndroidSaveBridge" type="button" class="share-card-save-link" :disabled="shareCardSaving" @click="saveShareCardAsPng">
             保存图片
           </button>
           <button v-else type="button" class="share-card-save-link" @click="openShareCardImagePreview">放大后截图</button>
@@ -429,6 +423,7 @@ const canUseNativeShare = computed(() => (
   typeof navigator.share === "function"
 ));
 const isAndroidClient = computed(() => typeof navigator !== "undefined" && isAndroidNativeApp());
+const hasAndroidSaveBridge = computed(() => typeof (window as any).CPUAndroid?.saveImage === "function");
 const shareCardDownloadName = computed(() => {
   const safeTitle = (topic.value?.title || "分享卡片").replace(/[\\/:*?"<>|]/g, "_").slice(0, 40);
   return `${safeTitle || "分享卡片"}-cpu-share.png`;
@@ -699,6 +694,13 @@ async function saveShareCardAsPng() {
   if (!dataUrl) return;
   shareCardSaving.value = true;
   try {
+    if (typeof (window as any).CPUAndroid?.saveImage === "function") {
+      const ok = (window as any).CPUAndroid.saveImage(dataUrl, shareCardDownloadName.value);
+      if (ok !== false) {
+        ElMessage.success("图片已开始保存");
+        return;
+      }
+    }
     const link = document.createElement("a");
     link.href = dataUrl;
     link.download = shareCardDownloadName.value;

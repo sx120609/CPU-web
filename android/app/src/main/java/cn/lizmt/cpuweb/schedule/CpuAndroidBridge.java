@@ -8,12 +8,20 @@ import android.content.ClipboardManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.ContentValues;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Environment;
+import android.provider.MediaStore;
+import android.util.Base64;
 import android.webkit.JavascriptInterface;
 import android.widget.Toast;
 
 import org.json.JSONObject;
+
+import java.io.OutputStream;
 
 final class CpuAndroidBridge {
     private final Activity activity;
@@ -60,6 +68,58 @@ final class CpuAndroidBridge {
                 Toast.makeText(activity, "无法打开系统浏览器", Toast.LENGTH_SHORT).show();
             }
         });
+    }
+
+    @JavascriptInterface
+    public boolean saveImage(String dataUrl, String fileName) {
+        try {
+            if (!activity.ensureLegacyStoragePermission()) {
+                activity.runOnUiThread(() ->
+                        Toast.makeText(activity, "请先允许存储权限后再保存图片", Toast.LENGTH_SHORT).show()
+                );
+                return false;
+            }
+            String safeName = sanitizeFileName(fileName == null ? "" : fileName);
+            String raw = dataUrl == null ? "" : dataUrl.trim();
+            int comma = raw.indexOf(',');
+            String payload = comma >= 0 ? raw.substring(comma + 1) : raw;
+            byte[] bytes = Base64.decode(payload, Base64.DEFAULT);
+            Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+            if (bitmap == null) return false;
+
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Images.Media.DISPLAY_NAME, safeName);
+            values.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/CPU-web");
+                values.put(MediaStore.Images.Media.IS_PENDING, 1);
+            }
+
+            Uri uri = activity.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+            if (uri == null) return false;
+
+            try (OutputStream output = activity.getContentResolver().openOutputStream(uri)) {
+                if (output == null) return false;
+                boolean ok = bitmap.compress(Bitmap.CompressFormat.PNG, 100, output);
+                if (!ok) return false;
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ContentValues done = new ContentValues();
+                done.put(MediaStore.Images.Media.IS_PENDING, 0);
+                activity.getContentResolver().update(uri, done, null, null);
+            }
+
+            activity.runOnUiThread(() ->
+                    Toast.makeText(activity, "图片已保存到相册", Toast.LENGTH_SHORT).show()
+            );
+            return true;
+        } catch (Exception ignored) {
+            activity.runOnUiThread(() ->
+                    Toast.makeText(activity, "保存图片失败", Toast.LENGTH_SHORT).show()
+            );
+            return false;
+        }
     }
 
     @JavascriptInterface
@@ -114,5 +174,15 @@ final class CpuAndroidBridge {
         } catch (Exception ignored) {
             return "";
         }
+    }
+
+    private String sanitizeFileName(String fileName) {
+        String raw = fileName.trim();
+        if (raw.isEmpty()) raw = "cpu-share";
+        raw = raw.replaceAll("[\\\\/:*?\"<>|]", "_");
+        if (!raw.toLowerCase().endsWith(".png")) {
+            raw += ".png";
+        }
+        return raw;
     }
 }

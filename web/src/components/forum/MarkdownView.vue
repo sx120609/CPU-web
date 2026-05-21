@@ -82,6 +82,11 @@ async function savePreviewImage() {
     const response = await fetch(previewImageUrl.value);
     if (!response.ok) throw new Error("download_failed");
     const blob = await response.blob();
+    if (typeof (window as any).CPUAndroid?.saveImage === "function") {
+      const dataUrl = await blobToDataUrl(blob);
+      const ok = (window as any).CPUAndroid.saveImage(dataUrl, previewFileName(previewImageUrl.value, blob.type));
+      if (ok !== false) return;
+    }
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = objectUrl;
@@ -107,6 +112,15 @@ function previewFileName(src: string, mimeType = "") {
   if (mimeType.includes("webp")) return "image.webp";
   if (mimeType.includes("gif")) return "image.gif";
   return "image.jpg";
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
 }
 
 onMounted(wrapTables);

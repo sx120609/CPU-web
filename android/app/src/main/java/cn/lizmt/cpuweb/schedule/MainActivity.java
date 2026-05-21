@@ -2,6 +2,7 @@ package cn.lizmt.cpuweb.schedule;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.pm.PackageManager;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.graphics.Bitmap;
@@ -10,6 +11,7 @@ import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.Manifest;
 import android.os.Message;
 import android.view.Gravity;
 import android.view.View;
@@ -30,6 +32,7 @@ import android.widget.TextView;
 
 public final class MainActivity extends Activity {
     private static final int REQUEST_FILE_CHOOSER = 2001;
+    private static final int REQUEST_WRITE_STORAGE = 2002;
 
     private WebView webView;
     private LinearLayout errorView;
@@ -403,6 +406,17 @@ public final class MainActivity extends Activity {
             webView.destroy();
         }
         super.onDestroy();
+    }
+
+    boolean ensureLegacyStoragePermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            return true;
+        }
+        if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
+            return true;
+        }
+        requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_WRITE_STORAGE);
+        return false;
     }
 
     private int dp(int value) {
