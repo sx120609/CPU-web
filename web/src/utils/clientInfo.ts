@@ -4,6 +4,7 @@ export const ANDROID_APP_LATEST_VERSION_CODE = 14;
 export const ANDROID_APP_LATEST_VERSION_NAME = "2.0.5";
 export const ANDROID_APP_DOWNLOAD_URL = "/api/site/downloads/android-app";
 export const ANDROID_WIDGET_MIN_VERSION_CODE = 5;
+export const ANDROID_IN_APP_UPDATE_MIN_VERSION_CODE = 14;
 
 export function detectClientPlatform(ua = navigator.userAgent): ClientPlatform {
   const source = (ua || "").toLowerCase();
@@ -86,7 +87,8 @@ export function supportsAndroidScheduleWidget(ua = navigator.userAgent) {
 export function supportsAndroidInAppApkDownload(ua = navigator.userAgent) {
   if (!isAndroidNativeApp(ua)) return false;
   const bridge = (window as any).CPUAndroid;
-  return typeof bridge?.downloadAndInstallApk === "function";
+  return getAndroidNativeVersionCode(ua) >= ANDROID_IN_APP_UPDATE_MIN_VERSION_CODE
+    && typeof bridge?.downloadAndInstallApk === "function";
 }
 
 export function clientPlatformLabel(platform: ClientPlatform) {
