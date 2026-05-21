@@ -56,7 +56,16 @@
           <div class="ann-content">{{ a.content }}</div>
           <div class="ann-meta">{{ fmtDate(a.createdAt) }} · {{ a.source }}</div>
         </div>
-        <el-button text type="danger" size="small" @click="removeAnn(a)">删除</el-button>
+        <el-dropdown trigger="click" @command="handleAnnouncementCommand($event, a)">
+          <el-button text size="small" class="action-trigger">
+            操作<el-icon class="more-icon"><MoreFilled /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </el-card>
   </div>
@@ -65,6 +74,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { MoreFilled } from "@element-plus/icons-vue";
 import { adminApi } from "@/api/admin";
 import { fmtDate } from "@/utils/format";
 
@@ -97,6 +107,10 @@ async function publish() {
   } finally { publishing.value = false; }
 }
 
+function handleAnnouncementCommand(command: string, row: any) {
+  if (command === "delete") return removeAnn(row);
+}
+
 async function removeAnn(a: any) {
   await ElMessageBox.confirm(`删除公告《${a.title}》？`, "确认", { type: "warning" });
   await adminApi.deleteAnnouncement(a.id);
@@ -121,6 +135,8 @@ async function removeAnn(a: any) {
 .ann-title { font-size: 14px; font-weight: 600; color: #1f2937; display: flex; gap: 6px; align-items: center; }
 .ann-content { font-size: 13px; color: #4b5563; margin: 4px 0 4px; }
 .ann-meta { font-size: 11px; color: #9ca3af; }
+.action-trigger { justify-content: center; }
+.more-icon { margin-left: 2px; transform: rotate(90deg); }
 
 @media (max-width: 768px) {
   .ann-pane :deep(.el-card__body) {
@@ -147,9 +163,11 @@ async function removeAnn(a: any) {
     align-items: flex-start;
     line-height: 1.5;
   }
-  .ann-row > .el-button {
-    align-self: stretch;
-    margin-left: 0;
+  .ann-row :deep(.el-dropdown) {
+    width: 100%;
+  }
+  .action-trigger {
+    width: 100%;
   }
 }
 </style>

@@ -34,10 +34,27 @@
           <span v-if="row.lastError" style="font-size:11px;color:#dc2626">{{ row.lastError.slice(0, 80) }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="240" fixed="right">
+      <el-table-column label="操作" width="108" fixed="right" align="center">
         <template #default="{ row }">
-          <el-button text type="primary" size="small" :loading="runningId === row.id" @click="runOne(row)">立即同步</el-button>
-          <el-button text type="danger" size="small" :loading="resettingId === row.id" @click="resetRun(row)">删除重爬</el-button>
+          <el-dropdown trigger="click" @command="handleFeedCommand($event, row)">
+            <el-button
+              text
+              size="small"
+              class="action-trigger"
+              :loading="isFeedBusy(row)"
+              :disabled="runningAll"
+            >
+              操作<el-icon class="more-icon"><MoreFilled /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="run" :disabled="isFeedBusy(row) || runningAll">立即同步</el-dropdown-item>
+                <el-dropdown-item command="reset" :disabled="isFeedBusy(row) || runningAll" divided>
+                  删除重爬
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </template>
       </el-table-column>
     </el-table>
@@ -64,8 +81,25 @@
           <span v-if="row.lastError" class="feed-error">{{ row.lastError.slice(0, 120) }}</span>
         </div>
         <div class="mobile-actions">
-          <el-button plain type="primary" size="small" :loading="runningId === row.id" @click="runOne(row)">立即同步</el-button>
-          <el-button plain type="danger" size="small" :loading="resettingId === row.id" @click="resetRun(row)">删除重爬</el-button>
+          <el-dropdown trigger="click" @command="handleFeedCommand($event, row)">
+            <el-button
+              plain
+              size="small"
+              class="mobile-action-trigger"
+              :loading="isFeedBusy(row)"
+              :disabled="runningAll"
+            >
+              操作<el-icon class="more-icon"><MoreFilled /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="run" :disabled="isFeedBusy(row) || runningAll">立即同步</el-dropdown-item>
+                <el-dropdown-item command="reset" :disabled="isFeedBusy(row) || runningAll" divided>
+                  删除重爬
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
       </article>
       <el-empty v-if="!loading && !list.length" description="暂无同步源" />
@@ -76,7 +110,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Refresh } from "@element-plus/icons-vue";
+import { Refresh, MoreFilled } from "@element-plus/icons-vue";
 import { adminApi } from "@/api/admin";
 import { fmtRelative } from "@/utils/format";
 
@@ -91,6 +125,15 @@ async function reload() {
   loading.value = true;
   try { list.value = await adminApi.feeds(); }
   finally { loading.value = false; }
+}
+
+function handleFeedCommand(command: string, row: any) {
+  if (command === "run") return runOne(row);
+  if (command === "reset") return resetRun(row);
+}
+
+function isFeedBusy(row: any) {
+  return runningId.value === row.id || resettingId.value === row.id;
 }
 
 async function toggleEnabled(row: any) {
@@ -138,6 +181,8 @@ async function runAll() {
 .ctrl-bar { display: flex; gap: 10px; }
 .muted { color: #9ca3af; }
 .mobile-list { display: none; }
+.action-trigger { justify-content: center; }
+.more-icon { margin-left: 2px; transform: rotate(90deg); }
 
 @media (max-width: 768px) {
   .ctrl-bar {
@@ -188,14 +233,13 @@ async function runAll() {
   }
   .feed-error { color: #dc2626; }
   .mobile-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
     margin-top: 12px;
   }
-  .mobile-actions :deep(.el-button) {
+  .mobile-actions :deep(.el-dropdown) {
     width: 100%;
-    margin-left: 0;
+  }
+  .mobile-action-trigger {
+    width: 100%;
   }
 }
 </style>

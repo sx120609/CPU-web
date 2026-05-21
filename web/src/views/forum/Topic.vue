@@ -158,6 +158,7 @@
         footer-text="支持排版、图片和草稿保存。"
         :max-length="REPLY_MAX"
         :draft-key="replyDraftKey"
+        toolbar-mode="static"
         @draft-restored="replyText = $event"
       />
       <div class="reply-form-actions reply-dialog-actions">
@@ -753,6 +754,32 @@ async function onDelete() {
   margin-top: 16px;
 }
 
+:deep(.reply-dialog .el-dialog__body) {
+  padding-top: 12px;
+}
+
+:deep(.reply-dialog .rich-editor) {
+  margin-top: 0;
+}
+
+:deep(.reply-dialog .rich-editor.toolbar-static) {
+  border-radius: 20px;
+  box-shadow: none;
+  border-color: #e8edf3;
+}
+
+:deep(.reply-dialog .rich-editor.toolbar-static .editor-toolbar) {
+  border-radius: 20px 20px 0 0;
+}
+
+:deep(.reply-dialog .rich-editor.toolbar-static .editor-surface) {
+  background: #fff;
+}
+
+:deep(.reply-dialog .rich-editor.toolbar-static .editor-foot) {
+  border-radius: 0 0 20px 20px;
+}
+
 .share-panel {
   display: flex;
   flex-direction: column;
@@ -803,10 +830,6 @@ async function onDelete() {
 
 :deep(.reply-dialog .el-dialog) {
   border-radius: 18px;
-}
-
-:deep(.reply-dialog .el-dialog__body) {
-  padding-top: 12px;
 }
 
 .cpu-section-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
@@ -917,6 +940,18 @@ async function onDelete() {
 
   .reply-anonymous-box {
     padding: 12px;
+  }
+
+  :deep(.reply-dialog .rich-editor.toolbar-static) {
+    border-radius: 16px;
+  }
+
+  :deep(.reply-dialog .rich-editor.toolbar-static .editor-toolbar) {
+    border-radius: 16px 16px 0 0;
+  }
+
+  :deep(.reply-dialog .rich-editor.toolbar-static .editor-foot) {
+    border-radius: 0 0 16px 16px;
   }
 
   :deep(.reply-dialog) {

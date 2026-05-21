@@ -54,17 +54,38 @@
       <el-table-column label="时间" width="160">
         <template #default="{ row }">{{ fmtDate(row.createdAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="350" fixed="right">
+      <el-table-column label="操作" width="108" fixed="right" align="center">
         <template #default="{ row }">
-          <el-button text size="small" @click="togglePin(row)">{{ row.pinned ? '取消板块置顶' : '板块置顶' }}</el-button>
-          <el-button text size="small" @click="toggleGlobalPin(row)">{{ row.globalPinned ? '取消全局置顶' : '全局置顶' }}</el-button>
-          <el-button text size="small" @click="toggleLock(row)">{{ row.locked ? '解锁' : '锁定' }}</el-button>
-          <el-button v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'" text type="success" size="small" @click="approveReview(row)">审核通过</el-button>
-          <el-button v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'" text type="warning" size="small" @click="rejectReview(row)">驳回</el-button>
-          <el-button v-if="!row.hidden" text type="danger" size="small" @click="hideRow(row)">隐藏</el-button>
-          <el-button v-else text type="success" size="small" @click="unhide(row)">恢复</el-button>
-          <el-button text type="warning" size="small" @click="moveBoard(row)">转版</el-button>
-          <el-button text type="danger" size="small" @click="destroyRow(row)">删除</el-button>
+          <el-dropdown trigger="click" @command="handleTopicCommand($event, row)">
+            <el-button text size="small" class="action-trigger">
+              操作<el-icon class="more-icon"><MoreFilled /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="open">查看原帖</el-dropdown-item>
+                <el-dropdown-item command="pin">{{ row.pinned ? "取消板块置顶" : "板块置顶" }}</el-dropdown-item>
+                <el-dropdown-item command="globalPin">{{ row.globalPinned ? "取消全局置顶" : "全局置顶" }}</el-dropdown-item>
+                <el-dropdown-item command="lock">{{ row.locked ? "解锁" : "锁定" }}</el-dropdown-item>
+                <el-dropdown-item
+                  v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'"
+                  command="approve"
+                >
+                  审核通过
+                </el-dropdown-item>
+                <el-dropdown-item
+                  v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'"
+                  command="reject"
+                >
+                  驳回
+                </el-dropdown-item>
+                <el-dropdown-item :command="row.hidden ? 'unhide' : 'hide'">
+                  {{ row.hidden ? "恢复" : "隐藏" }}
+                </el-dropdown-item>
+                <el-dropdown-item command="move">转版</el-dropdown-item>
+                <el-dropdown-item command="destroy" divided>删除</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </template>
       </el-table-column>
     </el-table>
@@ -86,15 +107,36 @@
           <span>{{ fmtDate(row.createdAt) }}</span>
         </div>
         <div class="mobile-actions">
-          <el-button plain size="small" @click="togglePin(row)">{{ row.pinned ? '取消板块置顶' : '板块置顶' }}</el-button>
-          <el-button plain type="warning" size="small" @click="toggleGlobalPin(row)">{{ row.globalPinned ? '取消全局置顶' : '全局置顶' }}</el-button>
-          <el-button plain size="small" @click="toggleLock(row)">{{ row.locked ? '解锁' : '锁定' }}</el-button>
-          <el-button v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'" plain type="success" size="small" @click="approveReview(row)">通过</el-button>
-          <el-button v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'" plain type="warning" size="small" @click="rejectReview(row)">驳回</el-button>
-          <el-button v-if="!row.hidden" plain type="danger" size="small" @click="hideRow(row)">隐藏</el-button>
-          <el-button v-else plain type="success" size="small" @click="unhide(row)">恢复</el-button>
-          <el-button plain type="warning" size="small" @click="moveBoard(row)">转版</el-button>
-          <el-button plain type="danger" size="small" @click="destroyRow(row)">删除</el-button>
+          <el-dropdown trigger="click" @command="handleTopicCommand($event, row)">
+            <el-button plain size="small" class="mobile-action-trigger">
+              操作<el-icon class="more-icon"><MoreFilled /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="open">查看原帖</el-dropdown-item>
+                <el-dropdown-item command="pin">{{ row.pinned ? "取消板块置顶" : "板块置顶" }}</el-dropdown-item>
+                <el-dropdown-item command="globalPin">{{ row.globalPinned ? "取消全局置顶" : "全局置顶" }}</el-dropdown-item>
+                <el-dropdown-item command="lock">{{ row.locked ? "解锁" : "锁定" }}</el-dropdown-item>
+                <el-dropdown-item
+                  v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'"
+                  command="approve"
+                >
+                  审核通过
+                </el-dropdown-item>
+                <el-dropdown-item
+                  v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'"
+                  command="reject"
+                >
+                  驳回
+                </el-dropdown-item>
+                <el-dropdown-item :command="row.hidden ? 'unhide' : 'hide'">
+                  {{ row.hidden ? "恢复" : "隐藏" }}
+                </el-dropdown-item>
+                <el-dropdown-item command="move">转版</el-dropdown-item>
+                <el-dropdown-item command="destroy" divided>删除</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
       </article>
       <el-empty v-if="!loading && !list.length" description="没有符合条件的帖子" />
@@ -115,7 +157,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Search } from "@element-plus/icons-vue";
+import { Search, MoreFilled } from "@element-plus/icons-vue";
 import { adminApi } from "@/api/admin";
 import { boardApi, type Board } from "@/api/board";
 import { fmtDate } from "@/utils/format";
@@ -150,6 +192,23 @@ async function reload() {
   } finally { loading.value = false; }
 }
 function onPage(p: number) { page.value = p; reload(); }
+
+function handleTopicCommand(command: string, row: any) {
+  if (command === "open") return openTopic(row);
+  if (command === "pin") return togglePin(row);
+  if (command === "globalPin") return toggleGlobalPin(row);
+  if (command === "lock") return toggleLock(row);
+  if (command === "approve") return approveReview(row);
+  if (command === "reject") return rejectReview(row);
+  if (command === "hide") return hideRow(row);
+  if (command === "unhide") return unhide(row);
+  if (command === "move") return moveBoard(row);
+  if (command === "destroy") return destroyRow(row);
+}
+
+function openTopic(row: any) {
+  window.open(`/forum/topic/${row.id}`, "_blank", "noopener,noreferrer");
+}
 
 async function togglePin(row: any) {
   await adminApi.updateTopic(row.id, { pinned: !row.pinned });
@@ -234,6 +293,8 @@ a { color: var(--cpu-primary); text-decoration: none; }
 a:hover { text-decoration: underline; }
 .mobile-list { display: none; }
 .risk-note { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+.action-trigger { justify-content: center; }
+.more-icon { margin-left: 2px; transform: rotate(90deg); }
 
 @media (max-width: 768px) {
   .ctrl-bar { align-items: stretch; }
@@ -299,14 +360,13 @@ a:hover { text-decoration: underline; }
     font-size: 12px;
   }
   .mobile-actions {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
     margin-top: 12px;
   }
-  .mobile-actions :deep(.el-button) {
+  .mobile-actions :deep(.el-dropdown) {
     width: 100%;
-    margin-left: 0;
+  }
+  .mobile-action-trigger {
+    width: 100%;
   }
   .pager { overflow-x: auto; justify-content: flex-start; padding-bottom: 2px; }
 }

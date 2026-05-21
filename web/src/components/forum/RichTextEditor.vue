@@ -1,5 +1,5 @@
 <template>
-  <div class="rich-editor" :style="rootStyle">
+  <div class="rich-editor" :class="toolbarModeClass" :style="rootStyle">
     <div class="editor-toolbar" @mousedown.prevent @touchstart.passive="rememberSelection">
       <div class="toolbar-head">
         <span class="toolbar-title">{{ label }}</span>
@@ -115,12 +115,14 @@ const props = withDefaults(defineProps<{
   footerText?: string;
   maxLength?: number;
   draftKey?: string;
+  toolbarMode?: "sticky" | "static";
 }>(), {
   placeholder: DEFAULT_PLACEHOLDER,
   label: "可视化编辑",
   footerText: DEFAULT_FOOTER,
   maxLength: 20000,
   draftKey: "",
+  toolbarMode: "sticky",
 });
 
 const emit = defineEmits<{
@@ -183,6 +185,9 @@ const toolbarStatusText = computed(() => {
   if (hasSelectedImage.value) return isMobileViewport.value ? "已选图片" : "已选图片，可调大小和对齐";
   return isMobileViewport.value ? "" : "支持排版、图片和草稿";
 });
+const toolbarModeClass = computed(() => ({
+  "toolbar-static": props.toolbarMode === "static",
+}));
 
 const rootStyle = computed(() => ({
   "--editor-toolbar-top": `${toolbarStickyOffset.value}px`,
@@ -788,6 +793,41 @@ defineExpose({ clearDraft, isContentEmpty });
   backdrop-filter: blur(14px);
 }
 
+.rich-editor.toolbar-static {
+  border-color: #e6ecf3;
+  border-radius: 18px;
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.07);
+  background: linear-gradient(180deg, #fcfdff 0%, #ffffff 100%);
+}
+
+.rich-editor.toolbar-static .editor-toolbar {
+  position: relative;
+  top: auto;
+  gap: 10px;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid #edf1f5;
+  border-radius: 18px 18px 0 0;
+  background:
+    radial-gradient(circle at top left, rgba(22, 135, 118, 0.08), transparent 34%),
+    linear-gradient(180deg, #f8fbfd 0%, #fdfefe 100%);
+  backdrop-filter: none;
+}
+
+.rich-editor.toolbar-static .toolbar-head {
+  align-items: flex-start;
+}
+
+.rich-editor.toolbar-static .toolbar-title {
+  color: #14532d;
+}
+
+.rich-editor.toolbar-static .toolbar-status {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #eefbf6;
+  color: #0f766e;
+}
+
 .toolbar-head {
   display: flex;
   align-items: center;
@@ -825,6 +865,15 @@ defineExpose({ clearDraft, isContentEmpty });
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
+.rich-editor.toolbar-static .toolbar-scroll {
+  gap: 8px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+}
+
 .toolbar-group {
   display: inline-flex;
   align-items: center;
@@ -834,10 +883,25 @@ defineExpose({ clearDraft, isContentEmpty });
   background: transparent;
 }
 
+.rich-editor.toolbar-static .toolbar-group {
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid #e6edf5;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
 .toolbar-group + .toolbar-group {
   margin-left: 6px;
   padding-left: 12px;
   border-left: 1px solid #e7edf4;
+}
+
+.rich-editor.toolbar-static .toolbar-group + .toolbar-group {
+  margin-left: 0;
+  padding-left: 8px;
+  border-left: none;
 }
 
 .toolbar-group--compact {
@@ -861,6 +925,13 @@ defineExpose({ clearDraft, isContentEmpty });
   transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
   touch-action: manipulation;
   -webkit-tap-highlight-color: rgba(22, 135, 118, 0.16);
+}
+
+.rich-editor.toolbar-static .editor-toolbar button {
+  min-height: 38px;
+  border-color: #dbe5ee;
+  border-radius: 11px;
+  background: #fbfdff;
 }
 
 .editor-toolbar button:hover {
@@ -1026,6 +1097,10 @@ defineExpose({ clearDraft, isContentEmpty });
   border-radius: 0 0 14px 14px;
 }
 
+.rich-editor.toolbar-static .editor-foot {
+  border-radius: 0 0 18px 18px;
+}
+
 .editor-foot .warn {
   color: #dc2626;
   font-weight: 700;
@@ -1141,6 +1216,66 @@ defineExpose({ clearDraft, isContentEmpty });
   .draft-state,
   .foot-count {
     font-size: 11px;
+  }
+
+  .rich-editor.toolbar-static {
+    border-radius: 16px;
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
+  }
+
+  .rich-editor.toolbar-static .editor-toolbar {
+    margin: 0;
+    padding: 12px 12px 10px;
+    border: none;
+    border-bottom: 1px solid #edf1f5;
+    border-radius: 16px 16px 0 0;
+    box-shadow: none;
+  }
+
+  .rich-editor.toolbar-static .toolbar-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .rich-editor.toolbar-static .toolbar-status {
+    text-align: left;
+  }
+
+  .rich-editor.toolbar-static .toolbar-scroll {
+    flex-wrap: wrap;
+    overflow: visible;
+    gap: 8px;
+  }
+
+  .rich-editor.toolbar-static .toolbar-group {
+    flex: 1 1 100%;
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .rich-editor.toolbar-static .toolbar-group + .toolbar-group {
+    padding-left: 8px;
+  }
+
+  .rich-editor.toolbar-static .editor-toolbar button {
+    min-height: 38px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  .rich-editor.toolbar-static .size-label {
+    min-width: auto;
+    padding: 0 2px;
+  }
+
+  .rich-editor.toolbar-static .editor-surface {
+    min-height: min(40dvh, 320px);
+    max-height: min(48dvh, 420px);
+  }
+
+  .rich-editor.toolbar-static .editor-foot {
+    border-radius: 0 0 16px 16px;
   }
 }
 </style>

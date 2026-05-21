@@ -28,10 +28,19 @@
           <span class="topic-count">{{ row.topicCount }} 帖</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="220" fixed="right">
+      <el-table-column label="操作" width="108" fixed="right" align="center">
         <template #default="{ row }">
-          <el-button text size="small" :disabled="row.readOnly || row.feedSourceId" @click="openEdit(row)">编辑</el-button>
-          <el-button text type="danger" size="small" :disabled="row.readOnly || row.feedSourceId" @click="removeBoard(row)">删除</el-button>
+          <el-dropdown trigger="click" @command="handleBoardCommand($event, row)">
+            <el-button text size="small" class="action-trigger" :disabled="row.readOnly || row.feedSourceId">
+              操作<el-icon class="more-icon"><MoreFilled /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="edit">编辑</el-dropdown-item>
+                <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </template>
       </el-table-column>
     </el-table>
@@ -52,10 +61,20 @@
           <span v-if="row.anonymousEnabled">支持匿名</span>
         </div>
         <div class="board-actions">
-          <el-button plain size="small" :disabled="row.readOnly || row.feedSourceId" @click="openEdit(row)">编辑</el-button>
-          <el-button plain type="danger" size="small" :disabled="row.readOnly || row.feedSourceId" @click="removeBoard(row)">删除</el-button>
+          <el-dropdown trigger="click" @command="handleBoardCommand($event, row)">
+            <el-button plain size="small" class="mobile-action-trigger" :disabled="row.readOnly || row.feedSourceId">
+              操作<el-icon class="more-icon"><MoreFilled /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="edit">编辑</el-dropdown-item>
+                <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
       </article>
+      <el-empty v-if="!loading && !list.length" description="暂无板块" />
     </div>
 
     <el-dialog v-model="dialogOpen" :title="editingId ? '编辑板块' : '新增板块'" width="480px" append-to-body>
@@ -106,6 +125,7 @@
 <script setup lang="ts">
 import { reactive, ref, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { MoreFilled } from "@element-plus/icons-vue";
 import { adminApi } from "@/api/admin";
 
 const loading = ref(false);
@@ -134,6 +154,11 @@ async function reload() {
   } finally {
     loading.value = false;
   }
+}
+
+function handleBoardCommand(command: string, row: any) {
+  if (command === "edit") return openEdit(row);
+  if (command === "delete") return removeBoard(row);
 }
 
 function openCreate() {
@@ -218,6 +243,8 @@ async function removeBoard(row: any) {
 .mobile-list { display: none; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .anonymous-switch-note { margin-left: 10px; color: #6b7280; font-size: 12px; }
+.action-trigger { justify-content: center; }
+.more-icon { margin-left: 2px; transform: rotate(90deg); }
 
 @media (max-width: 768px) {
   .admin-table { display: none; }
@@ -241,13 +268,13 @@ async function removeBoard(row: any) {
     color: #6b7280;
   }
   .board-actions {
-    display: flex;
-    gap: 8px;
     margin-top: 12px;
   }
-  .board-actions :deep(.el-button) {
-    flex: 1;
-    margin-left: 0;
+  .board-actions :deep(.el-dropdown) {
+    width: 100%;
+  }
+  .mobile-action-trigger {
+    width: 100%;
   }
   .row2 {
     grid-template-columns: 1fr;
