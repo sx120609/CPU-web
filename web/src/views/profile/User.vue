@@ -1,5 +1,10 @@
 <template>
   <div class="user-page" v-if="user">
+    <button type="button" class="back-btn" @click="goBack">
+      <el-icon><ArrowLeft /></el-icon>
+      返回上一页
+    </button>
+
     <div class="cpu-card profile-card">
       <UserAvatar :size="64" class="avatar" :src="user.avatar" :name="user.nickname" alt="用户头像" />
       <div>
@@ -40,7 +45,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
+import { ArrowLeft } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import UserModerationActions from "@/components/common/UserModerationActions.vue";
 import { request } from "@/api/request";
@@ -48,6 +54,7 @@ import { useAuthStore } from "@/stores/auth";
 import { fmtDate, fmtRelative } from "@/utils/format";
 
 const route = useRoute();
+const router = useRouter();
 const auth = useAuthStore();
 const user = ref<any>(null);
 const topics = ref<any[]>([]);
@@ -65,10 +72,31 @@ function applyModerationUpdate(patch: Record<string, unknown>) {
   if (!user.value) return;
   Object.assign(user.value, patch);
 }
+
+function goBack() {
+  if (window.history.length > 1) {
+    router.back();
+    return;
+  }
+  router.push("/forum");
+}
 </script>
 
 <style scoped>
 .user-page { display: flex; flex-direction: column; gap: 16px; }
+.back-btn {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--cpu-primary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
 .cpu-card { background: #fff; border-radius: 12px; padding: 20px 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
 .profile-card { display: flex; align-items: flex-start; gap: 16px; }
 .avatar { font-size: 24px; font-weight: 600; flex-shrink: 0; }

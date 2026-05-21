@@ -3,68 +3,46 @@
     <template v-if="auth.canAccessForum">
       <h2 class="page-title">讨论板块</h2>
 
-      <div class="forum-shell">
-        <div class="forum-main">
-          <div class="cluster" v-if="general.length">
-            <h3 class="cluster-title">💬 综合讨论</h3>
-            <div class="grid">
-              <div v-for="b in general" :key="b.slug" class="board-card" @click="$router.push(`/forum/b/${b.slug}`)">
-                <div class="icon" :style="{ background: b.color || '#168776' }">{{ b.icon || "💬" }}</div>
-                <div class="body">
-                  <div class="name">{{ b.name }}</div>
-                  <div class="desc">{{ b.description }}</div>
-                  <div class="meta">{{ b.topicCount }} 帖</div>
-                </div>
-              </div>
-            </div>
-          </div>
+      <button type="button" class="latest-entry cpu-card" @click="$router.push('/forum/latest')">
+        <div class="latest-entry-icon">🆕</div>
+        <div class="latest-entry-body">
+          <div class="latest-entry-title">最新内容</div>
+          <div class="latest-entry-desc">按时间看看最近有哪些新帖子和新回复</div>
+        </div>
+        <span class="latest-entry-arrow">查看全部 →</span>
+      </button>
 
-          <div class="cluster" v-if="ugc.length">
-            <h3 class="cluster-title">🎒 学生共建</h3>
-            <div class="grid">
-              <div v-for="b in ugc" :key="b.slug" class="board-card" @click="$router.push(`/forum/b/${b.slug}`)">
-                <div class="icon" :style="{ background: b.color || '#168776' }">{{ b.icon || "🎒" }}</div>
-                <div class="body">
-                  <div class="name">{{ b.name }}</div>
-                  <div class="desc">{{ b.description }}</div>
-                  <div class="meta">{{ b.topicCount }} 帖</div>
-                </div>
-              </div>
+      <div class="cluster" v-if="general.length">
+        <h3 class="cluster-title">💬 综合讨论</h3>
+        <div class="grid">
+          <div v-for="b in general" :key="b.slug" class="board-card" @click="$router.push(`/forum/b/${b.slug}`)">
+            <div class="icon" :style="{ background: b.color || '#168776' }">{{ b.icon || "💬" }}</div>
+            <div class="body">
+              <div class="name">{{ b.name }}</div>
+              <div class="desc">{{ b.description }}</div>
+              <div class="meta">{{ b.topicCount }} 帖</div>
             </div>
           </div>
         </div>
+      </div>
 
-        <aside class="forum-side">
-          <section class="latest-card cpu-card" v-loading="latestLoading">
-            <div class="latest-head">
-              <div>
-                <h3>🆕 最新动态</h3>
-                <p>跨板块看看最近在聊什么</p>
-              </div>
-              <router-link to="/forum/latest" class="more">查看全部 →</router-link>
+      <div class="cluster" v-if="ugc.length">
+        <h3 class="cluster-title">🎒 学生共建</h3>
+        <div class="grid">
+          <div v-for="b in ugc" :key="b.slug" class="board-card" @click="$router.push(`/forum/b/${b.slug}`)">
+            <div class="icon" :style="{ background: b.color || '#168776' }">{{ b.icon || "🎒" }}</div>
+            <div class="body">
+              <div class="name">{{ b.name }}</div>
+              <div class="desc">{{ b.description }}</div>
+              <div class="meta">{{ b.topicCount }} 帖</div>
             </div>
-            <button
-              v-for="item in latestSummary"
-              :key="item.id"
-              type="button"
-              class="latest-item"
-              @click="$router.push(`/forum/topic/${item.id}`)"
-            >
-              <div class="latest-top">
-                <span class="latest-board" :style="{ background: item.board?.color || '#168776' }">{{ item.board?.name }}</span>
-                <span class="latest-time">{{ fmtRelative(item.lastReplyAt || item.createdAt) }}</span>
-              </div>
-              <div class="latest-title">{{ item.title }}</div>
-              <div class="latest-meta">{{ item.replyCount }} 回复 · {{ item.likeCount }} 赞</div>
-            </button>
-            <el-empty v-if="!latestLoading && !latestSummary.length" description="暂时还没有新内容" />
-          </section>
-
-          <div class="footer-tip">
-            <el-icon><InfoFilled /></el-icon>
-            <span>查看学校官方公告？<router-link to="/announcements">→ 校园公告</router-link></span>
           </div>
-        </aside>
+        </div>
+      </div>
+
+      <div class="footer-tip">
+        <el-icon><InfoFilled /></el-icon>
+        <span>查看学校官方公告？<router-link to="/announcements">→ 校园公告</router-link></span>
       </div>
     </template>
 
@@ -156,9 +134,7 @@ import { ElMessage } from "element-plus";
 import { useRoute, useRouter } from "vue-router";
 import { InfoFilled } from "@element-plus/icons-vue";
 import { boardApi, type Board } from "@/api/board";
-import { homeApi } from "@/api/home";
 import { useAuthStore } from "@/stores/auth";
-import { fmtRelative } from "@/utils/format";
 
 const auth = useAuthStore();
 const route = useRoute();
@@ -169,23 +145,20 @@ const enableDialogOpen = ref(false);
 const enabling = ref(false);
 const readSeconds = ref(0);
 const confirmText = ref("");
-const latestSummary = ref<any[]>([]);
-const latestLoading = ref(false);
 let readTimer = 0;
 
 watch(() => auth.canAccessForum, async (enabled) => {
   if (enabled) {
     confirmText.value = "";
     closeEnableDialog(true);
-    await Promise.all([loadBoards(), loadLatestSummary()]);
+    await loadBoards();
   } else {
     all.value = [];
-    latestSummary.value = [];
   }
 }, { immediate: true });
 
 onMounted(async () => {
-  if (auth.canAccessForum) await Promise.all([loadBoards(), loadLatestSummary()]);
+  if (auth.canAccessForum) await loadBoards();
 });
 
 onBeforeUnmount(() => {
@@ -197,18 +170,6 @@ const ugc = computed(() => all.value.filter((b) => ["market", "question", "cours
 
 async function loadBoards() {
   all.value = await boardApi.list();
-}
-
-async function loadLatestSummary() {
-  latestLoading.value = true;
-  try {
-    const res = await homeApi.latestFeed({ page: 1, size: 6 });
-    latestSummary.value = res.list ?? [];
-  } catch {
-    latestSummary.value = [];
-  } finally {
-    latestLoading.value = false;
-  }
 }
 
 function goLogin() {
@@ -270,104 +231,57 @@ async function confirmEnable() {
 .forum-index { display: flex; flex-direction: column; gap: 24px; }
 .page-title { margin: 0; font-size: 22px; }
 .cluster-title { margin: 0 0 12px; font-size: 16px; color: #1f2937; font-weight: 600; }
-.forum-shell {
-  display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.95fr);
-  gap: 18px;
-  align-items: start;
-}
-.forum-main {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-.forum-side {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
 .cpu-card {
   background: #fff;
   border-radius: 14px;
   border: 1px solid #eef0f4;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
 }
-.latest-card {
-  padding: 16px 16px 10px;
-}
-.latest-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-.latest-head h3 {
-  margin: 0;
-  font-size: 16px;
-  color: #111827;
-}
-.latest-head p {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: #6b7280;
-}
-.more {
-  color: var(--cpu-primary);
-  font-size: 12px;
-  font-weight: 600;
-  text-decoration: none;
-  white-space: nowrap;
-}
-.latest-item {
+.latest-entry {
   width: 100%;
-  border: none;
-  background: transparent;
-  border-radius: 12px;
-  padding: 12px 10px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
   text-align: left;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
-.latest-item:hover {
-  background: #f8fafc;
+.latest-entry:hover {
+  border-color: var(--cpu-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 28px rgba(22, 135, 118, 0.08);
 }
-.latest-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
+.latest-entry-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+  font-size: 24px;
+  flex-shrink: 0;
 }
-.latest-board {
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 600;
+.latest-entry-body {
+  flex: 1;
+  min-width: 0;
 }
-.latest-time {
-  font-size: 12px;
-  color: #9ca3af;
-  white-space: nowrap;
-}
-.latest-title {
-  margin-top: 8px;
+.latest-entry-title {
+  font-size: 16px;
+  font-weight: 700;
   color: #111827;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.5;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
 }
-.latest-meta {
-  margin-top: 6px;
-  font-size: 12px;
+.latest-entry-desc {
+  margin-top: 4px;
+  font-size: 13px;
   color: #6b7280;
+  line-height: 1.55;
+}
+.latest-entry-arrow {
+  color: var(--cpu-primary);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .gate-card {
@@ -563,17 +477,18 @@ async function confirmEnable() {
     gap: 18px;
   }
 
-  .forum-shell {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-
-  .forum-main {
-    gap: 18px;
-  }
-
   .page-title {
     font-size: 20px;
+  }
+
+  .latest-entry {
+    align-items: flex-start;
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .latest-entry-arrow {
+    display: none;
   }
 
   .gate-card {
