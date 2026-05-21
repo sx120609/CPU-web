@@ -18,7 +18,6 @@ shareRouter.get("/topic/:id", async (req, res, next) => {
     const imageUrl = `${origin}/share/topic/${topic.id}/card.svg`;
     const description = buildTopicDescription(topic);
     res.type("html").send(renderTopicSharePage({
-      origin,
       shareUrl,
       topicUrl,
       imageUrl,
@@ -75,7 +74,7 @@ function buildTopicDescription(topic: any) {
   const boardPart = topic.board?.name ? `来自 ${topic.board.name} · ` : "";
   const authorPart = topic.isAnonymous ? (topic.anonymousAlias || "匿名同学") : (topic.author?.nickname || "同学");
   const content = stripText(topic.content);
-  const brief = content ? truncateText(content, 80) : "点击查看完整内容";
+  const brief = content ? truncateText(content, 72) : "点击查看完整内容";
   return `${boardPart}${authorPart}：${brief}`;
 }
 
@@ -95,7 +94,6 @@ function truncateText(text: string, maxChars: number) {
 }
 
 function renderTopicSharePage(input: {
-  origin: string;
   shareUrl: string;
   topicUrl: string;
   imageUrl: string;
@@ -125,8 +123,8 @@ function renderTopicSharePage(input: {
     <meta property="og:url" content="${shareUrl}" />
     <meta property="og:image" content="${imageUrl}" />
     <meta property="og:image:type" content="image/svg+xml" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
+    <meta property="og:image:width" content="720" />
+    <meta property="og:image:height" content="980" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${title}" />
     <meta name="twitter:description" content="${description}" />
@@ -199,82 +197,63 @@ async function renderTopicCardSvg(topic: any, origin: string) {
   const boardIcon = topic.board?.icon || "💬";
   const boardColor = topic.board?.color || "#168776";
   const authorName = topic.isAnonymous ? (topic.anonymousAlias || "匿名同学") : (topic.author?.nickname || "同学");
-  const tags = Array.isArray(topic.tags)
-    ? topic.tags.map((item: any) => item?.tag?.name).filter(Boolean).slice(0, 2)
-    : [];
-  const description = buildTopicDescription(topic).replace(/^来自 .*? · /, "");
-  const lines = wrapText(topic.title, 17, 3);
-  const descLines = wrapText(description, 20, 5);
-  const footer = [authorName, `${topic.replyCount || 0} 条回复`, `${topic.viewCount || 0} 浏览`].join(" · ");
-  const tagText = tags.join(" · ") || boardName;
+  const subtitle = `${boardName} · ${authorName}`;
+  const footer = `${topic.replyCount || 0} 条回复 · ${topic.viewCount || 0} 浏览`;
+  const titleLines = wrapText(topic.title, 15, 3);
+  const titleSvg = titleLines
+    .map((line, index) => `<tspan x="208" dy="${index === 0 ? 0 : 54}">${escapeXml(line)}</tspan>`)
+    .join("");
   const qrDataUrl = await QRCode.toDataURL(`${origin}/share/topic/${topic.id}`, {
     margin: 1,
     width: 220,
     color: { dark: "#111827", light: "#ffffff" },
   });
-  const titleSvg = lines.map((line, index) => `<tspan x="94" dy="${index === 0 ? 0 : 48}">${escapeXml(line)}</tspan>`).join("");
-  const descSvg = descLines.map((line, index) => `<tspan x="126" dy="${index === 0 ? 0 : 28}">${escapeXml(line)}</tspan>`).join("");
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="720" height="1080" viewBox="0 0 720 1080" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${escapeXml(topic.title)}">
+<svg width="720" height="980" viewBox="0 0 720 980" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${escapeXml(topic.title)}">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#f7f9fc" />
-      <stop offset="100%" stop-color="#eef2f7" />
+      <stop offset="0%" stop-color="#f6f8fb" />
+      <stop offset="100%" stop-color="#edf2f7" />
     </linearGradient>
-    <linearGradient id="hero" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="iconGrad" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="${escapeXml(boardColor)}" />
-      <stop offset="62%" stop-color="#167d72" />
-      <stop offset="100%" stop-color="#21496f" />
-    </linearGradient>
-    <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#fbfaf7" />
-      <stop offset="100%" stop-color="#f4efe5" />
+      <stop offset="100%" stop-color="#1f4d73" />
     </linearGradient>
     <filter id="cardShadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#0f172a" flood-opacity="0.10" />
+      <feDropShadow dx="0" dy="20" stdDeviation="28" flood-color="#0f172a" flood-opacity="0.10" />
     </filter>
   </defs>
-  <rect width="720" height="1080" fill="url(#bg)" />
-  <circle cx="620" cy="112" r="132" fill="${escapeXml(withOpacity(boardColor, 0.10))}" />
-  <circle cx="666" cy="64" r="60" fill="${escapeXml(withOpacity(boardColor, 0.08))}" />
-  <rect x="44" y="40" width="632" height="1000" rx="34" fill="#fffdfa" filter="url(#cardShadow)" />
-  <rect x="68" y="64" width="584" height="250" rx="30" fill="url(#hero)" />
-  <circle cx="566" cy="148" r="98" fill="${escapeXml(withOpacity("#ffffff", 0.10))}" />
-  <text x="560" y="180" font-size="108" text-anchor="middle" fill="${escapeXml(withOpacity("#ffffff", 0.16))}">${escapeXml(boardIcon)}</text>
-  <rect x="94" y="92" width="184" height="38" rx="19" fill="rgba(255,255,255,0.16)" stroke="rgba(255,255,255,0.16)" />
-  <text x="116" y="117" font-size="21" font-weight="700" fill="#ffffff">${escapeXml(boardIcon)} ${escapeXml(boardName)}</text>
-  <text x="94" y="164" font-size="18" font-weight="700" fill="${escapeXml(withOpacity("#ffffff", 0.82))}">校园社区分享</text>
-  <text x="94" y="214" font-size="48" font-weight="820" fill="#ffffff">${titleSvg}</text>
-  <rect x="94" y="266" width="334" height="36" rx="18" fill="rgba(255,255,255,0.16)" />
-  <text x="114" y="289" font-size="18" font-weight="700" fill="#ffffff">${escapeXml(footer)}</text>
-  <rect x="68" y="338" width="584" height="286" rx="28" fill="url(#paper)" stroke="${escapeXml(withOpacity(boardColor, 0.10))}" />
-  <text x="92" y="404" font-size="82" font-weight="700" fill="${escapeXml(withOpacity(boardColor, 0.18))}">“</text>
-  <text x="126" y="398" font-size="24" font-weight="700" fill="${escapeXml(boardColor)}">内容摘要</text>
-  <text x="94" y="452" font-size="25" fill="#435365">${descSvg}</text>
-  <rect x="94" y="650" width="172" height="40" rx="20" fill="#f3f6fa" />
-  <text x="118" y="676" font-size="19" font-weight="700" fill="#172033">${escapeXml(authorName)}</text>
-  <rect x="282" y="650" width="118" height="40" rx="20" fill="#f3f6fa" />
-  <text x="306" y="676" font-size="19" font-weight="700" fill="#172033">${topic.replyCount || 0} 回复</text>
-  <rect x="416" y="650" width="118" height="40" rx="20" fill="#f3f6fa" />
-  <text x="440" y="676" font-size="19" font-weight="700" fill="#172033">${topic.viewCount || 0} 浏览</text>
-  <text x="94" y="728" font-size="20" font-weight="700" fill="${escapeXml(boardColor)}">${escapeXml(tagText)}</text>
-  <line x1="94" y1="764" x2="626" y2="764" stroke="#eceff4" stroke-dasharray="8 8" />
-  <text x="94" y="828" font-size="38" font-weight="820" fill="#172033">药大垎坊</text>
-  <text x="94" y="868" font-size="20" fill="#667085">保存这张卡片，扫码即可查看原帖</text>
-  <text x="94" y="926" font-size="20" font-weight="700" fill="#172033">${escapeXml(footer)}</text>
-  <rect x="468" y="804" width="142" height="142" rx="20" fill="#ffffff" stroke="#dfe5ee" />
-  <image x="482" y="818" width="114" height="114" href="${escapeXml(qrDataUrl)}" />
-  <text x="476" y="974" font-size="15" fill="#98a2b3">扫码查看原帖</text>
-  <rect x="94" y="982" width="518" height="1" fill="#eef2f7" />
-  <text x="94" y="1018" font-size="17" fill="#98a2b3">cpu.lizmt.cn · 校园社区分享卡片</text>
+  <rect width="720" height="980" fill="url(#bg)" />
+  <circle cx="626" cy="110" r="126" fill="${escapeXml(withOpacity(boardColor, 0.12))}" />
+  <circle cx="674" cy="58" r="58" fill="${escapeXml(withOpacity(boardColor, 0.08))}" />
+  <rect x="52" y="48" width="616" height="884" rx="38" fill="#ffffff" filter="url(#cardShadow)" />
+
+  <rect x="92" y="108" width="88" height="88" rx="24" fill="url(#iconGrad)" />
+  <text x="136" y="164" text-anchor="middle" font-size="42" fill="#ffffff">${escapeXml(boardIcon)}</text>
+
+  <text x="208" y="138" font-size="19" font-weight="700" fill="#101828">${escapeXml(boardName)}</text>
+  <text x="208" y="166" font-size="16" fill="#667085">${escapeXml(subtitle)}</text>
+  <text x="208" y="194" font-size="16" fill="#98a2b3">${escapeXml(footer)}</text>
+
+  <text x="208" y="300" font-size="54" font-weight="820" fill="#172033">${titleSvg}</text>
+
+  <rect x="92" y="640" width="536" height="1" fill="#edf2f7" />
+
+  <text x="92" y="720" font-size="40" font-weight="820" fill="#172033">药大垎坊</text>
+  <text x="92" y="762" font-size="19" fill="#667085">扫描二维码，直接打开原帖</text>
+  <text x="92" y="816" font-size="16" fill="#98a2b3">cpu.lizmt.cn</text>
+  <text x="92" y="842" font-size="16" fill="#98a2b3">校园社区分享卡片</text>
+
+  <rect x="458" y="696" width="132" height="132" rx="20" fill="#ffffff" stroke="#dfe5ee" />
+  <image x="470" y="708" width="108" height="108" href="${escapeXml(qrDataUrl)}" />
 </svg>`;
 }
 
 function renderFallbackCardSvg(title: string, description: string) {
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="720" height="1100" viewBox="0 0 720 1100" xmlns="http://www.w3.org/2000/svg">
-  <rect width="720" height="1100" fill="#f8fafc" />
+<svg width="720" height="980" viewBox="0 0 720 980" xmlns="http://www.w3.org/2000/svg">
+  <rect width="720" height="980" fill="#f8fafc" />
   <text x="56" y="180" font-size="46" font-weight="800" fill="#172033">${escapeXml(title)}</text>
   <text x="56" y="254" font-size="24" fill="#667085">${escapeXml(description)}</text>
 </svg>`;
