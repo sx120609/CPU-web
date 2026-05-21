@@ -1,5 +1,6 @@
 import { Router, type Request } from "express";
 import QRCode from "qrcode";
+import { Resvg } from "@resvg/resvg-js";
 import { prisma } from "../prisma";
 import { getSiteOrigin, isBoardTypeEnabled } from "../services/siteSettings";
 
@@ -15,7 +16,7 @@ shareRouter.get("/topic/:id", async (req, res, next) => {
     const origin = resolvePublicOrigin(req);
     const topicUrl = `${origin}/forum/topic/${topic.id}`;
     const shareUrl = `${origin}/share/topic/${topic.id}`;
-    const imageUrl = `${origin}/share/topic/${topic.id}/card.svg`;
+    const imageUrl = `${origin}/share/topic/${topic.id}/card.png`;
     const description = buildTopicDescription(topic);
     res.type("html").send(renderTopicSharePage({
       shareUrl,
@@ -31,17 +32,21 @@ shareRouter.get("/topic/:id", async (req, res, next) => {
   }
 });
 
-shareRouter.get("/topic/:id/card.svg", async (req, res, next) => {
+shareRouter.get("/topic/:id/card.png", async (req, res, next) => {
   try {
     const topic = await loadShareTopic(req.params.id);
     if (!topic) {
-      res.status(404).type("image/svg+xml").send(renderFallbackCardSvg("药大垎坊", "分享内容不存在或暂不可用"));
+      const fallbackSvg = renderFallbackCardSvg("药大垎坊", "分享内容不存在或暂不可用");
+      const fallbackPng = renderSvgToPng(fallbackSvg);
+      res.status(404).type("image/png").send(fallbackPng);
       return;
     }
     const origin = resolvePublicOrigin(req);
-    res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
+    const svg = await renderTopicCardSvg(topic, origin);
+    const png = renderSvgToPng(svg);
+    res.setHeader("Content-Type", "image/png");
     res.setHeader("Cache-Control", "public, max-age=600");
-    res.send(await renderTopicCardSvg(topic, origin));
+    res.send(png);
   } catch (error) {
     next(error);
   }
@@ -122,7 +127,7 @@ function renderTopicSharePage(input: {
     <meta property="og:description" content="${description}" />
     <meta property="og:url" content="${shareUrl}" />
     <meta property="og:image" content="${imageUrl}" />
-    <meta property="og:image:type" content="image/svg+xml" />
+    <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="720" />
     <meta property="og:image:height" content="980" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -201,7 +206,7 @@ async function renderTopicCardSvg(topic: any, origin: string) {
   const footer = `${topic.replyCount || 0} 条回复 · ${topic.viewCount || 0} 浏览`;
   const titleLines = wrapText(topic.title, 15, 3);
   const titleSvg = titleLines
-    .map((line, index) => `<tspan x="208" dy="${index === 0 ? 0 : 60}">${escapeXml(line)}</tspan>`)
+    .map((line, index) => `<tspan x="360" dy="${index === 0 ? 0 : 60}">${escapeXml(line)}</tspan>`)
     .join("");
   const qrDataUrl = await QRCode.toDataURL(`${origin}/share/topic/${topic.id}`, {
     margin: 1,
@@ -240,7 +245,7 @@ async function renderTopicCardSvg(topic: any, origin: string) {
   <circle cx="532" cy="334" r="112" fill="${escapeXml(withOpacity(boardColor, 0.12))}" />
   <circle cx="594" cy="270" r="42" fill="${escapeXml(withOpacity(boardColor, 0.10))}" />
   <rect x="132" y="302" width="140" height="16" rx="8" fill="${escapeXml(withOpacity(boardColor, 0.18))}" />
-  <text x="112" y="394" font-size="60" font-weight="820" fill="#172033">${titleSvg}</text>
+  <text x="360" y="394" text-anchor="middle" font-size="60" font-weight="820" fill="#172033">${titleSvg}</text>
   <text x="112" y="516" font-size="18" fill="#667085">${escapeXml(subtitle)}</text>
 
   <rect x="92" y="650" width="536" height="1" fill="#edf2f7" />
@@ -262,6 +267,16 @@ function renderFallbackCardSvg(title: string, description: string) {
   <text x="56" y="180" font-size="46" font-weight="800" fill="#172033">${escapeXml(title)}</text>
   <text x="56" y="254" font-size="24" fill="#667085">${escapeXml(description)}</text>
 </svg>`;
+}
+
+function renderSvgToPng(svg: string) {
+  const resvg = new Resvg(svg, {
+    fitTo: {
+      mode: "width",
+      value: 720,
+    },
+  });
+  return resvg.render().asPng();
 }
 
 function renderNotFoundPage(origin: string, targetPath: string) {

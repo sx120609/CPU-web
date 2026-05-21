@@ -357,10 +357,10 @@ const canUseNativeShare = computed(() => (
   typeof navigator !== "undefined" &&
   typeof navigator.share === "function"
 ));
-const shareCardImageUrl = computed(() => topic.value ? new URL(`/share/topic/${topic.value.id}/card.svg`, window.location.origin).toString() : "");
+const shareCardImageUrl = computed(() => topic.value ? new URL(`/share/topic/${topic.value.id}/card.png`, window.location.origin).toString() : "");
 const shareCardDownloadName = computed(() => {
   const safeTitle = (topic.value?.title || "分享卡片").replace(/[\\/:*?"<>|]/g, "_").slice(0, 40);
-  return `${safeTitle || "分享卡片"}-cpu-share.svg`;
+  return `${safeTitle || "分享卡片"}-cpu-share.png`;
 });
 const displayContent = computed(() => {
   const content = topic.value?.content ?? "";
