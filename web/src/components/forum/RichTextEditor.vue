@@ -1,54 +1,12 @@
 <template>
   <div class="rich-editor" :class="toolbarModeClass" :style="rootStyle">
     <div class="editor-toolbar" @mousedown.prevent @touchstart.passive="rememberSelection">
-      <div v-if="!isMobileViewport" class="toolbar-head">
+      <div class="toolbar-head">
         <span class="toolbar-title">{{ label }}</span>
         <span v-if="toolbarStatusText" class="toolbar-status">{{ toolbarStatusText }}</span>
       </div>
 
-      <div v-if="!isMobileViewport" class="toolbar-scroll">
-        <div class="toolbar-group">
-          <button type="button" title="正文" :class="{ active: toolbarState.block === 'p' }" @click="applyFormat('p')">正文</button>
-          <button type="button" title="二级标题" :class="{ active: toolbarState.block === 'h2' }" @click="applyFormat('h2')">标题</button>
-          <button type="button" title="三级标题" :class="{ active: toolbarState.block === 'h3' }" @click="applyFormat('h3')">小标题</button>
-        </div>
-
-        <div class="toolbar-group">
-          <button type="button" title="加粗" class="bold" :class="{ active: toolbarState.bold }" @click="runCommand('bold')">B</button>
-          <button type="button" title="斜体" class="italic" :class="{ active: toolbarState.italic }" @click="runCommand('italic')">I</button>
-          <button type="button" title="引用" :class="{ active: toolbarState.block === 'blockquote' }" @click="applyFormat('blockquote')">引用</button>
-        </div>
-
-        <div class="toolbar-group">
-          <button type="button" title="无序列表" :class="{ active: toolbarState.ul }" @click="runCommand('insertUnorderedList')">列表</button>
-          <button type="button" title="有序列表" :class="{ active: toolbarState.ol }" @click="runCommand('insertOrderedList')">编号</button>
-          <button type="button" title="插入链接" @click="insertLink">链接</button>
-        </div>
-
-        <div class="toolbar-group toolbar-group--compact">
-          <span class="size-label">齐</span>
-          <button
-            v-for="item in alignOptions"
-            :key="item.value"
-            type="button"
-            class="align-btn"
-            :class="{ active: toolbarState.align === item.value }"
-            :title="item.title"
-            @click="applyAlignment(item.value)"
-          >
-            {{ item.label }}
-          </button>
-        </div>
-
-        <div class="toolbar-group toolbar-group--compact">
-          <span class="size-label">图</span>
-          <button type="button" title="上传图片" :disabled="imageUploading" @click="pickContentImage">
-            {{ imageUploading ? "上传中" : "插图" }}
-          </button>
-        </div>
-      </div>
-
-      <div v-else class="mobile-toolbar">
+      <div class="mobile-toolbar desktop-same-toolbar">
         <div class="mobile-toolbar-tabs">
           <button
             v-for="section in mobileToolbarSections"
@@ -1037,6 +995,41 @@ defineExpose({ clearDraft, isContentEmpty });
   font-size: 11px;
   color: #7b8794;
   line-height: 1.4;
+}
+
+.desktop-same-toolbar .mobile-toolbar-tabs {
+  grid-template-columns: repeat(5, minmax(88px, 1fr));
+}
+
+.desktop-same-toolbar .mobile-toolbar-tab {
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid #d5e1ec;
+  border-radius: 11px;
+  background: #fbfdff;
+  color: #344054;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.desktop-same-toolbar .mobile-toolbar-tab.active {
+  border-color: #168776;
+  background: #e8f7f3;
+  color: #0f766e;
+}
+
+.desktop-same-toolbar .mobile-toolbar-panel {
+  padding: 10px;
+  border-radius: 14px;
+  border-color: #dfe8f1;
+}
+
+.desktop-same-toolbar .mobile-toolbar-actions button {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 13px;
 }
 
 .size-label,
