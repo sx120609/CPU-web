@@ -9,7 +9,7 @@ import { ensureCanReadBoardType, ensureForumAccessEnabled } from "../services/fo
 import { requestManualReplyReview, reviewReplyContent, shouldBypassAiReviewForUser, shouldRunAiReview } from "../services/topicAiReview";
 import { ensureUserCanSpeak } from "../services/userModeration";
 import { refreshUserReplyCount } from "../services/forumStats";
-import { consumeAnonymousCredit, createAnonymousAlias } from "../services/userTrust";
+import { consumeAnonymousCredit, createAnonymousAlias, refreshAnonymousCreditsIfNeeded } from "../services/userTrust";
 import { decodeReplyForViewer } from "../services/forumPresentation";
 
 export const replyRouter = Router();
@@ -41,7 +41,21 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     }
 
     const bypassAiReview = await shouldBypassAiReviewForUser(userId, req.user!.role);
-    const anonymousAlias = anonymous ? createAnonymousAlias() : null;
+    const reuseTopicAnonymousIdentity = Boolean(
+      anonymous &&
+      topic.isAnonymous &&
+      topic.authorId === userId
+    );
+    const shouldConsumeAnonymousCredit = Boolean(anonymous && !reuseTopicAnonymousIdentity);
+    if (anonymous && reuseTopicAnonymousIdentity) {
+      const { trust } = await refreshAnonymousCreditsIfNeeded(userId);
+      if (trust.anonymousState.frozen) {
+        throw Errors.forbidden("你的匿名积分当前已被冻结，请联系管理员");
+      }
+    }
+    const anonymousAlias = anonymous
+      ? (reuseTopicAnonymousIdentity ? (topic.anonymousAlias || createAnonymousAlias()) : createAnonymousAlias())
+      : null;
     if (shouldRunAiReview() && !bypassAiReview) {
       let parentContent = "";
       if (parentReplyId) {
@@ -61,7 +75,7 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       });
       if (aiResult.status === "blocked_ai") {
         const blockedReply = await prisma.$transaction(async (tx) => {
-          if (anonymous) {
+          if (shouldConsumeAnonymousCredit) {
             await consumeAnonymousCredit(userId, tx);
           }
           return tx.reply.create({
@@ -107,7 +121,7 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     });
     const floor = (last?.floor ?? 0) + 1;
     const reply = await prisma.$transaction(async (tx) => {
-      if (anonymous) {
+      if (shouldConsumeAnonymousCredit) {
         await consumeAnonymousCredit(userId, tx);
       }
       const created = await tx.reply.create({

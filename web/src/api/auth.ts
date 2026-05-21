@@ -19,6 +19,12 @@ export interface UserInfo {
   postCount: number;
   replyCount: number;
   reputation: number;
+  reputationLevel?: {
+    level: number;
+    name: string;
+    minReputation: number;
+    nextLevel?: { level: number; name: string; minReputation: number; need: number } | null;
+  };
   lastSeenAt?: string;
   lastLoginAt?: string | null;
   lastLoginClient?: string | null;

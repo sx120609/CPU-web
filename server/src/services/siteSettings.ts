@@ -9,6 +9,15 @@
 import { prisma } from "../prisma";
 
 export type FeatureKey = "forum" | "market" | "coursereview" | "electric";
+export type AnonymousTierConfig = {
+  reputation: number;
+  quota: number;
+};
+export type ReputationLevelConfig = {
+  level: number;
+  name: string;
+  minReputation: number;
+};
 export type SiteConfig = {
   siteOrigin: string;
   aiReviewEnabled: boolean;
@@ -25,9 +34,34 @@ export type SiteConfig = {
   aiReplyReviewUserPrompt: string;
   aiEditSimilaritySystemPrompt: string;
   aiEditSimilarityUserPrompt: string;
+  anonymousMinReputation: number;
+  accountAgeDaysPerStep: number;
+  accountAgePointsPerStep: number;
+  accountAgePointsCap: number;
+  postPointsPerTopic: number;
+  postPointsCap: number;
+  replyPointsPerReply: number;
+  replyPointsCap: number;
+  forumEnabledBonus: number;
+  anonymousTiers: AnonymousTierConfig[];
+  reputationLevels: ReputationLevelConfig[];
 };
 
 export const ALL_FEATURES: FeatureKey[] = ["forum", "market", "coursereview", "electric"];
+export const DEFAULT_ANONYMOUS_TIERS: AnonymousTierConfig[] = [
+  { reputation: 30, quota: 1 },
+  { reputation: 60, quota: 2 },
+  { reputation: 90, quota: 3 },
+  { reputation: 120, quota: 4 },
+];
+export const DEFAULT_REPUTATION_LEVELS: ReputationLevelConfig[] = [
+  { level: 1, name: "初来乍到", minReputation: 0 },
+  { level: 2, name: "渐入佳境", minReputation: 30 },
+  { level: 3, name: "活跃同学", minReputation: 60 },
+  { level: 4, name: "资深成员", minReputation: 90 },
+  { level: 5, name: "校园传说", minReputation: 120 },
+];
+
 const GLOBAL_PINNED_TOPICS_KEY = "forum.globalPinnedTopics";
 const SITE_ORIGIN_KEY = "site.origin";
 const AI_REVIEW_ENABLED_KEY = "ai.review.enabled";
@@ -44,6 +78,17 @@ const AI_REPLY_REVIEW_SYSTEM_PROMPT_KEY = "ai.review.reply.systemPrompt";
 const AI_REPLY_REVIEW_USER_PROMPT_KEY = "ai.review.reply.userPrompt";
 const AI_EDIT_SIMILARITY_SYSTEM_PROMPT_KEY = "ai.review.editSimilarity.systemPrompt";
 const AI_EDIT_SIMILARITY_USER_PROMPT_KEY = "ai.review.editSimilarity.userPrompt";
+const ANONYMOUS_MIN_REPUTATION_KEY = "forum.anonymous.minReputation";
+const ACCOUNT_AGE_DAYS_PER_STEP_KEY = "forum.reputation.accountAgeDaysPerStep";
+const ACCOUNT_AGE_POINTS_PER_STEP_KEY = "forum.reputation.accountAgePointsPerStep";
+const ACCOUNT_AGE_POINTS_CAP_KEY = "forum.reputation.accountAgePointsCap";
+const POST_POINTS_PER_TOPIC_KEY = "forum.reputation.postPointsPerTopic";
+const POST_POINTS_CAP_KEY = "forum.reputation.postPointsCap";
+const REPLY_POINTS_PER_REPLY_KEY = "forum.reputation.replyPointsPerReply";
+const REPLY_POINTS_CAP_KEY = "forum.reputation.replyPointsCap";
+const FORUM_ENABLED_BONUS_KEY = "forum.reputation.forumEnabledBonus";
+const ANONYMOUS_TIERS_KEY = "forum.anonymous.tiers";
+const REPUTATION_LEVELS_KEY = "forum.reputation.levels";
 
 export const DEFAULT_AI_PROMPTS = {
   topicReviewSystem: "你是校园社区内容安全审核助手。你需要根据用户稿件判断风险，只返回 JSON。请关注违法、辱骂、人身攻击、隐私泄露、联系方式引流、诈骗、色情、诽谤、校园敏感舆情等风险。",
@@ -104,6 +149,17 @@ const configCache: SiteConfig = {
   aiReplyReviewUserPrompt: DEFAULT_AI_PROMPTS.replyReviewUser,
   aiEditSimilaritySystemPrompt: DEFAULT_AI_PROMPTS.editSimilaritySystem,
   aiEditSimilarityUserPrompt: DEFAULT_AI_PROMPTS.editSimilarityUser,
+  anonymousMinReputation: 30,
+  accountAgeDaysPerStep: 14,
+  accountAgePointsPerStep: 2,
+  accountAgePointsCap: 36,
+  postPointsPerTopic: 4,
+  postPointsCap: 48,
+  replyPointsPerReply: 2,
+  replyPointsCap: 48,
+  forumEnabledBonus: 6,
+  anonymousTiers: DEFAULT_ANONYMOUS_TIERS.map((item) => ({ ...item })),
+  reputationLevels: DEFAULT_REPUTATION_LEVELS.map((item) => ({ ...item })),
 };
 
 function keyOf(f: FeatureKey) {
@@ -150,6 +206,17 @@ export async function loadFeatures(): Promise<void> {
           AI_REPLY_REVIEW_USER_PROMPT_KEY,
           AI_EDIT_SIMILARITY_SYSTEM_PROMPT_KEY,
           AI_EDIT_SIMILARITY_USER_PROMPT_KEY,
+          ANONYMOUS_MIN_REPUTATION_KEY,
+          ACCOUNT_AGE_DAYS_PER_STEP_KEY,
+          ACCOUNT_AGE_POINTS_PER_STEP_KEY,
+          ACCOUNT_AGE_POINTS_CAP_KEY,
+          POST_POINTS_PER_TOPIC_KEY,
+          POST_POINTS_CAP_KEY,
+          REPLY_POINTS_PER_REPLY_KEY,
+          REPLY_POINTS_CAP_KEY,
+          FORUM_ENABLED_BONUS_KEY,
+          ANONYMOUS_TIERS_KEY,
+          REPUTATION_LEVELS_KEY,
         ],
       },
     },
@@ -219,6 +286,50 @@ export async function loadFeatures(): Promise<void> {
       configCache.aiEditSimilarityUserPrompt = normalizePromptTemplate(r.value, DEFAULT_AI_PROMPTS.editSimilarityUser);
       continue;
     }
+    if (r.key === ANONYMOUS_MIN_REPUTATION_KEY) {
+      configCache.anonymousMinReputation = normalizeSmallInt(r.value, 30, 0, 9999);
+      continue;
+    }
+    if (r.key === ACCOUNT_AGE_DAYS_PER_STEP_KEY) {
+      configCache.accountAgeDaysPerStep = normalizeSmallInt(r.value, 14, 1, 3650);
+      continue;
+    }
+    if (r.key === ACCOUNT_AGE_POINTS_PER_STEP_KEY) {
+      configCache.accountAgePointsPerStep = normalizeSmallInt(r.value, 2, 0, 999);
+      continue;
+    }
+    if (r.key === ACCOUNT_AGE_POINTS_CAP_KEY) {
+      configCache.accountAgePointsCap = normalizeSmallInt(r.value, 36, 0, 9999);
+      continue;
+    }
+    if (r.key === POST_POINTS_PER_TOPIC_KEY) {
+      configCache.postPointsPerTopic = normalizeSmallInt(r.value, 4, 0, 999);
+      continue;
+    }
+    if (r.key === POST_POINTS_CAP_KEY) {
+      configCache.postPointsCap = normalizeSmallInt(r.value, 48, 0, 9999);
+      continue;
+    }
+    if (r.key === REPLY_POINTS_PER_REPLY_KEY) {
+      configCache.replyPointsPerReply = normalizeSmallInt(r.value, 2, 0, 999);
+      continue;
+    }
+    if (r.key === REPLY_POINTS_CAP_KEY) {
+      configCache.replyPointsCap = normalizeSmallInt(r.value, 48, 0, 9999);
+      continue;
+    }
+    if (r.key === FORUM_ENABLED_BONUS_KEY) {
+      configCache.forumEnabledBonus = normalizeSmallInt(r.value, 6, 0, 9999);
+      continue;
+    }
+    if (r.key === ANONYMOUS_TIERS_KEY) {
+      configCache.anonymousTiers = normalizeAnonymousTiers(r.value, DEFAULT_ANONYMOUS_TIERS);
+      continue;
+    }
+    if (r.key === REPUTATION_LEVELS_KEY) {
+      configCache.reputationLevels = normalizeReputationLevels(r.value, DEFAULT_REPUTATION_LEVELS);
+      continue;
+    }
     if (r.key === GLOBAL_PINNED_TOPICS_KEY) {
       globalPinnedTopicIdsCache = normalizeTopicIdList(r.value);
       continue;
@@ -227,6 +338,7 @@ export async function loadFeatures(): Promise<void> {
     if (ALL_FEATURES.includes(f)) cache[f] = r.value === "on";
   }
   sanitizeAiReviewConfig();
+  sanitizeCommunityTrustConfig();
 }
 
 export function getFeatures(): Record<FeatureKey, boolean> {
@@ -246,7 +358,11 @@ export function isFeatureOn(f: FeatureKey): boolean {
 }
 
 export function getSiteConfig(): SiteConfig {
-  return { ...configCache };
+  return {
+    ...configCache,
+    anonymousTiers: configCache.anonymousTiers.map((item) => ({ ...item })),
+    reputationLevels: configCache.reputationLevels.map((item) => ({ ...item })),
+  };
 }
 
 export function getSiteOrigin(): string {
@@ -329,6 +445,12 @@ function normalizeAiScore(input: string | number | null | undefined, fallback: n
   return Math.max(0, Math.min(100, Math.round(n)));
 }
 
+function normalizeSmallInt(input: string | number | null | undefined, fallback: number, min: number, max: number) {
+  const n = Number(input);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(n)));
+}
+
 function normalizeTopicIdList(input: string | number[] | null | undefined) {
   let raw: unknown = input;
   if (typeof input === "string") {
@@ -362,6 +484,56 @@ function resolvePromptTemplate(input: string | null | undefined, current: string
   return normalizePromptTemplate(input, fallback);
 }
 
+function parseJsonValue<T>(input: string | null | undefined, fallback: T): T {
+  if (!input) return fallback;
+  try {
+    return JSON.parse(input) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeAnonymousTiers(
+  input: string | AnonymousTierConfig[] | null | undefined,
+  fallback: AnonymousTierConfig[]
+) {
+  const raw = parseJsonValue<AnonymousTierConfig[] | unknown>(typeof input === "string" ? input : JSON.stringify(input ?? fallback), fallback);
+  if (!Array.isArray(raw) || !raw.length) return fallback.map((item) => ({ ...item }));
+  return raw
+    .map((item: any) => ({
+      reputation: normalizeSmallInt(item?.reputation, 0, 0, 9999),
+      quota: normalizeSmallInt(item?.quota, 0, 0, 999),
+    }))
+    .sort((a, b) => a.reputation - b.reputation);
+}
+
+function normalizeReputationLevels(
+  input: string | ReputationLevelConfig[] | null | undefined,
+  fallback: ReputationLevelConfig[]
+) {
+  const raw = parseJsonValue<ReputationLevelConfig[] | unknown>(typeof input === "string" ? input : JSON.stringify(input ?? fallback), fallback);
+  if (!Array.isArray(raw) || raw.length !== 5) return fallback.map((item) => ({ ...item }));
+  const normalized = raw
+    .map((item: any, index) => ({
+      level: normalizeSmallInt(item?.level, index + 1, 1, 5),
+      name: String(item?.name ?? "").trim() || fallback[index]?.name || `等级 ${index + 1}`,
+      minReputation: normalizeSmallInt(item?.minReputation, fallback[index]?.minReputation ?? 0, 0, 9999),
+    }))
+    .sort((a, b) => a.level - b.level)
+    .map((item, index) => ({
+      level: index + 1,
+      name: item.name.slice(0, 20),
+      minReputation: item.minReputation,
+    }));
+  normalized[0].minReputation = 0;
+  for (let i = 1; i < normalized.length; i += 1) {
+    if (normalized[i].minReputation < normalized[i - 1].minReputation) {
+      normalized[i].minReputation = normalized[i - 1].minReputation;
+    }
+  }
+  return normalized;
+}
+
 function sanitizeAiReviewConfig() {
   configCache.aiReviewAutoPassScore = normalizeAiScore(configCache.aiReviewAutoPassScore, 24);
   configCache.aiReviewBlockScore = normalizeAiScore(configCache.aiReviewBlockScore, 70);
@@ -381,6 +553,20 @@ function sanitizeAiReviewConfig() {
   }
   if (!configCache.aiReviewProvider) configCache.aiReviewProvider = "deepseek";
   if (!configCache.aiReviewModel) configCache.aiReviewModel = "deepseek-v4-flash";
+}
+
+function sanitizeCommunityTrustConfig() {
+  configCache.anonymousMinReputation = normalizeSmallInt(configCache.anonymousMinReputation, 30, 0, 9999);
+  configCache.accountAgeDaysPerStep = normalizeSmallInt(configCache.accountAgeDaysPerStep, 14, 1, 3650);
+  configCache.accountAgePointsPerStep = normalizeSmallInt(configCache.accountAgePointsPerStep, 2, 0, 999);
+  configCache.accountAgePointsCap = normalizeSmallInt(configCache.accountAgePointsCap, 36, 0, 9999);
+  configCache.postPointsPerTopic = normalizeSmallInt(configCache.postPointsPerTopic, 4, 0, 999);
+  configCache.postPointsCap = normalizeSmallInt(configCache.postPointsCap, 48, 0, 9999);
+  configCache.replyPointsPerReply = normalizeSmallInt(configCache.replyPointsPerReply, 2, 0, 999);
+  configCache.replyPointsCap = normalizeSmallInt(configCache.replyPointsCap, 48, 0, 9999);
+  configCache.forumEnabledBonus = normalizeSmallInt(configCache.forumEnabledBonus, 6, 0, 9999);
+  configCache.anonymousTiers = normalizeAnonymousTiers(configCache.anonymousTiers, DEFAULT_ANONYMOUS_TIERS);
+  configCache.reputationLevels = normalizeReputationLevels(configCache.reputationLevels, DEFAULT_REPUTATION_LEVELS);
 }
 
 export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<SiteConfig> {
@@ -482,4 +668,100 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
   Object.assign(configCache, next);
   sanitizeAiReviewConfig();
   return getSiteConfig();
+}
+
+export async function setCommunityTrustConfig(input: Partial<SiteConfig>): Promise<SiteConfig> {
+  const next: SiteConfig = {
+    ...configCache,
+    anonymousMinReputation: normalizeSmallInt(input.anonymousMinReputation, configCache.anonymousMinReputation, 0, 9999),
+    accountAgeDaysPerStep: normalizeSmallInt(input.accountAgeDaysPerStep, configCache.accountAgeDaysPerStep, 1, 3650),
+    accountAgePointsPerStep: normalizeSmallInt(input.accountAgePointsPerStep, configCache.accountAgePointsPerStep, 0, 999),
+    accountAgePointsCap: normalizeSmallInt(input.accountAgePointsCap, configCache.accountAgePointsCap, 0, 9999),
+    postPointsPerTopic: normalizeSmallInt(input.postPointsPerTopic, configCache.postPointsPerTopic, 0, 999),
+    postPointsCap: normalizeSmallInt(input.postPointsCap, configCache.postPointsCap, 0, 9999),
+    replyPointsPerReply: normalizeSmallInt(input.replyPointsPerReply, configCache.replyPointsPerReply, 0, 999),
+    replyPointsCap: normalizeSmallInt(input.replyPointsCap, configCache.replyPointsCap, 0, 9999),
+    forumEnabledBonus: normalizeSmallInt(input.forumEnabledBonus, configCache.forumEnabledBonus, 0, 9999),
+    anonymousTiers: input.anonymousTiers !== undefined
+      ? normalizeAnonymousTiers(input.anonymousTiers, configCache.anonymousTiers)
+      : configCache.anonymousTiers.map((item) => ({ ...item })),
+    reputationLevels: input.reputationLevels !== undefined
+      ? normalizeReputationLevels(input.reputationLevels, configCache.reputationLevels)
+      : configCache.reputationLevels.map((item) => ({ ...item })),
+  };
+  sanitizeCommunityTrustConfigFor(next);
+  await prisma.$transaction([
+    prisma.siteSetting.upsert({
+      where: { key: ANONYMOUS_MIN_REPUTATION_KEY },
+      update: { value: String(next.anonymousMinReputation) },
+      create: { key: ANONYMOUS_MIN_REPUTATION_KEY, value: String(next.anonymousMinReputation) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: ACCOUNT_AGE_DAYS_PER_STEP_KEY },
+      update: { value: String(next.accountAgeDaysPerStep) },
+      create: { key: ACCOUNT_AGE_DAYS_PER_STEP_KEY, value: String(next.accountAgeDaysPerStep) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: ACCOUNT_AGE_POINTS_PER_STEP_KEY },
+      update: { value: String(next.accountAgePointsPerStep) },
+      create: { key: ACCOUNT_AGE_POINTS_PER_STEP_KEY, value: String(next.accountAgePointsPerStep) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: ACCOUNT_AGE_POINTS_CAP_KEY },
+      update: { value: String(next.accountAgePointsCap) },
+      create: { key: ACCOUNT_AGE_POINTS_CAP_KEY, value: String(next.accountAgePointsCap) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: POST_POINTS_PER_TOPIC_KEY },
+      update: { value: String(next.postPointsPerTopic) },
+      create: { key: POST_POINTS_PER_TOPIC_KEY, value: String(next.postPointsPerTopic) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: POST_POINTS_CAP_KEY },
+      update: { value: String(next.postPointsCap) },
+      create: { key: POST_POINTS_CAP_KEY, value: String(next.postPointsCap) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: REPLY_POINTS_PER_REPLY_KEY },
+      update: { value: String(next.replyPointsPerReply) },
+      create: { key: REPLY_POINTS_PER_REPLY_KEY, value: String(next.replyPointsPerReply) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: REPLY_POINTS_CAP_KEY },
+      update: { value: String(next.replyPointsCap) },
+      create: { key: REPLY_POINTS_CAP_KEY, value: String(next.replyPointsCap) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: FORUM_ENABLED_BONUS_KEY },
+      update: { value: String(next.forumEnabledBonus) },
+      create: { key: FORUM_ENABLED_BONUS_KEY, value: String(next.forumEnabledBonus) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: ANONYMOUS_TIERS_KEY },
+      update: { value: JSON.stringify(next.anonymousTiers) },
+      create: { key: ANONYMOUS_TIERS_KEY, value: JSON.stringify(next.anonymousTiers) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: REPUTATION_LEVELS_KEY },
+      update: { value: JSON.stringify(next.reputationLevels) },
+      create: { key: REPUTATION_LEVELS_KEY, value: JSON.stringify(next.reputationLevels) },
+    }),
+  ]);
+  Object.assign(configCache, next);
+  sanitizeCommunityTrustConfig();
+  return getSiteConfig();
+}
+
+function sanitizeCommunityTrustConfigFor(next: SiteConfig) {
+  next.anonymousMinReputation = normalizeSmallInt(next.anonymousMinReputation, 30, 0, 9999);
+  next.accountAgeDaysPerStep = normalizeSmallInt(next.accountAgeDaysPerStep, 14, 1, 3650);
+  next.accountAgePointsPerStep = normalizeSmallInt(next.accountAgePointsPerStep, 2, 0, 999);
+  next.accountAgePointsCap = normalizeSmallInt(next.accountAgePointsCap, 36, 0, 9999);
+  next.postPointsPerTopic = normalizeSmallInt(next.postPointsPerTopic, 4, 0, 999);
+  next.postPointsCap = normalizeSmallInt(next.postPointsCap, 48, 0, 9999);
+  next.replyPointsPerReply = normalizeSmallInt(next.replyPointsPerReply, 2, 0, 999);
+  next.replyPointsCap = normalizeSmallInt(next.replyPointsCap, 48, 0, 9999);
+  next.forumEnabledBonus = normalizeSmallInt(next.forumEnabledBonus, 6, 0, 9999);
+  next.anonymousTiers = normalizeAnonymousTiers(next.anonymousTiers, DEFAULT_ANONYMOUS_TIERS);
+  next.reputationLevels = normalizeReputationLevels(next.reputationLevels, DEFAULT_REPUTATION_LEVELS);
 }

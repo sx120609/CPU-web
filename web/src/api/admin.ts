@@ -8,6 +8,7 @@ export type SiteConfig = {
   aiReviewApiKey: string;
   aiReviewAutoPassScore: number;
   aiReviewBlockScore: number;
+  aiReviewForceBlockScore: number;
   aiEditSimilarityThreshold: number;
   aiTopicReviewSystemPrompt: string;
   aiTopicReviewUserPrompt: string;
@@ -15,6 +16,17 @@ export type SiteConfig = {
   aiReplyReviewUserPrompt: string;
   aiEditSimilaritySystemPrompt: string;
   aiEditSimilarityUserPrompt: string;
+  anonymousMinReputation: number;
+  accountAgeDaysPerStep: number;
+  accountAgePointsPerStep: number;
+  accountAgePointsCap: number;
+  postPointsPerTopic: number;
+  postPointsCap: number;
+  replyPointsPerReply: number;
+  replyPointsCap: number;
+  forumEnabledBonus: number;
+  anonymousTiers: Array<{ reputation: number; quota: number }>;
+  reputationLevels: Array<{ level: number; name: string; minReputation: number }>;
 };
 
 export type AdminOverview = {
@@ -83,6 +95,7 @@ export const adminApi = {
     aiReviewApiKey?: string;
     aiReviewAutoPassScore?: number;
     aiReviewBlockScore?: number;
+    aiReviewForceBlockScore?: number;
     aiEditSimilarityThreshold?: number;
     aiTopicReviewSystemPrompt?: string;
     aiTopicReviewUserPrompt?: string;
@@ -90,6 +103,17 @@ export const adminApi = {
     aiReplyReviewUserPrompt?: string;
     aiEditSimilaritySystemPrompt?: string;
     aiEditSimilarityUserPrompt?: string;
+    anonymousMinReputation?: number;
+    accountAgeDaysPerStep?: number;
+    accountAgePointsPerStep?: number;
+    accountAgePointsCap?: number;
+    postPointsPerTopic?: number;
+    postPointsCap?: number;
+    replyPointsPerReply?: number;
+    replyPointsCap?: number;
+    forumEnabledBonus?: number;
+    anonymousTiers?: Array<{ reputation: number; quota: number }>;
+    reputationLevels?: Array<{ level: number; name: string; minReputation: number }>;
   }) =>
     request.patch<SiteConfig>("/admin/site-config", patch),
   features: () => request.get<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>("/admin/features"),

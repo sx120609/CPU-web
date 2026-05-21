@@ -101,7 +101,7 @@
         <template #default="{ row }">
           <div class="anon-info">
             <span class="anon-main">{{ row.anonymousState?.availableCredits ?? 0 }} / {{ row.anonymousState?.weeklyQuota ?? 0 }}</span>
-            <span class="anon-sub">{{ row.anonymousState?.frozen ? "已冻结" : `信誉 ${row.reputation}` }}</span>
+            <span class="anon-sub">{{ row.anonymousState?.frozen ? "已冻结" : `信誉 ${row.reputation} · Lv.${row.reputationLevel?.level ?? 1}` }}</span>
           </div>
         </template>
       </el-table-column>
@@ -178,6 +178,7 @@
           <span>登录：{{ row.lastLoginAt ? fmtDate(row.lastLoginAt) : "未登录" }}</span>
           <span>论坛：{{ row.forumEnabledAt ? fmtDate(row.forumEnabledAt) : row.forumEnabled ? "已开启" : "未确认须知" }}</span>
           <span>注册：{{ fmtDate(row.createdAt) }}</span>
+          <span>信誉：{{ row.reputation }} · {{ row.reputationLevel?.name || "Lv.1" }}</span>
           <span>{{ row.postCount }} 帖 / {{ row.replyCount }} 回</span>
           <span>匿名 {{ row.anonymousState?.availableCredits ?? 0 }} / {{ row.anonymousState?.weeklyQuota ?? 0 }}{{ row.anonymousState?.frozen ? "（冻结）" : "" }}</span>
         </div>
@@ -303,10 +304,13 @@
           <div class="dlg-tip">{{ anonymityTarget?.nickname }}（{{ anonymityTarget?.username }}）</div>
         </el-form-item>
         <el-form-item label="当前信誉值">
-          <div class="dlg-tip">{{ anonymityTarget?.reputation ?? 0 }}</div>
+          <div class="dlg-tip">
+            {{ anonymityTarget?.reputation ?? 0 }}
+            <span v-if="anonymityTarget?.reputationLevel"> · Lv.{{ anonymityTarget.reputationLevel.level }} {{ anonymityTarget.reputationLevel.name }}</span>
+          </div>
         </el-form-item>
         <el-form-item label="本周剩余匿名积分">
-          <el-input-number v-model="anonymityCredits" :min="0" :max="20" style="width:100%" />
+          <el-input-number v-model="anonymityCredits" :min="0" :max="999" style="width:100%" />
         </el-form-item>
         <el-form-item label="冻结匿名积分">
           <el-switch v-model="anonymityFrozen" />

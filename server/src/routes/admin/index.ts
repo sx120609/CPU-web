@@ -14,6 +14,7 @@ import {
   setFeature,
   setTopicGlobalPinned,
   setAiReviewConfig,
+  setCommunityTrustConfig,
   setSiteOrigin,
   ALL_FEATURES,
   type FeatureKey,
@@ -115,6 +116,7 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
         return {
           ...user,
           reputation: trust.reputation,
+          reputationLevel: trust.reputationLevel,
           reputationBreakdown: trust.reputationBreakdown,
           anonymousState: trust.anonymousState,
         };
@@ -129,7 +131,7 @@ const userPatchSchema = z.object({
   nickname: z.string().min(1).max(20).optional(),
   aiReviewWhitelisted: z.boolean().optional(),
   mutedUntil: z.string().trim().max(64).nullable().optional(),
-  anonymousCredits: z.number().int().min(0).max(20).optional(),
+  anonymousCredits: z.number().int().min(0).max(999).optional(),
   anonymousCreditsFrozen: z.boolean().optional(),
 });
 
@@ -214,6 +216,7 @@ adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (re
       anonymousCreditsFrozen: u.anonymousCreditsFrozen,
       anonymousState: trust.anonymousState,
       reputation: trust.reputation,
+      reputationLevel: trust.reputationLevel,
     });
   } catch (e) { next(e); }
 });
@@ -968,6 +971,7 @@ const siteConfigPatchSchema = z.object({
   aiReviewApiKey: z.string().trim().max(240).optional(),
   aiReviewAutoPassScore: z.number().int().min(0).max(100).optional(),
   aiReviewBlockScore: z.number().int().min(0).max(100).optional(),
+  aiReviewForceBlockScore: z.number().int().min(0).max(100).optional(),
   aiEditSimilarityThreshold: z.number().min(0).max(1).optional(),
   aiTopicReviewSystemPrompt: z.string().max(8000).optional(),
   aiTopicReviewUserPrompt: z.string().max(12000).optional(),
@@ -975,6 +979,24 @@ const siteConfigPatchSchema = z.object({
   aiReplyReviewUserPrompt: z.string().max(12000).optional(),
   aiEditSimilaritySystemPrompt: z.string().max(8000).optional(),
   aiEditSimilarityUserPrompt: z.string().max(12000).optional(),
+  anonymousMinReputation: z.number().int().min(0).max(9999).optional(),
+  accountAgeDaysPerStep: z.number().int().min(1).max(3650).optional(),
+  accountAgePointsPerStep: z.number().int().min(0).max(999).optional(),
+  accountAgePointsCap: z.number().int().min(0).max(9999).optional(),
+  postPointsPerTopic: z.number().int().min(0).max(999).optional(),
+  postPointsCap: z.number().int().min(0).max(9999).optional(),
+  replyPointsPerReply: z.number().int().min(0).max(999).optional(),
+  replyPointsCap: z.number().int().min(0).max(9999).optional(),
+  forumEnabledBonus: z.number().int().min(0).max(9999).optional(),
+  anonymousTiers: z.array(z.object({
+    reputation: z.number().int().min(0).max(9999),
+    quota: z.number().int().min(0).max(999),
+  })).length(4).optional(),
+  reputationLevels: z.array(z.object({
+    level: z.number().int().min(1).max(5),
+    name: z.string().trim().min(1).max(20),
+    minReputation: z.number().int().min(0).max(9999),
+  })).length(5).optional(),
 });
 
 adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), async (req, res, next) => {
@@ -986,6 +1008,7 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       req.body.aiReviewApiKey !== undefined ||
       req.body.aiReviewAutoPassScore !== undefined ||
       req.body.aiReviewBlockScore !== undefined ||
+      req.body.aiReviewForceBlockScore !== undefined ||
       req.body.aiEditSimilarityThreshold !== undefined ||
       req.body.aiTopicReviewSystemPrompt !== undefined ||
       req.body.aiTopicReviewUserPrompt !== undefined ||
@@ -995,6 +1018,21 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       req.body.aiEditSimilarityUserPrompt !== undefined
     ) {
       await setAiReviewConfig(req.body);
+    }
+    if (
+      req.body.anonymousMinReputation !== undefined ||
+      req.body.accountAgeDaysPerStep !== undefined ||
+      req.body.accountAgePointsPerStep !== undefined ||
+      req.body.accountAgePointsCap !== undefined ||
+      req.body.postPointsPerTopic !== undefined ||
+      req.body.postPointsCap !== undefined ||
+      req.body.replyPointsPerReply !== undefined ||
+      req.body.replyPointsCap !== undefined ||
+      req.body.forumEnabledBonus !== undefined ||
+      req.body.anonymousTiers !== undefined ||
+      req.body.reputationLevels !== undefined
+    ) {
+      await setCommunityTrustConfig(req.body);
     }
     if (req.body.siteOrigin !== undefined) {
       await setSiteOrigin(req.body.siteOrigin ?? "");

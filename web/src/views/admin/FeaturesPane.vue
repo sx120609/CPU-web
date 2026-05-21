@@ -35,6 +35,81 @@
           <el-button type="primary" :loading="savingConfig" @click="saveSiteConfig">保存</el-button>
         </div>
       </div>
+
+      <div class="site-config trust-config">
+        <div class="config-copy">
+          <div class="card-title">匿名与信誉规则</div>
+          <div class="desc">匿名最低信誉、周额度档位、信誉积分公式和 5 级信誉等级都可以在这里调整。匿名楼主在自己的匿名帖下匿名回复时会自动免扣点。</div>
+        </div>
+        <div class="trust-config-form">
+          <div class="trust-grid">
+            <div class="trust-field">
+              <span class="field-label">匿名最低信誉</span>
+              <el-input-number v-model="anonymousMinReputation" :min="0" :max="9999" />
+            </div>
+            <div class="trust-field">
+              <span class="field-label">论坛资历加成</span>
+              <el-input-number v-model="forumEnabledBonus" :min="0" :max="9999" />
+            </div>
+            <div class="trust-field">
+              <span class="field-label">注册步长（天）</span>
+              <el-input-number v-model="accountAgeDaysPerStep" :min="1" :max="3650" />
+            </div>
+            <div class="trust-field">
+              <span class="field-label">注册每档积分</span>
+              <el-input-number v-model="accountAgePointsPerStep" :min="0" :max="999" />
+            </div>
+            <div class="trust-field">
+              <span class="field-label">注册积分上限</span>
+              <el-input-number v-model="accountAgePointsCap" :min="0" :max="9999" />
+            </div>
+            <div class="trust-field">
+              <span class="field-label">每帖积分</span>
+              <el-input-number v-model="postPointsPerTopic" :min="0" :max="999" />
+            </div>
+            <div class="trust-field">
+              <span class="field-label">发帖积分上限</span>
+              <el-input-number v-model="postPointsCap" :min="0" :max="9999" />
+            </div>
+            <div class="trust-field">
+              <span class="field-label">每回复积分</span>
+              <el-input-number v-model="replyPointsPerReply" :min="0" :max="999" />
+            </div>
+            <div class="trust-field">
+              <span class="field-label">回复积分上限</span>
+              <el-input-number v-model="replyPointsCap" :min="0" :max="9999" />
+            </div>
+          </div>
+
+          <div class="trust-subcard">
+            <div class="subcard-title">匿名周额度档位</div>
+            <div class="tier-grid">
+              <div v-for="(tier, index) in anonymousTiers" :key="`tier-${index}`" class="tier-row">
+                <span class="field-label">档位 {{ index + 1 }}</span>
+                <el-input-number v-model="tier.reputation" :min="0" :max="9999" />
+                <span class="field-inline-label">周额度</span>
+                <el-input-number v-model="tier.quota" :min="0" :max="999" />
+              </div>
+            </div>
+          </div>
+
+          <div class="trust-subcard">
+            <div class="subcard-title">信誉等级（5 级）</div>
+            <div class="level-grid">
+              <div v-for="(level, index) in reputationLevels" :key="`level-${index}`" class="level-row">
+                <span class="field-label">Lv.{{ index + 1 }}</span>
+                <el-input v-model="level.name" maxlength="20" placeholder="等级名称" />
+                <span class="field-inline-label">门槛</span>
+                <el-input-number v-model="level.minReputation" :min="0" :max="9999" />
+              </div>
+            </div>
+          </div>
+
+          <div class="actions-row">
+            <el-button type="primary" :loading="savingConfig" @click="saveTrustConfig">保存匿名与信誉规则</el-button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section class="settings-card" v-loading="configLoading">
@@ -188,6 +263,7 @@ const aiReviewModel = ref("deepseek-v4-flash");
 const aiReviewApiKey = ref("");
 const aiReviewAutoPassScore = ref(24);
 const aiReviewBlockScore = ref(70);
+const aiReviewForceBlockScore = ref(90);
 const aiEditSimilarityPercent = ref(0);
 const aiTopicReviewSystemPrompt = ref("");
 const aiTopicReviewUserPrompt = ref("");
@@ -195,6 +271,28 @@ const aiReplyReviewSystemPrompt = ref("");
 const aiReplyReviewUserPrompt = ref("");
 const aiEditSimilaritySystemPrompt = ref("");
 const aiEditSimilarityUserPrompt = ref("");
+const anonymousMinReputation = ref(30);
+const accountAgeDaysPerStep = ref(14);
+const accountAgePointsPerStep = ref(2);
+const accountAgePointsCap = ref(36);
+const postPointsPerTopic = ref(4);
+const postPointsCap = ref(48);
+const replyPointsPerReply = ref(2);
+const replyPointsCap = ref(48);
+const forumEnabledBonus = ref(6);
+const anonymousTiers = ref([
+  { reputation: 30, quota: 1 },
+  { reputation: 60, quota: 2 },
+  { reputation: 90, quota: 3 },
+  { reputation: 120, quota: 4 },
+]);
+const reputationLevels = ref([
+  { level: 1, name: "初来乍到", minReputation: 0 },
+  { level: 2, name: "渐入佳境", minReputation: 30 },
+  { level: 3, name: "活跃同学", minReputation: 60 },
+  { level: 4, name: "资深成员", minReputation: 90 },
+  { level: 5, name: "校园传说", minReputation: 120 },
+]);
 const features = reactive<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>({
   forum: true, market: true, coursereview: true, electric: true,
 });
@@ -239,6 +337,7 @@ async function reload() {
     aiReviewApiKey.value = config.aiReviewApiKey;
     aiReviewAutoPassScore.value = config.aiReviewAutoPassScore;
     aiReviewBlockScore.value = config.aiReviewBlockScore;
+    aiReviewForceBlockScore.value = config.aiReviewForceBlockScore;
     aiEditSimilarityPercent.value = Math.round((config.aiEditSimilarityThreshold ?? 0) * 100);
     aiTopicReviewSystemPrompt.value = config.aiTopicReviewSystemPrompt ?? "";
     aiTopicReviewUserPrompt.value = config.aiTopicReviewUserPrompt ?? "";
@@ -246,6 +345,17 @@ async function reload() {
     aiReplyReviewUserPrompt.value = config.aiReplyReviewUserPrompt ?? "";
     aiEditSimilaritySystemPrompt.value = config.aiEditSimilaritySystemPrompt ?? "";
     aiEditSimilarityUserPrompt.value = config.aiEditSimilarityUserPrompt ?? "";
+    anonymousMinReputation.value = config.anonymousMinReputation;
+    accountAgeDaysPerStep.value = config.accountAgeDaysPerStep;
+    accountAgePointsPerStep.value = config.accountAgePointsPerStep;
+    accountAgePointsCap.value = config.accountAgePointsCap;
+    postPointsPerTopic.value = config.postPointsPerTopic;
+    postPointsCap.value = config.postPointsCap;
+    replyPointsPerReply.value = config.replyPointsPerReply;
+    replyPointsCap.value = config.replyPointsCap;
+    forumEnabledBonus.value = config.forumEnabledBonus;
+    anonymousTiers.value = (config.anonymousTiers ?? []).map((item) => ({ ...item }));
+    reputationLevels.value = (config.reputationLevels ?? []).map((item) => ({ ...item }));
   } finally {
     loading.value = false;
     configLoading.value = false;
@@ -273,6 +383,7 @@ async function saveAiReviewConfig() {
       aiReviewApiKey: aiReviewApiKey.value,
       aiReviewAutoPassScore: aiReviewAutoPassScore.value,
       aiReviewBlockScore: aiReviewBlockScore.value,
+      aiReviewForceBlockScore: aiReviewForceBlockScore.value,
       aiEditSimilarityThreshold: aiEditSimilarityPercent.value / 100,
       aiTopicReviewSystemPrompt: aiTopicReviewSystemPrompt.value,
       aiTopicReviewUserPrompt: aiTopicReviewUserPrompt.value,
@@ -287,6 +398,7 @@ async function saveAiReviewConfig() {
     aiReviewApiKey.value = config.aiReviewApiKey;
     aiReviewAutoPassScore.value = config.aiReviewAutoPassScore;
     aiReviewBlockScore.value = config.aiReviewBlockScore;
+    aiReviewForceBlockScore.value = config.aiReviewForceBlockScore;
     aiEditSimilarityPercent.value = Math.round((config.aiEditSimilarityThreshold ?? 0) * 100);
     aiTopicReviewSystemPrompt.value = config.aiTopicReviewSystemPrompt ?? "";
     aiTopicReviewUserPrompt.value = config.aiTopicReviewUserPrompt ?? "";
@@ -295,6 +407,46 @@ async function saveAiReviewConfig() {
     aiEditSimilaritySystemPrompt.value = config.aiEditSimilaritySystemPrompt ?? "";
     aiEditSimilarityUserPrompt.value = config.aiEditSimilarityUserPrompt ?? "";
     ElMessage.success("AI 审核配置已保存");
+  } finally {
+    savingConfig.value = false;
+  }
+}
+
+async function saveTrustConfig() {
+  savingConfig.value = true;
+  try {
+    const config = await adminApi.updateSiteConfig({
+      anonymousMinReputation: anonymousMinReputation.value,
+      accountAgeDaysPerStep: accountAgeDaysPerStep.value,
+      accountAgePointsPerStep: accountAgePointsPerStep.value,
+      accountAgePointsCap: accountAgePointsCap.value,
+      postPointsPerTopic: postPointsPerTopic.value,
+      postPointsCap: postPointsCap.value,
+      replyPointsPerReply: replyPointsPerReply.value,
+      replyPointsCap: replyPointsCap.value,
+      forumEnabledBonus: forumEnabledBonus.value,
+      anonymousTiers: anonymousTiers.value.map((item) => ({
+        reputation: Number(item.reputation || 0),
+        quota: Number(item.quota || 0),
+      })),
+      reputationLevels: reputationLevels.value.map((item, index) => ({
+        level: index + 1,
+        name: item.name,
+        minReputation: Number(item.minReputation || 0),
+      })),
+    });
+    anonymousMinReputation.value = config.anonymousMinReputation;
+    accountAgeDaysPerStep.value = config.accountAgeDaysPerStep;
+    accountAgePointsPerStep.value = config.accountAgePointsPerStep;
+    accountAgePointsCap.value = config.accountAgePointsCap;
+    postPointsPerTopic.value = config.postPointsPerTopic;
+    postPointsCap.value = config.postPointsCap;
+    replyPointsPerReply.value = config.replyPointsPerReply;
+    replyPointsCap.value = config.replyPointsCap;
+    forumEnabledBonus.value = config.forumEnabledBonus;
+    anonymousTiers.value = (config.anonymousTiers ?? []).map((item) => ({ ...item }));
+    reputationLevels.value = (config.reputationLevels ?? []).map((item) => ({ ...item }));
+    ElMessage.success("匿名与信誉规则已保存");
   } finally {
     savingConfig.value = false;
   }
@@ -391,6 +543,62 @@ async function toggle(key: FKey, on: boolean) {
   align-items: center;
   gap: 10px;
   width: min(520px, 52%);
+}
+.trust-config {
+  align-items: flex-start;
+}
+.trust-config-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(760px, 100%);
+}
+.trust-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.trust-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #edf2f7;
+  background: #fff;
+}
+.trust-subcard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: #fcfdff;
+  border: 1px dashed #d7e2f0;
+}
+.subcard-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1f2937;
+}
+.tier-grid,
+.level-grid {
+  display: grid;
+  gap: 10px;
+}
+.tier-row,
+.level-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.field-label {
+  font-size: 12px;
+  color: #6b7280;
+}
+.field-inline-label {
+  font-size: 12px;
+  color: #9ca3af;
 }
 .section-toggle,
 .sub-toggle {
@@ -553,6 +761,14 @@ async function toggle(key: FKey, on: boolean) {
   }
   .ai-form {
     grid-template-columns: 1fr;
+  }
+  .trust-grid {
+    grid-template-columns: 1fr;
+  }
+  .tier-row,
+  .level-row {
+    align-items: stretch;
+    flex-direction: column;
   }
   .feature-head :deep(.el-switch),
   .ai-row--switch :deep(.el-switch),

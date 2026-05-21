@@ -30,6 +30,7 @@ export function buildSelfUser(u: any) {
     postCount: u.postCount,
     replyCount: u.replyCount,
     reputation: trust.reputation,
+    reputationLevel: trust.reputationLevel,
     reputationBreakdown: trust.reputationBreakdown,
     lastSeenAt: u.lastSeenAt,
     lastLoginAt: u.lastLoginAt,
@@ -60,6 +61,7 @@ export function buildPublicUser(u: any, viewer?: Viewer) {
     postCount: u.postCount,
     replyCount: u.replyCount,
     reputation: trust.reputation,
+    reputationLevel: trust.reputationLevel,
     createdAt: u.createdAt,
   };
 
@@ -81,6 +83,9 @@ export function buildUserPreview(u: any, viewer?: Viewer) {
     avatar: u.avatar,
     role: u.role,
   };
+
+  if ("reputation" in u) result.reputation = u.reputation;
+  if ("reputationLevel" in u) result.reputationLevel = u.reputationLevel;
 
   if ("bio" in u) result.bio = u.bio;
   if (canSeeUsername(viewer, u.id)) result.username = u.username;

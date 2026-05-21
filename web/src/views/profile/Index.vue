@@ -10,6 +10,9 @@
         {{ user?.nickname }}
         <el-tag v-if="user?.role === 'admin'" size="small" type="danger">管理员</el-tag>
         <el-tag v-else-if="user?.role === 'mod'" size="small">论坛管理员</el-tag>
+        <el-tag v-if="user?.reputationLevel" size="small" type="warning" effect="plain">
+          Lv.{{ user.reputationLevel.level }} {{ user.reputationLevel.name }}
+        </el-tag>
       </h3>
       <p class="account-note">{{ user?.studentSso ? "学号仅用于登录和身份校验，不会公开展示" : "登录账号仅自己可见，不会公开展示" }}</p>
       <p class="bio">{{ user?.bio || "这个人很懒，什么都没写" }}</p>
@@ -34,6 +37,10 @@
           <p class="trust-sub">信誉值由注册时长、发帖数量、回复数量等因素共同决定，按周发放匿名积分。</p>
         </div>
         <div class="trust-score">{{ user.reputation }}</div>
+      </div>
+
+      <div v-if="user.reputationLevel" class="trust-level-row">
+        当前等级：Lv.{{ user.reputationLevel.level }} {{ user.reputationLevel.name }}
       </div>
 
       <div class="trust-grid">
@@ -76,6 +83,9 @@
 
       <p v-if="user.anonymousState?.nextTier" class="trust-next">
         距离下一档匿名额度还差 {{ user.anonymousState.nextTier.need }} 点信誉值，达到后每周可得 {{ user.anonymousState.nextTier.weeklyQuota }} 点。
+      </p>
+      <p v-if="user.reputationLevel?.nextLevel" class="trust-next">
+        距离下一信誉等级还差 {{ user.reputationLevel.nextLevel.need }} 点，达到后将升级为 Lv.{{ user.reputationLevel.nextLevel.level }} {{ user.reputationLevel.nextLevel.name }}。
       </p>
 
       <div class="anonymous-boards">
@@ -388,6 +398,13 @@ async function removeAvatar() {
   color: #fff;
   font-size: 24px;
   font-weight: 700;
+}
+
+.trust-level-row {
+  margin-top: -4px;
+  color: #7c3aed;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .trust-grid {

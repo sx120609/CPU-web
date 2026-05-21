@@ -276,16 +276,28 @@ const canReply = computed(() =>
 );
 const replyAnonymousEnabled = computed(() => {
   const anonymousState = auth.user?.anonymousState;
+  const ownAnonymousTopic = Boolean(
+    topic.value?.isAnonymous &&
+    topic.value?.realAuthor?.id === auth.user?.id
+  );
   return Boolean(
     topic.value?.board?.anonymousEnabled &&
-    anonymousState?.eligible &&
-    !anonymousState?.frozen &&
-    (anonymousState?.availableCredits ?? 0) > 0
+    (
+      ownAnonymousTopic ||
+      (
+        anonymousState?.eligible &&
+        !anonymousState?.frozen &&
+        (anonymousState?.availableCredits ?? 0) > 0
+      )
+    )
   );
 });
 const replyAnonymousHint = computed(() => {
   const anonymousState = auth.user?.anonymousState;
   if (!topic.value?.board?.anonymousEnabled) return "当前板块暂不支持匿名回复。";
+  if (topic.value?.isAnonymous && topic.value?.realAuthor?.id === auth.user?.id) {
+    return "这是你的匿名主帖，在这里继续匿名回复不会消耗匿名积分。";
+  }
   if (!anonymousState?.eligible) return `信誉值达到 ${anonymousState?.minReputation ?? 30} 后才能匿名回复。`;
   if (anonymousState?.frozen) return "你的匿名积分当前已被冻结，请联系管理员处理。";
   if ((anonymousState?.availableCredits ?? 0) <= 0) return "本周匿名积分已用完，下周会自动刷新。";
