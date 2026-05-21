@@ -236,17 +236,22 @@ async function renderTopicCardSvg(topic: any, origin: string) {
   <text x="208" y="166" font-size="16" fill="#667085">${escapeXml(subtitle)}</text>
   <text x="208" y="194" font-size="16" fill="#98a2b3">${escapeXml(footer)}</text>
 
-  <text x="208" y="300" font-size="54" font-weight="820" fill="#172033">${titleSvg}</text>
+  <rect x="92" y="250" width="536" height="328" rx="30" fill="${escapeXml(withOpacity(boardColor, 0.06))}" />
+  <circle cx="532" cy="334" r="112" fill="${escapeXml(withOpacity(boardColor, 0.12))}" />
+  <circle cx="594" cy="270" r="42" fill="${escapeXml(withOpacity(boardColor, 0.10))}" />
+  <rect x="132" y="302" width="140" height="16" rx="8" fill="${escapeXml(withOpacity(boardColor, 0.18))}" />
+  <text x="112" y="394" font-size="60" font-weight="820" fill="#172033">${titleSvg}</text>
+  <text x="112" y="516" font-size="18" fill="#667085">${escapeXml(subtitle)}</text>
 
-  <rect x="92" y="640" width="536" height="1" fill="#edf2f7" />
+  <rect x="92" y="650" width="536" height="1" fill="#edf2f7" />
 
-  <text x="92" y="720" font-size="40" font-weight="820" fill="#172033">药大垎坊</text>
-  <text x="92" y="762" font-size="19" fill="#667085">扫描二维码，直接打开原帖</text>
-  <text x="92" y="816" font-size="16" fill="#98a2b3">cpu.lizmt.cn</text>
-  <text x="92" y="842" font-size="16" fill="#98a2b3">校园社区分享卡片</text>
+  <text x="92" y="724" font-size="40" font-weight="820" fill="#172033">药大垎坊</text>
+  <text x="92" y="764" font-size="19" fill="#667085">扫描二维码，直接打开原帖</text>
+  <text x="92" y="816" font-size="16" font-weight="700" fill="${escapeXml(boardColor)}">${escapeXml(boardName)}</text>
+  <text x="92" y="842" font-size="16" fill="#98a2b3">cpu.lizmt.cn</text>
 
-  <rect x="458" y="696" width="132" height="132" rx="20" fill="#ffffff" stroke="#dfe5ee" />
-  <image x="470" y="708" width="108" height="108" href="${escapeXml(qrDataUrl)}" />
+  <rect x="458" y="704" width="132" height="132" rx="20" fill="#ffffff" stroke="#dfe5ee" />
+  <image x="470" y="716" width="108" height="108" href="${escapeXml(qrDataUrl)}" />
 </svg>`;
 }
 
