@@ -6,6 +6,13 @@ import { getSiteOrigin, isBoardTypeEnabled } from "../services/siteSettings";
 
 export const shareRouter = Router();
 
+const SHARE_CARD_FONT_FILES = [
+  "C:/Windows/Fonts/msyh.ttc",
+  "C:/Windows/Fonts/msyhbd.ttc",
+  "C:/Windows/Fonts/simhei.ttf",
+  "C:/Windows/Fonts/simsun.ttc",
+];
+
 shareRouter.get("/topic/:id", async (req, res, next) => {
   try {
     const topic = await loadShareTopic(req.params.id);
@@ -274,6 +281,11 @@ function renderSvgToPng(svg: string) {
     fitTo: {
       mode: "width",
       value: 720,
+    },
+    font: {
+      loadSystemFonts: true,
+      fontFiles: SHARE_CARD_FONT_FILES,
+      defaultFontFamily: "Microsoft YaHei",
     },
   });
   return resvg.render().asPng();
