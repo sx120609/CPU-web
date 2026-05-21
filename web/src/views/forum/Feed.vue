@@ -40,9 +40,17 @@
         </div>
         <TopicListItem v-for="t in latestList" :key="t.id" :topic="t" />
         <div v-if="latestTotal > latestSize" class="latest-actions">
-          <el-button v-if="canLoadMore" :loading="loadingMore" @click="loadMore">
-            加载更多
-          </el-button>
+          <div
+            v-if="canLoadMore"
+            ref="loadMoreSentinelRef"
+            class="auto-load-sentinel"
+            :class="{ loading: loadingMore }"
+          >
+            {{ loadingMore ? "正在加载更多…" : "继续下滑自动加载更多" }}
+          </div>
+          <div v-else-if="latestList.length" class="auto-load-sentinel done">
+            已加载全部内容
+          </div>
           <el-button v-if="latestList.length > latestSize" text @click="backToTop">
             回到顶部
           </el-button>
@@ -55,7 +63,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import { homeApi } from "@/api/home";
@@ -71,13 +79,43 @@ const latestList = ref<any[]>([]);
 const latestTotal = ref(0);
 const latestPage = ref(1);
 const latestSize = ref(15);
+const loadMoreSentinelRef = ref<HTMLElement | null>(null);
 const currentList = computed(() => isHot.value ? hotList.value : [...pinnedList.value, ...latestList.value]);
 const canLoadMore = computed(() => !isHot.value && latestList.value.length < latestTotal.value);
+let loadMoreObserver: IntersectionObserver | null = null;
 
 watch(() => route.name, () => {
   resetState();
   void load();
 }, { immediate: true });
+
+watch(canLoadMore, async (value) => {
+  if (!loadMoreObserver) return;
+  loadMoreObserver.disconnect();
+  if (!value) return;
+  await nextTick();
+  if (loadMoreSentinelRef.value) {
+    loadMoreObserver.observe(loadMoreSentinelRef.value);
+  }
+});
+
+onMounted(() => {
+  if (typeof window === "undefined" || typeof IntersectionObserver === "undefined") return;
+  loadMoreObserver = new IntersectionObserver((entries) => {
+    const entry = entries[0];
+    if (!entry?.isIntersecting || loading.value || loadingMore.value || !canLoadMore.value) return;
+    void loadMore();
+  }, {
+    root: null,
+    rootMargin: "240px 0px 320px 0px",
+    threshold: 0.01,
+  });
+});
+
+onBeforeUnmount(() => {
+  loadMoreObserver?.disconnect();
+  loadMoreObserver = null;
+});
 
 async function load() {
   loading.value = true;
@@ -95,6 +133,13 @@ async function load() {
     latestTotal.value = res.total;
   } finally {
     loading.value = false;
+    if (!isHot.value) {
+      await nextTick();
+      if (loadMoreObserver && canLoadMore.value && loadMoreSentinelRef.value) {
+        loadMoreObserver.disconnect();
+        loadMoreObserver.observe(loadMoreSentinelRef.value);
+      }
+    }
   }
 }
 
@@ -109,6 +154,7 @@ function resetState() {
 async function loadMore() {
   if (!canLoadMore.value || loadingMore.value) return;
   loadingMore.value = true;
+  loadMoreObserver?.disconnect();
   const nextPage = latestPage.value + 1;
   try {
     const res = await homeApi.latestFeed({ page: nextPage, size: latestSize.value });
@@ -118,6 +164,10 @@ async function loadMore() {
     latestList.value = [...latestList.value, ...(res.list ?? [])];
   } finally {
     loadingMore.value = false;
+    await nextTick();
+    if (loadMoreObserver && canLoadMore.value && loadMoreSentinelRef.value) {
+      loadMoreObserver.observe(loadMoreSentinelRef.value);
+    }
   }
 }
 
@@ -190,10 +240,32 @@ function backToTop() {
 }
 .latest-actions {
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
   gap: 12px;
   padding-top: 14px;
+}
+
+.auto-load-sentinel {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px dashed #d8e2ee;
+  background: #f8fafc;
+  color: #6b7280;
+  font-size: 13px;
+  text-align: center;
+}
+
+.auto-load-sentinel.loading {
+  color: var(--cpu-primary);
+  border-color: rgba(22, 135, 118, 0.28);
+  background: rgba(22, 135, 118, 0.06);
+}
+
+.auto-load-sentinel.done {
+  color: #94a3b8;
 }
 
 @media (max-width: 700px) {
