@@ -27,6 +27,7 @@ export function buildSelfUser(u: any) {
     enrollYear: u.enrollYear,
     role: u.role,
     studentSso: u.studentSso,
+    dataAuthAgreedAt: u.dataAuthAgreedAt,
     postCount: u.postCount,
     replyCount: u.replyCount,
     reputation: trust.reputation,

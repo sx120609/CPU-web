@@ -12,6 +12,7 @@ export interface UserInfo {
   enrollYear?: number | null;
   role: string;
   studentSso?: boolean;
+  dataAuthAgreedAt?: string | null;
   forumEnabled?: boolean;
   forumEnabledAt?: string | null;
   status?: string;

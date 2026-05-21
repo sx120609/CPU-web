@@ -29,6 +29,9 @@ userRouter.patch("/me", authRequired, async (req, res, next) => {
     for (const k of ["nickname", "bio", "college", "enrollYear", "avatar"]) {
       if (body[k] !== undefined) allowed[k] = body[k];
     }
+    if (body.dataAuthAgreed === true) {
+      allowed.dataAuthAgreedAt = new Date();
+    }
     const u = await prisma.user.update({ where: { id: req.user!.userId }, data: allowed });
     ok(res, buildSelfUser(u));
   } catch (e) { next(e); }

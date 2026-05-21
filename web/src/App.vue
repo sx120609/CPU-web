@@ -269,7 +269,7 @@ function clearDataAuthTimer() {
 
 async function acceptDataAuth() {
   if (dataAuthReadSeconds.value > 0) return;
-  auth.acceptDataAuthAgreement();
+  await auth.acceptDataAuthAgreement();
   dataAuthOpen.value = false;
   clearDataAuthTimer();
   await nextTick();

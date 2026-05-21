@@ -38,6 +38,7 @@ model User {
   usedAndroidClient Boolean @default(false)
   topicSubmissionLocked Boolean @default(false)
   aiReviewWhitelisted Boolean @default(false)
+  dataAuthAgreedAt DateTime?
   forumEnabled  Boolean  @default(false)
   forumEnabledAt DateTime?
   anonymousCredits Int   @default(0)

@@ -56,18 +56,24 @@ export const useAuthStore = defineStore("auth", {
 
     syncDataAuthAgreement(user?: UserInfo | null) {
       if (user && user.studentSso) {
-        this.dataAuthAgreed = readDataAuthAgreement(user.username);
+        this.dataAuthAgreed = Boolean(user.dataAuthAgreedAt) || readDataAuthAgreement(user.username);
       } else {
         this.dataAuthAgreed = false;
       }
     },
 
-    acceptDataAuthAgreement() {
+    async acceptDataAuthAgreement() {
       if (!this.user?.studentSso) {
         this.dataAuthAgreed = false;
         return;
       }
       writeDataAuthAgreement(this.user.username);
+      try {
+        const updated = await authApi.updateMe({ dataAuthAgreed: true } as any);
+        this.user = updated;
+      } catch {
+        /* ignore */
+      }
       this.dataAuthAgreed = true;
     },
 
