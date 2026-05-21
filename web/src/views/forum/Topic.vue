@@ -91,7 +91,7 @@
         <span v-if="topic.metadata.tradeMode">🤝 {{ topic.metadata.tradeMode }}</span>
       </div>
 
-      <MarkdownView :content="displayContent" class="post-body" />
+      <MarkdownView :content="displayContent" class="post-body topic-markdown" clickable-images />
 
       <footer class="post-foot">
         <el-button :type="liked ? 'primary' : 'default'" :icon="Star" @click="onLike">
@@ -125,7 +125,7 @@
             <span class="dot">·</span>
             <span>{{ fmtRelative(r.createdAt) }}</span>
           </div>
-          <MarkdownView :content="r.content" class="reply-content reply-markdown" clickable-images />
+          <MarkdownView :content="r.content" class="reply-content topic-markdown reply-markdown" clickable-images />
           <div class="reply-actions">
             <el-button text size="small" @click="quoteReply(r)">引用</el-button>
             <el-button v-if="canEditReply(r)" text size="small" @click="editReply(r)">编辑</el-button>
@@ -818,9 +818,13 @@ async function onDelete() {
   .author { color: var(--cpu-primary); text-decoration: none; font-weight: 500; }
   .dot { color: #d1d5db; }
   .reply-content { font-size: 14px; }
-  .reply-markdown :deep(img) {
-    max-width: min(100%, 220px);
-    max-height: 180px;
+  .topic-markdown :deep(img),
+  .topic-markdown :deep(img[data-size="small"]),
+  .topic-markdown :deep(img[data-size="medium"]),
+  .topic-markdown :deep(img[data-size="large"]) {
+    width: auto;
+    max-width: min(100%, 220px) !important;
+    max-height: 180px !important;
     object-fit: cover;
   }
   .reply-actions {
