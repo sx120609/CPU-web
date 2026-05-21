@@ -248,6 +248,37 @@
       </div>
     </el-dialog>
 
+    <div class="share-card-export-shell" aria-hidden="true">
+      <div class="share-card-dom share-card-dom--export" ref="shareCardExportRef">
+        <div class="share-card-top">
+          <div class="share-card-icon" :style="{ background: shareCardAccent }">
+            {{ topic?.board?.icon || "💬" }}
+          </div>
+          <div class="share-card-meta">
+            <div class="share-card-board">{{ topic?.board?.name || "药大垎坊" }}</div>
+            <div class="share-card-subtitle">{{ shareCardSubtitle }}</div>
+            <div class="share-card-stats">{{ shareCardStats }}</div>
+          </div>
+        </div>
+        <div class="share-card-hero" :style="{ background: shareCardSoftBg }">
+          <div class="share-card-hero-orb" :style="{ background: shareCardSoftOrb }"></div>
+          <div class="share-card-hero-line" :style="{ background: shareCardSoftLine }"></div>
+          <h3 class="share-card-title">{{ topic?.title }}</h3>
+          <p class="share-card-subcopy">{{ shareCardSubtitle }}</p>
+        </div>
+        <div class="share-card-bottom">
+          <div class="share-card-brand">
+            <div class="share-card-brand-title">药大垎坊</div>
+            <div class="share-card-brand-copy">扫描二维码，直接打开原帖</div>
+            <div class="share-card-brand-host">cpu.lizmt.cn</div>
+          </div>
+          <div class="share-card-qr-box">
+            <img :src="shareCardQrDataUrl" alt="分享二维码" class="share-card-qr" />
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div v-if="auth.isLoggedIn && !topic.locked && auth.user?.status === 'muted'" class="locked-tip cpu-card">
       {{ currentMuteMessage }}
     </div>
@@ -327,6 +358,7 @@ const liked = ref(false);
 const repliesEl = ref<HTMLElement | null>(null);
 const replyEditorRef = ref<InstanceType<typeof RichTextEditor> | null>(null);
 const shareCardRef = ref<HTMLElement | null>(null);
+const shareCardExportRef = ref<HTMLElement | null>(null);
 const REPLY_MAX = 10000;
 
 const metaPrice = computed(() => topic.value?.metadata?.price);
@@ -647,13 +679,18 @@ function openShareCard() {
 }
 
 async function saveShareCardAsPng() {
-  if (!shareCardRef.value) return;
+  const exportNode = shareCardExportRef.value || shareCardRef.value;
+  if (!exportNode) return;
   shareCardSaving.value = true;
   try {
-    const dataUrl = await toPng(shareCardRef.value, {
+    const dataUrl = await toPng(exportNode, {
       cacheBust: true,
       pixelRatio: 2,
       backgroundColor: "#ffffff",
+      canvasWidth: 720,
+      canvasHeight: 980,
+      width: 720,
+      height: 980,
     });
     const link = document.createElement("a");
     link.href = dataUrl;
@@ -1093,11 +1130,33 @@ async function onDelete() {
 }
 
 .share-card-dom {
+  width: 100%;
+  max-width: 100%;
   padding: 24px;
   border-radius: 24px;
   background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
   border: 1px solid #e7eef7;
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+  box-sizing: border-box;
+}
+
+.share-card-dom--export {
+  width: 720px;
+  min-height: 980px;
+  border-radius: 0;
+  box-shadow: none;
+  border: none;
+}
+
+.share-card-export-shell {
+  position: fixed;
+  left: -99999px;
+  top: -99999px;
+  width: 720px;
+  height: 980px;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
 }
 
 .share-card-top {
