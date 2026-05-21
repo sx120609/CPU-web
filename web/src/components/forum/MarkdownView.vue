@@ -4,6 +4,9 @@
     <div v-if="previewImageUrl" class="md-image-preview" @click.self="closePreview">
       <button type="button" class="preview-close" @click="closePreview">×</button>
       <img :src="previewImageUrl" alt="预览图片" class="preview-image" />
+      <div class="preview-actions">
+        <button type="button" class="preview-action-btn" @click="savePreviewImage">保存图片</button>
+      </div>
     </div>
   </teleport>
 </template>
@@ -71,6 +74,39 @@ function openPreview(src: string) {
 function closePreview() {
   previewImageUrl.value = "";
   document.body.style.overflow = "";
+}
+
+async function savePreviewImage() {
+  if (!previewImageUrl.value) return;
+  try {
+    const response = await fetch(previewImageUrl.value);
+    if (!response.ok) throw new Error("download_failed");
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = previewFileName(previewImageUrl.value, blob.type);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  } catch {
+    window.open(previewImageUrl.value, "_blank", "noopener,noreferrer");
+  }
+}
+
+function previewFileName(src: string, mimeType = "") {
+  try {
+    const url = new URL(src, window.location.origin);
+    const last = url.pathname.split("/").pop() || "image";
+    if (/\.[a-z0-9]+$/i.test(last)) return last;
+  } catch {
+    /* ignore */
+  }
+  if (mimeType.includes("png")) return "image.png";
+  if (mimeType.includes("webp")) return "image.webp";
+  if (mimeType.includes("gif")) return "image.gif";
+  return "image.jpg";
 }
 
 onMounted(wrapTables);
@@ -200,6 +236,29 @@ watch(() => props.clickableImages, () => nextTick(bindImagePreview));
   border-radius: 16px;
   background: #fff;
   box-shadow: 0 24px 56px rgba(15, 23, 42, 0.35);
+}
+
+.preview-actions {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preview-action-btn {
+  min-height: 42px;
+  padding: 0 18px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
 }
 
 .preview-close {
