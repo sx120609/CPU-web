@@ -1,6 +1,6 @@
 import { prisma } from "../prisma";
 
-type ForumStatsClient = Pick<typeof prisma, "topic" | "board" | "user">;
+type ForumStatsClient = Pick<typeof prisma, "topic" | "board" | "user" | "reply">;
 
 function uniquePositiveIds(ids: Iterable<number>) {
   return [...new Set(Array.from(ids).filter((id) => Number.isFinite(id) && id > 0))];
@@ -31,4 +31,15 @@ export async function refreshUserPostCount(userId: number, client: ForumStatsCli
     data: { postCount },
   });
   return postCount;
+}
+
+export async function refreshUserReplyCount(userId: number, client: ForumStatsClient = prisma) {
+  const replyCount = await client.reply.count({
+    where: { authorId: userId, hidden: false },
+  });
+  await client.user.update({
+    where: { id: userId },
+    data: { replyCount },
+  });
+  return replyCount;
 }

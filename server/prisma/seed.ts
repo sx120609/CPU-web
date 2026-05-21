@@ -143,6 +143,7 @@ async function main() {
         color: board.color,
         order: inc(),
         type: board.type,
+        anonymousEnabled: Boolean(board.anonymousEnabled),
       },
     });
     communityBoards.set(board.slug, created);

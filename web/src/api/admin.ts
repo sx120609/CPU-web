@@ -55,7 +55,15 @@ export const adminApi = {
     size?: number;
   }) =>
     request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/users", params),
-  updateUser: (id: number, patch: { status?: string; role?: string; nickname?: string; aiReviewWhitelisted?: boolean; mutedUntil?: string | null }) =>
+  updateUser: (id: number, patch: {
+    status?: string;
+    role?: string;
+    nickname?: string;
+    aiReviewWhitelisted?: boolean;
+    mutedUntil?: string | null;
+    anonymousCredits?: number;
+    anonymousCreditsFrozen?: boolean;
+  }) =>
     request.patch<any>(`/admin/users/${id}`, patch),
   createUser: (data: {
     username: string; password: string; nickname: string;
@@ -119,6 +127,7 @@ export const adminApi = {
     color?: string;
     order?: number;
     type: "normal" | "question" | "market" | "coursereview";
+    anonymousEnabled?: boolean;
   }) => request.post<any>("/admin/boards", payload),
   updateBoard: (id: number, payload: Partial<{
     slug: string;
@@ -128,6 +137,7 @@ export const adminApi = {
     color: string;
     order: number;
     type: "normal" | "question" | "market" | "coursereview";
+    anonymousEnabled: boolean;
   }>) => request.patch<any>(`/admin/boards/${id}`, payload),
   deleteBoard: (id: number) => request.delete<any>(`/admin/boards/${id}`),
   // 爬虫

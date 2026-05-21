@@ -40,6 +40,9 @@ model User {
   aiReviewWhitelisted Boolean @default(false)
   forumEnabled  Boolean  @default(false)
   forumEnabledAt DateTime?
+  anonymousCredits Int   @default(0)
+  anonymousWeekKey String?
+  anonymousCreditsFrozen Boolean @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -75,6 +78,7 @@ model Board {
   type        String   @default("normal")
   // 只读板块发帖人必须是 bot
   readOnly    Boolean  @default(false)
+  anonymousEnabled Boolean @default(false)
   topicCount  Int      @default(0)
   // 关联爬虫源（announce 类型板块独有）
   feedSourceId Int?    @unique
@@ -108,6 +112,8 @@ model Topic {
   manualReviewedById Int?
   manualReviewedAt DateTime?
   manualReviewNote String?
+  isAnonymous Boolean   @default(false)
+  anonymousAlias String?
   editCount    Int       @default(0)
   pinned      Boolean   @default(false)
   locked      Boolean   @default(false) // 锁帖后不能回复
@@ -146,6 +152,8 @@ model Reply {
   aiReviewedAt  DateTime?
   // 楼中楼：parentReplyId 指向父级回复，null 表示直接对主帖
   parentReplyId Int?
+  isAnonymous  Boolean  @default(false)
+  anonymousAlias String?
   // 排序楼层号
   floor         Int      @default(0)
   likeCount     Int      @default(0)

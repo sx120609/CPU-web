@@ -38,11 +38,13 @@
         <div class="meta-author">
           <div class="name">
             <router-link v-if="topic.author?.id" :to="`/u/${topic.author.id}`">{{ topic.author?.nickname }}</router-link>
+            <span v-else>{{ topic.author?.nickname }}</span>
+            <el-tag v-if="topic.isAnonymous" size="small" type="warning" effect="plain">匿名发布</el-tag>
             <el-tag v-if="topic.author?.role === 'bot'" size="small" type="warning">公告同步</el-tag>
             <el-tag v-else-if="topic.author?.role === 'admin'" size="small" type="danger">管理员</el-tag>
             <UserModerationActions
-              v-if="topic.author"
-              :user="topic.author"
+              v-if="topicModerationUser"
+              :user="topicModerationUser"
               display="dropdown"
               text
               label="管理"
@@ -109,9 +111,11 @@
           <div class="reply-meta">
             <span class="floor">#{{ r.floor }}</span>
             <router-link v-if="r.author?.id" :to="`/u/${r.author.id}`" class="author">{{ r.author?.nickname }}</router-link>
+            <span v-else class="author">{{ r.author?.nickname }}</span>
+            <el-tag v-if="r.isAnonymous" size="small" type="warning" effect="plain">匿名</el-tag>
             <UserModerationActions
-              v-if="r.author"
-              :user="r.author"
+              v-if="replyModerationUser(r)"
+              :user="replyModerationUser(r)"
               display="dropdown"
               text
               label="管理"
@@ -138,6 +142,13 @@
       align-center
       class="reply-dialog"
     >
+      <div v-if="topic?.board?.anonymousEnabled" class="reply-anonymous-box" :class="{ disabled: !replyAnonymousEnabled }">
+        <el-switch v-model="replyAnonymous" :disabled="!replyAnonymousEnabled" />
+        <div class="reply-anonymous-copy">
+          <b>匿名回复</b>
+          <p>{{ replyAnonymousHint }}</p>
+        </div>
+      </div>
       <RichTextEditor
         ref="replyEditorRef"
         v-model="replyText"
@@ -191,7 +202,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, nextTick } from "vue";
+import { ref, reactive, computed, onMounted, nextTick, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { AxiosError } from "axios";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -214,6 +225,7 @@ const replies = ref<Reply[]>([]);
 const loading = ref(false);
 const replying = ref(false);
 const replyText = ref("");
+const replyAnonymous = ref(false);
 const replyDialogOpen = ref(false);
 const replyReviewBlockedOpen = ref(false);
 const requestingReplyManualReview = ref(false);
@@ -231,9 +243,31 @@ const REPLY_MAX = 10000;
 const metaPrice = computed(() => topic.value?.metadata?.price);
 const hotScore = computed(() => Math.round((topic.value?.likeCount ?? 0) * 5 + (topic.value?.replyCount ?? 0) * 3 + (topic.value?.viewCount ?? 0) * 0.03));
 const isReadOnly = computed(() => topic.value?.board?.readOnly);
+const topicModerationUser = computed(() => {
+  if (topic.value?.realAuthor) return topic.value.realAuthor as any;
+  if (topic.value?.author?.id) return topic.value.author as any;
+  return null;
+});
 const canReply = computed(() =>
   auth.isLoggedIn && !topic.value?.locked && auth.user?.status !== "muted"
 );
+const replyAnonymousEnabled = computed(() => {
+  const anonymousState = auth.user?.anonymousState;
+  return Boolean(
+    topic.value?.board?.anonymousEnabled &&
+    anonymousState?.eligible &&
+    !anonymousState?.frozen &&
+    (anonymousState?.availableCredits ?? 0) > 0
+  );
+});
+const replyAnonymousHint = computed(() => {
+  const anonymousState = auth.user?.anonymousState;
+  if (!topic.value?.board?.anonymousEnabled) return "当前板块暂不支持匿名回复。";
+  if (!anonymousState?.eligible) return `信誉值达到 ${anonymousState?.minReputation ?? 30} 后才能匿名回复。`;
+  if (anonymousState?.frozen) return "你的匿名积分当前已被冻结，请联系管理员处理。";
+  if ((anonymousState?.availableCredits ?? 0) <= 0) return "本周匿名积分已用完，下周会自动刷新。";
+  return `本周还剩 ${anonymousState?.availableCredits ?? 0} / ${anonymousState?.weeklyQuota ?? 0} 点匿名积分。`;
+});
 const canEdit = computed(() =>
   auth.user?.id === topic.value?.authorId ||
   auth.isAdmin ||
@@ -260,6 +294,14 @@ const sourceNotice = computed(() => {
 });
 
 onMounted(async () => { await load(); });
+
+watch(replyAnonymousEnabled, (enabled) => {
+  if (!enabled) replyAnonymous.value = false;
+}, { immediate: true });
+
+watch(replyDialogOpen, (open) => {
+  if (!open && !replying.value) replyAnonymous.value = false;
+});
 
 async function load() {
   loading.value = true;
@@ -336,7 +378,12 @@ async function submitReply() {
   if (replyText.value.length > REPLY_MAX) { ElMessage.warning("回复内容过长，请精简后再发布"); return; }
   replying.value = true;
   try {
-    const r = await replyApi.create({ topicId: topic.value!.id, content: replyText.value });
+    const r = await replyApi.create({
+      topicId: topic.value!.id,
+      content: replyText.value,
+      anonymous: replyAnonymous.value,
+    });
+    if (replyAnonymous.value) await auth.fetchMe();
     if ((r as any).submissionResult?.status === "blocked_ai") {
       blockedReplyId.value = (r as any).id ?? null;
       blockedReplyInfo.reason = (r as any).submissionResult.reason || "检测到较高风险内容";
@@ -347,6 +394,7 @@ async function submitReply() {
     }
     replies.value.push({ ...r, _liked: false } as any);
     replyText.value = "";
+    replyAnonymous.value = false;
     replyDialogOpen.value = false;
     replyEditorRef.value?.clearDraft();
     if (topic.value) topic.value.replyCount += 1;
@@ -363,6 +411,7 @@ async function confirmReplyManualReviewRequest() {
     await auth.fetchMe();
     replyEditorRef.value?.clearDraft();
     replyText.value = "";
+    replyAnonymous.value = false;
     replyDialogOpen.value = false;
     replyReviewBlockedOpen.value = false;
     ElMessage.success("已提交回复人工复核申请");
@@ -387,13 +436,19 @@ function onEdit() {
 }
 
 function applyTopicAuthorModeration(patch: Record<string, unknown>) {
-  if (!topic.value?.author) return;
-  Object.assign(topic.value.author, patch);
+  if (topic.value?.realAuthor) Object.assign(topic.value.realAuthor, patch);
+  else if (topic.value?.author) Object.assign(topic.value.author, patch);
+}
+
+function replyModerationUser(reply: any) {
+  if (reply?.realAuthor) return reply.realAuthor as any;
+  if (reply?.author?.id) return reply.author as any;
+  return null;
 }
 
 function applyReplyAuthorModeration(reply: any, patch: Record<string, unknown>) {
-  if (!reply?.author) return;
-  Object.assign(reply.author, patch);
+  if (reply?.realAuthor) Object.assign(reply.realAuthor, patch);
+  else if (reply?.author) Object.assign(reply.author, patch);
 }
 
 async function onPin() {
@@ -588,6 +643,39 @@ async function onDelete() {
   margin-top: 10px;
 }
 
+.reply-anonymous-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #ebe8ff;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #faf7ff 0%, #ffffff 100%);
+  margin-bottom: 14px;
+}
+
+.reply-anonymous-box.disabled {
+  opacity: 0.78;
+}
+
+.reply-anonymous-copy {
+  min-width: 0;
+}
+
+.reply-anonymous-copy b {
+  display: block;
+  font-size: 14px;
+  color: #4c1d95;
+  margin-bottom: 4px;
+}
+
+.reply-anonymous-copy p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .reply-dialog-actions {
   margin-top: 16px;
 }
@@ -718,6 +806,10 @@ async function onDelete() {
 
   .reply-form-actions .el-button {
     width: 100%;
+  }
+
+  .reply-anonymous-box {
+    padding: 12px;
   }
 
   :deep(.reply-dialog) {

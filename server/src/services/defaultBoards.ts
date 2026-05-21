@@ -29,6 +29,7 @@ export async function ensureBuiltinBoards() {
         color: board.color,
         order: nextOrder++,
         type: board.type,
+        anonymousEnabled: Boolean(board.anonymousEnabled),
       },
     });
     created.push(board);

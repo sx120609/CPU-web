@@ -8,6 +8,7 @@
           <p class="head-desc">{{ board.description }}</p>
           <div class="head-meta">
             <span>{{ board.topicCount }} 帖</span>
+            <span v-if="board.anonymousEnabled" class="anon-tag">支持匿名</span>
             <span v-if="board.readOnly" class="ro-tag">公告板</span>
             <a v-if="board.feedSource?.homepage" :href="board.feedSource.homepage" target="_blank" class="ro-link">查看来源 →</a>
           </div>
@@ -171,6 +172,7 @@ function goPost() {
   align-items: center;
 }
 .ro-tag { color: #b45309; background: #fef3c7; padding: 2px 8px; border-radius: 4px; }
+.anon-tag { color: #6d28d9; background: #f3e8ff; padding: 2px 8px; border-radius: 4px; }
 .ro-link { color: var(--cpu-primary); text-decoration: none; }
 .ro-link:hover { text-decoration: underline; }
 

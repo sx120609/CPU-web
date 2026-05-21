@@ -24,6 +24,16 @@
           </div>
         </el-form-item>
 
+        <el-form-item v-if="currentBoard?.anonymousEnabled" label="匿名发布">
+          <div class="anonymous-box" :class="{ disabled: !anonymousEnabledForForm }">
+            <el-switch v-model="form.anonymous" :disabled="!anonymousEnabledForForm || !!editingId" />
+            <div class="anonymous-copy">
+              <b>{{ editingId ? "保持匿名状态" : "使用匿名积分发帖" }}</b>
+              <p>{{ anonymousHint }}</p>
+            </div>
+          </div>
+        </el-form-item>
+
         <!-- 二手板块特化 -->
         <template v-if="boardType === 'market'">
           <div class="meta-row">
@@ -166,6 +176,7 @@
           <span>{{ currentBoard?.name || "未选择板块" }}</span>
           <span>{{ form.content.length }} / {{ CONTENT_MAX }}</span>
         </div>
+        <el-tag v-if="form.anonymous" type="warning" effect="plain" class="preview-anon-tag">匿名发布</el-tag>
         <h3>{{ form.title || "未填写标题" }}</h3>
         <MarkdownView :content="form.content" />
       </div>
@@ -241,6 +252,7 @@ const form = reactive({
   boardSlug: (route.query.board as string) || "",
   title: "",
   content: "",
+  anonymous: false,
 });
 
 const meta = reactive<any>({
@@ -259,6 +271,27 @@ const currentBoard = computed(() => boards.value.find((b) => b.slug === form.boa
 const boardType = computed(() => currentBoard.value?.type ?? "normal");
 const formDraftKey = computed(() => editingId.value ? "" : "cpu-post-new-draft");
 const contentDraftKey = computed(() => formDraftKey.value ? `${formDraftKey.value}-content` : "");
+const anonymousEnabledForForm = computed(() => {
+  const anonymousState = auth.user?.anonymousState;
+  if (!currentBoard.value?.anonymousEnabled) return false;
+  if (editingId.value) return true;
+  return Boolean(
+    anonymousState?.eligible &&
+    !anonymousState?.frozen &&
+    (anonymousState?.availableCredits ?? 0) > 0
+  );
+});
+const anonymousHint = computed(() => {
+  const anonymousState = auth.user?.anonymousState;
+  if (editingId.value) {
+    return form.anonymous ? "这篇帖子会继续以匿名身份展示，编辑不会公开你的真实身份。" : "这篇帖子当前不是匿名帖。";
+  }
+  if (!currentBoard.value?.anonymousEnabled) return "当前板块暂不支持匿名发帖。";
+  if (!anonymousState?.eligible) return `信誉值达到 ${anonymousState?.minReputation ?? 30} 后才能匿名发帖。`;
+  if (anonymousState?.frozen) return "你的匿名积分当前已被冻结，请联系管理员处理。";
+  if ((anonymousState?.availableCredits ?? 0) <= 0) return "本周匿名积分已用完，下周会自动刷新。";
+  return `本周还剩 ${anonymousState?.availableCredits ?? 0} / ${anonymousState?.weeklyQuota ?? 0} 点匿名积分。`;
+});
 
 const selectedCourse = computed(() => courses.value.find((c) => c.id === meta.courseId));
 const teacherOptions = computed(() => selectedCourse.value?.teachers ?? []);
@@ -282,6 +315,7 @@ onMounted(async () => {
     form.boardSlug = t.board?.slug ?? "";
     form.title = t.title;
     form.content = t.content;
+    form.anonymous = Boolean(t.isAnonymous);
     if (t.metadata) Object.assign(meta, t.metadata);
     normalizeSelectedBoard();
   } else {
@@ -299,7 +333,15 @@ watch(boardType, async () => {
   if (boardType.value === "coursereview") await loadCoursesForReview();
 });
 
-watch(() => [form.boardSlug, form.title, meta.price, meta.condition, meta.tradeMode, meta.bounty, meta.courseId, meta.courseTeacherId, meta.teacherName, meta.semester], () => {
+watch(() => currentBoard.value?.anonymousEnabled, (enabled) => {
+  if (!enabled && !editingId.value) form.anonymous = false;
+}, { immediate: true });
+
+watch(anonymousEnabledForForm, (enabled) => {
+  if (!enabled && !editingId.value) form.anonymous = false;
+}, { immediate: true });
+
+watch(() => [form.boardSlug, form.title, form.anonymous, meta.price, meta.condition, meta.tradeMode, meta.bounty, meta.courseId, meta.courseTeacherId, meta.teacherName, meta.semester], () => {
   scheduleFormDraftSave();
 }, { deep: true });
 
@@ -346,6 +388,7 @@ function restoreFormDraft() {
     const draft = JSON.parse(raw);
     if (typeof draft.title === "string" && !form.title) form.title = draft.title;
     if (typeof draft.boardSlug === "string" && !form.boardSlug) form.boardSlug = draft.boardSlug;
+    if (typeof draft.anonymous === "boolean") form.anonymous = draft.anonymous;
     if (draft.meta && typeof draft.meta === "object") Object.assign(meta, draft.meta);
   } catch {
     /* ignore */
@@ -369,6 +412,7 @@ function scheduleFormDraftSave() {
       localStorage.setItem(formDraftKey.value, JSON.stringify({
         boardSlug: form.boardSlug,
         title: form.title,
+        anonymous: form.anonymous,
         meta,
         savedAt: Date.now(),
       }));
@@ -388,6 +432,7 @@ async function submit() {
   if (auth.user?.status === "muted") { ElMessage.warning(mutedNotice.value); return; }
   if (auth.user?.topicSubmissionLocked) { ElMessage.warning("你有内容正在人工复核，暂时不能继续提交新内容"); return; }
   if (!form.boardSlug) { ElMessage.warning("请选择板块"); return; }
+  if (form.anonymous && !anonymousEnabledForForm.value) { ElMessage.warning(anonymousHint.value); return; }
   if (form.title.trim().length < 2) { ElMessage.warning("标题至少 2 字"); return; }
   if (isEditorContentEmpty()) { ElMessage.warning("请填写正文"); return; }
   if (form.content.length > CONTENT_MAX) { ElMessage.warning("正文内容过长，请精简后再发布"); return; }
@@ -451,7 +496,9 @@ async function confirmSubmit() {
         title: form.title,
         content: form.content,
         metadata,
+        anonymous: form.anonymous,
       });
+      if (form.anonymous) await auth.fetchMe();
       if (r.submissionResult?.status === "blocked_ai") {
         blockedTopicId.value = r.id;
         blockedReviewInfo.reason = r.submissionResult.reason || "检测到较高风险内容";
@@ -492,6 +539,34 @@ async function confirmManualReviewRequest() {
 .cpu-card { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
 
 .board-hint { font-size: 12px; color: #6b7280; margin-top: 6px; }
+.anonymous-box {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #ebe8ff;
+  background: linear-gradient(180deg, #faf7ff 0%, #ffffff 100%);
+}
+
+.anonymous-box.disabled {
+  opacity: 0.78;
+}
+
+.anonymous-copy b {
+  display: block;
+  font-size: 14px;
+  color: #4c1d95;
+  margin-bottom: 4px;
+}
+
+.anonymous-copy p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.6;
+}
 .meta-row { display: flex; gap: 14px; flex-wrap: wrap; }
 .meta-row .el-form-item { min-width: 200px; flex: 1; }
 
@@ -531,6 +606,10 @@ async function confirmManualReviewRequest() {
   line-height: 1.35;
 }
 
+.preview-anon-tag {
+  margin-bottom: 10px;
+}
+
 .publish-preview :deep(.md) {
   max-height: min(58vh, 520px);
   overflow: auto;
@@ -556,6 +635,10 @@ async function confirmManualReviewRequest() {
 
   .meta-row {
     gap: 0;
+  }
+
+  .anonymous-box {
+    padding: 12px;
   }
 
   .meta-row .el-form-item {

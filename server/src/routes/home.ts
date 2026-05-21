@@ -3,8 +3,10 @@ import { prisma } from "../prisma";
 import { ok } from "../utils/response";
 import { verifyToken } from "../utils/jwt";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
-import { enabledBoardTypes, getGlobalPinnedTopicIds, isGlobalPinnedTopic } from "../services/siteSettings";
+import { enabledBoardTypes, getGlobalPinnedTopicIds } from "../services/siteSettings";
 import { isForumStaffRole, resolveForumAccess } from "../services/forumAccess";
+import { decodeTopicForViewer } from "../services/forumPresentation";
+import { buildUserTrustSnapshot } from "../services/userTrust";
 
 export const homeRouter = Router();
 const HOME_HIDDEN_SERVICE_CODES = ["DORM_REPAIR"];
@@ -42,7 +44,7 @@ homeRouter.get("/summary", async (req, res, next) => {
         take: 10,
         include: {
           board: { select: { slug: true, name: true, color: true, type: true } },
-          author: { select: { nickname: true, avatar: true } },
+          author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
           tags: { include: { tag: true } },
         },
       }),
@@ -62,6 +64,7 @@ homeRouter.get("/summary", async (req, res, next) => {
       userId ? prisma.notification.count({ where: { userId: null } }) : Promise.resolve(0),
     ]);
     const forumAccessEnabled = user ? (isForumStaffRole(user.role) || user.forumEnabled) : await resolveForumAccess(userId, role);
+    const trust = user ? buildUserTrustSnapshot(user) : null;
 
     const unreadCount = personalUnread + (globalCount - (globalReads as any[]).length);
 
@@ -74,18 +77,18 @@ homeRouter.get("/summary", async (req, res, next) => {
         role: user.role,
         postCount: user.postCount,
         replyCount: user.replyCount,
-        reputation: user.reputation,
+        reputation: trust?.reputation ?? 0,
         forumEnabled: forumAccessEnabled,
         unreadCount,
       } : null,
-      pinnedTopics: forumAccessEnabled ? pinnedTopics.map(decode) : [],
+      pinnedTopics: forumAccessEnabled ? pinnedTopics.map((item) => decodeTopicForViewer(item, { userId, role })) : [],
       hotTopics: forumAccessEnabled ? hotTopics.map((item, index) => ({
         rank: index + 1,
         hotScore: computeHotScore(item, isRecentTopic(item)),
-        ...decode(item),
+        ...decodeTopicForViewer(item, { userId, role }),
       })) : [],
-      latestTopics: forumAccessEnabled ? latestTopics.map(decode) : [],
-      announce: announce.map(decode),
+      latestTopics: forumAccessEnabled ? latestTopics.map((item) => decodeTopicForViewer(item, { userId, role })) : [],
+      announce: announce.map((item) => decodeTopicForViewer(item, { userId, role })),
       services: services
         .filter((s) => !HOME_HIDDEN_SERVICE_CODES.includes(s.code))
         .map(normalizeServiceCard),
@@ -112,7 +115,7 @@ homeRouter.get("/hot-ranking", async (_req, res, next) => {
     ok(res, list.map((item, index) => ({
       rank: index + 1,
       hotScore: computeHotScore(item, isRecentTopic(item)),
-      ...decode(item),
+      ...decodeTopicForViewer(item, { userId, role }),
     })));
   } catch (e) { next(e); }
 });
@@ -145,13 +148,19 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
         take: size,
         include: {
           board: { select: { slug: true, name: true, color: true, type: true } },
-          author: { select: { nickname: true, avatar: true } },
+          author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
           tags: { include: { tag: true } },
         },
       }),
       prisma.topic.count({ where }),
     ]);
-    ok(res, { page, size, total, pins: pins.map(decode), list: list.map(decode) });
+    ok(res, {
+      page,
+      size,
+      total,
+      pins: pins.map((item) => decodeTopicForViewer(item, { userId, role })),
+      list: list.map((item) => decodeTopicForViewer(item, { userId, role })),
+    });
   } catch (e) { next(e); }
 });
 
@@ -160,7 +169,7 @@ async function listGlobalPinnedTopics(ids: number[], boardTypes: string[], limit
   if (!orderedIds.length) return [];
   const include = {
     board: { select: { slug: true, name: true, color: true, type: true } },
-    author: { select: { nickname: true, avatar: true } },
+    author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
     tags: { include: { tag: true } },
   } as const;
   const rows = await prisma.topic.findMany({
@@ -179,7 +188,7 @@ async function listHotTopics(size: number, boardTypes: string[]) {
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const include = {
     board: { select: { slug: true, name: true, color: true, type: true } },
-    author: { select: { nickname: true, avatar: true } },
+    author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
     tags: { include: { tag: true } },
   } as const;
   const [recent, older] = await Promise.all([
@@ -222,22 +231,4 @@ function computeHotScore(topic: any, recent: boolean) {
 function isRecentTopic(topic: any) {
   const last = topic.lastReplyAt ? new Date(topic.lastReplyAt).getTime() : 0;
   return last >= Date.now() - 24 * 60 * 60 * 1000;
-}
-
-function decode(t: any) {
-  return {
-    ...t,
-    globalPinned: isGlobalPinnedTopic(Number(t.id)),
-    metadata: safeJson(t.metadata),
-    tags: Array.isArray(t.tags)
-      ? t.tags
-          .map((item: any) => item?.tag ? { id: item.tag.id, name: item.tag.name } : item)
-          .filter((item: any) => item?.name)
-      : [],
-  };
-}
-
-function safeJson(s: string | null | undefined) {
-  if (!s) return {};
-  try { return JSON.parse(s); } catch { return {}; }
 }

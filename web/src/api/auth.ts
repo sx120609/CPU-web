@@ -26,6 +26,31 @@ export interface UserInfo {
   usedAndroidClient?: boolean;
   topicSubmissionLocked?: boolean;
   aiReviewWhitelisted?: boolean;
+  anonymousState?: {
+    eligible: boolean;
+    minReputation: number;
+    weeklyQuota: number;
+    availableCredits: number;
+    storedCredits: number;
+    frozen: boolean;
+    weekKey: string;
+    staleWeek: boolean;
+    nextResetAt: string;
+    nextTier?: { reputation: number; weeklyQuota: number; need: number } | null;
+  };
+  reputationBreakdown?: {
+    total: number;
+    accountAgeDays: number;
+    agePoints: number;
+    postPoints: number;
+    replyPoints: number;
+    forumPoints: number;
+    caps: {
+      agePoints: number;
+      postPoints: number;
+      replyPoints: number;
+    };
+  };
   createdAt: string;
 }
 

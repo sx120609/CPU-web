@@ -27,6 +27,68 @@
       </div>
     </div>
 
+    <div class="cpu-card trust-card" v-if="user">
+      <div class="trust-head">
+        <div>
+          <h3 class="cpu-section-title">信誉与匿名</h3>
+          <p class="trust-sub">信誉值由注册时长、发帖数量、回复数量等因素共同决定，按周发放匿名积分。</p>
+        </div>
+        <div class="trust-score">{{ user.reputation }}</div>
+      </div>
+
+      <div class="trust-grid">
+        <div class="trust-item">
+          <span>本周额度</span>
+          <b>{{ user.anonymousState?.weeklyQuota ?? 0 }}</b>
+        </div>
+        <div class="trust-item">
+          <span>剩余积分</span>
+          <b>{{ user.anonymousState?.availableCredits ?? 0 }}</b>
+        </div>
+        <div class="trust-item">
+          <span>状态</span>
+          <b>{{ anonymousStatusText }}</b>
+        </div>
+        <div class="trust-item">
+          <span>下次刷新</span>
+          <b>{{ anonymousResetText }}</b>
+        </div>
+      </div>
+
+      <div class="trust-breakdown">
+        <div class="trust-row">
+          <span>注册时长贡献</span>
+          <b>{{ user.reputationBreakdown?.agePoints ?? 0 }}</b>
+        </div>
+        <div class="trust-row">
+          <span>发帖贡献</span>
+          <b>{{ user.reputationBreakdown?.postPoints ?? 0 }}</b>
+        </div>
+        <div class="trust-row">
+          <span>回复贡献</span>
+          <b>{{ user.reputationBreakdown?.replyPoints ?? 0 }}</b>
+        </div>
+        <div class="trust-row">
+          <span>论坛资历加成</span>
+          <b>{{ user.reputationBreakdown?.forumPoints ?? 0 }}</b>
+        </div>
+      </div>
+
+      <p v-if="user.anonymousState?.nextTier" class="trust-next">
+        距离下一档匿名额度还差 {{ user.anonymousState.nextTier.need }} 点信誉值，达到后每周可得 {{ user.anonymousState.nextTier.weeklyQuota }} 点。
+      </p>
+
+      <div class="anonymous-boards">
+        <span class="anonymous-boards-label">支持匿名的板块</span>
+        <div class="anonymous-board-tags">
+          <el-tag v-for="board in anonymousBoards" :key="board.slug" effect="plain">
+            {{ board.icon || "💬" }} {{ board.name }}
+          </el-tag>
+          <span v-if="!anonymousBoards.length" class="cpu-muted">当前还没有开放匿名的板块</span>
+        </div>
+      </div>
+    </div>
+
     <div class="cpu-card user-group-card">
       <div>
         <h3 class="cpu-section-title">加入用户 QQ 群</h3>
@@ -50,6 +112,7 @@
       <el-empty v-if="!myTopics.length" description="还没有发过帖子" />
       <div v-for="t in myTopics" :key="t.id" class="topic-line" @click="$router.push(`/forum/topic/${t.id}`)">
         <span class="tag" :style="{ background: t.board?.color || '#168776' }">{{ t.board?.name }}</span>
+        <span v-if="t.isAnonymous" class="anon-tag">匿名</span>
         <span class="title">{{ t.title }}</span>
         <span class="meta">{{ fmtRelative(t.createdAt) }}</span>
       </div>
@@ -111,9 +174,10 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { ChatDotRound, CopyDocument } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { authApi } from "@/api/auth";
+import { boardApi, type Board } from "@/api/board";
 import { request } from "@/api/request";
 import UserAvatar from "@/components/common/UserAvatar.vue";
-import { fmtRelative } from "@/utils/format";
+import { fmtDate, fmtRelative } from "@/utils/format";
 import { compressImageFile, normalizeImageUploadError } from "@/utils/imageUpload";
 import { copyText, openUserGroup, USER_QQ_GROUP } from "@/utils/userGroup";
 
@@ -121,6 +185,7 @@ const auth = useAuthStore();
 const router = useRouter();
 const user = computed(() => auth.user);
 const myTopics = ref<any[]>([]);
+const boards = ref<Board[]>([]);
 const editing = ref(false);
 const saving = ref(false);
 const avatarSaving = ref(false);
@@ -131,6 +196,18 @@ const editForm = reactive({ nickname: "", bio: "", college: "", enrollYear: unde
 const passwordDialog = ref(false);
 const savingPw = ref(false);
 const pwForm = reactive({ oldPassword: "", newPassword: "", confirm: "" });
+const anonymousBoards = computed(() => boards.value.filter((board) => board.anonymousEnabled));
+const anonymousStatusText = computed(() => {
+  const state = user.value?.anonymousState;
+  if (!state) return "—";
+  if (state.frozen) return "已冻结";
+  if (!state.eligible) return `未达门槛（${state.minReputation}）`;
+  return "可用";
+});
+const anonymousResetText = computed(() => {
+  const nextResetAt = user.value?.anonymousState?.nextResetAt;
+  return nextResetAt ? fmtDate(nextResetAt, "MM-DD HH:mm") : "—";
+});
 
 watch(passwordDialog, (v) => {
   if (!v) { pwForm.oldPassword = ""; pwForm.newPassword = ""; pwForm.confirm = ""; }
@@ -138,9 +215,13 @@ watch(passwordDialog, (v) => {
 
 onMounted(async () => {
   if (!auth.user) await auth.fetchMe();
-  if (auth.user) {
-    myTopics.value = await request.get<any[]>(`/user/${auth.user.id}/topics`);
-  }
+  if (!auth.user) return;
+  const [topicList, boardList] = await Promise.all([
+    request.get<any[]>(`/user/${auth.user.id}/topics`),
+    boardApi.list(),
+  ]);
+  myTopics.value = topicList;
+  boards.value = boardList;
 });
 
 watch(editing, (v) => {
@@ -278,6 +359,108 @@ async function removeAvatar() {
 }
 .profile-actions .el-button { flex: 1 1 auto; min-width: 100px; margin-left: 0 !important; }
 
+.trust-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.trust-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.trust-sub {
+  margin: 4px 0 0;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.trust-score {
+  min-width: 72px;
+  text-align: center;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #4c1d95 0%, #7c3aed 100%);
+  color: #fff;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.trust-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.trust-item {
+  padding: 12px;
+  border-radius: 12px;
+  background: #f7f7fb;
+}
+
+.trust-item span {
+  display: block;
+  color: #6b7280;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.trust-item b {
+  color: #111827;
+  font-size: 18px;
+}
+
+.trust-breakdown {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+}
+
+.trust-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed #eceff3;
+  font-size: 13px;
+}
+
+.trust-row span {
+  color: #6b7280;
+}
+
+.trust-row b {
+  color: #111827;
+}
+
+.trust-next {
+  margin: 0;
+  color: #7c3aed;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.anonymous-boards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.anonymous-boards-label {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.anonymous-board-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .user-group-card {
   display: flex;
   align-items: center;
@@ -316,6 +499,7 @@ async function removeAvatar() {
 .topic-line:last-child { border-bottom: none; }
 .topic-line:hover { background: #f4f6f8; }
 .tag { color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
+.anon-tag { color: #7c3aed; font-size: 12px; font-weight: 600; }
 .title { font-size: 14px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .meta { font-size: 12px; color: #9ca3af; flex-shrink: 0; }
 
@@ -338,6 +522,20 @@ async function removeAvatar() {
 
   .avatar-actions {
     gap: 6px;
+  }
+
+  .trust-head {
+    flex-direction: column;
+  }
+
+  .trust-score {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .trust-grid,
+  .trust-breakdown {
+    grid-template-columns: 1fr;
   }
 
   .user-group-card {

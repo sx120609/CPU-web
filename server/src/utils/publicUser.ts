@@ -1,3 +1,5 @@
+import { buildUserTrustSnapshot } from "../services/userTrust";
+
 type Viewer = {
   userId?: number | null;
   role?: string | null;
@@ -14,6 +16,7 @@ function canSeeModerationFields(viewer: Viewer) {
 }
 
 export function buildSelfUser(u: any) {
+  const trust = buildUserTrustSnapshot(u);
   return {
     id: u.id,
     username: u.username,
@@ -26,7 +29,8 @@ export function buildSelfUser(u: any) {
     studentSso: u.studentSso,
     postCount: u.postCount,
     replyCount: u.replyCount,
-    reputation: u.reputation,
+    reputation: trust.reputation,
+    reputationBreakdown: trust.reputationBreakdown,
     lastSeenAt: u.lastSeenAt,
     lastLoginAt: u.lastLoginAt,
     lastLoginClient: u.lastLoginClient,
@@ -36,6 +40,7 @@ export function buildSelfUser(u: any) {
     aiReviewWhitelisted: u.aiReviewWhitelisted,
     forumEnabled: u.forumEnabled,
     forumEnabledAt: u.forumEnabledAt,
+    anonymousState: trust.anonymousState,
     status: u.status,
     mutedUntil: u.mutedUntil,
     createdAt: u.createdAt,
@@ -43,6 +48,7 @@ export function buildSelfUser(u: any) {
 }
 
 export function buildPublicUser(u: any, viewer?: Viewer) {
+  const trust = buildUserTrustSnapshot(u);
   const result: Record<string, unknown> = {
     id: u.id,
     nickname: u.nickname,
@@ -53,7 +59,7 @@ export function buildPublicUser(u: any, viewer?: Viewer) {
     role: u.role,
     postCount: u.postCount,
     replyCount: u.replyCount,
-    reputation: u.reputation,
+    reputation: trust.reputation,
     createdAt: u.createdAt,
   };
 

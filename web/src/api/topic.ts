@@ -7,6 +7,8 @@ export interface Topic {
   title: string;
   content: string;
   metadata: Record<string, any>;
+  isAnonymous?: boolean;
+  anonymousAlias?: string | null;
   pinned: boolean;
   globalPinned?: boolean;
   locked: boolean;
@@ -24,20 +26,24 @@ export interface Topic {
   tags?: Array<{ id: number; name: string }>;
   createdAt: string;
   updatedAt: string;
-  author?: { id: number; nickname: string; username?: string; avatar?: string; role: string; bio?: string; status?: string; mutedUntil?: string | null };
-  board?: { id?: number; slug: string; name: string; color?: string; type?: string; readOnly?: boolean };
+  author?: { id: number | null; nickname: string; username?: string; avatar?: string | null; role: string; bio?: string; status?: string; mutedUntil?: string | null; anonymous?: boolean };
+  realAuthor?: { id: number; nickname: string; username?: string; avatar?: string | null; role: string; bio?: string; status?: string; mutedUntil?: string | null };
+  board?: { id?: number; slug: string; name: string; color?: string; type?: string; readOnly?: boolean; anonymousEnabled?: boolean };
 }
 
 export interface Reply {
   id: number;
   topicId: number;
-  authorId: number;
+  authorId: number | null;
   content: string;
+  isAnonymous?: boolean;
+  anonymousAlias?: string | null;
   parentReplyId?: number | null;
   floor: number;
   likeCount: number;
   createdAt: string;
-  author?: { id: number; nickname: string; username?: string; avatar?: string; role: string; status?: string; mutedUntil?: string | null };
+  author?: { id: number | null; nickname: string; username?: string; avatar?: string | null; role: string; status?: string; mutedUntil?: string | null; anonymous?: boolean };
+  realAuthor?: { id: number; nickname: string; username?: string; avatar?: string | null; role: string; status?: string; mutedUntil?: string | null };
 }
 
 export const topicApi = {
@@ -45,7 +51,7 @@ export const topicApi = {
     request.get<{ page: number; size: number; total: number; list: Topic[] }>("/topics", params),
   detail: (id: number) => request.get<Topic>(`/topics/${id}`),
   replies: (id: number) => request.get<Reply[]>(`/topics/${id}/replies`),
-  create: (payload: { boardSlug: string; title: string; content: string; metadata?: any; tags?: string[] }) =>
+  create: (payload: { boardSlug: string; title: string; content: string; metadata?: any; tags?: string[]; anonymous?: boolean }) =>
     request.post<Topic & { submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string } }>("/topics", payload),
   update: (id: number, payload: Partial<Topic>) =>
     request.patch<Topic & { submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string } }>(`/topics/${id}`, payload),
@@ -54,7 +60,7 @@ export const topicApi = {
 };
 
 export const replyApi = {
-  create: (payload: { topicId: number; content: string; parentReplyId?: number }) =>
+  create: (payload: { topicId: number; content: string; parentReplyId?: number; anonymous?: boolean }) =>
     request.post<Reply & { blocked?: boolean; submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string } }>("/replies", payload),
   remove: (id: number) => request.delete<any>(`/replies/${id}`),
   requestManualReview: (id: number) => request.post<{ ok: true }>(`/replies/${id}/request-manual-review`),

@@ -36,6 +36,7 @@
       <el-empty v-if="!topics.length" description="还没有发过帖子" />
       <div v-for="t in topics" :key="t.id" class="topic-line" @click="$router.push(`/forum/topic/${t.id}`)">
         <span class="tag" :style="{ background: t.board?.color || '#168776' }">{{ t.board?.name }}</span>
+        <span v-if="t.isAnonymous" class="anon-tag">匿名</span>
         <span class="title">{{ t.title }}</span>
         <span class="meta">{{ fmtRelative(t.createdAt) }}</span>
       </div>
@@ -118,6 +119,7 @@ function goBack() {
 .topic-line:last-child { border-bottom: none; }
 .topic-line:hover { background: #f4f6f8; }
 .tag { color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
+.anon-tag { color: #7c3aed; font-size: 12px; font-weight: 600; }
 .title { font-size: 14px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .meta { font-size: 12px; color: #9ca3af; flex-shrink: 0; }
 .cpu-section-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }

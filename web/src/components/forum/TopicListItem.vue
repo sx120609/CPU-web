@@ -25,6 +25,7 @@
       </div>
       <div class="line2">
         <span class="author">{{ topic.author?.nickname ?? "—" }}</span>
+        <span v-if="topic.isAnonymous" class="anon">匿名</span>
         <span v-if="topic.author?.role === 'bot'" class="bot">🤖 公告同步</span>
         <span class="dot">·</span>
         <span>{{ fmtRelative(topic.lastReplyAt || topic.createdAt) }}</span>
@@ -94,6 +95,7 @@ const aiTags = computed(() => Array.isArray(props.topic.tags) ? props.topic.tags
 }
 .line2 span { display: inline-flex; align-items: center; gap: 3px; }
 .line2 .author { color: var(--cpu-primary); }
+.line2 .anon { color: #7c3aed; font-weight: 600; }
 .line2 .bot { color: #ef4444; }
 .line2 .edited { color: #b45309; }
 .line2 .heat { color: #0f766e; font-weight: 600; }

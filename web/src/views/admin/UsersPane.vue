@@ -97,6 +97,14 @@
           <span class="content-count">{{ row.postCount }} 帖 / {{ row.replyCount }} 回</span>
         </template>
       </el-table-column>
+      <el-table-column label="匿名" width="170">
+        <template #default="{ row }">
+          <div class="anon-info">
+            <span class="anon-main">{{ row.anonymousState?.availableCredits ?? 0 }} / {{ row.anonymousState?.weeklyQuota ?? 0 }}</span>
+            <span class="anon-sub">{{ row.anonymousState?.frozen ? "已冻结" : `信誉 ${row.reputation}` }}</span>
+          </div>
+        </template>
+      </el-table-column>
       <el-table-column label="论坛开启" width="160">
         <template #default="{ row }">
           <div class="forum-info">
@@ -122,6 +130,7 @@
             <el-dropdown-menu>
                 <el-dropdown-item command="role">改身份</el-dropdown-item>
                 <el-dropdown-item command="whitelist">{{ row.aiReviewWhitelisted ? "取消 AI 白名单" : "设为 AI 白名单" }}</el-dropdown-item>
+                <el-dropdown-item command="anonymity">匿名额度</el-dropdown-item>
                 <el-dropdown-item v-if="!row.studentSso" command="password">重置密码</el-dropdown-item>
                 <el-dropdown-item v-if="row.id !== auth.user?.id" command="delete" divided>删除用户</el-dropdown-item>
               </el-dropdown-menu>
@@ -163,6 +172,7 @@
           <span>论坛：{{ row.forumEnabledAt ? fmtDate(row.forumEnabledAt) : row.forumEnabled ? "已开启" : "未确认须知" }}</span>
           <span>注册：{{ fmtDate(row.createdAt) }}</span>
           <span>{{ row.postCount }} 帖 / {{ row.replyCount }} 回</span>
+          <span>匿名 {{ row.anonymousState?.availableCredits ?? 0 }} / {{ row.anonymousState?.weeklyQuota ?? 0 }}{{ row.anonymousState?.frozen ? "（冻结）" : "" }}</span>
         </div>
         <div class="mobile-actions">
           <UserModerationActions :user="row" display="inline" plain @updated="applyUserUpdate(row, $event)" @changed="reload" />
@@ -175,6 +185,7 @@
             <el-dropdown-menu>
                 <el-dropdown-item command="role">改身份</el-dropdown-item>
                 <el-dropdown-item command="whitelist">{{ row.aiReviewWhitelisted ? "取消 AI 白名单" : "设为 AI 白名单" }}</el-dropdown-item>
+                <el-dropdown-item command="anonymity">匿名额度</el-dropdown-item>
                 <el-dropdown-item v-if="!row.studentSso" command="password">重置密码</el-dropdown-item>
                 <el-dropdown-item v-if="row.id !== auth.user?.id" command="delete" divided>删除用户</el-dropdown-item>
               </el-dropdown-menu>
@@ -242,6 +253,28 @@
         <el-button type="primary" :loading="roleSaving" @click="submitRoleChange">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="anonymityDialogOpen" title="匿名额度管理" width="440" append-to-body>
+      <el-form label-position="top">
+        <el-form-item label="用户">
+          <div class="dlg-tip">{{ anonymityTarget?.nickname }}（{{ anonymityTarget?.username }}）</div>
+        </el-form-item>
+        <el-form-item label="当前信誉值">
+          <div class="dlg-tip">{{ anonymityTarget?.reputation ?? 0 }}</div>
+        </el-form-item>
+        <el-form-item label="本周剩余匿名积分">
+          <el-input-number v-model="anonymityCredits" :min="0" :max="20" style="width:100%" />
+        </el-form-item>
+        <el-form-item label="冻结匿名积分">
+          <el-switch v-model="anonymityFrozen" />
+        </el-form-item>
+        <div class="dlg-tip">周额度会按信誉值自动刷新；这里调整的是当前周可用积分与冻结状态。</div>
+      </el-form>
+      <template #footer>
+        <el-button @click="anonymityDialogOpen = false">取消</el-button>
+        <el-button type="primary" :loading="anonymitySaving" @click="submitAnonymityChange">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -275,6 +308,11 @@ const roleDialogOpen = ref(false);
 const roleSaving = ref(false);
 const roleDialogTarget = ref<any | null>(null);
 const selectedRole = ref<"user" | "mod" | "admin" | "bot">("user");
+const anonymityDialogOpen = ref(false);
+const anonymitySaving = ref(false);
+const anonymityTarget = ref<any | null>(null);
+const anonymityCredits = ref(0);
+const anonymityFrozen = ref(false);
 const createForm = reactive({
   username: "",
   password: "",
@@ -398,6 +436,7 @@ function clientTagType(client?: string | null): "success" | "warning" | "info" |
 function handleCommand(command: string, row: any) {
   if (command === "role") return changeRole(row);
   if (command === "whitelist") return toggleAiWhitelist(row);
+  if (command === "anonymity") return changeAnonymity(row);
   if (command === "password") return resetPw(row);
   if (command === "delete") return deleteUser(row);
 }
@@ -421,6 +460,13 @@ async function changeRole(row: any) {
   roleDialogOpen.value = true;
 }
 
+function changeAnonymity(row: any) {
+  anonymityTarget.value = row;
+  anonymityCredits.value = row.anonymousState?.availableCredits ?? row.anonymousCredits ?? 0;
+  anonymityFrozen.value = Boolean(row.anonymousState?.frozen ?? row.anonymousCreditsFrozen);
+  anonymityDialogOpen.value = true;
+}
+
 async function submitRoleChange() {
   if (!roleDialogTarget.value) return;
   roleSaving.value = true;
@@ -431,6 +477,22 @@ async function submitRoleChange() {
     await reload();
   } finally {
     roleSaving.value = false;
+  }
+}
+
+async function submitAnonymityChange() {
+  if (!anonymityTarget.value) return;
+  anonymitySaving.value = true;
+  try {
+    const patch = await adminApi.updateUser(anonymityTarget.value.id, {
+      anonymousCredits: Number(anonymityCredits.value || 0),
+      anonymousCreditsFrozen: anonymityFrozen.value,
+    });
+    applyUserUpdate(anonymityTarget.value, patch);
+    anonymityDialogOpen.value = false;
+    ElMessage.success("已更新匿名额度");
+  } finally {
+    anonymitySaving.value = false;
   }
 }
 
@@ -506,6 +568,9 @@ async function deleteUser(row: any) {
 .login-flags { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-width: 0; }
 .login-time { font-size: 12px; color: #4b5563; }
 .login-empty { font-size: 12px; color: #9ca3af; }
+.anon-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.anon-main { font-size: 13px; font-weight: 600; color: #111827; }
+.anon-sub { font-size: 12px; color: #6b7280; }
 .content-count,
 .muted-date { font-size: 12px; color: #4b5563; }
 .forum-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }

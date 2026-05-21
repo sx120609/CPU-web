@@ -27,6 +27,7 @@ import {
   resolveTopicManualReviewAdminNotifications,
 } from "../../services/topicAiReview";
 import { parseMutedUntil, releaseExpiredMutes } from "../../services/userModeration";
+import { buildUserTrustSnapshot, currentAnonymousWeekKey, freezeAnonymousCredits } from "../../services/userTrust";
 
 export const adminRouter = Router();
 
@@ -97,6 +98,7 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
           mutedUntil: true,
           postCount: true, replyCount: true, reputation: true,
           forumEnabled: true, forumEnabledAt: true,
+          anonymousCredits: true, anonymousWeekKey: true, anonymousCreditsFrozen: true,
           aiReviewWhitelisted: true,
           lastSeenAt: true, lastLoginAt: true, lastLoginClient: true, usedIosClient: true, usedAndroidClient: true,
           createdAt: true,
@@ -104,7 +106,20 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
       }),
       prisma.user.count({ where }),
     ]);
-    ok(res, { page, size, total, list });
+    ok(res, {
+      page,
+      size,
+      total,
+      list: list.map((user) => {
+        const trust = buildUserTrustSnapshot(user as any);
+        return {
+          ...user,
+          reputation: trust.reputation,
+          reputationBreakdown: trust.reputationBreakdown,
+          anonymousState: trust.anonymousState,
+        };
+      }),
+    });
   } catch (e) { next(e); }
 });
 
@@ -114,6 +129,8 @@ const userPatchSchema = z.object({
   nickname: z.string().min(1).max(20).optional(),
   aiReviewWhitelisted: z.boolean().optional(),
   mutedUntil: z.string().trim().max(64).nullable().optional(),
+  anonymousCredits: z.number().int().min(0).max(20).optional(),
+  anonymousCreditsFrozen: z.boolean().optional(),
 });
 
 adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (req, res, next) => {
@@ -130,9 +147,24 @@ adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (re
     if (req.body.aiReviewWhitelisted !== undefined && req.user!.role !== "admin") {
       throw Errors.forbidden("仅管理员可修改 AI 审核白名单");
     }
+    if ((req.body.anonymousCredits !== undefined || req.body.anonymousCreditsFrozen !== undefined) && req.user!.role !== "admin") {
+      throw Errors.forbidden("仅管理员可调整匿名积分");
+    }
     const current = await prisma.user.findUnique({
       where: { id },
-      select: { id: true, status: true, mutedUntil: true },
+      select: {
+        id: true,
+        status: true,
+        mutedUntil: true,
+        createdAt: true,
+        postCount: true,
+        replyCount: true,
+        forumEnabled: true,
+        forumEnabledAt: true,
+        anonymousCredits: true,
+        anonymousWeekKey: true,
+        anonymousCreditsFrozen: true,
+      },
     });
     if (!current) throw Errors.notFound("用户不存在");
 
@@ -140,6 +172,14 @@ adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (re
     if (req.body.role !== undefined) data.role = req.body.role;
     if (req.body.nickname !== undefined) data.nickname = req.body.nickname;
     if (req.body.aiReviewWhitelisted !== undefined) data.aiReviewWhitelisted = req.body.aiReviewWhitelisted;
+    if (req.body.anonymousCredits !== undefined) {
+      data.anonymousCredits = req.body.anonymousCredits;
+      data.anonymousWeekKey = currentAnonymousWeekKey();
+    }
+    if (req.body.anonymousCreditsFrozen !== undefined) {
+      data.anonymousCreditsFrozen = req.body.anonymousCreditsFrozen;
+      if (req.body.anonymousCreditsFrozen) data.anonymousCredits = 0;
+    }
 
     const parsedMutedUntil = parseMutedUntil(req.body.mutedUntil);
     if (req.body.status !== undefined || req.body.mutedUntil !== undefined) {
@@ -155,9 +195,14 @@ adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (re
         data.status = nextStatus;
         data.mutedUntil = null;
       }
+      if (nextStatus === "muted" || nextStatus === "banned") {
+        data.anonymousCreditsFrozen = true;
+        data.anonymousCredits = 0;
+      }
     }
 
     const u = await prisma.user.update({ where: { id }, data });
+    const trust = buildUserTrustSnapshot(u as any);
     ok(res, {
       id: u.id,
       role: u.role,
@@ -165,6 +210,10 @@ adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (re
       mutedUntil: u.mutedUntil,
       nickname: u.nickname,
       aiReviewWhitelisted: u.aiReviewWhitelisted,
+      anonymousCredits: u.anonymousCredits,
+      anonymousCreditsFrozen: u.anonymousCreditsFrozen,
+      anonymousState: trust.anonymousState,
+      reputation: trust.reputation,
     });
   } catch (e) { next(e); }
 });
@@ -444,6 +493,7 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
         boardId: true,
         title: true,
         hidden: true,
+        isAnonymous: true,
         aiReviewStatus: true,
         pinned: true,
         locked: true,
@@ -508,6 +558,9 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
     }
     if (req.body.aiReviewStatus) {
       await refreshTopicSubmissionLock(u.authorId);
+      if (req.body.aiReviewStatus === "rejected_manual" && existing.isAnonymous) {
+        await freezeAnonymousCredits(u.authorId);
+      }
       if (req.body.aiReviewStatus === "approved_manual" || req.body.aiReviewStatus === "rejected_manual") {
         await notifyManualReviewDecision({
           topicId: u.id,
@@ -570,7 +623,7 @@ adminRouter.patch("/replies/:id", modOrAbove, validate(replyPatchSchema), async 
     const id = Number(req.params.id);
     const existing = await prisma.reply.findUnique({
       where: { id },
-      select: { id: true, topicId: true, authorId: true, content: true, hidden: true, floor: true, aiReviewStatus: true, createdAt: true },
+      select: { id: true, topicId: true, authorId: true, content: true, hidden: true, floor: true, isAnonymous: true, aiReviewStatus: true, createdAt: true },
     });
     if (!existing) throw Errors.notFound("回复不存在");
     const data: any = {};
@@ -610,6 +663,9 @@ adminRouter.patch("/replies/:id", modOrAbove, validate(replyPatchSchema), async 
       }).catch(() => {});
     }
     if (req.body.aiReviewStatus === "approved_manual" || req.body.aiReviewStatus === "rejected_manual") {
+      if (req.body.aiReviewStatus === "rejected_manual" && existing.isAnonymous) {
+        await freezeAnonymousCredits(updated.authorId);
+      }
       await notifyManualReplyReviewDecision({
         replyId: updated.id,
         topicId: updated.topicId,
@@ -657,6 +713,7 @@ const boardCreateSchema = z.object({
   color: z.string().trim().max(20).optional(),
   order: z.number().int().min(0).max(9999).optional(),
   type: boardTypeSchema,
+  anonymousEnabled: z.boolean().optional(),
 });
 
 adminRouter.post("/boards", adminOnly, validate(boardCreateSchema), async (req, res, next) => {
@@ -670,6 +727,7 @@ adminRouter.post("/boards", adminOnly, validate(boardCreateSchema), async (req, 
         color: req.body.color || null,
         order: req.body.order ?? 0,
         type: req.body.type,
+        anonymousEnabled: req.body.anonymousEnabled ?? false,
         readOnly: false,
       },
     });
@@ -685,6 +743,7 @@ const boardPatchSchema = z.object({
   color: z.string().trim().max(20).optional(),
   order: z.number().int().min(0).max(9999).optional(),
   type: boardTypeSchema.optional(),
+  anonymousEnabled: z.boolean().optional(),
 });
 
 adminRouter.patch("/boards/:id", adminOnly, validate(boardPatchSchema), async (req, res, next) => {
@@ -705,6 +764,7 @@ adminRouter.patch("/boards/:id", adminOnly, validate(boardPatchSchema), async (r
         color: req.body.color,
         order: req.body.order,
         type: req.body.type,
+        anonymousEnabled: req.body.anonymousEnabled,
       },
     });
     ok(res, updated);

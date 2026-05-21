@@ -9,6 +9,7 @@ import { enabledBoardTypes } from "../services/siteSettings";
 import { FORUM_CONFIRM_TEXT, resolveForumAccess } from "../services/forumAccess";
 import { releaseExpiredMutes } from "../services/userModeration";
 import { buildPublicUser, buildSelfUser } from "../utils/publicUser";
+import { decodeTopicForViewer } from "../services/forumPresentation";
 
 export const userRouter = Router();
 
@@ -89,23 +90,22 @@ userRouter.get("/:id/topics", async (req, res, next) => {
     const id = Number(req.params.id);
     const forumAccessEnabled = await resolveForumAccess(req.user?.userId, req.user?.role);
     if (!forumAccessEnabled) return ok(res, []);
+    const canSeeAnonymous = req.user?.userId === id || req.user?.role === "admin" || req.user?.role === "mod";
     const list = await prisma.topic.findMany({
-      where: { authorId: id, hidden: false, board: { type: { in: enabledBoardTypes() } } },
+      where: {
+        authorId: id,
+        hidden: false,
+        board: { type: { in: enabledBoardTypes() } },
+        ...(canSeeAnonymous ? {} : { isAnonymous: false }),
+      },
       orderBy: { createdAt: "desc" },
       take: 30,
-      include: { board: { select: { slug: true, name: true } }, tags: { include: { tag: true } } },
+      include: {
+        board: { select: { slug: true, name: true, color: true, type: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+        tags: { include: { tag: true } },
+      },
     });
-    ok(res, list.map((topic: any) => ({
-      ...topic,
-      metadata: safeJson(topic.metadata),
-      tags: Array.isArray(topic.tags)
-        ? topic.tags.map((item: any) => item?.tag ? { id: item.tag.id, name: item.tag.name } : item).filter((item: any) => item?.name)
-        : [],
-    })));
+    ok(res, list.map((topic: any) => decodeTopicForViewer(topic, req.user)));
   } catch (e) { next(e); }
 });
-
-function safeJson(s: string | null | undefined) {
-  if (!s) return {};
-  try { return JSON.parse(s); } catch { return {}; }
-}

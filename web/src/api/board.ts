@@ -10,6 +10,7 @@ export interface Board {
   order: number;
   type: "normal" | "announce" | "market" | "question" | "coursereview";
   readOnly: boolean;
+  anonymousEnabled: boolean;
   topicCount: number;
   feedSource?: { name: string; homepage: string; lastRunAt?: string; enabled: boolean };
 }

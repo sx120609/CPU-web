@@ -10,7 +10,6 @@ import {
   featureForBoardType,
   getSiteConfig,
   isBoardTypeEnabled,
-  isGlobalPinnedTopic,
   isFeatureOn,
   removeTopicFromGlobalPins,
   setTopicGlobalPinned,
@@ -30,7 +29,8 @@ import {
 } from "../services/topicAiReview";
 import { ensureCanReadBoardType, ensureForumAccessEnabled, resolveForumAccess } from "../services/forumAccess";
 import { ensureUserCanSpeak, releaseExpiredMutes } from "../services/userModeration";
-import { buildUserPreview } from "../utils/publicUser";
+import { consumeAnonymousCredit, createAnonymousAlias } from "../services/userTrust";
+import { decodeReplyForViewer, decodeTopicForViewer } from "../services/forumPresentation";
 
 export const topicRouter = Router();
 
@@ -90,7 +90,7 @@ topicRouter.get("/", async (req, res, next) => {
 
     ok(res, {
       page, size, total,
-      list: list.map((item) => decodeTopic(item, req.user)),
+      list: list.map((item) => decodeTopicForViewer(item, req.user)),
     });
   } catch (e) { next(e); }
 });
@@ -105,7 +105,7 @@ topicRouter.get("/:id", async (req, res, next) => {
       where: { id },
       include: {
         author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, bio: true, status: true, mutedUntil: true } },
-        board: { select: { id: true, slug: true, name: true, type: true, readOnly: true } },
+        board: { select: { id: true, slug: true, name: true, type: true, readOnly: true, anonymousEnabled: true } },
         tags: { include: { tag: true } },
       },
     });
@@ -116,7 +116,7 @@ topicRouter.get("/:id", async (req, res, next) => {
     await ensureCanReadBoardType(topic.board?.type, requesterId, requesterRole);
     // 浏览数 +1（异步，失败也无所谓）
     if (!topic.hidden) prisma.topic.update({ where: { id }, data: { viewCount: { increment: 1 } } }).catch(() => {});
-    ok(res, decodeTopic(topic, req.user));
+    ok(res, decodeTopicForViewer(topic, req.user));
   } catch (e) { next(e); }
 });
 
@@ -126,12 +126,13 @@ const createSchema = z.object({
   content: z.string().min(1).max(20000),
   metadata: z.record(z.any()).optional(),
   tags: z.array(z.string().max(20)).optional(),
+  anonymous: z.boolean().optional(),
 });
 
 topicRouter.post("/", authRequired, validate(createSchema), async (req, res, next) => {
   try {
     const userId = req.user!.userId;
-    const { boardSlug, title, content, metadata, tags } = req.body;
+    const { boardSlug, title, content, metadata, tags, anonymous = false } = req.body;
     await ensureForumAccessEnabled(userId, req.user!.role);
     await ensureUserCanSpeak(userId);
     await ensureUserCanSubmitTopic(userId);
@@ -148,6 +149,9 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
         throw Errors.forbidden("该板块当前不可发帖，已被站方临时关闭");
       }
     }
+    if (anonymous && !board.anonymousEnabled) {
+      throw Errors.forbidden("该板块暂不支持匿名发布");
+    }
 
     const now = new Date();
     const bypassAiReview = await shouldBypassAiReviewForUser(userId, req.user!.role);
@@ -163,24 +167,37 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       : null;
     const hiddenByAi = aiResult?.status === "blocked_ai";
     const manualLocked = aiResult?.riskLevel === "medium" || aiResult?.riskScore === undefined ? false : false;
-    const topic = await prisma.topic.create({
-      data: {
-        boardId: board.id,
-        authorId: userId,
-        title,
-        content,
-        metadata: JSON.stringify(metadata ?? {}),
-        aiReviewStatus: aiResult?.status ?? "auto_passed",
-        aiRiskLevel: aiResult?.riskLevel ?? "low",
-        aiRiskScore: aiResult?.riskScore ?? 0,
-        aiReviewReason: aiResult?.reason ?? "",
-        aiReviewDetail: aiResult?.detail ?? "",
-        aiModel: aiResult?.model ?? null,
-        aiReviewedAt: aiResult ? now : null,
-        hidden: hiddenByAi,
-        lastReplyAt: now,
-        lastReplyById: userId,
-      },
+    const anonymousAlias = anonymous ? createAnonymousAlias() : null;
+    const topic = await prisma.$transaction(async (tx) => {
+      if (anonymous) {
+        await consumeAnonymousCredit(userId, tx);
+      }
+      const created = await tx.topic.create({
+        data: {
+          boardId: board.id,
+          authorId: userId,
+          title,
+          content,
+          metadata: JSON.stringify(metadata ?? {}),
+          aiReviewStatus: aiResult?.status ?? "auto_passed",
+          aiRiskLevel: aiResult?.riskLevel ?? "low",
+          aiRiskScore: aiResult?.riskScore ?? 0,
+          aiReviewReason: aiResult?.reason ?? "",
+          aiReviewDetail: aiResult?.detail ?? "",
+          aiModel: aiResult?.model ?? null,
+          aiReviewedAt: aiResult ? now : null,
+          hidden: hiddenByAi,
+          lastReplyAt: now,
+          lastReplyById: userId,
+          isAnonymous: anonymous,
+          anonymousAlias,
+        },
+      });
+      if (!hiddenByAi) {
+        await tx.user.update({ where: { id: userId }, data: { postCount: { increment: 1 } } });
+        await tx.board.update({ where: { id: board.id }, data: { topicCount: { increment: 1 } } });
+      }
+      return created;
     });
 
     if (tags?.length) {
@@ -258,10 +275,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       await refreshCourseStats(courseId);
     }
 
-    if (!hiddenByAi) {
-      await prisma.user.update({ where: { id: userId }, data: { postCount: { increment: 1 } } });
-      await prisma.board.update({ where: { id: board.id }, data: { topicCount: { increment: 1 } } });
-    } else if (aiResult) {
+    if (hiddenByAi && aiResult) {
       await notifyTopicAiBlocked({
         topicId: topic.id,
         userId,
@@ -272,7 +286,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     }
 
     ok(res, {
-      ...decodeTopic(topicWithTags ?? { ...topic, board: { slug: board.slug, name: board.name, type: board.type }, tags: [] }, req.user),
+      ...decodeTopicForViewer(topicWithTags ?? { ...topic, board: { slug: board.slug, name: board.name, type: board.type }, tags: [] }, req.user),
       submissionResult: hiddenByAi
         ? {
             status: "blocked_ai",
@@ -355,11 +369,11 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
           content: nextContent,
           boardName: boardInfo?.name,
           boardType: boardInfo?.type,
-          metadata: typeof body.metadata === "object" && body.metadata ? body.metadata : safeJson(t.metadata),
+          metadata: typeof body.metadata === "object" && body.metadata ? body.metadata : parseJsonSafe(t.metadata),
         });
         if (aiResult.status === "blocked_ai") {
           return ok(res, {
-            ...decodeTopic(t, req.user),
+            ...decodeTopicForViewer(t, req.user),
             submissionResult: {
               status: "blocked_ai",
               riskLevel: aiResult.riskLevel,
@@ -382,7 +396,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
         content: nextContent,
         boardName: boardInfo?.name,
         boardType: boardInfo?.type,
-        metadata: typeof body.metadata === "object" && body.metadata ? body.metadata : safeJson(t.metadata),
+        metadata: typeof body.metadata === "object" && body.metadata ? body.metadata : parseJsonSafe(t.metadata),
       }).catch(() => [] as string[]);
       data.__aiTags = aiTags;
     }
@@ -429,7 +443,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
       },
     });
     ok(res, {
-      ...decodeTopic(topicWithTags ?? u, req.user),
+      ...decodeTopicForViewer(topicWithTags ?? u, req.user),
       submissionResult: { status: "published" },
     });
   } catch (e) { next(e); }
@@ -481,31 +495,10 @@ topicRouter.get("/:id/replies", async (req, res, next) => {
         author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
       },
     });
-    ok(res, list.map((item) => decodeReply(item, req.user)));
+    ok(res, list.map((item) => decodeReplyForViewer(item, req.user)));
   } catch (e) { next(e); }
 });
-
-function decodeTopic(t: any, viewer?: { userId?: number | null; role?: string | null }) {
-  return {
-    ...t,
-    globalPinned: isGlobalPinnedTopic(Number(t.id)),
-    author: buildUserPreview(t.author, viewer),
-    metadata: safeJson(t.metadata),
-    tags: Array.isArray(t.tags)
-      ? t.tags
-          .map((item: any) => item?.tag ? { id: item.tag.id, name: item.tag.name } : item)
-          .filter((item: any) => item?.name)
-      : [],
-  };
-}
-
-function decodeReply(reply: any, viewer?: { userId?: number | null; role?: string | null }) {
-  return {
-    ...reply,
-    author: buildUserPreview(reply.author, viewer),
-  };
-}
-function safeJson(s: string | null | undefined) {
+function parseJsonSafe(s: string | null | undefined) {
   if (!s) return {};
   try { return JSON.parse(s); } catch { return {}; }
 }

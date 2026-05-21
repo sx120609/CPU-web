@@ -24,6 +24,7 @@
         <template #default="{ row }">
           <el-tag v-if="row.readOnly || row.feedSourceId" type="warning" size="small">公告同步</el-tag>
           <el-tag v-else type="success" size="small">可维护</el-tag>
+          <el-tag v-if="row.anonymousEnabled" type="info" size="small" effect="plain">支持匿名</el-tag>
           <span class="topic-count">{{ row.topicCount }} 帖</span>
         </template>
       </el-table-column>
@@ -48,6 +49,7 @@
           <span>#{{ row.order }} · {{ row.slug }}</span>
           <span>{{ row.type }}</span>
           <span>{{ row.topicCount }} 帖</span>
+          <span v-if="row.anonymousEnabled">支持匿名</span>
         </div>
         <div class="board-actions">
           <el-button plain size="small" :disabled="row.readOnly || row.feedSourceId" @click="openEdit(row)">编辑</el-button>
@@ -88,6 +90,10 @@
             </el-select>
           </el-form-item>
         </div>
+        <el-form-item label="匿名机制">
+          <el-switch v-model="form.anonymousEnabled" />
+          <span class="anonymous-switch-note">开启后，该板块可消耗用户每周匿名积分进行匿名发帖 / 回复。</span>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogOpen = false">取消</el-button>
@@ -116,6 +122,7 @@ const form = reactive({
   color: "",
   order: 0,
   type: "normal" as "normal" | "question" | "market" | "coursereview",
+  anonymousEnabled: false,
 });
 
 onMounted(reload);
@@ -139,6 +146,7 @@ function openCreate() {
     color: "",
     order: 0,
     type: "normal",
+    anonymousEnabled: false,
   });
   dialogOpen.value = true;
 }
@@ -153,6 +161,7 @@ function openEdit(row: any) {
     color: row.color || "",
     order: row.order ?? 0,
     type: row.type,
+    anonymousEnabled: Boolean(row.anonymousEnabled),
   });
   dialogOpen.value = true;
 }
@@ -170,6 +179,7 @@ async function submitBoard() {
       color: form.color.trim() || undefined,
       order: Number(form.order || 0),
       type: form.type,
+      anonymousEnabled: form.anonymousEnabled,
     };
     if (editingId.value) await adminApi.updateBoard(editingId.value, payload);
     else await adminApi.createBoard(payload);
@@ -207,6 +217,7 @@ async function removeBoard(row: any) {
 .topic-count { margin-left: 8px; font-size: 12px; color: #9ca3af; }
 .mobile-list { display: none; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.anonymous-switch-note { margin-left: 10px; color: #6b7280; font-size: 12px; }
 
 @media (max-width: 768px) {
   .admin-table { display: none; }
