@@ -5,6 +5,7 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { errorHandler } from "./middleware/error";
 import { router } from "./routes";
+import { shareRouter } from "./routes/share";
 import { isDev } from "./config";
 
 export function createApp() {
@@ -21,6 +22,7 @@ export function createApp() {
     res.json({ code: 0, data: { ok: true, ts: Date.now() }, message: "" });
   });
 
+  app.use("/share", shareRouter);
   app.use("/api", router);
 
   app.use("/api/*", (_req, res) => {

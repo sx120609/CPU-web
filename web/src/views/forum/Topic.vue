@@ -98,6 +98,7 @@
           {{ liked ? '已点赞' : '点赞' }} · {{ topic.likeCount }}
         </el-button>
         <el-button :icon="ChatLineRound" @click="openReplyDialog">回复 · {{ topic.replyCount }}</el-button>
+        <el-button @click="shareDialogOpen = true">分享</el-button>
       </footer>
     </article>
 
@@ -167,7 +168,26 @@
       </div>
     </el-dialog>
 
-    <div v-else-if="auth.isLoggedIn && !topic.locked && auth.user?.status === 'muted'" class="locked-tip cpu-card">
+    <el-dialog
+      v-model="shareDialogOpen"
+      title="分享帖子"
+      width="420px"
+      append-to-body
+      class="share-dialog"
+    >
+      <div class="share-panel">
+        <p class="share-copy">分享链接会先进入分享卡片页，再自动打开原帖，方便 QQ / 微信抓取预览。</p>
+        <div class="share-link">{{ shareLandingUrl }}</div>
+        <div class="share-actions">
+          <el-button v-if="canUseNativeShare" type="primary" @click="shareViaSystem">系统分享</el-button>
+          <el-button @click="copyShareLink">复制链接</el-button>
+          <el-button @click="openQqShare">分享到 QQ</el-button>
+          <el-button @click="shareToWechat">微信使用说明</el-button>
+        </div>
+      </div>
+    </el-dialog>
+
+    <div v-if="auth.isLoggedIn && !topic.locked && auth.user?.status === 'muted'" class="locked-tip cpu-card">
       {{ currentMuteMessage }}
     </div>
 
@@ -215,6 +235,7 @@ import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDia
 import { topicApi, replyApi, likeApi, type Topic, type Reply } from "@/api/topic";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate, fmtRelative } from "@/utils/format";
+import { copyText } from "@/utils/userGroup";
 
 const route = useRoute();
 const router = useRouter();
@@ -227,6 +248,7 @@ const replying = ref(false);
 const replyText = ref("");
 const replyAnonymous = ref(false);
 const replyDialogOpen = ref(false);
+const shareDialogOpen = ref(false);
 const replyReviewBlockedOpen = ref(false);
 const requestingReplyManualReview = ref(false);
 const replyManualReviewConfirmOpen = ref(false);
@@ -276,6 +298,12 @@ const canEdit = computed(() =>
 const canPin = computed(() => auth.isMod);
 const replyDraftKey = computed(() => topic.value?.id ? `cpu-reply-draft-${topic.value.id}` : "");
 const currentMuteMessage = computed(() => auth.user?.mutedUntil ? `你已被禁言至 ${fmtDate(auth.user.mutedUntil)}` : "你当前已被禁言，暂时无法回复");
+const shareLandingUrl = computed(() => topic.value ? new URL(`/share/topic/${topic.value.id}`, window.location.origin).toString() : "");
+const shareSummary = computed(() => {
+  const raw = stripTextForShare(displayContent.value || topic.value?.content || "");
+  return raw ? raw.slice(0, 80) : `来自 ${topic.value?.board?.name || "药大垎坊"} 的帖子`;
+});
+const canUseNativeShare = computed(() => typeof navigator !== "undefined" && typeof navigator.share === "function");
 const displayContent = computed(() => {
   const content = topic.value?.content ?? "";
   if (!topic.value?.metadata?.sourceUrl) return content;
@@ -422,6 +450,51 @@ async function confirmReplyManualReviewRequest() {
 
 function escapeHtml(value: string) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function stripTextForShare(value: string) {
+  return value
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function shareViaSystem() {
+  if (!topic.value || typeof navigator === "undefined" || typeof navigator.share !== "function") return;
+  try {
+    await navigator.share({
+      title: topic.value.title,
+      text: shareSummary.value,
+      url: shareLandingUrl.value,
+    });
+    shareDialogOpen.value = false;
+  } catch (error: any) {
+    if (error?.name === "AbortError") return;
+    ElMessage.error("系统分享暂时不可用，请改用复制链接");
+  }
+}
+
+async function copyShareLink() {
+  if (!shareLandingUrl.value) return;
+  await copyText(shareLandingUrl.value);
+  ElMessage.success("已复制分享链接");
+}
+
+function openQqShare() {
+  if (!topic.value || !shareLandingUrl.value) return;
+  const params = new URLSearchParams({
+    url: shareLandingUrl.value,
+    title: topic.value.title,
+    summary: shareSummary.value,
+    desc: shareSummary.value,
+  });
+  window.open(`https://connect.qq.com/widget/shareqq/index.html?${params.toString()}`, "_blank", "noopener,noreferrer");
+}
+
+async function shareToWechat() {
+  if (!shareLandingUrl.value) return;
+  await copyText(shareLandingUrl.value);
+  ElMessage.success("已复制链接，请在微信中粘贴发送，或使用右上角转发");
 }
 
 function stripCrawlerSourceHeader(content: string) {
@@ -680,6 +753,36 @@ async function onDelete() {
   margin-top: 16px;
 }
 
+.share-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.share-copy {
+  margin: 0;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.share-link {
+  padding: 12px;
+  border-radius: 12px;
+  background: #f7f8fb;
+  border: 1px solid #eceff3;
+  color: #1f2937;
+  font-size: 12px;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.share-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
 .locked-tip, .login-tip {
   text-align: center;
   color: #6b7280;
@@ -782,7 +885,7 @@ async function onDelete() {
 
     .post-foot {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
   }
 
@@ -806,6 +909,10 @@ async function onDelete() {
 
   .reply-form-actions .el-button {
     width: 100%;
+  }
+
+  .share-actions {
+    grid-template-columns: 1fr;
   }
 
   .reply-anonymous-box {
