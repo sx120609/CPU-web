@@ -28,7 +28,7 @@ export interface Topic {
   updatedAt: string;
   author?: { id: number | null; nickname: string; username?: string; avatar?: string | null; role: string; bio?: string; status?: string; mutedUntil?: string | null; anonymous?: boolean };
   realAuthor?: { id: number; nickname: string; username?: string; avatar?: string | null; role: string; bio?: string; status?: string; mutedUntil?: string | null; reputation?: number; reputationLevel?: { level: number; name: string; minReputation: number } };
-  board?: { id?: number; slug: string; name: string; color?: string; type?: string; readOnly?: boolean; anonymousEnabled?: boolean };
+  board?: { id?: number; slug: string; name: string; color?: string; icon?: string; type?: string; readOnly?: boolean; anonymousEnabled?: boolean };
 }
 
 export interface Reply {

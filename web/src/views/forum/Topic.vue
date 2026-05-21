@@ -211,12 +211,39 @@
       append-to-body
       class="share-card-dialog"
     >
-      <div class="share-card-panel">
-        <img :src="shareCardImageUrl" alt="分享卡片" class="share-card-image" />
+      <div class="share-card-panel" ref="shareCardRef">
+        <div class="share-card-dom">
+          <div class="share-card-top">
+            <div class="share-card-icon" :style="{ background: shareCardAccent }">
+              {{ topic?.board?.icon || "💬" }}
+            </div>
+            <div class="share-card-meta">
+              <div class="share-card-board">{{ topic?.board?.name || "药大垎坊" }}</div>
+              <div class="share-card-subtitle">{{ shareCardSubtitle }}</div>
+              <div class="share-card-stats">{{ shareCardStats }}</div>
+            </div>
+          </div>
+          <div class="share-card-hero" :style="{ background: shareCardSoftBg }">
+            <div class="share-card-hero-orb" :style="{ background: shareCardSoftOrb }"></div>
+            <div class="share-card-hero-line" :style="{ background: shareCardSoftLine }"></div>
+            <h3 class="share-card-title">{{ topic?.title }}</h3>
+            <p class="share-card-subcopy">{{ shareCardSubtitle }}</p>
+          </div>
+          <div class="share-card-bottom">
+            <div class="share-card-brand">
+              <div class="share-card-brand-title">药大垎坊</div>
+              <div class="share-card-brand-copy">扫描二维码，直接打开原帖</div>
+              <div class="share-card-brand-host">cpu.lizmt.cn</div>
+            </div>
+            <div class="share-card-qr-box">
+              <img :src="shareCardQrDataUrl" alt="分享二维码" class="share-card-qr" />
+            </div>
+          </div>
+        </div>
         <div class="share-card-actions">
-          <a :href="shareCardImageUrl" :download="shareCardDownloadName" class="share-card-save-link">
+          <button type="button" class="share-card-save-link" :disabled="shareCardSaving" @click="saveShareCardAsPng">
             保存图片
-          </a>
+          </button>
         </div>
       </div>
     </el-dialog>
@@ -260,6 +287,7 @@ import { ref, reactive, computed, onMounted, nextTick, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { AxiosError } from "axios";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { toPng } from "html-to-image";
 import { ArrowLeft, Star, ChatLineRound, Link } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import UserModerationActions from "@/components/common/UserModerationActions.vue";
@@ -286,6 +314,7 @@ const editingReplyId = ref<number | null>(null);
 const shareDialogOpen = ref(false);
 const copyShareDialogOpen = ref(false);
 const shareCardDialogOpen = ref(false);
+const shareCardSaving = ref(false);
 const replyReviewBlockedOpen = ref(false);
 const requestingReplyManualReview = ref(false);
 const replyManualReviewConfirmOpen = ref(false);
@@ -297,6 +326,7 @@ const blockedReplyInfo = reactive<{ reason: string; riskScore: number | null }>(
 const liked = ref(false);
 const repliesEl = ref<HTMLElement | null>(null);
 const replyEditorRef = ref<InstanceType<typeof RichTextEditor> | null>(null);
+const shareCardRef = ref<HTMLElement | null>(null);
 const REPLY_MAX = 10000;
 
 const metaPrice = computed(() => topic.value?.metadata?.price);
@@ -357,10 +387,23 @@ const canUseNativeShare = computed(() => (
   typeof navigator !== "undefined" &&
   typeof navigator.share === "function"
 ));
-const shareCardImageUrl = computed(() => topic.value ? new URL(`/share/topic/${topic.value.id}/card.png`, window.location.origin).toString() : "");
 const shareCardDownloadName = computed(() => {
   const safeTitle = (topic.value?.title || "分享卡片").replace(/[\\/:*?"<>|]/g, "_").slice(0, 40);
   return `${safeTitle || "分享卡片"}-cpu-share.png`;
+});
+const shareCardAccent = computed(() => topic.value?.board?.color || "#168776");
+const shareCardSoftBg = computed(() => `linear-gradient(135deg, ${hexToRgba(shareCardAccent.value, 0.08)} 0%, #f7fbff 100%)`);
+const shareCardSoftOrb = computed(() => hexToRgba(shareCardAccent.value, 0.13));
+const shareCardSoftLine = computed(() => hexToRgba(shareCardAccent.value, 0.22));
+const shareCardSubtitle = computed(() => {
+  const board = topic.value?.board?.name || "药大垎坊";
+  const author = topic.value?.author?.nickname || "同学";
+  return `${board} · ${author}`;
+});
+const shareCardStats = computed(() => `${topic.value?.replyCount ?? 0} 条回复 · ${topic.value?.viewCount ?? 0} 浏览`);
+const shareCardQrDataUrl = computed(() => {
+  if (!topic.value) return "";
+  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(shareLandingUrl.value)}`;
 });
 const displayContent = computed(() => {
   const content = topic.value?.content ?? "";
@@ -600,8 +643,30 @@ async function copyShareTitleAndLink() {
 }
 
 function openShareCard() {
-  if (!shareCardImageUrl.value) return;
   shareCardDialogOpen.value = true;
+}
+
+async function saveShareCardAsPng() {
+  if (!shareCardRef.value) return;
+  shareCardSaving.value = true;
+  try {
+    const dataUrl = await toPng(shareCardRef.value, {
+      cacheBust: true,
+      pixelRatio: 2,
+      backgroundColor: "#ffffff",
+    });
+    const link = document.createElement("a");
+    link.href = dataUrl;
+    link.download = shareCardDownloadName.value;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    ElMessage.success("图片已开始保存");
+  } catch {
+    ElMessage.error("保存图片失败，请稍后重试");
+  } finally {
+    shareCardSaving.value = false;
+  }
 }
 
 function stripCrawlerSourceHeader(content: string) {
@@ -618,6 +683,17 @@ function isIosDevice() {
     || ua.includes("ipad")
     || ua.includes("ipod")
     || (ua.includes("macintosh") && navigator.maxTouchPoints > 1);
+}
+
+function hexToRgba(hex: string, alpha: number) {
+  const normalized = hex.trim();
+  if (!/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(normalized)) return `rgba(22, 135, 118, ${alpha})`;
+  const raw = normalized.slice(1);
+  const full = raw.length === 3 ? raw.split("").map((ch) => ch + ch).join("") : raw;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 function onEdit() {
@@ -954,12 +1030,159 @@ async function onDelete() {
   justify-content: center;
   min-height: 44px;
   padding: 0 14px;
+  border: none;
   border-radius: 14px;
   background: var(--cpu-primary);
   color: #fff;
-  text-decoration: none;
   font-size: 14px;
   font-weight: 700;
+  cursor: pointer;
+}
+
+.share-card-save-link:disabled {
+  opacity: 0.66;
+  cursor: wait;
+}
+
+.share-card-dom {
+  padding: 24px;
+  border-radius: 24px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border: 1px solid #e7eef7;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+}
+
+.share-card-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.share-card-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 34px;
+  flex-shrink: 0;
+}
+
+.share-card-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.share-card-board {
+  font-size: 20px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.share-card-subtitle,
+.share-card-stats {
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.share-card-hero {
+  position: relative;
+  margin-top: 18px;
+  min-height: 260px;
+  padding: 26px 22px;
+  border-radius: 24px;
+  overflow: hidden;
+}
+
+.share-card-hero-orb {
+  position: absolute;
+  right: 26px;
+  top: 18px;
+  width: 126px;
+  height: 126px;
+  border-radius: 999px;
+}
+
+.share-card-hero-line {
+  width: 88px;
+  height: 10px;
+  border-radius: 999px;
+  margin-bottom: 22px;
+}
+
+.share-card-title {
+  position: relative;
+  margin: 0;
+  font-size: 48px;
+  line-height: 1.5;
+  font-weight: 850;
+  color: #172033;
+  word-break: break-word;
+}
+
+.share-card-subcopy {
+  position: relative;
+  margin: 18px 0 0;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #667085;
+}
+
+.share-card-bottom {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #e9eef5;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.share-card-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.share-card-brand-title {
+  font-size: 34px;
+  line-height: 1.5;
+  font-weight: 850;
+  color: #172033;
+}
+
+.share-card-brand-copy {
+  font-size: 16px;
+  line-height: 1.5;
+  color: #667085;
+}
+
+.share-card-brand-host {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #9ca3af;
+}
+
+.share-card-qr-box {
+  width: 132px;
+  height: 132px;
+  padding: 10px;
+  border-radius: 20px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.share-card-qr {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 :deep(.share-dialog .el-dialog),

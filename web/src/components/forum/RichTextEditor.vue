@@ -963,16 +963,21 @@ defineExpose({ clearDraft, isContentEmpty });
   display: flex;
   flex-direction: column;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
 }
 
 .mobile-toolbar-tabs {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 6px;
+  width: 100%;
+  min-width: 0;
 }
 
 .mobile-toolbar-tab {
   min-width: 0;
+  width: 100%;
 }
 
 .mobile-toolbar-panel {
@@ -983,53 +988,23 @@ defineExpose({ clearDraft, isContentEmpty });
   border: 1px solid #e2e8f0;
   border-radius: 12px;
   background: #fff;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .mobile-toolbar-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  width: 100%;
+  min-width: 0;
 }
 
 .mobile-toolbar-note {
   font-size: 11px;
   color: #7b8794;
   line-height: 1.4;
-}
-
-.desktop-same-toolbar .mobile-toolbar-tabs {
-  grid-template-columns: repeat(5, minmax(88px, 1fr));
-}
-
-.desktop-same-toolbar .mobile-toolbar-tab {
-  min-height: 36px;
-  padding: 0 8px;
-  border: 1px solid #d5e1ec;
-  border-radius: 11px;
-  background: #fbfdff;
-  color: #344054;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.desktop-same-toolbar .mobile-toolbar-tab.active {
-  border-color: #168776;
-  background: #e8f7f3;
-  color: #0f766e;
-}
-
-.desktop-same-toolbar .mobile-toolbar-panel {
-  padding: 10px;
-  border-radius: 14px;
-  border-color: #dfe8f1;
-}
-
-.desktop-same-toolbar .mobile-toolbar-actions button {
-  min-height: 36px;
-  padding: 0 12px;
-  border-radius: 10px;
-  font-size: 13px;
 }
 
 .size-label,
@@ -1192,6 +1167,43 @@ defineExpose({ clearDraft, isContentEmpty });
 
 .hidden-file {
   display: none;
+}
+
+@media (min-width: 701px) {
+  .desktop-same-toolbar .mobile-toolbar-tabs {
+    grid-template-columns: repeat(5, minmax(88px, 1fr));
+  }
+
+  .desktop-same-toolbar .mobile-toolbar-tab {
+    min-height: 36px;
+    padding: 0 8px;
+    border: 1px solid #d5e1ec;
+    border-radius: 11px;
+    background: #fbfdff;
+    color: #344054;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .desktop-same-toolbar .mobile-toolbar-tab.active {
+    border-color: #168776;
+    background: #e8f7f3;
+    color: #0f766e;
+  }
+
+  .desktop-same-toolbar .mobile-toolbar-panel {
+    padding: 10px;
+    border-radius: 14px;
+    border-color: #dfe8f1;
+  }
+
+  .desktop-same-toolbar .mobile-toolbar-actions button {
+    min-height: 36px;
+    padding: 0 12px;
+    border-radius: 10px;
+    font-size: 13px;
+  }
 }
 
 @media (max-width: 700px) {
