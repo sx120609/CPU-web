@@ -981,6 +981,8 @@ async function onDelete() {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  max-width: 340px;
+  margin: 0 auto;
 }
 
 .copy-share-panel,
@@ -988,6 +990,9 @@ async function onDelete() {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  max-width: 340px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .share-copy {
@@ -1001,9 +1006,13 @@ async function onDelete() {
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
+  width: 100%;
 }
 
 .share-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 44px;
   width: 100%;
   border-radius: 14px;
@@ -1046,6 +1055,11 @@ async function onDelete() {
 .share-card-actions .share-card-save-link {
   box-sizing: border-box;
   box-shadow: none;
+}
+
+.share-actions :deep(.el-button),
+.copy-share-panel :deep(.el-button) {
+  margin-left: 0 !important;
 }
 
 .share-panel .share-action-btn {

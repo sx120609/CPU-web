@@ -47,8 +47,19 @@ boardRouter.get("/:slug", async (req, res, next) => {
     }
     const board = await prisma.board.findUnique({
       where: { slug: req.params.slug },
-      include: {
-        feedSource: { select: { name: true, homepage: true, lastRunAt: true } },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        description: true,
+        icon: true,
+        color: true,
+        order: true,
+        type: true,
+        readOnly: true,
+        anonymousEnabled: true,
+        topicCount: true,
+        feedSource: { select: { name: true, homepage: true, lastRunAt: true, enabled: true } },
       },
     });
     if (!board) return res.status(404).json({ code: 4004, data: null, message: "板块不存在" });

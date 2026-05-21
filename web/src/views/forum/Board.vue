@@ -2,7 +2,7 @@
   <div class="board-page">
     <div v-if="board" class="board-head">
       <div class="head-left">
-        <div class="head-icon" :style="{ background: board.color || '#168776' }">{{ board.icon }}</div>
+        <div class="head-icon" :style="{ background: board.color || '#168776' }">{{ board.icon || fallbackBoardIcon }}</div>
         <div>
           <h2 class="head-name">{{ board.name }}</h2>
           <p class="head-desc">{{ board.description }}</p>
@@ -77,6 +77,13 @@ const sort = ref<"new" | "hot">("new");
 const loading = ref(false);
 
 const canPost = computed(() => !!board.value && !board.value.readOnly && auth.canAccessForum);
+const fallbackBoardIcon = computed(() => {
+  if (board.value?.type === "market") return "🛒";
+  if (board.value?.type === "question") return "❓";
+  if (board.value?.type === "coursereview") return "📚";
+  if (board.value?.type === "announce") return "📢";
+  return "💬";
+});
 
 watch(() => route.params.slug, async () => { await reload(); });
 onMounted(async () => { await reload(); });
