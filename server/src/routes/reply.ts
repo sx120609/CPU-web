@@ -21,6 +21,10 @@ const createSchema = z.object({
   anonymous: z.boolean().optional(),
 });
 
+const updateSchema = z.object({
+  content: z.string().min(1).max(10000),
+});
+
 replyRouter.post("/", authRequired, validate(createSchema), async (req, res, next) => {
   try {
     const userId = req.user!.userId;
@@ -177,6 +181,45 @@ replyRouter.post("/:id/request-manual-review", authRequired, async (req, res, ne
     await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
     await requestManualReplyReview(id, req.user!.userId);
     ok(res, { ok: true });
+  } catch (e) { next(e); }
+});
+
+replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) throw Errors.badRequest("回复 ID 不合法");
+    const reply = await prisma.reply.findUnique({
+      where: { id },
+      include: {
+        topic: {
+          select: {
+            id: true,
+            locked: true,
+            hidden: true,
+            board: { select: { type: true } },
+          },
+        },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+      },
+    });
+    if (!reply || !reply.topic || reply.hidden || reply.topic.hidden) throw Errors.notFound("回复不存在");
+    const isOwner = reply.authorId === req.user!.userId;
+    const isMod = req.user!.role === "mod" || req.user!.role === "admin";
+    if (!isOwner && !isMod) throw Errors.forbidden();
+    if (!isMod && !isBoardTypeEnabled(reply.topic.board?.type)) throw Errors.forbidden(featureClosedMessage(reply.topic.board?.type));
+    if (reply.topic.locked && !isMod) throw Errors.forbidden("帖子已锁定，无法修改回复");
+    if (isOwner) {
+      await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
+      await ensureUserCanSpeak(req.user!.userId);
+    }
+    const updated = await prisma.reply.update({
+      where: { id },
+      data: { content: req.body.content },
+      include: {
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+      },
+    });
+    ok(res, decodeReplyForViewer(updated, req.user));
   } catch (e) { next(e); }
 });
 

@@ -201,7 +201,7 @@ async function renderTopicCardSvg(topic: any, origin: string) {
   const footer = `${topic.replyCount || 0} 条回复 · ${topic.viewCount || 0} 浏览`;
   const titleLines = wrapText(topic.title, 15, 3);
   const titleSvg = titleLines
-    .map((line, index) => `<tspan x="208" dy="${index === 0 ? 0 : 54}">${escapeXml(line)}</tspan>`)
+    .map((line, index) => `<tspan x="208" dy="${index === 0 ? 0 : 60}">${escapeXml(line)}</tspan>`)
     .join("");
   const qrDataUrl = await QRCode.toDataURL(`${origin}/share/topic/${topic.id}`, {
     margin: 1,

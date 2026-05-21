@@ -62,6 +62,8 @@ export const topicApi = {
 export const replyApi = {
   create: (payload: { topicId: number; content: string; parentReplyId?: number; anonymous?: boolean }) =>
     request.post<Reply & { blocked?: boolean; submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string } }>("/replies", payload),
+  update: (id: number, payload: { content: string }) =>
+    request.patch<Reply>(`/replies/${id}`, payload),
   remove: (id: number) => request.delete<any>(`/replies/${id}`),
   requestManualReview: (id: number) => request.post<{ ok: true }>(`/replies/${id}/request-manual-review`),
 };

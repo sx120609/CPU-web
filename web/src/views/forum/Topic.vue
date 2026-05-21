@@ -128,6 +128,8 @@
           <MarkdownView :content="r.content" class="reply-content" />
           <div class="reply-actions">
             <el-button text size="small" @click="quoteReply(r)">引用</el-button>
+            <el-button v-if="canEditReply(r)" text size="small" @click="editReply(r)">编辑</el-button>
+            <el-button v-if="canEditReply(r)" text size="small" type="danger" @click="removeReply(r)">删除</el-button>
             <el-button text size="small" @click="onLikeReply(r)">👍 {{ r.likeCount }}</el-button>
           </div>
         </div>
@@ -163,9 +165,12 @@
       />
       <div class="reply-form-actions reply-dialog-actions">
         <span class="cpu-muted">离开页面后会保留未发送的内容。</span>
-        <el-button type="primary" :loading="replying" @click="submitReply">
-          发布回复
-        </el-button>
+        <div class="reply-submit-actions">
+          <el-button v-if="editingReplyId" @click="cancelReplyEdit">取消编辑</el-button>
+          <el-button type="primary" :loading="replying" @click="submitReply">
+            {{ editingReplyId ? "保存修改" : "发布回复" }}
+          </el-button>
+        </div>
       </div>
     </el-dialog>
 
@@ -277,6 +282,7 @@ const replying = ref(false);
 const replyText = ref("");
 const replyAnonymous = ref(false);
 const replyDialogOpen = ref(false);
+const editingReplyId = ref<number | null>(null);
 const shareDialogOpen = ref(false);
 const copyShareDialogOpen = ref(false);
 const shareCardDialogOpen = ref(false);
@@ -380,7 +386,10 @@ watch(replyAnonymousEnabled, (enabled) => {
 }, { immediate: true });
 
 watch(replyDialogOpen, (open) => {
-  if (!open && !replying.value) replyAnonymous.value = false;
+  if (!open && !replying.value) {
+    replyAnonymous.value = false;
+    editingReplyId.value = null;
+  }
 });
 
 async function load() {
@@ -434,6 +443,30 @@ function quoteReply(r: Reply) {
   replyText.value = `${replyText.value || ""}${quoted}`;
 }
 
+function canEditReply(reply: Reply) {
+  return Boolean(
+    auth.user &&
+    (
+      auth.user.id === reply.authorId ||
+      auth.isAdmin ||
+      auth.isMod
+    )
+  );
+}
+
+function editReply(reply: Reply) {
+  if (!canEditReply(reply)) return;
+  editingReplyId.value = reply.id;
+  replyText.value = reply.content;
+  replyAnonymous.value = false;
+  replyDialogOpen.value = true;
+}
+
+function cancelReplyEdit() {
+  editingReplyId.value = null;
+  replyText.value = "";
+}
+
 function openReplyDialog() {
   if (!auth.isLoggedIn) {
     router.push({ name: "login", query: { redirect: route.fullPath } });
@@ -458,6 +491,18 @@ async function submitReply() {
   if (replyText.value.length > REPLY_MAX) { ElMessage.warning("回复内容过长，请精简后再发布"); return; }
   replying.value = true;
   try {
+    if (editingReplyId.value) {
+      const updated = await replyApi.update(editingReplyId.value, { content: replyText.value });
+      const idx = replies.value.findIndex((item) => item.id === editingReplyId.value);
+      if (idx >= 0) replies.value[idx] = { ...replies.value[idx], ...updated } as any;
+      replyText.value = "";
+      replyAnonymous.value = false;
+      replyDialogOpen.value = false;
+      editingReplyId.value = null;
+      replyEditorRef.value?.clearDraft();
+      ElMessage.success("回复已修改");
+      return;
+    }
     const r = await replyApi.create({
       topicId: topic.value!.id,
       content: replyText.value,
@@ -481,6 +526,20 @@ async function submitReply() {
     ElMessage.success("已发布");
     nextTick(() => repliesEl.value?.scrollIntoView({ behavior: "smooth", block: "end" }));
   } finally { replying.value = false; }
+}
+
+async function removeReply(reply: Reply) {
+  if (!canEditReply(reply)) return;
+  await ElMessageBox.confirm("确认删除这条回复？", "提示", { type: "warning" });
+  await replyApi.remove(reply.id);
+  replies.value = replies.value.filter((item) => item.id !== reply.id);
+  if (topic.value && topic.value.replyCount > 0) topic.value.replyCount -= 1;
+  if (editingReplyId.value === reply.id) {
+    editingReplyId.value = null;
+    replyText.value = "";
+    replyDialogOpen.value = false;
+  }
+  ElMessage.success("已删除回复");
 }
 
 async function confirmReplyManualReviewRequest() {
@@ -773,6 +832,12 @@ async function onDelete() {
   margin-top: 10px;
 }
 
+.reply-submit-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .reply-anonymous-box {
   display: flex;
   align-items: flex-start;
@@ -1027,7 +1092,14 @@ async function onDelete() {
     gap: 10px;
   }
 
-  .reply-form-actions .el-button {
+  .reply-submit-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .reply-form-actions .el-button,
+  .reply-submit-actions .el-button {
     width: 100%;
   }
 
