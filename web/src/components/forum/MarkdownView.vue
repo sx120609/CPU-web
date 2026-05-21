@@ -1,14 +1,26 @@
 <template>
-  <div class="md" ref="el" v-html="html"></div>
+  <div class="md" :class="{ 'md-clickable-images': clickableImages }" ref="el" v-html="html"></div>
+  <teleport to="body">
+    <div v-if="previewImageUrl" class="md-image-preview" @click.self="closePreview">
+      <button type="button" class="preview-close" @click="closePreview">×</button>
+      <img :src="previewImageUrl" alt="预览图片" class="preview-image" />
+    </div>
+  </teleport>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, nextTick, watch } from "vue";
+import { computed, ref, onMounted, nextTick, watch, onBeforeUnmount } from "vue";
 import { renderMarkdown } from "@/utils/markdown";
 
-const props = defineProps<{ content: string }>();
+const props = withDefaults(defineProps<{
+  content: string;
+  clickableImages?: boolean;
+}>(), {
+  clickableImages: false,
+});
 const html = computed(() => renderMarkdown(props.content));
 const el = ref<HTMLElement | null>(null);
+const previewImageUrl = ref("");
 
 function wrapTables() {
   if (!el.value) return;
@@ -24,8 +36,53 @@ function wrapTables() {
   });
 }
 
+function bindImagePreview() {
+  if (!el.value) return;
+  const images = el.value.querySelectorAll<HTMLImageElement>("img");
+  images.forEach((img) => {
+    if (props.clickableImages) {
+      img.dataset.previewBound = "1";
+      img.tabIndex = 0;
+      img.setAttribute("role", "button");
+      img.setAttribute("aria-label", "点击查看大图");
+      img.onclick = () => openPreview(img.src);
+      img.onkeydown = (event: KeyboardEvent) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openPreview(img.src);
+        }
+      };
+    } else {
+      img.removeAttribute("data-preview-bound");
+      img.removeAttribute("tabindex");
+      img.removeAttribute("role");
+      img.removeAttribute("aria-label");
+      img.onclick = null;
+      img.onkeydown = null;
+    }
+  });
+}
+
+function openPreview(src: string) {
+  previewImageUrl.value = src;
+  document.body.style.overflow = "hidden";
+}
+
+function closePreview() {
+  previewImageUrl.value = "";
+  document.body.style.overflow = "";
+}
+
 onMounted(wrapTables);
-watch(html, () => nextTick(wrapTables));
+onMounted(() => nextTick(bindImagePreview));
+onBeforeUnmount(() => {
+  document.body.style.overflow = "";
+});
+watch(html, () => nextTick(() => {
+  wrapTables();
+  bindImagePreview();
+}));
+watch(() => props.clickableImages, () => nextTick(bindImagePreview));
 </script>
 
 <style scoped>
@@ -69,6 +126,14 @@ watch(html, () => nextTick(wrapTables));
 .md :deep(pre code) { background: transparent; padding: 0; color: inherit; }
 .md :deep(a) { color: var(--cpu-primary); text-decoration: underline; }
 .md :deep(img) { max-width: 100%; border-radius: 8px; margin: 8px 0; }
+.md-clickable-images :deep(img) {
+  cursor: zoom-in;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.md-clickable-images :deep(img:hover) {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+}
 .md :deep([data-align="left"]) { text-align: left; }
 .md :deep([data-align="center"]) { text-align: center; }
 .md :deep([data-align="right"]) { text-align: right; }
@@ -106,4 +171,39 @@ watch(html, () => nextTick(wrapTables));
   text-align: left;
 }
 .md :deep(sub), .md :deep(sup) { font-size: 0.75em; }
+
+.md-image-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.76);
+  backdrop-filter: blur(4px);
+}
+
+.preview-image {
+  max-width: min(92vw, 1100px);
+  max-height: 88vh;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.35);
+}
+
+.preview-close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 42px;
+  height: 42px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
 </style>

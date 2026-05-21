@@ -125,7 +125,7 @@
             <span class="dot">·</span>
             <span>{{ fmtRelative(r.createdAt) }}</span>
           </div>
-          <MarkdownView :content="r.content" class="reply-content" />
+          <MarkdownView :content="r.content" class="reply-content reply-markdown" clickable-images />
           <div class="reply-actions">
             <el-button text size="small" @click="quoteReply(r)">引用</el-button>
             <el-button v-if="canEditReply(r)" text size="small" @click="editReply(r)">编辑</el-button>
@@ -818,6 +818,11 @@ async function onDelete() {
   .author { color: var(--cpu-primary); text-decoration: none; font-weight: 500; }
   .dot { color: #d1d5db; }
   .reply-content { font-size: 14px; }
+  .reply-markdown :deep(img) {
+    max-width: min(100%, 220px);
+    max-height: 180px;
+    object-fit: cover;
+  }
   .reply-actions {
     margin-top: 6px;
     display: flex;
