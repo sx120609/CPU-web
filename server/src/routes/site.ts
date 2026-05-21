@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { ok } from "../utils/response";
 import { getFeatures, getSiteConfig } from "../services/siteSettings";
@@ -17,13 +17,25 @@ siteRouter.get("/config", (_req, res) => {
 });
 
 siteRouter.get("/downloads/android-app", (_req, res) => {
-  const candidates = [
-    "CPU-Web-V10.apk",
-    "CPU-Web-V9.apk",
-  ];
-  const baseDir = path.resolve(process.cwd(), "../web/public/downloads");
-  const fallbackDir = path.resolve(process.cwd(), "web/public/downloads");
-  const chosen = candidates.find((name) => existsSync(path.join(baseDir, name)) || existsSync(path.join(fallbackDir, name)));
-  const fileName = chosen || candidates[0];
+  const fileName = resolveLatestAndroidApkFileName() || "CPU-Web-V10.apk";
   res.redirect(302, `/downloads/${encodeURIComponent(fileName)}`);
 });
+
+function resolveLatestAndroidApkFileName() {
+  const dirs = [
+    path.resolve(process.cwd(), "../web/public/downloads"),
+    path.resolve(process.cwd(), "web/public/downloads"),
+  ];
+  for (const dir of dirs) {
+    if (!existsSync(dir)) continue;
+    const latest = readdirSync(dir)
+      .map((name) => {
+        const match = /^CPU-Web-V(\d+)\.apk$/i.exec(name);
+        return match ? { name, version: Number(match[1]) } : null;
+      })
+      .filter((item): item is { name: string; version: number } => Boolean(item))
+      .sort((a, b) => b.version - a.version)[0];
+    if (latest?.name) return latest.name;
+  }
+  return "";
+}
