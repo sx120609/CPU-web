@@ -960,10 +960,47 @@ async function onDelete() {
 
   :deep(.reply-dialog .rich-editor.toolbar-static .editor-toolbar) {
     border-radius: 16px 16px 0 0;
+    padding: 8px 8px 6px;
   }
 
   :deep(.reply-dialog .rich-editor.toolbar-static .editor-foot) {
     border-radius: 0 0 16px 16px;
+  }
+
+  :deep(.reply-dialog .rich-editor.toolbar-static .toolbar-head) {
+    display: none;
+  }
+
+  :deep(.reply-dialog .rich-editor.toolbar-static .toolbar-scroll) {
+    gap: 6px;
+  }
+
+  :deep(.reply-dialog .rich-editor.toolbar-static .toolbar-group) {
+    flex: 0 1 auto;
+    gap: 4px;
+    padding: 6px;
+    border-radius: 10px;
+  }
+
+  :deep(.reply-dialog .rich-editor.toolbar-static .toolbar-group + .toolbar-group) {
+    padding-left: 6px;
+  }
+
+  :deep(.reply-dialog .rich-editor.toolbar-static .editor-toolbar button) {
+    min-height: 32px;
+    padding: 0 8px;
+    border-radius: 8px;
+    font-size: 11px;
+  }
+
+  :deep(.reply-dialog .rich-editor.toolbar-static .size-btn),
+  :deep(.reply-dialog .rich-editor.toolbar-static .align-btn) {
+    min-width: 32px;
+    padding: 0 7px !important;
+  }
+
+  :deep(.reply-dialog .rich-editor.toolbar-static .size-label) {
+    font-size: 11px;
   }
 
   :deep(.reply-dialog) {
