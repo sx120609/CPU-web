@@ -211,8 +211,8 @@
       append-to-body
       class="share-card-dialog"
     >
-      <div class="share-card-panel" ref="shareCardRef">
-        <div class="share-card-dom">
+      <div class="share-card-panel">
+        <div class="share-card-dom" ref="shareCardRef">
           <div class="share-card-top">
             <div class="share-card-icon" :style="{ background: shareCardAccent }">
               {{ topic?.board?.icon || "💬" }}
@@ -1005,6 +1005,7 @@ async function onDelete() {
 
 .share-action-btn {
   min-height: 44px;
+  width: 100%;
   border-radius: 14px;
   font-size: 14px;
   font-weight: 700;
@@ -1029,6 +1030,7 @@ async function onDelete() {
   align-items: center;
   justify-content: center;
   min-height: 44px;
+  width: 100%;
   padding: 0 14px;
   border: none;
   border-radius: 14px;
@@ -1037,6 +1039,38 @@ async function onDelete() {
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
+}
+
+.copy-share-panel .share-action-btn,
+.share-panel .share-action-btn,
+.share-card-actions .share-card-save-link {
+  box-sizing: border-box;
+  box-shadow: none;
+}
+
+.share-panel .share-action-btn {
+  background: #f8fafc;
+  border-color: #dbe5ee;
+  color: #344054;
+}
+
+.share-panel :deep(.el-button--primary.share-action-btn) {
+  background: var(--cpu-primary);
+  border-color: var(--cpu-primary);
+  color: #fff;
+}
+
+.share-panel :deep(.el-button--primary.is-plain.share-action-btn),
+.copy-share-panel :deep(.el-button--primary.is-plain.share-action-btn) {
+  background: #ecfdf5;
+  border-color: #cce9df;
+  color: #0f766e;
+}
+
+.copy-share-panel .share-action-btn {
+  background: #fff;
+  border-color: #dbe5ee;
+  color: #344054;
 }
 
 .share-card-save-link:disabled {
