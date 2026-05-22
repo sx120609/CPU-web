@@ -17,7 +17,7 @@
             Lv.{{ user.reputationLevel.level }} {{ user.reputationLevel.name }}
           </el-tag>
         </h2>
-        <p class="bio">{{ user.bio || "—" }}</p>
+        <p class="bio">{{ user.bio || "这个人还没写简介" }}</p>
         <div class="meta">
           <span v-if="user.college">{{ user.college }}</span>
           <span v-if="user.enrollYear">{{ user.enrollYear }} 级</span>
