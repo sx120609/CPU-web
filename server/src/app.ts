@@ -22,6 +22,11 @@ export function createApp() {
     res.json({ code: 0, data: { ok: true, ts: Date.now() }, message: "" });
   });
 
+  app.get("/10b0f912e73a202f7040913a82166673.txt", (_req, res) => {
+    res.type("text/plain; charset=utf-8");
+    res.send("9abfb616e9ac54f49df77561d1d73d364e38f9a4");
+  });
+
   app.use("/share", shareRouter);
   app.use("/api", router);
 
