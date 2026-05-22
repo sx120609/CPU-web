@@ -3,8 +3,8 @@
     <!-- 主帖 -->
     <article class="cpu-card main-post">
       <header class="post-head">
-        <router-link :to="`/forum/b/${topic.board?.slug}`" class="board-back">
-          <el-icon><ArrowLeft /></el-icon> {{ topic.board?.name }}
+        <router-link :to="{ name: 'forum-latest' }" class="board-back">
+          <el-icon><ArrowLeft /></el-icon> 返回最新
         </router-link>
         <div class="actions">
           <el-button v-if="canEdit" text @click="onEdit">编辑</el-button>
@@ -804,7 +804,7 @@ async function onDelete() {
   await ElMessageBox.confirm("确认删除此帖？此操作不可撤销", "提示", { type: "warning" });
   await topicApi.remove(topic.value!.id);
   ElMessage.success("已删除");
-  router.replace(`/forum/b/${topic.value!.board?.slug}`);
+  router.replace({ name: "forum-latest" });
 }
 </script>
 
