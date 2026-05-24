@@ -5,12 +5,16 @@ import { authOptional, authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { Errors, ok } from "../utils/response";
 import {
+  assertToolUsable,
+  getToolSetting,
   hasToolManagePermission,
   isServiceToolCode,
   listManageableToolCodes,
+  listToolSettings,
   managerSelect,
   SERVICE_TOOL_CODES,
   SERVICE_TOOL_META,
+  updateToolSetting,
 } from "../services/serviceTools";
 import {
   ensureSystemQuestionnaires,
@@ -57,6 +61,10 @@ const managerCreateSchema = z.object({
   message: "请选择用户或输入用户名",
 });
 
+const toolSettingPatchSchema = z.object({
+  requireLogin: z.boolean().optional(),
+});
+
 toolsRouter.use(async (_req, _res, next) => {
   try {
     await ensureSystemQuestionnaires();
@@ -69,10 +77,26 @@ toolsRouter.use(async (_req, _res, next) => {
 toolsRouter.get("/", authOptional, async (req, res, next) => {
   try {
     const manageableCodes = await listManageableToolCodes(req.user);
+    const settings = await listToolSettings();
     ok(res, SERVICE_TOOL_CODES.map((code) => ({
       ...SERVICE_TOOL_META[code],
+      requireLogin: settings.get(code)?.requireLogin ?? false,
       canManage: manageableCodes.includes(code),
     })));
+  } catch (e) { next(e); }
+});
+
+toolsRouter.patch("/:toolCode/settings", authRequired, validate(toolSettingPatchSchema), async (req, res, next) => {
+  try {
+    const toolCode = String(req.params.toolCode);
+    if (!isServiceToolCode(toolCode)) throw Errors.notFound("小工具不存在");
+    if (!(await hasToolManagePermission(toolCode, req.user))) throw Errors.forbidden("没有该小工具的管理权限");
+    const row = await updateToolSetting(toolCode, { requireLogin: req.body.requireLogin });
+    ok(res, {
+      toolCode: row.toolCode,
+      requireLogin: row.requireLogin,
+      updatedAt: row.updatedAt,
+    });
   } catch (e) { next(e); }
 });
 
@@ -141,6 +165,7 @@ toolsRouter.get("/questionnaires", authOptional, async (req, res, next) => {
     if (toolCode && !isServiceToolCode(toolCode)) throw Errors.badRequest("小工具不合法");
     const canManageAll = req.user ? await listManageableToolCodes(req.user) : [];
     const includeDraft = req.query.manage === "1";
+    if (toolCode && !includeDraft) await ensureToolUsableForRequest(toolCode, req.user);
     const manageableFilter = includeDraft ? { toolCode: { in: canManageAll } } : {};
     const list = await prisma.questionnaire.findMany({
       where: {
@@ -170,6 +195,7 @@ toolsRouter.get("/questionnaires/:slug", authOptional, async (req, res, next) =>
     });
     if (!row) throw Errors.notFound("问卷不存在");
     const canManage = await hasToolManagePermission(row.toolCode, req.user);
+    if (!canManage) await ensureToolUsableForRequest(row.toolCode, req.user);
     if (row.status !== "open" && !canManage) throw Errors.notFound("问卷不存在或未开放");
     if (row.visibility === "login" && !req.user?.userId && !canManage) throw Errors.unauthorized("请先登录后填写");
     ok(res, {
@@ -260,6 +286,7 @@ toolsRouter.post("/questionnaires/:slug/responses", authOptional, validate(respo
   try {
     const row = await prisma.questionnaire.findUnique({ where: { slug: String(req.params.slug) } });
     if (!row) throw Errors.notFound("问卷不存在");
+    await ensureToolUsableForRequest(row.toolCode, req.user);
     if (row.status !== "open") throw Errors.badRequest("问卷当前未开放填写");
     if (row.visibility === "login" && !req.user?.userId) throw Errors.unauthorized("请先登录后填写");
     if (!row.allowAnonymous && !req.user?.userId) throw Errors.unauthorized("请先登录后填写");
@@ -356,4 +383,14 @@ function normalizeAnswers(fields: QuestionnaireField[], input: Record<string, st
     result[field.id] = value.slice(0, field.type === "textarea" ? 2000 : 300);
   }
   return result;
+}
+
+async function ensureToolUsableForRequest(toolCode: string, user: any) {
+  try {
+    await assertToolUsable(toolCode, user);
+  } catch (e: any) {
+    if (e?.message === "TOOL_LOGIN_REQUIRED") throw Errors.unauthorized("该小工具需要登录后使用");
+    if (e?.message === "INVALID_TOOL_CODE") throw Errors.badRequest("小工具不合法");
+    throw e;
+  }
 }

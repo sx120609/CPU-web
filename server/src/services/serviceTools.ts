@@ -47,6 +47,48 @@ export async function listManageableToolCodes(user?: { userId?: number; role?: s
   return rows.map((row) => row.toolCode).filter(isServiceToolCode);
 }
 
+export async function getToolSetting(toolCode: ServiceToolCode) {
+  return prisma.toolSetting.upsert({
+    where: { toolCode },
+    update: {},
+    create: { toolCode, requireLogin: false },
+  });
+}
+
+export async function listToolSettings() {
+  const rows = await prisma.toolSetting.findMany({
+    where: { toolCode: { in: [...SERVICE_TOOL_CODES] } },
+  });
+  const map = new Map(rows.map((row) => [row.toolCode, row]));
+  const missing = SERVICE_TOOL_CODES.filter((code) => !map.has(code));
+  if (missing.length) {
+    const created = await Promise.all(missing.map((toolCode) => prisma.toolSetting.create({
+      data: { toolCode, requireLogin: false },
+    })));
+    for (const row of created) map.set(row.toolCode, row);
+  }
+  return map;
+}
+
+export async function updateToolSetting(toolCode: ServiceToolCode, data: { requireLogin?: boolean }) {
+  return prisma.toolSetting.upsert({
+    where: { toolCode },
+    update: data,
+    create: {
+      toolCode,
+      requireLogin: data.requireLogin ?? false,
+    },
+  });
+}
+
+export async function assertToolUsable(toolCode: string, user?: { userId?: number; role?: string } | null) {
+  if (!isServiceToolCode(toolCode)) throw new Error("INVALID_TOOL_CODE");
+  const canManage = await hasToolManagePermission(toolCode, user);
+  if (canManage) return;
+  const setting = await getToolSetting(toolCode);
+  if (setting.requireLogin && !user?.userId) throw new Error("TOOL_LOGIN_REQUIRED");
+}
+
 export function managerSelect() {
   return {
     id: true,

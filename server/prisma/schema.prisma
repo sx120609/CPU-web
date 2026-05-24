@@ -413,6 +413,16 @@ model ToolPermission {
   @@index([userId])
 }
 
+model ToolSetting {
+  id           Int      @id @default(autoincrement())
+  toolCode     String   @unique
+  requireLogin Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([requireLogin])
+}
+
 // ============ 小工具：问卷系统 ============
 
 model Questionnaire {

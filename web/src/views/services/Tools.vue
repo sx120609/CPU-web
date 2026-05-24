@@ -50,6 +50,15 @@
               >
                 {{ statusText(tool.status) }}
               </el-tag>
+              <el-tag
+                v-if="toolAccessMap[tool.slug as ServiceToolCode]?.requireLogin"
+                size="small"
+                type="warning"
+                effect="plain"
+                round
+              >
+                需登录
+              </el-tag>
             </span>
             <span class="tool-summary">{{ tool.summary }}</span>
             <span class="tool-meta">{{ tool.category }}</span>
@@ -66,14 +75,21 @@ import { Right, Setting } from "@element-plus/icons-vue";
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { getToken } from "@/api/request";
-import { toolsApi, type ServiceToolCode } from "@/api/tools";
+import { toolsApi, type ServiceToolCode, type ToolMeta } from "@/api/tools";
 import { serviceTools, toolHubIntro, type ServiceTool, type ServiceToolStatus } from "@/data/serviceTools";
 
 const router = useRouter();
 const manageable = ref<ServiceToolCode[]>([]);
+const toolMetas = ref<ToolMeta[]>([]);
 const canManageAny = computed(() => manageable.value.length > 0);
+const toolAccessMap = computed(() => Object.fromEntries(toolMetas.value.map((item) => [item.code, item])));
 
 onMounted(async () => {
+  try {
+    toolMetas.value = await toolsApi.tools();
+  } catch {
+    toolMetas.value = [];
+  }
   if (!getToken()) return;
   try {
     manageable.value = (await toolsApi.myPermissions()).toolCodes;

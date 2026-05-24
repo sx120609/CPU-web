@@ -93,6 +93,26 @@
           <section class="admin-section managers-section">
             <div class="section-head">
               <div>
+                <h3>使用权限</h3>
+                <p>开启后，未登录用户不能打开或提交当前小工具。</p>
+              </div>
+            </div>
+            <div class="access-setting">
+              <div>
+                <b>登录后使用</b>
+                <span>{{ currentToolMeta?.requireLogin ? "当前需要登录" : "当前允许游客使用" }}</span>
+              </div>
+              <el-switch
+                v-model="toolRequireLogin"
+                :loading="settingSaving"
+                @change="saveToolSetting"
+              />
+            </div>
+          </section>
+
+          <section class="admin-section managers-section">
+            <div class="section-head">
+              <div>
                 <h3>管理器</h3>
                 <p>被分配后可进入此页面管理当前小工具。</p>
               </div>
@@ -234,6 +254,7 @@ const questionnaires = ref<Questionnaire[]>([]);
 const managers = ref<ToolManager[]>([]);
 const managerUsername = ref("");
 const managerSaving = ref(false);
+const settingSaving = ref(false);
 
 const createOpen = ref(false);
 const creating = ref(false);
@@ -253,6 +274,14 @@ const responses = ref<QuestionnaireResponse[]>([]);
 const activeResponseFields = ref<QuestionnaireField[]>([]);
 
 const manageableTools = computed(() => allTools.value.filter((tool) => manageableCodes.value.includes(tool.code)));
+const currentToolMeta = computed(() => allTools.value.find((tool) => tool.code === activeTool.value));
+const toolRequireLogin = computed({
+  get: () => Boolean(currentToolMeta.value?.requireLogin),
+  set: (value: boolean) => {
+    const target = currentToolMeta.value;
+    if (target) target.requireLogin = value;
+  },
+});
 
 onMounted(init);
 
@@ -280,6 +309,23 @@ async function reloadActive() {
   ]);
   questionnaires.value = questionnaireList;
   managers.value = managerList;
+}
+
+async function saveToolSetting(value: string | number | boolean) {
+  settingSaving.value = true;
+  const previous = !Boolean(value);
+  try {
+    const updated = await toolsApi.updateToolSetting(activeTool.value, { requireLogin: Boolean(value) });
+    const target = currentToolMeta.value;
+    if (target) target.requireLogin = updated.requireLogin;
+    ElMessage.success(updated.requireLogin ? "已设为登录后使用" : "已允许游客使用");
+  } catch (e) {
+    const target = currentToolMeta.value;
+    if (target) target.requireLogin = previous;
+    throw e;
+  } finally {
+    settingSaving.value = false;
+  }
 }
 
 function openCreate() {
@@ -486,6 +532,24 @@ function formatAnswer(value: string | string[] | undefined) {
   margin-bottom: 12px;
 }
 .manager-list { display: flex; flex-direction: column; gap: 8px; }
+.access-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid #eef0f4;
+  border-radius: 8px;
+  background: #fafafa;
+}
+.access-setting div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.access-setting b { color: #111827; }
+.access-setting span { color: #6b7280; font-size: 12px; }
 .manager-row {
   display: flex;
   align-items: center;
