@@ -141,13 +141,30 @@
             <div class="grade-upload-panel">
               <div class="upload-copy">
                 <h4>创建查询表</h4>
-                <p>Excel 第一行作为表头，必须包含“学号”字段。每个学号只能出现一次。</p>
+                <p>Excel 第一行作为表头。只有“学号”是必填字段，用来匹配登录用户；其他字段会原样展示给对应学生核对。</p>
               </div>
               <div class="template-actions">
                 <el-button plain @click="downloadGradeTemplate">
                   <el-icon><Download /></el-icon>
                   下载示例文件
                 </el-button>
+              </div>
+              <div class="field-rule-list">
+                <div>
+                  <b>必须包含</b>
+                  <span>学号</span>
+                  <small>字段名必须完全等于“学号”，且每行唯一</small>
+                </div>
+                <div>
+                  <b>建议包含</b>
+                  <span>姓名 / 课程 / 成绩 / 备注</span>
+                  <small>这些字段不强制，上传后会作为核对项目展示</small>
+                </div>
+                <div>
+                  <b>自动生成</b>
+                  <span>问题反馈问卷</span>
+                  <small>学生可反馈哪些项目存在问题</small>
+                </div>
               </div>
               <div class="grade-form-grid">
                 <el-input v-model="gradeForm.title" placeholder="查询表标题，例如：2026 春季药理学期末成绩核对" maxlength="120" />
@@ -1213,13 +1230,24 @@ function resetGradeForm() {
 }
 
 function downloadGradeTemplate() {
-  const rows = [
+  const dataRows = [
     { 学号: "20260001", 姓名: "张三", 课程: "药理学", 平时成绩: "88", 期末成绩: "91", 总评成绩: "90", 备注: "请核对姓名和成绩" },
     { 学号: "20260002", 姓名: "李四", 课程: "药理学", 平时成绩: "84", 期末成绩: "86", 总评成绩: "85", 备注: "" },
   ];
-  const worksheet = XLSX.utils.json_to_sheet(rows, { header: ["学号", "姓名", "课程", "平时成绩", "期末成绩", "总评成绩", "备注"] });
+  const helpRows = [
+    { 字段名: "学号", 是否必填: "必填", 说明: "字段名必须完全等于“学号”。系统用它匹配登录用户，只向学生展示自己学号对应的一行。", 示例: "20260001" },
+    { 字段名: "姓名", 是否必填: "选填", 说明: "建议保留，便于学生核对身份。", 示例: "张三" },
+    { 字段名: "课程", 是否必填: "选填", 说明: "可替换为考试名称、班级、批次等你需要展示的信息。", 示例: "药理学" },
+    { 字段名: "平时成绩 / 期末成绩 / 总评成绩", 是否必填: "选填", 说明: "成绩字段名称不限，上传后会原样展示。", 示例: "88" },
+    { 字段名: "备注", 是否必填: "选填", 说明: "可写核对说明、补充状态、处理提示等。", 示例: "请核对姓名和成绩" },
+  ];
+  const dataSheet = XLSX.utils.json_to_sheet(dataRows, { header: ["学号", "姓名", "课程", "平时成绩", "期末成绩", "总评成绩", "备注"] });
+  const helpSheet = XLSX.utils.json_to_sheet(helpRows, { header: ["字段名", "是否必填", "说明", "示例"] });
+  dataSheet["!cols"] = [{ wch: 14 }, { wch: 10 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 24 }];
+  helpSheet["!cols"] = [{ wch: 24 }, { wch: 10 }, { wch: 58 }, { wch: 18 }];
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "成绩表核对");
+  XLSX.utils.book_append_sheet(workbook, dataSheet, "可上传示例");
+  XLSX.utils.book_append_sheet(workbook, helpSheet, "字段说明");
   XLSX.writeFile(workbook, "成绩表核对示例.xlsx");
 }
 
@@ -1575,6 +1603,42 @@ function round(value: number) {
 .template-actions :deep(.el-button) {
   height: 32px;
   border-radius: 6px;
+}
+.field-rule-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding-top: 2px;
+}
+.field-rule-list div {
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #fff;
+}
+.field-rule-list b,
+.field-rule-list span,
+.field-rule-list small {
+  display: block;
+}
+.field-rule-list b {
+  color: #2563eb;
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+.field-rule-list span {
+  color: #111827;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.field-rule-list small {
+  margin-top: 5px;
+  color: #6b7280;
+  font-size: 11px;
+  line-height: 1.5;
 }
 .grade-form-grid {
   display: grid;
@@ -2266,6 +2330,7 @@ function round(value: number) {
     position: static;
   }
   .template-actions .el-button { width: 100%; }
+  .field-rule-list { grid-template-columns: 1fr; }
   .grade-form-grid { grid-template-columns: 1fr; }
   .grade-preview-head { align-items: stretch; flex-direction: column; }
   .grade-preview-head .el-button { width: 100%; }
