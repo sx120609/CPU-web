@@ -266,6 +266,7 @@ toolsRouter.get("/grade-checks/:slug", authRequired, async (req, res, next) => {
       table: normalizeGradeCheckTable(table),
       studentId,
       row: row ? parseGradePayload(row.payload) : null,
+      feedbackQuestionnaireSlug: table.feedbackQuestionnaireSlug,
       canManage,
     });
   } catch (e) { next(e); }
@@ -290,6 +291,28 @@ toolsRouter.post("/grade-checks", authRequired, validate(createGradeCheckSchema)
           publishedAt: (req.body.status ?? "open") === "open" ? now : null,
           closedAt: req.body.status === "closed" ? now : null,
         },
+      });
+      const feedbackSlug = await nextQuestionnaireSlug(`${req.body.title} 问题反馈`);
+      await tx.questionnaire.create({
+        data: {
+          toolCode: "questionnaire",
+          slug: feedbackSlug,
+          title: `${req.body.title} 问题反馈`,
+          description: "如成绩或个人信息存在问题，请在这里提交说明，发起者会在结果中查看。",
+          status: (req.body.status ?? "open") === "open" ? "open" : "draft",
+          visibility: "login",
+          allowAnonymous: false,
+          oneResponsePerUser: false,
+          isSystem: false,
+          fields: JSON.stringify(buildGradeCheckFeedbackFields(normalized.columns, normalized.studentIdColumn)),
+          createdById: req.user!.userId,
+          publishedAt: (req.body.status ?? "open") === "open" ? now : null,
+          closedAt: req.body.status === "closed" ? now : null,
+        },
+      });
+      await tx.gradeCheckTable.update({
+        where: { id: created.id },
+        data: { feedbackQuestionnaireSlug: feedbackSlug },
       });
       await tx.gradeCheckRow.createMany({
         data: normalized.rows.map((item) => ({
@@ -617,6 +640,7 @@ function normalizeGradeCheckTable(row: any) {
     studentIdColumn: row.studentIdColumn,
     columns: parseGradeColumns(row.columns),
     rowCount: row.rowCount,
+    feedbackQuestionnaireSlug: row.feedbackQuestionnaireSlug,
     publishedAt: row.publishedAt,
     closedAt: row.closedAt,
     createdAt: row.createdAt,
@@ -667,6 +691,50 @@ function formatGradeCell(value: string | number | boolean | null | undefined) {
 
 function normalizeStudentId(value: string | number | boolean | null | undefined) {
   return formatGradeCell(value).replace(/\s+/g, "");
+}
+
+function buildGradeCheckFeedbackFields(columns: string[], studentIdColumn: string): QuestionnaireField[] {
+  const options = columns.filter((column) => column !== studentIdColumn).slice(0, 20);
+  return [
+    {
+      id: "student_id",
+      label: "学号",
+      type: "text",
+      required: true,
+      placeholder: "请填写你的学号，便于发起者核对",
+      maxLength: 40,
+    },
+    {
+      id: "problem_fields",
+      label: "哪些项目存在问题",
+      type: "multiple",
+      required: true,
+      options: options.length >= 2 ? options : ["成绩信息", "个人信息", "其他"],
+    },
+    {
+      id: "problem_type",
+      label: "问题类型",
+      type: "single",
+      required: true,
+      options: ["信息有误", "成绩有疑问", "缺少记录", "无法确认", "其他"],
+    },
+    {
+      id: "description",
+      label: "问题说明",
+      type: "textarea",
+      required: true,
+      placeholder: "请说明你认为有问题的项目、当前显示值和你认为正确的信息。",
+      maxLength: 2000,
+    },
+    {
+      id: "contact",
+      label: "联系方式",
+      type: "text",
+      required: false,
+      placeholder: "选填，便于发起者进一步联系",
+      maxLength: 120,
+    },
+  ];
 }
 
 async function canManageQuestionnaire(row: { toolCode: string; createdById: number | null }, user: Express.Request["user"]) {

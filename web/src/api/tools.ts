@@ -79,6 +79,7 @@ export interface GradeCheckTable {
   studentIdColumn: string;
   columns: string[];
   rowCount: number;
+  feedbackQuestionnaireSlug?: string | null;
   publishedAt?: string | null;
   closedAt?: string | null;
   createdAt: string;
@@ -95,6 +96,7 @@ export interface GradeCheckLookup {
   table: GradeCheckTable;
   studentId: string;
   row: Record<string, string> | null;
+  feedbackQuestionnaireSlug?: string | null;
   canManage: boolean;
 }
 
