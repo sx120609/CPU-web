@@ -10,24 +10,22 @@
           <span class="head-icon" :style="{ color: tool.accent }">
             <el-icon><component :is="tool.iconComponent" /></el-icon>
           </span>
-          <div>
+          <div class="head-copy">
             <div class="head-title-row">
               <h2>{{ tool.name }}</h2>
-              <el-tag
-                size="small"
-                :type="tool.status === 'ready' ? 'success' : 'info'"
-                effect="plain"
-                round
-              >
-                {{ tool.status === "ready" ? "可用" : "待开发" }}
-              </el-tag>
+              <el-tag size="small" type="success" effect="plain" round>可用</el-tag>
             </div>
             <p>{{ tool.description }}</p>
           </div>
+          <el-button v-if="canManage" plain type="primary" class="manage-btn" @click="$router.push('/services/tools/manage')">
+            <el-icon><Setting /></el-icon>
+            管理
+          </el-button>
         </div>
       </div>
 
-      <component :is="currentComponent" :tool="tool" />
+      <FeedbackPanel v-if="tool.componentKey === 'feedback'" />
+      <QuestionnairePanel v-else />
     </section>
 
     <section v-else class="missing-card">
@@ -39,109 +37,83 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, ref } from "vue";
-import { ArrowLeft, DocumentChecked, Finished, Message, Tools } from "@element-plus/icons-vue";
+import { computed, defineComponent, h, onMounted, reactive, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { ArrowLeft, DocumentChecked, EditPen, Setting } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
-import { useRoute } from "vue-router";
-import { findServiceTool, type ServiceTool } from "@/data/serviceTools";
+import { getToken } from "@/api/request";
+import { toolsApi, type Questionnaire, type QuestionnaireField, type ServiceToolCode } from "@/api/tools";
+import { findServiceTool } from "@/data/serviceTools";
 
 const route = useRoute();
+const router = useRouter();
 const tool = computed(() => findServiceTool(String(route.params.slug || "")));
+const manageable = ref<ServiceToolCode[]>([]);
+const canManage = computed(() => Boolean(tool.value && manageable.value.includes(tool.value.slug as ServiceToolCode)));
 
-const FeedbackTool = defineComponent({
-  name: "FeedbackTool",
-  props: {
-    tool: {
-      type: Object as () => ServiceTool,
-      required: true,
-    },
-  },
-  setup(props) {
-    const category = ref("工具建议");
-    const content = ref("");
-    const contact = ref("");
+onMounted(async () => {
+  if (!getToken()) return;
+  try {
+    manageable.value = (await toolsApi.myPermissions()).toolCodes;
+  } catch {
+    manageable.value = [];
+  }
+});
 
-    function submit() {
-      const text = content.value.trim();
-      if (text.length < 5) {
-        ElMessage.warning("再多写一点点，方便后面处理");
-        return;
-      }
-      const saved = {
-        category: category.value,
-        content: text,
-        contact: contact.value.trim(),
-        createdAt: new Date().toISOString(),
-      };
-      const key = "cpu-service-tool-feedback";
-      const oldList = readFeedbackList(key);
-      localStorage.setItem(key, JSON.stringify([saved, ...oldList].slice(0, 20)));
-      content.value = "";
-      contact.value = "";
-      ElMessage.success("已暂存反馈，后续可接入后端提交");
-    }
+const FeedbackPanel = defineComponent({
+  name: "FeedbackPanel",
+  setup() {
+    const loading = ref(false);
+    const submitting = ref(false);
+    const questionnaire = ref<Questionnaire | null>(null);
+    const answers = reactive<Record<string, string | string[]>>({});
 
-    function readFeedbackList(key: string): any[] {
+    onMounted(load);
+
+    async function load() {
+      loading.value = true;
       try {
-        const raw = localStorage.getItem(key);
-        const parsed = raw ? JSON.parse(raw) : [];
-        return Array.isArray(parsed) ? parsed : [];
-      } catch {
-        return [];
+        questionnaire.value = await toolsApi.questionnaire("system-feedback");
+        for (const field of questionnaire.value.fields ?? []) {
+          answers[field.id] = field.type === "multiple" ? [] : "";
+        }
+      } finally {
+        loading.value = false;
       }
     }
 
-    return () => h("div", { class: "feedback-tool" }, [
+    async function submit() {
+      if (!questionnaire.value) return;
+      submitting.value = true;
+      try {
+        await toolsApi.submitResponse(questionnaire.value.slug, answers);
+        for (const field of questionnaire.value.fields ?? []) {
+          answers[field.id] = field.type === "multiple" ? [] : "";
+        }
+        ElMessage.success("已提交反馈");
+      } finally {
+        submitting.value = false;
+      }
+    }
+
+    return () => h("div", { class: "tool-content" }, [
       h("div", { class: "form-card" }, [
         h("div", { class: "form-head" }, [
-          h("span", { class: "form-head-icon" }, [h(Message)]),
+          h("span", { class: "form-head-icon" }, [h(EditPen)]),
           h("div", [
-            h("h3", props.tool.name),
-            h("p", "想要新的校园小工具，或者使用时遇到问题，都可以先记在这里。"),
+            h("h3", questionnaire.value?.title ?? "需求反馈"),
+            h("p", questionnaire.value?.description ?? "把想法写下来，我们会在后续工具迭代里统一处理。"),
           ]),
         ]),
-        h("label", { class: "field" }, [
-          h("span", "类型"),
-          h("select", {
-            value: category.value,
-            onChange: (event: Event) => {
-              category.value = (event.target as HTMLSelectElement).value;
-            },
-          }, [
-            h("option", "工具建议"),
-            h("option", "问题反馈"),
-            h("option", "问卷需求"),
-            h("option", "其他"),
-          ]),
-        ]),
-        h("label", { class: "field" }, [
-          h("span", "内容"),
-          h("textarea", {
-            value: content.value,
-            rows: 6,
-            maxlength: 500,
-            placeholder: "想要什么小工具、希望怎么用，或者遇到了什么问题...",
-            onInput: (event: Event) => {
-              content.value = (event.target as HTMLTextAreaElement).value;
-            },
+        loading.value
+          ? h("div", { class: "loading-card" }, "正在加载问卷...")
+          : h(QuestionnaireForm, {
+            fields: questionnaire.value?.fields ?? [],
+            answers,
+            submitText: "提交反馈",
+            submitting: submitting.value,
+            onSubmit: submit,
           }),
-          h("em", `${content.value.length} / 500`),
-        ]),
-        h("label", { class: "field" }, [
-          h("span", "联系方式"),
-          h("input", {
-            value: contact.value,
-            maxlength: 80,
-            placeholder: "选填，例如 QQ / 邮箱 / 站内昵称",
-            onInput: (event: Event) => {
-              contact.value = (event.target as HTMLInputElement).value;
-            },
-          }),
-        ]),
-        h("button", { class: "submit-btn", type: "button", onClick: submit }, [
-          h(Finished),
-          h("span", "暂存反馈"),
-        ]),
       ]),
       h("aside", { class: "side-note" }, [
         h("h3", "可以反馈什么"),
@@ -156,43 +128,132 @@ const FeedbackTool = defineComponent({
   },
 });
 
-const PlaceholderTool = defineComponent({
-  name: "PlaceholderTool",
-  props: {
-    tool: {
-      type: Object as () => ServiceTool,
-      required: true,
-    },
-  },
-  setup(props) {
-    return () => h("div", { class: "placeholder-tool" }, [
-      h("span", { class: "placeholder-icon" }, [h(DocumentChecked)]),
-      h("h3", `${props.tool.name}功能预留中`),
-      h("p", props.tool.summary),
-      h("div", { class: "placeholder-steps" }, [
-        h("span", [h(Tools), " 入口已预留"]),
-        h("span", [h(DocumentChecked), " 能力建设中"]),
-        h("span", [h(Finished), " 完成后开放"]),
+const QuestionnairePanel = defineComponent({
+  name: "QuestionnairePanel",
+  setup() {
+    const loading = ref(false);
+    const list = ref<Questionnaire[]>([]);
+    const canManageQuestionnaire = computed(() => manageable.value.includes("questionnaire"));
+
+    onMounted(load);
+
+    async function load() {
+      loading.value = true;
+      try {
+        list.value = await toolsApi.questionnaires({ toolCode: "questionnaire" });
+      } finally {
+        loading.value = false;
+      }
+    }
+
+    return () => h("div", { class: "questionnaire-list" }, [
+      h("div", { class: "list-head" }, [
+        h("div", [
+          h("h3", "可填写问卷"),
+          h("p", "公开问卷会显示在这里，点击后进入填写页。"),
+        ]),
+        canManageQuestionnaire.value
+          ? h("button", { class: "plain-action", type: "button", onClick: () => router.push("/services/tools/manage") }, "创建问卷")
+          : null,
       ]),
+      loading.value
+        ? h("div", { class: "loading-card" }, "正在加载问卷...")
+        : list.value.length
+          ? h("div", { class: "questionnaire-grid" }, list.value.map((item) => h("button", {
+            class: "questionnaire-card",
+            type: "button",
+            onClick: () => router.push({ name: "questionnaire-fill", params: { slug: item.slug } }),
+          }, [
+            h("span", { class: "q-icon" }, [h(DocumentChecked)]),
+            h("span", { class: "q-main" }, [
+              h("span", { class: "q-title" }, item.title),
+              h("span", { class: "q-desc" }, item.description || "点击填写问卷"),
+            ]),
+            h("span", { class: "q-meta" }, item.visibility === "login" ? "需登录" : "公开"),
+          ])))
+          : h("div", { class: "empty-panel" }, "暂时没有开放中的问卷"),
     ]);
   },
 });
 
-const componentMap = {
-  feedback: FeedbackTool,
-  placeholder: PlaceholderTool,
-};
+const QuestionnaireForm = defineComponent({
+  name: "QuestionnaireForm",
+  props: {
+    fields: { type: Array as () => QuestionnaireField[], required: true },
+    answers: { type: Object as () => Record<string, string | string[]>, required: true },
+    submitText: { type: String, default: "提交" },
+    submitting: { type: Boolean, default: false },
+  },
+  emits: ["submit"],
+  setup(props, { emit }) {
+    function setValue(id: string, value: string | string[]) {
+      props.answers[id] = value;
+    }
 
-const currentComponent = computed(() => componentMap[tool.value?.componentKey ?? "placeholder"]);
+    return () => h("form", {
+      class: "questionnaire-form",
+      onSubmit: (event: Event) => {
+        event.preventDefault();
+        emit("submit");
+      },
+    }, [
+      ...props.fields.map((field) => h("label", { class: "field", key: field.id }, [
+        h("span", [field.label, field.required ? h("b", " *") : null]),
+        renderField(field, props.answers[field.id], setValue),
+      ])),
+      h("button", {
+        class: "submit-btn",
+        type: "submit",
+        disabled: props.submitting,
+      }, props.submitting ? "提交中..." : props.submitText),
+    ]);
+  },
+});
+
+function renderField(field: QuestionnaireField, value: string | string[] | undefined, setValue: (id: string, value: string | string[]) => void) {
+  if (field.type === "textarea") {
+    return h("textarea", {
+      value: String(value ?? ""),
+      rows: 6,
+      maxlength: 2000,
+      placeholder: field.placeholder ?? "",
+      onInput: (event: Event) => setValue(field.id, (event.target as HTMLTextAreaElement).value),
+    });
+  }
+  if (field.type === "single") {
+    return h("select", {
+      value: String(value ?? ""),
+      onChange: (event: Event) => setValue(field.id, (event.target as HTMLSelectElement).value),
+    }, [
+      h("option", { value: "" }, "请选择"),
+      ...(field.options ?? []).map((option) => h("option", { value: option }, option)),
+    ]);
+  }
+  if (field.type === "multiple") {
+    const selected = Array.isArray(value) ? value : [];
+    return h("div", { class: "choice-list" }, (field.options ?? []).map((option) => h("label", { class: "choice-item" }, [
+      h("input", {
+        type: "checkbox",
+        checked: selected.includes(option),
+        onChange: (event: Event) => {
+          const checked = (event.target as HTMLInputElement).checked;
+          setValue(field.id, checked ? [...selected, option] : selected.filter((item) => item !== option));
+        },
+      }),
+      h("span", option),
+    ])));
+  }
+  return h("input", {
+    value: String(value ?? ""),
+    maxlength: 300,
+    placeholder: field.placeholder ?? "",
+    onInput: (event: Event) => setValue(field.id, (event.target as HTMLInputElement).value),
+  });
+}
 </script>
 
-<style scoped>
-.tool-detail-page {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
+<style>
+.tool-detail-page { display: flex; flex-direction: column; gap: 18px; }
 .tool-shell,
 .missing-card {
   background: #fff;
@@ -200,18 +261,8 @@ const currentComponent = computed(() => componentMap[tool.value?.componentKey ??
   border-radius: 12px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
-
-.tool-shell {
-  padding: 20px 22px 22px;
-}
-
-.tool-head {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  margin-bottom: 18px;
-}
-
+.tool-shell { padding: 20px 22px 22px; }
+.tool-head { display: flex; flex-direction: column; gap: 16px; margin-bottom: 18px; }
 .back-btn {
   align-self: flex-start;
   display: inline-flex;
@@ -227,18 +278,8 @@ const currentComponent = computed(() => componentMap[tool.value?.componentKey ??
   font: inherit;
   font-size: 13px;
 }
-
-.back-btn:hover {
-  color: var(--cpu-primary);
-  border-color: var(--cpu-primary);
-}
-
-.head-main {
-  display: flex;
-  gap: 14px;
-  align-items: flex-start;
-}
-
+.back-btn:hover { color: var(--cpu-primary); border-color: var(--cpu-primary); }
+.head-main { display: flex; gap: 14px; align-items: flex-start; }
 .head-icon {
   width: 50px;
   height: 50px;
@@ -248,61 +289,28 @@ const currentComponent = computed(() => componentMap[tool.value?.componentKey ??
   place-items: center;
   flex: 0 0 auto;
 }
-
-.head-icon .el-icon {
-  font-size: 26px;
-}
-
-.head-title-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.head-title-row h2 {
-  margin: 0;
-  color: #111827;
-  font-size: 22px;
-}
-
-.head-main p {
-  margin: 6px 0 0;
-  color: #6b7280;
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.missing-card {
-  padding: 28px;
-}
-
-:deep(.feedback-tool) {
+.head-icon .el-icon { font-size: 26px; }
+.head-copy { flex: 1; min-width: 0; }
+.head-title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.head-title-row h2 { margin: 0; color: #111827; font-size: 22px; }
+.head-main p { margin: 6px 0 0; color: #6b7280; font-size: 13px; line-height: 1.7; }
+.manage-btn { flex: 0 0 auto; }
+.missing-card { padding: 28px; }
+.tool-content {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
   gap: 14px;
 }
-
-:deep(.form-card),
-:deep(.side-note),
-:deep(.placeholder-tool) {
+.form-card,
+.side-note,
+.questionnaire-list {
   border: 1px solid #eef0f4;
   border-radius: 10px;
   background: #fff;
 }
-
-:deep(.form-card) {
-  padding: 18px;
-}
-
-:deep(.form-head) {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  margin-bottom: 16px;
-}
-
-:deep(.form-head-icon) {
+.form-card { padding: 18px; }
+.form-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px; }
+.form-head-icon {
   width: 42px;
   height: 42px;
   border-radius: 10px;
@@ -312,42 +320,29 @@ const currentComponent = computed(() => componentMap[tool.value?.componentKey ??
   background: #ecfdf5;
   flex: 0 0 auto;
 }
-
-:deep(.form-head svg) {
-  width: 22px;
-  height: 22px;
-}
-
-:deep(.form-head h3),
-:deep(.side-note h3),
-:deep(.placeholder-tool h3) {
+.form-head-icon .el-icon,
+.form-head-icon svg { width: 22px; height: 22px; }
+.form-head h3,
+.side-note h3,
+.questionnaire-list h3 {
   margin: 0;
   color: #111827;
   font-size: 16px;
 }
-
-:deep(.form-head p),
-:deep(.side-note p),
-:deep(.placeholder-tool p) {
+.form-head p,
+.side-note p,
+.questionnaire-list p {
   margin: 5px 0 0;
   color: #6b7280;
   font-size: 13px;
   line-height: 1.7;
 }
-
-:deep(.field) {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  margin-top: 12px;
-  color: #374151;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-:deep(.field input),
-:deep(.field select),
-:deep(.field textarea) {
+.questionnaire-form { display: flex; flex-direction: column; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 7px; color: #374151; font-size: 13px; font-weight: 600; }
+.field b { color: #dc2626; }
+.field input,
+.field select,
+.field textarea {
   width: 100%;
   border: 1px solid #dcdfe6;
   border-radius: 8px;
@@ -358,64 +353,52 @@ const currentComponent = computed(() => componentMap[tool.value?.componentKey ??
   outline: none;
   background: #fff;
 }
-
-:deep(.field textarea) {
-  resize: vertical;
-  min-height: 132px;
-}
-
-:deep(.field input:focus),
-:deep(.field select:focus),
-:deep(.field textarea:focus) {
+.field textarea { resize: vertical; min-height: 132px; }
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
   border-color: var(--cpu-primary);
   box-shadow: 0 0 0 2px rgba(22, 135, 118, 0.1);
 }
-
-:deep(.field em) {
-  align-self: flex-end;
-  color: #9ca3af;
-  font-size: 12px;
-  font-style: normal;
-  font-weight: 400;
+.choice-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.choice-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  font-weight: 500;
 }
-
-:deep(.submit-btn) {
+.choice-item input { width: auto; }
+.submit-btn,
+.plain-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  min-width: 132px;
+  min-width: 116px;
   height: 40px;
-  margin-top: 16px;
   padding: 0 16px;
-  border: 1px solid var(--cpu-primary);
   border-radius: 8px;
-  color: #fff;
-  background: var(--cpu-primary);
   cursor: pointer;
   font: inherit;
   font-weight: 600;
 }
-
-:deep(.submit-btn svg) {
-  width: 18px;
-  height: 18px;
+.submit-btn {
+  border: 1px solid var(--cpu-primary);
+  color: #fff;
+  background: var(--cpu-primary);
 }
-
-:deep(.side-note) {
-  padding: 16px;
-  align-self: start;
-  background: #f9fafb;
+.submit-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+.plain-action {
+  border: 1px solid var(--cpu-primary);
+  color: var(--cpu-primary);
+  background: #fff;
 }
-
-:deep(.note-list) {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-:deep(.note-list span) {
+.side-note { padding: 16px; align-self: start; background: #f9fafb; }
+.note-list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.note-list span {
   padding: 8px 10px;
   border-radius: 8px;
   background: #fff;
@@ -423,86 +406,67 @@ const currentComponent = computed(() => componentMap[tool.value?.componentKey ??
   color: #4b5563;
   font-size: 12px;
 }
-
-:deep(.placeholder-tool) {
+.questionnaire-list { padding: 18px; }
+.list-head {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 34px 18px;
-  text-align: center;
-  background: #fafafa;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
 }
-
-:deep(.placeholder-icon) {
-  width: 54px;
-  height: 54px;
-  border-radius: 14px;
+.questionnaire-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+.questionnaire-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 104px;
+  padding: 14px;
+  border: 1px solid #eef0f4;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.questionnaire-card:hover { border-color: var(--cpu-primary); box-shadow: 0 6px 18px rgba(22, 135, 118, 0.1); }
+.q-icon {
+  width: 42px;
+  height: 42px;
   display: grid;
   place-items: center;
+  border-radius: 10px;
   color: #d97706;
   background: #fff7ed;
+  flex: 0 0 auto;
 }
-
-:deep(.placeholder-icon svg) {
-  width: 26px;
-  height: 26px;
+.q-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.q-title { color: #111827; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.q-desc { color: #6b7280; font-size: 12px; line-height: 1.5; }
+.q-meta { color: #9ca3af; font-size: 12px; flex: 0 0 auto; }
+.loading-card,
+.empty-panel {
+  padding: 22px;
+  border: 1px dashed #d1d5db;
+  border-radius: 10px;
+  color: #6b7280;
+  text-align: center;
 }
-
-:deep(.placeholder-steps) {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-:deep(.placeholder-steps span) {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 10px;
-  border: 1px solid #fed7aa;
-  border-radius: 999px;
-  color: #9a3412;
-  background: #fff7ed;
-  font-size: 12px;
-}
-
-:deep(.placeholder-steps svg) {
-  width: 15px;
-  height: 15px;
-}
-
 @media (max-width: 800px) {
-  .tool-shell {
-    padding: 16px;
-  }
-
-  :deep(.feedback-tool) {
-    grid-template-columns: 1fr;
-  }
-
-  :deep(.side-note) {
-    align-self: stretch;
-  }
+  .tool-shell { padding: 16px; }
+  .tool-content { grid-template-columns: 1fr; }
+  .side-note { align-self: stretch; }
 }
-
 @media (max-width: 520px) {
-  .head-main {
-    flex-direction: column;
-  }
-
-  .head-title-row h2 {
-    font-size: 20px;
-  }
-
-  :deep(.form-card) {
-    padding: 14px;
-  }
-
-  :deep(.submit-btn) {
-    width: 100%;
-  }
+  .head-main { flex-direction: column; }
+  .head-title-row h2 { font-size: 20px; }
+  .manage-btn,
+  .submit-btn,
+  .plain-action { width: 100%; }
+  .list-head { flex-direction: column; align-items: stretch; }
+  .questionnaire-grid { grid-template-columns: 1fr; }
 }
 </style>

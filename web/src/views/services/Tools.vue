@@ -17,7 +17,13 @@
           <h3>工具列表</h3>
           <p>常用工具会陆续补齐，也欢迎先把需求告诉我们。</p>
         </div>
-        <el-tag round type="success">{{ serviceTools.length }} 个入口</el-tag>
+        <div class="panel-actions">
+          <el-button v-if="canManageAny" plain type="primary" @click="$router.push('/services/tools/manage')">
+            <el-icon><Setting /></el-icon>
+            管理
+          </el-button>
+          <el-tag round type="success">{{ serviceTools.length }} 个入口</el-tag>
+        </div>
       </div>
 
       <div class="tools-grid">
@@ -56,11 +62,25 @@
 </template>
 
 <script setup lang="ts">
-import { Right } from "@element-plus/icons-vue";
+import { Right, Setting } from "@element-plus/icons-vue";
+import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
+import { getToken } from "@/api/request";
+import { toolsApi, type ServiceToolCode } from "@/api/tools";
 import { serviceTools, toolHubIntro, type ServiceTool, type ServiceToolStatus } from "@/data/serviceTools";
 
 const router = useRouter();
+const manageable = ref<ServiceToolCode[]>([]);
+const canManageAny = computed(() => manageable.value.length > 0);
+
+onMounted(async () => {
+  if (!getToken()) return;
+  try {
+    manageable.value = (await toolsApi.myPermissions()).toolCodes;
+  } catch {
+    manageable.value = [];
+  }
+});
 
 function statusText(status: ServiceToolStatus) {
   return status === "ready" ? "可用" : "待开发";
@@ -142,6 +162,13 @@ function openTool(tool: ServiceTool) {
   align-items: flex-start;
   gap: 14px;
   margin-bottom: 16px;
+}
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .panel-head h3 {
@@ -277,6 +304,10 @@ function openTool(tool: ServiceTool) {
   .panel-head {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .panel-actions {
+    justify-content: flex-start;
   }
 
   .tools-grid {

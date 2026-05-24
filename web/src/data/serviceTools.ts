@@ -12,7 +12,7 @@ export interface ServiceTool {
   status: ServiceToolStatus;
   category: string;
   routeName: string;
-  componentKey: "feedback" | "placeholder";
+  componentKey: "feedback" | "questionnaire";
   accent: string;
   iconComponent: Component;
 }
@@ -37,10 +37,10 @@ export const serviceTools: ServiceTool[] = [
     summary: "预留问卷发布、填写与结果统计入口",
     description: "后续可扩展问卷编辑器、链接分享、匿名填写和数据导出等能力。",
     icon: "📝",
-    status: "planned",
+    status: "ready",
     category: "表单",
     routeName: "service-tool-detail",
-    componentKey: "placeholder",
+    componentKey: "questionnaire",
     accent: "#d97706",
     iconComponent: DocumentChecked,
   },

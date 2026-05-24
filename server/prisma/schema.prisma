@@ -58,6 +58,9 @@ model User {
   userCourses       UserCourse[]
   scheduleEdits     UserScheduleEdit[]
   scheduleWidgetTokens ScheduleWidgetToken[]
+  toolPermissions   ToolPermission[]
+  createdQuestionnaires Questionnaire[] @relation("QuestionnaireCreatedBy")
+  questionnaireResponses QuestionnaireResponse[]
 }
 
 // ============ 论坛核心 ============
@@ -391,6 +394,64 @@ model ServiceCard {
   order       Int      @default(0)
   hidden      Boolean  @default(false)
   createdAt   DateTime @default(now())
+}
+
+// ============ 校园小工具权限 ============
+
+model ToolPermission {
+  id        Int      @id @default(autoincrement())
+  toolCode  String
+  userId    Int
+  role      String   @default("manager") // manager
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([toolCode, userId])
+  @@index([toolCode])
+  @@index([userId])
+}
+
+// ============ 小工具：问卷系统 ============
+
+model Questionnaire {
+  id                 Int      @id @default(autoincrement())
+  toolCode           String   @default("questionnaire")
+  slug               String   @unique
+  title              String
+  description        String?
+  status             String   @default("draft") // draft / open / closed
+  visibility         String   @default("public") // public / login
+  allowAnonymous     Boolean  @default(true)
+  oneResponsePerUser Boolean  @default(false)
+  isSystem           Boolean  @default(false)
+  fields             String   @default("[]")
+  createdById        Int?
+  publishedAt        DateTime?
+  closedAt           DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  createdBy User? @relation("QuestionnaireCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  responses QuestionnaireResponse[]
+
+  @@index([toolCode, status])
+  @@index([createdById])
+}
+
+model QuestionnaireResponse {
+  id              Int      @id @default(autoincrement())
+  questionnaireId Int
+  respondentId    Int?
+  answers         String
+  createdAt       DateTime @default(now())
+
+  questionnaire Questionnaire @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+  respondent    User? @relation(fields: [respondentId], references: [id], onDelete: SetNull)
+
+  @@index([questionnaireId, createdAt])
+  @@index([respondentId])
 }
 
 // ============ 通知与待办（保留，但语义改为论坛事件） ============
