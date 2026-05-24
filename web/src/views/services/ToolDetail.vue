@@ -199,6 +199,7 @@ const QuestionnaireForm = defineComponent({
     }, [
       ...props.fields.map((field) => h("label", { class: "field", key: field.id }, [
         h("span", [field.label, field.required ? h("b", " *") : null]),
+        field.description ? h("small", field.description) : null,
         renderField(field, props.answers[field.id], setValue),
       ])),
       h("button", {
@@ -215,7 +216,7 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
     return h("textarea", {
       value: String(value ?? ""),
       rows: 6,
-      maxlength: 2000,
+      maxlength: field.maxLength ?? 2000,
       placeholder: field.placeholder ?? "",
       onInput: (event: Event) => setValue(field.id, (event.target as HTMLTextAreaElement).value),
     });
@@ -243,9 +244,36 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
       h("span", option),
     ])));
   }
+  if (field.type === "number") {
+    return h("input", {
+      value: String(value ?? ""),
+      type: "number",
+      min: field.min,
+      max: field.max,
+      step: field.step ?? 1,
+      placeholder: field.placeholder ?? "",
+      onInput: (event: Event) => setValue(field.id, (event.target as HTMLInputElement).value),
+    });
+  }
+  if (field.type === "date") {
+    return h("input", {
+      value: String(value ?? ""),
+      type: "date",
+      onInput: (event: Event) => setValue(field.id, (event.target as HTMLInputElement).value),
+    });
+  }
+  if (field.type === "rating") {
+    const min = Math.max(0, Math.round(field.min ?? 1));
+    const max = Math.min(10, Math.round(field.max ?? 5));
+    return h("div", { class: "rating-list" }, Array.from({ length: Math.max(0, max - min + 1) }, (_, i) => String(min + i)).map((score) => h("button", {
+      type: "button",
+      class: ["rating-btn", String(value ?? "") === score ? "active" : ""],
+      onClick: () => setValue(field.id, score),
+    }, score)));
+  }
   return h("input", {
     value: String(value ?? ""),
-    maxlength: 300,
+    maxlength: field.maxLength ?? 300,
     placeholder: field.placeholder ?? "",
     onInput: (event: Event) => setValue(field.id, (event.target as HTMLInputElement).value),
   });
@@ -340,6 +368,7 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
 .questionnaire-form { display: flex; flex-direction: column; gap: 12px; }
 .field { display: flex; flex-direction: column; gap: 7px; color: #374151; font-size: 13px; font-weight: 600; }
 .field b { color: #dc2626; }
+.field small { color: #6b7280; font-size: 12px; font-weight: 400; line-height: 1.6; }
 .field input,
 .field select,
 .field textarea {
@@ -372,6 +401,23 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
   font-weight: 500;
 }
 .choice-item input { width: auto; }
+.rating-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.rating-btn {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  color: #4b5563;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+}
+.rating-btn.active {
+  color: #fff;
+  border-color: var(--cpu-primary);
+  background: var(--cpu-primary);
+}
 .submit-btn,
 .plain-action {
   display: inline-flex;

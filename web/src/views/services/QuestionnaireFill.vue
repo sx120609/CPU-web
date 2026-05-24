@@ -15,43 +15,79 @@
             <div class="meta-row">
               <el-tag size="small" effect="plain">{{ questionnaire.visibility === "login" ? "需登录" : "公开填写" }}</el-tag>
               <el-tag v-if="questionnaire.oneResponsePerUser" size="small" type="warning" effect="plain">每人一次</el-tag>
+              <el-tag size="small" type="info" effect="plain">{{ answeredCount }}/{{ fieldCount }} 已填写</el-tag>
             </div>
           </div>
         </div>
 
-        <form class="questionnaire-form" @submit.prevent="submit">
-          <label v-for="field in questionnaire.fields || []" :key="field.id" class="field">
-            <span>{{ field.label }}<b v-if="field.required"> *</b></span>
-            <textarea
-              v-if="field.type === 'textarea'"
-              v-model="answers[field.id] as string"
-              rows="6"
-              maxlength="2000"
-              :placeholder="field.placeholder"
-            />
-            <select v-else-if="field.type === 'single'" v-model="answers[field.id] as string">
-              <option value="">请选择</option>
-              <option v-for="option in field.options || []" :key="option" :value="option">{{ option }}</option>
-            </select>
-            <div v-else-if="field.type === 'multiple'" class="choice-list">
-              <label v-for="option in field.options || []" :key="option" class="choice-item">
-                <input
-                  type="checkbox"
-                  :checked="Array.isArray(answers[field.id]) && (answers[field.id] as string[]).includes(option)"
-                  @change="toggleMulti(field.id, option, ($event.target as HTMLInputElement).checked)"
-                />
-                <span>{{ option }}</span>
-              </label>
-            </div>
-            <input
-              v-else
-              v-model="answers[field.id] as string"
-              maxlength="300"
-              :placeholder="field.placeholder"
-            />
-          </label>
+        <el-progress v-if="fieldCount" class="fill-progress" :percentage="progressPercent" :show-text="false" />
 
-          <el-button type="primary" size="large" native-type="submit" :loading="submitting">提交问卷</el-button>
+        <form class="questionnaire-form" @submit.prevent="submit">
+          <section v-for="(field, index) in questionnaire.fields || []" :key="field.id" class="field-card">
+            <div class="field-title">
+              <span>{{ index + 1 }}</span>
+              <div>
+                <b>{{ field.label }}<em v-if="field.required">*</em></b>
+                <p v-if="field.description">{{ field.description }}</p>
+              </div>
+            </div>
+
+            <el-input
+              v-if="field.type === 'text'"
+              v-model="answers[field.id] as string"
+              :maxlength="field.maxLength || 300"
+              :placeholder="field.placeholder"
+              clearable
+            />
+            <el-input
+              v-else-if="field.type === 'textarea'"
+              v-model="answers[field.id] as string"
+              type="textarea"
+              :rows="6"
+              :maxlength="field.maxLength || 2000"
+              show-word-limit
+              :placeholder="field.placeholder"
+            />
+            <el-radio-group v-else-if="field.type === 'single'" v-model="answers[field.id] as string" class="vertical-options">
+              <el-radio v-for="option in field.options || []" :key="option" :label="option">{{ option }}</el-radio>
+            </el-radio-group>
+            <el-checkbox-group v-else-if="field.type === 'multiple'" :model-value="multiValue(field.id)" class="vertical-options" @change="setMulti(field.id, $event)">
+              <el-checkbox v-for="option in field.options || []" :key="option" :label="option">{{ option }}</el-checkbox>
+            </el-checkbox-group>
+            <el-input
+              v-else-if="field.type === 'number'"
+              v-model="answers[field.id] as string"
+              type="number"
+              :min="field.min"
+              :max="field.max"
+              :step="field.step || 1"
+              :placeholder="field.placeholder || '请输入数字'"
+            />
+            <el-date-picker
+              v-else-if="field.type === 'date'"
+              :model-value="answers[field.id] as string"
+              type="date"
+              value-format="YYYY-MM-DD"
+              placeholder="选择日期"
+              @update:model-value="answers[field.id] = String($event || '')"
+            />
+            <div v-else-if="field.type === 'rating'" class="rating-field">
+              <button
+                v-for="score in ratingRange(field)"
+                :key="score"
+                type="button"
+                :class="{ active: answers[field.id] === String(score) }"
+                @click="answers[field.id] = answers[field.id] === String(score) ? '' : String(score)"
+              >
+                {{ score }}
+              </button>
+              <span>{{ answers[field.id] ? `${answers[field.id]} 分` : "未评分" }}</span>
+            </div>
+          </section>
+
+          <div class="submit-row">
+            <el-button type="primary" size="large" native-type="submit" :loading="submitting">提交问卷</el-button>
+          </div>
         </form>
       </template>
 
@@ -63,11 +99,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft, DocumentChecked } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
-import { toolsApi, type Questionnaire } from "@/api/tools";
+import { toolsApi, type Questionnaire, type QuestionnaireField } from "@/api/tools";
 
 const route = useRoute();
 const router = useRouter();
@@ -75,6 +111,10 @@ const loading = ref(false);
 const submitting = ref(false);
 const questionnaire = ref<Questionnaire | null>(null);
 const answers = reactive<Record<string, string | string[]>>({});
+
+const fieldCount = computed(() => questionnaire.value?.fields?.length ?? 0);
+const answeredCount = computed(() => (questionnaire.value?.fields ?? []).filter((field) => hasAnswer(answers[field.id])).length);
+const progressPercent = computed(() => fieldCount.value ? Math.round((answeredCount.value / fieldCount.value) * 100) : 0);
 
 onMounted(load);
 
@@ -90,13 +130,32 @@ async function load() {
   }
 }
 
-function toggleMulti(fieldId: string, option: string, checked: boolean) {
-  const current = Array.isArray(answers[fieldId]) ? answers[fieldId] as string[] : [];
-  answers[fieldId] = checked ? [...current, option] : current.filter((item) => item !== option);
+function multiValue(fieldId: string) {
+  return Array.isArray(answers[fieldId]) ? answers[fieldId] as string[] : [];
+}
+
+function setMulti(fieldId: string, value: unknown) {
+  answers[fieldId] = Array.isArray(value) ? value.map(String) : [];
+}
+
+function hasAnswer(value: string | string[] | undefined) {
+  if (Array.isArray(value)) return value.length > 0;
+  return Boolean(String(value ?? "").trim());
+}
+
+function ratingRange(field: QuestionnaireField) {
+  const min = Math.max(0, Math.round(field.min ?? 1));
+  const max = Math.min(10, Math.round(field.max ?? 5));
+  return Array.from({ length: Math.max(0, max - min + 1) }, (_, index) => min + index);
 }
 
 async function submit() {
   if (!questionnaire.value) return;
+  const missing = (questionnaire.value.fields ?? []).find((field) => field.required && !hasAnswer(answers[field.id]));
+  if (missing) {
+    ElMessage.warning(`请填写：${missing.label}`);
+    return;
+  }
   submitting.value = true;
   try {
     await toolsApi.submitResponse(questionnaire.value.slug, answers);
@@ -142,7 +201,7 @@ async function submit() {
   align-items: flex-start;
   padding-bottom: 18px;
   border-bottom: 1px solid #eef0f4;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 .head-icon {
   width: 50px;
@@ -172,54 +231,89 @@ async function submit() {
   gap: 8px;
   margin-top: 10px;
 }
+.fill-progress { margin-bottom: 18px; max-width: 820px; }
 .questionnaire-form {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  max-width: 760px;
+  max-width: 820px;
 }
-.field {
+.field-card {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  color: #374151;
-  font-size: 13px;
-  font-weight: 600;
-}
-.field b { color: #dc2626; }
-.field input,
-.field select,
-.field textarea {
-  width: 100%;
-  border: 1px solid #dcdfe6;
-  border-radius: 8px;
-  padding: 10px 12px;
-  color: #1f2937;
-  font: inherit;
-  line-height: 1.5;
-  outline: none;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #eef0f4;
+  border-radius: 10px;
   background: #fff;
 }
-.field textarea {
-  resize: vertical;
-  min-height: 132px;
-}
-.choice-list {
+.field-title {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 10px;
 }
-.choice-item {
-  display: inline-flex;
+.field-title > span {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--cpu-primary);
+  font-size: 12px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+.field-title div { min-width: 0; }
+.field-title b {
+  color: #111827;
+  font-size: 14px;
+}
+.field-title em {
+  color: #dc2626;
+  font-style: normal;
+  margin-left: 3px;
+}
+.field-title p {
+  margin: 5px 0 0;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.vertical-options {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.rating-field {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.rating-field button {
+  width: 36px;
+  height: 36px;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   background: #fff;
-  font-weight: 500;
+  color: #4b5563;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
 }
-.choice-item input { width: auto; }
+.rating-field button.active {
+  color: #fff;
+  border-color: var(--cpu-primary);
+  background: var(--cpu-primary);
+}
+.rating-field span { color: #6b7280; font-size: 13px; }
+.submit-row {
+  display: flex;
+  justify-content: flex-start;
+  padding-top: 4px;
+}
 @media (max-width: 700px) {
   .fill-card {
     padding: 16px;
@@ -231,5 +325,7 @@ async function submit() {
   .fill-head h2 {
     font-size: 20px;
   }
+  .field-card { padding: 14px; }
+  .submit-row .el-button { width: 100%; }
 }
 </style>

@@ -29,10 +29,15 @@ export const toolsRouter = Router();
 const fieldSchema = z.object({
   id: z.string().trim().min(1).max(40).regex(/^[a-zA-Z0-9_-]+$/, "字段 ID 仅支持英文、数字、下划线和中划线"),
   label: z.string().trim().min(1).max(80),
-  type: z.enum(["text", "textarea", "single", "multiple"]),
+  type: z.enum(["text", "textarea", "single", "multiple", "number", "date", "rating"]),
   required: z.boolean().optional(),
   placeholder: z.string().trim().max(120).optional(),
   options: z.array(z.string().trim().min(1).max(80)).max(20).optional(),
+  description: z.string().trim().max(300).optional(),
+  min: z.number().finite().optional(),
+  max: z.number().finite().optional(),
+  step: z.number().positive().finite().optional(),
+  maxLength: z.number().int().positive().max(2000).optional(),
 });
 
 const createQuestionnaireSchema = z.object({
@@ -161,16 +166,17 @@ toolsRouter.delete("/:toolCode/managers/:userId", authRequired, async (req, res,
 
 toolsRouter.get("/questionnaires", authOptional, async (req, res, next) => {
   try {
-    const toolCode = req.query.toolCode ? String(req.query.toolCode) : undefined;
-    if (toolCode && !isServiceToolCode(toolCode)) throw Errors.badRequest("小工具不合法");
+    const requestedToolCode = req.query.toolCode ? String(req.query.toolCode) : undefined;
+    if (requestedToolCode && !isServiceToolCode(requestedToolCode)) throw Errors.badRequest("小工具不合法");
+    const toolCode = requestedToolCode && isServiceToolCode(requestedToolCode) ? requestedToolCode : undefined;
     const canManageAll = req.user ? await listManageableToolCodes(req.user) : [];
     const includeDraft = req.query.manage === "1";
+    if (includeDraft && toolCode && !canManageAll.includes(toolCode)) throw Errors.forbidden("没有该小工具的管理权限");
     if (toolCode && !includeDraft) await ensureToolUsableForRequest(toolCode, req.user);
-    const manageableFilter = includeDraft ? { toolCode: { in: canManageAll } } : {};
     const list = await prisma.questionnaire.findMany({
       where: {
-        ...(toolCode ? { toolCode } : {}),
-        ...(includeDraft ? manageableFilter : { status: "open" }),
+        ...(toolCode ? { toolCode } : includeDraft ? { toolCode: { in: canManageAll } } : {}),
+        ...(includeDraft ? {} : { status: "open" }),
       },
       orderBy: [{ isSystem: "desc" }, { createdAt: "desc" }],
       include: {
@@ -179,6 +185,7 @@ toolsRouter.get("/questionnaires", authOptional, async (req, res, next) => {
       },
     });
     ok(res, list.map((row) => normalizeQuestionnaire(row, {
+      includeFields: includeDraft && isServiceToolCode(row.toolCode) && canManageAll.includes(row.toolCode),
       includeStats: isServiceToolCode(row.toolCode) && canManageAll.includes(row.toolCode),
     })));
   } catch (e) { next(e); }
@@ -358,6 +365,14 @@ function validateFields(fields: QuestionnaireField[]) {
     if ((field.type === "single" || field.type === "multiple") && (!field.options || field.options.length < 2)) {
       throw Errors.badRequest(`选项题“${field.label}”至少需要 2 个选项`);
     }
+    if (field.type === "rating") {
+      const min = field.min ?? 1;
+      const max = field.max ?? 5;
+      if (min < 0 || max > 10 || min >= max) throw Errors.badRequest(`评分题“${field.label}”的分值范围不合法`);
+    }
+    if (field.type === "number" && field.min !== undefined && field.max !== undefined && field.min > field.max) {
+      throw Errors.badRequest(`数字题“${field.label}”的最小值不能大于最大值`);
+    }
   }
 }
 
@@ -380,7 +395,25 @@ function normalizeAnswers(fields: QuestionnaireField[], input: Record<string, st
       const allowed = new Set(field.options ?? []);
       if (!allowed.has(value)) throw Errors.badRequest(`“${field.label}”包含无效选项`);
     }
-    result[field.id] = value.slice(0, field.type === "textarea" ? 2000 : 300);
+    if (field.type === "number" && value) {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) throw Errors.badRequest(`“${field.label}”需要填写数字`);
+      if (field.min !== undefined && numeric < field.min) throw Errors.badRequest(`“${field.label}”不能小于 ${field.min}`);
+      if (field.max !== undefined && numeric > field.max) throw Errors.badRequest(`“${field.label}”不能大于 ${field.max}`);
+    }
+    if (field.type === "rating" && value) {
+      const numeric = Number(value);
+      const min = field.min ?? 1;
+      const max = field.max ?? 5;
+      if (!Number.isFinite(numeric) || numeric < min || numeric > max) {
+        throw Errors.badRequest(`“${field.label}”评分不合法`);
+      }
+    }
+    if (field.type === "date" && value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      throw Errors.badRequest(`“${field.label}”日期格式不合法`);
+    }
+    const maxLength = field.maxLength ?? (field.type === "textarea" ? 2000 : 300);
+    result[field.id] = value.slice(0, Math.max(1, Math.min(maxLength, 2000)));
   }
   return result;
 }

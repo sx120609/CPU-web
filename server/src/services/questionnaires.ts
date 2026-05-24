@@ -1,7 +1,7 @@
 import { prisma } from "../prisma";
 import { SERVICE_TOOL_META, type ServiceToolCode } from "./serviceTools";
 
-export type QuestionnaireFieldType = "text" | "textarea" | "single" | "multiple";
+export type QuestionnaireFieldType = "text" | "textarea" | "single" | "multiple" | "number" | "date" | "rating";
 
 export interface QuestionnaireField {
   id: string;
@@ -10,6 +10,11 @@ export interface QuestionnaireField {
   required?: boolean;
   placeholder?: string;
   options?: string[];
+  description?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  maxLength?: number;
 }
 
 export function parseFields(raw: string | null | undefined): QuestionnaireField[] {

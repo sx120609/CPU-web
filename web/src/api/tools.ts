@@ -3,7 +3,7 @@ import { request } from "./request";
 export type ServiceToolCode = "feedback" | "questionnaire";
 export type QuestionnaireStatus = "draft" | "open" | "closed";
 export type QuestionnaireVisibility = "public" | "login";
-export type QuestionnaireFieldType = "text" | "textarea" | "single" | "multiple";
+export type QuestionnaireFieldType = "text" | "textarea" | "single" | "multiple" | "number" | "date" | "rating";
 
 export interface ToolMeta {
   code: ServiceToolCode;
@@ -20,6 +20,11 @@ export interface QuestionnaireField {
   required?: boolean;
   placeholder?: string;
   options?: string[];
+  description?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  maxLength?: number;
 }
 
 export interface Questionnaire {
