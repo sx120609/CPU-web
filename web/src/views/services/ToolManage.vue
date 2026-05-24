@@ -184,57 +184,66 @@
       </template>
     </section>
 
-    <el-dialog v-model="editorOpen" :title="editorTitle" width="92vw" class="questionnaire-builder-dialog" :close-on-click-modal="false">
+    <el-dialog
+      v-model="editorOpen"
+      fullscreen
+      class="questionnaire-builder-dialog"
+      :show-close="false"
+      modal-class="questionnaire-builder-overlay"
+      :close-on-click-modal="false"
+    >
+      <template #header>
+        <div class="builder-topbar">
+          <div class="builder-titlebar">
+            <button type="button" class="builder-back" @click="editorOpen = false">
+              <el-icon><ArrowLeft /></el-icon>
+            </button>
+            <div>
+              <b>{{ editorTitle }}</b>
+              <span>{{ statusText(form.status) }} · {{ form.fields.length }} 题 · {{ requiredCount }} 题必填</span>
+            </div>
+          </div>
+          <div class="builder-top-actions">
+            <el-button plain @click="openPreview()">
+              <el-icon><View /></el-icon>
+              预览
+            </el-button>
+            <el-button :loading="saving" @click="submitEditor('draft')">保存草稿</el-button>
+            <el-button type="primary" plain :loading="saving" @click="submitEditor()">保存</el-button>
+            <el-button type="primary" :loading="saving" @click="submitEditor('open')">保存并开放</el-button>
+          </div>
+        </div>
+      </template>
+
       <div class="builder-layout">
         <section class="type-palette">
           <div class="palette-title">
-            <h4>添加题型</h4>
-            <span>{{ form.fields.length }} 题</span>
+            <h4>常用题型</h4>
+            <span>点击添加</span>
           </div>
           <button v-for="type in fieldTypeOptions" :key="type.value" type="button" @click="addField(type.value)">
             <el-icon><component :is="type.icon" /></el-icon>
             <span>
               <b>{{ type.label }}</b>
+              <small>{{ type.hint }}</small>
             </span>
           </button>
         </section>
 
         <el-form label-position="top" class="questionnaire-editor">
           <div class="editor-card">
-            <div class="base-grid">
-              <el-form-item label="标题" required class="title-field">
-                <el-input v-model="form.title" maxlength="120" placeholder="例如：校园服务满意度调查" />
-              </el-form-item>
-              <el-form-item label="状态">
-                <el-select v-model="form.status">
-                  <el-option label="草稿" value="draft" />
-                  <el-option label="开放" value="open" />
-                  <el-option label="关闭" value="closed" />
-                </el-select>
-              </el-form-item>
-              <el-form-item label="可见性">
-                <el-select v-model="form.visibility">
-                  <el-option label="公开填写" value="public" />
-                  <el-option label="登录后填写" value="login" />
-                </el-select>
-              </el-form-item>
-            </div>
-            <el-form-item label="说明">
-              <el-input v-model="form.description" type="textarea" :rows="2" maxlength="1000" placeholder="填写说明、用途或截止提醒" />
+            <div class="cover-kicker">问卷封面</div>
+            <el-form-item label="标题" required class="title-field">
+              <el-input v-model="form.title" maxlength="120" placeholder="例如：校园服务满意度调查" />
             </el-form-item>
-            <div class="switch-row">
-              <el-checkbox v-model="form.allowAnonymous">允许匿名填写</el-checkbox>
-              <el-checkbox v-model="form.oneResponsePerUser">每个登录用户限填一次</el-checkbox>
-            </div>
+            <el-form-item label="说明">
+              <el-input v-model="form.description" type="textarea" :rows="3" maxlength="1000" placeholder="填写说明、用途或截止提醒" />
+            </el-form-item>
           </div>
 
           <div class="fields-head">
             <h4>题目设计</h4>
             <div>
-              <el-button size="small" plain @click="openPreview()">
-                <el-icon><View /></el-icon>
-                预览
-              </el-button>
               <el-button size="small" type="primary" plain @click="addField('single')">
                 <el-icon><Plus /></el-icon>
                 添加题目
@@ -243,9 +252,13 @@
           </div>
 
           <div class="field-editor-list">
-            <article v-for="(field, index) in form.fields" :key="field.localKey" class="field-editor">
-              <div class="field-index">{{ index + 1 }}</div>
+            <article v-for="(field, index) in form.fields" :key="field.localKey" class="field-editor" :class="{ 'is-required': field.required }">
+              <div class="field-index">Q{{ index + 1 }}</div>
               <div class="field-editor-body">
+                <div class="field-meta-line">
+                  <span>{{ fieldTypeText(field.type) }}</span>
+                  <b v-if="field.required">必填</b>
+                </div>
                 <div class="field-editor-main">
                   <el-input v-model="field.label" placeholder="题目名称" maxlength="80" />
                   <el-select v-model="field.type" class="type-select" @change="normalizeEditableField(field)">
@@ -288,35 +301,67 @@
                   </el-form-item>
                 </div>
                 <div class="field-actions">
-                  <el-button size="small" text :disabled="index === 0" @click="moveField(index, -1)">
+                  <button type="button" :disabled="index === 0" @click="moveField(index, -1)">
                     <el-icon><ArrowUp /></el-icon>
                     上移
-                  </el-button>
-                  <el-button size="small" text :disabled="index === form.fields.length - 1" @click="moveField(index, 1)">
+                  </button>
+                  <button type="button" :disabled="index === form.fields.length - 1" @click="moveField(index, 1)">
                     <el-icon><ArrowDown /></el-icon>
                     下移
-                  </el-button>
-                  <el-button size="small" text @click="duplicateField(index)">
+                  </button>
+                  <button type="button" @click="duplicateField(index)">
                     <el-icon><CopyDocument /></el-icon>
                     复制
-                  </el-button>
-                  <el-button size="small" text type="danger" @click="removeField(index)">
+                  </button>
+                  <button type="button" class="danger" @click="removeField(index)">
                     <el-icon><Delete /></el-icon>
                     删除
-                  </el-button>
+                  </button>
                 </div>
               </div>
             </article>
             <el-empty v-if="!form.fields.length" description="从左侧选择题型开始设计问卷" />
           </div>
         </el-form>
+
+        <aside class="builder-side">
+          <section class="inspector-card">
+            <h4>发布设置</h4>
+            <el-form label-position="top">
+              <el-form-item label="状态">
+                <el-select v-model="form.status">
+                  <el-option label="草稿" value="draft" />
+                  <el-option label="开放" value="open" />
+                  <el-option label="关闭" value="closed" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="填写权限">
+                <el-select v-model="form.visibility">
+                  <el-option label="公开填写" value="public" />
+                  <el-option label="登录后填写" value="login" />
+                </el-select>
+              </el-form-item>
+              <div class="inspector-checks">
+                <el-checkbox v-model="form.allowAnonymous">允许匿名填写</el-checkbox>
+                <el-checkbox v-model="form.oneResponsePerUser">每个登录用户限填一次</el-checkbox>
+              </div>
+            </el-form>
+          </section>
+
+          <section class="inspector-card">
+            <h4>发布检查</h4>
+            <div class="check-row">
+              <span>题目数</span>
+              <b>{{ form.fields.length }}</b>
+            </div>
+            <div class="check-row">
+              <span>必填题</span>
+              <b>{{ requiredCount }}</b>
+            </div>
+            <p>发布前确认必填题、选项数量、匿名设置和登录限制。发布后仍可编辑，已有答卷会按题目 ID 保留。</p>
+          </section>
+        </aside>
       </div>
-      <template #footer>
-        <el-button @click="editorOpen = false">取消</el-button>
-        <el-button :loading="saving" @click="submitEditor('draft')">保存草稿</el-button>
-        <el-button type="primary" plain :loading="saving" @click="submitEditor()">保存</el-button>
-        <el-button type="primary" :loading="saving" @click="submitEditor('open')">保存并开放</el-button>
-      </template>
     </el-dialog>
 
     <el-drawer v-model="previewOpen" title="问卷预览" size="min(760px, 92vw)">
@@ -551,6 +596,7 @@ const currentToolMeta = computed(() => allTools.value.find((tool) => tool.code =
 const openCount = computed(() => questionnaires.value.filter((item) => item.status === "open").length);
 const totalResponses = computed(() => questionnaires.value.reduce((sum, item) => sum + (item.responseCount ?? 0), 0));
 const editorTitle = computed(() => editorMode.value === "create" ? "新建问卷" : "编辑问卷");
+const requiredCount = computed(() => form.fields.filter((field) => field.required).length);
 const toolRequireLogin = computed({
   get: () => Boolean(currentToolMeta.value?.requireLogin),
   set: (value: boolean) => {
@@ -1039,13 +1085,107 @@ function round(value: number) {
 .manage-head h2 { margin: 0; font-size: 22px; color: #111827; }
 .manage-head p { margin: 6px 0 0; color: #6b7280; font-size: 13px; line-height: 1.7; }
 .manage-panel { padding: 16px 18px 20px; min-height: 240px; }
-:deep(.questionnaire-builder-dialog) {
-  max-width: 1180px;
+:global(.questionnaire-builder-dialog.el-dialog) {
+  --builder-primary: #267dff;
+  --builder-primary-dark: #1765d8;
+  --builder-primary-soft: #eef5ff;
+  --builder-border: #e5eaf3;
+  --builder-muted: #6b7280;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-height: none !important;
+  min-height: 100vh;
+  max-width: none;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0;
+  background: #f3f6fb;
+  box-shadow: none;
+  transform: none !important;
 }
-:deep(.questionnaire-builder-dialog .el-dialog__body) {
-  padding-top: 8px;
-  max-height: calc(100vh - 188px);
-  overflow-y: auto;
+:global(.questionnaire-builder-overlay) {
+  background: #f3f6fb !important;
+}
+:global(.questionnaire-builder-overlay .el-overlay-dialog) {
+  align-items: stretch !important;
+  justify-content: stretch !important;
+  padding: 0 !important;
+  overflow: hidden;
+}
+:global(.questionnaire-builder-dialog .el-dialog__header) {
+  padding: 0;
+  margin: 0;
+  border-bottom: 1px solid var(--builder-border);
+  background: #fff;
+  box-shadow: 0 1px 10px rgba(17, 24, 39, 0.04);
+}
+:global(.questionnaire-builder-dialog .el-dialog__body) {
+  padding: 0;
+  height: calc(100vh - 64px);
+  overflow: hidden;
+}
+.builder-topbar {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 24px;
+}
+.builder-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.builder-titlebar div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.builder-titlebar b { color: #111827; font-size: 17px; }
+.builder-titlebar span { color: #6b7280; font-size: 12px; }
+.builder-back {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--builder-border);
+  border-radius: 8px;
+  color: #4b5563;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.builder-back:hover {
+  color: var(--builder-primary);
+  border-color: #b8d7ff;
+  background: var(--builder-primary-soft);
+}
+.builder-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.builder-top-actions :deep(.el-button) {
+  height: 34px;
+  border-radius: 6px;
+}
+.builder-top-actions :deep(.el-button--primary) {
+  --el-button-bg-color: var(--builder-primary);
+  --el-button-border-color: var(--builder-primary);
+  --el-button-hover-bg-color: var(--builder-primary-dark);
+  --el-button-hover-border-color: var(--builder-primary-dark);
+}
+.builder-top-actions :deep(.el-button--primary.is-plain) {
+  --el-button-bg-color: #fff;
+  --el-button-border-color: #b8d7ff;
+  --el-button-text-color: var(--builder-primary);
+  --el-button-hover-bg-color: var(--builder-primary-soft);
+  --el-button-hover-border-color: var(--builder-primary);
+  --el-button-hover-text-color: var(--builder-primary);
 }
 .tool-admin-grid {
   display: grid;
@@ -1124,23 +1264,33 @@ function round(value: number) {
 .manager-row b { color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .manager-row span { color: #6b7280; font-size: 12px; }
 .builder-layout {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr) 286px;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
 }
 .type-palette,
 .editor-card,
-.field-editor {
-  border: 1px solid #eef0f4;
+.field-editor,
+.inspector-card {
+  border: 1px solid var(--builder-border);
   border-radius: 8px;
   background: #fff;
 }
 .type-palette {
+  align-self: stretch;
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 12px;
-  background: #fafafa;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 16px;
+  height: 100%;
+  max-height: 100%;
+  overflow: auto;
+  border-width: 0 1px 0 0;
+  border-radius: 0;
+  box-shadow: 5px 0 18px rgba(17, 24, 39, 0.025);
 }
 .palette-title {
   display: flex;
@@ -1148,6 +1298,7 @@ function round(value: number) {
   justify-content: space-between;
   gap: 10px;
   width: 100%;
+  padding: 2px 2px 8px;
 }
 .palette-title span {
   color: #6b7280;
@@ -1157,75 +1308,209 @@ function round(value: number) {
 .fields-head h4 {
   margin: 0;
   color: #111827;
-  font-size: 15px;
+  font-size: 16px;
 }
 .type-palette button {
   display: flex;
-  flex: 1 1 112px;
   align-items: center;
-  justify-content: center;
-  gap: 9px;
-  min-height: 42px;
-  padding: 8px 10px;
-  border: 1px solid #e5e7eb;
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 58px;
+  padding: 10px 11px;
+  border: 1px solid var(--builder-border);
   border-radius: 8px;
-  background: #fff;
+  background: #f9fbff;
   color: #374151;
   cursor: pointer;
   text-align: left;
   font: inherit;
+  transition: all 0.18s ease;
 }
-.type-palette button:hover { border-color: var(--cpu-primary); color: var(--cpu-primary); background: #f0fdfa; }
-.type-palette .el-icon { font-size: 18px; flex: 0 0 auto; }
-.type-palette b { font-size: 13px; }
-.questionnaire-editor { display: flex; flex-direction: column; gap: 12px; }
-.editor-card { padding: 14px; }
-.base-grid {
+.type-palette button:hover {
+  transform: translateY(-1px);
+  border-color: #b8d7ff;
+  color: var(--builder-primary);
+  background: var(--builder-primary-soft);
+  box-shadow: 0 6px 16px rgba(38, 125, 255, 0.12);
+}
+.type-palette .el-icon {
+  width: 30px;
+  height: 30px;
   display: grid;
-  grid-template-columns: minmax(360px, 1fr) 150px 170px;
-  gap: 12px;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 7px;
+  color: var(--builder-primary);
+  background: #eaf3ff;
+  font-size: 17px;
+}
+.type-palette button span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.type-palette b { font-size: 13px; }
+.type-palette small { color: #9ca3af; font-size: 11px; line-height: 1.35; }
+.questionnaire-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  overflow: auto;
+  padding: 26px 24px 44px;
+  background:
+    linear-gradient(90deg, rgba(229, 234, 243, 0.55) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(229, 234, 243, 0.55) 1px, transparent 1px),
+    #f3f6fb;
+  background-size: 28px 28px;
+}
+.editor-card {
+  max-width: 850px;
+  width: 100%;
+  align-self: center;
+  padding: 30px 34px 28px;
+  border-top: 4px solid var(--builder-primary);
+  box-shadow: 0 12px 32px rgba(17, 24, 39, 0.08);
+}
+.cover-kicker {
+  color: var(--builder-primary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  margin-bottom: 12px;
 }
 .editor-card :deep(.el-select) { width: 100%; }
-.base-grid :deep(.el-form-item) { margin-bottom: 12px; }
-.title-field { min-width: 0; }
-.switch-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 18px;
-  padding-top: 2px;
+.editor-card :deep(.el-form-item__label),
+.field-editor :deep(.el-form-item__label),
+.inspector-card :deep(.el-form-item__label) {
+  color: #4b5563;
+  font-weight: 600;
 }
+.title-field :deep(.el-input__wrapper) {
+  min-height: 48px;
+  padding: 0 2px;
+  border-radius: 0;
+  box-shadow: 0 1px 0 #d1d9e6;
+}
+.title-field :deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 2px 0 var(--builder-primary);
+}
+.title-field :deep(.el-input__inner) {
+  height: 48px;
+  color: #111827;
+  font-size: 22px;
+  font-weight: 700;
+}
+.editor-card :deep(.el-textarea__inner) {
+  min-height: 86px !important;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px #e5eaf3 inset;
+}
+.title-field { min-width: 0; }
 .fields-head {
+  max-width: 850px;
+  width: 100%;
+  align-self: center;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  margin-top: 2px;
+  padding: 0 2px;
 }
 .fields-head > div { display: flex; gap: 8px; }
-.field-editor-list { display: flex; flex-direction: column; gap: 10px; }
+.fields-head :deep(.el-button--primary.is-plain) {
+  --el-button-bg-color: #fff;
+  --el-button-border-color: #b8d7ff;
+  --el-button-text-color: var(--builder-primary);
+  --el-button-hover-bg-color: var(--builder-primary-soft);
+  --el-button-hover-border-color: var(--builder-primary);
+  --el-button-hover-text-color: var(--builder-primary);
+}
+.field-editor-list {
+  max-width: 850px;
+  width: 100%;
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
 .field-editor {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  gap: 12px;
-  padding: 14px;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 16px;
+  padding: 20px 22px;
   background: #fff;
+  border-left: 4px solid transparent;
+  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.055);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+.field-editor:hover {
+  transform: translateY(-1px);
+  border-color: #b8d7ff;
+  border-left-color: var(--builder-primary);
+  box-shadow: 0 12px 30px rgba(38, 125, 255, 0.13);
+}
+.field-editor.is-required {
+  border-left-color: var(--builder-primary);
 }
 .field-index {
-  width: 28px;
+  width: 42px;
   height: 28px;
   display: grid;
   place-items: center;
-  border-radius: 50%;
-  color: #fff;
-  background: var(--cpu-primary);
-  font-size: 12px;
+  border: 1px solid #b8d7ff;
+  border-radius: 999px;
+  color: var(--builder-primary);
+  background: var(--builder-primary-soft);
+  font-size: 11px;
   font-weight: 700;
 }
-.field-editor-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.field-editor-body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.field-meta-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #9ca3af;
+  font-size: 12px;
+}
+.field-meta-line span {
+  color: var(--builder-primary);
+  font-weight: 700;
+}
+.field-meta-line b {
+  padding: 1px 7px;
+  border-radius: 999px;
+  color: #dc2626;
+  background: #fef2f2;
+  font-size: 11px;
+}
 .field-editor-main {
   display: grid;
   grid-template-columns: minmax(280px, 1fr) 160px 80px;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
+}
+.field-editor :deep(.el-input__wrapper),
+.field-editor :deep(.el-select__wrapper),
+.inspector-card :deep(.el-select__wrapper) {
+  border-radius: 7px;
+  box-shadow: 0 0 0 1px #e5eaf3 inset;
+}
+.field-editor :deep(.el-input__wrapper.is-focus),
+.field-editor :deep(.el-select__wrapper.is-focused),
+.inspector-card :deep(.el-select__wrapper.is-focused) {
+  box-shadow: 0 0 0 1px var(--builder-primary) inset;
+}
+.field-editor :deep(.el-checkbox__input.is-checked .el-checkbox__inner),
+.inspector-card :deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
+  background-color: var(--builder-primary);
+  border-color: var(--builder-primary);
+}
+.field-editor :deep(.el-checkbox__input.is-checked + .el-checkbox__label),
+.inspector-card :deep(.el-checkbox__input.is-checked + .el-checkbox__label) {
+  color: var(--builder-primary);
 }
 .advanced-grid {
   display: grid;
@@ -1236,8 +1521,82 @@ function round(value: number) {
 .field-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
   justify-content: flex-end;
+  padding-top: 4px;
+  border-top: 1px dashed #e5eaf3;
+}
+.field-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #6b7280;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  transition: all 0.16s ease;
+}
+.field-actions button:hover:not(:disabled) {
+  color: var(--builder-primary);
+  border-color: #b8d7ff;
+  background: var(--builder-primary-soft);
+}
+.field-actions button.danger:hover:not(:disabled) {
+  color: #dc2626;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+.field-actions button:disabled {
+  color: #c4cdd8;
+  cursor: not-allowed;
+}
+.builder-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  overflow: auto;
+  padding: 18px 16px;
+  border-left: 1px solid var(--builder-border);
+  background: #fff;
+  box-shadow: -5px 0 18px rgba(17, 24, 39, 0.025);
+}
+.inspector-card {
+  padding: 16px;
+  background: #fbfcff;
+}
+.inspector-card h4 {
+  margin: 0 0 14px;
+  color: #111827;
+  font-size: 16px;
+}
+.inspector-card :deep(.el-select) { width: 100%; }
+.inspector-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.check-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid #edf1f7;
+  color: #6b7280;
+  font-size: 13px;
+}
+.check-row b { color: var(--builder-primary); font-size: 18px; }
+.inspector-card p {
+  margin: 12px 0 0;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.7;
 }
 .preview-shell { max-width: 720px; margin: 0 auto; }
 .preview-head {
@@ -1369,17 +1728,50 @@ function round(value: number) {
 .answer-row span { color: #6b7280; }
 .answer-row b { font-weight: 500; word-break: break-word; }
 @media (max-width: 1100px) {
-  .base-grid { grid-template-columns: minmax(260px, 1fr) repeat(2, 150px); }
+  .builder-layout {
+    grid-template-columns: 190px minmax(0, 1fr);
+  }
+  .builder-side {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+  }
 }
 @media (max-width: 900px) {
   .tool-admin-grid { grid-template-columns: 1fr; }
   .managers-section { order: -1; }
 }
 @media (max-width: 760px) {
-  .type-palette button { flex-basis: calc(50% - 6px); }
+  :global(.questionnaire-builder-dialog .el-dialog__body) {
+    height: calc(100vh - 116px);
+    overflow: auto;
+  }
+  .builder-topbar {
+    height: auto;
+    align-items: stretch;
+    flex-direction: column;
+    padding: 12px;
+  }
+  .builder-top-actions {
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+  .builder-layout {
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+    padding: 12px;
+  }
+  .type-palette {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+  }
+  .palette-title { grid-column: 1 / -1; }
   .field-editor-main,
-  .base-grid,
   .advanced-grid { grid-template-columns: 1fr; }
+  .builder-side { display: flex; }
 }
 @media (max-width: 700px) {
   .manage-head {
