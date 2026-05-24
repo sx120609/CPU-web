@@ -7,22 +7,28 @@
       </button>
 
       <template v-if="lookup">
-        <header class="page-head">
-          <div>
+        <header class="lookup-head">
+          <div class="head-copy">
+            <span>成绩核对单</span>
             <h2>{{ lookup.table.title }}</h2>
             <p>{{ lookup.table.description || "请核对下方项目。若存在问题，请在底部提交反馈。" }}</p>
           </div>
-          <div class="student-id">
-            <span>当前学号</span>
-            <b>{{ lookup.studentId }}</b>
+          <div class="head-side">
+            <div class="student-id">
+              <span>当前学号</span>
+              <b>{{ lookup.studentId }}</b>
+            </div>
+            <el-button v-if="lookup.canManage" class="manage-link" plain @click="openManage">进入管理</el-button>
           </div>
         </header>
 
         <template v-if="lookup.row">
           <section class="record-panel">
             <div class="panel-head">
-              <h3>核对项目</h3>
-              <span>只显示与你学号匹配的一行</span>
+              <div>
+                <h3>核对项目</h3>
+                <span>只显示与你学号匹配的一行</span>
+              </div>
             </div>
             <div class="record-list">
               <div v-for="column in lookup.table.columns" :key="column" class="record-row">
@@ -34,8 +40,10 @@
 
           <section class="feedback-panel">
             <div class="panel-head">
-              <h3>问题反馈</h3>
-              <span>信息无误可不填写</span>
+              <div>
+                <h3>问题反馈</h3>
+                <span>信息无误可不填写</span>
+              </div>
             </div>
             <div v-if="feedbackQuestionnaire" class="feedback-body">
               <el-form class="feedback-form" label-position="top" @submit.prevent="submitFeedback">
@@ -75,8 +83,6 @@
             </div>
             <div v-else class="feedback-loading">正在准备反馈问卷...</div>
           </section>
-
-          <el-button v-if="lookup.canManage" class="manage-link" plain @click="$router.push('/services/tools/manage')">进入管理</el-button>
         </template>
 
         <el-empty v-else description="未找到与你学号匹配的信息">
@@ -93,12 +99,14 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
+import { getToken } from "@/api/request";
 import { toolsApi, type GradeCheckLookup, type Questionnaire } from "@/api/tools";
 
 const route = useRoute();
+const router = useRouter();
 const loading = ref(false);
 const feedbackSubmitting = ref(false);
 const lookup = ref<GradeCheckLookup | null>(null);
@@ -143,8 +151,16 @@ function hasAnswer(value: string | string[] | undefined) {
   return Boolean(String(value ?? "").trim());
 }
 
+function openManage() {
+  router.push({ path: "/services/tools/manage", query: { tool: "grade_check" } });
+}
+
 async function submitFeedback() {
   if (!feedbackQuestionnaire.value) return;
+  if (!getToken()) {
+    ElMessage.warning("请先登录后再提交反馈");
+    return;
+  }
   const missing = (feedbackQuestionnaire.value.fields ?? []).find((field) => field.required && !hasAnswer(feedbackAnswers[field.id]));
   if (missing) {
     ElMessage.warning(`请填写：${missing.label}`);
@@ -152,9 +168,23 @@ async function submitFeedback() {
   }
   feedbackSubmitting.value = true;
   try {
-    await toolsApi.submitResponse(feedbackQuestionnaire.value.slug, feedbackAnswers);
+    await toolsApi.submitResponse(feedbackQuestionnaire.value.slug, feedbackAnswers, {
+      suppressAuthRedirect: true,
+      suppressAuthMessage: true,
+      suppressErrorMessage: true,
+    });
     ElMessage.success("反馈已提交");
     await loadFeedbackQuestionnaire();
+  } catch (e) {
+    const status = (e as { response?: { status?: number; data?: { message?: string } } }).response?.status;
+    if (status === 401) {
+      ElMessage.warning("登录状态已过期，请重新登录后再提交反馈");
+      return;
+    }
+    const message = (e as { response?: { data?: { message?: string } }; message?: string }).response?.data?.message
+      ?? (e as { message?: string }).message
+      ?? "提交失败，请稍后再试";
+    ElMessage.error(message);
   } finally {
     feedbackSubmitting.value = false;
   }
@@ -166,16 +196,21 @@ async function submitFeedback() {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  min-height: calc(100vh - 150px);
+  padding: 18px 0 34px;
+  background:
+    linear-gradient(180deg, #f5f8fc 0%, #ffffff 45%),
+    #fff;
 }
 .grade-sheet {
-  max-width: 980px;
+  max-width: 1040px;
   width: 100%;
   margin: 0 auto;
-  padding: 22px;
-  border: 1px solid #e5eaf3;
-  border-radius: 12px;
+  padding: 24px;
+  border: 1px solid #e1e7f0;
+  border-radius: 14px;
   background: #fff;
-  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 18px 45px rgba(31, 45, 61, 0.08);
 }
 .back-btn {
   display: inline-flex;
@@ -190,34 +225,66 @@ async function submitFeedback() {
   cursor: pointer;
   font: inherit;
   font-size: 13px;
+  margin-bottom: 20px;
+  transition: border-color 0.16s, color 0.16s, background 0.16s;
+}
+.back-btn:hover {
+  color: #2563eb;
+  border-color: #bfdbfe;
+  background: #f8fbff;
+}
+.lookup-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 24px;
+  align-items: stretch;
+  padding: 4px 2px 22px;
+  border-bottom: 1px solid #edf2f7;
   margin-bottom: 18px;
 }
-.page-head {
+.head-copy {
+  min-width: 0;
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid #edf2f7;
-  margin-bottom: 16px;
+  flex-direction: column;
+  justify-content: center;
 }
-.page-head h2 {
+.head-copy > span {
+  width: fit-content;
+  margin-bottom: 10px;
+  padding: 3px 9px;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  color: #2563eb;
+  background: #eff6ff;
+  font-size: 12px;
+  font-weight: 650;
+}
+.lookup-head h2 {
   margin: 0;
   color: #0f172a;
-  font-size: 24px;
+  font-size: 28px;
+  line-height: 1.25;
 }
-.page-head p {
+.lookup-head p {
   margin: 8px 0 0;
   color: #64748b;
   font-size: 14px;
   line-height: 1.7;
 }
+.head-side {
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+}
 .student-id {
-  min-width: 190px;
-  padding: 14px 16px;
-  border: 1px solid #dbeafe;
-  border-radius: 10px;
-  background: #f8fbff;
+  min-height: 98px;
+  padding: 15px 16px;
+  border: 1px solid #dbe7f5;
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, #f8fbff 0%, #fff 100%);
 }
 .student-id span {
   display: block;
@@ -227,14 +294,17 @@ async function submitFeedback() {
 }
 .student-id b {
   color: #0f172a;
-  font-size: 24px;
+  font-size: 26px;
+  line-height: 1.25;
+  word-break: break-all;
 }
 .record-panel,
 .feedback-panel {
-  border: 1px solid #e5eaf3;
-  border-radius: 10px;
+  border: 1px solid #e1e7f0;
+  border-radius: 12px;
   background: #fff;
   overflow: hidden;
+  box-shadow: 0 8px 22px rgba(31, 45, 61, 0.04);
 }
 .feedback-panel {
   margin-top: 16px;
@@ -244,9 +314,9 @@ async function submitFeedback() {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px;
+  padding: 15px 18px;
   border-bottom: 1px solid #e5eaf3;
-  background: #f8fafc;
+  background: #fbfcff;
 }
 .panel-head h3 {
   margin: 0;
@@ -263,10 +333,15 @@ async function submitFeedback() {
 }
 .record-row {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 18px;
-  padding: 14px 16px;
-  border-bottom: 1px solid #edf2f7;
+  grid-template-columns: minmax(150px, 230px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  padding: 15px 18px;
+  border-bottom: 1px solid #eef3f8;
+  transition: background 0.15s;
+}
+.record-row:hover {
+  background: #f8fbff;
 }
 .record-row:last-child {
   border-bottom: 0;
@@ -274,20 +349,36 @@ async function submitFeedback() {
 .record-row span {
   color: #64748b;
   font-size: 14px;
+  line-height: 1.6;
 }
 .record-row b {
   color: #0f172a;
   font-size: 16px;
   text-align: right;
   word-break: break-word;
+  line-height: 1.65;
+  font-weight: 650;
 }
 .feedback-body {
-  padding: 16px;
+  padding: 18px;
 }
 .feedback-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px 16px;
+  gap: 6px 18px;
+}
+.feedback-form :deep(.el-form-item__label) {
+  color: #334155;
+  font-weight: 650;
+}
+.feedback-form :deep(.el-input__wrapper),
+.feedback-form :deep(.el-textarea__inner) {
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px #dfe7f2 inset;
+}
+.feedback-form :deep(.el-input__wrapper.is-focus),
+.feedback-form :deep(.el-textarea__inner:focus) {
+  box-shadow: 0 0 0 1px #2563eb inset;
 }
 .feedback-form :deep(.el-form-item:nth-child(3)),
 .feedback-form :deep(.el-form-item:nth-child(4)),
@@ -305,20 +396,41 @@ async function submitFeedback() {
   justify-content: flex-start;
   padding-top: 4px;
 }
+.feedback-actions :deep(.el-button) {
+  min-width: 126px;
+  border-radius: 8px;
+}
 .feedback-loading {
   padding: 18px;
   color: #64748b;
   font-size: 13px;
 }
 .manage-link {
-  margin-top: 14px;
+  width: 100%;
+  margin: 0;
+  border-radius: 8px;
 }
 @media (max-width: 700px) {
+  .grade-lookup-page {
+    padding: 0;
+    background: #fff;
+  }
   .grade-sheet {
     padding: 16px;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    box-shadow: none;
   }
-  .page-head {
-    flex-direction: column;
+  .lookup-head {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .lookup-head h2 {
+    font-size: 22px;
+  }
+  .head-side {
+    width: 100%;
   }
   .student-id {
     width: 100%;

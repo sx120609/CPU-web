@@ -1,4 +1,4 @@
-import { request } from "./request";
+import { request, type RequestOptions } from "./request";
 
 export type ServiceToolCode = "feedback" | "questionnaire" | "grade_check";
 export type QuestionnaireStatus = "draft" | "open" | "closed";
@@ -125,7 +125,8 @@ export interface ToolManager {
 
 export const toolsApi = {
   tools: () => request.get<ToolMeta[]>("/tools"),
-  myPermissions: () => request.get<{ toolCodes: ServiceToolCode[]; adminToolCodes: ServiceToolCode[] }>("/tools/permissions/me"),
+  myPermissions: (options?: RequestOptions) =>
+    request.get<{ toolCodes: ServiceToolCode[]; adminToolCodes: ServiceToolCode[] }>("/tools/permissions/me", undefined, options),
   managers: (toolCode: ServiceToolCode) => request.get<ToolManager[]>(`/tools/${toolCode}/managers`),
   addManager: (toolCode: ServiceToolCode, payload: { userId?: number; username?: string }) =>
     request.post<ToolManager>(`/tools/${toolCode}/managers`, payload),
@@ -136,7 +137,7 @@ export const toolsApi = {
 
   questionnaires: (params?: { toolCode?: ServiceToolCode; manage?: "1" }) =>
     request.get<Questionnaire[]>("/tools/questionnaires", params),
-  questionnaire: (slug: string) => request.get<Questionnaire>(`/tools/questionnaires/${slug}`),
+  questionnaire: (slug: string, options?: RequestOptions) => request.get<Questionnaire>(`/tools/questionnaires/${slug}`, undefined, options),
   createQuestionnaire: (payload: {
     toolCode: ServiceToolCode;
     title: string;
@@ -158,8 +159,8 @@ export const toolsApi = {
     fields: QuestionnaireField[];
   }>) => request.patch<Questionnaire>(`/tools/questionnaires/${id}`, payload),
   deleteQuestionnaire: (id: number) => request.delete<{ ok: true }>(`/tools/questionnaires/${id}`),
-  submitResponse: (slug: string, answers: Record<string, string | string[]>) =>
-    request.post<{ id: number; createdAt: string }>(`/tools/questionnaires/${slug}/responses`, { answers }),
+  submitResponse: (slug: string, answers: Record<string, string | string[]>, options?: RequestOptions) =>
+    request.post<{ id: number; createdAt: string }>(`/tools/questionnaires/${slug}/responses`, { answers }, options),
   responses: (id: number) =>
     request.get<{ questionnaire: Questionnaire; list: QuestionnaireResponse[] }>(`/tools/questionnaires/${id}/responses`),
 

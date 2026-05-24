@@ -18,7 +18,7 @@
           <p>常用工具会陆续补齐，也欢迎先把需求告诉我们。</p>
         </div>
         <div class="panel-actions">
-          <el-button v-if="canManageAny" plain type="primary" @click="$router.push('/services/tools/manage')">
+          <el-button v-if="canManageAny" plain type="primary" @click="openManage">
             <el-icon><Setting /></el-icon>
             管理
           </el-button>
@@ -105,6 +105,10 @@ function statusText(status: ServiceToolStatus) {
 
 function openTool(tool: ServiceTool) {
   router.push({ name: tool.routeName, params: { slug: tool.slug } });
+}
+
+function openManage() {
+  router.push({ path: "/services/tools/manage", query: { tool: manageable.value[0] ?? "questionnaire" } });
 }
 </script>
 

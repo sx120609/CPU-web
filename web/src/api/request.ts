@@ -1,4 +1,4 @@
-import axios, { AxiosError, type AxiosInstance } from "axios";
+import axios, { AxiosError, type AxiosInstance, type AxiosRequestConfig } from "axios";
 import { ElMessage } from "element-plus";
 import { detectClientPlatform } from "@/utils/clientInfo";
 import { clearJwxtDataCaches } from "@/utils/jwxtCache";
@@ -10,6 +10,12 @@ export interface ApiResponse<T> {
 }
 
 const TOKEN_KEY = "cpu-web-token";
+
+export type RequestOptions = AxiosRequestConfig & {
+  suppressAuthRedirect?: boolean;
+  suppressAuthMessage?: boolean;
+  suppressErrorMessage?: boolean;
+};
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY) ?? "";
@@ -55,16 +61,17 @@ instance.interceptors.response.use(
     return resp.data;
   },
   (err: AxiosError<ApiResponse<unknown>>) => {
+    const config = err.config as RequestOptions | undefined;
     if (err.response?.status === 401) {
       clearToken();
       sessionStorage.removeItem("cpu-jwxt-token");
       clearJwxtDataCaches();
-      ElMessage.warning("登录已过期，请重新登录");
-      if (window.location.pathname !== "/login") {
+      if (!config?.suppressAuthMessage) ElMessage.warning("登录已过期，请重新登录");
+      if (!config?.suppressAuthRedirect && window.location.pathname !== "/login") {
         const redirect = encodeURIComponent(window.location.pathname + window.location.search);
         window.location.href = `/login?redirect=${redirect}`;
       }
-    } else {
+    } else if (!config?.suppressErrorMessage) {
       const message = err.response?.data?.message ?? err.message ?? "网络请求失败";
       ElMessage.error(message);
     }
@@ -73,13 +80,13 @@ instance.interceptors.response.use(
 );
 
 export const request = {
-  get: <T = unknown>(url: string, params?: Record<string, unknown>) =>
-    instance.get<unknown, T>(url, { params }),
-  post: <T = unknown>(url: string, data?: unknown) =>
-    instance.post<unknown, T>(url, data),
-  patch: <T = unknown>(url: string, data?: unknown) =>
-    instance.patch<unknown, T>(url, data),
-  delete: <T = unknown>(url: string) => instance.delete<unknown, T>(url),
+  get: <T = unknown>(url: string, params?: Record<string, unknown>, options?: RequestOptions) =>
+    instance.get<unknown, T>(url, { ...options, params }),
+  post: <T = unknown>(url: string, data?: unknown, options?: RequestOptions) =>
+    instance.post<unknown, T>(url, data, options),
+  patch: <T = unknown>(url: string, data?: unknown, options?: RequestOptions) =>
+    instance.patch<unknown, T>(url, data, options),
+  delete: <T = unknown>(url: string, options?: RequestOptions) => instance.delete<unknown, T>(url, options),
 };
 
 export default instance;

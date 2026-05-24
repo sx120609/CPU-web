@@ -17,7 +17,7 @@
             </div>
             <p>{{ tool.description }}</p>
           </div>
-          <el-button v-if="canManage" plain type="primary" class="manage-btn" @click="$router.push('/services/tools/manage')">
+          <el-button v-if="canManage" plain type="primary" class="manage-btn" @click="openCurrentToolManage">
             <el-icon><Setting /></el-icon>
             管理
           </el-button>
@@ -56,6 +56,15 @@ const canManage = computed(() => Boolean(tool.value && (
   || toolMetas.value.some((item) => item.code === tool.value?.slug && item.canManage)
 )));
 
+function openToolManage(toolCode: ServiceToolCode) {
+  router.push({ path: "/services/tools/manage", query: { tool: toolCode } });
+}
+
+function openCurrentToolManage() {
+  const code = tool.value?.slug as ServiceToolCode | undefined;
+  if (code) openToolManage(code);
+}
+
 onMounted(async () => {
   try {
     toolMetas.value = await toolsApi.tools();
@@ -65,7 +74,11 @@ onMounted(async () => {
   }
   if (!getToken()) return;
   try {
-    manageable.value = (await toolsApi.myPermissions()).toolCodes;
+    manageable.value = (await toolsApi.myPermissions({
+      suppressAuthRedirect: true,
+      suppressAuthMessage: true,
+      suppressErrorMessage: true,
+    })).toolCodes;
   } catch {
     manageable.value = [];
   }
@@ -77,16 +90,31 @@ const FeedbackPanel = defineComponent({
     const loading = ref(false);
     const submitting = ref(false);
     const questionnaire = ref<Questionnaire | null>(null);
+    const needLogin = ref(false);
+    const loadError = ref("");
     const answers = reactive<Record<string, string | string[]>>({});
 
     onMounted(load);
 
     async function load() {
       loading.value = true;
+      needLogin.value = false;
+      loadError.value = "";
       try {
-        questionnaire.value = await toolsApi.questionnaire("system-feedback");
+        questionnaire.value = await toolsApi.questionnaire("system-feedback", {
+          suppressAuthRedirect: true,
+          suppressAuthMessage: true,
+          suppressErrorMessage: true,
+        });
         for (const field of questionnaire.value.fields ?? []) {
           answers[field.id] = field.type === "multiple" ? [] : "";
+        }
+      } catch (e) {
+        if ((e as { response?: { status?: number } }).response?.status === 401) {
+          needLogin.value = true;
+        } else {
+          loadError.value = (e as { response?: { data?: { message?: string } }; message?: string }).response?.data?.message ?? "反馈问卷加载失败";
+          ElMessage.error(loadError.value);
         }
       } finally {
         loading.value = false;
@@ -97,11 +125,21 @@ const FeedbackPanel = defineComponent({
       if (!questionnaire.value) return;
       submitting.value = true;
       try {
-        await toolsApi.submitResponse(questionnaire.value.slug, answers);
+        await toolsApi.submitResponse(questionnaire.value.slug, answers, {
+          suppressAuthRedirect: true,
+          suppressAuthMessage: true,
+          suppressErrorMessage: true,
+        });
         for (const field of questionnaire.value.fields ?? []) {
           answers[field.id] = field.type === "multiple" ? [] : "";
         }
         ElMessage.success("已提交反馈");
+      } catch (e) {
+        if ((e as { response?: { status?: number } }).response?.status === 401) {
+          needLogin.value = true;
+        } else {
+          ElMessage.error((e as { response?: { data?: { message?: string } }; message?: string }).response?.data?.message ?? "提交失败，请稍后再试");
+        }
       } finally {
         submitting.value = false;
       }
@@ -118,6 +156,17 @@ const FeedbackPanel = defineComponent({
         ]),
         loading.value
           ? h("div", { class: "loading-card" }, "正在加载问卷...")
+          : needLogin.value
+            ? h("div", { class: "empty-panel" }, [
+              h("p", "登录后可以提交反馈。"),
+              h("button", {
+                class: "plain-action",
+                type: "button",
+                onClick: () => router.push({ name: "login", query: { redirect: route.fullPath } }),
+              }, "去登录"),
+            ])
+            : loadError.value
+              ? h("div", { class: "empty-panel" }, loadError.value)
           : h(QuestionnaireForm, {
             fields: questionnaire.value?.fields ?? [],
             answers,
@@ -151,7 +200,7 @@ const QuestionnairePanel = defineComponent({
           h("p", "问卷由发起者创建后通过链接分享。这里不展示全部问卷。"),
         ]),
         canManageQuestionnaire.value
-          ? h("button", { class: "plain-action", type: "button", onClick: () => router.push("/services/tools/manage") }, "进入管理")
+          ? h("button", { class: "plain-action", type: "button", onClick: () => openToolManage("questionnaire") }, "进入管理")
           : null,
       ]),
       h("div", { class: "empty-panel" }, canManageQuestionnaire.value
@@ -187,7 +236,7 @@ const GradeCheckPanel = defineComponent({
           h("p", "查询表由发起者上传 Excel 后生成链接。学生登录打开链接，只能看到自己学号对应的信息。"),
         ]),
         canManageGradeCheck.value
-          ? h("button", { class: "plain-action", type: "button", onClick: () => router.push("/services/tools/manage") }, "进入管理")
+          ? h("button", { class: "plain-action", type: "button", onClick: () => openToolManage("grade_check") }, "进入管理")
           : null,
       ]),
       loading.value

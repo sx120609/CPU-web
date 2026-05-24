@@ -16,7 +16,7 @@
       <el-empty v-if="!loading && !manageableTools.length" description="暂无可管理的小工具" />
 
       <template v-else>
-        <el-tabs v-model="activeTool" @tab-change="reloadActive">
+        <el-tabs v-model="activeTool" @tab-change="switchActiveTool">
           <el-tab-pane
             v-for="tool in manageableTools"
             :key="tool.code"
@@ -630,6 +630,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import * as XLSX from "xlsx";
 import { ElMessage, ElMessageBox } from "element-plus";
 import type { UploadFile } from "element-plus";
@@ -704,6 +705,8 @@ const fieldTypeOptions: Array<{ value: QuestionnaireFieldType; label: string; hi
   { value: "date", label: "日期", hint: "报名日期、预约时间", icon: Calendar },
 ];
 
+const route = useRoute();
+const router = useRouter();
 const loading = ref(false);
 const allTools = ref<ToolMeta[]>([]);
 const manageableCodes = ref<ServiceToolCode[]>([]);
@@ -793,11 +796,38 @@ async function init() {
     allTools.value = tools;
     manageableCodes.value = perms.toolCodes;
     adminCodes.value = perms.adminToolCodes ?? [];
-    activeTool.value = manageableCodes.value.includes("questionnaire") ? "questionnaire" : manageableCodes.value[0] ?? "questionnaire";
-    if (manageableCodes.value.length) await reloadActive();
+    activeTool.value = pickInitialTool();
+    if (manageableCodes.value.length) {
+      await syncActiveToolQuery();
+      await reloadActive();
+    }
   } finally {
     loading.value = false;
   }
+}
+
+function pickInitialTool(): ServiceToolCode {
+  const requested = normalizeToolQuery(route.query.tool);
+  if (requested && manageableCodes.value.includes(requested)) return requested;
+  return manageableCodes.value.includes("questionnaire") ? "questionnaire" : manageableCodes.value[0] ?? "questionnaire";
+}
+
+function normalizeToolQuery(value: unknown): ServiceToolCode | "" {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== "string") return "";
+  return (["feedback", "questionnaire", "grade_check"] as ServiceToolCode[]).includes(raw as ServiceToolCode)
+    ? raw as ServiceToolCode
+    : "";
+}
+
+async function syncActiveToolQuery() {
+  if (route.query.tool === activeTool.value) return;
+  await router.replace({ path: route.path, query: { ...route.query, tool: activeTool.value } });
+}
+
+async function switchActiveTool() {
+  await syncActiveToolQuery();
+  await reloadActive();
 }
 
 async function reloadActive() {
