@@ -9,6 +9,41 @@
       </div>
     </div>
 
+    <section class="tool-section">
+      <div class="tool-section-head">
+        <div>
+          <h3>校园小工具</h3>
+          <p>反馈、问卷和临时查询这类轻量入口会集中放在这里。</p>
+        </div>
+        <el-button type="primary" plain @click="$router.push('/services/tools')">
+          <el-icon><Tools /></el-icon>
+          全部工具
+        </el-button>
+      </div>
+      <div class="tool-grid">
+        <button
+          v-for="tool in serviceTools"
+          :key="tool.slug"
+          type="button"
+          class="tool-entry"
+          :class="{ planned: tool.status === 'planned' }"
+          @click="$router.push({ name: tool.routeName, params: { slug: tool.slug } })"
+        >
+          <span class="tool-entry-icon" :style="{ color: tool.accent }">
+            <el-icon><component :is="tool.iconComponent" /></el-icon>
+          </span>
+          <span class="tool-entry-body">
+            <span class="tool-entry-title">
+              <span>{{ tool.name }}</span>
+              <em>{{ tool.status === "ready" ? "可用" : "待开发" }}</em>
+            </span>
+            <span class="tool-entry-sub">{{ tool.summary }}</span>
+          </span>
+          <el-icon class="quick-arrow"><Right /></el-icon>
+        </button>
+      </div>
+    </section>
+
     <!-- 已登录：完整 i 服务面板 -->
     <template v-if="jwxt.isLoggedIn">
       <!-- 快速查询：站内代理，不外跳。按功能开关显示 -->
@@ -79,13 +114,14 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { Lock, Loading, Picture, Refresh, Right } from "@element-plus/icons-vue";
+import { Lock, Loading, Picture, Refresh, Right, Tools } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { useJwxtStore } from "@/stores/jwxt";
 import { useSiteStore } from "@/stores/site";
 import { loadCreds, hasCreds as hasSavedCreds } from "@/utils/credCrypto";
 import IServicePane from "@/components/jwxt/IServicePane.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
+import { serviceTools } from "@/data/serviceTools";
 
 const jwxt = useJwxtStore();
 const site = useSiteStore();
@@ -156,6 +192,108 @@ async function submitCaptcha() {
 .page-head .hint a { color: var(--cpu-primary); }
 
 .cpu-card { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
+
+.tool-section {
+  background: #fff;
+  border-radius: 12px;
+  padding: 18px 22px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+}
+.tool-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.tool-section-head h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #1f2937;
+}
+.tool-section-head p {
+  margin: 5px 0 0;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+.tool-entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 86px;
+  padding: 13px 14px;
+  border: 1px solid #eef0f4;
+  border-radius: 10px;
+  background: #fff;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.tool-entry:hover {
+  border-color: var(--cpu-primary);
+  box-shadow: 0 6px 18px rgba(22, 135, 118, 0.1);
+  transform: translateY(-1px);
+}
+.tool-entry.planned {
+  background: #fafafa;
+}
+.tool-entry-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  background: #f9fafb;
+}
+.tool-entry-icon .el-icon {
+  font-size: 22px;
+}
+.tool-entry-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tool-entry-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #1f2937;
+  font-size: 14px;
+  font-weight: 600;
+}
+.tool-entry-title > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool-entry-title em {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: #6b7280;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 500;
+}
+.tool-entry-sub {
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.5;
+}
 
 .login-hint {
   display: flex;
@@ -277,9 +415,23 @@ async function submitCaptcha() {
   }
 
   .cpu-card,
+  .tool-section,
   .fallback {
     border-radius: 10px;
     padding: 14px;
+  }
+
+  .tool-section-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tool-section-head .el-button {
+    width: 100%;
+  }
+
+  .tool-grid {
+    grid-template-columns: 1fr;
   }
 
   .login-hint {
