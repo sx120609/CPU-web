@@ -4,7 +4,7 @@
       <div>
         <div class="kicker">校园小工具</div>
         <h2>小工具管理</h2>
-        <p>拥有某个小工具管理权限后，可以维护这个工具的内容与管理人员。</p>
+        <p>管理器可维护工具设置和人员；开放管理入口后，登录用户可维护自己发起的内容。</p>
       </div>
       <el-button plain @click="$router.push('/services/tools')">
         <el-icon><ArrowLeft /></el-icon>
@@ -13,7 +13,7 @@
     </section>
 
     <section class="manage-panel" v-loading="loading">
-      <el-empty v-if="!loading && !manageableTools.length" description="你还没有任何小工具管理权限" />
+      <el-empty v-if="!loading && !manageableTools.length" description="暂无可管理的小工具" />
 
       <template v-else>
         <el-tabs v-model="activeTool" @tab-change="reloadActive">
@@ -30,7 +30,7 @@
             <div class="section-head">
               <div>
                 <h3>问卷</h3>
-                <p>{{ activeTool === "feedback" ? "需求反馈已接入系统问卷，可查看反馈结果。" : "创建、编辑、发布并统计在线问卷。" }}</p>
+                <p>{{ activeTool === "feedback" ? "需求反馈已接入系统问卷，可查看反馈结果。" : canAdminActiveTool ? "创建、编辑、发布并统计在线问卷。" : "创建并管理你自己发起的问卷，发布后复制链接分享给填写人。" }}</p>
               </div>
               <el-button v-if="activeTool === 'questionnaire'" type="primary" @click="openCreate">
                 <el-icon><Plus /></el-icon>
@@ -53,36 +53,26 @@
               </div>
             </div>
 
-            <el-table :data="questionnaires" size="default" class="desktop-table">
-              <el-table-column prop="title" label="标题" min-width="220">
-                <template #default="{ row }">
+            <div class="questionnaire-list-cards">
+              <article v-for="row in questionnaires" :key="row.id" class="questionnaire-row-card">
+                <div class="q-row-main">
                   <div class="q-title-cell">
                     <b>{{ row.title }}</b>
                     <span>{{ row.slug }}</span>
                   </div>
-                </template>
-              </el-table-column>
-              <el-table-column label="状态" width="110">
-                <template #default="{ row }">
-                  <el-tag :type="statusTag(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="填写权限" width="120">
-                <template #default="{ row }">
-                  <el-tag size="small" effect="plain">{{ row.visibility === "login" ? "登录填写" : "公开填写" }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="题目" width="80">
-                <template #default="{ row }">{{ row.fields?.length ?? 0 }}</template>
-              </el-table-column>
-              <el-table-column label="答卷" width="90">
-                <template #default="{ row }">{{ row.responseCount ?? 0 }}</template>
-              </el-table-column>
-              <el-table-column label="更新时间" width="150">
-                <template #default="{ row }">{{ fmtDate(row.updatedAt) }}</template>
-              </el-table-column>
-              <el-table-column label="操作" width="330">
-                <template #default="{ row }">
+                  <div class="q-row-tags">
+                    <el-tag :type="statusTag(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
+                    <el-tag size="small" effect="plain">{{ row.visibility === "login" ? "登录填写" : "公开填写" }}</el-tag>
+                    <el-tag v-if="row.isSystem" size="small" type="info" effect="plain">系统问卷</el-tag>
+                  </div>
+                  <div class="q-row-meta">
+                    <span>{{ row.fields?.length ?? 0 }} 题</span>
+                    <span>{{ row.responseCount ?? 0 }} 份答卷</span>
+                    <span>更新 {{ fmtDate(row.updatedAt) }}</span>
+                    <span v-if="row.createdBy">发起人 {{ row.createdBy.nickname || row.createdBy.username }}</span>
+                  </div>
+                </div>
+                <div class="q-row-actions">
                   <el-button v-if="!row.isSystem" size="small" @click="openEdit(row)">
                     <el-icon><Edit /></el-icon>
                     编辑
@@ -119,26 +109,13 @@
                       </el-dropdown-menu>
                     </template>
                   </el-dropdown>
-                </template>
-              </el-table-column>
-            </el-table>
-
-            <div class="mobile-list">
-              <article v-for="row in questionnaires" :key="row.id" class="mobile-item">
-                <div class="mobile-main">
-                  <b>{{ row.title }}</b>
-                  <span>{{ row.responseCount ?? 0 }} 份答卷 · {{ row.fields?.length ?? 0 }} 题 · {{ statusText(row.status) }}</span>
-                </div>
-                <div class="mobile-actions">
-                  <el-button v-if="!row.isSystem" size="small" @click="openEdit(row)">编辑</el-button>
-                  <el-button size="small" @click="openPreview(row)">预览</el-button>
-                  <el-button size="small" @click="openResponses(row)">结果</el-button>
                 </div>
               </article>
+              <el-empty v-if="!questionnaires.length" :description="canAdminActiveTool ? '暂无问卷' : '你还没有发起问卷'" />
             </div>
           </section>
 
-          <section class="admin-section managers-section">
+          <section v-if="canAdminActiveTool" class="admin-section managers-section">
             <div class="section-head">
               <div>
                 <h3>使用权限</h3>
@@ -156,9 +133,20 @@
                 @change="saveToolSetting"
               />
             </div>
+            <div class="access-setting">
+              <div>
+                <b>开放管理入口</b>
+                <span>{{ currentToolMeta?.allowPublicManage ? "所有登录用户可进入并管理自己创建的内容" : "仅管理器可进入管理" }}</span>
+              </div>
+              <el-switch
+                v-model="toolAllowPublicManage"
+                :loading="settingSaving"
+                @change="savePublicManageSetting"
+              />
+            </div>
           </section>
 
-          <section class="admin-section managers-section">
+          <section v-if="canAdminActiveTool" class="admin-section managers-section">
             <div class="section-head">
               <div>
                 <h3>管理器</h3>
@@ -555,6 +543,7 @@ const fieldTypeOptions: Array<{ value: QuestionnaireFieldType; label: string; hi
 const loading = ref(false);
 const allTools = ref<ToolMeta[]>([]);
 const manageableCodes = ref<ServiceToolCode[]>([]);
+const adminCodes = ref<ServiceToolCode[]>([]);
 const activeTool = ref<ServiceToolCode>("questionnaire");
 const questionnaires = ref<Questionnaire[]>([]);
 const managers = ref<ToolManager[]>([]);
@@ -593,6 +582,7 @@ const activeResponseFields = ref<QuestionnaireField[]>([]);
 
 const manageableTools = computed(() => allTools.value.filter((tool) => manageableCodes.value.includes(tool.code)));
 const currentToolMeta = computed(() => allTools.value.find((tool) => tool.code === activeTool.value));
+const canAdminActiveTool = computed(() => adminCodes.value.includes(activeTool.value));
 const openCount = computed(() => questionnaires.value.filter((item) => item.status === "open").length);
 const totalResponses = computed(() => questionnaires.value.reduce((sum, item) => sum + (item.responseCount ?? 0), 0));
 const editorTitle = computed(() => editorMode.value === "create" ? "新建问卷" : "编辑问卷");
@@ -602,6 +592,13 @@ const toolRequireLogin = computed({
   set: (value: boolean) => {
     const target = currentToolMeta.value;
     if (target) target.requireLogin = value;
+  },
+});
+const toolAllowPublicManage = computed({
+  get: () => Boolean(currentToolMeta.value?.allowPublicManage),
+  set: (value: boolean) => {
+    const target = currentToolMeta.value;
+    if (target) target.allowPublicManage = value;
   },
 });
 
@@ -618,6 +615,7 @@ async function init() {
     ]);
     allTools.value = tools;
     manageableCodes.value = perms.toolCodes;
+    adminCodes.value = perms.adminToolCodes ?? [];
     activeTool.value = manageableCodes.value.includes("questionnaire") ? "questionnaire" : manageableCodes.value[0] ?? "questionnaire";
     if (manageableCodes.value.length) await reloadActive();
   } finally {
@@ -627,10 +625,8 @@ async function init() {
 
 async function reloadActive() {
   if (!activeTool.value) return;
-  const [questionnaireList, managerList] = await Promise.all([
-    toolsApi.questionnaires({ toolCode: activeTool.value, manage: "1" }),
-    toolsApi.managers(activeTool.value),
-  ]);
+  const questionnaireList = await toolsApi.questionnaires({ toolCode: activeTool.value, manage: "1" });
+  const managerList = canAdminActiveTool.value ? await toolsApi.managers(activeTool.value) : [];
   questionnaires.value = questionnaireList;
   managers.value = managerList;
 }
@@ -646,6 +642,23 @@ async function saveToolSetting(value: string | number | boolean) {
   } catch (e) {
     const target = currentToolMeta.value;
     if (target) target.requireLogin = previous;
+    throw e;
+  } finally {
+    settingSaving.value = false;
+  }
+}
+
+async function savePublicManageSetting(value: string | number | boolean) {
+  settingSaving.value = true;
+  const previous = !Boolean(value);
+  try {
+    const updated = await toolsApi.updateToolSetting(activeTool.value, { allowPublicManage: Boolean(value) });
+    const target = currentToolMeta.value;
+    if (target) target.allowPublicManage = updated.allowPublicManage;
+    ElMessage.success(updated.allowPublicManage ? "已允许所有登录用户进入管理" : "已改为仅管理器可管理");
+  } catch (e) {
+    const target = currentToolMeta.value;
+    if (target) target.allowPublicManage = previous;
     throw e;
   } finally {
     settingSaving.value = false;
@@ -1222,10 +1235,57 @@ function round(value: number) {
 }
 .questionnaire-summary b { display: block; color: #111827; font-size: 20px; }
 .questionnaire-summary span { color: #6b7280; font-size: 12px; }
+.questionnaire-list-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.questionnaire-row-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid #eef0f4;
+  border-radius: 10px;
+  background: #fff;
+}
+.q-row-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .q-title-cell { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.q-title-cell b { color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.q-title-cell span { color: #9ca3af; font-size: 12px; }
-.mobile-list { display: none; }
+.q-title-cell b { color: #111827; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.q-title-cell span { color: #9ca3af; font-size: 12px; word-break: break-all; }
+.q-row-tags,
+.q-row-meta,
+.q-row-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.q-row-meta {
+  color: #6b7280;
+  font-size: 12px;
+}
+.q-row-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.q-row-meta span + span::before {
+  content: "";
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #c4cdd8;
+}
+.q-row-actions {
+  justify-content: flex-end;
+}
 .add-manager {
   display: flex;
   gap: 8px;
@@ -1242,6 +1302,7 @@ function round(value: number) {
   border-radius: 8px;
   background: #fafafa;
 }
+.access-setting + .access-setting { margin-top: 10px; }
 .access-setting div {
   min-width: 0;
   display: flex;
@@ -1784,21 +1845,14 @@ function round(value: number) {
   .section-head { flex-direction: column; align-items: stretch; }
   .section-head .el-button { width: 100%; }
   .questionnaire-summary { grid-template-columns: 1fr; }
-  .desktop-table { display: none; }
-  .mobile-list { display: flex; flex-direction: column; gap: 10px; }
-  .mobile-item {
+  .questionnaire-row-card {
     display: flex;
     flex-direction: column;
+    align-items: stretch;
     gap: 10px;
-    padding: 12px;
-    border: 1px solid #eef0f4;
-    border-radius: 8px;
   }
-  .mobile-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-  .mobile-item b { color: #111827; }
-  .mobile-item span { color: #6b7280; font-size: 12px; }
-  .mobile-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-  .mobile-actions .el-button { flex: 1; }
+  .q-row-actions { justify-content: flex-start; }
+  .q-row-actions .el-button { flex: 1; }
   .add-manager { flex-direction: column; }
   .answer-row,
   .choice-stat-row { grid-template-columns: 1fr; gap: 5px; }

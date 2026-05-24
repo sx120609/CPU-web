@@ -1,9 +1,9 @@
 <template>
   <div class="questionnaire-page">
     <section class="fill-card" v-loading="loading">
-      <button type="button" class="back-btn" @click="$router.push('/services/tools/questionnaire')">
+      <button type="button" class="back-btn" @click="$router.push('/services/tools')">
         <el-icon><ArrowLeft /></el-icon>
-        <span>问卷</span>
+        <span>校园小工具</span>
       </button>
 
       <template v-if="questionnaire">
@@ -92,7 +92,7 @@
       </template>
 
       <el-empty v-else-if="!loading" description="问卷不存在或暂未开放">
-        <el-button type="primary" @click="$router.push('/services/tools/questionnaire')">返回问卷列表</el-button>
+        <el-button type="primary" @click="$router.push('/services/tools')">返回小工具</el-button>
       </el-empty>
     </section>
   </div>

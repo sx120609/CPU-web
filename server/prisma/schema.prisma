@@ -414,13 +414,15 @@ model ToolPermission {
 }
 
 model ToolSetting {
-  id           Int      @id @default(autoincrement())
-  toolCode     String   @unique
-  requireLogin Boolean  @default(false)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                Int      @id @default(autoincrement())
+  toolCode          String   @unique
+  requireLogin      Boolean  @default(false)
+  allowPublicManage Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@index([requireLogin])
+  @@index([allowPublicManage])
 }
 
 // ============ 小工具：问卷系统 ============

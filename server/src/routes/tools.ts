@@ -6,10 +6,11 @@ import { validate } from "../middleware/validate";
 import { Errors, ok } from "../utils/response";
 import {
   assertToolUsable,
-  getToolSetting,
-  hasToolManagePermission,
+  hasToolContentManagePermission,
+  hasToolManagerPermission,
   isServiceToolCode,
-  listManageableToolCodes,
+  listContentManageableToolCodes,
+  listManagerToolCodes,
   listToolSettings,
   managerSelect,
   SERVICE_TOOL_CODES,
@@ -68,6 +69,7 @@ const managerCreateSchema = z.object({
 
 const toolSettingPatchSchema = z.object({
   requireLogin: z.boolean().optional(),
+  allowPublicManage: z.boolean().optional(),
 });
 
 toolsRouter.use(async (_req, _res, next) => {
@@ -81,12 +83,15 @@ toolsRouter.use(async (_req, _res, next) => {
 
 toolsRouter.get("/", authOptional, async (req, res, next) => {
   try {
-    const manageableCodes = await listManageableToolCodes(req.user);
+    const managerCodes = await listManagerToolCodes(req.user);
+    const manageableCodes = await listContentManageableToolCodes(req.user);
     const settings = await listToolSettings();
     ok(res, SERVICE_TOOL_CODES.map((code) => ({
       ...SERVICE_TOOL_META[code],
       requireLogin: settings.get(code)?.requireLogin ?? false,
+      allowPublicManage: settings.get(code)?.allowPublicManage ?? false,
       canManage: manageableCodes.includes(code),
+      canAdmin: managerCodes.includes(code),
     })));
   } catch (e) { next(e); }
 });
@@ -95,11 +100,15 @@ toolsRouter.patch("/:toolCode/settings", authRequired, validate(toolSettingPatch
   try {
     const toolCode = String(req.params.toolCode);
     if (!isServiceToolCode(toolCode)) throw Errors.notFound("小工具不存在");
-    if (!(await hasToolManagePermission(toolCode, req.user))) throw Errors.forbidden("没有该小工具的管理权限");
-    const row = await updateToolSetting(toolCode, { requireLogin: req.body.requireLogin });
+    if (!(await hasToolManagerPermission(toolCode, req.user))) throw Errors.forbidden("没有该小工具的管理权限");
+    const row = await updateToolSetting(toolCode, {
+      requireLogin: req.body.requireLogin,
+      allowPublicManage: req.body.allowPublicManage,
+    });
     ok(res, {
       toolCode: row.toolCode,
       requireLogin: row.requireLogin,
+      allowPublicManage: row.allowPublicManage,
       updatedAt: row.updatedAt,
     });
   } catch (e) { next(e); }
@@ -107,8 +116,11 @@ toolsRouter.patch("/:toolCode/settings", authRequired, validate(toolSettingPatch
 
 toolsRouter.get("/permissions/me", authRequired, async (req, res, next) => {
   try {
-    const toolCodes = await listManageableToolCodes(req.user);
-    ok(res, { toolCodes });
+    const [toolCodes, adminToolCodes] = await Promise.all([
+      listContentManageableToolCodes(req.user),
+      listManagerToolCodes(req.user),
+    ]);
+    ok(res, { toolCodes, adminToolCodes });
   } catch (e) { next(e); }
 });
 
@@ -116,7 +128,7 @@ toolsRouter.get("/:toolCode/managers", authRequired, async (req, res, next) => {
   try {
     const toolCode = String(req.params.toolCode);
     if (!isServiceToolCode(toolCode)) throw Errors.notFound("小工具不存在");
-    if (!(await hasToolManagePermission(toolCode, req.user))) throw Errors.forbidden("没有该小工具的管理权限");
+    if (!(await hasToolManagerPermission(toolCode, req.user))) throw Errors.forbidden("没有该小工具的管理权限");
     const rows = await prisma.toolPermission.findMany({
       where: { toolCode },
       orderBy: [{ createdAt: "desc" }],
@@ -130,7 +142,7 @@ toolsRouter.post("/:toolCode/managers", authRequired, validate(managerCreateSche
   try {
     const toolCode = String(req.params.toolCode);
     if (!isServiceToolCode(toolCode)) throw Errors.notFound("小工具不存在");
-    if (!(await hasToolManagePermission(toolCode, req.user))) throw Errors.forbidden("没有该小工具的管理权限");
+    if (!(await hasToolManagerPermission(toolCode, req.user))) throw Errors.forbidden("没有该小工具的管理权限");
 
     const target = req.body.userId
       ? await prisma.user.findUnique({ where: { id: req.body.userId } })
@@ -153,7 +165,7 @@ toolsRouter.delete("/:toolCode/managers/:userId", authRequired, async (req, res,
     const toolCode = String(req.params.toolCode);
     const userId = Number(req.params.userId);
     if (!isServiceToolCode(toolCode)) throw Errors.notFound("小工具不存在");
-    if (!(await hasToolManagePermission(toolCode, req.user))) throw Errors.forbidden("没有该小工具的管理权限");
+    if (!(await hasToolManagerPermission(toolCode, req.user))) throw Errors.forbidden("没有该小工具的管理权限");
     if (userId === req.user!.userId && req.user!.role !== "admin") {
       throw Errors.badRequest("不能移除自己的管理权限");
     }
@@ -169,14 +181,24 @@ toolsRouter.get("/questionnaires", authOptional, async (req, res, next) => {
     const requestedToolCode = req.query.toolCode ? String(req.query.toolCode) : undefined;
     if (requestedToolCode && !isServiceToolCode(requestedToolCode)) throw Errors.badRequest("小工具不合法");
     const toolCode = requestedToolCode && isServiceToolCode(requestedToolCode) ? requestedToolCode : undefined;
-    const canManageAll = req.user ? await listManageableToolCodes(req.user) : [];
     const includeDraft = req.query.manage === "1";
-    if (includeDraft && toolCode && !canManageAll.includes(toolCode)) throw Errors.forbidden("没有该小工具的管理权限");
-    if (toolCode && !includeDraft) await ensureToolUsableForRequest(toolCode, req.user);
+    if (!includeDraft) {
+      ok(res, []);
+      return;
+    }
+    const [contentManageCodes, managerCodes] = req.user
+      ? await Promise.all([listContentManageableToolCodes(req.user), listManagerToolCodes(req.user)])
+      : [[], []];
+    if (includeDraft && toolCode && !contentManageCodes.includes(toolCode)) throw Errors.forbidden("没有该小工具的管理权限");
+    if (includeDraft && !toolCode && !contentManageCodes.length) throw Errors.forbidden("没有小工具管理权限");
+    const isManagerForRequestedTool = Boolean(toolCode && managerCodes.includes(toolCode));
+    const manageScope = toolCode
+      ? (isManagerForRequestedTool ? {} : { createdById: req.user!.userId })
+      : { OR: [{ toolCode: { in: managerCodes } }, { createdById: req.user!.userId }] };
     const list = await prisma.questionnaire.findMany({
       where: {
-        ...(toolCode ? { toolCode } : includeDraft ? { toolCode: { in: canManageAll } } : {}),
-        ...(includeDraft ? {} : { status: "open" }),
+        ...(toolCode ? { toolCode } : { toolCode: { in: contentManageCodes } }),
+        ...manageScope,
       },
       orderBy: [{ isSystem: "desc" }, { createdAt: "desc" }],
       include: {
@@ -185,8 +207,8 @@ toolsRouter.get("/questionnaires", authOptional, async (req, res, next) => {
       },
     });
     ok(res, list.map((row) => normalizeQuestionnaire(row, {
-      includeFields: includeDraft && isServiceToolCode(row.toolCode) && canManageAll.includes(row.toolCode),
-      includeStats: isServiceToolCode(row.toolCode) && canManageAll.includes(row.toolCode),
+      includeFields: includeDraft && canManageQuestionnaireRow(row, req.user, managerCodes),
+      includeStats: canManageQuestionnaireRow(row, req.user, managerCodes),
     })));
   } catch (e) { next(e); }
 });
@@ -201,7 +223,7 @@ toolsRouter.get("/questionnaires/:slug", authOptional, async (req, res, next) =>
       },
     });
     if (!row) throw Errors.notFound("问卷不存在");
-    const canManage = await hasToolManagePermission(row.toolCode, req.user);
+    const canManage = await canManageQuestionnaire(row, req.user);
     if (!canManage) await ensureToolUsableForRequest(row.toolCode, req.user);
     if (row.status !== "open" && !canManage) throw Errors.notFound("问卷不存在或未开放");
     if (row.visibility === "login" && !req.user?.userId && !canManage) throw Errors.unauthorized("请先登录后填写");
@@ -214,7 +236,7 @@ toolsRouter.get("/questionnaires/:slug", authOptional, async (req, res, next) =>
 
 toolsRouter.post("/questionnaires", authRequired, validate(createQuestionnaireSchema), async (req, res, next) => {
   try {
-    if (!(await hasToolManagePermission(req.body.toolCode, req.user))) throw Errors.forbidden("没有该小工具的管理权限");
+    if (!(await hasToolContentManagePermission(req.body.toolCode, req.user))) throw Errors.forbidden("没有该小工具的管理权限");
     validateFields(req.body.fields);
     const now = new Date();
     const row = await prisma.questionnaire.create({
@@ -248,8 +270,8 @@ toolsRouter.patch("/questionnaires/:id", authRequired, validate(patchQuestionnai
     const current = await prisma.questionnaire.findUnique({ where: { id } });
     if (!current) throw Errors.notFound("问卷不存在");
     const targetToolCode = req.body.toolCode ?? current.toolCode;
-    if (!(await hasToolManagePermission(current.toolCode, req.user))) throw Errors.forbidden("没有该小工具的管理权限");
-    if (targetToolCode !== current.toolCode && !(await hasToolManagePermission(targetToolCode, req.user))) {
+    if (!(await canManageQuestionnaire(current, req.user))) throw Errors.forbidden("没有该问卷的管理权限");
+    if (targetToolCode !== current.toolCode && !(await hasToolContentManagePermission(targetToolCode, req.user))) {
       throw Errors.forbidden("没有目标小工具的管理权限");
     }
     if (req.body.fields) validateFields(req.body.fields);
@@ -283,7 +305,7 @@ toolsRouter.delete("/questionnaires/:id", authRequired, async (req, res, next) =
     const current = await prisma.questionnaire.findUnique({ where: { id } });
     if (!current) throw Errors.notFound("问卷不存在");
     if (current.isSystem) throw Errors.badRequest("系统问卷不能删除");
-    if (!(await hasToolManagePermission(current.toolCode, req.user))) throw Errors.forbidden("没有该小工具的管理权限");
+    if (!(await canManageQuestionnaire(current, req.user))) throw Errors.forbidden("没有该问卷的管理权限");
     await prisma.questionnaire.delete({ where: { id } });
     ok(res, { ok: true });
   } catch (e) { next(e); }
@@ -322,7 +344,7 @@ toolsRouter.get("/questionnaires/:id/responses", authRequired, async (req, res, 
     const id = Number(req.params.id);
     const questionnaire = await prisma.questionnaire.findUnique({ where: { id } });
     if (!questionnaire) throw Errors.notFound("问卷不存在");
-    if (!(await hasToolManagePermission(questionnaire.toolCode, req.user))) throw Errors.forbidden("没有该小工具的管理权限");
+    if (!(await canManageQuestionnaire(questionnaire, req.user))) throw Errors.forbidden("没有该问卷的管理权限");
     const list = await prisma.questionnaireResponse.findMany({
       where: { questionnaireId: id },
       orderBy: { createdAt: "desc" },
@@ -355,6 +377,21 @@ function slugify(text: string) {
     .slice(0, 48);
   if (/^[a-z0-9-]+$/.test(ascii)) return ascii;
   return `q-${Date.now().toString(36)}`;
+}
+
+async function canManageQuestionnaire(row: { toolCode: string; createdById: number | null }, user: Express.Request["user"]) {
+  if (!user?.userId) return false;
+  if (await hasToolManagerPermission(row.toolCode, user)) return true;
+  return row.createdById === user.userId && await hasToolContentManagePermission(row.toolCode, user);
+}
+
+function canManageQuestionnaireRow(
+  row: { toolCode: string; createdById: number | null },
+  user: Express.Request["user"],
+  managerCodes: string[],
+) {
+  if (!user?.userId) return false;
+  return managerCodes.includes(row.toolCode) || row.createdById === user.userId;
 }
 
 function validateFields(fields: QuestionnaireField[]) {

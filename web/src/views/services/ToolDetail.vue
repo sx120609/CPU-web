@@ -39,19 +39,29 @@
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowLeft, DocumentChecked, EditPen, Setting } from "@element-plus/icons-vue";
+import { ArrowLeft, EditPen, Setting } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { getToken } from "@/api/request";
-import { toolsApi, type Questionnaire, type QuestionnaireField, type ServiceToolCode } from "@/api/tools";
+import { toolsApi, type Questionnaire, type QuestionnaireField, type ServiceToolCode, type ToolMeta } from "@/api/tools";
 import { findServiceTool } from "@/data/serviceTools";
 
 const route = useRoute();
 const router = useRouter();
 const tool = computed(() => findServiceTool(String(route.params.slug || "")));
 const manageable = ref<ServiceToolCode[]>([]);
-const canManage = computed(() => Boolean(tool.value && manageable.value.includes(tool.value.slug as ServiceToolCode)));
+const toolMetas = ref<ToolMeta[]>([]);
+const canManage = computed(() => Boolean(tool.value && (
+  manageable.value.includes(tool.value.slug as ServiceToolCode)
+  || toolMetas.value.some((item) => item.code === tool.value?.slug && item.canManage)
+)));
 
 onMounted(async () => {
+  try {
+    toolMetas.value = await toolsApi.tools();
+    manageable.value = toolMetas.value.filter((item) => item.canManage).map((item) => item.code);
+  } catch {
+    toolMetas.value = [];
+  }
   if (!getToken()) return;
   try {
     manageable.value = (await toolsApi.myPermissions()).toolCodes;
@@ -131,47 +141,21 @@ const FeedbackPanel = defineComponent({
 const QuestionnairePanel = defineComponent({
   name: "QuestionnairePanel",
   setup() {
-    const loading = ref(false);
-    const list = ref<Questionnaire[]>([]);
-    const canManageQuestionnaire = computed(() => manageable.value.includes("questionnaire"));
-
-    onMounted(load);
-
-    async function load() {
-      loading.value = true;
-      try {
-        list.value = await toolsApi.questionnaires({ toolCode: "questionnaire" });
-      } finally {
-        loading.value = false;
-      }
-    }
+    const canManageQuestionnaire = computed(() => manageable.value.includes("questionnaire") || toolMetas.value.some((item) => item.code === "questionnaire" && item.canManage));
 
     return () => h("div", { class: "questionnaire-list" }, [
       h("div", { class: "list-head" }, [
         h("div", [
-          h("h3", "可填写问卷"),
-          h("p", "公开问卷会显示在这里，点击后进入填写页。"),
+          h("h3", "在线问卷"),
+          h("p", "问卷由发起者创建后通过链接分享。这里不展示全部问卷。"),
         ]),
         canManageQuestionnaire.value
-          ? h("button", { class: "plain-action", type: "button", onClick: () => router.push("/services/tools/manage") }, "创建问卷")
+          ? h("button", { class: "plain-action", type: "button", onClick: () => router.push("/services/tools/manage") }, "进入管理")
           : null,
       ]),
-      loading.value
-        ? h("div", { class: "loading-card" }, "正在加载问卷...")
-        : list.value.length
-          ? h("div", { class: "questionnaire-grid" }, list.value.map((item) => h("button", {
-            class: "questionnaire-card",
-            type: "button",
-            onClick: () => router.push({ name: "questionnaire-fill", params: { slug: item.slug } }),
-          }, [
-            h("span", { class: "q-icon" }, [h(DocumentChecked)]),
-            h("span", { class: "q-main" }, [
-              h("span", { class: "q-title" }, item.title),
-              h("span", { class: "q-desc" }, item.description || "点击填写问卷"),
-            ]),
-            h("span", { class: "q-meta" }, item.visibility === "login" ? "需登录" : "公开"),
-          ])))
-          : h("div", { class: "empty-panel" }, "暂时没有开放中的问卷"),
+      h("div", { class: "empty-panel" }, canManageQuestionnaire.value
+        ? "在管理页创建问卷，发布后复制链接发给填写人。"
+        : "请通过发起者分享的问卷链接填写。"),
     ]);
   },
 });
@@ -460,39 +444,6 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
   gap: 12px;
   margin-bottom: 14px;
 }
-.questionnaire-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
-}
-.questionnaire-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 104px;
-  padding: 14px;
-  border: 1px solid #eef0f4;
-  border-radius: 10px;
-  background: #fff;
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-}
-.questionnaire-card:hover { border-color: var(--cpu-primary); box-shadow: 0 6px 18px rgba(22, 135, 118, 0.1); }
-.q-icon {
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
-  border-radius: 10px;
-  color: #d97706;
-  background: #fff7ed;
-  flex: 0 0 auto;
-}
-.q-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
-.q-title { color: #111827; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.q-desc { color: #6b7280; font-size: 12px; line-height: 1.5; }
-.q-meta { color: #9ca3af; font-size: 12px; flex: 0 0 auto; }
 .loading-card,
 .empty-panel {
   padding: 22px;
@@ -513,6 +464,5 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
   .submit-btn,
   .plain-action { width: 100%; }
   .list-head { flex-direction: column; align-items: stretch; }
-  .questionnaire-grid { grid-template-columns: 1fr; }
 }
 </style>

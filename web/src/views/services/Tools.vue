@@ -81,12 +81,13 @@ import { serviceTools, toolHubIntro, type ServiceTool, type ServiceToolStatus } 
 const router = useRouter();
 const manageable = ref<ServiceToolCode[]>([]);
 const toolMetas = ref<ToolMeta[]>([]);
-const canManageAny = computed(() => manageable.value.length > 0);
+const canManageAny = computed(() => manageable.value.length > 0 || toolMetas.value.some((item) => item.canManage));
 const toolAccessMap = computed(() => Object.fromEntries(toolMetas.value.map((item) => [item.code, item])));
 
 onMounted(async () => {
   try {
     toolMetas.value = await toolsApi.tools();
+    manageable.value = toolMetas.value.filter((item) => item.canManage).map((item) => item.code);
   } catch {
     toolMetas.value = [];
   }

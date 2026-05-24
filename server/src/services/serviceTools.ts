@@ -25,7 +25,7 @@ export function isSiteAdmin(role?: string | null) {
   return role === "admin";
 }
 
-export async function hasToolManagePermission(toolCode: string, user?: { userId?: number; role?: string } | null) {
+export async function hasToolManagerPermission(toolCode: string, user?: { userId?: number; role?: string } | null) {
   if (!user?.userId) return false;
   if (isSiteAdmin(user.role)) return true;
   if (!isServiceToolCode(toolCode)) return false;
@@ -36,7 +36,17 @@ export async function hasToolManagePermission(toolCode: string, user?: { userId?
   return Boolean(row);
 }
 
-export async function listManageableToolCodes(user?: { userId?: number; role?: string } | null) {
+export const hasToolManagePermission = hasToolManagerPermission;
+
+export async function hasToolContentManagePermission(toolCode: string, user?: { userId?: number; role?: string } | null) {
+  if (!user?.userId) return false;
+  if (await hasToolManagerPermission(toolCode, user)) return true;
+  if (!isServiceToolCode(toolCode)) return false;
+  const setting = await getToolSetting(toolCode);
+  return Boolean(setting.allowPublicManage);
+}
+
+export async function listManagerToolCodes(user?: { userId?: number; role?: string } | null) {
   if (!user?.userId) return [];
   if (isSiteAdmin(user.role)) return [...SERVICE_TOOL_CODES];
   const rows = await prisma.toolPermission.findMany({
@@ -47,11 +57,26 @@ export async function listManageableToolCodes(user?: { userId?: number; role?: s
   return rows.map((row) => row.toolCode).filter(isServiceToolCode);
 }
 
+export const listManageableToolCodes = listManagerToolCodes;
+
+export async function listContentManageableToolCodes(user?: { userId?: number; role?: string } | null) {
+  if (!user?.userId) return [];
+  const [managerCodes, settings] = await Promise.all([
+    listManagerToolCodes(user),
+    listToolSettings(),
+  ]);
+  const result = new Set<ServiceToolCode>(managerCodes);
+  for (const code of SERVICE_TOOL_CODES) {
+    if (settings.get(code)?.allowPublicManage) result.add(code);
+  }
+  return [...result];
+}
+
 export async function getToolSetting(toolCode: ServiceToolCode) {
   return prisma.toolSetting.upsert({
     where: { toolCode },
     update: {},
-    create: { toolCode, requireLogin: false },
+    create: { toolCode, requireLogin: false, allowPublicManage: false },
   });
 }
 
@@ -63,27 +88,28 @@ export async function listToolSettings() {
   const missing = SERVICE_TOOL_CODES.filter((code) => !map.has(code));
   if (missing.length) {
     const created = await Promise.all(missing.map((toolCode) => prisma.toolSetting.create({
-      data: { toolCode, requireLogin: false },
+      data: { toolCode, requireLogin: false, allowPublicManage: false },
     })));
     for (const row of created) map.set(row.toolCode, row);
   }
   return map;
 }
 
-export async function updateToolSetting(toolCode: ServiceToolCode, data: { requireLogin?: boolean }) {
+export async function updateToolSetting(toolCode: ServiceToolCode, data: { requireLogin?: boolean; allowPublicManage?: boolean }) {
   return prisma.toolSetting.upsert({
     where: { toolCode },
     update: data,
     create: {
       toolCode,
       requireLogin: data.requireLogin ?? false,
+      allowPublicManage: data.allowPublicManage ?? false,
     },
   });
 }
 
 export async function assertToolUsable(toolCode: string, user?: { userId?: number; role?: string } | null) {
   if (!isServiceToolCode(toolCode)) throw new Error("INVALID_TOOL_CODE");
-  const canManage = await hasToolManagePermission(toolCode, user);
+  const canManage = await hasToolManagerPermission(toolCode, user);
   if (canManage) return;
   const setting = await getToolSetting(toolCode);
   if (setting.requireLogin && !user?.userId) throw new Error("TOOL_LOGIN_REQUIRED");
