@@ -61,6 +61,7 @@ model User {
   toolPermissions   ToolPermission[]
   createdQuestionnaires Questionnaire[] @relation("QuestionnaireCreatedBy")
   questionnaireResponses QuestionnaireResponse[]
+  createdGradeCheckTables GradeCheckTable[] @relation("GradeCheckCreatedBy")
 }
 
 // ============ 论坛核心 ============
@@ -464,6 +465,43 @@ model QuestionnaireResponse {
 
   @@index([questionnaireId, createdAt])
   @@index([respondentId])
+}
+
+// ============ 小工具：成绩表核对 ============
+
+model GradeCheckTable {
+  id              Int      @id @default(autoincrement())
+  slug            String   @unique
+  title           String
+  description     String?
+  status          String   @default("open") // draft / open / closed
+  studentIdColumn String   @default("学号")
+  columns         String   @default("[]")
+  rowCount        Int      @default(0)
+  createdById     Int?
+  publishedAt     DateTime?
+  closedAt        DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  createdBy User? @relation("GradeCheckCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  rows      GradeCheckRow[]
+
+  @@index([status])
+  @@index([createdById])
+}
+
+model GradeCheckRow {
+  id        Int      @id @default(autoincrement())
+  tableId   Int
+  studentId String
+  payload   String
+  createdAt DateTime @default(now())
+
+  table GradeCheckTable @relation(fields: [tableId], references: [id], onDelete: Cascade)
+
+  @@unique([tableId, studentId])
+  @@index([studentId])
 }
 
 // ============ 通知与待办（保留，但语义改为论坛事件） ============

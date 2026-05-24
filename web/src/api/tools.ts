@@ -1,9 +1,10 @@
 import { request } from "./request";
 
-export type ServiceToolCode = "feedback" | "questionnaire";
+export type ServiceToolCode = "feedback" | "questionnaire" | "grade_check";
 export type QuestionnaireStatus = "draft" | "open" | "closed";
 export type QuestionnaireVisibility = "public" | "login";
 export type QuestionnaireFieldType = "text" | "textarea" | "single" | "multiple" | "number" | "date" | "rating";
+export type GradeCheckStatus = "draft" | "open" | "closed";
 
 export interface ToolMeta {
   code: ServiceToolCode;
@@ -69,6 +70,43 @@ export interface QuestionnaireResponse {
   createdAt: string;
 }
 
+export interface GradeCheckTable {
+  id: number;
+  slug: string;
+  title: string;
+  description?: string | null;
+  status: GradeCheckStatus;
+  studentIdColumn: string;
+  columns: string[];
+  rowCount: number;
+  publishedAt?: string | null;
+  closedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: {
+    id: number;
+    username: string;
+    nickname: string;
+    role: string;
+  } | null;
+}
+
+export interface GradeCheckLookup {
+  table: GradeCheckTable;
+  studentId: string;
+  row: Record<string, string> | null;
+  canManage: boolean;
+}
+
+export interface GradeCheckPayload {
+  title: string;
+  description?: string;
+  status?: GradeCheckStatus;
+  studentIdColumn: string;
+  columns: string[];
+  rows: Array<Record<string, string | number | boolean | null>>;
+}
+
 export interface ToolManager {
   id: number;
   toolCode: ServiceToolCode;
@@ -122,4 +160,15 @@ export const toolsApi = {
     request.post<{ id: number; createdAt: string }>(`/tools/questionnaires/${slug}/responses`, { answers }),
   responses: (id: number) =>
     request.get<{ questionnaire: Questionnaire; list: QuestionnaireResponse[] }>(`/tools/questionnaires/${id}/responses`),
+
+  gradeChecks: (params?: { manage?: "1" }) =>
+    request.get<GradeCheckTable[]>("/tools/grade-checks", params),
+  gradeCheck: (slug: string) =>
+    request.get<GradeCheckLookup>(`/tools/grade-checks/${slug}`),
+  createGradeCheck: (payload: GradeCheckPayload) =>
+    request.post<GradeCheckTable>("/tools/grade-checks", payload),
+  updateGradeCheck: (id: number, payload: Partial<GradeCheckPayload>) =>
+    request.patch<GradeCheckTable>(`/tools/grade-checks/${id}`, payload),
+  deleteGradeCheck: (id: number) =>
+    request.delete<{ ok: true }>(`/tools/grade-checks/${id}`),
 };

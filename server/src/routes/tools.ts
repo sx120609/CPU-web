@@ -41,8 +41,11 @@ const fieldSchema = z.object({
   maxLength: z.number().int().positive().max(2000).optional(),
 });
 
+const QUESTIONNAIRE_TOOL_CODES = ["feedback", "questionnaire"] as const;
+const questionnaireToolCodeSchema = z.enum(QUESTIONNAIRE_TOOL_CODES);
+
 const createQuestionnaireSchema = z.object({
-  toolCode: z.enum(SERVICE_TOOL_CODES).default("questionnaire"),
+  toolCode: questionnaireToolCodeSchema.default("questionnaire"),
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(1000).optional(),
   status: z.enum(["draft", "open", "closed"]).optional(),
@@ -58,6 +61,25 @@ const patchQuestionnaireSchema = createQuestionnaireSchema.partial().extend({
 
 const responseSchema = z.object({
   answers: z.record(z.union([z.string(), z.array(z.string())])),
+});
+
+const gradeCheckCellSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+const gradeCheckRowSchema = z.record(gradeCheckCellSchema);
+const createGradeCheckSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(1000).optional(),
+  status: z.enum(["draft", "open", "closed"]).optional(),
+  studentIdColumn: z.string().trim().min(1).max(80).default("学号"),
+  columns: z.array(z.string().trim().min(1).max(80)).min(2).max(80),
+  rows: z.array(gradeCheckRowSchema).min(1).max(10000),
+});
+const patchGradeCheckSchema = z.object({
+  title: z.string().trim().min(1).max(120).optional(),
+  description: z.string().trim().max(1000).optional(),
+  status: z.enum(["draft", "open", "closed"]).optional(),
+  studentIdColumn: z.string().trim().min(1).max(80).optional(),
+  columns: z.array(z.string().trim().min(1).max(80)).min(2).max(80).optional(),
+  rows: z.array(gradeCheckRowSchema).min(1).max(10000).optional(),
 });
 
 const managerCreateSchema = z.object({
@@ -172,6 +194,156 @@ toolsRouter.delete("/:toolCode/managers/:userId", authRequired, async (req, res,
     await prisma.toolPermission.delete({
       where: { toolCode_userId: { toolCode, userId } },
     }).catch(() => null);
+    ok(res, { ok: true });
+  } catch (e) { next(e); }
+});
+
+toolsRouter.get("/grade-checks", authRequired, async (req, res, next) => {
+  try {
+    if (req.query.manage !== "1") {
+      ok(res, []);
+      return;
+    }
+    if (!(await hasToolContentManagePermission("grade_check", req.user))) throw Errors.forbidden("没有该小工具的管理权限");
+    const isManager = await hasToolManagerPermission("grade_check", req.user);
+    const list = await prisma.gradeCheckTable.findMany({
+      where: isManager ? {} : { createdById: req.user!.userId },
+      orderBy: [{ createdAt: "desc" }],
+      include: {
+        createdBy: { select: { id: true, username: true, nickname: true, role: true } },
+      },
+    });
+    ok(res, list.map(normalizeGradeCheckTable));
+  } catch (e) { next(e); }
+});
+
+toolsRouter.get("/grade-checks/:slug", authRequired, async (req, res, next) => {
+  try {
+    const table = await prisma.gradeCheckTable.findUnique({
+      where: { slug: String(req.params.slug) },
+      include: {
+        createdBy: { select: { id: true, username: true, nickname: true, role: true } },
+      },
+    });
+    if (!table) throw Errors.notFound("查询表不存在");
+    const canManage = await canManageGradeCheckTable(table, req.user);
+    if (!canManage) await ensureToolUsableForRequest("grade_check", req.user);
+    if (table.status !== "open" && !canManage) throw Errors.notFound("查询表不存在或未开放");
+
+    const studentId = normalizeStudentId(req.user!.studentId);
+    const row = await prisma.gradeCheckRow.findUnique({
+      where: {
+        tableId_studentId: {
+          tableId: table.id,
+          studentId,
+        },
+      },
+    });
+    ok(res, {
+      table: normalizeGradeCheckTable(table),
+      studentId,
+      row: row ? parseGradePayload(row.payload) : null,
+      canManage,
+    });
+  } catch (e) { next(e); }
+});
+
+toolsRouter.post("/grade-checks", authRequired, validate(createGradeCheckSchema), async (req, res, next) => {
+  try {
+    if (!(await hasToolContentManagePermission("grade_check", req.user))) throw Errors.forbidden("没有该小工具的管理权限");
+    const normalized = normalizeGradeCheckInput(req.body);
+    const now = new Date();
+    const row = await prisma.$transaction(async (tx) => {
+      const created = await tx.gradeCheckTable.create({
+        data: {
+          slug: await nextGradeCheckSlug(req.body.title),
+          title: req.body.title,
+          description: req.body.description || null,
+          status: req.body.status ?? "open",
+          studentIdColumn: normalized.studentIdColumn,
+          columns: JSON.stringify(normalized.columns),
+          rowCount: normalized.rows.length,
+          createdById: req.user!.userId,
+          publishedAt: (req.body.status ?? "open") === "open" ? now : null,
+          closedAt: req.body.status === "closed" ? now : null,
+        },
+      });
+      await tx.gradeCheckRow.createMany({
+        data: normalized.rows.map((item) => ({
+          tableId: created.id,
+          studentId: item.studentId,
+          payload: JSON.stringify(item.payload),
+        })),
+      });
+      return tx.gradeCheckTable.findUniqueOrThrow({
+        where: { id: created.id },
+        include: {
+          createdBy: { select: { id: true, username: true, nickname: true, role: true } },
+        },
+      });
+    });
+    ok(res, normalizeGradeCheckTable(row));
+  } catch (e) { next(e); }
+});
+
+toolsRouter.patch("/grade-checks/:id", authRequired, validate(patchGradeCheckSchema), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const current = await prisma.gradeCheckTable.findUnique({ where: { id } });
+    if (!current) throw Errors.notFound("查询表不存在");
+    if (!(await canManageGradeCheckTable(current, req.user))) throw Errors.forbidden("没有该查询表的管理权限");
+
+    const hasRows = Boolean(req.body.rows || req.body.columns || req.body.studentIdColumn);
+    if (hasRows && !req.body.rows) throw Errors.badRequest("更新行列时需要重新上传完整数据");
+    const normalized = hasRows ? normalizeGradeCheckInput({
+      studentIdColumn: req.body.studentIdColumn ?? current.studentIdColumn,
+      columns: req.body.columns ?? parseGradeColumns(current.columns),
+      rows: req.body.rows ?? [],
+    }) : null;
+
+    const now = new Date();
+    const row = await prisma.$transaction(async (tx) => {
+      const updated = await tx.gradeCheckTable.update({
+        where: { id },
+        data: {
+          title: req.body.title,
+          description: req.body.description === undefined ? undefined : (req.body.description || null),
+          status: req.body.status,
+          studentIdColumn: normalized?.studentIdColumn,
+          columns: normalized ? JSON.stringify(normalized.columns) : undefined,
+          rowCount: normalized?.rows.length,
+          publishedAt: req.body.status === "open" && !current.publishedAt ? now : undefined,
+          closedAt: req.body.status === "closed" ? now : req.body.status === "open" ? null : undefined,
+        },
+      });
+      if (normalized) {
+        await tx.gradeCheckRow.deleteMany({ where: { tableId: id } });
+        await tx.gradeCheckRow.createMany({
+          data: normalized.rows.map((item) => ({
+            tableId: id,
+            studentId: item.studentId,
+            payload: JSON.stringify(item.payload),
+          })),
+        });
+      }
+      return tx.gradeCheckTable.findUniqueOrThrow({
+        where: { id: updated.id },
+        include: {
+          createdBy: { select: { id: true, username: true, nickname: true, role: true } },
+        },
+      });
+    });
+    ok(res, normalizeGradeCheckTable(row));
+  } catch (e) { next(e); }
+});
+
+toolsRouter.delete("/grade-checks/:id", authRequired, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const current = await prisma.gradeCheckTable.findUnique({ where: { id } });
+    if (!current) throw Errors.notFound("查询表不存在");
+    if (!(await canManageGradeCheckTable(current, req.user))) throw Errors.forbidden("没有该查询表的管理权限");
+    await prisma.gradeCheckTable.delete({ where: { id } });
     ok(res, { ok: true });
   } catch (e) { next(e); }
 });
@@ -370,6 +542,18 @@ async function nextQuestionnaireSlug(title: string) {
   return `${base}-${Date.now().toString(36)}`;
 }
 
+async function nextGradeCheckSlug(title: string) {
+  const rawBase = slugify(title);
+  const base = rawBase && !rawBase.startsWith("q-") ? rawBase : "grade-check";
+  let slug = base;
+  for (let i = 0; i < 20; i += 1) {
+    const exists = await prisma.gradeCheckTable.findUnique({ where: { slug }, select: { id: true } });
+    if (!exists) return slug;
+    slug = `${base}-${Date.now().toString(36).slice(-5)}${i ? `-${i}` : ""}`;
+  }
+  return `${base}-${Date.now().toString(36)}`;
+}
+
 function slugify(text: string) {
   const ascii = text.trim().toLowerCase()
     .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, "-")
@@ -379,10 +563,99 @@ function slugify(text: string) {
   return `q-${Date.now().toString(36)}`;
 }
 
+function parseGradeColumns(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseGradePayload(raw: string | null | undefined): Record<string, string> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).map(([key, value]) => [key, String(value ?? "")]));
+  } catch {
+    return {};
+  }
+}
+
+function normalizeGradeCheckTable(row: any) {
+  return {
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    description: row.description,
+    status: row.status,
+    studentIdColumn: row.studentIdColumn,
+    columns: parseGradeColumns(row.columns),
+    rowCount: row.rowCount,
+    publishedAt: row.publishedAt,
+    closedAt: row.closedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    createdBy: row.createdBy ? {
+      id: row.createdBy.id,
+      nickname: row.createdBy.nickname,
+      username: row.createdBy.username,
+      role: row.createdBy.role,
+    } : null,
+  };
+}
+
+function normalizeGradeCheckInput(input: {
+  studentIdColumn: string;
+  columns: string[];
+  rows: Array<Record<string, string | number | boolean | null>>;
+}) {
+  const studentIdColumn = input.studentIdColumn.trim() || "学号";
+  const columns = input.columns.map((item) => item.trim()).filter(Boolean);
+  if (!columns.includes(studentIdColumn)) throw Errors.badRequest(`Excel 必须包含“${studentIdColumn}”字段`);
+  if (new Set(columns).size !== columns.length) throw Errors.badRequest("Excel 表头不能重复");
+
+  const seen = new Set<string>();
+  const rows: Array<{ studentId: string; payload: Record<string, string> }> = [];
+  input.rows.forEach((raw, index) => {
+    const payload: Record<string, string> = {};
+    for (const column of columns) payload[column] = formatGradeCell(raw[column]);
+    if (!columns.some((column) => payload[column])) return;
+
+    const studentId = normalizeStudentId(payload[studentIdColumn]);
+    if (!studentId) throw Errors.badRequest(`第 ${index + 2} 行缺少学号`);
+    if (seen.has(studentId)) throw Errors.badRequest(`学号重复：${studentId}`);
+    seen.add(studentId);
+    payload[studentIdColumn] = studentId;
+    rows.push({ studentId, payload });
+  });
+
+  if (!rows.length) throw Errors.badRequest("Excel 至少需要 1 行有效数据");
+  return { studentIdColumn, columns, rows };
+}
+
+function formatGradeCell(value: string | number | boolean | null | undefined) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "boolean") return value ? "是" : "否";
+  return String(value).trim();
+}
+
+function normalizeStudentId(value: string | number | boolean | null | undefined) {
+  return formatGradeCell(value).replace(/\s+/g, "");
+}
+
 async function canManageQuestionnaire(row: { toolCode: string; createdById: number | null }, user: Express.Request["user"]) {
   if (!user?.userId) return false;
   if (await hasToolManagerPermission(row.toolCode, user)) return true;
   return row.createdById === user.userId && await hasToolContentManagePermission(row.toolCode, user);
+}
+
+async function canManageGradeCheckTable(row: { createdById: number | null }, user: Express.Request["user"]) {
+  if (!user?.userId) return false;
+  if (await hasToolManagerPermission("grade_check", user)) return true;
+  return row.createdById === user.userId && await hasToolContentManagePermission("grade_check", user);
 }
 
 function canManageQuestionnaireRow(

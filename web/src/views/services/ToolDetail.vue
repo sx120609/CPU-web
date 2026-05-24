@@ -25,7 +25,8 @@
       </div>
 
       <FeedbackPanel v-if="tool.componentKey === 'feedback'" />
-      <QuestionnairePanel v-else />
+      <QuestionnairePanel v-else-if="tool.componentKey === 'questionnaire'" />
+      <GradeCheckPanel v-else />
     </section>
 
     <section v-else class="missing-card">
@@ -156,6 +157,28 @@ const QuestionnairePanel = defineComponent({
       h("div", { class: "empty-panel" }, canManageQuestionnaire.value
         ? "在管理页创建问卷，发布后复制链接发给填写人。"
         : "请通过发起者分享的问卷链接填写。"),
+    ]);
+  },
+});
+
+const GradeCheckPanel = defineComponent({
+  name: "GradeCheckPanel",
+  setup() {
+    const canManageGradeCheck = computed(() => manageable.value.includes("grade_check") || toolMetas.value.some((item) => item.code === "grade_check" && item.canManage));
+
+    return () => h("div", { class: "questionnaire-list grade-check-panel" }, [
+      h("div", { class: "list-head" }, [
+        h("div", [
+          h("h3", "成绩表核对"),
+          h("p", "查询表由发起者上传 Excel 后生成链接。学生登录打开链接，只能看到自己学号对应的信息。"),
+        ]),
+        canManageGradeCheck.value
+          ? h("button", { class: "plain-action", type: "button", onClick: () => router.push("/services/tools/manage") }, "进入管理")
+          : null,
+      ]),
+      h("div", { class: "empty-panel" }, canManageGradeCheck.value
+        ? "在管理页上传带有“学号”字段的 Excel，开放后复制链接分享给需要核对的同学。"
+        : "请通过发起者分享的成绩核对链接进入查询。"),
     ]);
   },
 });

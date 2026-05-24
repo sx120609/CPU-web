@@ -26,7 +26,7 @@
         </el-tabs>
 
         <div class="tool-admin-grid">
-          <section class="admin-section questionnaire-section">
+          <section v-if="activeTool !== 'grade_check'" class="admin-section questionnaire-section">
             <div class="section-head">
               <div>
                 <h3>问卷</h3>
@@ -112,6 +112,142 @@
                 </div>
               </article>
               <el-empty v-if="!questionnaires.length" :description="canAdminActiveTool ? '暂无问卷' : '你还没有发起问卷'" />
+            </div>
+          </section>
+
+          <section v-else class="admin-section questionnaire-section grade-check-section">
+            <div class="section-head">
+              <div>
+                <h3>成绩表核对</h3>
+                <p>{{ canAdminActiveTool ? "上传带有“学号”字段的 Excel，生成只展示本人记录的查询链接。" : "上传你发起的成绩核对表，发布后复制链接分享给同学。" }}</p>
+              </div>
+            </div>
+
+            <div class="questionnaire-summary">
+              <div>
+                <b>{{ gradeChecks.length }}</b>
+                <span>查询表</span>
+              </div>
+              <div>
+                <b>{{ gradeOpenCount }}</b>
+                <span>开放中</span>
+              </div>
+              <div>
+                <b>{{ gradeTotalRows }}</b>
+                <span>记录</span>
+              </div>
+            </div>
+
+            <div class="grade-upload-panel">
+              <div class="upload-copy">
+                <h4>创建查询表</h4>
+                <p>Excel 第一行作为表头，必须包含“学号”字段。每个学号只能出现一次。</p>
+              </div>
+              <div class="grade-form-grid">
+                <el-input v-model="gradeForm.title" placeholder="查询表标题，例如：2026 春季药理学期末成绩核对" maxlength="120" />
+                <el-select v-model="gradeForm.status">
+                  <el-option label="开放查询" value="open" />
+                  <el-option label="保存草稿" value="draft" />
+                  <el-option label="暂时关闭" value="closed" />
+                </el-select>
+                <el-input v-model="gradeForm.description" class="grade-desc" type="textarea" :rows="2" placeholder="补充说明，例如核对截止时间、联系人等" maxlength="1000" />
+              </div>
+              <el-upload
+                class="grade-uploader"
+                drag
+                :auto-upload="false"
+                :show-file-list="false"
+                accept=".xlsx,.xls"
+                @change="handleGradeExcelFile"
+              >
+                <el-icon><UploadFilled /></el-icon>
+                <div class="el-upload__text">拖拽 Excel 到这里，或点击选择文件</div>
+                <template #tip>
+                  <div class="el-upload__tip">支持 .xlsx / .xls，当前按第一张工作表读取。</div>
+                </template>
+              </el-upload>
+
+              <div v-if="gradeForm.rows.length" class="grade-preview-box">
+                <div class="grade-preview-head">
+                  <div>
+                    <b>{{ gradeFileName || "已读取表格" }}</b>
+                    <span>{{ gradeForm.rows.length }} 行 · {{ gradeForm.columns.length }} 个字段</span>
+                  </div>
+                  <el-button type="primary" :loading="gradeSaving" @click="createGradeCheck">
+                    <el-icon><Plus /></el-icon>
+                    创建查询表
+                  </el-button>
+                </div>
+                <div class="grade-columns">
+                  <el-tag
+                    v-for="column in gradeForm.columns"
+                    :key="column"
+                    size="small"
+                    :type="column === gradeForm.studentIdColumn ? 'success' : 'info'"
+                    effect="plain"
+                  >
+                    {{ column }}
+                  </el-tag>
+                </div>
+                <div class="grade-preview-table-wrap">
+                  <table class="grade-preview-table">
+                    <thead>
+                      <tr>
+                        <th v-for="column in gradeForm.columns.slice(0, 6)" :key="column">{{ column }}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(row, index) in gradeForm.rows.slice(0, 4)" :key="index">
+                        <td v-for="column in gradeForm.columns.slice(0, 6)" :key="column">{{ row[column] || "-" }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="questionnaire-list-cards">
+              <article v-for="row in gradeChecks" :key="row.id" class="questionnaire-row-card">
+                <div class="q-row-main">
+                  <div class="q-title-cell">
+                    <b>{{ row.title }}</b>
+                    <span>{{ row.slug }}</span>
+                  </div>
+                  <div class="q-row-tags">
+                    <el-tag :type="statusTag(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
+                    <el-tag size="small" effect="plain">{{ row.rowCount }} 条记录</el-tag>
+                    <el-tag size="small" type="info" effect="plain">{{ row.columns.length }} 字段</el-tag>
+                  </div>
+                  <div class="q-row-meta">
+                    <span>学号字段 {{ row.studentIdColumn }}</span>
+                    <span>更新 {{ fmtDate(row.updatedAt) }}</span>
+                    <span v-if="row.createdBy">发起人 {{ row.createdBy.nickname || row.createdBy.username }}</span>
+                  </div>
+                </div>
+                <div class="q-row-actions">
+                  <el-button size="small" @click="copyGradeLink(row)">
+                    <el-icon><Link /></el-icon>
+                    复制链接
+                  </el-button>
+                  <el-dropdown trigger="click" @command="handleGradeCommand($event, row)">
+                    <el-button size="small">
+                      更多<el-icon><ArrowDown /></el-icon>
+                    </el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="open">开放</el-dropdown-item>
+                        <el-dropdown-item command="close">关闭</el-dropdown-item>
+                        <el-dropdown-item command="draft">设为草稿</el-dropdown-item>
+                        <el-dropdown-item command="delete" divided>
+                          <el-icon><Delete /></el-icon>
+                          删除
+                        </el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </article>
+              <el-empty v-if="!gradeChecks.length" :description="canAdminActiveTool ? '暂无成绩核对表' : '你还没有发起成绩核对表'" />
             </div>
           </section>
 
@@ -471,7 +607,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
+import * as XLSX from "xlsx";
 import { ElMessage, ElMessageBox } from "element-plus";
+import type { UploadFile } from "element-plus";
 import {
   ArrowDown,
   ArrowLeft,
@@ -488,10 +626,13 @@ import {
   Rank,
   Star,
   Tickets,
+  UploadFilled,
   View,
 } from "@element-plus/icons-vue";
 import {
   toolsApi,
+  type GradeCheckStatus,
+  type GradeCheckTable,
   type Questionnaire,
   type QuestionnaireField,
   type QuestionnaireFieldType,
@@ -550,6 +691,17 @@ const managers = ref<ToolManager[]>([]);
 const managerUsername = ref("");
 const managerSaving = ref(false);
 const settingSaving = ref(false);
+const gradeChecks = ref<GradeCheckTable[]>([]);
+const gradeSaving = ref(false);
+const gradeFileName = ref("");
+const gradeForm = reactive({
+  title: "",
+  description: "",
+  status: "open" as GradeCheckStatus,
+  studentIdColumn: "学号",
+  columns: [] as string[],
+  rows: [] as Array<Record<string, string>>,
+});
 
 const editorOpen = ref(false);
 const editorMode = ref<"create" | "edit">("create");
@@ -585,6 +737,8 @@ const currentToolMeta = computed(() => allTools.value.find((tool) => tool.code =
 const canAdminActiveTool = computed(() => adminCodes.value.includes(activeTool.value));
 const openCount = computed(() => questionnaires.value.filter((item) => item.status === "open").length);
 const totalResponses = computed(() => questionnaires.value.reduce((sum, item) => sum + (item.responseCount ?? 0), 0));
+const gradeOpenCount = computed(() => gradeChecks.value.filter((item) => item.status === "open").length);
+const gradeTotalRows = computed(() => gradeChecks.value.reduce((sum, item) => sum + item.rowCount, 0));
 const editorTitle = computed(() => editorMode.value === "create" ? "新建问卷" : "编辑问卷");
 const requiredCount = computed(() => form.fields.filter((field) => field.required).length);
 const toolRequireLogin = computed({
@@ -625,10 +779,16 @@ async function init() {
 
 async function reloadActive() {
   if (!activeTool.value) return;
-  const questionnaireList = await toolsApi.questionnaires({ toolCode: activeTool.value, manage: "1" });
   const managerList = canAdminActiveTool.value ? await toolsApi.managers(activeTool.value) : [];
-  questionnaires.value = questionnaireList;
   managers.value = managerList;
+  if (activeTool.value === "grade_check") {
+    gradeChecks.value = await toolsApi.gradeChecks({ manage: "1" });
+    questionnaires.value = [];
+    return;
+  }
+  const questionnaireList = await toolsApi.questionnaires({ toolCode: activeTool.value, manage: "1" });
+  questionnaires.value = questionnaireList;
+  gradeChecks.value = [];
 }
 
 async function saveToolSetting(value: string | number | boolean) {
@@ -922,6 +1082,139 @@ function copyLink(row: Questionnaire) {
     () => ElMessage.success("链接已复制"),
     () => ElMessage.info(path)
   );
+}
+
+async function handleGradeExcelFile(uploadFile: UploadFile) {
+  const file = uploadFile.raw;
+  if (!file) return;
+  try {
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) {
+      ElMessage.warning("Excel 中没有工作表");
+      return;
+    }
+    const sheet = workbook.Sheets[sheetName];
+    const matrix = XLSX.utils.sheet_to_json<Array<string | number | boolean | null>>(sheet, {
+      header: 1,
+      defval: "",
+      raw: false,
+    });
+    const headerRow = matrix.find((row) => row.some((cell) => String(cell ?? "").trim()));
+    if (!headerRow) {
+      ElMessage.warning("Excel 没有表头");
+      return;
+    }
+    const columns = headerRow.map((cell) => String(cell ?? "").trim()).filter(Boolean);
+    if (!columns.includes("学号")) {
+      ElMessage.warning("Excel 必须包含“学号”字段");
+      return;
+    }
+    if (new Set(columns).size !== columns.length) {
+      ElMessage.warning("Excel 表头不能重复");
+      return;
+    }
+    const headerIndex = matrix.indexOf(headerRow);
+    const rows = matrix.slice(headerIndex + 1)
+      .map((line) => {
+        const row: Record<string, string> = {};
+        columns.forEach((column, index) => {
+          row[column] = String(line[index] ?? "").trim();
+        });
+        return row;
+      })
+      .filter((row) => columns.some((column) => row[column]));
+    if (!rows.length) {
+      ElMessage.warning("Excel 至少需要 1 行有效数据");
+      return;
+    }
+    const duplicate = findDuplicateStudentId(rows, "学号");
+    if (duplicate) {
+      ElMessage.warning(`学号重复：${duplicate}`);
+      return;
+    }
+    gradeFileName.value = file.name;
+    gradeForm.studentIdColumn = "学号";
+    gradeForm.columns = columns;
+    gradeForm.rows = rows;
+    if (!gradeForm.title.trim()) gradeForm.title = file.name.replace(/\.(xlsx|xls)$/i, "");
+    ElMessage.success(`已读取 ${rows.length} 行`);
+  } catch {
+    ElMessage.error("Excel 解析失败，请检查文件格式");
+  }
+}
+
+async function createGradeCheck() {
+  if (!gradeForm.title.trim()) {
+    ElMessage.warning("请填写查询表标题");
+    return;
+  }
+  if (!gradeForm.columns.includes(gradeForm.studentIdColumn) || !gradeForm.rows.length) {
+    ElMessage.warning("请先上传包含“学号”字段的 Excel");
+    return;
+  }
+  gradeSaving.value = true;
+  try {
+    await toolsApi.createGradeCheck({
+      title: gradeForm.title.trim(),
+      description: gradeForm.description.trim() || undefined,
+      status: gradeForm.status,
+      studentIdColumn: gradeForm.studentIdColumn,
+      columns: gradeForm.columns,
+      rows: gradeForm.rows,
+    });
+    ElMessage.success(gradeForm.status === "open" ? "查询表已创建并开放" : "查询表已创建");
+    resetGradeForm();
+    await reloadActive();
+  } finally {
+    gradeSaving.value = false;
+  }
+}
+
+async function handleGradeCommand(command: string | number | object, row: GradeCheckTable) {
+  const action = String(command);
+  if (action === "delete") {
+    const ok = await ElMessageBox.confirm(`删除查询表“${row.title}”？`, "确认删除", { type: "warning" })
+      .then(() => true).catch(() => false);
+    if (!ok) return;
+    await toolsApi.deleteGradeCheck(row.id);
+    ElMessage.success("已删除");
+  } else {
+    const status = action === "open" ? "open" : action === "close" ? "closed" : "draft";
+    await toolsApi.updateGradeCheck(row.id, { status });
+    ElMessage.success("状态已更新");
+  }
+  await reloadActive();
+}
+
+function copyGradeLink(row: GradeCheckTable) {
+  const path = `${window.location.origin}/services/tools/grade-checks/${row.slug}`;
+  navigator.clipboard?.writeText(path).then(
+    () => ElMessage.success("链接已复制"),
+    () => ElMessage.info(path)
+  );
+}
+
+function resetGradeForm() {
+  gradeFileName.value = "";
+  gradeForm.title = "";
+  gradeForm.description = "";
+  gradeForm.status = "open";
+  gradeForm.studentIdColumn = "学号";
+  gradeForm.columns = [];
+  gradeForm.rows = [];
+}
+
+function findDuplicateStudentId(rows: Array<Record<string, string>>, column: string) {
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const studentId = String(row[column] ?? "").replace(/\s+/g, "");
+    if (!studentId) continue;
+    if (seen.has(studentId)) return studentId;
+    seen.add(studentId);
+  }
+  return "";
 }
 
 async function addManager() {
@@ -1235,6 +1528,103 @@ function round(value: number) {
 }
 .questionnaire-summary b { display: block; color: #111827; font-size: 20px; }
 .questionnaire-summary span { color: #6b7280; font-size: 12px; }
+.grade-upload-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #e5eaf3;
+  border-radius: 10px;
+  background: #f8fbff;
+  margin-bottom: 14px;
+}
+.upload-copy h4 {
+  margin: 0;
+  color: #111827;
+  font-size: 15px;
+}
+.upload-copy p {
+  margin: 5px 0 0;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.grade-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 160px;
+  gap: 10px;
+}
+.grade-desc {
+  grid-column: 1 / -1;
+}
+.grade-uploader :deep(.el-upload-dragger) {
+  padding: 24px 16px;
+  border-radius: 10px;
+  background: #fff;
+}
+.grade-uploader :deep(.el-icon) {
+  color: #2563eb;
+}
+.grade-preview-box {
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  padding: 12px;
+  background: #fff;
+}
+.grade-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.grade-preview-head div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.grade-preview-head b {
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grade-preview-head span {
+  color: #6b7280;
+  font-size: 12px;
+}
+.grade-columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.grade-preview-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #eef0f4;
+  border-radius: 8px;
+}
+.grade-preview-table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.grade-preview-table th,
+.grade-preview-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid #eef0f4;
+  color: #374151;
+  text-align: left;
+  white-space: nowrap;
+}
+.grade-preview-table th {
+  color: #6b7280;
+  background: #f9fafb;
+  font-weight: 650;
+}
 .questionnaire-list-cards {
   display: flex;
   flex-direction: column;
@@ -1845,6 +2235,9 @@ function round(value: number) {
   .section-head { flex-direction: column; align-items: stretch; }
   .section-head .el-button { width: 100%; }
   .questionnaire-summary { grid-template-columns: 1fr; }
+  .grade-form-grid { grid-template-columns: 1fr; }
+  .grade-preview-head { align-items: stretch; flex-direction: column; }
+  .grade-preview-head .el-button { width: 100%; }
   .questionnaire-row-card {
     display: flex;
     flex-direction: column;

@@ -66,6 +66,7 @@ export const router = createRouter({
         { path: "services/tools/manage", name: "service-tools-manage", component: () => import("@/views/services/ToolManage.vue"), meta: { title: "小工具管理" } },
         { path: "services/tools/:slug", name: "service-tool-detail", component: () => import("@/views/services/ToolDetail.vue"), meta: { title: "校园小工具", public: true } },
         { path: "services/tools/questionnaires/:slug", name: "questionnaire-fill", component: () => import("@/views/services/QuestionnaireFill.vue"), meta: { title: "填写问卷", public: true } },
+        { path: "services/tools/grade-checks/:slug", name: "grade-check-lookup", component: () => import("@/views/services/GradeCheckLookup.vue"), meta: { title: "成绩核对" } },
         { path: "announcements", name: "announcements", component: () => import("@/views/announcements/Index.vue"), meta: { title: "校园公告", public: true } },
         { path: "jwxt", name: "jwxt", component: () => import("@/views/jwxt/Index.vue"), meta: { title: "教务数据", public: true } },
         { path: "schedule", name: "schedule", component: () => import("@/views/Schedule.vue"), meta: { title: "课表", public: true, hideChrome: true } },

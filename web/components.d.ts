@@ -47,6 +47,7 @@ declare module 'vue' {
     ElTag: typeof import('element-plus/es')['ElTag']
     ElTimeSelect: typeof import('element-plus/es')['ElTimeSelect']
     ElTooltip: typeof import('element-plus/es')['ElTooltip']
+    ElUpload: typeof import('element-plus/es')['ElUpload']
     EmptyState: typeof import('./src/components/common/EmptyState.vue')['default']
     ExamsPane: typeof import('./src/components/jwxt/ExamsPane.vue')['default']
     GradesPane: typeof import('./src/components/jwxt/GradesPane.vue')['default']

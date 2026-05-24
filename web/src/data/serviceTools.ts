@@ -1,4 +1,4 @@
-import { ChatDotRound, DocumentChecked, Tools } from "@element-plus/icons-vue";
+import { ChatDotRound, DataLine, DocumentChecked, Tools } from "@element-plus/icons-vue";
 import type { Component } from "vue";
 
 export type ServiceToolStatus = "ready" | "planned";
@@ -12,7 +12,7 @@ export interface ServiceTool {
   status: ServiceToolStatus;
   category: string;
   routeName: string;
-  componentKey: "feedback" | "questionnaire";
+  componentKey: "feedback" | "questionnaire" | "grade_check";
   accent: string;
   iconComponent: Component;
 }
@@ -43,6 +43,19 @@ export const serviceTools: ServiceTool[] = [
     componentKey: "questionnaire",
     accent: "#d97706",
     iconComponent: DocumentChecked,
+  },
+  {
+    slug: "grade_check",
+    name: "成绩表核对",
+    summary: "上传 Excel 后按学号开放个人查询",
+    description: "发起者上传带有学号字段的成绩或信息表，学生登录后只能查看自己学号对应的记录。",
+    icon: "📊",
+    status: "ready",
+    category: "查询",
+    routeName: "service-tool-detail",
+    componentKey: "grade_check",
+    accent: "#2563eb",
+    iconComponent: DataLine,
   },
 ];
 

@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 
-export const SERVICE_TOOL_CODES = ["feedback", "questionnaire"] as const;
+export const SERVICE_TOOL_CODES = ["feedback", "questionnaire", "grade_check"] as const;
 export type ServiceToolCode = typeof SERVICE_TOOL_CODES[number];
 
 export const SERVICE_TOOL_META: Record<ServiceToolCode, { code: ServiceToolCode; name: string; description: string }> = {
@@ -14,6 +14,11 @@ export const SERVICE_TOOL_META: Record<ServiceToolCode, { code: ServiceToolCode;
     code: "questionnaire",
     name: "在线问卷",
     description: "创建、发布和统计轻量问卷",
+  },
+  grade_check: {
+    code: "grade_check",
+    name: "成绩表核对",
+    description: "上传成绩表并按学号开放查询",
   },
 };
 
