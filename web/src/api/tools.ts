@@ -163,6 +163,8 @@ export const toolsApi = {
 
   gradeChecks: (params?: { manage?: "1" }) =>
     request.get<GradeCheckTable[]>("/tools/grade-checks", params),
+  relatedGradeChecks: () =>
+    request.get<GradeCheckTable[]>("/tools/grade-checks/related"),
   gradeCheck: (slug: string) =>
     request.get<GradeCheckLookup>(`/tools/grade-checks/${slug}`),
   createGradeCheck: (payload: GradeCheckPayload) =>

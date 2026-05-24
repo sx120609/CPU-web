@@ -217,6 +217,29 @@ toolsRouter.get("/grade-checks", authRequired, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+toolsRouter.get("/grade-checks/related", authRequired, async (req, res, next) => {
+  try {
+    await ensureToolUsableForRequest("grade_check", req.user);
+    const studentId = normalizeStudentId(req.user!.studentId);
+    const rows = await prisma.gradeCheckRow.findMany({
+      where: {
+        studentId,
+        table: { status: "open" },
+      },
+      include: {
+        table: {
+          include: {
+            createdBy: { select: { id: true, username: true, nickname: true, role: true } },
+          },
+        },
+      },
+    });
+    ok(res, rows
+      .map((row) => normalizeGradeCheckTable(row.table))
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()));
+  } catch (e) { next(e); }
+});
+
 toolsRouter.get("/grade-checks/:slug", authRequired, async (req, res, next) => {
   try {
     const table = await prisma.gradeCheckTable.findUnique({

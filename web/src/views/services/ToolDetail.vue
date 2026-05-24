@@ -40,10 +40,10 @@
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowLeft, EditPen, Setting } from "@element-plus/icons-vue";
+import { ArrowLeft, EditPen, Link, Setting } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { getToken } from "@/api/request";
-import { toolsApi, type Questionnaire, type QuestionnaireField, type ServiceToolCode, type ToolMeta } from "@/api/tools";
+import { toolsApi, type GradeCheckTable, type Questionnaire, type QuestionnaireField, type ServiceToolCode, type ToolMeta } from "@/api/tools";
 import { findServiceTool } from "@/data/serviceTools";
 
 const route = useRoute();
@@ -165,6 +165,20 @@ const GradeCheckPanel = defineComponent({
   name: "GradeCheckPanel",
   setup() {
     const canManageGradeCheck = computed(() => manageable.value.includes("grade_check") || toolMetas.value.some((item) => item.code === "grade_check" && item.canManage));
+    const loading = ref(false);
+    const related = ref<GradeCheckTable[]>([]);
+
+    onMounted(async () => {
+      if (!getToken()) return;
+      loading.value = true;
+      try {
+        related.value = await toolsApi.relatedGradeChecks();
+      } catch {
+        related.value = [];
+      } finally {
+        loading.value = false;
+      }
+    });
 
     return () => h("div", { class: "questionnaire-list grade-check-panel" }, [
       h("div", { class: "list-head" }, [
@@ -176,9 +190,25 @@ const GradeCheckPanel = defineComponent({
           ? h("button", { class: "plain-action", type: "button", onClick: () => router.push("/services/tools/manage") }, "进入管理")
           : null,
       ]),
-      h("div", { class: "empty-panel" }, canManageGradeCheck.value
-        ? "在管理页上传带有“学号”字段的 Excel，开放后复制链接分享给需要核对的同学。"
-        : "请通过发起者分享的成绩核对链接进入查询。"),
+      loading.value
+        ? h("div", { class: "empty-panel" }, "正在查找与你有关的查询...")
+        : related.value.length
+          ? h("div", { class: "related-grade-list" }, related.value.map((item) => h("button", {
+            key: item.id,
+            type: "button",
+            class: "related-grade-item",
+            onClick: () => router.push(`/services/tools/grade-checks/${item.slug}`),
+          }, [
+            h("span", { class: "related-grade-icon" }, [h(Link)]),
+            h("span", { class: "related-grade-main" }, [
+              h("b", item.title),
+              h("small", `${item.rowCount} 条记录 · 更新 ${new Date(item.updatedAt).toLocaleDateString()}`),
+            ]),
+            h("span", { class: "related-grade-action" }, "查看"),
+          ])))
+          : h("div", { class: "empty-panel" }, canManageGradeCheck.value
+            ? "在管理页上传带有“学号”字段的 Excel，开放后复制链接分享给需要核对的同学。"
+            : getToken() ? "暂未找到与你学号匹配的开放查询。也可以通过发起者分享的链接进入。" : "登录后会自动显示与你学号匹配的开放查询。"),
     ]);
   },
 });
@@ -475,6 +505,63 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
   color: #6b7280;
   text-align: center;
 }
+.related-grade-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.related-grade-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 72px;
+  padding: 12px;
+  border: 1px solid #e5eaf3;
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: border-color 0.16s, box-shadow 0.16s, transform 0.16s;
+}
+.related-grade-item:hover {
+  border-color: #93c5fd;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.1);
+  transform: translateY(-1px);
+}
+.related-grade-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: #2563eb;
+  background: #eff6ff;
+}
+.related-grade-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.related-grade-main b {
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.related-grade-main small {
+  color: #6b7280;
+  font-size: 12px;
+}
+.related-grade-action {
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 650;
+}
 @media (max-width: 800px) {
   .tool-shell { padding: 16px; }
   .tool-content { grid-template-columns: 1fr; }
@@ -487,5 +574,11 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
   .submit-btn,
   .plain-action { width: 100%; }
   .list-head { flex-direction: column; align-items: stretch; }
+  .related-grade-item {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+  .related-grade-action {
+    grid-column: 2;
+  }
 }
 </style>

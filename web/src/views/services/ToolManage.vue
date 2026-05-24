@@ -143,6 +143,12 @@
                 <h4>创建查询表</h4>
                 <p>Excel 第一行作为表头，必须包含“学号”字段。每个学号只能出现一次。</p>
               </div>
+              <div class="template-actions">
+                <el-button plain @click="downloadGradeTemplate">
+                  <el-icon><Download /></el-icon>
+                  下载示例文件
+                </el-button>
+              </div>
               <div class="grade-form-grid">
                 <el-input v-model="gradeForm.title" placeholder="查询表标题，例如：2026 春季药理学期末成绩核对" maxlength="120" />
                 <el-select v-model="gradeForm.status">
@@ -1206,6 +1212,17 @@ function resetGradeForm() {
   gradeForm.rows = [];
 }
 
+function downloadGradeTemplate() {
+  const rows = [
+    { 学号: "20260001", 姓名: "张三", 课程: "药理学", 平时成绩: "88", 期末成绩: "91", 总评成绩: "90", 备注: "请核对姓名和成绩" },
+    { 学号: "20260002", 姓名: "李四", 课程: "药理学", 平时成绩: "84", 期末成绩: "86", 总评成绩: "85", 备注: "" },
+  ];
+  const worksheet = XLSX.utils.json_to_sheet(rows, { header: ["学号", "姓名", "课程", "平时成绩", "期末成绩", "总评成绩", "备注"] });
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "成绩表核对");
+  XLSX.writeFile(workbook, "成绩表核对示例.xlsx");
+}
+
 function findDuplicateStudentId(rows: Array<Record<string, string>>, column: string) {
   const seen = new Set<string>();
   for (const row of rows) {
@@ -1529,6 +1546,7 @@ function round(value: number) {
 .questionnaire-summary b { display: block; color: #111827; font-size: 20px; }
 .questionnaire-summary span { color: #6b7280; font-size: 12px; }
 .grade-upload-panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -1548,6 +1566,15 @@ function round(value: number) {
   color: #6b7280;
   font-size: 12px;
   line-height: 1.6;
+}
+.template-actions {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+}
+.template-actions :deep(.el-button) {
+  height: 32px;
+  border-radius: 6px;
 }
 .grade-form-grid {
   display: grid;
@@ -2235,6 +2262,10 @@ function round(value: number) {
   .section-head { flex-direction: column; align-items: stretch; }
   .section-head .el-button { width: 100%; }
   .questionnaire-summary { grid-template-columns: 1fr; }
+  .template-actions {
+    position: static;
+  }
+  .template-actions .el-button { width: 100%; }
   .grade-form-grid { grid-template-columns: 1fr; }
   .grade-preview-head { align-items: stretch; flex-direction: column; }
   .grade-preview-head .el-button { width: 100%; }
