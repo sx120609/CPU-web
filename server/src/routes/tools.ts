@@ -262,11 +262,12 @@ toolsRouter.get("/grade-checks/:slug", authRequired, async (req, res, next) => {
         },
       },
     });
+    const feedbackQuestionnaireSlug = row ? await ensureGradeCheckFeedbackQuestionnaire(table) : table.feedbackQuestionnaireSlug;
     ok(res, {
       table: normalizeGradeCheckTable(table),
       studentId,
       row: row ? parseGradePayload(row.payload) : null,
-      feedbackQuestionnaireSlug: table.feedbackQuestionnaireSlug,
+      feedbackQuestionnaireSlug,
       canManage,
     });
   } catch (e) { next(e); }
@@ -358,6 +359,7 @@ toolsRouter.patch("/grade-checks/:id", authRequired, validate(patchGradeCheckSch
           studentIdColumn: normalized?.studentIdColumn,
           columns: normalized ? JSON.stringify(normalized.columns) : undefined,
           rowCount: normalized?.rows.length,
+          feedbackQuestionnaireSlug: normalized ? null : undefined,
           publishedAt: req.body.status === "open" && !current.publishedAt ? now : undefined,
           closedAt: req.body.status === "closed" ? now : req.body.status === "open" ? null : undefined,
         },
@@ -372,12 +374,40 @@ toolsRouter.patch("/grade-checks/:id", authRequired, validate(patchGradeCheckSch
           })),
         });
       }
-      return tx.gradeCheckTable.findUniqueOrThrow({
+      const refreshed = await tx.gradeCheckTable.findUniqueOrThrow({
         where: { id: updated.id },
         include: {
           createdBy: { select: { id: true, username: true, nickname: true, role: true } },
         },
       });
+      if (normalized) {
+        const slug = await nextQuestionnaireSlug(`${refreshed.title} 问题反馈`);
+        await tx.questionnaire.create({
+          data: {
+            toolCode: "questionnaire",
+            slug,
+            title: `${refreshed.title} 问题反馈`,
+            description: "如核对项目存在问题，请提交说明。",
+            status: refreshed.status === "open" ? "open" : "draft",
+            visibility: "login",
+            allowAnonymous: false,
+            oneResponsePerUser: false,
+            isSystem: false,
+            fields: JSON.stringify(buildGradeCheckFeedbackFields(normalized.columns, normalized.studentIdColumn)),
+            createdById: refreshed.createdById,
+            publishedAt: refreshed.status === "open" ? now : null,
+            closedAt: refreshed.status === "closed" ? now : null,
+          },
+        });
+        return tx.gradeCheckTable.update({
+          where: { id: updated.id },
+          data: { feedbackQuestionnaireSlug: slug },
+          include: {
+            createdBy: { select: { id: true, username: true, nickname: true, role: true } },
+          },
+        });
+      }
+      return refreshed;
     });
     ok(res, normalizeGradeCheckTable(row));
   } catch (e) { next(e); }
@@ -735,6 +765,49 @@ function buildGradeCheckFeedbackFields(columns: string[], studentIdColumn: strin
       maxLength: 120,
     },
   ];
+}
+
+async function ensureGradeCheckFeedbackQuestionnaire(table: {
+  id: number;
+  title: string;
+  status: string;
+  columns: string;
+  studentIdColumn: string;
+  createdById: number | null;
+  feedbackQuestionnaireSlug: string | null;
+}) {
+  if (table.feedbackQuestionnaireSlug) {
+    const exists = await prisma.questionnaire.findUnique({
+      where: { slug: table.feedbackQuestionnaireSlug },
+      select: { id: true },
+    });
+    if (exists) return table.feedbackQuestionnaireSlug;
+  }
+
+  const now = new Date();
+  const slug = await nextQuestionnaireSlug(`${table.title} 问题反馈`);
+  await prisma.questionnaire.create({
+    data: {
+      toolCode: "questionnaire",
+      slug,
+      title: `${table.title} 问题反馈`,
+      description: "如核对项目存在问题，请提交说明。",
+      status: table.status === "open" ? "open" : "draft",
+      visibility: "login",
+      allowAnonymous: false,
+      oneResponsePerUser: false,
+      isSystem: false,
+      fields: JSON.stringify(buildGradeCheckFeedbackFields(parseGradeColumns(table.columns), table.studentIdColumn)),
+      createdById: table.createdById,
+      publishedAt: table.status === "open" ? now : null,
+      closedAt: table.status === "closed" ? now : null,
+    },
+  });
+  await prisma.gradeCheckTable.update({
+    where: { id: table.id },
+    data: { feedbackQuestionnaireSlug: slug },
+  });
+  return slug;
 }
 
 async function canManageQuestionnaire(row: { toolCode: string; createdById: number | null }, user: Express.Request["user"]) {
