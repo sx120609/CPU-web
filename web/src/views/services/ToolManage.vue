@@ -81,7 +81,7 @@
               <el-table-column label="更新时间" width="150">
                 <template #default="{ row }">{{ fmtDate(row.updatedAt) }}</template>
               </el-table-column>
-              <el-table-column label="操作" width="330" fixed="right">
+              <el-table-column label="操作" width="330">
                 <template #default="{ row }">
                   <el-button v-if="!row.isSystem" size="small" @click="openEdit(row)">
                     <el-icon><Edit /></el-icon>
@@ -184,28 +184,27 @@
       </template>
     </section>
 
-    <el-dialog v-model="editorOpen" :title="editorTitle" width="min(1080px, 96vw)" :close-on-click-modal="false">
+    <el-dialog v-model="editorOpen" :title="editorTitle" width="92vw" class="questionnaire-builder-dialog" :close-on-click-modal="false">
       <div class="builder-layout">
-        <aside class="type-palette">
-          <h4>题型</h4>
+        <section class="type-palette">
+          <div class="palette-title">
+            <h4>添加题型</h4>
+            <span>{{ form.fields.length }} 题</span>
+          </div>
           <button v-for="type in fieldTypeOptions" :key="type.value" type="button" @click="addField(type.value)">
             <el-icon><component :is="type.icon" /></el-icon>
             <span>
               <b>{{ type.label }}</b>
-              <small>{{ type.hint }}</small>
             </span>
           </button>
-        </aside>
+        </section>
 
         <el-form label-position="top" class="questionnaire-editor">
           <div class="editor-card">
-            <el-form-item label="标题" required>
-              <el-input v-model="form.title" maxlength="120" placeholder="例如：校园服务满意度调查" />
-            </el-form-item>
-            <el-form-item label="说明">
-              <el-input v-model="form.description" type="textarea" :rows="3" maxlength="1000" placeholder="填写说明、用途或截止提醒" />
-            </el-form-item>
-            <div class="editor-row">
+            <div class="base-grid">
+              <el-form-item label="标题" required class="title-field">
+                <el-input v-model="form.title" maxlength="120" placeholder="例如：校园服务满意度调查" />
+              </el-form-item>
               <el-form-item label="状态">
                 <el-select v-model="form.status">
                   <el-option label="草稿" value="draft" />
@@ -220,6 +219,9 @@
                 </el-select>
               </el-form-item>
             </div>
+            <el-form-item label="说明">
+              <el-input v-model="form.description" type="textarea" :rows="2" maxlength="1000" placeholder="填写说明、用途或截止提醒" />
+            </el-form-item>
             <div class="switch-row">
               <el-checkbox v-model="form.allowAnonymous">允许匿名填写</el-checkbox>
               <el-checkbox v-model="form.oneResponsePerUser">每个登录用户限填一次</el-checkbox>
@@ -308,21 +310,6 @@
             <el-empty v-if="!form.fields.length" description="从左侧选择题型开始设计问卷" />
           </div>
         </el-form>
-
-        <aside class="builder-side">
-          <div class="side-stat">
-            <span>题目数</span>
-            <b>{{ form.fields.length }}</b>
-          </div>
-          <div class="side-stat">
-            <span>当前状态</span>
-            <b>{{ statusText(form.status) }}</b>
-          </div>
-          <div class="side-note">
-            <h4>发布检查</h4>
-            <p>开放前建议确认必填题、选项数量、匿名设置和登录限制。发布后的问卷仍可编辑，已有答卷会按题目 ID 保留。</p>
-          </div>
-        </aside>
       </div>
       <template #footer>
         <el-button @click="editorOpen = false">取消</el-button>
@@ -1052,6 +1039,14 @@ function round(value: number) {
 .manage-head h2 { margin: 0; font-size: 22px; color: #111827; }
 .manage-head p { margin: 6px 0 0; color: #6b7280; font-size: 13px; line-height: 1.7; }
 .manage-panel { padding: 16px 18px 20px; min-height: 240px; }
+:deep(.questionnaire-builder-dialog) {
+  max-width: 1180px;
+}
+:deep(.questionnaire-builder-dialog .el-dialog__body) {
+  padding-top: 8px;
+  max-height: calc(100vh - 188px);
+  overflow-y: auto;
+}
 .tool-admin-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
@@ -1129,13 +1124,11 @@ function round(value: number) {
 .manager-row b { color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .manager-row span { color: #6b7280; font-size: 12px; }
 .builder-layout {
-  display: grid;
-  grid-template-columns: 178px minmax(0, 1fr) 190px;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
-  align-items: start;
 }
 .type-palette,
-.builder-side,
 .editor-card,
 .field-editor {
   border: 1px solid #eef0f4;
@@ -1143,15 +1136,24 @@ function round(value: number) {
   background: #fff;
 }
 .type-palette {
-  position: sticky;
-  top: 0;
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 12px;
+  background: #fafafa;
+}
+.palette-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+.palette-title span {
+  color: #6b7280;
+  font-size: 12px;
 }
 .type-palette h4,
-.builder-side h4,
 .fields-head h4 {
   margin: 0;
   color: #111827;
@@ -1159,14 +1161,15 @@ function round(value: number) {
 }
 .type-palette button {
   display: flex;
+  flex: 1 1 112px;
   align-items: center;
+  justify-content: center;
   gap: 9px;
-  width: 100%;
-  min-height: 52px;
-  padding: 8px;
+  min-height: 42px;
+  padding: 8px 10px;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  background: #fafafa;
+  background: #fff;
   color: #374151;
   cursor: pointer;
   text-align: left;
@@ -1174,20 +1177,22 @@ function round(value: number) {
 }
 .type-palette button:hover { border-color: var(--cpu-primary); color: var(--cpu-primary); background: #f0fdfa; }
 .type-palette .el-icon { font-size: 18px; flex: 0 0 auto; }
-.type-palette span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .type-palette b { font-size: 13px; }
-.type-palette small { color: #9ca3af; font-size: 11px; line-height: 1.3; }
 .questionnaire-editor { display: flex; flex-direction: column; gap: 12px; }
 .editor-card { padding: 14px; }
-.editor-row {
+.base-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(360px, 1fr) 150px 170px;
   gap: 12px;
 }
+.editor-card :deep(.el-select) { width: 100%; }
+.base-grid :deep(.el-form-item) { margin-bottom: 12px; }
+.title-field { min-width: 0; }
 .switch-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px 18px;
+  padding-top: 2px;
 }
 .fields-head {
   display: flex;
@@ -1199,10 +1204,10 @@ function round(value: number) {
 .field-editor-list { display: flex; flex-direction: column; gap: 10px; }
 .field-editor {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  gap: 10px;
-  padding: 12px;
-  background: #fafafa;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px;
+  background: #fff;
 }
 .field-index {
   width: 28px;
@@ -1218,13 +1223,13 @@ function round(value: number) {
 .field-editor-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .field-editor-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 140px 72px;
+  grid-template-columns: minmax(280px, 1fr) 160px 80px;
   gap: 8px;
   align-items: center;
 }
 .advanced-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
   gap: 8px;
 }
 .advanced-grid :deep(.el-form-item) { margin-bottom: 0; }
@@ -1234,29 +1239,6 @@ function round(value: number) {
   gap: 4px;
   justify-content: flex-end;
 }
-.builder-side {
-  position: sticky;
-  top: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-}
-.side-stat {
-  padding: 10px;
-  border: 1px solid #eef0f4;
-  border-radius: 8px;
-  background: #fafafa;
-}
-.side-stat span { display: block; color: #6b7280; font-size: 12px; }
-.side-stat b { color: #111827; font-size: 18px; }
-.side-note {
-  padding: 10px;
-  border: 1px solid #eef0f4;
-  border-radius: 8px;
-  background: #f9fafb;
-}
-.side-note p { margin: 6px 0 0; color: #6b7280; font-size: 12px; line-height: 1.7; }
 .preview-shell { max-width: 720px; margin: 0 auto; }
 .preview-head {
   padding-bottom: 18px;
@@ -1387,23 +1369,16 @@ function round(value: number) {
 .answer-row span { color: #6b7280; }
 .answer-row b { font-weight: 500; word-break: break-word; }
 @media (max-width: 1100px) {
-  .builder-layout { grid-template-columns: 150px minmax(0, 1fr); }
-  .builder-side { display: none; }
+  .base-grid { grid-template-columns: minmax(260px, 1fr) repeat(2, 150px); }
 }
 @media (max-width: 900px) {
   .tool-admin-grid { grid-template-columns: 1fr; }
   .managers-section { order: -1; }
 }
 @media (max-width: 760px) {
-  .builder-layout { grid-template-columns: 1fr; }
-  .type-palette {
-    position: static;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .type-palette h4 { grid-column: 1 / -1; }
+  .type-palette button { flex-basis: calc(50% - 6px); }
   .field-editor-main,
-  .editor-row,
+  .base-grid,
   .advanced-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 700px) {
