@@ -520,6 +520,7 @@ model FileCollectTask {
   fields          String   @default("[]")
   fileRules       String   @default("{}")
   renameTemplate  String   @default("{name}-{student_id}")
+  folderTemplate  String   @default("{name}-{student_id}")
   expectedEntries String   @default("")
   submissionCount Int      @default(0)
   fileCount       Int      @default(0)
@@ -544,6 +545,7 @@ model FileCollectTemplate {
   fields          String   @default("[]")
   fileRules       String   @default("{}")
   renameTemplate  String   @default("{name}-{student_id}")
+  folderTemplate  String   @default("{name}-{student_id}")
   expectedEntries String   @default("")
   createdById     Int?
   createdAt       DateTime @default(now())

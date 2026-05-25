@@ -38,8 +38,13 @@
 
           <div v-if="files.length" class="file-list">
             <div v-for="(file, index) in files" :key="`${file.name}-${file.size}-${index}`">
-              <span>{{ file.name }}</span>
+              <span>
+                <b>{{ file.name }}</b>
+                <small>{{ savedPathPreview(file, index + 1, files.length) }}</small>
+              </span>
               <small>{{ formatBytes(file.size) }}</small>
+              <button type="button" :disabled="index === 0" @click="moveFile(index, index - 1)">上移</button>
+              <button type="button" :disabled="index === files.length - 1" @click="moveFile(index, index + 1)">下移</button>
               <button type="button" @click="removeFile(index)">删除</button>
             </div>
           </div>
@@ -98,12 +103,19 @@ async function load() {
 }
 
 function pickFiles(event: Event) {
-  files.value = [...((event.target as HTMLInputElement).files ?? [])];
+  files.value = [...files.value, ...((event.target as HTMLInputElement).files ?? [])];
+  if (fileInput.value) fileInput.value.value = "";
 }
 
 function removeFile(index: number) {
   files.value.splice(index, 1);
   if (fileInput.value) fileInput.value.value = "";
+}
+
+function moveFile(from: number, to: number) {
+  if (to < 0 || to >= files.value.length) return;
+  const [item] = files.value.splice(from, 1);
+  files.value.splice(to, 0, item);
 }
 
 function validate() {
@@ -185,6 +197,64 @@ function formatBytes(bytes: number) {
   const units = ["B", "KB", "MB", "GB"];
   const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   return `${(bytes / 1024 ** index).toFixed(index ? 1 : 0)} ${units[index]}`;
+}
+
+function savedPathPreview(file: File, index: number, total: number) {
+  if (!task.value) return file.name;
+  const name = renamedFileName(file, index, total);
+  if (total <= 1) return name;
+  return `${submissionFolderName()}/${name}`;
+}
+
+function currentData() {
+  return Object.fromEntries((task.value?.fields ?? []).map((field) => [field.id, answers[field.id]?.trim() || field.label]));
+}
+
+function submissionFolderName() {
+  if (!task.value) return "提交文件";
+  return renderTemplate(task.value.folderTemplate || "{name}-{student_id}", currentData());
+}
+
+function renamedFileName(file: File, index: number, total: number) {
+  if (!task.value) return file.name;
+  const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")).toLowerCase() : "";
+  let base = renderTemplate(task.value.renameTemplate || "{name}-{student_id}", currentData(), originalStem(file.name), index, total);
+  if (total > 1 && !task.value.renameTemplate.includes("{index}")) base = `${base}-${index}`;
+  return `${base}${ext}`;
+}
+
+function renderTemplate(template: string, data: Record<string, string>, original = "", index = 1, total = 1) {
+  const values: Record<string, string> = {
+    ...Object.fromEntries(Object.entries(data).map(([key, value]) => [key, safeFileName(value)])),
+    original: safeFileName(original),
+    index: total > 1 ? String(index) : "",
+  };
+  const rendered = String(template || "{name}-{student_id}").replace(/\{([a-zA-Z0-9_\u4e00-\u9fa5]+)(?:\|(last|first):(\d{1,2}))?\}/g, (_match, key, op, rawCount) => {
+    const value = values[key] || "";
+    const count = Number(rawCount || 0);
+    if (op === "last") return count > 0 ? value.slice(-count) : "";
+    if (op === "first") return count > 0 ? value.slice(0, count) : "";
+    return value;
+  });
+  return cleanRenderedName(rendered);
+}
+
+function originalStem(name: string) {
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? name.slice(0, dot) : name;
+}
+
+function safeFileName(value: string) {
+  return String(value || "")
+    .replace(/[\\/:*?"<>|]+/g, "_")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^[. ]+|[. ]+$/g, "")
+    .slice(0, 140) || "file";
+}
+
+function cleanRenderedName(value: string) {
+  return safeFileName(value).replace(/[-_ ]{2,}/g, "-").replace(/^[\s\-_.]+|[\s\-_.]+$/g, "") || "file";
 }
 </script>
 
@@ -274,7 +344,7 @@ function formatBytes(bytes: number) {
 }
 .file-list div {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
   gap: 10px;
   align-items: center;
   padding: 9px 10px;
@@ -282,6 +352,13 @@ function formatBytes(bytes: number) {
   border-radius: 8px;
 }
 .file-list span {
+  display: grid;
+  gap: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-list span b,
+.file-list span small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -294,6 +371,10 @@ function formatBytes(bytes: number) {
   background: transparent;
   color: #dc2626;
   cursor: pointer;
+}
+.file-list button:disabled {
+  color: #cbd5e1;
+  cursor: not-allowed;
 }
 @media (max-width: 700px) {
   .file-submit-page { padding: 14px; }

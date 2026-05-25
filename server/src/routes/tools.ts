@@ -121,6 +121,7 @@ const createFileCollectSchema = z.object({
   fields: z.array(fileCollectFieldSchema).min(1).max(20),
   fileRules: fileCollectRuleSchema,
   renameTemplate: z.string().trim().min(1).max(120).default("{name}-{student_id}"),
+  folderTemplate: z.string().trim().min(1).max(120).default("{name}-{student_id}"),
   expectedEntries: z.string().trim().max(20000).optional(),
 });
 const patchFileCollectSchema = createFileCollectSchema.partial().extend({
@@ -133,6 +134,7 @@ const createFileCollectTemplateSchema = z.object({
   fields: z.array(fileCollectFieldSchema).min(1).max(20),
   fileRules: fileCollectRuleSchema,
   renameTemplate: z.string().trim().min(1).max(120).default("{name}-{student_id}"),
+  folderTemplate: z.string().trim().min(1).max(120).default("{name}-{student_id}"),
   expectedEntries: z.string().trim().max(20000).optional(),
 });
 
@@ -504,6 +506,7 @@ toolsRouter.post("/file-collection-templates", authRequired, validate(createFile
         fields: JSON.stringify(payload.fields),
         fileRules: JSON.stringify(payload.fileRules),
         renameTemplate: payload.renameTemplate,
+        folderTemplate: payload.folderTemplate,
         expectedEntries: payload.expectedEntries || "",
         createdById: req.user!.userId,
       },
@@ -581,6 +584,7 @@ toolsRouter.post("/file-collections", authRequired, validate(createFileCollectSc
         fields: JSON.stringify(payload.fields),
         fileRules: JSON.stringify(payload.fileRules),
         renameTemplate: payload.renameTemplate,
+        folderTemplate: payload.folderTemplate,
         expectedEntries: payload.expectedEntries || "",
         createdById: req.user!.userId,
         publishedAt: (payload.status ?? "open") === "open" ? now : null,
@@ -612,6 +616,7 @@ toolsRouter.patch("/file-collections/:id", authRequired, validate(patchFileColle
         fields: payload.fields ? JSON.stringify(payload.fields) : undefined,
         fileRules: payload.fileRules ? JSON.stringify(payload.fileRules) : undefined,
         renameTemplate: payload.renameTemplate,
+        folderTemplate: payload.folderTemplate,
         expectedEntries: req.body.expectedEntries === undefined ? undefined : (payload.expectedEntries || ""),
         publishedAt: payload.status === "open" && !current.publishedAt ? now : undefined,
         closedAt: payload.status === "closed" ? now : payload.status === "open" ? null : undefined,
@@ -733,7 +738,7 @@ toolsRouter.post("/file-collections/:slug/submissions", authOptional, fileCollec
   }
 });
 
-toolsRouter.get("/file-collection-files/:id/download", authRequired, async (req, res, next) => {
+toolsRouter.get("/file-collection-files/:id/:action(download|preview)", authRequired, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const file = await prisma.fileCollectFile.findUnique({
@@ -743,7 +748,29 @@ toolsRouter.get("/file-collection-files/:id/download", authRequired, async (req,
     if (!file) throw Errors.notFound("文件不存在");
     if (!(await canManageFileCollectTask(file.submission.task, req.user))) throw Errors.forbidden("没有该文件的下载权限");
     const absolute = resolveFileCollectPath(file.path);
+    if (req.params.action === "preview") {
+      res.type(file.mimeType || "application/octet-stream");
+      res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(file.storedName)}`);
+      res.sendFile(absolute);
+      return;
+    }
     res.download(absolute, file.storedName);
+  } catch (e) { next(e); }
+});
+
+toolsRouter.delete("/file-collection-files/:id", authRequired, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const file = await prisma.fileCollectFile.findUnique({
+      where: { id },
+      include: { submission: { include: { task: true } } },
+    });
+    if (!file) throw Errors.notFound("文件不存在");
+    if (!(await canManageFileCollectTask(file.submission.task, req.user))) throw Errors.forbidden("没有该文件的管理权限");
+    await prisma.fileCollectFile.delete({ where: { id } });
+    await unlinkFileCollectPath(file.path);
+    await refreshFileCollectStats(file.submission.taskId);
+    ok(res, { ok: true });
   } catch (e) { next(e); }
 });
 
@@ -1051,6 +1078,7 @@ function normalizeFileCollectInput(input: z.infer<typeof createFileCollectSchema
     description: input.description ?? "",
     expectedEntries: input.expectedEntries ?? "",
     renameTemplate: input.renameTemplate || "{name}-{student_id}",
+    folderTemplate: input.folderTemplate || "{name}-{student_id}",
     fileRules: fileCollectRuleSchema.parse(input.fileRules ?? {}),
   };
 }
@@ -1062,6 +1090,7 @@ function normalizeFileCollectPatch(input: z.infer<typeof patchFileCollectSchema>
     fields: merged.fields,
     fileRules: merged.fileRules ?? fileCollectRuleSchema.parse({}),
     renameTemplate: merged.renameTemplate ?? "{name}-{student_id}",
+    folderTemplate: merged.folderTemplate ?? "{name}-{student_id}",
   });
   if (merged.fileRules) merged.fileRules = fileCollectRuleSchema.parse(merged.fileRules);
   return merged;
@@ -1075,6 +1104,7 @@ function normalizeFileCollectTemplateInput(input: z.infer<typeof createFileColle
     fields: input.fields,
     fileRules: input.fileRules,
     renameTemplate: input.renameTemplate,
+    folderTemplate: input.folderTemplate,
     expectedEntries: input.expectedEntries,
   });
   return {
@@ -1084,6 +1114,7 @@ function normalizeFileCollectTemplateInput(input: z.infer<typeof createFileColle
     fields: normalized.fields,
     fileRules: normalized.fileRules,
     renameTemplate: normalized.renameTemplate,
+    folderTemplate: normalized.folderTemplate,
     expectedEntries: normalized.expectedEntries,
   };
 }
@@ -1099,6 +1130,7 @@ function normalizeFileCollectTask(row: any) {
     fields: parseFileCollectFields(row.fields),
     fileRules: parseFileCollectRules(row.fileRules),
     renameTemplate: row.renameTemplate,
+    folderTemplate: row.folderTemplate,
     expectedEntries: row.expectedEntries,
     submissionCount: row.submissionCount,
     fileCount: row.fileCount,
@@ -1124,6 +1156,7 @@ function normalizeFileCollectTemplate(row: any) {
     fields: parseFileCollectFields(row.fields),
     fileRules: parseFileCollectRules(row.fileRules),
     renameTemplate: row.renameTemplate,
+    folderTemplate: row.folderTemplate,
     expectedEntries: row.expectedEntries,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

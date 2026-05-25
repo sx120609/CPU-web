@@ -257,6 +257,30 @@
                 </small>
               </div>
 
+              <div class="rename-builder">
+                <div class="rename-head">
+                  <div>
+                    <b>多文件文件夹</b>
+                    <span>同一次提交多个文件时，下载 ZIP 会按这个规则放进同一个文件夹。</span>
+                  </div>
+                  <el-input v-model="fileCollectForm.folderTemplate" placeholder="例如 {name}-{student_id}" />
+                </div>
+                <div class="rename-token-list">
+                  <button
+                    v-for="item in fileFolderTokens"
+                    :key="`folder-${item.label}-${item.token}`"
+                    type="button"
+                    :class="['rename-token', `rename-token-${item.group}`]"
+                    @click="insertFolderToken(item.token)"
+                  >
+                    {{ item.label }}
+                  </button>
+                </div>
+                <small class="rename-example">
+                  例：多文件提交会在 ZIP 中显示为“张三-08/张三-08-1.pdf、张三-08-2.jpg”。
+                </small>
+              </div>
+
               <div class="expected-list-box">
                 <label class="config-field">
                   <span>应提交名单</span>
@@ -301,6 +325,14 @@
                   <el-button size="small" @click="openFileSubmissions(row)">
                     <el-icon><DataAnalysis /></el-icon>
                     提交
+                  </el-button>
+                  <el-button size="small" @click="openFileManager(row)">
+                    <el-icon><View /></el-icon>
+                    文件
+                  </el-button>
+                  <el-button size="small" :loading="zipDownloading" @click="downloadFileCollectionZip(row)">
+                    <el-icon><Download /></el-icon>
+                    ZIP
                   </el-button>
                   <el-dropdown trigger="click" @command="handleFileCollectCommand($event, row)">
                     <el-button size="small">
@@ -864,14 +896,47 @@
             </div>
           </div>
           <div class="file-download-list">
-            <a v-for="file in item.files" :key="file.id" :href="`/api/tools/file-collection-files/${file.id}/download`" target="_blank" rel="noopener">
+            <button v-for="file in item.files" :key="file.id" type="button" @click="downloadFileCollectFile(file.id, file.storedName)">
               <el-icon><Download /></el-icon>
               <span>{{ file.storedName }}</span>
               <small>{{ formatBytes(file.size) }}</small>
-            </a>
+            </button>
           </div>
         </article>
         <el-empty v-if="!fileSubmissions.length" description="暂无提交记录" />
+      </div>
+    </el-dialog>
+
+    <el-dialog v-model="fileManagerOpen" width="min(980px, 96vw)">
+      <template #header>
+        <div class="responses-title">
+          <div>
+            <b>{{ fileManagerTask?.title || "文件管理" }}</b>
+            <span>{{ fileManagerFiles.length }} 个文件</span>
+          </div>
+          <el-button v-if="fileManagerTask" size="small" plain :loading="zipDownloading" @click="downloadFileCollectionZip(fileManagerTask)">
+            <el-icon><Download /></el-icon>
+            下载 ZIP
+          </el-button>
+        </div>
+      </template>
+      <div class="file-manager-toolbar">
+        <el-input v-model="fileManagerKeyword" clearable placeholder="搜索文件名、提交人、学号或填写内容" />
+      </div>
+      <div class="file-manager-list">
+        <article v-for="item in fileManagerFiles" :key="item.id" class="file-manager-card">
+          <div class="file-manager-main">
+            <strong>{{ item.storedName }}</strong>
+            <span>{{ item.folderPath }}</span>
+            <small>{{ item.submission.identity || `提交 #${item.submission.id}` }} · {{ fmtDate(item.submission.createdAt) }} · {{ formatBytes(item.size) }}</small>
+          </div>
+          <div class="file-manager-actions">
+            <button type="button" @click="previewFileCollectFile(item.id, item.storedName)">预览</button>
+            <button type="button" @click="downloadFileCollectFile(item.id, item.storedName)">下载</button>
+            <button type="button" @click="deleteFileCollectFile(item.id)">删除</button>
+          </div>
+        </article>
+        <el-empty v-if="!fileManagerFiles.length" description="暂无匹配文件" />
       </div>
     </el-dialog>
   </div>
@@ -922,6 +987,7 @@ import {
   type ToolManager,
   type ToolMeta,
 } from "@/api/tools";
+import { getToken } from "@/api/request";
 import { fmtDate } from "@/utils/format";
 
 type EditableField = {
@@ -962,6 +1028,7 @@ type FileCollectTemplateDraft = {
     maxCount: number;
   };
   renameTemplate: string;
+  folderTemplate: string;
   expectedEntries: string;
   customId?: number;
 };
@@ -984,6 +1051,7 @@ const builtInFileCollectTemplates: FileCollectTemplateDraft[] = [
     ],
     fileRules: { allowedTypes: ["pdf", "doc", "docx", "jpg", "png", "zip"], maxSizeMb: 20, maxCount: 1 },
     renameTemplate: "{name}-{student_id}",
+    folderTemplate: "{name}-{student_id}",
     expectedEntries: "",
   },
   {
@@ -997,6 +1065,7 @@ const builtInFileCollectTemplates: FileCollectTemplateDraft[] = [
     ],
     fileRules: { allowedTypes: ["pdf", "jpg", "png", "zip"], maxSizeMb: 20, maxCount: 1 },
     renameTemplate: "{name}-{student_id}",
+    folderTemplate: "{name}-{student_id}",
     expectedEntries: "",
   },
 ];
@@ -1035,6 +1104,11 @@ const fileSubmissionLoading = ref(false);
 const fileSubmissionsOpen = ref(false);
 const fileSubmissionTask = ref<FileCollectTask | null>(null);
 const fileSubmissions = ref<FileCollectSubmission[]>([]);
+const fileManagerOpen = ref(false);
+const fileManagerTask = ref<FileCollectTask | null>(null);
+const fileManagerSubmissions = ref<FileCollectSubmission[]>([]);
+const fileManagerKeyword = ref("");
+const zipDownloading = ref(false);
 const fileCollectForm = reactive({
   title: "",
   description: "",
@@ -1044,6 +1118,7 @@ const fileCollectForm = reactive({
   maxSizeMb: 20,
   maxCount: 1,
   renameTemplate: "{name}-{student_id}",
+  folderTemplate: "{name}-{student_id}",
   expectedEntries: "",
   fields: [
     { localKey: "fc-name", id: "name", label: "姓名", required: true, placeholder: "请输入姓名", pattern: "" },
@@ -1108,11 +1183,12 @@ const fileTemplateOptions = computed<FileCollectTemplateDraft[]>(() => [
     fields: item.fields,
     fileRules: item.fileRules,
     renameTemplate: item.renameTemplate,
+    folderTemplate: item.folderTemplate,
     expectedEntries: item.expectedEntries,
   })),
 ]);
 const selectedFileTemplate = computed(() => fileTemplateOptions.value.find((item) => item.key === fileCollectTemplateKey.value));
-const fileRenameTokens = computed<RenameToken[]>(() => {
+const fileTemplateTokens = computed<RenameToken[]>(() => {
   const fields = normalizeFileCollectFields()
     .filter((field) => field.id && field.label)
     .slice(0, 8);
@@ -1136,6 +1212,21 @@ const fileRenameTokens = computed<RenameToken[]>(() => {
     { label: "原文件名", token: "{original}", group: "system" },
     { label: "多文件序号", token: "{index}", group: "system" },
   ];
+});
+const fileRenameTokens = computed(() => fileTemplateTokens.value);
+const fileFolderTokens = computed(() => fileTemplateTokens.value.filter((item) => item.token !== "{original}" && item.token !== "{index}"));
+const fileManagerFiles = computed(() => {
+  const keyword = fileManagerKeyword.value.trim().toLowerCase();
+  const task = fileManagerTask.value;
+  return fileManagerSubmissions.value.flatMap((submission) => submission.files.map((file) => ({
+    ...file,
+    submission,
+    folderPath: task ? zipEntryPath(task, submission, file) : file.storedName,
+  }))).filter((item) => {
+    if (!keyword) return true;
+    const dataText = JSON.stringify(item.submission.data).toLowerCase();
+    return `${item.storedName} ${item.originalName} ${item.submission.identity} ${dataText}`.toLowerCase().includes(keyword);
+  });
 });
 const editorTitle = computed(() => editorMode.value === "create" ? "新建问卷" : "编辑问卷");
 const requiredCount = computed(() => form.fields.filter((field) => field.required).length);
@@ -1647,6 +1738,7 @@ function applyFileTemplate(template: FileCollectTemplateDraft, resetTitle = fals
   fileCollectForm.maxSizeMb = template.fileRules.maxSizeMb;
   fileCollectForm.maxCount = template.fileRules.maxCount;
   fileCollectForm.renameTemplate = template.renameTemplate;
+  fileCollectForm.folderTemplate = template.folderTemplate;
   fileCollectForm.expectedEntries = template.expectedEntries;
   fileCollectForm.fields = template.fields.map((field, index) => ({
     localKey: `fc-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
@@ -1667,6 +1759,10 @@ function applySelectedFileTemplate() {
 
 function insertRenameToken(token: string) {
   fileCollectForm.renameTemplate = `${fileCollectForm.renameTemplate || ""}${token}`;
+}
+
+function insertFolderToken(token: string) {
+  fileCollectForm.folderTemplate = `${fileCollectForm.folderTemplate || ""}${token}`;
 }
 
 async function saveCurrentFileTemplate() {
@@ -1695,6 +1791,7 @@ async function saveCurrentFileTemplate() {
         maxCount: Number(fileCollectForm.maxCount) || 1,
       },
       renameTemplate: fileCollectForm.renameTemplate.trim() || "{name}-{student_id}",
+      folderTemplate: fileCollectForm.folderTemplate.trim() || "{name}-{student_id}",
       expectedEntries: fileCollectForm.expectedEntries.trim() || "",
     });
     fileCollectTemplates.value = [created, ...fileCollectTemplates.value];
@@ -1780,6 +1877,7 @@ async function createFileCollection() {
         maxCount: Number(fileCollectForm.maxCount) || 1,
       },
       renameTemplate: fileCollectForm.renameTemplate.trim() || "{name}-{student_id}",
+      folderTemplate: fileCollectForm.folderTemplate.trim() || "{name}-{student_id}",
       expectedEntries: fileCollectForm.expectedEntries.trim() || undefined,
     });
     ElMessage.success(fileCollectForm.status === "open" ? "收集任务已创建并开放" : "收集任务已创建");
@@ -1823,12 +1921,16 @@ async function openFileSubmissions(row: FileCollectTask) {
   fileSubmissionsOpen.value = true;
   fileSubmissionLoading.value = true;
   try {
-    const data = await toolsApi.fileCollectionSubmissions(row.id);
+    const data = await loadFileCollectionSubmissions(row.id);
     fileSubmissionTask.value = data.task;
     fileSubmissions.value = data.list;
   } finally {
     fileSubmissionLoading.value = false;
   }
+}
+
+async function loadFileCollectionSubmissions(id: number) {
+  return toolsApi.fileCollectionSubmissions(id);
 }
 
 async function deleteFileSubmission(id: number) {
@@ -1839,6 +1941,233 @@ async function deleteFileSubmission(id: number) {
   fileSubmissions.value = fileSubmissions.value.filter((item) => item.id !== id);
   ElMessage.success("已删除");
   await reloadActive();
+}
+
+async function openFileManager(row: FileCollectTask) {
+  fileManagerOpen.value = true;
+  fileSubmissionLoading.value = true;
+  try {
+    const data = await loadFileCollectionSubmissions(row.id);
+    fileManagerTask.value = data.task;
+    fileManagerSubmissions.value = data.list;
+    fileManagerKeyword.value = "";
+  } finally {
+    fileSubmissionLoading.value = false;
+  }
+}
+
+async function deleteFileCollectFile(id: number) {
+  const ok = await ElMessageBox.confirm("删除这个文件？提交记录会保留，但该文件无法恢复。", "确认删除", { type: "warning" })
+    .then(() => true).catch(() => false);
+  if (!ok) return;
+  await toolsApi.deleteFileCollectionFile(id);
+  fileManagerSubmissions.value = fileManagerSubmissions.value.map((submission) => ({
+    ...submission,
+    files: submission.files.filter((file) => file.id !== id),
+  }));
+  fileSubmissions.value = fileSubmissions.value.map((submission) => ({
+    ...submission,
+    files: submission.files.filter((file) => file.id !== id),
+  }));
+  ElMessage.success("文件已删除");
+  await reloadActive();
+}
+
+async function fetchFileCollectBlob(id: number, action: "download" | "preview") {
+  const response = await fetch(`/api/tools/file-collection-files/${id}/${action}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!response.ok) throw new Error(action === "preview" ? "预览失败" : "下载失败");
+  return response.blob();
+}
+
+async function downloadFileCollectFile(id: number, filename: string) {
+  const blob = await fetchFileCollectBlob(id, "download");
+  saveBlob(blob, filename);
+}
+
+async function previewFileCollectFile(id: number, filename: string) {
+  const blob = await fetchFileCollectBlob(id, "preview");
+  const url = URL.createObjectURL(blob);
+  const opened = window.open(url, "_blank", "noopener");
+  if (!opened) ElMessage.info(filename);
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+async function downloadFileCollectionZip(row: FileCollectTask) {
+  zipDownloading.value = true;
+  try {
+    const data = await loadFileCollectionSubmissions(row.id);
+    const fileCount = data.list.reduce((sum, submission) => sum + submission.files.length, 0);
+    if (!fileCount) {
+      ElMessage.info("当前任务还没有可下载的文件");
+      return;
+    }
+    const entries: Array<{ path: string; bytes: Uint8Array; date: Date }> = [];
+    const usedPaths = new Set<string>();
+    let current = 0;
+    for (const submission of data.list) {
+      for (const file of submission.files) {
+        current += 1;
+        ElMessage.info(`正在读取文件 ${current}/${fileCount}`);
+        const blob = await fetchFileCollectBlob(file.id, "download");
+        entries.push({
+          path: uniqueZipPath(zipEntryPath(data.task, submission, file), usedPaths),
+          bytes: new Uint8Array(await blob.arrayBuffer()),
+          date: new Date(submission.createdAt || Date.now()),
+        });
+      }
+    }
+    saveBlob(buildZip(entries), `${zipSafePathSegment(data.task.title)}.zip`);
+    ElMessage.success("ZIP 已生成");
+  } finally {
+    zipDownloading.value = false;
+  }
+}
+
+function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function zipSafePathSegment(value: string) {
+  return cleanRenderedName(String(value || "file").replace(/[\\/:*?"<>|]+/g, "_"));
+}
+
+function cleanRenderedName(value: string) {
+  return safeStoredName(value).replace(/[-_ ]{2,}/g, "-").replace(/^[\s\-_.]+|[\s\-_.]+$/g, "") || "file";
+}
+
+function safeStoredName(value: string) {
+  return String(value || "")
+    .replace(/[\\/:*?"<>|]+/g, "_")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^[. ]+|[. ]+$/g, "")
+    .slice(0, 160) || "file";
+}
+
+function renderFileCollectTemplate(template: string, data: Record<string, string>, originalName = "", index = 1, totalCount = 1) {
+  const extIndex = originalName.lastIndexOf(".");
+  const original = extIndex > 0 ? originalName.slice(0, extIndex) : originalName;
+  const values: Record<string, string> = {
+    ...Object.fromEntries(Object.entries(data).map(([key, value]) => [key, zipSafePathSegment(value)])),
+    index: totalCount > 1 ? String(index) : "",
+    original: zipSafePathSegment(original),
+  };
+  const rendered = String(template || "{name}-{student_id}").replace(/\{([a-zA-Z0-9_\u4e00-\u9fa5]+)(?:\|(last|first):(\d{1,2}))?\}/g, (_match, key, op, rawCount) => {
+    const value = values[key] || "";
+    const count = Number(rawCount || 0);
+    if (op === "last") return count > 0 ? value.slice(-count) : "";
+    if (op === "first") return count > 0 ? value.slice(0, count) : "";
+    return value;
+  });
+  return cleanRenderedName(rendered);
+}
+
+function zipEntryPath(task: FileCollectTask, submission: FileCollectSubmission, file: FileCollectSubmission["files"][number]) {
+  if (submission.files.length <= 1) return zipSafePathSegment(file.storedName);
+  const folder = renderFileCollectTemplate(task.folderTemplate || "{name}-{student_id}", submission.data);
+  return `${folder}/${zipSafePathSegment(file.storedName)}`;
+}
+
+function uniqueZipPath(path: string, used: Set<string>) {
+  if (!used.has(path)) {
+    used.add(path);
+    return path;
+  }
+  const slash = path.lastIndexOf("/");
+  const dir = slash >= 0 ? path.slice(0, slash + 1) : "";
+  const name = slash >= 0 ? path.slice(slash + 1) : path;
+  const dot = name.lastIndexOf(".");
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : "";
+  let index = 2;
+  let next = `${dir}${stem}-${index}${ext}`;
+  while (used.has(next)) {
+    index += 1;
+    next = `${dir}${stem}-${index}${ext}`;
+  }
+  used.add(next);
+  return next;
+}
+
+const crcTable = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i += 1) {
+    let value = i;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+    }
+    table[i] = value >>> 0;
+  }
+  return table;
+})();
+
+function crc32(bytes: Uint8Array) {
+  let crc = 0xffffffff;
+  for (const byte of bytes) crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function dosDateTime(date = new Date()) {
+  const time = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
+  const day = ((date.getFullYear() - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+  return { time, day };
+}
+
+function zipHeader(fields: Array<[number, number]>) {
+  const bytes = new Uint8Array(fields.reduce((sum, item) => sum + item[1], 0));
+  const view = new DataView(bytes.buffer);
+  let offset = 0;
+  for (const [value, size] of fields) {
+    if (size === 2) view.setUint16(offset, value, true);
+    if (size === 4) view.setUint32(offset, value, true);
+    offset += size;
+  }
+  return bytes;
+}
+
+function buildZip(entries: Array<{ path: string; bytes: Uint8Array; date: Date }>) {
+  const encoder = new TextEncoder();
+  const parts: BlobPart[] = [];
+  const central: BlobPart[] = [];
+  let offset = 0;
+
+  for (const entry of entries) {
+    const name = encoder.encode(entry.path);
+    const data = entry.bytes;
+    const crc = crc32(data);
+    const { time, day } = dosDateTime(entry.date);
+    const local = zipHeader([
+      [0x04034b50, 4], [20, 2], [0x0800, 2], [0, 2], [time, 2], [day, 2],
+      [crc, 4], [data.length, 4], [data.length, 4], [name.length, 2], [0, 2],
+    ]);
+    parts.push(blobPart(local), blobPart(name), blobPart(data));
+    const centralHeader = zipHeader([
+      [0x02014b50, 4], [20, 2], [20, 2], [0x0800, 2], [0, 2], [time, 2], [day, 2],
+      [crc, 4], [data.length, 4], [data.length, 4], [name.length, 2], [0, 2],
+      [0, 2], [0, 2], [0, 2], [0, 4], [offset, 4],
+    ]);
+    central.push(blobPart(centralHeader), blobPart(name));
+    offset += local.length + name.length + data.length;
+  }
+  const centralSize = central.reduce((sum, part) => sum + (part as ArrayBuffer).byteLength, 0);
+  const end = zipHeader([
+    [0x06054b50, 4], [0, 2], [0, 2], [entries.length, 2], [entries.length, 2],
+    [centralSize, 4], [offset, 4], [0, 2],
+  ]);
+  return new Blob([...parts, ...central, blobPart(end)], { type: "application/zip" });
+}
+
+function blobPart(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
 function formatBytes(bytes: number) {
@@ -3033,7 +3362,7 @@ function round(value: number) {
   gap: 8px;
   margin-top: 12px;
 }
-.file-download-list a {
+.file-download-list button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -3042,8 +3371,8 @@ function round(value: number) {
   border: 1px solid #dbeafe;
   border-radius: 8px;
   color: #1d4ed8;
-  text-decoration: none;
   background: #eff6ff;
+  cursor: pointer;
 }
 .file-download-list span {
   overflow: hidden;
@@ -3051,6 +3380,55 @@ function round(value: number) {
   white-space: nowrap;
 }
 .file-download-list small { color: #64748b; }
+.file-manager-toolbar { margin-bottom: 12px; }
+.file-manager-list {
+  display: grid;
+  gap: 10px;
+  max-height: min(62vh, 620px);
+  overflow: auto;
+}
+.file-manager-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #eef0f4;
+  border-radius: 8px;
+  background: #fff;
+}
+.file-manager-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.file-manager-main strong,
+.file-manager-main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-manager-main strong { color: #111827; }
+.file-manager-main span { color: #2563eb; font-size: 13px; }
+.file-manager-main small { color: #64748b; }
+.file-manager-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.file-manager-actions button {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+}
+.file-manager-actions button:last-child {
+  color: #dc2626;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
 @media (max-width: 1100px) {
   .builder-layout {
     grid-template-columns: 190px minmax(0, 1fr);
@@ -3120,6 +3498,7 @@ function round(value: number) {
   .file-rule-grid,
   .rename-head { grid-template-columns: 1fr; }
   .file-field-row { flex-direction: column; align-items: stretch; }
+  .file-manager-card { grid-template-columns: 1fr; }
   .questionnaire-row-card {
     display: flex;
     flex-direction: column;

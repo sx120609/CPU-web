@@ -135,6 +135,7 @@ export interface FileCollectTask {
   fields: FileCollectField[];
   fileRules: FileCollectRules;
   renameTemplate: string;
+  folderTemplate: string;
   expectedEntries: string;
   submissionCount: number;
   fileCount: number;
@@ -159,6 +160,7 @@ export interface FileCollectTemplate {
   fields: FileCollectField[];
   fileRules: FileCollectRules;
   renameTemplate: string;
+  folderTemplate: string;
   expectedEntries: string;
   createdAt: string;
   updatedAt: string;
@@ -201,6 +203,7 @@ export interface FileCollectPayload {
   fields: FileCollectField[];
   fileRules: FileCollectRules;
   renameTemplate: string;
+  folderTemplate: string;
   expectedEntries?: string;
 }
 
@@ -294,4 +297,6 @@ export const toolsApi = {
     request.post<{ id: number; createdAt: string; files: string[] }>(`/tools/file-collections/${slug}/submissions`, form, options),
   deleteFileCollectionSubmission: (id: number) =>
     request.delete<{ ok: true }>(`/tools/file-collection-submissions/${id}`),
+  deleteFileCollectionFile: (id: number) =>
+    request.delete<{ ok: true }>(`/tools/file-collection-files/${id}`),
 };
