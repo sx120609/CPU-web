@@ -16,7 +16,7 @@
       <el-empty v-if="!loading && !manageableTools.length" description="暂无可管理的小工具" />
 
       <template v-else>
-        <el-tabs v-model="activeTool" @tab-change="switchActiveTool">
+        <el-tabs v-model="activeTool" class="manage-tool-tabs" @tab-change="switchActiveTool">
           <el-tab-pane
             v-for="tool in manageableTools"
             :key="tool.code"
@@ -3763,6 +3763,34 @@ function round(value: number) {
   .manage-head .el-button { width: 100%; }
   .manage-panel,
   .admin-section { padding: 14px; }
+  .manage-tool-tabs {
+    margin-inline: -14px;
+    padding-inline: 14px;
+  }
+  .manage-tool-tabs :deep(.el-tabs__header) {
+    margin-bottom: 14px;
+  }
+  .manage-tool-tabs :deep(.el-tabs__nav-wrap) {
+    overflow: visible;
+  }
+  .manage-tool-tabs :deep(.el-tabs__nav-scroll) {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .manage-tool-tabs :deep(.el-tabs__nav-scroll::-webkit-scrollbar) {
+    display: none;
+  }
+  .manage-tool-tabs :deep(.el-tabs__nav) {
+    float: none;
+    min-width: max-content;
+    white-space: nowrap;
+  }
+  .manage-tool-tabs :deep(.el-tabs__item) {
+    flex: 0 0 auto;
+    padding: 0 16px;
+  }
   .section-head { flex-direction: column; align-items: stretch; }
   .section-head .el-button { width: 100%; }
   .questionnaire-summary { grid-template-columns: 1fr; }
