@@ -63,6 +63,7 @@ model User {
   questionnaireResponses QuestionnaireResponse[]
   createdGradeCheckTables GradeCheckTable[] @relation("GradeCheckCreatedBy")
   createdFileCollectTasks FileCollectTask[] @relation("FileCollectCreatedBy")
+  createdFileCollectTemplates FileCollectTemplate[] @relation("FileCollectTemplateCreatedBy")
   fileCollectSubmissions FileCollectSubmission[] @relation("FileCollectSubmittedBy")
 }
 
@@ -532,6 +533,24 @@ model FileCollectTask {
   submissions FileCollectSubmission[]
 
   @@index([status])
+  @@index([createdById])
+}
+
+model FileCollectTemplate {
+  id              Int      @id @default(autoincrement())
+  name            String
+  description     String?
+  visibility      String   @default("public")
+  fields          String   @default("[]")
+  fileRules       String   @default("{}")
+  renameTemplate  String   @default("{name}-{student_id}")
+  expectedEntries String   @default("")
+  createdById     Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  createdBy User? @relation("FileCollectTemplateCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+
   @@index([createdById])
 }
 

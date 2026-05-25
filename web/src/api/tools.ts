@@ -151,6 +151,25 @@ export interface FileCollectTask {
   } | null;
 }
 
+export interface FileCollectTemplate {
+  id: number;
+  name: string;
+  description?: string | null;
+  visibility: FileCollectVisibility;
+  fields: FileCollectField[];
+  fileRules: FileCollectRules;
+  renameTemplate: string;
+  expectedEntries: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: {
+    id: number;
+    username: string;
+    nickname: string;
+    role: string;
+  } | null;
+}
+
 export interface FileCollectSubmission {
   id: number;
   taskId: number;
@@ -255,6 +274,12 @@ export const toolsApi = {
 
   fileCollections: (params?: { manage?: "1" }) =>
     request.get<FileCollectTask[]>("/tools/file-collections", params),
+  fileCollectionTemplates: () =>
+    request.get<FileCollectTemplate[]>("/tools/file-collection-templates"),
+  createFileCollectionTemplate: (payload: Omit<FileCollectTemplate, "id" | "createdAt" | "updatedAt" | "createdBy">) =>
+    request.post<FileCollectTemplate>("/tools/file-collection-templates", payload),
+  deleteFileCollectionTemplate: (id: number) =>
+    request.delete<{ ok: true }>(`/tools/file-collection-templates/${id}`),
   fileCollection: (slug: string, options?: RequestOptions) =>
     request.get<FileCollectTask>(`/tools/file-collections/${slug}`, undefined, options),
   createFileCollection: (payload: FileCollectPayload) =>

@@ -126,6 +126,15 @@ const createFileCollectSchema = z.object({
 const patchFileCollectSchema = createFileCollectSchema.partial().extend({
   status: z.enum(["draft", "open", "closed"]).optional(),
 });
+const createFileCollectTemplateSchema = z.object({
+  name: z.string().trim().min(1).max(60),
+  description: z.string().trim().max(1000).optional(),
+  visibility: z.enum(["public", "login"]).optional(),
+  fields: z.array(fileCollectFieldSchema).min(1).max(20),
+  fileRules: fileCollectRuleSchema,
+  renameTemplate: z.string().trim().min(1).max(120).default("{name}-{student_id}"),
+  expectedEntries: z.string().trim().max(20000).optional(),
+});
 
 const managerCreateSchema = z.object({
   userId: z.number().int().positive().optional(),
@@ -465,6 +474,55 @@ toolsRouter.delete("/grade-checks/:id", authRequired, async (req, res, next) => 
     if (!current) throw Errors.notFound("查询表不存在");
     if (!(await canManageGradeCheckTable(current, req.user))) throw Errors.forbidden("没有该查询表的管理权限");
     await prisma.gradeCheckTable.delete({ where: { id } });
+    ok(res, { ok: true });
+  } catch (e) { next(e); }
+});
+
+toolsRouter.get("/file-collection-templates", authRequired, async (req, res, next) => {
+  try {
+    if (!(await hasToolContentManagePermission("file_collect", req.user))) throw Errors.forbidden("没有该小工具的管理权限");
+    const list = await prisma.fileCollectTemplate.findMany({
+      where: { createdById: req.user!.userId },
+      orderBy: [{ updatedAt: "desc" }],
+      include: {
+        createdBy: { select: { id: true, username: true, nickname: true, role: true } },
+      },
+    });
+    ok(res, list.map(normalizeFileCollectTemplate));
+  } catch (e) { next(e); }
+});
+
+toolsRouter.post("/file-collection-templates", authRequired, validate(createFileCollectTemplateSchema), async (req, res, next) => {
+  try {
+    if (!(await hasToolContentManagePermission("file_collect", req.user))) throw Errors.forbidden("没有该小工具的管理权限");
+    const payload = normalizeFileCollectTemplateInput(req.body);
+    const row = await prisma.fileCollectTemplate.create({
+      data: {
+        name: payload.name,
+        description: payload.description || null,
+        visibility: payload.visibility ?? "public",
+        fields: JSON.stringify(payload.fields),
+        fileRules: JSON.stringify(payload.fileRules),
+        renameTemplate: payload.renameTemplate,
+        expectedEntries: payload.expectedEntries || "",
+        createdById: req.user!.userId,
+      },
+      include: {
+        createdBy: { select: { id: true, username: true, nickname: true, role: true } },
+      },
+    });
+    ok(res, normalizeFileCollectTemplate(row));
+  } catch (e) { next(e); }
+});
+
+toolsRouter.delete("/file-collection-templates/:id", authRequired, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const current = await prisma.fileCollectTemplate.findUnique({ where: { id } });
+    if (!current) throw Errors.notFound("模板不存在");
+    const canDelete = current.createdById === req.user!.userId || await hasToolManagerPermission("file_collect", req.user);
+    if (!canDelete) throw Errors.forbidden("没有该模板的管理权限");
+    await prisma.fileCollectTemplate.delete({ where: { id } });
     ok(res, { ok: true });
   } catch (e) { next(e); }
 });
@@ -1009,6 +1067,27 @@ function normalizeFileCollectPatch(input: z.infer<typeof patchFileCollectSchema>
   return merged;
 }
 
+function normalizeFileCollectTemplateInput(input: z.infer<typeof createFileCollectTemplateSchema>) {
+  const normalized = normalizeFileCollectInput({
+    title: input.name,
+    description: input.description,
+    visibility: input.visibility ?? "public",
+    fields: input.fields,
+    fileRules: input.fileRules,
+    renameTemplate: input.renameTemplate,
+    expectedEntries: input.expectedEntries,
+  });
+  return {
+    name: input.name,
+    description: normalized.description,
+    visibility: normalized.visibility,
+    fields: normalized.fields,
+    fileRules: normalized.fileRules,
+    renameTemplate: normalized.renameTemplate,
+    expectedEntries: normalized.expectedEntries,
+  };
+}
+
 function normalizeFileCollectTask(row: any) {
   return {
     id: row.id,
@@ -1025,6 +1104,27 @@ function normalizeFileCollectTask(row: any) {
     fileCount: row.fileCount,
     publishedAt: row.publishedAt,
     closedAt: row.closedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    createdBy: row.createdBy ? {
+      id: row.createdBy.id,
+      nickname: row.createdBy.nickname,
+      username: row.createdBy.username,
+      role: row.createdBy.role,
+    } : null,
+  };
+}
+
+function normalizeFileCollectTemplate(row: any) {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    visibility: row.visibility,
+    fields: parseFileCollectFields(row.fields),
+    fileRules: parseFileCollectRules(row.fileRules),
+    renameTemplate: row.renameTemplate,
+    expectedEntries: row.expectedEntries,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     createdBy: row.createdBy ? {

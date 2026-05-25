@@ -143,6 +143,40 @@
                 <h4>创建收集任务</h4>
                 <p>提交者通过链接填写字段并上传文件；使用相同学号或姓名再次提交时，会覆盖旧提交。</p>
               </div>
+              <div class="file-template-bar">
+                <div>
+                  <b>任务模板</b>
+                  <span>{{ selectedFileTemplate?.description || "选择模板后可一键套用字段、文件规则和命名规则。" }}</span>
+                </div>
+                <el-select v-model="fileCollectTemplateKey" placeholder="选择模板">
+                  <el-option-group label="内置模板">
+                    <el-option
+                      v-for="item in builtInFileCollectTemplates"
+                      :key="item.key"
+                      :label="item.name"
+                      :value="item.key"
+                    />
+                  </el-option-group>
+                  <el-option-group v-if="fileCollectTemplates.length" label="我的模板">
+                    <el-option
+                      v-for="item in fileCollectTemplates"
+                      :key="item.id"
+                      :label="item.name"
+                      :value="`custom:${item.id}`"
+                    />
+                  </el-option-group>
+                </el-select>
+                <el-button plain @click="applySelectedFileTemplate">套用</el-button>
+                <el-button plain :loading="fileCollectTemplateSaving" @click="saveCurrentFileTemplate">保存为模板</el-button>
+                <el-button
+                  v-if="selectedFileTemplate?.customId"
+                  text
+                  type="danger"
+                  @click="deleteSelectedFileTemplate"
+                >
+                  删除模板
+                </el-button>
+              </div>
               <div class="grade-form-grid">
                 <el-input v-model="fileCollectForm.title" placeholder="任务标题，例如：2026 春季药理学作业收集" maxlength="120" />
                 <el-select v-model="fileCollectForm.status">
@@ -824,6 +858,8 @@ import {
   type FileCollectStatus,
   type FileCollectSubmission,
   type FileCollectTask,
+  type FileCollectTemplate,
+  type FileCollectVisibility,
   type GradeCheckStatus,
   type GradeCheckTable,
   type Questionnaire,
@@ -864,6 +900,51 @@ type FieldStat = {
   samples: string[];
 };
 
+type FileCollectTemplateDraft = {
+  key: string;
+  name: string;
+  description?: string | null;
+  visibility: FileCollectVisibility;
+  fields: FileCollectField[];
+  fileRules: {
+    allowedTypes: string[];
+    maxSizeMb: number;
+    maxCount: number;
+  };
+  renameTemplate: string;
+  expectedEntries: string;
+  customId?: number;
+};
+
+const builtInFileCollectTemplates: FileCollectTemplateDraft[] = [
+  {
+    key: "builtin:student",
+    name: "学号模板",
+    description: "适合按姓名和学号收作业、照片、报名材料。",
+    visibility: "public",
+    fields: [
+      { id: "name", label: "姓名", required: true, placeholder: "请输入姓名" },
+      { id: "student_id", label: "学号", required: true, placeholder: "请输入学号" },
+    ],
+    fileRules: { allowedTypes: ["pdf", "doc", "docx", "jpg", "png", "zip"], maxSizeMb: 20, maxCount: 1 },
+    renameTemplate: "{name}-{student_id}",
+    expectedEntries: "",
+  },
+  {
+    key: "builtin:exam",
+    name: "考试号模板",
+    description: "适合按姓名和考试号收准考证、考试材料或确认文件。",
+    visibility: "public",
+    fields: [
+      { id: "name", label: "姓名", required: true, placeholder: "请输入姓名" },
+      { id: "student_id", label: "考试号", required: true, placeholder: "请输入考试号" },
+    ],
+    fileRules: { allowedTypes: ["pdf", "jpg", "png", "zip"], maxSizeMb: 20, maxCount: 1 },
+    renameTemplate: "{name}-{student_id}",
+    expectedEntries: "",
+  },
+];
+
 const fieldTypeOptions: Array<{ value: QuestionnaireFieldType; label: string; hint: string; icon: unknown }> = [
   { value: "single", label: "单选", hint: "从多个选项中选一项", icon: Tickets },
   { value: "multiple", label: "多选", hint: "可同时选择多个选项", icon: DocumentAdd },
@@ -890,7 +971,10 @@ const gradeChecks = ref<GradeCheckTable[]>([]);
 const gradeSaving = ref(false);
 const gradeFileName = ref("");
 const fileCollections = ref<FileCollectTask[]>([]);
+const fileCollectTemplates = ref<FileCollectTemplate[]>([]);
+const fileCollectTemplateKey = ref("builtin:student");
 const fileCollectSaving = ref(false);
+const fileCollectTemplateSaving = ref(false);
 const fileSubmissionLoading = ref(false);
 const fileSubmissionsOpen = ref(false);
 const fileSubmissionTask = ref<FileCollectTask | null>(null);
@@ -899,7 +983,7 @@ const fileCollectForm = reactive({
   title: "",
   description: "",
   status: "open" as FileCollectStatus,
-  visibility: "public" as "public" | "login",
+  visibility: "public" as FileCollectVisibility,
   allowedTypes: "pdf,doc,docx,jpg,png,zip",
   maxSizeMb: 20,
   maxCount: 1,
@@ -957,6 +1041,21 @@ const gradeOpenCount = computed(() => gradeChecks.value.filter((item) => item.st
 const gradeTotalRows = computed(() => gradeChecks.value.reduce((sum, item) => sum + item.rowCount, 0));
 const fileOpenCount = computed(() => fileCollections.value.filter((item) => item.status === "open").length);
 const fileTotalSubmissions = computed(() => fileCollections.value.reduce((sum, item) => sum + item.submissionCount, 0));
+const fileTemplateOptions = computed<FileCollectTemplateDraft[]>(() => [
+  ...builtInFileCollectTemplates,
+  ...fileCollectTemplates.value.map((item) => ({
+    key: `custom:${item.id}`,
+    customId: item.id,
+    name: item.name,
+    description: item.description,
+    visibility: item.visibility,
+    fields: item.fields,
+    fileRules: item.fileRules,
+    renameTemplate: item.renameTemplate,
+    expectedEntries: item.expectedEntries,
+  })),
+]);
+const selectedFileTemplate = computed(() => fileTemplateOptions.value.find((item) => item.key === fileCollectTemplateKey.value));
 const editorTitle = computed(() => editorMode.value === "create" ? "新建问卷" : "编辑问卷");
 const requiredCount = computed(() => form.fields.filter((field) => field.required).length);
 const toolRequireLogin = computed({
@@ -1033,7 +1132,12 @@ async function reloadActive() {
     return;
   }
   if (activeTool.value === "file_collect") {
-    fileCollections.value = await toolsApi.fileCollections({ manage: "1" });
+    const [collections, templates] = await Promise.all([
+      toolsApi.fileCollections({ manage: "1" }),
+      toolsApi.fileCollectionTemplates(),
+    ]);
+    fileCollections.value = collections;
+    fileCollectTemplates.value = templates;
     questionnaires.value = [];
     gradeChecks.value = [];
     return;
@@ -1449,6 +1553,85 @@ function copyGradeLink(row: GradeCheckTable) {
   );
 }
 
+function applyFileTemplate(template: FileCollectTemplateDraft, resetTitle = false) {
+  if (resetTitle) {
+    fileCollectForm.title = "";
+    fileCollectForm.description = "";
+    fileCollectForm.status = "open";
+  } else if (!fileCollectForm.description.trim() && template.description) {
+    fileCollectForm.description = template.description;
+  }
+  fileCollectForm.visibility = template.visibility;
+  fileCollectForm.allowedTypes = template.fileRules.allowedTypes.join(",");
+  fileCollectForm.maxSizeMb = template.fileRules.maxSizeMb;
+  fileCollectForm.maxCount = template.fileRules.maxCount;
+  fileCollectForm.renameTemplate = template.renameTemplate;
+  fileCollectForm.expectedEntries = template.expectedEntries;
+  fileCollectForm.fields = template.fields.map((field, index) => ({
+    localKey: `fc-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+    id: field.id,
+    label: field.label,
+    required: Boolean(field.required),
+    placeholder: field.placeholder || "",
+    pattern: field.pattern || "",
+  }));
+}
+
+function applySelectedFileTemplate() {
+  const template = selectedFileTemplate.value;
+  if (!template) return;
+  applyFileTemplate(template);
+  ElMessage.success("已套用模板");
+}
+
+async function saveCurrentFileTemplate() {
+  const fields = normalizeFileCollectFields();
+  if (!fields.length || fields.some((field) => !field.id || !field.label)) {
+    ElMessage.warning("请先完善填写字段");
+    return;
+  }
+  const name = await ElMessageBox.prompt("给这个模板起个名字", "保存模板", {
+    inputValue: fileCollectForm.title.trim() || "我的文件收集模板",
+    inputPattern: /^.{1,60}$/,
+    inputErrorMessage: "模板名称需在 1-60 个字符内",
+  }).then((result) => result.value.trim()).catch(() => "");
+  if (!name) return;
+
+  fileCollectTemplateSaving.value = true;
+  try {
+    const created = await toolsApi.createFileCollectionTemplate({
+      name,
+      description: fileCollectForm.description.trim() || undefined,
+      visibility: fileCollectForm.visibility,
+      fields,
+      fileRules: {
+        allowedTypes: fileCollectForm.allowedTypes.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean),
+        maxSizeMb: Number(fileCollectForm.maxSizeMb) || 20,
+        maxCount: Number(fileCollectForm.maxCount) || 1,
+      },
+      renameTemplate: fileCollectForm.renameTemplate.trim() || "{name}-{student_id}",
+      expectedEntries: fileCollectForm.expectedEntries.trim() || "",
+    });
+    fileCollectTemplates.value = [created, ...fileCollectTemplates.value];
+    fileCollectTemplateKey.value = `custom:${created.id}`;
+    ElMessage.success("模板已保存");
+  } finally {
+    fileCollectTemplateSaving.value = false;
+  }
+}
+
+async function deleteSelectedFileTemplate() {
+  const template = selectedFileTemplate.value;
+  if (!template?.customId) return;
+  const ok = await ElMessageBox.confirm(`删除模板“${template.name}”？`, "确认删除", { type: "warning" })
+    .then(() => true).catch(() => false);
+  if (!ok) return;
+  await toolsApi.deleteFileCollectionTemplate(template.customId);
+  fileCollectTemplates.value = fileCollectTemplates.value.filter((item) => item.id !== template.customId);
+  fileCollectTemplateKey.value = "builtin:student";
+  ElMessage.success("模板已删除");
+}
+
 function addFileCollectField() {
   fileCollectForm.fields.push({
     localKey: `fc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -1518,19 +1701,8 @@ async function createFileCollection() {
 }
 
 function resetFileCollectForm() {
-  fileCollectForm.title = "";
-  fileCollectForm.description = "";
-  fileCollectForm.status = "open";
-  fileCollectForm.visibility = "public";
-  fileCollectForm.allowedTypes = "pdf,doc,docx,jpg,png,zip";
-  fileCollectForm.maxSizeMb = 20;
-  fileCollectForm.maxCount = 1;
-  fileCollectForm.renameTemplate = "{name}-{student_id}";
-  fileCollectForm.expectedEntries = "";
-  fileCollectForm.fields = [
-    { localKey: "fc-name", id: "name", label: "姓名", required: true, placeholder: "请输入姓名", pattern: "" },
-    { localKey: "fc-student", id: "student_id", label: "学号", required: true, placeholder: "请输入学号", pattern: "" },
-  ];
+  fileCollectTemplateKey.value = "builtin:student";
+  applyFileTemplate(builtInFileCollectTemplates[0], true);
 }
 
 function copyFileCollectLink(row: FileCollectTask) {
@@ -2644,6 +2816,30 @@ function round(value: number) {
   gap: 10px;
   margin: 14px 0;
 }
+.file-template-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px auto auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #e0f2fe;
+  border-radius: 8px;
+  margin: 14px 0;
+  background: #f0f9ff;
+}
+.file-template-bar > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.file-template-bar b { color: #0f172a; }
+.file-template-bar span {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.file-template-bar :deep(.el-select) { width: 100%; }
 .file-field-head,
 .file-field-row {
   display: flex;
@@ -2749,6 +2945,7 @@ function round(value: number) {
   .grade-form-grid { grid-template-columns: 1fr; }
   .grade-preview-head { align-items: stretch; flex-direction: column; }
   .grade-preview-head .el-button { width: 100%; }
+  .file-template-bar { grid-template-columns: 1fr; }
   .file-field-row { flex-direction: column; align-items: stretch; }
   .questionnaire-row-card {
     display: flex;
