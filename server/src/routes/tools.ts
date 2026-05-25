@@ -41,7 +41,7 @@ const fileCollectUpload = multer({
   }),
   limits: {
     files: 20,
-    fileSize: 50 * 1024 * 1024,
+    fileSize: 100 * 1024 * 1024,
     fieldSize: 1024 * 1024,
   },
 });
@@ -110,7 +110,7 @@ const fileCollectFieldSchema = z.object({
 });
 const fileCollectRuleSchema = z.object({
   allowedTypes: z.array(z.string().trim().toLowerCase().regex(/^[a-z0-9]+$/)).max(30).default([]),
-  maxSizeMb: z.number().positive().max(50).default(20),
+  maxSizeMb: z.number().positive().max(100).default(20),
   maxCount: z.number().int().positive().max(20).default(1),
 });
 const createFileCollectSchema = z.object({

@@ -223,8 +223,8 @@
                 </label>
                 <label class="config-field">
                   <span>单个文件大小</span>
-                  <el-input-number v-model="fileCollectForm.maxSizeMb" :min="1" :max="50" controls-position="right" />
-                  <small>单位 MB，最大 50。</small>
+                  <el-input-number v-model="fileCollectForm.maxSizeMb" :min="1" :max="100" controls-position="right" />
+                  <small>单位 MB，最大 100。</small>
                 </label>
                 <label class="config-field">
                   <span>每人最多文件数</span>
