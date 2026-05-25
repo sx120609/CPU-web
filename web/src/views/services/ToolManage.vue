@@ -265,9 +265,13 @@
                     <span>位数</span>
                     <el-input-number v-model="fileRenameInsert.count" :min="1" :max="99" controls-position="right" :disabled="fileRenameInsert.mode === 'whole'" />
                   </label>
-                  <el-button type="primary" plain @click="insertRenameVariable">插入变量</el-button>
+                  <el-button class="rename-insert-action" type="primary" @click="insertRenameVariable">
+                    <el-icon><Plus /></el-icon>
+                    插入变量
+                  </el-button>
                 </div>
                 <div class="rename-token-list">
+                  <span class="rename-token-label">快捷插入</span>
                   <button
                     v-for="item in fileRenameQuickTokens"
                     :key="`${item.label}-${item.token}`"
@@ -315,9 +319,13 @@
                     <span>位数</span>
                     <el-input-number v-model="fileFolderInsert.count" :min="1" :max="99" controls-position="right" :disabled="fileFolderInsert.mode === 'whole'" />
                   </label>
-                  <el-button type="primary" plain @click="insertFolderVariable">插入变量</el-button>
+                  <el-button class="rename-insert-action" type="primary" @click="insertFolderVariable">
+                    <el-icon><Plus /></el-icon>
+                    插入变量
+                  </el-button>
                 </div>
                 <div class="rename-token-list">
+                  <span class="rename-token-label">快捷插入</span>
                   <button
                     v-for="item in fileFolderQuickTokens"
                     :key="`folder-${item.label}-${item.token}`"
@@ -3487,8 +3495,8 @@ function round(value: number) {
 .expected-list-box {
   display: grid;
   gap: 10px;
-  padding: 12px;
-  border: 1px solid #e5e7eb;
+  padding: 14px;
+  border: 1px solid #dbe7f3;
   border-radius: 8px;
   margin-top: 12px;
   background: #fff;
@@ -3514,17 +3522,22 @@ function round(value: number) {
 .rename-token-list {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
+  padding-top: 2px;
 }
 .rename-insert-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 132px auto;
+  grid-template-columns: minmax(200px, 1.2fr) minmax(220px, 1fr) 112px;
   gap: 10px;
   align-items: end;
-  padding: 10px;
-  border: 1px solid #eef2f7;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
   border-radius: 8px;
   background: #f8fafc;
+}
+.rename-insert-grid .config-field {
+  gap: 7px;
 }
 .rename-insert-grid :deep(.el-select),
 .rename-insert-grid :deep(.el-input-number) {
@@ -3539,26 +3552,54 @@ function round(value: number) {
 }
 .rename-insert-grid :deep(.el-radio-button__inner) {
   width: 100%;
+  height: 34px;
   padding: 0 8px;
+  color: #475569;
+  background: #fff;
+  font-weight: 650;
+  line-height: 32px;
 }
-.rename-insert-grid > .el-button {
-  min-height: 32px;
+.rename-insert-grid :deep(.el-radio-button.is-active .el-radio-button__inner) {
+  border-color: #0f766e;
+  background: #0f766e;
+  box-shadow: -1px 0 0 0 #0f766e;
+  color: #fff;
 }
-.rename-token {
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid #dbeafe;
-  border-radius: 6px;
-  color: #1d4ed8;
-  background: #eff6ff;
-  cursor: pointer;
+.rename-insert-action {
+  grid-column: 1 / -1;
+  justify-self: end;
+  min-width: 118px;
+  min-height: 36px;
+  border-radius: 8px;
+  font-weight: 650;
+}
+.rename-token-label {
+  color: #64748b;
   font-size: 12px;
   font-weight: 650;
 }
+.rename-token {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid #d7dee8;
+  border-radius: 999px;
+  color: #334155;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+  transition: border-color 0.15s, background 0.15s, color 0.15s, transform 0.15s;
+}
+.rename-token:hover {
+  border-color: #99f6e4;
+  color: #0f766e;
+  background: #f0fdfa;
+  transform: translateY(-1px);
+}
 .rename-token-system {
-  border-color: #e5e7eb;
-  color: #475569;
-  background: #f8fafc;
+  border-color: #d7dee8;
+  color: #334155;
+  background: #fff;
 }
 .file-download-list {
   display: flex;
@@ -3662,6 +3703,11 @@ function round(value: number) {
     overflow: visible;
   }
 }
+@media (max-width: 980px) {
+  .rename-insert-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 @media (max-width: 900px) {
   .tool-admin-grid { grid-template-columns: 1fr; }
   .managers-section { order: -1; }
@@ -3748,6 +3794,10 @@ function round(value: number) {
   .file-field-row { flex-direction: column; align-items: stretch; }
   .rename-insert-grid {
     padding: 10px;
+  }
+  .rename-insert-action {
+    width: 100%;
+    justify-self: stretch;
   }
   .rename-insert-grid > .el-button,
   .rename-token,
