@@ -1,0 +1,303 @@
+<template>
+  <div class="file-submit-page">
+    <section class="file-submit-shell" v-loading="loading">
+      <button type="button" class="back-link" @click="$router.push('/services/tools/file_collect')">
+        <el-icon><ArrowLeft /></el-icon>
+        <span>文件收集</span>
+      </button>
+
+      <template v-if="task">
+        <header class="submit-head">
+          <div>
+            <div class="kicker">{{ task.status === "open" ? "FILE COLLECTION" : "CLOSED" }}</div>
+            <h2>{{ task.title }}</h2>
+            <p>{{ task.description || "请按要求填写信息并上传文件。" }}</p>
+          </div>
+          <el-tag :type="statusTag(task.status)" effect="plain">{{ statusText(task.status) }}</el-tag>
+        </header>
+
+        <el-alert
+          v-if="task.visibility === 'login'"
+          type="info"
+          show-icon
+          :closable="false"
+          title="该任务需要登录后提交。"
+        />
+
+        <form class="submit-card" @submit.prevent="submit">
+          <label v-for="field in task.fields" :key="field.id" class="submit-field">
+            <span>{{ field.label }}<b v-if="field.required">*</b></span>
+            <el-input v-model="answers[field.id]" :placeholder="field.placeholder || ''" />
+          </label>
+
+          <div class="file-rule-box">
+            <b>上传文件</b>
+            <span>允许 {{ task.fileRules.allowedTypes.join(", ") || "任意类型" }}；单个不超过 {{ task.fileRules.maxSizeMb }} MB；最多 {{ task.fileRules.maxCount }} 个。</span>
+            <input ref="fileInput" type="file" multiple :accept="acceptTypes" @change="pickFiles" />
+          </div>
+
+          <div v-if="files.length" class="file-list">
+            <div v-for="(file, index) in files" :key="`${file.name}-${file.size}-${index}`">
+              <span>{{ file.name }}</span>
+              <small>{{ formatBytes(file.size) }}</small>
+              <button type="button" @click="removeFile(index)">删除</button>
+            </div>
+          </div>
+
+          <el-button type="primary" native-type="submit" :loading="submitting" :disabled="task.status !== 'open'">
+            提交文件
+          </el-button>
+        </form>
+      </template>
+
+      <el-empty v-else-if="!loading" :description="error || '收集任务不存在'" />
+    </section>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { ArrowLeft } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
+import { toolsApi, type FileCollectTask, type FileCollectStatus } from "@/api/tools";
+
+const route = useRoute();
+const router = useRouter();
+const loading = ref(false);
+const submitting = ref(false);
+const task = ref<FileCollectTask | null>(null);
+const error = ref("");
+const answers = reactive<Record<string, string>>({});
+const files = ref<File[]>([]);
+const fileInput = ref<HTMLInputElement | null>(null);
+const acceptTypes = computed(() => task.value?.fileRules.allowedTypes.map((item) => `.${item}`).join(",") || "");
+
+onMounted(load);
+
+async function load() {
+  loading.value = true;
+  error.value = "";
+  try {
+    task.value = await toolsApi.fileCollection(String(route.params.slug || ""), {
+      suppressAuthRedirect: true,
+      suppressAuthMessage: true,
+      suppressErrorMessage: true,
+    });
+    for (const field of task.value.fields) answers[field.id] = "";
+  } catch (e) {
+    const status = (e as { response?: { status?: number } }).response?.status;
+    if (status === 401) {
+      router.push({ name: "login", query: { redirect: route.fullPath } });
+      return;
+    }
+    error.value = (e as { response?: { data?: { message?: string } }; message?: string }).response?.data?.message ?? "收集任务加载失败";
+  } finally {
+    loading.value = false;
+  }
+}
+
+function pickFiles(event: Event) {
+  files.value = [...((event.target as HTMLInputElement).files ?? [])];
+}
+
+function removeFile(index: number) {
+  files.value.splice(index, 1);
+  if (fileInput.value) fileInput.value.value = "";
+}
+
+function validate() {
+  if (!task.value) return false;
+  for (const field of task.value.fields) {
+    const value = answers[field.id]?.trim() || "";
+    if (field.required && !value) {
+      ElMessage.warning(`请填写：${field.label}`);
+      return false;
+    }
+    if (field.pattern && value && !(new RegExp(field.pattern).test(value))) {
+      ElMessage.warning(`“${field.label}”格式不正确`);
+      return false;
+    }
+  }
+  if (!files.value.length) {
+    ElMessage.warning("请选择要上传的文件");
+    return false;
+  }
+  if (files.value.length > task.value.fileRules.maxCount) {
+    ElMessage.warning(`最多只能上传 ${task.value.fileRules.maxCount} 个文件`);
+    return false;
+  }
+  const allowed = new Set(task.value.fileRules.allowedTypes);
+  const maxBytes = task.value.fileRules.maxSizeMb * 1024 * 1024;
+  for (const file of files.value) {
+    const ext = file.name.includes(".") ? file.name.split(".").pop()!.toLowerCase() : "";
+    if (allowed.size && !allowed.has(ext)) {
+      ElMessage.warning(`${file.name} 类型不允许`);
+      return false;
+    }
+    if (file.size > maxBytes) {
+      ElMessage.warning(`${file.name} 超过大小限制`);
+      return false;
+    }
+  }
+  return true;
+}
+
+async function submit() {
+  if (!task.value || !validate()) return;
+  submitting.value = true;
+  try {
+    const form = new FormData();
+    form.append("data", JSON.stringify(answers));
+    files.value.forEach((file) => form.append("files", file, file.name));
+    const result = await toolsApi.submitFileCollection(task.value.slug, form, {
+      suppressAuthRedirect: true,
+      suppressAuthMessage: true,
+      suppressErrorMessage: true,
+      timeout: 120000,
+    });
+    ElMessage.success(`提交成功：${result.files.join("、")}`);
+    files.value = [];
+    Object.keys(answers).forEach((key) => { answers[key] = ""; });
+    if (fileInput.value) fileInput.value.value = "";
+  } catch (e) {
+    const status = (e as { response?: { status?: number } }).response?.status;
+    if (status === 401) {
+      router.push({ name: "login", query: { redirect: route.fullPath } });
+      return;
+    }
+    ElMessage.error((e as { response?: { data?: { message?: string } }; message?: string }).response?.data?.message ?? "提交失败");
+  } finally {
+    submitting.value = false;
+  }
+}
+
+function statusText(status: FileCollectStatus) {
+  return status === "open" ? "开放中" : status === "closed" ? "已关闭" : "草稿";
+}
+
+function statusTag(status: FileCollectStatus) {
+  return status === "open" ? "success" : status === "closed" ? "danger" : "info";
+}
+
+function formatBytes(bytes: number) {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** index).toFixed(index ? 1 : 0)} ${units[index]}`;
+}
+</script>
+
+<style scoped>
+.file-submit-page {
+  min-height: calc(100vh - 64px);
+  background: #f6f8fb;
+  padding: 22px;
+}
+.file-submit-shell {
+  max-width: 860px;
+  margin: 0 auto;
+}
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: #2563eb;
+  cursor: pointer;
+  margin-bottom: 16px;
+}
+.submit-head,
+.submit-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+.submit-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 22px;
+  margin-bottom: 14px;
+}
+.kicker {
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+.submit-head h2 {
+  margin: 5px 0 8px;
+  color: #111827;
+}
+.submit-head p {
+  margin: 0;
+  color: #64748b;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.submit-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  margin-top: 14px;
+}
+.submit-field {
+  display: grid;
+  gap: 7px;
+}
+.submit-field span,
+.file-rule-box b {
+  color: #111827;
+  font-weight: 650;
+}
+.submit-field b {
+  color: #dc2626;
+  margin-left: 3px;
+}
+.file-rule-box {
+  display: grid;
+  gap: 9px;
+  padding: 14px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.file-rule-box span {
+  color: #64748b;
+  font-size: 13px;
+}
+.file-list {
+  display: grid;
+  gap: 8px;
+}
+.file-list div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 10px;
+  border: 1px solid #eef0f4;
+  border-radius: 8px;
+}
+.file-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-list small {
+  color: #64748b;
+}
+.file-list button {
+  border: 0;
+  background: transparent;
+  color: #dc2626;
+  cursor: pointer;
+}
+@media (max-width: 700px) {
+  .file-submit-page { padding: 14px; }
+  .submit-head { flex-direction: column; }
+  .file-list div { grid-template-columns: 1fr; }
+}
+</style>

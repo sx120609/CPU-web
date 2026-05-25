@@ -26,7 +26,7 @@
         </el-tabs>
 
         <div class="tool-admin-grid">
-          <section v-if="activeTool !== 'grade_check'" class="admin-section questionnaire-section">
+          <section v-if="activeTool !== 'grade_check' && activeTool !== 'file_collect'" class="admin-section questionnaire-section">
             <div class="section-head">
               <div>
                 <h3>问卷</h3>
@@ -112,6 +112,131 @@
                 </div>
               </article>
               <el-empty v-if="!questionnaires.length" :description="canAdminActiveTool ? '暂无问卷' : '你还没有发起问卷'" />
+            </div>
+          </section>
+
+          <section v-else-if="activeTool === 'file_collect'" class="admin-section questionnaire-section grade-check-section">
+            <div class="section-head">
+              <div>
+                <h3>文件收集</h3>
+                <p>{{ canAdminActiveTool ? "创建提交链接，集中收取作业、材料、照片等文件。" : "创建并管理你自己发起的文件收集任务。" }}</p>
+              </div>
+            </div>
+
+            <div class="questionnaire-summary">
+              <div>
+                <b>{{ fileCollections.length }}</b>
+                <span>收集任务</span>
+              </div>
+              <div>
+                <b>{{ fileOpenCount }}</b>
+                <span>开放中</span>
+              </div>
+              <div>
+                <b>{{ fileTotalSubmissions }}</b>
+                <span>提交记录</span>
+              </div>
+            </div>
+
+            <div class="grade-upload-panel">
+              <div class="upload-copy">
+                <h4>创建收集任务</h4>
+                <p>提交者通过链接填写字段并上传文件；使用相同学号或姓名再次提交时，会覆盖旧提交。</p>
+              </div>
+              <div class="grade-form-grid">
+                <el-input v-model="fileCollectForm.title" placeholder="任务标题，例如：2026 春季药理学作业收集" maxlength="120" />
+                <el-select v-model="fileCollectForm.status">
+                  <el-option label="开放提交" value="open" />
+                  <el-option label="保存草稿" value="draft" />
+                  <el-option label="暂时关闭" value="closed" />
+                </el-select>
+                <el-select v-model="fileCollectForm.visibility">
+                  <el-option label="公开链接提交" value="public" />
+                  <el-option label="登录后提交" value="login" />
+                </el-select>
+                <el-input v-model="fileCollectForm.description" class="grade-desc" type="textarea" :rows="2" placeholder="补充说明，例如提交要求、截止时间、命名说明等" maxlength="1000" />
+              </div>
+              <div class="file-field-editor">
+                <div class="file-field-head">
+                  <b>填写字段</b>
+                  <el-button size="small" plain @click="addFileCollectField">
+                    <el-icon><Plus /></el-icon>
+                    添加字段
+                  </el-button>
+                </div>
+                <div v-for="(field, index) in fileCollectForm.fields" :key="field.localKey" class="file-field-row">
+                  <el-input v-model="field.label" placeholder="字段名称" />
+                  <el-input v-model="field.id" placeholder="字段 ID，如 student_id" />
+                  <el-input v-model="field.placeholder" placeholder="占位提示" />
+                  <el-checkbox v-model="field.required">必填</el-checkbox>
+                  <el-button text type="danger" :disabled="fileCollectForm.fields.length <= 1" @click="removeFileCollectField(index)">删除</el-button>
+                </div>
+              </div>
+              <div class="grade-form-grid">
+                <el-input v-model="fileCollectForm.allowedTypes" placeholder="允许类型，例如 pdf,docx,jpg,png,zip" />
+                <el-input-number v-model="fileCollectForm.maxSizeMb" :min="1" :max="50" controls-position="right" />
+                <el-input-number v-model="fileCollectForm.maxCount" :min="1" :max="20" controls-position="right" />
+                <el-input v-model="fileCollectForm.renameTemplate" class="grade-desc" placeholder="命名规则，例如 {name}-{student_id}" />
+                <el-input v-model="fileCollectForm.expectedEntries" class="grade-desc" type="textarea" :rows="3" placeholder="应提交名单，选填，一行一个学号或姓名" maxlength="20000" />
+              </div>
+              <div class="grade-preview-head">
+                <div>
+                  <b>命名变量</b>
+                  <span>可用 {name}、{student_id}、{original}、{index}，也可以使用自定义字段 ID。</span>
+                </div>
+                <el-button type="primary" :loading="fileCollectSaving" @click="createFileCollection">
+                  <el-icon><Plus /></el-icon>
+                  创建收集任务
+                </el-button>
+              </div>
+            </div>
+
+            <div class="questionnaire-list-cards">
+              <article v-for="row in fileCollections" :key="row.id" class="questionnaire-row-card">
+                <div class="q-row-main">
+                  <div class="q-title-cell">
+                    <b>{{ row.title }}</b>
+                    <span>{{ row.slug }}</span>
+                  </div>
+                  <div class="q-row-tags">
+                    <el-tag :type="statusTag(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
+                    <el-tag size="small" effect="plain">{{ row.submissionCount }} 份提交</el-tag>
+                    <el-tag size="small" type="info" effect="plain">{{ row.fileCount }} 个文件</el-tag>
+                  </div>
+                  <div class="q-row-meta">
+                    <span>{{ row.visibility === "login" ? "登录提交" : "公开提交" }}</span>
+                    <span>更新 {{ fmtDate(row.updatedAt) }}</span>
+                    <span v-if="row.createdBy">发起人 {{ row.createdBy.nickname || row.createdBy.username }}</span>
+                  </div>
+                </div>
+                <div class="q-row-actions">
+                  <el-button size="small" @click="copyFileCollectLink(row)">
+                    <el-icon><Link /></el-icon>
+                    复制链接
+                  </el-button>
+                  <el-button size="small" @click="openFileSubmissions(row)">
+                    <el-icon><DataAnalysis /></el-icon>
+                    提交
+                  </el-button>
+                  <el-dropdown trigger="click" @command="handleFileCollectCommand($event, row)">
+                    <el-button size="small">
+                      更多<el-icon><ArrowDown /></el-icon>
+                    </el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="open">开放</el-dropdown-item>
+                        <el-dropdown-item command="close">关闭</el-dropdown-item>
+                        <el-dropdown-item command="draft">设为草稿</el-dropdown-item>
+                        <el-dropdown-item command="delete" divided>
+                          <el-icon><Delete /></el-icon>
+                          删除
+                        </el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </article>
+              <el-empty v-if="!fileCollections.length" :description="canAdminActiveTool ? '暂无文件收集任务' : '你还没有发起文件收集任务'" />
             </div>
           </section>
 
@@ -625,6 +750,46 @@
         </el-tab-pane>
       </el-tabs>
     </el-dialog>
+
+    <el-dialog v-model="fileSubmissionsOpen" width="min(920px, 96vw)">
+      <template #header>
+        <div class="responses-title">
+          <div>
+            <b>{{ fileSubmissionTask?.title || "提交记录" }}</b>
+            <span>{{ fileSubmissions.length }} 份提交</span>
+          </div>
+          <el-button v-if="fileSubmissionTask" size="small" plain @click="copyFileCollectLink(fileSubmissionTask)">
+            <el-icon><Link /></el-icon>
+            复制提交链接
+          </el-button>
+        </div>
+      </template>
+      <div v-loading="fileSubmissionLoading" class="responses-list">
+        <article v-for="item in fileSubmissions" :key="item.id" class="response-card">
+          <div class="response-head">
+            <div>
+              <b>{{ item.identity || `提交 #${item.id}` }}</b>
+              <span>{{ fmtDate(item.createdAt) }} · {{ item.files.length }} 个文件</span>
+            </div>
+            <el-button text type="danger" @click="deleteFileSubmission(item.id)">删除</el-button>
+          </div>
+          <div class="answer-list">
+            <div v-for="field in fileSubmissionTask?.fields || []" :key="field.id" class="answer-row">
+              <span>{{ field.label }}</span>
+              <b>{{ item.data[field.id] || "-" }}</b>
+            </div>
+          </div>
+          <div class="file-download-list">
+            <a v-for="file in item.files" :key="file.id" :href="`/api/tools/file-collection-files/${file.id}/download`" target="_blank" rel="noopener">
+              <el-icon><Download /></el-icon>
+              <span>{{ file.storedName }}</span>
+              <small>{{ formatBytes(file.size) }}</small>
+            </a>
+          </div>
+        </article>
+        <el-empty v-if="!fileSubmissions.length" description="暂无提交记录" />
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -655,6 +820,10 @@ import {
 } from "@element-plus/icons-vue";
 import {
   toolsApi,
+  type FileCollectField,
+  type FileCollectStatus,
+  type FileCollectSubmission,
+  type FileCollectTask,
   type GradeCheckStatus,
   type GradeCheckTable,
   type Questionnaire,
@@ -720,6 +889,27 @@ const settingSaving = ref(false);
 const gradeChecks = ref<GradeCheckTable[]>([]);
 const gradeSaving = ref(false);
 const gradeFileName = ref("");
+const fileCollections = ref<FileCollectTask[]>([]);
+const fileCollectSaving = ref(false);
+const fileSubmissionLoading = ref(false);
+const fileSubmissionsOpen = ref(false);
+const fileSubmissionTask = ref<FileCollectTask | null>(null);
+const fileSubmissions = ref<FileCollectSubmission[]>([]);
+const fileCollectForm = reactive({
+  title: "",
+  description: "",
+  status: "open" as FileCollectStatus,
+  visibility: "public" as "public" | "login",
+  allowedTypes: "pdf,doc,docx,jpg,png,zip",
+  maxSizeMb: 20,
+  maxCount: 1,
+  renameTemplate: "{name}-{student_id}",
+  expectedEntries: "",
+  fields: [
+    { localKey: "fc-name", id: "name", label: "姓名", required: true, placeholder: "请输入姓名", pattern: "" },
+    { localKey: "fc-student", id: "student_id", label: "学号", required: true, placeholder: "请输入学号", pattern: "" },
+  ] as Array<FileCollectField & { localKey: string }>,
+});
 const gradeForm = reactive({
   title: "",
   description: "",
@@ -765,6 +955,8 @@ const openCount = computed(() => questionnaires.value.filter((item) => item.stat
 const totalResponses = computed(() => questionnaires.value.reduce((sum, item) => sum + (item.responseCount ?? 0), 0));
 const gradeOpenCount = computed(() => gradeChecks.value.filter((item) => item.status === "open").length);
 const gradeTotalRows = computed(() => gradeChecks.value.reduce((sum, item) => sum + item.rowCount, 0));
+const fileOpenCount = computed(() => fileCollections.value.filter((item) => item.status === "open").length);
+const fileTotalSubmissions = computed(() => fileCollections.value.reduce((sum, item) => sum + item.submissionCount, 0));
 const editorTitle = computed(() => editorMode.value === "create" ? "新建问卷" : "编辑问卷");
 const requiredCount = computed(() => form.fields.filter((field) => field.required).length);
 const toolRequireLogin = computed({
@@ -815,7 +1007,7 @@ function pickInitialTool(): ServiceToolCode {
 function normalizeToolQuery(value: unknown): ServiceToolCode | "" {
   const raw = Array.isArray(value) ? value[0] : value;
   if (typeof raw !== "string") return "";
-  return (["feedback", "questionnaire", "grade_check"] as ServiceToolCode[]).includes(raw as ServiceToolCode)
+  return (["feedback", "questionnaire", "grade_check", "file_collect"] as ServiceToolCode[]).includes(raw as ServiceToolCode)
     ? raw as ServiceToolCode
     : "";
 }
@@ -837,11 +1029,19 @@ async function reloadActive() {
   if (activeTool.value === "grade_check") {
     gradeChecks.value = await toolsApi.gradeChecks({ manage: "1" });
     questionnaires.value = [];
+    fileCollections.value = [];
+    return;
+  }
+  if (activeTool.value === "file_collect") {
+    fileCollections.value = await toolsApi.fileCollections({ manage: "1" });
+    questionnaires.value = [];
+    gradeChecks.value = [];
     return;
   }
   const questionnaireList = await toolsApi.questionnaires({ toolCode: activeTool.value, manage: "1" });
   questionnaires.value = questionnaireList;
   gradeChecks.value = [];
+  fileCollections.value = [];
 }
 
 async function saveToolSetting(value: string | number | boolean) {
@@ -1249,6 +1449,143 @@ function copyGradeLink(row: GradeCheckTable) {
   );
 }
 
+function addFileCollectField() {
+  fileCollectForm.fields.push({
+    localKey: `fc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    id: `field_${fileCollectForm.fields.length + 1}`,
+    label: "新字段",
+    required: false,
+    placeholder: "",
+    pattern: "",
+  });
+}
+
+function removeFileCollectField(index: number) {
+  fileCollectForm.fields.splice(index, 1);
+}
+
+function normalizeFileCollectFields() {
+  return fileCollectForm.fields.map((field) => ({
+    id: field.id.trim(),
+    label: field.label.trim(),
+    required: Boolean(field.required),
+    placeholder: field.placeholder?.trim() || undefined,
+    pattern: field.pattern?.trim() || undefined,
+  }));
+}
+
+function validateFileCollectForm() {
+  if (!fileCollectForm.title.trim()) {
+    ElMessage.warning("请填写收集任务标题");
+    return false;
+  }
+  const fields = normalizeFileCollectFields();
+  if (!fields.length || fields.some((field) => !field.id || !field.label)) {
+    ElMessage.warning("请完善填写字段");
+    return false;
+  }
+  if (new Set(fields.map((field) => field.id)).size !== fields.length) {
+    ElMessage.warning("字段 ID 不能重复");
+    return false;
+  }
+  return true;
+}
+
+async function createFileCollection() {
+  if (!validateFileCollectForm()) return;
+  fileCollectSaving.value = true;
+  try {
+    await toolsApi.createFileCollection({
+      title: fileCollectForm.title.trim(),
+      description: fileCollectForm.description.trim() || undefined,
+      status: fileCollectForm.status,
+      visibility: fileCollectForm.visibility,
+      fields: normalizeFileCollectFields(),
+      fileRules: {
+        allowedTypes: fileCollectForm.allowedTypes.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean),
+        maxSizeMb: Number(fileCollectForm.maxSizeMb) || 20,
+        maxCount: Number(fileCollectForm.maxCount) || 1,
+      },
+      renameTemplate: fileCollectForm.renameTemplate.trim() || "{name}-{student_id}",
+      expectedEntries: fileCollectForm.expectedEntries.trim() || undefined,
+    });
+    ElMessage.success(fileCollectForm.status === "open" ? "收集任务已创建并开放" : "收集任务已创建");
+    resetFileCollectForm();
+    await reloadActive();
+  } finally {
+    fileCollectSaving.value = false;
+  }
+}
+
+function resetFileCollectForm() {
+  fileCollectForm.title = "";
+  fileCollectForm.description = "";
+  fileCollectForm.status = "open";
+  fileCollectForm.visibility = "public";
+  fileCollectForm.allowedTypes = "pdf,doc,docx,jpg,png,zip";
+  fileCollectForm.maxSizeMb = 20;
+  fileCollectForm.maxCount = 1;
+  fileCollectForm.renameTemplate = "{name}-{student_id}";
+  fileCollectForm.expectedEntries = "";
+  fileCollectForm.fields = [
+    { localKey: "fc-name", id: "name", label: "姓名", required: true, placeholder: "请输入姓名", pattern: "" },
+    { localKey: "fc-student", id: "student_id", label: "学号", required: true, placeholder: "请输入学号", pattern: "" },
+  ];
+}
+
+function copyFileCollectLink(row: FileCollectTask) {
+  const link = `${window.location.origin}/services/tools/file-collections/${row.slug}`;
+  navigator.clipboard?.writeText(link).then(
+    () => ElMessage.success("链接已复制"),
+    () => ElMessage.info(link)
+  );
+}
+
+async function handleFileCollectCommand(command: string | number | object, row: FileCollectTask) {
+  const action = String(command);
+  if (action === "delete") {
+    const ok = await ElMessageBox.confirm(`删除收集任务“${row.title}”？提交记录和文件也会一起删除。`, "确认删除", { type: "warning" })
+      .then(() => true).catch(() => false);
+    if (!ok) return;
+    await toolsApi.deleteFileCollection(row.id);
+    ElMessage.success("已删除");
+  } else {
+    const status = action === "open" ? "open" : action === "close" ? "closed" : "draft";
+    await toolsApi.updateFileCollection(row.id, { status });
+    ElMessage.success("状态已更新");
+  }
+  await reloadActive();
+}
+
+async function openFileSubmissions(row: FileCollectTask) {
+  fileSubmissionsOpen.value = true;
+  fileSubmissionLoading.value = true;
+  try {
+    const data = await toolsApi.fileCollectionSubmissions(row.id);
+    fileSubmissionTask.value = data.task;
+    fileSubmissions.value = data.list;
+  } finally {
+    fileSubmissionLoading.value = false;
+  }
+}
+
+async function deleteFileSubmission(id: number) {
+  const ok = await ElMessageBox.confirm("删除这条提交记录及其文件？", "确认删除", { type: "warning" })
+    .then(() => true).catch(() => false);
+  if (!ok) return;
+  await toolsApi.deleteFileCollectionSubmission(id);
+  fileSubmissions.value = fileSubmissions.value.filter((item) => item.id !== id);
+  ElMessage.success("已删除");
+  await reloadActive();
+}
+
+function formatBytes(bytes: number) {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** index).toFixed(index ? 1 : 0)} ${units[index]}`;
+}
+
 function resetGradeForm() {
   gradeFileName.value = "";
   gradeForm.title = "";
@@ -1404,13 +1741,13 @@ function makeFieldId() {
   return `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
-function statusText(status: QuestionnaireStatus) {
+function statusText(status: QuestionnaireStatus | GradeCheckStatus | FileCollectStatus) {
   if (status === "open") return "开放";
   if (status === "closed") return "关闭";
   return "草稿";
 }
 
-function statusTag(status: QuestionnaireStatus): "success" | "info" | "warning" {
+function statusTag(status: QuestionnaireStatus | GradeCheckStatus | FileCollectStatus): "success" | "info" | "warning" {
   if (status === "open") return "success";
   if (status === "closed") return "info";
   return "warning";
@@ -2302,6 +2639,51 @@ function round(value: number) {
 }
 .answer-row span { color: #6b7280; }
 .answer-row b { font-weight: 500; word-break: break-word; }
+.file-field-editor {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+}
+.file-field-head,
+.file-field-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.file-field-head {
+  justify-content: space-between;
+  color: #111827;
+}
+.file-field-row {
+  padding: 10px;
+  border: 1px solid #eef0f4;
+  border-radius: 8px;
+  background: #fff;
+}
+.file-download-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.file-download-list a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 7px 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  color: #1d4ed8;
+  text-decoration: none;
+  background: #eff6ff;
+}
+.file-download-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-download-list small { color: #64748b; }
 @media (max-width: 1100px) {
   .builder-layout {
     grid-template-columns: 190px minmax(0, 1fr);
@@ -2367,6 +2749,7 @@ function round(value: number) {
   .grade-form-grid { grid-template-columns: 1fr; }
   .grade-preview-head { align-items: stretch; flex-direction: column; }
   .grade-preview-head .el-button { width: 100%; }
+  .file-field-row { flex-direction: column; align-items: stretch; }
   .questionnaire-row-card {
     display: flex;
     flex-direction: column;

@@ -1,5 +1,10 @@
 import { Router } from "express";
 import { z } from "zod";
+import multer from "multer";
+import path from "node:path";
+import { mkdirSync } from "node:fs";
+import { unlink, rm, rename } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { prisma } from "../prisma";
 import { authOptional, authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
@@ -26,6 +31,20 @@ import {
 } from "../services/questionnaires";
 
 export const toolsRouter = Router();
+
+const fileCollectTmpDir = path.resolve(process.cwd(), "uploads", "file-collect", "_tmp");
+mkdirSync(fileCollectTmpDir, { recursive: true });
+const fileCollectUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, fileCollectTmpDir),
+    filename: (_req, file, cb) => cb(null, `${Date.now()}-${randomUUID()}${path.extname(file.originalname || "")}`),
+  }),
+  limits: {
+    files: 20,
+    fileSize: 50 * 1024 * 1024,
+    fieldSize: 1024 * 1024,
+  },
+});
 
 const fieldSchema = z.object({
   id: z.string().trim().min(1).max(40).regex(/^[a-zA-Z0-9_-]+$/, "字段 ID 仅支持英文、数字、下划线和中划线"),
@@ -80,6 +99,32 @@ const patchGradeCheckSchema = z.object({
   studentIdColumn: z.string().trim().min(1).max(80).optional(),
   columns: z.array(z.string().trim().min(1).max(80)).min(2).max(80).optional(),
   rows: z.array(gradeCheckRowSchema).min(1).max(10000).optional(),
+});
+
+const fileCollectFieldSchema = z.object({
+  id: z.string().trim().min(1).max(40).regex(/^[a-zA-Z0-9_]+$/, "字段 ID 仅支持英文、数字和下划线"),
+  label: z.string().trim().min(1).max(80),
+  required: z.boolean().optional(),
+  placeholder: z.string().trim().max(120).optional(),
+  pattern: z.string().trim().max(200).optional(),
+});
+const fileCollectRuleSchema = z.object({
+  allowedTypes: z.array(z.string().trim().toLowerCase().regex(/^[a-z0-9]+$/)).max(30).default([]),
+  maxSizeMb: z.number().positive().max(50).default(20),
+  maxCount: z.number().int().positive().max(20).default(1),
+});
+const createFileCollectSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(1000).optional(),
+  status: z.enum(["draft", "open", "closed"]).optional(),
+  visibility: z.enum(["public", "login"]).optional(),
+  fields: z.array(fileCollectFieldSchema).min(1).max(20),
+  fileRules: fileCollectRuleSchema,
+  renameTemplate: z.string().trim().min(1).max(120).default("{name}-{student_id}"),
+  expectedEntries: z.string().trim().max(20000).optional(),
+});
+const patchFileCollectSchema = createFileCollectSchema.partial().extend({
+  status: z.enum(["draft", "open", "closed"]).optional(),
 });
 
 const managerCreateSchema = z.object({
@@ -424,6 +469,242 @@ toolsRouter.delete("/grade-checks/:id", authRequired, async (req, res, next) => 
   } catch (e) { next(e); }
 });
 
+toolsRouter.get("/file-collections", authRequired, async (req, res, next) => {
+  try {
+    if (req.query.manage !== "1") {
+      ok(res, []);
+      return;
+    }
+    if (!(await hasToolContentManagePermission("file_collect", req.user))) throw Errors.forbidden("没有该小工具的管理权限");
+    const isManager = await hasToolManagerPermission("file_collect", req.user);
+    const list = await prisma.fileCollectTask.findMany({
+      where: isManager ? {} : { createdById: req.user!.userId },
+      orderBy: [{ createdAt: "desc" }],
+      include: {
+        createdBy: { select: { id: true, username: true, nickname: true, role: true } },
+      },
+    });
+    ok(res, list.map(normalizeFileCollectTask));
+  } catch (e) { next(e); }
+});
+
+toolsRouter.get("/file-collections/:slug", authOptional, async (req, res, next) => {
+  try {
+    const task = await prisma.fileCollectTask.findUnique({
+      where: { slug: String(req.params.slug) },
+      include: {
+        createdBy: { select: { id: true, username: true, nickname: true, role: true } },
+      },
+    });
+    if (!task) throw Errors.notFound("收集任务不存在");
+    const canManage = await canManageFileCollectTask(task, req.user);
+    if (!canManage) await ensureToolUsableForRequest("file_collect", req.user);
+    if (task.status !== "open" && !canManage) throw Errors.notFound("收集任务不存在或未开放");
+    if (task.visibility === "login" && !req.user?.userId && !canManage) throw Errors.unauthorized("请先登录后提交");
+    ok(res, {
+      ...normalizeFileCollectTask(task),
+      canManage,
+    });
+  } catch (e) { next(e); }
+});
+
+toolsRouter.post("/file-collections", authRequired, validate(createFileCollectSchema), async (req, res, next) => {
+  try {
+    if (!(await hasToolContentManagePermission("file_collect", req.user))) throw Errors.forbidden("没有该小工具的管理权限");
+    const payload = normalizeFileCollectInput(req.body);
+    const now = new Date();
+    const row = await prisma.fileCollectTask.create({
+      data: {
+        slug: await nextFileCollectSlug(payload.title),
+        title: payload.title,
+        description: payload.description || null,
+        status: payload.status ?? "open",
+        visibility: payload.visibility ?? "public",
+        fields: JSON.stringify(payload.fields),
+        fileRules: JSON.stringify(payload.fileRules),
+        renameTemplate: payload.renameTemplate,
+        expectedEntries: payload.expectedEntries || "",
+        createdById: req.user!.userId,
+        publishedAt: (payload.status ?? "open") === "open" ? now : null,
+        closedAt: payload.status === "closed" ? now : null,
+      },
+      include: {
+        createdBy: { select: { id: true, username: true, nickname: true, role: true } },
+      },
+    });
+    ok(res, normalizeFileCollectTask(row));
+  } catch (e) { next(e); }
+});
+
+toolsRouter.patch("/file-collections/:id", authRequired, validate(patchFileCollectSchema), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const current = await prisma.fileCollectTask.findUnique({ where: { id } });
+    if (!current) throw Errors.notFound("收集任务不存在");
+    if (!(await canManageFileCollectTask(current, req.user))) throw Errors.forbidden("没有该收集任务的管理权限");
+    const payload = normalizeFileCollectPatch(req.body);
+    const now = new Date();
+    const row = await prisma.fileCollectTask.update({
+      where: { id },
+      data: {
+        title: payload.title,
+        description: req.body.description === undefined ? undefined : (payload.description || null),
+        status: payload.status,
+        visibility: payload.visibility,
+        fields: payload.fields ? JSON.stringify(payload.fields) : undefined,
+        fileRules: payload.fileRules ? JSON.stringify(payload.fileRules) : undefined,
+        renameTemplate: payload.renameTemplate,
+        expectedEntries: req.body.expectedEntries === undefined ? undefined : (payload.expectedEntries || ""),
+        publishedAt: payload.status === "open" && !current.publishedAt ? now : undefined,
+        closedAt: payload.status === "closed" ? now : payload.status === "open" ? null : undefined,
+      },
+      include: {
+        createdBy: { select: { id: true, username: true, nickname: true, role: true } },
+      },
+    });
+    ok(res, normalizeFileCollectTask(row));
+  } catch (e) { next(e); }
+});
+
+toolsRouter.delete("/file-collections/:id", authRequired, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const current = await prisma.fileCollectTask.findUnique({ where: { id } });
+    if (!current) throw Errors.notFound("收集任务不存在");
+    if (!(await canManageFileCollectTask(current, req.user))) throw Errors.forbidden("没有该收集任务的管理权限");
+    await prisma.fileCollectTask.delete({ where: { id } });
+    await rm(path.resolve(process.cwd(), "uploads", "file-collect", String(id)), { recursive: true, force: true });
+    ok(res, { ok: true });
+  } catch (e) { next(e); }
+});
+
+toolsRouter.get("/file-collections/:id/submissions", authRequired, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const task = await prisma.fileCollectTask.findUnique({ where: { id } });
+    if (!task) throw Errors.notFound("收集任务不存在");
+    if (!(await canManageFileCollectTask(task, req.user))) throw Errors.forbidden("没有该收集任务的管理权限");
+    const list = await prisma.fileCollectSubmission.findMany({
+      where: { taskId: id },
+      orderBy: { createdAt: "desc" },
+      include: {
+        submitter: { select: { id: true, username: true, nickname: true, role: true } },
+        files: { orderBy: { id: "asc" } },
+      },
+    });
+    ok(res, {
+      task: normalizeFileCollectTask(task),
+      list: list.map(normalizeFileCollectSubmission),
+    });
+  } catch (e) { next(e); }
+});
+
+toolsRouter.post("/file-collections/:slug/submissions", authOptional, fileCollectUpload.array("files", 20), async (req, res, next) => {
+  const uploadedFiles = (req.files as Express.Multer.File[] | undefined) ?? [];
+  try {
+    const task = await prisma.fileCollectTask.findUnique({ where: { slug: String(req.params.slug) } });
+    if (!task) throw Errors.notFound("收集任务不存在");
+    await ensureToolUsableForRequest("file_collect", req.user);
+    if (task.status !== "open") throw Errors.badRequest("收集任务当前未开放提交");
+    if (task.visibility === "login" && !req.user?.userId) throw Errors.unauthorized("请先登录后提交");
+
+    const fields = parseFileCollectFields(task.fields);
+    const rules = parseFileCollectRules(task.fileRules);
+    const data = normalizeFileCollectSubmissionData(fields, parseJsonObject(String(req.body.data || "{}")));
+    validateFileCollectUpload(uploadedFiles, rules);
+    const identity = fileCollectIdentity(data, fields);
+    const taskDir = path.resolve(process.cwd(), "uploads", "file-collect", String(task.id));
+    mkdirSync(taskDir, { recursive: true });
+
+    const result = await prisma.$transaction(async (tx) => {
+      if (identity) {
+        const oldRows = await tx.fileCollectSubmission.findMany({
+          where: { taskId: task.id, identity },
+          include: { files: true },
+        });
+        for (const old of oldRows) {
+          await tx.fileCollectSubmission.delete({ where: { id: old.id } });
+          for (const file of old.files) await unlinkFileCollectPath(file.path);
+        }
+      }
+
+      const submission = await tx.fileCollectSubmission.create({
+        data: {
+          taskId: task.id,
+          submitterId: req.user?.userId ?? null,
+          identity,
+          data: JSON.stringify(data),
+          ip: req.ip,
+        },
+      });
+      const fileRows = [];
+      for (let index = 0; index < uploadedFiles.length; index += 1) {
+        const file = uploadedFiles[index];
+        const storedName = renderFileCollectName(task.renameTemplate, data, file.originalname, index + 1, uploadedFiles.length);
+        const physicalName = `${submission.id}-${index + 1}-${randomUUID()}-${safeStoredFilename(storedName)}`;
+        const relativePath = path.posix.join("file-collect", String(task.id), physicalName);
+        await rename(file.path, path.join(taskDir, physicalName));
+        fileRows.push(await tx.fileCollectFile.create({
+          data: {
+            submissionId: submission.id,
+            originalName: file.originalname,
+            storedName,
+            mimeType: file.mimetype || "application/octet-stream",
+            size: file.size,
+            path: relativePath,
+          },
+        }));
+      }
+      await tx.fileCollectTask.update({
+        where: { id: task.id },
+        data: {
+          submissionCount: await tx.fileCollectSubmission.count({ where: { taskId: task.id } }),
+          fileCount: await tx.fileCollectFile.count({ where: { submission: { taskId: task.id } } }),
+        },
+      });
+      return { submission, files: fileRows };
+    });
+    ok(res, {
+      id: result.submission.id,
+      createdAt: result.submission.createdAt,
+      files: result.files.map((file) => file.storedName),
+    });
+  } catch (e) {
+    await Promise.all(uploadedFiles.map((file) => unlink(file.path).catch(() => null)));
+    next(e);
+  }
+});
+
+toolsRouter.get("/file-collection-files/:id/download", authRequired, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const file = await prisma.fileCollectFile.findUnique({
+      where: { id },
+      include: { submission: { include: { task: true } } },
+    });
+    if (!file) throw Errors.notFound("文件不存在");
+    if (!(await canManageFileCollectTask(file.submission.task, req.user))) throw Errors.forbidden("没有该文件的下载权限");
+    const absolute = resolveFileCollectPath(file.path);
+    res.download(absolute, file.storedName);
+  } catch (e) { next(e); }
+});
+
+toolsRouter.delete("/file-collection-submissions/:id", authRequired, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const submission = await prisma.fileCollectSubmission.findUnique({
+      where: { id },
+      include: { task: true, files: true },
+    });
+    if (!submission) throw Errors.notFound("提交记录不存在");
+    if (!(await canManageFileCollectTask(submission.task, req.user))) throw Errors.forbidden("没有该提交记录的管理权限");
+    await prisma.fileCollectSubmission.delete({ where: { id } });
+    await Promise.all(submission.files.map((file) => unlinkFileCollectPath(file.path)));
+    await refreshFileCollectStats(submission.taskId);
+    ok(res, { ok: true });
+  } catch (e) { next(e); }
+});
+
 toolsRouter.get("/questionnaires", authOptional, async (req, res, next) => {
   try {
     const requestedToolCode = req.query.toolCode ? String(req.query.toolCode) : undefined;
@@ -630,6 +911,18 @@ async function nextGradeCheckSlug(title: string) {
   return `${base}-${Date.now().toString(36)}`;
 }
 
+async function nextFileCollectSlug(title: string) {
+  const rawBase = slugify(title);
+  const base = rawBase && !rawBase.startsWith("q-") ? rawBase : "file-collect";
+  let slug = base;
+  for (let i = 0; i < 20; i += 1) {
+    const exists = await prisma.fileCollectTask.findUnique({ where: { slug }, select: { id: true } });
+    if (!exists) return slug;
+    slug = `${base}-${Date.now().toString(36).slice(-5)}${i ? `-${i}` : ""}`;
+  }
+  return `${base}-${Date.now().toString(36)}`;
+}
+
 function slugify(text: string) {
   const ascii = text.trim().toLowerCase()
     .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, "-")
@@ -647,6 +940,212 @@ function parseGradeColumns(raw: string | null | undefined): string[] {
   } catch {
     return [];
   }
+}
+
+type FileCollectField = z.infer<typeof fileCollectFieldSchema>;
+type FileCollectRules = z.infer<typeof fileCollectRuleSchema>;
+
+function parseJsonObject(raw: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function parseFileCollectFields(raw: string | null | undefined): FileCollectField[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map((item) => fileCollectFieldSchema.parse(item)) : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseFileCollectRules(raw: string | null | undefined): FileCollectRules {
+  if (!raw) return fileCollectRuleSchema.parse({});
+  try {
+    return fileCollectRuleSchema.parse(JSON.parse(raw));
+  } catch {
+    return fileCollectRuleSchema.parse({});
+  }
+}
+
+function normalizeFileCollectInput(input: z.infer<typeof createFileCollectSchema>) {
+  const fieldIds = new Set<string>();
+  for (const field of input.fields) {
+    if (fieldIds.has(field.id)) throw Errors.badRequest(`字段 ID 重复：${field.id}`);
+    if (field.pattern) {
+      try {
+        new RegExp(field.pattern);
+      } catch {
+        throw Errors.badRequest(`字段“${field.label}”的正则规则不合法`);
+      }
+    }
+    fieldIds.add(field.id);
+  }
+  return {
+    ...input,
+    status: input.status ?? "open",
+    visibility: input.visibility ?? "public",
+    description: input.description ?? "",
+    expectedEntries: input.expectedEntries ?? "",
+    renameTemplate: input.renameTemplate || "{name}-{student_id}",
+    fileRules: fileCollectRuleSchema.parse(input.fileRules ?? {}),
+  };
+}
+
+function normalizeFileCollectPatch(input: z.infer<typeof patchFileCollectSchema>) {
+  const merged = { ...input };
+  if (merged.fields) normalizeFileCollectInput({
+    title: merged.title || "patch",
+    fields: merged.fields,
+    fileRules: merged.fileRules ?? fileCollectRuleSchema.parse({}),
+    renameTemplate: merged.renameTemplate ?? "{name}-{student_id}",
+  });
+  if (merged.fileRules) merged.fileRules = fileCollectRuleSchema.parse(merged.fileRules);
+  return merged;
+}
+
+function normalizeFileCollectTask(row: any) {
+  return {
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    description: row.description,
+    status: row.status,
+    visibility: row.visibility,
+    fields: parseFileCollectFields(row.fields),
+    fileRules: parseFileCollectRules(row.fileRules),
+    renameTemplate: row.renameTemplate,
+    expectedEntries: row.expectedEntries,
+    submissionCount: row.submissionCount,
+    fileCount: row.fileCount,
+    publishedAt: row.publishedAt,
+    closedAt: row.closedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    createdBy: row.createdBy ? {
+      id: row.createdBy.id,
+      nickname: row.createdBy.nickname,
+      username: row.createdBy.username,
+      role: row.createdBy.role,
+    } : null,
+  };
+}
+
+function normalizeFileCollectSubmission(row: any) {
+  return {
+    id: row.id,
+    taskId: row.taskId,
+    identity: row.identity,
+    data: parseJsonObject(row.data),
+    ip: row.ip,
+    createdAt: row.createdAt,
+    submitter: row.submitter ? {
+      id: row.submitter.id,
+      nickname: row.submitter.nickname,
+      username: row.submitter.username,
+      role: row.submitter.role,
+    } : null,
+    files: (row.files ?? []).map((file: any) => ({
+      id: file.id,
+      originalName: file.originalName,
+      storedName: file.storedName,
+      mimeType: file.mimeType,
+      size: file.size,
+      createdAt: file.createdAt,
+    })),
+  };
+}
+
+function normalizeFileCollectSubmissionData(fields: FileCollectField[], input: Record<string, unknown>) {
+  const result: Record<string, string> = {};
+  for (const field of fields) {
+    const value = String(input[field.id] ?? "").trim();
+    if (field.required && !value) throw Errors.badRequest(`请填写：${field.label}`);
+    if (value && field.pattern && !(new RegExp(field.pattern).test(value))) {
+      throw Errors.badRequest(`“${field.label}”格式不正确`);
+    }
+    result[field.id] = value.slice(0, 300);
+  }
+  return result;
+}
+
+function validateFileCollectUpload(files: Express.Multer.File[], rules: FileCollectRules) {
+  if (!files.length) throw Errors.badRequest("请至少上传一个文件");
+  if (files.length > rules.maxCount) throw Errors.badRequest(`最多只能上传 ${rules.maxCount} 个文件`);
+  const allowed = new Set(rules.allowedTypes);
+  const maxBytes = rules.maxSizeMb * 1024 * 1024;
+  for (const file of files) {
+    const ext = path.extname(file.originalname || "").slice(1).toLowerCase();
+    if (allowed.size && !allowed.has(ext)) throw Errors.badRequest(`${file.originalname} 类型不允许`);
+    if (file.size > maxBytes) throw Errors.badRequest(`${file.originalname} 超过 ${rules.maxSizeMb} MB`);
+  }
+}
+
+function fileCollectIdentity(data: Record<string, string>, fields: FileCollectField[]) {
+  const preferred = ["student_id", "exam_id", "id", "name"];
+  const preferredKey = preferred.find((key) => data[key]);
+  if (preferredKey) return data[preferredKey].replace(/\s+/g, "");
+  const firstRequired = fields.find((field) => field.required && data[field.id]);
+  return firstRequired ? data[firstRequired.id].replace(/\s+/g, "") : "";
+}
+
+function safeStoredFilename(value: string) {
+  const cleaned = value
+    .replace(/[\\/:*?"<>|]+/g, "_")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^[. ]+|[. ]+$/g, "")
+    .slice(0, 160);
+  return cleaned || "file";
+}
+
+function renderFileCollectName(template: string, data: Record<string, string>, originalName: string, index: number, total: number) {
+  const ext = path.extname(originalName || "").toLowerCase();
+  const stem = path.basename(originalName || "file", path.extname(originalName || ""));
+  const values: Record<string, string> = {
+    ...Object.fromEntries(Object.entries(data).map(([key, value]) => [key, safeStoredFilename(value)])),
+    original: safeStoredFilename(stem),
+    index: total > 1 ? String(index) : "",
+  };
+  const rendered = template.replace(/\{([a-zA-Z0-9_]+)(?:\|(last|first):(\d{1,2}))?\}/g, (_match, key, op, rawCount) => {
+    const value = values[key] || "";
+    const count = Number(rawCount || 0);
+    if (op === "last") return count > 0 ? value.slice(-count) : "";
+    if (op === "first") return count > 0 ? value.slice(0, count) : "";
+    return value;
+  });
+  const base = safeStoredFilename(rendered).replace(/[-_ ]{2,}/g, "-").replace(/^[\s\-_.]+|[\s\-_.]+$/g, "") || "file";
+  const withIndex = total > 1 && !template.includes("{index}") ? `${base}-${index}` : base;
+  return `${withIndex}${ext}`;
+}
+
+function resolveFileCollectPath(relative: string) {
+  const uploadRoot = path.resolve(process.cwd(), "uploads");
+  const absolute = path.resolve(uploadRoot, relative);
+  if (!absolute.startsWith(path.resolve(uploadRoot, "file-collect") + path.sep)) {
+    throw Errors.forbidden("文件路径不合法");
+  }
+  return absolute;
+}
+
+async function unlinkFileCollectPath(relative: string) {
+  await unlink(resolveFileCollectPath(relative)).catch(() => null);
+}
+
+async function refreshFileCollectStats(taskId: number) {
+  const [submissionCount, fileCount] = await Promise.all([
+    prisma.fileCollectSubmission.count({ where: { taskId } }),
+    prisma.fileCollectFile.count({ where: { submission: { taskId } } }),
+  ]);
+  await prisma.fileCollectTask.update({
+    where: { id: taskId },
+    data: { submissionCount, fileCount },
+  }).catch(() => null);
 }
 
 function parseGradePayload(raw: string | null | undefined): Record<string, string> {
@@ -820,6 +1319,12 @@ async function canManageGradeCheckTable(row: { createdById: number | null }, use
   if (!user?.userId) return false;
   if (await hasToolManagerPermission("grade_check", user)) return true;
   return row.createdById === user.userId && await hasToolContentManagePermission("grade_check", user);
+}
+
+async function canManageFileCollectTask(row: { createdById: number | null }, user: Express.Request["user"]) {
+  if (!user?.userId) return false;
+  if (await hasToolManagerPermission("file_collect", user)) return true;
+  return row.createdById === user.userId && await hasToolContentManagePermission("file_collect", user);
 }
 
 function canManageQuestionnaireRow(

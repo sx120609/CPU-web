@@ -1,10 +1,12 @@
 import { request, type RequestOptions } from "./request";
 
-export type ServiceToolCode = "feedback" | "questionnaire" | "grade_check";
+export type ServiceToolCode = "feedback" | "questionnaire" | "grade_check" | "file_collect";
 export type QuestionnaireStatus = "draft" | "open" | "closed";
 export type QuestionnaireVisibility = "public" | "login";
 export type QuestionnaireFieldType = "text" | "textarea" | "single" | "multiple" | "number" | "date" | "rating";
 export type GradeCheckStatus = "draft" | "open" | "closed";
+export type FileCollectStatus = "draft" | "open" | "closed";
+export type FileCollectVisibility = "public" | "login";
 
 export interface ToolMeta {
   code: ServiceToolCode;
@@ -109,6 +111,80 @@ export interface GradeCheckPayload {
   rows: Array<Record<string, string | number | boolean | null>>;
 }
 
+export interface FileCollectField {
+  id: string;
+  label: string;
+  required?: boolean;
+  placeholder?: string;
+  pattern?: string;
+}
+
+export interface FileCollectRules {
+  allowedTypes: string[];
+  maxSizeMb: number;
+  maxCount: number;
+}
+
+export interface FileCollectTask {
+  id: number;
+  slug: string;
+  title: string;
+  description?: string | null;
+  status: FileCollectStatus;
+  visibility: FileCollectVisibility;
+  fields: FileCollectField[];
+  fileRules: FileCollectRules;
+  renameTemplate: string;
+  expectedEntries: string;
+  submissionCount: number;
+  fileCount: number;
+  canManage?: boolean;
+  publishedAt?: string | null;
+  closedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: {
+    id: number;
+    username: string;
+    nickname: string;
+    role: string;
+  } | null;
+}
+
+export interface FileCollectSubmission {
+  id: number;
+  taskId: number;
+  identity: string;
+  data: Record<string, string>;
+  ip?: string | null;
+  createdAt: string;
+  submitter?: {
+    id: number;
+    username: string;
+    nickname: string;
+    role: string;
+  } | null;
+  files: Array<{
+    id: number;
+    originalName: string;
+    storedName: string;
+    mimeType: string;
+    size: number;
+    createdAt: string;
+  }>;
+}
+
+export interface FileCollectPayload {
+  title: string;
+  description?: string;
+  status?: FileCollectStatus;
+  visibility?: FileCollectVisibility;
+  fields: FileCollectField[];
+  fileRules: FileCollectRules;
+  renameTemplate: string;
+  expectedEntries?: string;
+}
+
 export interface ToolManager {
   id: number;
   toolCode: ServiceToolCode;
@@ -176,4 +252,21 @@ export const toolsApi = {
     request.patch<GradeCheckTable>(`/tools/grade-checks/${id}`, payload),
   deleteGradeCheck: (id: number) =>
     request.delete<{ ok: true }>(`/tools/grade-checks/${id}`),
+
+  fileCollections: (params?: { manage?: "1" }) =>
+    request.get<FileCollectTask[]>("/tools/file-collections", params),
+  fileCollection: (slug: string, options?: RequestOptions) =>
+    request.get<FileCollectTask>(`/tools/file-collections/${slug}`, undefined, options),
+  createFileCollection: (payload: FileCollectPayload) =>
+    request.post<FileCollectTask>("/tools/file-collections", payload),
+  updateFileCollection: (id: number, payload: Partial<FileCollectPayload>) =>
+    request.patch<FileCollectTask>(`/tools/file-collections/${id}`, payload),
+  deleteFileCollection: (id: number) =>
+    request.delete<{ ok: true }>(`/tools/file-collections/${id}`),
+  fileCollectionSubmissions: (id: number) =>
+    request.get<{ task: FileCollectTask; list: FileCollectSubmission[] }>(`/tools/file-collections/${id}/submissions`),
+  submitFileCollection: (slug: string, form: FormData, options?: RequestOptions) =>
+    request.post<{ id: number; createdAt: string; files: string[] }>(`/tools/file-collections/${slug}/submissions`, form, options),
+  deleteFileCollectionSubmission: (id: number) =>
+    request.delete<{ ok: true }>(`/tools/file-collection-submissions/${id}`),
 };

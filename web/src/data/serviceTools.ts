@@ -1,4 +1,4 @@
-import { ChatDotRound, DataLine, DocumentChecked, Tools } from "@element-plus/icons-vue";
+import { ChatDotRound, DataLine, DocumentChecked, FolderOpened, Tools } from "@element-plus/icons-vue";
 import type { Component } from "vue";
 
 export type ServiceToolStatus = "ready" | "planned";
@@ -12,7 +12,7 @@ export interface ServiceTool {
   status: ServiceToolStatus;
   category: string;
   routeName: string;
-  componentKey: "feedback" | "questionnaire" | "grade_check";
+  componentKey: "feedback" | "questionnaire" | "grade_check" | "file_collect";
   accent: string;
   iconComponent: Component;
 }
@@ -56,6 +56,19 @@ export const serviceTools: ServiceTool[] = [
     componentKey: "grade_check",
     accent: "#2563eb",
     iconComponent: DataLine,
+  },
+  {
+    slug: "file_collect",
+    name: "文件收集",
+    summary: "创建提交链接，集中收作业、材料和照片",
+    description: "发起者配置字段和文件规则后生成链接，提交者填写信息并上传文件，后台统一查看和下载。",
+    icon: "📁",
+    status: "ready",
+    category: "收集",
+    routeName: "service-tool-detail",
+    componentKey: "file_collect",
+    accent: "#0f766e",
+    iconComponent: FolderOpened,
   },
 ];
 

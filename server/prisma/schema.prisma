@@ -62,6 +62,8 @@ model User {
   createdQuestionnaires Questionnaire[] @relation("QuestionnaireCreatedBy")
   questionnaireResponses QuestionnaireResponse[]
   createdGradeCheckTables GradeCheckTable[] @relation("GradeCheckCreatedBy")
+  createdFileCollectTasks FileCollectTask[] @relation("FileCollectCreatedBy")
+  fileCollectSubmissions FileCollectSubmission[] @relation("FileCollectSubmittedBy")
 }
 
 // ============ 论坛核心 ============
@@ -503,6 +505,67 @@ model GradeCheckRow {
 
   @@unique([tableId, studentId])
   @@index([studentId])
+}
+
+// ============ 小工具：文件收集 ============
+
+model FileCollectTask {
+  id              Int      @id @default(autoincrement())
+  slug            String   @unique
+  title           String
+  description     String?
+  status          String   @default("open") // draft / open / closed
+  visibility      String   @default("public") // public / login
+  fields          String   @default("[]")
+  fileRules       String   @default("{}")
+  renameTemplate  String   @default("{name}-{student_id}")
+  expectedEntries String   @default("")
+  submissionCount Int      @default(0)
+  fileCount       Int      @default(0)
+  createdById     Int?
+  publishedAt     DateTime?
+  closedAt        DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  createdBy   User? @relation("FileCollectCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  submissions FileCollectSubmission[]
+
+  @@index([status])
+  @@index([createdById])
+}
+
+model FileCollectSubmission {
+  id          Int      @id @default(autoincrement())
+  taskId      Int
+  submitterId Int?
+  identity    String   @default("")
+  data        String   @default("{}")
+  ip          String?
+  createdAt   DateTime @default(now())
+
+  task      FileCollectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  submitter User? @relation("FileCollectSubmittedBy", fields: [submitterId], references: [id], onDelete: SetNull)
+  files     FileCollectFile[]
+
+  @@index([taskId, createdAt])
+  @@index([submitterId])
+  @@index([identity])
+}
+
+model FileCollectFile {
+  id           Int      @id @default(autoincrement())
+  submissionId Int
+  originalName String
+  storedName   String
+  mimeType     String
+  size         Int
+  path         String
+  createdAt    DateTime @default(now())
+
+  submission FileCollectSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
 }
 
 // ============ 通知与待办（保留，但语义改为论坛事件） ============

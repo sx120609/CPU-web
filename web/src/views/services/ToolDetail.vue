@@ -26,7 +26,8 @@
 
       <FeedbackPanel v-if="tool.componentKey === 'feedback'" />
       <QuestionnairePanel v-else-if="tool.componentKey === 'questionnaire'" />
-      <GradeCheckPanel v-else />
+      <GradeCheckPanel v-else-if="tool.componentKey === 'grade_check'" />
+      <FileCollectPanel v-else />
     </section>
 
     <section v-else class="missing-card">
@@ -43,7 +44,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft, EditPen, Link, Setting } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { getToken } from "@/api/request";
-import { toolsApi, type GradeCheckTable, type Questionnaire, type QuestionnaireField, type ServiceToolCode, type ToolMeta } from "@/api/tools";
+import { toolsApi, type FileCollectTask, type GradeCheckTable, type Questionnaire, type QuestionnaireField, type ServiceToolCode, type ToolMeta } from "@/api/tools";
 import { findServiceTool } from "@/data/serviceTools";
 
 const route = useRoute();
@@ -258,6 +259,58 @@ const GradeCheckPanel = defineComponent({
           : h("div", { class: "empty-panel" }, canManageGradeCheck.value
             ? "在管理页上传带有“学号”字段的 Excel，开放后复制链接分享给需要核对的同学。"
             : getToken() ? "暂未找到与你学号匹配的开放查询。也可以通过发起者分享的链接进入。" : "登录后会自动显示与你学号匹配的开放查询。"),
+    ]);
+  },
+});
+
+const FileCollectPanel = defineComponent({
+  name: "FileCollectPanel",
+  setup() {
+    const canManageFileCollect = computed(() => manageable.value.includes("file_collect") || toolMetas.value.some((item) => item.code === "file_collect" && item.canManage));
+    const loading = ref(false);
+    const list = ref<FileCollectTask[]>([]);
+
+    onMounted(async () => {
+      if (!canManageFileCollect.value) return;
+      loading.value = true;
+      try {
+        list.value = await toolsApi.fileCollections({ manage: "1" });
+      } catch {
+        list.value = [];
+      } finally {
+        loading.value = false;
+      }
+    });
+
+    return () => h("div", { class: "questionnaire-list grade-check-panel" }, [
+      h("div", { class: "list-head" }, [
+        h("div", [
+          h("h3", "文件收集"),
+          h("p", "创建收集任务后，把提交链接发给同学；文件和填写信息会在管理页集中查看。"),
+        ]),
+        canManageFileCollect.value
+          ? h("button", { class: "plain-action", type: "button", onClick: () => openToolManage("file_collect") }, "进入管理")
+          : null,
+      ]),
+      loading.value
+        ? h("div", { class: "empty-panel" }, "正在加载你的收集任务...")
+        : list.value.length
+          ? h("div", { class: "related-grade-list" }, list.value.slice(0, 5).map((item) => h("button", {
+            key: item.id,
+            type: "button",
+            class: "related-grade-item",
+            onClick: () => router.push(`/services/tools/file-collections/${item.slug}`),
+          }, [
+            h("span", { class: "related-grade-icon" }, [h(Link)]),
+            h("span", { class: "related-grade-main" }, [
+              h("b", item.title),
+              h("small", `${item.submissionCount} 份提交 · ${item.fileCount} 个文件`),
+            ]),
+            h("span", { class: "related-grade-action" }, "打开"),
+          ])))
+          : h("div", { class: "empty-panel" }, canManageFileCollect.value
+            ? "在管理页创建收集任务，开放后复制链接发给提交者。"
+            : "请通过发起者分享的提交链接上传文件。"),
     ]);
   },
 });
