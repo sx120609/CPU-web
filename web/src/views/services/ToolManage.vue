@@ -1272,12 +1272,15 @@ function downloadGradeTemplate() {
     { 字段名: "备注", 是否必填: "选填", 说明: "可写核对说明、补充状态、处理提示等。", 示例: "请核对姓名和成绩" },
   ];
   const dataSheet = XLSX.utils.json_to_sheet(dataRows, { header: ["学号", "姓名", "课程", "平时成绩", "期末成绩", "总评成绩", "备注"] });
-  const helpSheet = XLSX.utils.json_to_sheet(helpRows, { header: ["字段名", "是否必填", "说明", "示例"] });
-  dataSheet["!cols"] = [{ wch: 14 }, { wch: 10 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 24 }];
-  helpSheet["!cols"] = [{ wch: 24 }, { wch: 10 }, { wch: 58 }, { wch: 18 }];
+  XLSX.utils.sheet_add_aoa(dataSheet, [
+    [],
+    ["注意事项（上传前请删除本行及以下内容）"],
+    ["字段名", "是否必填", "说明", "示例"],
+    ...helpRows.map((row) => [row.字段名, row.是否必填, row.说明, row.示例]),
+  ], { origin: `A${dataRows.length + 3}` });
+  dataSheet["!cols"] = [{ wch: 24 }, { wch: 10 }, { wch: 58 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 24 }];
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, dataSheet, "可上传示例");
-  XLSX.utils.book_append_sheet(workbook, helpSheet, "字段说明");
   XLSX.writeFile(workbook, "成绩表核对示例.xlsx");
 }
 
