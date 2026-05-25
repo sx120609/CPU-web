@@ -352,7 +352,7 @@
             </div>
 
             <div class="questionnaire-list-cards">
-              <article v-for="row in fileCollections" :key="row.id" class="questionnaire-row-card">
+              <article v-for="row in fileCollections" :key="row.id" class="questionnaire-row-card file-collection-card">
                 <div class="q-row-main">
                   <div class="q-title-cell">
                     <b>{{ row.title }}</b>
@@ -369,27 +369,29 @@
                     <span v-if="row.createdBy">发起人 {{ row.createdBy.nickname || row.createdBy.username }}</span>
                   </div>
                 </div>
-                <div class="q-row-actions">
-                  <el-button size="small" @click="copyFileCollectLink(row)">
-                    <el-icon><Link /></el-icon>
-                    复制链接
-                  </el-button>
-                  <el-button size="small" @click="openFileSubmissions(row)">
+                <div class="file-collection-actions">
+                  <el-button class="file-primary-action" type="primary" @click="openFileSubmissions(row)">
                     <el-icon><DataAnalysis /></el-icon>
-                    提交
+                    提交记录
                   </el-button>
-                  <el-button size="small" @click="openFileManager(row)">
-                    <el-icon><View /></el-icon>
-                    文件
-                  </el-button>
-                  <el-button size="small" :loading="zipDownloading" @click="downloadFileCollectionZip(row)">
-                    <el-icon><Download /></el-icon>
-                    ZIP
-                  </el-button>
-                  <el-dropdown trigger="click" @command="handleFileCollectCommand($event, row)">
-                    <el-button size="small">
+                  <div class="file-secondary-actions">
+                    <button type="button" class="file-tool-action" @click="copyFileCollectLink(row)">
+                      <el-icon><Link /></el-icon>
+                      <span>链接</span>
+                    </button>
+                    <button type="button" class="file-tool-action" @click="openFileManager(row)">
+                      <el-icon><View /></el-icon>
+                      <span>文件</span>
+                    </button>
+                    <button type="button" class="file-tool-action" :disabled="zipDownloading" @click="downloadFileCollectionZip(row)">
+                      <el-icon><Download /></el-icon>
+                      <span>{{ zipDownloading ? "打包中" : "ZIP" }}</span>
+                    </button>
+                  </div>
+                  <el-dropdown trigger="click" class="file-more-dropdown" @command="handleFileCollectCommand($event, row)">
+                    <button type="button" class="file-menu-action">
                       更多<el-icon><ArrowDown /></el-icon>
-                    </el-button>
+                    </button>
                     <template #dropdown>
                       <el-dropdown-menu>
                         <el-dropdown-item command="open">开放</el-dropdown-item>
@@ -983,9 +985,18 @@
             <small>{{ item.submission.identity || `提交 #${item.submission.id}` }} · {{ fmtDate(item.submission.createdAt) }} · {{ formatBytes(item.size) }}</small>
           </div>
           <div class="file-manager-actions">
-            <button type="button" @click="previewFileCollectFile(item.id, item.storedName)">预览</button>
-            <button type="button" @click="downloadFileCollectFile(item.id, item.storedName)">下载</button>
-            <button type="button" @click="deleteFileCollectFile(item.id)">删除</button>
+            <button type="button" @click="previewFileCollectFile(item.id, item.storedName)">
+              <el-icon><View /></el-icon>
+              预览
+            </button>
+            <button type="button" @click="downloadFileCollectFile(item.id, item.storedName)">
+              <el-icon><Download /></el-icon>
+              下载
+            </button>
+            <button type="button" @click="deleteFileCollectFile(item.id)">
+              <el-icon><Delete /></el-icon>
+              删除
+            </button>
           </div>
         </article>
         <el-empty v-if="!fileManagerFiles.length" description="暂无匹配文件" />
@@ -2827,6 +2838,77 @@ function round(value: number) {
 .q-row-actions {
   justify-content: flex-end;
 }
+.file-collection-card {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  align-items: stretch;
+  border-color: #dbeafe;
+  background:
+    linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+}
+.file-collection-card .q-row-main {
+  justify-content: center;
+}
+.file-collection-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  gap: 8px;
+  align-content: center;
+  padding-left: 14px;
+  border-left: 1px solid #e5edf8;
+}
+.file-primary-action {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-height: 38px;
+  border-radius: 8px;
+  font-weight: 650;
+}
+.file-secondary-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+.file-tool-action,
+.file-menu-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  transition: border-color 0.15s, background 0.15s, color 0.15s, transform 0.15s;
+}
+.file-tool-action:hover,
+.file-menu-action:hover {
+  border-color: #93c5fd;
+  background: #dbeafe;
+  transform: translateY(-1px);
+}
+.file-tool-action:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+  background: #f8fafc;
+  border-color: #e5e7eb;
+  transform: none;
+}
+.file-menu-action {
+  min-width: 78px;
+  color: #475569;
+  border-color: #e5e7eb;
+  background: #fff;
+}
+.file-more-dropdown {
+  min-width: 0;
+}
 .add-manager {
   display: flex;
   gap: 8px;
@@ -3539,17 +3621,35 @@ function round(value: number) {
   gap: 8px;
 }
 .file-manager-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  padding: 6px 10px;
+  border-radius: 8px;
+  min-height: 34px;
+  padding: 6px 12px;
   background: #fff;
   color: #334155;
   cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.file-manager-actions button:hover {
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+  background: #eff6ff;
 }
 .file-manager-actions button:last-child {
   color: #dc2626;
   border-color: #fecaca;
   background: #fef2f2;
+}
+.file-manager-actions button:last-child:hover {
+  border-color: #fca5a5;
+  background: #fee2e2;
 }
 @media (max-width: 1100px) {
   .builder-layout {
@@ -3671,6 +3771,31 @@ function round(value: number) {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .file-manager-actions button {
+    width: 100%;
+  }
+  .file-collection-card {
+    background: #fff;
+  }
+  .file-collection-actions {
+    padding-left: 0;
+    padding-top: 10px;
+    border-left: 0;
+    border-top: 1px solid #e5edf8;
+  }
+  .file-primary-action {
+    min-height: 42px;
+  }
+  .file-secondary-actions {
+    grid-column: 1 / -1;
+  }
+  .file-tool-action,
+  .file-menu-action {
+    min-height: 40px;
+  }
+  .file-more-dropdown {
+    grid-column: 1 / -1;
+  }
+  .file-menu-action {
     width: 100%;
   }
   .questionnaire-row-card {
