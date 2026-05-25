@@ -367,10 +367,13 @@ function cleanRenderedName(value: string) {
   color: #64748b;
 }
 .file-list button {
-  border: 0;
+  min-height: 34px;
+  border: 1px solid transparent;
+  border-radius: 7px;
   background: transparent;
   color: #dc2626;
   cursor: pointer;
+  font: inherit;
 }
 .file-list button:disabled {
   color: #cbd5e1;
@@ -378,7 +381,29 @@ function cleanRenderedName(value: string) {
 }
 @media (max-width: 700px) {
   .file-submit-page { padding: 14px; }
-  .submit-head { flex-direction: column; }
-  .file-list div { grid-template-columns: 1fr; }
+  .back-link { min-height: 40px; }
+  .submit-head {
+    flex-direction: column;
+    padding: 16px;
+  }
+  .submit-card { padding: 14px; }
+  .file-rule-box input { width: 100%; }
+  .file-list div {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .file-list div > span,
+  .file-list div > small {
+    grid-column: 1 / -1;
+  }
+  .file-list button {
+    min-height: 40px;
+    border-color: #fee2e2;
+    background: #fff7f7;
+  }
+  .submit-card :deep(.el-button) {
+    width: 100%;
+    min-height: 42px;
+  }
 }
 </style>

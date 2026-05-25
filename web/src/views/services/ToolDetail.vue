@@ -512,6 +512,7 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
 .field select,
 .field textarea {
   width: 100%;
+  min-height: 42px;
   border: 1px solid #dcdfe6;
   border-radius: 8px;
   padding: 10px 12px;
@@ -533,6 +534,7 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-height: 40px;
   padding: 8px 10px;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -668,19 +670,37 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
   .tool-shell { padding: 16px; }
   .tool-content { grid-template-columns: 1fr; }
   .side-note { align-self: stretch; }
+  .back-btn { height: 40px; }
 }
 @media (max-width: 520px) {
   .head-main { flex-direction: column; }
   .head-title-row h2 { font-size: 20px; }
+  .head-copy,
+  .head-title-row {
+    width: 100%;
+  }
   .manage-btn,
   .submit-btn,
   .plain-action { width: 100%; }
+  .choice-list {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .choice-item {
+    width: 100%;
+  }
+  .rating-btn {
+    width: 40px;
+    height: 40px;
+  }
   .list-head { flex-direction: column; align-items: stretch; }
   .related-grade-item {
     grid-template-columns: 34px minmax(0, 1fr);
+    min-height: 80px;
   }
   .related-grade-action {
     grid-column: 2;
+    justify-self: start;
   }
 }
 </style>

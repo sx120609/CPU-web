@@ -191,6 +191,9 @@ function openManage() {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+.panel-actions :deep(.el-button) {
+  min-height: 40px;
+}
 
 .panel-head h3 {
   margin: 0;
@@ -329,6 +332,12 @@ function openManage() {
 
   .panel-actions {
     justify-content: flex-start;
+    width: 100%;
+  }
+
+  .panel-actions :deep(.el-button) {
+    flex: 1;
+    min-width: 128px;
   }
 
   .tools-grid {
@@ -336,7 +345,43 @@ function openManage() {
   }
 
   .tool-card {
-    min-height: 118px;
+    min-height: 112px;
+    padding: 14px 12px;
+  }
+
+  .tool-title-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .tool-title {
+    white-space: normal;
+  }
+
+  .tool-summary {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+  }
+}
+
+@media (max-width: 430px) {
+  .tools-hero {
+    gap: 12px;
+  }
+
+  .hero-copy h2 {
+    font-size: 18px;
+  }
+
+  .tool-icon {
+    width: 42px;
+    height: 42px;
+  }
+
+  .tool-arrow {
+    display: none;
   }
 }
 </style>

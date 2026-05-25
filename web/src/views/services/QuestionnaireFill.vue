@@ -293,8 +293,8 @@ async function submit() {
   gap: 12px;
 }
 .rating-field button {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   background: #fff;
@@ -319,6 +319,9 @@ async function submit() {
     padding: 16px;
     border-radius: 10px;
   }
+  .back-btn {
+    height: 40px;
+  }
   .fill-head {
     flex-direction: column;
   }
@@ -326,6 +329,21 @@ async function submit() {
     font-size: 20px;
   }
   .field-card { padding: 14px; }
+  .field-title {
+    gap: 8px;
+  }
+  .vertical-options {
+    align-items: stretch;
+  }
+  .vertical-options :deep(.el-radio),
+  .vertical-options :deep(.el-checkbox) {
+    min-height: 40px;
+    margin-right: 0;
+    white-space: normal;
+  }
+  .rating-field {
+    gap: 8px;
+  }
   .submit-row .el-button { width: 100%; }
 }
 </style>

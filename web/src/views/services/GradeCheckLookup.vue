@@ -439,6 +439,10 @@ async function submitFeedback() {
   .feedback-form {
     grid-template-columns: 1fr;
   }
+  .record-row {
+    gap: 6px;
+    padding: 14px;
+  }
   .record-row b {
     text-align: left;
   }
@@ -448,6 +452,17 @@ async function submitFeedback() {
   }
   .feedback-actions .el-button {
     width: 100%;
+    min-height: 42px;
+  }
+  .option-list {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .option-list :deep(.el-checkbox) {
+    min-height: 40px;
+    margin-right: 0;
+    white-space: normal;
   }
 }
 </style>

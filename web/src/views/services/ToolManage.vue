@@ -237,13 +237,39 @@
                 <div class="rename-head">
                   <div>
                     <b>文件命名</b>
-                    <span>点击下面的按钮自动填入变量，不需要手写花括号。</span>
+                    <span>选择字段和取值方式后插入变量，不需要手写花括号。</span>
                   </div>
                   <el-input v-model="fileCollectForm.renameTemplate" placeholder="例如 {name}-{student_id|last:2}" />
                 </div>
+                <div class="rename-insert-grid">
+                  <label class="config-field">
+                    <span>字段</span>
+                    <el-select v-model="fileRenameInsert.fieldId" placeholder="选择字段">
+                      <el-option
+                        v-for="field in fileCollectVariableFields"
+                        :key="`rename-${field.id}`"
+                        :label="`${field.label}（${field.id}）`"
+                        :value="field.id"
+                      />
+                    </el-select>
+                  </label>
+                  <label class="config-field">
+                    <span>取值</span>
+                    <el-radio-group v-model="fileRenameInsert.mode">
+                      <el-radio-button label="whole">完整</el-radio-button>
+                      <el-radio-button label="last">后几位</el-radio-button>
+                      <el-radio-button label="first">前几位</el-radio-button>
+                    </el-radio-group>
+                  </label>
+                  <label class="config-field">
+                    <span>位数</span>
+                    <el-input-number v-model="fileRenameInsert.count" :min="1" :max="99" controls-position="right" :disabled="fileRenameInsert.mode === 'whole'" />
+                  </label>
+                  <el-button type="primary" plain @click="insertRenameVariable">插入变量</el-button>
+                </div>
                 <div class="rename-token-list">
                   <button
-                    v-for="item in fileRenameTokens"
+                    v-for="item in fileRenameQuickTokens"
                     :key="`${item.label}-${item.token}`"
                     type="button"
                     :class="['rename-token', `rename-token-${item.group}`]"
@@ -253,7 +279,7 @@
                   </button>
                 </div>
                 <small class="rename-example">
-                  例：点击“姓名”“-”“考试号后两位”，生成 {name}-{student_id|last:2}，保存为“张三-08.pdf”。
+                  例：字段选“考试号”，取值选“后几位”，位数填 2，会插入 {student_id|last:2}，保存为“张三-08.pdf”。
                 </small>
               </div>
 
@@ -265,9 +291,35 @@
                   </div>
                   <el-input v-model="fileCollectForm.folderTemplate" placeholder="例如 {name}-{student_id}" />
                 </div>
+                <div class="rename-insert-grid">
+                  <label class="config-field">
+                    <span>字段</span>
+                    <el-select v-model="fileFolderInsert.fieldId" placeholder="选择字段">
+                      <el-option
+                        v-for="field in fileCollectVariableFields"
+                        :key="`folder-${field.id}`"
+                        :label="`${field.label}（${field.id}）`"
+                        :value="field.id"
+                      />
+                    </el-select>
+                  </label>
+                  <label class="config-field">
+                    <span>取值</span>
+                    <el-radio-group v-model="fileFolderInsert.mode">
+                      <el-radio-button label="whole">完整</el-radio-button>
+                      <el-radio-button label="last">后几位</el-radio-button>
+                      <el-radio-button label="first">前几位</el-radio-button>
+                    </el-radio-group>
+                  </label>
+                  <label class="config-field">
+                    <span>位数</span>
+                    <el-input-number v-model="fileFolderInsert.count" :min="1" :max="99" controls-position="right" :disabled="fileFolderInsert.mode === 'whole'" />
+                  </label>
+                  <el-button type="primary" plain @click="insertFolderVariable">插入变量</el-button>
+                </div>
                 <div class="rename-token-list">
                   <button
-                    v-for="item in fileFolderTokens"
+                    v-for="item in fileFolderQuickTokens"
                     :key="`folder-${item.label}-${item.token}`"
                     type="button"
                     :class="['rename-token', `rename-token-${item.group}`]"
@@ -290,7 +342,7 @@
               <div class="grade-preview-head">
                 <div>
                   <b>命名变量</b>
-                  <span>可用 {name}、{student_id}、{original}、{index}，也可以使用自定义字段 ID。</span>
+                  <span>字段变量支持完整值、前几位、后几位；文件名还可用 {original} 和 {index}。</span>
                 </div>
                 <el-button type="primary" :loading="fileCollectSaving" @click="createFileCollection">
                   <el-icon><Plus /></el-icon>
@@ -788,7 +840,7 @@
       </div>
     </el-drawer>
 
-    <el-dialog v-model="responsesOpen" width="min(920px, 96vw)">
+    <el-dialog v-model="responsesOpen" width="min(920px, 96vw)" class="responsive-tool-dialog">
       <template #header>
         <div class="responses-title">
           <div>
@@ -867,7 +919,7 @@
       </el-tabs>
     </el-dialog>
 
-    <el-dialog v-model="fileSubmissionsOpen" width="min(920px, 96vw)">
+    <el-dialog v-model="fileSubmissionsOpen" width="min(920px, 96vw)" class="responsive-tool-dialog">
       <template #header>
         <div class="responses-title">
           <div>
@@ -907,7 +959,7 @@
       </div>
     </el-dialog>
 
-    <el-dialog v-model="fileManagerOpen" width="min(980px, 96vw)">
+    <el-dialog v-model="fileManagerOpen" width="min(980px, 96vw)" class="responsive-tool-dialog file-manager-dialog">
       <template #header>
         <div class="responses-title">
           <div>
@@ -1033,10 +1085,18 @@ type FileCollectTemplateDraft = {
   customId?: number;
 };
 
-type RenameToken = {
+type RenameSliceMode = "whole" | "last" | "first";
+
+type RenameInsertState = {
+  fieldId: string;
+  mode: RenameSliceMode;
+  count: number;
+};
+
+type RenameQuickToken = {
   label: string;
   token: string;
-  group: "field" | "slice" | "system";
+  group: "system";
 };
 
 const builtInFileCollectTemplates: FileCollectTemplateDraft[] = [
@@ -1125,6 +1185,16 @@ const fileCollectForm = reactive({
     { localKey: "fc-student", id: "student_id", label: "学号", required: true, placeholder: "请输入学号", pattern: "" },
   ] as Array<FileCollectField & { localKey: string }>,
 });
+const fileRenameInsert = reactive<RenameInsertState>({
+  fieldId: "name",
+  mode: "whole",
+  count: 2,
+});
+const fileFolderInsert = reactive<RenameInsertState>({
+  fieldId: "name",
+  mode: "whole",
+  count: 2,
+});
 const gradeForm = reactive({
   title: "",
   description: "",
@@ -1188,33 +1258,15 @@ const fileTemplateOptions = computed<FileCollectTemplateDraft[]>(() => [
   })),
 ]);
 const selectedFileTemplate = computed(() => fileTemplateOptions.value.find((item) => item.key === fileCollectTemplateKey.value));
-const fileTemplateTokens = computed<RenameToken[]>(() => {
-  const fields = normalizeFileCollectFields()
-    .filter((field) => field.id && field.label)
-    .slice(0, 8);
-  return [
-    ...fields.map((field) => ({
-      label: field.label,
-      token: `{${field.id}}`,
-      group: "field" as const,
-    })),
-    ...fields.map((field) => ({
-      label: `${field.label}后两位`,
-      token: `{${field.id}|last:2}`,
-      group: "slice" as const,
-    })),
-    ...fields.map((field) => ({
-      label: `${field.label}前四位`,
-      token: `{${field.id}|first:4}`,
-      group: "slice" as const,
-    })),
-    { label: "连接符 -", token: "-", group: "system" },
-    { label: "原文件名", token: "{original}", group: "system" },
-    { label: "多文件序号", token: "{index}", group: "system" },
-  ];
-});
-const fileRenameTokens = computed(() => fileTemplateTokens.value);
-const fileFolderTokens = computed(() => fileTemplateTokens.value.filter((item) => item.token !== "{original}" && item.token !== "{index}"));
+const fileCollectVariableFields = computed(() => normalizeFileCollectFields().filter((field) => field.id && field.label).slice(0, 20));
+const fileRenameQuickTokens: RenameQuickToken[] = [
+  { label: "连接符 -", token: "-", group: "system" },
+  { label: "原文件名", token: "{original}", group: "system" },
+  { label: "多文件序号", token: "{index}", group: "system" },
+];
+const fileFolderQuickTokens: RenameQuickToken[] = [
+  { label: "连接符 -", token: "-", group: "system" },
+];
 const fileManagerFiles = computed(() => {
   const keyword = fileManagerKeyword.value.trim().toLowerCase();
   const task = fileManagerTask.value;
@@ -1748,6 +1800,7 @@ function applyFileTemplate(template: FileCollectTemplateDraft, resetTitle = fals
     placeholder: field.placeholder || "",
     pattern: field.pattern || "",
   }));
+  syncRenameInsertFields();
 }
 
 function applySelectedFileTemplate() {
@@ -1763,6 +1816,48 @@ function insertRenameToken(token: string) {
 
 function insertFolderToken(token: string) {
   fileCollectForm.folderTemplate = `${fileCollectForm.folderTemplate || ""}${token}`;
+}
+
+function insertRenameVariable() {
+  const token = buildFieldVariableToken(fileRenameInsert);
+  if (token) insertRenameToken(token);
+}
+
+function insertFolderVariable() {
+  const token = buildFieldVariableToken(fileFolderInsert);
+  if (token) insertFolderToken(token);
+}
+
+function buildFieldVariableToken(state: RenameInsertState) {
+  const fields = fileCollectVariableFields.value;
+  const fallback = fields[0]?.id || "";
+  const fieldId = fields.some((field) => field.id === state.fieldId) ? state.fieldId : fallback;
+  if (!fieldId) {
+    ElMessage.warning("请先添加可用于命名的填写字段");
+    return "";
+  }
+  state.fieldId = fieldId;
+  if (state.mode === "whole") return `{${fieldId}}`;
+  const count = clampSliceCount(state.count);
+  state.count = count;
+  return `{${fieldId}|${state.mode}:${count}}`;
+}
+
+function syncRenameInsertFields() {
+  const fields = fileCollectVariableFields.value;
+  const fallback = fields[0]?.id || "";
+  for (const state of [fileRenameInsert, fileFolderInsert]) {
+    if (!fallback) {
+      state.fieldId = "";
+    } else if (!fields.some((field) => field.id === state.fieldId)) {
+      state.fieldId = fallback;
+    }
+  }
+}
+
+function clampSliceCount(value: number) {
+  const count = Math.round(Number(value) || 1);
+  return Math.min(99, Math.max(1, count));
 }
 
 async function saveCurrentFileTemplate() {
@@ -1815,18 +1910,22 @@ async function deleteSelectedFileTemplate() {
 }
 
 function addFileCollectField() {
+  const id = `field_${fileCollectForm.fields.length + 1}`;
   fileCollectForm.fields.push({
     localKey: `fc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    id: `field_${fileCollectForm.fields.length + 1}`,
+    id,
     label: "新字段",
     required: false,
     placeholder: "",
     pattern: "",
   });
+  fileRenameInsert.fieldId = id;
+  fileFolderInsert.fieldId = id;
 }
 
 function removeFileCollectField(index: number) {
   fileCollectForm.fields.splice(index, 1);
+  syncRenameInsertFields();
 }
 
 function normalizeFileCollectFields() {
@@ -3335,6 +3434,34 @@ function round(value: number) {
   flex-wrap: wrap;
   gap: 8px;
 }
+.rename-insert-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 132px auto;
+  gap: 10px;
+  align-items: end;
+  padding: 10px;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.rename-insert-grid :deep(.el-select),
+.rename-insert-grid :deep(.el-input-number) {
+  width: 100%;
+}
+.rename-insert-grid :deep(.el-radio-group) {
+  display: flex;
+  width: 100%;
+}
+.rename-insert-grid :deep(.el-radio-button) {
+  flex: 1;
+}
+.rename-insert-grid :deep(.el-radio-button__inner) {
+  width: 100%;
+  padding: 0 8px;
+}
+.rename-insert-grid > .el-button {
+  min-height: 32px;
+}
 .rename-token {
   height: 30px;
   padding: 0 10px;
@@ -3345,11 +3472,6 @@ function round(value: number) {
   cursor: pointer;
   font-size: 12px;
   font-weight: 650;
-}
-.rename-token-slice {
-  border-color: #ccfbf1;
-  color: #0f766e;
-  background: #f0fdfa;
 }
 .rename-token-system {
   border-color: #e5e7eb;
@@ -3476,6 +3598,18 @@ function round(value: number) {
   .builder-side { display: flex; }
 }
 @media (max-width: 700px) {
+  :global(.responsive-tool-dialog.el-dialog) {
+    width: 96vw !important;
+    margin-top: 10px !important;
+  }
+  :global(.responsive-tool-dialog .el-dialog__header) {
+    padding: 14px 14px 10px;
+  }
+  :global(.responsive-tool-dialog .el-dialog__body) {
+    max-height: calc(100vh - 112px);
+    overflow: auto;
+    padding: 12px 14px 16px;
+  }
   .manage-head {
     flex-direction: column;
     padding: 16px;
@@ -3494,19 +3628,68 @@ function round(value: number) {
   .grade-form-grid { grid-template-columns: 1fr; }
   .grade-preview-head { align-items: stretch; flex-direction: column; }
   .grade-preview-head .el-button { width: 100%; }
+  .responses-title {
+    align-items: stretch;
+    flex-direction: column;
+    padding-right: 26px;
+  }
+  .responses-title .el-button {
+    width: 100%;
+  }
+  .response-head,
+  .stat-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
   .file-template-bar { grid-template-columns: 1fr; }
   .file-rule-grid,
-  .rename-head { grid-template-columns: 1fr; }
+  .rename-head,
+  .rename-insert-grid { grid-template-columns: 1fr; }
   .file-field-row { flex-direction: column; align-items: stretch; }
+  .rename-insert-grid {
+    padding: 10px;
+  }
+  .rename-insert-grid > .el-button,
+  .rename-token,
+  .file-manager-actions button,
+  .file-download-list button {
+    min-height: 40px;
+  }
+  .rename-token {
+    flex: 1 1 112px;
+  }
+  .file-download-list {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .file-download-list button {
+    justify-content: center;
+  }
   .file-manager-card { grid-template-columns: 1fr; }
+  .file-manager-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .file-manager-actions button {
+    width: 100%;
+  }
   .questionnaire-row-card {
     display: flex;
     flex-direction: column;
     align-items: stretch;
     gap: 10px;
   }
-  .q-row-actions { justify-content: flex-start; }
-  .q-row-actions .el-button { flex: 1; }
+  .q-row-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: stretch;
+  }
+  .q-row-actions .el-button,
+  .q-row-actions :deep(.el-dropdown),
+  .q-row-actions :deep(.el-dropdown .el-button) {
+    width: 100%;
+    margin-left: 0;
+  }
   .add-manager { flex-direction: column; }
   .answer-row,
   .choice-stat-row { grid-template-columns: 1fr; gap: 5px; }
