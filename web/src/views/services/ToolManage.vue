@@ -199,19 +199,69 @@
                   </el-button>
                 </div>
                 <div v-for="(field, index) in fileCollectForm.fields" :key="field.localKey" class="file-field-row">
-                  <el-input v-model="field.label" placeholder="字段名称" />
-                  <el-input v-model="field.id" placeholder="字段 ID，如 student_id" />
-                  <el-input v-model="field.placeholder" placeholder="占位提示" />
+                  <label class="compact-field">
+                    <span>显示名称</span>
+                    <el-input v-model="field.label" placeholder="给提交者看的名称，如 姓名" />
+                  </label>
+                  <label class="compact-field">
+                    <span>变量名</span>
+                    <el-input v-model="field.id" placeholder="用于命名，如 student_id 或 考试号" />
+                  </label>
+                  <label class="compact-field">
+                    <span>填写提示</span>
+                    <el-input v-model="field.placeholder" placeholder="输入框提示，如 请输入学号" />
+                  </label>
                   <el-checkbox v-model="field.required">必填</el-checkbox>
                   <el-button text type="danger" :disabled="fileCollectForm.fields.length <= 1" @click="removeFileCollectField(index)">删除</el-button>
                 </div>
               </div>
-              <div class="grade-form-grid">
-                <el-input v-model="fileCollectForm.allowedTypes" placeholder="允许类型，例如 pdf,docx,jpg,png,zip" />
-                <el-input-number v-model="fileCollectForm.maxSizeMb" :min="1" :max="50" controls-position="right" />
-                <el-input-number v-model="fileCollectForm.maxCount" :min="1" :max="20" controls-position="right" />
-                <el-input v-model="fileCollectForm.renameTemplate" class="grade-desc" placeholder="命名规则，例如 {name}-{student_id}" />
-                <el-input v-model="fileCollectForm.expectedEntries" class="grade-desc" type="textarea" :rows="3" placeholder="应提交名单，选填，一行一个学号或姓名" maxlength="20000" />
+              <div class="file-rule-grid">
+                <label class="config-field">
+                  <span>允许文件类型</span>
+                  <el-input v-model="fileCollectForm.allowedTypes" placeholder="例如 pdf,docx,jpg,png,zip" />
+                  <small>多个类型用英文逗号隔开；留空表示不限制扩展名。</small>
+                </label>
+                <label class="config-field">
+                  <span>单个文件大小</span>
+                  <el-input-number v-model="fileCollectForm.maxSizeMb" :min="1" :max="50" controls-position="right" />
+                  <small>单位 MB，最大 50。</small>
+                </label>
+                <label class="config-field">
+                  <span>每人最多文件数</span>
+                  <el-input-number v-model="fileCollectForm.maxCount" :min="1" :max="20" controls-position="right" />
+                  <small>多文件会自动追加序号。</small>
+                </label>
+              </div>
+
+              <div class="rename-builder">
+                <div class="rename-head">
+                  <div>
+                    <b>文件命名</b>
+                    <span>点击下面的按钮自动填入变量，不需要手写花括号。</span>
+                  </div>
+                  <el-input v-model="fileCollectForm.renameTemplate" placeholder="例如 {name}-{student_id|last:2}" />
+                </div>
+                <div class="rename-token-list">
+                  <button
+                    v-for="item in fileRenameTokens"
+                    :key="`${item.label}-${item.token}`"
+                    type="button"
+                    :class="['rename-token', `rename-token-${item.group}`]"
+                    @click="insertRenameToken(item.token)"
+                  >
+                    {{ item.label }}
+                  </button>
+                </div>
+                <small class="rename-example">
+                  例：点击“姓名”“-”“考试号后两位”，生成 {name}-{student_id|last:2}，保存为“张三-08.pdf”。
+                </small>
+              </div>
+
+              <div class="expected-list-box">
+                <label class="config-field">
+                  <span>应提交名单</span>
+                  <el-input v-model="fileCollectForm.expectedEntries" type="textarea" :rows="3" placeholder="选填，一行一个学号、考试号或姓名，用于后续核对缺交" maxlength="20000" />
+                </label>
               </div>
               <div class="grade-preview-head">
                 <div>
@@ -916,6 +966,12 @@ type FileCollectTemplateDraft = {
   customId?: number;
 };
 
+type RenameToken = {
+  label: string;
+  token: string;
+  group: "field" | "slice" | "system";
+};
+
 const builtInFileCollectTemplates: FileCollectTemplateDraft[] = [
   {
     key: "builtin:student",
@@ -1056,6 +1112,31 @@ const fileTemplateOptions = computed<FileCollectTemplateDraft[]>(() => [
   })),
 ]);
 const selectedFileTemplate = computed(() => fileTemplateOptions.value.find((item) => item.key === fileCollectTemplateKey.value));
+const fileRenameTokens = computed<RenameToken[]>(() => {
+  const fields = normalizeFileCollectFields()
+    .filter((field) => field.id && field.label)
+    .slice(0, 8);
+  return [
+    ...fields.map((field) => ({
+      label: field.label,
+      token: `{${field.id}}`,
+      group: "field" as const,
+    })),
+    ...fields.map((field) => ({
+      label: `${field.label}后两位`,
+      token: `{${field.id}|last:2}`,
+      group: "slice" as const,
+    })),
+    ...fields.map((field) => ({
+      label: `${field.label}前四位`,
+      token: `{${field.id}|first:4}`,
+      group: "slice" as const,
+    })),
+    { label: "连接符 -", token: "-", group: "system" },
+    { label: "原文件名", token: "{original}", group: "system" },
+    { label: "多文件序号", token: "{index}", group: "system" },
+  ];
+});
 const editorTitle = computed(() => editorMode.value === "create" ? "新建问卷" : "编辑问卷");
 const requiredCount = computed(() => form.fields.filter((field) => field.required).length);
 const toolRequireLogin = computed({
@@ -1584,6 +1665,10 @@ function applySelectedFileTemplate() {
   ElMessage.success("已套用模板");
 }
 
+function insertRenameToken(token: string) {
+  fileCollectForm.renameTemplate = `${fileCollectForm.renameTemplate || ""}${token}`;
+}
+
 async function saveCurrentFileTemplate() {
   const fields = normalizeFileCollectFields();
   if (!fields.length || fields.some((field) => !field.id || !field.label)) {
@@ -1669,6 +1754,11 @@ function validateFileCollectForm() {
   }
   if (new Set(fields.map((field) => field.id)).size !== fields.length) {
     ElMessage.warning("字段 ID 不能重复");
+    return false;
+  }
+  const invalid = fields.find((field) => !/^[a-zA-Z0-9_\u4e00-\u9fa5]+$/.test(field.id));
+  if (invalid) {
+    ElMessage.warning(`变量名“${invalid.id}”只能包含中文、英文、数字和下划线`);
     return false;
   }
   return true;
@@ -2856,6 +2946,87 @@ function round(value: number) {
   border-radius: 8px;
   background: #fff;
 }
+.compact-field,
+.config-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.compact-field { flex: 1; }
+.compact-field span,
+.config-field span {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 650;
+}
+.config-field small,
+.rename-example {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.file-rule-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px 180px;
+  gap: 12px;
+  align-items: start;
+  margin-top: 14px;
+}
+.file-rule-grid :deep(.el-input-number) { width: 100%; }
+.rename-builder,
+.expected-list-box {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  margin-top: 12px;
+  background: #fff;
+}
+.rename-head {
+  display: grid;
+  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+.rename-head > div {
+  display: grid;
+  gap: 4px;
+}
+.rename-head b {
+  color: #111827;
+}
+.rename-head span {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.rename-token-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rename-token {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 6px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+}
+.rename-token-slice {
+  border-color: #ccfbf1;
+  color: #0f766e;
+  background: #f0fdfa;
+}
+.rename-token-system {
+  border-color: #e5e7eb;
+  color: #475569;
+  background: #f8fafc;
+}
 .file-download-list {
   display: flex;
   flex-wrap: wrap;
@@ -2946,6 +3117,8 @@ function round(value: number) {
   .grade-preview-head { align-items: stretch; flex-direction: column; }
   .grade-preview-head .el-button { width: 100%; }
   .file-template-bar { grid-template-columns: 1fr; }
+  .file-rule-grid,
+  .rename-head { grid-template-columns: 1fr; }
   .file-field-row { flex-direction: column; align-items: stretch; }
   .questionnaire-row-card {
     display: flex;

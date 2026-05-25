@@ -102,7 +102,7 @@ const patchGradeCheckSchema = z.object({
 });
 
 const fileCollectFieldSchema = z.object({
-  id: z.string().trim().min(1).max(40).regex(/^[a-zA-Z0-9_]+$/, "字段 ID 仅支持英文、数字和下划线"),
+  id: z.string().trim().min(1).max(40).regex(/^[a-zA-Z0-9_\u4e00-\u9fa5]+$/, "字段 ID 仅支持中文、英文、数字和下划线"),
   label: z.string().trim().min(1).max(80),
   required: z.boolean().optional(),
   placeholder: z.string().trim().max(120).optional(),
@@ -1212,7 +1212,7 @@ function renderFileCollectName(template: string, data: Record<string, string>, o
     original: safeStoredFilename(stem),
     index: total > 1 ? String(index) : "",
   };
-  const rendered = template.replace(/\{([a-zA-Z0-9_]+)(?:\|(last|first):(\d{1,2}))?\}/g, (_match, key, op, rawCount) => {
+  const rendered = template.replace(/\{([a-zA-Z0-9_\u4e00-\u9fa5]+)(?:\|(last|first):(\d{1,2}))?\}/g, (_match, key, op, rawCount) => {
     const value = values[key] || "";
     const count = Number(rawCount || 0);
     if (op === "last") return count > 0 ? value.slice(-count) : "";
