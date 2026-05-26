@@ -629,6 +629,8 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
   cursor: pointer;
   font: inherit;
   text-align: left;
+  min-width: 0;
+  overflow: hidden;
   transition: border-color 0.16s, box-shadow 0.16s, transform 0.16s;
 }
 .related-grade-item:hover {
@@ -653,13 +655,12 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
 }
 .related-grade-main b {
   color: #111827;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .related-grade-main small {
   color: #6b7280;
   font-size: 12px;
+  overflow-wrap: anywhere;
 }
 .related-grade-action {
   color: #2563eb;

@@ -213,6 +213,8 @@ function backToTop() {
   padding: 12px 4px;
   border-bottom: 1px dashed #eef2f7;
   cursor: pointer;
+  min-width: 0;
+  overflow: hidden;
 }
 .rank-row:last-child { border-bottom: none; }
 .rank-no {
@@ -222,7 +224,7 @@ function backToTop() {
   color: #94a3b8;
 }
 .rank-no.top3 { color: #dc2626; }
-.rank-title { font-size: 15px; font-weight: 600; color: #111827; line-height: 1.5; }
+.rank-title { font-size: 15px; font-weight: 600; color: #111827; line-height: 1.5; overflow-wrap: anywhere; min-width: 0; }
 .rank-meta {
   margin-top: 4px;
   display: flex;
@@ -230,6 +232,7 @@ function backToTop() {
   gap: 10px;
   font-size: 12px;
   color: #6b7280;
+  min-width: 0;
 }
 .rank-score {
   min-width: 50px;

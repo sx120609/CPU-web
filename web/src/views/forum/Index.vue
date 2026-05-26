@@ -454,7 +454,7 @@ async function confirmEnable() {
 }
 
 .body { flex: 1; min-width: 0; }
-.name { font-size: 15px; font-weight: 600; color: #1f2937; }
+.name { font-size: 15px; font-weight: 600; color: #1f2937; overflow-wrap: anywhere; }
 
 .desc {
   font-size: 12px;
@@ -464,12 +464,14 @@ async function confirmEnable() {
   display: -webkit-box;
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
 }
 
 .meta {
   font-size: 11px;
   color: #9ca3af;
   margin-top: 4px;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 640px) {

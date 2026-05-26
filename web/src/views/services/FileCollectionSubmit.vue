@@ -350,18 +350,18 @@ function cleanRenderedName(value: string) {
   padding: 9px 10px;
   border: 1px solid #eef0f4;
   border-radius: 8px;
+  min-width: 0;
+  overflow: hidden;
 }
 .file-list span {
   display: grid;
   gap: 3px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-width: 0;
 }
 .file-list span b,
 .file-list span small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .file-list small {
   color: #64748b;
@@ -374,6 +374,7 @@ function cleanRenderedName(value: string) {
   color: #dc2626;
   cursor: pointer;
   font: inherit;
+  min-width: 0;
 }
 .file-list button:disabled {
   color: #cbd5e1;

@@ -72,6 +72,8 @@ const aiTags = computed(() => Array.isArray(props.topic.tags) ? props.topic.tags
   padding: 12px 14px;
   cursor: pointer;
   border-radius: 8px;
+  min-width: 0;
+  overflow: hidden;
   transition: background 0.15s;
 }
 .topic-row:hover { background: #f4f6f8; }
@@ -80,20 +82,22 @@ const aiTags = computed(() => Array.isArray(props.topic.tags) ? props.topic.tags
 
 .main { flex: 1; min-width: 0; }
 
-.line1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.line1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .tag { flex-shrink: 0; }
 .ai-tag { --el-tag-border-color: #fdba74; --el-tag-hover-color: #9a3412; }
-.title { font-size: 15px; color: #1f2937; font-weight: 500; }
+.title { font-size: 15px; color: #1f2937; font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
 
 .line2 {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   font-size: 12px;
   color: #6b7280;
   margin-top: 4px;
+  min-width: 0;
 }
-.line2 span { display: inline-flex; align-items: center; gap: 3px; }
+.line2 span { display: inline-flex; align-items: center; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
 .line2 .author { color: var(--cpu-primary); }
 .line2 .anon { color: #7c3aed; font-weight: 600; }
 .line2 .bot { color: #ef4444; }

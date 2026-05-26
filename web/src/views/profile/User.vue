@@ -118,12 +118,14 @@ function goBack() {
   border-bottom: 1px dashed #f1f5f9;
   cursor: pointer;
   border-radius: 6px;
+  min-width: 0;
+  overflow: hidden;
 }
 .topic-line:last-child { border-bottom: none; }
 .topic-line:hover { background: #f4f6f8; }
 .tag { color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
 .anon-tag { color: #7c3aed; font-size: 12px; font-weight: 600; }
-.title { font-size: 14px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.title { font-size: 14px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .meta { font-size: 12px; color: #9ca3af; flex-shrink: 0; }
 .cpu-section-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
 

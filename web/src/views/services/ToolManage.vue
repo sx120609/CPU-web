@@ -2709,9 +2709,7 @@ function round(value: number) {
 .field-rule-list span {
   color: #111827;
   font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .field-rule-list small {
   margin-top: 5px;
@@ -2799,6 +2797,7 @@ function round(value: number) {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
 }
 .questionnaire-row-card {
   display: grid;
@@ -2809,6 +2808,8 @@ function round(value: number) {
   border: 1px solid #eef0f4;
   border-radius: 10px;
   background: #fff;
+  min-width: 0;
+  overflow: hidden;
 }
 .q-row-main {
   min-width: 0;
@@ -2817,7 +2818,7 @@ function round(value: number) {
   gap: 8px;
 }
 .q-title-cell { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.q-title-cell b { color: #111827; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.q-title-cell b { color: #111827; font-size: 15px; overflow-wrap: anywhere; line-height: 1.45; }
 .q-title-cell span { color: #9ca3af; font-size: 12px; word-break: break-all; }
 .q-row-tags,
 .q-row-meta,
@@ -2826,6 +2827,7 @@ function round(value: number) {
   align-items: center;
   flex-wrap: wrap;
   gap: 7px;
+  min-width: 0;
 }
 .q-row-meta {
   color: #6b7280;
@@ -2835,6 +2837,9 @@ function round(value: number) {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 .q-row-meta span + span::before {
   content: "";
@@ -2893,7 +2898,14 @@ function round(value: number) {
   font: inherit;
   font-size: 13px;
   font-weight: 650;
+  min-width: 0;
   transition: border-color 0.15s, background 0.15s, color 0.15s, transform 0.15s;
+}
+.file-tool-action span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .file-tool-action:hover,
 .file-menu-action:hover {
@@ -2953,7 +2965,7 @@ function round(value: number) {
   background: #fafafa;
 }
 .manager-row div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.manager-row b { color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.manager-row b { color: #111827; overflow-wrap: anywhere; }
 .manager-row span { color: #6b7280; font-size: 12px; }
 .builder-layout {
   height: 100%;
@@ -3355,6 +3367,8 @@ function round(value: number) {
   border-radius: 8px;
   padding: 12px;
   background: #fff;
+  min-width: 0;
+  overflow: hidden;
 }
 .stat-head,
 .response-head {
@@ -3365,12 +3379,25 @@ function round(value: number) {
   padding-bottom: 8px;
   border-bottom: 1px solid #f3f4f6;
   margin-bottom: 10px;
+  min-width: 0;
 }
-.stat-head div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.stat-head div,
+.response-head div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .stat-head b,
-.response-head b { color: #111827; }
+.response-head b {
+  color: #111827;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
 .stat-head span,
-.response-head span { color: #9ca3af; font-size: 12px; }
+.response-head span {
+  color: #9ca3af;
+  font-size: 12px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
 .choice-stats { display: flex; flex-direction: column; gap: 10px; }
 .choice-stat-row {
   display: grid;
@@ -3381,9 +3408,8 @@ function round(value: number) {
   font-size: 13px;
 }
 .choice-stat-row span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .choice-stat-row b { color: #111827; font-weight: 600; text-align: right; }
 .metric-grid {
@@ -3418,7 +3444,7 @@ function round(value: number) {
   font-size: 13px;
 }
 .answer-row span { color: #6b7280; }
-.answer-row b { font-weight: 500; word-break: break-word; }
+.answer-row b { font-weight: 500; word-break: break-word; overflow-wrap: anywhere; min-width: 0; }
 .file-field-editor {
   display: grid;
   gap: 10px;
@@ -3434,6 +3460,7 @@ function round(value: number) {
   border-radius: 8px;
   margin: 14px 0;
   background: #f0f9ff;
+  min-width: 0;
 }
 .file-template-bar > div {
   display: flex;
@@ -3612,6 +3639,7 @@ function round(value: number) {
   align-items: center;
   gap: 6px;
   max-width: 100%;
+  min-width: 0;
   padding: 7px 10px;
   border: 1px solid #dbeafe;
   border-radius: 8px;
@@ -3620,9 +3648,8 @@ function round(value: number) {
   cursor: pointer;
 }
 .file-download-list span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .file-download-list small { color: #64748b; }
 .file-manager-toolbar { margin-bottom: 12px; }
@@ -3641,6 +3668,8 @@ function round(value: number) {
   border: 1px solid #eef0f4;
   border-radius: 8px;
   background: #fff;
+  min-width: 0;
+  overflow: hidden;
 }
 .file-manager-main {
   display: grid;
@@ -3649,17 +3678,17 @@ function round(value: number) {
 }
 .file-manager-main strong,
 .file-manager-main span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .file-manager-main strong { color: #111827; }
 .file-manager-main span { color: #2563eb; font-size: 13px; }
-.file-manager-main small { color: #64748b; }
+.file-manager-main small { color: #64748b; overflow-wrap: anywhere; min-width: 0; }
 .file-manager-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
 }
 .file-manager-actions button {
   display: inline-flex;
@@ -3676,6 +3705,7 @@ function round(value: number) {
   font: inherit;
   font-size: 13px;
   font-weight: 650;
+  min-width: 0;
   transition: border-color 0.15s, background 0.15s, color 0.15s;
 }
 .file-manager-actions button:hover {
@@ -3693,6 +3723,13 @@ function round(value: number) {
   background: #fee2e2;
 }
 @media (max-width: 1100px) {
+  .file-template-bar {
+    grid-template-columns: minmax(0, 1fr) 220px;
+  }
+  .file-template-bar :deep(.el-button) {
+    min-width: 0;
+    margin-left: 0;
+  }
   .builder-layout {
     grid-template-columns: 190px minmax(0, 1fr);
   }

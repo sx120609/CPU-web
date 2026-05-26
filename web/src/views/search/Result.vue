@@ -95,12 +95,14 @@ function open(s: any) {
   cursor: pointer;
   border-radius: 6px;
   border-bottom: 1px dashed #f1f5f9;
+  min-width: 0;
+  overflow: hidden;
 }
 .course-row:last-child, .svc-row:last-child { border-bottom: none; }
 .course-row:hover, .svc-row:hover { background: #f4f6f8; }
 .course-row > div, .svc-row > div { flex: 1; min-width: 0; }
-.c-name, .s-name { font-size: 14px; color: #1f2937; }
-.c-meta, .s-desc { font-size: 12px; color: #6b7280; margin-top: 2px; }
+.c-name, .s-name { font-size: 14px; color: #1f2937; overflow-wrap: anywhere; }
+.c-meta, .s-desc { font-size: 12px; color: #6b7280; margin-top: 2px; overflow-wrap: anywhere; }
 .icon { font-size: 20px; }
 
 .empty { text-align: center; }

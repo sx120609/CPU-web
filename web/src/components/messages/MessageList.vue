@@ -60,6 +60,7 @@ function categoryLabel(category?: string | null) {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
 }
 .empty-state {
   padding: 18px 0;
@@ -73,6 +74,8 @@ function categoryLabel(category?: string | null) {
   background: #fff;
   cursor: pointer;
   border-radius: 14px;
+  min-width: 0;
+  overflow: hidden;
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.15s;
 }
 .row:hover {
@@ -138,6 +141,7 @@ function categoryLabel(category?: string | null) {
   font-size: 14px;
   color: #1f2937;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 .unread .title { font-weight: 600; }
 .unread .title::after {
@@ -158,8 +162,9 @@ function categoryLabel(category?: string | null) {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   line-height: 1.55;
+  overflow-wrap: anywhere;
 }
-.meta { font-size: 11px; color: #94a3b8; margin-top: 6px; }
+.meta { font-size: 11px; color: #94a3b8; margin-top: 6px; overflow-wrap: anywhere; }
 .arrow {
   color: #cbd5e1;
   flex-shrink: 0;
