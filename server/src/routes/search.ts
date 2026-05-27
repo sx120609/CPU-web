@@ -11,7 +11,7 @@ export const searchRouter = Router();
 /** 全局搜索：帖子标题/正文 + 课程 + 服务卡片 */
 searchRouter.get("/", async (req, res, next) => {
   try {
-    const q = String(req.query.q ?? "").trim();
+    const q = String(req.query.q ?? "").trim().slice(0, 100);
     if (!q) return ok(res, { topics: [], courses: [], services: [] });
     let userId: number | null = null;
     let role: string | null = null;
