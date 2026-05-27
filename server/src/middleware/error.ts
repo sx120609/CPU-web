@@ -27,6 +27,6 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   if (isDev) {
     console.error("[error]", err);
   }
-  const message = err instanceof Error ? err.message : "服务器内部错误";
+  const message = isDev && err instanceof Error ? err.message : "服务器内部错误";
   return res.status(500).json({ code: 5000, data: null, message });
 }
