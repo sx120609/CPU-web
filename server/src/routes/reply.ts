@@ -11,6 +11,7 @@ import { ensureUserCanSpeak } from "../services/userModeration";
 import { refreshUserReplyCount } from "../services/forumStats";
 import { consumeAnonymousCredit, createAnonymousAlias, refreshAnonymousCreditsIfNeeded } from "../services/userTrust";
 import { decodeReplyForViewer } from "../services/forumPresentation";
+import { replyCreateLimiter } from "../middleware/rateLimit";
 
 export const replyRouter = Router();
 
@@ -25,7 +26,7 @@ const updateSchema = z.object({
   content: z.string().min(1).max(10000),
 });
 
-replyRouter.post("/", authRequired, validate(createSchema), async (req, res, next) => {
+replyRouter.post("/", authRequired, replyCreateLimiter, validate(createSchema), async (req, res, next) => {
   try {
     const userId = req.user!.userId;
     const { topicId, content, parentReplyId, anonymous = false } = req.body;
@@ -129,17 +130,16 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       }
     }
 
-    // 当前楼层
-    const last = await prisma.reply.findFirst({
-      where: { topicId },
-      orderBy: { floor: "desc" },
-      select: { floor: true },
-    });
-    const floor = (last?.floor ?? 0) + 1;
     const reply = await prisma.$transaction(async (tx) => {
       if (shouldConsumeAnonymousCredit) {
         await consumeAnonymousCredit(userId, tx);
       }
+      const last = await tx.reply.findFirst({
+        where: { topicId },
+        orderBy: { floor: "desc" },
+        select: { floor: true },
+      });
+      const floor = (last?.floor ?? 0) + 1;
       const created = await tx.reply.create({
         data: {
           topicId,
@@ -168,7 +168,7 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     });
 
     // 通知被回复人
-    if (topic.authorId !== userId) {
+    if (topic.authorId !== userId && !reply.hidden) {
       await prisma.notification.create({
         data: {
           userId: topic.authorId,
@@ -206,6 +206,7 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
         topic: {
           select: {
             id: true,
+            title: true,
             locked: true,
             hidden: true,
             board: { select: { type: true } },
@@ -224,9 +225,36 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
       await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
       await ensureUserCanSpeak(req.user!.userId);
     }
+
+    const nextContent = req.body.content;
+    if (isOwner && shouldRunAiReview()) {
+      const bypassAiReview = await shouldBypassAiReviewForUser(req.user!.userId, req.user!.role);
+      if (!bypassAiReview) {
+        const aiResult = await reviewReplyContent({
+          topicTitle: reply.topic?.title ?? "",
+          boardName: "",
+          boardType: reply.topic?.board?.type ?? "",
+          content: nextContent,
+          parentContent: "",
+        });
+        if (aiResult.status === "blocked_ai") {
+          return ok(res, {
+            id: reply.id,
+            blocked: true,
+            submissionResult: {
+              status: "blocked_ai",
+              riskLevel: aiResult.riskLevel,
+              riskScore: aiResult.riskScore,
+              reason: aiResult.reason,
+            },
+          });
+        }
+      }
+    }
+
     const updated = await prisma.reply.update({
       where: { id },
-      data: { content: req.body.content },
+      data: { content: nextContent },
       include: {
         author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
       },
