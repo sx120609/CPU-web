@@ -153,6 +153,8 @@ export async function reviewTopicContent(input: {
         title: input.title,
         content: input.content,
         metadataJson: JSON.stringify(input.metadata ?? {}),
+        autoPassScore: config.aiReviewAutoPassScore,
+        blockScore: config.aiReviewBlockScore,
       }),
     },
   ]);
@@ -207,6 +209,8 @@ export async function reviewReplyContent(input: {
         boardType: input.boardType,
         parentContent: input.parentContent,
         content: input.content,
+        autoPassScore: config.aiReviewAutoPassScore,
+        blockScore: config.aiReviewBlockScore,
       }),
     },
   ]);
