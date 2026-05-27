@@ -31,6 +31,7 @@ import { ensureCanReadBoardType, ensureForumAccessEnabled, resolveForumAccess } 
 import { ensureUserCanSpeak, releaseExpiredMutes } from "../services/userModeration";
 import { consumeAnonymousCredit, createAnonymousAlias } from "../services/userTrust";
 import { decodeReplyForViewer, decodeTopicForViewer } from "../services/forumPresentation";
+import { topicCreateLimiter } from "../middleware/rateLimit";
 
 export const topicRouter = Router();
 
@@ -120,16 +121,32 @@ topicRouter.get("/:id", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+const courseRatingSchema = z.object({
+  difficulty: z.number().min(1).max(5),
+  reward: z.number().min(1).max(5),
+  recommend: z.number().min(1).max(5),
+  givingScore: z.number().min(1).max(5).optional(),
+  score: z.number().min(1).max(5).optional(),
+}).passthrough();
+
+const metadataSchema = z.object({
+  courseId: z.number().int().positive().optional(),
+  courseTeacherId: z.number().int().positive().optional(),
+  teacherName: z.string().max(40).optional(),
+  semester: z.string().max(20).optional(),
+  ratings: courseRatingSchema.optional(),
+}).strict().optional();
+
 const createSchema = z.object({
   boardSlug: z.string().min(1),
   title: z.string().min(2).max(120),
   content: z.string().min(1).max(20000),
-  metadata: z.record(z.any()).optional(),
+  metadata: metadataSchema,
   tags: z.array(z.string().max(20)).optional(),
   anonymous: z.boolean().optional(),
 });
 
-topicRouter.post("/", authRequired, validate(createSchema), async (req, res, next) => {
+topicRouter.post("/", authRequired, topicCreateLimiter, validate(createSchema), async (req, res, next) => {
   try {
     const userId = req.user!.userId;
     const { boardSlug, title, content, metadata, tags, anonymous = false } = req.body;
@@ -311,7 +328,17 @@ topicRouter.post("/:id/request-manual-review", authRequired, async (req, res, ne
   } catch (e) { next(e); }
 });
 
-topicRouter.patch("/:id", authRequired, async (req, res, next) => {
+const updateSchema = z.object({
+  title: z.string().min(2).max(120).optional(),
+  content: z.string().min(1).max(20000).optional(),
+  metadata: metadataSchema,
+  pinned: z.boolean().optional(),
+  locked: z.boolean().optional(),
+  hidden: z.boolean().optional(),
+  globalPinned: z.boolean().optional(),
+}).strict();
+
+topicRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const t = await prisma.topic.findUnique({
