@@ -10,8 +10,11 @@ import { releaseExpiredMutes } from "../services/userModeration";
 import { isDev } from "../config";
 import { detectLoginClient } from "../utils/loginClient";
 import { buildSelfUser } from "../utils/publicUser";
+import { authLimiter } from "../middleware/rateLimit";
 
 export const authRouter = Router();
+
+authRouter.use(authLimiter);
 
 const loginSchema = z.object({
   username: z.string().min(1, "请输入用户名"),
