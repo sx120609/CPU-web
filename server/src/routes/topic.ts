@@ -32,6 +32,7 @@ import { ensureUserCanSpeak, releaseExpiredMutes } from "../services/userModerat
 import { consumeAnonymousCredit, createAnonymousAlias } from "../services/userTrust";
 import { decodeReplyForViewer, decodeTopicForViewer } from "../services/forumPresentation";
 import { topicCreateLimiter } from "../middleware/rateLimit";
+import { checkWordFilter } from "../services/wordFilter";
 
 export const topicRouter = Router();
 
@@ -172,16 +173,32 @@ topicRouter.post("/", authRequired, topicCreateLimiter, validate(createSchema), 
 
     const now = new Date();
     const bypassAiReview = await shouldBypassAiReviewForUser(userId, req.user!.role);
-    const shouldReview = shouldRunAiReview() && !bypassAiReview && board.type !== "announce";
-    const aiResult = shouldReview
-      ? await reviewTopicContent({
-          title,
-          content,
-          boardName: board.name,
-          boardType: board.type,
-          metadata: metadata ?? {},
-        })
-      : null;
+
+    let wordFilterResult: { blocked: boolean; matchedWords: string[]; matchedCategories: string[] } | null = null;
+    if (!bypassAiReview && board.type !== "announce") {
+      const fullText = `${title}\n${content}`;
+      wordFilterResult = checkWordFilter(fullText);
+    }
+
+    const shouldReview = shouldRunAiReview() && !bypassAiReview && board.type !== "announce" && !wordFilterResult?.blocked;
+    const aiResult = wordFilterResult?.blocked
+      ? {
+          status: "blocked_ai" as const,
+          riskLevel: "high" as const,
+          riskScore: 100,
+          reason: `词库命中: ${wordFilterResult.matchedWords.slice(0, 5).join("、")}`,
+          detail: JSON.stringify({ wordFilter: wordFilterResult.matchedCategories, matchedWords: wordFilterResult.matchedWords.slice(0, 20) }),
+          model: "word-filter",
+        }
+      : shouldReview
+        ? await reviewTopicContent({
+            title,
+            content,
+            boardName: board.name,
+            boardType: board.type,
+            metadata: metadata ?? {},
+          })
+        : null;
     const hiddenByAi = aiResult?.status === "blocked_ai";
     const manualLocked = aiResult?.riskLevel === "medium" || aiResult?.riskScore === undefined ? false : false;
     const anonymousAlias = anonymous ? createAnonymousAlias() : null;

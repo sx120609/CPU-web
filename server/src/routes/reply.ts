@@ -12,6 +12,7 @@ import { refreshUserReplyCount } from "../services/forumStats";
 import { consumeAnonymousCredit, createAnonymousAlias, refreshAnonymousCreditsIfNeeded } from "../services/userTrust";
 import { decodeReplyForViewer } from "../services/forumPresentation";
 import { replyCreateLimiter } from "../middleware/rateLimit";
+import { checkWordFilter } from "../services/wordFilter";
 
 export const replyRouter = Router();
 
@@ -73,7 +74,11 @@ replyRouter.post("/", authRequired, replyCreateLimiter, validate(createSchema), 
             : (existingAnonymousReply?.anonymousAlias || createAnonymousAlias())
         )
       : null;
-    if (shouldRunAiReview() && !bypassAiReview) {
+
+    const wordFilterResult = !bypassAiReview ? checkWordFilter(content) : null;
+    const wordBlocked = wordFilterResult?.blocked ?? false;
+
+    if (!wordBlocked && shouldRunAiReview() && !bypassAiReview) {
       let parentContent = "";
       if (parentReplyId) {
         const parent = await prisma.reply.findUnique({
@@ -128,6 +133,45 @@ replyRouter.post("/", authRequired, replyCreateLimiter, validate(createSchema), 
           },
         } as any);
       }
+    }
+
+    if (wordBlocked && wordFilterResult) {
+      const blockedReply = await prisma.$transaction(async (tx) => {
+        if (shouldConsumeAnonymousCredit) {
+          await consumeAnonymousCredit(userId, tx);
+        }
+        return tx.reply.create({
+          data: {
+            topicId,
+            authorId: userId,
+            content,
+            parentReplyId,
+            floor: 0,
+            hidden: true,
+            aiReviewStatus: "blocked_ai",
+            aiRiskLevel: "high",
+            aiRiskScore: 100,
+            aiReviewReason: `词库命中: ${wordFilterResult.matchedWords.slice(0, 5).join("、")}`,
+            aiReviewDetail: JSON.stringify({ wordFilter: wordFilterResult.matchedCategories, matchedWords: wordFilterResult.matchedWords.slice(0, 20) }),
+            aiModel: "word-filter",
+            aiReviewedAt: new Date(),
+            isAnonymous: anonymous,
+            anonymousAlias,
+          },
+        });
+      });
+      return ok(res, {
+        id: blockedReply.id,
+        isAnonymous: blockedReply.isAnonymous,
+        anonymousAlias: blockedReply.anonymousAlias,
+        blocked: true,
+        submissionResult: {
+          status: "blocked_ai",
+          riskLevel: "high",
+          riskScore: 100,
+          reason: `词库命中: ${wordFilterResult.matchedWords.slice(0, 5).join("、")}`,
+        },
+      } as any);
     }
 
     const reply = await prisma.$transaction(async (tx) => {
