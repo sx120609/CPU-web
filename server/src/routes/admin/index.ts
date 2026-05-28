@@ -30,6 +30,8 @@ import {
 import { parseMutedUntil, releaseExpiredMutes } from "../../services/userModeration";
 import { buildUserTrustSnapshot, currentAnonymousWeekKey, freezeAnonymousCredits } from "../../services/userTrust";
 import { buildEpayCallbackUrls, buildEpaySubmitPayload, getEpayConfig, resolvePaymentOrigin, updateEpayConfig } from "../../services/epay";
+import { amountCentsToMoney } from "../../services/epay";
+import { formatSponsorOrder, getSponsorConfig, updateSponsorConfig } from "../../services/sponsor";
 
 export const adminRouter = Router();
 
@@ -1005,6 +1007,169 @@ adminRouter.post("/epay-config/preview", adminOnly, validate(epayPreviewSchema),
     }
     next(e);
   }
+});
+
+// ============ 赞助管理 ============
+
+adminRouter.get("/sponsor-config", adminOnly, async (_req, res, next) => {
+  try {
+    ok(res, await getSponsorConfig());
+  } catch (e) { next(e); }
+});
+
+const sponsorConfigPatchSchema = z.object({
+  title: z.string().trim().max(40).optional(),
+  description: z.string().trim().max(300).optional(),
+  presetAmounts: z.array(z.union([z.string(), z.number()])).min(1).max(8).optional(),
+  minAmount: z.union([z.string(), z.number()]).optional(),
+  maxAmount: z.union([z.string(), z.number()]).optional(),
+  wallEnabled: z.boolean().optional(),
+  allowMessage: z.boolean().optional(),
+});
+
+adminRouter.patch("/sponsor-config", adminOnly, validate(sponsorConfigPatchSchema), async (req, res, next) => {
+  try {
+    ok(res, await updateSponsorConfig(req.body));
+  } catch (e: any) {
+    if (e?.message === "支付金额不正确") {
+      next(Errors.badRequest("赞助金额配置不正确"));
+      return;
+    }
+    next(e);
+  }
+});
+
+adminRouter.get("/sponsor-overview", adminOnly, async (_req, res, next) => {
+  try {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const monthStart = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
+    const [paid, today, month, pending, closed, sponsors, payTypes] = await Promise.all([
+      prisma.sponsorOrder.aggregate({ where: { status: "paid" }, _sum: { amountCents: true }, _count: true }),
+      prisma.sponsorOrder.aggregate({ where: { status: "paid", paidAt: { gte: todayStart } }, _sum: { amountCents: true }, _count: true }),
+      prisma.sponsorOrder.aggregate({ where: { status: "paid", paidAt: { gte: monthStart } }, _sum: { amountCents: true }, _count: true }),
+      prisma.sponsorOrder.count({ where: { status: "pending" } }),
+      prisma.sponsorOrder.count({ where: { status: "closed" } }),
+      prisma.sponsorOrder.groupBy({ by: ["userId"], where: { status: "paid" }, _sum: { amountCents: true } }),
+      prisma.sponsorOrder.groupBy({ by: ["payType"], where: { status: "paid" }, _sum: { amountCents: true }, _count: true }),
+    ]);
+    ok(res, {
+      totalAmount: amountCentsToMoney(paid._sum.amountCents ?? 0),
+      totalPaidOrders: paid._count,
+      todayAmount: amountCentsToMoney(today._sum.amountCents ?? 0),
+      todayPaidOrders: today._count,
+      monthAmount: amountCentsToMoney(month._sum.amountCents ?? 0),
+      monthPaidOrders: month._count,
+      pendingOrders: pending,
+      closedOrders: closed,
+      sponsorCount: sponsors.length,
+      payTypes: payTypes.map((item) => ({
+        payType: item.payType,
+        count: item._count,
+        amount: amountCentsToMoney(item._sum.amountCents ?? 0),
+      })),
+    });
+  } catch (e) { next(e); }
+});
+
+adminRouter.get("/sponsor-orders", adminOnly, async (req, res, next) => {
+  try {
+    const q = String(req.query.q ?? "").trim();
+    const status = String(req.query.status ?? "").trim();
+    const page = Math.max(1, Number(req.query.page ?? 1));
+    const size = Math.min(100, Math.max(10, Number(req.query.size ?? 20)));
+    const where: any = {};
+    if (status && status !== "all") where.status = status;
+    if (q) {
+      where.OR = [
+        { outTradeNo: { contains: q } },
+        { tradeNo: { contains: q } },
+        { user: { is: { username: { contains: q } } } },
+        { user: { is: { nickname: { contains: q } } } },
+      ];
+    }
+    const [list, total] = await Promise.all([
+      prisma.sponsorOrder.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * size,
+        take: size,
+        include: { user: { select: { id: true, username: true, nickname: true, avatar: true } } },
+      }),
+      prisma.sponsorOrder.count({ where }),
+    ]);
+    ok(res, { page, size, total, list: list.map(formatSponsorOrder) });
+  } catch (e) { next(e); }
+});
+
+const sponsorOrderPatchSchema = z.object({
+  status: z.enum(["pending", "paid", "closed"]).optional(),
+  message: z.string().trim().max(80).optional(),
+  displayMode: z.enum(["public", "anonymous", "hidden"]).optional(),
+});
+
+adminRouter.patch("/sponsor-orders/:id", adminOnly, validate(sponsorOrderPatchSchema), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const current = await prisma.sponsorOrder.findUnique({ where: { id }, include: { user: true } });
+    if (!current) throw Errors.notFound("订单不存在");
+    const data: any = {
+      message: req.body.message,
+      displayMode: req.body.displayMode,
+    };
+    if (req.body.status && req.body.status !== current.status) {
+      if (req.body.status === "paid") {
+        data.status = "paid";
+        data.paidAt = current.paidAt ?? new Date();
+        data.closedAt = null;
+      } else if (req.body.status === "closed") {
+        data.status = "closed";
+        data.closedAt = current.closedAt ?? new Date();
+      } else {
+        data.status = "pending";
+        data.closedAt = null;
+      }
+    }
+    const updated = await prisma.$transaction(async (tx) => {
+      const row = await tx.sponsorOrder.update({ where: { id }, data, include: { user: true } });
+      if (req.body.status && req.body.status !== current.status) {
+        if (current.status !== "paid" && req.body.status === "paid") {
+          await tx.user.update({ where: { id: current.userId }, data: { sponsorTotalCents: { increment: current.amountCents } } });
+        }
+        if (current.status === "paid" && req.body.status !== "paid") {
+          await tx.user.update({
+            where: { id: current.userId },
+            data: { sponsorTotalCents: { decrement: current.amountCents } },
+          });
+        }
+      }
+      return row;
+    });
+    ok(res, formatSponsorOrder(updated));
+  } catch (e) { next(e); }
+});
+
+adminRouter.get("/sponsor-logs", adminOnly, async (req, res, next) => {
+  try {
+    const q = String(req.query.q ?? "").trim();
+    const signOk = req.query.signOk === "1" ? true : req.query.signOk === "0" ? false : undefined;
+    const page = Math.max(1, Number(req.query.page ?? 1));
+    const size = Math.min(100, Math.max(10, Number(req.query.size ?? 20)));
+    const where: any = {};
+    if (q) where.OR = [{ outTradeNo: { contains: q } }, { result: { contains: q } }];
+    if (typeof signOk === "boolean") where.signOk = signOk;
+    const [list, total] = await Promise.all([
+      prisma.sponsorPaymentLog.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * size,
+        take: size,
+        include: { order: { select: { id: true, amountCents: true, status: true } } },
+      }),
+      prisma.sponsorPaymentLog.count({ where }),
+    ]);
+    ok(res, { page, size, total, list });
+  } catch (e) { next(e); }
 });
 
 // ============ 概览 / 健康 ============

@@ -615,15 +615,37 @@ model SponsorOrder {
   tradeNo     String?
   payType     String
   amountCents Int
+  message     String   @default("")
+  displayMode String   @default("public") // public / anonymous / hidden
   status      String   @default("pending") // pending / paid / closed
   paidAt      DateTime?
+  closedAt    DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paymentLogs SponsorPaymentLog[]
 
   @@index([userId, status])
   @@index([status, createdAt])
+}
+
+model SponsorPaymentLog {
+  id          Int      @id @default(autoincrement())
+  orderId     Int?
+  outTradeNo  String?
+  provider    String   @default("epay")
+  event       String   @default("notify")
+  rawPayload  String   @default("{}")
+  signOk      Boolean  @default(false)
+  handled     Boolean  @default(false)
+  result      String?
+  createdAt   DateTime @default(now())
+
+  order SponsorOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([outTradeNo])
+  @@index([createdAt])
 }
 
 // ============ 通知与待办（保留，但语义改为论坛事件） ============

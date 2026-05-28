@@ -71,6 +71,16 @@ export type EpayPreview = {
   params: Record<string, string>;
 };
 
+export type SponsorConfig = {
+  title: string;
+  description: string;
+  presetAmounts: number[];
+  minAmount: string;
+  maxAmount: string;
+  wallEnabled: boolean;
+  allowMessage: boolean;
+};
+
 export const adminApi = {
   // 概览
   overview: () => request.get<AdminOverview>("/admin/overview"),
@@ -166,6 +176,16 @@ export const adminApi = {
     device?: string;
     param?: string;
   }) => request.post<EpayPreview>("/admin/epay-config/preview", payload),
+  sponsorConfig: () => request.get<SponsorConfig>("/admin/sponsor-config"),
+  updateSponsorConfig: (payload: Partial<SponsorConfig>) =>
+    request.patch<SponsorConfig>("/admin/sponsor-config", payload),
+  sponsorOverview: () => request.get<any>("/admin/sponsor-overview"),
+  sponsorOrders: (params: { q?: string; status?: string; page?: number; size?: number }) =>
+    request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/sponsor-orders", params),
+  updateSponsorOrder: (id: number, payload: { status?: "pending" | "paid" | "closed"; message?: string; displayMode?: "public" | "anonymous" | "hidden" }) =>
+    request.patch<any>(`/admin/sponsor-orders/${id}`, payload),
+  sponsorLogs: (params: { q?: string; signOk?: "0" | "1"; page?: number; size?: number }) =>
+    request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/sponsor-logs", params),
   // 帖子
   topics: (params: { q?: string; board?: string; hidden?: "0" | "1"; reviewStatus?: string; page?: number; size?: number }) =>
     request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/topics", params),
