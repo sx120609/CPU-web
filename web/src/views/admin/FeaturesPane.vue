@@ -263,7 +263,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { adminApi } from "@/api/admin";
 import { useSiteStore } from "@/stores/site";
 
-type FKey = "forum" | "market" | "coursereview" | "electric";
+type FKey = "forum" | "market" | "coursereview" | "electric" | "sponsor";
 
 const site = useSiteStore();
 const loading = ref(false);
@@ -310,8 +310,8 @@ const reputationLevels = ref([
   { level: 4, name: "资深成员", minReputation: 90 },
   { level: 5, name: "校园传说", minReputation: 120 },
 ]);
-const features = reactive<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>({
-  forum: true, market: true, coursereview: true, electric: true,
+const features = reactive<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>({
+  forum: true, market: true, coursereview: true, electric: true, sponsor: true,
 });
 const enabledFeatureCount = computed(() => featureMeta.filter((item) => features[item.key]).length);
 
@@ -335,6 +335,11 @@ const featureMeta: { key: FKey; icon: string; title: string; desc: string; paths
     key: "electric", icon: "💡", title: "宿舍电费查询",
     desc: "首页与校园服务页的电费快捷卡片；如果隧道不通、不想暴露这个功能时关掉。",
     paths: ["/api/services/dorm-electric", "首页电费卡片"],
+  },
+  {
+    key: "sponsor", icon: "💳", title: "赞助入口",
+    desc: "个人中心的赞助入口和下单接口。关闭后不影响已完成赞助金额展示。",
+    paths: ["/profile", "/api/payments/sponsor/orders"],
   },
 ];
 

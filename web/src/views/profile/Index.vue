@@ -22,12 +22,53 @@
         <li><span>发帖</span><span>{{ user?.postCount }}</span></li>
         <li><span>回复</span><span>{{ user?.replyCount }}</span></li>
         <li><span>声望</span><span>{{ user?.reputation }}</span></li>
+        <li v-if="(user?.sponsorAmount ?? 0) > 0"><span>赞助</span><span class="sponsor-total">¥{{ formatMoney(user?.sponsorAmount) }}</span></li>
       </ul>
       <div class="profile-actions">
         <el-button type="primary" plain @click="editing = true">编辑资料</el-button>
         <el-button v-if="!user?.studentSso" plain @click="passwordDialog = true">修改密码</el-button>
         <el-button type="danger" plain @click="onLogout">退出登录</el-button>
       </div>
+    </div>
+
+    <div v-if="site.features.sponsor || (user?.sponsorAmount ?? 0) > 0" class="cpu-card sponsor-card">
+      <div class="sponsor-head">
+        <div>
+          <h3 class="cpu-section-title">赞助本站</h3>
+          <p>赞助会通过易支付完成，成功后金额会展示在你的个人资料里。</p>
+        </div>
+        <div class="sponsor-total-box">
+          <span>已赞助</span>
+          <b>¥{{ formatMoney(user?.sponsorAmount) }}</b>
+        </div>
+      </div>
+
+      <template v-if="site.features.sponsor">
+        <div v-if="sponsorOptions.enabled" class="sponsor-form">
+          <div class="amount-grid">
+            <button
+              v-for="amount in sponsorOptions.amounts"
+              :key="amount"
+              type="button"
+              :class="{ active: sponsorAmount === String(amount) }"
+              @click="sponsorAmount = String(amount)"
+            >
+              ¥{{ amount }}
+            </button>
+          </div>
+          <div class="sponsor-controls">
+            <el-input v-model="sponsorAmount" placeholder="自定义金额" maxlength="8">
+              <template #prepend>¥</template>
+            </el-input>
+            <el-select v-model="sponsorPayType">
+              <el-option v-for="item in enabledPayTypes" :key="item.value" :label="item.label" :value="item.value" />
+            </el-select>
+            <el-button type="primary" :loading="sponsorSubmitting" @click="submitSponsor">去支付</el-button>
+          </div>
+        </div>
+        <el-alert v-else type="info" :closable="false" show-icon title="赞助支付暂不可用，请稍后再试。" />
+      </template>
+      <el-alert v-else type="info" :closable="false" show-icon title="赞助入口当前已关闭，已完成的赞助金额仍会保留展示。" />
     </div>
 
     <div class="cpu-card trust-card" v-if="user">
@@ -179,12 +220,14 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { ChatDotRound, CopyDocument } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
+import { useSiteStore } from "@/stores/site";
 import { authApi } from "@/api/auth";
 import { boardApi, type Board } from "@/api/board";
+import { paymentsApi, type PayType, type SponsorOptions } from "@/api/payments";
 import { request } from "@/api/request";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import { fmtDate, fmtRelative } from "@/utils/format";
@@ -192,6 +235,8 @@ import { compressImageFile, normalizeImageUploadError } from "@/utils/imageUploa
 import { copyText, openUserGroup, USER_QQ_GROUP } from "@/utils/userGroup";
 
 const auth = useAuthStore();
+const site = useSiteStore();
+const route = useRoute();
 const router = useRouter();
 const user = computed(() => auth.user);
 const myTopics = ref<any[]>([]);
@@ -200,6 +245,16 @@ const editing = ref(false);
 const saving = ref(false);
 const avatarSaving = ref(false);
 const avatarInputRef = ref<HTMLInputElement | null>(null);
+const sponsorSubmitting = ref(false);
+const sponsorAmount = ref("10");
+const sponsorPayType = ref<PayType>("alipay");
+const sponsorOptions = reactive<SponsorOptions>({
+  enabled: false,
+  payTypes: [],
+  amounts: [5, 10, 20, 50],
+  minAmount: "1.00",
+  maxAmount: "9999.00",
+});
 
 const editForm = reactive({ nickname: "", bio: "", college: "", enrollYear: undefined as any });
 
@@ -218,6 +273,14 @@ const anonymousResetText = computed(() => {
   const nextResetAt = user.value?.anonymousState?.nextResetAt;
   return nextResetAt ? fmtDate(nextResetAt, "MM-DD HH:mm") : "—";
 });
+const payTypeLabels: Record<PayType, string> = {
+  alipay: "支付宝",
+  wxpay: "微信支付",
+  qqpay: "QQ 钱包",
+  bank: "网银",
+  jdpay: "京东支付",
+};
+const enabledPayTypes = computed(() => sponsorOptions.payTypes.map((value) => ({ value, label: payTypeLabels[value] })));
 
 watch(passwordDialog, (v) => {
   if (!v) { pwForm.oldPassword = ""; pwForm.newPassword = ""; pwForm.confirm = ""; }
@@ -226,12 +289,19 @@ watch(passwordDialog, (v) => {
 onMounted(async () => {
   if (!auth.user) await auth.fetchMe();
   if (!auth.user) return;
+  if (!site.loaded) await site.fetch();
+  const sponsorQuery = String(route.query.sponsor ?? "");
+  if (sponsorQuery === "success") {
+    await auth.fetchMe();
+    ElMessage.success("支付完成后赞助金额会自动刷新，若未显示请稍等片刻");
+  }
   const [topicList, boardList] = await Promise.all([
     request.get<any[]>(`/user/${auth.user.id}/topics`),
     boardApi.list(),
   ]);
   myTopics.value = topicList;
   boards.value = boardList;
+  if (site.features.sponsor) await loadSponsorOptions();
 });
 
 watch(editing, (v) => {
@@ -251,6 +321,50 @@ async function saveEdit() {
     ElMessage.success("已保存");
     editing.value = false;
   } finally { saving.value = false; }
+}
+
+async function loadSponsorOptions() {
+  try {
+    Object.assign(sponsorOptions, await paymentsApi.sponsorOptions());
+    if (sponsorOptions.amounts.length) sponsorAmount.value = String(sponsorOptions.amounts[1] ?? sponsorOptions.amounts[0]);
+    if (sponsorOptions.payTypes.length) sponsorPayType.value = sponsorOptions.payTypes[0];
+  } catch {
+    sponsorOptions.enabled = false;
+  }
+}
+
+function formatMoney(value: number | string | undefined | null) {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n.toFixed(2) : "0.00";
+}
+
+async function submitSponsor() {
+  const amount = Number(sponsorAmount.value);
+  const min = Number(sponsorOptions.minAmount);
+  const max = Number(sponsorOptions.maxAmount);
+  if (!Number.isFinite(amount) || amount < min || amount > max) {
+    ElMessage.warning(`赞助金额需在 ${formatMoney(min)} - ${formatMoney(max)} 元之间`);
+    return;
+  }
+  sponsorSubmitting.value = true;
+  try {
+    const result = await paymentsApi.createSponsorOrder({ amount: sponsorAmount.value, payType: sponsorPayType.value });
+    const form = document.createElement("form");
+    form.method = result.epay.method;
+    form.action = result.epay.submitUrl;
+    form.style.display = "none";
+    for (const [key, value] of Object.entries(result.epay.params)) {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = key;
+      input.value = value;
+      form.appendChild(input);
+    }
+    document.body.appendChild(form);
+    form.submit();
+  } finally {
+    sponsorSubmitting.value = false;
+  }
 }
 
 async function savePassword() {
@@ -360,6 +474,7 @@ async function removeAvatar() {
 .kv li:last-child { border-bottom: none; }
 .kv li span:first-child { color: #6b7280; }
 .kv li span:last-child { color: #1f2937; font-weight: 500; }
+.sponsor-total { color: #b45309 !important; }
 
 .profile-actions {
   display: flex;
@@ -368,6 +483,72 @@ async function removeAvatar() {
   flex-wrap: wrap;
 }
 .profile-actions .el-button { flex: 1 1 auto; min-width: 100px; margin-left: 0 !important; }
+
+.sponsor-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.sponsor-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.sponsor-head p {
+  margin: 4px 0 0;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.sponsor-total-box {
+  min-width: 116px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  text-align: center;
+}
+.sponsor-total-box span {
+  display: block;
+  color: #92400e;
+  font-size: 12px;
+}
+.sponsor-total-box b {
+  display: block;
+  margin-top: 3px;
+  color: #b45309;
+  font-size: 22px;
+}
+.sponsor-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.amount-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.amount-grid button {
+  height: 40px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  color: #374151;
+  font-weight: 700;
+  cursor: pointer;
+}
+.amount-grid button.active {
+  border-color: #f59e0b;
+  background: #fffbeb;
+  color: #b45309;
+}
+.sponsor-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 160px 120px;
+  gap: 8px;
+}
 
 .trust-card {
   display: flex;
@@ -545,6 +726,22 @@ async function removeAvatar() {
 
   .trust-head {
     flex-direction: column;
+  }
+
+  .sponsor-head {
+    flex-direction: column;
+  }
+
+  .sponsor-total-box {
+    width: 100%;
+  }
+
+  .amount-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sponsor-controls {
+    grid-template-columns: 1fr;
   }
 
   .trust-score {

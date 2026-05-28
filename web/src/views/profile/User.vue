@@ -24,6 +24,7 @@
           <span>发帖 {{ user.postCount }}</span>
           <span>回复 {{ user.replyCount }}</span>
           <span>声望 {{ user.reputation }}</span>
+          <span v-if="user.sponsorAmount > 0" class="sponsor-badge">已赞助 ¥{{ formatMoney(user.sponsorAmount) }}</span>
         </div>
         <div v-if="auth.isMod" class="staff-panel">
           <UserModerationActions :user="user" display="inline" plain @updated="applyModerationUpdate" />
@@ -77,6 +78,11 @@ function applyModerationUpdate(patch: Record<string, unknown>) {
   Object.assign(user.value, patch);
 }
 
+function formatMoney(value: number | string) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toFixed(2) : "0.00";
+}
+
 function goBack() {
   if (window.history.length > 1) {
     router.back();
@@ -109,6 +115,7 @@ function goBack() {
 .meta { display: flex; gap: 12px; font-size: 12px; color: #6b7280; flex-wrap: wrap; }
 .staff-panel { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
 .staff-note { font-size: 12px; color: #6b7280; }
+.sponsor-badge { color: #b45309; font-weight: 700; }
 
 .topic-line {
   display: flex;

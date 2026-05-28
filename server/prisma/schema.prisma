@@ -44,6 +44,7 @@ model User {
   anonymousCredits Int   @default(0)
   anonymousWeekKey String?
   anonymousCreditsFrozen Boolean @default(false)
+  sponsorTotalCents Int @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -65,6 +66,7 @@ model User {
   createdFileCollectTasks FileCollectTask[] @relation("FileCollectCreatedBy")
   createdFileCollectTemplates FileCollectTemplate[] @relation("FileCollectTemplateCreatedBy")
   fileCollectSubmissions FileCollectSubmission[] @relation("FileCollectSubmittedBy")
+  sponsorOrders    SponsorOrder[]
 }
 
 // ============ 论坛核心 ============
@@ -599,10 +601,29 @@ model EpayConfig {
   merchantKey String   @default("")
   signType    String   @default("MD5")
   defaultType String   @default("alipay")
+  enabledTypes String  @default("[\"alipay\",\"wxpay\"]")
   notifyUrl   String   @default("")
   returnUrl   String   @default("")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model SponsorOrder {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  outTradeNo  String   @unique
+  tradeNo     String?
+  payType     String
+  amountCents Int
+  status      String   @default("pending") // pending / paid / closed
+  paidAt      DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([status, createdAt])
 }
 
 // ============ 通知与待办（保留，但语义改为论坛事件） ============

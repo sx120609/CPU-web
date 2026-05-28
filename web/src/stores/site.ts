@@ -7,7 +7,7 @@ import { siteApi, type FeatureMap } from "@/api/site";
  */
 export const useSiteStore = defineStore("site", {
   state: () => ({
-    features: { forum: false, market: false, coursereview: false, electric: false } as FeatureMap,
+    features: { forum: false, market: false, coursereview: false, electric: false, sponsor: false } as FeatureMap,
     loaded: false,
   }),
   actions: {

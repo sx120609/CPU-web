@@ -15,6 +15,10 @@ function canSeeModerationFields(viewer: Viewer) {
   return viewer?.role === "admin" || viewer?.role === "mod";
 }
 
+function sponsorAmount(u: any) {
+  return Number(((u.sponsorTotalCents ?? 0) / 100).toFixed(2));
+}
+
 export function buildSelfUser(u: any) {
   const trust = buildUserTrustSnapshot(u);
   return {
@@ -43,6 +47,8 @@ export function buildSelfUser(u: any) {
     forumEnabled: u.forumEnabled,
     forumEnabledAt: u.forumEnabledAt,
     anonymousState: trust.anonymousState,
+    sponsorTotalCents: u.sponsorTotalCents ?? 0,
+    sponsorAmount: sponsorAmount(u),
     status: u.status,
     mutedUntil: u.mutedUntil,
     createdAt: u.createdAt,
@@ -63,6 +69,8 @@ export function buildPublicUser(u: any, viewer?: Viewer) {
     replyCount: u.replyCount,
     reputation: trust.reputation,
     reputationLevel: trust.reputationLevel,
+    sponsorTotalCents: u.sponsorTotalCents ?? 0,
+    sponsorAmount: sponsorAmount(u),
     createdAt: u.createdAt,
   };
 

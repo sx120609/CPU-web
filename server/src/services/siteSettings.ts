@@ -8,7 +8,7 @@
  */
 import { prisma } from "../prisma";
 
-export type FeatureKey = "forum" | "market" | "coursereview" | "electric";
+export type FeatureKey = "forum" | "market" | "coursereview" | "electric" | "sponsor";
 export type AnonymousTierConfig = {
   reputation: number;
   quota: number;
@@ -47,7 +47,7 @@ export type SiteConfig = {
   reputationLevels: ReputationLevelConfig[];
 };
 
-export const ALL_FEATURES: FeatureKey[] = ["forum", "market", "coursereview", "electric"];
+export const ALL_FEATURES: FeatureKey[] = ["forum", "market", "coursereview", "electric", "sponsor"];
 export const DEFAULT_ANONYMOUS_TIERS: AnonymousTierConfig[] = [
   { reputation: 30, quota: 1 },
   { reputation: 60, quota: 2 },
@@ -130,6 +130,7 @@ const cache: Record<FeatureKey, boolean> = {
   market: true,
   coursereview: true,
   electric: true,
+  sponsor: true,
 };
 let globalPinnedTopicIdsCache: number[] = [];
 

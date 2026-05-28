@@ -13,6 +13,7 @@ export function createApp() {
 
   app.use(cors());
   app.use(express.json({ limit: "10mb" }));
+  app.use(express.urlencoded({ extended: false }));
   if (isDev) app.use(morgan("dev"));
 
   const uploadDir = path.resolve(process.cwd(), "uploads");

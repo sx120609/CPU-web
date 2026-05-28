@@ -29,9 +29,15 @@ import {
 } from "../../services/topicAiReview";
 import { parseMutedUntil, releaseExpiredMutes } from "../../services/userModeration";
 import { buildUserTrustSnapshot, currentAnonymousWeekKey, freezeAnonymousCredits } from "../../services/userTrust";
-import { buildEpaySubmitPayload, getEpayConfig, updateEpayConfig } from "../../services/epay";
+import { buildEpayCallbackUrls, buildEpaySubmitPayload, getEpayConfig, resolvePaymentOrigin, updateEpayConfig } from "../../services/epay";
 
 export const adminRouter = Router();
+
+function requestOrigin(req: any) {
+  const proto = String(req.headers["x-forwarded-proto"] ?? req.protocol ?? "http").split(",")[0].trim();
+  const host = String(req.headers["x-forwarded-host"] ?? req.headers.host ?? "").split(",")[0].trim();
+  return host ? `${proto}://${host}` : "";
+}
 
 // ============ 用户管理 ============
 
@@ -933,9 +939,9 @@ adminRouter.delete("/announcements/:id", adminOnly, async (req, res, next) => {
 
 // ============ 支付对接：易支付 ============
 
-adminRouter.get("/epay-config", adminOnly, async (_req, res, next) => {
+adminRouter.get("/epay-config", adminOnly, async (req, res, next) => {
   try {
-    ok(res, await getEpayConfig());
+    ok(res, await getEpayConfig(requestOrigin(req)));
   } catch (e) { next(e); }
 });
 
@@ -947,18 +953,15 @@ const epayConfigPatchSchema = z.object({
   clearMerchantKey: z.boolean().optional(),
   signType: z.enum(["MD5"]).optional(),
   defaultType: z.enum(["alipay", "wxpay", "qqpay", "bank", "jdpay"]).optional(),
-  notifyUrl: z.string().trim().max(500).optional(),
-  returnUrl: z.string().trim().max(500).optional(),
+  enabledTypes: z.array(z.enum(["alipay", "wxpay", "qqpay", "bank", "jdpay"])).min(1).optional(),
 });
 
 adminRouter.patch("/epay-config", adminOnly, validate(epayConfigPatchSchema), async (req, res, next) => {
   try {
-    ok(res, await updateEpayConfig(req.body));
+    ok(res, await updateEpayConfig(req.body, requestOrigin(req)));
   } catch (e: any) {
     if (
-      e?.message === "易支付网关地址格式不正确" ||
-      e?.message === "异步通知地址格式不正确" ||
-      e?.message === "同步跳转地址格式不正确"
+      e?.message === "易支付网关地址格式不正确"
     ) {
       next(Errors.badRequest(e.message));
       return;
@@ -981,10 +984,13 @@ const epayPreviewSchema = z.object({
 
 adminRouter.post("/epay-config/preview", adminOnly, validate(epayPreviewSchema), async (req, res, next) => {
   try {
-    ok(res, await buildEpaySubmitPayload(req.body));
+    const origin = resolvePaymentOrigin(requestOrigin(req));
+    const callbacks = buildEpayCallbackUrls(origin);
+    ok(res, await buildEpaySubmitPayload({ ...req.body, ...callbacks }));
   } catch (e: any) {
     if (
       e?.message === "支付金额不正确" ||
+      e?.message === "该支付方式未启用" ||
       e?.message === "易支付尚未启用" ||
       e?.message === "易支付网关地址未配置" ||
       e?.message === "易支付商户 ID 未配置" ||
@@ -1169,6 +1175,7 @@ const featurePatchSchema = z.object({
   market: z.boolean().optional(),
   coursereview: z.boolean().optional(),
   electric: z.boolean().optional(),
+  sponsor: z.boolean().optional(),
 });
 
 adminRouter.patch("/features", adminOnly, validate(featurePatchSchema), async (req, res, next) => {

@@ -20,6 +20,8 @@ export interface UserInfo {
   postCount: number;
   replyCount: number;
   reputation: number;
+  sponsorTotalCents?: number;
+  sponsorAmount?: number;
   reputationLevel?: {
     level: number;
     name: string;

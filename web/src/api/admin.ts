@@ -57,8 +57,10 @@ export type EpayConfig = {
   merchantKeyMasked: string;
   signType: "MD5";
   defaultType: "alipay" | "wxpay" | "qqpay" | "bank" | "jdpay";
+  enabledTypes: Array<"alipay" | "wxpay" | "qqpay" | "bank" | "jdpay">;
   notifyUrl: string;
   returnUrl: string;
+  siteOrigin: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -138,9 +140,9 @@ export const adminApi = {
     reputationLevels?: Array<{ level: number; name: string; minReputation: number }>;
   }) =>
     request.patch<SiteConfig>("/admin/site-config", patch),
-  features: () => request.get<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>("/admin/features"),
-  updateFeatures: (patch: { forum?: boolean; market?: boolean; coursereview?: boolean; electric?: boolean }) =>
-    request.patch<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>("/admin/features", patch),
+  features: () => request.get<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>("/admin/features"),
+  updateFeatures: (patch: { forum?: boolean; market?: boolean; coursereview?: boolean; electric?: boolean; sponsor?: boolean }) =>
+    request.patch<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>("/admin/features", patch),
   // 易支付
   epayConfig: () => request.get<EpayConfig>("/admin/epay-config"),
   updateEpayConfig: (patch: Partial<{
@@ -151,8 +153,7 @@ export const adminApi = {
     clearMerchantKey: boolean;
     signType: "MD5";
     defaultType: "alipay" | "wxpay" | "qqpay" | "bank" | "jdpay";
-    notifyUrl: string;
-    returnUrl: string;
+    enabledTypes: Array<"alipay" | "wxpay" | "qqpay" | "bank" | "jdpay">;
   }>) => request.patch<EpayConfig>("/admin/epay-config", patch),
   previewEpayPayment: (payload: {
     outTradeNo: string;

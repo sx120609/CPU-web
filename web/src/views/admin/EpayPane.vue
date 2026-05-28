@@ -33,25 +33,27 @@
         <label class="field">
           <span class="field-label">默认支付类型</span>
           <el-select v-model="form.defaultType">
-            <el-option v-for="item in payTypes" :key="item.value" :label="item.label" :value="item.value" />
+            <el-option v-for="item in enabledPayTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </label>
         <label class="field field--wide">
           <span class="field-label">商户密钥</span>
           <el-input v-model="merchantKey" maxlength="240" show-password :placeholder="keyPlaceholder" />
         </label>
-        <label class="field field--wide">
-          <span class="field-label">异步通知地址</span>
-          <el-input v-model="form.notifyUrl" maxlength="500" placeholder="https://your-site.com/api/payments/epay/notify" />
-        </label>
-        <label class="field field--wide">
-          <span class="field-label">同步跳转地址</span>
-          <el-input v-model="form.returnUrl" maxlength="500" placeholder="https://your-site.com/payments/return" />
-        </label>
+        <div class="field field--wide">
+          <span class="field-label">启用支付方式</span>
+          <el-checkbox-group v-model="form.enabledTypes" class="pay-checks">
+            <el-checkbox-button v-for="item in payTypes" :key="item.value" :label="item.value">
+              {{ item.label }}
+            </el-checkbox-button>
+          </el-checkbox-group>
+        </div>
       </div>
 
       <div class="meta-row">
         <span>提交地址：{{ form.submitUrl || "未生成" }}</span>
+        <span>异步通知：{{ form.notifyUrl || "请先设置网站域名" }}</span>
+        <span>同步跳转：{{ form.returnUrl || "请先设置网站域名" }}</span>
         <span v-if="form.merchantKeyMasked">密钥：{{ form.merchantKeyMasked }}</span>
       </div>
 
@@ -85,7 +87,7 @@
         <label class="field">
           <span class="field-label">支付类型</span>
           <el-select v-model="previewForm.type">
-            <el-option v-for="item in payTypes" :key="item.value" :label="item.label" :value="item.value" />
+            <el-option v-for="item in enabledPayTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </label>
         <label class="field">
@@ -152,8 +154,10 @@ const form = reactive<EpayConfig>({
   merchantKeyMasked: "",
   signType: "MD5",
   defaultType: "alipay",
+  enabledTypes: ["alipay", "wxpay"],
   notifyUrl: "",
   returnUrl: "",
+  siteOrigin: "",
   createdAt: "",
   updatedAt: "",
 });
@@ -168,6 +172,10 @@ const previewForm = reactive({
 });
 
 const keyPlaceholder = computed(() => form.hasMerchantKey ? "留空则保持当前密钥" : "请输入商户密钥");
+const enabledPayTypeOptions = computed(() => {
+  const enabled = new Set(form.enabledTypes.length ? form.enabledTypes : ["alipay"]);
+  return payTypes.filter((item) => enabled.has(item.value));
+});
 const previewRows = computed(() => Object.entries(preview.value?.params ?? {}).map(([key, value]) => ({ key, value })));
 
 onMounted(reload);
@@ -178,6 +186,7 @@ function nextPreviewNo() {
 
 function applyConfig(config: EpayConfig) {
   Object.assign(form, config);
+  if (!form.enabledTypes.length) form.enabledTypes = ["alipay"];
   previewForm.type = config.defaultType || "alipay";
   merchantKey.value = "";
 }
@@ -201,8 +210,7 @@ async function saveConfig() {
       merchantKey: merchantKey.value || undefined,
       signType: form.signType,
       defaultType: form.defaultType,
-      notifyUrl: form.notifyUrl,
-      returnUrl: form.returnUrl,
+      enabledTypes: form.enabledTypes,
     });
     applyConfig(config);
     ElMessage.success("易支付配置已保存");
@@ -314,6 +322,15 @@ async function copyPreview() {
 .field-label {
   font-size: 12px;
   color: #6b7280;
+}
+.pay-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pay-checks :deep(.el-checkbox-button__inner) {
+  border-left: var(--el-border);
+  border-radius: 6px !important;
 }
 .meta-row {
   display: flex;

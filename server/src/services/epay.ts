@@ -1,7 +1,10 @@
 import crypto from "crypto";
 import { prisma } from "../prisma";
+import { getSiteOrigin } from "./siteSettings";
 
 const EPAY_CONFIG_ID = 1;
+const PAY_TYPES = ["alipay", "wxpay", "qqpay", "bank", "jdpay"] as const;
+export type EpayPayType = typeof PAY_TYPES[number];
 
 export type EpayConfigInput = {
   enabled?: boolean;
@@ -11,8 +14,7 @@ export type EpayConfigInput = {
   clearMerchantKey?: boolean;
   signType?: string;
   defaultType?: string;
-  notifyUrl?: string;
-  returnUrl?: string;
+  enabledTypes?: string[];
 };
 
 export type EpayOrderInput = {
@@ -20,8 +22,8 @@ export type EpayOrderInput = {
   name: string;
   money: string;
   type?: string;
-  notifyUrl?: string;
-  returnUrl?: string;
+  notifyUrl: string;
+  returnUrl: string;
   clientIp?: string;
   device?: string;
   param?: string;
@@ -39,17 +41,24 @@ function normalizeGatewayUrl(url: string) {
   return url.trim().replace(/\/+$/, "");
 }
 
-function normalizeMoney(value: string) {
+export function amountCentsToMoney(amountCents: number) {
+  return (amountCents / 100).toFixed(2);
+}
+
+export function moneyToAmountCents(value: string | number) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) {
     throw new Error("支付金额不正确");
   }
-  return n.toFixed(2);
+  return Math.round(n * 100);
 }
 
-function ensureUrlOrEmpty(url: string, message: string) {
-  const trimmed = url.trim();
-  if (!trimmed) return "";
+function normalizeMoney(value: string | number) {
+  return amountCentsToMoney(moneyToAmountCents(value));
+}
+
+function normalizeAbsoluteUrl(url: string, message: string) {
+  const trimmed = url.trim().replace(/\/+$/, "");
   try {
     const parsed = new URL(trimmed);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error(message);
@@ -66,14 +75,52 @@ function submitUrlFromGateway(gatewayUrl: string) {
   return `${normalized}/submit.php`;
 }
 
+function normalizePayTypes(input: unknown, fallback: EpayPayType[] = ["alipay", "wxpay"]): EpayPayType[] {
+  let raw = input;
+  if (typeof input === "string") {
+    try {
+      raw = JSON.parse(input);
+    } catch {
+      raw = input.split(",");
+    }
+  }
+  if (!Array.isArray(raw)) raw = fallback;
+  const normalized = Array.from(new Set(
+    (raw as unknown[])
+      .map((item: unknown) => String(item).trim())
+      .filter((item: string): item is EpayPayType => (PAY_TYPES as readonly string[]).includes(item))
+  ));
+  return normalized.length ? normalized : fallback;
+}
+
+function normalizeDefaultType(input: string, enabledTypes: EpayPayType[]) {
+  const value = String(input || "").trim();
+  return enabledTypes.includes(value as EpayPayType) ? value : enabledTypes[0] || "alipay";
+}
+
 async function getStoredEpayConfig() {
   const existing = await prisma.epayConfig.findUnique({ where: { id: EPAY_CONFIG_ID } });
   if (existing) return existing;
   return prisma.epayConfig.create({ data: { id: EPAY_CONFIG_ID } });
 }
 
-export async function getEpayConfig() {
+export function resolvePaymentOrigin(requestOrigin = "") {
+  return getSiteOrigin() || requestOrigin.trim().replace(/\/+$/, "");
+}
+
+export function buildEpayCallbackUrls(origin: string) {
+  const normalized = origin.trim().replace(/\/+$/, "");
+  return {
+    notifyUrl: normalized ? `${normalized}/api/payments/epay/notify` : "",
+    returnUrl: normalized ? `${normalized}/api/payments/epay/return` : "",
+  };
+}
+
+export async function getEpayConfig(requestOrigin = "") {
   const config = await getStoredEpayConfig();
+  const enabledTypes = normalizePayTypes(config.enabledTypes);
+  const origin = resolvePaymentOrigin(requestOrigin);
+  const callbacks = buildEpayCallbackUrls(origin);
   return {
     id: config.id,
     enabled: config.enabled,
@@ -83,29 +130,35 @@ export async function getEpayConfig() {
     hasMerchantKey: Boolean(config.merchantKey),
     merchantKeyMasked: maskSecret(config.merchantKey),
     signType: config.signType,
-    defaultType: config.defaultType,
-    notifyUrl: config.notifyUrl,
-    returnUrl: config.returnUrl,
+    defaultType: normalizeDefaultType(config.defaultType, enabledTypes),
+    enabledTypes,
+    notifyUrl: callbacks.notifyUrl,
+    returnUrl: callbacks.returnUrl,
+    siteOrigin: origin,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
   };
 }
 
-export async function updateEpayConfig(input: EpayConfigInput) {
+export async function updateEpayConfig(input: EpayConfigInput, requestOrigin = "") {
   const data: Record<string, unknown> = {};
+  const current = await getStoredEpayConfig();
+  const nextEnabledTypes = input.enabledTypes !== undefined
+    ? normalizePayTypes(input.enabledTypes)
+    : normalizePayTypes(current.enabledTypes);
   if (input.enabled !== undefined) data.enabled = input.enabled;
-  if (input.gatewayUrl !== undefined) data.gatewayUrl = ensureUrlOrEmpty(input.gatewayUrl, "易支付网关地址格式不正确");
+  if (input.gatewayUrl !== undefined) data.gatewayUrl = input.gatewayUrl.trim() ? normalizeAbsoluteUrl(input.gatewayUrl, "易支付网关地址格式不正确") : "";
   if (input.pid !== undefined) data.pid = input.pid.trim();
   if (input.clearMerchantKey) data.merchantKey = "";
   else if (input.merchantKey !== undefined && input.merchantKey.trim()) data.merchantKey = input.merchantKey.trim();
   if (input.signType !== undefined) data.signType = input.signType.trim().toUpperCase() || "MD5";
-  if (input.defaultType !== undefined) data.defaultType = input.defaultType.trim() || "alipay";
-  if (input.notifyUrl !== undefined) data.notifyUrl = ensureUrlOrEmpty(input.notifyUrl, "异步通知地址格式不正确");
-  if (input.returnUrl !== undefined) data.returnUrl = ensureUrlOrEmpty(input.returnUrl, "同步跳转地址格式不正确");
+  if (input.enabledTypes !== undefined) data.enabledTypes = JSON.stringify(nextEnabledTypes);
+  if (input.defaultType !== undefined || input.enabledTypes !== undefined) {
+    data.defaultType = normalizeDefaultType(input.defaultType ?? current.defaultType, nextEnabledTypes);
+  }
 
-  await getStoredEpayConfig();
   await prisma.epayConfig.update({ where: { id: EPAY_CONFIG_ID }, data });
-  return getEpayConfig();
+  return getEpayConfig(requestOrigin);
 }
 
 export function signEpayParams(params: Record<string, string | number | boolean | null | undefined>, merchantKey: string) {
@@ -134,12 +187,15 @@ function ensureReady(config: EpayStoredConfig) {
 export async function buildEpaySubmitPayload(order: EpayOrderInput) {
   const config = await getStoredEpayConfig();
   ensureReady(config);
+  const enabledTypes = normalizePayTypes(config.enabledTypes);
+  const payType = normalizeDefaultType(order.type || config.defaultType, enabledTypes);
+  if (!enabledTypes.includes(payType as EpayPayType)) throw new Error("该支付方式未启用");
   const params: Record<string, string> = {
     pid: config.pid,
-    type: order.type || config.defaultType || "alipay",
+    type: payType,
     out_trade_no: order.outTradeNo.trim(),
-    notify_url: order.notifyUrl?.trim() || config.notifyUrl,
-    return_url: order.returnUrl?.trim() || config.returnUrl,
+    notify_url: order.notifyUrl.trim(),
+    return_url: order.returnUrl.trim(),
     name: order.name.trim(),
     money: normalizeMoney(order.money),
   };
@@ -160,4 +216,15 @@ export async function buildEpaySubmitPayload(order: EpayOrderInput) {
     method: "POST",
     params,
   };
+}
+
+export async function getEpayMerchantKey() {
+  const config = await getStoredEpayConfig();
+  return config.merchantKey;
+}
+
+export async function getEnabledEpayTypes() {
+  const config = await getStoredEpayConfig();
+  if (!config.enabled || !config.gatewayUrl || !config.pid || !config.merchantKey) return [];
+  return normalizePayTypes(config.enabledTypes);
 }
