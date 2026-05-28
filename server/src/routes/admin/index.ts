@@ -29,6 +29,7 @@ import {
 } from "../../services/topicAiReview";
 import { parseMutedUntil, releaseExpiredMutes } from "../../services/userModeration";
 import { buildUserTrustSnapshot, currentAnonymousWeekKey, freezeAnonymousCredits } from "../../services/userTrust";
+import { buildEpaySubmitPayload, getEpayConfig, updateEpayConfig } from "../../services/epay";
 
 export const adminRouter = Router();
 
@@ -928,6 +929,76 @@ adminRouter.delete("/announcements/:id", adminOnly, async (req, res, next) => {
     await prisma.notification.delete({ where: { id } });
     ok(res, { ok: true });
   } catch (e) { next(e); }
+});
+
+// ============ 支付对接：易支付 ============
+
+adminRouter.get("/epay-config", adminOnly, async (_req, res, next) => {
+  try {
+    ok(res, await getEpayConfig());
+  } catch (e) { next(e); }
+});
+
+const epayConfigPatchSchema = z.object({
+  enabled: z.boolean().optional(),
+  gatewayUrl: z.string().trim().max(240).optional(),
+  pid: z.string().trim().max(80).optional(),
+  merchantKey: z.string().trim().max(240).optional(),
+  clearMerchantKey: z.boolean().optional(),
+  signType: z.enum(["MD5"]).optional(),
+  defaultType: z.enum(["alipay", "wxpay", "qqpay", "bank", "jdpay"]).optional(),
+  notifyUrl: z.string().trim().max(500).optional(),
+  returnUrl: z.string().trim().max(500).optional(),
+});
+
+adminRouter.patch("/epay-config", adminOnly, validate(epayConfigPatchSchema), async (req, res, next) => {
+  try {
+    ok(res, await updateEpayConfig(req.body));
+  } catch (e: any) {
+    if (
+      e?.message === "易支付网关地址格式不正确" ||
+      e?.message === "异步通知地址格式不正确" ||
+      e?.message === "同步跳转地址格式不正确"
+    ) {
+      next(Errors.badRequest(e.message));
+      return;
+    }
+    next(e);
+  }
+});
+
+const epayPreviewSchema = z.object({
+  outTradeNo: z.string().trim().min(1).max(80),
+  name: z.string().trim().min(1).max(120),
+  money: z.string().trim().min(1).max(20),
+  type: z.enum(["alipay", "wxpay", "qqpay", "bank", "jdpay"]).optional(),
+  notifyUrl: z.string().trim().max(500).optional(),
+  returnUrl: z.string().trim().max(500).optional(),
+  clientIp: z.string().trim().max(80).optional(),
+  device: z.string().trim().max(40).optional(),
+  param: z.string().trim().max(200).optional(),
+});
+
+adminRouter.post("/epay-config/preview", adminOnly, validate(epayPreviewSchema), async (req, res, next) => {
+  try {
+    ok(res, await buildEpaySubmitPayload(req.body));
+  } catch (e: any) {
+    if (
+      e?.message === "支付金额不正确" ||
+      e?.message === "易支付尚未启用" ||
+      e?.message === "易支付网关地址未配置" ||
+      e?.message === "易支付商户 ID 未配置" ||
+      e?.message === "易支付商户密钥未配置" ||
+      e?.message === "商户订单号不能为空" ||
+      e?.message === "商品名称不能为空" ||
+      e?.message === "异步通知地址未配置" ||
+      e?.message === "同步跳转地址未配置"
+    ) {
+      next(Errors.badRequest(e.message));
+      return;
+    }
+    next(e);
+  }
 });
 
 // ============ 概览 / 健康 ============

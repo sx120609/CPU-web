@@ -589,6 +589,22 @@ model FileCollectFile {
   @@index([submissionId])
 }
 
+// ============ 支付对接：易支付 ============
+
+model EpayConfig {
+  id          Int      @id @default(autoincrement())
+  enabled     Boolean  @default(false)
+  gatewayUrl  String   @default("")
+  pid         String   @default("")
+  merchantKey String   @default("")
+  signType    String   @default("MD5")
+  defaultType String   @default("alipay")
+  notifyUrl   String   @default("")
+  returnUrl   String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 // ============ 通知与待办（保留，但语义改为论坛事件） ============
 
 model Notification {

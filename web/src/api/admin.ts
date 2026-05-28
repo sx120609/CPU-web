@@ -47,6 +47,28 @@ export type AdminOverview = {
   forumEnabledToday: number;
 };
 
+export type EpayConfig = {
+  id: number;
+  enabled: boolean;
+  gatewayUrl: string;
+  submitUrl: string;
+  pid: string;
+  hasMerchantKey: boolean;
+  merchantKeyMasked: string;
+  signType: "MD5";
+  defaultType: "alipay" | "wxpay" | "qqpay" | "bank" | "jdpay";
+  notifyUrl: string;
+  returnUrl: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EpayPreview = {
+  submitUrl: string;
+  method: "POST";
+  params: Record<string, string>;
+};
+
 export const adminApi = {
   // 概览
   overview: () => request.get<AdminOverview>("/admin/overview"),
@@ -119,6 +141,30 @@ export const adminApi = {
   features: () => request.get<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>("/admin/features"),
   updateFeatures: (patch: { forum?: boolean; market?: boolean; coursereview?: boolean; electric?: boolean }) =>
     request.patch<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean }>("/admin/features", patch),
+  // 易支付
+  epayConfig: () => request.get<EpayConfig>("/admin/epay-config"),
+  updateEpayConfig: (patch: Partial<{
+    enabled: boolean;
+    gatewayUrl: string;
+    pid: string;
+    merchantKey: string;
+    clearMerchantKey: boolean;
+    signType: "MD5";
+    defaultType: "alipay" | "wxpay" | "qqpay" | "bank" | "jdpay";
+    notifyUrl: string;
+    returnUrl: string;
+  }>) => request.patch<EpayConfig>("/admin/epay-config", patch),
+  previewEpayPayment: (payload: {
+    outTradeNo: string;
+    name: string;
+    money: string;
+    type?: "alipay" | "wxpay" | "qqpay" | "bank" | "jdpay";
+    notifyUrl?: string;
+    returnUrl?: string;
+    clientIp?: string;
+    device?: string;
+    param?: string;
+  }) => request.post<EpayPreview>("/admin/epay-config/preview", payload),
   // 帖子
   topics: (params: { q?: string; board?: string; hidden?: "0" | "1"; reviewStatus?: string; page?: number; size?: number }) =>
     request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/topics", params),

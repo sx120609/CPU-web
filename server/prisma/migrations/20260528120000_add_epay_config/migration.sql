@@ -1,0 +1,13 @@
+CREATE TABLE "EpayConfig" (
+  "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  "enabled" BOOLEAN NOT NULL DEFAULT false,
+  "gatewayUrl" TEXT NOT NULL DEFAULT '',
+  "pid" TEXT NOT NULL DEFAULT '',
+  "merchantKey" TEXT NOT NULL DEFAULT '',
+  "signType" TEXT NOT NULL DEFAULT 'MD5',
+  "defaultType" TEXT NOT NULL DEFAULT 'alipay',
+  "notifyUrl" TEXT NOT NULL DEFAULT '',
+  "returnUrl" TEXT NOT NULL DEFAULT '',
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" DATETIME NOT NULL
+);

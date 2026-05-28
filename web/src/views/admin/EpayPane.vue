@@ -1,0 +1,374 @@
+<template>
+  <div class="epay-pane" v-loading="loading">
+    <section class="settings-panel">
+      <div class="panel-head">
+        <div>
+          <h3 class="section-title">易支付商户配置</h3>
+          <p class="section-desc">独立存放在 EpayConfig 表，商户密钥保存后只显示脱敏值。</p>
+        </div>
+        <el-tag :type="form.enabled ? 'success' : 'info'" effect="plain">
+          {{ form.enabled ? "已启用" : "未启用" }}
+        </el-tag>
+      </div>
+
+      <div class="form-grid">
+        <label class="field field--switch">
+          <span class="field-label">启用</span>
+          <el-switch v-model="form.enabled" inline-prompt active-text="开" inactive-text="关" />
+        </label>
+        <label class="field">
+          <span class="field-label">支付网关</span>
+          <el-input v-model="form.gatewayUrl" maxlength="240" placeholder="https://pay.example.com" />
+        </label>
+        <label class="field">
+          <span class="field-label">商户 ID</span>
+          <el-input v-model="form.pid" maxlength="80" placeholder="PID" />
+        </label>
+        <label class="field">
+          <span class="field-label">签名方式</span>
+          <el-select v-model="form.signType">
+            <el-option label="MD5" value="MD5" />
+          </el-select>
+        </label>
+        <label class="field">
+          <span class="field-label">默认支付类型</span>
+          <el-select v-model="form.defaultType">
+            <el-option v-for="item in payTypes" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </label>
+        <label class="field field--wide">
+          <span class="field-label">商户密钥</span>
+          <el-input v-model="merchantKey" maxlength="240" show-password :placeholder="keyPlaceholder" />
+        </label>
+        <label class="field field--wide">
+          <span class="field-label">异步通知地址</span>
+          <el-input v-model="form.notifyUrl" maxlength="500" placeholder="https://your-site.com/api/payments/epay/notify" />
+        </label>
+        <label class="field field--wide">
+          <span class="field-label">同步跳转地址</span>
+          <el-input v-model="form.returnUrl" maxlength="500" placeholder="https://your-site.com/payments/return" />
+        </label>
+      </div>
+
+      <div class="meta-row">
+        <span>提交地址：{{ form.submitUrl || "未生成" }}</span>
+        <span v-if="form.merchantKeyMasked">密钥：{{ form.merchantKeyMasked }}</span>
+      </div>
+
+      <div class="actions-row">
+        <el-button v-if="form.hasMerchantKey" plain type="danger" :loading="saving" @click="clearKey">清空密钥</el-button>
+        <el-button type="primary" :loading="saving" @click="saveConfig">保存配置</el-button>
+      </div>
+    </section>
+
+    <section class="settings-panel">
+      <div class="panel-head">
+        <div>
+          <h3 class="section-title">签名预览</h3>
+          <p class="section-desc">生成一组标准易支付提交参数，用于核对网关、PID、回调和 MD5 签名。</p>
+        </div>
+      </div>
+
+      <div class="preview-grid">
+        <label class="field">
+          <span class="field-label">订单号</span>
+          <el-input v-model="previewForm.outTradeNo" maxlength="80" />
+        </label>
+        <label class="field">
+          <span class="field-label">商品名称</span>
+          <el-input v-model="previewForm.name" maxlength="120" />
+        </label>
+        <label class="field">
+          <span class="field-label">金额</span>
+          <el-input v-model="previewForm.money" maxlength="20" />
+        </label>
+        <label class="field">
+          <span class="field-label">支付类型</span>
+          <el-select v-model="previewForm.type">
+            <el-option v-for="item in payTypes" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </label>
+        <label class="field">
+          <span class="field-label">设备</span>
+          <el-input v-model="previewForm.device" maxlength="40" placeholder="pc / mobile" />
+        </label>
+        <label class="field">
+          <span class="field-label">附加参数</span>
+          <el-input v-model="previewForm.param" maxlength="200" />
+        </label>
+      </div>
+
+      <div class="actions-row">
+        <el-button :icon="Refresh" @click="resetPreviewNo">换订单号</el-button>
+        <el-button type="primary" :loading="previewing" @click="previewPayment">生成签名</el-button>
+      </div>
+
+      <div v-if="preview" class="preview-result">
+        <div class="result-head">
+          <div>
+            <div class="result-title">{{ preview.method }} {{ preview.submitUrl }}</div>
+            <div class="result-sub">共 {{ previewRows.length }} 个提交字段</div>
+          </div>
+          <el-button :icon="CopyDocument" plain @click="copyPreview">复制 JSON</el-button>
+        </div>
+        <el-table :data="previewRows" size="small" border>
+          <el-table-column prop="key" label="字段" min-width="150" />
+          <el-table-column prop="value" label="值" min-width="260" show-overflow-tooltip />
+        </el-table>
+      </div>
+    </section>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref } from "vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { CopyDocument, Refresh } from "@element-plus/icons-vue";
+import { adminApi, type EpayConfig, type EpayPreview } from "@/api/admin";
+
+type PayType = EpayConfig["defaultType"];
+
+const payTypes: Array<{ label: string; value: PayType }> = [
+  { label: "支付宝", value: "alipay" },
+  { label: "微信支付", value: "wxpay" },
+  { label: "QQ 钱包", value: "qqpay" },
+  { label: "网银", value: "bank" },
+  { label: "京东支付", value: "jdpay" },
+];
+
+const loading = ref(false);
+const saving = ref(false);
+const previewing = ref(false);
+const merchantKey = ref("");
+const preview = ref<EpayPreview | null>(null);
+
+const form = reactive<EpayConfig>({
+  id: 1,
+  enabled: false,
+  gatewayUrl: "",
+  submitUrl: "",
+  pid: "",
+  hasMerchantKey: false,
+  merchantKeyMasked: "",
+  signType: "MD5",
+  defaultType: "alipay",
+  notifyUrl: "",
+  returnUrl: "",
+  createdAt: "",
+  updatedAt: "",
+});
+
+const previewForm = reactive({
+  outTradeNo: nextPreviewNo(),
+  name: "测试订单",
+  money: "0.01",
+  type: "alipay" as PayType,
+  device: "pc",
+  param: "",
+});
+
+const keyPlaceholder = computed(() => form.hasMerchantKey ? "留空则保持当前密钥" : "请输入商户密钥");
+const previewRows = computed(() => Object.entries(preview.value?.params ?? {}).map(([key, value]) => ({ key, value })));
+
+onMounted(reload);
+
+function nextPreviewNo() {
+  return `TEST${Date.now()}`;
+}
+
+function applyConfig(config: EpayConfig) {
+  Object.assign(form, config);
+  previewForm.type = config.defaultType || "alipay";
+  merchantKey.value = "";
+}
+
+async function reload() {
+  loading.value = true;
+  try {
+    applyConfig(await adminApi.epayConfig());
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function saveConfig() {
+  saving.value = true;
+  try {
+    const config = await adminApi.updateEpayConfig({
+      enabled: form.enabled,
+      gatewayUrl: form.gatewayUrl,
+      pid: form.pid,
+      merchantKey: merchantKey.value || undefined,
+      signType: form.signType,
+      defaultType: form.defaultType,
+      notifyUrl: form.notifyUrl,
+      returnUrl: form.returnUrl,
+    });
+    applyConfig(config);
+    ElMessage.success("易支付配置已保存");
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function clearKey() {
+  try {
+    await ElMessageBox.confirm("确认清空当前易支付商户密钥？", "清空密钥", {
+      type: "warning",
+      confirmButtonText: "清空",
+      cancelButtonText: "取消",
+    });
+  } catch {
+    return;
+  }
+  saving.value = true;
+  try {
+    applyConfig(await adminApi.updateEpayConfig({ clearMerchantKey: true }));
+    ElMessage.success("商户密钥已清空");
+  } finally {
+    saving.value = false;
+  }
+}
+
+function resetPreviewNo() {
+  previewForm.outTradeNo = nextPreviewNo();
+  preview.value = null;
+}
+
+async function previewPayment() {
+  previewing.value = true;
+  try {
+    preview.value = await adminApi.previewEpayPayment({
+      outTradeNo: previewForm.outTradeNo,
+      name: previewForm.name,
+      money: previewForm.money,
+      type: previewForm.type,
+      device: previewForm.device,
+      param: previewForm.param,
+    });
+    ElMessage.success("签名已生成");
+  } finally {
+    previewing.value = false;
+  }
+}
+
+async function copyPreview() {
+  if (!preview.value) return;
+  await navigator.clipboard.writeText(JSON.stringify(preview.value, null, 2));
+  ElMessage.success("已复制");
+}
+</script>
+
+<style scoped>
+.epay-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid #e7edf5;
+  border-radius: 8px;
+  background: #fff;
+}
+.panel-head,
+.result-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.section-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+}
+.section-desc {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #667085;
+}
+.form-grid,
+.preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.field--switch {
+  justify-content: space-between;
+}
+.field--wide {
+  grid-column: 1 / -1;
+}
+.field-label {
+  font-size: 12px;
+  color: #6b7280;
+}
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 10px 12px;
+  border: 1px solid #edf2f7;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #4b5563;
+  font-size: 12px;
+}
+.actions-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.preview-result {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 2px;
+}
+.result-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1f2937;
+  word-break: break-all;
+}
+.result-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+@media (max-width: 768px) {
+  .settings-panel {
+    padding: 14px;
+  }
+  .panel-head,
+  .result-head,
+  .actions-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .form-grid,
+  .preview-grid {
+    grid-template-columns: 1fr;
+  }
+  .field--wide {
+    grid-column: auto;
+  }
+  .actions-row :deep(.el-button) {
+    width: 100%;
+    margin-left: 0;
+  }
+}
+</style>
