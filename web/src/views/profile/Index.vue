@@ -31,63 +31,68 @@
       </div>
     </div>
 
-    <div v-if="site.features.sponsor || (user?.sponsorAmount ?? 0) > 0" class="cpu-card sponsor-card sponsor-card--compact">
-      <div class="sponsor-head">
-        <div>
-          <h3 class="cpu-section-title">{{ sponsorOptions.title || "赞助本站" }}</h3>
+    <div v-if="site.features.sponsor || (user?.sponsorAmount ?? 0) > 0" class="cpu-card sponsor-card">
+      <div class="sponsor-shell">
+        <div class="sponsor-copy">
+          <span class="sponsor-kicker">赞助支持</span>
+          <h3>{{ sponsorOptions.title || "赞助本站" }}</h3>
           <p>{{ sponsorOptions.description || "赞助会通过易支付完成，成功后金额会展示在你的个人资料里。" }}</p>
+          <el-button v-if="sponsorOptions.wallEnabled" class="sponsor-wall-btn" plain @click="router.push('/sponsor-wall')">查看鸣谢墙</el-button>
         </div>
-        <div class="sponsor-side">
+
+        <div class="sponsor-panel">
           <div class="sponsor-total-box">
             <span>已赞助</span>
             <b>¥{{ formatMoney(user?.sponsorAmount) }}</b>
           </div>
-          <el-button v-if="sponsorOptions.wallEnabled" plain @click="router.push('/sponsor-wall')">查看鸣谢墙</el-button>
-        </div>
-      </div>
 
-      <template v-if="site.features.sponsor">
-        <div v-if="sponsorOptions.enabled" class="sponsor-form">
-          <div class="sponsor-main-row">
-            <div class="amount-grid">
-              <button
-                v-for="amount in sponsorOptions.amounts"
+          <template v-if="site.features.sponsor">
+            <div v-if="sponsorOptions.enabled" class="sponsor-form">
+              <div class="amount-grid">
+                <button
+                  v-for="amount in sponsorOptions.amounts"
                 :key="amount"
                 type="button"
                 :class="{ active: sponsorAmount === String(amount) }"
                 @click="sponsorAmount = String(amount)"
               >
-                ¥{{ amount }}
-              </button>
+                  ¥{{ amount }}
+                </button>
+              </div>
+
+              <div class="sponsor-pay-row">
+                <el-input v-model="sponsorAmount" placeholder="自定义金额" maxlength="8" class="sponsor-money-input">
+                  <template #prepend>¥</template>
+                </el-input>
+                <el-select v-model="sponsorPayType" class="sponsor-pay-select">
+                  <el-option v-for="item in enabledPayTypes" :key="item.value" :label="item.label" :value="item.value" />
+                </el-select>
+                <el-button class="sponsor-submit-btn" type="primary" :loading="sponsorSubmitting" @click="submitSponsor">去支付</el-button>
+              </div>
+
+              <div class="sponsor-display">
+                <span>展示方式</span>
+                <el-radio-group v-model="sponsorDisplayMode" size="small">
+                  <el-radio-button value="public">公开</el-radio-button>
+                  <el-radio-button value="anonymous">匿名</el-radio-button>
+                  <el-radio-button value="hidden">隐藏</el-radio-button>
+                </el-radio-group>
+              </div>
+
+              <el-input
+                v-if="sponsorOptions.allowMessage"
+                v-model="sponsorMessage"
+                maxlength="80"
+                show-word-limit
+                placeholder="给本站留一句话（选填）"
+                class="sponsor-message"
+              />
             </div>
-            <div class="sponsor-controls">
-              <el-input v-model="sponsorAmount" placeholder="自定义金额" maxlength="8">
-                <template #prepend>¥</template>
-              </el-input>
-              <el-select v-model="sponsorPayType">
-                <el-option v-for="item in enabledPayTypes" :key="item.value" :label="item.label" :value="item.value" />
-              </el-select>
-              <el-button type="primary" :loading="sponsorSubmitting" @click="submitSponsor">去支付</el-button>
-            </div>
-          </div>
-          <div class="sponsor-options">
-            <el-radio-group v-model="sponsorDisplayMode" size="small">
-              <el-radio-button value="public">公开鸣谢</el-radio-button>
-              <el-radio-button value="anonymous">匿名鸣谢</el-radio-button>
-              <el-radio-button value="hidden">不展示</el-radio-button>
-            </el-radio-group>
-            <el-input
-              v-if="sponsorOptions.allowMessage"
-              v-model="sponsorMessage"
-              maxlength="80"
-              show-word-limit
-              placeholder="给本站留一句话（选填）"
-            />
-          </div>
+            <el-alert v-else type="info" :closable="false" show-icon title="赞助支付暂不可用，请稍后再试。" />
+          </template>
+          <el-alert v-else type="info" :closable="false" show-icon title="赞助入口当前已关闭，已完成的赞助金额仍会保留展示。" />
         </div>
-        <el-alert v-else type="info" :closable="false" show-icon title="赞助支付暂不可用，请稍后再试。" />
-      </template>
-      <el-alert v-else type="info" :closable="false" show-icon title="赞助入口当前已关闭，已完成的赞助金额仍会保留展示。" />
+      </div>
 
       <div v-if="sponsorOrders.length" class="sponsor-history">
         <div class="sub-title">我的赞助记录</div>
@@ -560,91 +565,150 @@ async function removeAvatar() {
 .profile-actions .el-button { flex: 1 1 auto; min-width: 100px; margin-left: 0 !important; }
 
 .sponsor-card {
+  overflow: hidden;
+  border-radius: 8px;
+  padding: 0;
+  background: linear-gradient(135deg, #f8fafc 0%, #ecfdf5 56%, #fff7ed 100%);
+  border: 1px solid #dfe7ee;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+}
+.sponsor-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.92fr);
+  gap: 24px;
+  padding: 22px;
+  align-items: center;
+}
+.sponsor-copy {
+  min-width: 0;
+}
+.sponsor-kicker {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 8px;
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+.sponsor-copy h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 20px;
+  line-height: 1.35;
+}
+.sponsor-copy p {
+  max-width: 520px;
+  margin: 8px 0 16px;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.sponsor-wall-btn {
+  margin-left: 0 !important;
+  border-color: #99d8cd;
+  color: #0f766e;
+  background: rgba(255, 255, 255, 0.72);
+}
+.sponsor-panel {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
-.sponsor-card--compact {
-  padding: 16px 18px;
-}
-.sponsor-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-.sponsor-head p {
-  margin: 4px 0 0;
-  color: #6b7280;
-  font-size: 13px;
-  line-height: 1.45;
-}
-.sponsor-side {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-}
 .sponsor-total-box {
-  min-width: 104px;
-  padding: 8px 12px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
   border-radius: 8px;
   border: 1px solid #fde68a;
-  background: #fffbeb;
-  text-align: center;
+  background: rgba(255, 251, 235, 0.9);
 }
 .sponsor-total-box span {
-  display: block;
   color: #92400e;
   font-size: 12px;
+  font-weight: 700;
 }
 .sponsor-total-box b {
-  display: block;
-  margin-top: 3px;
   color: #b45309;
-  font-size: 19px;
+  font-size: 24px;
+  line-height: 1;
 }
 .sponsor-form {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-}
-.sponsor-main-row {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(340px, 1.4fr);
-  gap: 8px;
+  gap: 12px;
 }
 .amount-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
-}
-.amount-grid button {
-  height: 34px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  background: #fff;
-  color: #374151;
-  font-weight: 700;
-  cursor: pointer;
-}
-.amount-grid button.active {
-  border-color: #f59e0b;
-  background: #fffbeb;
-  color: #b45309;
-}
-.sponsor-controls {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 130px 96px;
   gap: 8px;
 }
-.sponsor-options {
+.amount-grid button {
+  height: 40px;
+  border: 1px solid #d9e6e3;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #1f2937;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+}
+.amount-grid button:hover {
+  border-color: #5bb7a8;
+  color: #0f766e;
+}
+.amount-grid button.active {
+  border-color: #168776;
+  background: #e9fbf6;
+  color: #0f766e;
+  box-shadow: inset 0 0 0 1px rgba(22, 135, 118, 0.18);
+}
+.sponsor-pay-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 136px 108px;
   gap: 8px;
   align-items: center;
 }
-.sponsor-history { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
+.sponsor-submit-btn {
+  width: 100%;
+  margin-left: 0 !important;
+  font-weight: 800;
+}
+.sponsor-money-input :deep(.el-input-group__prepend),
+.sponsor-money-input :deep(.el-input__wrapper),
+.sponsor-pay-select :deep(.el-select__wrapper) {
+  background: rgba(255, 255, 255, 0.92);
+}
+.sponsor-display {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.sponsor-display > span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.sponsor-display :deep(.el-radio-button__inner) {
+  padding: 7px 12px;
+}
+.sponsor-message :deep(.el-input__wrapper) {
+  background: rgba(255, 255, 255, 0.92);
+}
+.sponsor-history {
+  margin: 0 22px 18px;
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.24);
+}
 .sub-title {
   font-size: 13px;
   font-weight: 700;
@@ -655,8 +719,7 @@ async function removeAvatar() {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 0;
-  border-top: 1px dashed #edf2f7;
+  padding: 8px 0 0;
 }
 .sponsor-order-row b {
   display: block;
@@ -836,6 +899,11 @@ async function removeAvatar() {
     padding: 14px;
   }
 
+  .sponsor-card {
+    padding: 0;
+    border-radius: 8px;
+  }
+
   .profile-actions {
     gap: 6px;
   }
@@ -852,39 +920,92 @@ async function removeAvatar() {
     flex-direction: column;
   }
 
-  .sponsor-head {
-    flex-direction: column;
-    align-items: stretch;
+  .sponsor-shell {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 18px 14px;
   }
 
-  .sponsor-side {
-    align-items: stretch;
-    flex-direction: column;
+  .sponsor-copy {
+    text-align: center;
+  }
+
+  .sponsor-kicker {
+    justify-content: center;
+  }
+
+  .sponsor-copy h3 {
+    font-size: 19px;
+  }
+
+  .sponsor-copy p {
+    margin-left: auto;
+    margin-right: auto;
+    line-height: 1.65;
+  }
+
+  .sponsor-wall-btn {
+    width: 100%;
+    max-width: 220px;
   }
 
   .sponsor-total-box {
-    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 14px;
+    text-align: center;
   }
 
-  .sponsor-main-row {
-    grid-template-columns: 1fr;
+  .sponsor-total-box b {
+    font-size: 26px;
   }
 
   .amount-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
   }
 
-  .sponsor-controls {
-    grid-template-columns: 1fr;
+  .amount-grid button {
+    height: 42px;
   }
 
-  .sponsor-options {
+  .sponsor-pay-row {
     grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .sponsor-submit-btn {
+    height: 42px;
+  }
+
+  .sponsor-display {
+    align-items: center;
+    flex-direction: column;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .sponsor-display :deep(.el-radio-group) {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .sponsor-display :deep(.el-radio-button),
+  .sponsor-display :deep(.el-radio-button__inner) {
+    width: 100%;
+  }
+
+  .sponsor-history {
+    margin: 0 14px 16px;
+    text-align: center;
   }
 
   .sponsor-order-row {
-    align-items: flex-start;
+    align-items: center;
     flex-direction: column;
+    gap: 4px;
   }
 
   .trust-score {
