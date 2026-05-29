@@ -31,39 +31,44 @@
       </div>
     </div>
 
-    <div v-if="site.features.sponsor || (user?.sponsorAmount ?? 0) > 0" class="cpu-card sponsor-card">
+    <div v-if="site.features.sponsor || (user?.sponsorAmount ?? 0) > 0" class="cpu-card sponsor-card sponsor-card--compact">
       <div class="sponsor-head">
         <div>
           <h3 class="cpu-section-title">{{ sponsorOptions.title || "赞助本站" }}</h3>
           <p>{{ sponsorOptions.description || "赞助会通过易支付完成，成功后金额会展示在你的个人资料里。" }}</p>
         </div>
-        <div class="sponsor-total-box">
-          <span>已赞助</span>
-          <b>¥{{ formatMoney(user?.sponsorAmount) }}</b>
+        <div class="sponsor-side">
+          <div class="sponsor-total-box">
+            <span>已赞助</span>
+            <b>¥{{ formatMoney(user?.sponsorAmount) }}</b>
+          </div>
+          <el-button v-if="sponsorOptions.wallEnabled" plain @click="router.push('/sponsor-wall')">查看鸣谢墙</el-button>
         </div>
       </div>
 
       <template v-if="site.features.sponsor">
         <div v-if="sponsorOptions.enabled" class="sponsor-form">
-          <div class="amount-grid">
-            <button
-              v-for="amount in sponsorOptions.amounts"
-              :key="amount"
-              type="button"
-              :class="{ active: sponsorAmount === String(amount) }"
-              @click="sponsorAmount = String(amount)"
-            >
-              ¥{{ amount }}
-            </button>
-          </div>
-          <div class="sponsor-controls">
-            <el-input v-model="sponsorAmount" placeholder="自定义金额" maxlength="8">
-              <template #prepend>¥</template>
-            </el-input>
-            <el-select v-model="sponsorPayType">
-              <el-option v-for="item in enabledPayTypes" :key="item.value" :label="item.label" :value="item.value" />
-            </el-select>
-            <el-button type="primary" :loading="sponsorSubmitting" @click="submitSponsor">去支付</el-button>
+          <div class="sponsor-main-row">
+            <div class="amount-grid">
+              <button
+                v-for="amount in sponsorOptions.amounts"
+                :key="amount"
+                type="button"
+                :class="{ active: sponsorAmount === String(amount) }"
+                @click="sponsorAmount = String(amount)"
+              >
+                ¥{{ amount }}
+              </button>
+            </div>
+            <div class="sponsor-controls">
+              <el-input v-model="sponsorAmount" placeholder="自定义金额" maxlength="8">
+                <template #prepend>¥</template>
+              </el-input>
+              <el-select v-model="sponsorPayType">
+                <el-option v-for="item in enabledPayTypes" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+              <el-button type="primary" :loading="sponsorSubmitting" @click="submitSponsor">去支付</el-button>
+            </div>
           </div>
           <div class="sponsor-options">
             <el-radio-group v-model="sponsorDisplayMode" size="small">
@@ -89,23 +94,10 @@
         <div v-for="order in sponsorOrders" :key="order.outTradeNo" class="sponsor-order-row">
           <div>
             <b>¥{{ order.amount }}</b>
-            <span>{{ payTypeLabels[order.payType as PayType] || order.payType }} · {{ statusText(order.status) }}</span>
+            <span>{{ payTypeLabels[order.payType as PayType] || order.payType }} · 已支付</span>
           </div>
           <div class="order-actions">
-            <span>{{ fmtDate(order.createdAt, "MM-DD HH:mm") }}</span>
-            <el-button v-if="order.status === 'pending'" text size="small" @click="payExistingOrder(order)">继续支付</el-button>
-            <el-button v-if="order.status === 'pending'" text size="small" type="danger" @click="closeSponsorOrder(order)">关闭</el-button>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="sponsorWall.enabled && sponsorWall.list.length" class="sponsor-wall">
-        <div class="sub-title">鸣谢墙</div>
-        <div class="wall-list">
-          <div v-for="item in sponsorWall.list" :key="item.id" class="wall-item">
-            <span class="wall-name">{{ item.anonymous ? "匿名同学" : item.user?.nickname }}</span>
-            <b>¥{{ item.amount }}</b>
-            <p v-if="item.message">{{ item.message }}</p>
+            <span>{{ fmtDate(order.paidAt || order.createdAt, "MM-DD HH:mm") }}</span>
           </div>
         </div>
       </div>
@@ -291,11 +283,6 @@ const sponsorPayType = ref<PayType>("alipay");
 const sponsorMessage = ref("");
 const sponsorDisplayMode = ref<"public" | "anonymous" | "hidden">("public");
 const sponsorOrders = ref<any[]>([]);
-const sponsorWall = reactive<{ enabled: boolean; total: number; totalAmount?: string; list: any[] }>({
-  enabled: false,
-  total: 0,
-  list: [],
-});
 const sponsorOptions = reactive<SponsorOptions>({
   enabled: false,
   payTypes: [],
@@ -352,9 +339,8 @@ onMounted(async () => {
   ]);
   myTopics.value = topicList;
   boards.value = boardList;
-  if (site.features.sponsor) await loadSponsorOptions();
+  if (site.features.sponsor || (user.value?.sponsorAmount ?? 0) > 0) await loadSponsorOptions();
   await loadSponsorOrders();
-  await loadSponsorWall();
 });
 
 watch(editing, (v) => {
@@ -388,18 +374,9 @@ async function loadSponsorOptions() {
 
 async function loadSponsorOrders() {
   try {
-    sponsorOrders.value = (await paymentsApi.sponsorOrders({ page: 1, size: 10 })).list;
+    sponsorOrders.value = (await paymentsApi.sponsorOrders({ page: 1, size: 10, status: "paid" })).list;
   } catch {
     sponsorOrders.value = [];
-  }
-}
-
-async function loadSponsorWall() {
-  try {
-    Object.assign(sponsorWall, await paymentsApi.sponsorWall());
-  } catch {
-    sponsorWall.enabled = false;
-    sponsorWall.list = [];
   }
 }
 
@@ -444,23 +421,6 @@ async function submitSponsor() {
   } finally {
     sponsorSubmitting.value = false;
   }
-}
-
-async function payExistingOrder(order: any) {
-  submitEpayForm(await paymentsApi.paySponsorOrder(order.outTradeNo));
-}
-
-async function closeSponsorOrder(order: any) {
-  await ElMessageBox.confirm("确认关闭这笔待支付赞助订单？", "关闭订单", { type: "warning" });
-  await paymentsApi.closeSponsorOrder(order.outTradeNo);
-  ElMessage.success("订单已关闭");
-  await loadSponsorOrders();
-}
-
-function statusText(status: string) {
-  if (status === "paid") return "已支付";
-  if (status === "closed") return "已关闭";
-  return "待支付";
 }
 
 async function pollSponsorReturn(outTradeNo: string) {
@@ -602,11 +562,14 @@ async function removeAvatar() {
 .sponsor-card {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
+}
+.sponsor-card--compact {
+  padding: 16px 18px;
 }
 .sponsor-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
 }
@@ -614,11 +577,17 @@ async function removeAvatar() {
   margin: 4px 0 0;
   color: #6b7280;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.45;
+}
+.sponsor-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
 }
 .sponsor-total-box {
-  min-width: 116px;
-  padding: 10px 14px;
+  min-width: 104px;
+  padding: 8px 12px;
   border-radius: 8px;
   border: 1px solid #fde68a;
   background: #fffbeb;
@@ -633,22 +602,27 @@ async function removeAvatar() {
   display: block;
   margin-top: 3px;
   color: #b45309;
-  font-size: 22px;
+  font-size: 19px;
 }
 .sponsor-form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+}
+.sponsor-main-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(340px, 1.4fr);
+  gap: 8px;
 }
 .amount-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 .amount-grid button {
-  height: 40px;
+  height: 34px;
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border-radius: 6px;
   background: #fff;
   color: #374151;
   font-weight: 700;
@@ -661,7 +635,7 @@ async function removeAvatar() {
 }
 .sponsor-controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 160px 120px;
+  grid-template-columns: minmax(0, 1fr) 130px 96px;
   gap: 8px;
 }
 .sponsor-options {
@@ -670,13 +644,7 @@ async function removeAvatar() {
   gap: 8px;
   align-items: center;
 }
-.sponsor-history,
-.sponsor-wall {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding-top: 4px;
-}
+.sponsor-history { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
 .sub-title {
   font-size: 13px;
   font-weight: 700;
@@ -687,7 +655,7 @@ async function removeAvatar() {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 0;
+  padding: 8px 0;
   border-top: 1px dashed #edf2f7;
 }
 .sponsor-order-row b {
@@ -704,32 +672,6 @@ async function removeAvatar() {
   gap: 6px;
   flex-wrap: wrap;
   justify-content: flex-end;
-}
-.wall-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-.wall-item {
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid #fde68a;
-  background: #fffbeb;
-}
-.wall-name {
-  color: #92400e;
-  font-size: 12px;
-}
-.wall-item b {
-  float: right;
-  color: #b45309;
-}
-.wall-item p {
-  clear: both;
-  margin: 6px 0 0;
-  color: #6b7280;
-  font-size: 12px;
-  line-height: 1.5;
 }
 
 .trust-card {
@@ -912,10 +854,20 @@ async function removeAvatar() {
 
   .sponsor-head {
     flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sponsor-side {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .sponsor-total-box {
     width: 100%;
+  }
+
+  .sponsor-main-row {
+    grid-template-columns: 1fr;
   }
 
   .amount-grid {
@@ -926,8 +878,7 @@ async function removeAvatar() {
     grid-template-columns: 1fr;
   }
 
-  .sponsor-options,
-  .wall-list {
+  .sponsor-options {
     grid-template-columns: 1fr;
   }
 

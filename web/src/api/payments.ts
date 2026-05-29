@@ -14,6 +14,19 @@ export type SponsorOptions = {
   allowMessage: boolean;
 };
 
+export type SponsorWallItem = {
+  id: number;
+  amount: string;
+  message?: string;
+  paidAt?: string;
+  anonymous: boolean;
+  user?: {
+    id: number;
+    nickname: string;
+    avatar?: string | null;
+  } | null;
+};
+
 export type EpaySubmit = {
   submitUrl: string;
   method: "POST";
@@ -32,8 +45,8 @@ export type SponsorOrderResult = {
 
 export const paymentsApi = {
   sponsorOptions: () => request.get<SponsorOptions>("/payments/sponsor/options"),
-  sponsorWall: () => request.get<{ enabled: boolean; total: number; totalAmount?: string; list: any[] }>("/payments/sponsor/wall"),
-  sponsorOrders: (params?: { page?: number; size?: number }) =>
+  sponsorWall: () => request.get<{ enabled: boolean; total: number; totalAmount?: string; list: SponsorWallItem[] }>("/payments/sponsor/wall"),
+  sponsorOrders: (params?: { page?: number; size?: number; status?: "pending" | "paid" | "closed" }) =>
     request.get<{ page: number; size: number; total: number; list: any[] }>("/payments/sponsor/orders", params),
   createSponsorOrder: (payload: { amount: string | number; payType: PayType }) =>
     request.post<SponsorOrderResult>("/payments/sponsor/orders", payload),
