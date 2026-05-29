@@ -95,14 +95,26 @@ function bindImageViewer() {
     transition: true,
     zoomOnTouch: true,
     zoomOnWheel: true,
+    ready: () => {
+      annotateViewerToolbar();
+    },
     viewed: (event: CustomEvent) => {
       const originalImage = (event.detail as { originalImage?: HTMLImageElement }).originalImage;
       viewerImageUrl.value = originalImage ? getViewerImageUrl(originalImage) : "";
+      annotateViewerToolbar();
     },
     hidden: () => {
       viewerImageUrl.value = "";
     },
   });
+}
+
+function annotateViewerToolbar() {
+  window.setTimeout(() => {
+    const downloadButton = document.querySelector<HTMLElement>(".cpu-markdown-viewer .viewer-download");
+    downloadButton?.setAttribute("title", "保存图片");
+    downloadButton?.setAttribute("aria-label", "保存图片");
+  }, 0);
 }
 
 function destroyImageViewer() {
@@ -295,16 +307,13 @@ watch(() => props.clickableImages, () => nextTick(bindImageViewer));
 }
 
 :global(.cpu-markdown-viewer .viewer-download::before) {
-  content: "存";
+  content: "";
   display: block;
   width: 20px;
   height: 20px;
   margin: 5px;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 20px;
-  text-align: center;
+  background-color: #fff;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v12'/%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3Cpath d='M5 21h14'/%3E%3C/svg%3E") center / 20px 20px no-repeat;
 }
 
 :global(.cpu-markdown-viewer .viewer-title) {
