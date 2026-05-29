@@ -55,7 +55,7 @@
 
             <template v-else-if="activeMobileToolbar === 'image'">
               <button type="button" :disabled="imageUploading" @click="runMobileAction(() => pickContentImage())">
-                {{ imageUploading ? "上传中" : "插图" }}
+                {{ imageUploading ? "上传中" : "插入图片" }}
               </button>
             </template>
           </div>
@@ -92,6 +92,7 @@
       ref="contentImageInputRef"
       type="file"
       accept="image/*"
+      multiple
       class="hidden-file"
       @change="onContentImagePicked"
     />

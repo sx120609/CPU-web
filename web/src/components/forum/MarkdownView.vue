@@ -1,11 +1,51 @@
 <template>
   <div class="md" :class="{ 'md-clickable-images': clickableImages }" ref="el" v-html="html"></div>
   <teleport to="body">
-    <div v-if="previewImageUrl" class="md-image-preview" @click.self="closePreview">
-      <button type="button" class="preview-close" @click="closePreview">×</button>
-      <img :src="previewImageUrl" alt="预览图片" class="preview-image" />
+    <div
+      v-if="previewOpen"
+      class="md-image-preview"
+      tabindex="-1"
+      @click.self="closePreview"
+      @wheel.prevent="handlePreviewWheel"
+    >
+      <button type="button" class="preview-close" aria-label="关闭图片预览" @click="closePreview">×</button>
+      <button
+        v-if="previewImages.length > 1"
+        type="button"
+        class="preview-nav preview-nav-prev"
+        aria-label="上一张"
+        @click.stop="showPrevImage"
+      >
+        ‹
+      </button>
+      <button
+        v-if="previewImages.length > 1"
+        type="button"
+        class="preview-nav preview-nav-next"
+        aria-label="下一张"
+        @click.stop="showNextImage"
+      >
+        ›
+      </button>
+      <div class="preview-stage" @dblclick.stop="togglePreviewZoom">
+        <img
+          v-if="previewImageUrl"
+          :src="previewImageUrl"
+          alt="预览图片"
+          class="preview-image"
+          :style="{ transform: `scale(${previewScale})` }"
+          draggable="false"
+        />
+      </div>
+      <div class="preview-top-info">
+        <span v-if="previewImages.length > 1">{{ previewIndex + 1 }} / {{ previewImages.length }}</span>
+        <span>{{ Math.round(previewScale * 100) }}%</span>
+      </div>
       <div class="preview-actions">
-        <button type="button" class="preview-action-btn" @click="savePreviewImage">保存图片</button>
+        <button type="button" class="preview-action-btn" aria-label="缩小" @click.stop="zoomPreview(-0.2)">−</button>
+        <button type="button" class="preview-action-btn" @click.stop="resetPreviewZoom">重置</button>
+        <button type="button" class="preview-action-btn" aria-label="放大" @click.stop="zoomPreview(0.2)">＋</button>
+        <button type="button" class="preview-action-btn" @click.stop="savePreviewImage">保存图片</button>
       </div>
     </div>
   </teleport>
@@ -23,7 +63,11 @@ const props = withDefaults(defineProps<{
 });
 const html = computed(() => renderMarkdown(props.content));
 const el = ref<HTMLElement | null>(null);
-const previewImageUrl = ref("");
+const previewOpen = ref(false);
+const previewImages = ref<string[]>([]);
+const previewIndex = ref(0);
+const previewScale = ref(1);
+const previewImageUrl = computed(() => previewImages.value[previewIndex.value] ?? "");
 
 function wrapTables() {
   if (!el.value) return;
@@ -42,17 +86,18 @@ function wrapTables() {
 function bindImagePreview() {
   if (!el.value) return;
   const images = el.value.querySelectorAll<HTMLImageElement>("img");
-  images.forEach((img) => {
+  previewImages.value = Array.from(images).map((img) => img.src).filter(Boolean);
+  images.forEach((img, index) => {
     if (props.clickableImages) {
       img.dataset.previewBound = "1";
       img.tabIndex = 0;
       img.setAttribute("role", "button");
-      img.setAttribute("aria-label", "点击查看大图");
-      img.onclick = () => openPreview(img.src);
+      img.setAttribute("aria-label", "点击查看图片");
+      img.onclick = () => openPreview(index);
       img.onkeydown = (event: KeyboardEvent) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          openPreview(img.src);
+          openPreview(index);
         }
       };
     } else {
@@ -66,14 +111,62 @@ function bindImagePreview() {
   });
 }
 
-function openPreview(src: string) {
-  previewImageUrl.value = src;
+function openPreview(index: number) {
+  if (!previewImages.value.length) return;
+  previewIndex.value = clampIndex(index);
+  resetPreviewZoom();
+  previewOpen.value = true;
   document.body.style.overflow = "hidden";
+  window.addEventListener("keydown", handlePreviewKeydown);
 }
 
 function closePreview() {
-  previewImageUrl.value = "";
+  previewOpen.value = false;
+  previewScale.value = 1;
   document.body.style.overflow = "";
+  window.removeEventListener("keydown", handlePreviewKeydown);
+}
+
+function clampIndex(index: number) {
+  const total = previewImages.value.length;
+  if (!total) return 0;
+  return ((index % total) + total) % total;
+}
+
+function showPrevImage() {
+  previewIndex.value = clampIndex(previewIndex.value - 1);
+  resetPreviewZoom();
+}
+
+function showNextImage() {
+  previewIndex.value = clampIndex(previewIndex.value + 1);
+  resetPreviewZoom();
+}
+
+function zoomPreview(delta: number) {
+  previewScale.value = Math.min(4, Math.max(0.4, Number((previewScale.value + delta).toFixed(2))));
+}
+
+function resetPreviewZoom() {
+  previewScale.value = 1;
+}
+
+function togglePreviewZoom() {
+  previewScale.value = previewScale.value > 1 ? 1 : 2;
+}
+
+function handlePreviewWheel(event: WheelEvent) {
+  zoomPreview(event.deltaY > 0 ? -0.16 : 0.16);
+}
+
+function handlePreviewKeydown(event: KeyboardEvent) {
+  if (!previewOpen.value) return;
+  if (event.key === "Escape") closePreview();
+  else if (event.key === "ArrowLeft") showPrevImage();
+  else if (event.key === "ArrowRight") showNextImage();
+  else if (event.key === "+" || event.key === "=") zoomPreview(0.2);
+  else if (event.key === "-" || event.key === "_") zoomPreview(-0.2);
+  else if (event.key === "0") resetPreviewZoom();
 }
 
 async function savePreviewImage() {
@@ -127,6 +220,7 @@ onMounted(wrapTables);
 onMounted(() => nextTick(bindImagePreview));
 onBeforeUnmount(() => {
   document.body.style.overflow = "";
+  window.removeEventListener("keydown", handlePreviewKeydown);
 });
 watch(html, () => nextTick(() => {
   wrapTables();
@@ -236,20 +330,30 @@ watch(() => props.clickableImages, () => nextTick(bindImagePreview));
   position: fixed;
   inset: 0;
   z-index: 2000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   padding: 24px;
   background: rgba(15, 23, 42, 0.76);
   backdrop-filter: blur(4px);
+  user-select: none;
+  touch-action: none;
+}
+
+.preview-stage {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
 
 .preview-image {
   max-width: min(92vw, 1100px);
-  max-height: 88vh;
+  max-height: 82vh;
   border-radius: 16px;
   background: #fff;
   box-shadow: 0 24px 56px rgba(15, 23, 42, 0.35);
+  transition: transform 0.16s ease;
+  transform-origin: center;
 }
 
 .preview-actions {
@@ -260,11 +364,17 @@ watch(() => props.clickableImages, () => nextTick(bindImagePreview));
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.26);
+  backdrop-filter: blur(10px);
 }
 
 .preview-action-btn {
   min-height: 42px;
-  padding: 0 18px;
+  min-width: 42px;
+  padding: 0 14px;
   border: none;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.16);
@@ -288,5 +398,94 @@ watch(() => props.clickableImages, () => nextTick(bindImagePreview));
   font-size: 26px;
   line-height: 1;
   cursor: pointer;
+}
+
+.preview-top-info {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.preview-top-info span {
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(8px);
+}
+
+.preview-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  width: 50px;
+  height: 72px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: 54px;
+  line-height: 1;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transform: translateY(-50%);
+}
+
+.preview-nav:hover,
+.preview-action-btn:hover,
+.preview-close:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.preview-nav-prev {
+  left: 18px;
+}
+
+.preview-nav-next {
+  right: 18px;
+}
+
+@media (max-width: 640px) {
+  .md-image-preview {
+    padding: 14px;
+  }
+
+  .preview-image {
+    max-width: 96vw;
+    max-height: 78vh;
+    border-radius: 10px;
+  }
+
+  .preview-nav {
+    width: 42px;
+    height: 58px;
+    font-size: 42px;
+  }
+
+  .preview-nav-prev { left: 8px; }
+  .preview-nav-next { right: 8px; }
+
+  .preview-actions {
+    bottom: 12px;
+    width: calc(100vw - 24px);
+    justify-content: center;
+  }
+
+  .preview-action-btn {
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0 10px;
+    font-size: 13px;
+  }
+
+  .preview-close {
+    top: 12px;
+    right: 12px;
+  }
 }
 </style>
