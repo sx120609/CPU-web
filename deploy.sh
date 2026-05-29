@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 药大垎坊 一键部署脚本（Debian / Ubuntu）
+# 药大拾间 一键部署脚本（Debian / Ubuntu）
 #
 # 用法：
 #   ./deploy.sh                  # 首次部署：装依赖 + 初始化 DB + 构建前端 + 启动

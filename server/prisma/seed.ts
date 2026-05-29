@@ -1,5 +1,5 @@
 /**
- * 药大垎坊 种子数据
+ * 药大拾间 种子数据
  * 运行：npm run db:seed
  *
  * 包括：测试用户 + 机器人 + 板块 + 示例话题 + 课程 + 服务卡片 + 爬虫源
@@ -261,7 +261,7 @@ async function main() {
 
   // 灌水广场
   const t1 = await makeTopic(general.id, alice.id,
-    "[置顶] 欢迎来到药大垎坊！请先看版规",
+    "[置顶] 欢迎来到药大拾间！请先看版规",
     "## 欢迎\n\n这里是民间药大学生论坛，**与学校官方无关**。\n\n- 请理性发言，禁止人身攻击\n- 想发碎碎念或心情记录可以去树洞\n- 二手交易请到二手市场板块\n- 提问请到提问广场\n- 课程点评请到课程点评板块\n",
     72, undefined, { pinned: true, likes: 18, replies: 4 });
   const t2 = await makeTopic(general.id, bob.id,
@@ -398,8 +398,8 @@ async function main() {
   // 示例通知
   await prisma.notification.createMany({
     data: [
-      { userId: alice.id, category: "reply", level: "normal", title: "有人回复了你的帖子", content: "@夜归人 回复了「欢迎来到药大垎坊」", link: `/forum/topic/${t1.id}`, source: "论坛" },
-      { userId: null, category: "system", level: "weak", title: "「药大垎坊」上线公测", content: "欢迎试用！本站为民间学生站，与学校官方无关。", source: "站务组" },
+      { userId: alice.id, category: "reply", level: "normal", title: "有人回复了你的帖子", content: "@夜归人 回复了「欢迎来到药大拾间」", link: `/forum/topic/${t1.id}`, source: "论坛" },
+      { userId: null, category: "system", level: "weak", title: "「药大拾间」上线公测", content: "欢迎试用！本站为民间学生站，与学校官方无关。", source: "站务组" },
       { userId: null, category: "system", level: "normal", title: "版规公示", content: "请理性发言、不传播敏感内容、不发布违法信息。", source: "站务组" },
     ],
   });

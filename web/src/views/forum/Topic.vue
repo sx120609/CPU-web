@@ -248,7 +248,7 @@
             {{ topic?.board?.icon || "💬" }}
           </div>
           <div class="share-card-meta">
-            <div class="share-card-board">{{ topic?.board?.name || "药大垎坊" }}</div>
+            <div class="share-card-board">{{ topic?.board?.name || "药大拾间" }}</div>
             <div class="share-card-subtitle">{{ shareCardSubtitle }}</div>
             <div class="share-card-stats">{{ shareCardStats }}</div>
           </div>
@@ -261,7 +261,7 @@
         </div>
         <div class="share-card-bottom">
           <div class="share-card-brand">
-            <div class="share-card-brand-title">药大垎坊</div>
+            <div class="share-card-brand-title">药大拾间</div>
             <div class="share-card-brand-copy">扫描二维码，直接打开原帖</div>
             <div class="share-card-brand-host">cpu.lizmt.cn</div>
           </div>
@@ -415,7 +415,7 @@ const currentMuteMessage = computed(() => auth.user?.mutedUntil ? `你已被禁�
 const shareLandingUrl = computed(() => topic.value ? new URL(`/share/topic/${topic.value.id}`, window.location.origin).toString() : "");
 const shareSummary = computed(() => {
   const raw = stripTextForShare(displayContent.value || topic.value?.content || "");
-  return raw ? raw.slice(0, 80) : `来自 ${topic.value?.board?.name || "药大垎坊"} 的帖子`;
+  return raw ? raw.slice(0, 80) : `来自 ${topic.value?.board?.name || "药大拾间"} 的帖子`;
 });
 const canUseNativeShare = computed(() => (
   isIosDevice() &&
@@ -433,7 +433,7 @@ const shareCardSoftBg = computed(() => `linear-gradient(135deg, ${hexToRgba(shar
 const shareCardSoftOrb = computed(() => hexToRgba(shareCardAccent.value, 0.13));
 const shareCardSoftLine = computed(() => hexToRgba(shareCardAccent.value, 0.22));
 const shareCardSubtitle = computed(() => {
-  const board = topic.value?.board?.name || "药大垎坊";
+  const board = topic.value?.board?.name || "药大拾间";
   const author = topic.value?.author?.nickname || "同学";
   return `${board} · ${author}`;
 });

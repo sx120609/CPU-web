@@ -96,7 +96,7 @@ final class CpuAndroidBridge {
 
             String safeName = sanitizeApkFileName(fileName == null ? "" : fileName);
             DownloadManager.Request request = new DownloadManager.Request(uri);
-            request.setTitle("下载药大垎坊更新");
+            request.setTitle("下载药大拾间更新");
             request.setDescription("下载完成后将尝试打开安装");
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
             request.setMimeType("application/vnd.android.package-archive");

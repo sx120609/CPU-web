@@ -86,7 +86,7 @@ export const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
   const site = useSiteStore();
-  if (to.meta.title) document.title = `${to.meta.title} · 药大垎坊`;
+  if (to.meta.title) document.title = `${to.meta.title} · 药大拾间`;
 
   // 功能开关 gate：admin / mod 不受限（便于在关闭期间巡查）
   const featureName = to.name ? FEATURE_GATED[String(to.name)] : undefined;

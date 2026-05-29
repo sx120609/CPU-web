@@ -9,7 +9,7 @@ dependencies {
 def defaultAppUrl = "https://cpu.lizmt.cn/schedule"
 def resolvedAppUrl = (project.findProperty("appUrl") ?: defaultAppUrl).toString()
 def resolvedApplicationId = (project.findProperty("applicationId") ?: "cn.lizmt.cpuweb.schedule").toString()
-def resolvedAppName = (project.findProperty("appName") ?: "药大垎坊").toString()
+def resolvedAppName = (project.findProperty("appName") ?: "药大拾间").toString()
 
 def escapeJavaString = { value ->
     value.replace("\\", "\\\\").replace("\"", "\\\"")
@@ -23,8 +23,8 @@ android {
         applicationId resolvedApplicationId
         minSdk 23
         targetSdk 35
-        versionCode 14
-        versionName "2.0.5"
+        versionCode 15
+        versionName "2.0.6"
 
         buildConfigField "String", "APP_URL", "\"${escapeJavaString(resolvedAppUrl)}\""
         resValue "string", "app_name", resolvedAppName

@@ -1,7 +1,7 @@
 export type ClientPlatform = "ios" | "android" | "web" | "unknown";
 
-export const ANDROID_APP_LATEST_VERSION_CODE = 14;
-export const ANDROID_APP_LATEST_VERSION_NAME = "2.0.5";
+export const ANDROID_APP_LATEST_VERSION_CODE = 15;
+export const ANDROID_APP_LATEST_VERSION_NAME = "2.0.6";
 export const ANDROID_APP_DOWNLOAD_URL = "/api/site/downloads/android-app";
 export const ANDROID_WIDGET_MIN_VERSION_CODE = 5;
 export const ANDROID_IN_APP_UPDATE_MIN_VERSION_CODE = 14;

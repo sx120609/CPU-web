@@ -29,7 +29,7 @@ shareRouter.get("/topic/:id", async (req, res, next) => {
       shareUrl,
       topicUrl,
       imageUrl,
-      title: `${topic.title} · 药大垎坊`,
+      title: `${topic.title} · 药大拾间`,
       description,
       topicTitle: topic.title,
       boardName: topic.board.name,
@@ -43,7 +43,7 @@ shareRouter.get("/topic/:id/card.png", async (req, res, next) => {
   try {
     const topic = await loadShareTopic(req.params.id);
     if (!topic) {
-      const fallbackSvg = renderFallbackCardSvg("药大垎坊", "分享内容不存在或暂不可用");
+      const fallbackSvg = renderFallbackCardSvg("药大拾间", "分享内容不存在或暂不可用");
       const fallbackPng = renderSvgToPng(fallbackSvg);
       res.status(404).type("image/png").send(fallbackPng);
       return;
@@ -129,7 +129,7 @@ function renderTopicSharePage(input: {
     <title>${title}</title>
     <meta name="description" content="${description}" />
     <meta property="og:type" content="article" />
-    <meta property="og:site_name" content="药大垎坊" />
+    <meta property="og:site_name" content="药大拾间" />
     <meta property="og:title" content="${title}" />
     <meta property="og:description" content="${description}" />
     <meta property="og:url" content="${shareUrl}" />
@@ -205,7 +205,7 @@ function renderTopicSharePage(input: {
 }
 
 async function renderTopicCardSvg(topic: any, origin: string) {
-  const boardName = topic.board?.name || "药大垎坊";
+  const boardName = topic.board?.name || "药大拾间";
   const boardIcon = topic.board?.icon || "💬";
   const boardColor = topic.board?.color || "#168776";
   const authorName = topic.isAnonymous ? (topic.anonymousAlias || "匿名同学") : (topic.author?.nickname || "同学");
@@ -257,7 +257,7 @@ async function renderTopicCardSvg(topic: any, origin: string) {
 
   <rect x="92" y="650" width="536" height="1" fill="#edf2f7" />
 
-  <text x="92" y="724" font-size="40" font-weight="820" fill="#172033">药大垎坊</text>
+  <text x="92" y="724" font-size="40" font-weight="820" fill="#172033">药大拾间</text>
   <text x="92" y="764" font-size="19" fill="#667085">扫描二维码，直接打开原帖</text>
   <text x="92" y="816" font-size="16" font-weight="700" fill="${escapeXml(boardColor)}">${escapeXml(boardName)}</text>
   <text x="92" y="842" font-size="16" fill="#98a2b3">cpu.lizmt.cn</text>
@@ -298,16 +298,16 @@ function renderNotFoundPage(origin: string, targetPath: string) {
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="refresh" content="0;url=${escapeHtml(target)}" />
-    <title>药大垎坊</title>
+    <title>药大拾间</title>
   </head>
   <body>
-    <a href="${escapeHtml(target)}">继续访问药大垎坊</a>
+    <a href="${escapeHtml(target)}">继续访问药大拾间</a>
   </body>
 </html>`;
 }
 
 function wrapText(text: string, maxUnits: number, maxLines: number) {
-  const source = text.trim() || "药大垎坊";
+  const source = text.trim() || "药大拾间";
   const lines: string[] = [];
   let current = "";
   let units = 0;

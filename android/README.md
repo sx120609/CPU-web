@@ -1,4 +1,4 @@
-# 药大垎坊课表 Android WebView
+# 药大拾间课表 Android WebView
 
 这是一个轻量 Android WebView 壳，默认打开 `https://cpu.lizmt.cn/schedule`，用于把移动端课表页打包成 APK。
 
@@ -46,10 +46,10 @@ gradle :app:assembleRelease
 |---|---|---|
 | `appUrl` | `https://cpu.lizmt.cn/schedule` | WebView 首屏地址 |
 | `applicationId` | `cn.lizmt.cpuweb.schedule` | Android 包名 |
-| `appName` | `药大垎坊课表` | 桌面显示名称 |
+| `appName` | `药大拾间课表` | 桌面显示名称 |
 
 示例：
 
 ```bash
-gradle :app:assembleRelease -PappUrl=https://cpu.lizmt.cn/schedule -PapplicationId=cn.lizmt.cpuweb.schedule -PappName=药大垎坊课表
+gradle :app:assembleRelease -PappUrl=https://cpu.lizmt.cn/schedule -PapplicationId=cn.lizmt.cpuweb.schedule -PappName=药大拾间课表
 ```

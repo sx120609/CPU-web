@@ -12,7 +12,7 @@
       <div class="brand">
         <div class="brand-logo">药</div>
         <div>
-          <h1>注册药大垎坊</h1>
+          <h1>注册药大拾间</h1>
           <p>暂不开放公开注册</p>
         </div>
       </div>
@@ -65,8 +65,8 @@
       </template>
     </div>
 
-    <el-dialog v-model="showTerms" title="药大垎坊 用户协议" width="500">
-      <p>药大垎坊是面向校内同学的交流与服务平台。</p>
+    <el-dialog v-model="showTerms" title="药大拾间 用户协议" width="500">
+      <p>药大拾间是面向校内同学的交流与服务平台。</p>
       <p>注册即表示你同意：</p>
       <ol>
         <li>不发布违法、违规、人身攻击内容</li>

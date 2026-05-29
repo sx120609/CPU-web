@@ -350,7 +350,7 @@ public final class MainActivity extends Activity {
         logoParams.setMargins(0, 0, 0, dp(18));
 
         TextView title = new TextView(this);
-        title.setText("药大垎坊");
+        title.setText("药大拾间");
         title.setTextColor(Color.rgb(23, 32, 51));
         title.setTextSize(28);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);

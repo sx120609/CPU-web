@@ -11,7 +11,7 @@
       <div class="brand">
         <div class="brand-logo">药</div>
         <div>
-          <h1>药大垎坊</h1>
+          <h1>药大拾间</h1>
           <p>中国药科大学 · 校园互助与服务平台</p>
         </div>
       </div>

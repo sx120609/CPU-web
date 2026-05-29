@@ -6,7 +6,7 @@
         <router-link to="/home" class="brand">
           <span class="brand-logo">药</span>
           <span class="brand-text">
-            <span class="brand-name">药大垎坊</span>
+            <span class="brand-name">药大拾间</span>
             <span class="brand-sub">CPU 校园互助服务</span>
           </span>
         </router-link>
@@ -96,7 +96,7 @@
     </main>
 
     <footer v-if="!hideChrome" class="footer">
-      <span>© 2026 药大垎坊 · 校园互助与服务平台</span>
+      <span>© 2026 药大拾间 · 校园互助与服务平台</span>
       <span class="dot">·</span>
       <a href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener">GitHub</a>
       <span class="dot">·</span>
@@ -164,7 +164,7 @@
       :show-close="false"
     >
       <p class="dlg-tip">
-        欢迎来到药大垎坊，先设置一个公开显示的昵称
+        欢迎来到药大拾间，先设置一个公开显示的昵称
       </p>
       <p class="dlg-hint">
         {{ nicknameHint }}，<b>不会展示你的学号</b>。

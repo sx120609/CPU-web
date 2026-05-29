@@ -42,7 +42,7 @@ async function buildSponsorPayment(order: any, req: any) {
   if (!callbacks.notifyUrl || !callbacks.returnUrl) throw Errors.badRequest("请先在后台基础配置中设置网站域名");
   return buildEpaySubmitPayload({
     outTradeNo: order.outTradeNo,
-    name: "赞助药大垎坊",
+    name: "赞助药大拾间",
     money: amountCentsToMoney(order.amountCents),
     type: order.payType,
     notifyUrl: callbacks.notifyUrl,
