@@ -401,7 +401,7 @@ const LAST_STATE_BASE = "cpu-jwxt-schedule-view-state-v1";
 const LAST_CACHE_BASE = "cpu-schedule-last-cache-key-v1";
 const scheduleCacheStore = new Map<string, CacheEnvelope<ScheduleResult>>();
 const prewarmingScheduleKeys = new Set<string>();
-const isNativeScheduleApp = /cpuwebscheduleapp/i.test(navigator.userAgent);
+const isNativeScheduleApp = detectClientPlatform() === "android" || detectClientPlatform() === "harmony";
 let scheduleEditsSaveTimer = 0;
 let scheduleEditsLoadPromise: Promise<void> | null = null;
 const smallSlots = [

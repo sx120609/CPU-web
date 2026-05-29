@@ -72,6 +72,9 @@ struct Index {
         .fileAccess(true)
         .onlineImageAccess(true)
         .mixedMode(MixedMode.All)
+        .metaViewport(true)
+        .initialScale(100)
+        .textZoomRatio(100)
         .userAgent(USER_AGENT_TOKEN)
         .javaScriptProxy({
           object: this.bridge,
