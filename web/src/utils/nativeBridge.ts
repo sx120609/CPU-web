@@ -123,6 +123,16 @@ function showIosImagePreview(items: NativeImagePreviewItem[], startIndex: number
   let index = Math.max(0, Math.min(startIndex, images.length - 1));
   let touchStartX = 0;
   let touchStartY = 0;
+  let scale = 1;
+  let translateX = 0;
+  let translateY = 0;
+  let startScale = 1;
+  let startDistance = 0;
+  let startMidX = 0;
+  let startMidY = 0;
+  let startTranslateX = 0;
+  let startTranslateY = 0;
+  let lastTapAt = 0;
 
   const existing = document.querySelector<HTMLElement>("[data-ios-image-preview]");
   existing?.remove();
@@ -195,7 +205,9 @@ function showIosImagePreview(items: NativeImagePreviewItem[], startIndex: number
       max-height: 100vh;
       object-fit: contain;
       transform: translateZ(0);
+      transform-origin: center center;
       -webkit-user-drag: none;
+      will-change: transform;
     }
     [data-ios-image-preview] .ios-preview-title {
       position: absolute;
@@ -243,14 +255,58 @@ function showIosImagePreview(items: NativeImagePreviewItem[], startIndex: number
     style.remove();
   };
 
+  const applyTransform = () => {
+    image.style.transform = `translate3d(${translateX}px, ${translateY}px, 0) scale(${scale})`;
+    prev.hidden = images.length < 2 || index <= 0 || scale > 1.02;
+    next.hidden = images.length < 2 || index >= images.length - 1 || scale > 1.02;
+  };
+
+  const clampTranslate = () => {
+    if (scale <= 1) {
+      translateX = 0;
+      translateY = 0;
+      return;
+    }
+    const maxX = (window.innerWidth * (scale - 1)) / 2;
+    const maxY = (window.innerHeight * (scale - 1)) / 2;
+    translateX = clampValue(translateX, -maxX, maxX);
+    translateY = clampValue(translateY, -maxY, maxY);
+  };
+
+  const setZoom = (nextScale: number, centerX = window.innerWidth / 2, centerY = window.innerHeight / 2, animated = false) => {
+    const previousScale = scale;
+    scale = clampValue(nextScale, 1, 5);
+    if (scale <= 1.02) {
+      scale = 1;
+      translateX = 0;
+      translateY = 0;
+    } else if (previousScale > 0) {
+      const viewportCenterX = window.innerWidth / 2;
+      const viewportCenterY = window.innerHeight / 2;
+      translateX = centerX - viewportCenterX - ((centerX - viewportCenterX - translateX) * scale) / previousScale;
+      translateY = centerY - viewportCenterY - ((centerY - viewportCenterY - translateY) * scale) / previousScale;
+      clampTranslate();
+    }
+    image.style.transition = animated ? "transform 180ms ease" : "";
+    applyTransform();
+    if (animated) window.setTimeout(() => { image.style.transition = ""; }, 190);
+  };
+
+  const resetZoom = () => {
+    scale = 1;
+    translateX = 0;
+    translateY = 0;
+    applyTransform();
+  };
+
   const render = () => {
     const current = images[index];
+    resetZoom();
     image.src = current.url;
     image.alt = current.title;
     count.textContent = images.length > 1 ? `${index + 1} / ${images.length}` : "";
     title.textContent = current.title;
-    prev.hidden = images.length < 2 || index <= 0;
-    next.hidden = images.length < 2 || index >= images.length - 1;
+    applyTransform();
   };
 
   const move = (delta: number) => {
@@ -274,14 +330,70 @@ function showIosImagePreview(items: NativeImagePreviewItem[], startIndex: number
     if (action === "save") void shareIosImageUrl(images[index].url, images[index].fileName);
   });
   overlay.addEventListener("touchstart", (event) => {
+    if (event.touches.length === 2) {
+      const first = event.touches[0];
+      const second = event.touches[1];
+      startDistance = touchDistance(first, second);
+      const mid = touchMidpoint(first, second);
+      startMidX = mid.x;
+      startMidY = mid.y;
+      startScale = scale;
+      startTranslateX = translateX;
+      startTranslateY = translateY;
+      event.preventDefault();
+      return;
+    }
+
     const touch = event.touches[0];
     touchStartX = touch.clientX;
     touchStartY = touch.clientY;
-  }, { passive: true });
+    startTranslateX = translateX;
+    startTranslateY = translateY;
+  }, { passive: false });
+  overlay.addEventListener("touchmove", (event) => {
+    if (event.touches.length === 2 && startDistance > 0) {
+      const first = event.touches[0];
+      const second = event.touches[1];
+      const mid = touchMidpoint(first, second);
+      scale = clampValue(startScale * (touchDistance(first, second) / startDistance), 1, 5);
+      translateX = startTranslateX + mid.x - startMidX;
+      translateY = startTranslateY + mid.y - startMidY;
+      clampTranslate();
+      applyTransform();
+      event.preventDefault();
+      return;
+    }
+
+    if (event.touches.length === 1 && scale > 1.02) {
+      const touch = event.touches[0];
+      translateX = startTranslateX + touch.clientX - touchStartX;
+      translateY = startTranslateY + touch.clientY - touchStartY;
+      clampTranslate();
+      applyTransform();
+      event.preventDefault();
+    }
+  }, { passive: false });
   overlay.addEventListener("touchend", (event) => {
+    if (event.touches.length > 0) return;
     const touch = event.changedTouches[0];
     const deltaX = touch.clientX - touchStartX;
     const deltaY = touch.clientY - touchStartY;
+    const now = Date.now();
+    if (Math.abs(deltaX) < 12 && Math.abs(deltaY) < 12) {
+      if (now - lastTapAt < 280) {
+        setZoom(scale > 1.02 ? 1 : 2.5, touch.clientX, touch.clientY, true);
+        lastTapAt = 0;
+        return;
+      }
+      lastTapAt = now;
+    }
+
+    if (scale > 1.02) {
+      clampTranslate();
+      applyTransform();
+      return;
+    }
+
     if (Math.abs(deltaX) < 48 || Math.abs(deltaX) < Math.abs(deltaY) * 1.4) return;
     move(deltaX > 0 ? -1 : 1);
   }, { passive: true });
@@ -293,6 +405,21 @@ function showIosImagePreview(items: NativeImagePreviewItem[], startIndex: number
   window.addEventListener("keydown", onKeyDown);
   render();
   return true;
+}
+
+function clampValue(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function touchDistance(first: Touch, second: Touch) {
+  return Math.hypot(first.clientX - second.clientX, first.clientY - second.clientY);
+}
+
+function touchMidpoint(first: Touch, second: Touch) {
+  return {
+    x: (first.clientX + second.clientX) / 2,
+    y: (first.clientY + second.clientY) / 2,
+  };
 }
 
 function isAndroidNativePreviewFallback() {
