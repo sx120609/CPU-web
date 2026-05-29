@@ -5,7 +5,7 @@ import fs from '@ohos.file.fs';
 import fileUri from '@ohos.file.fileuri';
 import photoAccessHelper from '@ohos.file.photoAccessHelper';
 import util from '@ohos.util';
-import { APP_NAME, VERSION_CODE, VERSION_NAME, isHttpUrl } from './AppConfig';
+import { VERSION_CODE, VERSION_NAME, isHttpUrl } from './AppConfig';
 
 export class HarmonyBridge {
   private context?: common.UIAbilityContext;
@@ -83,9 +83,13 @@ export class HarmonyBridge {
       fs.closeSync(file);
 
       const imageUri = fileUri.getUriFromPath(sandboxPath);
-      const changeRequest = photoAccessHelper.MediaAssetChangeRequest.createImageAssetRequest(this.context, imageUri);
       const helper = photoAccessHelper.getPhotoAccessHelper(this.context);
-      await helper.applyChanges(changeRequest);
+      const config: photoAccessHelper.PhotoCreationConfig = {
+        title: this.stripExtension(safeName),
+        fileNameExtension: this.extensionOf(safeName),
+        photoType: photoAccessHelper.PhotoType.IMAGE
+      };
+      await helper.showAssetsCreationDialog([imageUri], [config]);
       this.toast('图片已保存到相册');
     } catch (_) {
       this.toast('保存图片失败');
@@ -106,6 +110,18 @@ export class HarmonyBridge {
     raw = raw.replace(/[\\/:*?"<>|]/g, '_');
     if (!raw.toLowerCase().endsWith('.png')) raw += '.png';
     return raw;
+  }
+
+  private stripExtension(fileName: string): string {
+    const dot = fileName.lastIndexOf('.');
+    return dot > 0 ? fileName.substring(0, dot) : fileName;
+  }
+
+  private extensionOf(fileName: string): string {
+    const dot = fileName.lastIndexOf('.');
+    const ext = dot >= 0 ? fileName.substring(dot + 1).toLowerCase() : 'png';
+    if (ext === 'jpg' || ext === 'jpeg' || ext === 'webp' || ext === 'gif' || ext === 'png') return ext;
+    return 'png';
   }
 
   private toast(message: string): void {

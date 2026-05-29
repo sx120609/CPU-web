@@ -1,7 +1,7 @@
 import common from '@ohos.app.ability.common';
-import { picker } from '@kit.CoreFileKit';
 import webview from '@ohos.web.webview';
 import promptAction from '@ohos.promptAction';
+import photoAccessHelper from '@ohos.file.photoAccessHelper';
 import { APP_NAME, APP_URL, USER_AGENT_TOKEN, isHttpUrl, isInternalUrl } from '../common/AppConfig';
 import { HarmonyBridge } from '../common/HarmonyBridge';
 
@@ -43,13 +43,14 @@ struct Index {
   }
 
   private chooseFiles(event?: OnShowFileSelectorEvent): boolean {
-    const documentPicker = new picker.DocumentViewPicker();
-    const options = new picker.DocumentSelectOptions();
+    const photoPicker = new photoAccessHelper.PhotoViewPicker();
+    const options = new photoAccessHelper.PhotoSelectOptions();
+    options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE;
     options.maxSelectNumber = 20;
-    options.fileSuffixFilters = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
-    documentPicker.select(options)
-      .then((uris: string[]) => {
-        event?.result.handleFileList(uris);
+    options.isPhotoTakingSupported = true;
+    photoPicker.select(options)
+      .then((result: photoAccessHelper.PhotoSelectResult) => {
+        event?.result.handleFileList(result.photoUris);
       })
       .catch(() => {
         event?.result.handleFileList([]);

@@ -1,6 +1,20 @@
 {
   "app": {
-    "signingConfigs": [],
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\Users\\ASUS\\.ohos\\config\\default_harmony_DWUx74n-wyZsx3ixZJX69vWDLPWlTzTevqidzpjsKTA=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001B66A7D3D8F6564E4B45AD9EFC0385BCCB3C8FA61405E76FA566334388CC92F80C2A273AB130D4EA",
+          "profile": "C:\\Users\\ASUS\\.ohos\\config\\default_harmony_DWUx74n-wyZsx3ixZJX69vWDLPWlTzTevqidzpjsKTA=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\Users\\ASUS\\.ohos\\config\\default_harmony_DWUx74n-wyZsx3ixZJX69vWDLPWlTzTevqidzpjsKTA=.p12",
+          "storePassword": "0000001B4F22CA7C254AF3EF57811CA4E441833553C9D5CE6339E469EF6C0AA4489F4BDB4CD2CE7369C95B"
+        }
+      }
+    ],
     "products": [
       {
         "name": "default",

@@ -13,7 +13,7 @@
 ## 基础信息
 
 - 应用名：药大拾间
-- 包名：`cn.lizmt.cpuweb.harmony`
+- 包名：`com.cpu.yaodashijian`
 - 版本：`2.0.6 (15)`
 - 默认入口：`https://cpu.lizmt.cn/schedule`
 

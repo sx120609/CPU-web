@@ -1,0 +1,132 @@
+{
+  "version": 1,
+  "ohos-module-entry": {
+    "SELECT_TARGET": "default",
+    "MODULE_BUILD_DIR": "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony\\entry\\build",
+    "TARGETS": {
+      "default": {
+        "SOURCE_ROOT": "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony\\entry\\src\\main",
+        "RESOURCES_PATH": [
+          "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony\\entry\\src\\main\\resources"
+        ],
+        "BUILD_PATH": {
+          "OUTPUT_PATH": "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony\\entry\\build\\default\\outputs\\default",
+          "INTERMEDIA_PATH": "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony\\entry\\build\\default\\intermediates",
+          "JS_ASSETS_PATH": "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony\\entry\\build\\default\\intermediates\\loader_out\\default",
+          "JS_LITE_ASSETS_PATH": "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony\\entry\\build\\default\\intermediates\\loader_out_lite\\default",
+          "RES_PATH": "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony\\entry\\build\\default\\intermediates\\res\\default",
+          "RES_PROFILE_PATH": "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony\\entry\\build\\default\\intermediates\\res\\default\\resources\\base\\profile",
+          "ETS_SUPER_VISUAL_PATH": "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony\\entry\\build\\default\\cache\\default\\default@CompileArkTS\\esmodule",
+          "JS_SUPER_VISUAL_PATH": "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony\\entry\\build\\default\\cache\\default\\default@CompileJS\\jsbundle",
+          "WORKER_LOADER": "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony\\entry\\build\\default\\intermediates\\loader\\default\\loader.json",
+          "MANIFEST_JSON": "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony\\entry\\build\\default\\intermediates\\manifest\\default",
+          "OUTPUT_METADATA_JSON": "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony\\entry\\build\\default\\intermediates\\hap_metadata\\default\\output_metadata.json",
+          "SOURCE_MAP_DIR": "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony\\entry\\build\\default\\intermediates\\source_map\\default"
+        },
+        "BUILD_OPTION": {
+          "debuggable": true
+        }
+      }
+    },
+    "BUILD_OPTION": {
+      "default-default": {
+        "debuggable": true,
+        "copyFrom": "default"
+      }
+    },
+    "BUILD_PROFILE_OPT": {
+      "apiType": "stageMode",
+      "buildOption": {},
+      "targets": [
+        {
+          "name": "default"
+        }
+      ]
+    },
+    "BUILD_CACHE_DIR": ""
+  },
+  "ohos-project": {
+    "SELECT_PRODUCT_NAME": "default",
+    "MODULE_BUILD_DIR": "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony\\build",
+    "BUNDLE_NAME": "com.cpu.yaodashijian",
+    "VERSION_CODE": 15,
+    "VERSION_NAME": "2.0.6",
+    "BUILD_PATH": {
+      "OUTPUT_PATH": "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony\\build\\outputs\\default"
+    },
+    "MODULES": [
+      {
+        "name": "entry",
+        "srcPath": "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony\\entry",
+        "targets": [
+          {
+            "name": "default",
+            "applyToProducts": [
+              "default"
+            ]
+          }
+        ],
+        "belongProjectPath": "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony"
+      }
+    ],
+    "PROFILE_OPT": {
+      "app": {
+        "signingConfigs": [
+          {
+            "name": "default",
+            "type": "HarmonyOS",
+            "material": {
+              "certpath": "C:\\Users\\ASUS\\.ohos\\config\\default_harmony_DWUx74n-wyZsx3ixZJX69vWDLPWlTzTevqidzpjsKTA=.cer",
+              "keyAlias": "debugKey",
+              "keyPassword": "0000001B66A7D3D8F6564E4B45AD9EFC0385BCCB3C8FA61405E76FA566334388CC92F80C2A273AB130D4EA",
+              "profile": "C:\\Users\\ASUS\\.ohos\\config\\default_harmony_DWUx74n-wyZsx3ixZJX69vWDLPWlTzTevqidzpjsKTA=.p7b",
+              "signAlg": "SHA256withECDSA",
+              "storeFile": "C:\\Users\\ASUS\\.ohos\\config\\default_harmony_DWUx74n-wyZsx3ixZJX69vWDLPWlTzTevqidzpjsKTA=.p12",
+              "storePassword": "0000001B4F22CA7C254AF3EF57811CA4E441833553C9D5CE6339E469EF6C0AA4489F4BDB4CD2CE7369C95B"
+            }
+          }
+        ],
+        "products": [
+          {
+            "name": "default",
+            "signingConfig": "default",
+            "compatibleSdkVersion": "5.0.0(12)",
+            "targetSdkVersion": "5.0.0(12)",
+            "runtimeOS": "HarmonyOS"
+          }
+        ],
+        "buildModeSet": [
+          {
+            "name": "debug"
+          },
+          {
+            "name": "release"
+          }
+        ]
+      },
+      "modules": [
+        {
+          "name": "entry",
+          "srcPath": "./entry",
+          "targets": [
+            {
+              "name": "default",
+              "applyToProducts": [
+                "default"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "CONFIG_PROPERTIES": {
+      "enableSignTask": true,
+      "skipNativeIncremental": false,
+      "hvigor.keepDependency": true
+    },
+    "OVERALL_PROJECT_PATHS": [
+      "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony"
+    ],
+    "BUILD_CACHE_DIR": ""
+  }
+}
