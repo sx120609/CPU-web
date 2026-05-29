@@ -219,7 +219,7 @@ PORT=12345 ./deploy.sh
 
 ## PWA / 添加到桌面
 
-`web/public/` 提供 `manifest-v2.webmanifest` 和 `sw.js`，独立课表页 `/schedule` 已经按 PWA 配置：
+`web/public/` 提供 `manifest-v3.webmanifest` 和 `sw.js`，独立课表页 `/schedule` 已经按 PWA 配置：
 
 - `start_url` 设为 `/schedule`，`display: standalone`，添加到桌面后以独立窗口打开。
 - 课表页内有"添加到桌面"引导（`InstallPromptDialog.vue`）；检测到微信 / QQ 等应用内浏览器时，会提示先在系统浏览器打开。

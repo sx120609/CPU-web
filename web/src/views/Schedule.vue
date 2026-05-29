@@ -790,7 +790,7 @@ const THEME_KEY = "cpu-schedule-theme-v1";
 const BACKGROUND_KEY = "cpu-schedule-background-v1";
 const scheduleCacheStore = new Map<string, CacheEnvelope<ScheduleResult>>();
 const prewarmingScheduleKeys = new Set<string>();
-const isNativeScheduleApp = detectClientPlatform() === "android" || detectClientPlatform() === "harmony";
+const isNativeScheduleApp = ["android", "harmony", "ios"].includes(detectClientPlatform());
 let scheduleEditsSaveTimer = 0;
 let scheduleEditsLoadPromise: Promise<void> | null = null;
 const smallSlots = [

@@ -32,6 +32,7 @@ export function hasNativeImageSaveBridge() {
 }
 
 export function hasNativeImagePreviewBridge() {
+  if (isAndroidNativePreviewFallback()) return false;
   return typeof getNativeBridge()?.previewImages === "function";
 }
 
@@ -71,4 +72,11 @@ export function absoluteImageUrl(src: string) {
   } catch {
     return src || "";
   }
+}
+
+function isAndroidNativePreviewFallback() {
+  if (typeof window === "undefined") return false;
+  const ua = navigator.userAgent.toLowerCase();
+  const params = new URLSearchParams(window.location.search);
+  return ua.includes("cpuwebscheduleapp") || params.get("client") === "android-app";
 }

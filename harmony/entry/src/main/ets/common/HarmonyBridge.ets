@@ -185,7 +185,7 @@ export class HarmonyBridge {
       this.toast('图片已保存到相册');
       return true;
     } catch (_) {
-      return false;
+      return await this.saveImageBufferWithDialogAsync(buffer, fileName);
     }
   }
 
@@ -218,6 +218,33 @@ export class HarmonyBridge {
       return true;
     } catch (_) {
       this.toast('保存图片失败');
+      return false;
+    }
+  }
+
+  private async saveImageBufferWithDialogAsync(buffer: ArrayBuffer, fileName: string): Promise<boolean> {
+    if (!this.context) {
+      this.toast('保存失败');
+      return false;
+    }
+    try {
+      const safeName = this.sanitizeImageName(fileName);
+      const sandboxPath = `${this.context.filesDir}/${Date.now()}-${safeName}`;
+      const file = fs.openSync(sandboxPath, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
+      fs.writeSync(file.fd, buffer);
+      fs.closeSync(file);
+
+      const imageUri = fileUri.getUriFromPath(sandboxPath);
+      const helper = photoAccessHelper.getPhotoAccessHelper(this.context);
+      const config: photoAccessHelper.PhotoCreationConfig = {
+        title: this.stripExtension(safeName),
+        fileNameExtension: this.extensionOf(safeName),
+        photoType: photoAccessHelper.PhotoType.IMAGE
+      };
+      await helper.showAssetsCreationDialog([imageUri], [config]);
+      this.toast('图片已保存到相册');
+      return true;
+    } catch (_) {
       return false;
     }
   }

@@ -22,6 +22,7 @@ struct Index {
   @State private previewScale: number = 1;
   @State private previewOffsetX: number = 0;
   @State private previewOffsetY: number = 0;
+  @State private previewSaveBusy: boolean = false;
   private previewBaseScale: number = 1;
   private previewBaseOffsetX: number = 0;
   private previewBaseOffsetY: number = 0;
@@ -201,22 +202,15 @@ struct Index {
             Blank()
               .layoutWeight(1)
 
-            SaveButton({
-              icon: SaveIconStyle.LINES,
-              text: SaveDescription.SAVE_TO_GALLERY,
-              buttonType: ButtonType.Capsule
-            })
+            Button(this.previewSaveBusy ? '保存中' : '保存')
+              .type(ButtonType.Capsule)
               .height(38)
               .fontSize(13)
               .fontColor('#FFFFFF')
-              .iconColor('#FFFFFF')
               .backgroundColor('#168776')
-              .onClick((_event: ClickEvent, result: SaveButtonOnClickResult) => {
-                if (result === SaveButtonOnClickResult.SUCCESS) {
-                  void this.commitPreviewImageSave();
-                } else {
-                  promptAction.showToast({ message: '未获得保存授权' });
-                }
+              .enabled(!this.previewSaveBusy)
+              .onClick(() => {
+                void this.commitPreviewImageSave();
               })
           }
           .width('100%')
@@ -353,25 +347,17 @@ struct Index {
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
             }
 
-            SaveButton({
-              icon: SaveIconStyle.LINES,
-              text: SaveDescription.SAVE_TO_GALLERY,
-              buttonType: ButtonType.Capsule
-            })
+            Button(this.saveBusy ? '保存中' : '保存到相册')
+              .type(ButtonType.Capsule)
               .width('100%')
               .height(48)
               .fontSize(16)
               .fontWeight(FontWeight.Medium)
               .fontColor('#FFFFFF')
-              .iconColor('#FFFFFF')
               .backgroundColor('#168776')
-              .onClick((_event: ClickEvent, result: SaveButtonOnClickResult) => {
-                if (result === SaveButtonOnClickResult.SUCCESS) {
-                  void this.commitPendingImageSave();
-                } else {
-                  this.closeSavePanel();
-                  promptAction.showToast({ message: '未获得保存授权' });
-                }
+              .enabled(!this.saveBusy)
+              .onClick(() => {
+                void this.commitPendingImageSave();
               })
           }
           .width('100%')
@@ -414,6 +400,7 @@ struct Index {
     this.imagePreviewVisible = false;
     this.previewImages = [];
     this.previewIndex = 0;
+    this.previewSaveBusy = false;
     this.resetPreviewTransform();
   }
 
@@ -454,8 +441,14 @@ struct Index {
   }
 
   private async commitPreviewImageSave(): Promise<void> {
+    if (this.previewSaveBusy) return;
     const image = this.currentPreviewImage();
-    await this.bridge.commitImageUrlSave(image.url, image.fileName);
+    this.previewSaveBusy = true;
+    const ok = await this.bridge.commitImageUrlSave(image.url, image.fileName);
+    this.previewSaveBusy = false;
+    if (!ok) {
+      promptAction.showToast({ message: '保存图片失败' });
+    }
   }
 
   private async commitPendingImageSave(): Promise<void> {

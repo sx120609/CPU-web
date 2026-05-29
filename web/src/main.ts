@@ -88,7 +88,11 @@ function installFeedbackLayerGuard() {
 }
 
 function installNativeAppMarker() {
-  if (!/cpuwebscheduleapp/i.test(navigator.userAgent)) return;
+  const ua = navigator.userAgent;
+  const platform = /cpuwebscheduleapp|cpuwebharmonyapp/i.test(ua)
+    || window.matchMedia?.("(display-mode: standalone)").matches
+    || (navigator as any).standalone === true;
+  if (!platform) return;
   document.body.dataset.cpuNativeApp = "1";
 }
 
