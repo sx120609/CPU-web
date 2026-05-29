@@ -69,11 +69,9 @@
 
               <div class="sponsor-display">
                 <span>展示方式</span>
-                <el-radio-group v-model="sponsorDisplayMode" size="small">
-                  <el-radio-button value="public">公开鸣谢</el-radio-button>
-                  <el-radio-button value="anonymous">匿名鸣谢</el-radio-button>
-                  <el-radio-button value="hidden">不展示</el-radio-button>
-                </el-radio-group>
+                <el-select v-model="sponsorDisplayMode" class="sponsor-display-select">
+                  <el-option v-for="item in sponsorDisplayOptions" :key="item.value" :label="item.label" :value="item.value" />
+                </el-select>
               </div>
 
               <el-input
@@ -321,6 +319,11 @@ const payTypeLabels: Record<PayType, string> = {
   bank: "网银",
   jdpay: "京东支付",
 };
+const sponsorDisplayOptions = [
+  { value: "public", label: "公开鸣谢" },
+  { value: "anonymous", label: "匿名鸣谢" },
+  { value: "hidden", label: "不展示" },
+] as const;
 const enabledPayTypes = computed(() => sponsorOptions.payTypes.map((value) => ({ value, label: payTypeLabels[value] })));
 
 watch(passwordDialog, (v) => {
@@ -621,6 +624,11 @@ async function removeAvatar() {
   background: #fff;
   color: #1f2937;
   font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
   cursor: pointer;
   transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
 }
@@ -651,10 +659,10 @@ async function removeAvatar() {
   background: #fff;
 }
 .sponsor-display {
-  display: flex;
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
 }
 .sponsor-display > span {
   color: #64748b;
@@ -662,8 +670,11 @@ async function removeAvatar() {
   font-weight: 700;
   white-space: nowrap;
 }
-.sponsor-display :deep(.el-radio-button__inner) {
-  padding: 7px 12px;
+.sponsor-display-select {
+  width: 100%;
+}
+.sponsor-display-select :deep(.el-select__wrapper) {
+  background: #fff;
 }
 .sponsor-message :deep(.el-input__wrapper) {
   background: #fff;
@@ -923,23 +934,13 @@ async function removeAvatar() {
   }
 
   .sponsor-display {
-    align-items: center;
-    flex-direction: column;
-    justify-content: center;
+    grid-template-columns: 1fr;
     gap: 8px;
+    text-align: center;
   }
 
-  .sponsor-display :deep(.el-radio-group) {
+  .sponsor-display-select {
     width: 100%;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .sponsor-display :deep(.el-radio-button),
-  .sponsor-display :deep(.el-radio-button__inner) {
-    width: 100%;
-    padding-left: 6px;
-    padding-right: 6px;
   }
 
   .sponsor-history {
