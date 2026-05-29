@@ -104,41 +104,195 @@ function previewIosImage(payload: string): boolean {
     const images = Array.isArray(data.images) ? data.images : [];
     if (!images.length) return false;
     const index = Math.max(0, Math.min(data.index ?? 0, images.length - 1));
-    const target = images[index];
-    const url = absoluteImageUrl(target?.url || "");
-    if (!url) return false;
-    return openIosImagePreview(url);
+    return showIosImagePreview(images, index);
   } catch {
     return false;
   }
 }
 
-function openIosImagePreview(url: string): boolean {
-  const openDirectly = (): boolean => {
-    const previewWindow = window.open(url, "_blank");
-    if (previewWindow) return true;
+function showIosImagePreview(items: NativeImagePreviewItem[], startIndex: number): boolean {
+  const images = items
+    .map((item) => ({
+      url: absoluteImageUrl(item.url),
+      title: item.title || item.fileName || fileNameFromUrl(item.url),
+      fileName: item.fileName || fileNameFromUrl(item.url),
+    }))
+    .filter((item) => item.url);
+  if (!images.length) return false;
 
-    const link = document.createElement("a");
-    link.href = url;
-    link.target = "_blank";
-    link.rel = "noopener";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    return true;
+  let index = Math.max(0, Math.min(startIndex, images.length - 1));
+  let touchStartX = 0;
+  let touchStartY = 0;
+
+  const existing = document.querySelector<HTMLElement>("[data-ios-image-preview]");
+  existing?.remove();
+
+  const overlay = document.createElement("div");
+  overlay.dataset.iosImagePreview = "1";
+  overlay.innerHTML = `
+    <div class="ios-preview-top">
+      <button class="ios-preview-button" type="button" data-action="close" aria-label="Close">Close</button>
+      <div class="ios-preview-count"></div>
+      <button class="ios-preview-button" type="button" data-action="save" aria-label="Save">Save</button>
+    </div>
+    <button class="ios-preview-nav ios-preview-prev" type="button" data-action="prev" aria-label="Previous">‹</button>
+    <img class="ios-preview-image" alt="" />
+    <button class="ios-preview-nav ios-preview-next" type="button" data-action="next" aria-label="Next">›</button>
+    <div class="ios-preview-title"></div>
+  `;
+  overlay.style.cssText = `
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.94);
+    color: #fff;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none;
+  `;
+
+  const style = document.createElement("style");
+  style.dataset.iosImagePreviewStyle = "1";
+  style.textContent = `
+    [data-ios-image-preview] .ios-preview-top {
+      position: absolute;
+      top: env(safe-area-inset-top, 0);
+      left: 0;
+      right: 0;
+      display: grid;
+      grid-template-columns: 80px 1fr 80px;
+      align-items: center;
+      min-height: 54px;
+      padding: 8px 14px;
+      background: linear-gradient(180deg, rgba(0,0,0,0.58), rgba(0,0,0,0));
+    }
+    [data-ios-image-preview] .ios-preview-button {
+      appearance: none;
+      border: 0;
+      border-radius: 999px;
+      min-width: 58px;
+      min-height: 36px;
+      padding: 0 12px;
+      background: rgba(255,255,255,0.16);
+      color: #fff;
+      font: 500 15px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+    [data-ios-image-preview] .ios-preview-button[data-action="save"] {
+      justify-self: end;
+    }
+    [data-ios-image-preview] .ios-preview-count {
+      justify-self: center;
+      color: rgba(255,255,255,0.82);
+      font: 500 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    [data-ios-image-preview] .ios-preview-image {
+      max-width: 100vw;
+      max-height: 100vh;
+      object-fit: contain;
+      transform: translateZ(0);
+      -webkit-user-drag: none;
+    }
+    [data-ios-image-preview] .ios-preview-title {
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      bottom: calc(env(safe-area-inset-bottom, 0) + 18px);
+      overflow: hidden;
+      color: rgba(255,255,255,0.76);
+      font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      text-align: center;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    [data-ios-image-preview] .ios-preview-nav {
+      appearance: none;
+      position: absolute;
+      top: 50%;
+      width: 42px;
+      height: 56px;
+      margin-top: -28px;
+      border: 0;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.12);
+      color: rgba(255,255,255,0.86);
+      font: 34px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    [data-ios-image-preview] .ios-preview-prev { left: 12px; }
+    [data-ios-image-preview] .ios-preview-next { right: 12px; }
+    [data-ios-image-preview] .ios-preview-nav[hidden] { display: none; }
+  `;
+
+  const image = overlay.querySelector<HTMLImageElement>(".ios-preview-image");
+  const count = overlay.querySelector<HTMLElement>(".ios-preview-count");
+  const title = overlay.querySelector<HTMLElement>(".ios-preview-title");
+  const prev = overlay.querySelector<HTMLButtonElement>(".ios-preview-prev");
+  const next = overlay.querySelector<HTMLButtonElement>(".ios-preview-next");
+  if (!image || !count || !title || !prev || !next) return false;
+
+  const close = () => {
+    document.body.style.overflow = overlay.dataset.previousBodyOverflow || "";
+    window.removeEventListener("keydown", onKeyDown);
+    overlay.remove();
+    style.remove();
   };
 
-  if (!url.startsWith("data:")) return openDirectly();
+  const render = () => {
+    const current = images[index];
+    image.src = current.url;
+    image.alt = current.title;
+    count.textContent = images.length > 1 ? `${index + 1} / ${images.length}` : "";
+    title.textContent = current.title;
+    prev.hidden = images.length < 2 || index <= 0;
+    next.hidden = images.length < 2 || index >= images.length - 1;
+  };
 
-  try {
-    const blob = dataUrlToBlob(url);
-    const objectUrl = URL.createObjectURL(blob);
-    const opened: boolean = openIosImagePreview(objectUrl);
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
-    return opened;
-  } catch {
-    return openDirectly();
-  }
+  const move = (delta: number) => {
+    const nextIndex = index + delta;
+    if (nextIndex < 0 || nextIndex >= images.length) return;
+    index = nextIndex;
+    render();
+  };
+
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") close();
+    if (event.key === "ArrowLeft") move(-1);
+    if (event.key === "ArrowRight") move(1);
+  };
+
+  overlay.addEventListener("click", (event) => {
+    const action = (event.target as HTMLElement).dataset.action;
+    if (action === "close") close();
+    if (action === "prev") move(-1);
+    if (action === "next") move(1);
+    if (action === "save") void shareIosImageUrl(images[index].url, images[index].fileName);
+  });
+  overlay.addEventListener("touchstart", (event) => {
+    const touch = event.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+  }, { passive: true });
+  overlay.addEventListener("touchend", (event) => {
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+    if (Math.abs(deltaX) < 48 || Math.abs(deltaX) < Math.abs(deltaY) * 1.4) return;
+    move(deltaX > 0 ? -1 : 1);
+  }, { passive: true });
+
+  overlay.dataset.previousBodyOverflow = document.body.style.overflow;
+  document.head.appendChild(style);
+  document.body.appendChild(overlay);
+  document.body.style.overflow = "hidden";
+  window.addEventListener("keydown", onKeyDown);
+  render();
+  return true;
 }
 
 function isAndroidNativePreviewFallback() {
