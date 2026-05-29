@@ -9,9 +9,14 @@ import { VERSION_CODE, VERSION_NAME, isHttpUrl } from './AppConfig';
 
 export class HarmonyBridge {
   private context?: common.UIAbilityContext;
+  private saveRequestHandler?: (dataUrl: string, fileName: string) => void;
 
   attachContext(context: common.UIAbilityContext): void {
     this.context = context;
+  }
+
+  setSaveRequestHandler(handler: (dataUrl: string, fileName: string) => void): void {
+    this.saveRequestHandler = handler;
   }
 
   getVersionCode(): number {
@@ -61,15 +66,45 @@ export class HarmonyBridge {
   }
 
   saveImage(dataUrl: string, fileName: string): boolean {
-    void this.saveImageAsync(dataUrl, fileName);
+    if (this.saveRequestHandler) {
+      this.saveRequestHandler(dataUrl, fileName);
+      return true;
+    }
+    void this.saveImageWithDialogAsync(dataUrl, fileName);
     return true;
+  }
+
+  async commitImageSave(dataUrl: string, fileName: string): Promise<boolean> {
+    if (!this.context) {
+      this.toast('保存失败');
+      return false;
+    }
+    try {
+      const bytes = this.decodeDataUrl(dataUrl);
+      const safeName = this.sanitizeImageName(fileName);
+      const extension = this.extensionOf(safeName);
+      const request = photoAccessHelper.MediaAssetChangeRequest.createAssetRequest(
+        this.context,
+        photoAccessHelper.PhotoType.IMAGE,
+        extension,
+        { title: this.stripExtension(safeName) }
+      );
+      request.addResource(photoAccessHelper.ResourceType.IMAGE_RESOURCE, this.toExactBuffer(bytes));
+      const helper = photoAccessHelper.getPhotoAccessHelper(this.context);
+      await helper.applyChanges(request);
+      this.toast('图片已保存到相册');
+      return true;
+    } catch (_) {
+      this.toast('保存图片失败');
+      return false;
+    }
   }
 
   installScheduleWidget(_payload: string): void {
     this.toast('鸿蒙小组件将在后续版本支持');
   }
 
-  private async saveImageAsync(dataUrl: string, fileName: string): Promise<void> {
+  private async saveImageWithDialogAsync(dataUrl: string, fileName: string): Promise<void> {
     if (!this.context) {
       this.toast('保存失败');
       return;
@@ -94,6 +129,12 @@ export class HarmonyBridge {
     } catch (_) {
       this.toast('保存图片失败');
     }
+  }
+
+  private toExactBuffer(bytes: Uint8Array): ArrayBuffer {
+    const buffer = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(buffer).set(bytes);
+    return buffer;
   }
 
   private decodeDataUrl(dataUrl: string): Uint8Array {
