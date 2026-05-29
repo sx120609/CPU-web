@@ -53,6 +53,7 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
     const usedClient = req.query.usedClient ? String(req.query.usedClient) : undefined;
     const usedIosClient = req.query.usedIosClient === "1" ? true : req.query.usedIosClient === "0" ? false : undefined;
     const usedAndroidClient = req.query.usedAndroidClient === "1" ? true : req.query.usedAndroidClient === "0" ? false : undefined;
+    const usedHarmonyClient = req.query.usedHarmonyClient === "1" ? true : req.query.usedHarmonyClient === "0" ? false : undefined;
     const forumEnabled = req.query.forumEnabled === "1" ? true : req.query.forumEnabled === "0" ? false : undefined;
     const loginFrom = String(req.query.loginFrom ?? "").trim();
     const loginTo = String(req.query.loginTo ?? "").trim();
@@ -70,12 +71,14 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
     if (status) where.status = status;
     if (loginClient && loginClient !== "all") {
       if (loginClient === "none") where.lastLoginAt = null;
-      else if (["ios", "android", "web", "unknown"].includes(loginClient)) where.lastLoginClient = loginClient;
+      else if (["ios", "android", "harmony", "web", "unknown"].includes(loginClient)) where.lastLoginClient = loginClient;
     }
     if (usedClient === "ios") where.usedIosClient = true;
     if (usedClient === "android") where.usedAndroidClient = true;
+    if (usedClient === "harmony") where.usedHarmonyClient = true;
     if (typeof usedIosClient === "boolean") where.usedIosClient = usedIosClient;
     if (typeof usedAndroidClient === "boolean") where.usedAndroidClient = usedAndroidClient;
+    if (typeof usedHarmonyClient === "boolean") where.usedHarmonyClient = usedHarmonyClient;
     if (typeof forumEnabled === "boolean") where.forumEnabled = forumEnabled;
     if (loginFrom || loginTo) {
       const loginAtFilter: any = where.lastLoginAt && typeof where.lastLoginAt === "object" ? where.lastLoginAt : {};
@@ -110,7 +113,7 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
           forumEnabled: true, forumEnabledAt: true,
           anonymousCredits: true, anonymousWeekKey: true, anonymousCreditsFrozen: true,
           aiReviewWhitelisted: true,
-          lastSeenAt: true, lastLoginAt: true, lastLoginClient: true, usedIosClient: true, usedAndroidClient: true,
+          lastSeenAt: true, lastLoginAt: true, lastLoginClient: true, usedIosClient: true, usedAndroidClient: true, usedHarmonyClient: true,
           createdAt: true,
         },
       }),
@@ -874,7 +877,7 @@ adminRouter.post("/announcements", adminOnly, validate(z.object({
   level: z.enum(["strong", "normal", "weak"]).optional(),
   link: z.string().max(500).optional(),
   source: z.string().max(40).optional(),
-  targetClient: z.enum(["all", "ios", "android"]).optional(),
+  targetClient: z.enum(["all", "ios", "android", "harmony"]).optional(),
 })), async (req, res, next) => {
   try {
     const n = await prisma.notification.create({
@@ -899,7 +902,7 @@ const announcementPatchSchema = z.object({
   level: z.enum(["strong", "normal", "weak"]).optional(),
   link: z.string().max(500).nullable().optional(),
   source: z.string().max(40).nullable().optional(),
-  targetClient: z.enum(["all", "ios", "android"]).optional(),
+  targetClient: z.enum(["all", "ios", "android", "harmony"]).optional(),
 });
 
 adminRouter.patch("/announcements/:id", adminOnly, validate(announcementPatchSchema), async (req, res, next) => {
@@ -1192,6 +1195,7 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       boards,
       iosClients,
       androidClients,
+      harmonyClients,
       recentLogins,
       forumEligibleUsers,
       forumEnabledUsers,
@@ -1209,6 +1213,7 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       prisma.board.count(),
       prisma.user.count({ where: { usedIosClient: true } }),
       prisma.user.count({ where: { usedAndroidClient: true } }),
+      prisma.user.count({ where: { usedHarmonyClient: true } }),
       prisma.user.count({ where: { lastLoginAt: { gte: thirtyDaysAgo } } }),
       prisma.user.count({ where: regularUserWhere }),
       prisma.user.count({ where: { ...regularUserWhere, forumEnabled: true } }),
@@ -1226,6 +1231,7 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       boards,
       iosClients,
       androidClients,
+      harmonyClients,
       recentLogins,
       forumEligibleUsers,
       forumEnabledUsers,

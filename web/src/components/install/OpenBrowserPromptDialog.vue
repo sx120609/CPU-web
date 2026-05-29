@@ -121,7 +121,10 @@ function isStandalone() {
 function isNativeApp() {
   const ua = navigator.userAgent.toLowerCase();
   const params = new URLSearchParams(window.location.search);
-  return ua.includes("cpuwebscheduleapp") || params.get("client") === "android-app";
+  return ua.includes("cpuwebscheduleapp")
+    || ua.includes("cpuwebharmonyapp")
+    || params.get("client") === "android-app"
+    || params.get("client") === "harmony-app";
 }
 
 function dismissDialog() {

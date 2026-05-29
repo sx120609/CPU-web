@@ -36,6 +36,7 @@ model User {
   lastLoginClient String?
   usedIosClient Boolean  @default(false)
   usedAndroidClient Boolean @default(false)
+  usedHarmonyClient Boolean @default(false)
   topicSubmissionLocked Boolean @default(false)
   aiReviewWhitelisted Boolean @default(false)
   dataAuthAgreedAt DateTime?

@@ -49,6 +49,7 @@ authRouter.post("/login", validate(loginSchema), async (req, res, next) => {
         lastLoginClient: client.client,
         usedIosClient: client.client === "ios" ? true : undefined,
         usedAndroidClient: client.client === "android" ? true : undefined,
+        usedHarmonyClient: client.client === "harmony" ? true : undefined,
       },
     });
 
@@ -83,6 +84,7 @@ authRouter.post("/register", validate(registerSchema), async (req, res, next) =>
         lastLoginClient: client.client,
         usedIosClient: client.client === "ios",
         usedAndroidClient: client.client === "android",
+        usedHarmonyClient: client.client === "harmony",
       },
     });
     await prisma.messageSetting.create({ data: { userId: user.id } });
@@ -160,6 +162,7 @@ authRouter.post(
           lastLoginClient: client.client,
           usedIosClient: client.client === "ios" ? true : undefined,
           usedAndroidClient: client.client === "android" ? true : undefined,
+          usedHarmonyClient: client.client === "harmony" ? true : undefined,
         },
       });
 

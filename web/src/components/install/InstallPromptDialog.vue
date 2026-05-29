@@ -144,19 +144,21 @@ function detectStandalone() {
 }
 
 /**
- * 是否在自家安卓客户端的 WebView 里。
- * 严格按客户端注入的 UA token "cpuwebscheduleapp" 判定（不区分大小写）。
+ * 是否在自家原生客户端的 WebView 里。
+ * 严格按客户端注入的 UA token 判定（不区分大小写）。
  * 不再做 `; wv` / `Version/X Chrome/X` 这种宽松匹配 —— 那些模式把许多系统浏览器
  * （Chrome / 三星 / 华为等）误判为客户端。
  *
- * 客户端侧需要在 WebView 的 userAgent 里追加 `CPUWebScheduleApp`（或其变形）。
- * 同时支持手动用 `?client=android-app` 强制，便于开发期测试。
+ * 客户端侧需要在 WebView 的 userAgent 里追加 `CPUWebScheduleApp` 或 `CPUWebHarmonyApp`。
+ * 同时支持手动用 `?client=android-app` / `?client=harmony-app` 强制，便于开发期测试。
  */
 function detectNativeApp() {
   const ua = navigator.userAgent.toLowerCase();
   const params = new URLSearchParams(window.location.search);
   isNativeApp.value = ua.includes("cpuwebscheduleapp")
-    || params.get("client") === "android-app";
+    || ua.includes("cpuwebharmonyapp")
+    || params.get("client") === "android-app"
+    || params.get("client") === "harmony-app";
 }
 
 function onBeforeInstall(e: Event) {

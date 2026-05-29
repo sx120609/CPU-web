@@ -27,6 +27,7 @@
             <el-radio-button value="all">全部</el-radio-button>
             <el-radio-button value="ios">仅 iOS</el-radio-button>
             <el-radio-button value="android">仅安卓</el-radio-button>
+            <el-radio-button value="harmony">仅鸿蒙</el-radio-button>
           </el-radio-group>
         </el-form-item>
         <el-form-item>
@@ -94,6 +95,7 @@ async function reload() { list.value = await adminApi.announcements(); }
 function targetLabel(value?: string | null) {
   if (value === "ios") return "仅 iOS";
   if (value === "android") return "仅安卓";
+  if (value === "harmony") return "仅鸿蒙";
   return "全部";
 }
 
@@ -107,7 +109,7 @@ async function publish() {
         level: form.level,
         link: form.link.trim() || null,
         source: form.source.trim() || "站务组",
-        targetClient: form.targetClient as "all" | "ios" | "android",
+        targetClient: form.targetClient as "all" | "ios" | "android" | "harmony",
       });
       ElMessage.success("公告已更新");
     } else {
@@ -117,7 +119,7 @@ async function publish() {
         level: form.level,
         link: form.link.trim() || undefined,
         source: form.source.trim() || "站务组",
-        targetClient: form.targetClient as "all" | "ios" | "android",
+        targetClient: form.targetClient as "all" | "ios" | "android" | "harmony",
       });
       ElMessage.success("公告已发布");
     }

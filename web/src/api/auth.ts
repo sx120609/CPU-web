@@ -33,6 +33,7 @@ export interface UserInfo {
   lastLoginClient?: string | null;
   usedIosClient?: boolean;
   usedAndroidClient?: boolean;
+  usedHarmonyClient?: boolean;
   topicSubmissionLocked?: boolean;
   aiReviewWhitelisted?: boolean;
   anonymousState?: {

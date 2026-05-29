@@ -7,6 +7,7 @@ import { computed, ref, onMounted, nextTick, watch, onBeforeUnmount } from "vue"
 import Viewer from "viewerjs";
 import "viewerjs/dist/viewer.css";
 import { renderMarkdown } from "@/utils/markdown";
+import { getNativeBridge } from "@/utils/nativeBridge";
 
 const props = withDefaults(defineProps<{
   content: string;
@@ -134,9 +135,10 @@ async function saveViewerImage() {
     const response = await fetch(viewerImageUrl.value);
     if (!response.ok) throw new Error("download_failed");
     const blob = await response.blob();
-    if (typeof (window as any).CPUAndroid?.saveImage === "function") {
+    const nativeBridge = getNativeBridge();
+    if (typeof nativeBridge?.saveImage === "function") {
       const dataUrl = await blobToDataUrl(blob);
-      const ok = (window as any).CPUAndroid.saveImage(dataUrl, previewFileName(viewerImageUrl.value, blob.type));
+      const ok = nativeBridge.saveImage(dataUrl, previewFileName(viewerImageUrl.value, blob.type));
       if (ok !== false) return;
     }
     const objectUrl = URL.createObjectURL(blob);

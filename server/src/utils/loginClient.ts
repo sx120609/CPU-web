@@ -1,6 +1,6 @@
 import type { Request } from "express";
 
-export type LoginClient = "ios" | "android" | "web" | "unknown";
+export type LoginClient = "ios" | "android" | "harmony" | "web" | "unknown";
 
 export interface LoginClientInfo {
   client: LoginClient;
@@ -12,6 +12,7 @@ function normalizeClient(value: string | undefined | null): LoginClient | null {
   const v = value.trim().toLowerCase();
   if (["ios", "iphone", "ipad"].includes(v)) return "ios";
   if (["android", "android-app"].includes(v)) return "android";
+  if (["harmony", "harmony-app", "harmonyos", "ohos"].includes(v)) return "harmony";
   if (v === "web" || v === "browser") return "web";
   if (v === "unknown") return "unknown";
   return null;
@@ -22,6 +23,7 @@ export function detectLoginClient(req: Request): LoginClientInfo {
   if (explicit) return toInfo(explicit);
 
   const ua = (req.get("user-agent") ?? "").toLowerCase();
+  if (ua.includes("cpuwebharmonyapp")) return toInfo("harmony");
   if (ua.includes("cpuwebscheduleapp")) return toInfo("android");
   if (ua) return toInfo("web");
   return toInfo("unknown");
@@ -30,6 +32,7 @@ export function detectLoginClient(req: Request): LoginClientInfo {
 function toInfo(client: LoginClient): LoginClientInfo {
   if (client === "ios") return { client, label: "iOS" };
   if (client === "android") return { client, label: "安卓" };
+  if (client === "harmony") return { client, label: "鸿蒙" };
   if (client === "web") return { client, label: "网页" };
   return { client, label: "未知" };
 }

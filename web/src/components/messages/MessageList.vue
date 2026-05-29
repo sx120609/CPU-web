@@ -43,6 +43,7 @@ function onClick(n: any) {
 function platformTag(targetClient?: string | null) {
   if (targetClient === "ios") return "iOS";
   if (targetClient === "android") return "安卓";
+  if (targetClient === "harmony") return "鸿蒙";
   return "";
 }
 
@@ -116,6 +117,7 @@ function categoryLabel(category?: string | null) {
 .lv-strong { box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.18); }
 .tag-target-ios { background: #e0e7ff; color: #4338ca; }
 .tag-target-android { background: #dcfce7; color: #15803d; }
+.tag-target-harmony { background: #fef3c7; color: #92400e; }
 
 .info { flex: 1; min-width: 0; }
 .top-line {

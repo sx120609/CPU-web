@@ -39,6 +39,7 @@ export type AdminOverview = {
   replies: number;
   iosClients: number;
   androidClients: number;
+  harmonyClients: number;
   feeds: number;
   boards: number;
   forumEligibleUsers: number;
@@ -94,6 +95,7 @@ export const adminApi = {
     usedClient?: string;
     usedIosClient?: string;
     usedAndroidClient?: string;
+    usedHarmonyClient?: string;
     loginFrom?: string;
     loginTo?: string;
     sort?: string;
@@ -240,9 +242,9 @@ export const adminApi = {
   runAllFeeds: () => request.post<any>("/admin/feeds/run-all"),
   // 公告
   announcements: () => request.get<any[]>("/admin/announcements"),
-  createAnnouncement: (p: { title: string; content: string; level?: string; link?: string; source?: string; targetClient?: "all" | "ios" | "android" }) =>
+  createAnnouncement: (p: { title: string; content: string; level?: string; link?: string; source?: string; targetClient?: "all" | "ios" | "android" | "harmony" }) =>
     request.post<any>("/admin/announcements", p),
-  updateAnnouncement: (id: number, p: { title?: string; content?: string; level?: string; link?: string | null; source?: string | null; targetClient?: "all" | "ios" | "android" }) =>
+  updateAnnouncement: (id: number, p: { title?: string; content?: string; level?: string; link?: string | null; source?: string | null; targetClient?: "all" | "ios" | "android" | "harmony" }) =>
     request.patch<any>(`/admin/announcements/${id}`, p),
   deleteAnnouncement: (id: number) => request.delete<any>(`/admin/announcements/${id}`),
 };

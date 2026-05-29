@@ -16,6 +16,7 @@ function notificationVisibleToClient(notification: { targetClient?: string | nul
   if (!notification.targetClient || notification.targetClient === "all") return true;
   if (notification.targetClient === "ios") return client === "ios";
   if (notification.targetClient === "android") return client === "android";
+  if (notification.targetClient === "harmony") return client === "harmony";
   return true;
 }
 

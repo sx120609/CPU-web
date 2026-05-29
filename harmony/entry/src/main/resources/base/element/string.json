@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "app_name",
+      "value": "药大拾间"
+    },
+    {
+      "name": "launch_subtitle",
+      "value": "正在打开你的校园服务"
+    },
+    {
+      "name": "permission_image_reason",
+      "value": "用于选择图片上传和保存图片到相册"
+    }
+  ]
+}

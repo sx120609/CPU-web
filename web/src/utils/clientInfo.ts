@@ -1,7 +1,9 @@
-export type ClientPlatform = "ios" | "android" | "web" | "unknown";
+export type ClientPlatform = "ios" | "android" | "harmony" | "web" | "unknown";
 
 export const ANDROID_APP_LATEST_VERSION_CODE = 15;
 export const ANDROID_APP_LATEST_VERSION_NAME = "2.0.6";
+export const HARMONY_APP_LATEST_VERSION_CODE = 15;
+export const HARMONY_APP_LATEST_VERSION_NAME = "2.0.6";
 export const ANDROID_APP_DOWNLOAD_URL = "/api/site/downloads/android-app";
 export const ANDROID_WIDGET_MIN_VERSION_CODE = 5;
 export const ANDROID_IN_APP_UPDATE_MIN_VERSION_CODE = 14;
@@ -10,6 +12,7 @@ export function detectClientPlatform(ua = navigator.userAgent): ClientPlatform {
   const source = (ua || "").toLowerCase();
   const params = new URLSearchParams(window.location.search);
 
+  if (isHarmonyNativeApp(ua)) return "harmony";
   if (isAndroidNativeApp(ua)) return "android";
   if (isStandaloneMode() && source.includes("android")) return "android";
   if (isIosStandalone(ua)) return "ios";
@@ -35,6 +38,48 @@ export function isAndroidNativeApp(ua = navigator.userAgent) {
   const source = (ua || "").toLowerCase();
   const params = new URLSearchParams(window.location.search);
   return source.includes("cpuwebscheduleapp") || params.get("client") === "android-app";
+}
+
+export function isHarmonyNativeApp(ua = navigator.userAgent) {
+  const source = (ua || "").toLowerCase();
+  const params = new URLSearchParams(window.location.search);
+  return source.includes("cpuwebharmonyapp") || params.get("client") === "harmony-app";
+}
+
+export function getHarmonyNativeVersionCode(ua = navigator.userAgent) {
+  const bridge = (window as any).CPUHarmony;
+  const bridgeVersion = Number(typeof bridge?.getVersionCode === "function" ? bridge.getVersionCode() : 0);
+  if (Number.isFinite(bridgeVersion) && bridgeVersion > 0) return Math.floor(bridgeVersion);
+
+  const params = new URLSearchParams(window.location.search);
+  const queryVersion = Number(params.get("harmonyVersionCode") || params.get("appVersionCode") || 0);
+  if (Number.isFinite(queryVersion) && queryVersion > 0) return Math.floor(queryVersion);
+
+  const source = ua || "";
+  const vcMatch = source.match(/CPUWebHarmonyApp[^;\s)]*(?:vc|versionCode)[=/](\d+)/i);
+  if (vcMatch) return Number(vcMatch[1]) || 0;
+
+  const versionMatch = source.match(/CPUWebHarmonyApp\/(\d+(?:\.\d+)?)/i);
+  if (versionMatch) return Number(versionMatch[1].split(".")[0]) || 0;
+
+  return isHarmonyNativeApp(ua) ? 1 : 0;
+}
+
+export function getHarmonyNativeVersionName(ua = navigator.userAgent) {
+  const bridge = (window as any).CPUHarmony;
+  const bridgeVersion = typeof bridge?.getVersionName === "function" ? String(bridge.getVersionName() || "") : "";
+  if (bridgeVersion) return bridgeVersion;
+
+  const params = new URLSearchParams(window.location.search);
+  const queryVersion = params.get("harmonyVersionName") || params.get("appVersionName");
+  if (queryVersion) return queryVersion;
+
+  const source = ua || "";
+  const versionNameMatch = source.match(/CPUWebHarmonyAppVersion\/([^;\s)]+)/i);
+  if (versionNameMatch) return versionNameMatch[1];
+
+  const versionMatch = source.match(/CPUWebHarmonyApp\/([^;\s)]+)/i);
+  return versionMatch?.[1] ?? "";
 }
 
 export function getAndroidNativeVersionCode(ua = navigator.userAgent) {
@@ -94,6 +139,7 @@ export function supportsAndroidInAppApkDownload(ua = navigator.userAgent) {
 export function clientPlatformLabel(platform: ClientPlatform) {
   if (platform === "ios") return "iOS";
   if (platform === "android") return "安卓";
+  if (platform === "harmony") return "鸿蒙";
   if (platform === "web") return "网页";
   return "未知";
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "User" ADD COLUMN "usedHarmonyClient" BOOLEAN NOT NULL DEFAULT false;

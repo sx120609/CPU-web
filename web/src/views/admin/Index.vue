@@ -32,8 +32,8 @@
         <div class="ov-lbl">回复</div>
       </div>
       <div class="ov-card">
-        <div class="ov-num">{{ overview.iosClients }} / {{ overview.androidClients }}</div>
-        <div class="ov-lbl">iOS / 安卓客户端</div>
+        <div class="ov-num">{{ overview.iosClients }} / {{ overview.androidClients }} / {{ overview.harmonyClients }}</div>
+        <div class="ov-lbl">iOS / 安卓 / 鸿蒙</div>
       </div>
       <div class="ov-card">
         <div class="ov-num">{{ overview.feeds }} / {{ overview.boards }}</div>

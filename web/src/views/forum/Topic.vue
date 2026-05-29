@@ -220,9 +220,9 @@
           class="share-card-image"
           @click="openShareCardImagePreview"
         />
-        <p v-if="isAndroidClient && !hasAndroidSaveBridge" class="share-card-tip">安卓客户端受 WebView 限制，建议点开图片后截图保存。</p>
+        <p v-if="isNativeAppClient && !hasNativeSaveBridge" class="share-card-tip">客户端受 WebView 限制，建议点开图片后截图保存。</p>
         <div class="share-card-actions">
-          <button v-if="!isAndroidClient || hasAndroidSaveBridge" type="button" class="share-card-save-link" :disabled="shareCardSaving" @click="saveShareCardAsPng">
+          <button v-if="!isNativeAppClient || hasNativeSaveBridge" type="button" class="share-card-save-link" :disabled="shareCardSaving" @click="saveShareCardAsPng">
             保存图片
           </button>
           <button v-else type="button" class="share-card-save-link" @click="openShareCardImagePreview">放大后截图</button>
@@ -238,7 +238,7 @@
       class="share-card-preview-dialog"
     >
       <img v-if="shareCardRenderedUrl" :src="shareCardRenderedUrl" alt="分享卡片大图" class="share-card-preview-image" />
-      <p v-if="isAndroidClient" class="share-card-tip">安卓客户端请放大后截图保存。</p>
+      <p v-if="isNativeAppClient" class="share-card-tip">客户端请放大后截图保存。</p>
     </el-dialog>
 
     <div class="share-card-export-shell" aria-hidden="true">
@@ -322,7 +322,8 @@ import { topicApi, replyApi, likeApi, type Topic, type Reply } from "@/api/topic
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate, fmtRelative } from "@/utils/format";
 import { copyText } from "@/utils/userGroup";
-import { isAndroidNativeApp } from "@/utils/clientInfo";
+import { isAndroidNativeApp, isHarmonyNativeApp } from "@/utils/clientInfo";
+import { getNativeBridge, hasNativeImageSaveBridge } from "@/utils/nativeBridge";
 
 const route = useRoute();
 const router = useRouter();
@@ -422,8 +423,8 @@ const canUseNativeShare = computed(() => (
   typeof navigator !== "undefined" &&
   typeof navigator.share === "function"
 ));
-const isAndroidClient = computed(() => typeof navigator !== "undefined" && isAndroidNativeApp());
-const hasAndroidSaveBridge = computed(() => typeof (window as any).CPUAndroid?.saveImage === "function");
+const isNativeAppClient = computed(() => typeof navigator !== "undefined" && (isAndroidNativeApp() || isHarmonyNativeApp()));
+const hasNativeSaveBridge = computed(() => hasNativeImageSaveBridge());
 const shareCardDownloadName = computed(() => {
   const safeTitle = (topic.value?.title || "分享卡片").replace(/[\\/:*?"<>|]/g, "_").slice(0, 40);
   return `${safeTitle || "分享卡片"}-cpu-share.png`;
@@ -694,8 +695,9 @@ async function saveShareCardAsPng() {
   if (!dataUrl) return;
   shareCardSaving.value = true;
   try {
-    if (typeof (window as any).CPUAndroid?.saveImage === "function") {
-      const ok = (window as any).CPUAndroid.saveImage(dataUrl, shareCardDownloadName.value);
+    const nativeBridge = getNativeBridge();
+    if (typeof nativeBridge?.saveImage === "function") {
+      const ok = nativeBridge.saveImage(dataUrl, shareCardDownloadName.value);
       if (ok !== false) {
         ElMessage.success("图片已开始保存");
         return;

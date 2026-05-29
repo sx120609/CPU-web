@@ -2285,7 +2285,7 @@ function hasScheduleEditAuth() {
 
 function canUseScheduleEdit() {
   const client = detectClientPlatform();
-  return (client === "android" || client === "ios") && hasScheduleEditAuth();
+  return (client === "android" || client === "ios" || client === "harmony") && hasScheduleEditAuth();
 }
 
 function ensureScheduleEditEnabled() {

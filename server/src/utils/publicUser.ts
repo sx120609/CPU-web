@@ -42,6 +42,7 @@ export function buildSelfUser(u: any) {
     lastLoginClient: u.lastLoginClient,
     usedIosClient: u.usedIosClient,
     usedAndroidClient: u.usedAndroidClient,
+    usedHarmonyClient: u.usedHarmonyClient,
     topicSubmissionLocked: u.topicSubmissionLocked,
     aiReviewWhitelisted: u.aiReviewWhitelisted,
     forumEnabled: u.forumEnabled,
