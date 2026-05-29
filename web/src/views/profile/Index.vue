@@ -105,11 +105,19 @@
         </div>
         <div class="sponsor-confirm-field">
           <span>展示方式</span>
-          <el-radio-group v-model="sponsorDisplayMode" size="small">
-            <el-radio-button v-for="item in sponsorDisplayOptions" :key="item.value" :value="item.value">
+          <div class="sponsor-display-tabs" role="radiogroup" aria-label="展示方式">
+            <button
+              v-for="item in sponsorDisplayOptions"
+              :key="item.value"
+              type="button"
+              :class="{ active: sponsorDisplayMode === item.value }"
+              role="radio"
+              :aria-checked="sponsorDisplayMode === item.value"
+              @click="sponsorDisplayMode = item.value"
+            >
               {{ item.label }}
-            </el-radio-button>
-          </el-radio-group>
+            </button>
+          </div>
         </div>
         <el-input
           v-if="sponsorOptions.allowMessage"
@@ -767,14 +775,43 @@ async function removeAvatar() {
   padding-top: 7px;
   white-space: nowrap;
 }
-.sponsor-confirm-field :deep(.el-radio-group) {
+.sponsor-display-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   width: 100%;
+  overflow: hidden;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
 }
-.sponsor-confirm-field :deep(.el-radio-button),
-.sponsor-confirm-field :deep(.el-radio-button__inner) {
+.sponsor-display-tabs button {
+  appearance: none;
+  min-width: 0;
   width: 100%;
+  height: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.sponsor-display-tabs button:last-child {
+  border-right: 0;
+}
+.sponsor-display-tabs button.active {
+  background: #168776;
+  color: #fff;
+}
+.sponsor-display-tabs button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid rgba(22, 135, 118, 0.35);
+  outline-offset: -2px;
 }
 
 .trust-card {
@@ -1006,9 +1043,10 @@ async function removeAvatar() {
     padding-top: 0;
   }
 
-  .sponsor-confirm-field :deep(.el-radio-button__inner) {
-    padding-left: 6px;
-    padding-right: 6px;
+  .sponsor-display-tabs button {
+    height: 38px;
+    padding: 0 4px;
+    font-size: 12px;
   }
 
   .trust-score {
