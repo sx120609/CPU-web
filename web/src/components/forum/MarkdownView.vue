@@ -1,58 +1,11 @@
 <template>
   <div class="md" :class="{ 'md-clickable-images': clickableImages }" ref="el" v-html="html"></div>
-  <teleport to="body">
-    <div
-      v-if="previewOpen"
-      class="md-image-preview"
-      tabindex="-1"
-      @click.self="closePreview"
-      @wheel.prevent="handlePreviewWheel"
-    >
-      <button type="button" class="preview-close" aria-label="关闭图片预览" @click="closePreview">×</button>
-      <button
-        v-if="previewImages.length > 1"
-        type="button"
-        class="preview-nav preview-nav-prev"
-        aria-label="上一张"
-        @click.stop="showPrevImage"
-      >
-        ‹
-      </button>
-      <button
-        v-if="previewImages.length > 1"
-        type="button"
-        class="preview-nav preview-nav-next"
-        aria-label="下一张"
-        @click.stop="showNextImage"
-      >
-        ›
-      </button>
-      <div class="preview-stage" @dblclick.stop="togglePreviewZoom">
-        <img
-          v-if="previewImageUrl"
-          :src="previewImageUrl"
-          alt="预览图片"
-          class="preview-image"
-          :style="{ transform: `scale(${previewScale})` }"
-          draggable="false"
-        />
-      </div>
-      <div class="preview-top-info">
-        <span v-if="previewImages.length > 1">{{ previewIndex + 1 }} / {{ previewImages.length }}</span>
-        <span>{{ Math.round(previewScale * 100) }}%</span>
-      </div>
-      <div class="preview-actions">
-        <button type="button" class="preview-action-btn" aria-label="缩小" @click.stop="zoomPreview(-0.2)">−</button>
-        <button type="button" class="preview-action-btn" @click.stop="resetPreviewZoom">重置</button>
-        <button type="button" class="preview-action-btn" aria-label="放大" @click.stop="zoomPreview(0.2)">＋</button>
-        <button type="button" class="preview-action-btn" @click.stop="savePreviewImage">保存图片</button>
-      </div>
-    </div>
-  </teleport>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, onMounted, nextTick, watch, onBeforeUnmount } from "vue";
+import Viewer from "viewerjs";
+import "viewerjs/dist/viewer.css";
 import { renderMarkdown } from "@/utils/markdown";
 
 const props = withDefaults(defineProps<{
@@ -63,11 +16,8 @@ const props = withDefaults(defineProps<{
 });
 const html = computed(() => renderMarkdown(props.content));
 const el = ref<HTMLElement | null>(null);
-const previewOpen = ref(false);
-const previewImages = ref<string[]>([]);
-const previewIndex = ref(0);
-const previewScale = ref(1);
-const previewImageUrl = computed(() => previewImages.value[previewIndex.value] ?? "");
+const viewerImageUrl = ref("");
+let imageViewer: Viewer | null = null;
 
 function wrapTables() {
   if (!el.value) return;
@@ -83,21 +33,20 @@ function wrapTables() {
   });
 }
 
-function bindImagePreview() {
+function bindImageViewer() {
   if (!el.value) return;
   const images = el.value.querySelectorAll<HTMLImageElement>("img");
-  previewImages.value = Array.from(images).map((img) => img.src).filter(Boolean);
+  destroyImageViewer();
   images.forEach((img, index) => {
     if (props.clickableImages) {
       img.dataset.previewBound = "1";
       img.tabIndex = 0;
       img.setAttribute("role", "button");
       img.setAttribute("aria-label", "点击查看图片");
-      img.onclick = () => openPreview(index);
       img.onkeydown = (event: KeyboardEvent) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          openPreview(index);
+          imageViewer?.view(index);
         }
       };
     } else {
@@ -105,91 +54,89 @@ function bindImagePreview() {
       img.removeAttribute("tabindex");
       img.removeAttribute("role");
       img.removeAttribute("aria-label");
-      img.onclick = null;
       img.onkeydown = null;
     }
   });
+
+  if (!props.clickableImages || !images.length) return;
+  const hasManyImages = images.length > 1;
+  imageViewer = new Viewer(el.value, {
+    className: "cpu-markdown-viewer",
+    url: (image: HTMLImageElement) => getViewerImageUrl(image),
+    filter: (image: HTMLImageElement) => Boolean(image.src),
+    title: [1, (image: HTMLImageElement) => image.alt || previewFileName(getViewerImageUrl(image))],
+    navbar: hasManyImages ? true : 0,
+    button: true,
+    keyboard: true,
+    loop: hasManyImages,
+    movable: true,
+    rotatable: true,
+    scalable: true,
+    slideOnTouch: true,
+    toggleOnDblclick: true,
+    toolbar: {
+      zoomIn: true,
+      zoomOut: true,
+      oneToOne: true,
+      reset: true,
+      prev: hasManyImages,
+      next: hasManyImages,
+      rotateLeft: true,
+      rotateRight: true,
+      flipHorizontal: true,
+      flipVertical: true,
+      download: {
+        show: true,
+        size: "large",
+        click: () => { void saveViewerImage(); },
+      },
+    },
+    tooltip: true,
+    transition: true,
+    zoomOnTouch: true,
+    zoomOnWheel: true,
+    viewed: (event: CustomEvent) => {
+      const originalImage = (event.detail as { originalImage?: HTMLImageElement }).originalImage;
+      viewerImageUrl.value = originalImage ? getViewerImageUrl(originalImage) : "";
+    },
+    hidden: () => {
+      viewerImageUrl.value = "";
+    },
+  });
 }
 
-function openPreview(index: number) {
-  if (!previewImages.value.length) return;
-  previewIndex.value = clampIndex(index);
-  resetPreviewZoom();
-  previewOpen.value = true;
-  document.body.style.overflow = "hidden";
-  window.addEventListener("keydown", handlePreviewKeydown);
+function destroyImageViewer() {
+  if (!imageViewer) return;
+  imageViewer.destroy();
+  imageViewer = null;
+  viewerImageUrl.value = "";
 }
 
-function closePreview() {
-  previewOpen.value = false;
-  previewScale.value = 1;
-  document.body.style.overflow = "";
-  window.removeEventListener("keydown", handlePreviewKeydown);
+function getViewerImageUrl(image: HTMLImageElement) {
+  return image.dataset.original || image.currentSrc || image.src;
 }
 
-function clampIndex(index: number) {
-  const total = previewImages.value.length;
-  if (!total) return 0;
-  return ((index % total) + total) % total;
-}
-
-function showPrevImage() {
-  previewIndex.value = clampIndex(previewIndex.value - 1);
-  resetPreviewZoom();
-}
-
-function showNextImage() {
-  previewIndex.value = clampIndex(previewIndex.value + 1);
-  resetPreviewZoom();
-}
-
-function zoomPreview(delta: number) {
-  previewScale.value = Math.min(4, Math.max(0.4, Number((previewScale.value + delta).toFixed(2))));
-}
-
-function resetPreviewZoom() {
-  previewScale.value = 1;
-}
-
-function togglePreviewZoom() {
-  previewScale.value = previewScale.value > 1 ? 1 : 2;
-}
-
-function handlePreviewWheel(event: WheelEvent) {
-  zoomPreview(event.deltaY > 0 ? -0.16 : 0.16);
-}
-
-function handlePreviewKeydown(event: KeyboardEvent) {
-  if (!previewOpen.value) return;
-  if (event.key === "Escape") closePreview();
-  else if (event.key === "ArrowLeft") showPrevImage();
-  else if (event.key === "ArrowRight") showNextImage();
-  else if (event.key === "+" || event.key === "=") zoomPreview(0.2);
-  else if (event.key === "-" || event.key === "_") zoomPreview(-0.2);
-  else if (event.key === "0") resetPreviewZoom();
-}
-
-async function savePreviewImage() {
-  if (!previewImageUrl.value) return;
+async function saveViewerImage() {
+  if (!viewerImageUrl.value) return;
   try {
-    const response = await fetch(previewImageUrl.value);
+    const response = await fetch(viewerImageUrl.value);
     if (!response.ok) throw new Error("download_failed");
     const blob = await response.blob();
     if (typeof (window as any).CPUAndroid?.saveImage === "function") {
       const dataUrl = await blobToDataUrl(blob);
-      const ok = (window as any).CPUAndroid.saveImage(dataUrl, previewFileName(previewImageUrl.value, blob.type));
+      const ok = (window as any).CPUAndroid.saveImage(dataUrl, previewFileName(viewerImageUrl.value, blob.type));
       if (ok !== false) return;
     }
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = objectUrl;
-    link.download = previewFileName(previewImageUrl.value, blob.type);
+    link.download = previewFileName(viewerImageUrl.value, blob.type);
     document.body.appendChild(link);
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
   } catch {
-    window.open(previewImageUrl.value, "_blank", "noopener,noreferrer");
+    window.open(viewerImageUrl.value, "_blank", "noopener,noreferrer");
   }
 }
 
@@ -217,16 +164,15 @@ function blobToDataUrl(blob: Blob) {
 }
 
 onMounted(wrapTables);
-onMounted(() => nextTick(bindImagePreview));
+onMounted(() => nextTick(bindImageViewer));
 onBeforeUnmount(() => {
-  document.body.style.overflow = "";
-  window.removeEventListener("keydown", handlePreviewKeydown);
+  destroyImageViewer();
 });
 watch(html, () => nextTick(() => {
   wrapTables();
-  bindImagePreview();
+  bindImageViewer();
 }));
-watch(() => props.clickableImages, () => nextTick(bindImagePreview));
+watch(() => props.clickableImages, () => nextTick(bindImageViewer));
 </script>
 
 <style scoped>
@@ -326,166 +272,54 @@ watch(() => props.clickableImages, () => nextTick(bindImagePreview));
 }
 .md :deep(sub), .md :deep(sup) { font-size: 0.75em; }
 
-.md-image-preview {
-  position: fixed;
-  inset: 0;
-  z-index: 2000;
-  padding: 24px;
-  background: rgba(15, 23, 42, 0.76);
-  backdrop-filter: blur(4px);
-  user-select: none;
-  touch-action: none;
+:global(.cpu-markdown-viewer.viewer-container) {
+  z-index: 3000;
 }
 
-.preview-stage {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
+:global(.cpu-markdown-viewer .viewer-canvas) {
+  background: rgba(15, 23, 42, 0.84);
+}
+
+:global(.cpu-markdown-viewer .viewer-toolbar > ul) {
+  display: inline-flex;
+  flex-wrap: wrap;
   justify-content: center;
-  overflow: hidden;
+  max-width: calc(100vw - 20px);
+  gap: 4px;
+  padding: 6px;
 }
 
-.preview-image {
-  max-width: min(92vw, 1100px);
-  max-height: 82vh;
-  border-radius: 16px;
-  background: #fff;
-  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.35);
-  transition: transform 0.16s ease;
-  transform-origin: center;
+:global(.cpu-markdown-viewer .viewer-toolbar > ul > li) {
+  float: none;
+  margin: 0;
 }
 
-.preview-actions {
-  position: absolute;
-  bottom: 18px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 8px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.26);
-  backdrop-filter: blur(10px);
-}
-
-.preview-action-btn {
-  min-height: 42px;
-  min-width: 42px;
-  padding: 0 14px;
-  border: none;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.16);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  backdrop-filter: blur(8px);
-}
-
-.preview-close {
-  position: absolute;
-  top: 18px;
-  right: 18px;
-  width: 42px;
-  height: 42px;
-  border: none;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.16);
-  color: #fff;
-  font-size: 26px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.preview-top-info {
-  position: absolute;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 8px;
+:global(.cpu-markdown-viewer .viewer-download::before) {
+  content: "存";
+  display: block;
+  width: 20px;
+  height: 20px;
+  margin: 5px;
   color: #fff;
   font-size: 13px;
   font-weight: 700;
+  line-height: 20px;
+  text-align: center;
 }
 
-.preview-top-info span {
-  padding: 7px 12px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.16);
-  backdrop-filter: blur(8px);
-}
-
-.preview-nav {
-  position: absolute;
-  top: 50%;
-  z-index: 1;
-  width: 50px;
-  height: 72px;
-  border: none;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.16);
-  color: #fff;
-  font-size: 54px;
-  line-height: 1;
-  cursor: pointer;
-  backdrop-filter: blur(8px);
-  transform: translateY(-50%);
-}
-
-.preview-nav:hover,
-.preview-action-btn:hover,
-.preview-close:hover {
-  background: rgba(255, 255, 255, 0.26);
-}
-
-.preview-nav-prev {
-  left: 18px;
-}
-
-.preview-nav-next {
-  right: 18px;
+:global(.cpu-markdown-viewer .viewer-title) {
+  max-width: min(760px, 90vw);
+  color: #f9fafb;
+  font-size: 13px;
 }
 
 @media (max-width: 640px) {
-  .md-image-preview {
-    padding: 14px;
+  :global(.cpu-markdown-viewer .viewer-toolbar) {
+    bottom: 10px;
   }
 
-  .preview-image {
-    max-width: 96vw;
-    max-height: 78vh;
-    border-radius: 10px;
-  }
-
-  .preview-nav {
-    width: 42px;
-    height: 58px;
-    font-size: 42px;
-  }
-
-  .preview-nav-prev { left: 8px; }
-  .preview-nav-next { right: 8px; }
-
-  .preview-actions {
-    bottom: 12px;
-    width: calc(100vw - 24px);
-    justify-content: center;
-  }
-
-  .preview-action-btn {
-    min-width: 38px;
-    min-height: 38px;
-    padding: 0 10px;
-    font-size: 13px;
-  }
-
-  .preview-close {
-    top: 12px;
-    right: 12px;
+  :global(.cpu-markdown-viewer .viewer-navbar) {
+    display: none;
   }
 }
 </style>
