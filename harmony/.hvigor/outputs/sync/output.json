@@ -73,36 +73,23 @@
       "app": {
         "signingConfigs": [
           {
-            "name": "default",
+            "name": "releasenew",
             "type": "HarmonyOS",
             "material": {
-              "certpath": "C:\\Users\\ASUS\\.ohos\\config\\default_harmony_DWUx74n-wyZsx3ixZJX69vWDLPWlTzTevqidzpjsKTA=.cer",
-              "keyAlias": "debugKey",
-              "keyPassword": "0000001B66A7D3D8F6564E4B45AD9EFC0385BCCB3C8FA61405E76FA566334388CC92F80C2A273AB130D4EA",
-              "profile": "C:\\Users\\ASUS\\.ohos\\config\\default_harmony_DWUx74n-wyZsx3ixZJX69vWDLPWlTzTevqidzpjsKTA=.p7b",
+              "storeFile": "D:/OneDrive/Desktop/yaodashijian-release-20260530.p12",
+              "storePassword": "0000001DF48922758A1615398FEEE5B0A887DE5709F970E9121AB3446C1FEC2AF77AC06AC7EE0FDD770B489971",
+              "keyAlias": "com.cpu.yaodashijian",
+              "keyPassword": "0000001DE7767F1EA3F7DB049A569C33388DB997202D8D76AF59DCCBD321DF8C7B2C89C3C99AE55DE884371B85",
               "signAlg": "SHA256withECDSA",
-              "storeFile": "C:\\Users\\ASUS\\.ohos\\config\\default_harmony_DWUx74n-wyZsx3ixZJX69vWDLPWlTzTevqidzpjsKTA=.p12",
-              "storePassword": "0000001B4F22CA7C254AF3EF57811CA4E441833553C9D5CE6339E469EF6C0AA4489F4BDB4CD2CE7369C95B"
-            }
-          },
-          {
-            "name": "release",
-            "type": "HarmonyOS",
-            "material": {
-              "storeFile": "C:\\Users\\ASUS\\.ohos\\config\\release_harmony_DWUx74n-wyZsx3ixZJX69vWDLPWlTzTevqidzpjsKTA=.p12",
-              "storePassword": "0000001B47BCDE76F2A810E452F04A414B69FE075DBB72EA385F1E99700193CED74DD8652799A3DFCEB969",
-              "keyAlias": "debugKey",
-              "keyPassword": "0000001BDA1D76C852B7EFC07B5C3771E5A2AD92F42ED90003A42B080B5FE75BCFA288559ADED75C4B18C6",
-              "signAlg": "SHA256withECDSA",
-              "profile": "D:/OneDrive/Desktop/药大拾间Release.p7b",
-              "certpath": "C:\\Users\\ASUS\\.ohos\\config\\release_harmony_DWUx74n-wyZsx3ixZJX69vWDLPWlTzTevqidzpjsKTA=.cer"
+              "profile": "D:/OneDrive/Desktop/药大拾间Release (2).p7b",
+              "certpath": "D:/OneDrive/Desktop/release.cer"
             }
           }
         ],
         "products": [
           {
             "name": "default",
-            "signingConfig": "default",
+            "signingConfig": "releasenew",
             "compatibleSdkVersion": "5.0.0(12)",
             "targetSdkVersion": "5.0.0(12)",
             "runtimeOS": "HarmonyOS"
