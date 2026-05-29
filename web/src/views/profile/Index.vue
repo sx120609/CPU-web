@@ -64,24 +64,8 @@
                 <el-select v-model="sponsorPayType" class="sponsor-pay-select">
                   <el-option v-for="item in enabledPayTypes" :key="item.value" :label="item.label" :value="item.value" />
                 </el-select>
-                <el-button class="sponsor-submit-btn" type="primary" :loading="sponsorSubmitting" @click="submitSponsor">去支付</el-button>
+                <el-button class="sponsor-submit-btn" type="primary" :loading="sponsorSubmitting" @click="openSponsorConfirm">去支付</el-button>
               </div>
-
-              <div class="sponsor-display">
-                <span>展示方式</span>
-                <el-select v-model="sponsorDisplayMode" class="sponsor-display-select">
-                  <el-option v-for="item in sponsorDisplayOptions" :key="item.value" :label="item.label" :value="item.value" />
-                </el-select>
-              </div>
-
-              <el-input
-                v-if="sponsorOptions.allowMessage"
-                v-model="sponsorMessage"
-                maxlength="80"
-                show-word-limit
-                placeholder="给本站留一句话（选填）"
-                class="sponsor-message"
-              />
             </div>
             <el-alert v-else type="info" :closable="false" show-icon title="赞助支付暂不可用，请稍后再试。" />
           </template>
@@ -102,6 +86,44 @@
         </div>
       </div>
     </div>
+
+    <el-dialog
+      v-model="sponsorConfirmOpen"
+      title="确认赞助"
+      width="420px"
+      class="sponsor-confirm-dialog"
+      append-to-body
+    >
+      <div class="sponsor-confirm">
+        <div class="sponsor-confirm-summary">
+          <span>赞助金额</span>
+          <b>¥{{ formatMoney(sponsorAmount) }}</b>
+        </div>
+        <div class="sponsor-confirm-line">
+          <span>支付方式</span>
+          <strong>{{ payTypeLabels[sponsorPayType] || sponsorPayType }}</strong>
+        </div>
+        <div class="sponsor-confirm-field">
+          <span>展示方式</span>
+          <el-radio-group v-model="sponsorDisplayMode" size="small">
+            <el-radio-button v-for="item in sponsorDisplayOptions" :key="item.value" :value="item.value">
+              {{ item.label }}
+            </el-radio-button>
+          </el-radio-group>
+        </div>
+        <el-input
+          v-if="sponsorOptions.allowMessage"
+          v-model="sponsorMessage"
+          maxlength="80"
+          show-word-limit
+          placeholder="给本站留一句话（选填）"
+        />
+      </div>
+      <template #footer>
+        <el-button @click="sponsorConfirmOpen = false">取消</el-button>
+        <el-button type="primary" :loading="sponsorSubmitting" @click="submitSponsor">确认并支付</el-button>
+      </template>
+    </el-dialog>
 
     <div class="cpu-card trust-card" v-if="user">
       <div class="trust-head">
@@ -282,6 +304,7 @@ const sponsorAmount = ref("10");
 const sponsorPayType = ref<PayType>("alipay");
 const sponsorMessage = ref("");
 const sponsorDisplayMode = ref<"public" | "anonymous" | "hidden">("public");
+const sponsorConfirmOpen = ref(false);
 const sponsorOrders = ref<any[]>([]);
 const sponsorOptions = reactive<SponsorOptions>({
   enabled: false,
@@ -406,14 +429,24 @@ function submitEpayForm(result: { epay: { method: "POST"; submitUrl: string; par
   form.submit();
 }
 
-async function submitSponsor() {
+function validateSponsorAmount() {
   const amount = Number(sponsorAmount.value);
   const min = Number(sponsorOptions.minAmount);
   const max = Number(sponsorOptions.maxAmount);
   if (!Number.isFinite(amount) || amount < min || amount > max) {
     ElMessage.warning(`赞助金额需在 ${formatMoney(min)} - ${formatMoney(max)} 元之间`);
-    return;
+    return false;
   }
+  return true;
+}
+
+function openSponsorConfirm() {
+  if (!validateSponsorAmount()) return;
+  sponsorConfirmOpen.value = true;
+}
+
+async function submitSponsor() {
+  if (!validateSponsorAmount()) return;
   sponsorSubmitting.value = true;
   try {
     const result = await paymentsApi.createSponsorOrderWithOptions({
@@ -422,6 +455,7 @@ async function submitSponsor() {
       message: sponsorMessage.value,
       displayMode: sponsorDisplayMode.value,
     });
+    sponsorConfirmOpen.value = false;
     submitEpayForm(result);
   } finally {
     sponsorSubmitting.value = false;
@@ -657,27 +691,7 @@ async function removeAvatar() {
 .sponsor-money-input :deep(.el-input__wrapper),
 .sponsor-pay-select :deep(.el-select__wrapper) {
   background: #fff;
-}
-.sponsor-display {
-  display: grid;
-  grid-template-columns: 70px minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-}
-.sponsor-display > span {
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-.sponsor-display-select {
-  width: 100%;
-}
-.sponsor-display-select :deep(.el-select__wrapper) {
-  background: #fff;
-}
-.sponsor-message :deep(.el-input__wrapper) {
-  background: #fff;
+  min-height: 40px;
 }
 .sponsor-history {
   padding-top: 14px;
@@ -712,6 +726,55 @@ async function removeAvatar() {
   gap: 6px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.sponsor-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.sponsor-confirm-summary,
+.sponsor-confirm-line,
+.sponsor-confirm-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.sponsor-confirm-summary {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+}
+.sponsor-confirm-summary span,
+.sponsor-confirm-line span,
+.sponsor-confirm-field > span {
+  color: #6b7280;
+  font-size: 13px;
+}
+.sponsor-confirm-summary b {
+  color: #168776;
+  font-size: 22px;
+}
+.sponsor-confirm-line strong {
+  color: #1f2937;
+}
+.sponsor-confirm-field {
+  align-items: flex-start;
+}
+.sponsor-confirm-field > span {
+  padding-top: 7px;
+  white-space: nowrap;
+}
+.sponsor-confirm-field :deep(.el-radio-group) {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+}
+.sponsor-confirm-field :deep(.el-radio-button),
+.sponsor-confirm-field :deep(.el-radio-button__inner) {
+  width: 100%;
 }
 
 .trust-card {
@@ -893,22 +956,9 @@ async function removeAvatar() {
   }
 
   .sponsor-main {
-    align-items: center;
+    align-items: stretch;
     flex-direction: column;
     gap: 16px;
-  }
-
-  .sponsor-copy {
-    text-align: center;
-  }
-
-  .sponsor-actions {
-    justify-content: center;
-  }
-
-  .sponsor-copy p {
-    margin-left: auto;
-    margin-right: auto;
   }
 
   .sponsor-copy strong {
@@ -925,32 +975,40 @@ async function removeAvatar() {
   }
 
   .sponsor-pay-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) 118px;
     gap: 10px;
   }
 
   .sponsor-submit-btn {
+    grid-column: 1 / -1;
     height: 42px;
   }
 
-  .sponsor-display {
-    grid-template-columns: 1fr;
-    gap: 8px;
-    text-align: center;
-  }
-
-  .sponsor-display-select {
-    width: 100%;
-  }
-
   .sponsor-history {
-    text-align: center;
+    text-align: left;
   }
 
   .sponsor-order-row {
-    align-items: center;
+    align-items: flex-start;
     flex-direction: column;
     gap: 4px;
+  }
+
+  .sponsor-confirm-summary,
+  .sponsor-confirm-line,
+  .sponsor-confirm-field {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .sponsor-confirm-field > span {
+    padding-top: 0;
+  }
+
+  .sponsor-confirm-field :deep(.el-radio-button__inner) {
+    padding-left: 6px;
+    padding-right: 6px;
   }
 
   .trust-score {
