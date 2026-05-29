@@ -32,20 +32,17 @@
     </div>
 
     <div v-if="site.features.sponsor || (user?.sponsorAmount ?? 0) > 0" class="cpu-card sponsor-card">
-      <div class="sponsor-shell">
+      <div class="sponsor-main">
         <div class="sponsor-copy">
-          <span class="sponsor-kicker">赞助支持</span>
-          <h3>{{ sponsorOptions.title || "赞助本站" }}</h3>
+          <h3 class="cpu-section-title">{{ sponsorOptions.title || "赞助本站" }}</h3>
           <p>{{ sponsorOptions.description || "赞助会通过易支付完成，成功后金额会展示在你的个人资料里。" }}</p>
-          <el-button v-if="sponsorOptions.wallEnabled" class="sponsor-wall-btn" plain @click="router.push('/sponsor-wall')">查看鸣谢墙</el-button>
+          <strong>已赞助 ¥{{ formatMoney(user?.sponsorAmount) }}</strong>
+          <div class="sponsor-actions">
+            <el-button v-if="sponsorOptions.wallEnabled" plain @click="router.push('/sponsor-wall')">查看鸣谢墙</el-button>
+          </div>
         </div>
 
         <div class="sponsor-panel">
-          <div class="sponsor-total-box">
-            <span>已赞助</span>
-            <b>¥{{ formatMoney(user?.sponsorAmount) }}</b>
-          </div>
-
           <template v-if="site.features.sponsor">
             <div v-if="sponsorOptions.enabled" class="sponsor-form">
               <div class="amount-grid">
@@ -73,9 +70,9 @@
               <div class="sponsor-display">
                 <span>展示方式</span>
                 <el-radio-group v-model="sponsorDisplayMode" size="small">
-                  <el-radio-button value="public">公开</el-radio-button>
-                  <el-radio-button value="anonymous">匿名</el-radio-button>
-                  <el-radio-button value="hidden">隐藏</el-radio-button>
+                  <el-radio-button value="public">公开鸣谢</el-radio-button>
+                  <el-radio-button value="anonymous">匿名鸣谢</el-radio-button>
+                  <el-radio-button value="hidden">不展示</el-radio-button>
                 </el-radio-group>
               </div>
 
@@ -565,77 +562,47 @@ async function removeAvatar() {
 .profile-actions .el-button { flex: 1 1 auto; min-width: 100px; margin-left: 0 !important; }
 
 .sponsor-card {
-  overflow: hidden;
-  border-radius: 8px;
-  padding: 0;
-  background: linear-gradient(135deg, #f8fafc 0%, #ecfdf5 56%, #fff7ed 100%);
-  border: 1px solid #dfe7ee;
-  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
-.sponsor-shell {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.92fr);
+.sponsor-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 24px;
-  padding: 22px;
-  align-items: center;
 }
 .sponsor-copy {
+  flex: 1;
   min-width: 0;
-}
-.sponsor-kicker {
-  display: inline-flex;
-  align-items: center;
-  margin-bottom: 8px;
-  color: #0f766e;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-.sponsor-copy h3 {
-  margin: 0;
-  color: #0f172a;
-  font-size: 20px;
-  line-height: 1.35;
 }
 .sponsor-copy p {
-  max-width: 520px;
-  margin: 8px 0 16px;
-  color: #475569;
+  margin: 4px 0 8px;
+  color: #6b7280;
   font-size: 13px;
-  line-height: 1.7;
+  line-height: 1.6;
 }
-.sponsor-wall-btn {
+.sponsor-copy strong {
+  display: block;
+  color: #168776;
+  font-size: 20px;
+  letter-spacing: 0;
+  margin-bottom: 12px;
+}
+.sponsor-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sponsor-actions .el-button {
   margin-left: 0 !important;
-  border-color: #99d8cd;
-  color: #0f766e;
-  background: rgba(255, 255, 255, 0.72);
 }
 .sponsor-panel {
-  min-width: 0;
+  width: min(560px, 100%);
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-.sponsor-total-box {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: 8px;
-  border: 1px solid #fde68a;
-  background: rgba(255, 251, 235, 0.9);
-}
-.sponsor-total-box span {
-  color: #92400e;
-  font-size: 12px;
-  font-weight: 700;
-}
-.sponsor-total-box b {
-  color: #b45309;
-  font-size: 24px;
-  line-height: 1;
 }
 .sponsor-form {
   display: flex;
@@ -648,23 +615,23 @@ async function removeAvatar() {
   gap: 8px;
 }
 .amount-grid button {
-  height: 40px;
-  border: 1px solid #d9e6e3;
+  height: 38px;
+  border: 1px solid #d8e2ec;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.86);
+  background: #fff;
   color: #1f2937;
-  font-weight: 800;
+  font-weight: 700;
   cursor: pointer;
   transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
 }
 .amount-grid button:hover {
-  border-color: #5bb7a8;
-  color: #0f766e;
+  border-color: #168776;
+  color: #168776;
 }
 .amount-grid button.active {
   border-color: #168776;
-  background: #e9fbf6;
-  color: #0f766e;
+  background: #ecfdf5;
+  color: #168776;
   box-shadow: inset 0 0 0 1px rgba(22, 135, 118, 0.18);
 }
 .sponsor-pay-row {
@@ -676,12 +643,12 @@ async function removeAvatar() {
 .sponsor-submit-btn {
   width: 100%;
   margin-left: 0 !important;
-  font-weight: 800;
+  font-weight: 700;
 }
 .sponsor-money-input :deep(.el-input-group__prepend),
 .sponsor-money-input :deep(.el-input__wrapper),
 .sponsor-pay-select :deep(.el-select__wrapper) {
-  background: rgba(255, 255, 255, 0.92);
+  background: #fff;
 }
 .sponsor-display {
   display: flex;
@@ -699,15 +666,14 @@ async function removeAvatar() {
   padding: 7px 12px;
 }
 .sponsor-message :deep(.el-input__wrapper) {
-  background: rgba(255, 255, 255, 0.92);
+  background: #fff;
 }
 .sponsor-history {
-  margin: 0 22px 18px;
-  padding-top: 12px;
+  padding-top: 14px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border-top: 1px solid rgba(148, 163, 184, 0.24);
+  border-top: 1px dashed #e5e7eb;
 }
 .sub-title {
   font-size: 13px;
@@ -899,11 +865,6 @@ async function removeAvatar() {
     padding: 14px;
   }
 
-  .sponsor-card {
-    padding: 0;
-    border-radius: 8px;
-  }
-
   .profile-actions {
     gap: 6px;
   }
@@ -920,45 +881,27 @@ async function removeAvatar() {
     flex-direction: column;
   }
 
-  .sponsor-shell {
-    grid-template-columns: 1fr;
+  .sponsor-main {
+    align-items: center;
+    flex-direction: column;
     gap: 16px;
-    padding: 18px 14px;
   }
 
   .sponsor-copy {
     text-align: center;
   }
 
-  .sponsor-kicker {
+  .sponsor-actions {
     justify-content: center;
-  }
-
-  .sponsor-copy h3 {
-    font-size: 19px;
   }
 
   .sponsor-copy p {
     margin-left: auto;
     margin-right: auto;
-    line-height: 1.65;
   }
 
-  .sponsor-wall-btn {
-    width: 100%;
-    max-width: 220px;
-  }
-
-  .sponsor-total-box {
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 14px;
-    text-align: center;
-  }
-
-  .sponsor-total-box b {
-    font-size: 26px;
+  .sponsor-copy strong {
+    font-size: 20px;
   }
 
   .amount-grid {
@@ -995,10 +938,11 @@ async function removeAvatar() {
   .sponsor-display :deep(.el-radio-button),
   .sponsor-display :deep(.el-radio-button__inner) {
     width: 100%;
+    padding-left: 6px;
+    padding-right: 6px;
   }
 
   .sponsor-history {
-    margin: 0 14px 16px;
     text-align: center;
   }
 
