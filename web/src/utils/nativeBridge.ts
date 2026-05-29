@@ -77,11 +77,16 @@ export function absoluteImageUrl(src: string) {
 
 export function installIosNativeImageBridge() {
   if (typeof window === "undefined" || !isIosDevice()) return;
-  if ((window as any).CPUIOS?.saveImage) return;
+  const currentBridge = ((window as any).CPUIOS ?? {}) as NativeAppBridge;
+  if (currentBridge.saveImage && currentBridge.saveImageUrl && currentBridge.previewImages) return;
 
   (window as any).CPUIOS = {
+    ...currentBridge,
     getVersionCode: () => 1,
     getVersionName: () => "ios-web",
+    previewImages: (payload: string) => {
+      return previewIosImage(payload);
+    },
     saveImage: (dataUrl: string, fileName = "image.png") => {
       void shareIosImageDataUrl(dataUrl, fileName);
       return true;
@@ -91,6 +96,49 @@ export function installIosNativeImageBridge() {
       return true;
     },
   } satisfies NativeAppBridge;
+}
+
+function previewIosImage(payload: string): boolean {
+  try {
+    const data = JSON.parse(payload || "{}") as NativeImagePreviewPayload;
+    const images = Array.isArray(data.images) ? data.images : [];
+    if (!images.length) return false;
+    const index = Math.max(0, Math.min(data.index ?? 0, images.length - 1));
+    const target = images[index];
+    const url = absoluteImageUrl(target?.url || "");
+    if (!url) return false;
+    return openIosImagePreview(url);
+  } catch {
+    return false;
+  }
+}
+
+function openIosImagePreview(url: string): boolean {
+  const openDirectly = (): boolean => {
+    const previewWindow = window.open(url, "_blank");
+    if (previewWindow) return true;
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    return true;
+  };
+
+  if (!url.startsWith("data:")) return openDirectly();
+
+  try {
+    const blob = dataUrlToBlob(url);
+    const objectUrl = URL.createObjectURL(blob);
+    const opened: boolean = openIosImagePreview(objectUrl);
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+    return opened;
+  } catch {
+    return openDirectly();
+  }
 }
 
 function isAndroidNativePreviewFallback() {
