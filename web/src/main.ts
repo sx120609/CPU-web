@@ -4,6 +4,7 @@ import App from "./App.vue";
 import { router } from "./router";
 import { useAuthStore } from "./stores/auth";
 import { useSiteStore } from "./stores/site";
+import { installIosNativeImageBridge } from "./utils/nativeBridge";
 
 import "element-plus/dist/index.css";
 import "./styles/index.scss";
@@ -98,6 +99,7 @@ function installNativeAppMarker() {
 
 installTouchGuards();
 installFeedbackLayerGuard();
+installIosNativeImageBridge();
 installNativeAppMarker();
 
 // 注册 Service Worker —— Chrome PWA "installable" 条件之一（manifest + SW + HTTPS）

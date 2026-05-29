@@ -154,10 +154,14 @@ function getViewerImageUrl(image: HTMLImageElement) {
 async function saveViewerImage() {
   if (!viewerImageUrl.value) return;
   try {
+    const nativeBridge = getNativeBridge();
+    if (typeof nativeBridge?.saveImageUrl === "function") {
+      const ok = nativeBridge.saveImageUrl(viewerImageUrl.value, previewFileName(viewerImageUrl.value));
+      if (ok !== false) return;
+    }
     const response = await fetch(viewerImageUrl.value);
     if (!response.ok) throw new Error("download_failed");
     const blob = await response.blob();
-    const nativeBridge = getNativeBridge();
     if (typeof nativeBridge?.saveImage === "function") {
       const dataUrl = await blobToDataUrl(blob);
       const ok = nativeBridge.saveImage(dataUrl, previewFileName(viewerImageUrl.value, blob.type));

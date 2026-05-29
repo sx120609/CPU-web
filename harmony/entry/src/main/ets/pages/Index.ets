@@ -202,16 +202,33 @@ struct Index {
             Blank()
               .layoutWeight(1)
 
-            Button(this.previewSaveBusy ? '保存中' : '保存')
-              .type(ButtonType.Capsule)
-              .height(38)
-              .fontSize(13)
-              .fontColor('#FFFFFF')
-              .backgroundColor('#168776')
-              .enabled(!this.previewSaveBusy)
-              .onClick(() => {
-                void this.commitPreviewImageSave();
+            if (this.previewSaveBusy) {
+              Button('保存中')
+                .type(ButtonType.Capsule)
+                .height(38)
+                .fontSize(13)
+                .fontColor('#FFFFFF')
+                .backgroundColor('#168776')
+                .enabled(false)
+            } else {
+              SaveButton({
+                icon: SaveIconStyle.LINES,
+                text: SaveDescription.SAVE_TO_GALLERY,
+                buttonType: ButtonType.Capsule
               })
+                .height(38)
+                .fontSize(13)
+                .fontColor('#FFFFFF')
+                .iconColor('#FFFFFF')
+                .backgroundColor('#168776')
+                .onClick((_event: ClickEvent, result: SaveButtonOnClickResult) => {
+                  if (result === SaveButtonOnClickResult.SUCCESS) {
+                    void this.commitPreviewImageSave();
+                  } else {
+                    promptAction.showToast({ message: '未获得保存授权' });
+                  }
+                })
+            }
           }
           .width('100%')
           .padding({
@@ -347,18 +364,37 @@ struct Index {
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
             }
 
-            Button(this.saveBusy ? '保存中' : '保存到相册')
-              .type(ButtonType.Capsule)
-              .width('100%')
-              .height(48)
-              .fontSize(16)
-              .fontWeight(FontWeight.Medium)
-              .fontColor('#FFFFFF')
-              .backgroundColor('#168776')
-              .enabled(!this.saveBusy)
-              .onClick(() => {
-                void this.commitPendingImageSave();
+            if (this.saveBusy) {
+              Button('保存中')
+                .type(ButtonType.Capsule)
+                .width('100%')
+                .height(48)
+                .fontSize(16)
+                .fontWeight(FontWeight.Medium)
+                .fontColor('#FFFFFF')
+                .backgroundColor('#168776')
+                .enabled(false)
+            } else {
+              SaveButton({
+                icon: SaveIconStyle.LINES,
+                text: SaveDescription.SAVE_TO_GALLERY,
+                buttonType: ButtonType.Capsule
               })
+                .width('100%')
+                .height(48)
+                .fontSize(16)
+                .fontWeight(FontWeight.Medium)
+                .fontColor('#FFFFFF')
+                .iconColor('#FFFFFF')
+                .backgroundColor('#168776')
+                .onClick((_event: ClickEvent, result: SaveButtonOnClickResult) => {
+                  if (result === SaveButtonOnClickResult.SUCCESS) {
+                    void this.commitPendingImageSave();
+                  } else {
+                    promptAction.showToast({ message: '未获得保存授权' });
+                  }
+                })
+            }
           }
           .width('100%')
           .padding({
@@ -444,19 +480,25 @@ struct Index {
     if (this.previewSaveBusy) return;
     const image = this.currentPreviewImage();
     this.previewSaveBusy = true;
-    const ok = await this.bridge.commitImageUrlSave(image.url, image.fileName);
-    this.previewSaveBusy = false;
-    if (!ok) {
-      promptAction.showToast({ message: '保存图片失败' });
+    try {
+      const ok = await this.bridge.commitImageUrlSave(image.url, image.fileName);
+      if (!ok) {
+        promptAction.showToast({ message: '保存图片失败' });
+      }
+    } finally {
+      this.previewSaveBusy = false;
     }
   }
 
   private async commitPendingImageSave(): Promise<void> {
     if (this.saveBusy) return;
     this.saveBusy = true;
-    const ok = await this.bridge.commitImageSave(this.pendingImageDataUrl, this.pendingImageFileName);
-    this.saveBusy = false;
-    if (ok) this.closeSavePanel();
+    try {
+      const ok = await this.bridge.commitImageSave(this.pendingImageDataUrl, this.pendingImageFileName);
+      if (ok) this.closeSavePanel();
+    } finally {
+      this.saveBusy = false;
+    }
   }
 
   onBackPress(): boolean {

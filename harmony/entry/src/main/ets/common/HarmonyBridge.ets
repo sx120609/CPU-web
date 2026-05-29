@@ -23,6 +23,7 @@ export class HarmonyBridge {
   private context?: common.UIAbilityContext;
   private saveRequestHandler?: (dataUrl: string, fileName: string) => void;
   private previewRequestHandler?: (images: NativePreviewImage[], index: number) => void;
+  private readonly imageSaveTimeoutMs: number = 15000;
 
   attachContext(context: common.UIAbilityContext): void {
     this.context = context;
@@ -122,21 +123,13 @@ export class HarmonyBridge {
     }
     try {
       const bytes = this.decodeDataUrl(dataUrl);
-      const safeName = this.sanitizeImageName(fileName);
-      const extension = this.extensionOf(safeName);
-      const request = photoAccessHelper.MediaAssetChangeRequest.createAssetRequest(
-        this.context,
-        photoAccessHelper.PhotoType.IMAGE,
-        extension,
-        { title: this.stripExtension(safeName) }
+      return await this.withTimeout(
+        this.writeImageAsset(this.toExactBuffer(bytes), fileName),
+        this.imageSaveTimeoutMs
       );
-      request.addResource(photoAccessHelper.ResourceType.IMAGE_RESOURCE, this.toExactBuffer(bytes));
-      const helper = photoAccessHelper.getPhotoAccessHelper(this.context);
-      await helper.applyChanges(request);
-      this.toast('图片已保存到相册');
-      return true;
     } catch (_) {
-      return await this.saveImageWithDialogAsync(dataUrl, fileName);
+      this.toast('保存图片失败');
+      return false;
     }
   }
 
@@ -145,47 +138,86 @@ export class HarmonyBridge {
       this.toast('图片地址无效');
       return false;
     }
-    const request = http.createHttp();
     try {
-      const response = await request.request(url, {
-        method: http.RequestMethod.GET,
-        expectDataType: http.HttpDataType.ARRAY_BUFFER
-      });
-      const statusCode = Number(response.responseCode);
-      if (statusCode < 200 || statusCode >= 300 || !(response.result instanceof ArrayBuffer)) {
-        this.toast('图片下载失败');
-        return false;
-      }
-      return await this.commitImageBufferSave(response.result, fileName);
+      return await this.withTimeout(
+        this.writeImageUrlAsset(url, fileName),
+        this.imageSaveTimeoutMs
+      );
     } catch (_) {
       this.toast('图片下载失败');
       return false;
-    } finally {
-      request.destroy();
     }
   }
 
-  private async commitImageBufferSave(buffer: ArrayBuffer, fileName: string): Promise<boolean> {
+  private async writeImageAsset(buffer: ArrayBuffer, fileName: string): Promise<boolean> {
     if (!this.context) {
       this.toast('保存失败');
       return false;
     }
+    let file: fs.File | undefined = undefined;
     try {
       const safeName = this.sanitizeImageName(fileName);
       const extension = this.extensionOf(safeName);
-      const request = photoAccessHelper.MediaAssetChangeRequest.createAssetRequest(
-        this.context,
-        photoAccessHelper.PhotoType.IMAGE,
-        extension,
-        { title: this.stripExtension(safeName) }
-      );
-      request.addResource(photoAccessHelper.ResourceType.IMAGE_RESOURCE, buffer);
       const helper = photoAccessHelper.getPhotoAccessHelper(this.context);
-      await helper.applyChanges(request);
+      const uri = await helper.createAsset(photoAccessHelper.PhotoType.IMAGE, extension);
+      file = await fs.open(uri, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
+      await fs.write(file.fd, buffer);
+      await fs.close(file.fd);
+      file = undefined;
       this.toast('图片已保存到相册');
       return true;
     } catch (_) {
-      return await this.saveImageBufferWithDialogAsync(buffer, fileName);
+      if (file) {
+        try {
+          await fs.close(file.fd);
+        } catch (_) {
+          /* ignore */
+        }
+      }
+      return false;
+    }
+  }
+
+  private async writeImageUrlAsset(url: string, fileName: string): Promise<boolean> {
+    if (!this.context) {
+      this.toast('保存失败');
+      return false;
+    }
+    const request = http.createHttp();
+    let file: fs.File | undefined = undefined;
+    try {
+      const safeName = this.sanitizeImageName(fileName);
+      const extension = this.extensionOf(safeName);
+      const helper = photoAccessHelper.getPhotoAccessHelper(this.context);
+      const uri = await helper.createAsset(photoAccessHelper.PhotoType.IMAGE, extension);
+      file = await fs.open(uri, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
+
+      const response = await request.request(url, {
+        method: http.RequestMethod.GET,
+        expectDataType: http.HttpDataType.ARRAY_BUFFER,
+        connectTimeout: 8000,
+        readTimeout: 8000
+      });
+      const statusCode = Number(response.responseCode);
+      if (statusCode < 200 || statusCode >= 300 || !(response.result instanceof ArrayBuffer)) {
+        return false;
+      }
+      await fs.write(file.fd, response.result);
+      await fs.close(file.fd);
+      file = undefined;
+      this.toast('图片已保存到相册');
+      return true;
+    } catch (_) {
+      if (file) {
+        try {
+          await fs.close(file.fd);
+        } catch (_) {
+          /* ignore */
+        }
+      }
+      return false;
+    } finally {
+      request.destroy();
     }
   }
 
@@ -222,37 +254,25 @@ export class HarmonyBridge {
     }
   }
 
-  private async saveImageBufferWithDialogAsync(buffer: ArrayBuffer, fileName: string): Promise<boolean> {
-    if (!this.context) {
-      this.toast('保存失败');
-      return false;
-    }
-    try {
-      const safeName = this.sanitizeImageName(fileName);
-      const sandboxPath = `${this.context.filesDir}/${Date.now()}-${safeName}`;
-      const file = fs.openSync(sandboxPath, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
-      fs.writeSync(file.fd, buffer);
-      fs.closeSync(file);
-
-      const imageUri = fileUri.getUriFromPath(sandboxPath);
-      const helper = photoAccessHelper.getPhotoAccessHelper(this.context);
-      const config: photoAccessHelper.PhotoCreationConfig = {
-        title: this.stripExtension(safeName),
-        fileNameExtension: this.extensionOf(safeName),
-        photoType: photoAccessHelper.PhotoType.IMAGE
-      };
-      await helper.showAssetsCreationDialog([imageUri], [config]);
-      this.toast('图片已保存到相册');
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
   private toExactBuffer(bytes: Uint8Array): ArrayBuffer {
     const buffer = new ArrayBuffer(bytes.byteLength);
     new Uint8Array(buffer).set(bytes);
     return buffer;
+  }
+
+  private withTimeout<T>(task: Promise<T>, timeoutMs: number): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('timeout')), timeoutMs);
+      task
+        .then((value: T) => {
+          clearTimeout(timer);
+          resolve(value);
+        })
+        .catch((error: Error) => {
+          clearTimeout(timer);
+          reject(error);
+        });
+    });
   }
 
   private decodeDataUrl(dataUrl: string): Uint8Array {
@@ -267,7 +287,7 @@ export class HarmonyBridge {
     let raw = (fileName ?? '').trim();
     if (!raw) raw = 'cpu-share.png';
     raw = raw.replace(/[\\/:*?"<>|]/g, '_');
-    if (!raw.toLowerCase().endsWith('.png')) raw += '.png';
+    if (!/\.(png|jpe?g|webp|gif)$/i.test(raw)) raw += '.png';
     return raw;
   }
 

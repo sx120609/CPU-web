@@ -49,8 +49,8 @@
     "SELECT_PRODUCT_NAME": "default",
     "MODULE_BUILD_DIR": "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony\\build",
     "BUNDLE_NAME": "com.cpu.yaodashijian",
-    "VERSION_CODE": 15,
-    "VERSION_NAME": "2.0.6",
+    "VERSION_CODE": 17,
+    "VERSION_NAME": "2.0.8",
     "BUILD_PATH": {
       "OUTPUT_PATH": "C:\\Users\\ASUS\\Documents\\GitHub\\CPU-web\\harmony\\build\\outputs\\default"
     },
@@ -83,6 +83,19 @@
               "signAlg": "SHA256withECDSA",
               "storeFile": "C:\\Users\\ASUS\\.ohos\\config\\default_harmony_DWUx74n-wyZsx3ixZJX69vWDLPWlTzTevqidzpjsKTA=.p12",
               "storePassword": "0000001B4F22CA7C254AF3EF57811CA4E441833553C9D5CE6339E469EF6C0AA4489F4BDB4CD2CE7369C95B"
+            }
+          },
+          {
+            "name": "release",
+            "type": "HarmonyOS",
+            "material": {
+              "storeFile": "C:\\Users\\ASUS\\.ohos\\config\\release_harmony_DWUx74n-wyZsx3ixZJX69vWDLPWlTzTevqidzpjsKTA=.p12",
+              "storePassword": "0000001B47BCDE76F2A810E452F04A414B69FE075DBB72EA385F1E99700193CED74DD8652799A3DFCEB969",
+              "keyAlias": "debugKey",
+              "keyPassword": "0000001BDA1D76C852B7EFC07B5C3771E5A2AD92F42ED90003A42B080B5FE75BCFA288559ADED75C4B18C6",
+              "signAlg": "SHA256withECDSA",
+              "profile": "D:/OneDrive/Desktop/药大拾间Release.p7b",
+              "certpath": "C:\\Users\\ASUS\\.ohos\\config\\release_harmony_DWUx74n-wyZsx3ixZJX69vWDLPWlTzTevqidzpjsKTA=.cer"
             }
           }
         ],

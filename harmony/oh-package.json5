@@ -1,7 +1,7 @@
 {
   "modelVersion": "5.0.0",
   "name": "yaodashijian-harmony",
-  "version": "2.0.7",
+  "version": "2.0.8",
   "description": "药大拾间 HarmonyOS WebView shell",
   "main": "",
   "author": "CPU Web",
