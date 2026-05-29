@@ -23,6 +23,7 @@ import android.widget.Toast;
 
 import androidx.core.content.FileProvider;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.OutputStream;
@@ -112,6 +113,33 @@ final class CpuAndroidBridge {
             activity.runOnUiThread(() ->
                     Toast.makeText(activity, "应用内下载失败，请使用浏览器更新", Toast.LENGTH_SHORT).show()
             );
+            return false;
+        }
+    }
+
+    @JavascriptInterface
+    public boolean previewImages(String payload) {
+        try {
+            JSONObject json = new JSONObject(payload == null ? "{}" : payload);
+            JSONArray images = json.optJSONArray("images");
+            if (images == null || images.length() == 0) return false;
+            int index = Math.max(0, Math.min(json.optInt("index", 0), images.length() - 1));
+            JSONObject image = images.optJSONObject(index);
+            String url = image == null ? "" : image.optString("url", "").trim();
+            Uri uri = Uri.parse(url);
+            if (!isHttpUrl(uri)) return false;
+            activity.runOnUiThread(() -> {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+                    intent.addCategory(Intent.CATEGORY_BROWSABLE);
+                    intent.setDataAndType(uri, "image/*");
+                    activity.startActivity(intent);
+                } catch (Exception ignored) {
+                    Toast.makeText(activity, "无法打开系统图片查看器", Toast.LENGTH_SHORT).show();
+                }
+            });
+            return true;
+        } catch (Exception ignored) {
             return false;
         }
     }

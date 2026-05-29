@@ -7,7 +7,7 @@ import { computed, ref, onMounted, nextTick, watch, onBeforeUnmount } from "vue"
 import Viewer from "viewerjs";
 import "viewerjs/dist/viewer.css";
 import { renderMarkdown } from "@/utils/markdown";
-import { getNativeBridge } from "@/utils/nativeBridge";
+import { fileNameFromUrl, getNativeBridge, hasNativeImagePreviewBridge, previewNativeImages } from "@/utils/nativeBridge";
 
 const props = withDefaults(defineProps<{
   content: string;
@@ -36,7 +36,7 @@ function wrapTables() {
 
 function bindImageViewer() {
   if (!el.value) return;
-  const images = el.value.querySelectorAll<HTMLImageElement>("img");
+  const images = Array.from(el.value.querySelectorAll<HTMLImageElement>("img"));
   destroyImageViewer();
   images.forEach((img, index) => {
     if (props.clickableImages) {
@@ -44,9 +44,14 @@ function bindImageViewer() {
       img.tabIndex = 0;
       img.setAttribute("role", "button");
       img.setAttribute("aria-label", "点击查看图片");
+      img.onclick = () => {
+        if (tryOpenNativePreview(index)) return;
+        imageViewer?.view(index);
+      };
       img.onkeydown = (event: KeyboardEvent) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
+          if (tryOpenNativePreview(index)) return;
           imageViewer?.view(index);
         }
       };
@@ -55,11 +60,13 @@ function bindImageViewer() {
       img.removeAttribute("tabindex");
       img.removeAttribute("role");
       img.removeAttribute("aria-label");
+      img.onclick = null;
       img.onkeydown = null;
     }
   });
 
   if (!props.clickableImages || !images.length) return;
+  if (hasNativeImagePreviewBridge()) return;
   const hasManyImages = images.length > 1;
   imageViewer = new Viewer(el.value, {
     className: "cpu-markdown-viewer",
@@ -108,6 +115,21 @@ function bindImageViewer() {
       viewerImageUrl.value = "";
     },
   });
+}
+
+function tryOpenNativePreview(index: number) {
+  if (!el.value || !hasNativeImagePreviewBridge()) return false;
+  const images = Array.from(el.value.querySelectorAll<HTMLImageElement>("img"))
+    .map((image) => {
+      const url = getViewerImageUrl(image);
+      return {
+        url,
+        title: image.alt || fileNameFromUrl(url),
+        fileName: fileNameFromUrl(url),
+      };
+    })
+    .filter((image) => image.url);
+  return previewNativeImages({ images, index });
 }
 
 function annotateViewerToolbar() {

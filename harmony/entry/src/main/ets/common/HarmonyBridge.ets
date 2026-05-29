@@ -4,12 +4,25 @@ import promptAction from '@ohos.promptAction';
 import fs from '@ohos.file.fs';
 import fileUri from '@ohos.file.fileuri';
 import photoAccessHelper from '@ohos.file.photoAccessHelper';
+import http from '@ohos.net.http';
 import util from '@ohos.util';
 import { VERSION_CODE, VERSION_NAME, isHttpUrl } from './AppConfig';
+
+export interface NativePreviewImage {
+  url: string;
+  title: string;
+  fileName: string;
+}
+
+interface NativePreviewPayload {
+  images?: NativePreviewImage[];
+  index?: number;
+}
 
 export class HarmonyBridge {
   private context?: common.UIAbilityContext;
   private saveRequestHandler?: (dataUrl: string, fileName: string) => void;
+  private previewRequestHandler?: (images: NativePreviewImage[], index: number) => void;
 
   attachContext(context: common.UIAbilityContext): void {
     this.context = context;
@@ -17,6 +30,10 @@ export class HarmonyBridge {
 
   setSaveRequestHandler(handler: (dataUrl: string, fileName: string) => void): void {
     this.saveRequestHandler = handler;
+  }
+
+  setPreviewRequestHandler(handler: (images: NativePreviewImage[], index: number) => void): void {
+    this.previewRequestHandler = handler;
   }
 
   getVersionCode(): number {
@@ -65,6 +82,30 @@ export class HarmonyBridge {
     return true;
   }
 
+  previewImages(payload: string): boolean {
+    if (!this.previewRequestHandler) return false;
+    try {
+      const parsed = JSON.parse(payload ?? '{}') as NativePreviewPayload;
+      const rawImages = parsed.images ?? [];
+      const images: NativePreviewImage[] = [];
+      rawImages.forEach((item: NativePreviewImage) => {
+        if (!isHttpUrl(item.url)) return;
+        const normalized: NativePreviewImage = {
+          url: item.url,
+          title: item.title || this.sanitizeImageName(item.fileName || '图片'),
+          fileName: this.sanitizeImageName(item.fileName || item.title || 'image.png')
+        };
+        images.push(normalized);
+      });
+      if (!images.length) return false;
+      const index = Math.max(0, Math.min(Math.floor(parsed.index ?? 0), images.length - 1));
+      this.previewRequestHandler(images, index);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   saveImage(dataUrl: string, fileName: string): boolean {
     if (this.saveRequestHandler) {
       this.saveRequestHandler(dataUrl, fileName);
@@ -95,7 +136,55 @@ export class HarmonyBridge {
       this.toast('图片已保存到相册');
       return true;
     } catch (_) {
-      this.toast('保存图片失败');
+      return await this.saveImageWithDialogAsync(dataUrl, fileName);
+    }
+  }
+
+  async commitImageUrlSave(url: string, fileName: string): Promise<boolean> {
+    if (!isHttpUrl(url)) {
+      this.toast('图片地址无效');
+      return false;
+    }
+    const request = http.createHttp();
+    try {
+      const response = await request.request(url, {
+        method: http.RequestMethod.GET,
+        expectDataType: http.HttpDataType.ARRAY_BUFFER
+      });
+      const statusCode = Number(response.responseCode);
+      if (statusCode < 200 || statusCode >= 300 || !(response.result instanceof ArrayBuffer)) {
+        this.toast('图片下载失败');
+        return false;
+      }
+      return await this.commitImageBufferSave(response.result, fileName);
+    } catch (_) {
+      this.toast('图片下载失败');
+      return false;
+    } finally {
+      request.destroy();
+    }
+  }
+
+  private async commitImageBufferSave(buffer: ArrayBuffer, fileName: string): Promise<boolean> {
+    if (!this.context) {
+      this.toast('保存失败');
+      return false;
+    }
+    try {
+      const safeName = this.sanitizeImageName(fileName);
+      const extension = this.extensionOf(safeName);
+      const request = photoAccessHelper.MediaAssetChangeRequest.createAssetRequest(
+        this.context,
+        photoAccessHelper.PhotoType.IMAGE,
+        extension,
+        { title: this.stripExtension(safeName) }
+      );
+      request.addResource(photoAccessHelper.ResourceType.IMAGE_RESOURCE, buffer);
+      const helper = photoAccessHelper.getPhotoAccessHelper(this.context);
+      await helper.applyChanges(request);
+      this.toast('图片已保存到相册');
+      return true;
+    } catch (_) {
       return false;
     }
   }
@@ -104,17 +193,17 @@ export class HarmonyBridge {
     this.toast('鸿蒙小组件将在后续版本支持');
   }
 
-  private async saveImageWithDialogAsync(dataUrl: string, fileName: string): Promise<void> {
+  private async saveImageWithDialogAsync(dataUrl: string, fileName: string): Promise<boolean> {
     if (!this.context) {
       this.toast('保存失败');
-      return;
+      return false;
     }
     try {
       const bytes = this.decodeDataUrl(dataUrl);
       const safeName = this.sanitizeImageName(fileName);
       const sandboxPath = `${this.context.filesDir}/${safeName}`;
       const file = fs.openSync(sandboxPath, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
-      fs.writeSync(file.fd, bytes.buffer);
+      fs.writeSync(file.fd, this.toExactBuffer(bytes));
       fs.closeSync(file);
 
       const imageUri = fileUri.getUriFromPath(sandboxPath);
@@ -126,8 +215,10 @@ export class HarmonyBridge {
       };
       await helper.showAssetsCreationDialog([imageUri], [config]);
       this.toast('图片已保存到相册');
+      return true;
     } catch (_) {
       this.toast('保存图片失败');
+      return false;
     }
   }
 
