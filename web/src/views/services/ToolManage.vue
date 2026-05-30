@@ -1701,12 +1701,12 @@ async function handleGradeExcelFile(uploadFile: UploadFile) {
       defval: "",
       raw: false,
     });
-    const headerRow = matrix.find((row) => row.some((cell) => String(cell ?? "").trim()));
+    const headerRow = matrix.find((row: (string | number | boolean | null)[]) => row.some((cell: string | number | boolean | null) => String(cell ?? "").trim()));
     if (!headerRow) {
       ElMessage.warning("Excel 没有表头");
       return;
     }
-    const columns = headerRow.map((cell) => String(cell ?? "").trim()).filter(Boolean);
+    const columns = headerRow.map((cell: string | number | boolean | null) => String(cell ?? "").trim()).filter(Boolean);
     if (!columns.includes("学号")) {
       ElMessage.warning("Excel 必须包含“学号”字段");
       return;
@@ -1717,14 +1717,14 @@ async function handleGradeExcelFile(uploadFile: UploadFile) {
     }
     const headerIndex = matrix.indexOf(headerRow);
     const rows = matrix.slice(headerIndex + 1)
-      .map((line) => {
+      .map((line: (string | number | boolean | null)[]) => {
         const row: Record<string, string> = {};
-        columns.forEach((column, index) => {
+        columns.forEach((column: string, index: number) => {
           row[column] = String(line[index] ?? "").trim();
         });
         return row;
       })
-      .filter((row) => columns.some((column) => row[column]));
+      .filter((row: Record<string, string>) => columns.some((column: string) => row[column]));
     if (!rows.length) {
       ElMessage.warning("Excel 至少需要 1 行有效数据");
       return;

@@ -6,12 +6,29 @@ import { existsSync } from "node:fs";
 import { errorHandler } from "./middleware/error";
 import { router } from "./routes";
 import { shareRouter } from "./routes/share";
-import { isDev } from "./config";
+import { isDev, config } from "./config";
+import { getSiteOrigin } from "./services/siteSettings";
 
 export function createApp() {
   const app = express();
 
-  app.use(cors());
+  if (isDev) {
+    app.use(cors());
+  } else {
+    app.use(cors({
+      origin: (origin, cb) => {
+        const dbOrigin = getSiteOrigin();
+        const allowed = dbOrigin || config.siteOrigin;
+        if (!allowed || origin === allowed) {
+          cb(null, allowed || true);
+        } else {
+          cb(new Error("CORS 策略拒绝了该请求来源"));
+        }
+      },
+      credentials: true,
+    }));
+  }
+
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: false }));
   if (isDev) app.use(morgan("dev"));

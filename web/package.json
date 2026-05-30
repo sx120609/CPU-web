@@ -29,6 +29,7 @@
   "devDependencies": {
     "@types/dompurify": "^3.0.5",
     "@types/node": "^22.9.0",
+    "@types/xlsx": "^0.0.35",
     "@vitejs/plugin-vue": "^5.1.4",
     "sass": "^1.80.6",
     "typescript": "^5.6.3",
