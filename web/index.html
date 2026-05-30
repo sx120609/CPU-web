@@ -5,10 +5,10 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="/manifest-v3.webmanifest?v=20260530" />
     <!-- iOS 添加到主屏幕：标题 + 图标（与 Android manifest 一致） -->
-    <link rel="apple-touch-icon" href="/apple-touch-icon-v2.png?v=20260530" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-v2.png?v=20260530" />
-    <link rel="apple-touch-icon" sizes="192x192" href="/icon-192-v2.png?v=20260530" />
-    <link rel="apple-touch-icon" sizes="512x512" href="/icon-512-v2.png?v=20260530" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon-v3.png?v=20260530-hw" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-v3.png?v=20260530-hw" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/icon-192-v3.png?v=20260530-hw" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/icon-512-v3.png?v=20260530-hw" />
     <link rel="apple-touch-startup-image" href="/splash/ios-launch-v4-750x1334.png?v=20260530" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
     <link rel="apple-touch-startup-image" href="/splash/ios-launch-v4-828x1792.png?v=20260530" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
     <link rel="apple-touch-startup-image" href="/splash/ios-launch-v4-1125x2436.png?v=20260530" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
@@ -69,13 +69,8 @@
       .app-launch-logo {
         width: 84px;
         height: 84px;
-        border-radius: 24px;
-        background: #168776;
-        color: #fff;
-        display: grid;
-        place-items: center;
-        font-size: 34px;
-        font-weight: 800;
+        border-radius: 0;
+        display: block;
         box-shadow: 0 14px 36px rgba(22, 135, 118, 0.22);
       }
       .app-launch-title {
@@ -97,7 +92,7 @@
   </head>
   <body>
     <div class="app-launch-screen" id="boot-screen" aria-label="药大拾间正在启动">
-      <div class="app-launch-logo">药</div>
+      <img class="app-launch-logo" src="/apple-touch-icon-v3.png?v=20260530-hw" alt="" />
       <h1 class="app-launch-title">药大拾间</h1>
       <p class="app-launch-subtitle">正在打开你的校园服务</p>
     </div>
