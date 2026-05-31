@@ -98,7 +98,7 @@ type AiJsonMessage = {
   content: string;
 };
 
-async function requestAiJson(messages: AiJsonMessage[]) {
+export async function requestAiJson(messages: AiJsonMessage[]) {
   const config = getSiteConfig();
   const response = await fetch(REVIEW_API_URL, {
     method: "POST",

@@ -8,6 +8,7 @@ import { ensureUserCanSpeak } from "./userModeration";
 import {
   ensureUserCanSubmitTopic,
   generateTopicAiTags,
+  requestAiJson,
   notifyTopicAiBlocked,
   reviewTopicContent,
   shouldBypassAiReviewForUser,
@@ -80,6 +81,15 @@ type ParsedForwardPayload = {
   content: string;
   sourceMessageId?: string;
 };
+
+type QqBotAiIntent =
+  | { intent: "chat" }
+  | { intent: "help" }
+  | { intent: "status" }
+  | { intent: "boards" }
+  | { intent: "recent-posts" }
+  | { intent: "start-post"; title?: string; content?: string; boardSlug?: string }
+  | { intent: "reply"; message: string };
 
 const CONFIG_ID = 1;
 const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "like", "system"];
@@ -313,6 +323,11 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     return { ok: true };
   }
 
+  if (!isCommandMessage(messageText)) {
+    const aiHandled = await handleNaturalLanguageMessage(context);
+    if (aiHandled) return aiHandled;
+  }
+
   await logQqBotMessage({
     direction: "inbound",
     eventType: "message",
@@ -324,6 +339,58 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     rawPayload: event,
   });
   return { ignored: true };
+}
+
+async function handleNaturalLanguageMessage(context: {
+  config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
+  event: OneBotEvent;
+  qqId: string;
+  groupId?: string;
+  messageText: string;
+  forwardPayload?: ParsedForwardPayload | null;
+}) {
+  if (!shouldRunAiReview()) return null;
+  const intent = await inferQqBotIntent(context).catch(() => null);
+  if (!intent || intent.intent === "chat") return null;
+  if (intent.intent === "help") {
+    await replyToEvent(context, renderHelp(context.config.defaultBoardSlug));
+    return { ok: true, ai: true };
+  }
+  if (intent.intent === "status") {
+    await replyToEvent(context, await renderBindingStatus(context.qqId, context.config, context.groupId));
+    return { ok: true, ai: true };
+  }
+  if (intent.intent === "boards") {
+    await replyToEvent(context, await renderBoardList(context.config.defaultBoardSlug, context.groupId));
+    return { ok: true, ai: true };
+  }
+  if (intent.intent === "recent-posts") {
+    await replyToEvent(context, await renderRecentQqTopics(context.qqId));
+    return { ok: true, ai: true };
+  }
+  if (intent.intent === "reply") {
+    await replyToEvent(context, intent.message.slice(0, 500));
+    return { ok: true, ai: true };
+  }
+  if (intent.intent === "start-post") {
+    const conversation = await startPostConversation(context);
+    let nextConversation = conversation;
+    if (intent.title?.trim()) {
+      const parsed = await parseConversationTitle(intent.title.trim(), conversation.draftBoardSlug || context.config.defaultBoardSlug, context.groupId);
+      nextConversation = await prisma.qqBotConversation.update({
+        where: { id: conversation.id },
+        data: {
+          draftTitle: parsed.title,
+          draftBoardSlug: intent.boardSlug || parsed.boardSlug,
+          draftContent: (intent.content || "").trim(),
+          step: "collect-content",
+        },
+      });
+    }
+    await replyToEvent(context, renderConversationPrompt(nextConversation));
+    return { ok: true, ai: true };
+  }
+  return null;
 }
 
 async function bindQqAccount(input: { qqId: string; nickname?: string; token: string }) {
@@ -365,12 +432,13 @@ async function startPostConversation(context: {
 }) {
   await ensureQqPostingAllowed(context);
   await ensureQqBinding(context.qqId);
+  const defaultBoardSlug = await resolveDefaultBoardSlug(context.config.defaultBoardSlug, context.groupId);
   return upsertConversation(context.qqId, context.groupId, {
     scene: "post",
     step: "await-title",
     draftTitle: "",
     draftContent: "",
-    draftBoardSlug: resolveDefaultBoardSlug(context.config.defaultBoardSlug, context.groupId),
+    draftBoardSlug: defaultBoardSlug,
     sourceMessageId: context.event.message_id ? String(context.event.message_id) : undefined,
     sourceSummary: "",
     metadata: "{}",
@@ -389,12 +457,13 @@ async function startForwardPostConversation(
 ) {
   await ensureQqPostingAllowed(context);
   await ensureQqBinding(context.qqId);
+  const defaultBoardSlug = await resolveDefaultBoardSlug(context.config.defaultBoardSlug, context.groupId);
   return upsertConversation(context.qqId, context.groupId, {
     scene: "forward-post",
     step: "await-forward-confirm",
     draftTitle: "",
     draftContent: forwardPayload.content,
-    draftBoardSlug: resolveDefaultBoardSlug(context.config.defaultBoardSlug, context.groupId),
+    draftBoardSlug: defaultBoardSlug,
     sourceMessageId: forwardPayload.sourceMessageId || (context.event.message_id ? String(context.event.message_id) : undefined),
     sourceSummary: forwardPayload.summary,
     metadata: JSON.stringify({ source: "forward" }),
@@ -1086,6 +1155,8 @@ function renderHelp(defaultBoardSlug: string) {
     "/结束 - 提交当前投稿",
     "/取消 - 取消当前投稿",
     "",
+    "也可以直接说“我想投稿”或发送一段想发的内容，我会尽量按对话帮你整理。",
+    "",
     `默认板块：${defaultBoardSlug}`,
   ].join("\n");
 }
@@ -1198,6 +1269,68 @@ async function renderRecentQqTopics(qqId: string) {
       return `- ${topic.title}｜${topic.board.name}｜${status}\n  ${topicLink}`;
     }),
   ].join("\n");
+}
+
+async function inferQqBotIntent(context: {
+  config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
+  event: OneBotEvent;
+  qqId: string;
+  groupId?: string;
+  messageText: string;
+}) {
+  const content = await requestAiJson([
+    {
+      role: "system",
+      content: [
+        "你是校园论坛 QQBot 的意图识别助手。",
+        "你只能输出 JSON。",
+        "请判断用户这句话更像是在：求帮助、查状态、查板块、查最近投稿、开始投稿、普通闲聊，或者需要你直接回复一句简短提示。",
+        "如果用户明显表达了想发帖/投稿/搬运内容，也可以抽取标题、正文、板块 slug。",
+      ].join("\n"),
+    },
+    {
+      role: "user",
+      content: [
+        '输出格式：{"intent":"chat|help|status|boards|recent-posts|start-post|reply","title":"","content":"","boardSlug":"","message":""}',
+        `默认投稿板块：${context.config.defaultBoardSlug}`,
+        `用户消息：${context.messageText}`,
+      ].join("\n"),
+    },
+  ]);
+  const parsed = parseAiIntentJson(content);
+  const intent = String(parsed.intent || "chat").trim();
+  if (intent === "help" || intent === "status" || intent === "boards" || intent === "recent-posts" || intent === "chat") {
+    return { intent } as QqBotAiIntent;
+  }
+  if (intent === "reply") {
+    return { intent: "reply", message: String(parsed.message || "如果你想投稿，可以直接说“我想投稿”，我会一步步带你发。").slice(0, 300) } as QqBotAiIntent;
+  }
+  if (intent === "start-post") {
+    return {
+      intent: "start-post",
+      title: String(parsed.title || "").trim().slice(0, 120),
+      content: String(parsed.content || "").trim().slice(0, 20000),
+      boardSlug: String(parsed.boardSlug || "").trim().slice(0, 80) || undefined,
+    } as QqBotAiIntent;
+  }
+  return { intent: "chat" } as QqBotAiIntent;
+}
+
+function parseAiIntentJson(content: string) {
+  if (!content || typeof content !== "string") return { intent: "chat" };
+  try {
+    return JSON.parse(content);
+  } catch {
+    const match = content.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        return JSON.parse(match[0]);
+      } catch {
+        return { intent: "chat" };
+      }
+    }
+    return { intent: "chat" };
+  }
 }
 
 function parseStringArray(value: string, fallback: string[]) {
