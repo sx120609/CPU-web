@@ -88,6 +88,8 @@ export type QqBotConfig = {
   napcatBaseUrl: string;
   hasAccessToken: boolean;
   accessTokenMasked: string;
+  connectionStatus: "disabled" | "http" | "idle" | "connecting" | "connected" | "error";
+  connectionError: string;
   webhookSecret: string;
   defaultBoardSlug: string;
   allowPrivatePost: boolean;

@@ -15,6 +15,11 @@
             <b>推荐配置</b>
             <span>NapCat 里新建 WebSocket 服务端；CPU-web 会作为客户端连过去。收 QQ 消息、回复消息、推送通知都走这一条连接。</span>
           </div>
+          <div v-if="config" class="status-box">
+            <b>当前连接状态</b>
+            <span :class="['status-text', `status-${config.connectionStatus}`]">{{ connectionStatusText }}</span>
+            <span v-if="config.connectionError" class="status-error">{{ config.connectionError }}</span>
+          </div>
         </div>
 
         <el-form label-width="150px" class="config-form">
@@ -257,6 +262,16 @@ const groupDialog = reactive({
 });
 
 const postBoards = computed(() => boards.value.filter((item) => !item.readOnly));
+const connectionStatusText = computed(() => {
+  const status = config.value?.connectionStatus;
+  if (status === "disabled") return "已关闭";
+  if (status === "http") return "HTTP 模式";
+  if (status === "connecting") return "连接中";
+  if (status === "connected") return "已连接";
+  if (status === "error") return "连接失败";
+  return "待连接";
+});
+
 onMounted(async () => {
   await Promise.all([loadConfig(), loadBoards(), loadBindings(), loadGroups(), loadLogs()]);
 });
@@ -288,6 +303,7 @@ async function saveConfig() {
       accessToken: form.accessToken || undefined,
     });
     form.accessToken = "";
+    await loadConfig();
     ElMessage.success("QQBot 配置已保存");
   } finally {
     saving.value = false;
@@ -297,6 +313,7 @@ async function saveConfig() {
 async function clearToken() {
   await ElMessageBox.confirm("确认清除 NapCat Access Token？", "清除 Token", { type: "warning" });
   config.value = await adminApi.updateQqBotConfig({ clearAccessToken: true });
+  await loadConfig();
   ElMessage.success("Token 已清除");
 }
 
@@ -310,7 +327,10 @@ async function sendTest() {
   try {
     await adminApi.sendQqBotTestMessage({ ...test });
     ElMessage.success("测试消息已发送");
-    await loadLogs();
+    await Promise.all([loadLogs(), loadConfig()]);
+  } catch (error) {
+    await loadConfig();
+    throw error;
   } finally {
     testing.value = false;
   }
@@ -437,11 +457,32 @@ async function loadLogs() {
   color: #1d4ed8;
   font-size: 13px;
 }
+.status-box {
+  border-color: #dbe3ea;
+  background: #f8fafc;
+}
 .setup-guide span,
 .form-tip {
   color: #64748b;
   font-size: 12px;
   line-height: 1.6;
+}
+.status-text {
+  font-weight: 600;
+}
+.status-connected {
+  color: #0f766e;
+}
+.status-connecting {
+  color: #2563eb;
+}
+.status-error {
+  color: #dc2626;
+}
+.status-disabled,
+.status-http,
+.status-idle {
+  color: #475569;
 }
 .form-tip {
   margin-top: 5px;

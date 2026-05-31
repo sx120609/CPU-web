@@ -21,6 +21,8 @@ export type QqBotConfigView = {
   napcatBaseUrl: string;
   hasAccessToken: boolean;
   accessTokenMasked: string;
+  connectionStatus: "disabled" | "http" | "idle" | "connecting" | "connected" | "error";
+  connectionError: string;
   webhookSecret: string;
   defaultBoardSlug: string;
   allowPrivatePost: boolean;
@@ -50,6 +52,7 @@ let pollerStarted = false;
 let wsClient: any = null;
 let wsConnecting = false;
 let wsReconnectTimer: NodeJS.Timeout | null = null;
+let wsLastError = "";
 
 export async function getQqBotConfigRaw() {
   return prisma.qqBotConfig.upsert({
@@ -66,6 +69,8 @@ export function formatQqBotConfig(config: Awaited<ReturnType<typeof getQqBotConf
     napcatBaseUrl: config.napcatBaseUrl,
     hasAccessToken: Boolean(config.accessToken),
     accessTokenMasked: maskSecret(config.accessToken),
+    connectionStatus: getQqBotConnectionStatus(config),
+    connectionError: getQqBotConnectionError(config),
     webhookSecret: config.webhookSecret,
     defaultBoardSlug: config.defaultBoardSlug || "general",
     allowPrivatePost: config.allowPrivatePost,
@@ -403,7 +408,20 @@ export async function sendQqMessage(target: { qqId?: string; groupId?: string },
     ? { group_id: Number(target.groupId), message }
     : { user_id: Number(target.qqId), message };
   if (isWebSocketUrl(config.napcatBaseUrl)) {
-    await sendQqMessageByWebSocket(endpoint, body, target, message);
+    try {
+      await sendQqMessageByWebSocket(endpoint, body, target, message);
+    } catch (error: any) {
+      await logQqBotMessage({
+        direction: "outbound",
+        eventType: target.groupId ? "group-message" : "private-message",
+        status: "error",
+        qqId: target.qqId,
+        groupId: target.groupId,
+        content: message.slice(0, 1000),
+        result: String(error?.message || error || "NapCat WebSocket 发送失败").slice(0, 500),
+      });
+      throw error;
+    }
     return;
   }
   const response = await fetch(`${config.napcatBaseUrl.replace(/\/+$/, "")}/${endpoint}`, {
@@ -648,6 +666,34 @@ function buildWebSocketUrl(config: Awaited<ReturnType<typeof getQqBotConfigRaw>>
   return `${url}${joiner}access_token=${encodeURIComponent(config.accessToken)}`;
 }
 
+function getQqBotConnectionStatus(config: Awaited<ReturnType<typeof getQqBotConfigRaw>>): QqBotConfigView["connectionStatus"] {
+  if (!config.enabled) return "disabled";
+  if (!isWebSocketUrl(config.napcatBaseUrl)) return "http";
+  if (wsClient?.readyState === 1) return "connected";
+  if (wsConnecting || wsClient?.readyState === 0) return "connecting";
+  if (wsLastError) return "error";
+  return "idle";
+}
+
+function getQqBotConnectionError(config: Awaited<ReturnType<typeof getQqBotConfigRaw>>) {
+  if (!config.enabled || !isWebSocketUrl(config.napcatBaseUrl)) return "";
+  return wsLastError;
+}
+
+function describeWebSocketError(error: unknown) {
+  if (!error) return "未知错误";
+  if (typeof error === "string") return error;
+  const maybeError = error as { message?: string; error?: unknown; cause?: unknown };
+  if (typeof maybeError.message === "string" && maybeError.message.trim()) return maybeError.message.trim();
+  if (maybeError.error) return describeWebSocketError(maybeError.error);
+  if (maybeError.cause) return describeWebSocketError(maybeError.cause);
+  return String(error);
+}
+
+function setWebSocketError(message: string) {
+  wsLastError = message;
+}
+
 export async function connectQqBotWebSocket() {
   const config = await getQqBotConfigRaw();
   if (!config.enabled || !isWebSocketUrl(config.napcatBaseUrl)) return;
@@ -655,15 +701,19 @@ export async function connectQqBotWebSocket() {
   if (wsConnecting) return;
   const WebSocketCtor = (globalThis as any).WebSocket;
   if (!WebSocketCtor) {
+    setWebSocketError("当前 Node.js 运行环境不支持全局 WebSocket");
     console.warn("[qqbot] current Node.js runtime has no global WebSocket");
     return;
   }
   wsConnecting = true;
   try {
-    const socket = new WebSocketCtor(buildWebSocketUrl(config));
+    const socket = new WebSocketCtor(buildWebSocketUrl(config), {
+      headers: config.accessToken ? { Authorization: `Bearer ${config.accessToken}` } : undefined,
+    });
     wsClient = socket;
     socket.addEventListener("open", () => {
       wsConnecting = false;
+      wsLastError = "";
       logQqBotMessage({ direction: "outbound", eventType: "websocket", status: "ok", result: "connected" });
     });
     socket.addEventListener("message", (event: any) => {
@@ -672,18 +722,26 @@ export async function connectQqBotWebSocket() {
         console.warn("[qqbot] websocket message failed", error);
       });
     });
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (event: any) => {
       wsConnecting = false;
       if (wsClient === socket) wsClient = null;
+      const message = event?.code === 1000
+        ? "连接已关闭"
+        : `连接已关闭（code ${event?.code ?? "unknown"}${event?.reason ? `, ${String(event.reason)}` : ""}）`;
+      if (event?.code === 1000) wsLastError = "";
+      else setWebSocketError(message);
       scheduleWebSocketReconnect();
     });
-    socket.addEventListener("error", () => {
+    socket.addEventListener("error", (event: any) => {
       wsConnecting = false;
       if (wsClient === socket) wsClient = null;
+      const message = `WebSocket 握手失败：${describeWebSocketError(event)}`;
+      setWebSocketError(message);
       scheduleWebSocketReconnect();
     });
   } catch (error) {
     wsConnecting = false;
+    setWebSocketError(`创建 WebSocket 失败：${describeWebSocketError(error)}`);
     scheduleWebSocketReconnect();
     throw error;
   }
@@ -699,6 +757,7 @@ function resetQqBotWebSocket() {
     wsClient = null;
   }
   wsConnecting = false;
+  wsLastError = "";
 }
 
 function scheduleWebSocketReconnect() {
@@ -763,7 +822,8 @@ function waitWebSocketOpen() {
       }
       if (Date.now() - started > 3000) {
         clearInterval(timer);
-        reject(Errors.badRequest("NapCat WebSocket 尚未连接"));
+        const reason = wsLastError ? `：${wsLastError}` : "";
+        reject(Errors.badRequest(`NapCat WebSocket 尚未连接${reason}`));
       }
     }, 100);
   });
