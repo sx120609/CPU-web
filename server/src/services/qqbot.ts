@@ -314,7 +314,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, await renderRecentQqTopics(qqId));
     return { ok: true };
   }
-  if (isCommandMessage(messageText) && /^\/状态\b/.test(messageText.trim())) {
+  if (isCommandMessage(messageText) && /^[/／]状态(?:\s|$)/.test(messageText.trim())) {
     await logHandledInboundMessage(context, "message", "assistant:status");
     await replyToEvent(context, await renderBindingStatus(qqId, config, groupId));
     return { ok: true };
@@ -335,7 +335,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, result);
     return { ok: true };
   }
-  if (isCommandMessage(messageText) && /^\/投稿\b/.test(messageText.trim())) {
+  if (isCommandMessage(messageText) && /^[/／]投稿(?:\s|$)/.test(messageText.trim())) {
     const conversation = await startPostConversation(context);
     await logHandledInboundMessage(context, "message", "assistant:start-post");
     await replyToEvent(context, renderConversationPrompt(conversation));
@@ -709,8 +709,8 @@ async function handleConversationMessage(
   }
 
   if (conversation.step === "collect-content") {
-    if (/(^|\n)\s*\/结束\s*$/m.test(text)) {
-      const normalizedText = context.messageText.replace(/(^|\n)\s*\/结束\s*$/m, "").trim();
+    if (/(^|\n)\s*[/／]结束(?:\s|$)/m.test(context.messageText.trim())) {
+      const normalizedText = context.messageText.replace(/(^|\n)\s*[/／]结束(?:\s|$)/m, "").trim();
       const mergedContent = normalizedText
         ? mergeConversationContent(conversation.draftContent || "", normalizedText)
         : (conversation.draftContent || "");
@@ -1339,12 +1339,12 @@ function isCommandMessage(text: string) {
 }
 
 function isConfirmPublishMessage(text: string) {
-  return /^(是|确认|确认发布|发布|发吧|就这样|没问题)$/i.test(text.trim()) || /^[/／](发布|确认发布)$/i.test(text.trim());
+  return /^(是|确认|确认发布|发布|发吧|就这样|没问题)$/i.test(text.trim()) || /^[/／](发布|确认发布)(?:\s|$)/i.test(text.trim());
 }
 
 function isCancelMessage(text: string) {
   const normalized = text.trim();
-  return /^[/／]取消\b/.test(normalized)
+  return /^[/／]取消(?:\s|$)/.test(normalized)
     || /^(取消|算了|不发了|我不发了|先不发了|不要发了|不投了|我不投了|先不投了|不了|不用了)$/i.test(normalized);
 }
 
