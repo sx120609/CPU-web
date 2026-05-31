@@ -336,6 +336,13 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     return { ok: true };
   }
   if (isCommandMessage(messageText) && /^[/／]投稿(?:\s|$)/.test(messageText.trim())) {
+    if (event.message_type === "group") {
+      await replyToEvent(
+        context,
+        "群聊投稿只支持“@bot + 合并转发内容”这一种方式。请先转发要投稿的内容，并在同一条消息里 @我 说明要投稿。",
+      );
+      return { ok: true };
+    }
     const conversation = await startPostConversation(context);
     await logHandledInboundMessage(context, "message", "assistant:start-post");
     await replyToEvent(context, renderConversationPrompt(conversation));
@@ -380,10 +387,10 @@ async function handleNaturalLanguageMessage(context: {
   messageText: string;
   forwardPayload?: ParsedForwardPayload | null;
 }) {
-  if (isRecentlyCancelled(context.qqId, context.groupId) && !isExplicitPostTrigger(context.event, context.messageText)) {
+  if (context.event.message_type === "group") {
     return null;
   }
-  if (context.event.message_type === "group" && !isExplicitBotMention(context.event, context.messageText)) {
+  if (isRecentlyCancelled(context.qqId, context.groupId) && !isExplicitPostTrigger(context.event, context.messageText)) {
     return null;
   }
   if (!shouldRunAiReview()) return null;
@@ -632,7 +639,7 @@ async function handleConversationMessage(
       await replyToEvent(context, "好的，这条转发内容我先不投稿。");
       return { ok: true, cancelled: true };
     }
-    await replyToEvent(context, "如果要投稿，请回复“是”；不想投稿就回复“否”或“/取消”。");
+    await replyToEvent(context, "如果要投稿，请回复“是”；不想投稿就回复“否”或“/取消”。群聊里我只处理这种带合并转发的投稿。");
     return { ok: true };
   }
 
