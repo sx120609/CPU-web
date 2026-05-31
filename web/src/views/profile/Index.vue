@@ -245,10 +245,6 @@
           <b>{{ qqBotProfile.binding?.qqId || "—" }}</b>
         </div>
         <div class="qqbot-item">
-          <span>默认板块</span>
-          <b>{{ qqBotProfile.defaultBoardSlug }}</b>
-        </div>
-        <div class="qqbot-item">
           <span>投稿开关</span>
           <b>{{ qqPostingText }}</b>
         </div>
@@ -302,21 +298,6 @@
         </div>
       </div>
 
-      <div class="qqbot-recent">
-        <div class="sub-title">最近投稿</div>
-        <el-empty v-if="!qqBotProfile.recentTopics.length" description="还没有投稿记录" />
-        <div
-          v-for="topic in qqBotProfile.recentTopics"
-          :key="topic.id"
-          class="topic-line"
-          @click="$router.push(`/forum/topic/${topic.id}`)"
-        >
-          <span class="tag qqbot-topic-tag">{{ topic.boardName }}</span>
-          <span v-if="topic.hidden" class="anon-tag">待审核</span>
-          <span class="title">{{ topic.title }}</span>
-          <span class="meta">{{ fmtRelative(topic.createdAt) }}</span>
-        </div>
-      </div>
     </div>
 
     <div class="cpu-card">

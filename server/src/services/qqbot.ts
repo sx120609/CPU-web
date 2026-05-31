@@ -709,7 +709,7 @@ async function handleConversationMessage(
         where: { id: conversation.id },
         data: { step: "await-title" },
       });
-      await replyToEvent(context, renderConversationPrompt(next, "没问题，请重新发一个标题。"));
+      await replyToEvent(context, renderConversationPrompt(next, "好的，请发送新的标题。"));
       return { ok: true };
     }
     if (/^(补充|继续写|加正文)$/i.test(text)) {
@@ -809,7 +809,7 @@ async function handleConversationMessage(
         where: { id: conversation.id },
         data: { step: "await-title" },
       });
-      await replyToEvent(context, renderConversationPrompt(next, "好的，请重新发一个标题。"));
+      await replyToEvent(context, renderConversationPrompt(next, "好的，请发送新的标题。"));
       return { ok: true };
     }
     if (/^(补充|继续写|继续补充|改正文|继续修改)$/i.test(text)) {
@@ -928,9 +928,9 @@ async function finishConversation(id: number, status: "done" | "cancelled") {
 
 function renderConversationPrompt(conversation: any, assistantHint?: string) {
   if (conversation.step === "await-title") {
+    const isRetitling = /重新发一个标题|重新标题|改标题|新标题/.test(String(assistantHint || ""));
     return [
-      "开始投稿。",
-      "请先发送标题。",
+      isRetitling ? "请发送新的标题。" : "请先发送标题。",
       "如果想取消，发送“/取消”。",
       assistantHint || "",
     ].join("\n");
@@ -1446,7 +1446,7 @@ function renderHelp(defaultBoardSlug: string) {
     "/绑定 绑定码 - 绑定站内账号",
     "/状态 - 查看绑定状态和投稿开关",
     "/板块 - 查看可投稿板块",
-    "/我的投稿 - 查看最近通过 QQ 投稿的帖子",
+    "/我的投稿 - 查看最近投稿记录",
     "/解绑 - 解除当前 QQ 绑定",
     "/投稿 - 开始分步投稿",
     "/结束 - 提交当前投稿",
@@ -1454,7 +1454,7 @@ function renderHelp(defaultBoardSlug: string) {
     "",
     "也可以直接说“我想投稿”或发送一段想发的内容，我会尽量按对话帮你整理。",
     "",
-    `默认板块：${defaultBoardSlug}`,
+    `默认投稿区：${defaultBoardSlug}`,
   ].join("\n");
 }
 
@@ -1462,7 +1462,7 @@ function renderGreetingReply(defaultBoardSlug: string) {
   return [
     "我在。",
     "如果你想投稿，可以直接说“我想投稿”，或者发送“/投稿”开始分步投稿。",
-    `默认板块是 ${defaultBoardSlug}。`,
+    `默认投稿区是 ${defaultBoardSlug}。`,
     "其他常用命令：/帮助 /状态 /板块 /我的投稿",
   ].join("\n");
 }
@@ -1539,14 +1539,14 @@ async function renderBindingStatus(
     return [
       "当前 QQ 尚未绑定站内账号。",
       "请先在站内生成绑定码，然后发送：绑定 绑定码",
-      `默认投稿板块：${defaultBoardSlug}`,
+      `默认投稿区：${defaultBoardSlug}`,
       `私聊投稿：${config.allowPrivatePost ? "已开启" : "未开启"}`,
       `群内投稿：${config.allowGroupPost ? "已开启" : "未开启"}`,
     ].join("\n");
   }
   return [
     `已绑定：${binding.user.nickname}（${binding.user.username}）`,
-    `默认投稿板块：${defaultBoardSlug}`,
+    `默认投稿区：${defaultBoardSlug}`,
     `私聊投稿：${config.allowPrivatePost ? "已开启" : "未开启"}`,
     `群内投稿：${config.allowGroupPost ? "已开启" : "未开启"}`,
     "命令：板块 / 我的投稿 / 解绑",
@@ -1576,9 +1576,9 @@ async function renderBoardList(defaultBoardSlug: string, groupId?: string) {
   const lines = [
     "可投稿板块：",
     ...availableBoards.slice(0, 12).map((board) => {
-      const suffix = board.slug === currentDefaultSlug ? "（默认）" : "";
+      const suffix = board.slug === currentDefaultSlug ? "（默认投稿区）" : "";
       const desc = board.description ? ` - ${board.description}` : "";
-      return `${board.slug}｜${board.name}${suffix}${desc}`;
+      return `${board.name}${suffix}${desc}`;
     }),
   ];
   const closedHints = boards
@@ -1591,8 +1591,7 @@ async function renderBoardList(defaultBoardSlug: string, groupId?: string) {
   lines.push("", "示例：");
   lines.push("投稿 标题");
   lines.push("正文");
-  lines.push("投稿 general 标题");
-  lines.push("正文");
+  lines.push("如果想指定投稿区，可以先发“板块”看看名称，再告诉我你想发到哪里。");
   return lines.join("\n");
 }
 
