@@ -400,6 +400,12 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     if (aiHandled) return aiHandled;
   }
 
+  if (event.message_type !== "group") {
+    await logHandledInboundMessage(context, "message", "assistant:fallback");
+    await replyToEvent(context, renderPrivateFallbackReply());
+    return { ok: true };
+  }
+
   await logQqBotMessage({
     direction: "inbound",
     eventType: "message",
@@ -1471,6 +1477,14 @@ function renderGreetingReply(defaultBoardSlug: string) {
     "如果你想投稿，可以直接说“我想投稿”，或者发送“/投稿”开始分步投稿。",
     `默认投稿区是 ${defaultBoardSlug}。`,
     "其他常用命令：/帮助 /状态 /板块 /我的投稿",
+  ].join("\n");
+}
+
+function renderPrivateFallbackReply() {
+  return [
+    "我收到啦。",
+    "你可以直接告诉我你想做什么，比如：投稿、查状态、看板块、看最近投稿。",
+    "也可以发：帮助 / 状态 / 板块 / 我的投稿 / 投稿",
   ].join("\n");
 }
 
