@@ -106,6 +106,8 @@ type QqBotAssistantReply = {
   confidence?: "low" | "medium" | "high";
 };
 
+const qqBotCooldowns = new Map<string, { cancelledAt?: number }>();
+
 const CONFIG_ID = 1;
 const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "like", "system"];
 let pollerStarted = false;
@@ -378,6 +380,9 @@ async function handleNaturalLanguageMessage(context: {
   messageText: string;
   forwardPayload?: ParsedForwardPayload | null;
 }) {
+  if (isRecentlyCancelled(context.qqId, context.groupId) && !isExplicitPostTrigger(context.event, context.messageText)) {
+    return null;
+  }
   if (context.event.message_type === "group" && !isExplicitBotMention(context.event, context.messageText)) {
     return null;
   }
@@ -605,7 +610,8 @@ async function handleConversationMessage(
   },
 ) {
   const text = context.messageText.trim();
-  if (isCommandMessage(text) && /^\/取消\b/.test(text)) {
+  if (isCancelMessage(text)) {
+    markConversationCancelled(context.qqId, context.groupId);
     await finishConversation(conversation.id, "cancelled");
     await replyToEvent(context, "已取消这次投稿。");
     return { ok: true, cancelled: true };
@@ -621,6 +627,7 @@ async function handleConversationMessage(
       return { ok: true };
     }
     if (/^(否|不要|取消|算了)$/i.test(text)) {
+      markConversationCancelled(context.qqId, context.groupId);
       await finishConversation(conversation.id, "cancelled");
       await replyToEvent(context, "好的，这条转发内容我先不投稿。");
       return { ok: true, cancelled: true };
@@ -1335,6 +1342,12 @@ function isConfirmPublishMessage(text: string) {
   return /^(是|确认|确认发布|发布|发吧|就这样|没问题)$/i.test(text.trim()) || /^[/／](发布|确认发布)$/i.test(text.trim());
 }
 
+function isCancelMessage(text: string) {
+  const normalized = text.trim();
+  return /^[/／]取消\b/.test(normalized)
+    || /^(取消|算了|不发了|我不发了|先不发了|不要发了|不投了|我不投了|先不投了|不了|不用了)$/i.test(normalized);
+}
+
 function isGreetingMessage(text: string) {
   const normalized = text.trim().toLowerCase();
   if (!normalized) return false;
@@ -1379,12 +1392,34 @@ function shouldAssistantAutoReply(context: {
   return isExplicitBotMention(context.event, context.messageText);
 }
 
+function cooldownKey(qqId: string, groupId?: string) {
+  return `${qqId}::${groupId || "private"}`;
+}
+
+function markConversationCancelled(qqId: string, groupId?: string) {
+  qqBotCooldowns.set(cooldownKey(qqId, groupId), { cancelledAt: Date.now() });
+}
+
+function isRecentlyCancelled(qqId: string, groupId?: string) {
+  const state = qqBotCooldowns.get(cooldownKey(qqId, groupId));
+  if (!state?.cancelledAt) return false;
+  return Date.now() - state.cancelledAt < 2 * 60 * 1000;
+}
+
 function isExplicitBotMention(event: OneBotEvent, text: string) {
   const raw = text.trim();
   if (!raw) return false;
   if (/(qqbot|药大拾间bot|助手|bot)\b/i.test(raw)) return true;
   if (/(帮我投稿|我要投稿|我想投稿|投稿到|发树洞|发帖|帮我发|板块|状态|帮助)/i.test(raw)) return true;
   return isMessageAtBot(event.message, event.self_id);
+}
+
+function isExplicitPostTrigger(event: OneBotEvent, text: string) {
+  const raw = text.trim();
+  if (!raw) return false;
+  if (/^[/／]投稿\b/.test(raw)) return true;
+  if (/(帮我投稿|我要投稿|我想投稿|投稿到|发树洞|发帖|帮我发)/i.test(raw)) return true;
+  return event.message_type === "group" ? isExplicitBotMention(event, text) : false;
 }
 
 function isMessageAtBot(message: unknown, selfId?: number | string) {
