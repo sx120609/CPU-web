@@ -78,7 +78,7 @@ const scheduleEditStateSchema = z.object({
 const scheduleWidgetTokenSchema = z.object({
   name: z.string().trim().max(40).optional(),
 });
-const WIDGET_PAYLOAD_VERSION = 2;
+const WIDGET_PAYLOAD_VERSION = 3;
 
 function emptyScheduleEdits() {
   return { hidden: [] as string[], custom: [] as Array<z.infer<typeof scheduleEditItemSchema>> };
@@ -342,7 +342,7 @@ function buildWidgetPayload(parsed: any, calendar: any | null, queryWeek?: strin
     : (calendarToday.day || chinaDayOfWeek(today));
   const rawCalendarDays = (calendar?.weeks ?? []).find((item: any) => Number(item.week) === week)?.days ?? [];
   const calendarDays = normalizeCalendarDays(rawCalendarDays);
-  const cells = (parsed?.cells ?? [])
+  const cells = dedupeWidgetCourses((parsed?.cells ?? [])
     .flatMap((cell: any) => (cell.courses ?? [])
       .filter((course: any) => courseMatchesWeek(course, week))
       .map((course: any) => {
@@ -362,7 +362,7 @@ function buildWidgetPayload(parsed: any, calendar: any | null, queryWeek?: strin
           custom: Boolean(course.custom),
         };
       }))
-    .sort((a: any, b: any) => a.day - b.day || a.startSlot - b.startSlot || a.endSlot - b.endSlot);
+    .sort((a: any, b: any) => a.day - b.day || a.startSlot - b.startSlot || a.endSlot - b.endSlot));
 
   const days = Array.from({ length: 7 }, (_, index) => {
     const day = index + 1;
@@ -401,6 +401,40 @@ function buildWidgetPayload(parsed: any, calendar: any | null, queryWeek?: strin
     strictDate: true,
     payloadVersion: WIDGET_PAYLOAD_VERSION,
   };
+}
+
+function dedupeWidgetCourses(courses: Array<{
+  day: number;
+  dayLabel: string;
+  date: string;
+  startSlot: number;
+  endSlot: number;
+  startTime: string;
+  endTime: string;
+  name: string;
+  teacher: string;
+  location: string;
+  note: string;
+  custom: boolean;
+}>) {
+  const seen = new Map<string, typeof courses[number]>();
+  for (const course of courses) {
+    const key = [
+      course.day,
+      course.startSlot,
+      course.endSlot,
+      normalizeKeyPart(course.name),
+      normalizeKeyPart(course.teacher),
+      normalizeKeyPart(course.location),
+    ].join("|");
+    const existing = seen.get(key);
+    if (!existing) {
+      seen.set(key, course);
+      continue;
+    }
+    if (!existing.note && course.note) existing.note = course.note;
+  }
+  return [...seen.values()];
 }
 
 jwxtRouter.get("/schedule-widget-tokens", authRequired, async (req: any, res, next) => {

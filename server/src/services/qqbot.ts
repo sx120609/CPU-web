@@ -379,7 +379,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     }
     const conversation = await startPostConversation(context);
     await logHandledInboundMessage(context, "message", "assistant:start-post");
-    await replyToEvent(context, renderConversationPrompt(conversation));
+    await replyToEvent(context, renderConversationPrompt(conversation, "如果方便，建议前往客户端完成投稿，编辑体验会更好。"));
     return { ok: true };
   }
   if (!isCommandMessage(messageText) && forwardPayload && shouldHandleForwardPostInContext(context)) {
@@ -483,7 +483,10 @@ async function handleNaturalLanguageMessage(context: {
         },
       });
     }
-    const reply = renderConversationPrompt(nextConversation, suggested?.reply);
+    const reply = renderConversationPrompt(
+      nextConversation,
+      [suggested?.reply, "如果方便，建议前往客户端完成投稿，编辑体验会更好。"].filter(Boolean).join("\n"),
+    );
     await logHandledInboundMessage(context, "message", "assistant:start-post-ai");
     await replyToEvent(context, reply);
     return { ok: true, ai: true };
@@ -738,19 +741,23 @@ async function handleConversationMessage(
     }
     const parsed = await parseConversationTitle(titleCandidate, conversation.draftBoardSlug || context.config.defaultBoardSlug, context.groupId);
     const draftContent = restLines.join("\n").trim();
+    const mergedDraftContent = mergeConversationContent(conversation.draftContent || "", draftContent);
+    const shouldReturnToConfirm = Boolean((conversation.draftContent || "").trim()) || conversation.step === "await-forward-title" || Boolean(draftContent);
     const next = await prisma.qqBotConversation.update({
       where: { id: conversation.id },
       data: {
         draftTitle: parsed.title,
         draftBoardSlug: parsed.boardSlug,
-        draftContent: mergeConversationContent(conversation.draftContent || "", draftContent),
-        step: conversation.step === "await-forward-title" || draftContent ? "await-submit-confirm" : "collect-content",
+        draftContent: mergedDraftContent,
+        step: shouldReturnToConfirm ? "await-submit-confirm" : "collect-content",
       },
     });
     await replyToEvent(context, renderConversationPrompt(
       next,
       conversation.step === "await-forward-title"
         ? `标题我记成「${parsed.title}」了，正文我会直接使用你刚才回复的那条合并转发内容。`
+        : shouldReturnToConfirm
+        ? `标题我已经改成「${parsed.title}」了，正文我继续沿用你刚才整理好的内容。`
         : draftContent
         ? `我把第一行当标题，后面的内容也一起收进正文了。标题是「${parsed.title}」。`
         : `我先帮你把标题定为「${parsed.title}」。`,
