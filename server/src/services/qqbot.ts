@@ -89,6 +89,8 @@ type ParsedForwardPayload = {
   sourceMessageId?: string;
 };
 
+type ForwardSource = "direct" | "reply";
+
 type QqBotAiIntent =
   | { intent: "chat" }
   | { intent: "help" }
@@ -310,16 +312,28 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     return { ok: true };
   }
   if (isCommandMessage(messageText) && isMyPostsCommand(messageText)) {
+    if (event.message_type === "group") {
+      await replyToEvent(context, "群聊里不支持查询个人投稿记录，请私聊我后再使用这个功能。");
+      return { ok: true };
+    }
     await logHandledInboundMessage(context, "message", "assistant:recent-posts");
     await replyToEvent(context, await renderRecentQqTopics(qqId));
     return { ok: true };
   }
   if (isCommandMessage(messageText) && /^[/／]状态(?:\s|$)/.test(messageText.trim())) {
+    if (event.message_type === "group") {
+      await replyToEvent(context, "群聊里不展示个人绑定状态，请私聊我后再查看。");
+      return { ok: true };
+    }
     await logHandledInboundMessage(context, "message", "assistant:status");
     await replyToEvent(context, await renderBindingStatus(qqId, config, groupId));
     return { ok: true };
   }
   if (isCommandMessage(messageText) && isUnbindCommand(messageText)) {
+    if (event.message_type === "group") {
+      await replyToEvent(context, "群聊里不支持解绑个人账号，请私聊我后再操作。");
+      return { ok: true };
+    }
     await logHandledInboundMessage(context, "message", "assistant:unbind");
     await replyToEvent(context, await unbindQqAccount(qqId));
     return { ok: true };
@@ -385,7 +399,7 @@ async function handleNaturalLanguageMessage(context: {
   qqId: string;
   groupId?: string;
   messageText: string;
-  forwardPayload?: ParsedForwardPayload | null;
+  forwardPayload?: (ParsedForwardPayload & { source: ForwardSource }) | null;
 }) {
   if (context.event.message_type === "group") {
     return null;
@@ -613,7 +627,7 @@ async function handleConversationMessage(
     qqId: string;
     groupId?: string;
     messageText: string;
-    forwardPayload?: ParsedForwardPayload | null;
+    forwardPayload?: (ParsedForwardPayload & { source: ForwardSource }) | null;
   },
 ) {
   const text = context.messageText.trim();
@@ -703,12 +717,14 @@ async function handleConversationMessage(
         draftTitle: parsed.title,
         draftBoardSlug: parsed.boardSlug,
         draftContent: mergeConversationContent(conversation.draftContent || "", draftContent),
-        step: draftContent ? "await-submit-confirm" : "collect-content",
+        step: conversation.step === "await-forward-title" || draftContent ? "await-submit-confirm" : "collect-content",
       },
     });
     await replyToEvent(context, renderConversationPrompt(
       next,
-      draftContent
+      conversation.step === "await-forward-title"
+        ? `标题我记成「${parsed.title}」了，正文我会直接使用你刚才回复的那条合并转发内容。`
+        : draftContent
         ? `我把第一行当标题，后面的内容也一起收进正文了。标题是「${parsed.title}」。`
         : `我先帮你把标题定为「${parsed.title}」。`,
     ));
@@ -1290,14 +1306,33 @@ function extractMessageText(message: unknown): string {
   }).join("").trim();
 }
 
-async function extractForwardPayload(message: unknown): Promise<ParsedForwardPayload | null> {
+async function extractForwardPayload(message: unknown): Promise<(ParsedForwardPayload & { source: ForwardSource }) | null> {
   if (!Array.isArray(message)) return null;
   const forwardSeg = message.find((seg: any) => seg?.type === "forward" && seg?.data?.id);
   const forwardId = String(forwardSeg?.data?.id || "").trim();
-  if (!forwardId) return null;
-  const payload = await callQqBotAction("get_forward_msg", { id: forwardId }).catch(() => null);
-  const messages = Array.isArray(payload?.data?.messages) ? payload.data.messages : [];
-  const lines = messages.map((item: any) => {
+  if (forwardId) {
+    const payload = await callQqBotAction("get_forward_msg", { id: forwardId }).catch(() => null);
+    const parsed = parseForwardMessages(payload?.data?.messages, forwardId);
+    if (parsed) return { ...parsed, source: "direct" };
+  }
+  const replyId = extractReplyMessageId(message);
+  if (!replyId) return null;
+  const replied = await callQqBotAction("get_msg", { message_id: Number(replyId) || replyId }).catch(() => null);
+  const replyMessage = replied?.data?.message;
+  const replyForwardSeg = Array.isArray(replyMessage)
+    ? replyMessage.find((seg: any) => seg?.type === "forward" && seg?.data?.id)
+    : null;
+  const replyForwardId = String(replyForwardSeg?.data?.id || "").trim();
+  if (!replyForwardId) return null;
+  const payload = await callQqBotAction("get_forward_msg", { id: replyForwardId }).catch(() => null);
+  const parsed = parseForwardMessages(payload?.data?.messages, replyForwardId);
+  if (!parsed) return null;
+  return { ...parsed, source: "reply" };
+}
+
+function parseForwardMessages(messages: unknown, forwardId: string): ParsedForwardPayload | null {
+  const list = Array.isArray(messages) ? messages : [];
+  const lines = list.map((item: any) => {
     const nickname = String(item?.sender?.nickname || item?.sender?.user_id || "QQ用户");
     const text = extractMessageText(item?.content || item?.message || "").trim();
     return text ? `${nickname}：${text}` : "";
@@ -1308,6 +1343,12 @@ async function extractForwardPayload(message: unknown): Promise<ParsedForwardPay
     content: lines.join("\n"),
     sourceMessageId: forwardId,
   };
+}
+
+function extractReplyMessageId(message: unknown) {
+  if (!Array.isArray(message)) return "";
+  const replySeg = message.find((seg: any) => seg?.type === "reply" && seg?.data?.id);
+  return String(replySeg?.data?.id || "").trim();
 }
 
 function cleanCqMessage(value: string) {
@@ -1438,11 +1479,11 @@ function isMessageAtBot(message: unknown, selfId?: number | string) {
 function shouldHandleForwardPostInContext(context: {
   event: OneBotEvent;
   messageText: string;
-  forwardPayload?: ParsedForwardPayload | null;
+  forwardPayload?: (ParsedForwardPayload & { source: ForwardSource }) | null;
 }) {
   if (!context.forwardPayload) return false;
   if (context.event.message_type !== "group") return true;
-  return isExplicitBotMention(context.event, context.messageText);
+  return context.forwardPayload.source === "reply" && isExplicitBotMention(context.event, context.messageText);
 }
 
 async function renderBindingStatus(
