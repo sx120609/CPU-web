@@ -73,6 +73,14 @@ type OneBotEvent = {
   sender?: { nickname?: string; card?: string; user_id?: number | string };
 };
 
+type QqConversationScene = "post" | "forward-post";
+type QqConversationStep = "await-title" | "collect-content" | "await-forward-confirm" | "await-forward-title";
+type ParsedForwardPayload = {
+  summary: string;
+  content: string;
+  sourceMessageId?: string;
+};
+
 const CONFIG_ID = 1;
 const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "like", "system"];
 let pollerStarted = false;
@@ -80,6 +88,7 @@ let wsClient: any = null;
 let wsConnecting = false;
 let wsReconnectTimer: NodeJS.Timeout | null = null;
 let wsLastError = "";
+const wsPendingActions = new Map<string, { resolve: (value: any) => void; reject: (reason?: unknown) => void; timer: NodeJS.Timeout }>();
 
 export async function getQqBotConfigRaw() {
   return prisma.qqBotConfig.upsert({
@@ -250,33 +259,40 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
   const qqId = event.user_id ? String(event.user_id) : "";
   const groupId = event.group_id ? String(event.group_id) : undefined;
   const messageText = extractMessageText(event.message ?? event.raw_message ?? "");
-  const context = { config, event, qqId, groupId, messageText };
+  const forwardPayload = await extractForwardPayload(event.message);
+  const context = { config, event, qqId, groupId, messageText, forwardPayload };
   if (!qqId || !messageText.trim()) {
     await logQqBotMessage({ direction: "inbound", eventType: "message", status: "ignored", qqId, groupId, rawPayload: event });
     return { ignored: true };
   }
 
-  if (isHelpCommand(messageText)) {
+  const activeConversation = await getActiveConversation(qqId, groupId);
+  if (activeConversation) {
+    const handled = await handleConversationMessage(activeConversation, context);
+    if (handled) return handled;
+  }
+
+  if (isCommandMessage(messageText) && isHelpCommand(messageText)) {
     await replyToEvent(context, renderHelp(config.defaultBoardSlug));
     return { ok: true };
   }
-  if (isBoardListCommand(messageText)) {
+  if (isCommandMessage(messageText) && isBoardListCommand(messageText)) {
     await replyToEvent(context, await renderBoardList(config.defaultBoardSlug, groupId));
     return { ok: true };
   }
-  if (isMyPostsCommand(messageText)) {
+  if (isCommandMessage(messageText) && isMyPostsCommand(messageText)) {
     await replyToEvent(context, await renderRecentQqTopics(qqId));
     return { ok: true };
   }
-  if (/^\/?状态\b/.test(messageText.trim())) {
+  if (isCommandMessage(messageText) && /^\/状态\b/.test(messageText.trim())) {
     await replyToEvent(context, await renderBindingStatus(qqId, config, groupId));
     return { ok: true };
   }
-  if (isUnbindCommand(messageText)) {
+  if (isCommandMessage(messageText) && isUnbindCommand(messageText)) {
     await replyToEvent(context, await unbindQqAccount(qqId));
     return { ok: true };
   }
-  const bindMatch = messageText.trim().match(/^\/?绑定\s+([A-Z0-9]{6,16})$/i);
+  const bindMatch = isCommandMessage(messageText) ? messageText.trim().match(/^\/绑定\s+([A-Z0-9]{6,16})$/i) : null;
   if (bindMatch) {
     const result = await bindQqAccount({
       qqId,
@@ -286,28 +302,15 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, result);
     return { ok: true };
   }
-  if (/^\/?#?投稿\b/.test(messageText.trim())) {
-    try {
-      const result = await submitQqPost(context);
-      await replyToEvent(context, result.message);
-      return { ok: true, topicId: result.topicId };
-    } catch (error: any) {
-      const message = error?.message || "投稿失败";
-      await logQqBotMessage({
-        direction: "inbound",
-        eventType: "post",
-        status: "error",
-        qqId,
-        groupId,
-        messageId: event.message_id ? String(event.message_id) : undefined,
-        command: "投稿",
-        content: messageText.slice(0, 1000),
-        result: message,
-        rawPayload: event,
-      });
-      await replyToEvent(context, `投稿失败：${message}`);
-      return { ok: false, error: message };
-    }
+  if (isCommandMessage(messageText) && /^\/投稿\b/.test(messageText.trim())) {
+    const conversation = await startPostConversation(context);
+    await replyToEvent(context, renderConversationPrompt(conversation));
+    return { ok: true };
+  }
+  if (!isCommandMessage(messageText) && forwardPayload) {
+    const conversation = await startForwardPostConversation(context, forwardPayload);
+    await replyToEvent(context, renderConversationPrompt(conversation));
+    return { ok: true };
   }
 
   await logQqBotMessage({
@@ -351,6 +354,51 @@ async function unbindQqAccount(qqId: string) {
   if (!binding) return "当前 QQ 还没有绑定站内账号。";
   await prisma.qqBotBinding.delete({ where: { id: binding.id } });
   return "已解绑当前 QQ。之后如需继续投稿，请回站内重新生成绑定码。";
+}
+
+async function startPostConversation(context: {
+  config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
+  event: OneBotEvent;
+  qqId: string;
+  groupId?: string;
+  messageText: string;
+}) {
+  await ensureQqPostingAllowed(context);
+  await ensureQqBinding(context.qqId);
+  return upsertConversation(context.qqId, context.groupId, {
+    scene: "post",
+    step: "await-title",
+    draftTitle: "",
+    draftContent: "",
+    draftBoardSlug: resolveDefaultBoardSlug(context.config.defaultBoardSlug, context.groupId),
+    sourceMessageId: context.event.message_id ? String(context.event.message_id) : undefined,
+    sourceSummary: "",
+    metadata: "{}",
+  });
+}
+
+async function startForwardPostConversation(
+  context: {
+    config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
+    event: OneBotEvent;
+    qqId: string;
+    groupId?: string;
+    messageText: string;
+  },
+  forwardPayload: ParsedForwardPayload,
+) {
+  await ensureQqPostingAllowed(context);
+  await ensureQqBinding(context.qqId);
+  return upsertConversation(context.qqId, context.groupId, {
+    scene: "forward-post",
+    step: "await-forward-confirm",
+    draftTitle: "",
+    draftContent: forwardPayload.content,
+    draftBoardSlug: resolveDefaultBoardSlug(context.config.defaultBoardSlug, context.groupId),
+    sourceMessageId: forwardPayload.sourceMessageId || (context.event.message_id ? String(context.event.message_id) : undefined),
+    sourceSummary: forwardPayload.summary,
+    metadata: JSON.stringify({ source: "forward" }),
+  });
 }
 
 async function submitQqPost(context: {
@@ -424,13 +472,248 @@ async function submitQqPost(context: {
   };
 }
 
+async function handleConversationMessage(
+  conversation: any,
+  context: {
+    config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
+    event: OneBotEvent;
+    qqId: string;
+    groupId?: string;
+    messageText: string;
+    forwardPayload?: ParsedForwardPayload | null;
+  },
+) {
+  const text = context.messageText.trim();
+  if (isCommandMessage(text) && /^\/取消\b/.test(text)) {
+    await finishConversation(conversation.id, "cancelled");
+    await replyToEvent(context, "已取消这次投稿。");
+    return { ok: true, cancelled: true };
+  }
+
+  if (conversation.step === "await-forward-confirm") {
+    if (/^(是|要|好的|确认|投稿)$/i.test(text)) {
+      const next = await prisma.qqBotConversation.update({
+        where: { id: conversation.id },
+        data: { step: "await-forward-title" },
+      });
+      await replyToEvent(context, renderConversationPrompt(next));
+      return { ok: true };
+    }
+    if (/^(否|不要|取消|算了)$/i.test(text)) {
+      await finishConversation(conversation.id, "cancelled");
+      await replyToEvent(context, "好的，这条转发内容我先不投稿。");
+      return { ok: true, cancelled: true };
+    }
+    await replyToEvent(context, "如果要投稿，请回复“是”；不想投稿就回复“否”或“/取消”。");
+    return { ok: true };
+  }
+
+  if (conversation.step === "await-title" || conversation.step === "await-forward-title") {
+    if (text.length < 2) {
+      await replyToEvent(context, "标题至少 2 个字，请重新发送标题。");
+      return { ok: true };
+    }
+    const parsed = await parseConversationTitle(text, conversation.draftBoardSlug || context.config.defaultBoardSlug, context.groupId);
+    const next = await prisma.qqBotConversation.update({
+      where: { id: conversation.id },
+      data: {
+        draftTitle: parsed.title,
+        draftBoardSlug: parsed.boardSlug,
+        step: "collect-content",
+      },
+    });
+    await replyToEvent(context, renderConversationPrompt(next));
+    return { ok: true };
+  }
+
+  if (conversation.step === "collect-content") {
+    if (isCommandMessage(text) && /^\/结束\b/.test(text)) {
+      try {
+        const result = await submitConversationPost(conversation.id, context);
+        await replyToEvent(context, result.message);
+        return { ok: true, topicId: result.topicId };
+      } catch (error: any) {
+        const message = error?.message || "投稿失败";
+        await replyToEvent(context, `投稿失败：${message}`);
+        return { ok: false, error: message };
+      }
+    }
+
+    const nextContent = mergeConversationContent(conversation.draftContent || "", context.messageText);
+    await prisma.qqBotConversation.update({
+      where: { id: conversation.id },
+      data: { draftContent: nextContent },
+    });
+    await replyToEvent(context, "已收到这段正文。继续发送内容，全部完成后发送“/结束”。");
+    return { ok: true };
+  }
+
+  return null;
+}
+
+async function submitConversationPost(
+  conversationId: number,
+  context: {
+    config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
+    event: OneBotEvent;
+    qqId: string;
+    groupId?: string;
+    messageText: string;
+  },
+) {
+  const conversation = await prisma.qqBotConversation.findUnique({ where: { id: conversationId } });
+  if (!conversation || conversation.status !== "active") throw Errors.badRequest("当前没有进行中的投稿会话");
+  if (!conversation.draftTitle?.trim()) throw Errors.badRequest("标题为空，请先发送标题");
+  const content = (conversation.draftContent || "").trim() || conversation.draftTitle.trim();
+  const result = await submitQqPost({
+    ...context,
+    messageText: buildPostCommandFromDraft(conversation.draftBoardSlug || context.config.defaultBoardSlug, conversation.draftTitle, content, context.groupId, context.config.defaultBoardSlug),
+  });
+  await finishConversation(conversationId, "done");
+  return result;
+}
+
+async function getActiveConversation(qqId: string, groupId?: string) {
+  return prisma.qqBotConversation.findFirst({
+    where: {
+      qqId,
+      groupId: groupId || null,
+      status: "active",
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
+async function upsertConversation(
+  qqId: string,
+  groupId: string | undefined,
+  input: {
+    scene: QqConversationScene;
+    step: QqConversationStep;
+    draftTitle?: string;
+    draftContent?: string;
+    draftBoardSlug?: string;
+    sourceMessageId?: string;
+    sourceSummary?: string;
+    metadata?: string;
+  },
+) {
+  const current = await getActiveConversation(qqId, groupId);
+  if (current) {
+    return prisma.qqBotConversation.update({
+      where: { id: current.id },
+      data: {
+        scene: input.scene,
+        step: input.step,
+        draftTitle: input.draftTitle || null,
+        draftContent: input.draftContent || "",
+        draftBoardSlug: input.draftBoardSlug || null,
+        sourceMessageId: input.sourceMessageId || null,
+        sourceSummary: input.sourceSummary || null,
+        metadata: input.metadata || "{}",
+        status: "active",
+      },
+    });
+  }
+  return prisma.qqBotConversation.create({
+    data: {
+      qqId,
+      groupId: groupId || null,
+      scene: input.scene,
+      step: input.step,
+      draftTitle: input.draftTitle || null,
+      draftContent: input.draftContent || "",
+      draftBoardSlug: input.draftBoardSlug || null,
+      sourceMessageId: input.sourceMessageId || null,
+      sourceSummary: input.sourceSummary || null,
+      metadata: input.metadata || "{}",
+    },
+  });
+}
+
+async function finishConversation(id: number, status: "done" | "cancelled") {
+  await prisma.qqBotConversation.update({
+    where: { id },
+    data: { status },
+  }).catch(() => null);
+}
+
+function renderConversationPrompt(conversation: any) {
+  if (conversation.step === "await-title") {
+    return [
+      "开始投稿。",
+      "请先发送标题。",
+      "如果想取消，发送“/取消”。",
+    ].join("\n");
+  }
+  if (conversation.step === "await-forward-confirm") {
+    return [
+      "我收到了疑似合并转发内容。",
+      conversation.sourceSummary ? `内容摘要：${conversation.sourceSummary}` : "",
+      "如果要投稿，请回复“是”；不想投稿请回复“否”或“/取消”。",
+    ].filter(Boolean).join("\n");
+  }
+  if (conversation.step === "await-forward-title") {
+    return [
+      "好的，请发送这篇投稿的标题。",
+      "正文我会使用刚才的转发内容。",
+      "取消请发送“/取消”。",
+    ].join("\n");
+  }
+  if (conversation.step === "collect-content") {
+    return [
+      `标题已记录：${conversation.draftTitle || "未命名"}`,
+      "接下来请逐条发送正文内容。",
+      "每发一条我会自动换行拼接。",
+      "全部完成后发送“/结束”，取消请发“/取消”。",
+    ].join("\n");
+  }
+  return "请继续发送内容。";
+}
+
+async function ensureQqPostingAllowed(context: {
+  config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
+  event: OneBotEvent;
+  qqId: string;
+  groupId?: string;
+}) {
+  if (context.event.message_type === "group" && !context.config.allowGroupPost) {
+    throw Errors.badRequest("群内投稿暂未开启，请私聊投稿。");
+  }
+  if (context.event.message_type !== "group" && !context.config.allowPrivatePost) {
+    throw Errors.badRequest("私聊投稿暂未开启。");
+  }
+}
+
+async function ensureQqBinding(qqId: string) {
+  const binding = await prisma.qqBotBinding.findUnique({
+    where: { qqId },
+    include: { user: { select: { id: true } } },
+  });
+  if (!binding?.enabled) throw Errors.badRequest("还没有绑定站内账号。请先在站内生成绑定码，然后发送：/绑定 绑定码");
+  return binding;
+}
+
+function mergeConversationContent(existing: string, next: string) {
+  return [existing.trim(), next.trim()].filter(Boolean).join("\n");
+}
+
+async function parseConversationTitle(text: string, defaultBoardSlug: string, groupId?: string) {
+  return parsePostCommand(`/投稿 ${text}`, defaultBoardSlug, groupId);
+}
+
+function buildPostCommandFromDraft(boardSlug: string, title: string, content: string, groupId?: string, defaultBoardSlug?: string) {
+  const useBoardPrefix = !defaultBoardSlug || boardSlug !== (groupId ? boardSlug : defaultBoardSlug);
+  const firstLine = useBoardPrefix ? `${boardSlug} ${title}` : title;
+  return `投稿 ${firstLine}\n${content}`;
+}
+
 async function parsePostCommand(text: string, defaultBoardSlug: string, groupId?: string) {
   const normalized = text.trim().replace(/^\/?#?投稿\s*/, "");
   const lines = normalized.split(/\r?\n/);
   const firstLine = (lines.shift() || "").trim();
   if (!firstLine) throw Errors.badRequest("投稿格式：投稿 [板块slug] 标题\\n正文");
-  const group = groupId ? await prisma.qqBotGroup.findUnique({ where: { groupId } }) : null;
-  const defaultSlug = group?.defaultBoardSlug || defaultBoardSlug || "general";
+  const defaultSlug = await resolveDefaultBoardSlug(defaultBoardSlug, groupId);
   const tokens = firstLine.split(/\s+/);
   let boardSlug = defaultSlug;
   let title = firstLine;
@@ -444,6 +727,11 @@ async function parsePostCommand(text: string, defaultBoardSlug: string, groupId?
   const content = lines.join("\n").trim() || title;
   if (title.length < 2) throw Errors.badRequest("标题至少 2 个字");
   return { boardSlug, title: title.slice(0, 120), content: content.slice(0, 20000) };
+}
+
+async function resolveDefaultBoardSlug(defaultBoardSlug: string, groupId?: string) {
+  const group = groupId ? await prisma.qqBotGroup.findUnique({ where: { groupId } }) : null;
+  return group?.defaultBoardSlug || defaultBoardSlug || "general";
 }
 
 async function createTopicFromQq(input: {
@@ -725,10 +1013,31 @@ function extractMessageText(message: unknown): string {
       const url = seg.data?.url || seg.data?.file || "";
       return url ? `\n![QQ图片](${url})\n` : "\n[图片]\n";
     }
+    if (seg?.type === "forward") return "\n[合并转发]\n";
     if (seg?.type === "video") return "\n[视频]\n";
     if (seg?.type === "record") return "\n[语音]\n";
     return "";
   }).join("").trim();
+}
+
+async function extractForwardPayload(message: unknown): Promise<ParsedForwardPayload | null> {
+  if (!Array.isArray(message)) return null;
+  const forwardSeg = message.find((seg: any) => seg?.type === "forward" && seg?.data?.id);
+  const forwardId = String(forwardSeg?.data?.id || "").trim();
+  if (!forwardId) return null;
+  const payload = await callQqBotAction("get_forward_msg", { id: forwardId }).catch(() => null);
+  const messages = Array.isArray(payload?.data?.messages) ? payload.data.messages : [];
+  const lines = messages.map((item: any) => {
+    const nickname = String(item?.sender?.nickname || item?.sender?.user_id || "QQ用户");
+    const text = extractMessageText(item?.content || item?.message || "").trim();
+    return text ? `${nickname}：${text}` : "";
+  }).filter(Boolean);
+  if (!lines.length) return null;
+  return {
+    summary: lines.slice(0, 3).join(" / ").slice(0, 120),
+    content: lines.join("\n"),
+    sourceMessageId: forwardId,
+  };
 }
 
 function cleanCqMessage(value: string) {
@@ -746,32 +1055,38 @@ function appendSourceFooter(content: string, context: { groupId?: string; event:
 }
 
 function isHelpCommand(text: string) {
-  return /^\/?(帮助|help|菜单)$/i.test(text.trim());
+  return /^\/(帮助|help|菜单)$/i.test(text.trim());
 }
 
 function isBoardListCommand(text: string) {
-  return /^\/?(板块|板块列表|boards?)$/i.test(text.trim());
+  return /^\/(板块|板块列表|boards?)$/i.test(text.trim());
 }
 
 function isMyPostsCommand(text: string) {
-  return /^\/?(我的投稿|我的帖子|recent|mine)$/i.test(text.trim());
+  return /^\/(我的投稿|我的帖子|recent|mine)$/i.test(text.trim());
 }
 
 function isUnbindCommand(text: string) {
-  return /^\/?(解绑|解除绑定|unbind)$/i.test(text.trim());
+  return /^\/(解绑|解除绑定|unbind)$/i.test(text.trim());
+}
+
+function isCommandMessage(text: string) {
+  return text.trim().startsWith("/");
 }
 
 function renderHelp(defaultBoardSlug: string) {
   return [
     "药大拾间 QQBot：",
-    "绑定 绑定码 - 绑定站内账号",
-    "状态 - 查看绑定状态和投稿开关",
-    "板块 - 查看可投稿板块",
-    "我的投稿 - 查看最近通过 QQ 投稿的帖子",
-    "解绑 - 解除当前 QQ 绑定",
+    "/绑定 绑定码 - 绑定站内账号",
+    "/状态 - 查看绑定状态和投稿开关",
+    "/板块 - 查看可投稿板块",
+    "/我的投稿 - 查看最近通过 QQ 投稿的帖子",
+    "/解绑 - 解除当前 QQ 绑定",
+    "/投稿 - 开始分步投稿",
+    "/结束 - 提交当前投稿",
+    "/取消 - 取消当前投稿",
     "",
-    `投稿 标题\n正文 - 投稿到默认板块 ${defaultBoardSlug}`,
-    "投稿 板块slug 标题\n正文 - 投稿到指定板块",
+    `默认板块：${defaultBoardSlug}`,
   ].join("\n");
 }
 
@@ -947,6 +1262,14 @@ function setWebSocketError(message: string) {
   wsLastError = message;
 }
 
+function rejectPendingWebSocketActions(reason: string) {
+  for (const [echo, pending] of wsPendingActions.entries()) {
+    clearTimeout(pending.timer);
+    pending.reject(new Error(reason));
+    wsPendingActions.delete(echo);
+  }
+}
+
 export async function connectQqBotWebSocket() {
   const config = await getQqBotConfigRaw();
   if (!config.enabled || !isWebSocketUrl(config.napcatBaseUrl)) return;
@@ -983,6 +1306,7 @@ export async function connectQqBotWebSocket() {
         : `连接已关闭（code ${event?.code ?? "unknown"}${event?.reason ? `, ${String(event.reason)}` : ""}）`;
       if (event?.code === 1000) wsLastError = "";
       else if (!wsLastError) setWebSocketError(message);
+      rejectPendingWebSocketActions(message);
       scheduleWebSocketReconnect();
     });
     socket.addEventListener("error", (event: any) => {
@@ -990,11 +1314,13 @@ export async function connectQqBotWebSocket() {
       if (wsClient === socket) wsClient = null;
       const message = `WebSocket 握手失败：${describeWebSocketError(event)}`;
       setWebSocketError(message);
+      rejectPendingWebSocketActions(message);
       scheduleWebSocketReconnect();
     });
   } catch (error) {
     wsConnecting = false;
     setWebSocketError(`创建 WebSocket 失败：${describeWebSocketError(error)}`);
+    rejectPendingWebSocketActions(wsLastError);
     scheduleWebSocketReconnect();
     throw error;
   }
@@ -1011,6 +1337,7 @@ function resetQqBotWebSocket() {
   }
   wsConnecting = false;
   wsLastError = "";
+  rejectPendingWebSocketActions("QQBot WebSocket 已重置");
 }
 
 function scheduleWebSocketReconnect() {
@@ -1030,6 +1357,13 @@ async function handleWebSocketPayload(text: string) {
     return;
   }
   if (payload?.echo) {
+    const pending = wsPendingActions.get(String(payload.echo));
+    if (pending) {
+      clearTimeout(pending.timer);
+      wsPendingActions.delete(String(payload.echo));
+      if (payload.status === "ok") pending.resolve(payload);
+      else pending.reject(new Error(String(payload?.wording || payload?.msg || payload?.message || "NapCat 动作失败")));
+    }
     await logQqBotMessage({
       direction: "inbound",
       eventType: "websocket-response",
@@ -1040,6 +1374,36 @@ async function handleWebSocketPayload(text: string) {
     return;
   }
   await handleQqBotWebhook(payload, (await getQqBotConfigRaw()).webhookSecret);
+}
+
+async function callQqBotAction(action: string, params: Record<string, unknown>) {
+  const config = await getQqBotConfigRaw();
+  if (!config.enabled || !config.napcatBaseUrl) throw Errors.badRequest("QQBot 未启用或 NapCat 地址未配置");
+  if (!isWebSocketUrl(config.napcatBaseUrl)) {
+    const response = await fetch(`${config.napcatBaseUrl.replace(/\/+$/, "")}/${action}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(config.accessToken ? { Authorization: `Bearer ${config.accessToken}` } : {}),
+      },
+      body: JSON.stringify(params),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw Errors.server(`NapCat 动作失败：${response.status}`);
+    return data;
+  }
+  await connectQqBotWebSocket();
+  await waitWebSocketOpen();
+  const echo = `cpu-action-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const result = await new Promise<any>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      wsPendingActions.delete(echo);
+      reject(Errors.badRequest(`NapCat 动作超时：${action}`));
+    }, 8000);
+    wsPendingActions.set(echo, { resolve, reject, timer });
+    wsClient.send(JSON.stringify({ action, params, echo }));
+  });
+  return result;
 }
 
 async function sendQqMessageByWebSocket(

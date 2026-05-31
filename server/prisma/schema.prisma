@@ -785,6 +785,26 @@ model QqBotMessageLog {
   @@index([notificationId, userId])
 }
 
+model QqBotConversation {
+  id          Int      @id @default(autoincrement())
+  qqId        String
+  groupId     String?
+  scene       String
+  status      String   @default("active")
+  step        String
+  draftTitle  String?
+  draftContent String  @default("")
+  draftBoardSlug String?
+  sourceMessageId String?
+  sourceSummary String?
+  metadata    String   @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([qqId, status, updatedAt])
+  @@index([groupId, status, updatedAt])
+}
+
 // ============ 站点功能开关 ============
 // KV 风格存储。当前用法：
 //   feature.forum         = 'on' | 'off'  控制论坛通用板块（包括 /forum 入口、发帖）
