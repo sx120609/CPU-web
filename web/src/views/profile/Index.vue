@@ -220,6 +220,100 @@
       </div>
     </div>
 
+    <div class="cpu-card qqbot-card" v-if="qqBotProfile">
+      <div class="qqbot-head">
+        <div>
+          <h3 class="cpu-section-title">QQBot 绑定</h3>
+          <p>绑定后可以直接在 QQ 里投稿、查状态、看最近投稿。</p>
+        </div>
+        <el-tag :type="qqBotProfile.enabled ? 'success' : 'info'" effect="plain">
+          {{ qqBotProfile.enabled ? "已启用" : "未启用" }}
+        </el-tag>
+      </div>
+
+      <div class="qqbot-grid">
+        <div class="qqbot-item">
+          <span>绑定状态</span>
+          <b>{{ qqBotProfile.binding ? (qqBotProfile.binding.enabled ? "已绑定" : "已停用") : "未绑定" }}</b>
+        </div>
+        <div class="qqbot-item">
+          <span>绑定 QQ</span>
+          <b>{{ qqBotProfile.binding?.qqId || "—" }}</b>
+        </div>
+        <div class="qqbot-item">
+          <span>默认板块</span>
+          <b>{{ qqBotProfile.defaultBoardSlug }}</b>
+        </div>
+        <div class="qqbot-item">
+          <span>投稿开关</span>
+          <b>{{ qqPostingText }}</b>
+        </div>
+      </div>
+
+      <div class="qqbot-bind-box">
+        <template v-if="qqBotProfile.activeBindToken">
+          <div class="qqbot-token">
+            <strong>{{ qqBotProfile.activeBindToken.token }}</strong>
+            <span>请在 QQ 里发送：绑定 {{ qqBotProfile.activeBindToken.token }}</span>
+            <span>有效期至 {{ fmtDate(qqBotProfile.activeBindToken.expiresAt, "MM-DD HH:mm") }}</span>
+          </div>
+        </template>
+        <template v-else>
+          <p class="qqbot-empty">还没有可用绑定码，生成后可直接去 QQ 完成绑定。</p>
+        </template>
+        <div class="qqbot-actions">
+          <el-button type="primary" :loading="qqBotLoading" @click="refreshQqBotToken">
+            {{ qqBotProfile.activeBindToken ? "重新生成绑定码" : "生成绑定码" }}
+          </el-button>
+          <el-button
+            v-if="qqBotProfile.activeBindToken"
+            plain
+            :loading="qqBotLoading"
+            @click="copyQqBotCommand"
+          >
+            复制绑定指令
+          </el-button>
+          <el-button
+            v-if="qqBotProfile.binding"
+            type="danger"
+            plain
+            :loading="qqBotLoading"
+            @click="unbindQqBot"
+          >
+            解绑 QQ
+          </el-button>
+          <el-button plain :loading="qqBotLoading" @click="refreshQqBotProfile">刷新状态</el-button>
+        </div>
+      </div>
+
+      <div class="qqbot-help">
+        <div class="sub-title">QQ 内可用命令</div>
+        <div class="qqbot-command-tags">
+          <el-tag effect="plain">帮助</el-tag>
+          <el-tag effect="plain">状态</el-tag>
+          <el-tag effect="plain">板块</el-tag>
+          <el-tag effect="plain">我的投稿</el-tag>
+          <el-tag effect="plain">解绑</el-tag>
+        </div>
+      </div>
+
+      <div class="qqbot-recent">
+        <div class="sub-title">最近通过 QQ 投稿</div>
+        <el-empty v-if="!qqBotProfile.recentTopics.length" description="还没有通过 QQ 投稿的帖子" />
+        <div
+          v-for="topic in qqBotProfile.recentTopics"
+          :key="topic.id"
+          class="topic-line"
+          @click="$router.push(`/forum/topic/${topic.id}`)"
+        >
+          <span class="tag qqbot-topic-tag">{{ topic.boardName }}</span>
+          <span v-if="topic.hidden" class="anon-tag">待审核</span>
+          <span class="title">{{ topic.title }}</span>
+          <span class="meta">{{ fmtRelative(topic.createdAt) }}</span>
+        </div>
+      </div>
+    </div>
+
     <div class="cpu-card">
       <h3 class="cpu-section-title">我发布的帖子</h3>
       <el-empty v-if="!myTopics.length" description="还没有发过帖子" />
@@ -287,7 +381,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { ChatDotRound, CopyDocument } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
-import { authApi } from "@/api/auth";
+import { authApi, type QqBotProfile } from "@/api/auth";
 import { boardApi, type Board } from "@/api/board";
 import { paymentsApi, type PayType, type SponsorOptions } from "@/api/payments";
 import { request } from "@/api/request";
@@ -307,6 +401,8 @@ const editing = ref(false);
 const saving = ref(false);
 const avatarSaving = ref(false);
 const avatarInputRef = ref<HTMLInputElement | null>(null);
+const qqBotProfile = ref<QqBotProfile | null>(null);
+const qqBotLoading = ref(false);
 const sponsorSubmitting = ref(false);
 const sponsorAmount = ref("10");
 const sponsorPayType = ref<PayType>("alipay");
@@ -332,6 +428,13 @@ const passwordDialog = ref(false);
 const savingPw = ref(false);
 const pwForm = reactive({ oldPassword: "", newPassword: "", confirm: "" });
 const anonymousBoards = computed(() => boards.value.filter((board) => board.anonymousEnabled));
+const qqPostingText = computed(() => {
+  if (!qqBotProfile.value) return "—";
+  if (qqBotProfile.value.allowPrivatePost && qqBotProfile.value.allowGroupPost) return "私聊 / 群聊已开启";
+  if (qqBotProfile.value.allowPrivatePost) return "仅私聊";
+  if (qqBotProfile.value.allowGroupPost) return "仅群聊";
+  return "未开启";
+});
 const anonymousStatusText = computed(() => {
   const state = user.value?.anonymousState;
   if (!state) return "—";
@@ -375,6 +478,7 @@ onMounted(async () => {
   ]);
   myTopics.value = topicList;
   boards.value = boardList;
+  await loadQqBotProfile();
   if (site.features.sponsor || (user.value?.sponsorAmount ?? 0) > 0) await loadSponsorOptions();
   await loadSponsorOrders();
 });
@@ -510,6 +614,48 @@ async function onLogout() {
 async function copyUserGroup() {
   await copyText(USER_QQ_GROUP);
   ElMessage.success(`已复制QQ群号 ${USER_QQ_GROUP}`);
+}
+
+async function loadQqBotProfile(opts?: { silent?: boolean }) {
+  if (!opts?.silent) qqBotLoading.value = true;
+  try {
+    qqBotProfile.value = await authApi.qqBotProfile();
+  } finally {
+    if (!opts?.silent) qqBotLoading.value = false;
+  }
+}
+
+function refreshQqBotProfile() {
+  return loadQqBotProfile();
+}
+
+async function refreshQqBotToken() {
+  qqBotLoading.value = true;
+  try {
+    await authApi.createQqBotBindToken();
+    await loadQqBotProfile({ silent: true });
+    ElMessage.success("绑定码已生成");
+  } finally {
+    qqBotLoading.value = false;
+  }
+}
+
+async function copyQqBotCommand() {
+  if (!qqBotProfile.value?.activeBindToken) return;
+  await copyText(`绑定 ${qqBotProfile.value.activeBindToken.token}`);
+  ElMessage.success("已复制绑定指令");
+}
+
+async function unbindQqBot() {
+  await ElMessageBox.confirm("确认解绑当前 QQBot 绑定？解绑后将不能继续通过 QQ 投稿。", "解绑 QQBot", { type: "warning" });
+  qqBotLoading.value = true;
+  try {
+    await authApi.deleteQqBotBinding();
+    await loadQqBotProfile({ silent: true });
+    ElMessage.success("QQBot 已解绑");
+  } finally {
+    qqBotLoading.value = false;
+  }
 }
 
 function joinUserGroup() {
@@ -949,6 +1095,107 @@ async function removeAvatar() {
   margin-left: 0 !important;
 }
 
+.qqbot-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.qqbot-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.qqbot-head p {
+  margin: 4px 0 0;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.qqbot-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.qqbot-item {
+  padding: 12px;
+  border-radius: 12px;
+  background: #f5fbf9;
+  border: 1px solid #d7efe8;
+}
+
+.qqbot-item span {
+  display: block;
+  color: #6b7280;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.qqbot-item b {
+  color: #0f5132;
+  font-size: 16px;
+}
+
+.qqbot-bind-box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 12px;
+  background: #fcfffd;
+  border: 1px dashed #cfe7df;
+}
+
+.qqbot-token {
+  display: grid;
+  gap: 6px;
+}
+
+.qqbot-token strong {
+  font-size: 24px;
+  color: #168776;
+  letter-spacing: 1px;
+}
+
+.qqbot-token span,
+.qqbot-empty {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.qqbot-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.qqbot-actions .el-button {
+  margin-left: 0 !important;
+}
+
+.qqbot-help,
+.qqbot-recent {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.qqbot-command-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.qqbot-topic-tag {
+  background: #168776 !important;
+}
+
 .topic-line {
   display: flex;
   align-items: center;
@@ -1055,7 +1302,8 @@ async function removeAvatar() {
   }
 
   .trust-grid,
-  .trust-breakdown {
+  .trust-breakdown,
+  .qqbot-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1063,6 +1311,16 @@ async function removeAvatar() {
     align-items: stretch;
     flex-direction: column;
   }
+
+  .qqbot-head {
+    flex-direction: column;
+  }
+
+  .qqbot-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .user-group-actions {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

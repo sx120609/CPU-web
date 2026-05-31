@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import { ensureForumAccessEnabled } from "./forumAccess";
-import { isFeatureOn, featureForBoardType } from "./siteSettings";
+import { getSiteOrigin, isBoardTypeEnabled, isFeatureOn, featureForBoardType, featureClosedMessage } from "./siteSettings";
 import { refreshBoardTopicCounts, refreshUserPostCount } from "./forumStats";
 import { ensureUserCanSpeak } from "./userModeration";
 import {
@@ -32,6 +32,33 @@ export type QqBotConfigView = {
   webhookPath: string;
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type UserQqBotProfileView = {
+  enabled: boolean;
+  defaultBoardSlug: string;
+  allowPrivatePost: boolean;
+  allowGroupPost: boolean;
+  binding: null | {
+    id: number;
+    qqId: string;
+    nickname: string;
+    enabled: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+  activeBindToken: null | {
+    token: string;
+    expiresAt: Date;
+  };
+  recentTopics: Array<{
+    id: number;
+    title: string;
+    boardSlug: string;
+    boardName: string;
+    hidden: boolean;
+    createdAt: Date;
+  }>;
 };
 
 type OneBotEvent = {
@@ -130,6 +157,75 @@ export async function createQqBindToken(userId: number) {
   return { token, expiresAt };
 }
 
+export async function getUserQqBotProfile(userId: number): Promise<UserQqBotProfileView> {
+  const [config, binding, activeToken, recentTopics] = await Promise.all([
+    getQqBotConfigRaw(),
+    prisma.qqBotBinding.findFirst({
+      where: { userId },
+      orderBy: { updatedAt: "desc" },
+    }),
+    prisma.qqBotBindToken.findFirst({
+      where: {
+        userId,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.topic.findMany({
+      where: {
+        authorId: userId,
+        metadata: { contains: "\"source\":\"qqbot\"" },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+      include: {
+        board: { select: { slug: true, name: true } },
+      },
+    }),
+  ]);
+
+  return {
+    enabled: config.enabled,
+    defaultBoardSlug: config.defaultBoardSlug || "general",
+    allowPrivatePost: config.allowPrivatePost,
+    allowGroupPost: config.allowGroupPost,
+    binding: binding ? {
+      id: binding.id,
+      qqId: binding.qqId,
+      nickname: binding.nickname || "",
+      enabled: binding.enabled,
+      createdAt: binding.createdAt,
+      updatedAt: binding.updatedAt,
+    } : null,
+    activeBindToken: activeToken ? {
+      token: activeToken.token,
+      expiresAt: activeToken.expiresAt,
+    } : null,
+    recentTopics: recentTopics.map((topic) => ({
+      id: topic.id,
+      title: topic.title,
+      boardSlug: topic.board.slug,
+      boardName: topic.board.name,
+      hidden: topic.hidden,
+      createdAt: topic.createdAt,
+    })),
+  };
+}
+
+export async function deleteUserQqBinding(userId: number, bindingId?: number) {
+  const binding = await prisma.qqBotBinding.findFirst({
+    where: {
+      userId,
+      ...(bindingId ? { id: bindingId } : {}),
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+  if (!binding) throw Errors.notFound("当前没有可解绑的 QQ 绑定");
+  await prisma.qqBotBinding.delete({ where: { id: binding.id } });
+  return { ok: true };
+}
+
 export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | null) {
   const config = await getQqBotConfigRaw();
   if (config.webhookSecret && secret !== config.webhookSecret) {
@@ -164,8 +260,20 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, renderHelp(config.defaultBoardSlug));
     return { ok: true };
   }
+  if (isBoardListCommand(messageText)) {
+    await replyToEvent(context, await renderBoardList(config.defaultBoardSlug, groupId));
+    return { ok: true };
+  }
+  if (isMyPostsCommand(messageText)) {
+    await replyToEvent(context, await renderRecentQqTopics(qqId));
+    return { ok: true };
+  }
   if (/^\/?状态\b/.test(messageText.trim())) {
-    await replyToEvent(context, await renderBindingStatus(qqId));
+    await replyToEvent(context, await renderBindingStatus(qqId, config, groupId));
+    return { ok: true };
+  }
+  if (isUnbindCommand(messageText)) {
+    await replyToEvent(context, await unbindQqAccount(qqId));
     return { ok: true };
   }
   const bindMatch = messageText.trim().match(/^\/?绑定\s+([A-Z0-9]{6,16})$/i);
@@ -230,7 +338,19 @@ async function bindQqAccount(input: { qqId: string; nickname?: string; token: st
     }),
     prisma.qqBotBindToken.update({ where: { id: row.id }, data: { usedAt: new Date() } }),
   ]);
-  return `绑定成功：${row.user.nickname}。之后可以用“投稿 标题\\n正文”把 QQ 内容搬运到论坛。`;
+  return [
+    `绑定成功：${row.user.nickname}`,
+    "之后可以这样发帖：",
+    "投稿 标题",
+    "正文",
+  ].join("\n");
+}
+
+async function unbindQqAccount(qqId: string) {
+  const binding = await prisma.qqBotBinding.findUnique({ where: { qqId } });
+  if (!binding) return "当前 QQ 还没有绑定站内账号。";
+  await prisma.qqBotBinding.delete({ where: { id: binding.id } });
+  return "已解绑当前 QQ。之后如需继续投稿，请回站内重新生成绑定码。";
 }
 
 async function submitQqPost(context: {
@@ -283,9 +403,25 @@ async function submitQqPost(context: {
     rawPayload: context.event,
   });
   if (topic.hidden) {
-    return { message: `已搬运到平台，但暂未通过 AI 初审：${topic.aiReviewReason || "需要人工复核"}`, topicId: topic.id };
+    const topicLink = buildTopicLink(topic.id);
+    return {
+      message: [
+        "已搬运到平台，但暂未通过 AI 初审",
+        `原因：${topic.aiReviewReason || "需要人工复核"}`,
+        topicLink ? `链接：${topicLink}` : `/forum/topic/${topic.id}`,
+      ].join("\n"),
+      topicId: topic.id,
+    };
   }
-  return { message: `已投稿到「${topic.board.name}」：${topic.title}\\n/forum/topic/${topic.id}`, topicId: topic.id };
+  const topicLink = buildTopicLink(topic.id);
+  return {
+    message: [
+      `已投稿到「${topic.board.name}」`,
+      topic.title,
+      topicLink ? `链接：${topicLink}` : `/forum/topic/${topic.id}`,
+    ].join("\n"),
+    topicId: topic.id,
+  };
 }
 
 async function parsePostCommand(text: string, defaultBoardSlug: string, groupId?: string) {
@@ -613,23 +749,140 @@ function isHelpCommand(text: string) {
   return /^\/?(帮助|help|菜单)$/i.test(text.trim());
 }
 
+function isBoardListCommand(text: string) {
+  return /^\/?(板块|板块列表|boards?)$/i.test(text.trim());
+}
+
+function isMyPostsCommand(text: string) {
+  return /^\/?(我的投稿|我的帖子|recent|mine)$/i.test(text.trim());
+}
+
+function isUnbindCommand(text: string) {
+  return /^\/?(解绑|解除绑定|unbind)$/i.test(text.trim());
+}
+
 function renderHelp(defaultBoardSlug: string) {
   return [
     "药大拾间 QQBot：",
     "绑定 绑定码 - 绑定站内账号",
-    "状态 - 查看绑定状态",
-    `投稿 标题\\n正文 - 投稿到默认板块 ${defaultBoardSlug}`,
-    "投稿 板块slug 标题\\n正文 - 投稿到指定板块",
+    "状态 - 查看绑定状态和投稿开关",
+    "板块 - 查看可投稿板块",
+    "我的投稿 - 查看最近通过 QQ 投稿的帖子",
+    "解绑 - 解除当前 QQ 绑定",
+    "",
+    `投稿 标题\n正文 - 投稿到默认板块 ${defaultBoardSlug}`,
+    "投稿 板块slug 标题\n正文 - 投稿到指定板块",
   ].join("\n");
 }
 
-async function renderBindingStatus(qqId: string) {
+async function renderBindingStatus(
+  qqId: string,
+  config: Awaited<ReturnType<typeof getQqBotConfigRaw>>,
+  groupId?: string,
+) {
   const binding = await prisma.qqBotBinding.findUnique({
     where: { qqId },
     include: { user: { select: { nickname: true, username: true } } },
   });
-  if (!binding?.enabled) return "当前 QQ 尚未绑定站内账号。";
-  return `已绑定：${binding.user.nickname}（${binding.user.username}）`;
+  const group = groupId ? await prisma.qqBotGroup.findUnique({ where: { groupId } }) : null;
+  const defaultBoardSlug = group?.defaultBoardSlug || config.defaultBoardSlug || "general";
+  if (!binding?.enabled) {
+    return [
+      "当前 QQ 尚未绑定站内账号。",
+      "请先在站内生成绑定码，然后发送：绑定 绑定码",
+      `默认投稿板块：${defaultBoardSlug}`,
+      `私聊投稿：${config.allowPrivatePost ? "已开启" : "未开启"}`,
+      `群内投稿：${config.allowGroupPost ? "已开启" : "未开启"}`,
+    ].join("\n");
+  }
+  return [
+    `已绑定：${binding.user.nickname}（${binding.user.username}）`,
+    `默认投稿板块：${defaultBoardSlug}`,
+    `私聊投稿：${config.allowPrivatePost ? "已开启" : "未开启"}`,
+    `群内投稿：${config.allowGroupPost ? "已开启" : "未开启"}`,
+    "命令：板块 / 我的投稿 / 解绑",
+  ].join("\n");
+}
+
+async function renderBoardList(defaultBoardSlug: string, groupId?: string) {
+  const group = groupId ? await prisma.qqBotGroup.findUnique({ where: { groupId } }) : null;
+  const currentDefaultSlug = group?.defaultBoardSlug || defaultBoardSlug || "general";
+  const boards = await prisma.board.findMany({
+    where: {
+      readOnly: false,
+      type: { in: ["normal", "question", "market", "coursereview"] },
+    },
+    orderBy: { order: "asc" },
+    select: {
+      slug: true,
+      name: true,
+      description: true,
+      type: true,
+    },
+  });
+  const availableBoards = boards.filter((board) => isBoardTypeEnabled(board.type));
+  if (!availableBoards.length) {
+    return "当前没有可投稿板块，请稍后再试。";
+  }
+  const lines = [
+    "可投稿板块：",
+    ...availableBoards.slice(0, 12).map((board) => {
+      const suffix = board.slug === currentDefaultSlug ? "（默认）" : "";
+      const desc = board.description ? ` - ${board.description}` : "";
+      return `${board.slug}｜${board.name}${suffix}${desc}`;
+    }),
+  ];
+  const closedHints = boards
+    .filter((board) => !isBoardTypeEnabled(board.type))
+    .map((board) => `${board.name}：${featureClosedMessage(board.type)}`);
+  if (closedHints.length) {
+    lines.push("", "当前暂不可投：");
+    lines.push(...closedHints.slice(0, 4));
+  }
+  lines.push("", "示例：");
+  lines.push("投稿 标题");
+  lines.push("正文");
+  lines.push("投稿 general 标题");
+  lines.push("正文");
+  return lines.join("\n");
+}
+
+function buildTopicLink(topicId: number) {
+  const origin = getSiteOrigin();
+  if (!origin) return "";
+  return `${origin}/forum/topic/${topicId}`;
+}
+
+async function renderRecentQqTopics(qqId: string) {
+  const binding = await prisma.qqBotBinding.findUnique({
+    where: { qqId },
+    include: {
+      user: { select: { id: true } },
+    },
+  });
+  if (!binding?.enabled) {
+    return "当前 QQ 尚未绑定站内账号，暂时无法查看投稿记录。";
+  }
+  const topics = await prisma.topic.findMany({
+    where: {
+      authorId: binding.user.id,
+      metadata: { contains: `"qqId":"${qqId}"` },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 5,
+    include: {
+      board: { select: { name: true } },
+    },
+  });
+  if (!topics.length) return "最近还没有通过 QQ 投稿的帖子。";
+  return [
+    "最近投稿：",
+    ...topics.map((topic) => {
+      const topicLink = buildTopicLink(topic.id) || `/forum/topic/${topic.id}`;
+      const status = topic.hidden ? "待审核" : "已发布";
+      return `- ${topic.title}｜${topic.board.name}｜${status}\n  ${topicLink}`;
+    }),
+  ].join("\n");
 }
 
 function parseStringArray(value: string, fallback: string[]) {

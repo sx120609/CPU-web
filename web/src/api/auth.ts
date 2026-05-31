@@ -64,6 +64,33 @@ export interface UserInfo {
   createdAt: string;
 }
 
+export interface QqBotProfile {
+  enabled: boolean;
+  defaultBoardSlug: string;
+  allowPrivatePost: boolean;
+  allowGroupPost: boolean;
+  binding: null | {
+    id: number;
+    qqId: string;
+    nickname: string;
+    enabled: boolean;
+    createdAt: string;
+    updatedAt: string;
+  };
+  activeBindToken: null | {
+    token: string;
+    expiresAt: string;
+  };
+  recentTopics: Array<{
+    id: number;
+    title: string;
+    boardSlug: string;
+    boardName: string;
+    hidden: boolean;
+    createdAt: string;
+  }>;
+}
+
 export interface SsoBeginResult {
   pendingId: string;
   needCaptcha: boolean;
@@ -93,4 +120,7 @@ export const authApi = {
   enableForumAccess: (confirmText: string) => request.post<UserInfo>("/user/forum-access/enable", { confirmText }),
   changePassword: (oldPassword: string, newPassword: string) =>
     request.patch<{ ok: true }>("/user/password", { oldPassword, newPassword }),
+  qqBotProfile: () => request.get<QqBotProfile>("/qqbot/me"),
+  createQqBotBindToken: () => request.post<{ token: string; expiresAt: string }>("/qqbot/bind-token"),
+  deleteQqBotBinding: () => request.delete<{ ok: true }>("/qqbot/binding"),
 };
