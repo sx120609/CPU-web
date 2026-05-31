@@ -13,7 +13,9 @@
           <div class="head-copy">
             <div class="head-title-row">
               <h2>{{ tool.name }}</h2>
-              <el-tag size="small" type="success" effect="plain" round>可用</el-tag>
+              <el-tag size="small" :type="currentRequireLogin ? 'warning' : 'success'" effect="plain" round>
+                {{ currentRequireLogin ? "需登录" : "免登录" }}
+              </el-tag>
             </div>
             <p>{{ tool.description }}</p>
           </div>
@@ -52,6 +54,8 @@ const router = useRouter();
 const tool = computed(() => findServiceTool(String(route.params.slug || "")));
 const manageable = ref<ServiceToolCode[]>([]);
 const toolMetas = ref<ToolMeta[]>([]);
+const currentMeta = computed(() => toolMetas.value.find((item) => item.code === tool.value?.slug));
+const currentRequireLogin = computed(() => Boolean(currentMeta.value?.requireLogin));
 const canManage = computed(() => Boolean(tool.value && (
   manageable.value.includes(tool.value.slug as ServiceToolCode)
   || toolMetas.value.some((item) => item.code === tool.value?.slug && item.canManage)

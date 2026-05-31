@@ -35,7 +35,9 @@
           <span class="tool-entry-body">
             <span class="tool-entry-title">
               <span>{{ tool.name }}</span>
-              <em>{{ tool.status === "ready" ? "可用" : "待开发" }}</em>
+              <em :class="{ login: isLoginRequired(tool.slug) }">
+                {{ isLoginRequired(tool.slug) ? "需登录" : "免登录" }}
+              </em>
             </span>
             <span class="tool-entry-sub">{{ tool.summary }}</span>
           </span>
@@ -113,7 +115,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { computed, ref, onMounted } from "vue";
 import { Lock, Loading, Picture, Refresh, Right, Tools } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { useJwxtStore } from "@/stores/jwxt";
@@ -122,6 +124,7 @@ import { loadCreds, hasCreds as hasSavedCreds } from "@/utils/credCrypto";
 import IServicePane from "@/components/jwxt/IServicePane.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 import { serviceTools } from "@/data/serviceTools";
+import { toolsApi, type ToolMeta } from "@/api/tools";
 
 const jwxt = useJwxtStore();
 const site = useSiteStore();
@@ -131,8 +134,15 @@ const captchaInput = ref("");
 const captchaSubmitting = ref(false);
 const captchaError = ref("");
 const electricOpen = ref(false);
+const toolMetas = ref<ToolMeta[]>([]);
+const toolAccessMap = computed(() => Object.fromEntries(toolMetas.value.map((item) => [item.code, item])));
 
 onMounted(async () => {
+  try {
+    toolMetas.value = await toolsApi.tools();
+  } catch {
+    toolMetas.value = [];
+  }
   jwxt.hydrate();
   hasCreds.value = hasSavedCreds();
   await jwxt.refreshStatus();
@@ -146,6 +156,10 @@ onMounted(async () => {
     // 如果 tryAutoLogin 命中 captcha，模板会自动切到 captcha-card；用户输入完点按钮 submitCaptcha
   }
 });
+
+function isLoginRequired(slug: string) {
+  return Boolean(toolAccessMap.value[slug]?.requireLogin);
+}
 
 async function reloadCaptcha() {
   captchaInput.value = "";
@@ -283,11 +297,17 @@ async function submitCaptcha() {
   flex: 0 0 auto;
   padding: 2px 7px;
   border-radius: 999px;
-  background: #f3f4f6;
-  color: #6b7280;
+  border: 1px solid #b7eb8f;
+  background: #f6ffed;
+  color: #52c41a;
   font-size: 11px;
   font-style: normal;
   font-weight: 500;
+}
+.tool-entry-title em.login {
+  border-color: #ffd591;
+  background: #fff7e6;
+  color: #d46b08;
 }
 .tool-entry-sub {
   color: #6b7280;

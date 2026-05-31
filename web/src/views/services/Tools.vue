@@ -44,20 +44,11 @@
               <span class="tool-title">{{ tool.name }}</span>
               <el-tag
                 size="small"
-                :type="tool.status === 'ready' ? 'success' : 'info'"
+                :type="isLoginRequired(tool.slug) ? 'warning' : 'success'"
                 effect="plain"
                 round
               >
-                {{ statusText(tool.status) }}
-              </el-tag>
-              <el-tag
-                v-if="toolAccessMap[tool.slug as ServiceToolCode]?.requireLogin"
-                size="small"
-                type="warning"
-                effect="plain"
-                round
-              >
-                需登录
+                {{ isLoginRequired(tool.slug) ? "需登录" : "免登录" }}
               </el-tag>
             </span>
             <span class="tool-summary">{{ tool.summary }}</span>
@@ -76,7 +67,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { getToken } from "@/api/request";
 import { toolsApi, type ServiceToolCode, type ToolMeta } from "@/api/tools";
-import { serviceTools, toolHubIntro, type ServiceTool, type ServiceToolStatus } from "@/data/serviceTools";
+import { serviceTools, toolHubIntro, type ServiceTool } from "@/data/serviceTools";
 
 const router = useRouter();
 const manageable = ref<ServiceToolCode[]>([]);
@@ -99,8 +90,8 @@ onMounted(async () => {
   }
 });
 
-function statusText(status: ServiceToolStatus) {
-  return status === "ready" ? "可用" : "待开发";
+function isLoginRequired(slug: string) {
+  return Boolean(toolAccessMap.value[slug]?.requireLogin);
 }
 
 function openTool(tool: ServiceTool) {
