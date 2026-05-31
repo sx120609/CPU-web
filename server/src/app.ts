@@ -7,11 +7,13 @@ import { errorHandler } from "./middleware/error";
 import { router } from "./routes";
 import { shareRouter } from "./routes/share";
 import { isDev } from "./config";
+import { filestoreProxy } from "./services/filestore";
 
 export function createApp() {
   const app = express();
 
   app.use(cors());
+  app.use("/filestore", filestoreProxy);
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: false }));
   if (isDev) app.use(morgan("dev"));

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>提交成功名单</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="submit-shell status-shell">
+    <section class="submit-card status-card">
+      <div id="statusHeader" class="submit-hero">
+        <p class="eyebrow">SUBMISSION STATUS</p>
+        <h1>加载成功名单中</h1>
+        <p>请稍候。</p>
+      </div>
+
+      <section id="statusBody" class="status-body" hidden>
+        <div id="statusMetrics" class="summary-grid status-summary"></div>
+        <div class="status-tools">
+          <input id="statusSearch" placeholder="搜索姓名、编号或文件名">
+        </div>
+        <div id="statusList" class="status-list"></div>
+      </section>
+    </section>
+    <footer class="app-footer submit-footer">
+      <span>© 2026 Filestore</span>
+      <a href="https://github.com/sx120609/filestore/" target="_blank" rel="noopener">GitHub</a>
+    </footer>
+  </main>
+  <script src="/status.js"></script>
+</body>
+</html>

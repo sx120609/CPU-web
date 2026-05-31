@@ -18,6 +18,7 @@
 | 课程点评 | `/coursereview` | 课程搜索、教师关联、课程评价与评分维度 |
 | 二手市场 | `/market` | 二手信息列表和交易字段展示 |
 | 校园服务 | `/services` | 融合门户应用、图书馆、就业、心理援助、宿舍电费查询等常用服务入口 |
+| 文件收集 | `/services/tools/filestore`、`/filestore` | 嵌入 Filestore 文件收集系统，支持任务创建、提交链接、缺交统计和批量下载 |
 | 消息中心 | `/messages` | 回复、全站公告、学校公告订阅设置 |
 | 个人中心 | `/profile`、`/u/:id` | 昵称、简介、个人发帖记录 |
 | 管理后台 | `/admin` | 用户、帖子、公告源、全站公告、功能开关管理 |
@@ -53,6 +54,7 @@ CPU-web/
 ├── package.json           # 根脚本：安装、开发、构建、数据库初始化
 ├── server/
 │   ├── prisma/            # Prisma schema、迁移与种子数据
+│   ├── filestore/         # 嵌入的 Filestore Python 文件收集系统
 │   └── src/
 │       ├── app.ts         # Express 应用组装
 │       ├── index.ts       # 主服务入口（含公告爬虫调度）
@@ -120,8 +122,9 @@ npm run dev
 - 前端：<http://localhost:5173>
 - 后端：<http://localhost:3000>
 - 健康检查：<http://localhost:3000/api/health>
+- 文件收集：<http://localhost:5173/filestore>（默认管理员密码 `admin123`，生产环境请设置 `FILESTORE_ADMIN_PASSWORD`）
 
-Vite 已配置 `/api` 代理到后端，开发时不需要额外处理跨域。
+Vite 已配置 `/api`、`/uploads` 和 `/filestore` 代理到后端，开发时不需要额外处理跨域。
 
 ## 常用脚本
 
@@ -156,6 +159,10 @@ Vite 已配置 `/api` 代理到后端，开发时不需要额外处理跨域。
 | `JWXT_PROXY_TIMEOUT_MS` | `15000` | 主服务调用代理的超时（毫秒） |
 | `PROXY_AUTH` | 空 | 代理端校验调用方时使用的共享密钥 |
 | `PROXY_PORT` | `23334` | 代理服务监听端口（仅运行代理时生效） |
+| `FILESTORE_ENABLED` | `true` | 是否启用嵌入的 Filestore 代理；设为 `false` 可关闭 |
+| `FILESTORE_PORT` | `8964` | Filestore Python 服务监听端口，Node 后端会按需启动并反向代理 |
+| `FILESTORE_PYTHON` | 自动选择 | Python 可执行文件路径；Windows 默认 `python`，其他系统默认 `python3` |
+| `FILESTORE_ADMIN_PASSWORD` | `admin123` | Filestore 初始管理员密码，首次登录后会写入其 SQLite 数据库 |
 
 ## 教务代理
 

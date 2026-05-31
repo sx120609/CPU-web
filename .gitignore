@@ -25,6 +25,8 @@ local.properties
 # Database
 *.db
 *.db-journal
+server/filestore/data/
+server/filestore/uploads/
 # 注意：server/prisma/migrations/ 必须纳入版本控制，
 # 否则部署机 prisma migrate deploy 拿不到迁移文件，新表建不出来。
 

@@ -25,7 +25,11 @@
           />
         </el-tabs>
 
-        <div class="tool-admin-grid">
+        <div v-show="activeTool === 'file_collect'" class="filestore-manage-embed">
+          <iframe class="filestore-admin-frame" src="/filestore/" title="Filestore 文件收集管理"></iframe>
+        </div>
+
+        <div v-show="activeTool !== 'file_collect'" class="tool-admin-grid">
           <section v-if="activeTool !== 'grade_check' && activeTool !== 'file_collect'" class="admin-section questionnaire-section">
             <div class="section-head">
               <div>
@@ -1375,12 +1379,8 @@ async function reloadActive() {
     return;
   }
   if (activeTool.value === "file_collect") {
-    const [collections, templates] = await Promise.all([
-      toolsApi.fileCollections({ manage: "1" }),
-      toolsApi.fileCollectionTemplates(),
-    ]);
-    fileCollections.value = collections;
-    fileCollectTemplates.value = templates;
+    fileCollections.value = [];
+    fileCollectTemplates.value = [];
     questionnaires.value = [];
     gradeChecks.value = [];
     return;
@@ -2622,6 +2622,20 @@ function round(value: number) {
   grid-template-columns: minmax(0, 1fr) 320px;
   gap: 14px;
 }
+.filestore-manage-embed {
+  height: calc(100vh - 230px);
+  min-height: 680px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+.filestore-admin-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
 .admin-section {
   border: 1px solid #eef0f4;
   border-radius: 10px;
@@ -3748,6 +3762,10 @@ function round(value: number) {
 @media (max-width: 900px) {
   .tool-admin-grid { grid-template-columns: 1fr; }
   .managers-section { order: -1; }
+  .filestore-manage-embed {
+    height: calc(100vh - 210px);
+    min-height: 620px;
+  }
 }
 @media (max-width: 760px) {
   :global(.questionnaire-builder-dialog .el-dialog__body) {
