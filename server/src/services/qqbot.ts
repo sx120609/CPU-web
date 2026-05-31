@@ -64,6 +64,7 @@ export type UserQqBotProfileView = {
 
 type OneBotEvent = {
   post_type?: string;
+  self_id?: number | string;
   message_type?: "private" | "group";
   sub_type?: string;
   user_id?: number | string;
@@ -338,14 +339,14 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, renderConversationPrompt(conversation));
     return { ok: true };
   }
-  if (!isCommandMessage(messageText) && forwardPayload) {
+  if (!isCommandMessage(messageText) && forwardPayload && shouldHandleForwardPostInContext(context)) {
     const conversation = await startForwardPostConversation(context, forwardPayload);
     await logHandledInboundMessage(context, "message", "assistant:forward-detected");
     await replyToEvent(context, renderConversationPrompt(conversation));
     return { ok: true };
   }
 
-  if (!isCommandMessage(messageText) && isGreetingMessage(messageText)) {
+  if (!isCommandMessage(messageText) && isGreetingMessage(messageText) && shouldAssistantAutoReply(context)) {
     await logHandledInboundMessage(context, "message", "assistant:greeting");
     await replyToEvent(context, renderGreetingReply(context.config.defaultBoardSlug));
     return { ok: true };
@@ -377,6 +378,9 @@ async function handleNaturalLanguageMessage(context: {
   messageText: string;
   forwardPayload?: ParsedForwardPayload | null;
 }) {
+  if (context.event.message_type === "group" && !isExplicitBotMention(context.event, context.messageText)) {
+    return null;
+  }
   if (!shouldRunAiReview()) return null;
   const intent = await inferQqBotIntent(context).catch(() => null);
   if (!intent) return null;
@@ -666,20 +670,34 @@ async function handleConversationMessage(
   }
 
   if (conversation.step === "await-title" || conversation.step === "await-forward-title") {
-    if (text.length < 2) {
+    const normalizedText = context.messageText.trim();
+    if (normalizedText.length < 2) {
       await replyToEvent(context, "标题至少 2 个字，请重新发送标题。");
       return { ok: true };
     }
-    const parsed = await parseConversationTitle(text, conversation.draftBoardSlug || context.config.defaultBoardSlug, context.groupId);
+    const [firstLine, ...restLines] = normalizedText.split(/\r?\n/);
+    const titleCandidate = firstLine.trim();
+    if (titleCandidate.length < 2) {
+      await replyToEvent(context, "标题至少 2 个字，请重新发送标题。");
+      return { ok: true };
+    }
+    const parsed = await parseConversationTitle(titleCandidate, conversation.draftBoardSlug || context.config.defaultBoardSlug, context.groupId);
+    const draftContent = restLines.join("\n").trim();
     const next = await prisma.qqBotConversation.update({
       where: { id: conversation.id },
       data: {
         draftTitle: parsed.title,
         draftBoardSlug: parsed.boardSlug,
-        step: "collect-content",
+        draftContent: mergeConversationContent(conversation.draftContent || "", draftContent),
+        step: draftContent ? "await-submit-confirm" : "collect-content",
       },
     });
-    await replyToEvent(context, renderConversationPrompt(next, `我先帮你把标题定为「${parsed.title}」。`));
+    await replyToEvent(context, renderConversationPrompt(
+      next,
+      draftContent
+        ? `我把第一行当标题，后面的内容也一起收进正文了。标题是「${parsed.title}」。`
+        : `我先帮你把标题定为「${parsed.title}」。`,
+    ));
     return { ok: true };
   }
 
@@ -1293,27 +1311,28 @@ function appendSourceFooter(content: string, context: { groupId?: string; event:
 }
 
 function isHelpCommand(text: string) {
-  return /^\/(帮助|help|菜单)$/i.test(text.trim());
+  return /^[/／](帮助|help|菜单)$/i.test(text.trim());
 }
 
 function isBoardListCommand(text: string) {
-  return /^\/(板块|板块列表|boards?)$/i.test(text.trim());
+  return /^[/／](板块|板块列表|boards?)$/i.test(text.trim());
 }
 
 function isMyPostsCommand(text: string) {
-  return /^\/(我的投稿|我的帖子|recent|mine)$/i.test(text.trim());
+  return /^[/／](我的投稿|我的帖子|recent|mine)$/i.test(text.trim());
 }
 
 function isUnbindCommand(text: string) {
-  return /^\/(解绑|解除绑定|unbind)$/i.test(text.trim());
+  return /^[/／](解绑|解除绑定|unbind)$/i.test(text.trim());
 }
 
 function isCommandMessage(text: string) {
-  return text.trim().startsWith("/");
+  const normalized = text.trim();
+  return normalized.startsWith("/") || normalized.startsWith("／");
 }
 
 function isConfirmPublishMessage(text: string) {
-  return /^(是|确认|确认发布|发布|发吧|就这样|没问题)$/i.test(text.trim()) || /^\/(发布|确认发布)$/i.test(text.trim());
+  return /^(是|确认|确认发布|发布|发吧|就这样|没问题)$/i.test(text.trim()) || /^[/／](发布|确认发布)$/i.test(text.trim());
 }
 
 function isGreetingMessage(text: string) {
@@ -1354,7 +1373,34 @@ function shouldAssistantAutoReply(context: {
   messageText: string;
 }) {
   if (context.event.message_type !== "group") return true;
-  return /qqbot|bot|助手|帮我|可以吗|行吗|怎么|如何|为什么|\?|？/i.test(context.messageText);
+  const text = context.messageText.trim();
+  if (!text) return false;
+  if (/^[/／].+/.test(text)) return true;
+  return isExplicitBotMention(context.event, context.messageText);
+}
+
+function isExplicitBotMention(event: OneBotEvent, text: string) {
+  const raw = text.trim();
+  if (!raw) return false;
+  if (/(qqbot|药大拾间bot|助手|bot)\b/i.test(raw)) return true;
+  if (/(帮我投稿|我要投稿|我想投稿|投稿到|发树洞|发帖|帮我发|板块|状态|帮助)/i.test(raw)) return true;
+  return isMessageAtBot(event.message, event.self_id);
+}
+
+function isMessageAtBot(message: unknown, selfId?: number | string) {
+  if (!Array.isArray(message) || !selfId) return false;
+  const target = String(selfId);
+  return message.some((seg: any) => seg?.type === "at" && String(seg?.data?.qq || "") === target);
+}
+
+function shouldHandleForwardPostInContext(context: {
+  event: OneBotEvent;
+  messageText: string;
+  forwardPayload?: ParsedForwardPayload | null;
+}) {
+  if (!context.forwardPayload) return false;
+  if (context.event.message_type !== "group") return true;
+  return isExplicitBotMention(context.event, context.messageText);
 }
 
 async function renderBindingStatus(
