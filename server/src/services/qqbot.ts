@@ -1641,7 +1641,8 @@ async function renderRecentQqTopics(qqId: string) {
   const topics = await prisma.topic.findMany({
     where: {
       authorId: binding.user.id,
-      metadata: { contains: `"qqId":"${qqId}"` },
+      hidden: false,
+      board: { type: { in: ["announce", "normal", "question", "market", "coursereview"] } },
     },
     orderBy: { createdAt: "desc" },
     take: 5,
@@ -1649,13 +1650,12 @@ async function renderRecentQqTopics(qqId: string) {
       board: { select: { name: true } },
     },
   });
-  if (!topics.length) return "最近还没有通过 QQ 投稿的帖子。";
+  if (!topics.length) return "最近还没有可见的投稿记录。";
   return [
     "最近投稿：",
     ...topics.map((topic) => {
       const topicLink = buildTopicLink(topic.id) || `/forum/topic/${topic.id}`;
-      const status = topic.hidden ? "待审核" : "已发布";
-      return `- ${topic.title}｜${topic.board.name}｜${status}\n  ${topicLink}`;
+      return `- ${topic.title}｜${topic.board.name}\n  ${topicLink}`;
     }),
   ].join("\n");
 }
