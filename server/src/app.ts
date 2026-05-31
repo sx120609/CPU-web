@@ -8,6 +8,7 @@ import { router } from "./routes";
 import { shareRouter } from "./routes/share";
 import { isDev } from "./config";
 import { filestoreProxy } from "./services/filestore";
+import { startQqNotificationPoller } from "./services/qqbot";
 
 export function createApp() {
   const app = express();
@@ -32,6 +33,7 @@ export function createApp() {
 
   app.use("/share", shareRouter);
   app.use("/api", router);
+  startQqNotificationPoller();
 
   app.use("/api/*", (_req, res) => {
     res.status(404).json({ code: 4004, data: null, message: "接口不存在" });

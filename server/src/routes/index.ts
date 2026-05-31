@@ -17,6 +17,7 @@ import { siteRouter } from "./site";
 import { uploadRouter } from "./upload";
 import { toolsRouter } from "./tools";
 import { paymentsRouter } from "./payments";
+import { qqBotRouter } from "./qqbot";
 
 export const router = Router();
 
@@ -32,6 +33,7 @@ router.use("/home", homeRouter);
 router.use("/site", siteRouter);
 router.use("/tools", toolsRouter);
 router.use("/payments", paymentsRouter);
+router.use("/qqbot", qqBotRouter);
 
 // 教务代登录：begin-login / login 公开，其余 handler 内部验 token
 router.use("/jwxt", jwxtRouter);

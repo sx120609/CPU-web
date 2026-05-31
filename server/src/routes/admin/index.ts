@@ -32,6 +32,7 @@ import { buildUserTrustSnapshot, currentAnonymousWeekKey, freezeAnonymousCredits
 import { buildEpayCallbackUrls, buildEpaySubmitPayload, getEpayConfig, resolvePaymentOrigin, updateEpayConfig } from "../../services/epay";
 import { amountCentsToMoney } from "../../services/epay";
 import { formatSponsorOrder, getSponsorConfig, updateSponsorConfig } from "../../services/sponsor";
+import { qqBotAdminRouter } from "./qqbot";
 
 export const adminRouter = Router();
 
@@ -40,6 +41,8 @@ function requestOrigin(req: any) {
   const host = String(req.headers["x-forwarded-host"] ?? req.headers.host ?? "").split(",")[0].trim();
   return host ? `${proto}://${host}` : "";
 }
+
+adminRouter.use("/qqbot", adminOnly, qqBotAdminRouter);
 
 // ============ 用户管理 ============
 

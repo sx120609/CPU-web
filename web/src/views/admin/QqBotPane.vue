@@ -1,0 +1,486 @@
+<template>
+  <div class="qqbot-pane">
+    <section class="section-grid">
+      <div class="config-card">
+        <div class="card-head">
+          <div>
+            <h3>NapCat 对接</h3>
+            <p>使用 OneBot/NapCat HTTP API 接收 QQ 消息、发送回复和推送站内通知。</p>
+          </div>
+          <el-switch v-model="form.enabled" inline-prompt active-text="开" inactive-text="关" />
+        </div>
+
+        <el-form label-width="120px" class="config-form">
+          <el-form-item label="NapCat 地址">
+            <el-input v-model="form.napcatBaseUrl" placeholder="例如 http://127.0.0.1:3001" />
+          </el-form-item>
+          <el-form-item label="Access Token">
+            <el-input v-model="form.accessToken" show-password placeholder="留空则不修改">
+              <template #append>{{ config?.hasAccessToken ? config.accessTokenMasked : "未设置" }}</template>
+            </el-input>
+          </el-form-item>
+          <el-form-item label="Webhook Secret">
+            <el-input v-model="form.webhookSecret" placeholder="NapCat 回调时放到 ?secret= 或 X-QQBot-Secret" />
+          </el-form-item>
+          <el-form-item label="Webhook 地址">
+            <el-input :model-value="webhookUrl" readonly>
+              <template #append>
+                <el-button @click="copy(webhookUrl)">复制</el-button>
+              </template>
+            </el-input>
+          </el-form-item>
+          <el-form-item label="默认投稿板块">
+            <el-select v-model="form.defaultBoardSlug" filterable>
+              <el-option v-for="board in postBoards" :key="board.slug" :label="`${board.name} / ${board.slug}`" :value="board.slug" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="能力开关">
+            <div class="check-grid">
+              <el-checkbox v-model="form.allowPrivatePost">允许私聊投稿</el-checkbox>
+              <el-checkbox v-model="form.allowGroupPost">允许群内投稿</el-checkbox>
+              <el-checkbox v-model="form.notificationEnabled">推送站内通知</el-checkbox>
+            </div>
+          </el-form-item>
+          <el-form-item label="通知类型">
+            <el-checkbox-group v-model="form.notifyCategories">
+              <el-checkbox label="reply">回复</el-checkbox>
+              <el-checkbox label="mention">提及</el-checkbox>
+              <el-checkbox label="like">点赞</el-checkbox>
+              <el-checkbox label="system">系统</el-checkbox>
+              <el-checkbox label="school-feed">校园公告</el-checkbox>
+            </el-checkbox-group>
+          </el-form-item>
+        </el-form>
+
+        <div class="actions">
+          <el-button type="primary" :loading="saving" @click="saveConfig">保存配置</el-button>
+          <el-button :loading="dispatching" @click="dispatchNow">立即派发最近通知</el-button>
+          <el-button v-if="config?.hasAccessToken" text type="danger" @click="clearToken">清除 Token</el-button>
+        </div>
+      </div>
+
+      <div class="config-card">
+        <div class="card-head">
+          <div>
+            <h3>绑定与测试</h3>
+            <p>用户在站内生成绑定码后，向 QQBot 发送“绑定 绑定码”完成关联。</p>
+          </div>
+        </div>
+        <div class="bind-box">
+          <el-button type="primary" plain @click="createBindToken">生成我的绑定码</el-button>
+          <div v-if="bindToken" class="bind-token">
+            <b>{{ bindToken.token }}</b>
+            <span>10 分钟内发送：绑定 {{ bindToken.token }}</span>
+          </div>
+        </div>
+        <el-divider />
+        <el-form label-width="90px">
+          <el-form-item label="QQ 号">
+            <el-input v-model="test.qqId" placeholder="私聊测试 QQ 号" />
+          </el-form-item>
+          <el-form-item label="群号">
+            <el-input v-model="test.groupId" placeholder="群消息测试群号，和 QQ 号二选一" />
+          </el-form-item>
+          <el-form-item label="内容">
+            <el-input v-model="test.message" type="textarea" :rows="3" />
+          </el-form-item>
+        </el-form>
+        <div class="actions">
+          <el-button :loading="testing" @click="sendTest">发送测试消息</el-button>
+        </div>
+      </div>
+    </section>
+
+    <section class="list-card">
+      <div class="card-head">
+        <div>
+          <h3>QQ群配置</h3>
+          <p>群配置用于控制群内投稿和全局通知推送。</p>
+        </div>
+        <el-button type="primary" plain @click="openGroupDialog()">添加群</el-button>
+      </div>
+      <el-table :data="groups" size="small">
+        <el-table-column prop="groupId" label="群号" width="150" />
+        <el-table-column prop="name" label="名称" min-width="160" />
+        <el-table-column label="开关" min-width="220">
+          <template #default="{ row }">
+            <el-tag :type="row.enabled ? 'success' : 'info'" size="small">{{ row.enabled ? "启用" : "停用" }}</el-tag>
+            <el-tag :type="row.allowPosting ? 'warning' : 'info'" size="small">投稿 {{ row.allowPosting ? "开" : "关" }}</el-tag>
+            <el-tag :type="row.notificationEnabled ? 'success' : 'info'" size="small">通知 {{ row.notificationEnabled ? "开" : "关" }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="defaultBoardSlug" label="默认板块" width="130" />
+        <el-table-column label="操作" width="150" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openGroupDialog(row)">编辑</el-button>
+            <el-button link type="danger" @click="removeGroup(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </section>
+
+    <section class="list-card">
+      <div class="card-head">
+        <div>
+          <h3>绑定用户</h3>
+          <p>QQ 号绑定到站内账号后，QQ 投稿会以该账号身份进入论坛审核流。</p>
+        </div>
+        <el-input v-model="bindingQuery" clearable placeholder="搜索 QQ / 用户" style="width: 220px" @keyup.enter="loadBindings" />
+      </div>
+      <el-table :data="bindings" size="small">
+        <el-table-column prop="qqId" label="QQ" width="150" />
+        <el-table-column label="站内账号" min-width="190">
+          <template #default="{ row }">
+            <span>{{ row.user?.nickname }}（{{ row.user?.username }}）</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="nickname" label="QQ 昵称" min-width="140" />
+        <el-table-column label="状态" width="100">
+          <template #default="{ row }">
+            <el-switch v-model="row.enabled" @change="toggleBinding(row)" />
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="90">
+          <template #default="{ row }">
+            <el-button link type="danger" @click="removeBinding(row)">解绑</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </section>
+
+    <section class="list-card">
+      <div class="card-head">
+        <div>
+          <h3>消息日志</h3>
+          <p>记录 webhook、投稿、通知推送和 NapCat 调用结果。</p>
+        </div>
+        <div class="filters">
+          <el-select v-model="logFilter.eventType" clearable placeholder="事件" style="width: 130px" @change="loadLogs">
+            <el-option label="投稿" value="post" />
+            <el-option label="通知" value="notification" />
+            <el-option label="消息" value="message" />
+            <el-option label="Webhook" value="webhook" />
+          </el-select>
+          <el-select v-model="logFilter.status" clearable placeholder="状态" style="width: 120px" @change="loadLogs">
+            <el-option label="成功" value="ok" />
+            <el-option label="忽略" value="ignored" />
+            <el-option label="错误" value="error" />
+          </el-select>
+        </div>
+      </div>
+      <el-table :data="logs" size="small">
+        <el-table-column prop="createdAt" label="时间" width="170">
+          <template #default="{ row }">{{ new Date(row.createdAt).toLocaleString() }}</template>
+        </el-table-column>
+        <el-table-column prop="eventType" label="事件" width="110" />
+        <el-table-column prop="status" label="状态" width="90" />
+        <el-table-column prop="qqId" label="QQ" width="120" />
+        <el-table-column prop="groupId" label="群" width="120" />
+        <el-table-column prop="content" label="内容" min-width="220" show-overflow-tooltip />
+        <el-table-column prop="result" label="结果" min-width="180" show-overflow-tooltip />
+      </el-table>
+      <div class="pager">
+        <el-pagination layout="prev, pager, next" :total="logTotal" :page-size="logFilter.size" v-model:current-page="logFilter.page" @current-change="loadLogs" />
+      </div>
+    </section>
+
+    <el-dialog v-model="groupDialog.visible" title="QQ群配置" width="520px">
+      <el-form label-width="100px">
+        <el-form-item label="群号">
+          <el-input v-model="groupDialog.form.groupId" :disabled="Boolean(groupDialog.editingId)" />
+        </el-form-item>
+        <el-form-item label="名称">
+          <el-input v-model="groupDialog.form.name" />
+        </el-form-item>
+        <el-form-item label="默认板块">
+          <el-select v-model="groupDialog.form.defaultBoardSlug" clearable filterable>
+            <el-option v-for="board in postBoards" :key="board.slug" :label="`${board.name} / ${board.slug}`" :value="board.slug" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="开关">
+          <div class="check-grid">
+            <el-checkbox v-model="groupDialog.form.enabled">启用</el-checkbox>
+            <el-checkbox v-model="groupDialog.form.allowPosting">允许投稿</el-checkbox>
+            <el-checkbox v-model="groupDialog.form.notificationEnabled">接收全局通知</el-checkbox>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="groupDialog.visible = false">取消</el-button>
+        <el-button type="primary" @click="saveGroup">保存</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref } from "vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { adminApi, type QqBotConfig } from "@/api/admin";
+
+const config = ref<QqBotConfig | null>(null);
+const boards = ref<any[]>([]);
+const bindings = ref<any[]>([]);
+const groups = ref<any[]>([]);
+const logs = ref<any[]>([]);
+const logTotal = ref(0);
+const saving = ref(false);
+const testing = ref(false);
+const dispatching = ref(false);
+const bindingQuery = ref("");
+const bindToken = ref<{ token: string; expiresAt: string } | null>(null);
+
+const form = reactive({
+  enabled: false,
+  napcatBaseUrl: "",
+  accessToken: "",
+  webhookSecret: "",
+  defaultBoardSlug: "general",
+  allowPrivatePost: true,
+  allowGroupPost: false,
+  notificationEnabled: true,
+  notifyCategories: ["reply", "mention", "like", "system"] as string[],
+});
+
+const test = reactive({ qqId: "", groupId: "", message: "药大拾间 QQBot 测试消息" });
+const logFilter = reactive({ eventType: "", status: "", page: 1, size: 30 });
+const groupDialog = reactive({
+  visible: false,
+  editingId: 0,
+  form: {
+    groupId: "",
+    name: "",
+    enabled: true,
+    allowPosting: false,
+    defaultBoardSlug: "",
+    notificationEnabled: false,
+  },
+});
+
+const postBoards = computed(() => boards.value.filter((item) => !item.readOnly));
+const webhookUrl = computed(() => {
+  const path = config.value?.webhookPath || "/api/qqbot/webhook";
+  const secret = form.webhookSecret ? `?secret=${encodeURIComponent(form.webhookSecret)}` : "";
+  return `${window.location.origin}${path}${secret}`;
+});
+
+onMounted(async () => {
+  await Promise.all([loadConfig(), loadBoards(), loadBindings(), loadGroups(), loadLogs()]);
+});
+
+async function loadConfig() {
+  config.value = await adminApi.qqBotConfig();
+  Object.assign(form, {
+    enabled: config.value.enabled,
+    napcatBaseUrl: config.value.napcatBaseUrl,
+    accessToken: "",
+    webhookSecret: config.value.webhookSecret,
+    defaultBoardSlug: config.value.defaultBoardSlug,
+    allowPrivatePost: config.value.allowPrivatePost,
+    allowGroupPost: config.value.allowGroupPost,
+    notificationEnabled: config.value.notificationEnabled,
+    notifyCategories: [...config.value.notifyCategories],
+  });
+}
+
+async function loadBoards() {
+  boards.value = await adminApi.boards();
+}
+
+async function saveConfig() {
+  saving.value = true;
+  try {
+    config.value = await adminApi.updateQqBotConfig({
+      ...form,
+      accessToken: form.accessToken || undefined,
+    });
+    form.accessToken = "";
+    ElMessage.success("QQBot 配置已保存");
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function clearToken() {
+  await ElMessageBox.confirm("确认清除 NapCat Access Token？", "清除 Token", { type: "warning" });
+  config.value = await adminApi.updateQqBotConfig({ clearAccessToken: true });
+  ElMessage.success("Token 已清除");
+}
+
+async function createBindToken() {
+  bindToken.value = await adminApi.createQqBotBindToken();
+  ElMessage.success("绑定码已生成");
+}
+
+async function sendTest() {
+  testing.value = true;
+  try {
+    await adminApi.sendQqBotTestMessage({ ...test });
+    ElMessage.success("测试消息已发送");
+    await loadLogs();
+  } finally {
+    testing.value = false;
+  }
+}
+
+async function dispatchNow() {
+  dispatching.value = true;
+  try {
+    const result = await adminApi.dispatchQqBotNotifications();
+    ElMessage.success(`已派发 ${result.sent} 条`);
+    await loadLogs();
+  } finally {
+    dispatching.value = false;
+  }
+}
+
+async function loadBindings() {
+  bindings.value = await adminApi.qqBotBindings({ q: bindingQuery.value || undefined });
+}
+
+async function toggleBinding(row: any) {
+  await adminApi.updateQqBotBinding(row.id, { enabled: Boolean(row.enabled) });
+}
+
+async function removeBinding(row: any) {
+  await ElMessageBox.confirm(`确认解绑 QQ ${row.qqId}？`, "解绑 QQ", { type: "warning" });
+  await adminApi.deleteQqBotBinding(row.id);
+  await loadBindings();
+}
+
+async function loadGroups() {
+  groups.value = await adminApi.qqBotGroups();
+}
+
+function openGroupDialog(row?: any) {
+  groupDialog.editingId = row?.id || 0;
+  Object.assign(groupDialog.form, {
+    groupId: row?.groupId || "",
+    name: row?.name || "",
+    enabled: row?.enabled ?? true,
+    allowPosting: row?.allowPosting ?? false,
+    defaultBoardSlug: row?.defaultBoardSlug || "",
+    notificationEnabled: row?.notificationEnabled ?? false,
+  });
+  groupDialog.visible = true;
+}
+
+async function saveGroup() {
+  await adminApi.upsertQqBotGroup({
+    ...groupDialog.form,
+    defaultBoardSlug: groupDialog.form.defaultBoardSlug || null,
+  });
+  groupDialog.visible = false;
+  await loadGroups();
+}
+
+async function removeGroup(row: any) {
+  await ElMessageBox.confirm(`确认删除群 ${row.groupId}？`, "删除群配置", { type: "warning" });
+  await adminApi.deleteQqBotGroup(row.id);
+  await loadGroups();
+}
+
+async function loadLogs() {
+  const data = await adminApi.qqBotLogs(logFilter);
+  logs.value = data.list;
+  logTotal.value = data.total;
+}
+
+async function copy(text: string) {
+  await navigator.clipboard.writeText(text);
+  ElMessage.success("已复制");
+}
+</script>
+
+<style scoped>
+.qqbot-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.section-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, .8fr);
+  gap: 14px;
+}
+.config-card,
+.list-card {
+  border: 1px solid #eef0f4;
+  border-radius: 10px;
+  padding: 16px;
+  background: #fff;
+}
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.card-head h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #111827;
+}
+.card-head p {
+  margin: 5px 0 0;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.config-form {
+  max-width: 860px;
+}
+.check-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+.bind-box {
+  display: grid;
+  gap: 10px;
+}
+.bind-token {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f0fdf4;
+  color: #166534;
+}
+.bind-token b {
+  font-size: 24px;
+  letter-spacing: 0;
+}
+.filters {
+  display: flex;
+  gap: 8px;
+}
+.pager {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+@media (max-width: 1100px) {
+  .section-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 720px) {
+  .config-card,
+  .list-card {
+    padding: 12px;
+  }
+  .card-head,
+  .actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+</style>

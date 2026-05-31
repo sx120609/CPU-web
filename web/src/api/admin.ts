@@ -82,6 +82,23 @@ export type SponsorConfig = {
   allowMessage: boolean;
 };
 
+export type QqBotConfig = {
+  id: number;
+  enabled: boolean;
+  napcatBaseUrl: string;
+  hasAccessToken: boolean;
+  accessTokenMasked: string;
+  webhookSecret: string;
+  defaultBoardSlug: string;
+  allowPrivatePost: boolean;
+  allowGroupPost: boolean;
+  notificationEnabled: boolean;
+  notifyCategories: string[];
+  webhookPath: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export const adminApi = {
   // 概览
   overview: () => request.get<AdminOverview>("/admin/overview"),
@@ -188,6 +205,39 @@ export const adminApi = {
     request.patch<any>(`/admin/sponsor-orders/${id}`, payload),
   sponsorLogs: (params: { q?: string; signOk?: "0" | "1"; page?: number; size?: number }) =>
     request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/sponsor-logs", params),
+  // QQBot / NapCat
+  qqBotConfig: () => request.get<QqBotConfig>("/admin/qqbot/config"),
+  updateQqBotConfig: (payload: Partial<{
+    enabled: boolean;
+    napcatBaseUrl: string;
+    accessToken: string;
+    clearAccessToken: boolean;
+    webhookSecret: string;
+    defaultBoardSlug: string;
+    allowPrivatePost: boolean;
+    allowGroupPost: boolean;
+    notificationEnabled: boolean;
+    notifyCategories: string[];
+  }>) => request.patch<QqBotConfig>("/admin/qqbot/config", payload),
+  qqBotBindings: (params?: { q?: string }) => request.get<any[]>("/admin/qqbot/bindings", params),
+  updateQqBotBinding: (id: number, payload: { enabled: boolean }) => request.patch<any>(`/admin/qqbot/bindings/${id}`, payload),
+  deleteQqBotBinding: (id: number) => request.delete<{ ok: true }>(`/admin/qqbot/bindings/${id}`),
+  qqBotGroups: () => request.get<any[]>("/admin/qqbot/groups"),
+  upsertQqBotGroup: (payload: {
+    groupId: string;
+    name?: string;
+    enabled?: boolean;
+    allowPosting?: boolean;
+    defaultBoardSlug?: string | null;
+    notificationEnabled?: boolean;
+  }) => request.post<any>("/admin/qqbot/groups", payload),
+  deleteQqBotGroup: (id: number) => request.delete<{ ok: true }>(`/admin/qqbot/groups/${id}`),
+  qqBotLogs: (params: { status?: string; eventType?: string; page?: number; size?: number }) =>
+    request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/qqbot/logs", params),
+  sendQqBotTestMessage: (payload: { qqId?: string; groupId?: string; message: string }) =>
+    request.post<{ ok: true }>("/admin/qqbot/test-message", payload),
+  dispatchQqBotNotifications: () => request.post<{ sent: number }>("/admin/qqbot/dispatch-notifications"),
+  createQqBotBindToken: () => request.post<{ token: string; expiresAt: string }>("/qqbot/bind-token"),
   // 帖子
   topics: (params: { q?: string; board?: string; hidden?: "0" | "1"; reviewStatus?: string; page?: number; size?: number }) =>
     request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/topics", params),

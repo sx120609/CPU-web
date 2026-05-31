@@ -68,6 +68,9 @@ model User {
   createdFileCollectTemplates FileCollectTemplate[] @relation("FileCollectTemplateCreatedBy")
   fileCollectSubmissions FileCollectSubmission[] @relation("FileCollectSubmittedBy")
   sponsorOrders    SponsorOrder[]
+  qqBotBindings     QqBotBinding[]
+  qqBotBindTokens   QqBotBindToken[]
+  qqBotMessageLogs  QqBotMessageLog[]
 }
 
 // ============ 论坛核心 ============
@@ -696,6 +699,90 @@ model MessageSetting {
   subscribeSystem Boolean @default(true)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ============ QQBot / NapCat 对接 ============
+
+model QqBotConfig {
+  id                Int      @id @default(autoincrement())
+  enabled           Boolean  @default(false)
+  napcatBaseUrl     String   @default("")
+  accessToken       String   @default("")
+  webhookSecret     String   @default("")
+  defaultBoardSlug  String   @default("general")
+  allowPrivatePost  Boolean  @default(true)
+  allowGroupPost    Boolean  @default(false)
+  notificationEnabled Boolean @default(true)
+  notifyCategories  String   @default("[\"reply\",\"mention\",\"like\",\"system\"]")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model QqBotBinding {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  qqId        String   @unique
+  nickname    String?
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([enabled])
+}
+
+model QqBotBindToken {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  token       String   @unique
+  usedAt      DateTime?
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model QqBotGroup {
+  id                Int      @id @default(autoincrement())
+  groupId           String   @unique
+  name              String?
+  enabled           Boolean  @default(true)
+  allowPosting      Boolean  @default(false)
+  defaultBoardSlug  String?
+  notificationEnabled Boolean @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([enabled])
+}
+
+model QqBotMessageLog {
+  id             Int      @id @default(autoincrement())
+  direction      String   // inbound / outbound
+  eventType      String
+  status         String   @default("ok") // ok / ignored / error
+  qqId           String?
+  groupId        String?
+  messageId      String?
+  userId         Int?
+  topicId        Int?
+  notificationId Int?
+  command        String?
+  content        String   @default("")
+  result         String   @default("")
+  rawPayload     String   @default("{}")
+  createdAt      DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([eventType, createdAt])
+  @@index([qqId, createdAt])
+  @@index([userId, createdAt])
+  @@index([notificationId, userId])
 }
 
 // ============ 站点功能开关 ============
