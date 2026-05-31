@@ -421,6 +421,9 @@ def current_session(handler: SimpleHTTPRequestHandler) -> str:
 
 
 def require_admin(handler: SimpleHTTPRequestHandler) -> bool:
+    trusted_token = os.environ.get("FILESTORE_TRUSTED_PROXY_TOKEN", "")
+    if trusted_token and secrets.compare_digest(handler.headers.get("X-CPU-Filestore-Admin", ""), trusted_token):
+        return True
     session = current_session(handler)
     if not session or session not in SESSIONS:
         send_json(handler, {"error": "请先登录"}, HTTPStatus.UNAUTHORIZED)

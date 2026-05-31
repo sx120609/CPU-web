@@ -18,12 +18,12 @@
           <small>管理员登录</small>
         </div>
       </div>
-      <h1>登录管理系统</h1>
-      <p>输入管理员密码后进入任务工作台。</p>
-      <label>管理员密码
-        <input id="loginPassword" type="password" autocomplete="current-password" placeholder="请输入管理员密码" required>
+      <h1>使用平台账号进入</h1>
+      <p>文件收集管理权限由药大拾间平台统一分配。</p>
+      <label hidden>平台登录
+        <input id="loginPassword" type="password" autocomplete="current-password" placeholder="请先登录平台">
       </label>
-      <button class="primary full" type="submit">登录</button>
+      <button class="primary full" type="submit">前往平台登录</button>
       <p id="loginMessage" class="message"></p>
       <footer class="app-footer login-card-footer">
         <span>© 2026 Filestore</span>
@@ -296,21 +296,7 @@
     </div>
     <p id="settingsMessage" class="message"></p>
 
-    <div class="settings-divider"></div>
-    <h3>管理员密码</h3>
-    <label>当前密码
-      <input id="currentPassword" type="password" autocomplete="current-password">
-    </label>
-    <label>新密码
-      <input id="newPassword" type="password" autocomplete="new-password" placeholder="至少 6 位">
-    </label>
-    <label>确认新密码
-      <input id="confirmPassword" type="password" autocomplete="new-password">
-    </label>
-    <div class="dialog-actions">
-      <button id="changePassword" class="danger">修改密码</button>
-    </div>
-    <p id="passwordMessage" class="message"></p>
+    <p id="passwordMessage" class="message" hidden></p>
   </dialog>
 
   <dialog id="confirmDialog">

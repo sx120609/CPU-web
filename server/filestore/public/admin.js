@@ -53,7 +53,16 @@ function escapeHtml(value = "") {
 }
 
 function headers() {
-  return { "Content-Type": "application/json" };
+  const token = localStorage.getItem("cpu-web-token") || "";
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+function authHeaders() {
+  const token = localStorage.getItem("cpu-web-token") || "";
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 async function api(path, options = {}) {
@@ -101,23 +110,12 @@ async function checkSession() {
 }
 
 async function login(password) {
-  const response = await fetch("/api/admin/login", {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ password }),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || "登录失败");
-  state.settings = normalizeSettings(payload.settings);
-  applyBranding();
-  renderTemplateSelect(state.templateKey);
-  setAuthed(true);
-  await loadTasks();
+  void password;
+  location.href = `/login?redirect=${encodeURIComponent("/services/tools/filestore")}`;
 }
 
 async function logout() {
-  await fetch("/api/admin/logout", { method: "POST", credentials: "same-origin" });
+  await fetch("/api/admin/logout", { method: "POST", credentials: "same-origin", headers: authHeaders() }).catch(() => undefined);
   state.tasks = [];
   state.current = null;
   state.detail = null;
@@ -517,7 +515,7 @@ async function changePassword() {
   const response = await fetch("/api/admin/password", {
     method: "POST",
     credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
+    headers: headers(),
     body: JSON.stringify({ currentPassword, newPassword }),
   });
   const payload = await response.json().catch(() => ({}));
@@ -942,7 +940,7 @@ async function deleteTask() {
 }
 
 async function download(path, filename) {
-  const response = await fetch(path, { credentials: "same-origin" });
+  const response = await fetch(path, { credentials: "same-origin", headers: authHeaders() });
   if (response.status === 401) {
     setAuthed(false);
     throw new Error("登录已过期，请重新登录");
@@ -1093,7 +1091,7 @@ async function downloadClientZip() {
     for (const file of submission.files) {
       current += 1;
       toast(`正在读取文件 ${current}/${fileCount}`);
-      const response = await fetch(`/api/files/${file.id}/download`, { credentials: "same-origin" });
+      const response = await fetch(`/api/files/${file.id}/download`, { credentials: "same-origin", headers: authHeaders() });
       if (response.status === 401) {
         setAuthed(false);
         throw new Error("登录已过期，请重新登录");
@@ -1146,10 +1144,6 @@ function bind() {
     $("#siteTitle").value = state.settings.siteTitle || "Filestore";
     $("#siteUrl").value = state.settings.siteUrl || "";
     $("#settingsMessage").textContent = "";
-    $("#passwordMessage").textContent = "";
-    $("#currentPassword").value = "";
-    $("#newPassword").value = "";
-    $("#confirmPassword").value = "";
     $("#settingsDialog").showModal();
   }));
   $("#closeSettings").addEventListener("click", () => $("#settingsDialog").close());
@@ -1166,7 +1160,7 @@ function bind() {
     $("#settingsMessage").className = "message ok";
     toast("系统设置已保存", "ok");
   }));
-  $("#changePassword").addEventListener("click", safe(async () => {
+  $("#changePassword")?.addEventListener("click", safe(async () => {
     $("#passwordMessage").textContent = "正在修改...";
     $("#passwordMessage").className = "message";
     await changePassword();

@@ -25,12 +25,33 @@
           />
         </el-tabs>
 
-        <div v-show="activeTool === 'file_collect'" class="filestore-manage-embed">
-          <iframe class="filestore-admin-frame" src="/filestore/" title="Filestore 文件收集管理"></iframe>
+        <div v-if="activeTool === 'file_collect'" class="tool-admin-grid permission-only-grid">
+          <section v-if="canAdminActiveTool" class="admin-section managers-section">
+            <div class="section-head">
+              <div>
+                <h3>管理器</h3>
+                <p>被分配后可访问 Filestore 文件收集工作台。</p>
+              </div>
+            </div>
+            <div class="add-manager">
+              <el-input v-model="managerUsername" placeholder="输入用户名" clearable @keyup.enter="addManager" />
+              <el-button type="primary" :loading="managerSaving" @click="addManager">添加</el-button>
+            </div>
+            <div class="manager-list">
+              <div v-for="manager in managers" :key="manager.id" class="manager-row">
+                <div>
+                  <b>{{ manager.user.nickname || manager.user.username }}</b>
+                  <span>{{ manager.user.username }}</span>
+                </div>
+                <el-button text type="danger" @click="removeManager(manager.user.id)">移除</el-button>
+              </div>
+              <el-empty v-if="!managers.length" description="暂无单独分配的管理器" />
+            </div>
+          </section>
         </div>
 
-        <div v-show="activeTool !== 'file_collect'" class="tool-admin-grid">
-          <section v-if="activeTool !== 'grade_check' && activeTool !== 'file_collect'" class="admin-section questionnaire-section">
+        <div v-else class="tool-admin-grid">
+          <section v-if="activeTool !== 'grade_check'" class="admin-section questionnaire-section">
             <div class="section-head">
               <div>
                 <h3>问卷</h3>
@@ -73,7 +94,7 @@
                     <span>{{ row.fields?.length ?? 0 }} 题</span>
                     <span>{{ row.responseCount ?? 0 }} 份答卷</span>
                     <span>更新 {{ fmtDate(row.updatedAt) }}</span>
-                    <span v-if="row.createdBy">发起人 {{ row.createdBy.nickname || row.createdBy.username }}</span>
+                    <span v-if="row.createdBy">发起人 {{ row.createdBy?.nickname || row.createdBy?.username }}</span>
                   </div>
                 </div>
                 <div class="q-row-actions">
@@ -119,7 +140,7 @@
             </div>
           </section>
 
-          <section v-else-if="activeTool === 'file_collect'" class="admin-section questionnaire-section grade-check-section">
+          <section v-else-if="false" class="admin-section questionnaire-section grade-check-section">
             <div class="section-head">
               <div>
                 <h3>文件收集</h3>
@@ -378,7 +399,7 @@
                   <div class="q-row-meta">
                     <span>{{ row.visibility === "login" ? "登录提交" : "公开提交" }}</span>
                     <span>更新 {{ fmtDate(row.updatedAt) }}</span>
-                    <span v-if="row.createdBy">发起人 {{ row.createdBy.nickname || row.createdBy.username }}</span>
+                    <span v-if="row.createdBy">发起人 {{ row.createdBy?.nickname || row.createdBy?.username }}</span>
                   </div>
                 </div>
                 <div class="file-collection-actions">
@@ -2622,19 +2643,8 @@ function round(value: number) {
   grid-template-columns: minmax(0, 1fr) 320px;
   gap: 14px;
 }
-.filestore-manage-embed {
-  height: calc(100vh - 230px);
-  min-height: 680px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #fff;
-}
-.filestore-admin-frame {
-  width: 100%;
-  height: 100%;
-  border: 0;
-  display: block;
+.permission-only-grid {
+  grid-template-columns: minmax(0, 520px);
 }
 .admin-section {
   border: 1px solid #eef0f4;
@@ -3762,10 +3772,6 @@ function round(value: number) {
 @media (max-width: 900px) {
   .tool-admin-grid { grid-template-columns: 1fr; }
   .managers-section { order: -1; }
-  .filestore-manage-embed {
-    height: calc(100vh - 210px);
-    min-height: 620px;
-  }
 }
 @media (max-width: 760px) {
   :global(.questionnaire-builder-dialog .el-dialog__body) {

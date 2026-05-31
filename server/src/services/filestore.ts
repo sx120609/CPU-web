@@ -4,9 +4,13 @@ import { existsSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { config } from "../config";
+import { prisma } from "../prisma";
+import { hasToolManagerPermission } from "./serviceTools";
+import { verifyToken } from "../utils/jwt";
 
 const MOUNT_PATH = "/filestore";
 const TEXT_RESPONSE_RE = /^(text\/|application\/json\b|application\/javascript\b|text\/javascript\b)/i;
+const TRUSTED_PROXY_TOKEN = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
 
 let filestoreProcess: ChildProcess | null = null;
 let startupPromise: Promise<void> | null = null;
@@ -72,6 +76,7 @@ async function ensureFilestoreStarted() {
         ...process.env,
         PORT: String(config.filestorePort),
         FILESTORE_ADMIN_PASSWORD: process.env.FILESTORE_ADMIN_PASSWORD ?? config.filestoreAdminPassword,
+        FILESTORE_TRUSTED_PROXY_TOKEN: TRUSTED_PROXY_TOKEN,
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -98,6 +103,48 @@ function upstreamPath(req: Request) {
   const original = req.originalUrl || req.url || "/";
   const withoutMount = original.replace(new RegExp(`^${MOUNT_PATH}(?=/|$)`), "") || "/";
   return withoutMount.startsWith("/") ? withoutMount : `/${withoutMount}`;
+}
+
+function isPublicFilestoreRequest(req: Request) {
+  const target = upstreamPath(req).split("?")[0];
+  if (req.method === "GET" && target === "/api/health") return true;
+  if (req.method === "GET" && /^\/api\/public\/(tasks|status)\/[A-Za-z0-9_-]+$/.test(target)) return true;
+  if (req.method === "POST" && /^\/api\/submit\/[A-Za-z0-9_-]+$/.test(target)) return true;
+  return !target.startsWith("/api/");
+}
+
+async function platformUserFromRequest(req: Request) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith("Bearer ")) return null;
+  try {
+    const payload = verifyToken(header.slice(7));
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { id: true, username: true, role: true, status: true },
+    });
+    if (!user || user.status === "banned") return null;
+    return {
+      ...payload,
+      studentId: user.username,
+      role: user.role,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function assertFilestoreAdmin(req: Request, res: Response) {
+  if (isPublicFilestoreRequest(req)) return true;
+  const user = await platformUserFromRequest(req);
+  if (!user?.userId) {
+    res.status(401).json({ error: "请先登录平台账号" });
+    return false;
+  }
+  if (!(await hasToolManagerPermission("file_collect", user))) {
+    res.status(403).json({ error: "没有文件收集管理权限" });
+    return false;
+  }
+  return true;
 }
 
 function rewriteText(body: string) {
@@ -130,7 +177,11 @@ function writeHeaders(res: Response, upstream: http.IncomingMessage, rewrittenBo
 }
 
 function proxyToFilestore(req: Request, res: Response) {
-  const headers = { ...req.headers, host: `127.0.0.1:${config.filestorePort}` };
+  const headers = {
+    ...req.headers,
+    host: `127.0.0.1:${config.filestorePort}`,
+    "x-cpu-filestore-admin": TRUSTED_PROXY_TOKEN,
+  };
   const upstream = http.request({
     hostname: "127.0.0.1",
     port: config.filestorePort,
@@ -169,6 +220,7 @@ function proxyToFilestore(req: Request, res: Response) {
 export const filestoreProxy: RequestHandler = async (req, res) => {
   try {
     await ensureFilestoreStarted();
+    if (!(await assertFilestoreAdmin(req, res))) return;
     proxyToFilestore(req, res);
   } catch (error) {
     res.status(503).send(error instanceof Error ? error.message : "Filestore 暂不可用");
