@@ -47,6 +47,9 @@ type OneBotEvent = {
 const CONFIG_ID = 1;
 const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "like", "system"];
 let pollerStarted = false;
+let wsClient: any = null;
+let wsConnecting = false;
+let wsReconnectTimer: NodeJS.Timeout | null = null;
 
 export async function getQqBotConfigRaw() {
   return prisma.qqBotConfig.upsert({
@@ -110,6 +113,8 @@ export async function updateQqBotConfig(input: {
     create: { id: CONFIG_ID, ...data },
     update: data,
   });
+  resetQqBotWebSocket();
+  setTimeout(() => connectQqBotWebSocket().catch(() => undefined), 300);
   return formatQqBotConfig(updated);
 }
 
@@ -397,6 +402,10 @@ export async function sendQqMessage(target: { qqId?: string; groupId?: string },
   const body = target.groupId
     ? { group_id: Number(target.groupId), message }
     : { user_id: Number(target.qqId), message };
+  if (isWebSocketUrl(config.napcatBaseUrl)) {
+    await sendQqMessageByWebSocket(endpoint, body, target, message);
+    return;
+  }
   const response = await fetch(`${config.napcatBaseUrl.replace(/\/+$/, "")}/${endpoint}`, {
     method: "POST",
     headers: {
@@ -432,8 +441,12 @@ export function startQqNotificationPoller() {
   const tick = () => dispatchRecentQqNotifications().catch((error) => {
     console.warn("[qqbot] notification dispatch failed", error);
   });
+  connectQqBotWebSocket().catch((error) => {
+    console.warn("[qqbot] websocket connect failed", error);
+  });
   setTimeout(tick, 5000);
   setInterval(tick, 30_000);
+  setInterval(() => connectQqBotWebSocket().catch(() => undefined), 30_000);
 }
 
 export async function dispatchRecentQqNotifications() {
@@ -614,7 +627,7 @@ function parseStringArray(value: string, fallback: string[]) {
 function normalizeBaseUrl(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return "";
-  if (!/^https?:\/\//i.test(trimmed)) throw Errors.badRequest("NapCat 地址必须以 http:// 或 https:// 开头");
+  if (!/^(https?|wss?):\/\//i.test(trimmed)) throw Errors.badRequest("NapCat 地址必须以 ws://、wss://、http:// 或 https:// 开头");
   return trimmed.replace(/\/+$/, "");
 }
 
@@ -622,4 +635,136 @@ function maskSecret(value: string) {
   if (!value) return "";
   if (value.length <= 8) return "********";
   return `${value.slice(0, 4)}****${value.slice(-4)}`;
+}
+
+function isWebSocketUrl(value: string) {
+  return /^wss?:\/\//i.test(value.trim());
+}
+
+function buildWebSocketUrl(config: Awaited<ReturnType<typeof getQqBotConfigRaw>>) {
+  let url = config.napcatBaseUrl.trim();
+  if (!config.accessToken || /[?&]access_token=/.test(url)) return url;
+  const joiner = url.includes("?") ? "&" : "?";
+  return `${url}${joiner}access_token=${encodeURIComponent(config.accessToken)}`;
+}
+
+export async function connectQqBotWebSocket() {
+  const config = await getQqBotConfigRaw();
+  if (!config.enabled || !isWebSocketUrl(config.napcatBaseUrl)) return;
+  if (wsClient && (wsClient.readyState === 0 || wsClient.readyState === 1)) return;
+  if (wsConnecting) return;
+  const WebSocketCtor = (globalThis as any).WebSocket;
+  if (!WebSocketCtor) {
+    console.warn("[qqbot] current Node.js runtime has no global WebSocket");
+    return;
+  }
+  wsConnecting = true;
+  try {
+    const socket = new WebSocketCtor(buildWebSocketUrl(config));
+    wsClient = socket;
+    socket.addEventListener("open", () => {
+      wsConnecting = false;
+      logQqBotMessage({ direction: "outbound", eventType: "websocket", status: "ok", result: "connected" });
+    });
+    socket.addEventListener("message", (event: any) => {
+      const text = typeof event.data === "string" ? event.data : Buffer.from(event.data).toString("utf8");
+      handleWebSocketPayload(text).catch((error) => {
+        console.warn("[qqbot] websocket message failed", error);
+      });
+    });
+    socket.addEventListener("close", () => {
+      wsConnecting = false;
+      if (wsClient === socket) wsClient = null;
+      scheduleWebSocketReconnect();
+    });
+    socket.addEventListener("error", () => {
+      wsConnecting = false;
+      if (wsClient === socket) wsClient = null;
+      scheduleWebSocketReconnect();
+    });
+  } catch (error) {
+    wsConnecting = false;
+    scheduleWebSocketReconnect();
+    throw error;
+  }
+}
+
+function resetQqBotWebSocket() {
+  if (wsReconnectTimer) {
+    clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = null;
+  }
+  if (wsClient) {
+    try { wsClient.close(); } catch { /* ignore */ }
+    wsClient = null;
+  }
+  wsConnecting = false;
+}
+
+function scheduleWebSocketReconnect() {
+  if (wsReconnectTimer) return;
+  wsReconnectTimer = setTimeout(() => {
+    wsReconnectTimer = null;
+    connectQqBotWebSocket().catch(() => undefined);
+  }, 5000);
+}
+
+async function handleWebSocketPayload(text: string) {
+  let payload: any;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    await logQqBotMessage({ direction: "inbound", eventType: "websocket", status: "error", result: "JSON 解析失败", content: text.slice(0, 1000) });
+    return;
+  }
+  if (payload?.echo) {
+    await logQqBotMessage({
+      direction: "inbound",
+      eventType: "websocket-response",
+      status: payload.status === "ok" ? "ok" : "error",
+      result: JSON.stringify(payload).slice(0, 1000),
+      rawPayload: payload,
+    });
+    return;
+  }
+  await handleQqBotWebhook(payload, (await getQqBotConfigRaw()).webhookSecret);
+}
+
+async function sendQqMessageByWebSocket(
+  action: "send_private_msg" | "send_group_msg",
+  params: Record<string, unknown>,
+  target: { qqId?: string; groupId?: string },
+  message: string,
+) {
+  await connectQqBotWebSocket();
+  await waitWebSocketOpen();
+  const echo = `cpu-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  wsClient.send(JSON.stringify({ action, params, echo }));
+  await logQqBotMessage({
+    direction: "outbound",
+    eventType: target.groupId ? "group-message" : "private-message",
+    status: "ok",
+    qqId: target.qqId,
+    groupId: target.groupId,
+    content: message.slice(0, 1000),
+    result: `queued:${echo}`,
+  });
+}
+
+function waitWebSocketOpen() {
+  if (wsClient?.readyState === 1) return Promise.resolve();
+  return new Promise<void>((resolve, reject) => {
+    const started = Date.now();
+    const timer = setInterval(() => {
+      if (wsClient?.readyState === 1) {
+        clearInterval(timer);
+        resolve();
+        return;
+      }
+      if (Date.now() - started > 3000) {
+        clearInterval(timer);
+        reject(Errors.badRequest("NapCat WebSocket 尚未连接"));
+      }
+    }, 100);
+  });
 }

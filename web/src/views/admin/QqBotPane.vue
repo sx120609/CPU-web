@@ -5,29 +5,28 @@
         <div class="card-head">
           <div>
             <h3>NapCat 对接</h3>
-            <p>使用 OneBot/NapCat HTTP API 接收 QQ 消息、发送回复和推送站内通知。</p>
+            <p>在 NapCat 创建一个 WebSocket 服务端，把地址填到这里即可。</p>
           </div>
           <el-switch v-model="form.enabled" inline-prompt active-text="开" inactive-text="关" />
         </div>
 
-        <el-form label-width="120px" class="config-form">
-          <el-form-item label="NapCat 地址">
-            <el-input v-model="form.napcatBaseUrl" placeholder="例如 http://127.0.0.1:3001" />
+        <div class="setup-guide">
+          <div>
+            <b>推荐配置</b>
+            <span>NapCat 里新建 WebSocket 服务端；CPU-web 会作为客户端连过去。收 QQ 消息、回复消息、推送通知都走这一条连接。</span>
+          </div>
+        </div>
+
+        <el-form label-width="150px" class="config-form">
+          <el-form-item label="WebSocket 地址">
+            <el-input v-model="form.napcatBaseUrl" placeholder="例如 ws://127.0.0.1:3001" />
+            <div class="form-tip">这是 CPU-web 后端连接 NapCat 的地址。NapCat 和后端不在同一台机器时，请填后端能访问到的内网或公网地址。</div>
           </el-form-item>
           <el-form-item label="Access Token">
             <el-input v-model="form.accessToken" show-password placeholder="留空则不修改">
               <template #append>{{ config?.hasAccessToken ? config.accessTokenMasked : "未设置" }}</template>
             </el-input>
-          </el-form-item>
-          <el-form-item label="Webhook Secret">
-            <el-input v-model="form.webhookSecret" placeholder="NapCat 回调时放到 ?secret= 或 X-QQBot-Secret" />
-          </el-form-item>
-          <el-form-item label="Webhook 地址">
-            <el-input :model-value="webhookUrl" readonly>
-              <template #append>
-                <el-button @click="copy(webhookUrl)">复制</el-button>
-              </template>
-            </el-input>
+            <div class="form-tip">如果 NapCat WebSocket 服务端设置了 token，这里填同一个；没设置就留空。</div>
           </el-form-item>
           <el-form-item label="默认投稿板块">
             <el-select v-model="form.defaultBoardSlug" filterable>
@@ -258,12 +257,6 @@ const groupDialog = reactive({
 });
 
 const postBoards = computed(() => boards.value.filter((item) => !item.readOnly));
-const webhookUrl = computed(() => {
-  const path = config.value?.webhookPath || "/api/qqbot/webhook";
-  const secret = form.webhookSecret ? `?secret=${encodeURIComponent(form.webhookSecret)}` : "";
-  return `${window.location.origin}${path}${secret}`;
-});
-
 onMounted(async () => {
   await Promise.all([loadConfig(), loadBoards(), loadBindings(), loadGroups(), loadLogs()]);
 });
@@ -386,10 +379,6 @@ async function loadLogs() {
   logTotal.value = data.total;
 }
 
-async function copy(text: string) {
-  await navigator.clipboard.writeText(text);
-  ElMessage.success("已复制");
-}
 </script>
 
 <style scoped>
@@ -430,6 +419,32 @@ async function copy(text: string) {
 }
 .config-form {
   max-width: 860px;
+}
+.setup-guide {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 16px;
+}
+.setup-guide > div {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #eff6ff;
+}
+.setup-guide b {
+  color: #1d4ed8;
+  font-size: 13px;
+}
+.setup-guide span,
+.form-tip {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.form-tip {
+  margin-top: 5px;
 }
 .check-grid {
   display: flex;
@@ -481,6 +496,9 @@ async function copy(text: string) {
   .actions {
     align-items: stretch;
     flex-direction: column;
+  }
+  .setup-guide {
+    grid-template-columns: 1fr;
   }
 }
 </style>
