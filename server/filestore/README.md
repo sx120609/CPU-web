@@ -107,7 +107,7 @@ python app.py
 默认访问地址：
 
 ```text
-http://127.0.0.1:8964
+http://127.0.0.1:8974
 ```
 
 默认管理员密码：
@@ -119,7 +119,7 @@ admin123
 可通过环境变量修改默认端口：
 
 ```powershell
-$env:PORT="8964"
+$env:PORT="8974"
 python app.py
 ```
 

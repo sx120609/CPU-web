@@ -11,7 +11,7 @@ export const config = {
   proxyAuth: process.env.PROXY_AUTH ?? "",
   proxyTimeoutMs: Number(process.env.JWXT_PROXY_TIMEOUT_MS ?? 15000),
   filestoreEnabled: process.env.FILESTORE_ENABLED !== "false",
-  filestorePort: Number(process.env.FILESTORE_PORT ?? 8964),
+  filestorePort: Number(process.env.FILESTORE_PORT ?? 8974),
   filestorePython: process.env.FILESTORE_PYTHON ?? "",
   filestoreAdminPassword: process.env.FILESTORE_ADMIN_PASSWORD ?? "admin123",
 };

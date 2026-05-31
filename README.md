@@ -160,7 +160,7 @@ Vite 已配置 `/api`、`/uploads` 和 `/filestore` 代理到后端，开发时�
 | `PROXY_AUTH` | 空 | 代理端校验调用方时使用的共享密钥 |
 | `PROXY_PORT` | `23334` | 代理服务监听端口（仅运行代理时生效） |
 | `FILESTORE_ENABLED` | `true` | 是否启用嵌入的 Filestore 代理；设为 `false` 可关闭 |
-| `FILESTORE_PORT` | `8964` | Filestore Python 服务监听端口，Node 后端会按需启动并反向代理 |
+| `FILESTORE_PORT` | `8974` | Filestore Python 服务监听端口，Node 后端会按需启动并反向代理 |
 | `FILESTORE_PYTHON` | 自动选择 | Python 可执行文件路径；Windows 默认 `python`，其他系统默认 `python3` |
 | `FILESTORE_ADMIN_PASSWORD` | `admin123` | Filestore 初始管理员密码，首次登录后会写入其 SQLite 数据库 |
 

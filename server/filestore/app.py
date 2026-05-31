@@ -1313,7 +1313,7 @@ class AppHandler(SimpleHTTPRequestHandler):
 
 def main() -> None:
     init_db()
-    port = int(os.environ.get("PORT", "8964"))
+    port = int(os.environ.get("PORT", "8974"))
     server = ThreadingHTTPServer(("127.0.0.1", port), AppHandler)
     print(f"Filestore running at http://127.0.0.1:{port}")
     print(f"Default admin password: {ADMIN_PASSWORD}")
