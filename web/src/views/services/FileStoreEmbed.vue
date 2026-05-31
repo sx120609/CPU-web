@@ -17,14 +17,41 @@
       </div>
     </section>
 
-    <section class="filestore-frame-shell">
+    <section v-if="loading" class="filestore-state" v-loading="loading"></section>
+
+    <section v-else-if="!canAccess" class="filestore-state">
+      <el-empty description="你还没有文件收集管理权限">
+        <el-button type="primary" @click="$router.push('/services/tools')">返回小工具</el-button>
+      </el-empty>
+    </section>
+
+    <section v-else class="filestore-frame-shell">
       <iframe class="filestore-frame" src="/filestore/" title="文件收集系统"></iframe>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
+import { onMounted, ref } from "vue";
 import { ArrowLeft, TopRight } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
+import { toolsApi } from "@/api/tools";
+
+const loading = ref(true);
+const canAccess = ref(false);
+
+onMounted(loadPermission);
+
+async function loadPermission() {
+  loading.value = true;
+  try {
+    const perms = await toolsApi.myPermissions();
+    canAccess.value = perms.adminToolCodes.includes("file_collect") || perms.toolCodes.includes("file_collect");
+    if (!canAccess.value) ElMessage.warning("没有文件收集管理权限");
+  } finally {
+    loading.value = false;
+  }
+}
 
 function openStandalone() {
   window.open("/filestore/", "_blank", "noopener");
@@ -70,6 +97,16 @@ function openStandalone() {
   border-radius: 8px;
   background: #fff;
   overflow: hidden;
+}
+.filestore-state {
+  max-width: 1180px;
+  min-height: 420px;
+  margin: 0 auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  display: grid;
+  place-items: center;
 }
 .filestore-frame {
   width: 100%;

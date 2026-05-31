@@ -32,31 +32,42 @@ function pythonCommand() {
   return { command: "python3", args: [] as string[] };
 }
 
-function healthCheck() {
-  return new Promise<boolean>((resolve) => {
+function requestStatus(targetPath: string, headers: Record<string, string> = {}) {
+  return new Promise<number>((resolve) => {
     const req = http.request({
       hostname: "127.0.0.1",
       port: config.filestorePort,
-      path: "/api/health",
+      path: targetPath,
       method: "GET",
+      headers,
       timeout: 800,
     }, (resp) => {
       resp.resume();
-      resolve(Boolean(resp.statusCode && resp.statusCode >= 200 && resp.statusCode < 500));
+      resolve(resp.statusCode ?? 0);
     });
     req.on("timeout", () => {
       req.destroy();
-      resolve(false);
+      resolve(0);
     });
-    req.on("error", () => resolve(false));
+    req.on("error", () => resolve(0));
     req.end();
   });
+}
+
+async function healthCheck() {
+  const status = await requestStatus("/api/health");
+  return status >= 200 && status < 500;
+}
+
+async function trustedProxyCheck() {
+  const status = await requestStatus("/api/admin/me", { "X-CPU-Filestore-Admin": TRUSTED_PROXY_TOKEN });
+  return status >= 200 && status < 300;
 }
 
 async function waitForHealth(timeoutMs = 7000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    if (await healthCheck()) return;
+    if (await healthCheck() && await trustedProxyCheck()) return;
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
   throw new Error(`Filestore 未能在 ${timeoutMs}ms 内启动`);
@@ -64,7 +75,10 @@ async function waitForHealth(timeoutMs = 7000) {
 
 async function ensureFilestoreStarted() {
   if (!config.filestoreEnabled) throw new Error("Filestore 已通过 FILESTORE_ENABLED=false 禁用");
-  if (await healthCheck()) return;
+  if (await healthCheck()) {
+    if (await trustedProxyCheck()) return;
+    throw new Error(`Filestore 端口 ${config.filestorePort} 正在运行旧实例，请重启 CPU-web 后端或停止旧的 python app.py 进程`);
+  }
   if (startupPromise) return startupPromise;
 
   startupPromise = (async () => {
