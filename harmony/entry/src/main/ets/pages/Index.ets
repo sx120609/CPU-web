@@ -135,7 +135,7 @@ struct Index {
 
       if (this.loading) {
         Column({ space: 16 }) {
-          Image($r('app.media.app_icon'))
+          Image($r('app.media.app_icon_harmony_preview'))
             .width(84)
             .height(84)
             .borderRadius(24)

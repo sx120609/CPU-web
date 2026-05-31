@@ -92,7 +92,7 @@
                 <el-icon class="more-chevron"><ArrowRight /></el-icon>
               </button>
               <button
-                v-if="isAndroidNativeApp()"
+                v-if="androidClientUpdateAllowed"
                 type="button"
                 class="more-action"
                 @click="checkAndroidAppUpdate"
@@ -688,6 +688,7 @@ import {
   ANDROID_APP_LATEST_VERSION_CODE,
   ANDROID_APP_LATEST_VERSION_NAME,
   ANDROID_WIDGET_MIN_VERSION_CODE,
+  androidClientUpdatesEnabled,
   detectClientPlatform,
   getAndroidNativeVersionCode,
   getAndroidNativeVersionName,
@@ -919,7 +920,7 @@ const widgetMenuPlatform = computed<WidgetMenuPlatform | null>(() => {
 
 const widgetMenuLabel = computed(() => {
   if (widgetMenuPlatform.value === "android") return "添加安卓小组件";
-  if (widgetMenuPlatform.value === "android-old") return "更新安卓客户端";
+  if (widgetMenuPlatform.value === "android-old") return androidClientUpdateAllowed.value ? "更新安卓客户端" : "小组件需商店新版";
   return "导入 iOS 小组件";
 });
 const androidCurrentVersionCode = computed(() => getAndroidNativeVersionCode());
@@ -933,6 +934,7 @@ const androidCurrentVersionLabel = computed(() => {
   return "未知版本";
 });
 const androidLatestVersionLabel = computed(() => `${ANDROID_APP_LATEST_VERSION_NAME} (${ANDROID_APP_LATEST_VERSION_CODE})`);
+const androidClientUpdateAllowed = computed(() => isAndroidNativeApp() && androidClientUpdatesEnabled());
 const androidAppUpdateAvailable = computed(() => isAndroidAppUpdateAvailable());
 const androidCanInAppUpdate = computed(() => supportsAndroidInAppApkDownload());
 const androidUpdateMenuLabel = computed(() => (
@@ -946,6 +948,11 @@ function handleWidgetMenuAction() {
   }
   if (widgetMenuPlatform.value === "android") {
     void installAndroidWidget();
+    return;
+  }
+  if (!androidClientUpdateAllowed.value) {
+    moreMenuOpen.value = false;
+    ElMessage.info("请前往应用商店更新客户端后再使用小组件");
     return;
   }
   showAndroidUpdateRequired("widget");
@@ -1020,7 +1027,7 @@ async function openAndroidDownload() {
 
 function checkAndroidAppUpdate() {
   moreMenuOpen.value = false;
-  if (!isAndroidNativeApp()) return;
+  if (!androidClientUpdateAllowed.value) return;
   if (androidAppUpdateAvailable.value) {
     showAndroidUpdateRequired("app");
     return;

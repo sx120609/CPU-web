@@ -119,7 +119,9 @@ export function getAndroidNativeVersionName(ua = navigator.userAgent) {
 }
 
 export function isAndroidAppUpdateAvailable(ua = navigator.userAgent) {
-  return isAndroidNativeApp(ua) && getAndroidNativeVersionCode(ua) < ANDROID_APP_LATEST_VERSION_CODE;
+  return isAndroidNativeApp(ua)
+    && androidClientUpdatesEnabled()
+    && getAndroidNativeVersionCode(ua) < ANDROID_APP_LATEST_VERSION_CODE;
 }
 
 export function supportsAndroidScheduleWidget(ua = navigator.userAgent) {
@@ -133,7 +135,24 @@ export function supportsAndroidInAppApkDownload(ua = navigator.userAgent) {
   if (!isAndroidNativeApp(ua)) return false;
   const bridge = (window as any).CPUAndroid;
   return getAndroidNativeVersionCode(ua) >= ANDROID_IN_APP_UPDATE_MIN_VERSION_CODE
+    && bridgeSupportsApkDownload(bridge)
     && typeof bridge?.downloadAndInstallApk === "function";
+}
+
+export function androidClientUpdatesEnabled() {
+  const bridge = (window as any).CPUAndroid;
+  return bridgeSupportsApkDownload(bridge);
+}
+
+function bridgeSupportsApkDownload(bridge: any) {
+  try {
+    if (typeof bridge?.supportsInAppApkDownload === "function") {
+      return bridge.supportsInAppApkDownload() !== false;
+    }
+  } catch {
+    return false;
+  }
+  return true;
 }
 
 export function clientPlatformLabel(platform: ClientPlatform) {

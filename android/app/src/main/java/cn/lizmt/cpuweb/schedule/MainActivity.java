@@ -245,10 +245,6 @@ public final class MainActivity extends Activity {
         }
 
         if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
-            if (isApkDownload(uri)) {
-                openExternal(uri);
-                return true;
-            }
             String host = uri.getHost();
             if (host != null && host.equalsIgnoreCase(appHost)) {
                 return false;
@@ -265,21 +261,7 @@ public final class MainActivity extends Activity {
         return true;
     }
 
-    private boolean isApkDownload(Uri uri) {
-        String path = uri.getPath();
-        if (path == null) {
-            return false;
-        }
-        return path.endsWith(".apk") || path.contains("/downloads/");
-    }
-
     private void openExternal(Uri uri) {
-        if (isApkDownload(uri)) {
-            boolean started = new CpuAndroidBridge(this).downloadAndInstallApk(uri.toString(), "");
-            if (started) {
-                return;
-            }
-        }
         try {
             Intent intent = new Intent(Intent.ACTION_VIEW, uri);
             intent.addCategory(Intent.CATEGORY_BROWSABLE);

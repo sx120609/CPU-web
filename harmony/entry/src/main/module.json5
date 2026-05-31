@@ -16,9 +16,9 @@
         "name": "EntryAbility",
         "srcEntry": "./ets/entryability/EntryAbility.ets",
         "description": "$string:app_name",
-        "icon": "$media:app_icon",
+        "icon": "$media:app_icon_layered",
         "label": "$string:app_name",
-        "startWindowIcon": "$media:app_icon",
+        "startWindowIcon": "$media:app_icon_layered",
         "startWindowBackground": "$color:start_window_background",
         "exported": true,
         "skills": [
