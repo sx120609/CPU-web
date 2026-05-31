@@ -237,6 +237,10 @@
           <b>{{ qqBotProfile.binding ? (qqBotProfile.binding.enabled ? "已绑定" : "已停用") : "未绑定" }}</b>
         </div>
         <div class="qqbot-item">
+          <span>QQBot 账号</span>
+          <b>{{ qqBotProfile.botQqId || "未配置" }}</b>
+        </div>
+        <div class="qqbot-item">
           <span>绑定 QQ</span>
           <b>{{ qqBotProfile.binding?.qqId || "—" }}</b>
         </div>
@@ -254,15 +258,16 @@
         <template v-if="qqBotProfile.activeBindToken">
           <div class="qqbot-token">
             <strong>{{ qqBotProfile.activeBindToken.token }}</strong>
-            <span>请在 QQ 里发送：绑定 {{ qqBotProfile.activeBindToken.token }}</span>
+            <span v-if="qqBotProfile.botQqId">请在 QQ 里添加并私聊机器人 {{ qqBotProfile.botQqId }}</span>
+            <span>发送：绑定 {{ qqBotProfile.activeBindToken.token }}</span>
             <span>有效期至 {{ fmtDate(qqBotProfile.activeBindToken.expiresAt, "MM-DD HH:mm") }}</span>
           </div>
         </template>
         <template v-else>
-          <p class="qqbot-empty">还没有可用绑定码，生成后可直接去 QQ 完成绑定。</p>
+          <p class="qqbot-empty">{{ qqBotProfile.binding ? "当前已绑定 QQ，如需更换请先解绑。" : "还没有可用绑定码，生成后可直接去 QQ 完成绑定。" }}</p>
         </template>
         <div class="qqbot-actions">
-          <el-button type="primary" :loading="qqBotLoading" @click="refreshQqBotToken">
+          <el-button v-if="!qqBotProfile.binding" type="primary" :loading="qqBotLoading" @click="refreshQqBotToken">
             {{ qqBotProfile.activeBindToken ? "重新生成绑定码" : "生成绑定码" }}
           </el-button>
           <el-button
@@ -298,8 +303,8 @@
       </div>
 
       <div class="qqbot-recent">
-        <div class="sub-title">最近通过 QQ 投稿</div>
-        <el-empty v-if="!qqBotProfile.recentTopics.length" description="还没有通过 QQ 投稿的帖子" />
+        <div class="sub-title">最近投稿</div>
+        <el-empty v-if="!qqBotProfile.recentTopics.length" description="还没有投稿记录" />
         <div
           v-for="topic in qqBotProfile.recentTopics"
           :key="topic.id"
@@ -643,7 +648,7 @@ async function refreshQqBotToken() {
 async function copyQqBotCommand() {
   if (!qqBotProfile.value?.activeBindToken) return;
   await copyText(`绑定 ${qqBotProfile.value.activeBindToken.token}`);
-  ElMessage.success("已复制绑定指令");
+  ElMessage.success(qqBotProfile.value.botQqId ? `已复制绑定指令，请发送给 QQBot ${qqBotProfile.value.botQqId}` : "已复制绑定指令");
 }
 
 async function unbindQqBot() {

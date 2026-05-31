@@ -706,6 +706,7 @@ model MessageSetting {
 model QqBotConfig {
   id                Int      @id @default(autoincrement())
   enabled           Boolean  @default(false)
+  botQqId           String   @default("")
   napcatBaseUrl     String   @default("")
   accessToken       String   @default("")
   webhookSecret     String   @default("")

@@ -66,6 +66,7 @@ export interface UserInfo {
 
 export interface QqBotProfile {
   enabled: boolean;
+  botQqId: string;
   defaultBoardSlug: string;
   allowPrivatePost: boolean;
   allowGroupPost: boolean;

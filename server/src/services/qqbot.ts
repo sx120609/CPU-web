@@ -19,6 +19,7 @@ import {
 export type QqBotConfigView = {
   id: number;
   enabled: boolean;
+  botQqId: string;
   napcatBaseUrl: string;
   hasAccessToken: boolean;
   accessTokenMasked: string;
@@ -37,6 +38,7 @@ export type QqBotConfigView = {
 
 export type UserQqBotProfileView = {
   enabled: boolean;
+  botQqId: string;
   defaultBoardSlug: string;
   allowPrivatePost: boolean;
   allowGroupPost: boolean;
@@ -131,6 +133,7 @@ export function formatQqBotConfig(config: Awaited<ReturnType<typeof getQqBotConf
   return {
     id: config.id,
     enabled: config.enabled,
+    botQqId: config.botQqId,
     napcatBaseUrl: config.napcatBaseUrl,
     hasAccessToken: Boolean(config.accessToken),
     accessTokenMasked: maskSecret(config.accessToken),
@@ -150,6 +153,7 @@ export function formatQqBotConfig(config: Awaited<ReturnType<typeof getQqBotConf
 
 export async function updateQqBotConfig(input: {
   enabled?: boolean;
+  botQqId?: string;
   napcatBaseUrl?: string;
   accessToken?: string;
   clearAccessToken?: boolean;
@@ -162,6 +166,7 @@ export async function updateQqBotConfig(input: {
 }) {
   const data: any = {};
   if (input.enabled !== undefined) data.enabled = input.enabled;
+  if (input.botQqId !== undefined) data.botQqId = String(input.botQqId || "").trim().slice(0, 40);
   if (input.napcatBaseUrl !== undefined) data.napcatBaseUrl = normalizeBaseUrl(input.napcatBaseUrl);
   if (input.clearAccessToken) data.accessToken = "";
   else if (input.accessToken !== undefined && input.accessToken.trim()) data.accessToken = input.accessToken.trim();
@@ -189,6 +194,20 @@ export async function updateQqBotConfig(input: {
 }
 
 export async function createQqBindToken(userId: number) {
+  const existingBinding = await prisma.qqBotBinding.findFirst({
+    where: { userId, enabled: true },
+    select: { id: true },
+  });
+  if (existingBinding) throw Errors.badRequest("当前账号已绑定 QQ，如需更换请先解绑。");
+  const activeToken = await prisma.qqBotBindToken.findFirst({
+    where: {
+      userId,
+      usedAt: null,
+      expiresAt: { gt: new Date() },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (activeToken) return { token: activeToken.token, expiresAt: activeToken.expiresAt };
   const token = crypto.randomBytes(4).toString("hex").toUpperCase();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
   await prisma.qqBotBindToken.create({ data: { userId, token, expiresAt } });
@@ -225,6 +244,7 @@ export async function getUserQqBotProfile(userId: number): Promise<UserQqBotProf
 
   return {
     enabled: config.enabled,
+    botQqId: config.botQqId,
     defaultBoardSlug: config.defaultBoardSlug || "general",
     allowPrivatePost: config.allowPrivatePost,
     allowGroupPost: config.allowGroupPost,
@@ -236,7 +256,7 @@ export async function getUserQqBotProfile(userId: number): Promise<UserQqBotProf
       createdAt: binding.createdAt,
       updatedAt: binding.updatedAt,
     } : null,
-    activeBindToken: activeToken ? {
+    activeBindToken: !binding && activeToken ? {
       token: activeToken.token,
       expiresAt: activeToken.expiresAt,
     } : null,
@@ -306,12 +326,12 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, renderHelp(config.defaultBoardSlug));
     return { ok: true };
   }
-  if (isCommandMessage(messageText) && isBoardListCommand(messageText)) {
+  if ((isCommandMessage(messageText) || isPrivatePlainCommand(messageText, "板块")) && isBoardListCommand(normalizePrivatePlainCommand(messageText, "板块"))) {
     await logHandledInboundMessage(context, "message", "assistant:boards");
     await replyToEvent(context, await renderBoardList(config.defaultBoardSlug, groupId));
     return { ok: true };
   }
-  if (isCommandMessage(messageText) && isMyPostsCommand(messageText)) {
+  if ((isCommandMessage(messageText) || isPrivatePlainCommand(messageText, "我的投稿")) && isMyPostsCommand(normalizePrivatePlainCommand(messageText, "我的投稿"))) {
     if (event.message_type === "group") {
       await replyToEvent(context, "群聊里不支持查询个人投稿记录，请私聊我后再使用这个功能。");
       return { ok: true };
@@ -320,7 +340,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, await renderRecentQqTopics(qqId));
     return { ok: true };
   }
-  if (isCommandMessage(messageText) && /^[/／]状态(?:\s|$)/.test(messageText.trim())) {
+  if ((isCommandMessage(messageText) && /^[/／]状态(?:\s|$)/.test(messageText.trim())) || isPrivatePlainCommand(messageText, "状态")) {
     if (event.message_type === "group") {
       await replyToEvent(context, "群聊里不展示个人绑定状态，请私聊我后再查看。");
       return { ok: true };
@@ -329,7 +349,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, await renderBindingStatus(qqId, config, groupId));
     return { ok: true };
   }
-  if (isCommandMessage(messageText) && isUnbindCommand(messageText)) {
+  if ((isCommandMessage(messageText) || isPrivatePlainCommand(messageText, "解绑")) && isUnbindCommand(normalizePrivatePlainCommand(messageText, "解绑"))) {
     if (event.message_type === "group") {
       await replyToEvent(context, "群聊里不支持解绑个人账号，请私聊我后再操作。");
       return { ok: true };
@@ -338,7 +358,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, await unbindQqAccount(qqId));
     return { ok: true };
   }
-  const bindMatch = isCommandMessage(messageText) ? messageText.trim().match(/^\/绑定\s+([A-Z0-9]{6,16})$/i) : null;
+  const bindMatch = messageText.trim().match(/^(?:[/／])?绑定\s+([A-Z0-9]{6,16})$/i);
   if (bindMatch) {
     const result = await bindQqAccount({
       qqId,
@@ -478,6 +498,13 @@ async function bindQqAccount(input: { qqId: string; nickname?: string; token: st
   });
   if (!row || row.usedAt || row.expiresAt.getTime() < Date.now()) return "绑定码不存在或已过期，请在站内重新生成。";
   if (row.user.status === "banned") return "这个站内账号已被封禁，不能绑定 QQ。";
+  const existingBinding = await prisma.qqBotBinding.findFirst({
+    where: { userId: row.userId, enabled: true },
+    select: { qqId: true },
+  });
+  if (existingBinding && existingBinding.qqId !== input.qqId) {
+    return `该站内账号已绑定 QQ ${existingBinding.qqId}，如需更换请先在站内解绑。`;
+  }
   await prisma.$transaction([
     prisma.qqBotBinding.upsert({
       where: { qqId: input.qqId },
@@ -1384,6 +1411,17 @@ function isUnbindCommand(text: string) {
 function isCommandMessage(text: string) {
   const normalized = text.trim();
   return normalized.startsWith("/") || normalized.startsWith("／");
+}
+
+function isPrivatePlainCommand(text: string, keyword: string) {
+  const normalized = text.trim();
+  return !isCommandMessage(normalized) && normalized === keyword;
+}
+
+function normalizePrivatePlainCommand(text: string, keyword: string) {
+  const normalized = text.trim();
+  if (normalized === keyword) return `/${keyword}`;
+  return normalized;
 }
 
 function isConfirmPublishMessage(text: string) {

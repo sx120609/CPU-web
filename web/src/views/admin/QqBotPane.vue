@@ -23,6 +23,10 @@
         </div>
 
         <el-form label-width="150px" class="config-form">
+          <el-form-item label="Bot QQ 号">
+            <el-input v-model="form.botQqId" placeholder="例如 123456789" />
+            <div class="form-tip">展示在个人中心，告诉用户应该在 QQ 里联系哪个 QQBot 账号。</div>
+          </el-form-item>
           <el-form-item label="WebSocket 地址">
             <el-input v-model="form.napcatBaseUrl" placeholder="例如 ws://127.0.0.1:3001" />
             <div class="form-tip">这是 CPU-web 后端连接 NapCat 的地址。NapCat 和后端不在同一台机器时，请填后端能访问到的内网或公网地址。</div>
@@ -236,6 +240,7 @@ const bindToken = ref<{ token: string; expiresAt: string } | null>(null);
 
 const form = reactive({
   enabled: false,
+  botQqId: "",
   napcatBaseUrl: "",
   accessToken: "",
   webhookSecret: "",
@@ -280,6 +285,7 @@ async function loadConfig() {
   config.value = await adminApi.qqBotConfig();
   Object.assign(form, {
     enabled: config.value.enabled,
+    botQqId: config.value.botQqId,
     napcatBaseUrl: config.value.napcatBaseUrl,
     accessToken: "",
     webhookSecret: config.value.webhookSecret,

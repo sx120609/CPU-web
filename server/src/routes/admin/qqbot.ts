@@ -15,6 +15,7 @@ export const qqBotAdminRouter = Router();
 
 const configPatchSchema = z.object({
   enabled: z.boolean().optional(),
+  botQqId: z.string().trim().max(40).optional(),
   napcatBaseUrl: z.string().trim().max(240).optional(),
   accessToken: z.string().trim().max(240).optional(),
   clearAccessToken: z.boolean().optional(),

@@ -85,6 +85,7 @@ export type SponsorConfig = {
 export type QqBotConfig = {
   id: number;
   enabled: boolean;
+  botQqId: string;
   napcatBaseUrl: string;
   hasAccessToken: boolean;
   accessTokenMasked: string;
@@ -211,6 +212,7 @@ export const adminApi = {
   qqBotConfig: () => request.get<QqBotConfig>("/admin/qqbot/config"),
   updateQqBotConfig: (payload: Partial<{
     enabled: boolean;
+    botQqId: string;
     napcatBaseUrl: string;
     accessToken: string;
     clearAccessToken: boolean;
