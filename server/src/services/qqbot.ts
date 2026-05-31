@@ -729,7 +729,7 @@ export async function connectQqBotWebSocket() {
         ? "连接已关闭"
         : `连接已关闭（code ${event?.code ?? "unknown"}${event?.reason ? `, ${String(event.reason)}` : ""}）`;
       if (event?.code === 1000) wsLastError = "";
-      else setWebSocketError(message);
+      else if (!wsLastError) setWebSocketError(message);
       scheduleWebSocketReconnect();
     });
     socket.addEventListener("error", (event: any) => {
