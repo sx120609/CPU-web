@@ -129,11 +129,15 @@ export async function getQqBotConfigRaw() {
   });
 }
 
+function readConfigBotQqId(config: any) {
+  return String(config?.botQqId || "").trim();
+}
+
 export function formatQqBotConfig(config: Awaited<ReturnType<typeof getQqBotConfigRaw>>): QqBotConfigView {
   return {
     id: config.id,
     enabled: config.enabled,
-    botQqId: config.botQqId,
+    botQqId: readConfigBotQqId(config),
     napcatBaseUrl: config.napcatBaseUrl,
     hasAccessToken: Boolean(config.accessToken),
     accessTokenMasked: maskSecret(config.accessToken),
@@ -244,7 +248,7 @@ export async function getUserQqBotProfile(userId: number): Promise<UserQqBotProf
 
   return {
     enabled: config.enabled,
-    botQqId: config.botQqId,
+    botQqId: readConfigBotQqId(config),
     defaultBoardSlug: config.defaultBoardSlug || "general",
     allowPrivatePost: config.allowPrivatePost,
     allowGroupPost: config.allowGroupPost,
@@ -752,6 +756,28 @@ async function handleConversationMessage(
       await replyToEvent(context, "标题至少 2 个字，请重新发送标题。");
       return { ok: true };
     }
+    const colonParsed = await detectBoardAndTitleInSingleLine(
+      normalizedText,
+      conversation.draftBoardSlug || context.config.defaultBoardSlug,
+      context.groupId,
+    );
+    if (colonParsed) {
+      const next = await prisma.qqBotConversation.update({
+        where: { id: conversation.id },
+        data: {
+          draftBoardSlug: colonParsed.board.slug,
+          draftTitle: colonParsed.title,
+          step: conversation.step === "await-forward-title" || (conversation.draftContent || "").trim()
+            ? "await-submit-confirm"
+            : "collect-content",
+        },
+      });
+      await replyToEvent(
+        context,
+        renderConversationPrompt(next, `我会把这篇稿子发到「${colonParsed.board.name}」，标题记成「${colonParsed.title}」。`),
+      );
+      return { ok: true };
+    }
     const boardSelection = await detectBoardSelectionInTitleStep(
       normalizedText,
       conversation.draftBoardSlug || context.config.defaultBoardSlug,
@@ -974,7 +1000,7 @@ function renderConversationPrompt(conversation: any, assistantHint?: string) {
     return [
       isRetitling ? "请发送新的标题。" : "请先发送标题。",
       "不想继续的话，发送“/取消”。",
-      !isRetitling ? "如果你想指定投稿区，可以先说“投稿到树洞”之类的话。" : "",
+      !isRetitling ? "如果你想指定投稿区，也可以直接说“投稿到树洞”，或者发“树洞：标题”。" : "",
       assistantHint || "",
     ].join("\n");
   }
@@ -1061,7 +1087,7 @@ async function parseConversationTitle(text: string, defaultBoardSlug: string, gr
 
 async function detectBoardSelectionInTitleStep(text: string, defaultBoardSlug: string, groupId?: string) {
   const normalized = text.trim();
-  const match = normalized.match(/^(?:发到|投稿到|发去|投到)(.+)$/);
+  const match = normalized.match(/^(?:发到|投稿到|发去|投到|发在|放到)(.+)$/);
   if (!match) return null;
   const target = match[1].trim();
   if (!target) return null;
@@ -1078,10 +1104,83 @@ async function detectBoardSelectionInTitleStep(text: string, defaultBoardSlug: s
     select: { slug: true, name: true },
     take: 50,
   });
+  const aliasMap = buildBoardAliasMap(boards);
+  const aliasHit = aliasMap.get(normalizeBoardAliasKey(target));
+  if (aliasHit) return aliasHit;
   const exact = boards.find((board) => board.name === target || board.slug === target);
   if (exact) return exact;
   const fuzzy = boards.find((board) => target.includes(board.name) || board.name.includes(target));
   return fuzzy ?? null;
+}
+
+async function detectBoardAndTitleInSingleLine(text: string, defaultBoardSlug: string, groupId?: string) {
+  const normalized = text.trim();
+  const match = normalized.match(/^(.+?)[：:]\s*(.+)$/);
+  if (!match) return null;
+  const boardHint = match[1].trim();
+  const title = match[2].trim();
+  if (title.length < 2) return null;
+  const board = await detectBoardSelectionInTitleStep(`投稿到${boardHint}`, defaultBoardSlug, groupId);
+  if (!board) return null;
+  return { board, title: title.slice(0, 120) };
+}
+
+function buildBoardAliasMap(boards: Array<{ slug: string; name: string }>) {
+  const map = new Map<string, { slug: string; name: string }>();
+  for (const board of boards) {
+    const keys = new Set<string>([
+      normalizeBoardAliasKey(board.slug),
+      normalizeBoardAliasKey(board.name),
+    ]);
+    for (const alias of boardAliasCandidates(board.slug, board.name)) {
+      keys.add(normalizeBoardAliasKey(alias));
+    }
+    for (const key of keys) {
+      if (key) map.set(key, board);
+    }
+  }
+  return map;
+}
+
+function normalizeBoardAliasKey(value: string) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, "");
+}
+
+function boardAliasCandidates(slug: string, name: string) {
+  const out = new Set<string>([slug, name]);
+  if (slug === "general") {
+    out.add("默认板块");
+    out.add("默认投稿区");
+    out.add("默认区");
+    out.add("总板块");
+    out.add("灌水");
+    out.add("灌水广场");
+  }
+  if (slug === "treehole") {
+    out.add("树洞");
+  }
+  if (slug === "life") {
+    out.add("校园生活");
+    out.add("生活");
+  }
+  if (slug === "freshman") {
+    out.add("新生");
+    out.add("新生入学");
+  }
+  if (slug === "question") {
+    out.add("提问");
+    out.add("提问广场");
+    out.add("求助");
+  }
+  if (slug === "market") {
+    out.add("二手");
+    out.add("二手市场");
+  }
+  if (slug === "coursereview") {
+    out.add("课评");
+    out.add("课程点评");
+  }
+  return [...out];
 }
 
 function buildPostCommandFromDraft(boardSlug: string, title: string, content: string, groupId?: string, defaultBoardSlug?: string) {
