@@ -54,13 +54,10 @@
         <p id="activeMeta">任务链接、统计、提交记录和缺交名单会集中显示在这里。</p>
       </div>
       <div class="top-actions">
-        <span class="admin-badge">管理员</span>
         <button id="editTask" disabled>编辑任务</button>
         <button id="copyLink" disabled>复制链接</button>
         <button id="showQr" disabled>二维码</button>
         <button id="openFileManager" disabled>文件管理</button>
-        <button id="openSettings">系统设置</button>
-        <button id="logout">退出</button>
       </div>
     </header>
 
@@ -273,30 +270,6 @@
       <input id="fileSearch" placeholder="搜索文件名、姓名、编号">
     </div>
     <div id="fileManager" class="file-manager"></div>
-  </dialog>
-
-  <dialog id="settingsDialog">
-    <div class="dialog-head">
-      <div>
-        <h2>系统设置</h2>
-        <p class="hint">反向代理到域名后，在这里设置对外访问地址。</p>
-      </div>
-      <button id="closeSettings" class="icon-button">×</button>
-    </div>
-    <label>站点标题
-      <input id="siteTitle" placeholder="例如 班级文件收集系统">
-    </label>
-    <label>站点地址
-      <input id="siteUrl" placeholder="例如 https://files.example.com">
-    </label>
-    <p class="hint">留空时使用当前访问地址。设置后，提交链接和二维码都会使用该地址。</p>
-    <div class="dialog-actions">
-      <button id="saveSettings" class="primary">保存设置</button>
-      <button id="clearSiteUrl">清空</button>
-    </div>
-    <p id="settingsMessage" class="message"></p>
-
-    <p id="passwordMessage" class="message" hidden></p>
   </dialog>
 
   <dialog id="confirmDialog">

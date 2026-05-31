@@ -62,10 +62,10 @@ function openStandalone() {
 .filestore-page {
   min-height: calc(100vh - 64px);
   background: #f6f8fb;
-  padding: 18px;
+  padding: 14px 22px 22px;
 }
 .filestore-head {
-  max-width: 1180px;
+  width: min(1680px, 100%);
   margin: 0 auto 12px;
   display: flex;
   align-items: center;
@@ -89,9 +89,9 @@ function openStandalone() {
   justify-content: flex-end;
 }
 .filestore-frame-shell {
-  max-width: 1180px;
-  height: calc(100vh - 152px);
-  min-height: 680px;
+  width: min(1680px, 100%);
+  height: calc(100vh - 126px);
+  min-height: 760px;
   margin: 0 auto;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -99,7 +99,7 @@ function openStandalone() {
   overflow: hidden;
 }
 .filestore-state {
-  max-width: 1180px;
+  width: min(1680px, 100%);
   min-height: 420px;
   margin: 0 auto;
   border: 1px solid #e5e7eb;

@@ -326,19 +326,6 @@ p { color: var(--muted); }
   flex-wrap: wrap;
 }
 
-.admin-badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 32px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface-2);
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 700;
-}
-
 .empty-dashboard {
   display: grid;
   place-items: center;
@@ -672,12 +659,6 @@ p { color: var(--muted); }
   gap: 8px;
   margin-top: 12px;
   justify-content: flex-end;
-}
-
-.settings-divider {
-  height: 1px;
-  margin: 18px 0 14px;
-  background: var(--line);
 }
 
 .table-wrap {
@@ -1382,10 +1363,6 @@ progress {
     display: grid;
     grid-template-columns: 1fr;
     align-items: stretch;
-  }
-
-  .top-actions .admin-badge {
-    justify-content: center;
   }
 
   .table-tools input,

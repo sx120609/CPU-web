@@ -114,19 +114,6 @@ async function login(password) {
   location.href = `/login?redirect=${encodeURIComponent("/services/tools/filestore")}`;
 }
 
-async function logout() {
-  await fetch("/api/admin/logout", { method: "POST", credentials: "same-origin", headers: authHeaders() }).catch(() => undefined);
-  state.tasks = [];
-  state.current = null;
-  state.detail = null;
-  $("#taskList").innerHTML = "";
-  $("#dashboard").hidden = true;
-  $("#emptyDashboard").hidden = false;
-  $("#activeTitle").textContent = "请选择或新建任务";
-  $("#activeMeta").textContent = "任务链接、统计、提交记录和缺交名单会集中显示在这里。";
-  setAuthed(false);
-}
-
 function toast(text, type = "") {
   const inline = $("#createMessage");
   if (inline) {
@@ -227,13 +214,13 @@ function localDateTime(iso) {
 
 function absoluteSubmitUrl(task) {
   if (!task) return "";
-  const base = (state.settings.siteUrl || location.origin).replace(/\/+$/, "");
+  const base = location.origin.replace(/\/+$/, "");
   return `${base}${task.submitUrl}`;
 }
 
 function absoluteStatusUrl(task) {
   if (!task) return "";
-  const base = (state.settings.siteUrl || location.origin).replace(/\/+$/, "");
+  const base = location.origin.replace(/\/+$/, "");
   return `${base}/status/${task.token}`;
 }
 
@@ -489,45 +476,6 @@ async function loadTasks({ silent = false } = {}) {
   }
 }
 
-async function saveSettings(siteUrl) {
-  const settings = await api("/api/settings", {
-    method: "POST",
-    body: JSON.stringify({ siteUrl, siteTitle: $("#siteTitle").value }),
-  });
-  state.settings = normalizeSettings(settings);
-  renderTemplateSelect(state.templateKey);
-  applyBranding();
-  if (state.current) renderDetail(state.current);
-  return settings;
-}
-
-async function changePassword() {
-  const currentPassword = $("#currentPassword").value;
-  const newPassword = $("#newPassword").value;
-  const confirmPassword = $("#confirmPassword").value;
-  if (newPassword !== confirmPassword) throw new Error("两次输入的新密码不一致");
-  const ok = await confirmInApp({
-    title: "修改管理员密码",
-    body: "修改成功后当前登录会失效，需要用新密码重新登录。",
-    okText: "修改密码",
-  });
-  if (!ok) return;
-  const response = await fetch("/api/admin/password", {
-    method: "POST",
-    credentials: "same-origin",
-    headers: headers(),
-    body: JSON.stringify({ currentPassword, newPassword }),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || "修改密码失败");
-  $("#currentPassword").value = "";
-  $("#newPassword").value = "";
-  $("#confirmPassword").value = "";
-  $("#settingsDialog").close();
-  toast("密码已修改，请重新登录", "ok");
-  setAuthed(false);
-}
-
 async function saveTemplate() {
   const name = await promptInApp({
     title: "保存当前模板",
@@ -556,8 +504,6 @@ async function saveTemplate() {
   const settings = await api("/api/settings", {
     method: "POST",
     body: JSON.stringify({
-      siteUrl: state.settings.siteUrl || "",
-      siteTitle: state.settings.siteTitle || "Filestore",
       taskTemplates: [...templates, template],
     }),
   });
@@ -583,8 +529,6 @@ async function deleteSelectedTemplate() {
   const settings = await api("/api/settings", {
     method: "POST",
     body: JSON.stringify({
-      siteUrl: state.settings.siteUrl || "",
-      siteTitle: state.settings.siteTitle || "Filestore",
       taskTemplates: templates,
     }),
   });
@@ -1139,32 +1083,6 @@ function bind() {
       $("#loginMessage").className = "message error";
     }
   });
-  $("#logout").addEventListener("click", safe(logout));
-  $("#openSettings").addEventListener("click", safe(() => {
-    $("#siteTitle").value = state.settings.siteTitle || "Filestore";
-    $("#siteUrl").value = state.settings.siteUrl || "";
-    $("#settingsMessage").textContent = "";
-    $("#settingsDialog").showModal();
-  }));
-  $("#closeSettings").addEventListener("click", () => $("#settingsDialog").close());
-  $("#clearSiteUrl").addEventListener("click", () => {
-    $("#siteUrl").value = "";
-  });
-  $("#saveSettings").addEventListener("click", safe(async () => {
-    $("#settingsMessage").textContent = "正在保存...";
-    $("#settingsMessage").className = "message";
-    const settings = await saveSettings($("#siteUrl").value);
-    $("#siteTitle").value = settings.siteTitle || "Filestore";
-    $("#siteUrl").value = settings.siteUrl || "";
-    $("#settingsMessage").textContent = "设置已保存";
-    $("#settingsMessage").className = "message ok";
-    toast("系统设置已保存", "ok");
-  }));
-  $("#changePassword")?.addEventListener("click", safe(async () => {
-    $("#passwordMessage").textContent = "正在修改...";
-    $("#passwordMessage").className = "message";
-    await changePassword();
-  }));
   $("#newTask").addEventListener("click", safe(() => openEditor(null)));
   $("#emptyNewTask").addEventListener("click", safe(() => openEditor(null)));
   $("#editTask").addEventListener("click", safe(() => openEditor(state.current)));
