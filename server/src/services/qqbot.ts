@@ -944,7 +944,7 @@ function renderConversationPrompt(conversation: any, assistantHint?: string) {
     const isRetitling = /重新发一个标题|重新标题|改标题|新标题/.test(String(assistantHint || ""));
     return [
       isRetitling ? "请发送新的标题。" : "请先发送标题。",
-      "如果想取消，发送“/取消”。",
+      "不想继续的话，发送“/取消”。",
       assistantHint || "",
     ].join("\n");
   }
@@ -958,12 +958,13 @@ function renderConversationPrompt(conversation: any, assistantHint?: string) {
   }
   if (conversation.step === "await-ai-post-confirm") {
     return [
-      `我先帮你整理了一版草稿：`,
+      "我先帮你整理了一版草稿：",
       conversation.draftBoardSlug ? `板块：${conversation.draftBoardSlug}` : "",
       conversation.draftTitle ? `标题：${conversation.draftTitle}` : "",
       conversation.draftContent ? `正文预览：${conversation.draftContent.slice(0, 120)}${conversation.draftContent.length > 120 ? "..." : ""}` : "",
       assistantHint || "",
-      "如果可以直接发，请回复“是”；想改标题就回复“改标题”；想继续补正文就直接发内容。",
+      "如果可以直接发，请回复“是”。",
+      "想改标题就回复“改标题”；想继续补正文就直接发内容。",
     ].filter(Boolean).join("\n");
   }
   if (conversation.step === "await-submit-confirm") {
@@ -974,14 +975,14 @@ function renderConversationPrompt(conversation: any, assistantHint?: string) {
       conversation.draftContent ? `正文预览：${conversation.draftContent.slice(0, 160)}${conversation.draftContent.length > 160 ? "..." : ""}` : "",
       assistantHint || "",
       "确认发布请回复“确认发布”或“是”。",
-      "想改标题请回复“改标题”，想继续补正文就直接发内容。",
+      "想改标题请回复“改标题”；想继续补正文就直接发内容；不想发了就回复“/取消”。",
     ].filter(Boolean).join("\n");
   }
   if (conversation.step === "await-forward-title") {
     return [
       "好的，请发送这篇投稿的标题。",
       "正文我会使用刚才的转发内容。",
-      "取消请发送“/取消”。",
+      "不想继续的话，发送“/取消”。",
       assistantHint || "",
     ].join("\n");
   }
@@ -990,7 +991,7 @@ function renderConversationPrompt(conversation: any, assistantHint?: string) {
       `标题已记录：${conversation.draftTitle || "未命名"}`,
       "接下来请逐条发送正文内容。",
       "每发一条我会自动换行拼接。",
-      "全部完成后发送“/结束”，取消请发“/取消”。",
+      "全部完成后发送“/结束”。不想继续的话，发送“/取消”。",
       assistantHint || "",
     ].join("\n");
   }
@@ -1456,14 +1457,14 @@ function isGreetingMessage(text: string) {
 function renderHelp(defaultBoardSlug: string) {
   return [
     "药大拾间 QQBot：",
-    "/绑定 绑定码 - 绑定站内账号",
-    "/状态 - 查看绑定状态和投稿开关",
-    "/板块 - 查看可投稿板块",
-    "/我的投稿 - 查看最近投稿记录",
-    "/解绑 - 解除当前 QQ 绑定",
-    "/投稿 - 开始分步投稿",
-    "/结束 - 提交当前投稿",
-    "/取消 - 取消当前投稿",
+    "绑定 绑定码 - 绑定站内账号",
+    "状态 - 查看绑定状态和投稿开关",
+    "板块 - 查看可投稿板块",
+    "我的投稿 - 查看最近投稿记录",
+    "解绑 - 解除当前 QQ 绑定",
+    "投稿 - 开始分步投稿",
+    "结束 - 提交当前投稿",
+    "取消 - 取消当前投稿",
     "",
     "也可以直接说“我想投稿”或发送一段想发的内容，我会尽量按对话帮你整理。",
     "",
@@ -1476,7 +1477,7 @@ function renderGreetingReply(defaultBoardSlug: string) {
     "我在。",
     "如果你想投稿，可以直接说“我想投稿”，或者发送“/投稿”开始分步投稿。",
     `默认投稿区是 ${defaultBoardSlug}。`,
-    "其他常用命令：/帮助 /状态 /板块 /我的投稿",
+    "常用命令：帮助 / 状态 / 板块 / 我的投稿",
   ].join("\n");
 }
 
@@ -1484,7 +1485,7 @@ function renderPrivateFallbackReply() {
   return [
     "我收到啦。",
     "你可以直接告诉我你想做什么，比如：投稿、查状态、看板块、看最近投稿。",
-    "也可以发：帮助 / 状态 / 板块 / 我的投稿 / 投稿",
+    "常用命令：帮助 / 状态 / 板块 / 我的投稿 / 投稿",
   ].join("\n");
 }
 
@@ -1559,7 +1560,7 @@ async function renderBindingStatus(
   if (!binding?.enabled) {
     return [
       "当前 QQ 尚未绑定站内账号。",
-      "请先在站内生成绑定码，然后发送：绑定 绑定码",
+      "请先在站内生成绑定码，然后私聊我发送：绑定 绑定码",
       `默认投稿区：${defaultBoardSlug}`,
       `私聊投稿：${config.allowPrivatePost ? "已开启" : "未开启"}`,
       `群内投稿：${config.allowGroupPost ? "已开启" : "未开启"}`,
@@ -1610,7 +1611,7 @@ async function renderBoardList(defaultBoardSlug: string, groupId?: string) {
     lines.push(...closedHints.slice(0, 4));
   }
   lines.push("", "示例：");
-  lines.push("投稿 标题");
+  lines.push("直接说“我想投稿”，或者发送“投稿 标题”");
   lines.push("正文");
   lines.push("如果想指定投稿区，可以先发“板块”看看名称，再告诉我你想发到哪里。");
   return lines.join("\n");
