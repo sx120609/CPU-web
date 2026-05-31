@@ -126,10 +126,12 @@ do_install() {
   npm install --no-audit --no-fund
   # 显式 prisma generate（npm install 不会触发 schema 变化的 generate）
   log "生成 Prisma Client"
-  npm run prisma:generate --prefix server
+  npm run prisma:generate --prefix server || err "Prisma Client 生成失败，请检查 Prisma 环境"
 }
 
 do_build() {
+  log "构建前再次生成 Prisma Client"
+  npm run prisma:generate --prefix server || err "构建前 Prisma Client 生成失败"
   log "构建后端 TypeScript → server/dist"
   npm run build --prefix server
   log "构建前端 Vite → web/dist"
@@ -137,6 +139,8 @@ do_build() {
 }
 
 do_build_proxy() {
+  log "代理构建前再次生成 Prisma Client"
+  npm run prisma:generate --prefix server || err "代理构建前 Prisma Client 生成失败"
   log "构建代理端后端 TypeScript → server/dist"
   npm run build --prefix server
 }
@@ -150,10 +154,14 @@ do_db_init() {
       warn "调用 heal-migrations.js 自动修复 migration 历史 ..."
       node scripts/heal-migrations.js
     fi
+    log "migration 完成后再次生成 Prisma Client"
+    npm run prisma:generate
     cd ..
   else
     log "首次初始化数据库（migrate + seed）"
     npm run db:setup
+    log "首次初始化后再次生成 Prisma Client"
+    npm run prisma:generate --prefix server
   fi
 }
 

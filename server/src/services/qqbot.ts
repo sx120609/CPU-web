@@ -323,6 +323,11 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     return { ok: true };
   }
 
+  if (!isCommandMessage(messageText) && isGreetingMessage(messageText)) {
+    await replyToEvent(context, renderGreetingReply(context.config.defaultBoardSlug));
+    return { ok: true };
+  }
+
   if (!isCommandMessage(messageText)) {
     const aiHandled = await handleNaturalLanguageMessage(context);
     if (aiHandled) return aiHandled;
@@ -596,8 +601,16 @@ async function handleConversationMessage(
   }
 
   if (conversation.step === "collect-content") {
-    if (isCommandMessage(text) && /^\/结束\b/.test(text)) {
+    if (/(^|\n)\s*\/结束\s*$/m.test(text)) {
       try {
+        const normalizedText = context.messageText.replace(/(^|\n)\s*\/结束\s*$/m, "").trim();
+        if (normalizedText) {
+          const nextContent = mergeConversationContent(conversation.draftContent || "", normalizedText);
+          await prisma.qqBotConversation.update({
+            where: { id: conversation.id },
+            data: { draftContent: nextContent },
+          });
+        }
         const result = await submitConversationPost(conversation.id, context);
         await replyToEvent(context, result.message);
         return { ok: true, topicId: result.topicId };
@@ -1143,6 +1156,12 @@ function isCommandMessage(text: string) {
   return text.trim().startsWith("/");
 }
 
+function isGreetingMessage(text: string) {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) return false;
+  return /^(你好|您好|哈喽|hello|hi|嗨|在吗|有人吗|bot|qqbot)[!！。?？ ]*$/.test(normalized);
+}
+
 function renderHelp(defaultBoardSlug: string) {
   return [
     "药大拾间 QQBot：",
@@ -1158,6 +1177,15 @@ function renderHelp(defaultBoardSlug: string) {
     "也可以直接说“我想投稿”或发送一段想发的内容，我会尽量按对话帮你整理。",
     "",
     `默认板块：${defaultBoardSlug}`,
+  ].join("\n");
+}
+
+function renderGreetingReply(defaultBoardSlug: string) {
+  return [
+    "我在。",
+    "如果你想投稿，可以直接说“我想投稿”，或者发送“/投稿”开始分步投稿。",
+    `默认板块是 ${defaultBoardSlug}。`,
+    "其他常用命令：/帮助 /状态 /板块 /我的投稿",
   ].join("\n");
 }
 
