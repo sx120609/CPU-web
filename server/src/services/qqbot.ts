@@ -333,7 +333,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
   }
   if ((isCommandMessage(messageText) || isPrivatePlainCommand(messageText, "我的投稿")) && isMyPostsCommand(normalizePrivatePlainCommand(messageText, "我的投稿"))) {
     if (event.message_type === "group") {
-      await replyToEvent(context, "群聊里不支持查询个人投稿记录，请私聊我后再使用这个功能。");
+      await replyToEvent(context, "这个功能只支持私聊使用。请私聊我后发送“我的投稿”。");
       return { ok: true };
     }
     await logHandledInboundMessage(context, "message", "assistant:recent-posts");
@@ -342,7 +342,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
   }
   if ((isCommandMessage(messageText) && /^[/／]状态(?:\s|$)/.test(messageText.trim())) || isPrivatePlainCommand(messageText, "状态")) {
     if (event.message_type === "group") {
-      await replyToEvent(context, "群聊里不展示个人绑定状态，请私聊我后再查看。");
+      await replyToEvent(context, "这个功能只支持私聊使用。请私聊我后发送“状态”。");
       return { ok: true };
     }
     await logHandledInboundMessage(context, "message", "assistant:status");
@@ -351,7 +351,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
   }
   if ((isCommandMessage(messageText) || isPrivatePlainCommand(messageText, "解绑")) && isUnbindCommand(normalizePrivatePlainCommand(messageText, "解绑"))) {
     if (event.message_type === "group") {
-      await replyToEvent(context, "群聊里不支持解绑个人账号，请私聊我后再操作。");
+      await replyToEvent(context, "这个功能只支持私聊使用。请私聊我后发送“解绑”。");
       return { ok: true };
     }
     await logHandledInboundMessage(context, "message", "assistant:unbind");
@@ -371,14 +371,22 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
   }
   if (messageText.trim().match(/^(?:[/／])?绑定(?:\s|$)/i)) {
     await logHandledInboundMessage(context, "message", "assistant:bind-hint");
-    await replyToEvent(context, "绑定需要使用站内生成的绑定码。请先在个人中心生成绑定码，再私聊发送：绑定 绑定码");
+    await replyToEvent(context, [
+      "绑定需要使用站内生成的绑定码。",
+      "请先到个人中心生成绑定码，再私聊发送：",
+      "绑定 绑定码",
+    ].join("\n"));
     return { ok: true };
   }
   if (isCommandMessage(messageText) && /^[/／]投稿(?:\s|$)/.test(messageText.trim())) {
     if (event.message_type === "group") {
       await replyToEvent(
         context,
-        "群聊投稿只支持“@bot + 合并转发内容”这一种方式。请先转发要投稿的内容，并在同一条消息里 @我 说明要投稿。",
+        [
+          "群聊投稿只支持这一种方式：",
+          "回复一条合并转发消息，并在同一条消息里 @我 说明要投稿。",
+          "如果是普通文字投稿，请改用私聊。",
+        ].join("\n"),
       );
       return { ok: true };
     }
@@ -955,9 +963,9 @@ function renderConversationPrompt(conversation: any, assistantHint?: string) {
   }
   if (conversation.step === "await-forward-confirm") {
     return [
-      "我收到了疑似合并转发内容。",
+      "我收到了你回复的合并转发内容。",
       conversation.sourceSummary ? `内容摘要：${conversation.sourceSummary}` : "",
-      "如果要投稿，请回复“是”；不想投稿请回复“否”或“/取消”。",
+      "如果要投稿，请回复“是”。不想投稿请回复“否”或“取消”。",
       assistantHint || "",
     ].filter(Boolean).join("\n");
   }
@@ -969,7 +977,7 @@ function renderConversationPrompt(conversation: any, assistantHint?: string) {
       conversation.draftContent ? `正文预览：${conversation.draftContent.slice(0, 120)}${conversation.draftContent.length > 120 ? "..." : ""}` : "",
       assistantHint || "",
       "如果可以直接发，请回复“是”。",
-      "想改标题就回复“改标题”；想继续补正文就直接发内容。",
+      "想改标题就回复“改标题”。想继续补正文就直接发内容。",
     ].filter(Boolean).join("\n");
   }
   if (conversation.step === "await-submit-confirm") {
@@ -980,14 +988,14 @@ function renderConversationPrompt(conversation: any, assistantHint?: string) {
       conversation.draftContent ? `正文预览：${conversation.draftContent.slice(0, 160)}${conversation.draftContent.length > 160 ? "..." : ""}` : "",
       assistantHint || "",
       "确认发布请回复“确认发布”或“是”。",
-      "想改标题请回复“改标题”；想继续补正文就直接发内容；不想发了就回复“/取消”。",
+      "想改标题请回复“改标题”。想继续补正文就直接发内容。不想发了就回复“取消”。",
     ].filter(Boolean).join("\n");
   }
   if (conversation.step === "await-forward-title") {
     return [
       "好的，请发送这篇投稿的标题。",
       "正文我会使用刚才的转发内容。",
-      "不想继续的话，发送“/取消”。",
+      "不想继续的话，发送“取消”。",
       assistantHint || "",
     ].join("\n");
   }
@@ -996,7 +1004,7 @@ function renderConversationPrompt(conversation: any, assistantHint?: string) {
       `标题已记录：${conversation.draftTitle || "未命名"}`,
       "接下来请逐条发送正文内容。",
       "每发一条我会自动换行拼接。",
-      "全部完成后发送“/结束”。不想继续的话，发送“/取消”。",
+      "全部完成后发送“结束”。不想继续的话，发送“取消”。",
       assistantHint || "",
     ].join("\n");
   }
@@ -1461,17 +1469,17 @@ function isGreetingMessage(text: string) {
 
 function renderHelp(defaultBoardSlug: string) {
   return [
-    "药大拾间 QQBot：",
-    "绑定 绑定码 - 绑定站内账号",
-    "状态 - 查看绑定状态和投稿开关",
-    "板块 - 查看可投稿板块",
-    "我的投稿 - 查看最近投稿记录",
-    "解绑 - 解除当前 QQ 绑定",
-    "投稿 - 开始分步投稿",
-    "结束 - 提交当前投稿",
-    "取消 - 取消当前投稿",
+    "我能帮你做这些事：",
+    "绑定 绑定码：绑定站内账号",
+    "状态：查看绑定状态和投稿开关",
+    "板块：查看可投稿板块",
+    "我的投稿：查看最近投稿记录",
+    "解绑：解除当前 QQ 绑定",
+    "投稿：开始分步投稿",
+    "结束：提交当前投稿",
+    "取消：取消当前投稿",
     "",
-    "也可以直接说“我想投稿”或发送一段想发的内容，我会尽量按对话帮你整理。",
+    "你也可以直接说“我想投稿”，我会一步步带你完成。",
     "",
     `默认投稿区：${defaultBoardSlug}`,
   ].join("\n");
@@ -1480,7 +1488,7 @@ function renderHelp(defaultBoardSlug: string) {
 function renderGreetingReply(defaultBoardSlug: string) {
   return [
     "我在。",
-    "如果你想投稿，可以直接说“我想投稿”，或者发送“/投稿”开始分步投稿。",
+    "如果你想投稿，可以直接说“我想投稿”，或者发送“投稿”开始分步投稿。",
     `默认投稿区是 ${defaultBoardSlug}。`,
     "常用命令：帮助 / 状态 / 板块 / 我的投稿",
   ].join("\n");
@@ -1490,7 +1498,7 @@ function renderPrivateFallbackReply() {
   return [
     "我收到啦。",
     "你可以直接告诉我你想做什么，比如：投稿、查状态、看板块、看最近投稿。",
-    "常用命令：帮助 / 状态 / 板块 / 我的投稿 / 投稿",
+    "如果不确定怎么说，发“帮助”就行。",
   ].join("\n");
 }
 
@@ -1565,7 +1573,7 @@ async function renderBindingStatus(
   if (!binding?.enabled) {
     return [
       "当前 QQ 尚未绑定站内账号。",
-      "请先在站内生成绑定码，然后私聊我发送：绑定 绑定码",
+      "请先在站内生成绑定码，再私聊我发送：绑定 绑定码",
       `默认投稿区：${defaultBoardSlug}`,
       `私聊投稿：${config.allowPrivatePost ? "已开启" : "未开启"}`,
       `群内投稿：${config.allowGroupPost ? "已开启" : "未开启"}`,
@@ -1616,9 +1624,8 @@ async function renderBoardList(defaultBoardSlug: string, groupId?: string) {
     lines.push(...closedHints.slice(0, 4));
   }
   lines.push("", "示例：");
-  lines.push("直接说“我想投稿”，或者发送“投稿 标题”");
-  lines.push("正文");
-  lines.push("如果想指定投稿区，可以先发“板块”看看名称，再告诉我你想发到哪里。");
+  lines.push("直接说“我想投稿”，我会一步步带你填写。");
+  lines.push("如果你已经想好内容，也可以直接发“投稿 标题”，下一行开始写正文。");
   return lines.join("\n");
 }
 
@@ -1698,6 +1705,7 @@ async function inferQqBotIntent(context: {
         "你只能输出 JSON。",
         "你只能在这些能力范围内判断意图：帮助、绑定码绑定、查看状态、查看板块、查看最近投稿、开始投稿、普通闲聊。",
         "如果用户提到绑定，但没有提供绑定码，不要猜测学号、工号、密码等内容，也不要要求用户输入这些信息。",
+        "不要编造不存在的业务规则或命令。",
         "请判断用户这句话更像是在：求帮助、查状态、查板块、查最近投稿、开始投稿、普通闲聊，或者需要你直接回复一句简短提示。",
         "如果用户明显表达了想发帖/投稿/搬运内容，也可以抽取标题、正文、板块 slug。",
       ].join("\n"),
@@ -1717,7 +1725,7 @@ async function inferQqBotIntent(context: {
     return { intent } as QqBotAiIntent;
   }
   if (intent === "reply") {
-    return { intent: "reply", message: String(parsed.message || "如果你想投稿，可以直接说“我想投稿”，我会一步步带你发。").slice(0, 300) } as QqBotAiIntent;
+    return { intent: "reply", message: String(parsed.message || "如果你想投稿，可以直接说“我想投稿”，我会一步步带你完成。").slice(0, 300) } as QqBotAiIntent;
   }
   if (intent === "start-post") {
     return {
@@ -1773,7 +1781,7 @@ async function generateAssistantReply(
         "你是校园论坛 QQBot 助手。",
         "你只能围绕这些功能回复：帮助、绑定码绑定、查看状态、查看板块、查看最近投稿、投稿助手。",
         "不要要求用户输入学号、工号、密码，也不要编造任何不存在的绑定流程。",
-        "请根据用户消息给出一段简短自然的回复。",
+        "请根据用户消息给出一段简短、明确、不会引起歧义的回复。",
         "如果用户像是在投稿、求助发帖、发树洞、发二手或课程评价，请尽量同时整理出建议板块 slug、建议标题、建议正文。",
         "只返回 JSON。",
       ].join("\n"),
