@@ -369,6 +369,11 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, result);
     return { ok: true };
   }
+  if (messageText.trim().match(/^(?:[/／])?绑定(?:\s|$)/i)) {
+    await logHandledInboundMessage(context, "message", "assistant:bind-hint");
+    await replyToEvent(context, "绑定需要使用站内生成的绑定码。请先在个人中心生成绑定码，再私聊发送：绑定 绑定码");
+    return { ok: true };
+  }
   if (isCommandMessage(messageText) && /^[/／]投稿(?:\s|$)/.test(messageText.trim())) {
     if (event.message_type === "group") {
       await replyToEvent(
@@ -1691,6 +1696,8 @@ async function inferQqBotIntent(context: {
       content: [
         "你是校园论坛 QQBot 的意图识别助手。",
         "你只能输出 JSON。",
+        "你只能在这些能力范围内判断意图：帮助、绑定码绑定、查看状态、查看板块、查看最近投稿、开始投稿、普通闲聊。",
+        "如果用户提到绑定，但没有提供绑定码，不要猜测学号、工号、密码等内容，也不要要求用户输入这些信息。",
         "请判断用户这句话更像是在：求帮助、查状态、查板块、查最近投稿、开始投稿、普通闲聊，或者需要你直接回复一句简短提示。",
         "如果用户明显表达了想发帖/投稿/搬运内容，也可以抽取标题、正文、板块 slug。",
       ].join("\n"),
@@ -1764,6 +1771,8 @@ async function generateAssistantReply(
       role: "system",
       content: [
         "你是校园论坛 QQBot 助手。",
+        "你只能围绕这些功能回复：帮助、绑定码绑定、查看状态、查看板块、查看最近投稿、投稿助手。",
+        "不要要求用户输入学号、工号、密码，也不要编造任何不存在的绑定流程。",
         "请根据用户消息给出一段简短自然的回复。",
         "如果用户像是在投稿、求助发帖、发树洞、发二手或课程评价，请尽量同时整理出建议板块 slug、建议标题、建议正文。",
         "只返回 JSON。",
