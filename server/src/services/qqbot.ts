@@ -75,7 +75,7 @@ type OneBotEvent = {
 };
 
 type QqConversationScene = "post" | "forward-post";
-type QqConversationStep = "await-title" | "collect-content" | "await-forward-confirm" | "await-forward-title";
+type QqConversationStep = "await-title" | "collect-content" | "await-forward-confirm" | "await-forward-title" | "await-ai-post-confirm";
 type ParsedForwardPayload = {
   summary: string;
   content: string;
@@ -90,6 +90,14 @@ type QqBotAiIntent =
   | { intent: "recent-posts" }
   | { intent: "start-post"; title?: string; content?: string; boardSlug?: string }
   | { intent: "reply"; message: string };
+
+type QqBotAssistantReply = {
+  reply: string;
+  suggestedBoardSlug?: string;
+  suggestedTitle?: string;
+  suggestedContent?: string;
+  confidence?: "low" | "medium" | "high";
+};
 
 const CONFIG_ID = 1;
 const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "like", "system"];
@@ -374,25 +382,31 @@ async function handleNaturalLanguageMessage(context: {
     return { ok: true, ai: true };
   }
   if (intent.intent === "reply") {
-    await replyToEvent(context, intent.message.slice(0, 500));
+    const assistantReply = await generateAssistantReply(context, intent.message).catch(() => null);
+    await replyToEvent(context, (assistantReply?.reply || intent.message).slice(0, 500));
     return { ok: true, ai: true };
   }
   if (intent.intent === "start-post") {
     const conversation = await startPostConversation(context);
     let nextConversation = conversation;
-    if (intent.title?.trim()) {
-      const parsed = await parseConversationTitle(intent.title.trim(), conversation.draftBoardSlug || context.config.defaultBoardSlug, context.groupId);
+    const suggested = await generateAssistantReply(context, "请根据用户刚才的话整理投稿草稿").catch(() => null);
+    const draftTitle = (intent.title || suggested?.suggestedTitle || "").trim();
+    const draftContent = (intent.content || suggested?.suggestedContent || "").trim();
+    const draftBoardSlug = (intent.boardSlug || suggested?.suggestedBoardSlug || "").trim();
+    if (draftTitle) {
+      const parsed = await parseConversationTitle(draftTitle, conversation.draftBoardSlug || context.config.defaultBoardSlug, context.groupId);
       nextConversation = await prisma.qqBotConversation.update({
         where: { id: conversation.id },
         data: {
           draftTitle: parsed.title,
-          draftBoardSlug: intent.boardSlug || parsed.boardSlug,
-          draftContent: (intent.content || "").trim(),
-          step: "collect-content",
+          draftBoardSlug: draftBoardSlug || parsed.boardSlug,
+          draftContent: draftContent,
+          step: draftContent ? "await-ai-post-confirm" : "collect-content",
         },
       });
     }
-    await replyToEvent(context, renderConversationPrompt(nextConversation));
+    const reply = renderConversationPrompt(nextConversation, suggested?.reply);
+    await replyToEvent(context, reply);
     return { ok: true, ai: true };
   }
   return null;
@@ -582,6 +596,46 @@ async function handleConversationMessage(
     return { ok: true };
   }
 
+  if (conversation.step === "await-ai-post-confirm") {
+    if (/^(是|好|好的|继续|发送|确认|就这样|可以)$/i.test(text)) {
+      if ((conversation.draftContent || "").trim()) {
+        try {
+          const result = await submitConversationPost(conversation.id, context);
+          await replyToEvent(context, result.message);
+          return { ok: true, topicId: result.topicId };
+        } catch (error: any) {
+          const message = error?.message || "投稿失败";
+          await replyToEvent(context, `投稿失败：${message}`);
+          return { ok: false, error: message };
+        }
+      }
+      const next = await prisma.qqBotConversation.update({
+        where: { id: conversation.id },
+        data: { step: "collect-content" },
+      });
+      await replyToEvent(context, renderConversationPrompt(next, "好的，你继续把正文发给我。"));
+      return { ok: true };
+    }
+    if (/^(改标题|重新标题|换标题)$/i.test(text)) {
+      const next = await prisma.qqBotConversation.update({
+        where: { id: conversation.id },
+        data: { step: "await-title" },
+      });
+      await replyToEvent(context, renderConversationPrompt(next, "没问题，请重新发一个标题。"));
+      return { ok: true };
+    }
+    if (/^(补充|继续写|加正文)$/i.test(text)) {
+      const next = await prisma.qqBotConversation.update({
+        where: { id: conversation.id },
+        data: { step: "collect-content" },
+      });
+      await replyToEvent(context, renderConversationPrompt(next, "好的，继续把正文补充给我。"));
+      return { ok: true };
+    }
+    await replyToEvent(context, "如果这份草稿可以直接发，请回复“是”；想改标题就回复“改标题”；想继续补正文就直接发内容或回复“补充”。");
+    return { ok: true };
+  }
+
   if (conversation.step === "await-title" || conversation.step === "await-forward-title") {
     if (text.length < 2) {
       await replyToEvent(context, "标题至少 2 个字，请重新发送标题。");
@@ -596,7 +650,7 @@ async function handleConversationMessage(
         step: "collect-content",
       },
     });
-    await replyToEvent(context, renderConversationPrompt(next));
+    await replyToEvent(context, renderConversationPrompt(next, `我先帮你把标题定为「${parsed.title}」。`));
     return { ok: true };
   }
 
@@ -720,12 +774,13 @@ async function finishConversation(id: number, status: "done" | "cancelled") {
   }).catch(() => null);
 }
 
-function renderConversationPrompt(conversation: any) {
+function renderConversationPrompt(conversation: any, assistantHint?: string) {
   if (conversation.step === "await-title") {
     return [
       "开始投稿。",
       "请先发送标题。",
       "如果想取消，发送“/取消”。",
+      assistantHint || "",
     ].join("\n");
   }
   if (conversation.step === "await-forward-confirm") {
@@ -733,6 +788,17 @@ function renderConversationPrompt(conversation: any) {
       "我收到了疑似合并转发内容。",
       conversation.sourceSummary ? `内容摘要：${conversation.sourceSummary}` : "",
       "如果要投稿，请回复“是”；不想投稿请回复“否”或“/取消”。",
+      assistantHint || "",
+    ].filter(Boolean).join("\n");
+  }
+  if (conversation.step === "await-ai-post-confirm") {
+    return [
+      `我先帮你整理了一版草稿：`,
+      conversation.draftBoardSlug ? `板块：${conversation.draftBoardSlug}` : "",
+      conversation.draftTitle ? `标题：${conversation.draftTitle}` : "",
+      conversation.draftContent ? `正文预览：${conversation.draftContent.slice(0, 120)}${conversation.draftContent.length > 120 ? "..." : ""}` : "",
+      assistantHint || "",
+      "如果可以直接发，请回复“是”；想改标题就回复“改标题”；想继续补正文就直接发内容。",
     ].filter(Boolean).join("\n");
   }
   if (conversation.step === "await-forward-title") {
@@ -740,6 +806,7 @@ function renderConversationPrompt(conversation: any) {
       "好的，请发送这篇投稿的标题。",
       "正文我会使用刚才的转发内容。",
       "取消请发送“/取消”。",
+      assistantHint || "",
     ].join("\n");
   }
   if (conversation.step === "collect-content") {
@@ -748,6 +815,7 @@ function renderConversationPrompt(conversation: any) {
       "接下来请逐条发送正文内容。",
       "每发一条我会自动换行拼接。",
       "全部完成后发送“/结束”，取消请发“/取消”。",
+      assistantHint || "",
     ].join("\n");
   }
   return "请继续发送内容。";
@@ -1359,6 +1427,85 @@ function parseAiIntentJson(content: string) {
     }
     return { intent: "chat" };
   }
+}
+
+async function generateAssistantReply(
+  context: {
+    config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
+    event: OneBotEvent;
+    qqId: string;
+    groupId?: string;
+    messageText: string;
+  },
+  fallbackMessage: string,
+): Promise<QqBotAssistantReply> {
+  const boardList = await prisma.board.findMany({
+    where: {
+      readOnly: false,
+      type: { in: ["normal", "question", "market", "coursereview"] },
+    },
+    orderBy: { order: "asc" },
+    select: { slug: true, name: true, description: true, type: true },
+    take: 12,
+  });
+  const content = await requestAiJson([
+    {
+      role: "system",
+      content: [
+        "你是校园论坛 QQBot 助手。",
+        "请根据用户消息给出一段简短自然的回复。",
+        "如果用户像是在投稿、求助发帖、发树洞、发二手或课程评价，请尽量同时整理出建议板块 slug、建议标题、建议正文。",
+        "只返回 JSON。",
+      ].join("\n"),
+    },
+    {
+      role: "user",
+      content: [
+        '输出格式：{"reply":"","suggestedBoardSlug":"","suggestedTitle":"","suggestedContent":"","confidence":"low|medium|high"}',
+        `默认板块：${context.config.defaultBoardSlug}`,
+        `可选板块：${boardList.map((board) => `${board.slug}:${board.name}`).join("；")}`,
+        `用户消息：${context.messageText}`,
+        `兜底提示：${fallbackMessage}`,
+      ].join("\n"),
+    },
+  ]);
+  return parseAssistantReplyJson(content, fallbackMessage);
+}
+
+function parseAssistantReplyJson(content: string, fallbackMessage: string): QqBotAssistantReply {
+  if (!content || typeof content !== "string") return { reply: fallbackMessage };
+  try {
+    const parsed = JSON.parse(content);
+    return {
+      reply: String(parsed.reply || fallbackMessage).slice(0, 500),
+      suggestedBoardSlug: String(parsed.suggestedBoardSlug || "").trim() || undefined,
+      suggestedTitle: String(parsed.suggestedTitle || "").trim().slice(0, 120) || undefined,
+      suggestedContent: String(parsed.suggestedContent || "").trim().slice(0, 20000) || undefined,
+      confidence: normalizeAssistantConfidence(parsed.confidence),
+    };
+  } catch {
+    const match = content.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        const parsed = JSON.parse(match[0]);
+        return {
+          reply: String(parsed.reply || fallbackMessage).slice(0, 500),
+          suggestedBoardSlug: String(parsed.suggestedBoardSlug || "").trim() || undefined,
+          suggestedTitle: String(parsed.suggestedTitle || "").trim().slice(0, 120) || undefined,
+          suggestedContent: String(parsed.suggestedContent || "").trim().slice(0, 20000) || undefined,
+          confidence: normalizeAssistantConfidence(parsed.confidence),
+        };
+      } catch {
+        return { reply: fallbackMessage };
+      }
+    }
+    return { reply: fallbackMessage };
+  }
+}
+
+function normalizeAssistantConfidence(value: unknown): "low" | "medium" | "high" | undefined {
+  if (value === "low" || value === "medium" || value === "high") return value;
+  return undefined;
 }
 
 function parseStringArray(value: string, fallback: string[]) {
