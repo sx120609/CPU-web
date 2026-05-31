@@ -327,7 +327,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
 
   if (isCommandMessage(messageText) && isHelpCommand(messageText)) {
     await logHandledInboundMessage(context, "message", "assistant:help");
-    await replyToEvent(context, renderHelp(config.defaultBoardSlug));
+    await replyToEvent(context, await renderHelp(config.defaultBoardSlug));
     return { ok: true };
   }
   if ((isCommandMessage(messageText) || isPrivatePlainCommand(messageText, "板块")) && isBoardListCommand(normalizePrivatePlainCommand(messageText, "板块"))) {
@@ -396,19 +396,19 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     }
     const conversation = await startPostConversation(context);
     await logHandledInboundMessage(context, "message", "assistant:start-post");
-    await replyToEvent(context, renderConversationPrompt(conversation, "如果方便，建议前往客户端完成投稿，编辑体验会更好。"));
+    await replyToEvent(context, await renderConversationPrompt(conversation, "如果方便，建议前往客户端完成投稿，编辑体验会更好。"));
     return { ok: true };
   }
   if (!isCommandMessage(messageText) && forwardPayload && shouldHandleForwardPostInContext(context)) {
     const conversation = await startForwardPostConversation(context, forwardPayload);
     await logHandledInboundMessage(context, "message", "assistant:forward-detected");
-    await replyToEvent(context, renderConversationPrompt(conversation));
+    await replyToEvent(context, await renderConversationPrompt(conversation));
     return { ok: true };
   }
 
   if (!isCommandMessage(messageText) && isGreetingMessage(messageText) && shouldAssistantAutoReply(context)) {
     await logHandledInboundMessage(context, "message", "assistant:greeting");
-    await replyToEvent(context, renderGreetingReply(context.config.defaultBoardSlug));
+    await replyToEvent(context, await renderGreetingReply(context.config.defaultBoardSlug));
     return { ok: true };
   }
 
@@ -463,7 +463,7 @@ async function handleNaturalLanguageMessage(context: {
   }
   if (intent.intent === "help") {
     await logHandledInboundMessage(context, "message", "assistant:help");
-    await replyToEvent(context, renderHelp(context.config.defaultBoardSlug));
+    await replyToEvent(context, await renderHelp(context.config.defaultBoardSlug));
     return { ok: true, ai: true };
   }
   if (intent.intent === "status") {
@@ -506,7 +506,7 @@ async function handleNaturalLanguageMessage(context: {
         },
       });
     }
-    const reply = renderConversationPrompt(
+    const reply = await renderConversationPrompt(
       nextConversation,
       [suggested?.reply, "如果方便，建议前往客户端完成投稿，编辑体验会更好。"].filter(Boolean).join("\n"),
     );
@@ -697,7 +697,7 @@ async function handleConversationMessage(
         where: { id: conversation.id },
         data: { step: "await-forward-title" },
       });
-      await replyToEvent(context, renderConversationPrompt(next));
+      await replyToEvent(context, await renderConversationPrompt(next));
       return { ok: true };
     }
     if (/^(否|不要|取消|算了)$/i.test(text)) {
@@ -727,7 +727,7 @@ async function handleConversationMessage(
         where: { id: conversation.id },
         data: { step: "collect-content" },
       });
-      await replyToEvent(context, renderConversationPrompt(next, "好的，你继续把正文发给我。"));
+      await replyToEvent(context, await renderConversationPrompt(next, "好的，你继续把正文发给我。"));
       return { ok: true };
     }
     if (/^(改标题|重新标题|换标题)$/i.test(text)) {
@@ -735,7 +735,7 @@ async function handleConversationMessage(
         where: { id: conversation.id },
         data: { step: "await-title" },
       });
-      await replyToEvent(context, renderConversationPrompt(next, "好的，请发送新的标题。"));
+      await replyToEvent(context, await renderConversationPrompt(next, "好的，请发送新的标题。"));
       return { ok: true };
     }
     if (/^(补充|继续写|加正文)$/i.test(text)) {
@@ -743,7 +743,7 @@ async function handleConversationMessage(
         where: { id: conversation.id },
         data: { step: "collect-content" },
       });
-      await replyToEvent(context, renderConversationPrompt(next, "好的，继续把正文补充给我。"));
+      await replyToEvent(context, await renderConversationPrompt(next, "好的，继续把正文补充给我。"));
       return { ok: true };
     }
     await replyToEvent(context, "如果这份草稿可以直接发，请回复“是”；想改标题就回复“改标题”；想继续补正文就直接发内容或回复“补充”。");
@@ -774,7 +774,7 @@ async function handleConversationMessage(
       });
       await replyToEvent(
         context,
-        renderConversationPrompt(next, `我会把这篇稿子发到「${colonParsed.board.name}」，标题记成「${colonParsed.title}」。`),
+        await renderConversationPrompt(next, `我会把这篇稿子发到「${colonParsed.board.name}」，标题记成「${colonParsed.title}」。`),
       );
       return { ok: true };
     }
@@ -790,7 +790,7 @@ async function handleConversationMessage(
       });
       await replyToEvent(
         context,
-        renderConversationPrompt(next, `好的，这篇稿子会发到「${boardSelection.name}」。现在请发送标题。`),
+        await renderConversationPrompt(next, `好的，这篇稿子会发到「${boardSelection.name}」。现在请发送标题。`),
       );
       return { ok: true };
     }
@@ -813,7 +813,7 @@ async function handleConversationMessage(
         step: shouldReturnToConfirm ? "await-submit-confirm" : "collect-content",
       },
     });
-    await replyToEvent(context, renderConversationPrompt(
+    await replyToEvent(context, await renderConversationPrompt(
       next,
       conversation.step === "await-forward-title"
         ? `标题我记成「${parsed.title}」了，正文我会直接使用你刚才回复的那条合并转发内容。`
@@ -839,7 +839,7 @@ async function handleConversationMessage(
           step: "await-submit-confirm",
         },
       });
-      await replyToEvent(context, renderConversationPrompt(next, "我先帮你整理好，确认后再正式发布。"));
+      await replyToEvent(context, await renderConversationPrompt(next, "我先帮你整理好，确认后再正式发布。"));
       return { ok: true };
     }
 
@@ -877,7 +877,7 @@ async function handleConversationMessage(
         where: { id: conversation.id },
         data: { step: "await-title" },
       });
-      await replyToEvent(context, renderConversationPrompt(next, "好的，请发送新的标题。"));
+      await replyToEvent(context, await renderConversationPrompt(next, "好的，请发送新的标题。"));
       return { ok: true };
     }
     if (/^(补充|继续写|继续补充|改正文|继续修改)$/i.test(text)) {
@@ -885,7 +885,7 @@ async function handleConversationMessage(
         where: { id: conversation.id },
         data: { step: "collect-content" },
       });
-      await replyToEvent(context, renderConversationPrompt(next, "好的，继续把正文补充给我。"));
+      await replyToEvent(context, await renderConversationPrompt(next, "好的，继续把正文补充给我。"));
       return { ok: true };
     }
     if (!isCommandMessage(text)) {
@@ -897,7 +897,7 @@ async function handleConversationMessage(
           step: "collect-content",
         },
       });
-      await replyToEvent(context, renderConversationPrompt(next, "我把这段也补进正文里了。"));
+      await replyToEvent(context, await renderConversationPrompt(next, "我把这段也补进正文里了。"));
       return { ok: true };
     }
     await replyToEvent(context, "如果可以发布，请回复“确认发布”或“是”；想改标题回复“改标题”；想继续补正文就直接发内容。");
@@ -994,7 +994,8 @@ async function finishConversation(id: number, status: "done" | "cancelled") {
   }).catch(() => null);
 }
 
-function renderConversationPrompt(conversation: any, assistantHint?: string) {
+async function renderConversationPrompt(conversation: any, assistantHint?: string) {
+  const boardDisplayName = conversation.draftBoardSlug ? await resolveBoardDisplayName(conversation.draftBoardSlug) : "";
   if (conversation.step === "await-title") {
     const isRetitling = /重新发一个标题|重新标题|改标题|新标题/.test(String(assistantHint || ""));
     return [
@@ -1015,7 +1016,7 @@ function renderConversationPrompt(conversation: any, assistantHint?: string) {
   if (conversation.step === "await-ai-post-confirm") {
     return [
       "我先帮你整理了一版草稿：",
-      conversation.draftBoardSlug ? `板块：${conversation.draftBoardSlug}` : "",
+      boardDisplayName ? `投稿区：${boardDisplayName}` : "",
       conversation.draftTitle ? `标题：${conversation.draftTitle}` : "",
       conversation.draftContent ? `正文预览：${conversation.draftContent.slice(0, 120)}${conversation.draftContent.length > 120 ? "..." : ""}` : "",
       assistantHint || "",
@@ -1026,7 +1027,7 @@ function renderConversationPrompt(conversation: any, assistantHint?: string) {
   if (conversation.step === "await-submit-confirm") {
     return [
       "投稿确认：",
-      conversation.draftBoardSlug ? `板块：${conversation.draftBoardSlug}` : "",
+      boardDisplayName ? `投稿区：${boardDisplayName}` : "",
       conversation.draftTitle ? `标题：${conversation.draftTitle}` : "",
       conversation.draftContent ? `正文预览：${conversation.draftContent.slice(0, 160)}${conversation.draftContent.length > 160 ? "..." : ""}` : "",
       assistantHint || "",
@@ -1608,7 +1609,8 @@ function isGreetingMessage(text: string) {
   return /^(你好|您好|哈喽|hello|hi|嗨|在吗|有人吗|bot|qqbot)[!！。?？ ]*$/.test(normalized);
 }
 
-function renderHelp(defaultBoardSlug: string) {
+async function renderHelp(defaultBoardSlug: string) {
+  const defaultBoardName = await resolveBoardDisplayName(defaultBoardSlug);
   return [
     "我能帮你做这些事：",
     "绑定 绑定码：绑定站内账号",
@@ -1622,15 +1624,16 @@ function renderHelp(defaultBoardSlug: string) {
     "",
     "你也可以直接说“我想投稿”，我会一步步带你完成。",
     "",
-    `默认投稿区：${defaultBoardSlug}`,
+    `默认投稿区：${defaultBoardName}`,
   ].join("\n");
 }
 
-function renderGreetingReply(defaultBoardSlug: string) {
+async function renderGreetingReply(defaultBoardSlug: string) {
+  const defaultBoardName = await resolveBoardDisplayName(defaultBoardSlug);
   return [
     "我在。",
     "如果你想投稿，可以直接说“我想投稿”，或者发送“投稿”开始分步投稿。",
-    `默认投稿区是 ${defaultBoardSlug}。`,
+    `默认投稿区是 ${defaultBoardName}。`,
     "常用命令：帮助 / 状态 / 板块 / 我的投稿",
   ].join("\n");
 }
@@ -1711,18 +1714,19 @@ async function renderBindingStatus(
   });
   const group = groupId ? await prisma.qqBotGroup.findUnique({ where: { groupId } }) : null;
   const defaultBoardSlug = group?.defaultBoardSlug || config.defaultBoardSlug || "general";
+  const defaultBoardName = await resolveBoardDisplayName(defaultBoardSlug);
   if (!binding?.enabled) {
     return [
       "当前 QQ 尚未绑定站内账号。",
       "请先在站内生成绑定码，再私聊我发送：绑定 绑定码",
-      `默认投稿区：${defaultBoardSlug}`,
+      `默认投稿区：${defaultBoardName}`,
       `私聊投稿：${config.allowPrivatePost ? "已开启" : "未开启"}`,
       `群内投稿：${config.allowGroupPost ? "已开启" : "未开启"}`,
     ].join("\n");
   }
   return [
     `已绑定：${binding.user.nickname}（${binding.user.username}）`,
-    `默认投稿区：${defaultBoardSlug}`,
+    `默认投稿区：${defaultBoardName}`,
     `私聊投稿：${config.allowPrivatePost ? "已开启" : "未开启"}`,
     `群内投稿：${config.allowGroupPost ? "已开启" : "未开启"}`,
     "命令：板块 / 我的投稿 / 解绑",
@@ -1774,6 +1778,13 @@ function buildTopicLink(topicId: number) {
   const origin = getSiteOrigin();
   if (!origin) return "";
   return `${origin}/forum/topic/${topicId}`;
+}
+
+async function resolveBoardDisplayName(slug?: string | null) {
+  const normalized = String(slug || "").trim();
+  if (!normalized) return "默认投稿区";
+  const board = await prisma.board.findUnique({ where: { slug: normalized }, select: { name: true } }).catch(() => null);
+  return board?.name || normalized;
 }
 
 async function renderRecentQqTopics(qqId: string) {
@@ -1979,7 +1990,7 @@ async function polishConversationDraft(
       step: "await-submit-confirm",
     },
   });
-  return renderConversationPrompt(next, parsed.reply);
+  return await renderConversationPrompt(next, parsed.reply);
 }
 
 function parseAssistantReplyJson(content: string, fallbackMessage: string): QqBotAssistantReply {
