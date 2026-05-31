@@ -752,6 +752,22 @@ async function handleConversationMessage(
       await replyToEvent(context, "标题至少 2 个字，请重新发送标题。");
       return { ok: true };
     }
+    const boardSelection = await detectBoardSelectionInTitleStep(
+      normalizedText,
+      conversation.draftBoardSlug || context.config.defaultBoardSlug,
+      context.groupId,
+    );
+    if (boardSelection) {
+      const next = await prisma.qqBotConversation.update({
+        where: { id: conversation.id },
+        data: { draftBoardSlug: boardSelection.slug },
+      });
+      await replyToEvent(
+        context,
+        renderConversationPrompt(next, `好的，这篇稿子会发到「${boardSelection.name}」。现在请发送标题。`),
+      );
+      return { ok: true };
+    }
     const [firstLine, ...restLines] = normalizedText.split(/\r?\n/);
     const titleCandidate = firstLine.trim();
     if (titleCandidate.length < 2) {
@@ -958,6 +974,7 @@ function renderConversationPrompt(conversation: any, assistantHint?: string) {
     return [
       isRetitling ? "请发送新的标题。" : "请先发送标题。",
       "不想继续的话，发送“/取消”。",
+      !isRetitling ? "如果你想指定投稿区，可以先说“投稿到树洞”之类的话。" : "",
       assistantHint || "",
     ].join("\n");
   }
@@ -1040,6 +1057,31 @@ function mergeConversationContent(existing: string, next: string) {
 
 async function parseConversationTitle(text: string, defaultBoardSlug: string, groupId?: string) {
   return parsePostCommand(`/投稿 ${text}`, defaultBoardSlug, groupId);
+}
+
+async function detectBoardSelectionInTitleStep(text: string, defaultBoardSlug: string, groupId?: string) {
+  const normalized = text.trim();
+  const match = normalized.match(/^(?:发到|投稿到|发去|投到)(.+)$/);
+  if (!match) return null;
+  const target = match[1].trim();
+  if (!target) return null;
+  const currentDefaultSlug = await resolveDefaultBoardSlug(defaultBoardSlug, groupId);
+  if (/^(默认板块|默认投稿区|默认区|默认)$/i.test(target)) {
+    const board = await prisma.board.findUnique({ where: { slug: currentDefaultSlug }, select: { slug: true, name: true } });
+    return board ? { slug: board.slug, name: board.name } : null;
+  }
+  const boards = await prisma.board.findMany({
+    where: {
+      readOnly: false,
+      type: { in: ["normal", "question", "market", "coursereview"] },
+    },
+    select: { slug: true, name: true },
+    take: 50,
+  });
+  const exact = boards.find((board) => board.name === target || board.slug === target);
+  if (exact) return exact;
+  const fuzzy = boards.find((board) => target.includes(board.name) || board.name.includes(target));
+  return fuzzy ?? null;
 }
 
 function buildPostCommandFromDraft(boardSlug: string, title: string, content: string, groupId?: string, defaultBoardSlug?: string) {
