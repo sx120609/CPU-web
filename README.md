@@ -183,6 +183,20 @@ cd server
 npm run db:migrate:sqlite-to-postgres
 ```
 
+如果你在服务器上是通过根目录 `deploy.sh` 管理部署，也可以直接用：
+
+```bash
+./deploy.sh postgres-config "postgresql://user:password@127.0.0.1:5432/cpu_web?schema=public"
+./deploy.sh postgres-dry-run
+./deploy.sh postgres-migrate
+./deploy.sh postgres-switch
+```
+
+- `postgres-config`：把 `POSTGRES_DATABASE_URL` 写入 `server/.env`，并刷新正在运行的后端环境。
+- `postgres-dry-run`：在服务器上试跑迁移脚本，不真正连接 PostgreSQL 写入数据。
+- `postgres-migrate`：在服务器上正式执行 SQLite -> PostgreSQL 主站迁移。
+- `postgres-switch`：把运行时 `DATABASE_URL` 切到 PostgreSQL，重建 Prisma Client / 后端并重启服务。
+
 常用参数：
 
 ```bash

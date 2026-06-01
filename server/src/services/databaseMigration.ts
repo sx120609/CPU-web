@@ -92,7 +92,11 @@ export function getDatabaseMigrationStatus(): DatabaseMigrationStatus {
     running: migrationRunning,
     maintenanceActive: isDatabaseMaintenanceActive(),
     maintenanceMessage: getDatabaseMaintenanceMessage(),
-    reason: support.reason ?? (support.targetConfigured ? null : "未配置 POSTGRES_DATABASE_URL，暂时无法开始正式迁移；但 dry-run 仍可使用"),
+    reason:
+      support.reason ??
+      (support.targetConfigured
+        ? null
+        : "未配置 POSTGRES_DATABASE_URL。可在服务器执行 ./deploy.sh postgres-config 'postgresql://...'；正式迁移暂不可用，但 dry-run 仍可使用"),
     lastRun,
   };
 }
