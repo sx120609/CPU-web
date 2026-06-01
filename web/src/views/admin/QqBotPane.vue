@@ -133,6 +133,31 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="record-list">
+        <article v-for="row in groups" :key="`group-${row.id}`" class="record-card">
+          <div class="record-head">
+            <div>
+              <b>{{ row.name || "未命名群" }}</b>
+              <span>{{ row.groupId }}</span>
+            </div>
+            <div class="group-meta-tags">
+              <el-tag :type="row.enabled ? 'success' : 'info'" size="small">{{ row.enabled ? "启用" : "停用" }}</el-tag>
+              <el-tag :type="row.allowPosting ? 'warning' : 'info'" size="small">投稿 {{ row.allowPosting ? "开" : "关" }}</el-tag>
+              <el-tag :type="row.notificationEnabled ? 'success' : 'info'" size="small">通知 {{ row.notificationEnabled ? "开" : "关" }}</el-tag>
+            </div>
+          </div>
+          <div class="record-meta">
+            <span>默认板块：{{ row.defaultBoardSlug || "未设置" }}</span>
+            <span>通知类型：{{ formatGroupNotifyCategories(row.notifyCategories).join(" / ") || "未设置" }}</span>
+            <span>通知受众：{{ formatGroupNotifyAudiences(row.notifyAudiences).join(" / ") || "未设置" }}</span>
+          </div>
+          <div class="record-actions">
+            <el-button link type="primary" @click="openGroupDialog(row)">编辑</el-button>
+            <el-button link type="danger" @click="removeGroup(row)">删除</el-button>
+          </div>
+        </article>
+        <el-empty v-if="!groups.length" description="暂无群配置" />
+      </div>
     </section>
 
     <section class="list-card">
@@ -162,6 +187,25 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="record-list">
+        <article v-for="row in bindings" :key="`binding-${row.id}`" class="record-card">
+          <div class="record-head">
+            <div>
+              <b>{{ row.user?.nickname || "未命名用户" }}</b>
+              <span>{{ row.user?.username }} · QQ {{ row.qqId }}</span>
+            </div>
+            <el-switch v-model="row.enabled" @change="toggleBinding(row)" />
+          </div>
+          <div class="record-meta">
+            <span>QQ 昵称：{{ row.nickname || "未记录" }}</span>
+            <span>站内身份：{{ row.user?.role || "user" }}</span>
+          </div>
+          <div class="record-actions">
+            <el-button link type="danger" @click="removeBinding(row)">解绑</el-button>
+          </div>
+        </article>
+        <el-empty v-if="!bindings.length" description="暂无绑定记录" />
+      </div>
     </section>
 
     <section class="list-card">
@@ -196,6 +240,26 @@
         <el-table-column prop="content" label="内容" min-width="220" show-overflow-tooltip />
         <el-table-column prop="result" label="结果" min-width="180" show-overflow-tooltip />
       </el-table>
+      <div class="record-list">
+        <article v-for="row in logs" :key="`log-${row.id}`" class="record-card">
+          <div class="record-head">
+            <div>
+              <b>{{ row.eventType }}</b>
+              <span>{{ new Date(row.createdAt).toLocaleString() }}</span>
+            </div>
+            <el-tag :type="row.status === 'ok' ? 'success' : row.status === 'ignored' ? 'info' : 'danger'" size="small" effect="plain">
+              {{ row.status }}
+            </el-tag>
+          </div>
+          <div class="record-meta">
+            <span v-if="row.qqId">QQ：{{ row.qqId }}</span>
+            <span v-if="row.groupId">群：{{ row.groupId }}</span>
+            <span>内容：{{ row.content || "—" }}</span>
+            <span>结果：{{ row.result || "—" }}</span>
+          </div>
+        </article>
+        <el-empty v-if="!logs.length" description="暂无日志" />
+      </div>
       <div class="pager">
         <el-pagination layout="prev, pager, next" :total="logTotal" :page-size="logFilter.size" v-model:current-page="logFilter.page" @current-change="loadLogs" />
       </div>
@@ -614,6 +678,55 @@ function saveBlob(blob: Blob, filename: string) {
   gap: 8px;
   justify-content: flex-end;
 }
+.list-card :deep(.el-table) {
+  display: none;
+}
+.record-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+.record-card {
+  border: 1px solid #e7edf5;
+  border-radius: 14px;
+  padding: 14px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.record-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.record-head b {
+  display: block;
+  color: #111827;
+  font-size: 14px;
+}
+.record-head span {
+  display: block;
+  margin-top: 2px;
+  color: #6b7280;
+  font-size: 12px;
+}
+.record-meta {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.record-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.record-list :deep(.el-empty) {
+  grid-column: 1 / -1;
+}
 .pager {
   display: flex;
   justify-content: flex-end;
@@ -628,6 +741,10 @@ function saveBlob(blob: Blob, filename: string) {
   .config-card,
   .list-card {
     padding: 12px;
+  }
+  .record-list {
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
   .card-head,
   .actions {

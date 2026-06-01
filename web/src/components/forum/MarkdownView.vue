@@ -1,5 +1,5 @@
 <template>
-  <div class="md" :class="{ 'md-clickable-images': clickableImages }" ref="el" v-html="html"></div>
+  <div class="md" :class="{ 'md-clickable-images': clickableImages }" ref="el" v-html="renderedHtml"></div>
 </template>
 
 <script setup lang="ts">
@@ -15,7 +15,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   clickableImages: false,
 });
-const html = computed(() => renderMarkdown(props.content));
+const renderedHtml = computed(() => enhanceRenderedHtml(renderMarkdown(props.content)));
 const el = ref<HTMLElement | null>(null);
 const viewerImageUrl = ref("");
 let imageViewer: Viewer | null = null;
@@ -39,23 +39,19 @@ function bindImageViewer() {
   const images = Array.from(el.value.querySelectorAll<HTMLImageElement>("img"));
   destroyImageViewer();
   images.forEach((img, index) => {
-    img.loading = "lazy";
-    img.decoding = "async";
-    img.setAttribute("fetchpriority", "low");
+    primeImageElement(img);
     if (props.clickableImages) {
       img.dataset.previewBound = "1";
       img.tabIndex = 0;
       img.setAttribute("role", "button");
       img.setAttribute("aria-label", "点击查看图片");
       img.onclick = () => {
-        if (tryOpenNativePreview(index)) return;
-        imageViewer?.view(index);
+        openImagePreview(index);
       };
       img.onkeydown = (event: KeyboardEvent) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          if (tryOpenNativePreview(index)) return;
-          imageViewer?.view(index);
+          openImagePreview(index);
         }
       };
     } else {
@@ -69,12 +65,41 @@ function bindImageViewer() {
   });
 
   if (!props.clickableImages || !images.length) return;
-  if (hasNativeImagePreviewBridge()) return;
+}
+
+function enhanceRenderedHtml(raw: string) {
+  if (!raw || typeof document === "undefined") return raw;
+  const container = document.createElement("div");
+  container.innerHTML = raw;
+  container.querySelectorAll<HTMLImageElement>("img").forEach((img) => {
+    primeImageElement(img);
+  });
+  return container.innerHTML;
+}
+
+function primeImageElement(img: HTMLImageElement) {
+  img.loading = "lazy";
+  img.decoding = "async";
+  img.setAttribute("fetchpriority", "low");
+  const rawSrc = img.getAttribute("src") || img.dataset.original || img.currentSrc || img.src;
+  if (rawSrc) img.dataset.original = rawSrc;
+}
+
+function openImagePreview(index: number) {
+  if (tryOpenNativePreview(index)) return;
+  ensureImageViewer();
+  imageViewer?.view(index);
+}
+
+function ensureImageViewer() {
+  if (!el.value || imageViewer || !props.clickableImages || hasNativeImagePreviewBridge()) return;
+  const images = Array.from(el.value.querySelectorAll<HTMLImageElement>("img"));
+  if (!images.length) return;
   const hasManyImages = images.length > 1;
   imageViewer = new Viewer(el.value, {
     className: "cpu-markdown-viewer",
     url: (image: HTMLImageElement) => getViewerImageUrl(image),
-    filter: (image: HTMLImageElement) => Boolean(image.src),
+    filter: (image: HTMLImageElement) => Boolean(getViewerImageUrl(image)),
     title: [1, (image: HTMLImageElement) => image.alt || previewFileName(getViewerImageUrl(image))],
     navbar: hasManyImages ? true : 0,
     button: true,
@@ -151,7 +176,7 @@ function destroyImageViewer() {
 }
 
 function getViewerImageUrl(image: HTMLImageElement) {
-  return image.dataset.original || image.currentSrc || image.src;
+  return image.dataset.original || image.getAttribute("src") || image.currentSrc || image.src;
 }
 
 async function saveViewerImage() {
@@ -211,11 +236,13 @@ onMounted(() => nextTick(bindImageViewer));
 onBeforeUnmount(() => {
   destroyImageViewer();
 });
-watch(html, () => nextTick(() => {
+watch(renderedHtml, () => nextTick(() => {
   wrapTables();
   bindImageViewer();
 }));
-watch(() => props.clickableImages, () => nextTick(bindImageViewer));
+watch(() => props.clickableImages, () => nextTick(() => {
+  bindImageViewer();
+}));
 </script>
 
 <style scoped>

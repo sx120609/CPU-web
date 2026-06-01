@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { copyFile, mkdtemp, open, rename, rm, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -6,10 +7,12 @@ import { prisma } from "../prisma";
 import { beginDatabaseMaintenance, endDatabaseMaintenance, getDatabaseMaintenanceMessage, isDatabaseMaintenanceActive } from "./maintenance";
 
 const SQLITE_HEADER = Buffer.from("SQLite format 3\0", "utf8");
+const PG_DUMP_COMMAND = process.env.PG_DUMP_BIN || "pg_dump";
 
 export type DatabaseBackupStatus = {
   supported: boolean;
-  provider: "sqlite-file" | "unsupported";
+  provider: "sqlite-file" | "postgresql" | "unsupported";
+  backupMethod: "sqlite-vacuum-into" | "pg-dump" | null;
   exists: boolean;
   maintenanceActive: boolean;
   maintenanceMessage: string;
@@ -22,6 +25,12 @@ export type DatabaseBackupStatus = {
 
 function databaseUrl() {
   return String(process.env.DATABASE_URL ?? "").trim().replace(/^"(.*)"$/, "$1");
+}
+
+function detectProvider(raw = databaseUrl()) {
+  if (raw.startsWith("file:")) return "sqlite-file" as const;
+  if (/^postgres(ql)?:\/\//i.test(raw)) return "postgresql" as const;
+  return "unsupported" as const;
 }
 
 function decodeFilePath(value: string) {
@@ -45,10 +54,32 @@ function resolveSqliteDatabasePath() {
   return path.resolve(process.cwd(), "prisma", target);
 }
 
+function parsePostgresUrl(raw: string) {
+  const parsed = new URL(raw);
+  return {
+    host: parsed.hostname || "127.0.0.1",
+    port: parsed.port || "5432",
+    user: decodeURIComponent(parsed.username || ""),
+    password: decodeURIComponent(parsed.password || ""),
+    database: parsed.pathname.replace(/^\/+/, ""),
+    sslmode: parsed.searchParams.get("sslmode") || "",
+  };
+}
+
 function displayPathLabel(filePath: string) {
   const relative = path.relative(process.cwd(), filePath);
   if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) return relative.replace(/\\/g, "/");
   return filePath;
+}
+
+function displayPostgresLabel(raw: string) {
+  try {
+    const parsed = parsePostgresUrl(raw);
+    const auth = parsed.user ? `${parsed.user}@` : "";
+    return `postgresql://${auth}${parsed.host}:${parsed.port}/${parsed.database || "(default)"}`;
+  } catch {
+    return raw.replace(/:[^:@/]+@/, ":***@");
+  }
 }
 
 function backupStamp(date = new Date()) {
@@ -61,8 +92,12 @@ function backupStamp(date = new Date()) {
   return `${yyyy}${mm}${dd}-${hh}${mi}${ss}`;
 }
 
-function backupFileName(date = new Date()) {
+function sqliteBackupFileName(date = new Date()) {
   return `cpu-web-db-backup-${backupStamp(date)}.sqlite`;
+}
+
+function postgresBackupFileName(date = new Date()) {
+  return `cpu-web-db-backup-${backupStamp(date)}.dump`;
 }
 
 function sqliteLiteral(value: string) {
@@ -95,53 +130,185 @@ async function verifyQuickCheck() {
   if (!ok) throw new Error("恢复后的数据库未通过 quick_check 校验");
 }
 
+function normalizeNumeric(value: unknown) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "bigint") return Number(value);
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+async function commandAvailable(command: string) {
+  return new Promise<boolean>((resolve) => {
+    const child = spawn(command, ["--version"], {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    child.once("error", () => resolve(false));
+    child.once("close", (code) => resolve(code === 0));
+  });
+}
+
+async function postgresDatabaseSize() {
+  const rows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>("SELECT pg_database_size(current_database()) AS size_bytes");
+  const value = rows[0] ? Object.values(rows[0])[0] : null;
+  return normalizeNumeric(value);
+}
+
+async function runPgDump(targetPath: string) {
+  const parsed = parsePostgresUrl(databaseUrl());
+  await new Promise<void>((resolve, reject) => {
+    const args = [
+      "--format=custom",
+      "--compress=9",
+      "--no-owner",
+      "--no-privileges",
+      "--file",
+      targetPath,
+      "--host",
+      parsed.host,
+      "--port",
+      parsed.port,
+    ];
+    if (parsed.user) args.push("--username", parsed.user);
+    args.push(parsed.database);
+
+    const child = spawn(PG_DUMP_COMMAND, args, {
+      windowsHide: true,
+      env: {
+        ...process.env,
+        ...(parsed.password ? { PGPASSWORD: parsed.password } : {}),
+        ...(parsed.sslmode ? { PGSSLMODE: parsed.sslmode } : {}),
+      },
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+
+    let stderr = "";
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    child.once("error", (error) => reject(error));
+    child.once("close", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(stderr.trim() || `pg_dump 失败，退出码 ${code ?? "unknown"}`));
+    });
+  });
+}
+
 export async function getDatabaseBackupStatus(): Promise<DatabaseBackupStatus> {
-  const dbPath = resolveSqliteDatabasePath();
-  if (!dbPath) {
+  const provider = detectProvider();
+
+  if (provider === "sqlite-file") {
+    const dbPath = resolveSqliteDatabasePath();
+    if (!dbPath) {
+      return {
+        supported: false,
+        provider: "unsupported",
+        backupMethod: null,
+        exists: false,
+        maintenanceActive: isDatabaseMaintenanceActive(),
+        maintenanceMessage: getDatabaseMaintenanceMessage(),
+        databasePathLabel: null,
+        sizeBytes: null,
+        updatedAt: null,
+        downloadFileName: null,
+        reason: "当前 DATABASE_URL 不是可直接下载的 SQLite 文件路径",
+      };
+    }
+
+    const fileStat = await stat(dbPath).catch(() => null);
     return {
-      supported: false,
-      provider: "unsupported",
-      exists: false,
+      supported: Boolean(fileStat),
+      provider: "sqlite-file",
+      backupMethod: "sqlite-vacuum-into",
+      exists: Boolean(fileStat),
       maintenanceActive: isDatabaseMaintenanceActive(),
       maintenanceMessage: getDatabaseMaintenanceMessage(),
-      databasePathLabel: null,
-      sizeBytes: null,
-      updatedAt: null,
-      downloadFileName: null,
-      reason: "当前 DATABASE_URL 不是可直接下载的 SQLite 文件路径",
+      databasePathLabel: displayPathLabel(dbPath),
+      sizeBytes: fileStat?.size ?? null,
+      updatedAt: fileStat?.mtime.toISOString() ?? null,
+      downloadFileName: sqliteBackupFileName(),
+      reason: fileStat ? null : "数据库文件当前不存在",
     };
   }
 
-  const fileStat = await stat(dbPath).catch(() => null);
+  if (provider === "postgresql") {
+    const raw = databaseUrl();
+    const pgDumpReady = await commandAvailable(PG_DUMP_COMMAND);
+    const sizeBytes = await postgresDatabaseSize().catch(() => null);
+    return {
+      supported: pgDumpReady,
+      provider: "postgresql",
+      backupMethod: pgDumpReady ? "pg-dump" : null,
+      exists: true,
+      maintenanceActive: isDatabaseMaintenanceActive(),
+      maintenanceMessage: getDatabaseMaintenanceMessage(),
+      databasePathLabel: displayPostgresLabel(raw),
+      sizeBytes,
+      updatedAt: null,
+      downloadFileName: postgresBackupFileName(),
+      reason: pgDumpReady ? null : `当前环境未找到 ${PG_DUMP_COMMAND}，无法导出 PostgreSQL 备份`,
+    };
+  }
+
   return {
-    supported: true,
-    provider: "sqlite-file",
-    exists: Boolean(fileStat),
+    supported: false,
+    provider: "unsupported",
+    backupMethod: null,
+    exists: false,
     maintenanceActive: isDatabaseMaintenanceActive(),
     maintenanceMessage: getDatabaseMaintenanceMessage(),
-    databasePathLabel: displayPathLabel(dbPath),
-    sizeBytes: fileStat?.size ?? null,
-    updatedAt: fileStat?.mtime.toISOString() ?? null,
-    downloadFileName: backupFileName(),
-    reason: fileStat ? null : "数据库文件当前不存在",
+    databasePathLabel: null,
+    sizeBytes: null,
+    updatedAt: null,
+    downloadFileName: null,
+    reason: "当前 DATABASE_URL 既不是 SQLite 文件也不是 PostgreSQL 连接串，暂不支持备份",
   };
 }
 
 export async function createDatabaseBackupSnapshot() {
-  const dbPath = resolveSqliteDatabasePath();
-  if (!dbPath) throw new Error("当前不是 SQLite 文件数据库，无法下载备份");
-  await stat(dbPath).catch(() => {
-    throw new Error("数据库文件不存在，无法下载备份");
-  });
+  const provider = detectProvider();
 
-  const tempDir = await mkdtemp(path.join(tmpdir(), "cpu-web-db-backup-"));
-  const snapshotPath = path.join(tempDir, `${path.basename(dbPath, path.extname(dbPath))}-${randomUUID()}.sqlite`);
-  await prisma.$executeRawUnsafe(`VACUUM INTO '${sqliteLiteral(snapshotPath)}'`);
-  return {
-    filePath: snapshotPath,
-    tempDir,
-    fileName: backupFileName(),
-  };
+  if (provider === "sqlite-file") {
+    const dbPath = resolveSqliteDatabasePath();
+    if (!dbPath) throw new Error("当前不是 SQLite 文件数据库，无法下载备份");
+    await stat(dbPath).catch(() => {
+      throw new Error("数据库文件不存在，无法下载备份");
+    });
+
+    const tempDir = await mkdtemp(path.join(tmpdir(), "cpu-web-db-backup-"));
+    const snapshotPath = path.join(tempDir, `${path.basename(dbPath, path.extname(dbPath))}-${randomUUID()}.sqlite`);
+    await prisma.$executeRawUnsafe(`VACUUM INTO '${sqliteLiteral(snapshotPath)}'`);
+    return {
+      filePath: snapshotPath,
+      tempDir,
+      fileName: sqliteBackupFileName(),
+      contentType: "application/vnd.sqlite3",
+    };
+  }
+
+  if (provider === "postgresql") {
+    if (!(await commandAvailable(PG_DUMP_COMMAND))) {
+      throw new Error(`当前环境未找到 ${PG_DUMP_COMMAND}，无法导出 PostgreSQL 备份`);
+    }
+
+    const tempDir = await mkdtemp(path.join(tmpdir(), "cpu-web-db-backup-"));
+    const snapshotPath = path.join(tempDir, `postgres-${randomUUID()}.dump`);
+    await runPgDump(snapshotPath);
+    return {
+      filePath: snapshotPath,
+      tempDir,
+      fileName: postgresBackupFileName(),
+      contentType: "application/octet-stream",
+    };
+  }
+
+  throw new Error("当前数据库类型暂不支持在线备份");
 }
 
 export async function cleanupDatabaseBackupSnapshot(snapshot: { filePath: string; tempDir: string }) {

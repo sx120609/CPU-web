@@ -736,7 +736,45 @@ async function deleteUser(row: any) {
 .forum-time { font-size: 12px; color: #6b7280; }
 .action-trigger { justify-content: center; }
 .more-icon { margin-left: 2px; transform: rotate(90deg); }
-.mobile-list { display: none; }
+.admin-table { display: none; }
+.mobile-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+  min-height: 120px;
+}
+.mobile-card {
+  padding: 14px;
+  border: 1px solid #e7edf5;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.mobile-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+.mobile-meta {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #6b7280;
+}
+.mobile-actions {
+  margin-top: 12px;
+}
+.mobile-actions :deep(.el-dropdown) {
+  width: 100%;
+}
+.mobile-action-trigger {
+  width: 100%;
+}
+.mobile-list :deep(.el-empty) {
+  grid-column: 1 / -1;
+}
 
 @media (max-width: 768px) {
   .filter-panel { padding: 10px; }
@@ -748,40 +786,9 @@ async function deleteUser(row: any) {
   .date-range { width: 100%; }
   .actions { justify-content: flex-start; margin-left: 0; }
   .actions :deep(.el-button) { flex: 1; min-width: 96px; margin-left: 0; }
-  .admin-table { display: none; }
   .mobile-list {
-    display: flex;
-    flex-direction: column;
+    grid-template-columns: 1fr;
     gap: 10px;
-    min-height: 120px;
-  }
-  .mobile-card {
-    padding: 12px;
-    border: 1px solid #eef0f4;
-    border-radius: 8px;
-    background: #fff;
-  }
-  .mobile-card-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 10px;
-  }
-  .mobile-meta {
-    display: grid;
-    gap: 4px;
-    margin-top: 10px;
-    font-size: 12px;
-    color: #6b7280;
-  }
-  .mobile-actions {
-    margin-top: 12px;
-  }
-  .mobile-actions :deep(.el-dropdown) {
-    width: 100%;
-  }
-  .mobile-action-trigger {
-    width: 100%;
   }
   .pager { overflow-x: auto; justify-content: flex-start; padding-bottom: 2px; }
   .users-pane :deep(.el-dialog) {

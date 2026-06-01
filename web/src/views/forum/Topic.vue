@@ -100,6 +100,31 @@
         <el-button v-if="canReviewTopicImages" link type="danger" @click="openTopicImageReviewDialog">手动复核图片</el-button>
       </div>
 
+      <div v-if="canAdminReviewTopicManual" class="topic-admin-review-tip cpu-card">
+        <div class="review-blocked">
+          <p>这篇稿件当前处于人工复核队列，可直接在这里处理。</p>
+          <p v-if="topic.aiReviewReason">AI 说明：{{ topic.aiReviewReason }}</p>
+          <p class="cpu-muted">通过后会立即公开展示；驳回后会继续隐藏，并给作者发送结果通知。</p>
+        </div>
+        <div class="topic-review-actions">
+          <el-button
+            type="success"
+            :loading="topicAdminReviewAction === 'approved'"
+            @click="approveTopicManualReview"
+          >
+            人工通过
+          </el-button>
+          <el-button
+            type="danger"
+            plain
+            :loading="topicAdminReviewAction === 'rejected'"
+            @click="rejectTopicManualReview"
+          >
+            人工驳回
+          </el-button>
+        </div>
+      </div>
+
       <div v-if="canRequestTopicManualReview" class="topic-review-tip cpu-card">
         <div class="review-blocked">
           <p>这篇稿件被 AI 拦截了，当前仅你自己和管理员可见。</p>
@@ -443,6 +468,7 @@ const requestingReplyManualReview = ref(false);
 const replyManualReviewConfirmOpen = ref(false);
 const requestingTopicManualReview = ref(false);
 const topicManualReviewConfirmOpen = ref(false);
+const topicAdminReviewAction = ref<"" | "approved" | "rejected">("");
 const blockedReplyId = ref<number | null>(null);
 const blockedReplyInfo = reactive<{ reason: string; riskScore: number | null }>({
   reason: "",
@@ -511,6 +537,11 @@ const canRequestTopicManualReview = computed(() => Boolean(
   auth.user?.id === topic.value?.authorId &&
   topic.value?.hidden &&
   topic.value?.aiReviewStatus === "blocked_ai"
+));
+const canAdminReviewTopicManual = computed(() => Boolean(
+  auth.isMod &&
+  topic.value?.hidden &&
+  ["manual_requested", "manual_reviewing"].includes(String(topic.value?.aiReviewStatus || ""))
 ));
 const isOwnTopicManualReviewPending = computed(() => Boolean(
   auth.isLoggedIn &&
@@ -770,6 +801,45 @@ async function confirmTopicManualReviewRequest() {
   }
 }
 
+async function approveTopicManualReview() {
+  if (!topic.value?.id || !canAdminReviewTopicManual.value) return;
+  await ElMessageBox.confirm("确认将这篇稿件人工审核通过并公开展示？", "人工通过", {
+    type: "warning",
+    confirmButtonText: "通过",
+    cancelButtonText: "取消",
+  });
+  topicAdminReviewAction.value = "approved";
+  try {
+    await adminApi.updateTopic(topic.value.id, {
+      aiReviewStatus: "approved_manual",
+      manualReviewNote: "管理员在稿件页人工审核通过",
+    });
+    await refreshTopicAfterAdminReview();
+    ElMessage.success("稿件已人工审核通过");
+  } finally {
+    topicAdminReviewAction.value = "";
+  }
+}
+
+async function rejectTopicManualReview() {
+  if (!topic.value?.id || !canAdminReviewTopicManual.value) return;
+  const { value } = await ElMessageBox.prompt("填写驳回说明（选填）", "人工驳回", {
+    inputPlaceholder: "例如：仍存在明显人身攻击 / 隐私泄露 / 引流信息",
+  }).catch(() => ({ value: null }));
+  if (value === null) return;
+  topicAdminReviewAction.value = "rejected";
+  try {
+    await adminApi.updateTopic(topic.value.id, {
+      aiReviewStatus: "rejected_manual",
+      manualReviewNote: value || "管理员在稿件页人工驳回",
+    });
+    await refreshTopicAfterAdminReview();
+    ElMessage.success("稿件已人工驳回");
+  } finally {
+    topicAdminReviewAction.value = "";
+  }
+}
+
 async function openTopicImageReviewDialog() {
   if (!topic.value?.id || !auth.isMod) return;
   topicImageReviewDialogOpen.value = true;
@@ -788,6 +858,12 @@ async function loadTopicImageReviewAssets() {
 }
 
 async function refreshTopicAfterImageReview() {
+  if (!topic.value?.id) return;
+  const nextTopic = await loadTopicDetail(topic.value.id);
+  if (nextTopic) topic.value = nextTopic;
+}
+
+async function refreshTopicAfterAdminReview() {
   if (!topic.value?.id) return;
   const nextTopic = await loadTopicDetail(topic.value.id);
   if (nextTopic) topic.value = nextTopic;
@@ -1175,6 +1251,12 @@ async function onDelete() {
 
 .topic-review-tip {
   margin-top: 12px;
+}
+
+.topic-admin-review-tip {
+  margin-top: 12px;
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
 }
 
 .topic-review-actions {

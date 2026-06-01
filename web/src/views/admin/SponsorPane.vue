@@ -101,6 +101,35 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="record-list">
+        <article v-for="row in orders" :key="row.id" class="record-card">
+          <div class="record-head">
+            <div>
+              <b>{{ row.outTradeNo }}</b>
+              <span>{{ row.user?.nickname || "-" }} <span class="muted">{{ row.user?.username }}</span></span>
+            </div>
+            <el-tag size="small" :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag>
+          </div>
+          <div class="record-meta">
+            <span>金额：¥{{ row.amount }}</span>
+            <span>方式：{{ row.payType || "—" }}</span>
+            <span>展示：{{ row.displayMode }}</span>
+            <span>留言：{{ row.message || "—" }}</span>
+            <span>时间：{{ row.paidAt ? fmtDate(row.paidAt) : fmtDate(row.createdAt) }}</span>
+          </div>
+          <div class="record-actions">
+            <el-select v-model="row.displayMode" size="small" @change="saveOrder(row, { displayMode: row.displayMode })">
+              <el-option label="公开" value="public" />
+              <el-option label="匿名" value="anonymous" />
+              <el-option label="隐藏" value="hidden" />
+            </el-select>
+            <el-button v-if="row.status === 'pending'" text size="small" @click="saveOrder(row, { status: 'closed' })">关闭</el-button>
+            <el-button v-if="row.status !== 'paid'" text size="small" type="warning" @click="markPaid(row)">标记已付</el-button>
+            <el-button text size="small" @click="editMessage(row)">改留言</el-button>
+          </div>
+        </article>
+        <el-empty v-if="!ordersLoading && !orders.length" description="暂无订单" />
+      </div>
       <el-pagination
         v-if="ordersTotal > filters.size"
         layout="prev, pager, next, total"
@@ -133,6 +162,25 @@
         <el-table-column prop="result" label="结果" min-width="130" />
         <el-table-column prop="rawPayload" label="原始参数" min-width="260" show-overflow-tooltip />
       </el-table>
+      <div class="record-list">
+        <article v-for="row in logs" :key="row.id" class="record-card">
+          <div class="record-head">
+            <div>
+              <b>{{ row.outTradeNo || "未匹配订单" }}</b>
+              <span>{{ fmtDate(row.createdAt) }}</span>
+            </div>
+            <div class="record-tag-stack">
+              <el-tag size="small" :type="row.signOk ? 'success' : 'danger'">{{ row.signOk ? "验签通过" : "验签失败" }}</el-tag>
+              <el-tag size="small" :type="row.handled ? 'success' : 'info'">{{ row.handled ? "已处理" : "未处理" }}</el-tag>
+            </div>
+          </div>
+          <div class="record-meta">
+            <span>结果：{{ row.result || "—" }}</span>
+            <span>原始参数：{{ row.rawPayload || "—" }}</span>
+          </div>
+        </article>
+        <el-empty v-if="!logsLoading && !logs.length" description="暂无回调日志" />
+      </div>
     </section>
   </div>
 </template>
@@ -257,6 +305,63 @@ async function editMessage(row: any) {
 .field--switch { align-items: center; flex-direction: row; justify-content: space-between; padding: 8px 0; }
 .filters { display: grid; grid-template-columns: minmax(0, 1fr) 140px 90px; gap: 8px; }
 .muted { color: #9ca3af; font-size: 12px; }
+.panel :deep(.el-table) { display: none; }
+.record-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+.record-card {
+  border: 1px solid #e7edf5;
+  border-radius: 14px;
+  padding: 14px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.record-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.record-head b {
+  display: block;
+  color: #111827;
+  font-size: 14px;
+}
+.record-head span {
+  display: block;
+  margin-top: 2px;
+  color: #6b7280;
+  font-size: 12px;
+}
+.record-tag-stack {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.record-meta {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.record-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 12px;
+}
+.record-actions :deep(.el-select) {
+  min-width: 120px;
+}
+.record-list :deep(.el-empty) {
+  grid-column: 1 / -1;
+}
 
 @media (max-width: 900px) {
   .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -264,5 +369,6 @@ async function editMessage(row: any) {
   .filters { grid-template-columns: 1fr; }
   .field--wide { grid-column: auto; }
   .panel-head { flex-direction: column; }
+  .record-list { grid-template-columns: 1fr; gap: 10px; }
 }
 </style>

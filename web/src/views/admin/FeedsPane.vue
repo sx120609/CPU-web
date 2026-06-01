@@ -180,7 +180,58 @@ async function runAll() {
 .feeds-pane { display: flex; flex-direction: column; gap: 12px; }
 .ctrl-bar { display: flex; gap: 10px; }
 .muted { color: #9ca3af; }
-.mobile-list { display: none; }
+.admin-table { display: none; }
+.mobile-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+  min-height: 120px;
+}
+.feed-card {
+  padding: 14px;
+  border: 1px solid #e7edf5;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.feed-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.feed-head b {
+  display: block;
+  color: #111827;
+  font-size: 14px;
+}
+.feed-head span {
+  display: block;
+  margin-top: 2px;
+  color: #6b7280;
+  font-size: 12px;
+}
+.feed-meta {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.feed-error { color: #dc2626; }
+.mobile-actions {
+  margin-top: 12px;
+}
+.mobile-actions :deep(.el-dropdown) {
+  width: 100%;
+}
+.mobile-action-trigger {
+  width: 100%;
+}
+.mobile-list :deep(.el-empty) {
+  grid-column: 1 / -1;
+}
 .action-trigger { justify-content: center; }
 .more-icon { margin-left: 2px; transform: rotate(90deg); }
 
@@ -193,53 +244,9 @@ async function runAll() {
     width: 100%;
     margin-left: 0;
   }
-  .admin-table { display: none; }
   .mobile-list {
-    display: flex;
-    flex-direction: column;
+    grid-template-columns: 1fr;
     gap: 10px;
-    min-height: 120px;
-  }
-  .feed-card {
-    padding: 12px;
-    border: 1px solid #eef0f4;
-    border-radius: 8px;
-    background: #fff;
-  }
-  .feed-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 12px;
-  }
-  .feed-head b {
-    display: block;
-    color: #111827;
-    font-size: 14px;
-  }
-  .feed-head span {
-    display: block;
-    margin-top: 2px;
-    color: #6b7280;
-    font-size: 12px;
-  }
-  .feed-meta {
-    display: grid;
-    gap: 5px;
-    margin-top: 10px;
-    color: #6b7280;
-    font-size: 12px;
-    line-height: 1.5;
-  }
-  .feed-error { color: #dc2626; }
-  .mobile-actions {
-    margin-top: 12px;
-  }
-  .mobile-actions :deep(.el-dropdown) {
-    width: 100%;
-  }
-  .mobile-action-trigger {
-    width: 100%;
   }
 }
 </style>

@@ -117,6 +117,12 @@
           <el-table-column prop="key" label="字段" min-width="150" />
           <el-table-column prop="value" label="值" min-width="260" show-overflow-tooltip />
         </el-table>
+        <div class="preview-card-list">
+          <article v-for="row in previewRows" :key="row.key" class="preview-card">
+            <b>{{ row.key }}</b>
+            <span>{{ row.value || "—" }}</span>
+          </article>
+        </div>
       </div>
     </section>
   </div>
@@ -365,6 +371,32 @@ async function copyPreview() {
   font-size: 12px;
   color: #6b7280;
 }
+.preview-result :deep(.el-table) {
+  display: none;
+}
+.preview-card-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+.preview-card {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid #e7edf5;
+  border-radius: 12px;
+  background: #fff;
+}
+.preview-card b {
+  color: #111827;
+  font-size: 13px;
+}
+.preview-card span {
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.6;
+  word-break: break-word;
+}
 
 @media (max-width: 768px) {
   .settings-panel {
@@ -382,6 +414,9 @@ async function copyPreview() {
   }
   .field--wide {
     grid-column: auto;
+  }
+  .preview-card-list {
+    grid-template-columns: 1fr;
   }
   .actions-row :deep(.el-button) {
     width: 100%;

@@ -291,7 +291,56 @@ async function rejectReview(row: any) {
 .pager { display: flex; justify-content: center; padding-top: 12px; }
 a { color: var(--cpu-primary); text-decoration: none; }
 a:hover { text-decoration: underline; }
-.mobile-list { display: none; }
+.admin-table { display: none; }
+.mobile-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+  min-height: 120px;
+}
+.topic-card {
+  padding: 14px;
+  border: 1px solid #e7edf5;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.topic-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.topic-title a {
+  flex: 1 1 100%;
+  color: #111827;
+}
+.topic-title a.hidden {
+  color: #9ca3af;
+  text-decoration: line-through;
+}
+.state {
+  border-radius: 4px;
+  background: #f3f4f6;
+  color: #4b5563;
+  padding: 1px 5px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.state.danger { color: #dc2626; background: #fef2f2; }
+.muted-state { color: #9ca3af; }
+.topic-meta {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  color: #6b7280;
+  font-size: 12px;
+}
+.mobile-list :deep(.el-empty) {
+  grid-column: 1 / -1;
+}
 .risk-note { font-size: 11px; color: #9ca3af; margin-top: 2px; }
 .action-trigger { justify-content: center; }
 .more-icon { margin-left: 2px; transform: rotate(90deg); }
@@ -313,51 +362,9 @@ a:hover { text-decoration: underline; }
     padding-left: 0;
     padding-right: 0;
   }
-  .admin-table { display: none; }
   .mobile-list {
-    display: flex;
-    flex-direction: column;
+    grid-template-columns: 1fr;
     gap: 10px;
-    min-height: 120px;
-  }
-  .topic-card {
-    padding: 12px;
-    border: 1px solid #eef0f4;
-    border-radius: 8px;
-    background: #fff;
-  }
-  .topic-title {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-    font-weight: 600;
-    line-height: 1.5;
-  }
-  .topic-title a {
-    flex: 1 1 100%;
-    color: #111827;
-  }
-  .topic-title a.hidden {
-    color: #9ca3af;
-    text-decoration: line-through;
-  }
-  .state {
-    border-radius: 4px;
-    background: #f3f4f6;
-    color: #4b5563;
-    padding: 1px 5px;
-    font-size: 11px;
-    font-weight: 500;
-  }
-  .state.danger { color: #dc2626; background: #fef2f2; }
-  .muted-state { color: #9ca3af; }
-  .topic-meta {
-    display: grid;
-    gap: 4px;
-    margin-top: 8px;
-    color: #6b7280;
-    font-size: 12px;
   }
   .mobile-actions {
     margin-top: 12px;

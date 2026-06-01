@@ -548,8 +548,14 @@ function buildImageSweepSummary(result: ForumImageSweepResult) {
   flex-wrap: wrap;
 }
 
-.mobile-list {
+.admin-table {
   display: none;
+}
+
+.mobile-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
 }
 
 .log-card {
@@ -596,6 +602,10 @@ function buildImageSweepSummary(result: ForumImageSweepResult) {
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.mobile-list :deep(.el-empty) {
+  grid-column: 1 / -1;
 }
 
 .status-pill {
@@ -648,12 +658,8 @@ function buildImageSweepSummary(result: ForumImageSweepResult) {
     width: 100%;
   }
 
-  .admin-table {
-    display: none;
-  }
-
   .mobile-list {
-    display: grid;
+    grid-template-columns: 1fr;
     gap: 10px;
   }
 }

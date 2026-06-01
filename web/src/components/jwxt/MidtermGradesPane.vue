@@ -287,14 +287,65 @@ async function reload() {
 .sem-head h3 { margin: 0; font-size: 15px; color: var(--cpu-primary); font-weight: 600; }
 .sem-sum { font-size: 12px; color: #9ca3af; }
 .table-scroll {
-  width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  display: none;
 }
 .table-scroll :deep(.el-table) {
   min-width: 920px;
 }
-.mobile-grade-list { display: none; }
+.mobile-grade-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.grade-card {
+  position: relative;
+  border: 1px solid #eef0f4;
+  border-radius: 14px;
+  padding: 14px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.grade-main {
+  min-width: 0;
+}
+
+.course-title {
+  line-height: 1.45;
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.course-sub,
+.grade-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 8px;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.score-badges {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.score-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: #f8fafc;
+  font-size: 13px;
+  font-weight: 700;
+}
 
 @media (max-width: 760px) {
   .ctrl-bar {
@@ -329,58 +380,8 @@ async function reload() {
   }
 
   .mobile-grade-list {
-    display: flex;
-    flex-direction: column;
+    grid-template-columns: 1fr;
     gap: 10px;
-  }
-
-  .grade-card {
-    position: relative;
-    border: 1px solid #eef0f4;
-    border-radius: 12px;
-    padding: 14px;
-    background: #fff;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-  }
-
-  .grade-main {
-    min-width: 0;
-  }
-
-  .course-title {
-    line-height: 1.45;
-    font-size: 15px;
-    font-weight: 600;
-    color: #111827;
-  }
-
-  .course-sub,
-  .grade-detail {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 10px;
-    margin-top: 8px;
-    color: #6b7280;
-    font-size: 12px;
-    line-height: 1.4;
-  }
-
-  .score-badges {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    margin-top: 10px;
-  }
-
-  .score-pill {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 7px 8px;
-    border-radius: 8px;
-    background: #f8fafc;
-    font-size: 13px;
-    font-weight: 700;
   }
 
   .table-scroll { display: none; }

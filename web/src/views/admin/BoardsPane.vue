@@ -240,41 +240,48 @@ async function removeBoard(row: any) {
 .name { font-size: 14px; font-weight: 600; color: #111827; }
 .desc { margin-top: 2px; font-size: 12px; color: #6b7280; line-height: 1.55; }
 .topic-count { margin-left: 8px; font-size: 12px; color: #9ca3af; }
-.mobile-list { display: none; }
+.admin-table { display: none; }
+.mobile-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+.board-card {
+  padding: 14px;
+  border: 1px solid #e7edf5;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.board-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #6b7280;
+}
+.board-actions {
+  margin-top: 12px;
+}
+.board-actions :deep(.el-dropdown) {
+  width: 100%;
+}
+.mobile-action-trigger {
+  width: 100%;
+}
+.mobile-list :deep(.el-empty) {
+  grid-column: 1 / -1;
+}
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .anonymous-switch-note { margin-left: 10px; color: #6b7280; font-size: 12px; }
 .action-trigger { justify-content: center; }
 .more-icon { margin-left: 2px; transform: rotate(90deg); }
 
 @media (max-width: 768px) {
-  .admin-table { display: none; }
   .mobile-list {
-    display: flex;
-    flex-direction: column;
+    grid-template-columns: 1fr;
     gap: 10px;
-  }
-  .board-card {
-    padding: 12px;
-    border: 1px solid #eef0f4;
-    border-radius: 10px;
-    background: #fff;
-  }
-  .board-meta {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-top: 8px;
-    font-size: 12px;
-    color: #6b7280;
-  }
-  .board-actions {
-    margin-top: 12px;
-  }
-  .board-actions :deep(.el-dropdown) {
-    width: 100%;
-  }
-  .mobile-action-trigger {
-    width: 100%;
   }
   .row2 {
     grid-template-columns: 1fr;

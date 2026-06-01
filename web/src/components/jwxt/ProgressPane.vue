@@ -421,14 +421,58 @@ function scoreColor(s: string) {
 .cnt { font-size: 12px; color: #9ca3af; }
 .cpu-muted { color: #9ca3af; }
 .table-scroll {
-  width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  display: none;
 }
 .table-scroll :deep(.el-table) {
   min-width: 760px;
 }
-.course-card-list { display: none; }
+.course-card-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.course-card {
+  border: 1px solid #eef0f4;
+  border-radius: 12px;
+  background: #fff;
+  padding: 12px;
+}
+
+.course-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.course-card-head b {
+  display: block;
+  color: #111827;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.course-card-head span {
+  display: block;
+  margin-top: 3px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.course-card-head strong {
+  flex-shrink: 0;
+  font-size: 15px;
+}
+
+.course-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 10px;
+  color: #6b7280;
+  font-size: 12px;
+}
 
 @media (max-width: 760px) {
   .progress-pane {
@@ -475,54 +519,9 @@ function scoreColor(s: string) {
     padding: 12px;
   }
 
-  .table-scroll { display: none; }
-
   .course-card-list {
-    display: flex;
-    flex-direction: column;
+    grid-template-columns: 1fr;
     gap: 10px;
-  }
-
-  .course-card {
-    border: 1px solid #eef0f4;
-    border-radius: 8px;
-    background: #fff;
-    padding: 12px;
-  }
-
-  .course-card-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .course-card-head b {
-    display: block;
-    color: #111827;
-    font-size: 14px;
-    line-height: 1.45;
-  }
-
-  .course-card-head span {
-    display: block;
-    margin-top: 3px;
-    color: #6b7280;
-    font-size: 12px;
-  }
-
-  .course-card-head strong {
-    flex-shrink: 0;
-    font-size: 15px;
-  }
-
-  .course-card-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 10px;
-    margin-top: 10px;
-    color: #6b7280;
-    font-size: 12px;
   }
 }
 </style>

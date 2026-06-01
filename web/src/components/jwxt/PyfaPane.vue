@@ -221,14 +221,59 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
 }
 .sem-val { color: #6b7280; white-space: nowrap; }
 .table-scroll {
-  width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  display: none;
 }
 .table-scroll :deep(.el-table) {
   min-width: 1000px;
 }
-.mobile-course-list { display: none; }
+.mobile-course-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.pyfa-card {
+  padding: 12px;
+  border: 1px solid #eef0f4;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.pyfa-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.pyfa-card-head b {
+  display: block;
+  color: #111827;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.pyfa-card-head span {
+  display: block;
+  margin-top: 3px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.pyfa-card-head :deep(.el-tag) {
+  flex-shrink: 0;
+  max-width: 72px;
+}
+
+.pyfa-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 10px;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.4;
+}
 
 @media (max-width: 760px) {
   .ctrl-bar {
@@ -264,55 +309,9 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
     white-space: normal;
   }
 
-  .table-scroll { display: none; }
-
   .mobile-course-list {
-    display: flex;
-    flex-direction: column;
+    grid-template-columns: 1fr;
     gap: 10px;
-  }
-
-  .pyfa-card {
-    padding: 12px;
-    border: 1px solid #eef0f4;
-    border-radius: 8px;
-    background: #fff;
-  }
-
-  .pyfa-card-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .pyfa-card-head b {
-    display: block;
-    color: #111827;
-    font-size: 14px;
-    line-height: 1.45;
-  }
-
-  .pyfa-card-head span {
-    display: block;
-    margin-top: 3px;
-    color: #6b7280;
-    font-size: 12px;
-  }
-
-  .pyfa-card-head :deep(.el-tag) {
-    flex-shrink: 0;
-    max-width: 72px;
-  }
-
-  .pyfa-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 10px;
-    margin-top: 10px;
-    color: #6b7280;
-    font-size: 12px;
-    line-height: 1.4;
   }
 }
 
