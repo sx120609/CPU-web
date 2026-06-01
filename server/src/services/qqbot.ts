@@ -103,6 +103,12 @@ type ParsedForwardEntry = {
   messageCount: number;
   imageCount: number;
 };
+type ParsedShareCard = {
+  source?: string;
+  title?: string;
+  summary?: string;
+  url?: string;
+};
 
 type ForwardSource = "direct" | "reply";
 type QqMessageExtractOptions = {
@@ -815,9 +821,7 @@ async function handleConversationMessage(
           await replyToPostingConversation(conversation, context, result.message);
           return { ok: true, topicId: result.topicId };
         } catch (error: any) {
-          const message = error?.message || "投稿失败";
-          await replyToPostingConversation(conversation, context, `投稿失败：${message}`);
-          return { ok: false, error: message };
+          return cancelConversationAfterSubmitFailure(conversation, context, error);
         }
       }
       const next = await prisma.qqBotConversation.update({
@@ -967,9 +971,7 @@ async function handleConversationMessage(
         await replyToPostingConversation(conversation, context, result.message);
         return { ok: true, topicId: result.topicId };
       } catch (error: any) {
-        const message = error?.message || "投稿失败";
-        await replyToPostingConversation(conversation, context, `投稿失败：${message}`);
-        return { ok: false, error: message };
+        return cancelConversationAfterSubmitFailure(conversation, context, error);
       }
     }
     if (/^(改标题|重新标题|换标题)$/i.test(text)) {
@@ -1007,6 +1009,28 @@ async function handleConversationMessage(
   return null;
 }
 
+async function cancelConversationAfterSubmitFailure(
+  conversation: any,
+  context: {
+    config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
+    event: OneBotEvent;
+    qqId: string;
+    groupId?: string;
+    messageText: string;
+  },
+  error: any,
+) {
+  const message = error?.message || "投稿失败";
+  markConversationCancelled(context.qqId, context.groupId);
+  await finishConversation(conversation.id, "cancelled");
+  await replyToPostingConversation(
+    conversation,
+    context,
+    `投稿失败：${message}\n这次投稿已自动取消。如需继续，请重新发送“投稿”或重新提供投稿内容。`,
+  );
+  return { ok: false, error: message, cancelled: true };
+}
+
 async function submitConversationPost(
   conversationId: number,
   context: {
@@ -1040,6 +1064,9 @@ async function submitConversationPost(
       context.config.defaultBoardSlug,
     ),
   });
+  if (!result.topicId || !Number.isFinite(result.topicId) || result.topicId <= 0) {
+    throw Errors.badRequest(result.message || "投稿失败");
+  }
   await finishConversation(conversationId, "done");
   return result;
 }
@@ -1836,6 +1863,10 @@ async function extractMessageText(
         }));
       }
     }
+    if (["json", "xml", "share", "music"].includes(String(maybeMessage.type || "").trim())) {
+      const rendered = await renderMessageSegment(maybeMessage, options);
+      if (rendered) return normalizeRenderedMessage(rendered);
+    }
     if (Array.isArray(maybeMessage.message)) return extractMessageText(maybeMessage.message, options);
     if (Array.isArray(maybeMessage.content)) return extractMessageText(maybeMessage.content, options);
     if (typeof maybeMessage.message === "string") return cleanCqMessage(maybeMessage.message, options);
@@ -1917,6 +1948,18 @@ async function renderMessageSegment(seg: any, options: QqMessageExtractOptions):
     if (options.imageMode === "placeholder") return "\n[图片]\n";
     const url = await resolveQqImageUrl(seg.data?.url, seg.data?.file);
     return url ? `\n![QQ图片](${url})\n` : "\n[图片]\n";
+  }
+  if (seg?.type === "share") {
+    return renderShareCardBlock(parseShareSegmentCard(seg.data));
+  }
+  if (seg?.type === "music") {
+    return renderShareCardBlock(parseMusicSegmentCard(seg.data));
+  }
+  if (seg?.type === "json") {
+    return renderShareCardBlock(parseJsonShareCard(seg.data?.data ?? seg.data));
+  }
+  if (seg?.type === "xml") {
+    return renderShareCardBlock(parseXmlShareCard(seg.data?.data ?? seg.data));
   }
   if (seg?.type === "node") {
     if (options.forwardMode === "placeholder") return "\n[合并转发]\n";
@@ -2104,11 +2147,22 @@ function extractForwardNodeId(message: unknown): string {
 
 async function cleanCqMessage(value: string, options: QqMessageExtractOptions = {}) {
   let normalized = String(value || "");
-  const mediaMatches = Array.from(normalized.matchAll(/\[CQ:(image|forward|node),([^\]]*)\]/g));
+  const mediaMatches = Array.from(normalized.matchAll(/\[CQ:(image|forward|node|json|xml|share|music),([^\]]*)\]/g));
   for (const match of mediaMatches) {
     const raw = match[0];
     const type = String(match[1] || "").trim();
-    const attrs = parseCqParams(match[2] || "");
+    const rawParams = String(match[2] || "");
+    if (type === "json") {
+      const rendered = renderShareCardBlock(parseJsonShareCard(rawParams.replace(/^data=/, "").trim()));
+      normalized = normalized.replace(raw, rendered || "\n[分享卡片]\n");
+      continue;
+    }
+    if (type === "xml") {
+      const rendered = renderShareCardBlock(parseXmlShareCard(rawParams.replace(/^data=/, "").trim()));
+      normalized = normalized.replace(raw, rendered || "\n[分享卡片]\n");
+      continue;
+    }
+    const attrs = parseCqParams(rawParams);
     if (type === "image") {
       if (options.imageMode === "placeholder") {
         normalized = normalized.replace(raw, "\n[图片]\n");
@@ -2116,6 +2170,14 @@ async function cleanCqMessage(value: string, options: QqMessageExtractOptions = 
       }
       const url = await resolveQqImageUrl(attrs.url, attrs.file);
       normalized = normalized.replace(raw, url ? `\n![QQ图片](${url})\n` : "\n[图片]\n");
+      continue;
+    }
+    if (type === "share") {
+      normalized = normalized.replace(raw, renderShareCardBlock(parseShareSegmentCard(attrs)) || "\n[分享卡片]\n");
+      continue;
+    }
+    if (type === "music") {
+      normalized = normalized.replace(raw, renderShareCardBlock(parseMusicSegmentCard(attrs)) || "\n[分享卡片]\n");
       continue;
     }
     if (options.forwardMode === "placeholder") {
@@ -2147,6 +2209,217 @@ function parseCqParams(raw: string) {
     out[normalizedKey] = rest.join("=").trim();
   }
   return out;
+}
+
+function parseShareSegmentCard(data: any): ParsedShareCard | null {
+  return finalizeShareCard({
+    source: undefined,
+    title: data?.title,
+    summary: data?.content,
+    url: data?.url,
+  });
+}
+
+function parseMusicSegmentCard(data: any): ParsedShareCard | null {
+  const sourceMap: Record<string, string> = {
+    qq: "QQ音乐",
+    "163": "网易云音乐",
+    kugou: "酷狗音乐",
+    kuwo: "酷我音乐",
+    migu: "咪咕音乐",
+    xm: "虾米音乐",
+    custom: "音乐分享",
+  };
+  return finalizeShareCard({
+    source: sourceMap[String(data?.type || "").trim().toLowerCase()] || "音乐分享",
+    title: data?.title,
+    summary: data?.content || data?.singer,
+    url: data?.url,
+  });
+}
+
+function parseJsonShareCard(raw: unknown): ParsedShareCard | null {
+  const root = normalizeJsonCardValue(raw);
+  if (!root || typeof root !== "object" || Array.isArray(root)) return null;
+  const metaCandidates = Object.values((root as any).meta || {}).filter((item) => item && typeof item === "object");
+  const candidates = [
+    ...metaCandidates.map((item) => extractShareCardFromObject(item, root)),
+    extractShareCardFromObject(root, root),
+  ].filter(Boolean) as ParsedShareCard[];
+  return finalizeShareCard(pickBestShareCard(candidates));
+}
+
+function parseXmlShareCard(raw: unknown): ParsedShareCard | null {
+  const xml = decodeCqEntities(String(raw || "").trim());
+  if (!xml) return null;
+  return finalizeShareCard({
+    source: extractXmlAttr(xml, "source", "name") || extractXmlAttr(xml, "msg", "brief"),
+    title: extractXmlTagText(xml, "title"),
+    summary: extractXmlTagText(xml, "summary"),
+    url: extractXmlAttr(xml, "msg", "url") || extractXmlAttr(xml, "item", "url"),
+  });
+}
+
+function pickBestShareCard(cards: ParsedShareCard[]) {
+  let best: ParsedShareCard | null = null;
+  let bestScore = -1;
+  for (const card of cards) {
+    const score = Number(Boolean(card.url)) * 3
+      + Number(Boolean(card.title)) * 2
+      + Number(Boolean(card.summary))
+      + Number(Boolean(card.source)) * 0.5;
+    if (score > bestScore) {
+      best = card;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+function extractShareCardFromObject(candidate: any, fallbackRoot?: any): ParsedShareCard | null {
+  if (!candidate || typeof candidate !== "object") return null;
+  return {
+    source: firstNonEmpty([
+      candidate.tag,
+      candidate.source,
+      candidate.sourceName,
+      fallbackRoot?.prompt,
+      fallbackRoot?.desc,
+      fallbackRoot?.app,
+    ]),
+    title: firstNonEmpty([
+      candidate.title,
+      candidate.name,
+      candidate.headline,
+      fallbackRoot?.title,
+    ]),
+    summary: firstNonEmpty([
+      candidate.desc,
+      candidate.description,
+      candidate.summary,
+      candidate.content,
+      candidate.text,
+      candidate.brief,
+      candidate.subtitle,
+      fallbackRoot?.summary,
+    ]),
+    url: firstNonEmpty([
+      candidate.jumpUrl,
+      candidate.targetUrl,
+      candidate.url,
+      candidate.sourceUrl,
+      candidate.qqdocurl,
+      fallbackRoot?.url,
+    ]),
+  };
+}
+
+function normalizeJsonCardValue(raw: unknown): unknown {
+  if (raw && typeof raw === "object") return raw;
+  const text = decodeCqEntities(String(raw || "").trim());
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function renderShareCardBlock(card: ParsedShareCard | null) {
+  const normalized = finalizeShareCard(card);
+  if (!normalized) return "\n[分享卡片]\n";
+  const lines = [
+    "[分享卡片]",
+    normalized.source ? `来源：${normalized.source}` : "",
+    normalized.title ? `标题：${normalized.title}` : "",
+    normalized.summary ? `简介：${normalized.summary}` : "",
+    normalized.url ? `链接：${normalized.url}` : "",
+  ].filter(Boolean);
+  return lines.length ? `\n${lines.join("\n")}\n` : "\n[分享卡片]\n";
+}
+
+function finalizeShareCard(card: ParsedShareCard | null | undefined): ParsedShareCard | null {
+  if (!card) return null;
+  const source = normalizeShareCardText(card.source, { allowGenericShareText: false, allowPackageName: false });
+  const title = normalizeShareCardText(card.title, { allowGenericShareText: false });
+  const summary = normalizeShareCardText(card.summary, { allowGenericShareText: false });
+  const url = normalizeShareCardUrl(card.url);
+  const resolvedSource = source && source !== title ? source : "";
+  const resolvedSummary = summary && summary !== title ? summary : "";
+  if (!resolvedSource && !title && !resolvedSummary && !url) return null;
+  return {
+    source: resolvedSource || undefined,
+    title: title || undefined,
+    summary: resolvedSummary || undefined,
+    url: url || undefined,
+  };
+}
+
+function normalizeShareCardText(
+  value: unknown,
+  options: { allowGenericShareText?: boolean; allowPackageName?: boolean } = {},
+) {
+  let text = decodeCqEntities(String(value || "").trim());
+  if (!text) return "";
+  text = text
+    .replace(/\r/g, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^\[(?:分享|链接分享)\]\s*/u, "")
+    .trim();
+  if (!text) return "";
+  if (!options.allowPackageName && looksLikePackageName(text)) return "";
+  if (!options.allowGenericShareText && /^(分享|链接分享|QQ分享)$/iu.test(text)) return "";
+  return text.slice(0, 300);
+}
+
+function normalizeShareCardUrl(value: unknown) {
+  const raw = decodeCqEntities(String(value || "").trim());
+  if (!raw) return "";
+  if (raw.startsWith("//")) return `https:${raw}`;
+  if (/^https?:\/\//i.test(raw)) return raw.slice(0, 1000);
+  return "";
+}
+
+function firstNonEmpty(values: unknown[]) {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+function looksLikePackageName(value: string) {
+  return /^[a-z0-9_.-]+\.[a-z0-9_.-]+$/i.test(value.trim());
+}
+
+function decodeCqEntities(value: string) {
+  let out = String(value || "");
+  for (let index = 0; index < 2; index += 1) {
+    out = out
+      .replace(/&amp;/g, "&")
+      .replace(/&#91;/g, "[")
+      .replace(/&#93;/g, "]")
+      .replace(/&#44;/g, ",")
+      .replace(/&quot;/g, "\"")
+      .replace(/&apos;/g, "'")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">");
+  }
+  return out;
+}
+
+function extractXmlTagText(xml: string, tagName: string) {
+  const pattern = new RegExp(`<${tagName}\\b[^>]*>([\\s\\S]*?)</${tagName}>`, "i");
+  const match = xml.match(pattern);
+  return match ? decodeCqEntities(match[1]).replace(/<!\\[CDATA\\[|\\]\\]>/g, "").trim() : "";
+}
+
+function extractXmlAttr(xml: string, tagName: string, attrName: string) {
+  const pattern = new RegExp(`<${tagName}\\b[^>]*\\b${attrName}=(["'])([\\s\\S]*?)\\1`, "i");
+  const match = xml.match(pattern);
+  return match ? decodeCqEntities(match[2]).trim() : "";
 }
 
 async function resolveQqImageUrl(urlLike: unknown, fileLike: unknown): Promise<string> {
