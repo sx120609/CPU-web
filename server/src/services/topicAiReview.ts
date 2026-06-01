@@ -67,7 +67,7 @@ type DeepSeekEditSimilarityResponse = {
 const REVIEW_API_URL = "https://api.deepseek.com/chat/completions";
 
 export function shouldBypassAiReview(role: string | null | undefined) {
-  return role === "admin" || role === "mod" || role === "bot";
+  return role === "bot";
 }
 
 export async function shouldBypassAiReviewForUser(userId: number, role: string | null | undefined) {

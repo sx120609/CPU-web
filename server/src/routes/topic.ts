@@ -156,7 +156,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
 
     const now = new Date();
     const bypassAiReview = await shouldBypassAiReviewForUser(userId, req.user!.role);
-    const shouldReview = shouldRunAiReview() && !bypassAiReview && board.type !== "announce";
+    const shouldReview = shouldRunAiReview() && !bypassAiReview;
     const aiResult = shouldReview
       ? await reviewTopicContent({
           title,
@@ -368,7 +368,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
         where: { id: t.boardId },
         select: { name: true, type: true },
       });
-      if (shouldRunAiReview() && !bypassAiReview && boardInfo?.type !== "announce") {
+      if (shouldRunAiReview() && !bypassAiReview) {
         const aiResult = await reviewTopicContent({
           title: nextTitle,
           content: nextContent,

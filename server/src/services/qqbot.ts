@@ -695,7 +695,6 @@ async function submitQqPost(context: {
   qqId: string;
   groupId?: string;
   messageText: string;
-  skipSourceFooter?: boolean;
 }) {
   if (context.event.message_type === "group" && !context.config.allowGroupPost) {
     return { message: "群内投稿暂未开启，请私聊投稿。", topicId: null };
@@ -719,7 +718,7 @@ async function submitQqPost(context: {
     },
     boardSlug: parsed.boardSlug,
     title: parsed.title,
-    content: context.skipSourceFooter ? parsed.content : appendSourceFooter(parsed.content, context),
+    content: appendSourceFooter(parsed.content, context),
     qqId: context.qqId,
     groupId: context.groupId,
     messageId: context.event.message_id ? String(context.event.message_id) : undefined,
@@ -1037,7 +1036,6 @@ async function submitConversationPost(
       originGroupId,
       context.config.defaultBoardSlug,
     ),
-    skipSourceFooter: conversation.scene === "forward-post",
   });
   await finishConversation(conversationId, "done");
   return result;
@@ -1391,7 +1389,7 @@ async function createTopicFromQq(input: {
   };
   const now = new Date();
   const bypassAiReview = await shouldBypassAiReviewForUser(userId, input.user.role);
-  const shouldReview = shouldRunAiReview() && !bypassAiReview && board.type !== "announce";
+  const shouldReview = shouldRunAiReview() && !bypassAiReview;
   const aiResult = shouldReview
     ? await reviewTopicContent({
         title: input.title,
@@ -2418,7 +2416,7 @@ function normalizeRenderedMessage(value: string) {
 
 function appendSourceFooter(content: string, context: { groupId?: string; event: OneBotEvent }) {
   const source = context.groupId ? `QQ群 ${context.groupId}` : "QQ 私聊";
-  return `${content}\n\n---\n_由 QQBot 从 ${source} 整理投稿。_`;
+  return `${content}\n\n---\n_转自 QQBot（${source}）。_`;
 }
 
 function isHelpCommand(text: string) {
