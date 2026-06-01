@@ -11,7 +11,7 @@ import { ensureUserCanSpeak } from "../services/userModeration";
 import { refreshUserReplyCount } from "../services/forumStats";
 import { consumeAnonymousCredit, createAnonymousAlias, refreshAnonymousCreditsIfNeeded } from "../services/userTrust";
 import { decodeReplyForViewer, decodeReplyForViewerWithImages } from "../services/forumPresentation";
-import { ensureForumImageAssetsForContent } from "../services/imageModeration";
+import { ensureForumImageAssetsForContent, summarizeForumImageModerationForContent } from "../services/imageModeration";
 
 export const replyRouter = Router();
 
@@ -185,7 +185,11 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     }
 
     await ensureForumImageAssetsForContent(content, userId).catch(() => null);
-    ok(res, await decodeReplyForViewerWithImages(reply, req.user));
+    const imageReview = await summarizeForumImageModerationForContent(content).catch(() => null);
+    ok(res, {
+      ...(await decodeReplyForViewerWithImages(reply, req.user)),
+      imageReview,
+    });
   } catch (e) { next(e); }
 });
 
@@ -235,7 +239,11 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
       },
     });
     await ensureForumImageAssetsForContent(req.body.content, req.user!.userId).catch(() => null);
-    ok(res, await decodeReplyForViewerWithImages(updated, req.user));
+    const imageReview = await summarizeForumImageModerationForContent(req.body.content).catch(() => null);
+    ok(res, {
+      ...(await decodeReplyForViewerWithImages(updated, req.user)),
+      imageReview,
+    });
   } catch (e) { next(e); }
 });
 

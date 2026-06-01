@@ -31,7 +31,7 @@ import { ensureCanReadBoardType, ensureForumAccessEnabled, resolveForumAccess } 
 import { ensureUserCanSpeak, releaseExpiredMutes } from "../services/userModeration";
 import { consumeAnonymousCredit, createAnonymousAlias } from "../services/userTrust";
 import { decodeReplyForViewer, decodeReplyForViewerWithImages, decodeTopicForViewer, decodeTopicForViewerWithImages } from "../services/forumPresentation";
-import { ensureForumImageAssetsForContent } from "../services/imageModeration";
+import { ensureForumImageAssetsForContent, summarizeForumImageModerationForContent } from "../services/imageModeration";
 
 export const topicRouter = Router();
 
@@ -287,6 +287,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     }
 
     await ensureForumImageAssetsForContent(content, userId).catch(() => null);
+    const imageReview = await summarizeForumImageModerationForContent(content).catch(() => null);
     ok(res, {
       ...(await decodeTopicForViewerWithImages(topicWithTags ?? { ...topic, board: { slug: board.slug, name: board.name, type: board.type }, tags: [] }, req.user)),
       submissionResult: hiddenByAi
@@ -295,9 +296,11 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
             riskLevel: aiResult?.riskLevel,
             riskScore: aiResult?.riskScore,
             reason: aiResult?.reason,
+            imageReview,
           }
         : {
             status: "published",
+            imageReview,
           },
     });
   } catch (e) { next(e); }
@@ -439,6 +442,9 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     if (typeof body.content === "string" && canEditContent) {
       await ensureForumImageAssetsForContent(nextContent, req.user!.userId).catch(() => null);
     }
+    const imageReview = typeof body.content === "string" && canEditContent
+      ? await summarizeForumImageModerationForContent(nextContent).catch(() => null)
+      : null;
     const topicWithTags = await prisma.topic.findUnique({
       where: { id: u.id },
       include: {
@@ -449,7 +455,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     });
     ok(res, {
       ...(await decodeTopicForViewerWithImages(topicWithTags ?? u, req.user)),
-      submissionResult: { status: "published" },
+      submissionResult: { status: "published", imageReview },
     });
   } catch (e) { next(e); }
 });

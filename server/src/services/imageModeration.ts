@@ -25,6 +25,14 @@ type ImageReviewDecision = {
   endpoint: string;
 };
 
+export type ForumImageModerationSummary = {
+  enabled: boolean;
+  totalCount: number;
+  pendingCount: number;
+  rejectedCount: number;
+  approvedCount: number;
+};
+
 export function startForumImageModerationPoller() {
   if (pollerStarted) return;
   pollerStarted = true;
@@ -66,9 +74,12 @@ export async function registerForumImageAsset(input: {
   if (!localPath) return null;
   const existing = await prisma.forumImageAsset.findUnique({
     where: { url: normalizedUrl },
-    select: { id: true, status: true },
+    select: { id: true, status: true, reviewModel: true, reviewEndpoint: true },
   });
   if (existing) {
+    const shouldRequeue = shouldRunImageReview()
+      && existing.status === "approved"
+      && (existing.reviewModel === "bypass" || existing.reviewEndpoint === "disabled");
     return prisma.forumImageAsset.update({
       where: { id: existing.id },
       data: {
@@ -76,6 +87,18 @@ export async function registerForumImageAsset(input: {
         mimeType: input.mimeType ?? undefined,
         fileSize: input.fileSize ?? undefined,
         createdById: input.createdById ?? undefined,
+        ...(shouldRequeue
+          ? {
+              status: "pending",
+              reason: null,
+              detail: null,
+              reviewModel: null,
+              reviewEndpoint: null,
+              reviewedAt: null,
+              nextRetryAt: null,
+              lastError: null,
+            }
+          : {}),
       },
     });
   }
@@ -125,16 +148,61 @@ export async function moderatePendingForumImages() {
 }
 
 export async function decorateTopicForViewerWithImageModeration(topic: any, viewer?: Viewer) {
+  const imageReview = await summarizeForumImageModerationForContent(topic.content);
   return {
     ...topic,
+    imageReview,
     content: await renderModeratedContent(topic.content, viewer),
   };
 }
 
 export async function decorateReplyForViewerWithImageModeration(reply: any, viewer?: Viewer) {
+  const imageReview = await summarizeForumImageModerationForContent(reply.content);
   return {
     ...reply,
+    imageReview,
     content: await renderModeratedContent(reply.content, viewer),
+  };
+}
+
+export async function summarizeForumImageModerationForContent(content: string): Promise<ForumImageModerationSummary> {
+  const urls = extractForumImageUrls(content);
+  if (!urls.length) {
+    return {
+      enabled: shouldRunImageReview(),
+      totalCount: 0,
+      pendingCount: 0,
+      rejectedCount: 0,
+      approvedCount: 0,
+    };
+  }
+  const rows = await prisma.forumImageAsset.findMany({
+    where: { url: { in: urls } },
+    select: { url: true, status: true },
+  });
+  const rowMap = new Map(rows.map((row) => [row.url, row.status]));
+  const missing = urls.filter((url) => !rowMap.has(url));
+  if (missing.length) {
+    const created = await Promise.all(missing.map((url) => registerForumImageAsset({ url })));
+    created.forEach((item, index) => {
+      rowMap.set(missing[index], item?.status || (shouldRunImageReview() ? "pending" : "approved"));
+    });
+  }
+  let pendingCount = 0;
+  let rejectedCount = 0;
+  let approvedCount = 0;
+  for (const url of urls) {
+    const status = rowMap.get(url) || (shouldRunImageReview() ? "pending" : "approved");
+    if (status === "approved") approvedCount += 1;
+    else if (status === "rejected") rejectedCount += 1;
+    else pendingCount += 1;
+  }
+  return {
+    enabled: shouldRunImageReview(),
+    totalCount: urls.length,
+    pendingCount,
+    rejectedCount,
+    approvedCount,
   };
 }
 

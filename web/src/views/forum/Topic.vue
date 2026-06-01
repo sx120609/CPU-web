@@ -91,6 +91,13 @@
         <span v-if="topic.metadata.tradeMode">🤝 {{ topic.metadata.tradeMode }}</span>
       </div>
 
+      <div v-if="topic.imageReview?.pendingCount" class="image-review-tip image-review-tip-pending">
+        正文中有 {{ topic.imageReview.pendingCount }} 张图片正在审核，审核通过后会自动显示。
+      </div>
+      <div v-else-if="topic.imageReview?.rejectedCount" class="image-review-tip image-review-tip-rejected">
+        正文中有 {{ topic.imageReview.rejectedCount }} 张图片未通过审核，当前已隐藏。
+      </div>
+
       <MarkdownView :content="displayContent" class="post-body topic-markdown" clickable-images />
 
       <footer class="post-foot">
@@ -935,9 +942,29 @@ async function onDelete() {
     background: #fef3c7;
   }
 
-  .post-body { padding: 4px 0; }
+.post-body { padding: 4px 0; }
 
-  .post-foot {
+.image-review-tip {
+  margin-top: 12px;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.image-review-tip-pending {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+}
+
+.image-review-tip-rejected {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+}
+
+.post-foot {
     margin-top: 16px;
     padding-top: 12px;
     border-top: 1px dashed #e5e7eb;

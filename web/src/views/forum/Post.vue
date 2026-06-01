@@ -487,6 +487,7 @@ async function confirmSubmit() {
         ElMessage.warning("修改后的内容暂未通过审核");
         return;
       }
+      notifyImageReviewState(r.submissionResult?.imageReview);
       clearDrafts();
       ElMessage.success("已保存");
       router.replace(`/forum/topic/${editingId.value}`);
@@ -507,6 +508,7 @@ async function confirmSubmit() {
         ElMessage.warning("内容暂未通过审核");
         return;
       }
+      notifyImageReviewState(r.submissionResult?.imageReview);
       clearDrafts();
       ElMessage.success("已发布");
       router.replace(`/forum/topic/${r.id}`);
@@ -529,6 +531,17 @@ async function confirmManualReviewRequest() {
     router.replace("/forum");
   } finally {
     requestingManualReview.value = false;
+  }
+}
+
+function notifyImageReviewState(summary?: { enabled: boolean; totalCount: number; pendingCount: number; rejectedCount: number } | null) {
+  if (!summary?.totalCount) return;
+  if (!summary.enabled) {
+    ElMessage.info(`本次包含 ${summary.totalCount} 张图片。当前图片审核未启用，图片会直接展示。`);
+    return;
+  }
+  if (summary.pendingCount > 0) {
+    ElMessage.info(`已提交 ${summary.pendingCount} 张图片审核，审核通过后才会显示原图。`);
   }
 }
 </script>
