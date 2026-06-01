@@ -30,7 +30,8 @@ import {
 import { ensureCanReadBoardType, ensureForumAccessEnabled, resolveForumAccess } from "../services/forumAccess";
 import { ensureUserCanSpeak, releaseExpiredMutes } from "../services/userModeration";
 import { consumeAnonymousCredit, createAnonymousAlias } from "../services/userTrust";
-import { decodeReplyForViewer, decodeTopicForViewer } from "../services/forumPresentation";
+import { decodeReplyForViewer, decodeReplyForViewerWithImages, decodeTopicForViewer, decodeTopicForViewerWithImages } from "../services/forumPresentation";
+import { ensureForumImageAssetsForContent } from "../services/imageModeration";
 
 export const topicRouter = Router();
 
@@ -116,7 +117,7 @@ topicRouter.get("/:id", async (req, res, next) => {
     await ensureCanReadBoardType(topic.board?.type, requesterId, requesterRole);
     // 浏览数 +1（异步，失败也无所谓）
     if (!topic.hidden) prisma.topic.update({ where: { id }, data: { viewCount: { increment: 1 } } }).catch(() => {});
-    ok(res, decodeTopicForViewer(topic, req.user));
+    ok(res, await decodeTopicForViewerWithImages(topic, req.user));
   } catch (e) { next(e); }
 });
 
@@ -285,8 +286,9 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       });
     }
 
+    await ensureForumImageAssetsForContent(content, userId).catch(() => null);
     ok(res, {
-      ...decodeTopicForViewer(topicWithTags ?? { ...topic, board: { slug: board.slug, name: board.name, type: board.type }, tags: [] }, req.user),
+      ...(await decodeTopicForViewerWithImages(topicWithTags ?? { ...topic, board: { slug: board.slug, name: board.name, type: board.type }, tags: [] }, req.user)),
       submissionResult: hiddenByAi
         ? {
             status: "blocked_ai",
@@ -373,7 +375,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
         });
         if (aiResult.status === "blocked_ai") {
           return ok(res, {
-            ...decodeTopicForViewer(t, req.user),
+            ...(await decodeTopicForViewerWithImages(t, req.user)),
             submissionResult: {
               status: "blocked_ai",
               riskLevel: aiResult.riskLevel,
@@ -434,6 +436,9 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     if (aiTags) {
       await syncTopicAiTags(id, aiTags);
     }
+    if (typeof body.content === "string" && canEditContent) {
+      await ensureForumImageAssetsForContent(nextContent, req.user!.userId).catch(() => null);
+    }
     const topicWithTags = await prisma.topic.findUnique({
       where: { id: u.id },
       include: {
@@ -443,7 +448,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
       },
     });
     ok(res, {
-      ...decodeTopicForViewer(topicWithTags ?? u, req.user),
+      ...(await decodeTopicForViewerWithImages(topicWithTags ?? u, req.user)),
       submissionResult: { status: "published" },
     });
   } catch (e) { next(e); }
@@ -495,7 +500,7 @@ topicRouter.get("/:id/replies", async (req, res, next) => {
         author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
       },
     });
-    ok(res, list.map((item) => decodeReplyForViewer(item, req.user)));
+    ok(res, await Promise.all(list.map((item) => decodeReplyForViewerWithImages(item, req.user))));
   } catch (e) { next(e); }
 });
 function parseJsonSafe(s: string | null | undefined) {

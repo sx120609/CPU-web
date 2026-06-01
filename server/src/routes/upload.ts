@@ -6,6 +6,7 @@ import { z } from "zod";
 import { Errors, ok } from "../utils/response";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
+import { registerForumImageAsset } from "../services/imageModeration";
 
 export const uploadRouter = Router();
 
@@ -37,8 +38,17 @@ uploadRouter.post("/images", authRequired, validate(imageSchema), async (req, re
     await mkdir(outputDir, { recursive: true });
 
     const filename = `${Date.now()}-${randomUUID()}.${ext}`;
-    await writeFile(path.join(outputDir, filename), parsed.buffer);
-    ok(res, { url: `/uploads/${relativeDir.replace(/\\/g, "/")}/${filename}` });
+    const localPath = path.join(outputDir, filename);
+    const url = `/uploads/${relativeDir.replace(/\\/g, "/")}/${filename}`;
+    await writeFile(localPath, parsed.buffer);
+    await registerForumImageAsset({
+      url,
+      localPath,
+      mimeType: parsed.mime,
+      fileSize: parsed.buffer.length,
+      createdById: req.user!.userId,
+    }).catch(() => null);
+    ok(res, { url });
   } catch (e) {
     next(e);
   }

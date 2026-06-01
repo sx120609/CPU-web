@@ -10,7 +10,8 @@ import { requestManualReplyReview, reviewReplyContent, shouldBypassAiReviewForUs
 import { ensureUserCanSpeak } from "../services/userModeration";
 import { refreshUserReplyCount } from "../services/forumStats";
 import { consumeAnonymousCredit, createAnonymousAlias, refreshAnonymousCreditsIfNeeded } from "../services/userTrust";
-import { decodeReplyForViewer } from "../services/forumPresentation";
+import { decodeReplyForViewer, decodeReplyForViewerWithImages } from "../services/forumPresentation";
+import { ensureForumImageAssetsForContent } from "../services/imageModeration";
 
 export const replyRouter = Router();
 
@@ -183,7 +184,8 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       });
     }
 
-    ok(res, decodeReplyForViewer(reply, req.user));
+    await ensureForumImageAssetsForContent(content, userId).catch(() => null);
+    ok(res, await decodeReplyForViewerWithImages(reply, req.user));
   } catch (e) { next(e); }
 });
 
@@ -232,7 +234,8 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
         author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
       },
     });
-    ok(res, decodeReplyForViewer(updated, req.user));
+    await ensureForumImageAssetsForContent(req.body.content, req.user!.userId).catch(() => null);
+    ok(res, await decodeReplyForViewerWithImages(updated, req.user));
   } catch (e) { next(e); }
 });
 

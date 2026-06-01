@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import { ensureForumAccessEnabled } from "./forumAccess";
+import { registerForumImageAsset } from "./imageModeration";
 import { getSiteOrigin, isBoardTypeEnabled, isFeatureOn, featureForBoardType, featureClosedMessage } from "./siteSettings";
 import { refreshBoardTopicCounts, refreshUserPostCount } from "./forumStats";
 import { ensureUserCanSpeak } from "./userModeration";
@@ -1869,8 +1870,16 @@ async function saveQqImageUpload(buffer: Buffer, mime: string, nameHint?: string
   const outputDir = path.join(uploadRoot, relativeDir);
   await mkdir(outputDir, { recursive: true });
   const filename = `qqbot-${Date.now()}-${crypto.randomUUID()}.${ext}`;
-  await writeFile(path.join(outputDir, filename), buffer);
-  return `/uploads/${relativeDir.replace(/\\/g, "/")}/${filename}`;
+  const localPath = path.join(outputDir, filename);
+  const url = `/uploads/${relativeDir.replace(/\\/g, "/")}/${filename}`;
+  await writeFile(localPath, buffer);
+  await registerForumImageAsset({
+    url,
+    localPath,
+    mimeType: mime || resolveMimeTypeByExtension(ext),
+    fileSize: buffer.length,
+  }).catch(() => null);
+  return url;
 }
 
 function detectImageExtension(buffer: Buffer, mime: string, nameHint?: string) {
@@ -1888,6 +1897,14 @@ function detectImageExtension(buffer: Buffer, mime: string, nameHint?: string) {
   }
   const ext = path.extname(String(nameHint || "")).replace(/^\./, "").toLowerCase();
   if (["jpg", "jpeg", "png", "webp", "gif"].includes(ext)) return ext === "jpeg" ? "jpg" : ext;
+  return "";
+}
+
+function resolveMimeTypeByExtension(ext: string) {
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "png") return "image/png";
+  if (ext === "webp") return "image/webp";
+  if (ext === "gif") return "image/gif";
   return "";
 }
 

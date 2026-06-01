@@ -1,4 +1,5 @@
 import { buildUserPreview } from "../utils/publicUser";
+import { decorateReplyForViewerWithImageModeration, decorateTopicForViewerWithImageModeration } from "./imageModeration";
 import { isGlobalPinnedTopic } from "./siteSettings";
 
 type Viewer = {
@@ -61,4 +62,12 @@ export function decodeReplyForViewer(reply: any, viewer?: Viewer) {
     author: anonymous ? buildAnonymousAuthor(reply.anonymousAlias) : buildUserPreview(reply.author, viewer),
     realAuthor: anonymous && reveal ? buildUserPreview(reply.author, viewer) : undefined,
   };
+}
+
+export async function decodeTopicForViewerWithImages(topic: any, viewer?: Viewer) {
+  return decorateTopicForViewerWithImageModeration(decodeTopicForViewer(topic, viewer), viewer);
+}
+
+export async function decodeReplyForViewerWithImages(reply: any, viewer?: Viewer) {
+  return decorateReplyForViewerWithImageModeration(decodeReplyForViewer(reply, viewer), viewer);
 }

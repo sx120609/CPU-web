@@ -180,6 +180,39 @@
         </div>
 
         <div class="prompt-card">
+          <div>
+            <div class="card-title">图片异步审核</div>
+            <div class="desc">图片发布后先占位展示，后台异步调用独立模型审核；通过后放行，不通过则展示违规原因。</div>
+          </div>
+          <div class="ai-form">
+            <div class="ai-row ai-row--switch">
+              <span class="ai-label">启用图片审核</span>
+              <el-switch v-model="imageReviewEnabled" inline-prompt active-text="开" inactive-text="关" />
+            </div>
+            <div class="ai-row">
+              <span class="ai-label">图片模型</span>
+              <el-input v-model="imageReviewModel" maxlength="80" placeholder="gpt-4o-mini" />
+            </div>
+            <div class="ai-row ai-row--stretch">
+              <span class="ai-label">图片审核 API 地址</span>
+              <el-input v-model="imageReviewApiUrl" maxlength="240" placeholder="https://api.openai.com/v1/chat/completions" />
+            </div>
+            <div class="ai-row ai-row--stretch">
+              <span class="ai-label">图片审核 API Key</span>
+              <el-input v-model="imageReviewApiKey" maxlength="240" show-password placeholder="sk-..." />
+            </div>
+            <div class="ai-row ai-row--stretch">
+              <span class="ai-label">图片审核 System Prompt</span>
+              <el-input v-model="imageReviewSystemPrompt" type="textarea" :rows="3" placeholder="图片审核系统提示词" />
+            </div>
+            <div class="ai-row ai-row--stretch">
+              <span class="ai-label">图片审核 User Prompt</span>
+              <el-input v-model="imageReviewUserPrompt" type="textarea" :rows="5" placeholder="支持 {{imageUrl}} / {{mimeType}} / {{fileName}}" />
+            </div>
+          </div>
+        </div>
+
+        <div class="prompt-card">
           <button type="button" class="sub-toggle" :class="{ expanded: aiPromptsExpanded }" @click="aiPromptsExpanded = !aiPromptsExpanded">
             <div>
               <div class="card-title">Prompt 模板</div>
@@ -278,6 +311,12 @@ const aiReviewEnabled = ref(false);
 const aiReviewProvider = ref("deepseek");
 const aiReviewModel = ref("deepseek-v4-flash");
 const aiReviewApiKey = ref("");
+const imageReviewEnabled = ref(false);
+const imageReviewApiUrl = ref("https://api.openai.com/v1/chat/completions");
+const imageReviewModel = ref("gpt-4o-mini");
+const imageReviewApiKey = ref("");
+const imageReviewSystemPrompt = ref("");
+const imageReviewUserPrompt = ref("");
 const aiReviewAutoPassScore = ref(24);
 const aiReviewBlockScore = ref(70);
 const aiReviewForceBlockScore = ref(90);
@@ -357,6 +396,12 @@ async function reload() {
     aiReviewProvider.value = config.aiReviewProvider;
     aiReviewModel.value = config.aiReviewModel;
     aiReviewApiKey.value = config.aiReviewApiKey;
+    imageReviewEnabled.value = config.imageReviewEnabled;
+    imageReviewApiUrl.value = config.imageReviewApiUrl;
+    imageReviewModel.value = config.imageReviewModel;
+    imageReviewApiKey.value = config.imageReviewApiKey;
+    imageReviewSystemPrompt.value = config.imageReviewSystemPrompt ?? "";
+    imageReviewUserPrompt.value = config.imageReviewUserPrompt ?? "";
     aiReviewAutoPassScore.value = config.aiReviewAutoPassScore;
     aiReviewBlockScore.value = config.aiReviewBlockScore;
     aiReviewForceBlockScore.value = config.aiReviewForceBlockScore;
@@ -403,6 +448,12 @@ async function saveAiReviewConfig() {
       aiReviewProvider: aiReviewProvider.value,
       aiReviewModel: aiReviewModel.value,
       aiReviewApiKey: aiReviewApiKey.value,
+      imageReviewEnabled: imageReviewEnabled.value,
+      imageReviewApiUrl: imageReviewApiUrl.value,
+      imageReviewModel: imageReviewModel.value,
+      imageReviewApiKey: imageReviewApiKey.value,
+      imageReviewSystemPrompt: imageReviewSystemPrompt.value,
+      imageReviewUserPrompt: imageReviewUserPrompt.value,
       aiReviewAutoPassScore: aiReviewAutoPassScore.value,
       aiReviewBlockScore: aiReviewBlockScore.value,
       aiReviewForceBlockScore: aiReviewForceBlockScore.value,
@@ -418,6 +469,12 @@ async function saveAiReviewConfig() {
     aiReviewProvider.value = config.aiReviewProvider;
     aiReviewModel.value = config.aiReviewModel;
     aiReviewApiKey.value = config.aiReviewApiKey;
+    imageReviewEnabled.value = config.imageReviewEnabled;
+    imageReviewApiUrl.value = config.imageReviewApiUrl;
+    imageReviewModel.value = config.imageReviewModel;
+    imageReviewApiKey.value = config.imageReviewApiKey;
+    imageReviewSystemPrompt.value = config.imageReviewSystemPrompt ?? "";
+    imageReviewUserPrompt.value = config.imageReviewUserPrompt ?? "";
     aiReviewAutoPassScore.value = config.aiReviewAutoPassScore;
     aiReviewBlockScore.value = config.aiReviewBlockScore;
     aiReviewForceBlockScore.value = config.aiReviewForceBlockScore;

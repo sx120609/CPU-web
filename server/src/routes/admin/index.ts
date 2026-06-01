@@ -1256,6 +1256,12 @@ const siteConfigPatchSchema = z.object({
   aiReviewProvider: z.string().trim().max(40).optional(),
   aiReviewModel: z.string().trim().max(80).optional(),
   aiReviewApiKey: z.string().trim().max(240).optional(),
+  imageReviewEnabled: z.boolean().optional(),
+  imageReviewApiUrl: z.string().trim().max(240).optional(),
+  imageReviewModel: z.string().trim().max(80).optional(),
+  imageReviewApiKey: z.string().trim().max(240).optional(),
+  imageReviewSystemPrompt: z.string().max(8000).optional(),
+  imageReviewUserPrompt: z.string().max(12000).optional(),
   aiReviewAutoPassScore: z.number().int().min(0).max(100).optional(),
   aiReviewBlockScore: z.number().int().min(0).max(100).optional(),
   aiReviewForceBlockScore: z.number().int().min(0).max(100).optional(),
@@ -1293,6 +1299,12 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       req.body.aiReviewProvider !== undefined ||
       req.body.aiReviewModel !== undefined ||
       req.body.aiReviewApiKey !== undefined ||
+      req.body.imageReviewEnabled !== undefined ||
+      req.body.imageReviewApiUrl !== undefined ||
+      req.body.imageReviewModel !== undefined ||
+      req.body.imageReviewApiKey !== undefined ||
+      req.body.imageReviewSystemPrompt !== undefined ||
+      req.body.imageReviewUserPrompt !== undefined ||
       req.body.aiReviewAutoPassScore !== undefined ||
       req.body.aiReviewBlockScore !== undefined ||
       req.body.aiReviewForceBlockScore !== undefined ||

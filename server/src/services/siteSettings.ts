@@ -24,6 +24,12 @@ export type SiteConfig = {
   aiReviewProvider: string;
   aiReviewModel: string;
   aiReviewApiKey: string;
+  imageReviewEnabled: boolean;
+  imageReviewApiUrl: string;
+  imageReviewModel: string;
+  imageReviewApiKey: string;
+  imageReviewSystemPrompt: string;
+  imageReviewUserPrompt: string;
   aiReviewAutoPassScore: number;
   aiReviewBlockScore: number;
   aiReviewForceBlockScore: number;
@@ -68,6 +74,12 @@ const AI_REVIEW_ENABLED_KEY = "ai.review.enabled";
 const AI_REVIEW_PROVIDER_KEY = "ai.review.provider";
 const AI_REVIEW_MODEL_KEY = "ai.review.model";
 const AI_REVIEW_API_KEY = "ai.review.apiKey";
+const IMAGE_REVIEW_ENABLED_KEY = "ai.imageReview.enabled";
+const IMAGE_REVIEW_API_URL_KEY = "ai.imageReview.apiUrl";
+const IMAGE_REVIEW_MODEL_KEY = "ai.imageReview.model";
+const IMAGE_REVIEW_API_KEY_KEY = "ai.imageReview.apiKey";
+const IMAGE_REVIEW_SYSTEM_PROMPT_KEY = "ai.imageReview.systemPrompt";
+const IMAGE_REVIEW_USER_PROMPT_KEY = "ai.imageReview.userPrompt";
 const AI_REVIEW_AUTO_PASS_SCORE_KEY = "ai.review.autoPassScore";
 const AI_REVIEW_BLOCK_SCORE_KEY = "ai.review.blockScore";
 const AI_REVIEW_FORCE_BLOCK_SCORE_KEY = "ai.review.forceBlockScore";
@@ -125,6 +137,18 @@ export const DEFAULT_AI_PROMPTS = {
   ].join("\n"),
 } as const;
 
+export const DEFAULT_IMAGE_REVIEW_PROMPTS = {
+  system: "你是校园社区图片安全审核助手。你需要判断这张图片是否适合在公开学生社区直接展示。重点关注色情裸露、未成年人相关性内容、血腥暴力、极端不适、自残鼓励、毒品、违法展示、仇恨符号、诈骗引流、联系方式与隐私证件等风险。只返回 JSON。",
+  user: [
+    "请审核这张图片是否可以在校园社区公开展示，输出 JSON：",
+    "{\"approved\":true,\"reason\":\"一句短原因\",\"detail\":\"补充说明\",\"risk_level\":\"low|medium|high\"}",
+    "",
+    "图片来源：{{imageUrl}}",
+    "文件类型：{{mimeType}}",
+    "文件名：{{fileName}}",
+  ].join("\n"),
+} as const;
+
 const cache: Record<FeatureKey, boolean> = {
   forum: true,
   market: true,
@@ -140,6 +164,12 @@ const configCache: SiteConfig = {
   aiReviewProvider: "deepseek",
   aiReviewModel: "deepseek-v4-flash",
   aiReviewApiKey: "",
+  imageReviewEnabled: false,
+  imageReviewApiUrl: "https://api.openai.com/v1/chat/completions",
+  imageReviewModel: "gpt-4o-mini",
+  imageReviewApiKey: "",
+  imageReviewSystemPrompt: DEFAULT_IMAGE_REVIEW_PROMPTS.system,
+  imageReviewUserPrompt: DEFAULT_IMAGE_REVIEW_PROMPTS.user,
   aiReviewAutoPassScore: 24,
   aiReviewBlockScore: 70,
   aiReviewForceBlockScore: 90,
@@ -197,6 +227,12 @@ export async function loadFeatures(): Promise<void> {
           AI_REVIEW_PROVIDER_KEY,
           AI_REVIEW_MODEL_KEY,
           AI_REVIEW_API_KEY,
+          IMAGE_REVIEW_ENABLED_KEY,
+          IMAGE_REVIEW_API_URL_KEY,
+          IMAGE_REVIEW_MODEL_KEY,
+          IMAGE_REVIEW_API_KEY_KEY,
+          IMAGE_REVIEW_SYSTEM_PROMPT_KEY,
+          IMAGE_REVIEW_USER_PROMPT_KEY,
           AI_REVIEW_AUTO_PASS_SCORE_KEY,
           AI_REVIEW_BLOCK_SCORE_KEY,
           AI_REVIEW_FORCE_BLOCK_SCORE_KEY,
@@ -245,6 +281,30 @@ export async function loadFeatures(): Promise<void> {
     }
     if (r.key === AI_REVIEW_API_KEY) {
       configCache.aiReviewApiKey = String(r.value || "");
+      continue;
+    }
+    if (r.key === IMAGE_REVIEW_ENABLED_KEY) {
+      configCache.imageReviewEnabled = r.value === "on";
+      continue;
+    }
+    if (r.key === IMAGE_REVIEW_API_URL_KEY) {
+      configCache.imageReviewApiUrl = normalizePromptTemplate(r.value, "https://api.openai.com/v1/chat/completions");
+      continue;
+    }
+    if (r.key === IMAGE_REVIEW_MODEL_KEY) {
+      configCache.imageReviewModel = String(r.value || "gpt-4o-mini").trim() || "gpt-4o-mini";
+      continue;
+    }
+    if (r.key === IMAGE_REVIEW_API_KEY_KEY) {
+      configCache.imageReviewApiKey = String(r.value || "");
+      continue;
+    }
+    if (r.key === IMAGE_REVIEW_SYSTEM_PROMPT_KEY) {
+      configCache.imageReviewSystemPrompt = normalizePromptTemplate(r.value, DEFAULT_IMAGE_REVIEW_PROMPTS.system);
+      continue;
+    }
+    if (r.key === IMAGE_REVIEW_USER_PROMPT_KEY) {
+      configCache.imageReviewUserPrompt = normalizePromptTemplate(r.value, DEFAULT_IMAGE_REVIEW_PROMPTS.user);
       continue;
     }
     if (r.key === AI_REVIEW_AUTO_PASS_SCORE_KEY) {
@@ -554,6 +614,10 @@ function sanitizeAiReviewConfig() {
   }
   if (!configCache.aiReviewProvider) configCache.aiReviewProvider = "deepseek";
   if (!configCache.aiReviewModel) configCache.aiReviewModel = "deepseek-v4-flash";
+  configCache.imageReviewApiUrl = normalizePromptTemplate(configCache.imageReviewApiUrl, "https://api.openai.com/v1/chat/completions");
+  configCache.imageReviewModel = String(configCache.imageReviewModel || "gpt-4o-mini").trim() || "gpt-4o-mini";
+  configCache.imageReviewSystemPrompt = normalizePromptTemplate(configCache.imageReviewSystemPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.system);
+  configCache.imageReviewUserPrompt = normalizePromptTemplate(configCache.imageReviewUserPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.user);
 }
 
 function sanitizeCommunityTrustConfig() {
@@ -577,6 +641,12 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
     aiReviewProvider: String(input.aiReviewProvider ?? configCache.aiReviewProvider ?? "deepseek").trim() || "deepseek",
     aiReviewModel: String(input.aiReviewModel ?? configCache.aiReviewModel ?? "deepseek-v4-flash").trim() || "deepseek-v4-flash",
     aiReviewApiKey: String(input.aiReviewApiKey ?? configCache.aiReviewApiKey ?? "").trim(),
+    imageReviewEnabled: input.imageReviewEnabled ?? configCache.imageReviewEnabled,
+    imageReviewApiUrl: normalizePromptTemplate(input.imageReviewApiUrl, configCache.imageReviewApiUrl),
+    imageReviewModel: String(input.imageReviewModel ?? configCache.imageReviewModel ?? "gpt-4o-mini").trim() || "gpt-4o-mini",
+    imageReviewApiKey: String(input.imageReviewApiKey ?? configCache.imageReviewApiKey ?? "").trim(),
+    imageReviewSystemPrompt: resolvePromptTemplate(input.imageReviewSystemPrompt, configCache.imageReviewSystemPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.system),
+    imageReviewUserPrompt: resolvePromptTemplate(input.imageReviewUserPrompt, configCache.imageReviewUserPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.user),
     aiReviewAutoPassScore: normalizeAiScore(input.aiReviewAutoPassScore, configCache.aiReviewAutoPassScore),
     aiReviewBlockScore: normalizeAiScore(input.aiReviewBlockScore, configCache.aiReviewBlockScore),
     aiReviewForceBlockScore: normalizeAiScore(input.aiReviewForceBlockScore, configCache.aiReviewForceBlockScore),
@@ -614,6 +684,36 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       where: { key: AI_REVIEW_API_KEY },
       update: { value: next.aiReviewApiKey },
       create: { key: AI_REVIEW_API_KEY, value: next.aiReviewApiKey },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: IMAGE_REVIEW_ENABLED_KEY },
+      update: { value: next.imageReviewEnabled ? "on" : "off" },
+      create: { key: IMAGE_REVIEW_ENABLED_KEY, value: next.imageReviewEnabled ? "on" : "off" },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: IMAGE_REVIEW_API_URL_KEY },
+      update: { value: next.imageReviewApiUrl },
+      create: { key: IMAGE_REVIEW_API_URL_KEY, value: next.imageReviewApiUrl },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: IMAGE_REVIEW_MODEL_KEY },
+      update: { value: next.imageReviewModel },
+      create: { key: IMAGE_REVIEW_MODEL_KEY, value: next.imageReviewModel },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: IMAGE_REVIEW_API_KEY_KEY },
+      update: { value: next.imageReviewApiKey },
+      create: { key: IMAGE_REVIEW_API_KEY_KEY, value: next.imageReviewApiKey },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: IMAGE_REVIEW_SYSTEM_PROMPT_KEY },
+      update: { value: next.imageReviewSystemPrompt },
+      create: { key: IMAGE_REVIEW_SYSTEM_PROMPT_KEY, value: next.imageReviewSystemPrompt },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: IMAGE_REVIEW_USER_PROMPT_KEY },
+      update: { value: next.imageReviewUserPrompt },
+      create: { key: IMAGE_REVIEW_USER_PROMPT_KEY, value: next.imageReviewUserPrompt },
     }),
     prisma.siteSetting.upsert({
       where: { key: AI_REVIEW_AUTO_PASS_SCORE_KEY },

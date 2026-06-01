@@ -8,6 +8,7 @@ import { router } from "./routes";
 import { shareRouter } from "./routes/share";
 import { isDev } from "./config";
 import { filestoreProxy } from "./services/filestore";
+import { startForumImageModerationPoller } from "./services/imageModeration";
 import { startQqNotificationPoller } from "./services/qqbot";
 
 export function createApp() {
@@ -33,6 +34,7 @@ export function createApp() {
 
   app.use("/share", shareRouter);
   app.use("/api", router);
+  startForumImageModerationPoller();
   startQqNotificationPoller();
 
   app.use("/api/*", (_req, res) => {

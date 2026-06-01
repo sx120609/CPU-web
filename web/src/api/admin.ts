@@ -6,6 +6,12 @@ export type SiteConfig = {
   aiReviewProvider: string;
   aiReviewModel: string;
   aiReviewApiKey: string;
+  imageReviewEnabled: boolean;
+  imageReviewApiUrl: string;
+  imageReviewModel: string;
+  imageReviewApiKey: string;
+  imageReviewSystemPrompt: string;
+  imageReviewUserPrompt: string;
   aiReviewAutoPassScore: number;
   aiReviewBlockScore: number;
   aiReviewForceBlockScore: number;
@@ -149,6 +155,12 @@ export const adminApi = {
     aiReviewProvider?: string;
     aiReviewModel?: string;
     aiReviewApiKey?: string;
+    imageReviewEnabled?: boolean;
+    imageReviewApiUrl?: string;
+    imageReviewModel?: string;
+    imageReviewApiKey?: string;
+    imageReviewSystemPrompt?: string;
+    imageReviewUserPrompt?: string;
     aiReviewAutoPassScore?: number;
     aiReviewBlockScore?: number;
     aiReviewForceBlockScore?: number;
