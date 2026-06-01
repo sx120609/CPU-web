@@ -52,6 +52,17 @@ export type SiteConfig = {
   anonymousTiers: AnonymousTierConfig[];
   reputationLevels: ReputationLevelConfig[];
 };
+export type SitePromptDefaults = Pick<
+  SiteConfig,
+  | "imageReviewSystemPrompt"
+  | "imageReviewUserPrompt"
+  | "aiTopicReviewSystemPrompt"
+  | "aiTopicReviewUserPrompt"
+  | "aiReplyReviewSystemPrompt"
+  | "aiReplyReviewUserPrompt"
+  | "aiEditSimilaritySystemPrompt"
+  | "aiEditSimilarityUserPrompt"
+>;
 
 export const ALL_FEATURES: FeatureKey[] = ["forum", "market", "coursereview", "electric", "sponsor"];
 export const DEFAULT_ANONYMOUS_TIERS: AnonymousTierConfig[] = [
@@ -435,6 +446,19 @@ export function getSiteConfig(): SiteConfig {
     ...configCache,
     anonymousTiers: configCache.anonymousTiers.map((item) => ({ ...item })),
     reputationLevels: configCache.reputationLevels.map((item) => ({ ...item })),
+  };
+}
+
+export function getSitePromptDefaults(): SitePromptDefaults {
+  return {
+    imageReviewSystemPrompt: DEFAULT_IMAGE_REVIEW_PROMPTS.system,
+    imageReviewUserPrompt: DEFAULT_IMAGE_REVIEW_PROMPTS.user,
+    aiTopicReviewSystemPrompt: DEFAULT_AI_PROMPTS.topicReviewSystem,
+    aiTopicReviewUserPrompt: DEFAULT_AI_PROMPTS.topicReviewUser,
+    aiReplyReviewSystemPrompt: DEFAULT_AI_PROMPTS.replyReviewSystem,
+    aiReplyReviewUserPrompt: DEFAULT_AI_PROMPTS.replyReviewUser,
+    aiEditSimilaritySystemPrompt: DEFAULT_AI_PROMPTS.editSimilaritySystem,
+    aiEditSimilarityUserPrompt: DEFAULT_AI_PROMPTS.editSimilarityUser,
   };
 }
 

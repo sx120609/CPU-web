@@ -10,6 +10,7 @@ import {
   getFeatures,
   isGlobalPinnedTopic,
   getSiteConfig,
+  getSitePromptDefaults,
   removeTopicFromGlobalPins,
   setFeature,
   setTopicGlobalPinned,
@@ -1313,6 +1314,10 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
 
 adminRouter.get("/site-config", adminOnly, (_req, res) => {
   ok(res, getSiteConfig());
+});
+
+adminRouter.get("/site-config/prompt-defaults", adminOnly, (_req, res) => {
+  ok(res, getSitePromptDefaults());
 });
 
 const siteConfigPatchSchema = z.object({

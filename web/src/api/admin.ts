@@ -34,6 +34,17 @@ export type SiteConfig = {
   anonymousTiers: Array<{ reputation: number; quota: number }>;
   reputationLevels: Array<{ level: number; name: string; minReputation: number }>;
 };
+export type SitePromptDefaults = Pick<
+  SiteConfig,
+  | "imageReviewSystemPrompt"
+  | "imageReviewUserPrompt"
+  | "aiTopicReviewSystemPrompt"
+  | "aiTopicReviewUserPrompt"
+  | "aiReplyReviewSystemPrompt"
+  | "aiReplyReviewUserPrompt"
+  | "aiEditSimilaritySystemPrompt"
+  | "aiEditSimilarityUserPrompt"
+>;
 
 export type AiReviewLogRow = {
   id: number;
@@ -214,6 +225,7 @@ export const adminApi = {
     request.delete<{ deletedUserId: number; deletedTopics: number; deletedReplies: number }>(`/admin/users/${id}`),
   // 站点功能开关
   siteConfig: () => request.get<SiteConfig>("/admin/site-config"),
+  sitePromptDefaults: () => request.get<SitePromptDefaults>("/admin/site-config/prompt-defaults"),
   updateSiteConfig: (patch: {
     siteOrigin?: string;
     aiReviewEnabled?: boolean;

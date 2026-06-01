@@ -47,6 +47,9 @@
           </div>
           <span class="toggle-arrow" aria-hidden="true">▾</span>
         </button>
+        <div class="prompt-actions">
+          <el-button text :disabled="loadingPromptDefaults" @click="resetTextPrompts">重置文字 Prompt</el-button>
+        </div>
         <div v-if="textPromptsExpanded" class="prompt-grid">
           <div class="ai-row ai-row--stretch">
             <span class="ai-label">帖子审核 System Prompt</span>
@@ -111,6 +114,9 @@
           </div>
           <span class="toggle-arrow" aria-hidden="true">▾</span>
         </button>
+        <div class="prompt-actions">
+          <el-button text :disabled="loadingPromptDefaults" @click="resetImagePrompts">重置图片 Prompt</el-button>
+        </div>
         <div v-if="imagePromptsExpanded" class="prompt-grid">
           <div class="ai-row ai-row--stretch">
             <span class="ai-label">图片审核 System Prompt</span>
@@ -125,6 +131,7 @@
 
       <div class="actions-row">
         <el-button type="primary" :loading="saving" @click="saveConfig">保存审核配置</el-button>
+        <el-button plain :disabled="loadingPromptDefaults" @click="resetAllPrompts">重置全部 Prompt</el-button>
         <el-button plain :loading="sweepingImages" @click="sweepForumImages">一键补扫全站图片</el-button>
       </div>
       <p v-if="lastImageSweepSummary" class="actions-note">{{ lastImageSweepSummary }}</p>
@@ -191,17 +198,19 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { adminApi, type AiReviewLogRow, type ForumImageSweepResult, type SiteConfig } from "@/api/admin";
+import { adminApi, type AiReviewLogRow, type ForumImageSweepResult, type SiteConfig, type SitePromptDefaults } from "@/api/admin";
 import { fmtDate } from "@/utils/format";
 
 const loadingConfig = ref(false);
 const loadingLogs = ref(false);
 const saving = ref(false);
 const sweepingImages = ref(false);
+const loadingPromptDefaults = ref(false);
 const textPromptsExpanded = ref(false);
 const imagePromptsExpanded = ref(false);
 const logs = ref<AiReviewLogRow[]>([]);
 const lastImageSweepSummary = ref("");
+const promptDefaults = ref<SitePromptDefaults | null>(null);
 const filters = reactive({ kind: "", status: "", page: 1, size: 20 });
 const form = reactive<SiteConfig>({
   siteOrigin: "",
@@ -246,7 +255,7 @@ const aiEditSimilarityPercent = computed({
 });
 
 onMounted(async () => {
-  await Promise.all([loadConfig(), loadLogs()]);
+  await Promise.all([loadConfig(), loadLogs(), loadPromptDefaults()]);
 });
 
 async function loadConfig() {
@@ -255,6 +264,15 @@ async function loadConfig() {
     Object.assign(form, await adminApi.siteConfig());
   } finally {
     loadingConfig.value = false;
+  }
+}
+
+async function loadPromptDefaults() {
+  loadingPromptDefaults.value = true;
+  try {
+    promptDefaults.value = await adminApi.sitePromptDefaults();
+  } finally {
+    loadingPromptDefaults.value = false;
   }
 }
 
@@ -287,6 +305,39 @@ async function saveConfig() {
   } finally {
     saving.value = false;
   }
+}
+
+function applyPromptDefaults(scope: "text" | "image" | "all") {
+  if (!promptDefaults.value) return;
+  const defaults = promptDefaults.value;
+  if (scope === "text" || scope === "all") {
+    form.aiTopicReviewSystemPrompt = defaults.aiTopicReviewSystemPrompt;
+    form.aiTopicReviewUserPrompt = defaults.aiTopicReviewUserPrompt;
+    form.aiReplyReviewSystemPrompt = defaults.aiReplyReviewSystemPrompt;
+    form.aiReplyReviewUserPrompt = defaults.aiReplyReviewUserPrompt;
+    form.aiEditSimilaritySystemPrompt = defaults.aiEditSimilaritySystemPrompt;
+    form.aiEditSimilarityUserPrompt = defaults.aiEditSimilarityUserPrompt;
+  }
+  if (scope === "image" || scope === "all") {
+    form.imageReviewSystemPrompt = defaults.imageReviewSystemPrompt;
+    form.imageReviewUserPrompt = defaults.imageReviewUserPrompt;
+  }
+  ElMessage.success(scope === "all" ? "已恢复全部默认 Prompt，记得保存审核配置" : `已恢复${scope === "text" ? "文字" : "图片"}默认 Prompt，记得保存审核配置`);
+}
+
+async function resetTextPrompts() {
+  if (!promptDefaults.value) await loadPromptDefaults();
+  applyPromptDefaults("text");
+}
+
+async function resetImagePrompts() {
+  if (!promptDefaults.value) await loadPromptDefaults();
+  applyPromptDefaults("image");
+}
+
+async function resetAllPrompts() {
+  if (!promptDefaults.value) await loadPromptDefaults();
+  applyPromptDefaults("all");
 }
 
 async function loadLogs() {
@@ -402,6 +453,12 @@ function buildImageSweepSummary(result: ForumImageSweepResult) {
   border-radius: 14px;
   background: #fcfdff;
   border: 1px dashed #d7e2f0;
+}
+
+.prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -4px;
 }
 
 .prompt-grid {
