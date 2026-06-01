@@ -2446,23 +2446,24 @@ function renderShareCardBlock(card: ParsedShareCard | null) {
   const host = extractUrlHostLabel(normalized.url);
   const hostLabel = host && host !== normalized.source ? escapeShareCardHtml(host) : "";
   const hasLink = Boolean(normalized.url);
-  const tagName = hasLink ? "a" : "div";
-  const attrs = hasLink
-    ? ` class="qq-share-card qq-share-card--linked" href="${escapeShareCardHtml(normalized.url!)}" target="_blank" rel="noopener noreferrer nofollow"`
-    : ` class="qq-share-card"`;
+  const linkAttrs = hasLink
+    ? ` href="${escapeShareCardHtml(normalized.url!)}" target="_blank" rel="noopener noreferrer nofollow"`
+    : "";
   const metaBits = [
     source ? `<span class="qq-share-card__source">${source}</span>` : "",
     hostLabel ? `<span class="qq-share-card__host">${hostLabel}</span>` : "",
   ].filter(Boolean).join("");
   return [
     "",
-    `<${tagName}${attrs}>`,
+    `<div class="qq-share-card${hasLink ? " qq-share-card--linked" : ""}">`,
     `<div class="qq-share-card__eyebrow">分享卡片</div>`,
-    `<div class="qq-share-card__title">${title}</div>`,
+    hasLink
+      ? `<div class="qq-share-card__title"><a class="qq-share-card__title-link"${linkAttrs}>${title}</a></div>`
+      : `<div class="qq-share-card__title">${title}</div>`,
     summary ? `<div class="qq-share-card__summary">${summary}</div>` : "",
     metaBits ? `<div class="qq-share-card__meta">${metaBits}</div>` : "",
-    hasLink ? `<div class="qq-share-card__action">打开链接</div>` : "",
-    `</${tagName}>`,
+    hasLink ? `<div class="qq-share-card__action"><a class="qq-share-card__action-link"${linkAttrs}>打开链接</a></div>` : "",
+    `</div>`,
     "",
   ].filter(Boolean).join("\n");
 }

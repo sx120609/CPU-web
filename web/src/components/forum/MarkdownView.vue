@@ -346,6 +346,13 @@ watch(() => props.clickableImages, () => nextTick(bindImageViewer));
   font-weight: 700;
   line-height: 1.5;
 }
+.md :deep(.qq-share-card__title-link) {
+  color: inherit;
+  text-decoration: none;
+}
+.md :deep(.qq-share-card__title-link:hover) {
+  text-decoration: underline;
+}
 .md :deep(.qq-share-card__summary) {
   margin-top: 6px;
   color: #4b5563;
@@ -376,11 +383,17 @@ watch(() => props.clickableImages, () => nextTick(bindImageViewer));
 }
 .md :deep(.qq-share-card__action) {
   margin-top: 12px;
+}
+.md :deep(.qq-share-card__action-link) {
   color: var(--cpu-primary);
   font-size: 13px;
   font-weight: 600;
+  text-decoration: none;
 }
-.md :deep(.qq-share-card__action::after) {
+.md :deep(.qq-share-card__action-link:hover) {
+  text-decoration: underline;
+}
+.md :deep(.qq-share-card__action-link::after) {
   content: " ↗";
 }
 
