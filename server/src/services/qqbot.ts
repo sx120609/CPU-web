@@ -159,6 +159,10 @@ const GROUP_NOTIFY_CATEGORY_OPTIONS = ["system", "school-feed"] as const;
 const GROUP_NOTIFY_AUDIENCE_OPTIONS = ["public", "staff"] as const;
 const DEFAULT_GROUP_NOTIFY_CATEGORIES = ["system", "school-feed"];
 const DEFAULT_GROUP_NOTIFY_AUDIENCES = ["public"];
+const STAFF_GROUP_ACTIONABLE_NOTIFICATION_TYPES = new Set([
+  "topic-manual-review-admin",
+  "reply-manual-review-admin",
+]);
 let pollerStarted = false;
 let wsClient: any = null;
 let wsConnecting = false;
@@ -3098,7 +3102,7 @@ function shouldDeliverQqNotificationToUser(
 
 function shouldDeliverQqNotificationToGroup(
   group: QqBotGroupView,
-  notification: { userId?: number | null; category?: string | null; targetClient?: string | null },
+  notification: { userId?: number | null; category?: string | null; targetClient?: string | null; payload?: unknown },
   recipientRole?: string | null,
 ) {
   if (!group.notificationEnabled) return false;
@@ -3107,7 +3111,8 @@ function shouldDeliverQqNotificationToGroup(
     return group.notifyAudiences.includes("public") && isNotificationVisibleToQq(notification);
   }
   if (!group.notifyAudiences.includes("staff")) return false;
-  return recipientRole === "admin" || recipientRole === "mod";
+  if (recipientRole !== "admin" && recipientRole !== "mod") return false;
+  return isStaffGroupActionableNotification(notification);
 }
 
 function buildGroupNotificationDeliveryKey(notification: {
@@ -3121,18 +3126,23 @@ function buildGroupNotificationDeliveryKey(notification: {
   source?: string | null;
 }) {
   if (notification.userId == null) return `global:${notification.id || 0}`;
-  const payload = typeof notification.payload === "string"
-    ? notification.payload
-    : JSON.stringify(notification.payload || {});
+  const payload = parseNotificationPayload(notification.payload);
+  const topicId = toPositiveInt(payload.topicId);
+  const replyId = toPositiveInt(payload.replyId);
+  const type = String(payload.type || "").trim();
   return [
     "staff",
-    notification.category || "",
-    notification.title || "",
-    notification.content || "",
-    payload,
-    notification.link || "",
-    notification.source || "",
-  ].join("::").slice(0, 500);
+    type || notification.category || "",
+    topicId || 0,
+    replyId || 0,
+  ].join(":");
+}
+
+function isStaffGroupActionableNotification(notification: { category?: string | null; payload?: unknown }) {
+  if (notification.category !== "system") return false;
+  const payload = parseNotificationPayload(notification.payload);
+  const type = String(payload.type || "").trim();
+  return STAFF_GROUP_ACTIONABLE_NOTIFICATION_TYPES.has(type);
 }
 
 function parseNotificationPayload(payload: unknown): Record<string, any> {
