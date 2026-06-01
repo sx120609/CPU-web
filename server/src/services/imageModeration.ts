@@ -26,8 +26,19 @@ type ImageReviewDecision = {
   reason: string;
   detail: string;
   riskLevel: "low" | "medium" | "high";
+  riskScore: number;
+  decision: "auto_pass" | "manual_review" | "block";
   model: string;
   endpoint: string;
+};
+type ParsedImageReviewJson = {
+  approved?: boolean;
+  risk_score?: number;
+  risk_level?: string;
+  decision?: string;
+  reason?: string;
+  detail?: string;
+  categories?: Record<string, number>;
 };
 
 export type ForumImageModerationSummary = {
@@ -777,13 +788,23 @@ async function requestImageReview(input: {
       const decision = {
         approved: false,
         reason: "图片未通过平台内容安全检查",
-        detail: providerBlock.message || "上游审核接口直接拦截了该图片请求",
+        detail: buildImageDecisionDetail({
+          riskScore: 100,
+          riskLevel: "high",
+          decision: "block",
+          categories: { provider_policy: 100 },
+          detail: providerBlock.message || "上游审核接口直接拦截了该图片请求",
+        }),
         riskLevel: "high" as const,
+        riskScore: 100,
+        decision: "block" as const,
         model: config.imageReviewModel,
         endpoint,
       };
       await finishAiReviewLogSuccess(logId, JSON.stringify({
-        approved: false,
+        risk_score: decision.riskScore,
+        risk_level: decision.riskLevel,
+        decision: decision.decision,
         reason: decision.reason,
         detail: decision.detail,
         providerErrorCode: providerBlock.code,
@@ -797,11 +818,23 @@ async function requestImageReview(input: {
   const content = extractChatCompletionContent(json);
   await finishAiReviewLogSuccess(logId, content);
   const parsed = parseImageReviewJson(content);
+  const riskScore = clampImageRiskScore(parsed.risk_score, parsed.approved);
+  const riskLevel = normalizeImageRiskLevel(parsed.risk_level, riskScore);
+  const decision = normalizeImageDecision(parsed.decision, parsed.approved, riskScore, config.aiReviewAutoPassScore, config.aiReviewBlockScore);
   return {
-    approved: Boolean(parsed.approved),
-    reason: String(parsed.reason || (parsed.approved ? "图片审核通过" : "图片未通过审核")).slice(0, 120),
-    detail: String(parsed.detail || "").slice(0, 1200),
-    riskLevel: normalizeRiskLevel(parsed.risk_level),
+    approved: decision === "auto_pass",
+    reason: String(parsed.reason || fallbackImageReason(riskLevel, decision)).slice(0, 120),
+    detail: buildImageDecisionDetail({
+      riskScore,
+      riskLevel,
+      decision,
+      categories: parsed.categories ?? {},
+      detail: String(parsed.detail || "").slice(0, 1000),
+      modelDecision: String(parsed.decision || "").trim(),
+    }),
+    riskLevel,
+    riskScore,
+    decision,
     model: config.imageReviewModel,
     endpoint,
   };
@@ -831,7 +864,7 @@ function extractChatCompletionContent(json: any) {
   return "";
 }
 
-function parseImageReviewJson(content: string) {
+function parseImageReviewJson(content: string): ParsedImageReviewJson {
   if (!content || typeof content !== "string") throw new Error("图片审核返回为空");
   try {
     return JSON.parse(content);
@@ -905,7 +938,65 @@ function resolveMimeType(inputMime: string | null | undefined, filePath: string,
   return "";
 }
 
-function normalizeRiskLevel(value: unknown): "low" | "medium" | "high" {
+function clampImageRiskScore(value: unknown, approved?: boolean) {
+  const score = Number(value);
+  if (Number.isFinite(score)) return Math.max(0, Math.min(100, Math.round(score)));
+  if (approved === true) return 0;
+  if (approved === false) return 100;
+  return 50;
+}
+
+function normalizeImageRiskLevel(value: unknown, score: number): "low" | "medium" | "high" {
   if (value === "low" || value === "medium" || value === "high") return value;
-  return "medium";
+  if (score >= 70) return "high";
+  if (score >= 30) return "medium";
+  return "low";
+}
+
+function normalizeImageDecision(
+  value: unknown,
+  approved: boolean | undefined,
+  score: number,
+  autoPassScore: number,
+  blockScore: number,
+): "auto_pass" | "manual_review" | "block" {
+  if (value === "auto_pass" || value === "manual_review" || value === "block") return value;
+  if (approved === true) return "auto_pass";
+  if (approved === false && score < blockScore) return "manual_review";
+  if (score < autoPassScore) return "auto_pass";
+  if (score >= blockScore) return "block";
+  return "manual_review";
+}
+
+function fallbackImageReason(
+  riskLevel: "low" | "medium" | "high",
+  decision: "auto_pass" | "manual_review" | "block",
+) {
+  if (decision === "auto_pass") return "图片审核通过";
+  if (decision === "manual_review") return riskLevel === "high" ? "图片存在较高争议，已暂时隐藏" : "图片存在一定风险，已暂时隐藏";
+  return riskLevel === "high" ? "图片风险较高，不适合公开展示" : "图片未通过审核";
+}
+
+function buildImageDecisionDetail(input: {
+  riskScore: number;
+  riskLevel: "low" | "medium" | "high";
+  decision: "auto_pass" | "manual_review" | "block";
+  categories?: Record<string, number>;
+  detail?: string;
+  modelDecision?: string;
+}) {
+  const topCategories = Object.entries(input.categories || {})
+    .map(([name, value]) => [name, Number(value)] as const)
+    .filter(([, value]) => Number.isFinite(value) && value > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4)
+    .map(([name, value]) => `${name}:${Math.round(value)}`);
+  return [
+    `风险分：${input.riskScore}`,
+    `风险等级：${input.riskLevel}`,
+    `审核决策：${input.decision}`,
+    input.modelDecision ? `模型原始决策：${input.modelDecision}` : "",
+    topCategories.length ? `风险分类：${topCategories.join(" / ")}` : "",
+    input.detail ? `补充说明：${input.detail}` : "",
+  ].filter(Boolean).join("\n");
 }

@@ -80,7 +80,7 @@
       <div class="section-head">
         <div>
           <h3 class="section-title">图片审核</h3>
-          <p class="section-desc">图片走异步审核，发布后先占位，审核通过再放行。</p>
+          <p class="section-desc">图片走异步审核，发布后先占位，审核通过再放行；风险评分与文字审核共用同一组阈值。</p>
         </div>
       </div>
 
