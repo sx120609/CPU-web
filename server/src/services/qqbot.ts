@@ -127,7 +127,7 @@ type ParsedShareCard = {
   url?: string;
 };
 
-type ForwardSource = "direct" | "reply";
+type ForwardSource = "direct-forward" | "reply-forward" | "reply-message";
 type QqMessageExtractOptions = {
   forwardDepth?: number;
   imageMode?: "upload" | "placeholder";
@@ -485,9 +485,9 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
       await replyToPrivateForPosting(
         context,
         [
-          "群聊投稿只支持这一种方式：",
-          "回复一条合并转发消息，并在同一条消息里 @我 说明要投稿。",
-          "如果是普通文字投稿，请改用私聊。",
+          "群聊投稿请这样发：",
+          "回复你想投稿的那条消息（可以是文字、图片、分享卡片或合并转发），并在同一条消息里 @我 说明要投稿。",
+          "如果不方便这样操作，也可以改用私聊投稿。",
         ].join("\n"),
         "已收到，请查看私信了解投稿方式。",
       );
@@ -745,7 +745,7 @@ async function startForwardPostConversation(
     groupId?: string;
     messageText: string;
   },
-  forwardPayload: ParsedForwardPayload,
+  forwardPayload: ParsedForwardPayload & { source: ForwardSource },
 ) {
   await ensureQqPostingAllowed(context);
   await ensureQqBinding(context.qqId);
@@ -759,9 +759,10 @@ async function startForwardPostConversation(
     sourceMessageId: forwardPayload.sourceMessageId || (context.event.message_id ? String(context.event.message_id) : undefined),
     sourceSummary: forwardPayload.summary,
     metadata: buildConversationMetadata(context, {
-      source: "forward",
+      source: forwardPayload.source === "reply-message" ? "reply-message" : "forward",
+      quotedPayloadSource: forwardPayload.source,
       forwardDraftTemplate: forwardPayload.content,
-      forwardDraftMode: "placeholder",
+      forwardDraftMode: forwardPayload.source === "reply-message" ? "reply" : "placeholder",
     }),
   });
 }
@@ -872,13 +873,13 @@ async function handleConversationMessage(
     if (/^(否|不要|取消|算了)$/i.test(text)) {
       markConversationCancelled(context.qqId, context.groupId);
       await finishConversation(conversation.id, "cancelled");
-      await replyToPostingConversation(conversation, context, "好的，这条转发内容我先不投稿。");
+      await replyToPostingConversation(conversation, context, "好的，这条内容我先不投稿。");
       return { ok: true, cancelled: true };
     }
     await replyToPostingConversation(
       conversation,
       context,
-      "如果要投稿，请回复“是”；不想投稿就回复“否”或“/取消”。我会把你刚才回复的那条合并转发内容当作投稿素材。",
+      "如果要投稿，请回复“是”；不想投稿就回复“否”或“/取消”。我会把你刚才回复的那条消息内容当作投稿素材。",
     );
     return { ok: true };
   }
@@ -990,7 +991,7 @@ async function handleConversationMessage(
     await replyToPostingConversation(conversation, context, await renderConversationPrompt(
       next,
       conversation.step === "await-forward-title"
-        ? `标题我记成「${parsed.title}」了，正文我会直接使用你刚才回复的那条合并转发内容。`
+        ? `标题我记成「${parsed.title}」了，正文我会直接使用你刚才回复的那条消息内容。`
         : shouldReturnToConfirm
         ? `标题我已经改成「${parsed.title}」了，正文我继续沿用你刚才整理好的内容。`
         : draftContent
@@ -1223,7 +1224,7 @@ async function renderConversationPrompt(conversation: any, assistantHint?: strin
   }
   if (conversation.step === "await-forward-confirm") {
     return [
-      "我收到了你回复的合并转发内容。",
+      "我收到了你回复的那条消息内容。",
       "如果要投稿，请回复“是”。不想投稿请回复“否”或“取消”。",
       assistantHint || "",
     ].filter(Boolean).join("\n");
@@ -1253,7 +1254,7 @@ async function renderConversationPrompt(conversation: any, assistantHint?: strin
   if (conversation.step === "await-forward-title") {
     return [
       "好的，请发送这篇投稿的标题。",
-      "正文我会使用刚才的转发内容。",
+      "正文我会使用刚才那条消息里的内容。",
       "不想继续的话，发送“取消”。",
       assistantHint || "",
     ].join("\n");
@@ -1317,10 +1318,19 @@ async function refreshForwardDraftContent(conversation: any) {
   if (conversation?.scene !== "forward-post" || !forwardId) return currentDraft;
   const forwardDraftTemplate = String(metadata.forwardDraftTemplate || "");
   if (!forwardDraftTemplate.includes("[图片]")) return currentDraft;
-  const payload = await extractForwardPayload([{ type: "forward", data: { id: forwardId } }], {
-    imageMode: "upload",
-  }).catch(() => null);
-  const refreshed = String(payload?.content || "").trim();
+  const payloadSource = String(metadata.quotedPayloadSource || "").trim();
+  let refreshed = "";
+  if (payloadSource === "reply-message") {
+    const replied = await callQqBotAction("get_msg", { message_id: Number(forwardId) || forwardId }).catch(() => null);
+    refreshed = await extractMessageText(replied?.data?.message ?? replied?.data?.content, {
+      imageMode: "upload",
+    }).catch(() => "");
+  } else {
+    const payload = await extractForwardPayload([{ type: "forward", data: { id: forwardId } }], {
+      imageMode: "upload",
+    }).catch(() => null);
+    refreshed = String(payload?.content || "").trim();
+  }
   if (!refreshed) return currentDraft;
   return replaceForwardDraftTemplate(currentDraft, String(metadata.forwardDraftTemplate || ""), refreshed);
 }
@@ -2107,12 +2117,12 @@ async function extractForwardPayload(
     const parsed = await parseForwardMessages(payload?.data?.messages, forwardId, options);
     if (parsed) {
       queueQqBotForwardDebug("forward.extract", {
-        source: "direct",
+        source: "direct-forward",
         forwardId,
         summary: parsed.summary,
         preview: debugMessagePreview(parsed.content),
       });
-      return { ...parsed, source: "direct" };
+      return { ...parsed, source: "direct-forward" };
     }
   }
   const replyId = extractReplyMessageId(message);
@@ -2120,18 +2130,41 @@ async function extractForwardPayload(
   const replied = await callQqBotAction("get_msg", { message_id: Number(replyId) || replyId }).catch(() => null);
   const replyMessage = replied?.data?.message ?? replied?.data?.content;
   const replyForwardId = extractForwardNodeId(replyMessage);
-  if (!replyForwardId) return null;
-  const payload = await callQqBotAction("get_forward_msg", { id: replyForwardId }).catch(() => null);
-  const parsed = await parseForwardMessages(payload?.data?.messages, replyForwardId, options);
-  if (!parsed) return null;
+  if (replyForwardId) {
+    const payload = await callQqBotAction("get_forward_msg", { id: replyForwardId }).catch(() => null);
+    const parsed = await parseForwardMessages(payload?.data?.messages, replyForwardId, options);
+    if (parsed) {
+      queueQqBotForwardDebug("forward.extract", {
+        source: "reply-forward",
+        replyId,
+        forwardId: replyForwardId,
+        summary: parsed.summary,
+        preview: debugMessagePreview(parsed.content),
+      });
+      return { ...parsed, source: "reply-forward" };
+    }
+  }
+  const replyContent = (await extractMessageText(replyMessage, options).catch(() => "")).trim();
+  if (!replyContent) return null;
+  const imageCount = countForwardImageTokens(replyContent);
+  const summary = buildReplyMessageSummary(replyContent, imageCount);
   queueQqBotForwardDebug("forward.extract", {
-    source: "reply",
+    source: "reply-message",
     replyId,
-    forwardId: replyForwardId,
-    summary: parsed.summary,
-    preview: debugMessagePreview(parsed.content),
+    summary,
+    preview: debugMessagePreview(replyContent),
+    message: replyMessage,
   });
-  return { ...parsed, source: "reply" };
+  return {
+    source: "reply-message",
+    summary,
+    content: replyContent,
+    sourceMessageId: replyId,
+    messageCount: 1,
+    blockCount: 1,
+    participantCount: 1,
+    imageCount,
+  };
 }
 
 async function parseForwardMessages(
@@ -2791,6 +2824,12 @@ function buildForwardPayloadSummary(
   return [statBits.join("，"), previewBits.join(" / ")].filter(Boolean).join(" · ").slice(0, 160);
 }
 
+function buildReplyMessageSummary(content: string, imageCount: number) {
+  const statBits = ["1 条消息"];
+  if (imageCount > 0) statBits.push(`${imageCount} 张图`);
+  return [statBits.join("，"), forwardSummaryPreview(content)].filter(Boolean).join(" · ").slice(0, 160);
+}
+
 function renderForwardPayloadContent(
   entries: ParsedForwardEntry[],
   stats: {
@@ -2987,7 +3026,7 @@ function shouldHandleForwardPostInContext(context: {
 }) {
   if (!context.forwardPayload) return false;
   if (context.event.message_type !== "group") return true;
-  return context.forwardPayload.source === "reply" && isExplicitBotMention(context.event, context.messageText);
+  return isExplicitBotMention(context.event, context.messageText);
 }
 
 async function renderBindingStatus(
