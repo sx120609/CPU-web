@@ -286,6 +286,28 @@ watch(() => props.clickableImages, () => nextTick(bindImageViewer));
 .md :deep(img[data-align="left"]) { display: block; margin-left: 0; margin-right: auto; }
 .md :deep(img[data-align="center"]) { display: block; margin-left: auto; margin-right: auto; }
 .md :deep(img[data-align="right"]) { display: block; margin-left: auto; margin-right: 0; }
+.md :deep(.image-review-placeholder) {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  margin: 8px 0;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+.md :deep(.image-review-placeholder-pending) {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #9a3412;
+}
+.md :deep(.image-review-placeholder-rejected) {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
 
 /* 表格容器（由 JS 自动包装）：只在表格超宽时才出现水平滚动条 */
 .md :deep(.md-table-wrap) {

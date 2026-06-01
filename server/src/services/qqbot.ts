@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import path from "node:path";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import { ensureForumAccessEnabled } from "./forumAccess";
@@ -1643,8 +1643,107 @@ export async function logQqBotMessage(input: {
   }).catch(() => null);
 }
 
+export async function buildQqBotDebugExport(input: {
+  status?: string;
+  eventType?: string;
+  take?: number;
+}) {
+  const take = Math.min(200, Math.max(20, Number(input.take ?? 80) || 80));
+  const where: any = {};
+  if (input.status) where.status = input.status;
+  if (input.eventType) where.eventType = input.eventType;
+  const [messageLogs, forwardDebugEntries] = await Promise.all([
+    prisma.qqBotMessageLog.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take,
+      include: { user: { select: { id: true, username: true, nickname: true } } },
+    }),
+    readQqBotForwardDebugEntries(),
+  ]);
+  return {
+    exportedAt: new Date().toISOString(),
+    filters: {
+      status: input.status || "",
+      eventType: input.eventType || "",
+      take,
+    },
+    messageLogs: messageLogs.map((row) => ({
+      ...row,
+      rawPayload: parseJsonTextMaybe(row.rawPayload),
+    })),
+    forwardDebugEntries,
+  };
+}
+
+function parseJsonTextMaybe(value: string) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+async function readQqBotForwardDebugEntries(limit = QQBOT_FORWARD_DEBUG_EXPORT_LIMIT) {
+  const raw = await readFile(QQBOT_FORWARD_DEBUG_FILE, "utf8").catch(() => "");
+  if (!raw.trim()) return [] as any[];
+  return raw
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .slice(-limit)
+    .map((line) => parseJsonTextMaybe(line));
+}
+
+function trimDebugValue(value: unknown, depth = 0): unknown {
+  if (value == null) return value;
+  if (depth >= 5) return "[depth-limit]";
+  if (typeof value === "string") {
+    return value.length > 4000 ? `${value.slice(0, 4000)}...[truncated ${value.length - 4000} chars]` : value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (Array.isArray(value)) {
+    const trimmed = value.slice(0, 20).map((item) => trimDebugValue(item, depth + 1));
+    if (value.length > 20) trimmed.push(`[truncated ${value.length - 20} items]`);
+    return trimmed;
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of entries.slice(0, 30)) out[key] = trimDebugValue(item, depth + 1);
+    if (entries.length > 30) out.__truncatedKeys = `[truncated ${entries.length - 30} keys]`;
+    return out;
+  }
+  return String(value);
+}
+
+async function appendQqBotForwardDebug(stage: string, payload: Record<string, unknown>) {
+  const trimmedPayload = trimDebugValue(payload);
+  const entry = JSON.stringify({
+    at: new Date().toISOString(),
+    stage,
+    ...(
+      trimmedPayload && typeof trimmedPayload === "object" && !Array.isArray(trimmedPayload)
+        ? trimmedPayload as Record<string, unknown>
+        : { payload: trimmedPayload }
+    ),
+  });
+  await mkdir(path.dirname(QQBOT_FORWARD_DEBUG_FILE), { recursive: true });
+  await appendFile(QQBOT_FORWARD_DEBUG_FILE, `${entry}\n`, "utf8").catch(() => undefined);
+}
+
+function queueQqBotForwardDebug(stage: string, payload: Record<string, unknown>) {
+  void appendQqBotForwardDebug(stage, payload);
+}
+
+function debugMessagePreview(value: string, limit = 240) {
+  const normalized = normalizeRenderedMessage(value).replace(/\n+/g, " ");
+  return normalized.length > limit ? `${normalized.slice(0, limit)}...` : normalized;
+}
+
 const MAX_FORWARD_DEPTH = 4;
 const QQBOT_IMAGE_MAX_BYTES = 12 * 1024 * 1024;
+const QQBOT_FORWARD_DEBUG_FILE = path.resolve(process.cwd(), "runtime", "qqbot-forward-debug.ndjson");
+const QQBOT_FORWARD_DEBUG_EXPORT_LIMIT = 200;
 const qqImageUploadCache = new Map<string, Promise<string>>();
 
 async function extractMessageText(
@@ -1655,9 +1754,23 @@ async function extractMessageText(
   if (message && typeof message === "object") {
     const maybeMessage = message as any;
     if (maybeMessage.type === "node") {
-      if (maybeMessage.data?.id) return resolveReferencedNodeContent(maybeMessage.data.id, options.forwardDepth ?? 0);
+      const embedded = await renderEmbeddedNodeSegmentContent(
+        maybeMessage.data?.content ?? maybeMessage.data?.message,
+        options.forwardDepth ?? 0,
+      );
+      if (embedded) return normalizeRenderedMessage(embedded);
+      if (maybeMessage.data?.id) return normalizeRenderedMessage(await resolveReferencedNodeContent(maybeMessage.data.id, options.forwardDepth ?? 0));
       if (Array.isArray(maybeMessage.data?.content)) return extractMessageText(maybeMessage.data.content, options);
       if (typeof maybeMessage.data?.content === "string") return cleanCqMessage(maybeMessage.data.content);
+    }
+    if (maybeMessage.type === "forward") {
+      const embedded = await renderEmbeddedForwardSegmentContent(
+        maybeMessage.data?.content ?? maybeMessage.data?.message,
+        options.forwardDepth ?? 0,
+      );
+      if (embedded) return normalizeRenderedMessage(embedded);
+      const forwardId = readForwardSegmentId(maybeMessage.data);
+      if (forwardId) return normalizeRenderedMessage(await renderNestedForwardContent(forwardId, (options.forwardDepth ?? 0) + 1));
     }
     if (Array.isArray(maybeMessage.message)) return extractMessageText(maybeMessage.message, options);
     if (Array.isArray(maybeMessage.content)) return extractMessageText(maybeMessage.content, options);
@@ -1673,23 +1786,81 @@ async function extractMessageText(
   return normalizeRenderedMessage(parts.join(""));
 }
 
+function readForwardSegmentId(data: any) {
+  return String(data?.id || data?.resid || data?.forward_id || data?.message_id || "").trim();
+}
+
+function looksLikeForwardMessageList(value: unknown): value is any[] {
+  if (!Array.isArray(value) || !value.length) return false;
+  return value.every((item) => {
+    if (!item || typeof item !== "object") return false;
+    const type = String((item as any).type || "").trim();
+    if (type && type !== "node") return false;
+    const node = (item as any).data ?? item;
+    return Boolean(
+      type === "node"
+      || node?.sender
+      || node?.nickname
+      || node?.user_id
+      || node?.message_type
+      || node?.content !== undefined
+      || node?.message !== undefined,
+    );
+  });
+}
+
+function pickEmbeddedForwardMessages(value: unknown): unknown[] | null {
+  if (looksLikeForwardMessageList(value)) return value;
+  if (!value || typeof value !== "object") return null;
+  const maybeValue = value as any;
+  if (looksLikeForwardMessageList(maybeValue.messages)) return maybeValue.messages;
+  if (looksLikeForwardMessageList(maybeValue.data?.messages)) return maybeValue.data.messages;
+  if (looksLikeForwardMessageList(maybeValue.content)) return maybeValue.content;
+  if (looksLikeForwardMessageList(maybeValue.data?.content)) return maybeValue.data.content;
+  return null;
+}
+
+async function renderEmbeddedForwardLikeContent(
+  content: unknown,
+  forwardDepth: number,
+  options: { withForwardTitle: boolean },
+) {
+  if (content == null) return "";
+  const embeddedMessages = pickEmbeddedForwardMessages(content);
+  if (embeddedMessages) {
+    const parsed = await parseForwardMessages(embeddedMessages, "", forwardDepth);
+    if (parsed?.content) return `\n${quoteMarkdownBlock(`转发消息\n${parsed.content}`)}\n`;
+  }
+  const nested = await extractMessageText(content, { forwardDepth }).catch(() => "");
+  if (!nested.trim()) return "";
+  return options.withForwardTitle
+    ? `\n${quoteMarkdownBlock(`转发消息\n${nested}`)}\n`
+    : `\n${quoteMarkdownBlock(nested)}\n`;
+}
+
+async function renderEmbeddedNodeSegmentContent(content: unknown, forwardDepth: number) {
+  return renderEmbeddedForwardLikeContent(content, forwardDepth, { withForwardTitle: false });
+}
+
+async function renderEmbeddedForwardSegmentContent(content: unknown, forwardDepth: number) {
+  return renderEmbeddedForwardLikeContent(content, forwardDepth, { withForwardTitle: true });
+}
+
 async function renderMessageSegment(seg: any, forwardDepth: number): Promise<string> {
   if (seg?.type === "text") return String(seg.data?.text || "");
   if (seg?.type === "image") {
     const url = await resolveQqImageUrl(seg.data?.url, seg.data?.file);
     return url ? `\n![QQ图片](${url})\n` : "\n[图片]\n";
   }
-  if (seg?.type === "forward" || seg?.type === "node") {
-    if (seg?.data?.id) {
-      return resolveReferencedNodeContent(seg.data.id, forwardDepth);
-    }
-    if (seg?.type === "node" && seg?.data?.content) {
-      const nested = await extractMessageText(seg.data.content, { forwardDepth });
-      if (nested.trim()) return `\n${quoteMarkdownBlock(nested)}\n`;
-    }
+  if (seg?.type === "node") {
+    const embedded = await renderEmbeddedNodeSegmentContent(seg.data?.content ?? seg.data?.message, forwardDepth);
+    if (embedded) return embedded;
+    if (seg?.data?.id) return resolveReferencedNodeContent(seg.data.id, forwardDepth);
   }
   if (seg?.type === "forward") {
-    return renderNestedForwardContent(seg.data?.id, forwardDepth + 1);
+    const embedded = await renderEmbeddedForwardSegmentContent(seg.data?.content ?? seg.data?.message, forwardDepth);
+    if (embedded) return embedded;
+    return renderNestedForwardContent(readForwardSegmentId(seg.data), forwardDepth + 1);
   }
   if (seg?.type === "video") return "\n[视频]\n";
   if (seg?.type === "record") return "\n[语音]\n";
@@ -1701,7 +1872,15 @@ async function extractForwardPayload(message: unknown): Promise<(ParsedForwardPa
   if (forwardId) {
     const payload = await callQqBotAction("get_forward_msg", { id: forwardId }).catch(() => null);
     const parsed = await parseForwardMessages(payload?.data?.messages, forwardId, 0);
-    if (parsed) return { ...parsed, source: "direct" };
+    if (parsed) {
+      queueQqBotForwardDebug("forward.extract", {
+        source: "direct",
+        forwardId,
+        summary: parsed.summary,
+        preview: debugMessagePreview(parsed.content),
+      });
+      return { ...parsed, source: "direct" };
+    }
   }
   const replyId = extractReplyMessageId(message);
   if (!replyId) return null;
@@ -1712,6 +1891,13 @@ async function extractForwardPayload(message: unknown): Promise<(ParsedForwardPa
   const payload = await callQqBotAction("get_forward_msg", { id: replyForwardId }).catch(() => null);
   const parsed = await parseForwardMessages(payload?.data?.messages, replyForwardId, 0);
   if (!parsed) return null;
+  queueQqBotForwardDebug("forward.extract", {
+    source: "reply",
+    replyId,
+    forwardId: replyForwardId,
+    summary: parsed.summary,
+    preview: debugMessagePreview(parsed.content),
+  });
   return { ...parsed, source: "reply" };
 }
 
@@ -1743,12 +1929,29 @@ async function parseForwardMessages(messages: unknown, forwardId: string, forwar
     blocks.push(renderForwardMessageBlock(index + 1, nickname, text));
     summaryBits.push(`${nickname}：${forwardSummaryPreview(text)}`);
   }
-  if (!blocks.length) return null;
-  return {
+  if (!blocks.length) {
+    queueQqBotForwardDebug("forward.parse.empty", {
+      forwardId,
+      forwardDepth,
+      itemCount: list.length,
+      messages: list,
+    });
+    return null;
+  }
+  const parsed = {
     summary: summaryBits.slice(0, 3).join(" / ").slice(0, 120),
     content: blocks.join("\n\n"),
     sourceMessageId: forwardId,
   };
+  queueQqBotForwardDebug("forward.parse.ok", {
+    forwardId,
+    forwardDepth,
+    itemCount: list.length,
+    summary: parsed.summary,
+    preview: debugMessagePreview(parsed.content),
+    messages: list,
+  });
+  return parsed;
 }
 
 function extractReplyMessageId(message: unknown) {
@@ -1968,6 +2171,14 @@ async function renderNestedForwardContent(forwardId: unknown, forwardDepth: numb
   if (forwardDepth > MAX_FORWARD_DEPTH) return "\n[合并转发层级过深]\n";
   const payload = await callQqBotAction("get_forward_msg", { id: normalizedId }).catch(() => null);
   const parsed = await parseForwardMessages(payload?.data?.messages, normalizedId, forwardDepth);
+  queueQqBotForwardDebug("forward.api.get_forward_msg", {
+    forwardId: normalizedId,
+    forwardDepth,
+    payload: payload?.data?.messages ?? null,
+    parsed: parsed
+      ? { summary: parsed.summary, preview: debugMessagePreview(parsed.content) }
+      : null,
+  });
   if (!parsed?.content) return "\n[合并转发]\n";
   return `\n${quoteMarkdownBlock(`转发消息\n${parsed.content}`)}\n`;
 }
@@ -1979,9 +2190,21 @@ async function resolveReferencedNodeContent(messageId: unknown, forwardDepth: nu
   const message = referenced?.data?.message ?? referenced?.data?.content;
   const forwardId = extractForwardNodeId(message);
   if (forwardId) {
+    queueQqBotForwardDebug("forward.node.refers-forward", {
+      messageId: normalizedId,
+      forwardDepth,
+      forwardId,
+      message,
+    });
     return renderNestedForwardContent(forwardId, forwardDepth + 1);
   }
   const text = await extractMessageText(message, { forwardDepth }).catch(() => "");
+  queueQqBotForwardDebug("forward.node.resolve", {
+    messageId: normalizedId,
+    forwardDepth,
+    preview: debugMessagePreview(text),
+    message,
+  });
   return text.trim() ? `\n${quoteMarkdownBlock(text)}\n` : "\n[合并转发]\n";
 }
 

@@ -4,6 +4,7 @@ import { prisma } from "../../prisma";
 import { Errors, ok } from "../../utils/response";
 import { validate } from "../../middleware/validate";
 import {
+  buildQqBotDebugExport,
   dispatchRecentQqNotifications,
   formatQqBotConfig,
   getQqBotConfigRaw,
@@ -136,6 +137,19 @@ qqBotAdminRouter.get("/logs", async (req, res, next) => {
       prisma.qqBotMessageLog.count({ where }),
     ]);
     ok(res, { page, size, total, list });
+  } catch (e) { next(e); }
+});
+
+qqBotAdminRouter.get("/debug-export", async (req, res, next) => {
+  try {
+    const status = String(req.query.status ?? "").trim();
+    const eventType = String(req.query.eventType ?? "").trim();
+    const take = Math.min(200, Math.max(20, Number(req.query.take ?? 80) || 80));
+    const payload = await buildQqBotDebugExport({ status, eventType, take });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename=\"qqbot-debug-${stamp}.json\"`);
+    res.send(JSON.stringify(payload, null, 2));
   } catch (e) { next(e); }
 });
 

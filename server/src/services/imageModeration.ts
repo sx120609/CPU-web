@@ -5,6 +5,7 @@ import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } fr
 import { getSiteConfig } from "./siteSettings";
 
 const IMAGE_MARKDOWN_RE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+const IMAGE_HTML_RE = /<img\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s"'=<>`]+))[^>]*>/gi;
 const IMAGE_REVIEW_MAX_INLINE_BYTES = 6 * 1024 * 1024;
 const IMAGE_REVIEW_POLL_INTERVAL_MS = 20_000;
 const IMAGE_REVIEW_BATCH_SIZE = 3;
@@ -179,23 +180,28 @@ export async function summarizeForumImageModerationForContent(content: string): 
   }
   const rows = await prisma.forumImageAsset.findMany({
     where: { url: { in: urls } },
-    select: { url: true, status: true },
+    select: { url: true, status: true, reason: true, lastError: true },
   });
-  const rowMap = new Map(rows.map((row) => [row.url, row.status]));
+  const rowMap = new Map(rows.map((row) => [row.url, row]));
   const missing = urls.filter((url) => !rowMap.has(url));
   if (missing.length) {
     const created = await Promise.all(missing.map((url) => registerForumImageAsset({ url })));
     created.forEach((item, index) => {
-      rowMap.set(missing[index], item?.status || (shouldRunImageReview() ? "pending" : "approved"));
+      rowMap.set(missing[index], {
+        url: missing[index],
+        status: item?.status || (shouldRunImageReview() ? "pending" : "approved"),
+        reason: item?.reason || null,
+        lastError: item?.lastError || null,
+      });
     });
   }
   let pendingCount = 0;
   let rejectedCount = 0;
   let approvedCount = 0;
   for (const url of urls) {
-    const status = rowMap.get(url) || (shouldRunImageReview() ? "pending" : "approved");
-    if (status === "approved") approvedCount += 1;
-    else if (status === "rejected") rejectedCount += 1;
+    const normalized = normalizeForumImageAssetState(rowMap.get(url));
+    if (normalized.status === "approved") approvedCount += 1;
+    else if (normalized.status === "rejected") rejectedCount += 1;
     else pendingCount += 1;
   }
   return {
@@ -208,20 +214,28 @@ export async function summarizeForumImageModerationForContent(content: string): 
 }
 
 export async function renderModeratedContent(content: string, _viewer?: Viewer) {
-  const matches = collectImageMarkdownMatches(content);
+  const matches = collectImageMatches(content);
   if (!matches.length) return content;
   const localUrls = Array.from(new Set(matches.map((item) => normalizeForumImageUrl(item.url)).filter(Boolean) as string[]));
   if (!localUrls.length) return content;
 
   const rows = await prisma.forumImageAsset.findMany({
     where: { url: { in: localUrls } },
-    select: { url: true, status: true, reason: true },
+    select: { url: true, status: true, reason: true, lastError: true },
   });
   const rowMap = new Map(rows.map((row) => [row.url, row]));
   const missing = localUrls.filter((url) => !rowMap.has(url));
   if (missing.length) {
-    await Promise.all(missing.map((url) => registerForumImageAsset({ url })));
-    missing.forEach((url) => rowMap.set(url, { url, status: "pending", reason: null } as any));
+    const created = await Promise.all(missing.map((url) => registerForumImageAsset({ url })));
+    missing.forEach((url, index) => {
+      const row = created[index];
+      rowMap.set(url, {
+        url,
+        status: row?.status || (shouldRunImageReview() ? "pending" : "approved"),
+        reason: row?.reason || null,
+        lastError: row?.lastError || null,
+      } as any);
+    });
   }
 
   let rendered = "";
@@ -230,23 +244,21 @@ export async function renderModeratedContent(content: string, _viewer?: Viewer) 
     rendered += content.slice(lastIndex, match.index);
     const normalizedUrl = normalizeForumImageUrl(match.url);
     const row = normalizedUrl ? rowMap.get(normalizedUrl) : null;
-    rendered += rewriteImageMarkdown(match.raw, row?.status, row?.reason);
+    rendered += rewriteImageToken(match.raw, row);
     lastIndex = match.index + match.raw.length;
   }
   rendered += content.slice(lastIndex);
   return rendered;
 }
 
-function rewriteImageMarkdown(raw: string, status?: string | null, reason?: string | null) {
-  if (!shouldRunImageReview() && status !== "rejected") return raw;
-  if (!status || status === "approved") return raw;
-  if (status === "rejected") {
-    return [
-      "> 图片因违规暂时无法查看。",
-      `> 原因：${String(reason || "未通过图片审核")}`,
-    ].join("\n");
+function rewriteImageToken(raw: string, row?: { status?: string | null; reason?: string | null; lastError?: string | null } | null) {
+  const normalized = normalizeForumImageAssetState(row);
+  if (!shouldRunImageReview() && normalized.status !== "rejected") return raw;
+  if (normalized.status === "approved") return raw;
+  if (normalized.status === "rejected") {
+    return buildImageReviewPlaceholder("rejected", normalized.reason || "未通过图片审核");
   }
-  return "> 图片审核中，暂时不可查看。";
+  return buildImageReviewPlaceholder("pending");
 }
 
 function collectImageMarkdownMatches(content: string) {
@@ -262,9 +274,29 @@ function collectImageMarkdownMatches(content: string) {
   return items;
 }
 
+function collectImageHtmlMatches(content: string) {
+  const items: Array<{ raw: string; alt: string; url: string; index: number }> = [];
+  for (const match of content.matchAll(IMAGE_HTML_RE)) {
+    items.push({
+      raw: match[0],
+      alt: "",
+      url: match[1] || match[2] || match[3] || "",
+      index: match.index ?? 0,
+    });
+  }
+  return items;
+}
+
+function collectImageMatches(content: string) {
+  return [
+    ...collectImageMarkdownMatches(content),
+    ...collectImageHtmlMatches(content),
+  ].sort((a, b) => a.index - b.index || b.raw.length - a.raw.length);
+}
+
 function extractForumImageUrls(content: string) {
   return Array.from(new Set(
-    collectImageMarkdownMatches(content)
+    collectImageMatches(content)
       .map((item) => normalizeForumImageUrl(item.url))
       .filter(Boolean) as string[],
   ));
@@ -297,6 +329,36 @@ function normalizeLocalUploadPath(input: string | null | undefined) {
   const raw = String(input || "").trim();
   if (!raw) return "";
   return path.resolve(raw);
+}
+
+function normalizeForumImageAssetState(row?: { status?: string | null; reason?: string | null; lastError?: string | null } | null) {
+  const status = String(row?.status || "").trim().toLowerCase();
+  if (status === "approved") {
+    return { status: "approved" as const, reason: row?.reason || null };
+  }
+  if (status === "rejected") {
+    return { status: "rejected" as const, reason: row?.reason || "未通过图片审核" };
+  }
+  if (isContentPolicyViolationText(`${row?.reason || ""}\n${row?.lastError || ""}`)) {
+    return { status: "rejected" as const, reason: row?.reason || "图片未通过平台内容安全检查" };
+  }
+  return { status: "pending" as const, reason: row?.reason || null };
+}
+
+function buildImageReviewPlaceholder(status: "pending" | "rejected", reason?: string | null) {
+  if (status === "rejected") {
+    return `<span class="image-review-placeholder image-review-placeholder-rejected" data-image-review-state="rejected">[图片未通过审核，已隐藏${reason ? `：${escapeHtml(reason)}` : ""}]</span>`;
+  }
+  return '<span class="image-review-placeholder image-review-placeholder-pending" data-image-review-state="pending">[图片审核中，暂时不可查看]</span>';
+}
+
+function escapeHtml(input: string) {
+  return String(input || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 async function moderateSingleForumImage(asset: {
@@ -410,6 +472,24 @@ async function requestImageReview(input: {
   });
   if (!response.ok) {
     const text = await response.text().catch(() => "");
+    const providerBlock = extractProviderContentPolicyBlock(text);
+    if (providerBlock) {
+      const decision = {
+        approved: false,
+        reason: "图片未通过平台内容安全检查",
+        detail: providerBlock.message || "上游审核接口直接拦截了该图片请求",
+        riskLevel: "high" as const,
+        model: config.imageReviewModel,
+        endpoint,
+      };
+      await finishAiReviewLogSuccess(logId, JSON.stringify({
+        approved: false,
+        reason: decision.reason,
+        detail: decision.detail,
+        providerErrorCode: providerBlock.code,
+      }));
+      return decision;
+    }
     await finishAiReviewLogError(logId, `HTTP ${response.status}`, text);
     throw new Error(`图片审核请求失败：${response.status}${text ? ` ${text.slice(0, 200)}` : ""}`);
   }
@@ -470,6 +550,30 @@ function parseImageReviewJson(content: string) {
 
 function renderPromptTemplate(template: string, vars: Record<string, unknown>) {
   return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => stringifyPromptValue(vars[key]));
+}
+
+function extractProviderContentPolicyBlock(text: string) {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+  let code = "";
+  let message = "";
+  try {
+    const parsed = JSON.parse(raw);
+    code = String(parsed?.error?.code || "").trim();
+    message = String(parsed?.error?.message || "").trim();
+  } catch {
+    /* ignore */
+  }
+  const combined = [code, message, raw].filter(Boolean).join("\n");
+  if (!isContentPolicyViolationText(combined)) return null;
+  return {
+    code: code || "content_policy_violation",
+    message: message || "Your input image may contain content that is not allowed by the content safety system.",
+  };
+}
+
+function isContentPolicyViolationText(text: string) {
+  return /content[_\s-]?policy[_\s-]?violation|content safety system|not allowed by (?:our|the) content safety system/i.test(String(text || ""));
 }
 
 function stringifyPromptValue(value: unknown) {

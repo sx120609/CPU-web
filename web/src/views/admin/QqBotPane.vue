@@ -160,7 +160,7 @@
       <div class="card-head">
         <div>
           <h3>消息日志</h3>
-          <p>记录 webhook、投稿、通知推送和 NapCat 调用结果。</p>
+          <p>记录 webhook、投稿、通知推送和 NapCat 调用结果。临时调试导出会附带原始 payload 和转发解析轨迹。</p>
         </div>
         <div class="filters">
           <el-select v-model="logFilter.eventType" clearable placeholder="事件" style="width: 130px" @change="loadLogs">
@@ -174,6 +174,7 @@
             <el-option label="忽略" value="ignored" />
             <el-option label="错误" value="error" />
           </el-select>
+          <el-button plain :icon="Download" :loading="debugDownloading" @click="downloadDebugLogs">下载调试日志</el-button>
         </div>
       </div>
       <el-table :data="logs" size="small">
@@ -224,7 +225,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { Download } from "@element-plus/icons-vue";
 import { adminApi, type QqBotConfig } from "@/api/admin";
+import { getToken } from "@/api/request";
 
 const config = ref<QqBotConfig | null>(null);
 const boards = ref<any[]>([]);
@@ -235,6 +238,7 @@ const logTotal = ref(0);
 const saving = ref(false);
 const testing = ref(false);
 const dispatching = ref(false);
+const debugDownloading = ref(false);
 const bindingQuery = ref("");
 const bindToken = ref<{ token: string; expiresAt: string } | null>(null);
 
@@ -405,6 +409,53 @@ async function loadLogs() {
   logTotal.value = data.total;
 }
 
+async function downloadDebugLogs() {
+  debugDownloading.value = true;
+  try {
+    const params = new URLSearchParams();
+    if (logFilter.eventType) params.set("eventType", logFilter.eventType);
+    if (logFilter.status) params.set("status", logFilter.status);
+    params.set("take", String(Math.max(logFilter.size, 80)));
+    const token = getToken();
+    const response = await fetch(`/api/admin/qqbot/debug-export?${params.toString()}`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+    let message = "";
+    if (!response.ok) {
+      message = await response.text().catch(() => "");
+      try {
+        const parsed = JSON.parse(message);
+        message = parsed?.message || message;
+      } catch {
+        // ignore invalid json
+      }
+      throw new Error(message || "调试日志下载失败");
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename=\"?([^\";]+)\"?/i);
+    saveBlob(blob, decodeURIComponent(match?.[1] || `qqbot-debug-${Date.now()}.json`));
+    ElMessage.success("调试日志已下载");
+  } catch (error: any) {
+    ElMessage.error(error?.message || "调试日志下载失败");
+  } finally {
+    debugDownloading.value = false;
+  }
+}
+
+function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
+}
+
 </script>
 
 <style scoped>
@@ -522,7 +573,9 @@ async function loadLogs() {
 }
 .filters {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  justify-content: flex-end;
 }
 .pager {
   display: flex;
