@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import path from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import { ensureForumAccessEnabled } from "./forumAccess";
@@ -1641,12 +1643,21 @@ export async function logQqBotMessage(input: {
 }
 
 const MAX_FORWARD_DEPTH = 4;
+const QQBOT_IMAGE_MAX_BYTES = 12 * 1024 * 1024;
+const qqImageUploadCache = new Map<string, Promise<string>>();
 
 async function extractMessageText(
   message: unknown,
   options: { forwardDepth?: number } = {},
 ): Promise<string> {
   if (typeof message === "string") return cleanCqMessage(message);
+  if (message && typeof message === "object") {
+    const maybeMessage = message as any;
+    if (Array.isArray(maybeMessage.message)) return extractMessageText(maybeMessage.message, options);
+    if (Array.isArray(maybeMessage.content)) return extractMessageText(maybeMessage.content, options);
+    if (typeof maybeMessage.message === "string") return cleanCqMessage(maybeMessage.message);
+    if (typeof maybeMessage.content === "string") return cleanCqMessage(maybeMessage.content);
+  }
   if (!Array.isArray(message)) return "";
   const parts: string[] = [];
   for (const seg of message) {
@@ -1722,16 +1733,22 @@ function extractReplyMessageId(message: unknown) {
 
 async function cleanCqMessage(value: string) {
   let normalized = String(value || "");
-  const imageMatches = Array.from(normalized.matchAll(/\[CQ:image,([^\]]*)\]/g));
-  for (const match of imageMatches) {
+  const mediaMatches = Array.from(normalized.matchAll(/\[CQ:(image|forward),([^\]]*)\]/g));
+  for (const match of mediaMatches) {
     const raw = match[0];
-    const attrs = parseCqParams(match[1] || "");
-    const url = await resolveQqImageUrl(attrs.url, attrs.file);
-    normalized = normalized.replace(raw, url ? `\n![QQ图片](${url})\n` : "\n[图片]\n");
+    const type = String(match[1] || "").trim();
+    const attrs = parseCqParams(match[2] || "");
+    if (type === "image") {
+      const url = await resolveQqImageUrl(attrs.url, attrs.file);
+      normalized = normalized.replace(raw, url ? `\n![QQ图片](${url})\n` : "\n[图片]\n");
+      continue;
+    }
+    const forwardId = attrs.id || attrs.resid || attrs.file || attrs.message_id;
+    const expanded = await renderNestedForwardContent(forwardId, 1);
+    normalized = normalized.replace(raw, expanded || "\n[合并转发]\n");
   }
   normalized = normalized
     .replace(/\[CQ:at,[^\]]+\]/g, "")
-    .replace(/\[CQ:forward[^\]]*\]/g, "\n[合并转发]\n")
     .replace(/\[CQ:video[^\]]*\]/g, "\n[视频]\n")
     .replace(/\[CQ:record[^\]]*\]/g, "\n[语音]\n")
     .replace(/\[CQ:[^\]]+\]/g, "");
@@ -1751,19 +1768,13 @@ function parseCqParams(raw: string) {
 }
 
 async function resolveQqImageUrl(urlLike: unknown, fileLike: unknown): Promise<string> {
-  const direct = normalizeRemoteMediaUrl(urlLike);
-  if (direct) return direct;
-  const file = String(fileLike || "").trim();
-  if (!file) return "";
-  const fileAsUrl = normalizeRemoteMediaUrl(file);
-  if (fileAsUrl) return fileAsUrl;
-  const payload = await callQqBotAction("get_image", { file }).catch(() => null);
-  return (
-    normalizeRemoteMediaUrl(payload?.data?.url)
-    || normalizeRemoteMediaUrl(payload?.data?.src)
-    || normalizeRemoteMediaUrl(payload?.data?.file)
-    || ""
-  );
+  const key = `${String(urlLike || "").trim()}|${String(fileLike || "").trim()}`;
+  if (qqImageUploadCache.has(key)) return qqImageUploadCache.get(key)!;
+  const task = downloadQqImageToUpload(urlLike, fileLike).catch(() => "");
+  qqImageUploadCache.set(key, task);
+  const result = await task;
+  if (!result) qqImageUploadCache.delete(key);
+  return result;
 }
 
 function normalizeRemoteMediaUrl(value: unknown) {
@@ -1771,6 +1782,113 @@ function normalizeRemoteMediaUrl(value: unknown) {
   if (!raw) return "";
   if (!/^https?:\/\//i.test(raw)) return "";
   return raw;
+}
+
+function normalizeLocalMediaPath(value: unknown) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^file:\/\//i.test(raw)) {
+    try {
+      return decodeURIComponent(new URL(raw).pathname.replace(/^\/+/, ""));
+    } catch {
+      return "";
+    }
+  }
+  if (/^[a-zA-Z]:[\\/]/.test(raw) || raw.startsWith("\\\\") || raw.startsWith("/")) return raw;
+  return "";
+}
+
+async function downloadQqImageToUpload(urlLike: unknown, fileLike: unknown): Promise<string> {
+  const file = String(fileLike || "").trim();
+  const candidates: Array<{ kind: "remote" | "local"; value: string }> = [];
+  const seen = new Set<string>();
+  const pushCandidate = (kind: "remote" | "local", value: string) => {
+    const normalized = value.trim();
+    if (!normalized) return;
+    const key = `${kind}:${normalized}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push({ kind, value: normalized });
+  };
+  const pushFromUnknown = (value: unknown) => {
+    const remote = normalizeRemoteMediaUrl(value);
+    if (remote) {
+      pushCandidate("remote", remote);
+      return;
+    }
+    const local = normalizeLocalMediaPath(value);
+    if (local) pushCandidate("local", local);
+  };
+
+  pushFromUnknown(urlLike);
+  pushFromUnknown(fileLike);
+  if (file) {
+    const payload = await callQqBotAction("get_image", { file }).catch(() => null);
+    pushFromUnknown(payload?.data?.url);
+    pushFromUnknown(payload?.data?.src);
+    pushFromUnknown(payload?.data?.file);
+    pushFromUnknown(payload?.data?.path);
+  }
+
+  for (const candidate of candidates) {
+    const loaded = candidate.kind === "remote"
+      ? await fetchRemoteImage(candidate.value)
+      : await readLocalImage(candidate.value);
+    if (!loaded) continue;
+    return saveQqImageUpload(loaded.buffer, loaded.mime, loaded.nameHint);
+  }
+  return "";
+}
+
+async function fetchRemoteImage(url: string) {
+  const response = await fetch(url, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
+  if (!response?.ok) return null;
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  if (contentLength > QQBOT_IMAGE_MAX_BYTES) return null;
+  const arrayBuffer = await response.arrayBuffer().catch(() => null);
+  if (!arrayBuffer) return null;
+  const buffer = Buffer.from(arrayBuffer);
+  if (!buffer.length || buffer.length > QQBOT_IMAGE_MAX_BYTES) return null;
+  const mime = String(response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+  return { buffer, mime, nameHint: url };
+}
+
+async function readLocalImage(filePath: string) {
+  const buffer = await readFile(filePath).catch(() => null);
+  if (!buffer?.length || buffer.length > QQBOT_IMAGE_MAX_BYTES) return null;
+  return { buffer, mime: "", nameHint: filePath };
+}
+
+async function saveQqImageUpload(buffer: Buffer, mime: string, nameHint?: string) {
+  const ext = detectImageExtension(buffer, mime, nameHint);
+  if (!ext) return "";
+  const now = new Date();
+  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const relativeDir = path.join("forum", month);
+  const uploadRoot = path.resolve(process.cwd(), "uploads");
+  const outputDir = path.join(uploadRoot, relativeDir);
+  await mkdir(outputDir, { recursive: true });
+  const filename = `qqbot-${Date.now()}-${crypto.randomUUID()}.${ext}`;
+  await writeFile(path.join(outputDir, filename), buffer);
+  return `/uploads/${relativeDir.replace(/\\/g, "/")}/${filename}`;
+}
+
+function detectImageExtension(buffer: Buffer, mime: string, nameHint?: string) {
+  const normalizedMime = String(mime || "").toLowerCase();
+  if (normalizedMime.includes("jpeg") || normalizedMime.includes("jpg")) return "jpg";
+  if (normalizedMime.includes("png")) return "png";
+  if (normalizedMime.includes("webp")) return "webp";
+  if (normalizedMime.includes("gif")) return "gif";
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "jpg";
+  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "png";
+  if (buffer.length >= 12 && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP") return "webp";
+  if (buffer.length >= 6) {
+    const head = buffer.subarray(0, 6).toString("ascii");
+    if (head === "GIF87a" || head === "GIF89a") return "gif";
+  }
+  const ext = path.extname(String(nameHint || "")).replace(/^\./, "").toLowerCase();
+  if (["jpg", "jpeg", "png", "webp", "gif"].includes(ext)) return ext === "jpeg" ? "jpg" : ext;
+  return "";
 }
 
 async function renderNestedForwardContent(forwardId: unknown, forwardDepth: number) {
