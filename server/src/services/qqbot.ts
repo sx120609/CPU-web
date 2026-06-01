@@ -1693,21 +1693,34 @@ export async function dispatchRecentQqNotifications() {
     if (!bindingByUserId.has(binding.userId)) bindingByUserId.set(binding.userId, binding);
   }
   const uniqueBindings = Array.from(bindingByUserId.values());
+  const notificationUserIds = Array.from(new Set(
+    notifications
+      .map((item) => item.userId)
+      .filter((item): item is number => Number.isFinite(item)),
+  ));
+  const notificationUsers = notificationUserIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: notificationUserIds } },
+        select: { id: true, role: true },
+      })
+    : [];
+  const notificationUserRoleById = new Map(notificationUsers.map((user) => [user.id, user.role]));
   let sent = 0;
   for (const item of notifications) {
     if (item.userId) {
+      const recipientRole = notificationUserRoleById.get(item.userId) || null;
       const binding = bindingByUserId.get(item.userId);
-      if (!binding || !shouldDeliverQqNotificationToUser(item, binding.user.messageSetting)) continue;
-      const existed = await prisma.qqBotMessageLog.findFirst({
-        where: { eventType: "notification", notificationId: item.id, userId: item.userId, status: "ok" },
-        select: { id: true },
-      });
-      if (existed) continue;
-      if (await sendNotificationMessage({ qqId: binding.qqId }, item, item.userId)) {
-        sent += 1;
+      if (binding && shouldDeliverQqNotificationToUser(item, binding.user.messageSetting)) {
+        const existed = await prisma.qqBotMessageLog.findFirst({
+          where: { eventType: "notification", notificationId: item.id, userId: item.userId, status: "ok" },
+          select: { id: true },
+        });
+        if (!existed && await sendNotificationMessage({ qqId: binding.qqId }, item, item.userId)) {
+          sent += 1;
+        }
       }
       for (const group of groups) {
-        if (!shouldDeliverQqNotificationToGroup(group, item, binding.user.role)) continue;
+        if (!shouldDeliverQqNotificationToGroup(group, item, recipientRole)) continue;
         const groupDeliveryKey = buildGroupNotificationDeliveryKey(item);
         const existedInGroup = await prisma.qqBotMessageLog.findFirst({
           where: { eventType: "notification", groupId: group.groupId, command: groupDeliveryKey, status: "ok" },
