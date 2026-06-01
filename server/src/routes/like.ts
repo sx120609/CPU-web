@@ -5,6 +5,7 @@ import { featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettin
 import { ensureCanReadBoardType } from "../services/forumAccess";
 
 export const likeRouter = Router();
+const LIKE_NOTIFICATION_DEDUP_MS = 24 * 60 * 60 * 1000;
 
 likeRouter.post("/topic/:id", async (req, res, next) => {
   try {
@@ -27,18 +28,27 @@ likeRouter.post("/topic/:id", async (req, res, next) => {
       await tx.like.create({ data: { userId, topicId } });
       const updated = await tx.topic.update({ where: { id: topicId }, data: { likeCount: { increment: 1 } } });
       if (t.authorId !== userId) {
-        await tx.notification.create({
-          data: {
-            userId: t.authorId,
-            category: "like",
-            level: "weak",
-            title: "有人赞了你的帖子",
-            content: `${await likerDisplayName(tx, userId)} 赞了「${t.title}」`,
-            link: `/forum/topic/${topicId}`,
-            source: "论坛",
-            payload: JSON.stringify({ type: "topic-like", topicId, actorUserId: userId }),
-          },
+        const payload = JSON.stringify({ type: "topic-like", topicId, actorUserId: userId });
+        const duplicated = await hasRecentLikeNotification(tx, {
+          recipientUserId: t.authorId,
+          actorUserId: userId,
+          topicId,
+          type: "topic-like",
         });
+        if (!duplicated) {
+          await tx.notification.create({
+            data: {
+              userId: t.authorId,
+              category: "like",
+              level: "weak",
+              title: "有人赞了你的帖子",
+              content: `${await likerDisplayName(tx, userId)} 赞了「${t.title}」`,
+              link: `/forum/topic/${topicId}`,
+              source: "论坛",
+              payload,
+            },
+          });
+        }
       }
       return updated;
     });
@@ -67,18 +77,28 @@ likeRouter.post("/reply/:id", async (req, res, next) => {
       await tx.like.create({ data: { userId, replyId } });
       const updated = await tx.reply.update({ where: { id: replyId }, data: { likeCount: { increment: 1 } } });
       if (r.authorId !== userId) {
-        await tx.notification.create({
-          data: {
-            userId: r.authorId,
-            category: "like",
-            level: "weak",
-            title: "有人赞了你的回复",
-            content: `${await likerDisplayName(tx, userId)} 赞了你在「${r.topic.title}」下的回复`,
-            link: `/forum/topic/${r.topicId}#reply-${replyId}`,
-            source: "论坛",
-            payload: JSON.stringify({ type: "reply-like", topicId: r.topicId, replyId, actorUserId: userId }),
-          },
+        const payload = JSON.stringify({ type: "reply-like", topicId: r.topicId, replyId, actorUserId: userId });
+        const duplicated = await hasRecentLikeNotification(tx, {
+          recipientUserId: r.authorId,
+          actorUserId: userId,
+          topicId: r.topicId,
+          replyId,
+          type: "reply-like",
         });
+        if (!duplicated) {
+          await tx.notification.create({
+            data: {
+              userId: r.authorId,
+              category: "like",
+              level: "weak",
+              title: "有人赞了你的回复",
+              content: `${await likerDisplayName(tx, userId)} 赞了你在「${r.topic.title}」下的回复`,
+              link: `/forum/topic/${r.topicId}#reply-${replyId}`,
+              source: "论坛",
+              payload,
+            },
+          });
+        }
       }
       return updated;
     });
@@ -108,4 +128,35 @@ async function likerDisplayName(tx: { user: typeof prisma.user }, userId: number
     select: { nickname: true, username: true },
   });
   return user?.nickname?.trim() || user?.username || "有同学";
+}
+
+async function hasRecentLikeNotification(
+  tx: { notification: typeof prisma.notification },
+  input: {
+    recipientUserId: number;
+    actorUserId: number;
+    topicId: number;
+    replyId?: number;
+    type: "topic-like" | "reply-like";
+  },
+) {
+  const since = new Date(Date.now() - LIKE_NOTIFICATION_DEDUP_MS);
+  const clauses = [
+    { payload: { contains: `"type":"${input.type}"` } },
+    { payload: { contains: `"actorUserId":${input.actorUserId}` } },
+    { payload: { contains: `"topicId":${input.topicId}` } },
+  ] as Array<Record<string, any>>;
+  if (input.replyId) {
+    clauses.push({ payload: { contains: `"replyId":${input.replyId}` } });
+  }
+  const existed = await tx.notification.findFirst({
+    where: {
+      userId: input.recipientUserId,
+      category: "like",
+      createdAt: { gte: since },
+      AND: clauses,
+    },
+    select: { id: true },
+  });
+  return Boolean(existed);
 }

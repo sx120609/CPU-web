@@ -510,14 +510,22 @@ function formatNoticeTime(value?: string) {
   }
 
   .notice-actions {
-    display: grid;
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-wrap: nowrap;
     gap: 8px;
+    justify-content: stretch;
   }
 
   .notice-actions :deep(.el-button) {
-    width: 100%;
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
     margin-left: 0;
+    padding-inline: 10px;
+  }
+
+  .notice-actions :deep(.el-button > span) {
+    white-space: nowrap;
   }
 }
 

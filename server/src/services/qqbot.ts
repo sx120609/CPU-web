@@ -311,10 +311,10 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
 
   const qqId = event.user_id ? String(event.user_id) : "";
   const groupId = event.group_id ? String(event.group_id) : undefined;
-  const messageText = extractMessageText(event.message ?? event.raw_message ?? "");
+  const messageText = await extractMessageText(event.message ?? event.raw_message ?? "");
   const forwardPayload = await extractForwardPayload(event.message);
   const context = { config, event, qqId, groupId, messageText, forwardPayload };
-  if (!qqId || !messageText.trim()) {
+  if (!qqId || (!messageText.trim() && !forwardPayload)) {
     await logQqBotMessage({ direction: "inbound", eventType: "message", status: "ignored", qqId, groupId, rawPayload: event });
     return { ignored: true };
   }
@@ -384,13 +384,14 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
   }
   if (isCommandMessage(messageText) && /^[/／]投稿(?:\s|$)/.test(messageText.trim())) {
     if (event.message_type === "group") {
-      await replyToEvent(
+      await replyToPrivateForPosting(
         context,
         [
           "群聊投稿只支持这一种方式：",
           "回复一条合并转发消息，并在同一条消息里 @我 说明要投稿。",
           "如果是普通文字投稿，请改用私聊。",
         ].join("\n"),
+        "已收到，请查看私信了解投稿方式。",
       );
       return { ok: true };
     }
@@ -402,7 +403,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
   if (!isCommandMessage(messageText) && forwardPayload && shouldHandleForwardPostInContext(context)) {
     const conversation = await startForwardPostConversation(context, forwardPayload);
     await logHandledInboundMessage(context, "message", "assistant:forward-detected");
-    await replyToEvent(context, await renderConversationPrompt(conversation));
+    await replyToPostingConversation(conversation, context, await renderConversationPrompt(conversation));
     return { ok: true };
   }
 
@@ -554,6 +555,68 @@ async function unbindQqAccount(qqId: string) {
   return "已解绑当前 QQ。之后如需继续投稿，请回站内重新生成绑定码。";
 }
 
+function parseConversationMetadata(metadata?: string | null) {
+  if (!metadata) return {} as Record<string, any>;
+  try {
+    const parsed = JSON.parse(metadata);
+    return parsed && typeof parsed === "object" ? parsed as Record<string, any> : {};
+  } catch {
+    return {};
+  }
+}
+
+function buildConversationMetadata(
+  context: { event: OneBotEvent; groupId?: string },
+  extra: Record<string, unknown> = {},
+) {
+  const metadata: Record<string, unknown> = { ...extra };
+  if (context.event.message_type === "group" && context.groupId) {
+    metadata.delivery = "private";
+    metadata.originGroupId = context.groupId;
+  }
+  return JSON.stringify(metadata);
+}
+
+function conversationStorageGroupId(context: { event: OneBotEvent; groupId?: string }) {
+  return context.event.message_type === "group" ? undefined : context.groupId;
+}
+
+async function moveConversationToPrivate(conversation: any, originGroupId?: string | null) {
+  const normalizedGroupId = String(originGroupId || conversation.groupId || "").trim();
+  if (!normalizedGroupId || !conversation.groupId) return conversation;
+  const metadata = {
+    ...parseConversationMetadata(conversation.metadata),
+    delivery: "private",
+    originGroupId: normalizedGroupId,
+  };
+  return prisma.qqBotConversation.update({
+    where: { id: conversation.id },
+    data: {
+      groupId: null,
+      metadata: JSON.stringify(metadata),
+    },
+  });
+}
+
+async function replyToPostingConversation(
+  conversation: any,
+  context: { event: OneBotEvent; qqId: string; groupId?: string },
+  message: string,
+  groupHint = "已收到，请查看私信完成投稿。",
+) {
+  const metadata = parseConversationMetadata(conversation?.metadata);
+  const shouldReplyPrivately = Boolean(
+    context.event.message_type === "group"
+    || metadata.delivery === "private"
+    || metadata.originGroupId,
+  );
+  if (!shouldReplyPrivately) {
+    await replyToEvent(context, message);
+    return;
+  }
+  await replyToPrivateForPosting(context, message, groupHint);
+}
+
 async function startPostConversation(context: {
   config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
   event: OneBotEvent;
@@ -564,7 +627,7 @@ async function startPostConversation(context: {
   await ensureQqPostingAllowed(context);
   await ensureQqBinding(context.qqId);
   const defaultBoardSlug = await resolveDefaultBoardSlug(context.config.defaultBoardSlug, context.groupId);
-  return upsertConversation(context.qqId, context.groupId, {
+  return upsertConversation(context.qqId, conversationStorageGroupId(context), {
     scene: "post",
     step: "await-title",
     draftTitle: "",
@@ -572,7 +635,7 @@ async function startPostConversation(context: {
     draftBoardSlug: defaultBoardSlug,
     sourceMessageId: context.event.message_id ? String(context.event.message_id) : undefined,
     sourceSummary: "",
-    metadata: "{}",
+    metadata: buildConversationMetadata(context),
   });
 }
 
@@ -589,7 +652,7 @@ async function startForwardPostConversation(
   await ensureQqPostingAllowed(context);
   await ensureQqBinding(context.qqId);
   const defaultBoardSlug = await resolveDefaultBoardSlug(context.config.defaultBoardSlug, context.groupId);
-  return upsertConversation(context.qqId, context.groupId, {
+  return upsertConversation(context.qqId, conversationStorageGroupId(context), {
     scene: "forward-post",
     step: "await-forward-confirm",
     draftTitle: "",
@@ -597,7 +660,7 @@ async function startForwardPostConversation(
     draftBoardSlug: defaultBoardSlug,
     sourceMessageId: forwardPayload.sourceMessageId || (context.event.message_id ? String(context.event.message_id) : undefined),
     sourceSummary: forwardPayload.summary,
-    metadata: JSON.stringify({ source: "forward" }),
+    metadata: buildConversationMetadata(context, { source: "forward" }),
   });
 }
 
@@ -683,11 +746,14 @@ async function handleConversationMessage(
     forwardPayload?: (ParsedForwardPayload & { source: ForwardSource }) | null;
   },
 ) {
+  if (conversation.groupId) {
+    conversation = await moveConversationToPrivate(conversation, context.groupId || conversation.groupId);
+  }
   const text = context.messageText.trim();
   if (isCancelMessage(text)) {
     markConversationCancelled(context.qqId, context.groupId);
     await finishConversation(conversation.id, "cancelled");
-    await replyToEvent(context, "已取消这次投稿。");
+    await replyToPostingConversation(conversation, context, "已取消这次投稿。");
     return { ok: true, cancelled: true };
   }
 
@@ -697,16 +763,20 @@ async function handleConversationMessage(
         where: { id: conversation.id },
         data: { step: "await-forward-title" },
       });
-      await replyToEvent(context, await renderConversationPrompt(next));
+      await replyToPostingConversation(conversation, context, await renderConversationPrompt(next));
       return { ok: true };
     }
     if (/^(否|不要|取消|算了)$/i.test(text)) {
       markConversationCancelled(context.qqId, context.groupId);
       await finishConversation(conversation.id, "cancelled");
-      await replyToEvent(context, "好的，这条转发内容我先不投稿。");
+      await replyToPostingConversation(conversation, context, "好的，这条转发内容我先不投稿。");
       return { ok: true, cancelled: true };
     }
-    await replyToEvent(context, "如果要投稿，请回复“是”；不想投稿就回复“否”或“/取消”。群聊里我只处理这种带合并转发的投稿。");
+    await replyToPostingConversation(
+      conversation,
+      context,
+      "如果要投稿，请回复“是”；不想投稿就回复“否”或“/取消”。我会把你刚才回复的那条合并转发内容当作投稿素材。",
+    );
     return { ok: true };
   }
 
@@ -715,11 +785,11 @@ async function handleConversationMessage(
       if ((conversation.draftContent || "").trim()) {
         try {
           const result = await submitConversationPost(conversation.id, context);
-          await replyToEvent(context, result.message);
+          await replyToPostingConversation(conversation, context, result.message);
           return { ok: true, topicId: result.topicId };
         } catch (error: any) {
           const message = error?.message || "投稿失败";
-          await replyToEvent(context, `投稿失败：${message}`);
+          await replyToPostingConversation(conversation, context, `投稿失败：${message}`);
           return { ok: false, error: message };
         }
       }
@@ -727,7 +797,7 @@ async function handleConversationMessage(
         where: { id: conversation.id },
         data: { step: "collect-content" },
       });
-      await replyToEvent(context, await renderConversationPrompt(next, "好的，你继续把正文发给我。"));
+      await replyToPostingConversation(conversation, context, await renderConversationPrompt(next, "好的，你继续把正文发给我。"));
       return { ok: true };
     }
     if (/^(改标题|重新标题|换标题)$/i.test(text)) {
@@ -735,7 +805,7 @@ async function handleConversationMessage(
         where: { id: conversation.id },
         data: { step: "await-title" },
       });
-      await replyToEvent(context, await renderConversationPrompt(next, "好的，请发送新的标题。"));
+      await replyToPostingConversation(conversation, context, await renderConversationPrompt(next, "好的，请发送新的标题。"));
       return { ok: true };
     }
     if (/^(补充|继续写|加正文)$/i.test(text)) {
@@ -743,17 +813,17 @@ async function handleConversationMessage(
         where: { id: conversation.id },
         data: { step: "collect-content" },
       });
-      await replyToEvent(context, await renderConversationPrompt(next, "好的，继续把正文补充给我。"));
+      await replyToPostingConversation(conversation, context, await renderConversationPrompt(next, "好的，继续把正文补充给我。"));
       return { ok: true };
     }
-    await replyToEvent(context, "如果这份草稿可以直接发，请回复“是”；想改标题就回复“改标题”；想继续补正文就直接发内容或回复“补充”。");
+    await replyToPostingConversation(conversation, context, "如果这份草稿可以直接发，请回复“是”；想改标题就回复“改标题”；想继续补正文就直接发内容或回复“补充”。");
     return { ok: true };
   }
 
   if (conversation.step === "await-title" || conversation.step === "await-forward-title") {
     const normalizedText = context.messageText.trim();
     if (normalizedText.length < 2) {
-      await replyToEvent(context, "标题至少 2 个字，请重新发送标题。");
+      await replyToPostingConversation(conversation, context, "标题至少 2 个字，请重新发送标题。");
       return { ok: true };
     }
     const colonParsed = await detectBoardAndTitleInSingleLine(
@@ -772,7 +842,8 @@ async function handleConversationMessage(
             : "collect-content",
         },
       });
-      await replyToEvent(
+      await replyToPostingConversation(
+        conversation,
         context,
         await renderConversationPrompt(next, `我会把这篇稿子发到「${colonParsed.board.name}」，标题记成「${colonParsed.title}」。`),
       );
@@ -788,7 +859,8 @@ async function handleConversationMessage(
         where: { id: conversation.id },
         data: { draftBoardSlug: boardSelection.slug },
       });
-      await replyToEvent(
+      await replyToPostingConversation(
+        conversation,
         context,
         await renderConversationPrompt(next, `好的，这篇稿子会发到「${boardSelection.name}」。现在请发送标题。`),
       );
@@ -797,7 +869,7 @@ async function handleConversationMessage(
     const [firstLine, ...restLines] = normalizedText.split(/\r?\n/);
     const titleCandidate = firstLine.trim();
     if (titleCandidate.length < 2) {
-      await replyToEvent(context, "标题至少 2 个字，请重新发送标题。");
+      await replyToPostingConversation(conversation, context, "标题至少 2 个字，请重新发送标题。");
       return { ok: true };
     }
     const parsed = await parseConversationTitle(titleCandidate, conversation.draftBoardSlug || context.config.defaultBoardSlug, context.groupId);
@@ -813,7 +885,7 @@ async function handleConversationMessage(
         step: shouldReturnToConfirm ? "await-submit-confirm" : "collect-content",
       },
     });
-    await replyToEvent(context, await renderConversationPrompt(
+    await replyToPostingConversation(conversation, context, await renderConversationPrompt(
       next,
       conversation.step === "await-forward-title"
         ? `标题我记成「${parsed.title}」了，正文我会直接使用你刚才回复的那条合并转发内容。`
@@ -839,14 +911,14 @@ async function handleConversationMessage(
           step: "await-submit-confirm",
         },
       });
-      await replyToEvent(context, await renderConversationPrompt(next, "我先帮你整理好，确认后再正式发布。"));
+      await replyToPostingConversation(conversation, context, await renderConversationPrompt(next, "我先帮你整理好，确认后再正式发布。"));
       return { ok: true };
     }
 
     if (shouldAssistantAutoReply(context) && /^(帮我润色|润色一下|优化一下|帮我整理一下|重写一下)/i.test(text)) {
       const polished = await polishConversationDraft(conversation, context).catch(() => null);
       if (polished) {
-        await replyToEvent(context, polished);
+        await replyToPostingConversation(conversation, context, polished);
         return { ok: true };
       }
     }
@@ -856,7 +928,7 @@ async function handleConversationMessage(
       where: { id: conversation.id },
       data: { draftContent: nextContent },
     });
-    await replyToEvent(context, "已收到这段正文。继续发送内容，全部完成后发送“/结束”。");
+    await replyToPostingConversation(conversation, context, "已收到这段正文。继续发送内容，全部完成后发送“/结束”。");
     return { ok: true };
   }
 
@@ -864,11 +936,11 @@ async function handleConversationMessage(
     if (isConfirmPublishMessage(text)) {
       try {
         const result = await submitConversationPost(conversation.id, context);
-        await replyToEvent(context, result.message);
+        await replyToPostingConversation(conversation, context, result.message);
         return { ok: true, topicId: result.topicId };
       } catch (error: any) {
         const message = error?.message || "投稿失败";
-        await replyToEvent(context, `投稿失败：${message}`);
+        await replyToPostingConversation(conversation, context, `投稿失败：${message}`);
         return { ok: false, error: message };
       }
     }
@@ -877,7 +949,7 @@ async function handleConversationMessage(
         where: { id: conversation.id },
         data: { step: "await-title" },
       });
-      await replyToEvent(context, await renderConversationPrompt(next, "好的，请发送新的标题。"));
+      await replyToPostingConversation(conversation, context, await renderConversationPrompt(next, "好的，请发送新的标题。"));
       return { ok: true };
     }
     if (/^(补充|继续写|继续补充|改正文|继续修改)$/i.test(text)) {
@@ -885,7 +957,7 @@ async function handleConversationMessage(
         where: { id: conversation.id },
         data: { step: "collect-content" },
       });
-      await replyToEvent(context, await renderConversationPrompt(next, "好的，继续把正文补充给我。"));
+      await replyToPostingConversation(conversation, context, await renderConversationPrompt(next, "好的，继续把正文补充给我。"));
       return { ok: true };
     }
     if (!isCommandMessage(text)) {
@@ -897,10 +969,10 @@ async function handleConversationMessage(
           step: "collect-content",
         },
       });
-      await replyToEvent(context, await renderConversationPrompt(next, "我把这段也补进正文里了。"));
+      await replyToPostingConversation(conversation, context, await renderConversationPrompt(next, "我把这段也补进正文里了。"));
       return { ok: true };
     }
-    await replyToEvent(context, "如果可以发布，请回复“确认发布”或“是”；想改标题回复“改标题”；想继续补正文就直接发内容。");
+    await replyToPostingConversation(conversation, context, "如果可以发布，请回复“确认发布”或“是”；想改标题回复“改标题”；想继续补正文就直接发内容。");
     return { ok: true };
   }
 
@@ -921,9 +993,24 @@ async function submitConversationPost(
   if (!conversation || conversation.status !== "active") throw Errors.badRequest("当前没有进行中的投稿会话");
   if (!conversation.draftTitle?.trim()) throw Errors.badRequest("标题为空，请先发送标题");
   const content = (conversation.draftContent || "").trim() || conversation.draftTitle.trim();
+  const metadata = parseConversationMetadata(conversation.metadata);
+  const originGroupId = String(metadata.originGroupId || "").trim() || undefined;
   const result = await submitQqPost({
     ...context,
-    messageText: buildPostCommandFromDraft(conversation.draftBoardSlug || context.config.defaultBoardSlug, conversation.draftTitle, content, context.groupId, context.config.defaultBoardSlug),
+    event: {
+      ...context.event,
+      message_type: originGroupId ? "group" : context.event.message_type,
+      group_id: originGroupId || context.event.group_id,
+      message_id: conversation.sourceMessageId || context.event.message_id,
+    },
+    groupId: originGroupId,
+    messageText: buildPostCommandFromDraft(
+      conversation.draftBoardSlug || context.config.defaultBoardSlug,
+      conversation.draftTitle,
+      content,
+      originGroupId,
+      context.config.defaultBoardSlug,
+    ),
   });
   await finishConversation(conversationId, "done");
   return result;
@@ -1359,6 +1446,28 @@ async function replyToEvent(context: { event: OneBotEvent; qqId: string; groupId
   }
 }
 
+async function replyToPrivateForPosting(
+  context: { event: OneBotEvent; qqId: string; groupId?: string },
+  message: string,
+  groupHint = "已收到，请查看私信完成投稿。",
+) {
+  try {
+    await sendQqMessage({ qqId: context.qqId }, message);
+  } catch {
+    if (context.event.message_type === "group" && context.groupId) {
+      await sendQqMessage(
+        { groupId: context.groupId },
+        "已收到，但私信发送失败。请先私聊我，确认能收到消息后再继续投稿。",
+      ).catch(() => undefined);
+    }
+    return false;
+  }
+  if (context.event.message_type === "group" && context.groupId) {
+    await sendQqMessage({ groupId: context.groupId }, groupHint).catch(() => undefined);
+  }
+  return true;
+}
+
 export function startQqNotificationPoller() {
   if (pollerStarted) return;
   pollerStarted = true;
@@ -1531,20 +1640,34 @@ export async function logQqBotMessage(input: {
   }).catch(() => null);
 }
 
-function extractMessageText(message: unknown): string {
+const MAX_FORWARD_DEPTH = 4;
+
+async function extractMessageText(
+  message: unknown,
+  options: { forwardDepth?: number } = {},
+): Promise<string> {
   if (typeof message === "string") return cleanCqMessage(message);
   if (!Array.isArray(message)) return "";
-  return message.map((seg: any) => {
-    if (seg?.type === "text") return String(seg.data?.text || "");
-    if (seg?.type === "image") {
-      const url = seg.data?.url || seg.data?.file || "";
-      return url ? `\n![QQ图片](${url})\n` : "\n[图片]\n";
-    }
-    if (seg?.type === "forward") return "\n[合并转发]\n";
-    if (seg?.type === "video") return "\n[视频]\n";
-    if (seg?.type === "record") return "\n[语音]\n";
-    return "";
-  }).join("").trim();
+  const parts: string[] = [];
+  for (const seg of message) {
+    const rendered = await renderMessageSegment(seg, options.forwardDepth ?? 0);
+    if (rendered) parts.push(rendered);
+  }
+  return normalizeRenderedMessage(parts.join(""));
+}
+
+async function renderMessageSegment(seg: any, forwardDepth: number): Promise<string> {
+  if (seg?.type === "text") return String(seg.data?.text || "");
+  if (seg?.type === "image") {
+    const url = await resolveQqImageUrl(seg.data?.url, seg.data?.file);
+    return url ? `\n![QQ图片](${url})\n` : "\n[图片]\n";
+  }
+  if (seg?.type === "forward") {
+    return renderNestedForwardContent(seg.data?.id, forwardDepth + 1);
+  }
+  if (seg?.type === "video") return "\n[视频]\n";
+  if (seg?.type === "record") return "\n[语音]\n";
+  return "";
 }
 
 async function extractForwardPayload(message: unknown): Promise<(ParsedForwardPayload & { source: ForwardSource }) | null> {
@@ -1553,7 +1676,7 @@ async function extractForwardPayload(message: unknown): Promise<(ParsedForwardPa
   const forwardId = String(forwardSeg?.data?.id || "").trim();
   if (forwardId) {
     const payload = await callQqBotAction("get_forward_msg", { id: forwardId }).catch(() => null);
-    const parsed = parseForwardMessages(payload?.data?.messages, forwardId);
+    const parsed = await parseForwardMessages(payload?.data?.messages, forwardId, 0);
     if (parsed) return { ...parsed, source: "direct" };
   }
   const replyId = extractReplyMessageId(message);
@@ -1566,22 +1689,27 @@ async function extractForwardPayload(message: unknown): Promise<(ParsedForwardPa
   const replyForwardId = String(replyForwardSeg?.data?.id || "").trim();
   if (!replyForwardId) return null;
   const payload = await callQqBotAction("get_forward_msg", { id: replyForwardId }).catch(() => null);
-  const parsed = parseForwardMessages(payload?.data?.messages, replyForwardId);
+  const parsed = await parseForwardMessages(payload?.data?.messages, replyForwardId, 0);
   if (!parsed) return null;
   return { ...parsed, source: "reply" };
 }
 
-function parseForwardMessages(messages: unknown, forwardId: string): ParsedForwardPayload | null {
+async function parseForwardMessages(messages: unknown, forwardId: string, forwardDepth: number): Promise<ParsedForwardPayload | null> {
   const list = Array.isArray(messages) ? messages : [];
-  const lines = list.map((item: any) => {
+  const blocks: string[] = [];
+  const summaryBits: string[] = [];
+  for (let index = 0; index < list.length; index += 1) {
+    const item = list[index];
     const nickname = String(item?.sender?.nickname || item?.sender?.user_id || "QQ用户");
-    const text = extractMessageText(item?.content || item?.message || "").trim();
-    return text ? `${nickname}：${text}` : "";
-  }).filter(Boolean);
-  if (!lines.length) return null;
+    const text = (await extractMessageText(item?.content || item?.message || "", { forwardDepth })).trim();
+    if (!text) continue;
+    blocks.push(renderForwardMessageBlock(index + 1, nickname, text));
+    summaryBits.push(`${nickname}：${forwardSummaryPreview(text)}`);
+  }
+  if (!blocks.length) return null;
   return {
-    summary: lines.slice(0, 3).join(" / ").slice(0, 120),
-    content: lines.join("\n"),
+    summary: summaryBits.slice(0, 3).join(" / ").slice(0, 120),
+    content: blocks.join("\n\n"),
     sourceMessageId: forwardId,
   };
 }
@@ -1592,12 +1720,93 @@ function extractReplyMessageId(message: unknown) {
   return String(replySeg?.data?.id || "").trim();
 }
 
-function cleanCqMessage(value: string) {
-  return value
-    .replace(/\[CQ:image,[^\]]*url=([^,\]]+)[^\]]*\]/g, "\n![QQ图片]($1)\n")
-    .replace(/\[CQ:image[^\]]*\]/g, "\n[图片]\n")
+async function cleanCqMessage(value: string) {
+  let normalized = String(value || "");
+  const imageMatches = Array.from(normalized.matchAll(/\[CQ:image,([^\]]*)\]/g));
+  for (const match of imageMatches) {
+    const raw = match[0];
+    const attrs = parseCqParams(match[1] || "");
+    const url = await resolveQqImageUrl(attrs.url, attrs.file);
+    normalized = normalized.replace(raw, url ? `\n![QQ图片](${url})\n` : "\n[图片]\n");
+  }
+  normalized = normalized
     .replace(/\[CQ:at,[^\]]+\]/g, "")
-    .replace(/\[CQ:[^\]]+\]/g, "")
+    .replace(/\[CQ:forward[^\]]*\]/g, "\n[合并转发]\n")
+    .replace(/\[CQ:video[^\]]*\]/g, "\n[视频]\n")
+    .replace(/\[CQ:record[^\]]*\]/g, "\n[语音]\n")
+    .replace(/\[CQ:[^\]]+\]/g, "");
+  return normalizeRenderedMessage(normalized);
+}
+
+function parseCqParams(raw: string) {
+  const out: Record<string, string> = {};
+  const parts = String(raw || "").split(",");
+  for (const item of parts) {
+    const [key, ...rest] = item.split("=");
+    const normalizedKey = String(key || "").trim();
+    if (!normalizedKey) continue;
+    out[normalizedKey] = rest.join("=").trim();
+  }
+  return out;
+}
+
+async function resolveQqImageUrl(urlLike: unknown, fileLike: unknown): Promise<string> {
+  const direct = normalizeRemoteMediaUrl(urlLike);
+  if (direct) return direct;
+  const file = String(fileLike || "").trim();
+  if (!file) return "";
+  const fileAsUrl = normalizeRemoteMediaUrl(file);
+  if (fileAsUrl) return fileAsUrl;
+  const payload = await callQqBotAction("get_image", { file }).catch(() => null);
+  return (
+    normalizeRemoteMediaUrl(payload?.data?.url)
+    || normalizeRemoteMediaUrl(payload?.data?.src)
+    || normalizeRemoteMediaUrl(payload?.data?.file)
+    || ""
+  );
+}
+
+function normalizeRemoteMediaUrl(value: unknown) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (!/^https?:\/\//i.test(raw)) return "";
+  return raw;
+}
+
+async function renderNestedForwardContent(forwardId: unknown, forwardDepth: number) {
+  const normalizedId = String(forwardId || "").trim();
+  if (!normalizedId) return "\n[合并转发]\n";
+  if (forwardDepth > MAX_FORWARD_DEPTH) return "\n[合并转发层级过深]\n";
+  const payload = await callQqBotAction("get_forward_msg", { id: normalizedId }).catch(() => null);
+  const parsed = await parseForwardMessages(payload?.data?.messages, normalizedId, forwardDepth);
+  if (!parsed?.content) return "\n[合并转发]\n";
+  return `\n${quoteMarkdownBlock(`转发消息\n${parsed.content}`)}\n`;
+}
+
+function renderForwardMessageBlock(index: number, nickname: string, text: string) {
+  return [`**${index}. ${nickname}**`, normalizeRenderedMessage(text)].join("\n");
+}
+
+function forwardSummaryPreview(text: string) {
+  return normalizeRenderedMessage(
+    text
+      .replace(/!\[[^\]]*\]\([^)]+\)/g, "[图片]")
+      .replace(/^\s*> ?/gm, "")
+      .replace(/\*\*/g, ""),
+  ).replace(/\n+/g, " ").slice(0, 40) || "内容";
+}
+
+function quoteMarkdownBlock(content: string) {
+  return String(content || "")
+    .split(/\r?\n/)
+    .map((line) => `> ${line}`)
+    .join("\n");
+}
+
+function normalizeRenderedMessage(value: string) {
+  return String(value || "")
+    .replace(/\r/g, "")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
