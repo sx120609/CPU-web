@@ -46,13 +46,13 @@
       :show-close="false"
     >
       <div v-if="currentStrongNotice" class="strong-notice">
-        <div class="notice-head">
+        <div class="strong-notice-head">
           <el-tag size="small" type="danger" effect="plain">强提醒</el-tag>
-          <span class="notice-source">{{ currentStrongNotice.source || "站务组" }}</span>
+          <span class="strong-notice-source">{{ currentStrongNotice.source || "站务组" }}</span>
         </div>
-        <h3 class="notice-title">{{ currentStrongNotice.title }}</h3>
-        <div class="notice-content">{{ currentStrongNotice.content }}</div>
-        <div v-if="currentStrongNotice.link" class="notice-link">
+        <h3 class="strong-notice-title">{{ currentStrongNotice.title }}</h3>
+        <div class="strong-notice-content">{{ currentStrongNotice.content }}</div>
+        <div v-if="currentStrongNotice.link" class="strong-notice-link">
           <span>相关链接：</span>
           <a :href="currentStrongNotice.link" target="_blank" rel="noopener noreferrer">{{ currentStrongNotice.link }}</a>
         </div>
@@ -462,39 +462,39 @@ html, body, #app {
   line-height: 1.7;
 }
 
-.notice-head {
+.strong-notice-head {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
 }
 
-.notice-source {
+.strong-notice-source {
   font-size: 12px;
   color: #9ca3af;
 }
 
-.notice-title {
+.strong-notice-title {
   margin: 0 0 10px;
   font-size: 18px;
   line-height: 1.45;
   color: #111827;
 }
 
-.notice-content {
+.strong-notice-content {
   white-space: pre-wrap;
   color: #374151;
   font-size: 14px;
 }
 
-.notice-link {
+.strong-notice-link {
   margin-top: 12px;
   font-size: 12px;
   color: #6b7280;
   word-break: break-all;
 }
 
-.notice-link a {
+.strong-notice-link a {
   color: var(--cpu-primary);
 }
 

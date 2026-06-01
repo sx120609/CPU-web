@@ -59,8 +59,8 @@
     <el-dialog v-model="detailOpen" title="通知详情" width="620px" append-to-body class="notice-dialog">
       <div v-if="activeNotice" class="notice-detail">
         <div class="notice-head">
-          <h3>{{ activeNotice.title }}</h3>
-          <span>{{ activeNotice.source || "校内" }} · {{ formatNoticeTime(activeNotice.createdAt) }}</span>
+          <h3 class="notice-title">{{ activeNotice.title }}</h3>
+          <div class="notice-meta">{{ activeNotice.source || "校内" }} · {{ formatNoticeTime(activeNotice.createdAt) }}</div>
         </div>
         <p class="notice-content">{{ activeNotice.content }}</p>
         <div v-if="reviewStateText" class="review-state" :class="{ done: !canReviewActiveNotice }">
@@ -302,14 +302,31 @@ function formatNoticeTime(value?: string) {
   font-size: 13px;
 }
 .notice-detail { display: flex; flex-direction: column; gap: 12px; }
+.notice-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
 .notice-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
 }
-.notice-head h3 { margin: 0; font-size: 18px; color: #1f2937; }
-.notice-head span { font-size: 12px; color: #94a3b8; line-height: 1.5; word-break: break-word; }
+.notice-title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.45;
+  color: #1f2937;
+  overflow-wrap: anywhere;
+}
+.notice-meta {
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.5;
+  word-break: break-word;
+}
 .notice-content { margin: 0; color: #374151; line-height: 1.75; white-space: pre-wrap; }
 .review-state { font-size: 13px; color: #166534; background: #ecfdf5; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 12px; }
 .review-state.done { color: #6b7280; background: #f8fafc; border-color: #e2e8f0; }
@@ -458,6 +475,14 @@ function formatNoticeTime(value?: string) {
 
   .bar-meta {
     font-size: 12px;
+  }
+
+  .notice-head {
+    gap: 4px;
+  }
+
+  .notice-title {
+    font-size: 17px;
   }
 
   :deep(.notice-dialog) {
