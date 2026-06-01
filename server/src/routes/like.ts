@@ -23,8 +23,25 @@ likeRouter.post("/topic/:id", async (req, res, next) => {
       const u = await prisma.topic.update({ where: { id: topicId }, data: { likeCount: { decrement: 1 } } });
       return ok(res, { liked: false, likeCount: u.likeCount });
     }
-    await prisma.like.create({ data: { userId, topicId } });
-    const u = await prisma.topic.update({ where: { id: topicId }, data: { likeCount: { increment: 1 } } });
+    const u = await prisma.$transaction(async (tx) => {
+      await tx.like.create({ data: { userId, topicId } });
+      const updated = await tx.topic.update({ where: { id: topicId }, data: { likeCount: { increment: 1 } } });
+      if (t.authorId !== userId) {
+        await tx.notification.create({
+          data: {
+            userId: t.authorId,
+            category: "like",
+            level: "weak",
+            title: "有人赞了你的帖子",
+            content: `${await likerDisplayName(tx, userId)} 赞了「${t.title}」`,
+            link: `/forum/topic/${topicId}`,
+            source: "论坛",
+            payload: JSON.stringify({ type: "topic-like", topicId, actorUserId: userId }),
+          },
+        });
+      }
+      return updated;
+    });
     ok(res, { liked: true, likeCount: u.likeCount });
   } catch (e) { next(e); }
 });
@@ -37,7 +54,7 @@ likeRouter.post("/reply/:id", async (req, res, next) => {
       where: { id: replyId },
       include: { topic: { include: { board: { select: { type: true } } } } },
     });
-    if (!r) throw Errors.notFound();
+    if (!r || r.hidden || r.topic?.hidden) throw Errors.notFound();
     if (!isBoardTypeEnabled(r.topic?.board?.type)) throw Errors.forbidden(featureClosedMessage(r.topic?.board?.type));
     await ensureCanReadBoardType(r.topic?.board?.type, userId, req.user?.role);
     const existing = await prisma.like.findFirst({ where: { userId, replyId } });
@@ -46,8 +63,25 @@ likeRouter.post("/reply/:id", async (req, res, next) => {
       const u = await prisma.reply.update({ where: { id: replyId }, data: { likeCount: { decrement: 1 } } });
       return ok(res, { liked: false, likeCount: u.likeCount });
     }
-    await prisma.like.create({ data: { userId, replyId } });
-    const u = await prisma.reply.update({ where: { id: replyId }, data: { likeCount: { increment: 1 } } });
+    const u = await prisma.$transaction(async (tx) => {
+      await tx.like.create({ data: { userId, replyId } });
+      const updated = await tx.reply.update({ where: { id: replyId }, data: { likeCount: { increment: 1 } } });
+      if (r.authorId !== userId) {
+        await tx.notification.create({
+          data: {
+            userId: r.authorId,
+            category: "like",
+            level: "weak",
+            title: "有人赞了你的回复",
+            content: `${await likerDisplayName(tx, userId)} 赞了你在「${r.topic.title}」下的回复`,
+            link: `/forum/topic/${r.topicId}#reply-${replyId}`,
+            source: "论坛",
+            payload: JSON.stringify({ type: "reply-like", topicId: r.topicId, replyId, actorUserId: userId }),
+          },
+        });
+      }
+      return updated;
+    });
     ok(res, { liked: true, likeCount: u.likeCount });
   } catch (e) { next(e); }
 });
@@ -67,3 +101,11 @@ likeRouter.get("/mine", async (req, res, next) => {
     });
   } catch (e) { next(e); }
 });
+
+async function likerDisplayName(tx: { user: typeof prisma.user }, userId: number) {
+  const user = await tx.user.findUnique({
+    where: { id: userId },
+    select: { nickname: true, username: true },
+  });
+  return user?.nickname?.trim() || user?.username || "有同学";
+}
