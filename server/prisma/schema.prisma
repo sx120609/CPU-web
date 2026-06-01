@@ -1,13 +1,13 @@
 // 药大拾间 数据模型
 // 民间学生论坛 + 学校公告爬虫聚合
-// SQLite + Prisma 5
+// PostgreSQL + Prisma 5
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -682,6 +682,7 @@ model SponsorOrder {
   message     String   @default("")
   displayMode String   @default("public") // public / anonymous / hidden
   status      String   @default("pending") // pending / paid / closed
+  expiresAt   DateTime?
   paidAt      DateTime?
   closedAt    DateTime?
   createdAt   DateTime @default(now())

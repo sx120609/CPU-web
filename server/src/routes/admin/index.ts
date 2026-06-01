@@ -1,10 +1,6 @@
 import { Router } from "express";
-import multer from "multer";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
-import path from "node:path";
-import { mkdirSync } from "node:fs";
-import { unlink } from "node:fs/promises";
 import { prisma } from "../../prisma";
 import { Errors, ok } from "../../utils/response";
 import { adminOnly, modOrAbove } from "../../middleware/admin";
@@ -36,26 +32,22 @@ import { parseMutedUntil, releaseExpiredMutes } from "../../services/userModerat
 import { buildUserTrustSnapshot, currentAnonymousWeekKey, freezeAnonymousCredits } from "../../services/userTrust";
 import { buildEpayCallbackUrls, buildEpaySubmitPayload, getEpayConfig, resolvePaymentOrigin, updateEpayConfig } from "../../services/epay";
 import { amountCentsToMoney } from "../../services/epay";
-import { formatSponsorOrder, getSponsorConfig, updateSponsorConfig } from "../../services/sponsor";
+import {
+  calcSponsorOrderExpiresAt,
+  closeExpiredSponsorOrders,
+  formatSponsorOrder,
+  getSponsorConfig,
+  updateSponsorConfig,
+} from "../../services/sponsor";
 import { applyManualForumImageReview, backfillForumImageAssetsAndTriggerModeration, listForumImageAssetsForContent } from "../../services/imageModeration";
 import {
   cleanupDatabaseBackupSnapshot,
   createDatabaseBackupSnapshot,
   getDatabaseBackupStatus,
-  restoreDatabaseFromUpload,
 } from "../../services/databaseBackup";
 import { qqBotAdminRouter } from "./qqbot";
 
 export const adminRouter = Router();
-const adminUploadDir = path.resolve(process.cwd(), "uploads", "_admin-tmp");
-mkdirSync(adminUploadDir, { recursive: true });
-const databaseRestoreUpload = multer({
-  dest: adminUploadDir,
-  limits: {
-    files: 1,
-    fileSize: 200 * 1024 * 1024,
-  },
-});
 
 function requestOrigin(req: any) {
   const proto = String(req.headers["x-forwarded-proto"] ?? req.protocol ?? "http").split(",")[0].trim();
@@ -87,32 +79,6 @@ adminRouter.get("/database/backup", adminOnly, async (_req, res, next) => {
   } catch (e) {
     if (snapshot) await cleanupDatabaseBackupSnapshot(snapshot);
     next(e);
-  }
-});
-
-adminRouter.post("/database/restore", adminOnly, databaseRestoreUpload.single("file"), async (req, res, next) => {
-  const uploadedPath = req.file?.path;
-  try {
-    if (!uploadedPath) throw Errors.badRequest("请先上传 SQLite 备份文件");
-    const result = await restoreDatabaseFromUpload(uploadedPath);
-    ok(res, result, "数据库已恢复");
-  } catch (e: any) {
-    if (e instanceof Error && e.message.includes("正在进行")) {
-      next(Errors.conflict(e.message));
-      return;
-    }
-    if (e instanceof Error && (
-      e.message.includes("SQLite") ||
-      e.message.includes("过小") ||
-      e.message.includes("无法执行恢复") ||
-      e.message.includes("无法识别")
-    )) {
-      next(Errors.badRequest(e.message));
-      return;
-    }
-    next(e);
-  } finally {
-    if (uploadedPath) await unlink(uploadedPath).catch(() => undefined);
   }
 });
 
@@ -1183,6 +1149,7 @@ adminRouter.patch("/sponsor-config", adminOnly, validate(sponsorConfigPatchSchem
 
 adminRouter.get("/sponsor-overview", adminOnly, async (_req, res, next) => {
   try {
+    await closeExpiredSponsorOrders();
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const monthStart = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
@@ -1216,6 +1183,7 @@ adminRouter.get("/sponsor-overview", adminOnly, async (_req, res, next) => {
 
 adminRouter.get("/sponsor-orders", adminOnly, async (req, res, next) => {
   try {
+    await closeExpiredSponsorOrders();
     const q = String(req.query.q ?? "").trim();
     const status = String(req.query.status ?? "").trim();
     const page = Math.max(1, Number(req.query.page ?? 1));
@@ -1264,12 +1232,14 @@ adminRouter.patch("/sponsor-orders/:id", adminOnly, validate(sponsorOrderPatchSc
         data.status = "paid";
         data.paidAt = current.paidAt ?? new Date();
         data.closedAt = null;
+        data.expiresAt = current.expiresAt ?? calcSponsorOrderExpiresAt(current.createdAt ?? new Date());
       } else if (req.body.status === "closed") {
         data.status = "closed";
         data.closedAt = current.closedAt ?? new Date();
       } else {
         data.status = "pending";
         data.closedAt = null;
+        data.expiresAt = calcSponsorOrderExpiresAt();
       }
     }
     const updated = await prisma.$transaction(async (tx) => {

@@ -3,7 +3,7 @@
     <div class="hero">
       <div>
         <h2>数据管理</h2>
-        <p>自动识别当前主站数据库类型，并提供对应的在线备份下载能力。SQLite 走一致性快照，PostgreSQL 走 `pg_dump`。</p>
+        <p>当前服务端已统一使用 PostgreSQL。这里提供当前主库识别、连接信息展示和在线备份下载功能。</p>
       </div>
       <el-button :loading="loading" @click="loadStatus">刷新状态</el-button>
     </div>
@@ -31,9 +31,9 @@
         <div class="hint">{{ providerHint }}</div>
       </article>
       <article class="status-card">
-        <div class="label">数据库位置 / 连接</div>
+        <div class="label">数据库连接</div>
         <div class="value path">{{ status.databasePathLabel || "未识别" }}</div>
-        <div class="hint">{{ status.exists ? "数据库当前可访问" : "当前无法确认数据库是否存在" }}</div>
+        <div class="hint">{{ status.exists ? "当前数据库连接可用" : "当前无法确认数据库可用性" }}</div>
       </article>
       <article class="status-card">
         <div class="label">备份方式</div>
@@ -43,12 +43,12 @@
       <article class="status-card">
         <div class="label">当前体积</div>
         <div class="value">{{ formatBytes(status.sizeBytes) }}</div>
-        <div class="hint">{{ sizeHint }}</div>
+        <div class="hint">这里展示的是当前 PostgreSQL 数据库体积。</div>
       </article>
       <article class="status-card">
         <div class="label">最近文件时间</div>
         <div class="value">{{ formatTime(status.updatedAt) }}</div>
-        <div class="hint">{{ updateHint }}</div>
+        <div class="hint">PostgreSQL 直连运行，没有单独的本地数据库文件时间。</div>
       </article>
       <article class="status-card">
         <div class="label">建议文件名</div>
@@ -59,11 +59,11 @@
 
     <article v-if="status" class="action-card">
       <div class="copy">
-        <h3>下载数据库备份</h3>
+        <h3>下载 PostgreSQL 备份</h3>
         <p>{{ downloadHint }}</p>
       </div>
       <el-button type="primary" :loading="downloading" :disabled="!canDownload" @click="downloadBackup">
-        {{ downloadButtonLabel }}
+        下载数据库备份
       </el-button>
     </article>
   </section>
@@ -118,39 +118,23 @@ function buildFallbackFileName() {
 }
 
 const providerLabel = computed(() => {
-  if (status.value?.provider === "sqlite-file") return "SQLite 文件主库";
   if (status.value?.provider === "postgresql") return "PostgreSQL";
   return "暂不支持";
 });
 
 const providerHint = computed(() => {
-  if (status.value?.provider === "sqlite-file") return "当前运行库仍是本地 SQLite 文件。";
-  if (status.value?.provider === "postgresql") return "当前运行库已切到 PostgreSQL。";
-  return "当前 DATABASE_URL 不是 SQLite / PostgreSQL。";
+  if (status.value?.provider === "postgresql") return "当前运行库已统一切到 PostgreSQL。";
+  return status.value?.reason || "当前 DATABASE_URL 不是 PostgreSQL 连接串。";
 });
 
 const backupMethodLabel = computed(() => {
-  if (status.value?.backupMethod === "sqlite-vacuum-into") return "SQLite 一致性快照";
   if (status.value?.backupMethod === "pg-dump") return "pg_dump 自定义备份";
   return "不可用";
 });
 
 const backupMethodHint = computed(() => {
-  if (status.value?.backupMethod === "sqlite-vacuum-into") return "服务端使用 VACUUM INTO 导出一致性备份。";
   if (status.value?.backupMethod === "pg-dump") return "服务端使用 pg_dump 导出 PostgreSQL 备份文件。";
   return status.value?.reason || "当前没有可用的在线备份方式。";
-});
-
-const sizeHint = computed(() => {
-  if (status.value?.provider === "postgresql") return "这里展示的是当前 PostgreSQL 数据库体积。";
-  if (status.value?.provider === "sqlite-file") return "这里展示的是 SQLite 数据库文件大小。";
-  return "暂无可展示的体积信息。";
-});
-
-const updateHint = computed(() => {
-  if (status.value?.provider === "postgresql") return "PostgreSQL 是实时连接库，没有单独的本地文件修改时间。";
-  if (status.value?.provider === "sqlite-file") return "这里展示的是 SQLite 文件最近修改时间。";
-  return "暂无可展示的时间信息。";
 });
 
 const canDownload = computed(() =>
@@ -159,18 +143,9 @@ const canDownload = computed(() =>
   !Boolean(status.value?.maintenanceActive)
 );
 
-const downloadButtonLabel = computed(() => {
-  if (status.value?.provider === "postgresql") return "下载 PostgreSQL 备份";
-  if (status.value?.provider === "sqlite-file") return "下载 SQLite 备份";
-  return "下载备份";
-});
-
 const downloadHint = computed(() => {
   if (status.value?.provider === "postgresql") {
     return "下载的是服务器当前 PostgreSQL 主库导出的备份文件。适合在做结构调整、升级或高风险操作前先留底。";
-  }
-  if (status.value?.provider === "sqlite-file") {
-    return "下载的是服务器当前 SQLite 主库的一致性快照。适合在迁移或高风险改动前先留底。";
   }
   return status.value?.reason || "当前数据库暂不支持在线备份。";
 });

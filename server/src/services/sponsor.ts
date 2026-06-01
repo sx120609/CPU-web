@@ -2,6 +2,9 @@ import { prisma } from "../prisma";
 import { amountCentsToMoney, moneyToAmountCents } from "./epay";
 
 const SPONSOR_CONFIG_KEY = "sponsor.config";
+const SPONSOR_ORDER_EXPIRE_MS = 3 * 60 * 60 * 1000;
+const SPONSOR_ORDER_EXPIRE_SWEEP_MS = 5 * 60 * 1000;
+let sponsorOrderExpiryPollerStarted = false;
 
 export type SponsorConfig = {
   title: string;
@@ -90,6 +93,69 @@ export function sponsorConfigToCents(config: SponsorConfig) {
   };
 }
 
+export function calcSponsorOrderExpiresAt(base = new Date()) {
+  return new Date(base.getTime() + SPONSOR_ORDER_EXPIRE_MS);
+}
+
+export function isSponsorOrderExpired(order: {
+  status?: string | null;
+  createdAt?: Date | null;
+  expiresAt?: Date | null;
+}, now = new Date()) {
+  if (order.status !== "pending") return false;
+  const expiresAt = order.expiresAt ?? (order.createdAt ? calcSponsorOrderExpiresAt(order.createdAt) : null);
+  return Boolean(expiresAt && expiresAt.getTime() <= now.getTime());
+}
+
+export async function closeExpiredSponsorOrders(now = new Date()) {
+  const fallbackCutoff = new Date(now.getTime() - SPONSOR_ORDER_EXPIRE_MS);
+  const result = await prisma.sponsorOrder.updateMany({
+    where: {
+      status: "pending",
+      OR: [
+        { expiresAt: { lte: now } },
+        {
+          expiresAt: null,
+          createdAt: { lte: fallbackCutoff },
+        },
+      ],
+    },
+    data: {
+      status: "closed",
+      closedAt: now,
+    },
+  });
+  return result.count;
+}
+
+export async function closeExpiredSponsorOrderIfNeeded<T extends {
+  id: number;
+  status?: string | null;
+  createdAt?: Date | null;
+  expiresAt?: Date | null;
+}>(order: T | null | undefined, now = new Date()) {
+  if (!order || !isSponsorOrderExpired(order, now)) return order ?? null;
+  return prisma.sponsorOrder.update({
+    where: { id: order.id },
+    data: {
+      status: "closed",
+      closedAt: now,
+    },
+  });
+}
+
+export function startSponsorOrderExpiryPoller() {
+  if (sponsorOrderExpiryPollerStarted) return;
+  sponsorOrderExpiryPollerStarted = true;
+  const tick = () => {
+    closeExpiredSponsorOrders().catch((error) => {
+      console.warn("[sponsor] close expired orders failed", error);
+    });
+  };
+  setTimeout(tick, 5_000);
+  setInterval(tick, SPONSOR_ORDER_EXPIRE_SWEEP_MS);
+}
+
 export function formatSponsorOrder(order: any) {
   return {
     id: order.id,
@@ -101,6 +167,7 @@ export function formatSponsorOrder(order: any) {
     message: order.message ?? "",
     displayMode: order.displayMode ?? "public",
     status: order.status,
+    expiresAt: order.expiresAt,
     paidAt: order.paidAt,
     closedAt: order.closedAt,
     createdAt: order.createdAt,

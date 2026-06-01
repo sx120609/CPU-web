@@ -11,6 +11,7 @@ import { getDatabaseMaintenanceMessage, isDatabaseMaintenanceActive } from "./se
 import { filestoreProxy } from "./services/filestore";
 import { startForumImageModerationPoller } from "./services/imageModeration";
 import { startQqNotificationPoller } from "./services/qqbot";
+import { startSponsorOrderExpiryPoller } from "./services/sponsor";
 import { fail } from "./utils/response";
 
 export function createApp() {
@@ -43,6 +44,7 @@ export function createApp() {
   app.use("/api", router);
   startForumImageModerationPoller();
   startQqNotificationPoller();
+  startSponsorOrderExpiryPoller();
 
   app.use("/api/*", (_req, res) => {
     res.status(404).json({ code: 4004, data: null, message: "接口不存在" });

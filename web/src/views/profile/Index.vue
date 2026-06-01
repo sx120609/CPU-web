@@ -573,6 +573,10 @@ async function pollSponsorReturn(outTradeNo: string) {
       ElMessage.success("赞助已到账，感谢支持");
       return;
     }
+    if (order?.status === "closed") {
+      ElMessage.warning("该订单已超时关闭，请重新发起赞助");
+      return;
+    }
     await new Promise((resolve) => window.setTimeout(resolve, 1200));
   }
   await auth.fetchMe();

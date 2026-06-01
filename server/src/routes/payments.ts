@@ -17,6 +17,9 @@ import {
   type EpayPayType,
 } from "../services/epay";
 import {
+  calcSponsorOrderExpiresAt,
+  closeExpiredSponsorOrderIfNeeded,
+  closeExpiredSponsorOrders,
   formatSponsorOrder,
   formatSponsorWallOrder,
   getSponsorConfig,
@@ -109,6 +112,7 @@ paymentsRouter.post("/sponsor/orders", authRequired, validate(sponsorCreateSchem
         amountCents,
         message: config.allowMessage ? (req.body.message ?? "") : "",
         displayMode: req.body.displayMode ?? "public",
+        expiresAt: calcSponsorOrderExpiresAt(),
       },
     });
     const epay = await buildSponsorPayment(order, req);
@@ -134,6 +138,7 @@ paymentsRouter.post("/sponsor/orders", authRequired, validate(sponsorCreateSchem
 
 paymentsRouter.get("/sponsor/orders", authRequired, async (req, res, next) => {
   try {
+    await closeExpiredSponsorOrders();
     const page = Math.max(1, Number(req.query.page ?? 1));
     const size = Math.min(50, Math.max(5, Number(req.query.size ?? 20)));
     const status = String(req.query.status ?? "").trim();
@@ -155,10 +160,11 @@ paymentsRouter.get("/sponsor/orders", authRequired, async (req, res, next) => {
 paymentsRouter.get("/sponsor/orders/:outTradeNo", authRequired, async (req, res, next) => {
   try {
     const outTradeNo = String(req.params.outTradeNo || "").trim();
-    const order = await prisma.sponsorOrder.findFirst({
+    const current = await prisma.sponsorOrder.findFirst({
       where: { outTradeNo, userId: req.user!.userId },
     });
-    if (!order) throw Errors.notFound("订单不存在");
+    if (!current) throw Errors.notFound("订单不存在");
+    const order = await closeExpiredSponsorOrderIfNeeded(current);
     ok(res, formatSponsorOrder(order));
   } catch (e) { next(e); }
 });
@@ -166,11 +172,16 @@ paymentsRouter.get("/sponsor/orders/:outTradeNo", authRequired, async (req, res,
 paymentsRouter.post("/sponsor/orders/:outTradeNo/pay", authRequired, async (req, res, next) => {
   try {
     const outTradeNo = String(req.params.outTradeNo || "").trim();
-    const order = await prisma.sponsorOrder.findFirst({
+    const current = await prisma.sponsorOrder.findFirst({
       where: { outTradeNo, userId: req.user!.userId },
     });
+    if (!current) throw Errors.notFound("订单不存在");
+    const order = await closeExpiredSponsorOrderIfNeeded(current);
     if (!order) throw Errors.notFound("订单不存在");
-    if (order.status !== "pending") throw Errors.badRequest("该订单不可继续支付");
+    if (order.status !== "pending") {
+      if (order.status === "closed") throw Errors.badRequest("订单已超时关闭，请重新发起赞助");
+      throw Errors.badRequest("该订单不可继续支付");
+    }
     const epay = await buildSponsorPayment(order, req);
     ok(res, { order: formatSponsorOrder(order), epay });
   } catch (e: any) {
@@ -191,9 +202,11 @@ paymentsRouter.post("/sponsor/orders/:outTradeNo/pay", authRequired, async (req,
 paymentsRouter.post("/sponsor/orders/:outTradeNo/close", authRequired, async (req, res, next) => {
   try {
     const outTradeNo = String(req.params.outTradeNo || "").trim();
-    const order = await prisma.sponsorOrder.findFirst({
+    const current = await prisma.sponsorOrder.findFirst({
       where: { outTradeNo, userId: req.user!.userId },
     });
+    if (!current) throw Errors.notFound("订单不存在");
+    const order = await closeExpiredSponsorOrderIfNeeded(current);
     if (!order) throw Errors.notFound("订单不存在");
     if (order.status !== "pending") throw Errors.badRequest("只有待支付订单可以关闭");
     const updated = await prisma.sponsorOrder.update({

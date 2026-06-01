@@ -122,8 +122,8 @@ export type AdminOverview = {
 
 export type DatabaseBackupStatus = {
   supported: boolean;
-  provider: "sqlite-file" | "postgresql" | "unsupported";
-  backupMethod: "sqlite-vacuum-into" | "pg-dump" | null;
+  provider: "postgresql" | "unsupported";
+  backupMethod: "pg-dump" | null;
   exists: boolean;
   maintenanceActive: boolean;
   maintenanceMessage: string;
@@ -132,13 +132,6 @@ export type DatabaseBackupStatus = {
   updatedAt: string | null;
   downloadFileName: string | null;
   reason: string | null;
-};
-
-export type DatabaseRestoreResult = {
-  restoredAt: string;
-  databasePathLabel: string;
-  sizeBytes: number;
-  safetyCopyPathLabel: string | null;
 };
 
 export type EpayConfig = {
@@ -220,13 +213,6 @@ export const adminApi = {
       timeout: 120000,
       suppressErrorMessage: true,
     }),
-  restoreDatabase: (file: File) => {
-    const form = new FormData();
-    form.append("file", file);
-    return request.post<DatabaseRestoreResult>("/admin/database/restore", form, {
-      timeout: 120000,
-    });
-  },
   // 用户
   users: (params: {
     q?: string;

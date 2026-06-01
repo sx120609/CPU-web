@@ -410,16 +410,14 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
 .sem-head h3 { margin: 0; font-size: 15px; color: var(--cpu-primary); font-weight: 600; }
 .sem-sum { font-size: 12px; color: #9ca3af; }
 .table-scroll {
-  display: none;
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .table-scroll :deep(.el-table) {
   min-width: 1000px;
 }
-.mobile-grade-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 12px;
-}
+.mobile-grade-list { display: none; }
 
 .grade-card {
   position: relative;
@@ -524,7 +522,10 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
     gap: 4px;
   }
 
+  .table-scroll { display: none; }
+
   .mobile-grade-list {
+    display: grid;
     grid-template-columns: 1fr;
     gap: 10px;
   }

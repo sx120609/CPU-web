@@ -9,12 +9,9 @@
 #   ./deploy.sh restart          # 重启
 #   ./deploy.sh logs             # 查看日志
 #   ./deploy.sh status           # 查看进程状态
-#   ./deploy.sh reset-db         # 重建数据库（⚠️ 删除所有论坛数据）
-#   ./deploy.sh postgres-init [db] [user]            # 安装 PostgreSQL、创建应用库和账号、写入 server/.env
-#   ./deploy.sh postgres-config "postgresql://..."   # 写入 PostgreSQL 目标连接串并刷新后端环境
-#   ./deploy.sh postgres-dry-run [batch]             # 在服务器上试跑 SQLite -> PostgreSQL 迁移
-#   ./deploy.sh postgres-migrate [batch]             # 在服务器上正式迁移到 PostgreSQL
-#   ./deploy.sh postgres-switch [url]                # 将运行库切到 PostgreSQL，重建并重启服务
+#   ./deploy.sh reset-db         # 重置 PostgreSQL schema 并重新写入种子数据
+#   ./deploy.sh postgres-init [db] [user]            # 安装 PostgreSQL、创建应用库和账号，并写入 server/.env
+#   ./deploy.sh postgres-config "postgresql://..."   # 手动写入 PostgreSQL 连接串并刷新后端环境
 #   ./deploy.sh proxy-init       # 代理端首次部署：装依赖 + 构建后端 + 启动教务代理
 #   ./deploy.sh proxy-update     # 代理端更新：git pull + 重装 + 重建后端 + 重启教务代理
 #   ./deploy.sh proxy-start      # 启动教务代理
@@ -104,10 +101,6 @@ is_postgres_url() {
   [[ "$1" =~ ^postgres(ql)?:// ]]
 }
 
-is_sqlite_url() {
-  [[ "$1" == file:* ]]
-}
-
 configured_database_url() {
   local from_file
   from_file="$(env_get DATABASE_URL)"
@@ -118,16 +111,6 @@ configured_database_url() {
   fi
 }
 
-configured_postgres_target_url() {
-  local from_file
-  from_file="$(env_get POSTGRES_DATABASE_URL)"
-  if [ -n "$from_file" ]; then
-    printf '%s' "$from_file"
-  else
-    printf '%s' "${POSTGRES_DATABASE_URL:-}"
-  fi
-}
-
 postgres_input_url() {
   if [ -n "${POSTGRES_DATABASE_URL:-}" ]; then
     printf '%s' "$POSTGRES_DATABASE_URL"
@@ -135,20 +118,6 @@ postgres_input_url() {
   fi
   if [ -n "${CMD_ARG_1:-}" ] && is_postgres_url "$CMD_ARG_1"; then
     printf '%s' "$CMD_ARG_1"
-  fi
-}
-
-postgres_batch_size() {
-  local candidate=""
-  if [ -n "${CMD_ARG_1:-}" ] && is_postgres_url "$CMD_ARG_1"; then
-    candidate="${CMD_ARG_2:-}"
-  else
-    candidate="${CMD_ARG_1:-}"
-  fi
-  if [ -n "$candidate" ]; then
-    printf '%s' "$candidate"
-  else
-    printf '%s' "${POSTGRES_MIGRATE_BATCH_SIZE:-2000}"
   fi
 }
 
@@ -273,14 +242,15 @@ ensure_env() {
     log "首次部署，创建 server/.env"
     cat > "$ENV_FILE" <<EOF
 PORT=$PORT
-DATABASE_URL="file:./dev.db"
+DATABASE_URL=""
 POSTGRES_DATABASE_URL=""
 JWT_SECRET="$(openssl rand -hex 32 2>/dev/null || echo "please-change-me-$(date +%s)")"
 JWT_EXPIRES_IN="7d"
 NODE_ENV=production
 EOF
     log "已生成随机 JWT_SECRET"
-  elif ! grep -q '^POSTGRES_DATABASE_URL=' "$ENV_FILE" 2>/dev/null; then
+  fi
+  if ! grep -q '^POSTGRES_DATABASE_URL=' "$ENV_FILE" 2>/dev/null; then
     echo 'POSTGRES_DATABASE_URL=""' >> "$ENV_FILE"
   fi
 }
@@ -304,26 +274,15 @@ EOF
 do_install() {
   log "安装依赖（root + server + web）..."
   npm install --no-audit --no-fund
-  # 显式 prisma generate（npm install 不会触发 schema 变化的 generate）
-  if runtime_uses_postgres; then
-    log "检测到运行库为 PostgreSQL，生成 PostgreSQL Prisma Client"
-    npm run prisma:generate:postgres --prefix server || err "PostgreSQL Prisma Client 生成失败，请检查 Prisma 环境"
-  else
-    log "生成 SQLite Prisma Client"
-    npm run prisma:generate --prefix server || err "Prisma Client 生成失败，请检查 Prisma 环境"
-  fi
+  log "生成 Prisma Client"
+  npm run prisma:generate --prefix server || err "Prisma Client 生成失败，请检查 Prisma 环境"
 }
 
 do_build() {
-  if runtime_uses_postgres; then
-    log "构建 PostgreSQL 运行时后端"
-    npm run build:postgres --prefix server
-  else
-    log "构建前再次生成 SQLite Prisma Client"
-    npm run prisma:generate --prefix server || err "构建前 Prisma Client 生成失败"
-    log "构建后端 TypeScript → server/dist"
-    npm run build --prefix server
-  fi
+  log "构建前再次生成 Prisma Client"
+  npm run prisma:generate --prefix server || err "构建前 Prisma Client 生成失败"
+  log "构建后端 TypeScript → server/dist"
+  npm run build --prefix server
   log "构建前端 Vite → web/dist"
   npm run build --prefix web
 }
@@ -336,39 +295,28 @@ do_build_proxy() {
 }
 
 do_db_init() {
-  if runtime_uses_postgres; then
-    log "检测到运行库为 PostgreSQL，应用 PostgreSQL schema"
-    npm run db:push:postgres --prefix server
-    return
-  fi
-  if [ -f server/prisma/dev.db ]; then
-    warn "已存在数据库 server/prisma/dev.db —— 跳过 seed，仅应用待执行的 migration"
-    cd server
-    if ! npx prisma migrate deploy; then
-      warn "migrate deploy 失败（多半是历史遗留：旧 db push / 旧 init migration 与 git 来的 migration 冲突）"
-      warn "调用 heal-migrations.js 自动修复 migration 历史 ..."
-      node scripts/heal-migrations.js
-    fi
-    log "migration 完成后再次生成 Prisma Client"
-    npm run prisma:generate
-    cd ..
+  local db_url user_count
+  db_url="$(configured_database_url)"
+  is_postgres_url "$db_url" || err "当前 deploy.sh 仅支持 PostgreSQL。请先运行 ./deploy.sh postgres-init 或 ./deploy.sh postgres-config"
+  log "同步 PostgreSQL schema"
+  npm run db:migrate --prefix server
+  user_count="$(
+    cd server && node -e 'const { PrismaClient } = require("@prisma/client"); const p = new PrismaClient(); p.user.count().then((c) => { console.log(c); }).catch(() => { console.log(""); process.exitCode = 1; }).finally(() => p.$disconnect());' 2>/dev/null | tr -d '[:space:]'
+  )"
+  if [ -z "$user_count" ] || [ "$user_count" = "0" ]; then
+    log "检测到空 PostgreSQL 库，写入种子数据"
+    npm run db:seed --prefix server
   else
-    log "首次初始化数据库（migrate + seed）"
-    npm run db:setup
-    log "首次初始化后再次生成 Prisma Client"
-    npm run prisma:generate --prefix server
+    log "检测到 PostgreSQL 已有数据（User: $user_count），跳过 seed"
   fi
+  log "数据库初始化完成后再次生成 Prisma Client"
+  npm run prisma:generate --prefix server
 }
 
 do_db_reset() {
-  if runtime_uses_postgres; then
-    err "当前运行库是 PostgreSQL，reset-db 不再安全适用。请改用 PostgreSQL 自己的备份/清库流程。"
-  fi
-  warn "⚠️  将删除所有论坛数据！5 秒内 Ctrl+C 取消..."
+  warn "⚠️  将重置当前 PostgreSQL schema 并删除所有论坛数据！5 秒内 Ctrl+C 取消..."
   sleep 5
-  rm -f server/prisma/dev.db server/prisma/dev.db-journal
-  rm -rf server/prisma/migrations
-  npm run db:setup
+  npm run db:reset --prefix server
 }
 
 do_postgres_config() {
@@ -376,17 +324,18 @@ do_postgres_config() {
   local input_url
   input_url="$(postgres_input_url)"
   if [ -n "$input_url" ]; then
+    env_set DATABASE_URL "$input_url"
     env_set POSTGRES_DATABASE_URL "$input_url"
-    log "已写入 POSTGRES_DATABASE_URL：$(mask_postgres_url "$input_url")"
+    log "已写入 DATABASE_URL / POSTGRES_DATABASE_URL：$(mask_postgres_url "$input_url")"
     maybe_restart_running_service
     return
   fi
   local current
-  current="$(configured_postgres_target_url)"
+  current="$(configured_database_url)"
   if [ -n "$current" ]; then
-    log "当前 POSTGRES_DATABASE_URL：$(mask_postgres_url "$current")"
+    log "当前 DATABASE_URL：$(mask_postgres_url "$current")"
   else
-    warn "当前尚未配置 POSTGRES_DATABASE_URL"
+    warn "当前尚未配置 PostgreSQL 连接串"
   fi
   echo ""
   echo "   可执行："
@@ -429,73 +378,17 @@ do_postgres_init() {
   fi
 
   url="postgresql://${app_user}:${app_password}@${host}:${port}/${db_name}?schema=public"
+  env_set DATABASE_URL "$url"
   env_set POSTGRES_DATABASE_URL "$url"
   env_set POSTGRES_DB_NAME "$db_name"
   env_set POSTGRES_APP_USER "$app_user"
 
-  log "已写入 POSTGRES_DATABASE_URL：$(mask_postgres_url "$url")"
+  log "已写入 DATABASE_URL / POSTGRES_DATABASE_URL：$(mask_postgres_url "$url")"
   log "数据库账号：$app_user"
   log "数据库名称：$db_name"
   log "数据库密码：$app_password"
   warn "请妥善保存上面的数据库密码；脚本只会在当前输出里明文显示一次。"
   maybe_restart_running_service
-}
-
-do_postgres_dry_run() {
-  ensure_node
-  ensure_env
-  local input_url batch
-  input_url="$(postgres_input_url)"
-  batch="$(postgres_batch_size)"
-  if [ -n "$input_url" ]; then
-    env_set POSTGRES_DATABASE_URL "$input_url"
-    log "已写入 POSTGRES_DATABASE_URL：$(mask_postgres_url "$input_url")"
-  fi
-  log "开始 PostgreSQL 迁移 dry-run（batch size: $batch）"
-  (cd server && npm run db:migrate:sqlite-to-postgres -- --dry-run --batch-size="$batch")
-}
-
-do_postgres_migrate() {
-  ensure_node
-  ensure_env
-  local input_url batch
-  input_url="$(postgres_input_url)"
-  batch="$(postgres_batch_size)"
-  if [ -n "$input_url" ]; then
-    env_set POSTGRES_DATABASE_URL "$input_url"
-    log "已写入 POSTGRES_DATABASE_URL：$(mask_postgres_url "$input_url")"
-  fi
-  local target
-  target="$(configured_postgres_target_url)"
-  [ -n "$target" ] || err "未配置 POSTGRES_DATABASE_URL。先运行 ./deploy.sh postgres-config 'postgresql://...'"
-  log "目标 PostgreSQL：$(mask_postgres_url "$target")"
-  warn "建议先在后台或命令行完成 SQLite 备份。"
-  warn "正式迁移即将开始（batch size: $batch）。"
-  (cd server && npm run db:migrate:sqlite-to-postgres -- --batch-size="$batch")
-}
-
-do_postgres_switch() {
-  ensure_node
-  ensure_env
-  local target input_url
-  input_url="$(postgres_input_url)"
-  if [ -n "$input_url" ]; then
-    env_set POSTGRES_DATABASE_URL "$input_url"
-    log "已写入 POSTGRES_DATABASE_URL：$(mask_postgres_url "$input_url")"
-  fi
-  target="$(configured_postgres_target_url)"
-  [ -n "$target" ] || err "未配置 POSTGRES_DATABASE_URL。先运行 ./deploy.sh postgres-config 'postgresql://...'"
-  local current
-  current="$(configured_database_url)"
-  if is_sqlite_url "$current"; then
-    env_set SQLITE_DATABASE_URL_BACKUP "$current"
-  fi
-  env_set DATABASE_URL "$target"
-  log "已将运行库切换为 PostgreSQL：$(mask_postgres_url "$target")"
-  do_install
-  do_db_init
-  do_build
-  do_restart || do_start
 }
 
 do_start() {
@@ -603,14 +496,19 @@ case "$CMD" in
     log "=== 首次部署模式 ==="
     ensure_node
     ensure_env
+    if ! runtime_uses_postgres; then
+      do_postgres_init
+    fi
     do_install
-    do_build
     do_db_init
+    do_build
     do_start
     ;;
   update)
     log "=== 更新部署 ==="
     ensure_node
+    ensure_env
+    runtime_uses_postgres || err "当前部署脚本已切换为 PostgreSQL-only。请先运行 ./deploy.sh postgres-init 或 ./deploy.sh postgres-config"
     do_update
     ;;
   proxy-init)
@@ -633,18 +531,6 @@ case "$CMD" in
   postgres-config)
     log "=== 配置 PostgreSQL 目标连接串 ==="
     do_postgres_config
-    ;;
-  postgres-dry-run)
-    log "=== PostgreSQL 迁移 dry-run ==="
-    do_postgres_dry_run
-    ;;
-  postgres-migrate)
-    log "=== PostgreSQL 正式迁移 ==="
-    do_postgres_migrate
-    ;;
-  postgres-switch)
-    log "=== 切换运行库到 PostgreSQL ==="
-    do_postgres_switch
     ;;
   start)        do_start ;;
   stop)         do_stop ;;

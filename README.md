@@ -40,7 +40,7 @@
 | 层 | 技术 |
 |---|---|
 | 前端 | Vue 3、Vite、TypeScript、Element Plus、Vue Router、Pinia、Axios、ECharts |
-| 后端 | Node.js、Express、TypeScript、Prisma、SQLite |
+| 后端 | Node.js、Express、TypeScript、Prisma、PostgreSQL |
 | 内容解析 | Cheerio、Turndown、iconv-lite、DOMPurify、marked |
 | 鉴权 | JWT、bcryptjs、学校统一认证授权会话 |
 | 校验与工具 | Zod、dayjs、tsx、pm2 部署脚本 |
@@ -96,7 +96,7 @@ npm install
 首次运行前需要准备 `server/.env`：
 
 ```env
-DATABASE_URL="file:./dev.db"
+DATABASE_URL="postgresql://user:password@127.0.0.1:5432/cpu_web?schema=public"
 JWT_SECRET="please-change-this-in-production"
 PORT=3000
 ```
@@ -136,9 +136,8 @@ Vite 已配置 `/api`、`/uploads` 和 `/filestore` 代理到后端，开发时�
 | `npm run dev:web` | 只启动前端 |
 | `npm run build` | 构建后端和前端 |
 | `npm run typecheck` | 后端构建 + 前端类型检查 |
-| `npm run db:setup` | 执行 Prisma migration 并写入种子数据 |
+| `npm run db:setup` | 同步 PostgreSQL schema 并写入种子数据 |
 | `npm run db:reset` | 重置数据库并重新写入种子数据 |
-| `npm run db:migrate:sqlite-to-postgres` | 将主站 SQLite 主库迁移到 PostgreSQL（不含 Filestore） |
 | `npm run start` | 启动已构建的后端服务 |
 | `npm run proxy --prefix server` | 启动教务代理（生产，需先 build） |
 | `npm run proxy:dev --prefix server` | 启动教务代理（开发，热重载） |
@@ -149,7 +148,7 @@ Vite 已配置 `/api`、`/uploads` 和 `/filestore` 代理到后端，开发时�
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `DATABASE_URL` | 无 | Prisma 数据库地址，开发默认使用 SQLite |
+| `DATABASE_URL` | 无 | Prisma 数据库地址，当前统一使用 PostgreSQL |
 | `JWT_SECRET` | `cpu-web-dev-secret` | JWT 签名密钥，生产环境必须改为强随机值 |
 | `JWT_EXPIRES_IN` | `7d` | 站内登录 token 有效期 |
 | `PORT` | `3000` | 后端服务端口（`deploy.sh` 部署时默认 `23333`） |
@@ -165,61 +164,26 @@ Vite 已配置 `/api`、`/uploads` 和 `/filestore` 代理到后端，开发时�
 | `FILESTORE_PYTHON` | 自动选择 | Python 可执行文件路径；Windows 默认 `python`，其他系统默认 `python3` |
 | `FILESTORE_ADMIN_PASSWORD` | `admin123` | Filestore 初始管理员密码，首次登录后会写入其 SQLite 数据库 |
 
-## SQLite 迁移到 PostgreSQL
+## PostgreSQL 部署
 
-当前仓库默认仍以 SQLite 开发，但已经提供了可直接在服务器上执行的主站主库迁移脚本。它只处理 `server/prisma/dev.db` 对应的主站数据库，不会迁移 `server/filestore/data/filestore.db`。
+当前仓库服务端已经统一使用 PostgreSQL，不再提供 SQLite 作为主站数据库开发或运行方案。
 
-先在服务器环境准备：
-
-```env
-DATABASE_URL="file:./dev.db"
-POSTGRES_DATABASE_URL="postgresql://user:password@127.0.0.1:5432/cpu_web?schema=public"
-```
-
-建议先下载你刚做好的后台 SQLite 备份，再执行：
-
-```bash
-cd server
-npm run db:migrate:sqlite-to-postgres
-```
-
-如果你在服务器上是通过根目录 `deploy.sh` 管理部署，也可以直接用：
+如果你在服务器上通过根目录 `deploy.sh` 管理部署，推荐直接用：
 
 ```bash
 ./deploy.sh postgres-init
+./deploy.sh
+```
+
+- `postgres-init`：在 Debian/Ubuntu 服务器上安装 PostgreSQL、本机创建应用数据库和账号、生成随机密码，并把 `DATABASE_URL` / `POSTGRES_DATABASE_URL` 写入 `server/.env`。
+- 随后的 `./deploy.sh` / `./deploy.sh update` 会直接按 PostgreSQL 连接构建、同步 schema、在空库时写入种子数据并启动服务。
+
+如果你使用外部 PostgreSQL，也可以手动写入连接串：
+
+```bash
 ./deploy.sh postgres-config "postgresql://user:password@127.0.0.1:5432/cpu_web?schema=public"
-./deploy.sh postgres-dry-run
-./deploy.sh postgres-migrate
-./deploy.sh postgres-switch
+./deploy.sh update
 ```
-
-- `postgres-init`：在 Debian/Ubuntu 服务器上安装 PostgreSQL、本机创建应用数据库和账号、生成随机密码并写入 `server/.env`。
-- `postgres-config`：把 `POSTGRES_DATABASE_URL` 写入 `server/.env`，并刷新正在运行的后端环境。
-- `postgres-dry-run`：在服务器上试跑迁移脚本，不真正连接 PostgreSQL 写入数据。
-- `postgres-migrate`：在服务器上正式执行 SQLite -> PostgreSQL 主站迁移。
-- `postgres-switch`：把运行时 `DATABASE_URL` 切到 PostgreSQL，重建 Prisma Client / 后端并重启服务。
-
-常用参数：
-
-```bash
-npm run db:migrate:sqlite-to-postgres -- --dry-run
-npm run db:migrate:sqlite-to-postgres -- --clear-target
-npm run db:migrate:sqlite-to-postgres -- --batch-size=2000
-```
-
-- `--dry-run`：只生成 PostgreSQL Prisma schema、检查迁移顺序，不真正连接 PostgreSQL。
-- `--clear-target`：清空目标 PostgreSQL 已有表数据后再导入，适合重复试跑。
-- `--batch-size`：按批次迁移大表，默认 `1000`。
-
-迁移完成后，如果你要让后端正式跑在 PostgreSQL 上，可以在服务器执行：
-
-```bash
-cd server
-npm run prisma:generate:postgres
-npm run build:postgres
-```
-
-这会用当前 schema 生成 PostgreSQL 版 Prisma Client，再构建后端。后续启动前请把运行环境里的 `DATABASE_URL` 改成 PostgreSQL 连接串。
 
 ## 教务代理
 
