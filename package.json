@@ -8,6 +8,7 @@
     "postinstall": "npm install --prefix server && npm install --prefix web",
     "db:setup": "npm run db:migrate --prefix server && npm run db:seed --prefix server",
     "db:reset": "npm run db:reset --prefix server",
+    "db:migrate:sqlite-to-postgres": "npm run db:migrate:sqlite-to-postgres --prefix server",
     "dev": "concurrently -k -n server,web -c blue,green \"npm run dev --prefix server\" \"npm run dev --prefix web\"",
     "dev:server": "npm run dev --prefix server",
     "dev:web": "npm run dev --prefix web",

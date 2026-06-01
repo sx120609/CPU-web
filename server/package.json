@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "prisma generate && tsc -p tsconfig.json",
+    "build:postgres": "npm run prisma:generate:postgres && tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "proxy": "node dist/proxy.js",
     "proxy:dev": "tsx watch src/proxy.ts",
@@ -15,7 +16,11 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --force --skip-seed && npm run db:seed",
     "db:studio": "prisma studio",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "prisma:render:postgres": "node scripts/render-provider-schema.mjs --provider postgresql --source prisma/schema.prisma --output prisma/schema.postgresql.prisma --url-env DATABASE_URL",
+    "prisma:generate:postgres": "npm run prisma:render:postgres && prisma generate --schema prisma/schema.postgresql.prisma",
+    "db:push:postgres": "npm run prisma:render:postgres && prisma db push --schema prisma/schema.postgresql.prisma",
+    "db:migrate:sqlite-to-postgres": "node scripts/migrate-sqlite-to-postgres.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

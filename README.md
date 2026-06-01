@@ -138,6 +138,7 @@ Vite 已配置 `/api`、`/uploads` 和 `/filestore` 代理到后端，开发时�
 | `npm run typecheck` | 后端构建 + 前端类型检查 |
 | `npm run db:setup` | 执行 Prisma migration 并写入种子数据 |
 | `npm run db:reset` | 重置数据库并重新写入种子数据 |
+| `npm run db:migrate:sqlite-to-postgres` | 将主站 SQLite 主库迁移到 PostgreSQL（不含 Filestore） |
 | `npm run start` | 启动已构建的后端服务 |
 | `npm run proxy --prefix server` | 启动教务代理（生产，需先 build） |
 | `npm run proxy:dev --prefix server` | 启动教务代理（开发，热重载） |
@@ -163,6 +164,46 @@ Vite 已配置 `/api`、`/uploads` 和 `/filestore` 代理到后端，开发时�
 | `FILESTORE_PORT` | `8974` | Filestore Python 服务监听端口，Node 后端会按需启动并反向代理 |
 | `FILESTORE_PYTHON` | 自动选择 | Python 可执行文件路径；Windows 默认 `python`，其他系统默认 `python3` |
 | `FILESTORE_ADMIN_PASSWORD` | `admin123` | Filestore 初始管理员密码，首次登录后会写入其 SQLite 数据库 |
+
+## SQLite 迁移到 PostgreSQL
+
+当前仓库默认仍以 SQLite 开发，但已经提供了可直接在服务器上执行的主站主库迁移脚本。它只处理 `server/prisma/dev.db` 对应的主站数据库，不会迁移 `server/filestore/data/filestore.db`。
+
+先在服务器环境准备：
+
+```env
+DATABASE_URL="file:./dev.db"
+POSTGRES_DATABASE_URL="postgresql://user:password@127.0.0.1:5432/cpu_web?schema=public"
+```
+
+建议先下载你刚做好的后台 SQLite 备份，再执行：
+
+```bash
+cd server
+npm run db:migrate:sqlite-to-postgres
+```
+
+常用参数：
+
+```bash
+npm run db:migrate:sqlite-to-postgres -- --dry-run
+npm run db:migrate:sqlite-to-postgres -- --clear-target
+npm run db:migrate:sqlite-to-postgres -- --batch-size=2000
+```
+
+- `--dry-run`：只生成 PostgreSQL Prisma schema、检查迁移顺序，不真正连接 PostgreSQL。
+- `--clear-target`：清空目标 PostgreSQL 已有表数据后再导入，适合重复试跑。
+- `--batch-size`：按批次迁移大表，默认 `1000`。
+
+迁移完成后，如果你要让后端正式跑在 PostgreSQL 上，可以在服务器执行：
+
+```bash
+cd server
+npm run prisma:generate:postgres
+npm run build:postgres
+```
+
+这会用当前 schema 生成 PostgreSQL 版 Prisma Client，再构建后端。后续启动前请把运行环境里的 `DATABASE_URL` 改成 PostgreSQL 连接串。
 
 ## 教务代理
 

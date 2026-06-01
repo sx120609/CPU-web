@@ -44,6 +44,7 @@ import {
   getDatabaseBackupStatus,
   restoreDatabaseFromUpload,
 } from "../../services/databaseBackup";
+import { getDatabaseMigrationStatus, runDatabaseMigration } from "../../services/databaseMigration";
 import { qqBotAdminRouter } from "./qqbot";
 
 export const adminRouter = Router();
@@ -55,6 +56,11 @@ const databaseRestoreUpload = multer({
     files: 1,
     fileSize: 200 * 1024 * 1024,
   },
+});
+const databaseMigrationSchema = z.object({
+  batchSize: z.number().int().min(100).max(10000).default(1000),
+  clearTarget: z.boolean().optional(),
+  dryRun: z.boolean().optional(),
 });
 
 function requestOrigin(req: any) {
@@ -68,6 +74,12 @@ adminRouter.use("/qqbot", adminOnly, qqBotAdminRouter);
 adminRouter.get("/database/status", adminOnly, async (_req, res, next) => {
   try {
     ok(res, await getDatabaseBackupStatus());
+  } catch (e) { next(e); }
+});
+
+adminRouter.get("/database/postgres/status", adminOnly, async (_req, res, next) => {
+  try {
+    ok(res, getDatabaseMigrationStatus());
   } catch (e) { next(e); }
 });
 
@@ -113,6 +125,35 @@ adminRouter.post("/database/restore", adminOnly, databaseRestoreUpload.single("f
     next(e);
   } finally {
     if (uploadedPath) await unlink(uploadedPath).catch(() => undefined);
+  }
+});
+
+adminRouter.post("/database/postgres/migrate", adminOnly, validate(databaseMigrationSchema), async (req, res, next) => {
+  try {
+    const result = await runDatabaseMigration({
+      batchSize: req.body.batchSize ?? 1000,
+      clearTarget: Boolean(req.body.clearTarget),
+      dryRun: Boolean(req.body.dryRun),
+    });
+    ok(res, result, result.dryRun ? "dry-run 完成" : "数据库迁移完成");
+  } catch (e: any) {
+    if (e?.result) {
+      ok(res, e.result, e.message || "数据库迁移失败");
+      return;
+    }
+    if (e instanceof Error && e.message.includes("正在进行")) {
+      next(Errors.conflict(e.message));
+      return;
+    }
+    if (e instanceof Error && (
+      e.message.includes("POSTGRES_DATABASE_URL") ||
+      e.message.includes("SQLite") ||
+      e.message.includes("维护状态")
+    )) {
+      next(Errors.badRequest(e.message));
+      return;
+    }
+    next(e);
   }
 });
 

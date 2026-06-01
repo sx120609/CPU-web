@@ -140,6 +140,29 @@ export type DatabaseRestoreResult = {
   safetyCopyPathLabel: string | null;
 };
 
+export type DatabaseMigrationRunRecord = {
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  dryRun: boolean;
+  clearTarget: boolean;
+  batchSize: number;
+  success: boolean;
+  output: string;
+};
+
+export type DatabaseMigrationStatus = {
+  supported: boolean;
+  sourceProvider: "sqlite-file" | "unsupported";
+  targetConfigured: boolean;
+  targetDisplay: string | null;
+  running: boolean;
+  maintenanceActive: boolean;
+  maintenanceMessage: string;
+  reason: string | null;
+  lastRun: DatabaseMigrationRunRecord | null;
+};
+
 export type EpayConfig = {
   id: number;
   enabled: boolean;
@@ -226,6 +249,11 @@ export const adminApi = {
       timeout: 120000,
     });
   },
+  databaseMigrationStatus: () => request.get<DatabaseMigrationStatus>("/admin/database/postgres/status"),
+  runDatabaseMigration: (payload: { batchSize: number; clearTarget?: boolean; dryRun?: boolean }) =>
+    request.post<DatabaseMigrationRunRecord>("/admin/database/postgres/migrate", payload, {
+      timeout: 0,
+    }),
   // 用户
   users: (params: {
     q?: string;

@@ -25,6 +25,7 @@ local.properties
 # Database
 *.db
 *.db-journal
+server/prisma/schema.postgresql.prisma
 server/filestore/data/
 server/filestore/uploads/
 # 注意：server/prisma/migrations/ 必须纳入版本控制，
@@ -33,6 +34,7 @@ server/filestore/uploads/
 # 教务代登录调试快照（可能含 session cookie / 真实 HTML）
 server/.debug/
 .debug/
+server/.tmp/
 
 # Logs
 *.log
