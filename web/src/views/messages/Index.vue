@@ -79,7 +79,15 @@
       </div>
       <template #footer>
         <div class="notice-actions">
-          <el-button v-if="activeNotice?.link" @click="goNoticeLink">前往查看</el-button>
+          <el-button v-if="canOpenActiveNoticeTarget" @click="goNoticeLink">前往查看</el-button>
+          <el-button
+            v-if="canRequestManualReviewFromNotice"
+            type="warning"
+            :loading="requestingManualReview"
+            @click="requestManualReviewFromNotice"
+          >
+            申请人工复核
+          </el-button>
           <el-button
             v-if="canReviewActiveNotice"
             type="success"
@@ -109,6 +117,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import MessageList from "@/components/messages/MessageList.vue";
 import { messageApi } from "@/api/message";
+import { topicApi } from "@/api/topic";
 import { useMessageStore } from "@/stores/message";
 import { useAuthStore } from "@/stores/auth";
 import { adminApi } from "@/api/admin";
@@ -126,6 +135,7 @@ const saving = ref(false);
 const detailOpen = ref(false);
 const activeNotice = ref<any | null>(null);
 const reviewing = ref(false);
+const requestingManualReview = ref(false);
 const reviewTarget = ref<{ kind: "topic" | "reply"; id: number; title: string; aiReviewStatus: string; hidden: boolean; topicId?: number; reviewable: boolean } | null>(null);
 const reviewTargetLoading = ref(false);
 
@@ -135,6 +145,11 @@ onMounted(async () => {
   [list.value, settings.value] = await Promise.all([messageApi.list(), messageApi.settings()]);
   msg.refresh();
 });
+
+async function reloadNoticeState() {
+  [list.value, settings.value] = await Promise.all([messageApi.list(), messageApi.settings()]);
+  msg.refresh();
+}
 
 const filtered = (cat: string) => computed(() => {
   if (!cat) return list.value;
@@ -180,6 +195,15 @@ async function openNotification(item: any) {
   }
 }
 
+const activeNoticeTargetLink = computed(() => resolveNoticeLink(activeNotice.value));
+const canOpenActiveNoticeTarget = computed(() => Boolean(activeNoticeTargetLink.value));
+const canRequestManualReviewFromNotice = computed(() => Boolean(
+  auth.isLoggedIn &&
+  !auth.user?.topicSubmissionLocked &&
+  activeNotice.value?.payload?.type === "topic-ai-blocked" &&
+  Number(activeNotice.value?.payload?.topicId) > 0
+));
+
 const canReviewActiveNotice = computed(() => {
   return Boolean(auth.isMod && reviewTarget.value?.reviewable);
 });
@@ -193,9 +217,24 @@ const reviewStateText = computed(() => {
 });
 
 function goNoticeLink() {
-  if (!activeNotice.value?.link) return;
+  if (!activeNoticeTargetLink.value) return;
   detailOpen.value = false;
-  router.push(activeNotice.value.link);
+  router.push(activeNoticeTargetLink.value);
+}
+
+async function requestManualReviewFromNotice() {
+  const topicId = Number(activeNotice.value?.payload?.topicId || 0);
+  if (!topicId) return;
+  requestingManualReview.value = true;
+  try {
+    await topicApi.requestManualReview(topicId);
+    await auth.fetchMe();
+    await reloadNoticeState();
+    detailOpen.value = false;
+    ElMessage.success("已提交人工复核申请");
+  } finally {
+    requestingManualReview.value = false;
+  }
 }
 
 async function approveFromNotice() {
@@ -215,8 +254,7 @@ async function approveFromNotice() {
     }
     ElMessage.success("已审核通过");
     detailOpen.value = false;
-    [list.value, settings.value] = await Promise.all([messageApi.list(), messageApi.settings()]);
-    msg.refresh();
+    await reloadNoticeState();
   } finally {
     reviewing.value = false;
   }
@@ -242,8 +280,7 @@ async function rejectFromNotice() {
     }
     ElMessage.success("已驳回");
     detailOpen.value = false;
-    [list.value, settings.value] = await Promise.all([messageApi.list(), messageApi.settings()]);
-    msg.refresh();
+    await reloadNoticeState();
   } finally {
     reviewing.value = false;
   }
@@ -268,6 +305,16 @@ function reviewLabel(status?: string) {
   if (status === "blocked_ai") return "AI 拦截";
   if (status === "auto_passed") return "自动通过";
   return "未审核";
+}
+
+function resolveNoticeLink(item: any) {
+  if (item?.link) return String(item.link);
+  const payload = item?.payload;
+  const topicId = Number(payload?.topicId || 0);
+  const replyId = Number(payload?.replyId || 0);
+  if (topicId && replyId) return `/forum/topic/${topicId}#reply-${replyId}`;
+  if (topicId) return `/forum/topic/${topicId}`;
+  return "";
 }
 
 function formatNoticeTime(value?: string) {

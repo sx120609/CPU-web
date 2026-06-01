@@ -559,6 +559,7 @@ export async function requestManualReplyReview(replyId: number, userId: number) 
       title: "已提交回复人工审核申请",
       content: "审核期间不能继续投递新稿件，请等待管理员处理。",
       source: "AI 审核",
+      link: `/forum/topic/${reply.topicId}`,
       payload: JSON.stringify({
         type: "reply-manual-review-pending",
         replyId: reply.id,
@@ -622,6 +623,7 @@ export async function notifyTopicAiBlocked(input: {
       title: "稿件未通过 AI 初审",
       content: `${input.title}：${input.reason}`,
       source: "AI 审核",
+      link: `/forum/topic/${input.topicId}`,
       payload: JSON.stringify({
         type: "topic-ai-blocked",
         topicId: input.topicId,
@@ -647,6 +649,7 @@ async function createAiReviewNotifications(topicId: number, userId: number) {
       title: "已提交人工审核申请",
       content: "审核期间不能继续投递新稿件，请等待管理员处理。",
       source: "AI 审核",
+      link: `/forum/topic/${topic.id}`,
       payload: JSON.stringify({
         type: "topic-manual-review-pending",
         topicId: topic.id,
@@ -696,7 +699,7 @@ export async function notifyManualReviewDecision(input: {
       title: input.approved ? "你的稿件已通过人工审核" : "你的稿件未通过人工审核",
       content: input.note?.trim() || input.title,
       source: "站务审核",
-      link: input.approved ? `/forum/topic/${input.topicId}` : null,
+      link: `/forum/topic/${input.topicId}`,
       payload: JSON.stringify({
         type: "topic-manual-review-result",
         topicId: input.topicId,
@@ -724,7 +727,7 @@ export async function notifyManualReplyReviewDecision(input: {
       title: input.approved ? "你的回复已通过人工审核" : "你的回复未通过人工审核",
       content: input.note?.trim() || input.content.slice(0, 80),
       source: "站务审核",
-      link: input.approved ? `/forum/topic/${input.topicId}` : null,
+      link: `/forum/topic/${input.topicId}`,
       payload: JSON.stringify({
         type: "reply-manual-review-result",
         replyId: input.replyId,

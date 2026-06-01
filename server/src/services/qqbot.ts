@@ -2419,7 +2419,7 @@ function normalizeRenderedMessage(value: string) {
 
 function appendSourceFooter(content: string, context: { groupId?: string; event: OneBotEvent }) {
   const source = context.groupId ? `QQ群 ${context.groupId}` : "QQ 私聊";
-  return `${content}\n\n---\n_转自 QQBot（${source}）。_`;
+  return `${content}\n\n> 转自 QQBot（${source}）。`;
 }
 
 function isHelpCommand(text: string) {
