@@ -35,6 +35,26 @@ export type SiteConfig = {
   reputationLevels: Array<{ level: number; name: string; minReputation: number }>;
 };
 
+export type AiReviewLogRow = {
+  id: number;
+  kind: string;
+  targetId?: number | null;
+  targetLabel?: string | null;
+  targetUrl?: string | null;
+  provider: string;
+  model: string;
+  endpoint?: string | null;
+  status: string;
+  requestSummary: string;
+  responseSummary: string;
+  errorMessage?: string | null;
+  createdById?: number | null;
+  startedAt: string;
+  finishedAt?: string | null;
+  durationMs?: number | null;
+  createdBy?: { id: number; nickname: string; username?: string } | null;
+};
+
 export type AdminOverview = {
   users: number;
   banned: number;
@@ -184,6 +204,8 @@ export const adminApi = {
     reputationLevels?: Array<{ level: number; name: string; minReputation: number }>;
   }) =>
     request.patch<SiteConfig>("/admin/site-config", patch),
+  aiReviewLogs: (params: { kind?: string; status?: string; page?: number; size?: number }) =>
+    request.get<{ page: number; size: number; total: number; list: AiReviewLogRow[] }>("/admin/ai-review/logs", params),
   features: () => request.get<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>("/admin/features"),
   updateFeatures: (patch: { forum?: boolean; market?: boolean; coursereview?: boolean; electric?: boolean; sponsor?: boolean }) =>
     request.patch<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>("/admin/features", patch),

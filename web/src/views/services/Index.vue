@@ -79,7 +79,7 @@
         <p>账号已经准备好了，只需补一次验证码。</p>
         <div class="captcha-row">
           <el-input v-model="captchaInput" placeholder="看图输入验证码" maxlength="8" style="flex:1; min-width:160px" @keyup.enter="submitCaptcha" />
-          <img v-if="jwxt.captchaImage" :src="jwxt.captchaImage" alt="captcha" class="vcode-img" @click="reloadCaptcha" />
+          <img v-if="jwxt.captchaImage" :src="jwxt.captchaImage" alt="captcha" class="vcode-img" loading="lazy" decoding="async" fetchpriority="low" @click="reloadCaptcha" />
           <el-button text @click="reloadCaptcha"><el-icon><Refresh /></el-icon></el-button>
         </div>
         <div v-if="captchaError" class="captcha-err">{{ captchaError }}</div>

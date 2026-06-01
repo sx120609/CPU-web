@@ -1,5 +1,6 @@
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
+import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
 import { getSiteConfig } from "./siteSettings";
 
 export type TopicAiReviewStatus =
@@ -98,8 +99,30 @@ type AiJsonMessage = {
   content: string;
 };
 
-export async function requestAiJson(messages: AiJsonMessage[]) {
+type AiReviewLogContext = {
+  kind: "topic" | "reply" | "topic-edit";
+  targetId?: number | null;
+  targetLabel?: string | null;
+  createdById?: number | null;
+};
+
+export async function requestAiJson(messages: AiJsonMessage[], logContext?: AiReviewLogContext) {
   const config = getSiteConfig();
+  let logId: number | null = null;
+  const userPrompt = messages.filter((item) => item.role === "user").map((item) => item.content).join("\n\n");
+  if (logContext) {
+    const started = await startAiReviewLog({
+      kind: logContext.kind,
+      targetId: logContext.targetId ?? null,
+      targetLabel: logContext.targetLabel ?? null,
+      createdById: logContext.createdById ?? null,
+      provider: config.aiReviewProvider,
+      model: config.aiReviewModel,
+      endpoint: REVIEW_API_URL,
+      requestSummary: userPrompt,
+    });
+    logId = started?.id ?? null;
+  }
   const response = await fetch(REVIEW_API_URL, {
     method: "POST",
     headers: {
@@ -115,10 +138,13 @@ export async function requestAiJson(messages: AiJsonMessage[]) {
   });
   if (!response.ok) {
     const text = await response.text().catch(() => "");
+    await finishAiReviewLogError(logId, `HTTP ${response.status}`, text);
     throw Errors.server(`AI 审核请求失败：${response.status}${text ? ` ${text.slice(0, 120)}` : ""}`);
   }
   const json: any = await response.json();
-  return json?.choices?.[0]?.message?.content;
+  const content = json?.choices?.[0]?.message?.content;
+  await finishAiReviewLogSuccess(logId, typeof content === "string" ? content : JSON.stringify(content ?? {}).slice(0, 4000));
+  return content;
 }
 
 export async function reviewTopicContent(input: {
@@ -155,7 +181,10 @@ export async function reviewTopicContent(input: {
         metadataJson: JSON.stringify(input.metadata ?? {}),
       }),
     },
-  ]);
+  ], {
+    kind: "topic",
+    targetLabel: input.title,
+  });
   const parsed = parseReviewJson(content);
   const riskScore = clampScore(parsed.risk_score);
   const riskLevel = normalizeRiskLevel(parsed.risk_level, riskScore);
@@ -209,7 +238,10 @@ export async function reviewReplyContent(input: {
         content: input.content,
       }),
     },
-  ]);
+  ], {
+    kind: "reply",
+    targetLabel: input.topicTitle || input.content.slice(0, 60),
+  });
   const parsed = parseReviewJson(content);
   const riskScore = clampScore(parsed.risk_score);
   const riskLevel = normalizeRiskLevel(parsed.risk_level, riskScore);
@@ -262,7 +294,10 @@ export async function evaluateTopicEditSimilarity(input: {
         updatedContent: input.updatedContent,
       }),
     },
-  ]);
+  ], {
+    kind: "topic-edit",
+    targetLabel: input.updatedTitle || input.originalTitle,
+  });
   const parsed = parseEditSimilarityJson(content);
   return {
     similarity: clampRatio(parsed.similarity_score),

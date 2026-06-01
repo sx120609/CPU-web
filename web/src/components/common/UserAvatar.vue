@@ -1,6 +1,6 @@
 <template>
   <el-avatar :size="size" class="user-avatar" :style="avatarStyle">
-    <img v-if="resolvedSrc" :src="resolvedSrc" :alt="alt" @error="onImageError" />
+    <img v-if="resolvedSrc" :src="resolvedSrc" :alt="alt" loading="lazy" decoding="async" fetchpriority="low" @error="onImageError" />
     <span v-else>{{ fallbackText }}</span>
   </el-avatar>
 </template>

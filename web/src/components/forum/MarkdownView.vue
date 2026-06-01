@@ -39,6 +39,9 @@ function bindImageViewer() {
   const images = Array.from(el.value.querySelectorAll<HTMLImageElement>("img"));
   destroyImageViewer();
   images.forEach((img, index) => {
+    img.loading = "lazy";
+    img.decoding = "async";
+    img.setAttribute("fetchpriority", "low");
     if (props.clickableImages) {
       img.dataset.previewBound = "1";
       img.tabIndex = 0;

@@ -44,7 +44,7 @@
         <el-form-item v-if="auth.ssoNeedCaptcha" prop="captcha">
           <div class="vcode-row">
             <el-input v-model="form.captcha" placeholder="看图输入验证码" maxlength="8" style="flex:1" />
-            <img v-if="auth.ssoCaptchaImage" :src="auth.ssoCaptchaImage" alt="captcha" class="vcode-img" @click="reloadCaptcha" />
+            <img v-if="auth.ssoCaptchaImage" :src="auth.ssoCaptchaImage" alt="captcha" class="vcode-img" loading="lazy" decoding="async" fetchpriority="low" @click="reloadCaptcha" />
             <el-button text @click="reloadCaptcha"><el-icon><Refresh /></el-icon></el-button>
           </div>
         </el-form-item>

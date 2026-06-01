@@ -52,6 +52,9 @@
             v-if="a.icon"
             :src="proxiedIcon(a.icon)"
             :alt="a.name"
+            loading="lazy"
+            decoding="async"
+            fetchpriority="low"
             @error="onIconError"
             referrerpolicy="no-referrer"
           />

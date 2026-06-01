@@ -66,7 +66,7 @@
           <div class="vcode-row">
             <el-input v-model="form.captcha" placeholder="看图输入" maxlength="8" class="vcode-input" />
             <div class="vcode-side">
-              <img v-if="jwxt.captchaImage" :src="jwxt.captchaImage" alt="captcha" class="vcode-img" @click="reloadCaptcha" :title="'点击换一张'" />
+              <img v-if="jwxt.captchaImage" :src="jwxt.captchaImage" alt="captcha" class="vcode-img" loading="lazy" decoding="async" fetchpriority="low" @click="reloadCaptcha" :title="'点击换一张'" />
               <el-button text class="vcode-refresh" @click="reloadCaptcha"><el-icon><Refresh /></el-icon></el-button>
             </div>
           </div>

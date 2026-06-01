@@ -1,0 +1,540 @@
+<template>
+  <div class="ai-review-pane">
+    <section class="settings-card" v-loading="loadingConfig">
+      <div class="section-head">
+        <div>
+          <h3 class="section-title">文字审核</h3>
+          <p class="section-desc">帖子、回复和编辑相似度判定共用这一组配置。</p>
+        </div>
+      </div>
+
+      <div class="ai-form">
+        <div class="ai-row ai-row--switch">
+          <span class="ai-label">启用审核</span>
+          <el-switch v-model="form.aiReviewEnabled" inline-prompt active-text="开" inactive-text="关" />
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">Provider</span>
+          <el-input v-model="form.aiReviewProvider" maxlength="40" placeholder="deepseek" />
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">模型</span>
+          <el-input v-model="form.aiReviewModel" maxlength="80" placeholder="deepseek-v4-flash" />
+        </div>
+        <div class="ai-row ai-row--stretch">
+          <span class="ai-label">API Key</span>
+          <el-input v-model="form.aiReviewApiKey" maxlength="240" show-password placeholder="sk-..." />
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">自动通过</span>
+          <el-input-number v-model="form.aiReviewAutoPassScore" :min="0" :max="100" />
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">自动拦截</span>
+          <el-input-number v-model="form.aiReviewBlockScore" :min="0" :max="100" />
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">编辑相似度下限</span>
+          <el-input-number v-model="aiEditSimilarityPercent" :min="0" :max="100" />
+        </div>
+      </div>
+
+      <div class="prompt-card">
+        <button type="button" class="sub-toggle" :class="{ expanded: textPromptsExpanded }" @click="textPromptsExpanded = !textPromptsExpanded">
+          <div>
+            <div class="card-title">文字审核 Prompt</div>
+            <div class="desc">支持按帖子、回复和编辑相似度分别配置提示词。</div>
+          </div>
+          <span class="toggle-arrow" aria-hidden="true">▾</span>
+        </button>
+        <div v-if="textPromptsExpanded" class="prompt-grid">
+          <div class="ai-row ai-row--stretch">
+            <span class="ai-label">帖子审核 System Prompt</span>
+            <el-input v-model="form.aiTopicReviewSystemPrompt" type="textarea" :rows="3" />
+          </div>
+          <div class="ai-row ai-row--stretch">
+            <span class="ai-label">帖子审核 User Prompt</span>
+            <el-input v-model="form.aiTopicReviewUserPrompt" type="textarea" :rows="6" />
+          </div>
+          <div class="ai-row ai-row--stretch">
+            <span class="ai-label">回复审核 System Prompt</span>
+            <el-input v-model="form.aiReplyReviewSystemPrompt" type="textarea" :rows="3" />
+          </div>
+          <div class="ai-row ai-row--stretch">
+            <span class="ai-label">回复审核 User Prompt</span>
+            <el-input v-model="form.aiReplyReviewUserPrompt" type="textarea" :rows="6" />
+          </div>
+          <div class="ai-row ai-row--stretch">
+            <span class="ai-label">编辑相似度 System Prompt</span>
+            <el-input v-model="form.aiEditSimilaritySystemPrompt" type="textarea" :rows="3" />
+          </div>
+          <div class="ai-row ai-row--stretch">
+            <span class="ai-label">编辑相似度 User Prompt</span>
+            <el-input v-model="form.aiEditSimilarityUserPrompt" type="textarea" :rows="6" />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-card" v-loading="loadingConfig">
+      <div class="section-head">
+        <div>
+          <h3 class="section-title">图片审核</h3>
+          <p class="section-desc">图片走异步审核，发布后先占位，审核通过再放行。</p>
+        </div>
+      </div>
+
+      <div class="ai-form">
+        <div class="ai-row ai-row--switch">
+          <span class="ai-label">启用图片审核</span>
+          <el-switch v-model="form.imageReviewEnabled" inline-prompt active-text="开" inactive-text="关" />
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">图片模型</span>
+          <el-input v-model="form.imageReviewModel" maxlength="80" placeholder="gpt-4o-mini" />
+        </div>
+        <div class="ai-row ai-row--stretch">
+          <span class="ai-label">图片审核 API 地址</span>
+          <el-input v-model="form.imageReviewApiUrl" maxlength="240" placeholder="https://api.openai.com/v1/chat/completions" />
+        </div>
+        <div class="ai-row ai-row--stretch">
+          <span class="ai-label">图片审核 API Key</span>
+          <el-input v-model="form.imageReviewApiKey" maxlength="240" show-password placeholder="sk-..." />
+        </div>
+      </div>
+
+      <div class="prompt-card">
+        <button type="button" class="sub-toggle" :class="{ expanded: imagePromptsExpanded }" @click="imagePromptsExpanded = !imagePromptsExpanded">
+          <div>
+            <div class="card-title">图片审核 Prompt</div>
+            <div class="desc">可单独配置图片审核系统提示词和用户提示词。</div>
+          </div>
+          <span class="toggle-arrow" aria-hidden="true">▾</span>
+        </button>
+        <div v-if="imagePromptsExpanded" class="prompt-grid">
+          <div class="ai-row ai-row--stretch">
+            <span class="ai-label">图片审核 System Prompt</span>
+            <el-input v-model="form.imageReviewSystemPrompt" type="textarea" :rows="4" />
+          </div>
+          <div class="ai-row ai-row--stretch">
+            <span class="ai-label">图片审核 User Prompt</span>
+            <el-input v-model="form.imageReviewUserPrompt" type="textarea" :rows="5" />
+          </div>
+        </div>
+      </div>
+
+      <div class="actions-row">
+        <el-button type="primary" :loading="saving" @click="saveConfig">保存审核配置</el-button>
+      </div>
+    </section>
+
+    <section class="settings-card">
+      <div class="section-head">
+        <div>
+          <h3 class="section-title">审核日志</h3>
+          <p class="section-desc">用来确认请求是否真的走到了 AI，以及返回是成功还是失败。</p>
+        </div>
+      </div>
+
+      <div class="filters">
+        <el-select v-model="filters.kind" clearable placeholder="类型" style="width: 150px" @change="loadLogs">
+          <el-option label="帖子" value="topic" />
+          <el-option label="回复" value="reply" />
+          <el-option label="编辑相似度" value="topic-edit" />
+          <el-option label="图片" value="image" />
+        </el-select>
+        <el-select v-model="filters.status" clearable placeholder="状态" style="width: 140px" @change="loadLogs">
+          <el-option label="开始" value="started" />
+          <el-option label="成功" value="success" />
+          <el-option label="失败" value="error" />
+        </el-select>
+        <el-button plain :loading="loadingLogs" @click="loadLogs">刷新</el-button>
+      </div>
+
+      <el-table :data="logs" v-loading="loadingLogs" size="small" class="admin-table">
+        <el-table-column prop="startedAt" label="时间" width="170">
+          <template #default="{ row }">{{ fmtDate(row.startedAt, "YYYY-MM-DD HH:mm:ss") }}</template>
+        </el-table-column>
+        <el-table-column prop="kind" label="类型" width="110" />
+        <el-table-column prop="status" label="状态" width="90" />
+        <el-table-column prop="model" label="模型" min-width="140" />
+        <el-table-column prop="targetLabel" label="目标" min-width="180" />
+        <el-table-column prop="requestSummary" label="请求摘要" min-width="240" show-overflow-tooltip />
+        <el-table-column prop="responseSummary" label="返回摘要" min-width="240" show-overflow-tooltip />
+        <el-table-column prop="errorMessage" label="错误" min-width="220" show-overflow-tooltip />
+      </el-table>
+
+      <div class="mobile-list" v-if="logs.length">
+        <article v-for="row in logs" :key="row.id" class="log-card">
+          <div class="log-top">
+            <strong>{{ row.kind }}</strong>
+            <span :class="['status-pill', `status-${row.status}`]">{{ row.status }}</span>
+          </div>
+          <div class="log-meta">{{ fmtDate(row.startedAt, "YYYY-MM-DD HH:mm:ss") }} · {{ row.model }}</div>
+          <div class="log-target">{{ row.targetLabel || row.targetUrl || "未指定目标" }}</div>
+          <div class="log-block">
+            <b>请求</b>
+            <p>{{ row.requestSummary || "—" }}</p>
+          </div>
+          <div class="log-block">
+            <b>返回</b>
+            <p>{{ row.responseSummary || row.errorMessage || "—" }}</p>
+          </div>
+        </article>
+      </div>
+    </section>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref } from "vue";
+import { ElMessage } from "element-plus";
+import { adminApi, type AiReviewLogRow, type SiteConfig } from "@/api/admin";
+import { fmtDate } from "@/utils/format";
+
+const loadingConfig = ref(false);
+const loadingLogs = ref(false);
+const saving = ref(false);
+const textPromptsExpanded = ref(false);
+const imagePromptsExpanded = ref(false);
+const logs = ref<AiReviewLogRow[]>([]);
+const filters = reactive({ kind: "", status: "", page: 1, size: 20 });
+const form = reactive<SiteConfig>({
+  siteOrigin: "",
+  aiReviewEnabled: false,
+  aiReviewProvider: "deepseek",
+  aiReviewModel: "deepseek-v4-flash",
+  aiReviewApiKey: "",
+  imageReviewEnabled: false,
+  imageReviewApiUrl: "https://api.openai.com/v1/chat/completions",
+  imageReviewModel: "gpt-4o-mini",
+  imageReviewApiKey: "",
+  imageReviewSystemPrompt: "",
+  imageReviewUserPrompt: "",
+  aiReviewAutoPassScore: 24,
+  aiReviewBlockScore: 70,
+  aiReviewForceBlockScore: 90,
+  aiEditSimilarityThreshold: 0,
+  aiTopicReviewSystemPrompt: "",
+  aiTopicReviewUserPrompt: "",
+  aiReplyReviewSystemPrompt: "",
+  aiReplyReviewUserPrompt: "",
+  aiEditSimilaritySystemPrompt: "",
+  aiEditSimilarityUserPrompt: "",
+  anonymousMinReputation: 30,
+  accountAgeDaysPerStep: 14,
+  accountAgePointsPerStep: 2,
+  accountAgePointsCap: 36,
+  postPointsPerTopic: 4,
+  postPointsCap: 48,
+  replyPointsPerReply: 2,
+  replyPointsCap: 48,
+  forumEnabledBonus: 6,
+  anonymousTiers: [],
+  reputationLevels: [],
+});
+
+const aiEditSimilarityPercent = computed({
+  get: () => Math.round((form.aiEditSimilarityThreshold ?? 0) * 100),
+  set: (value: number) => {
+    form.aiEditSimilarityThreshold = value / 100;
+  },
+});
+
+onMounted(async () => {
+  await Promise.all([loadConfig(), loadLogs()]);
+});
+
+async function loadConfig() {
+  loadingConfig.value = true;
+  try {
+    Object.assign(form, await adminApi.siteConfig());
+  } finally {
+    loadingConfig.value = false;
+  }
+}
+
+async function saveConfig() {
+  saving.value = true;
+  try {
+    Object.assign(form, await adminApi.updateSiteConfig({
+      aiReviewEnabled: form.aiReviewEnabled,
+      aiReviewProvider: form.aiReviewProvider,
+      aiReviewModel: form.aiReviewModel,
+      aiReviewApiKey: form.aiReviewApiKey,
+      imageReviewEnabled: form.imageReviewEnabled,
+      imageReviewApiUrl: form.imageReviewApiUrl,
+      imageReviewModel: form.imageReviewModel,
+      imageReviewApiKey: form.imageReviewApiKey,
+      imageReviewSystemPrompt: form.imageReviewSystemPrompt,
+      imageReviewUserPrompt: form.imageReviewUserPrompt,
+      aiReviewAutoPassScore: form.aiReviewAutoPassScore,
+      aiReviewBlockScore: form.aiReviewBlockScore,
+      aiReviewForceBlockScore: form.aiReviewForceBlockScore,
+      aiEditSimilarityThreshold: form.aiEditSimilarityThreshold,
+      aiTopicReviewSystemPrompt: form.aiTopicReviewSystemPrompt,
+      aiTopicReviewUserPrompt: form.aiTopicReviewUserPrompt,
+      aiReplyReviewSystemPrompt: form.aiReplyReviewSystemPrompt,
+      aiReplyReviewUserPrompt: form.aiReplyReviewUserPrompt,
+      aiEditSimilaritySystemPrompt: form.aiEditSimilaritySystemPrompt,
+      aiEditSimilarityUserPrompt: form.aiEditSimilarityUserPrompt,
+    }));
+    ElMessage.success("审核配置已保存");
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function loadLogs() {
+  loadingLogs.value = true;
+  try {
+    const result = await adminApi.aiReviewLogs(filters);
+    logs.value = result.list;
+  } finally {
+    loadingLogs.value = false;
+  }
+}
+</script>
+
+<style scoped>
+.ai-review-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid #e7edf5;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.04);
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.section-desc {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #667085;
+}
+
+.ai-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid #edf2f7;
+}
+
+.ai-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-row--switch {
+  justify-content: space-between;
+}
+
+.ai-row--stretch {
+  grid-column: 1 / -1;
+}
+
+.ai-label {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.prompt-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 14px;
+  background: #fcfdff;
+  border: 1px dashed #d7e2f0;
+}
+
+.prompt-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.desc {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.6;
+}
+
+.sub-toggle {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.toggle-arrow {
+  flex-shrink: 0;
+  margin-top: 2px;
+  font-size: 18px;
+  color: #64748b;
+  transition: transform 0.2s ease;
+}
+
+.sub-toggle.expanded .toggle-arrow {
+  transform: rotate(180deg);
+}
+
+.actions-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.filters {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mobile-list {
+  display: none;
+}
+
+.log-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 14px;
+  background: #fff;
+}
+
+.log-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+
+.log-meta {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.log-target {
+  margin-top: 8px;
+  color: #111827;
+  font-size: 13px;
+}
+
+.log-block {
+  margin-top: 10px;
+}
+
+.log-block b {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: #374151;
+}
+
+.log-block p {
+  margin: 0;
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.status-pill {
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.status-started {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.status-success {
+  background: #ecfdf5;
+  color: #166534;
+}
+
+.status-error {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+@media (max-width: 768px) {
+  .settings-card {
+    padding: 14px;
+    border-radius: 14px;
+  }
+
+  .ai-form {
+    grid-template-columns: 1fr;
+    padding: 14px;
+  }
+
+  .filters {
+    flex-direction: column;
+  }
+
+  .filters :deep(.el-select),
+  .filters :deep(.el-button) {
+    width: 100%;
+  }
+
+  .actions-row {
+    justify-content: stretch;
+  }
+
+  .actions-row :deep(.el-button) {
+    width: 100%;
+  }
+
+  .admin-table {
+    display: none;
+  }
+
+  .mobile-list {
+    display: grid;
+    gap: 10px;
+  }
+}
+</style>

@@ -259,7 +259,7 @@
       <p>本机已保存学校账号，补充验证码后即可查看课表。</p>
       <div class="captcha-row">
         <el-input v-model="captchaInput" size="large" placeholder="验证码" maxlength="8" @keyup.enter="submitCaptcha" />
-        <img v-if="jwxt.captchaImage" :src="jwxt.captchaImage" alt="验证码" @click="reloadCaptcha" />
+        <img v-if="jwxt.captchaImage" :src="jwxt.captchaImage" alt="验证码" loading="lazy" decoding="async" fetchpriority="low" @click="reloadCaptcha" />
       </div>
       <p v-if="captchaError" class="error-text">{{ captchaError }}</p>
       <el-button type="primary" size="large" :loading="captchaSubmitting" @click="submitCaptcha">完成授权</el-button>

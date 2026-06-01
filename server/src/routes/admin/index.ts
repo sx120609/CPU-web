@@ -1352,6 +1352,31 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
   }
 });
 
+adminRouter.get("/ai-review/logs", adminOnly, async (req, res, next) => {
+  try {
+    const kind = String(req.query.kind ?? "").trim();
+    const status = String(req.query.status ?? "").trim();
+    const page = Math.max(1, Number(req.query.page ?? 1));
+    const size = Math.min(100, Math.max(10, Number(req.query.size ?? 30)));
+    const where: any = {};
+    if (kind) where.kind = kind;
+    if (status) where.status = status;
+    const [list, total] = await Promise.all([
+      prisma.aiReviewLog.findMany({
+        where,
+        orderBy: { startedAt: "desc" },
+        skip: (page - 1) * size,
+        take: size,
+        include: {
+          createdBy: { select: { id: true, nickname: true, username: true } },
+        },
+      }),
+      prisma.aiReviewLog.count({ where }),
+    ]);
+    ok(res, { page, size, total, list });
+  } catch (e) { next(e); }
+});
+
 adminRouter.get("/features", adminOnly, (_req, res) => {
   ok(res, getFeatures());
 });

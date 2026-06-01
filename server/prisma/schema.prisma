@@ -72,6 +72,7 @@ model User {
   qqBotBindTokens   QqBotBindToken[]
   qqBotMessageLogs  QqBotMessageLog[]
   forumImageAssets  ForumImageAsset[]
+  aiReviewLogs      AiReviewLog[]
 }
 
 // ============ 论坛核心 ============
@@ -222,6 +223,33 @@ model ForumImageAsset {
 
   @@index([status, nextRetryAt, createdAt])
   @@index([createdById, createdAt])
+}
+
+model AiReviewLog {
+  id              Int      @id @default(autoincrement())
+  kind            String   // topic / reply / topic-edit / image
+  targetId        Int?
+  targetLabel     String?
+  targetUrl       String?
+  provider        String
+  model           String
+  endpoint        String?
+  status          String   @default("started") // started / success / error
+  requestSummary  String   @default("")
+  responseSummary String   @default("")
+  errorMessage    String?
+  createdById     Int?
+  startedAt       DateTime @default(now())
+  finishedAt      DateTime?
+  durationMs      Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([kind, startedAt])
+  @@index([status, startedAt])
+  @@index([targetId, kind, startedAt])
 }
 
 model Tag {

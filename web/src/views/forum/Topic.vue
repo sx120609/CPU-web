@@ -224,6 +224,9 @@
           v-else-if="shareCardRenderedUrl"
           :src="shareCardRenderedUrl"
           alt="分享卡片"
+          loading="lazy"
+          decoding="async"
+          fetchpriority="low"
           class="share-card-image"
           @click="openShareCardImagePreview"
         />
@@ -244,7 +247,7 @@
       append-to-body
       class="share-card-preview-dialog"
     >
-      <img v-if="shareCardRenderedUrl" :src="shareCardRenderedUrl" alt="分享卡片大图" class="share-card-preview-image" />
+      <img v-if="shareCardRenderedUrl" :src="shareCardRenderedUrl" alt="分享卡片大图" loading="lazy" decoding="async" fetchpriority="low" class="share-card-preview-image" />
       <p v-if="isNativeAppClient" class="share-card-tip">客户端请放大后截图保存。</p>
     </el-dialog>
 
@@ -273,7 +276,7 @@
             <div class="share-card-brand-host">cpu.lizmt.cn</div>
           </div>
           <div class="share-card-qr-box">
-            <img :src="shareCardQrDataUrl" alt="分享二维码" class="share-card-qr" />
+            <img :src="shareCardQrDataUrl" alt="分享二维码" loading="lazy" decoding="async" fetchpriority="low" class="share-card-qr" />
           </div>
         </div>
       </div>

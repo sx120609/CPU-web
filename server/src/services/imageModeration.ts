@@ -1,6 +1,7 @@
 import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { prisma } from "../prisma";
+import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
 import { getSiteConfig } from "./siteSettings";
 
 const IMAGE_MARKDOWN_RE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
@@ -362,6 +363,16 @@ async function requestImageReview(input: {
 }): Promise<ImageReviewDecision> {
   const config = getSiteConfig();
   const endpoint = normalizeImageReviewApiUrl(config.imageReviewApiUrl);
+  const started = await startAiReviewLog({
+    kind: "image",
+    targetLabel: path.basename(input.localPath),
+    targetUrl: input.url,
+    provider: "image-review",
+    model: config.imageReviewModel,
+    endpoint,
+    requestSummary: `${input.mimeType}\n${input.url}`,
+  });
+  const logId = started?.id ?? null;
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -399,10 +410,12 @@ async function requestImageReview(input: {
   });
   if (!response.ok) {
     const text = await response.text().catch(() => "");
+    await finishAiReviewLogError(logId, `HTTP ${response.status}`, text);
     throw new Error(`图片审核请求失败：${response.status}${text ? ` ${text.slice(0, 200)}` : ""}`);
   }
   const json: any = await response.json();
   const content = extractChatCompletionContent(json);
+  await finishAiReviewLogSuccess(logId, content);
   const parsed = parseImageReviewJson(content);
   return {
     approved: Boolean(parsed.approved),
