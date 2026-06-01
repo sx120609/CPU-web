@@ -774,6 +774,7 @@ const viewMode = ref<ViewMode>("day");
 const scheduleTheme = ref<ScheduleThemeKey>("green");
 const loading = ref(false);
 const autoLoading = ref(false);
+const offlineMode = ref(typeof navigator !== "undefined" ? navigator.onLine === false : false);
 const hasCreds = ref(false);
 const captchaInput = ref("");
 const captchaSubmitting = ref(false);
@@ -1381,10 +1382,13 @@ onMounted(async () => {
   document.body.classList.add("schedule-scroll-lock");
   jwxt.hydrate();
   hasCreds.value = hasSavedCreds();
+  syncNetworkStatus();
   restoreScheduleTheme();
   await restoreScheduleBackground();
   updateViewportHeight();
   window.addEventListener("resize", updateViewportHeight);
+  window.addEventListener("online", syncNetworkStatus);
+  window.addEventListener("offline", syncNetworkStatus);
   window.visualViewport?.addEventListener("resize", updateViewportHeight);
   window.visualViewport?.addEventListener("scroll", updateViewportHeight);
 
@@ -1399,17 +1403,23 @@ onMounted(async () => {
   installPromptRef.value?.autoPromptIfEligible();
   autoPromptAndroidAppUpdate();
 
-    // 后台静默：刷新会话状态 + 自动登录 + 重新拉数据。失败也不影响已显示的缓存。
-    void (async () => {
+  if (offlineMode.value) return;
+
+  // 后台静默：刷新会话状态 + 自动登录 + 重新拉数据。失败也不影响已显示的缓存。
+  void (async () => {
+    try {
       try { await jwxt.refreshStatus(); } catch { /* ignore */ }
       if (!jwxt.isLoggedIn && hasCreds.value) {
         autoLoading.value = !parsed.value;
         try { await jwxt.tryAutoLogin({ force: true }); }
         finally { autoLoading.value = false; }
       }
-    if (jwxt.isLoggedIn) {
-      await loadCalendar();
-      await loadSchedule();
+      if (jwxt.isLoggedIn) {
+        await loadCalendar();
+        await loadSchedule();
+      }
+    } catch {
+      /* Keep visible cache when background sync fails. */
     }
   })();
 });
@@ -1418,6 +1428,8 @@ onBeforeUnmount(() => {
   document.documentElement.classList.remove("schedule-scroll-lock");
   document.body.classList.remove("schedule-scroll-lock");
   window.removeEventListener("resize", updateViewportHeight);
+  window.removeEventListener("online", syncNetworkStatus);
+  window.removeEventListener("offline", syncNetworkStatus);
   window.visualViewport?.removeEventListener("resize", updateViewportHeight);
   window.visualViewport?.removeEventListener("scroll", updateViewportHeight);
   clearStaticWeekAnimation();
@@ -1440,7 +1452,12 @@ const currentWeekInfo = computed(() => weekInfoFor(week.value));
 const currentWeekRange = computed(() => weekRangeFor(week.value));
 const dayTabs = computed(() => dayTabsForWeek(week.value));
 const activeDayLabel = computed(() => dayTabs.value.find((d) => d.day === activeDay.value)?.label ?? "今日");
-const cacheText = computed(() => scheduleSavedAt.value ? `本地缓存 ${formatCacheTime(scheduleSavedAt.value)}` : "");
+const cacheText = computed(() => {
+  const parts: string[] = [];
+  if (offlineMode.value) parts.push("当前离线");
+  if (scheduleSavedAt.value) parts.push(`本地缓存 ${formatCacheTime(scheduleSavedAt.value)}`);
+  return parts.join(" · ");
+});
 const activeWeekNumber = computed(() => {
   const value = Number(week.value || parsed.value?.currentWeek || calendar.value?.currentWeek || 0);
   return Number.isFinite(value) && value > 0 ? value : 0;
@@ -1562,13 +1579,21 @@ async function loadCalendar() {
 async function loadSchedule(force = false, background = false) {
   if (!jwxt.isLoggedIn || (loading.value && !force && !background)) return;
   const hadCache = !force && restoreScheduleCache();
+  const canFallbackToVisibleSchedule = Boolean(parsed.value) && (
+    !semester.value
+    || !parsed.value?.currentSemester
+    || semester.value === parsed.value.currentSemester
+  );
   if (hadCache) {
     saveLastState();
     if (!isStale(scheduleSavedAt.value)) return;
   }
   if (!background) loading.value = !parsed.value || force || !hadCache;
   try {
-    const r: any = await jwxtApi.schedule({ semester: semester.value, week: week.value });
+    const r: any = await jwxtApi.schedule(
+      { semester: semester.value, week: week.value },
+      { silent: background || hadCache || (offlineMode.value && canFallbackToVisibleSchedule) },
+    );
     parsed.value = r.parsed;
     if (!semester.value) semester.value = parsed.value?.currentSemester ?? "";
     if (!week.value) week.value = String(calendar.value?.currentWeek || parsed.value?.currentWeek || "");
@@ -1577,6 +1602,8 @@ async function loadSchedule(force = false, background = false) {
     saveScheduleCache();
     saveLastState();
     prewarmAdjacentWeekCaches();
+  } catch (error) {
+    if (!hadCache && !canFallbackToVisibleSchedule) throw error;
   } finally {
     if (!background) loading.value = false;
   }
@@ -2050,6 +2077,10 @@ function updateViewportHeight() {
   const height = Math.min(visualHeight, window.innerHeight);
   viewportHeight.value = Math.max(0, Math.round(height || 0));
   compactViewport.value = window.matchMedia?.("(max-width: 760px)").matches ?? window.innerWidth <= 760;
+}
+
+function syncNetworkStatus() {
+  offlineMode.value = navigator.onLine === false;
 }
 
 function todayKey() {

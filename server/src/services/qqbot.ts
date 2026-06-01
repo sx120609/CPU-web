@@ -4,7 +4,7 @@ import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import { ensureForumAccessEnabled } from "./forumAccess";
-import { registerForumImageAsset } from "./imageModeration";
+import { ensureForumImageAssetsForContent } from "./imageModeration";
 import { getSiteOrigin, isBoardTypeEnabled, isFeatureOn, featureForBoardType, featureClosedMessage } from "./siteSettings";
 import { refreshBoardTopicCounts, refreshUserPostCount } from "./forumStats";
 import { ensureUserCanSpeak } from "./userModeration";
@@ -92,9 +92,23 @@ type ParsedForwardPayload = {
   summary: string;
   content: string;
   sourceMessageId?: string;
+  messageCount: number;
+  blockCount: number;
+  participantCount: number;
+  imageCount: number;
+};
+type ParsedForwardEntry = {
+  nickname: string;
+  text: string;
+  messageCount: number;
+  imageCount: number;
 };
 
 type ForwardSource = "direct" | "reply";
+type QqMessageExtractOptions = {
+  forwardDepth?: number;
+  imageMode?: "upload" | "placeholder";
+};
 
 type QqBotAiIntent =
   | { intent: "chat" }
@@ -314,8 +328,11 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
 
   const qqId = event.user_id ? String(event.user_id) : "";
   const groupId = event.group_id ? String(event.group_id) : undefined;
-  const messageText = await extractMessageText(event.message ?? event.raw_message ?? "");
-  const forwardPayload = await extractForwardPayload(event.message);
+  const extractOptions = shouldUseLightForwardExtraction(event.message)
+    ? ({ imageMode: "placeholder" } satisfies QqMessageExtractOptions)
+    : {};
+  const messageText = await extractMessageText(event.message ?? event.raw_message ?? "", extractOptions);
+  const forwardPayload = await extractForwardPayload(event.message, extractOptions);
   const context = { config, event, qqId, groupId, messageText, forwardPayload };
   if (!qqId || (!messageText.trim() && !forwardPayload)) {
     await logQqBotMessage({ direction: "inbound", eventType: "message", status: "ignored", qqId, groupId, rawPayload: event });
@@ -663,7 +680,11 @@ async function startForwardPostConversation(
     draftBoardSlug: defaultBoardSlug,
     sourceMessageId: forwardPayload.sourceMessageId || (context.event.message_id ? String(context.event.message_id) : undefined),
     sourceSummary: forwardPayload.summary,
-    metadata: buildConversationMetadata(context, { source: "forward" }),
+    metadata: buildConversationMetadata(context, {
+      source: "forward",
+      forwardDraftTemplate: forwardPayload.content,
+      forwardDraftMode: "placeholder",
+    }),
   });
 }
 
@@ -995,7 +1016,7 @@ async function submitConversationPost(
   const conversation = await prisma.qqBotConversation.findUnique({ where: { id: conversationId } });
   if (!conversation || conversation.status !== "active") throw Errors.badRequest("当前没有进行中的投稿会话");
   if (!conversation.draftTitle?.trim()) throw Errors.badRequest("标题为空，请先发送标题");
-  const content = (conversation.draftContent || "").trim() || conversation.draftTitle.trim();
+  const content = (await refreshForwardDraftContent(conversation)) || conversation.draftTitle.trim();
   const metadata = parseConversationMetadata(conversation.metadata);
   const originGroupId = String(metadata.originGroupId || "").trim() || undefined;
   const result = await submitQqPost({
@@ -1086,6 +1107,9 @@ async function finishConversation(id: number, status: "done" | "cancelled") {
 
 async function renderConversationPrompt(conversation: any, assistantHint?: string) {
   const boardDisplayName = conversation.draftBoardSlug ? await resolveBoardDisplayName(conversation.draftBoardSlug) : "";
+  const draftPreview = conversation.scene === "forward-post" && conversation.sourceSummary
+    ? conversation.sourceSummary
+    : (conversation.draftContent ? `${conversation.draftContent.slice(0, 160)}${conversation.draftContent.length > 160 ? "..." : ""}` : "");
   if (conversation.step === "await-title") {
     const isRetitling = /重新发一个标题|重新标题|改标题|新标题/.test(String(assistantHint || ""));
     return [
@@ -1108,7 +1132,7 @@ async function renderConversationPrompt(conversation: any, assistantHint?: strin
       "我先帮你整理了一版草稿：",
       boardDisplayName ? `投稿区：${boardDisplayName}` : "",
       conversation.draftTitle ? `标题：${conversation.draftTitle}` : "",
-      conversation.draftContent ? `正文预览：${conversation.draftContent.slice(0, 120)}${conversation.draftContent.length > 120 ? "..." : ""}` : "",
+      draftPreview ? `正文预览：${draftPreview}` : "",
       assistantHint || "",
       "如果可以直接发，请回复“是”。",
       "想改标题就回复“改标题”。想继续补正文就直接发内容。",
@@ -1119,7 +1143,7 @@ async function renderConversationPrompt(conversation: any, assistantHint?: strin
       "投稿确认：",
       boardDisplayName ? `投稿区：${boardDisplayName}` : "",
       conversation.draftTitle ? `标题：${conversation.draftTitle}` : "",
-      conversation.draftContent ? `正文预览：${conversation.draftContent.slice(0, 160)}${conversation.draftContent.length > 160 ? "..." : ""}` : "",
+      draftPreview ? `正文预览：${draftPreview}` : "",
       assistantHint || "",
       "确认发布请回复“确认发布”或“是”。",
       "想改标题请回复“改标题”。想继续补正文就直接发内容。不想发了就回复“取消”。",
@@ -1170,6 +1194,32 @@ async function ensureQqBinding(qqId: string) {
 
 function mergeConversationContent(existing: string, next: string) {
   return [existing.trim(), next.trim()].filter(Boolean).join("\n");
+}
+
+function replaceForwardDraftTemplate(currentDraft: string, template: string, nextForwardContent: string) {
+  const current = String(currentDraft || "").trim();
+  const previous = String(template || "").trim();
+  const next = String(nextForwardContent || "").trim();
+  if (!next) return current;
+  if (!current) return next;
+  if (!previous) return current;
+  if (current === previous) return next;
+  const index = current.indexOf(previous);
+  if (index < 0) return current;
+  return normalizeRenderedMessage(`${current.slice(0, index)}${next}${current.slice(index + previous.length)}`);
+}
+
+async function refreshForwardDraftContent(conversation: any) {
+  const currentDraft = String(conversation?.draftContent || "").trim();
+  const metadata = parseConversationMetadata(conversation?.metadata);
+  const forwardId = String(conversation?.sourceMessageId || "").trim();
+  if (conversation?.scene !== "forward-post" || !forwardId) return currentDraft;
+  const payload = await extractForwardPayload([{ type: "forward", data: { id: forwardId } }], {
+    imageMode: "upload",
+  }).catch(() => null);
+  const refreshed = String(payload?.content || "").trim();
+  if (!refreshed) return currentDraft;
+  return replaceForwardDraftTemplate(currentDraft, String(metadata.forwardDraftTemplate || ""), refreshed);
 }
 
 async function parseConversationTitle(text: string, defaultBoardSlug: string, groupId?: string) {
@@ -1393,6 +1443,7 @@ async function createTopicFromQq(input: {
   }
   if (hiddenByAi) await refreshUserPostCount(userId).catch(() => {});
   await refreshBoardTopicCounts([board.id]).catch(() => {});
+  await ensureForumImageAssetsForContent(input.content, userId).catch(() => null);
   return { ...topic, board };
 }
 
@@ -1748,39 +1799,44 @@ const qqImageUploadCache = new Map<string, Promise<string>>();
 
 async function extractMessageText(
   message: unknown,
-  options: { forwardDepth?: number } = {},
+  options: QqMessageExtractOptions = {},
 ): Promise<string> {
-  if (typeof message === "string") return cleanCqMessage(message);
+  if (typeof message === "string") return cleanCqMessage(message, options);
   if (message && typeof message === "object") {
     const maybeMessage = message as any;
     if (maybeMessage.type === "node") {
       const embedded = await renderEmbeddedNodeSegmentContent(
         maybeMessage.data?.content ?? maybeMessage.data?.message,
-        options.forwardDepth ?? 0,
+        options,
       );
       if (embedded) return normalizeRenderedMessage(embedded);
-      if (maybeMessage.data?.id) return normalizeRenderedMessage(await resolveReferencedNodeContent(maybeMessage.data.id, options.forwardDepth ?? 0));
+      if (maybeMessage.data?.id) return normalizeRenderedMessage(await resolveReferencedNodeContent(maybeMessage.data.id, options));
       if (Array.isArray(maybeMessage.data?.content)) return extractMessageText(maybeMessage.data.content, options);
-      if (typeof maybeMessage.data?.content === "string") return cleanCqMessage(maybeMessage.data.content);
+      if (typeof maybeMessage.data?.content === "string") return cleanCqMessage(maybeMessage.data.content, options);
     }
     if (maybeMessage.type === "forward") {
       const embedded = await renderEmbeddedForwardSegmentContent(
         maybeMessage.data?.content ?? maybeMessage.data?.message,
-        options.forwardDepth ?? 0,
+        options,
       );
       if (embedded) return normalizeRenderedMessage(embedded);
       const forwardId = readForwardSegmentId(maybeMessage.data);
-      if (forwardId) return normalizeRenderedMessage(await renderNestedForwardContent(forwardId, (options.forwardDepth ?? 0) + 1));
+      if (forwardId) {
+        return normalizeRenderedMessage(await renderNestedForwardContent(forwardId, {
+          ...options,
+          forwardDepth: (options.forwardDepth ?? 0) + 1,
+        }));
+      }
     }
     if (Array.isArray(maybeMessage.message)) return extractMessageText(maybeMessage.message, options);
     if (Array.isArray(maybeMessage.content)) return extractMessageText(maybeMessage.content, options);
-    if (typeof maybeMessage.message === "string") return cleanCqMessage(maybeMessage.message);
-    if (typeof maybeMessage.content === "string") return cleanCqMessage(maybeMessage.content);
+    if (typeof maybeMessage.message === "string") return cleanCqMessage(maybeMessage.message, options);
+    if (typeof maybeMessage.content === "string") return cleanCqMessage(maybeMessage.content, options);
   }
   if (!Array.isArray(message)) return "";
   const parts: string[] = [];
   for (const seg of message) {
-    const rendered = await renderMessageSegment(seg, options.forwardDepth ?? 0);
+    const rendered = await renderMessageSegment(seg, options);
     if (rendered) parts.push(rendered);
   }
   return normalizeRenderedMessage(parts.join(""));
@@ -1822,56 +1878,66 @@ function pickEmbeddedForwardMessages(value: unknown): unknown[] | null {
 
 async function renderEmbeddedForwardLikeContent(
   content: unknown,
-  forwardDepth: number,
-  options: { withForwardTitle: boolean },
+  options: QqMessageExtractOptions & { withForwardTitle: boolean },
 ) {
   if (content == null) return "";
+  const nestedOptions = {
+    ...options,
+    forwardDepth: (options.forwardDepth ?? 0) + 1,
+  };
   const embeddedMessages = pickEmbeddedForwardMessages(content);
   if (embeddedMessages) {
-    const parsed = await parseForwardMessages(embeddedMessages, "", forwardDepth);
-    if (parsed?.content) return `\n${quoteMarkdownBlock(`转发消息\n${parsed.content}`)}\n`;
+    const parsed = await parseForwardMessages(embeddedMessages, "", nestedOptions);
+    if (parsed?.content) return `\n${parsed.content}\n`;
   }
-  const nested = await extractMessageText(content, { forwardDepth }).catch(() => "");
+  const nested = await extractMessageText(content, nestedOptions).catch(() => "");
   if (!nested.trim()) return "";
   return options.withForwardTitle
-    ? `\n${quoteMarkdownBlock(`转发消息\n${nested}`)}\n`
-    : `\n${quoteMarkdownBlock(nested)}\n`;
+    ? `\n**内层转发摘录**\n\n${nested}\n`
+    : `\n${nested}\n`;
 }
 
-async function renderEmbeddedNodeSegmentContent(content: unknown, forwardDepth: number) {
-  return renderEmbeddedForwardLikeContent(content, forwardDepth, { withForwardTitle: false });
+async function renderEmbeddedNodeSegmentContent(content: unknown, options: QqMessageExtractOptions) {
+  return renderEmbeddedForwardLikeContent(content, { ...options, withForwardTitle: false });
 }
 
-async function renderEmbeddedForwardSegmentContent(content: unknown, forwardDepth: number) {
-  return renderEmbeddedForwardLikeContent(content, forwardDepth, { withForwardTitle: true });
+async function renderEmbeddedForwardSegmentContent(content: unknown, options: QqMessageExtractOptions) {
+  return renderEmbeddedForwardLikeContent(content, { ...options, withForwardTitle: true });
 }
 
-async function renderMessageSegment(seg: any, forwardDepth: number): Promise<string> {
+async function renderMessageSegment(seg: any, options: QqMessageExtractOptions): Promise<string> {
   if (seg?.type === "text") return String(seg.data?.text || "");
   if (seg?.type === "image") {
+    if (options.imageMode === "placeholder") return "\n[图片]\n";
     const url = await resolveQqImageUrl(seg.data?.url, seg.data?.file);
     return url ? `\n![QQ图片](${url})\n` : "\n[图片]\n";
   }
   if (seg?.type === "node") {
-    const embedded = await renderEmbeddedNodeSegmentContent(seg.data?.content ?? seg.data?.message, forwardDepth);
+    const embedded = await renderEmbeddedNodeSegmentContent(seg.data?.content ?? seg.data?.message, options);
     if (embedded) return embedded;
-    if (seg?.data?.id) return resolveReferencedNodeContent(seg.data.id, forwardDepth);
+    if (seg?.data?.id) return resolveReferencedNodeContent(seg.data.id, options);
   }
   if (seg?.type === "forward") {
-    const embedded = await renderEmbeddedForwardSegmentContent(seg.data?.content ?? seg.data?.message, forwardDepth);
+    const embedded = await renderEmbeddedForwardSegmentContent(seg.data?.content ?? seg.data?.message, options);
     if (embedded) return embedded;
-    return renderNestedForwardContent(readForwardSegmentId(seg.data), forwardDepth + 1);
+    return renderNestedForwardContent(readForwardSegmentId(seg.data), {
+      ...options,
+      forwardDepth: (options.forwardDepth ?? 0) + 1,
+    });
   }
   if (seg?.type === "video") return "\n[视频]\n";
   if (seg?.type === "record") return "\n[语音]\n";
   return "";
 }
 
-async function extractForwardPayload(message: unknown): Promise<(ParsedForwardPayload & { source: ForwardSource }) | null> {
+async function extractForwardPayload(
+  message: unknown,
+  options: QqMessageExtractOptions = {},
+): Promise<(ParsedForwardPayload & { source: ForwardSource }) | null> {
   const forwardId = extractForwardNodeId(message);
   if (forwardId) {
     const payload = await callQqBotAction("get_forward_msg", { id: forwardId }).catch(() => null);
-    const parsed = await parseForwardMessages(payload?.data?.messages, forwardId, 0);
+    const parsed = await parseForwardMessages(payload?.data?.messages, forwardId, options);
     if (parsed) {
       queueQqBotForwardDebug("forward.extract", {
         source: "direct",
@@ -1889,7 +1955,7 @@ async function extractForwardPayload(message: unknown): Promise<(ParsedForwardPa
   const replyForwardId = extractForwardNodeId(replyMessage);
   if (!replyForwardId) return null;
   const payload = await callQqBotAction("get_forward_msg", { id: replyForwardId }).catch(() => null);
-  const parsed = await parseForwardMessages(payload?.data?.messages, replyForwardId, 0);
+  const parsed = await parseForwardMessages(payload?.data?.messages, replyForwardId, options);
   if (!parsed) return null;
   queueQqBotForwardDebug("forward.extract", {
     source: "reply",
@@ -1901,10 +1967,14 @@ async function extractForwardPayload(message: unknown): Promise<(ParsedForwardPa
   return { ...parsed, source: "reply" };
 }
 
-async function parseForwardMessages(messages: unknown, forwardId: string, forwardDepth: number): Promise<ParsedForwardPayload | null> {
+async function parseForwardMessages(
+  messages: unknown,
+  forwardId: string,
+  options: QqMessageExtractOptions = {},
+): Promise<ParsedForwardPayload | null> {
   const list = Array.isArray(messages) ? messages : [];
-  const blocks: string[] = [];
-  const summaryBits: string[] = [];
+  const entries: ParsedForwardEntry[] = [];
+  const forwardDepth = options.forwardDepth ?? 0;
   for (let index = 0; index < list.length; index += 1) {
     const item = list[index];
     const node = item?.data ?? item;
@@ -1923,13 +1993,18 @@ async function parseForwardMessages(messages: unknown, forwardId: string, forwar
       ?? item?.content
       ?? item?.message
       ?? "",
-      { forwardDepth },
+      options,
     )).trim();
     if (!text) continue;
-    blocks.push(renderForwardMessageBlock(index + 1, nickname, text));
-    summaryBits.push(`${nickname}：${forwardSummaryPreview(text)}`);
+    entries.push({
+      nickname,
+      text,
+      messageCount: 1,
+      imageCount: countForwardImageTokens(text),
+    });
   }
-  if (!blocks.length) {
+  const mergedEntries = mergeForwardEntries(entries);
+  if (!mergedEntries.length) {
     queueQqBotForwardDebug("forward.parse.empty", {
       forwardId,
       forwardDepth,
@@ -1938,10 +2013,32 @@ async function parseForwardMessages(messages: unknown, forwardId: string, forwar
     });
     return null;
   }
+  const messageCount = entries.reduce((total, entry) => total + entry.messageCount, 0);
+  const imageCount = entries.reduce((total, entry) => total + entry.imageCount, 0);
+  const participantNames = Array.from(new Set(mergedEntries.map((entry) => entry.nickname).filter(Boolean)));
   const parsed = {
-    summary: summaryBits.slice(0, 3).join(" / ").slice(0, 120),
-    content: blocks.join("\n\n"),
+    summary: buildForwardPayloadSummary(mergedEntries, {
+      messageCount,
+      blockCount: mergedEntries.length,
+      participantCount: participantNames.length,
+      imageCount,
+    }),
+    content: renderForwardPayloadContent(
+      mergedEntries,
+      {
+        messageCount,
+        blockCount: mergedEntries.length,
+        participantCount: participantNames.length,
+        imageCount,
+        participantNames,
+      },
+      forwardDepth,
+    ),
     sourceMessageId: forwardId,
+    messageCount,
+    blockCount: mergedEntries.length,
+    participantCount: participantNames.length,
+    imageCount,
   };
   queueQqBotForwardDebug("forward.parse.ok", {
     forwardId,
@@ -1958,6 +2055,14 @@ function extractReplyMessageId(message: unknown) {
   if (!Array.isArray(message)) return "";
   const replySeg = message.find((seg: any) => seg?.type === "reply" && seg?.data?.id);
   return String(replySeg?.data?.id || "").trim();
+}
+
+function shouldUseLightForwardExtraction(message: unknown) {
+  if (!Array.isArray(message)) return false;
+  return message.some((seg: any) => {
+    const type = String(seg?.type || "").trim();
+    return type === "forward" || type === "node" || type === "reply";
+  });
 }
 
 function extractForwardNodeId(message: unknown): string {
@@ -1989,7 +2094,7 @@ function extractForwardNodeId(message: unknown): string {
   return "";
 }
 
-async function cleanCqMessage(value: string) {
+async function cleanCqMessage(value: string, options: QqMessageExtractOptions = {}) {
   let normalized = String(value || "");
   const mediaMatches = Array.from(normalized.matchAll(/\[CQ:(image|forward|node),([^\]]*)\]/g));
   for (const match of mediaMatches) {
@@ -1997,12 +2102,19 @@ async function cleanCqMessage(value: string) {
     const type = String(match[1] || "").trim();
     const attrs = parseCqParams(match[2] || "");
     if (type === "image") {
+      if (options.imageMode === "placeholder") {
+        normalized = normalized.replace(raw, "\n[图片]\n");
+        continue;
+      }
       const url = await resolveQqImageUrl(attrs.url, attrs.file);
       normalized = normalized.replace(raw, url ? `\n![QQ图片](${url})\n` : "\n[图片]\n");
       continue;
     }
     const forwardId = attrs.id || attrs.resid || attrs.file || attrs.message_id || attrs.forward_id;
-    const expanded = await renderNestedForwardContent(forwardId, 1);
+    const expanded = await renderNestedForwardContent(forwardId, {
+      ...options,
+      forwardDepth: (options.forwardDepth ?? 0) + 1,
+    });
     normalized = normalized.replace(raw, expanded || "\n[合并转发]\n");
   }
   normalized = normalized
@@ -2127,15 +2239,9 @@ async function saveQqImageUpload(buffer: Buffer, mime: string, nameHint?: string
   const outputDir = path.join(uploadRoot, relativeDir);
   await mkdir(outputDir, { recursive: true });
   const filename = `qqbot-${Date.now()}-${crypto.randomUUID()}.${ext}`;
-  const localPath = path.join(outputDir, filename);
+  const outputPath = path.join(outputDir, filename);
   const url = `/uploads/${relativeDir.replace(/\\/g, "/")}/${filename}`;
-  await writeFile(localPath, buffer);
-  await registerForumImageAsset({
-    url,
-    localPath,
-    mimeType: mime || resolveMimeTypeByExtension(ext),
-    fileSize: buffer.length,
-  }).catch(() => null);
+  await writeFile(outputPath, buffer);
   return url;
 }
 
@@ -2157,20 +2263,13 @@ function detectImageExtension(buffer: Buffer, mime: string, nameHint?: string) {
   return "";
 }
 
-function resolveMimeTypeByExtension(ext: string) {
-  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
-  if (ext === "png") return "image/png";
-  if (ext === "webp") return "image/webp";
-  if (ext === "gif") return "image/gif";
-  return "";
-}
-
-async function renderNestedForwardContent(forwardId: unknown, forwardDepth: number) {
+async function renderNestedForwardContent(forwardId: unknown, options: QqMessageExtractOptions = {}) {
   const normalizedId = String(forwardId || "").trim();
+  const forwardDepth = options.forwardDepth ?? 0;
   if (!normalizedId) return "\n[合并转发]\n";
   if (forwardDepth > MAX_FORWARD_DEPTH) return "\n[合并转发层级过深]\n";
   const payload = await callQqBotAction("get_forward_msg", { id: normalizedId }).catch(() => null);
-  const parsed = await parseForwardMessages(payload?.data?.messages, normalizedId, forwardDepth);
+  const parsed = await parseForwardMessages(payload?.data?.messages, normalizedId, options);
   queueQqBotForwardDebug("forward.api.get_forward_msg", {
     forwardId: normalizedId,
     forwardDepth,
@@ -2180,11 +2279,12 @@ async function renderNestedForwardContent(forwardId: unknown, forwardDepth: numb
       : null,
   });
   if (!parsed?.content) return "\n[合并转发]\n";
-  return `\n${quoteMarkdownBlock(`转发消息\n${parsed.content}`)}\n`;
+  return `\n${parsed.content}\n`;
 }
 
-async function resolveReferencedNodeContent(messageId: unknown, forwardDepth: number) {
+async function resolveReferencedNodeContent(messageId: unknown, options: QqMessageExtractOptions = {}) {
   const normalizedId = String(messageId || "").trim();
+  const forwardDepth = options.forwardDepth ?? 0;
   if (!normalizedId) return "\n[合并转发]\n";
   const referenced = await callQqBotAction("get_msg", { message_id: Number(normalizedId) || normalizedId }).catch(() => null);
   const message = referenced?.data?.message ?? referenced?.data?.content;
@@ -2196,9 +2296,12 @@ async function resolveReferencedNodeContent(messageId: unknown, forwardDepth: nu
       forwardId,
       message,
     });
-    return renderNestedForwardContent(forwardId, forwardDepth + 1);
+    return renderNestedForwardContent(forwardId, {
+      ...options,
+      forwardDepth: forwardDepth + 1,
+    });
   }
-  const text = await extractMessageText(message, { forwardDepth }).catch(() => "");
+  const text = await extractMessageText(message, options).catch(() => "");
   queueQqBotForwardDebug("forward.node.resolve", {
     messageId: normalizedId,
     forwardDepth,
@@ -2208,16 +2311,105 @@ async function resolveReferencedNodeContent(messageId: unknown, forwardDepth: nu
   return text.trim() ? `\n${quoteMarkdownBlock(text)}\n` : "\n[合并转发]\n";
 }
 
-function renderForwardMessageBlock(index: number, nickname: string, text: string) {
-  return [`**${index}. ${nickname}**`, normalizeRenderedMessage(text)].join("\n");
+function mergeForwardEntries(entries: ParsedForwardEntry[]) {
+  const merged: ParsedForwardEntry[] = [];
+  for (const entry of entries) {
+    const normalizedText = normalizeRenderedMessage(entry.text);
+    if (!normalizedText) continue;
+    const previous = merged[merged.length - 1];
+    if (previous && previous.nickname === entry.nickname) {
+      previous.text = normalizeRenderedMessage(`${previous.text}\n\n${normalizedText}`);
+      previous.messageCount += entry.messageCount;
+      previous.imageCount += entry.imageCount;
+      continue;
+    }
+    merged.push({
+      nickname: entry.nickname,
+      text: normalizedText,
+      messageCount: entry.messageCount,
+      imageCount: entry.imageCount,
+    });
+  }
+  return merged;
+}
+
+function countForwardImageTokens(text: string) {
+  return (String(text || "").match(/!\[[^\]]*\]\([^)]+\)|\[图片\]/g) || []).length;
+}
+
+function buildForwardPayloadSummary(
+  entries: ParsedForwardEntry[],
+  stats: { messageCount: number; blockCount: number; participantCount: number; imageCount: number },
+) {
+  const statBits = [
+    `${stats.messageCount} 条消息`,
+    `${stats.blockCount} 段整理稿`,
+    `${stats.participantCount} 人参与`,
+  ];
+  if (stats.imageCount > 0) statBits.push(`${stats.imageCount} 张图`);
+  const previewBits = entries
+    .slice(0, 3)
+    .map((entry) => `${entry.nickname}：${forwardSummaryPreview(entry.text)}`);
+  return [statBits.join("，"), previewBits.join(" / ")].filter(Boolean).join(" · ").slice(0, 160);
+}
+
+function renderForwardPayloadContent(
+  entries: ParsedForwardEntry[],
+  stats: {
+    messageCount: number;
+    blockCount: number;
+    participantCount: number;
+    imageCount: number;
+    participantNames: string[];
+  },
+  forwardDepth: number,
+) {
+  const heading = forwardDepth > 0 ? "**内层转发摘录**" : "### 转发整理";
+  const metaBits = [
+    `${stats.messageCount} 条消息`,
+    `${stats.blockCount} 段`,
+    `${stats.participantCount} 人参与`,
+  ];
+  if (stats.imageCount > 0) metaBits.push(`${stats.imageCount} 张图`);
+  const participantPreview = formatForwardParticipantPreview(stats.participantNames);
+  const blocks = entries.map((entry, index) => renderForwardEntryBlock(entry, index, forwardDepth));
+  return normalizeRenderedMessage([
+    heading,
+    `_${metaBits.join(" · ")}_`,
+    participantPreview ? `_参与者：${participantPreview}_` : "",
+    "",
+    blocks.join(forwardDepth > 0 ? "\n\n" : "\n\n---\n\n"),
+  ].filter(Boolean).join("\n"));
+}
+
+function formatForwardParticipantPreview(participantNames: string[]) {
+  if (!participantNames.length) return "";
+  if (participantNames.length <= 4) return participantNames.join("、");
+  return `${participantNames.slice(0, 3).join("、")} 等 ${participantNames.length} 人`;
+}
+
+function renderForwardEntryBlock(entry: ParsedForwardEntry, index: number, forwardDepth: number) {
+  const title = forwardDepth > 0
+    ? `**${index + 1}. ${entry.nickname}**`
+    : `**${String(index + 1).padStart(2, "0")} | ${entry.nickname}**`;
+  const metaBits: string[] = [];
+  if (entry.messageCount > 1) metaBits.push(`连续 ${entry.messageCount} 条`);
+  if (entry.imageCount > 0) metaBits.push(`${entry.imageCount} 张图`);
+  return [
+    title,
+    metaBits.length ? `_${metaBits.join(" · ")}_` : "",
+    normalizeRenderedMessage(entry.text),
+  ].filter(Boolean).join("\n");
 }
 
 function forwardSummaryPreview(text: string) {
   return normalizeRenderedMessage(
     text
       .replace(/!\[[^\]]*\]\([^)]+\)/g, "[图片]")
+      .replace(/^#{1,6}\s*/gm, "")
       .replace(/^\s*> ?/gm, "")
-      .replace(/\*\*/g, ""),
+      .replace(/^\s*-{3,}\s*$/gm, "")
+      .replace(/[*_]+/g, ""),
   ).replace(/\n+/g, " ").slice(0, 40) || "内容";
 }
 
@@ -2237,7 +2429,7 @@ function normalizeRenderedMessage(value: string) {
 
 function appendSourceFooter(content: string, context: { groupId?: string; event: OneBotEvent }) {
   const source = context.groupId ? `QQ群 ${context.groupId}` : "QQ 私聊";
-  return `${content}\n\n> 由 QQBot 从${source}搬运投稿。`;
+  return `${content}\n\n---\n_由 QQBot 从 ${source} 整理投稿。_`;
 }
 
 function isHelpCommand(text: string) {

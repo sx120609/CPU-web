@@ -9,6 +9,18 @@ import { installIosNativeImageBridge } from "./utils/nativeBridge";
 import "element-plus/dist/index.css";
 import "./styles/index.scss";
 
+const SCHEDULE_OFFLINE_WARMUP_MESSAGE = "cpu-schedule-offline-warmup";
+const SCHEDULE_OFFLINE_STATIC_URLS = [
+  "/schedule",
+  "/manifest-v3.webmanifest?v=20260530",
+  "/apple-touch-icon-v3.png?v=20260530-hw",
+  "/icon-192-v3.png?v=20260530-hw",
+  "/icon-512-v3.png?v=20260530-hw",
+  "/favicon.svg?v=20260530",
+];
+
+let serviceWorkerReady: Promise<ServiceWorkerRegistration | null> | null = null;
+
 function installTouchGuards() {
   document.addEventListener("gesturestart", (event) => event.preventDefault());
   document.addEventListener("gesturechange", (event) => event.preventDefault());
@@ -97,6 +109,71 @@ function installNativeAppMarker() {
   document.body.dataset.cpuNativeApp = "1";
 }
 
+function shouldWarmScheduleOfflinePath(pathname: string) {
+  return pathname === "/schedule"
+    || pathname.startsWith("/assets/")
+    || pathname.startsWith("/brand/")
+    || pathname.startsWith("/splash/")
+    || pathname === "/manifest-v3.webmanifest"
+    || pathname === "/favicon.svg"
+    || pathname.startsWith("/icon-")
+    || pathname.startsWith("/apple-touch-icon");
+}
+
+function toSameOriginPath(rawUrl?: string | null) {
+  if (!rawUrl) return "";
+  try {
+    const url = new URL(rawUrl, window.location.origin);
+    if (url.origin !== window.location.origin) return "";
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return "";
+  }
+}
+
+function collectScheduleOfflineUrls() {
+  const urls = new Set<string>(SCHEDULE_OFFLINE_STATIC_URLS);
+  const currentRouteUrl = toSameOriginPath(window.location.pathname + window.location.search);
+  if (currentRouteUrl) urls.add(currentRouteUrl);
+
+  document.querySelectorAll<HTMLLinkElement>(
+    'link[rel="manifest"], link[rel="icon"], link[rel="apple-touch-icon"], link[rel="apple-touch-startup-image"], link[rel="modulepreload"], link[rel="stylesheet"]',
+  ).forEach((element) => {
+    const normalized = toSameOriginPath(element.href);
+    if (!normalized) return;
+    const pathname = new URL(normalized, window.location.origin).pathname;
+    if (shouldWarmScheduleOfflinePath(pathname)) urls.add(normalized);
+  });
+
+  document.querySelectorAll<HTMLScriptElement>('script[src]').forEach((element) => {
+    const normalized = toSameOriginPath(element.src);
+    if (!normalized) return;
+    const pathname = new URL(normalized, window.location.origin).pathname;
+    if (shouldWarmScheduleOfflinePath(pathname)) urls.add(normalized);
+  });
+
+  performance.getEntriesByType("resource").forEach((entry) => {
+    const normalized = toSameOriginPath(entry.name);
+    if (!normalized) return;
+    const pathname = new URL(normalized, window.location.origin).pathname;
+    if (shouldWarmScheduleOfflinePath(pathname)) urls.add(normalized);
+  });
+
+  return [...urls];
+}
+
+function warmScheduleOfflineCache(registration: ServiceWorkerRegistration | null) {
+  if (!registration) return;
+  const currentPath = router.currentRoute.value.path || window.location.pathname;
+  if (!currentPath.startsWith("/schedule")) return;
+  const target = registration.active ?? navigator.serviceWorker.controller;
+  if (!target) return;
+  target.postMessage({
+    type: SCHEDULE_OFFLINE_WARMUP_MESSAGE,
+    urls: collectScheduleOfflineUrls(),
+  });
+}
+
 installTouchGuards();
 installFeedbackLayerGuard();
 installIosNativeImageBridge();
@@ -105,10 +182,19 @@ installNativeAppMarker();
 // 注册 Service Worker —— Chrome PWA "installable" 条件之一（manifest + SW + HTTPS）
 // 不满足时 beforeinstallprompt 不会触发，"添加到主屏幕"按钮就不会出现
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch((err) => {
-      console.warn("[sw] 注册失败：", err?.message);
-    });
+  serviceWorkerReady = new Promise((resolve) => {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/sw.js")
+        .then(() => navigator.serviceWorker.ready)
+        .then((registration) => {
+          warmScheduleOfflineCache(registration);
+          resolve(registration);
+        })
+        .catch((err) => {
+          console.warn("[sw] 注册失败：", err?.message);
+          resolve(null);
+        });
+    }, { once: true });
   });
 }
 
@@ -120,7 +206,15 @@ useSiteStore().fetch();
 app.use(router);
 app.mount("#app");
 
+router.afterEach((to) => {
+  if (!serviceWorkerReady || !to.path.startsWith("/schedule")) return;
+  void serviceWorkerReady.then((registration) => warmScheduleOfflineCache(registration));
+});
+
 router.isReady().finally(() => {
+  if (serviceWorkerReady) {
+    void serviceWorkerReady.then((registration) => warmScheduleOfflineCache(registration));
+  }
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       document.body.dataset.cpuAppReady = "1";

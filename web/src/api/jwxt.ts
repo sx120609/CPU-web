@@ -127,8 +127,11 @@ export const jwxtApi = {
       "/status",
       options?.silent ? ({ suppressErrorMessage: true } as any) : undefined
     ),
-  schedule: (params?: { semester?: string; week?: string }) =>
-    inst.get<unknown, { html: string; parsed: any }>("/schedule", { params }),
+  schedule: (params?: { semester?: string; week?: string }, options?: { silent?: boolean }) =>
+    inst.get<unknown, { html: string; parsed: any }>("/schedule", {
+      params,
+      ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
+    }),
   grades: (params?: { semester?: string }) =>
     inst.get<unknown, { html: string; parsed: any }>("/grades", { params }),
   midtermGrades: (params?: { semester?: string }) =>

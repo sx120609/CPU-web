@@ -133,9 +133,15 @@ function showIosImagePreview(items: NativeImagePreviewItem[], startIndex: number
   let startTranslateX = 0;
   let startTranslateY = 0;
   let lastTapAt = 0;
+  let gestureLockedByControl = false;
+  const cleanupKey = "__cpuIosImagePreviewCleanup";
 
+  const existingCleanup = (window as any)[cleanupKey];
+  if (typeof existingCleanup === "function") existingCleanup();
   const existing = document.querySelector<HTMLElement>("[data-ios-image-preview]");
+  const existingStyle = document.querySelector<HTMLElement>("[data-ios-image-preview-style]");
   existing?.remove();
+  existingStyle?.remove();
 
   const overlay = document.createElement("div");
   overlay.dataset.iosImagePreview = "1";
@@ -146,7 +152,9 @@ function showIosImagePreview(items: NativeImagePreviewItem[], startIndex: number
       <button class="ios-preview-button" type="button" data-action="save" aria-label="Save">Save</button>
     </div>
     <button class="ios-preview-nav ios-preview-prev" type="button" data-action="prev" aria-label="Previous">‹</button>
-    <img class="ios-preview-image" alt="" />
+    <div class="ios-preview-stage">
+      <img class="ios-preview-image" alt="" />
+    </div>
     <button class="ios-preview-nav ios-preview-next" type="button" data-action="next" aria-label="Next">›</button>
     <div class="ios-preview-title"></div>
   `;
@@ -154,19 +162,35 @@ function showIosImagePreview(items: NativeImagePreviewItem[], startIndex: number
     position: fixed;
     inset: 0;
     z-index: 99999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     background: rgba(0, 0, 0, 0.94);
     color: #fff;
     -webkit-user-select: none;
     user-select: none;
     touch-action: none;
+    overflow: hidden;
   `;
 
   const style = document.createElement("style");
   style.dataset.iosImagePreviewStyle = "1";
   style.textContent = `
+    [data-ios-image-preview] {
+      --ios-preview-top-gap: calc(env(safe-area-inset-top, 0px) + 68px);
+      --ios-preview-bottom-gap: calc(env(safe-area-inset-bottom, 0px) + 56px);
+    }
+    [data-ios-image-preview] .ios-preview-stage {
+      position: absolute;
+      top: var(--ios-preview-top-gap);
+      left: 0;
+      right: 0;
+      bottom: var(--ios-preview-bottom-gap);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 22px;
+      box-sizing: border-box;
+      overflow: hidden;
+      z-index: 1;
+    }
     [data-ios-image-preview] .ios-preview-top {
       position: absolute;
       top: env(safe-area-inset-top, 0);
@@ -178,6 +202,7 @@ function showIosImagePreview(items: NativeImagePreviewItem[], startIndex: number
       min-height: 54px;
       padding: 8px 14px;
       background: linear-gradient(180deg, rgba(0,0,0,0.58), rgba(0,0,0,0));
+      z-index: 3;
     }
     [data-ios-image-preview] .ios-preview-button {
       appearance: none;
@@ -201,12 +226,13 @@ function showIosImagePreview(items: NativeImagePreviewItem[], startIndex: number
       font: 500 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
     [data-ios-image-preview] .ios-preview-image {
-      max-width: 100vw;
-      max-height: 100vh;
+      max-width: 100%;
+      max-height: 100%;
       object-fit: contain;
       transform: translateZ(0);
       transform-origin: center center;
       -webkit-user-drag: none;
+      pointer-events: none;
       will-change: transform;
     }
     [data-ios-image-preview] .ios-preview-title {
@@ -220,6 +246,7 @@ function showIosImagePreview(items: NativeImagePreviewItem[], startIndex: number
       text-align: center;
       text-overflow: ellipsis;
       white-space: nowrap;
+      z-index: 3;
     }
     [data-ios-image-preview] .ios-preview-nav {
       appearance: none;
@@ -235,24 +262,39 @@ function showIosImagePreview(items: NativeImagePreviewItem[], startIndex: number
       font: 34px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
+      z-index: 3;
     }
     [data-ios-image-preview] .ios-preview-prev { left: 12px; }
     [data-ios-image-preview] .ios-preview-next { right: 12px; }
     [data-ios-image-preview] .ios-preview-nav[hidden] { display: none; }
   `;
 
+  const stage = overlay.querySelector<HTMLElement>(".ios-preview-stage");
   const image = overlay.querySelector<HTMLImageElement>(".ios-preview-image");
   const count = overlay.querySelector<HTMLElement>(".ios-preview-count");
   const title = overlay.querySelector<HTMLElement>(".ios-preview-title");
   const prev = overlay.querySelector<HTMLButtonElement>(".ios-preview-prev");
   const next = overlay.querySelector<HTMLButtonElement>(".ios-preview-next");
-  if (!image || !count || !title || !prev || !next) return false;
+  if (!stage || !image || !count || !title || !prev || !next) return false;
 
-  const close = () => {
-    document.body.style.overflow = overlay.dataset.previousBodyOverflow || "";
-    window.removeEventListener("keydown", onKeyDown);
-    overlay.remove();
-    style.remove();
+  const getStageRect = () => stage.getBoundingClientRect();
+  const getStageSize = () => {
+    const rect = getStageRect();
+    return {
+      width: rect.width || window.innerWidth,
+      height: rect.height || window.innerHeight,
+    };
+  };
+  const getStageCenter = () => {
+    const rect = getStageRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    };
+  };
+  const isControlTarget = (target: EventTarget | null) => {
+    return target instanceof HTMLElement
+      && Boolean(target.closest(".ios-preview-top, .ios-preview-title, .ios-preview-nav"));
   };
 
   const applyTransform = () => {
@@ -267,13 +309,14 @@ function showIosImagePreview(items: NativeImagePreviewItem[], startIndex: number
       translateY = 0;
       return;
     }
-    const maxX = (window.innerWidth * (scale - 1)) / 2;
-    const maxY = (window.innerHeight * (scale - 1)) / 2;
+    const { width, height } = getStageSize();
+    const maxX = (width * (scale - 1)) / 2;
+    const maxY = (height * (scale - 1)) / 2;
     translateX = clampValue(translateX, -maxX, maxX);
     translateY = clampValue(translateY, -maxY, maxY);
   };
 
-  const setZoom = (nextScale: number, centerX = window.innerWidth / 2, centerY = window.innerHeight / 2, animated = false) => {
+  const setZoom = (nextScale: number, centerX: number, centerY: number, animated = false) => {
     const previousScale = scale;
     scale = clampValue(nextScale, 1, 5);
     if (scale <= 1.02) {
@@ -281,8 +324,7 @@ function showIosImagePreview(items: NativeImagePreviewItem[], startIndex: number
       translateX = 0;
       translateY = 0;
     } else if (previousScale > 0) {
-      const viewportCenterX = window.innerWidth / 2;
-      const viewportCenterY = window.innerHeight / 2;
+      const { x: viewportCenterX, y: viewportCenterY } = getStageCenter();
       translateX = centerX - viewportCenterX - ((centerX - viewportCenterX - translateX) * scale) / previousScale;
       translateY = centerY - viewportCenterY - ((centerY - viewportCenterY - translateY) * scale) / previousScale;
       clampTranslate();
@@ -321,6 +363,18 @@ function showIosImagePreview(items: NativeImagePreviewItem[], startIndex: number
     if (event.key === "ArrowLeft") move(-1);
     if (event.key === "ArrowRight") move(1);
   };
+  const onResize = () => {
+    clampTranslate();
+    applyTransform();
+  };
+  const close = () => {
+    if ((window as any)[cleanupKey] === close) delete (window as any)[cleanupKey];
+    document.body.style.overflow = overlay.dataset.previousBodyOverflow || "";
+    window.removeEventListener("keydown", onKeyDown);
+    window.removeEventListener("resize", onResize);
+    overlay.remove();
+    style.remove();
+  };
 
   overlay.addEventListener("click", (event) => {
     const action = (event.target as HTMLElement).dataset.action;
@@ -330,6 +384,12 @@ function showIosImagePreview(items: NativeImagePreviewItem[], startIndex: number
     if (action === "save") void shareIosImageUrl(images[index].url, images[index].fileName);
   });
   overlay.addEventListener("touchstart", (event) => {
+    gestureLockedByControl = isControlTarget(event.target);
+    if (gestureLockedByControl) {
+      startDistance = 0;
+      return;
+    }
+
     if (event.touches.length === 2) {
       const first = event.touches[0];
       const second = event.touches[1];
@@ -345,12 +405,15 @@ function showIosImagePreview(items: NativeImagePreviewItem[], startIndex: number
     }
 
     const touch = event.touches[0];
+    startDistance = 0;
     touchStartX = touch.clientX;
     touchStartY = touch.clientY;
     startTranslateX = translateX;
     startTranslateY = translateY;
   }, { passive: false });
   overlay.addEventListener("touchmove", (event) => {
+    if (gestureLockedByControl) return;
+
     if (event.touches.length === 2 && startDistance > 0) {
       const first = event.touches[0];
       const second = event.touches[1];
@@ -374,7 +437,12 @@ function showIosImagePreview(items: NativeImagePreviewItem[], startIndex: number
     }
   }, { passive: false });
   overlay.addEventListener("touchend", (event) => {
+    if (gestureLockedByControl) {
+      if (event.touches.length === 0) gestureLockedByControl = false;
+      return;
+    }
     if (event.touches.length > 0) return;
+
     const touch = event.changedTouches[0];
     const deltaX = touch.clientX - touchStartX;
     const deltaY = touch.clientY - touchStartY;
@@ -397,12 +465,18 @@ function showIosImagePreview(items: NativeImagePreviewItem[], startIndex: number
     if (Math.abs(deltaX) < 48 || Math.abs(deltaX) < Math.abs(deltaY) * 1.4) return;
     move(deltaX > 0 ? -1 : 1);
   }, { passive: true });
+  overlay.addEventListener("touchcancel", () => {
+    startDistance = 0;
+    gestureLockedByControl = false;
+  });
 
   overlay.dataset.previousBodyOverflow = document.body.style.overflow;
   document.head.appendChild(style);
   document.body.appendChild(overlay);
   document.body.style.overflow = "hidden";
+  (window as any)[cleanupKey] = close;
   window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("resize", onResize);
   render();
   return true;
 }
