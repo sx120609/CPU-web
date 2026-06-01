@@ -104,6 +104,14 @@
           <span class="ai-label">图片审核 API Key</span>
           <el-input v-model="form.imageReviewApiKey" maxlength="240" show-password placeholder="sk-..." />
         </div>
+        <div class="ai-row">
+          <span class="ai-label">图片自动通过</span>
+          <el-input-number v-model="form.imageReviewAutoPassScore" :min="0" :max="100" />
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">图片自动拦截</span>
+          <el-input-number v-model="form.imageReviewBlockScore" :min="0" :max="100" />
+        </div>
       </div>
 
       <div class="prompt-card">
@@ -226,6 +234,8 @@ const form = reactive<SiteConfig>({
   imageReviewUserPrompt: "",
   aiReviewAutoPassScore: 24,
   aiReviewBlockScore: 70,
+  imageReviewAutoPassScore: 36,
+  imageReviewBlockScore: 82,
   aiReviewForceBlockScore: 90,
   aiEditSimilarityThreshold: 0,
   aiTopicReviewSystemPrompt: "",
@@ -292,6 +302,8 @@ async function saveConfig() {
       imageReviewUserPrompt: form.imageReviewUserPrompt,
       aiReviewAutoPassScore: form.aiReviewAutoPassScore,
       aiReviewBlockScore: form.aiReviewBlockScore,
+      imageReviewAutoPassScore: form.imageReviewAutoPassScore,
+      imageReviewBlockScore: form.imageReviewBlockScore,
       aiReviewForceBlockScore: form.aiReviewForceBlockScore,
       aiEditSimilarityThreshold: form.aiEditSimilarityThreshold,
       aiTopicReviewSystemPrompt: form.aiTopicReviewSystemPrompt,

@@ -820,7 +820,7 @@ async function requestImageReview(input: {
   const parsed = parseImageReviewJson(content);
   const riskScore = clampImageRiskScore(parsed.risk_score, parsed.approved);
   const riskLevel = normalizeImageRiskLevel(parsed.risk_level, riskScore);
-  const decision = normalizeImageDecision(parsed.decision, parsed.approved, riskScore, config.aiReviewAutoPassScore, config.aiReviewBlockScore);
+  const decision = normalizeImageDecision(parsed.decision, parsed.approved, riskScore, config.imageReviewAutoPassScore, config.imageReviewBlockScore);
   return {
     approved: decision === "auto_pass",
     reason: String(parsed.reason || fallbackImageReason(riskLevel, decision)).slice(0, 120),

@@ -14,6 +14,8 @@ export type SiteConfig = {
   imageReviewUserPrompt: string;
   aiReviewAutoPassScore: number;
   aiReviewBlockScore: number;
+  imageReviewAutoPassScore: number;
+  imageReviewBlockScore: number;
   aiReviewForceBlockScore: number;
   aiEditSimilarityThreshold: number;
   aiTopicReviewSystemPrompt: string;
@@ -240,6 +242,8 @@ export const adminApi = {
     imageReviewUserPrompt?: string;
     aiReviewAutoPassScore?: number;
     aiReviewBlockScore?: number;
+    imageReviewAutoPassScore?: number;
+    imageReviewBlockScore?: number;
     aiReviewForceBlockScore?: number;
     aiEditSimilarityThreshold?: number;
     aiTopicReviewSystemPrompt?: string;

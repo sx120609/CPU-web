@@ -65,6 +65,9 @@ type DeepSeekEditSimilarityResponse = {
 };
 
 const REVIEW_API_URL = "https://api.deepseek.com/chat/completions";
+const MARKDOWN_IMAGE_RE = /!\[[^\]]*\]\([^)]*\)/g;
+const HTML_IMAGE_RE = /<img\b[^>]*>/gi;
+const HTML_TAG_RE = /<[^>]+>/g;
 
 export function shouldBypassAiReview(role: string | null | undefined) {
   return role === "bot";
@@ -177,7 +180,7 @@ export async function reviewTopicContent(input: {
         boardName: input.boardName,
         boardType: input.boardType,
         title: input.title,
-        content: input.content,
+        content: normalizeTextContentForAiReview(input.content),
         metadataJson: JSON.stringify(input.metadata ?? {}),
       }),
     },
@@ -234,8 +237,8 @@ export async function reviewReplyContent(input: {
         topicTitle: input.topicTitle,
         boardName: input.boardName,
         boardType: input.boardType,
-        parentContent: input.parentContent,
-        content: input.content,
+        parentContent: normalizeTextContentForAiReview(input.parentContent || ""),
+        content: normalizeTextContentForAiReview(input.content),
       }),
     },
   ], {
@@ -378,6 +381,19 @@ function stringifyPromptValue(value: unknown) {
   } catch {
     return String(value);
   }
+}
+
+function normalizeTextContentForAiReview(content: string) {
+  return String(content || "")
+    .replace(MARKDOWN_IMAGE_RE, "\n")
+    .replace(HTML_IMAGE_RE, "\n")
+    .replace(/\n?\[图片\]\n?/g, "\n")
+    .replace(HTML_TAG_RE, " ")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, "$1")
+    .replace(/\s+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
 }
 
 export async function generateTopicAiTags(input: {

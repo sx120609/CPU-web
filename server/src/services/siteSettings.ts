@@ -32,6 +32,8 @@ export type SiteConfig = {
   imageReviewUserPrompt: string;
   aiReviewAutoPassScore: number;
   aiReviewBlockScore: number;
+  imageReviewAutoPassScore: number;
+  imageReviewBlockScore: number;
   aiReviewForceBlockScore: number;
   aiEditSimilarityThreshold: number;
   aiTopicReviewSystemPrompt: string;
@@ -93,6 +95,8 @@ const IMAGE_REVIEW_SYSTEM_PROMPT_KEY = "ai.imageReview.systemPrompt";
 const IMAGE_REVIEW_USER_PROMPT_KEY = "ai.imageReview.userPrompt";
 const AI_REVIEW_AUTO_PASS_SCORE_KEY = "ai.review.autoPassScore";
 const AI_REVIEW_BLOCK_SCORE_KEY = "ai.review.blockScore";
+const IMAGE_REVIEW_AUTO_PASS_SCORE_KEY = "ai.imageReview.autoPassScore";
+const IMAGE_REVIEW_BLOCK_SCORE_KEY = "ai.imageReview.blockScore";
 const AI_REVIEW_FORCE_BLOCK_SCORE_KEY = "ai.review.forceBlockScore";
 const AI_EDIT_SIMILARITY_THRESHOLD_KEY = "ai.review.editSimilarityThreshold";
 const AI_TOPIC_REVIEW_SYSTEM_PROMPT_KEY = "ai.review.topic.systemPrompt";
@@ -114,22 +118,24 @@ const ANONYMOUS_TIERS_KEY = "forum.anonymous.tiers";
 const REPUTATION_LEVELS_KEY = "forum.reputation.levels";
 
 export const DEFAULT_AI_PROMPTS = {
-  topicReviewSystem: "你是校园社区内容安全审核助手。你需要根据用户稿件判断风险，只返回 JSON。请关注违法、辱骂、人身攻击、隐私泄露、联系方式引流、诈骗、色情、诽谤、校园敏感舆情等风险。",
+  topicReviewSystem: "你是校园社区文字内容安全审核助手。你只根据标题、正文中的文字内容做判断，不要根据图片、图片占位符、图片链接、附件、分享卡片或外链落地页的想象内容加重风险。本站用户均为成年人，因此不需要对普通成人表达、恋爱讨论、两性话题、情绪吐槽采取过严标准；仅在出现违法、露骨色情、骚扰引导、仇恨攻击、性别对立煽动、隐私泄露、联系方式引流、诈骗、诽谤、极端政治动员等明确风险时提高分数。只返回 JSON。",
   topicReviewUser: [
     "请审核以下校园社区稿件，输出 JSON：",
-    "{\"risk_score\":0-100,\"risk_level\":\"low|medium|high\",\"decision\":\"auto_pass|manual_review|block\",\"reason\":\"一句短原因\",\"detail\":\"补充说明\",\"categories\":{\"violence\":0-100,\"porn\":0-100,\"abuse\":0-100,\"privacy\":0-100,\"fraud\":0-100,\"political\":0-100,\"defamation\":0-100,\"spam\":0-100}}",
+    "{\"risk_score\":0-100,\"risk_level\":\"low|medium|high\",\"decision\":\"auto_pass|manual_review|block\",\"reason\":\"一句短原因\",\"detail\":\"补充说明\",\"categories\":{\"violence\":0-100,\"porn_explicit\":0-100,\"abuse\":0-100,\"privacy\":0-100,\"fraud\":0-100,\"political_extremism\":0-100,\"defamation\":0-100,\"spam\":0-100,\"gender_conflict\":0-100}}",
     "",
+    "注意：只审核文字内容，不审核图片本身、图片链接、图片占位符、分享卡片预览图或外链落地页内容。",
     "板块名称：{{boardName}}",
     "板块类型：{{boardType}}",
     "标题：{{title}}",
     "正文：{{content}}",
     "补充 metadata：{{metadataJson}}",
   ].join("\n"),
-  replyReviewSystem: "你是校园社区内容安全审核助手。你需要根据用户回复判断风险，只返回 JSON。请关注违法、辱骂、人身攻击、隐私泄露、联系方式引流、诈骗、色情、诽谤、校园敏感舆情等风险。",
+  replyReviewSystem: "你是校园社区文字内容安全审核助手。你只根据回复中的文字内容做判断，不要根据图片、图片占位符、图片链接、附件、分享卡片或外链落地页的想象内容加重风险。本站用户均为成年人，因此不需要对普通成人表达、恋爱讨论、两性话题、情绪吐槽采取过严标准；仅在出现违法、露骨色情、骚扰引导、仇恨攻击、性别对立煽动、隐私泄露、联系方式引流、诈骗、诽谤、极端政治动员等明确风险时提高分数。只返回 JSON。",
   replyReviewUser: [
     "请审核以下校园社区回复，输出 JSON：",
-    "{\"risk_score\":0-100,\"risk_level\":\"low|medium|high\",\"decision\":\"auto_pass|manual_review|block\",\"reason\":\"一句短原因\",\"detail\":\"补充说明\",\"categories\":{\"violence\":0-100,\"porn\":0-100,\"abuse\":0-100,\"privacy\":0-100,\"fraud\":0-100,\"political\":0-100,\"defamation\":0-100,\"spam\":0-100}}",
+    "{\"risk_score\":0-100,\"risk_level\":\"low|medium|high\",\"decision\":\"auto_pass|manual_review|block\",\"reason\":\"一句短原因\",\"detail\":\"补充说明\",\"categories\":{\"violence\":0-100,\"porn_explicit\":0-100,\"abuse\":0-100,\"privacy\":0-100,\"fraud\":0-100,\"political_extremism\":0-100,\"defamation\":0-100,\"spam\":0-100,\"gender_conflict\":0-100}}",
     "",
+    "注意：只审核文字内容，不审核图片本身、图片链接、图片占位符、分享卡片预览图或外链落地页内容。",
     "所属帖子标题：{{topicTitle}}",
     "板块名称：{{boardName}}",
     "板块类型：{{boardType}}",
@@ -195,6 +201,8 @@ const configCache: SiteConfig = {
   imageReviewUserPrompt: DEFAULT_IMAGE_REVIEW_PROMPTS.user,
   aiReviewAutoPassScore: 24,
   aiReviewBlockScore: 70,
+  imageReviewAutoPassScore: 36,
+  imageReviewBlockScore: 82,
   aiReviewForceBlockScore: 90,
   aiEditSimilarityThreshold: 0,
   aiTopicReviewSystemPrompt: DEFAULT_AI_PROMPTS.topicReviewSystem,
@@ -258,6 +266,8 @@ export async function loadFeatures(): Promise<void> {
           IMAGE_REVIEW_USER_PROMPT_KEY,
           AI_REVIEW_AUTO_PASS_SCORE_KEY,
           AI_REVIEW_BLOCK_SCORE_KEY,
+          IMAGE_REVIEW_AUTO_PASS_SCORE_KEY,
+          IMAGE_REVIEW_BLOCK_SCORE_KEY,
           AI_REVIEW_FORCE_BLOCK_SCORE_KEY,
           AI_EDIT_SIMILARITY_THRESHOLD_KEY,
           AI_TOPIC_REVIEW_SYSTEM_PROMPT_KEY,
@@ -336,6 +346,14 @@ export async function loadFeatures(): Promise<void> {
     }
     if (r.key === AI_REVIEW_BLOCK_SCORE_KEY) {
       configCache.aiReviewBlockScore = normalizeAiScore(r.value, 70);
+      continue;
+    }
+    if (r.key === IMAGE_REVIEW_AUTO_PASS_SCORE_KEY) {
+      configCache.imageReviewAutoPassScore = normalizeAiScore(r.value, 36);
+      continue;
+    }
+    if (r.key === IMAGE_REVIEW_BLOCK_SCORE_KEY) {
+      configCache.imageReviewBlockScore = normalizeAiScore(r.value, 82);
       continue;
     }
     if (r.key === AI_REVIEW_FORCE_BLOCK_SCORE_KEY) {
@@ -634,6 +652,8 @@ function normalizeReputationLevels(
 function sanitizeAiReviewConfig() {
   configCache.aiReviewAutoPassScore = normalizeAiScore(configCache.aiReviewAutoPassScore, 24);
   configCache.aiReviewBlockScore = normalizeAiScore(configCache.aiReviewBlockScore, 70);
+  configCache.imageReviewAutoPassScore = normalizeAiScore(configCache.imageReviewAutoPassScore, 36);
+  configCache.imageReviewBlockScore = normalizeAiScore(configCache.imageReviewBlockScore, 82);
   configCache.aiReviewForceBlockScore = normalizeAiScore(configCache.aiReviewForceBlockScore, 90);
   configCache.aiEditSimilarityThreshold = normalizeAiRatio(configCache.aiEditSimilarityThreshold, 0);
   configCache.aiTopicReviewSystemPrompt = normalizePromptTemplate(configCache.aiTopicReviewSystemPrompt, DEFAULT_AI_PROMPTS.topicReviewSystem);
@@ -647,6 +667,9 @@ function sanitizeAiReviewConfig() {
   }
   if (configCache.aiReviewForceBlockScore < configCache.aiReviewBlockScore) {
     configCache.aiReviewForceBlockScore = configCache.aiReviewBlockScore;
+  }
+  if (configCache.imageReviewBlockScore < configCache.imageReviewAutoPassScore) {
+    configCache.imageReviewBlockScore = configCache.imageReviewAutoPassScore;
   }
   if (!configCache.aiReviewProvider) configCache.aiReviewProvider = "deepseek";
   if (!configCache.aiReviewModel) configCache.aiReviewModel = "deepseek-v4-flash";
@@ -699,6 +722,8 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
     imageReviewUserPrompt: resolvePromptTemplate(input.imageReviewUserPrompt, configCache.imageReviewUserPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.user),
     aiReviewAutoPassScore: normalizeAiScore(input.aiReviewAutoPassScore, configCache.aiReviewAutoPassScore),
     aiReviewBlockScore: normalizeAiScore(input.aiReviewBlockScore, configCache.aiReviewBlockScore),
+    imageReviewAutoPassScore: normalizeAiScore(input.imageReviewAutoPassScore, configCache.imageReviewAutoPassScore),
+    imageReviewBlockScore: normalizeAiScore(input.imageReviewBlockScore, configCache.imageReviewBlockScore),
     aiReviewForceBlockScore: normalizeAiScore(input.aiReviewForceBlockScore, configCache.aiReviewForceBlockScore),
     aiEditSimilarityThreshold: normalizeAiRatio(input.aiEditSimilarityThreshold, configCache.aiEditSimilarityThreshold),
     aiTopicReviewSystemPrompt: resolvePromptTemplate(input.aiTopicReviewSystemPrompt, configCache.aiTopicReviewSystemPrompt, DEFAULT_AI_PROMPTS.topicReviewSystem),
@@ -713,6 +738,9 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
   }
   if (next.aiReviewForceBlockScore < next.aiReviewBlockScore) {
     throw new Error("AI 强制拦截阈值不能低于自动拦截阈值");
+  }
+  if (next.imageReviewBlockScore < next.imageReviewAutoPassScore) {
+    throw new Error("图片自动拦截阈值不能低于图片自动通过阈值");
   }
   await prisma.$transaction([
     prisma.siteSetting.upsert({
@@ -774,6 +802,16 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       where: { key: AI_REVIEW_BLOCK_SCORE_KEY },
       update: { value: String(next.aiReviewBlockScore) },
       create: { key: AI_REVIEW_BLOCK_SCORE_KEY, value: String(next.aiReviewBlockScore) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: IMAGE_REVIEW_AUTO_PASS_SCORE_KEY },
+      update: { value: String(next.imageReviewAutoPassScore) },
+      create: { key: IMAGE_REVIEW_AUTO_PASS_SCORE_KEY, value: String(next.imageReviewAutoPassScore) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: IMAGE_REVIEW_BLOCK_SCORE_KEY },
+      update: { value: String(next.imageReviewBlockScore) },
+      create: { key: IMAGE_REVIEW_BLOCK_SCORE_KEY, value: String(next.imageReviewBlockScore) },
     }),
     prisma.siteSetting.upsert({
       where: { key: AI_REVIEW_FORCE_BLOCK_SCORE_KEY },

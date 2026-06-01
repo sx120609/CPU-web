@@ -1334,6 +1334,8 @@ const siteConfigPatchSchema = z.object({
   imageReviewUserPrompt: z.string().max(12000).optional(),
   aiReviewAutoPassScore: z.number().int().min(0).max(100).optional(),
   aiReviewBlockScore: z.number().int().min(0).max(100).optional(),
+  imageReviewAutoPassScore: z.number().int().min(0).max(100).optional(),
+  imageReviewBlockScore: z.number().int().min(0).max(100).optional(),
   aiReviewForceBlockScore: z.number().int().min(0).max(100).optional(),
   aiEditSimilarityThreshold: z.number().min(0).max(1).optional(),
   aiTopicReviewSystemPrompt: z.string().max(8000).optional(),
@@ -1377,6 +1379,8 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       req.body.imageReviewUserPrompt !== undefined ||
       req.body.aiReviewAutoPassScore !== undefined ||
       req.body.aiReviewBlockScore !== undefined ||
+      req.body.imageReviewAutoPassScore !== undefined ||
+      req.body.imageReviewBlockScore !== undefined ||
       req.body.aiReviewForceBlockScore !== undefined ||
       req.body.aiEditSimilarityThreshold !== undefined ||
       req.body.aiTopicReviewSystemPrompt !== undefined ||
