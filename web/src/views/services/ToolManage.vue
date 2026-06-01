@@ -554,14 +554,6 @@
                     </tbody>
                   </table>
                 </div>
-                <div class="grade-preview-card-list">
-                  <article v-for="(row, index) in gradeForm.rows.slice(0, 4)" :key="`preview-${index}`" class="grade-preview-card">
-                    <div v-for="column in gradeForm.columns.slice(0, 6)" :key="column" class="grade-preview-item">
-                      <b>{{ column }}</b>
-                      <span>{{ row[column] || "-" }}</span>
-                    </div>
-                  </article>
-                </div>
               </div>
             </div>
 
@@ -2801,7 +2793,10 @@ function round(value: number) {
   margin-bottom: 10px;
 }
 .grade-preview-table-wrap {
-  display: none;
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #eef0f4;
+  border-radius: 8px;
 }
 .grade-preview-table {
   width: 100%;
@@ -2821,33 +2816,6 @@ function round(value: number) {
   color: #6b7280;
   background: #f9fafb;
   font-weight: 650;
-}
-.grade-preview-card-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 10px;
-}
-.grade-preview-card {
-  display: grid;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid #eef0f4;
-  border-radius: 10px;
-  background: #fff;
-}
-.grade-preview-item {
-  display: grid;
-  gap: 4px;
-}
-.grade-preview-item b {
-  color: #111827;
-  font-size: 12px;
-}
-.grade-preview-item span {
-  color: #6b7280;
-  font-size: 12px;
-  line-height: 1.5;
-  word-break: break-word;
 }
 .questionnaire-list-cards {
   display: flex;

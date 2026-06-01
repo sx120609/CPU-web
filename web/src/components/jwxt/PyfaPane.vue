@@ -221,16 +221,14 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
 }
 .sem-val { color: #6b7280; white-space: nowrap; }
 .table-scroll {
-  display: none;
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .table-scroll :deep(.el-table) {
   min-width: 1000px;
 }
-.mobile-course-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 12px;
-}
+.mobile-course-list { display: none; }
 
 .pyfa-card {
   padding: 12px;
@@ -309,8 +307,11 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
     white-space: normal;
   }
 
+  .table-scroll { display: none; }
+
   .mobile-course-list {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
     gap: 10px;
   }
 }

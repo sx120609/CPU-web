@@ -421,16 +421,14 @@ function scoreColor(s: string) {
 .cnt { font-size: 12px; color: #9ca3af; }
 .cpu-muted { color: #9ca3af; }
 .table-scroll {
-  display: none;
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .table-scroll :deep(.el-table) {
   min-width: 760px;
 }
-.course-card-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 12px;
-}
+.course-card-list { display: none; }
 
 .course-card {
   border: 1px solid #eef0f4;
@@ -519,8 +517,11 @@ function scoreColor(s: string) {
     padding: 12px;
   }
 
+  .table-scroll { display: none; }
+
   .course-card-list {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
     gap: 10px;
   }
 }
