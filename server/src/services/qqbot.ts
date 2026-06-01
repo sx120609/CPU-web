@@ -1654,6 +1654,11 @@ async function extractMessageText(
   if (typeof message === "string") return cleanCqMessage(message);
   if (message && typeof message === "object") {
     const maybeMessage = message as any;
+    if (maybeMessage.type === "node") {
+      if (maybeMessage.data?.id) return renderNestedForwardContent(maybeMessage.data.id, (options.forwardDepth ?? 0) + 1);
+      if (Array.isArray(maybeMessage.data?.content)) return extractMessageText(maybeMessage.data.content, options);
+      if (typeof maybeMessage.data?.content === "string") return cleanCqMessage(maybeMessage.data.content);
+    }
     if (Array.isArray(maybeMessage.message)) return extractMessageText(maybeMessage.message, options);
     if (Array.isArray(maybeMessage.content)) return extractMessageText(maybeMessage.content, options);
     if (typeof maybeMessage.message === "string") return cleanCqMessage(maybeMessage.message);
@@ -1674,6 +1679,15 @@ async function renderMessageSegment(seg: any, forwardDepth: number): Promise<str
     const url = await resolveQqImageUrl(seg.data?.url, seg.data?.file);
     return url ? `\n![QQ图片](${url})\n` : "\n[图片]\n";
   }
+  if (seg?.type === "forward" || seg?.type === "node") {
+    if (seg?.data?.id) {
+      return renderNestedForwardContent(seg.data.id, forwardDepth + 1);
+    }
+    if (seg?.type === "node" && seg?.data?.content) {
+      const nested = await extractMessageText(seg.data.content, { forwardDepth });
+      if (nested.trim()) return `\n${quoteMarkdownBlock(nested)}\n`;
+    }
+  }
   if (seg?.type === "forward") {
     return renderNestedForwardContent(seg.data?.id, forwardDepth + 1);
   }
@@ -1683,9 +1697,7 @@ async function renderMessageSegment(seg: any, forwardDepth: number): Promise<str
 }
 
 async function extractForwardPayload(message: unknown): Promise<(ParsedForwardPayload & { source: ForwardSource }) | null> {
-  if (!Array.isArray(message)) return null;
-  const forwardSeg = message.find((seg: any) => seg?.type === "forward" && seg?.data?.id);
-  const forwardId = String(forwardSeg?.data?.id || "").trim();
+  const forwardId = extractForwardNodeId(message);
   if (forwardId) {
     const payload = await callQqBotAction("get_forward_msg", { id: forwardId }).catch(() => null);
     const parsed = await parseForwardMessages(payload?.data?.messages, forwardId, 0);
@@ -1694,11 +1706,8 @@ async function extractForwardPayload(message: unknown): Promise<(ParsedForwardPa
   const replyId = extractReplyMessageId(message);
   if (!replyId) return null;
   const replied = await callQqBotAction("get_msg", { message_id: Number(replyId) || replyId }).catch(() => null);
-  const replyMessage = replied?.data?.message;
-  const replyForwardSeg = Array.isArray(replyMessage)
-    ? replyMessage.find((seg: any) => seg?.type === "forward" && seg?.data?.id)
-    : null;
-  const replyForwardId = String(replyForwardSeg?.data?.id || "").trim();
+  const replyMessage = replied?.data?.message ?? replied?.data?.content;
+  const replyForwardId = extractForwardNodeId(replyMessage);
   if (!replyForwardId) return null;
   const payload = await callQqBotAction("get_forward_msg", { id: replyForwardId }).catch(() => null);
   const parsed = await parseForwardMessages(payload?.data?.messages, replyForwardId, 0);
@@ -1712,8 +1721,24 @@ async function parseForwardMessages(messages: unknown, forwardId: string, forwar
   const summaryBits: string[] = [];
   for (let index = 0; index < list.length; index += 1) {
     const item = list[index];
-    const nickname = String(item?.sender?.nickname || item?.sender?.user_id || "QQ用户");
-    const text = (await extractMessageText(item?.content || item?.message || "", { forwardDepth })).trim();
+    const node = item?.data ?? item;
+    const nickname = String(
+      node?.sender?.nickname
+      || node?.sender?.card
+      || node?.nickname
+      || node?.user_id
+      || item?.sender?.nickname
+      || item?.sender?.user_id
+      || "QQ用户",
+    );
+    const text = (await extractMessageText(
+      node?.content
+      ?? node?.message
+      ?? item?.content
+      ?? item?.message
+      ?? "",
+      { forwardDepth },
+    )).trim();
     if (!text) continue;
     blocks.push(renderForwardMessageBlock(index + 1, nickname, text));
     summaryBits.push(`${nickname}：${forwardSummaryPreview(text)}`);
@@ -1732,9 +1757,38 @@ function extractReplyMessageId(message: unknown) {
   return String(replySeg?.data?.id || "").trim();
 }
 
+function extractForwardNodeId(message: unknown): string {
+  if (!message) return "";
+  if (Array.isArray(message)) {
+    for (const seg of message) {
+      const nested = extractForwardNodeId(seg);
+      if (nested) return nested;
+    }
+    return "";
+  }
+  if (typeof message === "string") {
+    const match = message.match(/\[CQ:(?:forward|node),[^\]]*(?:id|resid|forward_id|message_id)=([^,\]]+)/i);
+    return String(match?.[1] || "").trim();
+  }
+  if (typeof message === "object") {
+    const item = message as any;
+    if ((item?.type === "forward" || item?.type === "node") && item?.data) {
+      const id = item.data.id || item.data.resid || item.data.forward_id || item.data.message_id;
+      if (id) return String(id).trim();
+      if (item.data.content) return extractForwardNodeId(item.data.content);
+      if (item.data.message) return extractForwardNodeId(item.data.message);
+    }
+    if (item?.content) return extractForwardNodeId(item.content);
+    if (item?.message) return extractForwardNodeId(item.message);
+    if (item?.data?.content) return extractForwardNodeId(item.data.content);
+    if (item?.data?.message) return extractForwardNodeId(item.data.message);
+  }
+  return "";
+}
+
 async function cleanCqMessage(value: string) {
   let normalized = String(value || "");
-  const mediaMatches = Array.from(normalized.matchAll(/\[CQ:(image|forward),([^\]]*)\]/g));
+  const mediaMatches = Array.from(normalized.matchAll(/\[CQ:(image|forward|node),([^\]]*)\]/g));
   for (const match of mediaMatches) {
     const raw = match[0];
     const type = String(match[1] || "").trim();
@@ -1744,7 +1798,7 @@ async function cleanCqMessage(value: string) {
       normalized = normalized.replace(raw, url ? `\n![QQ图片](${url})\n` : "\n[图片]\n");
       continue;
     }
-    const forwardId = attrs.id || attrs.resid || attrs.file || attrs.message_id;
+    const forwardId = attrs.id || attrs.resid || attrs.file || attrs.message_id || attrs.forward_id;
     const expanded = await renderNestedForwardContent(forwardId, 1);
     normalized = normalized.replace(raw, expanded || "\n[合并转发]\n");
   }
