@@ -745,6 +745,7 @@ async function submitQqPost(context: {
         "已搬运到平台，但暂未通过 AI 初审",
         `原因：${topic.aiReviewReason || "需要人工复核"}`,
         topicLink ? `链接：${topicLink}` : `/forum/topic/${topic.id}`,
+        "打开链接后可申请人工复核。",
       ].join("\n"),
       topicId: topic.id,
     };
@@ -809,6 +810,7 @@ async function handleConversationMessage(
     if (/^(是|好|好的|继续|发送|确认|就这样|可以)$/i.test(text)) {
       if ((conversation.draftContent || "").trim()) {
         try {
+          await replyToPostingConversation(conversation, context, "已收到投稿确认，正在处理中，请耐心稍候。").catch(() => null);
           const result = await submitConversationPost(conversation.id, context);
           await replyToPostingConversation(conversation, context, result.message);
           return { ok: true, topicId: result.topicId };
@@ -960,6 +962,7 @@ async function handleConversationMessage(
   if (conversation.step === "await-submit-confirm") {
     if (isConfirmPublishMessage(text)) {
       try {
+        await replyToPostingConversation(conversation, context, "已收到投稿确认，正在处理中，请耐心稍候。").catch(() => null);
         const result = await submitConversationPost(conversation.id, context);
         await replyToPostingConversation(conversation, context, result.message);
         return { ok: true, topicId: result.topicId };

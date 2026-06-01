@@ -100,6 +100,20 @@
         <el-button v-if="canReviewTopicImages" link type="danger" @click="openTopicImageReviewDialog">手动复核图片</el-button>
       </div>
 
+      <div v-if="canRequestTopicManualReview" class="topic-review-tip cpu-card">
+        <div class="review-blocked">
+          <p>这篇稿件被 AI 拦截了，当前仅你自己和管理员可见。</p>
+          <p v-if="topic.aiReviewReason">审核说明：{{ topic.aiReviewReason }}</p>
+          <p class="cpu-muted">你可以修改后再试，或申请人工复核。复核期间暂时不能继续提交新内容。</p>
+        </div>
+        <div class="topic-review-actions">
+          <el-button type="warning" :loading="requestingTopicManualReview" @click="topicManualReviewConfirmOpen = true">申请人工复核</el-button>
+        </div>
+      </div>
+      <div v-else-if="isOwnTopicManualReviewPending" class="topic-review-tip cpu-card topic-review-tip-pending">
+        <p>这篇稿件已提交人工复核，当前仅你自己和管理员可见。请耐心等待审核结果。</p>
+      </div>
+
       <MarkdownView :content="displayContent" class="post-body topic-markdown" clickable-images />
 
       <footer class="post-foot">
@@ -367,6 +381,12 @@
       @confirm="confirmReplyManualReviewRequest"
     />
 
+    <ManualReviewConfirmDialog
+      v-model="topicManualReviewConfirmOpen"
+      subject="稿件"
+      @confirm="confirmTopicManualReviewRequest"
+    />
+
     <div v-if="topic.locked" class="locked-tip cpu-card">🔒 该帖已锁定，无法回复</div>
     <div v-if="!auth.isLoggedIn" class="login-tip cpu-card">
       <router-link to="/login">登录</router-link> 或 <router-link to="/register">注册</router-link> 后参与回复
@@ -421,6 +441,8 @@ const topicImageReviewAssets = ref<ForumImageReviewAsset[]>([]);
 const replyReviewBlockedOpen = ref(false);
 const requestingReplyManualReview = ref(false);
 const replyManualReviewConfirmOpen = ref(false);
+const requestingTopicManualReview = ref(false);
+const topicManualReviewConfirmOpen = ref(false);
 const blockedReplyId = ref<number | null>(null);
 const blockedReplyInfo = reactive<{ reason: string; riskScore: number | null }>({
   reason: "",
@@ -484,6 +506,18 @@ const canEdit = computed(() =>
   auth.isAdmin ||
   (auth.isMod && !isReadOnly.value)
 );
+const canRequestTopicManualReview = computed(() => Boolean(
+  auth.isLoggedIn &&
+  auth.user?.id === topic.value?.authorId &&
+  topic.value?.hidden &&
+  topic.value?.aiReviewStatus === "blocked_ai"
+));
+const isOwnTopicManualReviewPending = computed(() => Boolean(
+  auth.isLoggedIn &&
+  auth.user?.id === topic.value?.authorId &&
+  topic.value?.hidden &&
+  ["manual_requested", "manual_reviewing"].includes(String(topic.value?.aiReviewStatus || ""))
+));
 const canPin = computed(() => auth.isMod);
 const canReviewTopicImages = computed(() => (
   auth.isMod &&
@@ -719,6 +753,20 @@ async function confirmReplyManualReviewRequest() {
     ElMessage.success("已提交回复人工复核申请");
   } finally {
     requestingReplyManualReview.value = false;
+  }
+}
+
+async function confirmTopicManualReviewRequest() {
+  if (!topic.value?.id || !canRequestTopicManualReview.value) return;
+  requestingTopicManualReview.value = true;
+  try {
+    await topicApi.requestManualReview(topic.value.id);
+    await auth.fetchMe();
+    topic.value.aiReviewStatus = "manual_requested";
+    topicManualReviewConfirmOpen.value = false;
+    ElMessage.success("已提交人工复核申请");
+  } finally {
+    requestingTopicManualReview.value = false;
   }
 }
 
@@ -1123,6 +1171,22 @@ async function onDelete() {
   background: #fef2f2;
   border: 1px solid #fecaca;
   color: #b91c1c;
+}
+
+.topic-review-tip {
+  margin-top: 12px;
+}
+
+.topic-review-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.topic-review-tip-pending {
+  border: 1px solid #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
 }
 
 .post-foot {
