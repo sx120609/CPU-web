@@ -1655,7 +1655,7 @@ async function extractMessageText(
   if (message && typeof message === "object") {
     const maybeMessage = message as any;
     if (maybeMessage.type === "node") {
-      if (maybeMessage.data?.id) return renderNestedForwardContent(maybeMessage.data.id, (options.forwardDepth ?? 0) + 1);
+      if (maybeMessage.data?.id) return resolveReferencedNodeContent(maybeMessage.data.id, options.forwardDepth ?? 0);
       if (Array.isArray(maybeMessage.data?.content)) return extractMessageText(maybeMessage.data.content, options);
       if (typeof maybeMessage.data?.content === "string") return cleanCqMessage(maybeMessage.data.content);
     }
@@ -1681,7 +1681,7 @@ async function renderMessageSegment(seg: any, forwardDepth: number): Promise<str
   }
   if (seg?.type === "forward" || seg?.type === "node") {
     if (seg?.data?.id) {
-      return renderNestedForwardContent(seg.data.id, forwardDepth + 1);
+      return resolveReferencedNodeContent(seg.data.id, forwardDepth);
     }
     if (seg?.type === "node" && seg?.data?.content) {
       const nested = await extractMessageText(seg.data.content, { forwardDepth });
@@ -1970,6 +1970,19 @@ async function renderNestedForwardContent(forwardId: unknown, forwardDepth: numb
   const parsed = await parseForwardMessages(payload?.data?.messages, normalizedId, forwardDepth);
   if (!parsed?.content) return "\n[合并转发]\n";
   return `\n${quoteMarkdownBlock(`转发消息\n${parsed.content}`)}\n`;
+}
+
+async function resolveReferencedNodeContent(messageId: unknown, forwardDepth: number) {
+  const normalizedId = String(messageId || "").trim();
+  if (!normalizedId) return "\n[合并转发]\n";
+  const referenced = await callQqBotAction("get_msg", { message_id: Number(normalizedId) || normalizedId }).catch(() => null);
+  const message = referenced?.data?.message ?? referenced?.data?.content;
+  const forwardId = extractForwardNodeId(message);
+  if (forwardId) {
+    return renderNestedForwardContent(forwardId, forwardDepth + 1);
+  }
+  const text = await extractMessageText(message, { forwardDepth }).catch(() => "");
+  return text.trim() ? `\n${quoteMarkdownBlock(text)}\n` : "\n[合并转发]\n";
 }
 
 function renderForwardMessageBlock(index: number, nickname: string, text: string) {
