@@ -308,6 +308,81 @@ watch(() => props.clickableImages, () => nextTick(bindImageViewer));
   border-color: #fecaca;
   color: #b91c1c;
 }
+.md :deep(.qq-share-card) {
+  display: block;
+  margin: 12px 0;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 100%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.02) 0%, rgba(22, 135, 118, 0.04) 100%);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.md :deep(.qq-share-card--linked:hover) {
+  transform: translateY(-1px);
+  border-color: rgba(22, 135, 118, 0.24);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
+}
+.md :deep(.qq-share-card__eyebrow) {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(22, 135, 118, 0.08);
+  color: var(--cpu-primary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.md :deep(.qq-share-card__title) {
+  margin: 0;
+  color: #111827;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.md :deep(.qq-share-card__summary) {
+  margin-top: 6px;
+  color: #4b5563;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.md :deep(.qq-share-card__meta) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.md :deep(.qq-share-card__source),
+.md :deep(.qq-share-card__host) {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1;
+}
+.md :deep(.qq-share-card__source) {
+  background: rgba(22, 135, 118, 0.1);
+  color: var(--cpu-primary);
+}
+.md :deep(.qq-share-card__action) {
+  margin-top: 12px;
+  color: var(--cpu-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+.md :deep(.qq-share-card__action::after) {
+  content: " ↗";
+}
 
 /* 表格容器（由 JS 自动包装）：只在表格超宽时才出现水平滚动条 */
 .md :deep(.md-table-wrap) {

@@ -815,6 +815,8 @@ model QqBotGroup {
   allowPosting      Boolean  @default(false)
   defaultBoardSlug  String?
   notificationEnabled Boolean @default(false)
+  notifyCategories  String   @default("[\"system\",\"school-feed\"]")
+  notifyAudiences   String   @default("[\"public\"]")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

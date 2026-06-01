@@ -49,7 +49,7 @@
               <el-checkbox v-model="form.notificationEnabled">推送站内通知</el-checkbox>
             </div>
           </el-form-item>
-          <el-form-item label="通知类型">
+          <el-form-item label="私聊通知类型">
             <el-checkbox-group v-model="form.notifyCategories">
               <el-checkbox label="reply">回复</el-checkbox>
               <el-checkbox label="mention">提及</el-checkbox>
@@ -103,7 +103,7 @@
       <div class="card-head">
         <div>
           <h3>QQ群配置</h3>
-          <p>群配置用于控制群内投稿和全局通知推送。</p>
+          <p>群配置用于控制群内投稿、公告通知，以及管理群专用的站务提醒。</p>
         </div>
         <el-button type="primary" plain @click="openGroupDialog()">添加群</el-button>
       </div>
@@ -115,6 +115,14 @@
             <el-tag :type="row.enabled ? 'success' : 'info'" size="small">{{ row.enabled ? "启用" : "停用" }}</el-tag>
             <el-tag :type="row.allowPosting ? 'warning' : 'info'" size="small">投稿 {{ row.allowPosting ? "开" : "关" }}</el-tag>
             <el-tag :type="row.notificationEnabled ? 'success' : 'info'" size="small">通知 {{ row.notificationEnabled ? "开" : "关" }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="通知规则" min-width="240">
+          <template #default="{ row }">
+            <div class="group-meta-tags">
+              <el-tag v-for="item in formatGroupNotifyCategories(row.notifyCategories)" :key="item" size="small" effect="plain">{{ item }}</el-tag>
+              <el-tag v-for="item in formatGroupNotifyAudiences(row.notifyAudiences)" :key="item" size="small" type="warning" effect="plain">{{ item }}</el-tag>
+            </div>
           </template>
         </el-table-column>
         <el-table-column prop="defaultBoardSlug" label="默认板块" width="130" />
@@ -210,8 +218,20 @@
           <div class="check-grid">
             <el-checkbox v-model="groupDialog.form.enabled">启用</el-checkbox>
             <el-checkbox v-model="groupDialog.form.allowPosting">允许投稿</el-checkbox>
-            <el-checkbox v-model="groupDialog.form.notificationEnabled">接收全局通知</el-checkbox>
+            <el-checkbox v-model="groupDialog.form.notificationEnabled">接收群通知</el-checkbox>
           </div>
+        </el-form-item>
+        <el-form-item label="通知类型">
+          <el-checkbox-group v-model="groupDialog.form.notifyCategories">
+            <el-checkbox label="system">系统公告 / 站务</el-checkbox>
+            <el-checkbox label="school-feed">校园公告</el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
+        <el-form-item label="通知受众">
+          <el-checkbox-group v-model="groupDialog.form.notifyAudiences">
+            <el-checkbox label="public">普通用户群</el-checkbox>
+            <el-checkbox label="staff">管理群（管理员 / 论坛管理员）</el-checkbox>
+          </el-checkbox-group>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -226,13 +246,13 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Download } from "@element-plus/icons-vue";
-import { adminApi, type QqBotConfig } from "@/api/admin";
+import { adminApi, type QqBotConfig, type QqBotGroup } from "@/api/admin";
 import { getToken } from "@/api/request";
 
 const config = ref<QqBotConfig | null>(null);
 const boards = ref<any[]>([]);
 const bindings = ref<any[]>([]);
-const groups = ref<any[]>([]);
+const groups = ref<QqBotGroup[]>([]);
 const logs = ref<any[]>([]);
 const logTotal = ref(0);
 const saving = ref(false);
@@ -267,6 +287,8 @@ const groupDialog = reactive({
     allowPosting: false,
     defaultBoardSlug: "",
     notificationEnabled: false,
+    notifyCategories: ["system", "school-feed"] as Array<"system" | "school-feed">,
+    notifyAudiences: ["public"] as Array<"public" | "staff">,
   },
 });
 
@@ -384,6 +406,8 @@ function openGroupDialog(row?: any) {
     allowPosting: row?.allowPosting ?? false,
     defaultBoardSlug: row?.defaultBoardSlug || "",
     notificationEnabled: row?.notificationEnabled ?? false,
+    notifyCategories: row?.notifyCategories?.length ? [...row.notifyCategories] : ["system", "school-feed"],
+    notifyAudiences: row?.notifyAudiences?.length ? [...row.notifyAudiences] : ["public"],
   });
   groupDialog.visible = true;
 }
@@ -401,6 +425,14 @@ async function removeGroup(row: any) {
   await ElMessageBox.confirm(`确认删除群 ${row.groupId}？`, "删除群配置", { type: "warning" });
   await adminApi.deleteQqBotGroup(row.id);
   await loadGroups();
+}
+
+function formatGroupNotifyCategories(items: Array<"system" | "school-feed"> = []) {
+  return items.map((item) => item === "system" ? "系统公告" : "校园公告");
+}
+
+function formatGroupNotifyAudiences(items: Array<"public" | "staff"> = []) {
+  return items.map((item) => item === "staff" ? "管理群" : "普通用户群");
 }
 
 async function loadLogs() {
@@ -548,6 +580,11 @@ function saveBlob(blob: Blob, filename: string) {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 16px;
+}
+.group-meta-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .actions {
   display: flex;

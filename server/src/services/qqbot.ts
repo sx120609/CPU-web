@@ -39,6 +39,23 @@ export type QqBotConfigView = {
   updatedAt: Date;
 };
 
+export type QqBotGroupNotifyCategory = "system" | "school-feed";
+export type QqBotGroupNotifyAudience = "public" | "staff";
+
+export type QqBotGroupView = {
+  id: number;
+  groupId: string;
+  name: string | null;
+  enabled: boolean;
+  allowPosting: boolean;
+  defaultBoardSlug: string | null;
+  notificationEnabled: boolean;
+  notifyCategories: QqBotGroupNotifyCategory[];
+  notifyAudiences: QqBotGroupNotifyAudience[];
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type UserQqBotProfileView = {
   enabled: boolean;
   botQqId: string;
@@ -138,6 +155,10 @@ const qqBotCooldowns = new Map<string, { cancelledAt?: number }>();
 
 const CONFIG_ID = 1;
 const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "like", "system"];
+const GROUP_NOTIFY_CATEGORY_OPTIONS = ["system", "school-feed"] as const;
+const GROUP_NOTIFY_AUDIENCE_OPTIONS = ["public", "staff"] as const;
+const DEFAULT_GROUP_NOTIFY_CATEGORIES = ["system", "school-feed"];
+const DEFAULT_GROUP_NOTIFY_AUDIENCES = ["public"];
 let pollerStarted = false;
 let wsClient: any = null;
 let wsConnecting = false;
@@ -176,6 +197,52 @@ export function formatQqBotConfig(config: Awaited<ReturnType<typeof getQqBotConf
     webhookPath: "/api/qqbot/webhook",
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
+  };
+}
+
+export function normalizeQqBotGroupNotifyCategories(input?: string[] | null): QqBotGroupNotifyCategory[] {
+  const normalized = normalizeAllowedStringArray(
+    input,
+    DEFAULT_GROUP_NOTIFY_CATEGORIES,
+    GROUP_NOTIFY_CATEGORY_OPTIONS,
+  );
+  return normalized as QqBotGroupNotifyCategory[];
+}
+
+export function normalizeQqBotGroupNotifyAudiences(input?: string[] | null): QqBotGroupNotifyAudience[] {
+  const normalized = normalizeAllowedStringArray(
+    input,
+    DEFAULT_GROUP_NOTIFY_AUDIENCES,
+    GROUP_NOTIFY_AUDIENCE_OPTIONS,
+  );
+  return normalized as QqBotGroupNotifyAudience[];
+}
+
+export function formatQqBotGroup(group: {
+  id: number;
+  groupId: string;
+  name: string | null;
+  enabled: boolean;
+  allowPosting: boolean;
+  defaultBoardSlug: string | null;
+  notificationEnabled: boolean;
+  notifyCategories?: string | null;
+  notifyAudiences?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): QqBotGroupView {
+  return {
+    id: group.id,
+    groupId: group.groupId,
+    name: group.name,
+    enabled: group.enabled,
+    allowPosting: group.allowPosting,
+    defaultBoardSlug: group.defaultBoardSlug,
+    notificationEnabled: group.notificationEnabled,
+    notifyCategories: normalizeQqBotGroupNotifyCategories(parseStringArray(group.notifyCategories || "", DEFAULT_GROUP_NOTIFY_CATEGORIES)),
+    notifyAudiences: normalizeQqBotGroupNotifyAudiences(parseStringArray(group.notifyAudiences || "", DEFAULT_GROUP_NOTIFY_AUDIENCES)),
+    createdAt: group.createdAt,
+    updatedAt: group.updatedAt,
   };
 }
 
@@ -1572,9 +1639,20 @@ export function startQqNotificationPoller() {
 export async function dispatchRecentQqNotifications() {
   const config = await getQqBotConfigRaw();
   if (!config.enabled || !config.notificationEnabled || !config.napcatBaseUrl) return { sent: 0 };
-  const categories = parseStringArray(config.notifyCategories, DEFAULT_NOTIFY_CATEGORIES);
+  const personalCategories = parseStringArray(config.notifyCategories, DEFAULT_NOTIFY_CATEGORIES);
   const since = new Date(Date.now() - 10 * 60 * 1000);
-  const [notifications, bindings, groups] = await Promise.all([
+  const rawGroups = await prisma.qqBotGroup.findMany({ where: { enabled: true, notificationEnabled: true } });
+  const groups = rawGroups.map((group) => formatQqBotGroup(group));
+  const groupCategorySet = new Set<string>();
+  groups.forEach((group) => {
+    group.notifyCategories.forEach((category) => groupCategorySet.add(category));
+  });
+  const categories = Array.from(new Set([
+    ...personalCategories,
+    ...groupCategorySet,
+  ]));
+  if (!categories.length) return { sent: 0 };
+  const [notifications, bindings] = await Promise.all([
     prisma.notification.findMany({
       where: {
         createdAt: { gte: since },
@@ -1604,11 +1682,11 @@ export async function dispatchRecentQqNotifications() {
                 subscribeSystem: true,
               },
             },
+            role: true,
           },
         },
       },
     }),
-    prisma.qqBotGroup.findMany({ where: { enabled: true, notificationEnabled: true } }),
   ]);
   const bindingByUserId = new Map<number, (typeof bindings)[number]>();
   for (const binding of bindings) {
@@ -1628,6 +1706,18 @@ export async function dispatchRecentQqNotifications() {
       if (await sendNotificationMessage({ qqId: binding.qqId }, item, item.userId)) {
         sent += 1;
       }
+      for (const group of groups) {
+        if (!shouldDeliverQqNotificationToGroup(group, item, binding.user.role)) continue;
+        const groupDeliveryKey = buildGroupNotificationDeliveryKey(item);
+        const existedInGroup = await prisma.qqBotMessageLog.findFirst({
+          where: { eventType: "notification", groupId: group.groupId, command: groupDeliveryKey, status: "ok" },
+          select: { id: true },
+        });
+        if (existedInGroup) continue;
+        if (await sendNotificationMessage({ groupId: group.groupId }, item, null, { command: groupDeliveryKey })) {
+          sent += 1;
+        }
+      }
     } else {
       if (!isNotificationVisibleToQq(item)) continue;
       for (const binding of uniqueBindings) {
@@ -1642,12 +1732,14 @@ export async function dispatchRecentQqNotifications() {
         }
       }
       for (const group of groups) {
+        if (!shouldDeliverQqNotificationToGroup(group, item, null)) continue;
+        const groupDeliveryKey = buildGroupNotificationDeliveryKey(item);
         const existed = await prisma.qqBotMessageLog.findFirst({
-          where: { eventType: "notification", notificationId: item.id, groupId: group.groupId, status: "ok" },
+          where: { eventType: "notification", groupId: group.groupId, command: groupDeliveryKey, status: "ok" },
           select: { id: true },
         });
         if (existed) continue;
-        if (await sendNotificationMessage({ groupId: group.groupId }, item, null)) {
+        if (await sendNotificationMessage({ groupId: group.groupId }, item, null, { command: groupDeliveryKey })) {
           sent += 1;
         }
       }
@@ -1656,7 +1748,12 @@ export async function dispatchRecentQqNotifications() {
   return { sent };
 }
 
-async function sendNotificationMessage(target: { qqId?: string; groupId?: string }, notification: any, userId: number | null) {
+async function sendNotificationMessage(
+  target: { qqId?: string; groupId?: string },
+  notification: any,
+  userId: number | null,
+  options?: { command?: string },
+) {
   const link = resolveNotificationLink(notification);
   const message = [
     `【${notification.source || "药大拾间"}】${notification.title}`,
@@ -1673,6 +1770,7 @@ async function sendNotificationMessage(target: { qqId?: string; groupId?: string
       groupId: target.groupId,
       userId,
       notificationId: notification.id,
+      command: options?.command,
       content: message.slice(0, 1000),
       result: "sent",
     });
@@ -1686,6 +1784,7 @@ async function sendNotificationMessage(target: { qqId?: string; groupId?: string
       groupId: target.groupId,
       userId,
       notificationId: notification.id,
+      command: options?.command,
       content: message.slice(0, 1000),
       result: error?.message || "发送失败",
     });
@@ -2328,14 +2427,31 @@ function normalizeJsonCardValue(raw: unknown): unknown {
 function renderShareCardBlock(card: ParsedShareCard | null) {
   const normalized = finalizeShareCard(card);
   if (!normalized) return "\n[分享卡片]\n";
-  const lines = [
-    "[分享卡片]",
-    normalized.source ? `来源：${normalized.source}` : "",
-    normalized.title ? `标题：${normalized.title}` : "",
-    normalized.summary ? `简介：${normalized.summary}` : "",
-    normalized.url ? `链接：${normalized.url}` : "",
-  ].filter(Boolean);
-  return lines.length ? `\n${lines.join("\n")}\n` : "\n[分享卡片]\n";
+  const title = escapeShareCardHtml(normalized.title || normalized.source || extractUrlHostLabel(normalized.url) || "分享卡片");
+  const summary = normalized.summary ? escapeShareCardHtml(normalized.summary) : "";
+  const source = normalized.source ? escapeShareCardHtml(normalized.source) : "";
+  const host = extractUrlHostLabel(normalized.url);
+  const hostLabel = host && host !== normalized.source ? escapeShareCardHtml(host) : "";
+  const hasLink = Boolean(normalized.url);
+  const tagName = hasLink ? "a" : "div";
+  const attrs = hasLink
+    ? ` class="qq-share-card qq-share-card--linked" href="${escapeShareCardHtml(normalized.url!)}" target="_blank" rel="noopener noreferrer nofollow"`
+    : ` class="qq-share-card"`;
+  const metaBits = [
+    source ? `<span class="qq-share-card__source">${source}</span>` : "",
+    hostLabel ? `<span class="qq-share-card__host">${hostLabel}</span>` : "",
+  ].filter(Boolean).join("");
+  return [
+    "",
+    `<${tagName}${attrs}>`,
+    `<div class="qq-share-card__eyebrow">分享卡片</div>`,
+    `<div class="qq-share-card__title">${title}</div>`,
+    summary ? `<div class="qq-share-card__summary">${summary}</div>` : "",
+    metaBits ? `<div class="qq-share-card__meta">${metaBits}</div>` : "",
+    hasLink ? `<div class="qq-share-card__action">打开链接</div>` : "",
+    `</${tagName}>`,
+    "",
+  ].filter(Boolean).join("\n");
 }
 
 function finalizeShareCard(card: ParsedShareCard | null | undefined): ParsedShareCard | null {
@@ -2408,6 +2524,25 @@ function decodeCqEntities(value: string) {
       .replace(/&gt;/g, ">");
   }
   return out;
+}
+
+function escapeShareCardHtml(value: string) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function extractUrlHostLabel(value?: string) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    return new URL(raw).host.replace(/^www\./i, "");
+  } catch {
+    return "";
+  }
 }
 
 function extractXmlTagText(xml: string, tagName: string) {
@@ -2947,6 +3082,45 @@ function shouldDeliverQqNotificationToUser(
   return true;
 }
 
+function shouldDeliverQqNotificationToGroup(
+  group: QqBotGroupView,
+  notification: { userId?: number | null; category?: string | null; targetClient?: string | null },
+  recipientRole?: string | null,
+) {
+  if (!group.notificationEnabled) return false;
+  if (!notification.category || !group.notifyCategories.includes(notification.category as QqBotGroupNotifyCategory)) return false;
+  if (notification.userId == null) {
+    return group.notifyAudiences.includes("public") && isNotificationVisibleToQq(notification);
+  }
+  if (!group.notifyAudiences.includes("staff")) return false;
+  return recipientRole === "admin" || recipientRole === "mod";
+}
+
+function buildGroupNotificationDeliveryKey(notification: {
+  id?: number | null;
+  userId?: number | null;
+  category?: string | null;
+  title?: string | null;
+  content?: string | null;
+  payload?: unknown;
+  link?: string | null;
+  source?: string | null;
+}) {
+  if (notification.userId == null) return `global:${notification.id || 0}`;
+  const payload = typeof notification.payload === "string"
+    ? notification.payload
+    : JSON.stringify(notification.payload || {});
+  return [
+    "staff",
+    notification.category || "",
+    notification.title || "",
+    notification.content || "",
+    payload,
+    notification.link || "",
+    notification.source || "",
+  ].join("::").slice(0, 500);
+}
+
 function parseNotificationPayload(payload: unknown): Record<string, any> {
   if (!payload) return {};
   if (typeof payload === "string") {
@@ -3243,6 +3417,17 @@ function parseStringArray(value: string, fallback: string[]) {
     /* ignore */
   }
   return [...fallback];
+}
+
+function normalizeAllowedStringArray(
+  input: readonly string[] | null | undefined,
+  fallback: readonly string[],
+  allowed: readonly string[],
+) {
+  const allowedSet = new Set(allowed);
+  const values = Array.isArray(input) ? input : fallback;
+  const normalized = Array.from(new Set(values.map((item) => String(item || "").trim()).filter((item) => allowedSet.has(item))));
+  return normalized.length ? normalized : [...fallback];
 }
 
 function normalizeBaseUrl(value: string) {

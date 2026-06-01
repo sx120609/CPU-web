@@ -6,8 +6,11 @@ import { validate } from "../../middleware/validate";
 import {
   buildQqBotDebugExport,
   dispatchRecentQqNotifications,
+  formatQqBotGroup,
   formatQqBotConfig,
   getQqBotConfigRaw,
+  normalizeQqBotGroupNotifyAudiences,
+  normalizeQqBotGroupNotifyCategories,
   sendQqMessage,
   updateQqBotConfig,
 } from "../../services/qqbot";
@@ -81,7 +84,8 @@ qqBotAdminRouter.delete("/bindings/:id", async (req, res, next) => {
 
 qqBotAdminRouter.get("/groups", async (_req, res, next) => {
   try {
-    ok(res, await prisma.qqBotGroup.findMany({ orderBy: { updatedAt: "desc" }, take: 100 }));
+    const rows = await prisma.qqBotGroup.findMany({ orderBy: { updatedAt: "desc" }, take: 100 });
+    ok(res, rows.map((row) => formatQqBotGroup(row)));
   } catch (e) { next(e); }
 });
 
@@ -92,6 +96,8 @@ const groupUpsertSchema = z.object({
   allowPosting: z.boolean().optional(),
   defaultBoardSlug: z.string().trim().max(80).nullable().optional(),
   notificationEnabled: z.boolean().optional(),
+  notifyCategories: z.array(z.enum(["system", "school-feed"])).max(10).optional(),
+  notifyAudiences: z.array(z.enum(["public", "staff"])).max(10).optional(),
 });
 
 qqBotAdminRouter.post("/groups", validate(groupUpsertSchema), async (req, res, next) => {
@@ -100,11 +106,22 @@ qqBotAdminRouter.post("/groups", validate(groupUpsertSchema), async (req, res, n
       const board = await prisma.board.findUnique({ where: { slug: req.body.defaultBoardSlug }, select: { id: true } });
       if (!board) throw Errors.badRequest("群默认投稿板块不存在");
     }
-    ok(res, await prisma.qqBotGroup.upsert({
+    const payload = {
+      groupId: req.body.groupId,
+      name: req.body.name,
+      enabled: req.body.enabled,
+      allowPosting: req.body.allowPosting,
+      defaultBoardSlug: req.body.defaultBoardSlug,
+      notificationEnabled: req.body.notificationEnabled,
+      notifyCategories: JSON.stringify(normalizeQqBotGroupNotifyCategories(req.body.notifyCategories)),
+      notifyAudiences: JSON.stringify(normalizeQqBotGroupNotifyAudiences(req.body.notifyAudiences)),
+    };
+    const row = await prisma.qqBotGroup.upsert({
       where: { groupId: req.body.groupId },
-      create: req.body,
-      update: req.body,
-    }));
+      create: payload,
+      update: payload,
+    });
+    ok(res, formatQqBotGroup(row));
   } catch (e) { next(e); }
 });
 

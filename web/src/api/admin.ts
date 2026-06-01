@@ -159,6 +159,20 @@ export type QqBotConfig = {
   updatedAt: string;
 };
 
+export type QqBotGroup = {
+  id: number;
+  groupId: string;
+  name?: string | null;
+  enabled: boolean;
+  allowPosting: boolean;
+  defaultBoardSlug?: string | null;
+  notificationEnabled: boolean;
+  notifyCategories: Array<"system" | "school-feed">;
+  notifyAudiences: Array<"public" | "staff">;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export const adminApi = {
   // 概览
   overview: () => request.get<AdminOverview>("/admin/overview"),
@@ -293,7 +307,7 @@ export const adminApi = {
   qqBotBindings: (params?: { q?: string }) => request.get<any[]>("/admin/qqbot/bindings", params),
   updateQqBotBinding: (id: number, payload: { enabled: boolean }) => request.patch<any>(`/admin/qqbot/bindings/${id}`, payload),
   deleteQqBotBinding: (id: number) => request.delete<{ ok: true }>(`/admin/qqbot/bindings/${id}`),
-  qqBotGroups: () => request.get<any[]>("/admin/qqbot/groups"),
+  qqBotGroups: () => request.get<QqBotGroup[]>("/admin/qqbot/groups"),
   upsertQqBotGroup: (payload: {
     groupId: string;
     name?: string;
@@ -301,7 +315,9 @@ export const adminApi = {
     allowPosting?: boolean;
     defaultBoardSlug?: string | null;
     notificationEnabled?: boolean;
-  }) => request.post<any>("/admin/qqbot/groups", payload),
+    notifyCategories?: Array<"system" | "school-feed">;
+    notifyAudiences?: Array<"public" | "staff">;
+  }) => request.post<QqBotGroup>("/admin/qqbot/groups", payload),
   deleteQqBotGroup: (id: number) => request.delete<{ ok: true }>(`/admin/qqbot/groups/${id}`),
   qqBotLogs: (params: { status?: string; eventType?: string; page?: number; size?: number }) =>
     request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/qqbot/logs", params),
