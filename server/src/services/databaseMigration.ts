@@ -96,7 +96,7 @@ export function getDatabaseMigrationStatus(): DatabaseMigrationStatus {
       support.reason ??
       (support.targetConfigured
         ? null
-        : "未配置 POSTGRES_DATABASE_URL。可在服务器执行 ./deploy.sh postgres-config 'postgresql://...'；正式迁移暂不可用，但 dry-run 仍可使用"),
+        : "未配置 POSTGRES_DATABASE_URL。可先在服务器执行 ./deploy.sh postgres-init，或手动 ./deploy.sh postgres-config 'postgresql://...'；正式迁移暂不可用，但 dry-run 仍可使用"),
     lastRun,
   };
 }

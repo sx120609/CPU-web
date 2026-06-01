@@ -186,12 +186,14 @@ npm run db:migrate:sqlite-to-postgres
 如果你在服务器上是通过根目录 `deploy.sh` 管理部署，也可以直接用：
 
 ```bash
+./deploy.sh postgres-init
 ./deploy.sh postgres-config "postgresql://user:password@127.0.0.1:5432/cpu_web?schema=public"
 ./deploy.sh postgres-dry-run
 ./deploy.sh postgres-migrate
 ./deploy.sh postgres-switch
 ```
 
+- `postgres-init`：在 Debian/Ubuntu 服务器上安装 PostgreSQL、本机创建应用数据库和账号、生成随机密码并写入 `server/.env`。
 - `postgres-config`：把 `POSTGRES_DATABASE_URL` 写入 `server/.env`，并刷新正在运行的后端环境。
 - `postgres-dry-run`：在服务器上试跑迁移脚本，不真正连接 PostgreSQL 写入数据。
 - `postgres-migrate`：在服务器上正式执行 SQLite -> PostgreSQL 主站迁移。

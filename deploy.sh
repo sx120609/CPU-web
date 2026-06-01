@@ -10,6 +10,7 @@
 #   ./deploy.sh logs             # 查看日志
 #   ./deploy.sh status           # 查看进程状态
 #   ./deploy.sh reset-db         # 重建数据库（⚠️ 删除所有论坛数据）
+#   ./deploy.sh postgres-init [db] [user]            # 安装 PostgreSQL、创建应用库和账号、写入 server/.env
 #   ./deploy.sh postgres-config "postgresql://..."   # 写入 PostgreSQL 目标连接串并刷新后端环境
 #   ./deploy.sh postgres-dry-run [batch]             # 在服务器上试跑 SQLite -> PostgreSQL 迁移
 #   ./deploy.sh postgres-migrate [batch]             # 在服务器上正式迁移到 PostgreSQL
@@ -163,6 +164,57 @@ maybe_restart_running_service() {
     pm2 restart "$SERVICE_NAME" --update-env
     pm2 save >/dev/null
   fi
+}
+
+postgres_init_db_name() {
+  printf '%s' "${POSTGRES_DB_NAME:-${CMD_ARG_1:-cpu_web}}"
+}
+
+postgres_init_user() {
+  printf '%s' "${POSTGRES_APP_USER:-${CMD_ARG_2:-cpu_web_app}}"
+}
+
+postgres_init_password() {
+  if [ -n "${POSTGRES_APP_PASSWORD:-}" ]; then
+    printf '%s' "$POSTGRES_APP_PASSWORD"
+  else
+    openssl rand -hex 24 2>/dev/null || echo "cpuweb-pg-$(date +%s)"
+  fi
+}
+
+sql_ident() {
+  printf '"%s"' "$(printf '%s' "$1" | sed 's/"/""/g')"
+}
+
+sql_literal() {
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/''/g")"
+}
+
+postgres_psql() {
+  local sql="$1"
+  sudo -u postgres psql -v ON_ERROR_STOP=1 -d postgres -tAc "$sql"
+}
+
+ensure_postgres() {
+  if command -v psql >/dev/null 2>&1; then
+    log "PostgreSQL 客户端已安装：$(psql --version | head -n 1)"
+  else
+    if ! command -v sudo >/dev/null 2>&1; then
+      err "需要 sudo 才能安装 PostgreSQL。请手动安装或以 root 运行此脚本"
+    fi
+    log "安装 PostgreSQL 服务端与客户端"
+    sudo apt-get update
+    sudo apt-get install -y postgresql postgresql-contrib
+  fi
+
+  if command -v systemctl >/dev/null 2>&1; then
+    sudo systemctl enable postgresql >/dev/null 2>&1 || true
+    sudo systemctl restart postgresql
+  else
+    sudo service postgresql restart
+  fi
+
+  sudo -u postgres psql -d postgres -c "SELECT 1" >/dev/null
 }
 
 # ---------- 环境检查与安装 ----------
@@ -341,6 +393,52 @@ do_postgres_config() {
   echo "     ./deploy.sh postgres-config 'postgresql://user:password@127.0.0.1:5432/cpu_web?schema=public'"
   echo "   或者："
   echo "     POSTGRES_DATABASE_URL='postgresql://user:password@127.0.0.1:5432/cpu_web?schema=public' ./deploy.sh postgres-config"
+}
+
+do_postgres_init() {
+  ensure_node
+  ensure_env
+  ensure_postgres
+
+  local db_name app_user app_password host port url role_exists db_exists
+  db_name="$(postgres_init_db_name)"
+  app_user="$(postgres_init_user)"
+  app_password="$(postgres_init_password)"
+  host="${POSTGRES_HOST:-127.0.0.1}"
+  port="${POSTGRES_PORT:-5432}"
+
+  [[ "$db_name" =~ ^[a-zA-Z0-9_]+$ ]] || err "数据库名仅支持字母、数字和下划线：$db_name"
+  [[ "$app_user" =~ ^[a-zA-Z0-9_]+$ ]] || err "数据库用户名仅支持字母、数字和下划线：$app_user"
+
+  role_exists="$(postgres_psql "SELECT 1 FROM pg_roles WHERE rolname = $(sql_literal "$app_user")" | tr -d '[:space:]')"
+  if [ "$role_exists" = "1" ]; then
+    log "PostgreSQL 角色已存在：$app_user，更新密码"
+    postgres_psql "ALTER ROLE $(sql_ident "$app_user") WITH LOGIN PASSWORD $(sql_literal "$app_password")"
+  else
+    log "创建 PostgreSQL 角色：$app_user"
+    postgres_psql "CREATE ROLE $(sql_ident "$app_user") WITH LOGIN PASSWORD $(sql_literal "$app_password")"
+  fi
+
+  db_exists="$(postgres_psql "SELECT 1 FROM pg_database WHERE datname = $(sql_literal "$db_name")" | tr -d '[:space:]')"
+  if [ "$db_exists" = "1" ]; then
+    log "PostgreSQL 数据库已存在：$db_name，调整 owner 为 $app_user"
+    postgres_psql "ALTER DATABASE $(sql_ident "$db_name") OWNER TO $(sql_ident "$app_user")"
+  else
+    log "创建 PostgreSQL 数据库：$db_name"
+    postgres_psql "CREATE DATABASE $(sql_ident "$db_name") OWNER $(sql_ident "$app_user")"
+  fi
+
+  url="postgresql://${app_user}:${app_password}@${host}:${port}/${db_name}?schema=public"
+  env_set POSTGRES_DATABASE_URL "$url"
+  env_set POSTGRES_DB_NAME "$db_name"
+  env_set POSTGRES_APP_USER "$app_user"
+
+  log "已写入 POSTGRES_DATABASE_URL：$(mask_postgres_url "$url")"
+  log "数据库账号：$app_user"
+  log "数据库名称：$db_name"
+  log "数据库密码：$app_password"
+  warn "请妥善保存上面的数据库密码；脚本只会在当前输出里明文显示一次。"
+  maybe_restart_running_service
 }
 
 do_postgres_dry_run() {
@@ -527,6 +625,10 @@ case "$CMD" in
     log "=== 教务代理更新部署 ==="
     ensure_node
     do_proxy_update
+    ;;
+  postgres-init)
+    log "=== 安装并初始化 PostgreSQL ==="
+    do_postgres_init
     ;;
   postgres-config)
     log "=== 配置 PostgreSQL 目标连接串 ==="
