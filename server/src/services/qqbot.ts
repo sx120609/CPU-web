@@ -108,6 +108,7 @@ type ForwardSource = "direct" | "reply";
 type QqMessageExtractOptions = {
   forwardDepth?: number;
   imageMode?: "upload" | "placeholder";
+  forwardMode?: "expand" | "placeholder";
 };
 
 type QqBotAiIntent =
@@ -329,7 +330,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
   const qqId = event.user_id ? String(event.user_id) : "";
   const groupId = event.group_id ? String(event.group_id) : undefined;
   const extractOptions = shouldUseLightForwardExtraction(event.message)
-    ? ({ imageMode: "placeholder" } satisfies QqMessageExtractOptions)
+    ? ({ imageMode: "placeholder", forwardMode: "placeholder" } satisfies QqMessageExtractOptions)
     : {};
   const messageText = await extractMessageText(event.message ?? event.raw_message ?? "", extractOptions);
   const forwardPayload = await extractForwardPayload(event.message, extractOptions);
@@ -1215,6 +1216,8 @@ async function refreshForwardDraftContent(conversation: any) {
   const metadata = parseConversationMetadata(conversation?.metadata);
   const forwardId = String(conversation?.sourceMessageId || "").trim();
   if (conversation?.scene !== "forward-post" || !forwardId) return currentDraft;
+  const forwardDraftTemplate = String(metadata.forwardDraftTemplate || "");
+  if (!forwardDraftTemplate.includes("[图片]")) return currentDraft;
   const payload = await extractForwardPayload([{ type: "forward", data: { id: forwardId } }], {
     imageMode: "upload",
   }).catch(() => null);
@@ -1425,14 +1428,15 @@ async function createTopicFromQq(input: {
     }
     return created;
   });
-  const aiTags = await generateTopicAiTags({
+  void generateTopicAiTags({
     title: input.title,
     content: input.content,
     boardName: board.name,
     boardType: board.type,
     metadata,
-  }).catch(() => [] as string[]);
-  await syncTopicAiTags(topic.id, aiTags);
+  })
+    .then((aiTags) => syncTopicAiTags(topic.id, aiTags))
+    .catch(() => undefined);
   if (hiddenByAi && aiResult) {
     await notifyTopicAiBlocked({
       topicId: topic.id,
@@ -1806,6 +1810,7 @@ async function extractMessageText(
   if (message && typeof message === "object") {
     const maybeMessage = message as any;
     if (maybeMessage.type === "node") {
+      if (options.forwardMode === "placeholder") return "[合并转发]";
       const embedded = await renderEmbeddedNodeSegmentContent(
         maybeMessage.data?.content ?? maybeMessage.data?.message,
         options,
@@ -1816,6 +1821,7 @@ async function extractMessageText(
       if (typeof maybeMessage.data?.content === "string") return cleanCqMessage(maybeMessage.data.content, options);
     }
     if (maybeMessage.type === "forward") {
+      if (options.forwardMode === "placeholder") return "[合并转发]";
       const embedded = await renderEmbeddedForwardSegmentContent(
         maybeMessage.data?.content ?? maybeMessage.data?.message,
         options,
@@ -1912,11 +1918,13 @@ async function renderMessageSegment(seg: any, options: QqMessageExtractOptions):
     return url ? `\n![QQ图片](${url})\n` : "\n[图片]\n";
   }
   if (seg?.type === "node") {
+    if (options.forwardMode === "placeholder") return "\n[合并转发]\n";
     const embedded = await renderEmbeddedNodeSegmentContent(seg.data?.content ?? seg.data?.message, options);
     if (embedded) return embedded;
     if (seg?.data?.id) return resolveReferencedNodeContent(seg.data.id, options);
   }
   if (seg?.type === "forward") {
+    if (options.forwardMode === "placeholder") return "\n[合并转发]\n";
     const embedded = await renderEmbeddedForwardSegmentContent(seg.data?.content ?? seg.data?.message, options);
     if (embedded) return embedded;
     return renderNestedForwardContent(readForwardSegmentId(seg.data), {
@@ -2107,6 +2115,10 @@ async function cleanCqMessage(value: string, options: QqMessageExtractOptions = 
       }
       const url = await resolveQqImageUrl(attrs.url, attrs.file);
       normalized = normalized.replace(raw, url ? `\n![QQ图片](${url})\n` : "\n[图片]\n");
+      continue;
+    }
+    if (options.forwardMode === "placeholder") {
+      normalized = normalized.replace(raw, "\n[合并转发]\n");
       continue;
     }
     const forwardId = attrs.id || attrs.resid || attrs.file || attrs.message_id || attrs.forward_id;
@@ -2363,7 +2375,7 @@ function renderForwardPayloadContent(
   },
   forwardDepth: number,
 ) {
-  return normalizeRenderedMessage(entries.map((entry) => renderForwardEntryBlock(entry)).filter(Boolean).join("\n\n"));
+  return normalizeRenderedMessage(entries.map((entry) => renderForwardEntryBlock(entry)).filter(Boolean).join("\n\n---\n\n"));
 }
 
 function formatForwardParticipantPreview(participantNames: string[]) {
@@ -2376,7 +2388,7 @@ function renderForwardEntryBlock(entry: ParsedForwardEntry) {
   const content = normalizeRenderedMessage(entry.text);
   if (!content) return "";
   const nickname = String(entry.nickname || "").trim();
-  return nickname ? `${nickname}：\n${content}` : content;
+  return nickname ? `**${nickname}**\n${content}` : content;
 }
 
 function forwardSummaryPreview(text: string) {
