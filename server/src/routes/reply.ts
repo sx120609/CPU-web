@@ -176,7 +176,8 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
           level: "normal",
           title: `有人回复了你的帖子`,
           content: content.slice(0, 80),
-          link: `/forum/topic/${topicId}`,
+          payload: JSON.stringify({ type: "reply", topicId, replyId: reply.id }),
+          link: `/forum/topic/${topicId}#reply-${reply.id}`,
           source: "论坛",
         },
       });

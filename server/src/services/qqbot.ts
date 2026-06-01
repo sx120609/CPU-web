@@ -1378,40 +1378,82 @@ export async function dispatchRecentQqNotifications() {
   if (!config.enabled || !config.notificationEnabled || !config.napcatBaseUrl) return { sent: 0 };
   const categories = parseStringArray(config.notifyCategories, DEFAULT_NOTIFY_CATEGORIES);
   const since = new Date(Date.now() - 10 * 60 * 1000);
-  const notifications = await prisma.notification.findMany({
-    where: {
-      createdAt: { gte: since },
-      category: { in: categories },
-      OR: [
-        { userId: { not: null }, readAt: null },
-        { userId: null },
-      ],
-    },
-    orderBy: { createdAt: "asc" },
-    take: 50,
-  });
+  const [notifications, bindings, groups] = await Promise.all([
+    prisma.notification.findMany({
+      where: {
+        createdAt: { gte: since },
+        category: { in: categories },
+        OR: [
+          { userId: { not: null }, readAt: null },
+          { userId: null },
+        ],
+      },
+      orderBy: { createdAt: "asc" },
+      take: 50,
+    }),
+    prisma.qqBotBinding.findMany({
+      where: { enabled: true },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        userId: true,
+        qqId: true,
+        user: {
+          select: {
+            messageSetting: {
+              select: {
+                subscribeReply: true,
+                subscribeLike: true,
+                subscribeSchool: true,
+                subscribeSystem: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.qqBotGroup.findMany({ where: { enabled: true, notificationEnabled: true } }),
+  ]);
+  const bindingByUserId = new Map<number, (typeof bindings)[number]>();
+  for (const binding of bindings) {
+    if (!bindingByUserId.has(binding.userId)) bindingByUserId.set(binding.userId, binding);
+  }
+  const uniqueBindings = Array.from(bindingByUserId.values());
   let sent = 0;
   for (const item of notifications) {
     if (item.userId) {
+      const binding = bindingByUserId.get(item.userId);
+      if (!binding || !shouldDeliverQqNotificationToUser(item, binding.user.messageSetting)) continue;
       const existed = await prisma.qqBotMessageLog.findFirst({
         where: { eventType: "notification", notificationId: item.id, userId: item.userId, status: "ok" },
         select: { id: true },
       });
       if (existed) continue;
-      const binding = await prisma.qqBotBinding.findFirst({ where: { userId: item.userId, enabled: true } });
-      if (!binding) continue;
-      await sendNotificationMessage({ qqId: binding.qqId }, item, item.userId);
-      sent += 1;
+      if (await sendNotificationMessage({ qqId: binding.qqId }, item, item.userId)) {
+        sent += 1;
+      }
     } else {
-      const groups = await prisma.qqBotGroup.findMany({ where: { enabled: true, notificationEnabled: true } });
+      if (!isNotificationVisibleToQq(item)) continue;
+      for (const binding of uniqueBindings) {
+        if (!shouldDeliverQqNotificationToUser(item, binding.user.messageSetting)) continue;
+        const existed = await prisma.qqBotMessageLog.findFirst({
+          where: { eventType: "notification", notificationId: item.id, userId: binding.userId, status: "ok" },
+          select: { id: true },
+        });
+        if (existed) continue;
+        if (await sendNotificationMessage({ qqId: binding.qqId }, item, binding.userId)) {
+          sent += 1;
+        }
+      }
       for (const group of groups) {
         const existed = await prisma.qqBotMessageLog.findFirst({
           where: { eventType: "notification", notificationId: item.id, groupId: group.groupId, status: "ok" },
           select: { id: true },
         });
         if (existed) continue;
-        await sendNotificationMessage({ groupId: group.groupId }, item, null);
-        sent += 1;
+        if (await sendNotificationMessage({ groupId: group.groupId }, item, null)) {
+          sent += 1;
+        }
       }
     }
   }
@@ -1419,10 +1461,11 @@ export async function dispatchRecentQqNotifications() {
 }
 
 async function sendNotificationMessage(target: { qqId?: string; groupId?: string }, notification: any, userId: number | null) {
+  const link = resolveNotificationLink(notification);
   const message = [
     `【${notification.source || "药大拾间"}】${notification.title}`,
     notification.content,
-    notification.link ? `链接：${notification.link}` : "",
+    link ? `链接：${link}` : "",
   ].filter(Boolean).join("\n");
   try {
     await sendQqMessage(target, message);
@@ -1437,6 +1480,7 @@ async function sendNotificationMessage(target: { qqId?: string; groupId?: string
       content: message.slice(0, 1000),
       result: "sent",
     });
+    return true;
   } catch (error: any) {
     await logQqBotMessage({
       direction: "outbound",
@@ -1449,6 +1493,7 @@ async function sendNotificationMessage(target: { qqId?: string; groupId?: string
       content: message.slice(0, 1000),
       result: error?.message || "发送失败",
     });
+    return false;
   }
 }
 
@@ -1736,19 +1781,7 @@ async function renderBindingStatus(
 async function renderBoardList(defaultBoardSlug: string, groupId?: string) {
   const group = groupId ? await prisma.qqBotGroup.findUnique({ where: { groupId } }) : null;
   const currentDefaultSlug = group?.defaultBoardSlug || defaultBoardSlug || "general";
-  const boards = await prisma.board.findMany({
-    where: {
-      readOnly: false,
-      type: { in: ["normal", "question", "market", "coursereview"] },
-    },
-    orderBy: { order: "asc" },
-    select: {
-      slug: true,
-      name: true,
-      description: true,
-      type: true,
-    },
-  });
+  const boards = await getAvailableBoardOptions();
   const availableBoards = boards.filter((board) => isBoardTypeEnabled(board.type));
   if (!availableBoards.length) {
     return "当前没有可投稿板块，请稍后再试。";
@@ -1774,10 +1807,96 @@ async function renderBoardList(defaultBoardSlug: string, groupId?: string) {
   return lines.join("\n");
 }
 
+async function getAvailableBoardOptions() {
+  return prisma.board.findMany({
+    where: {
+      readOnly: false,
+      type: { in: ["normal", "question", "market", "coursereview"] },
+    },
+    orderBy: { order: "asc" },
+    select: {
+      slug: true,
+      name: true,
+      description: true,
+      type: true,
+    },
+  });
+}
+
 function buildTopicLink(topicId: number) {
   const origin = getSiteOrigin();
   if (!origin) return "";
   return `${origin}/forum/topic/${topicId}`;
+}
+
+function buildReplyLink(topicId: number, replyId?: number | null) {
+  const topicLink = buildTopicLink(topicId);
+  if (!topicLink) return "";
+  return replyId && Number.isFinite(replyId) && replyId > 0
+    ? `${topicLink}#reply-${replyId}`
+    : topicLink;
+}
+
+function isNotificationVisibleToQq(notification: { targetClient?: string | null }) {
+  return !notification.targetClient || notification.targetClient === "all";
+}
+
+function shouldDeliverQqNotificationToUser(
+  notification: { category?: string | null; targetClient?: string | null },
+  messageSetting?: {
+    subscribeReply?: boolean;
+    subscribeLike?: boolean;
+    subscribeSchool?: boolean;
+    subscribeSystem?: boolean;
+  } | null,
+) {
+  if (!isNotificationVisibleToQq(notification)) return false;
+  if (notification.category === "reply") return messageSetting?.subscribeReply !== false;
+  if (notification.category === "like") return messageSetting?.subscribeLike !== false;
+  if (notification.category === "school-feed") return messageSetting?.subscribeSchool !== false;
+  if (notification.category === "system") return messageSetting?.subscribeSystem !== false;
+  return true;
+}
+
+function parseNotificationPayload(payload: unknown): Record<string, any> {
+  if (!payload) return {};
+  if (typeof payload === "string") {
+    try {
+      return JSON.parse(payload);
+    } catch {
+      return {};
+    }
+  }
+  if (typeof payload === "object") return payload as Record<string, any>;
+  return {};
+}
+
+function toPositiveInt(value: unknown) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function resolveNotificationLink(notification: { link?: string | null; payload?: unknown }) {
+  const payload = parseNotificationPayload(notification.payload);
+  const topicId = toPositiveInt(payload.topicId);
+  const replyId = toPositiveInt(payload.replyId);
+  const rawLink = String(notification.link || "").trim();
+  if (rawLink) {
+    if (/^https?:\/\//i.test(rawLink)) return rawLink;
+    if (rawLink.startsWith("/")) {
+      const suffix = !rawLink.includes("#") && replyId && /^\/forum\/topic\/\d+$/i.test(rawLink)
+        ? `#reply-${replyId}`
+        : "";
+      const origin = getSiteOrigin();
+      return origin ? `${origin}${rawLink}${suffix}` : `${rawLink}${suffix}`;
+    }
+    return rawLink;
+  }
+  if (topicId) {
+    const replyLink = buildReplyLink(topicId, replyId);
+    if (replyLink) return replyLink;
+  }
+  return "";
 }
 
 async function resolveBoardDisplayName(slug?: string | null) {
@@ -1849,6 +1968,8 @@ async function inferQqBotIntent(context: {
   groupId?: string;
   messageText: string;
 }) {
+  const boardList = await getAvailableBoardOptions();
+  const defaultBoardName = await resolveBoardDisplayName(context.config.defaultBoardSlug);
   const content = await requestAiJson([
     {
       role: "system",
@@ -1860,13 +1981,15 @@ async function inferQqBotIntent(context: {
         "不要编造不存在的业务规则或命令。",
         "请判断用户这句话更像是在：求帮助、查状态、查板块、查最近投稿、开始投稿、普通闲聊，或者需要你直接回复一句简短提示。",
         "如果用户明显表达了想发帖/投稿/搬运内容，也可以抽取标题、正文、板块 slug。",
+        "返回给程序时可以使用板块 slug，但不要把 slug 当成给用户看的文案。",
       ].join("\n"),
     },
     {
       role: "user",
       content: [
         '输出格式：{"intent":"chat|help|status|boards|recent-posts|start-post|reply","title":"","content":"","boardSlug":"","message":""}',
-        `默认投稿板块：${context.config.defaultBoardSlug}`,
+        `默认投稿区：${defaultBoardName}`,
+        `可用投稿区（中文名=>slug）：${boardList.map((board) => `${board.name}=>${board.slug}`).join("；")}`,
         `用户消息：${context.messageText}`,
       ].join("\n"),
     },
@@ -1917,15 +2040,8 @@ async function generateAssistantReply(
   },
   fallbackMessage: string,
 ): Promise<QqBotAssistantReply> {
-  const boardList = await prisma.board.findMany({
-    where: {
-      readOnly: false,
-      type: { in: ["normal", "question", "market", "coursereview"] },
-    },
-    orderBy: { order: "asc" },
-    select: { slug: true, name: true, description: true, type: true },
-    take: 12,
-  });
+  const boardList = (await getAvailableBoardOptions()).slice(0, 12);
+  const defaultBoardName = await resolveBoardDisplayName(context.config.defaultBoardSlug);
   const content = await requestAiJson([
     {
       role: "system",
@@ -1935,6 +2051,7 @@ async function generateAssistantReply(
         "不要要求用户输入学号、工号、密码，也不要编造任何不存在的绑定流程。",
         "请根据用户消息给出一段简短、明确、不会引起歧义的回复。",
         "如果用户像是在投稿、求助发帖、发树洞、发二手或课程评价，请尽量同时整理出建议板块 slug、建议标题、建议正文。",
+        "给用户看的回复里优先使用中文板块名，不要直接展示 slug。",
         "只返回 JSON。",
       ].join("\n"),
     },
@@ -1942,8 +2059,8 @@ async function generateAssistantReply(
       role: "user",
       content: [
         '输出格式：{"reply":"","suggestedBoardSlug":"","suggestedTitle":"","suggestedContent":"","confidence":"low|medium|high"}',
-        `默认板块：${context.config.defaultBoardSlug}`,
-        `可选板块：${boardList.map((board) => `${board.slug}:${board.name}`).join("；")}`,
+        `默认投稿区：${defaultBoardName}`,
+        `可用投稿区（中文名=>slug）：${boardList.map((board) => `${board.name}=>${board.slug}`).join("；")}`,
         `用户消息：${context.messageText}`,
         `兜底提示：${fallbackMessage}`,
       ].join("\n"),

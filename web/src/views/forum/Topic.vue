@@ -106,7 +106,7 @@
     <section class="replies cpu-card" ref="repliesEl">
       <h3 class="cpu-section-title">{{ topic.replyCount }} 条回复</h3>
       <el-empty v-if="!replies.length" description="还没有回复，来聊两句吧" />
-      <div v-for="r in replies" :key="r.id" class="reply">
+      <div v-for="r in replies" :id="`reply-${r.id}`" :key="r.id" class="reply">
         <UserAvatar :size="32" class="avatar" :src="r.author?.avatar" :name="r.author?.nickname" alt="回复头像" />
         <div class="reply-body">
           <div class="reply-meta">
@@ -952,6 +952,14 @@ async function onDelete() {
     gap: 12px;
     padding: 14px 0;
     border-bottom: 1px dashed #f1f5f9;
+    scroll-margin-top: 96px;
+  }
+  .reply:target {
+    border-radius: 14px;
+    padding-inline: 12px;
+    margin-inline: -12px;
+    background: linear-gradient(180deg, #fffaf0 0%, #ffffff 100%);
+    box-shadow: 0 0 0 1px #fde68a inset;
   }
   .reply:last-child { border-bottom: none; }
   .avatar { background: var(--cpu-primary); color: #fff; font-weight: 600; flex-shrink: 0; }
