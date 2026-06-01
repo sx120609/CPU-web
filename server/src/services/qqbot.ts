@@ -694,6 +694,7 @@ async function submitQqPost(context: {
   qqId: string;
   groupId?: string;
   messageText: string;
+  skipSourceFooter?: boolean;
 }) {
   if (context.event.message_type === "group" && !context.config.allowGroupPost) {
     return { message: "群内投稿暂未开启，请私聊投稿。", topicId: null };
@@ -717,7 +718,7 @@ async function submitQqPost(context: {
     },
     boardSlug: parsed.boardSlug,
     title: parsed.title,
-    content: appendSourceFooter(parsed.content, context),
+    content: context.skipSourceFooter ? parsed.content : appendSourceFooter(parsed.content, context),
     qqId: context.qqId,
     groupId: context.groupId,
     messageId: context.event.message_id ? String(context.event.message_id) : undefined,
@@ -1035,6 +1036,7 @@ async function submitConversationPost(
       originGroupId,
       context.config.defaultBoardSlug,
     ),
+    skipSourceFooter: conversation.scene === "forward-post",
   });
   await finishConversation(conversationId, "done");
   return result;
@@ -1107,9 +1109,9 @@ async function finishConversation(id: number, status: "done" | "cancelled") {
 
 async function renderConversationPrompt(conversation: any, assistantHint?: string) {
   const boardDisplayName = conversation.draftBoardSlug ? await resolveBoardDisplayName(conversation.draftBoardSlug) : "";
-  const draftPreview = conversation.scene === "forward-post" && conversation.sourceSummary
-    ? conversation.sourceSummary
-    : (conversation.draftContent ? `${conversation.draftContent.slice(0, 160)}${conversation.draftContent.length > 160 ? "..." : ""}` : "");
+  const draftPreview = conversation.draftContent
+    ? `${conversation.draftContent.slice(0, 160)}${conversation.draftContent.length > 160 ? "..." : ""}`
+    : "";
   if (conversation.step === "await-title") {
     const isRetitling = /重新发一个标题|重新标题|改标题|新标题/.test(String(assistantHint || ""));
     return [
@@ -1122,7 +1124,6 @@ async function renderConversationPrompt(conversation: any, assistantHint?: strin
   if (conversation.step === "await-forward-confirm") {
     return [
       "我收到了你回复的合并转发内容。",
-      conversation.sourceSummary ? `内容摘要：${conversation.sourceSummary}` : "",
       "如果要投稿，请回复“是”。不想投稿请回复“否”或“取消”。",
       assistantHint || "",
     ].filter(Boolean).join("\n");
@@ -1892,9 +1893,7 @@ async function renderEmbeddedForwardLikeContent(
   }
   const nested = await extractMessageText(content, nestedOptions).catch(() => "");
   if (!nested.trim()) return "";
-  return options.withForwardTitle
-    ? `\n**内层转发摘录**\n\n${nested}\n`
-    : `\n${nested}\n`;
+  return `\n${nested}\n`;
 }
 
 async function renderEmbeddedNodeSegmentContent(content: unknown, options: QqMessageExtractOptions) {
@@ -2364,22 +2363,7 @@ function renderForwardPayloadContent(
   },
   forwardDepth: number,
 ) {
-  const heading = forwardDepth > 0 ? "**内层转发摘录**" : "### 转发整理";
-  const metaBits = [
-    `${stats.messageCount} 条消息`,
-    `${stats.blockCount} 段`,
-    `${stats.participantCount} 人参与`,
-  ];
-  if (stats.imageCount > 0) metaBits.push(`${stats.imageCount} 张图`);
-  const participantPreview = formatForwardParticipantPreview(stats.participantNames);
-  const blocks = entries.map((entry, index) => renderForwardEntryBlock(entry, index, forwardDepth));
-  return normalizeRenderedMessage([
-    heading,
-    `_${metaBits.join(" · ")}_`,
-    participantPreview ? `_参与者：${participantPreview}_` : "",
-    "",
-    blocks.join(forwardDepth > 0 ? "\n\n" : "\n\n---\n\n"),
-  ].filter(Boolean).join("\n"));
+  return normalizeRenderedMessage(entries.map((entry) => renderForwardEntryBlock(entry)).filter(Boolean).join("\n\n"));
 }
 
 function formatForwardParticipantPreview(participantNames: string[]) {
@@ -2388,18 +2372,11 @@ function formatForwardParticipantPreview(participantNames: string[]) {
   return `${participantNames.slice(0, 3).join("、")} 等 ${participantNames.length} 人`;
 }
 
-function renderForwardEntryBlock(entry: ParsedForwardEntry, index: number, forwardDepth: number) {
-  const title = forwardDepth > 0
-    ? `**${index + 1}. ${entry.nickname}**`
-    : `**${String(index + 1).padStart(2, "0")} | ${entry.nickname}**`;
-  const metaBits: string[] = [];
-  if (entry.messageCount > 1) metaBits.push(`连续 ${entry.messageCount} 条`);
-  if (entry.imageCount > 0) metaBits.push(`${entry.imageCount} 张图`);
-  return [
-    title,
-    metaBits.length ? `_${metaBits.join(" · ")}_` : "",
-    normalizeRenderedMessage(entry.text),
-  ].filter(Boolean).join("\n");
+function renderForwardEntryBlock(entry: ParsedForwardEntry) {
+  const content = normalizeRenderedMessage(entry.text);
+  if (!content) return "";
+  const nickname = String(entry.nickname || "").trim();
+  return nickname ? `${nickname}：\n${content}` : content;
 }
 
 function forwardSummaryPreview(text: string) {

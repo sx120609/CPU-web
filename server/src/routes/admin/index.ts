@@ -32,6 +32,7 @@ import { buildUserTrustSnapshot, currentAnonymousWeekKey, freezeAnonymousCredits
 import { buildEpayCallbackUrls, buildEpaySubmitPayload, getEpayConfig, resolvePaymentOrigin, updateEpayConfig } from "../../services/epay";
 import { amountCentsToMoney } from "../../services/epay";
 import { formatSponsorOrder, getSponsorConfig, updateSponsorConfig } from "../../services/sponsor";
+import { applyManualForumImageReview, backfillForumImageAssetsAndTriggerModeration, listForumImageAssetsForContent } from "../../services/imageModeration";
 import { qqBotAdminRouter } from "./qqbot";
 
 export const adminRouter = Router();
@@ -485,6 +486,40 @@ adminRouter.get("/review-targets/:kind/:id", modOrAbove, async (req, res, next) 
   } catch (e) { next(e); }
 });
 
+adminRouter.get("/review-targets/:kind/:id/images", modOrAbove, async (req, res, next) => {
+  try {
+    const kind = String(req.params.kind);
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) throw Errors.badRequest("审核对象 ID 不合法");
+    if (kind === "topic") {
+      const topic = await prisma.topic.findUnique({
+        where: { id },
+        select: { id: true, content: true },
+      });
+      if (!topic) throw Errors.notFound("帖子不存在");
+      return ok(res, {
+        kind,
+        id: topic.id,
+        list: await listForumImageAssetsForContent(topic.content),
+      });
+    }
+    if (kind === "reply") {
+      const reply = await prisma.reply.findUnique({
+        where: { id },
+        select: { id: true, content: true, topicId: true },
+      });
+      if (!reply) throw Errors.notFound("回复不存在");
+      return ok(res, {
+        kind,
+        id: reply.id,
+        topicId: reply.topicId,
+        list: await listForumImageAssetsForContent(reply.content),
+      });
+    }
+    throw Errors.badRequest("不支持的审核对象类型");
+  } catch (e) { next(e); }
+});
+
 const topicPatchSchema = z.object({
   hidden: z.boolean().optional(),
   pinned: z.boolean().optional(),
@@ -497,6 +532,11 @@ const topicPatchSchema = z.object({
 
 const replyPatchSchema = z.object({
   aiReviewStatus: z.enum(["manual_reviewing", "approved_manual", "rejected_manual"]).optional(),
+  manualReviewNote: z.string().max(500).optional(),
+});
+
+const forumImagePatchSchema = z.object({
+  status: z.enum(["approved", "rejected"]),
   manualReviewNote: z.string().max(500).optional(),
 });
 
@@ -704,6 +744,31 @@ adminRouter.patch("/replies/:id", modOrAbove, validate(replyPatchSchema), async 
       hidden: updated.hidden,
       floor: updated.floor,
       aiReviewStatus: updated.aiReviewStatus,
+    });
+  } catch (e) { next(e); }
+});
+
+adminRouter.patch("/forum-images/:id", modOrAbove, validate(forumImagePatchSchema), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) throw Errors.badRequest("图片 ID 不合法");
+    const updated = await applyManualForumImageReview({
+      assetId: id,
+      reviewerId: req.user!.userId,
+      approved: req.body.status === "approved",
+      note: req.body.manualReviewNote ?? "",
+    });
+    if (!updated) throw Errors.notFound("图片不存在");
+    ok(res, {
+      id: updated.id,
+      url: updated.url,
+      status: updated.status,
+      reason: updated.reason,
+      detail: updated.detail,
+      reviewedAt: updated.reviewedAt,
+      manualReviewedAt: updated.manualReviewedAt,
+      manualReviewNote: updated.manualReviewNote,
+      manualReviewedBy: updated.manualReviewedBy,
     });
   } catch (e) { next(e); }
 });
@@ -1350,6 +1415,12 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
     }
     next(e);
   }
+});
+
+adminRouter.post("/ai-review/images/sweep", adminOnly, async (_req, res, next) => {
+  try {
+    ok(res, await backfillForumImageAssetsAndTriggerModeration());
+  } catch (e) { next(e); }
 });
 
 adminRouter.get("/ai-review/logs", adminOnly, async (req, res, next) => {

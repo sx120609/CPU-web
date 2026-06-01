@@ -51,6 +51,7 @@ model User {
 
   topics            Topic[]
   manualReviewedTopics Topic[] @relation("ManualReviewedTopics")
+  manualReviewedImages ForumImageAsset[] @relation("ManualReviewedImages")
   replies           Reply[]
   likes             Like[]
   notifications     Notification[]
@@ -216,10 +217,14 @@ model ForumImageAsset {
   attemptCount  Int      @default(0)
   lastError     String?
   createdById   Int?
+  manualReviewedById Int?
+  manualReviewedAt DateTime?
+  manualReviewNote String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  manualReviewedBy User? @relation("ManualReviewedImages", fields: [manualReviewedById], references: [id], onDelete: SetNull)
 
   @@index([status, nextRetryAt, createdAt])
   @@index([createdById, createdAt])

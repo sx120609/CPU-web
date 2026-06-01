@@ -9,9 +9,12 @@ const IMAGE_HTML_RE = /<img\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s"'=<>`
 const IMAGE_REVIEW_MAX_INLINE_BYTES = 6 * 1024 * 1024;
 const IMAGE_REVIEW_POLL_INTERVAL_MS = 20_000;
 const IMAGE_REVIEW_BATCH_SIZE = 3;
+const FORUM_IMAGE_SWEEP_BATCH_SIZE = 200;
 
 let pollerStarted = false;
-let pollerRunning = false;
+let moderationDrainBudget = 0;
+let moderationDrainPromise: Promise<number> | null = null;
+let forumImageSweepPromise: Promise<ForumImageSweepSummary> | null = null;
 
 type Viewer = {
   userId?: number | null;
@@ -35,18 +38,46 @@ export type ForumImageModerationSummary = {
   approvedCount: number;
 };
 
+export type ForumImageSweepSummary = {
+  reviewEnabled: boolean;
+  scannedTopics: number;
+  scannedReplies: number;
+  imageReferences: number;
+  uniqueImageUrls: number;
+  createdAssets: number;
+  requeuedAssets: number;
+  alreadyTracked: number;
+  skippedAssets: number;
+  pendingAfterScan: number;
+  moderationTriggered: boolean;
+};
+
+export type ForumImageReviewAsset = {
+  id: number;
+  url: string;
+  status: string;
+  reason: string | null;
+  detail: string | null;
+  reviewModel: string | null;
+  reviewEndpoint: string | null;
+  reviewedAt: Date | null;
+  lastError: string | null;
+  manualReviewedAt: Date | null;
+  manualReviewNote: string | null;
+  manualReviewedBy: {
+    id: number;
+    nickname: string;
+    username: string;
+  } | null;
+};
+
 export function startForumImageModerationPoller() {
   if (pollerStarted) return;
   pollerStarted = true;
   const tick = () => {
-    if (pollerRunning) return;
-    pollerRunning = true;
-    moderatePendingForumImages()
-      .catch((error) => {
+    triggerForumImageModerationDrain(IMAGE_REVIEW_BATCH_SIZE)
+      .catch((error: unknown) => {
         console.warn("[image-review] moderation tick failed", error);
-      })
-      .finally(() => {
-        pollerRunning = false;
       });
   };
   setTimeout(tick, 5_000);
@@ -128,9 +159,19 @@ export async function ensureForumImageAssetsForContent(content: string, createdB
   return Promise.all(tasks);
 }
 
-export async function moderatePendingForumImages() {
+export async function backfillForumImageAssetsAndTriggerModeration() {
+  if (!forumImageSweepPromise) {
+    forumImageSweepPromise = performForumImageSweep().finally(() => {
+      forumImageSweepPromise = null;
+    });
+  }
+  return forumImageSweepPromise;
+}
+
+export async function moderatePendingForumImages(limit = IMAGE_REVIEW_BATCH_SIZE) {
   if (!shouldRunImageReview()) return { processed: 0 };
   const now = new Date();
+  const take = Math.max(1, Math.floor(Number(limit) || IMAGE_REVIEW_BATCH_SIZE));
   const list = await prisma.forumImageAsset.findMany({
     where: {
       OR: [
@@ -139,7 +180,7 @@ export async function moderatePendingForumImages() {
       ],
     },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-    take: IMAGE_REVIEW_BATCH_SIZE,
+    take,
   });
   let processed = 0;
   for (const asset of list) {
@@ -211,6 +252,124 @@ export async function summarizeForumImageModerationForContent(content: string): 
     rejectedCount,
     approvedCount,
   };
+}
+
+export async function listForumImageAssetsForContent(content: string): Promise<ForumImageReviewAsset[]> {
+  const urls = extractForumImageUrls(content);
+  if (!urls.length) return [];
+
+  const select = {
+    id: true,
+    url: true,
+    status: true,
+    reason: true,
+    detail: true,
+    reviewModel: true,
+    reviewEndpoint: true,
+    reviewedAt: true,
+    lastError: true,
+    manualReviewedAt: true,
+    manualReviewNote: true,
+    manualReviewedBy: {
+      select: {
+        id: true,
+        nickname: true,
+        username: true,
+      },
+    },
+  } as const;
+
+  const initialRows = await prisma.forumImageAsset.findMany({
+    where: { url: { in: urls } },
+    select,
+  });
+  const initialMap = new Map(initialRows.map((row) => [row.url, row]));
+  const missing = urls.filter((url) => !initialMap.has(url));
+  if (missing.length) {
+    await Promise.all(missing.map((url) => registerForumImageAsset({ url }))).catch(() => null);
+  }
+
+  const rows = missing.length
+    ? await prisma.forumImageAsset.findMany({
+        where: { url: { in: urls } },
+        select,
+      })
+    : initialRows;
+  const rowMap = new Map(rows.map((row) => [row.url, row]));
+
+  return urls
+    .map((url) => rowMap.get(url))
+    .filter(Boolean)
+    .map((row) => ({
+      id: row!.id,
+      url: row!.url,
+      status: row!.status,
+      reason: row!.reason,
+      detail: row!.detail,
+      reviewModel: row!.reviewModel,
+      reviewEndpoint: row!.reviewEndpoint,
+      reviewedAt: row!.reviewedAt,
+      lastError: row!.lastError,
+      manualReviewedAt: row!.manualReviewedAt,
+      manualReviewNote: row!.manualReviewNote,
+      manualReviewedBy: row!.manualReviewedBy
+        ? {
+            id: row!.manualReviewedBy.id,
+            nickname: row!.manualReviewedBy.nickname,
+            username: row!.manualReviewedBy.username,
+          }
+        : null,
+    }));
+}
+
+export async function applyManualForumImageReview(input: {
+  assetId: number;
+  reviewerId: number;
+  approved: boolean;
+  note?: string | null;
+}) {
+  const existing = await prisma.forumImageAsset.findUnique({
+    where: { id: input.assetId },
+    select: {
+      id: true,
+      reason: true,
+      detail: true,
+    },
+  });
+  if (!existing) return null;
+
+  const note = String(input.note || "").trim();
+  const reviewedAt = new Date();
+  const reason = input.approved
+    ? (note || "管理员人工复核通过")
+    : (note || existing.reason || "管理员人工驳回，继续隐藏");
+  const detail = note || existing.detail || existing.reason || (input.approved ? "管理员人工复核通过，允许公开展示" : "管理员人工驳回，继续隐藏");
+
+  return prisma.forumImageAsset.update({
+    where: { id: input.assetId },
+    data: {
+      status: input.approved ? "approved" : "rejected",
+      reason,
+      detail,
+      reviewModel: "manual",
+      reviewEndpoint: "mod-panel",
+      reviewedAt,
+      nextRetryAt: null,
+      lastError: null,
+      manualReviewedById: input.reviewerId,
+      manualReviewedAt: reviewedAt,
+      manualReviewNote: note || null,
+    },
+    include: {
+      manualReviewedBy: {
+        select: {
+          id: true,
+          nickname: true,
+          username: true,
+        },
+      },
+    },
+  });
 }
 
 export async function renderModeratedContent(content: string, _viewer?: Viewer) {
@@ -359,6 +518,147 @@ function escapeHtml(input: string) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+async function performForumImageSweep(): Promise<ForumImageSweepSummary> {
+  let scannedTopics = 0;
+  let scannedReplies = 0;
+  let imageReferences = 0;
+  const uniqueUrls = new Set<string>();
+
+  let lastTopicId = 0;
+  for (;;) {
+    const rows = await prisma.topic.findMany({
+      where: { id: { gt: lastTopicId } },
+      orderBy: { id: "asc" },
+      take: FORUM_IMAGE_SWEEP_BATCH_SIZE,
+      select: { id: true, content: true },
+    });
+    if (!rows.length) break;
+    scannedTopics += rows.length;
+    for (const row of rows) {
+      const urls = extractForumImageUrls(row.content);
+      imageReferences += urls.length;
+      urls.forEach((url) => uniqueUrls.add(url));
+    }
+    lastTopicId = rows[rows.length - 1].id;
+  }
+
+  let lastReplyId = 0;
+  for (;;) {
+    const rows = await prisma.reply.findMany({
+      where: { id: { gt: lastReplyId } },
+      orderBy: { id: "asc" },
+      take: FORUM_IMAGE_SWEEP_BATCH_SIZE,
+      select: { id: true, content: true },
+    });
+    if (!rows.length) break;
+    scannedReplies += rows.length;
+    for (const row of rows) {
+      const urls = extractForumImageUrls(row.content);
+      imageReferences += urls.length;
+      urls.forEach((url) => uniqueUrls.add(url));
+    }
+    lastReplyId = rows[rows.length - 1].id;
+  }
+
+  const reviewEnabled = shouldRunImageReview();
+  const urls = Array.from(uniqueUrls);
+  let createdAssets = 0;
+  let requeuedAssets = 0;
+  let alreadyTracked = 0;
+  let skippedAssets = 0;
+
+  for (let index = 0; index < urls.length; index += FORUM_IMAGE_SWEEP_BATCH_SIZE) {
+    const chunk = urls.slice(index, index + FORUM_IMAGE_SWEEP_BATCH_SIZE);
+    const existingRows = await prisma.forumImageAsset.findMany({
+      where: { url: { in: chunk } },
+      select: { url: true, status: true, reviewModel: true, reviewEndpoint: true },
+    });
+    const existingMap = new Map(existingRows.map((row) => [row.url, row]));
+    const results = await Promise.all(chunk.map((url) => registerForumImageAsset({ url })));
+    results.forEach((row, offset) => {
+      if (!row) {
+        skippedAssets += 1;
+        return;
+      }
+      const previous = existingMap.get(chunk[offset]);
+      if (!previous) {
+        createdAssets += 1;
+        return;
+      }
+      const requeued = reviewEnabled
+        && previous.status === "approved"
+        && (previous.reviewModel === "bypass" || previous.reviewEndpoint === "disabled")
+        && row.status === "pending";
+      if (requeued) requeuedAssets += 1;
+      else alreadyTracked += 1;
+    });
+  }
+
+  const pendingAfterScan = await prisma.forumImageAsset.count({
+    where: { status: { in: ["pending", "error"] } },
+  });
+  const moderationTriggered = reviewEnabled && pendingAfterScan > 0;
+  if (moderationTriggered) {
+    void triggerForumImageModerationDrain(Number.POSITIVE_INFINITY).catch((error) => {
+      console.warn("[image-review] manual sweep failed", error);
+    });
+  }
+
+  return {
+    reviewEnabled,
+    scannedTopics,
+    scannedReplies,
+    imageReferences,
+    uniqueImageUrls: urls.length,
+    createdAssets,
+    requeuedAssets,
+    alreadyTracked,
+    skippedAssets,
+    pendingAfterScan,
+    moderationTriggered,
+  };
+}
+
+export function triggerForumImageModerationDrain(maxProcessed = IMAGE_REVIEW_BATCH_SIZE) {
+  const normalized = Number.isFinite(maxProcessed)
+    ? Math.max(1, Math.floor(maxProcessed))
+    : Number.POSITIVE_INFINITY;
+  moderationDrainBudget = Number.isFinite(normalized)
+    ? (Number.isFinite(moderationDrainBudget)
+      ? Math.max(moderationDrainBudget, normalized)
+      : moderationDrainBudget)
+    : Number.POSITIVE_INFINITY;
+  if (!moderationDrainPromise) {
+    moderationDrainPromise = runForumImageModerationDrain().finally(() => {
+      moderationDrainPromise = null;
+    });
+  }
+  return moderationDrainPromise;
+}
+
+async function runForumImageModerationDrain() {
+  let processed = 0;
+  while (!Number.isFinite(moderationDrainBudget) || moderationDrainBudget > 0) {
+    const batchLimit = Number.isFinite(moderationDrainBudget)
+      ? Math.min(IMAGE_REVIEW_BATCH_SIZE, moderationDrainBudget)
+      : IMAGE_REVIEW_BATCH_SIZE;
+    const result = await moderatePendingForumImages(batchLimit);
+    if (!result.processed) {
+      moderationDrainBudget = 0;
+      break;
+    }
+    processed += result.processed;
+    if (Number.isFinite(moderationDrainBudget)) {
+      moderationDrainBudget = Math.max(0, moderationDrainBudget - result.processed);
+    }
+    if (result.processed < batchLimit) {
+      moderationDrainBudget = 0;
+      break;
+    }
+  }
+  return processed;
 }
 
 async function moderateSingleForumImage(asset: {

@@ -92,10 +92,12 @@
       </div>
 
       <div v-if="topic.imageReview?.pendingCount" class="image-review-tip image-review-tip-pending">
-        正文中有 {{ topic.imageReview.pendingCount }} 张图片正在审核，审核通过后会自动显示。
+        <span>正文中有 {{ topic.imageReview.pendingCount }} 张图片正在审核，审核通过后会自动显示。</span>
+        <el-button v-if="canReviewTopicImages" link type="warning" @click="openTopicImageReviewDialog">手动复核图片</el-button>
       </div>
       <div v-else-if="topic.imageReview?.rejectedCount" class="image-review-tip image-review-tip-rejected">
-        正文中有 {{ topic.imageReview.rejectedCount }} 张图片未通过审核，当前已隐藏。
+        <span>正文中有 {{ topic.imageReview.rejectedCount }} 张图片未通过审核，当前已隐藏。</span>
+        <el-button v-if="canReviewTopicImages" link type="danger" @click="openTopicImageReviewDialog">手动复核图片</el-button>
       </div>
 
       <MarkdownView :content="displayContent" class="post-body topic-markdown" clickable-images />
@@ -251,6 +253,62 @@
       <p v-if="isNativeAppClient" class="share-card-tip">客户端请放大后截图保存。</p>
     </el-dialog>
 
+    <el-dialog
+      v-model="topicImageReviewDialogOpen"
+      title="图片人工复核"
+      width="min(920px, calc(100vw - 24px))"
+      append-to-body
+      class="topic-image-review-dialog"
+    >
+      <div class="topic-image-review-panel" v-loading="topicImageReviewLoading">
+        <p class="topic-image-review-copy">这里只展示当前主帖正文里的本地上传图片。你可以直接查看原图，并手动决定放行或继续隐藏。</p>
+        <el-empty v-if="!topicImageReviewLoading && !topicImageReviewAssets.length" description="这条帖子里没有可复核的图片" />
+        <div v-else class="topic-image-review-list">
+          <article v-for="asset in topicImageReviewAssets" :key="asset.id" class="topic-image-review-card">
+            <a :href="asset.url" target="_blank" rel="noopener noreferrer" class="topic-image-review-preview">
+              <img :src="asset.url" alt="待复核图片" loading="lazy" decoding="async" fetchpriority="low" />
+            </a>
+            <div class="topic-image-review-meta">
+              <div class="topic-image-review-head">
+                <el-tag :type="imageReviewTagType(asset.status)" effect="plain">{{ imageReviewStatusLabel(asset.status) }}</el-tag>
+                <span v-if="asset.manualReviewedBy?.nickname" class="topic-image-review-auditor">
+                  最近人工处理：{{ asset.manualReviewedBy.nickname }}
+                </span>
+              </div>
+              <p v-if="asset.reason" class="topic-image-review-line">当前说明：{{ asset.reason }}</p>
+              <p v-if="asset.manualReviewNote" class="topic-image-review-line">人工备注：{{ asset.manualReviewNote }}</p>
+              <p v-if="asset.lastError" class="topic-image-review-line topic-image-review-error">审核异常：{{ asset.lastError }}</p>
+              <p v-if="asset.detail && asset.detail !== asset.reason && asset.detail !== asset.manualReviewNote" class="topic-image-review-line">
+                详细信息：{{ asset.detail }}
+              </p>
+              <p v-if="asset.reviewedAt || asset.manualReviewedAt" class="topic-image-review-time">
+                最近处理时间：{{ fmtDate(asset.manualReviewedAt || asset.reviewedAt || "") }}
+              </p>
+              <div class="topic-image-review-actions">
+                <el-button
+                  type="success"
+                  size="small"
+                  :loading="topicImageReviewSavingId === asset.id && topicImageReviewSavingAction === 'approved'"
+                  @click="approveTopicImage(asset)"
+                >
+                  人工通过
+                </el-button>
+                <el-button
+                  type="danger"
+                  plain
+                  size="small"
+                  :loading="topicImageReviewSavingId === asset.id && topicImageReviewSavingAction === 'rejected'"
+                  @click="rejectTopicImage(asset)"
+                >
+                  继续隐藏
+                </el-button>
+              </div>
+            </div>
+          </article>
+        </div>
+      </div>
+    </el-dialog>
+
     <div class="share-card-export-shell" aria-hidden="true">
       <div class="share-card-dom share-card-dom--export" ref="shareCardExportRef">
         <div class="share-card-top">
@@ -329,6 +387,7 @@ import MarkdownView from "@/components/forum/MarkdownView.vue";
 import RichTextEditor from "@/components/forum/RichTextEditor.vue";
 import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDialog.vue";
 import { topicApi, replyApi, likeApi, type Topic, type Reply } from "@/api/topic";
+import { adminApi, type ForumImageReviewAsset } from "@/api/admin";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate, fmtRelative } from "@/utils/format";
 import { copyText } from "@/utils/userGroup";
@@ -354,6 +413,11 @@ const shareCardSaving = ref(false);
 const shareCardRendering = ref(false);
 const shareCardRenderedUrl = ref("");
 const shareCardPreviewOpen = ref(false);
+const topicImageReviewDialogOpen = ref(false);
+const topicImageReviewLoading = ref(false);
+const topicImageReviewSavingId = ref<number | null>(null);
+const topicImageReviewSavingAction = ref<"approved" | "rejected" | "">("");
+const topicImageReviewAssets = ref<ForumImageReviewAsset[]>([]);
 const replyReviewBlockedOpen = ref(false);
 const requestingReplyManualReview = ref(false);
 const replyManualReviewConfirmOpen = ref(false);
@@ -421,6 +485,10 @@ const canEdit = computed(() =>
   (auth.isMod && !isReadOnly.value)
 );
 const canPin = computed(() => auth.isMod);
+const canReviewTopicImages = computed(() => (
+  auth.isMod &&
+  (((topic.value?.imageReview?.pendingCount ?? 0) > 0) || ((topic.value?.imageReview?.rejectedCount ?? 0) > 0))
+));
 const replyDraftKey = computed(() => topic.value?.id ? `cpu-reply-draft-${topic.value.id}` : "");
 const currentMuteMessage = computed(() => auth.user?.mutedUntil ? `你已被禁言至 ${fmtDate(auth.user.mutedUntil)}` : "你当前已被禁言，暂时无法回复");
 const shareLandingUrl = computed(() => topic.value ? new URL(`/share/topic/${topic.value.id}`, window.location.origin).toString() : "");
@@ -487,12 +555,7 @@ async function load() {
   loading.value = true;
   try {
     const id = Number(route.params.id);
-    topic.value = await topicApi.detail(id).catch((error: AxiosError) => {
-      if (error.response?.status === 403) {
-        router.replace({ name: "forum", query: { redirect: route.fullPath } });
-      }
-      return null;
-    });
+    topic.value = await loadTopicDetail(id);
     if (!topic.value) {
       replies.value = [];
       return;
@@ -512,6 +575,15 @@ async function load() {
       replies.value.forEach((r: any) => (r._liked = set.has(r.id)));
     }
   } finally { loading.value = false; }
+}
+
+async function loadTopicDetail(id: number) {
+  return topicApi.detail(id).catch((error: AxiosError) => {
+    if (error.response?.status === 403) {
+      router.replace({ name: "forum", query: { redirect: route.fullPath } });
+    }
+    return null;
+  });
 }
 
 async function onLike() {
@@ -648,6 +720,87 @@ async function confirmReplyManualReviewRequest() {
   } finally {
     requestingReplyManualReview.value = false;
   }
+}
+
+async function openTopicImageReviewDialog() {
+  if (!topic.value?.id || !auth.isMod) return;
+  topicImageReviewDialogOpen.value = true;
+  await loadTopicImageReviewAssets();
+}
+
+async function loadTopicImageReviewAssets() {
+  if (!topic.value?.id || !auth.isMod) return;
+  topicImageReviewLoading.value = true;
+  try {
+    const response = await adminApi.reviewTargetImages("topic", topic.value.id);
+    topicImageReviewAssets.value = response.list;
+  } finally {
+    topicImageReviewLoading.value = false;
+  }
+}
+
+async function refreshTopicAfterImageReview() {
+  if (!topic.value?.id) return;
+  const nextTopic = await loadTopicDetail(topic.value.id);
+  if (nextTopic) topic.value = nextTopic;
+}
+
+async function approveTopicImage(asset: ForumImageReviewAsset) {
+  await ElMessageBox.confirm("确认将这张图片人工审核通过并恢复展示？", "人工通过", {
+    type: "warning",
+    confirmButtonText: "通过",
+    cancelButtonText: "取消",
+  });
+  topicImageReviewSavingId.value = asset.id;
+  topicImageReviewSavingAction.value = "approved";
+  try {
+    await adminApi.updateForumImage(asset.id, { status: "approved" });
+    await Promise.all([
+      refreshTopicAfterImageReview(),
+      loadTopicImageReviewAssets(),
+    ]);
+    ElMessage.success("图片已人工审核通过");
+  } finally {
+    topicImageReviewSavingId.value = null;
+    topicImageReviewSavingAction.value = "";
+  }
+}
+
+async function rejectTopicImage(asset: ForumImageReviewAsset) {
+  const { value } = await ElMessageBox.prompt("可选填写人工驳回备注，留空会保留当前审核说明。", "继续隐藏", {
+    inputPlaceholder: "例如：群二维码和群号可直接识别，不适合公开展示",
+  }).catch(() => ({ value: null }));
+  if (value === null) return;
+  topicImageReviewSavingId.value = asset.id;
+  topicImageReviewSavingAction.value = "rejected";
+  try {
+    await adminApi.updateForumImage(asset.id, {
+      status: "rejected",
+      manualReviewNote: value || undefined,
+    });
+    await Promise.all([
+      refreshTopicAfterImageReview(),
+      loadTopicImageReviewAssets(),
+    ]);
+    ElMessage.success("图片已维持隐藏");
+  } finally {
+    topicImageReviewSavingId.value = null;
+    topicImageReviewSavingAction.value = "";
+  }
+}
+
+function imageReviewStatusLabel(status?: string) {
+  if (status === "approved") return "已通过";
+  if (status === "rejected") return "已驳回";
+  if (status === "error") return "审核异常";
+  return "审核中";
+}
+
+function imageReviewTagType(status?: string) {
+  if (status === "approved") return "success";
+  if (status === "rejected") return "danger";
+  if (status === "error") return "warning";
+  return "info";
 }
 
 function escapeHtml(value: string) {
@@ -953,6 +1106,11 @@ async function onDelete() {
   padding: 10px 12px;
   font-size: 13px;
   line-height: 1.6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .image-review-tip-pending {
@@ -1011,6 +1169,87 @@ async function onDelete() {
     display: flex;
     gap: 4px;
   }
+}
+
+.topic-image-review-panel {
+  min-height: 160px;
+}
+
+.topic-image-review-copy {
+  margin: 0 0 14px;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.topic-image-review-list {
+  display: grid;
+  gap: 14px;
+}
+
+.topic-image-review-card {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) 1fr;
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.topic-image-review-preview {
+  display: block;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+}
+
+.topic-image-review-preview img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  display: block;
+}
+
+.topic-image-review-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.topic-image-review-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.topic-image-review-auditor,
+.topic-image-review-time {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.topic-image-review-line {
+  margin: 0;
+  color: #111827;
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.topic-image-review-error {
+  color: #b45309;
+}
+
+.topic-image-review-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 6px;
 }
 
 .reply-form-actions {
@@ -1534,6 +1773,10 @@ async function onDelete() {
   }
 
   .share-card-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .topic-image-review-card {
     grid-template-columns: 1fr;
   }
 

@@ -125,7 +125,9 @@
 
       <div class="actions-row">
         <el-button type="primary" :loading="saving" @click="saveConfig">保存审核配置</el-button>
+        <el-button plain :loading="sweepingImages" @click="sweepForumImages">一键补扫全站图片</el-button>
       </div>
+      <p v-if="lastImageSweepSummary" class="actions-note">{{ lastImageSweepSummary }}</p>
     </section>
 
     <section class="settings-card">
@@ -189,15 +191,17 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { adminApi, type AiReviewLogRow, type SiteConfig } from "@/api/admin";
+import { adminApi, type AiReviewLogRow, type ForumImageSweepResult, type SiteConfig } from "@/api/admin";
 import { fmtDate } from "@/utils/format";
 
 const loadingConfig = ref(false);
 const loadingLogs = ref(false);
 const saving = ref(false);
+const sweepingImages = ref(false);
 const textPromptsExpanded = ref(false);
 const imagePromptsExpanded = ref(false);
 const logs = ref<AiReviewLogRow[]>([]);
+const lastImageSweepSummary = ref("");
 const filters = reactive({ kind: "", status: "", page: 1, size: 20 });
 const form = reactive<SiteConfig>({
   siteOrigin: "",
@@ -293,6 +297,32 @@ async function loadLogs() {
   } finally {
     loadingLogs.value = false;
   }
+}
+
+async function sweepForumImages() {
+  sweepingImages.value = true;
+  try {
+    const result = await adminApi.sweepForumImages();
+    lastImageSweepSummary.value = buildImageSweepSummary(result);
+    ElMessage.success(result.moderationTriggered ? "已开始全站图片补扫并触发审核" : "已完成全站图片补扫");
+    await loadLogs();
+  } finally {
+    sweepingImages.value = false;
+  }
+}
+
+function buildImageSweepSummary(result: ForumImageSweepResult) {
+  const parts = [
+    `已扫描 ${result.scannedTopics} 帖 / ${result.scannedReplies} 条回复`,
+    `发现 ${result.uniqueImageUrls} 张图片`,
+  ];
+  if (result.createdAssets) parts.push(`补登记 ${result.createdAssets} 张`);
+  if (result.requeuedAssets) parts.push(`重新入队 ${result.requeuedAssets} 张`);
+  if (result.skippedAssets) parts.push(`跳过 ${result.skippedAssets} 张`);
+  if (!result.reviewEnabled) parts.push("图片审核当前未启用");
+  else if (result.moderationTriggered) parts.push(`后台已开始审核，当前待审 ${result.pendingAfterScan} 张`);
+  else parts.push("当前没有待审图片");
+  return parts.join("，");
 }
 </script>
 
@@ -419,7 +449,16 @@ async function loadLogs() {
 
 .actions-row {
   display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.actions-note {
+  margin: -4px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #667085;
 }
 
 .filters {
