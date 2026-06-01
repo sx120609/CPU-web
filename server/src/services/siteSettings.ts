@@ -149,6 +149,18 @@ export const DEFAULT_IMAGE_REVIEW_PROMPTS = {
   ].join("\n"),
 } as const;
 
+const LEGACY_DEFAULT_IMAGE_REVIEW_PROMPTS = {
+  system: "你是校园社区图片安全审核助手。你需要判断这张图片是否适合在公开学生社区直接展示。重点关注色情裸露、未成年人相关性内容、血腥暴力、极端不适、自残鼓励、毒品、违法展示、仇恨符号、诈骗引流、联系方式与隐私证件等风险。只返回 JSON。",
+  user: [
+    "请审核这张图片是否可以在校园社区公开展示，输出 JSON：",
+    "{\"approved\":true,\"reason\":\"一句短原因\",\"detail\":\"补充说明\",\"risk_level\":\"low|medium|high\"}",
+    "",
+    "图片来源：{{imageUrl}}",
+    "文件类型：{{mimeType}}",
+    "文件名：{{fileName}}",
+  ].join("\n"),
+} as const;
+
 const cache: Record<FeatureKey, boolean> = {
   forum: true,
   market: true,
@@ -616,8 +628,22 @@ function sanitizeAiReviewConfig() {
   if (!configCache.aiReviewModel) configCache.aiReviewModel = "deepseek-v4-flash";
   configCache.imageReviewApiUrl = normalizePromptTemplate(configCache.imageReviewApiUrl, "https://api.openai.com/v1/chat/completions");
   configCache.imageReviewModel = String(configCache.imageReviewModel || "gpt-4o-mini").trim() || "gpt-4o-mini";
+  upgradeLegacyImageReviewPrompts();
   configCache.imageReviewSystemPrompt = normalizePromptTemplate(configCache.imageReviewSystemPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.system);
   configCache.imageReviewUserPrompt = normalizePromptTemplate(configCache.imageReviewUserPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.user);
+}
+
+function upgradeLegacyImageReviewPrompts() {
+  const currentSystem = normalizePromptTemplate(configCache.imageReviewSystemPrompt, "");
+  const currentUser = normalizePromptTemplate(configCache.imageReviewUserPrompt, "");
+  const legacySystem = normalizePromptTemplate(LEGACY_DEFAULT_IMAGE_REVIEW_PROMPTS.system, "");
+  const legacyUser = normalizePromptTemplate(LEGACY_DEFAULT_IMAGE_REVIEW_PROMPTS.user, "");
+  if (currentSystem === legacySystem) {
+    configCache.imageReviewSystemPrompt = DEFAULT_IMAGE_REVIEW_PROMPTS.system;
+  }
+  if (currentUser === legacyUser) {
+    configCache.imageReviewUserPrompt = DEFAULT_IMAGE_REVIEW_PROMPTS.user;
+  }
 }
 
 function sanitizeCommunityTrustConfig() {
