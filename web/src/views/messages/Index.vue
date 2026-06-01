@@ -1,8 +1,13 @@
 <template>
   <div class="msg-page">
     <div class="page-head">
-      <h2 class="page-title">消息中心</h2>
-      <span v-if="tab !== 'settings' && unreadCount" class="page-sub">{{ unreadCount }} 条未读</span>
+      <div class="page-head-main">
+        <h2 class="page-title">消息中心</h2>
+        <span v-if="tab !== 'settings'" class="page-sub">{{ unreadCount ? `${unreadCount} 条未读` : "当前全部已读" }}</span>
+      </div>
+      <div v-if="tab !== 'settings'" class="page-head-actions">
+        <el-button text :disabled="!unreadCount" @click="readAll">全部标为已读</el-button>
+      </div>
     </div>
     <el-tabs v-model="tab" class="cpu-card messages-tabs">
       <el-tab-pane label="全部" name="all">
@@ -50,11 +55,6 @@
         </div>
       </el-tab-pane>
     </el-tabs>
-
-    <div class="bar" v-if="tab !== 'settings'">
-      <span class="bar-meta">{{ unreadCount ? `${unreadCount} 条未读` : "当前全部已读" }}</span>
-      <el-button text :disabled="!unreadCount" @click="readAll">全部标为已读</el-button>
-    </div>
 
     <el-dialog v-model="detailOpen" title="通知详情" width="620px" append-to-body class="notice-dialog">
       <div v-if="activeNotice" class="notice-detail">
@@ -330,24 +330,23 @@ function formatNoticeTime(value?: string) {
   justify-content: space-between;
   gap: 12px;
 }
+.page-head-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 .page-title { margin: 0; font-size: 22px; }
 .page-sub {
   color: #6b7280;
   font-size: 13px;
 }
-.cpu-card { background: #fff; border-radius: 12px; padding: 16px 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
-
-.bar {
+.page-head-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 4px;
+  justify-content: flex-end;
+  flex-shrink: 0;
 }
-.bar-meta {
-  color: #6b7280;
-  font-size: 13px;
-}
+.cpu-card { background: #fff; border-radius: 12px; padding: 16px 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
 .notice-detail { display: flex; flex-direction: column; gap: 12px; }
 .notice-head {
   display: flex;
@@ -414,11 +413,24 @@ function formatNoticeTime(value?: string) {
   .page-head {
     align-items: flex-start;
     flex-direction: column;
-    gap: 4px;
+    gap: 8px;
   }
 
   .page-title {
     font-size: 20px;
+  }
+
+  .page-head-main {
+    width: 100%;
+  }
+
+  .page-head-actions {
+    width: 100%;
+  }
+
+  .page-head-actions .el-button {
+    width: 100%;
+    margin-left: 0;
   }
 
   .cpu-card {
@@ -508,20 +520,6 @@ function formatNoticeTime(value?: string) {
 
   .settings .el-button {
     width: 100%;
-  }
-
-  .bar {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .bar .el-button {
-    width: 100%;
-  }
-
-  .bar-meta {
-    font-size: 12px;
   }
 
   .notice-head {

@@ -107,7 +107,7 @@
         </div>
         <el-button type="primary" plain @click="openGroupDialog()">添加群</el-button>
       </div>
-      <el-table :data="groups" size="small">
+      <el-table :data="groups" size="small" class="interactive-table">
         <el-table-column prop="groupId" label="群号" width="150" />
         <el-table-column prop="name" label="名称" min-width="160" />
         <el-table-column label="开关" min-width="220">
@@ -168,7 +168,7 @@
         </div>
         <el-input v-model="bindingQuery" clearable placeholder="搜索 QQ / 用户" style="width: 220px" @keyup.enter="loadBindings" />
       </div>
-      <el-table :data="bindings" size="small">
+      <el-table :data="bindings" size="small" class="interactive-table">
         <el-table-column prop="qqId" label="QQ" width="150" />
         <el-table-column label="站内账号" min-width="190">
           <template #default="{ row }">
@@ -240,26 +240,6 @@
         <el-table-column prop="content" label="内容" min-width="220" show-overflow-tooltip />
         <el-table-column prop="result" label="结果" min-width="180" show-overflow-tooltip />
       </el-table>
-      <div class="record-list">
-        <article v-for="row in logs" :key="`log-${row.id}`" class="record-card">
-          <div class="record-head">
-            <div>
-              <b>{{ row.eventType }}</b>
-              <span>{{ new Date(row.createdAt).toLocaleString() }}</span>
-            </div>
-            <el-tag :type="row.status === 'ok' ? 'success' : row.status === 'ignored' ? 'info' : 'danger'" size="small" effect="plain">
-              {{ row.status }}
-            </el-tag>
-          </div>
-          <div class="record-meta">
-            <span v-if="row.qqId">QQ：{{ row.qqId }}</span>
-            <span v-if="row.groupId">群：{{ row.groupId }}</span>
-            <span>内容：{{ row.content || "—" }}</span>
-            <span>结果：{{ row.result || "—" }}</span>
-          </div>
-        </article>
-        <el-empty v-if="!logs.length" description="暂无日志" />
-      </div>
       <div class="pager">
         <el-pagination layout="prev, pager, next" :total="logTotal" :page-size="logFilter.size" v-model:current-page="logFilter.page" @current-change="loadLogs" />
       </div>
@@ -678,7 +658,7 @@ function saveBlob(blob: Blob, filename: string) {
   gap: 8px;
   justify-content: flex-end;
 }
-.list-card :deep(.el-table) {
+.interactive-table {
   display: none;
 }
 .record-list {
@@ -745,6 +725,9 @@ function saveBlob(blob: Blob, filename: string) {
   .record-list {
     grid-template-columns: 1fr;
     gap: 10px;
+  }
+  .interactive-table {
+    display: none;
   }
   .card-head,
   .actions {

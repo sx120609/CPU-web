@@ -66,7 +66,7 @@
         </el-select>
         <el-button type="primary" @click="reloadOrders">查询</el-button>
       </div>
-      <el-table :data="orders" v-loading="ordersLoading" border size="small">
+      <el-table :data="orders" v-loading="ordersLoading" border size="small" class="interactive-table">
         <el-table-column prop="outTradeNo" label="订单号" min-width="190" show-overflow-tooltip />
         <el-table-column label="用户" min-width="130">
           <template #default="{ row }">{{ row.user?.nickname || "-" }} <span class="muted">{{ row.user?.username }}</span></template>
@@ -162,25 +162,6 @@
         <el-table-column prop="result" label="结果" min-width="130" />
         <el-table-column prop="rawPayload" label="原始参数" min-width="260" show-overflow-tooltip />
       </el-table>
-      <div class="record-list">
-        <article v-for="row in logs" :key="row.id" class="record-card">
-          <div class="record-head">
-            <div>
-              <b>{{ row.outTradeNo || "未匹配订单" }}</b>
-              <span>{{ fmtDate(row.createdAt) }}</span>
-            </div>
-            <div class="record-tag-stack">
-              <el-tag size="small" :type="row.signOk ? 'success' : 'danger'">{{ row.signOk ? "验签通过" : "验签失败" }}</el-tag>
-              <el-tag size="small" :type="row.handled ? 'success' : 'info'">{{ row.handled ? "已处理" : "未处理" }}</el-tag>
-            </div>
-          </div>
-          <div class="record-meta">
-            <span>结果：{{ row.result || "—" }}</span>
-            <span>原始参数：{{ row.rawPayload || "—" }}</span>
-          </div>
-        </article>
-        <el-empty v-if="!logsLoading && !logs.length" description="暂无回调日志" />
-      </div>
     </section>
   </div>
 </template>
@@ -305,7 +286,7 @@ async function editMessage(row: any) {
 .field--switch { align-items: center; flex-direction: row; justify-content: space-between; padding: 8px 0; }
 .filters { display: grid; grid-template-columns: minmax(0, 1fr) 140px 90px; gap: 8px; }
 .muted { color: #9ca3af; font-size: 12px; }
-.panel :deep(.el-table) { display: none; }
+.interactive-table { display: none; }
 .record-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -370,5 +351,6 @@ async function editMessage(row: any) {
   .field--wide { grid-column: auto; }
   .panel-head { flex-direction: column; }
   .record-list { grid-template-columns: 1fr; gap: 10px; }
+  .interactive-table { display: none; }
 }
 </style>

@@ -188,25 +188,6 @@
         <el-table-column prop="responseSummary" label="返回摘要" min-width="240" show-overflow-tooltip />
         <el-table-column prop="errorMessage" label="错误" min-width="220" show-overflow-tooltip />
       </el-table>
-
-      <div class="mobile-list" v-if="logs.length">
-        <article v-for="row in logs" :key="row.id" class="log-card">
-          <div class="log-top">
-            <strong>{{ row.kind }}</strong>
-            <span :class="['status-pill', `status-${row.status}`]">{{ row.status }}</span>
-          </div>
-          <div class="log-meta">{{ fmtDate(row.startedAt, "YYYY-MM-DD HH:mm:ss") }} · {{ row.model }}</div>
-          <div class="log-target">{{ row.targetLabel || row.targetUrl || "未指定目标" }}</div>
-          <div class="log-block">
-            <b>请求</b>
-            <p>{{ row.requestSummary || "—" }}</p>
-          </div>
-          <div class="log-block">
-            <b>返回</b>
-            <p>{{ row.responseSummary || row.errorMessage || "—" }}</p>
-          </div>
-        </article>
-      </div>
     </section>
   </div>
 </template>
@@ -548,66 +529,6 @@ function buildImageSweepSummary(result: ForumImageSweepResult) {
   flex-wrap: wrap;
 }
 
-.admin-table {
-  display: none;
-}
-
-.mobile-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 12px;
-}
-
-.log-card {
-  border: 1px solid #e5e7eb;
-  border-radius: 14px;
-  padding: 14px;
-  background: #fff;
-}
-
-.log-top {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  align-items: center;
-}
-
-.log-meta {
-  margin-top: 6px;
-  font-size: 12px;
-  color: #6b7280;
-}
-
-.log-target {
-  margin-top: 8px;
-  color: #111827;
-  font-size: 13px;
-}
-
-.log-block {
-  margin-top: 10px;
-}
-
-.log-block b {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 12px;
-  color: #374151;
-}
-
-.log-block p {
-  margin: 0;
-  font-size: 12px;
-  color: #6b7280;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.mobile-list :deep(.el-empty) {
-  grid-column: 1 / -1;
-}
-
 .status-pill {
   padding: 4px 8px;
   border-radius: 999px;
@@ -658,9 +579,5 @@ function buildImageSweepSummary(result: ForumImageSweepResult) {
     width: 100%;
   }
 
-  .mobile-list {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
 }
 </style>
