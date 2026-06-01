@@ -83,7 +83,7 @@
       <div class="section-head">
         <div>
           <h3 class="section-title">图片审核</h3>
-          <p class="section-desc">图片走异步审核，发布后先占位，审核通过再放行；风险评分与文字审核共用同一组阈值。</p>
+          <p class="section-desc">图片走异步审核，发布后先占位，审核通过再放行；图片使用独立的自动通过 / 自动拦截阈值。</p>
         </div>
       </div>
 
@@ -103,6 +103,14 @@
         <div class="ai-row ai-row--stretch">
           <span class="ai-label">图片审核 API Key</span>
           <el-input v-model="form.imageReviewApiKey" maxlength="240" show-password placeholder="sk-..." />
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">并发请求数</span>
+          <el-input-number v-model="form.imageReviewConcurrency" :min="1" :max="8" />
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">单次请求图片数</span>
+          <el-input-number v-model="form.imageReviewRequestGroupSize" :min="1" :max="6" />
         </div>
         <div class="ai-row">
           <span class="ai-label">图片自动通过</span>
@@ -232,6 +240,8 @@ const form = reactive<SiteConfig>({
   imageReviewApiKey: "",
   imageReviewSystemPrompt: "",
   imageReviewUserPrompt: "",
+  imageReviewConcurrency: 2,
+  imageReviewRequestGroupSize: 3,
   aiReviewAutoPassScore: 24,
   aiReviewBlockScore: 70,
   imageReviewAutoPassScore: 36,
@@ -300,6 +310,8 @@ async function saveConfig() {
       imageReviewApiKey: form.imageReviewApiKey,
       imageReviewSystemPrompt: form.imageReviewSystemPrompt,
       imageReviewUserPrompt: form.imageReviewUserPrompt,
+      imageReviewConcurrency: form.imageReviewConcurrency,
+      imageReviewRequestGroupSize: form.imageReviewRequestGroupSize,
       aiReviewAutoPassScore: form.aiReviewAutoPassScore,
       aiReviewBlockScore: form.aiReviewBlockScore,
       imageReviewAutoPassScore: form.imageReviewAutoPassScore,

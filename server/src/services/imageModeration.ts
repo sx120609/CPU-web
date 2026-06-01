@@ -7,8 +7,10 @@ import { getSiteConfig } from "./siteSettings";
 const IMAGE_MARKDOWN_RE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 const IMAGE_HTML_RE = /<img\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s"'=<>`]+))[^>]*>/gi;
 const IMAGE_REVIEW_MAX_INLINE_BYTES = 6 * 1024 * 1024;
+const IMAGE_REVIEW_MAX_BATCH_INLINE_BYTES = 12 * 1024 * 1024;
 const IMAGE_REVIEW_POLL_INTERVAL_MS = 20_000;
-const IMAGE_REVIEW_BATCH_SIZE = 3;
+const IMAGE_REVIEW_DEFAULT_CONCURRENCY = 2;
+const IMAGE_REVIEW_DEFAULT_REQUEST_GROUP_SIZE = 3;
 const FORUM_IMAGE_SWEEP_BATCH_SIZE = 200;
 
 let pollerStarted = false;
@@ -39,6 +41,17 @@ type ParsedImageReviewJson = {
   reason?: string;
   detail?: string;
   categories?: Record<string, number>;
+};
+type PreparedImageReviewInput = {
+  asset: {
+    id: number;
+    url: string;
+    localPath: string;
+    mimeType: string | null;
+    attemptCount: number;
+  };
+  mimeType: string;
+  dataUrl: string;
 };
 
 export type ForumImageModerationSummary = {
@@ -86,7 +99,7 @@ export function startForumImageModerationPoller() {
   if (pollerStarted) return;
   pollerStarted = true;
   const tick = () => {
-    triggerForumImageModerationDrain(IMAGE_REVIEW_BATCH_SIZE)
+    triggerForumImageModerationDrain(getImageReviewDispatchCapacity())
       .catch((error: unknown) => {
         console.warn("[image-review] moderation tick failed", error);
       });
@@ -179,10 +192,12 @@ export async function backfillForumImageAssetsAndTriggerModeration() {
   return forumImageSweepPromise;
 }
 
-export async function moderatePendingForumImages(limit = IMAGE_REVIEW_BATCH_SIZE) {
+export async function moderatePendingForumImages(limit = getImageReviewDispatchCapacity()) {
   if (!shouldRunImageReview()) return { processed: 0 };
   const now = new Date();
-  const take = Math.max(1, Math.floor(Number(limit) || IMAGE_REVIEW_BATCH_SIZE));
+  const take = Math.max(1, Math.floor(Number(limit) || getImageReviewDispatchCapacity()));
+  const concurrency = getImageReviewConcurrency();
+  const groupSize = getImageReviewRequestGroupSize();
   const list = await prisma.forumImageAsset.findMany({
     where: {
       OR: [
@@ -193,12 +208,18 @@ export async function moderatePendingForumImages(limit = IMAGE_REVIEW_BATCH_SIZE
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     take,
   });
-  let processed = 0;
-  for (const asset of list) {
-    await moderateSingleForumImage(asset);
-    processed += 1;
+  const groups = chunkImageAssets(list, groupSize);
+  for (let index = 0; index < groups.length; index += concurrency) {
+    const wave = groups.slice(index, index + concurrency);
+    const results = await Promise.allSettled(wave.map((group) => moderateForumImageGroup(group)));
+    const rejected = results.filter((item) => item.status === "rejected");
+    if (rejected.length) {
+      rejected.forEach((item) => {
+        console.warn("[image-review] image moderation group failed", item.reason);
+      });
+    }
   }
-  return { processed };
+  return { processed: list.length };
 }
 
 export async function decorateTopicForViewerWithImageModeration(topic: any, viewer?: Viewer) {
@@ -632,7 +653,7 @@ async function performForumImageSweep(): Promise<ForumImageSweepSummary> {
   };
 }
 
-export function triggerForumImageModerationDrain(maxProcessed = IMAGE_REVIEW_BATCH_SIZE) {
+export function triggerForumImageModerationDrain(maxProcessed = getImageReviewDispatchCapacity()) {
   const normalized = Number.isFinite(maxProcessed)
     ? Math.max(1, Math.floor(maxProcessed))
     : Number.POSITIVE_INFINITY;
@@ -652,9 +673,10 @@ export function triggerForumImageModerationDrain(maxProcessed = IMAGE_REVIEW_BAT
 async function runForumImageModerationDrain() {
   let processed = 0;
   while (!Number.isFinite(moderationDrainBudget) || moderationDrainBudget > 0) {
+    const dispatchCapacity = getImageReviewDispatchCapacity();
     const batchLimit = Number.isFinite(moderationDrainBudget)
-      ? Math.min(IMAGE_REVIEW_BATCH_SIZE, moderationDrainBudget)
-      : IMAGE_REVIEW_BATCH_SIZE;
+      ? Math.min(dispatchCapacity, moderationDrainBudget)
+      : dispatchCapacity;
     const result = await moderatePendingForumImages(batchLimit);
     if (!result.processed) {
       moderationDrainBudget = 0;
@@ -672,6 +694,29 @@ async function runForumImageModerationDrain() {
   return processed;
 }
 
+function getImageReviewConcurrency() {
+  const config = getSiteConfig();
+  return Math.max(1, Math.min(8, Math.floor(Number(config.imageReviewConcurrency) || IMAGE_REVIEW_DEFAULT_CONCURRENCY)));
+}
+
+function getImageReviewRequestGroupSize() {
+  const config = getSiteConfig();
+  return Math.max(1, Math.min(6, Math.floor(Number(config.imageReviewRequestGroupSize) || IMAGE_REVIEW_DEFAULT_REQUEST_GROUP_SIZE)));
+}
+
+function getImageReviewDispatchCapacity() {
+  return getImageReviewConcurrency() * getImageReviewRequestGroupSize();
+}
+
+function chunkImageAssets<T>(list: T[], size: number) {
+  const normalizedSize = Math.max(1, Math.floor(size) || 1);
+  const out: T[][] = [];
+  for (let index = 0; index < list.length; index += normalizedSize) {
+    out.push(list.slice(index, index + normalizedSize));
+  }
+  return out;
+}
+
 async function moderateSingleForumImage(asset: {
   id: number;
   url: string;
@@ -679,6 +724,53 @@ async function moderateSingleForumImage(asset: {
   mimeType: string | null;
   attemptCount: number;
 }) {
+  try {
+    const prepared = await prepareImageReviewInput(asset);
+    await reviewPreparedImage(prepared);
+  } catch (error: any) {
+    await markImageReviewError(asset, error);
+  }
+}
+
+async function moderateForumImageGroup(assets: Array<{
+  id: number;
+  url: string;
+  localPath: string;
+  mimeType: string | null;
+  attemptCount: number;
+}>) {
+  const preparedResults = await Promise.allSettled(assets.map((asset) => prepareImageReviewInput(asset)));
+  const prepared: PreparedImageReviewInput[] = [];
+  for (let index = 0; index < preparedResults.length; index += 1) {
+    const result = preparedResults[index];
+    if (result.status === "fulfilled") prepared.push(result.value);
+    else await markImageReviewError(assets[index], result.reason);
+  }
+  if (!prepared.length) return;
+  const batches = splitPreparedImageReviewInputs(prepared);
+  for (const batch of batches) {
+    if (batch.length === 1) {
+      await Promise.allSettled(batch.map((item) => reviewPreparedImage(item)));
+      continue;
+    }
+    try {
+      const decisions = await requestImageReviewBatch(batch);
+      if (decisions.length !== batch.length) throw new Error(`批量图片审核结果数量异常：expected ${batch.length}, got ${decisions.length}`);
+      await Promise.all(batch.map((item, index) => applyImageReviewDecision(item.asset.id, decisions[index])));
+    } catch (error) {
+      console.warn("[image-review] batch image review failed, fallback to single", error);
+      await Promise.allSettled(batch.map((item) => reviewPreparedImage(item)));
+    }
+  }
+}
+
+async function prepareImageReviewInput(asset: {
+  id: number;
+  url: string;
+  localPath: string;
+  mimeType: string | null;
+  attemptCount: number;
+}): Promise<PreparedImageReviewInput> {
   const now = new Date();
   await prisma.forumImageAsset.update({
     where: { id: asset.id },
@@ -689,43 +781,84 @@ async function moderateSingleForumImage(asset: {
       lastError: null,
     },
   });
-  try {
-    const buffer = await readFile(asset.localPath);
-    if (!buffer.length || buffer.length > IMAGE_REVIEW_MAX_INLINE_BYTES) {
-      throw new Error(buffer.length ? "图片文件过大，无法送审" : "图片文件为空");
-    }
-    const mimeType = resolveMimeType(asset.mimeType, asset.localPath, buffer);
-    if (!mimeType) throw new Error("图片格式暂不支持审核");
-    const decision = await requestImageReview({
-      url: asset.url,
-      localPath: asset.localPath,
-      mimeType,
-      dataUrl: `data:${mimeType};base64,${buffer.toString("base64")}`,
-    });
-    await prisma.forumImageAsset.update({
-      where: { id: asset.id },
-      data: {
-        status: decision.approved ? "approved" : "rejected",
-        reason: decision.reason,
-        detail: decision.detail,
-        reviewModel: decision.model,
-        reviewEndpoint: decision.endpoint,
-        reviewedAt: new Date(),
-        nextRetryAt: null,
-        lastError: null,
-      },
-    });
-  } catch (error: any) {
-    const delayMinutes = Math.min(60, Math.max(3, asset.attemptCount * 5 || 3));
-    await prisma.forumImageAsset.update({
-      where: { id: asset.id },
-      data: {
-        status: "error",
-        lastError: String(error?.message || error || "图片审核失败").slice(0, 500),
-        nextRetryAt: new Date(Date.now() + delayMinutes * 60 * 1000),
-      },
-    });
+  const buffer = await readFile(asset.localPath);
+  if (!buffer.length || buffer.length > IMAGE_REVIEW_MAX_INLINE_BYTES) {
+    throw new Error(buffer.length ? "图片文件过大，无法送审" : "图片文件为空");
   }
+  const mimeType = resolveMimeType(asset.mimeType, asset.localPath, buffer);
+  if (!mimeType) throw new Error("图片格式暂不支持审核");
+  return {
+    asset,
+    mimeType,
+    dataUrl: `data:${mimeType};base64,${buffer.toString("base64")}`,
+  };
+}
+
+async function reviewPreparedImage(input: PreparedImageReviewInput) {
+  try {
+    const decision = await requestImageReview({
+      url: input.asset.url,
+      localPath: input.asset.localPath,
+      mimeType: input.mimeType,
+      dataUrl: input.dataUrl,
+    });
+    await applyImageReviewDecision(input.asset.id, decision);
+  } catch (error: any) {
+    await markImageReviewError(input.asset, error);
+  }
+}
+
+async function applyImageReviewDecision(assetId: number, decision: ImageReviewDecision) {
+  await prisma.forumImageAsset.update({
+    where: { id: assetId },
+    data: {
+      status: decision.approved ? "approved" : "rejected",
+      reason: decision.reason,
+      detail: decision.detail,
+      reviewModel: decision.model,
+      reviewEndpoint: decision.endpoint,
+      reviewedAt: new Date(),
+      nextRetryAt: null,
+      lastError: null,
+    },
+  });
+}
+
+async function markImageReviewError(
+  asset: { id: number; attemptCount: number },
+  error: unknown,
+) {
+  const delayMinutes = Math.min(60, Math.max(3, asset.attemptCount * 5 || 3));
+  await prisma.forumImageAsset.update({
+    where: { id: asset.id },
+    data: {
+      status: "error",
+      lastError: String((error as any)?.message || error || "图片审核失败").slice(0, 500),
+      nextRetryAt: new Date(Date.now() + delayMinutes * 60 * 1000),
+    },
+  });
+}
+
+function splitPreparedImageReviewInputs(inputs: PreparedImageReviewInput[]) {
+  const maxGroupSize = getImageReviewRequestGroupSize();
+  const batches: PreparedImageReviewInput[][] = [];
+  let current: PreparedImageReviewInput[] = [];
+  let currentBytes = 0;
+  for (const input of inputs) {
+    const payloadBytes = Buffer.byteLength(input.dataUrl, "utf8");
+    if (
+      current.length
+      && (current.length >= maxGroupSize || currentBytes + payloadBytes > IMAGE_REVIEW_MAX_BATCH_INLINE_BYTES)
+    ) {
+      batches.push(current);
+      current = [];
+      currentBytes = 0;
+    }
+    current.push(input);
+    currentBytes += payloadBytes;
+  }
+  if (current.length) batches.push(current);
+  return batches;
 }
 
 async function requestImageReview(input: {
@@ -817,27 +950,63 @@ async function requestImageReview(input: {
   const json: any = await response.json();
   const content = extractChatCompletionContent(json);
   await finishAiReviewLogSuccess(logId, content);
-  const parsed = parseImageReviewJson(content);
-  const riskScore = clampImageRiskScore(parsed.risk_score, parsed.approved);
-  const riskLevel = normalizeImageRiskLevel(parsed.risk_level, riskScore);
-  const decision = normalizeImageDecision(parsed.decision, parsed.approved, riskScore, config.imageReviewAutoPassScore, config.imageReviewBlockScore);
-  return {
-    approved: decision === "auto_pass",
-    reason: String(parsed.reason || fallbackImageReason(riskLevel, decision)).slice(0, 120),
-    detail: buildImageDecisionDetail({
-      riskScore,
-      riskLevel,
-      decision,
-      categories: parsed.categories ?? {},
-      detail: String(parsed.detail || "").slice(0, 1000),
-      modelDecision: String(parsed.decision || "").trim(),
-    }),
-    riskLevel,
-    riskScore,
-    decision,
+  return buildImageReviewDecision(parseImageReviewJson(content), config);
+}
+
+async function requestImageReviewBatch(inputs: PreparedImageReviewInput[]): Promise<ImageReviewDecision[]> {
+  const config = getSiteConfig();
+  const endpoint = normalizeImageReviewApiUrl(config.imageReviewApiUrl);
+  const started = await startAiReviewLog({
+    kind: "image",
+    targetLabel: `${inputs.length} 张图片批量审核`,
+    targetUrl: inputs.map((item) => item.asset.url).slice(0, 3).join("\n"),
+    provider: "image-review",
     model: config.imageReviewModel,
     endpoint,
-  };
+    requestSummary: inputs
+      .map((item, index) => `${index + 1}. ${item.mimeType} ${item.asset.url}`)
+      .join("\n")
+      .slice(0, 4000),
+  });
+  const logId = started?.id ?? null;
+  const contentItems: Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string; detail: "low" } }> = [
+    {
+      type: "text",
+      text: buildBatchImageReviewPrompt(inputs, config.imageReviewUserPrompt),
+    },
+    ...inputs.map((item) => ({
+      type: "image_url" as const,
+      image_url: {
+        url: item.dataUrl,
+        detail: "low" as const,
+      },
+    })),
+  ];
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${config.imageReviewApiKey}`,
+    },
+    body: JSON.stringify({
+      model: config.imageReviewModel,
+      temperature: 0.1,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: config.imageReviewSystemPrompt },
+        { role: "user", content: contentItems },
+      ],
+    }),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    await finishAiReviewLogError(logId, `HTTP ${response.status}`, text);
+    throw new Error(`批量图片审核请求失败：${response.status}${text ? ` ${text.slice(0, 200)}` : ""}`);
+  }
+  const json: any = await response.json();
+  const content = extractChatCompletionContent(json);
+  await finishAiReviewLogSuccess(logId, content);
+  return parseImageReviewBatchJson(content, inputs.length).map((item) => buildImageReviewDecision(item, config));
 }
 
 function normalizeImageReviewApiUrl(input: string) {
@@ -879,6 +1048,18 @@ function parseImageReviewJson(content: string): ParsedImageReviewJson {
     }
     throw new Error("图片审核返回格式异常");
   }
+}
+
+function parseImageReviewBatchJson(content: string, expectedCount: number): ParsedImageReviewJson[] {
+  const parsed = parseImageReviewJson(content) as any;
+  const results = Array.isArray(parsed) ? parsed : parsed?.results;
+  if (!Array.isArray(results)) {
+    throw new Error("批量图片审核返回格式异常");
+  }
+  if (results.length !== expectedCount) {
+    throw new Error(`批量图片审核结果数量异常：expected ${expectedCount}, got ${results.length}`);
+  }
+  return results as ParsedImageReviewJson[];
 }
 
 function renderPromptTemplate(template: string, vars: Record<string, unknown>) {
@@ -977,6 +1158,29 @@ function fallbackImageReason(
   return riskLevel === "high" ? "图片风险较高，不适合公开展示" : "图片未通过审核";
 }
 
+function buildImageReviewDecision(parsed: ParsedImageReviewJson, config: ReturnType<typeof getSiteConfig>): ImageReviewDecision {
+  const riskScore = clampImageRiskScore(parsed.risk_score, parsed.approved);
+  const riskLevel = normalizeImageRiskLevel(parsed.risk_level, riskScore);
+  const decision = normalizeImageDecision(parsed.decision, parsed.approved, riskScore, config.imageReviewAutoPassScore, config.imageReviewBlockScore);
+  return {
+    approved: decision === "auto_pass",
+    reason: String(parsed.reason || fallbackImageReason(riskLevel, decision)).slice(0, 120),
+    detail: buildImageDecisionDetail({
+      riskScore,
+      riskLevel,
+      decision,
+      categories: parsed.categories ?? {},
+      detail: String(parsed.detail || "").slice(0, 1000),
+      modelDecision: String(parsed.decision || "").trim(),
+    }),
+    riskLevel,
+    riskScore,
+    decision,
+    model: config.imageReviewModel,
+    endpoint: normalizeImageReviewApiUrl(config.imageReviewApiUrl),
+  };
+}
+
 function buildImageDecisionDetail(input: {
   riskScore: number;
   riskLevel: "low" | "medium" | "high";
@@ -999,4 +1203,23 @@ function buildImageDecisionDetail(input: {
     topCategories.length ? `风险分类：${topCategories.join(" / ")}` : "",
     input.detail ? `补充说明：${input.detail}` : "",
   ].filter(Boolean).join("\n");
+}
+
+function buildBatchImageReviewPrompt(inputs: PreparedImageReviewInput[], promptTemplate: string) {
+  const perImageInstructions = inputs.map((item, index) => [
+    `# 第 ${index + 1} 张图片`,
+    renderPromptTemplate(promptTemplate, {
+      imageUrl: item.asset.url,
+      mimeType: item.mimeType,
+      fileName: path.basename(item.asset.localPath),
+    }),
+  ].join("\n"));
+  return [
+    "你将收到多张图片，请严格按照图片出现顺序逐张审核。",
+    "你必须只返回一个 JSON 对象，格式如下：",
+    "{\"results\":[{\"risk_score\":0-100,\"risk_level\":\"low|medium|high\",\"decision\":\"auto_pass|manual_review|block\",\"reason\":\"一句短原因\",\"detail\":\"补充说明\",\"categories\":{\"sexual\":0-100,\"minor\":0-100,\"violence\":0-100,\"self_harm\":0-100,\"privacy\":0-100,\"fraud\":0-100,\"hate\":0-100,\"gender_conflict\":0-100,\"extremism\":0-100}}]}",
+    `要求：results 数组长度必须等于 ${inputs.length}，并且每一项都与对应序号的图片一一对应。`,
+    "",
+    ...perImageInstructions,
+  ].join("\n\n");
 }

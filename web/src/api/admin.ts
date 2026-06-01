@@ -12,6 +12,8 @@ export type SiteConfig = {
   imageReviewApiKey: string;
   imageReviewSystemPrompt: string;
   imageReviewUserPrompt: string;
+  imageReviewConcurrency: number;
+  imageReviewRequestGroupSize: number;
   aiReviewAutoPassScore: number;
   aiReviewBlockScore: number;
   imageReviewAutoPassScore: number;
@@ -118,6 +120,26 @@ export type AdminOverview = {
   forumEnabledToday: number;
 };
 
+export type DatabaseBackupStatus = {
+  supported: boolean;
+  provider: "sqlite-file" | "unsupported";
+  exists: boolean;
+  maintenanceActive: boolean;
+  maintenanceMessage: string;
+  databasePathLabel: string | null;
+  sizeBytes: number | null;
+  updatedAt: string | null;
+  downloadFileName: string | null;
+  reason: string | null;
+};
+
+export type DatabaseRestoreResult = {
+  restoredAt: string;
+  databasePathLabel: string;
+  sizeBytes: number;
+  safetyCopyPathLabel: string | null;
+};
+
 export type EpayConfig = {
   id: number;
   enabled: boolean;
@@ -189,6 +211,21 @@ export type QqBotGroup = {
 export const adminApi = {
   // 概览
   overview: () => request.get<AdminOverview>("/admin/overview"),
+  // 数据库备份
+  databaseStatus: () => request.get<DatabaseBackupStatus>("/admin/database/status"),
+  downloadDatabaseBackup: () =>
+    request.get<Blob>("/admin/database/backup", undefined, {
+      responseType: "blob",
+      timeout: 120000,
+      suppressErrorMessage: true,
+    }),
+  restoreDatabase: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request.post<DatabaseRestoreResult>("/admin/database/restore", form, {
+      timeout: 120000,
+    });
+  },
   // 用户
   users: (params: {
     q?: string;
@@ -240,6 +277,8 @@ export const adminApi = {
     imageReviewApiKey?: string;
     imageReviewSystemPrompt?: string;
     imageReviewUserPrompt?: string;
+    imageReviewConcurrency?: number;
+    imageReviewRequestGroupSize?: number;
     aiReviewAutoPassScore?: number;
     aiReviewBlockScore?: number;
     imageReviewAutoPassScore?: number;

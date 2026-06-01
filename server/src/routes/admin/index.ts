@@ -1,6 +1,10 @@
 import { Router } from "express";
+import multer from "multer";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
+import path from "node:path";
+import { mkdirSync } from "node:fs";
+import { unlink } from "node:fs/promises";
 import { prisma } from "../../prisma";
 import { Errors, ok } from "../../utils/response";
 import { adminOnly, modOrAbove } from "../../middleware/admin";
@@ -34,9 +38,24 @@ import { buildEpayCallbackUrls, buildEpaySubmitPayload, getEpayConfig, resolvePa
 import { amountCentsToMoney } from "../../services/epay";
 import { formatSponsorOrder, getSponsorConfig, updateSponsorConfig } from "../../services/sponsor";
 import { applyManualForumImageReview, backfillForumImageAssetsAndTriggerModeration, listForumImageAssetsForContent } from "../../services/imageModeration";
+import {
+  cleanupDatabaseBackupSnapshot,
+  createDatabaseBackupSnapshot,
+  getDatabaseBackupStatus,
+  restoreDatabaseFromUpload,
+} from "../../services/databaseBackup";
 import { qqBotAdminRouter } from "./qqbot";
 
 export const adminRouter = Router();
+const adminUploadDir = path.resolve(process.cwd(), "uploads", "_admin-tmp");
+mkdirSync(adminUploadDir, { recursive: true });
+const databaseRestoreUpload = multer({
+  dest: adminUploadDir,
+  limits: {
+    files: 1,
+    fileSize: 200 * 1024 * 1024,
+  },
+});
 
 function requestOrigin(req: any) {
   const proto = String(req.headers["x-forwarded-proto"] ?? req.protocol ?? "http").split(",")[0].trim();
@@ -45,6 +64,57 @@ function requestOrigin(req: any) {
 }
 
 adminRouter.use("/qqbot", adminOnly, qqBotAdminRouter);
+
+adminRouter.get("/database/status", adminOnly, async (_req, res, next) => {
+  try {
+    ok(res, await getDatabaseBackupStatus());
+  } catch (e) { next(e); }
+});
+
+adminRouter.get("/database/backup", adminOnly, async (_req, res, next) => {
+  let snapshot: Awaited<ReturnType<typeof createDatabaseBackupSnapshot>> | null = null;
+  try {
+    snapshot = await createDatabaseBackupSnapshot();
+    res.setHeader("Content-Type", "application/vnd.sqlite3");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${snapshot.fileName}"; filename*=UTF-8''${encodeURIComponent(snapshot.fileName)}`
+    );
+    res.sendFile(snapshot.filePath, async (error) => {
+      if (snapshot) await cleanupDatabaseBackupSnapshot(snapshot);
+      if (error && !res.headersSent) next(error);
+    });
+  } catch (e) {
+    if (snapshot) await cleanupDatabaseBackupSnapshot(snapshot);
+    next(e);
+  }
+});
+
+adminRouter.post("/database/restore", adminOnly, databaseRestoreUpload.single("file"), async (req, res, next) => {
+  const uploadedPath = req.file?.path;
+  try {
+    if (!uploadedPath) throw Errors.badRequest("请先上传 SQLite 备份文件");
+    const result = await restoreDatabaseFromUpload(uploadedPath);
+    ok(res, result, "数据库已恢复");
+  } catch (e: any) {
+    if (e instanceof Error && e.message.includes("正在进行")) {
+      next(Errors.conflict(e.message));
+      return;
+    }
+    if (e instanceof Error && (
+      e.message.includes("SQLite") ||
+      e.message.includes("过小") ||
+      e.message.includes("无法执行恢复") ||
+      e.message.includes("无法识别")
+    )) {
+      next(Errors.badRequest(e.message));
+      return;
+    }
+    next(e);
+  } finally {
+    if (uploadedPath) await unlink(uploadedPath).catch(() => undefined);
+  }
+});
 
 // ============ 用户管理 ============
 
@@ -1332,6 +1402,8 @@ const siteConfigPatchSchema = z.object({
   imageReviewApiKey: z.string().trim().max(240).optional(),
   imageReviewSystemPrompt: z.string().max(8000).optional(),
   imageReviewUserPrompt: z.string().max(12000).optional(),
+  imageReviewConcurrency: z.number().int().min(1).max(8).optional(),
+  imageReviewRequestGroupSize: z.number().int().min(1).max(6).optional(),
   aiReviewAutoPassScore: z.number().int().min(0).max(100).optional(),
   aiReviewBlockScore: z.number().int().min(0).max(100).optional(),
   imageReviewAutoPassScore: z.number().int().min(0).max(100).optional(),
@@ -1377,6 +1449,8 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       req.body.imageReviewApiKey !== undefined ||
       req.body.imageReviewSystemPrompt !== undefined ||
       req.body.imageReviewUserPrompt !== undefined ||
+      req.body.imageReviewConcurrency !== undefined ||
+      req.body.imageReviewRequestGroupSize !== undefined ||
       req.body.aiReviewAutoPassScore !== undefined ||
       req.body.aiReviewBlockScore !== undefined ||
       req.body.imageReviewAutoPassScore !== undefined ||

@@ -7,14 +7,21 @@ import { errorHandler } from "./middleware/error";
 import { router } from "./routes";
 import { shareRouter } from "./routes/share";
 import { isDev } from "./config";
+import { getDatabaseMaintenanceMessage, isDatabaseMaintenanceActive } from "./services/maintenance";
 import { filestoreProxy } from "./services/filestore";
 import { startForumImageModerationPoller } from "./services/imageModeration";
 import { startQqNotificationPoller } from "./services/qqbot";
+import { fail } from "./utils/response";
 
 export function createApp() {
   const app = express();
 
   app.use(cors());
+  app.use((req, res, next) => {
+    if (!isDatabaseMaintenanceActive()) return next();
+    if (req.path === "/api/health") return next();
+    return fail(res, 5030, getDatabaseMaintenanceMessage(), 503);
+  });
   app.use("/filestore", filestoreProxy);
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: false }));

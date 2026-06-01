@@ -30,6 +30,8 @@ export type SiteConfig = {
   imageReviewApiKey: string;
   imageReviewSystemPrompt: string;
   imageReviewUserPrompt: string;
+  imageReviewConcurrency: number;
+  imageReviewRequestGroupSize: number;
   aiReviewAutoPassScore: number;
   aiReviewBlockScore: number;
   imageReviewAutoPassScore: number;
@@ -93,6 +95,8 @@ const IMAGE_REVIEW_MODEL_KEY = "ai.imageReview.model";
 const IMAGE_REVIEW_API_KEY_KEY = "ai.imageReview.apiKey";
 const IMAGE_REVIEW_SYSTEM_PROMPT_KEY = "ai.imageReview.systemPrompt";
 const IMAGE_REVIEW_USER_PROMPT_KEY = "ai.imageReview.userPrompt";
+const IMAGE_REVIEW_CONCURRENCY_KEY = "ai.imageReview.concurrency";
+const IMAGE_REVIEW_REQUEST_GROUP_SIZE_KEY = "ai.imageReview.requestGroupSize";
 const AI_REVIEW_AUTO_PASS_SCORE_KEY = "ai.review.autoPassScore";
 const AI_REVIEW_BLOCK_SCORE_KEY = "ai.review.blockScore";
 const IMAGE_REVIEW_AUTO_PASS_SCORE_KEY = "ai.imageReview.autoPassScore";
@@ -199,6 +203,8 @@ const configCache: SiteConfig = {
   imageReviewApiKey: "",
   imageReviewSystemPrompt: DEFAULT_IMAGE_REVIEW_PROMPTS.system,
   imageReviewUserPrompt: DEFAULT_IMAGE_REVIEW_PROMPTS.user,
+  imageReviewConcurrency: 2,
+  imageReviewRequestGroupSize: 3,
   aiReviewAutoPassScore: 24,
   aiReviewBlockScore: 70,
   imageReviewAutoPassScore: 36,
@@ -264,6 +270,8 @@ export async function loadFeatures(): Promise<void> {
           IMAGE_REVIEW_API_KEY_KEY,
           IMAGE_REVIEW_SYSTEM_PROMPT_KEY,
           IMAGE_REVIEW_USER_PROMPT_KEY,
+          IMAGE_REVIEW_CONCURRENCY_KEY,
+          IMAGE_REVIEW_REQUEST_GROUP_SIZE_KEY,
           AI_REVIEW_AUTO_PASS_SCORE_KEY,
           AI_REVIEW_BLOCK_SCORE_KEY,
           IMAGE_REVIEW_AUTO_PASS_SCORE_KEY,
@@ -338,6 +346,14 @@ export async function loadFeatures(): Promise<void> {
     }
     if (r.key === IMAGE_REVIEW_USER_PROMPT_KEY) {
       configCache.imageReviewUserPrompt = normalizePromptTemplate(r.value, DEFAULT_IMAGE_REVIEW_PROMPTS.user);
+      continue;
+    }
+    if (r.key === IMAGE_REVIEW_CONCURRENCY_KEY) {
+      configCache.imageReviewConcurrency = normalizeSmallInt(r.value, 2, 1, 8);
+      continue;
+    }
+    if (r.key === IMAGE_REVIEW_REQUEST_GROUP_SIZE_KEY) {
+      configCache.imageReviewRequestGroupSize = normalizeSmallInt(r.value, 3, 1, 6);
       continue;
     }
     if (r.key === AI_REVIEW_AUTO_PASS_SCORE_KEY) {
@@ -675,6 +691,8 @@ function sanitizeAiReviewConfig() {
   if (!configCache.aiReviewModel) configCache.aiReviewModel = "deepseek-v4-flash";
   configCache.imageReviewApiUrl = normalizePromptTemplate(configCache.imageReviewApiUrl, "https://api.openai.com/v1/chat/completions");
   configCache.imageReviewModel = String(configCache.imageReviewModel || "gpt-4o-mini").trim() || "gpt-4o-mini";
+  configCache.imageReviewConcurrency = normalizeSmallInt(configCache.imageReviewConcurrency, 2, 1, 8);
+  configCache.imageReviewRequestGroupSize = normalizeSmallInt(configCache.imageReviewRequestGroupSize, 3, 1, 6);
   upgradeLegacyImageReviewPrompts();
   configCache.imageReviewSystemPrompt = normalizePromptTemplate(configCache.imageReviewSystemPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.system);
   configCache.imageReviewUserPrompt = normalizePromptTemplate(configCache.imageReviewUserPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.user);
@@ -720,6 +738,8 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
     imageReviewApiKey: String(input.imageReviewApiKey ?? configCache.imageReviewApiKey ?? "").trim(),
     imageReviewSystemPrompt: resolvePromptTemplate(input.imageReviewSystemPrompt, configCache.imageReviewSystemPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.system),
     imageReviewUserPrompt: resolvePromptTemplate(input.imageReviewUserPrompt, configCache.imageReviewUserPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.user),
+    imageReviewConcurrency: normalizeSmallInt(input.imageReviewConcurrency, configCache.imageReviewConcurrency, 1, 8),
+    imageReviewRequestGroupSize: normalizeSmallInt(input.imageReviewRequestGroupSize, configCache.imageReviewRequestGroupSize, 1, 6),
     aiReviewAutoPassScore: normalizeAiScore(input.aiReviewAutoPassScore, configCache.aiReviewAutoPassScore),
     aiReviewBlockScore: normalizeAiScore(input.aiReviewBlockScore, configCache.aiReviewBlockScore),
     imageReviewAutoPassScore: normalizeAiScore(input.imageReviewAutoPassScore, configCache.imageReviewAutoPassScore),
@@ -792,6 +812,16 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       where: { key: IMAGE_REVIEW_USER_PROMPT_KEY },
       update: { value: next.imageReviewUserPrompt },
       create: { key: IMAGE_REVIEW_USER_PROMPT_KEY, value: next.imageReviewUserPrompt },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: IMAGE_REVIEW_CONCURRENCY_KEY },
+      update: { value: String(next.imageReviewConcurrency) },
+      create: { key: IMAGE_REVIEW_CONCURRENCY_KEY, value: String(next.imageReviewConcurrency) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: IMAGE_REVIEW_REQUEST_GROUP_SIZE_KEY },
+      update: { value: String(next.imageReviewRequestGroupSize) },
+      create: { key: IMAGE_REVIEW_REQUEST_GROUP_SIZE_KEY, value: String(next.imageReviewRequestGroupSize) },
     }),
     prisma.siteSetting.upsert({
       where: { key: AI_REVIEW_AUTO_PASS_SCORE_KEY },
