@@ -79,7 +79,6 @@ function bindVideoPlayers() {
   videos.forEach((video, index) => {
     const src = getVideoSourceUrl(video);
     if (!src) return;
-    syncVideoAspectRatio(video);
     const poster = String(video.getAttribute("poster") || "").trim();
     const fallbackVideo = video.cloneNode(true) as HTMLVideoElement;
     fallbackVideo.controls = true;
@@ -92,6 +91,8 @@ function bindVideoPlayers() {
     const playerMount = document.createElement("div");
     playerMount.className = "md-video-player";
     shell.appendChild(playerMount);
+    bindVideoLayout(fallbackVideo, shell);
+    bindVideoLayout(video, shell);
 
     const linkBlock = video.nextElementSibling instanceof HTMLParagraphElement
       && video.nextElementSibling.querySelector(".qq-inline-video__link")
@@ -128,6 +129,10 @@ function bindVideoPlayers() {
       });
       player.on("ready", () => {
         player.autoSize();
+        bindVideoLayout(player.video, shell);
+      });
+      player.on("video:loadedmetadata", () => {
+        bindVideoLayout(player.video, shell);
       });
       videoPlayers.push(player);
       shell.dataset.playerIndex = String(index);
@@ -146,11 +151,19 @@ function getVideoSourceUrl(video: HTMLVideoElement) {
   return source?.getAttribute("src") || source?.src || "";
 }
 
-function syncVideoAspectRatio(video: HTMLVideoElement) {
+function bindVideoLayout(video: HTMLVideoElement, shell: HTMLDivElement) {
   const apply = () => {
     if (!video.videoWidth || !video.videoHeight) return;
-    const ratio = `${video.videoWidth} / ${video.videoHeight}`;
-    video.style.setProperty("--md-video-aspect-ratio", ratio);
+    const width = video.videoWidth;
+    const height = video.videoHeight;
+    const ratio = width / height;
+    shell.style.setProperty("--md-video-aspect-ratio", `${width} / ${height}`);
+    const isPortrait = ratio < 0.95;
+    shell.dataset.videoOrientation = isPortrait ? "portrait" : "landscape";
+    const maxWidth = isPortrait
+      ? Math.min(460, Math.max(320, Math.round(720 * ratio)))
+      : 720;
+    shell.style.setProperty("--md-video-max-width", `${maxWidth}px`);
   };
   if (video.readyState >= 1) {
     apply();
@@ -688,10 +701,14 @@ watch(() => props.clickableImages, () => nextTick(() => {
   box-shadow: 0 14px 32px rgba(15, 23, 42, 0.12);
 }
 .md :deep(.md-video-shell) {
-  width: min(100%, 720px);
+  width: min(100%, var(--md-video-max-width, 720px));
   max-width: 100%;
   margin: 14px 0;
   border-radius: 18px;
+}
+.md :deep(.md-video-shell[data-video-orientation="portrait"]) {
+  margin-left: auto;
+  margin-right: auto;
 }
 .md :deep(.md-video-player) {
   width: 100%;
@@ -706,6 +723,9 @@ watch(() => props.clickableImages, () => nextTick(() => {
 }
 .md :deep(.md-video-shell.is-fallback) {
   border-radius: 14px;
+}
+.md :deep(.md-video-shell[data-video-orientation="portrait"] .md-video-player) {
+  min-height: 0;
 }
 .md :deep(.qq-inline-video-fallback) {
   width: 100%;
@@ -786,6 +806,11 @@ watch(() => props.clickableImages, () => nextTick(() => {
   background: #fef2f2;
   border-color: #fecaca;
   color: #b91c1c;
+}
+.md :deep(.video-review-placeholder-error) {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #991b1b;
 }
 .md :deep(.qq-share-card) {
   display: block;

@@ -63,6 +63,7 @@ import {
   saveOneDriveChinaDriveSelection,
 } from "../../services/oneDriveChina";
 import {
+  cleanupMigratedLocalMediaAssets,
   listMediaStorageAdminInventory,
   migrateLocalMediaAssetsToRemote,
 } from "../../services/mediaStorage";
@@ -1559,6 +1560,22 @@ adminRouter.get("/media-storage/files", adminOnly, async (_req, res, next) => {
 adminRouter.post("/media-storage/migrate", adminOnly, async (_req, res, next) => {
   try {
     ok(res, await migrateLocalMediaAssetsToRemote());
+  } catch (e: any) {
+    if (
+      e?.message === "请先将媒体存储后端切换为世纪互联 OneDrive / SharePoint"
+      || e?.message === "世纪互联 OneDrive / SharePoint 尚未完成授权或未选择文档库"
+      || e?.message === "请先在后台点击登录授权"
+    ) {
+      next(Errors.badRequest(e.message));
+      return;
+    }
+    next(e);
+  }
+});
+
+adminRouter.post("/media-storage/cleanup-local", adminOnly, async (_req, res, next) => {
+  try {
+    ok(res, await cleanupMigratedLocalMediaAssets());
   } catch (e: any) {
     if (
       e?.message === "请先将媒体存储后端切换为世纪互联 OneDrive / SharePoint"

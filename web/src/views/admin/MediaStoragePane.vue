@@ -112,6 +112,15 @@
           >
             一键搬迁当前远端前缀下的本地文件
           </el-button>
+          <el-button
+            type="danger"
+            plain
+            :disabled="cleanupDisabled"
+            :loading="cleaningLocalFiles"
+            @click="cleanupLocalFiles"
+          >
+            清理已迁移的本地/缓存副本
+          </el-button>
         </div>
       </div>
 
@@ -179,6 +188,21 @@
         </div>
       </div>
 
+      <div v-if="lastCleanupResult" class="migration-result">
+        <div class="migration-head">
+          <div class="card-title">最近一次本地清理结果</div>
+          <div class="section-desc">
+            已删除 {{ lastCleanupResult.removed }} / {{ lastCleanupResult.eligible }}，失败 {{ lastCleanupResult.failed }}。
+          </div>
+        </div>
+        <div v-if="failedCleanupItems.length" class="migration-errors">
+          <div v-for="item in failedCleanupItems" :key="item.relativePath" class="migration-error-row">
+            <code>{{ item.relativePath }}</code>
+            <span>{{ item.message }}</span>
+          </div>
+        </div>
+      </div>
+
       <el-table
         v-if="filteredFiles.length"
         :data="filteredFiles"
@@ -233,6 +257,7 @@ import {
   adminApi,
   type MediaStorageAdminFileEntry,
   type MediaStorageAdminInventory,
+  type MediaStorageCleanupResult,
   type MediaStorageConfig,
   type MediaStorageMigrationResult,
   type OneDriveChinaDriveOption,
@@ -258,6 +283,7 @@ const authorizingOneDriveChina = ref(false);
 const loadingOneDriveChinaDrives = ref(false);
 const savingOneDriveChinaDrive = ref(false);
 const migratingFiles = ref(false);
+const cleaningLocalFiles = ref(false);
 
 const siteOrigin = ref("");
 const mediaStorageProvider = ref<"local" | "onedrive-cn">("local");
@@ -280,6 +306,7 @@ const oneDriveChinaDriveOptions = ref<OneDriveChinaDriveOption[]>([]);
 
 const inventory = ref<MediaStorageAdminInventory | null>(null);
 const lastMigrationResult = ref<MediaStorageMigrationResult | null>(null);
+const lastCleanupResult = ref<MediaStorageCleanupResult | null>(null);
 const fileQuery = ref("");
 const fileFilter = ref<FileFilterKey>("all");
 
@@ -291,7 +318,18 @@ const migrationDisabled = computed(() =>
   || !oneDriveChinaDriveId.value
   || !inventory.value?.summary.eligibleMigrationCount,
 );
+const cleanupEligibleCount = computed(() => (inventory.value?.list ?? []).filter((item) => (
+  item.inRemotePrefix && item.remoteExists && (item.localExists || item.cacheExists)
+)).length);
+const cleanupDisabled = computed(() =>
+  cleaningLocalFiles.value
+  || mediaStorageProvider.value !== "onedrive-cn"
+  || !oneDriveChinaRefreshTokenConfigured.value
+  || !oneDriveChinaDriveId.value
+  || !cleanupEligibleCount.value,
+);
 const failedMigrationItems = computed(() => (lastMigrationResult.value?.list ?? []).filter((item) => item.status === "failed"));
+const failedCleanupItems = computed(() => (lastCleanupResult.value?.list ?? []).filter((item) => item.status === "failed"));
 const filteredFiles = computed(() => {
   const source = inventory.value?.list ?? [];
   const query = fileQuery.value.trim().toLowerCase();
@@ -491,6 +529,36 @@ async function migrateLocalFiles() {
     }
   } finally {
     migratingFiles.value = false;
+  }
+}
+
+async function cleanupLocalFiles() {
+  if (!cleanupEligibleCount.value) {
+    ElMessage.warning("当前没有可清理的本地或缓存副本");
+    return;
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确认删除这 ${cleanupEligibleCount.value} 个已完成远端落盘文件的本地/缓存副本吗？删除后仍会优先从世纪互联读取，后续如需审核会自动回源到缓存。`,
+      "清理本地副本",
+      { type: "warning", confirmButtonText: "开始清理", cancelButtonText: "取消" },
+    );
+  } catch {
+    return;
+  }
+
+  cleaningLocalFiles.value = true;
+  try {
+    const result = await adminApi.cleanupMediaStorageLocalFiles();
+    lastCleanupResult.value = result;
+    await reloadInventory();
+    if (result.failed) {
+      ElMessage.warning(`清理完成：成功 ${result.removed}，失败 ${result.failed}`);
+    } else {
+      ElMessage.success(`清理完成，共删除 ${result.removed} 个本地副本`);
+    }
+  } finally {
+    cleaningLocalFiles.value = false;
   }
 }
 

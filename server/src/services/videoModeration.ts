@@ -4,7 +4,7 @@ import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 import { prisma } from "../prisma";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
-import { resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
+import { ensureMediaLocalPathFromUploadUrl, resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
 import { getSiteConfig } from "./siteSettings";
 
 const execFile = promisify(execFileCallback);
@@ -213,8 +213,13 @@ export async function registerForumVideoAsset(input: {
   });
   if (existing) {
     const shouldRequeue = shouldRunVideoReview()
-      && ["approved", "rejected"].includes(existing.status)
-      && (existing.reviewModel === "bypass" || existing.reviewEndpoint === "disabled");
+      && (
+        existing.status === "error"
+        || (
+          ["approved", "rejected"].includes(existing.status)
+          && (existing.reviewModel === "bypass" || existing.reviewEndpoint === "disabled")
+        )
+      );
     return prisma.forumVideoAsset.update({
       where: { id: existing.id },
       data: {
@@ -614,27 +619,37 @@ async function prepareVideoReviewInput(asset: {
     },
   });
 
-  const file = await stat(asset.localPath);
+  const localPath = await ensureMediaLocalPathFromUploadUrl(asset.url) || asset.localPath;
+  const file = await stat(localPath);
   if (!file.isFile()) throw new Error("视频文件不存在");
   if (!file.size || file.size > VIDEO_MAX_BYTES) {
     throw new Error(file.size ? "视频文件过大，暂不支持自动审核" : "视频文件为空");
   }
 
-  const metadata = await probeVideoFile(asset.localPath, asset.mimeType);
-  const transcript = metadata.hasAudio ? await transcribeVideoAudio(asset.localPath).catch(() => ({
+  const metadata = await probeVideoFile(localPath, asset.mimeType);
+  const transcript = metadata.hasAudio ? await transcribeVideoAudio(localPath).catch(() => ({
     text: "",
     status: "error",
   })) : { text: "", status: "missing-audio" };
   const context = await findVideoReviewTargetByUrl(asset.url);
+  if (localPath !== asset.localPath) {
+    await prisma.forumVideoAsset.update({
+      where: { id: asset.id },
+      data: { localPath },
+    }).catch(() => null);
+  }
 
   const tempDir = path.resolve(process.cwd(), "runtime", "video-review", `${asset.id}-${Date.now()}`);
   await mkdir(tempDir, { recursive: true });
   try {
-    const framePaths = await extractVideoFrames(asset.localPath, metadata.durationMs, tempDir);
+    const framePaths = await extractVideoFrames(localPath, metadata.durationMs, tempDir);
     const frames = await buildFrameDataUrls(framePaths);
     if (!frames.length) throw new Error("视频抽帧失败，无法自动审核");
     return {
-      asset,
+      asset: {
+        ...asset,
+        localPath,
+      },
       metadata,
       transcript: transcript.text.slice(0, VIDEO_TRANSCRIPT_MAX_CHARS),
       transcriptStatus: transcript.status,
@@ -1011,8 +1026,13 @@ async function performForumVideoSweep(): Promise<ForumVideoSweepSummary> {
         return;
       }
       const requeued = reviewEnabled
-        && ["approved", "rejected"].includes(previous.status)
-        && (previous.reviewModel === "bypass" || previous.reviewEndpoint === "disabled")
+        && (
+          previous.status === "error"
+          || (
+            ["approved", "rejected"].includes(previous.status)
+            && (previous.reviewModel === "bypass" || previous.reviewEndpoint === "disabled")
+          )
+        )
         && row.status === "pending";
       if (requeued) requeuedAssets += 1;
       else alreadyTracked += 1;
@@ -1097,6 +1117,9 @@ function rewriteVideoToken(
   if (normalized.status === "manual_review") {
     return buildVideoReviewPlaceholder("manual_review", normalized.reason || "视频待人工审核");
   }
+  if (normalized.status === "error") {
+    return buildVideoReviewPlaceholder("error", normalized.reason || "视频审核异常");
+  }
   if (normalized.status === "rejected") {
     return buildVideoReviewPlaceholder("rejected", normalized.reason || "未通过视频审核");
   }
@@ -1165,15 +1188,21 @@ function normalizeForumVideoAssetState(row?: { status?: string | null; reason?: 
   if (status === "manual_review") {
     return { status: "manual_review" as const, reason: row?.reason || "视频待人工审核" };
   }
+  if (status === "error") {
+    return { status: "error" as const, reason: row?.lastError || row?.reason || "视频审核异常" };
+  }
   return { status: "pending" as const, reason: row?.reason || null };
 }
 
-function buildVideoReviewPlaceholder(status: "pending" | "rejected" | "manual_review", reason?: string | null) {
+function buildVideoReviewPlaceholder(status: "pending" | "rejected" | "manual_review" | "error", reason?: string | null) {
   if (status === "rejected") {
     return `<span class="video-review-placeholder video-review-placeholder-rejected" data-video-review-state="rejected">[视频未通过审核，已隐藏${reason ? `：${escapeHtml(reason)}` : ""}]</span>`;
   }
   if (status === "manual_review") {
     return `<span class="video-review-placeholder video-review-placeholder-manual" data-video-review-state="manual_review">[视频待人工审核${reason ? `：${escapeHtml(reason)}` : ""}]</span>`;
+  }
+  if (status === "error") {
+    return `<span class="video-review-placeholder video-review-placeholder-error" data-video-review-state="error">[视频审核异常，暂不可查看${reason ? `：${escapeHtml(reason)}` : ""}]</span>`;
   }
   return '<span class="video-review-placeholder video-review-placeholder-pending" data-video-review-state="pending">[视频审核中，暂时不可查看]</span>';
 }

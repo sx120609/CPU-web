@@ -2,7 +2,7 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { prisma } from "../prisma";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
-import { resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
+import { ensureMediaLocalPathFromUploadUrl, resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
 import { getSiteConfig } from "./siteSettings";
 
 const IMAGE_MARKDOWN_RE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
@@ -862,14 +862,24 @@ async function prepareImageReviewInput(asset: {
       lastError: null,
     },
   });
-  const buffer = await readFile(asset.localPath);
+  const localPath = await ensureMediaLocalPathFromUploadUrl(asset.url) || asset.localPath;
+  const buffer = await readFile(localPath);
   if (!buffer.length || buffer.length > IMAGE_REVIEW_MAX_INLINE_BYTES) {
     throw new Error(buffer.length ? "图片文件过大，无法送审" : "图片文件为空");
   }
-  const mimeType = resolveMimeType(asset.mimeType, asset.localPath, buffer);
+  const mimeType = resolveMimeType(asset.mimeType, localPath, buffer);
   if (!mimeType) throw new Error("图片格式暂不支持审核");
+  if (localPath !== asset.localPath) {
+    await prisma.forumImageAsset.update({
+      where: { id: asset.id },
+      data: { localPath },
+    }).catch(() => null);
+  }
   return {
-    asset,
+    asset: {
+      ...asset,
+      localPath,
+    },
     mimeType,
     dataUrl: `data:${mimeType};base64,${buffer.toString("base64")}`,
   };

@@ -110,6 +110,21 @@ export type MediaStorageMigrationResult = {
     message: string;
   }>;
 };
+
+export type MediaStorageCleanupResult = {
+  startedAt: string;
+  finishedAt: string;
+  mediaStorageProvider: "local" | "onedrive-cn";
+  remotePrefixes: string[];
+  eligible: number;
+  removed: number;
+  failed: number;
+  list: Array<{
+    relativePath: string;
+    status: "removed" | "failed";
+    message: string;
+  }>;
+};
 export type SitePromptDefaults = Pick<
   SiteConfig,
   | "imageReviewSystemPrompt"
@@ -407,6 +422,7 @@ export const adminApi = {
     request.delete<{ ok: true }>("/admin/media-storage/onedrive-cn/authorization"),
   mediaStorageFiles: () => request.get<MediaStorageAdminInventory>("/admin/media-storage/files"),
   migrateMediaStorageFiles: () => request.post<MediaStorageMigrationResult>("/admin/media-storage/migrate", {}),
+  cleanupMediaStorageLocalFiles: () => request.post<MediaStorageCleanupResult>("/admin/media-storage/cleanup-local", {}),
   updateSiteConfig: (patch: {
     siteOrigin?: string;
     aiReviewEnabled?: boolean;
