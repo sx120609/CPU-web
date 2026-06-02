@@ -263,6 +263,26 @@ export async function fetchOneDriveChinaFile(relativePath: string, range?: strin
   });
 }
 
+export async function resolveOneDriveChinaDirectDownloadUrl(relativePath: string) {
+  const runtime = await getMediaStorageRuntimeConfig();
+  const drive = await requireActiveRemoteDrive(runtime);
+  const remotePath = buildRemoteStoragePath(relativePath, drive.rootPath);
+  const response = await graphRequestWithCurrentMode(`/drives/${drive.driveId}/root:/${encodeGraphPath(remotePath)}:/content`, {
+    method: "GET",
+    redirect: "manual",
+  });
+  const location = String(response.headers.get("location") || "").trim();
+  if ([301, 302, 303, 307, 308].includes(response.status) && location) {
+    return location;
+  }
+  if (response.ok && response.url && !response.url.startsWith(GRAPH_BASE_URL)) {
+    return response.url;
+  }
+  if (response.status === 404) return "";
+  const detail = await safeReadResponseText(response);
+  throw new Error(detail ? `获取世纪互联文件直链失败：${detail}` : `获取世纪互联文件直链失败：HTTP ${response.status}`);
+}
+
 async function requireActiveRemoteDrive(runtime: Awaited<ReturnType<typeof getMediaStorageRuntimeConfig>>) {
   if (runtime.oneDriveChinaRefreshToken.trim() && runtime.oneDriveChinaDriveId.trim()) {
     return {

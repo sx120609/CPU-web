@@ -571,6 +571,15 @@ watch(() => props.clickableImages, () => nextTick(() => {
 .md :deep(.md-image-shell.is-error .md-image-shell__state) {
   display: flex;
 }
+.md :deep(video) {
+  display: block;
+  width: min(100%, 720px);
+  max-width: 100%;
+  margin: 12px 0;
+  border-radius: 14px;
+  background: #020617;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.12);
+}
 .md-clickable-images :deep(img) {
   cursor: zoom-in;
   transition: transform 0.18s ease, box-shadow 0.18s ease;
@@ -827,6 +836,11 @@ watch(() => props.clickableImages, () => nextTick(() => {
 
   .md :deep(.md-image-album > .md-image-shell img) {
     border-radius: 10px;
+  }
+
+  .md :deep(video) {
+    width: 100%;
+    border-radius: 12px;
   }
 
   .md :deep(.qq-forward-card) {

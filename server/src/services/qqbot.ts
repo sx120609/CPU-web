@@ -137,6 +137,7 @@ type ForwardSource = "direct-forward" | "reply-forward" | "reply-message";
 type QqMessageExtractOptions = {
   forwardDepth?: number;
   imageMode?: "upload" | "placeholder";
+  videoMode?: "upload" | "placeholder";
   forwardMode?: "expand" | "placeholder";
 };
 
@@ -419,7 +420,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
   const qqId = event.user_id ? String(event.user_id) : "";
   const groupId = event.group_id ? String(event.group_id) : undefined;
   const messageExtractOptions = shouldUseLightForwardExtraction(event.message)
-    ? ({ forwardMode: "placeholder" } satisfies QqMessageExtractOptions)
+    ? ({ forwardMode: "placeholder", imageMode: "placeholder", videoMode: "placeholder" } satisfies QqMessageExtractOptions)
     : {};
   const messageText = await extractMessageText(event.message ?? event.raw_message ?? "", messageExtractOptions);
   const context = { config, event, qqId, groupId, messageText, forwardPayload: null as (ParsedForwardPayload & { source: ForwardSource }) | null };
@@ -1510,9 +1511,11 @@ function replaceForwardDraftTemplate(currentDraft: string, template: string, nex
   return normalizeRenderedMessage(`${current.slice(0, index)}${next}${current.slice(index + previous.length)}`);
 }
 
-function hasForwardImagePlaceholders(content: string) {
+function hasForwardMediaPlaceholders(content: string) {
   const normalized = String(content || "");
-  return normalized.includes("[图片]") || normalized.includes("qq-forward-placeholder");
+  return normalized.includes("[图片]")
+    || normalized.includes("[视频]")
+    || normalized.includes("qq-forward-placeholder");
 }
 
 async function refreshForwardDraftContent(conversation: any) {
@@ -1521,17 +1524,19 @@ async function refreshForwardDraftContent(conversation: any) {
   const forwardId = String(conversation?.sourceMessageId || "").trim();
   if (conversation?.scene !== "forward-post" || !forwardId) return currentDraft;
   const forwardDraftTemplate = String(metadata.forwardDraftTemplate || "");
-  if (!hasForwardImagePlaceholders(forwardDraftTemplate) && !hasForwardImagePlaceholders(currentDraft)) return currentDraft;
+  if (!hasForwardMediaPlaceholders(forwardDraftTemplate) && !hasForwardMediaPlaceholders(currentDraft)) return currentDraft;
   const payloadSource = String(metadata.quotedPayloadSource || "").trim();
   let refreshed = "";
   if (payloadSource === "reply-message") {
     const replied = await callQqBotAction("get_msg", { message_id: Number(forwardId) || forwardId }).catch(() => null);
     refreshed = await extractMessageText(replied?.data?.message ?? replied?.data?.content, {
       imageMode: "upload",
+      videoMode: "upload",
     }).catch(() => "");
   } else {
     const payload = await extractForwardPayload([{ type: "forward", data: { id: forwardId } }], {
       imageMode: "upload",
+      videoMode: "upload",
     }).catch(() => null);
     refreshed = String(payload?.content || "").trim();
   }
@@ -2156,9 +2161,11 @@ function debugMessagePreview(value: string, limit = 240) {
 
 const MAX_FORWARD_DEPTH = 4;
 const QQBOT_IMAGE_MAX_BYTES = 12 * 1024 * 1024;
+const QQBOT_VIDEO_MAX_BYTES = 80 * 1024 * 1024;
 const QQBOT_FORWARD_DEBUG_FILE = path.resolve(process.cwd(), "runtime", "qqbot-forward-debug.ndjson");
 const QQBOT_FORWARD_DEBUG_EXPORT_LIMIT = 200;
 const qqImageUploadCache = new Map<string, Promise<string>>();
+const qqVideoUploadCache = new Map<string, Promise<string>>();
 
 async function extractMessageText(
   message: unknown,
@@ -2193,7 +2200,7 @@ async function extractMessageText(
         }));
       }
     }
-    if (["json", "xml", "share", "music"].includes(String(maybeMessage.type || "").trim())) {
+    if (["image", "video", "record", "json", "xml", "share", "music"].includes(String(maybeMessage.type || "").trim())) {
       const rendered = await renderMessageSegment(maybeMessage, options);
       if (rendered) return normalizeRenderedMessage(rendered);
     }
@@ -2279,6 +2286,14 @@ async function renderMessageSegment(seg: any, options: QqMessageExtractOptions):
     const url = await resolveQqImageUrl(seg.data?.url, seg.data?.file);
     return url ? `\n![QQ图片](${url})\n` : "\n[图片]\n";
   }
+  if (seg?.type === "video") {
+    if (options.videoMode === "placeholder") return "\n[视频]\n";
+    const url = await resolveQqVideoUrl(
+      seg.data?.url ?? seg.data?.src,
+      seg.data?.file ?? seg.data?.file_id ?? seg.data?.path,
+    );
+    return url ? `\n${renderQqVideoBlock(url)}\n` : "\n[视频]\n";
+  }
   if (seg?.type === "share") {
     return renderShareCardBlock(parseShareSegmentCard(seg.data));
   }
@@ -2306,7 +2321,6 @@ async function renderMessageSegment(seg: any, options: QqMessageExtractOptions):
       forwardDepth: (options.forwardDepth ?? 0) + 1,
     });
   }
-  if (seg?.type === "video") return "\n[视频]\n";
   if (seg?.type === "record") return "\n[语音]\n";
   return "";
 }
@@ -2475,7 +2489,10 @@ async function maybeExtractForwardPayloadForPosting(
   event: OneBotEvent,
 ): Promise<(ParsedForwardPayload & { source: ForwardSource }) | null> {
   if (!shouldAttemptForwardPayloadExtraction(message, messageText, event)) return null;
-  return extractForwardPayload(message, { imageMode: "placeholder" }).catch(() => null);
+  return extractForwardPayload(message, {
+    imageMode: "placeholder",
+    videoMode: "placeholder",
+  }).catch(() => null);
 }
 
 function shouldAttemptForwardPayloadExtraction(message: unknown, messageText: string, event: OneBotEvent) {
@@ -2518,7 +2535,7 @@ function extractForwardNodeId(message: unknown): string {
 
 async function cleanCqMessage(value: string, options: QqMessageExtractOptions = {}) {
   let normalized = String(value || "");
-  const mediaMatches = Array.from(normalized.matchAll(/\[CQ:(image|forward|node|json|xml|share|music),([^\]]*)\]/g));
+  const mediaMatches = Array.from(normalized.matchAll(/\[CQ:(image|video|forward|node|json|xml|share|music),([^\]]*)\]/g));
   for (const match of mediaMatches) {
     const raw = match[0];
     const type = String(match[1] || "").trim();
@@ -2541,6 +2558,18 @@ async function cleanCqMessage(value: string, options: QqMessageExtractOptions = 
       }
       const url = await resolveQqImageUrl(attrs.url, attrs.file);
       normalized = normalized.replace(raw, url ? `\n![QQ图片](${url})\n` : "\n[图片]\n");
+      continue;
+    }
+    if (type === "video") {
+      if (options.videoMode === "placeholder") {
+        normalized = normalized.replace(raw, "\n[视频]\n");
+        continue;
+      }
+      const url = await resolveQqVideoUrl(
+        attrs.url || attrs.src,
+        attrs.file || attrs.file_id || attrs.path,
+      );
+      normalized = normalized.replace(raw, url ? `\n${renderQqVideoBlock(url)}\n` : "\n[视频]\n");
       continue;
     }
     if (type === "share") {
@@ -2818,6 +2847,17 @@ function extractUrlHostLabel(value?: string) {
   }
 }
 
+function renderQqVideoBlock(url: string) {
+  const safeUrl = escapeShareCardHtml(String(url || "").trim());
+  if (!safeUrl) return "[视频]";
+  return [
+    `<video class="qq-inline-video" controls preload="metadata" playsinline src="${safeUrl}">`,
+    "你的浏览器暂不支持站内视频预览。",
+    `</video>`,
+    `<p><a class="qq-inline-video__link" href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow">打开视频</a></p>`,
+  ].join("\n");
+}
+
 function extractXmlTagText(xml: string, tagName: string) {
   const pattern = new RegExp(`<${tagName}\\b[^>]*>([\\s\\S]*?)</${tagName}>`, "i");
   const match = xml.match(pattern);
@@ -2837,6 +2877,16 @@ async function resolveQqImageUrl(urlLike: unknown, fileLike: unknown): Promise<s
   qqImageUploadCache.set(key, task);
   const result = await task;
   if (!result) qqImageUploadCache.delete(key);
+  return result;
+}
+
+async function resolveQqVideoUrl(urlLike: unknown, fileLike: unknown): Promise<string> {
+  const key = `${String(urlLike || "").trim()}|${String(fileLike || "").trim()}`;
+  if (qqVideoUploadCache.has(key)) return qqVideoUploadCache.get(key)!;
+  const task = downloadQqVideoToUpload(urlLike, fileLike).catch(() => "");
+  qqVideoUploadCache.set(key, task);
+  const result = await task;
+  if (!result) qqVideoUploadCache.delete(key);
   return result;
 }
 
@@ -2903,6 +2953,53 @@ async function downloadQqImageToUpload(urlLike: unknown, fileLike: unknown): Pro
   return "";
 }
 
+async function downloadQqVideoToUpload(urlLike: unknown, fileLike: unknown): Promise<string> {
+  const file = String(fileLike || "").trim();
+  const candidates: Array<{ kind: "remote" | "local"; value: string }> = [];
+  const seen = new Set<string>();
+  const pushCandidate = (kind: "remote" | "local", value: string) => {
+    const normalized = value.trim();
+    if (!normalized) return;
+    const key = `${kind}:${normalized}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push({ kind, value: normalized });
+  };
+  const pushFromUnknown = (value: unknown) => {
+    const remote = normalizeRemoteMediaUrl(value);
+    if (remote) {
+      pushCandidate("remote", remote);
+      return;
+    }
+    const local = normalizeLocalMediaPath(value);
+    if (local) pushCandidate("local", local);
+  };
+
+  pushFromUnknown(urlLike);
+  pushFromUnknown(fileLike);
+  if (file) {
+    const payload = await callQqBotAction("get_file", { file, file_id: file }).catch(() => null);
+    pushFromUnknown(payload?.data?.url);
+    pushFromUnknown(payload?.data?.src);
+    pushFromUnknown(payload?.data?.file);
+    pushFromUnknown(payload?.data?.path);
+    pushFromUnknown(payload?.data?.local);
+    const base64Loaded = decodeBase64MediaPayload(payload?.data?.base64, payload?.data?.mime_type, file);
+    if (base64Loaded) {
+      return saveQqVideoUpload(base64Loaded.buffer, base64Loaded.mime, base64Loaded.nameHint);
+    }
+  }
+
+  for (const candidate of candidates) {
+    const loaded = candidate.kind === "remote"
+      ? await fetchRemoteVideo(candidate.value)
+      : await readLocalVideo(candidate.value);
+    if (!loaded) continue;
+    return saveQqVideoUpload(loaded.buffer, loaded.mime, loaded.nameHint);
+  }
+  return "";
+}
+
 async function fetchRemoteImage(url: string) {
   const response = await fetch(url, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
   if (!response?.ok) return null;
@@ -2916,9 +3013,28 @@ async function fetchRemoteImage(url: string) {
   return { buffer, mime, nameHint: url };
 }
 
+async function fetchRemoteVideo(url: string) {
+  const response = await fetch(url, { signal: AbortSignal.timeout(30_000) }).catch(() => null);
+  if (!response?.ok) return null;
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  if (contentLength > QQBOT_VIDEO_MAX_BYTES) return null;
+  const arrayBuffer = await response.arrayBuffer().catch(() => null);
+  if (!arrayBuffer) return null;
+  const buffer = Buffer.from(arrayBuffer);
+  if (!buffer.length || buffer.length > QQBOT_VIDEO_MAX_BYTES) return null;
+  const mime = String(response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+  return { buffer, mime, nameHint: url };
+}
+
 async function readLocalImage(filePath: string) {
   const buffer = await readFile(filePath).catch(() => null);
   if (!buffer?.length || buffer.length > QQBOT_IMAGE_MAX_BYTES) return null;
+  return { buffer, mime: "", nameHint: filePath };
+}
+
+async function readLocalVideo(filePath: string) {
+  const buffer = await readFile(filePath).catch(() => null);
+  if (!buffer?.length || buffer.length > QQBOT_VIDEO_MAX_BYTES) return null;
   return { buffer, mime: "", nameHint: filePath };
 }
 
@@ -2933,6 +3049,21 @@ async function saveQqImageUpload(buffer: Buffer, mime: string, nameHint?: string
     relativePath: path.posix.join(relativeDir.replace(/\\/g, "/"), filename),
     buffer,
     contentType: mime || undefined,
+  });
+  return saved.url;
+}
+
+async function saveQqVideoUpload(buffer: Buffer, mime: string, nameHint?: string) {
+  const ext = detectVideoExtension(buffer, mime, nameHint);
+  if (!ext) return "";
+  const now = new Date();
+  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const relativeDir = path.join("forum", month);
+  const filename = `qqbot-video-${Date.now()}-${crypto.randomUUID()}.${ext}`;
+  const saved = await saveMediaAsset({
+    relativePath: path.posix.join(relativeDir.replace(/\\/g, "/"), filename),
+    buffer,
+    contentType: mime || resolveVideoMimeTypeByExt(ext),
   });
   return saved.url;
 }
@@ -2953,6 +3084,62 @@ function detectImageExtension(buffer: Buffer, mime: string, nameHint?: string) {
   const ext = path.extname(String(nameHint || "")).replace(/^\./, "").toLowerCase();
   if (["jpg", "jpeg", "png", "webp", "gif"].includes(ext)) return ext === "jpeg" ? "jpg" : ext;
   return "";
+}
+
+function detectVideoExtension(buffer: Buffer, mime: string, nameHint?: string) {
+  const normalizedMime = String(mime || "").toLowerCase();
+  if (normalizedMime.includes("mp4")) return "mp4";
+  if (normalizedMime.includes("webm")) return "webm";
+  if (normalizedMime.includes("ogg")) return "ogv";
+  if (normalizedMime.includes("quicktime")) return "mov";
+  if (normalizedMime.includes("x-m4v")) return "m4v";
+  if (buffer.length >= 12 && buffer.subarray(4, 8).toString("ascii") === "ftyp") {
+    return normalizeVideoHintExtension(nameHint) || "mp4";
+  }
+  if (buffer.length >= 4 && buffer.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))) {
+    const hinted = normalizeVideoHintExtension(nameHint);
+    return hinted === "mkv" ? "mkv" : "webm";
+  }
+  if (buffer.length >= 4 && buffer.subarray(0, 4).toString("ascii") === "OggS") return "ogv";
+  return normalizeVideoHintExtension(nameHint);
+}
+
+function normalizeVideoHintExtension(nameHint?: string) {
+  const ext = path.extname(String(nameHint || "")).replace(/^\./, "").toLowerCase();
+  if (["mp4", "webm", "ogv", "ogg", "mov", "m4v", "mkv"].includes(ext)) {
+    return ext === "ogg" ? "ogv" : ext;
+  }
+  return "";
+}
+
+function resolveVideoMimeTypeByExt(ext: string) {
+  const mimeByExt: Record<string, string> = {
+    mp4: "video/mp4",
+    webm: "video/webm",
+    ogv: "video/ogg",
+    mov: "video/quicktime",
+    m4v: "video/x-m4v",
+    mkv: "video/x-matroska",
+  };
+  return mimeByExt[String(ext || "").toLowerCase()] || "application/octet-stream";
+}
+
+function decodeBase64MediaPayload(base64Like: unknown, mimeLike: unknown, nameHint?: string) {
+  const raw = String(base64Like || "").trim();
+  if (!raw) return null;
+  const normalized = raw.replace(/^base64:\/\//i, "").replace(/\s+/g, "");
+  if (!normalized) return null;
+  try {
+    const buffer = Buffer.from(normalized, "base64");
+    if (!buffer.length) return null;
+    return {
+      buffer,
+      mime: String(mimeLike || "").trim().toLowerCase(),
+      nameHint: nameHint || "",
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function renderNestedForwardContent(forwardId: unknown, options: QqMessageExtractOptions = {}) {

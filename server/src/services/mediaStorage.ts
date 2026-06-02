@@ -3,10 +3,16 @@ import path from "node:path";
 import { mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { prisma } from "../prisma";
-import { fetchOneDriveChinaFile, listOneDriveChinaFiles, uploadOneDriveChinaFile } from "./oneDriveChina";
+import {
+  fetchOneDriveChinaFile,
+  listOneDriveChinaFiles,
+  resolveOneDriveChinaDirectDownloadUrl,
+  uploadOneDriveChinaFile,
+} from "./oneDriveChina";
 import { getMediaStorageRuntimeConfig, getMediaStorageRuntimeConfigSync } from "./storageConfig";
 
 const CACHE_CONTROL_VALUE = "public, max-age=2592000, immutable";
+const REMOTE_PUBLIC_URL_CACHE_TTL_MS = 10 * 60 * 1000;
 
 export type MediaStorageBackend = "local" | "onedrive-cn";
 
@@ -77,6 +83,8 @@ export type MediaStorageMigrationResult = {
 
 const localUploadRoot = path.resolve(process.cwd(), "uploads");
 const mediaCacheRoot = path.resolve(process.cwd(), "runtime", "media-cache");
+const remotePublicUrlCache = new Map<string, { url: string; expiresAt: number }>();
+const remotePublicUrlPromises = new Map<string, Promise<string>>();
 
 export function buildUploadUrl(relativePath: string) {
   return `/uploads/${normalizeUploadRelativePath(relativePath)}`;
@@ -86,6 +94,43 @@ export function resolveMediaLocalPathFromUploadUrl(url: string) {
   const relativePath = relativeUploadPathFromUrl(url);
   if (!relativePath) return "";
   return resolvePreferredLocalMediaPath(relativePath);
+}
+
+export async function resolveMediaPublicUrl(url: string) {
+  const relativePath = relativeUploadPathFromUrl(url);
+  if (!relativePath) return String(url || "").trim();
+  if (!(await shouldUseRemoteMediaStorage(relativePath))) {
+    return buildUploadUrl(relativePath);
+  }
+
+  const cached = remotePublicUrlCache.get(relativePath);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.url;
+  }
+
+  const existingPromise = remotePublicUrlPromises.get(relativePath);
+  if (existingPromise) return existingPromise;
+
+  const promise = (async () => {
+    try {
+      const directUrl = await resolveOneDriveChinaDirectDownloadUrl(relativePath);
+      const resolved = directUrl || buildUploadUrl(relativePath);
+      if (directUrl) {
+        remotePublicUrlCache.set(relativePath, {
+          url: directUrl,
+          expiresAt: Date.now() + REMOTE_PUBLIC_URL_CACHE_TTL_MS,
+        });
+      }
+      return resolved;
+    } catch {
+      return buildUploadUrl(relativePath);
+    } finally {
+      remotePublicUrlPromises.delete(relativePath);
+    }
+  })();
+
+  remotePublicUrlPromises.set(relativePath, promise);
+  return promise;
 }
 
 export async function saveMediaAsset(input: SaveMediaAssetInput): Promise<SaveMediaAssetResult> {
@@ -433,6 +478,11 @@ function guessContentType(relativePath: string) {
     json: "application/json",
     pdf: "application/pdf",
     mp4: "video/mp4",
+    webm: "video/webm",
+    ogv: "video/ogg",
+    mov: "video/quicktime",
+    m4v: "video/x-m4v",
+    mkv: "video/x-matroska",
   };
   return contentTypeMap[ext] || "application/octet-stream";
 }

@@ -2,7 +2,7 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { prisma } from "../prisma";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
-import { resolveMediaLocalPathFromUploadUrl } from "./mediaStorage";
+import { resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
 import { getSiteConfig } from "./siteSettings";
 
 const IMAGE_MARKDOWN_RE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
@@ -430,27 +430,58 @@ export async function renderModeratedContent(content: string, _viewer?: Viewer) 
     });
   }
 
+  const visibleUrls = localUrls.filter((url) => {
+    const normalized = normalizeForumImageAssetState(rowMap.get(url));
+    if (!shouldRunImageReview() && normalized.status !== "rejected") return true;
+    return normalized.status === "approved";
+  });
+  const publicUrlMap = new Map<string, string>();
+  await Promise.all(visibleUrls.map(async (url) => {
+    publicUrlMap.set(url, await resolveMediaPublicUrl(url));
+  }));
+
   let rendered = "";
   let lastIndex = 0;
   for (const match of matches) {
     rendered += content.slice(lastIndex, match.index);
     const normalizedUrl = normalizeForumImageUrl(match.url);
     const row = normalizedUrl ? rowMap.get(normalizedUrl) : null;
-    rendered += rewriteImageToken(match.raw, row);
+    rendered += rewriteImageToken(match, row, normalizedUrl ? publicUrlMap.get(normalizedUrl) : "");
     lastIndex = match.index + match.raw.length;
   }
   rendered += content.slice(lastIndex);
   return rendered;
 }
 
-function rewriteImageToken(raw: string, row?: { status?: string | null; reason?: string | null; lastError?: string | null } | null) {
+function rewriteImageToken(
+  match: { raw: string; alt: string; url: string },
+  row?: { status?: string | null; reason?: string | null; lastError?: string | null } | null,
+  publicUrl?: string,
+) {
   const normalized = normalizeForumImageAssetState(row);
-  if (!shouldRunImageReview() && normalized.status !== "rejected") return raw;
-  if (normalized.status === "approved") return raw;
+  if (!shouldRunImageReview() && normalized.status !== "rejected") {
+    return rewriteVisibleImageToken(match, publicUrl);
+  }
+  if (normalized.status === "approved") {
+    return rewriteVisibleImageToken(match, publicUrl);
+  }
   if (normalized.status === "rejected") {
     return buildImageReviewPlaceholder("rejected", normalized.reason || "未通过图片审核");
   }
   return buildImageReviewPlaceholder("pending");
+}
+
+function rewriteVisibleImageToken(match: { raw: string; alt: string; url: string }, publicUrl?: string) {
+  const target = String(publicUrl || "").trim();
+  if (!target || target === match.url) return match.raw;
+  const trimmedRaw = match.raw.trimStart();
+  if (trimmedRaw.startsWith("<img")) {
+    return match.raw.replace(match.url, escapeHtmlAttribute(target));
+  }
+  if (trimmedRaw.startsWith("![")) {
+    return `<img src="${escapeHtmlAttribute(target)}" alt="${escapeHtmlAttribute(match.alt)}" />`;
+  }
+  return match.raw.replace(match.url, target);
 }
 
 function collectImageMarkdownMatches(content: string) {
@@ -547,6 +578,10 @@ function escapeHtml(input: string) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function escapeHtmlAttribute(input: string) {
+  return escapeHtml(input);
 }
 
 async function performForumImageSweep(): Promise<ForumImageSweepSummary> {
