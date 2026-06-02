@@ -702,93 +702,69 @@ watch(() => props.clickableImages, () => nextTick(() => {
 
 .md :deep(.qq-forward-card) {
   display: block;
-  margin: 14px 0;
-  padding: 14px;
+  margin: 12px 0;
+  padding: 12px;
   border: 1px solid #dbe6f1;
-  border-radius: 18px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 100%),
-    linear-gradient(135deg, rgba(22, 135, 118, 0.04) 0%, rgba(15, 23, 42, 0.03) 100%);
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 100%);
 }
 
 .md :deep(.qq-forward-card[data-forward-depth="1"]) {
   margin-left: 12px;
-  border-left: 4px solid rgba(22, 135, 118, 0.26);
+  border-left: 4px solid rgba(22, 135, 118, 0.22);
 }
 
 .md :deep(.qq-forward-card[data-forward-depth="2"]),
 .md :deep(.qq-forward-card[data-forward-depth="3"]),
 .md :deep(.qq-forward-card[data-forward-depth="4"]) {
   margin-left: 18px;
-  border-left: 4px solid rgba(15, 118, 110, 0.34);
-  background:
-    linear-gradient(180deg, rgba(250, 253, 252, 0.98) 0%, rgba(244, 248, 246, 0.98) 100%),
-    linear-gradient(135deg, rgba(15, 118, 110, 0.05) 0%, rgba(15, 23, 42, 0.03) 100%);
+  border-left: 4px solid rgba(15, 118, 110, 0.28);
+  background: linear-gradient(180deg, rgba(250, 253, 252, 0.98) 0%, rgba(244, 248, 246, 0.98) 100%);
 }
 
 .md :deep(.qq-forward-card__head) {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .md :deep(.qq-forward-card__badge) {
   display: inline-flex;
   align-items: center;
-  min-height: 26px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: rgba(22, 135, 118, 0.1);
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 8px;
+  background: rgba(22, 135, 118, 0.08);
   color: var(--cpu-primary);
   font-size: 12px;
   font-weight: 700;
 }
 
-.md :deep(.qq-forward-card__stats),
-.md :deep(.qq-forward-card__participants) {
-  color: #6b7280;
-  font-size: 12px;
-}
-
-.md :deep(.qq-forward-card__participants) {
-  margin-top: 8px;
-}
-
 .md :deep(.qq-forward-card__body) {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-top: 12px;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .md :deep(.qq-forward-entry) {
-  padding: 12px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid #e5edf5;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #e7edf4;
 }
 
 .md :deep(.qq-forward-entry__head) {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
+  gap: 8px;
+  margin-bottom: 6px;
 }
 
 .md :deep(.qq-forward-entry__name) {
   color: #111827;
   font-size: 13px;
   font-weight: 700;
-}
-
-.md :deep(.qq-forward-entry__meta) {
-  color: #6b7280;
-  font-size: 12px;
 }
 
 .md :deep(.qq-forward-entry__content > p:first-child) {
@@ -812,6 +788,30 @@ watch(() => props.clickableImages, () => nextTick(() => {
 
 .md :deep(.qq-forward-album) {
   margin: 8px 0;
+}
+
+.md :deep(.qq-forward-nest) {
+  position: relative;
+  margin-top: 10px;
+  padding-left: 14px;
+}
+
+.md :deep(.qq-forward-nest::before) {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 2px;
+  bottom: 2px;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(22, 135, 118, 0.28) 0%, rgba(22, 135, 118, 0.12) 100%);
+}
+
+.md :deep(.qq-forward-nest__label) {
+  margin-bottom: 6px;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 @media (max-width: 700px) {
@@ -851,6 +851,10 @@ watch(() => props.clickableImages, () => nextTick(() => {
   .md :deep(.qq-forward-entry) {
     padding: 10px;
     border-radius: 12px;
+  }
+
+  .md :deep(.qq-forward-nest) {
+    padding-left: 10px;
   }
 }
 

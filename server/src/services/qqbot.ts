@@ -3019,21 +3019,14 @@ function renderForwardPayloadContent(
   },
   forwardDepth: number,
 ) {
-  const participantPreview = formatForwardParticipantPreview(stats.participantNames);
-  const statBits = [
-    `${stats.messageCount} 条消息`,
-    `${stats.participantCount} 人`,
-    stats.imageCount > 0 ? `${stats.imageCount} 张图` : "",
-  ].filter(Boolean).join(" · ");
   const entryHtml = entries.map((entry) => renderForwardEntryBlock(entry)).filter(Boolean).join("");
+  const badgeText = forwardDepth > 0 ? "转发内容" : "合并转发";
   return normalizeRenderedMessage([
     "",
     `<div class="qq-forward-card" data-forward-depth="${Math.min(forwardDepth, 4)}">`,
     `  <div class="qq-forward-card__head">`,
-    `    <span class="qq-forward-card__badge">${forwardDepth > 0 ? "嵌套转发" : "合并转发"}</span>`,
-    `    <span class="qq-forward-card__stats">${escapeShareCardHtml(statBits)}</span>`,
+    `    <span class="qq-forward-card__badge">${badgeText}</span>`,
     `  </div>`,
-    participantPreview ? `  <div class="qq-forward-card__participants">${escapeShareCardHtml(participantPreview)}</div>` : "",
     `  <div class="qq-forward-card__body">`,
     entryHtml,
     `  </div>`,
@@ -3042,26 +3035,13 @@ function renderForwardPayloadContent(
   ].filter(Boolean).join("\n"));
 }
 
-function formatForwardParticipantPreview(participantNames: string[]) {
-  if (!participantNames.length) return "";
-  if (participantNames.length <= 4) return participantNames.join("、");
-  return `${participantNames.slice(0, 3).join("、")} 等 ${participantNames.length} 人`;
-}
-
 function renderForwardEntryBlock(entry: ParsedForwardEntry) {
   const content = normalizeRenderedMessage(entry.text);
   if (!content) return "";
   const nickname = String(entry.nickname || "").trim();
-  const metaBits = [
-    entry.messageCount > 1 ? `${entry.messageCount} 条` : "1 条",
-    entry.imageCount > 0 ? `${entry.imageCount} 图` : "",
-  ].filter(Boolean).join(" · ");
   return [
     `<article class="qq-forward-entry">`,
-    `  <div class="qq-forward-entry__head">`,
-    nickname ? `    <span class="qq-forward-entry__name">${escapeShareCardHtml(nickname)}</span>` : "",
-    metaBits ? `    <span class="qq-forward-entry__meta">${escapeShareCardHtml(metaBits)}</span>` : "",
-    `  </div>`,
+    nickname ? `  <div class="qq-forward-entry__head"><span class="qq-forward-entry__name">${escapeShareCardHtml(nickname)}</span></div>` : "",
     `  <div class="qq-forward-entry__content">`,
     renderForwardEntryContent(content),
     `  </div>`,
@@ -3093,7 +3073,16 @@ function renderForwardEntryContent(content: string) {
     }
     flushImages();
     if (isTrustedForwardHtmlBlock(block)) {
-      html.push(block);
+      if (String(block).trim().startsWith("<div class=\"qq-forward-card")) {
+        html.push([
+          `<div class="qq-forward-nest">`,
+          `  <div class="qq-forward-nest__label">转发内容</div>`,
+          block,
+          `</div>`,
+        ].join("\n"));
+      } else {
+        html.push(block);
+      }
       continue;
     }
     if (block === "[图片]") {
