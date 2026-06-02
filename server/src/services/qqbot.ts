@@ -490,7 +490,22 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     ].join("\n"));
     return { ok: true };
   }
-  if (isCommandMessage(messageText) && /^[/／]投稿(?:\s|$)/.test(messageText.trim())) {
+  const isSlashPostCommand = isCommandMessage(messageText) && /^[/／]投稿(?:\s|$)/.test(messageText.trim());
+  const isPlainPrivatePostCommand = event.message_type !== "group" && isPrivatePlainCommand(messageText, "投稿");
+  const isQuickPostTrigger = isSlashPostCommand || isPlainPrivatePostCommand;
+  const forwardPayload = await maybeExtractForwardPayloadForPosting(event.message, messageText, event);
+  if (!messageText.trim() && !forwardPayload) {
+    await logQqBotMessage({ direction: "inbound", eventType: "message", status: "ignored", qqId, groupId, rawPayload: event });
+    return { ignored: true };
+  }
+  context.forwardPayload = forwardPayload;
+  if (isQuickPostTrigger && forwardPayload) {
+    const conversation = await startForwardPostConversation(context, forwardPayload);
+    await logHandledInboundMessage(context, "message", "assistant:forward-detected");
+    await replyToPostingConversation(conversation, context, await renderConversationPrompt(conversation));
+    return { ok: true };
+  }
+  if (isSlashPostCommand) {
     if (event.message_type === "group") {
       await replyToPrivateForPosting(
         context,
@@ -508,18 +523,12 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, await renderConversationPrompt(conversation, "如果方便，建议前往客户端完成投稿，编辑体验会更好。"));
     return { ok: true };
   }
-  if (event.message_type !== "group" && isPrivatePlainCommand(messageText, "投稿")) {
+  if (isPlainPrivatePostCommand) {
     const conversation = await startPostConversation(context);
     await logHandledInboundMessage(context, "message", "assistant:start-post");
     await replyToEvent(context, await renderConversationPrompt(conversation, "如果方便，建议前往客户端完成投稿，编辑体验会更好。"));
     return { ok: true };
   }
-  const forwardPayload = await maybeExtractForwardPayloadForPosting(event.message, messageText, event);
-  if (!messageText.trim() && !forwardPayload) {
-    await logQqBotMessage({ direction: "inbound", eventType: "message", status: "ignored", qqId, groupId, rawPayload: event });
-    return { ignored: true };
-  }
-  context.forwardPayload = forwardPayload;
   if (!isCommandMessage(messageText) && forwardPayload && shouldHandleForwardPostInContext(context)) {
     const conversation = await startForwardPostConversation(context, forwardPayload);
     await logHandledInboundMessage(context, "message", "assistant:forward-detected");
