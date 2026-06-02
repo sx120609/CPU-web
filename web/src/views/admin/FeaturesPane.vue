@@ -36,77 +36,6 @@
         </div>
       </div>
 
-      <div class="site-config storage-config">
-        <div class="config-copy storage-copy">
-          <div class="card-title">媒体存储（世纪互联 OneDrive / SharePoint）</div>
-          <div class="desc">
-            参考 AList 的接入方式：先在 Azure 中国创建 Web 应用，回调地址填这里显示的 URL，再在后台保存应用信息并点击登录授权。
-            授权成功后会自动解析你填写的 SharePoint 站点，并列出可选文档库。
-          </div>
-          <div class="summary-row storage-status-row">
-            <span class="summary-pill">当前后端：{{ mediaStorageProvider === "onedrive-cn" ? "世纪互联 OneDrive" : "本地磁盘" }}</span>
-            <span class="summary-pill">{{ oneDriveChinaClientSecretConfigured ? "已保存密钥" : "未保存密钥" }}</span>
-            <span class="summary-pill">{{ oneDriveChinaRefreshTokenConfigured ? "已完成授权" : "未授权" }}</span>
-            <span class="summary-pill" v-if="oneDriveChinaDriveName">文档库：{{ oneDriveChinaDriveName }}</span>
-          </div>
-          <div class="storage-meta">
-            <div><b>回调地址：</b><code>{{ oneDriveCallbackUrl }}</code></div>
-            <div v-if="oneDriveChinaSharepointHost"><b>已解析站点：</b>{{ oneDriveChinaSharepointHost }}{{ oneDriveChinaSharepointPath }}</div>
-            <div v-if="oneDriveChinaLastError" class="storage-error"><b>最近错误：</b>{{ oneDriveChinaLastError }}</div>
-          </div>
-        </div>
-        <div class="storage-form">
-          <div class="storage-grid">
-            <div class="storage-field">
-              <span class="field-label">存储后端</span>
-              <el-select v-model="mediaStorageProvider">
-                <el-option label="本地磁盘" value="local" />
-                <el-option label="世纪互联 OneDrive / SharePoint" value="onedrive-cn" />
-              </el-select>
-            </div>
-            <div class="storage-field">
-              <span class="field-label">远端前缀</span>
-              <el-input v-model="mediaStorageRemotePrefixesInput" placeholder="forum" />
-            </div>
-            <div class="storage-field">
-              <span class="field-label">Azure 应用 ID</span>
-              <el-input v-model="oneDriveChinaClientId" maxlength="120" placeholder="Application (client) ID" />
-            </div>
-            <div class="storage-field">
-              <span class="field-label">Azure 应用密钥</span>
-              <el-input v-model="oneDriveChinaClientSecretInput" maxlength="240" show-password :placeholder="oneDriveChinaClientSecretConfigured ? '留空表示继续使用已保存密钥' : 'Client Secret'" />
-            </div>
-            <div class="storage-field storage-field-wide">
-              <span class="field-label">SharePoint 地址</span>
-              <el-input v-model="oneDriveChinaSharepointUrl" maxlength="500" placeholder="https://tenant.sharepoint.cn/sites/media" />
-            </div>
-            <div class="storage-field">
-              <span class="field-label">远端根目录</span>
-              <el-input v-model="oneDriveChinaRootPath" maxlength="240" placeholder="cpu-web-media" />
-            </div>
-          </div>
-
-          <div class="storage-actions">
-            <el-button type="primary" :loading="savingMediaStorage" @click="saveMediaStorageConfig">保存媒体存储配置</el-button>
-            <el-button :loading="authorizingOneDriveChina" @click="startOneDriveChinaAuth">登录授权</el-button>
-            <el-button :disabled="!oneDriveChinaRefreshTokenConfigured" :loading="loadingOneDriveChinaDrives" @click="loadOneDriveChinaDrives">刷新文档库</el-button>
-            <el-button :disabled="!oneDriveChinaRefreshTokenConfigured" @click="clearOneDriveChinaAuth">清除授权</el-button>
-          </div>
-
-          <div v-if="oneDriveChinaDriveOptions.length" class="storage-drive-box">
-            <div class="storage-drive-row">
-              <el-select v-model="oneDriveChinaDriveId" class="drive-select" placeholder="选择要写入的 SharePoint 文档库">
-                <el-option v-for="item in oneDriveChinaDriveOptions" :key="item.id" :label="item.name" :value="item.id" />
-              </el-select>
-              <el-button type="primary" plain :loading="savingOneDriveChinaDrive" @click="saveOneDriveChinaDriveSelection">保存文档库</el-button>
-            </div>
-            <div class="desc">
-              当前站点：{{ oneDriveChinaSiteName || "未解析" }}。如果你粘贴的是文档库或列表页面 URL，系统会自动向上回退并转换成可用的站点路径。
-            </div>
-          </div>
-        </div>
-      </div>
-
       <button type="button" class="section-toggle" :class="{ expanded: trustConfigExpanded }" @click="trustConfigExpanded = !trustConfigExpanded">
         <div class="section-toggle-copy">
           <div class="section-toggle-top">
@@ -237,22 +166,15 @@
 <script setup lang="ts">
 import { computed, reactive, ref, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { useRoute, useRouter } from "vue-router";
-import { adminApi, type MediaStorageConfig, type OneDriveChinaDriveOption } from "@/api/admin";
+import { adminApi } from "@/api/admin";
 import { useSiteStore } from "@/stores/site";
 
 type FKey = "forum" | "market" | "coursereview" | "electric" | "sponsor";
 
 const site = useSiteStore();
-const route = useRoute();
-const router = useRouter();
 const loading = ref(false);
 const configLoading = ref(false);
 const savingConfig = ref(false);
-const savingMediaStorage = ref(false);
-const authorizingOneDriveChina = ref(false);
-const loadingOneDriveChinaDrives = ref(false);
-const savingOneDriveChinaDrive = ref(false);
 const pendingKey = ref<FKey | null>(null);
 const aiConfigExpanded = ref(false);
 const aiPromptsExpanded = ref(false);
@@ -298,28 +220,10 @@ const reputationLevels = ref([
   { level: 4, name: "资深成员", minReputation: 90 },
   { level: 5, name: "校园传说", minReputation: 120 },
 ]);
-const mediaStorageProvider = ref<"local" | "onedrive-cn">("local");
-const mediaStorageRemotePrefixesInput = ref("forum");
-const oneDriveChinaClientId = ref("");
-const oneDriveChinaClientSecretInput = ref("");
-const oneDriveChinaClientSecretConfigured = ref(false);
-const oneDriveChinaSharepointUrl = ref("");
-const oneDriveChinaSharepointHost = ref("");
-const oneDriveChinaSharepointPath = ref("/");
-const oneDriveChinaSiteId = ref("");
-const oneDriveChinaSiteName = ref("");
-const oneDriveChinaDriveId = ref("");
-const oneDriveChinaDriveName = ref("");
-const oneDriveChinaRootPath = ref("");
-const oneDriveChinaRefreshTokenConfigured = ref(false);
-const oneDriveChinaAuthorizedAt = ref("");
-const oneDriveChinaLastError = ref("");
-const oneDriveChinaDriveOptions = ref<OneDriveChinaDriveOption[]>([]);
 const features = reactive<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>({
   forum: true, market: true, coursereview: true, electric: true, sponsor: true,
 });
 const enabledFeatureCount = computed(() => featureMeta.filter((item) => features[item.key]).length);
-const oneDriveCallbackUrl = computed(() => `${(siteOrigin.value || window.location.origin).replace(/\/+$/, "")}/api/storage/onedrive-cn/callback`);
 
 const featureMeta: { key: FKey; icon: string; title: string; desc: string; paths: string[] }[] = [
   {
@@ -355,7 +259,7 @@ async function reload() {
   loading.value = true;
   configLoading.value = true;
   try {
-    const [r, config, mediaStorage] = await Promise.all([adminApi.features(), adminApi.siteConfig(), adminApi.mediaStorageConfig()]);
+    const [r, config] = await Promise.all([adminApi.features(), adminApi.siteConfig()]);
     Object.assign(features, r);
     site.apply(r);
     siteOrigin.value = config.siteOrigin;
@@ -388,8 +292,6 @@ async function reload() {
     forumEnabledBonus.value = config.forumEnabledBonus;
     anonymousTiers.value = (config.anonymousTiers ?? []).map((item) => ({ ...item }));
     reputationLevels.value = (config.reputationLevels ?? []).map((item) => ({ ...item }));
-    applyMediaStorageConfig(mediaStorage);
-    await handleStorageAuthQuery();
   } finally {
     loading.value = false;
     configLoading.value = false;
@@ -405,138 +307,6 @@ async function saveSiteConfig() {
   } finally {
     savingConfig.value = false;
   }
-}
-
-function applyMediaStorageConfig(config: MediaStorageConfig) {
-  mediaStorageProvider.value = config.mediaStorageProvider;
-  mediaStorageRemotePrefixesInput.value = (config.mediaStorageRemotePrefixes ?? []).join(", ");
-  oneDriveChinaClientId.value = config.oneDriveChinaClientId;
-  oneDriveChinaClientSecretInput.value = "";
-  oneDriveChinaClientSecretConfigured.value = config.oneDriveChinaClientSecretConfigured;
-  oneDriveChinaSharepointUrl.value = config.oneDriveChinaSharepointUrl;
-  oneDriveChinaSharepointHost.value = config.oneDriveChinaSharepointHost;
-  oneDriveChinaSharepointPath.value = config.oneDriveChinaSharepointPath || "/";
-  oneDriveChinaSiteId.value = config.oneDriveChinaSiteId;
-  oneDriveChinaSiteName.value = config.oneDriveChinaSiteName;
-  oneDriveChinaDriveId.value = config.oneDriveChinaDriveId;
-  oneDriveChinaDriveName.value = config.oneDriveChinaDriveName;
-  oneDriveChinaRootPath.value = config.oneDriveChinaRootPath;
-  oneDriveChinaRefreshTokenConfigured.value = config.oneDriveChinaRefreshTokenConfigured;
-  oneDriveChinaAuthorizedAt.value = config.oneDriveChinaAuthorizedAt;
-  oneDriveChinaLastError.value = config.oneDriveChinaLastError;
-}
-
-async function persistMediaStorageConfig(silent = false) {
-  savingMediaStorage.value = true;
-  try {
-    const config = await adminApi.updateMediaStorageConfig({
-      mediaStorageProvider: mediaStorageProvider.value,
-      mediaStorageRemotePrefixes: mediaStorageRemotePrefixesInput.value,
-      oneDriveChinaClientId: oneDriveChinaClientId.value,
-      oneDriveChinaClientSecret: oneDriveChinaClientSecretInput.value || undefined,
-      oneDriveChinaSharepointUrl: oneDriveChinaSharepointUrl.value,
-      oneDriveChinaRootPath: oneDriveChinaRootPath.value,
-    });
-    applyMediaStorageConfig(config);
-    if (!silent) ElMessage.success("媒体存储配置已保存");
-  } finally {
-    savingMediaStorage.value = false;
-  }
-}
-
-async function saveMediaStorageConfig() {
-  await persistMediaStorageConfig(false);
-}
-
-async function startOneDriveChinaAuth() {
-  authorizingOneDriveChina.value = true;
-  try {
-    await persistMediaStorageConfig(true);
-    const result = await adminApi.beginOneDriveChinaAuth();
-    window.location.assign(result.authorizeUrl);
-  } finally {
-    authorizingOneDriveChina.value = false;
-  }
-}
-
-async function fetchOneDriveChinaDrives(silent = false) {
-  loadingOneDriveChinaDrives.value = true;
-  try {
-    const result = await adminApi.oneDriveChinaDrives();
-    oneDriveChinaSiteId.value = result.siteId;
-    oneDriveChinaSiteName.value = result.siteName;
-    oneDriveChinaSharepointUrl.value = result.sharepointUrl;
-    oneDriveChinaSharepointHost.value = result.sharepointHost;
-    oneDriveChinaSharepointPath.value = result.sharepointPath || "/";
-    oneDriveChinaDriveId.value = result.selectedDriveId;
-    oneDriveChinaDriveName.value = result.selectedDriveName;
-    oneDriveChinaDriveOptions.value = result.list;
-    if (!silent) ElMessage.success(result.list.length ? "文档库已刷新" : "当前站点下没有可用文档库");
-  } finally {
-    loadingOneDriveChinaDrives.value = false;
-  }
-}
-
-async function loadOneDriveChinaDrives() {
-  await fetchOneDriveChinaDrives(false);
-}
-
-async function saveOneDriveChinaDriveSelection() {
-  if (!oneDriveChinaDriveId.value) {
-    ElMessage.warning("请先选择文档库");
-    return;
-  }
-  savingOneDriveChinaDrive.value = true;
-  try {
-    const result = await adminApi.saveOneDriveChinaDrive(oneDriveChinaDriveId.value);
-    oneDriveChinaDriveName.value = result.driveName;
-    ElMessage.success("文档库选择已保存");
-  } finally {
-    savingOneDriveChinaDrive.value = false;
-  }
-}
-
-async function clearOneDriveChinaAuth() {
-  try {
-    await ElMessageBox.confirm(
-      "确认清除当前世纪互联 OneDrive / SharePoint 授权吗？已保存的应用 ID、密钥和 SharePoint 地址会保留，但 refresh token 与已解析文档库会被清空。",
-      "清除授权",
-      { type: "warning", confirmButtonText: "清除", cancelButtonText: "取消" }
-    );
-  } catch {
-    return;
-  }
-  await adminApi.clearOneDriveChinaAuthorization();
-  oneDriveChinaRefreshTokenConfigured.value = false;
-  oneDriveChinaAuthorizedAt.value = "";
-  oneDriveChinaDriveId.value = "";
-  oneDriveChinaDriveName.value = "";
-  oneDriveChinaSiteId.value = "";
-  oneDriveChinaSiteName.value = "";
-  oneDriveChinaDriveOptions.value = [];
-  ElMessage.success("已清除世纪互联 OneDrive 授权");
-}
-
-async function handleStorageAuthQuery() {
-  const status = typeof route.query.storageAuth === "string" ? route.query.storageAuth : "";
-  const message = typeof route.query.storageAuthMessage === "string" ? route.query.storageAuthMessage : "";
-  if (!status) return;
-  if (status === "success") {
-    ElMessage.success("世纪互联 OneDrive 授权成功");
-    await reloadMediaStorageOnly();
-    await fetchOneDriveChinaDrives(true).catch(() => null);
-  } else {
-    ElMessage.error(message || "世纪互联 OneDrive 授权失败");
-    await reloadMediaStorageOnly();
-  }
-  const nextQuery = { ...route.query } as Record<string, any>;
-  delete nextQuery.storageAuth;
-  delete nextQuery.storageAuthMessage;
-  router.replace({ query: nextQuery }).catch(() => null);
-}
-
-async function reloadMediaStorageOnly() {
-  applyMediaStorageConfig(await adminApi.mediaStorageConfig());
 }
 
 async function saveAiReviewConfig() {
@@ -717,68 +487,6 @@ async function toggle(key: FKey, on: boolean) {
   align-items: center;
   gap: 10px;
   width: min(520px, 52%);
-}
-.storage-config {
-  align-items: flex-start;
-}
-.storage-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.storage-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 12px;
-  color: #475467;
-}
-.storage-error {
-  color: #c2410c;
-}
-.storage-form {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  width: min(760px, 100%);
-}
-.storage-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-.storage-field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.storage-field-wide {
-  grid-column: 1 / -1;
-}
-.storage-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.storage-drive-box {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  border-radius: 14px;
-  background: #fcfdff;
-  border: 1px dashed #d7e2f0;
-}
-.storage-drive-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.drive-select {
-  flex: 1;
-}
-.storage-status-row {
-  margin-top: 0;
 }
 .trust-config {
   align-items: flex-start;
@@ -994,16 +702,6 @@ async function toggle(key: FKey, on: boolean) {
     width: 100%;
     flex-direction: column;
     align-items: stretch;
-  }
-  .storage-grid {
-    grid-template-columns: 1fr;
-  }
-  .storage-drive-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .drive-select {
-    width: 100%;
   }
   .ai-form {
     grid-template-columns: 1fr;

@@ -1,8 +1,9 @@
 import type { RequestHandler } from "express";
 import path from "node:path";
-import { mkdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { Readable } from "node:stream";
-import { fetchOneDriveChinaFile, uploadOneDriveChinaFile } from "./oneDriveChina";
+import { prisma } from "../prisma";
+import { fetchOneDriveChinaFile, listOneDriveChinaFiles, uploadOneDriveChinaFile } from "./oneDriveChina";
 import { getMediaStorageRuntimeConfig, getMediaStorageRuntimeConfigSync } from "./storageConfig";
 
 const CACHE_CONTROL_VALUE = "public, max-age=2592000, immutable";
@@ -20,6 +21,58 @@ export type SaveMediaAssetResult = {
   relativePath: string;
   url: string;
   localPath: string;
+};
+
+export type MediaStorageAdminFileEntry = {
+  relativePath: string;
+  url: string;
+  inRemotePrefix: boolean;
+  localExists: boolean;
+  cacheExists: boolean;
+  remoteExists: boolean;
+  localSizeBytes: number | null;
+  cacheSizeBytes: number | null;
+  remoteSizeBytes: number | null;
+  localUpdatedAt: string;
+  cacheUpdatedAt: string;
+  remoteUpdatedAt: string;
+};
+
+export type MediaStorageAdminInventory = {
+  generatedAt: string;
+  mediaStorageProvider: MediaStorageBackend;
+  remotePrefixes: string[];
+  remoteConfigured: boolean;
+  remoteReachable: boolean;
+  remoteError: string;
+  summary: {
+    total: number;
+    localCount: number;
+    cacheCount: number;
+    remoteCount: number;
+    eligibleMigrationCount: number;
+    syncedCount: number;
+    migratedCount: number;
+    outOfScopeLocalCount: number;
+  };
+  list: MediaStorageAdminFileEntry[];
+};
+
+export type MediaStorageMigrationItem = {
+  relativePath: string;
+  status: "migrated" | "failed";
+  message: string;
+};
+
+export type MediaStorageMigrationResult = {
+  startedAt: string;
+  finishedAt: string;
+  mediaStorageProvider: MediaStorageBackend;
+  remotePrefixes: string[];
+  eligible: number;
+  migrated: number;
+  failed: number;
+  list: MediaStorageMigrationItem[];
 };
 
 const localUploadRoot = path.resolve(process.cwd(), "uploads");
@@ -58,6 +111,141 @@ export async function saveMediaAsset(input: SaveMediaAssetInput): Promise<SaveMe
     relativePath,
     url: buildUploadUrl(relativePath),
     localPath: cachePath,
+  };
+}
+
+export async function listMediaStorageAdminInventory(): Promise<MediaStorageAdminInventory> {
+  const runtime = await getMediaStorageRuntimeConfig();
+  const localFiles = await collectLocalFiles(localUploadRoot);
+  const cacheFiles = await collectLocalFiles(mediaCacheRoot);
+  const remoteConfigured = Boolean(runtime.oneDriveChinaDriveId.trim() || runtime.legacyDriveId.trim());
+  let remoteReachable = false;
+  let remoteError = "";
+  let remoteFiles = new Map<string, { sizeBytes: number | null; updatedAt: string }>();
+
+  if (remoteConfigured) {
+    try {
+      remoteFiles = new Map(
+        (await listOneDriveChinaFiles()).map((item) => [
+          normalizeUploadRelativePath(item.relativePath),
+          {
+            sizeBytes: typeof item.size === "number" ? item.size : null,
+            updatedAt: String(item.lastModifiedAt || "").trim(),
+          },
+        ]),
+      );
+      remoteReachable = true;
+    } catch (error) {
+      remoteError = String((error as any)?.message || error || "读取远端文件列表失败").slice(0, 500);
+    }
+  }
+
+  const allPaths = new Set<string>([
+    ...localFiles.keys(),
+    ...cacheFiles.keys(),
+    ...remoteFiles.keys(),
+  ]);
+  const list = Array.from(allPaths)
+    .sort((a, b) => a.localeCompare(b, "zh-Hans-CN"))
+    .map((relativePath) => {
+      const local = localFiles.get(relativePath);
+      const cache = cacheFiles.get(relativePath);
+      const remote = remoteFiles.get(relativePath);
+      return {
+        relativePath,
+        url: buildUploadUrl(relativePath),
+        inRemotePrefix: pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes),
+        localExists: Boolean(local),
+        cacheExists: Boolean(cache),
+        remoteExists: Boolean(remote),
+        localSizeBytes: local?.sizeBytes ?? null,
+        cacheSizeBytes: cache?.sizeBytes ?? null,
+        remoteSizeBytes: remote?.sizeBytes ?? null,
+        localUpdatedAt: local?.updatedAt ?? "",
+        cacheUpdatedAt: cache?.updatedAt ?? "",
+        remoteUpdatedAt: remote?.updatedAt ?? "",
+      } satisfies MediaStorageAdminFileEntry;
+    });
+
+  return {
+    generatedAt: new Date().toISOString(),
+    mediaStorageProvider: runtime.effectiveProvider,
+    remotePrefixes: [...runtime.effectiveRemotePrefixes],
+    remoteConfigured,
+    remoteReachable,
+    remoteError,
+    summary: {
+      total: list.length,
+      localCount: list.filter((item) => item.localExists).length,
+      cacheCount: list.filter((item) => item.cacheExists).length,
+      remoteCount: list.filter((item) => item.remoteExists).length,
+      eligibleMigrationCount: list.filter((item) => item.localExists && item.inRemotePrefix).length,
+      syncedCount: list.filter((item) => item.localExists && item.remoteExists && item.inRemotePrefix).length,
+      migratedCount: list.filter((item) => !item.localExists && item.cacheExists && item.remoteExists && item.inRemotePrefix).length,
+      outOfScopeLocalCount: list.filter((item) => item.localExists && !item.inRemotePrefix).length,
+    },
+    list,
+  };
+}
+
+export async function migrateLocalMediaAssetsToRemote(): Promise<MediaStorageMigrationResult> {
+  const runtime = await getMediaStorageRuntimeConfig();
+  if (runtime.effectiveProvider !== "onedrive-cn") {
+    throw new Error("请先将媒体存储后端切换为世纪互联 OneDrive / SharePoint");
+  }
+
+  const startedAt = new Date().toISOString();
+  const localFiles = await collectLocalFiles(localUploadRoot);
+  const eligibleFiles = Array.from(localFiles.keys())
+    .filter((relativePath) => pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes))
+    .sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
+
+  const results: MediaStorageMigrationItem[] = [];
+  for (const relativePath of eligibleFiles) {
+    const sourcePath = localAssetAbsolutePath(relativePath);
+    const cachePath = cachedAssetAbsolutePath(relativePath);
+    try {
+      const buffer = await readFile(sourcePath);
+      await uploadOneDriveChinaFile(relativePath, buffer, guessContentType(relativePath));
+      await mkdir(path.dirname(cachePath), { recursive: true });
+      await writeFile(cachePath, buffer);
+      await prisma.forumImageAsset.updateMany({
+        where: {
+          OR: [
+            { localPath: sourcePath },
+            { url: buildUploadUrl(relativePath) },
+          ],
+        },
+        data: {
+          localPath: cachePath,
+        },
+      });
+      await unlink(sourcePath).catch((error: any) => {
+        if (error?.code !== "ENOENT") throw error;
+      });
+      results.push({
+        relativePath,
+        status: "migrated",
+        message: "已上传远端、写入缓存并移除本地源文件",
+      });
+    } catch (error) {
+      results.push({
+        relativePath,
+        status: "failed",
+        message: String((error as any)?.message || error || "迁移失败").slice(0, 500),
+      });
+    }
+  }
+
+  return {
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    mediaStorageProvider: runtime.effectiveProvider,
+    remotePrefixes: [...runtime.effectiveRemotePrefixes],
+    eligible: eligibleFiles.length,
+    migrated: results.filter((item) => item.status === "migrated").length,
+    failed: results.filter((item) => item.status === "failed").length,
+    list: results,
   };
 }
 
@@ -155,8 +343,7 @@ function relativeUploadPathFromUrl(url: string) {
 async function shouldUseRemoteMediaStorage(relativePath: string) {
   const runtime = await getMediaStorageRuntimeConfig();
   if (runtime.effectiveProvider !== "onedrive-cn") return false;
-  const normalized = normalizeUploadRelativePath(relativePath);
-  return runtime.effectiveRemotePrefixes.some((prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`));
+  return pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes);
 }
 
 function localAssetAbsolutePath(relativePath: string) {
@@ -169,9 +356,8 @@ function cachedAssetAbsolutePath(relativePath: string) {
 
 function resolvePreferredLocalMediaPath(relativePath: string) {
   const runtime = getMediaStorageRuntimeConfigSync();
-  const normalized = normalizeUploadRelativePath(relativePath);
   const isRemote = runtime.effectiveProvider === "onedrive-cn"
-    && runtime.effectiveRemotePrefixes.some((prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`));
+    && pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes);
   return isRemote ? cachedAssetAbsolutePath(relativePath) : localAssetAbsolutePath(relativePath);
 }
 
@@ -196,6 +382,59 @@ async function findExistingLocalAsset(relativePath: string, includeCache: boolea
     }
   }
   return "";
+}
+
+async function collectLocalFiles(root: string) {
+  const results = new Map<string, { sizeBytes: number; updatedAt: string }>();
+  const pending = [root];
+  while (pending.length) {
+    const current = pending.pop()!;
+    const entries = await readdir(current, { withFileTypes: true }).catch((error: any) => {
+      if (error?.code === "ENOENT") return null;
+      throw error;
+    });
+    if (!entries) continue;
+    for (const entry of entries) {
+      const absolutePath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        pending.push(absolutePath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const file = await stat(absolutePath).catch(() => null);
+      if (!file?.isFile()) continue;
+      const relativePath = normalizeUploadRelativePath(path.relative(root, absolutePath).replace(/\\/g, "/"));
+      results.set(relativePath, {
+        sizeBytes: file.size,
+        updatedAt: file.mtime.toISOString(),
+      });
+    }
+  }
+  return results;
+}
+
+function pathMatchesPrefixes(relativePath: string, prefixes: string[]) {
+  const normalized = normalizeUploadRelativePath(relativePath);
+  return prefixes.some((prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`));
+}
+
+function guessContentType(relativePath: string) {
+  const ext = path.extname(relativePath).replace(/^\./, "").toLowerCase();
+  const contentTypeMap: Record<string, string> = {
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    webp: "image/webp",
+    gif: "image/gif",
+    svg: "image/svg+xml",
+    avif: "image/avif",
+    bmp: "image/bmp",
+    txt: "text/plain; charset=utf-8",
+    json: "application/json",
+    pdf: "application/pdf",
+    mp4: "video/mp4",
+  };
+  return contentTypeMap[ext] || "application/octet-stream";
 }
 
 async function safeReadResponseText(response: Response) {

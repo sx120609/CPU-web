@@ -37,6 +37,13 @@ export type OneDriveChinaDriveOption = {
   driveType: string;
 };
 
+export type OneDriveChinaStoredFile = {
+  relativePath: string;
+  size: number | null;
+  lastModifiedAt: string;
+  webUrl: string;
+};
+
 type DelegatedTokenResult = {
   accessToken: string;
   refreshToken: string;
@@ -176,6 +183,50 @@ export async function saveOneDriveChinaDriveSelection(driveId: string) {
 export async function disconnectOneDriveChinaAuthorization() {
   await clearOneDriveChinaAuthorization();
   resetOneDriveChinaCaches();
+}
+
+export async function listOneDriveChinaFiles(): Promise<OneDriveChinaStoredFile[]> {
+  const runtime = await getMediaStorageRuntimeConfig();
+  const drive = await requireActiveRemoteDrive(runtime);
+  const rootPath = normalizeRemoteFolderPath(drive.rootPath);
+  const rootFolder = await resolveConfiguredRootFolder(drive.driveId, rootPath);
+  if (!rootFolder) return [];
+
+  if (rootFolder.file) {
+    return [{
+      relativePath: rootPath || rootFolder.name || "",
+      size: typeof rootFolder.size === "number" ? rootFolder.size : null,
+      lastModifiedAt: String(rootFolder.lastModifiedDateTime || "").trim(),
+      webUrl: String(rootFolder.webUrl || "").trim(),
+    }].filter((item) => item.relativePath);
+  }
+  if (!rootFolder.id) return [];
+
+  const queue: Array<{ itemId: string; relativeBase: string }> = [{
+    itemId: rootFolder.id,
+    relativeBase: "",
+  }];
+  const files: OneDriveChinaStoredFile[] = [];
+  while (queue.length) {
+    const current = queue.shift()!;
+    const children = await listDriveChildrenByItemId(drive.driveId, current.itemId);
+    for (const item of children) {
+      const relativePath = current.relativeBase ? `${current.relativeBase}/${item.name}` : item.name;
+      if (item.folder) {
+        queue.push({ itemId: item.id, relativeBase: relativePath });
+        continue;
+      }
+      if (!item.file) continue;
+      files.push({
+        relativePath,
+        size: typeof item.size === "number" ? item.size : null,
+        lastModifiedAt: String(item.lastModifiedDateTime || "").trim(),
+        webUrl: String(item.webUrl || "").trim(),
+      });
+    }
+  }
+  files.sort((a, b) => a.relativePath.localeCompare(b.relativePath, "zh-Hans-CN"));
+  return files;
 }
 
 export async function uploadOneDriveChinaFile(relativePath: string, buffer: Buffer, contentType: string) {
@@ -437,7 +488,8 @@ async function graphRequestWithCurrentMode(resourcePath: string, init: RequestIn
   const token = await acquireOneDriveChinaAccessToken();
   const headers = new Headers(init.headers);
   headers.set("Authorization", `Bearer ${token}`);
-  const response = await fetch(`${GRAPH_BASE_URL}${resourcePath}`, {
+  const targetUrl = /^https?:\/\//i.test(resourcePath) ? resourcePath : `${GRAPH_BASE_URL}${resourcePath}`;
+  const response = await fetch(targetUrl, {
     ...init,
     headers,
   });
@@ -507,7 +559,15 @@ async function fetchRemoteItemMetadataByPath(driveId: string, remotePath: string
     const detail = await safeReadResponseText(response);
     throw new Error(detail ? `检查远端目录失败：${detail}` : `检查远端目录失败：HTTP ${response.status}`);
   }
-  return response.json() as Promise<{ id?: string }>;
+  return response.json() as Promise<{
+    id?: string;
+    name?: string;
+    size?: number;
+    webUrl?: string;
+    lastModifiedDateTime?: string;
+    folder?: Record<string, unknown>;
+    file?: Record<string, unknown>;
+  }>;
 }
 
 async function getRootItemId(driveId: string) {
@@ -524,6 +584,73 @@ async function getRootItemId(driveId: string) {
   if (!payload.id) throw new Error("读取远端根目录失败：响应缺少根目录 id");
   rootItemIdCache.set(driveId, payload.id);
   return payload.id;
+}
+
+async function resolveConfiguredRootFolder(driveId: string, rootPath: string) {
+  if (!rootPath) {
+    return {
+      id: await getRootItemId(driveId),
+      name: "",
+      folder: {},
+      file: null as Record<string, unknown> | null,
+      size: null as number | null,
+      webUrl: "",
+      lastModifiedDateTime: "",
+    };
+  }
+  const item = await fetchRemoteItemMetadataByPath(driveId, rootPath).catch((error: any) => {
+    if (String(error?.message || "").includes("HTTP 404")) return null;
+    throw error;
+  });
+  return item || null;
+}
+
+async function listDriveChildrenByItemId(driveId: string, itemId: string) {
+  const items: Array<{
+    id: string;
+    name: string;
+    size?: number;
+    webUrl?: string;
+    lastModifiedDateTime?: string;
+    folder?: Record<string, unknown>;
+    file?: Record<string, unknown>;
+  }> = [];
+  let nextUrl = `${GRAPH_BASE_URL}/drives/${driveId}/items/${encodeURIComponent(itemId)}/children?$top=200&$select=id,name,size,webUrl,lastModifiedDateTime,folder,file`;
+  while (nextUrl) {
+    const response = await graphRequestWithCurrentMode(nextUrl, { method: "GET" });
+    if (!response.ok) {
+      const detail = await safeReadResponseText(response);
+      throw new Error(detail ? `读取远端文件列表失败：${detail}` : `读取远端文件列表失败：HTTP ${response.status}`);
+    }
+    const payload = await response.json() as {
+      value?: Array<{
+        id?: string;
+        name?: string;
+        size?: number;
+        webUrl?: string;
+        lastModifiedDateTime?: string;
+        folder?: Record<string, unknown>;
+        file?: Record<string, unknown>;
+      }>;
+      "@odata.nextLink"?: string;
+    };
+    for (const item of Array.isArray(payload.value) ? payload.value : []) {
+      const id = String(item.id || "").trim();
+      const name = String(item.name || "").trim();
+      if (!id || !name) continue;
+      items.push({
+        id,
+        name,
+        size: typeof item.size === "number" ? item.size : undefined,
+        webUrl: String(item.webUrl || "").trim(),
+        lastModifiedDateTime: String(item.lastModifiedDateTime || "").trim(),
+        folder: item.folder,
+        file: item.file,
+      });
+    }
+    nextUrl = String(payload["@odata.nextLink"] || "").trim();
+  }
+  return items;
 }
 
 function parseSharePointCandidateInput(input: string) {

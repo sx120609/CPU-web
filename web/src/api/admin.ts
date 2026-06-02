@@ -60,6 +60,56 @@ export type OneDriveChinaDriveOption = {
   webUrl: string;
   driveType: string;
 };
+
+export type MediaStorageAdminFileEntry = {
+  relativePath: string;
+  url: string;
+  inRemotePrefix: boolean;
+  localExists: boolean;
+  cacheExists: boolean;
+  remoteExists: boolean;
+  localSizeBytes: number | null;
+  cacheSizeBytes: number | null;
+  remoteSizeBytes: number | null;
+  localUpdatedAt: string;
+  cacheUpdatedAt: string;
+  remoteUpdatedAt: string;
+};
+
+export type MediaStorageAdminInventory = {
+  generatedAt: string;
+  mediaStorageProvider: "local" | "onedrive-cn";
+  remotePrefixes: string[];
+  remoteConfigured: boolean;
+  remoteReachable: boolean;
+  remoteError: string;
+  summary: {
+    total: number;
+    localCount: number;
+    cacheCount: number;
+    remoteCount: number;
+    eligibleMigrationCount: number;
+    syncedCount: number;
+    migratedCount: number;
+    outOfScopeLocalCount: number;
+  };
+  list: MediaStorageAdminFileEntry[];
+};
+
+export type MediaStorageMigrationResult = {
+  startedAt: string;
+  finishedAt: string;
+  mediaStorageProvider: "local" | "onedrive-cn";
+  remotePrefixes: string[];
+  eligible: number;
+  migrated: number;
+  failed: number;
+  list: Array<{
+    relativePath: string;
+    status: "migrated" | "failed";
+    message: string;
+  }>;
+};
 export type SitePromptDefaults = Pick<
   SiteConfig,
   | "imageReviewSystemPrompt"
@@ -301,6 +351,8 @@ export const adminApi = {
     request.patch<{ driveId: string; driveName: string }>("/admin/media-storage/onedrive-cn/drive", { driveId }),
   clearOneDriveChinaAuthorization: () =>
     request.delete<{ ok: true }>("/admin/media-storage/onedrive-cn/authorization"),
+  mediaStorageFiles: () => request.get<MediaStorageAdminInventory>("/admin/media-storage/files"),
+  migrateMediaStorageFiles: () => request.post<MediaStorageMigrationResult>("/admin/media-storage/migrate", {}),
   updateSiteConfig: (patch: {
     siteOrigin?: string;
     aiReviewEnabled?: boolean;

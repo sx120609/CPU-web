@@ -56,6 +56,10 @@ import {
   listOneDriveChinaDriveOptions,
   saveOneDriveChinaDriveSelection,
 } from "../../services/oneDriveChina";
+import {
+  listMediaStorageAdminInventory,
+  migrateLocalMediaAssetsToRemote,
+} from "../../services/mediaStorage";
 import { qqBotAdminRouter } from "./qqbot";
 
 export const adminRouter = Router();
@@ -1459,6 +1463,28 @@ adminRouter.delete("/media-storage/onedrive-cn/authorization", adminOnly, async 
     await disconnectOneDriveChinaAuthorization();
     ok(res, { ok: true });
   } catch (e) { next(e); }
+});
+
+adminRouter.get("/media-storage/files", adminOnly, async (_req, res, next) => {
+  try {
+    ok(res, await listMediaStorageAdminInventory());
+  } catch (e) { next(e); }
+});
+
+adminRouter.post("/media-storage/migrate", adminOnly, async (_req, res, next) => {
+  try {
+    ok(res, await migrateLocalMediaAssetsToRemote());
+  } catch (e: any) {
+    if (
+      e?.message === "请先将媒体存储后端切换为世纪互联 OneDrive / SharePoint"
+      || e?.message === "世纪互联 OneDrive / SharePoint 尚未完成授权或未选择文档库"
+      || e?.message === "请先在后台点击登录授权"
+    ) {
+      next(Errors.badRequest(e.message));
+      return;
+    }
+    next(e);
+  }
 });
 
 const siteConfigPatchSchema = z.object({

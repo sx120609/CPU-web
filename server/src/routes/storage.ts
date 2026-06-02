@@ -10,7 +10,7 @@ storageRouter.get("/onedrive-cn/callback", async (req, res) => {
   if (oauthError) {
     const message = oauthErrorDescription || oauthError || "用户取消了世纪互联 OneDrive 授权";
     await setOneDriveChinaLastError(message).catch(() => null);
-    res.redirect(302, `/admin?tab=features&storageAuth=error&storageAuthMessage=${encodeURIComponent(message)}`);
+    res.redirect(302, `/admin?tab=media-storage&storageAuth=error&storageAuthMessage=${encodeURIComponent(message)}`);
     return;
   }
 
@@ -19,7 +19,7 @@ storageRouter.get("/onedrive-cn/callback", async (req, res) => {
   if (!code || !state) {
     const message = "世纪互联 OneDrive 授权回调缺少 code 或 state";
     await setOneDriveChinaLastError(message).catch(() => null);
-    res.redirect(302, `/admin?tab=features&storageAuth=error&storageAuthMessage=${encodeURIComponent(message)}`);
+    res.redirect(302, `/admin?tab=media-storage&storageAuth=error&storageAuthMessage=${encodeURIComponent(message)}`);
     return;
   }
 
@@ -29,11 +29,11 @@ storageRouter.get("/onedrive-cn/callback", async (req, res) => {
       state,
       requestOrigin: requestOrigin(req),
     });
-    res.redirect(302, "/admin?tab=features&storageAuth=success");
+    res.redirect(302, "/admin?tab=media-storage&storageAuth=success");
   } catch (error) {
     const message = error instanceof Error ? error.message : "世纪互联 OneDrive 授权失败";
     await setOneDriveChinaLastError(message).catch(() => null);
-    res.redirect(302, `/admin?tab=features&storageAuth=error&storageAuthMessage=${encodeURIComponent(message)}`);
+    res.redirect(302, `/admin?tab=media-storage&storageAuth=error&storageAuthMessage=${encodeURIComponent(message)}`);
   }
 });
 
