@@ -1,6 +1,7 @@
 import { buildUserPreview } from "../utils/publicUser";
 import { decorateReplyForViewerWithImageModeration, decorateTopicForViewerWithImageModeration } from "./imageModeration";
 import { isGlobalPinnedTopic } from "./siteSettings";
+import { renderModeratedVideoContent } from "./videoModeration";
 
 type Viewer = {
   userId?: number | null;
@@ -65,9 +66,17 @@ export function decodeReplyForViewer(reply: any, viewer?: Viewer) {
 }
 
 export async function decodeTopicForViewerWithImages(topic: any, viewer?: Viewer) {
-  return decorateTopicForViewerWithImageModeration(decodeTopicForViewer(topic, viewer), viewer);
+  const decoded = await decorateTopicForViewerWithImageModeration(decodeTopicForViewer(topic, viewer), viewer);
+  return {
+    ...decoded,
+    content: await renderModeratedVideoContent(decoded.content, viewer),
+  };
 }
 
 export async function decodeReplyForViewerWithImages(reply: any, viewer?: Viewer) {
-  return decorateReplyForViewerWithImageModeration(decodeReplyForViewer(reply, viewer), viewer);
+  const decoded = await decorateReplyForViewerWithImageModeration(decodeReplyForViewer(reply, viewer), viewer);
+  return {
+    ...decoded,
+    content: await renderModeratedVideoContent(decoded.content, viewer),
+  };
 }

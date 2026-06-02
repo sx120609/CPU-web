@@ -9,6 +9,7 @@ import { saveMediaAsset } from "./mediaStorage";
 import { getSiteOrigin, isBoardTypeEnabled, isFeatureOn, featureForBoardType, featureClosedMessage } from "./siteSettings";
 import { refreshBoardTopicCounts, refreshUserPostCount } from "./forumStats";
 import { ensureUserCanSpeak } from "./userModeration";
+import { ensureForumVideoAssetsForContent } from "./videoModeration";
 import {
   ensureUserCanSubmitTopic,
   generateTopicAiTags,
@@ -1766,7 +1767,10 @@ async function createTopicFromQq(input: {
   }
   if (hiddenByAi) await refreshUserPostCount(userId).catch(() => {});
   await refreshBoardTopicCounts([board.id]).catch(() => {});
-  await ensureForumImageAssetsForContent(input.content, userId).catch(() => null);
+  await Promise.all([
+    ensureForumImageAssetsForContent(input.content, userId).catch(() => null),
+    ensureForumVideoAssetsForContent(input.content, userId).catch(() => null),
+  ]);
   return { ...topic, board };
 }
 
@@ -2851,10 +2855,12 @@ function renderQqVideoBlock(url: string) {
   const safeUrl = escapeShareCardHtml(String(url || "").trim());
   if (!safeUrl) return "[视频]";
   return [
+    `<div class="qq-video-card">`,
     `<video class="qq-inline-video" controls preload="metadata" playsinline src="${safeUrl}">`,
     "你的浏览器暂不支持站内视频预览。",
     `</video>`,
     `<p><a class="qq-inline-video__link" href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow">打开视频</a></p>`,
+    `</div>`,
   ].join("\n");
 }
 

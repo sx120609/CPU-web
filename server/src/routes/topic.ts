@@ -32,6 +32,7 @@ import { ensureUserCanSpeak, releaseExpiredMutes } from "../services/userModerat
 import { consumeAnonymousCredit, createAnonymousAlias } from "../services/userTrust";
 import { decodeReplyForViewer, decodeReplyForViewerWithImages, decodeTopicForViewer, decodeTopicForViewerWithImages } from "../services/forumPresentation";
 import { ensureForumImageAssetsForContent, summarizeForumImageModerationForContent } from "../services/imageModeration";
+import { ensureForumVideoAssetsForContent } from "../services/videoModeration";
 
 export const topicRouter = Router();
 
@@ -286,7 +287,10 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       });
     }
 
-    await ensureForumImageAssetsForContent(content, userId).catch(() => null);
+    await Promise.all([
+      ensureForumImageAssetsForContent(content, userId).catch(() => null),
+      ensureForumVideoAssetsForContent(content, userId).catch(() => null),
+    ]);
     const imageReview = await summarizeForumImageModerationForContent(content).catch(() => null);
     ok(res, {
       ...(await decodeTopicForViewerWithImages(topicWithTags ?? { ...topic, board: { slug: board.slug, name: board.name, type: board.type }, tags: [] }, req.user)),
@@ -440,7 +444,10 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
       await syncTopicAiTags(id, aiTags);
     }
     if (typeof body.content === "string" && canEditContent) {
-      await ensureForumImageAssetsForContent(nextContent, req.user!.userId).catch(() => null);
+      await Promise.all([
+        ensureForumImageAssetsForContent(nextContent, req.user!.userId).catch(() => null),
+        ensureForumVideoAssetsForContent(nextContent, req.user!.userId).catch(() => null),
+      ]);
     }
     const imageReview = typeof body.content === "string" && canEditContent
       ? await summarizeForumImageModerationForContent(nextContent).catch(() => null)

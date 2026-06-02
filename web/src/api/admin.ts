@@ -156,6 +156,20 @@ export type ForumImageSweepResult = {
   moderationTriggered: boolean;
 };
 
+export type ForumVideoSweepResult = {
+  reviewEnabled: boolean;
+  scannedTopics: number;
+  scannedReplies: number;
+  videoReferences: number;
+  uniqueVideoUrls: number;
+  createdAssets: number;
+  requeuedAssets: number;
+  alreadyTracked: number;
+  skippedAssets: number;
+  pendingAfterScan: number;
+  moderationTriggered: boolean;
+};
+
 export type ReviewTargetKind = "topic" | "reply";
 
 export type ForumImageReviewAsset = {
@@ -171,6 +185,46 @@ export type ForumImageReviewAsset = {
   manualReviewedAt?: string | null;
   manualReviewNote?: string | null;
   manualReviewedBy?: { id: number; nickname: string; username?: string } | null;
+};
+
+export type ForumVideoReviewAsset = {
+  id: number;
+  url: string;
+  status: string;
+  reason?: string | null;
+  detail?: string | null;
+  reviewModel?: string | null;
+  reviewEndpoint?: string | null;
+  reviewedAt?: string | null;
+  lastError?: string | null;
+  durationMs?: number | null;
+  width?: number | null;
+  height?: number | null;
+  hasAudio?: boolean;
+  transcriptStatus?: string | null;
+  manualReviewedAt?: string | null;
+  manualReviewNote?: string | null;
+  manualReviewedBy?: { id: number; nickname: string; username?: string } | null;
+};
+
+export type ForumVideoQueueRow = {
+  id: number;
+  url: string;
+  status: string;
+  reason?: string | null;
+  detail?: string | null;
+  reviewedAt?: string | null;
+  lastError?: string | null;
+  durationMs?: number | null;
+  width?: number | null;
+  height?: number | null;
+  hasAudio?: boolean;
+  transcriptStatus?: string | null;
+  createdAt: string;
+  targetKind: "topic" | "reply" | "unknown";
+  targetId?: number | null;
+  targetLabel: string;
+  targetUrl: string;
 };
 
 export type AdminOverview = {
@@ -393,6 +447,8 @@ export const adminApi = {
     request.get<{ page: number; size: number; total: number; list: AiReviewLogRow[] }>("/admin/ai-review/logs", params),
   sweepForumImages: () =>
     request.post<ForumImageSweepResult>("/admin/ai-review/images/sweep", {}, { timeout: 120000 }),
+  sweepForumVideos: () =>
+    request.post<ForumVideoSweepResult>("/admin/ai-review/videos/sweep", {}, { timeout: 120000 }),
   features: () => request.get<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>("/admin/features"),
   updateFeatures: (patch: { forum?: boolean; market?: boolean; coursereview?: boolean; electric?: boolean; sponsor?: boolean }) =>
     request.patch<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>("/admin/features", patch),
@@ -487,11 +543,24 @@ export const adminApi = {
     request.get<{ kind: ReviewTargetKind; id: number; title: string; aiReviewStatus: string; hidden: boolean; topicId?: number; reviewable: boolean }>(`/admin/review-targets/${kind}/${id}`),
   reviewTargetImages: (kind: ReviewTargetKind, id: number) =>
     request.get<{ kind: ReviewTargetKind; id: number; topicId?: number; list: ForumImageReviewAsset[] }>(`/admin/review-targets/${kind}/${id}/images`),
+  reviewTargetVideos: (kind: ReviewTargetKind, id: number) =>
+    request.get<{ kind: ReviewTargetKind; id: number; topicId?: number; list: ForumVideoReviewAsset[] }>(`/admin/review-targets/${kind}/${id}/videos`),
   updateForumImage: (id: number, patch: {
     status: "approved" | "rejected";
     manualReviewNote?: string;
   }) =>
     request.patch<ForumImageReviewAsset>(`/admin/forum-images/${id}`, patch),
+  forumVideos: (params?: {
+    status?: "pending" | "manual_review" | "rejected" | "approved" | "error";
+    page?: number;
+    size?: number;
+  }) =>
+    request.get<{ page: number; size: number; total: number; list: ForumVideoQueueRow[] }>("/admin/forum-videos", params),
+  updateForumVideo: (id: number, patch: {
+    status: "approved" | "rejected";
+    manualReviewNote?: string;
+  }) =>
+    request.patch<ForumVideoReviewAsset>(`/admin/forum-videos/${id}`, patch),
   deleteTopic: (id: number) => request.delete<any>(`/admin/topics/${id}`),
   destroyTopic: (id: number) => request.delete<any>(`/admin/topics/${id}?hard=1`),
   // 板块

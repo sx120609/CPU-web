@@ -10,6 +10,7 @@ import { isDev } from "./config";
 import { getDatabaseMaintenanceMessage, isDatabaseMaintenanceActive } from "./services/maintenance";
 import { filestoreProxy } from "./services/filestore";
 import { startForumImageModerationPoller } from "./services/imageModeration";
+import { startForumVideoModerationPoller } from "./services/videoModeration";
 import { uploadAssetHandler } from "./services/mediaStorage";
 import { startQqNotificationPoller } from "./services/qqbot";
 import { startSponsorOrderExpiryPoller } from "./services/sponsor";
@@ -43,6 +44,7 @@ export function createApp() {
   app.use("/share", shareRouter);
   app.use("/api", router);
   startForumImageModerationPoller();
+  startForumVideoModerationPoller();
   startQqNotificationPoller();
   startSponsorOrderExpiryPoller();
 

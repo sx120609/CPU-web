@@ -74,14 +74,16 @@ function bindImageViewer() {
 function bindVideoPlayers() {
   if (!el.value) return;
   destroyVideoPlayers();
-  const videos = Array.from(el.value.querySelectorAll<HTMLVideoElement>("video.qq-inline-video"));
+  const videos = Array.from(el.value.querySelectorAll<HTMLVideoElement>("video"))
+    .filter((video) => !video.closest(".art-video-player") && !video.closest(".md-video-shell"));
   videos.forEach((video, index) => {
-    const src = video.getAttribute("src") || video.currentSrc || video.src;
+    const src = getVideoSourceUrl(video);
     if (!src) return;
     const fallbackVideo = video.cloneNode(true) as HTMLVideoElement;
     fallbackVideo.controls = true;
     fallbackVideo.preload = "metadata";
     fallbackVideo.playsInline = true;
+    fallbackVideo.classList.add("qq-inline-video-fallback");
 
     const shell = document.createElement("div");
     shell.className = "md-video-shell";
@@ -132,6 +134,13 @@ function bindVideoPlayers() {
       playerMount.replaceWith(fallbackVideo);
     }
   });
+}
+
+function getVideoSourceUrl(video: HTMLVideoElement) {
+  const direct = video.getAttribute("src") || video.currentSrc || video.src;
+  if (direct) return direct;
+  const source = video.querySelector<HTMLSourceElement>("source[src]");
+  return source?.getAttribute("src") || source?.src || "";
 }
 
 function wrapImageAlbums() {
@@ -680,10 +689,16 @@ watch(() => props.clickableImages, () => nextTick(() => {
 .md :deep(.md-video-shell.is-fallback) {
   border-radius: 14px;
 }
+.md :deep(.qq-inline-video-fallback) {
+  width: 100%;
+  margin: 0;
+  border-radius: 18px;
+}
 .md :deep(.qq-inline-video__link) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  margin-top: 10px;
   font-size: 13px;
   color: #275df3;
 }
@@ -723,6 +738,33 @@ watch(() => props.clickableImages, () => nextTick(() => {
   color: #9a3412;
 }
 .md :deep(.image-review-placeholder-rejected) {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+.md :deep(.video-review-placeholder) {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  margin: 10px 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+.md :deep(.video-review-placeholder-pending) {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+.md :deep(.video-review-placeholder-manual) {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #c2410c;
+}
+.md :deep(.video-review-placeholder-rejected) {
   background: #fef2f2;
   border-color: #fecaca;
   color: #b91c1c;

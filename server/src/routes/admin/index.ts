@@ -42,6 +42,12 @@ import {
 } from "../../services/sponsor";
 import { applyManualForumImageReview, backfillForumImageAssetsAndTriggerModeration, listForumImageAssetsForContent } from "../../services/imageModeration";
 import {
+  applyManualForumVideoReview,
+  backfillForumVideoAssetsAndTriggerModeration,
+  listForumVideoAssetsForContent,
+  listForumVideoQueue,
+} from "../../services/videoModeration";
+import {
   cleanupDatabaseBackupSnapshot,
   createDatabaseBackupSnapshot,
   getDatabaseBackupStatus,
@@ -572,6 +578,40 @@ adminRouter.get("/review-targets/:kind/:id/images", modOrAbove, async (req, res,
   } catch (e) { next(e); }
 });
 
+adminRouter.get("/review-targets/:kind/:id/videos", modOrAbove, async (req, res, next) => {
+  try {
+    const kind = String(req.params.kind);
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) throw Errors.badRequest("审核对象 ID 不合法");
+    if (kind === "topic") {
+      const topic = await prisma.topic.findUnique({
+        where: { id },
+        select: { id: true, content: true },
+      });
+      if (!topic) throw Errors.notFound("帖子不存在");
+      return ok(res, {
+        kind,
+        id: topic.id,
+        list: await listForumVideoAssetsForContent(topic.content),
+      });
+    }
+    if (kind === "reply") {
+      const reply = await prisma.reply.findUnique({
+        where: { id },
+        select: { id: true, content: true, topicId: true },
+      });
+      if (!reply) throw Errors.notFound("回复不存在");
+      return ok(res, {
+        kind,
+        id: reply.id,
+        topicId: reply.topicId,
+        list: await listForumVideoAssetsForContent(reply.content),
+      });
+    }
+    throw Errors.badRequest("不支持的审核对象类型");
+  } catch (e) { next(e); }
+});
+
 const topicPatchSchema = z.object({
   hidden: z.boolean().optional(),
   pinned: z.boolean().optional(),
@@ -588,6 +628,11 @@ const replyPatchSchema = z.object({
 });
 
 const forumImagePatchSchema = z.object({
+  status: z.enum(["approved", "rejected"]),
+  manualReviewNote: z.string().max(500).optional(),
+});
+
+const forumVideoPatchSchema = z.object({
   status: z.enum(["approved", "rejected"]),
   manualReviewNote: z.string().max(500).optional(),
 });
@@ -821,6 +866,46 @@ adminRouter.patch("/forum-images/:id", modOrAbove, validate(forumImagePatchSchem
       manualReviewedAt: updated.manualReviewedAt,
       manualReviewNote: updated.manualReviewNote,
       manualReviewedBy: updated.manualReviewedBy,
+    });
+  } catch (e) { next(e); }
+});
+
+adminRouter.get("/forum-videos", adminOnly, async (req, res, next) => {
+  try {
+    ok(res, await listForumVideoQueue({
+      status: req.query.status ? String(req.query.status) as any : undefined,
+      page: Number(req.query.page ?? 1),
+      size: Number(req.query.size ?? 20),
+    }));
+  } catch (e) { next(e); }
+});
+
+adminRouter.patch("/forum-videos/:id", modOrAbove, validate(forumVideoPatchSchema), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) throw Errors.badRequest("视频 ID 不合法");
+    const updated = await applyManualForumVideoReview({
+      assetId: id,
+      reviewerId: req.user!.userId,
+      approved: req.body.status === "approved",
+      note: req.body.manualReviewNote ?? "",
+    });
+    if (!updated) throw Errors.notFound("视频不存在");
+    ok(res, {
+      id: updated.id,
+      url: updated.url,
+      status: updated.status,
+      reason: updated.reason,
+      detail: updated.detail,
+      reviewedAt: updated.reviewedAt,
+      manualReviewedAt: updated.manualReviewedAt,
+      manualReviewNote: updated.manualReviewNote,
+      manualReviewedBy: updated.manualReviewedBy,
+      durationMs: updated.durationMs,
+      width: updated.width,
+      height: updated.height,
+      hasAudio: updated.hasAudio,
+      transcriptStatus: updated.transcriptStatus,
     });
   } catch (e) { next(e); }
 });
@@ -1600,6 +1685,12 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
 adminRouter.post("/ai-review/images/sweep", adminOnly, async (_req, res, next) => {
   try {
     ok(res, await backfillForumImageAssetsAndTriggerModeration());
+  } catch (e) { next(e); }
+});
+
+adminRouter.post("/ai-review/videos/sweep", adminOnly, async (_req, res, next) => {
+  try {
+    ok(res, await backfillForumVideoAssetsAndTriggerModeration());
   } catch (e) { next(e); }
 });
 

@@ -7,6 +7,7 @@ import { getSiteConfig } from "./siteSettings";
 
 const IMAGE_MARKDOWN_RE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 const IMAGE_HTML_RE = /<img\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s"'=<>`]+))[^>]*>/gi;
+const MEDIA_HTML_ATTR_RE = /<(video|source|a)\b[^>]*\b(src|href|poster)\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s"'=<>`]+))[^>]*>/gi;
 const IMAGE_REVIEW_MAX_INLINE_BYTES = 6 * 1024 * 1024;
 const IMAGE_REVIEW_MAX_BATCH_INLINE_BYTES = 12 * 1024 * 1024;
 const IMAGE_REVIEW_POLL_INTERVAL_MS = 20_000;
@@ -407,9 +408,9 @@ export async function applyManualForumImageReview(input: {
 
 export async function renderModeratedContent(content: string, _viewer?: Viewer) {
   const matches = collectImageMatches(content);
-  if (!matches.length) return content;
+  if (!matches.length) return rewriteUploadMediaAttributes(content);
   const localUrls = Array.from(new Set(matches.map((item) => normalizeForumImageUrl(item.url)).filter(Boolean) as string[]));
-  if (!localUrls.length) return content;
+  if (!localUrls.length) return rewriteUploadMediaAttributes(content);
 
   const rows = await prisma.forumImageAsset.findMany({
     where: { url: { in: localUrls } },
@@ -450,7 +451,7 @@ export async function renderModeratedContent(content: string, _viewer?: Viewer) 
     lastIndex = match.index + match.raw.length;
   }
   rendered += content.slice(lastIndex);
-  return rendered;
+  return rewriteUploadMediaAttributes(rendered);
 }
 
 function rewriteImageToken(
@@ -517,6 +518,50 @@ function collectImageMatches(content: string) {
   ].sort((a, b) => a.index - b.index || b.raw.length - a.raw.length);
 }
 
+function collectUploadMediaAttributeMatches(content: string) {
+  const items: Array<{ raw: string; url: string; index: number }> = [];
+  for (const match of content.matchAll(MEDIA_HTML_ATTR_RE)) {
+    items.push({
+      raw: match[0],
+      url: match[3] || match[4] || match[5] || "",
+      index: match.index ?? 0,
+    });
+  }
+  return items.sort((a, b) => a.index - b.index || b.raw.length - a.raw.length);
+}
+
+async function rewriteUploadMediaAttributes(content: string) {
+  const matches = collectUploadMediaAttributeMatches(content);
+  if (!matches.length) return content;
+  const uploadUrls = Array.from(new Set(
+    matches
+      .map((item) => normalizeUploadManagedUrl(item.url))
+      .filter(Boolean) as string[],
+  ));
+  if (!uploadUrls.length) return content;
+  const publicUrlMap = new Map<string, string>();
+  await Promise.all(uploadUrls.map(async (url) => {
+    publicUrlMap.set(url, await resolveMediaPublicUrl(url));
+  }));
+
+  let rendered = "";
+  let lastIndex = 0;
+  for (const match of matches) {
+    rendered += content.slice(lastIndex, match.index);
+    const normalizedUrl = normalizeUploadManagedUrl(match.url);
+    rendered += rewriteMediaAttributeToken(match.raw, match.url, normalizedUrl ? publicUrlMap.get(normalizedUrl) : "");
+    lastIndex = match.index + match.raw.length;
+  }
+  rendered += content.slice(lastIndex);
+  return rendered;
+}
+
+function rewriteMediaAttributeToken(raw: string, originalUrl: string, publicUrl?: string) {
+  const target = String(publicUrl || "").trim();
+  if (!target || target === originalUrl) return raw;
+  return raw.replace(originalUrl, escapeHtmlAttribute(target));
+}
+
 function extractForumImageUrls(content: string) {
   return Array.from(new Set(
     collectImageMatches(content)
@@ -526,6 +571,10 @@ function extractForumImageUrls(content: string) {
 }
 
 function normalizeForumImageUrl(input: string | null | undefined) {
+  return normalizeUploadManagedUrl(input);
+}
+
+function normalizeUploadManagedUrl(input: string | null | undefined) {
   const raw = String(input || "").trim();
   if (!raw) return "";
   if (raw.startsWith("/uploads/")) return raw.split("?")[0];
@@ -539,7 +588,7 @@ function normalizeForumImageUrl(input: string | null | undefined) {
 }
 
 function resolveForumImageLocalPath(url: string) {
-  const normalized = normalizeForumImageUrl(url);
+  const normalized = normalizeUploadManagedUrl(url);
   if (!normalized.startsWith("/uploads/")) return "";
   return resolveMediaLocalPathFromUploadUrl(normalized);
 }

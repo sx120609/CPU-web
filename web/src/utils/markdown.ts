@@ -7,9 +7,12 @@ export function renderMarkdown(md: string): string {
   const raw = marked.parse(md, { async: false }) as string;
   return DOMPurify.sanitize(raw, {
     ADD_ATTR: [
+      "class",
       "target",
       "rel",
       "src",
+      "href",
+      "type",
       "controls",
       "preload",
       "playsinline",
@@ -23,7 +26,7 @@ export function renderMarkdown(md: string): string {
       "data-forward-depth",
     ],
     // 允许学校公告中常见的表格相关标签
-    ADD_TAGS: ["table", "thead", "tbody", "tfoot", "tr", "td", "th", "caption", "colgroup", "col", "sub", "sup", "video"],
+    ADD_TAGS: ["table", "thead", "tbody", "tfoot", "tr", "td", "th", "caption", "colgroup", "col", "sub", "sup", "video", "source"],
   });
 }
 

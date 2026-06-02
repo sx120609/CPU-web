@@ -79,7 +79,7 @@
       <div class="section-head">
         <div>
           <h3 class="section-title">图片审核</h3>
-          <p class="section-desc">图片走异步审核，发布后先占位；低于阈值自动通过，达到阈值就隐藏等待人工处理。</p>
+          <p class="section-desc">图片与视频画面共用这组视觉审核配置。图片走异步审核，发布后先占位；低于阈值自动通过，达到阈值就隐藏等待人工处理。</p>
         </div>
       </div>
 
@@ -148,6 +148,65 @@
     <section class="settings-card">
       <div class="section-head">
         <div>
+          <h3 class="section-title">视频审核</h3>
+          <p class="section-desc">视频会抽关键帧、尝试转写音轨，并结合正文上下文异步判定；这里处理待人工复核的视频。</p>
+        </div>
+      </div>
+
+      <div class="actions-row">
+        <el-button plain :loading="sweepingVideos" @click="sweepForumVideos">一键补扫全站视频</el-button>
+      </div>
+      <p v-if="lastVideoSweepSummary" class="actions-note">{{ lastVideoSweepSummary }}</p>
+
+      <div class="filters">
+        <el-select v-model="videoFilters.status" placeholder="视频状态" style="width: 160px" @change="loadVideos">
+          <el-option label="待人工" value="manual_review" />
+          <el-option label="审核中" value="pending" />
+          <el-option label="审核异常" value="error" />
+          <el-option label="已驳回" value="rejected" />
+          <el-option label="已通过" value="approved" />
+        </el-select>
+        <el-button plain :loading="loadingVideos" @click="loadVideos">刷新</el-button>
+      </div>
+
+      <el-table :data="videoRows" v-loading="loadingVideos" size="small" class="admin-table">
+        <el-table-column prop="createdAt" label="入队时间" width="170">
+          <template #default="{ row }">{{ fmtDate(row.createdAt, "YYYY-MM-DD HH:mm:ss") }}</template>
+        </el-table-column>
+        <el-table-column prop="status" label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="videoStatusTagType(row.status)" effect="plain">{{ videoStatusLabel(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="targetLabel" label="目标" min-width="180">
+          <template #default="{ row }">
+            <a v-if="row.targetUrl" :href="row.targetUrl" target="_blank" rel="noreferrer">{{ row.targetLabel }}</a>
+            <span v-else>{{ row.targetLabel }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="url" label="视频" min-width="220" show-overflow-tooltip />
+        <el-table-column label="信息" min-width="160">
+          <template #default="{ row }">
+            {{ row.durationMs ? `${Math.round(row.durationMs / 1000)} 秒` : "时长未知" }}
+            <span v-if="row.width && row.height"> · {{ row.width }}x{{ row.height }}</span>
+            <span> · {{ row.hasAudio ? "有音轨" : "无音轨" }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="reason" label="原因" min-width="200" show-overflow-tooltip />
+        <el-table-column label="操作" width="180">
+          <template #default="{ row }">
+            <div class="table-actions">
+              <el-button size="small" type="success" plain @click="approveVideo(row)">通过</el-button>
+              <el-button size="small" type="danger" plain @click="rejectVideo(row)">驳回</el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+    </section>
+
+    <section class="settings-card">
+      <div class="section-head">
+        <div>
           <h3 class="section-title">审核日志</h3>
           <p class="section-desc">用来确认请求是否真的走到了 AI，以及返回是成功还是失败。</p>
         </div>
@@ -159,6 +218,7 @@
           <el-option label="回复" value="reply" />
           <el-option label="编辑相似度" value="topic-edit" />
           <el-option label="图片" value="image" />
+          <el-option label="视频" value="video" />
         </el-select>
         <el-select v-model="filters.status" clearable placeholder="状态" style="width: 140px" @change="loadLogs">
           <el-option label="开始" value="started" />
@@ -186,21 +246,38 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
-import { ElMessage } from "element-plus";
-import { adminApi, type AiReviewLogRow, type ForumImageSweepResult, type SiteConfig, type SitePromptDefaults } from "@/api/admin";
+import { ElMessage, ElMessageBox } from "element-plus";
+import {
+  adminApi,
+  type AiReviewLogRow,
+  type ForumImageSweepResult,
+  type ForumVideoQueueRow,
+  type ForumVideoSweepResult,
+  type SiteConfig,
+  type SitePromptDefaults,
+} from "@/api/admin";
 import { fmtDate } from "@/utils/format";
 
 const loadingConfig = ref(false);
 const loadingLogs = ref(false);
 const saving = ref(false);
 const sweepingImages = ref(false);
+const sweepingVideos = ref(false);
+const loadingVideos = ref(false);
 const loadingPromptDefaults = ref(false);
 const textPromptsExpanded = ref(false);
 const imagePromptsExpanded = ref(false);
 const logs = ref<AiReviewLogRow[]>([]);
 const lastImageSweepSummary = ref("");
+const lastVideoSweepSummary = ref("");
+const videoRows = ref<ForumVideoQueueRow[]>([]);
 const promptDefaults = ref<SitePromptDefaults | null>(null);
 const filters = reactive({ kind: "", status: "", page: 1, size: 20 });
+const videoFilters = reactive<{ status: "" | "pending" | "manual_review" | "rejected" | "approved" | "error"; page: number; size: number }>({
+  status: "manual_review",
+  page: 1,
+  size: 20,
+});
 const form = reactive<SiteConfig>({
   siteOrigin: "",
   aiReviewEnabled: false,
@@ -245,7 +322,7 @@ const aiEditSimilarityPercent = computed({
 });
 
 onMounted(async () => {
-  await Promise.all([loadConfig(), loadLogs(), loadPromptDefaults()]);
+  await Promise.all([loadConfig(), loadLogs(), loadPromptDefaults(), loadVideos()]);
 });
 
 async function loadConfig() {
@@ -351,6 +428,83 @@ async function sweepForumImages() {
   } finally {
     sweepingImages.value = false;
   }
+}
+
+async function loadVideos() {
+  loadingVideos.value = true;
+  try {
+    const result = await adminApi.forumVideos({
+      status: videoFilters.status || undefined,
+      page: videoFilters.page,
+      size: videoFilters.size,
+    });
+    videoRows.value = result.list;
+  } finally {
+    loadingVideos.value = false;
+  }
+}
+
+async function sweepForumVideos() {
+  sweepingVideos.value = true;
+  try {
+    const result = await adminApi.sweepForumVideos();
+    lastVideoSweepSummary.value = buildVideoSweepSummary(result);
+    ElMessage.success(result.moderationTriggered ? "已开始全站视频补扫并触发审核" : "已完成全站视频补扫");
+    await Promise.all([loadLogs(), loadVideos()]);
+  } finally {
+    sweepingVideos.value = false;
+  }
+}
+
+function buildVideoSweepSummary(result: ForumVideoSweepResult) {
+  const parts = [
+    `已扫描 ${result.scannedTopics} 帖 / ${result.scannedReplies} 条回复`,
+    `发现 ${result.uniqueVideoUrls} 条视频`,
+  ];
+  if (result.createdAssets) parts.push(`新增 ${result.createdAssets} 条视频资产`);
+  if (result.requeuedAssets) parts.push(`重新入队 ${result.requeuedAssets} 条`);
+  if (result.pendingAfterScan) parts.push(`待处理 ${result.pendingAfterScan} 条`);
+  return parts.join("，");
+}
+
+async function approveVideo(row: ForumVideoQueueRow) {
+  await ElMessageBox.confirm("确认将这条视频人工审核通过并恢复展示？", "人工通过", {
+    type: "warning",
+    confirmButtonText: "通过",
+    cancelButtonText: "取消",
+  });
+  await adminApi.updateForumVideo(row.id, { status: "approved" });
+  ElMessage.success("视频已人工审核通过");
+  await loadVideos();
+}
+
+async function rejectVideo(row: ForumVideoQueueRow) {
+  const { value } = await ElMessageBox.prompt("可选填写人工驳回备注，留空会保留当前审核说明。", "继续隐藏", {
+    inputPlaceholder: "例如：画面中可识别隐私信息较多，不适合公开展示",
+  }).catch(() => ({ value: null }));
+  if (value === null) return;
+  await adminApi.updateForumVideo(row.id, {
+    status: "rejected",
+    manualReviewNote: value || undefined,
+  });
+  ElMessage.success("视频已维持隐藏");
+  await loadVideos();
+}
+
+function videoStatusLabel(status?: string) {
+  if (status === "approved") return "已通过";
+  if (status === "rejected") return "已驳回";
+  if (status === "manual_review") return "待人工";
+  if (status === "error") return "审核异常";
+  return "审核中";
+}
+
+function videoStatusTagType(status?: string) {
+  if (status === "approved") return "success";
+  if (status === "rejected") return "danger";
+  if (status === "manual_review") return "warning";
+  if (status === "error") return "info";
+  return undefined;
 }
 
 function buildImageSweepSummary(result: ForumImageSweepResult) {
@@ -515,6 +669,11 @@ function buildImageSweepSummary(result: ForumImageSweepResult) {
   flex-wrap: wrap;
 }
 
+.table-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .status-pill {
   padding: 4px 8px;
   border-radius: 999px;
@@ -555,6 +714,10 @@ function buildImageSweepSummary(result: ForumImageSweepResult) {
   .filters :deep(.el-select),
   .filters :deep(.el-button) {
     width: 100%;
+  }
+
+  .table-actions {
+    flex-direction: column;
   }
 
   .actions-row {
