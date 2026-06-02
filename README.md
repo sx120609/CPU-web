@@ -132,6 +132,14 @@ FILESTORE_ENABLED=true
 FILESTORE_PORT=8974
 FILESTORE_PYTHON=""
 FILESTORE_ADMIN_PASSWORD="admin123"
+
+MEDIA_STORAGE_PROVIDER="local"
+MEDIA_STORAGE_REMOTE_PREFIXES="forum"
+ONEDRIVE_CN_TENANT_ID=""
+ONEDRIVE_CN_CLIENT_ID=""
+ONEDRIVE_CN_CLIENT_SECRET=""
+ONEDRIVE_CN_DRIVE_ID=""
+ONEDRIVE_CN_ROOT_PATH="cpu-web-media"
 ```
 
 ### 3. 初始化数据库
@@ -245,12 +253,21 @@ Vite 已代理以下路径到后端：
 | `FILESTORE_PORT` | `8974` | Filestore Python 服务端口 |
 | `FILESTORE_PYTHON` | 自动探测 | 指定 Python 可执行文件 |
 | `FILESTORE_ADMIN_PASSWORD` | `admin123` | Filestore 初始管理员密码 |
+| `MEDIA_STORAGE_PROVIDER` | `local` | 媒体资源存储后端；可设为 `local` 或 `onedrive-cn` |
+| `MEDIA_STORAGE_REMOTE_PREFIXES` | `forum` | 哪些 `/uploads/...` 前缀走远端存储，逗号分隔 |
+| `ONEDRIVE_CN_TENANT_ID` | 空 | 世纪互联版 Microsoft 365 / Entra 租户 ID |
+| `ONEDRIVE_CN_CLIENT_ID` | 空 | 世纪互联应用注册的客户端 ID |
+| `ONEDRIVE_CN_CLIENT_SECRET` | 空 | 世纪互联应用注册的客户端密钥 |
+| `ONEDRIVE_CN_DRIVE_ID` | 空 | SharePoint 文档库或 OneDrive 对应的 Drive ID |
+| `ONEDRIVE_CN_ROOT_PATH` | 空 | 远端根目录下的存储子路径，例如 `cpu-web-media` |
 | `PG_DUMP_BIN` | `pg_dump` | 后台数据库备份使用的命令路径 |
 
 补充说明：
 
 - AI 文本审核、图片审核、匿名信誉阈值、站点域名等配置现在主要保存在数据库 `site_settings` 中，通过管理后台维护。
 - 生产部署时无需额外 Nginx 才能跑起来；构建后的前端静态资源会直接由 Express 提供。
+- 当 `MEDIA_STORAGE_PROVIDER=onedrive-cn` 时，命中的媒体资源会上传到世纪互联版 OneDrive / SharePoint，外部访问仍保持 `/uploads/...` 不变，由后端统一回源。
+- 推荐给该应用授予 Microsoft Graph 应用权限 `Files.ReadWrite.All`，如使用 SharePoint 文档库可一并授予 `Sites.ReadWrite.All`，并在世纪互联环境完成管理员同意。
 
 ## 教务代理模式
 

@@ -1,10 +1,11 @@
 import crypto from "node:crypto";
 import path from "node:path";
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import { ensureForumAccessEnabled } from "./forumAccess";
 import { ensureForumImageAssetsForContent } from "./imageModeration";
+import { saveMediaAsset } from "./mediaStorage";
 import { getSiteOrigin, isBoardTypeEnabled, isFeatureOn, featureForBoardType, featureClosedMessage } from "./siteSettings";
 import { refreshBoardTopicCounts, refreshUserPostCount } from "./forumStats";
 import { ensureUserCanSpeak } from "./userModeration";
@@ -2927,14 +2928,13 @@ async function saveQqImageUpload(buffer: Buffer, mime: string, nameHint?: string
   const now = new Date();
   const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const relativeDir = path.join("forum", month);
-  const uploadRoot = path.resolve(process.cwd(), "uploads");
-  const outputDir = path.join(uploadRoot, relativeDir);
-  await mkdir(outputDir, { recursive: true });
   const filename = `qqbot-${Date.now()}-${crypto.randomUUID()}.${ext}`;
-  const outputPath = path.join(outputDir, filename);
-  const url = `/uploads/${relativeDir.replace(/\\/g, "/")}/${filename}`;
-  await writeFile(outputPath, buffer);
-  return url;
+  const saved = await saveMediaAsset({
+    relativePath: path.posix.join(relativeDir.replace(/\\/g, "/"), filename),
+    buffer,
+    contentType: mime || undefined,
+  });
+  return saved.url;
 }
 
 function detectImageExtension(buffer: Buffer, mime: string, nameHint?: string) {

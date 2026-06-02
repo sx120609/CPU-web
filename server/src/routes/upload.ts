@@ -1,12 +1,12 @@
 import { Router } from "express";
 import path from "node:path";
-import { mkdir, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { Errors, ok } from "../utils/response";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { registerForumImageAsset } from "../services/imageModeration";
+import { saveMediaAsset } from "../services/mediaStorage";
 
 export const uploadRouter = Router();
 
@@ -33,22 +33,20 @@ uploadRouter.post("/images", authRequired, validate(imageSchema), async (req, re
     const now = new Date();
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const relativeDir = path.join("forum", month);
-    const uploadRoot = path.resolve(process.cwd(), "uploads");
-    const outputDir = path.join(uploadRoot, relativeDir);
-    await mkdir(outputDir, { recursive: true });
-
     const filename = `${Date.now()}-${randomUUID()}.${ext}`;
-    const localPath = path.join(outputDir, filename);
-    const url = `/uploads/${relativeDir.replace(/\\/g, "/")}/${filename}`;
-    await writeFile(localPath, parsed.buffer);
+    const saved = await saveMediaAsset({
+      relativePath: path.posix.join(relativeDir.replace(/\\/g, "/"), filename),
+      buffer: parsed.buffer,
+      contentType: parsed.mime,
+    });
     await registerForumImageAsset({
-      url,
-      localPath,
+      url: saved.url,
+      localPath: saved.localPath,
       mimeType: parsed.mime,
       fileSize: parsed.buffer.length,
       createdById: req.user!.userId,
     }).catch(() => null);
-    ok(res, { url });
+    ok(res, { url: saved.url });
   } catch (e) {
     next(e);
   }

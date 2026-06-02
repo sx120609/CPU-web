@@ -1,6 +1,12 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+function parseCsvEnv(value: string | undefined, fallback: string[] = []) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return fallback;
+  return raw.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
 export const config = {
   port: Number(process.env.PORT ?? 3000),
   jwtSecret: process.env.JWT_SECRET ?? "cpu-web-dev-secret",
@@ -14,6 +20,13 @@ export const config = {
   filestorePort: Number(process.env.FILESTORE_PORT ?? 8974),
   filestorePython: process.env.FILESTORE_PYTHON ?? "",
   filestoreAdminPassword: process.env.FILESTORE_ADMIN_PASSWORD ?? "admin123",
+  mediaStorageProvider: (process.env.MEDIA_STORAGE_PROVIDER ?? "local").trim().toLowerCase(),
+  mediaStorageRemotePrefixes: parseCsvEnv(process.env.MEDIA_STORAGE_REMOTE_PREFIXES, ["forum"]),
+  oneDriveChinaTenantId: process.env.ONEDRIVE_CN_TENANT_ID ?? "",
+  oneDriveChinaClientId: process.env.ONEDRIVE_CN_CLIENT_ID ?? "",
+  oneDriveChinaClientSecret: process.env.ONEDRIVE_CN_CLIENT_SECRET ?? "",
+  oneDriveChinaDriveId: process.env.ONEDRIVE_CN_DRIVE_ID ?? "",
+  oneDriveChinaRootPath: process.env.ONEDRIVE_CN_ROOT_PATH ?? "",
 };
 
 export const isDev = config.nodeEnv !== "production";

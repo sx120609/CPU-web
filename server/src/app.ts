@@ -10,6 +10,7 @@ import { isDev } from "./config";
 import { getDatabaseMaintenanceMessage, isDatabaseMaintenanceActive } from "./services/maintenance";
 import { filestoreProxy } from "./services/filestore";
 import { startForumImageModerationPoller } from "./services/imageModeration";
+import { uploadAssetHandler } from "./services/mediaStorage";
 import { startQqNotificationPoller } from "./services/qqbot";
 import { startSponsorOrderExpiryPoller } from "./services/sponsor";
 import { fail } from "./utils/response";
@@ -28,8 +29,7 @@ export function createApp() {
   app.use(express.urlencoded({ extended: false }));
   if (isDev) app.use(morgan("dev"));
 
-  const uploadDir = path.resolve(process.cwd(), "uploads");
-  app.use("/uploads", express.static(uploadDir, { maxAge: "30d", index: false }));
+  app.use("/uploads", uploadAssetHandler);
 
   app.get("/api/health", (_req, res) => {
     res.json({ code: 0, data: { ok: true, ts: Date.now() }, message: "" });

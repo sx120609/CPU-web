@@ -2,6 +2,7 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { prisma } from "../prisma";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
+import { resolveMediaLocalPathFromUploadUrl } from "./mediaStorage";
 import { getSiteConfig } from "./siteSettings";
 
 const IMAGE_MARKDOWN_RE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
@@ -509,11 +510,7 @@ function normalizeForumImageUrl(input: string | null | undefined) {
 function resolveForumImageLocalPath(url: string) {
   const normalized = normalizeForumImageUrl(url);
   if (!normalized.startsWith("/uploads/")) return "";
-  const uploadRoot = path.resolve(process.cwd(), "uploads");
-  const relative = normalized.replace(/^\/uploads\/+/, "");
-  const absolute = path.resolve(uploadRoot, relative);
-  if (!(absolute === uploadRoot || absolute.startsWith(uploadRoot + path.sep))) return "";
-  return absolute;
+  return resolveMediaLocalPathFromUploadUrl(normalized);
 }
 
 function normalizeLocalUploadPath(input: string | null | undefined) {
