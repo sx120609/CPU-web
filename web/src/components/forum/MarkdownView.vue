@@ -394,6 +394,7 @@ watch(() => props.clickableImages, () => nextTick(() => {
 .md :deep(.md-image-shell__state) {
   position: absolute;
   inset: 0;
+  pointer-events: none;
 }
 .md :deep(.md-image-shell__placeholder) {
   background:

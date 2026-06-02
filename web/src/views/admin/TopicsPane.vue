@@ -39,7 +39,14 @@
         </template>
       </el-table-column>
       <el-table-column label="作者" width="120">
-        <template #default="{ row }">{{ row.author.nickname }}</template>
+        <template #default="{ row }">
+          <div class="author-cell">
+            <span>{{ row.author.nickname }}</span>
+            <span v-if="row.isAnonymous && row.realAuthor" class="author-real">
+              {{ row.realAuthor.nickname }}<template v-if="row.realAuthor.username"> @{{ row.realAuthor.username }}</template>
+            </span>
+          </div>
+        </template>
       </el-table-column>
       <el-table-column label="审核" width="160">
         <template #default="{ row }">
@@ -101,7 +108,12 @@
         </div>
         <div class="topic-meta">
           <span>{{ row.board.name }}</span>
-          <span>{{ row.author.nickname }}</span>
+          <span>
+            {{ row.author.nickname }}
+            <template v-if="row.isAnonymous && row.realAuthor">
+              · 真实作者 {{ row.realAuthor.nickname }}<template v-if="row.realAuthor.username"> @{{ row.realAuthor.username }}</template>
+            </template>
+          </span>
           <span>{{ reviewLabel(row.aiReviewStatus) }}<template v-if="row.aiRiskScore !== null && row.aiRiskScore !== undefined"> · {{ row.aiRiskScore }} 分</template></span>
           <span>{{ row.replyCount }} 回 / {{ row.likeCount }} 赞</span>
           <span>{{ fmtDate(row.createdAt) }}</span>
@@ -335,6 +347,16 @@ a:hover { text-decoration: underline; }
   display: grid;
   gap: 4px;
   margin-top: 8px;
+  color: #6b7280;
+  font-size: 12px;
+}
+.author-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.35;
+}
+.author-real {
   color: #6b7280;
   font-size: 12px;
 }

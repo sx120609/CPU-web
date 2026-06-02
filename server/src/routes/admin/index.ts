@@ -32,6 +32,7 @@ import { parseMutedUntil, releaseExpiredMutes } from "../../services/userModerat
 import { buildUserTrustSnapshot, currentAnonymousWeekKey, freezeAnonymousCredits } from "../../services/userTrust";
 import { buildEpayCallbackUrls, buildEpaySubmitPayload, getEpayConfig, resolvePaymentOrigin, updateEpayConfig } from "../../services/epay";
 import { amountCentsToMoney } from "../../services/epay";
+import { decodeTopicForViewer } from "../../services/forumPresentation";
 import {
   calcSponsorOrderExpiresAt,
   closeExpiredSponsorOrders,
@@ -475,10 +476,10 @@ adminRouter.get("/topics", modOrAbove, async (req, res, next) => {
       page,
       size,
       total,
-      list: list.map((item: any) => ({
+      list: list.map((item: any) => decodeTopicForViewer({
         ...item,
         globalPinned: isGlobalPinnedTopic(item.id),
-      })),
+      }, req.user)),
     });
   } catch (e) { next(e); }
 });

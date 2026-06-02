@@ -82,6 +82,9 @@
               @updated="applyTopicAuthorModeration"
             />
           </div>
+          <div v-if="topic.isAnonymous && topic.realAuthor" class="real-author-line">
+            真实作者：{{ topic.realAuthor.nickname }}<template v-if="topic.realAuthor.username"> @{{ topic.realAuthor.username }}</template>
+          </div>
           <div class="meta">
             发表于 {{ fmtDate(topic.createdAt) }}
             <template v-if="topic.editCount && topic.editCount > 0"> · 已编辑 {{ topic.editCount }} 次</template>
@@ -206,6 +209,9 @@
                 label="管理"
                 @updated="applyReplyAuthorModeration(r, $event)"
               />
+              <span v-if="r.isAnonymous && r.realAuthor" class="real-author-inline">
+                真实作者：{{ r.realAuthor.nickname }}<template v-if="r.realAuthor.username"> @{{ r.realAuthor.username }}</template>
+              </span>
               <span class="dot">·</span>
               <span>{{ fmtRelative(r.createdAt) }}</span>
             </div>
@@ -1272,6 +1278,7 @@ async function onDelete() {
     .meta-author { flex: 1; }
     .name { font-size: 14px; font-weight: 500; color: #1f2937; display: flex; gap: 6px; align-items: center; }
     .name a { color: var(--cpu-primary); text-decoration: none; }
+    .real-author-line { font-size: 12px; color: #6b7280; margin-top: 2px; }
     .meta { font-size: 12px; color: #9ca3af; margin-top: 2px; }
     .meta-price { font-size: 22px; color: #ef4444; font-weight: 700; }
   }
@@ -1433,6 +1440,7 @@ async function onDelete() {
   }
   .floor { color: #9ca3af; }
   .author { color: var(--cpu-primary); text-decoration: none; font-weight: 500; }
+  .real-author-inline { color: #6b7280; }
   .dot { color: #d1d5db; }
   .reply-content { font-size: 14px; }
   .reply-actions {
