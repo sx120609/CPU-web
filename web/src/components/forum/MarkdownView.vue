@@ -79,6 +79,7 @@ function bindVideoPlayers() {
   videos.forEach((video, index) => {
     const src = getVideoSourceUrl(video);
     if (!src) return;
+    syncVideoAspectRatio(video);
     const fallbackVideo = video.cloneNode(true) as HTMLVideoElement;
     fallbackVideo.controls = true;
     fallbackVideo.preload = "metadata";
@@ -97,12 +98,14 @@ function bindVideoPlayers() {
       : null;
 
     video.replaceWith(shell);
-    if (linkBlock) shell.appendChild(linkBlock);
+    linkBlock?.remove();
 
     try {
+      video.controls = false;
       const player = new Artplayer({
         container: playerMount,
         url: src,
+        proxy: () => video,
         poster: video.getAttribute("poster") || undefined,
         theme: "#168776",
         volume: 0.8,
@@ -141,6 +144,19 @@ function getVideoSourceUrl(video: HTMLVideoElement) {
   if (direct) return direct;
   const source = video.querySelector<HTMLSourceElement>("source[src]");
   return source?.getAttribute("src") || source?.src || "";
+}
+
+function syncVideoAspectRatio(video: HTMLVideoElement) {
+  const apply = () => {
+    if (!video.videoWidth || !video.videoHeight) return;
+    const ratio = `${video.videoWidth} / ${video.videoHeight}`;
+    video.style.setProperty("--md-video-aspect-ratio", ratio);
+  };
+  if (video.readyState >= 1) {
+    apply();
+    return;
+  }
+  video.addEventListener("loadedmetadata", apply, { once: true });
 }
 
 function wrapImageAlbums() {
@@ -679,6 +695,8 @@ watch(() => props.clickableImages, () => nextTick(() => {
 }
 .md :deep(.md-video-player) {
   width: 100%;
+  aspect-ratio: var(--md-video-aspect-ratio, 16 / 9);
+  min-height: 240px;
   overflow: hidden;
   border-radius: 18px;
   background:
@@ -995,6 +1013,10 @@ watch(() => props.clickableImages, () => nextTick(() => {
   .md :deep(.md-video-shell),
   .md :deep(.md-video-player) {
     border-radius: 14px;
+  }
+
+  .md :deep(.md-video-player) {
+    min-height: 180px;
   }
 
   .md :deep(.qq-forward-card) {

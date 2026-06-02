@@ -2859,7 +2859,6 @@ function renderQqVideoBlock(url: string) {
     `<video class="qq-inline-video" controls preload="metadata" playsinline src="${safeUrl}">`,
     "你的浏览器暂不支持站内视频预览。",
     `</video>`,
-    `<p><a class="qq-inline-video__link" href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow">打开视频</a></p>`,
     `</div>`,
   ].join("\n");
 }
