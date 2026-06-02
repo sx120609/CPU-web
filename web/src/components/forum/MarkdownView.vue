@@ -36,6 +36,7 @@ function wrapTables() {
 
 function bindImageViewer() {
   if (!el.value) return;
+  wrapImageAlbums();
   const images = Array.from(el.value.querySelectorAll<HTMLImageElement>("img"));
   destroyImageViewer();
   images.forEach((img, index) => {
@@ -66,6 +67,103 @@ function bindImageViewer() {
   });
 
   if (!props.clickableImages || !images.length) return;
+}
+
+function wrapImageAlbums() {
+  if (!el.value) return;
+  mergeConsecutiveImageBlocks(el.value);
+  normalizeAlbumBlocks(el.value);
+}
+
+function mergeConsecutiveImageBlocks(root: HTMLElement) {
+  const children = Array.from(root.children);
+  let run: HTMLElement[] = [];
+  const flush = () => {
+    if (run.length >= 2) createAlbumFromBlocks(run);
+    run = [];
+  };
+  children.forEach((child) => {
+    if (!(child instanceof HTMLElement)) {
+      flush();
+      return;
+    }
+    if (child.dataset.imageAlbum === "1") {
+      flush();
+      return;
+    }
+    if (isStandaloneImageBlock(child)) {
+      run.push(child);
+      return;
+    }
+    flush();
+  });
+  flush();
+}
+
+function isStandaloneImageBlock(block: HTMLElement) {
+  const directElements = Array.from(block.children);
+  if (!directElements.length) return false;
+  const imageLike = directElements.filter((child) => (
+    child instanceof HTMLImageElement || child.classList.contains("md-image-shell")
+  ));
+  if (!imageLike.length || imageLike.length !== directElements.length) return false;
+  return Array.from(block.childNodes).every((node) => {
+    if (node instanceof HTMLElement) {
+      return node instanceof HTMLImageElement || node.classList.contains("md-image-shell") || node instanceof HTMLBRElement;
+    }
+    return !(node.textContent ?? "").replace(/\u00a0/g, " ").trim();
+  });
+}
+
+function createAlbumFromBlocks(blocks: HTMLElement[]) {
+  const first = blocks[0];
+  const parent = first?.parentElement;
+  if (!first || !parent) return;
+  const album = document.createElement("p");
+  album.className = "md-image-album";
+  album.dataset.imageAlbum = "1";
+  const align = normalizeAlbumAlign(blocks);
+  if (align) album.dataset.align = align;
+  parent.insertBefore(album, first);
+  blocks.forEach((block) => {
+    Array.from(block.children).forEach((child) => {
+      if (child instanceof HTMLImageElement || child.classList.contains("md-image-shell")) {
+        album.appendChild(child);
+      }
+    });
+    block.remove();
+  });
+  syncAlbumCount(album);
+}
+
+function normalizeAlbumBlocks(root: HTMLElement) {
+  root.querySelectorAll<HTMLElement>("[data-image-album='1']").forEach((album) => {
+    album.classList.add("md-image-album");
+    const align = album.dataset.align;
+    if (!align || !["left", "center", "right"].includes(align)) {
+      const normalized = normalizeAlbumAlign(Array.from(album.children).filter((child): child is HTMLElement => child instanceof HTMLElement));
+      if (normalized) album.dataset.align = normalized;
+      else album.removeAttribute("data-align");
+    }
+    syncAlbumCount(album);
+  });
+}
+
+function normalizeAlbumAlign(nodes: HTMLElement[]) {
+  for (const node of nodes) {
+    const direct = node.dataset.align;
+    if (direct === "left" || direct === "center" || direct === "right") return direct;
+    const nested = node.querySelector<HTMLElement>("[data-align]")?.dataset.align;
+    if (nested === "left" || nested === "center" || nested === "right") return nested;
+  }
+  return "";
+}
+
+function syncAlbumCount(album: HTMLElement) {
+  const count = Array.from(album.children).filter((child) => (
+    child instanceof HTMLImageElement || (child instanceof HTMLElement && child.classList.contains("md-image-shell"))
+  )).length;
+  album.dataset.imageCount = String(count || 0);
 }
 
 function enhanceRenderedHtml(raw: string) {
@@ -338,6 +436,34 @@ watch(() => props.clickableImages, () => nextTick(() => {
 .md :deep(h2) { font-size: 19px; }
 .md :deep(h3) { font-size: 17px; }
 .md :deep(p) { margin: 0.5em 0; }
+.md :deep(.md-image-album) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: min(100%, 680px);
+  margin: 12px 0;
+}
+.md :deep(.md-image-album[data-align="center"]) {
+  margin-left: auto;
+  margin-right: auto;
+}
+.md :deep(.md-image-album[data-align="right"]) {
+  margin-left: auto;
+  margin-right: 0;
+}
+.md :deep(.md-image-album[data-image-count="3"]) {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: min(100%, 760px);
+}
+.md :deep(.md-image-album[data-image-count="4"]),
+.md :deep(.md-image-album[data-image-count="5"]),
+.md :deep(.md-image-album[data-image-count="6"]),
+.md :deep(.md-image-album[data-image-count="7"]),
+.md :deep(.md-image-album[data-image-count="8"]),
+.md :deep(.md-image-album[data-image-count="9"]) {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: min(100%, 760px);
+}
 .md :deep(ul), .md :deep(ol) { padding-left: 24px; margin: 0.5em 0; }
 .md :deep(li) { margin: 0.2em 0; }
 .md :deep(blockquote) {
@@ -374,6 +500,12 @@ watch(() => props.clickableImages, () => nextTick(() => {
   overflow: hidden;
   vertical-align: top;
   background: #f8fafc;
+}
+.md :deep(.md-image-album > .md-image-shell) {
+  display: flex;
+  width: 100%;
+  margin: 0;
+  aspect-ratio: 1 / 1;
 }
 .md :deep(.md-image-shell[data-align="left"]) {
   display: flex;
@@ -421,6 +553,9 @@ watch(() => props.clickableImages, () => nextTick(() => {
   object-fit: cover;
   opacity: 0;
   transition: opacity 0.22s ease;
+}
+.md :deep(.md-image-album > .md-image-shell img) {
+  border-radius: 12px;
 }
 .md :deep(.md-image-shell.is-ready img) {
   opacity: 1;
@@ -563,6 +698,29 @@ watch(() => props.clickableImages, () => nextTick(() => {
 }
 .md :deep(.qq-share-card__action-link::after) {
   content: " ↗";
+}
+
+@media (max-width: 700px) {
+  .md :deep(.md-image-album),
+  .md :deep(.md-image-album[data-image-count="3"]),
+  .md :deep(.md-image-album[data-image-count="4"]),
+  .md :deep(.md-image-album[data-image-count="5"]),
+  .md :deep(.md-image-album[data-image-count="6"]),
+  .md :deep(.md-image-album[data-image-count="7"]),
+  .md :deep(.md-image-album[data-image-count="8"]),
+  .md :deep(.md-image-album[data-image-count="9"]) {
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .md :deep(.md-image-album > .md-image-shell) {
+    border-radius: 10px;
+  }
+
+  .md :deep(.md-image-album > .md-image-shell img) {
+    border-radius: 10px;
+  }
 }
 
 @keyframes md-image-shimmer {

@@ -55,7 +55,7 @@
 
             <template v-else-if="activeMobileToolbar === 'image'">
               <button type="button" :disabled="imageUploading" @click="runMobileAction(() => pickContentImage())">
-                {{ imageUploading ? "上传中" : "插入图片" }}
+                {{ imageUploading ? "上传中" : "插入图片/相册" }}
               </button>
             </template>
           </div>
@@ -110,10 +110,10 @@ type MobileToolbarKey = "heading" | "format" | "tools" | "align" | "image";
 
 const EDITABLE_BLOCK_SELECTOR = "p,div,h1,h2,h3,h4,h5,h6,blockquote,li";
 const MOBILE_BREAKPOINT = "(max-width: 700px)";
-const DEFAULT_PLACEHOLDER = "写点什么，也可以直接插入图片。";
-const MOBILE_PLACEHOLDER = "写点什么，也可以用工具栏插图。";
-const DEFAULT_FOOTER = "支持排版、图片和草稿保存。";
-const MOBILE_FOOTER = "支持排版、图片和草稿保存。";
+const DEFAULT_PLACEHOLDER = "写点什么，也可以直接插入图片；一次选多张会自动排成相册。";
+const MOBILE_PLACEHOLDER = "写点什么，也可以用工具栏插图；多图会自动排成相册。";
+const DEFAULT_FOOTER = "支持排版、图片、相册和草稿保存。";
+const MOBILE_FOOTER = "支持排版、图片、相册和草稿保存。";
 
 const props = withDefaults(defineProps<{
   modelValue: string;
@@ -192,7 +192,7 @@ const resolvedFooterText = computed(() => (
 
 const toolbarStatusText = computed(() => {
   if (hasSelectedImage.value) return isMobileViewport.value ? "已选图片" : "已选图片，可调对齐";
-  return isMobileViewport.value ? "" : "支持排版、图片和草稿";
+  return isMobileViewport.value ? "" : "支持排版、图片和相册";
 });
 const toolbarModeClass = computed(() => ({
   "toolbar-static": props.toolbarMode === "static",
@@ -497,6 +497,7 @@ async function uploadAndInsertImages(files: File[]) {
   if (!files.length) return;
   imageUploading.value = true;
   try {
+    const uploaded: Array<{ url: string; alt: string }> = [];
     for (const file of files) {
       const compressed = await compressImageFile(file, {
         maxWidth: 1400,
@@ -506,9 +507,10 @@ async function uploadAndInsertImages(files: File[]) {
         maxBytes: 520 * 1024,
       });
       const { url } = await uploadApi.image(compressed);
-      insertUploadedImage(url, file.name || "图片");
+      uploaded.push({ url, alt: file.name || "图片" });
     }
-    ElMessage.success(files.length > 1 ? "图片已压缩并上传" : "图片已压缩并插入");
+    insertUploadedImages(uploaded);
+    ElMessage.success(files.length > 1 ? `已插入 ${files.length} 张图片，相册会自动展示` : "图片已压缩并插入");
   } catch (error) {
     ElMessage.error(normalizeImageUploadError(error));
   } finally {
@@ -516,11 +518,23 @@ async function uploadAndInsertImages(files: File[]) {
   }
 }
 
-function insertUploadedImage(url: string, alt: string) {
+function insertUploadedImages(items: Array<{ url: string; alt: string }>) {
+  if (!items.length) return;
   const markerId = `image-caret-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  if (items.length === 1) {
+    const item = items[0];
+    insertHtmlAtCursor(
+      `<p data-align="${toolbarState.align}"><img src="${escapeAttr(item.url)}" alt="${escapeAttr(item.alt)}" data-size="small" data-align="${toolbarState.align}" /></p><p data-caret="${markerId}"><br></p>`,
+      markerId,
+    );
+    return;
+  }
+  const albumItems = items.map((item) => (
+    `<img src="${escapeAttr(item.url)}" alt="${escapeAttr(item.alt)}" data-size="album" data-align="${toolbarState.align}" />`
+  )).join("");
   insertHtmlAtCursor(
-    `<p data-align="${toolbarState.align}"><img src="${escapeAttr(url)}" alt="${escapeAttr(alt)}" data-size="small" data-align="${toolbarState.align}" /></p><p data-caret="${markerId}"><br></p>`,
-    markerId
+    `<p class="editor-image-album" data-image-album="1" data-align="${toolbarState.align}">${albumItems}</p><p data-caret="${markerId}"><br></p>`,
+    markerId,
   );
 }
 
@@ -586,6 +600,12 @@ function closestEditableBlock(node: Node) {
 
 function setAlignment(target: HTMLElement, align: Alignment) {
   if (target instanceof HTMLImageElement) {
+    const album = target.closest<HTMLElement>("[data-image-album='1']");
+    if (album) {
+      album.setAttribute("data-align", align);
+      album.querySelectorAll("img").forEach((img) => img.setAttribute("data-align", align));
+      return;
+    }
     target.setAttribute("data-align", align);
     return;
   }
@@ -647,6 +667,16 @@ function normalizeEditorStructure(root: HTMLElement) {
   const blocks = Array.from(root.querySelectorAll<HTMLElement>(EDITABLE_BLOCK_SELECTOR));
   blocks.forEach((block) => {
     if (!block.parentNode) return;
+    if (block.dataset.imageAlbum === "1") {
+      const align = normalizeTextAlign(block.dataset.align || "");
+      if (align) block.setAttribute("data-align", align);
+      block.classList.add("editor-image-album");
+      block.querySelectorAll("img").forEach((img) => {
+        img.setAttribute("data-size", "album");
+        if (align) img.setAttribute("data-align", align);
+      });
+      return;
+    }
     const images = Array.from(block.children).filter((child): child is HTMLImageElement => child instanceof HTMLImageElement);
     if (images.length <= 1) return;
     const hasMeaningfulContent = Array.from(block.childNodes).some((node) => {
@@ -1135,6 +1165,42 @@ defineExpose({ clearDraft, isContentEmpty });
   max-height: 220px;
 }
 
+.editor-surface :deep(.editor-image-album) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: min(100%, 420px);
+  margin: 12px 0;
+}
+
+.editor-surface :deep(.editor-image-album[data-align="center"]) {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.editor-surface :deep(.editor-image-album[data-align="right"]) {
+  margin-left: auto;
+  margin-right: 0;
+}
+
+.editor-surface :deep(.editor-image-album[data-align="left"]) {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.editor-surface :deep(.editor-image-album img[data-size="album"]) {
+  width: 100%;
+  max-width: none;
+  height: auto;
+  min-height: 110px;
+  max-height: none;
+  aspect-ratio: 1 / 1;
+  margin: 0;
+  object-fit: cover;
+  padding: 0;
+  border-radius: 12px;
+}
+
 .editor-foot {
   display: flex;
   align-items: center;
@@ -1318,6 +1384,16 @@ defineExpose({ clearDraft, isContentEmpty });
   .editor-surface :deep(img:not([data-size])) {
     max-width: min(100%, 220px);
     max-height: 140px;
+  }
+
+  .editor-surface :deep(.editor-image-album) {
+    width: 100%;
+    gap: 8px;
+  }
+
+  .editor-surface :deep(.editor-image-album img[data-size="album"]) {
+    min-height: 92px;
+    border-radius: 10px;
   }
 
   .editor-foot {
