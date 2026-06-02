@@ -417,11 +417,11 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
 
   const qqId = event.user_id ? String(event.user_id) : "";
   const groupId = event.group_id ? String(event.group_id) : undefined;
-  const extractOptions = shouldUseLightForwardExtraction(event.message)
-    ? ({ imageMode: "placeholder", forwardMode: "placeholder" } satisfies QqMessageExtractOptions)
+  const messageExtractOptions = shouldUseLightForwardExtraction(event.message)
+    ? ({ forwardMode: "placeholder" } satisfies QqMessageExtractOptions)
     : {};
-  const messageText = await extractMessageText(event.message ?? event.raw_message ?? "", extractOptions);
-  const forwardPayload = await extractForwardPayload(event.message, extractOptions);
+  const messageText = await extractMessageText(event.message ?? event.raw_message ?? "", messageExtractOptions);
+  const forwardPayload = await extractForwardPayload(event.message, {});
   const context = { config, event, qqId, groupId, messageText, forwardPayload };
   if (!qqId || (!messageText.trim() && !forwardPayload)) {
     await logQqBotMessage({ direction: "inbound", eventType: "message", status: "ignored", qqId, groupId, rawPayload: event });
