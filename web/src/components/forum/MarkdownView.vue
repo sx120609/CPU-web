@@ -1,5 +1,41 @@
 <template>
   <div class="md" :class="{ 'md-clickable-images': clickableImages }" ref="el" v-html="renderedHtml"></div>
+  <div v-if="videoGalleryOpen" class="md-video-lightbox" @click.self="closeVideoGallery">
+    <button type="button" class="md-video-lightbox__close" @click="closeVideoGallery">关闭</button>
+    <button
+      v-if="videoGalleryItems.length > 1"
+      type="button"
+      class="md-video-lightbox__nav md-video-lightbox__nav--prev"
+      :disabled="videoGalleryIndex <= 0"
+      @click="showPrevVideo"
+    >
+      ‹
+    </button>
+    <button
+      v-if="videoGalleryItems.length > 1"
+      type="button"
+      class="md-video-lightbox__nav md-video-lightbox__nav--next"
+      :disabled="videoGalleryIndex >= videoGalleryItems.length - 1"
+      @click="showNextVideo"
+    >
+      ›
+    </button>
+    <div class="md-video-lightbox__body">
+      <div ref="videoGalleryPlayerMountRef" class="md-video-lightbox__player"></div>
+      <div class="md-video-lightbox__meta">
+        <span>{{ activeVideoGalleryItem?.title || "视频" }}</span>
+        <span v-if="videoGalleryItems.length > 1">{{ videoGalleryIndex + 1 }} / {{ videoGalleryItems.length }}</span>
+        <a
+          v-if="activeVideoGalleryItem?.src"
+          :href="activeVideoGalleryItem.src"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          打开原视频
+        </a>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -19,8 +55,13 @@ const props = withDefaults(defineProps<{
 const renderedHtml = computed(() => enhanceRenderedHtml(renderMarkdown(props.content)));
 const el = ref<HTMLElement | null>(null);
 const viewerImageUrl = ref("");
+const videoGalleryOpen = ref(false);
+const videoGalleryIndex = ref(0);
+const videoGalleryItems = ref<Array<{ src: string; poster: string; title: string }>>([]);
+const activeVideoGalleryItem = computed(() => videoGalleryItems.value[videoGalleryIndex.value] || null);
+const videoGalleryPlayerMountRef = ref<HTMLDivElement | null>(null);
 let imageViewer: Viewer | null = null;
-let videoPlayers: Artplayer[] = [];
+let videoGalleryPlayer: Artplayer | null = null;
 
 function wrapTables() {
   if (!el.value) return;
@@ -71,77 +112,27 @@ function bindImageViewer() {
   if (!props.clickableImages || !images.length) return;
 }
 
-function bindVideoPlayers() {
+function bindVideoThumbnails() {
   if (!el.value) return;
-  destroyVideoPlayers();
+  const nextItems: Array<{ src: string; poster: string; title: string }> = [];
   const videos = Array.from(el.value.querySelectorAll<HTMLVideoElement>("video"))
     .filter((video) => !video.closest(".art-video-player") && !video.closest(".md-video-shell"));
-  videos.forEach((video, index) => {
+  videos.forEach((video) => {
     const src = getVideoSourceUrl(video);
     if (!src) return;
     const poster = String(video.getAttribute("poster") || "").trim();
-    const fallbackVideo = video.cloneNode(true) as HTMLVideoElement;
-    fallbackVideo.controls = true;
-    fallbackVideo.preload = "metadata";
-    fallbackVideo.playsInline = true;
-    fallbackVideo.classList.add("qq-inline-video-fallback");
-
-    const shell = document.createElement("div");
-    shell.className = "md-video-shell";
-    const playerMount = document.createElement("div");
-    playerMount.className = "md-video-player";
-    shell.appendChild(playerMount);
-    bindVideoLayout(fallbackVideo, shell);
-    bindVideoLayout(video, shell);
-
-    const linkBlock = video.nextElementSibling instanceof HTMLParagraphElement
-      && video.nextElementSibling.querySelector(".qq-inline-video__link")
-      ? video.nextElementSibling
+    const title = video.getAttribute("title") || fileNameFromUrl(src, "video.mp4");
+    const index = nextItems.push({ src, poster, title }) - 1;
+    const replaceTarget = video.closest<HTMLElement>(".qq-video-card") || video;
+    const linkBlock = replaceTarget.nextElementSibling instanceof HTMLParagraphElement
+      && replaceTarget.nextElementSibling.querySelector(".qq-inline-video__link")
+      ? replaceTarget.nextElementSibling
       : null;
-
-    video.replaceWith(shell);
+    const shell = createVideoThumbnailShell({ src, poster, title }, index, readVideoAlign(replaceTarget));
+    replaceTarget.replaceWith(shell);
     linkBlock?.remove();
-
-    try {
-      const player = new Artplayer({
-        container: playerMount,
-        url: src,
-        theme: "#168776",
-        volume: 0.8,
-        autoplay: false,
-        autoSize: true,
-        playbackRate: true,
-        aspectRatio: true,
-        setting: true,
-        pip: true,
-        mutex: true,
-        backdrop: true,
-        fullscreen: true,
-        fullscreenWeb: true,
-        miniProgressBar: true,
-        playsInline: true,
-        airplay: true,
-        moreVideoAttr: {
-          preload: "metadata",
-          playsInline: true,
-        },
-        ...(poster ? { poster } : {}),
-      });
-      player.on("ready", () => {
-        player.autoSize();
-        bindVideoLayout(player.video, shell);
-      });
-      player.on("video:loadedmetadata", () => {
-        bindVideoLayout(player.video, shell);
-      });
-      videoPlayers.push(player);
-      shell.dataset.playerIndex = String(index);
-    } catch (error) {
-      console.warn("[markdown-video] artplayer init failed", error);
-      shell.classList.add("is-fallback");
-      playerMount.replaceWith(fallbackVideo);
-    }
   });
+  videoGalleryItems.value = nextItems;
 }
 
 function getVideoSourceUrl(video: HTMLVideoElement) {
@@ -151,25 +142,139 @@ function getVideoSourceUrl(video: HTMLVideoElement) {
   return source?.getAttribute("src") || source?.src || "";
 }
 
-function bindVideoLayout(video: HTMLVideoElement, shell: HTMLDivElement) {
-  const apply = () => {
-    if (!video.videoWidth || !video.videoHeight) return;
-    const width = video.videoWidth;
-    const height = video.videoHeight;
-    const ratio = width / height;
-    shell.style.setProperty("--md-video-aspect-ratio", `${width} / ${height}`);
-    const isPortrait = ratio < 0.95;
-    shell.dataset.videoOrientation = isPortrait ? "portrait" : "landscape";
-    const maxWidth = isPortrait
-      ? Math.min(460, Math.max(320, Math.round(720 * ratio)))
-      : 720;
-    shell.style.setProperty("--md-video-max-width", `${maxWidth}px`);
-  };
-  if (video.readyState >= 1) {
-    apply();
+function readVideoAlign(target: HTMLElement) {
+  const direct = target.getAttribute("data-align");
+  if (direct === "left" || direct === "center" || direct === "right") return direct;
+  const parentAlign = target.parentElement?.getAttribute("data-align");
+  if (parentAlign === "left" || parentAlign === "center" || parentAlign === "right") return parentAlign;
+  return "left";
+}
+
+function createVideoThumbnailShell(
+  item: { src: string; poster: string; title: string },
+  index: number,
+  align: "left" | "center" | "right" | string,
+) {
+  const shell = document.createElement("div");
+  shell.className = "md-video-shell";
+  if (align === "left" || align === "center" || align === "right") shell.dataset.align = align;
+  shell.dataset.videoIndex = String(index);
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "md-video-thumb";
+  button.setAttribute("aria-label", `打开视频：${item.title}`);
+  button.addEventListener("click", () => openVideoGallery(index));
+
+  if (item.poster) {
+    const poster = document.createElement("span");
+    poster.className = "md-video-thumb__poster";
+    poster.style.backgroundImage = `url("${item.poster.replace(/"/g, "&quot;")}")`;
+    button.appendChild(poster);
+  } else {
+    button.classList.add("is-posterless");
+    const fallback = document.createElement("span");
+    fallback.className = "md-video-thumb__fallback";
+    fallback.textContent = item.title;
+    button.appendChild(fallback);
+  }
+
+  const overlay = document.createElement("span");
+  overlay.className = "md-video-thumb__overlay";
+  overlay.innerHTML = `<span class="md-video-thumb__play">▶</span><span class="md-video-thumb__label">${escapeVideoThumbText(item.title)}</span>`;
+  button.appendChild(overlay);
+  shell.appendChild(button);
+  return shell;
+}
+
+function escapeVideoThumbText(value: string) {
+  return String(value || "").replace(/[<>&]/g, "");
+}
+
+function openVideoGallery(index: number) {
+  if (!videoGalleryItems.value.length) return;
+  videoGalleryIndex.value = Math.max(0, Math.min(index, videoGalleryItems.value.length - 1));
+  videoGalleryOpen.value = true;
+  void nextTick(syncVideoGalleryPlayer);
+}
+
+function closeVideoGallery() {
+  videoGalleryOpen.value = false;
+  destroyVideoGalleryPlayer();
+}
+
+function showPrevVideo() {
+  if (videoGalleryIndex.value <= 0) return;
+  videoGalleryIndex.value -= 1;
+}
+
+function showNextVideo() {
+  if (videoGalleryIndex.value >= videoGalleryItems.value.length - 1) return;
+  videoGalleryIndex.value += 1;
+}
+
+function syncVideoGalleryPlayer() {
+  if (!videoGalleryOpen.value || !videoGalleryPlayerMountRef.value || !activeVideoGalleryItem.value) return;
+  destroyVideoGalleryPlayer();
+  const item = activeVideoGalleryItem.value;
+  try {
+    videoGalleryPlayer = new Artplayer({
+      container: videoGalleryPlayerMountRef.value,
+      url: item.src,
+      theme: "#168776",
+      volume: 0.8,
+      autoplay: false,
+      autoSize: true,
+      playbackRate: true,
+      aspectRatio: true,
+      setting: true,
+      pip: true,
+      mutex: true,
+      backdrop: true,
+      fullscreen: true,
+      fullscreenWeb: true,
+      miniProgressBar: true,
+      playsInline: true,
+      airplay: true,
+      moreVideoAttr: {
+        preload: "metadata",
+        playsInline: true,
+      },
+      ...(item.poster ? { poster: item.poster } : {}),
+    });
+  } catch (error) {
+    console.warn("[markdown-video] gallery artplayer init failed", error);
+  }
+}
+
+function destroyVideoGalleryPlayer() {
+  if (videoGalleryPlayer) {
+    try {
+      videoGalleryPlayer.destroy(false);
+    } catch {
+      // ignore player cleanup failure
+    }
+    videoGalleryPlayer = null;
+  }
+  if (videoGalleryPlayerMountRef.value) {
+    videoGalleryPlayerMountRef.value.innerHTML = "";
+  }
+}
+
+function handleWindowKeydown(event: KeyboardEvent) {
+  if (!videoGalleryOpen.value) return;
+  if (event.key === "Escape") {
+    closeVideoGallery();
     return;
   }
-  video.addEventListener("loadedmetadata", apply, { once: true });
+  if (event.key === "ArrowLeft") {
+    event.preventDefault();
+    showPrevVideo();
+    return;
+  }
+  if (event.key === "ArrowRight") {
+    event.preventDefault();
+    showNextVideo();
+  }
 }
 
 function wrapImageAlbums() {
@@ -454,18 +559,6 @@ function destroyImageViewer() {
   viewerImageUrl.value = "";
 }
 
-function destroyVideoPlayers() {
-  if (!videoPlayers.length) return;
-  for (const player of videoPlayers) {
-    try {
-      player.destroy(false);
-    } catch {
-      // ignore player cleanup failure
-    }
-  }
-  videoPlayers = [];
-}
-
 function getViewerImageUrl(image: HTMLImageElement) {
   return image.dataset.original || image.getAttribute("src") || image.currentSrc || image.src;
 }
@@ -524,21 +617,33 @@ function blobToDataUrl(blob: Blob) {
 
 onMounted(wrapTables);
 onMounted(() => nextTick(() => {
-  bindVideoPlayers();
+  bindVideoThumbnails();
   bindImageViewer();
 }));
 onBeforeUnmount(() => {
   destroyImageViewer();
-  destroyVideoPlayers();
+  destroyVideoGalleryPlayer();
+  if (typeof window !== "undefined") {
+    window.removeEventListener("keydown", handleWindowKeydown);
+  }
 });
 watch(renderedHtml, () => nextTick(() => {
   wrapTables();
-  bindVideoPlayers();
+  bindVideoThumbnails();
   bindImageViewer();
 }));
 watch(() => props.clickableImages, () => nextTick(() => {
   bindImageViewer();
 }));
+watch(() => [videoGalleryOpen.value, videoGalleryIndex.value], () => nextTick(() => {
+  if (videoGalleryOpen.value) syncVideoGalleryPlayer();
+  else destroyVideoGalleryPlayer();
+}));
+onMounted(() => {
+  if (typeof window !== "undefined") {
+    window.addEventListener("keydown", handleWindowKeydown);
+  }
+});
 </script>
 
 <style scoped>
@@ -691,54 +796,159 @@ watch(() => props.clickableImages, () => nextTick(() => {
 .md :deep(.md-image-shell.is-error .md-image-shell__state) {
   display: flex;
 }
-.md :deep(video) {
-  display: block;
-  width: min(100%, 720px);
-  max-width: 100%;
-  margin: 12px 0;
-  border-radius: 14px;
-  background: #020617;
-  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.12);
-}
 .md :deep(.md-video-shell) {
-  width: min(100%, var(--md-video-max-width, 720px));
+  width: min(100%, 720px);
   max-width: 100%;
   margin: 14px 0;
   border-radius: 18px;
 }
-.md :deep(.md-video-shell[data-video-orientation="portrait"]) {
+.md :deep(.md-video-shell[data-align="center"]) {
   margin-left: auto;
   margin-right: auto;
 }
-.md :deep(.md-video-player) {
+.md :deep(.md-video-shell[data-align="right"]) {
+  margin-left: auto;
+  margin-right: 0;
+}
+.md :deep(.md-video-thumb) {
+  position: relative;
   width: 100%;
-  aspect-ratio: var(--md-video-aspect-ratio, 16 / 9);
-  min-height: 240px;
+  aspect-ratio: 16 / 9;
+  display: block;
   overflow: hidden;
   border-radius: 18px;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
   background:
     radial-gradient(circle at top, rgba(22, 135, 118, 0.14), transparent 48%),
     linear-gradient(180deg, #0f172a 0%, #020617 100%);
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
 }
-.md :deep(.md-video-shell.is-fallback) {
-  border-radius: 14px;
+.md :deep(.md-video-thumb__poster),
+.md :deep(.md-video-thumb__fallback) {
+  position: absolute;
+  inset: 0;
 }
-.md :deep(.md-video-shell[data-video-orientation="portrait"] .md-video-player) {
-  min-height: 0;
+.md :deep(.md-video-thumb__poster) {
+  background-size: cover;
+  background-position: center;
+  transform: scale(1.01);
 }
-.md :deep(.qq-inline-video-fallback) {
-  width: 100%;
-  margin: 0;
-  border-radius: 18px;
+.md :deep(.md-video-thumb__fallback) {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding: 16px;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: left;
 }
-.md :deep(.qq-inline-video__link) {
+.md :deep(.md-video-thumb__overlay) {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 18px;
+  background: linear-gradient(180deg, rgba(2, 6, 23, 0.12), rgba(2, 6, 23, 0.56));
+  color: #fff;
+}
+.md :deep(.md-video-thumb__play) {
+  width: 62px;
+  height: 62px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 10px;
-  font-size: 13px;
-  color: #275df3;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(14px);
+  font-size: 28px;
+  text-indent: 4px;
+}
+.md :deep(.md-video-thumb__label) {
+  max-width: min(100%, 520px);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.42);
+}
+.md-video-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(2, 6, 23, 0.82);
+  backdrop-filter: blur(16px);
+}
+.md-video-lightbox__body {
+  width: min(100%, 960px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.md-video-lightbox__player {
+  width: 100%;
+  min-height: min(72vh, 640px);
+  border-radius: 20px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #0f172a 0%, #020617 100%);
+  box-shadow: 0 24px 60px rgba(2, 6, 23, 0.34);
+}
+.md-video-lightbox__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 14px;
+}
+.md-video-lightbox__meta a {
+  color: #93c5fd;
+}
+.md-video-lightbox__close,
+.md-video-lightbox__nav {
+  position: absolute;
+  border: 0;
+  color: #fff;
+  background: rgba(15, 23, 42, 0.56);
+  backdrop-filter: blur(12px);
+  cursor: pointer;
+}
+.md-video-lightbox__close {
+  top: 20px;
+  right: 20px;
+  min-width: 68px;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.md-video-lightbox__nav {
+  top: 50%;
+  width: 52px;
+  height: 72px;
+  margin-top: -36px;
+  border-radius: 18px;
+  font-size: 36px;
+}
+.md-video-lightbox__nav:disabled {
+  opacity: 0.36;
+  cursor: not-allowed;
+}
+.md-video-lightbox__nav--prev {
+  left: 24px;
+}
+.md-video-lightbox__nav--next {
+  right: 24px;
 }
 .md-clickable-images :deep(img) {
   cursor: zoom-in;
@@ -1030,18 +1240,43 @@ watch(() => props.clickableImages, () => nextTick(() => {
     border-radius: 10px;
   }
 
-  .md :deep(video) {
-    width: 100%;
-    border-radius: 12px;
-  }
-
   .md :deep(.md-video-shell),
-  .md :deep(.md-video-player) {
+  .md :deep(.md-video-thumb) {
     border-radius: 14px;
   }
 
-  .md :deep(.md-video-player) {
-    min-height: 180px;
+  .md-video-lightbox {
+    padding: 18px 12px;
+  }
+
+  .md-video-lightbox__body {
+    width: 100%;
+  }
+
+  .md-video-lightbox__player {
+    min-height: min(48vh, 320px);
+    border-radius: 14px;
+  }
+
+  .md-video-lightbox__meta {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .md-video-lightbox__nav {
+    width: 42px;
+    height: 56px;
+    margin-top: -28px;
+    border-radius: 14px;
+    font-size: 28px;
+  }
+
+  .md-video-lightbox__nav--prev {
+    left: 10px;
+  }
+
+  .md-video-lightbox__nav--next {
+    right: 10px;
   }
 
   .md :deep(.qq-forward-card) {

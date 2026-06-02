@@ -54,8 +54,8 @@
             </template>
 
             <template v-else-if="activeMobileToolbar === 'image'">
-              <button type="button" :disabled="imageUploading" @click="runMobileAction(() => pickContentImage())">
-                {{ imageUploading ? "上传中" : "插入图片/相册" }}
+              <button type="button" :disabled="imageUploading" @click="runMobileAction(() => pickContentMedia())">
+                {{ imageUploading ? "上传中" : "插入媒体" }}
               </button>
             </template>
           </div>
@@ -91,7 +91,7 @@
     <input
       ref="contentImageInputRef"
       type="file"
-      accept="image/*"
+      accept="image/*,video/*"
       multiple
       class="hidden-file"
       @change="onContentImagePicked"
@@ -103,17 +103,17 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { uploadApi } from "@/api/topic";
-import { compressImageFile, normalizeImageUploadError } from "@/utils/imageUpload";
+import { compressImageFile, dataUrlToBlob, normalizeImageUploadError } from "@/utils/imageUpload";
 import { renderMarkdown } from "@/utils/markdown";
 type Alignment = "left" | "center" | "right";
 type MobileToolbarKey = "heading" | "format" | "tools" | "align" | "image";
 
 const EDITABLE_BLOCK_SELECTOR = "p,div,h1,h2,h3,h4,h5,h6,blockquote,li";
 const MOBILE_BREAKPOINT = "(max-width: 700px)";
-const DEFAULT_PLACEHOLDER = "写点什么，也可以直接插入图片；一次选多张会自动排成相册。";
-const MOBILE_PLACEHOLDER = "写点什么，也可以用工具栏插图；多图会自动排成相册。";
-const DEFAULT_FOOTER = "支持排版、图片、相册和草稿保存。";
-const MOBILE_FOOTER = "支持排版、图片、相册和草稿保存。";
+const DEFAULT_PLACEHOLDER = "写点什么，也可以直接插入图片或视频；一次选多张图片会自动排成相册。";
+const MOBILE_PLACEHOLDER = "写点什么，也可以用工具栏插入图片或视频；多图会自动排成相册。";
+const DEFAULT_FOOTER = "支持排版、图片、视频、相册和草稿保存。";
+const MOBILE_FOOTER = "支持排版、图片、视频、相册和草稿保存。";
 
 const props = withDefaults(defineProps<{
   modelValue: string;
@@ -175,7 +175,7 @@ const mobileToolbarSections: Array<{ key: MobileToolbarKey; label: string }> = [
   { key: "format", label: "格式" },
   { key: "tools", label: "工具" },
   { key: "align", label: "对齐" },
-  { key: "image", label: "图片" },
+  { key: "image", label: "媒体" },
 ];
 
 const resolvedPlaceholder = computed(() => (
@@ -192,7 +192,7 @@ const resolvedFooterText = computed(() => (
 
 const toolbarStatusText = computed(() => {
   if (hasSelectedImage.value) return isMobileViewport.value ? "已选图片" : "已选图片，可调对齐";
-  return isMobileViewport.value ? "" : "支持排版、图片和相册";
+  return isMobileViewport.value ? "" : "支持排版、图片、视频和相册";
 });
 const toolbarModeClass = computed(() => ({
   "toolbar-static": props.toolbarMode === "static",
@@ -463,7 +463,7 @@ async function insertLink() {
   else insertHtmlAtCursor(`<a href="${escapeAttr(url)}">${escapeHtml(url)}</a>`);
 }
 
-function pickContentImage() {
+function pickContentMedia() {
   rememberSelection();
   contentImageInputRef.value?.click();
 }
@@ -472,45 +472,64 @@ async function onContentImagePicked(event: Event) {
   const input = event.target as HTMLInputElement;
   const files = Array.from(input.files ?? []);
   input.value = "";
-  await uploadAndInsertImages(files);
+  await uploadAndInsertMedia(files);
 }
 
 async function handleEditorPaste(event: ClipboardEvent) {
-  const files = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith("image/"));
+  const files = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/"));
   if (!files.length) {
     setTimeout(syncEditorContent, 0);
     return;
   }
   event.preventDefault();
   rememberSelection();
-  await uploadAndInsertImages(files);
+  await uploadAndInsertMedia(files);
 }
 
 async function handleEditorDrop(event: DragEvent) {
-  const files = Array.from(event.dataTransfer?.files ?? []).filter((file) => file.type.startsWith("image/"));
+  const files = Array.from(event.dataTransfer?.files ?? []).filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/"));
   if (!files.length) return;
   rememberSelection();
-  await uploadAndInsertImages(files);
+  await uploadAndInsertMedia(files);
 }
 
-async function uploadAndInsertImages(files: File[]) {
+type UploadedMediaItem =
+  | { kind: "image"; url: string; alt: string }
+  | { kind: "video"; url: string; alt: string; posterUrl?: string };
+
+async function uploadAndInsertMedia(files: File[]) {
   if (!files.length) return;
   imageUploading.value = true;
   try {
-    const uploaded: Array<{ url: string; alt: string }> = [];
+    const uploaded: UploadedMediaItem[] = [];
     for (const file of files) {
-      const compressed = await compressImageFile(file, {
-        maxWidth: 1400,
-        maxHeight: 1400,
-        quality: 0.82,
-        mimeType: "image/jpeg",
-        maxBytes: 520 * 1024,
-      });
-      const { url } = await uploadApi.image(compressed);
-      uploaded.push({ url, alt: file.name || "图片" });
+      if (file.type.startsWith("image/")) {
+        const compressed = await compressImageFile(file, {
+          maxWidth: 1400,
+          maxHeight: 1400,
+          quality: 0.82,
+          mimeType: "image/jpeg",
+          maxBytes: 520 * 1024,
+        });
+        const imageBlob = dataUrlToBlob(compressed);
+        const { url } = await uploadApi.media(imageBlob, replaceFileExtension(file.name || "image.jpg", "jpg"));
+        uploaded.push({ kind: "image", url, alt: file.name || "图片" });
+        continue;
+      }
+      if (file.type.startsWith("video/")) {
+        const { url, posterUrl } = await uploadApi.media(file, file.name || "video.mp4");
+        uploaded.push({
+          kind: "video",
+          url,
+          alt: file.name || "视频",
+          posterUrl: posterUrl || "",
+        });
+        continue;
+      }
+      throw new Error("当前仅支持上传图片或视频文件");
     }
-    insertUploadedImages(uploaded);
-    ElMessage.success(files.length > 1 ? `已插入 ${files.length} 张图片，相册会自动展示` : "图片已压缩并插入");
+    insertUploadedMedia(uploaded);
+    ElMessage.success(files.length > 1 ? `已插入 ${files.length} 个媒体文件` : "媒体已插入");
   } catch (error) {
     ElMessage.error(normalizeImageUploadError(error));
   } finally {
@@ -518,24 +537,49 @@ async function uploadAndInsertImages(files: File[]) {
   }
 }
 
-function insertUploadedImages(items: Array<{ url: string; alt: string }>) {
+function insertUploadedMedia(items: UploadedMediaItem[]) {
   if (!items.length) return;
   const markerId = `image-caret-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  if (items.length === 1) {
-    const item = items[0];
-    insertHtmlAtCursor(
-      `<p data-align="${toolbarState.align}"><img src="${escapeAttr(item.url)}" alt="${escapeAttr(item.alt)}" data-size="small" data-align="${toolbarState.align}" /></p><p data-caret="${markerId}"><br></p>`,
-      markerId,
-    );
-    return;
+  const blocks: string[] = [];
+  let imageRun: Array<Extract<UploadedMediaItem, { kind: "image" }>> = [];
+  const flushImages = () => {
+    if (!imageRun.length) return;
+    if (imageRun.length === 1) {
+      const item = imageRun[0];
+      blocks.push(
+        `<p data-align="${toolbarState.align}"><img src="${escapeAttr(item.url)}" alt="${escapeAttr(item.alt)}" data-size="small" data-align="${toolbarState.align}" /></p>`,
+      );
+    } else {
+      const albumItems = imageRun.map((item) => (
+        `<img src="${escapeAttr(item.url)}" alt="${escapeAttr(item.alt)}" data-size="album" data-align="${toolbarState.align}" />`
+      )).join("");
+      blocks.push(
+        `<p class="editor-image-album" data-image-album="1" data-align="${toolbarState.align}">${albumItems}</p>`,
+      );
+    }
+    imageRun = [];
+  };
+
+  for (const item of items) {
+    if (item.kind === "image") {
+      imageRun.push(item);
+      continue;
+    }
+    flushImages();
+    blocks.push(renderEditorVideoBlock(item));
   }
-  const albumItems = items.map((item) => (
-    `<img src="${escapeAttr(item.url)}" alt="${escapeAttr(item.alt)}" data-size="album" data-align="${toolbarState.align}" />`
-  )).join("");
-  insertHtmlAtCursor(
-    `<p class="editor-image-album" data-image-album="1" data-align="${toolbarState.align}">${albumItems}</p><p data-caret="${markerId}"><br></p>`,
-    markerId,
-  );
+  flushImages();
+  blocks.push(`<p data-caret="${markerId}"><br></p>`);
+  insertHtmlAtCursor(blocks.join(""), markerId);
+}
+
+function renderEditorVideoBlock(item: Extract<UploadedMediaItem, { kind: "video" }>) {
+  const posterAttr = item.posterUrl ? ` poster="${escapeAttr(item.posterUrl)}"` : "";
+  return [
+    `<div class="qq-video-card editor-video-card" data-media-kind="video" data-align="${toolbarState.align}">`,
+    `<video class="qq-inline-video" controls preload="metadata" playsinline src="${escapeAttr(item.url)}"${posterAttr}></video>`,
+    `</div>`,
+  ].join("");
 }
 
 function insertHtmlAtCursor(html: string, caretMarkerId = "") {
@@ -548,6 +592,11 @@ function insertHtmlAtCursor(html: string, caretMarkerId = "") {
   clearSelectedImage();
   syncEditorContent();
   rememberSelection();
+}
+
+function replaceFileExtension(name: string, extension: string) {
+  const base = String(name || "").replace(/\.[^.]+$/, "") || "image";
+  return `${base}.${extension}`;
 }
 
 function getAlignmentTargets() {
@@ -1201,6 +1250,38 @@ defineExpose({ clearDraft, isContentEmpty });
   border-radius: 12px;
 }
 
+.editor-surface :deep(.editor-video-card) {
+  width: min(100%, 420px);
+  margin: 12px 0;
+  border-radius: 14px;
+}
+
+.editor-surface :deep(.editor-video-card[data-align="center"]) {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.editor-surface :deep(.editor-video-card[data-align="right"]) {
+  margin-left: auto;
+  margin-right: 0;
+}
+
+.editor-surface :deep(.editor-video-card[data-align="left"]) {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.editor-surface :deep(.editor-video-card video) {
+  display: block;
+  width: 100%;
+  max-width: none;
+  aspect-ratio: 16 / 9;
+  border: 1px solid #dbe4ee;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #0f172a 0%, #020617 100%);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+}
+
 .editor-foot {
   display: flex;
   align-items: center;
@@ -1394,6 +1475,14 @@ defineExpose({ clearDraft, isContentEmpty });
   .editor-surface :deep(.editor-image-album img[data-size="album"]) {
     min-height: 92px;
     border-radius: 10px;
+  }
+
+  .editor-surface :deep(.editor-video-card) {
+    width: 100%;
+  }
+
+  .editor-surface :deep(.editor-video-card video) {
+    border-radius: 12px;
   }
 
   .editor-foot {

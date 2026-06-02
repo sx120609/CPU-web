@@ -101,4 +101,14 @@ export const likeApi = {
 
 export const uploadApi = {
   image: (image: string) => request.post<{ url: string }>("/uploads/images", { image }),
+  media: (file: Blob, fileName: string) => {
+    const formData = new FormData();
+    formData.append("file", file, fileName);
+    return request.post<{
+      kind: "image" | "video";
+      url: string;
+      posterUrl?: string;
+      mimeType?: string;
+    }>("/uploads/media", formData, { timeout: 180000 });
+  },
 };

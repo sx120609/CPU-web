@@ -10,6 +10,7 @@ import { getSiteOrigin, isBoardTypeEnabled, isFeatureOn, featureForBoardType, fe
 import { refreshBoardTopicCounts, refreshUserPostCount } from "./forumStats";
 import { ensureUserCanSpeak } from "./userModeration";
 import { ensureForumVideoAssetsForContent } from "./videoModeration";
+import { createVideoPosterAsset } from "./videoPoster";
 import {
   ensureUserCanSubmitTopic,
   generateTopicAiTags,
@@ -2169,7 +2170,7 @@ const QQBOT_VIDEO_MAX_BYTES = 80 * 1024 * 1024;
 const QQBOT_FORWARD_DEBUG_FILE = path.resolve(process.cwd(), "runtime", "qqbot-forward-debug.ndjson");
 const QQBOT_FORWARD_DEBUG_EXPORT_LIMIT = 200;
 const qqImageUploadCache = new Map<string, Promise<string>>();
-const qqVideoUploadCache = new Map<string, Promise<string>>();
+const qqVideoUploadCache = new Map<string, Promise<{ url: string; posterUrl: string } | null>>();
 
 async function extractMessageText(
   message: unknown,
@@ -2292,11 +2293,11 @@ async function renderMessageSegment(seg: any, options: QqMessageExtractOptions):
   }
   if (seg?.type === "video") {
     if (options.videoMode === "placeholder") return "\n[视频]\n";
-    const url = await resolveQqVideoUrl(
+    const media = await resolveQqVideoUrl(
       seg.data?.url ?? seg.data?.src,
       seg.data?.file ?? seg.data?.file_id ?? seg.data?.path,
     );
-    return url ? `\n${renderQqVideoBlock(url)}\n` : "\n[视频]\n";
+    return media?.url ? `\n${renderQqVideoBlock(media.url, media.posterUrl)}\n` : "\n[视频]\n";
   }
   if (seg?.type === "share") {
     return renderShareCardBlock(parseShareSegmentCard(seg.data));
@@ -2569,11 +2570,11 @@ async function cleanCqMessage(value: string, options: QqMessageExtractOptions = 
         normalized = normalized.replace(raw, "\n[视频]\n");
         continue;
       }
-      const url = await resolveQqVideoUrl(
+      const media = await resolveQqVideoUrl(
         attrs.url || attrs.src,
         attrs.file || attrs.file_id || attrs.path,
       );
-      normalized = normalized.replace(raw, url ? `\n${renderQqVideoBlock(url)}\n` : "\n[视频]\n");
+      normalized = normalized.replace(raw, media?.url ? `\n${renderQqVideoBlock(media.url, media.posterUrl)}\n` : "\n[视频]\n");
       continue;
     }
     if (type === "share") {
@@ -2851,12 +2852,14 @@ function extractUrlHostLabel(value?: string) {
   }
 }
 
-function renderQqVideoBlock(url: string) {
+function renderQqVideoBlock(url: string, posterUrl?: string) {
   const safeUrl = escapeShareCardHtml(String(url || "").trim());
   if (!safeUrl) return "[视频]";
+  const safePoster = escapeShareCardHtml(String(posterUrl || "").trim());
+  const posterAttr = safePoster ? ` poster="${safePoster}"` : "";
   return [
     `<div class="qq-video-card">`,
-    `<video class="qq-inline-video" controls preload="metadata" playsinline src="${safeUrl}">`,
+    `<video class="qq-inline-video" controls preload="metadata" playsinline src="${safeUrl}"${posterAttr}>`,
     "你的浏览器暂不支持站内视频预览。",
     `</video>`,
     `</div>`,
@@ -2885,10 +2888,10 @@ async function resolveQqImageUrl(urlLike: unknown, fileLike: unknown): Promise<s
   return result;
 }
 
-async function resolveQqVideoUrl(urlLike: unknown, fileLike: unknown): Promise<string> {
+async function resolveQqVideoUrl(urlLike: unknown, fileLike: unknown): Promise<{ url: string; posterUrl: string } | null> {
   const key = `${String(urlLike || "").trim()}|${String(fileLike || "").trim()}`;
   if (qqVideoUploadCache.has(key)) return qqVideoUploadCache.get(key)!;
-  const task = downloadQqVideoToUpload(urlLike, fileLike).catch(() => "");
+  const task = downloadQqVideoToUpload(urlLike, fileLike).catch(() => null);
   qqVideoUploadCache.set(key, task);
   const result = await task;
   if (!result) qqVideoUploadCache.delete(key);
@@ -2958,7 +2961,7 @@ async function downloadQqImageToUpload(urlLike: unknown, fileLike: unknown): Pro
   return "";
 }
 
-async function downloadQqVideoToUpload(urlLike: unknown, fileLike: unknown): Promise<string> {
+async function downloadQqVideoToUpload(urlLike: unknown, fileLike: unknown): Promise<{ url: string; posterUrl: string } | null> {
   const file = String(fileLike || "").trim();
   const candidates: Array<{ kind: "remote" | "local"; value: string }> = [];
   const seen = new Set<string>();
@@ -3002,7 +3005,7 @@ async function downloadQqVideoToUpload(urlLike: unknown, fileLike: unknown): Pro
     if (!loaded) continue;
     return saveQqVideoUpload(loaded.buffer, loaded.mime, loaded.nameHint);
   }
-  return "";
+  return null;
 }
 
 async function fetchRemoteImage(url: string) {
@@ -3060,17 +3063,24 @@ async function saveQqImageUpload(buffer: Buffer, mime: string, nameHint?: string
 
 async function saveQqVideoUpload(buffer: Buffer, mime: string, nameHint?: string) {
   const ext = detectVideoExtension(buffer, mime, nameHint);
-  if (!ext) return "";
+  if (!ext) return null;
   const now = new Date();
   const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const relativeDir = path.join("forum", month);
-  const filename = `qqbot-video-${Date.now()}-${crypto.randomUUID()}.${ext}`;
+  const filenameBase = `qqbot-video-${Date.now()}-${crypto.randomUUID()}`;
   const saved = await saveMediaAsset({
-    relativePath: path.posix.join(relativeDir.replace(/\\/g, "/"), filename),
+    relativePath: path.posix.join(relativeDir.replace(/\\/g, "/"), `${filenameBase}.${ext}`),
     buffer,
     contentType: mime || resolveVideoMimeTypeByExt(ext),
   });
-  return saved.url;
+  const posterUrl = await createVideoPosterAsset({
+    videoLocalPath: saved.localPath,
+    videoRelativePath: saved.relativePath,
+  }).catch(() => "");
+  return {
+    url: saved.url,
+    posterUrl,
+  };
 }
 
 function detectImageExtension(buffer: Buffer, mime: string, nameHint?: string) {
