@@ -421,9 +421,8 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     ? ({ forwardMode: "placeholder" } satisfies QqMessageExtractOptions)
     : {};
   const messageText = await extractMessageText(event.message ?? event.raw_message ?? "", messageExtractOptions);
-  const forwardPayload = await extractForwardPayload(event.message, {});
-  const context = { config, event, qqId, groupId, messageText, forwardPayload };
-  if (!qqId || (!messageText.trim() && !forwardPayload)) {
+  const context = { config, event, qqId, groupId, messageText, forwardPayload: null as (ParsedForwardPayload & { source: ForwardSource }) | null };
+  if (!qqId) {
     await logQqBotMessage({ direction: "inbound", eventType: "message", status: "ignored", qqId, groupId, rawPayload: event });
     return { ignored: true };
   }
@@ -509,6 +508,18 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, await renderConversationPrompt(conversation, "如果方便，建议前往客户端完成投稿，编辑体验会更好。"));
     return { ok: true };
   }
+  if (event.message_type !== "group" && isPrivatePlainCommand(messageText, "投稿")) {
+    const conversation = await startPostConversation(context);
+    await logHandledInboundMessage(context, "message", "assistant:start-post");
+    await replyToEvent(context, await renderConversationPrompt(conversation, "如果方便，建议前往客户端完成投稿，编辑体验会更好。"));
+    return { ok: true };
+  }
+  const forwardPayload = await maybeExtractForwardPayloadForPosting(event.message, messageText, event);
+  if (!messageText.trim() && !forwardPayload) {
+    await logQqBotMessage({ direction: "inbound", eventType: "message", status: "ignored", qqId, groupId, rawPayload: event });
+    return { ignored: true };
+  }
+  context.forwardPayload = forwardPayload;
   if (!isCommandMessage(messageText) && forwardPayload && shouldHandleForwardPostInContext(context)) {
     const conversation = await startForwardPostConversation(context, forwardPayload);
     await logHandledInboundMessage(context, "message", "assistant:forward-detected");
@@ -2443,6 +2454,24 @@ function shouldUseLightForwardExtraction(message: unknown) {
   });
 }
 
+async function maybeExtractForwardPayloadForPosting(
+  message: unknown,
+  messageText: string,
+  event: OneBotEvent,
+): Promise<(ParsedForwardPayload & { source: ForwardSource }) | null> {
+  if (!shouldAttemptForwardPayloadExtraction(message, messageText, event)) return null;
+  return extractForwardPayload(message, { imageMode: "placeholder" }).catch(() => null);
+}
+
+function shouldAttemptForwardPayloadExtraction(message: unknown, messageText: string, event: OneBotEvent) {
+  const hasForwardLikeSource = Boolean(extractForwardNodeId(message) || extractReplyMessageId(message));
+  if (!hasForwardLikeSource) return false;
+  if (event.message_type !== "group") return true;
+  return isExplicitBotMention(event, messageText)
+    || /^[/／]投稿(?:\s|$)/.test(messageText.trim())
+    || /^投稿(?:\s|$)/.test(messageText.trim());
+}
+
 function extractForwardNodeId(message: unknown): string {
   if (!message) return "";
   if (Array.isArray(message)) {
@@ -3046,7 +3075,7 @@ function unwrapSingleNestedForwardCard(entries: ParsedForwardEntry[], forwardDep
 
   const directCardMatch = onlyContent.match(/^(<div class="qq-forward-card"[\s\S]*<\/div>)$/);
   const nestedCardMatch = onlyContent.match(
-    /^<div class="qq-forward-nest">\s*<div class="qq-forward-nest__label">转发内容<\/div>\s*(<div class="qq-forward-card"[\s\S]*<\/div>)\s*<\/div>$/,
+    /^<div class="qq-forward-nest">\s*(?:<div class="qq-forward-nest__label">转发内容<\/div>\s*)?(<div class="qq-forward-card"[\s\S]*<\/div>)\s*<\/div>$/,
   );
   const card = nestedCardMatch?.[1] || directCardMatch?.[1] || "";
   if (!card) return "";
@@ -3102,7 +3131,6 @@ function renderForwardEntryContent(content: string) {
       if (String(block).trim().startsWith("<div class=\"qq-forward-card")) {
         html.push([
           `<div class="qq-forward-nest">`,
-          `  <div class="qq-forward-nest__label">转发内容</div>`,
           block,
           `</div>`,
         ].join("\n"));

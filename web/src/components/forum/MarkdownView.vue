@@ -807,13 +807,6 @@ watch(() => props.clickableImages, () => nextTick(() => {
   background: linear-gradient(180deg, rgba(22, 135, 118, 0.28) 0%, rgba(22, 135, 118, 0.12) 100%);
 }
 
-.md :deep(.qq-forward-nest__label) {
-  margin-bottom: 6px;
-  color: #6b7280;
-  font-size: 12px;
-  font-weight: 600;
-}
-
 @media (max-width: 700px) {
   .md :deep(.md-image-album),
   .md :deep(.md-image-album[data-image-count="3"]),
