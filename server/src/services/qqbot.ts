@@ -3019,6 +3019,10 @@ function renderForwardPayloadContent(
   },
   forwardDepth: number,
 ) {
+  const flattenedNestedCard = unwrapSingleNestedForwardCard(entries, forwardDepth);
+  if (flattenedNestedCard) {
+    return normalizeRenderedMessage(["", flattenedNestedCard, ""].join("\n"));
+  }
   const entryHtml = entries.map((entry) => renderForwardEntryBlock(entry)).filter(Boolean).join("");
   const badgeText = forwardDepth > 0 ? "转发内容" : "合并转发";
   return normalizeRenderedMessage([
@@ -3033,6 +3037,28 @@ function renderForwardPayloadContent(
     `</div>`,
     "",
   ].filter(Boolean).join("\n"));
+}
+
+function unwrapSingleNestedForwardCard(entries: ParsedForwardEntry[], forwardDepth: number) {
+  if (entries.length !== 1) return "";
+  const onlyContent = normalizeRenderedMessage(entries[0]?.text || "");
+  if (!onlyContent) return "";
+
+  const directCardMatch = onlyContent.match(/^(<div class="qq-forward-card"[\s\S]*<\/div>)$/);
+  const nestedCardMatch = onlyContent.match(
+    /^<div class="qq-forward-nest">\s*<div class="qq-forward-nest__label">转发内容<\/div>\s*(<div class="qq-forward-card"[\s\S]*<\/div>)\s*<\/div>$/,
+  );
+  const card = nestedCardMatch?.[1] || directCardMatch?.[1] || "";
+  if (!card) return "";
+  if (forwardDepth > 0) return card;
+  return promoteNestedForwardCardToRoot(card);
+}
+
+function promoteNestedForwardCardToRoot(content: string) {
+  let promoted = String(content || "");
+  promoted = promoted.replace(/data-forward-depth="([1-4])"/, 'data-forward-depth="0"');
+  promoted = promoted.replace(/<span class="qq-forward-card__badge">转发内容<\/span>/, '<span class="qq-forward-card__badge">合并转发</span>');
+  return promoted;
 }
 
 function renderForwardEntryBlock(entry: ParsedForwardEntry) {
