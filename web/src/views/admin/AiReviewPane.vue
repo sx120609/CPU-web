@@ -26,12 +26,8 @@
           <el-input v-model="form.aiReviewApiKey" maxlength="240" show-password placeholder="sk-..." />
         </div>
         <div class="ai-row">
-          <span class="ai-label">自动通过</span>
-          <el-input-number v-model="form.aiReviewAutoPassScore" :min="0" :max="100" />
-        </div>
-        <div class="ai-row">
-          <span class="ai-label">自动拦截</span>
-          <el-input-number v-model="form.aiReviewBlockScore" :min="0" :max="100" />
+          <span class="ai-label">文字审核阈值</span>
+          <el-input-number v-model="form.aiReviewThreshold" :min="0" :max="100" />
         </div>
         <div class="ai-row">
           <span class="ai-label">编辑相似度下限</span>
@@ -83,7 +79,7 @@
       <div class="section-head">
         <div>
           <h3 class="section-title">图片审核</h3>
-          <p class="section-desc">图片走异步审核，发布后先占位，审核通过再放行；图片使用独立的自动通过 / 自动拦截阈值。</p>
+          <p class="section-desc">图片走异步审核，发布后先占位；低于阈值自动通过，达到阈值就隐藏等待人工处理。</p>
         </div>
       </div>
 
@@ -113,12 +109,8 @@
           <el-input-number v-model="form.imageReviewRequestGroupSize" :min="1" :max="6" />
         </div>
         <div class="ai-row">
-          <span class="ai-label">图片自动通过</span>
-          <el-input-number v-model="form.imageReviewAutoPassScore" :min="0" :max="100" />
-        </div>
-        <div class="ai-row">
-          <span class="ai-label">图片自动拦截</span>
-          <el-input-number v-model="form.imageReviewBlockScore" :min="0" :max="100" />
+          <span class="ai-label">图片审核阈值</span>
+          <el-input-number v-model="form.imageReviewThreshold" :min="0" :max="100" />
         </div>
       </div>
 
@@ -223,11 +215,8 @@ const form = reactive<SiteConfig>({
   imageReviewUserPrompt: "",
   imageReviewConcurrency: 2,
   imageReviewRequestGroupSize: 3,
-  aiReviewAutoPassScore: 24,
-  aiReviewBlockScore: 70,
-  imageReviewAutoPassScore: 36,
-  imageReviewBlockScore: 82,
-  aiReviewForceBlockScore: 90,
+  aiReviewThreshold: 24,
+  imageReviewThreshold: 36,
   aiEditSimilarityThreshold: 0,
   aiTopicReviewSystemPrompt: "",
   aiTopicReviewUserPrompt: "",
@@ -293,11 +282,8 @@ async function saveConfig() {
       imageReviewUserPrompt: form.imageReviewUserPrompt,
       imageReviewConcurrency: form.imageReviewConcurrency,
       imageReviewRequestGroupSize: form.imageReviewRequestGroupSize,
-      aiReviewAutoPassScore: form.aiReviewAutoPassScore,
-      aiReviewBlockScore: form.aiReviewBlockScore,
-      imageReviewAutoPassScore: form.imageReviewAutoPassScore,
-      imageReviewBlockScore: form.imageReviewBlockScore,
-      aiReviewForceBlockScore: form.aiReviewForceBlockScore,
+      aiReviewThreshold: form.aiReviewThreshold,
+      imageReviewThreshold: form.imageReviewThreshold,
       aiEditSimilarityThreshold: form.aiEditSimilarityThreshold,
       aiTopicReviewSystemPrompt: form.aiTopicReviewSystemPrompt,
       aiTopicReviewUserPrompt: form.aiTopicReviewUserPrompt,

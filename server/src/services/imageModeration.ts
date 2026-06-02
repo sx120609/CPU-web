@@ -29,7 +29,7 @@ type ImageReviewDecision = {
   detail: string;
   riskLevel: "low" | "medium" | "high";
   riskScore: number;
-  decision: "auto_pass" | "manual_review" | "block";
+  decision: "auto_pass" | "block";
   model: string;
   endpoint: string;
 };
@@ -1135,33 +1135,27 @@ function normalizeImageRiskLevel(value: unknown, score: number): "low" | "medium
 }
 
 function normalizeImageDecision(
-  value: unknown,
   approved: boolean | undefined,
   score: number,
-  autoPassScore: number,
-  blockScore: number,
-): "auto_pass" | "manual_review" | "block" {
-  if (value === "auto_pass" || value === "manual_review" || value === "block") return value;
+  threshold: number,
+): "auto_pass" | "block" {
   if (approved === true) return "auto_pass";
-  if (approved === false && score < blockScore) return "manual_review";
-  if (score < autoPassScore) return "auto_pass";
-  if (score >= blockScore) return "block";
-  return "manual_review";
+  if (approved === false) return "block";
+  return score < threshold ? "auto_pass" : "block";
 }
 
 function fallbackImageReason(
   riskLevel: "low" | "medium" | "high",
-  decision: "auto_pass" | "manual_review" | "block",
+  decision: "auto_pass" | "block",
 ) {
   if (decision === "auto_pass") return "图片审核通过";
-  if (decision === "manual_review") return riskLevel === "high" ? "图片存在较高争议，已暂时隐藏" : "图片存在一定风险，已暂时隐藏";
   return riskLevel === "high" ? "图片风险较高，不适合公开展示" : "图片未通过审核";
 }
 
 function buildImageReviewDecision(parsed: ParsedImageReviewJson, config: ReturnType<typeof getSiteConfig>): ImageReviewDecision {
   const riskScore = clampImageRiskScore(parsed.risk_score, parsed.approved);
   const riskLevel = normalizeImageRiskLevel(parsed.risk_level, riskScore);
-  const decision = normalizeImageDecision(parsed.decision, parsed.approved, riskScore, config.imageReviewAutoPassScore, config.imageReviewBlockScore);
+  const decision = normalizeImageDecision(parsed.approved, riskScore, config.imageReviewThreshold);
   return {
     approved: decision === "auto_pass",
     reason: String(parsed.reason || fallbackImageReason(riskLevel, decision)).slice(0, 120),
@@ -1184,7 +1178,7 @@ function buildImageReviewDecision(parsed: ParsedImageReviewJson, config: ReturnT
 function buildImageDecisionDetail(input: {
   riskScore: number;
   riskLevel: "low" | "medium" | "high";
-  decision: "auto_pass" | "manual_review" | "block";
+  decision: "auto_pass" | "block";
   categories?: Record<string, number>;
   detail?: string;
   modelDecision?: string;

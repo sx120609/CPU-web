@@ -190,9 +190,7 @@ const imageReviewModel = ref("gpt-4o-mini");
 const imageReviewApiKey = ref("");
 const imageReviewSystemPrompt = ref("");
 const imageReviewUserPrompt = ref("");
-const aiReviewAutoPassScore = ref(24);
-const aiReviewBlockScore = ref(70);
-const aiReviewForceBlockScore = ref(90);
+const aiReviewThreshold = ref(24);
 const aiEditSimilarityPercent = ref(0);
 const aiTopicReviewSystemPrompt = ref("");
 const aiTopicReviewUserPrompt = ref("");
@@ -275,9 +273,7 @@ async function reload() {
     imageReviewApiKey.value = config.imageReviewApiKey;
     imageReviewSystemPrompt.value = config.imageReviewSystemPrompt ?? "";
     imageReviewUserPrompt.value = config.imageReviewUserPrompt ?? "";
-    aiReviewAutoPassScore.value = config.aiReviewAutoPassScore;
-    aiReviewBlockScore.value = config.aiReviewBlockScore;
-    aiReviewForceBlockScore.value = config.aiReviewForceBlockScore;
+    aiReviewThreshold.value = config.aiReviewThreshold;
     aiEditSimilarityPercent.value = Math.round((config.aiEditSimilarityThreshold ?? 0) * 100);
     aiTopicReviewSystemPrompt.value = config.aiTopicReviewSystemPrompt ?? "";
     aiTopicReviewUserPrompt.value = config.aiTopicReviewUserPrompt ?? "";
@@ -327,9 +323,7 @@ async function saveAiReviewConfig() {
       imageReviewApiKey: imageReviewApiKey.value,
       imageReviewSystemPrompt: imageReviewSystemPrompt.value,
       imageReviewUserPrompt: imageReviewUserPrompt.value,
-      aiReviewAutoPassScore: aiReviewAutoPassScore.value,
-      aiReviewBlockScore: aiReviewBlockScore.value,
-      aiReviewForceBlockScore: aiReviewForceBlockScore.value,
+      aiReviewThreshold: aiReviewThreshold.value,
       aiEditSimilarityThreshold: aiEditSimilarityPercent.value / 100,
       aiTopicReviewSystemPrompt: aiTopicReviewSystemPrompt.value,
       aiTopicReviewUserPrompt: aiTopicReviewUserPrompt.value,
@@ -348,9 +342,7 @@ async function saveAiReviewConfig() {
     imageReviewApiKey.value = config.imageReviewApiKey;
     imageReviewSystemPrompt.value = config.imageReviewSystemPrompt ?? "";
     imageReviewUserPrompt.value = config.imageReviewUserPrompt ?? "";
-    aiReviewAutoPassScore.value = config.aiReviewAutoPassScore;
-    aiReviewBlockScore.value = config.aiReviewBlockScore;
-    aiReviewForceBlockScore.value = config.aiReviewForceBlockScore;
+    aiReviewThreshold.value = config.aiReviewThreshold;
     aiEditSimilarityPercent.value = Math.round((config.aiEditSimilarityThreshold ?? 0) * 100);
     aiTopicReviewSystemPrompt.value = config.aiTopicReviewSystemPrompt ?? "";
     aiTopicReviewUserPrompt.value = config.aiTopicReviewUserPrompt ?? "";

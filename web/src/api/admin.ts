@@ -14,11 +14,8 @@ export type SiteConfig = {
   imageReviewUserPrompt: string;
   imageReviewConcurrency: number;
   imageReviewRequestGroupSize: number;
-  aiReviewAutoPassScore: number;
-  aiReviewBlockScore: number;
-  imageReviewAutoPassScore: number;
-  imageReviewBlockScore: number;
-  aiReviewForceBlockScore: number;
+  aiReviewThreshold: number;
+  imageReviewThreshold: number;
   aiEditSimilarityThreshold: number;
   aiTopicReviewSystemPrompt: string;
   aiTopicReviewUserPrompt: string;
@@ -266,11 +263,8 @@ export const adminApi = {
     imageReviewUserPrompt?: string;
     imageReviewConcurrency?: number;
     imageReviewRequestGroupSize?: number;
-    aiReviewAutoPassScore?: number;
-    aiReviewBlockScore?: number;
-    imageReviewAutoPassScore?: number;
-    imageReviewBlockScore?: number;
-    aiReviewForceBlockScore?: number;
+    aiReviewThreshold?: number;
+    imageReviewThreshold?: number;
     aiEditSimilarityThreshold?: number;
     aiTopicReviewSystemPrompt?: string;
     aiTopicReviewUserPrompt?: string;

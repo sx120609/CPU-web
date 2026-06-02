@@ -191,9 +191,9 @@ export async function reviewTopicContent(input: {
   const parsed = parseReviewJson(content);
   const riskScore = clampScore(parsed.risk_score);
   const riskLevel = normalizeRiskLevel(parsed.risk_level, riskScore);
-  const decision = decideByThreshold(riskScore, config.aiReviewAutoPassScore, config.aiReviewBlockScore);
+  const decision = decideByThreshold(riskScore, config.aiReviewThreshold);
   return {
-    status: decision === "auto_pass" ? "auto_passed" : decision === "block" ? "blocked_ai" : "blocked_ai",
+    status: decision === "auto_pass" ? "auto_passed" : "blocked_ai",
     riskLevel,
     riskScore,
     reason: String(parsed.reason || fallbackReason(riskLevel)).slice(0, 120),
@@ -248,9 +248,9 @@ export async function reviewReplyContent(input: {
   const parsed = parseReviewJson(content);
   const riskScore = clampScore(parsed.risk_score);
   const riskLevel = normalizeRiskLevel(parsed.risk_level, riskScore);
-  const decision = decideByThreshold(riskScore, config.aiReviewAutoPassScore, config.aiReviewBlockScore);
+  const decision = decideByThreshold(riskScore, config.aiReviewThreshold);
   return {
-    status: decision === "auto_pass" ? "auto_passed" : decision === "block" ? "blocked_ai" : "blocked_ai",
+    status: decision === "auto_pass" ? "auto_passed" : "blocked_ai",
     riskLevel,
     riskScore,
     reason: String(parsed.reason || fallbackReason(riskLevel)).slice(0, 120),
@@ -362,10 +362,8 @@ function normalizeRiskLevel(value: unknown, score: number): TopicAiRiskLevel {
   return "low";
 }
 
-function decideByThreshold(score: number, autoPassScore: number, blockScore: number) {
-  if (score < autoPassScore) return "auto_pass";
-  if (score >= blockScore) return "block";
-  return "manual_review";
+function decideByThreshold(score: number, threshold: number) {
+  return score < threshold ? "auto_pass" : "block";
 }
 
 function renderPromptTemplate(template: string, vars: Record<string, unknown>) {

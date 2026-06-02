@@ -1375,11 +1375,12 @@ const siteConfigPatchSchema = z.object({
   imageReviewUserPrompt: z.string().max(12000).optional(),
   imageReviewConcurrency: z.number().int().min(1).max(8).optional(),
   imageReviewRequestGroupSize: z.number().int().min(1).max(6).optional(),
+  aiReviewThreshold: z.number().int().min(0).max(100).optional(),
+  imageReviewThreshold: z.number().int().min(0).max(100).optional(),
   aiReviewAutoPassScore: z.number().int().min(0).max(100).optional(),
   aiReviewBlockScore: z.number().int().min(0).max(100).optional(),
   imageReviewAutoPassScore: z.number().int().min(0).max(100).optional(),
   imageReviewBlockScore: z.number().int().min(0).max(100).optional(),
-  aiReviewForceBlockScore: z.number().int().min(0).max(100).optional(),
   aiEditSimilarityThreshold: z.number().min(0).max(1).optional(),
   aiTopicReviewSystemPrompt: z.string().max(8000).optional(),
   aiTopicReviewUserPrompt: z.string().max(12000).optional(),
@@ -1422,11 +1423,12 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       req.body.imageReviewUserPrompt !== undefined ||
       req.body.imageReviewConcurrency !== undefined ||
       req.body.imageReviewRequestGroupSize !== undefined ||
+      req.body.aiReviewThreshold !== undefined ||
+      req.body.imageReviewThreshold !== undefined ||
       req.body.aiReviewAutoPassScore !== undefined ||
       req.body.aiReviewBlockScore !== undefined ||
       req.body.imageReviewAutoPassScore !== undefined ||
       req.body.imageReviewBlockScore !== undefined ||
-      req.body.aiReviewForceBlockScore !== undefined ||
       req.body.aiEditSimilarityThreshold !== undefined ||
       req.body.aiTopicReviewSystemPrompt !== undefined ||
       req.body.aiTopicReviewUserPrompt !== undefined ||
@@ -1460,9 +1462,7 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
   } catch (e: any) {
     if (
       e?.message === "网站域名格式不正确" ||
-      e?.message === "网站域名仅支持 http 或 https" ||
-      e?.message === "AI 自动拦截阈值不能低于自动通过阈值" ||
-      e?.message === "AI 强制拦截阈值不能低于自动拦截阈值"
+      e?.message === "网站域名仅支持 http 或 https"
     ) {
       next(Errors.badRequest(e.message));
       return;

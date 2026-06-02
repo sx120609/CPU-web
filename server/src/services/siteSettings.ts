@@ -32,11 +32,8 @@ export type SiteConfig = {
   imageReviewUserPrompt: string;
   imageReviewConcurrency: number;
   imageReviewRequestGroupSize: number;
-  aiReviewAutoPassScore: number;
-  aiReviewBlockScore: number;
-  imageReviewAutoPassScore: number;
-  imageReviewBlockScore: number;
-  aiReviewForceBlockScore: number;
+  aiReviewThreshold: number;
+  imageReviewThreshold: number;
   aiEditSimilarityThreshold: number;
   aiTopicReviewSystemPrompt: string;
   aiTopicReviewUserPrompt: string;
@@ -97,11 +94,12 @@ const IMAGE_REVIEW_SYSTEM_PROMPT_KEY = "ai.imageReview.systemPrompt";
 const IMAGE_REVIEW_USER_PROMPT_KEY = "ai.imageReview.userPrompt";
 const IMAGE_REVIEW_CONCURRENCY_KEY = "ai.imageReview.concurrency";
 const IMAGE_REVIEW_REQUEST_GROUP_SIZE_KEY = "ai.imageReview.requestGroupSize";
+const AI_REVIEW_THRESHOLD_KEY = "ai.review.threshold";
+const IMAGE_REVIEW_THRESHOLD_KEY = "ai.imageReview.threshold";
 const AI_REVIEW_AUTO_PASS_SCORE_KEY = "ai.review.autoPassScore";
 const AI_REVIEW_BLOCK_SCORE_KEY = "ai.review.blockScore";
 const IMAGE_REVIEW_AUTO_PASS_SCORE_KEY = "ai.imageReview.autoPassScore";
 const IMAGE_REVIEW_BLOCK_SCORE_KEY = "ai.imageReview.blockScore";
-const AI_REVIEW_FORCE_BLOCK_SCORE_KEY = "ai.review.forceBlockScore";
 const AI_EDIT_SIMILARITY_THRESHOLD_KEY = "ai.review.editSimilarityThreshold";
 const AI_TOPIC_REVIEW_SYSTEM_PROMPT_KEY = "ai.review.topic.systemPrompt";
 const AI_TOPIC_REVIEW_USER_PROMPT_KEY = "ai.review.topic.userPrompt";
@@ -210,11 +208,8 @@ const configCache: SiteConfig = {
   imageReviewUserPrompt: DEFAULT_IMAGE_REVIEW_PROMPTS.user,
   imageReviewConcurrency: 2,
   imageReviewRequestGroupSize: 3,
-  aiReviewAutoPassScore: 24,
-  aiReviewBlockScore: 70,
-  imageReviewAutoPassScore: 36,
-  imageReviewBlockScore: 82,
-  aiReviewForceBlockScore: 90,
+  aiReviewThreshold: 24,
+  imageReviewThreshold: 36,
   aiEditSimilarityThreshold: 0,
   aiTopicReviewSystemPrompt: DEFAULT_AI_PROMPTS.topicReviewSystem,
   aiTopicReviewUserPrompt: DEFAULT_AI_PROMPTS.topicReviewUser,
@@ -258,6 +253,8 @@ export function normalizeSiteOrigin(input: string | null | undefined): string {
 
 /** 服务启动时加载一次；之后每次写入会同步更新缓存 */
 export async function loadFeatures(): Promise<void> {
+  let hasAiReviewThreshold = false;
+  let hasImageReviewThreshold = false;
   const rows = await prisma.siteSetting.findMany({
     where: {
       key: {
@@ -277,11 +274,12 @@ export async function loadFeatures(): Promise<void> {
           IMAGE_REVIEW_USER_PROMPT_KEY,
           IMAGE_REVIEW_CONCURRENCY_KEY,
           IMAGE_REVIEW_REQUEST_GROUP_SIZE_KEY,
+          AI_REVIEW_THRESHOLD_KEY,
+          IMAGE_REVIEW_THRESHOLD_KEY,
           AI_REVIEW_AUTO_PASS_SCORE_KEY,
           AI_REVIEW_BLOCK_SCORE_KEY,
           IMAGE_REVIEW_AUTO_PASS_SCORE_KEY,
           IMAGE_REVIEW_BLOCK_SCORE_KEY,
-          AI_REVIEW_FORCE_BLOCK_SCORE_KEY,
           AI_EDIT_SIMILARITY_THRESHOLD_KEY,
           AI_TOPIC_REVIEW_SYSTEM_PROMPT_KEY,
           AI_TOPIC_REVIEW_USER_PROMPT_KEY,
@@ -361,24 +359,32 @@ export async function loadFeatures(): Promise<void> {
       configCache.imageReviewRequestGroupSize = normalizeSmallInt(r.value, 3, 1, 6);
       continue;
     }
+    if (r.key === AI_REVIEW_THRESHOLD_KEY) {
+      configCache.aiReviewThreshold = normalizeAiScore(r.value, 24);
+      hasAiReviewThreshold = true;
+      continue;
+    }
+    if (r.key === IMAGE_REVIEW_THRESHOLD_KEY) {
+      configCache.imageReviewThreshold = normalizeAiScore(r.value, 36);
+      hasImageReviewThreshold = true;
+      continue;
+    }
     if (r.key === AI_REVIEW_AUTO_PASS_SCORE_KEY) {
-      configCache.aiReviewAutoPassScore = normalizeAiScore(r.value, 24);
+      if (!hasAiReviewThreshold) {
+        configCache.aiReviewThreshold = normalizeAiScore(r.value, 24);
+      }
       continue;
     }
     if (r.key === AI_REVIEW_BLOCK_SCORE_KEY) {
-      configCache.aiReviewBlockScore = normalizeAiScore(r.value, 70);
       continue;
     }
     if (r.key === IMAGE_REVIEW_AUTO_PASS_SCORE_KEY) {
-      configCache.imageReviewAutoPassScore = normalizeAiScore(r.value, 36);
+      if (!hasImageReviewThreshold) {
+        configCache.imageReviewThreshold = normalizeAiScore(r.value, 36);
+      }
       continue;
     }
     if (r.key === IMAGE_REVIEW_BLOCK_SCORE_KEY) {
-      configCache.imageReviewBlockScore = normalizeAiScore(r.value, 82);
-      continue;
-    }
-    if (r.key === AI_REVIEW_FORCE_BLOCK_SCORE_KEY) {
-      configCache.aiReviewForceBlockScore = normalizeAiScore(r.value, 90);
       continue;
     }
     if (r.key === AI_EDIT_SIMILARITY_THRESHOLD_KEY) {
@@ -671,11 +677,8 @@ function normalizeReputationLevels(
 }
 
 function sanitizeAiReviewConfig() {
-  configCache.aiReviewAutoPassScore = normalizeAiScore(configCache.aiReviewAutoPassScore, 24);
-  configCache.aiReviewBlockScore = normalizeAiScore(configCache.aiReviewBlockScore, 70);
-  configCache.imageReviewAutoPassScore = normalizeAiScore(configCache.imageReviewAutoPassScore, 36);
-  configCache.imageReviewBlockScore = normalizeAiScore(configCache.imageReviewBlockScore, 82);
-  configCache.aiReviewForceBlockScore = normalizeAiScore(configCache.aiReviewForceBlockScore, 90);
+  configCache.aiReviewThreshold = normalizeAiScore(configCache.aiReviewThreshold, 24);
+  configCache.imageReviewThreshold = normalizeAiScore(configCache.imageReviewThreshold, 36);
   configCache.aiEditSimilarityThreshold = normalizeAiRatio(configCache.aiEditSimilarityThreshold, 0);
   configCache.aiTopicReviewSystemPrompt = normalizePromptTemplate(configCache.aiTopicReviewSystemPrompt, DEFAULT_AI_PROMPTS.topicReviewSystem);
   configCache.aiTopicReviewUserPrompt = normalizePromptTemplate(configCache.aiTopicReviewUserPrompt, DEFAULT_AI_PROMPTS.topicReviewUser);
@@ -683,15 +686,6 @@ function sanitizeAiReviewConfig() {
   configCache.aiReplyReviewUserPrompt = normalizePromptTemplate(configCache.aiReplyReviewUserPrompt, DEFAULT_AI_PROMPTS.replyReviewUser);
   configCache.aiEditSimilaritySystemPrompt = normalizePromptTemplate(configCache.aiEditSimilaritySystemPrompt, DEFAULT_AI_PROMPTS.editSimilaritySystem);
   configCache.aiEditSimilarityUserPrompt = normalizePromptTemplate(configCache.aiEditSimilarityUserPrompt, DEFAULT_AI_PROMPTS.editSimilarityUser);
-  if (configCache.aiReviewBlockScore < configCache.aiReviewAutoPassScore) {
-    configCache.aiReviewBlockScore = configCache.aiReviewAutoPassScore;
-  }
-  if (configCache.aiReviewForceBlockScore < configCache.aiReviewBlockScore) {
-    configCache.aiReviewForceBlockScore = configCache.aiReviewBlockScore;
-  }
-  if (configCache.imageReviewBlockScore < configCache.imageReviewAutoPassScore) {
-    configCache.imageReviewBlockScore = configCache.imageReviewAutoPassScore;
-  }
   if (!configCache.aiReviewProvider) configCache.aiReviewProvider = "deepseek";
   if (!configCache.aiReviewModel) configCache.aiReviewModel = "deepseek-v4-flash";
   configCache.imageReviewApiUrl = normalizePromptTemplate(configCache.imageReviewApiUrl, "https://api.openai.com/v1/chat/completions");
@@ -745,11 +739,18 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
     imageReviewUserPrompt: resolvePromptTemplate(input.imageReviewUserPrompt, configCache.imageReviewUserPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.user),
     imageReviewConcurrency: normalizeSmallInt(input.imageReviewConcurrency, configCache.imageReviewConcurrency, 1, 8),
     imageReviewRequestGroupSize: normalizeSmallInt(input.imageReviewRequestGroupSize, configCache.imageReviewRequestGroupSize, 1, 6),
-    aiReviewAutoPassScore: normalizeAiScore(input.aiReviewAutoPassScore, configCache.aiReviewAutoPassScore),
-    aiReviewBlockScore: normalizeAiScore(input.aiReviewBlockScore, configCache.aiReviewBlockScore),
-    imageReviewAutoPassScore: normalizeAiScore(input.imageReviewAutoPassScore, configCache.imageReviewAutoPassScore),
-    imageReviewBlockScore: normalizeAiScore(input.imageReviewBlockScore, configCache.imageReviewBlockScore),
-    aiReviewForceBlockScore: normalizeAiScore(input.aiReviewForceBlockScore, configCache.aiReviewForceBlockScore),
+    aiReviewThreshold: normalizeAiScore(
+      (input as Partial<SiteConfig> & { aiReviewAutoPassScore?: number; aiReviewBlockScore?: number }).aiReviewThreshold
+        ?? (input as any).aiReviewAutoPassScore
+        ?? (input as any).aiReviewBlockScore,
+      configCache.aiReviewThreshold,
+    ),
+    imageReviewThreshold: normalizeAiScore(
+      (input as Partial<SiteConfig> & { imageReviewAutoPassScore?: number; imageReviewBlockScore?: number }).imageReviewThreshold
+        ?? (input as any).imageReviewAutoPassScore
+        ?? (input as any).imageReviewBlockScore,
+      configCache.imageReviewThreshold,
+    ),
     aiEditSimilarityThreshold: normalizeAiRatio(input.aiEditSimilarityThreshold, configCache.aiEditSimilarityThreshold),
     aiTopicReviewSystemPrompt: resolvePromptTemplate(input.aiTopicReviewSystemPrompt, configCache.aiTopicReviewSystemPrompt, DEFAULT_AI_PROMPTS.topicReviewSystem),
     aiTopicReviewUserPrompt: resolvePromptTemplate(input.aiTopicReviewUserPrompt, configCache.aiTopicReviewUserPrompt, DEFAULT_AI_PROMPTS.topicReviewUser),
@@ -758,15 +759,6 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
     aiEditSimilaritySystemPrompt: resolvePromptTemplate(input.aiEditSimilaritySystemPrompt, configCache.aiEditSimilaritySystemPrompt, DEFAULT_AI_PROMPTS.editSimilaritySystem),
     aiEditSimilarityUserPrompt: resolvePromptTemplate(input.aiEditSimilarityUserPrompt, configCache.aiEditSimilarityUserPrompt, DEFAULT_AI_PROMPTS.editSimilarityUser),
   };
-  if (next.aiReviewBlockScore < next.aiReviewAutoPassScore) {
-    throw new Error("AI 自动拦截阈值不能低于自动通过阈值");
-  }
-  if (next.aiReviewForceBlockScore < next.aiReviewBlockScore) {
-    throw new Error("AI 强制拦截阈值不能低于自动拦截阈值");
-  }
-  if (next.imageReviewBlockScore < next.imageReviewAutoPassScore) {
-    throw new Error("图片自动拦截阈值不能低于图片自动通过阈值");
-  }
   await prisma.$transaction([
     prisma.siteSetting.upsert({
       where: { key: AI_REVIEW_ENABLED_KEY },
@@ -829,29 +821,34 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       create: { key: IMAGE_REVIEW_REQUEST_GROUP_SIZE_KEY, value: String(next.imageReviewRequestGroupSize) },
     }),
     prisma.siteSetting.upsert({
+      where: { key: AI_REVIEW_THRESHOLD_KEY },
+      update: { value: String(next.aiReviewThreshold) },
+      create: { key: AI_REVIEW_THRESHOLD_KEY, value: String(next.aiReviewThreshold) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: IMAGE_REVIEW_THRESHOLD_KEY },
+      update: { value: String(next.imageReviewThreshold) },
+      create: { key: IMAGE_REVIEW_THRESHOLD_KEY, value: String(next.imageReviewThreshold) },
+    }),
+    prisma.siteSetting.upsert({
       where: { key: AI_REVIEW_AUTO_PASS_SCORE_KEY },
-      update: { value: String(next.aiReviewAutoPassScore) },
-      create: { key: AI_REVIEW_AUTO_PASS_SCORE_KEY, value: String(next.aiReviewAutoPassScore) },
+      update: { value: String(next.aiReviewThreshold) },
+      create: { key: AI_REVIEW_AUTO_PASS_SCORE_KEY, value: String(next.aiReviewThreshold) },
     }),
     prisma.siteSetting.upsert({
       where: { key: AI_REVIEW_BLOCK_SCORE_KEY },
-      update: { value: String(next.aiReviewBlockScore) },
-      create: { key: AI_REVIEW_BLOCK_SCORE_KEY, value: String(next.aiReviewBlockScore) },
+      update: { value: String(next.aiReviewThreshold) },
+      create: { key: AI_REVIEW_BLOCK_SCORE_KEY, value: String(next.aiReviewThreshold) },
     }),
     prisma.siteSetting.upsert({
       where: { key: IMAGE_REVIEW_AUTO_PASS_SCORE_KEY },
-      update: { value: String(next.imageReviewAutoPassScore) },
-      create: { key: IMAGE_REVIEW_AUTO_PASS_SCORE_KEY, value: String(next.imageReviewAutoPassScore) },
+      update: { value: String(next.imageReviewThreshold) },
+      create: { key: IMAGE_REVIEW_AUTO_PASS_SCORE_KEY, value: String(next.imageReviewThreshold) },
     }),
     prisma.siteSetting.upsert({
       where: { key: IMAGE_REVIEW_BLOCK_SCORE_KEY },
-      update: { value: String(next.imageReviewBlockScore) },
-      create: { key: IMAGE_REVIEW_BLOCK_SCORE_KEY, value: String(next.imageReviewBlockScore) },
-    }),
-    prisma.siteSetting.upsert({
-      where: { key: AI_REVIEW_FORCE_BLOCK_SCORE_KEY },
-      update: { value: String(next.aiReviewForceBlockScore) },
-      create: { key: AI_REVIEW_FORCE_BLOCK_SCORE_KEY, value: String(next.aiReviewForceBlockScore) },
+      update: { value: String(next.imageReviewThreshold) },
+      create: { key: IMAGE_REVIEW_BLOCK_SCORE_KEY, value: String(next.imageReviewThreshold) },
     }),
     prisma.siteSetting.upsert({
       where: { key: AI_EDIT_SIMILARITY_THRESHOLD_KEY },
