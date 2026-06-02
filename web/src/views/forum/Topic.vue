@@ -1477,17 +1477,29 @@ async function onDelete() {
 }
 
 .topic-image-review-preview {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 10px;
   overflow: hidden;
   background: #f8fafc;
   border: 1px solid #e5e7eb;
+  padding: 10px;
+  min-height: 220px;
 }
 
 .topic-image-review-preview img {
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  object-fit: cover;
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: min(70vh, 560px);
+  object-fit: contain;
+}
+
+:deep(.topic-image-review-dialog .el-dialog__body) {
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
   display: block;
 }
 
