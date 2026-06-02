@@ -2,7 +2,7 @@ import { Router } from "express";
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { ok } from "../utils/response";
-import { getFeatures, getSiteConfig } from "../services/siteSettings";
+import { getFeatures, getSiteOrigin } from "../services/siteSettings";
 
 export const siteRouter = Router();
 
@@ -13,7 +13,7 @@ siteRouter.get("/features", (_req, res) => {
 
 /** 公开：站点基础配置。不要放敏感内容。 */
 siteRouter.get("/config", (_req, res) => {
-  ok(res, getSiteConfig());
+  ok(res, { siteOrigin: getSiteOrigin() });
 });
 
 siteRouter.get("/downloads/android-app", (_req, res) => {

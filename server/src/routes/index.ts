@@ -18,6 +18,7 @@ import { uploadRouter } from "./upload";
 import { toolsRouter } from "./tools";
 import { paymentsRouter } from "./payments";
 import { qqBotRouter } from "./qqbot";
+import { storageRouter } from "./storage";
 
 export const router = Router();
 
@@ -31,6 +32,7 @@ router.use("/courses", courseRouter);
 router.use("/search", searchRouter);
 router.use("/home", homeRouter);
 router.use("/site", siteRouter);
+router.use("/storage", storageRouter);
 router.use("/tools", toolsRouter);
 router.use("/payments", paymentsRouter);
 router.use("/qqbot", qqBotRouter);

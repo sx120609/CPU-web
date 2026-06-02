@@ -35,6 +35,31 @@ export type SiteConfig = {
   anonymousTiers: Array<{ reputation: number; quota: number }>;
   reputationLevels: Array<{ level: number; name: string; minReputation: number }>;
 };
+
+export type MediaStorageConfig = {
+  mediaStorageProvider: "local" | "onedrive-cn";
+  mediaStorageRemotePrefixes: string[];
+  oneDriveChinaClientId: string;
+  oneDriveChinaClientSecretConfigured: boolean;
+  oneDriveChinaSharepointUrl: string;
+  oneDriveChinaSharepointHost: string;
+  oneDriveChinaSharepointPath: string;
+  oneDriveChinaSiteId: string;
+  oneDriveChinaSiteName: string;
+  oneDriveChinaDriveId: string;
+  oneDriveChinaDriveName: string;
+  oneDriveChinaRootPath: string;
+  oneDriveChinaRefreshTokenConfigured: boolean;
+  oneDriveChinaAuthorizedAt: string;
+  oneDriveChinaLastError: string;
+};
+
+export type OneDriveChinaDriveOption = {
+  id: string;
+  name: string;
+  webUrl: string;
+  driveType: string;
+};
 export type SitePromptDefaults = Pick<
   SiteConfig,
   | "imageReviewSystemPrompt"
@@ -249,6 +274,33 @@ export const adminApi = {
   // 站点功能开关
   siteConfig: () => request.get<SiteConfig>("/admin/site-config"),
   sitePromptDefaults: () => request.get<SitePromptDefaults>("/admin/site-config/prompt-defaults"),
+  mediaStorageConfig: () => request.get<MediaStorageConfig>("/admin/media-storage"),
+  updateMediaStorageConfig: (patch: {
+    mediaStorageProvider?: "local" | "onedrive-cn";
+    mediaStorageRemotePrefixes?: string[] | string;
+    oneDriveChinaClientId?: string;
+    oneDriveChinaClientSecret?: string;
+    clearOneDriveChinaClientSecret?: boolean;
+    oneDriveChinaSharepointUrl?: string;
+    oneDriveChinaRootPath?: string;
+  }) => request.patch<MediaStorageConfig>("/admin/media-storage", patch),
+  beginOneDriveChinaAuth: () =>
+    request.post<{ callbackUrl: string; authorizeUrl: string }>("/admin/media-storage/onedrive-cn/authorize", {}),
+  oneDriveChinaDrives: () =>
+    request.get<{
+      siteId: string;
+      siteName: string;
+      sharepointUrl: string;
+      sharepointHost: string;
+      sharepointPath: string;
+      selectedDriveId: string;
+      selectedDriveName: string;
+      list: OneDriveChinaDriveOption[];
+    }>("/admin/media-storage/onedrive-cn/drives"),
+  saveOneDriveChinaDrive: (driveId: string) =>
+    request.patch<{ driveId: string; driveName: string }>("/admin/media-storage/onedrive-cn/drive", { driveId }),
+  clearOneDriveChinaAuthorization: () =>
+    request.delete<{ ok: true }>("/admin/media-storage/onedrive-cn/authorization"),
   updateSiteConfig: (patch: {
     siteOrigin?: string;
     aiReviewEnabled?: boolean;

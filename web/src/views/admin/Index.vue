@@ -58,7 +58,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { adminApi, type AdminOverview } from "@/api/admin";
 import UsersPane from "./UsersPane.vue";
@@ -74,11 +75,27 @@ import DatabasePane from "./DatabasePane.vue";
 import FeaturesPane from "./FeaturesPane.vue";
 
 const auth = useAuthStore();
-const tab = ref("users");
+const route = useRoute();
+const router = useRouter();
+const tab = ref(typeof route.query.tab === "string" ? route.query.tab : "users");
 const overview = ref<AdminOverview | null>(null);
 
 onMounted(async () => {
   try { overview.value = await adminApi.overview(); } catch { /* ignore */ }
+});
+
+watch(() => route.query.tab, (next) => {
+  if (typeof next === "string" && next && next !== tab.value) tab.value = next;
+});
+
+watch(tab, (next) => {
+  if (route.query.tab === next) return;
+  router.replace({
+    query: {
+      ...route.query,
+      tab: next,
+    },
+  }).catch(() => null);
 });
 </script>
 

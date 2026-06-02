@@ -3,6 +3,7 @@ import { config } from "./config";
 import { ensureBuiltinBoards } from "./services/defaultBoards";
 import { startScheduler } from "./services/schoolCrawler";
 import { loadFeatures } from "./services/siteSettings";
+import { loadStorageConfig } from "./services/storageConfig";
 
 const app = createApp();
 
@@ -18,5 +19,6 @@ app.listen(config.port, async () => {
     console.log(`🏛️  已补齐默认板块: ${createdBoards.map((board) => board.name).join("、")}`);
   }
   await loadFeatures().catch((e) => console.warn("loadFeatures failed:", e?.message));
+  await loadStorageConfig().catch((e) => console.warn("loadStorageConfig failed:", e?.message));
   startScheduler();
 });

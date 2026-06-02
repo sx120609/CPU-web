@@ -46,6 +46,16 @@ import {
   createDatabaseBackupSnapshot,
   getDatabaseBackupStatus,
 } from "../../services/databaseBackup";
+import {
+  getMediaStorageAdminConfig,
+  updateMediaStorageAdminConfig,
+} from "../../services/storageConfig";
+import {
+  buildOneDriveChinaAuthorization,
+  disconnectOneDriveChinaAuthorization,
+  listOneDriveChinaDriveOptions,
+  saveOneDriveChinaDriveSelection,
+} from "../../services/oneDriveChina";
 import { qqBotAdminRouter } from "./qqbot";
 
 export const adminRouter = Router();
@@ -1359,6 +1369,96 @@ adminRouter.get("/site-config", adminOnly, (_req, res) => {
 
 adminRouter.get("/site-config/prompt-defaults", adminOnly, (_req, res) => {
   ok(res, getSitePromptDefaults());
+});
+
+adminRouter.get("/media-storage", adminOnly, async (_req, res, next) => {
+  try {
+    ok(res, await getMediaStorageAdminConfig());
+  } catch (e) { next(e); }
+});
+
+const mediaStoragePatchSchema = z.object({
+  mediaStorageProvider: z.enum(["local", "onedrive-cn"]).optional(),
+  mediaStorageRemotePrefixes: z.union([z.string().trim().max(200), z.array(z.string().trim().min(1).max(80)).max(10)]).optional(),
+  oneDriveChinaClientId: z.string().trim().max(120).optional(),
+  oneDriveChinaClientSecret: z.string().trim().max(240).optional(),
+  clearOneDriveChinaClientSecret: z.boolean().optional(),
+  oneDriveChinaSharepointUrl: z.string().trim().max(500).optional(),
+  oneDriveChinaRootPath: z.string().trim().max(240).optional(),
+});
+
+adminRouter.patch("/media-storage", adminOnly, validate(mediaStoragePatchSchema), async (req, res, next) => {
+  try {
+    ok(res, await updateMediaStorageAdminConfig(req.body));
+  } catch (e: any) {
+    if (
+      e?.message === "SharePoint 地址格式不正确" ||
+      e?.message === "SharePoint 地址仅支持 http 或 https"
+    ) {
+      next(Errors.badRequest(e.message));
+      return;
+    }
+    next(e);
+  }
+});
+
+adminRouter.post("/media-storage/onedrive-cn/authorize", adminOnly, async (req, res, next) => {
+  try {
+    ok(res, await buildOneDriveChinaAuthorization({
+      requestOrigin: requestOrigin(req),
+      adminUserId: req.user!.userId,
+    }));
+  } catch (e: any) {
+    if (
+      e?.message === "请先填写 Azure 应用 ID" ||
+      e?.message === "请先填写 Azure 应用密钥" ||
+      e?.message === "请先填写 SharePoint 站点地址" ||
+      e?.message === "当前请求缺少可用站点域名，无法生成回调地址"
+    ) {
+      next(Errors.badRequest(e.message));
+      return;
+    }
+    next(e);
+  }
+});
+
+adminRouter.get("/media-storage/onedrive-cn/drives", adminOnly, async (_req, res, next) => {
+  try {
+    ok(res, await listOneDriveChinaDriveOptions());
+  } catch (e: any) {
+    if (
+      e?.message === "请先填写 SharePoint 站点地址" ||
+      e?.message === "请先在后台点击登录授权" ||
+      e?.message === "世纪互联 OneDrive / SharePoint 尚未完成授权"
+    ) {
+      next(Errors.badRequest(e.message));
+      return;
+    }
+    next(e);
+  }
+});
+
+const mediaStorageDriveSchema = z.object({
+  driveId: z.string().trim().min(1).max(160),
+});
+
+adminRouter.patch("/media-storage/onedrive-cn/drive", adminOnly, validate(mediaStorageDriveSchema), async (req, res, next) => {
+  try {
+    ok(res, await saveOneDriveChinaDriveSelection(req.body.driveId));
+  } catch (e: any) {
+    if (e?.message === "所选文档库不存在") {
+      next(Errors.badRequest(e.message));
+      return;
+    }
+    next(e);
+  }
+});
+
+adminRouter.delete("/media-storage/onedrive-cn/authorization", adminOnly, async (_req, res, next) => {
+  try {
+    await disconnectOneDriveChinaAuthorization();
+    ok(res, { ok: true });
+  } catch (e) { next(e); }
 });
 
 const siteConfigPatchSchema = z.object({

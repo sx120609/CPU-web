@@ -266,8 +266,10 @@ Vite 已代理以下路径到后端：
 
 - AI 文本审核、图片审核、匿名信誉阈值、站点域名等配置现在主要保存在数据库 `site_settings` 中，通过管理后台维护。
 - 生产部署时无需额外 Nginx 才能跑起来；构建后的前端静态资源会直接由 Express 提供。
-- 当 `MEDIA_STORAGE_PROVIDER=onedrive-cn` 时，命中的媒体资源会上传到世纪互联版 OneDrive / SharePoint，外部访问仍保持 `/uploads/...` 不变，由后端统一回源。
-- 推荐给该应用授予 Microsoft Graph 应用权限 `Files.ReadWrite.All`，如使用 SharePoint 文档库可一并授予 `Sites.ReadWrite.All`，并在世纪互联环境完成管理员同意。
+- 世纪互联版 OneDrive / SharePoint 媒体存储现在支持直接在管理后台配置：填写 Azure 应用 ID、密钥、SharePoint 站点地址后，点击“登录授权”完成回调授权，再选择文档库即可。
+- 回调地址固定为 `https://你的站点域名/api/storage/onedrive-cn/callback`；如果你在后台配置了“网站域名”，系统会优先用它生成回调地址。
+- 推荐在世纪互联环境给该应用授予 Microsoft Graph 委托权限 `offline_access`、`User.Read`、`Files.ReadWrite.All`、`Sites.ReadWrite.All`，并完成管理员同意。
+- `MEDIA_STORAGE_PROVIDER`、`ONEDRIVE_CN_*` 这些环境变量仍可作为旧的后备方式使用，但新的后台授权流程优先面向管理后台配置。
 
 ## 教务代理模式
 
