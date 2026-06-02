@@ -1500,13 +1500,18 @@ function replaceForwardDraftTemplate(currentDraft: string, template: string, nex
   return normalizeRenderedMessage(`${current.slice(0, index)}${next}${current.slice(index + previous.length)}`);
 }
 
+function hasForwardImagePlaceholders(content: string) {
+  const normalized = String(content || "");
+  return normalized.includes("[图片]") || normalized.includes("qq-forward-placeholder");
+}
+
 async function refreshForwardDraftContent(conversation: any) {
   const currentDraft = String(conversation?.draftContent || "").trim();
   const metadata = parseConversationMetadata(conversation?.metadata);
   const forwardId = String(conversation?.sourceMessageId || "").trim();
   if (conversation?.scene !== "forward-post" || !forwardId) return currentDraft;
   const forwardDraftTemplate = String(metadata.forwardDraftTemplate || "");
-  if (!forwardDraftTemplate.includes("[图片]")) return currentDraft;
+  if (!hasForwardImagePlaceholders(forwardDraftTemplate) && !hasForwardImagePlaceholders(currentDraft)) return currentDraft;
   const payloadSource = String(metadata.quotedPayloadSource || "").trim();
   let refreshed = "";
   if (payloadSource === "reply-message") {
