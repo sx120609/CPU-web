@@ -237,6 +237,20 @@ ensure_pm2() {
   fi
 }
 
+ensure_ffmpeg() {
+  if command -v ffmpeg >/dev/null 2>&1 && command -v ffprobe >/dev/null 2>&1; then
+    log "ffmpeg 已安装：$(ffmpeg -version 2>/dev/null | head -n 1)"
+    return
+  fi
+  if ! command -v sudo >/dev/null 2>&1; then
+    err "需要 sudo 才能安装 ffmpeg。请手动安装 ffmpeg / ffprobe 或以 root 运行此脚本"
+  fi
+  log "安装 ffmpeg（视频抽帧 / 转写预处理依赖）"
+  sudo apt-get update
+  sudo apt-get install -y ffmpeg
+  log "ffmpeg 已安装：$(ffmpeg -version 2>/dev/null | head -n 1)"
+}
+
 ensure_env() {
   if [ ! -f "$ENV_FILE" ]; then
     log "首次部署，创建 server/.env"
@@ -495,6 +509,7 @@ case "$CMD" in
   init|"")
     log "=== 首次部署模式 ==="
     ensure_node
+    ensure_ffmpeg
     ensure_env
     if ! runtime_uses_postgres; then
       do_postgres_init
@@ -507,6 +522,7 @@ case "$CMD" in
   update)
     log "=== 更新部署 ==="
     ensure_node
+    ensure_ffmpeg
     ensure_env
     runtime_uses_postgres || err "当前部署脚本已切换为 PostgreSQL-only。请先运行 ./deploy.sh postgres-init 或 ./deploy.sh postgres-config"
     do_update

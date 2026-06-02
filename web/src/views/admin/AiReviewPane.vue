@@ -192,7 +192,11 @@
             <span> · {{ row.hasAudio ? "有音轨" : "无音轨" }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="reason" label="原因" min-width="200" show-overflow-tooltip />
+        <el-table-column label="原因 / 异常" min-width="260" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.reason || row.lastError || row.detail || "-" }}
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="180">
           <template #default="{ row }">
             <div class="table-actions">

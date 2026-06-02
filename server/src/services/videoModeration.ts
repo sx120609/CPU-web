@@ -738,7 +738,7 @@ async function transcribeVideoAudio(filePath: string) {
   const endpoint = normalizeTranscriptionsUrl(config.imageReviewApiUrl);
   const tempDir = path.resolve(process.cwd(), "runtime", "video-review-audio");
   await mkdir(tempDir, { recursive: true });
-  const audioPath = path.join(tempDir, `${path.basename(filePath)}-${Date.now()}.mp3`);
+  const audioPath = path.join(tempDir, `${path.basename(filePath)}-${Date.now()}.wav`);
   try {
     await execFile("ffmpeg", [
       "-y",
@@ -749,8 +749,8 @@ async function transcribeVideoAudio(filePath: string) {
       "1",
       "-ar",
       "16000",
-      "-b:a",
-      "64k",
+      "-acodec",
+      "pcm_s16le",
       audioPath,
     ]);
     const audioBuffer = await readFile(audioPath);
@@ -758,7 +758,7 @@ async function transcribeVideoAudio(filePath: string) {
     const form = new FormData();
     form.append("model", VIDEO_TRANSCRIBE_MODEL);
     form.append("response_format", "json");
-    form.append("file", new Blob([audioBuffer], { type: "audio/mpeg" }), "video-audio.mp3");
+    form.append("file", new Blob([audioBuffer], { type: "audio/wav" }), "video-audio.wav");
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {

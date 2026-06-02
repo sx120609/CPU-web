@@ -101,11 +101,9 @@ function bindVideoPlayers() {
     linkBlock?.remove();
 
     try {
-      video.controls = false;
       const player = new Artplayer({
         container: playerMount,
         url: src,
-        proxy: () => video,
         poster: video.getAttribute("poster") || undefined,
         theme: "#168776",
         volume: 0.8,
@@ -132,7 +130,8 @@ function bindVideoPlayers() {
       });
       videoPlayers.push(player);
       shell.dataset.playerIndex = String(index);
-    } catch {
+    } catch (error) {
+      console.warn("[markdown-video] artplayer init failed", error);
       shell.classList.add("is-fallback");
       playerMount.replaceWith(fallbackVideo);
     }
