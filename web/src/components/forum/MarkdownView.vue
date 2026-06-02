@@ -4,6 +4,7 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, nextTick, watch, onBeforeUnmount } from "vue";
+import Artplayer from "artplayer";
 import Viewer from "viewerjs";
 import "viewerjs/dist/viewer.css";
 import { renderMarkdown } from "@/utils/markdown";
@@ -19,6 +20,7 @@ const renderedHtml = computed(() => enhanceRenderedHtml(renderMarkdown(props.con
 const el = ref<HTMLElement | null>(null);
 const viewerImageUrl = ref("");
 let imageViewer: Viewer | null = null;
+let videoPlayers: Artplayer[] = [];
 
 function wrapTables() {
   if (!el.value) return;
@@ -67,6 +69,69 @@ function bindImageViewer() {
   });
 
   if (!props.clickableImages || !images.length) return;
+}
+
+function bindVideoPlayers() {
+  if (!el.value) return;
+  destroyVideoPlayers();
+  const videos = Array.from(el.value.querySelectorAll<HTMLVideoElement>("video.qq-inline-video"));
+  videos.forEach((video, index) => {
+    const src = video.getAttribute("src") || video.currentSrc || video.src;
+    if (!src) return;
+    const fallbackVideo = video.cloneNode(true) as HTMLVideoElement;
+    fallbackVideo.controls = true;
+    fallbackVideo.preload = "metadata";
+    fallbackVideo.playsInline = true;
+
+    const shell = document.createElement("div");
+    shell.className = "md-video-shell";
+    const playerMount = document.createElement("div");
+    playerMount.className = "md-video-player";
+    shell.appendChild(playerMount);
+
+    const linkBlock = video.nextElementSibling instanceof HTMLParagraphElement
+      && video.nextElementSibling.querySelector(".qq-inline-video__link")
+      ? video.nextElementSibling
+      : null;
+
+    video.replaceWith(shell);
+    if (linkBlock) shell.appendChild(linkBlock);
+
+    try {
+      const player = new Artplayer({
+        container: playerMount,
+        url: src,
+        poster: video.getAttribute("poster") || undefined,
+        theme: "#168776",
+        volume: 0.8,
+        autoplay: false,
+        autoSize: true,
+        playbackRate: true,
+        aspectRatio: true,
+        setting: true,
+        pip: true,
+        mutex: true,
+        backdrop: true,
+        fullscreen: true,
+        fullscreenWeb: true,
+        miniProgressBar: true,
+        playsInline: true,
+        airplay: true,
+        moreVideoAttr: {
+          preload: "metadata",
+          playsInline: true,
+        },
+      });
+      player.on("ready", () => {
+        player.autoSize();
+      });
+      videoPlayers.push(player);
+      shell.dataset.playerIndex = String(index);
+    } catch {
+      shell.classList.add("is-fallback");
+      playerMount.replaceWith(fallbackVideo);
+    }
+  });
 }
 
 function wrapImageAlbums() {
@@ -351,6 +416,18 @@ function destroyImageViewer() {
   viewerImageUrl.value = "";
 }
 
+function destroyVideoPlayers() {
+  if (!videoPlayers.length) return;
+  for (const player of videoPlayers) {
+    try {
+      player.destroy(false);
+    } catch {
+      // ignore player cleanup failure
+    }
+  }
+  videoPlayers = [];
+}
+
 function getViewerImageUrl(image: HTMLImageElement) {
   return image.dataset.original || image.getAttribute("src") || image.currentSrc || image.src;
 }
@@ -408,12 +485,17 @@ function blobToDataUrl(blob: Blob) {
 }
 
 onMounted(wrapTables);
-onMounted(() => nextTick(bindImageViewer));
+onMounted(() => nextTick(() => {
+  bindVideoPlayers();
+  bindImageViewer();
+}));
 onBeforeUnmount(() => {
   destroyImageViewer();
+  destroyVideoPlayers();
 });
 watch(renderedHtml, () => nextTick(() => {
   wrapTables();
+  bindVideoPlayers();
   bindImageViewer();
 }));
 watch(() => props.clickableImages, () => nextTick(() => {
@@ -579,6 +661,31 @@ watch(() => props.clickableImages, () => nextTick(() => {
   border-radius: 14px;
   background: #020617;
   box-shadow: 0 14px 32px rgba(15, 23, 42, 0.12);
+}
+.md :deep(.md-video-shell) {
+  width: min(100%, 720px);
+  max-width: 100%;
+  margin: 14px 0;
+  border-radius: 18px;
+}
+.md :deep(.md-video-player) {
+  width: 100%;
+  overflow: hidden;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top, rgba(22, 135, 118, 0.14), transparent 48%),
+    linear-gradient(180deg, #0f172a 0%, #020617 100%);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+}
+.md :deep(.md-video-shell.is-fallback) {
+  border-radius: 14px;
+}
+.md :deep(.qq-inline-video__link) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #275df3;
 }
 .md-clickable-images :deep(img) {
   cursor: zoom-in;
@@ -841,6 +948,11 @@ watch(() => props.clickableImages, () => nextTick(() => {
   .md :deep(video) {
     width: 100%;
     border-radius: 12px;
+  }
+
+  .md :deep(.md-video-shell),
+  .md :deep(.md-video-player) {
+    border-radius: 14px;
   }
 
   .md :deep(.qq-forward-card) {
