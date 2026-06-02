@@ -80,6 +80,7 @@ function bindVideoPlayers() {
     const src = getVideoSourceUrl(video);
     if (!src) return;
     syncVideoAspectRatio(video);
+    const poster = String(video.getAttribute("poster") || "").trim();
     const fallbackVideo = video.cloneNode(true) as HTMLVideoElement;
     fallbackVideo.controls = true;
     fallbackVideo.preload = "metadata";
@@ -104,7 +105,6 @@ function bindVideoPlayers() {
       const player = new Artplayer({
         container: playerMount,
         url: src,
-        poster: video.getAttribute("poster") || undefined,
         theme: "#168776",
         volume: 0.8,
         autoplay: false,
@@ -124,6 +124,7 @@ function bindVideoPlayers() {
           preload: "metadata",
           playsInline: true,
         },
+        ...(poster ? { poster } : {}),
       });
       player.on("ready", () => {
         player.autoSize();
