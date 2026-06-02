@@ -1,5 +1,36 @@
 <template>
-  <div class="topic-page" v-if="topic" v-loading="loading">
+  <div v-if="loading && !topic" class="topic-page topic-page-loading" aria-busy="true">
+    <article class="cpu-card topic-skeleton-card">
+      <el-skeleton animated>
+        <template #template>
+          <div class="topic-skeleton-head">
+            <el-skeleton-item variant="text" class="topic-skeleton-back" />
+            <div class="topic-skeleton-actions">
+              <el-skeleton-item variant="button" />
+              <el-skeleton-item variant="button" />
+            </div>
+          </div>
+          <el-skeleton-item variant="h1" class="topic-skeleton-title" />
+          <div class="topic-skeleton-meta">
+            <el-skeleton-item variant="circle" class="topic-skeleton-avatar" />
+            <div class="topic-skeleton-meta-copy">
+              <el-skeleton-item variant="text" class="topic-skeleton-author" />
+              <el-skeleton-item variant="text" class="topic-skeleton-submeta" />
+            </div>
+          </div>
+          <div class="topic-skeleton-body">
+            <el-skeleton-item v-for="index in 5" :key="index" variant="text" class="topic-skeleton-line" />
+          </div>
+        </template>
+      </el-skeleton>
+    </article>
+
+    <section class="cpu-card topic-skeleton-card">
+      <el-skeleton animated :rows="4" />
+    </section>
+  </div>
+
+  <div v-else-if="topic" class="topic-page">
     <!-- 主帖 -->
     <article class="cpu-card main-post">
       <header class="post-head">
@@ -153,35 +184,41 @@
     <!-- 回复列表 -->
     <section class="replies cpu-card" ref="repliesEl">
       <h3 class="cpu-section-title">{{ topic.replyCount }} 条回复</h3>
-      <el-empty v-if="!replies.length" description="还没有回复，来聊两句吧" />
-      <div v-for="r in replies" :id="`reply-${r.id}`" :key="r.id" class="reply">
-        <UserAvatar :size="32" class="avatar" :src="r.author?.avatar" :name="r.author?.nickname" alt="回复头像" />
-        <div class="reply-body">
-          <div class="reply-meta">
-            <span class="floor">#{{ r.floor }}</span>
-            <router-link v-if="r.author?.id" :to="`/u/${r.author.id}`" class="author">{{ r.author?.nickname }}</router-link>
-            <span v-else class="author">{{ r.author?.nickname }}</span>
-            <el-tag v-if="r.isAnonymous" size="small" type="warning" effect="plain">匿名</el-tag>
-            <UserModerationActions
-              v-if="replyModerationUser(r)"
-              :user="replyModerationUser(r)"
-              display="dropdown"
-              text
-              label="管理"
-              @updated="applyReplyAuthorModeration(r, $event)"
-            />
-            <span class="dot">·</span>
-            <span>{{ fmtRelative(r.createdAt) }}</span>
-          </div>
-          <MarkdownView :content="r.content" class="reply-content topic-markdown reply-markdown" clickable-images />
-          <div class="reply-actions">
-            <el-button text size="small" @click="quoteReply(r)">引用</el-button>
-            <el-button v-if="canEditReply(r)" text size="small" @click="editReply(r)">编辑</el-button>
-            <el-button v-if="canEditReply(r)" text size="small" type="danger" @click="removeReply(r)">删除</el-button>
-            <el-button text size="small" @click="onLikeReply(r)">👍 {{ r.likeCount }}</el-button>
+      <div v-if="repliesLoading" class="replies-loading" aria-busy="true">
+        <el-skeleton animated :rows="3" />
+        <el-skeleton animated :rows="3" />
+      </div>
+      <el-empty v-else-if="!replies.length" description="还没有回复，来聊两句吧" />
+      <template v-else>
+        <div v-for="r in replies" :id="`reply-${r.id}`" :key="r.id" class="reply">
+          <UserAvatar :size="32" class="avatar" :src="r.author?.avatar" :name="r.author?.nickname" alt="回复头像" />
+          <div class="reply-body">
+            <div class="reply-meta">
+              <span class="floor">#{{ r.floor }}</span>
+              <router-link v-if="r.author?.id" :to="`/u/${r.author.id}`" class="author">{{ r.author?.nickname }}</router-link>
+              <span v-else class="author">{{ r.author?.nickname }}</span>
+              <el-tag v-if="r.isAnonymous" size="small" type="warning" effect="plain">匿名</el-tag>
+              <UserModerationActions
+                v-if="replyModerationUser(r)"
+                :user="replyModerationUser(r)"
+                display="dropdown"
+                text
+                label="管理"
+                @updated="applyReplyAuthorModeration(r, $event)"
+              />
+              <span class="dot">·</span>
+              <span>{{ fmtRelative(r.createdAt) }}</span>
+            </div>
+            <MarkdownView :content="r.content" class="reply-content topic-markdown reply-markdown" clickable-images />
+            <div class="reply-actions">
+              <el-button text size="small" @click="quoteReply(r)">引用</el-button>
+              <el-button v-if="canEditReply(r)" text size="small" @click="editReply(r)">编辑</el-button>
+              <el-button v-if="canEditReply(r)" text size="small" type="danger" @click="removeReply(r)">删除</el-button>
+              <el-button text size="small" @click="onLikeReply(r)">👍 {{ r.likeCount }}</el-button>
+            </div>
           </div>
         </div>
-      </div>
+      </template>
     </section>
 
     <el-dialog
@@ -417,6 +454,12 @@
       <router-link to="/login">登录</router-link> 或 <router-link to="/register">注册</router-link> 后参与回复
     </div>
   </div>
+
+  <div v-else class="topic-page topic-page-empty">
+    <section class="cpu-card topic-empty-card">
+      <el-empty description="帖子不存在或暂时不可见" />
+    </section>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -446,6 +489,7 @@ const auth = useAuthStore();
 const topic = ref<Topic | null>(null);
 const replies = ref<Reply[]>([]);
 const loading = ref(false);
+const repliesLoading = ref(false);
 const replying = ref(false);
 const replyText = ref("");
 const replyAnonymous = ref(false);
@@ -618,9 +662,13 @@ watch(replyDialogOpen, (open) => {
 
 async function load() {
   loading.value = true;
+  repliesLoading.value = true;
+  replies.value = [];
+  liked.value = false;
   try {
     const id = Number(route.params.id);
     topic.value = await loadTopicDetail(id);
+    loading.value = false;
     if (!topic.value) {
       replies.value = [];
       return;
@@ -639,7 +687,10 @@ async function load() {
       const set = new Set(mine.replies);
       replies.value.forEach((r: any) => (r._liked = set.has(r.id)));
     }
-  } finally { loading.value = false; }
+  } finally {
+    loading.value = false;
+    repliesLoading.value = false;
+  }
 }
 
 async function loadTopicDetail(id: number) {
@@ -1102,6 +1153,75 @@ async function onDelete() {
 
 .cpu-card { background: #fff; border-radius: 12px; padding: 20px 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
 
+.topic-page-loading,
+.topic-page-empty {
+  min-height: 360px;
+}
+
+.topic-skeleton-card {
+  .el-skeleton {
+    width: 100%;
+  }
+}
+
+.topic-skeleton-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.topic-skeleton-back {
+  width: 120px;
+}
+
+.topic-skeleton-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.topic-skeleton-title {
+  width: min(100%, 480px);
+  height: 30px;
+  margin-bottom: 18px;
+}
+
+.topic-skeleton-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.topic-skeleton-avatar {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+
+.topic-skeleton-meta-copy {
+  flex: 1;
+}
+
+.topic-skeleton-author {
+  width: 160px;
+  margin-bottom: 8px;
+}
+
+.topic-skeleton-submeta {
+  width: min(100%, 280px);
+}
+
+.topic-skeleton-body {
+  display: grid;
+  gap: 10px;
+}
+
+.topic-skeleton-line:last-child {
+  width: 72%;
+}
+
 .main-post {
   .post-head {
     display: flex;
@@ -1281,6 +1401,11 @@ async function onDelete() {
 }
 
 .replies {
+  .replies-loading {
+    display: grid;
+    gap: 16px;
+  }
+
   .reply {
     display: flex;
     gap: 12px;
@@ -1811,6 +1936,15 @@ async function onDelete() {
 @media (max-width: 700px) {
   .topic-page {
     gap: 12px;
+  }
+
+  .topic-skeleton-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .topic-skeleton-actions {
+    width: 100%;
   }
 
   .cpu-card {

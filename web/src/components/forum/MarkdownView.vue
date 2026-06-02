@@ -40,6 +40,7 @@ function bindImageViewer() {
   destroyImageViewer();
   images.forEach((img, index) => {
     primeImageElement(img);
+    decorateImageElement(img);
     if (props.clickableImages) {
       img.dataset.previewBound = "1";
       img.tabIndex = 0;
@@ -83,6 +84,83 @@ function primeImageElement(img: HTMLImageElement) {
   img.setAttribute("fetchpriority", "low");
   const rawSrc = img.getAttribute("src") || img.dataset.original || img.currentSrc || img.src;
   if (rawSrc) img.dataset.original = rawSrc;
+}
+
+function decorateImageElement(img: HTMLImageElement) {
+  const shell = ensureImageShell(img);
+  syncImageShellMetrics(img, shell);
+  if (img.dataset.loadBound === "1") {
+    syncImageLoadState(img, shell);
+    return;
+  }
+  const updateState = () => {
+    syncImageShellMetrics(img, shell);
+    syncImageLoadState(img, shell);
+  };
+  img.addEventListener("load", updateState);
+  img.addEventListener("error", updateState);
+  img.dataset.loadBound = "1";
+  syncImageLoadState(img, shell);
+}
+
+function ensureImageShell(img: HTMLImageElement) {
+  const existingShell = img.parentElement?.classList.contains("md-image-shell")
+    ? img.parentElement as HTMLSpanElement
+    : null;
+  const shell = existingShell ?? document.createElement("span");
+  if (!existingShell) {
+    shell.className = "md-image-shell";
+    const placeholder = document.createElement("span");
+    placeholder.className = "md-image-shell__placeholder";
+    placeholder.setAttribute("aria-hidden", "true");
+    const state = document.createElement("span");
+    state.className = "md-image-shell__state";
+    state.textContent = "图片加载失败";
+    state.setAttribute("aria-hidden", "true");
+    const parent = img.parentNode;
+    if (!parent) return shell;
+    parent.insertBefore(shell, img);
+    shell.appendChild(placeholder);
+    shell.appendChild(state);
+    shell.appendChild(img);
+  }
+  const align = img.dataset.align || "";
+  const size = img.dataset.size || "";
+  if (align) shell.setAttribute("data-align", align);
+  else shell.removeAttribute("data-align");
+  if (size) shell.setAttribute("data-size", size);
+  else shell.removeAttribute("data-size");
+  return shell;
+}
+
+function syncImageShellMetrics(img: HTMLImageElement, shell: HTMLSpanElement) {
+  const max = getImageMaxBounds(img);
+  const naturalWidth = img.naturalWidth;
+  const naturalHeight = img.naturalHeight;
+  if (!naturalWidth || !naturalHeight) {
+    shell.style.setProperty("--md-image-target-width", `${max.width}px`);
+    shell.style.setProperty("--md-image-aspect-ratio", `${max.width} / ${max.height}`);
+    return;
+  }
+  const scale = Math.min(max.width / naturalWidth, max.height / naturalHeight, 1);
+  const width = Math.max(48, Math.round(naturalWidth * scale));
+  const height = Math.max(48, Math.round(naturalHeight * scale));
+  shell.style.setProperty("--md-image-target-width", `${width}px`);
+  shell.style.setProperty("--md-image-aspect-ratio", `${width} / ${height}`);
+}
+
+function syncImageLoadState(img: HTMLImageElement, shell: HTMLSpanElement) {
+  const ready = img.complete && img.naturalWidth > 0 && img.naturalHeight > 0;
+  const failed = img.complete && !ready;
+  shell.classList.toggle("is-ready", ready);
+  shell.classList.toggle("is-loading", !ready && !failed);
+  shell.classList.toggle("is-error", failed);
+}
+
+function getImageMaxBounds(img: HTMLImageElement) {
+  if (img.dataset.size === "small") return { width: 180, height: 140 };
+  if (img.dataset.size === "medium") return { width: 220, height: 180 };
+  return { width: 220, height: 180 };
 }
 
 function openImagePreview(index: number) {
@@ -285,12 +363,77 @@ watch(() => props.clickableImages, () => nextTick(() => {
 }
 .md :deep(pre code) { background: transparent; padding: 0; color: inherit; }
 .md :deep(a) { color: var(--cpu-primary); text-decoration: underline; }
-.md :deep(img) {
-  max-width: min(100%, 220px);
-  max-height: 180px;
-  border-radius: 8px;
+.md :deep(.md-image-shell) {
+  position: relative;
+  display: inline-flex;
+  width: min(100%, var(--md-image-target-width, 220px));
+  max-width: 100%;
+  aspect-ratio: var(--md-image-aspect-ratio, 11 / 9);
   margin: 8px 0;
+  border-radius: 12px;
+  overflow: hidden;
+  vertical-align: top;
+  background: #f8fafc;
+}
+.md :deep(.md-image-shell[data-align="left"]) {
+  display: flex;
+  margin-left: 0;
+  margin-right: auto;
+}
+.md :deep(.md-image-shell[data-align="center"]) {
+  display: flex;
+  margin-left: auto;
+  margin-right: auto;
+}
+.md :deep(.md-image-shell[data-align="right"]) {
+  display: flex;
+  margin-left: auto;
+  margin-right: 0;
+}
+.md :deep(.md-image-shell__placeholder),
+.md :deep(.md-image-shell__state) {
+  position: absolute;
+  inset: 0;
+}
+.md :deep(.md-image-shell__placeholder) {
+  background:
+    linear-gradient(110deg, rgba(255, 255, 255, 0) 24%, rgba(255, 255, 255, 0.78) 48%, rgba(255, 255, 255, 0) 72%),
+    linear-gradient(135deg, #eef2f7 0%, #e2e8f0 100%);
+  background-size: 220% 100%, 100% 100%;
+  animation: md-image-shimmer 1.15s linear infinite;
+}
+.md :deep(.md-image-shell__state) {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  color: #94a3b8;
+  font-size: 12px;
+  text-align: center;
+  background: rgba(248, 250, 252, 0.92);
+}
+.md :deep(.md-image-shell img) {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 8px;
   object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+.md :deep(.md-image-shell.is-ready img) {
+  opacity: 1;
+}
+.md :deep(.md-image-shell.is-ready .md-image-shell__placeholder) {
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+.md :deep(.md-image-shell.is-error .md-image-shell__placeholder) {
+  animation: none;
+  background: linear-gradient(135deg, #f8fafc 0%, #eef2f7 100%);
+}
+.md :deep(.md-image-shell.is-error .md-image-shell__state) {
+  display: flex;
 }
 .md-clickable-images :deep(img) {
   cursor: zoom-in;
@@ -310,9 +453,6 @@ watch(() => props.clickableImages, () => nextTick(() => {
   max-width: min(100%, 220px) !important;
   max-height: 180px !important;
 }
-.md :deep(img[data-align="left"]) { display: block; margin-left: 0; margin-right: auto; }
-.md :deep(img[data-align="center"]) { display: block; margin-left: auto; margin-right: auto; }
-.md :deep(img[data-align="right"]) { display: block; margin-left: auto; margin-right: 0; }
 .md :deep(.image-review-placeholder) {
   display: inline-flex;
   align-items: center;
@@ -422,6 +562,15 @@ watch(() => props.clickableImages, () => nextTick(() => {
 }
 .md :deep(.qq-share-card__action-link::after) {
   content: " ↗";
+}
+
+@keyframes md-image-shimmer {
+  0% {
+    background-position: 200% 0, 0 0;
+  }
+  100% {
+    background-position: -20% 0, 0 0;
+  }
 }
 
 /* 表格容器（由 JS 自动包装）：只在表格超宽时才出现水平滚动条 */
