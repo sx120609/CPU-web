@@ -88,10 +88,15 @@ type OneBotEvent = {
   post_type?: string;
   self_id?: number | string;
   message_type?: "private" | "group";
+  request_type?: "friend" | "group";
+  notice_type?: string;
   sub_type?: string;
   user_id?: number | string;
   group_id?: number | string;
   message_id?: number | string;
+  flag?: string;
+  comment?: string;
+  request_id?: number | string;
   message?: unknown;
   raw_message?: string;
   sender?: { nickname?: string; card?: string; user_id?: number | string };
@@ -399,6 +404,12 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await logQqBotMessage({ direction: "inbound", eventType: "webhook", status: "ignored", result: "QQBot 未启用", rawPayload: event });
     return { ignored: true };
   }
+  if (event.post_type === "request") {
+    return handleQqBotRequestEvent(event, config);
+  }
+  if (event.post_type === "notice") {
+    return handleQqBotNoticeEvent(event, config);
+  }
   if (event.post_type !== "message") {
     await logQqBotMessage({ direction: "inbound", eventType: event.post_type || "event", status: "ignored", rawPayload: event });
     return { ignored: true };
@@ -533,6 +544,173 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     rawPayload: event,
   });
   return { ignored: true };
+}
+
+async function handleQqBotRequestEvent(
+  event: OneBotEvent,
+  config: Awaited<ReturnType<typeof getQqBotConfigRaw>>,
+) {
+  const qqId = event.user_id ? String(event.user_id) : "";
+  const groupId = event.group_id ? String(event.group_id) : undefined;
+  const requestType = String(event.request_type || "").trim();
+  const subType = String(event.sub_type || "").trim();
+  const flag = String(event.flag || "").trim();
+  if (!flag || !requestType) {
+    await logQqBotMessage({
+      direction: "inbound",
+      eventType: "request",
+      status: "ignored",
+      qqId,
+      groupId,
+      result: "request 缺少 flag 或 request_type",
+      rawPayload: event,
+    });
+    return { ignored: true };
+  }
+  if (requestType === "friend") {
+    await callQqBotAction("set_friend_add_request", {
+      flag,
+      approve: true,
+      remark: "CPU Web 用户",
+    });
+    await logQqBotMessage({
+      direction: "inbound",
+      eventType: "friend-request",
+      status: "ok",
+      qqId,
+      result: "已自动通过好友申请",
+      rawPayload: event,
+    });
+    return { ok: true, autoAccepted: "friend" };
+  }
+  if (requestType === "group" && subType === "invite") {
+    await callQqBotAction("set_group_add_request", {
+      flag,
+      sub_type: "invite",
+      approve: true,
+    });
+    await ensureQqBotPostingGroup({
+      groupId,
+      config,
+      preferredName: extractQqBotGroupName(event),
+      source: "invite-request",
+    });
+    await logQqBotMessage({
+      direction: "inbound",
+      eventType: "group-invite",
+      status: "ok",
+      qqId,
+      groupId,
+      result: "已自动通过群聊邀请，并设为投稿群",
+      rawPayload: event,
+    });
+    return { ok: true, autoAccepted: "group-invite" };
+  }
+  await logQqBotMessage({
+    direction: "inbound",
+    eventType: "request",
+    status: "ignored",
+    qqId,
+    groupId,
+    result: `未处理的 request：${requestType}${subType ? `/${subType}` : ""}`,
+    rawPayload: event,
+  });
+  return { ignored: true };
+}
+
+async function handleQqBotNoticeEvent(
+  event: OneBotEvent,
+  config: Awaited<ReturnType<typeof getQqBotConfigRaw>>,
+) {
+  const qqId = event.user_id ? String(event.user_id) : "";
+  const groupId = event.group_id ? String(event.group_id) : undefined;
+  if (
+    event.notice_type === "group_increase"
+    && groupId
+    && event.self_id
+    && String(event.user_id || "") === String(event.self_id)
+  ) {
+    await ensureQqBotPostingGroup({
+      groupId,
+      config,
+      preferredName: extractQqBotGroupName(event),
+      source: "group-increase",
+    });
+    await logQqBotMessage({
+      direction: "inbound",
+      eventType: "group-increase",
+      status: "ok",
+      qqId,
+      groupId,
+      result: "机器人已入群，已同步为投稿群",
+      rawPayload: event,
+    });
+    return { ok: true, synced: "group" };
+  }
+  await logQqBotMessage({
+    direction: "inbound",
+    eventType: event.notice_type || "notice",
+    status: "ignored",
+    qqId,
+    groupId,
+    rawPayload: event,
+  });
+  return { ignored: true };
+}
+
+async function ensureQqBotPostingGroup(input: {
+  groupId?: string;
+  config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
+  preferredName?: string | null;
+  source: "invite-request" | "group-increase";
+}) {
+  const groupId = String(input.groupId || "").trim();
+  if (!groupId) return null;
+  const boardSlug = String(input.config.defaultBoardSlug || "").trim() || "general";
+  const groupName = await resolveQqBotGroupName(groupId, input.preferredName);
+  return prisma.qqBotGroup.upsert({
+    where: { groupId },
+    create: {
+      groupId,
+      name: groupName,
+      enabled: true,
+      allowPosting: true,
+      defaultBoardSlug: boardSlug,
+      notificationEnabled: false,
+      notifyCategories: JSON.stringify(DEFAULT_GROUP_NOTIFY_CATEGORIES),
+      notifyAudiences: JSON.stringify(DEFAULT_GROUP_NOTIFY_AUDIENCES),
+    },
+    update: {
+      name: groupName ?? undefined,
+      enabled: true,
+      allowPosting: true,
+      defaultBoardSlug: boardSlug,
+    },
+  });
+}
+
+function extractQqBotGroupName(event: OneBotEvent) {
+  const payload = event as Record<string, any>;
+  return String(
+    payload?.group_name
+    || payload?.group?.group_name
+    || payload?.group?.name
+    || payload?.name
+    || "",
+  ).trim() || null;
+}
+
+async function resolveQqBotGroupName(groupId: string, fallback?: string | null) {
+  const preferred = String(fallback || "").trim();
+  if (preferred) return preferred.slice(0, 80);
+  const payload = await callQqBotAction("get_group_info", { group_id: Number(groupId) || groupId, no_cache: true }).catch(() => null);
+  const name = String(
+    payload?.data?.group_name
+    || payload?.data?.groupName
+    || payload?.group_name
+    || "",
+  ).trim();
+  return name ? name.slice(0, 80) : null;
 }
 
 async function handleNaturalLanguageMessage(context: {
