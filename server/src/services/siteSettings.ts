@@ -7,6 +7,7 @@
  * 默认值：全部为 on（即不破坏现有上线体验）。
  */
 import { prisma } from "../prisma";
+import { broadcastSiteSettingsReload } from "./runtimeBroadcast";
 import { normalizeFallbackModelList } from "./modelFallback";
 
 export type FeatureKey = "forum" | "market" | "coursereview" | "electric" | "sponsor";
@@ -683,6 +684,7 @@ export async function setFeature(f: FeatureKey, on: boolean): Promise<void> {
     create: { key: keyOf(f), value },
   });
   cache[f] = on;
+  await broadcastSiteSettingsReload();
 }
 
 export async function setGlobalPinnedTopicIds(ids: number[]): Promise<number[]> {
@@ -693,6 +695,7 @@ export async function setGlobalPinnedTopicIds(ids: number[]): Promise<number[]> 
     create: { key: GLOBAL_PINNED_TOPICS_KEY, value: JSON.stringify(normalized) },
   });
   globalPinnedTopicIdsCache = normalized;
+  await broadcastSiteSettingsReload();
   return getGlobalPinnedTopicIds();
 }
 
@@ -714,6 +717,7 @@ export async function setSiteOrigin(input: string | null | undefined): Promise<S
     create: { key: SITE_ORIGIN_KEY, value: siteOrigin },
   });
   configCache.siteOrigin = siteOrigin;
+  await broadcastSiteSettingsReload();
   return getSiteConfig();
 }
 
@@ -1114,6 +1118,7 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
   ]);
   Object.assign(configCache, next);
   sanitizeAiReviewConfig();
+  await broadcastSiteSettingsReload();
   return getSiteConfig();
 }
 
@@ -1196,6 +1201,7 @@ export async function setCommunityTrustConfig(input: Partial<SiteConfig>): Promi
   ]);
   Object.assign(configCache, next);
   sanitizeCommunityTrustConfig();
+  await broadcastSiteSettingsReload();
   return getSiteConfig();
 }
 

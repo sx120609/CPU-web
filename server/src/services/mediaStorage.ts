@@ -12,6 +12,8 @@ import {
   resolveOneDriveChinaDirectDownloadUrl,
   uploadOneDriveChinaFile,
 } from "./oneDriveChina";
+import { getCachedJson, setCachedJson } from "./cache";
+import { buildRedisKey } from "./redis";
 import { getMediaStorageRuntimeConfig, getMediaStorageRuntimeConfigSync } from "./storageConfig";
 
 const CACHE_CONTROL_VALUE = "public, max-age=2592000, immutable";
@@ -111,6 +113,11 @@ const mediaCacheRoot = path.resolve(process.cwd(), "runtime", "media-cache");
 const remotePublicUrlCache = new Map<string, { url: string; expiresAt: number }>();
 const remotePublicUrlPromises = new Map<string, Promise<string>>();
 
+export function resetMediaStorageRuntimeCaches() {
+  remotePublicUrlCache.clear();
+  remotePublicUrlPromises.clear();
+}
+
 export function buildUploadUrl(relativePath: string) {
   return `/uploads/${normalizeUploadRelativePath(relativePath)}`;
 }
@@ -137,13 +144,29 @@ export async function ensureMediaLocalPathFromUploadUrl(url: string) {
 export async function resolveMediaPublicUrl(url: string) {
   const relativePath = relativeUploadPathFromUrl(url);
   if (!relativePath) return String(url || "").trim();
-  if (!(await shouldUseRemoteMediaStorage(relativePath))) {
+  const runtime = await getMediaStorageRuntimeConfig();
+  const usesRemote = runtime.effectiveProvider === "onedrive-cn"
+    && pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes);
+  if (!usesRemote) {
     return buildUploadUrl(relativePath);
   }
 
   const cached = remotePublicUrlCache.get(relativePath);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.url;
+  }
+
+  const remoteDriveKey = runtime.oneDriveChinaDriveId.trim()
+    || runtime.legacyDriveId.trim()
+    || "default";
+  const sharedCacheKey = buildRedisKey("media-public-url", remoteDriveKey, relativePath);
+  const sharedCachedUrl = await getCachedJson<string>(sharedCacheKey);
+  if (sharedCachedUrl) {
+    remotePublicUrlCache.set(relativePath, {
+      url: sharedCachedUrl,
+      expiresAt: Date.now() + REMOTE_PUBLIC_URL_CACHE_TTL_MS,
+    });
+    return sharedCachedUrl;
   }
 
   const existingPromise = remotePublicUrlPromises.get(relativePath);
@@ -158,6 +181,7 @@ export async function resolveMediaPublicUrl(url: string) {
           url: directUrl,
           expiresAt: Date.now() + REMOTE_PUBLIC_URL_CACHE_TTL_MS,
         });
+        await setCachedJson(sharedCacheKey, directUrl, REMOTE_PUBLIC_URL_CACHE_TTL_MS).catch(() => undefined);
       }
       return resolved;
     } catch {

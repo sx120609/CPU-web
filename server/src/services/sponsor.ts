@@ -1,4 +1,5 @@
 import { prisma } from "../prisma";
+import { runWithDistributedLock } from "./cache";
 import { amountCentsToMoney, moneyToAmountCents } from "./epay";
 
 const SPONSOR_CONFIG_KEY = "sponsor.config";
@@ -148,7 +149,7 @@ export function startSponsorOrderExpiryPoller() {
   if (sponsorOrderExpiryPollerStarted) return;
   sponsorOrderExpiryPollerStarted = true;
   const tick = () => {
-    closeExpiredSponsorOrders().catch((error) => {
+    runWithDistributedLock("sponsor-order-expiry:tick", 4 * 60_000, async () => closeExpiredSponsorOrders()).catch((error) => {
       console.warn("[sponsor] close expired orders failed", error);
     });
   };

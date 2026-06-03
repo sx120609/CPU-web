@@ -2,10 +2,12 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma";
 import { ok, Errors } from "../utils/response";
+import { withCache } from "../services/cache";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { getGrades, getPyfa } from "../services/jwxtTransport";
 import type { GradeRow, PyfaCourse } from "../services/jwxtParser";
+import { invalidateCourseCaches } from "../services/cacheInvalidation";
 import { isFeatureOn } from "../services/siteSettings";
 import { ensureForumAccessEnabled, forumAccessErrorMessage, resolveForumAccess } from "../services/forumAccess";
 import { verifyToken } from "../utils/jwt";
@@ -68,14 +70,23 @@ courseRouter.get("/", async (req, res, next) => {
       { courseTeachers: { some: { teacher: { name: { contains: q } } } } },
     ];
 
-    const list = await prisma.course.findMany({
-      where,
-      orderBy: [{ ratingCount: "desc" }, { id: "asc" }],
-      take: 200,
-      include: {
-        courseTeachers: { include: { teacher: true } },
-      },
-    });
+    const list = mine
+      ? await prisma.course.findMany({
+          where,
+          orderBy: [{ ratingCount: "desc" }, { id: "asc" }],
+          take: 200,
+          include: {
+            courseTeachers: { include: { teacher: true } },
+          },
+        })
+      : await withCache("courses", ["list", q || ""], 5 * 60_000, async () => prisma.course.findMany({
+          where,
+          orderBy: [{ ratingCount: "desc" }, { id: "asc" }],
+          take: 200,
+          include: {
+            courseTeachers: { include: { teacher: true } },
+          },
+        }));
     ok(res, list.map(withTeachers));
   } catch (e) { next(e); }
 });
@@ -85,21 +96,21 @@ courseRouter.get("/:id", async (req, res, next) => {
     assertCourseReviewEnabled();
     await ensureCanReadCourseReview(req);
     const id = Number(req.params.id);
-    const course = await prisma.course.findUnique({
+    const course = await withCache("courses", ["detail", id], 5 * 60_000, async () => prisma.course.findUnique({
       where: { id },
       include: {
         courseTeachers: { include: { teacher: true } },
       },
-    });
+    }));
     if (!course) return res.status(404).json({ code: 4004, data: null, message: "课程不存在" });
-    const ratings = await prisma.courseRating.findMany({
+    const ratings = await withCache("courses", ["ratings", id], 5 * 60_000, async () => prisma.courseRating.findMany({
       where: { courseId: id },
       orderBy: { createdAt: "desc" },
       take: 50,
       include: {
         courseTeacher: { include: { teacher: true } },
       },
-    });
+    }));
     // 评分上也把老师名展开，前端可显示"@王老师"
     const ratingsOut = ratings.map((r: any) => ({
       ...r,
@@ -134,6 +145,7 @@ courseRouter.post("/:id/teachers", authRequired, validate(addTeacherSchema), asy
       update: {},
       create: { courseId, teacherId: teacher.id, source: "user-add" },
     });
+    await invalidateCourseCaches();
     ok(res, { id: teacher.id, name: teacher.name, courseTeacherId: ct.id });
   } catch (e) { next(e); }
 });
@@ -260,6 +272,8 @@ courseRouter.post("/sync", authRequired, async (req, res, next) => {
         linksUpdated++;
       }
     }
+
+    await invalidateCourseCaches();
 
     ok(res, {
       examined: merged.size,

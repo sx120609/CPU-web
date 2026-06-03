@@ -5,7 +5,10 @@ import { ok, Errors } from "../utils/response";
 import { validate } from "../middleware/validate";
 import { authRequired } from "../middleware/auth";
 import { prisma } from "../prisma";
+import { getCacheVersion, getCachedJson, setCachedJson, withCache } from "../services/cache";
 import { detectLoginClient } from "../utils/loginClient";
+import { invalidateJwxtWidgetCaches } from "../services/cacheInvalidation";
+import { buildRedisKey } from "../services/redis";
 import { getSiteOrigin } from "../services/siteSettings";
 import {
   beginLogin,
@@ -42,6 +45,15 @@ const SMALL_SLOTS = [
 ];
 const MAX_SMALL_SLOT = SMALL_SLOTS[SMALL_SLOTS.length - 1]?.no ?? 11;
 const WIDGET_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const JWXT_STATUS_CACHE_TTL_MS = 15_000;
+const JWXT_SCHEDULE_CACHE_TTL_MS = 60_000;
+const JWXT_GRADES_CACHE_TTL_MS = 5 * 60_000;
+const JWXT_MIDTERM_CACHE_TTL_MS = 5 * 60_000;
+const JWXT_EXAMS_CACHE_TTL_MS = 5 * 60_000;
+const JWXT_CALENDAR_CACHE_TTL_MS = 12 * 60 * 60_000;
+const JWXT_PROGRESS_CACHE_TTL_MS = 5 * 60_000;
+const JWXT_PYFA_CACHE_TTL_MS = 10 * 60_000;
+const JWXT_IAPPS_CACHE_TTL_MS = 10 * 60_000;
 
 /**
  * 教务会话 token 取自 X-Jwxt-Token 头。
@@ -49,6 +61,10 @@ const WIDGET_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
  */
 function getToken(req: any): string | null {
   return (req.headers["x-jwxt-token"] as string) || null;
+}
+
+function jwxtTokenCacheId(token: string) {
+  return crypto.createHash("sha256").update(token).digest("hex").slice(0, 24);
 }
 
 const scheduleEditCourseSchema = z.object({
@@ -507,6 +523,7 @@ jwxtRouter.post("/schedule-widget-tokens/refresh", authRequired, async (req: any
         expiresAt: new Date(Date.now() + WIDGET_TOKEN_TTL_MS),
       },
     });
+    await invalidateJwxtWidgetCaches();
     ok(res, { updated: result.count });
   } catch (e) { next(e); }
 });
@@ -519,6 +536,7 @@ jwxtRouter.delete("/schedule-widget-tokens/:id", authRequired, async (req: any, 
       where: { id, userId: req.user.userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    await invalidateJwxtWidgetCaches();
     ok(res, { ok: true });
   } catch (e) { next(e); }
 });
@@ -545,6 +563,18 @@ jwxtRouter.get("/schedule-widget", async (req, res, next) => {
     }
 
     const requestedWeek = req.query.week ? String(req.query.week) : "";
+    const widgetCacheVersion = await getCacheVersion("jwxt-widget");
+    const widgetCacheKey = buildRedisKey("jwxt-widget", "payload", `v${widgetCacheVersion}`, hashWidgetToken(token), requestedWeek || "current");
+    const sharedCachedPayload = await getCachedJson<any>(widgetCacheKey);
+    if (sharedCachedPayload) {
+      await prisma.scheduleWidgetToken.update({
+        where: { id: row.id },
+        data: { lastUsedAt: new Date() },
+      }).catch(() => undefined);
+      res.setHeader("Cache-Control", "private, max-age=120");
+      ok(res, sharedCachedPayload);
+      return;
+    }
     try {
       const [calendar, parsed] = await Promise.all([
         getCalendar(row.jwxtToken).catch(() => null),
@@ -565,6 +595,7 @@ jwxtRouter.get("/schedule-widget", async (req, res, next) => {
           cachedAt: new Date(),
         },
       });
+      await setCachedJson(widgetCacheKey, payload, 120_000);
       res.setHeader("Cache-Control", "private, max-age=120");
       ok(res, payload);
     } catch (e: any) {
@@ -628,7 +659,15 @@ jwxtRouter.post("/logout", async (req, res, next) => {
 /** 当前会话信息（不暴露用户名） */
 jwxtRouter.get("/status", async (req, res, next) => {
   try {
-    ok(res, await getStatus(getToken(req)));
+    const token = getToken(req);
+    if (!token) {
+      ok(res, { active: false });
+      return;
+    }
+    const cacheId = jwxtTokenCacheId(token);
+    const payload = await withCache("jwxt-status", [cacheId], JWXT_STATUS_CACHE_TTL_MS, async () => getStatus(token));
+    res.setHeader("Cache-Control", "private, max-age=15");
+    ok(res, payload);
   } catch (e) { next(e); }
 });
 
@@ -639,7 +678,9 @@ jwxtRouter.get("/schedule", async (req, res, next) => {
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const semester = req.query.semester ? String(req.query.semester) : "";
     const week = req.query.week ? String(req.query.week) : "";
-    const parsed = await getSchedule(t, { semester, week });
+    const cacheId = jwxtTokenCacheId(t);
+    const parsed = await withCache("jwxt-schedule", [cacheId, semester || "_", week || "_"], JWXT_SCHEDULE_CACHE_TTL_MS, async () => getSchedule(t, { semester, week }));
+    res.setHeader("Cache-Control", "private, max-age=60");
     ok(res, { parsed });
   } catch (e) { next(e); }
 });
@@ -650,7 +691,9 @@ jwxtRouter.get("/grades", async (req, res, next) => {
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const semester = req.query.semester ? String(req.query.semester) : "";
-    const parsed = await getGrades(t, { semester });
+    const cacheId = jwxtTokenCacheId(t);
+    const parsed = await withCache("jwxt-grades", [cacheId, semester || "_"], JWXT_GRADES_CACHE_TTL_MS, async () => getGrades(t, { semester }));
+    res.setHeader("Cache-Control", "private, max-age=300");
     ok(res, { parsed });
   } catch (e) { next(e); }
 });
@@ -661,7 +704,10 @@ jwxtRouter.get("/midterm-grades", async (req, res, next) => {
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const semester = req.query.semester ? String(req.query.semester) : "";
-    ok(res, { parsed: await getMidtermGrades(t, { semester }) });
+    const cacheId = jwxtTokenCacheId(t);
+    const parsed = await withCache("jwxt-midterm-grades", [cacheId, semester || "_"], JWXT_MIDTERM_CACHE_TTL_MS, async () => getMidtermGrades(t, { semester }));
+    res.setHeader("Cache-Control", "private, max-age=300");
+    ok(res, { parsed });
   } catch (e) { next(e); }
 });
 
@@ -672,7 +718,10 @@ jwxtRouter.get("/exams", async (req, res, next) => {
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const semester = req.query.semester ? String(req.query.semester) : "";
     const type = req.query.type ? String(req.query.type) : "";
-    ok(res, { parsed: await getExams(t, { semester, type }) });
+    const cacheId = jwxtTokenCacheId(t);
+    const parsed = await withCache("jwxt-exams", [cacheId, semester || "_", type || "_"], JWXT_EXAMS_CACHE_TTL_MS, async () => getExams(t, { semester, type }));
+    res.setHeader("Cache-Control", "private, max-age=300");
+    ok(res, { parsed });
   } catch (e) { next(e); }
 });
 
@@ -714,7 +763,9 @@ jwxtRouter.get("/calendar", async (req, res, next) => {
   try {
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
-    const parsed = await getCalendar(t);
+    const cacheId = jwxtTokenCacheId(t);
+    const parsed = await withCache("jwxt-calendar", [cacheId], JWXT_CALENDAR_CACHE_TTL_MS, async () => getCalendar(t));
+    res.setHeader("Cache-Control", "private, max-age=43200");
     ok(res, { parsed });
   } catch (e) { next(e); }
 });
@@ -724,7 +775,9 @@ jwxtRouter.get("/iapps", async (req, res, next) => {
   try {
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
-    const apps = await getIApps(t);
+    const cacheId = jwxtTokenCacheId(t);
+    const apps = await withCache("jwxt-iapps", [cacheId], JWXT_IAPPS_CACHE_TTL_MS, async () => getIApps(t));
+    res.setHeader("Cache-Control", "private, max-age=600");
     ok(res, { apps });
   } catch (e) { next(e); }
 });
@@ -734,7 +787,9 @@ jwxtRouter.get("/progress", async (req, res, next) => {
   try {
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
-    const parsed = await getProgress(t);
+    const cacheId = jwxtTokenCacheId(t);
+    const parsed = await withCache("jwxt-progress", [cacheId], JWXT_PROGRESS_CACHE_TTL_MS, async () => getProgress(t));
+    res.setHeader("Cache-Control", "private, max-age=300");
     ok(res, { parsed });
   } catch (e) { next(e); }
 });
@@ -744,7 +799,9 @@ jwxtRouter.get("/pyfa", async (req, res, next) => {
   try {
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
-    const parsed = await getPyfa(t);
+    const cacheId = jwxtTokenCacheId(t);
+    const parsed = await withCache("jwxt-pyfa", [cacheId], JWXT_PYFA_CACHE_TTL_MS, async () => getPyfa(t));
+    res.setHeader("Cache-Control", "private, max-age=600");
     ok(res, { parsed });
   } catch (e) { next(e); }
 });
@@ -795,6 +852,7 @@ jwxtRouter.put(
         where: { userId: req.user.userId, revokedAt: null },
         data: { cachedPayload: null, cachedAt: null },
       });
+      await invalidateJwxtWidgetCaches();
       ok(res, { semester, edits });
     } catch (e) { next(e); }
   }

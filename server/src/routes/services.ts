@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { ok, Errors } from "../utils/response";
+import { withCache } from "../services/cache";
 import { authRequired } from "../middleware/auth";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
 import { queryDormElectric } from "../services/dormElectric";
@@ -11,10 +12,10 @@ export const servicesRouter = Router();
 servicesRouter.get("/", async (req, res, next) => {
   try {
     const category = req.query.category ? String(req.query.category) : undefined;
-    const list = await prisma.serviceCard.findMany({
+    const list = await withCache("services", ["list", category || "all"], 5 * 60_000, async () => prisma.serviceCard.findMany({
       where: visibleServiceWhere(category ? { category } : undefined),
       orderBy: [{ order: "asc" }, { id: "asc" }],
-    });
+    }));
     ok(res, list.map(normalizeServiceCard));
   } catch (e) { next(e); }
 });

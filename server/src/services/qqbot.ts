@@ -3,6 +3,7 @@ import path from "node:path";
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
+import { runWithDistributedLock } from "./cache";
 import { ensureForumAccessEnabled } from "./forumAccess";
 import { ensureForumImageAssetsForContent } from "./imageModeration";
 import { saveMediaAsset } from "./mediaStorage";
@@ -1853,7 +1854,7 @@ async function replyToPrivateForPosting(
 export function startQqNotificationPoller() {
   if (pollerStarted) return;
   pollerStarted = true;
-  const tick = () => dispatchRecentQqNotifications().catch((error) => {
+  const tick = () => runWithDistributedLock("qqbot-notification-dispatch:tick", 25_000, async () => dispatchRecentQqNotifications()).catch((error) => {
     console.warn("[qqbot] notification dispatch failed", error);
   });
   connectQqBotWebSocket().catch((error) => {

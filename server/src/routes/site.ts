@@ -2,18 +2,23 @@ import { Router } from "express";
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { ok } from "../utils/response";
+import { withCache } from "../services/cache";
 import { getFeatures, getSiteOrigin } from "../services/siteSettings";
 
 export const siteRouter = Router();
 
 /** 公开：前端读功能开关，过滤导航 / 路由 / 占位页 */
-siteRouter.get("/features", (_req, res) => {
-  ok(res, getFeatures());
+siteRouter.get("/features", async (_req, res, next) => {
+  try {
+    ok(res, await withCache("site", ["features"], 60_000, async () => getFeatures()));
+  } catch (e) { next(e); }
 });
 
 /** 公开：站点基础配置。不要放敏感内容。 */
-siteRouter.get("/config", (_req, res) => {
-  ok(res, { siteOrigin: getSiteOrigin() });
+siteRouter.get("/config", async (_req, res, next) => {
+  try {
+    ok(res, await withCache("site", ["config"], 60_000, async () => ({ siteOrigin: getSiteOrigin() })));
+  } catch (e) { next(e); }
 });
 
 siteRouter.get("/downloads/android-app", (_req, res) => {

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { Errors, ok } from "../utils/response";
+import { invalidateForumCaches } from "../services/cacheInvalidation";
 import { featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettings";
 import { ensureCanReadBoardType } from "../services/forumAccess";
 
@@ -22,6 +23,7 @@ likeRouter.post("/topic/:id", async (req, res, next) => {
     if (existing) {
       await prisma.like.delete({ where: { id: existing.id } });
       const u = await prisma.topic.update({ where: { id: topicId }, data: { likeCount: { decrement: 1 } } });
+      await invalidateForumCaches({ includeBoards: false });
       return ok(res, { liked: false, likeCount: u.likeCount });
     }
     const u = await prisma.$transaction(async (tx) => {
@@ -52,6 +54,7 @@ likeRouter.post("/topic/:id", async (req, res, next) => {
       }
       return updated;
     });
+    await invalidateForumCaches({ includeBoards: false });
     ok(res, { liked: true, likeCount: u.likeCount });
   } catch (e) { next(e); }
 });
@@ -71,6 +74,7 @@ likeRouter.post("/reply/:id", async (req, res, next) => {
     if (existing) {
       await prisma.like.delete({ where: { id: existing.id } });
       const u = await prisma.reply.update({ where: { id: replyId }, data: { likeCount: { decrement: 1 } } });
+      await invalidateForumCaches({ includeBoards: false });
       return ok(res, { liked: false, likeCount: u.likeCount });
     }
     const u = await prisma.$transaction(async (tx) => {
@@ -102,6 +106,7 @@ likeRouter.post("/reply/:id", async (req, res, next) => {
       }
       return updated;
     });
+    await invalidateForumCaches({ includeBoards: false });
     ok(res, { liked: true, likeCount: u.likeCount });
   } catch (e) { next(e); }
 });

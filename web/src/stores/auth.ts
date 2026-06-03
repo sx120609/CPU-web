@@ -41,6 +41,7 @@ export const useAuthStore = defineStore("auth", {
     ssoCaptchaImage: "",
     ssoError: "",
     ssoLoading: false,
+    _pendingFetchMe: null as Promise<void> | null,
   }),
   getters: {
     isLoggedIn: (s) => !!s.token && !!s.user,
@@ -143,11 +144,17 @@ export const useAuthStore = defineStore("auth", {
 
     async fetchMe() {
       if (!this.token) return;
-      try { this.user = await authApi.me(); } catch { /* 401 由拦截器处理 */ }
-      finally {
-        this.syncDataAuthAgreement(this.user);
-        this.ready = true;
-      }
+      if (this._pendingFetchMe) return this._pendingFetchMe;
+      const task = (async () => {
+        try { this.user = await authApi.me(); } catch { /* 401 由拦截器处理 */ }
+        finally {
+          this.syncDataAuthAgreement(this.user);
+          this.ready = true;
+          this._pendingFetchMe = null;
+        }
+      })();
+      this._pendingFetchMe = task;
+      return task;
     },
 
     async updateProfile(patch: Partial<UserInfo>) {

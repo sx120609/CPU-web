@@ -32,6 +32,11 @@ import { parseMutedUntil, releaseExpiredMutes } from "../../services/userModerat
 import { buildUserTrustSnapshot, currentAnonymousWeekKey, freezeAnonymousCredits } from "../../services/userTrust";
 import { buildEpayCallbackUrls, buildEpaySubmitPayload, getEpayConfig, resolvePaymentOrigin, updateEpayConfig } from "../../services/epay";
 import { amountCentsToMoney } from "../../services/epay";
+import {
+  invalidateBoardCaches,
+  invalidateForumCaches,
+  invalidateSiteSettingCaches,
+} from "../../services/cacheInvalidation";
 import { decodeTopicForViewer } from "../../services/forumPresentation";
 import {
   calcSponsorOrderExpiresAt,
@@ -732,6 +737,7 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
         });
       }
     }
+    await invalidateForumCaches({ includeCourses: true });
     ok(res, {
       id: u.id,
       hidden: u.hidden,
@@ -770,6 +776,7 @@ adminRouter.delete("/topics/:id", modOrAbove, async (req, res, next) => {
       });
     }
     await removeTopicFromGlobalPins(id);
+    await invalidateForumCaches({ includeCourses: true });
     ok(res, { ok: true });
   } catch (e) { next(e); }
 });
@@ -836,6 +843,7 @@ adminRouter.patch("/replies/:id", modOrAbove, validate(replyPatchSchema), async 
         note: req.body.manualReviewNote ?? "",
       });
     }
+    await invalidateForumCaches({ includeBoards: false });
     ok(res, {
       id: updated.id,
       topicId: updated.topicId,
@@ -857,6 +865,7 @@ adminRouter.patch("/forum-images/:id", modOrAbove, validate(forumImagePatchSchem
       note: req.body.manualReviewNote ?? "",
     });
     if (!updated) throw Errors.notFound("图片不存在");
+    await invalidateForumCaches({ includeBoards: false });
     ok(res, {
       id: updated.id,
       url: updated.url,
@@ -892,6 +901,7 @@ adminRouter.patch("/forum-videos/:id", modOrAbove, validate(forumVideoPatchSchem
       note: req.body.manualReviewNote ?? "",
     });
     if (!updated) throw Errors.notFound("视频不存在");
+    await invalidateForumCaches({ includeBoards: false });
     ok(res, {
       id: updated.id,
       url: updated.url,
@@ -952,6 +962,8 @@ adminRouter.post("/boards", adminOnly, validate(boardCreateSchema), async (req, 
         readOnly: false,
       },
     });
+    await invalidateBoardCaches();
+    await invalidateForumCaches();
     ok(res, created);
   } catch (e) { next(e); }
 });
@@ -988,6 +1000,8 @@ adminRouter.patch("/boards/:id", adminOnly, validate(boardPatchSchema), async (r
         anonymousEnabled: req.body.anonymousEnabled,
       },
     });
+    await invalidateBoardCaches();
+    await invalidateForumCaches();
     ok(res, updated);
   } catch (e) { next(e); }
 });
@@ -1001,6 +1015,8 @@ adminRouter.delete("/boards/:id", adminOnly, async (req, res, next) => {
     const topicCount = await prisma.topic.count({ where: { boardId: id } });
     if (topicCount > 0) throw Errors.badRequest("该板块下仍有帖子，不能删除");
     await prisma.board.delete({ where: { id } });
+    await invalidateBoardCaches();
+    await invalidateForumCaches();
     ok(res, { ok: true });
   } catch (e) { next(e); }
 });
@@ -1712,6 +1728,7 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       await setSiteOrigin(req.body.siteOrigin ?? "");
     }
     const config = getSiteConfig();
+    await invalidateSiteSettingCaches();
     ok(res, config);
   } catch (e: any) {
     if (
@@ -1781,6 +1798,7 @@ adminRouter.patch("/features", adminOnly, validate(featurePatchSchema), async (r
         await setFeature(f as FeatureKey, req.body[f]);
       }
     }
+    await invalidateSiteSettingCaches();
     ok(res, getFeatures());
   } catch (e) { next(e); }
 });

@@ -128,7 +128,7 @@ export async function completeOneDriveChinaAuthorization(input: {
     driveName: selectedDrive?.name || "",
     lastError: "",
   });
-  resetOneDriveChinaCaches();
+  resetOneDriveChinaTransientCaches();
   return {
     siteName: resolved.siteName,
     driveName: selectedDrive?.name || "",
@@ -187,7 +187,7 @@ export async function saveOneDriveChinaDriveSelection(driveId: string) {
 
 export async function disconnectOneDriveChinaAuthorization() {
   await clearOneDriveChinaAuthorization();
-  resetOneDriveChinaCaches();
+  resetOneDriveChinaTransientCaches();
 }
 
 export async function listOneDriveChinaFiles(): Promise<OneDriveChinaStoredFile[]> {
@@ -798,7 +798,7 @@ async function safeReadResponseText(response: Response) {
   return response.text().then((text) => text.trim().slice(0, 600)).catch(() => "");
 }
 
-function resetOneDriveChinaCaches() {
+export function resetOneDriveChinaTransientCaches() {
   delegatedAccessTokenCache = null;
   appOnlyAccessTokenCache = null;
   rootItemIdCache.clear();

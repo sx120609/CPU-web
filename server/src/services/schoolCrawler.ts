@@ -6,6 +6,8 @@
  */
 import { prisma } from "../prisma";
 import { isDev } from "../config";
+import { runWithDistributedLock } from "./cache";
+import { invalidateBoardCaches, invalidateForumCaches } from "./cacheInvalidation";
 import { crawlSchoolFeedSource } from "./schoolCrawlerTransport";
 
 /** 单次抓取某个源 */
@@ -92,6 +94,10 @@ export async function runOnce(sourceId: number, opts: { dryRun?: boolean } = {})
     where: { id: source.id },
     data: { lastRunAt: new Date(), lastRunOk: !totalError, lastError: totalError },
   });
+  if (totalNew > 0 && !opts.dryRun) {
+    await invalidateBoardCaches();
+    await invalidateForumCaches();
+  }
 
   return { ok: !totalError, newCount: totalNew, error: totalError };
 }
@@ -127,6 +133,8 @@ export async function resetSourceAndRun(sourceId: number) {
     const count = await tx.topic.count({ where: { boardId: board.id, hidden: false } });
     await tx.board.update({ where: { id: board.id }, data: { topicCount: count } });
   });
+  await invalidateBoardCaches();
+  await invalidateForumCaches();
 
   return runOnce(source.id);
 }
@@ -139,16 +147,18 @@ export function startScheduler() {
   let timer: NodeJS.Timeout | null = null;
 
   const tick = async () => {
-    const sources = await prisma.schoolFeedSource.findMany({ where: { enabled: true } });
-    const now = Date.now();
-    for (const s of sources) {
-      const last = lastRun.get(s.id) ?? 0;
-      if (now - last < s.cronMinutes * 60_000) continue;
-      lastRun.set(s.id, now);
-      runOnce(s.id).then((r) => {
-        if (r.newCount && r.newCount > 0) console.log(`  [crawler:${s.slug}] +${r.newCount} new`);
-      });
-    }
+    await runWithDistributedLock("school-crawler:tick", 55_000, async () => {
+      const sources = await prisma.schoolFeedSource.findMany({ where: { enabled: true } });
+      const now = Date.now();
+      for (const s of sources) {
+        const last = lastRun.get(s.id) ?? 0;
+        if (now - last < s.cronMinutes * 60_000) continue;
+        lastRun.set(s.id, now);
+        runOnce(s.id).then((r) => {
+          if (r.newCount && r.newCount > 0) console.log(`  [crawler:${s.slug}] +${r.newCount} new`);
+        });
+      }
+    });
   };
 
   if (started) return;

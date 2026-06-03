@@ -1,6 +1,7 @@
 import path from "node:path";
 import { readFile, rm } from "node:fs/promises";
 import { prisma } from "../prisma";
+import { runWithDistributedLock } from "./cache";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
 import { prepareMediaLocalFileForProcessing, resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
@@ -753,27 +754,30 @@ export function triggerForumImageModerationDrain(maxProcessed = getImageReviewDi
 }
 
 async function runForumImageModerationDrain() {
-  let processed = 0;
-  while (!Number.isFinite(moderationDrainBudget) || moderationDrainBudget > 0) {
-    const dispatchCapacity = getImageReviewDispatchCapacity();
-    const batchLimit = Number.isFinite(moderationDrainBudget)
-      ? Math.min(dispatchCapacity, moderationDrainBudget)
-      : dispatchCapacity;
-    const result = await moderatePendingForumImages(batchLimit);
-    if (!result.processed) {
-      moderationDrainBudget = 0;
-      break;
+  const locked = await runWithDistributedLock("forum-image-review:drain", 120_000, async () => {
+    let processed = 0;
+    while (!Number.isFinite(moderationDrainBudget) || moderationDrainBudget > 0) {
+      const dispatchCapacity = getImageReviewDispatchCapacity();
+      const batchLimit = Number.isFinite(moderationDrainBudget)
+        ? Math.min(dispatchCapacity, moderationDrainBudget)
+        : dispatchCapacity;
+      const result = await moderatePendingForumImages(batchLimit);
+      if (!result.processed) {
+        moderationDrainBudget = 0;
+        break;
+      }
+      processed += result.processed;
+      if (Number.isFinite(moderationDrainBudget)) {
+        moderationDrainBudget = Math.max(0, moderationDrainBudget - result.processed);
+      }
+      if (result.processed < batchLimit) {
+        moderationDrainBudget = 0;
+        break;
+      }
     }
-    processed += result.processed;
-    if (Number.isFinite(moderationDrainBudget)) {
-      moderationDrainBudget = Math.max(0, moderationDrainBudget - result.processed);
-    }
-    if (result.processed < batchLimit) {
-      moderationDrainBudget = 0;
-      break;
-    }
-  }
-  return processed;
+    return processed;
+  });
+  return locked.result ?? 0;
 }
 
 function getImageReviewConcurrency() {

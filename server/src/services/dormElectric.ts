@@ -17,6 +17,7 @@
  * 不依赖部署服务器是否在校园网。如要换隧道地址，在 .env 设 DORM_ELECTRIC_BASE。
  */
 import { createHash } from "node:crypto";
+import { withCache } from "./cache";
 
 /**
  * 校园侧 API base URL —— **每次调用读 env**，避免模块加载顺序与 dotenv.config()
@@ -73,61 +74,55 @@ export interface DormElectricResult {
   raw?: unknown;
 }
 
-const cache = new Map<string, { at: number; result: DormElectricResult }>();
-
 export async function queryDormElectric(studentNo: string): Promise<DormElectricResult> {
   if (!studentNo) throw new Error("学号为空");
+  return withCache("dorm-electric", [studentNo], CACHE_TTL_MS, async () => {
+    const payload: Record<string, unknown> = {
+      appId: APP_ID,
+      openId: studentNo, // SPA 里这个字段是 sessionId，?no=学号 进入时 SPA 把学号写入 sessionId
+      stuNo: true,
+    };
+    payload.sign = computeSign(payload);
 
-  const cached = cache.get(studentNo);
-  if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.result;
+    const base = getBaseUrl();
+    const targetUrl = `${base}/api/wxapp/my3`;
 
-  const payload: Record<string, unknown> = {
-    appId: APP_ID,
-    openId: studentNo, // SPA 里这个字段是 sessionId，?no=学号 进入时 SPA 把学号写入 sessionId
-    stuNo: true,
-  };
-  payload.sign = computeSign(payload);
-
-  const base = getBaseUrl();
-  const targetUrl = `${base}/api/wxapp/my3`;
-
-  let resp: Response;
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 10_000);
+    let resp: Response;
     try {
-      resp = await fetch(targetUrl, {
-        method: "POST",
-        headers: { "accept": "*/*", "content-type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: ctrl.signal,
-      });
-    } finally { clearTimeout(timer); }
-  } catch (e: any) {
-    if (e?.name === "AbortError") throw new Error("查询超时，校园侧响应过慢，请稍后重试");
-    throw new Error(`电费查询失败：${e?.message || e}`);
-  }
-
-  if (!resp.ok) {
-    throw new Error(`电费接口返回 HTTP ${resp.status}`);
-  }
-
-  let body: any;
-  try { body = await resp.json(); }
-  catch { throw new Error("电费接口返回格式异常"); }
-
-  // 校园侧通常会用 { code, msg, data } 包裹，sign 错时 code != 0
-  if (typeof body?.code === "number" && body.code !== 0) {
-    const msg = body?.msg || body?.message || "校园侧拒绝";
-    if (/sign|签名/i.test(String(msg))) {
-      throw new Error(`签名失效（${msg}）—— 学校可能已更换 SALT，需要重新抓取 SPA 源码`);
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 10_000);
+      try {
+        resp = await fetch(targetUrl, {
+          method: "POST",
+          headers: { "accept": "*/*", "content-type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: ctrl.signal,
+        });
+      } finally { clearTimeout(timer); }
+    } catch (e: any) {
+      if (e?.name === "AbortError") throw new Error("查询超时，校园侧响应过慢，请稍后重试");
+      throw new Error(`电费查询失败：${e?.message || e}`);
     }
-    throw new Error(`校园侧返回错误：${msg}`);
-  }
 
-  const result = normalize(body);
-  cache.set(studentNo, { at: Date.now(), result });
-  return result;
+    if (!resp.ok) {
+      throw new Error(`电费接口返回 HTTP ${resp.status}`);
+    }
+
+    let body: any;
+    try { body = await resp.json(); }
+    catch { throw new Error("电费接口返回格式异常"); }
+
+    // 校园侧通常会用 { code, msg, data } 包裹，sign 错时 code != 0
+    if (typeof body?.code === "number" && body.code !== 0) {
+      const msg = body?.msg || body?.message || "校园侧拒绝";
+      if (/sign|签名/i.test(String(msg))) {
+        throw new Error(`签名失效（${msg}）—— 学校可能已更换 SALT，需要重新抓取 SPA 源码`);
+      }
+      throw new Error(`校园侧返回错误：${msg}`);
+    }
+
+    return normalize(body);
+  });
 }
 
 /**

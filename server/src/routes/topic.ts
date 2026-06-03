@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma";
 import { Errors, ok } from "../utils/response";
+import { withCache } from "../services/cache";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import {
@@ -33,6 +34,7 @@ import { consumeAnonymousCredit, createAnonymousAlias } from "../services/userTr
 import { decodeReplyForViewer, decodeReplyForViewerWithImages, decodeTopicForViewer, decodeTopicForViewerWithImages } from "../services/forumPresentation";
 import { ensureForumImageAssetsForContent, summarizeForumImageModerationForContent } from "../services/imageModeration";
 import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForContent } from "../services/videoModeration";
+import { invalidateCourseCaches, invalidateForumCaches } from "../services/cacheInvalidation";
 
 export const topicRouter = Router();
 
@@ -75,24 +77,34 @@ topicRouter.get("/", async (req, res, next) => {
         ? [{ pinned: "desc" }, { likeCount: "desc" }, { lastReplyAt: "desc" }]
         : [{ pinned: "desc" }, { lastReplyAt: "desc" }, { createdAt: "desc" }];
 
-    const [list, total] = await Promise.all([
-      prisma.topic.findMany({
-        where,
-        orderBy,
-        skip: (page - 1) * size,
-        take: size,
-        include: {
-          author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
-          board: { select: { id: true, slug: true, name: true, color: true, type: true } },
-          tags: { include: { tag: true } },
-        },
-      }),
-      prisma.topic.count({ where }),
-    ]);
+    const cached = await withCache(
+      "forum-list",
+      ["topic-list", boardSlug || "all", page, size, sort, pinnedMode],
+      60_000,
+      async () => {
+        const [list, total] = await Promise.all([
+          prisma.topic.findMany({
+            where,
+            orderBy,
+            skip: (page - 1) * size,
+            take: size,
+            include: {
+              author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+              board: { select: { id: true, slug: true, name: true, color: true, type: true } },
+              tags: { include: { tag: true } },
+            },
+          }),
+          prisma.topic.count({ where }),
+        ]);
+        return { list, total };
+      },
+    );
 
     ok(res, {
-      page, size, total,
-      list: list.map((item) => decodeTopicForViewer(item, req.user)),
+      page,
+      size,
+      total: cached.total,
+      list: cached.list.map((item: any) => decodeTopicForViewer(item, req.user)),
     });
   } catch (e) { next(e); }
 });
@@ -293,6 +305,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     ]);
     const imageReview = await summarizeForumImageModerationForContent(content).catch(() => null);
     const videoReview = await summarizeForumVideoModerationForContent(content).catch(() => null);
+    await invalidateForumCaches({ includeCourses: board.type === "coursereview" });
     ok(res, {
       ...(await decodeTopicForViewerWithImages(topicWithTags ?? { ...topic, board: { slug: board.slug, name: board.name, type: board.type }, tags: [] }, req.user)),
       submissionResult: hiddenByAi
@@ -470,6 +483,10 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
         tags: { include: { tag: true } },
       },
     });
+    if (t.board?.type === "coursereview") {
+      await invalidateCourseCaches();
+    }
+    await invalidateForumCaches();
     ok(res, {
       ...(await decodeTopicForViewerWithImages(topicWithTags ?? u, req.user)),
       submissionResult: { status: "published", imageReview, videoReview },
@@ -500,6 +517,10 @@ topicRouter.delete("/:id", authRequired, async (req, res, next) => {
       }
     });
     await removeTopicFromGlobalPins(id);
+    if (t.board?.type === "coursereview") {
+      await invalidateCourseCaches();
+    }
+    await invalidateForumCaches();
     ok(res, { ok: true });
   } catch (e) { next(e); }
 });

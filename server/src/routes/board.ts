@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { Errors, ok } from "../utils/response";
+import { withCache } from "../services/cache";
 import { enabledBoardTypes, featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettings";
 import { ensureCanReadBoardType, resolveForumAccess } from "../services/forumAccess";
 import { verifyToken } from "../utils/jwt";
@@ -21,13 +22,14 @@ boardRouter.get("/", async (req, res, next) => {
       } catch { /* ignore */ }
     }
     const forumAccessEnabled = await resolveForumAccess(userId, role);
-    const boards = await prisma.board.findMany({
-      where: { type: { in: forumAccessEnabled ? enabledBoardTypes() : ["announce"] } },
+    const allowedTypes = forumAccessEnabled ? enabledBoardTypes() : ["announce"];
+    const boards = await withCache("boards", ["list", forumAccessEnabled ? "forum-enabled" : "announce-only"], 5 * 60_000, async () => prisma.board.findMany({
+      where: { type: { in: allowedTypes } },
       orderBy: { order: "asc" },
       include: {
         feedSource: { select: { name: true, homepage: true, lastRunAt: true, enabled: true } },
       },
-    });
+    }));
     ok(res, boards);
   } catch (e) { next(e); }
 });
@@ -45,7 +47,7 @@ boardRouter.get("/:slug", async (req, res, next) => {
         role = token.role;
       } catch { /* ignore */ }
     }
-    const board = await prisma.board.findUnique({
+    const board = await withCache("boards", ["detail", req.params.slug], 5 * 60_000, async () => prisma.board.findUnique({
       where: { slug: req.params.slug },
       select: {
         id: true,
@@ -61,7 +63,7 @@ boardRouter.get("/:slug", async (req, res, next) => {
         topicCount: true,
         feedSource: { select: { name: true, homepage: true, lastRunAt: true, enabled: true } },
       },
-    });
+    }));
     if (!board) return res.status(404).json({ code: 4004, data: null, message: "板块不存在" });
     if (!isBoardTypeEnabled(board.type)) throw Errors.forbidden(featureClosedMessage(board.type));
     await ensureCanReadBoardType(board.type, userId, role);

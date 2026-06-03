@@ -23,6 +23,28 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("/echarts/") || id.includes("/vue-echarts/")) {
+            return "charts";
+          }
+          if (id.includes("/viewerjs/") || id.includes("/artplayer/") || id.includes("/html-to-image/") || id.includes("/qrcode/")) {
+            return "media-tools";
+          }
+          if (id.includes("/xlsx/")) {
+            return "xlsx-tools";
+          }
+          if (id.includes("/marked/") || id.includes("/dompurify/")) {
+            return "markdown-tools";
+          }
+          return undefined;
+        },
+      },
+    },
+  },
   css: {
     preprocessorOptions: {
       scss: {

@@ -17,6 +17,16 @@ import * as cheerio from "cheerio";
 import crypto from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import {
+  countEphemeralKeys,
+  deleteEphemeralValue,
+  getEphemeralValue,
+  jwxtPendingKey,
+  jwxtPendingPrefix,
+  jwxtSessionKey,
+  jwxtSessionPrefix,
+  setEphemeralValue,
+} from "./cache";
 import { isDev } from "../config";
 import { Errors } from "../utils/response";
 
@@ -29,6 +39,20 @@ const DEBUG_DIR = path.join(process.cwd(), ".debug");
 /** 简易 cookie jar：按 host 分组存 cookie 名值对 */
 export class CookieJar {
   private byHost = new Map<string, Map<string, string>>();
+
+  static fromJson(input: Record<string, Record<string, string>> | null | undefined) {
+    const jar = new CookieJar();
+    for (const [host, cookies] of Object.entries(input ?? {})) {
+      const map = new Map<string, string>();
+      for (const [name, value] of Object.entries(cookies ?? {})) {
+        const cookieName = String(name || "").trim();
+        if (!cookieName) continue;
+        map.set(cookieName, String(value ?? ""));
+      }
+      if (map.size) jar.byHost.set(host, map);
+    }
+    return jar;
+  }
 
   ingest(setCookie: string[] | string | null, host: string) {
     if (!setCookie) return;
@@ -159,9 +183,6 @@ interface ActiveSession {
   lastSeenAt: number;
 }
 
-const pendings = new Map<string, PendingLogin>();
-const sessions = new Map<string, ActiveSession>();
-
 const PENDING_TTL = 5 * 60 * 1000;          // 5 分钟未提交则丢弃
 const SESSION_IDLE_TTL = 30 * 60 * 1000;    // 30 分钟无活动失效
 
@@ -169,16 +190,78 @@ function genId() {
   return crypto.randomBytes(24).toString("hex");
 }
 
-// 定时清理
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of pendings) {
-    if (now - v.createdAt > PENDING_TTL) pendings.delete(k);
+async function savePendingLogin(id: string, pending: PendingLogin) {
+  await setEphemeralValue(jwxtPendingKey(id), JSON.stringify({
+    jar: pending.jar.toJson(),
+    ssoUrl: pending.ssoUrl,
+    hidden: pending.hidden,
+    createdAt: pending.createdAt,
+  }), PENDING_TTL);
+}
+
+async function getPendingLogin(id: string): Promise<PendingLogin | null> {
+  const raw = await getEphemeralValue(jwxtPendingKey(id));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as {
+      jar?: Record<string, Record<string, string>>;
+      ssoUrl?: string;
+      hidden?: Record<string, string>;
+      createdAt?: number;
+    };
+    return {
+      jar: CookieJar.fromJson(parsed.jar),
+      ssoUrl: String(parsed.ssoUrl || ""),
+      hidden: parsed.hidden && typeof parsed.hidden === "object" ? parsed.hidden : {},
+      createdAt: Number(parsed.createdAt || Date.now()),
+    };
+  } catch {
+    await deletePendingLogin(id);
+    return null;
   }
-  for (const [k, v] of sessions) {
-    if (now - v.lastSeenAt > SESSION_IDLE_TTL) sessions.delete(k);
+}
+
+async function deletePendingLogin(id: string) {
+  await deleteEphemeralValue(jwxtPendingKey(id));
+}
+
+async function saveActiveSession(token: string, session: ActiveSession) {
+  await setEphemeralValue(jwxtSessionKey(token), JSON.stringify({
+    jar: session.jar.toJson(),
+    username: session.username,
+    createdAt: session.createdAt,
+    lastSeenAt: session.lastSeenAt,
+  }), SESSION_IDLE_TTL);
+}
+
+async function deleteActiveSession(token: string) {
+  await deleteEphemeralValue(jwxtSessionKey(token));
+}
+
+async function getActiveSession(token: string | undefined | null): Promise<ActiveSession | null> {
+  if (!token) return null;
+  const raw = await getEphemeralValue(jwxtSessionKey(token));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as {
+      jar?: Record<string, Record<string, string>>;
+      username?: string;
+      createdAt?: number;
+      lastSeenAt?: number;
+    };
+    const session: ActiveSession = {
+      jar: CookieJar.fromJson(parsed.jar),
+      username: String(parsed.username || ""),
+      createdAt: Number(parsed.createdAt || Date.now()),
+      lastSeenAt: Date.now(),
+    };
+    await saveActiveSession(token, session);
+    return session;
+  } catch {
+    await deleteActiveSession(String(token));
+    return null;
   }
-}, 60_000).unref?.();
+}
 
 /** 第一步：拿到登录页（lt/execution），如果需要验证码则一并返回图片 */
 export async function beginLogin(): Promise<{
@@ -209,7 +292,7 @@ export async function beginLogin(): Promise<{
   const useVCode = hidden.useVCode === "true";
 
   const id = genId();
-  pendings.set(id, { jar, ssoUrl: finalUrl, hidden, createdAt: Date.now() });
+  await savePendingLogin(id, { jar, ssoUrl: finalUrl, hidden, createdAt: Date.now() });
 
   if (useVCode) {
     const img = await fetchCaptcha(jar, finalUrl).catch(() => "");
@@ -237,7 +320,7 @@ export async function submitLogin(args: {
   password: string;
   captcha?: string;
 }): Promise<LoginAttempt> {
-  const pending = pendings.get(args.pendingId);
+  const pending = await getPendingLogin(args.pendingId);
   if (!pending) return { ok: false, error: "登录会话已过期，请刷新页面重试" };
   const { jar, ssoUrl, hidden } = pending;
 
@@ -265,7 +348,7 @@ export async function submitLogin(args: {
   });
 
   // 用完即弃
-  pendings.delete(args.pendingId);
+  await deletePendingLogin(args.pendingId);
 
   // 期望：最终 URL 落到 jsxsd 域名（说明 CAS 已颁发 ticket 并交换成 JSESSIONID）
   const finalHost = new URL(r.finalUrl).host;
@@ -273,7 +356,7 @@ export async function submitLogin(args: {
     // 注意：不保存 post-login.html —— 它含学生姓名/学号等个人信息
     const token = genId();
     const now = Date.now();
-    sessions.set(token, { jar, username: args.username, createdAt: now, lastSeenAt: now });
+    await saveActiveSession(token, { jar, username: args.username, createdAt: now, lastSeenAt: now });
     return { ok: true, token };
   }
 
@@ -296,7 +379,7 @@ export async function submitLogin(args: {
       if (name) newHidden[name] = value;
     });
     const newPendingId = genId();
-    pendings.set(newPendingId, {
+    await savePendingLogin(newPendingId, {
       jar, ssoUrl: r.finalUrl, hidden: newHidden, createdAt: Date.now(),
     });
     const img = await fetchCaptcha(jar, r.finalUrl).catch(() => "");
@@ -311,32 +394,26 @@ export async function submitLogin(args: {
   return { ok: false, error: errText };
 }
 
-/** 注销：删除 server 内存里的 cookie jar */
-export function logout(token: string): boolean {
-  return sessions.delete(token);
+/** 注销：删除服务端持有的教务 cookie jar */
+export async function logout(token: string): Promise<boolean> {
+  const existed = Boolean(await getEphemeralValue(jwxtSessionKey(token)));
+  await deleteActiveSession(token);
+  return existed;
 }
 
 /** 获取 session（供 API 路由用）；同时刷新 lastSeenAt */
-export function getSession(token: string | undefined | null): ActiveSession | null {
-  if (!token) return null;
-  const s = sessions.get(token);
-  if (!s) return null;
-  if (Date.now() - s.lastSeenAt > SESSION_IDLE_TTL) {
-    sessions.delete(token);
-    return null;
-  }
-  s.lastSeenAt = Date.now();
-  return s;
+export async function getSession(token: string | undefined | null): Promise<ActiveSession | null> {
+  return getActiveSession(token);
 }
 
 /** 用一个 session 访问任意 jsxsd 路径，返回 HTML 文本 */
 export async function jwxtFetchHtml(token: string, path: string): Promise<string> {
-  const sess = getSession(token);
+  const sess = await getSession(token);
   if (!sess) throw Errors.unauthorized("教务会话已失效，请重新登录");
   const url = new URL(path, "http://jsxsd.cpu.edu.cn").toString();
   const { res, finalUrl } = await followRedirects(sess.jar, url);
   if (new URL(finalUrl).host !== "jsxsd.cpu.edu.cn") {
-    sessions.delete(token);
+    await deleteActiveSession(token);
     throw Errors.unauthorized("教务会话已失效（被学校 SSO 踢出），请重新登录");
   }
   return res.text();
@@ -347,12 +424,12 @@ export async function jwxtFetchHtml(token: string, path: string): Promise<string
  * 因为 SSO session 已建立，CAS 会自动透传 ticket 到目标 service。
  */
 export async function fetchAnyCpu(token: string, url: string, opts?: { allowSso?: boolean }): Promise<string> {
-  const sess = getSession(token);
+  const sess = await getSession(token);
   if (!sess) throw Errors.unauthorized("教务会话已失效，请重新登录");
   const { res, finalUrl } = await followRedirects(sess.jar, url);
   const finalHost = new URL(finalUrl).host;
   if (finalHost === "id.cpu.edu.cn" && !opts?.allowSso) {
-    sessions.delete(token);
+    await deleteActiveSession(token);
     throw Errors.unauthorized("学校 SSO 会话已失效，请重新登录");
   }
   if (!finalHost.endsWith("cpu.edu.cn")) {
@@ -421,7 +498,7 @@ export async function fetchIServiceApps(token: string): Promise<IServiceApp[]> {
 
 /** POST form 到 jsxsd 路径，返回 HTML */
 export async function jwxtPostForm(token: string, path: string, fields: Record<string, string>): Promise<string> {
-  const sess = getSession(token);
+  const sess = await getSession(token);
   if (!sess) throw Errors.unauthorized("教务会话已失效，请重新登录");
   const url = new URL(path, "http://jsxsd.cpu.edu.cn").toString();
   const body = new URLSearchParams(fields);
@@ -434,7 +511,7 @@ export async function jwxtPostForm(token: string, path: string, fields: Record<s
     },
   });
   if (new URL(finalUrl).host !== "jsxsd.cpu.edu.cn") {
-    sessions.delete(token);
+    await deleteActiveSession(token);
     throw Errors.unauthorized("教务会话已失效，请重新登录");
   }
   return res.text();
@@ -451,7 +528,7 @@ async function saveDebug(name: string, content: string) {
 
 /** 调试模式：登录后批量抓取若干预设页面用于解析器开发 */
 export async function jwxtDebugSnapshot(token: string): Promise<{ saved: string[]; errors: string[] }> {
-  const sess = getSession(token);
+  const sess = await getSession(token);
   if (!sess) throw Errors.unauthorized("教务会话已失效");
   const base = "http://jsxsd.cpu.edu.cn";
   // GET 类型的探针
@@ -521,5 +598,8 @@ function sanitizeDebugHtml(html: string): string {
 
 /** 暴露给路由层用的"当前活跃会话数"，仅调试 */
 export function sessionStats() {
-  return { sessions: sessions.size, pendings: pendings.size };
+  return Promise.all([
+    countEphemeralKeys(jwxtSessionPrefix()),
+    countEphemeralKeys(jwxtPendingPrefix()),
+  ]).then(([sessions, pendings]) => ({ sessions, pendings }));
 }

@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import morgan from "morgan";
+import compression from "compression";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { errorHandler } from "./middleware/error";
@@ -14,12 +15,16 @@ import { startForumVideoModerationPoller } from "./services/videoModeration";
 import { uploadAssetHandler } from "./services/mediaStorage";
 import { startQqNotificationPoller } from "./services/qqbot";
 import { startSponsorOrderExpiryPoller } from "./services/sponsor";
+import { startRuntimeSync } from "./services/runtimeSync";
 import { fail } from "./utils/response";
 
 export function createApp() {
   const app = express();
 
   app.use(cors());
+  app.use(compression({
+    threshold: 1024,
+  }));
   app.use((req, res, next) => {
     if (!isDatabaseMaintenanceActive()) return next();
     if (req.path === "/api/health") return next();
@@ -43,6 +48,7 @@ export function createApp() {
 
   app.use("/share", shareRouter);
   app.use("/api", router);
+  startRuntimeSync();
   startForumImageModerationPoller();
   startForumVideoModerationPoller();
   startQqNotificationPoller();

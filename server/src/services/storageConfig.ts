@@ -1,5 +1,6 @@
 import { prisma } from "../prisma";
 import { config } from "../config";
+import { broadcastStorageConfigReload } from "./runtimeBroadcast";
 
 export type MediaStorageProvider = "local" | "onedrive-cn";
 
@@ -369,6 +370,7 @@ async function persistStorageConfig(next: MediaStorageStoredConfig) {
     update: { value },
     create: { key, value },
   })));
+  await broadcastStorageConfigReload();
 }
 
 function normalizeMediaStorageProvider(input: unknown, fallback: MediaStorageProvider): MediaStorageProvider {

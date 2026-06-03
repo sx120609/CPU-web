@@ -106,6 +106,7 @@ model Board {
   topics Topic[]
 
   @@index([order])
+  @@index([type, order])
 }
 
 model Topic {
@@ -153,6 +154,9 @@ model Topic {
   manualReviewedBy User? @relation("ManualReviewedTopics", fields: [manualReviewedById], references: [id])
 
   @@index([boardId, lastReplyAt])
+  @@index([boardId, hidden, createdAt])
+  @@index([hidden, createdAt])
+  @@index([hidden, lastReplyAt])
   @@index([authorId])
   @@index([authorId, aiReviewStatus])
 }
@@ -186,6 +190,7 @@ model Reply {
   likes       Like[]
 
   @@index([topicId, floor])
+  @@index([topicId, hidden, floor])
 }
 
 model Like {
@@ -466,6 +471,8 @@ model SchoolFeedSource {
 
   botUser User   @relation("BotUser", fields: [botUserId], references: [id])
   board   Board?
+
+  @@index([enabled])
 }
 
 // 已经抓取过的官方公告（去重用）
@@ -502,6 +509,8 @@ model ServiceCard {
   order       Int      @default(0)
   hidden      Boolean  @default(false)
   createdAt   DateTime @default(now())
+
+  @@index([hidden, order])
 }
 
 // ============ 校园小工具权限 ============
@@ -731,6 +740,7 @@ model SponsorOrder {
 
   @@index([userId, status])
   @@index([status, createdAt])
+  @@index([status, expiresAt])
 }
 
 model SponsorPaymentLog {
@@ -773,6 +783,9 @@ model Notification {
   reads NotificationRead[]
 
   @@index([userId, readAt])
+  @@index([userId, category, createdAt])
+  @@index([category, createdAt])
+  @@index([targetClient, createdAt])
 }
 
 model NotificationRead {
@@ -785,6 +798,7 @@ model NotificationRead {
   notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
 
   @@unique([userId, notificationId])
+  @@index([userId, readAt])
 }
 
 model MessageSetting {

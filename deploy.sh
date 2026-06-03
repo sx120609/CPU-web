@@ -12,6 +12,8 @@
 #   ./deploy.sh reset-db         # 重置 PostgreSQL schema 并重新写入种子数据
 #   ./deploy.sh postgres-init [db] [user]            # 安装 PostgreSQL、创建应用库和账号，并写入 server/.env
 #   ./deploy.sh postgres-config "postgresql://..."   # 手动写入 PostgreSQL 连接串并刷新后端环境
+#   ./deploy.sh redis-init [db-index]                # 安装 Redis 并写入 REDIS_URL
+#   ./deploy.sh redis-config "redis://..."           # 手动写入 Redis 连接串并刷新后端环境
 #   ./deploy.sh proxy-init       # 代理端首次部署：装依赖 + 构建后端 + 启动教务代理
 #   ./deploy.sh proxy-update     # 代理端更新：git pull + 重装 + 重建后端 + 重启教务代理
 #   ./deploy.sh proxy-start      # 启动教务代理
@@ -111,6 +113,45 @@ configured_database_url() {
   fi
 }
 
+mask_redis_url() {
+  local url="$1"
+  if [ -z "$url" ]; then
+    echo "(未配置)"
+    return
+  fi
+  echo "$url" | sed -E 's#(redis(s)?://[^:/@]+):[^@]*@#\1:***@#'
+}
+
+is_redis_url() {
+  [[ "$1" =~ ^redis(s)?:// ]]
+}
+
+configured_redis_url() {
+  local from_file
+  from_file="$(env_get REDIS_URL)"
+  if [ -n "$from_file" ]; then
+    printf '%s' "$from_file"
+  else
+    printf '%s' "${REDIS_URL:-}"
+  fi
+}
+
+redis_input_url() {
+  if [ -n "${REDIS_URL:-}" ] && is_redis_url "${REDIS_URL:-}"; then
+    printf '%s' "$REDIS_URL"
+    return
+  fi
+  if [ -n "${CMD_ARG_1:-}" ] && is_redis_url "$CMD_ARG_1"; then
+    printf '%s' "$CMD_ARG_1"
+  fi
+}
+
+runtime_uses_redis() {
+  local url
+  url="$(configured_redis_url)"
+  is_redis_url "$url"
+}
+
 postgres_input_url() {
   if [ -n "${POSTGRES_DATABASE_URL:-}" ]; then
     printf '%s' "$POSTGRES_DATABASE_URL"
@@ -184,6 +225,28 @@ ensure_postgres() {
   fi
 
   sudo -u postgres psql -d postgres -c "SELECT 1" >/dev/null
+}
+
+ensure_redis() {
+  if command -v redis-server >/dev/null 2>&1 && command -v redis-cli >/dev/null 2>&1; then
+    log "Redis 已安装：$(redis-server --version | head -n 1)"
+  else
+    if ! command -v sudo >/dev/null 2>&1; then
+      err "需要 sudo 才能安装 Redis。请手动安装 redis-server / redis-cli 或以 root 运行此脚本"
+    fi
+    log "安装 Redis 服务端与客户端"
+    sudo apt-get update
+    sudo apt-get install -y redis-server redis-tools
+  fi
+
+  if command -v systemctl >/dev/null 2>&1; then
+    sudo systemctl enable redis-server >/dev/null 2>&1 || true
+    sudo systemctl restart redis-server
+  else
+    sudo service redis-server restart
+  fi
+
+  redis-cli ping >/dev/null 2>&1 || warn "redis-cli ping 失败，请手动检查 Redis 服务状态"
 }
 
 # ---------- 环境检查与安装 ----------
@@ -261,11 +324,23 @@ POSTGRES_DATABASE_URL=""
 JWT_SECRET="$(openssl rand -hex 32 2>/dev/null || echo "please-change-me-$(date +%s)")"
 JWT_EXPIRES_IN="7d"
 NODE_ENV=production
+REDIS_ENABLED="true"
+REDIS_URL=""
+REDIS_PREFIX="cpu-web"
 EOF
     log "已生成随机 JWT_SECRET"
   fi
   if ! grep -q '^POSTGRES_DATABASE_URL=' "$ENV_FILE" 2>/dev/null; then
     echo 'POSTGRES_DATABASE_URL=""' >> "$ENV_FILE"
+  fi
+  if ! grep -q '^REDIS_ENABLED=' "$ENV_FILE" 2>/dev/null; then
+    echo 'REDIS_ENABLED="true"' >> "$ENV_FILE"
+  fi
+  if ! grep -q '^REDIS_URL=' "$ENV_FILE" 2>/dev/null; then
+    echo 'REDIS_URL=""' >> "$ENV_FILE"
+  fi
+  if ! grep -q '^REDIS_PREFIX=' "$ENV_FILE" 2>/dev/null; then
+    echo 'REDIS_PREFIX="cpu-web"' >> "$ENV_FILE"
   fi
 }
 
@@ -405,6 +480,50 @@ do_postgres_init() {
   maybe_restart_running_service
 }
 
+do_redis_config() {
+  ensure_env
+  local input_url
+  input_url="$(redis_input_url)"
+  if [ -n "$input_url" ]; then
+    env_set REDIS_ENABLED "true"
+    env_set REDIS_URL "$input_url"
+    if [ -z "$(env_get REDIS_PREFIX)" ]; then
+      env_set REDIS_PREFIX "cpu-web"
+    fi
+    log "已写入 REDIS_URL：$(mask_redis_url "$input_url")"
+    maybe_restart_running_service
+    return
+  fi
+  local current
+  current="$(configured_redis_url)"
+  if [ -n "$current" ]; then
+    log "当前 REDIS_URL：$(mask_redis_url "$current")"
+  else
+    warn "当前尚未配置 Redis 连接串"
+  fi
+  echo ""
+  echo "   可执行："
+  echo "     ./deploy.sh redis-config 'redis://127.0.0.1:6379/0'"
+  echo "   或者："
+  echo "     REDIS_URL='redis://127.0.0.1:6379/0' ./deploy.sh redis-config"
+}
+
+do_redis_init() {
+  ensure_env
+  ensure_redis
+  local db_index
+  db_index="${REDIS_DB_INDEX:-${CMD_ARG_1:-0}}"
+  [[ "$db_index" =~ ^[0-9]+$ ]] || err "Redis DB index 必须是非负整数：$db_index"
+  local url="redis://127.0.0.1:6379/${db_index}"
+  env_set REDIS_ENABLED "true"
+  env_set REDIS_URL "$url"
+  if [ -z "$(env_get REDIS_PREFIX)" ]; then
+    env_set REDIS_PREFIX "cpu-web"
+  fi
+  log "已写入 REDIS_URL：$(mask_redis_url "$url")"
+  maybe_restart_running_service
+}
+
 do_start() {
   ensure_pm2
   log "通过 pm2 启动 $SERVICE_NAME（端口 $PORT）"
@@ -514,6 +633,9 @@ case "$CMD" in
     if ! runtime_uses_postgres; then
       do_postgres_init
     fi
+    if ! runtime_uses_redis; then
+      do_redis_init
+    fi
     do_install
     do_db_init
     do_build
@@ -547,6 +669,14 @@ case "$CMD" in
   postgres-config)
     log "=== 配置 PostgreSQL 目标连接串 ==="
     do_postgres_config
+    ;;
+  redis-init)
+    log "=== 安装并初始化 Redis ==="
+    do_redis_init
+    ;;
+  redis-config)
+    log "=== 配置 Redis 目标连接串 ==="
+    do_redis_config
     ;;
   start)        do_start ;;
   stop)         do_stop ;;

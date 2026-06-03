@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { ok } from "../utils/response";
+import { withCache } from "../services/cache";
 import { verifyToken } from "../utils/jwt";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
 import { enabledBoardTypes, getGlobalPinnedTopicIds } from "../services/siteSettings";
@@ -31,40 +32,50 @@ homeRouter.get("/summary", async (req, res, next) => {
       } catch { /* ignore */ }
     }
 
-    const readableBoardTypes = enabledBoardTypes();
-    const contentBoardTypes = readableBoardTypes.filter((type) => type !== "announce");
-    const globalPinnedIds = getGlobalPinnedTopicIds();
-    const [user, pinnedTopics, hotTopics, latestTopics, announce, services, personalUnread, globalReads, globalCount] = await Promise.all([
+    const [user, personalUnread, globalReads, globalCount] = await Promise.all([
       userId ? prisma.user.findUnique({ where: { id: userId } }) : Promise.resolve(null),
-      listGlobalPinnedTopics(globalPinnedIds, contentBoardTypes, 6),
-      listHotTopics(6, contentBoardTypes),
-      prisma.topic.findMany({
-        where: { hidden: false, id: { notIn: globalPinnedIds }, board: { type: { in: contentBoardTypes } } },
-        orderBy: { createdAt: "desc" },
-        take: 10,
-        include: {
-          board: { select: { slug: true, name: true, color: true, type: true } },
-          author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
-          tags: { include: { tag: true } },
-        },
-      }),
-      prisma.topic.findMany({
-        where: { hidden: false, board: { readOnly: true } },
-        orderBy: { createdAt: "desc" },
-        take: 8,
-        include: { board: { select: { slug: true, name: true } }, tags: { include: { tag: true } } },
-      }),
-      prisma.serviceCard.findMany({
-        where: visibleServiceWhere(),
-        orderBy: [{ order: "asc" }, { id: "asc" }],
-        take: 8,
-      }),
       userId ? prisma.notification.count({ where: { userId, readAt: null } }) : Promise.resolve(0),
       userId ? prisma.notificationRead.findMany({ where: { userId }, select: { notificationId: true } }) : Promise.resolve([]),
       userId ? prisma.notification.count({ where: { userId: null } }) : Promise.resolve(0),
     ]);
     const forumAccessEnabled = user ? (isForumStaffRole(user.role) || user.forumEnabled) : await resolveForumAccess(userId, role);
     const trust = user ? buildUserTrustSnapshot(user) : null;
+    const readableBoardTypes = enabledBoardTypes();
+    const contentBoardTypes = readableBoardTypes.filter((type) => type !== "announce");
+    const globalPinnedIds = getGlobalPinnedTopicIds();
+    const publicSummary = await withCache(
+      "home",
+      ["summary", forumAccessEnabled ? "forum-enabled" : "announce-only"],
+      60_000,
+      async () => {
+        const [pinnedTopics, hotTopics, latestTopics, announce, services] = await Promise.all([
+          forumAccessEnabled ? listGlobalPinnedTopics(globalPinnedIds, contentBoardTypes, 6) : Promise.resolve([]),
+          forumAccessEnabled ? listHotTopics(6, contentBoardTypes) : Promise.resolve([]),
+          forumAccessEnabled ? prisma.topic.findMany({
+            where: { hidden: false, id: { notIn: globalPinnedIds }, board: { type: { in: contentBoardTypes } } },
+            orderBy: { createdAt: "desc" },
+            take: 10,
+            include: {
+              board: { select: { slug: true, name: true, color: true, type: true } },
+              author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+              tags: { include: { tag: true } },
+            },
+          }) : Promise.resolve([]),
+          prisma.topic.findMany({
+            where: { hidden: false, board: { readOnly: true } },
+            orderBy: { createdAt: "desc" },
+            take: 8,
+            include: { board: { select: { slug: true, name: true } }, tags: { include: { tag: true } } },
+          }),
+          prisma.serviceCard.findMany({
+            where: visibleServiceWhere(),
+            orderBy: [{ order: "asc" }, { id: "asc" }],
+            take: 8,
+          }),
+        ]);
+        return { pinnedTopics, hotTopics, latestTopics, announce, services };
+      },
+    );
 
     const unreadCount = personalUnread + (globalCount - (globalReads as any[]).length);
 
@@ -81,15 +92,15 @@ homeRouter.get("/summary", async (req, res, next) => {
         forumEnabled: forumAccessEnabled,
         unreadCount,
       } : null,
-      pinnedTopics: forumAccessEnabled ? pinnedTopics.map((item) => decodeTopicForViewer(item, { userId, role })) : [],
-      hotTopics: forumAccessEnabled ? hotTopics.map((item, index) => ({
+      pinnedTopics: forumAccessEnabled ? publicSummary.pinnedTopics.map((item: any) => decodeTopicForViewer(item, { userId, role })) : [],
+      hotTopics: forumAccessEnabled ? publicSummary.hotTopics.map((item: any, index: number) => ({
         rank: index + 1,
         hotScore: computeHotScore(item, isRecentTopic(item)),
         ...decodeTopicForViewer(item, { userId, role }),
       })) : [],
-      latestTopics: forumAccessEnabled ? latestTopics.map((item) => decodeTopicForViewer(item, { userId, role })) : [],
-      announce: announce.map((item) => decodeTopicForViewer(item, { userId, role })),
-      services: services
+      latestTopics: forumAccessEnabled ? publicSummary.latestTopics.map((item: any) => decodeTopicForViewer(item, { userId, role })) : [],
+      announce: publicSummary.announce.map((item: any) => decodeTopicForViewer(item, { userId, role })),
+      services: publicSummary.services
         .filter((s) => !HOME_HIDDEN_SERVICE_CODES.includes(s.code))
         .map(normalizeServiceCard),
     });
@@ -111,7 +122,7 @@ homeRouter.get("/hot-ranking", async (_req, res, next) => {
     const forumAccessEnabled = await resolveForumAccess(userId, role);
     if (!forumAccessEnabled) return ok(res, []);
     const contentBoardTypes = enabledBoardTypes().filter((type) => type !== "announce");
-    const list = await listHotTopics(HOT_TOPIC_DEFAULT_SIZE, contentBoardTypes);
+    const list = await withCache("home", ["hot-ranking"], 60_000, async () => listHotTopics(HOT_TOPIC_DEFAULT_SIZE, contentBoardTypes));
     ok(res, list.map((item, index) => ({
       rank: index + 1,
       hotScore: computeHotScore(item, isRecentTopic(item)),
@@ -139,27 +150,30 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
     const contentBoardTypes = enabledBoardTypes().filter((type) => type !== "announce");
     const globalPinnedIds = getGlobalPinnedTopicIds();
     const where = { hidden: false, id: { notIn: globalPinnedIds }, board: { type: { in: contentBoardTypes } } } as const;
-    const [pins, list, total] = await Promise.all([
-      listGlobalPinnedTopics(globalPinnedIds, contentBoardTypes, 20),
-      prisma.topic.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        skip: (page - 1) * size,
-        take: size,
-        include: {
-          board: { select: { slug: true, name: true, color: true, type: true } },
-          author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
-          tags: { include: { tag: true } },
-        },
-      }),
-      prisma.topic.count({ where }),
-    ]);
+    const cached = await withCache("home", ["latest-feed", page, size], 60_000, async () => {
+      const [pins, list, total] = await Promise.all([
+        listGlobalPinnedTopics(globalPinnedIds, contentBoardTypes, 20),
+        prisma.topic.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          skip: (page - 1) * size,
+          take: size,
+          include: {
+            board: { select: { slug: true, name: true, color: true, type: true } },
+            author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+            tags: { include: { tag: true } },
+          },
+        }),
+        prisma.topic.count({ where }),
+      ]);
+      return { pins, list, total };
+    });
     ok(res, {
       page,
       size,
-      total,
-      pins: pins.map((item) => decodeTopicForViewer(item, { userId, role })),
-      list: list.map((item) => decodeTopicForViewer(item, { userId, role })),
+      total: cached.total,
+      pins: cached.pins.map((item: any) => decodeTopicForViewer(item, { userId, role })),
+      list: cached.list.map((item: any) => decodeTopicForViewer(item, { userId, role })),
     });
   } catch (e) { next(e); }
 });

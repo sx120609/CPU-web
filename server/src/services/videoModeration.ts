@@ -3,6 +3,7 @@ import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 import { prisma } from "../prisma";
+import { runWithDistributedLock } from "./cache";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
 import { prepareMediaLocalFileForProcessing, resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
@@ -1091,18 +1092,21 @@ function triggerForumVideoModerationDrain(limit: number) {
 }
 
 async function drainForumVideoModerationQueue() {
-  let processed = 0;
-  while (moderationDrainBudget > 0) {
-    const batchLimit = moderationDrainBudget;
-    moderationDrainBudget = 0;
-    const result = await moderatePendingForumVideos(batchLimit);
-    processed += result.processed;
-    if (result.processed < batchLimit) {
+  const locked = await runWithDistributedLock("forum-video-review:drain", 180_000, async () => {
+    let processed = 0;
+    while (moderationDrainBudget > 0) {
+      const batchLimit = moderationDrainBudget;
       moderationDrainBudget = 0;
-      break;
+      const result = await moderatePendingForumVideos(batchLimit);
+      processed += result.processed;
+      if (result.processed < batchLimit) {
+        moderationDrainBudget = 0;
+        break;
+      }
     }
-  }
-  return processed;
+    return processed;
+  });
+  return locked.result ?? 0;
 }
 
 function getVideoReviewConcurrency() {

@@ -10,6 +10,7 @@ import { requestManualReplyReview, reviewReplyContent, shouldBypassAiReviewForUs
 import { ensureUserCanSpeak } from "../services/userModeration";
 import { refreshUserReplyCount } from "../services/forumStats";
 import { consumeAnonymousCredit, createAnonymousAlias, refreshAnonymousCreditsIfNeeded } from "../services/userTrust";
+import { invalidateForumCaches } from "../services/cacheInvalidation";
 import { decodeReplyForViewer, decodeReplyForViewerWithImages } from "../services/forumPresentation";
 import { ensureForumImageAssetsForContent, summarizeForumImageModerationForContent } from "../services/imageModeration";
 import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForContent } from "../services/videoModeration";
@@ -191,6 +192,7 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     ]);
     const imageReview = await summarizeForumImageModerationForContent(content).catch(() => null);
     const videoReview = await summarizeForumVideoModerationForContent(content).catch(() => null);
+    await invalidateForumCaches();
     ok(res, {
       ...(await decodeReplyForViewerWithImages(reply, req.user)),
       imageReview,
@@ -250,6 +252,7 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
     ]);
     const imageReview = await summarizeForumImageModerationForContent(req.body.content).catch(() => null);
     const videoReview = await summarizeForumVideoModerationForContent(req.body.content).catch(() => null);
+    await invalidateForumCaches();
     ok(res, {
       ...(await decodeReplyForViewerWithImages(updated, req.user)),
       imageReview,
@@ -293,6 +296,7 @@ replyRouter.delete("/:id", authRequired, async (req, res, next) => {
         await refreshUserReplyCount(r.authorId, tx);
       }
     });
+    await invalidateForumCaches();
     ok(res, { ok: true });
   } catch (e) { next(e); }
 });
