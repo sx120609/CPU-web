@@ -123,7 +123,7 @@
             :loading="migratingFiles"
             @click="migrateLocalFiles"
           >
-            一键搬迁当前应走远端的本地文件
+            一键迁移到当前后端
           </el-button>
           <el-button
             type="danger"
@@ -171,7 +171,7 @@
         :closable="false"
         show-icon
         class="inventory-alert"
-        title="有一部分当前应走远端的本地文件不在远端前缀内，这些文件不会参与一键搬迁，否则会影响原路径访问。"
+        title="有一部分当前应走远端的本地文件不在远端前缀内，这些文件不会参与迁移，否则会影响原路径访问。"
       />
 
       <div class="filters">
@@ -547,14 +547,14 @@ async function handleStorageAuthQuery() {
 
 async function migrateLocalFiles() {
   if (!inventory.value?.summary.eligibleMigrationCount) {
-    ElMessage.warning("当前没有可搬迁的本地文件");
+    ElMessage.warning("当前没有需要迁移到当前后端的文件");
     return;
   }
   try {
     await ElMessageBox.confirm(
-      `确认把当前配置下应走远端后端的 ${inventory.value.summary.eligibleMigrationCount} 个本地文件搬迁到世纪互联吗？系统会保留原 /uploads 路径，并把后台引用改到缓存路径。`,
-      "一键搬迁",
-      { type: "warning", confirmButtonText: "开始搬迁", cancelButtonText: "取消" },
+      `确认把这 ${inventory.value.summary.eligibleMigrationCount} 个文件迁移到当前后端吗？如果当前后端是本地，会把旧远端文件回迁到本地；如果当前后端是世纪互联，会把旧本地文件补传到远端。站内访问链接会继续保持 /uploads 路径。`,
+      "一键迁移到当前后端",
+      { type: "warning", confirmButtonText: "开始迁移", cancelButtonText: "取消" },
     );
   } catch {
     return;
@@ -566,9 +566,9 @@ async function migrateLocalFiles() {
     lastMigrationResult.value = result;
     await reloadInventory();
     if (result.failed) {
-      ElMessage.warning(`搬迁完成：成功 ${result.migrated}，失败 ${result.failed}`);
+      ElMessage.warning(`迁移完成：成功 ${result.migrated}，失败 ${result.failed}`);
     } else {
-      ElMessage.success(`搬迁完成，共处理 ${result.migrated} 个文件`);
+      ElMessage.success(`迁移完成，共处理 ${result.migrated} 个文件`);
     }
   } finally {
     migratingFiles.value = false;
