@@ -716,7 +716,8 @@ onMounted(() => {
   border-radius: 12px;
   overflow: hidden;
   vertical-align: top;
-  background: #f8fafc;
+  line-height: 0;
+  background: transparent;
 }
 .md :deep(.md-image-album > .md-image-shell) {
   display: flex;
@@ -746,6 +747,7 @@ onMounted(() => {
   pointer-events: none;
 }
 .md :deep(.md-image-shell__placeholder) {
+  z-index: 0;
   background:
     linear-gradient(110deg, rgba(255, 255, 255, 0) 24%, rgba(255, 255, 255, 0.78) 48%, rgba(255, 255, 255, 0) 72%),
     linear-gradient(135deg, #eef2f7 0%, #e2e8f0 100%);
@@ -753,6 +755,7 @@ onMounted(() => {
   animation: md-image-shimmer 1.15s linear infinite;
 }
 .md :deep(.md-image-shell__state) {
+  z-index: 2;
   display: none;
   align-items: center;
   justify-content: center;
@@ -763,16 +766,19 @@ onMounted(() => {
   background: rgba(248, 250, 252, 0.92);
 }
 .md :deep(.md-image-shell img) {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
   width: 100%;
   height: 100%;
-  display: block;
-  border-radius: 8px;
+  border-radius: inherit;
   object-fit: cover;
   opacity: 0;
   transition: opacity 0.22s ease;
 }
 .md :deep(.md-image-album > .md-image-shell img) {
-  border-radius: 12px;
+  border-radius: inherit;
 }
 .md :deep(.md-image-shell.is-ready img) {
   opacity: 1;
