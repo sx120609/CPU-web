@@ -85,6 +85,7 @@ uploadRouter.post("/images", authRequired, validate(imageSchema), async (req, re
       relativePath: path.posix.join(relativeDir.replace(/\\/g, "/"), filename),
       buffer: parsed.buffer,
       contentType: parsed.mime,
+      mediaKind: "image",
     });
     await registerForumImageAsset({
       url: saved.url,
@@ -111,6 +112,7 @@ uploadRouter.post("/media/init", authRequired, validate(mediaInitSchema), async 
     const session = await createRemoteMediaUploadSession({
       relativePath,
       contentType: mimeType || undefined,
+      mediaKind: kind,
     });
     if (!session) {
       ok(res, { mode: "proxy" as const, kind });
@@ -226,6 +228,7 @@ uploadRouter.post("/media", authRequired, (req, res, next) => {
       relativePath,
       buffer: file.buffer,
       contentType: mimeType || undefined,
+      mediaKind: kind,
     });
 
     if (kind === "image") {

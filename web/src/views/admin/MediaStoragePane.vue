@@ -15,9 +15,14 @@
           <h3 class="section-title">媒体存储配置</h3>
           <p class="section-desc">先保存 Azure 应用和 SharePoint 站点信息，再发起登录授权。授权成功后可选择文档库，并查看远端文件。</p>
         </div>
-        <el-tag :type="mediaStorageProvider === 'onedrive-cn' ? 'success' : 'info'" round>
-          {{ mediaStorageProvider === "onedrive-cn" ? "当前后端：世纪互联 OneDrive" : "当前后端：本地磁盘" }}
-        </el-tag>
+        <div class="summary-row">
+          <el-tag :type="mediaStorageImageProvider === 'onedrive-cn' ? 'success' : 'info'" round>
+            图片：{{ mediaStorageImageProvider === "onedrive-cn" ? "世纪互联 OneDrive" : "本地磁盘" }}
+          </el-tag>
+          <el-tag :type="mediaStorageVideoProvider === 'onedrive-cn' ? 'success' : 'info'" round>
+            视频：{{ mediaStorageVideoProvider === "onedrive-cn" ? "世纪互联 OneDrive" : "本地磁盘" }}
+          </el-tag>
+        </div>
       </div>
 
       <div class="storage-layout">
@@ -41,8 +46,15 @@
         <div class="storage-form">
           <div class="storage-grid">
             <div class="storage-field">
-              <span class="field-label">存储后端</span>
-              <el-select v-model="mediaStorageProvider">
+              <span class="field-label">图片后端</span>
+              <el-select v-model="mediaStorageImageProvider">
+                <el-option label="本地磁盘" value="local" />
+                <el-option label="世纪互联 OneDrive / SharePoint" value="onedrive-cn" />
+              </el-select>
+            </div>
+            <div class="storage-field">
+              <span class="field-label">视频后端</span>
+              <el-select v-model="mediaStorageVideoProvider">
                 <el-option label="本地磁盘" value="local" />
                 <el-option label="世纪互联 OneDrive / SharePoint" value="onedrive-cn" />
               </el-select>
@@ -110,7 +122,7 @@
             :loading="migratingFiles"
             @click="migrateLocalFiles"
           >
-            一键搬迁当前远端前缀下的本地文件
+            一键搬迁当前应走远端的本地文件
           </el-button>
           <el-button
             type="danger"
@@ -125,6 +137,8 @@
       </div>
 
       <div v-if="inventory" class="summary-row inventory-summary">
+        <span class="summary-pill">图片后端 {{ inventory.mediaStorageImageProvider === "onedrive-cn" ? "世纪互联" : "本地" }}</span>
+        <span class="summary-pill">视频后端 {{ inventory.mediaStorageVideoProvider === "onedrive-cn" ? "世纪互联" : "本地" }}</span>
         <span class="summary-pill">总文件 {{ inventory.summary.total }}</span>
         <span class="summary-pill">本地 {{ inventory.summary.localCount }}</span>
         <span class="summary-pill">缓存 {{ inventory.summary.cacheCount }}</span>
@@ -140,7 +154,7 @@
         :closable="false"
         show-icon
         class="inventory-alert"
-        title="远端文档库尚未就绪，当前文件总览仍可查看本地与缓存状态。"
+        title="远端文档库尚未就绪，当前文件总览仍可查看本地与缓存状态；只有配置为远端后端的媒体会受影响。"
       />
       <el-alert
         v-else-if="inventory && inventory.remoteError"
@@ -156,7 +170,7 @@
         :closable="false"
         show-icon
         class="inventory-alert"
-        title="有一部分本地文件不在当前远端前缀内，这些文件不会参与一键搬迁，否则会影响原路径访问。"
+        title="有一部分当前应走远端的本地文件不在远端前缀内，这些文件不会参与一键搬迁，否则会影响原路径访问。"
       />
 
       <div class="filters">
@@ -174,12 +188,12 @@
       </div>
 
       <div v-if="lastMigrationResult" class="migration-result">
-        <div class="migration-head">
-          <div class="card-title">最近一次搬迁结果</div>
-          <div class="section-desc">
-            {{ lastMigrationResult.migrated }} / {{ lastMigrationResult.eligible }} 成功，失败 {{ lastMigrationResult.failed }}。
+          <div class="migration-head">
+            <div class="card-title">最近一次搬迁结果</div>
+            <div class="section-desc">
+            已迁移到当前后端 {{ lastMigrationResult.migrated }} / {{ lastMigrationResult.eligible }}，失败 {{ lastMigrationResult.failed }}。
+            </div>
           </div>
-        </div>
         <div v-if="failedMigrationItems.length" class="migration-errors">
           <div v-for="item in failedMigrationItems" :key="item.relativePath" class="migration-error-row">
             <code>{{ item.relativePath }}</code>
@@ -189,12 +203,12 @@
       </div>
 
       <div v-if="lastCleanupResult" class="migration-result">
-        <div class="migration-head">
-          <div class="card-title">最近一次本地清理结果</div>
-          <div class="section-desc">
-            已删除 {{ lastCleanupResult.removed }} / {{ lastCleanupResult.eligible }}，失败 {{ lastCleanupResult.failed }}。
+          <div class="migration-head">
+            <div class="card-title">最近一次本地清理结果</div>
+            <div class="section-desc">
+            已删除旧副本 {{ lastCleanupResult.removed }} / {{ lastCleanupResult.eligible }}，失败 {{ lastCleanupResult.failed }}。
+            </div>
           </div>
-        </div>
         <div v-if="failedCleanupItems.length" class="migration-errors">
           <div v-for="item in failedCleanupItems" :key="item.relativePath" class="migration-error-row">
             <code>{{ item.relativePath }}</code>
@@ -216,6 +230,14 @@
             <div class="file-main">
               <div class="file-path">{{ row.relativePath }}</div>
               <a class="file-link" :href="row.url" target="_blank" rel="noreferrer">{{ row.url }}</a>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="类型 / 目标后端" width="180">
+          <template #default="{ row }">
+            <div class="time-stack">
+              <span>{{ row.mediaKind === "image" ? "图片" : row.mediaKind === "video" ? "视频" : "未知" }}</span>
+              <span>{{ row.configuredBackend === "onedrive-cn" ? "当前应走世纪互联" : "当前应走本地" }}</span>
             </div>
           </template>
         </el-table-column>
@@ -287,6 +309,8 @@ const cleaningLocalFiles = ref(false);
 
 const siteOrigin = ref("");
 const mediaStorageProvider = ref<"local" | "onedrive-cn">("local");
+const mediaStorageImageProvider = ref<"local" | "onedrive-cn">("local");
+const mediaStorageVideoProvider = ref<"local" | "onedrive-cn">("local");
 const mediaStorageRemotePrefixesInput = ref("forum");
 const oneDriveChinaClientId = ref("");
 const oneDriveChinaClientSecretInput = ref("");
@@ -311,22 +335,25 @@ const fileQuery = ref("");
 const fileFilter = ref<FileFilterKey>("all");
 
 const oneDriveCallbackUrl = computed(() => `${(siteOrigin.value || window.location.origin).replace(/\/+$/, "")}/api/storage/onedrive-cn/callback`);
+const migrationCandidates = computed(() => (inventory.value?.list ?? []).filter((row) => needsMigration(row)));
+const migrationNeedsRemote = computed(() => migrationCandidates.value.some((row) => (
+  row.configuredBackend === "onedrive-cn"
+  || (!row.localExists && !row.cacheExists && row.remoteExists)
+)));
 const migrationDisabled = computed(() =>
   migratingFiles.value
-  || mediaStorageProvider.value !== "onedrive-cn"
-  || !oneDriveChinaRefreshTokenConfigured.value
-  || !oneDriveChinaDriveId.value
-  || !inventory.value?.summary.eligibleMigrationCount,
+  || !migrationCandidates.value.length
+  || (migrationNeedsRemote.value && (!oneDriveChinaRefreshTokenConfigured.value || !oneDriveChinaDriveId.value))
 );
-const cleanupEligibleCount = computed(() => (inventory.value?.list ?? []).filter((item) => (
-  item.inRemotePrefix && item.remoteExists && (item.localExists || item.cacheExists)
-)).length);
+const cleanupCandidates = computed(() => (inventory.value?.list ?? []).filter((row) => hasRedundantCopies(row)));
+const cleanupNeedsRemote = computed(() => cleanupCandidates.value.some((row) => (
+  row.configuredBackend === "local" && row.remoteExists
+)));
+const cleanupEligibleCount = computed(() => cleanupCandidates.value.length);
 const cleanupDisabled = computed(() =>
   cleaningLocalFiles.value
-  || mediaStorageProvider.value !== "onedrive-cn"
-  || !oneDriveChinaRefreshTokenConfigured.value
-  || !oneDriveChinaDriveId.value
-  || !cleanupEligibleCount.value,
+  || !cleanupEligibleCount.value
+  || (cleanupNeedsRemote.value && (!oneDriveChinaRefreshTokenConfigured.value || !oneDriveChinaDriveId.value))
 );
 const failedMigrationItems = computed(() => (lastMigrationResult.value?.list ?? []).filter((item) => item.status === "failed"));
 const failedCleanupItems = computed(() => (lastCleanupResult.value?.list ?? []).filter((item) => item.status === "failed"));
@@ -362,6 +389,8 @@ async function reload() {
 
 function applyMediaStorageConfig(config: MediaStorageConfig) {
   mediaStorageProvider.value = config.mediaStorageProvider;
+  mediaStorageImageProvider.value = config.mediaStorageImageProvider;
+  mediaStorageVideoProvider.value = config.mediaStorageVideoProvider;
   mediaStorageRemotePrefixesInput.value = (config.mediaStorageRemotePrefixes ?? []).join(", ");
   oneDriveChinaClientId.value = config.oneDriveChinaClientId;
   oneDriveChinaClientSecretInput.value = "";
@@ -382,8 +411,13 @@ function applyMediaStorageConfig(config: MediaStorageConfig) {
 async function persistMediaStorageConfig(silent = false) {
   savingMediaStorage.value = true;
   try {
+    const unifiedProvider = mediaStorageImageProvider.value === mediaStorageVideoProvider.value
+      ? mediaStorageImageProvider.value
+      : mediaStorageProvider.value;
     const config = await adminApi.updateMediaStorageConfig({
-      mediaStorageProvider: mediaStorageProvider.value,
+      mediaStorageProvider: unifiedProvider,
+      mediaStorageImageProvider: mediaStorageImageProvider.value,
+      mediaStorageVideoProvider: mediaStorageVideoProvider.value,
       mediaStorageRemotePrefixes: mediaStorageRemotePrefixesInput.value,
       oneDriveChinaClientId: oneDriveChinaClientId.value,
       oneDriveChinaClientSecret: oneDriveChinaClientSecretInput.value || undefined,
@@ -509,7 +543,7 @@ async function migrateLocalFiles() {
   }
   try {
     await ElMessageBox.confirm(
-      `确认把当前远端前缀下的 ${inventory.value.summary.eligibleMigrationCount} 个本地文件搬迁到世纪互联吗？系统会保留原 /uploads 路径，并把后台引用改到缓存路径。`,
+      `确认把当前配置下应走远端后端的 ${inventory.value.summary.eligibleMigrationCount} 个本地文件搬迁到世纪互联吗？系统会保留原 /uploads 路径，并把后台引用改到缓存路径。`,
       "一键搬迁",
       { type: "warning", confirmButtonText: "开始搬迁", cancelButtonText: "取消" },
     );
@@ -539,7 +573,7 @@ async function cleanupLocalFiles() {
   }
   try {
     await ElMessageBox.confirm(
-      `确认删除这 ${cleanupEligibleCount.value} 个已完成远端落盘文件的本地/缓存副本吗？删除后仍会优先从世纪互联读取，后续如需审核会自动回源到缓存。`,
+      `确认删除这 ${cleanupEligibleCount.value} 个已完成远端落盘文件的本地/缓存副本吗？删除后仍会优先从世纪互联读取，后续如需审核会自动回源到缓存。当前配置为本地的媒体不会受影响。`,
       "清理本地副本",
       { type: "warning", confirmButtonText: "开始清理", cancelButtonText: "取消" },
     );
@@ -568,12 +602,37 @@ function matchesFilter(row: MediaStorageAdminFileEntry, filter: FileFilterKey) {
   return state === filter;
 }
 
+function needsMigration(row: MediaStorageAdminFileEntry) {
+  if (row.configuredBackend === "onedrive-cn") {
+    return row.inRemotePrefix && !row.remoteExists && (row.localExists || row.cacheExists);
+  }
+  return !row.localExists && (row.cacheExists || row.remoteExists);
+}
+
+function hasRedundantCopies(row: MediaStorageAdminFileEntry) {
+  if (row.configuredBackend === "onedrive-cn") {
+    return row.remoteExists && (row.localExists || row.cacheExists);
+  }
+  return row.localExists && (row.cacheExists || row.remoteExists);
+}
+
 function resolveState(row: MediaStorageAdminFileEntry) {
-  if (row.localExists && row.remoteExists && row.inRemotePrefix) {
-    return { key: "synced" as const, label: "本地 + 远端并存", type: "warning" as const };
+  if (row.localExists && row.remoteExists) {
+    return {
+      key: "synced" as const,
+      label: row.inRemotePrefix ? "本地 + 远端并存" : "历史本地 + 远端并存",
+      type: "warning" as const,
+    };
   }
   if (!row.localExists && row.cacheExists && row.remoteExists && row.inRemotePrefix) {
     return { key: "migrated" as const, label: "已迁移", type: "success" as const };
+  }
+  if (!row.localExists && row.cacheExists && row.remoteExists) {
+    return {
+      key: "remote-only" as const,
+      label: row.configuredBackend === "local" ? "历史远端 + 缓存" : "远端 + 缓存",
+      type: "primary" as const,
+    };
   }
   if (row.localExists && row.inRemotePrefix) {
     return { key: "eligible" as const, label: "可搬迁", type: "warning" as const };
@@ -582,7 +641,11 @@ function resolveState(row: MediaStorageAdminFileEntry) {
     return { key: "out-of-scope" as const, label: "前缀外本地", type: "info" as const };
   }
   if (row.remoteExists && !row.localExists && !row.cacheExists) {
-    return { key: "remote-only" as const, label: "仅远端", type: "primary" as const };
+    return {
+      key: "remote-only" as const,
+      label: row.configuredBackend === "local" ? "历史仅远端" : "仅远端",
+      type: "primary" as const,
+    };
   }
   if (row.cacheExists && !row.localExists && !row.remoteExists) {
     return { key: "cache-only" as const, label: "仅缓存", type: "info" as const };

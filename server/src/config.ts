@@ -29,6 +29,8 @@ export const config = {
   filestorePython: process.env.FILESTORE_PYTHON ?? "",
   filestoreAdminPassword: process.env.FILESTORE_ADMIN_PASSWORD ?? "admin123",
   mediaStorageProvider: (process.env.MEDIA_STORAGE_PROVIDER ?? "local").trim().toLowerCase(),
+  mediaStorageImageProvider: (process.env.MEDIA_STORAGE_IMAGE_PROVIDER ?? "").trim().toLowerCase(),
+  mediaStorageVideoProvider: (process.env.MEDIA_STORAGE_VIDEO_PROVIDER ?? "").trim().toLowerCase(),
   mediaStorageRemotePrefixes: parseCsvEnv(process.env.MEDIA_STORAGE_REMOTE_PREFIXES, ["forum"]),
   oneDriveChinaTenantId: process.env.ONEDRIVE_CN_TENANT_ID ?? "",
   oneDriveChinaClientId: process.env.ONEDRIVE_CN_CLIENT_ID ?? "",

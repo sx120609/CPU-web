@@ -3058,6 +3058,7 @@ async function saveQqImageUpload(buffer: Buffer, mime: string, nameHint?: string
     relativePath: path.posix.join(relativeDir.replace(/\\/g, "/"), filename),
     buffer,
     contentType: mime || undefined,
+    mediaKind: "image",
   });
   return saved.url;
 }
@@ -3073,6 +3074,7 @@ async function saveQqVideoUpload(buffer: Buffer, mime: string, nameHint?: string
     relativePath: path.posix.join(relativeDir.replace(/\\/g, "/"), `${filenameBase}.${ext}`),
     buffer,
     contentType: mime || resolveVideoMimeTypeByExt(ext),
+    mediaKind: "video",
   });
   const posterUrl = await createVideoPosterAsset({
     videoLocalPath: saved.localPath,

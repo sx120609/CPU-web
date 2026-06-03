@@ -327,6 +327,9 @@ NODE_ENV=production
 REDIS_ENABLED="true"
 REDIS_URL=""
 REDIS_PREFIX="cpu-web"
+MEDIA_STORAGE_PROVIDER="local"
+MEDIA_STORAGE_IMAGE_PROVIDER="local"
+MEDIA_STORAGE_VIDEO_PROVIDER="local"
 EOF
     log "已生成随机 JWT_SECRET"
   fi
@@ -341,6 +344,15 @@ EOF
   fi
   if ! grep -q '^REDIS_PREFIX=' "$ENV_FILE" 2>/dev/null; then
     echo 'REDIS_PREFIX="cpu-web"' >> "$ENV_FILE"
+  fi
+  if ! grep -q '^MEDIA_STORAGE_PROVIDER=' "$ENV_FILE" 2>/dev/null; then
+    echo 'MEDIA_STORAGE_PROVIDER="local"' >> "$ENV_FILE"
+  fi
+  if ! grep -q '^MEDIA_STORAGE_IMAGE_PROVIDER=' "$ENV_FILE" 2>/dev/null; then
+    echo 'MEDIA_STORAGE_IMAGE_PROVIDER="local"' >> "$ENV_FILE"
+  fi
+  if ! grep -q '^MEDIA_STORAGE_VIDEO_PROVIDER=' "$ENV_FILE" 2>/dev/null; then
+    echo 'MEDIA_STORAGE_VIDEO_PROVIDER="local"' >> "$ENV_FILE"
   fi
 }
 

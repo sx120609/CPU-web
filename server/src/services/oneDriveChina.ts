@@ -299,6 +299,21 @@ export async function fetchOneDriveChinaFile(relativePath: string, range?: strin
   });
 }
 
+export async function deleteOneDriveChinaFile(relativePath: string) {
+  const runtime = await getMediaStorageRuntimeConfig();
+  const drive = await requireActiveRemoteDrive(runtime);
+  const remotePath = buildRemoteStoragePath(relativePath, drive.rootPath);
+  const response = await graphRequestWithCurrentMode(`/drives/${drive.driveId}/root:/${encodeGraphPath(remotePath)}`, {
+    method: "DELETE",
+  });
+  if (response.status === 404) return false;
+  if (!response.ok && response.status !== 204) {
+    const detail = await safeReadResponseText(response);
+    throw new Error(detail ? `删除世纪互联文件失败：${detail}` : `删除世纪互联文件失败：HTTP ${response.status}`);
+  }
+  return true;
+}
+
 export async function resolveOneDriveChinaDirectDownloadUrl(relativePath: string) {
   const runtime = await getMediaStorageRuntimeConfig();
   const drive = await requireActiveRemoteDrive(runtime);

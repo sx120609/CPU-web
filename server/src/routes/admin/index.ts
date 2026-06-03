@@ -165,7 +165,7 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
       ? [{ id: "asc" as const }]
       : sort === "id-desc"
         ? [{ id: "desc" as const }]
-        : [{ lastLoginAt: "desc" as const }, { id: "desc" as const }];
+        : [{ lastLoginAt: { sort: "desc" as const, nulls: "last" as const } }, { id: "desc" as const }];
 
     const [list, total] = await Promise.all([
       prisma.user.findMany({
@@ -1485,6 +1485,8 @@ adminRouter.get("/media-storage", adminOnly, async (_req, res, next) => {
 
 const mediaStoragePatchSchema = z.object({
   mediaStorageProvider: z.enum(["local", "onedrive-cn"]).optional(),
+  mediaStorageImageProvider: z.enum(["local", "onedrive-cn"]).optional(),
+  mediaStorageVideoProvider: z.enum(["local", "onedrive-cn"]).optional(),
   mediaStorageRemotePrefixes: z.union([z.string().trim().max(200), z.array(z.string().trim().min(1).max(80)).max(10)]).optional(),
   oneDriveChinaClientId: z.string().trim().max(120).optional(),
   oneDriveChinaClientSecret: z.string().trim().max(240).optional(),
@@ -1579,6 +1581,7 @@ adminRouter.post("/media-storage/migrate", adminOnly, async (_req, res, next) =>
   } catch (e: any) {
     if (
       e?.message === "请先将媒体存储后端切换为世纪互联 OneDrive / SharePoint"
+      || e?.message === "请先至少将图片或视频中的一种媒体后端切换为世纪互联 OneDrive / SharePoint"
       || e?.message === "世纪互联 OneDrive / SharePoint 尚未完成授权或未选择文档库"
       || e?.message === "请先在后台点击登录授权"
     ) {
@@ -1595,6 +1598,7 @@ adminRouter.post("/media-storage/cleanup-local", adminOnly, async (_req, res, ne
   } catch (e: any) {
     if (
       e?.message === "请先将媒体存储后端切换为世纪互联 OneDrive / SharePoint"
+      || e?.message === "请先至少将图片或视频中的一种媒体后端切换为世纪互联 OneDrive / SharePoint"
       || e?.message === "世纪互联 OneDrive / SharePoint 尚未完成授权或未选择文档库"
       || e?.message === "请先在后台点击登录授权"
     ) {

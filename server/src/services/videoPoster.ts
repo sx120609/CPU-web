@@ -35,6 +35,7 @@ export async function createVideoPosterAsset(input: {
       relativePath: path.posix.join(parsed.dir, `${parsed.name}-poster.jpg`),
       buffer,
       contentType: "image/jpeg",
+      mediaKind: "image",
     });
     return saved.url;
   } catch {

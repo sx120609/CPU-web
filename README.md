@@ -134,6 +134,8 @@ FILESTORE_PYTHON=""
 FILESTORE_ADMIN_PASSWORD="admin123"
 
 MEDIA_STORAGE_PROVIDER="local"
+MEDIA_STORAGE_IMAGE_PROVIDER="local"
+MEDIA_STORAGE_VIDEO_PROVIDER="local"
 MEDIA_STORAGE_REMOTE_PREFIXES="forum"
 ONEDRIVE_CN_TENANT_ID=""
 ONEDRIVE_CN_CLIENT_ID=""
@@ -253,7 +255,9 @@ Vite 已代理以下路径到后端：
 | `FILESTORE_PORT` | `8974` | Filestore Python 服务端口 |
 | `FILESTORE_PYTHON` | 自动探测 | 指定 Python 可执行文件 |
 | `FILESTORE_ADMIN_PASSWORD` | `admin123` | Filestore 初始管理员密码 |
-| `MEDIA_STORAGE_PROVIDER` | `local` | 媒体资源存储后端；可设为 `local` 或 `onedrive-cn` |
+| `MEDIA_STORAGE_PROVIDER` | `local` | 媒体资源默认存储后端；可设为 `local` 或 `onedrive-cn`，未单独指定图片/视频时作为回退值 |
+| `MEDIA_STORAGE_IMAGE_PROVIDER` | 空 | 图片资源存储后端；可单独设为 `local` 或 `onedrive-cn` |
+| `MEDIA_STORAGE_VIDEO_PROVIDER` | 空 | 视频资源存储后端；可单独设为 `local` 或 `onedrive-cn` |
 | `MEDIA_STORAGE_REMOTE_PREFIXES` | `forum` | 哪些 `/uploads/...` 前缀走远端存储，逗号分隔 |
 | `ONEDRIVE_CN_TENANT_ID` | 空 | 世纪互联版 Microsoft 365 / Entra 租户 ID |
 | `ONEDRIVE_CN_CLIENT_ID` | 空 | 世纪互联应用注册的客户端 ID |
@@ -267,9 +271,10 @@ Vite 已代理以下路径到后端：
 - AI 文本审核、图片审核、匿名信誉阈值、站点域名等配置现在主要保存在数据库 `site_settings` 中，通过管理后台维护。
 - 生产部署时无需额外 Nginx 才能跑起来；构建后的前端静态资源会直接由 Express 提供。
 - 世纪互联版 OneDrive / SharePoint 媒体存储现在支持直接在管理后台配置：填写 Azure 应用 ID、密钥、SharePoint 站点地址后，点击“登录授权”完成回调授权，再选择文档库即可。
+- 管理后台支持按媒体类型分别切换后端，例如“图片走本地、视频走世纪互联”。切换后会立刻影响后续新上传文件；历史远端文件仍可继续读取，不会因切换而失效。
 - 回调地址固定为 `https://你的站点域名/api/storage/onedrive-cn/callback`；如果你在后台配置了“网站域名”，系统会优先用它生成回调地址。
 - 推荐在世纪互联环境给该应用授予 Microsoft Graph 委托权限 `offline_access`、`User.Read`、`Files.ReadWrite.All`、`Sites.ReadWrite.All`，并完成管理员同意。
-- `MEDIA_STORAGE_PROVIDER`、`ONEDRIVE_CN_*` 这些环境变量仍可作为旧的后备方式使用，但新的后台授权流程优先面向管理后台配置。
+- `MEDIA_STORAGE_PROVIDER`、`MEDIA_STORAGE_IMAGE_PROVIDER`、`MEDIA_STORAGE_VIDEO_PROVIDER` 与 `ONEDRIVE_CN_*` 这些环境变量仍可作为后备方式使用，但新的后台授权流程优先面向管理后台配置。
 
 ## 教务代理模式
 

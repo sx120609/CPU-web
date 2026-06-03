@@ -49,6 +49,8 @@ export type SiteConfig = {
 
 export type MediaStorageConfig = {
   mediaStorageProvider: "local" | "onedrive-cn";
+  mediaStorageImageProvider: "local" | "onedrive-cn";
+  mediaStorageVideoProvider: "local" | "onedrive-cn";
   mediaStorageRemotePrefixes: string[];
   oneDriveChinaClientId: string;
   oneDriveChinaClientSecretConfigured: boolean;
@@ -75,6 +77,8 @@ export type OneDriveChinaDriveOption = {
 export type MediaStorageAdminFileEntry = {
   relativePath: string;
   url: string;
+  mediaKind: "image" | "video" | "unknown";
+  configuredBackend: "local" | "onedrive-cn";
   inRemotePrefix: boolean;
   localExists: boolean;
   cacheExists: boolean;
@@ -89,7 +93,9 @@ export type MediaStorageAdminFileEntry = {
 
 export type MediaStorageAdminInventory = {
   generatedAt: string;
-  mediaStorageProvider: "local" | "onedrive-cn";
+  mediaStorageProvider: "local" | "onedrive-cn" | "mixed";
+  mediaStorageImageProvider: "local" | "onedrive-cn";
+  mediaStorageVideoProvider: "local" | "onedrive-cn";
   remotePrefixes: string[];
   remoteConfigured: boolean;
   remoteReachable: boolean;
@@ -110,7 +116,9 @@ export type MediaStorageAdminInventory = {
 export type MediaStorageMigrationResult = {
   startedAt: string;
   finishedAt: string;
-  mediaStorageProvider: "local" | "onedrive-cn";
+  mediaStorageProvider: "local" | "onedrive-cn" | "mixed";
+  mediaStorageImageProvider: "local" | "onedrive-cn";
+  mediaStorageVideoProvider: "local" | "onedrive-cn";
   remotePrefixes: string[];
   eligible: number;
   migrated: number;
@@ -125,7 +133,9 @@ export type MediaStorageMigrationResult = {
 export type MediaStorageCleanupResult = {
   startedAt: string;
   finishedAt: string;
-  mediaStorageProvider: "local" | "onedrive-cn";
+  mediaStorageProvider: "local" | "onedrive-cn" | "mixed";
+  mediaStorageImageProvider: "local" | "onedrive-cn";
+  mediaStorageVideoProvider: "local" | "onedrive-cn";
   remotePrefixes: string[];
   eligible: number;
   removed: number;
@@ -409,6 +419,8 @@ export const adminApi = {
   mediaStorageConfig: () => request.get<MediaStorageConfig>("/admin/media-storage"),
   updateMediaStorageConfig: (patch: {
     mediaStorageProvider?: "local" | "onedrive-cn";
+    mediaStorageImageProvider?: "local" | "onedrive-cn";
+    mediaStorageVideoProvider?: "local" | "onedrive-cn";
     mediaStorageRemotePrefixes?: string[] | string;
     oneDriveChinaClientId?: string;
     oneDriveChinaClientSecret?: string;

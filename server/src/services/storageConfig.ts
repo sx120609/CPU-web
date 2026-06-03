@@ -3,9 +3,12 @@ import { config } from "../config";
 import { broadcastStorageConfigReload } from "./runtimeBroadcast";
 
 export type MediaStorageProvider = "local" | "onedrive-cn";
+export type MediaStorageKind = "image" | "video";
 
 export type MediaStorageStoredConfig = {
   mediaStorageProvider: MediaStorageProvider;
+  mediaStorageImageProvider: MediaStorageProvider;
+  mediaStorageVideoProvider: MediaStorageProvider;
   mediaStorageRemotePrefixes: string[];
   oneDriveChinaClientId: string;
   oneDriveChinaClientSecret: string;
@@ -29,6 +32,8 @@ export type MediaStorageAdminConfig = Omit<MediaStorageStoredConfig, "oneDriveCh
 
 export type MediaStorageRuntimeConfig = MediaStorageStoredConfig & {
   effectiveProvider: MediaStorageProvider;
+  effectiveImageProvider: MediaStorageProvider;
+  effectiveVideoProvider: MediaStorageProvider;
   effectiveRemotePrefixes: string[];
   legacyTenantId: string;
   legacyClientId: string;
@@ -38,6 +43,8 @@ export type MediaStorageRuntimeConfig = MediaStorageStoredConfig & {
 };
 
 const MEDIA_STORAGE_PROVIDER_KEY = "storage.media.provider";
+const MEDIA_STORAGE_IMAGE_PROVIDER_KEY = "storage.media.imageProvider";
+const MEDIA_STORAGE_VIDEO_PROVIDER_KEY = "storage.media.videoProvider";
 const MEDIA_STORAGE_REMOTE_PREFIXES_KEY = "storage.media.remotePrefixes";
 const ONEDRIVE_CN_CLIENT_ID_KEY = "storage.onedriveCn.clientId";
 const ONEDRIVE_CN_CLIENT_SECRET_KEY = "storage.onedriveCn.clientSecret";
@@ -55,6 +62,8 @@ const ONEDRIVE_CN_LAST_ERROR_KEY = "storage.onedriveCn.lastError";
 
 const STORAGE_KEYS = [
   MEDIA_STORAGE_PROVIDER_KEY,
+  MEDIA_STORAGE_IMAGE_PROVIDER_KEY,
+  MEDIA_STORAGE_VIDEO_PROVIDER_KEY,
   MEDIA_STORAGE_REMOTE_PREFIXES_KEY,
   ONEDRIVE_CN_CLIENT_ID_KEY,
   ONEDRIVE_CN_CLIENT_SECRET_KEY,
@@ -75,6 +84,14 @@ let loaded = false;
 
 const storageConfigCache: MediaStorageStoredConfig = {
   mediaStorageProvider: normalizeMediaStorageProvider(config.mediaStorageProvider, "local"),
+  mediaStorageImageProvider: normalizeMediaStorageProvider(
+    config.mediaStorageImageProvider,
+    normalizeMediaStorageProvider(config.mediaStorageProvider, "local"),
+  ),
+  mediaStorageVideoProvider: normalizeMediaStorageProvider(
+    config.mediaStorageVideoProvider,
+    normalizeMediaStorageProvider(config.mediaStorageProvider, "local"),
+  ),
   mediaStorageRemotePrefixes: normalizeRemotePrefixes(config.mediaStorageRemotePrefixes, ["forum"]),
   oneDriveChinaClientId: "",
   oneDriveChinaClientSecret: "",
@@ -100,6 +117,16 @@ export async function loadStorageConfig(): Promise<void> {
   for (const row of rows) {
     if (row.key === MEDIA_STORAGE_PROVIDER_KEY) {
       storageConfigCache.mediaStorageProvider = normalizeMediaStorageProvider(row.value, "local");
+      storageConfigCache.mediaStorageImageProvider = storageConfigCache.mediaStorageProvider;
+      storageConfigCache.mediaStorageVideoProvider = storageConfigCache.mediaStorageProvider;
+      continue;
+    }
+    if (row.key === MEDIA_STORAGE_IMAGE_PROVIDER_KEY) {
+      storageConfigCache.mediaStorageImageProvider = normalizeMediaStorageProvider(row.value, storageConfigCache.mediaStorageProvider);
+      continue;
+    }
+    if (row.key === MEDIA_STORAGE_VIDEO_PROVIDER_KEY) {
+      storageConfigCache.mediaStorageVideoProvider = normalizeMediaStorageProvider(row.value, storageConfigCache.mediaStorageProvider);
       continue;
     }
     if (row.key === MEDIA_STORAGE_REMOTE_PREFIXES_KEY) {
@@ -178,9 +205,12 @@ export async function getMediaStorageRuntimeConfig(): Promise<MediaStorageRuntim
 
 export function getMediaStorageRuntimeConfigSync(): MediaStorageRuntimeConfig {
   const current = cloneStorageConfig(storageConfigCache);
+  const fallbackProvider = current.mediaStorageProvider || normalizeMediaStorageProvider(config.mediaStorageProvider, "local");
   return {
     ...current,
-    effectiveProvider: current.mediaStorageProvider || normalizeMediaStorageProvider(config.mediaStorageProvider, "local"),
+    effectiveProvider: fallbackProvider,
+    effectiveImageProvider: current.mediaStorageImageProvider || normalizeMediaStorageProvider(config.mediaStorageImageProvider, fallbackProvider),
+    effectiveVideoProvider: current.mediaStorageVideoProvider || normalizeMediaStorageProvider(config.mediaStorageVideoProvider, fallbackProvider),
     effectiveRemotePrefixes: current.mediaStorageRemotePrefixes.length
       ? [...current.mediaStorageRemotePrefixes]
       : normalizeRemotePrefixes(config.mediaStorageRemotePrefixes, ["forum"]),
@@ -194,6 +224,8 @@ export function getMediaStorageRuntimeConfigSync(): MediaStorageRuntimeConfig {
 
 export async function updateMediaStorageAdminConfig(input: {
   mediaStorageProvider?: string;
+  mediaStorageImageProvider?: string;
+  mediaStorageVideoProvider?: string;
   mediaStorageRemotePrefixes?: string[] | string;
   oneDriveChinaClientId?: string;
   oneDriveChinaClientSecret?: string;
@@ -208,7 +240,16 @@ export async function updateMediaStorageAdminConfig(input: {
   const previousSharepointUrl = next.oneDriveChinaSharepointUrl;
 
   if (input.mediaStorageProvider !== undefined) {
-    next.mediaStorageProvider = normalizeMediaStorageProvider(input.mediaStorageProvider, next.mediaStorageProvider);
+    const normalized = normalizeMediaStorageProvider(input.mediaStorageProvider, next.mediaStorageProvider);
+    next.mediaStorageProvider = normalized;
+    next.mediaStorageImageProvider = normalized;
+    next.mediaStorageVideoProvider = normalized;
+  }
+  if (input.mediaStorageImageProvider !== undefined) {
+    next.mediaStorageImageProvider = normalizeMediaStorageProvider(input.mediaStorageImageProvider, next.mediaStorageImageProvider);
+  }
+  if (input.mediaStorageVideoProvider !== undefined) {
+    next.mediaStorageVideoProvider = normalizeMediaStorageProvider(input.mediaStorageVideoProvider, next.mediaStorageVideoProvider);
   }
   if (input.mediaStorageRemotePrefixes !== undefined) {
     next.mediaStorageRemotePrefixes = normalizeRemotePrefixes(input.mediaStorageRemotePrefixes, next.mediaStorageRemotePrefixes);
@@ -329,6 +370,8 @@ function cloneStorageConfig(source: MediaStorageStoredConfig): MediaStorageStore
 
 function sanitizeStorageConfig(target: MediaStorageStoredConfig) {
   target.mediaStorageProvider = normalizeMediaStorageProvider(target.mediaStorageProvider, "local");
+  target.mediaStorageImageProvider = normalizeMediaStorageProvider(target.mediaStorageImageProvider, target.mediaStorageProvider);
+  target.mediaStorageVideoProvider = normalizeMediaStorageProvider(target.mediaStorageVideoProvider, target.mediaStorageProvider);
   target.mediaStorageRemotePrefixes = normalizeRemotePrefixes(target.mediaStorageRemotePrefixes, ["forum"]);
   target.oneDriveChinaSharepointUrl = normalizeOptionalUrl(target.oneDriveChinaSharepointUrl);
   target.oneDriveChinaSharepointHost = String(target.oneDriveChinaSharepointHost || "").trim().toLowerCase();
@@ -350,6 +393,8 @@ function clearResolvedSharePointState(target: MediaStorageStoredConfig) {
 async function persistStorageConfig(next: MediaStorageStoredConfig) {
   const entries: Array<[string, string]> = [
     [MEDIA_STORAGE_PROVIDER_KEY, next.mediaStorageProvider],
+    [MEDIA_STORAGE_IMAGE_PROVIDER_KEY, next.mediaStorageImageProvider],
+    [MEDIA_STORAGE_VIDEO_PROVIDER_KEY, next.mediaStorageVideoProvider],
     [MEDIA_STORAGE_REMOTE_PREFIXES_KEY, next.mediaStorageRemotePrefixes.join(",")],
     [ONEDRIVE_CN_CLIENT_ID_KEY, next.oneDriveChinaClientId],
     [ONEDRIVE_CN_CLIENT_SECRET_KEY, next.oneDriveChinaClientSecret],
