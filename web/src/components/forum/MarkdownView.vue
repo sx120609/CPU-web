@@ -21,9 +21,22 @@
       ›
     </button>
     <div class="md-video-lightbox__body">
-      <div ref="videoGalleryPlayerMountRef" class="md-video-lightbox__player"></div>
+      <div class="md-video-lightbox__player">
+        <video
+          v-if="activeVideoGalleryItem?.src"
+          :key="activeVideoGalleryItem.src"
+          class="md-video-lightbox__video"
+          :src="activeVideoGalleryItem.src"
+          :poster="activeVideoGalleryItem.poster || undefined"
+          controls
+          autoplay
+          playsinline
+          webkit-playsinline="true"
+          preload="metadata"
+        ></video>
+      </div>
       <div class="md-video-lightbox__meta">
-        <span>{{ activeVideoGalleryItem?.title || "视频" }}</span>
+        <span>视频预览</span>
         <span v-if="videoGalleryItems.length > 1">{{ videoGalleryIndex + 1 }} / {{ videoGalleryItems.length }}</span>
         <a
           v-if="activeVideoGalleryItem?.src"
@@ -40,7 +53,6 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, nextTick, watch, onBeforeUnmount } from "vue";
-import Artplayer from "artplayer";
 import Viewer from "viewerjs";
 import "viewerjs/dist/viewer.css";
 import { renderMarkdown } from "@/utils/markdown";
@@ -57,11 +69,9 @@ const el = ref<HTMLElement | null>(null);
 const viewerImageUrl = ref("");
 const videoGalleryOpen = ref(false);
 const videoGalleryIndex = ref(0);
-const videoGalleryItems = ref<Array<{ src: string; poster: string; title: string }>>([]);
+const videoGalleryItems = ref<Array<{ src: string; poster: string }>>([]);
 const activeVideoGalleryItem = computed(() => videoGalleryItems.value[videoGalleryIndex.value] || null);
-const videoGalleryPlayerMountRef = ref<HTMLDivElement | null>(null);
 let imageViewer: Viewer | null = null;
-let videoGalleryPlayer: Artplayer | null = null;
 
 function wrapTables() {
   if (!el.value) return;
@@ -114,21 +124,20 @@ function bindImageViewer() {
 
 function bindVideoThumbnails() {
   if (!el.value) return;
-  const nextItems: Array<{ src: string; poster: string; title: string }> = [];
+  const nextItems: Array<{ src: string; poster: string }> = [];
   const videos = Array.from(el.value.querySelectorAll<HTMLVideoElement>("video"))
     .filter((video) => !video.closest(".art-video-player") && !video.closest(".md-video-shell"));
   videos.forEach((video) => {
     const src = getVideoSourceUrl(video);
     if (!src) return;
     const poster = String(video.getAttribute("poster") || "").trim();
-    const title = video.getAttribute("title") || fileNameFromUrl(src, "video.mp4");
-    const index = nextItems.push({ src, poster, title }) - 1;
+    const index = nextItems.push({ src, poster }) - 1;
     const replaceTarget = video.closest<HTMLElement>(".qq-video-card") || video;
     const linkBlock = replaceTarget.nextElementSibling instanceof HTMLParagraphElement
       && replaceTarget.nextElementSibling.querySelector(".qq-inline-video__link")
       ? replaceTarget.nextElementSibling
       : null;
-    const shell = createVideoThumbnailShell({ src, poster, title }, index, readVideoAlign(replaceTarget));
+    const shell = createVideoThumbnailShell({ src, poster }, index, readVideoAlign(replaceTarget));
     replaceTarget.replaceWith(shell);
     linkBlock?.remove();
   });
@@ -151,7 +160,7 @@ function readVideoAlign(target: HTMLElement) {
 }
 
 function createVideoThumbnailShell(
-  item: { src: string; poster: string; title: string },
+  item: { src: string; poster: string },
   index: number,
   align: "left" | "center" | "right" | string,
 ) {
@@ -162,7 +171,7 @@ function createVideoThumbnailShell(
   const button = document.createElement("button");
   button.type = "button";
   button.className = "md-video-thumb";
-  button.setAttribute("aria-label", `打开视频：${item.title}`);
+  button.setAttribute("aria-label", "打开视频");
   button.addEventListener("click", () => openVideoGallery(index));
 
   if (item.poster) {
@@ -171,35 +180,28 @@ function createVideoThumbnailShell(
     poster.style.backgroundImage = `url("${item.poster.replace(/"/g, "&quot;")}")`;
     button.appendChild(poster);
   } else {
-    button.classList.add("is-posterless");
     const fallback = document.createElement("span");
     fallback.className = "md-video-thumb__fallback";
-    fallback.textContent = item.title;
+    fallback.setAttribute("aria-hidden", "true");
     button.appendChild(fallback);
   }
 
   const overlay = document.createElement("span");
   overlay.className = "md-video-thumb__overlay";
-  overlay.innerHTML = `<span class="md-video-thumb__play">▶</span><span class="md-video-thumb__label">${escapeVideoThumbText(item.title)}</span>`;
+  overlay.innerHTML = `<span class="md-video-thumb__play" aria-hidden="true">▶</span>`;
   button.appendChild(overlay);
   shell.appendChild(button);
   return shell;
-}
-
-function escapeVideoThumbText(value: string) {
-  return String(value || "").replace(/[<>&]/g, "");
 }
 
 function openVideoGallery(index: number) {
   if (!videoGalleryItems.value.length) return;
   videoGalleryIndex.value = Math.max(0, Math.min(index, videoGalleryItems.value.length - 1));
   videoGalleryOpen.value = true;
-  void nextTick(syncVideoGalleryPlayer);
 }
 
 function closeVideoGallery() {
   videoGalleryOpen.value = false;
-  destroyVideoGalleryPlayer();
 }
 
 function showPrevVideo() {
@@ -210,54 +212,6 @@ function showPrevVideo() {
 function showNextVideo() {
   if (videoGalleryIndex.value >= videoGalleryItems.value.length - 1) return;
   videoGalleryIndex.value += 1;
-}
-
-function syncVideoGalleryPlayer() {
-  if (!videoGalleryOpen.value || !videoGalleryPlayerMountRef.value || !activeVideoGalleryItem.value) return;
-  destroyVideoGalleryPlayer();
-  const item = activeVideoGalleryItem.value;
-  try {
-    videoGalleryPlayer = new Artplayer({
-      container: videoGalleryPlayerMountRef.value,
-      url: item.src,
-      theme: "#168776",
-      volume: 0.8,
-      autoplay: false,
-      autoSize: true,
-      playbackRate: true,
-      aspectRatio: true,
-      setting: true,
-      pip: true,
-      mutex: true,
-      backdrop: true,
-      fullscreen: true,
-      fullscreenWeb: true,
-      miniProgressBar: true,
-      playsInline: true,
-      airplay: true,
-      moreVideoAttr: {
-        preload: "metadata",
-        playsInline: true,
-      },
-      ...(item.poster ? { poster: item.poster } : {}),
-    });
-  } catch (error) {
-    console.warn("[markdown-video] gallery artplayer init failed", error);
-  }
-}
-
-function destroyVideoGalleryPlayer() {
-  if (videoGalleryPlayer) {
-    try {
-      videoGalleryPlayer.destroy(false);
-    } catch {
-      // ignore player cleanup failure
-    }
-    videoGalleryPlayer = null;
-  }
-  if (videoGalleryPlayerMountRef.value) {
-    videoGalleryPlayerMountRef.value.innerHTML = "";
-  }
 }
 
 function handleWindowKeydown(event: KeyboardEvent) {
@@ -622,7 +576,6 @@ onMounted(() => nextTick(() => {
 }));
 onBeforeUnmount(() => {
   destroyImageViewer();
-  destroyVideoGalleryPlayer();
   if (typeof window !== "undefined") {
     window.removeEventListener("keydown", handleWindowKeydown);
   }
@@ -634,10 +587,6 @@ watch(renderedHtml, () => nextTick(() => {
 }));
 watch(() => props.clickableImages, () => nextTick(() => {
   bindImageViewer();
-}));
-watch(() => [videoGalleryOpen.value, videoGalleryIndex.value], () => nextTick(() => {
-  if (videoGalleryOpen.value) syncVideoGalleryPlayer();
-  else destroyVideoGalleryPlayer();
 }));
 onMounted(() => {
   if (typeof window !== "undefined") {
@@ -797,33 +746,35 @@ onMounted(() => {
   display: flex;
 }
 .md :deep(.md-video-shell) {
-  width: min(100%, 720px);
+  display: inline-flex;
+  width: min(100%, 220px);
   max-width: 100%;
-  margin: 14px 0;
-  border-radius: 18px;
+  margin: 8px 0;
+  border-radius: 12px;
+  vertical-align: top;
 }
 .md :deep(.md-video-shell[data-align="center"]) {
+  display: flex;
   margin-left: auto;
   margin-right: auto;
 }
 .md :deep(.md-video-shell[data-align="right"]) {
+  display: flex;
   margin-left: auto;
   margin-right: 0;
 }
 .md :deep(.md-video-thumb) {
   position: relative;
   width: 100%;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 11 / 9;
   display: block;
   overflow: hidden;
-  border-radius: 18px;
+  border-radius: 12px;
   border: 0;
   padding: 0;
   cursor: pointer;
-  background:
-    radial-gradient(circle at top, rgba(22, 135, 118, 0.14), transparent 48%),
-    linear-gradient(180deg, #0f172a 0%, #020617 100%);
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+  background: #f8fafc;
+  box-shadow: none;
 }
 .md :deep(.md-video-thumb__poster),
 .md :deep(.md-video-thumb__fallback) {
@@ -836,46 +787,34 @@ onMounted(() => {
   transform: scale(1.01);
 }
 .md :deep(.md-video-thumb__fallback) {
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-start;
-  padding: 16px;
-  color: rgba(255, 255, 255, 0.92);
-  font-size: 14px;
-  line-height: 1.5;
-  text-align: left;
+  background:
+    linear-gradient(110deg, rgba(255, 255, 255, 0) 24%, rgba(255, 255, 255, 0.78) 48%, rgba(255, 255, 255, 0) 72%),
+    linear-gradient(135deg, #eef2f7 0%, #e2e8f0 100%);
+  background-size: 220% 100%, 100% 100%;
+  animation: md-image-shimmer 1.15s linear infinite;
 }
 .md :deep(.md-video-thumb__overlay) {
   position: absolute;
   inset: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 18px;
-  background: linear-gradient(180deg, rgba(2, 6, 23, 0.12), rgba(2, 6, 23, 0.56));
+  padding: 12px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.06), rgba(15, 23, 42, 0.2));
   color: #fff;
 }
 .md :deep(.md-video-thumb__play) {
-  width: 62px;
-  height: 62px;
+  width: 52px;
+  height: 52px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(14px);
-  font-size: 28px;
+  background: rgba(15, 23, 42, 0.56);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+  font-size: 24px;
   text-indent: 4px;
-}
-.md :deep(.md-video-thumb__label) {
-  max-width: min(100%, 520px);
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1.5;
-  text-align: center;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.42);
 }
 .md-video-lightbox {
   position: fixed;
@@ -896,11 +835,16 @@ onMounted(() => {
 }
 .md-video-lightbox__player {
   width: 100%;
-  min-height: min(72vh, 640px);
   border-radius: 20px;
   overflow: hidden;
-  background: linear-gradient(180deg, #0f172a 0%, #020617 100%);
+  background: #020617;
   box-shadow: 0 24px 60px rgba(2, 6, 23, 0.34);
+}
+.md-video-lightbox__video {
+  width: 100%;
+  max-height: min(72vh, 640px);
+  display: block;
+  background: #000;
 }
 .md-video-lightbox__meta {
   display: flex;
@@ -1242,7 +1186,8 @@ onMounted(() => {
 
   .md :deep(.md-video-shell),
   .md :deep(.md-video-thumb) {
-    border-radius: 14px;
+    width: min(100%, 180px);
+    border-radius: 10px;
   }
 
   .md-video-lightbox {
@@ -1254,8 +1199,11 @@ onMounted(() => {
   }
 
   .md-video-lightbox__player {
-    min-height: min(48vh, 320px);
     border-radius: 14px;
+  }
+
+  .md-video-lightbox__video {
+    max-height: min(56vh, 420px);
   }
 
   .md-video-lightbox__meta {
