@@ -38,14 +38,6 @@
       <div class="md-video-lightbox__meta">
         <span>视频预览</span>
         <span v-if="videoGalleryItems.length > 1">{{ videoGalleryIndex + 1 }} / {{ videoGalleryItems.length }}</span>
-        <a
-          v-if="activeVideoGalleryItem?.src"
-          :href="activeVideoGalleryItem.src"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          打开原视频
-        </a>
       </div>
     </div>
   </div>
@@ -849,13 +841,10 @@ onMounted(() => {
 .md-video-lightbox__meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   color: rgba(255, 255, 255, 0.92);
   font-size: 14px;
-}
-.md-video-lightbox__meta a {
-  color: #93c5fd;
 }
 .md-video-lightbox__close,
 .md-video-lightbox__nav {
