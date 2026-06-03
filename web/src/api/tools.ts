@@ -1,6 +1,6 @@
 import { request, type RequestOptions } from "./request";
 
-export type ServiceToolCode = "feedback" | "questionnaire" | "grade_check" | "file_collect";
+export type ServiceToolCode = "feedback" | "questionnaire" | "grade_check" | "file_collect" | "cloud_drive";
 export type QuestionnaireStatus = "draft" | "open" | "closed";
 export type QuestionnaireVisibility = "public" | "login";
 export type QuestionnaireFieldType = "text" | "textarea" | "single" | "multiple" | "number" | "date" | "rating";
@@ -221,6 +221,38 @@ export interface ToolManager {
   };
 }
 
+export interface CloudDriveEntry {
+  name: string;
+  relativePath: string;
+  kind: "folder" | "file";
+  sizeBytes: number | null;
+  updatedAt: string;
+  extension: string;
+  previewable: boolean;
+  webUrl: string;
+}
+
+export interface CloudDriveDirectory {
+  backend: "local" | "onedrive-cn";
+  remoteReady: boolean;
+  currentPath: string;
+  rootName: string;
+  rootStoragePath: string;
+  siteName: string;
+  driveName: string;
+  breadcrumbs: Array<{ name: string; path: string }>;
+  entries: CloudDriveEntry[];
+}
+
+export interface CloudDriveUploadInitResult {
+  backend: "local" | "onedrive-cn";
+  mode: "direct" | "proxy";
+  relativePath: string;
+  uploadUrl?: string;
+  uploadToken?: string;
+  expiresAt?: string;
+}
+
 export const toolsApi = {
   tools: () => request.get<ToolMeta[]>("/tools"),
   myPermissions: (options?: RequestOptions) =>
@@ -299,4 +331,24 @@ export const toolsApi = {
     request.delete<{ ok: true }>(`/tools/file-collection-submissions/${id}`),
   deleteFileCollectionFile: (id: number) =>
     request.delete<{ ok: true }>(`/tools/file-collection-files/${id}`),
+  cloudDrive: (path = "", options?: RequestOptions) =>
+    request.get<CloudDriveDirectory>("/tools/cloud-drive", { path }, options),
+  createCloudDriveFolder: (data: { path?: string; name: string }) =>
+    request.post<CloudDriveEntry>("/tools/cloud-drive/folders", data),
+  renameCloudDriveEntry: (data: { path: string; name: string }) =>
+    request.patch<CloudDriveEntry>("/tools/cloud-drive/rename", data),
+  deleteCloudDriveEntry: (path: string) =>
+    request.delete<{ ok: true }>("/tools/cloud-drive", { params: { path } }),
+  cloudDriveAccessUrl: (data: { path: string; download?: boolean }, options?: RequestOptions) =>
+    request.post<{ url: string }>("/tools/cloud-drive/access", data, options),
+  initCloudDriveUpload: (data: {
+    path?: string;
+    fileName: string;
+    mimeType?: string;
+    fileSize: number;
+  }) => request.post<CloudDriveUploadInitResult>("/tools/cloud-drive/upload/init", data, { timeout: 30000 }),
+  completeCloudDriveUpload: (uploadToken: string) =>
+    request.post<{ entry: CloudDriveEntry }>("/tools/cloud-drive/upload/complete", { uploadToken }, { timeout: 180000 }),
+  uploadCloudDriveFile: (formData: FormData, options?: RequestOptions) =>
+    request.post<CloudDriveEntry>("/tools/cloud-drive/upload", formData, options),
 };

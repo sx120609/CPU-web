@@ -50,6 +50,78 @@
           </section>
         </div>
 
+        <div v-else-if="activeTool === 'cloud_drive'" class="tool-admin-grid permission-only-grid">
+          <section class="admin-section questionnaire-section">
+            <div class="section-head">
+              <div>
+                <h3>云盘</h3>
+                <p>云盘本体在小工具页里使用，这里只维护访问权限和管理器。接好世纪互联文档库后，管理器可直接在工具页上传、整理和删除文件。</p>
+              </div>
+              <el-button type="primary" @click="openCloudDriveTool">
+                <el-icon><View /></el-icon>
+                打开云盘
+              </el-button>
+            </div>
+            <div class="empty-panel">
+              共享文件目录、上传队列和预览下载都在“云盘”工具页里完成；此页面保留通用权限配置，方便控制谁能看、谁能改。
+            </div>
+          </section>
+
+          <section v-if="canAdminActiveTool" class="admin-section managers-section">
+            <div class="section-head">
+              <div>
+                <h3>使用权限</h3>
+                <p>可决定云盘是否需要登录浏览，以及是否允许所有登录用户一起管理文件。</p>
+              </div>
+            </div>
+            <div class="access-setting">
+              <div>
+                <b>登录后使用</b>
+                <span>{{ currentToolMeta?.requireLogin ? "当前需要登录" : "当前允许游客访问" }}</span>
+              </div>
+              <el-switch
+                v-model="toolRequireLogin"
+                :loading="settingSaving"
+                @change="saveToolSetting"
+              />
+            </div>
+            <div class="access-setting">
+              <div>
+                <b>开放管理入口</b>
+                <span>{{ currentToolMeta?.allowPublicManage ? "所有登录用户都可上传和整理文件" : "仅管理器可修改文件" }}</span>
+              </div>
+              <el-switch
+                v-model="toolAllowPublicManage"
+                :loading="settingSaving"
+                @change="savePublicManageSetting"
+              />
+            </div>
+          </section>
+
+          <section v-if="canAdminActiveTool" class="admin-section managers-section">
+            <div class="section-head">
+              <div>
+                <h3>管理器</h3>
+                <p>被分配后可直接进入云盘工具页管理目录、上传文件和删除内容。</p>
+              </div>
+            </div>
+            <div class="add-manager">
+              <el-input v-model="managerUsername" placeholder="输入用户名" clearable @keyup.enter="addManager" />
+              <el-button type="primary" :loading="managerSaving" @click="addManager">添加</el-button>
+            </div>
+            <div class="manager-list">
+              <div v-for="manager in managers" :key="manager.id" class="manager-row">
+                <div>
+                  <b>{{ manager.user.nickname || manager.user.username }}</b>
+                  <span>{{ manager.user.username }}</span>
+                </div>
+                <el-button text type="danger" @click="removeManager(manager.user.id)">移除</el-button>
+              </div>
+              <el-empty v-if="!managers.length" description="暂无单独分配的管理器" />
+            </div>
+          </section>
+        </div>
+
         <div v-else class="tool-admin-grid">
           <section v-if="activeTool !== 'grade_check'" class="admin-section questionnaire-section">
             <div class="section-head">
@@ -1374,7 +1446,7 @@ function pickInitialTool(): ServiceToolCode {
 function normalizeToolQuery(value: unknown): ServiceToolCode | "" {
   const raw = Array.isArray(value) ? value[0] : value;
   if (typeof raw !== "string") return "";
-  return (["feedback", "questionnaire", "grade_check", "file_collect"] as ServiceToolCode[]).includes(raw as ServiceToolCode)
+  return (["feedback", "questionnaire", "grade_check", "file_collect", "cloud_drive"] as ServiceToolCode[]).includes(raw as ServiceToolCode)
     ? raw as ServiceToolCode
     : "";
 }
@@ -1406,10 +1478,20 @@ async function reloadActive() {
     gradeChecks.value = [];
     return;
   }
+  if (activeTool.value === "cloud_drive") {
+    questionnaires.value = [];
+    gradeChecks.value = [];
+    fileCollections.value = [];
+    return;
+  }
   const questionnaireList = await toolsApi.questionnaires({ toolCode: activeTool.value, manage: "1" });
   questionnaires.value = questionnaireList;
   gradeChecks.value = [];
   fileCollections.value = [];
+}
+
+function openCloudDriveTool() {
+  router.push("/services/tools/cloud_drive");
 }
 
 async function saveToolSetting(value: string | number | boolean) {

@@ -3,8 +3,8 @@
     <section class="drive-shell">
       <aside class="drive-sidebar">
         <div class="sidebar-card hero-card">
-          <div class="hero-kicker">ADMIN CLOUD DRIVE</div>
-          <h3>后台云盘</h3>
+          <div class="hero-kicker">CAMPUS CLOUD DRIVE</div>
+          <h3>共享云盘</h3>
           <p>
             基于现有世纪互联 OneDrive / SharePoint 存储能力构建的文件管理器。
             当前独立写入 <code>{{ directory?.rootStoragePath || "cloud-drive" }}</code>。
@@ -18,7 +18,7 @@
             <span class="summary-pill" v-if="directory?.driveName">{{ directory.driveName }}</span>
           </div>
 
-          <div class="sidebar-actions">
+          <div v-if="canManage" class="sidebar-actions">
             <el-button type="primary" @click="triggerFilePicker">上传文件</el-button>
             <el-button @click="promptCreateFolder">新建文件夹</el-button>
           </div>
@@ -92,6 +92,26 @@
 
       <section class="drive-main">
         <el-alert
+          v-if="needLogin"
+          type="info"
+          :closable="false"
+          show-icon
+          class="drive-alert"
+          title="当前云盘需要登录后使用。"
+        >
+          <template #default>
+            <el-button type="primary" size="small" @click="goLogin">去登录</el-button>
+          </template>
+        </el-alert>
+        <el-alert
+          v-else-if="loadError"
+          type="error"
+          :closable="false"
+          show-icon
+          class="drive-alert"
+          :title="loadError"
+        />
+        <el-alert
           v-if="directory && directory.backend === 'local' && !directory.remoteReady"
           type="warning"
           :closable="false"
@@ -99,14 +119,22 @@
           class="drive-alert"
           title="世纪互联文档库当前不可用，云盘已自动回退到本地目录。"
         />
+        <el-alert
+          v-if="directory && !canManage"
+          type="info"
+          :closable="false"
+          show-icon
+          class="drive-alert"
+          title="你当前只有浏览和下载权限；上传、重命名和删除仅对管理者开放。"
+        />
 
-        <div class="explorer-card">
+        <div v-if="!needLogin" class="explorer-card">
           <div class="explorer-hero">
             <div>
               <div class="hero-label">Cloud Explorer</div>
               <h2>{{ directory?.rootName || "云盘根目录" }}</h2>
               <p>
-                {{ directory?.backend === "onedrive-cn" ? "当前正在操作 SharePoint 文档库中的独立云盘子目录。" : "当前正在使用本地 fallback 目录，可继续上传与整理文件。" }}
+                {{ directory?.backend === "onedrive-cn" ? (canManage ? "当前正在操作 SharePoint 文档库中的独立云盘子目录。" : "当前正在浏览 SharePoint 文档库中的共享云盘内容。") : (canManage ? "当前正在使用本地 fallback 目录，可继续上传与整理文件。" : "当前正在浏览本地 fallback 目录中的共享文件。") }}
               </p>
             </div>
             <div class="hero-controls">
@@ -132,12 +160,12 @@
             </div>
             <div class="toolbar-actions">
               <el-button @click="goUp" :disabled="!directory?.currentPath">返回上级</el-button>
-              <el-button @click="triggerFilePicker">上传</el-button>
-              <el-button @click="promptCreateFolder">新建文件夹</el-button>
+              <el-button v-if="canManage" @click="triggerFilePicker">上传</el-button>
+              <el-button v-if="canManage" @click="promptCreateFolder">新建文件夹</el-button>
               <el-button @click="openSelected" :disabled="!selectedEntry">打开</el-button>
               <el-button @click="downloadSelected" :disabled="!selectedEntry || selectedEntry.kind !== 'file'">下载</el-button>
-              <el-button @click="promptRename(selectedEntry || undefined)" :disabled="!selectedEntry">重命名</el-button>
-              <el-button type="danger" plain @click="removeEntry(selectedEntry || undefined)" :disabled="!selectedEntry">删除</el-button>
+              <el-button v-if="canManage" @click="promptRename(selectedEntry || undefined)" :disabled="!selectedEntry">重命名</el-button>
+              <el-button v-if="canManage" type="danger" plain @click="removeEntry(selectedEntry || undefined)" :disabled="!selectedEntry">删除</el-button>
             </div>
           </div>
 
@@ -186,6 +214,8 @@
                     <el-button text size="small" @click="handleEntryOpen(entry)">打开</el-button>
                     <el-button v-if="entry.kind === 'file'" text size="small" @click="downloadEntry(entry)">下载</el-button>
                     <el-button v-if="entry.webUrl" text size="small" @click="openRemoteUrl(entry)">远端页</el-button>
+                    <el-button v-if="canManage" text size="small" @click="promptRename(entry)">重命名</el-button>
+                    <el-button v-if="canManage" text size="small" type="danger" @click="removeEntry(entry)">删除</el-button>
                   </span>
                 </button>
               </div>
@@ -221,9 +251,14 @@
 <script setup lang="ts">
 import axios from "axios";
 import { computed, onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { adminApi, type CloudDriveDirectory, type CloudDriveEntry } from "@/api/admin";
+import { toolsApi, type CloudDriveDirectory, type CloudDriveEntry } from "@/api/tools";
 import { fmtDate } from "@/utils/format";
+
+const props = defineProps<{
+  canManage: boolean;
+}>();
 
 type UploadTaskStatus = "preparing" | "uploading" | "processing" | "done" | "error";
 
@@ -237,6 +272,8 @@ type UploadTask = {
 
 const ONEDRIVE_UPLOAD_CHUNK_BYTES = 32 * 320 * 1024;
 
+const route = useRoute();
+const router = useRouter();
 const loading = ref(false);
 const search = ref("");
 const viewMode = ref<"list" | "grid">("list");
@@ -245,6 +282,9 @@ const selectedPath = ref("");
 const dragActive = ref(false);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const uploadTasks = ref<UploadTask[]>([]);
+const needLogin = ref(false);
+const loadError = ref("");
+const canManage = computed(() => props.canManage);
 
 const filteredEntries = computed(() => {
   const keyword = search.value.trim().toLowerCase();
@@ -275,11 +315,25 @@ onMounted(() => {
 async function reload(path = directory.value?.currentPath || "") {
   loading.value = true;
   try {
-    const data = await adminApi.cloudDrive(path);
+    needLogin.value = false;
+    loadError.value = "";
+    const data = await toolsApi.cloudDrive(path, {
+      suppressAuthRedirect: true,
+      suppressAuthMessage: true,
+      suppressErrorMessage: true,
+    });
     directory.value = data;
     if (!(data.entries || []).some((entry) => entry.relativePath === selectedPath.value)) {
       selectedPath.value = "";
     }
+  } catch (error: any) {
+    if (error?.response?.status === 401) {
+      needLogin.value = true;
+      directory.value = null;
+      return;
+    }
+    loadError.value = error?.response?.data?.message ?? error?.message ?? "云盘加载失败";
+    directory.value = null;
   } finally {
     loading.value = false;
   }
@@ -309,11 +363,19 @@ async function onFileInputChange(event: Event) {
 
 async function onDropFiles(event: DragEvent) {
   dragActive.value = false;
+  if (!canManage.value) {
+    ElMessage.warning("你当前没有上传权限");
+    return;
+  }
   const files = Array.from(event.dataTransfer?.files || []);
   await enqueueFiles(files);
 }
 
 async function enqueueFiles(files: File[]) {
+  if (!canManage.value) {
+    ElMessage.warning("你当前没有上传权限");
+    return;
+  }
   if (!files.length) return;
   for (const file of files) {
     const task: UploadTask = {
@@ -339,7 +401,7 @@ async function enqueueFiles(files: File[]) {
 }
 
 async function uploadSingleFile(file: File, task: UploadTask) {
-  const init = await adminApi.initCloudDriveUpload({
+  const init = await toolsApi.initCloudDriveUpload({
     path: directory.value?.currentPath || "",
     fileName: file.name,
     mimeType: file.type || "",
@@ -355,7 +417,7 @@ async function uploadSingleFile(file: File, task: UploadTask) {
     task.status = "processing";
     task.detail = "正在确认远端文件";
     task.percent = 100;
-    await adminApi.completeCloudDriveUpload(init.uploadToken);
+    await toolsApi.completeCloudDriveUpload(init.uploadToken);
     return;
   }
 
@@ -364,7 +426,7 @@ async function uploadSingleFile(file: File, task: UploadTask) {
   formData.append("file", file, file.name);
   task.status = "uploading";
   task.detail = uploadStageLabel("uploading", 0, file.size);
-  await adminApi.uploadCloudDriveFile(formData, {
+  await toolsApi.uploadCloudDriveFile(formData, {
     timeout: 180000,
     onUploadProgress: (event) => {
       const total = Number(event.total || file.size || 0);
@@ -400,9 +462,13 @@ async function downloadEntry(entry: CloudDriveEntry) {
 }
 
 async function openAccessUrl(entry: CloudDriveEntry, download: boolean) {
-  const { url } = await adminApi.cloudDriveAccessUrl({
+  const { url } = await toolsApi.cloudDriveAccessUrl({
     path: entry.relativePath,
     download,
+  }, {
+    suppressAuthRedirect: true,
+    suppressAuthMessage: true,
+    suppressErrorMessage: true,
   });
   window.open(url, "_blank", "noopener");
 }
@@ -420,7 +486,7 @@ async function promptCreateFolder() {
       cancelButtonText: "取消",
     });
     if (!value) return;
-    await adminApi.createCloudDriveFolder({
+    await toolsApi.createCloudDriveFolder({
       path: directory.value?.currentPath || "",
       name: value,
     });
@@ -440,7 +506,7 @@ async function promptRename(entry = selectedEntry.value || undefined) {
       cancelButtonText: "取消",
     });
     if (!value) return;
-    await adminApi.renameCloudDriveEntry({
+    await toolsApi.renameCloudDriveEntry({
       path: entry.relativePath,
       name: value,
     });
@@ -459,7 +525,7 @@ async function removeEntry(entry = selectedEntry.value || undefined) {
       "删除确认",
       { type: "warning" },
     );
-    await adminApi.deleteCloudDriveEntry(entry.relativePath);
+    await toolsApi.deleteCloudDriveEntry(entry.relativePath);
     ElMessage.success("已删除");
     selectedPath.value = "";
     await reload(directory.value?.currentPath || "");
@@ -494,6 +560,10 @@ function formatBytes(value: number | null | undefined) {
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   if (size < 1024 * 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
   return `${(size / 1024 / 1024 / 1024).toFixed(1)} GB`;
+}
+
+function goLogin() {
+  router.push({ name: "login", query: { redirect: route.fullPath } });
 }
 
 async function uploadFileToOneDriveSession(

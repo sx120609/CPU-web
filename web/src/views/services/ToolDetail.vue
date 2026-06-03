@@ -29,6 +29,7 @@
       <FeedbackPanel v-if="tool.componentKey === 'feedback'" />
       <QuestionnairePanel v-else-if="tool.componentKey === 'questionnaire'" />
       <GradeCheckPanel v-else-if="tool.componentKey === 'grade_check'" />
+      <CloudDrivePanel v-else-if="tool.componentKey === 'cloud_drive'" :can-manage="canManage" />
       <FileCollectPanel v-else />
     </section>
 
@@ -48,6 +49,7 @@ import { ElMessage } from "element-plus";
 import { getToken } from "@/api/request";
 import { toolsApi, type GradeCheckTable, type Questionnaire, type QuestionnaireField, type ServiceToolCode, type ToolMeta } from "@/api/tools";
 import { findServiceTool } from "@/data/serviceTools";
+import CloudDrivePanel from "./CloudDrivePanel.vue";
 
 const route = useRoute();
 const router = useRouter();

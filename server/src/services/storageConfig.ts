@@ -453,7 +453,9 @@ async function persistStorageConfig(next: MediaStorageStoredConfig) {
 
 function normalizeMediaStorageProvider(input: unknown, fallback: MediaStorageProvider): MediaStorageProvider {
   const raw = String(input || "").trim().toLowerCase();
-  return raw === "onedrive-cn" ? "onedrive-cn" : fallback;
+  if (raw === "onedrive-cn") return "onedrive-cn";
+  if (raw === "local") return "local";
+  return fallback;
 }
 
 function normalizeRemotePrefixes(input: string[] | string | unknown, fallback: string[]) {
