@@ -1,7 +1,7 @@
 import { buildUserPreview } from "../utils/publicUser";
-import { decorateReplyForViewerWithImageModeration, decorateTopicForViewerWithImageModeration } from "./imageModeration";
+import { renderModeratedContent, summarizeForumImageModerationForContent } from "./imageModeration";
 import { isGlobalPinnedTopic } from "./siteSettings";
-import { decorateReplyForViewerWithVideoModeration, decorateTopicForViewerWithVideoModeration } from "./videoModeration";
+import { renderModeratedVideoContent, summarizeForumVideoModerationForContent } from "./videoModeration";
 
 type Viewer = {
   userId?: number | null;
@@ -66,11 +66,35 @@ export function decodeReplyForViewer(reply: any, viewer?: Viewer) {
 }
 
 export async function decodeTopicForViewerWithImages(topic: any, viewer?: Viewer) {
-  const decoded = await decorateTopicForViewerWithImageModeration(decodeTopicForViewer(topic, viewer), viewer);
-  return decorateTopicForViewerWithVideoModeration(decoded, viewer);
+  const decoded = decodeTopicForViewer(topic, viewer);
+  const sourceContent = String(decoded.content || "");
+  const [imageReview, videoReview] = await Promise.all([
+    summarizeForumImageModerationForContent(sourceContent),
+    summarizeForumVideoModerationForContent(sourceContent),
+  ]);
+  const videoRenderedContent = await renderModeratedVideoContent(sourceContent, viewer);
+  const content = await renderModeratedContent(videoRenderedContent, viewer);
+  return {
+    ...decoded,
+    imageReview,
+    videoReview,
+    content,
+  };
 }
 
 export async function decodeReplyForViewerWithImages(reply: any, viewer?: Viewer) {
-  const decoded = await decorateReplyForViewerWithImageModeration(decodeReplyForViewer(reply, viewer), viewer);
-  return decorateReplyForViewerWithVideoModeration(decoded, viewer);
+  const decoded = decodeReplyForViewer(reply, viewer);
+  const sourceContent = String(decoded.content || "");
+  const [imageReview, videoReview] = await Promise.all([
+    summarizeForumImageModerationForContent(sourceContent),
+    summarizeForumVideoModerationForContent(sourceContent),
+  ]);
+  const videoRenderedContent = await renderModeratedVideoContent(sourceContent, viewer);
+  const content = await renderModeratedContent(videoRenderedContent, viewer);
+  return {
+    ...decoded,
+    imageReview,
+    videoReview,
+    content,
+  };
 }
