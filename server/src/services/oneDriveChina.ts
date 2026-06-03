@@ -44,6 +44,16 @@ export type OneDriveChinaStoredFile = {
   webUrl: string;
 };
 
+export type OneDriveChinaDirectoryEntry = {
+  name: string;
+  kind: "folder" | "file";
+  size: number | null;
+  lastModifiedAt: string;
+  webUrl: string;
+};
+
+export type OneDriveChinaItemMetadata = OneDriveChinaDirectoryEntry;
+
 export type OneDriveChinaUploadSession = {
   uploadUrl: string;
   expiresAt: string;
@@ -252,7 +262,11 @@ export async function uploadOneDriveChinaFile(relativePath: string, buffer: Buff
   }
 }
 
-export async function createOneDriveChinaUploadSession(relativePath: string, contentType?: string | null): Promise<OneDriveChinaUploadSession> {
+export async function createOneDriveChinaUploadSession(
+  relativePath: string,
+  contentType?: string | null,
+  options?: { conflictBehavior?: "replace" | "fail" | "rename" },
+): Promise<OneDriveChinaUploadSession> {
   const runtime = await getMediaStorageRuntimeConfig();
   const drive = await requireActiveRemoteDrive(runtime);
   const remotePath = buildRemoteStoragePath(relativePath, drive.rootPath);
@@ -264,7 +278,7 @@ export async function createOneDriveChinaUploadSession(relativePath: string, con
     },
     body: JSON.stringify({
       item: {
-        "@microsoft.graph.conflictBehavior": "replace",
+        "@microsoft.graph.conflictBehavior": options?.conflictBehavior || "replace",
         ...(contentType ? { file: { mimeType: String(contentType).trim() } } : {}),
       },
       deferCommit: false,
@@ -314,6 +328,41 @@ export async function deleteOneDriveChinaFile(relativePath: string) {
   return true;
 }
 
+export async function validateOneDriveChinaClientCredentials() {
+  const runtime = await getMediaStorageRuntimeConfig();
+  if (!runtime.oneDriveChinaClientId.trim()) throw new Error("请先填写 Azure 应用 ID");
+  if (!runtime.oneDriveChinaClientSecret.trim()) throw new Error("请先填写 Azure 应用密钥");
+  const form = new URLSearchParams({
+    client_id: runtime.oneDriveChinaClientId,
+    client_secret: runtime.oneDriveChinaClientSecret,
+    grant_type: "client_credentials",
+    scope: APP_ONLY_SCOPE,
+  });
+  const response = await fetch(`${LOGIN_BASE_URL}/organizations/oauth2/v2.0/token`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: form.toString(),
+  });
+  if (response.ok) {
+    return {
+      ok: true,
+      message: "Azure 应用 ID 与密钥已通过服务端校验，可继续发起登录授权。",
+      detail: "",
+    };
+  }
+  const detail = await safeReadResponseText(response);
+  if (/invalid_client|7000215/i.test(detail)) {
+    throw new Error(detail ? `Azure 应用密钥校验失败：${detail}` : "Azure 应用密钥校验失败：invalid_client");
+  }
+  return {
+    ok: true,
+    message: "Azure 应用 ID 与密钥已被服务端接受，但应用权限或租户策略返回了额外限制。通常不影响继续走登录授权。",
+    detail,
+  };
+}
+
 export async function resolveOneDriveChinaDirectDownloadUrl(relativePath: string) {
   const runtime = await getMediaStorageRuntimeConfig();
   const drive = await requireActiveRemoteDrive(runtime);
@@ -332,6 +381,100 @@ export async function resolveOneDriveChinaDirectDownloadUrl(relativePath: string
   if (response.status === 404) return "";
   const detail = await safeReadResponseText(response);
   throw new Error(detail ? `获取世纪互联文件直链失败：${detail}` : `获取世纪互联文件直链失败：HTTP ${response.status}`);
+}
+
+export async function getOneDriveChinaItemMetadata(relativePath: string): Promise<OneDriveChinaItemMetadata | null> {
+  const runtime = await getMediaStorageRuntimeConfig();
+  const drive = await requireActiveRemoteDrive(runtime);
+  const remotePath = buildRemoteStoragePath(relativePath, drive.rootPath);
+  const response = await fetchRemoteItemMetadataByPath(drive.driveId, remotePath);
+  if (!response) return null;
+  return {
+    name: response.name || pathBasename(remotePath),
+    kind: response.folder ? "folder" : "file",
+    size: typeof response.size === "number" ? response.size : null,
+    lastModifiedAt: String(response.lastModifiedDateTime || "").trim(),
+    webUrl: String(response.webUrl || "").trim(),
+  };
+}
+
+export async function listOneDriveChinaDirectory(relativePath: string): Promise<OneDriveChinaDirectoryEntry[] | null> {
+  const runtime = await getMediaStorageRuntimeConfig();
+  const drive = await requireActiveRemoteDrive(runtime);
+  const remotePath = buildRemoteStoragePath(relativePath, drive.rootPath);
+  const folder = await resolveConfiguredRootFolder(drive.driveId, remotePath);
+  if (!folder) return null;
+  if (folder.file) throw new Error("当前路径不是文件夹");
+  if (!folder.id) return [];
+  const children = await listDriveChildrenByItemId(drive.driveId, folder.id);
+  return children
+    .map((item) => ({
+      name: item.name,
+      kind: item.folder ? "folder" as const : "file" as const,
+      size: item.folder ? null : (typeof item.size === "number" ? item.size : null),
+      lastModifiedAt: String(item.lastModifiedDateTime || "").trim(),
+      webUrl: String(item.webUrl || "").trim(),
+    }))
+    .sort((a, b) => {
+      if (a.kind !== b.kind) return a.kind === "folder" ? -1 : 1;
+      return a.name.localeCompare(b.name, "zh-Hans-CN", { sensitivity: "base", numeric: true });
+    });
+}
+
+export async function createOneDriveChinaFolder(relativePath: string): Promise<OneDriveChinaItemMetadata> {
+  const runtime = await getMediaStorageRuntimeConfig();
+  const drive = await requireActiveRemoteDrive(runtime);
+  const remotePath = buildRemoteStoragePath(relativePath, drive.rootPath);
+  const existing = await fetchRemoteItemMetadataByPath(drive.driveId, remotePath);
+  if (existing) throw new Error("同名文件或文件夹已存在");
+  await ensureRemoteFolder(drive.driveId, remotePath);
+  const created = await fetchRemoteItemMetadataByPath(drive.driveId, remotePath);
+  if (!created) throw new Error("创建远端目录失败：目录创建后未能重新读取");
+  return {
+    name: created.name || pathBasename(remotePath),
+    kind: "folder",
+    size: null,
+    lastModifiedAt: String(created.lastModifiedDateTime || "").trim(),
+    webUrl: String(created.webUrl || "").trim(),
+  };
+}
+
+export async function renameOneDriveChinaItem(relativePath: string, newName: string): Promise<OneDriveChinaItemMetadata> {
+  const runtime = await getMediaStorageRuntimeConfig();
+  const drive = await requireActiveRemoteDrive(runtime);
+  const remotePath = buildRemoteStoragePath(relativePath, drive.rootPath);
+  const target = await fetchRemoteItemMetadataByPath(drive.driveId, remotePath);
+  if (!target?.id) throw new Error("文件或文件夹不存在");
+
+  const response = await graphRequestWithCurrentMode(`/drives/${drive.driveId}/items/${encodeURIComponent(target.id)}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: newName,
+    }),
+  });
+  if (response.status === 409) throw new Error("同名文件或文件夹已存在");
+  if (!response.ok) {
+    const detail = await safeReadResponseText(response);
+    throw new Error(detail ? `重命名世纪互联文件失败：${detail}` : `重命名世纪互联文件失败：HTTP ${response.status}`);
+  }
+  const payload = await response.json() as {
+    name?: string;
+    size?: number;
+    webUrl?: string;
+    lastModifiedDateTime?: string;
+    folder?: Record<string, unknown>;
+    file?: Record<string, unknown>;
+  };
+  return {
+    name: String(payload.name || newName).trim() || newName,
+    kind: payload.folder ? "folder" : "file",
+    size: payload.folder ? null : (typeof payload.size === "number" ? payload.size : null),
+    lastModifiedAt: String(payload.lastModifiedDateTime || "").trim(),
+    webUrl: String(payload.webUrl || "").trim(),
+  };
 }
 
 async function requireActiveRemoteDrive(runtime: Awaited<ReturnType<typeof getMediaStorageRuntimeConfig>>) {
@@ -588,6 +731,9 @@ async function ensureRemoteFolder(driveId: string, folderPath: string) {
     }
     const exists = await fetchRemoteItemMetadataByPath(driveId, currentPath);
     if (exists?.id) {
+      if (!exists.folder) {
+        throw new Error(`创建远端目录失败：${currentPath} 已存在同名文件`);
+      }
       folderIdCache.set(cacheKey, exists.id);
       parentId = exists.id;
       continue;
@@ -807,6 +953,12 @@ function pathDirname(value: string) {
   const normalized = normalizeRemoteFolderPath(value);
   if (!normalized.includes("/")) return "";
   return normalized.slice(0, normalized.lastIndexOf("/"));
+}
+
+function pathBasename(value: string) {
+  const normalized = normalizeRemoteFolderPath(value);
+  if (!normalized) return "";
+  return normalized.includes("/") ? normalized.slice(normalized.lastIndexOf("/") + 1) : normalized;
 }
 
 async function safeReadResponseText(response: Response) {

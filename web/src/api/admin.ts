@@ -1,4 +1,4 @@
-import { request } from "./request";
+import { request, type RequestOptions } from "./request";
 
 export type SiteConfig = {
   siteOrigin: string;
@@ -146,6 +146,39 @@ export type MediaStorageCleanupResult = {
     message: string;
   }>;
 };
+
+export type CloudDriveEntry = {
+  name: string;
+  relativePath: string;
+  kind: "folder" | "file";
+  sizeBytes: number | null;
+  updatedAt: string;
+  extension: string;
+  previewable: boolean;
+  webUrl: string;
+};
+
+export type CloudDriveDirectory = {
+  backend: "local" | "onedrive-cn";
+  remoteReady: boolean;
+  currentPath: string;
+  rootName: string;
+  rootStoragePath: string;
+  siteName: string;
+  driveName: string;
+  breadcrumbs: Array<{ name: string; path: string }>;
+  entries: CloudDriveEntry[];
+};
+
+export type CloudDriveUploadInitResult = {
+  backend: "local" | "onedrive-cn";
+  mode: "direct" | "proxy";
+  relativePath: string;
+  uploadUrl?: string;
+  uploadToken?: string;
+  expiresAt?: string;
+};
+
 export type SitePromptDefaults = Pick<
   SiteConfig,
   | "imageReviewSystemPrompt"
@@ -430,6 +463,8 @@ export const adminApi = {
   }) => request.patch<MediaStorageConfig>("/admin/media-storage", patch),
   beginOneDriveChinaAuth: () =>
     request.post<{ callbackUrl: string; authorizeUrl: string }>("/admin/media-storage/onedrive-cn/authorize", {}),
+  validateOneDriveChinaClient: () =>
+    request.post<{ ok: true; message: string; detail?: string }>("/admin/media-storage/onedrive-cn/validate-client", {}),
   oneDriveChinaDrives: () =>
     request.get<{
       siteId: string;
@@ -448,6 +483,26 @@ export const adminApi = {
   mediaStorageFiles: () => request.get<MediaStorageAdminInventory>("/admin/media-storage/files"),
   migrateMediaStorageFiles: () => request.post<MediaStorageMigrationResult>("/admin/media-storage/migrate", {}),
   cleanupMediaStorageLocalFiles: () => request.post<MediaStorageCleanupResult>("/admin/media-storage/cleanup-local", {}),
+  cloudDrive: (path = "") =>
+    request.get<CloudDriveDirectory>("/admin/cloud-drive", { path }),
+  createCloudDriveFolder: (data: { path?: string; name: string }) =>
+    request.post<CloudDriveEntry>("/admin/cloud-drive/folders", data),
+  renameCloudDriveEntry: (data: { path: string; name: string }) =>
+    request.patch<CloudDriveEntry>("/admin/cloud-drive/rename", data),
+  deleteCloudDriveEntry: (path: string) =>
+    request.delete<{ ok: true }>("/admin/cloud-drive", { params: { path } }),
+  cloudDriveAccessUrl: (data: { path: string; download?: boolean }) =>
+    request.post<{ url: string }>("/admin/cloud-drive/access", data),
+  initCloudDriveUpload: (data: {
+    path?: string;
+    fileName: string;
+    mimeType?: string;
+    fileSize: number;
+  }) => request.post<CloudDriveUploadInitResult>("/admin/cloud-drive/upload/init", data, { timeout: 30000 }),
+  completeCloudDriveUpload: (uploadToken: string) =>
+    request.post<{ entry: CloudDriveEntry }>("/admin/cloud-drive/upload/complete", { uploadToken }, { timeout: 180000 }),
+  uploadCloudDriveFile: (formData: FormData, options?: RequestOptions) =>
+    request.post<CloudDriveEntry>("/admin/cloud-drive/upload", formData, options),
   updateSiteConfig: (patch: {
     siteOrigin?: string;
     aiReviewEnabled?: boolean;

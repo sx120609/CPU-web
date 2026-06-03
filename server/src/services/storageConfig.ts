@@ -215,8 +215,14 @@ export async function loadStorageConfig(): Promise<void> {
 
 export async function getMediaStorageAdminConfig(): Promise<MediaStorageAdminConfig> {
   await ensureLoaded();
+  const normalizedProvider = storageConfigCache.mediaStorageImageProvider === storageConfigCache.mediaStorageVideoProvider
+    ? storageConfigCache.mediaStorageImageProvider
+    : storageConfigCache.mediaStorageProvider;
   return {
-    ...cloneStorageConfig(storageConfigCache),
+    ...cloneStorageConfig({
+      ...storageConfigCache,
+      mediaStorageProvider: normalizedProvider,
+    }),
     oneDriveChinaClientSecretConfigured: Boolean(storageConfigCache.oneDriveChinaClientSecret),
     oneDriveChinaRefreshTokenConfigured: Boolean(storageConfigCache.oneDriveChinaRefreshToken),
   };
@@ -306,6 +312,9 @@ export async function updateMediaStorageAdminConfig(input: {
   }
 
   sanitizeStorageConfig(next);
+  if (next.mediaStorageImageProvider === next.mediaStorageVideoProvider) {
+    next.mediaStorageProvider = next.mediaStorageImageProvider;
+  }
   await persistStorageConfig(next);
   Object.assign(storageConfigCache, next);
   return getMediaStorageAdminConfig();

@@ -88,6 +88,7 @@
 
           <div class="storage-actions">
             <el-button type="primary" :loading="savingMediaStorage" @click="saveMediaStorageConfig">保存媒体存储配置</el-button>
+            <el-button :loading="validatingOneDriveChinaClient" @click="validateOneDriveChinaClient">校验密钥</el-button>
             <el-button :loading="authorizingOneDriveChina" @click="startOneDriveChinaAuth">登录授权</el-button>
             <el-button :disabled="!oneDriveChinaRefreshTokenConfigured" :loading="loadingOneDriveChinaDrives" @click="loadOneDriveChinaDrives">刷新文档库</el-button>
             <el-button :disabled="!oneDriveChinaRefreshTokenConfigured" @click="clearOneDriveChinaAuth">清除授权</el-button>
@@ -302,6 +303,7 @@ const loadingConfig = ref(false);
 const loadingInventory = ref(false);
 const savingMediaStorage = ref(false);
 const authorizingOneDriveChina = ref(false);
+const validatingOneDriveChinaClient = ref(false);
 const loadingOneDriveChinaDrives = ref(false);
 const savingOneDriveChinaDrive = ref(false);
 const migratingFiles = ref(false);
@@ -411,11 +413,7 @@ function applyMediaStorageConfig(config: MediaStorageConfig) {
 async function persistMediaStorageConfig(silent = false) {
   savingMediaStorage.value = true;
   try {
-    const unifiedProvider = mediaStorageImageProvider.value === mediaStorageVideoProvider.value
-      ? mediaStorageImageProvider.value
-      : mediaStorageProvider.value;
-    const config = await adminApi.updateMediaStorageConfig({
-      mediaStorageProvider: unifiedProvider,
+    await adminApi.updateMediaStorageConfig({
       mediaStorageImageProvider: mediaStorageImageProvider.value,
       mediaStorageVideoProvider: mediaStorageVideoProvider.value,
       mediaStorageRemotePrefixes: mediaStorageRemotePrefixesInput.value,
@@ -424,7 +422,7 @@ async function persistMediaStorageConfig(silent = false) {
       oneDriveChinaSharepointUrl: oneDriveChinaSharepointUrl.value,
       oneDriveChinaRootPath: oneDriveChinaRootPath.value,
     });
-    applyMediaStorageConfig(config);
+    applyMediaStorageConfig(await adminApi.mediaStorageConfig());
     await reloadInventory();
     if (!silent) ElMessage.success("媒体存储配置已保存");
   } finally {
@@ -444,6 +442,17 @@ async function startOneDriveChinaAuth() {
     window.location.assign(result.authorizeUrl);
   } finally {
     authorizingOneDriveChina.value = false;
+  }
+}
+
+async function validateOneDriveChinaClient() {
+  validatingOneDriveChinaClient.value = true;
+  try {
+    await persistMediaStorageConfig(true);
+    const result = await adminApi.validateOneDriveChinaClient();
+    ElMessage.success(result.message);
+  } finally {
+    validatingOneDriveChinaClient.value = false;
   }
 }
 
