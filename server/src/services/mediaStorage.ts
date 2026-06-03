@@ -182,7 +182,8 @@ export async function resolveMediaPublicUrl(url: string) {
   const relativePath = relativeUploadPathFromUrl(url);
   if (!relativePath) return String(url || "").trim();
   const runtime = await getMediaStorageRuntimeConfig();
-  const usesRemote = runtime.effectiveProvider === "onedrive-cn"
+  const configuredBackend = resolveConfiguredBackendForRelativePath(relativePath, runtime);
+  const usesRemote = configuredBackend === "onedrive-cn"
     && pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes);
   if (!usesRemote) {
     return buildUploadUrl(relativePath);

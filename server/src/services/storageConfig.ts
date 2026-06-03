@@ -448,7 +448,19 @@ async function persistStorageConfig(next: MediaStorageStoredConfig) {
     update: { value },
     create: { key, value },
   })));
+  await resetStorageRuntimeCachesLocally();
   await broadcastStorageConfigReload();
+}
+
+async function resetStorageRuntimeCachesLocally() {
+  await Promise.all([
+    import("./mediaStorage")
+      .then((module) => module.resetMediaStorageRuntimeCaches())
+      .catch(() => undefined),
+    import("./oneDriveChina")
+      .then((module) => module.resetOneDriveChinaTransientCaches())
+      .catch(() => undefined),
+  ]);
 }
 
 function normalizeMediaStorageProvider(input: unknown, fallback: MediaStorageProvider): MediaStorageProvider {
