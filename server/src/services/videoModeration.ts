@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import { prisma } from "../prisma";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
 import { ensureMediaLocalPathFromUploadUrl, resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
-import { getSiteConfig } from "./siteSettings";
+import { DEFAULT_VIDEO_REVIEW_PROMPTS, getSiteConfig } from "./siteSettings";
 
 const execFile = promisify(execFileCallback);
 
@@ -17,33 +17,6 @@ const VIDEO_MAX_BYTES = 100 * 1024 * 1024;
 const VIDEO_INLINE_FRAME_MAX_BYTES = 10 * 1024 * 1024;
 const VIDEO_TRANSCRIPT_MAX_CHARS = 4000;
 const VIDEO_TRANSCRIBE_MODEL = "whisper-1";
-
-const VIDEO_REVIEW_SYSTEM_PROMPT = [
-  "你是校园社区视频公开展示审核助手。",
-  "你会收到这个视频的关键帧、可选音频转写、以及帖子上下文。",
-  "你的任务是判断这个视频是否适合在公开校园社区直接展示。",
-  "默认从宽：信息不足、证据不足、只靠脑补才能成立的风险，不要直接拦截，优先 manual_review 或 auto_pass。",
-  "重点关注：明确的裸露色情、未成年人相关性内容、血腥暴力、自残鼓励、毒品、违法演示、诈骗引流、隐私证件与敏感信息泄露、针对个人或群体的攻击性曝光、煽动性极端内容。",
-  "只返回 JSON。",
-].join(" ");
-
-const VIDEO_REVIEW_USER_PROMPT = [
-  "请审核这个视频是否可以在校园社区公开展示，输出 JSON：",
-  "{\"risk_score\":0-100,\"risk_level\":\"low|medium|high\",\"decision\":\"auto_pass|manual_review|block\",\"reason\":\"一句短原因\",\"detail\":\"补充说明\",\"categories\":{\"sexual\":0-100,\"minor\":0-100,\"violence\":0-100,\"self_harm\":0-100,\"privacy\":0-100,\"fraud\":0-100,\"hate\":0-100,\"gender_conflict\":0-100,\"extremism\":0-100}}",
-  "",
-  "视频来源：{{videoUrl}}",
-  "文件类型：{{mimeType}}",
-  "文件名：{{fileName}}",
-  "时长（秒）：{{durationSeconds}}",
-  "分辨率：{{resolution}}",
-  "是否有音轨：{{hasAudio}}",
-  "所属对象：{{targetKind}}",
-  "板块：{{boardName}}",
-  "标题：{{targetTitle}}",
-  "正文上下文：{{contextText}}",
-  "音频转写：{{transcript}}",
-  "请结合关键帧、音频转写和文字上下文给出判断。",
-].join("\n");
 
 type Viewer = {
   userId?: number | null;
@@ -189,10 +162,10 @@ export function startForumVideoModerationPoller() {
 export function shouldRunVideoReview() {
   const config = getSiteConfig();
   return Boolean(
-    config.imageReviewEnabled
-    && config.imageReviewApiKey.trim()
-    && config.imageReviewModel.trim()
-    && config.imageReviewApiUrl.trim(),
+    config.videoReviewEnabled
+    && config.videoReviewApiKey.trim()
+    && config.videoReviewModel.trim()
+    && config.videoReviewApiUrl.trim(),
   );
 }
 
@@ -713,13 +686,13 @@ async function applyVideoReviewDecision(input: PreparedVideoReviewInput, decisio
 
 async function requestVideoReview(input: PreparedVideoReviewInput): Promise<VideoReviewDecision> {
   const config = getSiteConfig();
-  const endpoint = normalizeChatCompletionsUrl(config.imageReviewApiUrl);
+  const endpoint = normalizeChatCompletionsUrl(config.videoReviewApiUrl);
   const started = await startAiReviewLog({
     kind: "video",
     targetLabel: path.basename(input.asset.localPath),
     targetUrl: input.asset.url,
     provider: "video-review",
-    model: config.imageReviewModel,
+    model: config.videoReviewModel,
     endpoint,
     requestSummary: buildVideoReviewTextPrompt(input).slice(0, 4000),
   });
@@ -728,14 +701,14 @@ async function requestVideoReview(input: PreparedVideoReviewInput): Promise<Vide
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${config.imageReviewApiKey}`,
+      Authorization: `Bearer ${config.videoReviewApiKey}`,
     },
     body: JSON.stringify({
-      model: config.imageReviewModel,
+      model: config.videoReviewModel,
       temperature: 0.1,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: VIDEO_REVIEW_SYSTEM_PROMPT },
+        { role: "system", content: config.videoReviewSystemPrompt || DEFAULT_VIDEO_REVIEW_PROMPTS.system },
         {
           role: "user",
           content: [
@@ -768,7 +741,7 @@ async function requestVideoReview(input: PreparedVideoReviewInput): Promise<Vide
 
 async function transcribeVideoAudio(filePath: string) {
   const config = getSiteConfig();
-  const endpoint = normalizeTranscriptionsUrl(config.imageReviewApiUrl);
+  const endpoint = normalizeTranscriptionsUrl(config.videoReviewApiUrl);
   const tempDir = path.resolve(process.cwd(), "runtime", "video-review-audio");
   await mkdir(tempDir, { recursive: true });
   const audioPath = path.join(tempDir, `${path.basename(filePath)}-${Date.now()}.wav`);
@@ -795,7 +768,7 @@ async function transcribeVideoAudio(filePath: string) {
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${config.imageReviewApiKey}`,
+        Authorization: `Bearer ${config.videoReviewApiKey}`,
       },
       body: form,
     });
@@ -939,7 +912,8 @@ async function findVideoReviewTargetByUrl(url: string) {
 }
 
 function buildVideoReviewTextPrompt(input: PreparedVideoReviewInput) {
-  return renderPromptTemplate(VIDEO_REVIEW_USER_PROMPT, {
+  const config = getSiteConfig();
+  return renderPromptTemplate(config.videoReviewUserPrompt || DEFAULT_VIDEO_REVIEW_PROMPTS.user, {
     videoUrl: input.asset.url,
     mimeType: input.metadata.mimeType,
     fileName: path.basename(input.asset.localPath),
@@ -957,7 +931,7 @@ function buildVideoReviewTextPrompt(input: PreparedVideoReviewInput) {
 function buildVideoReviewDecision(parsed: ParsedVideoReviewJson, config: ReturnType<typeof getSiteConfig>): VideoReviewDecision {
   const riskScore = clampRiskScore(parsed.risk_score);
   const riskLevel = normalizeRiskLevel(parsed.risk_level, riskScore);
-  const decision = normalizeVideoDecision(parsed.decision, riskScore, config.imageReviewThreshold);
+  const decision = normalizeVideoDecision(parsed.decision, riskScore, config.videoReviewThreshold);
   return {
     status: decision === "auto_pass" ? "approved" : decision === "block" ? "rejected" : "manual_review",
     reason: String(parsed.reason || fallbackVideoReason(riskLevel, decision)).slice(0, 120),
@@ -971,8 +945,8 @@ function buildVideoReviewDecision(parsed: ParsedVideoReviewJson, config: ReturnT
     riskLevel,
     riskScore,
     decision,
-    model: config.imageReviewModel,
-    endpoint: normalizeChatCompletionsUrl(config.imageReviewApiUrl),
+    model: config.videoReviewModel,
+    endpoint: normalizeChatCompletionsUrl(config.videoReviewApiUrl),
   };
 }
 
@@ -1112,7 +1086,7 @@ async function drainForumVideoModerationQueue() {
 
 function getVideoReviewConcurrency() {
   const config = getSiteConfig();
-  const base = Math.max(1, Math.floor(Number(config.imageReviewConcurrency) || 1));
+  const base = Math.max(1, Math.floor(Number(config.videoReviewConcurrency) || 1));
   return Math.min(2, base);
 }
 

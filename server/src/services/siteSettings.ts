@@ -32,8 +32,16 @@ export type SiteConfig = {
   imageReviewUserPrompt: string;
   imageReviewConcurrency: number;
   imageReviewRequestGroupSize: number;
+  videoReviewEnabled: boolean;
+  videoReviewApiUrl: string;
+  videoReviewModel: string;
+  videoReviewApiKey: string;
+  videoReviewSystemPrompt: string;
+  videoReviewUserPrompt: string;
+  videoReviewConcurrency: number;
   aiReviewThreshold: number;
   imageReviewThreshold: number;
+  videoReviewThreshold: number;
   aiEditSimilarityThreshold: number;
   aiTopicReviewSystemPrompt: string;
   aiTopicReviewUserPrompt: string;
@@ -57,6 +65,8 @@ export type SitePromptDefaults = Pick<
   SiteConfig,
   | "imageReviewSystemPrompt"
   | "imageReviewUserPrompt"
+  | "videoReviewSystemPrompt"
+  | "videoReviewUserPrompt"
   | "aiTopicReviewSystemPrompt"
   | "aiTopicReviewUserPrompt"
   | "aiReplyReviewSystemPrompt"
@@ -94,12 +104,22 @@ const IMAGE_REVIEW_SYSTEM_PROMPT_KEY = "ai.imageReview.systemPrompt";
 const IMAGE_REVIEW_USER_PROMPT_KEY = "ai.imageReview.userPrompt";
 const IMAGE_REVIEW_CONCURRENCY_KEY = "ai.imageReview.concurrency";
 const IMAGE_REVIEW_REQUEST_GROUP_SIZE_KEY = "ai.imageReview.requestGroupSize";
+const VIDEO_REVIEW_ENABLED_KEY = "ai.videoReview.enabled";
+const VIDEO_REVIEW_API_URL_KEY = "ai.videoReview.apiUrl";
+const VIDEO_REVIEW_MODEL_KEY = "ai.videoReview.model";
+const VIDEO_REVIEW_API_KEY_KEY = "ai.videoReview.apiKey";
+const VIDEO_REVIEW_SYSTEM_PROMPT_KEY = "ai.videoReview.systemPrompt";
+const VIDEO_REVIEW_USER_PROMPT_KEY = "ai.videoReview.userPrompt";
+const VIDEO_REVIEW_CONCURRENCY_KEY = "ai.videoReview.concurrency";
 const AI_REVIEW_THRESHOLD_KEY = "ai.review.threshold";
 const IMAGE_REVIEW_THRESHOLD_KEY = "ai.imageReview.threshold";
+const VIDEO_REVIEW_THRESHOLD_KEY = "ai.videoReview.threshold";
 const AI_REVIEW_AUTO_PASS_SCORE_KEY = "ai.review.autoPassScore";
 const AI_REVIEW_BLOCK_SCORE_KEY = "ai.review.blockScore";
 const IMAGE_REVIEW_AUTO_PASS_SCORE_KEY = "ai.imageReview.autoPassScore";
 const IMAGE_REVIEW_BLOCK_SCORE_KEY = "ai.imageReview.blockScore";
+const VIDEO_REVIEW_AUTO_PASS_SCORE_KEY = "ai.videoReview.autoPassScore";
+const VIDEO_REVIEW_BLOCK_SCORE_KEY = "ai.videoReview.blockScore";
 const AI_EDIT_SIMILARITY_THRESHOLD_KEY = "ai.review.editSimilarityThreshold";
 const AI_TOPIC_REVIEW_SYSTEM_PROMPT_KEY = "ai.review.topic.systemPrompt";
 const AI_TOPIC_REVIEW_USER_PROMPT_KEY = "ai.review.topic.userPrompt";
@@ -173,6 +193,34 @@ export const DEFAULT_IMAGE_REVIEW_PROMPTS = {
   ].join("\n"),
 } as const;
 
+export const DEFAULT_VIDEO_REVIEW_PROMPTS = {
+  system: [
+    "你是校园社区视频公开展示审核助手。",
+    "你会收到这个视频的关键帧、可选音频转写、以及帖子上下文。",
+    "你的任务是判断这个视频是否适合在公开校园社区直接展示。",
+    "默认从宽：信息不足、证据不足、只靠脑补才能成立的风险，不要直接拦截，优先 manual_review 或 auto_pass。",
+    "重点关注：明确的裸露色情、未成年人相关性内容、血腥暴力、自残鼓励、毒品、违法演示、诈骗引流、隐私证件与敏感信息泄露、针对个人或群体的攻击性曝光、煽动性极端内容。",
+    "只返回 JSON。",
+  ].join(" "),
+  user: [
+    "请审核这个视频是否可以在校园社区公开展示，输出 JSON：",
+    "{\"risk_score\":0-100,\"risk_level\":\"low|medium|high\",\"decision\":\"auto_pass|manual_review|block\",\"reason\":\"一句短原因\",\"detail\":\"补充说明\",\"categories\":{\"sexual\":0-100,\"minor\":0-100,\"violence\":0-100,\"self_harm\":0-100,\"privacy\":0-100,\"fraud\":0-100,\"hate\":0-100,\"gender_conflict\":0-100,\"extremism\":0-100}}",
+    "",
+    "视频来源：{{videoUrl}}",
+    "文件类型：{{mimeType}}",
+    "文件名：{{fileName}}",
+    "时长（秒）：{{durationSeconds}}",
+    "分辨率：{{resolution}}",
+    "是否有音轨：{{hasAudio}}",
+    "所属对象：{{targetKind}}",
+    "板块：{{boardName}}",
+    "标题：{{targetTitle}}",
+    "正文上下文：{{contextText}}",
+    "音频转写：{{transcript}}",
+    "请结合关键帧、音频转写和文字上下文给出判断。",
+  ].join("\n"),
+} as const;
+
 const LEGACY_DEFAULT_IMAGE_REVIEW_PROMPTS = {
   system: "你是校园社区图片安全审核助手。你需要判断这张图片是否适合在公开学生社区直接展示。重点关注色情裸露、未成年人相关性内容、血腥暴力、极端不适、自残鼓励、毒品、违法展示、仇恨符号、诈骗引流、联系方式与隐私证件等风险。只返回 JSON。",
   user: [
@@ -208,8 +256,16 @@ const configCache: SiteConfig = {
   imageReviewUserPrompt: DEFAULT_IMAGE_REVIEW_PROMPTS.user,
   imageReviewConcurrency: 2,
   imageReviewRequestGroupSize: 3,
+  videoReviewEnabled: false,
+  videoReviewApiUrl: "https://api.openai.com/v1/chat/completions",
+  videoReviewModel: "gpt-4o-mini",
+  videoReviewApiKey: "",
+  videoReviewSystemPrompt: DEFAULT_VIDEO_REVIEW_PROMPTS.system,
+  videoReviewUserPrompt: DEFAULT_VIDEO_REVIEW_PROMPTS.user,
+  videoReviewConcurrency: 1,
   aiReviewThreshold: 24,
   imageReviewThreshold: 36,
+  videoReviewThreshold: 36,
   aiEditSimilarityThreshold: 0,
   aiTopicReviewSystemPrompt: DEFAULT_AI_PROMPTS.topicReviewSystem,
   aiTopicReviewUserPrompt: DEFAULT_AI_PROMPTS.topicReviewUser,
@@ -255,6 +311,7 @@ export function normalizeSiteOrigin(input: string | null | undefined): string {
 export async function loadFeatures(): Promise<void> {
   let hasAiReviewThreshold = false;
   let hasImageReviewThreshold = false;
+  let hasVideoReviewThreshold = false;
   const rows = await prisma.siteSetting.findMany({
     where: {
       key: {
@@ -274,12 +331,22 @@ export async function loadFeatures(): Promise<void> {
           IMAGE_REVIEW_USER_PROMPT_KEY,
           IMAGE_REVIEW_CONCURRENCY_KEY,
           IMAGE_REVIEW_REQUEST_GROUP_SIZE_KEY,
+          VIDEO_REVIEW_ENABLED_KEY,
+          VIDEO_REVIEW_API_URL_KEY,
+          VIDEO_REVIEW_MODEL_KEY,
+          VIDEO_REVIEW_API_KEY_KEY,
+          VIDEO_REVIEW_SYSTEM_PROMPT_KEY,
+          VIDEO_REVIEW_USER_PROMPT_KEY,
+          VIDEO_REVIEW_CONCURRENCY_KEY,
           AI_REVIEW_THRESHOLD_KEY,
           IMAGE_REVIEW_THRESHOLD_KEY,
+          VIDEO_REVIEW_THRESHOLD_KEY,
           AI_REVIEW_AUTO_PASS_SCORE_KEY,
           AI_REVIEW_BLOCK_SCORE_KEY,
           IMAGE_REVIEW_AUTO_PASS_SCORE_KEY,
           IMAGE_REVIEW_BLOCK_SCORE_KEY,
+          VIDEO_REVIEW_AUTO_PASS_SCORE_KEY,
+          VIDEO_REVIEW_BLOCK_SCORE_KEY,
           AI_EDIT_SIMILARITY_THRESHOLD_KEY,
           AI_TOPIC_REVIEW_SYSTEM_PROMPT_KEY,
           AI_TOPIC_REVIEW_USER_PROMPT_KEY,
@@ -359,6 +426,34 @@ export async function loadFeatures(): Promise<void> {
       configCache.imageReviewRequestGroupSize = normalizeSmallInt(r.value, 3, 1, 6);
       continue;
     }
+    if (r.key === VIDEO_REVIEW_ENABLED_KEY) {
+      configCache.videoReviewEnabled = r.value === "on";
+      continue;
+    }
+    if (r.key === VIDEO_REVIEW_API_URL_KEY) {
+      configCache.videoReviewApiUrl = normalizePromptTemplate(r.value, "https://api.openai.com/v1/chat/completions");
+      continue;
+    }
+    if (r.key === VIDEO_REVIEW_MODEL_KEY) {
+      configCache.videoReviewModel = String(r.value || "gpt-4o-mini").trim() || "gpt-4o-mini";
+      continue;
+    }
+    if (r.key === VIDEO_REVIEW_API_KEY_KEY) {
+      configCache.videoReviewApiKey = String(r.value || "");
+      continue;
+    }
+    if (r.key === VIDEO_REVIEW_SYSTEM_PROMPT_KEY) {
+      configCache.videoReviewSystemPrompt = normalizePromptTemplate(r.value, DEFAULT_VIDEO_REVIEW_PROMPTS.system);
+      continue;
+    }
+    if (r.key === VIDEO_REVIEW_USER_PROMPT_KEY) {
+      configCache.videoReviewUserPrompt = normalizePromptTemplate(r.value, DEFAULT_VIDEO_REVIEW_PROMPTS.user);
+      continue;
+    }
+    if (r.key === VIDEO_REVIEW_CONCURRENCY_KEY) {
+      configCache.videoReviewConcurrency = normalizeSmallInt(r.value, 1, 1, 2);
+      continue;
+    }
     if (r.key === AI_REVIEW_THRESHOLD_KEY) {
       configCache.aiReviewThreshold = normalizeAiScore(r.value, 24);
       hasAiReviewThreshold = true;
@@ -367,6 +462,11 @@ export async function loadFeatures(): Promise<void> {
     if (r.key === IMAGE_REVIEW_THRESHOLD_KEY) {
       configCache.imageReviewThreshold = normalizeAiScore(r.value, 36);
       hasImageReviewThreshold = true;
+      continue;
+    }
+    if (r.key === VIDEO_REVIEW_THRESHOLD_KEY) {
+      configCache.videoReviewThreshold = normalizeAiScore(r.value, 36);
+      hasVideoReviewThreshold = true;
       continue;
     }
     if (r.key === AI_REVIEW_AUTO_PASS_SCORE_KEY) {
@@ -385,6 +485,15 @@ export async function loadFeatures(): Promise<void> {
       continue;
     }
     if (r.key === IMAGE_REVIEW_BLOCK_SCORE_KEY) {
+      continue;
+    }
+    if (r.key === VIDEO_REVIEW_AUTO_PASS_SCORE_KEY) {
+      if (!hasVideoReviewThreshold) {
+        configCache.videoReviewThreshold = normalizeAiScore(r.value, 36);
+      }
+      continue;
+    }
+    if (r.key === VIDEO_REVIEW_BLOCK_SCORE_KEY) {
       continue;
     }
     if (r.key === AI_EDIT_SIMILARITY_THRESHOLD_KEY) {
@@ -498,6 +607,8 @@ export function getSitePromptDefaults(): SitePromptDefaults {
   return {
     imageReviewSystemPrompt: DEFAULT_IMAGE_REVIEW_PROMPTS.system,
     imageReviewUserPrompt: DEFAULT_IMAGE_REVIEW_PROMPTS.user,
+    videoReviewSystemPrompt: DEFAULT_VIDEO_REVIEW_PROMPTS.system,
+    videoReviewUserPrompt: DEFAULT_VIDEO_REVIEW_PROMPTS.user,
     aiTopicReviewSystemPrompt: DEFAULT_AI_PROMPTS.topicReviewSystem,
     aiTopicReviewUserPrompt: DEFAULT_AI_PROMPTS.topicReviewUser,
     aiReplyReviewSystemPrompt: DEFAULT_AI_PROMPTS.replyReviewSystem,
@@ -679,6 +790,7 @@ function normalizeReputationLevels(
 function sanitizeAiReviewConfig() {
   configCache.aiReviewThreshold = normalizeAiScore(configCache.aiReviewThreshold, 24);
   configCache.imageReviewThreshold = normalizeAiScore(configCache.imageReviewThreshold, 36);
+  configCache.videoReviewThreshold = normalizeAiScore(configCache.videoReviewThreshold, 36);
   configCache.aiEditSimilarityThreshold = normalizeAiRatio(configCache.aiEditSimilarityThreshold, 0);
   configCache.aiTopicReviewSystemPrompt = normalizePromptTemplate(configCache.aiTopicReviewSystemPrompt, DEFAULT_AI_PROMPTS.topicReviewSystem);
   configCache.aiTopicReviewUserPrompt = normalizePromptTemplate(configCache.aiTopicReviewUserPrompt, DEFAULT_AI_PROMPTS.topicReviewUser);
@@ -695,6 +807,11 @@ function sanitizeAiReviewConfig() {
   upgradeLegacyImageReviewPrompts();
   configCache.imageReviewSystemPrompt = normalizePromptTemplate(configCache.imageReviewSystemPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.system);
   configCache.imageReviewUserPrompt = normalizePromptTemplate(configCache.imageReviewUserPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.user);
+  configCache.videoReviewApiUrl = normalizePromptTemplate(configCache.videoReviewApiUrl, "https://api.openai.com/v1/chat/completions");
+  configCache.videoReviewModel = String(configCache.videoReviewModel || "gpt-4o-mini").trim() || "gpt-4o-mini";
+  configCache.videoReviewConcurrency = normalizeSmallInt(configCache.videoReviewConcurrency, 1, 1, 2);
+  configCache.videoReviewSystemPrompt = normalizePromptTemplate(configCache.videoReviewSystemPrompt, DEFAULT_VIDEO_REVIEW_PROMPTS.system);
+  configCache.videoReviewUserPrompt = normalizePromptTemplate(configCache.videoReviewUserPrompt, DEFAULT_VIDEO_REVIEW_PROMPTS.user);
 }
 
 function upgradeLegacyImageReviewPrompts() {
@@ -739,6 +856,13 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
     imageReviewUserPrompt: resolvePromptTemplate(input.imageReviewUserPrompt, configCache.imageReviewUserPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.user),
     imageReviewConcurrency: normalizeSmallInt(input.imageReviewConcurrency, configCache.imageReviewConcurrency, 1, 8),
     imageReviewRequestGroupSize: normalizeSmallInt(input.imageReviewRequestGroupSize, configCache.imageReviewRequestGroupSize, 1, 6),
+    videoReviewEnabled: input.videoReviewEnabled ?? configCache.videoReviewEnabled,
+    videoReviewApiUrl: normalizePromptTemplate(input.videoReviewApiUrl, configCache.videoReviewApiUrl),
+    videoReviewModel: String(input.videoReviewModel ?? configCache.videoReviewModel ?? "gpt-4o-mini").trim() || "gpt-4o-mini",
+    videoReviewApiKey: String(input.videoReviewApiKey ?? configCache.videoReviewApiKey ?? "").trim(),
+    videoReviewSystemPrompt: resolvePromptTemplate(input.videoReviewSystemPrompt, configCache.videoReviewSystemPrompt, DEFAULT_VIDEO_REVIEW_PROMPTS.system),
+    videoReviewUserPrompt: resolvePromptTemplate(input.videoReviewUserPrompt, configCache.videoReviewUserPrompt, DEFAULT_VIDEO_REVIEW_PROMPTS.user),
+    videoReviewConcurrency: normalizeSmallInt(input.videoReviewConcurrency, configCache.videoReviewConcurrency, 1, 2),
     aiReviewThreshold: normalizeAiScore(
       (input as Partial<SiteConfig> & { aiReviewAutoPassScore?: number; aiReviewBlockScore?: number }).aiReviewThreshold
         ?? (input as any).aiReviewAutoPassScore
@@ -750,6 +874,12 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
         ?? (input as any).imageReviewAutoPassScore
         ?? (input as any).imageReviewBlockScore,
       configCache.imageReviewThreshold,
+    ),
+    videoReviewThreshold: normalizeAiScore(
+      (input as Partial<SiteConfig> & { videoReviewAutoPassScore?: number; videoReviewBlockScore?: number }).videoReviewThreshold
+        ?? (input as any).videoReviewAutoPassScore
+        ?? (input as any).videoReviewBlockScore,
+      configCache.videoReviewThreshold,
     ),
     aiEditSimilarityThreshold: normalizeAiRatio(input.aiEditSimilarityThreshold, configCache.aiEditSimilarityThreshold),
     aiTopicReviewSystemPrompt: resolvePromptTemplate(input.aiTopicReviewSystemPrompt, configCache.aiTopicReviewSystemPrompt, DEFAULT_AI_PROMPTS.topicReviewSystem),
@@ -821,6 +951,41 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       create: { key: IMAGE_REVIEW_REQUEST_GROUP_SIZE_KEY, value: String(next.imageReviewRequestGroupSize) },
     }),
     prisma.siteSetting.upsert({
+      where: { key: VIDEO_REVIEW_ENABLED_KEY },
+      update: { value: next.videoReviewEnabled ? "on" : "off" },
+      create: { key: VIDEO_REVIEW_ENABLED_KEY, value: next.videoReviewEnabled ? "on" : "off" },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: VIDEO_REVIEW_API_URL_KEY },
+      update: { value: next.videoReviewApiUrl },
+      create: { key: VIDEO_REVIEW_API_URL_KEY, value: next.videoReviewApiUrl },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: VIDEO_REVIEW_MODEL_KEY },
+      update: { value: next.videoReviewModel },
+      create: { key: VIDEO_REVIEW_MODEL_KEY, value: next.videoReviewModel },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: VIDEO_REVIEW_API_KEY_KEY },
+      update: { value: next.videoReviewApiKey },
+      create: { key: VIDEO_REVIEW_API_KEY_KEY, value: next.videoReviewApiKey },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: VIDEO_REVIEW_SYSTEM_PROMPT_KEY },
+      update: { value: next.videoReviewSystemPrompt },
+      create: { key: VIDEO_REVIEW_SYSTEM_PROMPT_KEY, value: next.videoReviewSystemPrompt },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: VIDEO_REVIEW_USER_PROMPT_KEY },
+      update: { value: next.videoReviewUserPrompt },
+      create: { key: VIDEO_REVIEW_USER_PROMPT_KEY, value: next.videoReviewUserPrompt },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: VIDEO_REVIEW_CONCURRENCY_KEY },
+      update: { value: String(next.videoReviewConcurrency) },
+      create: { key: VIDEO_REVIEW_CONCURRENCY_KEY, value: String(next.videoReviewConcurrency) },
+    }),
+    prisma.siteSetting.upsert({
       where: { key: AI_REVIEW_THRESHOLD_KEY },
       update: { value: String(next.aiReviewThreshold) },
       create: { key: AI_REVIEW_THRESHOLD_KEY, value: String(next.aiReviewThreshold) },
@@ -829,6 +994,11 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       where: { key: IMAGE_REVIEW_THRESHOLD_KEY },
       update: { value: String(next.imageReviewThreshold) },
       create: { key: IMAGE_REVIEW_THRESHOLD_KEY, value: String(next.imageReviewThreshold) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: VIDEO_REVIEW_THRESHOLD_KEY },
+      update: { value: String(next.videoReviewThreshold) },
+      create: { key: VIDEO_REVIEW_THRESHOLD_KEY, value: String(next.videoReviewThreshold) },
     }),
     prisma.siteSetting.upsert({
       where: { key: AI_REVIEW_AUTO_PASS_SCORE_KEY },
@@ -849,6 +1019,16 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       where: { key: IMAGE_REVIEW_BLOCK_SCORE_KEY },
       update: { value: String(next.imageReviewThreshold) },
       create: { key: IMAGE_REVIEW_BLOCK_SCORE_KEY, value: String(next.imageReviewThreshold) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: VIDEO_REVIEW_AUTO_PASS_SCORE_KEY },
+      update: { value: String(next.videoReviewThreshold) },
+      create: { key: VIDEO_REVIEW_AUTO_PASS_SCORE_KEY, value: String(next.videoReviewThreshold) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: VIDEO_REVIEW_BLOCK_SCORE_KEY },
+      update: { value: String(next.videoReviewThreshold) },
+      create: { key: VIDEO_REVIEW_BLOCK_SCORE_KEY, value: String(next.videoReviewThreshold) },
     }),
     prisma.siteSetting.upsert({
       where: { key: AI_EDIT_SIMILARITY_THRESHOLD_KEY },

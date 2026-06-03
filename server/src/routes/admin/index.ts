@@ -1603,12 +1603,22 @@ const siteConfigPatchSchema = z.object({
   imageReviewUserPrompt: z.string().max(12000).optional(),
   imageReviewConcurrency: z.number().int().min(1).max(8).optional(),
   imageReviewRequestGroupSize: z.number().int().min(1).max(6).optional(),
+  videoReviewEnabled: z.boolean().optional(),
+  videoReviewApiUrl: z.string().trim().max(240).optional(),
+  videoReviewModel: z.string().trim().max(80).optional(),
+  videoReviewApiKey: z.string().trim().max(240).optional(),
+  videoReviewSystemPrompt: z.string().max(8000).optional(),
+  videoReviewUserPrompt: z.string().max(12000).optional(),
+  videoReviewConcurrency: z.number().int().min(1).max(2).optional(),
   aiReviewThreshold: z.number().int().min(0).max(100).optional(),
   imageReviewThreshold: z.number().int().min(0).max(100).optional(),
+  videoReviewThreshold: z.number().int().min(0).max(100).optional(),
   aiReviewAutoPassScore: z.number().int().min(0).max(100).optional(),
   aiReviewBlockScore: z.number().int().min(0).max(100).optional(),
   imageReviewAutoPassScore: z.number().int().min(0).max(100).optional(),
   imageReviewBlockScore: z.number().int().min(0).max(100).optional(),
+  videoReviewAutoPassScore: z.number().int().min(0).max(100).optional(),
+  videoReviewBlockScore: z.number().int().min(0).max(100).optional(),
   aiEditSimilarityThreshold: z.number().min(0).max(1).optional(),
   aiTopicReviewSystemPrompt: z.string().max(8000).optional(),
   aiTopicReviewUserPrompt: z.string().max(12000).optional(),
@@ -1651,12 +1661,22 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       req.body.imageReviewUserPrompt !== undefined ||
       req.body.imageReviewConcurrency !== undefined ||
       req.body.imageReviewRequestGroupSize !== undefined ||
+      req.body.videoReviewEnabled !== undefined ||
+      req.body.videoReviewApiUrl !== undefined ||
+      req.body.videoReviewModel !== undefined ||
+      req.body.videoReviewApiKey !== undefined ||
+      req.body.videoReviewSystemPrompt !== undefined ||
+      req.body.videoReviewUserPrompt !== undefined ||
+      req.body.videoReviewConcurrency !== undefined ||
       req.body.aiReviewThreshold !== undefined ||
       req.body.imageReviewThreshold !== undefined ||
+      req.body.videoReviewThreshold !== undefined ||
       req.body.aiReviewAutoPassScore !== undefined ||
       req.body.aiReviewBlockScore !== undefined ||
       req.body.imageReviewAutoPassScore !== undefined ||
       req.body.imageReviewBlockScore !== undefined ||
+      req.body.videoReviewAutoPassScore !== undefined ||
+      req.body.videoReviewBlockScore !== undefined ||
       req.body.aiEditSimilarityThreshold !== undefined ||
       req.body.aiTopicReviewSystemPrompt !== undefined ||
       req.body.aiTopicReviewUserPrompt !== undefined ||

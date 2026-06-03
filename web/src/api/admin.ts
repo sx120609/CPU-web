@@ -14,8 +14,16 @@ export type SiteConfig = {
   imageReviewUserPrompt: string;
   imageReviewConcurrency: number;
   imageReviewRequestGroupSize: number;
+  videoReviewEnabled: boolean;
+  videoReviewApiUrl: string;
+  videoReviewModel: string;
+  videoReviewApiKey: string;
+  videoReviewSystemPrompt: string;
+  videoReviewUserPrompt: string;
+  videoReviewConcurrency: number;
   aiReviewThreshold: number;
   imageReviewThreshold: number;
+  videoReviewThreshold: number;
   aiEditSimilarityThreshold: number;
   aiTopicReviewSystemPrompt: string;
   aiTopicReviewUserPrompt: string;
@@ -129,6 +137,8 @@ export type SitePromptDefaults = Pick<
   SiteConfig,
   | "imageReviewSystemPrompt"
   | "imageReviewUserPrompt"
+  | "videoReviewSystemPrompt"
+  | "videoReviewUserPrompt"
   | "aiTopicReviewSystemPrompt"
   | "aiTopicReviewUserPrompt"
   | "aiReplyReviewSystemPrompt"
@@ -437,8 +447,16 @@ export const adminApi = {
     imageReviewUserPrompt?: string;
     imageReviewConcurrency?: number;
     imageReviewRequestGroupSize?: number;
+    videoReviewEnabled?: boolean;
+    videoReviewApiUrl?: string;
+    videoReviewModel?: string;
+    videoReviewApiKey?: string;
+    videoReviewSystemPrompt?: string;
+    videoReviewUserPrompt?: string;
+    videoReviewConcurrency?: number;
     aiReviewThreshold?: number;
     imageReviewThreshold?: number;
+    videoReviewThreshold?: number;
     aiEditSimilarityThreshold?: number;
     aiTopicReviewSystemPrompt?: string;
     aiTopicReviewUserPrompt?: string;

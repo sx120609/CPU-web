@@ -79,7 +79,7 @@
       <div class="section-head">
         <div>
           <h3 class="section-title">图片审核</h3>
-          <p class="section-desc">图片与视频画面共用这组视觉审核配置。图片走异步审核，发布后先占位；低于阈值自动通过，达到阈值就隐藏等待人工处理。</p>
+          <p class="section-desc">图片走异步审核，发布后先占位；低于阈值自动通过，达到阈值就隐藏等待人工处理。</p>
         </div>
       </div>
 
@@ -145,15 +145,67 @@
       <p v-if="lastImageSweepSummary" class="actions-note">{{ lastImageSweepSummary }}</p>
     </section>
 
-    <section class="settings-card">
+    <section class="settings-card" v-loading="loadingConfig">
       <div class="section-head">
         <div>
           <h3 class="section-title">视频审核</h3>
-          <p class="section-desc">视频会抽关键帧、尝试转写音轨，并结合正文上下文异步判定；这里处理待人工复核的视频。</p>
+          <p class="section-desc">视频会抽关键帧、尝试转写音轨，并结合正文上下文异步判定；可单独配置启停、模型、阈值和 Prompt，这里也继续处理待人工复核的视频。</p>
+        </div>
+      </div>
+
+      <div class="ai-form">
+        <div class="ai-row ai-row--switch">
+          <span class="ai-label">启用视频审核</span>
+          <el-switch v-model="form.videoReviewEnabled" inline-prompt active-text="开" inactive-text="关" />
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">视频模型</span>
+          <el-input v-model="form.videoReviewModel" maxlength="80" placeholder="gpt-4o-mini" />
+        </div>
+        <div class="ai-row ai-row--stretch">
+          <span class="ai-label">视频审核 API 地址</span>
+          <el-input v-model="form.videoReviewApiUrl" maxlength="240" placeholder="https://api.openai.com/v1/chat/completions" />
+        </div>
+        <div class="ai-row ai-row--stretch">
+          <span class="ai-label">视频审核 API Key</span>
+          <el-input v-model="form.videoReviewApiKey" maxlength="240" show-password placeholder="sk-..." />
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">并发请求数</span>
+          <el-input-number v-model="form.videoReviewConcurrency" :min="1" :max="2" />
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">视频审核阈值</span>
+          <el-input-number v-model="form.videoReviewThreshold" :min="0" :max="100" />
+        </div>
+      </div>
+
+      <div class="prompt-card">
+        <button type="button" class="sub-toggle" :class="{ expanded: videoPromptsExpanded }" @click="videoPromptsExpanded = !videoPromptsExpanded">
+          <div>
+            <div class="card-title">视频审核 Prompt</div>
+            <div class="desc">可单独配置视频审核系统提示词和用户提示词。</div>
+          </div>
+          <span class="toggle-arrow" aria-hidden="true">▾</span>
+        </button>
+        <div class="prompt-actions">
+          <el-button text :disabled="loadingPromptDefaults" @click="resetVideoPrompts">重置视频 Prompt</el-button>
+        </div>
+        <div v-if="videoPromptsExpanded" class="prompt-grid">
+          <div class="ai-row ai-row--stretch">
+            <span class="ai-label">视频审核 System Prompt</span>
+            <el-input v-model="form.videoReviewSystemPrompt" type="textarea" :rows="4" />
+          </div>
+          <div class="ai-row ai-row--stretch">
+            <span class="ai-label">视频审核 User Prompt</span>
+            <el-input v-model="form.videoReviewUserPrompt" type="textarea" :rows="6" />
+          </div>
         </div>
       </div>
 
       <div class="actions-row">
+        <el-button type="primary" :loading="saving" @click="saveConfig">保存审核配置</el-button>
+        <el-button plain :disabled="loadingPromptDefaults" @click="resetAllPrompts">重置全部 Prompt</el-button>
         <el-button plain :loading="sweepingVideos" @click="sweepForumVideos">一键补扫全站视频</el-button>
       </div>
       <p v-if="lastVideoSweepSummary" class="actions-note">{{ lastVideoSweepSummary }}</p>
@@ -271,6 +323,7 @@ const loadingVideos = ref(false);
 const loadingPromptDefaults = ref(false);
 const textPromptsExpanded = ref(false);
 const imagePromptsExpanded = ref(false);
+const videoPromptsExpanded = ref(false);
 const logs = ref<AiReviewLogRow[]>([]);
 const lastImageSweepSummary = ref("");
 const lastVideoSweepSummary = ref("");
@@ -296,8 +349,16 @@ const form = reactive<SiteConfig>({
   imageReviewUserPrompt: "",
   imageReviewConcurrency: 2,
   imageReviewRequestGroupSize: 3,
+  videoReviewEnabled: false,
+  videoReviewApiUrl: "https://api.openai.com/v1/chat/completions",
+  videoReviewModel: "gpt-4o-mini",
+  videoReviewApiKey: "",
+  videoReviewSystemPrompt: "",
+  videoReviewUserPrompt: "",
+  videoReviewConcurrency: 1,
   aiReviewThreshold: 24,
   imageReviewThreshold: 36,
+  videoReviewThreshold: 36,
   aiEditSimilarityThreshold: 0,
   aiTopicReviewSystemPrompt: "",
   aiTopicReviewUserPrompt: "",
@@ -363,8 +424,16 @@ async function saveConfig() {
       imageReviewUserPrompt: form.imageReviewUserPrompt,
       imageReviewConcurrency: form.imageReviewConcurrency,
       imageReviewRequestGroupSize: form.imageReviewRequestGroupSize,
+      videoReviewEnabled: form.videoReviewEnabled,
+      videoReviewApiUrl: form.videoReviewApiUrl,
+      videoReviewModel: form.videoReviewModel,
+      videoReviewApiKey: form.videoReviewApiKey,
+      videoReviewSystemPrompt: form.videoReviewSystemPrompt,
+      videoReviewUserPrompt: form.videoReviewUserPrompt,
+      videoReviewConcurrency: form.videoReviewConcurrency,
       aiReviewThreshold: form.aiReviewThreshold,
       imageReviewThreshold: form.imageReviewThreshold,
+      videoReviewThreshold: form.videoReviewThreshold,
       aiEditSimilarityThreshold: form.aiEditSimilarityThreshold,
       aiTopicReviewSystemPrompt: form.aiTopicReviewSystemPrompt,
       aiTopicReviewUserPrompt: form.aiTopicReviewUserPrompt,
@@ -379,7 +448,7 @@ async function saveConfig() {
   }
 }
 
-function applyPromptDefaults(scope: "text" | "image" | "all") {
+function applyPromptDefaults(scope: "text" | "image" | "video" | "all") {
   if (!promptDefaults.value) return;
   const defaults = promptDefaults.value;
   if (scope === "text" || scope === "all") {
@@ -394,7 +463,12 @@ function applyPromptDefaults(scope: "text" | "image" | "all") {
     form.imageReviewSystemPrompt = defaults.imageReviewSystemPrompt;
     form.imageReviewUserPrompt = defaults.imageReviewUserPrompt;
   }
-  ElMessage.success(scope === "all" ? "已恢复全部默认 Prompt，记得保存审核配置" : `已恢复${scope === "text" ? "文字" : "图片"}默认 Prompt，记得保存审核配置`);
+  if (scope === "video" || scope === "all") {
+    form.videoReviewSystemPrompt = defaults.videoReviewSystemPrompt;
+    form.videoReviewUserPrompt = defaults.videoReviewUserPrompt;
+  }
+  const scopeLabel = scope === "text" ? "文字" : scope === "image" ? "图片" : scope === "video" ? "视频" : "全部";
+  ElMessage.success(scope === "all" ? "已恢复全部默认 Prompt，记得保存审核配置" : `已恢复${scopeLabel}默认 Prompt，记得保存审核配置`);
 }
 
 async function resetTextPrompts() {
@@ -405,6 +479,11 @@ async function resetTextPrompts() {
 async function resetImagePrompts() {
   if (!promptDefaults.value) await loadPromptDefaults();
   applyPromptDefaults("image");
+}
+
+async function resetVideoPrompts() {
+  if (!promptDefaults.value) await loadPromptDefaults();
+  applyPromptDefaults("video");
 }
 
 async function resetAllPrompts() {
