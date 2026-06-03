@@ -12,7 +12,7 @@ import { refreshUserReplyCount } from "../services/forumStats";
 import { consumeAnonymousCredit, createAnonymousAlias, refreshAnonymousCreditsIfNeeded } from "../services/userTrust";
 import { decodeReplyForViewer, decodeReplyForViewerWithImages } from "../services/forumPresentation";
 import { ensureForumImageAssetsForContent, summarizeForumImageModerationForContent } from "../services/imageModeration";
-import { ensureForumVideoAssetsForContent } from "../services/videoModeration";
+import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForContent } from "../services/videoModeration";
 
 export const replyRouter = Router();
 
@@ -190,9 +190,11 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       ensureForumVideoAssetsForContent(content, userId).catch(() => null),
     ]);
     const imageReview = await summarizeForumImageModerationForContent(content).catch(() => null);
+    const videoReview = await summarizeForumVideoModerationForContent(content).catch(() => null);
     ok(res, {
       ...(await decodeReplyForViewerWithImages(reply, req.user)),
       imageReview,
+      videoReview,
     });
   } catch (e) { next(e); }
 });
@@ -247,9 +249,11 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
       ensureForumVideoAssetsForContent(req.body.content, req.user!.userId).catch(() => null),
     ]);
     const imageReview = await summarizeForumImageModerationForContent(req.body.content).catch(() => null);
+    const videoReview = await summarizeForumVideoModerationForContent(req.body.content).catch(() => null);
     ok(res, {
       ...(await decodeReplyForViewerWithImages(updated, req.user)),
       imageReview,
+      videoReview,
     });
   } catch (e) { next(e); }
 });

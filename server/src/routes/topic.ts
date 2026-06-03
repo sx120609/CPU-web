@@ -32,7 +32,7 @@ import { ensureUserCanSpeak, releaseExpiredMutes } from "../services/userModerat
 import { consumeAnonymousCredit, createAnonymousAlias } from "../services/userTrust";
 import { decodeReplyForViewer, decodeReplyForViewerWithImages, decodeTopicForViewer, decodeTopicForViewerWithImages } from "../services/forumPresentation";
 import { ensureForumImageAssetsForContent, summarizeForumImageModerationForContent } from "../services/imageModeration";
-import { ensureForumVideoAssetsForContent } from "../services/videoModeration";
+import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForContent } from "../services/videoModeration";
 
 export const topicRouter = Router();
 
@@ -292,6 +292,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       ensureForumVideoAssetsForContent(content, userId).catch(() => null),
     ]);
     const imageReview = await summarizeForumImageModerationForContent(content).catch(() => null);
+    const videoReview = await summarizeForumVideoModerationForContent(content).catch(() => null);
     ok(res, {
       ...(await decodeTopicForViewerWithImages(topicWithTags ?? { ...topic, board: { slug: board.slug, name: board.name, type: board.type }, tags: [] }, req.user)),
       submissionResult: hiddenByAi
@@ -301,10 +302,12 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
             riskScore: aiResult?.riskScore,
             reason: aiResult?.reason,
             imageReview,
+            videoReview,
           }
         : {
             status: "published",
             imageReview,
+            videoReview,
           },
     });
   } catch (e) { next(e); }
@@ -381,6 +384,8 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
           metadata: typeof body.metadata === "object" && body.metadata ? body.metadata : parseJsonSafe(t.metadata),
         });
         if (aiResult.status === "blocked_ai") {
+          const imageReview = await summarizeForumImageModerationForContent(nextContent).catch(() => null);
+          const videoReview = await summarizeForumVideoModerationForContent(nextContent).catch(() => null);
           return ok(res, {
             ...(await decodeTopicForViewerWithImages(t, req.user)),
             submissionResult: {
@@ -388,6 +393,8 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
               riskLevel: aiResult.riskLevel,
               riskScore: aiResult.riskScore,
               reason: aiResult.reason,
+              imageReview,
+              videoReview,
             },
           });
         }
@@ -452,6 +459,9 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     const imageReview = typeof body.content === "string" && canEditContent
       ? await summarizeForumImageModerationForContent(nextContent).catch(() => null)
       : null;
+    const videoReview = typeof body.content === "string" && canEditContent
+      ? await summarizeForumVideoModerationForContent(nextContent).catch(() => null)
+      : null;
     const topicWithTags = await prisma.topic.findUnique({
       where: { id: u.id },
       include: {
@@ -462,7 +472,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     });
     ok(res, {
       ...(await decodeTopicForViewerWithImages(topicWithTags ?? u, req.user)),
-      submissionResult: { status: "published", imageReview },
+      submissionResult: { status: "published", imageReview, videoReview },
     });
   } catch (e) { next(e); }
 });

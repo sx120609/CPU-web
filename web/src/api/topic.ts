@@ -36,6 +36,14 @@ export interface Topic {
     rejectedCount: number;
     approvedCount: number;
   };
+  videoReview?: {
+    enabled: boolean;
+    totalCount: number;
+    pendingCount: number;
+    rejectedCount: number;
+    approvedCount: number;
+    manualReviewCount: number;
+  };
 }
 
 export interface Reply {
@@ -58,6 +66,14 @@ export interface Reply {
     rejectedCount: number;
     approvedCount: number;
   };
+  videoReview?: {
+    enabled: boolean;
+    totalCount: number;
+    pendingCount: number;
+    rejectedCount: number;
+    approvedCount: number;
+    manualReviewCount: number;
+  };
 }
 
 export type ImageReviewSummary = {
@@ -68,24 +84,33 @@ export type ImageReviewSummary = {
   approvedCount: number;
 };
 
+export type VideoReviewSummary = {
+  enabled: boolean;
+  totalCount: number;
+  pendingCount: number;
+  rejectedCount: number;
+  approvedCount: number;
+  manualReviewCount: number;
+};
+
 export const topicApi = {
   list: (params: { board?: string; page?: number; size?: number; sort?: "new" | "hot"; pinned?: "only" | "exclude" }) =>
     request.get<{ page: number; size: number; total: number; list: Topic[] }>("/topics", params),
   detail: (id: number) => request.get<Topic>(`/topics/${id}`),
   replies: (id: number) => request.get<Reply[]>(`/topics/${id}/replies`),
   create: (payload: { boardSlug: string; title: string; content: string; metadata?: any; tags?: string[]; anonymous?: boolean }) =>
-    request.post<Topic & { submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string; imageReview?: ImageReviewSummary | null } }>("/topics", payload),
+    request.post<Topic & { submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string; imageReview?: ImageReviewSummary | null; videoReview?: VideoReviewSummary | null } }>("/topics", payload),
   update: (id: number, payload: Partial<Topic>) =>
-    request.patch<Topic & { submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string; imageReview?: ImageReviewSummary | null } }>(`/topics/${id}`, payload),
+    request.patch<Topic & { submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string; imageReview?: ImageReviewSummary | null; videoReview?: VideoReviewSummary | null } }>(`/topics/${id}`, payload),
   remove: (id: number) => request.delete<any>(`/topics/${id}`),
   requestManualReview: (id: number) => request.post<{ ok: true }>(`/topics/${id}/request-manual-review`),
 };
 
 export const replyApi = {
   create: (payload: { topicId: number; content: string; parentReplyId?: number; anonymous?: boolean }) =>
-    request.post<Reply & { blocked?: boolean; submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string }; imageReview?: ImageReviewSummary | null }>("/replies", payload),
+    request.post<Reply & { blocked?: boolean; submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string }; imageReview?: ImageReviewSummary | null; videoReview?: VideoReviewSummary | null }>("/replies", payload),
   update: (id: number, payload: { content: string }) =>
-    request.patch<Reply & { imageReview?: ImageReviewSummary | null }>(`/replies/${id}`, payload),
+    request.patch<Reply & { imageReview?: ImageReviewSummary | null; videoReview?: VideoReviewSummary | null }>(`/replies/${id}`, payload),
   remove: (id: number) => request.delete<any>(`/replies/${id}`),
   requestManualReview: (id: number) => request.post<{ ok: true }>(`/replies/${id}/request-manual-review`),
 };

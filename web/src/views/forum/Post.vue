@@ -488,6 +488,7 @@ async function confirmSubmit() {
         return;
       }
       notifyImageReviewState(r.submissionResult?.imageReview);
+      notifyVideoReviewState(r.submissionResult?.videoReview);
       clearDrafts();
       ElMessage.success("已保存");
       router.replace(`/forum/topic/${editingId.value}`);
@@ -509,6 +510,7 @@ async function confirmSubmit() {
         return;
       }
       notifyImageReviewState(r.submissionResult?.imageReview);
+      notifyVideoReviewState(r.submissionResult?.videoReview);
       clearDrafts();
       ElMessage.success("已发布");
       router.replace(`/forum/topic/${r.id}`);
@@ -542,6 +544,27 @@ function notifyImageReviewState(summary?: { enabled: boolean; totalCount: number
   }
   if (summary.pendingCount > 0) {
     ElMessage.info(`已提交 ${summary.pendingCount} 张图片审核，审核通过后才会显示原图。`);
+  }
+}
+
+function notifyVideoReviewState(summary?: {
+  enabled: boolean;
+  totalCount: number;
+  pendingCount: number;
+  rejectedCount: number;
+  manualReviewCount: number;
+} | null) {
+  if (!summary?.totalCount) return;
+  if (!summary.enabled) {
+    ElMessage.info(`本次包含 ${summary.totalCount} 个视频。当前视频审核未启用，视频会直接展示。`);
+    return;
+  }
+  if (summary.manualReviewCount > 0) {
+    ElMessage.warning(`有 ${summary.manualReviewCount} 个视频进入人工复核，当前会先隐藏。`);
+    return;
+  }
+  if (summary.pendingCount > 0) {
+    ElMessage.info(`已提交 ${summary.pendingCount} 个视频审核，审核通过后才会显示。`);
   }
 }
 </script>

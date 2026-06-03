@@ -133,6 +133,18 @@
         <span>正文中有 {{ topic.imageReview.rejectedCount }} 张图片未通过审核，当前已隐藏。</span>
         <el-button v-if="canReviewTopicImages" link type="danger" @click="openTopicImageReviewDialog">手动复核图片</el-button>
       </div>
+      <div v-if="topic.videoReview?.manualReviewCount" class="image-review-tip image-review-tip-rejected">
+        <span>正文中有 {{ topic.videoReview.manualReviewCount }} 个视频待人工复核，当前已隐藏。</span>
+        <el-button v-if="canReviewTopicVideos" link type="danger" @click="openTopicVideoReviewDialog">手动复核视频</el-button>
+      </div>
+      <div v-else-if="topic.videoReview?.rejectedCount" class="image-review-tip image-review-tip-rejected">
+        <span>正文中有 {{ topic.videoReview.rejectedCount }} 个视频未通过审核，当前已隐藏。</span>
+        <el-button v-if="canReviewTopicVideos" link type="danger" @click="openTopicVideoReviewDialog">手动复核视频</el-button>
+      </div>
+      <div v-else-if="topic.videoReview?.pendingCount" class="image-review-tip image-review-tip-pending">
+        <span>正文中有 {{ topic.videoReview.pendingCount }} 个视频正在审核，审核通过后会自动显示。</span>
+        <el-button v-if="canReviewTopicVideos" link type="warning" @click="openTopicVideoReviewDialog">手动复核视频</el-button>
+      </div>
 
       <div v-if="canAdminReviewTopicManual" class="topic-admin-review-tip cpu-card">
         <div class="review-blocked">
@@ -391,6 +403,68 @@
       </div>
     </el-dialog>
 
+    <el-dialog
+      v-model="topicVideoReviewDialogOpen"
+      title="视频人工复核"
+      width="min(920px, calc(100vw - 24px))"
+      append-to-body
+      class="topic-video-review-dialog"
+    >
+      <div class="topic-video-review-panel" v-loading="topicVideoReviewLoading">
+        <p class="topic-video-review-copy">这里只展示当前主帖正文里的本地上传视频。你可以直接预览视频，并手动决定放行或继续隐藏。</p>
+        <el-empty v-if="!topicVideoReviewLoading && !topicVideoReviewAssets.length" description="这条帖子里没有可复核的视频" />
+        <div v-else class="topic-video-review-list">
+          <article v-for="asset in topicVideoReviewAssets" :key="asset.id" class="topic-video-review-card">
+            <div class="topic-video-review-preview">
+              <video :src="asset.url" controls preload="metadata"></video>
+            </div>
+            <div class="topic-video-review-meta">
+              <div class="topic-video-review-head">
+                <el-tag :type="videoReviewTagType(asset.status)" effect="plain">{{ videoReviewStatusLabel(asset.status) }}</el-tag>
+                <span v-if="asset.manualReviewedBy?.nickname" class="topic-video-review-auditor">
+                  最近人工处理：{{ asset.manualReviewedBy.nickname }}
+                </span>
+              </div>
+              <p v-if="asset.reason" class="topic-video-review-line">当前说明：{{ asset.reason }}</p>
+              <p v-if="asset.manualReviewNote" class="topic-video-review-line">人工备注：{{ asset.manualReviewNote }}</p>
+              <p v-if="asset.lastError" class="topic-video-review-line topic-video-review-error">审核异常：{{ asset.lastError }}</p>
+              <p v-if="asset.detail && asset.detail !== asset.reason && asset.detail !== asset.manualReviewNote" class="topic-video-review-line">
+                详细信息：{{ asset.detail }}
+              </p>
+              <p class="topic-video-review-line">
+                视频信息：{{ formatVideoResolution(asset.width, asset.height) }} · {{ formatVideoDuration(asset.durationMs) }} · {{ asset.hasAudio ? "含音轨" : "无音轨" }}
+              </p>
+              <p v-if="asset.transcriptStatus" class="topic-video-review-line">
+                转写状态：{{ formatTranscriptStatus(asset.transcriptStatus) }}
+              </p>
+              <p v-if="asset.reviewedAt || asset.manualReviewedAt" class="topic-video-review-time">
+                最近处理时间：{{ fmtDate(asset.manualReviewedAt || asset.reviewedAt || "") }}
+              </p>
+              <div class="topic-video-review-actions">
+                <el-button
+                  type="success"
+                  size="small"
+                  :loading="topicVideoReviewSavingId === asset.id && topicVideoReviewSavingAction === 'approved'"
+                  @click="approveTopicVideo(asset)"
+                >
+                  人工通过
+                </el-button>
+                <el-button
+                  type="danger"
+                  plain
+                  size="small"
+                  :loading="topicVideoReviewSavingId === asset.id && topicVideoReviewSavingAction === 'rejected'"
+                  @click="rejectTopicVideo(asset)"
+                >
+                  继续隐藏
+                </el-button>
+              </div>
+            </div>
+          </article>
+        </div>
+      </div>
+    </el-dialog>
+
     <div class="share-card-export-shell" aria-hidden="true">
       <div class="share-card-dom share-card-dom--export" ref="shareCardExportRef">
         <div class="share-card-top">
@@ -481,7 +555,7 @@ import MarkdownView from "@/components/forum/MarkdownView.vue";
 import RichTextEditor from "@/components/forum/RichTextEditor.vue";
 import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDialog.vue";
 import { topicApi, replyApi, likeApi, type Topic, type Reply } from "@/api/topic";
-import { adminApi, type ForumImageReviewAsset } from "@/api/admin";
+import { adminApi, type ForumImageReviewAsset, type ForumVideoReviewAsset } from "@/api/admin";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate, fmtRelative } from "@/utils/format";
 import { copyText } from "@/utils/userGroup";
@@ -513,6 +587,11 @@ const topicImageReviewLoading = ref(false);
 const topicImageReviewSavingId = ref<number | null>(null);
 const topicImageReviewSavingAction = ref<"approved" | "rejected" | "">("");
 const topicImageReviewAssets = ref<ForumImageReviewAsset[]>([]);
+const topicVideoReviewDialogOpen = ref(false);
+const topicVideoReviewLoading = ref(false);
+const topicVideoReviewSavingId = ref<number | null>(null);
+const topicVideoReviewSavingAction = ref<"approved" | "rejected" | "">("");
+const topicVideoReviewAssets = ref<ForumVideoReviewAsset[]>([]);
 const replyReviewBlockedOpen = ref(false);
 const requestingReplyManualReview = ref(false);
 const replyManualReviewConfirmOpen = ref(false);
@@ -603,6 +682,14 @@ const canPin = computed(() => auth.isMod);
 const canReviewTopicImages = computed(() => (
   auth.isMod &&
   (((topic.value?.imageReview?.pendingCount ?? 0) > 0) || ((topic.value?.imageReview?.rejectedCount ?? 0) > 0))
+));
+const canReviewTopicVideos = computed(() => (
+  auth.isMod &&
+  (
+    ((topic.value?.videoReview?.pendingCount ?? 0) > 0)
+    || ((topic.value?.videoReview?.manualReviewCount ?? 0) > 0)
+    || ((topic.value?.videoReview?.rejectedCount ?? 0) > 0)
+  )
 ));
 const replyDraftKey = computed(() => topic.value?.id ? `cpu-reply-draft-${topic.value.id}` : "");
 const currentMuteMessage = computed(() => auth.user?.mutedUntil ? `你已被禁言至 ${fmtDate(auth.user.mutedUntil)}` : "你当前已被禁言，暂时无法回复");
@@ -920,6 +1007,29 @@ async function refreshTopicAfterImageReview() {
   if (nextTopic) topic.value = nextTopic;
 }
 
+async function openTopicVideoReviewDialog() {
+  if (!topic.value?.id || !auth.isMod) return;
+  topicVideoReviewDialogOpen.value = true;
+  await loadTopicVideoReviewAssets();
+}
+
+async function loadTopicVideoReviewAssets() {
+  if (!topic.value?.id || !auth.isMod) return;
+  topicVideoReviewLoading.value = true;
+  try {
+    const response = await adminApi.reviewTargetVideos("topic", topic.value.id);
+    topicVideoReviewAssets.value = response.list;
+  } finally {
+    topicVideoReviewLoading.value = false;
+  }
+}
+
+async function refreshTopicAfterVideoReview() {
+  if (!topic.value?.id) return;
+  const nextTopic = await loadTopicDetail(topic.value.id);
+  if (nextTopic) topic.value = nextTopic;
+}
+
 async function refreshTopicAfterAdminReview() {
   if (!topic.value?.id) return;
   const nextTopic = await loadTopicDetail(topic.value.id);
@@ -970,6 +1080,50 @@ async function rejectTopicImage(asset: ForumImageReviewAsset) {
   }
 }
 
+async function approveTopicVideo(asset: ForumVideoReviewAsset) {
+  await ElMessageBox.confirm("确认将这个视频人工审核通过并恢复展示？", "人工通过", {
+    type: "warning",
+    confirmButtonText: "通过",
+    cancelButtonText: "取消",
+  });
+  topicVideoReviewSavingId.value = asset.id;
+  topicVideoReviewSavingAction.value = "approved";
+  try {
+    await adminApi.updateForumVideo(asset.id, { status: "approved" });
+    await Promise.all([
+      refreshTopicAfterVideoReview(),
+      loadTopicVideoReviewAssets(),
+    ]);
+    ElMessage.success("视频已人工审核通过");
+  } finally {
+    topicVideoReviewSavingId.value = null;
+    topicVideoReviewSavingAction.value = "";
+  }
+}
+
+async function rejectTopicVideo(asset: ForumVideoReviewAsset) {
+  const { value } = await ElMessageBox.prompt("可选填写人工驳回备注，留空会保留当前审核说明。", "继续隐藏", {
+    inputPlaceholder: "例如：画面中存在可识别隐私信息，不适合公开展示",
+  }).catch(() => ({ value: null }));
+  if (value === null) return;
+  topicVideoReviewSavingId.value = asset.id;
+  topicVideoReviewSavingAction.value = "rejected";
+  try {
+    await adminApi.updateForumVideo(asset.id, {
+      status: "rejected",
+      manualReviewNote: value || undefined,
+    });
+    await Promise.all([
+      refreshTopicAfterVideoReview(),
+      loadTopicVideoReviewAssets(),
+    ]);
+    ElMessage.success("视频已维持隐藏");
+  } finally {
+    topicVideoReviewSavingId.value = null;
+    topicVideoReviewSavingAction.value = "";
+  }
+}
+
 function imageReviewStatusLabel(status?: string) {
   if (status === "approved") return "已通过";
   if (status === "rejected") return "已驳回";
@@ -982,6 +1136,44 @@ function imageReviewTagType(status?: string) {
   if (status === "rejected") return "danger";
   if (status === "error") return "warning";
   return "info";
+}
+
+function videoReviewStatusLabel(status?: string) {
+  if (status === "approved") return "已通过";
+  if (status === "manual_review") return "待人工";
+  if (status === "rejected") return "已驳回";
+  if (status === "error") return "审核异常";
+  return "审核中";
+}
+
+function videoReviewTagType(status?: string) {
+  if (status === "approved") return "success";
+  if (status === "manual_review") return "warning";
+  if (status === "rejected") return "danger";
+  if (status === "error") return "warning";
+  return "info";
+}
+
+function formatVideoDuration(durationMs?: number | null) {
+  if (!durationMs || durationMs <= 0) return "时长未知";
+  const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatVideoResolution(width?: number | null, height?: number | null) {
+  if (!width || !height) return "分辨率未知";
+  return `${width} × ${height}`;
+}
+
+function formatTranscriptStatus(status?: string | null) {
+  if (status === "ready") return "已转写";
+  if (status === "missing_audio") return "无音轨";
+  if (status === "skipped") return "已跳过";
+  if (status === "error") return "转写失败";
+  if (status === "processing") return "转写中";
+  return status || "未知";
 }
 
 function escapeHtml(value: string) {
@@ -1454,7 +1646,18 @@ async function onDelete() {
   min-height: 160px;
 }
 
+.topic-video-review-panel {
+  min-height: 160px;
+}
+
 .topic-image-review-copy {
+  margin: 0 0 14px;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.topic-video-review-copy {
   margin: 0 0 14px;
   color: #6b7280;
   font-size: 13px;
@@ -1466,9 +1669,24 @@ async function onDelete() {
   gap: 14px;
 }
 
+.topic-video-review-list {
+  display: grid;
+  gap: 14px;
+}
+
 .topic-image-review-card {
   display: grid;
   grid-template-columns: minmax(180px, 240px) 1fr;
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.topic-video-review-card {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) 1fr;
   gap: 16px;
   padding: 14px;
   border: 1px solid #e5e7eb;
@@ -1488,6 +1706,17 @@ async function onDelete() {
   min-height: 220px;
 }
 
+.topic-video-review-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #020617;
+  border: 1px solid #e5e7eb;
+  min-height: 220px;
+}
+
 .topic-image-review-preview img {
   display: block;
   width: auto;
@@ -1497,13 +1726,33 @@ async function onDelete() {
   object-fit: contain;
 }
 
+.topic-video-review-preview video {
+  display: block;
+  width: 100%;
+  max-height: min(70vh, 560px);
+  background: #000;
+}
+
 :deep(.topic-image-review-dialog .el-dialog__body) {
   max-height: calc(100vh - 180px);
   overflow-y: auto;
   display: block;
 }
 
+:deep(.topic-video-review-dialog .el-dialog__body) {
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+  display: block;
+}
+
 .topic-image-review-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.topic-video-review-meta {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1517,8 +1766,21 @@ async function onDelete() {
   flex-wrap: wrap;
 }
 
+.topic-video-review-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .topic-image-review-auditor,
 .topic-image-review-time {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.topic-video-review-auditor,
+.topic-video-review-time {
   color: #6b7280;
   font-size: 12px;
 }
@@ -1531,11 +1793,31 @@ async function onDelete() {
   word-break: break-word;
 }
 
+.topic-video-review-line {
+  margin: 0;
+  color: #111827;
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
 .topic-image-review-error {
   color: #b45309;
 }
 
+.topic-video-review-error {
+  color: #b45309;
+}
+
 .topic-image-review-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 6px;
+}
+
+.topic-video-review-actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
@@ -2077,6 +2359,10 @@ async function onDelete() {
   }
 
   .topic-image-review-card {
+    grid-template-columns: 1fr;
+  }
+
+  .topic-video-review-card {
     grid-template-columns: 1fr;
   }
 

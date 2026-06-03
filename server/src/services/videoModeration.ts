@@ -353,6 +353,24 @@ export async function summarizeForumVideoModerationForContent(content: string): 
   };
 }
 
+export async function decorateTopicForViewerWithVideoModeration(topic: any, viewer?: Viewer) {
+  const videoReview = await summarizeForumVideoModerationForContent(topic.content);
+  return {
+    ...topic,
+    videoReview,
+    content: await renderModeratedVideoContent(topic.content, viewer),
+  };
+}
+
+export async function decorateReplyForViewerWithVideoModeration(reply: any, viewer?: Viewer) {
+  const videoReview = await summarizeForumVideoModerationForContent(reply.content);
+  return {
+    ...reply,
+    videoReview,
+    content: await renderModeratedVideoContent(reply.content, viewer),
+  };
+}
+
 export async function listForumVideoAssetsForContent(content: string): Promise<ForumVideoReviewAsset[]> {
   const urls = extractForumVideoUrls(content);
   if (!urls.length) return [];
