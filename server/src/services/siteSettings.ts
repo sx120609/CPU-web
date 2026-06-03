@@ -7,6 +7,7 @@
  * 默认值：全部为 on（即不破坏现有上线体验）。
  */
 import { prisma } from "../prisma";
+import { normalizeFallbackModelList } from "./modelFallback";
 
 export type FeatureKey = "forum" | "market" | "coursereview" | "electric" | "sponsor";
 export type AnonymousTierConfig = {
@@ -23,10 +24,12 @@ export type SiteConfig = {
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
   aiReviewModel: string;
+  aiReviewFallbackModels: string;
   aiReviewApiKey: string;
   imageReviewEnabled: boolean;
   imageReviewApiUrl: string;
   imageReviewModel: string;
+  imageReviewFallbackModels: string;
   imageReviewApiKey: string;
   imageReviewSystemPrompt: string;
   imageReviewUserPrompt: string;
@@ -35,6 +38,7 @@ export type SiteConfig = {
   videoReviewEnabled: boolean;
   videoReviewApiUrl: string;
   videoReviewModel: string;
+  videoReviewFallbackModels: string;
   videoReviewApiKey: string;
   videoReviewSystemPrompt: string;
   videoReviewUserPrompt: string;
@@ -95,10 +99,12 @@ const SITE_ORIGIN_KEY = "site.origin";
 const AI_REVIEW_ENABLED_KEY = "ai.review.enabled";
 const AI_REVIEW_PROVIDER_KEY = "ai.review.provider";
 const AI_REVIEW_MODEL_KEY = "ai.review.model";
+const AI_REVIEW_FALLBACK_MODELS_KEY = "ai.review.fallbackModels";
 const AI_REVIEW_API_KEY = "ai.review.apiKey";
 const IMAGE_REVIEW_ENABLED_KEY = "ai.imageReview.enabled";
 const IMAGE_REVIEW_API_URL_KEY = "ai.imageReview.apiUrl";
 const IMAGE_REVIEW_MODEL_KEY = "ai.imageReview.model";
+const IMAGE_REVIEW_FALLBACK_MODELS_KEY = "ai.imageReview.fallbackModels";
 const IMAGE_REVIEW_API_KEY_KEY = "ai.imageReview.apiKey";
 const IMAGE_REVIEW_SYSTEM_PROMPT_KEY = "ai.imageReview.systemPrompt";
 const IMAGE_REVIEW_USER_PROMPT_KEY = "ai.imageReview.userPrompt";
@@ -107,6 +113,7 @@ const IMAGE_REVIEW_REQUEST_GROUP_SIZE_KEY = "ai.imageReview.requestGroupSize";
 const VIDEO_REVIEW_ENABLED_KEY = "ai.videoReview.enabled";
 const VIDEO_REVIEW_API_URL_KEY = "ai.videoReview.apiUrl";
 const VIDEO_REVIEW_MODEL_KEY = "ai.videoReview.model";
+const VIDEO_REVIEW_FALLBACK_MODELS_KEY = "ai.videoReview.fallbackModels";
 const VIDEO_REVIEW_API_KEY_KEY = "ai.videoReview.apiKey";
 const VIDEO_REVIEW_SYSTEM_PROMPT_KEY = "ai.videoReview.systemPrompt";
 const VIDEO_REVIEW_USER_PROMPT_KEY = "ai.videoReview.userPrompt";
@@ -247,10 +254,12 @@ const configCache: SiteConfig = {
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
   aiReviewModel: "deepseek-v4-flash",
+  aiReviewFallbackModels: "",
   aiReviewApiKey: "",
   imageReviewEnabled: false,
   imageReviewApiUrl: "https://api.openai.com/v1/chat/completions",
   imageReviewModel: "gpt-4o-mini",
+  imageReviewFallbackModels: "",
   imageReviewApiKey: "",
   imageReviewSystemPrompt: DEFAULT_IMAGE_REVIEW_PROMPTS.system,
   imageReviewUserPrompt: DEFAULT_IMAGE_REVIEW_PROMPTS.user,
@@ -259,6 +268,7 @@ const configCache: SiteConfig = {
   videoReviewEnabled: false,
   videoReviewApiUrl: "https://api.openai.com/v1/chat/completions",
   videoReviewModel: "gpt-4o-mini",
+  videoReviewFallbackModels: "",
   videoReviewApiKey: "",
   videoReviewSystemPrompt: DEFAULT_VIDEO_REVIEW_PROMPTS.system,
   videoReviewUserPrompt: DEFAULT_VIDEO_REVIEW_PROMPTS.user,
@@ -322,10 +332,12 @@ export async function loadFeatures(): Promise<void> {
           AI_REVIEW_ENABLED_KEY,
           AI_REVIEW_PROVIDER_KEY,
           AI_REVIEW_MODEL_KEY,
+          AI_REVIEW_FALLBACK_MODELS_KEY,
           AI_REVIEW_API_KEY,
           IMAGE_REVIEW_ENABLED_KEY,
           IMAGE_REVIEW_API_URL_KEY,
           IMAGE_REVIEW_MODEL_KEY,
+          IMAGE_REVIEW_FALLBACK_MODELS_KEY,
           IMAGE_REVIEW_API_KEY_KEY,
           IMAGE_REVIEW_SYSTEM_PROMPT_KEY,
           IMAGE_REVIEW_USER_PROMPT_KEY,
@@ -334,6 +346,7 @@ export async function loadFeatures(): Promise<void> {
           VIDEO_REVIEW_ENABLED_KEY,
           VIDEO_REVIEW_API_URL_KEY,
           VIDEO_REVIEW_MODEL_KEY,
+          VIDEO_REVIEW_FALLBACK_MODELS_KEY,
           VIDEO_REVIEW_API_KEY_KEY,
           VIDEO_REVIEW_SYSTEM_PROMPT_KEY,
           VIDEO_REVIEW_USER_PROMPT_KEY,
@@ -390,6 +403,10 @@ export async function loadFeatures(): Promise<void> {
       configCache.aiReviewModel = String(r.value || "deepseek-v4-flash").trim() || "deepseek-v4-flash";
       continue;
     }
+    if (r.key === AI_REVIEW_FALLBACK_MODELS_KEY) {
+      configCache.aiReviewFallbackModels = normalizeFallbackModelList(r.value, configCache.aiReviewModel);
+      continue;
+    }
     if (r.key === AI_REVIEW_API_KEY) {
       configCache.aiReviewApiKey = String(r.value || "");
       continue;
@@ -404,6 +421,10 @@ export async function loadFeatures(): Promise<void> {
     }
     if (r.key === IMAGE_REVIEW_MODEL_KEY) {
       configCache.imageReviewModel = String(r.value || "gpt-4o-mini").trim() || "gpt-4o-mini";
+      continue;
+    }
+    if (r.key === IMAGE_REVIEW_FALLBACK_MODELS_KEY) {
+      configCache.imageReviewFallbackModels = normalizeFallbackModelList(r.value, configCache.imageReviewModel);
       continue;
     }
     if (r.key === IMAGE_REVIEW_API_KEY_KEY) {
@@ -436,6 +457,10 @@ export async function loadFeatures(): Promise<void> {
     }
     if (r.key === VIDEO_REVIEW_MODEL_KEY) {
       configCache.videoReviewModel = String(r.value || "gpt-4o-mini").trim() || "gpt-4o-mini";
+      continue;
+    }
+    if (r.key === VIDEO_REVIEW_FALLBACK_MODELS_KEY) {
+      configCache.videoReviewFallbackModels = normalizeFallbackModelList(r.value, configCache.videoReviewModel);
       continue;
     }
     if (r.key === VIDEO_REVIEW_API_KEY_KEY) {
@@ -800,8 +825,10 @@ function sanitizeAiReviewConfig() {
   configCache.aiEditSimilarityUserPrompt = normalizePromptTemplate(configCache.aiEditSimilarityUserPrompt, DEFAULT_AI_PROMPTS.editSimilarityUser);
   if (!configCache.aiReviewProvider) configCache.aiReviewProvider = "deepseek";
   if (!configCache.aiReviewModel) configCache.aiReviewModel = "deepseek-v4-flash";
+  configCache.aiReviewFallbackModels = normalizeFallbackModelList(configCache.aiReviewFallbackModels, configCache.aiReviewModel);
   configCache.imageReviewApiUrl = normalizePromptTemplate(configCache.imageReviewApiUrl, "https://api.openai.com/v1/chat/completions");
   configCache.imageReviewModel = String(configCache.imageReviewModel || "gpt-4o-mini").trim() || "gpt-4o-mini";
+  configCache.imageReviewFallbackModels = normalizeFallbackModelList(configCache.imageReviewFallbackModels, configCache.imageReviewModel);
   configCache.imageReviewConcurrency = normalizeSmallInt(configCache.imageReviewConcurrency, 2, 1, 8);
   configCache.imageReviewRequestGroupSize = normalizeSmallInt(configCache.imageReviewRequestGroupSize, 3, 1, 6);
   upgradeLegacyImageReviewPrompts();
@@ -809,6 +836,7 @@ function sanitizeAiReviewConfig() {
   configCache.imageReviewUserPrompt = normalizePromptTemplate(configCache.imageReviewUserPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.user);
   configCache.videoReviewApiUrl = normalizePromptTemplate(configCache.videoReviewApiUrl, "https://api.openai.com/v1/chat/completions");
   configCache.videoReviewModel = String(configCache.videoReviewModel || "gpt-4o-mini").trim() || "gpt-4o-mini";
+  configCache.videoReviewFallbackModels = normalizeFallbackModelList(configCache.videoReviewFallbackModels, configCache.videoReviewModel);
   configCache.videoReviewConcurrency = normalizeSmallInt(configCache.videoReviewConcurrency, 1, 1, 2);
   configCache.videoReviewSystemPrompt = normalizePromptTemplate(configCache.videoReviewSystemPrompt, DEFAULT_VIDEO_REVIEW_PROMPTS.system);
   configCache.videoReviewUserPrompt = normalizePromptTemplate(configCache.videoReviewUserPrompt, DEFAULT_VIDEO_REVIEW_PROMPTS.user);
@@ -847,10 +875,12 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
     aiReviewEnabled: input.aiReviewEnabled ?? configCache.aiReviewEnabled,
     aiReviewProvider: String(input.aiReviewProvider ?? configCache.aiReviewProvider ?? "deepseek").trim() || "deepseek",
     aiReviewModel: String(input.aiReviewModel ?? configCache.aiReviewModel ?? "deepseek-v4-flash").trim() || "deepseek-v4-flash",
+    aiReviewFallbackModels: normalizeFallbackModelList(input.aiReviewFallbackModels, input.aiReviewModel ?? configCache.aiReviewModel),
     aiReviewApiKey: String(input.aiReviewApiKey ?? configCache.aiReviewApiKey ?? "").trim(),
     imageReviewEnabled: input.imageReviewEnabled ?? configCache.imageReviewEnabled,
     imageReviewApiUrl: normalizePromptTemplate(input.imageReviewApiUrl, configCache.imageReviewApiUrl),
     imageReviewModel: String(input.imageReviewModel ?? configCache.imageReviewModel ?? "gpt-4o-mini").trim() || "gpt-4o-mini",
+    imageReviewFallbackModels: normalizeFallbackModelList(input.imageReviewFallbackModels, input.imageReviewModel ?? configCache.imageReviewModel),
     imageReviewApiKey: String(input.imageReviewApiKey ?? configCache.imageReviewApiKey ?? "").trim(),
     imageReviewSystemPrompt: resolvePromptTemplate(input.imageReviewSystemPrompt, configCache.imageReviewSystemPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.system),
     imageReviewUserPrompt: resolvePromptTemplate(input.imageReviewUserPrompt, configCache.imageReviewUserPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.user),
@@ -859,6 +889,7 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
     videoReviewEnabled: input.videoReviewEnabled ?? configCache.videoReviewEnabled,
     videoReviewApiUrl: normalizePromptTemplate(input.videoReviewApiUrl, configCache.videoReviewApiUrl),
     videoReviewModel: String(input.videoReviewModel ?? configCache.videoReviewModel ?? "gpt-4o-mini").trim() || "gpt-4o-mini",
+    videoReviewFallbackModels: normalizeFallbackModelList(input.videoReviewFallbackModels, input.videoReviewModel ?? configCache.videoReviewModel),
     videoReviewApiKey: String(input.videoReviewApiKey ?? configCache.videoReviewApiKey ?? "").trim(),
     videoReviewSystemPrompt: resolvePromptTemplate(input.videoReviewSystemPrompt, configCache.videoReviewSystemPrompt, DEFAULT_VIDEO_REVIEW_PROMPTS.system),
     videoReviewUserPrompt: resolvePromptTemplate(input.videoReviewUserPrompt, configCache.videoReviewUserPrompt, DEFAULT_VIDEO_REVIEW_PROMPTS.user),
@@ -906,6 +937,11 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       create: { key: AI_REVIEW_MODEL_KEY, value: next.aiReviewModel },
     }),
     prisma.siteSetting.upsert({
+      where: { key: AI_REVIEW_FALLBACK_MODELS_KEY },
+      update: { value: next.aiReviewFallbackModels },
+      create: { key: AI_REVIEW_FALLBACK_MODELS_KEY, value: next.aiReviewFallbackModels },
+    }),
+    prisma.siteSetting.upsert({
       where: { key: AI_REVIEW_API_KEY },
       update: { value: next.aiReviewApiKey },
       create: { key: AI_REVIEW_API_KEY, value: next.aiReviewApiKey },
@@ -924,6 +960,11 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       where: { key: IMAGE_REVIEW_MODEL_KEY },
       update: { value: next.imageReviewModel },
       create: { key: IMAGE_REVIEW_MODEL_KEY, value: next.imageReviewModel },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: IMAGE_REVIEW_FALLBACK_MODELS_KEY },
+      update: { value: next.imageReviewFallbackModels },
+      create: { key: IMAGE_REVIEW_FALLBACK_MODELS_KEY, value: next.imageReviewFallbackModels },
     }),
     prisma.siteSetting.upsert({
       where: { key: IMAGE_REVIEW_API_KEY_KEY },
@@ -964,6 +1005,11 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       where: { key: VIDEO_REVIEW_MODEL_KEY },
       update: { value: next.videoReviewModel },
       create: { key: VIDEO_REVIEW_MODEL_KEY, value: next.videoReviewModel },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: VIDEO_REVIEW_FALLBACK_MODELS_KEY },
+      update: { value: next.videoReviewFallbackModels },
+      create: { key: VIDEO_REVIEW_FALLBACK_MODELS_KEY, value: next.videoReviewFallbackModels },
     }),
     prisma.siteSetting.upsert({
       where: { key: VIDEO_REVIEW_API_KEY_KEY },

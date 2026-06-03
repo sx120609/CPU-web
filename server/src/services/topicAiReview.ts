@@ -1,6 +1,7 @@
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
+import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 import { getSiteConfig } from "./siteSettings";
 
 export type TopicAiReviewStatus =
@@ -111,43 +112,54 @@ type AiReviewLogContext = {
 
 export async function requestAiJson(messages: AiJsonMessage[], logContext?: AiReviewLogContext) {
   const config = getSiteConfig();
-  let logId: number | null = null;
   const userPrompt = messages.filter((item) => item.role === "user").map((item) => item.content).join("\n\n");
-  if (logContext) {
-    const started = await startAiReviewLog({
-      kind: logContext.kind,
-      targetId: logContext.targetId ?? null,
-      targetLabel: logContext.targetLabel ?? null,
-      createdById: logContext.createdById ?? null,
-      provider: config.aiReviewProvider,
-      model: config.aiReviewModel,
-      endpoint: REVIEW_API_URL,
-      requestSummary: userPrompt,
+  const candidates = resolveModelCandidates(config.aiReviewModel, config.aiReviewFallbackModels);
+  let lastError: Error | null = null;
+  for (let index = 0; index < candidates.length; index += 1) {
+    const model = candidates[index];
+    let logId: number | null = null;
+    if (logContext) {
+      const started = await startAiReviewLog({
+        kind: logContext.kind,
+        targetId: logContext.targetId ?? null,
+        targetLabel: logContext.targetLabel ?? null,
+        createdById: logContext.createdById ?? null,
+        provider: config.aiReviewProvider,
+        model,
+        endpoint: REVIEW_API_URL,
+        requestSummary: userPrompt,
+      });
+      logId = started?.id ?? null;
+    }
+    const response = await fetch(REVIEW_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.aiReviewApiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.1,
+        response_format: { type: "json_object" },
+        messages,
+      }),
     });
-    logId = started?.id ?? null;
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      await finishAiReviewLogError(logId, `HTTP ${response.status}`, text);
+      const canFallback = index < candidates.length - 1 && shouldFallbackToNextModel(response.status, text);
+      if (canFallback) {
+        lastError = Errors.server(`AI 审核模型 ${model} 当前不可用，已自动尝试下一个备选模型`);
+        continue;
+      }
+      throw Errors.server(`AI 审核请求失败：${response.status}${text ? ` ${text.slice(0, 120)}` : ""}`);
+    }
+    const json: any = await response.json();
+    const content = json?.choices?.[0]?.message?.content;
+    await finishAiReviewLogSuccess(logId, typeof content === "string" ? content : JSON.stringify(content ?? {}).slice(0, 4000));
+    return { content, model };
   }
-  const response = await fetch(REVIEW_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.aiReviewApiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.aiReviewModel,
-      temperature: 0.1,
-      response_format: { type: "json_object" },
-      messages,
-    }),
-  });
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    await finishAiReviewLogError(logId, `HTTP ${response.status}`, text);
-    throw Errors.server(`AI 审核请求失败：${response.status}${text ? ` ${text.slice(0, 120)}` : ""}`);
-  }
-  const json: any = await response.json();
-  const content = json?.choices?.[0]?.message?.content;
-  await finishAiReviewLogSuccess(logId, typeof content === "string" ? content : JSON.stringify(content ?? {}).slice(0, 4000));
-  return content;
+  throw lastError || Errors.server("AI 审核请求失败");
 }
 
 export async function reviewTopicContent(input: {
@@ -169,7 +181,7 @@ export async function reviewTopicContent(input: {
     };
   }
 
-  const content = await requestAiJson([
+  const { content, model } = await requestAiJson([
     {
       role: "system",
       content: config.aiTopicReviewSystemPrompt,
@@ -203,7 +215,7 @@ export async function reviewTopicContent(input: {
       categories: parsed.categories ?? {},
       detail: String(parsed.detail || "").slice(0, 1000),
     }),
-    model: config.aiReviewModel,
+    model,
   };
 }
 
@@ -226,7 +238,7 @@ export async function reviewReplyContent(input: {
     };
   }
 
-  const content = await requestAiJson([
+  const { content, model } = await requestAiJson([
     {
       role: "system",
       content: config.aiReplyReviewSystemPrompt,
@@ -260,7 +272,7 @@ export async function reviewReplyContent(input: {
       categories: parsed.categories ?? {},
       detail: String(parsed.detail || "").slice(0, 1000),
     }),
-    model: config.aiReviewModel,
+    model,
   };
 }
 
@@ -283,7 +295,7 @@ export async function evaluateTopicEditSimilarity(input: {
       sameTopic: true,
     };
   }
-  const content = await requestAiJson([
+  const { content, model } = await requestAiJson([
     {
       role: "system",
       content: config.aiEditSimilaritySystemPrompt,
@@ -306,7 +318,7 @@ export async function evaluateTopicEditSimilarity(input: {
     similarity: clampRatio(parsed.similarity_score),
     reason: String(parsed.reason || "AI 未提供原因").slice(0, 120),
     detail: String(parsed.detail || "").slice(0, 1000),
-    model: config.aiReviewModel,
+    model,
     sameTopic: Boolean(parsed.same_topic),
   };
 }
@@ -403,7 +415,7 @@ export async function generateTopicAiTags(input: {
 }) {
   const config = getSiteConfig();
   if (!config.aiReviewApiKey.trim()) return [] as TopicAiLabel[];
-  const content = await requestAiJson([
+  const { content } = await requestAiJson([
     {
       role: "system",
       content:

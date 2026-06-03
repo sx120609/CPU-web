@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { prisma } from "../prisma";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
 import { ensureMediaLocalPathFromUploadUrl, resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
+import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 import { DEFAULT_VIDEO_REVIEW_PROMPTS, getSiteConfig } from "./siteSettings";
 
 const execFile = promisify(execFileCallback);
@@ -687,56 +688,67 @@ async function applyVideoReviewDecision(input: PreparedVideoReviewInput, decisio
 async function requestVideoReview(input: PreparedVideoReviewInput): Promise<VideoReviewDecision> {
   const config = getSiteConfig();
   const endpoint = normalizeChatCompletionsUrl(config.videoReviewApiUrl);
-  const started = await startAiReviewLog({
-    kind: "video",
-    targetLabel: path.basename(input.asset.localPath),
-    targetUrl: input.asset.url,
-    provider: "video-review",
-    model: config.videoReviewModel,
-    endpoint,
-    requestSummary: buildVideoReviewTextPrompt(input).slice(0, 4000),
-  });
-  const logId = started?.id ?? null;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.videoReviewApiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.videoReviewModel,
-      temperature: 0.1,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: config.videoReviewSystemPrompt || DEFAULT_VIDEO_REVIEW_PROMPTS.system },
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: buildVideoReviewTextPrompt(input),
-            },
-            ...input.frames.map((frame) => ({
-              type: "image_url" as const,
-              image_url: {
-                url: frame.dataUrl,
-                detail: "low" as const,
+  const requestSummary = buildVideoReviewTextPrompt(input).slice(0, 4000);
+  const candidates = resolveModelCandidates(config.videoReviewModel, config.videoReviewFallbackModels);
+  let lastError: Error | null = null;
+  for (let index = 0; index < candidates.length; index += 1) {
+    const model = candidates[index];
+    const started = await startAiReviewLog({
+      kind: "video",
+      targetLabel: path.basename(input.asset.localPath),
+      targetUrl: input.asset.url,
+      provider: "video-review",
+      model,
+      endpoint,
+      requestSummary,
+    });
+    const logId = started?.id ?? null;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.videoReviewApiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.1,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: config.videoReviewSystemPrompt || DEFAULT_VIDEO_REVIEW_PROMPTS.system },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: buildVideoReviewTextPrompt(input),
               },
-            })),
-          ],
-        },
-      ],
-    }),
-  });
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    await finishAiReviewLogError(logId, `HTTP ${response.status}`, text);
-    throw new Error(`视频审核请求失败：${response.status}${text ? ` ${text.slice(0, 200)}` : ""}`);
+              ...input.frames.map((frame) => ({
+                type: "image_url" as const,
+                image_url: {
+                  url: frame.dataUrl,
+                  detail: "low" as const,
+                },
+              })),
+            ],
+          },
+        ],
+      }),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      await finishAiReviewLogError(logId, `HTTP ${response.status}`, text);
+      if (index < candidates.length - 1 && shouldFallbackToNextModel(response.status, text)) {
+        lastError = new Error(`视频审核模型 ${model} 当前不可用，已自动切换备选模型`);
+        continue;
+      }
+      throw new Error(`视频审核请求失败：${response.status}${text ? ` ${text.slice(0, 200)}` : ""}`);
+    }
+    const json: any = await response.json();
+    const content = extractChatCompletionContent(json);
+    await finishAiReviewLogSuccess(logId, content);
+    return buildVideoReviewDecision(parseVideoReviewJson(content), config.videoReviewThreshold, model, endpoint);
   }
-  const json: any = await response.json();
-  const content = extractChatCompletionContent(json);
-  await finishAiReviewLogSuccess(logId, content);
-  return buildVideoReviewDecision(parseVideoReviewJson(content), config);
+  throw lastError || new Error("视频审核请求失败");
 }
 
 async function transcribeVideoAudio(filePath: string) {
@@ -928,10 +940,15 @@ function buildVideoReviewTextPrompt(input: PreparedVideoReviewInput) {
   });
 }
 
-function buildVideoReviewDecision(parsed: ParsedVideoReviewJson, config: ReturnType<typeof getSiteConfig>): VideoReviewDecision {
+function buildVideoReviewDecision(
+  parsed: ParsedVideoReviewJson,
+  threshold: number,
+  model: string,
+  endpoint: string,
+): VideoReviewDecision {
   const riskScore = clampRiskScore(parsed.risk_score);
   const riskLevel = normalizeRiskLevel(parsed.risk_level, riskScore);
-  const decision = normalizeVideoDecision(parsed.decision, riskScore, config.videoReviewThreshold);
+  const decision = normalizeVideoDecision(parsed.decision, riskScore, threshold);
   return {
     status: decision === "auto_pass" ? "approved" : decision === "block" ? "rejected" : "manual_review",
     reason: String(parsed.reason || fallbackVideoReason(riskLevel, decision)).slice(0, 120),
@@ -945,8 +962,8 @@ function buildVideoReviewDecision(parsed: ParsedVideoReviewJson, config: ReturnT
     riskLevel,
     riskScore,
     decision,
-    model: config.videoReviewModel,
-    endpoint: normalizeChatCompletionsUrl(config.videoReviewApiUrl),
+    model,
+    endpoint,
   };
 }
 

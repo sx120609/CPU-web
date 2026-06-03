@@ -22,6 +22,10 @@
           <el-input v-model="form.aiReviewModel" maxlength="80" placeholder="deepseek-v4-flash" />
         </div>
         <div class="ai-row ai-row--stretch">
+          <span class="ai-label">模型备选</span>
+          <el-input v-model="form.aiReviewFallbackModels" maxlength="400" placeholder="逗号分隔，例如 gpt-4.1, gpt-4o-mini" />
+        </div>
+        <div class="ai-row ai-row--stretch">
           <span class="ai-label">API Key</span>
           <el-input v-model="form.aiReviewApiKey" maxlength="240" show-password placeholder="sk-..." />
         </div>
@@ -93,6 +97,10 @@
           <el-input v-model="form.imageReviewModel" maxlength="80" placeholder="gpt-4o-mini" />
         </div>
         <div class="ai-row ai-row--stretch">
+          <span class="ai-label">模型备选</span>
+          <el-input v-model="form.imageReviewFallbackModels" maxlength="400" placeholder="逗号分隔，例如 gpt-4.1, gpt-4o-mini" />
+        </div>
+        <div class="ai-row ai-row--stretch">
           <span class="ai-label">图片审核 API 地址</span>
           <el-input v-model="form.imageReviewApiUrl" maxlength="240" placeholder="https://api.openai.com/v1/chat/completions" />
         </div>
@@ -161,6 +169,10 @@
         <div class="ai-row">
           <span class="ai-label">视频模型</span>
           <el-input v-model="form.videoReviewModel" maxlength="80" placeholder="gpt-4o-mini" />
+        </div>
+        <div class="ai-row ai-row--stretch">
+          <span class="ai-label">模型备选</span>
+          <el-input v-model="form.videoReviewFallbackModels" maxlength="400" placeholder="逗号分隔，例如 gpt-4.1, gpt-4o-mini" />
         </div>
         <div class="ai-row ai-row--stretch">
           <span class="ai-label">视频审核 API 地址</span>
@@ -340,10 +352,12 @@ const form = reactive<SiteConfig>({
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
   aiReviewModel: "deepseek-v4-flash",
+  aiReviewFallbackModels: "",
   aiReviewApiKey: "",
   imageReviewEnabled: false,
   imageReviewApiUrl: "https://api.openai.com/v1/chat/completions",
   imageReviewModel: "gpt-4o-mini",
+  imageReviewFallbackModels: "",
   imageReviewApiKey: "",
   imageReviewSystemPrompt: "",
   imageReviewUserPrompt: "",
@@ -352,6 +366,7 @@ const form = reactive<SiteConfig>({
   videoReviewEnabled: false,
   videoReviewApiUrl: "https://api.openai.com/v1/chat/completions",
   videoReviewModel: "gpt-4o-mini",
+  videoReviewFallbackModels: "",
   videoReviewApiKey: "",
   videoReviewSystemPrompt: "",
   videoReviewUserPrompt: "",
@@ -415,10 +430,12 @@ async function saveConfig() {
       aiReviewEnabled: form.aiReviewEnabled,
       aiReviewProvider: form.aiReviewProvider,
       aiReviewModel: form.aiReviewModel,
+      aiReviewFallbackModels: form.aiReviewFallbackModels,
       aiReviewApiKey: form.aiReviewApiKey,
       imageReviewEnabled: form.imageReviewEnabled,
       imageReviewApiUrl: form.imageReviewApiUrl,
       imageReviewModel: form.imageReviewModel,
+      imageReviewFallbackModels: form.imageReviewFallbackModels,
       imageReviewApiKey: form.imageReviewApiKey,
       imageReviewSystemPrompt: form.imageReviewSystemPrompt,
       imageReviewUserPrompt: form.imageReviewUserPrompt,
@@ -427,6 +444,7 @@ async function saveConfig() {
       videoReviewEnabled: form.videoReviewEnabled,
       videoReviewApiUrl: form.videoReviewApiUrl,
       videoReviewModel: form.videoReviewModel,
+      videoReviewFallbackModels: form.videoReviewFallbackModels,
       videoReviewApiKey: form.videoReviewApiKey,
       videoReviewSystemPrompt: form.videoReviewSystemPrompt,
       videoReviewUserPrompt: form.videoReviewUserPrompt,

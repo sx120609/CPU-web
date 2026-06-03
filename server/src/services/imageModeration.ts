@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { prisma } from "../prisma";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
 import { ensureMediaLocalPathFromUploadUrl, resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
+import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 import { getSiteConfig } from "./siteSettings";
 
 const IMAGE_MARKDOWN_RE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
@@ -960,106 +961,107 @@ async function requestImageReview(input: {
 }): Promise<ImageReviewDecision> {
   const config = getSiteConfig();
   const endpoint = normalizeImageReviewApiUrl(config.imageReviewApiUrl);
-  const started = await startAiReviewLog({
-    kind: "image",
-    targetLabel: path.basename(input.localPath),
-    targetUrl: input.url,
-    provider: "image-review",
-    model: config.imageReviewModel,
-    endpoint,
-    requestSummary: `${input.mimeType}\n${input.url}`,
-  });
-  const logId = started?.id ?? null;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.imageReviewApiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.imageReviewModel,
-      temperature: 0.1,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: config.imageReviewSystemPrompt },
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: renderPromptTemplate(config.imageReviewUserPrompt, {
-                imageUrl: input.url,
-                mimeType: input.mimeType,
-                fileName: path.basename(input.localPath),
-              }),
-            },
-            {
-              type: "image_url",
-              image_url: {
-                url: input.dataUrl,
-                detail: "low",
+  const candidates = resolveModelCandidates(config.imageReviewModel, config.imageReviewFallbackModels);
+  let lastError: Error | null = null;
+  for (let index = 0; index < candidates.length; index += 1) {
+    const model = candidates[index];
+    const started = await startAiReviewLog({
+      kind: "image",
+      targetLabel: path.basename(input.localPath),
+      targetUrl: input.url,
+      provider: "image-review",
+      model,
+      endpoint,
+      requestSummary: `${input.mimeType}\n${input.url}`,
+    });
+    const logId = started?.id ?? null;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.imageReviewApiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.1,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: config.imageReviewSystemPrompt },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: renderPromptTemplate(config.imageReviewUserPrompt, {
+                  imageUrl: input.url,
+                  mimeType: input.mimeType,
+                  fileName: path.basename(input.localPath),
+                }),
               },
-            },
-          ],
-        },
-      ],
-    }),
-  });
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    const providerBlock = extractProviderContentPolicyBlock(text);
-    if (providerBlock) {
-      const decision = {
-        approved: false,
-        reason: "图片未通过平台内容安全检查",
-        detail: buildImageDecisionDetail({
+              {
+                type: "image_url",
+                image_url: {
+                  url: input.dataUrl,
+                  detail: "low",
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      const providerBlock = extractProviderContentPolicyBlock(text);
+      if (providerBlock) {
+        const decision = {
+          approved: false,
+          reason: "图片未通过平台内容安全检查",
+          detail: buildImageDecisionDetail({
+            riskScore: 100,
+            riskLevel: "high",
+            decision: "block",
+            categories: { provider_policy: 100 },
+            detail: providerBlock.message || "上游审核接口直接拦截了该图片请求",
+          }),
+          riskLevel: "high" as const,
           riskScore: 100,
-          riskLevel: "high",
-          decision: "block",
-          categories: { provider_policy: 100 },
-          detail: providerBlock.message || "上游审核接口直接拦截了该图片请求",
-        }),
-        riskLevel: "high" as const,
-        riskScore: 100,
-        decision: "block" as const,
-        model: config.imageReviewModel,
-        endpoint,
-      };
-      await finishAiReviewLogSuccess(logId, JSON.stringify({
-        risk_score: decision.riskScore,
-        risk_level: decision.riskLevel,
-        decision: decision.decision,
-        reason: decision.reason,
-        detail: decision.detail,
-        providerErrorCode: providerBlock.code,
-      }));
-      return decision;
+          decision: "block" as const,
+          model,
+          endpoint,
+        };
+        await finishAiReviewLogSuccess(logId, JSON.stringify({
+          risk_score: decision.riskScore,
+          risk_level: decision.riskLevel,
+          decision: decision.decision,
+          reason: decision.reason,
+          detail: decision.detail,
+          providerErrorCode: providerBlock.code,
+        }));
+        return decision;
+      }
+      await finishAiReviewLogError(logId, `HTTP ${response.status}`, text);
+      if (index < candidates.length - 1 && shouldFallbackToNextModel(response.status, text)) {
+        lastError = new Error(`图片审核模型 ${model} 当前不可用，已自动切换备选模型`);
+        continue;
+      }
+      throw new Error(`图片审核请求失败：${response.status}${text ? ` ${text.slice(0, 200)}` : ""}`);
     }
-    await finishAiReviewLogError(logId, `HTTP ${response.status}`, text);
-    throw new Error(`图片审核请求失败：${response.status}${text ? ` ${text.slice(0, 200)}` : ""}`);
+    const json: any = await response.json();
+    const content = extractChatCompletionContent(json);
+    await finishAiReviewLogSuccess(logId, content);
+    return buildImageReviewDecision(parseImageReviewJson(content), config.imageReviewThreshold, model, endpoint);
   }
-  const json: any = await response.json();
-  const content = extractChatCompletionContent(json);
-  await finishAiReviewLogSuccess(logId, content);
-  return buildImageReviewDecision(parseImageReviewJson(content), config);
+  throw lastError || new Error("图片审核请求失败");
 }
 
 async function requestImageReviewBatch(inputs: PreparedImageReviewInput[]): Promise<ImageReviewDecision[]> {
   const config = getSiteConfig();
   const endpoint = normalizeImageReviewApiUrl(config.imageReviewApiUrl);
-  const started = await startAiReviewLog({
-    kind: "image",
-    targetLabel: `${inputs.length} 张图片批量审核`,
-    targetUrl: inputs.map((item) => item.asset.url).slice(0, 3).join("\n"),
-    provider: "image-review",
-    model: config.imageReviewModel,
-    endpoint,
-    requestSummary: inputs
-      .map((item, index) => `${index + 1}. ${item.mimeType} ${item.asset.url}`)
-      .join("\n")
-      .slice(0, 4000),
-  });
-  const logId = started?.id ?? null;
+  const requestSummary = inputs
+    .map((item, index) => `${index + 1}. ${item.mimeType} ${item.asset.url}`)
+    .join("\n")
+    .slice(0, 4000);
   const contentItems: Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string; detail: "low" } }> = [
     {
       type: "text",
@@ -1073,31 +1075,52 @@ async function requestImageReviewBatch(inputs: PreparedImageReviewInput[]): Prom
       },
     })),
   ];
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.imageReviewApiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.imageReviewModel,
-      temperature: 0.1,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: config.imageReviewSystemPrompt },
-        { role: "user", content: contentItems },
-      ],
-    }),
-  });
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    await finishAiReviewLogError(logId, `HTTP ${response.status}`, text);
-    throw new Error(`批量图片审核请求失败：${response.status}${text ? ` ${text.slice(0, 200)}` : ""}`);
+  const candidates = resolveModelCandidates(config.imageReviewModel, config.imageReviewFallbackModels);
+  let lastError: Error | null = null;
+  for (let index = 0; index < candidates.length; index += 1) {
+    const model = candidates[index];
+    const started = await startAiReviewLog({
+      kind: "image",
+      targetLabel: `${inputs.length} 张图片批量审核`,
+      targetUrl: inputs.map((item) => item.asset.url).slice(0, 3).join("\n"),
+      provider: "image-review",
+      model,
+      endpoint,
+      requestSummary,
+    });
+    const logId = started?.id ?? null;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.imageReviewApiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.1,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: config.imageReviewSystemPrompt },
+          { role: "user", content: contentItems },
+        ],
+      }),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      await finishAiReviewLogError(logId, `HTTP ${response.status}`, text);
+      if (index < candidates.length - 1 && shouldFallbackToNextModel(response.status, text)) {
+        lastError = new Error(`批量图片审核模型 ${model} 当前不可用，已自动切换备选模型`);
+        continue;
+      }
+      throw new Error(`批量图片审核请求失败：${response.status}${text ? ` ${text.slice(0, 200)}` : ""}`);
+    }
+    const json: any = await response.json();
+    const content = extractChatCompletionContent(json);
+    await finishAiReviewLogSuccess(logId, content);
+    return parseImageReviewBatchJson(content, inputs.length)
+      .map((item) => buildImageReviewDecision(item, config.imageReviewThreshold, model, endpoint));
   }
-  const json: any = await response.json();
-  const content = extractChatCompletionContent(json);
-  await finishAiReviewLogSuccess(logId, content);
-  return parseImageReviewBatchJson(content, inputs.length).map((item) => buildImageReviewDecision(item, config));
+  throw lastError || new Error("批量图片审核请求失败");
 }
 
 function normalizeImageReviewApiUrl(input: string) {
@@ -1243,10 +1266,15 @@ function fallbackImageReason(
   return riskLevel === "high" ? "图片风险较高，不适合公开展示" : "图片未通过审核";
 }
 
-function buildImageReviewDecision(parsed: ParsedImageReviewJson, config: ReturnType<typeof getSiteConfig>): ImageReviewDecision {
+function buildImageReviewDecision(
+  parsed: ParsedImageReviewJson,
+  threshold: number,
+  model: string,
+  endpoint: string,
+): ImageReviewDecision {
   const riskScore = clampImageRiskScore(parsed.risk_score, parsed.approved);
   const riskLevel = normalizeImageRiskLevel(parsed.risk_level, riskScore);
-  const decision = normalizeImageDecision(parsed.approved, riskScore, config.imageReviewThreshold);
+  const decision = normalizeImageDecision(parsed.approved, riskScore, threshold);
   return {
     approved: decision === "auto_pass",
     reason: String(parsed.reason || fallbackImageReason(riskLevel, decision)).slice(0, 120),
@@ -1261,8 +1289,8 @@ function buildImageReviewDecision(parsed: ParsedImageReviewJson, config: ReturnT
     riskLevel,
     riskScore,
     decision,
-    model: config.imageReviewModel,
-    endpoint: normalizeImageReviewApiUrl(config.imageReviewApiUrl),
+    model,
+    endpoint,
   };
 }
 

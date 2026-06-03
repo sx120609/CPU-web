@@ -1594,10 +1594,12 @@ const siteConfigPatchSchema = z.object({
   aiReviewEnabled: z.boolean().optional(),
   aiReviewProvider: z.string().trim().max(40).optional(),
   aiReviewModel: z.string().trim().max(80).optional(),
+  aiReviewFallbackModels: z.string().trim().max(400).optional(),
   aiReviewApiKey: z.string().trim().max(240).optional(),
   imageReviewEnabled: z.boolean().optional(),
   imageReviewApiUrl: z.string().trim().max(240).optional(),
   imageReviewModel: z.string().trim().max(80).optional(),
+  imageReviewFallbackModels: z.string().trim().max(400).optional(),
   imageReviewApiKey: z.string().trim().max(240).optional(),
   imageReviewSystemPrompt: z.string().max(8000).optional(),
   imageReviewUserPrompt: z.string().max(12000).optional(),
@@ -1606,6 +1608,7 @@ const siteConfigPatchSchema = z.object({
   videoReviewEnabled: z.boolean().optional(),
   videoReviewApiUrl: z.string().trim().max(240).optional(),
   videoReviewModel: z.string().trim().max(80).optional(),
+  videoReviewFallbackModels: z.string().trim().max(400).optional(),
   videoReviewApiKey: z.string().trim().max(240).optional(),
   videoReviewSystemPrompt: z.string().max(8000).optional(),
   videoReviewUserPrompt: z.string().max(12000).optional(),
@@ -1652,10 +1655,12 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       req.body.aiReviewEnabled !== undefined ||
       req.body.aiReviewProvider !== undefined ||
       req.body.aiReviewModel !== undefined ||
+      req.body.aiReviewFallbackModels !== undefined ||
       req.body.aiReviewApiKey !== undefined ||
       req.body.imageReviewEnabled !== undefined ||
       req.body.imageReviewApiUrl !== undefined ||
       req.body.imageReviewModel !== undefined ||
+      req.body.imageReviewFallbackModels !== undefined ||
       req.body.imageReviewApiKey !== undefined ||
       req.body.imageReviewSystemPrompt !== undefined ||
       req.body.imageReviewUserPrompt !== undefined ||
@@ -1664,6 +1669,7 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       req.body.videoReviewEnabled !== undefined ||
       req.body.videoReviewApiUrl !== undefined ||
       req.body.videoReviewModel !== undefined ||
+      req.body.videoReviewFallbackModels !== undefined ||
       req.body.videoReviewApiKey !== undefined ||
       req.body.videoReviewSystemPrompt !== undefined ||
       req.body.videoReviewUserPrompt !== undefined ||

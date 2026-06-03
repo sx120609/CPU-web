@@ -5,10 +5,12 @@ export type SiteConfig = {
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
   aiReviewModel: string;
+  aiReviewFallbackModels: string;
   aiReviewApiKey: string;
   imageReviewEnabled: boolean;
   imageReviewApiUrl: string;
   imageReviewModel: string;
+  imageReviewFallbackModels: string;
   imageReviewApiKey: string;
   imageReviewSystemPrompt: string;
   imageReviewUserPrompt: string;
@@ -17,6 +19,7 @@ export type SiteConfig = {
   videoReviewEnabled: boolean;
   videoReviewApiUrl: string;
   videoReviewModel: string;
+  videoReviewFallbackModels: string;
   videoReviewApiKey: string;
   videoReviewSystemPrompt: string;
   videoReviewUserPrompt: string;
@@ -438,10 +441,12 @@ export const adminApi = {
     aiReviewEnabled?: boolean;
     aiReviewProvider?: string;
     aiReviewModel?: string;
+    aiReviewFallbackModels?: string;
     aiReviewApiKey?: string;
     imageReviewEnabled?: boolean;
     imageReviewApiUrl?: string;
     imageReviewModel?: string;
+    imageReviewFallbackModels?: string;
     imageReviewApiKey?: string;
     imageReviewSystemPrompt?: string;
     imageReviewUserPrompt?: string;
@@ -450,6 +455,7 @@ export const adminApi = {
     videoReviewEnabled?: boolean;
     videoReviewApiUrl?: string;
     videoReviewModel?: string;
+    videoReviewFallbackModels?: string;
     videoReviewApiKey?: string;
     videoReviewSystemPrompt?: string;
     videoReviewUserPrompt?: string;

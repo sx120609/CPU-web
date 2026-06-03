@@ -3832,7 +3832,7 @@ async function inferQqBotIntent(context: {
 }) {
   const boardList = await getAvailableBoardOptions();
   const defaultBoardName = await resolveBoardDisplayName(context.config.defaultBoardSlug);
-  const content = await requestAiJson([
+  const { content } = await requestAiJson([
     {
       role: "system",
       content: [
@@ -3904,7 +3904,7 @@ async function generateAssistantReply(
 ): Promise<QqBotAssistantReply> {
   const boardList = (await getAvailableBoardOptions()).slice(0, 12);
   const defaultBoardName = await resolveBoardDisplayName(context.config.defaultBoardSlug);
-  const content = await requestAiJson([
+  const { content } = await requestAiJson([
     {
       role: "system",
       content: [
@@ -3941,7 +3941,7 @@ async function polishConversationDraft(
     messageText: string;
   },
 ) {
-  const content = await requestAiJson([
+  const { content } = await requestAiJson([
     {
       role: "system",
       content: [
