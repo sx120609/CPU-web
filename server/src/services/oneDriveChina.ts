@@ -615,11 +615,12 @@ async function acquireOneDriveChinaAccessToken(mode: "delegated" | "auto" = "aut
   };
   if (!payload.access_token) throw new Error("刷新世纪互联 OneDrive 授权失败：响应缺少 access_token");
   const refreshToken = String(payload.refresh_token || runtime.oneDriveChinaRefreshToken).trim();
-  delegatedAccessTokenCache = {
+  const nextDelegatedToken = {
     accessToken: payload.access_token,
     refreshToken,
     expiresAt: Date.now() + Math.max(300, Number(payload.expires_in) || 3600) * 1000,
   };
+  delegatedAccessTokenCache = nextDelegatedToken;
   if (payload.refresh_token && payload.refresh_token !== runtime.oneDriveChinaRefreshToken) {
     await setOneDriveChinaRefreshTokenState({
       refreshToken,
@@ -627,7 +628,7 @@ async function acquireOneDriveChinaAccessToken(mode: "delegated" | "auto" = "aut
       lastError: "",
     }).catch(() => null);
   }
-  return delegatedAccessTokenCache.accessToken;
+  return nextDelegatedToken.accessToken;
 }
 
 async function getLegacyAppOnlyAccessToken(runtime: Awaited<ReturnType<typeof getMediaStorageRuntimeConfig>>) {

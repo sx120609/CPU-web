@@ -123,7 +123,7 @@
             :loading="migratingFiles"
             @click="migrateLocalFiles"
           >
-            一键迁移到当前后端
+            按当前后端同步文件
           </el-button>
           <el-button
             type="danger"
@@ -144,8 +144,8 @@
         <span class="summary-pill">本地 {{ inventory.summary.localCount }}</span>
         <span class="summary-pill">缓存 {{ inventory.summary.cacheCount }}</span>
         <span class="summary-pill">远端 {{ inventory.summary.remoteCount }}</span>
-        <span class="summary-pill">可搬迁 {{ inventory.summary.eligibleMigrationCount }}</span>
-        <span class="summary-pill">已迁移 {{ inventory.summary.migratedCount }}</span>
+        <span class="summary-pill">待同步 {{ inventory.summary.eligibleMigrationCount }}</span>
+        <span class="summary-pill">已在当前后端 {{ inventory.summary.migratedCount }}</span>
         <span class="summary-pill" v-if="inventory.summary.outOfScopeLocalCount">前缀外本地 {{ inventory.summary.outOfScopeLocalCount }}</span>
       </div>
 
@@ -178,8 +178,8 @@
         <el-input v-model="fileQuery" clearable placeholder="搜索路径 / 文件名" class="filter-search" />
         <el-select v-model="fileFilter" class="filter-state">
           <el-option label="全部状态" value="all" />
-          <el-option label="可搬迁" value="eligible" />
-          <el-option label="已迁移" value="migrated" />
+          <el-option label="待同步" value="eligible" />
+          <el-option label="已在当前后端" value="migrated" />
           <el-option label="本地 + 远端并存" value="synced" />
           <el-option label="仅本地" value="local-only" />
           <el-option label="仅远端" value="remote-only" />
@@ -190,9 +190,9 @@
 
       <div v-if="lastMigrationResult" class="migration-result">
           <div class="migration-head">
-            <div class="card-title">最近一次搬迁结果</div>
+            <div class="card-title">最近一次同步结果</div>
             <div class="section-desc">
-            已迁移到当前后端 {{ lastMigrationResult.migrated }} / {{ lastMigrationResult.eligible }}，失败 {{ lastMigrationResult.failed }}。
+            已同步到当前后端 {{ lastMigrationResult.migrated }} / {{ lastMigrationResult.eligible }}，失败 {{ lastMigrationResult.failed }}。
             </div>
           </div>
         <div v-if="failedMigrationItems.length" class="migration-errors">
@@ -547,14 +547,14 @@ async function handleStorageAuthQuery() {
 
 async function migrateLocalFiles() {
   if (!inventory.value?.summary.eligibleMigrationCount) {
-    ElMessage.warning("当前没有需要迁移到当前后端的文件");
+    ElMessage.warning("当前没有需要同步到当前后端的文件");
     return;
   }
   try {
     await ElMessageBox.confirm(
-      `确认把这 ${inventory.value.summary.eligibleMigrationCount} 个文件迁移到当前后端吗？如果当前后端是本地，会把旧远端文件回迁到本地；如果当前后端是世纪互联，会把旧本地文件补传到远端。站内访问链接会继续保持 /uploads 路径。`,
-      "一键迁移到当前后端",
-      { type: "warning", confirmButtonText: "开始迁移", cancelButtonText: "取消" },
+      `确认按当前配置同步这 ${inventory.value.summary.eligibleMigrationCount} 个文件吗？每个文件都会按它自己的目标后端处理：当前应走本地的会回迁到本地，当前应走世纪互联的会补传到远端。站内访问链接会继续保持 /uploads 路径。`,
+      "按当前后端同步文件",
+      { type: "warning", confirmButtonText: "开始同步", cancelButtonText: "取消" },
     );
   } catch {
     return;
@@ -566,9 +566,9 @@ async function migrateLocalFiles() {
     lastMigrationResult.value = result;
     await reloadInventory();
     if (result.failed) {
-      ElMessage.warning(`迁移完成：成功 ${result.migrated}，失败 ${result.failed}`);
+      ElMessage.warning(`同步完成：成功 ${result.migrated}，失败 ${result.failed}`);
     } else {
-      ElMessage.success(`迁移完成，共处理 ${result.migrated} 个文件`);
+      ElMessage.success(`同步完成，共处理 ${result.migrated} 个文件`);
     }
   } finally {
     migratingFiles.value = false;
@@ -634,7 +634,7 @@ function resolveState(row: MediaStorageAdminFileEntry) {
     };
   }
   if (!row.localExists && row.cacheExists && row.remoteExists && row.inRemotePrefix) {
-    return { key: "migrated" as const, label: "已迁移", type: "success" as const };
+    return { key: "migrated" as const, label: "已在当前后端", type: "success" as const };
   }
   if (!row.localExists && row.cacheExists && row.remoteExists) {
     return {
@@ -644,7 +644,7 @@ function resolveState(row: MediaStorageAdminFileEntry) {
     };
   }
   if (row.localExists && row.inRemotePrefix) {
-    return { key: "eligible" as const, label: "可搬迁", type: "warning" as const };
+    return { key: "eligible" as const, label: "待同步", type: "warning" as const };
   }
   if (row.localExists && !row.inRemotePrefix) {
     return { key: "out-of-scope" as const, label: "前缀外本地", type: "info" as const };
