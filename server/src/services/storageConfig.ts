@@ -109,6 +109,31 @@ const storageConfigCache: MediaStorageStoredConfig = {
 };
 
 export async function loadStorageConfig(): Promise<void> {
+  const next = cloneStorageConfig({
+    mediaStorageProvider: normalizeMediaStorageProvider(config.mediaStorageProvider, "local"),
+    mediaStorageImageProvider: normalizeMediaStorageProvider(
+      config.mediaStorageImageProvider,
+      normalizeMediaStorageProvider(config.mediaStorageProvider, "local"),
+    ),
+    mediaStorageVideoProvider: normalizeMediaStorageProvider(
+      config.mediaStorageVideoProvider,
+      normalizeMediaStorageProvider(config.mediaStorageProvider, "local"),
+    ),
+    mediaStorageRemotePrefixes: normalizeRemotePrefixes(config.mediaStorageRemotePrefixes, ["forum"]),
+    oneDriveChinaClientId: "",
+    oneDriveChinaClientSecret: "",
+    oneDriveChinaSharepointUrl: "",
+    oneDriveChinaSharepointHost: "",
+    oneDriveChinaSharepointPath: "",
+    oneDriveChinaSiteId: "",
+    oneDriveChinaSiteName: "",
+    oneDriveChinaDriveId: "",
+    oneDriveChinaDriveName: "",
+    oneDriveChinaRootPath: "",
+    oneDriveChinaRefreshToken: "",
+    oneDriveChinaAuthorizedAt: "",
+    oneDriveChinaLastError: "",
+  });
   const rows = await prisma.siteSetting.findMany({
     where: {
       key: { in: [...STORAGE_KEYS] },
@@ -116,76 +141,75 @@ export async function loadStorageConfig(): Promise<void> {
   });
   for (const row of rows) {
     if (row.key === MEDIA_STORAGE_PROVIDER_KEY) {
-      storageConfigCache.mediaStorageProvider = normalizeMediaStorageProvider(row.value, "local");
-      storageConfigCache.mediaStorageImageProvider = storageConfigCache.mediaStorageProvider;
-      storageConfigCache.mediaStorageVideoProvider = storageConfigCache.mediaStorageProvider;
+      next.mediaStorageProvider = normalizeMediaStorageProvider(row.value, "local");
       continue;
     }
     if (row.key === MEDIA_STORAGE_IMAGE_PROVIDER_KEY) {
-      storageConfigCache.mediaStorageImageProvider = normalizeMediaStorageProvider(row.value, storageConfigCache.mediaStorageProvider);
+      next.mediaStorageImageProvider = normalizeMediaStorageProvider(row.value, next.mediaStorageProvider);
       continue;
     }
     if (row.key === MEDIA_STORAGE_VIDEO_PROVIDER_KEY) {
-      storageConfigCache.mediaStorageVideoProvider = normalizeMediaStorageProvider(row.value, storageConfigCache.mediaStorageProvider);
+      next.mediaStorageVideoProvider = normalizeMediaStorageProvider(row.value, next.mediaStorageProvider);
       continue;
     }
     if (row.key === MEDIA_STORAGE_REMOTE_PREFIXES_KEY) {
-      storageConfigCache.mediaStorageRemotePrefixes = normalizeRemotePrefixes(row.value, ["forum"]);
+      next.mediaStorageRemotePrefixes = normalizeRemotePrefixes(row.value, ["forum"]);
       continue;
     }
     if (row.key === ONEDRIVE_CN_CLIENT_ID_KEY) {
-      storageConfigCache.oneDriveChinaClientId = String(row.value || "").trim();
+      next.oneDriveChinaClientId = String(row.value || "").trim();
       continue;
     }
     if (row.key === ONEDRIVE_CN_CLIENT_SECRET_KEY) {
-      storageConfigCache.oneDriveChinaClientSecret = String(row.value || "").trim();
+      next.oneDriveChinaClientSecret = String(row.value || "").trim();
       continue;
     }
     if (row.key === ONEDRIVE_CN_SHAREPOINT_URL_KEY) {
-      storageConfigCache.oneDriveChinaSharepointUrl = normalizeOptionalUrl(row.value);
+      next.oneDriveChinaSharepointUrl = normalizeOptionalUrl(row.value);
       continue;
     }
     if (row.key === ONEDRIVE_CN_SHAREPOINT_HOST_KEY) {
-      storageConfigCache.oneDriveChinaSharepointHost = String(row.value || "").trim().toLowerCase();
+      next.oneDriveChinaSharepointHost = String(row.value || "").trim().toLowerCase();
       continue;
     }
     if (row.key === ONEDRIVE_CN_SHAREPOINT_PATH_KEY) {
-      storageConfigCache.oneDriveChinaSharepointPath = normalizeSharePointPath(row.value);
+      next.oneDriveChinaSharepointPath = normalizeSharePointPath(row.value);
       continue;
     }
     if (row.key === ONEDRIVE_CN_SITE_ID_KEY) {
-      storageConfigCache.oneDriveChinaSiteId = String(row.value || "").trim();
+      next.oneDriveChinaSiteId = String(row.value || "").trim();
       continue;
     }
     if (row.key === ONEDRIVE_CN_SITE_NAME_KEY) {
-      storageConfigCache.oneDriveChinaSiteName = String(row.value || "").trim();
+      next.oneDriveChinaSiteName = String(row.value || "").trim();
       continue;
     }
     if (row.key === ONEDRIVE_CN_DRIVE_ID_KEY) {
-      storageConfigCache.oneDriveChinaDriveId = String(row.value || "").trim();
+      next.oneDriveChinaDriveId = String(row.value || "").trim();
       continue;
     }
     if (row.key === ONEDRIVE_CN_DRIVE_NAME_KEY) {
-      storageConfigCache.oneDriveChinaDriveName = String(row.value || "").trim();
+      next.oneDriveChinaDriveName = String(row.value || "").trim();
       continue;
     }
     if (row.key === ONEDRIVE_CN_ROOT_PATH_KEY) {
-      storageConfigCache.oneDriveChinaRootPath = normalizeRootPath(row.value);
+      next.oneDriveChinaRootPath = normalizeRootPath(row.value);
       continue;
     }
     if (row.key === ONEDRIVE_CN_REFRESH_TOKEN_KEY) {
-      storageConfigCache.oneDriveChinaRefreshToken = String(row.value || "").trim();
+      next.oneDriveChinaRefreshToken = String(row.value || "").trim();
       continue;
     }
     if (row.key === ONEDRIVE_CN_AUTHORIZED_AT_KEY) {
-      storageConfigCache.oneDriveChinaAuthorizedAt = normalizeIsoDate(row.value);
+      next.oneDriveChinaAuthorizedAt = normalizeIsoDate(row.value);
       continue;
     }
     if (row.key === ONEDRIVE_CN_LAST_ERROR_KEY) {
-      storageConfigCache.oneDriveChinaLastError = String(row.value || "").trim();
+      next.oneDriveChinaLastError = String(row.value || "").trim();
     }
   }
-  sanitizeStorageConfig(storageConfigCache);
+  sanitizeStorageConfig(next);
+  Object.assign(storageConfigCache, next);
   loaded = true;
 }
 
