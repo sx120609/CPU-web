@@ -82,6 +82,40 @@
       @focus="handleEditorSelectionChange"
     ></div>
 
+    <div v-if="mediaUploadTasks.length" class="upload-progress-panel">
+      <div class="upload-progress-head">
+        <div>
+          <strong>上传进度</strong>
+          <span>{{ uploadProgressSummary }}</span>
+        </div>
+        <span>{{ overallUploadPercent }}%</span>
+      </div>
+      <el-progress :percentage="overallUploadPercent" :show-text="false" />
+      <div class="upload-progress-list">
+        <div
+          v-for="task in mediaUploadTasks"
+          :key="task.id"
+          class="upload-progress-item"
+          :class="`is-${task.status}`"
+        >
+          <div class="upload-progress-item__top">
+            <span class="upload-progress-item__name">{{ task.name }}</span>
+            <span class="upload-progress-item__status">{{ formatUploadTaskStatus(task) }}</span>
+          </div>
+          <el-progress
+            :percentage="task.progress"
+            :show-text="false"
+            :status="task.status === 'error' ? 'exception' : task.status === 'done' ? 'success' : undefined"
+          />
+          <div class="upload-progress-item__meta">
+            <span>{{ task.kind === "image" ? "图片" : "视频" }}</span>
+            <span>{{ formatBytes(task.loadedBytes) }} / {{ formatBytes(task.totalBytes) }}</span>
+          </div>
+          <p v-if="task.errorMessage" class="upload-progress-item__error">{{ task.errorMessage }}</p>
+        </div>
+      </div>
+    </div>
+
     <div class="editor-foot">
       <span class="foot-note">{{ resolvedFooterText }}</span>
       <span class="draft-state">{{ draftHint || "草稿会自动保存" }}</span>
@@ -140,6 +174,7 @@ const emit = defineEmits<{
 const editorRef = ref<HTMLElement | null>(null);
 const contentImageInputRef = ref<HTMLInputElement | null>(null);
 const imageUploading = ref(false);
+const mediaUploadTasks = ref<MediaUploadTask[]>([]);
 const draftHint = ref("");
 const hasSelectedImage = ref(false);
 const isMobileViewport = ref(false);
@@ -190,7 +225,30 @@ const resolvedFooterText = computed(() => (
     : props.footerText
 ));
 
+const overallUploadPercent = computed(() => {
+  if (!mediaUploadTasks.value.length) return 0;
+  return Math.round(mediaUploadTasks.value.reduce((sum, task) => sum + task.progress, 0) / mediaUploadTasks.value.length);
+});
+
+const uploadProgressSummary = computed(() => {
+  const total = mediaUploadTasks.value.length;
+  if (!total) return "";
+  const completed = mediaUploadTasks.value.filter((task) => task.status === "done").length;
+  const failed = mediaUploadTasks.value.filter((task) => task.status === "error").length;
+  const active = mediaUploadTasks.value.filter((task) => isActiveUploadStatus(task.status)).length;
+  if (active) return `进行中 ${active} 个，已完成 ${completed}/${total}`;
+  if (failed) return `已完成 ${completed} 个，失败 ${failed} 个`;
+  return `本次共上传 ${total} 个文件`;
+});
+
 const toolbarStatusText = computed(() => {
+  if (mediaUploadTasks.value.some((task) => isActiveUploadStatus(task.status))) {
+    const completed = mediaUploadTasks.value.filter((task) => task.status === "done").length;
+    return `正在上传 ${completed}/${mediaUploadTasks.value.length}`;
+  }
+  if (mediaUploadTasks.value.length && mediaUploadTasks.value.every((task) => task.status === "done")) {
+    return `已上传 ${mediaUploadTasks.value.length} 个媒体`;
+  }
   if (hasSelectedImage.value) return isMobileViewport.value ? "已选图片" : "已选图片，可调对齐";
   return isMobileViewport.value ? "" : "支持排版、图片、视频和相册";
 });
@@ -497,41 +555,122 @@ type UploadedMediaItem =
   | { kind: "image"; url: string; alt: string }
   | { kind: "video"; url: string; alt: string; posterUrl?: string };
 
+type MediaUploadTask = {
+  id: string;
+  name: string;
+  kind: "image" | "video";
+  status: "waiting" | "preparing" | "uploading" | "processing" | "done" | "error";
+  progress: number;
+  loadedBytes: number;
+  totalBytes: number;
+  errorMessage: string;
+};
+
 async function uploadAndInsertMedia(files: File[]) {
   if (!files.length) return;
+  if (imageUploading.value) {
+    ElMessage.info("当前还有文件在上传，请稍候");
+    return;
+  }
   imageUploading.value = true;
+  mediaUploadTasks.value = files.map((file, index) => createUploadTask(file, index));
   try {
     const uploaded: UploadedMediaItem[] = [];
-    for (const file of files) {
+    let successCount = 0;
+    let failedCount = 0;
+    for (const [index, file] of files.entries()) {
+      const task = mediaUploadTasks.value[index];
       if (file.type.startsWith("image/")) {
-        const compressed = await compressImageFile(file, {
-          maxWidth: 1400,
-          maxHeight: 1400,
-          quality: 0.82,
-          mimeType: "image/jpeg",
-          maxBytes: 520 * 1024,
-        });
-        const imageBlob = dataUrlToBlob(compressed);
-        const { url } = await uploadApi.media(imageBlob, replaceFileExtension(file.name || "image.jpg", "jpg"));
-        uploaded.push({ kind: "image", url, alt: file.name || "图片" });
+        try {
+          updateUploadTask(task.id, {
+            status: "preparing",
+            progress: 0,
+            loadedBytes: 0,
+            totalBytes: file.size,
+            errorMessage: "",
+          });
+          const compressed = await compressImageFile(file, {
+            maxWidth: 1400,
+            maxHeight: 1400,
+            quality: 0.82,
+            mimeType: "image/jpeg",
+            maxBytes: 520 * 1024,
+          });
+          const imageBlob = dataUrlToBlob(compressed);
+          updateUploadTask(task.id, {
+            totalBytes: imageBlob.size || file.size,
+            loadedBytes: 0,
+          });
+          const { url } = await uploadApi.media(imageBlob, replaceFileExtension(file.name || "image.jpg", "jpg"), {
+            onProgress: (state) => syncUploadTaskProgress(task.id, state),
+          });
+          updateUploadTask(task.id, {
+            status: "done",
+            progress: 100,
+            loadedBytes: imageBlob.size || file.size,
+            totalBytes: imageBlob.size || file.size,
+          });
+          uploaded.push({ kind: "image", url, alt: file.name || "图片" });
+          successCount += 1;
+        } catch (error) {
+          failedCount += 1;
+          updateUploadTask(task.id, {
+            status: "error",
+            errorMessage: normalizeImageUploadError(error),
+          });
+        }
         continue;
       }
       if (file.type.startsWith("video/")) {
-        const { url, posterUrl } = await uploadApi.media(file, file.name || "video.mp4");
-        uploaded.push({
-          kind: "video",
-          url,
-          alt: file.name || "视频",
-          posterUrl: posterUrl || "",
-        });
+        try {
+          updateUploadTask(task.id, {
+            status: "preparing",
+            progress: 0,
+            loadedBytes: 0,
+            totalBytes: file.size,
+            errorMessage: "",
+          });
+          const { url, posterUrl } = await uploadApi.media(file, file.name || "video.mp4", {
+            onProgress: (state) => syncUploadTaskProgress(task.id, state),
+          });
+          updateUploadTask(task.id, {
+            status: "done",
+            progress: 100,
+            loadedBytes: file.size,
+            totalBytes: file.size,
+          });
+          uploaded.push({
+            kind: "video",
+            url,
+            alt: file.name || "视频",
+            posterUrl: posterUrl || "",
+          });
+          successCount += 1;
+        } catch (error) {
+          failedCount += 1;
+          updateUploadTask(task.id, {
+            status: "error",
+            errorMessage: normalizeImageUploadError(error),
+          });
+        }
         continue;
       }
-      throw new Error("当前仅支持上传图片或视频文件");
+      failedCount += 1;
+      updateUploadTask(task.id, {
+        status: "error",
+        errorMessage: "当前仅支持上传图片或视频文件",
+      });
     }
-    insertUploadedMedia(uploaded);
-    ElMessage.success(files.length > 1 ? `已插入 ${files.length} 个媒体文件` : "媒体已插入");
-  } catch (error) {
-    ElMessage.error(normalizeImageUploadError(error));
+    if (uploaded.length) {
+      insertUploadedMedia(uploaded);
+    }
+    if (successCount && failedCount) {
+      ElMessage.warning(`已插入 ${successCount} 个媒体，另有 ${failedCount} 个上传失败`);
+    } else if (successCount) {
+      ElMessage.success(successCount > 1 ? `已插入 ${successCount} 个媒体文件` : "媒体已插入");
+    } else if (failedCount) {
+      ElMessage.error("媒体上传失败");
+    }
   } finally {
     imageUploading.value = false;
   }
@@ -576,9 +715,9 @@ function insertUploadedMedia(items: UploadedMediaItem[]) {
 function renderEditorVideoBlock(item: Extract<UploadedMediaItem, { kind: "video" }>) {
   const posterAttr = item.posterUrl ? ` poster="${escapeAttr(item.posterUrl)}"` : "";
   return [
-    `<div class="qq-video-card editor-video-card" data-media-kind="video" data-align="${toolbarState.align}">`,
+    `<p class="qq-video-card editor-video-card" data-media-kind="video" data-align="${toolbarState.align}">`,
     `<video class="qq-inline-video" controls preload="metadata" playsinline src="${escapeAttr(item.url)}"${posterAttr}></video>`,
-    `</div>`,
+    `</p>`,
   ].join("");
 }
 
@@ -597,6 +736,68 @@ function insertHtmlAtCursor(html: string, caretMarkerId = "") {
 function replaceFileExtension(name: string, extension: string) {
   const base = String(name || "").replace(/\.[^.]+$/, "") || "image";
   return `${base}.${extension}`;
+}
+
+function createUploadTask(file: File, index: number): MediaUploadTask {
+  return {
+    id: `media-upload-${Date.now().toString(36)}-${index}-${Math.random().toString(36).slice(2, 8)}`,
+    name: file.name || (file.type.startsWith("video/") ? "视频" : "图片"),
+    kind: file.type.startsWith("video/") ? "video" : "image",
+    status: "waiting",
+    progress: 0,
+    loadedBytes: 0,
+    totalBytes: file.size,
+    errorMessage: "",
+  };
+}
+
+function updateUploadTask(taskId: string, patch: Partial<MediaUploadTask>) {
+  const task = mediaUploadTasks.value.find((item) => item.id === taskId);
+  if (!task) return;
+  Object.assign(task, patch);
+}
+
+function syncUploadTaskProgress(
+  taskId: string,
+  state: {
+    stage: "preparing" | "uploading" | "processing";
+    loaded: number;
+    total: number;
+    percent: number;
+  },
+) {
+  updateUploadTask(taskId, {
+    status: state.stage === "processing" ? "processing" : state.stage === "preparing" ? "preparing" : "uploading",
+    progress: Math.max(0, Math.min(100, state.percent)),
+    loadedBytes: Math.max(0, state.loaded),
+    totalBytes: Math.max(state.total, state.loaded),
+    errorMessage: "",
+  });
+}
+
+function isActiveUploadStatus(status: MediaUploadTask["status"]) {
+  return status === "preparing" || status === "uploading" || status === "processing";
+}
+
+function formatUploadTaskStatus(task: MediaUploadTask) {
+  if (task.status === "waiting") return "等待上传";
+  if (task.status === "preparing") return task.kind === "image" ? "压缩准备中" : "准备上传";
+  if (task.status === "uploading") return `上传中 ${task.progress}%`;
+  if (task.status === "processing") return task.kind === "video" ? "云端处理中" : "服务器处理中";
+  if (task.status === "done") return "上传完成";
+  return "上传失败";
+}
+
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
 }
 
 function getAlignmentTargets() {
@@ -834,7 +1035,7 @@ function clearDraft() {
 function isContentEmpty() {
   if (!editorRef.value) return !props.modelValue.trim();
   const text = editorRef.value.innerText.replace(/\u00a0/g, " ").trim();
-  return !text && !editorRef.value.querySelector("img");
+  return !text && !editorRef.value.querySelector("img, video");
 }
 
 function escapeAttr(value: string) {
@@ -1282,6 +1483,97 @@ defineExpose({ clearDraft, isContentEmpty });
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
 }
 
+.upload-progress-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  border-top: 1px solid #edf1f5;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0.92), rgba(255, 255, 255, 0.96));
+}
+
+.upload-progress-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  color: #4b5563;
+  font-size: 12px;
+}
+
+.upload-progress-head strong {
+  display: block;
+  margin-bottom: 3px;
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.upload-progress-list {
+  display: grid;
+  gap: 10px;
+}
+
+.upload-progress-item {
+  padding: 10px 12px;
+  border: 1px solid #e3eaf2;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.upload-progress-item.is-error {
+  border-color: rgba(220, 38, 38, 0.22);
+  background: rgba(254, 242, 242, 0.86);
+}
+
+.upload-progress-item.is-done {
+  border-color: rgba(22, 135, 118, 0.18);
+}
+
+.upload-progress-item__top,
+.upload-progress-item__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.upload-progress-item__top {
+  margin-bottom: 8px;
+}
+
+.upload-progress-item__meta {
+  margin-top: 8px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.upload-progress-item__name {
+  min-width: 0;
+  color: #111827;
+  font-size: 13px;
+  font-weight: 700;
+  word-break: break-all;
+}
+
+.upload-progress-item__status {
+  flex: 0 0 auto;
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.upload-progress-item.is-error .upload-progress-item__status,
+.upload-progress-item__error {
+  color: #dc2626;
+}
+
+.upload-progress-item__error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .editor-foot {
   display: flex;
   align-items: center;
@@ -1483,6 +1775,36 @@ defineExpose({ clearDraft, isContentEmpty });
 
   .editor-surface :deep(.editor-video-card video) {
     border-radius: 12px;
+  }
+
+  .upload-progress-panel {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .upload-progress-head {
+    font-size: 11px;
+  }
+
+  .upload-progress-head strong,
+  .upload-progress-item__name {
+    font-size: 12px;
+  }
+
+  .upload-progress-item {
+    padding: 9px 10px;
+    border-radius: 10px;
+  }
+
+  .upload-progress-item__top,
+  .upload-progress-item__meta {
+    gap: 8px;
+  }
+
+  .upload-progress-item__meta,
+  .upload-progress-item__status,
+  .upload-progress-item__error {
+    font-size: 11px;
   }
 
   .editor-foot {

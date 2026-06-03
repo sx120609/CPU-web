@@ -4,7 +4,7 @@ import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 import { prisma } from "../prisma";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
-import { ensureMediaLocalPathFromUploadUrl, resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
+import { prepareMediaLocalFileForProcessing, resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 import { DEFAULT_VIDEO_REVIEW_PROMPTS, getSiteConfig } from "./siteSettings";
 
@@ -611,29 +611,30 @@ async function prepareVideoReviewInput(asset: {
     },
   });
 
-  const localPath = await ensureMediaLocalPathFromUploadUrl(asset.url) || asset.localPath;
-  const file = await stat(localPath);
-  if (!file.isFile()) throw new Error("视频文件不存在");
-  if (!file.size || file.size > VIDEO_MAX_BYTES) {
-    throw new Error(file.size ? "视频文件过大，暂不支持自动审核" : "视频文件为空");
-  }
-
-  const metadata = await probeVideoFile(localPath, asset.mimeType);
-  const transcript = metadata.hasAudio ? await transcribeVideoAudio(localPath).catch(() => ({
-    text: "",
-    status: "error",
-  })) : { text: "", status: "missing-audio" };
-  const context = await findVideoReviewTargetByUrl(asset.url);
-  if (localPath !== asset.localPath) {
-    await prisma.forumVideoAsset.update({
-      where: { id: asset.id },
-      data: { localPath },
-    }).catch(() => null);
-  }
-
+  const preparedFile = await prepareMediaLocalFileForProcessing(asset.url);
+  const localPath = preparedFile.localPath || asset.localPath;
   const tempDir = path.resolve(process.cwd(), "runtime", "video-review", `${asset.id}-${Date.now()}`);
   await mkdir(tempDir, { recursive: true });
   try {
+    const file = await stat(localPath);
+    if (!file.isFile()) throw new Error("视频文件不存在");
+    if (!file.size || file.size > VIDEO_MAX_BYTES) {
+      throw new Error(file.size ? "视频文件过大，暂不支持自动审核" : "视频文件为空");
+    }
+
+    const metadata = await probeVideoFile(localPath, asset.mimeType);
+    const transcript = metadata.hasAudio ? await transcribeVideoAudio(localPath).catch(() => ({
+      text: "",
+      status: "error",
+    })) : { text: "", status: "missing-audio" };
+    const context = await findVideoReviewTargetByUrl(asset.url);
+    if (!preparedFile.temporary && localPath !== asset.localPath) {
+      await prisma.forumVideoAsset.update({
+        where: { id: asset.id },
+        data: { localPath },
+      }).catch(() => null);
+    }
+
     const framePaths = await extractVideoFrames(localPath, metadata.durationMs, tempDir);
     const frames = await buildFrameDataUrls(framePaths);
     if (!frames.length) throw new Error("视频抽帧失败，无法自动审核");
@@ -655,6 +656,9 @@ async function prepareVideoReviewInput(asset: {
     };
   } finally {
     await rm(tempDir, { recursive: true, force: true }).catch(() => null);
+    if (preparedFile.temporary && preparedFile.localPath) {
+      await rm(preparedFile.localPath, { force: true }).catch(() => null);
+    }
   }
 }
 

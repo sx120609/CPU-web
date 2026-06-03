@@ -1,10 +1,12 @@
 import type { RequestHandler } from "express";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { prisma } from "../prisma";
 import {
+  createOneDriveChinaUploadSession,
   fetchOneDriveChinaFile,
   listOneDriveChinaFiles,
   resolveOneDriveChinaDirectDownloadUrl,
@@ -28,6 +30,11 @@ export type SaveMediaAssetResult = {
   relativePath: string;
   url: string;
   localPath: string;
+};
+
+export type MediaProcessingLocalFile = {
+  localPath: string;
+  temporary: boolean;
 };
 
 export type MediaStorageAdminFileEntry = {
@@ -162,6 +169,47 @@ export async function resolveMediaPublicUrl(url: string) {
 
   remotePublicUrlPromises.set(relativePath, promise);
   return promise;
+}
+
+export async function shouldUseRemoteMediaStorageForRelativePath(relativePath: string) {
+  return shouldUseRemoteMediaStorage(normalizeUploadRelativePath(relativePath));
+}
+
+export async function createRemoteMediaUploadSession(input: {
+  relativePath: string;
+  contentType?: string | null;
+}) {
+  const relativePath = normalizeUploadRelativePath(input.relativePath);
+  const remote = await shouldUseRemoteMediaStorage(relativePath);
+  if (!remote) return null;
+  return createOneDriveChinaUploadSession(relativePath, input.contentType);
+}
+
+export async function prepareMediaLocalFileForProcessing(url: string): Promise<MediaProcessingLocalFile> {
+  const relativePath = relativeUploadPathFromUrl(url);
+  if (!relativePath) return { localPath: "", temporary: false };
+  const existing = resolveExistingLocalMediaPath(relativePath);
+  if (existing) return { localPath: existing, temporary: false };
+  if (!(await shouldUseRemoteMediaStorage(relativePath))) {
+    return {
+      localPath: resolvePreferredLocalMediaPath(relativePath),
+      temporary: false,
+    };
+  }
+  try {
+    const response = await fetchOneDriveChinaFile(relativePath);
+    if (!response.ok) return { localPath: "", temporary: false };
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length) return { localPath: "", temporary: false };
+    const ext = path.extname(relativePath).replace(/^\./, "").toLowerCase();
+    const tempDir = path.resolve(process.cwd(), "runtime", "media-processing");
+    await mkdir(tempDir, { recursive: true });
+    const localPath = path.join(tempDir, `${Date.now()}-${randomUUID()}${ext ? `.${ext}` : ""}`);
+    await writeFile(localPath, buffer);
+    return { localPath, temporary: true };
+  } catch {
+    return { localPath: "", temporary: false };
+  }
 }
 
 export async function saveMediaAsset(input: SaveMediaAssetInput): Promise<SaveMediaAssetResult> {

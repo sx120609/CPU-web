@@ -44,6 +44,11 @@ export type OneDriveChinaStoredFile = {
   webUrl: string;
 };
 
+export type OneDriveChinaUploadSession = {
+  uploadUrl: string;
+  expiresAt: string;
+};
+
 type DelegatedTokenResult = {
   accessToken: string;
   refreshToken: string;
@@ -245,6 +250,37 @@ export async function uploadOneDriveChinaFile(relativePath: string, buffer: Buff
     const detail = await safeReadResponseText(response);
     throw new Error(detail ? `上传到世纪互联 OneDrive 失败：${detail}` : `上传到世纪互联 OneDrive 失败：HTTP ${response.status}`);
   }
+}
+
+export async function createOneDriveChinaUploadSession(relativePath: string, contentType?: string | null): Promise<OneDriveChinaUploadSession> {
+  const runtime = await getMediaStorageRuntimeConfig();
+  const drive = await requireActiveRemoteDrive(runtime);
+  const remotePath = buildRemoteStoragePath(relativePath, drive.rootPath);
+  await ensureRemoteFolder(drive.driveId, pathDirname(remotePath));
+  const response = await graphRequestWithCurrentMode(`/drives/${drive.driveId}/root:/${encodeGraphPath(remotePath)}:/createUploadSession`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      item: {
+        "@microsoft.graph.conflictBehavior": "replace",
+        ...(contentType ? { file: { mimeType: String(contentType).trim() } } : {}),
+      },
+      deferCommit: false,
+    }),
+  });
+  if (!response.ok) {
+    const detail = await safeReadResponseText(response);
+    throw new Error(detail ? `创建世纪互联直传会话失败：${detail}` : `创建世纪互联直传会话失败：HTTP ${response.status}`);
+  }
+  const payload = await response.json() as { uploadUrl?: string; expirationDateTime?: string };
+  const uploadUrl = String(payload.uploadUrl || "").trim();
+  if (!uploadUrl) throw new Error("创建世纪互联直传会话失败：响应缺少 uploadUrl");
+  return {
+    uploadUrl,
+    expiresAt: String(payload.expirationDateTime || "").trim(),
+  };
 }
 
 export async function fetchOneDriveChinaFile(relativePath: string, range?: string | string[], ifNoneMatch?: string | string[]) {

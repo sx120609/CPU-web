@@ -1,3 +1,4 @@
+import axios from "axios";
 import { request } from "./request";
 
 export interface Topic {
@@ -126,7 +127,61 @@ export const likeApi = {
 
 export const uploadApi = {
   image: (image: string) => request.post<{ url: string }>("/uploads/images", { image }),
-  media: (file: Blob, fileName: string) => {
+  media: async (
+    file: Blob,
+    fileName: string,
+    options?: {
+      onProgress?: (state: {
+        stage: "preparing" | "uploading" | "processing";
+        loaded: number;
+        total: number;
+        percent: number;
+      }) => void;
+    },
+  ) => {
+    const reportProgress = (
+      stage: "preparing" | "uploading" | "processing",
+      loaded: number,
+      total: number,
+    ) => {
+      const safeTotal = Math.max(0, Number(total) || 0);
+      const safeLoaded = Math.max(0, Math.min(Number(loaded) || 0, safeTotal || Number(loaded) || 0));
+      const percent = safeTotal > 0 ? Math.max(0, Math.min(100, Math.round((safeLoaded / safeTotal) * 100))) : 0;
+      options?.onProgress?.({
+        stage,
+        loaded: safeLoaded,
+        total: safeTotal,
+        percent,
+      });
+    };
+
+    const init = await request.post<{
+      mode: "direct" | "proxy";
+      kind: "image" | "video";
+      url?: string;
+      uploadUrl?: string;
+      uploadToken?: string;
+      expiresAt?: string;
+      mimeType?: string;
+    }>("/uploads/media/init", {
+      fileName,
+      mimeType: file.type || "",
+      fileSize: file.size,
+    }, { timeout: 30000 });
+
+    if (init.mode === "direct" && init.uploadUrl && init.uploadToken) {
+      await uploadFileToOneDriveSession(init.uploadUrl, file, file.type || init.mimeType || "application/octet-stream", reportProgress);
+      reportProgress("processing", file.size, file.size);
+      return request.post<{
+        kind: "image" | "video";
+        url: string;
+        posterUrl?: string;
+        mimeType?: string;
+      }>("/uploads/media/complete", {
+        uploadToken: init.uploadToken,
+      }, { timeout: 180000 });
+    }
+
     const formData = new FormData();
     formData.append("file", file, fileName);
     return request.post<{
@@ -134,6 +189,43 @@ export const uploadApi = {
       url: string;
       posterUrl?: string;
       mimeType?: string;
-    }>("/uploads/media", formData, { timeout: 180000 });
+    }>("/uploads/media", formData, {
+      timeout: 180000,
+      onUploadProgress: (event) => {
+        const total = Number(event.total || file.size || 0);
+        const loaded = Math.min(Number(event.loaded || 0), total || Number(event.loaded || 0));
+        reportProgress(loaded >= total && total > 0 ? "processing" : "uploading", loaded, total);
+      },
+    });
   },
 };
+
+const ONEDRIVE_UPLOAD_CHUNK_BYTES = 32 * 320 * 1024;
+
+async function uploadFileToOneDriveSession(
+  uploadUrl: string,
+  file: Blob,
+  contentType: string,
+  reportProgress: (stage: "preparing" | "uploading" | "processing", loaded: number, total: number) => void,
+) {
+  const total = file.size;
+  let uploaded = 0;
+  reportProgress("uploading", 0, total);
+  while (uploaded < total) {
+    const end = Math.min(uploaded + ONEDRIVE_UPLOAD_CHUNK_BYTES, total);
+    const chunk = file.slice(uploaded, end);
+    await axios.put(uploadUrl, chunk, {
+      headers: {
+        "Content-Type": contentType || "application/octet-stream",
+        "Content-Range": `bytes ${uploaded}-${end - 1}/${total}`,
+      },
+      timeout: 180000,
+      onUploadProgress: (event) => {
+        const currentLoaded = uploaded + Math.min(Number(event.loaded || 0), chunk.size);
+        reportProgress("uploading", currentLoaded, total);
+      },
+    });
+    uploaded = end;
+    reportProgress("uploading", uploaded, total);
+  }
+}

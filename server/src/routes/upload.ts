@@ -1,13 +1,22 @@
 import { Router } from "express";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { rm } from "node:fs/promises";
+import jwt from "jsonwebtoken";
 import multer from "multer";
 import { z } from "zod";
+import { config } from "../config";
 import { Errors, ok } from "../utils/response";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { registerForumImageAsset } from "../services/imageModeration";
-import { saveMediaAsset } from "../services/mediaStorage";
+import {
+  buildUploadUrl,
+  createRemoteMediaUploadSession,
+  prepareMediaLocalFileForProcessing,
+  resolveMediaLocalPathFromUploadUrl,
+  saveMediaAsset,
+} from "../services/mediaStorage";
 import { registerForumVideoAsset } from "../services/videoModeration";
 import { createVideoPosterAsset } from "../services/videoPoster";
 
@@ -31,6 +40,16 @@ const uploadMedia = multer({
   limits: { fileSize: MAX_MEDIA_BYTES },
 });
 
+const mediaInitSchema = z.object({
+  fileName: z.string().trim().min(1).max(260),
+  mimeType: z.string().trim().max(200).optional().default(""),
+  fileSize: z.number().int().positive().max(MAX_MEDIA_BYTES),
+});
+
+const mediaCompleteSchema = z.object({
+  uploadToken: z.string().trim().min(1),
+});
+
 const VIDEO_MIME_EXT: Record<string, string> = {
   "video/mp4": "mp4",
   "video/webm": "webm",
@@ -38,6 +57,16 @@ const VIDEO_MIME_EXT: Record<string, string> = {
   "video/quicktime": "mov",
   "video/x-m4v": "m4v",
   "video/x-matroska": "mkv",
+};
+
+type MediaUploadTokenPayload = {
+  kind: "forum-media-upload";
+  userId: number;
+  mediaKind: "image" | "video";
+  relativePath: string;
+  mimeType: string;
+  fileSize: number;
+  fileName: string;
 };
 
 uploadRouter.post("/images", authRequired, validate(imageSchema), async (req, res, next) => {
@@ -70,6 +99,110 @@ uploadRouter.post("/images", authRequired, validate(imageSchema), async (req, re
   }
 });
 
+uploadRouter.post("/media/init", authRequired, validate(mediaInitSchema), async (req, res, next) => {
+  try {
+    const mimeType = normalizeMimeType(req.body.mimeType);
+    const kind = resolveMediaKind(mimeType, req.body.fileName);
+    if (!kind) throw Errors.badRequest("仅支持 JPG、PNG、WebP、GIF 图片或 MP4、WebM、MOV、M4V、MKV、OGV 视频");
+    const ext = resolveUploadExtension(kind, mimeType, req.body.fileName);
+    if (!ext) throw Errors.badRequest("当前文件格式暂不支持上传");
+
+    const relativePath = buildForumMediaRelativePath(ext);
+    const session = await createRemoteMediaUploadSession({
+      relativePath,
+      contentType: mimeType || undefined,
+    });
+    if (!session) {
+      ok(res, { mode: "proxy" as const, kind });
+      return;
+    }
+
+    const uploadToken = jwt.sign({
+      kind: "forum-media-upload",
+      userId: req.user!.userId,
+      mediaKind: kind,
+      relativePath,
+      mimeType,
+      fileSize: req.body.fileSize,
+      fileName: req.body.fileName,
+    } satisfies MediaUploadTokenPayload, config.jwtSecret, { expiresIn: "3h" });
+
+    ok(res, {
+      mode: "direct" as const,
+      kind,
+      url: buildUploadUrl(relativePath),
+      uploadUrl: session.uploadUrl,
+      uploadToken,
+      expiresAt: session.expiresAt,
+      mimeType,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+uploadRouter.post("/media/complete", authRequired, validate(mediaCompleteSchema), async (req, res, next) => {
+  try {
+    const payload = verifyMediaUploadToken(req.body.uploadToken);
+    if (payload.userId !== req.user!.userId) throw Errors.forbidden("上传会话与当前账号不匹配");
+    const mimeType = normalizeMimeType(payload.mimeType);
+    const url = buildUploadUrl(payload.relativePath);
+    const localPath = resolveMediaLocalPathFromUploadUrl(url);
+    const preparedFile = await prepareMediaLocalFileForProcessing(url);
+    if (!preparedFile.localPath) {
+      throw Errors.badRequest("文件还没上传完成，请稍后再试");
+    }
+
+    try {
+      if (payload.mediaKind === "image") {
+        await registerForumImageAsset({
+          url,
+          localPath,
+          mimeType: mimeType || undefined,
+          fileSize: payload.fileSize,
+          createdById: req.user!.userId,
+        }).catch(() => null);
+        ok(res, {
+          kind: payload.mediaKind,
+          url,
+          posterUrl: "",
+          mimeType,
+        });
+        return;
+      }
+
+      await registerForumVideoAsset({
+        url,
+        localPath,
+        mimeType: mimeType || undefined,
+        fileSize: payload.fileSize,
+        createdById: req.user!.userId,
+      }).catch(() => null);
+
+      let posterUrl = "";
+      if (preparedFile.localPath) {
+        posterUrl = await createVideoPosterAsset({
+          videoLocalPath: preparedFile.localPath,
+          videoRelativePath: payload.relativePath,
+        }).catch(() => "");
+      }
+
+      ok(res, {
+        kind: payload.mediaKind,
+        url,
+        posterUrl,
+        mimeType,
+      });
+    } finally {
+      if (preparedFile.temporary && preparedFile.localPath) {
+        await rm(preparedFile.localPath, { force: true }).catch(() => null);
+      }
+    }
+  } catch (e) {
+    next(e);
+  }
+});
+
 uploadRouter.post("/media", authRequired, (req, res, next) => {
   uploadMedia.single("file")(req, res, (error: any) => {
     if (!error) return next();
@@ -82,27 +215,24 @@ uploadRouter.post("/media", authRequired, (req, res, next) => {
   try {
     const file = req.file;
     if (!file?.buffer?.length) throw Errors.badRequest("请先选择要上传的媒体文件");
-    const kind = resolveMediaKind(file.mimetype);
+    const mimeType = normalizeMimeType(file.mimetype);
+    const kind = resolveMediaKind(mimeType, file.originalname);
     if (!kind) throw Errors.badRequest("仅支持 JPG、PNG、WebP、GIF 图片或 MP4、WebM、MOV、M4V、MKV、OGV 视频");
 
-    const now = new Date();
-    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const relativeDir = path.join("forum", month);
-    const ext = resolveUploadExtension(kind, file.mimetype, file.originalname);
+    const ext = resolveUploadExtension(kind, mimeType, file.originalname);
     if (!ext) throw Errors.badRequest("当前文件格式暂不支持上传");
-    const baseName = `${Date.now()}-${randomUUID()}`;
-    const relativePath = path.posix.join(relativeDir.replace(/\\/g, "/"), `${baseName}.${ext}`);
+    const relativePath = buildForumMediaRelativePath(ext);
     const saved = await saveMediaAsset({
       relativePath,
       buffer: file.buffer,
-      contentType: file.mimetype || undefined,
+      contentType: mimeType || undefined,
     });
 
     if (kind === "image") {
       await registerForumImageAsset({
         url: saved.url,
         localPath: saved.localPath,
-        mimeType: file.mimetype,
+        mimeType: mimeType || undefined,
         fileSize: file.size,
         createdById: req.user!.userId,
       }).catch(() => null);
@@ -110,7 +240,7 @@ uploadRouter.post("/media", authRequired, (req, res, next) => {
         kind,
         url: saved.url,
         posterUrl: "",
-        mimeType: file.mimetype,
+        mimeType,
       });
       return;
     }
@@ -118,7 +248,7 @@ uploadRouter.post("/media", authRequired, (req, res, next) => {
     await registerForumVideoAsset({
       url: saved.url,
       localPath: saved.localPath,
-      mimeType: file.mimetype,
+      mimeType: mimeType || undefined,
       fileSize: file.size,
       createdById: req.user!.userId,
     }).catch(() => null);
@@ -130,7 +260,7 @@ uploadRouter.post("/media", authRequired, (req, res, next) => {
       kind,
       url: saved.url,
       posterUrl,
-      mimeType: file.mimetype,
+      mimeType,
     });
   } catch (e) {
     next(e);
@@ -144,9 +274,35 @@ function parseDataUrl(value: string) {
   return { mime: match[1].toLowerCase(), buffer };
 }
 
-function resolveMediaKind(mime: string) {
+function verifyMediaUploadToken(token: string) {
+  try {
+    const payload = jwt.verify(String(token || ""), config.jwtSecret) as MediaUploadTokenPayload;
+    if (payload.kind !== "forum-media-upload") throw Errors.badRequest("上传会话无效或已过期");
+    return payload;
+  } catch (error) {
+    if ((error as any)?.status && (error as any)?.code) throw error;
+    throw Errors.badRequest("上传会话无效或已过期");
+  }
+}
+
+function buildForumMediaRelativePath(ext: string) {
+  const now = new Date();
+  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const relativeDir = path.join("forum", month);
+  const baseName = `${Date.now()}-${randomUUID()}`;
+  return path.posix.join(relativeDir.replace(/\\/g, "/"), `${baseName}.${ext}`);
+}
+
+function normalizeMimeType(mime: string | null | undefined) {
+  return String(mime || "").trim().toLowerCase();
+}
+
+function resolveMediaKind(mime: string, originalName = "") {
   if (Object.prototype.hasOwnProperty.call(MIME_EXT, mime)) return "image" as const;
   if (Object.prototype.hasOwnProperty.call(VIDEO_MIME_EXT, mime)) return "video" as const;
+  const ext = normalizeKnownExtension(originalName, ["jpg", "jpeg", "png", "webp", "gif", "mp4", "webm", "ogv", "mov", "m4v", "mkv"]);
+  if (["jpg", "png", "webp", "gif"].includes(ext)) return "image" as const;
+  if (["mp4", "webm", "ogv", "mov", "m4v", "mkv"].includes(ext)) return "video" as const;
   return "";
 }
 
