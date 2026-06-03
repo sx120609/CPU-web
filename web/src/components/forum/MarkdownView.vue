@@ -124,16 +124,37 @@ function bindVideoThumbnails() {
     if (!src) return;
     const poster = String(video.getAttribute("poster") || "").trim();
     const index = nextItems.push({ src, poster }) - 1;
-    const replaceTarget = video.closest<HTMLElement>(".qq-video-card") || video;
+    const replaceTarget = resolveVideoReplaceTarget(video.closest<HTMLElement>(".qq-video-card") || video);
     const linkBlock = replaceTarget.nextElementSibling instanceof HTMLParagraphElement
       && replaceTarget.nextElementSibling.querySelector(".qq-inline-video__link")
       ? replaceTarget.nextElementSibling
       : null;
     const shell = createVideoThumbnailShell({ src, poster }, index, readVideoAlign(replaceTarget));
     replaceTarget.replaceWith(shell);
+    removeEmptyBlockWrapper(replaceTarget.parentElement);
     linkBlock?.remove();
   });
   videoGalleryItems.value = nextItems;
+}
+
+function resolveVideoReplaceTarget(target: HTMLElement) {
+  const parent = target.parentElement;
+  if (
+    parent instanceof HTMLParagraphElement
+    && parent.childElementCount === 1
+    && parent.firstElementChild === target
+    && !String(parent.textContent || "").replace(/\u00a0/g, " ").trim()
+  ) {
+    return parent;
+  }
+  return target;
+}
+
+function removeEmptyBlockWrapper(node: HTMLElement | null) {
+  if (!(node instanceof HTMLParagraphElement)) return;
+  if (node.childElementCount > 0) return;
+  if (String(node.textContent || "").replace(/\u00a0/g, " ").trim()) return;
+  node.remove();
 }
 
 function getVideoSourceUrl(video: HTMLVideoElement) {
@@ -738,12 +759,13 @@ onMounted(() => {
   display: flex;
 }
 .md :deep(.md-video-shell) {
-  display: inline-flex;
+  display: flex;
   width: min(100%, 220px);
   max-width: 100%;
   margin: 8px 0;
   border-radius: 12px;
   vertical-align: top;
+  clear: both;
 }
 .md :deep(.md-video-shell[data-align="center"]) {
   display: flex;
