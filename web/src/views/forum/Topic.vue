@@ -185,7 +185,7 @@
         <p>这篇稿件已提交人工复核，当前仅你自己和管理员可见。请耐心等待审核结果。</p>
       </div>
 
-      <MarkdownView :content="displayContent" class="post-body topic-markdown" clickable-images />
+      <MarkdownView :content="displayContent" class="post-body topic-markdown" clickable-images media-loading="eager" />
 
       <footer class="post-foot">
         <el-button :type="liked ? 'primary' : 'default'" :icon="Star" @click="onLike">
@@ -227,7 +227,7 @@
               <span class="dot">·</span>
               <span>{{ fmtRelative(r.createdAt) }}</span>
             </div>
-            <MarkdownView :content="r.content" class="reply-content topic-markdown reply-markdown" clickable-images />
+            <MarkdownView :content="r.content" class="reply-content topic-markdown reply-markdown" clickable-images media-loading="eager" />
             <div class="reply-actions">
               <el-button text size="small" @click="quoteReply(r)">引用</el-button>
               <el-button v-if="canEditReply(r)" text size="small" @click="editReply(r)">编辑</el-button>
@@ -760,25 +760,40 @@ async function load() {
   liked.value = false;
   try {
     const id = Number(route.params.id);
-    topic.value = await loadTopicDetail(id);
-    loading.value = false;
-    if (!topic.value) {
+    const topicPromise = loadTopicDetail(id)
+      .then((result) => {
+        topic.value = result;
+        return result;
+      })
+      .finally(() => {
+        loading.value = false;
+      });
+    const repliesPromise = topicApi.replies(id)
+      .catch((error: AxiosError) => {
+        if (error.response?.status === 403) {
+          router.replace({ name: "forum", query: { redirect: route.fullPath } });
+        }
+        return [];
+      })
+      .then((result) => {
+        replies.value = result;
+        return result;
+      })
+      .finally(() => {
+        repliesLoading.value = false;
+      });
+    const [nextTopic, nextReplies] = await Promise.all([topicPromise, repliesPromise]);
+    if (!nextTopic) {
       replies.value = [];
       return;
     }
-    replies.value = await topicApi.replies(id).catch((error: AxiosError) => {
-      if (error.response?.status === 403) {
-        router.replace({ name: "forum", query: { redirect: route.fullPath } });
-      }
-      return [];
-    });
     // 我是否赞过
     if (auth.isLoggedIn) {
-      const mine = await likeApi.mine([id], replies.value.map((r) => r.id));
+      const mine = await likeApi.mine([id], nextReplies.map((r) => r.id));
       liked.value = mine.topics.includes(id);
       // 标记每条回复 liked
       const set = new Set(mine.replies);
-      replies.value.forEach((r: any) => (r._liked = set.has(r.id)));
+      nextReplies.forEach((r: any) => (r._liked = set.has(r.id)));
     }
   } finally {
     loading.value = false;

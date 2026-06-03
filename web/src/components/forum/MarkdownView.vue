@@ -53,16 +53,20 @@ import { fileNameFromUrl, getNativeBridge, hasNativeImagePreviewBridge, previewN
 const props = withDefaults(defineProps<{
   content: string;
   clickableImages?: boolean;
+  mediaLoading?: "lazy" | "eager";
 }>(), {
   clickableImages: false,
+  mediaLoading: "lazy",
 });
-const renderedHtml = computed(() => enhanceRenderedHtml(renderMarkdown(props.content)));
+const renderedHtml = computed(() => enhanceRenderedHtml(renderMarkdown(props.content), props.mediaLoading));
 const el = ref<HTMLElement | null>(null);
 const viewerImageUrl = ref("");
 const videoGalleryOpen = ref(false);
 const videoGalleryIndex = ref(0);
 const videoGalleryItems = ref<Array<{ src: string; poster: string }>>([]);
 const activeVideoGalleryItem = computed(() => videoGalleryItems.value[videoGalleryIndex.value] || null);
+const warmedImageUrls = new Set<string>();
+const warmedImagePreloads = new Map<string, HTMLImageElement>();
 let imageViewer: Viewer | null = null;
 
 function wrapTables() {
@@ -85,7 +89,7 @@ function bindImageViewer() {
   const images = Array.from(el.value.querySelectorAll<HTMLImageElement>("img"));
   destroyImageViewer();
   images.forEach((img, index) => {
-    primeImageElement(img);
+    primeImageElement(img, index);
     decorateImageElement(img);
     if (props.clickableImages) {
       img.dataset.previewBound = "1";
@@ -110,6 +114,7 @@ function bindImageViewer() {
       img.onkeydown = null;
     }
   });
+  warmImageUrls(images.map((img) => img.dataset.original || img.getAttribute("src") || img.currentSrc || img.src));
 
   if (!props.clickableImages || !images.length) return;
 }
@@ -135,6 +140,7 @@ function bindVideoThumbnails() {
     linkBlock?.remove();
   });
   videoGalleryItems.value = nextItems;
+  warmImageUrls(nextItems.map((item) => item.poster));
 }
 
 function resolveVideoReplaceTarget(target: HTMLElement) {
@@ -341,22 +347,44 @@ function syncAlbumCount(album: HTMLElement) {
   album.dataset.imageCount = String(count || 0);
 }
 
-function enhanceRenderedHtml(raw: string) {
+function enhanceRenderedHtml(raw: string, mediaLoading: "lazy" | "eager") {
   if (!raw || typeof document === "undefined") return raw;
   const container = document.createElement("div");
   container.innerHTML = raw;
-  container.querySelectorAll<HTMLImageElement>("img").forEach((img) => {
-    primeImageElement(img);
+  container.querySelectorAll<HTMLImageElement>("img").forEach((img, index) => {
+    primeImageElement(img, index, mediaLoading);
   });
   return container.innerHTML;
 }
 
-function primeImageElement(img: HTMLImageElement) {
-  img.loading = "lazy";
+function primeImageElement(
+  img: HTMLImageElement,
+  index = 0,
+  mediaLoading: "lazy" | "eager" = props.mediaLoading,
+) {
+  const eager = mediaLoading === "eager";
+  const fetchPriority = eager && index < 6 ? "high" : eager ? "auto" : "low";
+  img.loading = eager ? "eager" : "lazy";
   img.decoding = "async";
-  img.setAttribute("fetchpriority", "low");
+  img.setAttribute("loading", eager ? "eager" : "lazy");
+  img.setAttribute("decoding", "async");
+  img.setAttribute("fetchpriority", fetchPriority);
   const rawSrc = img.getAttribute("src") || img.dataset.original || img.currentSrc || img.src;
   if (rawSrc) img.dataset.original = rawSrc;
+}
+
+function warmImageUrls(urls: Array<string | null | undefined>) {
+  if (props.mediaLoading !== "eager" || typeof Image === "undefined") return;
+  urls.forEach((value) => {
+    const url = String(value || "").trim();
+    if (!url || warmedImageUrls.has(url)) return;
+    warmedImageUrls.add(url);
+    const preloader = new Image();
+    preloader.decoding = "async";
+    preloader.setAttribute("fetchpriority", "high");
+    preloader.src = url;
+    warmedImagePreloads.set(url, preloader);
+  });
 }
 
 function decorateImageElement(img: HTMLImageElement) {
@@ -589,6 +617,8 @@ onMounted(() => nextTick(() => {
 }));
 onBeforeUnmount(() => {
   destroyImageViewer();
+  warmedImagePreloads.clear();
+  warmedImageUrls.clear();
   if (typeof window !== "undefined") {
     window.removeEventListener("keydown", handleWindowKeydown);
   }

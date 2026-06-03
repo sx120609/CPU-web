@@ -68,11 +68,11 @@ export function decodeReplyForViewer(reply: any, viewer?: Viewer) {
 export async function decodeTopicForViewerWithImages(topic: any, viewer?: Viewer) {
   const decoded = decodeTopicForViewer(topic, viewer);
   const sourceContent = String(decoded.content || "");
-  const [imageReview, videoReview] = await Promise.all([
+  const [imageReview, videoReview, videoRenderedContent] = await Promise.all([
     summarizeForumImageModerationForContent(sourceContent),
     summarizeForumVideoModerationForContent(sourceContent),
+    renderModeratedVideoContent(sourceContent, viewer),
   ]);
-  const videoRenderedContent = await renderModeratedVideoContent(sourceContent, viewer);
   const content = await renderModeratedContent(videoRenderedContent, viewer);
   return {
     ...decoded,
@@ -85,11 +85,11 @@ export async function decodeTopicForViewerWithImages(topic: any, viewer?: Viewer
 export async function decodeReplyForViewerWithImages(reply: any, viewer?: Viewer) {
   const decoded = decodeReplyForViewer(reply, viewer);
   const sourceContent = String(decoded.content || "");
-  const [imageReview, videoReview] = await Promise.all([
+  const [imageReview, videoReview, videoRenderedContent] = await Promise.all([
     summarizeForumImageModerationForContent(sourceContent),
     summarizeForumVideoModerationForContent(sourceContent),
+    renderModeratedVideoContent(sourceContent, viewer),
   ]);
-  const videoRenderedContent = await renderModeratedVideoContent(sourceContent, viewer);
   const content = await renderModeratedContent(videoRenderedContent, viewer);
   return {
     ...decoded,
