@@ -12,6 +12,7 @@ export interface ToolMeta {
   code: ServiceToolCode;
   name: string;
   description: string;
+  isVisible: boolean;
   requireLogin: boolean;
   allowPublicManage: boolean;
   canManage: boolean;
@@ -262,8 +263,8 @@ export const toolsApi = {
     request.post<ToolManager>(`/tools/${toolCode}/managers`, payload),
   removeManager: (toolCode: ServiceToolCode, userId: number) =>
     request.delete<{ ok: true }>(`/tools/${toolCode}/managers/${userId}`),
-  updateToolSetting: (toolCode: ServiceToolCode, payload: { requireLogin?: boolean; allowPublicManage?: boolean }) =>
-    request.patch<{ toolCode: ServiceToolCode; requireLogin: boolean; allowPublicManage: boolean; updatedAt: string }>(`/tools/${toolCode}/settings`, payload),
+  updateToolSetting: (toolCode: ServiceToolCode, payload: { isVisible?: boolean; requireLogin?: boolean; allowPublicManage?: boolean }) =>
+    request.patch<{ toolCode: ServiceToolCode; isVisible: boolean; requireLogin: boolean; allowPublicManage: boolean; updatedAt: string }>(`/tools/${toolCode}/settings`, payload),
 
   questionnaires: (params?: { toolCode?: ServiceToolCode; manage?: "1" }) =>
     request.get<Questionnaire[]>("/tools/questionnaires", params),

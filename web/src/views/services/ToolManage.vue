@@ -76,6 +76,17 @@
             </div>
             <div class="access-setting">
               <div>
+                <b>展示在工具列表</b>
+                <span>{{ currentToolMeta?.isVisible ? "当前会显示在小工具入口中" : "当前已从小工具入口中隐藏" }}</span>
+              </div>
+              <el-switch
+                v-model="toolVisible"
+                :loading="settingSaving"
+                @change="saveToolVisibilitySetting"
+              />
+            </div>
+            <div class="access-setting">
+              <div>
                 <b>登录后使用</b>
                 <span>{{ currentToolMeta?.requireLogin ? "当前需要登录" : "当前允许游客访问" }}</span>
               </div>
@@ -680,6 +691,17 @@
                 <h3>使用权限</h3>
                 <p>开启后，未登录用户不能打开或提交当前小工具。</p>
               </div>
+            </div>
+            <div class="access-setting">
+              <div>
+                <b>展示在工具列表</b>
+                <span>{{ currentToolMeta?.isVisible ? "当前会显示在小工具入口中" : "当前已从小工具入口中隐藏" }}</span>
+              </div>
+              <el-switch
+                v-model="toolVisible"
+                :loading="settingSaving"
+                @change="saveToolVisibilitySetting"
+              />
             </div>
             <div class="access-setting">
               <div>
@@ -1405,6 +1427,13 @@ const toolRequireLogin = computed({
     if (target) target.requireLogin = value;
   },
 });
+const toolVisible = computed({
+  get: () => currentToolMeta.value?.isVisible !== false,
+  set: (value: boolean) => {
+    const target = currentToolMeta.value;
+    if (target) target.isVisible = value;
+  },
+});
 const toolAllowPublicManage = computed({
   get: () => Boolean(currentToolMeta.value?.allowPublicManage),
   set: (value: boolean) => {
@@ -1505,6 +1534,23 @@ async function saveToolSetting(value: string | number | boolean) {
   } catch (e) {
     const target = currentToolMeta.value;
     if (target) target.requireLogin = previous;
+    throw e;
+  } finally {
+    settingSaving.value = false;
+  }
+}
+
+async function saveToolVisibilitySetting(value: string | number | boolean) {
+  settingSaving.value = true;
+  const previous = !Boolean(value);
+  try {
+    const updated = await toolsApi.updateToolSetting(activeTool.value, { isVisible: Boolean(value) });
+    const target = currentToolMeta.value;
+    if (target) target.isVisible = updated.isVisible;
+    ElMessage.success(updated.isVisible ? "已显示在工具列表中" : "已从工具列表中隐藏");
+  } catch (e) {
+    const target = currentToolMeta.value;
+    if (target) target.isVisible = previous;
     throw e;
   } finally {
     settingSaving.value = false;

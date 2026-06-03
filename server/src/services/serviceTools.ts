@@ -91,7 +91,7 @@ export async function getToolSetting(toolCode: ServiceToolCode) {
   return prisma.toolSetting.upsert({
     where: { toolCode },
     update: {},
-    create: { toolCode, requireLogin: false, allowPublicManage: false },
+    create: { toolCode, isVisible: true, requireLogin: false, allowPublicManage: false },
   });
 }
 
@@ -103,19 +103,20 @@ export async function listToolSettings() {
   const missing = SERVICE_TOOL_CODES.filter((code) => !map.has(code));
   if (missing.length) {
     const created = await Promise.all(missing.map((toolCode) => prisma.toolSetting.create({
-      data: { toolCode, requireLogin: false, allowPublicManage: false },
+      data: { toolCode, isVisible: true, requireLogin: false, allowPublicManage: false },
     })));
     for (const row of created) map.set(row.toolCode, row);
   }
   return map;
 }
 
-export async function updateToolSetting(toolCode: ServiceToolCode, data: { requireLogin?: boolean; allowPublicManage?: boolean }) {
+export async function updateToolSetting(toolCode: ServiceToolCode, data: { isVisible?: boolean; requireLogin?: boolean; allowPublicManage?: boolean }) {
   return prisma.toolSetting.upsert({
     where: { toolCode },
     update: data,
     create: {
       toolCode,
+      isVisible: data.isVisible ?? true,
       requireLogin: data.requireLogin ?? false,
       allowPublicManage: data.allowPublicManage ?? false,
     },

@@ -22,7 +22,7 @@
       </div>
       <div class="tool-grid">
         <button
-          v-for="tool in serviceTools"
+          v-for="tool in visibleTools"
           :key="tool.slug"
           type="button"
           class="tool-entry"
@@ -136,6 +136,7 @@ const captchaError = ref("");
 const electricOpen = ref(false);
 const toolMetas = ref<ToolMeta[]>([]);
 const toolAccessMap = computed(() => Object.fromEntries(toolMetas.value.map((item) => [item.code, item])));
+const visibleTools = computed(() => serviceTools.filter((tool) => toolAccessMap.value[tool.slug]?.isVisible !== false));
 
 onMounted(async () => {
   try {

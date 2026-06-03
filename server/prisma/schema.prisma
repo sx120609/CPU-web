@@ -533,11 +533,13 @@ model ToolPermission {
 model ToolSetting {
   id                Int      @id @default(autoincrement())
   toolCode          String   @unique
+  isVisible         Boolean  @default(true)
   requireLogin      Boolean  @default(false)
   allowPublicManage Boolean  @default(false)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
+  @@index([isVisible])
   @@index([requireLogin])
   @@index([allowPublicManage])
 }

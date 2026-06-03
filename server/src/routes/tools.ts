@@ -165,6 +165,7 @@ const managerCreateSchema = z.object({
 });
 
 const toolSettingPatchSchema = z.object({
+  isVisible: z.boolean().optional(),
   requireLogin: z.boolean().optional(),
   allowPublicManage: z.boolean().optional(),
 });
@@ -219,6 +220,7 @@ toolsRouter.get("/", authOptional, async (req, res, next) => {
     const settings = await listToolSettings();
     ok(res, SERVICE_TOOL_CODES.map((code) => ({
       ...SERVICE_TOOL_META[code],
+      isVisible: settings.get(code)?.isVisible ?? true,
       requireLogin: settings.get(code)?.requireLogin ?? false,
       allowPublicManage: settings.get(code)?.allowPublicManage ?? false,
       canManage: manageableCodes.includes(code),
@@ -233,11 +235,13 @@ toolsRouter.patch("/:toolCode/settings", authRequired, validate(toolSettingPatch
     if (!isServiceToolCode(toolCode)) throw Errors.notFound("小工具不存在");
     if (!(await hasToolManagerPermission(toolCode, req.user))) throw Errors.forbidden("没有该小工具的管理权限");
     const row = await updateToolSetting(toolCode, {
+      isVisible: req.body.isVisible,
       requireLogin: req.body.requireLogin,
       allowPublicManage: req.body.allowPublicManage,
     });
     ok(res, {
       toolCode: row.toolCode,
+      isVisible: row.isVisible,
       requireLogin: row.requireLogin,
       allowPublicManage: row.allowPublicManage,
       updatedAt: row.updatedAt,

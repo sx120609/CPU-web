@@ -22,13 +22,13 @@
             <el-icon><Setting /></el-icon>
             管理
           </el-button>
-          <el-tag round type="success">{{ serviceTools.length }} 个入口</el-tag>
+          <el-tag round type="success">{{ visibleTools.length }} 个入口</el-tag>
         </div>
       </div>
 
       <div class="tools-grid">
         <button
-          v-for="tool in serviceTools"
+          v-for="tool in visibleTools"
           :key="tool.slug"
           type="button"
           class="tool-card"
@@ -74,6 +74,7 @@ const manageable = ref<ServiceToolCode[]>([]);
 const toolMetas = ref<ToolMeta[]>([]);
 const canManageAny = computed(() => manageable.value.length > 0 || toolMetas.value.some((item) => item.canManage));
 const toolAccessMap = computed(() => Object.fromEntries(toolMetas.value.map((item) => [item.code, item])));
+const visibleTools = computed(() => serviceTools.filter((tool) => toolAccessMap.value[tool.slug]?.isVisible !== false));
 
 onMounted(async () => {
   try {
