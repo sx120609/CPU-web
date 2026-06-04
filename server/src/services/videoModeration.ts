@@ -743,6 +743,35 @@ async function requestVideoReview(input: PreparedVideoReviewInput): Promise<Vide
     });
     if (!response.ok) {
       const text = await response.text().catch(() => "");
+      const providerBlock = extractProviderContentPolicyBlock(text);
+      if (providerBlock) {
+        const decision = {
+          status: "rejected" as const,
+          reason: "视频未通过平台内容安全检查",
+          detail: buildVideoReviewSummaryDetail({
+            riskScore: 100,
+            riskLevel: "high",
+            decision: "block",
+            categories: { provider_policy: 100 },
+            detail: providerBlock.message || "上游审核接口直接拦截了该视频请求",
+            providerErrorCode: providerBlock.code,
+          }),
+          riskLevel: "high" as const,
+          riskScore: 100,
+          decision: "block" as const,
+          model,
+          endpoint,
+        };
+        await finishAiReviewLogSuccess(logId, JSON.stringify({
+          risk_score: decision.riskScore,
+          risk_level: decision.riskLevel,
+          decision: decision.decision,
+          reason: decision.reason,
+          detail: decision.detail,
+          providerErrorCode: providerBlock.code,
+        }));
+        return decision;
+      }
       await finishAiReviewLogError(logId, `HTTP ${response.status}`, text);
       if (index < candidates.length - 1 && shouldFallbackToNextModel(response.status, text)) {
         lastError = new Error(`视频审核模型 ${model} 当前不可用，已自动切换备选模型`);
@@ -959,13 +988,14 @@ function buildVideoReviewDecision(
   return {
     status: decision === "auto_pass" ? "approved" : decision === "block" ? "rejected" : "manual_review",
     reason: String(parsed.reason || fallbackVideoReason(riskLevel, decision)).slice(0, 120),
-    detail: [
-      `风险分：${riskScore}`,
-      `风险等级：${riskLevel}`,
-      `审核决策：${decision}`,
-      parsed.detail ? `补充说明：${String(parsed.detail).slice(0, 1000)}` : "",
-      parsed.categories ? `风险分类：${Object.entries(parsed.categories).map(([key, value]) => `${key}:${Math.round(Number(value) || 0)}`).slice(0, 6).join(" / ")}` : "",
-    ].filter(Boolean).join("\n"),
+    detail: buildVideoReviewSummaryDetail({
+      riskScore,
+      riskLevel,
+      decision,
+      categories: parsed.categories ?? {},
+      detail: String(parsed.detail || "").slice(0, 1000),
+      modelDecision: String(parsed.decision || "").trim(),
+    }),
     riskLevel,
     riskScore,
     decision,
@@ -1319,6 +1349,30 @@ function renderPromptTemplate(template: string, vars: Record<string, unknown>) {
   return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => stringifyPromptValue(vars[key]));
 }
 
+function extractProviderContentPolicyBlock(text: string) {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+  let code = "";
+  let message = "";
+  try {
+    const parsed = JSON.parse(raw);
+    code = String(parsed?.error?.code || "").trim();
+    message = String(parsed?.error?.message || "").trim();
+  } catch {
+    /* ignore */
+  }
+  const combined = [code, message, raw].filter(Boolean).join("\n");
+  if (!isContentPolicyViolationText(combined)) return null;
+  return {
+    code: code || "content_policy_violation",
+    message: message || "Your input image may contain content that is not allowed by the content safety system.",
+  };
+}
+
+function isContentPolicyViolationText(text: string) {
+  return /content[_\s-]?policy[_\s-]?violation|content safety system|not allowed by (?:our|the) content safety system/i.test(String(text || ""));
+}
+
 function stringifyPromptValue(value: unknown) {
   if (value === null || value === undefined) return "";
   if (typeof value === "string") return value;
@@ -1363,10 +1417,12 @@ function normalizeVideoDecision(
   score: number,
   threshold: number,
 ): "auto_pass" | "manual_review" | "block" {
-  if (rawDecision === "auto_pass" || rawDecision === "manual_review" || rawDecision === "block") return rawDecision;
+  if (score < threshold) return "auto_pass";
+  if (rawDecision === "block") return "block";
+  if (rawDecision === "manual_review") return "manual_review";
+  if (rawDecision === "auto_pass") return "manual_review";
   if (score >= Math.max(threshold + 24, 70)) return "block";
-  if (score >= threshold) return "manual_review";
-  return "auto_pass";
+  return "manual_review";
 }
 
 function fallbackVideoReason(
@@ -1376,6 +1432,32 @@ function fallbackVideoReason(
   if (decision === "auto_pass") return "视频审核通过";
   if (decision === "manual_review") return "视频需要人工复核";
   return riskLevel === "high" ? "视频风险较高，不适合公开展示" : "视频未通过审核";
+}
+
+function buildVideoReviewSummaryDetail(input: {
+  riskScore: number;
+  riskLevel: "low" | "medium" | "high";
+  decision: "auto_pass" | "manual_review" | "block";
+  categories?: Record<string, number>;
+  detail?: string;
+  modelDecision?: string;
+  providerErrorCode?: string;
+}) {
+  const topCategories = Object.entries(input.categories || {})
+    .map(([name, value]) => [name, Number(value)] as const)
+    .filter(([, value]) => Number.isFinite(value) && value > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([name, value]) => `${name}:${Math.round(value)}`);
+  return [
+    `风险分：${input.riskScore}`,
+    `风险等级：${input.riskLevel}`,
+    `审核决策：${input.decision}`,
+    input.modelDecision ? `模型原始决策：${input.modelDecision}` : "",
+    input.providerErrorCode ? `平台拦截码：${input.providerErrorCode}` : "",
+    topCategories.length ? `风险分类：${topCategories.join(" / ")}` : "",
+    input.detail ? `补充说明：${String(input.detail).slice(0, 1000)}` : "",
+  ].filter(Boolean).join("\n");
 }
 
 function buildVideoDecisionDetail(input: {
