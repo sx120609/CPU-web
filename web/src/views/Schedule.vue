@@ -273,6 +273,7 @@
       <el-button type="primary" size="large" @click="$router.push({ name: 'jwxt', query: { redirect: '/schedule' } })">
         前往登录
       </el-button>
+      <PrivacyPolicyNotice />
     </section>
 
     <section
@@ -698,6 +699,7 @@ import {
   supportsAndroidScheduleWidget,
 } from "@/utils/clientInfo";
 import { USER_QQ_GROUP, openUserGroup } from "@/utils/userGroup";
+import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import InstallPromptDialog from "@/components/install/InstallPromptDialog.vue";
 import OpenBrowserPromptDialog from "@/components/install/OpenBrowserPromptDialog.vue";
 import {

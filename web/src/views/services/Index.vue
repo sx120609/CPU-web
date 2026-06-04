@@ -94,6 +94,7 @@
         <h3>登录后可查看更完整的服务列表</h3>
         <p>登录后可查看更多校园应用和常用入口。学号 / 工号仅用于关联站内账号，<b>学校密码和验证码不会保存</b>。</p>
         <el-button class="hint-action" type="primary" size="large" @click="$router.push('/jwxt')">前往登录</el-button>
+        <PrivacyPolicyNotice align="left" />
       </div>
     </div>
 
@@ -121,6 +122,7 @@ import { ElMessage } from "element-plus";
 import { useJwxtStore } from "@/stores/jwxt";
 import { useSiteStore } from "@/stores/site";
 import { loadCreds, hasCreds as hasSavedCreds } from "@/utils/credCrypto";
+import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import IServicePane from "@/components/jwxt/IServicePane.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 import { serviceTools } from "@/data/serviceTools";

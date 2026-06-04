@@ -17,6 +17,7 @@
               <el-tag v-if="questionnaire.oneResponsePerUser" size="small" type="warning" effect="plain">每人一次</el-tag>
               <el-tag size="small" type="info" effect="plain">{{ answeredCount }}/{{ fieldCount }} 已填写</el-tag>
             </div>
+            <PrivacyPolicyNotice v-if="questionnaire.visibility === 'login'" align="left" compact />
           </div>
         </div>
 
@@ -104,6 +105,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft, DocumentChecked } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { toolsApi, type Questionnaire, type QuestionnaireField } from "@/api/tools";
+import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 
 const route = useRoute();
 const router = useRouter();

@@ -31,6 +31,7 @@
         <div class="alt" style="margin-top:18px">
           <button type="button" @click="goLogin">去登录页</button>
         </div>
+        <PrivacyPolicyNotice />
       </template>
 
       <!-- 开发模式：保留旧的注册表单便于自测 -->
@@ -62,6 +63,7 @@
         <div class="alt">
           已有账号？<button type="button" @click="goLogin">直接登录</button>
         </div>
+        <PrivacyPolicyNotice />
       </template>
     </div>
 
@@ -88,6 +90,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage, type FormInstance, type FormRules } from "element-plus";
 import { ArrowLeft } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
+import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 
 const router = useRouter();
 const route = useRoute();

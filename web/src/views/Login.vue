@@ -61,6 +61,8 @@
         </el-form-item>
       </el-form>
 
+      <PrivacyPolicyNotice />
+
       <!-- 站内独立账号：新生 / 毕业生 / 站务 / 管理员 -->
       <details class="dev-fallback">
         <summary>🔑 其他方式登录</summary>
@@ -97,6 +99,7 @@ import { User, Lock, Refresh, ArrowLeft } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { loadCreds, hasCreds } from "@/utils/credCrypto";
+import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 
 const router = useRouter();
 const route = useRoute();

@@ -49,6 +49,7 @@ import { ElMessage } from "element-plus";
 import { getToken } from "@/api/request";
 import { toolsApi, type GradeCheckTable, type Questionnaire, type QuestionnaireField, type ServiceToolCode, type ToolMeta } from "@/api/tools";
 import { findServiceTool } from "@/data/serviceTools";
+import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import CloudDrivePanel from "./CloudDrivePanel.vue";
 
 const route = useRoute();
@@ -171,6 +172,7 @@ const FeedbackPanel = defineComponent({
                 type: "button",
                 onClick: () => router.push({ name: "login", query: { redirect: route.fullPath } }),
               }, "去登录"),
+              h(PrivacyPolicyNotice, { compact: true }),
             ])
             : loadError.value
               ? h("div", { class: "empty-panel" }, loadError.value)
@@ -264,7 +266,12 @@ const GradeCheckPanel = defineComponent({
           ])))
           : h("div", { class: "empty-panel" }, canManageGradeCheck.value
             ? "在管理页上传带有“学号”字段的 Excel，开放后复制链接分享给需要核对的同学。"
-            : getToken() ? "暂未找到与你学号匹配的开放查询。也可以通过发起者分享的链接进入。" : "登录后会自动显示与你学号匹配的开放查询。"),
+            : getToken()
+              ? "暂未找到与你学号匹配的开放查询。也可以通过发起者分享的链接进入。"
+              : h("div", [
+                h("p", { class: "empty-panel-copy" }, "登录后会自动显示与你学号匹配的开放查询。"),
+                h(PrivacyPolicyNotice, { compact: true }),
+              ])),
     ]);
   },
 });
@@ -585,6 +592,7 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
   color: #6b7280;
   text-align: center;
 }
+.empty-panel-copy { margin: 0; }
 .related-grade-list {
   display: flex;
   flex-direction: column;

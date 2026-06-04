@@ -62,6 +62,7 @@ declare module 'vue' {
     MidtermGradesPane: typeof import('./src/components/jwxt/MidtermGradesPane.vue')['default']
     OpenBrowserPromptDialog: typeof import('./src/components/install/OpenBrowserPromptDialog.vue')['default']
     PageHeader: typeof import('./src/components/common/PageHeader.vue')['default']
+    PrivacyPolicyNotice: typeof import('./src/components/common/PrivacyPolicyNotice.vue')['default']
     ProgressPane: typeof import('./src/components/jwxt/ProgressPane.vue')['default']
     PyfaPane: typeof import('./src/components/jwxt/PyfaPane.vue')['default']
     RichTextEditor: typeof import('./src/components/forum/RichTextEditor.vue')['default']

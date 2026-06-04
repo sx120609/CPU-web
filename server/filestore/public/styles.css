@@ -209,6 +209,23 @@ p { color: var(--muted); }
 .inline-control { display: grid; grid-template-columns: 1fr 40px; gap: 8px; }
 .full { width: 100%; }
 
+.login-privacy {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.login-privacy a {
+  color: var(--accent);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.login-privacy a:hover {
+  text-decoration: underline;
+}
+
 .primary {
   border-color: var(--accent);
   background: var(--accent);

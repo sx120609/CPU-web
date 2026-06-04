@@ -105,6 +105,8 @@
         </el-form-item>
       </el-form>
 
+      <PrivacyPolicyNotice />
+
       <div class="alt-link">
         暂不授权？也可以 <a href="http://jsxsd.cpu.edu.cn/zgykdx/tyrz.jsp" target="_blank">前往学校教务系统原站</a>
       </div>
@@ -178,6 +180,7 @@ import { Lock, User, Refresh, CircleCheckFilled, CircleClose, InfoFilled } from 
 import { useJwxtStore } from "@/stores/jwxt";
 import { jwxtApi } from "@/api/jwxt";
 import { jwxtScopedStorageKey } from "@/utils/jwxtCache";
+import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import SchedulePane from "@/components/jwxt/SchedulePane.vue";
 import GradesPane from "@/components/jwxt/GradesPane.vue";
 import MidtermGradesPane from "@/components/jwxt/MidtermGradesPane.vue";

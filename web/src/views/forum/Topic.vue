@@ -531,7 +531,8 @@
 
     <div v-if="topic.locked" class="locked-tip cpu-card">🔒 该帖已锁定，无法回复</div>
     <div v-if="!auth.isLoggedIn" class="login-tip cpu-card">
-      <router-link to="/login">登录</router-link> 或 <router-link to="/register">注册</router-link> 后参与回复
+      <p><router-link to="/login">登录</router-link> 或 <router-link to="/register">注册</router-link> 后参与回复</p>
+      <PrivacyPolicyNotice compact />
     </div>
   </div>
 
@@ -551,6 +552,7 @@ import { toPng } from "html-to-image";
 import { ArrowLeft, Star, ChatLineRound, Link } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import UserModerationActions from "@/components/common/UserModerationActions.vue";
+import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import MarkdownView from "@/components/forum/MarkdownView.vue";
 import RichTextEditor from "@/components/forum/RichTextEditor.vue";
 import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDialog.vue";
@@ -2231,6 +2233,7 @@ async function onDelete() {
   font-size: 14px;
   padding: 24px;
   a { color: var(--cpu-primary); margin: 0 4px; }
+  p { margin: 0; }
 }
 
 .review-blocked p {

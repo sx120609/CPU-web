@@ -72,6 +72,7 @@
             先看校园公告
           </el-button>
         </div>
+        <PrivacyPolicyNotice v-if="!auth.isLoggedIn" align="left" />
       </section>
 
       <div class="footer-tip">
@@ -135,6 +136,7 @@ import { useRoute, useRouter } from "vue-router";
 import { InfoFilled } from "@element-plus/icons-vue";
 import { boardApi, type Board } from "@/api/board";
 import { useAuthStore } from "@/stores/auth";
+import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 
 const auth = useAuthStore();
 const route = useRoute();

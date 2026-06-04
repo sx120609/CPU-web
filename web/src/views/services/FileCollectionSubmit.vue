@@ -22,7 +22,11 @@
           show-icon
           :closable="false"
           title="该任务需要登录后提交。"
-        />
+        >
+          <template #default>
+            <PrivacyPolicyNotice align="left" compact />
+          </template>
+        </el-alert>
 
         <form class="submit-card" @submit.prevent="submit">
           <label v-for="field in task.fields" :key="field.id" class="submit-field">
@@ -66,6 +70,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { toolsApi, type FileCollectTask, type FileCollectStatus } from "@/api/tools";
+import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 
 const route = useRoute();
 const router = useRouter();

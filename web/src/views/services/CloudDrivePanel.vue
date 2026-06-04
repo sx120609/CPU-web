@@ -100,7 +100,10 @@
           title="当前云盘需要登录后使用。"
         >
           <template #default>
-            <el-button type="primary" size="small" @click="goLogin">去登录</el-button>
+            <div class="drive-alert-body">
+              <el-button type="primary" size="small" @click="goLogin">去登录</el-button>
+              <PrivacyPolicyNotice align="left" compact />
+            </div>
           </template>
         </el-alert>
         <el-alert
@@ -255,6 +258,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { toolsApi, type CloudDriveDirectory, type CloudDriveEntry } from "@/api/tools";
 import { fmtDate } from "@/utils/format";
+import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 
 const props = defineProps<{
   canManage: boolean;
@@ -804,6 +808,12 @@ async function uploadFileToOneDriveSession(
 
 .drive-alert {
   margin-bottom: 14px;
+}
+
+.drive-alert-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 .explorer-card {
