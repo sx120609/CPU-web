@@ -1027,6 +1027,9 @@ onMounted(() => {
   color: inherit;
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
+.md :deep(.qq-share-card--linked) {
+  cursor: pointer;
+}
 .md :deep(.qq-share-card--linked:hover) {
   transform: translateY(-1px);
   border-color: rgba(22, 135, 118, 0.24);

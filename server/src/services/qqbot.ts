@@ -1091,7 +1091,7 @@ async function handleConversationMessage(
     if (/^(是|好|好的|继续|发送|确认|就这样|可以)$/i.test(text)) {
       if ((conversation.draftContent || "").trim()) {
         try {
-          await replyToPostingConversation(conversation, context, "已收到投稿确认，正在处理中，请耐心稍候。").catch(() => null);
+          await replyToPostingConversation(conversation, context, QQBOT_POST_SUBMIT_PENDING_MESSAGE).catch(() => null);
           const result = await submitConversationPost(conversation.id, context);
           await replyToPostingConversation(conversation, context, result.message);
           return { ok: true, topicId: result.topicId };
@@ -1241,7 +1241,7 @@ async function handleConversationMessage(
   if (conversation.step === "await-submit-confirm") {
     if (isConfirmPublishMessage(text)) {
       try {
-        await replyToPostingConversation(conversation, context, "已收到投稿确认，正在处理中，请耐心稍候。").catch(() => null);
+        await replyToPostingConversation(conversation, context, QQBOT_POST_SUBMIT_PENDING_MESSAGE).catch(() => null);
         const result = await submitConversationPost(conversation.id, context);
         await replyToPostingConversation(conversation, context, result.message);
         return { ok: true, topicId: result.topicId };
@@ -2170,6 +2170,11 @@ const QQBOT_IMAGE_MAX_BYTES = 12 * 1024 * 1024;
 const QQBOT_VIDEO_MAX_BYTES = 80 * 1024 * 1024;
 const QQBOT_FORWARD_DEBUG_FILE = path.resolve(process.cwd(), "runtime", "qqbot-forward-debug.ndjson");
 const QQBOT_FORWARD_DEBUG_EXPORT_LIMIT = 200;
+const QQBOT_POST_SUBMIT_PENDING_MESSAGE = [
+  "已收到投稿确认，开始为你投递。",
+  "由于 QQ 限制，投稿速度会比较慢，尤其是长消息、多图、多视频时，投递完成甚至可能要 10 分钟左右。",
+  "耐心等待即可；投递完成后，我会再给你发送反馈。",
+].join("\n");
 const qqImageUploadCache = new Map<string, Promise<string>>();
 const qqVideoUploadCache = new Map<string, Promise<{ url: string; posterUrl: string } | null>>();
 
@@ -2622,7 +2627,7 @@ function parseShareSegmentCard(data: any): ParsedShareCard | null {
     source: undefined,
     title: data?.title,
     summary: data?.content,
-    url: data?.url,
+    url: pickShareCardUrl(data),
   });
 }
 
@@ -2640,7 +2645,7 @@ function parseMusicSegmentCard(data: any): ParsedShareCard | null {
     source: sourceMap[String(data?.type || "").trim().toLowerCase()] || "音乐分享",
     title: data?.title,
     summary: data?.content || data?.singer,
-    url: data?.url,
+    url: pickShareCardUrl(data),
   });
 }
 
@@ -2662,7 +2667,11 @@ function parseXmlShareCard(raw: unknown): ParsedShareCard | null {
     source: extractXmlAttr(xml, "source", "name") || extractXmlAttr(xml, "msg", "brief"),
     title: extractXmlTagText(xml, "title"),
     summary: extractXmlTagText(xml, "summary"),
-    url: extractXmlAttr(xml, "msg", "url") || extractXmlAttr(xml, "item", "url"),
+    url: firstNonEmpty([
+      extractXmlAttr(xml, "msg", "url"),
+      extractXmlAttr(xml, "item", "url"),
+      extractXmlShareCardUrl(xml),
+    ]),
   });
 }
 
@@ -2710,11 +2719,9 @@ function extractShareCardFromObject(candidate: any, fallbackRoot?: any): ParsedS
       fallbackRoot?.summary,
     ]),
     url: firstNonEmpty([
-      candidate.jumpUrl,
-      candidate.targetUrl,
+      pickShareCardUrl(candidate),
+      pickShareCardUrl(fallbackRoot),
       candidate.url,
-      candidate.sourceUrl,
-      candidate.qqdocurl,
       fallbackRoot?.url,
     ]),
   };
@@ -2743,21 +2750,20 @@ function renderShareCardBlock(card: ParsedShareCard | null) {
   const linkAttrs = hasLink
     ? ` href="${escapeShareCardHtml(normalized.url!)}" target="_blank" rel="noopener noreferrer nofollow"`
     : "";
+  const wrapperTag = hasLink ? "a" : "div";
   const metaBits = [
     source ? `<span class="qq-share-card__source">${source}</span>` : "",
     hostLabel ? `<span class="qq-share-card__host">${hostLabel}</span>` : "",
   ].filter(Boolean).join("");
   return [
     "",
-    `<div class="qq-share-card${hasLink ? " qq-share-card--linked" : ""}">`,
+    `<${wrapperTag} class="qq-share-card${hasLink ? " qq-share-card--linked" : ""}"${linkAttrs}>`,
     `<div class="qq-share-card__eyebrow">分享卡片</div>`,
-    hasLink
-      ? `<div class="qq-share-card__title"><a class="qq-share-card__title-link"${linkAttrs}>${title}</a></div>`
-      : `<div class="qq-share-card__title">${title}</div>`,
+    `<div class="qq-share-card__title">${title}</div>`,
     summary ? `<div class="qq-share-card__summary">${summary}</div>` : "",
     metaBits ? `<div class="qq-share-card__meta">${metaBits}</div>` : "",
-    hasLink ? `<div class="qq-share-card__action"><a class="qq-share-card__action-link"${linkAttrs}>打开链接</a></div>` : "",
-    `</div>`,
+    hasLink ? `<div class="qq-share-card__action"><span class="qq-share-card__action-link">打开链接</span></div>` : "",
+    `</${wrapperTag}>`,
     "",
   ].filter(Boolean).join("\n");
 }
@@ -2797,12 +2803,68 @@ function normalizeShareCardText(
   return text.slice(0, 300);
 }
 
-function normalizeShareCardUrl(value: unknown) {
+function normalizeShareCardUrl(value: unknown): string {
   const raw = decodeCqEntities(String(value || "").trim());
   if (!raw) return "";
   if (raw.startsWith("//")) return `https:${raw}`;
   if (/^https?:\/\//i.test(raw)) return raw.slice(0, 1000);
+  const extracted = extractEmbeddedShareCardUrl(raw);
+  if (extracted) return extracted;
+  const decodedOnce = safeDecodeUriComponent(raw);
+  if (decodedOnce && decodedOnce !== raw) {
+    const decodedUrl = normalizeShareCardUrl(decodedOnce);
+    if (decodedUrl) return decodedUrl;
+  }
+  try {
+    const parsed = new URL(raw);
+    for (const [key, valueText] of parsed.searchParams.entries()) {
+      if (!looksLikeShareCardUrlKey(key)) continue;
+      const nestedUrl = normalizeShareCardUrl(valueText);
+      if (nestedUrl) return nestedUrl;
+    }
+  } catch {
+    /* ignore */
+  }
   return "";
+}
+
+function pickShareCardUrl(value: unknown): string {
+  return findShareCardUrl(value, 0, new Set<object>());
+}
+
+function findShareCardUrl(value: unknown, depth: number, seen: Set<object>): string {
+  if (depth > 5 || value == null) return "";
+  if (typeof value === "string") return normalizeShareCardUrl(value);
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nestedUrl = findShareCardUrl(item, depth + 1, seen);
+      if (nestedUrl) return nestedUrl;
+    }
+    return "";
+  }
+  if (typeof value !== "object") return "";
+  if (seen.has(value as object)) return "";
+  seen.add(value as object);
+  const entries = Object.entries(value as Record<string, unknown>);
+  const prioritized = entries.filter(([key]) => looksLikeShareCardUrlKey(key));
+  for (const [, nested] of prioritized) {
+    const nestedUrl = findShareCardUrl(nested, depth + 1, seen);
+    if (nestedUrl) return nestedUrl;
+  }
+  for (const [, nested] of entries) {
+    if (!nested || typeof nested !== "object") continue;
+    const nestedUrl = findShareCardUrl(nested, depth + 1, seen);
+    if (nestedUrl) return nestedUrl;
+  }
+  return "";
+}
+
+function looksLikeShareCardUrlKey(value: string): boolean {
+  const normalized = String(value || "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+  return normalized === "url"
+    || normalized.endsWith("url")
+    || normalized.endsWith("href")
+    || normalized.endsWith("link");
 }
 
 function firstNonEmpty(values: unknown[]) {
@@ -2877,6 +2939,39 @@ function extractXmlAttr(xml: string, tagName: string, attrName: string) {
   const pattern = new RegExp(`<${tagName}\\b[^>]*\\b${attrName}=(["'])([\\s\\S]*?)\\1`, "i");
   const match = xml.match(pattern);
   return match ? decodeCqEntities(match[2]).trim() : "";
+}
+
+function extractXmlShareCardUrl(xml: string): string {
+  const attrRe = /\b([a-zA-Z0-9_:-]*(?:url|link|href)[a-zA-Z0-9_:-]*)=(["'])([\s\S]*?)\2/gi;
+  for (const match of xml.matchAll(attrRe)) {
+    const resolved = normalizeShareCardUrl(match[3]);
+    if (resolved) return resolved;
+  }
+  return "";
+}
+
+function extractEmbeddedShareCardUrl(value: string): string {
+  const candidates = [String(value || "").trim()];
+  const decodedOnce = safeDecodeUriComponent(candidates[0]);
+  if (decodedOnce && decodedOnce !== candidates[0]) candidates.push(decodedOnce);
+  const decodedTwice = safeDecodeUriComponent(decodedOnce);
+  if (decodedTwice && decodedTwice !== decodedOnce) candidates.push(decodedTwice);
+  for (const candidate of candidates) {
+    const match = candidate.match(/https?:\/\/[^\s"'<>`]+/i);
+    if (!match) continue;
+    return match[0].slice(0, 1000);
+  }
+  return "";
+}
+
+function safeDecodeUriComponent(value: string): string {
+  const raw = String(value || "").trim();
+  if (!raw.includes("%")) return raw;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
 }
 
 async function resolveQqImageUrl(urlLike: unknown, fileLike: unknown): Promise<string> {
