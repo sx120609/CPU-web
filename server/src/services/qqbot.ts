@@ -3392,6 +3392,7 @@ function isTrustedForwardHtmlBlock(block: string) {
   const normalized = String(block || "").trim();
   return normalized.startsWith("<div class=\"qq-share-card")
     || normalized.startsWith("<div class=\"qq-forward-card")
+    || normalized.startsWith("<div class=\"qq-video-card")
     || normalized.startsWith("<p class=\"qq-forward-album")
     || normalized.startsWith("<p><img ");
 }

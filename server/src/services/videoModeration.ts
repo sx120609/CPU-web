@@ -12,6 +12,7 @@ import { DEFAULT_VIDEO_REVIEW_PROMPTS, getSiteConfig } from "./siteSettings";
 const execFile = promisify(execFileCallback);
 
 const VIDEO_BLOCK_RE = /<video\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s"'=<>`]+))[^>]*>[\s\S]*?<\/video>(?:\s*<p>\s*<a\b[^>]*class=(?:"[^"]*\bqq-inline-video__link\b[^"]*"|'[^']*\bqq-inline-video__link\b[^']*')[\s\S]*?<\/a>\s*<\/p>)?/gi;
+const LEGACY_ESCAPED_QQ_VIDEO_BLOCK_RE = /<p>\s*(&lt;div class=&quot;qq-video-card&quot;&gt;[\s\S]*?&lt;video class=&quot;qq-inline-video&quot;[\s\S]*?&lt;\/video&gt;[\s\S]*?&lt;\/div&gt;)\s*<\/p>/gi;
 const VIDEO_REVIEW_POLL_INTERVAL_MS = 45_000;
 const VIDEO_REVIEW_SWEEP_BATCH_SIZE = 120;
 const VIDEO_FRAME_MAX_COUNT = 6;
@@ -471,10 +472,11 @@ export async function applyManualForumVideoReview(input: {
 }
 
 export async function renderModeratedVideoContent(content: string, _viewer?: Viewer) {
-  const matches = collectVideoMatches(content);
-  if (!matches.length) return content;
+  const normalizedContent = repairLegacyEscapedQqVideoBlocks(content);
+  const matches = collectVideoMatches(normalizedContent);
+  if (!matches.length) return normalizedContent;
   const localUrls = Array.from(new Set(matches.map((item) => normalizeForumVideoUrl(item.url)).filter(Boolean) as string[]));
-  if (!localUrls.length) return content;
+  if (!localUrls.length) return normalizedContent;
 
   const rows = await prisma.forumVideoAsset.findMany({
     where: { url: { in: localUrls } },
@@ -508,13 +510,13 @@ export async function renderModeratedVideoContent(content: string, _viewer?: Vie
   let rendered = "";
   let lastIndex = 0;
   for (const match of matches) {
-    rendered += content.slice(lastIndex, match.index);
+    rendered += normalizedContent.slice(lastIndex, match.index);
     const normalizedUrl = normalizeForumVideoUrl(match.url);
     const row = normalizedUrl ? rowMap.get(normalizedUrl) : null;
     rendered += rewriteVideoToken(match, row, normalizedUrl ? publicUrlMap.get(normalizedUrl) : "");
     lastIndex = match.index + match.raw.length;
   }
-  rendered += content.slice(lastIndex);
+  rendered += normalizedContent.slice(lastIndex);
   return rendered;
 }
 
@@ -1162,11 +1164,32 @@ function collectVideoMatches(content: string) {
 }
 
 function extractForumVideoUrls(content: string) {
+  const normalizedContent = repairLegacyEscapedQqVideoBlocks(content);
   return Array.from(new Set(
-    collectVideoMatches(content)
+    collectVideoMatches(normalizedContent)
       .map((item) => normalizeForumVideoUrl(item.url))
       .filter(Boolean) as string[],
   ));
+}
+
+function repairLegacyEscapedQqVideoBlocks(content: string) {
+  const raw = String(content || "");
+  if (!raw.includes("&lt;div class=&quot;qq-video-card&quot;&gt;")) return raw;
+  return raw.replace(LEGACY_ESCAPED_QQ_VIDEO_BLOCK_RE, (block, encoded) => {
+    const decoded = decodeLegacyEscapedQqVideoHtml(String(encoded || ""))
+      .replace(/<br\s*\/?>/gi, "\n")
+      .trim();
+    return decoded || block;
+  });
+}
+
+function decodeLegacyEscapedQqVideoHtml(content: string) {
+  return String(content || "")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
 }
 
 function normalizeForumVideoUrl(input: string | null | undefined) {
