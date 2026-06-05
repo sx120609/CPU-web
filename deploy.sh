@@ -168,6 +168,95 @@ runtime_uses_postgres() {
   is_postgres_url "$url"
 }
 
+postgres_url_field() {
+  local url="$1"
+  local field="$2"
+  node -e '
+    try {
+      const parsed = new URL(process.argv[1]);
+      const values = {
+        host: parsed.hostname || "",
+        port: parsed.port || "5432",
+        username: decodeURIComponent(parsed.username || ""),
+        password: decodeURIComponent(parsed.password || ""),
+        database: decodeURIComponent((parsed.pathname || "").replace(/^\/+/, "")),
+      };
+      process.stdout.write(values[process.argv[2]] || "");
+    } catch {
+      process.exit(1);
+    }
+  ' "$url" "$field" 2>/dev/null || true
+}
+
+postgres_url_is_local() {
+  local host
+  host="$(postgres_url_field "$1" host)"
+  [[ "$host" = "127.0.0.1" || "$host" = "localhost" || "$host" = "::1" ]]
+}
+
+postgres_url_is_reachable() {
+  local url="$1"
+  command -v psql >/dev/null 2>&1 || return 1
+  local host port username password database
+  host="$(postgres_url_field "$url" host)"
+  port="$(postgres_url_field "$url" port)"
+  username="$(postgres_url_field "$url" username)"
+  password="$(postgres_url_field "$url" password)"
+  database="$(postgres_url_field "$url" database)"
+  [ -n "$host" ] || return 1
+  [ -n "$database" ] || return 1
+  if [ -n "$username" ]; then
+    PGPASSWORD="$password" psql -h "$host" -p "$port" -U "$username" -d "$database" -c "SELECT 1" >/dev/null 2>&1
+  else
+    psql -h "$host" -p "$port" -d "$database" -c "SELECT 1" >/dev/null 2>&1
+  fi
+}
+
+prime_postgres_bootstrap_env_from_url() {
+  local url="$1"
+  local url_db url_user url_password url_host url_port
+  url_db="$(postgres_url_field "$url" database)"
+  url_user="$(postgres_url_field "$url" username)"
+  url_password="$(postgres_url_field "$url" password)"
+  url_host="$(postgres_url_field "$url" host)"
+  url_port="$(postgres_url_field "$url" port)"
+
+  if [ -z "${POSTGRES_DB_NAME:-}" ] && [ -n "$url_db" ]; then
+    export POSTGRES_DB_NAME="$url_db"
+  fi
+  if [ -z "${POSTGRES_APP_USER:-}" ]; then
+    if [ -n "$url_user" ] && [ "$url_user" != "postgres" ]; then
+      export POSTGRES_APP_USER="$url_user"
+    else
+      export POSTGRES_APP_USER="cpu_web_app"
+    fi
+  fi
+  if [ -z "${POSTGRES_APP_PASSWORD:-}" ] && [ -n "$url_password" ] && [ "${POSTGRES_APP_USER:-}" = "$url_user" ]; then
+    export POSTGRES_APP_PASSWORD="$url_password"
+  fi
+  if [ -z "${POSTGRES_HOST:-}" ] && [ -n "$url_host" ]; then
+    export POSTGRES_HOST="$url_host"
+  fi
+  if [ -z "${POSTGRES_PORT:-}" ] && [ -n "$url_port" ]; then
+    export POSTGRES_PORT="$url_port"
+  fi
+}
+
+ensure_local_postgres_url_ready() {
+  local url="$1"
+  postgres_url_is_local "$url" || return 0
+  ensure_postgres
+  if postgres_url_is_reachable "$url"; then
+    return 0
+  fi
+  log "检测到本机 PostgreSQL 连接不可用，尝试按 DATABASE_URL 自动补齐库与账号"
+  prime_postgres_bootstrap_env_from_url "$url"
+  do_postgres_init
+  local refreshed
+  refreshed="$(configured_database_url)"
+  postgres_url_is_reachable "$refreshed" || err "PostgreSQL 已处理，但仍无法连接：$(mask_postgres_url "$refreshed")"
+}
+
 maybe_restart_running_service() {
   if command -v pm2 >/dev/null 2>&1 && pm2 describe "$SERVICE_NAME" >/dev/null 2>&1; then
     log "检测到 $SERVICE_NAME 正在运行，重启使新配置生效"
@@ -186,8 +275,7 @@ start_managed_service() {
   local service_name="$1"
   if can_use_systemd; then
     sudo systemctl enable "$service_name" >/dev/null 2>&1 || true
-    sudo systemctl restart "$service_name"
-    return 0
+    sudo systemctl restart "$service_name" >/dev/null 2>&1 && return 0
   fi
   if command -v service >/dev/null 2>&1; then
     sudo service "$service_name" restart >/dev/null 2>&1 || sudo service "$service_name" start >/dev/null 2>&1
@@ -217,7 +305,7 @@ ensure_postgres_started() {
     postgres_is_ready && return 0
   fi
   if start_postgres_cluster_fallback; then
-    log "当前环境未启用 systemd，已通过 pg_ctlcluster 启动 PostgreSQL"
+    log "systemd/service 未成功启动 PostgreSQL，已通过 pg_ctlcluster 回退启动"
     postgres_is_ready && return 0
   fi
   err "PostgreSQL 启动失败，请检查数据库服务状态"
@@ -242,7 +330,7 @@ ensure_redis_started() {
     redis_is_ready && return 0
   fi
   if start_redis_fallback; then
-    log "当前环境未启用 systemd，已直接以 daemon 模式启动 Redis"
+    log "systemd/service 未成功启动 Redis，已直接以 daemon 模式回退启动"
     redis_is_ready && return 0
   fi
   warn "Redis 启动失败，请手动检查 Redis 服务状态"
@@ -458,6 +546,7 @@ do_db_init() {
   local db_url user_count
   db_url="$(configured_database_url)"
   is_postgres_url "$db_url" || err "当前 deploy.sh 仅支持 PostgreSQL。请先运行 ./deploy.sh postgres-init 或 ./deploy.sh postgres-config"
+  ensure_local_postgres_url_ready "$db_url"
   log "同步 PostgreSQL schema"
   npm run db:migrate --prefix server
   user_count="$(
