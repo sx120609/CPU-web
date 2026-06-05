@@ -47,6 +47,16 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       throw Errors.forbidden("当前板块暂不支持匿名回复");
     }
 
+    const parentReply = parentReplyId
+      ? await prisma.reply.findUnique({
+          where: { id: parentReplyId },
+          select: { id: true, topicId: true, authorId: true, content: true, hidden: true },
+        })
+      : null;
+    if (parentReplyId && (!parentReply || parentReply.hidden || parentReply.topicId !== topicId)) {
+      throw Errors.badRequest("引用的回复不存在");
+    }
+
     const bypassAiReview = await shouldBypassAiReviewForUser(userId, req.user!.role);
     const existingAnonymousReply = anonymous
       ? await prisma.reply.findFirst({
@@ -76,21 +86,12 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
         )
       : null;
     if (shouldRunAiReview() && !bypassAiReview) {
-      let parentContent = "";
-      if (parentReplyId) {
-        const parent = await prisma.reply.findUnique({
-          where: { id: parentReplyId },
-          select: { content: true, topicId: true },
-        });
-        if (!parent || parent.topicId !== topicId) throw Errors.badRequest("引用的回复不存在");
-        parentContent = parent.content;
-      }
       const aiResult = await reviewReplyContent({
         topicTitle: topic.title,
         boardName: (topic as any).board?.name ?? "",
         boardType: topic.board?.type ?? "",
         content,
-        parentContent,
+        parentContent: parentReply?.content ?? "",
       });
       if (aiResult.status === "blocked_ai") {
         const blockedReply = await prisma.$transaction(async (tx) => {
@@ -170,20 +171,48 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       return created;
     });
 
-    // 通知被回复人
-    if (topic.authorId !== userId) {
-      await prisma.notification.create({
-        data: {
-          userId: topic.authorId,
-          category: "reply",
-          level: "normal",
-          title: `有人回复了你的帖子`,
-          content: content.slice(0, 80),
-          payload: JSON.stringify({ type: "reply", topicId, replyId: reply.id }),
-          link: `/forum/topic/${topicId}#reply-${reply.id}`,
-          source: "论坛",
-        },
+    const replyLink = `/forum/topic/${topicId}#reply-${reply.id}`;
+    const notifications: Array<{
+      userId: number;
+      category: string;
+      level: string;
+      title: string;
+      content: string;
+      payload: string;
+      link: string;
+      source: string;
+    }> = [];
+
+    if (parentReply && parentReply.authorId !== userId) {
+      notifications.push({
+        userId: parentReply.authorId,
+        category: "reply",
+        level: "normal",
+        title: "有人回复了你的回复",
+        content: content.slice(0, 80),
+        payload: JSON.stringify({ type: "reply", topicId, replyId: reply.id, parentReplyId: parentReply.id }),
+        link: replyLink,
+        source: "论坛",
       });
+    }
+
+    if (topic.authorId !== userId && topic.authorId !== parentReply?.authorId) {
+      notifications.push({
+        userId: topic.authorId,
+        category: "reply",
+        level: "normal",
+        title: "有人回复了你的帖子",
+        content: content.slice(0, 80),
+        payload: JSON.stringify({ type: "reply", topicId, replyId: reply.id }),
+        link: replyLink,
+        source: "论坛",
+      });
+    }
+
+    if (notifications.length === 1) {
+      await prisma.notification.create({ data: notifications[0] });
+    } else if (notifications.length > 1) {
+      await prisma.notification.createMany({ data: notifications });
     }
 
     await Promise.all([
