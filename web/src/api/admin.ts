@@ -321,6 +321,8 @@ export type DatabaseBackupStatus = {
   supported: boolean;
   provider: "postgresql" | "unsupported";
   backupMethod: "pg-dump" | null;
+  restoreSupported: boolean;
+  restoreMethod: "pg-restore" | null;
   exists: boolean;
   maintenanceActive: boolean;
   maintenanceMessage: string;
@@ -329,6 +331,17 @@ export type DatabaseBackupStatus = {
   updatedAt: string | null;
   downloadFileName: string | null;
   reason: string | null;
+  restoreReason: string | null;
+  maxRestoreUploadBytes: number | null;
+  restoreUploadAccept: string;
+};
+
+export type DatabaseRestoreResult = {
+  restoredAt: string;
+  durationMs: number;
+  fileName: string;
+  fileSizeBytes: number;
+  provider: "postgresql";
 };
 
 export type EpayConfig = {
@@ -410,6 +423,8 @@ export const adminApi = {
       timeout: 120000,
       suppressErrorMessage: true,
     }),
+  restoreDatabaseBackup: (formData: FormData, options?: RequestOptions) =>
+    request.post<DatabaseRestoreResult>("/admin/database/restore", formData, options),
   // 用户
   users: (params: {
     q?: string;

@@ -4,14 +4,26 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { prisma } from "../prisma";
-import { getDatabaseMaintenanceMessage, isDatabaseMaintenanceActive } from "./maintenance";
+import { loadFeatures } from "./siteSettings";
+import { loadStorageConfig } from "./storageConfig";
+import {
+  beginDatabaseMaintenance,
+  endDatabaseMaintenance,
+  getDatabaseMaintenanceMessage,
+  isDatabaseMaintenanceActive,
+} from "./maintenance";
 
 const PG_DUMP_COMMAND = process.env.PG_DUMP_BIN || "pg_dump";
+const PG_RESTORE_COMMAND = process.env.PG_RESTORE_BIN || "pg_restore";
+const DATABASE_RESTORE_UPLOAD_ACCEPT = ".dump,.backup,.tar";
+const DATABASE_RESTORE_UPLOAD_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
 
 export type DatabaseBackupStatus = {
   supported: boolean;
   provider: "postgresql" | "unsupported";
   backupMethod: "pg-dump" | null;
+  restoreSupported: boolean;
+  restoreMethod: "pg-restore" | null;
   exists: boolean;
   maintenanceActive: boolean;
   maintenanceMessage: string;
@@ -20,6 +32,17 @@ export type DatabaseBackupStatus = {
   updatedAt: string | null;
   downloadFileName: string | null;
   reason: string | null;
+  restoreReason: string | null;
+  maxRestoreUploadBytes: number | null;
+  restoreUploadAccept: string;
+};
+
+export type DatabaseRestoreResult = {
+  restoredAt: string;
+  durationMs: number;
+  fileName: string;
+  fileSizeBytes: number;
+  provider: "postgresql";
 };
 
 function databaseUrl() {
@@ -67,6 +90,10 @@ function postgresBackupFileName(date = new Date()) {
   return `cpu-web-db-backup-${backupStamp(date)}.dump`;
 }
 
+export function databaseRestoreUploadLimitBytes() {
+  return DATABASE_RESTORE_UPLOAD_LIMIT_BYTES;
+}
+
 async function removeIfExists(filePath: string) {
   await unlink(filePath).catch(() => undefined);
 }
@@ -98,8 +125,40 @@ async function postgresDatabaseSize() {
   return normalizeNumeric(value);
 }
 
-async function runPgDump(targetPath: string) {
+function buildPostgresCommandContext() {
   const parsed = parsePostgresUrl(databaseUrl());
+  const env = {
+    ...process.env,
+    ...(parsed.password ? { PGPASSWORD: parsed.password } : {}),
+    ...(parsed.sslmode ? { PGSSLMODE: parsed.sslmode } : {}),
+  };
+  const connectionArgs = [
+    "--host",
+    parsed.host,
+    "--port",
+    parsed.port,
+  ];
+  if (parsed.user) connectionArgs.push("--username", parsed.user);
+  return {
+    parsed,
+    env,
+    connectionArgs,
+  };
+}
+
+function summarizeCommandFailure(stderr: string, fallback: string) {
+  const normalized = stderr
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(-12)
+    .join("\n")
+    .trim();
+  return normalized || fallback;
+}
+
+async function runPgDump(targetPath: string) {
+  const { parsed, env, connectionArgs } = buildPostgresCommandContext();
   await new Promise<void>((resolve, reject) => {
     const args = [
       "--format=custom",
@@ -108,21 +167,13 @@ async function runPgDump(targetPath: string) {
       "--no-privileges",
       "--file",
       targetPath,
-      "--host",
-      parsed.host,
-      "--port",
-      parsed.port,
+      ...connectionArgs,
     ];
-    if (parsed.user) args.push("--username", parsed.user);
     args.push(parsed.database);
 
     const child = spawn(PG_DUMP_COMMAND, args, {
       windowsHide: true,
-      env: {
-        ...process.env,
-        ...(parsed.password ? { PGPASSWORD: parsed.password } : {}),
-        ...(parsed.sslmode ? { PGSSLMODE: parsed.sslmode } : {}),
-      },
+      env,
       stdio: ["ignore", "ignore", "pipe"],
     });
 
@@ -136,7 +187,43 @@ async function runPgDump(targetPath: string) {
         resolve();
         return;
       }
-      reject(new Error(stderr.trim() || `pg_dump 失败，退出码 ${code ?? "unknown"}`));
+      reject(new Error(summarizeCommandFailure(stderr, `pg_dump 失败，退出码 ${code ?? "unknown"}`)));
+    });
+  });
+}
+
+async function runPgRestore(sourcePath: string) {
+  const { parsed, env, connectionArgs } = buildPostgresCommandContext();
+  await new Promise<void>((resolve, reject) => {
+    const args = [
+      "--clean",
+      "--if-exists",
+      "--no-owner",
+      "--no-privileges",
+      "--exit-on-error",
+      ...connectionArgs,
+      "--dbname",
+      parsed.database,
+      sourcePath,
+    ];
+
+    const child = spawn(PG_RESTORE_COMMAND, args, {
+      windowsHide: true,
+      env,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+
+    let stderr = "";
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    child.once("error", (error) => reject(error));
+    child.once("close", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(summarizeCommandFailure(stderr, `pg_restore 失败，退出码 ${code ?? "unknown"}`)));
     });
   });
 }
@@ -148,6 +235,8 @@ export async function getDatabaseBackupStatus(): Promise<DatabaseBackupStatus> {
       supported: false,
       provider: "unsupported",
       backupMethod: null,
+      restoreSupported: false,
+      restoreMethod: null,
       exists: false,
       maintenanceActive: isDatabaseMaintenanceActive(),
       maintenanceMessage: getDatabaseMaintenanceMessage(),
@@ -156,16 +245,22 @@ export async function getDatabaseBackupStatus(): Promise<DatabaseBackupStatus> {
       updatedAt: null,
       downloadFileName: null,
       reason: "当前服务端只支持 PostgreSQL，DATABASE_URL 不是 PostgreSQL 连接串",
+      restoreReason: "当前服务端只支持 PostgreSQL，DATABASE_URL 不是 PostgreSQL 连接串",
+      maxRestoreUploadBytes: DATABASE_RESTORE_UPLOAD_LIMIT_BYTES,
+      restoreUploadAccept: DATABASE_RESTORE_UPLOAD_ACCEPT,
     };
   }
 
   const raw = databaseUrl();
   const pgDumpReady = await commandAvailable(PG_DUMP_COMMAND);
+  const pgRestoreReady = await commandAvailable(PG_RESTORE_COMMAND);
   const sizeBytes = await postgresDatabaseSize().catch(() => null);
   return {
     supported: pgDumpReady,
     provider: "postgresql",
     backupMethod: pgDumpReady ? "pg-dump" : null,
+    restoreSupported: pgRestoreReady,
+    restoreMethod: pgRestoreReady ? "pg-restore" : null,
     exists: true,
     maintenanceActive: isDatabaseMaintenanceActive(),
     maintenanceMessage: getDatabaseMaintenanceMessage(),
@@ -174,6 +269,9 @@ export async function getDatabaseBackupStatus(): Promise<DatabaseBackupStatus> {
     updatedAt: null,
     downloadFileName: postgresBackupFileName(),
     reason: pgDumpReady ? null : `当前环境未找到 ${PG_DUMP_COMMAND}，无法导出 PostgreSQL 备份`,
+    restoreReason: pgRestoreReady ? null : `当前环境未找到 ${PG_RESTORE_COMMAND}，无法恢复 PostgreSQL 备份`,
+    maxRestoreUploadBytes: DATABASE_RESTORE_UPLOAD_LIMIT_BYTES,
+    restoreUploadAccept: DATABASE_RESTORE_UPLOAD_ACCEPT,
   };
 }
 
@@ -199,4 +297,53 @@ export async function createDatabaseBackupSnapshot() {
 export async function cleanupDatabaseBackupSnapshot(snapshot: { filePath: string; tempDir: string }) {
   await removeIfExists(snapshot.filePath);
   await rm(snapshot.tempDir, { recursive: true, force: true }).catch(() => undefined);
+}
+
+export async function restoreDatabaseBackupSnapshot(input: {
+  filePath: string;
+  fileName: string;
+  fileSizeBytes: number;
+}): Promise<DatabaseRestoreResult> {
+  if (detectProvider() !== "postgresql") {
+    throw new Error("当前服务端只支持 PostgreSQL 在线恢复");
+  }
+  if (!(await commandAvailable(PG_RESTORE_COMMAND))) {
+    throw new Error(`当前环境未找到 ${PG_RESTORE_COMMAND}，无法恢复 PostgreSQL 备份`);
+  }
+  if (!beginDatabaseMaintenance("数据库恢复中，请稍后再试")) {
+    throw new Error("数据库当前正在维护中，请稍后再试");
+  }
+
+  const startedAt = Date.now();
+  let restoreError: unknown = null;
+
+  try {
+    await prisma.$disconnect().catch(() => undefined);
+    await runPgRestore(input.filePath);
+  } catch (error) {
+    restoreError = error;
+  }
+
+  try {
+    await prisma.$connect();
+    await prisma.$queryRawUnsafe("SELECT 1");
+    await Promise.all([
+      loadFeatures().catch(() => undefined),
+      loadStorageConfig().catch(() => undefined),
+    ]);
+  } catch (error) {
+    if (!restoreError) restoreError = error;
+  }
+
+  endDatabaseMaintenance();
+
+  if (restoreError) throw restoreError;
+
+  return {
+    restoredAt: new Date().toISOString(),
+    durationMs: Date.now() - startedAt,
+    fileName: input.fileName,
+    fileSizeBytes: input.fileSizeBytes,
+    provider: "postgresql",
+  };
 }

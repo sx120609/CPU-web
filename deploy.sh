@@ -176,6 +176,79 @@ maybe_restart_running_service() {
   fi
 }
 
+can_use_systemd() {
+  command -v systemctl >/dev/null 2>&1 || return 1
+  [ -d /run/systemd/system ] || return 1
+  systemctl show-environment >/dev/null 2>&1
+}
+
+start_managed_service() {
+  local service_name="$1"
+  if can_use_systemd; then
+    sudo systemctl enable "$service_name" >/dev/null 2>&1 || true
+    sudo systemctl restart "$service_name"
+    return 0
+  fi
+  if command -v service >/dev/null 2>&1; then
+    sudo service "$service_name" restart >/dev/null 2>&1 || sudo service "$service_name" start >/dev/null 2>&1
+    return $?
+  fi
+  return 1
+}
+
+postgres_is_ready() {
+  sudo -u postgres psql -d postgres -c "SELECT 1" >/dev/null 2>&1
+}
+
+start_postgres_cluster_fallback() {
+  command -v pg_lsclusters >/dev/null 2>&1 || return 1
+  command -v pg_ctlcluster >/dev/null 2>&1 || return 1
+  local cluster version name
+  cluster="$(pg_lsclusters --no-header 2>/dev/null | awk 'NR==1 { print $1 " " $2 }')"
+  [ -n "$cluster" ] || return 1
+  read -r version name <<<"$cluster"
+  sudo pg_ctlcluster --skip-systemctl-redirect "$version" "$name" start >/dev/null 2>&1 \
+    || sudo pg_ctlcluster "$version" "$name" start >/dev/null 2>&1
+}
+
+ensure_postgres_started() {
+  postgres_is_ready && return 0
+  if start_managed_service postgresql; then
+    postgres_is_ready && return 0
+  fi
+  if start_postgres_cluster_fallback; then
+    log "当前环境未启用 systemd，已通过 pg_ctlcluster 启动 PostgreSQL"
+    postgres_is_ready && return 0
+  fi
+  err "PostgreSQL 启动失败，请检查数据库服务状态"
+}
+
+redis_is_ready() {
+  redis-cli ping >/dev/null 2>&1
+}
+
+start_redis_fallback() {
+  local conf="/etc/redis/redis.conf"
+  if [ -f "$conf" ]; then
+    sudo redis-server "$conf" --supervised no --daemonize yes >/dev/null 2>&1
+  else
+    sudo redis-server --daemonize yes >/dev/null 2>&1
+  fi
+}
+
+ensure_redis_started() {
+  redis_is_ready && return 0
+  if start_managed_service redis-server; then
+    redis_is_ready && return 0
+  fi
+  if start_redis_fallback; then
+    log "当前环境未启用 systemd，已直接以 daemon 模式启动 Redis"
+    redis_is_ready && return 0
+  fi
+  warn "Redis 启动失败，请手动检查 Redis 服务状态"
+  return 1
+}
+
 postgres_init_db_name() {
   printf '%s' "${POSTGRES_DB_NAME:-${CMD_ARG_1:-cpu_web}}"
 }
@@ -217,14 +290,7 @@ ensure_postgres() {
     sudo apt-get install -y postgresql postgresql-contrib
   fi
 
-  if command -v systemctl >/dev/null 2>&1; then
-    sudo systemctl enable postgresql >/dev/null 2>&1 || true
-    sudo systemctl restart postgresql
-  else
-    sudo service postgresql restart
-  fi
-
-  sudo -u postgres psql -d postgres -c "SELECT 1" >/dev/null
+  ensure_postgres_started
 }
 
 ensure_redis() {
@@ -239,14 +305,7 @@ ensure_redis() {
     sudo apt-get install -y redis-server redis-tools
   fi
 
-  if command -v systemctl >/dev/null 2>&1; then
-    sudo systemctl enable redis-server >/dev/null 2>&1 || true
-    sudo systemctl restart redis-server
-  else
-    sudo service redis-server restart
-  fi
-
-  redis-cli ping >/dev/null 2>&1 || warn "redis-cli ping 失败，请手动检查 Redis 服务状态"
+  ensure_redis_started || true
 }
 
 # ---------- 环境检查与安装 ----------

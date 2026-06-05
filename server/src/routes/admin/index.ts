@@ -1,5 +1,10 @@
 import { Router } from "express";
 import multer from "multer";
+import { randomUUID } from "node:crypto";
+import { mkdirSync } from "node:fs";
+import { unlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "../../prisma";
@@ -56,7 +61,9 @@ import {
 import {
   cleanupDatabaseBackupSnapshot,
   createDatabaseBackupSnapshot,
+  databaseRestoreUploadLimitBytes,
   getDatabaseBackupStatus,
+  restoreDatabaseBackupSnapshot,
 } from "../../services/databaseBackup";
 import {
   getMediaStorageAdminConfig,
@@ -88,6 +95,20 @@ import {
 import { qqBotAdminRouter } from "./qqbot";
 
 export const adminRouter = Router();
+const DATABASE_RESTORE_UPLOAD_DIR = path.join(tmpdir(), "cpu-web-db-restore-upload");
+mkdirSync(DATABASE_RESTORE_UPLOAD_DIR, { recursive: true });
+
+const databaseRestoreUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, DATABASE_RESTORE_UPLOAD_DIR),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname || "").slice(0, 20);
+      cb(null, `${Date.now()}-${randomUUID()}${ext}`);
+    },
+  }),
+  limits: { fileSize: databaseRestoreUploadLimitBytes() },
+});
+
 const cloudDriveUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: cloudDriveProxyUploadLimitBytes() },
@@ -123,6 +144,41 @@ adminRouter.get("/database/backup", adminOnly, async (_req, res, next) => {
   } catch (e) {
     if (snapshot) await cleanupDatabaseBackupSnapshot(snapshot);
     next(e);
+  }
+});
+
+adminRouter.post("/database/restore", adminOnly, (req, res, next) => {
+  databaseRestoreUpload.single("file")(req, res, (error: any) => {
+    if (!error) return next();
+    if (error?.code === "LIMIT_FILE_SIZE") {
+      return next(Errors.badRequest("恢复备份文件过大，请分卷压缩或改用命令行恢复"));
+    }
+    return next(error);
+  });
+}, async (req, res, next) => {
+  const file = req.file;
+  try {
+    if (!file?.path || !file.size) throw Errors.badRequest("请先选择要恢复的数据库备份文件");
+    ok(res, await restoreDatabaseBackupSnapshot({
+      filePath: file.path,
+      fileName: file.originalname || file.filename,
+      fileSizeBytes: file.size,
+    }));
+  } catch (e: any) {
+    if (e?.message === "数据库当前正在维护中，请稍后再试") {
+      next(Errors.conflict(e.message));
+      return;
+    }
+    if (
+      e?.message === "当前服务端只支持 PostgreSQL 在线恢复"
+      || String(e?.message || "").includes("无法恢复 PostgreSQL 备份")
+    ) {
+      next(Errors.badRequest(e.message));
+      return;
+    }
+    next(e);
+  } finally {
+    if (file?.path) await unlink(file.path).catch(() => undefined);
   }
 });
 

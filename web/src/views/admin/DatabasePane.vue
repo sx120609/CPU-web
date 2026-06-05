@@ -3,10 +3,18 @@
     <div class="hero">
       <div>
         <h2>数据管理</h2>
-        <p>当前服务端已统一使用 PostgreSQL。这里提供当前主库识别、连接信息展示和在线备份下载功能。</p>
+        <p>当前服务端已统一使用 PostgreSQL。这里可以查看主库状态、下载备份，也可以上传已有备份并直接恢复当前主库。</p>
       </div>
       <el-button :loading="loading" @click="loadStatus">刷新状态</el-button>
     </div>
+
+    <el-alert
+      v-if="status?.maintenanceActive"
+      type="warning"
+      :closable="false"
+      :title="status.maintenanceMessage"
+      show-icon
+    />
 
     <el-alert
       v-if="status && !status.supported"
@@ -17,10 +25,10 @@
     />
 
     <el-alert
-      v-else-if="status?.maintenanceActive"
+      v-if="status && !status.restoreSupported"
       type="warning"
       :closable="false"
-      :title="status.maintenanceMessage"
+      :title="status.restoreReason || '当前数据库暂不支持在线恢复'"
       show-icon
     />
 
@@ -41,6 +49,11 @@
         <div class="hint">{{ backupMethodHint }}</div>
       </article>
       <article class="status-card">
+        <div class="label">恢复方式</div>
+        <div class="value">{{ restoreMethodLabel }}</div>
+        <div class="hint">{{ restoreMethodHint }}</div>
+      </article>
+      <article class="status-card">
         <div class="label">当前体积</div>
         <div class="value">{{ formatBytes(status.sizeBytes) }}</div>
         <div class="hint">这里展示的是当前 PostgreSQL 数据库体积。</div>
@@ -55,6 +68,11 @@
         <div class="value path">{{ status.downloadFileName || "暂无" }}</div>
         <div class="hint">下载时会直接使用这个文件名。</div>
       </article>
+      <article class="status-card">
+        <div class="label">恢复上传限制</div>
+        <div class="value">{{ formatBytes(status.maxRestoreUploadBytes) }}</div>
+        <div class="hint">仅建议上传从本页下载得到的 PostgreSQL 自定义备份文件。</div>
+      </article>
     </div>
 
     <article v-if="status" class="action-card">
@@ -66,17 +84,47 @@
         下载数据库备份
       </el-button>
     </article>
+
+    <article v-if="status" class="action-card danger-card">
+      <div class="copy">
+        <h3>上传并恢复 PostgreSQL 备份</h3>
+        <p>{{ restoreHint }}</p>
+        <div class="restore-meta">
+          <div class="restore-file">{{ restoreFile ? restoreFile.name : "未选择备份文件" }}</div>
+          <div class="restore-file-hint">
+            {{ restoreFile ? `文件大小：${formatBytes(restoreFile.size)}` : `支持选择：${status.restoreUploadAccept || ".dump,.backup,.tar"}` }}
+          </div>
+        </div>
+      </div>
+      <div class="action-buttons">
+        <input
+          ref="restoreInput"
+          class="hidden-file-input"
+          type="file"
+          :accept="status.restoreUploadAccept || '.dump,.backup,.tar'"
+          @change="onRestoreFileChange"
+        />
+        <el-button :disabled="!canRestore" @click="selectRestoreFile">选择备份文件</el-button>
+        <el-button v-if="restoreFile" @click="clearRestoreFile">清空</el-button>
+        <el-button type="danger" :loading="restoring" :disabled="!canRestore || !restoreFile" @click="confirmRestore">
+          上传并恢复
+        </el-button>
+      </div>
+    </article>
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { ElMessage } from "element-plus";
-import { adminApi, type DatabaseBackupStatus } from "@/api/admin";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { adminApi, type DatabaseBackupStatus, type DatabaseRestoreResult } from "@/api/admin";
 
 const loading = ref(false);
 const downloading = ref(false);
+const restoring = ref(false);
 const status = ref<DatabaseBackupStatus | null>(null);
+const restoreInput = ref<HTMLInputElement | null>(null);
+const restoreFile = ref<File | null>(null);
 
 onMounted(() => {
   void loadStatus();
@@ -104,6 +152,14 @@ function formatTime(value: string | null | undefined) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "未知";
   return date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function formatDuration(durationMs: number) {
+  if (durationMs < 1000) return `${durationMs} ms`;
+  if (durationMs < 60_000) return `${(durationMs / 1000).toFixed(1)} 秒`;
+  const minutes = Math.floor(durationMs / 60_000);
+  const seconds = Math.round((durationMs % 60_000) / 1000);
+  return `${minutes} 分 ${seconds} 秒`;
 }
 
 function buildFallbackFileName() {
@@ -137,8 +193,26 @@ const backupMethodHint = computed(() => {
   return status.value?.reason || "当前没有可用的在线备份方式。";
 });
 
+const restoreMethodLabel = computed(() => {
+  if (status.value?.restoreMethod === "pg-restore") return "pg_restore 在线恢复";
+  return "不可用";
+});
+
+const restoreMethodHint = computed(() => {
+  if (status.value?.restoreMethod === "pg-restore") {
+    return "服务端会先进入维护模式，再用 pg_restore 覆盖当前 PostgreSQL 主库。";
+  }
+  return status.value?.restoreReason || "当前没有可用的在线恢复方式。";
+});
+
 const canDownload = computed(() =>
   Boolean(status.value?.supported) &&
+  Boolean(status.value?.exists) &&
+  !Boolean(status.value?.maintenanceActive)
+);
+
+const canRestore = computed(() =>
+  Boolean(status.value?.restoreSupported) &&
   Boolean(status.value?.exists) &&
   !Boolean(status.value?.maintenanceActive)
 );
@@ -149,6 +223,28 @@ const downloadHint = computed(() => {
   }
   return status.value?.reason || "当前数据库暂不支持在线备份。";
 });
+
+const restoreHint = computed(() => {
+  if (status.value?.provider === "postgresql") {
+    return "恢复会覆盖当前 PostgreSQL 主库，并在恢复期间临时进入维护模式。建议只上传从本页下载得到的备份文件。";
+  }
+  return status.value?.restoreReason || "当前数据库暂不支持在线恢复。";
+});
+
+function selectRestoreFile() {
+  if (restoreInput.value) restoreInput.value.value = "";
+  restoreInput.value?.click();
+}
+
+function clearRestoreFile() {
+  restoreFile.value = null;
+  if (restoreInput.value) restoreInput.value.value = "";
+}
+
+function onRestoreFileChange(event: Event) {
+  const input = event.target as HTMLInputElement | null;
+  restoreFile.value = input?.files?.[0] || null;
+}
 
 async function downloadBackup() {
   if (!status.value?.supported || !status.value.exists) return;
@@ -169,6 +265,51 @@ async function downloadBackup() {
   } finally {
     downloading.value = false;
   }
+}
+
+async function confirmRestore() {
+  if (!restoreFile.value || !canRestore.value) return;
+  try {
+    await ElMessageBox.prompt(
+      "这会覆盖当前 PostgreSQL 主库，恢复期间站点会进入维护模式。请输入 RESTORE 确认继续。",
+      "确认恢复数据库",
+      {
+        confirmButtonText: "上传并恢复",
+        cancelButtonText: "取消",
+        inputPattern: /^RESTORE$/,
+        inputErrorMessage: "请输入 RESTORE",
+        type: "warning",
+      },
+    );
+  } catch {
+    return;
+  }
+  await uploadAndRestore();
+}
+
+async function uploadAndRestore() {
+  if (!restoreFile.value) return;
+  restoring.value = true;
+  try {
+    const formData = new FormData();
+    formData.append("file", restoreFile.value);
+    const result = await adminApi.restoreDatabaseBackup(formData, {
+      timeout: 10 * 60 * 1000,
+      suppressErrorMessage: true,
+    });
+    handleRestoreSuccess(result);
+    clearRestoreFile();
+    await loadStatus();
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.message || error?.message || "数据库恢复失败");
+    await loadStatus().catch(() => undefined);
+  } finally {
+    restoring.value = false;
+  }
+}
+
+function handleRestoreSuccess(result: DatabaseRestoreResult) {
+  ElMessage.success(`数据库已恢复完成，耗时 ${formatDuration(result.durationMs)}`);
 }
 </script>
 
@@ -217,6 +358,11 @@ async function downloadBackup() {
   padding: 16px 18px;
 }
 
+.danger-card {
+  border-color: #f7d8d8;
+  background: linear-gradient(180deg, #fffefe 0%, #fff7f7 100%);
+}
+
 .label {
   font-size: 12px;
   color: #6b7280;
@@ -246,6 +392,35 @@ async function downloadBackup() {
   gap: 20px;
 }
 
+.action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.restore-meta {
+  margin-top: 10px;
+}
+
+.restore-file {
+  font-size: 14px;
+  font-weight: 600;
+  color: #12314f;
+  word-break: break-all;
+}
+
+.restore-file-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
 @media (max-width: 860px) {
   .hero,
   .action-card {
@@ -255,6 +430,10 @@ async function downloadBackup() {
 
   .status-grid {
     grid-template-columns: 1fr;
+  }
+
+  .action-buttons {
+    justify-content: flex-start;
   }
 }
 </style>
