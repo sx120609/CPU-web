@@ -96,11 +96,18 @@
     </main>
 
     <footer v-if="!hideChrome" class="footer">
-      <span>© 2026 药大拾间 · 校园互助与服务平台</span>
-      <span class="dot">·</span>
-      <a href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener">GitHub</a>
-      <span class="dot">·</span>
-      <span>非学校官方站点</span>
+      <span class="footer-item">© 2026 药大拾间 · 校园互助与服务平台</span>
+      <a class="footer-item" href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener">GitHub</a>
+      <span class="footer-item">非学校官方站点</span>
+      <a
+        v-if="site.siteFilingNumber"
+        class="footer-item"
+        href="https://beian.miit.gov.cn/"
+        target="_blank"
+        rel="noopener"
+      >
+        {{ site.siteFilingNumber }}
+      </a>
     </footer>
 
     <nav class="mobile-tabbar" :class="{ 'is-hidden': keyboardOpen }" aria-label="移动端主导航" :style="{ gridTemplateColumns: `repeat(${mobileNavItems.length}, 1fr)` }">
@@ -664,13 +671,24 @@ async function onUserCmd(cmd: string) {
   background: #fff;
   border-top: 1px solid #eef0f4;
   padding: 16px 20px;
-  text-align: center;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 14px;
   font-size: 12px;
   color: #9ca3af;
 }
 
-.footer a { color: var(--cpu-primary); text-decoration: none; }
-.footer .dot { margin: 0 8px; }
+.footer-item {
+  color: inherit;
+  line-height: 1.6;
+}
+
+.footer a.footer-item {
+  color: var(--cpu-primary);
+  text-decoration: none;
+}
 
 .mobile-tabbar {
   display: none;
@@ -849,7 +867,9 @@ async function onUserCmd(cmd: string) {
   }
 
   .footer {
-    display: none;
+    padding: 12px 12px calc(12px + 68px + env(safe-area-inset-bottom));
+    gap: 6px 12px;
+    font-size: 11px;
   }
 
   .mobile-tabbar {

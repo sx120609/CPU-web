@@ -22,6 +22,7 @@ export type ReputationLevelConfig = {
 };
 export type SiteConfig = {
   siteOrigin: string;
+  siteFilingNumber: string;
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
   aiReviewModel: string;
@@ -97,6 +98,7 @@ export const DEFAULT_REPUTATION_LEVELS: ReputationLevelConfig[] = [
 
 const GLOBAL_PINNED_TOPICS_KEY = "forum.globalPinnedTopics";
 const SITE_ORIGIN_KEY = "site.origin";
+const SITE_FILING_NUMBER_KEY = "site.filingNumber";
 const AI_REVIEW_ENABLED_KEY = "ai.review.enabled";
 const AI_REVIEW_PROVIDER_KEY = "ai.review.provider";
 const AI_REVIEW_MODEL_KEY = "ai.review.model";
@@ -252,6 +254,7 @@ let globalPinnedTopicIdsCache: number[] = [];
 
 const configCache: SiteConfig = {
   siteOrigin: "",
+  siteFilingNumber: "",
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
   aiReviewModel: "deepseek-v4-flash",
@@ -318,6 +321,14 @@ export function normalizeSiteOrigin(input: string | null | undefined): string {
   return url.origin.replace(/\/+$/, "");
 }
 
+export function normalizeSiteFilingNumber(input: string | null | undefined): string {
+  return String(input ?? "")
+    .replace(/\r\n/g, "\n")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 120);
+}
+
 /** 服务启动时加载一次；之后每次写入会同步更新缓存 */
 export async function loadFeatures(): Promise<void> {
   let hasAiReviewThreshold = false;
@@ -330,6 +341,7 @@ export async function loadFeatures(): Promise<void> {
           ...ALL_FEATURES.map(keyOf),
           GLOBAL_PINNED_TOPICS_KEY,
           SITE_ORIGIN_KEY,
+          SITE_FILING_NUMBER_KEY,
           AI_REVIEW_ENABLED_KEY,
           AI_REVIEW_PROVIDER_KEY,
           AI_REVIEW_MODEL_KEY,
@@ -390,6 +402,10 @@ export async function loadFeatures(): Promise<void> {
       } catch {
         configCache.siteOrigin = "";
       }
+      continue;
+    }
+    if (r.key === SITE_FILING_NUMBER_KEY) {
+      configCache.siteFilingNumber = normalizeSiteFilingNumber(r.value);
       continue;
     }
     if (r.key === AI_REVIEW_ENABLED_KEY) {
@@ -648,6 +664,10 @@ export function getSiteOrigin(): string {
   return configCache.siteOrigin;
 }
 
+export function getSiteFilingNumber(): string {
+  return configCache.siteFilingNumber;
+}
+
 export function featureForBoardType(type: string | null | undefined): FeatureKey | null {
   if (type === "announce") return null;
   if (type === "market") return "market";
@@ -717,6 +737,18 @@ export async function setSiteOrigin(input: string | null | undefined): Promise<S
     create: { key: SITE_ORIGIN_KEY, value: siteOrigin },
   });
   configCache.siteOrigin = siteOrigin;
+  await broadcastSiteSettingsReload();
+  return getSiteConfig();
+}
+
+export async function setSiteFilingNumber(input: string | null | undefined): Promise<SiteConfig> {
+  const siteFilingNumber = normalizeSiteFilingNumber(input);
+  await prisma.siteSetting.upsert({
+    where: { key: SITE_FILING_NUMBER_KEY },
+    update: { value: siteFilingNumber },
+    create: { key: SITE_FILING_NUMBER_KEY, value: siteFilingNumber },
+  });
+  configCache.siteFilingNumber = siteFilingNumber;
   await broadcastSiteSettingsReload();
   return getSiteConfig();
 }

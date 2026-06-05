@@ -349,6 +349,7 @@ const videoFilters = reactive<{ status: "" | "pending" | "manual_review" | "reje
 });
 const form = reactive<SiteConfig>({
   siteOrigin: "",
+  siteFilingNumber: "",
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
   aiReviewModel: "deepseek-v4-flash",

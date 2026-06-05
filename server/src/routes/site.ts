@@ -3,7 +3,7 @@ import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { ok } from "../utils/response";
 import { withCache } from "../services/cache";
-import { getFeatures, getSiteOrigin } from "../services/siteSettings";
+import { getFeatures, getSiteFilingNumber, getSiteOrigin } from "../services/siteSettings";
 
 export const siteRouter = Router();
 
@@ -17,7 +17,10 @@ siteRouter.get("/features", async (_req, res, next) => {
 /** 公开：站点基础配置。不要放敏感内容。 */
 siteRouter.get("/config", async (_req, res, next) => {
   try {
-    ok(res, await withCache("site", ["config"], 60_000, async () => ({ siteOrigin: getSiteOrigin() })));
+    ok(res, await withCache("site", ["config"], 60_000, async () => ({
+      siteOrigin: getSiteOrigin(),
+      siteFilingNumber: getSiteFilingNumber(),
+    })));
   } catch (e) { next(e); }
 });
 

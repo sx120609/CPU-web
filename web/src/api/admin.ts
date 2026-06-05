@@ -2,6 +2,7 @@ import { request, type RequestOptions } from "./request";
 
 export type SiteConfig = {
   siteOrigin: string;
+  siteFilingNumber: string;
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
   aiReviewModel: string;
@@ -520,6 +521,7 @@ export const adminApi = {
     request.post<CloudDriveEntry>("/admin/cloud-drive/upload", formData, options),
   updateSiteConfig: (patch: {
     siteOrigin?: string;
+    siteFilingNumber?: string;
     aiReviewEnabled?: boolean;
     aiReviewProvider?: string;
     aiReviewModel?: string;

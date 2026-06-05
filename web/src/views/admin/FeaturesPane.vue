@@ -36,6 +36,23 @@
         </div>
       </div>
 
+      <div class="site-config">
+        <div class="config-copy">
+          <div class="card-title">备案号</div>
+          <div class="desc">显示在全站底部。通常填写类似“苏 ICP 备 2024000000 号-1”的备案编号，留空则不显示。</div>
+        </div>
+        <div class="config-form">
+          <el-input
+            v-model="siteFilingNumber"
+            clearable
+            maxlength="120"
+            placeholder="苏ICP备2024000000号-1"
+            @keyup.enter="saveSiteConfig"
+          />
+          <el-button type="primary" :loading="savingConfig" @click="saveSiteConfig">保存</el-button>
+        </div>
+      </div>
+
       <button type="button" class="section-toggle" :class="{ expanded: trustConfigExpanded }" @click="trustConfigExpanded = !trustConfigExpanded">
         <div class="section-toggle-copy">
           <div class="section-toggle-top">
@@ -180,6 +197,7 @@ const aiConfigExpanded = ref(false);
 const aiPromptsExpanded = ref(false);
 const trustConfigExpanded = ref(false);
 const siteOrigin = ref("");
+const siteFilingNumber = ref("");
 const aiReviewEnabled = ref(false);
 const aiReviewProvider = ref("deepseek");
 const aiReviewModel = ref("deepseek-v4-flash");
@@ -263,6 +281,7 @@ async function reload() {
     Object.assign(features, r);
     site.apply(r);
     siteOrigin.value = config.siteOrigin;
+    siteFilingNumber.value = config.siteFilingNumber;
     aiReviewEnabled.value = config.aiReviewEnabled;
     aiReviewProvider.value = config.aiReviewProvider;
     aiReviewModel.value = config.aiReviewModel;
@@ -301,9 +320,17 @@ async function reload() {
 async function saveSiteConfig() {
   savingConfig.value = true;
   try {
-    const config = await adminApi.updateSiteConfig({ siteOrigin: siteOrigin.value });
+    const config = await adminApi.updateSiteConfig({
+      siteOrigin: siteOrigin.value,
+      siteFilingNumber: siteFilingNumber.value,
+    });
     siteOrigin.value = config.siteOrigin;
-    ElMessage.success(config.siteOrigin ? "网站域名已保存" : "已清空网站域名");
+    siteFilingNumber.value = config.siteFilingNumber;
+    site.applyConfig({
+      siteOrigin: config.siteOrigin,
+      siteFilingNumber: config.siteFilingNumber,
+    });
+    ElMessage.success(config.siteOrigin || config.siteFilingNumber ? "基础配置已保存" : "已清空网站域名和备案号");
   } finally {
     savingConfig.value = false;
   }

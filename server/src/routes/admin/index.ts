@@ -19,6 +19,7 @@ import {
   getSitePromptDefaults,
   removeTopicFromGlobalPins,
   setFeature,
+  setSiteFilingNumber,
   setTopicGlobalPinned,
   setAiReviewConfig,
   setCommunityTrustConfig,
@@ -1873,6 +1874,7 @@ adminRouter.post("/cloud-drive/upload", adminOnly, (req, res, next) => {
 
 const siteConfigPatchSchema = z.object({
   siteOrigin: z.string().trim().max(240).optional(),
+  siteFilingNumber: z.string().trim().max(120).optional(),
   aiReviewEnabled: z.boolean().optional(),
   aiReviewProvider: z.string().trim().max(40).optional(),
   aiReviewModel: z.string().trim().max(80).optional(),
@@ -1992,6 +1994,9 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
     }
     if (req.body.siteOrigin !== undefined) {
       await setSiteOrigin(req.body.siteOrigin ?? "");
+    }
+    if (req.body.siteFilingNumber !== undefined) {
+      await setSiteFilingNumber(req.body.siteFilingNumber ?? "");
     }
     const config = getSiteConfig();
     await invalidateSiteSettingCaches();
