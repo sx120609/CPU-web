@@ -46,7 +46,7 @@
         </div>
       </header>
 
-      <h1 class="post-title">
+      <h1 v-if="!titlelessWeiwall" class="post-title">
         <span v-if="topic.globalPinned" class="badge global-pin">全局置顶</span>
         <span v-if="topic.pinned" class="badge pin">板块置顶</span>
         <span v-if="topic.locked" class="badge lock">🔒</span>
@@ -751,6 +751,7 @@ const sourceNotice = computed(() => {
 
 const isCampusWallTopic = computed(() => topic.value?.board?.slug === "campus-wall" || topic.value?.metadata?.externalPlatform === "weiwall");
 const isAnnouncementTopic = computed(() => topic.value?.board?.type === "announce");
+const titlelessWeiwall = computed(() => isCampusWallTopic.value && (!topic.value?.title || topic.value?.title === "none"));
 const backLabel = computed(() => {
   if (isCampusWallTopic.value) return "返回校园墙";
   if (isAnnouncementTopic.value) return "返回上页";

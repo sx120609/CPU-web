@@ -73,10 +73,10 @@ topicRouter.get("/", async (req, res, next) => {
     else if (pinnedMode === "exclude") where.pinned = false;
 
     const orderBy: any = pinnedMode === "only"
-      ? [{ updatedAt: "desc" }, { createdAt: "desc" }]
+      ? [{ createdAt: "desc" }]
       : sort === "hot"
         ? [{ pinned: "desc" }, { likeCount: "desc" }, { lastReplyAt: "desc" }]
-        : [{ pinned: "desc" }, { lastReplyAt: "desc" }, { createdAt: "desc" }];
+        : [{ pinned: "desc" }, { createdAt: "desc" }];
 
     const cached = await withCache(
       "forum-list",

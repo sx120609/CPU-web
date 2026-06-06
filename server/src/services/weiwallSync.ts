@@ -212,12 +212,7 @@ function renderExternalContent(content: unknown, images: Array<string | null | u
 function deriveLocalTitle(topic: WeiwallTopicRow) {
   const explicit = trimTo(topic.title, 120);
   if (explicit && explicit !== "none") return explicit;
-  const firstLine = String(topic.content ?? "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find(Boolean);
-  if (firstLine) return firstLine.slice(0, 120);
-  return `校园墙帖子 ${externalId(topic.id)}`;
+  return "none";
 }
 
 function normalizeExternalAuthor(userInfo?: WeiwallUserInfo | null) {
@@ -823,6 +818,18 @@ async function syncSingleTopic(
     },
   });
 
+  const needsReplyAuthorBackfill = existingMap
+    ? await prisma.weiwallReplyMap.count({
+        where: {
+          externalTopicId,
+          OR: [
+            { externalAuthorName: null },
+            { externalAuthorName: "" },
+          ],
+        },
+      })
+    : 0;
+
   if (looksLikeWeiwallAdvertisement(topic)) {
     if (existingMap) {
       await prisma.$transaction(async (tx) => {
@@ -847,7 +854,11 @@ async function syncSingleTopic(
   const shouldSyncComments =
     Number(topic.commentCount ?? 0) > 0
     && !control.commentFetchStopped
-    && (!existingMap || Number(topic.commentCount ?? 0) !== existingMap.lastCommentCount);
+    && (
+      !existingMap
+      || Number(topic.commentCount ?? 0) !== existingMap.lastCommentCount
+      || needsReplyAuthorBackfill > 0
+    );
 
   const commentFetchCounters = { commentsFetched: 0 };
   const comments = shouldSyncComments

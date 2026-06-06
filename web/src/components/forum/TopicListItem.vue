@@ -8,7 +8,7 @@
         <el-tag v-if="topic.board" size="small" :style="{ background: topic.board.color || '#168776', color: '#fff', border: 'none' }" class="tag">
           {{ topic.board.name }}
         </el-tag>
-        <span class="title">{{ topic.title }}</span>
+        <span v-if="!titlelessWeiwall" class="title">{{ topic.title }}</span>
         <el-tag
           v-for="tag in aiTags"
           :key="tag.name"
@@ -38,6 +38,9 @@
         <span><el-icon><ChatLineRound /></el-icon> {{ topic.replyCount }}</span>
         <span><el-icon><Star /></el-icon> {{ topic.likeCount }}</span>
       </div>
+      <div v-if="titlelessWeiwall && weiwallPreview" class="line3">
+        {{ weiwallPreview }}
+      </div>
     </div>
     <!-- 价格/评分等板块特化的右侧小标 -->
     <div v-if="metaPrice !== undefined" class="price">¥{{ metaPrice }}</div>
@@ -63,6 +66,17 @@ const metaRating = computed(() => {
 });
 const hotScore = computed(() => Math.round((props.topic.likeCount ?? 0) * 5 + (props.topic.replyCount ?? 0) * 3 + (props.topic.viewCount ?? 0) * 0.03));
 const aiTags = computed(() => Array.isArray(props.topic.tags) ? props.topic.tags.slice(0, 2) : []);
+const titlelessWeiwall = computed(() => props.topic.metadata?.externalPlatform === "weiwall" && (!props.topic.title || props.topic.title === "none"));
+const weiwallPreview = computed(() => {
+  if (!titlelessWeiwall.value) return "";
+  return String(props.topic.content || "")
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, " ")
+    .replace(/\[[^\]]+\]\([^)]+\)/g, "$1")
+    .replace(/[#>*_`~\-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+});
 </script>
 
 <style scoped>
@@ -97,6 +111,17 @@ const aiTags = computed(() => Array.isArray(props.topic.tags) ? props.topic.tags
   color: #6b7280;
   margin-top: 4px;
   min-width: 0;
+}
+.line3 {
+  margin-top: 6px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #1f2937;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 .line2 span { display: inline-flex; align-items: center; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
 .line2 .author { color: var(--cpu-primary); }
