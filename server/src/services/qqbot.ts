@@ -4200,35 +4200,73 @@ function rejectPendingWebSocketActions(reason: string) {
   }
 }
 
+function getQqBotWebSocketCtor() {
+  const globalCtor = (globalThis as any).WebSocket;
+  if (typeof globalCtor === "function") return globalCtor;
+  try {
+    const wsModule = require("ws");
+    return wsModule?.WebSocket ?? wsModule?.default ?? wsModule;
+  } catch (error) {
+    console.warn("[qqbot] failed to load ws fallback", error);
+    return null;
+  }
+}
+
+function bindWebSocketEvent(socket: any, event: "open" | "message" | "close" | "error", handler: (payload?: any) => void) {
+  if (typeof socket?.addEventListener === "function") {
+    socket.addEventListener(event, handler);
+    return;
+  }
+  if (typeof socket?.on !== "function") {
+    throw new Error("当前 WebSocket 实例不支持事件监听");
+  }
+  if (event === "open") {
+    socket.on("open", () => handler());
+    return;
+  }
+  if (event === "message") {
+    socket.on("message", (data: any) => handler({ data }));
+    return;
+  }
+  if (event === "close") {
+    socket.on("close", (code: number, reason: Buffer | string) => {
+      handler({
+        code,
+        reason: Buffer.isBuffer(reason) ? reason.toString("utf8") : String(reason || ""),
+      });
+    });
+    return;
+  }
+  socket.on("error", (error: any) => handler(error));
+}
+
 export async function connectQqBotWebSocket() {
   const config = await getQqBotConfigRaw();
   if (!config.enabled || !isWebSocketUrl(config.napcatBaseUrl)) return;
   if (wsClient && (wsClient.readyState === 0 || wsClient.readyState === 1)) return;
   if (wsConnecting) return;
-  const WebSocketCtor = (globalThis as any).WebSocket;
+  const WebSocketCtor = getQqBotWebSocketCtor();
   if (!WebSocketCtor) {
-    setWebSocketError("当前 Node.js 运行环境不支持全局 WebSocket");
-    console.warn("[qqbot] current Node.js runtime has no global WebSocket");
+    setWebSocketError("当前 Node.js 运行环境不支持 WebSocket（缺少全局 WebSocket，且 ws 兼容包未加载成功）");
+    console.warn("[qqbot] current Node.js runtime has no usable WebSocket implementation");
     return;
   }
   wsConnecting = true;
   try {
-    const socket = new WebSocketCtor(buildWebSocketUrl(config), {
-      headers: config.accessToken ? { Authorization: `Bearer ${config.accessToken}` } : undefined,
-    });
+    const socket = new WebSocketCtor(buildWebSocketUrl(config));
     wsClient = socket;
-    socket.addEventListener("open", () => {
+    bindWebSocketEvent(socket, "open", () => {
       wsConnecting = false;
       wsLastError = "";
       logQqBotMessage({ direction: "outbound", eventType: "websocket", status: "ok", result: "connected" });
     });
-    socket.addEventListener("message", (event: any) => {
+    bindWebSocketEvent(socket, "message", (event: any) => {
       const text = typeof event.data === "string" ? event.data : Buffer.from(event.data).toString("utf8");
       handleWebSocketPayload(text).catch((error) => {
         console.warn("[qqbot] websocket message failed", error);
       });
     });
-    socket.addEventListener("close", (event: any) => {
+    bindWebSocketEvent(socket, "close", (event: any) => {
       wsConnecting = false;
       if (wsClient === socket) wsClient = null;
       const message = event?.code === 1000
@@ -4239,7 +4277,7 @@ export async function connectQqBotWebSocket() {
       rejectPendingWebSocketActions(message);
       scheduleWebSocketReconnect();
     });
-    socket.addEventListener("error", (event: any) => {
+    bindWebSocketEvent(socket, "error", (event: any) => {
       wsConnecting = false;
       if (wsClient === socket) wsClient = null;
       const message = `WebSocket 握手失败：${describeWebSocketError(event)}`;

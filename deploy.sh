@@ -397,14 +397,14 @@ ensure_redis() {
 }
 
 # ---------- 环境检查与安装 ----------
-NODE_MIN_MAJOR=20  # undici / 现代 fetch 依赖 Node 20+ 的 File 全局
+NODE_MIN_MAJOR=22  # QQBot WebSocket / modern undici runtime fresh deploy 统一使用 Node 22 LTS
 
 ensure_node() {
   if command -v node >/dev/null 2>&1; then
     local v=$(node -v | sed 's/v//')
     local major=${v%%.*}
     if [ "$major" -lt "$NODE_MIN_MAJOR" ]; then
-      warn "检测到 Node $v ，本项目需要 Node $NODE_MIN_MAJOR+（undici 依赖 File 全局，Node 18 默认不开启）"
+      warn "检测到 Node $v ，本项目部署脚本要求 Node $NODE_MIN_MAJOR+"
       # 杀掉所有 pm2 进程（旧 Node 二进制要被替换）
       if command -v pm2 >/dev/null 2>&1; then
         log "停止现有 pm2 进程，准备升级 Node"
@@ -415,16 +415,16 @@ ensure_node() {
       log "Node $v ✓"
     fi
   else
-    log "Node.js 未安装，使用 NodeSource 安装 20 LTS"
+    log "Node.js 未安装，使用 NodeSource 安装 22 LTS"
     install_node
   fi
 }
 
 install_node() {
   if ! command -v sudo >/dev/null 2>&1; then
-    err "需要 sudo 才能安装/升级 Node.js。请手动安装 Node 20+ 或以 root 运行此脚本"
+    err "需要 sudo 才能安装/升级 Node.js。请手动安装 Node 22+ 或以 root 运行此脚本"
   fi
-  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
   sudo apt-get install -y nodejs
   log "Node 已安装：$(node -v)"
   # 升级 Node 后 pm2 也要重装到新 Node 下
@@ -685,6 +685,7 @@ do_redis_init() {
 }
 
 do_start() {
+  ensure_node
   ensure_pm2
   log "通过 pm2 启动 $SERVICE_NAME（端口 $PORT）"
   # 用 ecosystem-less 模式：直接 start 命令
@@ -720,6 +721,7 @@ do_start() {
 }
 
 do_proxy_start() {
+  ensure_node
   ensure_pm2
   log "通过 pm2 启动 $PROXY_SERVICE_NAME（端口 $PROXY_PORT）"
   cd server
@@ -748,12 +750,12 @@ do_proxy_start() {
 }
 
 do_stop()    { ensure_pm2; pm2 stop "$SERVICE_NAME"; }
-do_restart() { ensure_pm2; pm2 restart "$SERVICE_NAME" --update-env; }
+do_restart() { ensure_node; ensure_pm2; pm2 restart "$SERVICE_NAME" --update-env; }
 do_logs()    { ensure_pm2; pm2 logs "$SERVICE_NAME"; }
 do_status()  { ensure_pm2; pm2 status; }
 
 do_proxy_stop()    { ensure_pm2; pm2 stop "$PROXY_SERVICE_NAME"; }
-do_proxy_restart() { ensure_pm2; pm2 restart "$PROXY_SERVICE_NAME" --update-env; }
+do_proxy_restart() { ensure_node; ensure_pm2; pm2 restart "$PROXY_SERVICE_NAME" --update-env; }
 do_proxy_logs()    { ensure_pm2; pm2 logs "$PROXY_SERVICE_NAME"; }
 
 do_update() {
