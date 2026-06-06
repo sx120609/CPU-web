@@ -476,13 +476,35 @@ async function normalizeLegacyMirroredAuthorAssignments(botUserId: number) {
 }
 
 function topicHidden(topic: WeiwallTopicRow) {
-  const status = String(topic.status ?? "").trim().toLowerCase();
-  return Boolean(coerceBool(topic.isDelete) || (status && status !== "1" && status !== "normal"));
+  return Boolean(coerceBool(topic.isDelete) || isWeiwallContentHiddenStatus(topic.status));
 }
 
 function replyHidden(reply: WeiwallReplyRow) {
-  const status = String(reply.status ?? "").trim().toLowerCase();
-  return Boolean(coerceBool(reply.isDelete) || (status && status !== "1" && status !== "normal"));
+  return Boolean(coerceBool(reply.isDelete) || isWeiwallContentHiddenStatus(reply.status));
+}
+
+function isWeiwallContentHiddenStatus(status: unknown) {
+  const text = String(status ?? "").trim().toLowerCase();
+  if (!text) return false;
+  if (["0", "1", "normal", "active", "open", "ok", "success"].includes(text)) return false;
+  return [
+    "delete",
+    "deleted",
+    "removed",
+    "hide",
+    "hidden",
+    "ban",
+    "banned",
+    "forbid",
+    "forbidden",
+    "block",
+    "blocked",
+    "close",
+    "closed",
+    "disable",
+    "disabled",
+    "over",
+  ].includes(text);
 }
 
 function buildTopicSourceUrl(baseUrl: string, schoolEn: string, topicId: string) {
