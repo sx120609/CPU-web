@@ -10,7 +10,7 @@
             <el-icon><ChatLineRound /></el-icon> {{ forumActionLabel }}
           </el-button>
           <el-button v-if="showForumContent" size="large" @click="$router.push('/forum/b/campus-wall')">
-            <span>📮</span> 逛逛推流
+            <span>📮</span> 校园墙
           </el-button>
           <el-button v-else type="primary" size="large" @click="$router.push('/announcements')">
             <el-icon><Bell /></el-icon> 看校园公告
@@ -94,13 +94,13 @@
 
         <section class="block" v-if="showForumContent">
           <div class="block-head">
-            <h3>📮 逛逛推流</h3>
+            <h3>📮 校园墙</h3>
             <span class="cpu-muted">外部镜像内容</span>
           </div>
           <div class="wall-card" @click="$router.push('/forum/b/campus-wall')">
             <div class="wall-icon">📮</div>
             <div class="wall-body">
-              <div class="wall-title">单独查看逛逛推流镜像</div>
+              <div class="wall-title">单独查看校园墙镜像</div>
               <div class="wall-desc">外部帖子和评论会持续同步，但不会参与本站热榜和最新流。</div>
             </div>
           </div>

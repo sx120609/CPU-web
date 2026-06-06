@@ -4,8 +4,8 @@
       <template #header>
         <div class="pane-header">
           <div>
-            <h3>📮 逛逛推流同步</h3>
-            <p>把外部逛逛推流的帖子和评论同步进本站，并按设定频率持续刷新。</p>
+            <h3>📮 校园墙同步</h3>
+            <p>把外部校园墙的帖子和评论同步进本站，并按设定频率持续刷新。</p>
           </div>
           <div class="pane-actions">
             <el-button :loading="loading" @click="reload">刷新状态</el-button>
@@ -162,7 +162,7 @@
 
     <el-dialog v-model="authDialogOpen" title="微信授权更新 Token" width="min(560px, 92vw)">
       <div v-if="authSession" class="auth-dialog">
-        <p class="auth-tip">用微信扫描下方二维码，完成授权后服务器会自动换取并保存新的逛逛推流 Token。</p>
+        <p class="auth-tip">用微信扫描下方二维码，完成授权后服务器会自动换取并保存新的校园墙 Token。</p>
         <el-alert
           v-if="authOriginHint"
           class="auth-origin-alert"
@@ -318,7 +318,7 @@ async function save() {
       token: form.token.trim() || undefined,
     });
     hydrate(next);
-    ElMessage.success("逛逛推流同步配置已保存");
+    ElMessage.success("校园墙同步配置已保存");
   } finally {
     saving.value = false;
   }
@@ -348,7 +348,7 @@ async function pollAuthStatus() {
   authStatus.value = next;
   if (next.status === "success") {
     stopAuthPolling();
-    ElMessage.success("逛逛推流 Token 已自动更新");
+    ElMessage.success("校园墙 Token 已自动更新");
     await reload();
     return;
   }
@@ -398,8 +398,8 @@ async function runNow() {
   running.value = true;
   try {
     runResult.value = await adminApi.runWeiwallSync();
-    if (runResult.value.ok) ElMessage.success("逛逛推流同步已完成");
-    else ElMessage.warning(runResult.value.error || "逛逛推流同步未完成");
+    if (runResult.value.ok) ElMessage.success("校园墙同步已完成");
+    else ElMessage.warning(runResult.value.error || "校园墙同步未完成");
     await reload();
   } finally {
     running.value = false;

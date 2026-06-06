@@ -18,7 +18,7 @@ likeRouter.post("/topic/:id", async (req, res, next) => {
     });
     if (!t || t.hidden) throw Errors.notFound();
     const mirroredTopic = await prisma.weiwallTopicMap.findUnique({ where: { localTopicId: topicId }, select: { id: true } });
-    if (mirroredTopic) throw Errors.badRequest("逛逛推流镜像为只读同步内容，暂不支持站内点赞");
+    if (mirroredTopic) throw Errors.badRequest("校园墙镜像为只读同步内容，暂不支持站内点赞");
     if (!isBoardTypeEnabled(t.board?.type)) throw Errors.forbidden(featureClosedMessage(t.board?.type));
     await ensureCanReadBoardType(t.board?.type, userId, req.user?.role);
     const existing = await prisma.like.findFirst({ where: { userId, topicId } });
@@ -71,7 +71,7 @@ likeRouter.post("/reply/:id", async (req, res, next) => {
     });
     if (!r || r.hidden || r.topic?.hidden) throw Errors.notFound();
     const mirroredTopic = await prisma.weiwallTopicMap.findUnique({ where: { localTopicId: r.topicId }, select: { id: true } });
-    if (mirroredTopic) throw Errors.badRequest("逛逛推流镜像为只读同步内容，暂不支持站内点赞");
+    if (mirroredTopic) throw Errors.badRequest("校园墙镜像为只读同步内容，暂不支持站内点赞");
     if (!isBoardTypeEnabled(r.topic?.board?.type)) throw Errors.forbidden(featureClosedMessage(r.topic?.board?.type));
     await ensureCanReadBoardType(r.topic?.board?.type, userId, req.user?.role);
     const existing = await prisma.like.findFirst({ where: { userId, replyId } });

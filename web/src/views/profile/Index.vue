@@ -135,15 +135,16 @@
 
     <div class="cpu-card trust-card" v-if="user">
       <div class="trust-head">
-        <div>
+        <div class="trust-copy">
           <h3 class="cpu-section-title">信誉与匿名</h3>
           <p class="trust-sub">信誉值由注册时长、发帖数量、回复数量等因素共同决定，按周发放匿名积分。</p>
+          <div class="trust-inline-summary">
+            <span v-if="user.reputationLevel">Lv.{{ user.reputationLevel.level }} {{ user.reputationLevel.name }}</span>
+            <span>状态 {{ anonymousStatusText }}</span>
+            <span>本周 {{ user.anonymousState?.weeklyQuota ?? 0 }} 点</span>
+          </div>
         </div>
         <div class="trust-score">{{ user.reputation }}</div>
-      </div>
-
-      <div v-if="user.reputationLevel" class="trust-level-row">
-        当前等级：Lv.{{ user.reputationLevel.level }} {{ user.reputationLevel.name }}
       </div>
 
       <div class="trust-grid">
@@ -165,39 +166,64 @@
         </div>
       </div>
 
-      <div class="trust-breakdown">
-        <div class="trust-row">
-          <span>注册时长贡献</span>
-          <b>{{ user.reputationBreakdown?.agePoints ?? 0 }}</b>
+      <div class="trust-section">
+        <div class="trust-section-head">
+          <div>
+            <div class="trust-section-title">得分详情</div>
+            <p class="trust-section-tip">需要时再展开查看各项贡献和升级进度。</p>
+          </div>
+          <el-button text type="primary" @click="trustDetailsOpen = !trustDetailsOpen">
+            {{ trustDetailsOpen ? "收起" : "点击展开" }}
+          </el-button>
         </div>
-        <div class="trust-row">
-          <span>发帖贡献</span>
-          <b>{{ user.reputationBreakdown?.postPoints ?? 0 }}</b>
-        </div>
-        <div class="trust-row">
-          <span>回复贡献</span>
-          <b>{{ user.reputationBreakdown?.replyPoints ?? 0 }}</b>
-        </div>
-        <div class="trust-row">
-          <span>论坛资历加成</span>
-          <b>{{ user.reputationBreakdown?.forumPoints ?? 0 }}</b>
+        <div v-if="trustDetailsOpen" class="trust-section-body">
+          <div class="trust-breakdown">
+            <div class="trust-row">
+              <span>注册时长贡献</span>
+              <b>{{ user.reputationBreakdown?.agePoints ?? 0 }}</b>
+            </div>
+            <div class="trust-row">
+              <span>发帖贡献</span>
+              <b>{{ user.reputationBreakdown?.postPoints ?? 0 }}</b>
+            </div>
+            <div class="trust-row">
+              <span>回复贡献</span>
+              <b>{{ user.reputationBreakdown?.replyPoints ?? 0 }}</b>
+            </div>
+            <div class="trust-row">
+              <span>论坛资历加成</span>
+              <b>{{ user.reputationBreakdown?.forumPoints ?? 0 }}</b>
+            </div>
+          </div>
+
+          <div class="trust-progress-list">
+            <p v-if="user.anonymousState?.nextTier" class="trust-next">
+              距离下一档匿名额度还差 {{ user.anonymousState.nextTier.need }} 点信誉值，达到后每周可得 {{ user.anonymousState.nextTier.weeklyQuota }} 点。
+            </p>
+            <p v-if="user.reputationLevel?.nextLevel" class="trust-next">
+              距离下一信誉等级还差 {{ user.reputationLevel.nextLevel.need }} 点，达到后将升级为 Lv.{{ user.reputationLevel.nextLevel.level }} {{ user.reputationLevel.nextLevel.name }}。
+            </p>
+          </div>
         </div>
       </div>
 
-      <p v-if="user.anonymousState?.nextTier" class="trust-next">
-        距离下一档匿名额度还差 {{ user.anonymousState.nextTier.need }} 点信誉值，达到后每周可得 {{ user.anonymousState.nextTier.weeklyQuota }} 点。
-      </p>
-      <p v-if="user.reputationLevel?.nextLevel" class="trust-next">
-        距离下一信誉等级还差 {{ user.reputationLevel.nextLevel.need }} 点，达到后将升级为 Lv.{{ user.reputationLevel.nextLevel.level }} {{ user.reputationLevel.nextLevel.name }}。
-      </p>
-
-      <div class="anonymous-boards">
-        <span class="anonymous-boards-label">支持匿名的板块</span>
-        <div class="anonymous-board-tags">
-          <el-tag v-for="board in anonymousBoards" :key="board.slug" effect="plain">
-            {{ board.icon || "💬" }} {{ board.name }}
-          </el-tag>
-          <span v-if="!anonymousBoards.length" class="cpu-muted">当前还没有开放匿名的板块</span>
+      <div class="trust-section">
+        <div class="trust-section-head">
+          <div>
+            <div class="trust-section-title">支持匿名的板块</div>
+            <p class="trust-section-tip">{{ anonymousBoards.length }} 个板块支持匿名发帖或回复。</p>
+          </div>
+          <el-button text type="primary" @click="anonymousBoardsOpen = !anonymousBoardsOpen">
+            {{ anonymousBoardsOpen ? "收起" : "点击展开" }}
+          </el-button>
+        </div>
+        <div v-if="anonymousBoardsOpen" class="trust-section-body">
+          <div class="anonymous-board-tags">
+            <el-tag v-for="board in anonymousBoards" :key="board.slug" effect="plain">
+              {{ board.icon || "💬" }} {{ board.name }}
+            </el-tag>
+            <span v-if="!anonymousBoards.length" class="cpu-muted">当前还没有开放匿名的板块</span>
+          </div>
         </div>
       </div>
     </div>
@@ -496,6 +522,8 @@ const qqBotProfile = ref<QqBotProfile | null>(null);
 const qqBotLoading = ref(false);
 const qqBotGuideVisible = ref(false);
 const qqBotCommandsVisible = ref(false);
+const trustDetailsOpen = ref(false);
+const anonymousBoardsOpen = ref(false);
 const sponsorSubmitting = ref(false);
 const sponsorAmount = ref("10");
 const sponsorPayType = ref<PayType>("alipay");
@@ -1113,11 +1141,32 @@ async function removeAvatar() {
   gap: 16px;
 }
 
+.trust-copy {
+  flex: 1;
+  min-width: 0;
+}
+
 .trust-sub {
   margin: 4px 0 0;
   color: #6b7280;
   font-size: 13px;
   line-height: 1.6;
+}
+
+.trust-inline-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.trust-inline-summary span {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #f4f7fb;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1;
 }
 
 .trust-score {
@@ -1131,13 +1180,6 @@ async function removeAvatar() {
   font-weight: 700;
 }
 
-.trust-level-row {
-  margin-top: -4px;
-  color: #7c3aed;
-  font-size: 13px;
-  font-weight: 600;
-}
-
 .trust-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1145,7 +1187,7 @@ async function removeAvatar() {
 }
 
 .trust-item {
-  padding: 12px;
+  padding: 12px 14px;
   border-radius: 12px;
   background: #f7f7fb;
 }
@@ -1160,6 +1202,37 @@ async function removeAvatar() {
 .trust-item b {
   color: #111827;
   font-size: 18px;
+}
+
+.trust-section {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid #ebeef5;
+  background: #fbfcff;
+}
+
+.trust-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.trust-section-title {
+  color: #111827;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.trust-section-tip {
+  margin: 4px 0 0;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.trust-section-body {
+  margin-top: 12px;
 }
 
 .trust-breakdown {
@@ -1192,15 +1265,11 @@ async function removeAvatar() {
   line-height: 1.6;
 }
 
-.anonymous-boards {
+.trust-progress-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.anonymous-boards-label {
-  color: #6b7280;
-  font-size: 12px;
+  margin-top: 12px;
 }
 
 .anonymous-board-tags {
@@ -1562,6 +1631,10 @@ async function removeAvatar() {
     flex-direction: column;
   }
 
+  .trust-inline-summary {
+    gap: 6px;
+  }
+
   .sponsor-main {
     align-items: stretch;
     flex-direction: column;
@@ -1628,6 +1701,10 @@ async function removeAvatar() {
   .trust-breakdown,
   .qqbot-grid {
     grid-template-columns: 1fr;
+  }
+
+  .trust-section-head {
+    flex-direction: column;
   }
 
   .user-group-card {

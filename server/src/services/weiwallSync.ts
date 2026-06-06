@@ -12,8 +12,8 @@ import { Errors } from "../utils/response";
 import { getSiteOrigin } from "./siteSettings";
 
 export const WEIWALL_BOARD_SLUG = "campus-wall";
-const WEIWALL_BOARD_NAME = "逛逛推流";
-const WEIWALL_BOARD_DESCRIPTION = "从外部逛逛推流同步的只读镜像，自动刷新帖子与评论。";
+const WEIWALL_BOARD_NAME = "校园墙";
+const WEIWALL_BOARD_DESCRIPTION = "从外部校园墙同步的只读镜像，自动刷新帖子与评论。";
 const WEIWALL_BOARD_ICON = "📮";
 const WEIWALL_BOARD_COLOR = "#0ea5e9";
 const WEIWALL_DEFAULT_BASE_URL = "https://s.weiwall.com";
@@ -24,7 +24,7 @@ const WEIWALL_MAX_COMMENT_PAGE_SIZE = 20;
 const WEIWALL_COMMENT_BACKFILL_TOPICS_PER_RUN = 12;
 const WEIWALL_TRACE_LIMIT = 40;
 const WEIWALL_BOT_USERNAME = "weiwall_sync_bot";
-const WEIWALL_BOT_NICKNAME = "逛逛推流同步";
+const WEIWALL_BOT_NICKNAME = "校园墙同步";
 const WEIWALL_AUTH_FLOW_TTL_MS = 15 * 60_000;
 
 type WeiwallUserInfo = {
@@ -311,8 +311,8 @@ async function notifyAdminsIfWeiwallTokenExpired(token: string, expiresAt: strin
     where: {
       userId: { in: admins.map((item) => item.id) },
       category: "system",
-      source: "逛逛推流同步",
-      title: "逛逛推流 Token 已过期",
+      source: "校园墙同步",
+      title: "校园墙 Token 已过期",
       AND: [
         { payload: { contains: "\"type\":\"weiwall-token-expired\"" } },
         { payload: { contains: `"tokenHash":"${tokenHash}"` } },
@@ -333,9 +333,9 @@ async function notifyAdminsIfWeiwallTokenExpired(token: string, expiresAt: strin
       userId,
       category: "system",
       level: "warning",
-      title: "逛逛推流 Token 已过期",
-      content: `当前逛逛推流 Token 已于 ${shortDateTime(expiresAt)} 过期，请尽快重新授权。`,
-      source: "逛逛推流同步",
+      title: "校园墙 Token 已过期",
+      content: `当前校园墙 Token 已于 ${shortDateTime(expiresAt)} 过期，请尽快重新授权。`,
+      source: "校园墙同步",
       link: "/admin?tab=weiwall",
       payload,
     })),
@@ -422,6 +422,24 @@ function renderWeiwallBlockedNotice() {
   ].join("\n");
 }
 
+async function countLegacyBlockedPlaceholderReplies(externalTopicId: string) {
+  const rows = await prisma.weiwallReplyMap.findMany({
+    where: { externalTopicId },
+    select: {
+      localReply: {
+        select: {
+          content: true,
+        },
+      },
+    },
+  });
+  let count = 0;
+  for (const row of rows) {
+    if (looksLikeWeiwallBlockedBody(row.localReply?.content)) count += 1;
+  }
+  return count;
+}
+
 function renderExternalContent(content: unknown, images: Array<string | null | undefined>) {
   const body = String(content ?? "").trim();
   if (looksLikeWeiwallBlockedBody(body)) return renderWeiwallBlockedNotice();
@@ -447,7 +465,7 @@ function deriveLocalTitle(topic: WeiwallTopicRow) {
   if (explicit && explicit !== "none") return explicit;
   const fromContent = summarizeExternalText(topic.content, 80);
   if (fromContent) return fromContent;
-  return `逛逛推流帖子 ${externalId(topic.id) || "unknown"}`;
+  return `校园墙帖子 ${externalId(topic.id) || "unknown"}`;
 }
 
 function formatTraceTitle(input: {
@@ -728,7 +746,7 @@ async function fetchTenantName(baseUrl: string) {
     headers: { Accept: "application/json" },
   });
   const json = parseJsonSafe<any>(await res.text(), {});
-  return trimTo(json?.data?.tenantName, 80, "逛逛推流");
+  return trimTo(json?.data?.tenantName, 80, "校园墙");
 }
 
 async function weiwallFetchJson(row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>, path: string, query?: Record<string, string | number | null | undefined>) {
@@ -1046,8 +1064,8 @@ export async function completeWeiwallTokenAuthCallback(input: {
     await writeWeiwallAuthFlow(record, 10 * 60_000);
     return {
       ok: true,
-      title: "逛逛推流 Token 已更新",
-      message: "新的逛逛推流 Token 已自动保存，现在可以返回后台继续使用。",
+      title: "校园墙 Token 已更新",
+      message: "新的校园墙 Token 已自动保存，现在可以返回后台继续使用。",
     };
   } catch (error: any) {
     record.used = true;
@@ -1340,6 +1358,17 @@ async function syncSingleTopic(
         },
       })
     : 0;
+  const remoteCommentCount = Math.max(0, Number(topic.commentCount ?? 0) || 0);
+  const localReplyCountBefore = existingMap?.localTopic?.replyCount ?? 0;
+  const shouldProbeLegacyBlockedReplies =
+    Boolean(existingMap)
+    && remoteCommentCount > 0
+    && remoteCommentCount === Math.max(0, Number(existingMap?.lastCommentCount ?? 0) || 0)
+    && remoteCommentCount === Math.max(0, Number(localReplyCountBefore ?? 0) || 0)
+    && needsReplyAuthorBackfill === 0;
+  const legacyBlockedReplyCount = shouldProbeLegacyBlockedReplies
+    ? await countLegacyBlockedPlaceholderReplies(externalTopicId)
+    : 0;
 
   if (looksLikeWeiwallAdvertisement(topic)) {
     if (existingMap) {
@@ -1363,13 +1392,14 @@ async function syncSingleTopic(
   }
 
   const shouldSyncComments =
-    Number(topic.commentCount ?? 0) > 0
+    remoteCommentCount > 0
     && !control.commentFetchStopped
     && (
       !existingMap
-      || Number(topic.commentCount ?? 0) !== existingMap.lastCommentCount
-      || Number(topic.commentCount ?? 0) !== Number(existingMap.localTopic?.replyCount ?? 0)
+      || remoteCommentCount !== existingMap.lastCommentCount
+      || remoteCommentCount !== Number(existingMap.localTopic?.replyCount ?? 0)
       || needsReplyAuthorBackfill > 0
+      || legacyBlockedReplyCount > 0
     );
 
   const commentFetchCounters = { commentsFetched: 0 };
@@ -1378,8 +1408,6 @@ async function syncSingleTopic(
     : [];
   counters.commentsFetched += commentFetchCounters.commentsFetched;
   const localTitle = deriveLocalTitle(topic);
-  const remoteCommentCount = Math.max(0, Number(topic.commentCount ?? 0) || 0);
-  const localReplyCountBefore = existingMap?.localTopic?.replyCount ?? 0;
 
   const result = await prisma.$transaction(async (tx) => {
     const externalAuthor = externalAuthorForStorage(topic.userInfo);
@@ -1528,7 +1556,7 @@ async function syncSingleTopic(
             lastCommentCount: existingMap?.lastCommentCount,
             localReplyCount: localReplyCountBefore,
             needsReplyAuthorBackfill,
-          }),
+          }) + (legacyBlockedReplyCount > 0 ? `；发现 ${legacyBlockedReplyCount} 条旧占位评论待修复` : ""),
     });
   }
   return {
@@ -1565,9 +1593,17 @@ async function syncBackfillTopicComments(
 
   const remoteCommentCount = Math.max(0, Number(detail?.commentCount ?? topicMap.lastCommentCount) || 0);
   const remoteStatus = String(detail?.status ?? topicMap.lastStatus ?? "");
+  const shouldProbeLegacyBlockedReplies =
+    remoteCommentCount > 0
+    && remoteCommentCount === Math.max(0, Number(topicMap.lastCommentCount ?? 0) || 0)
+    && remoteCommentCount === Math.max(0, Number(topicMap.localTopic?.replyCount ?? 0) || 0);
+  const legacyBlockedReplyCount = shouldProbeLegacyBlockedReplies
+    ? await countLegacyBlockedPlaceholderReplies(topicMap.externalTopicId)
+    : 0;
   const shouldFetchComments =
     remoteCommentCount !== Math.max(0, Number(topicMap.lastCommentCount ?? 0) || 0)
-    || remoteCommentCount !== Math.max(0, Number(topicMap.localTopic?.replyCount ?? 0) || 0);
+    || remoteCommentCount !== Math.max(0, Number(topicMap.localTopic?.replyCount ?? 0) || 0)
+    || legacyBlockedReplyCount > 0;
 
   if (!shouldFetchComments) {
     await prisma.weiwallTopicMap.update({
@@ -1653,7 +1689,7 @@ async function syncBackfillTopicComments(
       remoteCommentCount,
       lastCommentCount: topicMap.lastCommentCount,
       localReplyCount: topicMap.localTopic.replyCount,
-    }),
+    }) + (legacyBlockedReplyCount > 0 ? `；发现 ${legacyBlockedReplyCount} 条旧占位评论待修复` : ""),
   });
   return { replyAuthorIds: replySync.touchedReplyAuthorIds };
 }
@@ -1669,7 +1705,7 @@ export async function runWeiwallSyncNow() {
     const result: WeiwallSyncResult = {
       ok: false,
       boardSlug: board.slug,
-      sourceName: "逛逛推流",
+      sourceName: "校园墙",
       pagesScanned: 0,
       topicsScanned: 0,
       topicsCreated: 0,
@@ -1788,7 +1824,7 @@ export async function runWeiwallSyncNow() {
   return {
     ok: false,
     boardSlug: board.slug,
-    sourceName: "逛逛推流",
+    sourceName: "校园墙",
     pagesScanned: 0,
     topicsScanned: 0,
     topicsCreated: 0,
@@ -1821,7 +1857,7 @@ export function startWeiwallSyncScheduler() {
       return;
     }
     if (result.ok && (result.topicsCreated || result.repliesCreated)) {
-      console.log(`📮 逛逛推流同步完成: +${result.topicsCreated} 帖子, +${result.repliesCreated} 回复`);
+      console.log(`📮 校园墙同步完成: +${result.topicsCreated} 帖子, +${result.repliesCreated} 回复`);
     }
   };
 
@@ -1832,5 +1868,5 @@ export function startWeiwallSyncScheduler() {
     }, WEIWALL_TICK_MS);
   }, 8_000);
 
-  console.log("📮 逛逛推流同步器已挂载（默认 30 秒检查，按配置 intervalSeconds 执行）");
+  console.log("📮 校园墙同步器已挂载（默认 30 秒检查，按配置 intervalSeconds 执行）");
 }

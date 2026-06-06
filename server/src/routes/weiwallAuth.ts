@@ -48,7 +48,7 @@ weiwallAuthRouter.get("/callback", async (req, res) => {
   } catch (error: any) {
     res.status(400).type("html").send(renderResultPage({
       ok: false,
-      title: "逛逛推流 Token 更新失败",
+      title: "校园墙 Token 更新失败",
       message: error?.message ?? "授权回调处理失败，请返回后台重新生成二维码再试。",
     }));
   }
