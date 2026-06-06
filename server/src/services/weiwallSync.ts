@@ -4,10 +4,12 @@ import QRCode from "qrcode";
 import jwt from "jsonwebtoken";
 import { prisma } from "../prisma";
 import { runWithDistributedLock } from "./cache";
+import { getCachedJson, setCachedJson } from "./cache";
 import { invalidateBoardCaches, invalidateForumCaches } from "./cacheInvalidation";
 import { refreshBoardTopicCount, refreshUserPostCount, refreshUserReplyCount } from "./forumStats";
 import { config } from "../config";
 import { Errors } from "../utils/response";
+import { getSiteOrigin } from "./siteSettings";
 
 export const WEIWALL_BOARD_SLUG = "campus-wall";
 const WEIWALL_BOARD_NAME = "校园墙";
@@ -181,8 +183,6 @@ type WeiwallAuthFlowPayload = {
   schoolEn: string;
 };
 
-const weiwallAuthFlows = new Map<string, WeiwallAuthFlowRecord>();
-
 class WeiwallRateLimitError extends Error {
   constructor(message = "请求过于频繁，请稍后再试") {
     super(message);
@@ -199,13 +199,8 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function cleanupWeiwallAuthFlows() {
-  const now = Date.now();
-  for (const [flowId, record] of weiwallAuthFlows.entries()) {
-    if (record.expiresAtMs <= now || (record.completedAtMs && record.completedAtMs + 10 * 60_000 <= now)) {
-      weiwallAuthFlows.delete(flowId);
-    }
-  }
+function weiwallAuthFlowCacheKey(flowId: string) {
+  return `weiwall-auth-flow:${String(flowId).trim()}`;
 }
 
 function parseJsonSafe<T>(input: string | null | undefined, fallback: T): T {
@@ -694,6 +689,14 @@ function normalizeOrigin(origin: string) {
   return text;
 }
 
+async function readWeiwallAuthFlow(flowId: string) {
+  return await getCachedJson<WeiwallAuthFlowRecord>(weiwallAuthFlowCacheKey(flowId));
+}
+
+async function writeWeiwallAuthFlow(record: WeiwallAuthFlowRecord, ttlMs = WEIWALL_AUTH_FLOW_TTL_MS) {
+  await setCachedJson(weiwallAuthFlowCacheKey(record.flowId), record, ttlMs);
+}
+
 async function buildWeiwallOfficialAuthorizeUrl(
   row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>,
   redirectUri: string,
@@ -725,9 +728,8 @@ async function exchangeWeiwallCodeForToken(
 }
 
 export async function createWeiwallTokenAuthSession(origin: string) {
-  cleanupWeiwallAuthFlows();
   const configRow = await ensureWeiwallSyncConfigRow();
-  const normalizedOrigin = normalizeOrigin(origin);
+  const normalizedOrigin = normalizeOrigin(getSiteOrigin() || origin);
   const flowId = randomUUID();
   const expiresAtMs = Date.now() + WEIWALL_AUTH_FLOW_TTL_MS;
   const flowToken = signWeiwallAuthFlowToken({
@@ -742,7 +744,7 @@ export async function createWeiwallTokenAuthSession(origin: string) {
     margin: 1,
     width: 320,
   });
-  weiwallAuthFlows.set(flowId, {
+  await writeWeiwallAuthFlow({
     flowId,
     schoolEn: configRow.schoolEn || "cpu",
     expiresAtMs,
@@ -761,8 +763,7 @@ export async function createWeiwallTokenAuthSession(origin: string) {
 }
 
 export async function getWeiwallTokenAuthStatus(flowId: string) {
-  cleanupWeiwallAuthFlows();
-  const record = weiwallAuthFlows.get(String(flowId).trim());
+  const record = await readWeiwallAuthFlow(String(flowId).trim());
   if (!record) {
     return {
       flowId: String(flowId).trim(),
@@ -787,10 +788,9 @@ export async function completeWeiwallTokenAuthCallback(input: {
   school?: string | null;
   code?: string | null;
 }) {
-  cleanupWeiwallAuthFlows();
   const payload = verifyWeiwallAuthFlowToken(String(input.flowToken || ""));
   if (payload.purpose !== "weiwall-token-auth") throw Errors.badRequest("授权凭证无效");
-  const record = weiwallAuthFlows.get(payload.flowId);
+  const record = await readWeiwallAuthFlow(payload.flowId);
   if (!record || record.expiresAtMs <= Date.now()) {
     throw Errors.badRequest("授权会话已过期，请重新生成二维码");
   }
@@ -815,7 +815,7 @@ export async function completeWeiwallTokenAuthCallback(input: {
     record.status = "success";
     record.error = null;
     record.completedAtMs = Date.now();
-    weiwallAuthFlows.set(record.flowId, record);
+    await writeWeiwallAuthFlow(record, 10 * 60_000);
     return {
       ok: true,
       title: "校园墙 Token 已更新",
@@ -826,7 +826,7 @@ export async function completeWeiwallTokenAuthCallback(input: {
     record.status = "error";
     record.error = error?.message ?? String(error);
     record.completedAtMs = Date.now();
-    weiwallAuthFlows.set(record.flowId, record);
+    await writeWeiwallAuthFlow(record, 10 * 60_000);
     throw error;
   }
 }

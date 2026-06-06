@@ -1193,9 +1193,11 @@ adminRouter.post("/weiwall-sync/run", adminOnly, async (_req, res, next) => {
   } catch (e) { next(e); }
 });
 
-adminRouter.post("/weiwall-sync/auth-link", adminOnly, async (req, res, next) => {
+adminRouter.post("/weiwall-sync/auth-link", adminOnly, validate(z.object({
+  origin: z.string().trim().max(240).optional(),
+})), async (req, res, next) => {
   try {
-    ok(res, await createWeiwallTokenAuthSession(requestOrigin(req)));
+    ok(res, await createWeiwallTokenAuthSession(String(req.body.origin || requestOrigin(req) || "").trim()));
   } catch (e) { next(e); }
 });
 

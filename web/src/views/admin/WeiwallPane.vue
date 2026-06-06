@@ -131,6 +131,14 @@
     <el-dialog v-model="authDialogOpen" title="微信授权更新 Token" width="min(560px, 92vw)">
       <div v-if="authSession" class="auth-dialog">
         <p class="auth-tip">用微信扫描下方二维码，完成授权后服务器会自动换取并保存新的校园墙 Token。</p>
+        <el-alert
+          v-if="authOriginHint"
+          class="auth-origin-alert"
+          :type="authOriginHint.type"
+          :closable="false"
+          show-icon
+          :title="authOriginHint.title"
+        />
         <img :src="authSession.qrDataUrl" alt="微信授权二维码" class="auth-qr" />
         <div class="auth-actions">
           <el-button type="primary" @click="openAuthorizeUrl">打开授权链接</el-button>
@@ -143,6 +151,8 @@
           :title="authStatusTitle"
         />
         <div v-if="authStatus?.error" class="field-tip">{{ authStatus.error }}</div>
+        <div v-if="authSession.callbackUrl" class="field-tip">回调地址：<code>{{ authSession.callbackUrl }}</code></div>
+        <div class="field-tip">站点域名：<code>{{ activeSiteOrigin }}</code></div>
         <div class="field-tip">二维码有效期到：{{ fmtDate(authSession.expiresAt) }}</div>
       </div>
     </el-dialog>
@@ -152,7 +162,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { adminApi, type WeiwallSyncConfig, type WeiwallSyncRunResult, type WeiwallTokenAuthSession, type WeiwallTokenAuthStatus } from "@/api/admin";
+import { adminApi, type SiteConfig, type WeiwallSyncConfig, type WeiwallSyncRunResult, type WeiwallTokenAuthSession, type WeiwallTokenAuthStatus } from "@/api/admin";
 import { fmtDate } from "@/utils/format";
 
 const loading = ref(false);
@@ -165,6 +175,7 @@ const config = ref<WeiwallSyncConfig | null>(null);
 const runResult = ref<WeiwallSyncRunResult | null>(null);
 const authSession = ref<WeiwallTokenAuthSession | null>(null);
 const authStatus = ref<WeiwallTokenAuthStatus | null>(null);
+const siteOrigin = ref("");
 let authPollTimer: number | null = null;
 const form = reactive({
   enabled: false,
@@ -187,6 +198,46 @@ const authStatusTitle = computed(() => {
   return "等待微信完成授权";
 });
 
+const activeSiteOrigin = computed(() => siteOrigin.value.trim() || window.location.origin);
+
+const authOriginHint = computed(() => {
+  const callbackUrl = authSession.value?.callbackUrl || "";
+  const activeOrigin = activeSiteOrigin.value;
+  const callbackHost = safeHostname(callbackUrl);
+  const activeHost = safeHostname(activeOrigin);
+  if (!siteOrigin.value.trim()) {
+    if (isLoopbackHost(activeHost)) {
+      return {
+        type: "error" as const,
+        title: "当前站点域名未配置，回调地址会落到本地地址，手机微信无法完成回调。请先到“基础配置”里保存一个可公网访问的 HTTPS 域名。",
+      };
+    }
+    return {
+      type: "warning" as const,
+      title: "当前使用的是浏览器所在域名作为回调地址。若扫码后一直 pending，优先检查“基础配置”里的站点域名是否已配置成可公网访问的 HTTPS 域名。",
+    };
+  }
+  if (isLoopbackHost(callbackHost)) {
+    return {
+      type: "error" as const,
+      title: "当前回调地址仍然指向本地地址，请检查“基础配置”里的站点域名设置。",
+    };
+  }
+  return null;
+});
+
+function safeHostname(input: string) {
+  try {
+    return new URL(input).hostname.trim().toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function isLoopbackHost(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
 function hydrate(next: WeiwallSyncConfig) {
   config.value = next;
   form.enabled = next.enabled;
@@ -204,10 +255,19 @@ function hydrate(next: WeiwallSyncConfig) {
 async function reload() {
   loading.value = true;
   try {
-    hydrate(await adminApi.weiwallSync());
+    const [nextConfig, nextSiteConfig] = await Promise.all([
+      adminApi.weiwallSync(),
+      adminApi.siteConfig(),
+    ]);
+    hydrate(nextConfig);
+    siteOrigin.value = readSiteOrigin(nextSiteConfig);
   } finally {
     loading.value = false;
   }
+}
+
+function readSiteOrigin(next: SiteConfig) {
+  return String(next.siteOrigin || "").trim();
 }
 
 async function save() {
@@ -266,9 +326,13 @@ async function pollAuthStatus() {
 }
 
 async function startWechatAuth() {
+  if (!siteOrigin.value.trim() && isLoopbackHost(window.location.hostname.trim().toLowerCase())) {
+    ElMessage.error("当前页面是本地地址，请先到“基础配置”里设置可公网访问的站点域名，再生成微信授权二维码");
+    return;
+  }
   authLinkLoading.value = true;
   try {
-    authSession.value = await adminApi.createWeiwallAuthLink();
+    authSession.value = await adminApi.createWeiwallAuthLink(window.location.origin);
     authStatus.value = {
       flowId: authSession.value.flowId,
       status: "pending",
