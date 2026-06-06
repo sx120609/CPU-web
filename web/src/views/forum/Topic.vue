@@ -209,34 +209,42 @@
       </div>
       <el-empty v-else-if="!replies.length" description="还没有回复，来聊两句吧" />
       <template v-else>
-        <div v-for="r in replies" :id="`reply-${r.id}`" :key="r.id" class="reply">
-          <UserAvatar :size="32" class="avatar" :src="r.author?.avatar" :name="r.author?.nickname" alt="回复头像" />
+        <div
+          v-for="entry in displayReplies"
+          :id="`reply-${entry.item.id}`"
+          :key="entry.item.id"
+          class="reply"
+          :class="{ nested: entry.depth > 0 }"
+          :style="{ marginLeft: `${Math.min(entry.depth, 4) * 24}px` }"
+        >
+          <UserAvatar :size="32" class="avatar" :src="entry.item.author?.avatar" :name="entry.item.author?.nickname" alt="回复头像" />
           <div class="reply-body">
             <div class="reply-meta">
-              <span class="floor">#{{ r.floor }}</span>
-              <router-link v-if="r.author?.id" :to="`/u/${r.author.id}`" class="author">{{ r.author?.nickname }}</router-link>
-              <span v-else class="author">{{ r.author?.nickname }}</span>
-              <el-tag v-if="r.isAnonymous" size="small" type="warning" effect="plain">匿名</el-tag>
+              <span class="floor">#{{ entry.item.floor }}</span>
+              <router-link v-if="entry.item.author?.id" :to="`/u/${entry.item.author.id}`" class="author">{{ entry.item.author?.nickname }}</router-link>
+              <span v-else class="author">{{ entry.item.author?.nickname }}</span>
+              <el-tag v-if="entry.item.isAnonymous" size="small" type="warning" effect="plain">匿名</el-tag>
               <UserModerationActions
-                v-if="replyModerationUser(r)"
-                :user="replyModerationUser(r)"
+                v-if="replyModerationUser(entry.item)"
+                :user="replyModerationUser(entry.item)"
                 display="dropdown"
                 text
                 label="管理"
-                @updated="applyReplyAuthorModeration(r, $event)"
+                @updated="applyReplyAuthorModeration(entry.item, $event)"
               />
-              <span v-if="r.isAnonymous && r.realAuthor" class="real-author-inline">
-                真实作者：{{ r.realAuthor.nickname }}<template v-if="r.realAuthor.username"> @{{ r.realAuthor.username }}</template>
+              <span v-if="entry.item.isAnonymous && entry.item.realAuthor" class="real-author-inline">
+                真实作者：{{ entry.item.realAuthor.nickname }}<template v-if="entry.item.realAuthor.username"> @{{ entry.item.realAuthor.username }}</template>
               </span>
+              <span v-if="entry.parent" class="reply-parent-chip">回复 {{ entry.parent.author?.nickname || "同学" }} · #{{ entry.parent.floor }}</span>
               <span class="dot">·</span>
-              <span>{{ fmtRelative(r.createdAt) }}</span>
+              <span>{{ fmtRelative(entry.item.createdAt) }}</span>
             </div>
-            <MarkdownView :content="r.content" class="reply-content topic-markdown reply-markdown" clickable-images media-loading="eager" />
+            <MarkdownView :content="entry.item.content" class="reply-content topic-markdown reply-markdown" clickable-images media-loading="eager" />
             <div class="reply-actions">
-              <el-button text size="small" @click="quoteReply(r)">引用</el-button>
-              <el-button v-if="canEditReply(r)" text size="small" @click="editReply(r)">编辑</el-button>
-              <el-button v-if="canEditReply(r)" text size="small" type="danger" @click="removeReply(r)">删除</el-button>
-              <el-button text size="small" @click="onLikeReply(r)">👍 {{ r.likeCount }}</el-button>
+              <el-button text size="small" @click="quoteReply(entry.item)">引用</el-button>
+              <el-button v-if="canEditReply(entry.item)" text size="small" @click="editReply(entry.item)">编辑</el-button>
+              <el-button v-if="canEditReply(entry.item)" text size="small" type="danger" @click="removeReply(entry.item)">删除</el-button>
+              <el-button text size="small" @click="onLikeReply(entry.item)">👍 {{ entry.item.likeCount }}</el-button>
             </div>
           </div>
         </div>
@@ -252,6 +260,10 @@
       align-center
       class="reply-dialog"
     >
+      <div v-if="replyParentPreview && !editingReplyId" class="reply-target-bar">
+        <span>正在回复 {{ replyParentPreview.author?.nickname || "同学" }} 的 #{{ replyParentPreview.floor }} 楼</span>
+        <el-button text size="small" @click="clearReplyParent">取消</el-button>
+      </div>
       <div v-if="topic?.board?.anonymousEnabled" class="reply-anonymous-box" :class="{ disabled: !replyAnonymousEnabled }">
         <el-switch v-model="replyAnonymous" :disabled="!replyAnonymousEnabled" />
         <div class="reply-anonymous-copy">
@@ -581,6 +593,7 @@ const replyText = ref("");
 const replyAnonymous = ref(false);
 const replyDialogOpen = ref(false);
 const editingReplyId = ref<number | null>(null);
+const replyParentId = ref<number | null>(null);
 const shareDialogOpen = ref(false);
 const copyShareDialogOpen = ref(false);
 const shareCardDialogOpen = ref(false);
@@ -626,6 +639,34 @@ const topicModerationUser = computed(() => {
 const canReply = computed(() =>
   auth.isLoggedIn && !topic.value?.locked && auth.user?.status !== "muted"
 );
+const replyParentPreview = computed(() => replies.value.find((item) => item.id === replyParentId.value) ?? null);
+const displayReplies = computed(() => {
+  const byId = new Map(replies.value.map((item) => [item.id, item] as const));
+  const children = new Map<number, Reply[]>();
+  const roots: Reply[] = [];
+  for (const reply of replies.value) {
+    const parentId = Number(reply.parentReplyId ?? 0) || 0;
+    if (!parentId || !byId.has(parentId) || parentId === reply.id) {
+      roots.push(reply);
+      continue;
+    }
+    const list = children.get(parentId) ?? [];
+    list.push(reply);
+    children.set(parentId, list);
+  }
+  const sortByFloor = (list: Reply[]) => list.sort((a, b) => (a.floor || 0) - (b.floor || 0) || a.id - b.id);
+  sortByFloor(roots);
+  children.forEach((list) => sortByFloor(list));
+  const flattened: Array<{ item: Reply; depth: number; parent: Reply | null }> = [];
+  const walk = (reply: Reply, depth: number, parent: Reply | null) => {
+    flattened.push({ item: reply, depth, parent });
+    for (const child of children.get(reply.id) ?? []) {
+      walk(child, depth + 1, reply);
+    }
+  };
+  for (const root of roots) walk(root, 0, null);
+  return flattened;
+});
 const replyAnonymousEnabled = computed(() => {
   const anonymousState = auth.user?.anonymousState;
   const ownAnonymousTopic = Boolean(
@@ -781,6 +822,7 @@ watch(replyDialogOpen, (open) => {
   if (!open && !replying.value) {
     replyAnonymous.value = false;
     editingReplyId.value = null;
+    replyParentId.value = null;
   }
 });
 
@@ -857,8 +899,13 @@ async function onLikeReply(reply: any) {
 
 function quoteReply(r: Reply) {
   if (!openReplyDialog()) return;
+  replyParentId.value = r.id;
   const quoted = `<blockquote><p>@${escapeHtml(r.author?.nickname || "同学")} 在 #${r.floor} 楼：</p>${r.content}</blockquote><p><br></p>`;
   replyText.value = `${replyText.value || ""}${quoted}`;
+}
+
+function clearReplyParent() {
+  replyParentId.value = null;
 }
 
 function canEditReply(reply: Reply) {
@@ -875,6 +922,7 @@ function canEditReply(reply: Reply) {
 function editReply(reply: Reply) {
   if (!canEditReply(reply)) return;
   editingReplyId.value = reply.id;
+  replyParentId.value = null;
   replyText.value = reply.content;
   replyAnonymous.value = false;
   replyDialogOpen.value = true;
@@ -882,6 +930,7 @@ function editReply(reply: Reply) {
 
 function cancelReplyEdit() {
   editingReplyId.value = null;
+  replyParentId.value = null;
   replyText.value = "";
 }
 
@@ -924,6 +973,7 @@ async function submitReply() {
     const r = await replyApi.create({
       topicId: topic.value!.id,
       content: replyText.value,
+      parentReplyId: replyParentId.value || undefined,
       anonymous: replyAnonymous.value,
     });
     if (replyAnonymous.value) await auth.fetchMe();
@@ -938,6 +988,7 @@ async function submitReply() {
     replies.value.push({ ...r, _liked: false } as any);
     replyText.value = "";
     replyAnonymous.value = false;
+    replyParentId.value = null;
     replyDialogOpen.value = false;
     replyEditorRef.value?.clearDraft();
     if (topic.value) topic.value.replyCount += 1;
@@ -1673,6 +1724,20 @@ async function onDelete() {
     border-bottom: 1px dashed #f1f5f9;
     scroll-margin-top: 96px;
   }
+  .reply.nested {
+    position: relative;
+    padding-left: 12px;
+  }
+  .reply.nested::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 16px;
+    bottom: 16px;
+    width: 3px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #cbd5e1 0%, #e2e8f0 100%);
+  }
   .reply:target {
     border-radius: 14px;
     padding-inline: 12px;
@@ -1686,6 +1751,7 @@ async function onDelete() {
   .reply-meta {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 6px;
     font-size: 12px;
     color: #6b7280;
@@ -1694,6 +1760,16 @@ async function onDelete() {
   .floor { color: #9ca3af; }
   .author { color: var(--cpu-primary); text-decoration: none; font-weight: 500; }
   .real-author-inline { color: #6b7280; }
+  .reply-parent-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    color: #475569;
+  }
   .dot { color: #d1d5db; }
   .reply-content { font-size: 14px; }
   .reply-actions {
@@ -1701,6 +1777,19 @@ async function onDelete() {
     display: flex;
     gap: 4px;
   }
+}
+
+.reply-target-bar {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #bfdbfe;
+  background: linear-gradient(180deg, #eff6ff 0%, #f8fbff 100%);
+  color: #1d4ed8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .topic-image-review-panel {

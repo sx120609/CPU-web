@@ -398,7 +398,6 @@
           </div>
           <div class="qqbot-guide-account-actions">
             <el-button plain :disabled="!qqBotProfile?.botQqId" @click="copyQqBotAccount">复制 QQBot 号</el-button>
-            <el-button plain :disabled="!qqBotProfile?.botQqId" @click="openQqBotContact">尝试打开 QQ</el-button>
           </div>
         </div>
 
@@ -785,18 +784,6 @@ async function copyQqBotAccount() {
   }
   await copyText(qqId);
   ElMessage.success(`已复制 QQBot 账号 ${qqId}`);
-}
-
-function openQqBotContact() {
-  const qqId = qqBotProfile.value?.botQqId?.trim();
-  if (!qqId) {
-    ElMessage.warning("管理员还没有配置 QQBot 账号");
-    return;
-  }
-  window.location.href = `tencent://AddContact/?fromId=45&fromSubId=1&subcmd=all&uin=${encodeURIComponent(qqId)}`;
-  window.setTimeout(() => {
-    ElMessage.info("如果没有自动拉起 QQ，请先复制上面的 QQBot 号，再到 QQ 内手动添加。");
-  }, 200);
 }
 
 async function unbindQqBot() {
