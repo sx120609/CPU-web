@@ -1231,7 +1231,7 @@ async function syncSingleTopic(
     where: { externalTopicId },
     include: {
       localTopic: {
-        select: { id: true, authorId: true, createdAt: true },
+        select: { id: true, authorId: true, createdAt: true, replyCount: true },
       },
     },
   });
@@ -1275,6 +1275,7 @@ async function syncSingleTopic(
     && (
       !existingMap
       || Number(topic.commentCount ?? 0) !== existingMap.lastCommentCount
+      || Number(topic.commentCount ?? 0) !== Number(existingMap.localTopic?.replyCount ?? 0)
       || needsReplyAuthorBackfill > 0
     );
 
@@ -1309,7 +1310,7 @@ async function syncSingleTopic(
       externalAuthorUuid: externalAuthor.uuid,
     });
 
-    let localTopic: Pick<Topic, "id" | "authorId" | "createdAt">;
+    let localTopic: Pick<Topic, "id" | "authorId" | "createdAt" | "replyCount">;
     if (!existingMap) {
       const created = await tx.topic.create({
         data: {
@@ -1327,7 +1328,7 @@ async function syncSingleTopic(
           lastReplyById: botUserId,
           createdAt,
         },
-        select: { id: true, authorId: true, createdAt: true },
+        select: { id: true, authorId: true, createdAt: true, replyCount: true },
       });
       await tx.weiwallTopicMap.create({
         data: {
@@ -1420,7 +1421,7 @@ async function syncBackfillTopicComments(
     localTopicId: number;
     lastCommentCount: number;
     lastStatus: string | null;
-    localTopic: Pick<Topic, "id" | "authorId" | "createdAt"> | null;
+    localTopic: Pick<Topic, "id" | "authorId" | "createdAt" | "replyCount"> | null;
   },
   botUserId: number,
   counters: WeiwallSyncResult,
@@ -1440,7 +1441,9 @@ async function syncBackfillTopicComments(
 
   const remoteCommentCount = Math.max(0, Number(detail?.commentCount ?? topicMap.lastCommentCount) || 0);
   const remoteStatus = String(detail?.status ?? topicMap.lastStatus ?? "");
-  const shouldFetchComments = remoteCommentCount !== Math.max(0, Number(topicMap.lastCommentCount ?? 0) || 0);
+  const shouldFetchComments =
+    remoteCommentCount !== Math.max(0, Number(topicMap.lastCommentCount ?? 0) || 0)
+    || remoteCommentCount !== Math.max(0, Number(topicMap.localTopic?.replyCount ?? 0) || 0);
 
   if (!shouldFetchComments) {
     await prisma.weiwallTopicMap.update({
@@ -1562,7 +1565,7 @@ export async function runWeiwallSyncNow() {
           take: WEIWALL_COMMENT_BACKFILL_TOPICS_PER_RUN,
           include: {
             localTopic: {
-              select: { id: true, authorId: true, createdAt: true },
+              select: { id: true, authorId: true, createdAt: true, replyCount: true },
             },
           },
         });
