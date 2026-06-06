@@ -97,6 +97,9 @@ export type WeiwallSyncAdminConfig = {
   tenantId: number;
   tokenPresent: boolean;
   tokenPreview: string;
+  tokenExpiresAt: string | null;
+  tokenExpiresKnown: boolean;
+  tokenExpired: boolean;
   intervalSeconds: number;
   topicPages: number;
   commentPageSize: number;
@@ -183,6 +186,13 @@ type WeiwallAuthFlowPayload = {
   schoolEn: string;
 };
 
+type WeiwallTokenMeta = {
+  expiresAt: string | null;
+  expiresAtMs: number | null;
+  expiresKnown: boolean;
+  expired: boolean;
+};
+
 class WeiwallRateLimitError extends Error {
   constructor(message = "请求过于频繁，请稍后再试") {
     super(message);
@@ -222,6 +232,104 @@ function maskToken(token: string) {
   if (!token) return "";
   if (token.length <= 16) return token;
   return `${token.slice(0, 8)}...${token.slice(-6)}`;
+}
+
+function inspectWeiwallToken(token: string): WeiwallTokenMeta {
+  const text = String(token || "").trim();
+  if (!text) {
+    return {
+      expiresAt: null,
+      expiresAtMs: null,
+      expiresKnown: false,
+      expired: false,
+    };
+  }
+  const decoded = jwt.decode(text);
+  if (!decoded || typeof decoded !== "object") {
+    return {
+      expiresAt: null,
+      expiresAtMs: null,
+      expiresKnown: false,
+      expired: false,
+    };
+  }
+  const expSeconds = Number((decoded as Record<string, unknown>).exp ?? 0);
+  if (!Number.isFinite(expSeconds) || expSeconds <= 0) {
+    return {
+      expiresAt: null,
+      expiresAtMs: null,
+      expiresKnown: false,
+      expired: false,
+    };
+  }
+  const expiresAtMs = Math.round(expSeconds * 1000);
+  return {
+    expiresAt: new Date(expiresAtMs).toISOString(),
+    expiresAtMs,
+    expiresKnown: true,
+    expired: expiresAtMs <= Date.now(),
+  };
+}
+
+function shortDateTime(input: string | null) {
+  if (!input) return "";
+  const date = new Date(input);
+  if (Number.isNaN(date.getTime())) return input;
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function weiwallTokenHash(token: string) {
+  return createHash("sha1").update(String(token || "").trim()).digest("hex").slice(0, 16);
+}
+
+async function notifyAdminsIfWeiwallTokenExpired(token: string, expiresAt: string) {
+  const admins = await prisma.user.findMany({
+    where: { role: "admin", status: "active" },
+    select: { id: true },
+  });
+  if (!admins.length) return;
+  const tokenHash = weiwallTokenHash(token);
+  const existing = await prisma.notification.findMany({
+    where: {
+      userId: { in: admins.map((item) => item.id) },
+      category: "system",
+      source: "校园墙同步",
+      title: "校园墙 Token 已过期",
+      AND: [
+        { payload: { contains: "\"type\":\"weiwall-token-expired\"" } },
+        { payload: { contains: `"tokenHash":"${tokenHash}"` } },
+      ],
+    },
+    select: { userId: true },
+  });
+  const existingUserIds = new Set(existing.map((item) => item.userId).filter((value): value is number => typeof value === "number"));
+  const missingUserIds = admins.map((item) => item.id).filter((id) => !existingUserIds.has(id));
+  if (!missingUserIds.length) return;
+  const payload = JSON.stringify({
+    type: "weiwall-token-expired",
+    tokenHash,
+    expiresAt,
+  });
+  await prisma.notification.createMany({
+    data: missingUserIds.map((userId) => ({
+      userId,
+      category: "system",
+      level: "warning",
+      title: "校园墙 Token 已过期",
+      content: `当前校园墙 Token 已于 ${shortDateTime(expiresAt)} 过期，请尽快重新授权。`,
+      source: "校园墙同步",
+      link: "/admin?tab=weiwall",
+      payload,
+    })),
+  }).catch(() => {});
+}
+
+async function maybeNotifyWeiwallTokenExpired(token: string) {
+  const meta = inspectWeiwallToken(token);
+  if (!meta.expiresKnown || !meta.expired || !meta.expiresAt) return meta;
+  await notifyAdminsIfWeiwallTokenExpired(token, meta.expiresAt);
+  return meta;
 }
 
 function coerceBool(input: unknown) {
@@ -434,6 +542,7 @@ async function ensureWeiwallSyncConfigRow(client: SyncClient = prisma) {
 }
 
 function toAdminConfig(row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>): WeiwallSyncAdminConfig {
+  const tokenMeta = inspectWeiwallToken(row.token);
   return {
     id: row.id,
     enabled: row.enabled,
@@ -442,6 +551,9 @@ function toAdminConfig(row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow
     tenantId: row.tenantId,
     tokenPresent: Boolean(row.token),
     tokenPreview: maskToken(row.token),
+    tokenExpiresAt: tokenMeta.expiresAt,
+    tokenExpiresKnown: tokenMeta.expiresKnown,
+    tokenExpired: tokenMeta.expired,
     intervalSeconds: row.intervalSeconds,
     topicPages: row.topicPages,
     commentPageSize: row.commentPageSize,
@@ -462,7 +574,9 @@ function toAdminConfig(row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow
 }
 
 export async function getWeiwallSyncAdminConfig() {
-  return toAdminConfig(await ensureWeiwallSyncConfigRow());
+  const row = await ensureWeiwallSyncConfigRow();
+  if (row.token) await maybeNotifyWeiwallTokenExpired(row.token);
+  return toAdminConfig(row);
 }
 
 export async function updateWeiwallSyncConfig(patch: WeiwallSyncPatch) {
@@ -1392,6 +1506,7 @@ export async function runWeiwallSyncNow() {
       });
       return result;
     }
+    await maybeNotifyWeiwallTokenExpired(configRow.token);
 
     try {
       result.sourceName = await fetchTenantName(configRow.baseUrl || WEIWALL_DEFAULT_BASE_URL);

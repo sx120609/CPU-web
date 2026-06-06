@@ -326,6 +326,9 @@ export type WeiwallSyncConfig = {
   tenantId: number;
   tokenPresent: boolean;
   tokenPreview: string;
+  tokenExpiresAt: string | null;
+  tokenExpiresKnown: boolean;
+  tokenExpired: boolean;
   intervalSeconds: number;
   topicPages: number;
   commentPageSize: number;

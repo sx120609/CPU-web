@@ -30,6 +30,10 @@
           <span class="label">Token</span>
           <div class="value">
             <span>{{ config.tokenPresent ? config.tokenPreview : "未配置" }}</span>
+            <span v-if="config.tokenPresent && config.tokenExpiresKnown" class="muted">
+              · {{ config.tokenExpired ? "已过期" : "到期" }} {{ fmtDate(config.tokenExpiresAt) }}
+            </span>
+            <span v-else-if="config.tokenPresent" class="muted">· 到期时间未知</span>
           </div>
         </div>
         <div class="status-card">
@@ -98,6 +102,7 @@
             placeholder="把 capture-token --show-token 抓到的 Bearer token 粘贴到这里"
           />
           <div class="field-tip">推荐先在命令行执行：<code>npm run weiwall -- capture-token --adb \"D:\platform-tools\adb.exe\" --show-token</code></div>
+          <div class="field-tip">如果当前 Token 是 JWT，后台会自动显示到期时间；过期后会给管理员发送站内通知。</div>
         </el-form-item>
 
         <div class="form-actions">
