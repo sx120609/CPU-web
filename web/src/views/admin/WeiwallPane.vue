@@ -74,7 +74,7 @@
 
         <el-form-item label="帖子扫描页数">
           <el-input-number v-model="form.topicPages" :min="1" :max="20" />
-          <div class="field-tip">每轮会从“最新”流往后翻这么多页，页数越大越稳，但请求量也越高。</div>
+          <div class="field-tip">每轮会先从“最新发帖”流往后翻这么多页，再额外轮转补扫一小批老帖评论；页数越大越稳，但请求量也越高。</div>
         </el-form-item>
 
         <el-form-item label="评论页大小">

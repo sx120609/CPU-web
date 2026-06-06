@@ -15,6 +15,7 @@ const WEIWALL_TICK_MS = 30_000;
 const WEIWALL_MIN_INTERVAL_SECONDS = 30;
 const WEIWALL_LOCK_MS = 4 * 60_000;
 const WEIWALL_MAX_COMMENT_PAGE_SIZE = 20;
+const WEIWALL_COMMENT_BACKFILL_TOPICS_PER_RUN = 12;
 const WEIWALL_BOT_USERNAME = "weiwall_sync_bot";
 const WEIWALL_BOT_NICKNAME = "校园墙同步";
 
@@ -61,6 +62,15 @@ type WeiwallCommentPage = {
   rows: WeiwallReplyRow[];
   page?: number;
   pageSize?: number;
+};
+
+type WeiwallReadOnlyTopicDetail = {
+  id?: number | string;
+  status?: string | number | null;
+  commentCount?: number | null;
+  likeCount?: number | null;
+  viewCount?: number | null;
+  createTime?: string | null;
 };
 
 type FlattenedExternalReply = {
@@ -484,6 +494,32 @@ async function weiwallFetchJson(row: Awaited<ReturnType<typeof ensureWeiwallSync
   throw new Error("WeiWall 请求失败");
 }
 
+async function weiwallFetchPublicJson(row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>, path: string) {
+  const url = new URL(path, row.baseUrl || WEIWALL_DEFAULT_BASE_URL);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch(url.toString(), {
+      headers: {
+        Accept: "application/json",
+        Tenant: String(row.tenantId),
+        "User-Agent": "Mozilla/5.0",
+      },
+    });
+    const text = await res.text();
+    const json = parseJsonSafe<any>(text, {});
+    const message = json?.errmsg || json?.message || `WeiWall 请求失败 (${res.status})`;
+    if (isWeiwallRateLimitMessage(message)) {
+      if (attempt < 2) {
+        await delay(1200 * (attempt + 1));
+        continue;
+      }
+      throw new WeiwallRateLimitError(message);
+    }
+    if (!res.ok) throw new Error(message);
+    return json;
+  }
+  throw new Error("WeiWall 请求失败");
+}
+
 async function fetchLatestTopics(row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>) {
   const collected: WeiwallTopicRow[] = [];
   const seen = new Set<string>();
@@ -547,6 +583,14 @@ async function fetchCommentPage(
     page: Number(json?.data?.page ?? args.page),
     pageSize: Number(json?.data?.pageSize ?? pageSize),
   } satisfies WeiwallCommentPage;
+}
+
+async function fetchReadOnlyTopicDetail(
+  row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>,
+  topicId: string,
+) {
+  const json = await weiwallFetchPublicJson(row, `/api/client/topics/read_only/${encodeURIComponent(topicId)}`);
+  return (json?.data ?? null) as WeiwallReadOnlyTopicDetail | null;
 }
 
 async function fetchTopicComments(
@@ -994,6 +1038,85 @@ async function syncSingleTopic(
   };
 }
 
+async function syncBackfillTopicComments(
+  configRow: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>,
+  topicMap: {
+    id: number;
+    externalTopicId: string;
+    localTopicId: number;
+    lastCommentCount: number;
+    lastStatus: string | null;
+    localTopic: Pick<Topic, "id" | "authorId" | "createdAt"> | null;
+  },
+  botUserId: number,
+  counters: WeiwallSyncResult,
+  control: { commentFetchStopped: boolean; rateLimitMessage: string | null },
+) {
+  if (control.commentFetchStopped || !topicMap.localTopic) return { replyAuthorIds: [] as number[] };
+
+  let detail: WeiwallReadOnlyTopicDetail | null = null;
+  try {
+    detail = await fetchReadOnlyTopicDetail(configRow, topicMap.externalTopicId);
+  } catch (error: any) {
+    if (!(error instanceof WeiwallRateLimitError)) throw error;
+    control.commentFetchStopped = true;
+    control.rateLimitMessage = error.message;
+    return { replyAuthorIds: [] as number[] };
+  }
+
+  const remoteCommentCount = Math.max(0, Number(detail?.commentCount ?? topicMap.lastCommentCount) || 0);
+  const remoteStatus = String(detail?.status ?? topicMap.lastStatus ?? "");
+  const shouldFetchComments = remoteCommentCount !== Math.max(0, Number(topicMap.lastCommentCount ?? 0) || 0);
+
+  if (!shouldFetchComments) {
+    await prisma.weiwallTopicMap.update({
+      where: { id: topicMap.id },
+      data: {
+        lastCommentCount: remoteCommentCount,
+        lastStatus: remoteStatus,
+        lastSyncedAt: new Date(),
+      },
+    });
+    return { replyAuthorIds: [] as number[] };
+  }
+
+  const commentFetchCounters = { commentsFetched: 0 };
+  const comments = await fetchTopicComments(configRow, topicMap.externalTopicId, commentFetchCounters, control);
+  counters.commentsFetched += commentFetchCounters.commentsFetched;
+
+  const replySync = await prisma.$transaction(async (tx) => {
+    const replies = comments.length
+      ? await syncTopicReplies(tx, topicMap.localTopic!, topicMap.externalTopicId, comments, botUserId)
+      : { repliesCreated: 0, repliesUpdated: 0, touchedReplyAuthorIds: [] as number[] };
+
+    if (!comments.length) {
+      await tx.topic.update({
+        where: { id: topicMap.localTopic!.id },
+        data: {
+          replyCount: 0,
+          lastReplyAt: topicMap.localTopic!.createdAt,
+          lastReplyById: topicMap.localTopic!.authorId,
+        },
+      });
+    }
+
+    await tx.weiwallTopicMap.update({
+      where: { id: topicMap.id },
+      data: {
+        lastCommentCount: remoteCommentCount,
+        lastStatus: remoteStatus,
+        lastSyncedAt: new Date(),
+      },
+    });
+
+    return replies;
+  });
+
+  counters.repliesCreated += replySync.repliesCreated;
+  counters.repliesUpdated += replySync.repliesUpdated;
+  return { replyAuthorIds: replySync.touchedReplyAuthorIds };
+}
+
 export async function runWeiwallSyncNow() {
   const locked = await runWithDistributedLock("weiwall-sync:run", WEIWALL_LOCK_MS, async () => {
     const configRow = await ensureWeiwallSyncConfigRow();
@@ -1045,10 +1168,34 @@ export async function runWeiwallSyncNow() {
       if (topicScan.rateLimited) control.rateLimitMessage = topicScan.rateLimitMessage;
       const touchedTopicAuthorIds = new Set<number>();
       const touchedReplyAuthorIds = new Set<number>();
+      const latestExternalTopicIds = new Set<string>();
       for (const topic of topicScan.rows) {
+        latestExternalTopicIds.add(externalId(topic.id));
         const syncResult = await syncSingleTopic(configRow, board, result.sourceName, topic, botUser.id, result, control);
         syncResult.topicAuthorIds.forEach((id) => touchedTopicAuthorIds.add(id));
         syncResult.replyAuthorIds.forEach((id) => touchedReplyAuthorIds.add(id));
+      }
+      if (!control.commentFetchStopped) {
+        const backfillCandidates = await prisma.weiwallTopicMap.findMany({
+          where: latestExternalTopicIds.size
+            ? { externalTopicId: { notIn: [...latestExternalTopicIds] } }
+            : undefined,
+          orderBy: [
+            { lastSyncedAt: "asc" },
+            { id: "asc" },
+          ],
+          take: WEIWALL_COMMENT_BACKFILL_TOPICS_PER_RUN,
+          include: {
+            localTopic: {
+              select: { id: true, authorId: true, createdAt: true },
+            },
+          },
+        });
+        for (const topicMap of backfillCandidates) {
+          if (control.commentFetchStopped) break;
+          const syncResult = await syncBackfillTopicComments(configRow, topicMap, botUser.id, result, control);
+          syncResult.replyAuthorIds.forEach((id) => touchedReplyAuthorIds.add(id));
+        }
       }
       result.authorsCreated = authorCounters.created;
       result.authorsUpdated = authorCounters.updated;
