@@ -12,8 +12,8 @@ import { Errors } from "../utils/response";
 import { getSiteOrigin } from "./siteSettings";
 
 export const WEIWALL_BOARD_SLUG = "campus-wall";
-const WEIWALL_BOARD_NAME = "校园墙";
-const WEIWALL_BOARD_DESCRIPTION = "从外部校园墙同步的只读镜像，自动刷新帖子与评论。";
+const WEIWALL_BOARD_NAME = "逛逛推流";
+const WEIWALL_BOARD_DESCRIPTION = "从外部逛逛推流同步的只读镜像，自动刷新帖子与评论。";
 const WEIWALL_BOARD_ICON = "📮";
 const WEIWALL_BOARD_COLOR = "#0ea5e9";
 const WEIWALL_DEFAULT_BASE_URL = "https://s.weiwall.com";
@@ -24,7 +24,7 @@ const WEIWALL_MAX_COMMENT_PAGE_SIZE = 20;
 const WEIWALL_COMMENT_BACKFILL_TOPICS_PER_RUN = 12;
 const WEIWALL_TRACE_LIMIT = 40;
 const WEIWALL_BOT_USERNAME = "weiwall_sync_bot";
-const WEIWALL_BOT_NICKNAME = "校园墙同步";
+const WEIWALL_BOT_NICKNAME = "逛逛推流同步";
 const WEIWALL_AUTH_FLOW_TTL_MS = 15 * 60_000;
 
 type WeiwallUserInfo = {
@@ -311,8 +311,8 @@ async function notifyAdminsIfWeiwallTokenExpired(token: string, expiresAt: strin
     where: {
       userId: { in: admins.map((item) => item.id) },
       category: "system",
-      source: "校园墙同步",
-      title: "校园墙 Token 已过期",
+      source: "逛逛推流同步",
+      title: "逛逛推流 Token 已过期",
       AND: [
         { payload: { contains: "\"type\":\"weiwall-token-expired\"" } },
         { payload: { contains: `"tokenHash":"${tokenHash}"` } },
@@ -333,9 +333,9 @@ async function notifyAdminsIfWeiwallTokenExpired(token: string, expiresAt: strin
       userId,
       category: "system",
       level: "warning",
-      title: "校园墙 Token 已过期",
-      content: `当前校园墙 Token 已于 ${shortDateTime(expiresAt)} 过期，请尽快重新授权。`,
-      source: "校园墙同步",
+      title: "逛逛推流 Token 已过期",
+      content: `当前逛逛推流 Token 已于 ${shortDateTime(expiresAt)} 过期，请尽快重新授权。`,
+      source: "逛逛推流同步",
       link: "/admin?tab=weiwall",
       payload,
     })),
@@ -401,8 +401,30 @@ function describeCommentSyncReason(input: {
   return notes.join("；") || "本轮未命中评论补抓条件";
 }
 
+function looksLikeWeiwallBlockedBody(content: unknown) {
+  const body = String(content ?? "").trim();
+  if (!body) return false;
+  const compact = body.replace(/\s+/g, "");
+  if (/^[-_=~*#.^。·—]{5,}$/.test(compact)) return true;
+  const normalized = compact.toLowerCase();
+  return [
+    "该内容已被屏蔽",
+    "内容已被屏蔽",
+    "该评论已被屏蔽",
+    "该回复已被屏蔽",
+    "该内容无法查看",
+  ].includes(normalized);
+}
+
+function renderWeiwallBlockedNotice() {
+  return [
+    "> **该内容被逛逛屏蔽，当前无法查看原文。**",
+  ].join("\n");
+}
+
 function renderExternalContent(content: unknown, images: Array<string | null | undefined>) {
   const body = String(content ?? "").trim();
+  if (looksLikeWeiwallBlockedBody(body)) return renderWeiwallBlockedNotice();
   const uniqImages = uniqStrings(images);
   const imageMarkdown = uniqImages.map((url) => `![](${url})`).join("\n\n");
   if (body && imageMarkdown) return `${body}\n\n${imageMarkdown}`;
@@ -425,7 +447,7 @@ function deriveLocalTitle(topic: WeiwallTopicRow) {
   if (explicit && explicit !== "none") return explicit;
   const fromContent = summarizeExternalText(topic.content, 80);
   if (fromContent) return fromContent;
-  return `校园墙帖子 ${externalId(topic.id) || "unknown"}`;
+  return `逛逛推流帖子 ${externalId(topic.id) || "unknown"}`;
 }
 
 function formatTraceTitle(input: {
@@ -706,7 +728,7 @@ async function fetchTenantName(baseUrl: string) {
     headers: { Accept: "application/json" },
   });
   const json = parseJsonSafe<any>(await res.text(), {});
-  return trimTo(json?.data?.tenantName, 80, "校园墙");
+  return trimTo(json?.data?.tenantName, 80, "逛逛推流");
 }
 
 async function weiwallFetchJson(row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>, path: string, query?: Record<string, string | number | null | undefined>) {
@@ -1024,8 +1046,8 @@ export async function completeWeiwallTokenAuthCallback(input: {
     await writeWeiwallAuthFlow(record, 10 * 60_000);
     return {
       ok: true,
-      title: "校园墙 Token 已更新",
-      message: "新的校园墙 Token 已自动保存，现在可以返回后台继续使用。",
+      title: "逛逛推流 Token 已更新",
+      message: "新的逛逛推流 Token 已自动保存，现在可以返回后台继续使用。",
     };
   } catch (error: any) {
     record.used = true;
@@ -1647,7 +1669,7 @@ export async function runWeiwallSyncNow() {
     const result: WeiwallSyncResult = {
       ok: false,
       boardSlug: board.slug,
-      sourceName: "校园墙",
+      sourceName: "逛逛推流",
       pagesScanned: 0,
       topicsScanned: 0,
       topicsCreated: 0,
@@ -1766,7 +1788,7 @@ export async function runWeiwallSyncNow() {
   return {
     ok: false,
     boardSlug: board.slug,
-    sourceName: "校园墙",
+    sourceName: "逛逛推流",
     pagesScanned: 0,
     topicsScanned: 0,
     topicsCreated: 0,
@@ -1799,7 +1821,7 @@ export function startWeiwallSyncScheduler() {
       return;
     }
     if (result.ok && (result.topicsCreated || result.repliesCreated)) {
-      console.log(`📮 校园墙同步完成: +${result.topicsCreated} 帖子, +${result.repliesCreated} 回复`);
+      console.log(`📮 逛逛推流同步完成: +${result.topicsCreated} 帖子, +${result.repliesCreated} 回复`);
     }
   };
 
@@ -1810,5 +1832,5 @@ export function startWeiwallSyncScheduler() {
     }, WEIWALL_TICK_MS);
   }, 8_000);
 
-  console.log("📮 校园墙同步器已挂载（默认 30 秒检查，按配置 intervalSeconds 执行）");
+  console.log("📮 逛逛推流同步器已挂载（默认 30 秒检查，按配置 intervalSeconds 执行）");
 }

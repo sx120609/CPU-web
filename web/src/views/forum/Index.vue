@@ -47,7 +47,7 @@
             <div class="icon" :style="{ background: campusWall.color || '#0ea5e9' }">{{ campusWall.icon || "📮" }}</div>
             <div class="body">
               <div class="name">{{ campusWall.name }}</div>
-              <div class="desc">单独展示的校园墙镜像内容，不参与本站热榜和最新流。</div>
+              <div class="desc">单独展示的逛逛推流镜像内容，不参与本站热榜和最新流。</div>
               <div class="meta">{{ campusWall.topicCount }} 帖</div>
             </div>
           </div>

@@ -31,7 +31,7 @@ function buildAnonymousAuthor(alias?: string | null) {
 function buildExternalAuthor(name?: string | null, avatar?: string | null) {
   return {
     id: null,
-    nickname: name || "校园墙同学",
+    nickname: name || "逛逛推流同学",
     avatar: avatar || null,
     role: "external",
     external: true,
@@ -50,7 +50,7 @@ export function decodeTopicForViewer(topic: any, viewer?: Viewer) {
   const metadata = safeJson(topic.metadata);
   const isWeiwall = metadata?.externalPlatform === "weiwall";
   if (isWeiwall) {
-    const externalName = topic?.weiwallMap?.externalAuthorName || metadata?.externalAuthorName || "校园墙同学";
+    const externalName = topic?.weiwallMap?.externalAuthorName || metadata?.externalAuthorName || "逛逛推流同学";
     const externalAvatar = topic?.weiwallMap?.externalAuthorAvatar || metadata?.externalAuthorAvatar || null;
     return {
       ...topic,

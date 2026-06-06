@@ -493,7 +493,7 @@ model SchoolFeedItem {
   @@index([sourceId])
 }
 
-// ============ 外部校园墙同步（WeiWall / 逛逛校园圈） ============
+// ============ 外部逛逛推流同步（WeiWall / 逛逛校园圈） ============
 
 model WeiwallSyncConfig {
   id               Int      @id @default(autoincrement())
