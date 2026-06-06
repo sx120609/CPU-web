@@ -255,19 +255,6 @@
         </div>
       </div>
 
-      <div class="qqbot-bot-box">
-        <div>
-          <div class="sub-title">要添加的 QQBot</div>
-          <p class="qqbot-bot-copy">
-            {{ qqBotBotHint }}
-          </p>
-        </div>
-        <div class="qqbot-bot-actions">
-          <el-button plain :disabled="!qqBotProfile.botQqId" @click="copyQqBotAccount">复制 QQBot 号</el-button>
-          <el-button plain :disabled="!qqBotProfile.botQqId" @click="openQqBotContact">尝试打开 QQ</el-button>
-        </div>
-      </div>
-
       <div class="qqbot-bind-box">
         <template v-if="qqBotProfile.activeBindToken">
           <div class="qqbot-token">
@@ -541,11 +528,6 @@ const qqPostingText = computed(() => {
   if (qqBotProfile.value.allowPrivatePost) return "仅私聊";
   if (qqBotProfile.value.allowGroupPost) return "仅群聊";
   return "未开启";
-});
-const qqBotBotHint = computed(() => {
-  if (!qqBotProfile.value?.enabled) return "当前站点暂未启用 QQBot。";
-  if (!qqBotProfile.value.botQqId) return "管理员暂未填写 QQBot 账号，请稍后再试。";
-  return `绑定时请在 QQ 搜索并添加 ${qqBotProfile.value.botQqId}，私聊后发送绑定命令。`;
 });
 const qqBotBindCommandText = computed(() => {
   if (qqBotProfile.value?.activeBindToken) return `绑定 ${qqBotProfile.value.activeBindToken.token}`;
@@ -1319,31 +1301,6 @@ async function removeAvatar() {
   font-size: 16px;
 }
 
-.qqbot-bot-box {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #eefbf6 0%, #f8fffc 100%);
-  border: 1px solid #d6efe6;
-}
-
-.qqbot-bot-copy {
-  margin: 6px 0 0;
-  color: #64748b;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.qqbot-bot-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
 .qqbot-bind-box {
   display: flex;
   flex-direction: column;
@@ -1696,12 +1653,10 @@ async function removeAvatar() {
   }
 
   .qqbot-head-actions,
-  .qqbot-bot-actions,
   .qqbot-guide-account-actions {
     justify-content: flex-start;
   }
 
-  .qqbot-bot-box,
   .qqbot-guide-account {
     flex-direction: column;
   }
