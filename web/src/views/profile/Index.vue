@@ -309,8 +309,14 @@
       </div>
 
       <div class="qqbot-help">
-        <div class="sub-title">QQ 内可用命令</div>
-        <div class="qqbot-command-groups">
+        <div class="qqbot-help-head">
+          <div class="sub-title">QQ 内可用命令</div>
+          <el-button text type="primary" @click="qqBotCommandsVisible = !qqBotCommandsVisible">
+            {{ qqBotCommandsVisible ? "收起" : "点击查看" }}
+          </el-button>
+        </div>
+        <p v-if="!qqBotCommandsVisible" class="qqbot-help-tip">需要时再展开查看完整命令列表。</p>
+        <div v-else class="qqbot-command-groups">
           <div v-for="section in qqBotCommandSections" :key="section.title" class="qqbot-command-group">
             <div class="qqbot-command-group-title">{{ section.title }}</div>
             <div class="qqbot-command-list">
@@ -320,20 +326,6 @@
               </div>
             </div>
           </div>
-        </div>
-      </div>
-
-      <div v-if="qqBotProfile.recentTopics.length" class="qqbot-recent">
-        <div class="sub-title">最近通过 QQBot 发布</div>
-        <div
-          v-for="topic in qqBotProfile.recentTopics"
-          :key="topic.id"
-          class="topic-line"
-          @click="$router.push(`/forum/topic/${topic.id}`)"
-        >
-          <span class="tag qqbot-topic-tag">{{ topic.boardName }}</span>
-          <span class="title">{{ topic.title }}</span>
-          <span class="meta">{{ topic.hidden ? "审核中" : fmtRelative(topic.createdAt) }}</span>
         </div>
       </div>
 
@@ -517,6 +509,7 @@ const avatarInputRef = ref<HTMLInputElement | null>(null);
 const qqBotProfile = ref<QqBotProfile | null>(null);
 const qqBotLoading = ref(false);
 const qqBotGuideVisible = ref(false);
+const qqBotCommandsVisible = ref(false);
 const sponsorSubmitting = ref(false);
 const sponsorAmount = ref("10");
 const sponsorPayType = ref<PayType>("alipay");
@@ -1390,11 +1383,24 @@ async function removeAvatar() {
   margin-left: 0 !important;
 }
 
-.qqbot-help,
-.qqbot-recent {
+.qqbot-help {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.qqbot-help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.qqbot-help-tip {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .qqbot-command-groups {
@@ -1445,10 +1451,6 @@ async function removeAvatar() {
   color: #64748b;
   font-size: 12px;
   line-height: 1.5;
-}
-
-.qqbot-topic-tag {
-  background: #168776 !important;
 }
 
 .qqbot-guide {
