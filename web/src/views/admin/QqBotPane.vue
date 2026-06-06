@@ -226,12 +226,14 @@
             <el-option label="忽略" value="ignored" />
             <el-option label="错误" value="error" />
           </el-select>
+          <span class="log-meta">{{ lastLogAtText }}</span>
+          <el-button plain :loading="refreshingLogs" @click="refreshLogs">刷新</el-button>
           <el-button plain :icon="Download" :loading="debugDownloading" @click="downloadDebugLogs">下载调试日志</el-button>
         </div>
       </div>
       <el-table :data="logs" size="small">
         <el-table-column prop="createdAt" label="时间" width="170">
-          <template #default="{ row }">{{ new Date(row.createdAt).toLocaleString() }}</template>
+          <template #default="{ row }">{{ formatLogTime(row.createdAt) }}</template>
         </el-table-column>
         <el-table-column prop="eventType" label="事件" width="110" />
         <el-table-column prop="status" label="状态" width="90" />
@@ -287,7 +289,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Download } from "@element-plus/icons-vue";
 import { adminApi, type QqBotConfig, type QqBotGroup } from "@/api/admin";
@@ -303,8 +305,10 @@ const saving = ref(false);
 const testing = ref(false);
 const dispatching = ref(false);
 const debugDownloading = ref(false);
+const refreshingLogs = ref(false);
 const bindingQuery = ref("");
 const bindToken = ref<{ token: string; expiresAt: string } | null>(null);
+let logRefreshTimer: number | null = null;
 
 const form = reactive({
   enabled: false,
@@ -346,9 +350,25 @@ const connectionStatusText = computed(() => {
   if (status === "error") return "连接失败";
   return "待连接";
 });
+const lastLogAtText = computed(() => {
+  const first = logs.value[0];
+  if (!first?.createdAt) return "暂无日志";
+  return `最新：${formatLogTime(first.createdAt)}`;
+});
 
 onMounted(async () => {
   await Promise.all([loadConfig(), loadBoards(), loadBindings(), loadGroups(), loadLogs()]);
+  logRefreshTimer = window.setInterval(() => {
+    if (document.hidden) return;
+    loadLogs().catch(() => undefined);
+  }, 15000);
+});
+
+onBeforeUnmount(() => {
+  if (logRefreshTimer !== null) {
+    window.clearInterval(logRefreshTimer);
+    logRefreshTimer = null;
+  }
 });
 
 async function loadConfig() {
@@ -485,6 +505,16 @@ async function loadLogs() {
   logTotal.value = data.total;
 }
 
+async function refreshLogs() {
+  refreshingLogs.value = true;
+  try {
+    await loadLogs();
+    ElMessage.success("日志已刷新");
+  } finally {
+    refreshingLogs.value = false;
+  }
+}
+
 async function downloadDebugLogs() {
   debugDownloading.value = true;
   try {
@@ -530,6 +560,12 @@ function saveBlob(blob: Blob, filename: string) {
   anchor.click();
   document.body.removeChild(anchor);
   URL.revokeObjectURL(url);
+}
+
+function formatLogTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("zh-CN", { hour12: false });
 }
 
 </script>
@@ -657,6 +693,11 @@ function saveBlob(blob: Blob, filename: string) {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+  align-items: center;
+}
+.log-meta {
+  color: #6b7280;
+  font-size: 12px;
 }
 .interactive-table {
   display: none;

@@ -2065,7 +2065,19 @@ export async function logQqBotMessage(input: {
       result: input.result || "",
       rawPayload: input.rawPayload === undefined ? "{}" : JSON.stringify(input.rawPayload).slice(0, 8000),
     },
-  }).catch(() => null);
+  }).catch((error) => {
+    const summary = {
+      direction: input.direction,
+      eventType: input.eventType,
+      status: input.status ?? "ok",
+      qqId: input.qqId || null,
+      groupId: input.groupId || null,
+      topicId: input.topicId ?? null,
+      notificationId: input.notificationId ?? null,
+    };
+    console.error("[qqbot] message log write failed", summary, error);
+    return null;
+  });
 }
 
 export async function buildQqBotDebugExport(input: {
