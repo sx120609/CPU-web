@@ -15,6 +15,7 @@ const WEIWALL_DEFAULT_BASE_URL = "https://s.weiwall.com";
 const WEIWALL_TICK_MS = 30_000;
 const WEIWALL_MIN_INTERVAL_SECONDS = 30;
 const WEIWALL_LOCK_MS = 4 * 60_000;
+const WEIWALL_MAX_COMMENT_PAGE_SIZE = 20;
 
 type WeiwallUserInfo = {
   uuid?: number | string | null;
@@ -338,7 +339,9 @@ export async function updateWeiwallSyncConfig(patch: WeiwallSyncPatch) {
     data.intervalSeconds = Math.max(WEIWALL_MIN_INTERVAL_SECONDS, Math.min(3600, Math.round(patch.intervalSeconds)));
   }
   if (patch.topicPages !== undefined) data.topicPages = Math.max(1, Math.min(20, Math.round(patch.topicPages)));
-  if (patch.commentPageSize !== undefined) data.commentPageSize = Math.max(5, Math.min(100, Math.round(patch.commentPageSize)));
+  if (patch.commentPageSize !== undefined) {
+    data.commentPageSize = Math.max(5, Math.min(WEIWALL_MAX_COMMENT_PAGE_SIZE, Math.round(patch.commentPageSize)));
+  }
   if (patch.maxCommentPages !== undefined) data.maxCommentPages = Math.max(1, Math.min(50, Math.round(patch.maxCommentPages)));
   if (patch.maxReplyPages !== undefined) data.maxReplyPages = Math.max(1, Math.min(50, Math.round(patch.maxReplyPages)));
 
@@ -421,19 +424,20 @@ async function fetchCommentPage(
     sort?: string;
   },
 ) {
+  const pageSize = Math.max(5, Math.min(WEIWALL_MAX_COMMENT_PAGE_SIZE, Math.round(args.pageSize)));
   const json = await weiwallFetchJson(row, "/api/client/comments", {
     topic_id: args.topicId,
     comment_id: args.commentId ?? undefined,
     reply_id: args.replyId ?? undefined,
     sort: args.sort ?? "time",
     page: args.page,
-    pageSize: args.pageSize,
-    page_size: args.pageSize,
+    pageSize,
+    page_size: pageSize,
   });
   return {
     rows: Array.isArray(json?.data?.rows) ? (json.data.rows as WeiwallReplyRow[]) : [],
     page: Number(json?.data?.page ?? args.page),
-    pageSize: Number(json?.data?.pageSize ?? args.pageSize),
+    pageSize: Number(json?.data?.pageSize ?? pageSize),
   } satisfies WeiwallCommentPage;
 }
 

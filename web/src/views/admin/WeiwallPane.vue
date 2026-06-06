@@ -78,7 +78,8 @@
         </el-form-item>
 
         <el-form-item label="评论页大小">
-          <el-input-number v-model="form.commentPageSize" :min="5" :max="100" />
+          <el-input-number v-model="form.commentPageSize" :min="5" :max="20" />
+          <div class="field-tip">远端评论接口限制 <code>page_size &lt;= 20</code>，这里按接口上限约束。</div>
         </el-form-item>
 
         <el-form-item label="单帖最多抓多少页一级评论">
@@ -147,7 +148,7 @@ const form = reactive({
   tenantId: 7,
   intervalSeconds: 120,
   topicPages: 3,
-  commentPageSize: 50,
+  commentPageSize: 20,
   maxCommentPages: 10,
   maxReplyPages: 10,
   token: "",

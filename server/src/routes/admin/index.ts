@@ -1176,7 +1176,7 @@ adminRouter.patch("/weiwall-sync", adminOnly, validate(z.object({
   clearToken: z.boolean().optional(),
   intervalSeconds: z.number().int().min(30).max(3600).optional(),
   topicPages: z.number().int().min(1).max(20).optional(),
-  commentPageSize: z.number().int().min(5).max(100).optional(),
+  commentPageSize: z.number().int().min(5).max(20).optional(),
   maxCommentPages: z.number().int().min(1).max(50).optional(),
   maxReplyPages: z.number().int().min(1).max(50).optional(),
 })), async (req, res, next) => {

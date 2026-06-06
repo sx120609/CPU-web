@@ -8,7 +8,7 @@ CREATE TABLE "WeiwallSyncConfig" (
     "token" TEXT NOT NULL DEFAULT '',
     "intervalSeconds" INTEGER NOT NULL DEFAULT 120,
     "topicPages" INTEGER NOT NULL DEFAULT 3,
-    "commentPageSize" INTEGER NOT NULL DEFAULT 50,
+    "commentPageSize" INTEGER NOT NULL DEFAULT 20,
     "maxCommentPages" INTEGER NOT NULL DEFAULT 10,
     "maxReplyPages" INTEGER NOT NULL DEFAULT 10,
     "boardId" INTEGER,

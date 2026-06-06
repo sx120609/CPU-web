@@ -505,7 +505,7 @@ model WeiwallSyncConfig {
   token            String   @default("")
   intervalSeconds  Int      @default(120)
   topicPages       Int      @default(3)
-  commentPageSize  Int      @default(50)
+  commentPageSize  Int      @default(20)
   maxCommentPages  Int      @default(10)
   maxReplyPages    Int      @default(10)
   boardId          Int?
