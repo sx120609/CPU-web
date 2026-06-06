@@ -102,6 +102,7 @@
 
         <div class="form-actions">
           <el-button type="primary" :loading="saving" @click="save">保存配置</el-button>
+          <el-button :loading="authLinkLoading" @click="startWechatAuth">微信授权更新 Token</el-button>
           <el-button :disabled="!config.tokenPresent" :loading="clearingToken" @click="clearToken">清空已保存 Token</el-button>
           <span class="muted">上次成功同步：{{ config.lastSyncedAt ? fmtDate(config.lastSyncedAt) : "暂无" }}</span>
         </div>
@@ -126,21 +127,45 @@
       </div>
       <el-alert v-if="runResult.error" class="run-error" type="error" :closable="false" :title="runResult.error" show-icon />
     </el-card>
+
+    <el-dialog v-model="authDialogOpen" title="微信授权更新 Token" width="min(560px, 92vw)">
+      <div v-if="authSession" class="auth-dialog">
+        <p class="auth-tip">用微信扫描下方二维码，完成授权后服务器会自动换取并保存新的校园墙 Token。</p>
+        <img :src="authSession.qrDataUrl" alt="微信授权二维码" class="auth-qr" />
+        <div class="auth-actions">
+          <el-button type="primary" @click="openAuthorizeUrl">打开授权链接</el-button>
+          <el-button @click="copyAuthorizeUrl">复制授权链接</el-button>
+        </div>
+        <el-alert
+          :type="authStatus?.status === 'success' ? 'success' : authStatus?.status === 'error' || authStatus?.status === 'expired' ? 'error' : 'info'"
+          :closable="false"
+          show-icon
+          :title="authStatusTitle"
+        />
+        <div v-if="authStatus?.error" class="field-tip">{{ authStatus.error }}</div>
+        <div class="field-tip">二维码有效期到：{{ fmtDate(authSession.expiresAt) }}</div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { adminApi, type WeiwallSyncConfig, type WeiwallSyncRunResult } from "@/api/admin";
+import { adminApi, type WeiwallSyncConfig, type WeiwallSyncRunResult, type WeiwallTokenAuthSession, type WeiwallTokenAuthStatus } from "@/api/admin";
 import { fmtDate } from "@/utils/format";
 
 const loading = ref(false);
 const saving = ref(false);
 const running = ref(false);
 const clearingToken = ref(false);
+const authLinkLoading = ref(false);
+const authDialogOpen = ref(false);
 const config = ref<WeiwallSyncConfig | null>(null);
 const runResult = ref<WeiwallSyncRunResult | null>(null);
+const authSession = ref<WeiwallTokenAuthSession | null>(null);
+const authStatus = ref<WeiwallTokenAuthStatus | null>(null);
+let authPollTimer: number | null = null;
 const form = reactive({
   enabled: false,
   baseUrl: "https://s.weiwall.com",
@@ -152,6 +177,14 @@ const form = reactive({
   maxCommentPages: 10,
   maxReplyPages: 10,
   token: "",
+});
+
+const authStatusTitle = computed(() => {
+  const status = authStatus.value?.status;
+  if (status === "success") return "授权成功，新的 Token 已保存";
+  if (status === "error") return "授权失败，请按提示重试";
+  if (status === "expired") return "授权会话已过期，请重新生成二维码";
+  return "等待微信完成授权";
 });
 
 function hydrate(next: WeiwallSyncConfig) {
@@ -210,6 +243,61 @@ async function clearToken() {
   }
 }
 
+function stopAuthPolling() {
+  if (authPollTimer !== null) {
+    window.clearInterval(authPollTimer);
+    authPollTimer = null;
+  }
+}
+
+async function pollAuthStatus() {
+  if (!authSession.value?.flowId) return;
+  const next = await adminApi.getWeiwallAuthStatus(authSession.value.flowId);
+  authStatus.value = next;
+  if (next.status === "success") {
+    stopAuthPolling();
+    ElMessage.success("校园墙 Token 已自动更新");
+    await reload();
+    return;
+  }
+  if (next.status === "error" || next.status === "expired") {
+    stopAuthPolling();
+  }
+}
+
+async function startWechatAuth() {
+  authLinkLoading.value = true;
+  try {
+    authSession.value = await adminApi.createWeiwallAuthLink();
+    authStatus.value = {
+      flowId: authSession.value.flowId,
+      status: "pending",
+      expiresAt: authSession.value.expiresAt,
+      completedAt: null,
+      error: null,
+    };
+    authDialogOpen.value = true;
+    stopAuthPolling();
+    authPollTimer = window.setInterval(() => {
+      pollAuthStatus().catch(() => null);
+    }, 3000);
+    await pollAuthStatus();
+  } finally {
+    authLinkLoading.value = false;
+  }
+}
+
+function openAuthorizeUrl() {
+  if (!authSession.value?.authorizeUrl) return;
+  window.open(authSession.value.authorizeUrl, "_blank", "noopener");
+}
+
+async function copyAuthorizeUrl() {
+  if (!authSession.value?.authorizeUrl) return;
+  await navigator.clipboard.writeText(authSession.value.authorizeUrl);
+  ElMessage.success("授权链接已复制");
+}
+
 async function runNow() {
   running.value = true;
   try {
@@ -223,6 +311,7 @@ async function runNow() {
 }
 
 onMounted(reload);
+onBeforeUnmount(stopAuthPolling);
 </script>
 
 <style scoped>
@@ -332,6 +421,35 @@ onMounted(reload);
 
 .run-error {
   margin-bottom: 14px;
+}
+
+.auth-dialog {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.auth-tip {
+  margin: 0;
+  color: #4b5563;
+  line-height: 1.7;
+}
+
+.auth-qr {
+  width: min(320px, 78vw);
+  max-width: 100%;
+  border-radius: 14px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  padding: 10px;
+}
+
+.auth-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 @media (max-width: 900px) {

@@ -361,6 +361,22 @@ export type WeiwallSyncRunResult = {
   error?: string | null;
 };
 
+export type WeiwallTokenAuthSession = {
+  flowId: string;
+  authorizeUrl: string;
+  qrDataUrl: string;
+  callbackUrl: string;
+  expiresAt: string;
+};
+
+export type WeiwallTokenAuthStatus = {
+  flowId: string;
+  status: "pending" | "success" | "error" | "expired";
+  expiresAt: string | null;
+  completedAt: string | null;
+  error: string | null;
+};
+
 export type DatabaseBackupStatus = {
   supported: boolean;
   provider: "postgresql" | "unsupported";
@@ -776,6 +792,8 @@ export const adminApi = {
     maxReplyPages: number;
   }>) => request.patch<WeiwallSyncConfig>("/admin/weiwall-sync", patch),
   runWeiwallSync: () => request.post<WeiwallSyncRunResult>("/admin/weiwall-sync/run", {}),
+  createWeiwallAuthLink: () => request.post<WeiwallTokenAuthSession>("/admin/weiwall-sync/auth-link", {}),
+  getWeiwallAuthStatus: (flowId: string) => request.get<WeiwallTokenAuthStatus>(`/admin/weiwall-sync/auth-status/${flowId}`),
   // 公告
   announcements: () => request.get<any[]>("/admin/announcements"),
   createAnnouncement: (p: { title: string; content: string; level?: string; link?: string; source?: string; targetClient?: "all" | "ios" | "android" | "harmony" }) =>

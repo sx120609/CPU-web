@@ -95,7 +95,9 @@ import {
 } from "../../services/cloudDrive";
 import { qqBotAdminRouter } from "./qqbot";
 import {
+  createWeiwallTokenAuthSession,
   getWeiwallSyncAdminConfig,
+  getWeiwallTokenAuthStatus,
   runWeiwallSyncNow,
   updateWeiwallSyncConfig,
 } from "../../services/weiwallSync";
@@ -1188,6 +1190,18 @@ adminRouter.patch("/weiwall-sync", adminOnly, validate(z.object({
 adminRouter.post("/weiwall-sync/run", adminOnly, async (_req, res, next) => {
   try {
     ok(res, await runWeiwallSyncNow());
+  } catch (e) { next(e); }
+});
+
+adminRouter.post("/weiwall-sync/auth-link", adminOnly, async (req, res, next) => {
+  try {
+    ok(res, await createWeiwallTokenAuthSession(requestOrigin(req)));
+  } catch (e) { next(e); }
+});
+
+adminRouter.get("/weiwall-sync/auth-status/:flowId", adminOnly, async (req, res, next) => {
+  try {
+    ok(res, await getWeiwallTokenAuthStatus(String(req.params.flowId || "")));
   } catch (e) { next(e); }
 });
 

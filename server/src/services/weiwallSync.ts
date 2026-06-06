@@ -1,9 +1,13 @@
 import { Prisma, type Board, type Topic, type Reply } from "@prisma/client";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import QRCode from "qrcode";
+import jwt from "jsonwebtoken";
 import { prisma } from "../prisma";
 import { runWithDistributedLock } from "./cache";
 import { invalidateBoardCaches, invalidateForumCaches } from "./cacheInvalidation";
 import { refreshBoardTopicCount, refreshUserPostCount, refreshUserReplyCount } from "./forumStats";
+import { config } from "../config";
+import { Errors } from "../utils/response";
 
 export const WEIWALL_BOARD_SLUG = "campus-wall";
 const WEIWALL_BOARD_NAME = "校园墙";
@@ -18,6 +22,7 @@ const WEIWALL_MAX_COMMENT_PAGE_SIZE = 20;
 const WEIWALL_COMMENT_BACKFILL_TOPICS_PER_RUN = 12;
 const WEIWALL_BOT_USERNAME = "weiwall_sync_bot";
 const WEIWALL_BOT_NICKNAME = "校园墙同步";
+const WEIWALL_AUTH_FLOW_TTL_MS = 15 * 60_000;
 
 type WeiwallUserInfo = {
   uuid?: number | string | null;
@@ -139,10 +144,44 @@ export type WeiwallSyncResult = {
   error?: string | null;
 };
 
+export type WeiwallTokenAuthSession = {
+  flowId: string;
+  authorizeUrl: string;
+  qrDataUrl: string;
+  callbackUrl: string;
+  expiresAt: string;
+};
+
+export type WeiwallTokenAuthStatus = {
+  flowId: string;
+  status: "pending" | "success" | "error" | "expired";
+  expiresAt: string | null;
+  completedAt: string | null;
+  error: string | null;
+};
+
 type AuthorSyncCounters = {
   created: number;
   updated: number;
 };
+
+type WeiwallAuthFlowRecord = {
+  flowId: string;
+  schoolEn: string;
+  expiresAtMs: number;
+  status: "pending" | "success" | "error";
+  completedAtMs: number | null;
+  error: string | null;
+  used: boolean;
+};
+
+type WeiwallAuthFlowPayload = {
+  purpose: "weiwall-token-auth";
+  flowId: string;
+  schoolEn: string;
+};
+
+const weiwallAuthFlows = new Map<string, WeiwallAuthFlowRecord>();
 
 class WeiwallRateLimitError extends Error {
   constructor(message = "请求过于频繁，请稍后再试") {
@@ -158,6 +197,15 @@ function isWeiwallRateLimitMessage(message: unknown) {
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function cleanupWeiwallAuthFlows() {
+  const now = Date.now();
+  for (const [flowId, record] of weiwallAuthFlows.entries()) {
+    if (record.expiresAtMs <= now || (record.completedAtMs && record.completedAtMs + 10 * 60_000 <= now)) {
+      weiwallAuthFlows.delete(flowId);
+    }
+  }
 }
 
 function parseJsonSafe<T>(input: string | null | undefined, fallback: T): T {
@@ -494,6 +542,43 @@ async function weiwallFetchJson(row: Awaited<ReturnType<typeof ensureWeiwallSync
   throw new Error("WeiWall 请求失败");
 }
 
+async function weiwallPostJson(
+  row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>,
+  path: string,
+  body: Record<string, unknown>,
+  contentType: "application/json" | "application/x-www-form-urlencoded" = "application/json",
+) {
+  const url = new URL(path, row.baseUrl || WEIWALL_DEFAULT_BASE_URL);
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    Tenant: String(row.tenantId),
+    "User-Agent": "Mozilla/5.0",
+  };
+  let payload = "";
+  if (contentType === "application/x-www-form-urlencoded") {
+    headers["Content-Type"] = contentType;
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(body)) {
+      if (value === undefined || value === null) continue;
+      params.set(key, String(value));
+    }
+    payload = params.toString();
+  } else {
+    headers["Content-Type"] = contentType;
+    payload = JSON.stringify(body);
+  }
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers,
+    body: payload,
+  });
+  const text = await res.text();
+  const json = parseJsonSafe<any>(text, {});
+  const message = json?.errmsg || json?.message || `WeiWall 请求失败 (${res.status})`;
+  if (!res.ok) throw new Error(message);
+  return json;
+}
+
 async function weiwallFetchPublicJson(row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>, path: string) {
   const url = new URL(path, row.baseUrl || WEIWALL_DEFAULT_BASE_URL);
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -591,6 +676,159 @@ async function fetchReadOnlyTopicDetail(
 ) {
   const json = await weiwallFetchPublicJson(row, `/api/client/topics/read_only/${encodeURIComponent(topicId)}`);
   return (json?.data ?? null) as WeiwallReadOnlyTopicDetail | null;
+}
+
+function signWeiwallAuthFlowToken(payload: WeiwallAuthFlowPayload) {
+  return jwt.sign(payload, config.jwtSecret, {
+    expiresIn: Math.floor(WEIWALL_AUTH_FLOW_TTL_MS / 1000),
+  });
+}
+
+function verifyWeiwallAuthFlowToken(token: string) {
+  return jwt.verify(token, config.jwtSecret) as WeiwallAuthFlowPayload;
+}
+
+function normalizeOrigin(origin: string) {
+  const text = String(origin ?? "").trim().replace(/\/+$/, "");
+  if (!/^https?:\/\//i.test(text)) throw Errors.badRequest("当前站点地址不合法，无法生成微信授权链接");
+  return text;
+}
+
+async function buildWeiwallOfficialAuthorizeUrl(
+  row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>,
+  redirectUri: string,
+) {
+  const payload = { redirect_uri: encodeURIComponent(redirectUri) };
+  let json = await weiwallPostJson(row, "/api/client/wxjssdk/official_authorizer_url", payload).catch(async (error) => {
+    const message = String((error as Error)?.message ?? error ?? "");
+    if (!/不能为空/.test(message)) throw error;
+    return await weiwallPostJson(row, "/api/client/wxjssdk/official_authorizer_url", payload, "application/x-www-form-urlencoded");
+  });
+  if (!json?.data?.url) throw new Error(String(json?.errmsg || json?.message || "未获取到微信授权地址"));
+  return String(json.data.url);
+}
+
+async function exchangeWeiwallCodeForToken(
+  row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>,
+  school: string,
+  code: string,
+) {
+  const payload = { school, code };
+  let json = await weiwallPostJson(row, "/api/client/users", payload).catch(async (error) => {
+    const message = String((error as Error)?.message ?? error ?? "");
+    if (!/不能为空/.test(message)) throw error;
+    return await weiwallPostJson(row, "/api/client/users", payload, "application/x-www-form-urlencoded");
+  });
+  const token = String(json?.data?.token || "").trim();
+  if (!token) throw new Error(String(json?.errmsg || json?.message || "未获取到 token"));
+  return token;
+}
+
+export async function createWeiwallTokenAuthSession(origin: string) {
+  cleanupWeiwallAuthFlows();
+  const configRow = await ensureWeiwallSyncConfigRow();
+  const normalizedOrigin = normalizeOrigin(origin);
+  const flowId = randomUUID();
+  const expiresAtMs = Date.now() + WEIWALL_AUTH_FLOW_TTL_MS;
+  const flowToken = signWeiwallAuthFlowToken({
+    purpose: "weiwall-token-auth",
+    flowId,
+    schoolEn: configRow.schoolEn || "cpu",
+  });
+  const callbackUrl = `${normalizedOrigin}/api/weiwall-auth/callback?flow=${encodeURIComponent(flowToken)}`;
+  const authorizeUrl = await buildWeiwallOfficialAuthorizeUrl(configRow, callbackUrl);
+  const qrDataUrl = await QRCode.toDataURL(authorizeUrl, {
+    errorCorrectionLevel: "M",
+    margin: 1,
+    width: 320,
+  });
+  weiwallAuthFlows.set(flowId, {
+    flowId,
+    schoolEn: configRow.schoolEn || "cpu",
+    expiresAtMs,
+    status: "pending",
+    completedAtMs: null,
+    error: null,
+    used: false,
+  });
+  return {
+    flowId,
+    authorizeUrl,
+    qrDataUrl,
+    callbackUrl,
+    expiresAt: new Date(expiresAtMs).toISOString(),
+  } satisfies WeiwallTokenAuthSession;
+}
+
+export async function getWeiwallTokenAuthStatus(flowId: string) {
+  cleanupWeiwallAuthFlows();
+  const record = weiwallAuthFlows.get(String(flowId).trim());
+  if (!record) {
+    return {
+      flowId: String(flowId).trim(),
+      status: "expired",
+      expiresAt: null,
+      completedAt: null,
+      error: "授权会话不存在或已过期",
+    } satisfies WeiwallTokenAuthStatus;
+  }
+  const expired = record.expiresAtMs <= Date.now();
+  return {
+    flowId: record.flowId,
+    status: expired && record.status === "pending" ? "expired" : record.status,
+    expiresAt: new Date(record.expiresAtMs).toISOString(),
+    completedAt: record.completedAtMs ? new Date(record.completedAtMs).toISOString() : null,
+    error: expired && record.status === "pending" ? "授权会话已过期" : record.error,
+  } satisfies WeiwallTokenAuthStatus;
+}
+
+export async function completeWeiwallTokenAuthCallback(input: {
+  flowToken: string;
+  school?: string | null;
+  code?: string | null;
+}) {
+  cleanupWeiwallAuthFlows();
+  const payload = verifyWeiwallAuthFlowToken(String(input.flowToken || ""));
+  if (payload.purpose !== "weiwall-token-auth") throw Errors.badRequest("授权凭证无效");
+  const record = weiwallAuthFlows.get(payload.flowId);
+  if (!record || record.expiresAtMs <= Date.now()) {
+    throw Errors.badRequest("授权会话已过期，请重新生成二维码");
+  }
+  if (record.used) {
+    throw Errors.badRequest("授权会话已使用，请重新生成二维码");
+  }
+  const school = String(input.school || record.schoolEn || payload.schoolEn || "").trim();
+  const code = String(input.code || "").trim();
+  if (!school || !code) throw Errors.badRequest("缺少 school 或 code，无法完成授权");
+  try {
+    const configRow = await ensureWeiwallSyncConfigRow();
+    const token = await exchangeWeiwallCodeForToken(configRow, school, code);
+    await prisma.weiwallSyncConfig.update({
+      where: { id: configRow.id },
+      data: {
+        schoolEn: school,
+        token,
+        lastError: null,
+      },
+    });
+    record.used = true;
+    record.status = "success";
+    record.error = null;
+    record.completedAtMs = Date.now();
+    weiwallAuthFlows.set(record.flowId, record);
+    return {
+      ok: true,
+      title: "校园墙 Token 已更新",
+      message: "新的校园墙 Token 已自动保存，现在可以返回后台继续使用。",
+    };
+  } catch (error: any) {
+    record.used = true;
+    record.status = "error";
+    record.error = error?.message ?? String(error);
+    record.completedAtMs = Date.now();
+    weiwallAuthFlows.set(record.flowId, record);
+    throw error;
+  }
 }
 
 async function fetchTopicComments(
