@@ -35,6 +35,7 @@ import { decodeReplyForViewer, decodeReplyForViewerWithImages, decodeTopicForVie
 import { ensureForumImageAssetsForContent, summarizeForumImageModerationForContent } from "../services/imageModeration";
 import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForContent } from "../services/videoModeration";
 import { invalidateCourseCaches, invalidateForumCaches } from "../services/cacheInvalidation";
+import { WEIWALL_BOARD_SLUG } from "../services/weiwallSync";
 
 export const topicRouter = Router();
 
@@ -67,7 +68,7 @@ topicRouter.get("/", async (req, res, next) => {
 
     const where: any = { hidden: false };
     if (boardId) where.boardId = boardId;
-    else where.board = { type: { in: enabledBoardTypes() } };
+    else where.board = { type: { in: enabledBoardTypes() }, slug: { not: WEIWALL_BOARD_SLUG } };
     if (pinnedMode === "only") where.pinned = true;
     else if (pinnedMode === "exclude") where.pinned = false;
 
@@ -542,6 +543,7 @@ topicRouter.get("/:id/replies", async (req, res, next) => {
       orderBy: { floor: "asc" },
       include: {
         author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+        weiwallMap: { select: { externalAuthorName: true, externalAuthorAvatar: true, externalAuthorUuid: true } },
       },
     });
     ok(res, await Promise.all(list.map((item) => decodeReplyForViewerWithImages(item, req.user))));

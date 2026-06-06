@@ -89,6 +89,20 @@
           <el-empty v-else description="暂无公告，稍后再来看看" />
         </section>
 
+        <section class="block" v-if="showForumContent">
+          <div class="block-head">
+            <h3>📮 校园墙</h3>
+            <span class="cpu-muted">外部镜像内容</span>
+          </div>
+          <div class="wall-card" @click="$router.push('/forum/b/campus-wall')">
+            <div class="wall-icon">📮</div>
+            <div class="wall-body">
+              <div class="wall-title">单独查看校园墙镜像</div>
+              <div class="wall-desc">外部帖子和评论会持续同步，但不会参与本站热榜和最新流。</div>
+            </div>
+          </div>
+        </section>
+
         <section class="block">
           <div class="block-head">
             <h3>🧭 校园服务</h3>
@@ -350,6 +364,40 @@ function openUrl(url: string) {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 8px;
+}
+.wall-card {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+  cursor: pointer;
+}
+.wall-card:hover {
+  border-color: #93c5fd;
+}
+.wall-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  background: #dbeafe;
+  flex-shrink: 0;
+}
+.wall-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+.wall-desc {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #6b7280;
 }
 .svc {
   padding: 10px;

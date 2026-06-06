@@ -28,6 +28,16 @@ function buildAnonymousAuthor(alias?: string | null) {
   };
 }
 
+function buildExternalAuthor(name?: string | null, avatar?: string | null) {
+  return {
+    id: null,
+    nickname: name || "校园墙同学",
+    avatar: avatar || null,
+    role: "external",
+    external: true,
+  };
+}
+
 function normalizeTags(tags: any) {
   return Array.isArray(tags)
     ? tags
@@ -37,13 +47,30 @@ function normalizeTags(tags: any) {
 }
 
 export function decodeTopicForViewer(topic: any, viewer?: Viewer) {
+  const metadata = safeJson(topic.metadata);
+  const isWeiwall = metadata?.externalPlatform === "weiwall";
+  if (isWeiwall) {
+    const externalName = topic?.weiwallMap?.externalAuthorName || metadata?.externalAuthorName || "校园墙同学";
+    const externalAvatar = topic?.weiwallMap?.externalAuthorAvatar || metadata?.externalAuthorAvatar || null;
+    return {
+      ...topic,
+      authorId: null,
+      globalPinned: isGlobalPinnedTopic(Number(topic.id)),
+      metadata,
+      tags: normalizeTags(topic.tags),
+      isAnonymous: false,
+      anonymousAlias: null,
+      author: buildExternalAuthor(externalName, externalAvatar),
+      realAuthor: undefined,
+    };
+  }
   const anonymous = Boolean(topic?.isAnonymous);
   const reveal = anonymous && canRevealAnonymousAuthor(viewer, topic?.authorId);
   return {
     ...topic,
     authorId: anonymous && !reveal ? null : topic.authorId,
     globalPinned: isGlobalPinnedTopic(Number(topic.id)),
-    metadata: safeJson(topic.metadata),
+    metadata,
     tags: normalizeTags(topic.tags),
     isAnonymous: anonymous,
     anonymousAlias: anonymous ? (topic.anonymousAlias || "匿名同学") : null,
@@ -53,6 +80,16 @@ export function decodeTopicForViewer(topic: any, viewer?: Viewer) {
 }
 
 export function decodeReplyForViewer(reply: any, viewer?: Viewer) {
+  if (reply?.weiwallMap?.externalAuthorName) {
+    return {
+      ...reply,
+      authorId: null,
+      isAnonymous: false,
+      anonymousAlias: null,
+      author: buildExternalAuthor(reply.weiwallMap.externalAuthorName, reply.weiwallMap.externalAuthorAvatar),
+      realAuthor: undefined,
+    };
+  }
   const anonymous = Boolean(reply?.isAnonymous);
   const reveal = anonymous && canRevealAnonymousAuthor(viewer, reply?.authorId);
   return {

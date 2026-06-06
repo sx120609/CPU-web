@@ -40,6 +40,20 @@
         </div>
       </div>
 
+      <div class="cluster" v-if="campusWall">
+        <h3 class="cluster-title">📮 外部镜像</h3>
+        <div class="grid">
+          <div class="board-card readonly" @click="$router.push(`/forum/b/${campusWall.slug}`)">
+            <div class="icon" :style="{ background: campusWall.color || '#0ea5e9' }">{{ campusWall.icon || "📮" }}</div>
+            <div class="body">
+              <div class="name">{{ campusWall.name }}</div>
+              <div class="desc">单独展示的校园墙镜像内容，不参与本站热榜和最新流。</div>
+              <div class="meta">{{ campusWall.topicCount }} 帖</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="footer-tip">
         <el-icon><InfoFilled /></el-icon>
         <span>查看学校官方公告？<router-link to="/announcements">→ 校园公告</router-link></span>
@@ -141,6 +155,7 @@ import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
+const CAMPUS_WALL_SLUG = "campus-wall";
 
 const all = ref<Board[]>([]);
 const enableDialogOpen = ref(false);
@@ -167,8 +182,9 @@ onBeforeUnmount(() => {
   window.clearInterval(readTimer);
 });
 
-const general = computed(() => all.value.filter((b) => b.type === "normal"));
+const general = computed(() => all.value.filter((b) => b.type === "normal" && b.slug !== CAMPUS_WALL_SLUG));
 const ugc = computed(() => all.value.filter((b) => ["market", "question", "coursereview"].includes(b.type)));
+const campusWall = computed(() => all.value.find((b) => b.slug === CAMPUS_WALL_SLUG) ?? null);
 
 async function loadBoards() {
   all.value = await boardApi.list();

@@ -8,6 +8,7 @@ import { enabledBoardTypes, getGlobalPinnedTopicIds } from "../services/siteSett
 import { isForumStaffRole, resolveForumAccess } from "../services/forumAccess";
 import { decodeTopicForViewer } from "../services/forumPresentation";
 import { buildUserTrustSnapshot } from "../services/userTrust";
+import { WEIWALL_BOARD_SLUG } from "../services/weiwallSync";
 
 export const homeRouter = Router();
 const HOME_HIDDEN_SERVICE_CODES = ["DORM_REPAIR"];
@@ -52,7 +53,7 @@ homeRouter.get("/summary", async (req, res, next) => {
           forumAccessEnabled ? listGlobalPinnedTopics(globalPinnedIds, contentBoardTypes, 6) : Promise.resolve([]),
           forumAccessEnabled ? listHotTopics(6, contentBoardTypes) : Promise.resolve([]),
           forumAccessEnabled ? prisma.topic.findMany({
-            where: { hidden: false, id: { notIn: globalPinnedIds }, board: { type: { in: contentBoardTypes } } },
+            where: { hidden: false, id: { notIn: globalPinnedIds }, board: { type: { in: contentBoardTypes }, slug: { not: WEIWALL_BOARD_SLUG } } },
             orderBy: { createdAt: "desc" },
             take: 10,
             include: {
@@ -62,7 +63,7 @@ homeRouter.get("/summary", async (req, res, next) => {
             },
           }) : Promise.resolve([]),
           prisma.topic.findMany({
-            where: { hidden: false, board: { readOnly: true } },
+            where: { hidden: false, board: { readOnly: true, slug: { not: WEIWALL_BOARD_SLUG } } },
             orderBy: { createdAt: "desc" },
             take: 8,
             include: { board: { select: { slug: true, name: true } }, tags: { include: { tag: true } } },
@@ -149,7 +150,7 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
     const size = Math.min(50, Math.max(10, Number(req.query.size ?? LATEST_FEED_DEFAULT_SIZE)));
     const contentBoardTypes = enabledBoardTypes().filter((type) => type !== "announce");
     const globalPinnedIds = getGlobalPinnedTopicIds();
-    const where = { hidden: false, id: { notIn: globalPinnedIds }, board: { type: { in: contentBoardTypes } } } as const;
+    const where = { hidden: false, id: { notIn: globalPinnedIds }, board: { type: { in: contentBoardTypes }, slug: { not: WEIWALL_BOARD_SLUG } } } as const;
     const cached = await withCache("home", ["latest-feed", page, size], 60_000, async () => {
       const [pins, list, total] = await Promise.all([
         listGlobalPinnedTopics(globalPinnedIds, contentBoardTypes, 20),
@@ -187,11 +188,11 @@ async function listGlobalPinnedTopics(ids: number[], boardTypes: string[], limit
     tags: { include: { tag: true } },
   } as const;
   const rows = await prisma.topic.findMany({
-    where: {
-      id: { in: orderedIds },
-      hidden: false,
-      board: { type: { in: boardTypes } },
-    },
+      where: {
+        id: { in: orderedIds },
+        hidden: false,
+        board: { type: { in: boardTypes }, slug: { not: WEIWALL_BOARD_SLUG } },
+      },
     include,
   });
   const byId = new Map(rows.map((item) => [item.id, item]));
@@ -209,7 +210,7 @@ async function listHotTopics(size: number, boardTypes: string[]) {
     prisma.topic.findMany({
       where: {
         hidden: false,
-        board: { type: { in: boardTypes } },
+        board: { type: { in: boardTypes }, slug: { not: WEIWALL_BOARD_SLUG } },
         lastReplyAt: { gte: cutoff },
       },
       orderBy: [{ likeCount: "desc" }, { replyCount: "desc" }, { viewCount: "desc" }],
@@ -219,7 +220,7 @@ async function listHotTopics(size: number, boardTypes: string[]) {
     prisma.topic.findMany({
       where: {
         hidden: false,
-        board: { type: { in: boardTypes } },
+        board: { type: { in: boardTypes }, slug: { not: WEIWALL_BOARD_SLUG } },
         OR: [{ lastReplyAt: null }, { lastReplyAt: { lt: cutoff } }],
       },
       orderBy: [{ likeCount: "desc" }, { replyCount: "desc" }, { viewCount: "desc" }],

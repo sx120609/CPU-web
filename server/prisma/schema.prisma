@@ -76,7 +76,6 @@ model User {
   forumImageAssets  ForumImageAsset[]
   forumVideoAssets  ForumVideoAsset[]
   aiReviewLogs      AiReviewLog[]
-  weiwallAuthors    WeiwallAuthor[]
 }
 
 // ============ 论坛核心 ============
@@ -521,27 +520,14 @@ model WeiwallSyncConfig {
   @@index([enabled])
 }
 
-model WeiwallAuthor {
-  id            Int      @id @default(autoincrement())
-  externalKey   String   @unique
-  externalUuid  String?
-  nickname      String
-  avatar        String?
-  localUserId   Int      @unique
-  lastSeenAt    DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  localUser User @relation(fields: [localUserId], references: [id], onDelete: Cascade)
-
-  @@index([externalUuid])
-}
-
 model WeiwallTopicMap {
   id               Int      @id @default(autoincrement())
   externalTopicId  String   @unique
   localTopicId     Int      @unique
   externalAuthorKey String?
+  externalAuthorUuid String?
+  externalAuthorName String
+  externalAuthorAvatar String?
   externalCreatedAt DateTime?
   lastCommentCount Int      @default(0)
   lastLikeCount    Int      @default(0)
@@ -562,6 +548,9 @@ model WeiwallReplyMap {
   externalTopicId       String
   externalCommentId     String?
   parentExternalReplyId String?
+  externalAuthorUuid    String?
+  externalAuthorName    String
+  externalAuthorAvatar  String?
   externalCreatedAt     DateTime?
   lastSyncedAt          DateTime @default(now())
   createdAt             DateTime @default(now())

@@ -71,7 +71,8 @@
             <router-link v-if="topic.author?.id" :to="`/u/${topic.author.id}`">{{ topic.author?.nickname }}</router-link>
             <span v-else>{{ topic.author?.nickname }}</span>
             <el-tag v-if="topic.isAnonymous" size="small" type="warning" effect="plain">匿名发布</el-tag>
-            <el-tag v-if="topic.author?.role === 'bot'" size="small" type="warning">公告同步</el-tag>
+            <el-tag v-if="topic.metadata?.externalPlatform === 'weiwall'" size="small" type="warning">校园墙同步</el-tag>
+            <el-tag v-else-if="topic.author?.role === 'bot'" size="small" type="warning">公告同步</el-tag>
             <el-tag v-else-if="topic.author?.role === 'admin'" size="small" type="danger">管理员</el-tag>
             <UserModerationActions
               v-if="topicModerationUser"
@@ -95,14 +96,17 @@
       </div>
 
       <!-- 板块特化 metadata -->
-      <div v-if="topic.metadata?.sourceUrl" class="source-bar" :class="{ wechat: topic.metadata?.externalType === 'wechat' }">
-        <span class="src-icon">{{ topic.metadata?.externalType === 'wechat' ? '💬' : '📢' }}</span>
+      <div v-if="topic.metadata?.sourceUrl" class="source-bar" :class="{ wechat: topic.metadata?.externalType === 'wechat', external: topic.metadata?.externalPlatform === 'weiwall' }">
+        <span class="src-icon">{{ topic.metadata?.externalPlatform === 'weiwall' ? '📮' : topic.metadata?.externalType === 'wechat' ? '💬' : '📢' }}</span>
         <span class="src-text-wrap">
           <span class="src-text">
+            <template v-if="topic.metadata?.externalPlatform === 'weiwall'">
+              来自 <b>{{ topic.metadata.sourceName || "校园墙" }}</b> · 发布于 {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
+            </template>
             <template v-if="topic.metadata?.externalType === 'wechat'">
               原文发布于 <b>微信公众号</b> · {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
             </template>
-            <template v-else>
+            <template v-else-if="topic.metadata?.externalPlatform !== 'weiwall'">
               来自 <b>{{ topic.metadata.sourceName || topic.board?.name }}</b>
               · 发布于 {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
             </template>
@@ -111,7 +115,7 @@
         </span>
         <a :href="topic.metadata.sourceUrl" target="_blank" class="src-link">
           <el-icon><Link /></el-icon>
-          {{ topic.metadata?.externalType === 'wechat' ? '前往微信阅读全文' : '在学校原站查看' }}
+          {{ topic.metadata?.externalPlatform === 'weiwall' ? '前往校园墙原帖' : topic.metadata?.externalType === 'wechat' ? '前往微信阅读全文' : '在学校原站查看' }}
         </a>
       </div>
       <div v-if="topic.metadata?.ratings" class="extra-bar ratings">
@@ -732,6 +736,9 @@ const displayContent = computed(() => {
 });
 const sourceNotice = computed(() => {
   if (!topic.value?.metadata?.sourceUrl) return "";
+  if (topic.value?.metadata?.externalPlatform === "weiwall") {
+    return "这是校园墙镜像内容，不参与本站热榜和最新流；如遇评论未补齐或正文异常，可前往原帖查看。";
+  }
   if (topic.value?.metadata?.externalType === "wechat") {
     return "微信文章可能无法在站内完整展示，建议前往微信阅读全文。";
   }

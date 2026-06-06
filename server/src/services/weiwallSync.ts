@@ -1,12 +1,11 @@
 import { Prisma, type Board, type Topic, type Reply } from "@prisma/client";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { prisma } from "../prisma";
-import { hashPassword } from "../utils/password";
 import { runWithDistributedLock } from "./cache";
 import { invalidateBoardCaches, invalidateForumCaches } from "./cacheInvalidation";
 import { refreshBoardTopicCount, refreshUserPostCount, refreshUserReplyCount } from "./forumStats";
 
-const WEIWALL_BOARD_SLUG = "campus-wall";
+export const WEIWALL_BOARD_SLUG = "campus-wall";
 const WEIWALL_BOARD_NAME = "校园墙";
 const WEIWALL_BOARD_DESCRIPTION = "从外部校园墙同步的只读镜像，自动刷新帖子与评论。";
 const WEIWALL_BOARD_ICON = "📮";
@@ -16,6 +15,8 @@ const WEIWALL_TICK_MS = 30_000;
 const WEIWALL_MIN_INTERVAL_SECONDS = 30;
 const WEIWALL_LOCK_MS = 4 * 60_000;
 const WEIWALL_MAX_COMMENT_PAGE_SIZE = 20;
+const WEIWALL_BOT_USERNAME = "weiwall_sync_bot";
+const WEIWALL_BOT_NICKNAME = "校园墙同步";
 
 type WeiwallUserInfo = {
   uuid?: number | string | null;
@@ -133,6 +134,22 @@ type AuthorSyncCounters = {
   updated: number;
 };
 
+class WeiwallRateLimitError extends Error {
+  constructor(message = "请求过于频繁，请稍后再试") {
+    super(message);
+    this.name = "WeiwallRateLimitError";
+  }
+}
+
+function isWeiwallRateLimitMessage(message: unknown) {
+  const text = String(message ?? "");
+  return /请求过于频繁|请稍后再试|rate limit/i.test(text);
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function parseJsonSafe<T>(input: string | null | undefined, fallback: T): T {
   if (!input) return fallback;
   try {
@@ -224,8 +241,82 @@ function normalizeExternalAuthor(userInfo?: WeiwallUserInfo | null) {
   };
 }
 
-function buildSyntheticUsername(externalKey: string) {
-  return `ww_${createHash("sha1").update(externalKey).digest("hex").slice(0, 16)}`;
+function looksLikeWeiwallAdvertisement(topic: WeiwallTopicRow) {
+  const text = `${trimTo(topic.title, 300)}\n${trimTo(topic.content, 5000)}`;
+  let score = 0;
+  if (/流量卡|校园卡|办卡|换卡|套餐到期|充值|充100得200|视频会员|兑换任意两杯/.test(text)) score += 2;
+  if (/扫码下方二维码|二维码|负责人微信办理|超值优惠活动|重磅来袭|免费用|月底前/.test(text)) score += 2;
+  if (/福利君|校园代理|推广|合作|限时活动/.test(`${trimTo(topic.userInfo?.nickname, 80)} ${text}`)) score += 1;
+  if ((topic.imgs?.length || topic.data?.imgs?.length || 0) >= 2 && /优惠|活动|福利|礼包/.test(text)) score += 1;
+  return score >= 3;
+}
+
+async function ensureWeiwallBotUser(client: SyncClient) {
+  const existing = await client.user.findUnique({
+    where: { username: WEIWALL_BOT_USERNAME },
+    select: { id: true, nickname: true, role: true, avatar: true },
+  });
+  if (existing) {
+    if (existing.role !== "bot" || existing.nickname !== WEIWALL_BOT_NICKNAME || existing.avatar) {
+      await client.user.update({
+        where: { id: existing.id },
+        data: { role: "bot", nickname: WEIWALL_BOT_NICKNAME, avatar: null },
+      });
+    }
+    return { id: existing.id };
+  }
+  const created = await client.user.create({
+    data: {
+      username: WEIWALL_BOT_USERNAME,
+      passwordHash: "__disabled__",
+      nickname: WEIWALL_BOT_NICKNAME,
+      role: "bot",
+      avatar: null,
+    },
+    select: { id: true },
+  });
+  return created;
+}
+
+async function cleanupLegacyWeiwallUsers() {
+  const users = await prisma.user.findMany({
+    where: {
+      username: { startsWith: "ww_" },
+      studentSso: false,
+      forumEnabled: false,
+      lastLoginAt: null,
+    },
+    select: { id: true },
+    take: 2000,
+  });
+  for (const user of users) {
+    const [topicCount, replyCount] = await Promise.all([
+      prisma.topic.count({ where: { authorId: user.id } }),
+      prisma.reply.count({ where: { authorId: user.id } }),
+    ]);
+    if (topicCount === 0 && replyCount === 0) {
+      await prisma.user.delete({ where: { id: user.id } }).catch(() => undefined);
+    }
+  }
+}
+
+async function normalizeLegacyMirroredAuthorAssignments(botUserId: number) {
+  const [topicMaps, replyMaps] = await Promise.all([
+    prisma.weiwallTopicMap.findMany({ select: { localTopicId: true } }),
+    prisma.weiwallReplyMap.findMany({ select: { localReplyId: true } }),
+  ]);
+  if (topicMaps.length) {
+    await prisma.topic.updateMany({
+      where: { id: { in: topicMaps.map((item) => item.localTopicId) }, authorId: { not: botUserId } },
+      data: { authorId: botUserId },
+    });
+  }
+  if (replyMaps.length) {
+    await prisma.reply.updateMany({
+      where: { id: { in: replyMaps.map((item) => item.localReplyId) }, authorId: { not: botUserId } },
+      data: { authorId: botUserId },
+    });
+  }
 }
 
 function topicHidden(topic: WeiwallTopicRow) {
@@ -370,20 +461,32 @@ async function weiwallFetchJson(row: Awaited<ReturnType<typeof ensureWeiwallSync
     if (value === undefined || value === null || value === "") continue;
     url.searchParams.set(key, String(value));
   }
-  const res = await fetch(url.toString(), {
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${row.token}`,
-      Tenant: String(row.tenantId),
-      "User-Agent": "Mozilla/5.0",
-    },
-  });
-  const text = await res.text();
-  const json = parseJsonSafe<any>(text, {});
-  if (!res.ok || json?.status === "unauthorized" || json?.errcode === 4010001 || json?.errcode === 4010002) {
-    throw new Error(json?.errmsg || `WeiWall 请求失败 (${res.status})`);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch(url.toString(), {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${row.token}`,
+        Tenant: String(row.tenantId),
+        "User-Agent": "Mozilla/5.0",
+      },
+    });
+    const text = await res.text();
+    const json = parseJsonSafe<any>(text, {});
+    const message = json?.errmsg || json?.message || `WeiWall 请求失败 (${res.status})`;
+    if (json?.status === "unauthorized" || json?.errcode === 4010001 || json?.errcode === 4010002) {
+      throw new Error(message);
+    }
+    if (isWeiwallRateLimitMessage(message)) {
+      if (attempt < 2) {
+        await delay(1200 * (attempt + 1));
+        continue;
+      }
+      throw new WeiwallRateLimitError(message);
+    }
+    if (!res.ok) throw new Error(message);
+    return json;
   }
-  return json;
+  throw new Error("WeiWall 请求失败");
 }
 
 async function fetchLatestTopics(row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>) {
@@ -391,13 +494,23 @@ async function fetchLatestTopics(row: Awaited<ReturnType<typeof ensureWeiwallSyn
   const seen = new Set<string>();
   let lastId = "";
   let pagesScanned = 0;
+  let rateLimited = false;
+  let rateLimitMessage: string | null = null;
   for (let page = 1; page <= row.topicPages; page++) {
-    const json = await weiwallFetchJson(row, "/api/client/topics", {
-      page,
-      last_id: lastId || undefined,
-      pageSize: 20,
-      page_size: 20,
-    });
+    let json: any;
+    try {
+      json = await weiwallFetchJson(row, "/api/client/topics", {
+        page,
+        last_id: lastId || undefined,
+        pageSize: 20,
+        page_size: 20,
+      });
+    } catch (error: any) {
+      if (!(error instanceof WeiwallRateLimitError)) throw error;
+      rateLimited = true;
+      rateLimitMessage = error.message;
+      break;
+    }
     const rows = Array.isArray(json?.data?.rows) ? (json.data.rows as WeiwallTopicRow[]) : [];
     pagesScanned++;
     if (!rows.length) break;
@@ -410,7 +523,7 @@ async function fetchLatestTopics(row: Awaited<ReturnType<typeof ensureWeiwallSyn
     lastId = externalId(rows[rows.length - 1]?.id);
     if (!lastId) break;
   }
-  return { pagesScanned, rows: collected };
+  return { pagesScanned, rows: collected, rateLimited, rateLimitMessage };
 }
 
 async function fetchCommentPage(
@@ -445,15 +558,25 @@ async function fetchTopicComments(
   row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>,
   topicId: string,
   counters: { commentsFetched: number },
+  control: { commentFetchStopped: boolean; rateLimitMessage: string | null },
 ) {
+  if (control.commentFetchStopped) return [];
   const topLevelRows: Array<WeiwallReplyRow & { children: WeiwallReplyRow[] }> = [];
   for (let page = 1; page <= row.maxCommentPages; page++) {
-    const pageData = await fetchCommentPage(row, {
-      topicId,
-      page,
-      pageSize: row.commentPageSize,
-      sort: "time",
-    });
+    let pageData: WeiwallCommentPage;
+    try {
+      pageData = await fetchCommentPage(row, {
+        topicId,
+        page,
+        pageSize: row.commentPageSize,
+        sort: "time",
+      });
+    } catch (error: any) {
+      if (!(error instanceof WeiwallRateLimitError)) throw error;
+      control.commentFetchStopped = true;
+      control.rateLimitMessage = error.message;
+      break;
+    }
     if (!pageData.rows.length) break;
     counters.commentsFetched += pageData.rows.length;
     for (const current of pageData.rows) {
@@ -467,14 +590,22 @@ async function fetchTopicComments(
       }
       if (childCount > childMap.size) {
         for (let childPage = 1; childPage <= row.maxReplyPages; childPage++) {
-          const nested = await fetchCommentPage(row, {
-            topicId,
-            commentId: externalId(current.id),
-            replyId: externalId((current as any).replyId ?? 0),
-            page: childPage,
-            pageSize: row.commentPageSize,
-            sort: "time",
-          });
+          let nested: WeiwallCommentPage;
+          try {
+            nested = await fetchCommentPage(row, {
+              topicId,
+              commentId: externalId(current.id),
+              replyId: externalId((current as any).replyId ?? 0),
+              page: childPage,
+              pageSize: row.commentPageSize,
+              sort: "time",
+            });
+          } catch (error: any) {
+            if (!(error instanceof WeiwallRateLimitError)) throw error;
+            control.commentFetchStopped = true;
+            control.rateLimitMessage = error.message;
+            break;
+          }
           if (!nested.rows.length) break;
           counters.commentsFetched += nested.rows.length;
           for (const child of nested.rows) {
@@ -493,60 +624,19 @@ async function fetchTopicComments(
       });
     }
     if (pageData.rows.length < row.commentPageSize) break;
+    if (control.commentFetchStopped) break;
   }
   return topLevelRows;
 }
 
-async function ensureLocalAuthor(userInfo: WeiwallUserInfo | null | undefined, client: SyncClient, counters: AuthorSyncCounters) {
+function externalAuthorForStorage(userInfo: WeiwallUserInfo | null | undefined) {
   const normalized = normalizeExternalAuthor(userInfo);
-  const existing = await client.weiwallAuthor.findUnique({
-    where: { externalKey: normalized.externalKey },
-    include: {
-      localUser: {
-        select: { id: true, nickname: true, avatar: true },
-      },
-    },
-  });
-  if (existing) {
-    const userPatch: Prisma.UserUpdateInput = {};
-    if (trimTo(existing.localUser.nickname, 40) !== normalized.nickname) userPatch.nickname = normalized.nickname.slice(0, 20);
-    if ((existing.localUser.avatar || "") !== (normalized.avatar || "")) userPatch.avatar = normalized.avatar;
-    const authorPatch: Prisma.WeiwallAuthorUpdateInput = {};
-    if (existing.nickname !== normalized.nickname) authorPatch.nickname = normalized.nickname;
-    if ((existing.avatar || "") !== (normalized.avatar || "")) authorPatch.avatar = normalized.avatar;
-    if ((existing.externalUuid || "") !== (normalized.externalUuid || "")) authorPatch.externalUuid = normalized.externalUuid;
-    authorPatch.lastSeenAt = new Date();
-    if (Object.keys(userPatch).length) {
-      await client.user.update({ where: { id: existing.localUserId }, data: userPatch });
-      counters.updated++;
-    }
-    if (Object.keys(authorPatch).length) {
-      await client.weiwallAuthor.update({ where: { id: existing.id }, data: authorPatch });
-    }
-    return { id: existing.localUserId };
-  }
-
-  const localUser = await client.user.create({
-    data: {
-      username: buildSyntheticUsername(normalized.externalKey),
-      passwordHash: await hashPassword(randomUUID()),
-      nickname: normalized.nickname.slice(0, 20),
-      avatar: normalized.avatar,
-    },
-    select: { id: true },
-  });
-  await client.weiwallAuthor.create({
-    data: {
-      externalKey: normalized.externalKey,
-      externalUuid: normalized.externalUuid,
-      nickname: normalized.nickname,
-      avatar: normalized.avatar,
-      localUserId: localUser.id,
-      lastSeenAt: new Date(),
-    },
-  });
-  counters.created++;
-  return { id: localUser.id };
+  return {
+    key: normalized.externalKey,
+    uuid: normalized.externalUuid,
+    name: normalized.nickname,
+    avatar: normalized.avatar,
+  };
 }
 
 async function attachTopicNodeTag(client: SyncClient, topicId: number, nodeName: string | null | undefined) {
@@ -569,11 +659,11 @@ async function syncTopicReplies(
   localTopic: Pick<Topic, "id" | "authorId" | "createdAt">,
   externalTopicId: string,
   comments: Array<WeiwallReplyRow & { children: WeiwallReplyRow[] }>,
-  authorCounters: AuthorSyncCounters,
+  botUserId: number,
 ) {
   const replyMaps = await client.weiwallReplyMap.findMany({
     where: { externalTopicId },
-    select: { id: true, externalReplyId: true, localReplyId: true, externalCreatedAt: true },
+    select: { id: true, externalReplyId: true, localReplyId: true, externalCreatedAt: true, externalAuthorName: true, externalAuthorAvatar: true, externalAuthorUuid: true },
   });
   const replyMapByExternal = new Map(replyMaps.map((item) => [item.externalReplyId, item]));
   const touchedReplyAuthorIds = new Set<number>();
@@ -581,7 +671,7 @@ async function syncTopicReplies(
   let repliesUpdated = 0;
 
   const upsertOne = async (entry: FlattenedExternalReply) => {
-    const author = await ensureLocalAuthor(entry.row.userInfo, client, authorCounters);
+    const externalAuthor = externalAuthorForStorage(entry.row.userInfo);
     const replyId = entry.externalReplyId;
     const parentLocalReplyId = entry.parentExternalReplyId
       ? replyMapByExternal.get(entry.parentExternalReplyId)?.localReplyId ?? null
@@ -590,7 +680,7 @@ async function syncTopicReplies(
     const hidden = replyHidden(entry.row);
     const data: Prisma.ReplyUncheckedCreateInput = {
       topicId: localTopic.id,
-      authorId: author.id,
+      authorId: botUserId,
       content: renderExternalContent(entry.row.content, entry.row.imgs ?? []),
       parentReplyId: parentLocalReplyId,
       hidden,
@@ -603,7 +693,7 @@ async function syncTopicReplies(
       await client.reply.update({
         where: { id: existing.localReplyId },
         data: {
-          authorId: data.authorId,
+          authorId: botUserId,
           content: data.content,
           parentReplyId: data.parentReplyId,
           hidden: data.hidden,
@@ -615,12 +705,15 @@ async function syncTopicReplies(
         data: {
           externalCommentId: entry.externalCommentId,
           parentExternalReplyId: entry.parentExternalReplyId,
+          externalAuthorUuid: externalAuthor.uuid,
+          externalAuthorName: externalAuthor.name,
+          externalAuthorAvatar: externalAuthor.avatar,
           externalCreatedAt: data.createdAt,
           lastSyncedAt: new Date(),
         },
       });
       repliesUpdated++;
-      touchedReplyAuthorIds.add(author.id);
+      touchedReplyAuthorIds.add(botUserId);
       return;
     }
     const created = await client.reply.create({ data });
@@ -631,6 +724,9 @@ async function syncTopicReplies(
         externalTopicId,
         externalCommentId: entry.externalCommentId,
         parentExternalReplyId: entry.parentExternalReplyId,
+        externalAuthorUuid: externalAuthor.uuid,
+        externalAuthorName: externalAuthor.name,
+        externalAuthorAvatar: externalAuthor.avatar,
         externalCreatedAt: createdAt,
         lastSyncedAt: new Date(),
       },
@@ -640,9 +736,12 @@ async function syncTopicReplies(
       externalReplyId: replyId,
       localReplyId: created.id,
       externalCreatedAt: createdAt,
+      externalAuthorName: externalAuthor.name,
+      externalAuthorAvatar: externalAuthor.avatar,
+      externalAuthorUuid: externalAuthor.uuid,
     });
     repliesCreated++;
-    touchedReplyAuthorIds.add(author.id);
+    touchedReplyAuthorIds.add(botUserId);
   };
 
   for (const topLevel of comments) {
@@ -708,8 +807,9 @@ async function syncSingleTopic(
   board: Board,
   sourceName: string,
   topic: WeiwallTopicRow,
-  authorCounters: AuthorSyncCounters,
+  botUserId: number,
   counters: WeiwallSyncResult,
+  control: { commentFetchStopped: boolean; rateLimitMessage: string | null },
 ) {
   const externalTopicId = externalId(topic.id);
   if (!externalTopicId) return { topicAuthorIds: [] as number[], replyAuthorIds: [] as number[] };
@@ -723,23 +823,45 @@ async function syncSingleTopic(
     },
   });
 
+  if (looksLikeWeiwallAdvertisement(topic)) {
+    if (existingMap) {
+      await prisma.$transaction(async (tx) => {
+        await tx.topic.update({
+          where: { id: existingMap.localTopicId },
+          data: { authorId: botUserId, hidden: true, pinned: false, locked: true, lastReplyById: botUserId },
+        });
+        await tx.reply.updateMany({ where: { topicId: existingMap.localTopicId }, data: { authorId: botUserId } });
+        await tx.weiwallTopicMap.update({
+          where: { id: existingMap.id },
+          data: { lastStatus: "filtered-ad", lastSyncedAt: new Date() },
+        });
+      });
+      counters.topicsUpdated++;
+    }
+    return {
+      topicAuthorIds: [botUserId, existingMap?.localTopic.authorId ?? null].filter((id): id is number => typeof id === "number" && id > 0),
+      replyAuthorIds: [botUserId],
+    };
+  }
+
   const shouldSyncComments =
     Number(topic.commentCount ?? 0) > 0
+    && !control.commentFetchStopped
     && (!existingMap || Number(topic.commentCount ?? 0) !== existingMap.lastCommentCount);
 
   const commentFetchCounters = { commentsFetched: 0 };
   const comments = shouldSyncComments
-    ? await fetchTopicComments(configRow, externalTopicId, commentFetchCounters)
+    ? await fetchTopicComments(configRow, externalTopicId, commentFetchCounters, control)
     : [];
   counters.commentsFetched += commentFetchCounters.commentsFetched;
 
   const result = await prisma.$transaction(async (tx) => {
-    const topicAuthor = await ensureLocalAuthor(topic.userInfo, tx, authorCounters);
+    const externalAuthor = externalAuthorForStorage(topic.userInfo);
     const createdAt = parseExternalTime(topic.createTime);
     const localContent = renderExternalContent(topic.content, [...(topic.imgs ?? []), ...(topic.data?.imgs ?? [])]);
     const localTitle = deriveLocalTitle(topic);
     const hidden = topicHidden(topic);
-    const pinned = Boolean(coerceBool(topic.isTop));
+    const pinned = false;
     const metadata = JSON.stringify({
       sourceUrl: buildTopicSourceUrl(configRow.baseUrl, configRow.schoolEn, externalTopicId),
       sourceName,
@@ -753,6 +875,9 @@ async function syncSingleTopic(
       externalLikeCount: Number(topic.likeCount ?? 0) || 0,
       externalViewCount: Number(topic.viewCount ?? 0) || 0,
       originalTitle: trimTo(topic.title, 120),
+      externalAuthorName: externalAuthor.name,
+      externalAuthorAvatar: externalAuthor.avatar,
+      externalAuthorUuid: externalAuthor.uuid,
     });
 
     let localTopic: Pick<Topic, "id" | "authorId" | "createdAt">;
@@ -760,7 +885,7 @@ async function syncSingleTopic(
       const created = await tx.topic.create({
         data: {
           boardId: board.id,
-          authorId: topicAuthor.id,
+          authorId: botUserId,
           title: localTitle,
           content: localContent,
           metadata,
@@ -770,7 +895,7 @@ async function syncSingleTopic(
           likeCount: Number(topic.likeCount ?? 0) || 0,
           viewCount: Number(topic.viewCount ?? 0) || 0,
           lastReplyAt: createdAt,
-          lastReplyById: topicAuthor.id,
+          lastReplyById: botUserId,
           createdAt,
         },
         select: { id: true, authorId: true, createdAt: true },
@@ -779,7 +904,10 @@ async function syncSingleTopic(
         data: {
           externalTopicId,
           localTopicId: created.id,
-          externalAuthorKey: normalizeExternalAuthor(topic.userInfo).externalKey,
+          externalAuthorKey: externalAuthor.key,
+          externalAuthorUuid: externalAuthor.uuid,
+          externalAuthorName: externalAuthor.name,
+          externalAuthorAvatar: externalAuthor.avatar,
           externalCreatedAt: createdAt,
           lastCommentCount: Number(topic.commentCount ?? 0) || 0,
           lastLikeCount: Number(topic.likeCount ?? 0) || 0,
@@ -794,7 +922,7 @@ async function syncSingleTopic(
       await tx.topic.update({
         where: { id: existingMap.localTopicId },
         data: {
-          authorId: topicAuthor.id,
+          authorId: botUserId,
           title: localTitle,
           content: localContent,
           metadata,
@@ -808,7 +936,10 @@ async function syncSingleTopic(
       await tx.weiwallTopicMap.update({
         where: { id: existingMap.id },
         data: {
-          externalAuthorKey: normalizeExternalAuthor(topic.userInfo).externalKey,
+          externalAuthorKey: externalAuthor.key,
+          externalAuthorUuid: externalAuthor.uuid,
+          externalAuthorName: externalAuthor.name,
+          externalAuthorAvatar: externalAuthor.avatar,
           externalCreatedAt: createdAt,
           lastCommentCount: Number(topic.commentCount ?? 0) || 0,
           lastLikeCount: Number(topic.likeCount ?? 0) || 0,
@@ -823,7 +954,7 @@ async function syncSingleTopic(
 
     let replySync = { repliesCreated: 0, repliesUpdated: 0, touchedReplyAuthorIds: [] as number[] };
     if (shouldSyncComments) {
-      replySync = await syncTopicReplies(tx, localTopic, externalTopicId, comments, authorCounters);
+      replySync = await syncTopicReplies(tx, localTopic, externalTopicId, comments, botUserId);
     } else if ((Number(topic.commentCount ?? 0) || 0) === 0) {
       await tx.topic.update({
         where: { id: localTopic.id },
@@ -836,7 +967,7 @@ async function syncSingleTopic(
     }
 
     return {
-      currentTopicAuthorId: topicAuthor.id,
+      currentTopicAuthorId: botUserId,
       previousTopicAuthorId: existingMap?.localTopic.authorId ?? null,
       touchedReplyAuthorIds: replySync.touchedReplyAuthorIds,
       repliesCreated: replySync.repliesCreated,
@@ -893,31 +1024,41 @@ export async function runWeiwallSyncNow() {
     try {
       result.sourceName = await fetchTenantName(configRow.baseUrl || WEIWALL_DEFAULT_BASE_URL);
       const authorCounters: AuthorSyncCounters = { created: 0, updated: 0 };
+      const botUser = await ensureWeiwallBotUser(prisma);
+      await normalizeLegacyMirroredAuthorAssignments(botUser.id);
+      const control = { commentFetchStopped: false, rateLimitMessage: null as string | null };
       const topicScan = await fetchLatestTopics(configRow);
       result.pagesScanned = topicScan.pagesScanned;
       result.topicsScanned = topicScan.rows.length;
       result.latestExternalTopicId = externalId(topicScan.rows[0]?.id) || null;
+      if (topicScan.rateLimited) control.rateLimitMessage = topicScan.rateLimitMessage;
       const touchedTopicAuthorIds = new Set<number>();
       const touchedReplyAuthorIds = new Set<number>();
       for (const topic of topicScan.rows) {
-        const syncResult = await syncSingleTopic(configRow, board, result.sourceName, topic, authorCounters, result);
+        const syncResult = await syncSingleTopic(configRow, board, result.sourceName, topic, botUser.id, result, control);
         syncResult.topicAuthorIds.forEach((id) => touchedTopicAuthorIds.add(id));
         syncResult.replyAuthorIds.forEach((id) => touchedReplyAuthorIds.add(id));
       }
       result.authorsCreated = authorCounters.created;
       result.authorsUpdated = authorCounters.updated;
+      if (control.rateLimitMessage && (result.topicsCreated || result.topicsUpdated || result.repliesCreated || result.repliesUpdated)) {
+        result.error = `${control.rateLimitMessage}；本轮已部分同步，稍后会继续补齐`;
+      } else if (control.rateLimitMessage) {
+        result.error = control.rateLimitMessage;
+      }
 
       await refreshBoardTopicCount(board.id);
       await Promise.all([
         ...[...touchedTopicAuthorIds].map((id) => refreshUserPostCount(id)),
         ...[...touchedReplyAuthorIds].map((id) => refreshUserReplyCount(id)),
       ]);
+      await cleanupLegacyWeiwallUsers();
       await prisma.weiwallSyncConfig.update({
         where: { id: configRow.id },
         data: {
           lastRunAt: new Date(),
-          lastRunOk: true,
-          lastError: null,
+          lastRunOk: control.rateLimitMessage ? Boolean(result.topicsScanned) : true,
+          lastError: result.error,
           lastSyncedAt: new Date(),
         },
       });
@@ -925,7 +1066,7 @@ export async function runWeiwallSyncNow() {
         await invalidateBoardCaches();
         await invalidateForumCaches();
       }
-      result.ok = true;
+      result.ok = !control.rateLimitMessage || Boolean(result.topicsScanned);
       return result;
     } catch (error: any) {
       const message = error?.message ?? String(error);
