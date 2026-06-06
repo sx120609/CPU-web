@@ -411,10 +411,39 @@ function renderExternalContent(content: unknown, images: Array<string | null | u
   return "_（外部内容为空）_";
 }
 
+function summarizeExternalText(input: unknown, max = 60) {
+  const text = String(input ?? "")
+    .replace(/!\[[^\]]*]\([^)]+\)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return "";
+  return text.slice(0, max);
+}
+
 function deriveLocalTitle(topic: WeiwallTopicRow) {
   const explicit = trimTo(topic.title, 120);
   if (explicit && explicit !== "none") return explicit;
-  return "none";
+  const fromContent = summarizeExternalText(topic.content, 80);
+  if (fromContent) return fromContent;
+  return `校园墙帖子 ${externalId(topic.id) || "unknown"}`;
+}
+
+function formatTraceTitle(input: {
+  title?: string | null;
+  content?: string | null;
+  externalTopicId?: string | null;
+  localTopicId?: number | null;
+}) {
+  const title = trimTo(input.title, 120);
+  if (title && title.toLowerCase() !== "none") return title;
+  const fromContent = summarizeExternalText(input.content, 80);
+  if (fromContent) return fromContent;
+  const localId = Number(input.localTopicId ?? 0) || 0;
+  const externalTopicId = String(input.externalTopicId || "").trim();
+  if (localId > 0 && externalTopicId) return `本地#${localId} / 外部#${externalTopicId}`;
+  if (externalTopicId) return `外部#${externalTopicId}`;
+  if (localId > 0) return `本地#${localId}`;
+  return "未命名帖子";
 }
 
 function normalizeExternalAuthor(userInfo?: WeiwallUserInfo | null) {
@@ -1458,7 +1487,12 @@ async function syncSingleTopic(
       action: "fetched",
       externalTopicId,
       localTopicId: existingMap?.localTopicId ?? null,
-      title: localTitle,
+      title: formatTraceTitle({
+        title: localTitle,
+        content: topic.content,
+        externalTopicId,
+        localTopicId: existingMap?.localTopicId ?? null,
+      }),
       remoteCommentCount,
       localReplyCountBefore,
       visibleReplyCountAfter: result.visibleReplyCount,
@@ -1527,7 +1561,11 @@ async function syncBackfillTopicComments(
       action: "probed",
       externalTopicId: topicMap.externalTopicId,
       localTopicId: topicMap.localTopicId,
-      title: topicMap.localTopic.title,
+      title: formatTraceTitle({
+        title: topicMap.localTopic.title,
+        externalTopicId: topicMap.externalTopicId,
+        localTopicId: topicMap.localTopicId,
+      }),
       remoteCommentCount,
       localReplyCountBefore: topicMap.localTopic.replyCount,
       visibleReplyCountAfter: topicMap.localTopic.replyCount,
@@ -1578,7 +1616,11 @@ async function syncBackfillTopicComments(
     action: "fetched",
     externalTopicId: topicMap.externalTopicId,
     localTopicId: topicMap.localTopicId,
-    title: topicMap.localTopic.title,
+    title: formatTraceTitle({
+      title: topicMap.localTopic.title,
+      externalTopicId: topicMap.externalTopicId,
+      localTopicId: topicMap.localTopicId,
+    }),
     remoteCommentCount,
     localReplyCountBefore: topicMap.localTopic.replyCount,
     visibleReplyCountAfter: replySync.visibleReplyCount,
