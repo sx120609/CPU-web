@@ -361,6 +361,20 @@ export type WeiwallSyncRunResult = {
   authorsUpdated: number;
   commentsFetched: number;
   latestExternalTopicId: string | null;
+  topicTraces: Array<{
+    phase: "latest" | "backfill";
+    action: "fetched" | "probed" | "skipped";
+    externalTopicId: string;
+    localTopicId: number | null;
+    title: string;
+    remoteCommentCount: number | null;
+    localReplyCountBefore: number | null;
+    visibleReplyCountAfter: number | null;
+    commentsFetched: number;
+    repliesCreated: number;
+    repliesUpdated: number;
+    note: string | null;
+  }>;
   error?: string | null;
 };
 

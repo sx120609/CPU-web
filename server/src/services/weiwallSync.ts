@@ -22,6 +22,7 @@ const WEIWALL_MIN_INTERVAL_SECONDS = 30;
 const WEIWALL_LOCK_MS = 4 * 60_000;
 const WEIWALL_MAX_COMMENT_PAGE_SIZE = 20;
 const WEIWALL_COMMENT_BACKFILL_TOPICS_PER_RUN = 12;
+const WEIWALL_TRACE_LIMIT = 40;
 const WEIWALL_BOT_USERNAME = "weiwall_sync_bot";
 const WEIWALL_BOT_NICKNAME = "校园墙同步";
 const WEIWALL_AUTH_FLOW_TTL_MS = 15 * 60_000;
@@ -146,7 +147,23 @@ export type WeiwallSyncResult = {
   authorsUpdated: number;
   commentsFetched: number;
   latestExternalTopicId: string | null;
+  topicTraces: WeiwallSyncTopicTrace[];
   error?: string | null;
+};
+
+export type WeiwallSyncTopicTrace = {
+  phase: "latest" | "backfill";
+  action: "fetched" | "probed" | "skipped";
+  externalTopicId: string;
+  localTopicId: number | null;
+  title: string;
+  remoteCommentCount: number | null;
+  localReplyCountBefore: number | null;
+  visibleReplyCountAfter: number | null;
+  commentsFetched: number;
+  repliesCreated: number;
+  repliesUpdated: number;
+  note: string | null;
 };
 
 export type WeiwallTokenAuthSession = {
@@ -358,6 +375,30 @@ function uniqStrings(values: Array<string | null | undefined>) {
     result.push(text);
   }
   return result;
+}
+
+function pushWeiwallTrace(result: WeiwallSyncResult, trace: WeiwallSyncTopicTrace) {
+  if (result.topicTraces.length >= WEIWALL_TRACE_LIMIT) return;
+  result.topicTraces.push(trace);
+}
+
+function describeCommentSyncReason(input: {
+  remoteCommentCount: number;
+  lastCommentCount?: number | null;
+  localReplyCount?: number | null;
+  needsReplyAuthorBackfill?: number;
+}) {
+  const notes: string[] = [];
+  if (input.remoteCommentCount !== Math.max(0, Number(input.lastCommentCount ?? 0) || 0)) {
+    notes.push("远端 commentCount 有变化");
+  }
+  if (input.remoteCommentCount !== Math.max(0, Number(input.localReplyCount ?? 0) || 0)) {
+    notes.push("远端评论数与本地 replyCount 不一致");
+  }
+  if ((input.needsReplyAuthorBackfill ?? 0) > 0) {
+    notes.push("历史回复作者信息需要补齐");
+  }
+  return notes.join("；") || "本轮未命中评论补抓条件";
 }
 
 function renderExternalContent(content: unknown, images: Array<string | null | undefined>) {
@@ -1212,6 +1253,7 @@ async function syncTopicReplies(
     repliesCreated,
     repliesUpdated,
     touchedReplyAuthorIds: [...touchedReplyAuthorIds],
+    visibleReplyCount: visibleReplies.length,
   };
 }
 
@@ -1231,7 +1273,7 @@ async function syncSingleTopic(
     where: { externalTopicId },
     include: {
       localTopic: {
-        select: { id: true, authorId: true, createdAt: true, replyCount: true },
+        select: { id: true, authorId: true, createdAt: true, replyCount: true, title: true },
       },
     },
   });
@@ -1284,12 +1326,14 @@ async function syncSingleTopic(
     ? await fetchTopicComments(configRow, externalTopicId, commentFetchCounters, control)
     : [];
   counters.commentsFetched += commentFetchCounters.commentsFetched;
+  const localTitle = deriveLocalTitle(topic);
+  const remoteCommentCount = Math.max(0, Number(topic.commentCount ?? 0) || 0);
+  const localReplyCountBefore = existingMap?.localTopic?.replyCount ?? 0;
 
   const result = await prisma.$transaction(async (tx) => {
     const externalAuthor = externalAuthorForStorage(topic.userInfo);
     const createdAt = parseExternalTime(topic.createTime);
     const localContent = renderExternalContent(topic.content, [...(topic.imgs ?? []), ...(topic.data?.imgs ?? [])]);
-    const localTitle = deriveLocalTitle(topic);
     const hidden = topicHidden(topic);
     const pinned = false;
     const metadata = JSON.stringify({
@@ -1310,7 +1354,7 @@ async function syncSingleTopic(
       externalAuthorUuid: externalAuthor.uuid,
     });
 
-    let localTopic: Pick<Topic, "id" | "authorId" | "createdAt" | "replyCount">;
+    let localTopic: Pick<Topic, "id" | "authorId" | "createdAt" | "replyCount" | "title">;
     if (!existingMap) {
       const created = await tx.topic.create({
         data: {
@@ -1328,7 +1372,7 @@ async function syncSingleTopic(
           lastReplyById: botUserId,
           createdAt,
         },
-        select: { id: true, authorId: true, createdAt: true, replyCount: true },
+        select: { id: true, authorId: true, createdAt: true, replyCount: true, title: true },
       });
       await tx.weiwallTopicMap.create({
         data: {
@@ -1382,7 +1426,7 @@ async function syncSingleTopic(
       counters.topicsUpdated++;
     }
 
-    let replySync = { repliesCreated: 0, repliesUpdated: 0, touchedReplyAuthorIds: [] as number[] };
+    let replySync = { repliesCreated: 0, repliesUpdated: 0, touchedReplyAuthorIds: [] as number[], visibleReplyCount: localTopic.replyCount ?? 0 };
     if (shouldSyncComments) {
       replySync = await syncTopicReplies(tx, localTopic, externalTopicId, comments, botUserId);
     } else if ((Number(topic.commentCount ?? 0) || 0) === 0) {
@@ -1402,11 +1446,35 @@ async function syncSingleTopic(
       touchedReplyAuthorIds: replySync.touchedReplyAuthorIds,
       repliesCreated: replySync.repliesCreated,
       repliesUpdated: replySync.repliesUpdated,
+      visibleReplyCount: replySync.visibleReplyCount,
     };
   });
 
   counters.repliesCreated += result.repliesCreated;
   counters.repliesUpdated += result.repliesUpdated;
+  if (shouldSyncComments) {
+    pushWeiwallTrace(counters, {
+      phase: "latest",
+      action: "fetched",
+      externalTopicId,
+      localTopicId: existingMap?.localTopicId ?? null,
+      title: localTitle,
+      remoteCommentCount,
+      localReplyCountBefore,
+      visibleReplyCountAfter: result.visibleReplyCount,
+      commentsFetched: commentFetchCounters.commentsFetched,
+      repliesCreated: result.repliesCreated,
+      repliesUpdated: result.repliesUpdated,
+      note: result.visibleReplyCount === 0 && commentFetchCounters.commentsFetched > 0
+        ? "已抓到评论，但本地可见回复仍为 0"
+        : describeCommentSyncReason({
+            remoteCommentCount,
+            lastCommentCount: existingMap?.lastCommentCount,
+            localReplyCount: localReplyCountBefore,
+            needsReplyAuthorBackfill,
+          }),
+    });
+  }
   return {
     topicAuthorIds: [result.currentTopicAuthorId, result.previousTopicAuthorId].filter((id): id is number => typeof id === "number" && Number.isFinite(id) && id > 0),
     replyAuthorIds: result.touchedReplyAuthorIds,
@@ -1421,7 +1489,7 @@ async function syncBackfillTopicComments(
     localTopicId: number;
     lastCommentCount: number;
     lastStatus: string | null;
-    localTopic: Pick<Topic, "id" | "authorId" | "createdAt" | "replyCount"> | null;
+    localTopic: Pick<Topic, "id" | "authorId" | "createdAt" | "replyCount" | "title"> | null;
   },
   botUserId: number,
   counters: WeiwallSyncResult,
@@ -1454,6 +1522,20 @@ async function syncBackfillTopicComments(
         lastSyncedAt: new Date(),
       },
     });
+    pushWeiwallTrace(counters, {
+      phase: "backfill",
+      action: "probed",
+      externalTopicId: topicMap.externalTopicId,
+      localTopicId: topicMap.localTopicId,
+      title: topicMap.localTopic.title,
+      remoteCommentCount,
+      localReplyCountBefore: topicMap.localTopic.replyCount,
+      visibleReplyCountAfter: topicMap.localTopic.replyCount,
+      commentsFetched: 0,
+      repliesCreated: 0,
+      repliesUpdated: 0,
+      note: "只做只读探测，commentCount 未变化",
+    });
     return { replyAuthorIds: [] as number[] };
   }
 
@@ -1464,7 +1546,7 @@ async function syncBackfillTopicComments(
   const replySync = await prisma.$transaction(async (tx) => {
     const replies = comments.length
       ? await syncTopicReplies(tx, topicMap.localTopic!, topicMap.externalTopicId, comments, botUserId)
-      : { repliesCreated: 0, repliesUpdated: 0, touchedReplyAuthorIds: [] as number[] };
+      : { repliesCreated: 0, repliesUpdated: 0, touchedReplyAuthorIds: [] as number[], visibleReplyCount: 0 };
 
     if (!comments.length) {
       await tx.topic.update({
@@ -1491,6 +1573,24 @@ async function syncBackfillTopicComments(
 
   counters.repliesCreated += replySync.repliesCreated;
   counters.repliesUpdated += replySync.repliesUpdated;
+  pushWeiwallTrace(counters, {
+    phase: "backfill",
+    action: "fetched",
+    externalTopicId: topicMap.externalTopicId,
+    localTopicId: topicMap.localTopicId,
+    title: topicMap.localTopic.title,
+    remoteCommentCount,
+    localReplyCountBefore: topicMap.localTopic.replyCount,
+    visibleReplyCountAfter: replySync.visibleReplyCount,
+    commentsFetched: commentFetchCounters.commentsFetched,
+    repliesCreated: replySync.repliesCreated,
+    repliesUpdated: replySync.repliesUpdated,
+    note: describeCommentSyncReason({
+      remoteCommentCount,
+      lastCommentCount: topicMap.lastCommentCount,
+      localReplyCount: topicMap.localTopic.replyCount,
+    }),
+  });
   return { replyAuthorIds: replySync.touchedReplyAuthorIds };
 }
 
@@ -1516,6 +1616,7 @@ export async function runWeiwallSyncNow() {
       authorsUpdated: 0,
       commentsFetched: 0,
       latestExternalTopicId: null,
+      topicTraces: [],
       error: null,
     };
 
@@ -1565,7 +1666,7 @@ export async function runWeiwallSyncNow() {
           take: WEIWALL_COMMENT_BACKFILL_TOPICS_PER_RUN,
           include: {
             localTopic: {
-              select: { id: true, authorId: true, createdAt: true, replyCount: true },
+              select: { id: true, authorId: true, createdAt: true, replyCount: true, title: true },
             },
           },
         });
@@ -1634,6 +1735,7 @@ export async function runWeiwallSyncNow() {
     authorsUpdated: 0,
     commentsFetched: 0,
     latestExternalTopicId: null,
+    topicTraces: [],
     error: "locked",
   } satisfies WeiwallSyncResult;
 }

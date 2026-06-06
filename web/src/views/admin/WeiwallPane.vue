@@ -130,6 +130,33 @@
         <div class="result-item"><span>评论请求量</span><b>{{ runResult.commentsFetched }}</b></div>
         <div class="result-item"><span>最新外部帖子 ID</span><b>{{ runResult.latestExternalTopicId || "-" }}</b></div>
       </div>
+      <div v-if="runResult.topicTraces?.length" class="trace-block">
+        <div class="trace-title">本轮评论补抓明细</div>
+        <el-table :data="runResult.topicTraces" size="small" stripe>
+          <el-table-column label="阶段" min-width="88">
+            <template #default="{ row }">{{ row.phase === "latest" ? "最新窗口" : "历史补扫" }}</template>
+          </el-table-column>
+          <el-table-column label="动作" min-width="88">
+            <template #default="{ row }">{{ row.action === "fetched" ? "抓评论" : row.action === "probed" ? "只探测" : "跳过" }}</template>
+          </el-table-column>
+          <el-table-column prop="title" label="帖子" min-width="220" show-overflow-tooltip />
+          <el-table-column label="评论数" min-width="110">
+            <template #default="{ row }">{{ row.remoteCommentCount ?? "-" }} / {{ row.localReplyCountBefore ?? "-" }}</template>
+          </el-table-column>
+          <el-table-column label="抓到" min-width="70">
+            <template #default="{ row }">{{ row.commentsFetched }}</template>
+          </el-table-column>
+          <el-table-column label="新增/更新" min-width="92">
+            <template #default="{ row }">{{ row.repliesCreated }}/{{ row.repliesUpdated }}</template>
+          </el-table-column>
+          <el-table-column label="抓后可见" min-width="92">
+            <template #default="{ row }">{{ row.visibleReplyCountAfter ?? "-" }}</template>
+          </el-table-column>
+          <el-table-column prop="externalTopicId" label="外部 ID" min-width="110" />
+          <el-table-column prop="note" label="说明" min-width="260" show-overflow-tooltip />
+        </el-table>
+        <div class="field-tip">“评论数”列表示“远端 commentCount / 本地 replyCount(抓前)”。如果这里只显示别的帖子，说明本轮拉到的新评论并不是你正在看的那条。</div>
+      </div>
       <el-alert v-if="runResult.error" class="run-error" type="error" :closable="false" :title="runResult.error" show-icon />
     </el-card>
 
@@ -486,6 +513,17 @@ onBeforeUnmount(stopAuthPolling);
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.trace-block {
+  margin-top: 16px;
+}
+
+.trace-title {
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1f2937;
 }
 
 .run-error {
