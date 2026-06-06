@@ -76,6 +76,7 @@ model User {
   forumImageAssets  ForumImageAsset[]
   forumVideoAssets  ForumVideoAsset[]
   aiReviewLogs      AiReviewLog[]
+  weiwallAuthors    WeiwallAuthor[]
 }
 
 // ============ 论坛核心 ============
@@ -102,6 +103,7 @@ model Board {
   // 关联爬虫源（announce 类型板块独有）
   feedSourceId Int?    @unique
   feedSource  SchoolFeedSource? @relation(fields: [feedSourceId], references: [id])
+  weiwallSyncConfigs WeiwallSyncConfig[]
 
   topics Topic[]
 
@@ -152,6 +154,7 @@ model Topic {
   likes   Like[]
   tags    TopicTag[]
   manualReviewedBy User? @relation("ManualReviewedTopics", fields: [manualReviewedById], references: [id])
+  weiwallMap WeiwallTopicMap?
 
   @@index([boardId, lastReplyAt])
   @@index([boardId, hidden, createdAt])
@@ -188,6 +191,7 @@ model Reply {
   parentReply Reply?  @relation("ReplyToReply", fields: [parentReplyId], references: [id])
   children    Reply[] @relation("ReplyToReply")
   likes       Like[]
+  weiwallMap  WeiwallReplyMap?
 
   @@index([topicId, floor])
   @@index([topicId, hidden, floor])
@@ -488,6 +492,84 @@ model SchoolFeedItem {
 
   @@unique([sourceId, externalId])
   @@index([sourceId])
+}
+
+// ============ 外部校园墙同步（WeiWall / 逛逛校园圈） ============
+
+model WeiwallSyncConfig {
+  id               Int      @id @default(autoincrement())
+  enabled          Boolean  @default(false)
+  baseUrl          String   @default("https://s.weiwall.com")
+  schoolEn         String   @default("cpu")
+  tenantId         Int      @default(7)
+  token            String   @default("")
+  intervalSeconds  Int      @default(120)
+  topicPages       Int      @default(3)
+  commentPageSize  Int      @default(50)
+  maxCommentPages  Int      @default(10)
+  maxReplyPages    Int      @default(10)
+  boardId          Int?
+  lastRunAt        DateTime?
+  lastRunOk        Boolean?
+  lastError        String?
+  lastSyncedAt     DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  board Board? @relation(fields: [boardId], references: [id], onDelete: SetNull)
+
+  @@index([enabled])
+}
+
+model WeiwallAuthor {
+  id            Int      @id @default(autoincrement())
+  externalKey   String   @unique
+  externalUuid  String?
+  nickname      String
+  avatar        String?
+  localUserId   Int      @unique
+  lastSeenAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  localUser User @relation(fields: [localUserId], references: [id], onDelete: Cascade)
+
+  @@index([externalUuid])
+}
+
+model WeiwallTopicMap {
+  id               Int      @id @default(autoincrement())
+  externalTopicId  String   @unique
+  localTopicId     Int      @unique
+  externalAuthorKey String?
+  externalCreatedAt DateTime?
+  lastCommentCount Int      @default(0)
+  lastLikeCount    Int      @default(0)
+  lastStatus       String?
+  lastSyncedAt     DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  localTopic Topic @relation(fields: [localTopicId], references: [id], onDelete: Cascade)
+
+  @@index([lastSyncedAt])
+}
+
+model WeiwallReplyMap {
+  id                    Int      @id @default(autoincrement())
+  externalReplyId       String   @unique
+  localReplyId          Int      @unique
+  externalTopicId       String
+  externalCommentId     String?
+  parentExternalReplyId String?
+  externalCreatedAt     DateTime?
+  lastSyncedAt          DateTime @default(now())
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  localReply Reply @relation(fields: [localReplyId], references: [id], onDelete: Cascade)
+
+  @@index([externalTopicId, externalCreatedAt])
 }
 
 // ============ 服务导航卡片（学校原入口外链） ============

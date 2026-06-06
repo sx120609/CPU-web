@@ -46,6 +46,7 @@
       <el-tab-pane label="🧩 板块" name="boards" v-if="auth.isAdmin"><BoardsPane v-if="tab === 'boards'" /></el-tab-pane>
       <el-tab-pane label="📝 帖子" name="topics"><TopicsPane v-if="tab === 'topics'" /></el-tab-pane>
       <el-tab-pane label="🔄 同步源" name="feeds" v-if="auth.isAdmin"><FeedsPane v-if="tab === 'feeds'" /></el-tab-pane>
+      <el-tab-pane label="📮 校园墙" name="weiwall" v-if="auth.isAdmin"><WeiwallPane v-if="tab === 'weiwall'" /></el-tab-pane>
       <el-tab-pane label="📣 公告" name="announcements" v-if="auth.isAdmin"><AnnouncementsPane v-if="tab === 'announcements'" /></el-tab-pane>
       <el-tab-pane label="💳 支付对接" name="epay" v-if="auth.isAdmin"><EpayPane v-if="tab === 'epay'" /></el-tab-pane>
       <el-tab-pane label="💛 赞助" name="sponsor" v-if="auth.isAdmin"><SponsorPane v-if="tab === 'sponsor'" /></el-tab-pane>
@@ -67,6 +68,7 @@ import UsersPane from "./UsersPane.vue";
 import BoardsPane from "./BoardsPane.vue";
 import TopicsPane from "./TopicsPane.vue";
 import FeedsPane from "./FeedsPane.vue";
+import WeiwallPane from "./WeiwallPane.vue";
 import AnnouncementsPane from "./AnnouncementsPane.vue";
 import EpayPane from "./EpayPane.vue";
 import SponsorPane from "./SponsorPane.vue";

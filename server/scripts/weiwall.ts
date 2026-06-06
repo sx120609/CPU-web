@@ -1,4 +1,7 @@
 import { promises as fs } from "node:fs";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { WebSocket } from "ws";
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 
@@ -10,6 +13,7 @@ type CliOptions = {
 const DEFAULT_BASE_URL = process.env.WEIWALL_BASE_URL || "https://s.weiwall.com";
 const DEFAULT_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0 Safari/537.36";
+const execFileAsync = promisify(execFile);
 
 function printUsage() {
   console.log(`
@@ -19,6 +23,7 @@ Usage:
   npm run weiwall -- parse-url --url "<wechat callback url>"
   npm run weiwall -- exchange-code --url "<wechat callback url>"
   npm run weiwall -- exchange-code --school cpu --code "<oauth code>"
+  npm run weiwall -- capture-token --adb "D:\\platform-tools\\adb.exe"
   npm run weiwall -- tenant
   npm run weiwall -- topic --id 31669159
   npm run weiwall -- topic --id 31669159 --token "<bearer token>"
@@ -27,6 +32,7 @@ Usage:
 Commands:
   parse-url      Parse a callback URL and decode nested path parameters
   exchange-code  Exchange { school, code } for the platform Bearer token
+  capture-token  Read token from a connected Android WeChat WebView via adb
   tenant         Print tenant info from /api/client/tenant
   topic          Fetch one topic. Without token it falls back to read_only
   api            Send an arbitrary API request
@@ -36,6 +42,7 @@ Common flags:
   --tenant <id>      Override Tenant header
   --token <token>    Bearer token for authenticated requests
   --show-token       Print the full token in exchange-code output
+  --adb <path>       adb.exe path for capture-token
 
 api flags:
   --path <path>      API path such as /api/client/topics/31669159
@@ -155,6 +162,14 @@ function maskToken(token: string) {
   return `${token.slice(0, 8)}...${token.slice(-6)}`;
 }
 
+function adbPath(opts: CliOptions) {
+  return (
+    flag(opts, "adb") ||
+    process.env.ADB_PATH ||
+    "adb"
+  );
+}
+
 function ensureMethod(input?: string): HttpMethod {
   const upper = String(input || "GET").toUpperCase();
   if (upper === "GET" || upper === "POST" || upper === "PUT" || upper === "DELETE") return upper;
@@ -211,6 +226,64 @@ async function requestApi(args: {
   const res = await fetch(buildUrl(args.base, args.path), { method, headers, body });
   const text = await res.text();
   return { res, text, json: maybeJson(text) };
+}
+
+async function execAdb(adb: string, args: string[]) {
+  const { stdout, stderr } = await execFileAsync(adb, args, {
+    windowsHide: true,
+    maxBuffer: 1024 * 1024 * 8,
+  });
+  return { stdout, stderr };
+}
+
+function parseAdbDevices(output: string) {
+  return output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !line.startsWith("List of devices attached"))
+    .map((line) => {
+      const [serial, state] = line.split(/\s+/);
+      return { serial, state };
+    })
+    .filter((row) => row.serial);
+}
+
+async function cdpEvaluate(wsUrl: string, expression: string): Promise<any> {
+  return await new Promise((resolve, reject) => {
+    const ws = new WebSocket(wsUrl);
+    const timer = setTimeout(() => {
+      try { ws.close(); } catch { /* ignore */ }
+      reject(new Error("CDP timeout"));
+    }, 15000);
+
+    ws.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+
+    ws.on("open", () => {
+      ws.send(JSON.stringify({ id: 1, method: "Runtime.enable" }));
+      ws.send(JSON.stringify({ id: 2, method: "Page.enable" }));
+      ws.send(JSON.stringify({
+        id: 3,
+        method: "Runtime.evaluate",
+        params: { expression, returnByValue: true },
+      }));
+    });
+
+    ws.on("message", (raw) => {
+      const msg = JSON.parse(String(raw));
+      if (msg.id !== 3) return;
+      clearTimeout(timer);
+      try { ws.close(); } catch { /* ignore */ }
+      if (msg.result?.exceptionDetails) {
+        reject(new Error(msg.result.exceptionDetails.text || "Runtime exception"));
+        return;
+      }
+      resolve(msg.result?.result?.value);
+    });
+  });
 }
 
 async function detectTenant(base: string) {
@@ -317,6 +390,85 @@ async function commandTopic(opts: CliOptions) {
   summarizeEnvelope("topic", result);
 }
 
+async function commandCaptureToken(opts: CliOptions) {
+  const adb = adbPath(opts);
+  const port = Number(flag(opts, "port") || "9223");
+  const devices = parseAdbDevices((await execAdb(adb, ["devices"])).stdout);
+  const online = devices.find((item) => item.state === "device");
+  if (!online) throw new Error("没有检测到可用的 Android 设备，请先确认 adb devices 显示为 device");
+
+  const unixList = (
+    await execAdb(adb, ["shell", "cat /proc/net/unix | grep -E 'devtools_remote|webview|xweb'"])
+  ).stdout;
+  const socketMatches = Array.from(unixList.matchAll(/@(webview_devtools_remote_\d+)/g)).map((m) => m[1]);
+  if (!socketMatches.length) {
+    throw new Error("设备上没有发现可调试的 WebView socket，请先在微信里打开目标页面");
+  }
+
+  let chosenSocket = "";
+  let chosenPid = "";
+  for (const socket of socketMatches) {
+    const pid = socket.match(/_(\d+)$/)?.[1] || "";
+    if (!pid) continue;
+    const cmdline = (await execAdb(adb, ["shell", `cat /proc/${pid}/cmdline`])).stdout;
+    if (cmdline.includes("com.tencent.mm")) {
+      chosenSocket = socket;
+      chosenPid = pid;
+      break;
+    }
+  }
+  if (!chosenSocket) {
+    throw new Error("没找到属于 com.tencent.mm 的可调试 WebView socket");
+  }
+
+  await execAdb(adb, ["forward", `tcp:${port}`, `localabstract:${chosenSocket}`]);
+  const pageListRes = await fetch(`http://127.0.0.1:${port}/json/list`);
+  const pages = (await pageListRes.json()) as Array<{
+    id: string;
+    title: string;
+    url: string;
+    webSocketDebuggerUrl: string;
+  }>;
+  const targetPage =
+    pages.find((page) => page.url.startsWith("https://s.weiwall.com/")) ||
+    pages.find((page) => page.title.includes("圈子")) ||
+    pages[0];
+  if (!targetPage?.webSocketDebuggerUrl) {
+    throw new Error("没有找到可用的微信页面调试目标");
+  }
+
+  const dump = await cdpEvaluate(
+    targetPage.webSocketDebuggerUrl,
+    `(() => ({
+      href: location.href,
+      title: document.title,
+      storage: Object.fromEntries(Object.keys(localStorage).map(k => [k, localStorage.getItem(k)]))
+    }))()`,
+  );
+
+  const authState = maybeJson(String(dump?.storage?.auth || ""))?.state ?? {};
+  const extConfigState = maybeJson(String(dump?.storage?.extConfig || ""))?.state?.extConfig ?? {};
+  const userState = maybeJson(String(dump?.storage?.user || ""))?.state?.userInfo ?? {};
+  const token = String(authState.token || "");
+  const showToken = hasFlag(opts, "show-token");
+
+  console.log(JSON.stringify({
+    ok: Boolean(token),
+    device: online.serial,
+    wechatPid: chosenPid,
+    socket: chosenSocket,
+    forwardedPort: port,
+    pageTitle: dump?.title || "",
+    pageUrl: dump?.href || targetPage.url || "",
+    tenantId: extConfigState.tenantId ?? null,
+    schoolEn: userState.schoolEn ?? "",
+    nickname: userState.nickname ?? "",
+    token: showToken ? token : maskToken(token),
+    tokenLength: token.length,
+    storageKeys: Object.keys(dump?.storage || {}),
+  }, null, 2));
+}
+
 async function commandApi(opts: CliOptions) {
   const base = baseUrl(opts);
   const method = ensureMethod(flag(opts, "method"));
@@ -359,6 +511,11 @@ async function main() {
 
   if (command === "exchange-code") {
     await commandExchangeCode(opts);
+    return;
+  }
+
+  if (command === "capture-token") {
+    await commandCaptureToken(opts);
     return;
   }
 

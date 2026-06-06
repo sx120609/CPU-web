@@ -4,6 +4,7 @@ import { ensureBuiltinBoards } from "./services/defaultBoards";
 import { startScheduler } from "./services/schoolCrawler";
 import { loadFeatures } from "./services/siteSettings";
 import { loadStorageConfig } from "./services/storageConfig";
+import { startWeiwallSyncScheduler } from "./services/weiwallSync";
 
 const app = createApp();
 
@@ -21,4 +22,5 @@ app.listen(config.port, async () => {
   await loadFeatures().catch((e) => console.warn("loadFeatures failed:", e?.message));
   await loadStorageConfig().catch((e) => console.warn("loadStorageConfig failed:", e?.message));
   startScheduler();
+  startWeiwallSyncScheduler();
 });

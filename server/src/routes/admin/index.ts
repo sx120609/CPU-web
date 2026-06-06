@@ -94,6 +94,11 @@ import {
   saveCloudDriveFile,
 } from "../../services/cloudDrive";
 import { qqBotAdminRouter } from "./qqbot";
+import {
+  getWeiwallSyncAdminConfig,
+  runWeiwallSyncNow,
+  updateWeiwallSyncConfig,
+} from "../../services/weiwallSync";
 
 export const adminRouter = Router();
 const DATABASE_RESTORE_UPLOAD_DIR = path.join(tmpdir(), "cpu-web-db-restore-upload");
@@ -1151,6 +1156,38 @@ adminRouter.post("/feeds/:id/reset-run", adminOnly, async (req, res, next) => {
     const id = Number(req.params.id);
     const r = await resetSourceAndRun(id);
     ok(res, r);
+  } catch (e) { next(e); }
+});
+
+// ============ 校园墙同步 ============
+
+adminRouter.get("/weiwall-sync", adminOnly, async (_req, res, next) => {
+  try {
+    ok(res, await getWeiwallSyncAdminConfig());
+  } catch (e) { next(e); }
+});
+
+adminRouter.patch("/weiwall-sync", adminOnly, validate(z.object({
+  enabled: z.boolean().optional(),
+  baseUrl: z.string().trim().max(240).optional(),
+  schoolEn: z.string().trim().max(40).optional(),
+  tenantId: z.number().int().min(1).max(999999).optional(),
+  token: z.string().trim().max(4000).optional(),
+  clearToken: z.boolean().optional(),
+  intervalSeconds: z.number().int().min(30).max(3600).optional(),
+  topicPages: z.number().int().min(1).max(20).optional(),
+  commentPageSize: z.number().int().min(5).max(100).optional(),
+  maxCommentPages: z.number().int().min(1).max(50).optional(),
+  maxReplyPages: z.number().int().min(1).max(50).optional(),
+})), async (req, res, next) => {
+  try {
+    ok(res, await updateWeiwallSyncConfig(req.body));
+  } catch (e) { next(e); }
+});
+
+adminRouter.post("/weiwall-sync/run", adminOnly, async (_req, res, next) => {
+  try {
+    ok(res, await runWeiwallSyncNow());
   } catch (e) { next(e); }
 });
 

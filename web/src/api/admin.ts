@@ -318,6 +318,49 @@ export type AdminOverview = {
   forumEnabledToday: number;
 };
 
+export type WeiwallSyncConfig = {
+  id: number;
+  enabled: boolean;
+  baseUrl: string;
+  schoolEn: string;
+  tenantId: number;
+  tokenPresent: boolean;
+  tokenPreview: string;
+  intervalSeconds: number;
+  topicPages: number;
+  commentPageSize: number;
+  maxCommentPages: number;
+  maxReplyPages: number;
+  board: null | {
+    id: number;
+    slug: string;
+    name: string;
+    readOnly: boolean;
+    topicCount: number;
+  };
+  lastRunAt: string | null;
+  lastRunOk: boolean | null;
+  lastError: string | null;
+  lastSyncedAt: string | null;
+};
+
+export type WeiwallSyncRunResult = {
+  ok: boolean;
+  boardSlug: string;
+  sourceName: string;
+  pagesScanned: number;
+  topicsScanned: number;
+  topicsCreated: number;
+  topicsUpdated: number;
+  repliesCreated: number;
+  repliesUpdated: number;
+  authorsCreated: number;
+  authorsUpdated: number;
+  commentsFetched: number;
+  latestExternalTopicId: string | null;
+  error?: string | null;
+};
+
 export type DatabaseBackupStatus = {
   supported: boolean;
   provider: "postgresql" | "unsupported";
@@ -717,6 +760,22 @@ export const adminApi = {
   runFeed: (id: number) => request.post<any>(`/admin/feeds/${id}/run`),
   resetRunFeed: (id: number) => request.post<any>(`/admin/feeds/${id}/reset-run`),
   runAllFeeds: () => request.post<any>("/admin/feeds/run-all"),
+  // 校园墙同步
+  weiwallSync: () => request.get<WeiwallSyncConfig>("/admin/weiwall-sync"),
+  updateWeiwallSync: (patch: Partial<{
+    enabled: boolean;
+    baseUrl: string;
+    schoolEn: string;
+    tenantId: number;
+    token: string;
+    clearToken: boolean;
+    intervalSeconds: number;
+    topicPages: number;
+    commentPageSize: number;
+    maxCommentPages: number;
+    maxReplyPages: number;
+  }>) => request.patch<WeiwallSyncConfig>("/admin/weiwall-sync", patch),
+  runWeiwallSync: () => request.post<WeiwallSyncRunResult>("/admin/weiwall-sync/run", {}),
   // 公告
   announcements: () => request.get<any[]>("/admin/announcements"),
   createAnnouncement: (p: { title: string; content: string; level?: string; link?: string; source?: string; targetClient?: "all" | "ios" | "android" | "harmony" }) =>
