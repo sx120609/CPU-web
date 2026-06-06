@@ -526,7 +526,7 @@ model WeiwallTopicMap {
   localTopicId     Int      @unique
   externalAuthorKey String?
   externalAuthorUuid String?
-  externalAuthorName String
+  externalAuthorName String?
   externalAuthorAvatar String?
   externalCreatedAt DateTime?
   lastCommentCount Int      @default(0)
@@ -549,7 +549,7 @@ model WeiwallReplyMap {
   externalCommentId     String?
   parentExternalReplyId String?
   externalAuthorUuid    String?
-  externalAuthorName    String
+  externalAuthorName    String?
   externalAuthorAvatar  String?
   externalCreatedAt     DateTime?
   lastSyncedAt          DateTime @default(now())
