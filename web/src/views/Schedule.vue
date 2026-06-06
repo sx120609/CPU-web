@@ -861,7 +861,7 @@ const widgetInstructionOpen = ref(false);
 const widgetInstructionCountdown = ref(6);
 const androidUpdateOpen = ref(false);
 const androidWidgetGuideOpen = ref(false);
-const androidUpdateCountdown = ref(3);
+const androidUpdateCountdown = ref(1);
 const moreMenuOpen = ref(false);
 const moreMenuView = ref<"menu" | "theme" | "background">("menu");
 const widgetConfigCopying = ref(false);
@@ -1049,7 +1049,7 @@ function autoPromptAndroidAppUpdate() {
 
 function startAndroidUpdateCountdown() {
   stopAndroidUpdateCountdown();
-  androidUpdateCountdown.value = 3;
+  androidUpdateCountdown.value = 1;
   androidUpdateTimer = window.setInterval(() => {
     androidUpdateCountdown.value = Math.max(0, androidUpdateCountdown.value - 1);
     if (androidUpdateCountdown.value <= 0) stopAndroidUpdateCountdown();

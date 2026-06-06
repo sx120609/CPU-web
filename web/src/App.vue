@@ -184,7 +184,7 @@ function isSchedulePage() {
 
 function startInAppReadTimer() {
   clearInAppReadTimer();
-  inAppReadSeconds.value = 3;
+  inAppReadSeconds.value = 1;
   inAppReadTimer = window.setInterval(() => {
     inAppReadSeconds.value -= 1;
     if (inAppReadSeconds.value <= 0) {

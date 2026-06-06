@@ -198,7 +198,7 @@ function closeEnableDialog(force = false) {
 function startReadTimer() {
   window.clearInterval(readTimer);
   readTimer = 0;
-  readSeconds.value = 10;
+  readSeconds.value = 5;
   readTimer = window.setInterval(() => {
     readSeconds.value -= 1;
     if (readSeconds.value <= 0) {
