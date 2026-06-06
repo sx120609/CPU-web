@@ -34,9 +34,9 @@
     <!-- 主帖 -->
     <article class="cpu-card main-post">
       <header class="post-head">
-        <router-link :to="{ name: 'forum-latest' }" class="board-back">
-          <el-icon><ArrowLeft /></el-icon> 返回最新
-        </router-link>
+        <button type="button" class="board-back board-back-btn" @click="goBackFromTopic">
+          <el-icon><ArrowLeft /></el-icon> {{ backLabel }}
+        </button>
         <div class="actions">
           <el-button v-if="canEdit" text @click="onEdit">编辑</el-button>
           <el-button v-if="canPin && !isReadOnly" text @click="onPin">{{ topic.pinned ? '取消板块置顶' : '板块置顶' }}</el-button>
@@ -749,6 +749,27 @@ const sourceNotice = computed(() => {
   return "如遇正文缺失、附件打不开或排版异常，可前往学校原站查看。";
 });
 
+const isCampusWallTopic = computed(() => topic.value?.board?.slug === "campus-wall" || topic.value?.metadata?.externalPlatform === "weiwall");
+const isAnnouncementTopic = computed(() => topic.value?.board?.type === "announce");
+const backLabel = computed(() => {
+  if (isCampusWallTopic.value) return "返回校园墙";
+  if (isAnnouncementTopic.value) return "返回上页";
+  return "返回最新";
+});
+
+function goBackFromTopic() {
+  if (isCampusWallTopic.value) {
+    router.push("/forum/b/campus-wall");
+    return;
+  }
+  if (isAnnouncementTopic.value) {
+    if (window.history.length > 1) router.back();
+    else router.replace("/announcements");
+    return;
+  }
+  router.push({ name: "forum-latest" });
+}
+
 onMounted(async () => { await load(); });
 
 watch(replyAnonymousEnabled, (enabled) => {
@@ -1366,6 +1387,15 @@ async function onDelete() {
   await ElMessageBox.confirm("确认删除此帖？此操作不可撤销", "提示", { type: "warning" });
   await topicApi.remove(topic.value!.id);
   ElMessage.success("已删除");
+  if (isCampusWallTopic.value) {
+    router.replace("/forum/b/campus-wall");
+    return;
+  }
+  if (isAnnouncementTopic.value) {
+    if (window.history.length > 1) router.back();
+    else router.replace("/announcements");
+    return;
+  }
   router.replace({ name: "forum-latest" });
 }
 </script>
@@ -1457,6 +1487,12 @@ async function onDelete() {
     color: var(--cpu-primary);
     font-size: 14px;
     text-decoration: none;
+  }
+  .board-back-btn {
+    border: none;
+    background: none;
+    padding: 0;
+    cursor: pointer;
   }
   .actions { display: flex; gap: 4px; }
 

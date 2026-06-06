@@ -9,6 +9,9 @@
           <el-button v-if="site.features.forum" type="primary" size="large" @click="$router.push('/forum')">
             <el-icon><ChatLineRound /></el-icon> {{ forumActionLabel }}
           </el-button>
+          <el-button v-if="showForumContent" size="large" @click="$router.push('/forum/b/campus-wall')">
+            <span>📮</span> 校园墙
+          </el-button>
           <el-button v-else type="primary" size="large" @click="$router.push('/announcements')">
             <el-icon><Bell /></el-icon> 看校园公告
           </el-button>

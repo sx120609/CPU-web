@@ -267,7 +267,7 @@ const desktopNavItems = computed(() => {
   const items: { to: string; label: string }[] = [];
   items.push({ to: "/home", label: "首页" });
   if (site.features.forum) items.push({ to: "/forum", label: "论坛" });
-  if (site.features.forum) items.push({ to: "/forum/b/campus-wall", label: "校园墙" });
+  if (site.features.forum && auth.canAccessForum) items.push({ to: "/forum/b/campus-wall", label: "校园墙" });
   items.push({ to: "/announcements", label: "公告" });
   items.push({ to: "/jwxt", label: "教务数据" });
   if (site.features.coursereview && auth.canAccessForum) items.push({ to: "/coursereview", label: "课评" });
@@ -293,7 +293,7 @@ const drawerItems = computed(() => {
   items.push({ to: "/messages", label: "消息", icon: Message });
   if (auth.isMod) items.push({ to: "/admin", label: "管理后台", icon: Tools });
   if (site.features.forum) items.push({ to: "/forum", label: "论坛", icon: ChatLineRound });
-  if (site.features.forum) items.push({ to: "/forum/b/campus-wall", label: "校园墙", icon: Message });
+  if (site.features.forum && auth.canAccessForum) items.push({ to: "/forum/b/campus-wall", label: "校园墙", icon: Message });
   items.push({ to: "/announcements", label: "校园公告", icon: Bell });
   items.push({ to: "/jwxt", label: "教务数据", icon: Calendar });
   if (site.features.coursereview && auth.canAccessForum) items.push({ to: "/coursereview", label: "课评", icon: Reading });
