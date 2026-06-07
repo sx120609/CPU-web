@@ -464,6 +464,10 @@ function renderExternalContent(content: unknown, images: Array<string | null | u
   return "_（外部内容为空）_";
 }
 
+function encodeWeiwallHotTopicsPayload(input: unknown) {
+  return Buffer.from(JSON.stringify(input), "utf8").toString("base64");
+}
+
 function summarizeExternalText(input: unknown, max = 60) {
   const text = String(input ?? "")
     .replace(/!\[[^\]]*]\([^)]+\)/g, " ")
@@ -642,14 +646,6 @@ function buildWeiwallHotPageUrl(baseUrl: string, schoolEn: string) {
   const url = new URL("/pages/index/toptopic", baseUrl || WEIWALL_DEFAULT_BASE_URL);
   url.searchParams.set("s", schoolEn || "cpu");
   return url.toString();
-}
-
-function escapeMarkdownLinkText(input: string) {
-  return String(input ?? "")
-    .replace(/\[/g, "［")
-    .replace(/\]/g, "］")
-    .replace(/\r?\n+/g, " ")
-    .trim();
 }
 
 async function nextBoardOrder(client: SyncClient) {
@@ -972,37 +968,14 @@ function buildWeiwallHotEntryContent(input: {
   localTopicIdByExternalId: Map<string, number>;
 }) {
   const lines = [
-    "这是一条自动生成的热榜入口帖，每 30 分钟刷新一次，只汇总当前校园墙热榜，不会把热榜页整批同步进站内。",
+    "校园墙热榜入口每 30 分钟自动刷新一次。",
     "",
+    "这里只保留热榜入口，不会把热榜整批同步成新帖。",
+    "",
+    `最近更新：${shortDateTime(input.updatedAt.toISOString())}`,
+    "",
+    "超过 3 天的校园墙稿件不再继续更新；若想查看最新评论或最新状态，请以原帖为准。",
   ];
-
-  if (!input.rows.length) {
-    lines.push("当前校园墙热榜暂时为空，请稍后再来看看。");
-  } else {
-    input.rows.forEach((row, index) => {
-      const externalTopicId = externalId(row.id);
-      const localTopicId = input.localTopicIdByExternalId.get(externalTopicId);
-      const linkTarget = localTopicId
-        ? `/forum/topic/${localTopicId}`
-        : buildTopicSourceUrl(input.baseUrl, input.schoolEn, externalTopicId);
-      const title = escapeMarkdownLinkText(deriveLocalTitle(row));
-      const summary = summarizeExternalText(row.content, 68);
-      const stats = [
-        row.node ? `分区 ${trimTo(row.node, 20)}` : "",
-        `热度 ${Math.max(0, Number(row.score ?? 0) || 0)}`,
-        `评论 ${Math.max(0, Number(row.commentCount ?? 0) || 0)}`,
-        `点赞 ${Math.max(0, Number(row.likeCount ?? 0) || 0)}`,
-      ].filter(Boolean).join(" · ");
-      lines.push(`${index + 1}. [${title}](${linkTarget})`);
-      lines.push(`   ${stats}`);
-      if (summary) lines.push(`   ${summary}`);
-      lines.push("");
-    });
-  }
-
-  lines.push(`> 最近更新：${shortDateTime(input.updatedAt.toISOString())}`);
-  lines.push("> 说明：这里只放热榜入口，不会把热榜所有文章都额外同步成新帖。");
-  lines.push("> 超过 3 天的校园墙稿件不再继续更新，若想查看最新评论或最新状态，请以原帖为准。");
   return lines.join("\n");
 }
 
@@ -1042,6 +1015,23 @@ async function syncWeiwallHotRankingEntry(
   }
 
   const updatedAt = new Date();
+  const hotTopics = rows.map((item, index) => {
+    const externalTopicId = externalId(item.id);
+    const localTopicId = localTopicIdByExternalId.get(externalTopicId) ?? null;
+    return {
+      rank: index + 1,
+      externalTopicId,
+      localTopicId,
+      title: deriveLocalTitle(item),
+      summary: summarizeExternalText(item.content, 96),
+      node: trimTo(item.node, 24),
+      score: Math.max(0, Number(item.score ?? 0) || 0),
+      commentCount: Math.max(0, Number(item.commentCount ?? 0) || 0),
+      likeCount: Math.max(0, Number(item.likeCount ?? 0) || 0),
+      sourceUrl: buildTopicSourceUrl(row.baseUrl, row.schoolEn, externalTopicId),
+      targetPath: localTopicId ? `/forum/topic/${localTopicId}` : null,
+    };
+  });
   const metadata = JSON.stringify({
     sourceUrl: buildWeiwallHotPageUrl(row.baseUrl, row.schoolEn),
     sourceName: "校园墙热榜",
@@ -1054,6 +1044,7 @@ async function syncWeiwallHotRankingEntry(
     weiwallHotEntry: true,
     refreshMinutes: 30,
     hotTopicCount: rows.length,
+    hotTopicsBase64: encodeWeiwallHotTopicsPayload(hotTopics),
   });
   const content = buildWeiwallHotEntryContent({
     baseUrl: row.baseUrl,

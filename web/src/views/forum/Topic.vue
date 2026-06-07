@@ -71,7 +71,8 @@
             <router-link v-if="topic.author?.id" :to="`/u/${topic.author.id}`">{{ topic.author?.nickname }}</router-link>
             <span v-else>{{ topic.author?.nickname }}</span>
             <el-tag v-if="topic.isAnonymous" size="small" type="warning" effect="plain">匿名发布</el-tag>
-            <el-tag v-if="topic.metadata?.externalPlatform === 'weiwall'" size="small" type="warning">校园墙同步</el-tag>
+            <el-tag v-if="isWeiwallHotEntry" size="small" type="danger">校园墙热榜</el-tag>
+            <el-tag v-else-if="topic.metadata?.externalPlatform === 'weiwall'" size="small" type="warning">校园墙同步</el-tag>
             <el-tag v-else-if="topic.author?.role === 'bot'" size="small" type="warning">公告同步</el-tag>
             <el-tag v-else-if="topic.author?.role === 'admin'" size="small" type="danger">管理员</el-tag>
             <UserModerationActions
@@ -87,9 +88,14 @@
             真实作者：{{ topic.realAuthor.nickname }}<template v-if="topic.realAuthor.username"> @{{ topic.realAuthor.username }}</template>
           </div>
           <div class="meta">
-            发表于 {{ fmtDate(topic.createdAt) }}
-            <template v-if="topic.editCount && topic.editCount > 0"> · 已编辑 {{ topic.editCount }} 次</template>
-            · 热度 {{ hotScore }} · 浏览 {{ topic.viewCount }} · 回复 {{ topic.replyCount }}
+            <template v-if="isWeiwallHotEntry">
+              校园墙热榜入口 · 每 {{ weiwallHotRefreshMinutes }} 分钟刷新<template v-if="weiwallHotUpdatedLabel"> · 最近更新 {{ weiwallHotUpdatedLabel }}</template>
+            </template>
+            <template v-else>
+              发表于 {{ fmtDate(topic.createdAt) }}
+              <template v-if="topic.editCount && topic.editCount > 0"> · 已编辑 {{ topic.editCount }} 次</template>
+              · 热度 {{ hotScore }} · 浏览 {{ topic.viewCount }} · 回复 {{ topic.replyCount }}
+            </template>
           </div>
         </div>
         <div v-if="metaPrice !== undefined" class="meta-price">¥ {{ metaPrice }}</div>
@@ -115,7 +121,7 @@
         </span>
         <a :href="topic.metadata.sourceUrl" target="_blank" class="src-link">
           <el-icon><Link /></el-icon>
-          {{ topic.metadata?.externalPlatform === 'weiwall' ? '前往校园墙原帖' : topic.metadata?.externalType === 'wechat' ? '前往微信阅读全文' : '在学校原站查看' }}
+          {{ isWeiwallHotEntry ? '打开校园墙热榜' : topic.metadata?.externalPlatform === 'weiwall' ? '前往校园墙原帖' : topic.metadata?.externalType === 'wechat' ? '前往微信阅读全文' : '在学校原站查看' }}
         </a>
       </div>
       <div v-if="topic.metadata?.ratings" class="extra-bar ratings">
@@ -189,19 +195,70 @@
         <p>这篇稿件已提交人工复核，当前仅你自己和管理员可见。请耐心等待审核结果。</p>
       </div>
 
-      <MarkdownView :content="displayContent" class="post-body topic-markdown" clickable-images media-loading="eager" />
+      <section v-if="isWeiwallHotEntry" class="weiwall-hot-panel">
+        <div class="weiwall-hot-hero">
+          <div>
+            <p class="weiwall-hot-eyebrow">校园墙实时热榜</p>
+            <h3>只保留入口，不把热榜刷屏进站内</h3>
+            <p>{{ weiwallHotIntro }}</p>
+          </div>
+          <div class="weiwall-hot-hero-meta">
+            <span>每 {{ weiwallHotRefreshMinutes }} 分钟刷新</span>
+            <span>{{ weiwallHotTopics.length }} 条榜单</span>
+            <span v-if="weiwallHotUpdatedLabel">更新于 {{ weiwallHotUpdatedLabel }}</span>
+          </div>
+        </div>
 
-      <footer class="post-foot">
+        <div v-if="weiwallHotTopics.length" class="weiwall-hot-list">
+          <article
+            v-for="item in weiwallHotTopics"
+            :key="`${item.rank}-${item.externalTopicId}`"
+            class="weiwall-hot-item"
+            :class="{ top3: item.rank <= 3 }"
+          >
+            <div class="weiwall-hot-rank">#{{ item.rank }}</div>
+            <div class="weiwall-hot-main">
+              <div class="weiwall-hot-title-row">
+                <button type="button" class="weiwall-hot-title" @click="openWeiwallHotTarget(item)">
+                  {{ item.title }}
+                </button>
+                <span v-if="item.node" class="weiwall-hot-node">{{ item.node }}</span>
+              </div>
+              <p v-if="item.summary" class="weiwall-hot-summary">{{ item.summary }}</p>
+              <div class="weiwall-hot-stats">
+                <span>热度 {{ item.score }}</span>
+                <span>评论 {{ item.commentCount }}</span>
+                <span>点赞 {{ item.likeCount }}</span>
+              </div>
+            </div>
+            <button type="button" class="weiwall-hot-action" @click="openWeiwallHotTarget(item)">
+              {{ item.targetPath ? "查看站内镜像" : "前往原帖" }}
+            </button>
+          </article>
+        </div>
+        <el-empty v-else description="当前校园墙热榜暂时为空" />
+
+        <div class="weiwall-hot-footnote">
+          超过 3 天的校园墙稿件不再继续更新；如果你想看最新评论或原始上下文，请以校园墙原帖为准。
+        </div>
+      </section>
+      <MarkdownView v-else :content="displayContent" class="post-body topic-markdown" clickable-images media-loading="eager" />
+
+      <footer v-if="!isWeiwallHotEntry" class="post-foot">
         <el-button :type="liked ? 'primary' : 'default'" :icon="Star" @click="onLike">
           {{ liked ? '已点赞' : '点赞' }} · {{ topic.likeCount }}
         </el-button>
         <el-button :icon="ChatLineRound" @click="openReplyDialog">回复 · {{ topic.replyCount }}</el-button>
         <el-button @click="shareDialogOpen = true">分享</el-button>
       </footer>
+      <footer v-else class="post-foot post-foot-entry">
+        <el-button type="primary" @click="openWeiwallHotPage">打开校园墙热榜</el-button>
+        <el-button @click="shareDialogOpen = true">分享入口</el-button>
+      </footer>
     </article>
 
     <!-- 回复列表 -->
-    <section class="replies cpu-card" ref="repliesEl">
+    <section v-if="!isWeiwallHotEntry" class="replies cpu-card" ref="repliesEl">
       <h3 class="cpu-section-title">{{ topic.replyCount }} 条回复</h3>
       <div v-if="repliesLoading" class="replies-loading" aria-busy="true">
         <el-skeleton animated :rows="3" />
@@ -770,13 +827,74 @@ const shareCardQrDataUrl = computed(() => {
   if (!topic.value) return "";
   return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(shareLandingUrl.value)}`;
 });
+type WeiwallHotTopicEntry = {
+  rank: number;
+  externalTopicId: string;
+  localTopicId?: number | null;
+  title: string;
+  summary?: string;
+  node?: string;
+  score: number;
+  commentCount: number;
+  likeCount: number;
+  sourceUrl: string;
+  targetPath?: string | null;
+};
+function decodeWeiwallHotTopicsPayload(value: unknown) {
+  const text = String(value ?? "").trim();
+  if (!text) return [];
+  try {
+    if (typeof window !== "undefined" && typeof window.atob === "function") {
+      const binary = window.atob(text);
+      const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+      const decoded = new TextDecoder().decode(bytes);
+      const parsed = JSON.parse(decoded);
+      return Array.isArray(parsed) ? parsed : [];
+    }
+  } catch {
+    return [];
+  }
+  return [];
+}
 const displayContent = computed(() => {
   const content = topic.value?.content ?? "";
   if (!topic.value?.metadata?.sourceUrl) return content;
   return stripCrawlerSourceHeader(content);
 });
+const isWeiwallHotEntry = computed(() => Boolean(topic.value?.metadata?.weiwallHotEntry));
+const weiwallHotTopics = computed<WeiwallHotTopicEntry[]>(() => {
+  const rows = Array.isArray(topic.value?.metadata?.hotTopics)
+    ? topic.value?.metadata?.hotTopics
+    : decodeWeiwallHotTopicsPayload(topic.value?.metadata?.hotTopicsBase64);
+  if (!Array.isArray(rows)) return [];
+  return rows.map((item: any, index: number) => ({
+    rank: Math.max(1, Number(item?.rank ?? index + 1) || index + 1),
+    externalTopicId: String(item?.externalTopicId ?? ""),
+    localTopicId: Number(item?.localTopicId ?? 0) || null,
+    title: String(item?.title ?? "").trim() || `校园墙热帖 #${index + 1}`,
+    summary: String(item?.summary ?? "").trim(),
+    node: String(item?.node ?? "").trim(),
+    score: Math.max(0, Number(item?.score ?? 0) || 0),
+    commentCount: Math.max(0, Number(item?.commentCount ?? 0) || 0),
+    likeCount: Math.max(0, Number(item?.likeCount ?? 0) || 0),
+    sourceUrl: String(item?.sourceUrl ?? "").trim(),
+    targetPath: String(item?.targetPath ?? "").trim() || null,
+  })).filter((item) => item.externalTopicId || item.targetPath || item.sourceUrl);
+});
+const weiwallHotUpdatedLabel = computed(() => {
+  const publishedAt = String(topic.value?.metadata?.publishedAt ?? "").trim();
+  return publishedAt ? fmtDate(publishedAt, "MM-DD HH:mm") : "";
+});
+const weiwallHotRefreshMinutes = computed(() => Math.max(1, Number(topic.value?.metadata?.refreshMinutes ?? 30) || 30));
+const weiwallHotIntro = computed(() => {
+  if (!weiwallHotTopics.value.length) return "当前没有抓到可展示的热榜条目，稍后会自动再试。";
+  return "这里只有一个整理好的入口帖，你可以直接点进去看站内镜像，或者跳回校园墙原帖继续追更。";
+});
 const sourceNotice = computed(() => {
   if (!topic.value?.metadata?.sourceUrl) return "";
+  if (isWeiwallHotEntry.value) {
+    return "这是校园墙热榜入口帖，每 30 分钟刷新一次；这里只放榜单入口，不会把热榜所有文章额外同步进站内。";
+  }
   if (topic.value?.metadata?.externalPlatform === "weiwall") {
     return "这是校园墙镜像内容，不参与本站热榜和最新流；仅补充近 3 天稿件的后续更新，超过三天的稿件不再更新；如遇评论未补齐或正文异常，可前往原帖查看。";
   }
@@ -821,6 +939,22 @@ function goBackFromTopic() {
     return;
   }
   router.push({ name: "forum-latest" });
+}
+
+function openWeiwallHotTarget(item: WeiwallHotTopicEntry) {
+  if (item.targetPath) {
+    router.push(item.targetPath);
+    return;
+  }
+  if (item.sourceUrl) {
+    window.open(item.sourceUrl, "_blank", "noopener,noreferrer");
+  }
+}
+
+function openWeiwallHotPage() {
+  const url = String(topic.value?.metadata?.sourceUrl ?? "").trim();
+  if (!url) return;
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 onMounted(async () => { await load(); });
@@ -1646,8 +1780,8 @@ async function onDelete() {
     line-height: 1.45;
     color: #a16207;
   }
-  .source-bar.wechat .src-notice { color: #15803d; }
-  .src-link {
+.source-bar.wechat .src-notice { color: #15803d; }
+.src-link {
     background: #fff;
     color: #b45309 !important;
     padding: 6px 12px;
@@ -1663,6 +1797,198 @@ async function onDelete() {
   .src-link:hover {
     background: #fef3c7;
   }
+
+.weiwall-hot-panel {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.weiwall-hot-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px 22px;
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top right, rgba(251, 191, 36, 0.18), transparent 34%),
+    linear-gradient(135deg, #fff6df 0%, #fffef8 48%, #eefbf8 100%);
+  border: 1px solid #f6d38b;
+}
+
+.weiwall-hot-hero h3 {
+  margin: 4px 0 8px;
+  font-size: 24px;
+  line-height: 1.35;
+  color: #172033;
+}
+
+.weiwall-hot-hero p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #516074;
+  max-width: 720px;
+}
+
+.weiwall-hot-eyebrow {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #b45309;
+  font-weight: 800;
+}
+
+.weiwall-hot-hero-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 160px;
+}
+
+.weiwall-hot-hero-meta span {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  color: #8b5e16;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.weiwall-hot-list {
+  display: grid;
+  gap: 12px;
+}
+
+.weiwall-hot-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid #e7edf4;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.weiwall-hot-item.top3 {
+  border-color: #f7d48a;
+  background: linear-gradient(135deg, #fffdfa 0%, #fff7e8 100%);
+}
+
+.weiwall-hot-rank {
+  min-width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: #eff7f5;
+  color: #0f766e;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.weiwall-hot-item.top3 .weiwall-hot-rank {
+  background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
+  color: #fff;
+}
+
+.weiwall-hot-main {
+  min-width: 0;
+}
+
+.weiwall-hot-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.weiwall-hot-title {
+  padding: 0;
+  border: none;
+  background: none;
+  color: #152033;
+  font-size: 17px;
+  line-height: 1.45;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+.weiwall-hot-title:hover {
+  color: var(--cpu-primary);
+}
+
+.weiwall-hot-node {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #eef7ff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.weiwall-hot-summary {
+  margin: 8px 0 0;
+  color: #526071;
+  font-size: 14px;
+  line-height: 1.7;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.weiwall-hot-stats {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.weiwall-hot-stats span {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #f7fafc;
+  color: #4b5563;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.weiwall-hot-action {
+  min-height: 42px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 999px;
+  background: var(--cpu-primary);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.weiwall-hot-footnote {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #f8fafc;
+  border: 1px dashed #d7e3ee;
+  color: #607084;
+  font-size: 13px;
+  line-height: 1.7;
+}
 
 .post-body { padding: 4px 0; }
 
@@ -1719,6 +2045,10 @@ async function onDelete() {
     border-top: 1px dashed #e5e7eb;
     display: flex;
     gap: 8px;
+  }
+
+  .post-foot-entry {
+    justify-content: flex-start;
   }
 }
 
@@ -2475,6 +2805,50 @@ async function onDelete() {
     .extra-bar {
       gap: 8px;
       padding: 10px 12px;
+    }
+
+    .weiwall-hot-hero {
+      padding: 16px;
+      border-radius: 18px;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .weiwall-hot-hero h3 {
+      font-size: 20px;
+    }
+
+    .weiwall-hot-hero-meta {
+      min-width: 0;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      flex-direction: row;
+    }
+
+    .weiwall-hot-item {
+      grid-template-columns: auto 1fr;
+      padding: 14px;
+    }
+
+    .weiwall-hot-rank {
+      min-width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      font-size: 15px;
+    }
+
+    .weiwall-hot-title {
+      font-size: 15px;
+    }
+
+    .weiwall-hot-summary {
+      font-size: 13px;
+    }
+
+    .weiwall-hot-action {
+      grid-column: 1 / -1;
+      width: 100%;
+      justify-self: stretch;
     }
 
     .post-foot {
