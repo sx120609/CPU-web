@@ -179,6 +179,15 @@ type QqBotAiPromptContext = {
   allowGroupPost: boolean;
 };
 
+type QqBotDoubtFriendRequest = {
+  user_id?: number | string;
+  nickname?: string;
+  age?: number;
+  sex?: string;
+  reason?: string;
+  flag?: string | number;
+};
+
 const qqBotCooldowns = new Map<string, { cancelledAt?: number }>();
 
 const CONFIG_ID = 1;
@@ -639,17 +648,13 @@ async function handleQqBotRequestEvent(
     return { ignored: true };
   }
   if (requestType === "friend") {
-    await callQqBotAction("set_friend_add_request", {
-      flag,
-      approve: true,
-      remark: "CPU Web 用户",
-    });
+    const approvedVia = await approveQqFriendRequest({ flag, qqId, rawPayload: event });
     await logQqBotMessage({
       direction: "inbound",
       eventType: "friend-request",
       status: "ok",
       qqId,
-      result: "已自动通过好友申请",
+      result: approvedVia === "doubt" ? "已自动通过可疑好友申请" : "已自动通过好友申请",
       rawPayload: event,
     });
     return { ok: true, autoAccepted: "friend" };
@@ -1912,7 +1917,12 @@ async function replyToPrivateForPosting(
 export function startQqNotificationPoller() {
   if (pollerStarted) return;
   pollerStarted = true;
-  const tick = () => runWithDistributedLock("qqbot-notification-dispatch:tick", 25_000, async () => dispatchRecentQqNotifications()).catch((error) => {
+  const tick = () => runWithDistributedLock("qqbot-notification-dispatch:tick", 25_000, async () => {
+    await Promise.all([
+      dispatchRecentQqNotifications(),
+      syncPendingDoubtFriendRequests({ reason: "poller" }),
+    ]);
+  }).catch((error) => {
     console.warn("[qqbot] notification dispatch failed", error);
   });
   connectQqBotWebSocket().catch((error) => {
@@ -4225,6 +4235,86 @@ function getQqBotUserFacingErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+function getQqBotActionErrorMessage(error: unknown) {
+  return String(
+    (error && typeof error === "object" && "message" in error && (error as { message?: unknown }).message)
+      || error
+      || "",
+  ).trim();
+}
+
+function isQqBotDoubtFriendRequestError(error: unknown) {
+  const text = getQqBotActionErrorMessage(error);
+  return /频繁|可疑|异常|风控|suspicious|frequent/i.test(text);
+}
+
+async function approveQqFriendRequest(input: { flag: string; qqId: string; rawPayload?: unknown }) {
+  try {
+    await callQqBotAction("set_friend_add_request", {
+      flag: input.flag,
+      approve: true,
+    });
+    return "friend" as const;
+  } catch (error) {
+    if (!isQqBotDoubtFriendRequestError(error)) throw error;
+    const synced = await syncPendingDoubtFriendRequests({
+      targetQqId: input.qqId,
+      reason: "friend-request-fallback",
+      rawPayload: input.rawPayload,
+    });
+    if (synced.acceptedCount > 0) return "doubt" as const;
+    throw error;
+  }
+}
+
+async function syncPendingDoubtFriendRequests(input?: {
+  targetQqId?: string;
+  reason?: string;
+  rawPayload?: unknown;
+}) {
+  const config = await getQqBotConfigRaw();
+  if (!config.enabled || !config.napcatBaseUrl) return { acceptedCount: 0, scannedCount: 0 };
+  const reason = input?.reason || "manual";
+  let result: any;
+  try {
+    result = await callQqBotAction("get_doubt_friends_add_request", { count: 20 });
+  } catch (error) {
+    const message = getQqBotActionErrorMessage(error);
+    if (/未实现|not implemented|unknown action/i.test(message)) return { acceptedCount: 0, scannedCount: 0 };
+    throw error;
+  }
+  const rows = normalizeQqBotDoubtFriendRequests(result?.data ?? result);
+  const matched = input?.targetQqId
+    ? rows.filter((row) => String(row.user_id || "") === input.targetQqId)
+    : rows;
+  let acceptedCount = 0;
+  for (const row of matched) {
+    const flag = String(row.flag || "").trim();
+    if (!flag) continue;
+    await callQqBotAction("set_doubt_friends_add_request", {
+      flag,
+      approve: true,
+    });
+    acceptedCount += 1;
+    await logQqBotMessage({
+      direction: "inbound",
+      eventType: "friend-request",
+      status: "ok",
+      qqId: row.user_id ? String(row.user_id) : input?.targetQqId,
+      result: `已自动通过可疑好友申请（${reason}）`,
+      rawPayload: input?.rawPayload || row,
+    });
+  }
+  return { acceptedCount, scannedCount: rows.length };
+}
+
+function normalizeQqBotDoubtFriendRequests(value: unknown): QqBotDoubtFriendRequest[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => item && typeof item === "object")
+    .map((item) => item as QqBotDoubtFriendRequest);
+}
+
 function parseStringArray(value: string, fallback: string[]) {
   try {
     const parsed = JSON.parse(value);
@@ -4464,6 +4554,14 @@ async function callQqBotAction(action: string, params: Record<string, unknown>) 
     });
     const data = await response.json().catch(() => null);
     if (!response.ok) throw Errors.server(`NapCat 动作失败：${response.status}`);
+    if (data && typeof data === "object") {
+      const status = String((data as any).status || "").trim().toLowerCase();
+      const retcode = Number((data as any).retcode ?? 0);
+      if ((status && status !== "ok") || retcode !== 0) {
+        const message = String((data as any).wording || (data as any).message || (data as any).msg || `${action} failed`).trim();
+        throw Errors.badRequest(message || `NapCat 动作失败：${action}`);
+      }
+    }
     return data;
   }
   await connectQqBotWebSocket();
