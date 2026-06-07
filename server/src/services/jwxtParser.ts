@@ -576,6 +576,35 @@ export interface CalendarResult {
   today: string;
 }
 
+function dayOfWeekForCalendarYmd(ymd: string) {
+  const match = String(ymd || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return 0;
+  const d = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  const day = d.getUTCDay();
+  return day === 0 ? 7 : day;
+}
+
+function addDaysToCalendarYmd(ymd: string, days: number) {
+  const match = String(ymd || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return "";
+  const d = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + days));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
+function normalizeCalendarWeekDays(days: string[]) {
+  const raw = (days ?? []).map((item) => String(item || "").trim());
+  if (raw.length >= 7 && dayOfWeekForCalendarYmd(raw[0]) === 7 && dayOfWeekForCalendarYmd(raw[1]) === 1) {
+    return [...raw.slice(1, 7), addDaysToCalendarYmd(raw[6], 1)];
+  }
+
+  const normalized = Array.from({ length: 7 }, () => "");
+  for (const date of raw) {
+    const day = dayOfWeekForCalendarYmd(date);
+    if (day >= 1 && day <= 7) normalized[day - 1] = date;
+  }
+  return normalized.some(Boolean) ? normalized : raw;
+}
+
 export function parseCalendar(html: string): CalendarResult {
   const $ = cheerio.load(html);
   const semesters = parseSelectOptions($, "xnxqid")
@@ -651,13 +680,20 @@ export function parseCalendar(html: string): CalendarResult {
   const semesterStart = firstWeek?.days.find(Boolean) ?? "";
   const semesterEnd = [...(lastWeek?.days ?? [])].reverse().find(Boolean) ?? "";
 
-  // 本地时区今天
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const todayParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const todayValue = (type: string) => todayParts.find((part) => part.type === type)?.value ?? "";
+  const todayStr = `${todayValue("year")}-${todayValue("month")}-${todayValue("day")}`;
   let currentWeek = 0;
   for (const w of weeks) {
-    if (!w.monday) continue;
-    const monday = new Date(w.monday + "T00:00:00");
+    const normalizedDays = normalizeCalendarWeekDays(w.days);
+    const mondayYmd = normalizedDays[0] || w.monday;
+    if (!mondayYmd) continue;
+    const monday = new Date(mondayYmd + "T00:00:00");
     const nextMonday = new Date(monday);
     nextMonday.setDate(nextMonday.getDate() + 7);
     const todayD = new Date(todayStr + "T12:00:00");
