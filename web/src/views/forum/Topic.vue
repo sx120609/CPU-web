@@ -113,9 +113,18 @@
           </span>
           <span v-if="sourceNotice" class="src-notice">{{ sourceNotice }}</span>
         </span>
-        <a :href="topic.metadata.sourceUrl" target="_blank" class="src-link">
+        <button
+          v-if="topic.metadata?.externalPlatform === 'weiwall'"
+          type="button"
+          class="src-link"
+          @click="openWeiwallSource"
+        >
           <el-icon><Link /></el-icon>
-          {{ topic.metadata?.externalPlatform === 'weiwall' ? '前往逛逛原帖' : topic.metadata?.externalType === 'wechat' ? '前往微信阅读全文' : '在学校原站查看' }}
+          前往逛逛原帖
+        </button>
+        <a v-else :href="topic.metadata.sourceUrl" target="_blank" class="src-link">
+          <el-icon><Link /></el-icon>
+          {{ topic.metadata?.externalType === 'wechat' ? '前往微信阅读全文' : '在学校原站查看' }}
         </a>
       </div>
       <div v-if="topic.metadata?.ratings" class="extra-bar ratings">
@@ -320,6 +329,36 @@
       <div class="copy-share-panel">
         <el-button class="share-action-btn" @click="copyShareLinkOnly">只复制链接</el-button>
         <el-button type="primary" plain class="share-action-btn" @click="copyShareTitleAndLink">复制标题和链接</el-button>
+      </div>
+    </el-dialog>
+
+    <el-dialog
+      v-model="weiwallSourceDialogOpen"
+      title="打开逛逛原帖"
+      width="min(420px, calc(100vw - 24px))"
+      append-to-body
+      class="weiwall-source-dialog"
+    >
+      <div class="weiwall-source-panel">
+        <p class="weiwall-source-copy">
+          当前不是微信环境，直接打开逛逛原帖通常会被原站拦截。更稳的方式是先复制链接或用微信扫码打开。
+        </p>
+        <div class="weiwall-source-actions">
+          <el-button type="primary" class="share-action-btn" @click="copyWeiwallSourceLink">复制原帖链接</el-button>
+          <el-button plain class="share-action-btn" @click="forceOpenWeiwallSource">仍然尝试打开</el-button>
+        </div>
+        <div class="weiwall-source-qr-card">
+          <img
+            v-if="weiwallSourceQrDataUrl"
+            :src="weiwallSourceQrDataUrl"
+            alt="逛逛原帖二维码"
+            loading="lazy"
+            decoding="async"
+            fetchpriority="low"
+            class="weiwall-source-qr"
+          />
+          <p>{{ weiwallSourceHint }}</p>
+        </div>
       </div>
     </el-dialog>
 
@@ -565,6 +604,7 @@ import { useRoute, useRouter } from "vue-router";
 import { AxiosError } from "axios";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { toPng } from "html-to-image";
+import QRCode from "qrcode";
 import { ArrowLeft, Star, ChatLineRound, Link } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import UserModerationActions from "@/components/common/UserModerationActions.vue";
@@ -579,6 +619,7 @@ import { fmtDate, fmtRelative } from "@/utils/format";
 import { copyText } from "@/utils/userGroup";
 import { isAndroidNativeApp, isHarmonyNativeApp } from "@/utils/clientInfo";
 import { getNativeBridge, hasNativeImageSaveBridge } from "@/utils/nativeBridge";
+import { detectInAppBrowser } from "@/utils/inAppBrowser";
 
 const route = useRoute();
 const router = useRouter();
@@ -596,6 +637,8 @@ const editingReplyId = ref<number | null>(null);
 const replyParentId = ref<number | null>(null);
 const shareDialogOpen = ref(false);
 const copyShareDialogOpen = ref(false);
+const weiwallSourceDialogOpen = ref(false);
+const weiwallSourceQrDataUrl = ref("");
 const shareCardDialogOpen = ref(false);
 const shareCardSaving = ref(false);
 const shareCardRendering = ref(false);
@@ -775,6 +818,18 @@ const shareCardQrDataUrl = computed(() => {
   if (!topic.value) return "";
   return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(shareLandingUrl.value)}`;
 });
+const inAppBrowser = computed(() => detectInAppBrowser());
+const weiwallSourceUrl = computed(() => String(topic.value?.metadata?.sourceUrl ?? "").trim());
+const weiwallSourceHint = computed(() => {
+  if (inAppBrowser.value.label === "QQ") {
+    return "建议复制链接后切到微信打开，或直接用微信扫一扫这个二维码。";
+  }
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent.toLowerCase() : "";
+  if (/android|iphone|ipad|ipod|mobile/.test(ua)) {
+    return "手机上建议复制后发给自己，再用微信点开；电脑上可以直接用微信扫一扫。";
+  }
+  return "电脑上最稳的是直接用微信扫一扫；手机上也可以先复制链接再切到微信打开。";
+});
 const displayContent = computed(() => {
   const content = topic.value?.content ?? "";
   if (!topic.value?.metadata?.sourceUrl) return content;
@@ -832,10 +887,50 @@ function goBackFromTopic() {
   router.push({ name: "forum-latest" });
 }
 
+async function copyWeiwallSourceLink() {
+  if (!weiwallSourceUrl.value) return;
+  await copyText(weiwallSourceUrl.value);
+  ElMessage.success("已复制逛逛原帖链接");
+}
+
+function forceOpenWeiwallSource() {
+  if (!weiwallSourceUrl.value) return;
+  window.open(weiwallSourceUrl.value, "_blank", "noopener,noreferrer");
+}
+
+function openWeiwallSource() {
+  if (!weiwallSourceUrl.value) return;
+  if (inAppBrowser.value.label === "微信") {
+    window.location.href = weiwallSourceUrl.value;
+    return;
+  }
+  weiwallSourceDialogOpen.value = true;
+}
+
 onMounted(async () => { await load(); });
 
 watch(replyAnonymousEnabled, (enabled) => {
   if (!enabled) replyAnonymous.value = false;
+}, { immediate: true });
+
+watch(weiwallSourceUrl, async (url) => {
+  if (!url) {
+    weiwallSourceQrDataUrl.value = "";
+    return;
+  }
+  try {
+    weiwallSourceQrDataUrl.value = await QRCode.toDataURL(url, {
+      width: 240,
+      margin: 1,
+      color: {
+        dark: "#172033",
+        light: "#ffffffff",
+      },
+    });
+  } catch (error) {
+    console.warn("[topic] failed to render weiwall source QR code", error);
+    weiwallSourceQrDataUrl.value = "";
+  }
 }, { immediate: true });
 
 watch(replyDialogOpen, (open) => {
@@ -1661,13 +1756,18 @@ async function onDelete() {
     color: #b45309 !important;
     padding: 6px 12px;
     border-radius: 6px;
+    appearance: none;
     text-decoration: none;
     font-weight: 500;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 4px;
     border: 1px solid #fde68a;
     transition: background 0.15s;
+    cursor: pointer;
+    font: inherit;
+    line-height: inherit;
   }
   .src-link:hover {
     background: #fef3c7;
@@ -2292,7 +2392,29 @@ async function onDelete() {
   line-height: 1.6;
 }
 
+.weiwall-source-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 340px;
+  margin: 0 auto;
+}
+
+.weiwall-source-copy {
+  margin: 0;
+  color: #667085;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
 .share-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  width: 100%;
+}
+
+.weiwall-source-actions {
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
@@ -2342,13 +2464,15 @@ async function onDelete() {
 
 .copy-share-panel .share-action-btn,
 .share-panel .share-action-btn,
+.weiwall-source-actions .share-action-btn,
 .share-card-actions .share-card-save-link {
   box-sizing: border-box;
   box-shadow: none;
 }
 
 .share-actions :deep(.el-button),
-.copy-share-panel :deep(.el-button) {
+.copy-share-panel :deep(.el-button),
+.weiwall-source-actions :deep(.el-button) {
   margin-left: 0 !important;
 }
 
@@ -2358,7 +2482,19 @@ async function onDelete() {
   color: #344054;
 }
 
+.weiwall-source-actions .share-action-btn {
+  background: #f8fafc;
+  border-color: #dbe5ee;
+  color: #344054;
+}
+
 .share-panel :deep(.el-button--primary.share-action-btn) {
+  background: var(--cpu-primary);
+  border-color: var(--cpu-primary);
+  color: #fff;
+}
+
+.weiwall-source-actions :deep(.el-button--primary.share-action-btn) {
   background: var(--cpu-primary);
   border-color: var(--cpu-primary);
   color: #fff;
@@ -2375,6 +2511,36 @@ async function onDelete() {
   background: #fff;
   border-color: #dbe5ee;
   color: #344054;
+}
+
+.weiwall-source-qr-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #fffdf6 0%, #fff7df 100%);
+  border: 1px solid #f6d38b;
+}
+
+.weiwall-source-qr {
+  width: 176px;
+  height: 176px;
+  display: block;
+  border-radius: 16px;
+  background: #fff;
+  padding: 10px;
+  box-sizing: border-box;
+  border: 1px solid #f1f5f9;
+}
+
+.weiwall-source-qr-card p {
+  margin: 0;
+  text-align: center;
+  color: #7c5c18;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .share-card-save-link:disabled {
@@ -2568,7 +2734,8 @@ async function onDelete() {
 
 :deep(.share-dialog .el-dialog),
 :deep(.copy-share-dialog .el-dialog),
-:deep(.share-card-dialog .el-dialog) {
+:deep(.share-card-dialog .el-dialog),
+:deep(.weiwall-source-dialog .el-dialog) {
   border-radius: 22px;
 }
 
