@@ -22,7 +22,7 @@
         <div class="status-card">
           <span class="label">目标板块</span>
           <div class="value">
-            <span>{{ config.board?.name || "未绑定" }}</span>
+            <span>{{ boardDisplayName }}</span>
             <span v-if="config.board" class="muted">/{{ config.board.slug }} · {{ config.board.topicCount }} 帖</span>
           </div>
         </div>
@@ -228,6 +228,11 @@ const authStatusTitle = computed(() => {
   if (status === "error") return "授权失败，请按提示重试";
   if (status === "expired") return "授权会话已过期，请重新生成二维码";
   return "等待微信完成授权";
+});
+
+const boardDisplayName = computed(() => {
+  if (!config.value?.board) return "未绑定";
+  return config.value.board.slug === "campus-wall" ? "逛逛" : config.value.board.name;
 });
 
 const activeSiteOrigin = computed(() => siteOrigin.value.trim() || window.location.origin);

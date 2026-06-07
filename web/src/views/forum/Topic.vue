@@ -50,7 +50,7 @@
         <span v-if="topic.globalPinned" class="badge global-pin">全局置顶</span>
         <span v-if="topic.pinned" class="badge pin">板块置顶</span>
         <span v-if="topic.locked" class="badge lock">🔒</span>
-        {{ topic.title }}
+        {{ displayTopicTitle }}
       </h1>
       <div v-if="topic.tags?.length" class="topic-tags">
         <el-tag
@@ -107,13 +107,13 @@
         <span class="src-text-wrap">
           <span class="src-text">
             <template v-if="topic.metadata?.externalPlatform === 'weiwall'">
-              来自 <b>{{ topic.metadata.sourceName || "逛逛" }}</b> · 发布于 {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
+              来自 <b>{{ externalSourceName }}</b> · 发布于 {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
             </template>
             <template v-if="topic.metadata?.externalType === 'wechat'">
               原文发布于 <b>微信公众号</b> · {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
             </template>
             <template v-else-if="topic.metadata?.externalPlatform !== 'weiwall'">
-              来自 <b>{{ topic.metadata.sourceName || topic.board?.name }}</b>
+              来自 <b>{{ topic.metadata.sourceName || boardDisplayName }}</b>
               · 发布于 {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
             </template>
           </span>
@@ -202,11 +202,6 @@
             <h3>只保留入口，不把热榜刷屏进站内</h3>
             <p>{{ weiwallHotIntro }}</p>
           </div>
-          <div class="weiwall-hot-hero-meta">
-            <span>每 {{ weiwallHotRefreshMinutes }} 分钟刷新</span>
-            <span>{{ weiwallHotTopics.length }} 条榜单</span>
-            <span v-if="weiwallHotUpdatedLabel">更新于 {{ weiwallHotUpdatedLabel }}</span>
-          </div>
         </div>
 
         <div v-if="weiwallHotTopics.length" class="weiwall-hot-list">
@@ -225,11 +220,6 @@
                 <span v-if="item.node" class="weiwall-hot-node">{{ item.node }}</span>
               </div>
               <p v-if="item.summary" class="weiwall-hot-summary">{{ item.summary }}</p>
-              <div class="weiwall-hot-stats">
-                <span>热度 {{ item.score }}</span>
-                <span>评论 {{ item.commentCount }}</span>
-                <span>点赞 {{ item.likeCount }}</span>
-              </div>
             </div>
             <button type="button" class="weiwall-hot-action" @click="openWeiwallHotTarget(item)">
               {{ item.targetPath ? "查看站内镜像" : "前往原帖" }}
@@ -237,10 +227,6 @@
           </article>
         </div>
         <el-empty v-else description="当前逛逛热榜暂时为空" />
-
-        <div class="weiwall-hot-footnote">
-          超过 3 天的逛逛稿件不再继续更新；如果你想看最新评论或原始上下文，请以逛逛原帖为准。
-        </div>
       </section>
       <MarkdownView v-else :content="displayContent" class="post-body topic-markdown" clickable-images media-loading="eager" />
 
@@ -545,7 +531,7 @@
             {{ topic?.board?.icon || "💬" }}
           </div>
           <div class="share-card-meta">
-            <div class="share-card-board">{{ topic?.board?.name || "药大拾间" }}</div>
+            <div class="share-card-board">{{ boardDisplayName }}</div>
             <div class="share-card-subtitle">{{ shareCardSubtitle }}</div>
             <div class="share-card-stats">{{ shareCardStats }}</div>
           </div>
@@ -687,6 +673,12 @@ const REPLY_MAX = 10000;
 
 const metaPrice = computed(() => topic.value?.metadata?.price);
 const hotScore = computed(() => Math.round((topic.value?.likeCount ?? 0) * 5 + (topic.value?.replyCount ?? 0) * 3 + (topic.value?.viewCount ?? 0) * 0.03));
+const boardDisplayName = computed(() => topic.value?.board?.slug === "campus-wall" ? "逛逛" : (topic.value?.board?.name || "药大拾间"));
+const displayTopicTitle = computed(() => isWeiwallHotEntry.value ? "逛逛热榜入口（每 30 分钟更新）" : (topic.value?.title || ""));
+const externalSourceName = computed(() => {
+  if (isWeiwallHotEntry.value) return "逛逛热榜";
+  return String(topic.value?.metadata?.sourceName || "").trim() || "逛逛";
+});
 const isReadOnly = computed(() => topic.value?.board?.readOnly);
 const topicModerationUser = computed(() => {
   if (topic.value?.realAuthor) return topic.value.realAuthor as any;
@@ -800,7 +792,7 @@ const currentMuteMessage = computed(() => auth.user?.mutedUntil ? `你已被禁�
 const shareLandingUrl = computed(() => topic.value ? new URL(`/share/topic/${topic.value.id}`, window.location.origin).toString() : "");
 const shareSummary = computed(() => {
   const raw = stripTextForShare(displayContent.value || topic.value?.content || "");
-  return raw ? raw.slice(0, 80) : `来自 ${topic.value?.board?.name || "药大拾间"} 的帖子`;
+  return raw ? raw.slice(0, 80) : `来自 ${boardDisplayName.value} 的帖子`;
 });
 const canUseNativeShare = computed(() => (
   isIosDevice() &&
@@ -818,7 +810,7 @@ const shareCardSoftBg = computed(() => `linear-gradient(135deg, ${hexToRgba(shar
 const shareCardSoftOrb = computed(() => hexToRgba(shareCardAccent.value, 0.13));
 const shareCardSoftLine = computed(() => hexToRgba(shareCardAccent.value, 0.22));
 const shareCardSubtitle = computed(() => {
-  const board = topic.value?.board?.name || "药大拾间";
+  const board = boardDisplayName.value;
   const author = topic.value?.author?.nickname || "同学";
   return `${board} · ${author}`;
 });
@@ -888,7 +880,7 @@ const weiwallHotUpdatedLabel = computed(() => {
 const weiwallHotRefreshMinutes = computed(() => Math.max(1, Number(topic.value?.metadata?.refreshMinutes ?? 30) || 30));
 const weiwallHotIntro = computed(() => {
   if (!weiwallHotTopics.value.length) return "当前没有抓到可展示的热榜条目，稍后会自动再试。";
-  return "这里只有一个整理好的入口帖，你可以直接点进去看站内镜像，或者跳回逛逛原帖继续追更。";
+  return "这里只放一个干净入口，你可以直接点进站内镜像，或者回到逛逛原帖继续看。";
 });
 const sourceNotice = computed(() => {
   if (!topic.value?.metadata?.sourceUrl) return "";

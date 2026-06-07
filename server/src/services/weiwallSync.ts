@@ -468,6 +468,34 @@ function encodeWeiwallHotTopicsPayload(input: unknown) {
   return Buffer.from(JSON.stringify(input), "utf8").toString("base64");
 }
 
+function sanitizeWeiwallHotTopicEntry(input: {
+  rank: number;
+  externalTopicId: string;
+  localTopicId?: number | null;
+  title: string;
+  summary?: string;
+  node?: string;
+  score: number;
+  commentCount: number;
+  likeCount: number;
+  sourceUrl: string;
+  targetPath?: string | null;
+}) {
+  return {
+    rank: Math.max(1, Number(input.rank) || 1),
+    externalTopicId: sanitizeWeiwallStorageText(input.externalTopicId, 80),
+    localTopicId: Number(input.localTopicId ?? 0) || null,
+    title: sanitizeWeiwallStorageText(input.title, 120) || "逛逛热帖",
+    summary: sanitizeWeiwallStorageText(input.summary, 160),
+    node: sanitizeWeiwallStorageText(input.node, 32),
+    score: Math.max(0, Number(input.score ?? 0) || 0),
+    commentCount: Math.max(0, Number(input.commentCount ?? 0) || 0),
+    likeCount: Math.max(0, Number(input.likeCount ?? 0) || 0),
+    sourceUrl: sanitizeWeiwallStorageText(input.sourceUrl, 500),
+    targetPath: sanitizeWeiwallStorageText(input.targetPath, 200) || null,
+  };
+}
+
 function summarizeExternalText(input: unknown, max = 60) {
   const text = String(input ?? "")
     .replace(/!\[[^\]]*]\([^)]+\)/g, " ")
@@ -477,12 +505,36 @@ function summarizeExternalText(input: unknown, max = 60) {
   return text.slice(0, max);
 }
 
+function sanitizeWeiwallStorageText(input: unknown, max = 0) {
+  const raw = String(input ?? "");
+  let normalized = "";
+  for (const char of raw) {
+    const code = char.codePointAt(0) ?? 0;
+    if (code === 0) continue;
+    if (code < 32 && char !== "\n" && char !== "\r" && char !== "\t") continue;
+    if (code >= 0xd800 && code <= 0xdfff) continue;
+    normalized += char;
+  }
+  normalized = normalized.replace(/\\x[0-9a-fA-F]?/g, " ").replace(/\\u(?![0-9a-fA-F]{4})/g, " ");
+  normalized = normalized.replace(/\r\n/g, "\n").trim();
+  if (max > 0) return normalized.slice(0, max);
+  return normalized;
+}
+
 function deriveLocalTitle(topic: WeiwallTopicRow) {
   const explicit = trimTo(topic.title, 120);
   if (explicit && explicit !== "none") return explicit;
   const fromContent = summarizeExternalText(topic.content, 80);
   if (fromContent) return fromContent;
   return `逛逛帖子 ${externalId(topic.id) || "unknown"}`;
+}
+
+function buildMirroredTopicFallbackContent(sourceUrl: string) {
+  return [
+    "> 这条逛逛帖子在同步时遇到格式问题。",
+    "",
+    `> 请前往原帖查看：${sourceUrl}`,
+  ].join("\n");
 }
 
 function formatTraceTitle(input: {
@@ -657,7 +709,27 @@ async function nextBoardOrder(client: SyncClient) {
 
 async function ensureWeiwallBoard(client: SyncClient = prisma) {
   const existing = await client.board.findUnique({ where: { slug: WEIWALL_BOARD_SLUG } });
-  if (existing) return existing;
+  if (existing) {
+    const needsUpdate =
+      existing.name !== WEIWALL_BOARD_NAME
+      || (existing.description || "") !== WEIWALL_BOARD_DESCRIPTION
+      || (existing.icon || "") !== WEIWALL_BOARD_ICON
+      || (existing.color || "") !== WEIWALL_BOARD_COLOR
+      || existing.readOnly !== true
+      || existing.anonymousEnabled !== false;
+    if (!needsUpdate) return existing;
+    return client.board.update({
+      where: { id: existing.id },
+      data: {
+        name: WEIWALL_BOARD_NAME,
+        description: WEIWALL_BOARD_DESCRIPTION,
+        icon: WEIWALL_BOARD_ICON,
+        color: WEIWALL_BOARD_COLOR,
+        readOnly: true,
+        anonymousEnabled: false,
+      },
+    });
+  }
   return client.board.create({
     data: {
       slug: WEIWALL_BOARD_SLUG,
@@ -1018,7 +1090,7 @@ async function syncWeiwallHotRankingEntry(
   const hotTopics = rows.map((item, index) => {
     const externalTopicId = externalId(item.id);
     const localTopicId = localTopicIdByExternalId.get(externalTopicId) ?? null;
-    return {
+    return sanitizeWeiwallHotTopicEntry({
       rank: index + 1,
       externalTopicId,
       localTopicId,
@@ -1030,7 +1102,7 @@ async function syncWeiwallHotRankingEntry(
       likeCount: Math.max(0, Number(item.likeCount ?? 0) || 0),
       sourceUrl: buildTopicSourceUrl(row.baseUrl, row.schoolEn, externalTopicId),
       targetPath: localTopicId ? `/forum/topic/${localTopicId}` : null,
-    };
+    });
   });
   const metadata = JSON.stringify({
     sourceUrl: buildWeiwallHotPageUrl(row.baseUrl, row.schoolEn),
@@ -1647,47 +1719,77 @@ async function syncSingleTopic(
   const result = await prisma.$transaction(async (tx) => {
     const externalAuthor = externalAuthorForStorage(topic.userInfo);
     const createdAt = parseExternalTime(topic.createTime);
-    const localContent = renderExternalContent(topic.content, [...(topic.imgs ?? []), ...(topic.data?.imgs ?? [])]);
+    const sourceUrl = buildTopicSourceUrl(configRow.baseUrl, configRow.schoolEn, externalTopicId);
+    const localContent = sanitizeWeiwallStorageText(
+      renderExternalContent(topic.content, [...(topic.imgs ?? []), ...(topic.data?.imgs ?? [])]),
+    );
+    const fallbackContent = buildMirroredTopicFallbackContent(sourceUrl);
     const hidden = topicHidden(topic);
     const pinned = false;
     const metadata = JSON.stringify({
-      sourceUrl: buildTopicSourceUrl(configRow.baseUrl, configRow.schoolEn, externalTopicId),
-      sourceName,
+      sourceUrl,
+      sourceName: sanitizeWeiwallStorageText(sourceName, 80),
       publishedAt: createdAt.toISOString(),
       external: true,
       externalType: "weiwall",
       externalPlatform: "weiwall",
       externalId: externalTopicId,
-      externalNode: trimTo(topic.node, 40),
+      externalNode: sanitizeWeiwallStorageText(trimTo(topic.node, 40), 40),
       externalCommentCount: Number(topic.commentCount ?? 0) || 0,
       externalLikeCount: Number(topic.likeCount ?? 0) || 0,
       externalViewCount: Number(topic.viewCount ?? 0) || 0,
-      originalTitle: trimTo(topic.title, 120),
-      externalAuthorName: externalAuthor.name,
-      externalAuthorAvatar: externalAuthor.avatar,
-      externalAuthorUuid: externalAuthor.uuid,
+      originalTitle: sanitizeWeiwallStorageText(trimTo(topic.title, 120), 120),
+      externalAuthorName: sanitizeWeiwallStorageText(externalAuthor.name, 80),
+      externalAuthorAvatar: sanitizeWeiwallStorageText(externalAuthor.avatar, 500),
+      externalAuthorUuid: sanitizeWeiwallStorageText(externalAuthor.uuid, 80),
     });
+    const fallbackMetadata = JSON.stringify({
+      sourceUrl,
+      sourceName: "逛逛",
+      publishedAt: createdAt.toISOString(),
+      external: true,
+      externalType: "weiwall",
+      externalPlatform: "weiwall",
+      externalId: externalTopicId,
+    });
+    const safeLocalTitle = sanitizeWeiwallStorageText(localTitle, 120) || `逛逛帖子 ${externalTopicId}`;
+    const fallbackTitle = `逛逛帖子 ${externalTopicId}`;
 
     let localTopic: Pick<Topic, "id" | "authorId" | "createdAt" | "replyCount" | "title">;
     if (!existingMap) {
-      const created = await tx.topic.create({
-        data: {
-          boardId: board.id,
-          authorId: botUserId,
-          title: localTitle,
-          content: localContent,
-          metadata,
-          hidden,
-          pinned,
-          locked: true,
-          likeCount: Number(topic.likeCount ?? 0) || 0,
-          viewCount: Number(topic.viewCount ?? 0) || 0,
-          lastReplyAt: createdAt,
-          lastReplyById: botUserId,
-          createdAt,
-        },
-        select: { id: true, authorId: true, createdAt: true, replyCount: true, title: true },
-      });
+      const createData = {
+        boardId: board.id,
+        authorId: botUserId,
+        title: safeLocalTitle,
+        content: localContent,
+        metadata,
+        hidden,
+        pinned,
+        locked: true,
+        likeCount: Number(topic.likeCount ?? 0) || 0,
+        viewCount: Number(topic.viewCount ?? 0) || 0,
+        lastReplyAt: createdAt,
+        lastReplyById: botUserId,
+        createdAt,
+      } satisfies Prisma.TopicUncheckedCreateInput;
+      let created: Pick<Topic, "id" | "authorId" | "createdAt" | "replyCount" | "title">;
+      try {
+        created = await tx.topic.create({
+          data: createData,
+          select: { id: true, authorId: true, createdAt: true, replyCount: true, title: true },
+        });
+      } catch (error) {
+        console.warn(`[weiwall-sync] mirrored topic create fallback for ${externalTopicId}:`, error);
+        created = await tx.topic.create({
+          data: {
+            ...createData,
+            title: fallbackTitle,
+            content: fallbackContent,
+            metadata: fallbackMetadata,
+          },
+          select: { id: true, authorId: true, createdAt: true, replyCount: true, title: true },
+        });
+      }
       await tx.weiwallTopicMap.create({
         data: {
           externalTopicId,
@@ -1707,20 +1809,34 @@ async function syncSingleTopic(
       localTopic = created;
       counters.topicsCreated++;
     } else {
-      await tx.topic.update({
-        where: { id: existingMap.localTopicId },
-        data: {
-          authorId: botUserId,
-          title: localTitle,
-          content: localContent,
-          metadata,
-          hidden,
-          pinned,
-          locked: true,
-          likeCount: Number(topic.likeCount ?? 0) || 0,
-          viewCount: Number(topic.viewCount ?? 0) || 0,
-        },
-      });
+      const updateData = {
+        authorId: botUserId,
+        title: safeLocalTitle,
+        content: localContent,
+        metadata,
+        hidden,
+        pinned,
+        locked: true,
+        likeCount: Number(topic.likeCount ?? 0) || 0,
+        viewCount: Number(topic.viewCount ?? 0) || 0,
+      } satisfies Prisma.TopicUncheckedUpdateInput;
+      try {
+        await tx.topic.update({
+          where: { id: existingMap.localTopicId },
+          data: updateData,
+        });
+      } catch (error) {
+        console.warn(`[weiwall-sync] mirrored topic update fallback for ${externalTopicId}:`, error);
+        await tx.topic.update({
+          where: { id: existingMap.localTopicId },
+          data: {
+            ...updateData,
+            title: fallbackTitle,
+            content: fallbackContent,
+            metadata: fallbackMetadata,
+          },
+        });
+      }
       await tx.weiwallTopicMap.update({
         where: { id: existingMap.id },
         data: {

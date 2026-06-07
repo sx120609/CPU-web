@@ -6,9 +6,9 @@
         <el-tag v-if="topic.globalPinned" size="small" type="warning" effect="dark" class="tag">全局置顶</el-tag>
         <el-tag v-if="topic.pinned" size="small" type="danger" effect="plain" class="tag">板块置顶</el-tag>
         <el-tag v-if="topic.board" size="small" :style="{ background: topic.board.color || '#168776', color: '#fff', border: 'none' }" class="tag">
-          {{ topic.board.name }}
+          {{ boardDisplayName }}
         </el-tag>
-        <span v-if="!titlelessWeiwall" class="title">{{ topic.title }}</span>
+        <span v-if="!titlelessWeiwall" class="title">{{ displayTitle }}</span>
         <el-tag
           v-for="tag in aiTags"
           :key="tag.name"
@@ -29,14 +29,21 @@
         <span v-if="topic.metadata?.externalPlatform === 'weiwall'" class="bot">📮 逛逛同步</span>
         <span v-else-if="topic.author?.role === 'bot'" class="bot">🤖 公告同步</span>
         <span class="dot">·</span>
-        <span>{{ fmtRelative(topic.lastReplyAt || topic.createdAt) }}</span>
-        <span v-if="topic.editCount && topic.editCount > 0" class="edited">已编辑 {{ topic.editCount }} 次</span>
-        <span class="dot">·</span>
-        <span class="heat">热度 {{ hotScore }}</span>
-        <span class="dot">·</span>
-        <span><el-icon><View /></el-icon> {{ topic.viewCount }}</span>
-        <span><el-icon><ChatLineRound /></el-icon> {{ topic.replyCount }}</span>
-        <span><el-icon><Star /></el-icon> {{ topic.likeCount }}</span>
+        <template v-if="isWeiwallHotEntry">
+          <span>热榜入口</span>
+          <span class="dot">·</span>
+          <span>每 30 分钟刷新</span>
+        </template>
+        <template v-else>
+          <span>{{ fmtRelative(topic.lastReplyAt || topic.createdAt) }}</span>
+          <span v-if="topic.editCount && topic.editCount > 0" class="edited">已编辑 {{ topic.editCount }} 次</span>
+          <span class="dot">·</span>
+          <span class="heat">热度 {{ hotScore }}</span>
+          <span class="dot">·</span>
+          <span><el-icon><View /></el-icon> {{ topic.viewCount }}</span>
+          <span><el-icon><ChatLineRound /></el-icon> {{ topic.replyCount }}</span>
+          <span><el-icon><Star /></el-icon> {{ topic.likeCount }}</span>
+        </template>
       </div>
       <div v-if="titlelessWeiwall && weiwallPreview" class="line3">
         {{ weiwallPreview }}
@@ -63,6 +70,12 @@ const router = useRouter();
 const metaPrice = computed(() => props.topic.metadata?.price);
 const metaSolved = computed(() => props.topic.metadata?.resolved === true);
 const metaBounty = computed(() => props.topic.metadata?.bounty ? props.topic.metadata.bounty : 0);
+const isWeiwallHotEntry = computed(() => Boolean(props.topic.metadata?.weiwallHotEntry));
+const boardDisplayName = computed(() => props.topic.board?.slug === "campus-wall" ? "逛逛" : (props.topic.board?.name || ""));
+const displayTitle = computed(() => {
+  if (!isWeiwallHotEntry.value) return props.topic.title;
+  return "逛逛热榜入口（每 30 分钟更新）";
+});
 const metaRating = computed(() => {
   const r = props.topic.metadata?.ratings?.recommend;
   return typeof r === "number" ? r : 0;

@@ -4,8 +4,8 @@
       <div class="head-left">
         <div class="head-icon" :style="{ background: board.color || '#168776' }">{{ board.icon || fallbackBoardIcon }}</div>
         <div>
-          <h2 class="head-name">{{ board.name }}</h2>
-          <p class="head-desc">{{ board.description }}</p>
+          <h2 class="head-name">{{ boardDisplayName }}</h2>
+          <p class="head-desc">{{ boardDisplayDescription }}</p>
           <div class="head-meta">
             <span>{{ board.topicCount }} 帖</span>
             <span v-if="board.anonymousEnabled" class="anon-tag">支持匿名</span>
@@ -86,6 +86,12 @@ const loading = ref(false);
 let pendingRestoreState: BoardRestoreState | null = null;
 
 const canPost = computed(() => !!board.value && !board.value.readOnly && auth.canAccessForum);
+const boardDisplayName = computed(() => board.value?.slug === "campus-wall" ? "逛逛" : (board.value?.name || ""));
+const boardDisplayDescription = computed(() => (
+  board.value?.slug === "campus-wall"
+    ? "从外部逛逛同步的只读镜像，自动刷新帖子与评论。"
+    : (board.value?.description || "")
+));
 const fallbackBoardIcon = computed(() => {
   if (board.value?.type === "market") return "🛒";
   if (board.value?.type === "question") return "❓";
