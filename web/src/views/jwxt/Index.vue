@@ -17,7 +17,7 @@
       class="scope-tip"
     >
       <template #title>
-        目前主要支持<b>本科生</b>账号。研究生、教职工、留学生等账号，暂时可能无法获取完整教务数据。
+        {{ scopeTipText }}
       </template>
     </el-alert>
 
@@ -42,6 +42,13 @@
           <li>学校密码和验证码<b>不会保存</b>在本站</li>
         </ul>
       </el-alert>
+
+      <AcademicIdentityPicker
+        v-model="selectedIdentity"
+        label="读取身份"
+        :hint="identityHint"
+        class="identity-picker"
+      />
 
       <el-form
         :model="form"
@@ -108,7 +115,7 @@
       <PrivacyPolicyNotice />
 
       <div class="alt-link">
-        暂不授权？也可以 <a href="http://jsxsd.cpu.edu.cn/zgykdx/tyrz.jsp" target="_blank">前往学校教务系统原站</a>
+        暂不授权？也可以 <a :href="schoolSystemLink" target="_blank">{{ schoolSystemLabel }}</a>
       </div>
     </div>
 
@@ -119,7 +126,11 @@
           <el-icon class="session-ok"><CircleCheckFilled /></el-icon>
           <div class="session-copy">
             <div class="session-title">已连接学校教务系统</div>
-            <div class="session-sub">如果数据不完整或显示异常，刷新后再试即可。</div>
+            <div class="session-sub">{{ sessionSubText }}</div>
+            <div class="session-identity">
+              <span>当前身份</span>
+              <AcademicIdentityPicker v-model="selectedIdentity" compact />
+            </div>
           </div>
         </div>
         <div class="session-actions">
@@ -137,18 +148,18 @@
 
       <el-tabs v-model="tab" class="cpu-card jwxt-tabs" @tab-change="onTabChange">
         <el-tab-pane label="📅 课表" name="schedule">
-          <SchedulePane :data="schedule" :loading="tabLoading" />
+          <SchedulePane :data="schedule" :loading="tabLoading" :source="isGraduateIdentity ? 'graduate' : 'jwxt'" />
         </el-tab-pane>
-        <el-tab-pane label="📊 成绩" name="grades">
+        <el-tab-pane v-if="!isGraduateIdentity" label="📊 成绩" name="grades">
           <GradesPane :data="grades" :loading="tabLoading" />
         </el-tab-pane>
-        <el-tab-pane label="📝 期中成绩" name="midterm">
+        <el-tab-pane v-if="!isGraduateIdentity" label="📝 期中成绩" name="midterm">
           <MidtermGradesPane :data="midtermGrades" :loading="tabLoading" />
         </el-tab-pane>
-        <el-tab-pane label="🎓 学业完成情况" name="progress">
+        <el-tab-pane v-if="!isGraduateIdentity" label="🎓 学业完成情况" name="progress">
           <ProgressPane :data="progress" :loading="tabLoading" />
         </el-tab-pane>
-        <el-tab-pane label="📖 培养方案" name="pyfa">
+        <el-tab-pane v-if="!isGraduateIdentity" label="📖 培养方案" name="pyfa">
           <PyfaPane :data="pyfa" :loading="tabLoading" />
         </el-tab-pane>
         <el-tab-pane label="🛠 调试" name="debug" v-if="isDev">
@@ -174,20 +185,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from "vue";
+import { ref, reactive, onMounted, computed, watch } from "vue";
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from "element-plus";
 import { Lock, User, Refresh, CircleCheckFilled, CircleClose, InfoFilled } from "@element-plus/icons-vue";
 import { useJwxtStore } from "@/stores/jwxt";
+import { useAuthStore } from "@/stores/auth";
 import { jwxtApi } from "@/api/jwxt";
 import { jwxtScopedStorageKey } from "@/utils/jwxtCache";
+import AcademicIdentityPicker from "@/components/auth/AcademicIdentityPicker.vue";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import SchedulePane from "@/components/jwxt/SchedulePane.vue";
 import GradesPane from "@/components/jwxt/GradesPane.vue";
 import MidtermGradesPane from "@/components/jwxt/MidtermGradesPane.vue";
 import ProgressPane from "@/components/jwxt/ProgressPane.vue";
 import PyfaPane from "@/components/jwxt/PyfaPane.vue";
+import { type AcademicIdentity } from "@/utils/academicIdentity";
 
 const jwxt = useJwxtStore();
+const auth = useAuthStore();
 const formRef = ref<FormInstance>();
 const form = reactive({ username: "", password: "", captcha: "" });
 const remember = ref(true); // 默认勾选"记住"
@@ -195,6 +210,11 @@ const rules: FormRules = {
   username: [{ required: true, message: "请输入学号或工号" }],
   password: [{ required: true, message: "请输入密码" }],
 };
+const selectedIdentity = computed<AcademicIdentity>({
+  get: () => auth.academicIdentity,
+  set: (value) => auth.setAcademicIdentity(value),
+});
+const isGraduateIdentity = computed(() => selectedIdentity.value === "graduate");
 
 const tab = ref<"schedule" | "grades" | "midterm" | "progress" | "pyfa" | "debug">("schedule");
 type DataTab = "schedule" | "grades" | "midterm" | "progress" | "pyfa";
@@ -206,7 +226,7 @@ const pyfa = ref<any>(null);
 const tabLoading = ref(false);
 const CACHE_TTL = 12 * 60 * 60 * 1000;
 const CACHE_PREFIX = "cpu-jwxt-tab-cache-v4";
-const activeRequests = new Map<DataTab, Promise<any>>();
+const activeRequests = new Map<string, Promise<any>>();
 
 const probePath = ref("/zgykdx/framework/xsMain.jsp");
 const probeHtml = ref("");
@@ -215,9 +235,33 @@ const snapping = ref(false);
 const snapResult = ref<{ saved: string[]; errors: string[] } | null>(null);
 
 const isDev = computed(() => import.meta.env.DEV);
+const scopeTipText = computed(() => (
+  isGraduateIdentity.value
+    ? "当前按研究生身份读取。现阶段正式支持研究生课表，其余研究生教务能力后续补齐。"
+    : "当前按本科生身份读取，可查看课表、成绩和培养方案等完整教务数据。"
+));
+const identityHint = computed(() => (
+  isGraduateIdentity.value
+    ? "研究生模式当前先开放课表；登录后课表页也会自动按研究生课表展示。"
+    : "本科生模式会继续读取成绩、期中成绩、学业完成情况和培养方案。"
+));
+const schoolSystemLink = computed(() => (
+  isGraduateIdentity.value
+    ? "http://ygl.cpu.edu.cn/gmis5/oauthLogin/zgyk"
+    : "http://jsxsd.cpu.edu.cn/zgykdx/tyrz.jsp"
+));
+const schoolSystemLabel = computed(() => (
+  isGraduateIdentity.value ? "前往研究生管理系统原站" : "前往学校教务系统原站"
+));
+const sessionSubText = computed(() => (
+  isGraduateIdentity.value
+    ? "当前按研究生身份展示课表；如果课表异常，刷新后重试即可。"
+    : "当前按本科生身份读取数据；如果信息不完整或显示异常，刷新后再试即可。"
+));
 
 onMounted(async () => {
   jwxt.hydrate();
+  if (isGraduateIdentity.value && tab.value !== "schedule") tab.value = "schedule";
   restoreAllTabCaches();
   await jwxt.refreshStatus();
   if (!jwxt.isLoggedIn) {
@@ -239,8 +283,20 @@ onMounted(async () => {
   }
 });
 
+watch(() => auth.academicIdentity, async (next, prev) => {
+  if (!next || next === prev) return;
+  if (next === "graduate" && tab.value !== "schedule" && tab.value !== "debug") {
+    tab.value = "schedule";
+  }
+  resetTabData();
+  restoreAllTabCaches();
+  if (jwxt.isLoggedIn) {
+    await loadCurrentTab(true);
+  }
+});
+
 function cacheKey(t: DataTab) {
-  return jwxtScopedStorageKey(CACHE_PREFIX, t);
+  return jwxtScopedStorageKey(CACHE_PREFIX, auth.academicIdentity, t);
 }
 
 function readCache(t: DataTab): { savedAt: number; data: any } | null {
@@ -328,22 +384,38 @@ function normalizeTabData(t: DataTab, data: any) {
 }
 
 function restoreAllTabCaches() {
-  (["schedule", "grades", "midterm", "progress", "pyfa"] as DataTab[]).forEach((t) => restoreCachedTab(t));
+  const tabs = isGraduateIdentity.value
+    ? (["schedule"] as DataTab[])
+    : (["schedule", "grades", "midterm", "progress", "pyfa"] as DataTab[]);
+  tabs.forEach((t) => restoreCachedTab(t));
 }
 
-function fetchTab(t: DataTab) {
-  if (activeRequests.has(t)) return activeRequests.get(t)!;
+function resetTabData() {
+  schedule.value = null;
+  grades.value = null;
+  midtermGrades.value = null;
+  progress.value = null;
+  pyfa.value = null;
+}
+
+function fetchTab(t: DataTab, identity = auth.academicIdentity) {
+  const requestId = `${identity}:${t}`;
+  if (activeRequests.has(requestId)) return activeRequests.get(requestId)!;
   const request = (async () => {
+    if (identity === "graduate") {
+      if (t === "schedule") return jwxtApi.graduateSchedule();
+      throw new Error("当前身份暂不支持该教务能力");
+    }
     if (t === "schedule") return jwxtApi.schedule();
     if (t === "grades") return jwxtApi.grades();
     if (t === "midterm") return jwxtApi.midtermGrades();
     if (t === "progress") return jwxtApi.progress();
     return jwxtApi.pyfa();
   })();
-  activeRequests.set(t, request);
+  activeRequests.set(requestId, request);
   request.then(
-    () => activeRequests.delete(t),
-    () => activeRequests.delete(t)
+    () => activeRequests.delete(requestId),
+    () => activeRequests.delete(requestId)
   );
   return request;
 }
@@ -356,7 +428,13 @@ async function reloadCaptcha() {
 async function onSubmit() {
   try { await formRef.value?.validate(); } catch { return; }
   if (jwxt.needCaptcha && !form.captcha) { ElMessage.warning("请输入验证码"); return; }
-  const ok = await jwxt.submitLogin(form.username, form.password, form.captcha || undefined, remember.value);
+  const ok = await jwxt.submitLogin(
+    form.username,
+    form.password,
+    form.captcha || undefined,
+    remember.value,
+    selectedIdentity.value,
+  );
   form.password = ""; // 立刻清掉密码字段
   if (ok) {
     ElMessage.success("登录成功");
@@ -370,7 +448,8 @@ async function onLogout() {
   await ElMessageBox.confirm("断开当前教务连接？\n如果勾选了“记住登录信息”，下次打开时仍可快速登录。", "确认", { type: "warning" });
   await jwxt.logout();
   ElMessage.success("已断开教务连接");
-  schedule.value = grades.value = midtermGrades.value = progress.value = pyfa.value = null;
+  resetTabData();
+  tab.value = "schedule";
   await jwxt.beginLogin();
 }
 
@@ -382,12 +461,18 @@ async function onForget() {
 
 async function loadCurrentTab(force = false) {
   if (tab.value === "debug") return;
+  if (isGraduateIdentity.value && tab.value !== "schedule") {
+    tab.value = "schedule";
+    return;
+  }
   const current = tab.value as DataTab;
+  const identity = auth.academicIdentity;
   const cached = restoreCachedTab(current);
   if (cached && !force && !isStale(cached.savedAt)) return;
   tabLoading.value = force || !getTabData(current);
   try {
-    const data = await fetchTab(current);
+    const data = await fetchTab(current, identity);
+    if (identity !== auth.academicIdentity || current !== tab.value) return;
     setTabData(current, data);
     writeCache(current, data);
   } catch {
@@ -467,6 +552,7 @@ async function onProbe() {
 .safety li b { color: #b45309; }
 
 .form { margin-top: 16px; }
+.identity-picker { margin-top: 16px; }
 .btn-submit { width: 100%; letter-spacing: 4px; }
 .remember-row {
   display: flex;
@@ -546,6 +632,16 @@ async function onProbe() {
   color: #4b5563;
   font-size: 12px;
   line-height: 1.6;
+}
+.session-identity {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+  max-width: 240px;
+}
+.session-identity span {
+  font-size: 12px;
+  color: #4b5563;
 }
 .session-actions {
   display: flex;

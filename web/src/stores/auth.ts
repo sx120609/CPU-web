@@ -4,6 +4,12 @@ import { clearToken, getToken, setToken } from "@/api/request";
 import { setJwxtToken, clearJwxtToken } from "@/api/jwxt";
 import { saveCreds } from "@/utils/credCrypto";
 import { clearJwxtDataCaches } from "@/utils/jwxtCache";
+import {
+  academicIdentityLabel,
+  readAcademicIdentity,
+  writeAcademicIdentity,
+  type AcademicIdentity,
+} from "@/utils/academicIdentity";
 
 const DATA_AUTH_KEY_PREFIX = "cpu-data-auth-agreement-v1";
 
@@ -33,6 +39,7 @@ export const useAuthStore = defineStore("auth", {
   state: () => ({
     user: null as UserInfo | null,
     token: "",
+    academicIdentity: readAcademicIdentity() as AcademicIdentity,
     ready: false,
     dataAuthAgreed: false,
     /** SSO 登录流程的临时状态 */
@@ -51,9 +58,19 @@ export const useAuthStore = defineStore("auth", {
     canAccessForum: (s) => !!s.user && (s.user.role === "admin" || s.user.role === "mod" || s.user.role === "bot" || !!s.user.forumEnabled),
     needSetupNickname: (s) => !!s.user && (!s.user.nickname || s.user.nickname.trim() === ""),
     needDataAuthAgreement: (s) => !!s.user?.studentSso && !s.dataAuthAgreed,
+    isGraduateIdentity: (s) => s.academicIdentity === "graduate",
+    academicIdentityLabel: (s) => academicIdentityLabel(s.academicIdentity),
   },
   actions: {
-    hydrate() { this.token = getToken(); },
+    hydrate() {
+      this.token = getToken();
+      this.academicIdentity = readAcademicIdentity();
+    },
+
+    setAcademicIdentity(identity: AcademicIdentity) {
+      this.academicIdentity = identity;
+      writeAcademicIdentity(identity);
+    },
 
     syncDataAuthAgreement(user?: UserInfo | null) {
       if (user && user.studentSso) {

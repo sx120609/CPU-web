@@ -19,6 +19,13 @@
       <p class="welcome">使用 <strong>学校统一认证</strong> 登录</p>
       <p class="hint">{{ loginHint }}</p>
 
+      <AcademicIdentityPicker
+        v-model="academicIdentity"
+        label="登录身份"
+        :hint="identityHint"
+        class="identity-picker"
+      />
+
       <el-alert type="warning" :closable="false" show-icon class="safety">
         学号 / 工号仅用于识别身份并关联账号，<b>学校密码和验证码不会保存</b>
       </el-alert>
@@ -32,7 +39,7 @@
         @keyup.enter="onSubmit"
       >
         <el-form-item prop="username">
-          <el-input v-model="form.username" placeholder="学号">
+          <el-input v-model="form.username" placeholder="学号 / 工号">
             <template #prefix><el-icon><User /></el-icon></template>
           </el-input>
         </el-form-item>
@@ -99,7 +106,9 @@ import { User, Lock, Refresh, ArrowLeft } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { loadCreds, hasCreds } from "@/utils/credCrypto";
+import AcademicIdentityPicker from "@/components/auth/AcademicIdentityPicker.vue";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
+import { academicIdentityLabel, type AcademicIdentity } from "@/utils/academicIdentity";
 
 const router = useRouter();
 const route = useRoute();
@@ -108,10 +117,14 @@ const site = useSiteStore();
 const formRef = ref<FormInstance>();
 const remember = ref(true);
 const isDev = computed(() => import.meta.env.DEV);
+const academicIdentity = computed<AcademicIdentity>({
+  get: () => auth.academicIdentity,
+  set: (value) => auth.setAcademicIdentity(value),
+});
 
 const form = reactive({ username: "", password: "", captcha: "" });
 const rules: FormRules = {
-  username: [{ required: true, message: "请输入学号" }],
+  username: [{ required: true, message: "请输入学号 / 工号" }],
   password: [{ required: true, message: "请输入密码" }],
 };
 
@@ -122,8 +135,15 @@ const loginHint = computed(() => {
   if (site.features.forum) uses.push("发帖");
   if (site.features.coursereview) uses.push("课评");
   uses.push("消息通知");
-  return `完成身份确认后会自动创建站内账号，可用于${uses.join("、")}。`;
+  const identityText = academicIdentity.value === "graduate"
+    ? "研究生身份会优先接入研究生课表，本科生能力后续逐步补齐。"
+    : "本科生身份会接入完整教务数据。";
+  return `完成身份确认后会自动创建站内账号，可用于${uses.join("、")}。${identityText}`;
 });
+
+const identityHint = computed(() => (
+  `当前将按${academicIdentityLabel(academicIdentity.value)}身份接入教务数据，后续课表和教务页面会沿用这个选择。`
+));
 
 onMounted(async () => {
   if (auth.isLoggedIn) {
@@ -185,6 +205,7 @@ async function onSubmit() {
     ElMessage.warning("请输入验证码");
     return;
   }
+  auth.setAcademicIdentity(academicIdentity.value);
   const ok = await auth.ssoLogin(form.username, form.password, form.captcha || undefined, remember.value);
   form.password = ""; // 凭据送出后立刻清空
   if (ok) {
@@ -272,6 +293,7 @@ async function onDevSubmit() {
 .welcome { font-size: 18px; color: #111827; margin: 6px 0 4px; font-weight: 600; }
 .welcome strong { color: var(--cpu-primary); }
 .hint { font-size: 13px; color: #6b7280; margin: 0 0 14px; line-height: 1.6; }
+.identity-picker { margin-bottom: 14px; }
 
 .safety { margin-bottom: 14px; font-size: 12px; }
 .safety b { color: #b45309; }

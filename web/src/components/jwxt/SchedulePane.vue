@@ -381,11 +381,36 @@ interface SchedulePageModel {
   dayCourseBlocks: WeekCourseBlock[];
   weekCourseBlocks: WeekCourseBlock[];
 }
+interface OfficialSemesterCalendar { start: string; end: string; weeks: number }
+interface SemesterDescriptor { startYear: number; endYear: number; season: "first" | "second" }
 
-const props = defineProps<{ data: any; loading?: boolean }>();
+const props = withDefaults(defineProps<{
+  data: any;
+  loading?: boolean;
+  source?: "jwxt" | "graduate";
+}>(), {
+  source: "jwxt",
+});
 
-const parsed = ref<ScheduleResult | null>(props.data?.parsed ?? null);
-const calendar = ref<CalendarResult | null>(null);
+const OFFICIAL_GRADUATE_SEMESTER_CALENDARS: Record<string, OfficialSemesterCalendar> = {
+  "2025-2026学年一学期": { start: "2025-09-01", end: "2026-01-18", weeks: 20 },
+  "2025-2026学年二学期": { start: "2026-03-02", end: "2026-07-05", weeks: 18 },
+  "2024-2025学年一学期": { start: "2024-09-02", end: "2025-01-19", weeks: 20 },
+  "2024-2025学年二学期": { start: "2025-02-24", end: "2025-07-06", weeks: 19 },
+  "2023-2024学年一学期": { start: "2023-09-04", end: "2024-01-14", weeks: 19 },
+  "2023-2024学年二学期": { start: "2024-02-26", end: "2024-07-07", weeks: 19 },
+};
+const graduateSourceMeta = ref<{
+  mode?: "live" | "debug" | "debug-fallback";
+  path?: string;
+  savedAt?: string;
+  fetchedAt?: string;
+  semester?: string;
+  termcode?: string;
+} | null>(null);
+const initialScheduleBundle = normalizeIncomingScheduleData(props.data, props.source);
+const parsed = ref<ScheduleResult | null>(initialScheduleBundle.parsed);
+const calendar = ref<CalendarResult | null>(initialScheduleBundle.calendar);
 const semester = ref("");
 const week = ref("");
 const activeDay = ref(dayOfWeek());
@@ -418,6 +443,7 @@ const smallSlots = [
   { no: 11, start: "20:20", end: "21:05" },
 ];
 const MAX_SMALL_SLOT = smallSlots[smallSlots.length - 1]?.no ?? 10;
+const isGraduateSource = computed(() => props.source === "graduate");
 const editDialogOpen = ref(false);
 const customCourseForm = reactive({
   name: "",
@@ -467,18 +493,186 @@ const activePageScrollKey = computed(() => (
     : `day:${currentWeekValue()}:${activeDay.value}`
 ));
 
+function normalizeSemesterLabel(value: string) {
+  return String(value || "")
+    .replace(/\s+/g, "")
+    .replace(/第一学期/g, "一学期")
+    .replace(/第二学期/g, "二学期")
+    .trim();
+}
+
+function officialGraduateSemesterCalendarFor(value: string) {
+  return OFFICIAL_GRADUATE_SEMESTER_CALENDARS[normalizeSemesterLabel(value)] ?? null;
+}
+
+function pickFirstCourseDay(data: ScheduleResult | null, weekValue: number) {
+  if (!data) return 1;
+  const courseDays = data.cells
+    .filter((cell) => cell.courses.some((course) => courseMatchesWeek(course, weekValue)))
+    .map((cell) => cell.day)
+    .filter((day) => day >= 1 && day <= 7)
+    .sort((a, b) => a - b);
+  return courseDays[0] || 1;
+}
+
+function resolveGraduateInitialWeek(data: ScheduleResult | null, fallbackCalendar: CalendarResult | null) {
+  const weekValues = new Set((data?.weeks ?? []).map((item) => String(item.value || "")));
+  const currentByDate = String(fallbackCalendar?.currentWeek || "");
+  if (currentByDate && weekValues.has(currentByDate)) return currentByDate;
+  const currentBySchedule = String(data?.currentWeek || "");
+  if (currentBySchedule && weekValues.has(currentBySchedule)) return currentBySchedule;
+  return String(data?.weeks?.find((item) => item.current)?.value || data?.weeks?.[0]?.value || currentByDate || "");
+}
+
+function resolveGraduateActiveDay(
+  data: ScheduleResult | null,
+  weekValue: string,
+  fallbackCalendar: CalendarResult | null,
+) {
+  const weekNumber = Number(weekValue || 0);
+  if (weekNumber && weekNumber === Number(fallbackCalendar?.currentWeek || 0)) return dayOfWeek();
+  return pickFirstCourseDay(data, weekNumber);
+}
+
+function formatYmd(year: number, month: number, day: number) {
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function addDaysToCalendarYmd(ymd: string, days: number): string {
+  const match = String(ymd || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return "";
+  const d = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + days));
+  return formatYmd(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+}
+
+function parseSemesterDescriptor(value: string): SemesterDescriptor | null {
+  const normalized = String(value || "").trim();
+  const match = normalized.match(/(\d{4})-(\d{4})/);
+  if (!match) return null;
+  const season = /第一学期|第1学期|1学期|一学期|秋学期|秋/.test(normalized)
+    ? "first"
+    : /第二学期|第2学期|2学期|二学期|春学期|春/.test(normalized)
+      ? "second"
+      : null;
+  if (!season) return null;
+  return {
+    startYear: Number(match[1]),
+    endYear: Number(match[2]),
+    season,
+  };
+}
+
+function inferSemesterDescriptorFromToday(): SemesterDescriptor {
+  const today = chinaTodayParts();
+  if (today.month >= 9) {
+    return { startYear: today.year, endYear: today.year + 1, season: "first" };
+  }
+  if (today.month === 1) {
+    return { startYear: today.year - 1, endYear: today.year, season: "first" };
+  }
+  return { startYear: today.year - 1, endYear: today.year, season: "second" };
+}
+
+function semesterAnchorMonday(descriptor: SemesterDescriptor) {
+  const anchor = descriptor.season === "first"
+    ? formatYmd(descriptor.startYear, 9, 1)
+    : formatYmd(descriptor.endYear, 3, 1);
+  const day = dayOfWeekForCalendarYmd(anchor);
+  return day ? addDaysToCalendarYmd(anchor, 1 - day) : anchor;
+}
+
+function scheduleWeekCount(data: ScheduleResult | null) {
+  const maxFromOptions = Math.max(
+    0,
+    ...(data?.weeks ?? []).map((item) => Number(item.value) || 0),
+  );
+  const maxFromCourses = Math.max(
+    0,
+    ...(data?.cells ?? []).flatMap((cell) => cell.courses.flatMap((course) => normalizedCourseWeekList(course))),
+  );
+  return Math.max(1, maxFromOptions, maxFromCourses, Number(data?.currentWeek || 0) || 0);
+}
+
+function extendScheduleWeeksToCalendar(data: ScheduleResult | null, source: CalendarResult | null) {
+  if (!data || !source?.weeks?.length) return data;
+  const totalWeeks = Math.max(scheduleWeekCount(data), source.weeks.length);
+  const weeks = Array.from({ length: totalWeeks }, (_, index) => {
+    const value = String(index + 1);
+    return {
+      value,
+      label: `第 ${value} 周`,
+      current: value === String(source.currentWeek || data.currentWeek || ""),
+    };
+  });
+  return {
+    ...data,
+    weeks,
+  };
+}
+
+function buildGraduateFallbackCalendar(data: ScheduleResult | null): CalendarResult | null {
+  if (!data) return null;
+  const officialCalendar = officialGraduateSemesterCalendarFor(data.currentSemester);
+  const descriptor = parseSemesterDescriptor(data.currentSemester) ?? inferSemesterDescriptorFromToday();
+  const semesterStart = officialCalendar?.start || semesterAnchorMonday(descriptor);
+  const totalWeeks = Math.max(scheduleWeekCount(data), officialCalendar?.weeks || 0);
+  const weeks = Array.from({ length: totalWeeks }, (_, index) => {
+    const monday = addDaysToCalendarYmd(semesterStart, index * 7);
+    const days = Array.from({ length: 7 }, (_, offset) => addDaysToCalendarYmd(monday, offset));
+    return {
+      week: index + 1,
+      days,
+      monday,
+      sunday: days[6] || monday,
+    };
+  });
+  const today = todayKey();
+  const currentWeekByDate = weeks.find((item) => item.days.includes(today))?.week ?? 0;
+  const fallbackCurrentWeek = Number(data.currentWeek || 0) || 0;
+  return {
+    currentWeek: currentWeekByDate || fallbackCurrentWeek || 1,
+    semesterStart,
+    semesterEnd: officialCalendar?.end || weeks[weeks.length - 1]?.sunday || semesterStart,
+    weeks,
+  };
+}
+
+function normalizeIncomingScheduleData(rawData: any, source: "jwxt" | "graduate") {
+  if (source !== "graduate") {
+    graduateSourceMeta.value = null;
+    return {
+      parsed: (rawData?.parsed ?? null) as ScheduleResult | null,
+      calendar: hydrateCalendar(rawData?.calendar ?? null),
+    };
+  }
+  graduateSourceMeta.value = rawData?.source ?? null;
+  const fallbackCalendar = hydrateCalendar(rawData?.calendar ?? buildGraduateFallbackCalendar(rawData?.parsed ?? null));
+  return {
+    parsed: extendScheduleWeeksToCalendar(rawData?.parsed ?? null, fallbackCalendar),
+    calendar: fallbackCalendar,
+  };
+}
+
 watch(() => props.loading, (v) => {
   loading.value = Boolean(v);
 }, { immediate: true });
 
-watch(() => props.data, (v) => {
-  const next: ScheduleResult | null = v?.parsed ?? null;
+watch([() => props.data, () => props.source], ([data, source]) => {
+  const normalized = normalizeIncomingScheduleData(data, source);
+  const next = normalized.parsed;
   if (!next) return;
   parsed.value = next;
+  if (normalized.calendar) calendar.value = normalized.calendar;
   if (!semester.value || !next.semesters.some((s) => s.value === semester.value)) {
     semester.value = next.currentSemester || "";
   }
-  if (!week.value || !next.weeks.some((w) => String(w.value) === week.value)) {
+  if (source === "graduate") {
+    const initialWeek = resolveGraduateInitialWeek(next, calendar.value);
+    if (!week.value || !next.weeks.some((w) => String(w.value) === week.value)) {
+      week.value = initialWeek;
+    }
+    activeDay.value = resolveGraduateActiveDay(next, week.value || initialWeek, calendar.value);
+  } else if (!week.value || !next.weeks.some((w) => String(w.value) === week.value)) {
     week.value = String(calendar.value?.currentWeek || next.currentWeek || "");
   }
   scheduleSavedAt.value = Date.now();
@@ -498,7 +692,14 @@ onMounted(async () => {
   restoreCachedCalendar();
   if (!parsed.value) restoreLastScheduleCache();
   if (!semester.value && parsed.value?.currentSemester) semester.value = parsed.value.currentSemester;
-  if (!week.value && parsed.value?.currentWeek) week.value = String(parsed.value.currentWeek);
+  if (!week.value) {
+    if (isGraduateSource.value) {
+      week.value = resolveGraduateInitialWeek(parsed.value, calendar.value);
+      activeDay.value = resolveGraduateActiveDay(parsed.value, week.value, calendar.value);
+    } else if (parsed.value?.currentWeek) {
+      week.value = String(parsed.value.currentWeek);
+    }
+  }
   loadScheduleEdits();
   await loadCalendar();
   if (parsed.value && selectedScheduleDiffers(parsed.value)) {
@@ -525,7 +726,17 @@ const currentWeekInfo = computed(() => weekInfoFor(week.value));
 const currentWeekRange = computed(() => weekRangeFor(week.value));
 const dayTabs = computed(() => dayTabsForWeek(week.value));
 const activeDayLabel = computed(() => dayTabs.value.find((d) => d.day === activeDay.value)?.label ?? "今日");
-const cacheText = computed(() => scheduleSavedAt.value ? `本地缓存 ${formatCacheTime(scheduleSavedAt.value)}` : "");
+const cacheText = computed(() => {
+  const parts: string[] = [];
+  if (isGraduateSource.value) {
+    if (graduateSourceMeta.value?.mode === "debug-fallback") parts.push("研究生本地样例回退");
+    else parts.push("研究生实时课表");
+    parts.push(officialGraduateSemesterCalendarFor(semester.value || parsed.value?.currentSemester || "") ? "日期来自官方校历" : "日期为推算");
+    if (graduateSourceMeta.value?.fetchedAt) parts.push(`实时同步 ${formatCacheTime(Date.parse(graduateSourceMeta.value.fetchedAt))}`);
+  }
+  if (scheduleSavedAt.value) parts.push(`本地缓存 ${formatCacheTime(scheduleSavedAt.value)}`);
+  return parts.join(" · ");
+});
 const activeWeekNumber = computed(() => {
   const value = Number(week.value || parsed.value?.currentWeek || calendar.value?.currentWeek || 0);
   return Number.isFinite(value) && value > 0 ? value : 0;
@@ -590,10 +801,19 @@ const canJumpToCurrentWeek = computed(() => {
 
 async function loadCalendar() {
   restoreCachedCalendar();
+  if (isGraduateSource.value) {
+    const normalized = normalizeIncomingScheduleData({ parsed: parsed.value, source: graduateSourceMeta.value, calendar: calendar.value }, "graduate");
+    if (normalized.calendar) {
+      calendar.value = normalized.calendar;
+      writeCache(calendarCacheKey(), calendar.value);
+      if (!week.value) week.value = resolveGraduateInitialWeek(parsed.value, calendar.value);
+    }
+    return;
+  }
   try {
     const r: any = await jwxtApi.calendar();
     calendar.value = hydrateCalendar(r.parsed);
-    writeCache(jwxtScopedStorageKey(CALENDAR_CACHE_BASE), calendar.value);
+    writeCache(calendarCacheKey(), calendar.value);
     if (calendar.value?.currentWeek && !week.value) week.value = String(calendar.value.currentWeek);
   } catch {
     /* calendar is best effort */
@@ -609,6 +829,24 @@ async function loadSchedule(force = false, background = false) {
   }
   if (!background) loading.value = true;
   try {
+    if (isGraduateSource.value) {
+      const raw = await jwxtApi.graduateSchedule({ semester: semester.value || undefined });
+      const normalized = normalizeIncomingScheduleData(raw, "graduate");
+      parsed.value = normalized.parsed;
+      calendar.value = normalized.calendar;
+      if (!semester.value) semester.value = parsed.value?.currentSemester ?? "";
+      const initialWeek = resolveGraduateInitialWeek(parsed.value, calendar.value);
+      if (!week.value || !parsed.value?.weeks.some((item) => String(item.value) === week.value)) {
+        week.value = initialWeek;
+      }
+      activeDay.value = resolveGraduateActiveDay(parsed.value, week.value || initialWeek, calendar.value);
+      loadScheduleEdits();
+      scheduleSavedAt.value = Date.now();
+      if (calendar.value) writeCache(calendarCacheKey(), calendar.value);
+      saveScheduleCache();
+      saveLastState();
+      return;
+    }
     const r: any = await jwxtApi.schedule({ semester: semester.value, week: week.value });
     parsed.value = r.parsed;
     if (!semester.value) semester.value = parsed.value?.currentSemester ?? "";
@@ -1357,6 +1595,7 @@ function hasScheduleEditAuth() {
 
 function canUseScheduleEdit() {
   const client = detectClientPlatform();
+  if (isGraduateSource.value) return false;
   return (client === "android" || client === "ios" || client === "harmony") && hasScheduleEditAuth();
 }
 
@@ -1607,6 +1846,10 @@ function clampSlot(value: number) {
 }
 
 function loadScheduleEdits() {
+  if (!canUseScheduleEdit()) {
+    scheduleEdits.value = emptyScheduleEdits();
+    return Promise.resolve();
+  }
   if (scheduleEditsLoadPromise) return scheduleEditsLoadPromise;
   const sem = semester.value || parsed.value?.currentSemester || "current";
   scheduleEditsLoadPromise = (async () => {
@@ -1680,6 +1923,7 @@ function allKnownScheduleSources() {
 
 function selectedScheduleDiffers(data: ScheduleResult) {
   const semesterDiffers = Boolean(semester.value && data.currentSemester && semester.value !== data.currentSemester);
+  if (isGraduateSource.value) return semesterDiffers;
   const weekDiffers = Boolean(week.value && data.currentWeek && String(week.value) !== String(data.currentWeek));
   return semesterDiffers || weekDiffers;
 }
@@ -1771,8 +2015,10 @@ function dayCourseBlockStyle(block: WeekCourseBlock) {
 
 function scheduleCacheKey(sem = semester.value, wk = week.value) {
   const s = sem || parsed.value?.currentSemester || "current";
-  const w = wk || calendar.value?.currentWeek || parsed.value?.currentWeek || "current";
-  return jwxtScopedStorageKey("cpu-schedule-cache-v3", s, w);
+  const w = isGraduateSource.value
+    ? "all"
+    : (wk || calendar.value?.currentWeek || parsed.value?.currentWeek || "current");
+  return jwxtScopedStorageKey("cpu-schedule-cache-v3", props.source, s, w);
 }
 
 function readCache<T>(key: string): CacheEnvelope<T> | null {
@@ -1816,14 +2062,26 @@ function isStale(savedAt: number) {
   return !savedAt || Date.now() - savedAt > CACHE_TTL;
 }
 
+function calendarCacheKey() {
+  return jwxtScopedStorageKey(CALENDAR_CACHE_BASE, props.source);
+}
+
+function lastStateCacheKey() {
+  return jwxtScopedStorageKey(LAST_STATE_BASE, props.source);
+}
+
+function lastScheduleCacheKey() {
+  return jwxtScopedStorageKey(LAST_CACHE_BASE, props.source);
+}
+
 function restoreCachedCalendar() {
-  const cached = readCache<CalendarResult>(jwxtScopedStorageKey(CALENDAR_CACHE_BASE));
+  const cached = readCache<CalendarResult>(calendarCacheKey());
   if (cached?.data) calendar.value = hydrateCalendar(cached.data);
 }
 
 function restoreLastState() {
   try {
-    const key = jwxtScopedStorageKey(LAST_STATE_BASE);
+    const key = lastStateCacheKey();
     if (!key) return;
     const raw = localStorage.getItem(key);
     if (!raw) return;
@@ -1839,7 +2097,7 @@ function restoreLastState() {
 
 function saveLastState() {
   try {
-    const key = jwxtScopedStorageKey(LAST_STATE_BASE);
+    const key = lastStateCacheKey();
     if (!key) return;
     localStorage.setItem(key, JSON.stringify({
       semester: semester.value,
@@ -1854,7 +2112,7 @@ function saveLastState() {
 
 function restoreLastScheduleCache() {
   try {
-    const lastKey = jwxtScopedStorageKey(LAST_CACHE_BASE);
+    const lastKey = lastScheduleCacheKey();
     if (!lastKey) return false;
     const key = localStorage.getItem(lastKey);
     if (!key) return false;
@@ -1875,9 +2133,21 @@ function applyScheduleCache(key: string) {
   if (!cached?.data) return false;
   rememberScheduleCache(key, cached);
   parsed.value = cached.data;
+  if (isGraduateSource.value) {
+    const normalized = normalizeIncomingScheduleData(
+      { parsed: cached.data, source: graduateSourceMeta.value, calendar: calendar.value },
+      "graduate",
+    );
+    parsed.value = normalized.parsed;
+    if (normalized.calendar) calendar.value = normalized.calendar;
+  }
   scheduleSavedAt.value = cached.savedAt;
   if (!semester.value) semester.value = cached.data.currentSemester || "";
-  if (!week.value) week.value = String(cached.data.currentWeek || "");
+  if (!week.value) {
+    week.value = isGraduateSource.value
+      ? resolveGraduateInitialWeek(parsed.value, calendar.value)
+      : String(cached.data.currentWeek || "");
+  }
   loadScheduleEdits();
   prewarmAdjacentWeekCaches();
   return true;
@@ -1887,11 +2157,12 @@ function saveScheduleCache() {
   if (!parsed.value) return;
   const key = scheduleCacheKey(parsed.value.currentSemester || semester.value, week.value || parsed.value.currentWeek);
   writeScheduleCache(key, parsed.value);
-  const lastKey = jwxtScopedStorageKey(LAST_CACHE_BASE);
+  const lastKey = lastScheduleCacheKey();
   try { if (lastKey && key) localStorage.setItem(lastKey, key); } catch { /* ignore */ }
 }
 
 function prewarmAdjacentWeekCaches() {
+  if (isGraduateSource.value) return;
   if (!parsed.value || !semester.value) return;
   const current = currentWeekValue();
   [nextWeekValueFrom(current, -1), nextWeekValueFrom(current, 1)]
@@ -1900,6 +2171,7 @@ function prewarmAdjacentWeekCaches() {
 }
 
 function prewarmScheduleCacheForWeek(wk: string) {
+  if (isGraduateSource.value) return;
   const key = scheduleCacheKey(parsed.value?.currentSemester || semester.value, wk);
   if (!key) return;
   const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);

@@ -111,7 +111,7 @@ watch(() => route.fullPath, async () => {
   await reload();
 }, { immediate: true });
 
-async function reload() {
+async function reload(options: { scrollToTop?: boolean } = {}) {
   loading.value = true;
   try {
     const slug = String(route.params.slug);
@@ -152,18 +152,22 @@ async function reload() {
     total.value = normal.total;
   } finally {
     loading.value = false;
-    await restoreScrollIfNeeded();
+    if (pendingRestoreState) {
+      await restoreScrollIfNeeded();
+    } else if (options.scrollToTop) {
+      await scrollToTop();
+    }
   }
 }
 
 function onPage(p: number) {
   page.value = p;
-  reload();
+  void reload({ scrollToTop: true });
 }
 
 function onSortChange() {
   page.value = 1;
-  reload();
+  void reload({ scrollToTop: true });
 }
 
 function goPost() {
@@ -186,6 +190,16 @@ async function restoreScrollIfNeeded() {
   });
   clearForumListRestoreState(route.fullPath);
   pendingRestoreState = null;
+}
+
+async function scrollToTop() {
+  await nextTick();
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "auto" });
+      resolve();
+    });
+  });
 }
 
 function persistRestoreState() {

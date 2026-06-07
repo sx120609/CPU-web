@@ -21,24 +21,6 @@
         <el-option v-for="s in semesters" :key="s.value" :value="s.value" :label="s.label" />
       </el-select>
       <div class="top-actions">
-        <div v-if="jwxt.isLoggedIn || parsed" class="view-switch source-switch" aria-label="切换课表来源">
-          <button
-            type="button"
-            :class="{ active: scheduleSource === 'jwxt' }"
-            title="本科生课表"
-            @click="switchToJwxtSchedule"
-          >
-            本
-          </button>
-          <button
-            type="button"
-            :class="{ active: isGraduateSource }"
-            title="研究生课表"
-            @click="switchToGraduateSchedule"
-          >
-            研
-          </button>
-        </div>
         <div v-if="parsed" class="view-switch" aria-label="切换课表视图">
           <button type="button" :class="{ active: viewMode === 'day' }" @click="setViewMode('day')">日</button>
           <button type="button" :class="{ active: viewMode === 'week' }" @click="setViewMode('week')">周</button>
@@ -297,7 +279,7 @@
       <el-icon class="big"><Lock /></el-icon>
       <h2>需要先登录教务</h2>
       <p>登录后可快速查看课表，也可以把这个页面加到桌面方便下次打开。学校密码和验证码不会保存。</p>
-      <p class="scope-note">目前课表功能主要支持<b>本科生</b>账号，其他账号暂时可能拿不到完整数据。</p>
+      <p class="scope-note">{{ scheduleLoginScopeText }}</p>
       <el-button type="primary" size="large" @click="$router.push({ name: 'jwxt', query: { redirect: '/schedule' } })">
         前往登录
       </el-button>
@@ -496,9 +478,9 @@
               v-if="isGraduateDebugSource"
               type="primary"
               plain
-              @click="returnToJwxtSchedule"
+              @click="returnToPrimarySchedule"
             >
-              回到本科教务课表
+              退出调试样例
             </el-button>
           </div>
         </div>
@@ -756,6 +738,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Aim, ArrowLeft, ArrowRight, Download, Iphone, Loading, Lock, Moon, MoreFilled, Picture, QuestionFilled, Refresh, Tools } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
+import { useAuthStore } from "@/stores/auth";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
 import { jwxtScopedStorageKey } from "@/utils/jwxtCache";
@@ -849,6 +832,7 @@ interface SchedulePageModel {
   weekCourseBlocks: WeekCourseBlock[];
 }
 
+const auth = useAuthStore();
 const jwxt = useJwxtStore();
 const parsed = ref<ScheduleResult | null>(null);
 const calendar = ref<CalendarResult | null>(null);
@@ -985,6 +969,12 @@ let widgetInstructionTimer = 0;
 let androidUpdateTimer = 0;
 let androidAppUpdatePromptTimer = 0;
 let scheduleBackgroundPreviewUrl = "";
+const prefersGraduateIdentity = computed(() => auth.academicIdentity === "graduate");
+const scheduleLoginScopeText = computed(() => (
+  prefersGraduateIdentity.value
+    ? "当前登录会按研究生身份读取课表；研究生教务其他能力后续补齐。"
+    : "当前登录会按本科生身份读取课表和完整教务数据。"
+));
 type WidgetMenuPlatform = "ios" | "android" | "android-old";
 interface AndroidWidgetBridge {
   getVersionCode?: () => number;
@@ -995,6 +985,11 @@ interface AndroidWidgetBridge {
   openExternalUrl?: (url: string) => void;
   supportsInAppApkDownload?: () => boolean;
   downloadAndInstallApk?: (url: string, fileName: string) => boolean;
+}
+
+function scheduleStorageScope() {
+  if (scheduleSource.value === "graduate" || scheduleSource.value === "graduate-debug") return "graduate";
+  return prefersGraduateIdentity.value ? "graduate" : "undergraduate";
 }
 async function openInstallPrompt() {
   const inApp = detectInAppBrowser();
@@ -1077,6 +1072,7 @@ async function loadGraduateSchedule(targetSemester?: string) {
     parsed.value = normalizedParsed;
     calendar.value = fallbackCalendar;
     scheduleSource.value = "graduate";
+    writeCache(calendarCacheKey(), calendar.value);
     graduateSourceMeta.value = result.source ?? { mode: "live" };
     semester.value = normalizedParsed?.currentSemester ?? "";
     week.value = initialWeek;
@@ -1108,6 +1104,7 @@ async function loadGraduateDebugSchedule(targetSemester?: string) {
     parsed.value = normalizedParsed;
     calendar.value = fallbackCalendar;
     scheduleSource.value = "graduate-debug";
+    writeCache(calendarCacheKey(), calendar.value);
     graduateSourceMeta.value = {
       ...(result.source ?? {}),
       mode: "debug",
@@ -1126,7 +1123,7 @@ async function loadGraduateDebugSchedule(targetSemester?: string) {
   }
 }
 
-async function returnToJwxtSchedule() {
+async function returnToPrimarySchedule() {
   graduateSourceMeta.value = null;
   parsed.value = null;
   calendar.value = null;
@@ -1134,8 +1131,13 @@ async function returnToJwxtSchedule() {
   week.value = "";
   scheduleSavedAt.value = 0;
   scheduleEdits.value = emptyScheduleEdits();
-  scheduleSource.value = "jwxt";
+  scheduleSource.value = prefersGraduateIdentity.value ? "graduate" : "jwxt";
   if (jwxt.isLoggedIn) {
+    if (prefersGraduateIdentity.value) {
+      await loadGraduateSchedule();
+      ElMessage.success("已回到研究生正式课表");
+      return;
+    }
     await loadCalendar();
     await loadSchedule(true);
     ElMessage.success("已切回本科教务课表");
@@ -1145,21 +1147,7 @@ async function returnToJwxtSchedule() {
   calendar.value = null;
   semester.value = "";
   week.value = "";
-  ElMessage.info("已退出研究生课表");
-}
-
-async function switchToGraduateSchedule() {
-  if (scheduleSource.value === "graduate") return;
-  if (!jwxt.isLoggedIn) {
-    ElMessage.warning("请先完成教务授权，再切换研究生课表");
-    return;
-  }
-  await loadGraduateSchedule();
-}
-
-async function switchToJwxtSchedule() {
-  if (scheduleSource.value === "jwxt") return;
-  await returnToJwxtSchedule();
+  ElMessage.info("已退出研究生调试样例");
 }
 
 function openGradSystemDebug() {
@@ -1640,6 +1628,7 @@ onMounted(async () => {
   document.documentElement.classList.add("schedule-scroll-lock");
   document.body.classList.add("schedule-scroll-lock");
   jwxt.hydrate();
+  scheduleSource.value = prefersGraduateIdentity.value ? "graduate" : "jwxt";
   hasCreds.value = hasSavedCreds();
   syncNetworkStatus();
   restoreScheduleTheme();
@@ -1674,8 +1663,12 @@ onMounted(async () => {
         finally { autoLoading.value = false; }
       }
       if (jwxt.isLoggedIn) {
-        await loadCalendar();
-        await loadSchedule();
+        if (prefersGraduateIdentity.value) {
+          await loadGraduateSchedule();
+        } else {
+          await loadCalendar();
+          await loadSchedule();
+        }
       }
     } catch {
       /* Keep visible cache when background sync fails. */
@@ -1854,7 +1847,7 @@ async function loadCalendar() {
   try {
     const r: any = await jwxtApi.calendar();
     calendar.value = hydrateCalendar(r.parsed);
-    writeCache(jwxtScopedStorageKey(CALENDAR_CACHE_BASE), calendar.value);
+    writeCache(calendarCacheKey(), calendar.value);
     if (calendar.value?.currentWeek && !week.value) week.value = String(calendar.value.currentWeek);
   } catch { /* calendar is best effort */ }
 }
@@ -2381,8 +2374,12 @@ async function submitCaptcha() {
     restoreLastState();
     restoreCachedCalendar();
     restoreLastScheduleCache();
-    await loadCalendar();
-    await loadSchedule(true);
+    if (prefersGraduateIdentity.value) {
+      await loadGraduateSchedule();
+    } else {
+      await loadCalendar();
+      await loadSchedule(true);
+    }
   } finally {
     captchaSubmitting.value = false;
   }
@@ -2787,6 +2784,7 @@ function hasScheduleEditAuth() {
 
 function canUseScheduleEdit() {
   const client = detectClientPlatform();
+  if (scheduleSource.value === "graduate" || scheduleSource.value === "graduate-debug") return false;
   return (client === "android" || client === "ios" || client === "harmony") && hasScheduleEditAuth();
 }
 
@@ -3037,6 +3035,10 @@ function clampSlot(value: number) {
 }
 
 function loadScheduleEdits() {
+  if (!canUseScheduleEdit()) {
+    scheduleEdits.value = emptyScheduleEdits();
+    return Promise.resolve();
+  }
   if (scheduleEditsLoadPromise) return scheduleEditsLoadPromise;
   const sem = semester.value || parsed.value?.currentSemester || "current";
   scheduleEditsLoadPromise = (async () => {
@@ -3376,8 +3378,10 @@ function dayCourseBlockStyle(block: WeekCourseBlock) {
 
 function scheduleCacheKey(sem = semester.value, wk = week.value) {
   const s = sem || parsed.value?.currentSemester || "current";
-  const w = wk || calendar.value?.currentWeek || parsed.value?.currentWeek || "current";
-  return jwxtScopedStorageKey("cpu-schedule-cache-v3", s, w);
+  const w = scheduleStorageScope() === "graduate"
+    ? "all"
+    : (wk || calendar.value?.currentWeek || parsed.value?.currentWeek || "current");
+  return jwxtScopedStorageKey("cpu-schedule-cache-v3", scheduleStorageScope(), s, w);
 }
 
 function readCache<T>(key: string): CacheEnvelope<T> | null {
@@ -3421,14 +3425,26 @@ function isStale(savedAt: number) {
   return !savedAt || Date.now() - savedAt > CACHE_TTL;
 }
 
+function calendarCacheKey() {
+  return jwxtScopedStorageKey(CALENDAR_CACHE_BASE, scheduleStorageScope());
+}
+
+function lastStateCacheKey() {
+  return jwxtScopedStorageKey(LAST_STATE_BASE, scheduleStorageScope());
+}
+
+function lastScheduleCacheKey() {
+  return jwxtScopedStorageKey(LAST_CACHE_BASE, scheduleStorageScope());
+}
+
 function restoreCachedCalendar() {
-  const cached = readCache<CalendarResult>(jwxtScopedStorageKey(CALENDAR_CACHE_BASE));
+  const cached = readCache<CalendarResult>(calendarCacheKey());
   if (cached?.data) calendar.value = hydrateCalendar(cached.data);
 }
 
 function restoreLastState() {
   try {
-    const key = jwxtScopedStorageKey(LAST_STATE_BASE);
+    const key = lastStateCacheKey();
     if (!key) return;
     const raw = localStorage.getItem(key);
     if (!raw) return;
@@ -3444,7 +3460,7 @@ function restoreLastState() {
 
 function saveLastState() {
   try {
-    const key = jwxtScopedStorageKey(LAST_STATE_BASE);
+    const key = lastStateCacheKey();
     if (!key) return;
     localStorage.setItem(key, JSON.stringify({
       semester: semester.value,
@@ -3459,7 +3475,7 @@ function saveLastState() {
 
 function restoreLastScheduleCache() {
   try {
-    const lastKey = jwxtScopedStorageKey(LAST_CACHE_BASE);
+    const lastKey = lastScheduleCacheKey();
     if (!lastKey) return false;
     const key = localStorage.getItem(lastKey);
     if (!key) return false;
@@ -3480,9 +3496,20 @@ function applyScheduleCache(key: string) {
   if (!cached?.data) return false;
   rememberScheduleCache(key, cached);
   parsed.value = cached.data;
+  if (scheduleStorageScope() === "graduate") {
+    const fallbackCalendar = hydrateCalendar(calendar.value ?? buildGraduateFallbackCalendar(cached.data));
+    if (fallbackCalendar) {
+      calendar.value = fallbackCalendar;
+      parsed.value = extendScheduleWeeksToCalendar(cached.data, fallbackCalendar);
+    }
+  }
   scheduleSavedAt.value = cached.savedAt;
   if (!semester.value) semester.value = cached.data.currentSemester || "";
-  if (!week.value) week.value = String(cached.data.currentWeek || "");
+  if (!week.value) {
+    week.value = scheduleStorageScope() === "graduate"
+      ? resolveGraduateInitialWeek(parsed.value, calendar.value)
+      : String(cached.data.currentWeek || "");
+  }
   loadScheduleEdits();
   prewarmAdjacentWeekCaches();
   return true;
@@ -3492,11 +3519,12 @@ function saveScheduleCache() {
   if (!parsed.value) return;
   const key = scheduleCacheKey(parsed.value.currentSemester || semester.value, week.value || parsed.value.currentWeek);
   writeScheduleCache(key, parsed.value);
-  const lastKey = jwxtScopedStorageKey(LAST_CACHE_BASE);
+  const lastKey = lastScheduleCacheKey();
   try { if (lastKey && key) localStorage.setItem(lastKey, key); } catch { /* ignore */ }
 }
 
 function prewarmAdjacentWeekCaches() {
+  if (scheduleStorageScope() === "graduate") return;
   if (!parsed.value || !semester.value) return;
   const current = currentWeekValue();
   [nextWeekValueFrom(current, -1), nextWeekValueFrom(current, 1)]
@@ -3505,6 +3533,7 @@ function prewarmAdjacentWeekCaches() {
 }
 
 function prewarmScheduleCacheForWeek(wk: string) {
+  if (scheduleStorageScope() === "graduate") return;
   if (!jwxt.isLoggedIn) return;
   const key = scheduleCacheKey(parsed.value?.currentSemester || semester.value, wk);
   if (!key) return;
