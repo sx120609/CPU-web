@@ -778,7 +778,7 @@ const displayContent = computed(() => {
 const sourceNotice = computed(() => {
   if (!topic.value?.metadata?.sourceUrl) return "";
   if (topic.value?.metadata?.externalPlatform === "weiwall") {
-    return "这是校园墙镜像内容，不参与本站热榜和最新流；如遇评论未补齐或正文异常，可前往原帖查看。";
+    return "这是校园墙镜像内容，不参与本站热榜和最新流；仅补充近 3 天稿件的后续更新，超过三天的稿件不再更新；如遇评论未补齐或正文异常，可前往原帖查看。";
   }
   if (topic.value?.metadata?.externalType === "wechat") {
     return "微信文章可能无法在站内完整展示，建议前往微信阅读全文。";

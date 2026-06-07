@@ -101,7 +101,7 @@
             <div class="wall-icon">📮</div>
             <div class="wall-body">
               <div class="wall-title">单独查看校园墙镜像</div>
-              <div class="wall-desc">外部帖子和评论会持续同步，但不会参与本站热榜和最新流。</div>
+              <div class="wall-desc">外部帖子和评论会持续同步，但仅补充近 3 天稿件的后续更新，超过三天的稿件不再更新。</div>
             </div>
           </div>
         </section>

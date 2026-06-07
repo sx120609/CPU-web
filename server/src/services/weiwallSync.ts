@@ -22,6 +22,7 @@ const WEIWALL_MIN_INTERVAL_SECONDS = 30;
 const WEIWALL_LOCK_MS = 4 * 60_000;
 const WEIWALL_MAX_COMMENT_PAGE_SIZE = 20;
 const WEIWALL_COMMENT_BACKFILL_TOPICS_PER_RUN = 12;
+const WEIWALL_COMMENT_BACKFILL_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 const WEIWALL_TRACE_LIMIT = 40;
 const WEIWALL_BOT_USERNAME = "weiwall_sync_bot";
 const WEIWALL_BOT_NICKNAME = "校园墙同步";
@@ -1755,10 +1756,21 @@ export async function runWeiwallSyncNow() {
         syncResult.replyAuthorIds.forEach((id) => touchedReplyAuthorIds.add(id));
       }
       if (!control.commentFetchStopped) {
+        const backfillCutoff = new Date(Date.now() - WEIWALL_COMMENT_BACKFILL_MAX_AGE_MS);
         const backfillCandidates = await prisma.weiwallTopicMap.findMany({
-          where: latestExternalTopicIds.size
-            ? { externalTopicId: { notIn: [...latestExternalTopicIds] } }
-            : undefined,
+          where: {
+            AND: [
+              latestExternalTopicIds.size
+                ? { externalTopicId: { notIn: [...latestExternalTopicIds] } }
+                : {},
+              {
+                OR: [
+                  { externalCreatedAt: { gte: backfillCutoff } },
+                  { externalCreatedAt: null, createdAt: { gte: backfillCutoff } },
+                ],
+              },
+            ],
+          },
           orderBy: [
             { lastSyncedAt: "asc" },
             { id: "asc" },
