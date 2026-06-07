@@ -27,9 +27,6 @@ const WEIWALL_TRACE_LIMIT = 40;
 const WEIWALL_BOT_USERNAME = "weiwall_sync_bot";
 const WEIWALL_BOT_NICKNAME = "逛逛同步";
 const WEIWALL_AUTH_FLOW_TTL_MS = 15 * 60_000;
-const WEIWALL_HOT_ENTRY_TITLE = "逛逛热榜入口（每 30 分钟更新）";
-const WEIWALL_HOT_ENTRY_INTERVAL_MS = 30 * 60 * 1000;
-const WEIWALL_HOT_ENTRY_SIZE = 10;
 
 type WeiwallUserInfo = {
   uuid?: number | string | null;
@@ -54,15 +51,6 @@ type WeiwallTopicRow = {
   userInfo?: WeiwallUserInfo | null;
   imgs?: string[] | null;
   data?: { imgs?: string[] | null } | null;
-};
-
-type WeiwallHotTopicRow = WeiwallTopicRow & {
-  score?: number | null;
-  schoolInfo?: {
-    schoolName?: string | null;
-    simpleName?: string | null;
-    simpleNameEn?: string | null;
-  } | null;
 };
 
 type WeiwallReplyRow = {
@@ -464,38 +452,6 @@ function renderExternalContent(content: unknown, images: Array<string | null | u
   return "_（外部内容为空）_";
 }
 
-function encodeWeiwallHotTopicsPayload(input: unknown) {
-  return Buffer.from(JSON.stringify(input), "utf8").toString("base64");
-}
-
-function sanitizeWeiwallHotTopicEntry(input: {
-  rank: number;
-  externalTopicId: string;
-  localTopicId?: number | null;
-  title: string;
-  summary?: string;
-  node?: string;
-  score: number;
-  commentCount: number;
-  likeCount: number;
-  sourceUrl: string;
-  targetPath?: string | null;
-}) {
-  return {
-    rank: Math.max(1, Number(input.rank) || 1),
-    externalTopicId: sanitizeWeiwallStorageText(input.externalTopicId, 80),
-    localTopicId: Number(input.localTopicId ?? 0) || null,
-    title: sanitizeWeiwallStorageText(input.title, 120) || "逛逛热帖",
-    summary: sanitizeWeiwallStorageText(input.summary, 160),
-    node: sanitizeWeiwallStorageText(input.node, 32),
-    score: Math.max(0, Number(input.score ?? 0) || 0),
-    commentCount: Math.max(0, Number(input.commentCount ?? 0) || 0),
-    likeCount: Math.max(0, Number(input.likeCount ?? 0) || 0),
-    sourceUrl: sanitizeWeiwallStorageText(input.sourceUrl, 500),
-    targetPath: sanitizeWeiwallStorageText(input.targetPath, 200) || null,
-  };
-}
-
 function summarizeExternalText(input: unknown, max = 60) {
   const text = String(input ?? "")
     .replace(/!\[[^\]]*]\([^)]+\)/g, " ")
@@ -691,12 +647,6 @@ function buildTopicSourceUrl(baseUrl: string, schoolEn: string, topicId: string)
   url.searchParams.set("id", topicId);
   url.searchParams.set("s", schoolEn || "cpu");
   url.searchParams.set("source", "home");
-  return url.toString();
-}
-
-function buildWeiwallHotPageUrl(baseUrl: string, schoolEn: string) {
-  const url = new URL("/pages/index/toptopic", baseUrl || WEIWALL_DEFAULT_BASE_URL);
-  url.searchParams.set("s", schoolEn || "cpu");
   return url.toString();
 }
 
@@ -1022,216 +972,14 @@ async function fetchReadOnlyTopicDetail(
   return (json?.data ?? null) as WeiwallReadOnlyTopicDetail | null;
 }
 
-async function fetchWeiwallHotTopics(row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>) {
-  const json = await weiwallFetchPublicJson(row, "/api/client/topics/top", {
-    school: row.schoolEn || "cpu",
-    page: 1,
-    pageSize: WEIWALL_HOT_ENTRY_SIZE,
-    page_size: WEIWALL_HOT_ENTRY_SIZE,
-  });
-  return Array.isArray(json?.data) ? (json.data as WeiwallHotTopicRow[]) : [];
-}
-
-function buildWeiwallHotEntryContent(input: {
-  baseUrl: string;
-  schoolEn: string;
-  updatedAt: Date;
-  rows: WeiwallHotTopicRow[];
-  localTopicIdByExternalId: Map<string, number>;
-}) {
-  const lines = [
-    "逛逛热榜入口每 30 分钟自动刷新一次。",
-    "",
-    "这里只保留热榜入口，不会把热榜整批同步成新帖。",
-    "",
-    `最近更新：${shortDateTime(input.updatedAt.toISOString())}`,
-    "",
-    "超过 3 天的逛逛稿件不再继续更新；若想查看最新评论或最新状态，请以原帖为准。",
-  ];
-  for (const [index, row] of input.rows.entries()) {
-    const externalTopicId = externalId(row.id);
-    const targetPath = input.localTopicIdByExternalId.get(externalTopicId)
-      ? `/forum/topic/${input.localTopicIdByExternalId.get(externalTopicId)}`
-      : "";
-    const sourceUrl = buildTopicSourceUrl(input.baseUrl, input.schoolEn, externalTopicId);
-    const title = sanitizeWeiwallStorageText(deriveLocalTitle(row), 120).replace(/[\[\]\(\)]/g, " ").trim() || `逛逛热帖 #${index + 1}`;
-    const node = sanitizeWeiwallStorageText(trimTo(row.node, 24), 24);
-    const summary = sanitizeWeiwallStorageText(summarizeExternalText(row.content, 120), 120);
-    lines.push("");
-    lines.push(`${index + 1}. [${title}](${sourceUrl})`);
-    if (node) lines.push(`   分区：${node}`);
-    if (targetPath) lines.push(`   站内：${targetPath}`);
-    if (summary) lines.push(`   摘要：${summary}`);
-  }
-  return lines.join("\n");
-}
-
-async function syncWeiwallHotRankingEntry(
-  row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>,
-  board: Board,
-  botUserId: number,
-) {
-  const existingEntry = await prisma.topic.findFirst({
+async function removeWeiwallHotEntries(boardId: number) {
+  const removed = await prisma.topic.deleteMany({
     where: {
-      boardId: board.id,
+      boardId,
       metadata: { contains: "\"weiwallHotEntry\":true" },
     },
-    select: { id: true, updatedAt: true, createdAt: true },
-    orderBy: { id: "asc" },
   });
-
-  const lastTouchedAt = existingEntry?.updatedAt?.getTime?.() || existingEntry?.createdAt?.getTime?.() || 0;
-  if (lastTouchedAt && Date.now() - lastTouchedAt < WEIWALL_HOT_ENTRY_INTERVAL_MS) return false;
-
-  const rows = await fetchWeiwallHotTopics(row);
-  const externalTopicIds = uniqStrings(rows.map((item) => externalId(item.id)));
-  const localMaps = externalTopicIds.length
-    ? await prisma.weiwallTopicMap.findMany({
-        where: { externalTopicId: { in: externalTopicIds } },
-        select: {
-          externalTopicId: true,
-          localTopicId: true,
-          localTopic: { select: { hidden: true } },
-        },
-      })
-    : [];
-  const localTopicIdByExternalId = new Map<string, number>();
-  for (const item of localMaps) {
-    if (item.localTopic?.hidden) continue;
-    localTopicIdByExternalId.set(item.externalTopicId, item.localTopicId);
-  }
-
-  const updatedAt = new Date();
-  const hotTopics = rows.map((item, index) => {
-    const externalTopicId = externalId(item.id);
-    const localTopicId = localTopicIdByExternalId.get(externalTopicId) ?? null;
-    return sanitizeWeiwallHotTopicEntry({
-      rank: index + 1,
-      externalTopicId,
-      localTopicId,
-      title: deriveLocalTitle(item),
-      summary: summarizeExternalText(item.content, 96),
-      node: trimTo(item.node, 24),
-      score: Math.max(0, Number(item.score ?? 0) || 0),
-      commentCount: Math.max(0, Number(item.commentCount ?? 0) || 0),
-      likeCount: Math.max(0, Number(item.likeCount ?? 0) || 0),
-      sourceUrl: buildTopicSourceUrl(row.baseUrl, row.schoolEn, externalTopicId),
-      targetPath: localTopicId ? `/forum/topic/${localTopicId}` : null,
-    });
-  });
-  const metadata = JSON.stringify({
-    sourceUrl: buildWeiwallHotPageUrl(row.baseUrl, row.schoolEn),
-    sourceName: "逛逛热榜",
-    publishedAt: updatedAt.toISOString(),
-    external: true,
-    externalType: "weiwall",
-    externalPlatform: "weiwall",
-    externalAuthorName: "逛逛热榜",
-    externalAuthorAvatar: null,
-    weiwallHotEntry: true,
-    refreshMinutes: 30,
-    hotTopicCount: rows.length,
-    hotTopicsBase64: encodeWeiwallHotTopicsPayload(hotTopics),
-  });
-  const content = buildWeiwallHotEntryContent({
-    baseUrl: row.baseUrl,
-    schoolEn: row.schoolEn,
-    updatedAt,
-    rows,
-    localTopicIdByExternalId,
-  });
-
-  try {
-    if (!existingEntry) {
-      await prisma.topic.create({
-        data: {
-          boardId: board.id,
-          authorId: botUserId,
-          title: WEIWALL_HOT_ENTRY_TITLE,
-          content,
-          metadata,
-          pinned: true,
-          locked: true,
-          hidden: false,
-          likeCount: 0,
-          viewCount: 0,
-          lastReplyAt: updatedAt,
-          lastReplyById: botUserId,
-          createdAt: updatedAt,
-        },
-      });
-      return true;
-    }
-
-    await prisma.topic.update({
-      where: { id: existingEntry.id },
-      data: {
-        authorId: botUserId,
-        title: WEIWALL_HOT_ENTRY_TITLE,
-        content,
-        metadata,
-        pinned: true,
-        locked: true,
-        hidden: false,
-        lastReplyAt: updatedAt,
-        lastReplyById: botUserId,
-      },
-    });
-    return true;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn("[weiwall-sync] hot entry create/update failed, fallback to content-only entry:", message);
-    const fallbackMetadata = JSON.stringify({
-      sourceUrl: buildWeiwallHotPageUrl(row.baseUrl, row.schoolEn),
-      sourceName: "逛逛热榜",
-      publishedAt: updatedAt.toISOString(),
-      external: true,
-      externalType: "weiwall",
-      externalPlatform: "weiwall",
-      externalAuthorName: "逛逛热榜",
-      externalAuthorAvatar: null,
-      weiwallHotEntry: true,
-      refreshMinutes: 30,
-      hotTopicCount: rows.length,
-    });
-
-    if (!existingEntry) {
-      await prisma.topic.create({
-        data: {
-          boardId: board.id,
-          authorId: botUserId,
-          title: WEIWALL_HOT_ENTRY_TITLE,
-          content,
-          metadata: fallbackMetadata,
-          pinned: true,
-          locked: true,
-          hidden: false,
-          likeCount: 0,
-          viewCount: 0,
-          lastReplyAt: updatedAt,
-          lastReplyById: botUserId,
-          createdAt: updatedAt,
-        },
-      });
-      return true;
-    }
-
-    await prisma.topic.update({
-      where: { id: existingEntry.id },
-      data: {
-        authorId: botUserId,
-        title: WEIWALL_HOT_ENTRY_TITLE,
-        content,
-        metadata: fallbackMetadata,
-        pinned: true,
-        locked: true,
-        hidden: false,
-        lastReplyAt: updatedAt,
-        lastReplyById: botUserId,
-      },
-    });
-    return true;
-  }
+  return removed.count > 0;
 }
 
 async function finalizeWeiwallEntryChanges(boardId: number, botUserId: number) {
@@ -2091,19 +1839,18 @@ export async function runWeiwallSyncNow() {
       return result;
     }
     const botUser = await ensureWeiwallBotUser(prisma);
-    let hotEntryChanged = false;
-    try {
-      hotEntryChanged = await syncWeiwallHotRankingEntry(configRow, board, botUser.id);
-    } catch (error) {
-      console.warn("[weiwall-sync] hot entry update failed:", error);
-    }
+    const hotEntryChanged = await removeWeiwallHotEntries(board.id);
     if (!configRow.token) {
       result.error = "token missing";
       await prisma.weiwallSyncConfig.update({
         where: { id: configRow.id },
         data: { lastRunAt: new Date(), lastRunOk: false, lastError: "未配置 token" },
       });
-      if (hotEntryChanged) await finalizeWeiwallEntryChanges(board.id, botUser.id);
+      if (hotEntryChanged) {
+        await refreshBoardTopicCount(board.id);
+        await invalidateBoardCaches();
+        await invalidateForumCaches();
+      }
       return result;
     }
     await maybeNotifyWeiwallTokenExpired(configRow.token);

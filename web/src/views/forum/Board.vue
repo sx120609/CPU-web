@@ -100,8 +100,7 @@ const fallbackBoardIcon = computed(() => {
   return "💬";
 });
 const orderedPinnedList = computed(() => {
-  if (board.value?.slug !== "campus-wall") return pinnedList.value;
-  return [...pinnedList.value].sort((a, b) => Number(Boolean(b?.metadata?.weiwallHotEntry)) - Number(Boolean(a?.metadata?.weiwallHotEntry)));
+  return pinnedList.value.filter((item) => !item?.metadata?.weiwallHotEntry);
 });
 
 watch(() => route.fullPath, async () => {
@@ -148,8 +147,8 @@ async function reload() {
       total.value = 0;
       return;
     }
-    pinnedList.value = pins?.list ?? [];
-    list.value = normal.list;
+    pinnedList.value = (pins?.list ?? []).filter((item) => !item?.metadata?.weiwallHotEntry);
+    list.value = normal.list.filter((item: any) => !item?.metadata?.weiwallHotEntry);
     total.value = normal.total;
   } finally {
     loading.value = false;

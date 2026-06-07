@@ -71,8 +71,7 @@
             <router-link v-if="topic.author?.id" :to="`/u/${topic.author.id}`">{{ topic.author?.nickname }}</router-link>
             <span v-else>{{ topic.author?.nickname }}</span>
             <el-tag v-if="topic.isAnonymous" size="small" type="warning" effect="plain">匿名发布</el-tag>
-            <el-tag v-if="isWeiwallHotEntry" size="small" type="danger">逛逛热榜</el-tag>
-            <el-tag v-else-if="topic.metadata?.externalPlatform === 'weiwall'" size="small" type="warning">逛逛同步</el-tag>
+            <el-tag v-if="topic.metadata?.externalPlatform === 'weiwall'" size="small" type="warning">逛逛同步</el-tag>
             <el-tag v-else-if="topic.author?.role === 'bot'" size="small" type="warning">公告同步</el-tag>
             <el-tag v-else-if="topic.author?.role === 'admin'" size="small" type="danger">管理员</el-tag>
             <UserModerationActions
@@ -88,14 +87,9 @@
             真实作者：{{ topic.realAuthor.nickname }}<template v-if="topic.realAuthor.username"> @{{ topic.realAuthor.username }}</template>
           </div>
           <div class="meta">
-            <template v-if="isWeiwallHotEntry">
-              逛逛热榜入口 · 每 {{ weiwallHotRefreshMinutes }} 分钟刷新<template v-if="weiwallHotUpdatedLabel"> · 最近更新 {{ weiwallHotUpdatedLabel }}</template>
-            </template>
-            <template v-else>
-              发表于 {{ fmtDate(topic.createdAt) }}
-              <template v-if="topic.editCount && topic.editCount > 0"> · 已编辑 {{ topic.editCount }} 次</template>
-              · 热度 {{ hotScore }} · 浏览 {{ topic.viewCount }} · 回复 {{ topic.replyCount }}
-            </template>
+            发表于 {{ fmtDate(topic.createdAt) }}
+            <template v-if="topic.editCount && topic.editCount > 0"> · 已编辑 {{ topic.editCount }} 次</template>
+            · 热度 {{ hotScore }} · 浏览 {{ topic.viewCount }} · 回复 {{ topic.replyCount }}
           </div>
         </div>
         <div v-if="metaPrice !== undefined" class="meta-price">¥ {{ metaPrice }}</div>
@@ -121,7 +115,7 @@
         </span>
         <a :href="topic.metadata.sourceUrl" target="_blank" class="src-link">
           <el-icon><Link /></el-icon>
-          {{ isWeiwallHotEntry ? '打开逛逛热榜' : topic.metadata?.externalPlatform === 'weiwall' ? '前往逛逛原帖' : topic.metadata?.externalType === 'wechat' ? '前往微信阅读全文' : '在学校原站查看' }}
+          {{ topic.metadata?.externalPlatform === 'weiwall' ? '前往逛逛原帖' : topic.metadata?.externalType === 'wechat' ? '前往微信阅读全文' : '在学校原站查看' }}
         </a>
       </div>
       <div v-if="topic.metadata?.ratings" class="extra-bar ratings">
@@ -195,56 +189,19 @@
         <p>这篇稿件已提交人工复核，当前仅你自己和管理员可见。请耐心等待审核结果。</p>
       </div>
 
-      <section v-if="isWeiwallHotEntry" class="weiwall-hot-panel">
-        <div class="weiwall-hot-hero">
-          <div>
-            <p class="weiwall-hot-eyebrow">逛逛实时热榜</p>
-            <h3>只保留入口，不把热榜刷屏进站内</h3>
-            <p>{{ weiwallHotIntro }}</p>
-          </div>
-        </div>
+      <MarkdownView :content="displayContent" class="post-body topic-markdown" clickable-images media-loading="eager" />
 
-        <div v-if="weiwallHotTopics.length" class="weiwall-hot-list">
-          <article
-            v-for="item in weiwallHotTopics"
-            :key="`${item.rank}-${item.externalTopicId}`"
-            class="weiwall-hot-item"
-            :class="{ top3: item.rank <= 3 }"
-          >
-            <div class="weiwall-hot-rank">#{{ item.rank }}</div>
-            <div class="weiwall-hot-main">
-              <div class="weiwall-hot-title-row">
-                <button type="button" class="weiwall-hot-title" @click="openWeiwallHotTarget(item)">
-                  {{ item.title }}
-                </button>
-                <span v-if="item.node" class="weiwall-hot-node">{{ item.node }}</span>
-              </div>
-              <p v-if="item.summary" class="weiwall-hot-summary">{{ item.summary }}</p>
-            </div>
-            <button type="button" class="weiwall-hot-action" @click="openWeiwallHotTarget(item)">
-              {{ item.targetPath ? "查看站内镜像" : "前往原帖" }}
-            </button>
-          </article>
-        </div>
-        <el-empty v-else description="当前逛逛热榜暂时为空" />
-      </section>
-      <MarkdownView v-else :content="displayContent" class="post-body topic-markdown" clickable-images media-loading="eager" />
-
-      <footer v-if="!isWeiwallHotEntry" class="post-foot">
+      <footer class="post-foot">
         <el-button :type="liked ? 'primary' : 'default'" :icon="Star" @click="onLike">
           {{ liked ? '已点赞' : '点赞' }} · {{ topic.likeCount }}
         </el-button>
         <el-button :icon="ChatLineRound" @click="openReplyDialog">回复 · {{ topic.replyCount }}</el-button>
         <el-button @click="shareDialogOpen = true">分享</el-button>
       </footer>
-      <footer v-else class="post-foot post-foot-entry">
-        <el-button type="primary" @click="openWeiwallHotPage">打开逛逛热榜</el-button>
-        <el-button @click="shareDialogOpen = true">分享入口</el-button>
-      </footer>
     </article>
 
     <!-- 回复列表 -->
-    <section v-if="!isWeiwallHotEntry" class="replies cpu-card" ref="repliesEl">
+    <section class="replies cpu-card" ref="repliesEl">
       <h3 class="cpu-section-title">{{ topic.replyCount }} 条回复</h3>
       <div v-if="repliesLoading" class="replies-loading" aria-busy="true">
         <el-skeleton animated :rows="3" />
@@ -674,9 +631,8 @@ const REPLY_MAX = 10000;
 const metaPrice = computed(() => topic.value?.metadata?.price);
 const hotScore = computed(() => Math.round((topic.value?.likeCount ?? 0) * 5 + (topic.value?.replyCount ?? 0) * 3 + (topic.value?.viewCount ?? 0) * 0.03));
 const boardDisplayName = computed(() => topic.value?.board?.slug === "campus-wall" ? "逛逛" : (topic.value?.board?.name || "药大拾间"));
-const displayTopicTitle = computed(() => isWeiwallHotEntry.value ? "逛逛热榜入口（每 30 分钟更新）" : (topic.value?.title || ""));
+const displayTopicTitle = computed(() => topic.value?.title || "");
 const externalSourceName = computed(() => {
-  if (isWeiwallHotEntry.value) return "逛逛热榜";
   return String(topic.value?.metadata?.sourceName || "").trim() || "逛逛";
 });
 const isReadOnly = computed(() => topic.value?.board?.readOnly);
@@ -819,117 +775,13 @@ const shareCardQrDataUrl = computed(() => {
   if (!topic.value) return "";
   return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(shareLandingUrl.value)}`;
 });
-type WeiwallHotTopicEntry = {
-  rank: number;
-  externalTopicId: string;
-  localTopicId?: number | null;
-  title: string;
-  summary?: string;
-  node?: string;
-  score: number;
-  commentCount: number;
-  likeCount: number;
-  sourceUrl: string;
-  targetPath?: string | null;
-};
-function decodeWeiwallHotTopicsPayload(value: unknown) {
-  const text = String(value ?? "").trim();
-  if (!text) return [];
-  try {
-    if (typeof window !== "undefined" && typeof window.atob === "function") {
-      const binary = window.atob(text);
-      const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-      const decoded = new TextDecoder().decode(bytes);
-      const parsed = JSON.parse(decoded);
-      return Array.isArray(parsed) ? parsed : [];
-    }
-  } catch {
-    return [];
-  }
-  return [];
-}
-function parseWeiwallHotTopicsFromContent(content: unknown): WeiwallHotTopicEntry[] {
-  const text = String(content ?? "");
-  if (!text.trim()) return [];
-  const lines = text.split(/\r?\n/);
-  const entries: WeiwallHotTopicEntry[] = [];
-  let current: WeiwallHotTopicEntry | null = null;
-  for (const rawLine of lines) {
-    const line = rawLine.trimEnd();
-    const itemMatch = line.match(/^(\d+)\.\s+\[(.+?)\]\((https?:\/\/[^)]+)\)\s*$/);
-    if (itemMatch) {
-      if (current) entries.push(current);
-      current = {
-        rank: Math.max(1, Number(itemMatch[1]) || entries.length + 1),
-        externalTopicId: "",
-        title: itemMatch[2].trim(),
-        sourceUrl: itemMatch[3].trim(),
-        score: 0,
-        commentCount: 0,
-        likeCount: 0,
-      };
-      continue;
-    }
-    if (!current) continue;
-    const targetMatch = line.match(/^\s*站内：(.+?)\s*$/);
-    if (targetMatch) {
-      current.targetPath = targetMatch[1].trim() || null;
-      continue;
-    }
-    const nodeMatch = line.match(/^\s*分区：(.+?)\s*$/);
-    if (nodeMatch) {
-      current.node = nodeMatch[1].trim();
-      continue;
-    }
-    const summaryMatch = line.match(/^\s*摘要：(.+?)\s*$/);
-    if (summaryMatch) {
-      current.summary = summaryMatch[1].trim();
-    }
-  }
-  if (current) entries.push(current);
-  return entries.filter((item) => item.title && item.sourceUrl);
-}
 const displayContent = computed(() => {
   const content = topic.value?.content ?? "";
   if (!topic.value?.metadata?.sourceUrl) return content;
   return stripCrawlerSourceHeader(content);
 });
-const isWeiwallHotEntry = computed(() => Boolean(topic.value?.metadata?.weiwallHotEntry));
-const weiwallHotTopics = computed<WeiwallHotTopicEntry[]>(() => {
-  const rows = Array.isArray(topic.value?.metadata?.hotTopics)
-    ? topic.value?.metadata?.hotTopics
-    : (topic.value?.metadata?.hotTopicsBase64
-      ? decodeWeiwallHotTopicsPayload(topic.value?.metadata?.hotTopicsBase64)
-      : parseWeiwallHotTopicsFromContent(topic.value?.content));
-  if (!Array.isArray(rows)) return [];
-  return rows.map((item: any, index: number) => ({
-    rank: Math.max(1, Number(item?.rank ?? index + 1) || index + 1),
-    externalTopicId: String(item?.externalTopicId ?? ""),
-    localTopicId: Number(item?.localTopicId ?? 0) || null,
-    title: String(item?.title ?? "").trim() || `逛逛热帖 #${index + 1}`,
-    summary: String(item?.summary ?? "").trim(),
-    node: String(item?.node ?? "").trim(),
-    score: Math.max(0, Number(item?.score ?? 0) || 0),
-    commentCount: Math.max(0, Number(item?.commentCount ?? 0) || 0),
-    likeCount: Math.max(0, Number(item?.likeCount ?? 0) || 0),
-    sourceUrl: String(item?.sourceUrl ?? "").trim(),
-    targetPath: String(item?.targetPath ?? "").trim() || null,
-  })).filter((item) => item.externalTopicId || item.targetPath || item.sourceUrl);
-});
-const weiwallHotUpdatedLabel = computed(() => {
-  const publishedAt = String(topic.value?.metadata?.publishedAt ?? "").trim();
-  return publishedAt ? fmtDate(publishedAt, "MM-DD HH:mm") : "";
-});
-const weiwallHotRefreshMinutes = computed(() => Math.max(1, Number(topic.value?.metadata?.refreshMinutes ?? 30) || 30));
-const weiwallHotIntro = computed(() => {
-  if (!weiwallHotTopics.value.length) return "当前没有抓到可展示的热榜条目，稍后会自动再试。";
-  return "这里只放一个干净入口，你可以直接点进站内镜像，或者回到逛逛原帖继续看。";
-});
 const sourceNotice = computed(() => {
   if (!topic.value?.metadata?.sourceUrl) return "";
-  if (isWeiwallHotEntry.value) {
-    return "这是逛逛热榜入口帖，每 30 分钟刷新一次；这里只放榜单入口，不会把热榜所有文章额外同步进站内。";
-  }
   if (topic.value?.metadata?.externalPlatform === "weiwall") {
     return "这是逛逛镜像内容，不参与本站热榜和最新流；仅补充近 3 天稿件的后续更新，超过三天的稿件不再更新；如遇评论未补齐或正文异常，可前往原帖查看。";
   }
@@ -974,22 +826,6 @@ function goBackFromTopic() {
     return;
   }
   router.push({ name: "forum-latest" });
-}
-
-function openWeiwallHotTarget(item: WeiwallHotTopicEntry) {
-  if (item.targetPath) {
-    router.push(item.targetPath);
-    return;
-  }
-  if (item.sourceUrl) {
-    window.open(item.sourceUrl, "_blank", "noopener,noreferrer");
-  }
-}
-
-function openWeiwallHotPage() {
-  const url = String(topic.value?.metadata?.sourceUrl ?? "").trim();
-  if (!url) return;
-  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 onMounted(async () => { await load(); });
