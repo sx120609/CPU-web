@@ -67,6 +67,8 @@ function updateValue(value: AcademicIdentity) {
 
 .identity-picker.compact {
   gap: 0;
+  width: fit-content;
+  max-width: 100%;
 }
 
 .identity-copy {
@@ -77,48 +79,70 @@ function updateValue(value: AcademicIdentity) {
 .identity-copy b {
   font-size: 13px;
   color: #172033;
+  letter-spacing: 0.02em;
 }
 
 .identity-copy span {
   font-size: 12px;
-  color: #6b7280;
-  line-height: 1.6;
+  color: #667085;
+  line-height: 1.65;
 }
 
 .identity-switch {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+  padding: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(247, 250, 248, 0.98), rgba(241, 245, 249, 0.92));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .identity-picker.compact .identity-switch {
-  gap: 6px;
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(52px, auto));
+  width: fit-content;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .identity-option {
   min-width: 0;
-  border: 1px solid #dce3ee;
-  border-radius: 12px;
-  background: #f8fafc;
+  min-height: 76px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
   color: #475467;
-  padding: 11px 12px;
+  padding: 13px 14px 12px;
   display: grid;
   gap: 4px;
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
 }
 
 .identity-picker.compact .identity-option {
-  min-height: 36px;
-  padding: 0 12px;
+  min-height: 34px;
+  padding: 0 16px;
   place-items: center;
   text-align: center;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
 }
 
 .identity-option strong {
   font-size: 14px;
   color: inherit;
+  line-height: 1.2;
 }
 
 .identity-picker.compact .identity-option strong {
@@ -128,20 +152,30 @@ function updateValue(value: AcademicIdentity) {
 
 .identity-option small {
   font-size: 11px;
-  line-height: 1.5;
+  line-height: 1.55;
   color: inherit;
-  opacity: 0.92;
+  opacity: 0.9;
 }
 
 .identity-option:hover:not(:disabled) {
-  border-color: rgba(22, 135, 118, 0.4);
-  box-shadow: 0 6px 18px rgba(22, 135, 118, 0.08);
+  border-color: rgba(22, 135, 118, 0.22);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  transform: translateY(-1px);
 }
 
 .identity-option.active {
-  border-color: var(--cpu-primary);
-  background: linear-gradient(135deg, rgba(22, 135, 118, 0.12), rgba(232, 163, 23, 0.08));
+  border-color: rgba(22, 135, 118, 0.26);
+  background: linear-gradient(135deg, rgba(22, 135, 118, 0.16), rgba(232, 163, 23, 0.08));
   color: #0f5f52;
+  box-shadow: 0 12px 24px rgba(22, 135, 118, 0.1);
+  transform: translateY(-1px);
+}
+
+.identity-picker.compact .identity-option.active {
+  border-color: transparent;
+  background: linear-gradient(135deg, rgba(22, 135, 118, 0.18), rgba(232, 163, 23, 0.1));
+  box-shadow: 0 6px 14px rgba(22, 135, 118, 0.14);
+  transform: none;
 }
 
 .identity-option:disabled {
@@ -150,8 +184,14 @@ function updateValue(value: AcademicIdentity) {
 }
 
 @media (max-width: 520px) {
+  .identity-switch {
+    padding: 5px;
+    border-radius: 16px;
+  }
+
   .identity-option {
-    padding: 10px;
+    min-height: 72px;
+    padding: 12px;
   }
 }
 </style>

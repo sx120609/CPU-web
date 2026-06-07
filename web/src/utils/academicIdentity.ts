@@ -14,13 +14,13 @@ export const academicIdentityOptions: Array<{
     value: "undergraduate",
     label: "本科生",
     shortLabel: "本",
-    description: "课表、成绩和培养方案等完整教务数据",
+    description: "课表、成绩、培养方案",
   },
   {
     value: "graduate",
     label: "研究生",
     shortLabel: "研",
-    description: "当前正式支持课表，其他教务功能后续补齐",
+    description: "当前先支持课表",
   },
 ];
 

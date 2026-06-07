@@ -972,8 +972,8 @@ let scheduleBackgroundPreviewUrl = "";
 const prefersGraduateIdentity = computed(() => auth.academicIdentity === "graduate");
 const scheduleLoginScopeText = computed(() => (
   prefersGraduateIdentity.value
-    ? "当前登录会按研究生身份读取课表；研究生教务其他能力后续补齐。"
-    : "当前登录会按本科生身份读取课表和完整教务数据。"
+    ? "当前会按研究生身份读取课表；如果你其实是本科生，请先去教务页把读取身份切回“本”。"
+    : "当前会按本科生身份读取课表；如果你其实是研究生，请先去教务页把读取身份切到“研”。"
 ));
 type WidgetMenuPlatform = "ios" | "android" | "android-old";
 interface AndroidWidgetBridge {
@@ -1081,11 +1081,6 @@ async function loadGraduateSchedule(targetSemester?: string) {
     scheduleEdits.value = emptyScheduleEdits();
     await loadScheduleEdits();
     saveLastState();
-    ElMessage.success(
-      graduateSourceMeta.value?.mode === "debug-fallback"
-        ? "研究生实时服务暂不可达，已回退到本地样例"
-        : "已切换到研究生课表",
-    );
   } finally {
     loading.value = false;
   }

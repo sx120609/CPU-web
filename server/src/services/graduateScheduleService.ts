@@ -56,6 +56,26 @@ function isGraduateHtmlResponse(value: string) {
   return /^<!DOCTYPE|^<html/i.test(value) || /<body[\s>]/i.test(value);
 }
 
+function graduateHtmlErrorMessage(raw: string, label: string) {
+  const html = String(raw || "").trim();
+  if (!html) {
+    return `研究生入口暂时没有返回可用的${label}数据，请刷新后重试。`;
+  }
+
+  if (
+    /统一身份认证|CAS|登录|login/i.test(html)
+    && /用户名|学号|工号|密码|captcha|execution|lt/i.test(html)
+  ) {
+    return "当前没有拿到研究生入口的有效登录态。请确认教务身份选的是实际身份：本科生选“本”，研究生选“研”，然后重新连接一次教务。";
+  }
+
+  if (/jsxsd|教务系统|成绩|培养方案/i.test(html)) {
+    return "当前读取入口和你的实际身份可能不一致。请确认教务身份选择正确：本科生选“本”，研究生选“研”，然后重新连接一次教务。";
+  }
+
+  return `研究生入口返回了网页而不是${label}数据。请刷新后重试；如果你切错了身份，请改回实际身份后重新连接教务。`;
+}
+
 function decryptGraduateResponse(raw: string) {
   const trimmed = String(raw ?? "").trim();
   if (!trimmed) return "";
@@ -78,12 +98,12 @@ function decryptGraduateResponse(raw: string) {
 function parseGraduateJson<T>(raw: string, label: string) {
   const decrypted = decryptGraduateResponse(raw);
   if (!decrypted || isGraduateHtmlResponse(decrypted)) {
-    throw Errors.badRequest(`研究生系统返回了非 JSON 的${label}响应，可能需要重新初始化研究生课表会话`);
+    throw Errors.badRequest(graduateHtmlErrorMessage(decrypted || raw, label));
   }
   try {
     return JSON.parse(decrypted) as T;
   } catch {
-    throw Errors.badRequest(`研究生系统${label}响应解析失败`);
+    throw Errors.badRequest(`研究生${label}响应解析失败，请刷新后重试。`);
   }
 }
 

@@ -21,7 +21,7 @@
 
       <AcademicIdentityPicker
         v-model="academicIdentity"
-        label="登录身份"
+        label="教务身份"
         :hint="identityHint"
         class="identity-picker"
       />
@@ -135,14 +135,13 @@ const loginHint = computed(() => {
   if (site.features.forum) uses.push("发帖");
   if (site.features.coursereview) uses.push("课评");
   uses.push("消息通知");
-  const identityText = academicIdentity.value === "graduate"
-    ? "研究生身份会优先接入研究生课表，本科生能力后续逐步补齐。"
-    : "本科生身份会接入完整教务数据。";
-  return `完成身份确认后会自动创建站内账号，可用于${uses.join("、")}。${identityText}`;
+  return `完成统一认证后会自动创建站内账号，可用于${uses.join("、")}。教务数据会按你选择的本科生 / 研究生身份读取。`;
 });
 
 const identityHint = computed(() => (
-  `当前将按${academicIdentityLabel(academicIdentity.value)}身份接入教务数据，后续课表和教务页面会沿用这个选择。`
+  academicIdentity.value === "graduate"
+    ? `当前按${academicIdentityLabel(academicIdentity.value)}入口登录。研究生请保持“研”；如果你其实是本科生，请切回“本”，否则通常只会读到空课表或不匹配的数据。`
+    : `当前按${academicIdentityLabel(academicIdentity.value)}入口登录。本科生请保持“本”；如果你其实是研究生，请切到“研”，否则可能读不到研究生课表。`
 ));
 
 onMounted(async () => {

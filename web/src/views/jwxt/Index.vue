@@ -3,7 +3,7 @@
     <div class="page-head" :class="{ centered: !jwxt.isLoggedIn }">
       <h2>🎓 教务数据</h2>
       <p class="hint">
-        通过学校统一认证查看课表、成绩和培养方案，信息会整理成更方便阅读的样子。
+        {{ pageHintText }}
         学号 / 工号仅用于关联站内账号，<b>学校密码和验证码不会保存</b>。
       </p>
     </div>
@@ -27,7 +27,7 @@
         <el-icon class="lock-icon"><Lock /></el-icon>
         <div>
           <h3>授权读取教务数据</h3>
-          <p>登录后可查看课表、成绩等信息</p>
+          <p>{{ loginCardHintText }}</p>
         </div>
       </div>
 
@@ -128,7 +128,7 @@
             <div class="session-title">已连接学校教务系统</div>
             <div class="session-sub">{{ sessionSubText }}</div>
             <div class="session-identity">
-              <span>当前身份</span>
+              <span>读取身份</span>
               <AcademicIdentityPicker v-model="selectedIdentity" compact />
             </div>
           </div>
@@ -235,15 +235,21 @@ const snapping = ref(false);
 const snapResult = ref<{ saved: string[]; errors: string[] } | null>(null);
 
 const isDev = computed(() => import.meta.env.DEV);
-const scopeTipText = computed(() => (
+const pageHintText = computed(() => (
   isGraduateIdentity.value
-    ? "当前按研究生身份读取。现阶段正式支持研究生课表，其余研究生教务能力后续补齐。"
-    : "当前按本科生身份读取，可查看课表、成绩和培养方案等完整教务数据。"
+    ? "通过学校统一认证查看研究生课表，信息会整理成更方便阅读的样子。"
+    : "通过学校统一认证查看课表、成绩和培养方案，信息会整理成更方便阅读的样子。"
+));
+const loginCardHintText = computed(() => (
+  isGraduateIdentity.value ? "登录后可查看研究生课表" : "登录后可查看课表、成绩等信息"
+));
+const scopeTipText = computed(() => (
+  "先选你在学校里的实际身份：本科生选“本”，研究生选“研”。选错时最常见的表现是课表为空，或成绩这类数据读不到。"
 ));
 const identityHint = computed(() => (
   isGraduateIdentity.value
-    ? "研究生模式当前先开放课表；登录后课表页也会自动按研究生课表展示。"
-    : "本科生模式会继续读取成绩、期中成绩、学业完成情况和培养方案。"
+    ? "将按研究生入口读取教务数据，当前先支持课表；如果你其实是本科生，请切回“本”后再连接。"
+    : "将按本科生入口读取教务数据；如果你其实是研究生，请切到“研”后再连接。"
 ));
 const schoolSystemLink = computed(() => (
   isGraduateIdentity.value
@@ -255,8 +261,8 @@ const schoolSystemLabel = computed(() => (
 ));
 const sessionSubText = computed(() => (
   isGraduateIdentity.value
-    ? "当前按研究生身份展示课表；如果课表异常，刷新后重试即可。"
-    : "当前按本科生身份读取数据；如果信息不完整或显示异常，刷新后再试即可。"
+    ? "现在按研究生入口读取课表。选错时，切回正确身份后重新连接一次就行。"
+    : "现在按本科生入口读取教务数据。选错时，切回正确身份后重新连接一次就行。"
 ));
 
 onMounted(async () => {
@@ -404,7 +410,7 @@ function fetchTab(t: DataTab, identity = auth.academicIdentity) {
   const request = (async () => {
     if (identity === "graduate") {
       if (t === "schedule") return jwxtApi.graduateSchedule();
-      throw new Error("当前身份暂不支持该教务能力");
+      throw new Error("研究生身份当前只开放课表，请先在课表页查看。");
     }
     if (t === "schedule") return jwxtApi.schedule();
     if (t === "grades") return jwxtApi.grades();
@@ -635,13 +641,15 @@ async function onProbe() {
 }
 .session-identity {
   margin-top: 10px;
-  display: grid;
-  gap: 6px;
-  max-width: 240px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 .session-identity span {
   font-size: 12px;
   color: #4b5563;
+  white-space: nowrap;
 }
 .session-actions {
   display: flex;
@@ -815,6 +823,10 @@ async function onProbe() {
 
   .session-main {
     width: 100%;
+  }
+
+  .session-identity {
+    gap: 8px;
   }
 
   .session-actions {
