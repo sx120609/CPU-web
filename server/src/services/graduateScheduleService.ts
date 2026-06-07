@@ -8,6 +8,7 @@ import {
 import { fetchAnyCpuText } from "./jwxtClient";
 
 const GRAD_HOST = "ygl.cpu.edu.cn";
+const GRAD_OAUTH_ENTRY_URL = "https://ygl.cpu.edu.cn/gmis5/oauthLogin/zgyk";
 const GRAD_SCHEDULE_PAGE_URL = "https://ygl.cpu.edu.cn/gmis5/student/pygl/xskbcx";
 const GRAD_BINDTERM_URL = "https://ygl.cpu.edu.cn/gmis5/student/default/bindterm";
 const GRAD_SCHEDULE_URL = "https://ygl.cpu.edu.cn/gmis5/student/pygl/py_kbcx_ew";
@@ -165,11 +166,11 @@ function unwrapGraduateTermArray(value: unknown): RawGraduateTermOption[] {
 }
 
 async function warmupGraduateScheduleSession(token: string) {
-  await fetchAnyCpuText(token, GRAD_SCHEDULE_PAGE_URL, {
+  await fetchAnyCpuText(token, GRAD_OAUTH_ENTRY_URL, {
     expectedHost: GRAD_HOST,
     headers: {
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      Referer: GRAD_SCHEDULE_PAGE_URL,
+      Referer: "http://jsxsd.cpu.edu.cn/",
     },
   });
 }

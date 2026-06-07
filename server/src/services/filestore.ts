@@ -15,6 +15,15 @@ const TRUSTED_PROXY_TOKEN = `${Date.now().toString(36)}-${Math.random().toString
 let filestoreProcess: ChildProcess | null = null;
 let startupPromise: Promise<void> | null = null;
 
+type PlatformFilestoreUser = {
+  userId: number;
+  username: string;
+  nickname: string;
+  role: string;
+  studentId: string;
+  campus: string;
+};
+
 function filestoreRoot() {
   const candidates = [
     path.resolve(process.cwd(), "filestore"),
@@ -60,7 +69,13 @@ async function healthCheck() {
 }
 
 async function trustedProxyCheck() {
-  const status = await requestStatus("/api/admin/me", { "X-CPU-Filestore-Admin": TRUSTED_PROXY_TOKEN });
+  const status = await requestStatus("/api/admin/me", {
+    "X-CPU-Filestore-Admin": TRUSTED_PROXY_TOKEN,
+    "X-CPU-Filestore-User-Id": "0",
+    "X-CPU-Filestore-Username": "system",
+    "X-CPU-Filestore-Display-Name": "system",
+    "X-CPU-Filestore-Role": "admin",
+  });
   return status >= 200 && status < 300;
 }
 
@@ -134,21 +149,23 @@ async function platformUserFromRequest(req: Request) {
     const payload = verifyToken(header.slice(7));
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { id: true, username: true, role: true, status: true },
+      select: { id: true, username: true, nickname: true, role: true, status: true },
     });
     if (!user || user.status === "banned") return null;
     return {
       ...payload,
       studentId: user.username,
+      username: user.username,
+      nickname: user.nickname || user.username,
       role: user.role,
-    };
+    } satisfies PlatformFilestoreUser;
   } catch {
     return null;
   }
 }
 
-async function assertFilestoreAdmin(req: Request, res: Response) {
-  if (isPublicFilestoreRequest(req)) return true;
+async function assertFilestoreAdmin(req: Request, res: Response): Promise<PlatformFilestoreUser | null | false> {
+  if (isPublicFilestoreRequest(req)) return null;
   const user = await platformUserFromRequest(req);
   if (!user?.userId) {
     res.status(401).json({ error: "请先登录平台账号" });
@@ -158,7 +175,11 @@ async function assertFilestoreAdmin(req: Request, res: Response) {
     res.status(403).json({ error: "没有文件收集管理权限" });
     return false;
   }
-  return true;
+  return user;
+}
+
+function encodeFilestoreHeaderValue(value?: string | null) {
+  return encodeURIComponent(String(value ?? ""));
 }
 
 function rewriteText(body: string) {
@@ -190,11 +211,70 @@ function writeHeaders(res: Response, upstream: http.IncomingMessage, rewrittenBo
   if (rewrittenBody) res.setHeader("content-length", String(rewrittenBody.byteLength));
 }
 
-function proxyToFilestore(req: Request, res: Response) {
+async function handleFilestoreUtilityRoute(req: Request, res: Response, user: PlatformFilestoreUser | null) {
+  const target = upstreamPath(req).split("?")[0];
+  if (req.method === "GET" && target === "/api/platform/users") {
+    if (!user?.userId) {
+      res.status(401).json({ error: "请先登录平台账号" });
+      return true;
+    }
+    if (user.role !== "admin") {
+      res.status(403).json({ error: "仅超级管理员可绑定旧任务创建者" });
+      return true;
+    }
+    const q = String(req.query.q ?? "").trim();
+    const take = Math.min(12, Math.max(1, Number(req.query.size ?? 8)));
+    if (!q) {
+      res.json([]);
+      return true;
+    }
+    const rows = await prisma.user.findMany({
+      where: {
+        status: { not: "banned" },
+        OR: [
+          { role: "admin" },
+          { toolPermissions: { some: { toolCode: "file_collect" } } },
+        ],
+        AND: [
+          {
+            OR: [
+              { username: { contains: q, mode: "insensitive" } },
+              { nickname: { contains: q, mode: "insensitive" } },
+            ],
+          },
+        ],
+      },
+      orderBy: [{ id: "asc" }],
+      take,
+      select: {
+        id: true,
+        username: true,
+        nickname: true,
+        role: true,
+      },
+    });
+    res.json(rows.map((item) => ({
+      userId: item.id,
+      username: item.username,
+      displayName: item.nickname || item.username,
+      role: item.role,
+    })));
+    return true;
+  }
+  return false;
+}
+
+function proxyToFilestore(req: Request, res: Response, user: PlatformFilestoreUser | null) {
   const headers = {
     ...req.headers,
     host: `127.0.0.1:${config.filestorePort}`,
     "x-cpu-filestore-admin": TRUSTED_PROXY_TOKEN,
+    ...(user ? {
+      "x-cpu-filestore-user-id": String(user.userId),
+      "x-cpu-filestore-username": encodeFilestoreHeaderValue(user.username),
+      "x-cpu-filestore-display-name": encodeFilestoreHeaderValue(user.nickname || user.username),
+      "x-cpu-filestore-role": user.role,
+    } : {}),
   };
   const upstream = http.request({
     hostname: "127.0.0.1",
@@ -234,8 +314,10 @@ function proxyToFilestore(req: Request, res: Response) {
 export const filestoreProxy: RequestHandler = async (req, res) => {
   try {
     await ensureFilestoreStarted();
-    if (!(await assertFilestoreAdmin(req, res))) return;
-    proxyToFilestore(req, res);
+    const user = await assertFilestoreAdmin(req, res);
+    if (user === false) return;
+    if (await handleFilestoreUtilityRoute(req, res, user)) return;
+    proxyToFilestore(req, res, user);
   } catch (error) {
     res.status(503).send(error instanceof Error ? error.message : "Filestore 暂不可用");
   }

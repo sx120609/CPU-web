@@ -16,7 +16,7 @@ from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from tempfile import SpooledTemporaryFile
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 
 ROOT = Path(__file__).resolve().parent
@@ -229,6 +229,9 @@ def init_db() -> None:
                 folder_template TEXT NOT NULL DEFAULT '{name}-{student_id}',
                 expected_entries TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL DEFAULT 'open',
+                created_by_user_id INTEGER,
+                created_by_username TEXT NOT NULL DEFAULT '',
+                created_by_display_name TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL
             );
 
@@ -262,10 +265,48 @@ def init_db() -> None:
         task_columns = {row["name"] for row in conn.execute("PRAGMA table_info(tasks)").fetchall()}
         if "folder_template" not in task_columns:
             conn.execute("ALTER TABLE tasks ADD COLUMN folder_template TEXT NOT NULL DEFAULT '{name}-{student_id}'")
+        if "created_by_user_id" not in task_columns:
+            conn.execute("ALTER TABLE tasks ADD COLUMN created_by_user_id INTEGER")
+        if "created_by_username" not in task_columns:
+            conn.execute("ALTER TABLE tasks ADD COLUMN created_by_username TEXT NOT NULL DEFAULT ''")
+        if "created_by_display_name" not in task_columns:
+            conn.execute("ALTER TABLE tasks ADD COLUMN created_by_display_name TEXT NOT NULL DEFAULT ''")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_created_by_user_id ON tasks(created_by_user_id)")
+
+def task_creator_user_id(row: sqlite3.Row | dict) -> int | None:
+    try:
+        raw_value = row["created_by_user_id"]
+    except (KeyError, IndexError):
+        return None
+    if raw_value in {None, ""}:
+        return None
+    try:
+        return int(raw_value)
+    except (TypeError, ValueError):
+        return None
 
 
-def task_to_dict(row: sqlite3.Row) -> dict:
+def task_created_by(row: sqlite3.Row | dict) -> dict | None:
+    user_id = task_creator_user_id(row)
+    try:
+        username = str(row["created_by_username"] or "").strip()
+    except (KeyError, IndexError):
+        username = ""
+    try:
+        display_name = str(row["created_by_display_name"] or "").strip() or username
+    except (KeyError, IndexError):
+        display_name = username
+    if user_id is None and not username and not display_name:
+        return None
     return {
+        "userId": user_id,
+        "username": username,
+        "displayName": display_name or "创建者未知",
+    }
+
+
+def task_to_dict(row: sqlite3.Row, include_creator: bool = False) -> dict:
+    payload = {
         "id": row["id"],
         "token": row["token"],
         "title": row["title"],
@@ -280,6 +321,9 @@ def task_to_dict(row: sqlite3.Row) -> dict:
         "createdAt": row["created_at"],
         "submitUrl": f"/submit/{row['token']}",
     }
+    if include_creator:
+        payload["createdBy"] = task_created_by(row)
+    return payload
 
 
 def get_setting(key: str, default: str = "") -> str:
@@ -420,15 +464,67 @@ def current_session(handler: SimpleHTTPRequestHandler) -> str:
     return cookie_value(handler, "filestore_session")
 
 
-def require_admin(handler: SimpleHTTPRequestHandler) -> bool:
+def trusted_proxy_actor(handler: SimpleHTTPRequestHandler) -> dict | None:
     trusted_token = os.environ.get("FILESTORE_TRUSTED_PROXY_TOKEN", "")
-    if trusted_token and secrets.compare_digest(handler.headers.get("X-CPU-Filestore-Admin", ""), trusted_token):
-        return True
+    if not trusted_token or not secrets.compare_digest(handler.headers.get("X-CPU-Filestore-Admin", ""), trusted_token):
+        return None
+    raw_user_id = handler.headers.get("X-CPU-Filestore-User-Id", "").strip()
+    try:
+        user_id = int(raw_user_id)
+    except ValueError:
+        return None
+    username = unquote(handler.headers.get("X-CPU-Filestore-Username", "").strip())
+    display_name = unquote(handler.headers.get("X-CPU-Filestore-Display-Name", "").strip()) or username
+    role = handler.headers.get("X-CPU-Filestore-Role", "").strip() or "user"
+    return {
+        "authType": "platform",
+        "userId": user_id,
+        "username": username,
+        "displayName": display_name,
+        "role": role,
+        "isSuperAdmin": role == "admin",
+    }
+
+
+def current_actor(handler: SimpleHTTPRequestHandler) -> dict | None:
+    proxy_actor = trusted_proxy_actor(handler)
+    if proxy_actor:
+        return proxy_actor
     session = current_session(handler)
-    if not session or session not in SESSIONS:
-        send_json(handler, {"error": "请先登录"}, HTTPStatus.UNAUTHORIZED)
+    if session and session in SESSIONS:
+        return {
+            "authType": "legacy",
+            "userId": None,
+            "username": "filestore-admin",
+            "displayName": "Filestore 管理员",
+            "role": "admin",
+            "isSuperAdmin": True,
+        }
+    return None
+
+
+def require_admin(handler: SimpleHTTPRequestHandler) -> bool:
+    if current_actor(handler):
+        return True
+    send_json(handler, {"error": "请先登录"}, HTTPStatus.UNAUTHORIZED)
+    return False
+
+
+def require_super_admin(handler: SimpleHTTPRequestHandler, actor: dict | None = None) -> dict | None:
+    current = actor or current_actor(handler)
+    if current and current.get("isSuperAdmin"):
+        return current
+    send_json(handler, {"error": "仅超级管理员可操作"}, HTTPStatus.FORBIDDEN)
+    return None
+
+
+def can_access_task(actor: dict | None, row: sqlite3.Row | dict) -> bool:
+    if not actor:
         return False
-    return True
+    if actor.get("isSuperAdmin"):
+        return True
+    owner_user_id = task_creator_user_id(row)
+    return owner_user_id is not None and owner_user_id == actor.get("userId")
 
 
 def send_json(
@@ -614,10 +710,12 @@ def get_task_by_token(token: str) -> dict | None:
     return task_to_dict(row) if row else None
 
 
-def build_task_detail(task_id: int) -> dict | None:
+def build_task_detail(task_id: int, actor: dict | None = None, include_creator: bool = False) -> dict | None:
     with connect() as conn:
         task_row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not task_row:
+            return None
+        if actor is not None and not can_access_task(actor, task_row):
             return None
         rows = conn.execute(
             """
@@ -639,7 +737,7 @@ def build_task_detail(task_id: int) -> dict | None:
             """,
             (task_id,),
         ).fetchall()
-    task = task_to_dict(task_row)
+    task = task_to_dict(task_row, include_creator=include_creator)
     submissions = []
     for row in rows:
         submissions.append(
@@ -820,13 +918,33 @@ def get_file_row(file_id: int) -> sqlite3.Row | None:
                 s.task_id,
                 s.data_json,
                 s.created_at AS submission_created_at,
-                t.title AS task_title
+                t.title AS task_title,
+                t.created_by_user_id,
+                t.created_by_username,
+                t.created_by_display_name
             FROM files f
             JOIN submissions s ON s.id = f.submission_id
             JOIN tasks t ON t.id = s.task_id
             WHERE f.id = ?
             """,
             (file_id,),
+        ).fetchone()
+
+
+def get_submission_row(submission_id: int) -> sqlite3.Row | None:
+    with connect() as conn:
+        return conn.execute(
+            """
+            SELECT
+                s.*,
+                t.created_by_user_id,
+                t.created_by_username,
+                t.created_by_display_name
+            FROM submissions s
+            JOIN tasks t ON t.id = s.task_id
+            WHERE s.id = ?
+            """,
+            (submission_id,),
         ).fetchone()
 
 
@@ -843,6 +961,24 @@ def file_row_to_dict(row: sqlite3.Row) -> dict:
         "taskTitle": row["task_title"],
         "submissionData": json.loads(row["data_json"]),
         "submissionCreatedAt": row["submission_created_at"],
+    }
+
+
+def normalize_owner_binding_payload(payload: dict) -> dict:
+    try:
+        user_id = int(payload.get("userId"))
+    except (TypeError, ValueError):
+        raise ValueError("绑定用户 ID 无效")
+    if user_id <= 0:
+        raise ValueError("绑定用户 ID 无效")
+    username = str(payload.get("username") or "").strip()
+    display_name = str(payload.get("displayName") or "").strip() or username
+    if not username:
+        raise ValueError("绑定用户名不能为空")
+    return {
+        "userId": user_id,
+        "username": username[:60],
+        "displayName": display_name[:60] or username[:60],
     }
 
 
@@ -879,7 +1015,21 @@ class AppHandler(SimpleHTTPRequestHandler):
         if path == "/api/admin/me":
             if not require_admin(self):
                 return
-            send_json(self, {"ok": True, "role": "admin", "settings": app_settings()})
+            actor = current_actor(self)
+            send_json(
+                self,
+                {
+                    "ok": True,
+                    "role": actor["role"] if actor else "admin",
+                    "isSuperAdmin": bool(actor and actor.get("isSuperAdmin")),
+                    "user": {
+                        "userId": actor.get("userId") if actor else None,
+                        "username": actor.get("username") if actor else "",
+                        "displayName": actor.get("displayName") if actor else "Filestore 管理员",
+                    },
+                    "settings": app_settings(),
+                },
+            )
             return
         if path == "/api/settings":
             if not require_admin(self):
@@ -889,15 +1039,27 @@ class AppHandler(SimpleHTTPRequestHandler):
         if path == "/api/tasks":
             if not require_admin(self):
                 return
+            actor = current_actor(self)
             with connect() as conn:
-                rows = conn.execute("SELECT * FROM tasks ORDER BY created_at DESC").fetchall()
-            send_json(self, [task_to_dict(row) for row in rows])
+                if actor and actor.get("isSuperAdmin"):
+                    rows = conn.execute("SELECT * FROM tasks ORDER BY created_at DESC").fetchall()
+                else:
+                    rows = conn.execute(
+                        "SELECT * FROM tasks WHERE created_by_user_id = ? ORDER BY created_at DESC",
+                        (actor.get("userId") if actor else None,),
+                    ).fetchall()
+            send_json(self, [task_to_dict(row, include_creator=bool(actor and actor.get("isSuperAdmin"))) for row in rows])
             return
         match = re.fullmatch(r"/api/tasks/(\d+)", path)
         if match:
             if not require_admin(self):
                 return
-            task = build_task_detail(int(match.group(1)))
+            actor = current_actor(self)
+            task = build_task_detail(
+                int(match.group(1)),
+                actor=actor,
+                include_creator=bool(actor and actor.get("isSuperAdmin")),
+            )
             if not task:
                 send_json(self, {"error": "任务不存在"}, HTTPStatus.NOT_FOUND)
                 return
@@ -925,7 +1087,12 @@ class AppHandler(SimpleHTTPRequestHandler):
         if match:
             if not require_admin(self):
                 return
-            self.export_csv(int(match.group(1)))
+            actor = current_actor(self)
+            self.export_csv(
+                int(match.group(1)),
+                actor=actor,
+                include_creator=bool(actor and actor.get("isSuperAdmin")),
+            )
             return
         match = re.fullmatch(r"/api/tasks/(\d+)/download.zip", path)
         if match:
@@ -937,8 +1104,9 @@ class AppHandler(SimpleHTTPRequestHandler):
         if match:
             if not require_admin(self):
                 return
+            actor = current_actor(self)
             row = get_file_row(int(match.group(1)))
-            if not row:
+            if not row or not can_access_task(actor, row):
                 send_json(self, {"error": "文件不存在"}, HTTPStatus.NOT_FOUND)
                 return
             send_json(self, file_row_to_dict(row))
@@ -947,7 +1115,7 @@ class AppHandler(SimpleHTTPRequestHandler):
         if match:
             if not require_admin(self):
                 return
-            self.send_file(int(match.group(1)), inline=match.group(2) == "preview")
+            self.send_file(int(match.group(1)), inline=match.group(2) == "preview", actor=current_actor(self))
             return
         super().do_GET()
 
@@ -1039,6 +1207,7 @@ class AppHandler(SimpleHTTPRequestHandler):
         if path == "/api/tasks":
             if not require_admin(self):
                 return
+            actor = current_actor(self)
             try:
                 payload = normalize_task_payload(read_json_body(self))
             except Exception as exc:
@@ -1050,8 +1219,9 @@ class AppHandler(SimpleHTTPRequestHandler):
                     """
                     INSERT INTO tasks (
                         token, title, description, deadline, fields_json, file_rules_json,
-                        rename_template, folder_template, expected_entries, status, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        rename_template, folder_template, expected_entries, status,
+                        created_by_user_id, created_by_username, created_by_display_name, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         token,
@@ -1064,21 +1234,33 @@ class AppHandler(SimpleHTTPRequestHandler):
                         payload["folderTemplate"],
                         payload["expectedEntries"],
                         payload["status"],
+                        actor.get("userId") if actor else None,
+                        actor.get("username", "") if actor else "",
+                        actor.get("displayName", "") if actor else "",
                         now_iso(),
                     ),
                 )
                 task_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-            send_json(self, build_task_detail(task_id), HTTPStatus.CREATED)
+            send_json(
+                self,
+                build_task_detail(
+                    task_id,
+                    actor=actor,
+                    include_creator=bool(actor and actor.get("isSuperAdmin")),
+                ),
+                HTTPStatus.CREATED,
+            )
             return
         rerename_match = re.fullmatch(r"/api/tasks/(\d+)/rename-files", path)
         if rerename_match:
             if not require_admin(self):
                 return
+            actor = current_actor(self)
             task_id = int(rerename_match.group(1))
             try:
                 with connect() as conn:
-                    row = conn.execute("SELECT rename_template FROM tasks WHERE id = ?", (task_id,)).fetchone()
-                    if not row:
+                    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+                    if not row or not can_access_task(actor, row):
                         send_json(self, {"error": "任务不存在"}, HTTPStatus.NOT_FOUND)
                         return
                     result = rerename_task_files(conn, task_id, row["rename_template"])
@@ -1096,7 +1278,38 @@ class AppHandler(SimpleHTTPRequestHandler):
     def do_PATCH(self) -> None:
         if not require_admin(self):
             return
+        actor = current_actor(self)
         path = urlparse(self.path).path
+        owner_match = re.fullmatch(r"/api/tasks/(\d+)/owner", path)
+        if owner_match:
+            actor = require_super_admin(self, actor)
+            if not actor:
+                return
+            try:
+                owner = normalize_owner_binding_payload(read_json_body(self))
+            except Exception as exc:
+                send_json(self, {"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
+            task_id = int(owner_match.group(1))
+            with connect() as conn:
+                cursor = conn.execute(
+                    """
+                    UPDATE tasks
+                    SET created_by_user_id = ?, created_by_username = ?, created_by_display_name = ?
+                    WHERE id = ?
+                    """,
+                    (owner["userId"], owner["username"], owner["displayName"], task_id),
+                )
+            if cursor.rowcount == 0:
+                send_json(self, {"error": "任务不存在"}, HTTPStatus.NOT_FOUND)
+                return
+            detail = build_task_detail(task_id, actor=actor, include_creator=True)
+            if not detail:
+                send_json(self, {"error": "任务不存在"}, HTTPStatus.NOT_FOUND)
+                return
+            send_json(self, detail)
+            return
+
         task_match = re.fullmatch(r"/api/tasks/(\d+)", path)
         if task_match:
             try:
@@ -1109,6 +1322,10 @@ class AppHandler(SimpleHTTPRequestHandler):
             rename_result = None
             try:
                 with connect() as conn:
+                    task_row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+                    if not task_row or not can_access_task(actor, task_row):
+                        send_json(self, {"error": "任务不存在"}, HTTPStatus.NOT_FOUND)
+                        return
                     cursor = conn.execute(
                         """
                         UPDATE tasks
@@ -1137,7 +1354,11 @@ class AppHandler(SimpleHTTPRequestHandler):
             if cursor.rowcount == 0:
                 send_json(self, {"error": "任务不存在"}, HTTPStatus.NOT_FOUND)
                 return
-            detail = build_task_detail(task_id)
+            detail = build_task_detail(
+                task_id,
+                actor=actor,
+                include_creator=bool(actor and actor.get("isSuperAdmin")),
+            )
             if detail and rename_result is not None:
                 detail["renameResult"] = rename_result
             send_json(self, detail)
@@ -1148,11 +1369,16 @@ class AppHandler(SimpleHTTPRequestHandler):
     def do_DELETE(self) -> None:
         if not require_admin(self):
             return
+        actor = current_actor(self)
         path = urlparse(self.path).path
         task_match = re.fullmatch(r"/api/tasks/(\d+)", path)
         if task_match:
             task_id = int(task_match.group(1))
             with connect() as conn:
+                task_row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+                if not task_row or not can_access_task(actor, task_row):
+                    send_json(self, {"error": "任务不存在"}, HTTPStatus.NOT_FOUND)
+                    return
                 # 依赖 schema 中的 ON DELETE CASCADE + PRAGMA foreign_keys=ON
                 # 删除任务会自动级联清理 submissions 和 files 两张表
                 cursor = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
@@ -1166,6 +1392,10 @@ class AppHandler(SimpleHTTPRequestHandler):
         match = re.fullmatch(r"/api/submissions/(\d+)", path)
         if match:
             submission_id = int(match.group(1))
+            submission = get_submission_row(submission_id)
+            if not submission or not can_access_task(actor, submission):
+                send_json(self, {"error": "提交记录不存在"}, HTTPStatus.NOT_FOUND)
+                return
             with connect() as conn:
                 # 先查文件路径用于磁盘清理，再删 submission（CASCADE 自动删 files 表行）
                 files = conn.execute("SELECT path FROM files WHERE submission_id = ?", (submission_id,)).fetchall()
@@ -1182,6 +1412,10 @@ class AppHandler(SimpleHTTPRequestHandler):
             send_json(self, {"error": "接口不存在"}, HTTPStatus.NOT_FOUND)
             return
         file_id = int(file_match.group(1))
+        file_row = get_file_row(file_id)
+        if not file_row or not can_access_task(actor, file_row):
+            send_json(self, {"error": "文件不存在"}, HTTPStatus.NOT_FOUND)
+            return
         with connect() as conn:
             row = conn.execute("SELECT path FROM files WHERE id = ?", (file_id,)).fetchone()
             if not row:
@@ -1261,8 +1495,8 @@ class AppHandler(SimpleHTTPRequestHandler):
                 saved_files.append(stored_name)
         send_json(self, {"ok": True, "submissionId": submission_id, "files": saved_files}, HTTPStatus.CREATED)
 
-    def export_csv(self, task_id: int) -> None:
-        task = build_task_detail(task_id)
+    def export_csv(self, task_id: int, actor: dict | None = None, include_creator: bool = False) -> None:
+        task = build_task_detail(task_id, actor=actor, include_creator=include_creator)
         if not task:
             send_json(self, {"error": "任务不存在"}, HTTPStatus.NOT_FOUND)
             return
@@ -1290,9 +1524,9 @@ class AppHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def send_file(self, file_id: int, inline: bool) -> None:
+    def send_file(self, file_id: int, inline: bool, actor: dict | None = None) -> None:
         row = get_file_row(file_id)
-        if not row:
+        if not row or not can_access_task(actor, row):
             send_json(self, {"error": "文件不存在"}, HTTPStatus.NOT_FOUND)
             return
         source = resolve_stored_file(row)

@@ -162,6 +162,80 @@ class TestRenderName(unittest.TestCase):
         self.assertEqual(result, "x.jpg")
 
 
+class TestTaskOwnership(unittest.TestCase):
+    def _task_row(self, **overrides):
+        row = {
+            "id": 1,
+            "token": "task-token",
+            "title": "测试任务",
+            "description": "",
+            "deadline": None,
+            "fields_json": json.dumps([{"key": "name", "label": "姓名"}], ensure_ascii=False),
+            "file_rules_json": json.dumps({"allowedTypes": ["pdf"], "maxSizeMb": 20, "maxCount": 1}, ensure_ascii=False),
+            "rename_template": "{name}",
+            "folder_template": "{name}",
+            "expected_entries": "",
+            "status": "open",
+            "created_by_user_id": 12,
+            "created_by_username": "teacher01",
+            "created_by_display_name": "张老师",
+            "created_at": "2026-06-08T00:00:00+00:00",
+        }
+        row.update(overrides)
+        return row
+
+    def test_task_to_dict_includes_creator_for_super_admin(self):
+        task = app.task_to_dict(self._task_row(), include_creator=True)
+        self.assertEqual(task["createdBy"]["userId"], 12)
+        self.assertEqual(task["createdBy"]["username"], "teacher01")
+        self.assertEqual(task["createdBy"]["displayName"], "张老师")
+
+    def test_owner_can_access_own_task(self):
+        self.assertTrue(app.can_access_task({"userId": 12, "isSuperAdmin": False}, self._task_row()))
+
+    def test_non_owner_cannot_access_task(self):
+        self.assertFalse(app.can_access_task({"userId": 99, "isSuperAdmin": False}, self._task_row()))
+
+    def test_super_admin_can_access_any_task(self):
+        self.assertTrue(app.can_access_task({"userId": 99, "isSuperAdmin": True}, self._task_row()))
+
+    def test_legacy_task_without_creator_is_hidden_from_regular_manager(self):
+        self.assertFalse(
+            app.can_access_task(
+                {"userId": 12, "isSuperAdmin": False},
+                self._task_row(created_by_user_id=None, created_by_username="", created_by_display_name=""),
+            )
+        )
+
+
+class TestOwnerBindingPayload(unittest.TestCase):
+    def test_normalizes_binding_payload(self):
+        result = app.normalize_owner_binding_payload({
+            "userId": "23",
+            "username": "teacher01",
+            "displayName": "张老师",
+        })
+        self.assertEqual(result["userId"], 23)
+        self.assertEqual(result["username"], "teacher01")
+        self.assertEqual(result["displayName"], "张老师")
+
+    def test_display_name_falls_back_to_username(self):
+        result = app.normalize_owner_binding_payload({
+            "userId": 9,
+            "username": "teacher02",
+            "displayName": "",
+        })
+        self.assertEqual(result["displayName"], "teacher02")
+
+    def test_invalid_user_id_rejected(self):
+        with self.assertRaises(ValueError):
+            app.normalize_owner_binding_payload({"userId": 0, "username": "x"})
+
+    def test_empty_username_rejected(self):
+        with self.assertRaises(ValueError):
+            app.normalize_owner_binding_payload({"userId": 3, "username": ""})
+
+
 class TestNormalizeTaskPayload(unittest.TestCase):
     def _minimal(self, **overrides):
         payload = {

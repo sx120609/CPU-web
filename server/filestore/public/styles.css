@@ -266,7 +266,7 @@ p { color: var(--muted); }
 }
 
 .task-card strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.task-card small { color: var(--muted); }
+.task-card small { display: block; color: var(--muted); }
 
 .status-dot {
   position: absolute;

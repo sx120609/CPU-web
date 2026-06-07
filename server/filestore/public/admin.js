@@ -5,6 +5,7 @@ const state = {
   mode: "create",
   templateKey: "builtin:student",
   settings: { siteUrl: "", siteTitle: "Filestore", taskTemplates: [] },
+  viewer: { role: "", isSuperAdmin: false, user: null },
   authed: false,
   softRefreshTimer: null,
   softRefreshing: false,
@@ -79,6 +80,7 @@ async function api(path, options = {}) {
 
 function setAuthed(isAuthed) {
   state.authed = isAuthed;
+  if (!isAuthed) state.viewer = { role: "", isSuperAdmin: false, user: null };
   document.body.classList.toggle("auth-pending", !isAuthed);
   $("#loginScreen").hidden = isAuthed;
   if (isAuthed) {
@@ -86,6 +88,7 @@ function setAuthed(isAuthed) {
   } else {
     stopSoftRefresh();
   }
+  syncOwnerBindButton(state.current);
 }
 
 function applyBranding() {
@@ -96,10 +99,34 @@ function applyBranding() {
   });
 }
 
+function formatCreator(task) {
+  const createdBy = task?.createdBy;
+  if (!createdBy?.userId) return "未绑定";
+  const displayName = createdBy.displayName || createdBy.username || "未绑定";
+  return createdBy.username && createdBy.username !== displayName
+    ? `${displayName}（${createdBy.username}）`
+    : displayName;
+}
+
+function syncOwnerBindButton(task = state.current) {
+  const button = $("#bindTaskOwner");
+  if (!button) return;
+  const visible = Boolean(state.viewer.isSuperAdmin);
+  button.hidden = !visible;
+  if (!visible) return;
+  button.disabled = !task;
+  button.textContent = task?.createdBy?.userId ? "更改创建者" : "绑定创建者";
+}
+
 async function checkSession() {
   try {
     const session = await api("/api/admin/me");
     state.settings = normalizeSettings(session.settings);
+    state.viewer = {
+      role: session.role || "",
+      isSuperAdmin: Boolean(session.isSuperAdmin),
+      user: session.user || null,
+    };
     applyBranding();
     renderTemplateSelect(state.templateKey);
     setAuthed(true);
@@ -546,11 +573,13 @@ function renderTaskList() {
   }
   $("#taskList").innerHTML = tasks.map((task) => {
     const active = state.current?.id === task.id ? " active" : "";
+    const creator = state.viewer.isSuperAdmin ? `<small>${escapeHtml(formatCreator(task))}</small>` : "";
     return `
       <button class="task-card${active}" data-task="${task.id}">
         <span class="status-dot ${task.status}"></span>
         <strong>${escapeHtml(task.title)}</strong>
         <small>${task.status === "open" ? "开放提交" : "停止提交"} · ${task.deadline ? new Date(task.deadline).toLocaleDateString() : "无截止时间"}</small>
+        ${creator}
       </button>
     `;
   }).join("");
@@ -577,6 +606,7 @@ function clearDashboardSelection() {
   $("#dashboard").hidden = true;
   $("#emptyDashboard").hidden = false;
   ["editTask", "copyLink", "showQr", "openFileManager", "exportCsv", "downloadZip"].forEach((id) => $(`#${id}`).disabled = true);
+  syncOwnerBindButton(null);
 }
 
 async function softRefresh() {
@@ -678,6 +708,7 @@ function unexpectedLabel(item) {
 
 function renderRules(task) {
   const rules = task.fileRules;
+  const creator = state.viewer.isSuperAdmin ? `<dt>创建者</dt><dd>${escapeHtml(formatCreator(task))}</dd>` : "";
   $("#ruleList").innerHTML = `
     <dt>字段</dt><dd>${task.fields.map((field) => escapeHtml(field.label)).join("、")}</dd>
     <dt>文件类型</dt><dd>${normalizeAllowedTypes(rules.allowedTypes).join(", ") || "不限"}</dd>
@@ -685,6 +716,7 @@ function renderRules(task) {
     <dt>文件命名</dt><dd>${escapeHtml(task.renameTemplate)}</dd>
     <dt>文件夹</dt><dd>${escapeHtml(task.folderTemplate || "{name}-{student_id}")}</dd>
     <dt>截止</dt><dd>${task.deadline ? new Date(task.deadline).toLocaleString() : "未设置"}</dd>
+    ${creator}
   `;
 }
 
@@ -707,15 +739,77 @@ function renderDetail(task) {
   $("#emptyDashboard").hidden = true;
   $("#dashboard").hidden = false;
   $("#activeTitle").textContent = task.title;
-  $("#activeMeta").textContent = `${task.status === "open" ? "开放提交" : "停止提交"} · ${task.deadline ? `截止 ${new Date(task.deadline).toLocaleString()}` : "未设置截止时间"}`;
+  const metaParts = [
+    task.status === "open" ? "开放提交" : "停止提交",
+    task.deadline ? `截止 ${new Date(task.deadline).toLocaleString()}` : "未设置截止时间",
+  ];
+  if (state.viewer.isSuperAdmin) metaParts.push(`创建者 ${formatCreator(task)}`);
+  $("#activeMeta").textContent = metaParts.join(" · ");
   $("#shareLink").value = absoluteSubmitUrl(task);
   $("#statusLink").value = absoluteStatusUrl(task);
   ["editTask", "copyLink", "showQr", "openFileManager", "exportCsv", "downloadZip"].forEach((id) => $(`#${id}`).disabled = false);
+  syncOwnerBindButton(task);
   renderMetrics(task);
   renderRules(task);
   renderMissing(task);
   renderUnexpected(task);
   renderSubmissionTable();
+}
+
+async function searchAssignableUsers(query) {
+  const params = new URLSearchParams({ q: query, size: "8" });
+  return api(`/api/platform/users?${params.toString()}`);
+}
+
+function formatAssignableUser(user) {
+  const displayName = user.displayName || user.username || "未命名用户";
+  return user.username && user.username !== displayName
+    ? `${displayName}（${user.username}）`
+    : displayName;
+}
+
+async function bindTaskOwner() {
+  if (!state.viewer.isSuperAdmin) throw new Error("仅超级管理员可绑定创建者");
+  const task = state.current;
+  if (!task) throw new Error("请先选择任务");
+  const keyword = await promptInApp({
+    title: task.createdBy?.userId ? "更改创建者" : "绑定旧任务创建者",
+    body: "输入平台用户名，或输入能唯一匹配的昵称。系统只会匹配有文件收集管理权限的账号。",
+    label: "平台用户名",
+    value: task.createdBy?.username || "",
+    okText: "继续",
+  });
+  if (!keyword) return;
+  const users = await searchAssignableUsers(keyword);
+  const normalized = keyword.trim().toLowerCase();
+  const exactUsername = users.find((item) => item.username.toLowerCase() === normalized);
+  const exactDisplay = users.filter((item) => (item.displayName || "").trim().toLowerCase() === normalized);
+  const target = exactUsername || (exactDisplay.length === 1 ? exactDisplay[0] : null) || (users.length === 1 ? users[0] : null);
+  if (!target) {
+    if (!users.length) throw new Error("未找到可绑定的文件收集管理员");
+    throw new Error(`匹配到多个账号：${users.slice(0, 5).map(formatAssignableUser).join("、")}。请输入更精确的用户名。`);
+  }
+  const ok = await confirmInApp({
+    title: task.createdBy?.userId ? "确认更改创建者" : "确认绑定创建者",
+    body: `将任务「${task.title}」${task.createdBy?.userId ? "改绑" : "绑定"}给「${formatAssignableUser(target)}」？`,
+    okText: task.createdBy?.userId ? "确认改绑" : "确认绑定",
+    danger: false,
+  });
+  if (!ok) return;
+  const updated = await api(`/api/tasks/${task.id}/owner`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      userId: target.userId,
+      username: target.username,
+      displayName: target.displayName,
+    }),
+  });
+  state.current = updated;
+  state.detail = updated;
+  await loadTasks({ silent: true });
+  renderTaskList();
+  renderDetail(updated);
+  toast(task.createdBy?.userId ? "创建者已更新" : "创建者已绑定", "ok");
 }
 
 function filteredSubmissions() {
@@ -1086,6 +1180,7 @@ function bind() {
   $("#newTask").addEventListener("click", safe(() => openEditor(null)));
   $("#emptyNewTask").addEventListener("click", safe(() => openEditor(null)));
   $("#editTask").addEventListener("click", safe(() => openEditor(state.current)));
+  $("#bindTaskOwner").addEventListener("click", safe(bindTaskOwner));
   $("#closeEditor").addEventListener("click", closeEditor);
   $("#drawerScrim").addEventListener("click", closeEditor);
   $("#taskSearch").addEventListener("input", renderTaskList);

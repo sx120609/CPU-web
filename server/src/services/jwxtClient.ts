@@ -238,6 +238,11 @@ async function deleteActiveSession(token: string) {
   await deleteEphemeralValue(jwxtSessionKey(token));
 }
 
+async function persistActiveSession(token: string, session: ActiveSession) {
+  session.lastSeenAt = Date.now();
+  await saveActiveSession(token, session);
+}
+
 async function getActiveSession(token: string | undefined | null): Promise<ActiveSession | null> {
   if (!token) return null;
   const raw = await getEphemeralValue(jwxtSessionKey(token));
@@ -416,6 +421,7 @@ export async function jwxtFetchHtml(token: string, path: string): Promise<string
     await deleteActiveSession(token);
     throw Errors.unauthorized("教务会话已失效（被学校 SSO 踢出），请重新登录");
   }
+  await persistActiveSession(token, sess);
   return res.text();
 }
 
@@ -447,6 +453,7 @@ export async function fetchAnyCpuText(
   if (expectedHost && finalHost !== expectedHost) {
     throw Errors.badRequest(`意外的最终域名: ${finalHost}`);
   }
+  await persistActiveSession(token, sess);
 
   return {
     text: await res.text(),
@@ -545,6 +552,7 @@ export async function jwxtPostForm(token: string, path: string, fields: Record<s
     await deleteActiveSession(token);
     throw Errors.unauthorized("教务会话已失效，请重新登录");
   }
+  await persistActiveSession(token, sess);
   return res.text();
 }
 
@@ -613,6 +621,7 @@ export async function jwxtDebugSnapshot(token: string): Promise<{ saved: string[
       saved.push(file);
     } catch (e: any) { errors.push(`${p.name}: ${e.message ?? e}`); }
   }
+  await persistActiveSession(token, sess);
   return { saved, errors };
 }
 
