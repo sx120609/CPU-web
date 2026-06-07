@@ -797,7 +797,11 @@ const sourceNotice = computed(() => {
 
 const isCampusWallTopic = computed(() => topic.value?.board?.slug === "campus-wall" || topic.value?.metadata?.externalPlatform === "weiwall");
 const isAnnouncementTopic = computed(() => topic.value?.board?.type === "announce");
-const titlelessWeiwall = computed(() => isCampusWallTopic.value && (!topic.value?.title || topic.value?.title === "none"));
+const titlelessWeiwall = computed(() => {
+  if (!isCampusWallTopic.value) return false;
+  const originalTitle = String(topic.value?.metadata?.originalTitle ?? "").trim().toLowerCase();
+  return !originalTitle || originalTitle === "none";
+});
 const backTargetFromQuery = computed(() => {
   const text = String(route.query.from ?? "").trim();
   return text.startsWith("/") ? text : "";

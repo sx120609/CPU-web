@@ -1572,7 +1572,7 @@ async function loadCalendar() {
   restoreCachedCalendar();
   try {
     const r: any = await jwxtApi.calendar();
-    calendar.value = r.parsed;
+    calendar.value = hydrateCalendar(r.parsed);
     writeCache(jwxtScopedStorageKey(CALENDAR_CACHE_BASE), calendar.value);
     if (calendar.value?.currentWeek && !week.value) week.value = String(calendar.value.currentWeek);
   } catch { /* calendar is best effort */ }
@@ -2069,8 +2069,25 @@ async function submitCaptcha() {
   }
 }
 
+function chinaTodayParts() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return {
+    year: Number(value("year")),
+    month: Number(value("month")),
+    day: Number(value("day")),
+    ymd: `${value("year")}-${value("month")}-${value("day")}`,
+  };
+}
+
 function dayOfWeek() {
-  const d = new Date().getDay();
+  const today = chinaTodayParts();
+  const d = new Date(Date.UTC(today.year, today.month - 1, today.day)).getUTCDay();
   return d === 0 ? 7 : d;
 }
 
@@ -2086,11 +2103,7 @@ function syncNetworkStatus() {
 }
 
 function todayKey() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return chinaTodayParts().ymd;
 }
 
 function shortDate(value: string) {
@@ -2104,6 +2117,43 @@ function plusOneDay(ymd: string): string {
   const d = new Date(ymd + "T00:00:00");
   d.setDate(d.getDate() + 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function dayOfWeekForCalendarYmd(ymd: string) {
+  const match = String(ymd || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return 0;
+  const d = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  const day = d.getUTCDay();
+  return day === 0 ? 7 : day;
+}
+
+function normalizeCalendarWeekDays(days: string[]) {
+  const raw = (days ?? []).map((item) => String(item || "").trim());
+  if (raw.length >= 7 && dayOfWeekForCalendarYmd(raw[0]) === 7 && dayOfWeekForCalendarYmd(raw[1]) === 1) {
+    return [...raw.slice(1, 7), plusOneDay(raw[6])];
+  }
+
+  const normalized = Array.from({ length: 7 }, () => "");
+  for (const date of raw) {
+    const day = dayOfWeekForCalendarYmd(date);
+    if (day >= 1 && day <= 7) normalized[day - 1] = date;
+  }
+  return normalized.some(Boolean) ? normalized : raw;
+}
+
+function resolveCalendarCurrentWeek(source: CalendarResult | null | undefined) {
+  if (!source?.weeks?.length) return source?.currentWeek ?? 0;
+  const today = todayKey();
+  const matched = source.weeks.find((item) => normalizeCalendarWeekDays(item.days).includes(today));
+  return matched?.week ?? source.currentWeek ?? 0;
+}
+
+function hydrateCalendar(source: CalendarResult | null | undefined): CalendarResult | null {
+  if (!source) return null;
+  return {
+    ...source,
+    currentWeek: resolveCalendarCurrentWeek(source),
+  };
 }
 
 function formatCacheTime(ts: number) {
@@ -2120,15 +2170,15 @@ function weekInfoFor(value: string | number) {
 function weekRangeFor(value: string | number) {
   const w = weekInfoFor(value);
   if (!w || w.days.length < 7) return "";
-  const monday = w.days[1];
-  const sunday = plusOneDay(w.days[6]);
+  const dates = normalizeCalendarWeekDays(w.days);
+  const monday = dates[0];
+  const sunday = dates[6];
   return `${shortDate(monday)} - ${shortDate(sunday)}`;
 }
 
 function dayTabsForWeek(value: string | number) {
   const labels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
-  const raw = weekInfoFor(value)?.days ?? [];
-  const dates = raw.length >= 7 ? [...raw.slice(1, 7), plusOneDay(raw[6])] : [];
+  const dates = normalizeCalendarWeekDays(weekInfoFor(value)?.days ?? []);
   const today = todayKey();
   return labels.map((label, i) => ({
     day: i + 1,
@@ -2954,7 +3004,7 @@ function isStale(savedAt: number) {
 
 function restoreCachedCalendar() {
   const cached = readCache<CalendarResult>(jwxtScopedStorageKey(CALENDAR_CACHE_BASE));
-  if (cached?.data) calendar.value = cached.data;
+  if (cached?.data) calendar.value = hydrateCalendar(cached.data);
 }
 
 function restoreLastState() {

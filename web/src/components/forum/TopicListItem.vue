@@ -70,7 +70,11 @@ const metaRating = computed(() => {
 });
 const hotScore = computed(() => Math.round((props.topic.likeCount ?? 0) * 5 + (props.topic.replyCount ?? 0) * 3 + (props.topic.viewCount ?? 0) * 0.03));
 const aiTags = computed(() => Array.isArray(props.topic.tags) ? props.topic.tags.slice(0, 2) : []);
-const titlelessWeiwall = computed(() => props.topic.metadata?.externalPlatform === "weiwall" && (!props.topic.title || props.topic.title === "none"));
+const titlelessWeiwall = computed(() => {
+  if (props.topic.metadata?.externalPlatform !== "weiwall") return false;
+  const originalTitle = String(props.topic.metadata?.originalTitle ?? "").trim().toLowerCase();
+  return !originalTitle || originalTitle === "none";
+});
 const weiwallPreview = computed(() => {
   if (!titlelessWeiwall.value) return "";
   return String(props.topic.content || "")
