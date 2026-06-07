@@ -848,6 +848,47 @@ function decodeWeiwallHotTopicsPayload(value: unknown) {
   }
   return [];
 }
+function parseWeiwallHotTopicsFromContent(content: unknown): WeiwallHotTopicEntry[] {
+  const text = String(content ?? "");
+  if (!text.trim()) return [];
+  const lines = text.split(/\r?\n/);
+  const entries: WeiwallHotTopicEntry[] = [];
+  let current: WeiwallHotTopicEntry | null = null;
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    const itemMatch = line.match(/^(\d+)\.\s+\[(.+?)\]\((https?:\/\/[^)]+)\)\s*$/);
+    if (itemMatch) {
+      if (current) entries.push(current);
+      current = {
+        rank: Math.max(1, Number(itemMatch[1]) || entries.length + 1),
+        externalTopicId: "",
+        title: itemMatch[2].trim(),
+        sourceUrl: itemMatch[3].trim(),
+        score: 0,
+        commentCount: 0,
+        likeCount: 0,
+      };
+      continue;
+    }
+    if (!current) continue;
+    const targetMatch = line.match(/^\s*站内：(.+?)\s*$/);
+    if (targetMatch) {
+      current.targetPath = targetMatch[1].trim() || null;
+      continue;
+    }
+    const nodeMatch = line.match(/^\s*分区：(.+?)\s*$/);
+    if (nodeMatch) {
+      current.node = nodeMatch[1].trim();
+      continue;
+    }
+    const summaryMatch = line.match(/^\s*摘要：(.+?)\s*$/);
+    if (summaryMatch) {
+      current.summary = summaryMatch[1].trim();
+    }
+  }
+  if (current) entries.push(current);
+  return entries.filter((item) => item.title && item.sourceUrl);
+}
 const displayContent = computed(() => {
   const content = topic.value?.content ?? "";
   if (!topic.value?.metadata?.sourceUrl) return content;
@@ -857,7 +898,9 @@ const isWeiwallHotEntry = computed(() => Boolean(topic.value?.metadata?.weiwallH
 const weiwallHotTopics = computed<WeiwallHotTopicEntry[]>(() => {
   const rows = Array.isArray(topic.value?.metadata?.hotTopics)
     ? topic.value?.metadata?.hotTopics
-    : decodeWeiwallHotTopicsPayload(topic.value?.metadata?.hotTopicsBase64);
+    : (topic.value?.metadata?.hotTopicsBase64
+      ? decodeWeiwallHotTopicsPayload(topic.value?.metadata?.hotTopicsBase64)
+      : parseWeiwallHotTopicsFromContent(topic.value?.content));
   if (!Array.isArray(rows)) return [];
   return rows.map((item: any, index: number) => ({
     rank: Math.max(1, Number(item?.rank ?? index + 1) || index + 1),

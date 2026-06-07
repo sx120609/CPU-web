@@ -1048,6 +1048,21 @@ function buildWeiwallHotEntryContent(input: {
     "",
     "超过 3 天的逛逛稿件不再继续更新；若想查看最新评论或最新状态，请以原帖为准。",
   ];
+  for (const [index, row] of input.rows.entries()) {
+    const externalTopicId = externalId(row.id);
+    const targetPath = input.localTopicIdByExternalId.get(externalTopicId)
+      ? `/forum/topic/${input.localTopicIdByExternalId.get(externalTopicId)}`
+      : "";
+    const sourceUrl = buildTopicSourceUrl(input.baseUrl, input.schoolEn, externalTopicId);
+    const title = sanitizeWeiwallStorageText(deriveLocalTitle(row), 120).replace(/[\[\]\(\)]/g, " ").trim() || `逛逛热帖 #${index + 1}`;
+    const node = sanitizeWeiwallStorageText(trimTo(row.node, 24), 24);
+    const summary = sanitizeWeiwallStorageText(summarizeExternalText(row.content, 120), 120);
+    lines.push("");
+    lines.push(`${index + 1}. [${title}](${sourceUrl})`);
+    if (node) lines.push(`   分区：${node}`);
+    if (targetPath) lines.push(`   站内：${targetPath}`);
+    if (summary) lines.push(`   摘要：${summary}`);
+  }
   return lines.join("\n");
 }
 
