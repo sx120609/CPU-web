@@ -161,6 +161,24 @@ type QqBotAssistantReply = {
   confidence?: "low" | "medium" | "high";
 };
 
+type QqBotAiRequestContext = {
+  config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
+  event: OneBotEvent;
+  qqId: string;
+  groupId?: string;
+  messageText: string;
+};
+
+type QqBotAiPromptContext = {
+  bindingEnabled: boolean;
+  bindingLabel: string;
+  defaultBoardName: string;
+  boardList: Array<{ name: string; slug: string; description: string | null; type: string }>;
+  sceneLabel: "私聊" | "群聊";
+  allowPrivatePost: boolean;
+  allowGroupPost: boolean;
+};
+
 const qqBotCooldowns = new Map<string, { cancelledAt?: number }>();
 
 const CONFIG_ID = 1;
@@ -505,7 +523,14 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
   }
   context.forwardPayload = forwardPayload;
   if (isQuickPostTrigger && forwardPayload) {
-    const conversation = await startForwardPostConversation(context, forwardPayload);
+    let conversation: Awaited<ReturnType<typeof startForwardPostConversation>>;
+    try {
+      conversation = await startForwardPostConversation(context, forwardPayload);
+    } catch (error: any) {
+      await logHandledInboundMessage(context, "message", "assistant:forward-start-blocked");
+      await replyToEvent(context, getQqBotUserFacingErrorMessage(error, "暂时无法开始投稿，请稍后再试。"));
+      return { ok: true };
+    }
     await logHandledInboundMessage(context, "message", "assistant:forward-detected");
     await replyToPostingConversation(conversation, context, await renderConversationPrompt(conversation));
     return { ok: true };
@@ -523,19 +548,40 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
       );
       return { ok: true };
     }
-    const conversation = await startPostConversation(context);
+    let conversation: Awaited<ReturnType<typeof startPostConversation>>;
+    try {
+      conversation = await startPostConversation(context);
+    } catch (error: any) {
+      await logHandledInboundMessage(context, "message", "assistant:start-post-blocked");
+      await replyToEvent(context, getQqBotUserFacingErrorMessage(error, "暂时无法开始投稿，请稍后再试。"));
+      return { ok: true };
+    }
     await logHandledInboundMessage(context, "message", "assistant:start-post");
     await replyToEvent(context, await renderConversationPrompt(conversation, "如果方便，建议前往客户端完成投稿，编辑体验会更好。"));
     return { ok: true };
   }
   if (isPlainPrivatePostCommand) {
-    const conversation = await startPostConversation(context);
+    let conversation: Awaited<ReturnType<typeof startPostConversation>>;
+    try {
+      conversation = await startPostConversation(context);
+    } catch (error: any) {
+      await logHandledInboundMessage(context, "message", "assistant:start-post-blocked");
+      await replyToEvent(context, getQqBotUserFacingErrorMessage(error, "暂时无法开始投稿，请稍后再试。"));
+      return { ok: true };
+    }
     await logHandledInboundMessage(context, "message", "assistant:start-post");
     await replyToEvent(context, await renderConversationPrompt(conversation, "如果方便，建议前往客户端完成投稿，编辑体验会更好。"));
     return { ok: true };
   }
   if (!isCommandMessage(messageText) && forwardPayload && shouldHandleForwardPostInContext(context)) {
-    const conversation = await startForwardPostConversation(context, forwardPayload);
+    let conversation: Awaited<ReturnType<typeof startForwardPostConversation>>;
+    try {
+      conversation = await startForwardPostConversation(context, forwardPayload);
+    } catch (error: any) {
+      await logHandledInboundMessage(context, "message", "assistant:forward-start-blocked");
+      await replyToEvent(context, getQqBotUserFacingErrorMessage(error, "暂时无法开始投稿，请稍后再试。"));
+      return { ok: true };
+    }
     await logHandledInboundMessage(context, "message", "assistant:forward-detected");
     await replyToPostingConversation(conversation, context, await renderConversationPrompt(conversation));
     return { ok: true };
@@ -790,7 +836,15 @@ async function handleNaturalLanguageMessage(context: {
     return { ok: true, ai: true };
   }
   if (intent.intent === "start-post") {
-    const conversation = await startPostConversation(context);
+    let conversation: Awaited<ReturnType<typeof startPostConversation>>;
+    try {
+      conversation = await startPostConversation(context);
+    } catch (error: any) {
+      const message = getQqBotUserFacingErrorMessage(error, "暂时无法开始投稿，请稍后再试。");
+      await logHandledInboundMessage(context, "message", "assistant:start-post-blocked");
+      await replyToEvent(context, message);
+      return { ok: true, ai: true };
+    }
     let nextConversation = conversation;
     const suggested = await generateAssistantReply(context, "请根据用户刚才的话整理投稿草稿").catch(() => null);
     const draftTitle = (intent.title || suggested?.suggestedTitle || "").trim();
@@ -843,9 +897,13 @@ async function bindQqAccount(input: { qqId: string; nickname?: string; token: st
   ]);
   return [
     `绑定成功：${row.user.nickname}`,
-    "之后可以这样发帖：",
-    "投稿 标题",
-    "正文",
+    "现在可以直接在 QQ 里这样用我：",
+    "帮助：查看全部命令",
+    "状态：查看绑定状态和投稿开关",
+    "板块：查看可投稿板块",
+    "我的投稿：查看最近投稿",
+    "投稿：开始分步投稿",
+    "也可以直接说“我想投稿”，我会一步步带你完成。",
   ].join("\n");
 }
 
@@ -3941,19 +3999,26 @@ async function inferQqBotIntent(context: {
   groupId?: string;
   messageText: string;
 }) {
-  const boardList = await getAvailableBoardOptions();
-  const defaultBoardName = await resolveBoardDisplayName(context.config.defaultBoardSlug);
+  const aiContext = await buildQqBotAiPromptContext(context);
   const { content } = await requestAiJson([
     {
       role: "system",
       content: [
         "你是校园论坛 QQBot 的意图识别助手。",
         "你只能输出 JSON。",
-        "你只能在这些能力范围内判断意图：帮助、绑定码绑定、查看状态、查看板块、查看最近投稿、开始投稿、普通闲聊。",
+        "你只能在这些能力范围内判断意图：帮助、查看状态、查看板块、查看最近投稿、开始投稿、普通闲聊，或给出一句简短引导。",
         "如果用户提到绑定，但没有提供绑定码，不要猜测学号、工号、密码等内容，也不要要求用户输入这些信息。",
         "不要编造不存在的业务规则或命令。",
-        "请判断用户这句话更像是在：求帮助、查状态、查板块、查最近投稿、开始投稿、普通闲聊，或者需要你直接回复一句简短提示。",
-        "如果用户明显表达了想发帖/投稿/搬运内容，也可以抽取标题、正文、板块 slug。",
+        "意图判断时优先遵守这些规则：",
+        "1. 用户问能做什么、怎么用、命令列表，判为 help。",
+        "2. 用户问绑定、是否已绑定、默认投稿区、投稿开关、解绑、怎么绑定，优先判为 status 或 reply。",
+        "3. 用户问可投稿板块、树洞/二手/课程评价该发去哪，判为 boards。",
+        "4. 用户问我的投稿、最近投稿、我发过什么，判为 recent-posts。",
+        "5. 用户明确说想投稿、帮我发帖、发树洞、发二手、发课程评价，或消息本身已经像一篇待投稿内容，判为 start-post。",
+        "6. 用户只是打招呼、寒暄，判为 chat。",
+        "7. 用户的问题超出机器人能力，但适合给一句功能范围内的引导，判为 reply。",
+        "如果判为 start-post，请尽量抽取标题、正文、板块 slug；拿不准时留空。",
+        "如果判为 reply，message 必须直接、简短，并给出明确下一步动作。",
         "返回给程序时可以使用板块 slug，但不要把 slug 当成给用户看的文案。",
       ].join("\n"),
     },
@@ -3961,8 +4026,7 @@ async function inferQqBotIntent(context: {
       role: "user",
       content: [
         '输出格式：{"intent":"chat|help|status|boards|recent-posts|start-post|reply","title":"","content":"","boardSlug":"","message":""}',
-        `默认投稿区：${defaultBoardName}`,
-        `可用投稿区（中文名=>slug）：${boardList.map((board) => `${board.name}=>${board.slug}`).join("；")}`,
+        ...renderQqBotAiContextLines(aiContext),
         `用户消息：${context.messageText}`,
       ].join("\n"),
     },
@@ -4004,17 +4068,10 @@ function parseAiIntentJson(content: string) {
 }
 
 async function generateAssistantReply(
-  context: {
-    config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
-    event: OneBotEvent;
-    qqId: string;
-    groupId?: string;
-    messageText: string;
-  },
+  context: QqBotAiRequestContext,
   fallbackMessage: string,
 ): Promise<QqBotAssistantReply> {
-  const boardList = (await getAvailableBoardOptions()).slice(0, 12);
-  const defaultBoardName = await resolveBoardDisplayName(context.config.defaultBoardSlug);
+  const aiContext = await buildQqBotAiPromptContext(context, 12);
   const { content } = await requestAiJson([
     {
       role: "system",
@@ -4023,7 +4080,16 @@ async function generateAssistantReply(
         "你只能围绕这些功能回复：帮助、绑定码绑定、查看状态、查看板块、查看最近投稿、投稿助手。",
         "不要要求用户输入学号、工号、密码，也不要编造任何不存在的绑定流程。",
         "请根据用户消息给出一段简短、明确、不会引起歧义的回复。",
-        "如果用户像是在投稿、求助发帖、发树洞、发二手或课程评价，请尽量同时整理出建议板块 slug、建议标题、建议正文。",
+        "回复规则：",
+        "1. 优先告诉用户下一步该怎么做，尽量只给一个主动作和一个备选动作。",
+        "2. 如果当前未绑定，且用户提到投稿、状态、最近投稿或账号关联，明确提醒先到站内个人中心生成绑定码，再私聊发送“绑定 绑定码”。",
+        "3. 如果当前已绑定且用户想投稿，优先引导发送“投稿”或直接说“我想投稿”。",
+        "4. 如果用户问板块，提醒发送“板块”；如果问最近投稿，提醒发送“我的投稿”；如果问状态，提醒发送“状态”。",
+        "5. 如果问题超出机器人能力范围，礼貌说明你主要负责论坛投稿和账号相关查询，并把话题拉回可执行功能。",
+        "6. 不要假装已经替用户完成了绑定、发帖、查询等操作。",
+        "7. reply 保持简洁，尽量控制在 2 到 4 行内。",
+        "8. 如果用户像是在投稿、求助发帖、发树洞、发二手或课程评价，请尽量同时整理出建议板块 slug、建议标题、建议正文。",
+        "9. 如果无法可靠判断建议内容，confidence 设为 low，并尽量贴近兜底提示。",
         "给用户看的回复里优先使用中文板块名，不要直接展示 slug。",
         "只返回 JSON。",
       ].join("\n"),
@@ -4032,8 +4098,7 @@ async function generateAssistantReply(
       role: "user",
       content: [
         '输出格式：{"reply":"","suggestedBoardSlug":"","suggestedTitle":"","suggestedContent":"","confidence":"low|medium|high"}',
-        `默认投稿区：${defaultBoardName}`,
-        `可用投稿区（中文名=>slug）：${boardList.map((board) => `${board.name}=>${board.slug}`).join("；")}`,
+        ...renderQqBotAiContextLines(aiContext),
         `用户消息：${context.messageText}`,
         `兜底提示：${fallbackMessage}`,
       ].join("\n"),
@@ -4044,13 +4109,7 @@ async function generateAssistantReply(
 
 async function polishConversationDraft(
   conversation: any,
-  context: {
-    config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
-    event: OneBotEvent;
-    qqId: string;
-    groupId?: string;
-    messageText: string;
-  },
+  context: QqBotAiRequestContext,
 ) {
   const { content } = await requestAiJson([
     {
@@ -4058,6 +4117,8 @@ async function polishConversationDraft(
       content: [
         "你是校园论坛 QQBot 的投稿润色助手。",
         "请在不改变原意的前提下，帮用户把标题和正文整理得更清晰自然。",
+        "不要补充用户没提到的事实，不要擅自夸张或改写立场。",
+        "标题尽量简洁明确，正文可以适度分段，但不要变成公文腔。",
         "只返回 JSON。",
       ].join("\n"),
     },
@@ -4117,6 +4178,51 @@ function parseAssistantReplyJson(content: string, fallbackMessage: string): QqBo
 function normalizeAssistantConfidence(value: unknown): "low" | "medium" | "high" | undefined {
   if (value === "low" || value === "medium" || value === "high") return value;
   return undefined;
+}
+
+async function buildQqBotAiPromptContext(
+  context: QqBotAiRequestContext,
+  boardLimit?: number,
+): Promise<QqBotAiPromptContext> {
+  const [binding, boardList, group] = await Promise.all([
+    prisma.qqBotBinding.findUnique({
+      where: { qqId: context.qqId },
+      include: { user: { select: { nickname: true, username: true } } },
+    }),
+    getAvailableBoardOptions(),
+    context.groupId ? prisma.qqBotGroup.findUnique({ where: { groupId: context.groupId } }) : Promise.resolve(null),
+  ]);
+  const availableBoards = boardList.filter((board) => isBoardTypeEnabled(board.type));
+  const defaultBoardSlug = group?.defaultBoardSlug || context.config.defaultBoardSlug || "general";
+  const defaultBoardName = await resolveBoardDisplayName(defaultBoardSlug);
+  return {
+    bindingEnabled: Boolean(binding?.enabled),
+    bindingLabel: binding?.enabled ? `${binding.user.nickname}（${binding.user.username}）` : "未绑定",
+    defaultBoardName,
+    boardList: typeof boardLimit === "number" ? availableBoards.slice(0, boardLimit) : availableBoards,
+    sceneLabel: context.event.message_type === "group" ? "群聊" : "私聊",
+    allowPrivatePost: context.config.allowPrivatePost,
+    allowGroupPost: context.config.allowGroupPost,
+  };
+}
+
+function renderQqBotAiContextLines(context: QqBotAiPromptContext) {
+  return [
+    `当前会话：${context.sceneLabel}`,
+    `当前绑定状态：${context.bindingEnabled ? `已绑定 ${context.bindingLabel}` : "未绑定"}`,
+    `默认投稿区：${context.defaultBoardName}`,
+    `私聊投稿：${context.allowPrivatePost ? "已开启" : "未开启"}`,
+    `群内投稿：${context.allowGroupPost ? "已开启" : "未开启"}`,
+    `可用投稿区（中文名=>slug）：${context.boardList.map((board) => `${board.name}=>${board.slug}`).join("；") || "暂无"}`,
+  ];
+}
+
+function getQqBotUserFacingErrorMessage(error: unknown, fallback: string) {
+  if (error && typeof error === "object" && "message" in error) {
+    const message = String((error as { message?: unknown }).message || "").trim();
+    if (message) return message;
+  }
+  return fallback;
 }
 
 function parseStringArray(value: string, fallback: string[]) {
