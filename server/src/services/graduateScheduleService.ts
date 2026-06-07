@@ -33,6 +33,16 @@ type RawGraduateTermOption = {
   selected?: unknown;
 };
 
+type GraduateTermEnvelope =
+  | RawGraduateTermOption[]
+  | {
+      terms?: unknown;
+      data?: unknown;
+      rows?: unknown;
+      list?: unknown;
+      items?: unknown;
+    };
+
 function defaultGraduateRequestHeaders() {
   return {
     Accept: "application/json, text/plain, */*",
@@ -41,11 +51,15 @@ function defaultGraduateRequestHeaders() {
   };
 }
 
+function isGraduateHtmlResponse(value: string) {
+  return /^<!DOCTYPE|^<html/i.test(value) || /<body[\s>]/i.test(value);
+}
+
 function decryptGraduateResponse(raw: string) {
   const trimmed = String(raw ?? "").trim();
   if (!trimmed) return "";
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) return trimmed;
-  if (trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html")) return trimmed;
+  if (isGraduateHtmlResponse(trimmed)) return trimmed;
 
   try {
     const decipher = crypto.createDecipheriv("aes-128-ecb", GRAD_AES_KEY, null);
@@ -62,8 +76,8 @@ function decryptGraduateResponse(raw: string) {
 
 function parseGraduateJson<T>(raw: string, label: string) {
   const decrypted = decryptGraduateResponse(raw);
-  if (!decrypted || decrypted.startsWith("<!DOCTYPE") || decrypted.startsWith("<html")) {
-    throw Errors.badRequest(`研究生系统返回了非 JSON 的${label}响应`);
+  if (!decrypted || isGraduateHtmlResponse(decrypted)) {
+    throw Errors.badRequest(`研究生系统返回了非 JSON 的${label}响应，可能需要重新初始化研究生课表会话`);
   }
   try {
     return JSON.parse(decrypted) as T;
@@ -88,6 +102,8 @@ export function normalizeGraduateSemesterLabel(value: string) {
     .replace(/\s+/g, "")
     .replace(/第一学期/g, "一学期")
     .replace(/第二学期/g, "二学期")
+    .replace(/秋学期/g, "一学期")
+    .replace(/春学期/g, "二学期")
     .trim();
 }
 
@@ -113,15 +129,72 @@ function resolveGraduateTargetTerm(
   return terms.find((item) => item.selected) ?? terms[0] ?? null;
 }
 
-async function fetchGraduateTerms(token: string) {
+function unwrapGraduateTermCandidate(candidate: unknown): RawGraduateTermOption[] {
+  if (Array.isArray(candidate)) return candidate as RawGraduateTermOption[];
+  if (typeof candidate === "string") {
+    const trimmed = candidate.trim();
+    if (!trimmed) return [];
+    try {
+      return unwrapGraduateTermCandidate(JSON.parse(trimmed));
+    } catch {
+      return [];
+    }
+  }
+  if (!candidate || typeof candidate !== "object") return [];
+
+  const nestedObject = candidate as Record<string, unknown>;
+  const deeperCandidates = [
+    nestedObject.terms,
+    nestedObject.data,
+    nestedObject.rows,
+    nestedObject.list,
+    nestedObject.items,
+    nestedObject.obj,
+    nestedObject.records,
+    nestedObject.datas,
+  ];
+  for (const deeper of deeperCandidates) {
+    const unwrapped = unwrapGraduateTermCandidate(deeper);
+    if (unwrapped.length) return unwrapped;
+  }
+  return [];
+}
+
+function unwrapGraduateTermArray(value: unknown): RawGraduateTermOption[] {
+  return unwrapGraduateTermCandidate(value);
+}
+
+async function warmupGraduateScheduleSession(token: string) {
+  await fetchAnyCpuText(token, GRAD_SCHEDULE_PAGE_URL, {
+    expectedHost: GRAD_HOST,
+    headers: {
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      Referer: GRAD_SCHEDULE_PAGE_URL,
+    },
+  });
+}
+
+async function fetchGraduateTermsOnce(token: string) {
   const response = await fetchAnyCpuText(token, GRAD_BINDTERM_URL, {
     expectedHost: GRAD_HOST,
     headers: defaultGraduateRequestHeaders(),
   });
-  const json = parseGraduateJson<RawGraduateTermOption[]>(response.text, "学期列表");
-  const terms = Array.isArray(json) ? json.map(normalizeTermOption).filter((item): item is GraduateTermOption => Boolean(item)) : [];
+  const json = parseGraduateJson<GraduateTermEnvelope>(response.text, "学期列表");
+  const termItems = unwrapGraduateTermArray(json);
+  const terms = termItems
+    .map(normalizeTermOption)
+    .filter((item): item is GraduateTermOption => Boolean(item));
   if (!terms.length) throw Errors.badRequest("研究生系统没有返回可用学期列表");
   return terms;
+}
+
+async function fetchGraduateTerms(token: string) {
+  try {
+    return await fetchGraduateTermsOnce(token);
+  } catch {
+    await warmupGraduateScheduleSession(token);
+    return fetchGraduateTermsOnce(token);
+  }
 }
 
 async function fetchGraduateSchedulePayload(token: string, termcode: string) {
