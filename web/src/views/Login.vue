@@ -52,7 +52,7 @@
           <el-alert :title="auth.ssoError" type="error" :closable="false" show-icon />
         </el-form-item>
         <el-form-item>
-          <el-checkbox v-model="remember">记住此账号（仅保存在当前设备）</el-checkbox>
+          <el-checkbox v-model="remember">记住登录信息（仅保存在当前设备）</el-checkbox>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" class="btn-submit" :loading="auth.ssoLoading" @click="onSubmit">

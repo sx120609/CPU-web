@@ -9,6 +9,7 @@ import {
   fetchIServiceApps,
   jwxtDebugSnapshot,
 } from "./jwxtClient";
+import { getGraduateSchedule as getGraduateScheduleLive } from "./graduateScheduleService";
 import {
   parseCalendar,
   parseExams,
@@ -120,4 +121,8 @@ export async function getIApps(token: string) {
 
 export async function debugSnapshot(token: string) {
   return jwxtDebugSnapshot(token);
+}
+
+export async function getGraduateSchedule(token: string, args: { semester?: string; termcode?: string } = {}) {
+  return getGraduateScheduleLive(token, args);
 }

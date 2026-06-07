@@ -23,4 +23,5 @@ export const getCalendar = impl.getCalendar;
 export const getProgress = impl.getProgress;
 export const getPyfa = impl.getPyfa;
 export const getIApps = impl.getIApps;
+export const getGraduateSchedule = impl.getGraduateSchedule;
 export const debugSnapshot = impl.debugSnapshot;

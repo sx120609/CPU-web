@@ -16,11 +16,29 @@
         v-model="semester"
         size="small"
         class="sem-select"
-        @change="loadSchedule(false)"
+        @change="onScheduleSemesterChange"
       >
         <el-option v-for="s in semesters" :key="s.value" :value="s.value" :label="s.label" />
       </el-select>
       <div class="top-actions">
+        <div v-if="jwxt.isLoggedIn || parsed" class="view-switch source-switch" aria-label="切换课表来源">
+          <button
+            type="button"
+            :class="{ active: scheduleSource === 'jwxt' }"
+            title="本科生课表"
+            @click="switchToJwxtSchedule"
+          >
+            本
+          </button>
+          <button
+            type="button"
+            :class="{ active: isGraduateSource }"
+            title="研究生课表"
+            @click="switchToGraduateSchedule"
+          >
+            研
+          </button>
+        </div>
         <div v-if="parsed" class="view-switch" aria-label="切换课表视图">
           <button type="button" :class="{ active: viewMode === 'day' }" @click="setViewMode('day')">日</button>
           <button type="button" :class="{ active: viewMode === 'week' }" @click="setViewMode('week')">周</button>
@@ -45,6 +63,16 @@
           @click="openInstallPrompt"
         >
           <el-icon><Download /></el-icon>
+        </button>
+        <button
+          v-if="isDev"
+          type="button"
+          class="icon-btn"
+          aria-label="研究生课表调试"
+          title="研究生课表调试"
+          @click="gradDebugDialogOpen = true"
+        >
+          <el-icon><Tools /></el-icon>
         </button>
         <el-popover
           v-if="parsed"
@@ -196,7 +224,7 @@
           class="icon-btn"
           :class="{ spinning: loading }"
           aria-label="刷新课表"
-          @click="loadSchedule(true)"
+          @click="refreshCurrentSchedule"
         >
           <el-icon><Refresh /></el-icon>
         </button>
@@ -422,6 +450,59 @@
         <el-button v-if="canJumpToCurrentWeek" type="primary" @click="onJumpAndClose">回到本周</el-button>
         <el-button @click="weekDialogOpen = false">关闭</el-button>
       </template>
+    </el-dialog>
+
+    <el-dialog
+      v-if="isDev"
+      v-model="gradDebugDialogOpen"
+      title="研究生课表调试"
+      :width="gradDebugDialogWidth"
+      align-center
+      :show-close="true"
+      append-to-body
+      class="grad-debug-dialog"
+    >
+      <div class="grad-debug-panel">
+        <p class="grad-debug-intro">
+          这一步已经改成自动调试模式。只要我在浏览器里抓到研究生课表页面，就能把本地样例直接套进当前本科生同款课表样式里预览。
+        </p>
+        <div class="grad-debug-target">
+          <span>目标地址</span>
+          <code>{{ GRAD_DEBUG_URL }}</code>
+        </div>
+        <div class="grad-debug-target">
+          <span>本地样例</span>
+          <code>{{ GRAD_DEBUG_FIXTURE_PATH }}</code>
+        </div>
+        <div class="grad-debug-actions">
+          <el-button type="primary" :loading="gradDebugLoading" @click="loadGraduateDebugSchedule()">
+            载入本地抓取样例
+          </el-button>
+          <el-button @click="openGradSystemDebug">打开研究生管理系统</el-button>
+        </div>
+        <div class="grad-debug-tips">
+          <b>当前调试会做这两件事：</b>
+          <ol>
+            <li>优先读取本地保存的研究生课表 HTML 样例。</li>
+            <li>把解析结果转成和本科生课表一致的数据结构与页面样式。</li>
+            <li>如果你后面切到别的学期或重新登录，我再继续补自动抓取链路。</li>
+          </ol>
+        </div>
+        <div class="grad-debug-foot">
+          <span>{{ gradDebugStatusText }}</span>
+          <div class="grad-debug-foot-actions">
+            <el-button @click="copyGradDebugGuide">复制调试说明</el-button>
+            <el-button
+              v-if="isGraduateDebugSource"
+              type="primary"
+              plain
+              @click="returnToJwxtSchedule"
+            >
+              回到本科教务课表
+            </el-button>
+          </div>
+        </div>
+      </div>
     </el-dialog>
 
     <el-dialog
@@ -671,9 +752,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Aim, ArrowLeft, ArrowRight, Download, Iphone, Loading, Lock, Moon, MoreFilled, Picture, QuestionFilled, Refresh } from "@element-plus/icons-vue";
+import { Aim, ArrowLeft, ArrowRight, Download, Iphone, Loading, Lock, Moon, MoreFilled, Picture, QuestionFilled, Refresh, Tools } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
@@ -698,7 +779,7 @@ import {
   supportsAndroidInAppApkDownload,
   supportsAndroidScheduleWidget,
 } from "@/utils/clientInfo";
-import { USER_QQ_GROUP, openUserGroup } from "@/utils/userGroup";
+import { USER_QQ_GROUP, copyText, openUserGroup } from "@/utils/userGroup";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import InstallPromptDialog from "@/components/install/InstallPromptDialog.vue";
 import OpenBrowserPromptDialog from "@/components/install/OpenBrowserPromptDialog.vue";
@@ -744,6 +825,8 @@ interface ScheduleResult {
 }
 interface CalendarWeek { week: number; days: string[]; monday: string; sunday: string }
 interface CalendarResult { currentWeek: number; semesterStart: string; semesterEnd: string; weeks: CalendarWeek[] }
+interface SemesterDescriptor { startYear: number; endYear: number; season: "first" | "second" }
+interface OfficialSemesterCalendar { start: string; end: string; weeks: number }
 interface FlatCourse { bigSlot: number; index: number; course: ScheduleCourse }
 interface CacheEnvelope<T> { savedAt: number; data: T }
 type ViewMode = "day" | "week";
@@ -791,9 +874,20 @@ const LAST_STATE_BASE = "cpu-schedule-last-state-v1";
 const LAST_CACHE_BASE = "cpu-schedule-last-cache-key-v1";
 const THEME_KEY = "cpu-schedule-theme-v1";
 const BACKGROUND_KEY = "cpu-schedule-background-v1";
+const GRAD_DEBUG_URL = "http://ygl.cpu.edu.cn/gmis5/oauthLogin/zgyk";
+const GRAD_DEBUG_FIXTURE_PATH = "server/.debug/grad-schedule.html";
+const OFFICIAL_GRADUATE_SEMESTER_CALENDARS: Record<string, OfficialSemesterCalendar> = {
+  "2025-2026学年一学期": { start: "2025-09-01", end: "2026-01-18", weeks: 20 },
+  "2025-2026学年二学期": { start: "2026-03-02", end: "2026-07-05", weeks: 18 },
+  "2024-2025学年一学期": { start: "2024-09-02", end: "2025-01-19", weeks: 20 },
+  "2024-2025学年二学期": { start: "2025-02-24", end: "2025-07-06", weeks: 19 },
+  "2023-2024学年一学期": { start: "2023-09-04", end: "2024-01-14", weeks: 19 },
+  "2023-2024学年二学期": { start: "2024-02-26", end: "2024-07-07", weeks: 19 },
+};
 const scheduleCacheStore = new Map<string, CacheEnvelope<ScheduleResult>>();
 const prewarmingScheduleKeys = new Set<string>();
 const isNativeScheduleApp = ["android", "harmony", "ios"].includes(detectClientPlatform());
+const isDev = computed(() => import.meta.env.DEV);
 let scheduleEditsSaveTimer = 0;
 let scheduleEditsLoadPromise: Promise<void> | null = null;
 const smallSlots = [
@@ -861,6 +955,17 @@ const widgetInstructionOpen = ref(false);
 const widgetInstructionCountdown = ref(6);
 const androidUpdateOpen = ref(false);
 const androidWidgetGuideOpen = ref(false);
+const gradDebugDialogOpen = ref(false);
+const gradDebugLoading = ref(false);
+const graduateSourceMeta = ref<{
+  mode?: "live" | "debug" | "debug-fallback";
+  path?: string;
+  savedAt?: string;
+  fetchedAt?: string;
+  semester?: string;
+  termcode?: string;
+} | null>(null);
+const scheduleSource = ref<"jwxt" | "graduate" | "graduate-debug">("jwxt");
 const androidUpdateCountdown = ref(1);
 const moreMenuOpen = ref(false);
 const moreMenuView = ref<"menu" | "theme" | "background">("menu");
@@ -912,6 +1017,158 @@ function openMoreMenu() {
 
 function getAndroidWidgetBridge(): AndroidWidgetBridge | null {
   return ((window as any).CPUAndroid ?? null) as AndroidWidgetBridge | null;
+}
+
+async function copyGradDebugGuide() {
+  await copyText(gradDebugGuideText.value);
+  ElMessage.success("已复制调试说明");
+}
+
+function normalizeSemesterLabel(value: string) {
+  return String(value || "")
+    .replace(/\s+/g, "")
+    .replace(/第一学期/g, "一学期")
+    .replace(/第二学期/g, "二学期")
+    .trim();
+}
+
+function officialGraduateSemesterCalendarFor(value: string) {
+  return OFFICIAL_GRADUATE_SEMESTER_CALENDARS[normalizeSemesterLabel(value)] ?? null;
+}
+
+function pickFirstCourseDay(data: ScheduleResult | null, weekValue: number) {
+  if (!data) return 1;
+  const courseDays = data.cells
+    .filter((cell) => cell.courses.some((course) => courseMatchesWeek(course, weekValue)))
+    .map((cell) => cell.day)
+    .filter((day) => day >= 1 && day <= 7)
+    .sort((a, b) => a - b);
+  return courseDays[0] || 1;
+}
+
+function resolveGraduateInitialWeek(data: ScheduleResult | null, fallbackCalendar: CalendarResult | null) {
+  const weekValues = new Set((data?.weeks ?? []).map((item) => String(item.value || "")));
+  const currentByDate = String(fallbackCalendar?.currentWeek || "");
+  if (currentByDate && weekValues.has(currentByDate)) return currentByDate;
+  const currentBySchedule = String(data?.currentWeek || "");
+  if (currentBySchedule && weekValues.has(currentBySchedule)) return currentBySchedule;
+  return String(data?.weeks?.find((item) => item.current)?.value || data?.weeks?.[0]?.value || currentByDate || "");
+}
+
+function resolveGraduateActiveDay(
+  data: ScheduleResult | null,
+  weekValue: string,
+  fallbackCalendar: CalendarResult | null,
+) {
+  const weekNumber = Number(weekValue || 0);
+  if (weekNumber && weekNumber === Number(fallbackCalendar?.currentWeek || 0)) return dayOfWeek();
+  return pickFirstCourseDay(data, weekNumber);
+}
+
+async function loadGraduateSchedule(targetSemester?: string) {
+  loading.value = true;
+  try {
+    const requestedSemester = targetSemester?.trim()
+      || (scheduleSource.value === "graduate" ? semester.value || undefined : undefined);
+    const result = await jwxtApi.graduateSchedule({ semester: requestedSemester });
+    const fallbackCalendar = buildGraduateFallbackCalendar(result.parsed);
+    const normalizedParsed = extendScheduleWeeksToCalendar(result.parsed, fallbackCalendar);
+    const initialWeek = resolveGraduateInitialWeek(normalizedParsed, fallbackCalendar);
+    parsed.value = normalizedParsed;
+    calendar.value = fallbackCalendar;
+    scheduleSource.value = "graduate";
+    graduateSourceMeta.value = result.source ?? { mode: "live" };
+    semester.value = normalizedParsed?.currentSemester ?? "";
+    week.value = initialWeek;
+    activeDay.value = resolveGraduateActiveDay(normalizedParsed, initialWeek, fallbackCalendar);
+    scheduleSavedAt.value = 0;
+    scheduleEdits.value = emptyScheduleEdits();
+    await loadScheduleEdits();
+    saveLastState();
+    ElMessage.success(
+      graduateSourceMeta.value?.mode === "debug-fallback"
+        ? "研究生实时服务暂不可达，已回退到本地样例"
+        : "已切换到研究生课表",
+    );
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function loadGraduateDebugSchedule(targetSemester?: string) {
+  gradDebugLoading.value = true;
+  loading.value = true;
+  try {
+    const requestedSemester = targetSemester?.trim()
+      || (scheduleSource.value === "graduate-debug" ? semester.value || undefined : undefined);
+    const result = await jwxtApi.graduateDebugSchedule({ semester: requestedSemester });
+    const fallbackCalendar = buildGraduateFallbackCalendar(result.parsed);
+    const normalizedParsed = extendScheduleWeeksToCalendar(result.parsed, fallbackCalendar);
+    const initialWeek = resolveGraduateInitialWeek(normalizedParsed, fallbackCalendar);
+    parsed.value = normalizedParsed;
+    calendar.value = fallbackCalendar;
+    scheduleSource.value = "graduate-debug";
+    graduateSourceMeta.value = {
+      ...(result.source ?? {}),
+      mode: "debug",
+    };
+    semester.value = normalizedParsed?.currentSemester ?? "";
+    week.value = initialWeek;
+    activeDay.value = resolveGraduateActiveDay(normalizedParsed, initialWeek, fallbackCalendar);
+    scheduleSavedAt.value = 0;
+    scheduleEdits.value = emptyScheduleEdits();
+    saveLastState();
+    gradDebugDialogOpen.value = false;
+    ElMessage.success("已载入研究生课表调试样例");
+  } finally {
+    gradDebugLoading.value = false;
+    loading.value = false;
+  }
+}
+
+async function returnToJwxtSchedule() {
+  graduateSourceMeta.value = null;
+  parsed.value = null;
+  calendar.value = null;
+  semester.value = "";
+  week.value = "";
+  scheduleSavedAt.value = 0;
+  scheduleEdits.value = emptyScheduleEdits();
+  scheduleSource.value = "jwxt";
+  if (jwxt.isLoggedIn) {
+    await loadCalendar();
+    await loadSchedule(true);
+    ElMessage.success("已切回本科教务课表");
+    return;
+  }
+  parsed.value = null;
+  calendar.value = null;
+  semester.value = "";
+  week.value = "";
+  ElMessage.info("已退出研究生课表");
+}
+
+async function switchToGraduateSchedule() {
+  if (scheduleSource.value === "graduate") return;
+  if (!jwxt.isLoggedIn) {
+    ElMessage.warning("请先完成教务授权，再切换研究生课表");
+    return;
+  }
+  await loadGraduateSchedule();
+}
+
+async function switchToJwxtSchedule() {
+  if (scheduleSource.value === "jwxt") return;
+  await returnToJwxtSchedule();
+}
+
+function openGradSystemDebug() {
+  const bridge = getAndroidWidgetBridge();
+  if (typeof bridge?.openExternalUrl === "function") {
+    bridge.openExternalUrl(GRAD_DEBUG_URL);
+    return;
+  }
+  window.open(GRAD_DEBUG_URL, "_blank", "noopener,noreferrer");
 }
 
 const widgetMenuPlatform = computed<WidgetMenuPlatform | null>(() => {
@@ -1456,8 +1713,16 @@ const dayTabs = computed(() => dayTabsForWeek(week.value));
 const activeDayLabel = computed(() => dayTabs.value.find((d) => d.day === activeDay.value)?.label ?? "今日");
 const cacheText = computed(() => {
   const parts: string[] = [];
+  if (scheduleSource.value === "graduate" || scheduleSource.value === "graduate-debug") {
+    if (graduateSourceMeta.value?.mode === "live") parts.push("研究生实时课表");
+    else if (graduateSourceMeta.value?.mode === "debug-fallback") parts.push("研究生本地样例回退");
+    else parts.push("研究生调试样例");
+    parts.push(officialGraduateSemesterCalendarFor(semester.value || parsed.value?.currentSemester || "") ? "日期来自官方校历" : "日期为推算");
+    if (graduateSourceMeta.value?.fetchedAt) parts.push(`实时同步 ${formatCacheTime(Date.parse(graduateSourceMeta.value.fetchedAt))}`);
+    if (graduateSourceMeta.value?.savedAt) parts.push(`本地抓取 ${formatCacheTime(Date.parse(graduateSourceMeta.value.savedAt))}`);
+  }
   if (offlineMode.value) parts.push("当前离线");
-  if (scheduleSavedAt.value) parts.push(`本地缓存 ${formatCacheTime(scheduleSavedAt.value)}`);
+  if (scheduleSavedAt.value && scheduleSource.value === "jwxt") parts.push(`本地缓存 ${formatCacheTime(scheduleSavedAt.value)}`);
   return parts.join(" · ");
 });
 const activeWeekNumber = computed(() => {
@@ -1498,6 +1763,9 @@ const dayCourseBlocks = computed<WeekCourseBlock[]>(() => (
 ));
 const weekCourseBlocks = computed<WeekCourseBlock[]>(() => weekCourseBlocksFor(activeWeekNumber.value, parsed.value));
 const editDialogWidth = computed(() => compactViewport.value ? "92vw" : "560px");
+const gradDebugDialogWidth = computed(() => compactViewport.value ? "calc(100vw - 16px)" : "680px");
+const isGraduateSource = computed(() => scheduleSource.value === "graduate" || scheduleSource.value === "graduate-debug");
+const isGraduateDebugSource = computed(() => scheduleSource.value === "graduate-debug");
 const maxWeekNumber = computed(() => {
   const values = weeks.value.map((w) => Number(w.value)).filter((v) => Number.isFinite(v) && v > 0);
   return values.length ? Math.max(...values) : 20;
@@ -1525,6 +1793,19 @@ const hiddenCourseItems = computed(() => {
     }
   }
   return items;
+});
+const gradDebugGuideText = computed(() => [
+  "研究生课表调试说明",
+  `1. 打开 ${GRAD_DEBUG_URL} 并完成登录。`,
+  `2. 我会把课表样例保存到 ${GRAD_DEBUG_FIXTURE_PATH}。`,
+  "3. 在调试面板点击“载入本地抓取样例”，就会直接用本科生同款课表样式预览研究生课表。",
+].join("\n"));
+const gradDebugStatusText = computed(() => {
+  if (gradDebugLoading.value) return "正在解析本地研究生课表样例...";
+  if (graduateSourceMeta.value?.savedAt) {
+    return `已就绪：${graduateSourceMeta.value.path || GRAD_DEBUG_FIXTURE_PATH} · ${formatCacheTime(Date.parse(graduateSourceMeta.value.savedAt))}`;
+  }
+  return `等待载入本地样例：${GRAD_DEBUG_FIXTURE_PATH}`;
 });
 
 // 横向轨道始终渲染：上一页 / 当前页 / 下一页，拖动时只移动轨道。
@@ -1578,6 +1859,42 @@ async function loadCalendar() {
   } catch { /* calendar is best effort */ }
 }
 
+async function onScheduleSemesterChange() {
+  if (scheduleSource.value === "graduate") {
+    const loadedSemester = parsed.value?.currentSemester ?? "";
+    if (!semester.value || semester.value === loadedSemester) return;
+    try {
+      await loadGraduateSchedule(semester.value);
+    } catch {
+      semester.value = loadedSemester;
+    }
+    return;
+  }
+  if (scheduleSource.value === "graduate-debug") {
+    const loadedSemester = parsed.value?.currentSemester ?? "";
+    if (!semester.value || semester.value === loadedSemester) return;
+    try {
+      await loadGraduateDebugSchedule(semester.value);
+    } catch {
+      semester.value = loadedSemester;
+    }
+    return;
+  }
+  await loadSchedule(false);
+}
+
+async function refreshCurrentSchedule() {
+  if (scheduleSource.value === "graduate") {
+    await loadGraduateSchedule();
+    return;
+  }
+  if (scheduleSource.value === "graduate-debug") {
+    await loadGraduateDebugSchedule();
+    return;
+  }
+  await loadSchedule(true);
+}
+
 async function loadSchedule(force = false, background = false) {
   if (!jwxt.isLoggedIn || (loading.value && !force && !background)) return;
   const hadCache = !force && restoreScheduleCache();
@@ -1596,6 +1913,8 @@ async function loadSchedule(force = false, background = false) {
       { semester: semester.value, week: week.value },
       { silent: background || hadCache || (offlineMode.value && canFallbackToVisibleSchedule) },
     );
+    scheduleSource.value = "jwxt";
+    graduateSourceMeta.value = null;
     parsed.value = r.parsed;
     if (!semester.value) semester.value = parsed.value?.currentSemester ?? "";
     if (!week.value) week.value = String(calendar.value?.currentWeek || parsed.value?.currentWeek || "");
@@ -2111,12 +2430,20 @@ function shortDate(value: string) {
   return m ? `${m[1]}/${m[2]}` : "";
 }
 
+function formatYmd(year: number, month: number, day: number) {
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function addDaysToCalendarYmd(ymd: string, days: number): string {
+  const match = String(ymd || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return "";
+  const d = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + days));
+  return formatYmd(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+}
+
 /** 给 "YYYY-MM-DD" 加一天 */
 function plusOneDay(ymd: string): string {
-  if (!ymd) return "";
-  const d = new Date(ymd + "T00:00:00");
-  d.setDate(d.getDate() + 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return addDaysToCalendarYmd(ymd, 1);
 }
 
 function dayOfWeekForCalendarYmd(ymd: string) {
@@ -2139,6 +2466,98 @@ function normalizeCalendarWeekDays(days: string[]) {
     if (day >= 1 && day <= 7) normalized[day - 1] = date;
   }
   return normalized.some(Boolean) ? normalized : raw;
+}
+
+function parseSemesterDescriptor(value: string): SemesterDescriptor | null {
+  const normalized = String(value || "").trim();
+  const match = normalized.match(/(\d{4})-(\d{4})/);
+  if (!match) return null;
+  const season = /第一学期|第1学期|1学期|一学期|秋学期|秋/.test(normalized)
+    ? "first"
+    : /第二学期|第2学期|2学期|二学期|春学期|春/.test(normalized)
+      ? "second"
+      : null;
+  if (!season) return null;
+  return {
+    startYear: Number(match[1]),
+    endYear: Number(match[2]),
+    season,
+  };
+}
+
+function inferSemesterDescriptorFromToday(): SemesterDescriptor {
+  const today = chinaTodayParts();
+  if (today.month >= 9) {
+    return { startYear: today.year, endYear: today.year + 1, season: "first" };
+  }
+  if (today.month === 1) {
+    return { startYear: today.year - 1, endYear: today.year, season: "first" };
+  }
+  return { startYear: today.year - 1, endYear: today.year, season: "second" };
+}
+
+function semesterAnchorMonday(descriptor: SemesterDescriptor) {
+  const anchor = descriptor.season === "first"
+    ? formatYmd(descriptor.startYear, 9, 1)
+    : formatYmd(descriptor.endYear, 3, 1);
+  const day = dayOfWeekForCalendarYmd(anchor);
+  return day ? addDaysToCalendarYmd(anchor, 1 - day) : anchor;
+}
+
+function scheduleWeekCount(data: ScheduleResult | null) {
+  const maxFromOptions = Math.max(
+    0,
+    ...(data?.weeks ?? []).map((item) => Number(item.value) || 0),
+  );
+  const maxFromCourses = Math.max(
+    0,
+    ...(data?.cells ?? []).flatMap((cell) => cell.courses.flatMap((course) => normalizedCourseWeekList(course))),
+  );
+  return Math.max(1, maxFromOptions, maxFromCourses, Number(data?.currentWeek || 0) || 0);
+}
+
+function extendScheduleWeeksToCalendar(data: ScheduleResult | null, source: CalendarResult | null) {
+  if (!data || !source?.weeks?.length) return data;
+  const totalWeeks = Math.max(scheduleWeekCount(data), source.weeks.length);
+  const weeks = Array.from({ length: totalWeeks }, (_, index) => {
+    const value = String(index + 1);
+    return {
+      value,
+      label: `第 ${value} 周`,
+      current: value === String(source.currentWeek || data.currentWeek || ""),
+    };
+  });
+  return {
+    ...data,
+    weeks,
+  };
+}
+
+function buildGraduateFallbackCalendar(data: ScheduleResult | null): CalendarResult | null {
+  if (!data) return null;
+  const officialCalendar = officialGraduateSemesterCalendarFor(data.currentSemester);
+  const descriptor = parseSemesterDescriptor(data.currentSemester) ?? inferSemesterDescriptorFromToday();
+  const semesterStart = officialCalendar?.start || semesterAnchorMonday(descriptor);
+  const totalWeeks = Math.max(scheduleWeekCount(data), officialCalendar?.weeks || 0);
+  const weeks = Array.from({ length: totalWeeks }, (_, index) => {
+    const monday = addDaysToCalendarYmd(semesterStart, index * 7);
+    const days = Array.from({ length: 7 }, (_, offset) => addDaysToCalendarYmd(monday, offset));
+    return {
+      week: index + 1,
+      days,
+      monday,
+      sunday: days[6] || monday,
+    };
+  });
+  const today = todayKey();
+  const currentWeekByDate = weeks.find((item) => item.days.includes(today))?.week ?? 0;
+  const fallbackCurrentWeek = Number(data.currentWeek || 0) || 0;
+  return {
+    currentWeek: currentWeekByDate || fallbackCurrentWeek || 1,
+    semesterStart,
+    semesterEnd: officialCalendar?.end || weeks[weeks.length - 1]?.sunday || semesterStart,
+    weeks,
+  };
 }
 
 function resolveCalendarCurrentWeek(source: CalendarResult | null | undefined) {
@@ -3310,6 +3729,69 @@ function prewarmScheduleCacheForWeek(wk: string) {
 .more-panel {
   display: flex;
   flex-direction: column;
+  gap: 8px;
+}
+.grad-debug-panel {
+  display: grid;
+  gap: 14px;
+}
+.grad-debug-intro {
+  margin: 0;
+  color: #516074;
+  line-height: 1.75;
+}
+.grad-debug-target {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(248, 250, 252, 0.88);
+}
+.grad-debug-target span {
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+}
+.grad-debug-target code {
+  word-break: break-all;
+  color: #0f172a;
+}
+.grad-debug-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.grad-debug-tips {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.9);
+  color: #475569;
+}
+.grad-debug-tips b {
+  color: #172033;
+}
+.grad-debug-tips ol {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+}
+.grad-debug-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: #64748b;
+  font-size: 12px;
+}
+.grad-debug-foot-actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 .background-panel {
@@ -4627,6 +5109,12 @@ function prewarmScheduleCacheForWeek(wk: string) {
   flex-direction: column;
 }
 
+:global(.grad-debug-dialog.el-dialog),
+:global(.grad-debug-dialog .el-dialog) {
+  border-radius: 22px;
+  overflow: hidden;
+}
+
 :global(.schedule-edit-dialog.el-dialog .el-dialog__body),
 :global(.schedule-edit-dialog .el-dialog__body) {
   flex: 1;
@@ -4764,6 +5252,17 @@ function prewarmScheduleCacheForWeek(wk: string) {
 
   .view-switch {
     grid-template-columns: repeat(2, 30px);
+  }
+
+  .grad-debug-actions,
+  .grad-debug-foot-actions {
+    width: 100%;
+  }
+
+  .grad-debug-actions :deep(.el-button),
+  .grad-debug-foot-actions :deep(.el-button) {
+    flex: 1 1 0;
+    min-width: 0;
   }
 
   .form-grid {

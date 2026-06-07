@@ -448,7 +448,7 @@
             <div class="qqbot-step-index">2</div>
             <div class="qqbot-step-body">
               <div class="qqbot-step-title">添加 QQBot 并发送绑定命令</div>
-              <p>先在 QQ 里添加上面的机器人账号，再私聊发送下面这条命令。</p>
+              <p>先在 QQ 里添加上面的机器人账号，再私聊发送下面这条命令。绑定码不要发到群里。</p>
               <div class="qqbot-code-box">
                 <code>{{ qqBotBindCommandText }}</code>
                 <el-button plain size="small" :disabled="!qqBotProfile?.activeBindToken" :loading="qqBotLoading" @click="copyQqBotCommand">
@@ -462,15 +462,33 @@
             <div class="qqbot-step-index">3</div>
             <div class="qqbot-step-body">
               <div class="qqbot-step-title">绑定完成后可直接在 QQ 里使用</div>
-              <p>你可以发“帮助”查看全部命令，也可以直接说“我想投稿”进入分步投稿流程。</p>
+              <p>你可以发“帮助”查看全部命令，也可以直接说“我想投稿”进入分步投稿流程。私聊里像“状态？”、“板块呢”这种自然说法也能识别；投稿会话中还可以用“/板块 树洞”切板块、用“/标题 新标题”改标题、用“/清空标题”重填标题、用“/润色”重新整理草稿，发错正文时也能用“/撤回最后一行”、“/撤回上一段”或“/清空正文”快速修正，还能用“/润色标题 更短一点”或“/润色正文 更自然一点”这种写法直接带要求。正文收集和确认草稿时，如果你是在改草稿，也可以直接说“标题太长了”、“这段太官方了”、“把上一段再顺一点”或“把最后一行改口语一点”；如果刚改过上一段或最后一行，下一句直接说“再口语一点”“再短一点”也会继续沿着那一小段调整；如果想切去标题或整篇，直接说“标题太长了”或“整体再顺一点”就行。像“自然一点”“像机器人”“标题太长了”这种口语反馈，现在也更容易被直接接住；如果太模糊，机器人会先给短选项提示，你直接回“标题”、“正文”或“整篇”就行。</p>
               <div class="qqbot-inline-examples">
                 <el-tag effect="plain">帮助</el-tag>
+                <el-tag effect="plain">命令</el-tag>
                 <el-tag effect="plain">状态</el-tag>
                 <el-tag effect="plain">板块</el-tag>
                 <el-tag effect="plain">我的投稿</el-tag>
+                <el-tag effect="plain">最近投稿</el-tag>
                 <el-tag effect="plain">投稿</el-tag>
                 <el-tag effect="plain">结束</el-tag>
                 <el-tag effect="plain">取消</el-tag>
+                <el-tag effect="plain">/进度</el-tag>
+                <el-tag effect="plain">/预览</el-tag>
+                <el-tag effect="plain">/板块 树洞</el-tag>
+                <el-tag effect="plain">/标题 新标题</el-tag>
+                <el-tag effect="plain">/清空标题</el-tag>
+                <el-tag effect="plain">/润色</el-tag>
+                <el-tag effect="plain">/润色 更口语一点</el-tag>
+                <el-tag effect="plain">/润色标题</el-tag>
+                <el-tag effect="plain">/润色标题 更短一点</el-tag>
+                <el-tag effect="plain">/润色正文</el-tag>
+                <el-tag effect="plain">/润色正文 更自然一点</el-tag>
+                <el-tag effect="plain">/润色上一段 更自然一点</el-tag>
+                <el-tag effect="plain">/润色最后一行 更口语一点</el-tag>
+                <el-tag effect="plain">/撤回最后一行</el-tag>
+                <el-tag effect="plain">/撤回上一段</el-tag>
+                <el-tag effect="plain">/清空正文</el-tag>
               </div>
             </div>
           </div>
@@ -558,13 +576,13 @@ const qqPostingText = computed(() => {
 });
 const qqBotBindCommandText = computed(() => {
   if (qqBotProfile.value?.activeBindToken) return `绑定 ${qqBotProfile.value.activeBindToken.token}`;
-  return "先生成绑定码，再发送：绑定 绑定码";
+  return "先生成绑定码，再私聊发送：绑定 绑定码";
 });
 const qqBotCommandSections = [
   {
     title: "账号与状态",
     items: [
-      { command: "帮助", desc: "查看功能说明和常用命令" },
+      { command: "帮助 / 命令 / 功能", desc: "查看功能说明和常用命令" },
       { command: "绑定 绑定码", desc: "把当前 QQ 绑定到站内账号" },
       { command: "状态", desc: "查看绑定状态、默认投稿区和投稿开关" },
       { command: "解绑", desc: "解除当前 QQ 绑定" },
@@ -573,12 +591,25 @@ const qqBotCommandSections = [
   {
     title: "查询与投稿",
     items: [
-      { command: "板块", desc: "查看可投稿板块和默认投稿区" },
-      { command: "我的投稿", desc: "查看最近 5 条投稿记录" },
+      { command: "板块 / 版块 / 分区", desc: "查看可投稿板块和默认投稿区" },
+      { command: "我的投稿 / 最近投稿", desc: "查看最近 5 条投稿记录" },
       { command: "投稿", desc: "开始分步投稿，机器人会一步步提示" },
       { command: "我想投稿", desc: "也可以直接用自然语言开始投稿" },
       { command: "结束", desc: "提交当前稿件，进入最终确认" },
       { command: "取消", desc: "取消这次投稿会话" },
+      { command: "/进度", desc: "会话里查看当前草稿进度" },
+      { command: "/预览", desc: "会话里查看当前草稿完整预览" },
+      { command: "/板块 树洞", desc: "会话里把当前草稿切换到指定板块" },
+      { command: "/标题 新标题", desc: "会话里直接修改当前草稿标题" },
+      { command: "/清空标题", desc: "会话里清空当前标题，重新填写" },
+      { command: "/润色 [要求]", desc: "会话里按你的要求重新整理当前草稿，比如“/润色 更口语一点”" },
+      { command: "/润色标题 [要求]", desc: "会话里只调整当前标题，比如“/润色标题 更短一点”" },
+      { command: "/润色正文 [要求]", desc: "会话里只调整当前正文，比如“/润色正文 更自然一点”" },
+      { command: "/润色上一段 [要求]", desc: "会话里只调整最后一段正文，比如“/润色上一段 更自然一点”" },
+      { command: "/润色最后一行 [要求]", desc: "会话里只调整最后一行，比如“/润色最后一行 更口语一点”" },
+      { command: "/撤回最后一行", desc: "会话里只删除正文最后一行" },
+      { command: "/撤回上一段", desc: "会话里删除刚补进草稿的最后一段正文" },
+      { command: "/清空正文", desc: "会话里清空当前正文，重新开始写" },
     ],
   },
 ] as const;

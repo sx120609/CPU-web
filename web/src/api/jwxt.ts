@@ -169,5 +169,25 @@ export const jwxtApi = {
     inst.delete<unknown, { ok: boolean }>(`/schedule-widget-tokens/${id}`),
   textbook: () => inst.get<unknown, { parsed: any }>("/textbook"),
   debugSnapshot: () => inst.post<unknown, { saved: string[]; errors: string[] }>("/debug/snapshot"),
+  graduateSchedule: (params?: { semester?: string; termcode?: string }, options?: { silent?: boolean }) =>
+    inst.get<unknown, {
+      parsed: any;
+      source: {
+        mode?: "live" | "debug-fallback";
+        semester?: string;
+        termcode?: string;
+        fetchedAt?: string;
+        path?: string;
+        savedAt?: string;
+      };
+    }>("/graduate-schedule", {
+      params,
+      ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
+    }),
+  graduateDebugSchedule: (params?: { semester?: string }, options?: { silent?: boolean }) =>
+    inst.get<unknown, { parsed: any; source: { path: string; savedAt?: string } }>("/graduate-debug/schedule", {
+      params,
+      ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
+    }),
   probe: (path: string) => inst.get<unknown, { html: string }>("/probe", { params: { path } }),
 };

@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
 import crypto from "node:crypto";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import { ok, Errors } from "../utils/response";
 import { validate } from "../middleware/validate";
 import { authRequired } from "../middleware/auth";
@@ -10,6 +12,13 @@ import { detectLoginClient } from "../utils/loginClient";
 import { invalidateJwxtWidgetCaches } from "../services/cacheInvalidation";
 import { buildRedisKey } from "../services/redis";
 import { getSiteOrigin } from "../services/siteSettings";
+import {
+  parseGraduateSchedule,
+  parseGraduateSchedulePayload,
+  type GraduateSchedulePayload,
+  type GraduateTermOption,
+} from "../services/graduateScheduleParser";
+import { normalizeGraduateSemesterLabel, type GraduateScheduleFetchResult } from "../services/graduateScheduleService";
 import {
   beginLogin,
   submitLogin,
@@ -23,6 +32,7 @@ import {
   getProgress,
   getPyfa,
   getIApps,
+  getGraduateSchedule,
   debugSnapshot,
   sessionStats,
   isRemoteMode,
@@ -54,6 +64,18 @@ const JWXT_CALENDAR_CACHE_TTL_MS = 12 * 60 * 60_000;
 const JWXT_PROGRESS_CACHE_TTL_MS = 5 * 60_000;
 const JWXT_PYFA_CACHE_TTL_MS = 10 * 60_000;
 const JWXT_IAPPS_CACHE_TTL_MS = 10 * 60_000;
+const GRAD_SCHEDULE_DEBUG_BINDTERM_CANDIDATES = [
+  path.resolve(process.cwd(), ".debug", "grad-bindterm.json"),
+  path.resolve(process.cwd(), "server", ".debug", "grad-bindterm.json"),
+];
+const GRAD_SCHEDULE_DEBUG_PAYLOAD_CANDIDATES = [
+  path.resolve(process.cwd(), ".debug", "grad-schedule-payloads.json"),
+  path.resolve(process.cwd(), "server", ".debug", "grad-schedule-payloads.json"),
+];
+const GRAD_SCHEDULE_DEBUG_FIXTURE_CANDIDATES = [
+  path.resolve(process.cwd(), ".debug", "grad-schedule.html"),
+  path.resolve(process.cwd(), "server", ".debug", "grad-schedule.html"),
+];
 
 /**
  * 教务会话 token 取自 X-Jwxt-Token 头。
@@ -65,6 +87,138 @@ function getToken(req: any): string | null {
 
 function jwxtTokenCacheId(token: string) {
   return crypto.createHash("sha256").update(token).digest("hex").slice(0, 24);
+}
+
+async function readGraduateDebugFixture() {
+  for (const filePath of GRAD_SCHEDULE_DEBUG_FIXTURE_CANDIDATES) {
+    try {
+      const [html, stat] = await Promise.all([
+        fs.readFile(filePath, "utf8"),
+        fs.stat(filePath),
+      ]);
+      if (html.trim()) {
+        return {
+          html,
+          path: filePath,
+          savedAt: stat.mtime.toISOString(),
+        };
+      }
+    } catch {
+      /* try next candidate */
+    }
+  }
+  throw Errors.badRequest("未找到研究生课表调试样例，请先抓取并保存 grad-schedule.html");
+}
+
+async function readGraduateDebugJson<T>(candidates: string[], missingMessage: string) {
+  for (const filePath of candidates) {
+    try {
+      const [raw, stat] = await Promise.all([
+        fs.readFile(filePath, "utf8"),
+        fs.stat(filePath),
+      ]);
+      if (!raw.trim()) continue;
+      return {
+        data: JSON.parse(raw) as T,
+        path: filePath,
+        savedAt: stat.mtime.toISOString(),
+      };
+    } catch {
+      /* try next candidate */
+    }
+  }
+  throw Errors.badRequest(missingMessage);
+}
+
+async function readGraduateDebugBindterm() {
+  return readGraduateDebugJson<{ terms?: GraduateTermOption[] }>(
+    GRAD_SCHEDULE_DEBUG_BINDTERM_CANDIDATES,
+    "未找到研究生学期列表调试样例，请先重新抓取 bindterm",
+  );
+}
+
+async function readGraduateDebugPayloadBundle() {
+  return readGraduateDebugJson<{
+    items?: Array<{
+      termcode?: string;
+      termname?: string;
+      selected?: boolean;
+      payload?: GraduateSchedulePayload;
+    }>;
+  }>(
+    GRAD_SCHEDULE_DEBUG_PAYLOAD_CANDIDATES,
+    "未找到研究生课表 JSON 调试样例，请先重新抓取课表接口",
+  );
+}
+
+async function buildGraduateDebugScheduleResponse(requestedSemester: string) {
+  const [bindterm, payloadBundle] = await Promise.all([
+    readGraduateDebugBindterm().catch(() => null),
+    readGraduateDebugPayloadBundle().catch(() => null),
+  ]);
+
+  if (bindterm?.data?.terms?.length && payloadBundle?.data?.items?.length) {
+    const terms = bindterm.data.terms
+      .map((item) => ({
+        termcode: String(item?.termcode ?? "").trim(),
+        termname: String(item?.termname ?? "").trim(),
+        selected: Boolean(item?.selected),
+      }))
+      .filter((item) => item.termcode && item.termname);
+    const normalizedRequestedSemester = normalizeGraduateSemesterLabel(requestedSemester);
+    const targetTerm = requestedSemester
+      ? terms.find((item) => normalizeGraduateSemesterLabel(item.termname) === normalizedRequestedSemester)
+      : terms.find((item) => item.selected) ?? terms[0];
+    if (!targetTerm) throw Errors.badRequest("未找到可用的研究生学期数据");
+
+    const payloadItem = payloadBundle.data.items.find((item) => String(item?.termcode ?? "").trim() === targetTerm.termcode);
+    if (!payloadItem?.payload) {
+      throw Errors.badRequest(`当前本地还没有抓到「${targetTerm.termname}」的研究生课表数据，请先在研究生系统切到该学期后重新抓取。`);
+    }
+
+    return {
+      parsed: parseGraduateSchedulePayload(payloadItem.payload, terms, targetTerm.termcode),
+      source: {
+        mode: "debug-fallback" as const,
+        path: payloadBundle.path,
+        savedAt: payloadBundle.savedAt,
+        bindtermPath: bindterm.path,
+        semester: targetTerm.termname,
+        termcode: targetTerm.termcode,
+      },
+    };
+  }
+
+  const fixture = await readGraduateDebugFixture();
+  const parsed = parseGraduateSchedule(fixture.html);
+  if (requestedSemester && requestedSemester !== parsed.currentSemester) {
+    throw Errors.badRequest(`当前本地只保存了「${parsed.currentSemester}」课表样例；请先去研究生系统切到「${requestedSemester}」后再重新抓取。`);
+  }
+  return {
+    parsed,
+    source: {
+      mode: "debug-fallback" as const,
+      path: fixture.path,
+      savedAt: fixture.savedAt,
+      semester: parsed.currentSemester,
+    },
+  };
+}
+
+async function loadGraduateScheduleResponse(
+  token: string,
+  requestedSemester: string,
+  requestedTermcode: string,
+) {
+  try {
+    return await getGraduateSchedule(token, {
+      semester: requestedSemester || undefined,
+      termcode: requestedTermcode || undefined,
+    }) as GraduateScheduleFetchResult | Awaited<ReturnType<typeof buildGraduateDebugScheduleResponse>>;
+  } catch (error) {
+    if (process.env.NODE_ENV === "production") throw error;
+    return buildGraduateDebugScheduleResponse(requestedSemester);
+  }
 }
 
 const scheduleEditCourseSchema = z.object({
@@ -685,6 +839,24 @@ jwxtRouter.get("/schedule", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+jwxtRouter.get("/graduate-schedule", async (req, res, next) => {
+  try {
+    const t = getToken(req);
+    if (!t) throw Errors.unauthorized("请先登录教务系统");
+    const semester = req.query.semester ? String(req.query.semester).trim() : "";
+    const termcode = req.query.termcode ? String(req.query.termcode).trim() : "";
+    const cacheId = jwxtTokenCacheId(t);
+    const result = await withCache(
+      "jwxt-graduate-schedule",
+      [cacheId, semester || "_", termcode || "_"],
+      JWXT_SCHEDULE_CACHE_TTL_MS,
+      async () => loadGraduateScheduleResponse(t, semester, termcode),
+    );
+    res.setHeader("Cache-Control", "private, max-age=60");
+    ok(res, result);
+  } catch (e) { next(e); }
+});
+
 /** 成绩（GET 接口，内部 POST 查询） */
 jwxtRouter.get("/grades", async (req, res, next) => {
   try {
@@ -749,6 +921,14 @@ jwxtRouter.get("/probe", async (req, res, next) => {
     const { jwxtFetchHtml } = await import("../services/jwxtClient");
     const html = await jwxtFetchHtml(t, p);
     ok(res, { html });
+  } catch (e) { next(e); }
+});
+
+jwxtRouter.get("/graduate-debug/schedule", async (req, res, next) => {
+  try {
+    if (process.env.NODE_ENV === "production") throw Errors.forbidden();
+    const requestedSemester = String(req.query.semester ?? "").trim();
+    ok(res, await buildGraduateDebugScheduleResponse(requestedSemester));
   } catch (e) { next(e); }
 });
 

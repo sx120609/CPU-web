@@ -419,23 +419,54 @@ export async function jwxtFetchHtml(token: string, path: string): Promise<string
   return res.text();
 }
 
-/**
- * 通用：访问任意 cpu.edu.cn 子域。
- * 因为 SSO session 已建立，CAS 会自动透传 ticket 到目标 service。
- */
-export async function fetchAnyCpu(token: string, url: string, opts?: { allowSso?: boolean }): Promise<string> {
+export interface CpuFetchTextResult {
+  text: string;
+  finalUrl: string;
+  status: number;
+  contentType: string;
+}
+
+export async function fetchAnyCpuText(
+  token: string,
+  url: string,
+  opts: (RequestInit & { allowSso?: boolean; expectedHost?: string }) = {},
+): Promise<CpuFetchTextResult> {
   const sess = await getSession(token);
   if (!sess) throw Errors.unauthorized("教务会话已失效，请重新登录");
-  const { res, finalUrl } = await followRedirects(sess.jar, url);
+
+  const { allowSso, expectedHost, ...requestInit } = opts;
+  const { res, finalUrl } = await followRedirects(sess.jar, url, requestInit);
   const finalHost = new URL(finalUrl).host;
-  if (finalHost === "id.cpu.edu.cn" && !opts?.allowSso) {
+  if (finalHost === "id.cpu.edu.cn" && !allowSso) {
     await deleteActiveSession(token);
     throw Errors.unauthorized("学校 SSO 会话已失效，请重新登录");
   }
   if (!finalHost.endsWith("cpu.edu.cn")) {
     throw Errors.badRequest(`意外的最终域名: ${finalHost}`);
   }
-  return res.text();
+  if (expectedHost && finalHost !== expectedHost) {
+    throw Errors.badRequest(`意外的最终域名: ${finalHost}`);
+  }
+
+  return {
+    text: await res.text(),
+    finalUrl,
+    status: res.status,
+    contentType: res.headers.get("content-type") || "",
+  };
+}
+
+/**
+ * 通用：访问任意 cpu.edu.cn 子域。
+ * 因为 SSO session 已建立，CAS 会自动透传 ticket 到目标 service。
+ */
+export async function fetchAnyCpu(
+  token: string,
+  url: string,
+  opts?: (RequestInit & { allowSso?: boolean; expectedHost?: string }),
+): Promise<string> {
+  const result = await fetchAnyCpuText(token, url, opts);
+  return result.text;
 }
 
 // ============ i.cpu.edu.cn 融合门户（sudy/sopplus 平台）============

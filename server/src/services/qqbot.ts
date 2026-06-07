@@ -161,6 +161,23 @@ type QqBotAssistantReply = {
   confidence?: "low" | "medium" | "high";
 };
 
+type ConversationDraftFeedbackTarget = "title" | "content" | "all" | "board" | "unknown";
+type ConversationDraftFeedbackAnalysis = {
+  target: ConversationDraftFeedbackTarget;
+  confidence: "low" | "medium" | "high";
+};
+type ConversationLocalPolishScope = "last-block" | "last-line";
+type PendingConversationDraftFeedback = {
+  text: string;
+  target: ConversationDraftFeedbackTarget;
+  step: QqConversationStep;
+};
+type PendingConversationLocalPolish = {
+  scope: ConversationLocalPolishScope;
+  step: QqConversationStep;
+  segmentText: string;
+};
+
 type QqBotAiRequestContext = {
   config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
   event: OneBotEvent;
@@ -196,6 +213,10 @@ const GROUP_NOTIFY_CATEGORY_OPTIONS = ["system", "school-feed"] as const;
 const GROUP_NOTIFY_AUDIENCE_OPTIONS = ["public", "staff"] as const;
 const DEFAULT_GROUP_NOTIFY_CATEGORIES = ["system", "school-feed"];
 const DEFAULT_GROUP_NOTIFY_AUDIENCES = ["public"];
+const QQBOT_MESSAGE_SOFT_LIMIT = 720;
+const QQBOT_AI_REPLY_MAX_LENGTH = 1200;
+const QQBOT_INTENT_HINT_MAX_LENGTH = 600;
+const QQBOT_DRAFT_PREVIEW_LIMIT = 220;
 const STAFF_GROUP_ACTIONABLE_NOTIFICATION_TYPES = new Set([
   "topic-manual-review-admin",
   "reply-manual-review-admin",
@@ -453,6 +474,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     ? ({ forwardMode: "placeholder", imageMode: "placeholder", videoMode: "placeholder" } satisfies QqMessageExtractOptions)
     : {};
   const messageText = await extractMessageText(event.message ?? event.raw_message ?? "", messageExtractOptions);
+  const commandText = normalizeInboundCommandText(messageText);
   const context = { config, event, qqId, groupId, messageText, forwardPayload: null as (ParsedForwardPayload & { source: ForwardSource }) | null };
   if (!qqId) {
     await logQqBotMessage({ direction: "inbound", eventType: "message", status: "ignored", qqId, groupId, rawPayload: event });
@@ -464,18 +486,19 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     const handled = await handleConversationMessage(activeConversation, context);
     if (handled) return handled;
   }
+  const canHandlePlainCommand = event.message_type !== "group" || isExplicitBotMention(event, messageText);
 
-  if (isCommandMessage(messageText) && isHelpCommand(messageText)) {
+  if ((isCommandMessage(commandText) || canHandlePlainCommand) && isHelpCommand(commandText)) {
     await logHandledInboundMessage(context, "message", "assistant:help");
     await replyToEvent(context, await renderHelp(config.defaultBoardSlug));
     return { ok: true };
   }
-  if ((isCommandMessage(messageText) || isPrivatePlainCommand(messageText, "板块")) && isBoardListCommand(normalizePrivatePlainCommand(messageText, "板块"))) {
+  if ((isCommandMessage(commandText) || canHandlePlainCommand) && isBoardListCommand(commandText)) {
     await logHandledInboundMessage(context, "message", "assistant:boards");
     await replyToEvent(context, await renderBoardList(config.defaultBoardSlug, groupId));
     return { ok: true };
   }
-  if ((isCommandMessage(messageText) || isPrivatePlainCommand(messageText, "我的投稿")) && isMyPostsCommand(normalizePrivatePlainCommand(messageText, "我的投稿"))) {
+  if ((isCommandMessage(commandText) || canHandlePlainCommand) && isMyPostsCommand(commandText)) {
     if (event.message_type === "group") {
       await replyToEvent(context, "这个功能只支持私聊使用。请私聊我后发送“我的投稿”。");
       return { ok: true };
@@ -484,7 +507,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, await renderRecentQqTopics(qqId));
     return { ok: true };
   }
-  if ((isCommandMessage(messageText) && /^[/／]状态(?:\s|$)/.test(messageText.trim())) || isPrivatePlainCommand(messageText, "状态")) {
+  if ((isCommandMessage(commandText) || canHandlePlainCommand) && isStatusCommand(commandText)) {
     if (event.message_type === "group") {
       await replyToEvent(context, "这个功能只支持私聊使用。请私聊我后发送“状态”。");
       return { ok: true };
@@ -493,7 +516,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, await renderBindingStatus(qqId, config, groupId));
     return { ok: true };
   }
-  if ((isCommandMessage(messageText) || isPrivatePlainCommand(messageText, "解绑")) && isUnbindCommand(normalizePrivatePlainCommand(messageText, "解绑"))) {
+  if ((isCommandMessage(commandText) || canHandlePlainCommand) && isUnbindCommand(commandText)) {
     if (event.message_type === "group") {
       await replyToEvent(context, "这个功能只支持私聊使用。请私聊我后发送“解绑”。");
       return { ok: true };
@@ -502,8 +525,12 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, await unbindQqAccount(qqId));
     return { ok: true };
   }
-  const bindMatch = messageText.trim().match(/^(?:[/／])?绑定\s+([A-Z0-9]{6,16})$/i);
+  const bindMatch = commandText.trim().match(/^(?:[/／])?绑定\s+([A-Z0-9]{6,16})$/i);
   if (bindMatch) {
+    if (event.message_type === "group") {
+      await replyToEvent(context, "绑定码只支持私聊发送。请私聊我后再发送“绑定 绑定码”。");
+      return { ok: true };
+    }
     const result = await bindQqAccount({
       qqId,
       nickname: event.sender?.card || event.sender?.nickname || "",
@@ -513,7 +540,11 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, result);
     return { ok: true };
   }
-  if (messageText.trim().match(/^(?:[/／])?绑定(?:\s|$)/i)) {
+  if (commandText.trim().match(/^(?:[/／])?绑定(?:\s|$)/i)) {
+    if (event.message_type === "group") {
+      await replyToEvent(context, "绑定码只支持私聊发送。请先私聊我，再发送“绑定 绑定码”。");
+      return { ok: true };
+    }
     await logHandledInboundMessage(context, "message", "assistant:bind-hint");
     await replyToEvent(context, [
       "绑定需要使用站内生成的绑定码。",
@@ -522,8 +553,8 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     ].join("\n"));
     return { ok: true };
   }
-  const isSlashPostCommand = isCommandMessage(messageText) && /^[/／]投稿(?:\s|$)/.test(messageText.trim());
-  const isPlainPrivatePostCommand = event.message_type !== "group" && isPrivatePlainCommand(messageText, "投稿");
+  const isSlashPostCommand = isCommandMessage(commandText) && /^[/／]投稿(?:\s|$)/.test(commandText.trim());
+  const isPlainPrivatePostCommand = event.message_type !== "group" && isPrivatePlainCommand(commandText, "投稿");
   const isQuickPostTrigger = isSlashPostCommand || isPlainPrivatePostCommand;
   const forwardPayload = await maybeExtractForwardPayloadForPosting(event.message, messageText, event);
   if (!messageText.trim() && !forwardPayload) {
@@ -811,7 +842,7 @@ async function handleNaturalLanguageMessage(context: {
     const assistantReply = await generateAssistantReply(context, "如果你想投稿、查板块、看状态，直接跟我说就行。").catch(() => null);
     if (!assistantReply?.reply?.trim()) return null;
     await logHandledInboundMessage(context, "message", "assistant:chat");
-    await replyToEvent(context, assistantReply.reply.slice(0, 500));
+    await replyToEvent(context, assistantReply.reply);
     return { ok: true, ai: true };
   }
   if (intent.intent === "help") {
@@ -837,7 +868,7 @@ async function handleNaturalLanguageMessage(context: {
   if (intent.intent === "reply") {
     const assistantReply = await generateAssistantReply(context, intent.message).catch(() => null);
     await logHandledInboundMessage(context, "message", "assistant:reply");
-    await replyToEvent(context, (assistantReply?.reply || intent.message).slice(0, 500));
+    await replyToEvent(context, assistantReply?.reply || intent.message);
     return { ok: true, ai: true };
   }
   if (intent.intent === "start-post") {
@@ -857,6 +888,7 @@ async function handleNaturalLanguageMessage(context: {
     const draftBoardSlug = (intent.boardSlug || suggested?.suggestedBoardSlug || "").trim();
     if (draftTitle) {
       const parsed = await parseConversationTitle(draftTitle, conversation.draftBoardSlug || context.config.defaultBoardSlug, context.groupId);
+      const nextDraftBlocks = draftContent ? [draftContent] : [];
       nextConversation = await prisma.qqBotConversation.update({
         where: { id: conversation.id },
         data: {
@@ -864,6 +896,7 @@ async function handleNaturalLanguageMessage(context: {
           draftBoardSlug: draftBoardSlug || parsed.boardSlug,
           draftContent: draftContent,
           step: draftContent ? "await-ai-post-confirm" : "collect-content",
+          metadata: updateConversationMetadata(conversation.metadata, { draftBlocks: nextDraftBlocks }),
         },
       });
     }
@@ -941,6 +974,110 @@ function buildConversationMetadata(
   return JSON.stringify(metadata);
 }
 
+function updateConversationMetadata(metadataText: string | null | undefined, patch: Record<string, unknown>) {
+  return JSON.stringify({
+    ...parseConversationMetadata(metadataText),
+    ...patch,
+  });
+}
+
+function normalizeConversationPolishInstruction(text: string) {
+  return normalizeRenderedMessage(
+    String(text || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join(" ")
+      .trim(),
+  ).slice(0, 200);
+}
+
+function isConversationStepValue(value: unknown): value is QqConversationStep {
+  return value === "await-title"
+    || value === "collect-content"
+    || value === "await-forward-confirm"
+    || value === "await-forward-title"
+    || value === "await-ai-post-confirm"
+    || value === "await-submit-confirm";
+}
+
+function isConversationDraftEditingStep(step: unknown): step is "collect-content" | "await-ai-post-confirm" | "await-submit-confirm" {
+  return step === "collect-content" || step === "await-ai-post-confirm" || step === "await-submit-confirm";
+}
+
+function normalizeConversationDraftFeedbackTarget(value: unknown): ConversationDraftFeedbackTarget {
+  return value === "title" || value === "content" || value === "all" || value === "board" || value === "unknown"
+    ? value
+    : "unknown";
+}
+
+function normalizeConversationLocalPolishScope(value: unknown): ConversationLocalPolishScope | null {
+  return value === "last-block" || value === "last-line" ? value : null;
+}
+
+function getConversationPendingDraftFeedback(conversation: any): PendingConversationDraftFeedback | null {
+  const metadata = parseConversationMetadata(conversation?.metadata);
+  const pending = metadata.pendingDraftFeedback;
+  if (!pending || typeof pending !== "object") return null;
+  const record = pending as Record<string, unknown>;
+  const text = String(record.text || "").trim();
+  const step = record.step;
+  if (!text || !isConversationStepValue(step)) return null;
+  return {
+    text: text.slice(0, 160),
+    target: normalizeConversationDraftFeedbackTarget(record.target),
+    step,
+  };
+}
+
+async function setConversationPendingDraftFeedback(
+  conversation: any,
+  pending: PendingConversationDraftFeedback | null,
+) {
+  const metadata = parseConversationMetadata(conversation?.metadata);
+  if (pending) {
+    metadata.pendingDraftFeedback = pending;
+  } else if ("pendingDraftFeedback" in metadata) {
+    delete metadata.pendingDraftFeedback;
+  } else {
+    return conversation;
+  }
+  return prisma.qqBotConversation.update({
+    where: { id: conversation.id },
+    data: { metadata: JSON.stringify(metadata) },
+  });
+}
+
+function getConversationPendingLocalPolish(conversation: any): PendingConversationLocalPolish | null {
+  const metadata = parseConversationMetadata(conversation?.metadata);
+  const pending = metadata.pendingLocalPolish;
+  if (!pending || typeof pending !== "object") return null;
+  const record = pending as Record<string, unknown>;
+  const scope = normalizeConversationLocalPolishScope(record.scope);
+  const step = record.step;
+  const segmentText = normalizeRenderedMessage(String(record.segmentText || "").trim()).slice(0, 500);
+  if (!scope || !isConversationStepValue(step) || !segmentText) return null;
+  return { scope, step, segmentText };
+}
+
+async function setConversationPendingLocalPolish(
+  conversation: any,
+  pending: PendingConversationLocalPolish | null,
+) {
+  const metadata = parseConversationMetadata(conversation?.metadata);
+  if (pending) {
+    metadata.pendingLocalPolish = pending;
+  } else if ("pendingLocalPolish" in metadata) {
+    delete metadata.pendingLocalPolish;
+  } else {
+    return conversation;
+  }
+  return prisma.qqBotConversation.update({
+    where: { id: conversation.id },
+    data: { metadata: JSON.stringify(metadata) },
+  });
+}
+
 function conversationStorageGroupId(context: { event: OneBotEvent; groupId?: string }) {
   return context.event.message_type === "group" ? undefined : context.groupId;
 }
@@ -999,7 +1136,7 @@ async function startPostConversation(context: {
     draftBoardSlug: defaultBoardSlug,
     sourceMessageId: context.event.message_id ? String(context.event.message_id) : undefined,
     sourceSummary: "",
-    metadata: buildConversationMetadata(context),
+    metadata: buildConversationMetadata(context, { draftBlocks: [] }),
   });
 }
 
@@ -1025,6 +1162,7 @@ async function startForwardPostConversation(
     sourceMessageId: forwardPayload.sourceMessageId || (context.event.message_id ? String(context.event.message_id) : undefined),
     sourceSummary: forwardPayload.summary,
     metadata: buildConversationMetadata(context, {
+      draftBlocks: forwardPayload.content.trim() ? [forwardPayload.content.trim()] : [],
       source: forwardPayload.source === "reply-message" ? "reply-message" : "forward",
       quotedPayloadSource: forwardPayload.source,
       forwardDraftTemplate: forwardPayload.content,
@@ -1051,7 +1189,9 @@ async function submitQqPost(context: {
     where: { qqId: context.qqId },
     include: { user: { select: { id: true, username: true, nickname: true, role: true, status: true } } },
   });
-  if (!binding?.enabled) return { message: "还没有绑定站内账号。请先在站内生成绑定码，然后发送：绑定 绑定码", topicId: null };
+  if (!binding?.enabled) {
+    return { message: "还没有绑定站内账号。请先在站内生成绑定码，再私聊发送：绑定 绑定码", topicId: null };
+  }
   const parsed = await parsePostCommand(context.messageText, context.config.defaultBoardSlug, context.groupId);
   const topic = await createTopicFromQq({
     user: {
@@ -1120,15 +1260,24 @@ async function handleConversationMessage(
     conversation = await moveConversationToPrivate(conversation, context.groupId || conversation.groupId);
   }
   const text = context.messageText.trim();
+  const shortReply = normalizeShortReplyText(text);
   if (isCancelMessage(text)) {
     markConversationCancelled(context.qqId, context.groupId);
     await finishConversation(conversation.id, "cancelled");
     await replyToPostingConversation(conversation, context, "已取消这次投稿。");
     return { ok: true, cancelled: true };
   }
+  const pendingFeedbackResolution = await resolveConversationDraftFeedbackFollowup(conversation, context);
+  conversation = pendingFeedbackResolution.conversation;
+  if (pendingFeedbackResolution.handled) return pendingFeedbackResolution.handled;
+  const localPolishFollowup = await resolveConversationPendingLocalPolishFollowup(conversation, context);
+  conversation = localPolishFollowup.conversation;
+  if (localPolishFollowup.handled) return localPolishFollowup.handled;
+  const utilityHandled = await handleConversationUtilityCommand(conversation, context);
+  if (utilityHandled) return utilityHandled;
 
   if (conversation.step === "await-forward-confirm") {
-    if (/^(是|要|好的|确认|投稿)$/i.test(text)) {
+    if (/^(是|要|好的|确认|投稿)$/.test(shortReply)) {
       const next = await prisma.qqBotConversation.update({
         where: { id: conversation.id },
         data: { step: "await-forward-title" },
@@ -1136,7 +1285,7 @@ async function handleConversationMessage(
       await replyToPostingConversation(conversation, context, await renderConversationPrompt(next));
       return { ok: true };
     }
-    if (/^(否|不要|取消|算了)$/i.test(text)) {
+    if (/^(否|不要|取消|算了)$/.test(shortReply)) {
       markConversationCancelled(context.qqId, context.groupId);
       await finishConversation(conversation.id, "cancelled");
       await replyToPostingConversation(conversation, context, "好的，这条内容我先不投稿。");
@@ -1145,13 +1294,13 @@ async function handleConversationMessage(
     await replyToPostingConversation(
       conversation,
       context,
-      "如果要投稿，请回复“是”；不想投稿就回复“否”或“/取消”。我会把你刚才回复的那条消息内容当作投稿素材。",
+      "如果要投稿，请回复“是”；不想投稿就回复“否”或“取消”。我会把你刚才回复的那条消息内容当作投稿素材。",
     );
     return { ok: true };
   }
 
   if (conversation.step === "await-ai-post-confirm") {
-    if (/^(是|好|好的|继续|发送|确认|就这样|可以)$/i.test(text)) {
+    if (/^(是|好|好的|继续|发送|确认|就这样|可以|是的)$/.test(shortReply)) {
       if ((conversation.draftContent || "").trim()) {
         try {
           await replyToPostingConversation(conversation, context, QQBOT_POST_SUBMIT_PENDING_MESSAGE).catch(() => null);
@@ -1169,7 +1318,7 @@ async function handleConversationMessage(
       await replyToPostingConversation(conversation, context, await renderConversationPrompt(next, "好的，你继续把正文发给我。"));
       return { ok: true };
     }
-    if (/^(改标题|重新标题|换标题)$/i.test(text)) {
+    if (/^(改标题|重新标题|换标题)$/.test(shortReply)) {
       const next = await prisma.qqBotConversation.update({
         where: { id: conversation.id },
         data: { step: "await-title" },
@@ -1177,7 +1326,7 @@ async function handleConversationMessage(
       await replyToPostingConversation(conversation, context, await renderConversationPrompt(next, "好的，请发送新的标题。"));
       return { ok: true };
     }
-    if (/^(补充|继续写|加正文)$/i.test(text)) {
+    if (/^(补充|继续写|加正文|补充一下)$/.test(shortReply)) {
       const next = await prisma.qqBotConversation.update({
         where: { id: conversation.id },
         data: { step: "collect-content" },
@@ -1185,7 +1334,23 @@ async function handleConversationMessage(
       await replyToPostingConversation(conversation, context, await renderConversationPrompt(next, "好的，继续把正文补充给我。"));
       return { ok: true };
     }
-    await replyToPostingConversation(conversation, context, "如果这份草稿可以直接发，请回复“是”；想改标题就回复“改标题”；想继续补正文就直接发内容或回复“补充”。");
+    const naturalEditHandled = await handleConversationNaturalEditIntent(conversation, context);
+    if (naturalEditHandled) return naturalEditHandled;
+    if (isLikelyConversationDraftFeedbackMessage(text)) {
+      const handled = await tryAutoApplyConversationDraftFeedback(conversation, context, text);
+      if (handled) return { ok: true };
+      conversation = await rememberConversationDraftFeedbackFollowup(conversation, text);
+      await replyToPostingConversation(
+        conversation,
+        context,
+        renderConversationDraftFeedbackNudge(conversation, text),
+      );
+      return { ok: true };
+    }
+    await replyToPostingConversation(conversation, context, renderConversationStageNudge(
+      conversation,
+      "没太看懂你这一步想怎么处理这版草稿。",
+    ));
     return { ok: true };
   }
 
@@ -1244,6 +1409,9 @@ async function handleConversationMessage(
     const parsed = await parseConversationTitle(titleCandidate, conversation.draftBoardSlug || context.config.defaultBoardSlug, context.groupId);
     const draftContent = restLines.join("\n").trim();
     const mergedDraftContent = mergeConversationContent(conversation.draftContent || "", draftContent);
+    const mergedDraftBlocks = draftContent
+      ? [...getConversationDraftBlocks(conversation), draftContent]
+      : getConversationDraftBlocks(conversation);
     const shouldReturnToConfirm = Boolean((conversation.draftContent || "").trim()) || conversation.step === "await-forward-title" || Boolean(draftContent);
     const next = await prisma.qqBotConversation.update({
       where: { id: conversation.id },
@@ -1252,6 +1420,7 @@ async function handleConversationMessage(
         draftBoardSlug: parsed.boardSlug,
         draftContent: mergedDraftContent,
         step: shouldReturnToConfirm ? "await-submit-confirm" : "collect-content",
+        metadata: updateConversationMetadata(conversation.metadata, { draftBlocks: mergedDraftBlocks }),
       },
     });
     await replyToPostingConversation(conversation, context, await renderConversationPrompt(
@@ -1268,17 +1437,15 @@ async function handleConversationMessage(
   }
 
   if (conversation.step === "collect-content") {
-    if (/(^|\n)\s*[/／]结束(?:\s|$)/m.test(context.messageText.trim())) {
-      const normalizedText = context.messageText.replace(/(^|\n)\s*[/／]结束(?:\s|$)/m, "").trim();
+    const finishPayload = extractFinishCommandPayload(context.messageText);
+    if (finishPayload !== null) {
+      const normalizedText = finishPayload;
       const mergedContent = normalizedText
         ? mergeConversationContent(conversation.draftContent || "", normalizedText)
         : (conversation.draftContent || "");
-      const next = await prisma.qqBotConversation.update({
-        where: { id: conversation.id },
-        data: {
-          draftContent: mergedContent,
-          step: "await-submit-confirm",
-        },
+      const next = await updateConversationDraftContent(conversation, mergedContent, {
+        step: "await-submit-confirm",
+        appendBlock: normalizedText || undefined,
       });
       await replyToPostingConversation(conversation, context, await renderConversationPrompt(next, "我先帮你整理好，确认后再正式发布。"));
       return { ok: true };
@@ -1291,13 +1458,37 @@ async function handleConversationMessage(
         return { ok: true };
       }
     }
+    const naturalEditHandled = await handleConversationNaturalEditIntent(conversation, context);
+    if (naturalEditHandled) return naturalEditHandled;
+    if (shouldHandleDraftFeedbackDuringContentCollection(conversation, text)) {
+      const handled = await tryAutoApplyConversationDraftFeedback(conversation, context, text);
+      if (handled) return { ok: true };
+      conversation = await rememberConversationDraftFeedbackFollowup(conversation, text);
+      await replyToPostingConversation(
+        conversation,
+        context,
+        renderCollectContentDraftFeedbackNudge(conversation, text),
+      );
+      return { ok: true };
+    }
+    if (isLikelyConversationCommandMessage(normalizeInboundCommandText(text))) {
+      await replyToPostingConversation(
+        conversation,
+        context,
+        renderConversationStageNudge(conversation, "没认出这个会话命令。"),
+      );
+      return { ok: true };
+    }
 
     const nextContent = mergeConversationContent(conversation.draftContent || "", context.messageText);
-    await prisma.qqBotConversation.update({
-      where: { id: conversation.id },
-      data: { draftContent: nextContent },
+    const next = await updateConversationDraftContent(conversation, nextContent, {
+      appendBlock: context.messageText,
     });
-    await replyToPostingConversation(conversation, context, "已收到这段正文。继续发送内容，全部完成后发送“/结束”。");
+    await replyToPostingConversation(
+      conversation,
+      context,
+      await renderConversationPrompt(next, "已收到这段正文。你可以继续补充，写完后发送“结束”。"),
+    );
     return { ok: true };
   }
 
@@ -1312,7 +1503,7 @@ async function handleConversationMessage(
         return cancelConversationAfterSubmitFailure(conversation, context, error);
       }
     }
-    if (/^(改标题|重新标题|换标题)$/i.test(text)) {
+    if (/^(改标题|重新标题|换标题)$/.test(shortReply)) {
       const next = await prisma.qqBotConversation.update({
         where: { id: conversation.id },
         data: { step: "await-title" },
@@ -1320,7 +1511,7 @@ async function handleConversationMessage(
       await replyToPostingConversation(conversation, context, await renderConversationPrompt(next, "好的，请发送新的标题。"));
       return { ok: true };
     }
-    if (/^(补充|继续写|继续补充|改正文|继续修改)$/i.test(text)) {
+    if (/^(补充|继续写|继续补充|改正文|继续修改|补充一下)$/.test(shortReply)) {
       const next = await prisma.qqBotConversation.update({
         where: { id: conversation.id },
         data: { step: "collect-content" },
@@ -1328,22 +1519,239 @@ async function handleConversationMessage(
       await replyToPostingConversation(conversation, context, await renderConversationPrompt(next, "好的，继续把正文补充给我。"));
       return { ok: true };
     }
+    const naturalEditHandled = await handleConversationNaturalEditIntent(conversation, context);
+    if (naturalEditHandled) return naturalEditHandled;
+    if (isLikelyConversationDraftFeedbackMessage(text)) {
+      const handled = await tryAutoApplyConversationDraftFeedback(conversation, context, text);
+      if (handled) return { ok: true };
+      conversation = await rememberConversationDraftFeedbackFollowup(conversation, text);
+      await replyToPostingConversation(
+        conversation,
+        context,
+        renderConversationDraftFeedbackNudge(conversation, text),
+      );
+      return { ok: true };
+    }
     if (!isCommandMessage(text)) {
       const nextContent = mergeConversationContent(conversation.draftContent || "", context.messageText);
-      const next = await prisma.qqBotConversation.update({
-        where: { id: conversation.id },
-        data: {
-          draftContent: nextContent,
-          step: "collect-content",
-        },
+      const next = await updateConversationDraftContent(conversation, nextContent, {
+        appendBlock: context.messageText,
+        step: "collect-content",
       });
       await replyToPostingConversation(conversation, context, await renderConversationPrompt(next, "我把这段也补进正文里了。"));
       return { ok: true };
     }
-    await replyToPostingConversation(conversation, context, "如果可以发布，请回复“确认发布”或“是”；想改标题回复“改标题”；想继续补正文就直接发内容。");
+    await replyToPostingConversation(conversation, context, renderConversationStageNudge(
+      conversation,
+      "没太看懂你这一步想做什么。",
+    ));
     return { ok: true };
   }
 
+  return null;
+}
+
+async function handleConversationUtilityCommand(
+  conversation: any,
+  context: {
+    config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
+    event: OneBotEvent;
+    qqId: string;
+    groupId?: string;
+    messageText: string;
+  },
+) {
+  const text = context.messageText.trim();
+  if (!text) return null;
+  const commandText = normalizeInboundCommandText(text);
+  if (!isCommandMessage(commandText)) return null;
+  const boardSwitchTarget = extractConversationBoardSwitchTarget(commandText);
+  if (boardSwitchTarget) {
+    const boardSelection = await detectBoardSelectionInTitleStep(`投稿到${boardSwitchTarget}`, context.config.defaultBoardSlug, context.groupId);
+    if (!boardSelection) {
+      await replyToPostingConversation(
+        conversation,
+        context,
+        "没认出你想切到哪个板块。你可以先发送“/板块”看列表，再用“/板块 树洞”这样的格式切换。",
+      );
+      return { ok: true, utility: "board-switch-invalid" };
+    }
+    const next = await prisma.qqBotConversation.update({
+      where: { id: conversation.id },
+      data: { draftBoardSlug: boardSelection.slug },
+    });
+    await replyToPostingConversation(
+      conversation,
+      context,
+      await renderConversationPrompt(next, `好的，这篇稿子会发到「${boardSelection.name}」。`),
+    );
+    return { ok: true, utility: "board-switch" };
+  }
+  const titleCommandValue = extractConversationTitleCommandValue(commandText);
+  if (titleCommandValue) {
+    try {
+      const next = await applyConversationTitleUpdate(conversation, titleCommandValue);
+      await replyToPostingConversation(
+        conversation,
+        context,
+        await renderConversationPrompt(next, `好的，标题我改成「${next.draftTitle}」了。`),
+      );
+      return { ok: true, utility: "title-set" };
+    } catch (error: any) {
+      await replyToPostingConversation(conversation, context, error?.message || "标题还不太对，请重新发送。");
+      return { ok: true, utility: "title-set-invalid" };
+    }
+  }
+  if (isConversationRetitleCommand(commandText)) {
+    return performConversationRetitle(conversation, context);
+  }
+  if (isConversationClearTitleCommand(commandText)) {
+    if (!String(conversation.draftTitle || "").trim()) {
+      await replyToPostingConversation(conversation, context, "当前标题已经是空的了。");
+      return { ok: true, utility: "clear-title-empty" };
+    }
+    const next = await prisma.qqBotConversation.update({
+      where: { id: conversation.id },
+      data: {
+        draftTitle: "",
+        step: "await-title",
+      },
+    });
+    await replyToPostingConversation(conversation, context, await renderConversationPrompt(next, "标题已经清空了，请发送新的标题。"));
+    return { ok: true, utility: "clear-title" };
+  }
+  if (isConversationPolishTitleCommand(commandText)) {
+    if (!String(conversation.draftTitle || "").trim()) {
+      await replyToPostingConversation(conversation, context, "现在还没有标题可润色。你先发标题给我就行。");
+      return { ok: true, utility: "polish-title-empty" };
+    }
+    const polishInstruction = extractConversationPolishTitleInstruction(commandText);
+    const polished = await polishConversationDraft(conversation, {
+      ...context,
+      messageText: buildConversationPolishRequest("title", polishInstruction),
+    }, "title").catch(() => null);
+    if (polished) {
+      await replyToPostingConversation(conversation, context, polished);
+      return { ok: true, utility: "polish-title" };
+    }
+    await replyToPostingConversation(
+      conversation,
+      context,
+      polishInstruction
+        ? "这次没能按这个要求调整标题。你可以换个说法再试，或直接发“/标题 新标题”。"
+        : "这次没能顺利调整标题。你可以稍后再试，或直接发“/标题 新标题”。",
+    );
+    return { ok: true, utility: "polish-title-failed" };
+  }
+  if (isConversationPolishContentCommand(commandText)) {
+    if (!String(conversation.draftContent || "").trim()) {
+      await replyToPostingConversation(conversation, context, "现在还没有正文可润色。你先发正文给我就行。");
+      return { ok: true, utility: "polish-content-empty" };
+    }
+    const polishInstruction = extractConversationPolishContentInstruction(commandText);
+    const polished = await polishConversationDraft(conversation, {
+      ...context,
+      messageText: buildConversationPolishRequest("content", polishInstruction),
+    }, "content").catch(() => null);
+    if (polished) {
+      await replyToPostingConversation(conversation, context, polished);
+      return { ok: true, utility: "polish-content" };
+    }
+    await replyToPostingConversation(
+      conversation,
+      context,
+      polishInstruction
+        ? "这次没能按这个要求整理正文。你可以换个说法再试，或先继续补充内容。"
+        : "这次没能顺利整理正文。你可以稍后再试，或先继续补充内容。",
+    );
+    return { ok: true, utility: "polish-content-failed" };
+  }
+  if (isConversationPolishLastBlockCommand(commandText)) {
+    return performConversationPolishSegment(
+      conversation,
+      context,
+      "last-block",
+      extractConversationPolishLastBlockInstruction(commandText),
+    );
+  }
+  if (isConversationPolishLastLineCommand(commandText)) {
+    return performConversationPolishSegment(
+      conversation,
+      context,
+      "last-line",
+      extractConversationPolishLastLineInstruction(commandText),
+    );
+  }
+  if (isConversationPolishCommand(commandText)) {
+    if (!String(conversation.draftTitle || "").trim() && !String(conversation.draftContent || "").trim()) {
+      await replyToPostingConversation(conversation, context, "现在还没有可润色的草稿内容。你先发标题或正文给我就行。");
+      return { ok: true, utility: "polish-empty" };
+    }
+    const polishInstruction = extractConversationPolishInstruction(commandText);
+    const polished = await polishConversationDraft(conversation, {
+      ...context,
+      messageText: buildConversationPolishRequest("all", polishInstruction),
+    }).catch(() => null);
+    if (polished) {
+      await replyToPostingConversation(conversation, context, polished);
+      return { ok: true, utility: "polish" };
+    }
+    await replyToPostingConversation(
+      conversation,
+      context,
+      polishInstruction
+        ? "这次没能按这个要求润色草稿。你可以换个说法再试，或先继续补充内容。"
+        : "这次没能顺利润色草稿。你可以稍后再试，或先继续补充内容。",
+    );
+    return { ok: true, utility: "polish-failed" };
+  }
+  if (isConversationUndoContentCommand(commandText)) {
+    return performConversationUndoContent(conversation, context);
+  }
+  if (isConversationUndoLastLineCommand(commandText)) {
+    return performConversationUndoLastLine(conversation, context);
+  }
+  if (isConversationClearContentCommand(commandText)) {
+    return performConversationClearContent(conversation, context);
+  }
+  if (isHelpCommand(commandText)) {
+    await replyToPostingConversation(conversation, context, await renderConversationCommandHelp(conversation));
+    return { ok: true, utility: "help" };
+  }
+  if (isConversationPreviewCommand(commandText)) {
+    await replyToPostingConversation(conversation, context, await renderConversationDraftPreview(conversation));
+    return { ok: true, utility: "draft-preview" };
+  }
+  if (isBoardListCommand(commandText)) {
+    const boardList = await renderBoardList(context.config.defaultBoardSlug, context.groupId);
+    await replyToPostingConversation(
+      conversation,
+      context,
+      [boardList, "", "当前这篇草稿还在，可以继续发送内容或发送“取消”。"].join("\n"),
+    );
+    return { ok: true, utility: "boards" };
+  }
+  if (isConversationStatusCommand(commandText) || isStatusCommand(commandText)) {
+    await replyToPostingConversation(conversation, context, await renderConversationStatus(conversation));
+    return { ok: true, utility: "conversation-status" };
+  }
+  if (isMyPostsCommand(commandText)) {
+    const recent = await renderRecentQqTopics(context.qqId);
+    await replyToPostingConversation(
+      conversation,
+      context,
+      [recent, "", "当前这篇草稿还在，可以继续发送内容或发送“取消”。"].join("\n"),
+    );
+    return { ok: true, utility: "recent-posts" };
+  }
+  if (isUnbindCommand(commandText)) {
+    await replyToPostingConversation(
+      conversation,
+      context,
+      "当前有进行中的投稿草稿。请先发送“取消”结束这次投稿，再执行解绑。",
+    );
+    return { ok: true, utility: "unbind-blocked" };
+  }
   return null;
 }
 
@@ -1385,6 +1793,7 @@ async function submitConversationPost(
   const content = (await refreshForwardDraftContent(conversation)) || conversation.draftTitle.trim();
   const metadata = parseConversationMetadata(conversation.metadata);
   const originGroupId = String(metadata.originGroupId || "").trim() || undefined;
+  const submitDefaultBoardSlug = await resolveDefaultBoardSlug(context.config.defaultBoardSlug, originGroupId);
   const result = await submitQqPost({
     ...context,
     event: {
@@ -1398,8 +1807,7 @@ async function submitConversationPost(
       conversation.draftBoardSlug || context.config.defaultBoardSlug,
       conversation.draftTitle,
       content,
-      originGroupId,
-      context.config.defaultBoardSlug,
+      submitDefaultBoardSlug,
     ),
   });
   if (!result.topicId || !Number.isFinite(result.topicId) || result.topicId <= 0) {
@@ -1477,64 +1885,167 @@ async function finishConversation(id: number, status: "done" | "cancelled") {
 async function renderConversationPrompt(conversation: any, assistantHint?: string) {
   const boardDisplayName = conversation.draftBoardSlug ? await resolveBoardDisplayName(conversation.draftBoardSlug) : "";
   const draftPreview = conversation.draftContent
-    ? `${conversation.draftContent.slice(0, 160)}${conversation.draftContent.length > 160 ? "..." : ""}`
+    ? `${conversation.draftContent.slice(0, QQBOT_DRAFT_PREVIEW_LIMIT)}${conversation.draftContent.length > QQBOT_DRAFT_PREVIEW_LIMIT ? "..." : ""}`
     : "";
+  const draftStats = buildConversationDraftStats(conversation);
+  const normalizedHint = normalizeRenderedMessage(assistantHint || "");
   if (conversation.step === "await-title") {
     const isRetitling = /重新发一个标题|重新标题|改标题|新标题/.test(String(assistantHint || ""));
     return [
-      isRetitling ? "请发送新的标题。" : "请先发送标题。",
-      "不想继续的话，发送“/取消”。",
-      !isRetitling ? "如果你想指定投稿区，也可以直接说“投稿到树洞”，或者发“树洞：标题”。" : "",
-      assistantHint || "",
-    ].join("\n");
+      isRetitling ? "请发送新的标题" : "请先发送标题",
+      !isRetitling ? "也可以直接说“投稿到树洞”，或者发“树洞：标题”" : "",
+      "不想继续就发送“取消”",
+      normalizedHint || "",
+    ].filter(Boolean).join("\n");
   }
   if (conversation.step === "await-forward-confirm") {
     return [
-      "我收到了你回复的那条消息内容。",
-      "如果要投稿，请回复“是”。不想投稿请回复“否”或“取消”。",
-      assistantHint || "",
+      "我收到了你回复的那条消息内容",
+      "要投稿就回复“是”",
+      "不想投稿就回复“否”或“取消”",
+      normalizedHint || "",
     ].filter(Boolean).join("\n");
   }
   if (conversation.step === "await-ai-post-confirm") {
     return [
-      "我先帮你整理了一版草稿：",
+      "我先帮你整理了一版草稿",
       boardDisplayName ? `投稿区：${boardDisplayName}` : "",
       conversation.draftTitle ? `标题：${conversation.draftTitle}` : "",
+      draftStats,
       draftPreview ? `正文预览：${draftPreview}` : "",
-      assistantHint || "",
-      "如果可以直接发，请回复“是”。",
-      "想改标题就回复“改标题”。想继续补正文就直接发内容。",
+      normalizedHint || "",
+      "可以直接发就回复“是”",
+      "想改标题就回复“改标题”或发“/标题 新标题”",
+      "想继续补正文就直接发内容或回复“补充”",
+      "想按要求改可发“/润色标题 更短一点”或“/润色正文 更自然一点”",
+      "也可以直接说“把上一段再顺一点”“删掉刚才那句”这种自然说法",
+      "如果刚改过上一段或最后一行，继续说“再口语一点”“再短一点”也会沿着那一小段接着改",
     ].filter(Boolean).join("\n");
   }
   if (conversation.step === "await-submit-confirm") {
     return [
-      "投稿确认：",
+      "投稿确认",
       boardDisplayName ? `投稿区：${boardDisplayName}` : "",
       conversation.draftTitle ? `标题：${conversation.draftTitle}` : "",
+      draftStats,
       draftPreview ? `正文预览：${draftPreview}` : "",
-      assistantHint || "",
-      "确认发布请回复“确认发布”或“是”。",
-      "想改标题请回复“改标题”。想继续补正文就直接发内容。不想发了就回复“取消”。",
+      normalizedHint || "",
+      "确认发布请回复“确认发布”或“是”",
+      "想改标题请回复“改标题”或发“/标题 新标题”",
+      "想清空标题可发“/清空标题”",
+      "想换板块可发“/板块 树洞”",
+      "想重新润色可发“/润色 更口语一点”",
+      "只润色标题或正文可发“/润色标题 更短一点”或“/润色正文 更自然一点”",
+      "也可以直接说“把上一段再顺一点”“删掉刚才那句”这种自然说法",
+      "如果刚改过上一段或最后一行，继续说“再口语一点”“再短一点”也会沿着那一小段接着改",
+      "想继续补正文就直接发内容",
+      "不想发了就回复“取消”",
     ].filter(Boolean).join("\n");
   }
   if (conversation.step === "await-forward-title") {
     return [
-      "好的，请发送这篇投稿的标题。",
-      "正文我会使用刚才那条消息里的内容。",
-      "不想继续的话，发送“取消”。",
-      assistantHint || "",
-    ].join("\n");
+      "好的，请发送这篇投稿的标题",
+      "正文我会使用刚才那条消息里的内容",
+      "不想继续就发送“取消”",
+      normalizedHint || "",
+    ].filter(Boolean).join("\n");
   }
   if (conversation.step === "collect-content") {
     return [
       `标题已记录：${conversation.draftTitle || "未命名"}`,
-      "接下来请逐条发送正文内容。",
-      "每发一条我会自动换行拼接。",
-      "全部完成后发送“结束”。不想继续的话，发送“取消”。",
-      assistantHint || "",
-    ].join("\n");
+      boardDisplayName ? `投稿区：${boardDisplayName}` : "",
+      draftStats,
+      "接下来请逐条发送正文内容",
+      "每发一条我会自动换行拼接",
+      "全部完成后发送“结束”",
+      "想直接改标题可发“/标题 新标题”",
+      "想清空标题可发“/清空标题”",
+      "想换板块可发“/板块 树洞”",
+      "想只删掉最后一行可发“/撤回最后一行”",
+      "发错一段可用“/撤回上一段”，想重写正文可用“/清空正文”",
+      "也可以直接说“删掉刚才那句”、“删掉上一段”或“改标题”",
+      "想只改一小段时，也可以说“把上一段再顺一点”或“把最后一行改口语一点”",
+      "如果刚改过上一段或最后一行，下一句直接说“再口语一点”“再短一点”也会继续按那一小段调整",
+      "如果想改去标题或整篇，直接说“标题太长了”或“整体再顺一点”就会切过去",
+      "如果是在调整草稿，也可以直接说“标题太长了”或“这段太官方了”",
+      "如果想让我先整理一下，也可以说“润色一下”或发“/润色 更口语一点”",
+      "只润色标题或正文可发“/润色标题 更短一点”或“/润色正文 更自然一点”",
+      "不想继续就发送“取消”",
+      normalizedHint || "",
+    ].filter(Boolean).join("\n");
   }
   return "请继续发送内容。";
+}
+
+function buildConversationDraftStats(conversation: any) {
+  const content = String(conversation?.draftContent || "").trim();
+  if (!content) return "";
+  const charCount = content.length;
+  const lineCount = content.split(/\r?\n/).filter((line) => line.trim()).length;
+  const blockCount = getConversationDraftBlocks(conversation).length;
+  return `正文概况：${lineCount} 行，${blockCount} 段，约 ${charCount} 字`;
+}
+
+async function renderConversationCommandHelp(conversation: any) {
+  return [
+    await renderConversationStatus(conversation),
+    "",
+    "现在最适合这样做",
+    ...buildConversationStepHelpLines(conversation),
+    "",
+    "当前阶段常用命令",
+    ...buildConversationStepCommandLines(conversation),
+    "",
+    "通用命令",
+    "• /帮助：查看当前投稿流程提示",
+    "• /状态 或 /进度：查看当前草稿进度",
+    "• /预览 或 /草稿：查看当前草稿预览",
+    "• /板块：查看可投稿板块",
+    "• 取消：取消这次投稿",
+  ].join("\n");
+}
+
+async function renderConversationStatus(conversation: any) {
+  const boardDisplayName = conversation.draftBoardSlug ? await resolveBoardDisplayName(conversation.draftBoardSlug) : "未指定";
+  const nextStep = describeConversationStep(conversation.step);
+  const draftStats = buildConversationDraftStats(conversation);
+  const recentSummary = buildConversationRecentSummaryLines(conversation);
+  return [
+    "当前投稿进度",
+    `阶段：${nextStep}`,
+    `投稿区：${boardDisplayName}`,
+    conversation.draftTitle ? `标题：${conversation.draftTitle}` : "标题：未填写",
+    draftStats || "正文概况：还没有正文",
+    ...recentSummary,
+    `下一步：${describeConversationNextAction(conversation.step, conversation)}`,
+    `快捷操作：${describeConversationQuickActions(conversation.step, conversation)}`,
+  ].join("\n");
+}
+
+function describeConversationStep(step: QqConversationStep) {
+  if (step === "await-title") return "等待标题";
+  if (step === "collect-content") return "填写正文";
+  if (step === "await-forward-confirm") return "确认是否投稿";
+  if (step === "await-forward-title") return "为转发内容填写标题";
+  if (step === "await-ai-post-confirm") return "确认 AI 整理草稿";
+  if (step === "await-submit-confirm") return "确认发布";
+  return "进行中";
+}
+
+async function renderConversationDraftPreview(conversation: any) {
+  const boardDisplayName = conversation.draftBoardSlug ? await resolveBoardDisplayName(conversation.draftBoardSlug) : "未指定";
+  const content = String(conversation.draftContent || "").trim();
+  const recentSummary = buildConversationRecentSummaryLines(conversation);
+  return [
+    "当前草稿预览",
+    `投稿区：${boardDisplayName}`,
+    conversation.draftTitle ? `标题：${conversation.draftTitle}` : "标题：未填写",
+    buildConversationDraftStats(conversation) || "正文概况：还没有正文",
+    ...recentSummary,
+    `可直接操作：${describeConversationQuickActions(conversation.step, conversation)}`,
+    "正文：",
+    content || "还没有正文",
+  ].join("\n");
 }
 
 async function ensureQqPostingAllowed(context: {
@@ -1556,12 +2067,1027 @@ async function ensureQqBinding(qqId: string) {
     where: { qqId },
     include: { user: { select: { id: true } } },
   });
-  if (!binding?.enabled) throw Errors.badRequest("还没有绑定站内账号。请先在站内生成绑定码，然后发送：/绑定 绑定码");
+  if (!binding?.enabled) throw Errors.badRequest("还没有绑定站内账号。请先在站内生成绑定码，再私聊发送：绑定 绑定码");
   return binding;
 }
 
 function mergeConversationContent(existing: string, next: string) {
   return [existing.trim(), next.trim()].filter(Boolean).join("\n");
+}
+
+function normalizeConversationDraftBlocks(value: unknown) {
+  if (!Array.isArray(value)) return [] as string[];
+  return value
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+}
+
+function getConversationDraftBlocks(conversation: any) {
+  const metadata = parseConversationMetadata(conversation?.metadata);
+  const blocks = normalizeConversationDraftBlocks(metadata.draftBlocks);
+  if (blocks.length) return blocks;
+  const normalized = String(conversation?.draftContent || "").trim();
+  return normalized ? [normalized] : [];
+}
+
+function summarizeConversationDraftBlock(content: string, limit = 32) {
+  const normalized = normalizeRenderedMessage(String(content || "").replace(/\s+/g, " ").trim());
+  if (!normalized) return "已删除上一段内容";
+  return normalized.length > limit ? `${normalized.slice(0, limit)}...` : normalized;
+}
+
+function getConversationLastNonEmptyLine(content: string) {
+  const lines = String(content || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return lines.length ? lines[lines.length - 1] : "";
+}
+
+function buildConversationRecentSummaryLines(conversation: any) {
+  const blocks = getConversationDraftBlocks(conversation);
+  const content = String(conversation?.draftContent || "").trim();
+  const lines: string[] = [];
+  if (blocks.length) {
+    lines.push(`最近一段：${summarizeConversationDraftBlock(blocks[blocks.length - 1])}`);
+  }
+  const lastLine = getConversationLastNonEmptyLine(content);
+  if (lastLine) {
+    lines.push(`最后一行：${summarizeConversationDraftBlock(lastLine)}`);
+  }
+  return lines;
+}
+
+function buildConversationStepHelpLines(conversation: any) {
+  const step = conversation.step as QqConversationStep;
+  if (step === "await-title") {
+    return [
+      "• 直接发送标题",
+      "• 也可以发送“树洞：标题”或“投稿到树洞”",
+      "• 如果暂时不想发了，直接回复“取消”",
+    ];
+  }
+  if (step === "await-forward-title") {
+    return [
+      "• 给这条转发内容补一个标题",
+      "• 标题发来后就可以进入发布确认",
+      "• 如果不想继续，直接回复“取消”",
+    ];
+  }
+  if (step === "await-forward-confirm") {
+    return [
+      "• 想投稿就回复“是”",
+      "• 不想投稿就回复“否”或“取消”",
+    ];
+  }
+  if (step === "collect-content") {
+    return [
+      "• 直接继续发正文内容",
+      "• 写完后发送“结束”进入发布确认",
+      "• 发错内容时可撤回最后一行、上一段，或清空正文重写",
+      "• 也可以直接说“删掉刚才那句”“删掉上一段”或“改标题”",
+      "• 想只改一小段，也可以说“把上一段再顺一点”或“把最后一行改口语一点”",
+      "• 如果刚改过上一段或最后一行，继续说“再口语一点”“再短一点”也会沿着那一小段接着改",
+      "• 如果想切去标题或整篇，直接说“标题太长了”或“整体再顺一点”就行",
+      "• 如果是在改草稿，也可以直接说“标题太长了”或“这段太官方了”",
+      "• 想按具体要求整理草稿，也可以直接发“/润色 更口语一点”",
+    ];
+  }
+  if (step === "await-ai-post-confirm") {
+    return [
+      "• 草稿没问题就回复“是”继续",
+      "• 想改标题就回复“改标题”或发“/标题 新标题”",
+      "• 想补正文就直接发内容或回复“补充”",
+    ];
+  }
+  if (step === "await-submit-confirm") {
+    return [
+      "• 想发布就回复“确认发布”或“是”",
+      "• 想改标题、改正文或重新润色，都可以在这一步继续调整",
+      "• 不想发了就直接回复“取消”",
+    ];
+  }
+  return ["• 继续发送内容，或发送“/状态”查看当前进度"];
+}
+
+function describeConversationNextAction(step: QqConversationStep, conversation: any) {
+  if (step === "await-title") return "发送标题";
+  if (step === "await-forward-title") return "给转发内容补一个标题";
+  if (step === "await-forward-confirm") return "回复“是”开始投稿，或回复“否/取消”结束";
+  if (step === "collect-content") {
+    return String(conversation?.draftContent || "").trim()
+      ? "继续发正文，或发送“结束”进入发布确认"
+      : "开始发送正文内容";
+  }
+  if (step === "await-ai-post-confirm") return "确认这版 AI 草稿是否可用";
+  if (step === "await-submit-confirm") return "确认发布，或继续改标题/正文";
+  return "继续发送内容";
+}
+
+function buildConversationStepCommandLines(conversation: any) {
+  const step = conversation.step as QqConversationStep;
+  const hasTitle = Boolean(String(conversation?.draftTitle || "").trim());
+  const hasContent = Boolean(String(conversation?.draftContent || "").trim());
+  if (step === "await-title" || step === "await-forward-title") {
+    return [
+      "• /板块 树洞：切换当前草稿板块",
+      "• /标题 新标题：直接设置标题",
+      hasTitle ? "• /清空标题：清空当前标题，重新填写" : "",
+    ].filter(Boolean);
+  }
+  if (step === "await-forward-confirm") {
+    return [
+      "• 是：开始投稿",
+      "• 否：放弃这条转发内容",
+    ];
+  }
+  if (step === "collect-content") {
+    return [
+      "• 结束：完成正文输入并进入发布确认",
+      "• /撤回最后一行：只删除正文最后一行",
+      hasContent ? "• /撤回上一段：删除刚补进草稿的最后一段内容" : "",
+      hasContent ? "• /清空正文：清空当前正文，重新开始写" : "",
+      hasTitle ? "• /标题 新标题：直接修改当前草稿标题" : "",
+      hasTitle ? "• /清空标题：清空当前标题，重新填写" : "",
+      hasContent ? "• /润色上一段 [要求]：只调整最后一段正文" : "",
+      hasContent ? "• /润色最后一行 [要求]：只调整最后一行" : "",
+      "• /润色 [要求]：按要求整理草稿",
+      "• /润色标题 [要求] /润色正文 [要求]：只调整一部分",
+    ].filter(Boolean);
+  }
+  if (step === "await-ai-post-confirm" || step === "await-submit-confirm") {
+    return [
+      "• 确认发布：确认按当前草稿继续",
+      hasTitle ? "• /标题 新标题：直接修改当前草稿标题" : "",
+      hasTitle ? "• /清空标题：清空当前标题，重新填写" : "",
+      hasContent ? "• /润色正文：只调整当前正文" : "",
+      hasContent ? "• /润色上一段 [要求] /润色最后一行 [要求]：只微调最后一小段" : "",
+      hasTitle ? "• /润色标题 [要求]：只调整当前标题" : "",
+      "• /润色 [要求]：重新整理整篇草稿",
+    ].filter(Boolean);
+  }
+  return ["• /状态：查看当前进度"];
+}
+
+function describeConversationQuickActions(step: QqConversationStep, conversation: any) {
+  const hasTitle = Boolean(String(conversation?.draftTitle || "").trim());
+  const hasContent = Boolean(String(conversation?.draftContent || "").trim());
+  if (step === "await-title" || step === "await-forward-title") return "/板块 树洞 / 取消";
+  if (step === "await-forward-confirm") return "是 / 否 / 取消";
+  if (step === "collect-content") {
+    const actions = [
+      hasContent ? "结束" : "",
+      hasTitle ? "/标题 新标题" : "",
+      hasContent ? "/撤回最后一行" : "",
+      hasContent ? "/撤回上一段" : "",
+      hasContent ? "/清空正文" : "",
+      "/预览",
+    ].filter(Boolean);
+    return actions.join(" / ");
+  }
+  if (step === "await-ai-post-confirm" || step === "await-submit-confirm") {
+    const actions = [
+      "确认发布",
+      hasTitle ? "/标题 新标题" : "",
+      hasTitle ? "/清空标题" : "",
+      hasContent ? "/润色正文" : "",
+      "/预览",
+      "取消",
+    ].filter(Boolean);
+    return actions.join(" / ");
+  }
+  return "/帮助 / 取消";
+}
+
+function renderConversationStageNudge(conversation: any, intro: string) {
+  return [
+    intro,
+    `下一步：${describeConversationNextAction(conversation.step, conversation)}`,
+    `可直接操作：${describeConversationQuickActions(conversation.step, conversation)}`,
+    "如果想看更完整的当前阶段提示，可发送“/帮助”。",
+  ].join("\n");
+}
+
+function describeConversationDraftFeedbackTarget(target: ConversationDraftFeedbackTarget) {
+  if (target === "title") return "标题";
+  if (target === "content") return "正文";
+  if (target === "all") return "整篇草稿";
+  if (target === "board") return "投稿区";
+  return "草稿的哪个部分";
+}
+
+function parseConversationDraftFeedbackFollowupTarget(
+  text: string,
+): "title" | "content" | "all" | "board" | null {
+  const normalized = normalizeShortReplyText(text);
+  if (!normalized || normalized.length > 12) return null;
+  if (/^(标题|题目|只改标题)$/.test(normalized)) return "title";
+  if (/^(正文|内容|只改正文)$/.test(normalized)) return "content";
+  if (/^(整篇|整体|全文|全篇|全都改|都改)$/.test(normalized)) return "all";
+  if (/^(板块|版块|分区|投稿区)$/.test(normalized)) return "board";
+  return null;
+}
+
+function renderConversationAmbiguousDraftFeedbackNudge(conversation: any, target: ConversationDraftFeedbackTarget) {
+  const hasTitle = Boolean(String(conversation?.draftTitle || "").trim());
+  const hasContent = Boolean(String(conversation?.draftContent || "").trim());
+  const hint = target === "unknown"
+    ? "我还不太确定你是在改标题、正文还是整篇。"
+    : `我还不太确定你是在改${describeConversationDraftFeedbackTarget(target)}，还是想整体调整。`;
+  return [
+    hint,
+    hasTitle ? "• 想改标题：直接回复“标题”" : "",
+    hasContent ? "• 想改正文：直接回复“正文”" : "",
+    hasTitle || hasContent ? "• 想整体顺一顺：直接回复“整篇”" : "",
+  ].filter(Boolean).join("\n");
+}
+
+function hasConversationDraftStyleCue(normalized: string) {
+  return /(太长|太短|太乱|太生硬|太啰嗦|不太好|不太行|怪怪的|有点怪|别扭|口语|正式|自然一点|自然些|顺一点|顺一些|通顺一点|通顺些|简短一点|精简一点|精炼一点|短一点|长一点|像机器人|机器人味|太官方|官方一点|柔和一点|具体一点|明确一点|清楚一点|再改改|再顺顺|再润一下)/.test(normalized);
+}
+
+function hasConversationWholeDraftCue(normalized: string) {
+  return /(整篇|整体|全文|全篇|这版|这一版|这篇|统一一下|整体润色|整体改改)/.test(normalized);
+}
+
+function hasConversationTitleBiasCue(normalized: string) {
+  return /(题目|标题|更像标题|像个标题|更直接|更醒目|更吸引人|更好懂|一眼看懂|更简洁)/.test(normalized);
+}
+
+function hasConversationContentBiasCue(normalized: string) {
+  return /(正文|内容|口语|自然|通顺|像机器人|机器人味|太官方|太生硬|柔和一点|具体一点|明确一点|清楚一点|再顺顺|再润一下)/.test(normalized);
+}
+
+function hasConversationShortenCue(normalized: string) {
+  return /(太长|太啰嗦|简短一点|精简一点|精炼一点|短一点)/.test(normalized);
+}
+
+function hasConversationExpandCue(normalized: string) {
+  return /(长一点|具体一点|明确一点|清楚一点|详细一点)/.test(normalized);
+}
+
+function hasConversationDraftReferenceCue(normalized: string) {
+  return /(这段|这一段|上一段|刚才那段|刚刚那段|这句|这一句|上一句|刚才那句|刚刚那句|这行|这一行|上一行|刚才那行|刚刚那行|最后一句|最后一行|这版|这一版|这个|这篇)/.test(normalized);
+}
+
+function isLikelyConversationDraftFeedbackMessage(text: string) {
+  const raw = String(text || "").trim();
+  if (!raw || /[\r\n]/.test(raw)) return false;
+  if (raw.length > 48) return false;
+  const normalized = normalizeCommandKeywordText(raw);
+  if (!normalized) return false;
+  if (/[?？]$/.test(raw) && raw.length <= 24) return true;
+  if (/(标题|正文|内容|板块|投稿区|润色|发布)/.test(normalized)) return true;
+  if (/^(我觉得|感觉|好像|是不是|是否|能不能|可不可以|要不要|会不会)/.test(normalized)) return true;
+  if (hasConversationDraftStyleCue(normalized)) return true;
+  return false;
+}
+
+function shouldHandleDraftFeedbackDuringContentCollection(conversation: any, text: string) {
+  if (!isLikelyConversationDraftFeedbackMessage(text)) return false;
+  const raw = String(text || "").trim();
+  const normalized = normalizeCommandKeywordText(raw);
+  if (!normalized) return false;
+  const hasTitle = Boolean(String(conversation?.draftTitle || "").trim());
+  const hasContent = Boolean(String(conversation?.draftContent || "").trim());
+  const hasReferenceCue = hasConversationDraftReferenceCue(normalized);
+  const questionLike = /[?？]$/.test(raw) || /^(我觉得|感觉|好像|是不是|是否|能不能|可不可以|要不要|会不会)/.test(normalized);
+  if (/(板块|投稿区)/.test(normalized)) return hasTitle || hasContent;
+  if (/(标题|题目)/.test(normalized) || hasConversationTitleBiasCue(normalized)) return hasTitle;
+  if (/(正文|内容)/.test(normalized)) return hasContent;
+  if (hasConversationWholeDraftCue(normalized)) return hasTitle && hasContent;
+  if (hasConversationContentBiasCue(normalized) || hasConversationShortenCue(normalized) || hasConversationExpandCue(normalized)) {
+    return hasContent && (questionLike || hasReferenceCue);
+  }
+  return false;
+}
+
+function isLikelyConversationLocalPolishFollowupMessage(text: string) {
+  const raw = String(text || "").trim();
+  if (!raw || /[\r\n]/.test(raw) || raw.length > 24) return false;
+  if (isCommandMessage(raw)) return false;
+  const normalized = normalizeCommandKeywordText(raw);
+  if (!normalized) return false;
+  if (/(标题|题目|板块|投稿区|整篇|整体|全文|全篇)/.test(normalized)) return false;
+  return isConversationLocalPolishInstruction(normalized);
+}
+
+function extractConversationNaturalLocalPolishIntent(
+  text: string,
+): { scope: ConversationLocalPolishScope; instruction?: string } | null {
+  const raw = normalizeCommandKeywordText(String(text || ""));
+  const compact = normalizeShortReplyText(text);
+  if (!raw || raw.length > 36 || /[\r\n]/.test(String(text || ""))) return null;
+  const defaultBlockInstruction = buildConversationDefaultLocalPolishInstruction("last-block");
+  const defaultLineInstruction = buildConversationDefaultLocalPolishInstruction("last-line");
+  if (/^(只改|改一下|改改|润色一下|润一下)?(上一段|刚才那段|刚刚那段|最后一段)$/.test(compact)) {
+    return { scope: "last-block", instruction: defaultBlockInstruction };
+  }
+  if (/^(只改|改一下|改改|润色一下|润一下)?(最后一行|最后一句|上一句|刚才那句|刚刚那句|上一行|刚才那一行|刚刚那一行)$/.test(compact)) {
+    return { scope: "last-line", instruction: defaultLineInstruction };
+  }
+
+  const blockMatch = raw.match(/^(?:把|将|帮我把|请把|麻烦把)?(上一段|刚才那段|刚刚那段|最后一段)(?:给我)?(?:再|稍微|稍稍)?([\s\S]+)$/);
+  if (blockMatch) {
+    const instruction = normalizeConversationPolishInstruction(String(blockMatch[2] || "").replace(/^(?:改成|改得|变得|弄得|再|稍微|稍稍)/, "").trim());
+    if (instruction && isConversationLocalPolishInstruction(instruction)) {
+      return { scope: "last-block", instruction };
+    }
+  }
+
+  const lineMatch = raw.match(/^(?:把|将|帮我把|请把|麻烦把)?(最后一行|最后一句|上一句|刚才那句|刚刚那句|上一行|刚才那一行|刚刚那一行)(?:给我)?(?:再|稍微|稍稍)?([\s\S]+)$/);
+  if (lineMatch) {
+    const instruction = normalizeConversationPolishInstruction(String(lineMatch[2] || "").replace(/^(?:改成|改得|变得|弄得|再|稍微|稍稍)/, "").trim());
+    if (instruction && isConversationLocalPolishInstruction(instruction)) {
+      return { scope: "last-line", instruction };
+    }
+  }
+  return null;
+}
+
+function getCollectContentNaturalEditIntent(text: string) {
+  const normalized = normalizeShortReplyText(text);
+  if (!normalized || normalized.length > 24) return null;
+  const localPolishIntent = extractConversationNaturalLocalPolishIntent(text);
+  if (localPolishIntent) return { kind: "local-polish", ...localPolishIntent } as const;
+  if (/^(改标题|换标题|重新标题|重写标题|重新写标题|换个标题)$/.test(normalized)) return { kind: "retitle" } as const;
+  if (/^(删掉|删除|去掉|不要)(刚才那句|刚刚那句|上一句|最后一句|最后一行|刚才那一行|刚刚那一行)$/.test(normalized)) {
+    return { kind: "undo-last-line" } as const;
+  }
+  if (/^(删掉|删除|去掉|不要)(刚才那段|刚刚那段|上一段|最后一段|刚才那条|刚刚那条)$/.test(normalized)) {
+    return { kind: "undo-last-block" } as const;
+  }
+  if (/^(重写正文|重新写正文|正文重写|正文重来|重来正文|清空正文)$/.test(normalized)) return { kind: "clear-content" } as const;
+  return null;
+}
+
+function analyzeConversationDraftFeedback(
+  conversation: any,
+  text: string,
+): ConversationDraftFeedbackAnalysis {
+  const normalized = normalizeCommandKeywordText(String(text || ""));
+  const raw = String(text || "").trim();
+  const hasTitle = Boolean(String(conversation?.draftTitle || "").trim());
+  const hasContent = Boolean(String(conversation?.draftContent || "").trim());
+  const titleLength = String(conversation?.draftTitle || "").trim().length;
+  const contentLength = String(conversation?.draftContent || "").trim().length;
+  const isQuestionLike = /[?？]$/.test(raw) || /^(是不是|是否|能不能|可不可以|要不要|会不会)/.test(normalized);
+  if (!normalized) return { target: "unknown", confidence: "low" };
+  if (/(板块|投稿区)/.test(normalized)) return { target: "board", confidence: "high" };
+  if (/(标题)/.test(normalized)) return { target: "title", confidence: "high" };
+  if (/(正文|内容)/.test(normalized)) return { target: "content", confidence: "high" };
+  if (hasConversationWholeDraftCue(normalized)) {
+    if (hasTitle && hasContent) return { target: "all", confidence: "high" };
+    if (hasContent) return { target: "content", confidence: "medium" };
+    if (hasTitle) return { target: "title", confidence: "medium" };
+  }
+  if (hasConversationTitleBiasCue(normalized)) {
+    if (hasTitle) return { target: "title", confidence: isQuestionLike ? "medium" : "high" };
+    if (hasContent) return { target: "content", confidence: "low" };
+  }
+  if (hasConversationContentBiasCue(normalized)) {
+    if (hasContent) return { target: "content", confidence: isQuestionLike ? "medium" : "high" };
+    if (hasTitle) return { target: "title", confidence: "low" };
+  }
+  if (hasConversationShortenCue(normalized)) {
+    if (hasTitle && hasContent) {
+      if (titleLength >= 18 && contentLength < 80) return { target: "title", confidence: "medium" };
+      if (contentLength >= 80 && titleLength < 18) return { target: "content", confidence: "medium" };
+      return { target: "all", confidence: "low" };
+    }
+    if (hasContent) return { target: "content", confidence: "medium" };
+    if (hasTitle) return { target: "title", confidence: "medium" };
+  }
+  if (hasConversationExpandCue(normalized)) {
+    if (hasContent) return { target: "content", confidence: "medium" };
+    if (hasTitle) return { target: "title", confidence: "low" };
+  }
+  if (hasConversationDraftStyleCue(normalized)) {
+    if (hasTitle && hasContent) {
+      if (contentLength >= 60 && titleLength < 18) return { target: "content", confidence: "medium" };
+      if (titleLength >= 18 && contentLength < 40) return { target: "title", confidence: "medium" };
+      return { target: "all", confidence: "low" };
+    }
+    if (!hasContent && hasTitle) return { target: "title", confidence: "medium" };
+    if (hasContent) return { target: "content", confidence: "medium" };
+    if (hasTitle) return { target: "title", confidence: "medium" };
+    return { target: "all", confidence: "low" };
+  }
+  return { target: "unknown", confidence: "low" };
+}
+
+function renderConversationDraftFeedbackNudge(conversation: any, text: string) {
+  const normalized = normalizeCommandKeywordText(String(text || ""));
+  const step = conversation.step as QqConversationStep;
+  const hasTitle = Boolean(String(conversation?.draftTitle || "").trim());
+  const hasContent = Boolean(String(conversation?.draftContent || "").trim());
+  const analysis = analyzeConversationDraftFeedback(conversation, text);
+  const inferredTarget = analysis.target;
+  if (analysis.confidence === "low") {
+    if (inferredTarget === "board") {
+      return [
+        "我还不太确定你是在问投稿区，还是想改草稿内容。",
+        "• 想改投稿区：发“/板块”或“/板块 树洞”",
+        hasTitle ? "• 想改标题：直接回复“改标题”" : "",
+        hasContent ? "• 想改正文：直接回复“补充”或继续发内容" : "",
+      ].filter(Boolean).join("\n");
+    }
+    return renderConversationAmbiguousDraftFeedbackNudge(conversation, inferredTarget);
+  }
+  if (/(标题)/.test(normalized)) {
+    return [
+      "如果你是想调整标题，可以直接这样做：",
+      "• 发“/标题 新标题”直接改标题",
+      "• 发“/清空标题”重新写标题",
+      "• 发“/润色标题 更短一点”让我按要求只调整标题",
+    ].join("\n");
+  }
+  if (/(正文|内容|润色正文)/.test(normalized)) {
+    return [
+      "如果你是想调整正文，可以直接这样做：",
+      step === "await-ai-post-confirm"
+        ? "• 回复“补充”或直接发内容，进入正文补充"
+        : "• 直接继续发内容，我会补进正文",
+      "• 发“/润色正文 更自然一点”让我按要求只调整正文",
+      "• 发“/润色上一段 更自然一点”或“/润色最后一行 更口语一点”做局部调整",
+      "• 发“/撤回最后一行”或“/撤回上一段”回退内容",
+    ].join("\n");
+  }
+  if (/(板块|投稿区)/.test(normalized)) {
+    return [
+      "如果你是想调整投稿区，可以直接这样做：",
+      "• 发“/板块”先看可投稿板块",
+      "• 发“/板块 树洞”把这篇草稿切到指定板块",
+    ].join("\n");
+  }
+  if (inferredTarget === "title") {
+    return [
+      "我更像理解成你是在调整标题，可以直接这样做：",
+      "• 发“/润色标题 更短一点”让我按要求只调整标题",
+      "• 发“/标题 新标题”直接改标题",
+      "• 发“/清空标题”重新写标题",
+    ].join("\n");
+  }
+  if (inferredTarget === "content") {
+    return [
+      "我更像理解成你是在调整正文，可以直接这样做：",
+      step === "await-ai-post-confirm"
+        ? "• 回复“补充”或直接发内容，进入正文补充"
+        : "• 直接继续发内容，我会补进正文",
+      "• 发“/润色正文 更自然一点”让我按要求只调整正文",
+      "• 发“/润色上一段 更自然一点”或“/润色最后一行 更口语一点”做局部调整",
+      "• 发“/撤回最后一行”或“/撤回上一段”回退内容",
+    ].join("\n");
+  }
+  if (inferredTarget === "all") {
+    return [
+      "我更像理解成你是想整体顺一顺这版草稿，可以直接这样做：",
+      "• 发“/润色 更口语一点”让我按要求整体调整这篇草稿",
+      hasContent ? "• 发“/润色正文 更自然一点”只调整正文" : "",
+      hasTitle ? "• 发“/润色标题 更短一点”只调整标题" : "",
+    ].filter(Boolean).join("\n");
+  }
+  if (hasConversationDraftStyleCue(normalized) || /(这版|这一版|这个|整体|整篇|全文|全篇)/.test(normalized)) {
+    return [
+      "如果你是想把这版草稿再顺一顺，可以直接这样做：",
+      "• 发“/润色 更口语一点”让我按要求整体调整这篇草稿",
+      hasContent ? "• 发“/润色正文 更自然一点”只调整正文" : "",
+      hasTitle ? "• 发“/润色标题 更短一点”只调整标题" : "",
+      step === "await-ai-post-confirm" && hasContent ? "• 也可以回复“补充”或直接发内容，先继续补正文" : "",
+    ].filter(Boolean).join("\n");
+  }
+  return renderConversationStageNudge(conversation, "如果你是在表达对这版草稿的看法，我可以按当前阶段继续帮你改。");
+}
+
+function renderCollectContentDraftFeedbackNudge(conversation: any, text: string) {
+  return [
+    "这句我先不补进正文，更像是在调整当前草稿。",
+    renderConversationDraftFeedbackNudge(conversation, text),
+  ].join("\n");
+}
+
+async function handleConversationNaturalEditIntent(
+  conversation: any,
+  context: {
+    config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
+    event: OneBotEvent;
+    qqId: string;
+    groupId?: string;
+    messageText: string;
+  },
+) {
+  const intent = getCollectContentNaturalEditIntent(context.messageText);
+  if (!intent) return null;
+  if (intent.kind === "local-polish") {
+    return performConversationPolishSegment(conversation, context, intent.scope, intent.instruction);
+  }
+  if (intent.kind === "retitle") {
+    return performConversationRetitle(conversation, context);
+  }
+  if (intent.kind === "undo-last-line") {
+    return performConversationUndoLastLine(conversation, context);
+  }
+  if (intent.kind === "undo-last-block") {
+    return performConversationUndoContent(conversation, context);
+  }
+  if (intent.kind === "clear-content") {
+    return performConversationClearContent(conversation, context);
+  }
+  return null;
+}
+
+async function resolveConversationPendingLocalPolishFollowup(
+  conversation: any,
+  context: {
+    config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
+    event: OneBotEvent;
+    qqId: string;
+    groupId?: string;
+    messageText: string;
+  },
+) {
+  const pending = getConversationPendingLocalPolish(conversation);
+  if (!pending) return { conversation, handled: null as { ok: true; utility: string } | null };
+
+  let nextConversation = conversation;
+  const canCarryAcrossSteps = isConversationDraftEditingStep(pending.step) && isConversationDraftEditingStep(conversation.step);
+  if (pending.step !== conversation.step && !canCarryAcrossSteps) {
+    nextConversation = await setConversationPendingLocalPolish(conversation, null);
+    return { conversation: nextConversation, handled: null as { ok: true; utility: string } | null };
+  }
+
+  const currentSegment = normalizeRenderedMessage(getConversationCurrentLocalPolishSegment(conversation, pending.scope));
+  if (!currentSegment || currentSegment !== pending.segmentText) {
+    nextConversation = await setConversationPendingLocalPolish(conversation, null);
+    return { conversation: nextConversation, handled: null as { ok: true; utility: string } | null };
+  }
+
+  if (!isLikelyConversationLocalPolishFollowupMessage(context.messageText)) {
+    nextConversation = await setConversationPendingLocalPolish(conversation, null);
+    return { conversation: nextConversation, handled: null as { ok: true; utility: string } | null };
+  }
+
+  const handled = await performConversationPolishSegment(conversation, context, pending.scope, context.messageText);
+  return { conversation, handled };
+}
+
+async function rememberConversationDraftFeedbackFollowup(conversation: any, text: string) {
+  const analysis = analyzeConversationDraftFeedback(conversation, text);
+  if (analysis.confidence !== "low") return conversation;
+  return setConversationPendingDraftFeedback(conversation, {
+    text: String(text || "").trim().slice(0, 160),
+    target: analysis.target,
+    step: conversation.step as QqConversationStep,
+  });
+}
+
+async function resolveConversationDraftFeedbackFollowup(
+  conversation: any,
+  context: {
+    config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
+    event: OneBotEvent;
+    qqId: string;
+    groupId?: string;
+    messageText: string;
+    forwardPayload?: (ParsedForwardPayload & { source: ForwardSource }) | null;
+  },
+) {
+  const pending = getConversationPendingDraftFeedback(conversation);
+  if (!pending) return { conversation, handled: null as { ok: true; utility: string } | null };
+
+  let nextConversation = conversation;
+  if (pending.step !== conversation.step) {
+    nextConversation = await setConversationPendingDraftFeedback(conversation, null);
+    return { conversation: nextConversation, handled: null as { ok: true; utility: string } | null };
+  }
+
+  const target = parseConversationDraftFeedbackFollowupTarget(context.messageText);
+  if (!target) {
+    nextConversation = await setConversationPendingDraftFeedback(conversation, null);
+    return { conversation: nextConversation, handled: null as { ok: true; utility: string } | null };
+  }
+
+  nextConversation = await setConversationPendingDraftFeedback(conversation, null);
+  if (target === "board") {
+    await replyToPostingConversation(
+      nextConversation,
+      context,
+      [
+        "如果你是想调整投稿区，可以直接这样做：",
+        "• 发“/板块”先看可投稿板块",
+        "• 发“/板块 树洞”把这篇草稿切到指定板块",
+      ].join("\n"),
+    );
+    return {
+      conversation: nextConversation,
+      handled: { ok: true, utility: "draft-feedback-followup-board" } as const,
+    };
+  }
+
+  const polished = await polishConversationDraft(
+    nextConversation,
+    { ...context, messageText: pending.text },
+    target,
+  ).catch(() => null);
+  if (!polished) {
+    await replyToPostingConversation(
+      nextConversation,
+      context,
+      renderConversationDraftFeedbackNudge(nextConversation, pending.text),
+    );
+    return {
+      conversation: nextConversation,
+      handled: { ok: true, utility: "draft-feedback-followup-fallback" } as const,
+    };
+  }
+  await replyToPostingConversation(nextConversation, context, polished);
+  return {
+    conversation: nextConversation,
+    handled: { ok: true, utility: "draft-feedback-followup-polish" } as const,
+  };
+}
+
+async function tryAutoApplyConversationDraftFeedback(
+  conversation: any,
+  context: {
+    config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
+    event: OneBotEvent;
+    qqId: string;
+    groupId?: string;
+    messageText: string;
+  },
+  text: string,
+) {
+  const analysis = analyzeConversationDraftFeedback(conversation, text);
+  const target = analysis.target;
+  if (target === "board" || target === "unknown") return false;
+  if (analysis.confidence === "low") return false;
+  if (analysis.confidence === "medium" && target === "all") return false;
+  const polished = await polishConversationDraft(
+    conversation,
+    { ...context, messageText: text },
+    target,
+  ).catch(() => null);
+  if (!polished) return false;
+  await replyToPostingConversation(conversation, context, polished);
+  return true;
+}
+
+function removeLastLineFromDraftBlocks(blocks: string[]) {
+  const nextBlocks = [...blocks];
+  while (nextBlocks.length) {
+    const lastBlock = String(nextBlocks.pop() || "");
+    const lines = lastBlock.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    if (!lines.length) continue;
+    const removedLine = lines.pop() || "";
+    if (lines.length) nextBlocks.push(lines.join("\n"));
+    return { blocks: nextBlocks, removedLine };
+  }
+  return { blocks: [] as string[], removedLine: "" };
+}
+
+function buildConversationDraftContentFromBlocks(blocks: string[]) {
+  return normalizeConversationDraftBlocks(blocks).join("\n");
+}
+
+function getConversationLastDraftBlock(blocks: string[]) {
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    const block = String(blocks[index] || "").trim();
+    if (block) return block;
+  }
+  return "";
+}
+
+function replaceLastDraftBlock(blocks: string[], nextBlock: string) {
+  const nextBlocks = [...blocks];
+  const normalizedNextBlock = normalizeRenderedMessage(String(nextBlock || "").trim());
+  for (let index = nextBlocks.length - 1; index >= 0; index -= 1) {
+    const previousBlock = String(nextBlocks[index] || "").trim();
+    if (!previousBlock) continue;
+    if (normalizedNextBlock) {
+      nextBlocks[index] = normalizedNextBlock;
+    } else {
+      nextBlocks.splice(index, 1);
+    }
+    return {
+      blocks: normalizeConversationDraftBlocks(nextBlocks),
+      previousBlock,
+    };
+  }
+  return { blocks: normalizeConversationDraftBlocks(nextBlocks), previousBlock: "" };
+}
+
+function replaceLastLineInDraftBlocks(blocks: string[], nextLine: string) {
+  const nextBlocks = [...blocks];
+  const normalizedNextLine = normalizeRenderedMessage(String(nextLine || "").trim());
+  for (let index = nextBlocks.length - 1; index >= 0; index -= 1) {
+    const lines = String(nextBlocks[index] || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (!lines.length) continue;
+    const previousLine = lines[lines.length - 1] || "";
+    if (normalizedNextLine) {
+      lines[lines.length - 1] = normalizedNextLine;
+    } else {
+      lines.pop();
+    }
+    if (lines.length) {
+      nextBlocks[index] = lines.join("\n");
+    } else {
+      nextBlocks.splice(index, 1);
+    }
+    return {
+      blocks: normalizeConversationDraftBlocks(nextBlocks),
+      previousLine,
+    };
+  }
+  return { blocks: normalizeConversationDraftBlocks(nextBlocks), previousLine: "" };
+}
+
+function isConversationLocalPolishInstruction(text: string) {
+  const normalized = normalizeCommandKeywordText(text).replace(/\s+/g, "");
+  if (!normalized) return false;
+  if (hasConversationDraftStyleCue(normalized)) return true;
+  if (hasConversationShortenCue(normalized)) return true;
+  if (hasConversationExpandCue(normalized)) return true;
+  return /(顺一下|顺一顺|润色一下|润一下|改一下|改改|调整一下|优化一下|口语一点|自然一点|通顺一点|简洁一点|精简一点|精炼一点|详细一点|具体一点|明确一点|清楚一点|柔和一点|重写一下)/.test(normalized);
+}
+
+function buildConversationDefaultLocalPolishInstruction(scope: ConversationLocalPolishScope) {
+  return scope === "last-line"
+    ? "顺一点，自然一点"
+    : "顺一点，尽量更自然一点";
+}
+
+function getConversationCurrentLocalPolishSegment(conversation: any, scope: ConversationLocalPolishScope) {
+  const blocks = getConversationDraftBlocks(conversation);
+  return scope === "last-block"
+    ? getConversationLastDraftBlock(blocks)
+    : getConversationLastNonEmptyLine(String(conversation?.draftContent || ""));
+}
+
+function buildConversationLocalPolishRequest(
+  scope: ConversationLocalPolishScope,
+  instruction?: string | null,
+) {
+  const normalizedInstruction = normalizeConversationPolishInstruction(instruction || "");
+  const fallbackInstruction = buildConversationDefaultLocalPolishInstruction(scope);
+  return normalizedInstruction || fallbackInstruction;
+}
+
+function getConversationStepAfterContentEdit(conversation: any, nextContent: string) {
+  if (String(nextContent || "").trim()) return conversation.step;
+  if (conversation.step === "await-submit-confirm" || conversation.step === "await-ai-post-confirm" || conversation.step === "collect-content") {
+    return String(conversation.draftTitle || "").trim() ? "collect-content" : "await-title";
+  }
+  return conversation.step;
+}
+
+async function updateConversationDraftContent(
+  conversation: any,
+  nextContent: string,
+  options: {
+    step?: QqConversationStep;
+    manualContentEdit?: boolean;
+    appendBlock?: string;
+    replaceBlocks?: string[];
+  } = {},
+) {
+  const metadata = parseConversationMetadata(conversation.metadata);
+  const currentBlocks = getConversationDraftBlocks(conversation);
+  const nextBlocks = options.replaceBlocks
+    ? normalizeConversationDraftBlocks(options.replaceBlocks)
+    : options.appendBlock
+    ? [...currentBlocks, String(options.appendBlock || "").trim()].filter(Boolean)
+    : currentBlocks;
+  if (options.manualContentEdit && conversation.scene === "forward-post") {
+    metadata.forwardDraftTemplate = "";
+  }
+  metadata.draftBlocks = nextBlocks;
+  return prisma.qqBotConversation.update({
+    where: { id: conversation.id },
+    data: {
+      draftContent: nextContent,
+      step: options.step ?? conversation.step,
+      metadata: JSON.stringify(metadata),
+    },
+  });
+}
+
+async function performConversationPolishSegment(
+  conversation: any,
+  context: QqBotAiRequestContext,
+  scope: ConversationLocalPolishScope,
+  instruction?: string | null,
+) {
+  const blocks = getConversationDraftBlocks(conversation);
+  const currentSegment = scope === "last-block"
+    ? getConversationLastDraftBlock(blocks)
+    : getConversationLastNonEmptyLine(String(conversation.draftContent || ""));
+  if (!currentSegment) {
+    const label = scope === "last-block" ? "上一段" : "最后一行";
+    await replyToPostingConversation(conversation, context, `当前还没有可调整的${label}。你先发正文给我就行。`);
+    return {
+      ok: true,
+      utility: scope === "last-block" ? "polish-last-block-empty" : "polish-last-line-empty",
+    } as const;
+  }
+
+  const userInstruction = buildConversationLocalPolishRequest(scope, instruction);
+  const fallbackReply = scope === "last-block"
+    ? "我把上一段稍微顺了一下。"
+    : "我把最后一行稍微顺了一下。";
+  const aiResult = await requestAiJson([
+    {
+      role: "system",
+      content: [
+        "你是校园论坛 QQBot 的局部改稿助手。",
+        scope === "last-block"
+          ? "请只调整正文最后一段，不要改其他段落，也不要改标题。"
+          : "请只调整正文最后一行，不要改其他内容，也不要改标题。",
+        "不要补充用户没提到的事实，不要新增观点、细节或结论。",
+        "如果用户要求不明确，就只做小幅调整，让表达更自然一些。",
+        "除非用户明确要求更长或更短，否则尽量保持原本篇幅接近。",
+        "只返回 JSON。",
+      ].join("\n"),
+    },
+    {
+      role: "user",
+      content: [
+        '输出格式：{"reply":"","suggestedContent":""}',
+        `当前标题：${conversation.draftTitle || ""}`,
+        `当前正文：${conversation.draftContent || ""}`,
+        `当前定位：${scope === "last-block" ? "正文最后一段" : "正文最后一行"}`,
+        `当前片段：${currentSegment}`,
+        `用户要求：${userInstruction}`,
+      ].join("\n"),
+    },
+  ]).catch(() => null);
+  if (!aiResult?.content) {
+    await replyToPostingConversation(
+      conversation,
+      context,
+      scope === "last-block"
+        ? "这次没能顺利调整上一段。你可以换个说法再试，或直接发“/润色上一段 更自然一点”。"
+        : "这次没能顺利调整最后一行。你可以换个说法再试，或直接发“/润色最后一行 更口语一点”。",
+    );
+    return {
+      ok: true,
+      utility: scope === "last-block" ? "polish-last-block-failed" : "polish-last-line-failed",
+    } as const;
+  }
+
+  const parsed = parseAssistantReplyJson(aiResult.content, fallbackReply);
+  const nextSegment = normalizeRenderedMessage(String(parsed.suggestedContent || currentSegment).trim()) || currentSegment;
+  const replacement = scope === "last-block"
+    ? replaceLastDraftBlock(blocks, nextSegment)
+    : replaceLastLineInDraftBlocks(blocks, nextSegment);
+  const nextBlocks = replacement.blocks;
+  const nextContent = buildConversationDraftContentFromBlocks(nextBlocks);
+  const next = await updateConversationDraftContent(conversation, nextContent, {
+    step: getConversationStepAfterContentEdit(conversation, nextContent),
+    manualContentEdit: true,
+    replaceBlocks: nextBlocks,
+  });
+  await setConversationPendingLocalPolish(next, {
+    scope,
+    step: next.step as QqConversationStep,
+    segmentText: nextSegment.slice(0, 500),
+  });
+  const label = scope === "last-block" ? "上一段" : "最后一行";
+  const promptMessage = [
+    `我把${label}按你的意思改了一下。`,
+    parsed.reply && parsed.reply !== fallbackReply ? parsed.reply : "",
+    `现在这${scope === "last-block" ? "一段" : "一行"}是：`,
+    quoteMarkdownBlock(nextSegment),
+  ].filter(Boolean).join("\n");
+  await replyToPostingConversation(conversation, context, await renderConversationPrompt(next, promptMessage));
+  return {
+    ok: true,
+    utility: scope === "last-block" ? "polish-last-block" : "polish-last-line",
+  } as const;
+}
+
+async function performConversationRetitle(
+  conversation: any,
+  context: {
+    event: OneBotEvent;
+    qqId: string;
+    groupId?: string;
+  },
+) {
+  const next = await prisma.qqBotConversation.update({
+    where: { id: conversation.id },
+    data: { step: "await-title" },
+  });
+  await replyToPostingConversation(conversation, context, await renderConversationPrompt(next, "好的，请发送新的标题。"));
+  return { ok: true, utility: "title-edit" } as const;
+}
+
+async function performConversationUndoContent(
+  conversation: any,
+  context: {
+    event: OneBotEvent;
+    qqId: string;
+    groupId?: string;
+  },
+) {
+  const blocks = [...getConversationDraftBlocks(conversation)];
+  if (!blocks.length) {
+    await replyToPostingConversation(conversation, context, "当前还没有正文可撤回。你可以直接继续发内容。");
+    return { ok: true, utility: "undo-empty" } as const;
+  }
+  const removed = blocks.pop() || "";
+  const nextContent = blocks.join("\n");
+  const next = await updateConversationDraftContent(conversation, nextContent, {
+    step: getConversationStepAfterContentEdit(conversation, nextContent),
+    manualContentEdit: true,
+    replaceBlocks: blocks,
+  });
+  await replyToPostingConversation(
+    conversation,
+    context,
+    await renderConversationPrompt(next, `已撤回上一段：${summarizeConversationDraftBlock(removed)}`),
+  );
+  return { ok: true, utility: "undo-content" } as const;
+}
+
+async function performConversationUndoLastLine(
+  conversation: any,
+  context: {
+    event: OneBotEvent;
+    qqId: string;
+    groupId?: string;
+  },
+) {
+  const nextState = removeLastLineFromDraftBlocks(getConversationDraftBlocks(conversation));
+  if (!nextState.removedLine) {
+    await replyToPostingConversation(conversation, context, "当前还没有正文可撤回。你可以直接继续发内容。");
+    return { ok: true, utility: "undo-line-empty" } as const;
+  }
+  const nextContent = nextState.blocks.join("\n");
+  const next = await updateConversationDraftContent(conversation, nextContent, {
+    step: getConversationStepAfterContentEdit(conversation, nextContent),
+    manualContentEdit: true,
+    replaceBlocks: nextState.blocks,
+  });
+  await replyToPostingConversation(
+    conversation,
+    context,
+    await renderConversationPrompt(next, `已撤回最后一行：${summarizeConversationDraftBlock(nextState.removedLine)}`),
+  );
+  return { ok: true, utility: "undo-last-line" } as const;
+}
+
+async function performConversationClearContent(
+  conversation: any,
+  context: {
+    event: OneBotEvent;
+    qqId: string;
+    groupId?: string;
+  },
+) {
+  const currentContent = String(conversation.draftContent || "").trim();
+  if (!currentContent) {
+    await replyToPostingConversation(conversation, context, "当前正文已经是空的了。");
+    return { ok: true, utility: "clear-empty" } as const;
+  }
+  const next = await updateConversationDraftContent(conversation, "", {
+    step: getConversationStepAfterContentEdit(conversation, ""),
+    manualContentEdit: true,
+    replaceBlocks: [],
+  });
+  await replyToPostingConversation(
+    conversation,
+    context,
+    await renderConversationPrompt(next, "正文已经清空了。你可以重新开始发正文。"),
+  );
+  return { ok: true, utility: "clear-content" } as const;
+}
+
+async function applyConversationTitleUpdate(conversation: any, title: string) {
+  const normalizedTitle = title
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(" ")
+    .trim()
+    .slice(0, 120);
+  if (normalizedTitle.length < 2) throw Errors.badRequest("标题至少 2 个字，请重新发送。");
+  const shouldAdvanceFromTitleStep = conversation.step === "await-title" || conversation.step === "await-forward-title";
+  const nextStep = shouldAdvanceFromTitleStep
+    ? (conversation.step === "await-forward-title" || String(conversation.draftContent || "").trim()
+      ? "await-submit-confirm"
+      : "collect-content")
+    : conversation.step;
+  return prisma.qqBotConversation.update({
+    where: { id: conversation.id },
+    data: {
+      draftTitle: normalizedTitle,
+      step: nextStep,
+    },
+  });
 }
 
 function replaceForwardDraftTemplate(currentDraft: string, template: string, nextForwardContent: string) {
@@ -1616,9 +3142,9 @@ async function parseConversationTitle(text: string, defaultBoardSlug: string, gr
 
 async function detectBoardSelectionInTitleStep(text: string, defaultBoardSlug: string, groupId?: string) {
   const normalized = text.trim();
-  const match = normalized.match(/^(?:发到|投稿到|发去|投到|发在|放到)(.+)$/);
+  const match = normalized.match(/^(?:发到|投稿到|发去|投到|发在|放到)\s*(.+)$/);
   if (!match) return null;
-  const target = match[1].trim();
+  const target = match[1].trim().replace(/^到/, "").trim();
   if (!target) return null;
   const currentDefaultSlug = await resolveDefaultBoardSlug(defaultBoardSlug, groupId);
   if (/^(默认板块|默认投稿区|默认区|默认)$/i.test(target)) {
@@ -1645,6 +3171,18 @@ async function detectBoardSelectionInTitleStep(text: string, defaultBoardSlug: s
 async function detectBoardAndTitleInSingleLine(text: string, defaultBoardSlug: string, groupId?: string) {
   const normalized = text.trim();
   const match = normalized.match(/^(.+?)[：:]\s*(.+)$/);
+  if (!match) return null;
+  const boardHint = match[1].trim();
+  const title = match[2].trim();
+  if (title.length < 2) return null;
+  const board = await detectBoardSelectionInTitleStep(`投稿到${boardHint}`, defaultBoardSlug, groupId);
+  if (!board) return null;
+  return { board, title: title.slice(0, 120) };
+}
+
+async function detectBoardAndTitleInCommandLine(text: string, defaultBoardSlug: string, groupId?: string) {
+  const normalized = text.trim();
+  const match = normalized.match(/^(?:到|发到|投稿到|发去|投到|发在|放到)\s*(\S+)\s+(.+)$/);
   if (!match) return null;
   const boardHint = match[1].trim();
   const title = match[2].trim();
@@ -1712,8 +3250,8 @@ function boardAliasCandidates(slug: string, name: string) {
   return [...out];
 }
 
-function buildPostCommandFromDraft(boardSlug: string, title: string, content: string, groupId?: string, defaultBoardSlug?: string) {
-  const useBoardPrefix = !defaultBoardSlug || boardSlug !== (groupId ? boardSlug : defaultBoardSlug);
+function buildPostCommandFromDraft(boardSlug: string, title: string, content: string, defaultBoardSlug?: string) {
+  const useBoardPrefix = !defaultBoardSlug || boardSlug !== defaultBoardSlug;
   const firstLine = useBoardPrefix ? `${boardSlug} ${title}` : title;
   return `投稿 ${firstLine}\n${content}`;
 }
@@ -1722,13 +3260,39 @@ async function parsePostCommand(text: string, defaultBoardSlug: string, groupId?
   const normalized = text.trim().replace(/^\/?#?投稿\s*/, "");
   const lines = normalized.split(/\r?\n/);
   const firstLine = (lines.shift() || "").trim();
-  if (!firstLine) throw Errors.badRequest("投稿格式：投稿 [板块slug] 标题\\n正文");
+  if (!firstLine) {
+    throw Errors.badRequest([
+      "投稿格式不太对。",
+      "可以这样发：",
+      "投稿 标题",
+      "正文",
+      "也可以发：投稿 树洞 标题",
+    ].join("\n"));
+  }
   const defaultSlug = await resolveDefaultBoardSlug(defaultBoardSlug, groupId);
+  const colonParsed = await detectBoardAndTitleInSingleLine(firstLine, defaultBoardSlug, groupId);
+  if (colonParsed) {
+    const content = lines.join("\n").trim() || colonParsed.title;
+    return {
+      boardSlug: colonParsed.board.slug,
+      title: colonParsed.title.slice(0, 120),
+      content: content.slice(0, 20000),
+    };
+  }
+  const prefixedParsed = await detectBoardAndTitleInCommandLine(firstLine, defaultBoardSlug, groupId);
+  if (prefixedParsed) {
+    const content = lines.join("\n").trim() || prefixedParsed.title;
+    return {
+      boardSlug: prefixedParsed.board.slug,
+      title: prefixedParsed.title.slice(0, 120),
+      content: content.slice(0, 20000),
+    };
+  }
   const tokens = firstLine.split(/\s+/);
   let boardSlug = defaultSlug;
   let title = firstLine;
   if (tokens.length >= 2) {
-    const maybeBoard = await prisma.board.findUnique({ where: { slug: tokens[0] }, select: { slug: true } });
+    const maybeBoard = await detectBoardSelectionInTitleStep(`投稿到${tokens[0]}`, defaultBoardSlug, groupId);
     if (maybeBoard) {
       boardSlug = maybeBoard.slug;
       title = tokens.slice(1).join(" ").trim();
@@ -1840,6 +3404,15 @@ async function createTopicFromQq(input: {
 }
 
 export async function sendQqMessage(target: { qqId?: string; groupId?: string }, message: string) {
+  const chunks = splitQqMessageForDelivery(message);
+  for (let index = 0; index < chunks.length; index += 1) {
+    const chunk = chunks[index];
+    const decorated = chunks.length > 1 ? `（${index + 1}/${chunks.length}）\n${chunk}` : chunk;
+    await sendSingleQqMessage(target, decorated);
+  }
+}
+
+async function sendSingleQqMessage(target: { qqId?: string; groupId?: string }, message: string) {
   const config = await getQqBotConfigRaw();
   if (!config.enabled || !config.napcatBaseUrl) throw Errors.badRequest("QQBot 未启用或 NapCat 地址未配置");
   const endpoint = target.groupId ? "send_group_msg" : "send_private_msg";
@@ -2067,7 +3640,9 @@ async function sendNotificationMessage(
   const link = resolveNotificationLink(notification);
   const message = [
     `【${notification.source || "药大拾间"}】${notification.title}`,
+    "",
     notification.content,
+    link ? "" : null,
     link ? `链接：${link}` : "",
   ].filter(Boolean).join("\n");
   try {
@@ -2251,9 +3826,9 @@ const QQBOT_VIDEO_MAX_BYTES = 80 * 1024 * 1024;
 const QQBOT_FORWARD_DEBUG_FILE = path.resolve(process.cwd(), "runtime", "qqbot-forward-debug.ndjson");
 const QQBOT_FORWARD_DEBUG_EXPORT_LIMIT = 200;
 const QQBOT_POST_SUBMIT_PENDING_MESSAGE = [
-  "已收到投稿确认，开始为你投递。",
-  "由于 QQ 限制，投稿速度会比较慢，尤其是长消息、多图、多视频时，投递完成甚至可能要 10 分钟左右。",
-  "耐心等待即可；投递完成后，我会再给你发送反馈。",
+  "已收到投稿确认，开始为你投递",
+  "长消息、多图、多视频时速度会比较慢",
+  "投递完成后，我会再给你发送反馈",
 ].join("\n");
 const qqImageUploadCache = new Map<string, Promise<string>>();
 const qqVideoUploadCache = new Map<string, Promise<{ url: string; posterUrl: string } | null>>();
@@ -3597,25 +5172,225 @@ function normalizeRenderedMessage(value: string) {
     .trim();
 }
 
+function splitQqMessageForDelivery(value: string, limit = QQBOT_MESSAGE_SOFT_LIMIT) {
+  const normalized = normalizeRenderedMessage(value);
+  if (!normalized) return [];
+  if (normalized.length <= limit) return [normalized];
+  const chunks: string[] = [];
+  const blocks = normalized.split(/\n{2,}/).map((item) => item.trim()).filter(Boolean);
+  const pushChunk = (raw: string) => {
+    const chunk = normalizeRenderedMessage(raw);
+    if (!chunk) return;
+    if (chunk.length <= limit) {
+      chunks.push(chunk);
+      return;
+    }
+    const lines = chunk.split(/\n/).map((item) => item.trimEnd()).filter(Boolean);
+    if (lines.length > 1) {
+      let lineBuffer = "";
+      for (const line of lines) {
+        const next = lineBuffer ? `${lineBuffer}\n${line}` : line;
+        if (next.length <= limit) {
+          lineBuffer = next;
+          continue;
+        }
+        if (lineBuffer) chunks.push(lineBuffer);
+        lineBuffer = "";
+        if (line.length <= limit) {
+          lineBuffer = line;
+          continue;
+        }
+        const sentences = line.split(/(?<=[。！？；.!?;])\s*/).map((item) => item.trim()).filter(Boolean);
+        let sentenceBuffer = "";
+        for (const sentence of sentences) {
+          const nextSentence = sentenceBuffer ? `${sentenceBuffer}${sentence}` : sentence;
+          if (nextSentence.length <= limit) {
+            sentenceBuffer = nextSentence;
+            continue;
+          }
+          if (sentenceBuffer) chunks.push(sentenceBuffer);
+          sentenceBuffer = "";
+          if (sentence.length <= limit) {
+            sentenceBuffer = sentence;
+            continue;
+          }
+          for (let index = 0; index < sentence.length; index += limit) {
+            chunks.push(sentence.slice(index, index + limit));
+          }
+        }
+        if (sentenceBuffer) lineBuffer = sentenceBuffer;
+      }
+      if (lineBuffer) chunks.push(lineBuffer);
+      return;
+    }
+    for (let index = 0; index < chunk.length; index += limit) {
+      chunks.push(chunk.slice(index, index + limit));
+    }
+  };
+  let buffer = "";
+  for (const block of blocks) {
+    const next = buffer ? `${buffer}\n\n${block}` : block;
+    if (next.length <= limit) {
+      buffer = next;
+      continue;
+    }
+    if (buffer) pushChunk(buffer);
+    buffer = "";
+    if (block.length <= limit) {
+      buffer = block;
+      continue;
+    }
+    pushChunk(block);
+  }
+  if (buffer) pushChunk(buffer);
+  return chunks.length ? chunks : [normalized];
+}
+
 function appendSourceFooter(content: string, context: { groupId?: string; event: OneBotEvent }) {
   const source = context.groupId ? `QQ群 ${context.groupId}` : "QQ 私聊";
   return `${content}\n\n> 转自 QQBot（${source}）。`;
 }
 
 function isHelpCommand(text: string) {
-  return /^[/／](帮助|help|菜单)$/i.test(text.trim());
+  return /^(?:[/／])?(帮助|help|菜单|命令|功能)$/i.test(normalizeCommandKeywordText(text));
 }
 
 function isBoardListCommand(text: string) {
-  return /^[/／](板块|板块列表|boards?)$/i.test(text.trim());
+  return /^(?:[/／])?(板块|板块列表|boards?|版块|分区)$/i.test(normalizeCommandKeywordText(text));
 }
 
 function isMyPostsCommand(text: string) {
-  return /^[/／](我的投稿|我的帖子|recent|mine)$/i.test(text.trim());
+  return /^(?:[/／])?(我的投稿|我的帖子|最近投稿|最近帖子|recent|mine)$/i.test(normalizeCommandKeywordText(text));
+}
+
+function isStatusCommand(text: string) {
+  return /^(?:[/／])?状态$/i.test(normalizeCommandKeywordText(text));
+}
+
+function isConversationStatusCommand(text: string) {
+  return /^(?:[/／])?(状态|进度)$/i.test(normalizeCommandKeywordText(text));
+}
+
+function isConversationPreviewCommand(text: string) {
+  return /^(?:[/／])?(预览|草稿)$/i.test(normalizeCommandKeywordText(text));
+}
+
+function extractConversationBoardSwitchTarget(text: string) {
+  const match = String(text || "").trim().match(/^(?:[/／])?(?:板块|版块|分区|投稿区|改板块|换板块|切换板块)\s+(.+)$/i);
+  if (!match) return "";
+  return normalizeCommandKeywordText(match[1]);
+}
+
+function extractConversationTitleCommandValue(text: string) {
+  const match = String(text || "").trim().match(/^(?:[/／])?(?:标题|改标题|重新标题|换标题|title)\s+([\s\S]+)$/i);
+  if (!match) return "";
+  return match[1].trim();
+}
+
+function extractConversationCommandInstruction(text: string, aliases: string[]) {
+  const aliasPattern = aliases.map((alias) => alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  const match = String(text || "").trim().match(new RegExp(`^(?:[/／])?(?:${aliasPattern})(?:\\s+([\\s\\S]+))?$`, "i"));
+  if (!match) return null;
+  return normalizeConversationPolishInstruction(match[1] || "");
+}
+
+function isConversationRetitleCommand(text: string) {
+  return /^(?:[/／])?(标题|改标题|重新标题|换标题|title)$/i.test(normalizeCommandKeywordText(text));
+}
+
+function isConversationClearTitleCommand(text: string) {
+  return /^(?:[/／])?(清空标题|删除标题|重写标题|cleartitle)$/i.test(
+    normalizeCommandKeywordText(text).replace(/\s+/g, ""),
+  );
+}
+
+function isConversationPolishCommand(text: string) {
+  return extractConversationPolishInstruction(text) !== null;
+}
+
+function isConversationPolishTitleCommand(text: string) {
+  return extractConversationPolishTitleInstruction(text) !== null;
+}
+
+function isConversationPolishContentCommand(text: string) {
+  return extractConversationPolishContentInstruction(text) !== null;
+}
+
+function isConversationPolishLastBlockCommand(text: string) {
+  return extractConversationPolishLastBlockInstruction(text) !== null;
+}
+
+function isConversationPolishLastLineCommand(text: string) {
+  return extractConversationPolishLastLineInstruction(text) !== null;
+}
+
+function extractConversationPolishInstruction(text: string) {
+  return extractConversationCommandInstruction(text, ["润色", "润色一下", "整理草稿", "优化草稿", "polish"]);
+}
+
+function extractConversationPolishTitleInstruction(text: string) {
+  return extractConversationCommandInstruction(text, ["润色标题", "优化标题", "整理标题", "polishtitle"]);
+}
+
+function extractConversationPolishContentInstruction(text: string) {
+  return extractConversationCommandInstruction(text, ["润色正文", "优化正文", "整理正文", "polishbody", "polishcontent"]);
+}
+
+function extractConversationPolishLastBlockInstruction(text: string) {
+  return extractConversationCommandInstruction(text, ["润色上一段", "润色最后一段", "优化上一段", "整理上一段", "polishlastblock"]);
+}
+
+function extractConversationPolishLastLineInstruction(text: string) {
+  return extractConversationCommandInstruction(text, ["润色最后一行", "润色最后一句", "优化最后一行", "整理最后一行", "polishlastline"]);
+}
+
+function buildConversationPolishRequest(
+  scope: "all" | "title" | "content",
+  instruction?: string | null,
+) {
+  const normalizedInstruction = normalizeConversationPolishInstruction(instruction || "");
+  if (scope === "title") {
+    return normalizedInstruction
+      ? `请只润色当前标题，不要改正文。重点要求：${normalizedInstruction}`
+      : "请只润色当前标题，不要改正文";
+  }
+  if (scope === "content") {
+    return normalizedInstruction
+      ? `请只润色当前正文，不要改标题。重点要求：${normalizedInstruction}`
+      : "请只润色当前正文，不要改标题";
+  }
+  return normalizedInstruction
+    ? `请按这个要求润色当前草稿：${normalizedInstruction}`
+    : "请帮我润色当前草稿";
+}
+
+function isConversationUndoContentCommand(text: string) {
+  return /^(?:[/／])?(撤回|撤回上一条|撤回上一段|删除上一条|删除上一段|undo)$/i.test(
+    normalizeCommandKeywordText(text).replace(/\s+/g, ""),
+  );
+}
+
+function isConversationUndoLastLineCommand(text: string) {
+  return /^(?:[/／])?(撤回最后一行|删除最后一行|undo-last-line)$/i.test(
+    normalizeCommandKeywordText(text).replace(/\s+/g, ""),
+  );
+}
+
+function isConversationClearContentCommand(text: string) {
+  return /^(?:[/／])?(清空正文|清空内容|重写正文|重来正文|clearbody)$/i.test(
+    normalizeCommandKeywordText(text).replace(/\s+/g, ""),
+  );
+}
+
+function isLikelyConversationCommandMessage(text: string) {
+  const normalized = String(text || "").trim();
+  if (!normalized.startsWith("/") && !normalized.startsWith("／")) return false;
+  if (/[\r\n]/.test(normalized)) return false;
+  return normalized.length <= 24;
 }
 
 function isUnbindCommand(text: string) {
-  return /^[/／](解绑|解除绑定|unbind)$/i.test(text.trim());
+  return /^(?:[/／])?(解绑|解除绑定|unbind)$/i.test(normalizeCommandKeywordText(text));
 }
 
 function isCommandMessage(text: string) {
@@ -3623,25 +5398,57 @@ function isCommandMessage(text: string) {
   return normalized.startsWith("/") || normalized.startsWith("／");
 }
 
+function normalizeInboundCommandText(text: string) {
+  let normalized = String(text || "").trim();
+  if (!normalized) return "";
+  for (let index = 0; index < 2; index += 1) {
+    const next = normalized.replace(/^(?:@?\s*)?(?:qqbot|药大拾间bot|助手|bot)\s*[，,:：-]?\s*/i, "").trim();
+    if (!next || next === normalized) break;
+    normalized = next;
+  }
+  return normalized;
+}
+
+function normalizeCommandKeywordText(text: string) {
+  let normalized = String(text || "").trim();
+  if (!normalized) return "";
+  for (let index = 0; index < 3; index += 1) {
+    const next = normalized
+      .replace(/[?？!！~～。．,，、…]+$/g, "")
+      .replace(/(?:啊|呀|呢|嘛|吧|哈|呗|哦|噢|啦|喔|哇)+$/g, "")
+      .trim();
+    if (!next || next === normalized) break;
+    normalized = next;
+  }
+  return normalized;
+}
+
 function isPrivatePlainCommand(text: string, keyword: string) {
   const normalized = text.trim();
   return !isCommandMessage(normalized) && normalized === keyword;
 }
 
-function normalizePrivatePlainCommand(text: string, keyword: string) {
-  const normalized = text.trim();
-  if (normalized === keyword) return `/${keyword}`;
-  return normalized;
+function extractFinishCommandPayload(text: string) {
+  const finishRegex = /(^|\n)\s*(?:[/／])?(结束|完成|提交)(?:\s|$)/m;
+  const normalized = String(text || "").trim();
+  if (!finishRegex.test(normalized)) return null;
+  return String(text || "").replace(finishRegex, "$1").trim();
 }
 
 function isConfirmPublishMessage(text: string) {
-  return /^(是|确认|确认发布|发布|发吧|就这样|没问题)$/i.test(text.trim()) || /^[/／](发布|确认发布)(?:\s|$)/i.test(text.trim());
+  const normalized = normalizeShortReplyText(text);
+  return /^(是|是的|确认|确认发布|发布|发吧|就这样|没问题)$/.test(normalized) || /^[/／](发布|确认发布)(?:\s|$)/i.test(String(text || "").trim());
 }
 
 function isCancelMessage(text: string) {
-  const normalized = text.trim();
-  return /^[/／]取消(?:\s|$)/.test(normalized)
-    || /^(取消|算了|不发了|我不发了|先不发了|不要发了|不投了|我不投了|先不投了|不了|不用了)$/i.test(normalized);
+  const raw = String(text || "").trim();
+  const normalized = normalizeShortReplyText(raw);
+  return /^[/／]取消(?:\s|$)/.test(raw)
+    || /^(取消|算了|不发了|我不发了|先不发了|不要发了|不投了|我不投了|先不投了|不了|不用了)$/.test(normalized);
+}
+
+function normalizeShortReplyText(text: string) {
+  return normalizeCommandKeywordText(String(text || "").trim()).replace(/\s+/g, "");
 }
 
 function isGreetingMessage(text: string) {
@@ -3653,17 +5460,23 @@ function isGreetingMessage(text: string) {
 async function renderHelp(defaultBoardSlug: string) {
   const defaultBoardName = await resolveBoardDisplayName(defaultBoardSlug);
   return [
-    "我能帮你做这些事：",
-    "绑定 绑定码：绑定站内账号",
-    "状态：查看绑定状态和投稿开关",
-    "板块：查看可投稿板块",
-    "我的投稿：查看最近投稿记录",
-    "解绑：解除当前 QQ 绑定",
-    "投稿：开始分步投稿",
-    "结束：提交当前投稿",
-    "取消：取消当前投稿",
+    "QQBot 帮助",
     "",
-    "你也可以直接说“我想投稿”，我会一步步带你完成。",
+    "账号与状态",
+    "• 帮助 / 命令 / 功能：查看全部命令",
+    "• 绑定 绑定码：绑定站内账号",
+    "• 状态：查看绑定状态、默认投稿区和投稿开关",
+    "• 解绑：解除当前 QQ 绑定",
+    "",
+    "查询",
+    "• 板块 / 版块 / 分区：查看可投稿板块",
+    "• 我的投稿 / 最近投稿：查看最近投稿记录",
+    "",
+    "投稿",
+    "• 投稿：开始分步投稿",
+    "• 结束：提交当前投稿",
+    "• 取消：取消当前投稿",
+    "• 也可以直接说“我想投稿”，我会一步步带你完成",
     "",
     `默认投稿区：${defaultBoardName}`,
   ].join("\n");
@@ -3673,8 +5486,8 @@ async function renderGreetingReply(defaultBoardSlug: string) {
   const defaultBoardName = await resolveBoardDisplayName(defaultBoardSlug);
   return [
     "我在。",
-    "如果你想投稿，可以直接说“我想投稿”，或者发送“投稿”开始分步投稿。",
-    `默认投稿区是 ${defaultBoardName}。`,
+    `默认投稿区：${defaultBoardName}`,
+    "想投稿就直接说“我想投稿”，或者发送“投稿”。",
     "常用命令：帮助 / 状态 / 板块 / 我的投稿",
   ].join("\n");
 }
@@ -3682,7 +5495,7 @@ async function renderGreetingReply(defaultBoardSlug: string) {
 function renderPrivateFallbackReply() {
   return [
     "我收到啦。",
-    "你可以直接告诉我你想做什么，比如：投稿、查状态、看板块、看最近投稿。",
+    "你可以直接说：投稿 / 状态 / 板块 / 我的投稿。",
     "如果不确定怎么说，发“帮助”就行。",
   ].join("\n");
 }
@@ -3716,7 +5529,7 @@ function isExplicitBotMention(event: OneBotEvent, text: string) {
   const raw = text.trim();
   if (!raw) return false;
   if (/(qqbot|药大拾间bot|助手|bot)\b/i.test(raw)) return true;
-  if (/(帮我投稿|我要投稿|我想投稿|投稿到|发树洞|发帖|帮我发|板块|状态|帮助)/i.test(raw)) return true;
+  if (isDirectBotKeywordMessage(raw)) return true;
   return isMessageAtBot(event.message, event.self_id);
 }
 
@@ -3726,6 +5539,14 @@ function isExplicitPostTrigger(event: OneBotEvent, text: string) {
   if (/^[/／]投稿\b/.test(raw)) return true;
   if (/(帮我投稿|我要投稿|我想投稿|投稿到|发树洞|发帖|帮我发)/i.test(raw)) return true;
   return event.message_type === "group" ? isExplicitBotMention(event, text) : false;
+}
+
+function isDirectBotKeywordMessage(text: string) {
+  const raw = String(text || "").trim();
+  if (!raw) return false;
+  if (/^(帮助|help|菜单|命令|功能|板块|板块列表|版块|分区|我的投稿|我的帖子|最近投稿|最近帖子|状态|解绑|解除绑定|投稿)(?:\s|$)/i.test(raw)) return true;
+  if (/^(帮我投稿|我要投稿|我想投稿|投稿到|发树洞|发帖|帮我发|想发树洞|想发二手|想发课评)/i.test(raw)) return true;
+  return false;
 }
 
 function isMessageAtBot(message: unknown, selfId?: number | string) {
@@ -3758,19 +5579,20 @@ async function renderBindingStatus(
   const defaultBoardName = await resolveBoardDisplayName(defaultBoardSlug);
   if (!binding?.enabled) {
     return [
-      "当前 QQ 尚未绑定站内账号。",
-      "请先在站内生成绑定码，再私聊我发送：绑定 绑定码",
+      "当前状态：未绑定",
+      "先到站内个人中心生成绑定码，再私聊发送：绑定 绑定码",
       `默认投稿区：${defaultBoardName}`,
       `私聊投稿：${config.allowPrivatePost ? "已开启" : "未开启"}`,
       `群内投稿：${config.allowGroupPost ? "已开启" : "未开启"}`,
+      "提示：绑定后才能投稿、查状态和查看最近投稿。",
     ].join("\n");
   }
   return [
-    `已绑定：${binding.user.nickname}（${binding.user.username}）`,
+    `当前状态：已绑定 ${binding.user.nickname}（${binding.user.username}）`,
     `默认投稿区：${defaultBoardName}`,
     `私聊投稿：${config.allowPrivatePost ? "已开启" : "未开启"}`,
     `群内投稿：${config.allowGroupPost ? "已开启" : "未开启"}`,
-    "命令：板块 / 我的投稿 / 解绑",
+    "常用命令：板块 / 我的投稿 / 投稿 / 解绑",
   ].join("\n");
 }
 
@@ -3783,23 +5605,23 @@ async function renderBoardList(defaultBoardSlug: string, groupId?: string) {
     return "当前没有可投稿板块，请稍后再试。";
   }
   const lines = [
-    "可投稿板块：",
+    "可投稿板块",
     ...availableBoards.slice(0, 12).map((board) => {
       const suffix = board.slug === currentDefaultSlug ? "（默认投稿区）" : "";
-      const desc = board.description ? ` - ${board.description}` : "";
-      return `${board.name}${suffix}${desc}`;
+      const desc = board.description ? `：${board.description}` : "";
+      return `• ${board.name}${suffix}${desc}`;
     }),
   ];
   const closedHints = boards
     .filter((board) => !isBoardTypeEnabled(board.type))
-    .map((board) => `${board.name}：${featureClosedMessage(board.type)}`);
+    .map((board) => `• ${board.name}：${featureClosedMessage(board.type)}`);
   if (closedHints.length) {
-    lines.push("", "当前暂不可投：");
+    lines.push("", "当前暂不可投");
     lines.push(...closedHints.slice(0, 4));
   }
-  lines.push("", "示例：");
-  lines.push("直接说“我想投稿”，我会一步步带你填写。");
-  lines.push("如果你已经想好内容，也可以直接发“投稿 标题”，下一行开始写正文。");
+  lines.push("", "怎么发");
+  lines.push("• 直接说“我想投稿”，我会一步步带你填写");
+  lines.push("• 如果你已经想好内容，也可以发“投稿 标题”，下一行开始写正文");
   return lines.join("\n");
 }
 
@@ -3972,10 +5794,11 @@ async function renderRecentQqTopics(qqId: string) {
   if (!topics.length) return "最近还没有可见的投稿记录。";
   return [
     "最近投稿：",
-    ...topics.map((topic) => {
+    "",
+    topics.map((topic, index) => {
       const topicLink = buildTopicLink(topic.id) || `/forum/topic/${topic.id}`;
-      return `- ${topic.title}｜${topic.board.name}\n  ${topicLink}`;
-    }),
+      return `${index + 1}. ${topic.title}\n板块：${topic.board.name}\n链接：${topicLink}`;
+    }).join("\n\n"),
   ].join("\n");
 }
 
@@ -4029,6 +5852,11 @@ async function inferQqBotIntent(context: {
         "7. 用户的问题超出机器人能力，但适合给一句功能范围内的引导，判为 reply。",
         "如果判为 start-post，请尽量抽取标题、正文、板块 slug；拿不准时留空。",
         "如果判为 reply，message 必须直接、简短，并给出明确下一步动作。",
+        "示例：",
+        "用户说“怎么绑定”=> intent=reply 或 status，message 引导去个人中心生成绑定码后发送“绑定 绑定码”。",
+        "用户说“树洞该发哪里”=> intent=boards。",
+        "用户说“我想发一个失物招领”=> intent=start-post。",
+        "用户说“你能做什么”=> intent=help。",
         "返回给程序时可以使用板块 slug，但不要把 slug 当成给用户看的文案。",
       ].join("\n"),
     },
@@ -4047,7 +5875,10 @@ async function inferQqBotIntent(context: {
     return { intent } as QqBotAiIntent;
   }
   if (intent === "reply") {
-    return { intent: "reply", message: String(parsed.message || "如果你想投稿，可以直接说“我想投稿”，我会一步步带你完成。").slice(0, 300) } as QqBotAiIntent;
+    return {
+      intent: "reply",
+      message: normalizeRenderedMessage(String(parsed.message || "如果你想投稿，可以直接说“我想投稿”，我会一步步带你完成。")).slice(0, QQBOT_INTENT_HINT_MAX_LENGTH),
+    } as QqBotAiIntent;
   }
   if (intent === "start-post") {
     return {
@@ -4097,9 +5928,16 @@ async function generateAssistantReply(
         "4. 如果用户问板块，提醒发送“板块”；如果问最近投稿，提醒发送“我的投稿”；如果问状态，提醒发送“状态”。",
         "5. 如果问题超出机器人能力范围，礼貌说明你主要负责论坛投稿和账号相关查询，并把话题拉回可执行功能。",
         "6. 不要假装已经替用户完成了绑定、发帖、查询等操作。",
-        "7. reply 保持简洁，尽量控制在 2 到 4 行内。",
+        "7. reply 保持简洁，尽量控制在 2 到 4 行内，每行只表达一个点，避免大段堆叠文字。",
         "8. 如果用户像是在投稿、求助发帖、发树洞、发二手或课程评价，请尽量同时整理出建议板块 slug、建议标题、建议正文。",
         "9. 如果无法可靠判断建议内容，confidence 设为 low，并尽量贴近兜底提示。",
+        "10. 如果适合用列表，优先使用短列表，不要输出长段说明书。",
+        "11. 能直接引用命令时就引用具体命令，不要只说“去看看菜单”这种空泛表达。",
+        "12. 如果当前是投稿场景，reply 要尽量鼓励继续下一步，不要打断用户节奏。",
+        "示例：",
+        "未绑定用户问“我怎么发帖”=> reply 先说明去个人中心生成绑定码，再私聊发送“绑定 绑定码”。",
+        "已绑定用户问“我想发树洞”=> reply 建议直接发送“投稿”或“我想投稿”。",
+        "用户问“课程评价发哪里”=> reply 提示发送“板块”查看可投稿板块，或直接说想投稿。",
         "给用户看的回复里优先使用中文板块名，不要直接展示 slug。",
         "只返回 JSON。",
       ].join("\n"),
@@ -4117,17 +5955,42 @@ async function generateAssistantReply(
   return parseAssistantReplyJson(content, fallbackMessage);
 }
 
+function getConversationStepAfterPolish(
+  conversation: any,
+  nextContent: string,
+  scope: "all" | "title" | "content",
+): QqConversationStep {
+  const hasContent = Boolean(String(nextContent || "").trim());
+  if (scope === "title") {
+    if (conversation.step === "await-title" || conversation.step === "await-forward-title") {
+      return hasContent || conversation.step === "await-forward-title" ? "await-submit-confirm" : "collect-content";
+    }
+    return conversation.step;
+  }
+  if (hasContent) return "await-submit-confirm";
+  if (conversation.step === "await-submit-confirm" || conversation.step === "await-ai-post-confirm") return "collect-content";
+  return conversation.step;
+}
+
 async function polishConversationDraft(
   conversation: any,
   context: QqBotAiRequestContext,
+  scope: "all" | "title" | "content" = "all",
 ) {
   const { content } = await requestAiJson([
     {
       role: "system",
       content: [
         "你是校园论坛 QQBot 的投稿润色助手。",
-        "请在不改变原意的前提下，帮用户把标题和正文整理得更清晰自然。",
+        scope === "title"
+          ? "请只调整标题，不要改正文。"
+          : scope === "content"
+          ? "请只调整正文，不要改标题。"
+          : "请在不改变原意的前提下，帮用户把标题和正文整理得更清晰自然。",
         "不要补充用户没提到的事实，不要擅自夸张或改写立场。",
+        "如果用户只要求调整标题或正文，另一部分保持不变，建议字段留空即可。",
+        "如果用户是短反馈，比如“自然一点”“像机器人”“短一点”“太官方了”，请按字面做小幅调整，不要大改。",
+        "优先保留原本信息和语气，只优化表达，不要凭空新增观点、细节或结论。",
         "标题尽量简洁明确，正文可以适度分段，但不要变成公文腔。",
         "只返回 JSON。",
       ].join("\n"),
@@ -4143,12 +6006,17 @@ async function polishConversationDraft(
     },
   ]);
   const parsed = parseAssistantReplyJson(content, "我已经帮你稍微整理了一下草稿。");
+  const nextTitle = scope === "content" ? conversation.draftTitle : (parsed.suggestedTitle || conversation.draftTitle);
+  const nextContent = scope === "title" ? conversation.draftContent : (parsed.suggestedContent || conversation.draftContent);
   const next = await prisma.qqBotConversation.update({
     where: { id: conversation.id },
     data: {
-      draftTitle: parsed.suggestedTitle || conversation.draftTitle,
-      draftContent: parsed.suggestedContent || conversation.draftContent,
-      step: "await-submit-confirm",
+      draftTitle: nextTitle,
+      draftContent: nextContent,
+      step: getConversationStepAfterPolish(conversation, nextContent, scope),
+      metadata: updateConversationMetadata(conversation.metadata, {
+        draftBlocks: String(nextContent || "").trim() ? [String(nextContent || "").trim()] : [],
+      }),
     },
   });
   return await renderConversationPrompt(next, parsed.reply);
@@ -4159,7 +6027,7 @@ function parseAssistantReplyJson(content: string, fallbackMessage: string): QqBo
   try {
     const parsed = JSON.parse(content);
     return {
-      reply: String(parsed.reply || fallbackMessage).slice(0, 500),
+      reply: normalizeRenderedMessage(String(parsed.reply || fallbackMessage)).slice(0, QQBOT_AI_REPLY_MAX_LENGTH),
       suggestedBoardSlug: String(parsed.suggestedBoardSlug || "").trim() || undefined,
       suggestedTitle: String(parsed.suggestedTitle || "").trim().slice(0, 120) || undefined,
       suggestedContent: String(parsed.suggestedContent || "").trim().slice(0, 20000) || undefined,
@@ -4171,7 +6039,7 @@ function parseAssistantReplyJson(content: string, fallbackMessage: string): QqBo
       try {
         const parsed = JSON.parse(match[0]);
         return {
-          reply: String(parsed.reply || fallbackMessage).slice(0, 500),
+          reply: normalizeRenderedMessage(String(parsed.reply || fallbackMessage)).slice(0, QQBOT_AI_REPLY_MAX_LENGTH),
           suggestedBoardSlug: String(parsed.suggestedBoardSlug || "").trim() || undefined,
           suggestedTitle: String(parsed.suggestedTitle || "").trim().slice(0, 120) || undefined,
           suggestedContent: String(parsed.suggestedContent || "").trim().slice(0, 20000) || undefined,

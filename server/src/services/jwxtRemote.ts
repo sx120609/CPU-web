@@ -120,6 +120,10 @@ export function getIApps(token: string): ReturnType<typeof local.getIApps> {
     .then((r) => r.apps) as ReturnType<typeof local.getIApps>;
 }
 
+export function getGraduateSchedule(token: string, args?: Parameters<typeof local.getGraduateSchedule>[1]): ReturnType<typeof local.getGraduateSchedule> {
+  return call<Awaited<ReturnType<typeof local.getGraduateSchedule>>>("/v1/graduate-schedule", { token, ...(args ?? {}) }) as ReturnType<typeof local.getGraduateSchedule>;
+}
+
 export function debugSnapshot(token: string): ReturnType<typeof local.debugSnapshot> {
   return call("/v1/debug-snapshot", { token });
 }

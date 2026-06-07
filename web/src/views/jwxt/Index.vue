@@ -76,11 +76,11 @@
           <div class="remember-row">
             <div class="remember-main">
               <el-checkbox v-model="remember">
-                记住账号（仅保存在当前设备）
+                记住登录信息（仅保存在当前设备）
               </el-checkbox>
               <el-tooltip placement="top">
                 <template #content>
-                  账号只保存在当前设备浏览器，<br/>
+                  学校账号和密码只保存在当前设备浏览器，<br/>
                   <b>不会上传到本站</b>。<br/>
                   下次打开时可更快完成登录。<br/>
                   <b>共享电脑请勿勾选</b>。
@@ -124,10 +124,10 @@
         </div>
         <div class="session-actions">
           <el-tag v-if="jwxt.rememberSaved" size="small" type="warning" class="remember-tag">
-            已记住账号
+            已保存登录信息
           </el-tag>
           <el-button v-if="jwxt.rememberSaved" plain type="warning" size="small" @click="onForget">
-            忘记账号
+            清除已保存信息
           </el-button>
           <el-button plain type="danger" size="small" @click="onLogout">
             <el-icon><CircleClose /></el-icon> 断开连接
@@ -367,7 +367,7 @@ async function onSubmit() {
 }
 
 async function onLogout() {
-  await ElMessageBox.confirm("断开当前教务连接？\n如果勾选了“记住账号”，下次打开时仍可快速登录。", "确认", { type: "warning" });
+  await ElMessageBox.confirm("断开当前教务连接？\n如果勾选了“记住登录信息”，下次打开时仍可快速登录。", "确认", { type: "warning" });
   await jwxt.logout();
   ElMessage.success("已断开教务连接");
   schedule.value = grades.value = midtermGrades.value = progress.value = pyfa.value = null;

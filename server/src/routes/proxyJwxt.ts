@@ -17,6 +17,7 @@ import {
   getProgress,
   getPyfa,
   getIApps,
+  getGraduateSchedule,
   debugSnapshot,
 } from "../services/jwxtFacade";
 import { crawlSchoolFeedSource } from "../services/schoolCrawlerCore";
@@ -135,6 +136,17 @@ proxyJwxtRouter.post("/v1/iapps", validate(tokenSchema), async (req, res, next) 
     ok(res, { apps: await getIApps(req.body.token) });
   } catch (e) { next(e); }
 });
+
+proxyJwxtRouter.post(
+  "/v1/graduate-schedule",
+  validate(tokenSchema.extend({ semester: z.string().optional(), termcode: z.string().optional() })),
+  async (req, res, next) => {
+    try {
+      const { token, semester, termcode } = req.body;
+      ok(res, await getGraduateSchedule(token, { semester, termcode }));
+    } catch (e) { next(e); }
+  },
+);
 
 proxyJwxtRouter.post("/v1/debug-snapshot", validate(tokenSchema), async (req, res, next) => {
   try {

@@ -68,17 +68,17 @@
       </div>
 
       <div class="config-card">
-        <div class="card-head">
-          <div>
-            <h3>绑定与测试</h3>
-            <p>用户在站内生成绑定码后，向 QQBot 发送“绑定 绑定码”完成关联。</p>
-          </div>
+      <div class="card-head">
+        <div>
+          <h3>绑定与测试</h3>
+          <p>用户在站内生成绑定码后，需要私聊 QQBot 发送“绑定 绑定码”完成关联，绑定码不应发到群里。</p>
         </div>
+      </div>
         <div class="bind-box">
           <el-button type="primary" plain @click="createBindToken">生成我的绑定码</el-button>
           <div v-if="bindToken" class="bind-token">
             <b>{{ bindToken.token }}</b>
-            <span>10 分钟内发送：绑定 {{ bindToken.token }}</span>
+            <span>10 分钟内私聊发送：绑定 {{ bindToken.token }}</span>
           </div>
         </div>
         <el-divider />
