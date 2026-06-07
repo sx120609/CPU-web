@@ -1,11 +1,13 @@
 import { defineStore } from "pinia";
 import { authApi, type UserInfo, type RegisterPayload } from "@/api/auth";
 import { clearToken, getToken, setToken } from "@/api/request";
-import { setJwxtToken, clearJwxtToken } from "@/api/jwxt";
+import { jwxtApi, setJwxtToken, clearJwxtToken } from "@/api/jwxt";
 import { saveCreds } from "@/utils/credCrypto";
 import { clearJwxtDataCaches } from "@/utils/jwxtCache";
 import {
   academicIdentityLabel,
+  clearAcademicIdentity,
+  DEFAULT_ACADEMIC_IDENTITY,
   readAcademicIdentity,
   writeAcademicIdentity,
   type AcademicIdentity,
@@ -36,10 +38,14 @@ function writeDataAuthAgreement(username?: string | null) {
 }
 
 export const useAuthStore = defineStore("auth", {
-  state: () => ({
+  state: () => {
+    const storedIdentity = readAcademicIdentity();
+    return ({
     user: null as UserInfo | null,
     token: "",
-    academicIdentity: readAcademicIdentity() as AcademicIdentity,
+    academicIdentity: storedIdentity ?? DEFAULT_ACADEMIC_IDENTITY,
+    academicIdentityResolved: Boolean(storedIdentity),
+    academicIdentityDetecting: false,
     ready: false,
     dataAuthAgreed: false,
     /** SSO 登录流程的临时状态 */
@@ -49,7 +55,9 @@ export const useAuthStore = defineStore("auth", {
     ssoError: "",
     ssoLoading: false,
     _pendingFetchMe: null as Promise<void> | null,
-  }),
+    _pendingIdentityDetection: null as Promise<AcademicIdentity> | null,
+  });
+  },
   getters: {
     isLoggedIn: (s) => !!s.token && !!s.user,
     nickname: (s) => s.user?.nickname ?? "",
@@ -64,12 +72,50 @@ export const useAuthStore = defineStore("auth", {
   actions: {
     hydrate() {
       this.token = getToken();
-      this.academicIdentity = readAcademicIdentity();
+      const storedIdentity = readAcademicIdentity();
+      this.academicIdentity = storedIdentity ?? DEFAULT_ACADEMIC_IDENTITY;
+      this.academicIdentityResolved = Boolean(storedIdentity);
     },
 
     setAcademicIdentity(identity: AcademicIdentity) {
       this.academicIdentity = identity;
+      this.academicIdentityResolved = true;
       writeAcademicIdentity(identity);
+    },
+
+    clearAcademicIdentity() {
+      this.academicIdentity = DEFAULT_ACADEMIC_IDENTITY;
+      this.academicIdentityResolved = false;
+      clearAcademicIdentity();
+    },
+
+    async detectAcademicIdentity(options?: { force?: boolean; silent?: boolean; fallback?: AcademicIdentity }) {
+      if (!getToken() || !this.user?.studentSso) {
+        return this.academicIdentity;
+      }
+      if (this.academicIdentityResolved && !options?.force) {
+        return this.academicIdentity;
+      }
+      if (this._pendingIdentityDetection) return this._pendingIdentityDetection;
+
+      const fallback = options?.fallback ?? this.academicIdentity ?? DEFAULT_ACADEMIC_IDENTITY;
+      const task = (async () => {
+        this.academicIdentityDetecting = true;
+        try {
+          const result = await jwxtApi.identity({ silent: options?.silent ?? true });
+          this.setAcademicIdentity(result.identity);
+          return result.identity;
+        } catch {
+          this.academicIdentity = fallback;
+          return fallback;
+        } finally {
+          this.academicIdentityDetecting = false;
+          this._pendingIdentityDetection = null;
+        }
+      })();
+
+      this._pendingIdentityDetection = task;
+      return task;
     },
 
     syncDataAuthAgreement(user?: UserInfo | null) {
@@ -99,6 +145,7 @@ export const useAuthStore = defineStore("auth", {
       const { token, user } = await authApi.login({ username, password });
       clearJwxtToken();
       clearJwxtDataCaches();
+      this.clearAcademicIdentity();
       setToken(token); this.token = token; this.user = user; this.syncDataAuthAgreement(user); this.ready = true;
     },
 
@@ -106,6 +153,7 @@ export const useAuthStore = defineStore("auth", {
       const { token, user } = await authApi.register(p);
       clearJwxtToken();
       clearJwxtDataCaches();
+      this.clearAcademicIdentity();
       setToken(token); this.token = token; this.user = user; this.syncDataAuthAgreement(user); this.ready = true;
     },
 
@@ -155,6 +203,12 @@ export const useAuthStore = defineStore("auth", {
         this.ssoNeedCaptcha = false;
         this.ssoCaptchaImage = "";
         this.ssoPendingId = "";
+        this.academicIdentityResolved = false;
+        await this.detectAcademicIdentity({
+          force: true,
+          silent: true,
+          fallback: this.academicIdentity,
+        });
         return true;
       } finally { this.ssoLoading = false; }
     },
@@ -189,8 +243,11 @@ export const useAuthStore = defineStore("auth", {
     async logout() {
       try { await authApi.logout(); } catch { /* ignore */ }
       clearToken(); this.token = ""; this.user = null; this.dataAuthAgreed = false; this.ready = false;
+      this._pendingIdentityDetection = null;
+      this.academicIdentityDetecting = false;
       clearJwxtToken();
       clearJwxtDataCaches();
+      this.clearAcademicIdentity();
       // 主动退出 → 设一个本会话级标记，避免回到 /login 时被 onMounted 立即自动重登；
       // 但**保留** credCrypto 里"记住的密码"——这样关闭浏览器再打开还能自动登录，
       // 符合"记住此账号"checkbox 的字面承诺。

@@ -66,14 +66,14 @@ function graduateHtmlErrorMessage(raw: string, label: string) {
     /统一身份认证|CAS|登录|login/i.test(html)
     && /用户名|学号|工号|密码|captcha|execution|lt/i.test(html)
   ) {
-    return "当前没有拿到研究生入口的有效登录态。请确认教务身份选的是实际身份：本科生选“本”，研究生选“研”，然后重新连接一次教务。";
+    return "当前没有拿到研究生入口的有效登录态。请刷新后重试；如果你刚完成教务授权，稍等几秒再试一次即可。";
   }
 
   if (/jsxsd|教务系统|成绩|培养方案/i.test(html)) {
-    return "当前读取入口和你的实际身份可能不一致。请确认教务身份选择正确：本科生选“本”，研究生选“研”，然后重新连接一次教务。";
+    return "当前会话暂时落在本科教务入口，系统还没成功接上研究生入口。请刷新后重试；如果你刚完成教务授权，稍等几秒再试一次即可。";
   }
 
-  return `研究生入口返回了网页而不是${label}数据。请刷新后重试；如果你切错了身份，请改回实际身份后重新连接教务。`;
+  return `研究生入口返回了网页而不是${label}数据。请刷新后重试；如果你刚完成教务授权，稍等几秒再试一次即可。`;
 }
 
 function decryptGraduateResponse(raw: string) {
@@ -148,6 +148,14 @@ function resolveGraduateTargetTerm(
   }
 
   return terms.find((item) => item.selected) ?? terms[0] ?? null;
+}
+
+function hasGraduateScheduleCourses(parsed: GraduateScheduleParsed | null | undefined) {
+  return Array.isArray(parsed?.cells) && parsed.cells.length > 0;
+}
+
+function graduateScheduleCourseEntryCount(parsed: GraduateScheduleParsed | null | undefined) {
+  return (parsed?.cells ?? []).reduce((sum, cell) => sum + (cell.courses?.length ?? 0), 0);
 }
 
 function unwrapGraduateTermCandidate(candidate: unknown): RawGraduateTermOption[] {
@@ -243,13 +251,48 @@ export async function getGraduateSchedule(
   const targetTerm = resolveGraduateTargetTerm(terms, args);
   if (!targetTerm) throw Errors.badRequest("未找到可用的研究生学期");
 
-  const payload = await fetchGraduateSchedulePayload(token, targetTerm.termcode);
+  const explicitTarget = Boolean(String(args.semester ?? "").trim() || String(args.termcode ?? "").trim());
+  let resolvedTerm = targetTerm;
+  let payload = await fetchGraduateSchedulePayload(token, resolvedTerm.termcode);
+  let parsed = parseGraduateSchedulePayload(payload, terms, resolvedTerm.termcode);
+
+  if (!explicitTarget && !hasGraduateScheduleCourses(parsed)) {
+    let bestFallback: {
+      term: GraduateTermOption;
+      payload: GraduateSchedulePayload;
+      parsed: GraduateScheduleParsed;
+      score: number;
+    } | null = null;
+
+    for (const candidate of terms) {
+      if (candidate.termcode === resolvedTerm.termcode) continue;
+      const nextPayload = await fetchGraduateSchedulePayload(token, candidate.termcode);
+      const nextParsed = parseGraduateSchedulePayload(nextPayload, terms, candidate.termcode);
+      if (!hasGraduateScheduleCourses(nextParsed)) continue;
+      const nextScore = graduateScheduleCourseEntryCount(nextParsed);
+      if (!bestFallback || nextScore > bestFallback.score) {
+        bestFallback = {
+          term: candidate,
+          payload: nextPayload,
+          parsed: nextParsed,
+          score: nextScore,
+        };
+      }
+    }
+
+    if (bestFallback) {
+      resolvedTerm = bestFallback.term;
+      payload = bestFallback.payload;
+      parsed = bestFallback.parsed;
+    }
+  }
+
   return {
-    parsed: parseGraduateSchedulePayload(payload, terms, targetTerm.termcode),
+    parsed,
     source: {
       mode: "live",
-      semester: targetTerm.termname,
-      termcode: targetTerm.termcode,
+      semester: resolvedTerm.termname,
+      termcode: resolvedTerm.termcode,
       fetchedAt: new Date().toISOString(),
     },
   };

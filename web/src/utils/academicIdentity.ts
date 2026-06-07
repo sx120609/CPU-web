@@ -28,17 +28,27 @@ export function normalizeAcademicIdentity(value: unknown): AcademicIdentity {
   return value === "graduate" ? "graduate" : DEFAULT_ACADEMIC_IDENTITY;
 }
 
-export function readAcademicIdentity(): AcademicIdentity {
+export function readAcademicIdentity(): AcademicIdentity | null {
   try {
-    return normalizeAcademicIdentity(localStorage.getItem(ACADEMIC_IDENTITY_KEY));
+    const stored = localStorage.getItem(ACADEMIC_IDENTITY_KEY);
+    if (!stored) return null;
+    return normalizeAcademicIdentity(stored);
   } catch {
-    return DEFAULT_ACADEMIC_IDENTITY;
+    return null;
   }
 }
 
 export function writeAcademicIdentity(value: AcademicIdentity) {
   try {
     localStorage.setItem(ACADEMIC_IDENTITY_KEY, normalizeAcademicIdentity(value));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearAcademicIdentity() {
+  try {
+    localStorage.removeItem(ACADEMIC_IDENTITY_KEY);
   } catch {
     /* ignore */
   }

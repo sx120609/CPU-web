@@ -127,6 +127,18 @@ export const jwxtApi = {
       "/status",
       options?.silent ? ({ suppressErrorMessage: true } as any) : undefined
     ),
+  identity: (options?: { silent?: boolean }) =>
+    inst.get<unknown, {
+      identity: "undergraduate" | "graduate";
+      source: "detected" | "fallback";
+      capabilities: {
+        undergraduate: boolean;
+        graduate: boolean;
+      };
+    }>(
+      "/identity",
+      options?.silent ? ({ suppressErrorMessage: true } as any) : undefined
+    ),
   schedule: (params?: { semester?: string; week?: string }, options?: { silent?: boolean }) =>
     inst.get<unknown, { html: string; parsed: any }>("/schedule", {
       params,

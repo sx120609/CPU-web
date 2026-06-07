@@ -628,9 +628,8 @@ function buildGraduateFallbackCalendar(data: ScheduleResult | null): CalendarRes
   });
   const today = todayKey();
   const currentWeekByDate = weeks.find((item) => item.days.includes(today))?.week ?? 0;
-  const fallbackCurrentWeek = Number(data.currentWeek || 0) || 0;
   return {
-    currentWeek: currentWeekByDate || fallbackCurrentWeek || 1,
+    currentWeek: currentWeekByDate || 0,
     semesterStart,
     semesterEnd: officialCalendar?.end || weeks[weeks.length - 1]?.sunday || semesterStart,
     weeks,
@@ -873,6 +872,7 @@ function selectWeek(v: string | number) {
   }
   slideDirection.value = Number(next) > Number(week.value || 0) ? "next" : "prev";
   week.value = next;
+  syncGraduateActiveDayForWeek(next);
   saveLastState();
   weekDialogOpen.value = false;
   const key = scheduleCacheKey(semester.value || parsed.value?.currentSemester, next);
@@ -900,6 +900,7 @@ async function changeWeek(delta: number) {
   if (!next) return;
   slideDirection.value = delta > 0 ? "next" : "prev";
   week.value = next;
+  syncGraduateActiveDayForWeek(next);
   saveLastState();
   const key = scheduleCacheKey(semester.value || parsed.value?.currentSemester, next);
   const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
@@ -1477,6 +1478,14 @@ function weekCourseBlocksFor(wk: number, source: ScheduleResult | null = parsed.
 
 function dayCourseBlocksFor(wk: number, day: number, source: ScheduleResult | null = parsed.value) {
   return weekCourseBlocksFor(wk, source).filter((block) => block.day === day);
+}
+
+function syncGraduateActiveDayForWeek(targetWeek = week.value) {
+  if (!isGraduateSource.value || !parsed.value) return;
+  const weekNo = Number(targetWeek || 0);
+  if (!weekNo) return;
+  if (dayCourseBlocksFor(weekNo, activeDay.value, parsed.value).length) return;
+  activeDay.value = resolveGraduateActiveDay(parsed.value, String(targetWeek || ""), calendar.value);
 }
 
 function weekPageModel(delta: number): SchedulePageModel {
@@ -2086,8 +2095,10 @@ function restoreLastState() {
     const raw = localStorage.getItem(key);
     if (!raw) return;
     const state = JSON.parse(raw) as LastState;
-    if (state.semester) semester.value = state.semester;
-    if (state.week) week.value = state.week;
+    if (props.source !== "graduate") {
+      if (state.semester) semester.value = state.semester;
+      if (state.week) week.value = state.week;
+    }
     if (state.activeDay >= 1 && state.activeDay <= 7) activeDay.value = state.activeDay;
     if (state.viewMode === "day" || state.viewMode === "week") viewMode.value = state.viewMode;
   } catch {
@@ -2148,6 +2159,7 @@ function applyScheduleCache(key: string) {
       ? resolveGraduateInitialWeek(parsed.value, calendar.value)
       : String(cached.data.currentWeek || "");
   }
+  syncGraduateActiveDayForWeek(week.value);
   loadScheduleEdits();
   prewarmAdjacentWeekCaches();
   return true;

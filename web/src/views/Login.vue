@@ -19,13 +19,6 @@
       <p class="welcome">使用 <strong>学校统一认证</strong> 登录</p>
       <p class="hint">{{ loginHint }}</p>
 
-      <AcademicIdentityPicker
-        v-model="academicIdentity"
-        label="教务身份"
-        :hint="identityHint"
-        class="identity-picker"
-      />
-
       <el-alert type="warning" :closable="false" show-icon class="safety">
         学号 / 工号仅用于识别身份并关联账号，<b>学校密码和验证码不会保存</b>
       </el-alert>
@@ -106,9 +99,7 @@ import { User, Lock, Refresh, ArrowLeft } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { loadCreds, hasCreds } from "@/utils/credCrypto";
-import AcademicIdentityPicker from "@/components/auth/AcademicIdentityPicker.vue";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
-import { academicIdentityLabel, type AcademicIdentity } from "@/utils/academicIdentity";
 
 const router = useRouter();
 const route = useRoute();
@@ -117,10 +108,6 @@ const site = useSiteStore();
 const formRef = ref<FormInstance>();
 const remember = ref(true);
 const isDev = computed(() => import.meta.env.DEV);
-const academicIdentity = computed<AcademicIdentity>({
-  get: () => auth.academicIdentity,
-  set: (value) => auth.setAcademicIdentity(value),
-});
 
 const form = reactive({ username: "", password: "", captcha: "" });
 const rules: FormRules = {
@@ -135,14 +122,8 @@ const loginHint = computed(() => {
   if (site.features.forum) uses.push("发帖");
   if (site.features.coursereview) uses.push("课评");
   uses.push("消息通知");
-  return `完成统一认证后会自动创建站内账号，可用于${uses.join("、")}。教务数据会按你选择的本科生 / 研究生身份读取。`;
+  return `完成统一认证后会自动创建站内账号，可用于${uses.join("、")}。教务数据会在登录后自动识别你可用的本科生 / 研究生入口。`;
 });
-
-const identityHint = computed(() => (
-  academicIdentity.value === "graduate"
-    ? `当前按${academicIdentityLabel(academicIdentity.value)}入口登录。研究生请保持“研”；如果你其实是本科生，请切回“本”，否则通常只会读到空课表或不匹配的数据。`
-    : `当前按${academicIdentityLabel(academicIdentity.value)}入口登录。本科生请保持“本”；如果你其实是研究生，请切到“研”，否则可能读不到研究生课表。`
-));
 
 onMounted(async () => {
   if (auth.isLoggedIn) {
@@ -204,7 +185,6 @@ async function onSubmit() {
     ElMessage.warning("请输入验证码");
     return;
   }
-  auth.setAcademicIdentity(academicIdentity.value);
   const ok = await auth.ssoLogin(form.username, form.password, form.captcha || undefined, remember.value);
   form.password = ""; // 凭据送出后立刻清空
   if (ok) {

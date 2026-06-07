@@ -3,7 +3,6 @@ import { jwxtApi, getJwxtToken, clearJwxtToken } from "@/api/jwxt";
 import { clearCreds, hasCreds, loadCreds } from "@/utils/credCrypto";
 import { useAuthStore } from "@/stores/auth";
 import { clearJwxtDataCaches } from "@/utils/jwxtCache";
-import { type AcademicIdentity } from "@/utils/academicIdentity";
 
 /**
  * 教务 jwxt store —— 现在是 auth store 的薄包装。
@@ -42,9 +41,6 @@ export const useJwxtStore = defineStore("jwxt", {
     pendingId(): string {
       return useAuthStore().ssoPendingId;
     },
-    academicIdentity(): AcademicIdentity {
-      return useAuthStore().academicIdentity;
-    },
     isGraduateIdentity(): boolean {
       return useAuthStore().academicIdentity === "graduate";
     },
@@ -78,6 +74,11 @@ export const useJwxtStore = defineStore("jwxt", {
           clearJwxtDataCaches();
           this.token = "";
         } else {
+          await auth.detectAcademicIdentity({
+            force: true,
+            silent: true,
+            fallback: auth.academicIdentity,
+          });
           void this.refreshWidgetTokens();
         }
       } catch {
@@ -96,10 +97,8 @@ export const useJwxtStore = defineStore("jwxt", {
       password: string,
       captcha: string | undefined,
       remember: boolean,
-      identity?: AcademicIdentity,
     ): Promise<boolean> {
       const auth = useAuthStore();
-      if (identity) auth.setAcademicIdentity(identity);
       const ok = await auth.ssoLogin(username, password, captcha, remember);
       if (ok) {
         // jwxt token 已经被 auth.ssoLogin 写入 sessionStorage；这里同步本地 state

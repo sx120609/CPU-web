@@ -915,16 +915,17 @@ function selectWeek(v: string | number) {
   }
   slideDirection.value = Number(next) > Number(week.value || 0) ? "next" : "prev";
   week.value = next;
+  syncGraduateActiveDayForWeek(next);
   saveLastState();
   weekDialogOpen.value = false;
   const key = scheduleCacheKey(semester.value || parsed.value?.currentSemester, next);
   const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
   if (cached?.data) {
     applyScheduleCache(key);
-    if (isStale(cached.savedAt)) void loadSchedule(false, true);
+    if (isStale(cached.savedAt)) void refreshScheduleForCurrentSource({ background: true });
     return;
   }
-  void loadSchedule(false);
+  void refreshScheduleForCurrentSource();
 }
 async function onJumpAndClose() {
   weekDialogOpen.value = false;
@@ -971,9 +972,7 @@ let androidAppUpdatePromptTimer = 0;
 let scheduleBackgroundPreviewUrl = "";
 const prefersGraduateIdentity = computed(() => auth.academicIdentity === "graduate");
 const scheduleLoginScopeText = computed(() => (
-  prefersGraduateIdentity.value
-    ? "当前会按研究生身份读取课表；如果你其实是本科生，请先去教务页把读取身份切回“本”。"
-    : "当前会按本科生身份读取课表；如果你其实是研究生，请先去教务页把读取身份切到“研”。"
+  "登录后会自动识别你当前可用的教务入口。本科生默认显示本科课表，研究生当前显示研究生课表。"
 ));
 type WidgetMenuPlatform = "ios" | "android" | "android-old";
 interface AndroidWidgetBridge {
@@ -1060,8 +1059,11 @@ function resolveGraduateActiveDay(
   return pickFirstCourseDay(data, weekNumber);
 }
 
-async function loadGraduateSchedule(targetSemester?: string) {
-  loading.value = true;
+async function loadGraduateSchedule(
+  targetSemester?: string,
+  options?: { background?: boolean },
+) {
+  if (!options?.background) loading.value = true;
   try {
     const requestedSemester = targetSemester?.trim()
       || (scheduleSource.value === "graduate" ? semester.value || undefined : undefined);
@@ -1075,20 +1077,26 @@ async function loadGraduateSchedule(targetSemester?: string) {
     writeCache(calendarCacheKey(), calendar.value);
     graduateSourceMeta.value = result.source ?? { mode: "live" };
     semester.value = normalizedParsed?.currentSemester ?? "";
-    week.value = initialWeek;
-    activeDay.value = resolveGraduateActiveDay(normalizedParsed, initialWeek, fallbackCalendar);
-    scheduleSavedAt.value = 0;
+    if (!week.value || !normalizedParsed?.weeks.some((item) => String(item.value) === week.value)) {
+      week.value = initialWeek;
+    }
+    activeDay.value = resolveGraduateActiveDay(normalizedParsed, week.value || initialWeek, fallbackCalendar);
+    scheduleSavedAt.value = Date.now();
     scheduleEdits.value = emptyScheduleEdits();
     await loadScheduleEdits();
+    saveScheduleCache();
     saveLastState();
   } finally {
-    loading.value = false;
+    if (!options?.background) loading.value = false;
   }
 }
 
-async function loadGraduateDebugSchedule(targetSemester?: string) {
+async function loadGraduateDebugSchedule(
+  targetSemester?: string,
+  options?: { background?: boolean; announce?: boolean },
+) {
   gradDebugLoading.value = true;
-  loading.value = true;
+  if (!options?.background) loading.value = true;
   try {
     const requestedSemester = targetSemester?.trim()
       || (scheduleSource.value === "graduate-debug" ? semester.value || undefined : undefined);
@@ -1105,17 +1113,37 @@ async function loadGraduateDebugSchedule(targetSemester?: string) {
       mode: "debug",
     };
     semester.value = normalizedParsed?.currentSemester ?? "";
-    week.value = initialWeek;
-    activeDay.value = resolveGraduateActiveDay(normalizedParsed, initialWeek, fallbackCalendar);
-    scheduleSavedAt.value = 0;
+    if (!week.value || !normalizedParsed?.weeks.some((item) => String(item.value) === week.value)) {
+      week.value = initialWeek;
+    }
+    activeDay.value = resolveGraduateActiveDay(normalizedParsed, week.value || initialWeek, fallbackCalendar);
+    scheduleSavedAt.value = Date.now();
     scheduleEdits.value = emptyScheduleEdits();
+    saveScheduleCache();
     saveLastState();
-    gradDebugDialogOpen.value = false;
-    ElMessage.success("已载入研究生课表调试样例");
+    if (options?.announce ?? true) {
+      gradDebugDialogOpen.value = false;
+      ElMessage.success("已载入研究生课表调试样例");
+    }
   } finally {
     gradDebugLoading.value = false;
-    loading.value = false;
+    if (!options?.background) loading.value = false;
   }
+}
+
+async function refreshScheduleForCurrentSource(options?: { force?: boolean; background?: boolean }) {
+  if (scheduleSource.value === "graduate") {
+    await loadGraduateSchedule(undefined, { background: options?.background });
+    return;
+  }
+  if (scheduleSource.value === "graduate-debug") {
+    await loadGraduateDebugSchedule(undefined, {
+      background: options?.background,
+      announce: false,
+    });
+    return;
+  }
+  await loadSchedule(options?.force ?? false, options?.background ?? false);
 }
 
 async function returnToPrimarySchedule() {
@@ -1927,15 +1955,16 @@ async function changeWeek(delta: number) {
   const next = nextWeekValue(delta);
   if (!next) return;
   week.value = next;
+  syncGraduateActiveDayForWeek(next);
   saveLastState();
   const key = scheduleCacheKey(semester.value || parsed.value?.currentSemester, next);
   const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
   if (cached?.data) {
     applyScheduleCache(key);
-    if (isStale(cached.savedAt)) void loadSchedule(false, true);
+    if (isStale(cached.savedAt)) void refreshScheduleForCurrentSource({ background: true });
     return;
   }
-  await loadSchedule(false);
+  await refreshScheduleForCurrentSource();
   prewarmAdjacentWeekCaches();
 }
 
@@ -1977,10 +2006,10 @@ async function jumpToCurrentWeek() {
   const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
   if (cached?.data) {
     applyScheduleCache(key);
-    if (isStale(cached.savedAt)) void loadSchedule(false, true);
+    if (isStale(cached.savedAt)) void refreshScheduleForCurrentSource({ background: true });
     return;
   }
-  await loadSchedule(false);
+  await refreshScheduleForCurrentSource();
 }
 
 async function prevDay() {
@@ -2543,9 +2572,8 @@ function buildGraduateFallbackCalendar(data: ScheduleResult | null): CalendarRes
   });
   const today = todayKey();
   const currentWeekByDate = weeks.find((item) => item.days.includes(today))?.week ?? 0;
-  const fallbackCurrentWeek = Number(data.currentWeek || 0) || 0;
   return {
-    currentWeek: currentWeekByDate || fallbackCurrentWeek || 1,
+    currentWeek: currentWeekByDate || 0,
     semesterStart,
     semesterEnd: officialCalendar?.end || weeks[weeks.length - 1]?.sunday || semesterStart,
     weeks,
@@ -2655,6 +2683,14 @@ function weekCourseBlocksFor(wk: number, source: ScheduleResult | null = parsed.
 
 function dayCourseBlocksFor(wk: number, day: number, source: ScheduleResult | null = parsed.value) {
   return weekCourseBlocksFor(wk, source).filter((block) => block.day === day);
+}
+
+function syncGraduateActiveDayForWeek(targetWeek = week.value) {
+  if (scheduleStorageScope() !== "graduate" || !parsed.value) return;
+  const weekNo = Number(targetWeek || 0);
+  if (!weekNo) return;
+  if (dayCourseBlocksFor(weekNo, activeDay.value, parsed.value).length) return;
+  activeDay.value = resolveGraduateActiveDay(parsed.value, String(targetWeek || ""), calendar.value);
 }
 
 function weekPageModel(delta: number): SchedulePageModel {
@@ -3444,8 +3480,10 @@ function restoreLastState() {
     const raw = localStorage.getItem(key);
     if (!raw) return;
     const state = JSON.parse(raw) as LastState;
-    if (state.semester) semester.value = state.semester;
-    if (state.week) week.value = state.week;
+    if (scheduleStorageScope() !== "graduate") {
+      if (state.semester) semester.value = state.semester;
+      if (state.week) week.value = state.week;
+    }
     if (state.activeDay >= 1 && state.activeDay <= 7) activeDay.value = state.activeDay;
     if (state.viewMode === "day" || state.viewMode === "week") viewMode.value = state.viewMode;
   } catch {
@@ -3505,6 +3543,7 @@ function applyScheduleCache(key: string) {
       ? resolveGraduateInitialWeek(parsed.value, calendar.value)
       : String(cached.data.currentWeek || "");
   }
+  syncGraduateActiveDayForWeek(week.value);
   loadScheduleEdits();
   prewarmAdjacentWeekCaches();
   return true;

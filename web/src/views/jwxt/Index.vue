@@ -43,13 +43,6 @@
         </ul>
       </el-alert>
 
-      <AcademicIdentityPicker
-        v-model="selectedIdentity"
-        label="读取身份"
-        :hint="identityHint"
-        class="identity-picker"
-      />
-
       <el-form
         :model="form"
         :rules="rules"
@@ -127,10 +120,7 @@
           <div class="session-copy">
             <div class="session-title">已连接学校教务系统</div>
             <div class="session-sub">{{ sessionSubText }}</div>
-            <div class="session-identity">
-              <span>读取身份</span>
-              <AcademicIdentityPicker v-model="selectedIdentity" compact />
-            </div>
+            <el-tag class="session-mode" size="small" effect="plain" type="success">{{ identityBadgeText }}</el-tag>
           </div>
         </div>
         <div class="session-actions">
@@ -192,14 +182,12 @@ import { useJwxtStore } from "@/stores/jwxt";
 import { useAuthStore } from "@/stores/auth";
 import { jwxtApi } from "@/api/jwxt";
 import { jwxtScopedStorageKey } from "@/utils/jwxtCache";
-import AcademicIdentityPicker from "@/components/auth/AcademicIdentityPicker.vue";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import SchedulePane from "@/components/jwxt/SchedulePane.vue";
 import GradesPane from "@/components/jwxt/GradesPane.vue";
 import MidtermGradesPane from "@/components/jwxt/MidtermGradesPane.vue";
 import ProgressPane from "@/components/jwxt/ProgressPane.vue";
 import PyfaPane from "@/components/jwxt/PyfaPane.vue";
-import { type AcademicIdentity } from "@/utils/academicIdentity";
 
 const jwxt = useJwxtStore();
 const auth = useAuthStore();
@@ -210,11 +198,7 @@ const rules: FormRules = {
   username: [{ required: true, message: "请输入学号或工号" }],
   password: [{ required: true, message: "请输入密码" }],
 };
-const selectedIdentity = computed<AcademicIdentity>({
-  get: () => auth.academicIdentity,
-  set: (value) => auth.setAcademicIdentity(value),
-});
-const isGraduateIdentity = computed(() => selectedIdentity.value === "graduate");
+const isGraduateIdentity = computed(() => auth.academicIdentity === "graduate");
 
 const tab = ref<"schedule" | "grades" | "midterm" | "progress" | "pyfa" | "debug">("schedule");
 type DataTab = "schedule" | "grades" | "midterm" | "progress" | "pyfa";
@@ -241,28 +225,33 @@ const pageHintText = computed(() => (
     : "通过学校统一认证查看课表、成绩和培养方案，信息会整理成更方便阅读的样子。"
 ));
 const loginCardHintText = computed(() => (
-  isGraduateIdentity.value ? "登录后可查看研究生课表" : "登录后可查看课表、成绩等信息"
+  "登录后会自动识别你可用的教务入口。本科生会显示完整教务数据，研究生当前会直接进入课表。"
 ));
 const scopeTipText = computed(() => (
-  "先选你在学校里的实际身份：本科生选“本”，研究生选“研”。选错时最常见的表现是课表为空，或成绩这类数据读不到。"
-));
-const identityHint = computed(() => (
-  isGraduateIdentity.value
-    ? "将按研究生入口读取教务数据，当前先支持课表；如果你其实是本科生，请切回“本”后再连接。"
-    : "将按本科生入口读取教务数据；如果你其实是研究生，请切到“研”后再连接。"
+  "登录后会根据这次实际读取到的数据自动选择可用入口，不需要手动切换。本科生默认显示完整教务，研究生当前显示课表。"
 ));
 const schoolSystemLink = computed(() => (
-  isGraduateIdentity.value
-    ? "http://ygl.cpu.edu.cn/gmis5/oauthLogin/zgyk"
-    : "http://jsxsd.cpu.edu.cn/zgykdx/tyrz.jsp"
+  !auth.academicIdentityResolved
+    ? "http://jsxsd.cpu.edu.cn/zgykdx/tyrz.jsp"
+    : isGraduateIdentity.value
+      ? "http://ygl.cpu.edu.cn/gmis5/oauthLogin/zgyk"
+      : "http://jsxsd.cpu.edu.cn/zgykdx/tyrz.jsp"
 ));
 const schoolSystemLabel = computed(() => (
-  isGraduateIdentity.value ? "前往研究生管理系统原站" : "前往学校教务系统原站"
+  !auth.academicIdentityResolved
+    ? "前往学校统一认证原站"
+    : isGraduateIdentity.value ? "前往研究生管理系统原站" : "前往学校教务系统原站"
 ));
-const sessionSubText = computed(() => (
-  isGraduateIdentity.value
-    ? "现在按研究生入口读取课表。选错时，切回正确身份后重新连接一次就行。"
-    : "现在按本科生入口读取教务数据。选错时，切回正确身份后重新连接一次就行。"
+const sessionSubText = computed(() => {
+  if (auth.academicIdentityDetecting && !auth.academicIdentityResolved) {
+    return "正在识别当前账号可用的教务入口…";
+  }
+  return isGraduateIdentity.value
+    ? "已自动识别到研究生课表入口。"
+    : "已自动识别到本科教务入口。";
+});
+const identityBadgeText = computed(() => (
+  isGraduateIdentity.value ? "自动识别：研究生课表" : "自动识别：本科教务"
 ));
 
 onMounted(async () => {
@@ -410,7 +399,7 @@ function fetchTab(t: DataTab, identity = auth.academicIdentity) {
   const request = (async () => {
     if (identity === "graduate") {
       if (t === "schedule") return jwxtApi.graduateSchedule();
-      throw new Error("研究生身份当前只开放课表，请先在课表页查看。");
+      throw new Error("研究生入口当前先支持课表，请直接查看课表。");
     }
     if (t === "schedule") return jwxtApi.schedule();
     if (t === "grades") return jwxtApi.grades();
@@ -439,7 +428,6 @@ async function onSubmit() {
     form.password,
     form.captcha || undefined,
     remember.value,
-    selectedIdentity.value,
   );
   form.password = ""; // 立刻清掉密码字段
   if (ok) {
@@ -558,7 +546,6 @@ async function onProbe() {
 .safety li b { color: #b45309; }
 
 .form { margin-top: 16px; }
-.identity-picker { margin-top: 16px; }
 .btn-submit { width: 100%; letter-spacing: 4px; }
 .remember-row {
   display: flex;
@@ -639,17 +626,8 @@ async function onProbe() {
   font-size: 12px;
   line-height: 1.6;
 }
-.session-identity {
+.session-mode {
   margin-top: 10px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.session-identity span {
-  font-size: 12px;
-  color: #4b5563;
-  white-space: nowrap;
 }
 .session-actions {
   display: flex;
@@ -823,10 +801,6 @@ async function onProbe() {
 
   .session-main {
     width: 100%;
-  }
-
-  .session-identity {
-    gap: 8px;
   }
 
   .session-actions {

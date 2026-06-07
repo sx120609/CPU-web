@@ -56,6 +56,7 @@ const SMALL_SLOTS = [
 const MAX_SMALL_SLOT = SMALL_SLOTS[SMALL_SLOTS.length - 1]?.no ?? 11;
 const WIDGET_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const JWXT_STATUS_CACHE_TTL_MS = 15_000;
+const JWXT_IDENTITY_CACHE_TTL_MS = 5 * 60_000;
 const JWXT_SCHEDULE_CACHE_TTL_MS = 60_000;
 const JWXT_GRADES_CACHE_TTL_MS = 5 * 60_000;
 const JWXT_MIDTERM_CACHE_TTL_MS = 5 * 60_000;
@@ -151,14 +152,21 @@ async function readGraduateDebugPayloadBundle() {
   );
 }
 
-async function buildGraduateDebugScheduleResponse(requestedSemester: string) {
+function graduateParsedCourseEntryCount(parsed: any) {
+  return (parsed?.cells ?? []).reduce(
+    (sum: number, cell: any) => sum + (cell?.courses?.length ?? 0),
+    0,
+  );
+}
+
+async function buildGraduateDebugScheduleResponse(requestedSemester: string, requestedTermcode = "") {
   const [bindterm, payloadBundle] = await Promise.all([
     readGraduateDebugBindterm().catch(() => null),
     readGraduateDebugPayloadBundle().catch(() => null),
   ]);
 
   if (bindterm?.data?.terms?.length && payloadBundle?.data?.items?.length) {
-    const terms = bindterm.data.terms
+    const terms: GraduateTermOption[] = bindterm.data.terms
       .map((item) => ({
         termcode: String(item?.termcode ?? "").trim(),
         termname: String(item?.termname ?? "").trim(),
@@ -166,18 +174,57 @@ async function buildGraduateDebugScheduleResponse(requestedSemester: string) {
       }))
       .filter((item) => item.termcode && item.termname);
     const normalizedRequestedSemester = normalizeGraduateSemesterLabel(requestedSemester);
-    const targetTerm = requestedSemester
-      ? terms.find((item) => normalizeGraduateSemesterLabel(item.termname) === normalizedRequestedSemester)
-      : terms.find((item) => item.selected) ?? terms[0];
-    if (!targetTerm) throw Errors.badRequest("未找到可用的研究生学期数据");
+    const initialTargetTerm = requestedTermcode
+      ? terms.find((item) => item.termcode === requestedTermcode)
+      : requestedSemester
+        ? terms.find((item) => normalizeGraduateSemesterLabel(item.termname) === normalizedRequestedSemester)
+        : terms.find((item) => item.selected) ?? terms[0];
+    if (!initialTargetTerm) throw Errors.badRequest("未找到可用的研究生学期数据");
+    let targetTerm: GraduateTermOption = initialTargetTerm;
 
-    const payloadItem = payloadBundle.data.items.find((item) => String(item?.termcode ?? "").trim() === targetTerm.termcode);
+    let payloadItem = payloadBundle.data.items.find((item) => String(item?.termcode ?? "").trim() === targetTerm.termcode);
+    let parsed = payloadItem?.payload
+      ? parseGraduateSchedulePayload(payloadItem.payload, terms, targetTerm.termcode)
+      : null;
+
+    if (!requestedSemester && !requestedTermcode && graduateParsedCourseEntryCount(parsed) <= 0) {
+      let bestFallback: {
+        term: GraduateTermOption;
+        payloadItem: NonNullable<typeof payloadItem>;
+        parsed: ReturnType<typeof parseGraduateSchedulePayload>;
+        score: number;
+      } | null = null;
+
+      for (const candidate of payloadBundle.data.items) {
+        const candidateTermcode = String(candidate?.termcode ?? "").trim();
+        const candidateTerm = terms.find((item) => item.termcode === candidateTermcode);
+        if (!candidateTerm || !candidate?.payload) continue;
+        const nextParsed = parseGraduateSchedulePayload(candidate.payload, terms, candidateTerm.termcode);
+        const nextScore = graduateParsedCourseEntryCount(nextParsed);
+        if (nextScore <= 0) continue;
+        if (!bestFallback || nextScore > bestFallback.score) {
+          bestFallback = {
+            term: candidateTerm,
+            payloadItem: candidate,
+            parsed: nextParsed,
+            score: nextScore,
+          };
+        }
+      }
+
+      if (bestFallback) {
+        targetTerm = bestFallback.term;
+        payloadItem = bestFallback.payloadItem;
+        parsed = bestFallback.parsed;
+      }
+    }
+
     if (!payloadItem?.payload) {
       throw Errors.badRequest(`当前本地还没有抓到「${targetTerm.termname}」的研究生课表数据，请先在研究生系统切到该学期后重新抓取。`);
     }
 
     return {
-      parsed: parseGraduateSchedulePayload(payloadItem.payload, terms, targetTerm.termcode),
+      parsed: parsed ?? parseGraduateSchedulePayload(payloadItem.payload, terms, targetTerm.termcode),
       source: {
         mode: "debug-fallback" as const,
         path: payloadBundle.path,
@@ -217,8 +264,62 @@ async function loadGraduateScheduleResponse(
     }) as GraduateScheduleFetchResult | Awaited<ReturnType<typeof buildGraduateDebugScheduleResponse>>;
   } catch (error) {
     if (process.env.NODE_ENV === "production") throw error;
-    return buildGraduateDebugScheduleResponse(requestedSemester);
+    return buildGraduateDebugScheduleResponse(requestedSemester, requestedTermcode);
   }
+}
+
+function hasUsableUndergraduateSchedule(parsed: any) {
+  return Boolean(
+    parsed?.currentSemester
+    || (Array.isArray(parsed?.semesters) && parsed.semesters.length)
+    || (Array.isArray(parsed?.cells) && parsed.cells.length)
+  );
+}
+
+function graduateScheduleCourseCount(result: any) {
+  return (result?.parsed?.cells ?? []).reduce(
+    (sum: number, cell: any) => sum + (cell?.courses?.length ?? 0),
+    0,
+  );
+}
+
+function hasUsableGraduateSchedule(result: any) {
+  return Boolean(
+    graduateScheduleCourseCount(result)
+    || (
+      result?.parsed?.currentSemester
+      && Array.isArray(result?.parsed?.semesters)
+      && result.parsed.semesters.length
+    )
+  );
+}
+
+async function detectAcademicIdentity(token: string) {
+  const [undergraduate, graduate] = await Promise.allSettled([
+    getSchedule(token, {}),
+    getGraduateSchedule(token, {}),
+  ]);
+
+  const undergraduateAvailable = undergraduate.status === "fulfilled"
+    && hasUsableUndergraduateSchedule(undergraduate.value);
+  const graduateAvailable = graduate.status === "fulfilled"
+    && hasUsableGraduateSchedule(graduate.value);
+  const graduateReachable = graduate.status === "fulfilled";
+
+  const identity = undergraduateAvailable
+    ? "undergraduate"
+    : graduateReachable
+      ? "graduate"
+      : "undergraduate";
+
+  return {
+    identity,
+    source: undergraduateAvailable || graduateAvailable ? "detected" as const : "fallback" as const,
+    capabilities: {
+      undergraduate: undergraduateAvailable,
+      graduate: graduateAvailable,
+    },
+  };
 }
 
 const scheduleEditCourseSchema = z.object({
@@ -825,6 +926,22 @@ jwxtRouter.get("/status", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+jwxtRouter.get("/identity", async (req, res, next) => {
+  try {
+    const token = getToken(req);
+    if (!token) throw Errors.unauthorized("请先登录教务系统");
+    const cacheId = jwxtTokenCacheId(token);
+    const payload = await withCache(
+      "jwxt-identity",
+      [cacheId],
+      JWXT_IDENTITY_CACHE_TTL_MS,
+      async () => detectAcademicIdentity(token),
+    );
+    res.setHeader("Cache-Control", "private, max-age=300");
+    ok(res, payload);
+  } catch (e) { next(e); }
+});
+
 /** 课表（GET） */
 jwxtRouter.get("/schedule", async (req, res, next) => {
   try {
@@ -928,7 +1045,8 @@ jwxtRouter.get("/graduate-debug/schedule", async (req, res, next) => {
   try {
     if (process.env.NODE_ENV === "production") throw Errors.forbidden();
     const requestedSemester = String(req.query.semester ?? "").trim();
-    ok(res, await buildGraduateDebugScheduleResponse(requestedSemester));
+    const requestedTermcode = String(req.query.termcode ?? "").trim();
+    ok(res, await buildGraduateDebugScheduleResponse(requestedSemester, requestedTermcode));
   } catch (e) { next(e); }
 });
 
