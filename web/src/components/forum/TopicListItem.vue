@@ -1,5 +1,5 @@
 <template>
-  <div class="topic-row" @click="$router.push(`/forum/topic/${topic.id}`)">
+  <div class="topic-row" @click="openTopic">
     <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" alt="作者头像" />
     <div class="main">
       <div class="line1">
@@ -52,11 +52,14 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { View, ChatLineRound, Star } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import { fmtRelative } from "@/utils/format";
 
 const props = defineProps<{ topic: any }>();
+const route = useRoute();
+const router = useRouter();
 const metaPrice = computed(() => props.topic.metadata?.price);
 const metaSolved = computed(() => props.topic.metadata?.resolved === true);
 const metaBounty = computed(() => props.topic.metadata?.bounty ? props.topic.metadata.bounty : 0);
@@ -77,6 +80,19 @@ const weiwallPreview = computed(() => {
     .trim()
     .slice(0, 120);
 });
+
+const restorableRouteNames = new Set(["board", "forum-latest", "forum-hot"]);
+
+function openTopic() {
+  const routeName = String(route.name || "");
+  const query = restorableRouteNames.has(routeName)
+    ? { from: route.fullPath }
+    : undefined;
+  router.push({
+    path: `/forum/topic/${props.topic.id}`,
+    query,
+  });
+}
 </script>
 
 <style scoped>

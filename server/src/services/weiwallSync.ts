@@ -27,6 +27,9 @@ const WEIWALL_TRACE_LIMIT = 40;
 const WEIWALL_BOT_USERNAME = "weiwall_sync_bot";
 const WEIWALL_BOT_NICKNAME = "校园墙同步";
 const WEIWALL_AUTH_FLOW_TTL_MS = 15 * 60_000;
+const WEIWALL_HOT_ENTRY_TITLE = "校园墙热榜入口（每 30 分钟更新）";
+const WEIWALL_HOT_ENTRY_INTERVAL_MS = 30 * 60 * 1000;
+const WEIWALL_HOT_ENTRY_SIZE = 10;
 
 type WeiwallUserInfo = {
   uuid?: number | string | null;
@@ -51,6 +54,15 @@ type WeiwallTopicRow = {
   userInfo?: WeiwallUserInfo | null;
   imgs?: string[] | null;
   data?: { imgs?: string[] | null } | null;
+};
+
+type WeiwallHotTopicRow = WeiwallTopicRow & {
+  score?: number | null;
+  schoolInfo?: {
+    schoolName?: string | null;
+    simpleName?: string | null;
+    simpleNameEn?: string | null;
+  } | null;
 };
 
 type WeiwallReplyRow = {
@@ -626,6 +638,20 @@ function buildTopicSourceUrl(baseUrl: string, schoolEn: string, topicId: string)
   return url.toString();
 }
 
+function buildWeiwallHotPageUrl(baseUrl: string, schoolEn: string) {
+  const url = new URL("/pages/index/toptopic", baseUrl || WEIWALL_DEFAULT_BASE_URL);
+  url.searchParams.set("s", schoolEn || "cpu");
+  return url.toString();
+}
+
+function escapeMarkdownLinkText(input: string) {
+  return String(input ?? "")
+    .replace(/\[/g, "［")
+    .replace(/\]/g, "］")
+    .replace(/\r?\n+/g, " ")
+    .trim();
+}
+
 async function nextBoardOrder(client: SyncClient) {
   return ((await client.board.findFirst({
     orderBy: { order: "desc" },
@@ -821,8 +847,16 @@ async function weiwallPostJson(
   return json;
 }
 
-async function weiwallFetchPublicJson(row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>, path: string) {
+async function weiwallFetchPublicJson(
+  row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>,
+  path: string,
+  query?: Record<string, string | number | null | undefined>,
+) {
   const url = new URL(path, row.baseUrl || WEIWALL_DEFAULT_BASE_URL);
+  for (const [key, value] of Object.entries(query ?? {})) {
+    if (value === undefined || value === null || value === "") continue;
+    url.searchParams.set(key, String(value));
+  }
   for (let attempt = 0; attempt < 3; attempt++) {
     const res = await fetch(url.toString(), {
       headers: {
@@ -918,6 +952,160 @@ async function fetchReadOnlyTopicDetail(
 ) {
   const json = await weiwallFetchPublicJson(row, `/api/client/topics/read_only/${encodeURIComponent(topicId)}`);
   return (json?.data ?? null) as WeiwallReadOnlyTopicDetail | null;
+}
+
+async function fetchWeiwallHotTopics(row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>) {
+  const json = await weiwallFetchPublicJson(row, "/api/client/topics/top", {
+    school: row.schoolEn || "cpu",
+    page: 1,
+    pageSize: WEIWALL_HOT_ENTRY_SIZE,
+    page_size: WEIWALL_HOT_ENTRY_SIZE,
+  });
+  return Array.isArray(json?.data) ? (json.data as WeiwallHotTopicRow[]) : [];
+}
+
+function buildWeiwallHotEntryContent(input: {
+  baseUrl: string;
+  schoolEn: string;
+  updatedAt: Date;
+  rows: WeiwallHotTopicRow[];
+  localTopicIdByExternalId: Map<string, number>;
+}) {
+  const lines = [
+    "这是一条自动生成的热榜入口帖，每 30 分钟刷新一次，只汇总当前校园墙热榜，不会把热榜页整批同步进站内。",
+    "",
+  ];
+
+  if (!input.rows.length) {
+    lines.push("当前校园墙热榜暂时为空，请稍后再来看看。");
+  } else {
+    input.rows.forEach((row, index) => {
+      const externalTopicId = externalId(row.id);
+      const localTopicId = input.localTopicIdByExternalId.get(externalTopicId);
+      const linkTarget = localTopicId
+        ? `/forum/topic/${localTopicId}`
+        : buildTopicSourceUrl(input.baseUrl, input.schoolEn, externalTopicId);
+      const title = escapeMarkdownLinkText(deriveLocalTitle(row));
+      const summary = summarizeExternalText(row.content, 68);
+      const stats = [
+        row.node ? `分区 ${trimTo(row.node, 20)}` : "",
+        `热度 ${Math.max(0, Number(row.score ?? 0) || 0)}`,
+        `评论 ${Math.max(0, Number(row.commentCount ?? 0) || 0)}`,
+        `点赞 ${Math.max(0, Number(row.likeCount ?? 0) || 0)}`,
+      ].filter(Boolean).join(" · ");
+      lines.push(`${index + 1}. [${title}](${linkTarget})`);
+      lines.push(`   ${stats}`);
+      if (summary) lines.push(`   ${summary}`);
+      lines.push("");
+    });
+  }
+
+  lines.push(`> 最近更新：${shortDateTime(input.updatedAt.toISOString())}`);
+  lines.push("> 说明：这里只放热榜入口，不会把热榜所有文章都额外同步成新帖。");
+  lines.push("> 超过 3 天的校园墙稿件不再继续更新，若想查看最新评论或最新状态，请以原帖为准。");
+  return lines.join("\n");
+}
+
+async function syncWeiwallHotRankingEntry(
+  row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>,
+  board: Board,
+  botUserId: number,
+) {
+  const existingEntry = await prisma.topic.findFirst({
+    where: {
+      boardId: board.id,
+      metadata: { contains: "\"weiwallHotEntry\":true" },
+    },
+    select: { id: true, updatedAt: true, createdAt: true },
+    orderBy: { id: "asc" },
+  });
+
+  const lastTouchedAt = existingEntry?.updatedAt?.getTime?.() || existingEntry?.createdAt?.getTime?.() || 0;
+  if (lastTouchedAt && Date.now() - lastTouchedAt < WEIWALL_HOT_ENTRY_INTERVAL_MS) return false;
+
+  const rows = await fetchWeiwallHotTopics(row);
+  const externalTopicIds = uniqStrings(rows.map((item) => externalId(item.id)));
+  const localMaps = externalTopicIds.length
+    ? await prisma.weiwallTopicMap.findMany({
+        where: { externalTopicId: { in: externalTopicIds } },
+        select: {
+          externalTopicId: true,
+          localTopicId: true,
+          localTopic: { select: { hidden: true } },
+        },
+      })
+    : [];
+  const localTopicIdByExternalId = new Map<string, number>();
+  for (const item of localMaps) {
+    if (item.localTopic?.hidden) continue;
+    localTopicIdByExternalId.set(item.externalTopicId, item.localTopicId);
+  }
+
+  const updatedAt = new Date();
+  const metadata = JSON.stringify({
+    sourceUrl: buildWeiwallHotPageUrl(row.baseUrl, row.schoolEn),
+    sourceName: "校园墙热榜",
+    publishedAt: updatedAt.toISOString(),
+    external: true,
+    externalType: "weiwall",
+    externalPlatform: "weiwall",
+    externalAuthorName: "校园墙热榜",
+    externalAuthorAvatar: null,
+    weiwallHotEntry: true,
+    refreshMinutes: 30,
+    hotTopicCount: rows.length,
+  });
+  const content = buildWeiwallHotEntryContent({
+    baseUrl: row.baseUrl,
+    schoolEn: row.schoolEn,
+    updatedAt,
+    rows,
+    localTopicIdByExternalId,
+  });
+
+  if (!existingEntry) {
+    await prisma.topic.create({
+      data: {
+        boardId: board.id,
+        authorId: botUserId,
+        title: WEIWALL_HOT_ENTRY_TITLE,
+        content,
+        metadata,
+        pinned: true,
+        locked: true,
+        hidden: false,
+        likeCount: 0,
+        viewCount: 0,
+        lastReplyAt: updatedAt,
+        lastReplyById: botUserId,
+        createdAt: updatedAt,
+      },
+    });
+    return true;
+  }
+
+  await prisma.topic.update({
+    where: { id: existingEntry.id },
+    data: {
+      authorId: botUserId,
+      title: WEIWALL_HOT_ENTRY_TITLE,
+      content,
+      metadata,
+      pinned: true,
+      locked: true,
+      hidden: false,
+      lastReplyAt: updatedAt,
+      lastReplyById: botUserId,
+    },
+  });
+  return true;
+}
+
+async function finalizeWeiwallEntryChanges(boardId: number, botUserId: number) {
+  await refreshBoardTopicCount(boardId);
+  await refreshUserPostCount(botUserId);
+  await invalidateBoardCaches();
+  await invalidateForumCaches();
 }
 
 function signWeiwallAuthFlowToken(payload: WeiwallAuthFlowPayload) {
@@ -1725,12 +1913,20 @@ export async function runWeiwallSyncNow() {
       result.error = "disabled";
       return result;
     }
+    const botUser = await ensureWeiwallBotUser(prisma);
+    let hotEntryChanged = false;
+    try {
+      hotEntryChanged = await syncWeiwallHotRankingEntry(configRow, board, botUser.id);
+    } catch (error) {
+      console.warn("[weiwall-sync] hot entry update failed:", error);
+    }
     if (!configRow.token) {
       result.error = "token missing";
       await prisma.weiwallSyncConfig.update({
         where: { id: configRow.id },
         data: { lastRunAt: new Date(), lastRunOk: false, lastError: "未配置 token" },
       });
+      if (hotEntryChanged) await finalizeWeiwallEntryChanges(board.id, botUser.id);
       return result;
     }
     await maybeNotifyWeiwallTokenExpired(configRow.token);
@@ -1738,7 +1934,6 @@ export async function runWeiwallSyncNow() {
     try {
       result.sourceName = await fetchTenantName(configRow.baseUrl || WEIWALL_DEFAULT_BASE_URL);
       const authorCounters: AuthorSyncCounters = { created: 0, updated: 0 };
-      const botUser = await ensureWeiwallBotUser(prisma);
       await normalizeLegacyMirroredAuthorAssignments(botUser.id);
       const control = { commentFetchStopped: false, rateLimitMessage: null as string | null };
       const topicScan = await fetchLatestTopics(configRow);
@@ -1790,6 +1985,7 @@ export async function runWeiwallSyncNow() {
       }
       result.authorsCreated = authorCounters.created;
       result.authorsUpdated = authorCounters.updated;
+      if (hotEntryChanged) touchedTopicAuthorIds.add(botUser.id);
       if (control.rateLimitMessage && (result.topicsCreated || result.topicsUpdated || result.repliesCreated || result.repliesUpdated)) {
         result.error = `${control.rateLimitMessage}；本轮已部分同步，稍后会继续补齐`;
       } else if (control.rateLimitMessage) {
@@ -1811,7 +2007,7 @@ export async function runWeiwallSyncNow() {
           lastSyncedAt: new Date(),
         },
       });
-      if (result.topicsCreated || result.topicsUpdated || result.repliesCreated || result.repliesUpdated) {
+      if (result.topicsCreated || result.topicsUpdated || result.repliesCreated || result.repliesUpdated || hotEntryChanged) {
         await invalidateBoardCaches();
         await invalidateForumCaches();
       }

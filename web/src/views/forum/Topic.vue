@@ -793,13 +793,24 @@ const sourceNotice = computed(() => {
 const isCampusWallTopic = computed(() => topic.value?.board?.slug === "campus-wall" || topic.value?.metadata?.externalPlatform === "weiwall");
 const isAnnouncementTopic = computed(() => topic.value?.board?.type === "announce");
 const titlelessWeiwall = computed(() => isCampusWallTopic.value && (!topic.value?.title || topic.value?.title === "none"));
+const backTargetFromQuery = computed(() => {
+  const text = String(route.query.from ?? "").trim();
+  return text.startsWith("/") ? text : "";
+});
 const backLabel = computed(() => {
+  if (backTargetFromQuery.value.includes("/forum/b/campus-wall")) return "返回校园墙";
+  if (backTargetFromQuery.value.includes("/forum/latest")) return "返回最新";
+  if (backTargetFromQuery.value.includes("/forum/hot")) return "返回热榜";
   if (isCampusWallTopic.value) return "返回校园墙";
   if (isAnnouncementTopic.value) return "返回上页";
   return "返回最新";
 });
 
 function goBackFromTopic() {
+  if (backTargetFromQuery.value) {
+    router.push(backTargetFromQuery.value);
+    return;
+  }
   if (isCampusWallTopic.value) {
     router.push("/forum/b/campus-wall");
     return;

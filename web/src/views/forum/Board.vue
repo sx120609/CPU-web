@@ -25,12 +25,12 @@
       </div>
     </div>
 
-    <div v-if="pinnedList.length" class="topic-list cpu-card pinned-list">
+    <div v-if="orderedPinnedList.length" class="topic-list cpu-card pinned-list">
       <div class="section-head">
         <h3>置顶帖</h3>
-        <span>{{ pinnedList.length }} 条</span>
+        <span>{{ orderedPinnedList.length }} 条</span>
       </div>
-      <TopicListItem v-for="t in pinnedList" :key="`pin-${t.id}`" :topic="t" />
+      <TopicListItem v-for="t in orderedPinnedList" :key="`pin-${t.id}`" :topic="t" />
     </div>
 
     <div class="topic-list cpu-card" v-loading="loading">
@@ -54,14 +54,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { ref, computed, nextTick, watch } from "vue";
+import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import { AxiosError } from "axios";
 import { Edit } from "@element-plus/icons-vue";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import { boardApi, type Board } from "@/api/board";
 import { topicApi } from "@/api/topic";
 import { useAuthStore } from "@/stores/auth";
+import { clearForumListRestoreState, readForumListRestoreState, writeForumListRestoreState } from "@/utils/forumListRestore";
+
+type BoardRestoreState = {
+  scrollY: number;
+  page?: number;
+  sort?: "new" | "hot";
+  savedAt: number;
+};
 
 const route = useRoute();
 const router = useRouter();
@@ -75,6 +83,7 @@ const page = ref(1);
 const size = ref(20);
 const sort = ref<"new" | "hot">("new");
 const loading = ref(false);
+let pendingRestoreState: BoardRestoreState | null = null;
 
 const canPost = computed(() => !!board.value && !board.value.readOnly && auth.canAccessForum);
 const fallbackBoardIcon = computed(() => {
@@ -84,9 +93,18 @@ const fallbackBoardIcon = computed(() => {
   if (board.value?.type === "announce") return "📢";
   return "💬";
 });
+const orderedPinnedList = computed(() => {
+  if (board.value?.slug !== "campus-wall") return pinnedList.value;
+  return [...pinnedList.value].sort((a, b) => Number(Boolean(b?.metadata?.weiwallHotEntry)) - Number(Boolean(a?.metadata?.weiwallHotEntry)));
+});
 
-watch(() => route.params.slug, async () => { await reload(); });
-onMounted(async () => { await reload(); });
+watch(() => route.fullPath, async () => {
+  const restored = readForumListRestoreState<BoardRestoreState>(route.fullPath);
+  page.value = Math.max(1, Number(restored?.page ?? 1) || 1);
+  sort.value = restored?.sort === "hot" ? "hot" : "new";
+  pendingRestoreState = restored;
+  await reload();
+}, { immediate: true });
 
 async function reload() {
   loading.value = true;
@@ -129,6 +147,7 @@ async function reload() {
     total.value = normal.total;
   } finally {
     loading.value = false;
+    await restoreScrollIfNeeded();
   }
 }
 
@@ -149,6 +168,33 @@ function goPost() {
   }
   router.push({ name: "post", query: { board: route.params.slug } });
 }
+
+async function restoreScrollIfNeeded() {
+  if (!pendingRestoreState) return;
+  const scrollY = Math.max(0, Number(pendingRestoreState.scrollY || 0));
+  await nextTick();
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: scrollY, behavior: "auto" });
+      resolve();
+    });
+  });
+  clearForumListRestoreState(route.fullPath);
+  pendingRestoreState = null;
+}
+
+function persistRestoreState() {
+  if (!board.value || !route.fullPath) return;
+  writeForumListRestoreState(route.fullPath, {
+    scrollY: window.scrollY,
+    page: page.value,
+    sort: sort.value,
+  });
+}
+
+onBeforeRouteLeave((to) => {
+  if (to.name === "topic") persistRestoreState();
+});
 </script>
 
 <style scoped>

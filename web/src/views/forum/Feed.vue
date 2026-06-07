@@ -11,7 +11,7 @@
 
     <section class="cpu-card" v-loading="loading">
       <template v-if="isHot">
-        <div v-for="item in hotList" :key="item.id" class="rank-row" @click="$router.push(`/forum/topic/${item.id}`)">
+        <div v-for="item in hotList" :key="item.id" class="rank-row" @click="openHotTopic(item.id)">
           <div class="rank-no" :class="{ top3: item.rank <= 3 }">#{{ item.rank }}</div>
           <div class="rank-main">
             <div class="rank-title">{{ item.title }}</div>
@@ -63,13 +63,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { useRoute } from "vue-router";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import { homeApi } from "@/api/home";
 import { fmtRelative } from "@/utils/format";
+import { clearForumListRestoreState, readForumListRestoreState, writeForumListRestoreState } from "@/utils/forumListRestore";
+
+type LatestFeedRestoreState = {
+  scrollY: number;
+  latestPage?: number;
+  savedAt: number;
+};
 
 const route = useRoute();
+const router = useRouter();
 const isHot = computed(() => route.name === "forum-hot");
 const loading = ref(false);
 const loadingMore = ref(false);
@@ -83,9 +91,14 @@ const loadMoreSentinelRef = ref<HTMLElement | null>(null);
 const currentList = computed(() => isHot.value ? hotList.value : [...pinnedList.value, ...latestList.value]);
 const canLoadMore = computed(() => !isHot.value && latestList.value.length < latestTotal.value);
 let loadMoreObserver: IntersectionObserver | null = null;
+let pendingRestoreState: LatestFeedRestoreState | null = null;
 
-watch(() => route.name, () => {
+watch(() => route.fullPath, () => {
   resetState();
+  pendingRestoreState = !isHot.value ? readForumListRestoreState<LatestFeedRestoreState>(route.fullPath) : null;
+  if (pendingRestoreState?.latestPage && pendingRestoreState.latestPage > 1) {
+    latestPage.value = pendingRestoreState.latestPage;
+  }
   void load();
 }, { immediate: true });
 
@@ -127,14 +140,24 @@ async function load() {
       latestTotal.value = 0;
       return;
     }
-    const res = await homeApi.latestFeed({ page: latestPage.value, size: latestSize.value });
-    pinnedList.value = res.pins ?? [];
-    latestList.value = res.list ?? [];
-    latestTotal.value = res.total;
+    if (latestPage.value > 1) {
+      const pages = await Promise.all(
+        Array.from({ length: latestPage.value }, (_, index) => homeApi.latestFeed({ page: index + 1, size: latestSize.value })),
+      );
+      pinnedList.value = pages[0]?.pins ?? [];
+      latestTotal.value = pages[0]?.total ?? 0;
+      latestList.value = dedupeTopicsById(pages.flatMap((pageResult) => pageResult.list ?? []));
+    } else {
+      const res = await homeApi.latestFeed({ page: latestPage.value, size: latestSize.value });
+      pinnedList.value = res.pins ?? [];
+      latestList.value = res.list ?? [];
+      latestTotal.value = res.total;
+    }
   } finally {
     loading.value = false;
     if (!isHot.value) {
       await nextTick();
+      await restoreScrollIfNeeded();
       if (loadMoreObserver && canLoadMore.value && loadMoreSentinelRef.value) {
         loadMoreObserver.disconnect();
         loadMoreObserver.observe(loadMoreSentinelRef.value);
@@ -174,6 +197,48 @@ async function loadMore() {
 function backToTop() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
+
+function dedupeTopicsById(items: any[]) {
+  const seen = new Set<number>();
+  return items.filter((item) => {
+    const id = Number(item?.id || 0);
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
+async function restoreScrollIfNeeded() {
+  if (!pendingRestoreState) return;
+  const scrollY = Math.max(0, Number(pendingRestoreState.scrollY || 0));
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: scrollY, behavior: "auto" });
+      resolve();
+    });
+  });
+  clearForumListRestoreState(route.fullPath);
+  pendingRestoreState = null;
+}
+
+function persistRestoreState() {
+  if (isHot.value || !latestList.value.length || !route.fullPath) return;
+  writeForumListRestoreState(route.fullPath, {
+    scrollY: window.scrollY,
+    latestPage: latestPage.value,
+  });
+}
+
+function openHotTopic(id: number) {
+  router.push({
+    path: `/forum/topic/${id}`,
+    query: { from: route.fullPath },
+  });
+}
+
+onBeforeRouteLeave((to) => {
+  if (to.name === "topic") persistRestoreState();
+});
 </script>
 
 <style scoped>
