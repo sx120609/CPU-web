@@ -71,8 +71,8 @@
             <router-link v-if="topic.author?.id" :to="`/u/${topic.author.id}`">{{ topic.author?.nickname }}</router-link>
             <span v-else>{{ topic.author?.nickname }}</span>
             <el-tag v-if="topic.isAnonymous" size="small" type="warning" effect="plain">匿名发布</el-tag>
-            <el-tag v-if="isWeiwallHotEntry" size="small" type="danger">校园墙热榜</el-tag>
-            <el-tag v-else-if="topic.metadata?.externalPlatform === 'weiwall'" size="small" type="warning">校园墙同步</el-tag>
+            <el-tag v-if="isWeiwallHotEntry" size="small" type="danger">逛逛热榜</el-tag>
+            <el-tag v-else-if="topic.metadata?.externalPlatform === 'weiwall'" size="small" type="warning">逛逛同步</el-tag>
             <el-tag v-else-if="topic.author?.role === 'bot'" size="small" type="warning">公告同步</el-tag>
             <el-tag v-else-if="topic.author?.role === 'admin'" size="small" type="danger">管理员</el-tag>
             <UserModerationActions
@@ -89,7 +89,7 @@
           </div>
           <div class="meta">
             <template v-if="isWeiwallHotEntry">
-              校园墙热榜入口 · 每 {{ weiwallHotRefreshMinutes }} 分钟刷新<template v-if="weiwallHotUpdatedLabel"> · 最近更新 {{ weiwallHotUpdatedLabel }}</template>
+              逛逛热榜入口 · 每 {{ weiwallHotRefreshMinutes }} 分钟刷新<template v-if="weiwallHotUpdatedLabel"> · 最近更新 {{ weiwallHotUpdatedLabel }}</template>
             </template>
             <template v-else>
               发表于 {{ fmtDate(topic.createdAt) }}
@@ -107,7 +107,7 @@
         <span class="src-text-wrap">
           <span class="src-text">
             <template v-if="topic.metadata?.externalPlatform === 'weiwall'">
-              来自 <b>{{ topic.metadata.sourceName || "校园墙" }}</b> · 发布于 {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
+              来自 <b>{{ topic.metadata.sourceName || "逛逛" }}</b> · 发布于 {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
             </template>
             <template v-if="topic.metadata?.externalType === 'wechat'">
               原文发布于 <b>微信公众号</b> · {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
@@ -121,7 +121,7 @@
         </span>
         <a :href="topic.metadata.sourceUrl" target="_blank" class="src-link">
           <el-icon><Link /></el-icon>
-          {{ isWeiwallHotEntry ? '打开校园墙热榜' : topic.metadata?.externalPlatform === 'weiwall' ? '前往校园墙原帖' : topic.metadata?.externalType === 'wechat' ? '前往微信阅读全文' : '在学校原站查看' }}
+          {{ isWeiwallHotEntry ? '打开逛逛热榜' : topic.metadata?.externalPlatform === 'weiwall' ? '前往逛逛原帖' : topic.metadata?.externalType === 'wechat' ? '前往微信阅读全文' : '在学校原站查看' }}
         </a>
       </div>
       <div v-if="topic.metadata?.ratings" class="extra-bar ratings">
@@ -198,7 +198,7 @@
       <section v-if="isWeiwallHotEntry" class="weiwall-hot-panel">
         <div class="weiwall-hot-hero">
           <div>
-            <p class="weiwall-hot-eyebrow">校园墙实时热榜</p>
+            <p class="weiwall-hot-eyebrow">逛逛实时热榜</p>
             <h3>只保留入口，不把热榜刷屏进站内</h3>
             <p>{{ weiwallHotIntro }}</p>
           </div>
@@ -236,10 +236,10 @@
             </button>
           </article>
         </div>
-        <el-empty v-else description="当前校园墙热榜暂时为空" />
+        <el-empty v-else description="当前逛逛热榜暂时为空" />
 
         <div class="weiwall-hot-footnote">
-          超过 3 天的校园墙稿件不再继续更新；如果你想看最新评论或原始上下文，请以校园墙原帖为准。
+          超过 3 天的逛逛稿件不再继续更新；如果你想看最新评论或原始上下文，请以逛逛原帖为准。
         </div>
       </section>
       <MarkdownView v-else :content="displayContent" class="post-body topic-markdown" clickable-images media-loading="eager" />
@@ -252,7 +252,7 @@
         <el-button @click="shareDialogOpen = true">分享</el-button>
       </footer>
       <footer v-else class="post-foot post-foot-entry">
-        <el-button type="primary" @click="openWeiwallHotPage">打开校园墙热榜</el-button>
+        <el-button type="primary" @click="openWeiwallHotPage">打开逛逛热榜</el-button>
         <el-button @click="shareDialogOpen = true">分享入口</el-button>
       </footer>
     </article>
@@ -871,7 +871,7 @@ const weiwallHotTopics = computed<WeiwallHotTopicEntry[]>(() => {
     rank: Math.max(1, Number(item?.rank ?? index + 1) || index + 1),
     externalTopicId: String(item?.externalTopicId ?? ""),
     localTopicId: Number(item?.localTopicId ?? 0) || null,
-    title: String(item?.title ?? "").trim() || `校园墙热帖 #${index + 1}`,
+    title: String(item?.title ?? "").trim() || `逛逛热帖 #${index + 1}`,
     summary: String(item?.summary ?? "").trim(),
     node: String(item?.node ?? "").trim(),
     score: Math.max(0, Number(item?.score ?? 0) || 0),
@@ -888,15 +888,15 @@ const weiwallHotUpdatedLabel = computed(() => {
 const weiwallHotRefreshMinutes = computed(() => Math.max(1, Number(topic.value?.metadata?.refreshMinutes ?? 30) || 30));
 const weiwallHotIntro = computed(() => {
   if (!weiwallHotTopics.value.length) return "当前没有抓到可展示的热榜条目，稍后会自动再试。";
-  return "这里只有一个整理好的入口帖，你可以直接点进去看站内镜像，或者跳回校园墙原帖继续追更。";
+  return "这里只有一个整理好的入口帖，你可以直接点进去看站内镜像，或者跳回逛逛原帖继续追更。";
 });
 const sourceNotice = computed(() => {
   if (!topic.value?.metadata?.sourceUrl) return "";
   if (isWeiwallHotEntry.value) {
-    return "这是校园墙热榜入口帖，每 30 分钟刷新一次；这里只放榜单入口，不会把热榜所有文章额外同步进站内。";
+    return "这是逛逛热榜入口帖，每 30 分钟刷新一次；这里只放榜单入口，不会把热榜所有文章额外同步进站内。";
   }
   if (topic.value?.metadata?.externalPlatform === "weiwall") {
-    return "这是校园墙镜像内容，不参与本站热榜和最新流；仅补充近 3 天稿件的后续更新，超过三天的稿件不再更新；如遇评论未补齐或正文异常，可前往原帖查看。";
+    return "这是逛逛镜像内容，不参与本站热榜和最新流；仅补充近 3 天稿件的后续更新，超过三天的稿件不再更新；如遇评论未补齐或正文异常，可前往原帖查看。";
   }
   if (topic.value?.metadata?.externalType === "wechat") {
     return "微信文章可能无法在站内完整展示，建议前往微信阅读全文。";
@@ -916,10 +916,10 @@ const backTargetFromQuery = computed(() => {
   return text.startsWith("/") ? text : "";
 });
 const backLabel = computed(() => {
-  if (backTargetFromQuery.value.includes("/forum/b/campus-wall")) return "返回校园墙";
+  if (backTargetFromQuery.value.includes("/forum/b/campus-wall")) return "返回逛逛";
   if (backTargetFromQuery.value.includes("/forum/latest")) return "返回最新";
   if (backTargetFromQuery.value.includes("/forum/hot")) return "返回热榜";
-  if (isCampusWallTopic.value) return "返回校园墙";
+  if (isCampusWallTopic.value) return "返回逛逛";
   if (isAnnouncementTopic.value) return "返回上页";
   return "返回最新";
 });

@@ -1161,7 +1161,7 @@ adminRouter.post("/feeds/:id/reset-run", adminOnly, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// ============ 校园墙同步 ============
+// ============ 逛逛同步 ============
 
 adminRouter.get("/weiwall-sync", adminOnly, async (_req, res, next) => {
   try {

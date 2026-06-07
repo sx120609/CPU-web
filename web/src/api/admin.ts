@@ -793,7 +793,7 @@ export const adminApi = {
   runFeed: (id: number) => request.post<any>(`/admin/feeds/${id}/run`),
   resetRunFeed: (id: number) => request.post<any>(`/admin/feeds/${id}/reset-run`),
   runAllFeeds: () => request.post<any>("/admin/feeds/run-all"),
-  // 校园墙同步
+  // 逛逛同步
   weiwallSync: () => request.get<WeiwallSyncConfig>("/admin/weiwall-sync"),
   updateWeiwallSync: (patch: Partial<{
     enabled: boolean;

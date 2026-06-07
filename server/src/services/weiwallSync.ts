@@ -12,8 +12,8 @@ import { Errors } from "../utils/response";
 import { getSiteOrigin } from "./siteSettings";
 
 export const WEIWALL_BOARD_SLUG = "campus-wall";
-const WEIWALL_BOARD_NAME = "校园墙";
-const WEIWALL_BOARD_DESCRIPTION = "从外部校园墙同步的只读镜像，自动刷新帖子与评论。";
+const WEIWALL_BOARD_NAME = "逛逛";
+const WEIWALL_BOARD_DESCRIPTION = "从外部逛逛同步的只读镜像，自动刷新帖子与评论。";
 const WEIWALL_BOARD_ICON = "📮";
 const WEIWALL_BOARD_COLOR = "#0ea5e9";
 const WEIWALL_DEFAULT_BASE_URL = "https://s.weiwall.com";
@@ -25,9 +25,9 @@ const WEIWALL_COMMENT_BACKFILL_TOPICS_PER_RUN = 12;
 const WEIWALL_COMMENT_BACKFILL_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 const WEIWALL_TRACE_LIMIT = 40;
 const WEIWALL_BOT_USERNAME = "weiwall_sync_bot";
-const WEIWALL_BOT_NICKNAME = "校园墙同步";
+const WEIWALL_BOT_NICKNAME = "逛逛同步";
 const WEIWALL_AUTH_FLOW_TTL_MS = 15 * 60_000;
-const WEIWALL_HOT_ENTRY_TITLE = "校园墙热榜入口（每 30 分钟更新）";
+const WEIWALL_HOT_ENTRY_TITLE = "逛逛热榜入口（每 30 分钟更新）";
 const WEIWALL_HOT_ENTRY_INTERVAL_MS = 30 * 60 * 1000;
 const WEIWALL_HOT_ENTRY_SIZE = 10;
 
@@ -324,8 +324,8 @@ async function notifyAdminsIfWeiwallTokenExpired(token: string, expiresAt: strin
     where: {
       userId: { in: admins.map((item) => item.id) },
       category: "system",
-      source: "校园墙同步",
-      title: "校园墙 Token 已过期",
+      source: "逛逛同步",
+      title: "逛逛 Token 已过期",
       AND: [
         { payload: { contains: "\"type\":\"weiwall-token-expired\"" } },
         { payload: { contains: `"tokenHash":"${tokenHash}"` } },
@@ -346,9 +346,9 @@ async function notifyAdminsIfWeiwallTokenExpired(token: string, expiresAt: strin
       userId,
       category: "system",
       level: "warning",
-      title: "校园墙 Token 已过期",
-      content: `当前校园墙 Token 已于 ${shortDateTime(expiresAt)} 过期，请尽快重新授权。`,
-      source: "校园墙同步",
+      title: "逛逛 Token 已过期",
+      content: `当前逛逛 Token 已于 ${shortDateTime(expiresAt)} 过期，请尽快重新授权。`,
+      source: "逛逛同步",
       link: "/admin?tab=weiwall",
       payload,
     })),
@@ -482,7 +482,7 @@ function deriveLocalTitle(topic: WeiwallTopicRow) {
   if (explicit && explicit !== "none") return explicit;
   const fromContent = summarizeExternalText(topic.content, 80);
   if (fromContent) return fromContent;
-  return `校园墙帖子 ${externalId(topic.id) || "unknown"}`;
+  return `逛逛帖子 ${externalId(topic.id) || "unknown"}`;
 }
 
 function formatTraceTitle(input: {
@@ -769,7 +769,7 @@ async function fetchTenantName(baseUrl: string) {
     headers: { Accept: "application/json" },
   });
   const json = parseJsonSafe<any>(await res.text(), {});
-  return trimTo(json?.data?.tenantName, 80, "校园墙");
+  return trimTo(json?.data?.tenantName, 80, "逛逛");
 }
 
 async function weiwallFetchJson(row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>, path: string, query?: Record<string, string | number | null | undefined>) {
@@ -968,13 +968,13 @@ function buildWeiwallHotEntryContent(input: {
   localTopicIdByExternalId: Map<string, number>;
 }) {
   const lines = [
-    "校园墙热榜入口每 30 分钟自动刷新一次。",
+    "逛逛热榜入口每 30 分钟自动刷新一次。",
     "",
     "这里只保留热榜入口，不会把热榜整批同步成新帖。",
     "",
     `最近更新：${shortDateTime(input.updatedAt.toISOString())}`,
     "",
-    "超过 3 天的校园墙稿件不再继续更新；若想查看最新评论或最新状态，请以原帖为准。",
+    "超过 3 天的逛逛稿件不再继续更新；若想查看最新评论或最新状态，请以原帖为准。",
   ];
   return lines.join("\n");
 }
@@ -1034,12 +1034,12 @@ async function syncWeiwallHotRankingEntry(
   });
   const metadata = JSON.stringify({
     sourceUrl: buildWeiwallHotPageUrl(row.baseUrl, row.schoolEn),
-    sourceName: "校园墙热榜",
+    sourceName: "逛逛热榜",
     publishedAt: updatedAt.toISOString(),
     external: true,
     externalType: "weiwall",
     externalPlatform: "weiwall",
-    externalAuthorName: "校园墙热榜",
+    externalAuthorName: "逛逛热榜",
     externalAuthorAvatar: null,
     weiwallHotEntry: true,
     refreshMinutes: 30,
@@ -1054,10 +1054,31 @@ async function syncWeiwallHotRankingEntry(
     localTopicIdByExternalId,
   });
 
-  if (!existingEntry) {
-    await prisma.topic.create({
+  try {
+    if (!existingEntry) {
+      await prisma.topic.create({
+        data: {
+          boardId: board.id,
+          authorId: botUserId,
+          title: WEIWALL_HOT_ENTRY_TITLE,
+          content,
+          metadata,
+          pinned: true,
+          locked: true,
+          hidden: false,
+          likeCount: 0,
+          viewCount: 0,
+          lastReplyAt: updatedAt,
+          lastReplyById: botUserId,
+          createdAt: updatedAt,
+        },
+      });
+      return true;
+    }
+
+    await prisma.topic.update({
+      where: { id: existingEntry.id },
       data: {
-        boardId: board.id,
         authorId: botUserId,
         title: WEIWALL_HOT_ENTRY_TITLE,
         content,
@@ -1065,31 +1086,65 @@ async function syncWeiwallHotRankingEntry(
         pinned: true,
         locked: true,
         hidden: false,
-        likeCount: 0,
-        viewCount: 0,
         lastReplyAt: updatedAt,
         lastReplyById: botUserId,
-        createdAt: updatedAt,
+      },
+    });
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn("[weiwall-sync] hot entry create/update failed, fallback to content-only entry:", message);
+    const fallbackMetadata = JSON.stringify({
+      sourceUrl: buildWeiwallHotPageUrl(row.baseUrl, row.schoolEn),
+      sourceName: "逛逛热榜",
+      publishedAt: updatedAt.toISOString(),
+      external: true,
+      externalType: "weiwall",
+      externalPlatform: "weiwall",
+      externalAuthorName: "逛逛热榜",
+      externalAuthorAvatar: null,
+      weiwallHotEntry: true,
+      refreshMinutes: 30,
+      hotTopicCount: rows.length,
+    });
+
+    if (!existingEntry) {
+      await prisma.topic.create({
+        data: {
+          boardId: board.id,
+          authorId: botUserId,
+          title: WEIWALL_HOT_ENTRY_TITLE,
+          content,
+          metadata: fallbackMetadata,
+          pinned: true,
+          locked: true,
+          hidden: false,
+          likeCount: 0,
+          viewCount: 0,
+          lastReplyAt: updatedAt,
+          lastReplyById: botUserId,
+          createdAt: updatedAt,
+        },
+      });
+      return true;
+    }
+
+    await prisma.topic.update({
+      where: { id: existingEntry.id },
+      data: {
+        authorId: botUserId,
+        title: WEIWALL_HOT_ENTRY_TITLE,
+        content,
+        metadata: fallbackMetadata,
+        pinned: true,
+        locked: true,
+        hidden: false,
+        lastReplyAt: updatedAt,
+        lastReplyById: botUserId,
       },
     });
     return true;
   }
-
-  await prisma.topic.update({
-    where: { id: existingEntry.id },
-    data: {
-      authorId: botUserId,
-      title: WEIWALL_HOT_ENTRY_TITLE,
-      content,
-      metadata,
-      pinned: true,
-      locked: true,
-      hidden: false,
-      lastReplyAt: updatedAt,
-      lastReplyById: botUserId,
-    },
-  });
-  return true;
 }
 
 async function finalizeWeiwallEntryChanges(boardId: number, botUserId: number) {
@@ -1244,8 +1299,8 @@ export async function completeWeiwallTokenAuthCallback(input: {
     await writeWeiwallAuthFlow(record, 10 * 60_000);
     return {
       ok: true,
-      title: "校园墙 Token 已更新",
-      message: "新的校园墙 Token 已自动保存，现在可以返回后台继续使用。",
+      title: "逛逛 Token 已更新",
+      message: "新的逛逛 Token 已自动保存，现在可以返回后台继续使用。",
     };
   } catch (error: any) {
     record.used = true;
@@ -1885,7 +1940,7 @@ export async function runWeiwallSyncNow() {
     const result: WeiwallSyncResult = {
       ok: false,
       boardSlug: board.slug,
-      sourceName: "校园墙",
+      sourceName: "逛逛",
       pagesScanned: 0,
       topicsScanned: 0,
       topicsCreated: 0,
@@ -2023,7 +2078,7 @@ export async function runWeiwallSyncNow() {
   return {
     ok: false,
     boardSlug: board.slug,
-    sourceName: "校园墙",
+    sourceName: "逛逛",
     pagesScanned: 0,
     topicsScanned: 0,
     topicsCreated: 0,
@@ -2056,7 +2111,7 @@ export function startWeiwallSyncScheduler() {
       return;
     }
     if (result.ok && (result.topicsCreated || result.repliesCreated)) {
-      console.log(`📮 校园墙同步完成: +${result.topicsCreated} 帖子, +${result.repliesCreated} 回复`);
+      console.log(`📮 逛逛同步完成: +${result.topicsCreated} 帖子, +${result.repliesCreated} 回复`);
     }
   };
 
@@ -2067,5 +2122,5 @@ export function startWeiwallSyncScheduler() {
     }, WEIWALL_TICK_MS);
   }, 8_000);
 
-  console.log("📮 校园墙同步器已挂载（默认 30 秒检查，按配置 intervalSeconds 执行）");
+  console.log("📮 逛逛同步器已挂载（默认 30 秒检查，按配置 intervalSeconds 执行）");
 }

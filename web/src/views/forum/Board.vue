@@ -9,7 +9,7 @@
           <div class="head-meta">
             <span>{{ board.topicCount }} 帖</span>
             <span v-if="board.anonymousEnabled" class="anon-tag">支持匿名</span>
-            <span v-if="board.readOnly" class="ro-tag">{{ board.slug === 'campus-wall' ? '校园墙镜像' : '公告板' }}</span>
+            <span v-if="board.readOnly" class="ro-tag">{{ board.slug === 'campus-wall' ? '逛逛镜像' : '公告板' }}</span>
             <a v-if="board.feedSource?.homepage" :href="board.feedSource.homepage" target="_blank" class="ro-link">查看来源 →</a>
           </div>
         </div>
