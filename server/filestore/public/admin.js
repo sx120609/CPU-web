@@ -887,12 +887,73 @@ function bindFileActionButtons() {
   });
 }
 
-function previewFile(id) {
-  window.open(`/api/files/${id}/preview`, "_blank", "noopener");
+function filenameFromDisposition(disposition = "") {
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+  const basicMatch = disposition.match(/filename="([^"]+)"/i);
+  return basicMatch ? basicMatch[1] : "";
 }
 
-function downloadFile(id) {
-  window.open(`/api/files/${id}/download`, "_blank", "noopener");
+async function fetchProtectedBlob(path) {
+  const response = await fetch(path, { credentials: "same-origin", headers: authHeaders() });
+  if (response.status === 401) {
+    setAuthed(false);
+    throw new Error("登录已过期，请重新登录");
+  }
+  if (!response.ok) {
+    let message = "文件读取失败";
+    try {
+      const payload = await response.json();
+      message = payload.error || message;
+    } catch {
+      // ignore non-json errors
+    }
+    throw new Error(message);
+  }
+  return {
+    blob: await response.blob(),
+    filename: filenameFromDisposition(response.headers.get("Content-Disposition") || ""),
+    type: response.headers.get("Content-Type") || "",
+  };
+}
+
+async function previewFile(id) {
+  const previewWindow = window.open("", "_blank");
+  if (previewWindow) {
+    previewWindow.document.write("<title>正在加载文件...</title><p style='font-family:sans-serif;padding:16px'>正在加载文件...</p>");
+    previewWindow.document.close();
+  }
+  try {
+    const { blob, type } = await fetchProtectedBlob(`/api/files/${id}/preview`);
+    const objectUrl = URL.createObjectURL(type ? blob.slice(0, blob.size, type) : blob);
+    if (previewWindow) {
+      previewWindow.location.replace(objectUrl);
+    } else {
+      window.open(objectUrl, "_blank");
+    }
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  } catch (error) {
+    if (previewWindow && !previewWindow.closed) previewWindow.close();
+    throw error;
+  }
+}
+
+async function downloadFile(id) {
+  const { blob, filename } = await fetchProtectedBlob(`/api/files/${id}/download`);
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename || `file-${id}`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 async function deleteFile(id) {
