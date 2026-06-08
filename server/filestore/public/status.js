@@ -1,5 +1,6 @@
 const token = location.pathname.split("/").pop();
 let statusData = null;
+const SITE_TITLE_DEFAULT = "药大拾间文件收集";
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -19,12 +20,12 @@ function formatBytes(bytes) {
 }
 
 function renderHeader() {
-  document.title = `${statusData.siteTitle || "Filestore"} - 提交成功名单`;
+  document.title = `${statusData.siteTitle || SITE_TITLE_DEFAULT} - 提交成功名单`;
   $("#statusHeader").innerHTML = `
-    <p class="eyebrow">SUBMISSION STATUS</p>
+    <p class="eyebrow">药大拾间 · 成功提交名单</p>
     <h1>${escapeHtml(statusData.title)}</h1>
     <p>这里显示已经成功提交的记录和文件名。文件内容不会在此页面公开。</p>
-    ${statusData.deadline ? `<p class="hint">截止时间：${new Date(statusData.deadline).toLocaleString()}</p>` : ""}
+    ${statusData.deadline ? `<p class="hint hero-deadline">截止时间：${new Date(statusData.deadline).toLocaleString()}</p>` : ""}
   `;
 }
 
@@ -82,7 +83,7 @@ async function loadStatus() {
     renderList();
     $("#statusBody").hidden = false;
   } catch (error) {
-    $("#statusHeader").innerHTML = `<p class="eyebrow">ERROR</p><h1>无法查看</h1><p>${escapeHtml(error.message)}</p>`;
+    $("#statusHeader").innerHTML = `<p class="eyebrow">药大拾间 · 访问异常</p><h1>无法查看</h1><p>${escapeHtml(error.message)}</p>`;
   }
 }
 

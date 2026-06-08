@@ -1,6 +1,7 @@
 const token = location.pathname.split("/").pop();
 let task = null;
 let selectedFiles = [];
+const SITE_TITLE_DEFAULT = "药大拾间文件收集";
 let draggedFileId = null;
 let successReset = false;
 
@@ -229,12 +230,12 @@ function clearFiles() {
 
 function renderTask() {
   const isClosed = task.status !== "open";
-  document.title = `${task.siteTitle || "Filestore"} - ${task.title}`;
+  document.title = `${task.siteTitle || SITE_TITLE_DEFAULT} - ${task.title}`;
   $("#submitHeader").innerHTML = `
-    <p class="eyebrow">${isClosed ? "CLOSED" : "FILE SUBMISSION"}</p>
+    <p class="eyebrow">${isClosed ? "药大拾间 · 已停止提交" : "药大拾间 · 文件提交"}</p>
     <h1>${escapeHtml(task.title)}</h1>
     <p>${escapeHtml(submitDescription()).replaceAll("\n", "<br>")}</p>
-    ${task.deadline ? `<p class="hint">截止时间：${new Date(task.deadline).toLocaleString()}</p>` : ""}
+    ${task.deadline ? `<p class="hint hero-deadline">截止时间：${new Date(task.deadline).toLocaleString()}</p>` : ""}
   `;
   showStatusShortcut();
 
@@ -267,7 +268,7 @@ async function loadTask() {
     task = payload;
     renderTask();
   } catch (error) {
-    $("#submitHeader").innerHTML = `<p class="eyebrow">ERROR</p><h1>无法提交</h1><p>${escapeHtml(error.message)}</p>`;
+    $("#submitHeader").innerHTML = `<p class="eyebrow">药大拾间 · 访问异常</p><h1>无法提交</h1><p>${escapeHtml(error.message)}</p>`;
   }
 }
 

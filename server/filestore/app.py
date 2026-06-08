@@ -25,6 +25,7 @@ DATA_DIR = ROOT / "data"
 UPLOAD_DIR = ROOT / "uploads"
 DB_PATH = DATA_DIR / "filestore.db"
 ADMIN_PASSWORD = os.environ.get("FILESTORE_ADMIN_PASSWORD", "admin123")
+SITE_TITLE_DEFAULT = "药大拾间文件收集"
 MAX_REQUEST_BYTES = 1024 * 1024 * 1024
 SESSIONS: set[str] = set()
 
@@ -422,7 +423,7 @@ def app_settings() -> dict:
         templates = [legacy_template]
     return {
         "siteUrl": get_setting("site_url"),
-        "siteTitle": get_setting("site_title", "Filestore"),
+        "siteTitle": get_setting("site_title", SITE_TITLE_DEFAULT) or SITE_TITLE_DEFAULT,
         "taskTemplates": templates,
     }
 
@@ -820,7 +821,7 @@ def build_public_status(token: str) -> dict | None:
         "title": detail["title"],
         "deadline": detail["deadline"],
         "status": detail["status"],
-        "siteTitle": get_setting("site_title", "Filestore"),
+        "siteTitle": get_setting("site_title", SITE_TITLE_DEFAULT) or SITE_TITLE_DEFAULT,
         "stats": {
             "submitted": detail["stats"]["submitted"],
             "expected": detail["stats"]["expected"],
@@ -1072,7 +1073,7 @@ class AppHandler(SimpleHTTPRequestHandler):
                 send_json(self, {"error": "提交链接不存在"}, HTTPStatus.NOT_FOUND)
                 return
             public_task = {key: task[key] for key in ["title", "description", "deadline", "fields", "fileRules", "renameTemplate", "folderTemplate", "status"]}
-            public_task["siteTitle"] = get_setting("site_title", "Filestore")
+            public_task["siteTitle"] = get_setting("site_title", SITE_TITLE_DEFAULT) or SITE_TITLE_DEFAULT
             send_json(self, public_task)
             return
         match = re.fullmatch(r"/api/public/status/([A-Za-z0-9_-]+)", path)
@@ -1183,7 +1184,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             try:
                 payload = read_json_body(self)
                 site_url = normalize_site_url(str(payload.get("siteUrl", "")))
-                site_title = str(payload.get("siteTitle", "Filestore")).strip()[:60] or "Filestore"
+                site_title = str(payload.get("siteTitle", SITE_TITLE_DEFAULT)).strip()[:60] or SITE_TITLE_DEFAULT
                 templates_value = None
                 should_update_templates = "taskTemplates" in payload
                 if should_update_templates:

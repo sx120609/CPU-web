@@ -1,10 +1,12 @@
+const SITE_TITLE_DEFAULT = "药大拾间文件收集";
+
 const state = {
   tasks: [],
   current: null,
   detail: null,
   mode: "create",
   templateKey: "builtin:student",
-  settings: { siteUrl: "", siteTitle: "Filestore", taskTemplates: [] },
+  settings: { siteUrl: "", siteTitle: SITE_TITLE_DEFAULT, taskTemplates: [] },
   viewer: { role: "", isSuperAdmin: false, user: null },
   authed: false,
   softRefreshTimer: null,
@@ -92,7 +94,7 @@ function setAuthed(isAuthed) {
 }
 
 function applyBranding() {
-  const title = state.settings.siteTitle || "Filestore";
+  const title = state.settings.siteTitle || SITE_TITLE_DEFAULT;
   document.title = `${title} 管理系统`;
   $$("[data-site-title]").forEach((node) => {
     node.textContent = title;
@@ -219,7 +221,7 @@ function promptInApp({ title = "输入名称", body = "", label = "名称", valu
 function normalizeSettings(settings = {}) {
   return {
     siteUrl: settings.siteUrl || "",
-    siteTitle: settings.siteTitle || "Filestore",
+    siteTitle: settings.siteTitle || SITE_TITLE_DEFAULT,
     taskTemplates: Array.isArray(settings.taskTemplates) ? settings.taskTemplates : [],
   };
 }

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Filestore 管理系统</title>
+  <title>药大拾间文件收集管理系统</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body class="admin-body auth-pending">
@@ -12,24 +12,25 @@
   <section id="loginScreen" class="login-screen">
     <form id="loginForm" class="login-card">
       <div class="login-brand">
-        <span class="brand-mark">F</span>
+        <span class="brand-mark">药</span>
         <div>
-          <strong data-site-title>Filestore</strong>
-          <small>管理员登录</small>
+          <strong data-site-title>药大拾间文件收集</strong>
+          <small>CPU 校园互助服务 · 文件收集</small>
         </div>
       </div>
-      <h1>使用平台账号进入</h1>
-      <p>文件收集管理权限由药大拾间平台统一分配。</p>
+      <span class="login-badge">药大拾间校园小工具</span>
+      <h1>使用药大拾间平台账号进入</h1>
+      <p>这里是药大拾间内置的文件收集系统，任务权限、身份与平台账号统一同步。</p>
       <label hidden>平台登录
         <input id="loginPassword" type="password" autocomplete="current-password" placeholder="请先登录平台">
       </label>
-      <button class="primary full" type="submit">前往平台登录</button>
+      <button class="primary full" type="submit">前往药大拾间登录</button>
       <p class="login-privacy">
         前往登录前可先阅读 <a href="/privacy.html">隐私政策</a>
       </p>
       <p id="loginMessage" class="message"></p>
       <footer class="app-footer login-card-footer">
-        <span>© 2026 Filestore</span>
+        <span>© 2026 药大拾间 · 校园互助与服务平台</span>
         <a href="https://github.com/sx120609/filestore/" target="_blank" rel="noopener">GitHub</a>
       </footer>
     </form>
@@ -37,12 +38,17 @@
 
   <aside class="app-sidebar">
     <div class="brand">
-      <span class="brand-mark">F</span>
+      <span class="brand-mark">药</span>
       <div>
-        <strong data-site-title>Filestore</strong>
-        <small>文件收集管理系统</small>
+        <strong data-site-title>药大拾间文件收集</strong>
+        <small>CPU Campus File Collect</small>
       </div>
     </div>
+    <section class="sidebar-intro">
+      <p class="sidebar-kicker">药大拾间小工具</p>
+      <h2>文件收集工作台</h2>
+      <p>统一管理提交链接、回收记录、名单核对与文件导出。</p>
+    </section>
 
     <button id="newTask" class="primary full">新建收集任务</button>
     <input id="taskSearch" class="sidebar-search" placeholder="搜索任务">
@@ -135,7 +141,7 @@
       </section>
     </section>
     <footer class="app-footer">
-      <span>© 2026 Filestore</span>
+      <span>© 2026 药大拾间 · 校园互助与服务平台</span>
       <a href="https://github.com/sx120609/filestore/" target="_blank" rel="noopener">GitHub</a>
     </footer>
   </main>
