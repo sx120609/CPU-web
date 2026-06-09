@@ -133,9 +133,13 @@
         <span>推荐 <el-rate :model-value="topic.metadata.ratings.recommend" disabled size="small" /></span>
         <span>给分 <el-rate :model-value="topic.metadata.ratings.givingScore" disabled size="small" /></span>
       </div>
-      <div v-if="topic.metadata?.condition || topic.metadata?.tradeMode" class="extra-bar">
+      <div v-if="topic.metadata?.condition || topic.metadata?.tradeMode || metaContacts.length" class="extra-bar">
         <span v-if="topic.metadata.condition">📦 {{ topic.metadata.condition }}</span>
         <span v-if="topic.metadata.tradeMode">🤝 {{ topic.metadata.tradeMode }}</span>
+        <span v-for="item in metaContacts" :key="`${item.type}-${item.value}`" class="contact-item">
+          <span class="contact-label">{{ contactTypeIcon(item.type) }} {{ item.label }}</span>
+          <b class="contact-value">{{ item.value }}</b>
+        </span>
       </div>
 
       <div v-if="topic.imageReview?.pendingCount" class="image-review-tip image-review-tip-pending">
@@ -671,7 +675,27 @@ const replyEditorRef = ref<InstanceType<typeof RichTextEditor> | null>(null);
 const shareCardExportRef = ref<HTMLElement | null>(null);
 const REPLY_MAX = 10000;
 
+type TopicContact = {
+  type: string;
+  label: string;
+  value: string;
+};
+
 const metaPrice = computed(() => topic.value?.metadata?.price);
+const metaContacts = computed<TopicContact[]>(() => {
+  const raw = topic.value?.metadata?.contacts;
+  if (Array.isArray(raw)) {
+    return raw
+      .map((item) => ({
+        type: String(item?.type || "other").trim().toLowerCase() || "other",
+        label: String(item?.label || "联系方式").trim() || "联系方式",
+        value: String(item?.value || "").trim(),
+      }))
+      .filter((item) => item.value);
+  }
+  const single = String(topic.value?.metadata?.contact || "").trim();
+  return single ? [{ type: "other", label: "联系方式", value: single }] : [];
+});
 const hotScore = computed(() => Math.round((topic.value?.likeCount ?? 0) * 5 + (topic.value?.replyCount ?? 0) * 3 + (topic.value?.viewCount ?? 0) * 0.03));
 const boardDisplayName = computed(() => topic.value?.board?.slug === "campus-wall" ? "逛逛" : (topic.value?.board?.name || "药大拾间"));
 const displayTopicTitle = computed(() => topic.value?.title || "");
@@ -869,6 +893,14 @@ const backLabel = computed(() => {
   if (isAnnouncementTopic.value) return "返回上页";
   return "返回最新";
 });
+
+function contactTypeIcon(type: string) {
+  if (type === "phone") return "📱";
+  if (type === "wechat") return "💬";
+  if (type === "qq") return "🐧";
+  if (type === "email") return "✉️";
+  return "☎️";
+}
 
 function goBackFromTopic() {
   if (backTargetFromQuery.value) {
@@ -1713,6 +1745,9 @@ async function onDelete() {
     a { color: var(--cpu-primary); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
   }
   .extra-bar.ratings { background: #ecfdf5; }
+  .contact-item { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .contact-label { color: #6b7280; }
+  .contact-value { color: #111827; font-weight: 600; }
 
   .source-bar {
     background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
