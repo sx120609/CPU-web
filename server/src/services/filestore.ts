@@ -6,6 +6,7 @@ import path from "node:path";
 import { config } from "../config";
 import { prisma } from "../prisma";
 import { hasToolContentManagePermission, hasToolManagerPermission } from "./serviceTools";
+import { getSiteFilingNumber } from "./siteSettings";
 import { verifyToken } from "../utils/jwt";
 
 const MOUNT_PATH = "/filestore";
@@ -218,6 +219,12 @@ function writeHeaders(res: Response, upstream: http.IncomingMessage, rewrittenBo
 
 async function handleFilestoreUtilityRoute(req: Request, res: Response, user: FilestoreAccessUser | null) {
   const target = upstreamPath(req).split("?")[0];
+  if (req.method === "GET" && target === "/api/platform/site-config") {
+    res.json({
+      siteFilingNumber: getSiteFilingNumber(),
+    });
+    return true;
+  }
   if (req.method === "GET" && target === "/api/platform/users") {
     if (!user?.userId) {
       res.status(401).json({ error: "请先登录平台账号" });

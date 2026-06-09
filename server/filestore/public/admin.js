@@ -102,6 +102,25 @@ function applyBranding() {
   });
 }
 
+function applySiteFooter(config = {}) {
+  const filingNumber = String(config.siteFilingNumber || "").trim();
+  $$("[data-filing-link]").forEach((node) => {
+    node.hidden = !filingNumber;
+    node.textContent = filingNumber;
+  });
+}
+
+async function loadSiteFooter() {
+  try {
+    const response = await fetch("/api/platform/site-config", { credentials: "same-origin" });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "备案信息加载失败");
+    applySiteFooter(payload);
+  } catch {
+    applySiteFooter({});
+  }
+}
+
 function formatCreator(task) {
   const createdBy = task?.createdBy;
   if (!createdBy?.userId) return "未绑定";
@@ -1317,4 +1336,5 @@ function bind() {
 
 fillEditor(null);
 bind();
+loadSiteFooter();
 checkSession();

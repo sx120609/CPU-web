@@ -15,6 +15,25 @@ function escapeHtml(value = "") {
     .replaceAll('"', "&quot;");
 }
 
+function applySiteFooter(config = {}) {
+  const filingNumber = String(config.siteFilingNumber || "").trim();
+  document.querySelectorAll("[data-filing-link]").forEach((node) => {
+    node.hidden = !filingNumber;
+    node.textContent = filingNumber;
+  });
+}
+
+async function loadSiteFooter() {
+  try {
+    const response = await fetch("/api/platform/site-config");
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "备案信息加载失败");
+    applySiteFooter(payload);
+  } catch {
+    applySiteFooter({});
+  }
+}
+
 function message(text, type = "") {
   const node = $("#submitMessage");
   node.textContent = text;
@@ -380,6 +399,7 @@ $("#submitForm").addEventListener("submit", (event) => {
   message("正在上传...");
 });
 
+loadSiteFooter();
 loadTask();
 
 $("#closeSuccessDialog").addEventListener("click", () => $("#successDialog").close());

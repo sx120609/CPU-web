@@ -372,6 +372,7 @@ p { color: var(--muted); }
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
   gap: 8px;
   min-height: 34px;
   color: var(--muted);
