@@ -48,18 +48,12 @@
           </div>
           <span class="ov-chip">按登录去重</span>
         </div>
-        <div class="ov-trend" v-if="dailyActiveBars.length">
-          <div
-            v-for="item in dailyActiveBars"
-            :key="item.date"
-            class="ov-trend-col"
-            :class="{ today: item.isToday }"
-            :title="`${item.date}：${item.count} 人`"
-          >
-            <span class="ov-trend-bar" :style="{ height: item.height }"></span>
-            <span class="ov-trend-label" :class="{ ghost: !item.showLabel }">{{ item.showLabel ? item.label : "" }}</span>
-          </div>
-        </div>
+        <VChart
+          v-if="dailyActiveSeries.length"
+          class="ov-chart"
+          :option="dailyActiveChartOption"
+          autoresize
+        />
       </div>
     </div>
 
@@ -83,6 +77,12 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, watch } from "vue";
+import { use } from "echarts/core";
+import { CanvasRenderer } from "echarts/renderers";
+import { LineChart } from "echarts/charts";
+import { GridComponent, TooltipComponent } from "echarts/components";
+import type { EChartsOption } from "echarts";
+import VChart from "vue-echarts";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { adminApi, type AdminOverview } from "@/api/admin";
@@ -100,6 +100,8 @@ import DatabasePane from "./DatabasePane.vue";
 import MediaStoragePane from "./MediaStoragePane.vue";
 import FeaturesPane from "./FeaturesPane.vue";
 
+use([CanvasRenderer, LineChart, GridComponent, TooltipComponent]);
+
 const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
@@ -112,24 +114,112 @@ const dailyActiveAverage = computed(() => {
   const total = dailyActiveSeries.value.reduce((sum, item) => sum + item.count, 0);
   return Math.round((total / dailyActiveSeries.value.length) * 10) / 10;
 });
-const dailyActiveBars = computed(() => {
-  const peak = Math.max(1, dailyActivePeak.value);
-  return dailyActiveSeries.value.map((item, index, list) => {
-    const ratio = item.count > 0 ? item.count / peak : 0;
-    return {
-      ...item,
-      isToday: index === list.length - 1,
-      label: item.date.slice(5).replace("-", "/"),
-      showLabel: index === 0 || index === list.length - 1 || index % 7 === 0,
-      height: `${Math.max(item.count > 0 ? 14 : 8, Math.round(ratio * 100))}%`,
-    };
-  });
-});
 const dailyActiveSummary = computed(() => {
   if (!dailyActiveSeries.value.length) return "按每日登录去重统计";
   const trackedDays = dailyActiveSeries.value.filter((item) => item.count > 0).length;
   if (trackedDays <= 1) return "按每日登录去重统计，历史数据会逐步累计";
   return `30 日均 ${dailyActiveAverage.value} · 峰值 ${dailyActivePeak.value}`;
+});
+const dailyActiveChartOption = computed<EChartsOption>(() => {
+  const lastIndex = Math.max(0, dailyActiveSeries.value.length - 1);
+  return {
+    animation: false,
+    grid: {
+      left: 8,
+      right: 8,
+      top: 20,
+      bottom: 16,
+      containLabel: true,
+    },
+    tooltip: {
+      trigger: "item",
+      confine: true,
+      backgroundColor: "rgba(15, 23, 42, 0.92)",
+      borderWidth: 0,
+      padding: [8, 10],
+      textStyle: {
+        color: "#f8fafc",
+        fontSize: 12,
+      },
+      formatter: (params: any) => {
+        const date = String(params?.data?.fullDate || params?.name || "");
+        const count = Number(params?.data?.value ?? params?.value ?? 0);
+        return `${date}<br/>登录人数：${count}`;
+      },
+    },
+    xAxis: {
+      type: "category",
+      boundaryGap: false,
+      data: dailyActiveSeries.value.map((item) => item.date.slice(5).replace("-", "/")),
+      axisTick: { show: false },
+      axisLine: {
+        lineStyle: { color: "#dbe4f0" },
+      },
+      axisLabel: {
+        color: "#94a3b8",
+        fontSize: 10,
+        interval: (index: number) => index === 0 || index === lastIndex || index % 7 === 0,
+      },
+    },
+    yAxis: {
+      type: "value",
+      minInterval: 1,
+      splitNumber: 3,
+      axisLabel: {
+        color: "#94a3b8",
+        fontSize: 10,
+      },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: {
+        lineStyle: {
+          color: "rgba(148, 163, 184, 0.18)",
+          type: "dashed",
+        },
+      },
+    },
+    series: [
+      {
+        type: "line",
+        smooth: true,
+        symbol: "circle",
+        symbolSize: 7,
+        showSymbol: true,
+        data: dailyActiveSeries.value.map((item, index) => ({
+          value: item.count,
+          fullDate: item.date,
+          itemStyle: index === lastIndex
+            ? {
+                color: "#10b981",
+                borderColor: "#ecfdf5",
+                borderWidth: 2,
+              }
+            : undefined,
+        })),
+        lineStyle: {
+          width: 3,
+          color: "#3b82f6",
+        },
+        itemStyle: {
+          color: "#ffffff",
+          borderColor: "#3b82f6",
+          borderWidth: 2,
+        },
+        areaStyle: {
+          color: "rgba(59, 130, 246, 0.10)",
+        },
+        emphasis: {
+          focus: "series",
+          scale: true,
+          itemStyle: {
+            color: "#1d4ed8",
+            borderColor: "#dbeafe",
+            borderWidth: 3,
+          },
+        },
+      },
+    ],
+  };
 });
 
 onMounted(async () => {
@@ -194,41 +284,10 @@ watch(tab, (next) => {
 .ov-num { font-size: 24px; font-weight: 700; color: var(--cpu-primary); line-height: 1; white-space: nowrap; }
 .ov-lbl { font-size: 12px; color: #6b7280; margin-top: 4px; }
 .ov-sub { font-size: 11px; color: #6b7280; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ov-trend {
-  margin-top: 14px;
-  height: 132px;
-  display: grid;
-  grid-template-columns: repeat(30, minmax(0, 1fr));
-  gap: 6px;
-  align-items: end;
-}
-.ov-trend-col {
-  min-width: 0;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: end;
-  align-items: center;
-  gap: 6px;
-}
-.ov-trend-bar {
+.ov-chart {
+  margin-top: 10px;
+  height: 180px;
   width: 100%;
-  min-height: 8px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.22);
-}
-.ov-trend-col.today .ov-trend-bar {
-  background: linear-gradient(180deg, #34d399 0%, #059669 100%);
-}
-.ov-trend-label {
-  min-height: 16px;
-  font-size: 10px;
-  line-height: 1.2;
-  color: #94a3b8;
-}
-.ov-trend-label.ghost {
-  visibility: hidden;
 }
 .cpu-card { background: #fff; border-radius: 12px; padding: 12px 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
 
@@ -253,9 +312,8 @@ watch(tab, (next) => {
   .ov-chip {
     align-self: flex-start;
   }
-  .ov-trend {
-    gap: 4px;
-    height: 112px;
+  .ov-chart {
+    height: 160px;
   }
   .cpu-card {
     margin: 0 -4px;
