@@ -34,7 +34,13 @@ type WeiwallUserInfo = {
   avatar?: string | null;
 };
 
-type WeiwallTopicRow = {
+type WeiwallContactSourceFields = {
+  linkPeople?: string | null;
+  linkType?: number | string | null;
+  linkInfo?: string | null;
+};
+
+type WeiwallTopicRow = WeiwallContactSourceFields & {
   id: number | string;
   title?: string | null;
   content?: string | null;
@@ -73,13 +79,14 @@ type WeiwallCommentPage = {
   pageSize?: number;
 };
 
-type WeiwallReadOnlyTopicDetail = {
+type WeiwallReadOnlyTopicDetail = WeiwallContactSourceFields & {
   id?: number | string;
   status?: string | number | null;
   commentCount?: number | null;
   likeCount?: number | null;
   viewCount?: number | null;
   createTime?: string | null;
+  isOver?: number | boolean | null;
 };
 
 type FlattenedExternalReply = {
@@ -475,6 +482,64 @@ function sanitizeWeiwallStorageText(input: unknown, max = 0) {
   normalized = normalized.replace(/\r\n/g, "\n").trim();
   if (max > 0) return normalized.slice(0, max);
   return normalized;
+}
+
+function normalizeWeiwallBinaryFlag(input: unknown) {
+  if (input === null || input === undefined || input === "") return null;
+  if (typeof input === "boolean") return input ? 1 : 0;
+  const value = Number(input);
+  if (!Number.isFinite(value)) return null;
+  return value > 0 ? 1 : 0;
+}
+
+function normalizeWeiwallContactType(input: unknown): 0 | 1 | 2 | null {
+  const value = Number(input);
+  if (value === 0 || value === 1 || value === 2) return value;
+  return null;
+}
+
+function extractWeiwallTopicStateMetadata(input: { status?: unknown; isOver?: unknown }) {
+  const metadata: Record<string, any> = {};
+  const externalStatus = sanitizeWeiwallStorageText(String(input.status ?? "").trim(), 32);
+  const externalIsOver = normalizeWeiwallBinaryFlag(input.isOver);
+  if (externalStatus) metadata.externalStatus = externalStatus;
+  if (externalIsOver !== null) metadata.externalIsOver = externalIsOver;
+  return metadata;
+}
+
+function extractWeiwallContactMetadata(input: WeiwallContactSourceFields) {
+  const metadata: Record<string, any> = {};
+  const linkType = normalizeWeiwallContactType(input.linkType);
+  const linkPeople = sanitizeWeiwallStorageText(String(input.linkPeople ?? "").trim(), 40);
+  const linkInfo = sanitizeWeiwallStorageText(String(input.linkInfo ?? "").trim(), 80);
+  if (linkType !== null) metadata.linkType = linkType;
+  if (linkPeople) metadata.linkPeople = linkPeople;
+  if (linkInfo) metadata.linkInfo = linkInfo;
+  return metadata;
+}
+
+function hasWeiwallContactMetadata(input: Record<string, any>) {
+  return "linkType" in input || "linkPeople" in input || "linkInfo" in input;
+}
+
+function pickStoredWeiwallContactMetadata(raw: unknown) {
+  if (!raw || typeof raw !== "object") return {};
+  return extractWeiwallContactMetadata(raw as WeiwallContactSourceFields);
+}
+
+function stripWeiwallDetailMetadata(raw: unknown) {
+  const metadata = raw && typeof raw === "object" ? { ...(raw as Record<string, any>) } : {};
+  delete metadata.externalStatus;
+  delete metadata.externalIsOver;
+  delete metadata.linkPeople;
+  delete metadata.linkType;
+  delete metadata.linkInfo;
+  delete metadata.weiwallDetailLoaded;
+  return metadata;
+}
+
+function hasWeiwallDetailLoaded(raw: unknown) {
+  return Boolean(raw && typeof raw === "object" && (raw as Record<string, any>).weiwallDetailLoaded === true);
 }
 
 function deriveLocalTitle(topic: WeiwallTopicRow) {
@@ -1412,10 +1477,11 @@ async function syncSingleTopic(
     where: { externalTopicId },
     include: {
       localTopic: {
-        select: { id: true, authorId: true, createdAt: true, replyCount: true, title: true },
+        select: { id: true, authorId: true, createdAt: true, replyCount: true, title: true, metadata: true },
       },
     },
   });
+  const existingMetadata = parseJsonSafe<Record<string, any>>(existingMap?.localTopic?.metadata, {});
 
   const needsReplyAuthorBackfill = existingMap
     ? await prisma.weiwallReplyMap.count({
@@ -1461,6 +1527,17 @@ async function syncSingleTopic(
     };
   }
 
+  const rowContactMetadata = extractWeiwallContactMetadata(topic);
+  const needsWeiwallDetailSync = !hasWeiwallContactMetadata(rowContactMetadata) && !hasWeiwallDetailLoaded(existingMetadata);
+  let topicDetail: WeiwallReadOnlyTopicDetail | null = null;
+  if (needsWeiwallDetailSync) {
+    try {
+      topicDetail = await fetchReadOnlyTopicDetail(configRow, externalTopicId);
+    } catch (error) {
+      console.warn(`[weiwall-sync] read_only detail skipped for ${externalTopicId}:`, error);
+    }
+  }
+
   const shouldSyncComments =
     remoteCommentCount > 0
     && !control.commentFetchStopped
@@ -1489,6 +1566,16 @@ async function syncSingleTopic(
     const fallbackContent = buildMirroredTopicFallbackContent(sourceUrl);
     const hidden = topicHidden(topic);
     const pinned = false;
+    const stateMetadata = {
+      ...extractWeiwallTopicStateMetadata(topic),
+      ...extractWeiwallTopicStateMetadata(topicDetail ?? {}),
+    };
+    const contactMetadata = topicDetail
+      ? extractWeiwallContactMetadata(topicDetail)
+      : hasWeiwallContactMetadata(rowContactMetadata)
+        ? rowContactMetadata
+        : pickStoredWeiwallContactMetadata(existingMetadata);
+    const weiwallDetailLoaded = Boolean(topicDetail) || hasWeiwallContactMetadata(rowContactMetadata) || hasWeiwallDetailLoaded(existingMetadata);
     const metadata = JSON.stringify({
       sourceUrl,
       sourceName: sanitizeWeiwallStorageText(sourceName, 80),
@@ -1505,6 +1592,9 @@ async function syncSingleTopic(
       externalAuthorName: sanitizeWeiwallStorageText(externalAuthor.name, 80),
       externalAuthorAvatar: sanitizeWeiwallStorageText(externalAuthor.avatar, 500),
       externalAuthorUuid: sanitizeWeiwallStorageText(externalAuthor.uuid, 80),
+      ...stateMetadata,
+      ...contactMetadata,
+      ...(weiwallDetailLoaded ? { weiwallDetailLoaded: true } : {}),
     });
     const fallbackMetadata = JSON.stringify({
       sourceUrl,
@@ -1514,6 +1604,9 @@ async function syncSingleTopic(
       externalType: "weiwall",
       externalPlatform: "weiwall",
       externalId: externalTopicId,
+      ...stateMetadata,
+      ...contactMetadata,
+      ...(weiwallDetailLoaded ? { weiwallDetailLoaded: true } : {}),
     });
     const safeLocalTitle = sanitizeWeiwallStorageText(localTitle, 120) || `逛逛帖子 ${externalTopicId}`;
     const fallbackTitle = `逛逛帖子 ${externalTopicId}`;
@@ -1687,7 +1780,7 @@ async function syncBackfillTopicComments(
     localTopicId: number;
     lastCommentCount: number;
     lastStatus: string | null;
-    localTopic: Pick<Topic, "id" | "authorId" | "createdAt" | "replyCount" | "title"> | null;
+    localTopic: Pick<Topic, "id" | "authorId" | "createdAt" | "replyCount" | "title" | "metadata"> | null;
   },
   botUserId: number,
   counters: WeiwallSyncResult,
@@ -1707,6 +1800,15 @@ async function syncBackfillTopicComments(
 
   const remoteCommentCount = Math.max(0, Number(detail?.commentCount ?? topicMap.lastCommentCount) || 0);
   const remoteStatus = String(detail?.status ?? topicMap.lastStatus ?? "");
+  const existingTopicMetadata = parseJsonSafe<Record<string, any>>(topicMap.localTopic.metadata, {});
+  const backfilledMetadata = detail
+    ? JSON.stringify({
+        ...stripWeiwallDetailMetadata(existingTopicMetadata),
+        ...extractWeiwallTopicStateMetadata(detail),
+        ...extractWeiwallContactMetadata(detail),
+        weiwallDetailLoaded: true,
+      })
+    : topicMap.localTopic.metadata;
   const shouldProbeLegacyBlockedReplies =
     remoteCommentCount > 0
     && remoteCommentCount === Math.max(0, Number(topicMap.lastCommentCount ?? 0) || 0)
@@ -1720,6 +1822,10 @@ async function syncBackfillTopicComments(
     || legacyBlockedReplyCount > 0;
 
   if (!shouldFetchComments) {
+    await prisma.topic.update({
+      where: { id: topicMap.localTopic.id },
+      data: { metadata: backfilledMetadata },
+    });
     await prisma.weiwallTopicMap.update({
       where: { id: topicMap.id },
       data: {
@@ -1762,10 +1868,16 @@ async function syncBackfillTopicComments(
       await tx.topic.update({
         where: { id: topicMap.localTopic!.id },
         data: {
+          metadata: backfilledMetadata,
           replyCount: 0,
           lastReplyAt: topicMap.localTopic!.createdAt,
           lastReplyById: topicMap.localTopic!.authorId,
         },
+      });
+    } else {
+      await tx.topic.update({
+        where: { id: topicMap.localTopic!.id },
+        data: { metadata: backfilledMetadata },
       });
     }
 
@@ -1897,7 +2009,7 @@ export async function runWeiwallSyncNow() {
           take: WEIWALL_COMMENT_BACKFILL_TOPICS_PER_RUN,
           include: {
             localTopic: {
-              select: { id: true, authorId: true, createdAt: true, replyCount: true, title: true },
+              select: { id: true, authorId: true, createdAt: true, replyCount: true, title: true, metadata: true },
             },
           },
         });

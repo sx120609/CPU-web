@@ -133,13 +133,9 @@
         <span>推荐 <el-rate :model-value="topic.metadata.ratings.recommend" disabled size="small" /></span>
         <span>给分 <el-rate :model-value="topic.metadata.ratings.givingScore" disabled size="small" /></span>
       </div>
-      <div v-if="topic.metadata?.condition || topic.metadata?.tradeMode || metaContacts.length" class="extra-bar">
+      <div v-if="topic.metadata?.condition || topic.metadata?.tradeMode" class="extra-bar">
         <span v-if="topic.metadata.condition">📦 {{ topic.metadata.condition }}</span>
         <span v-if="topic.metadata.tradeMode">🤝 {{ topic.metadata.tradeMode }}</span>
-        <span v-for="item in metaContacts" :key="`${item.type}-${item.value}`" class="contact-item">
-          <span class="contact-label">{{ contactTypeIcon(item.type) }} {{ item.label }}</span>
-          <b class="contact-value">{{ item.value }}</b>
-        </span>
       </div>
 
       <div v-if="topic.imageReview?.pendingCount" class="image-review-tip image-review-tip-pending">
@@ -211,6 +207,32 @@
         <el-button :icon="ChatLineRound" @click="openReplyDialog">回复 · {{ topic.replyCount }}</el-button>
         <el-button @click="shareDialogOpen = true">分享</el-button>
       </footer>
+
+      <section v-if="showWeiwallContactSection" class="weiwall-contact-card">
+        <button type="button" class="weiwall-contact-toggle" @click="toggleWeiwallContactSection">
+          <span class="weiwall-contact-toggle-main">
+            <span class="weiwall-contact-toggle-icon">☎</span>
+            <span>点此{{ weiwallContactExpanded ? "折叠" : "查看" }}联系方式</span>
+          </span>
+          <span class="weiwall-contact-toggle-arrow" :class="{ expanded: weiwallContactExpanded }">›</span>
+        </button>
+        <div v-if="weiwallContact && weiwallContactExpanded" class="weiwall-contact-panel">
+          <div class="weiwall-contact-row">
+            <span class="weiwall-contact-row-label">联系姓名</span>
+            <span class="weiwall-contact-row-value">{{ weiwallContact.name || "联系人" }}</span>
+          </div>
+          <div class="weiwall-contact-row weiwall-contact-row-action">
+            <div class="weiwall-contact-row-copy">
+              <span class="weiwall-contact-row-label">{{ weiwallContact.typeLabel }}</span>
+              <span class="weiwall-contact-row-value">{{ weiwallContact.info }}</span>
+            </div>
+            <button type="button" class="weiwall-contact-action" @click="handleWeiwallContactAction">
+              {{ weiwallContact.actionLabel }}
+            </button>
+          </div>
+          <p class="weiwall-contact-hint">联系时请备注在 {{ externalSourceName }} 上看到的。</p>
+        </div>
+      </section>
     </article>
 
     <!-- 回复列表 -->
@@ -648,6 +670,7 @@ const shareCardSaving = ref(false);
 const shareCardRendering = ref(false);
 const shareCardRenderedUrl = ref("");
 const shareCardPreviewOpen = ref(false);
+const weiwallContactExpanded = ref(false);
 const topicImageReviewDialogOpen = ref(false);
 const topicImageReviewLoading = ref(false);
 const topicImageReviewSavingId = ref<number | null>(null);
@@ -675,26 +698,39 @@ const replyEditorRef = ref<InstanceType<typeof RichTextEditor> | null>(null);
 const shareCardExportRef = ref<HTMLElement | null>(null);
 const REPLY_MAX = 10000;
 
-type TopicContact = {
-  type: string;
-  label: string;
-  value: string;
+type WeiwallContact = {
+  name: string;
+  type: 0 | 1 | 2;
+  info: string;
+  typeLabel: string;
+  actionLabel: string;
+};
+
+const WEIWALL_CONTACT_LABELS: Record<number, string> = {
+  0: "手机号码",
+  1: "微信账号",
+  2: "QQ账号",
 };
 
 const metaPrice = computed(() => topic.value?.metadata?.price);
-const metaContacts = computed<TopicContact[]>(() => {
-  const raw = topic.value?.metadata?.contacts;
-  if (Array.isArray(raw)) {
-    return raw
-      .map((item) => ({
-        type: String(item?.type || "other").trim().toLowerCase() || "other",
-        label: String(item?.label || "联系方式").trim() || "联系方式",
-        value: String(item?.value || "").trim(),
-      }))
-      .filter((item) => item.value);
-  }
-  const single = String(topic.value?.metadata?.contact || "").trim();
-  return single ? [{ type: "other", label: "联系方式", value: single }] : [];
+const weiwallContact = computed<WeiwallContact | null>(() => {
+  if (topic.value?.metadata?.externalPlatform !== "weiwall") return null;
+  const info = String(topic.value?.metadata?.linkInfo ?? "").trim();
+  const type = normalizeWeiwallContactType(topic.value?.metadata?.linkType);
+  if (!info || type === null) return null;
+  return {
+    name: String(topic.value?.metadata?.linkPeople ?? "").trim(),
+    type,
+    info,
+    typeLabel: WEIWALL_CONTACT_LABELS[type],
+    actionLabel: type === 0 ? "一键拨打" : "一键复制",
+  };
+});
+const showWeiwallContactSection = computed(() => {
+  if (!weiwallContact.value) return false;
+  const status = String(topic.value?.metadata?.externalStatus ?? "").trim().toLowerCase();
+  const isOver = normalizeWeiwallOverFlag(topic.value?.metadata?.externalIsOver);
+  return status === "normal" && isOver === 0;
 });
 const hotScore = computed(() => Math.round((topic.value?.likeCount ?? 0) * 5 + (topic.value?.replyCount ?? 0) * 3 + (topic.value?.viewCount ?? 0) * 0.03));
 const boardDisplayName = computed(() => topic.value?.board?.slug === "campus-wall" ? "逛逛" : (topic.value?.board?.name || "药大拾间"));
@@ -894,12 +930,40 @@ const backLabel = computed(() => {
   return "返回最新";
 });
 
-function contactTypeIcon(type: string) {
-  if (type === "phone") return "📱";
-  if (type === "wechat") return "💬";
-  if (type === "qq") return "🐧";
-  if (type === "email") return "✉️";
-  return "☎️";
+function normalizeWeiwallContactType(value: unknown): 0 | 1 | 2 | null {
+  const type = Number(value);
+  if (type === 0 || type === 1 || type === 2) return type;
+  return null;
+}
+
+function normalizeWeiwallOverFlag(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "boolean") return value ? 1 : 0;
+  const normalized = Number(value);
+  if (!Number.isFinite(normalized)) return null;
+  return normalized > 0 ? 1 : 0;
+}
+
+function toggleWeiwallContactSection() {
+  if (!showWeiwallContactSection.value) return;
+  weiwallContactExpanded.value = !weiwallContactExpanded.value;
+}
+
+async function handleWeiwallContactAction() {
+  const contact = weiwallContact.value;
+  if (!contact) return;
+  if (contact.type === 0) {
+    const tel = contact.info.replace(/[^\d+]/g, "");
+    if (!tel) {
+      await copyText(contact.info);
+      ElMessage.success("手机号已复制");
+      return;
+    }
+    window.location.href = `tel:${tel}`;
+    return;
+  }
+  await copyText(contact.info);
+  ElMessage.success(`${contact.typeLabel}已复制`);
 }
 
 function goBackFromTopic() {
@@ -973,11 +1037,16 @@ watch(replyDialogOpen, (open) => {
   }
 });
 
+watch(showWeiwallContactSection, (visible) => {
+  if (!visible) weiwallContactExpanded.value = false;
+}, { immediate: true });
+
 async function load() {
   loading.value = true;
   repliesLoading.value = true;
   replies.value = [];
   liked.value = false;
+  weiwallContactExpanded.value = false;
   try {
     const id = Number(route.params.id);
     const topicPromise = loadTopicDetail(id)
@@ -1745,9 +1814,123 @@ async function onDelete() {
     a { color: var(--cpu-primary); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
   }
   .extra-bar.ratings { background: #ecfdf5; }
-  .contact-item { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .contact-label { color: #6b7280; }
-  .contact-value { color: #111827; font-weight: 600; }
+
+  .weiwall-contact-card {
+    margin-top: 14px;
+    border: 1px solid #c8eadf;
+    border-radius: 16px;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at top right, rgba(20, 184, 166, 0.16), transparent 32%),
+      linear-gradient(135deg, #f3fffb 0%, #ffffff 58%, #eefbf7 100%);
+  }
+
+  .weiwall-contact-toggle {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: #0f766e;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .weiwall-contact-toggle-main {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+  }
+
+  .weiwall-contact-toggle-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 118, 110, 0.12);
+  }
+
+  .weiwall-contact-toggle-arrow {
+    font-size: 24px;
+    line-height: 1;
+    color: #0f766e;
+    transition: transform 0.2s ease;
+  }
+
+  .weiwall-contact-toggle-arrow.expanded {
+    transform: rotate(90deg);
+  }
+
+  .weiwall-contact-panel {
+    padding: 0 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .weiwall-contact-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.86);
+    border: 1px solid rgba(15, 118, 110, 0.12);
+  }
+
+  .weiwall-contact-row-action {
+    align-items: stretch;
+  }
+
+  .weiwall-contact-row-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .weiwall-contact-row-label {
+    font-size: 12px;
+    color: #6b7280;
+  }
+
+  .weiwall-contact-row-value {
+    color: #111827;
+    font-weight: 600;
+    word-break: break-all;
+  }
+
+  .weiwall-contact-action {
+    flex: none;
+    align-self: center;
+    border: 0;
+    border-radius: 10px;
+    padding: 10px 14px;
+    background: #0f766e;
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+  }
+
+  .weiwall-contact-action:hover {
+    opacity: 0.9;
+  }
+
+  .weiwall-contact-hint {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #4b5563;
+  }
 
   .source-bar {
     background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
@@ -2931,6 +3114,16 @@ async function onDelete() {
     .post-foot {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .weiwall-contact-row,
+    .weiwall-contact-row-action {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .weiwall-contact-action {
+      width: 100%;
     }
   }
 
