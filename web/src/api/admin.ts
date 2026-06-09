@@ -302,7 +302,7 @@ export type ForumVideoQueueRow = {
 export type AdminOverview = {
   users: number;
   banned: number;
-  recentLogins: number;
+  todayLogins: number;
   topics: number;
   todayTopics: number;
   hiddenTopics: number;
@@ -316,6 +316,10 @@ export type AdminOverview = {
   forumEnabledUsers: number;
   forumPendingUsers: number;
   forumEnabledToday: number;
+  dailyActiveSeries: Array<{
+    date: string;
+    count: number;
+  }>;
 };
 
 export type WeiwallSyncConfig = {

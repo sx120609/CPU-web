@@ -101,6 +101,7 @@ import {
   runWeiwallSyncNow,
   updateWeiwallSyncConfig,
 } from "../../services/weiwallSync";
+import { listAdminDailyLoginSeries } from "../../services/adminStats";
 
 export const adminRouter = Router();
 const DATABASE_RESTORE_UPLOAD_DIR = path.join(tmpdir(), "cpu-web-db-restore-upload");
@@ -1532,7 +1533,6 @@ adminRouter.get("/sponsor-logs", adminOnly, async (req, res, next) => {
 
 adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
   try {
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const regularUserWhere = { role: "user" as const };
@@ -1549,10 +1549,11 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       iosClients,
       androidClients,
       harmonyClients,
-      recentLogins,
+      todayLogins,
       forumEligibleUsers,
       forumEnabledUsers,
       forumEnabledToday,
+      dailyActiveSeries,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({ where: { status: "banned" } }),
@@ -1567,12 +1568,17 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       prisma.user.count({ where: { usedIosClient: true } }),
       prisma.user.count({ where: { usedAndroidClient: true } }),
       prisma.user.count({ where: { usedHarmonyClient: true } }),
-      prisma.user.count({ where: { lastLoginAt: { gte: thirtyDaysAgo } } }),
+      prisma.user.count({ where: { lastLoginAt: { gte: todayStart } } }),
       prisma.user.count({ where: regularUserWhere }),
       prisma.user.count({ where: { ...regularUserWhere, forumEnabled: true } }),
       prisma.user.count({ where: { ...regularUserWhere, forumEnabled: true, forumEnabledAt: { gte: todayStart } } }),
+      listAdminDailyLoginSeries(30),
     ]);
     const forumPendingUsers = Math.max(0, forumEligibleUsers - forumEnabledUsers);
+    const dailyActiveToday = dailyActiveSeries[dailyActiveSeries.length - 1];
+    if (dailyActiveToday) {
+      dailyActiveToday.count = Math.max(dailyActiveToday.count, todayLogins);
+    }
     ok(res, {
       users,
       banned,
@@ -1585,11 +1591,12 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       iosClients,
       androidClients,
       harmonyClients,
-      recentLogins,
+      todayLogins,
       forumEligibleUsers,
       forumEnabledUsers,
       forumPendingUsers,
       forumEnabledToday,
+      dailyActiveSeries,
     });
   } catch (e) { next(e); }
 });

@@ -15,7 +15,7 @@
       <div class="ov-card">
         <div class="ov-num">{{ overview.users }}</div>
         <div class="ov-lbl">用户</div>
-        <div class="ov-sub">{{ overview.banned || 0 }} 封禁 · {{ overview.recentLogins || 0 }} 近 30 天登录</div>
+        <div class="ov-sub">{{ overview.banned || 0 }} 封禁 · {{ overview.todayLogins || 0 }} 今日登录</div>
       </div>
       <div class="ov-card">
         <div class="ov-num">{{ overview.forumEnabledUsers }} / {{ overview.forumEligibleUsers }}</div>
@@ -39,6 +39,28 @@
         <div class="ov-num">{{ overview.feeds }} / {{ overview.boards }}</div>
         <div class="ov-lbl">同步源 / 板块</div>
       </div>
+      <div class="ov-card ov-card-wide">
+        <div class="ov-card-head">
+          <div>
+            <div class="ov-num">{{ overview.todayLogins }}</div>
+            <div class="ov-lbl">近 30 日日活</div>
+            <div class="ov-sub">{{ dailyActiveSummary }}</div>
+          </div>
+          <span class="ov-chip">按登录去重</span>
+        </div>
+        <div class="ov-trend" v-if="dailyActiveBars.length">
+          <div
+            v-for="item in dailyActiveBars"
+            :key="item.date"
+            class="ov-trend-col"
+            :class="{ today: item.isToday }"
+            :title="`${item.date}：${item.count} 人`"
+          >
+            <span class="ov-trend-bar" :style="{ height: item.height }"></span>
+            <span class="ov-trend-label" :class="{ ghost: !item.showLabel }">{{ item.showLabel ? item.label : "" }}</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <el-tabs v-model="tab" class="cpu-card">
@@ -60,7 +82,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from "vue";
+import { computed, ref, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { adminApi, type AdminOverview } from "@/api/admin";
@@ -83,6 +105,32 @@ const route = useRoute();
 const router = useRouter();
 const tab = ref(typeof route.query.tab === "string" ? route.query.tab : "users");
 const overview = ref<AdminOverview | null>(null);
+const dailyActiveSeries = computed(() => overview.value?.dailyActiveSeries ?? []);
+const dailyActivePeak = computed(() => dailyActiveSeries.value.reduce((max, item) => Math.max(max, item.count), 0));
+const dailyActiveAverage = computed(() => {
+  if (!dailyActiveSeries.value.length) return 0;
+  const total = dailyActiveSeries.value.reduce((sum, item) => sum + item.count, 0);
+  return Math.round((total / dailyActiveSeries.value.length) * 10) / 10;
+});
+const dailyActiveBars = computed(() => {
+  const peak = Math.max(1, dailyActivePeak.value);
+  return dailyActiveSeries.value.map((item, index, list) => {
+    const ratio = item.count > 0 ? item.count / peak : 0;
+    return {
+      ...item,
+      isToday: index === list.length - 1,
+      label: item.date.slice(5).replace("-", "/"),
+      showLabel: index === 0 || index === list.length - 1 || index % 7 === 0,
+      height: `${Math.max(item.count > 0 ? 14 : 8, Math.round(ratio * 100))}%`,
+    };
+  });
+});
+const dailyActiveSummary = computed(() => {
+  if (!dailyActiveSeries.value.length) return "按每日登录去重统计";
+  const trackedDays = dailyActiveSeries.value.filter((item) => item.count > 0).length;
+  if (trackedDays <= 1) return "按每日登录去重统计，历史数据会逐步累计";
+  return `30 日均 ${dailyActiveAverage.value} · 峰值 ${dailyActivePeak.value}`;
+});
 
 onMounted(async () => {
   try { overview.value = await adminApi.overview(); } catch { /* ignore */ }
@@ -122,13 +170,71 @@ watch(tab, (next) => {
   padding: 14px 16px;
   min-width: 0;
 }
+.ov-card-wide {
+  grid-column: span 2;
+  background:
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 30%),
+    linear-gradient(135deg, #f8fbff 0%, #ffffff 54%, #f3f8ff 100%);
+}
+.ov-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ov-chip {
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 600;
+}
 .ov-num { font-size: 24px; font-weight: 700; color: var(--cpu-primary); line-height: 1; white-space: nowrap; }
 .ov-lbl { font-size: 12px; color: #6b7280; margin-top: 4px; }
 .ov-sub { font-size: 11px; color: #6b7280; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-trend {
+  margin-top: 14px;
+  height: 132px;
+  display: grid;
+  grid-template-columns: repeat(30, minmax(0, 1fr));
+  gap: 6px;
+  align-items: end;
+}
+.ov-trend-col {
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: end;
+  align-items: center;
+  gap: 6px;
+}
+.ov-trend-bar {
+  width: 100%;
+  min-height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.22);
+}
+.ov-trend-col.today .ov-trend-bar {
+  background: linear-gradient(180deg, #34d399 0%, #059669 100%);
+}
+.ov-trend-label {
+  min-height: 16px;
+  font-size: 10px;
+  line-height: 1.2;
+  color: #94a3b8;
+}
+.ov-trend-label.ghost {
+  visibility: hidden;
+}
 .cpu-card { background: #fff; border-radius: 12px; padding: 12px 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
 
 @media (max-width: 1100px) {
   .overview { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ov-card-wide { grid-column: span 3; }
 }
 
 @media (max-width: 720px) {
@@ -139,6 +245,18 @@ watch(tab, (next) => {
   .overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ov-card { padding: 12px; }
   .ov-num { font-size: 21px; }
+  .ov-card-wide { grid-column: span 2; }
+  .ov-card-head {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .ov-chip {
+    align-self: flex-start;
+  }
+  .ov-trend {
+    gap: 4px;
+    height: 112px;
+  }
   .cpu-card {
     margin: 0 -4px;
     padding: 8px 8px 12px;
@@ -191,5 +309,6 @@ watch(tab, (next) => {
 
 @media (max-width: 420px) {
   .overview { grid-template-columns: 1fr; }
+  .ov-card-wide { grid-column: span 1; }
 }
 </style>
