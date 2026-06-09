@@ -7,7 +7,7 @@ const state = {
   mode: "create",
   templateKey: "builtin:student",
   settings: { siteUrl: "", siteTitle: SITE_TITLE_DEFAULT, taskTemplates: [] },
-  viewer: { role: "", isSuperAdmin: false, user: null },
+  viewer: { role: "", isSuperAdmin: false, isManager: false, user: null },
   authed: false,
   softRefreshTimer: null,
   softRefreshing: false,
@@ -82,7 +82,7 @@ async function api(path, options = {}) {
 
 function setAuthed(isAuthed) {
   state.authed = isAuthed;
-  if (!isAuthed) state.viewer = { role: "", isSuperAdmin: false, user: null };
+  if (!isAuthed) state.viewer = { role: "", isSuperAdmin: false, isManager: false, user: null };
   document.body.classList.toggle("auth-pending", !isAuthed);
   $("#loginScreen").hidden = isAuthed;
   if (isAuthed) {
@@ -91,6 +91,7 @@ function setAuthed(isAuthed) {
     stopSoftRefresh();
   }
   syncOwnerBindButton(state.current);
+  syncTemplateActions();
 }
 
 function applyBranding() {
@@ -120,6 +121,20 @@ function syncOwnerBindButton(task = state.current) {
   button.textContent = task?.createdBy?.userId ? "更改创建者" : "绑定创建者";
 }
 
+function syncTemplateActions() {
+  const canManageTemplates = Boolean(state.viewer.isManager);
+  const saveButton = $("#saveTemplate");
+  const deleteButton = $("#deleteTemplate");
+  if (saveButton) {
+    saveButton.hidden = !canManageTemplates;
+    saveButton.disabled = !canManageTemplates;
+  }
+  if (deleteButton) {
+    deleteButton.hidden = !canManageTemplates;
+    deleteButton.disabled = !canManageTemplates || state.templateKey.startsWith("builtin:");
+  }
+}
+
 async function checkSession() {
   try {
     const session = await api("/api/admin/me");
@@ -127,6 +142,7 @@ async function checkSession() {
     state.viewer = {
       role: session.role || "",
       isSuperAdmin: Boolean(session.isSuperAdmin),
+      isManager: Boolean(session.isManager),
       user: session.user || null,
     };
     applyBranding();
@@ -281,7 +297,7 @@ function renderTemplateSelect(selectedKey = state.templateKey) {
   const hasSelected = options.some((item) => item.key === selectedKey);
   state.templateKey = hasSelected ? selectedKey : "builtin:student";
   $("#templateSelect").value = state.templateKey;
-  $("#deleteTemplate").disabled = state.templateKey.startsWith("builtin:");
+  syncTemplateActions();
 }
 
 function addField(field = {}) {
@@ -506,6 +522,7 @@ async function loadTasks({ silent = false } = {}) {
 }
 
 async function saveTemplate() {
+  if (!state.viewer.isManager) throw new Error("仅文件收集管理器可保存全局模板");
   const name = await promptInApp({
     title: "保存当前模板",
     body: "输入模板名称，保存后会出现在模板下拉列表中。",
@@ -542,6 +559,7 @@ async function saveTemplate() {
 }
 
 async function deleteSelectedTemplate() {
+  if (!state.viewer.isManager) throw new Error("仅文件收集管理器可删除全局模板");
   const selected = selectedTemplate();
   if (!selected) throw new Error("请选择模板");
   if (selected.builtin) {
@@ -1269,7 +1287,7 @@ function bind() {
   });
   $("#templateSelect").addEventListener("change", () => {
     state.templateKey = $("#templateSelect").value;
-    $("#deleteTemplate").disabled = state.templateKey.startsWith("builtin:");
+    syncTemplateActions();
   });
   $("#applyTemplate").addEventListener("click", safe(() => applyTemplate()));
   $("#deleteTemplate").addEventListener("click", safe(deleteSelectedTemplate));

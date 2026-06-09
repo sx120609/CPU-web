@@ -5,7 +5,7 @@ import http from "node:http";
 import path from "node:path";
 import { config } from "../config";
 import { prisma } from "../prisma";
-import { hasToolManagerPermission } from "./serviceTools";
+import { hasToolContentManagePermission, hasToolManagerPermission } from "./serviceTools";
 import { verifyToken } from "../utils/jwt";
 
 const MOUNT_PATH = "/filestore";
@@ -22,6 +22,10 @@ type PlatformFilestoreUser = {
   role: string;
   studentId: string;
   campus: string;
+};
+
+type FilestoreAccessUser = PlatformFilestoreUser & {
+  isToolManager: boolean;
 };
 
 function filestoreRoot() {
@@ -164,18 +168,19 @@ async function platformUserFromRequest(req: Request) {
   }
 }
 
-async function assertFilestoreAdmin(req: Request, res: Response): Promise<PlatformFilestoreUser | null | false> {
+async function assertFilestoreAccess(req: Request, res: Response): Promise<FilestoreAccessUser | null | false> {
   if (isPublicFilestoreRequest(req)) return null;
   const user = await platformUserFromRequest(req);
   if (!user?.userId) {
     res.status(401).json({ error: "请先登录平台账号" });
     return false;
   }
-  if (!(await hasToolManagerPermission("file_collect", user))) {
+  const isToolManager = await hasToolManagerPermission("file_collect", user);
+  if (!isToolManager && !(await hasToolContentManagePermission("file_collect", user))) {
     res.status(403).json({ error: "没有文件收集管理权限" });
     return false;
   }
-  return user;
+  return { ...user, isToolManager };
 }
 
 function encodeFilestoreHeaderValue(value?: string | null) {
@@ -211,7 +216,7 @@ function writeHeaders(res: Response, upstream: http.IncomingMessage, rewrittenBo
   if (rewrittenBody) res.setHeader("content-length", String(rewrittenBody.byteLength));
 }
 
-async function handleFilestoreUtilityRoute(req: Request, res: Response, user: PlatformFilestoreUser | null) {
+async function handleFilestoreUtilityRoute(req: Request, res: Response, user: FilestoreAccessUser | null) {
   const target = upstreamPath(req).split("?")[0];
   if (req.method === "GET" && target === "/api/platform/users") {
     if (!user?.userId) {
@@ -264,7 +269,7 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Pl
   return false;
 }
 
-function proxyToFilestore(req: Request, res: Response, user: PlatformFilestoreUser | null) {
+function proxyToFilestore(req: Request, res: Response, user: FilestoreAccessUser | null) {
   const headers = {
     ...req.headers,
     host: `127.0.0.1:${config.filestorePort}`,
@@ -274,6 +279,7 @@ function proxyToFilestore(req: Request, res: Response, user: PlatformFilestoreUs
       "x-cpu-filestore-username": encodeFilestoreHeaderValue(user.username),
       "x-cpu-filestore-display-name": encodeFilestoreHeaderValue(user.nickname || user.username),
       "x-cpu-filestore-role": user.role,
+      "x-cpu-filestore-is-manager": user.isToolManager ? "1" : "0",
     } : {}),
   };
   const upstream = http.request({
@@ -314,7 +320,7 @@ function proxyToFilestore(req: Request, res: Response, user: PlatformFilestoreUs
 export const filestoreProxy: RequestHandler = async (req, res) => {
   try {
     await ensureFilestoreStarted();
-    const user = await assertFilestoreAdmin(req, res);
+    const user = await assertFilestoreAccess(req, res);
     if (user === false) return;
     if (await handleFilestoreUtilityRoute(req, res, user)) return;
     proxyToFilestore(req, res, user);

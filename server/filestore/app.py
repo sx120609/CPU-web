@@ -477,6 +477,7 @@ def trusted_proxy_actor(handler: SimpleHTTPRequestHandler) -> dict | None:
     username = unquote(handler.headers.get("X-CPU-Filestore-Username", "").strip())
     display_name = unquote(handler.headers.get("X-CPU-Filestore-Display-Name", "").strip()) or username
     role = handler.headers.get("X-CPU-Filestore-Role", "").strip() or "user"
+    is_manager = role == "admin" or handler.headers.get("X-CPU-Filestore-Is-Manager", "").strip() == "1"
     return {
         "authType": "platform",
         "userId": user_id,
@@ -484,6 +485,7 @@ def trusted_proxy_actor(handler: SimpleHTTPRequestHandler) -> dict | None:
         "displayName": display_name,
         "role": role,
         "isSuperAdmin": role == "admin",
+        "isManager": is_manager,
     }
 
 
@@ -500,6 +502,7 @@ def current_actor(handler: SimpleHTTPRequestHandler) -> dict | None:
             "displayName": "Filestore 管理员",
             "role": "admin",
             "isSuperAdmin": True,
+            "isManager": True,
         }
     return None
 
@@ -516,6 +519,14 @@ def require_super_admin(handler: SimpleHTTPRequestHandler, actor: dict | None = 
     if current and current.get("isSuperAdmin"):
         return current
     send_json(handler, {"error": "仅超级管理员可操作"}, HTTPStatus.FORBIDDEN)
+    return None
+
+
+def require_manager(handler: SimpleHTTPRequestHandler, actor: dict | None = None) -> dict | None:
+    current = actor or current_actor(handler)
+    if current and current.get("isManager"):
+        return current
+    send_json(handler, {"error": "仅文件收集管理器可操作全局配置"}, HTTPStatus.FORBIDDEN)
     return None
 
 
@@ -1023,6 +1034,7 @@ class AppHandler(SimpleHTTPRequestHandler):
                     "ok": True,
                     "role": actor["role"] if actor else "admin",
                     "isSuperAdmin": bool(actor and actor.get("isSuperAdmin")),
+                    "isManager": bool(actor and actor.get("isManager")),
                     "user": {
                         "userId": actor.get("userId") if actor else None,
                         "username": actor.get("username") if actor else "",
@@ -1033,7 +1045,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             )
             return
         if path == "/api/settings":
-            if not require_admin(self):
+            if not require_manager(self):
                 return
             send_json(self, app_settings())
             return
@@ -1179,7 +1191,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             )
             return
         if path == "/api/settings":
-            if not require_admin(self):
+            if not require_manager(self):
                 return
             try:
                 payload = read_json_body(self)

@@ -26,11 +26,69 @@
         </el-tabs>
 
         <div v-if="activeTool === 'file_collect'" class="tool-admin-grid permission-only-grid">
+          <section class="admin-section questionnaire-section">
+            <div class="section-head">
+              <div>
+                <h3>文件收集</h3>
+                <p>文件收集管理端已经接入 Filestore。任务创建、收件统计、文件浏览和导出都在工作台里完成，这里负责统一维护入口权限和管理器。</p>
+              </div>
+              <el-button type="primary" @click="openFilestoreTool">
+                <el-icon><View /></el-icon>
+                打开工作台
+              </el-button>
+            </div>
+            <div class="empty-panel">
+              {{ canAdminActiveTool ? "可在这里决定是否展示工具、是否要求登录，以及是否允许所有登录用户进入后只管理自己创建的任务。" : "你可以进入工作台创建和管理自己发起的文件收集任务；工具入口和权限开关由管理器维护。" }}
+            </div>
+          </section>
+
+          <section v-if="canAdminActiveTool" class="admin-section managers-section">
+            <div class="section-head">
+              <div>
+                <h3>使用权限</h3>
+                <p>可决定文件收集是否显示在小工具入口中，以及是否向所有登录用户开放“只管理自己任务”的工作台。</p>
+              </div>
+            </div>
+            <div class="access-setting">
+              <div>
+                <b>展示在工具列表</b>
+                <span>{{ currentToolMeta?.isVisible ? "当前会显示在小工具入口中" : "当前已从小工具入口中隐藏" }}</span>
+              </div>
+              <el-switch
+                v-model="toolVisible"
+                :loading="settingSaving"
+                @change="saveToolVisibilitySetting"
+              />
+            </div>
+            <div class="access-setting">
+              <div>
+                <b>登录后使用</b>
+                <span>{{ currentToolMeta?.requireLogin ? "当前需要登录" : "当前允许游客打开工具详情页" }}</span>
+              </div>
+              <el-switch
+                v-model="toolRequireLogin"
+                :loading="settingSaving"
+                @change="saveToolSetting"
+              />
+            </div>
+            <div class="access-setting">
+              <div>
+                <b>开放管理入口</b>
+                <span>{{ currentToolMeta?.allowPublicManage ? "所有登录用户都可进入工作台，但只能看到并管理自己创建的任务" : "仅管理器可进入文件收集工作台" }}</span>
+              </div>
+              <el-switch
+                v-model="toolAllowPublicManage"
+                :loading="settingSaving"
+                @change="savePublicManageSetting"
+              />
+            </div>
+          </section>
+
           <section v-if="canAdminActiveTool" class="admin-section managers-section">
             <div class="section-head">
               <div>
                 <h3>管理器</h3>
-                <p>被分配后可访问 Filestore 文件收集工作台。</p>
+                <p>被分配后可维护文件收集入口设置、全局模板，并查看全部任务。</p>
               </div>
             </div>
             <div class="add-manager">
@@ -1521,6 +1579,10 @@ async function reloadActive() {
 
 function openCloudDriveTool() {
   router.push("/services/tools/cloud_drive");
+}
+
+function openFilestoreTool() {
+  router.push("/services/tools/filestore");
 }
 
 async function saveToolSetting(value: string | number | boolean) {
