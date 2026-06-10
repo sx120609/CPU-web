@@ -438,9 +438,20 @@ function syncImageShellMetrics(img: HTMLImageElement, shell: HTMLSpanElement) {
   const max = getImageMaxBounds(img);
   const naturalWidth = img.naturalWidth;
   const naturalHeight = img.naturalHeight;
+  const ratioKind = readImageRatioKind(naturalWidth, naturalHeight);
+  shell.classList.toggle("is-tall", ratioKind === "tall");
+  shell.classList.toggle("is-wide", ratioKind === "wide");
+  shell.classList.toggle("is-full-ratio", ratioKind !== "normal");
   if (!naturalWidth || !naturalHeight) {
     shell.style.setProperty("--md-image-target-width", `${max.width}px`);
     shell.style.setProperty("--md-image-aspect-ratio", `${max.width} / ${max.height}`);
+    return;
+  }
+  if (shell.parentElement?.classList.contains("md-image-album") && ratioKind !== "normal") {
+    const widthCap = ratioKind === "tall" ? 320 : 520;
+    const width = Math.max(96, Math.min(naturalWidth, widthCap));
+    shell.style.setProperty("--md-image-target-width", `${width}px`);
+    shell.style.setProperty("--md-image-aspect-ratio", `${naturalWidth} / ${naturalHeight}`);
     return;
   }
   const scale = Math.min(max.width / naturalWidth, max.height / naturalHeight, 1);
@@ -462,6 +473,14 @@ function getImageMaxBounds(img: HTMLImageElement) {
   if (img.dataset.size === "small") return { width: 180, height: 140 };
   if (img.dataset.size === "medium") return { width: 220, height: 180 };
   return { width: 220, height: 180 };
+}
+
+function readImageRatioKind(naturalWidth: number, naturalHeight: number) {
+  if (!naturalWidth || !naturalHeight) return "normal" as const;
+  const ratio = naturalWidth / naturalHeight;
+  if (ratio <= 0.72) return "tall" as const;
+  if (ratio >= 1.85) return "wide" as const;
+  return "normal" as const;
 }
 
 function openImagePreview(index: number) {
@@ -725,6 +744,15 @@ onMounted(() => {
   margin: 0;
   aspect-ratio: 1 / 1;
 }
+.md :deep(.md-image-album > .md-image-shell.is-full-ratio) {
+  width: min(100%, var(--md-image-target-width, 320px));
+  max-width: 100%;
+  grid-column: 1 / -1;
+  margin-left: auto;
+  margin-right: auto;
+  aspect-ratio: var(--md-image-aspect-ratio, 11 / 9);
+  background: #f8fafc;
+}
 .md :deep(.md-image-shell[data-align="left"]) {
   display: flex;
   margin-left: 0;
@@ -776,6 +804,10 @@ onMounted(() => {
   object-fit: cover;
   opacity: 0;
   transition: opacity 0.22s ease;
+}
+.md :deep(.md-image-album > .md-image-shell.is-full-ratio img) {
+  object-fit: contain;
+  background: #fff;
 }
 .md :deep(.md-image-album > .md-image-shell img) {
   border-radius: inherit;
