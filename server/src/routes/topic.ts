@@ -28,6 +28,7 @@ import {
   shouldRunAiReview,
   syncTopicAiTags,
 } from "../services/topicAiReview";
+import { autoFormatTopicContent } from "../services/topicAiFormat";
 import { ensureCanReadBoardType, ensureForumAccessEnabled, resolveForumAccess } from "../services/forumAccess";
 import { ensureUserCanSpeak, releaseExpiredMutes } from "../services/userModeration";
 import { consumeAnonymousCredit, createAnonymousAlias } from "../services/userTrust";
@@ -142,6 +143,13 @@ const createSchema = z.object({
   metadata: z.record(z.any()).optional(),
   tags: z.array(z.string().max(20)).optional(),
   anonymous: z.boolean().optional(),
+});
+
+const formatSchema = z.object({
+  title: z.string().max(120).optional(),
+  content: z.string().min(1).max(20000),
+  boardSlug: z.string().min(1).optional(),
+  editorMode: z.enum(["visual", "markup"]).optional(),
 });
 
 topicRouter.post("/", authRequired, validate(createSchema), async (req, res, next) => {
@@ -324,6 +332,26 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
             videoReview,
           },
     });
+  } catch (e) { next(e); }
+});
+
+topicRouter.post("/format", authRequired, validate(formatSchema), async (req, res, next) => {
+  try {
+    const { title, content, boardSlug, editorMode } = req.body;
+    const board = boardSlug
+      ? await prisma.board.findUnique({
+          where: { slug: boardSlug },
+          select: { name: true, type: true },
+        })
+      : null;
+    const result = await autoFormatTopicContent({
+      title,
+      content,
+      boardName: board?.name,
+      boardType: board?.type,
+      editorMode,
+    });
+    ok(res, result);
   } catch (e) { next(e); }
 });
 

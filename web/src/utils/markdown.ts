@@ -5,7 +5,7 @@ marked.setOptions({ breaks: true, gfm: true });
 
 export function renderMarkdown(md: string): string {
   const raw = marked.parse(md, { async: false }) as string;
-  return DOMPurify.sanitize(raw, {
+  const sanitized = DOMPurify.sanitize(raw, {
     ADD_ATTR: [
       "class",
       "target",
@@ -24,10 +24,12 @@ export function renderMarkdown(md: string): string {
       "data-image-album",
       "data-image-count",
       "data-forward-depth",
+      "align",
     ],
     // 允许学校公告中常见的表格相关标签
     ADD_TAGS: ["table", "thead", "tbody", "tfoot", "tr", "td", "th", "caption", "colgroup", "col", "sub", "sup", "video", "source"],
   });
+  return normalizeRenderedMarkup(sanitized);
 }
 
 /** 从 Markdown 提取纯文本摘要 */
@@ -45,4 +47,21 @@ export function mdSummary(md: string, max = 80): string {
     .replace(/\s+/g, " ")
     .trim();
   return text.length > max ? text.slice(0, max) + "…" : text;
+}
+
+function normalizeRenderedMarkup(html: string) {
+  if (!html) return html;
+  if (typeof document === "undefined") {
+    return html.replace(/\salign=(['"]?)(left|center|right)\1/gi, (_match, _quote, align) => ` data-align="${String(align).toLowerCase()}"`);
+  }
+  const container = document.createElement("div");
+  container.innerHTML = html;
+  container.querySelectorAll<HTMLElement>("[align]").forEach((element) => {
+    const align = String(element.getAttribute("align") || "").trim().toLowerCase();
+    if (align === "left" || align === "center" || align === "right") {
+      element.setAttribute("data-align", align);
+    }
+    element.removeAttribute("align");
+  });
+  return container.innerHTML;
 }

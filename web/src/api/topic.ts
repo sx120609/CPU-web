@@ -94,6 +94,13 @@ export type VideoReviewSummary = {
   manualReviewCount: number;
 };
 
+export type TopicAutoFormatResult = {
+  content: string;
+  provider: "ai" | "fallback";
+  model: string | null;
+  summary: string;
+};
+
 export const topicApi = {
   list: (params: { board?: string; page?: number; size?: number; sort?: "new" | "hot"; pinned?: "only" | "exclude" }) =>
     request.get<{ page: number; size: number; total: number; list: Topic[] }>("/topics", params),
@@ -103,6 +110,8 @@ export const topicApi = {
     request.post<Topic & { submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string; imageReview?: ImageReviewSummary | null; videoReview?: VideoReviewSummary | null } }>("/topics", payload),
   update: (id: number, payload: Partial<Topic>) =>
     request.patch<Topic & { submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string; imageReview?: ImageReviewSummary | null; videoReview?: VideoReviewSummary | null } }>(`/topics/${id}`, payload),
+  autoFormat: (payload: { title?: string; content: string; boardSlug?: string; editorMode?: "visual" | "markup" }) =>
+    request.post<TopicAutoFormatResult>("/topics/format", payload, { timeout: 60000 }),
   remove: (id: number) => request.delete<any>(`/topics/${id}`),
   requestManualReview: (id: number) => request.post<{ ok: true }>(`/topics/${id}/request-manual-review`),
 };

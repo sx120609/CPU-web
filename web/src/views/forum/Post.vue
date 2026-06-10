@@ -132,13 +132,80 @@
         </el-form-item>
 
         <el-form-item label="正文" required>
-          <RichTextEditor
-            ref="editorRef"
-            v-model="form.content"
-            :max-length="CONTENT_MAX"
-            :draft-key="contentDraftKey"
-            @draft-restored="onContentDraftRestored"
-          />
+          <div class="post-editor-shell">
+            <div class="post-editor-toolbar">
+              <div class="editor-mode-switch" role="tablist" aria-label="正文编辑模式">
+                <button
+                  type="button"
+                  class="editor-mode-btn"
+                  :class="{ active: editorMode === 'visual' }"
+                  @click="setEditorMode('visual')"
+                >
+                  可视化编辑
+                </button>
+                <button
+                  type="button"
+                  class="editor-mode-btn"
+                  :class="{ active: editorMode === 'markup' }"
+                  @click="setEditorMode('markup')"
+                >
+                  Markdown / HTML
+                </button>
+              </div>
+              <el-button size="small" :loading="autoFormatting" @click="autoFormatContent">
+                {{ autoFormatting ? "排版中" : "AI 自动排版" }}
+              </el-button>
+            </div>
+
+            <p class="editor-mode-hint">
+              <template v-if="editorMode === 'visual'">
+                适合直接排版、插图和视频。想写源码可切到 Markdown / HTML 高级模式。
+              </template>
+              <template v-else>
+                高级模式支持 Markdown 和安全 HTML。切回可视化后，会按最终渲染效果继续编辑。
+              </template>
+            </p>
+
+            <RichTextEditor
+              v-if="editorMode === 'visual'"
+              ref="editorRef"
+              v-model="form.content"
+              :max-length="CONTENT_MAX"
+              :draft-key="contentDraftKey"
+              :restore-draft="false"
+            />
+
+            <div v-else class="markup-editor-shell">
+              <div class="markup-helper-row">
+                <button type="button" class="markup-helper-btn" @click="insertMarkupSnippet(markupHeadingSnippet)">小标题</button>
+                <button type="button" class="markup-helper-btn" @click="insertMarkupSnippet(markupQuoteSnippet)">引用</button>
+                <button type="button" class="markup-helper-btn" @click="insertMarkupSnippet(markupListSnippet)">列表</button>
+                <button type="button" class="markup-helper-btn" @click="insertMarkupSnippet(markupTableSnippet)">表格</button>
+                <button type="button" class="markup-helper-btn" @click="insertMarkupSnippet(markupCenterSnippet)">居中 HTML</button>
+              </div>
+              <textarea
+                ref="markupTextareaRef"
+                v-model="form.content"
+                class="markup-editor"
+                placeholder="在这里输入 Markdown 或安全 HTML，例如标题、列表、表格、blockquote、video、img 等。"
+                spellcheck="false"
+              ></textarea>
+              <div class="markup-meta">
+                <span>支持 Markdown、表格、引用，以及安全 HTML 标签。</span>
+                <span :class="{ warn: form.content.length > CONTENT_MAX }">{{ form.content.length }} / {{ CONTENT_MAX }}</span>
+              </div>
+              <div class="markup-preview">
+                <div class="markup-preview__head">
+                  <strong>实时预览</strong>
+                  <span>按帖子最终展示效果渲染</span>
+                </div>
+                <div v-if="isMarkupContentEmpty(form.content)" class="markup-preview__empty">
+                  写点内容后，这里会显示预览效果。
+                </div>
+                <MarkdownView v-else :content="form.content" />
+              </div>
+            </div>
+          </div>
         </el-form-item>
 
         <el-alert
@@ -214,7 +281,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onBeforeUnmount, onMounted, watch } from "vue";
+import { ref, reactive, computed, nextTick, onBeforeUnmount, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import MarkdownView from "@/components/forum/MarkdownView.vue";
@@ -235,7 +302,11 @@ const courses = ref<Course[]>([]);
 const submitting = ref(false);
 const editingId = computed(() => (route.params.id ? Number(route.params.id) : null));
 const CONTENT_MAX = 20000;
+type PostEditorMode = "visual" | "markup";
 const editorRef = ref<InstanceType<typeof RichTextEditor> | null>(null);
+const markupTextareaRef = ref<HTMLTextAreaElement | null>(null);
+const editorMode = ref<PostEditorMode>("visual");
+const autoFormatting = ref(false);
 const previewOpen = ref(false);
 const pendingMetadata = ref<any>(null);
 const reviewBlockedOpen = ref(false);
@@ -247,6 +318,12 @@ const blockedReviewInfo = reactive<{ reason: string; riskScore: number | null }>
   riskScore: null,
 });
 let formDraftTimer = 0;
+let markupDraftTimer = 0;
+const markupHeadingSnippet = "## 小标题\n\n";
+const markupQuoteSnippet = "> 引用内容\n\n";
+const markupListSnippet = "- 要点一\n- 要点二\n\n";
+const markupTableSnippet = "| 项目 | 内容 |\n| --- | --- |\n| 示例 | 示例内容 |\n\n";
+const markupCenterSnippet = "<div align='center'>居中文字</div>\n\n";
 
 const form = reactive({
   boardSlug: (route.query.board as string) || "",
@@ -317,9 +394,11 @@ onMounted(async () => {
     form.content = t.content;
     form.anonymous = Boolean(t.isAnonymous);
     if (t.metadata) Object.assign(meta, t.metadata);
+    editorMode.value = resolveInitialEditorMode(t.content, t.metadata);
     normalizeSelectedBoard();
   } else {
     restoreFormDraft();
+    restoreContentDraft();
   }
   normalizeSelectedBoard();
   if (boardType.value === "coursereview") await loadCoursesForReview();
@@ -327,6 +406,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.clearTimeout(formDraftTimer);
+  window.clearTimeout(markupDraftTimer);
 });
 
 watch(boardType, async () => {
@@ -341,9 +421,13 @@ watch(anonymousEnabledForForm, (enabled) => {
   if (!enabled && !editingId.value) form.anonymous = false;
 }, { immediate: true });
 
-watch(() => [form.boardSlug, form.title, form.anonymous, meta.price, meta.condition, meta.tradeMode, meta.bounty, meta.courseId, meta.courseTeacherId, meta.teacherName, meta.semester], () => {
+watch(() => [form.boardSlug, form.title, form.anonymous, meta.price, meta.condition, meta.tradeMode, meta.bounty, meta.courseId, meta.courseTeacherId, meta.teacherName, meta.semester, editorMode.value], () => {
   scheduleFormDraftSave();
 }, { deep: true });
+
+watch(() => form.content, (value) => {
+  if (editorMode.value === "markup") scheduleMarkupDraftSave(value);
+});
 
 async function loadCoursesForReview() {
   if (courses.value.length) return;
@@ -372,8 +456,43 @@ function onTypeNewTeacher(v: string) {
   if (v && v.trim()) meta.courseTeacherId = undefined; // 开始手输 → 清掉已选
 }
 
+function normalizeEditorMode(value: unknown): PostEditorMode | null {
+  return value === "markup" || value === "visual" ? value : null;
+}
+
+function looksLikeHtmlContent(value: string) {
+  return /<\/?(p|div|h[1-6]|ul|ol|li|blockquote|img|video|table|thead|tbody|tr|th|td|a)\b/i.test(value);
+}
+
+function looksLikeMarkdownSource(value: string) {
+  return /(^|\n)\s{0,3}(#{1,6}\s|>\s|[-*+]\s|\d+\.\s|```|\|.+\|)|!\[[^\]]*\]\([^)]*\)|\[[^\]]+\]\([^)]*\)/m.test(value);
+}
+
+function resolveInitialEditorMode(content: string, metadata?: Record<string, any> | null): PostEditorMode {
+  const saved = normalizeEditorMode(metadata?._editorMode);
+  if (saved) return saved;
+  if (!looksLikeHtmlContent(content) && looksLikeMarkdownSource(content)) return "markup";
+  return "visual";
+}
+
+function isMarkupContentEmpty(value: string) {
+  const raw = String(value || "");
+  const hasMedia = /!\[[^\]]*\]\([^)]*\)|<img\b[^>]*>|<video\b[\s\S]*?<\/video>|<source\b[^>]*>/i.test(raw);
+  const text = raw
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/<img\b[^>]*>/gi, " ")
+    .replace(/<video\b[\s\S]*?<\/video>/gi, " ")
+    .replace(/<source\b[^>]*>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/[#>*_`~\-[\]()|]/g, " ")
+    .replace(/\s+/g, "")
+    .trim();
+  return !text && !hasMedia;
+}
+
 function isEditorContentEmpty() {
-  return editorRef.value?.isContentEmpty() ?? !form.content.trim();
+  if (editorMode.value === "markup") return isMarkupContentEmpty(form.content);
+  return editorRef.value?.isContentEmpty() ?? isMarkupContentEmpty(form.content);
 }
 
 function onContentDraftRestored(value: string) {
@@ -390,6 +509,22 @@ function restoreFormDraft() {
     if (typeof draft.boardSlug === "string" && !form.boardSlug) form.boardSlug = draft.boardSlug;
     if (typeof draft.anonymous === "boolean") form.anonymous = draft.anonymous;
     if (draft.meta && typeof draft.meta === "object") Object.assign(meta, draft.meta);
+    const savedMode = normalizeEditorMode(draft.editorMode ?? draft.meta?._editorMode);
+    if (savedMode) editorMode.value = savedMode;
+  } catch {
+    /* ignore */
+  }
+}
+
+function restoreContentDraft() {
+  if (!contentDraftKey.value || form.content) return;
+  try {
+    const raw = localStorage.getItem(contentDraftKey.value);
+    if (!raw) return;
+    const draft = JSON.parse(raw);
+    if (typeof draft?.content === "string" && draft.content.trim()) {
+      form.content = draft.content;
+    }
   } catch {
     /* ignore */
   }
@@ -413,6 +548,7 @@ function scheduleFormDraftSave() {
         boardSlug: form.boardSlug,
         title: form.title,
         anonymous: form.anonymous,
+        editorMode: editorMode.value,
         meta,
         savedAt: Date.now(),
       }));
@@ -422,10 +558,79 @@ function scheduleFormDraftSave() {
   }, 400);
 }
 
+function scheduleMarkupDraftSave(content: string) {
+  if (!contentDraftKey.value) return;
+  window.clearTimeout(markupDraftTimer);
+  markupDraftTimer = window.setTimeout(() => {
+    try {
+      if (isMarkupContentEmpty(content)) {
+        localStorage.removeItem(contentDraftKey.value);
+      } else {
+        localStorage.setItem(contentDraftKey.value, JSON.stringify({
+          content,
+          savedAt: Date.now(),
+        }));
+      }
+    } catch {
+      /* ignore */
+    }
+  }, 400);
+}
+
 function clearDrafts() {
   if (!formDraftKey.value) return;
   localStorage.removeItem(formDraftKey.value);
+  if (contentDraftKey.value) localStorage.removeItem(contentDraftKey.value);
   editorRef.value?.clearDraft();
+}
+
+function setEditorMode(nextMode: PostEditorMode) {
+  if (editorMode.value === nextMode) return;
+  editorMode.value = nextMode;
+  scheduleFormDraftSave();
+  if (nextMode === "markup") scheduleMarkupDraftSave(form.content);
+}
+
+async function insertMarkupSnippet(snippet: string) {
+  const textarea = markupTextareaRef.value;
+  if (!textarea) {
+    form.content = `${form.content}${snippet}`;
+    return;
+  }
+  const start = textarea.selectionStart ?? form.content.length;
+  const end = textarea.selectionEnd ?? start;
+  const nextContent = `${form.content.slice(0, start)}${snippet}${form.content.slice(end)}`;
+  form.content = nextContent;
+  await nextTick();
+  textarea.focus();
+  const cursor = start + snippet.length;
+  textarea.setSelectionRange(cursor, cursor);
+}
+
+async function autoFormatContent() {
+  if (autoFormatting.value) return;
+  if (isMarkupContentEmpty(form.content)) {
+    ElMessage.warning("先写一点正文，再试试自动排版");
+    return;
+  }
+  autoFormatting.value = true;
+  try {
+    const result = await topicApi.autoFormat({
+      title: form.title.trim() || undefined,
+      content: form.content,
+      boardSlug: form.boardSlug || undefined,
+      editorMode: editorMode.value,
+    });
+    form.content = result.content;
+    if (editorMode.value === "markup") scheduleMarkupDraftSave(result.content);
+    if (result.provider === "ai") {
+      ElMessage.success(result.summary || "AI 已完成自动排版");
+    } else {
+      ElMessage.info(result.summary || "AI 当前不可用，已按本地规则整理排版");
+    }
+  } finally {
+    autoFormatting.value = false;
+  }
 }
 
 async function submit() {
@@ -444,7 +649,9 @@ async function submit() {
 
 function buildMetadata() {
   // 组织 metadata
-  const metadata: any = {};
+  const metadata: any = {
+    _editorMode: editorMode.value,
+  };
   if (boardType.value === "market") {
     if (!meta.price && meta.price !== 0) { ElMessage.warning("请填写价格"); return null; }
     metadata.price = meta.price;
@@ -574,6 +781,149 @@ function notifyVideoReviewState(summary?: {
 .page-title { margin: 0; font-size: 22px; }
 .cpu-card { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
 
+.post-editor-shell {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.post-editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.editor-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  background: #f4f7fb;
+  border: 1px solid #dfe8f2;
+}
+
+.editor-mode-btn {
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.editor-mode-btn.active {
+  background: #fff;
+  color: #0f172a;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+.editor-mode-hint {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.markup-editor-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid #d8e2ec;
+  border-radius: 16px;
+  padding: 14px;
+  background: linear-gradient(180deg, #fbfdff 0%, #f7fafc 100%);
+}
+
+.markup-helper-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.markup-helper-btn {
+  border: 1px solid #d7e1eb;
+  background: #fff;
+  color: #334155;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.markup-editor {
+  width: 100%;
+  min-height: 320px;
+  resize: vertical;
+  border: 1px solid #d7e1eb;
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font: 13px/1.75 "Consolas", "SFMono-Regular", "Courier New", monospace;
+  outline: none;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.18);
+}
+
+.markup-editor::placeholder {
+  color: #94a3b8;
+}
+
+.markup-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.markup-meta .warn {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.markup-preview {
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  padding: 14px;
+}
+
+.markup-preview__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.markup-preview__head strong {
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.markup-preview__empty {
+  border-radius: 12px;
+  padding: 20px 16px;
+  background: #f8fafc;
+  color: #94a3b8;
+  font-size: 13px;
+  text-align: center;
+}
+
+.markup-preview :deep(.md) {
+  padding: 0;
+}
+
 .board-hint { font-size: 12px; color: #6b7280; margin-top: 6px; }
 .anonymous-box {
   width: 100%;
@@ -671,6 +1021,42 @@ function notifyVideoReviewState(summary?: {
 
   .meta-row {
     gap: 0;
+  }
+
+  .post-editor-toolbar,
+  .markup-meta,
+  .markup-preview__head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .editor-mode-switch {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .editor-mode-btn {
+    width: 100%;
+    text-align: center;
+  }
+
+  .markup-editor-shell {
+    padding: 12px;
+  }
+
+  .markup-helper-row {
+    gap: 6px;
+  }
+
+  .markup-helper-btn {
+    flex: 1 1 calc(50% - 6px);
+    text-align: center;
+  }
+
+  .markup-editor {
+    min-height: 260px;
+    padding: 12px;
   }
 
   .anonymous-box {

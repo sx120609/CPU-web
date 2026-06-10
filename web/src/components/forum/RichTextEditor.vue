@@ -156,6 +156,7 @@ const props = withDefaults(defineProps<{
   footerText?: string;
   maxLength?: number;
   draftKey?: string;
+  restoreDraft?: boolean;
   toolbarMode?: "sticky" | "static";
 }>(), {
   placeholder: DEFAULT_PLACEHOLDER,
@@ -163,6 +164,7 @@ const props = withDefaults(defineProps<{
   footerText: DEFAULT_FOOTER,
   maxLength: 20000,
   draftKey: "",
+  restoreDraft: true,
   toolbarMode: "sticky",
 });
 
@@ -272,7 +274,7 @@ onMounted(async () => {
   }
   observeTopbarHeight();
   syncToolbarStickyOffset();
-  hydrateEditor(readDraft() || props.modelValue);
+  hydrateEditor((props.restoreDraft ? readDraft() : "") || props.modelValue);
   document.addEventListener("selectionchange", updateToolbarState);
   if (typeof window !== "undefined") {
     window.addEventListener("resize", handleLayoutResize, { passive: true });
@@ -391,7 +393,7 @@ watch(() => props.modelValue, (value) => {
 });
 
 watch(() => props.draftKey, () => {
-  hydrateEditor(readDraft() || props.modelValue);
+  hydrateEditor((props.restoreDraft ? readDraft() : "") || props.modelValue);
 });
 
 function hydrateEditor(value: string) {
