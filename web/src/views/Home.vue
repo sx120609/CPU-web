@@ -141,9 +141,9 @@
             <h3>🧭 校园服务</h3>
             <router-link to="/services" class="more">全部 →</router-link>
           </div>
-          <div class="service-grid">
+          <div v-if="hasServiceEntries" class="service-grid">
             <div
-              v-if="auth.isLoggedIn && site.features.electric"
+              v-if="showElectricEntry"
               class="svc svc-special"
               role="button"
               tabindex="0"
@@ -156,7 +156,7 @@
               <div class="svc-tag svc-tag-fresh">站内查</div>
             </div>
             <div
-              v-for="s in summary?.services ?? []"
+              v-for="s in visibleServices"
               :key="s.id"
               class="svc"
               role="button"
@@ -170,6 +170,7 @@
               <div class="svc-tag" v-if="s.needSso">需登录</div>
             </div>
           </div>
+          <el-empty v-else description="暂无可用服务" />
         </section>
       </div>
     </div>
@@ -198,6 +199,10 @@ const loading = ref(false);
 const homeError = ref("");
 const electricOpen = ref(false);
 const hotPreview = computed(() => (summary.value?.hotTopics ?? []).slice(0, 3));
+const visibleServices = computed(() => summary.value?.services ?? []);
+const showElectricEntry = computed(() => auth.isLoggedIn && site.features.electric);
+const hasServiceEntries = computed(() => showElectricEntry.value || visibleServices.value.length > 0);
+let loadSeq = 0;
 
 const enabledFeatureLabels = computed(() => {
   const labels = ["公告聚合", "教务数据", "常用校园服务"];
@@ -225,16 +230,20 @@ const loginActionText = computed(() => site.features.forum ? "登录" : "登录�
 onMounted(loadSummary);
 
 async function loadSummary() {
+  const seq = ++loadSeq;
   loading.value = true;
   homeError.value = "";
   try {
     // 不区分游客 / 登录态，统一调 home/summary —— 后端按 token 自动决定 identity 是否返回
-    summary.value = await homeApi.summary({ suppressErrorMessage: true });
+    const next = await homeApi.summary({ suppressErrorMessage: true });
+    if (seq !== loadSeq) return;
+    summary.value = next;
   } catch (e) {
+    if (seq !== loadSeq) return;
     summary.value = { identity: null, pinnedTopics: [], hotTopics: [], latestTopics: [], announce: [], services: [] };
     homeError.value = normalizeHomeError(e);
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
 }
 

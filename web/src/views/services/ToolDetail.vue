@@ -82,13 +82,18 @@ onMounted(async () => {
   }
   if (!getToken()) return;
   try {
-    manageable.value = (await toolsApi.myPermissions({
+    const perms = await toolsApi.myPermissions({
       suppressAuthRedirect: true,
       suppressAuthMessage: true,
       suppressErrorMessage: true,
-    })).toolCodes;
+    });
+    manageable.value = uniqueToolCodes([
+      ...manageable.value,
+      ...perms.toolCodes,
+      ...(perms.adminToolCodes ?? []),
+    ]);
   } catch {
-    manageable.value = [];
+    manageable.value = uniqueToolCodes(manageable.value);
   }
 });
 
@@ -414,6 +419,10 @@ function normalizeFeedbackLoadError(error: unknown) {
     return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "反馈问卷加载失败";
   }
   return "反馈问卷加载失败，请稍后再试";
+}
+
+function uniqueToolCodes(items: ServiceToolCode[]) {
+  return Array.from(new Set(items));
 }
 </script>
 

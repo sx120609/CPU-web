@@ -1,4 +1,4 @@
-import { request } from "./request";
+import { request, type RequestOptions } from "./request";
 
 export interface SearchResult {
   topics: any[];
@@ -7,5 +7,5 @@ export interface SearchResult {
 }
 
 export const searchApi = {
-  search: (q: string) => request.get<SearchResult>("/search", { q }),
+  search: (q: string, options?: RequestOptions) => request.get<SearchResult>("/search", { q }, options),
 };

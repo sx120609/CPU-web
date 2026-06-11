@@ -1,5 +1,18 @@
 <template>
   <div class="epay-pane" v-loading="loading">
+    <el-alert
+      v-if="loadError"
+      type="error"
+      :closable="false"
+      show-icon
+      class="pane-alert"
+      :title="loadError"
+    >
+      <template #default>
+        <el-button size="small" :loading="loading" @click="reload">重试</el-button>
+      </template>
+    </el-alert>
+
     <section class="settings-panel">
       <div class="panel-head">
         <div>
@@ -58,8 +71,8 @@
       </div>
 
       <div class="actions-row">
-        <el-button v-if="form.hasMerchantKey" plain type="danger" :loading="saving" :disabled="saving" @click="clearKey">清空密钥</el-button>
-        <el-button type="primary" :loading="saving" :disabled="saving" @click="saveConfig">保存配置</el-button>
+        <el-button v-if="form.hasMerchantKey" plain type="danger" :loading="saving" :disabled="saving || Boolean(loadError)" @click="clearKey">清空密钥</el-button>
+        <el-button type="primary" :loading="saving" :disabled="saving || Boolean(loadError)" @click="saveConfig">保存配置</el-button>
       </div>
     </section>
 
@@ -102,7 +115,7 @@
 
       <div class="actions-row">
         <el-button :icon="Refresh" @click="resetPreviewNo">换订单号</el-button>
-        <el-button type="primary" :loading="previewing" :disabled="previewing" @click="previewPayment">生成签名</el-button>
+        <el-button type="primary" :loading="previewing" :disabled="previewing || Boolean(loadError)" @click="previewPayment">生成签名</el-button>
       </div>
 
       <div v-if="preview" class="preview-result">
@@ -141,6 +154,7 @@ const payTypes: Array<{ label: string; value: PayType }> = [
 ];
 
 const loading = ref(false);
+const loadError = ref("");
 const saving = ref(false);
 const previewing = ref(false);
 const merchantKey = ref("");
@@ -195,15 +209,18 @@ function applyConfig(config: EpayConfig) {
 
 async function reload() {
   loading.value = true;
+  loadError.value = "";
   try {
-    applyConfig(await adminApi.epayConfig());
+    applyConfig(await adminApi.epayConfig({ suppressErrorMessage: true }));
+  } catch (error) {
+    loadError.value = requestMessage(error) || "易支付配置加载失败，请稍后重试";
   } finally {
     loading.value = false;
   }
 }
 
 async function saveConfig() {
-  if (saving.value) return;
+  if (saving.value || loadError.value) return;
   saving.value = true;
   try {
     const config = await adminApi.updateEpayConfig({
@@ -223,7 +240,7 @@ async function saveConfig() {
 }
 
 async function clearKey() {
-  if (saving.value) return;
+  if (saving.value || loadError.value) return;
   saving.value = true;
   try {
     await ElMessageBox.confirm("确认清空当前易支付商户密钥？", "清空密钥", {
@@ -249,7 +266,7 @@ function resetPreviewNo() {
 }
 
 async function previewPayment() {
-  if (previewing.value) return;
+  if (previewing.value || loadError.value) return;
   previewing.value = true;
   try {
     preview.value = await adminApi.previewEpayPayment({
@@ -271,6 +288,13 @@ async function copyPreview() {
   await navigator.clipboard.writeText(JSON.stringify(preview.value, null, 2));
   ElMessage.success("已复制");
 }
+
+function requestMessage(error: unknown) {
+  if (typeof error !== "object" || error === null) return "";
+  const responseMessage = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+  if (typeof responseMessage === "string") return responseMessage;
+  return error instanceof Error ? error.message : "";
+}
 </script>
 
 <style scoped>
@@ -278,6 +302,13 @@ async function copyPreview() {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+.pane-alert :deep(.el-alert__content) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
 }
 .settings-panel {
   display: flex;

@@ -440,6 +440,7 @@ const prewarmingScheduleKeys = new Set<string>();
 const isNativeScheduleApp = ["android", "harmony", "ios"].includes(detectClientPlatform());
 let scheduleEditsSaveTimer = 0;
 let scheduleEditsLoadPromise: Promise<void> | null = null;
+let pendingScheduleEditsSave: { semester: string; edits: ScheduleEditState } | null = null;
 const smallSlots = [
   { no: 1, start: "08:00", end: "08:45" },
   { no: 2, start: "08:55", end: "09:40" },
@@ -729,10 +730,7 @@ onBeforeUnmount(() => {
   window.visualViewport?.removeEventListener("resize", updateViewportHeight);
   window.visualViewport?.removeEventListener("scroll", updateViewportHeight);
   clearStaticWeekAnimation();
-  if (scheduleEditsSaveTimer) {
-    window.clearTimeout(scheduleEditsSaveTimer);
-    scheduleEditsSaveTimer = 0;
-  }
+  flushScheduleEditsSave();
 });
 
 const semesters = computed(() => parsed.value?.semesters ?? []);
@@ -1957,12 +1955,26 @@ function persistScheduleEdits() {
   if (!canUseScheduleEdit()) return;
   const sem = semester.value || parsed.value?.currentSemester || "current";
   scheduleEdits.value = normalizeScheduleEditsState(scheduleEdits.value);
+  pendingScheduleEditsSave = {
+    semester: sem,
+    edits: normalizeScheduleEditsState(scheduleEdits.value),
+  };
   if (scheduleEditsSaveTimer) window.clearTimeout(scheduleEditsSaveTimer);
   scheduleEditsSaveTimer = window.setTimeout(() => {
-    scheduleEditsSaveTimer = 0;
-    const payload = normalizeScheduleEditsState(scheduleEdits.value);
-    void jwxtApi.saveScheduleEdits({ semester: sem, edits: payload }, { silent: true });
+    flushScheduleEditsSave();
   }, 160);
+}
+
+function flushScheduleEditsSave() {
+  if (scheduleEditsSaveTimer) {
+    window.clearTimeout(scheduleEditsSaveTimer);
+    scheduleEditsSaveTimer = 0;
+  }
+  const pending = pendingScheduleEditsSave;
+  if (!pending) return;
+  pendingScheduleEditsSave = null;
+  void jwxtApi.saveScheduleEdits({ semester: pending.semester, edits: pending.edits }, { silent: true })
+    .catch(() => null);
 }
 
 function normalizeScheduleEditsState(input: ScheduleEditState | null | undefined): ScheduleEditState {

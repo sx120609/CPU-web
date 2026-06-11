@@ -255,7 +255,7 @@ export interface CloudDriveUploadInitResult {
 }
 
 export const toolsApi = {
-  tools: () => request.get<ToolMeta[]>("/tools"),
+  tools: (options?: RequestOptions) => request.get<ToolMeta[]>("/tools", undefined, options),
   myPermissions: (options?: RequestOptions) =>
     request.get<{ toolCodes: ServiceToolCode[]; adminToolCodes: ServiceToolCode[] }>("/tools/permissions/me", undefined, options),
   managers: (toolCode: ServiceToolCode) => request.get<ToolManager[]>(`/tools/${toolCode}/managers`),

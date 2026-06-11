@@ -177,7 +177,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed, watch } from "vue";
+import { ref, reactive, onMounted, onBeforeUnmount, computed, watch } from "vue";
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from "element-plus";
 import { Lock, User, Refresh, CircleCheckFilled, CircleClose, InfoFilled } from "@element-plus/icons-vue";
 import { useJwxtStore } from "@/stores/jwxt";
@@ -217,6 +217,8 @@ const captchaLoading = ref(false);
 const logoutBusy = ref(false);
 const forgetBusy = ref(false);
 let tabLoadSeq = 0;
+let pageInitSeq = 0;
+let disposed = false;
 
 const probePath = ref("/zgykdx/framework/xsMain.jsp");
 const probeHtml = ref("");
@@ -260,16 +262,31 @@ const identityBadgeText = computed(() => (
   isGraduateIdentity.value ? "自动识别：研究生课表" : "自动识别：本科教务"
 ));
 
-onMounted(async () => {
+onMounted(() => {
+  disposed = false;
+  void initPage();
+});
+
+onBeforeUnmount(() => {
+  disposed = true;
+  pageInitSeq += 1;
+  tabLoadSeq += 1;
+  activeRequests.clear();
+});
+
+async function initPage() {
+  const seq = ++pageInitSeq;
   jwxt.hydrate();
   if (isGraduateIdentity.value && tab.value !== "schedule") tab.value = "schedule";
   restoreAllTabCaches();
   await jwxt.refreshStatus();
+  if (disposed || seq !== pageInitSeq) return;
   if (!jwxt.isLoggedIn) {
     // 1. 先尝试自动登录（用本地保存的账号）
     if (jwxt.rememberSaved) {
       ElMessage.info("正在尝试自动登录…");
       const ok = await jwxt.tryAutoLogin();
+      if (disposed || seq !== pageInitSeq) return;
       if (ok) {
         ElMessage.success("已完成登录");
         loadCurrentTab();
@@ -279,10 +296,11 @@ onMounted(async () => {
     }
     // 2. 准备登录页（拿 lt/execution + 可能的验证码）
     try { await jwxt.beginLogin(); } catch { /* ignore */ }
+    if (disposed || seq !== pageInitSeq) return;
   } else {
     loadCurrentTab();
   }
-});
+}
 
 watch(() => auth.academicIdentity, async (next, prev) => {
   if (!next || next === prev) return;
@@ -426,9 +444,12 @@ async function reloadCaptcha() {
   captchaLoading.value = true;
   try {
     await jwxt.beginLogin();
+    if (disposed) return;
     form.captcha = "";
+  } catch {
+    if (!disposed) ElMessage.error("验证码刷新失败，请稍后再试");
   } finally {
-    captchaLoading.value = false;
+    if (!disposed) captchaLoading.value = false;
   }
 }
 
@@ -436,13 +457,20 @@ async function onSubmit() {
   if (jwxt.loading || captchaLoading.value) return;
   try { await formRef.value?.validate(); } catch { return; }
   if (jwxt.needCaptcha && !form.captcha) { ElMessage.warning("请输入验证码"); return; }
-  const ok = await jwxt.submitLogin(
-    form.username,
-    form.password,
-    form.captcha || undefined,
-    remember.value,
-  );
-  form.password = ""; // 立刻清掉密码字段
+  let ok = false;
+  try {
+    ok = await jwxt.submitLogin(
+      form.username,
+      form.password,
+      form.captcha || undefined,
+      remember.value,
+    );
+  } catch {
+    return;
+  } finally {
+    form.password = ""; // 立刻清掉密码字段
+  }
+  if (disposed) return;
   if (ok) {
     ElMessage.success("登录成功");
     loadCurrentTab();
@@ -463,9 +491,13 @@ async function onLogout() {
     ElMessage.success("已断开教务连接");
     resetTabData();
     tab.value = "schedule";
-    await jwxt.beginLogin();
+    try {
+      await jwxt.beginLogin();
+    } catch {
+      if (!disposed) ElMessage.error("登录准备失败，请刷新页面后重试");
+    }
   } finally {
-    logoutBusy.value = false;
+    if (!disposed) logoutBusy.value = false;
   }
 }
 
@@ -485,6 +517,7 @@ async function onForget() {
 }
 
 async function loadCurrentTab(force = false) {
+  if (disposed) return;
   if (tab.value === "debug") return;
   if (isGraduateIdentity.value && tab.value !== "schedule") {
     tab.value = "schedule";
@@ -498,13 +531,13 @@ async function loadCurrentTab(force = false) {
   tabLoading.value = force || !getTabData(current);
   try {
     const data = await fetchTab(current, identity);
-    if (identity !== auth.academicIdentity || current !== tab.value) return;
+    if (disposed || identity !== auth.academicIdentity || current !== tab.value) return;
     setTabData(current, data);
     writeCache(current, data);
   } catch {
     // 已有缓存时保留旧数据；错误提示由 API 拦截器统一处理。
   } finally {
-    if (seq === tabLoadSeq) tabLoading.value = false;
+    if (!disposed && seq === tabLoadSeq) tabLoading.value = false;
   }
 }
 

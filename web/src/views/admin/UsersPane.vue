@@ -51,6 +51,19 @@
       </div>
     </div>
 
+    <el-alert
+      v-if="loadError"
+      type="error"
+      :closable="false"
+      show-icon
+      class="pane-alert"
+      :title="loadError"
+    >
+      <template #default>
+        <el-button size="small" :loading="loading" @click="reload">重试</el-button>
+      </template>
+    </el-alert>
+
     <el-table :data="list" v-loading="loading" stripe size="default" class="admin-table">
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column label="用户" min-width="190">
@@ -342,7 +355,9 @@ const total = ref(0);
 const page = ref(1);
 const size = ref(30);
 const loading = ref(false);
+const loadError = ref("");
 const userBusyId = ref<number | null>(null);
+let userLoadSeq = 0;
 
 const q = ref("");
 const role = ref("");
@@ -398,7 +413,9 @@ const muteDurationOptions = [
 onMounted(reload);
 
 async function reload() {
+  const seq = ++userLoadSeq;
   loading.value = true;
+  loadError.value = "";
   try {
     const r = await adminApi.users({
       q: q.value,
@@ -411,10 +428,18 @@ async function reload() {
       sort: sort.value,
       page: page.value,
       size: size.value,
-    });
+    }, { suppressErrorMessage: true });
+    if (seq !== userLoadSeq) return;
     list.value = r.list;
     total.value = r.total;
-  } finally { loading.value = false; }
+  } catch (error) {
+    if (seq !== userLoadSeq) return;
+    list.value = [];
+    total.value = 0;
+    loadError.value = requestMessage(error) || "用户列表加载失败，请稍后重试";
+  } finally {
+    if (seq === userLoadSeq) loading.value = false;
+  }
 }
 
 function onPage(p: number) { page.value = p; reload(); }
@@ -440,6 +465,13 @@ function resetFilters() {
   loginRange.value = [];
   page.value = 1;
   reload();
+}
+
+function requestMessage(error: unknown) {
+  if (typeof error !== "object" || error === null) return "";
+  const responseMessage = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+  if (typeof responseMessage === "string") return responseMessage;
+  return error instanceof Error ? error.message : "";
 }
 
 function openCreate() {
@@ -744,6 +776,13 @@ async function deleteUser(row: any) {
 
 <style scoped>
 .users-pane { display: flex; flex-direction: column; gap: 12px; }
+.pane-alert :deep(.el-alert__content) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
 .filter-panel {
   display: grid;
   gap: 10px;

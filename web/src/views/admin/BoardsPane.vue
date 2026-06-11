@@ -5,6 +5,19 @@
       <el-button :loading="loading" :disabled="loading" @click="reload">刷新</el-button>
     </div>
 
+    <el-alert
+      v-if="loadError"
+      type="error"
+      :closable="false"
+      show-icon
+      class="pane-alert"
+      :title="loadError"
+    >
+      <template #default>
+        <el-button size="small" :loading="loading" @click="reload">重试</el-button>
+      </template>
+    </el-alert>
+
     <el-table :data="list" v-loading="loading" stripe class="admin-table">
       <el-table-column prop="order" label="排序" width="80" />
       <el-table-column prop="slug" label="Slug" width="150" />
@@ -129,6 +142,7 @@ import { MoreFilled } from "@element-plus/icons-vue";
 import { adminApi } from "@/api/admin";
 
 const loading = ref(false);
+const loadError = ref("");
 const saving = ref(false);
 const boardBusyId = ref<number | null>(null);
 const dialogOpen = ref(false);
@@ -152,12 +166,25 @@ onMounted(reload);
 async function reload() {
   const seq = ++boardLoadSeq;
   loading.value = true;
+  loadError.value = "";
   try {
-    const next = await adminApi.boards();
+    const next = await adminApi.boards({ suppressErrorMessage: true });
     if (seq === boardLoadSeq) list.value = next;
+  } catch (error) {
+    if (seq === boardLoadSeq) {
+      list.value = [];
+      loadError.value = requestMessage(error) || "板块列表加载失败，请稍后重试";
+    }
   } finally {
     if (seq === boardLoadSeq) loading.value = false;
   }
+}
+
+function requestMessage(error: unknown) {
+  if (typeof error !== "object" || error === null) return "";
+  const responseMessage = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+  if (typeof responseMessage === "string") return responseMessage;
+  return error instanceof Error ? error.message : "";
 }
 
 function handleBoardCommand(command: string, row: any) {
@@ -248,6 +275,13 @@ async function removeBoard(row: any) {
 <style scoped>
 .boards-pane { display: flex; flex-direction: column; gap: 12px; }
 .ctrl-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.pane-alert :deep(.el-alert__content) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
 .board-main { display: flex; gap: 12px; align-items: flex-start; }
 .icon {
   width: 38px;

@@ -8,6 +8,11 @@
     </div>
 
     <div v-if="!q" class="cpu-card empty"><el-empty description="请输入搜索关键词" /></div>
+    <div v-else-if="error && !loading" class="cpu-card empty">
+      <el-empty :description="error">
+        <el-button type="primary" @click="reload">重试</el-button>
+      </el-empty>
+    </div>
 
     <template v-else-if="result">
       <section v-if="result.topics.length" class="cpu-card">
@@ -64,7 +69,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Right } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
@@ -76,6 +81,7 @@ const router = useRouter();
 const q = ref((route.query.q as string) ?? "");
 const result = ref<SearchResult | null>(null);
 const loading = ref(false);
+const error = ref("");
 let searchSeq = 0;
 
 const hasResult = computed(() =>
@@ -85,28 +91,39 @@ const hasResult = computed(() =>
 watch(() => route.query.q, async (v) => {
   q.value = (v as string) ?? "";
   await reload();
-});
-
-onMounted(reload);
+}, { immediate: true });
 
 async function reload() {
   const keyword = q.value.trim();
   if (!keyword) {
     searchSeq += 1;
     result.value = null;
+    error.value = "";
     loading.value = false;
     return;
   }
   const seq = ++searchSeq;
   loading.value = true;
+  error.value = "";
   try {
-    const next = await searchApi.search(keyword);
+    const next = await searchApi.search(keyword, { suppressErrorMessage: true });
     if (seq === searchSeq) result.value = next;
-  } catch {
-    if (seq === searchSeq) result.value = { topics: [], courses: [], services: [] };
+  } catch (searchError) {
+    if (seq === searchSeq) {
+      result.value = null;
+      error.value = normalizeSearchError(searchError);
+    }
   } finally {
     if (seq === searchSeq) loading.value = false;
   }
+}
+
+function normalizeSearchError(searchError: unknown) {
+  const status = (searchError as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
+  if (status && status < 500) {
+    return (searchError as { response?: { data?: { message?: string } } })?.response?.data?.message || "搜索失败";
+  }
+  return "搜索失败，请稍后再试";
 }
 
 function open(s: any) {

@@ -55,8 +55,12 @@
         </div>
         <TopicListItem v-for="t in latestList" :key="t.id" :topic="t" />
         <div v-if="latestTotal > latestSize" class="latest-actions">
+          <div v-if="loadMoreError" class="auto-load-sentinel error">
+            <span>{{ loadMoreError }}</span>
+            <el-button text size="small" :loading="loadingMore" @click="loadMore">重试</el-button>
+          </div>
           <div
-            v-if="canLoadMore"
+            v-else-if="canLoadMore"
             ref="loadMoreSentinelRef"
             class="auto-load-sentinel"
             :class="{ loading: loadingMore }"
@@ -97,6 +101,7 @@ const isHot = computed(() => route.name === "forum-hot");
 const loading = ref(false);
 const loadingMore = ref(false);
 const error = ref("");
+const loadMoreError = ref("");
 const hotList = ref<any[]>([]);
 const pinnedList = ref<any[]>([]);
 const latestList = ref<any[]>([]);
@@ -108,6 +113,7 @@ const currentList = computed(() => isHot.value ? hotList.value : [...pinnedList.
 const canLoadMore = computed(() => !isHot.value && latestList.value.length < latestTotal.value);
 let loadMoreObserver: IntersectionObserver | null = null;
 let pendingRestoreState: LatestFeedRestoreState | null = null;
+let loadSeq = 0;
 
 watch(() => route.fullPath, () => {
   resetState();
@@ -132,13 +138,16 @@ onMounted(() => {
   if (typeof window === "undefined" || typeof IntersectionObserver === "undefined") return;
   loadMoreObserver = new IntersectionObserver((entries) => {
     const entry = entries[0];
-    if (!entry?.isIntersecting || loading.value || loadingMore.value || !canLoadMore.value) return;
+    if (!entry?.isIntersecting || loading.value || loadingMore.value || loadMoreError.value || !canLoadMore.value) return;
     void loadMore();
   }, {
     root: null,
     rootMargin: "240px 0px 320px 0px",
     threshold: 0.01,
   });
+  if (canLoadMore.value && loadMoreSentinelRef.value) {
+    loadMoreObserver.observe(loadMoreSentinelRef.value);
+  }
 });
 
 onBeforeUnmount(() => {
@@ -147,11 +156,15 @@ onBeforeUnmount(() => {
 });
 
 async function load() {
+  const seq = ++loadSeq;
   loading.value = true;
   error.value = "";
+  loadMoreError.value = "";
   try {
     if (isHot.value) {
-      hotList.value = await homeApi.hotRanking({ suppressErrorMessage: true });
+      const nextHotList = await homeApi.hotRanking({ suppressErrorMessage: true });
+      if (seq !== loadSeq) return;
+      hotList.value = nextHotList;
       pinnedList.value = [];
       latestList.value = [];
       latestTotal.value = 0;
@@ -161,22 +174,26 @@ async function load() {
       const pages = await Promise.all(
         Array.from({ length: latestPage.value }, (_, index) => homeApi.latestFeed({ page: index + 1, size: latestSize.value }, { suppressErrorMessage: true })),
       );
+      if (seq !== loadSeq) return;
       pinnedList.value = pages[0]?.pins ?? [];
       latestTotal.value = pages[0]?.total ?? 0;
       latestList.value = dedupeTopicsById(pages.flatMap((pageResult) => pageResult.list ?? []));
     } else {
       const res = await homeApi.latestFeed({ page: latestPage.value, size: latestSize.value }, { suppressErrorMessage: true });
+      if (seq !== loadSeq) return;
       pinnedList.value = res.pins ?? [];
       latestList.value = res.list ?? [];
       latestTotal.value = res.total;
     }
   } catch (e) {
+    if (seq !== loadSeq) return;
     hotList.value = [];
     pinnedList.value = [];
     latestList.value = [];
     latestTotal.value = 0;
     error.value = normalizeFeedError(e);
   } finally {
+    if (seq !== loadSeq) return;
     loading.value = false;
     if (!isHot.value && !error.value) {
       await nextTick();
@@ -190,28 +207,38 @@ async function load() {
 }
 
 function resetState() {
+  loadMoreObserver?.disconnect();
   hotList.value = [];
   pinnedList.value = [];
   latestList.value = [];
   latestTotal.value = 0;
   latestPage.value = 1;
+  loadingMore.value = false;
+  loadMoreError.value = "";
 }
 
 async function loadMore() {
-  if (!canLoadMore.value || loadingMore.value) return;
+  if (!canLoadMore.value || loading.value || loadingMore.value) return;
+  const seq = loadSeq;
   loadingMore.value = true;
+  loadMoreError.value = "";
   loadMoreObserver?.disconnect();
   const nextPage = latestPage.value + 1;
   try {
-    const res = await homeApi.latestFeed({ page: nextPage, size: latestSize.value });
+    const res = await homeApi.latestFeed({ page: nextPage, size: latestSize.value }, { suppressErrorMessage: true });
+    if (seq !== loadSeq || isHot.value) return;
     latestPage.value = nextPage;
     pinnedList.value = res.pins ?? pinnedList.value;
     latestTotal.value = res.total;
-    latestList.value = [...latestList.value, ...(res.list ?? [])];
+    latestList.value = dedupeTopicsById([...latestList.value, ...(res.list ?? [])]);
+  } catch (e) {
+    if (seq === loadSeq) {
+      loadMoreError.value = normalizeFeedError(e);
+    }
   } finally {
-    loadingMore.value = false;
+    if (seq === loadSeq) loadingMore.value = false;
     await nextTick();
-    if (loadMoreObserver && canLoadMore.value && loadMoreSentinelRef.value) {
+    if (seq === loadSeq && loadMoreObserver && canLoadMore.value && !loadMoreError.value && loadMoreSentinelRef.value) {
       loadMoreObserver.observe(loadMoreSentinelRef.value);
     }
   }
@@ -372,6 +399,16 @@ onBeforeRouteLeave((to) => {
 
 .auto-load-sentinel.done {
   color: #94a3b8;
+}
+
+.auto-load-sentinel.error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
 }
 
 @media (max-width: 700px) {

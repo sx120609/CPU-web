@@ -149,6 +149,7 @@ const DEFAULT_PLACEHOLDER = "写点什么，也可以直接插入图片或视频
 const MOBILE_PLACEHOLDER = "写点什么，也可以用工具栏插入图片或视频；多图会自动排成相册。";
 const DEFAULT_FOOTER = "支持排版、图片、视频、相册和草稿保存。";
 const MOBILE_FOOTER = "支持排版、图片、视频、相册和草稿保存。";
+const UPLOAD_TASK_CLEANUP_DELAY = 4500;
 
 const props = withDefaults(defineProps<{
   modelValue: string;
@@ -199,6 +200,8 @@ const toolbarState = reactive({
 let savedSelection: Range | null = null;
 let selectedImage: HTMLImageElement | null = null;
 let draftTimer = 0;
+let uploadCleanupTimer = 0;
+let editorDisposed = false;
 let mobileViewportQuery: MediaQueryList | null = null;
 let topbarResizeObserver: ResizeObserver | null = null;
 
@@ -287,6 +290,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  editorDisposed = true;
   document.removeEventListener("selectionchange", updateToolbarState);
   if (mobileViewportQuery) {
     if (typeof mobileViewportQuery.removeEventListener === "function") {
@@ -304,6 +308,7 @@ onBeforeUnmount(() => {
   editorRef.value?.removeEventListener("touchmove", handleEditorTouchMove);
   editorRef.value?.removeEventListener("touchend", handleEditorTouchEnd);
   window.clearTimeout(draftTimer);
+  window.clearTimeout(uploadCleanupTimer);
 });
 
 function handleViewportChange(event: { matches: boolean }) {
@@ -602,6 +607,7 @@ async function uploadAndInsertMedia(files: File[]) {
     ElMessage.info("当前还有文件在上传，请稍候");
     return;
   }
+  window.clearTimeout(uploadCleanupTimer);
   imageUploading.value = true;
   mediaUploadTasks.value = files.map((file, index) => createUploadTask(file, index));
   try {
@@ -627,6 +633,7 @@ async function uploadAndInsertMedia(files: File[]) {
             maxBytes: 520 * 1024,
           });
           const imageBlob = dataUrlToBlob(compressed);
+          if (editorDisposed) return;
           updateUploadTask(task.id, {
             totalBytes: imageBlob.size || file.size,
             loadedBytes: 0,
@@ -634,6 +641,7 @@ async function uploadAndInsertMedia(files: File[]) {
           const { url } = await uploadApi.media(imageBlob, replaceFileExtension(file.name || "image.jpg", "jpg"), {
             onProgress: (state) => syncUploadTaskProgress(task.id, state),
           });
+          if (editorDisposed) return;
           updateUploadTask(task.id, {
             status: "done",
             progress: 100,
@@ -663,6 +671,7 @@ async function uploadAndInsertMedia(files: File[]) {
           const { url, posterUrl } = await uploadApi.media(file, file.name || "video.mp4", {
             onProgress: (state) => syncUploadTaskProgress(task.id, state),
           });
+          if (editorDisposed) return;
           updateUploadTask(task.id, {
             status: "done",
             progress: 100,
@@ -692,8 +701,10 @@ async function uploadAndInsertMedia(files: File[]) {
       });
     }
     if (uploaded.length) {
+      if (editorDisposed) return;
       insertUploadedMedia(uploaded);
     }
+    if (editorDisposed) return;
     if (successCount && failedCount) {
       ElMessage.warning(`已插入 ${successCount} 个媒体，另有 ${failedCount} 个上传失败`);
     } else if (successCount) {
@@ -702,7 +713,10 @@ async function uploadAndInsertMedia(files: File[]) {
       ElMessage.error("媒体上传失败");
     }
   } finally {
-    imageUploading.value = false;
+    if (!editorDisposed) {
+      imageUploading.value = false;
+      scheduleUploadTaskCleanup();
+    }
   }
 }
 
@@ -782,6 +796,7 @@ function createUploadTask(file: File, index: number): MediaUploadTask {
 }
 
 function updateUploadTask(taskId: string, patch: Partial<MediaUploadTask>) {
+  if (editorDisposed) return;
   const task = mediaUploadTasks.value.find((item) => item.id === taskId);
   if (!task) return;
   Object.assign(task, patch);
@@ -807,6 +822,16 @@ function syncUploadTaskProgress(
 
 function isActiveUploadStatus(status: MediaUploadTask["status"]) {
   return status === "preparing" || status === "uploading" || status === "processing";
+}
+
+function scheduleUploadTaskCleanup() {
+  window.clearTimeout(uploadCleanupTimer);
+  if (!mediaUploadTasks.value.length) return;
+  if (mediaUploadTasks.value.some((task) => isActiveUploadStatus(task.status))) return;
+  uploadCleanupTimer = window.setTimeout(() => {
+    if (editorDisposed) return;
+    mediaUploadTasks.value = mediaUploadTasks.value.filter((task) => task.status === "error");
+  }, UPLOAD_TASK_CLEANUP_DELAY);
 }
 
 function formatUploadTaskStatus(task: MediaUploadTask) {

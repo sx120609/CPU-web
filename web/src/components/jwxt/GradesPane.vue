@@ -54,7 +54,19 @@
     </div>
 
     <div v-loading="loading">
-      <el-empty v-if="!filteredList.length" description="没有符合条件的成绩" />
+      <el-alert
+        v-if="loadError"
+        type="error"
+        :closable="false"
+        show-icon
+        class="pane-alert"
+        :title="loadError"
+      >
+        <template #default>
+          <el-button size="small" :loading="loading" @click="reload">重试</el-button>
+        </template>
+      </el-alert>
+      <el-empty v-if="!loading && !filteredList.length" description="没有符合条件的成绩" />
       <div v-else>
         <div v-for="(rows, semKey) in groupedBySem" :key="semKey" class="sem-block">
           <div class="sem-head">
@@ -130,6 +142,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { InfoFilled } from "@element-plus/icons-vue";
+import { jwxtApi } from "@/api/jwxt";
 
 interface GradeRow {
   semester: string;
@@ -154,6 +167,8 @@ const loading = ref(props.loading ?? false);
 const semester = ref<string>("");
 const attrFilter = ref<string[]>([]);
 const keyword = ref<string>("");
+const loadError = ref("");
+let loadSeq = 0;
 
 const isMobile = ref(false);
 let mql: MediaQueryList | null = null;
@@ -171,7 +186,10 @@ onBeforeUnmount(() => {
   mql = null;
 });
 
-watch(() => props.data, (v) => { parsed.value = normalizeParsedGrades(v?.parsed ?? null); }, { immediate: true });
+watch(() => props.data, (v) => {
+  parsed.value = normalizeParsedGrades(v?.parsed ?? null);
+  if (v?.parsed) loadError.value = "";
+}, { immediate: true });
 watch(() => props.loading, (v) => { loading.value = Boolean(v); }, { immediate: true });
 
 function scoreToGpa(score?: string): number | undefined {
@@ -307,15 +325,21 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
 }
 
 async function reload() {
+  const seq = ++loadSeq;
   loading.value = true;
+  loadError.value = "";
   try {
-    const tk = sessionStorage.getItem("cpu-jwxt-token") ?? "";
-    const u = new URL("/api/jwxt/grades", window.location.origin);
-    if (semester.value) u.searchParams.set("semester", semester.value);
-    const resp = await fetch(u, { headers: { "X-Jwxt-Token": tk } });
-    const body = await resp.json();
-    if (body.code === 0) parsed.value = normalizeParsedGrades(body.data.parsed);
-  } finally { loading.value = false; }
+    const result = await jwxtApi.grades({ semester: semester.value || undefined }, { silent: true });
+    if (seq === loadSeq) parsed.value = normalizeParsedGrades(result.parsed);
+  } catch (error) {
+    if (seq === loadSeq) loadError.value = requestMessage(error) || "成绩加载失败，请稍后重试";
+  } finally {
+    if (seq === loadSeq) loading.value = false;
+  }
+}
+
+function requestMessage(error: unknown) {
+  return error instanceof Error ? error.message : "";
 }
 </script>
 
@@ -397,6 +421,19 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
 .reco-link:hover {
   background: var(--cpu-primary);
   color: #fff;
+}
+
+.pane-alert {
+  margin-bottom: 12px;
+}
+
+.pane-alert :deep(.el-alert__content) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
 }
 
 .sem-block { margin-bottom: 20px; }

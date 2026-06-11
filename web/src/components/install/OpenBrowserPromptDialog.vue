@@ -94,7 +94,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 import { ANDROID_APP_DOWNLOAD_URL } from "@/utils/clientInfo";
@@ -103,6 +103,8 @@ import { USER_QQ_GROUP, copyText, openUserGroup } from "@/utils/userGroup";
 const open = ref(false);
 const inAppBrowser = computed(() => detectInAppBrowser());
 const selectedPlatform = ref<"android" | "ios">(detectDevicePlatform());
+let autoPromptTimer: number | null = null;
+let disposed = false;
 
 const dialogWidth = computed(() => window.innerWidth < 480 ? "92dvw" : "380px");
 const androidDownloadUrl = computed(() => new URL(ANDROID_APP_DOWNLOAD_URL, window.location.origin).toString());
@@ -131,6 +133,18 @@ function dismissDialog() {
   open.value = false;
 }
 
+onBeforeUnmount(() => {
+  disposed = true;
+  clearAutoPromptTimer();
+});
+
+function clearAutoPromptTimer() {
+  if (autoPromptTimer) {
+    window.clearTimeout(autoPromptTimer);
+    autoPromptTimer = null;
+  }
+}
+
 async function copyAndroidDownloadUrl() {
   await copyText(androidDownloadUrl.value);
   ElMessage.success("已复制 APK 下载链接");
@@ -142,14 +156,19 @@ async function copySchedulePageUrl() {
 }
 
 function openDialog() {
+  if (disposed) return;
   if (!inAppBrowser.value.isInApp || isStandalone() || isNativeApp()) return;
   selectedPlatform.value = detectDevicePlatform();
   open.value = true;
 }
 
 function autoPromptIfEligible() {
+  if (disposed) return;
   if (!inAppBrowser.value.isInApp || isStandalone() || isNativeApp()) return;
-  setTimeout(() => {
+  clearAutoPromptTimer();
+  autoPromptTimer = window.setTimeout(() => {
+    autoPromptTimer = null;
+    if (disposed) return;
     if (detectInAppBrowser().isInApp && !isStandalone() && !isNativeApp()) {
       selectedPlatform.value = detectDevicePlatform();
       open.value = true;

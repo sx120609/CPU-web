@@ -17,7 +17,15 @@
         <el-radio-button value="all">全部课程</el-radio-button>
         <el-radio-button value="mine" :disabled="!auth.canAccessForum">⭐ 我学过的</el-radio-button>
       </el-radio-group>
-      <el-input v-model="q" placeholder="搜课程名 / 代码 / 教师" clearable style="max-width:300px" @keyup.enter="reload">
+      <el-input
+        v-model="q"
+        placeholder="搜课程名 / 代码 / 教师"
+        clearable
+        style="max-width:300px"
+        @keyup.enter="reload"
+        @clear="reload"
+        @change="reload"
+      >
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
     </div>
@@ -92,23 +100,34 @@ const scope = ref<"all" | "mine">("all");
 const loading = ref(false);
 const syncing = ref(false);
 const error = ref("");
+let loadSeq = 0;
 
 onMounted(reload);
-watch(() => auth.canAccessForum, (v) => { if (!v) scope.value = "all"; });
+watch(() => auth.canAccessForum, (v) => {
+  if (v || scope.value !== "mine") return;
+  scope.value = "all";
+  void reload();
+});
 
 function openCourse(id: number) {
   router.push(`/coursereview/${id}`);
 }
 
 async function reload() {
+  const seq = ++loadSeq;
   loading.value = true;
   error.value = "";
   try {
-    list.value = await courseApi.list(q.value, scope.value === "mine", { suppressErrorMessage: true });
+    const nextList = await courseApi.list(q.value, scope.value === "mine", { suppressErrorMessage: true });
+    if (seq === loadSeq) list.value = nextList;
   } catch (e) {
-    list.value = [];
-    error.value = normalizeCourseListError(e);
-  } finally { loading.value = false; }
+    if (seq === loadSeq) {
+      list.value = [];
+      error.value = normalizeCourseListError(e);
+    }
+  } finally {
+    if (seq === loadSeq) loading.value = false;
+  }
 }
 
 async function onSync() {

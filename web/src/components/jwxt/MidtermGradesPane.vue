@@ -31,7 +31,19 @@
     />
 
     <div v-loading="loading">
-      <el-empty v-if="!filteredList.length" description="暂无期中成绩数据" />
+      <el-alert
+        v-if="loadError"
+        type="error"
+        :closable="false"
+        show-icon
+        class="pane-alert"
+        :title="loadError"
+      >
+        <template #default>
+          <el-button size="small" :loading="loading" @click="reload">重试</el-button>
+        </template>
+      </el-alert>
+      <el-empty v-if="!loading && !filteredList.length" description="暂无期中成绩数据" />
       <div v-else>
         <div v-for="(rows, semKey) in groupedBySem" :key="semKey" class="sem-block">
           <div class="sem-head">
@@ -126,6 +138,8 @@ const parsed = ref<any>(props.data?.parsed ?? null);
 const loading = ref(props.loading ?? false);
 const semester = ref("");
 const keyword = ref("");
+const loadError = ref("");
+let loadSeq = 0;
 
 const isMobile = ref(false);
 let mql: MediaQueryList | null = null;
@@ -146,7 +160,10 @@ onBeforeUnmount(() => {
   mql = null;
 });
 
-watch(() => props.data, (v) => { parsed.value = v?.parsed ?? null; }, { immediate: true });
+watch(() => props.data, (v) => {
+  parsed.value = v?.parsed ?? null;
+  if (v?.parsed) loadError.value = "";
+}, { immediate: true });
 watch(() => props.loading, (v) => { loading.value = Boolean(v); }, { immediate: true });
 
 function normalizeNum(input?: string | number | null) {
@@ -235,13 +252,21 @@ function totalColor(n: number | null) {
 }
 
 async function reload() {
+  const seq = ++loadSeq;
   loading.value = true;
+  loadError.value = "";
   try {
-    const result = await jwxtApi.midtermGrades({ semester: semester.value || undefined });
-    parsed.value = result.parsed;
+    const result = await jwxtApi.midtermGrades({ semester: semester.value || undefined }, { silent: true });
+    if (seq === loadSeq) parsed.value = result.parsed;
+  } catch (error) {
+    if (seq === loadSeq) loadError.value = requestMessage(error) || "期中成绩加载失败，请稍后重试";
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
+}
+
+function requestMessage(error: unknown) {
+  return error instanceof Error ? error.message : "";
 }
 </script>
 
@@ -275,6 +300,17 @@ async function reload() {
 .stat b { color: var(--cpu-primary); font-size: 15px; }
 .scope-tip { margin-top: -2px; }
 .scope-tip :deep(.el-alert__title) { line-height: 1.55; }
+.pane-alert {
+  margin-bottom: 12px;
+}
+.pane-alert :deep(.el-alert__content) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
 .sem-block { margin-bottom: 20px; }
 .sem-block:last-child { margin-bottom: 0; }
 .sem-head {

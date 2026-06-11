@@ -14,7 +14,7 @@
             <el-icon><Money /></el-icon>
             我要赞助
           </el-button>
-      <el-button plain :loading="loading" :disabled="loading" @click="loadWall">
+          <el-button plain :loading="loading" :disabled="loading" @click="loadWall">
             <el-icon><Refresh /></el-icon>
             刷新
           </el-button>
@@ -33,6 +33,10 @@
     </section>
 
     <el-skeleton v-if="loading" animated :rows="8" class="wall-loading" />
+
+    <el-empty v-else-if="error" :description="error">
+      <el-button type="primary" :loading="loading" @click="loadWall">重试</el-button>
+    </el-empty>
 
     <el-empty v-else-if="!wall.enabled" description="鸣谢墙当前未开启" />
 
@@ -84,22 +88,39 @@ import { fmtDate } from "@/utils/format";
 
 const router = useRouter();
 const loading = ref(false);
+const error = ref("");
 const wall = reactive<{ enabled: boolean; total: number; totalAmount?: string; list: SponsorWallItem[] }>({
   enabled: true,
   total: 0,
   totalAmount: "0.00",
   list: [],
 });
+let loadSeq = 0;
 
 onMounted(loadWall);
 
 async function loadWall() {
+  const seq = ++loadSeq;
   loading.value = true;
+  error.value = "";
   try {
-    Object.assign(wall, await paymentsApi.sponsorWall());
+    const next = await paymentsApi.sponsorWall({ suppressErrorMessage: true });
+    if (seq !== loadSeq) return;
+    Object.assign(wall, next);
+  } catch (error_) {
+    if (seq !== loadSeq) return;
+    error.value = normalizeSponsorWallError(error_);
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
+}
+
+function normalizeSponsorWallError(error_: unknown) {
+  const status = (error_ as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
+  if (status && status < 500) {
+    return (error_ as { response?: { data?: { message?: string } } })?.response?.data?.message || "鸣谢墙加载失败";
+  }
+  return "鸣谢墙加载失败，请稍后再试";
 }
 </script>
 

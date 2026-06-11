@@ -1,13 +1,38 @@
 <template>
   <div class="qqbot-pane">
+    <el-alert
+      v-if="configLoadError"
+      type="error"
+      :closable="false"
+      show-icon
+      class="pane-alert"
+      :title="configLoadError"
+    >
+      <template #default>
+        <el-button size="small" :loading="configLoading" @click="loadConfig">重试配置</el-button>
+      </template>
+    </el-alert>
+    <el-alert
+      v-if="boardsLoadError"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="pane-alert"
+      :title="boardsLoadError"
+    >
+      <template #default>
+        <el-button size="small" :loading="boardsLoading" @click="loadBoards">重试板块</el-button>
+      </template>
+    </el-alert>
+
     <section class="section-grid">
-      <div class="config-card">
+      <div class="config-card" v-loading="configLoading || boardsLoading">
         <div class="card-head">
           <div>
             <h3>NapCat 对接</h3>
             <p>在 NapCat 创建一个 WebSocket 服务端，把地址填到这里即可。</p>
           </div>
-          <el-switch v-model="form.enabled" inline-prompt active-text="开" inactive-text="关" />
+          <el-switch v-model="form.enabled" inline-prompt active-text="开" inactive-text="关" :disabled="configDisabled" />
         </div>
 
         <div class="setup-guide">
@@ -24,33 +49,33 @@
 
         <el-form label-width="150px" class="config-form">
           <el-form-item label="Bot QQ 号">
-            <el-input v-model="form.botQqId" placeholder="例如 123456789" />
+            <el-input v-model="form.botQqId" placeholder="例如 123456789" :disabled="configDisabled" />
             <div class="form-tip">展示在个人中心，告诉用户应该在 QQ 里联系哪个 QQBot 账号。</div>
           </el-form-item>
           <el-form-item label="WebSocket 地址">
-            <el-input v-model="form.napcatBaseUrl" placeholder="例如 ws://127.0.0.1:3001" />
+            <el-input v-model="form.napcatBaseUrl" placeholder="例如 ws://127.0.0.1:3001" :disabled="configDisabled" />
             <div class="form-tip">这是 CPU-web 后端连接 NapCat 的地址。NapCat 和后端不在同一台机器时，请填后端能访问到的内网或公网地址。</div>
           </el-form-item>
           <el-form-item label="Access Token">
-            <el-input v-model="form.accessToken" show-password placeholder="留空则不修改">
+            <el-input v-model="form.accessToken" show-password placeholder="留空则不修改" :disabled="configDisabled">
               <template #append>{{ config?.hasAccessToken ? config.accessTokenMasked : "未设置" }}</template>
             </el-input>
             <div class="form-tip">如果 NapCat WebSocket 服务端设置了 token，这里填同一个；没设置就留空。</div>
           </el-form-item>
           <el-form-item label="默认投稿板块">
-            <el-select v-model="form.defaultBoardSlug" filterable>
+            <el-select v-model="form.defaultBoardSlug" filterable :disabled="configDisabled || Boolean(boardsLoadError)">
               <el-option v-for="board in postBoards" :key="board.slug" :label="`${board.name} / ${board.slug}`" :value="board.slug" />
             </el-select>
           </el-form-item>
           <el-form-item label="能力开关">
             <div class="check-grid">
-              <el-checkbox v-model="form.allowPrivatePost">允许私聊投稿</el-checkbox>
-              <el-checkbox v-model="form.allowGroupPost">允许群内投稿</el-checkbox>
-              <el-checkbox v-model="form.notificationEnabled">推送站内通知</el-checkbox>
+              <el-checkbox v-model="form.allowPrivatePost" :disabled="configDisabled">允许私聊投稿</el-checkbox>
+              <el-checkbox v-model="form.allowGroupPost" :disabled="configDisabled">允许群内投稿</el-checkbox>
+              <el-checkbox v-model="form.notificationEnabled" :disabled="configDisabled">推送站内通知</el-checkbox>
             </div>
           </el-form-item>
           <el-form-item label="私聊通知类型">
-            <el-checkbox-group v-model="form.notifyCategories">
+            <el-checkbox-group v-model="form.notifyCategories" :disabled="configDisabled">
               <el-checkbox label="reply">回复</el-checkbox>
               <el-checkbox label="mention">提及</el-checkbox>
               <el-checkbox label="like">点赞</el-checkbox>
@@ -61,9 +86,9 @@
         </el-form>
 
         <div class="actions">
-          <el-button type="primary" :loading="saving" :disabled="saving" @click="saveConfig">保存配置</el-button>
-          <el-button :loading="dispatching" :disabled="dispatching" @click="dispatchNow">立即派发最近通知</el-button>
-          <el-button v-if="config?.hasAccessToken" text type="danger" :loading="clearingToken" :disabled="clearingToken" @click="clearToken">清除 Token</el-button>
+          <el-button type="primary" :loading="saving" :disabled="saving || configDisabled" @click="saveConfig">保存配置</el-button>
+          <el-button :loading="dispatching" :disabled="dispatching || configDisabled" @click="dispatchNow">立即派发最近通知</el-button>
+          <el-button v-if="config?.hasAccessToken" text type="danger" :loading="clearingToken" :disabled="clearingToken || configDisabled" @click="clearToken">清除 Token</el-button>
         </div>
       </div>
 
@@ -105,9 +130,21 @@
           <h3>QQ群配置</h3>
           <p>群配置用于控制群内投稿、公告通知，以及管理群专用的站务提醒。</p>
         </div>
-        <el-button type="primary" plain :disabled="savingGroup || groupBusyId !== null" @click="openGroupDialog()">添加群</el-button>
+        <el-button type="primary" plain :disabled="savingGroup || groupBusyId !== null || Boolean(groupsLoadError)" @click="openGroupDialog()">添加群</el-button>
       </div>
-      <el-table :data="groups" size="small" class="interactive-table">
+      <el-alert
+        v-if="groupsLoadError"
+        type="error"
+        :closable="false"
+        show-icon
+        class="pane-alert"
+        :title="groupsLoadError"
+      >
+        <template #default>
+          <el-button size="small" :loading="groupsLoading" @click="loadGroups">重试</el-button>
+        </template>
+      </el-alert>
+      <el-table :data="groups" v-loading="groupsLoading" size="small" class="interactive-table">
         <el-table-column prop="groupId" label="群号" width="150" />
         <el-table-column prop="name" label="名称" min-width="160" />
         <el-table-column label="开关" min-width="220">
@@ -133,7 +170,7 @@
           </template>
         </el-table-column>
       </el-table>
-      <div class="record-list">
+      <div class="record-list" v-loading="groupsLoading">
         <article v-for="row in groups" :key="`group-${row.id}`" class="record-card">
           <div class="record-head">
             <div>
@@ -166,9 +203,21 @@
           <h3>绑定用户</h3>
           <p>QQ 号绑定到站内账号后，QQ 投稿会以该账号身份进入论坛审核流。</p>
         </div>
-        <el-input v-model="bindingQuery" clearable placeholder="搜索 QQ / 用户" style="width: 220px" @keyup.enter="loadBindings" />
+        <el-input v-model="bindingQuery" clearable placeholder="搜索 QQ / 用户" style="width: 220px" @keyup.enter="loadBindings()" />
       </div>
-      <el-table :data="bindings" size="small" class="interactive-table">
+      <el-alert
+        v-if="bindingsLoadError"
+        type="error"
+        :closable="false"
+        show-icon
+        class="pane-alert"
+        :title="bindingsLoadError"
+      >
+        <template #default>
+          <el-button size="small" :loading="bindingsLoading" @click="loadBindings()">重试</el-button>
+        </template>
+      </el-alert>
+      <el-table :data="bindings" v-loading="bindingsLoading" size="small" class="interactive-table">
         <el-table-column prop="qqId" label="QQ" width="150" />
         <el-table-column label="站内账号" min-width="190">
           <template #default="{ row }">
@@ -187,7 +236,7 @@
           </template>
         </el-table-column>
       </el-table>
-      <div class="record-list">
+      <div class="record-list" v-loading="bindingsLoading">
         <article v-for="row in bindings" :key="`binding-${row.id}`" class="record-card">
           <div class="record-head">
             <div>
@@ -227,12 +276,24 @@
             <el-option label="错误" value="error" />
           </el-select>
           <span class="log-meta">{{ lastLogAtText }}</span>
-          <el-button plain :loading="refreshingLogs" :disabled="refreshingLogs" @click="refreshLogs">刷新</el-button>
+          <el-button plain :loading="refreshingLogs || logsLoading" :disabled="refreshingLogs || logsLoading" @click="refreshLogs">刷新</el-button>
           <el-button plain :icon="Download" :loading="debugDownloading" :disabled="debugDownloading" @click="downloadDebugLogs">下载调试日志</el-button>
         </div>
       </div>
+      <el-alert
+        v-if="logsLoadError"
+        type="error"
+        :closable="false"
+        show-icon
+        class="pane-alert"
+        :title="logsLoadError"
+      >
+        <template #default>
+          <el-button size="small" :loading="logsLoading || refreshingLogs" @click="loadLogs">重试</el-button>
+        </template>
+      </el-alert>
       <div class="log-table-scroll">
-        <el-table :data="logs" size="small" class="log-table">
+        <el-table :data="logs" v-loading="logsLoading" size="small" class="log-table">
           <el-table-column prop="createdAt" label="时间" width="170">
             <template #default="{ row }">{{ formatLogTime(row.createdAt) }}</template>
           </el-table-column>
@@ -313,9 +374,24 @@ const bindingBusyId = ref<number | null>(null);
 const groupBusyId = ref<number | null>(null);
 const debugDownloading = ref(false);
 const refreshingLogs = ref(false);
+const configLoading = ref(false);
+const boardsLoading = ref(false);
+const bindingsLoading = ref(false);
+const groupsLoading = ref(false);
+const logsLoading = ref(false);
+const configLoadError = ref("");
+const boardsLoadError = ref("");
+const bindingsLoadError = ref("");
+const groupsLoadError = ref("");
+const logsLoadError = ref("");
 const bindingQuery = ref("");
 const bindToken = ref<{ token: string; expiresAt: string } | null>(null);
 let logRefreshTimer: number | null = null;
+let configLoadSeq = 0;
+let boardsLoadSeq = 0;
+let bindingsLoadSeq = 0;
+let groupsLoadSeq = 0;
+let logsLoadSeq = 0;
 
 const form = reactive({
   enabled: false,
@@ -348,6 +424,7 @@ const groupDialog = reactive({
 });
 
 const postBoards = computed(() => boards.value.filter((item) => !item.readOnly));
+const configDisabled = computed(() => configLoading.value || Boolean(configLoadError.value));
 const connectionStatusText = computed(() => {
   const status = config.value?.connectionStatus;
   if (status === "disabled") return "已关闭";
@@ -379,7 +456,21 @@ onBeforeUnmount(() => {
 });
 
 async function loadConfig() {
-  config.value = await adminApi.qqBotConfig();
+  const seq = ++configLoadSeq;
+  configLoading.value = true;
+  configLoadError.value = "";
+  try {
+    config.value = await adminApi.qqBotConfig({ suppressErrorMessage: true });
+  } catch (error) {
+    if (seq === configLoadSeq) {
+      config.value = null;
+      configLoadError.value = requestMessage(error) || "QQBot 配置加载失败，请稍后重试";
+    }
+    return;
+  } finally {
+    if (seq === configLoadSeq) configLoading.value = false;
+  }
+  if (seq !== configLoadSeq || !config.value) return;
   Object.assign(form, {
     enabled: config.value.enabled,
     botQqId: config.value.botQqId,
@@ -395,11 +486,24 @@ async function loadConfig() {
 }
 
 async function loadBoards() {
-  boards.value = await adminApi.boards();
+  const seq = ++boardsLoadSeq;
+  boardsLoading.value = true;
+  boardsLoadError.value = "";
+  try {
+    const next = await adminApi.boards({ suppressErrorMessage: true });
+    if (seq === boardsLoadSeq) boards.value = next;
+  } catch (error) {
+    if (seq === boardsLoadSeq) {
+      boards.value = [];
+      boardsLoadError.value = requestMessage(error) || "板块列表加载失败，默认投稿板块暂不可选";
+    }
+  } finally {
+    if (seq === boardsLoadSeq) boardsLoading.value = false;
+  }
 }
 
 async function saveConfig() {
-  if (saving.value) return;
+  if (saving.value || configDisabled.value) return;
   saving.value = true;
   try {
     config.value = await adminApi.updateQqBotConfig({
@@ -415,7 +519,7 @@ async function saveConfig() {
 }
 
 async function clearToken() {
-  if (clearingToken.value) return;
+  if (clearingToken.value || configDisabled.value) return;
   clearingToken.value = true;
   try {
     await ElMessageBox.confirm("确认清除 NapCat Access Token？", "清除 Token", { type: "warning" });
@@ -459,7 +563,7 @@ async function sendTest() {
 }
 
 async function dispatchNow() {
-  if (dispatching.value) return;
+  if (dispatching.value || configDisabled.value) return;
   dispatching.value = true;
   try {
     const result = await adminApi.dispatchQqBotNotifications();
@@ -471,7 +575,23 @@ async function dispatchNow() {
 }
 
 async function loadBindings() {
-  bindings.value = await adminApi.qqBotBindings({ q: bindingQuery.value || undefined });
+  const seq = ++bindingsLoadSeq;
+  bindingsLoading.value = true;
+  bindingsLoadError.value = "";
+  try {
+    const next = await adminApi.qqBotBindings(
+      { q: bindingQuery.value || undefined },
+      { suppressErrorMessage: true },
+    );
+    if (seq === bindingsLoadSeq) bindings.value = next;
+  } catch (error) {
+    if (seq === bindingsLoadSeq) {
+      bindings.value = [];
+      bindingsLoadError.value = requestMessage(error) || "绑定用户加载失败，请稍后重试";
+    }
+  } finally {
+    if (seq === bindingsLoadSeq) bindingsLoading.value = false;
+  }
 }
 
 function isBindingBusy(row: any) {
@@ -508,11 +628,24 @@ async function removeBinding(row: any) {
 }
 
 async function loadGroups() {
-  groups.value = await adminApi.qqBotGroups();
+  const seq = ++groupsLoadSeq;
+  groupsLoading.value = true;
+  groupsLoadError.value = "";
+  try {
+    const next = await adminApi.qqBotGroups({ suppressErrorMessage: true });
+    if (seq === groupsLoadSeq) groups.value = next;
+  } catch (error) {
+    if (seq === groupsLoadSeq) {
+      groups.value = [];
+      groupsLoadError.value = requestMessage(error) || "QQ群配置加载失败，请稍后重试";
+    }
+  } finally {
+    if (seq === groupsLoadSeq) groupsLoading.value = false;
+  }
 }
 
 function openGroupDialog(row?: any) {
-  if (savingGroup.value || groupBusyId.value !== null) return;
+  if (savingGroup.value || groupBusyId.value !== null || groupsLoadError.value) return;
   groupDialog.editingId = row?.id || 0;
   Object.assign(groupDialog.form, {
     groupId: row?.groupId || "",
@@ -572,9 +705,22 @@ function formatGroupNotifyAudiences(items: Array<"public" | "staff"> = []) {
 }
 
 async function loadLogs() {
-  const data = await adminApi.qqBotLogs(logFilter);
-  logs.value = data.list;
-  logTotal.value = data.total;
+  const seq = ++logsLoadSeq;
+  logsLoading.value = true;
+  logsLoadError.value = "";
+  try {
+    const data = await adminApi.qqBotLogs(logFilter, { suppressErrorMessage: true });
+    if (seq !== logsLoadSeq) return;
+    logs.value = data.list;
+    logTotal.value = data.total;
+  } catch (error) {
+    if (seq !== logsLoadSeq) return;
+    logs.value = [];
+    logTotal.value = 0;
+    logsLoadError.value = requestMessage(error) || "消息日志加载失败，请稍后重试";
+  } finally {
+    if (seq === logsLoadSeq) logsLoading.value = false;
+  }
 }
 
 async function refreshLogs() {
@@ -640,6 +786,13 @@ function formatLogTime(value: string) {
   return date.toLocaleString("zh-CN", { hour12: false });
 }
 
+function requestMessage(error: unknown) {
+  if (typeof error !== "object" || error === null) return "";
+  const responseMessage = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+  if (typeof responseMessage === "string") return responseMessage;
+  return error instanceof Error ? error.message : "";
+}
+
 </script>
 
 <style scoped>
@@ -647,6 +800,13 @@ function formatLogTime(value: string) {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+.pane-alert :deep(.el-alert__content) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
 }
 .section-grid {
   display: grid;

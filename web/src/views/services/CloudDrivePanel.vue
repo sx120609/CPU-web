@@ -131,7 +131,7 @@
           title="你当前只有浏览和下载权限；上传、重命名和删除仅对管理者开放。"
         />
 
-        <div v-if="!needLogin" class="explorer-card">
+        <div v-if="!needLogin && (directory || loading)" class="explorer-card">
           <div class="explorer-hero">
             <div>
               <div class="hero-label">Cloud Explorer</div>
@@ -175,16 +175,16 @@
 
           <div
             class="explorer-body"
-            :class="{ 'is-dragover': dragActive }"
+            :class="{ 'is-dragover': dragActive && canManage }"
             v-loading="loading"
-            @dragenter.prevent="dragActive = true"
-            @dragover.prevent="dragActive = true"
+            @dragenter.prevent="onDriveDragEnter"
+            @dragover.prevent="onDriveDragEnter"
             @dragleave.prevent="dragActive = false"
             @drop.prevent="onDropFiles"
           >
             <div v-if="!filteredEntries.length" class="empty-state">
-              <div class="empty-title">当前目录还没有文件</div>
-              <div class="empty-copy">把文件拖到这里，或者点击左侧“上传文件”开始使用。</div>
+              <div class="empty-title">{{ emptyStateTitle }}</div>
+              <div class="empty-copy">{{ emptyStateCopy }}</div>
             </div>
 
             <template v-else-if="viewMode === 'list'">
@@ -323,6 +323,13 @@ const currentDirectoryCount = computed(() =>
   (directory.value?.entries || []).filter((entry) => entry.kind === "folder").length);
 
 const currentFolderCount = computed(() => (directory.value?.entries || []).length);
+const emptyStateTitle = computed(() => search.value.trim() ? "没有匹配的文件" : "当前目录还没有文件");
+const emptyStateCopy = computed(() => {
+  if (search.value.trim()) return "换个关键词再试试。";
+  return canManage.value
+    ? "把文件拖到这里，或者点击左侧“上传文件”开始使用。"
+    : "当前目录暂无可浏览文件。";
+});
 
 onMounted(() => {
   reload().catch(() => null);
@@ -404,6 +411,11 @@ async function onFileInputChange(event: Event) {
   const files = Array.from(target?.files || []);
   target && (target.value = "");
   await enqueueFiles(files);
+}
+
+function onDriveDragEnter() {
+  if (!canManage.value || driveBusy.value) return;
+  dragActive.value = true;
 }
 
 async function onDropFiles(event: DragEvent) {

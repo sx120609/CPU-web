@@ -47,20 +47,24 @@ const all = ref<Board[]>([]);
 const loading = ref(false);
 const error = ref("");
 const hiddenAnnouncementSlugs = new Set(["xinli-notice"]);
+let loadSeq = 0;
 
 onMounted(reload);
 
 async function reload() {
+  const seq = ++loadSeq;
   loading.value = true;
   error.value = "";
   try {
-    all.value = await boardApi.list();
-  } catch (e: any) {
-    // 之前是裸 try-finally，错误被吞，用户看到的就是"卡死"——现在显式反馈
-    error.value = e?.message || "暂时加载失败，请稍后再试";
+    const next = await boardApi.list({ suppressErrorMessage: true });
+    if (seq !== loadSeq) return;
+    all.value = next;
+  } catch (error_) {
+    if (seq !== loadSeq) return;
+    error.value = normalizeAnnouncementsError(error_);
     all.value = [];
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
 }
 
@@ -76,6 +80,14 @@ function shortHost(url?: string) {
     const u = new URL(url);
     return u.hostname.replace(/^www\./, "");
   } catch { return url; }
+}
+
+function normalizeAnnouncementsError(error_: unknown) {
+  const status = (error_ as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
+  if (status && status < 500) {
+    return (error_ as { response?: { data?: { message?: string } } })?.response?.data?.message || "公告来源加载失败";
+  }
+  return "公告来源加载失败，请稍后再试";
 }
 </script>
 

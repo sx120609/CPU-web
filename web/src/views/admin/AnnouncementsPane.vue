@@ -46,6 +46,18 @@
           <el-button text :loading="loading" :disabled="loading" @click="reload">刷新</el-button>
         </div>
       </template>
+      <el-alert
+        v-if="loadError"
+        type="error"
+        :closable="false"
+        show-icon
+        class="pane-alert"
+        :title="loadError"
+      >
+        <template #default>
+          <el-button size="small" :loading="loading" @click="reload">重试</el-button>
+        </template>
+      </el-alert>
       <div v-loading="loading" class="ann-list">
         <el-empty v-if="!list.length" description="还没发布过公告" />
         <div v-for="a in list" :key="a.id" class="ann-row">
@@ -90,6 +102,7 @@ const list = ref<any[]>([]);
 const editingId = ref<number | null>(null);
 const form = reactive({ title: "", content: "", level: "normal", link: "", source: "站务组", targetClient: "all" });
 const loading = ref(false);
+const loadError = ref("");
 const publishing = ref(false);
 const announcementBusyId = ref<number | null>(null);
 let announcementLoadSeq = 0;
@@ -98,12 +111,25 @@ onMounted(reload);
 async function reload() {
   const seq = ++announcementLoadSeq;
   loading.value = true;
+  loadError.value = "";
   try {
-    const next = await adminApi.announcements();
+    const next = await adminApi.announcements({ suppressErrorMessage: true });
     if (seq === announcementLoadSeq) list.value = next;
+  } catch (error) {
+    if (seq === announcementLoadSeq) {
+      list.value = [];
+      loadError.value = requestMessage(error) || "历史公告加载失败，请稍后重试";
+    }
   } finally {
     if (seq === announcementLoadSeq) loading.value = false;
   }
+}
+
+function requestMessage(error: unknown) {
+  if (typeof error !== "object" || error === null) return "";
+  const responseMessage = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+  if (typeof responseMessage === "string") return responseMessage;
+  return error instanceof Error ? error.message : "";
 }
 
 function targetLabel(value?: string | null) {
@@ -200,6 +226,16 @@ async function removeAnn(a: any) {
 .ann-pane { display: flex; flex-direction: column; gap: 14px; }
 .composer .el-card__header { padding-bottom: 0; }
 .hdr { display: flex; justify-content: space-between; align-items: center; }
+.pane-alert {
+  margin-bottom: 12px;
+}
+.pane-alert :deep(.el-alert__content) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
 .ann-list { min-height: 80px; }
 .ann-row {
   display: flex;

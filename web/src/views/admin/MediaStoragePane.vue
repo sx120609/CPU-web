@@ -9,7 +9,7 @@
       </div>
     </el-alert>
 
-    <section class="settings-card" v-loading="loadingConfig">
+    <section class="settings-card" :class="{ 'is-config-disabled': Boolean(configLoadError) }" v-loading="loadingConfig">
       <div class="section-head">
         <div>
           <h3 class="section-title">媒体存储配置</h3>
@@ -24,6 +24,18 @@
           </el-tag>
         </div>
       </div>
+      <el-alert
+        v-if="configLoadError"
+        type="error"
+        :closable="false"
+        show-icon
+        class="pane-alert"
+        :title="configLoadError"
+      >
+        <template #default>
+          <el-button size="small" :loading="loadingConfig" @click="reloadConfig">重试配置</el-button>
+        </template>
+      </el-alert>
 
       <div class="storage-layout">
         <div class="storage-copy">
@@ -87,11 +99,11 @@
           </div>
 
           <div class="storage-actions">
-            <el-button type="primary" :loading="savingMediaStorage" :disabled="savingMediaStorage" @click="saveMediaStorageConfig">保存媒体存储配置</el-button>
-            <el-button :loading="validatingOneDriveChinaClient" :disabled="validatingOneDriveChinaClient" @click="validateOneDriveChinaClient">校验密钥</el-button>
-            <el-button :loading="authorizingOneDriveChina" :disabled="authorizingOneDriveChina" @click="startOneDriveChinaAuth">登录授权</el-button>
-            <el-button :disabled="!oneDriveChinaRefreshTokenConfigured || loadingOneDriveChinaDrives" :loading="loadingOneDriveChinaDrives" @click="loadOneDriveChinaDrives">刷新文档库</el-button>
-            <el-button :disabled="!oneDriveChinaRefreshTokenConfigured || clearingOneDriveChinaAuth" :loading="clearingOneDriveChinaAuth" @click="clearOneDriveChinaAuth">清除授权</el-button>
+            <el-button type="primary" :loading="savingMediaStorage" :disabled="savingMediaStorage || Boolean(configLoadError)" @click="saveMediaStorageConfig">保存媒体存储配置</el-button>
+            <el-button :loading="validatingOneDriveChinaClient" :disabled="validatingOneDriveChinaClient || Boolean(configLoadError)" @click="validateOneDriveChinaClient">校验密钥</el-button>
+            <el-button :loading="authorizingOneDriveChina" :disabled="authorizingOneDriveChina || Boolean(configLoadError)" @click="startOneDriveChinaAuth">登录授权</el-button>
+            <el-button :disabled="!oneDriveChinaRefreshTokenConfigured || loadingOneDriveChinaDrives || Boolean(configLoadError)" :loading="loadingOneDriveChinaDrives" @click="loadOneDriveChinaDrives">刷新文档库</el-button>
+            <el-button :disabled="!oneDriveChinaRefreshTokenConfigured || clearingOneDriveChinaAuth || Boolean(configLoadError)" :loading="clearingOneDriveChinaAuth" @click="clearOneDriveChinaAuth">清除授权</el-button>
           </div>
 
           <div v-if="oneDriveChinaDriveOptions.length" class="storage-drive-box">
@@ -99,7 +111,7 @@
               <el-select v-model="oneDriveChinaDriveId" class="drive-select" placeholder="选择要写入的 SharePoint 文档库">
                 <el-option v-for="item in oneDriveChinaDriveOptions" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
-              <el-button type="primary" plain :loading="savingOneDriveChinaDrive" :disabled="savingOneDriveChinaDrive" @click="saveOneDriveChinaDriveSelection">保存文档库</el-button>
+              <el-button type="primary" plain :loading="savingOneDriveChinaDrive" :disabled="savingOneDriveChinaDrive || Boolean(configLoadError)" @click="saveOneDriveChinaDriveSelection">保存文档库</el-button>
             </div>
             <div class="section-desc drive-desc">
               当前站点：{{ oneDriveChinaSiteName || "未解析" }}。如果粘贴的是文档库或列表页面 URL，系统会自动向上回退成可用站点路径。
@@ -136,6 +148,18 @@
           </el-button>
         </div>
       </div>
+      <el-alert
+        v-if="inventoryLoadError"
+        type="error"
+        :closable="false"
+        show-icon
+        class="inventory-alert"
+        :title="inventoryLoadError"
+      >
+        <template #default>
+          <el-button size="small" :loading="loadingInventory" @click="reloadInventory">重试列表</el-button>
+        </template>
+      </el-alert>
 
       <div v-if="inventory" class="summary-row inventory-summary">
         <span class="summary-pill">图片后端 {{ inventory.mediaStorageImageProvider === "onedrive-cn" ? "世纪互联" : "本地" }}</span>
@@ -310,6 +334,10 @@ const savingOneDriveChinaDrive = ref(false);
 const clearingOneDriveChinaAuth = ref(false);
 const migratingFiles = ref(false);
 const cleaningLocalFiles = ref(false);
+const configLoadError = ref("");
+const inventoryLoadError = ref("");
+let configLoadSeq = 0;
+let inventoryLoadSeq = 0;
 
 const siteOrigin = ref("");
 const mediaStorageProvider = ref<"local" | "onedrive-cn">("local");
@@ -373,21 +401,28 @@ const filteredFiles = computed(() => {
 onMounted(reload);
 
 async function reload() {
+  await Promise.all([reloadConfig(), reloadInventory()]);
+  await handleStorageAuthQuery();
+}
+
+async function reloadConfig() {
+  const seq = ++configLoadSeq;
   loadingConfig.value = true;
-  loadingInventory.value = true;
+  configLoadError.value = "";
   try {
-    const [config, siteConfig, files] = await Promise.all([
-      adminApi.mediaStorageConfig(),
-      adminApi.siteConfig(),
-      adminApi.mediaStorageFiles(),
+    const [config, siteConfig] = await Promise.all([
+      adminApi.mediaStorageConfig({ suppressErrorMessage: true }),
+      adminApi.siteConfig({ suppressErrorMessage: true }),
     ]);
+    if (seq !== configLoadSeq) return;
     applyMediaStorageConfig(config);
     siteOrigin.value = siteConfig.siteOrigin;
-    inventory.value = files;
-    await handleStorageAuthQuery();
+  } catch (error) {
+    if (seq === configLoadSeq) {
+      configLoadError.value = requestMessage(error) || "媒体存储配置加载失败，请稍后重试";
+    }
   } finally {
-    loadingConfig.value = false;
-    loadingInventory.value = false;
+    if (seq === configLoadSeq) loadingConfig.value = false;
   }
 }
 
@@ -413,6 +448,10 @@ function applyMediaStorageConfig(config: MediaStorageConfig) {
 }
 
 async function persistMediaStorageConfig(silent = false) {
+  if (configLoadError.value) {
+    ElMessage.warning("请先重新加载媒体存储配置");
+    return false;
+  }
   savingMediaStorage.value = true;
   try {
     await adminApi.updateMediaStorageConfig({
@@ -424,9 +463,12 @@ async function persistMediaStorageConfig(silent = false) {
       oneDriveChinaSharepointUrl: oneDriveChinaSharepointUrl.value,
       oneDriveChinaRootPath: oneDriveChinaRootPath.value,
     });
-    applyMediaStorageConfig(await adminApi.mediaStorageConfig());
+    const nextConfig = await adminApi.mediaStorageConfig({ suppressErrorMessage: true });
+    applyMediaStorageConfig(nextConfig);
+    configLoadError.value = "";
     await reloadInventory();
     if (!silent) ElMessage.success("媒体存储配置已保存");
+    return true;
   } finally {
     savingMediaStorage.value = false;
   }
@@ -437,10 +479,11 @@ async function saveMediaStorageConfig() {
 }
 
 async function startOneDriveChinaAuth() {
-  if (authorizingOneDriveChina.value) return;
+  if (authorizingOneDriveChina.value || configLoadError.value) return;
   authorizingOneDriveChina.value = true;
   try {
-    await persistMediaStorageConfig(true);
+    const saved = await persistMediaStorageConfig(true);
+    if (!saved) return;
     const result = await adminApi.beginOneDriveChinaAuth();
     window.location.assign(result.authorizeUrl);
   } finally {
@@ -449,10 +492,11 @@ async function startOneDriveChinaAuth() {
 }
 
 async function validateOneDriveChinaClient() {
-  if (validatingOneDriveChinaClient.value) return;
+  if (validatingOneDriveChinaClient.value || configLoadError.value) return;
   validatingOneDriveChinaClient.value = true;
   try {
-    await persistMediaStorageConfig(true);
+    const saved = await persistMediaStorageConfig(true);
+    if (!saved) return;
     const result = await adminApi.validateOneDriveChinaClient();
     ElMessage.success(result.message);
   } finally {
@@ -461,10 +505,10 @@ async function validateOneDriveChinaClient() {
 }
 
 async function fetchOneDriveChinaDrives(silent = false) {
-  if (loadingOneDriveChinaDrives.value) return;
+  if (loadingOneDriveChinaDrives.value || configLoadError.value) return;
   loadingOneDriveChinaDrives.value = true;
   try {
-    const result = await adminApi.oneDriveChinaDrives();
+    const result = await adminApi.oneDriveChinaDrives({ suppressErrorMessage: true });
     oneDriveChinaSiteId.value = result.siteId;
     oneDriveChinaSiteName.value = result.siteName;
     oneDriveChinaSharepointUrl.value = result.sharepointUrl;
@@ -474,6 +518,8 @@ async function fetchOneDriveChinaDrives(silent = false) {
     oneDriveChinaDriveName.value = result.selectedDriveName;
     oneDriveChinaDriveOptions.value = result.list;
     if (!silent) ElMessage.success(result.list.length ? "文档库已刷新" : "当前站点下没有可用文档库");
+  } catch (error) {
+    if (!silent) ElMessage.error(requestMessage(error) || "文档库刷新失败，请稍后重试");
   } finally {
     loadingOneDriveChinaDrives.value = false;
   }
@@ -484,7 +530,7 @@ async function loadOneDriveChinaDrives() {
 }
 
 async function saveOneDriveChinaDriveSelection() {
-  if (savingOneDriveChinaDrive.value) return;
+  if (savingOneDriveChinaDrive.value || configLoadError.value) return;
   if (!oneDriveChinaDriveId.value) {
     ElMessage.warning("请先选择文档库");
     return;
@@ -501,7 +547,7 @@ async function saveOneDriveChinaDriveSelection() {
 }
 
 async function clearOneDriveChinaAuth() {
-  if (clearingOneDriveChinaAuth.value) return;
+  if (clearingOneDriveChinaAuth.value || configLoadError.value) return;
   clearingOneDriveChinaAuth.value = true;
   try {
     await ElMessageBox.confirm(
@@ -530,11 +576,19 @@ async function clearOneDriveChinaAuth() {
 }
 
 async function reloadInventory() {
+  const seq = ++inventoryLoadSeq;
   loadingInventory.value = true;
+  inventoryLoadError.value = "";
   try {
-    inventory.value = await adminApi.mediaStorageFiles();
+    const nextInventory = await adminApi.mediaStorageFiles({ suppressErrorMessage: true });
+    if (seq === inventoryLoadSeq) inventory.value = nextInventory;
+  } catch (error) {
+    if (seq === inventoryLoadSeq) {
+      inventory.value = null;
+      inventoryLoadError.value = requestMessage(error) || "站点文件总览加载失败，请稍后重试";
+    }
   } finally {
-    loadingInventory.value = false;
+    if (seq === inventoryLoadSeq) loadingInventory.value = false;
   }
 }
 
@@ -544,18 +598,31 @@ async function handleStorageAuthQuery() {
   if (!status) return;
   if (status === "success") {
     ElMessage.success("世纪互联 OneDrive 授权成功");
-    applyMediaStorageConfig(await adminApi.mediaStorageConfig());
+    const nextConfig = await loadMediaStorageConfigAfterAuth();
+    if (nextConfig) applyMediaStorageConfig(nextConfig);
     await fetchOneDriveChinaDrives(true).catch(() => null);
     await reloadInventory();
   } else {
     ElMessage.error(message || "世纪互联 OneDrive 授权失败");
-    applyMediaStorageConfig(await adminApi.mediaStorageConfig());
+    const nextConfig = await loadMediaStorageConfigAfterAuth();
+    if (nextConfig) applyMediaStorageConfig(nextConfig);
     await reloadInventory();
   }
   const nextQuery = { ...route.query } as Record<string, any>;
   delete nextQuery.storageAuth;
   delete nextQuery.storageAuthMessage;
   router.replace({ query: nextQuery }).catch(() => null);
+}
+
+async function loadMediaStorageConfigAfterAuth() {
+  try {
+    const nextConfig = await adminApi.mediaStorageConfig({ suppressErrorMessage: true });
+    configLoadError.value = "";
+    return nextConfig;
+  } catch (error) {
+    configLoadError.value = requestMessage(error) || "媒体存储配置加载失败，请稍后重试";
+    return null;
+  }
 }
 
 async function migrateLocalFiles() {
@@ -677,6 +744,13 @@ function resolveState(row: MediaStorageAdminFileEntry) {
     return { key: "cache-only" as const, label: "仅缓存", type: "info" as const };
   }
   return { key: "local-only" as const, label: "仅本地", type: "info" as const };
+}
+
+function requestMessage(error: unknown) {
+  if (typeof error !== "object" || error === null) return "";
+  const responseMessage = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+  if (typeof responseMessage === "string") return responseMessage;
+  return error instanceof Error ? error.message : "";
 }
 
 function formatBytes(value: number | null) {
@@ -843,6 +917,21 @@ function formatTime(value: string) {
 
 .drive-desc {
   margin: 0;
+}
+
+.pane-alert :deep(.el-alert__content),
+.inventory-alert :deep(.el-alert__content) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+
+.settings-card.is-config-disabled .storage-layout {
+  pointer-events: none;
+  opacity: 0.62;
 }
 
 .inventory-alert {

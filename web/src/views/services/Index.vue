@@ -9,7 +9,7 @@
       </div>
     </div>
 
-    <section class="tool-section">
+    <section class="tool-section" v-loading="toolsLoading">
       <div class="tool-section-head">
         <div>
           <h3>校园小工具</h3>
@@ -19,6 +19,10 @@
           <el-icon><Tools /></el-icon>
           全部工具
         </el-button>
+      </div>
+      <div v-if="toolsError" class="tool-error">
+        <span>{{ toolsError }}</span>
+        <el-button text size="small" :loading="toolsLoading" @click="loadToolMetas">重试</el-button>
       </div>
       <div class="tool-grid">
         <button
@@ -155,15 +159,14 @@ const captchaRefreshing = ref(false);
 const captchaError = ref("");
 const electricOpen = ref(false);
 const toolMetas = ref<ToolMeta[]>([]);
+const toolsLoading = ref(false);
+const toolsError = ref("");
+let toolsLoadSeq = 0;
 const toolAccessMap = computed(() => Object.fromEntries(toolMetas.value.map((item) => [item.code, item])));
 const visibleTools = computed(() => serviceTools.filter((tool) => toolAccessMap.value[tool.slug]?.isVisible !== false));
 
 onMounted(async () => {
-  try {
-    toolMetas.value = await toolsApi.tools();
-  } catch {
-    toolMetas.value = [];
-  }
+  void loadToolMetas();
   jwxt.hydrate();
   hasCreds.value = hasSavedCreds();
   try {
@@ -182,6 +185,23 @@ onMounted(async () => {
     // 如果 tryAutoLogin 命中 captcha，模板会自动切到 captcha-card；用户输入完点按钮 submitCaptcha
   }
 });
+
+async function loadToolMetas() {
+  const seq = ++toolsLoadSeq;
+  toolsLoading.value = true;
+  toolsError.value = "";
+  try {
+    const next = await toolsApi.tools({ suppressErrorMessage: true });
+    if (seq !== toolsLoadSeq) return;
+    toolMetas.value = next;
+  } catch (error) {
+    if (seq !== toolsLoadSeq) return;
+    toolMetas.value = [];
+    toolsError.value = normalizeToolsError(error);
+  } finally {
+    if (seq === toolsLoadSeq) toolsLoading.value = false;
+  }
+}
 
 function isLoginRequired(slug: string) {
   return Boolean(toolAccessMap.value[slug]?.requireLogin);
@@ -223,6 +243,14 @@ async function submitCaptcha() {
     }
   } finally { captchaSubmitting.value = false; }
 }
+
+function normalizeToolsError(error: unknown) {
+  const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
+  if (status && status < 500) {
+    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "工具配置加载失败，已显示默认入口";
+  }
+  return "工具配置加载失败，已显示默认入口";
+}
 </script>
 
 <style scoped>
@@ -262,6 +290,19 @@ async function submitCaptcha() {
   color: #6b7280;
   font-size: 13px;
   line-height: 1.6;
+}
+.tool-error {
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #92400e;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
 }
 .tool-grid {
   display: grid;
@@ -507,6 +548,16 @@ async function submitCaptcha() {
 
   .tool-section-head .el-button {
     width: 100%;
+  }
+
+  .tool-error {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tool-error .el-button {
+    align-self: flex-start;
+    margin-left: 0;
   }
 
   .tool-grid {

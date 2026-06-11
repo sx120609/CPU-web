@@ -10,8 +10,21 @@
       </div>
     </div>
 
+    <el-alert
+      v-if="overviewError"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="overview-alert"
+      :title="overviewError"
+    >
+      <template #default>
+        <el-button size="small" :loading="overviewLoading" @click="loadOverview">重试</el-button>
+      </template>
+    </el-alert>
+
     <!-- 概览数据 -->
-    <div class="overview" v-if="overview">
+    <div class="overview" v-if="overview" v-loading="overviewLoading">
       <div class="ov-card">
         <div class="ov-num">{{ overview.users }}</div>
         <div class="ov-lbl">用户</div>
@@ -101,6 +114,8 @@ const route = useRoute();
 const router = useRouter();
 const tab = ref(typeof route.query.tab === "string" ? route.query.tab : "users");
 const overview = ref<AdminOverview | null>(null);
+const overviewLoading = ref(false);
+const overviewError = ref("");
 const dailyActiveSeries = computed(() => overview.value?.dailyActiveSeries ?? []);
 const dailyActivePeak = computed(() => dailyActiveSeries.value.reduce((max, item) => Math.max(max, item.count), 0));
 const dailyActiveAverage = computed(() => {
@@ -216,9 +231,27 @@ const dailyActiveChartOption = computed<EChartsOption>(() => {
   };
 });
 
-onMounted(async () => {
-  try { overview.value = await adminApi.overview(); } catch { /* ignore */ }
-});
+onMounted(loadOverview);
+
+async function loadOverview() {
+  overviewLoading.value = true;
+  overviewError.value = "";
+  try {
+    overview.value = await adminApi.overview({ suppressErrorMessage: true });
+  } catch (error) {
+    overview.value = null;
+    overviewError.value = requestMessage(error) || "后台概览加载失败";
+  } finally {
+    overviewLoading.value = false;
+  }
+}
+
+function requestMessage(error: unknown) {
+  if (typeof error !== "object" || error === null) return "";
+  const responseMessage = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+  if (typeof responseMessage === "string") return responseMessage;
+  return error instanceof Error ? error.message : "";
+}
 
 watch(() => route.query.tab, (next) => {
   if (typeof next === "string" && next && next !== tab.value) tab.value = next;
@@ -241,6 +274,13 @@ watch(tab, (next) => {
 .title { margin: 0; font-size: 24px; }
 .user-tag { display: flex; gap: 8px; align-items: center; }
 .me { font-size: 13px; color: #4b5563; }
+.overview-alert :deep(.el-alert__content) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
 
 .overview {
   display: grid;

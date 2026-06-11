@@ -4,7 +4,7 @@
       <el-input v-model="q" placeholder="搜标题 / 正文" clearable style="width:280px" @keyup.enter="reload">
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
-      <el-select v-model="boardSlug" clearable placeholder="所有板块" style="width:160px" @change="reload">
+      <el-select v-model="boardSlug" clearable placeholder="所有板块" style="width:160px" :disabled="Boolean(boardLoadError)" @change="reload">
         <el-option v-for="b in boards" :key="b.slug" :value="b.slug" :label="b.name" />
       </el-select>
       <el-select v-model="reviewStatus" clearable placeholder="审核状态" style="width:180px" @change="reload">
@@ -21,13 +21,34 @@
         <el-radio-button value="0">正常</el-radio-button>
         <el-radio-button value="1">已隐</el-radio-button>
       </el-radio-group>
-      <el-button @click="reload">刷新</el-button>
+      <el-button :loading="loading" @click="reload">刷新</el-button>
     </div>
+
+    <el-alert
+      v-if="boardLoadError"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="pane-alert"
+      :title="boardLoadError"
+    />
+    <el-alert
+      v-if="loadError"
+      type="error"
+      :closable="false"
+      show-icon
+      class="pane-alert"
+      :title="loadError"
+    >
+      <template #default>
+        <el-button size="small" :loading="loading" @click="reload">重试</el-button>
+      </template>
+    </el-alert>
 
     <el-table :data="list" v-loading="loading" stripe size="default" class="admin-table">
       <el-table-column prop="id" label="ID" width="60" />
       <el-table-column label="板块" width="120">
-        <template #default="{ row }">{{ row.board.name }}</template>
+        <template #default="{ row }">{{ row.board?.name || "-" }}</template>
       </el-table-column>
       <el-table-column label="标题" min-width="280">
         <template #default="{ row }">
@@ -41,7 +62,7 @@
       <el-table-column label="作者" width="120">
         <template #default="{ row }">
           <div class="author-cell">
-            <span>{{ row.author.nickname }}</span>
+            <span>{{ row.author?.nickname || "未知用户" }}</span>
             <span v-if="row.isAnonymous && row.realAuthor" class="author-real">
               {{ row.realAuthor.nickname }}<template v-if="row.realAuthor.username"> @{{ row.realAuthor.username }}</template>
             </span>
@@ -109,9 +130,9 @@
           <a :class="{ hidden: row.hidden }" :href="`/forum/topic/${row.id}`" target="_blank" rel="noopener noreferrer">{{ row.title }}</a>
         </div>
         <div class="topic-meta">
-          <span>{{ row.board.name }}</span>
+          <span>{{ row.board?.name || "-" }}</span>
           <span>
-            {{ row.author.nickname }}
+            {{ row.author?.nickname || "未知用户" }}
             <template v-if="row.isAnonymous && row.realAuthor">
               · 真实作者 {{ row.realAuthor.nickname }}<template v-if="row.realAuthor.username"> @{{ row.realAuthor.username }}</template>
             </template>
@@ -184,31 +205,56 @@ const total = ref(0);
 const page = ref(1);
 const size = ref(20);
 const loading = ref(false);
+const loadError = ref("");
+const boardLoadError = ref("");
 const topicBusyId = ref<number | null>(null);
 const q = ref("");
 const boardSlug = ref("");
 const hidden = ref<"" | "0" | "1">("");
 const reviewStatus = ref("");
+let reloadSeq = 0;
 
 onMounted(async () => {
-  boards.value = await boardApi.list();
+  try {
+    boards.value = await boardApi.list({ suppressErrorMessage: true });
+  } catch (error) {
+    boardLoadError.value = requestMessage(error) || "板块列表加载失败，转版和板块筛选暂不可用";
+    boards.value = [];
+  }
   await reload();
 });
 
 async function reload() {
+  const seq = ++reloadSeq;
   loading.value = true;
+  loadError.value = "";
   try {
     const r = await adminApi.topics({
       q: q.value, board: boardSlug.value || undefined,
       hidden: hidden.value || undefined,
       reviewStatus: reviewStatus.value || undefined,
       page: page.value, size: size.value,
-    });
+    }, { suppressErrorMessage: true });
+    if (seq !== reloadSeq) return;
     list.value = r.list;
     total.value = r.total;
-  } finally { loading.value = false; }
+  } catch (error) {
+    if (seq !== reloadSeq) return;
+    list.value = [];
+    total.value = 0;
+    loadError.value = requestMessage(error) || "帖子列表加载失败，请稍后重试";
+  } finally {
+    if (seq === reloadSeq) loading.value = false;
+  }
 }
 function onPage(p: number) { page.value = p; reload(); }
+
+function requestMessage(error: unknown) {
+  if (typeof error !== "object" || error === null) return "";
+  const responseMessage = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+  if (typeof responseMessage === "string") return responseMessage;
+  return error instanceof Error ? error.message : "";
+}
 
 function isTopicBusy(row: any) {
   return topicBusyId.value === row.id;
@@ -297,6 +343,10 @@ async function unhide(row: any) {
 async function moveBoard(row: any) {
   await runTopicAction(row, async () => {
     const writable = boards.value.filter((b) => !b.readOnly);
+    if (!writable.length) {
+      ElMessage.warning(boardLoadError.value || "暂无可转入的板块");
+      return;
+    }
     const slugs = writable.map((b) => `${b.slug} (${b.name})`).join(", ");
     const { value } = await ElMessageBox.prompt(
       `将《${row.title.slice(0, 30)}》转到哪个板块？\n可选 slug：\n${slugs}`,
@@ -348,6 +398,13 @@ async function rejectReview(row: any) {
 <style scoped>
 .topics-pane { display: flex; flex-direction: column; gap: 12px; }
 .ctrl-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.pane-alert :deep(.el-alert__content) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
 .pager { display: flex; justify-content: center; padding-top: 12px; }
 a { color: var(--cpu-primary); text-decoration: none; }
 a:hover { text-decoration: underline; }

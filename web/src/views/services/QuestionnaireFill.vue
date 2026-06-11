@@ -106,7 +106,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft, DocumentChecked } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
@@ -120,28 +120,41 @@ const submitting = ref(false);
 const questionnaire = ref<Questionnaire | null>(null);
 const error = ref("");
 const answers = reactive<Record<string, string | string[]>>({});
+let loadSeq = 0;
 
 const fieldCount = computed(() => questionnaire.value?.fields?.length ?? 0);
 const answeredCount = computed(() => (questionnaire.value?.fields ?? []).filter((field) => hasAnswer(answers[field.id])).length);
 const progressPercent = computed(() => fieldCount.value ? Math.round((answeredCount.value / fieldCount.value) * 100) : 0);
 
-onMounted(load);
+watch(() => route.params.slug, () => {
+  void load();
+}, { immediate: true });
 
 async function load() {
+  const seq = ++loadSeq;
+  const slug = String(route.params.slug || "").trim();
   loading.value = true;
   error.value = "";
   questionnaire.value = null;
   Object.keys(answers).forEach((key) => delete answers[key]);
+  if (!slug) {
+    error.value = "问卷地址无效";
+    loading.value = false;
+    return;
+  }
   try {
-    questionnaire.value = await toolsApi.questionnaire(String(route.params.slug), {
+    const next = await toolsApi.questionnaire(slug, {
       suppressErrorMessage: true,
       suppressAuthRedirect: true,
       suppressAuthMessage: true,
     });
-    for (const field of questionnaire.value.fields ?? []) {
+    if (seq !== loadSeq) return;
+    questionnaire.value = next;
+    for (const field of next.fields ?? []) {
       answers[field.id] = field.type === "multiple" ? [] : "";
     }
   } catch (e) {
+    if (seq !== loadSeq) return;
     const status = (e as { response?: { status?: number; data?: { message?: string } } }).response?.status;
     if (status === 401) {
       error.value = "请先登录后再填写问卷";
@@ -156,7 +169,7 @@ async function load() {
       error.value = "问卷加载失败，请稍后再试";
     }
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
 }
 

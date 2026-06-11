@@ -301,7 +301,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, nextTick, onBeforeUnmount, onMounted, watch } from "vue";
+import { ref, reactive, computed, nextTick, onBeforeUnmount, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import MarkdownView from "@/components/forum/MarkdownView.vue";
@@ -325,7 +325,11 @@ const coursesLoading = ref(false);
 const coursesLoaded = ref(false);
 const courseLoadError = ref("");
 const submitting = ref(false);
-const editingId = computed(() => (route.params.id ? Number(route.params.id) : null));
+const editingId = computed(() => {
+  if (!route.params.id) return null;
+  const id = Number(route.params.id);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+});
 const CONTENT_MAX = 20000;
 type PostEditorMode = "visual" | "markup";
 const editorRef = ref<InstanceType<typeof RichTextEditor> | null>(null);
@@ -342,6 +346,7 @@ const blockedReviewInfo = reactive<{ reason: string; riskScore: number | null }>
   reason: "",
   riskScore: null,
 });
+let loadSeq = 0;
 let formDraftTimer = 0;
 let markupDraftTimer = 0;
 const markupHeadingSnippet = "## 小标题\n\n";
@@ -357,7 +362,8 @@ const form = reactive({
   anonymous: false,
 });
 
-const meta = reactive<any>({
+function defaultPostMeta() {
+  return {
   price: 0,
   condition: "九成新",
   tradeMode: "当面",
@@ -367,7 +373,10 @@ const meta = reactive<any>({
   teacherName: "",
   ratings: { difficulty: 3, reward: 3, recommend: 3, givingScore: 3 },
   semester: "",
-});
+  };
+}
+
+const meta = reactive<any>(defaultPostMeta());
 
 const currentBoard = computed(() => boards.value.find((b) => b.slug === form.boardSlug));
 const boardType = computed(() => currentBoard.value?.type ?? "normal");
@@ -416,7 +425,9 @@ const groupedBoards = computed(() => {
 });
 const mutedNotice = computed(() => auth.user?.mutedUntil ? `你已被禁言至 ${fmtDate(auth.user.mutedUntil)}，当前不能发帖或编辑发言内容` : "你当前已被禁言，暂时不能发帖或编辑发言内容");
 
-onMounted(loadInitial);
+watch(() => route.params.id, () => {
+  void loadInitial();
+}, { immediate: true });
 
 onBeforeUnmount(() => {
   window.clearTimeout(formDraftTimer);
@@ -453,13 +464,23 @@ watch(() => form.content, (value) => {
 });
 
 async function loadInitial() {
+  const seq = ++loadSeq;
   loading.value = true;
   loadError.value = "";
+  resetEditorStateForLoad();
+  if (route.params.id && !editingId.value) {
+    loadError.value = "编辑的帖子地址无效";
+    loading.value = false;
+    return;
+  }
   try {
-    boards.value = await boardApi.list({ suppressErrorMessage: true });
+    const boardList = await boardApi.list({ suppressErrorMessage: true });
+    if (seq !== loadSeq) return;
+    boards.value = boardList;
     normalizeSelectedBoard();
     if (editingId.value) {
       const t = await topicApi.detail(editingId.value, { suppressErrorMessage: true });
+      if (seq !== loadSeq) return;
       form.boardSlug = t.board?.slug ?? "";
       form.title = t.title;
       form.content = t.content;
@@ -474,10 +495,30 @@ async function loadInitial() {
     normalizeSelectedBoard();
     if (boardType.value === "coursereview") await loadCoursesForReview();
   } catch (error) {
+    if (seq !== loadSeq) return;
     loadError.value = normalizePostLoadError(error);
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
+}
+
+function resetEditorStateForLoad() {
+  window.clearTimeout(formDraftTimer);
+  window.clearTimeout(markupDraftTimer);
+  previewOpen.value = false;
+  pendingMetadata.value = null;
+  reviewBlockedOpen.value = false;
+  manualReviewConfirmOpen.value = false;
+  requestingManualReview.value = false;
+  blockedTopicId.value = null;
+  blockedReviewInfo.reason = "";
+  blockedReviewInfo.riskScore = null;
+  editorMode.value = "visual";
+  form.boardSlug = typeof route.query.board === "string" && !editingId.value ? route.query.board : "";
+  form.title = "";
+  form.content = "";
+  form.anonymous = false;
+  Object.assign(meta, defaultPostMeta());
 }
 
 async function loadCoursesForReview(force = false) {

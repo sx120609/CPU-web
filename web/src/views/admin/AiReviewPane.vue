@@ -1,6 +1,31 @@
 <template>
   <div class="ai-review-pane">
-    <section class="settings-card" v-loading="loadingConfig">
+    <el-alert
+      v-if="configLoadError"
+      type="error"
+      :closable="false"
+      show-icon
+      class="pane-alert"
+      :title="configLoadError"
+    >
+      <template #default>
+        <el-button size="small" :loading="loadingConfig" @click="loadConfig">重试配置</el-button>
+      </template>
+    </el-alert>
+    <el-alert
+      v-if="promptDefaultsLoadError"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="pane-alert"
+      :title="promptDefaultsLoadError"
+    >
+      <template #default>
+        <el-button size="small" :loading="loadingPromptDefaults" @click="loadPromptDefaults">重试默认 Prompt</el-button>
+      </template>
+    </el-alert>
+
+    <section class="settings-card" :class="{ 'is-config-disabled': Boolean(configLoadError) }" v-loading="loadingConfig">
       <div class="section-head">
         <div>
           <h3 class="section-title">文字审核</h3>
@@ -48,7 +73,7 @@
           <span class="toggle-arrow" aria-hidden="true">▾</span>
         </button>
         <div class="prompt-actions">
-          <el-button text :disabled="loadingPromptDefaults" @click="resetTextPrompts">重置文字 Prompt</el-button>
+        <el-button text :disabled="loadingPromptDefaults || Boolean(configLoadError)" @click="resetTextPrompts">重置文字 Prompt</el-button>
         </div>
         <div v-if="textPromptsExpanded" class="prompt-grid">
           <div class="ai-row ai-row--stretch">
@@ -79,7 +104,7 @@
       </div>
     </section>
 
-    <section class="settings-card" v-loading="loadingConfig">
+    <section class="settings-card" :class="{ 'is-config-disabled': Boolean(configLoadError) }" v-loading="loadingConfig">
       <div class="section-head">
         <div>
           <h3 class="section-title">图片审核</h3>
@@ -131,7 +156,7 @@
           <span class="toggle-arrow" aria-hidden="true">▾</span>
         </button>
         <div class="prompt-actions">
-          <el-button text :disabled="loadingPromptDefaults" @click="resetImagePrompts">重置图片 Prompt</el-button>
+        <el-button text :disabled="loadingPromptDefaults || Boolean(configLoadError)" @click="resetImagePrompts">重置图片 Prompt</el-button>
         </div>
         <div v-if="imagePromptsExpanded" class="prompt-grid">
           <div class="ai-row ai-row--stretch">
@@ -146,14 +171,14 @@
       </div>
 
       <div class="actions-row">
-        <el-button type="primary" :loading="saving" :disabled="saving" @click="saveConfig">保存审核配置</el-button>
-        <el-button plain :disabled="loadingPromptDefaults" @click="resetAllPrompts">重置全部 Prompt</el-button>
+        <el-button type="primary" :loading="saving" :disabled="saving || Boolean(configLoadError)" @click="saveConfig">保存审核配置</el-button>
+        <el-button plain :disabled="loadingPromptDefaults || Boolean(configLoadError)" @click="resetAllPrompts">重置全部 Prompt</el-button>
         <el-button plain :loading="sweepingImages" :disabled="sweepingImages" @click="sweepForumImages">一键补扫全站图片</el-button>
       </div>
       <p v-if="lastImageSweepSummary" class="actions-note">{{ lastImageSweepSummary }}</p>
     </section>
 
-    <section class="settings-card" v-loading="loadingConfig">
+    <section class="settings-card" :class="{ 'is-config-disabled': Boolean(configLoadError) }" v-loading="loadingConfig">
       <div class="section-head">
         <div>
           <h3 class="section-title">视频审核</h3>
@@ -201,7 +226,7 @@
           <span class="toggle-arrow" aria-hidden="true">▾</span>
         </button>
         <div class="prompt-actions">
-          <el-button text :disabled="loadingPromptDefaults" @click="resetVideoPrompts">重置视频 Prompt</el-button>
+        <el-button text :disabled="loadingPromptDefaults || Boolean(configLoadError)" @click="resetVideoPrompts">重置视频 Prompt</el-button>
         </div>
         <div v-if="videoPromptsExpanded" class="prompt-grid">
           <div class="ai-row ai-row--stretch">
@@ -216,8 +241,8 @@
       </div>
 
       <div class="actions-row">
-        <el-button type="primary" :loading="saving" :disabled="saving" @click="saveConfig">保存审核配置</el-button>
-        <el-button plain :disabled="loadingPromptDefaults" @click="resetAllPrompts">重置全部 Prompt</el-button>
+        <el-button type="primary" :loading="saving" :disabled="saving || Boolean(configLoadError)" @click="saveConfig">保存审核配置</el-button>
+        <el-button plain :disabled="loadingPromptDefaults || Boolean(configLoadError)" @click="resetAllPrompts">重置全部 Prompt</el-button>
         <el-button plain :loading="sweepingVideos" :disabled="sweepingVideos" @click="sweepForumVideos">一键补扫全站视频</el-button>
       </div>
       <p v-if="lastVideoSweepSummary" class="actions-note">{{ lastVideoSweepSummary }}</p>
@@ -232,6 +257,18 @@
         </el-select>
         <el-button plain :loading="loadingVideos" :disabled="loadingVideos" @click="loadVideos">刷新</el-button>
       </div>
+      <el-alert
+        v-if="videosLoadError"
+        type="error"
+        :closable="false"
+        show-icon
+        class="pane-alert"
+        :title="videosLoadError"
+      >
+        <template #default>
+          <el-button size="small" :loading="loadingVideos" @click="loadVideos">重试</el-button>
+        </template>
+      </el-alert>
 
       <div class="admin-table-scroll">
         <el-table :data="videoRows" v-loading="loadingVideos" size="small" class="admin-table admin-table--videos">
@@ -297,6 +334,18 @@
         </el-select>
         <el-button plain :loading="loadingLogs" :disabled="loadingLogs" @click="loadLogs">刷新</el-button>
       </div>
+      <el-alert
+        v-if="logsLoadError"
+        type="error"
+        :closable="false"
+        show-icon
+        class="pane-alert"
+        :title="logsLoadError"
+      >
+        <template #default>
+          <el-button size="small" :loading="loadingLogs" @click="loadLogs">重试</el-button>
+        </template>
+      </el-alert>
 
       <div class="admin-table-scroll">
         <el-table :data="logs" v-loading="loadingLogs" size="small" class="admin-table admin-table--logs">
@@ -338,6 +387,10 @@ const sweepingVideos = ref(false);
 const loadingVideos = ref(false);
 const videoReviewBusyId = ref<number | null>(null);
 const loadingPromptDefaults = ref(false);
+const configLoadError = ref("");
+const promptDefaultsLoadError = ref("");
+const logsLoadError = ref("");
+const videosLoadError = ref("");
 const textPromptsExpanded = ref(false);
 const imagePromptsExpanded = ref(false);
 const videoPromptsExpanded = ref(false);
@@ -346,6 +399,10 @@ const lastImageSweepSummary = ref("");
 const lastVideoSweepSummary = ref("");
 const videoRows = ref<ForumVideoQueueRow[]>([]);
 const promptDefaults = ref<SitePromptDefaults | null>(null);
+let configLoadSeq = 0;
+let promptDefaultsLoadSeq = 0;
+let logsLoadSeq = 0;
+let videosLoadSeq = 0;
 const filters = reactive({ kind: "", status: "", page: 1, size: 20 });
 const videoFilters = reactive<{ status: "" | "pending" | "manual_review" | "rejected" | "approved" | "error"; page: number; size: number }>({
   status: "manual_review",
@@ -412,25 +469,40 @@ onMounted(async () => {
 });
 
 async function loadConfig() {
+  const seq = ++configLoadSeq;
   loadingConfig.value = true;
+  configLoadError.value = "";
   try {
-    Object.assign(form, await adminApi.siteConfig());
+    const config = await adminApi.siteConfig({ suppressErrorMessage: true });
+    if (seq === configLoadSeq) Object.assign(form, config);
+  } catch (error) {
+    if (seq === configLoadSeq) {
+      configLoadError.value = requestMessage(error) || "审核配置加载失败，请稍后重试";
+    }
   } finally {
-    loadingConfig.value = false;
+    if (seq === configLoadSeq) loadingConfig.value = false;
   }
 }
 
 async function loadPromptDefaults() {
+  const seq = ++promptDefaultsLoadSeq;
   loadingPromptDefaults.value = true;
+  promptDefaultsLoadError.value = "";
   try {
-    promptDefaults.value = await adminApi.sitePromptDefaults();
+    const defaults = await adminApi.sitePromptDefaults({ suppressErrorMessage: true });
+    if (seq === promptDefaultsLoadSeq) promptDefaults.value = defaults;
+  } catch (error) {
+    if (seq === promptDefaultsLoadSeq) {
+      promptDefaults.value = null;
+      promptDefaultsLoadError.value = requestMessage(error) || "默认 Prompt 加载失败，重置功能暂不可用";
+    }
   } finally {
-    loadingPromptDefaults.value = false;
+    if (seq === promptDefaultsLoadSeq) loadingPromptDefaults.value = false;
   }
 }
 
 async function saveConfig() {
-  if (saving.value) return;
+  if (saving.value || configLoadError.value) return;
   saving.value = true;
   try {
     Object.assign(form, await adminApi.updateSiteConfig({
@@ -474,7 +546,10 @@ async function saveConfig() {
 }
 
 function applyPromptDefaults(scope: "text" | "image" | "video" | "all") {
-  if (!promptDefaults.value) return;
+  if (!promptDefaults.value) {
+    ElMessage.warning(promptDefaultsLoadError.value || "默认 Prompt 暂不可用");
+    return;
+  }
   const defaults = promptDefaults.value;
   if (scope === "text" || scope === "all") {
     form.aiTopicReviewSystemPrompt = defaults.aiTopicReviewSystemPrompt;
@@ -518,12 +593,19 @@ async function resetAllPrompts() {
 
 async function loadLogs() {
   if (loadingLogs.value) return;
+  const seq = ++logsLoadSeq;
   loadingLogs.value = true;
+  logsLoadError.value = "";
   try {
-    const result = await adminApi.aiReviewLogs(filters);
+    const result = await adminApi.aiReviewLogs(filters, { suppressErrorMessage: true });
+    if (seq !== logsLoadSeq) return;
     logs.value = result.list;
+  } catch (error) {
+    if (seq !== logsLoadSeq) return;
+    logs.value = [];
+    logsLoadError.value = requestMessage(error) || "审核日志加载失败，请稍后重试";
   } finally {
-    loadingLogs.value = false;
+    if (seq === logsLoadSeq) loadingLogs.value = false;
   }
 }
 
@@ -542,16 +624,23 @@ async function sweepForumImages() {
 
 async function loadVideos() {
   if (loadingVideos.value) return;
+  const seq = ++videosLoadSeq;
   loadingVideos.value = true;
+  videosLoadError.value = "";
   try {
     const result = await adminApi.forumVideos({
       status: videoFilters.status || undefined,
       page: videoFilters.page,
       size: videoFilters.size,
-    });
+    }, { suppressErrorMessage: true });
+    if (seq !== videosLoadSeq) return;
     videoRows.value = result.list;
+  } catch (error) {
+    if (seq !== videosLoadSeq) return;
+    videoRows.value = [];
+    videosLoadError.value = requestMessage(error) || "视频审核队列加载失败，请稍后重试";
   } finally {
-    loadingVideos.value = false;
+    if (seq === videosLoadSeq) loadingVideos.value = false;
   }
 }
 
@@ -648,6 +737,13 @@ function buildImageSweepSummary(result: ForumImageSweepResult) {
   else if (result.moderationTriggered) parts.push(`后台已开始审核，当前待审 ${result.pendingAfterScan} 张`);
   else parts.push("当前没有待审图片");
   return parts.join("，");
+}
+
+function requestMessage(error: unknown) {
+  if (typeof error !== "object" || error === null) return "";
+  const responseMessage = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+  if (typeof responseMessage === "string") return responseMessage;
+  return error instanceof Error ? error.message : "";
 }
 </script>
 
@@ -796,6 +892,20 @@ function buildImageSweepSummary(result: ForumImageSweepResult) {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.pane-alert :deep(.el-alert__content) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.settings-card.is-config-disabled .ai-form,
+.settings-card.is-config-disabled .prompt-card {
+  pointer-events: none;
+  opacity: 0.62;
 }
 
 .admin-table-scroll {

@@ -1,4 +1,4 @@
-import { request } from "./request";
+import { request, type RequestOptions } from "./request";
 
 export type PayType = "alipay" | "wxpay" | "qqpay" | "bank" | "jdpay";
 
@@ -44,10 +44,11 @@ export type SponsorOrderResult = {
 };
 
 export const paymentsApi = {
-  sponsorOptions: () => request.get<SponsorOptions>("/payments/sponsor/options"),
-  sponsorWall: () => request.get<{ enabled: boolean; total: number; totalAmount?: string; list: SponsorWallItem[] }>("/payments/sponsor/wall"),
-  sponsorOrders: (params?: { page?: number; size?: number; status?: "pending" | "paid" | "closed" }) =>
-    request.get<{ page: number; size: number; total: number; list: any[] }>("/payments/sponsor/orders", params),
+  sponsorOptions: (options?: RequestOptions) => request.get<SponsorOptions>("/payments/sponsor/options", undefined, options),
+  sponsorWall: (options?: RequestOptions) =>
+    request.get<{ enabled: boolean; total: number; totalAmount?: string; list: SponsorWallItem[] }>("/payments/sponsor/wall", undefined, options),
+  sponsorOrders: (params?: { page?: number; size?: number; status?: "pending" | "paid" | "closed" }, options?: RequestOptions) =>
+    request.get<{ page: number; size: number; total: number; list: any[] }>("/payments/sponsor/orders", params, options),
   createSponsorOrder: (payload: { amount: string | number; payType: PayType }) =>
     request.post<SponsorOrderResult>("/payments/sponsor/orders", payload),
   createSponsorOrderWithOptions: (payload: { amount: string | number; payType: PayType; message?: string; displayMode?: "public" | "anonymous" | "hidden" }) =>
@@ -56,6 +57,6 @@ export const paymentsApi = {
     request.post<SponsorOrderResult>(`/payments/sponsor/orders/${outTradeNo}/pay`),
   closeSponsorOrder: (outTradeNo: string) =>
     request.post<any>(`/payments/sponsor/orders/${outTradeNo}/close`),
-  sponsorOrder: (outTradeNo: string) =>
-    request.get<any>(`/payments/sponsor/orders/${outTradeNo}`),
+  sponsorOrder: (outTradeNo: string, options?: RequestOptions) =>
+    request.get<any>(`/payments/sponsor/orders/${outTradeNo}`, undefined, options),
 };

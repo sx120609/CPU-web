@@ -144,12 +144,21 @@ export const jwxtApi = {
       params,
       ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
     }),
-  grades: (params?: { semester?: string }) =>
-    inst.get<unknown, { html: string; parsed: any }>("/grades", { params }),
-  midtermGrades: (params?: { semester?: string }) =>
-    inst.get<unknown, { html: string; parsed: any }>("/midterm-grades", { params }),
-  exams: (params?: { semester?: string; type?: string }) =>
-    inst.get<unknown, { html: string; parsed: any }>("/exams", { params }),
+  grades: (params?: { semester?: string }, options?: { silent?: boolean }) =>
+    inst.get<unknown, { html: string; parsed: any }>("/grades", {
+      params,
+      ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
+    }),
+  midtermGrades: (params?: { semester?: string }, options?: { silent?: boolean }) =>
+    inst.get<unknown, { html: string; parsed: any }>("/midterm-grades", {
+      params,
+      ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
+    }),
+  exams: (params?: { semester?: string; type?: string }, options?: { silent?: boolean }) =>
+    inst.get<unknown, { html: string; parsed: any }>("/exams", {
+      params,
+      ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
+    }),
   progress: () => inst.get<unknown, { parsed: any }>("/progress"),
   pyfa: () => inst.get<unknown, { parsed: any }>("/pyfa"),
   calendar: () => inst.get<unknown, { parsed: any }>("/calendar"),

@@ -1137,9 +1137,17 @@
             </div>
           </div>
           <div class="file-download-list">
-            <button v-for="file in item.files" :key="file.id" type="button" @click="downloadFileCollectFile(file.id, file.storedName)">
+            <button
+              v-for="file in item.files"
+              :key="file.id"
+              type="button"
+              :class="{ busy: isFileTransferBusy(file.id) }"
+              :disabled="isFileTransferBusy(file.id)"
+              :aria-busy="isFileTransferBusy(file.id)"
+              @click="downloadFileCollectFile(file.id, file.storedName)"
+            >
               <el-icon><Download /></el-icon>
-              <span>{{ file.storedName }}</span>
+              <span>{{ fileDownloadingId === file.id ? "下载中" : file.storedName }}</span>
               <small>{{ formatBytes(file.size) }}</small>
             </button>
           </div>
@@ -1172,15 +1180,15 @@
             <small>{{ item.submission.identity || `提交 #${item.submission.id}` }} · {{ fmtDate(item.submission.createdAt) }} · {{ formatBytes(item.size) }}</small>
           </div>
           <div class="file-manager-actions">
-            <button type="button" :disabled="fileDeletingId === item.id" @click="previewFileCollectFile(item.id, item.storedName)">
+            <button type="button" :disabled="isFileActionDisabled(item.id)" @click="previewFileCollectFile(item.id, item.storedName)">
               <el-icon><View /></el-icon>
-              预览
+              {{ filePreviewingId === item.id ? "预览中" : "预览" }}
             </button>
-            <button type="button" :disabled="fileDeletingId === item.id" @click="downloadFileCollectFile(item.id, item.storedName)">
+            <button type="button" :disabled="isFileActionDisabled(item.id)" @click="downloadFileCollectFile(item.id, item.storedName)">
               <el-icon><Download /></el-icon>
-              下载
+              {{ fileDownloadingId === item.id ? "下载中" : "下载" }}
             </button>
-            <button type="button" :disabled="fileDeletingId === item.id" @click="deleteFileCollectFile(item.id)">
+            <button type="button" :disabled="isFileActionDisabled(item.id)" @click="deleteFileCollectFile(item.id)">
               <el-icon><Delete /></el-icon>
               删除
             </button>
@@ -1370,6 +1378,8 @@ const fileManagerOpen = ref(false);
 const fileManagerTask = ref<FileCollectTask | null>(null);
 const fileManagerSubmissions = ref<FileCollectSubmission[]>([]);
 const fileDeletingId = ref<number | null>(null);
+const fileDownloadingId = ref<number | null>(null);
+const filePreviewingId = ref<number | null>(null);
 const fileManagerKeyword = ref("");
 let xlsxModule: typeof import("xlsx") | null = null;
 const zipDownloading = ref(false);
@@ -1484,6 +1494,15 @@ const fileManagerFiles = computed(() => {
     return `${item.storedName} ${item.originalName} ${item.submission.identity} ${dataText}`.toLowerCase().includes(keyword);
   });
 });
+
+function isFileTransferBusy(id: number) {
+  return zipDownloading.value || fileDownloadingId.value === id || filePreviewingId.value === id;
+}
+
+function isFileActionDisabled(id: number) {
+  return fileDeletingId.value !== null || isFileTransferBusy(id);
+}
+
 const editorTitle = computed(() => editorMode.value === "create" ? "新建问卷" : "编辑问卷");
 const requiredCount = computed(() => form.fields.filter((field) => field.required).length);
 const toolRequireLogin = computed({
@@ -1520,7 +1539,10 @@ async function init() {
       toolsApi.myPermissions(),
     ]);
     allTools.value = tools;
-    manageableCodes.value = perms.toolCodes;
+    manageableCodes.value = uniqueToolCodes([
+      ...perms.toolCodes,
+      ...(perms.adminToolCodes ?? []),
+    ]);
     adminCodes.value = perms.adminToolCodes ?? [];
     activeTool.value = pickInitialTool();
     if (manageableCodes.value.length) {
@@ -1546,6 +1568,10 @@ function normalizeToolQuery(value: unknown): ServiceToolCode | "" {
     : "";
 }
 
+function uniqueToolCodes(items: ServiceToolCode[]) {
+  return Array.from(new Set(items));
+}
+
 async function syncActiveToolQuery() {
   if (route.query.tool === activeTool.value) return;
   await router.replace({ path: route.path, query: { ...route.query, tool: activeTool.value } });
@@ -1567,8 +1593,12 @@ async function reloadActive() {
     return;
   }
   if (activeTool.value === "file_collect") {
-    fileCollections.value = [];
-    fileCollectTemplates.value = [];
+    const [tasks, templates] = await Promise.all([
+      toolsApi.fileCollections({ manage: "1" }),
+      toolsApi.fileCollectionTemplates(),
+    ]);
+    fileCollections.value = tasks;
+    fileCollectTemplates.value = templates;
     questionnaires.value = [];
     gradeChecks.value = [];
     return;
@@ -2400,23 +2430,55 @@ async function fetchFileCollectBlob(id: number, action: "download" | "preview") 
   const response = await fetch(`/api/tools/file-collection-files/${id}/${action}`, {
     headers: { Authorization: `Bearer ${getToken()}` },
   });
-  if (!response.ok) throw new Error(action === "preview" ? "预览失败" : "下载失败");
+  if (!response.ok) {
+    const fallback = action === "preview" ? "预览失败" : "下载失败";
+    let message = await response.text().catch(() => "");
+    try {
+      const parsed = JSON.parse(message);
+      message = parsed?.message || message;
+    } catch {
+      // Non-JSON error body; use the raw text if present.
+    }
+    throw new Error(message || fallback);
+  }
   return response.blob();
 }
 
+function requestMessage(error: unknown) {
+  if (typeof error === "object" && error !== null) {
+    const responseMessage = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+    if (typeof responseMessage === "string") return responseMessage;
+  }
+  return error instanceof Error ? error.message : "";
+}
+
 async function downloadFileCollectFile(id: number, filename: string) {
-  if (fileDeletingId.value === id) return;
-  const blob = await fetchFileCollectBlob(id, "download");
-  saveBlob(blob, filename);
+  if (isFileActionDisabled(id)) return;
+  fileDownloadingId.value = id;
+  try {
+    const blob = await fetchFileCollectBlob(id, "download");
+    saveBlob(blob, filename);
+  } catch (error) {
+    ElMessage.error(requestMessage(error) || "下载失败");
+  } finally {
+    fileDownloadingId.value = null;
+  }
 }
 
 async function previewFileCollectFile(id: number, filename: string) {
-  if (fileDeletingId.value === id) return;
-  const blob = await fetchFileCollectBlob(id, "preview");
-  const url = URL.createObjectURL(blob);
-  const opened = window.open(url, "_blank", "noopener,noreferrer");
-  if (!opened) ElMessage.info(filename);
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  if (isFileActionDisabled(id)) return;
+  filePreviewingId.value = id;
+  try {
+    const blob = await fetchFileCollectBlob(id, "preview");
+    const url = URL.createObjectURL(blob);
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
+    if (!opened) ElMessage.info(filename);
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (error) {
+    ElMessage.error(requestMessage(error) || "预览失败");
+  } finally {
+    filePreviewingId.value = null;
+  }
 }
 
 async function downloadFileCollectionZip(row: FileCollectTask) {
@@ -3971,6 +4033,10 @@ function round(value: number) {
   background: #eff6ff;
   cursor: pointer;
 }
+.file-download-list button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
 .file-download-list span {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -4036,6 +4102,10 @@ function round(value: number) {
   color: #1d4ed8;
   border-color: #bfdbfe;
   background: #eff6ff;
+}
+.file-manager-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 .file-manager-actions button:last-child {
   color: #dc2626;

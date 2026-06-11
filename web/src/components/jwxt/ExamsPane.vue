@@ -24,6 +24,18 @@
 
     <div v-loading="loading">
       <el-alert
+        v-if="loadError"
+        type="error"
+        :closable="false"
+        show-icon
+        class="pane-alert"
+        :title="loadError"
+      >
+        <template #default>
+          <el-button size="small" :loading="loading" @click="reload">重试</el-button>
+        </template>
+      </el-alert>
+      <el-alert
         v-if="needSemester"
         type="info"
         :closable="false"
@@ -48,6 +60,7 @@
           </li>
         </ul>
       </div>
+      <el-empty v-else-if="!loading && !parsed" description="暂无考试安排数据" />
       <div v-else class="exam-list">
         <div v-for="(e, i) in parsed?.list ?? []" :key="i" class="exam-card">
           <div class="left">
@@ -71,15 +84,19 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import { Calendar } from "@element-plus/icons-vue";
+import { jwxtApi } from "@/api/jwxt";
 
 const props = defineProps<{ data: any; loading?: boolean }>();
 const parsed = ref<any>(props.data?.parsed ?? null);
 const loading = ref(props.loading ?? false);
 const semester = ref<string>("");
 const type = ref<string>("");
+const loadError = ref("");
+let loadSeq = 0;
 
 watch(() => props.data, (v) => {
   parsed.value = v?.parsed ?? null;
+  if (v?.parsed) loadError.value = "";
   if (parsed.value?.currentSemester && !semester.value) {
     semester.value = parsed.value.currentSemester;
   }
@@ -103,17 +120,25 @@ const semesterOptions = computed(() => {
 const needSemester = computed(() => parsed.value?.needSemester === true);
 
 async function reload() {
-  if (!semester.value) return;
+  if (!semester.value) {
+    loadError.value = "";
+    return;
+  }
+  const seq = ++loadSeq;
   loading.value = true;
+  loadError.value = "";
   try {
-    const tk = sessionStorage.getItem("cpu-jwxt-token") ?? "";
-    const u = new URL("/api/jwxt/exams", window.location.origin);
-    u.searchParams.set("semester", semester.value);
-    if (type.value) u.searchParams.set("type", type.value);
-    const resp = await fetch(u, { headers: { "X-Jwxt-Token": tk } });
-    const body = await resp.json();
-    if (body.code === 0) parsed.value = body.data.parsed;
-  } finally { loading.value = false; }
+    const result = await jwxtApi.exams({ semester: semester.value, type: type.value || undefined }, { silent: true });
+    if (seq === loadSeq) parsed.value = result.parsed;
+  } catch (error) {
+    if (seq === loadSeq) loadError.value = requestMessage(error) || "考试安排加载失败，请稍后重试";
+  } finally {
+    if (seq === loadSeq) loading.value = false;
+  }
+}
+
+function requestMessage(error: unknown) {
+  return error instanceof Error ? error.message : "";
 }
 </script>
 
@@ -143,6 +168,19 @@ async function reload() {
 }
 .lbl { font-size: 12px; color: #6b7280; }
 .stat { font-size: 13px; color: var(--cpu-primary); font-weight: 500; }
+
+.pane-alert {
+  margin-bottom: 12px;
+}
+
+.pane-alert :deep(.el-alert__content) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
 
 .exam-list { display: flex; flex-direction: column; gap: 10px; }
 .exam-card {

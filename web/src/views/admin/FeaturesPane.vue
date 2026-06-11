@@ -11,6 +11,19 @@
       </div>
     </el-alert>
 
+    <el-alert
+      v-if="loadError"
+      type="error"
+      :closable="false"
+      show-icon
+      class="pane-alert"
+      :title="loadError"
+    >
+      <template #default>
+        <el-button size="small" :loading="loading || configLoading" @click="reload">重试</el-button>
+      </template>
+    </el-alert>
+
     <section class="settings-card" v-loading="configLoading">
       <div class="section-head">
         <div>
@@ -30,10 +43,10 @@
             clearable
             maxlength="240"
             placeholder="https://cpu.example.com"
-            :disabled="savingConfig || configLoading"
+            :disabled="savingConfig || configLoading || Boolean(loadError)"
             @keyup.enter="saveSiteConfig"
           />
-          <el-button type="primary" :loading="savingConfig" :disabled="savingConfig || configLoading" @click="saveSiteConfig">保存</el-button>
+          <el-button type="primary" :loading="savingConfig" :disabled="savingConfig || configLoading || Boolean(loadError)" @click="saveSiteConfig">保存</el-button>
         </div>
       </div>
 
@@ -48,10 +61,10 @@
             clearable
             maxlength="120"
             placeholder="苏ICP备2024000000号-1"
-            :disabled="savingConfig || configLoading"
+            :disabled="savingConfig || configLoading || Boolean(loadError)"
             @keyup.enter="saveSiteConfig"
           />
-          <el-button type="primary" :loading="savingConfig" :disabled="savingConfig || configLoading" @click="saveSiteConfig">保存</el-button>
+          <el-button type="primary" :loading="savingConfig" :disabled="savingConfig || configLoading || Boolean(loadError)" @click="saveSiteConfig">保存</el-button>
         </div>
       </div>
 
@@ -141,7 +154,7 @@
           </div>
 
           <div class="actions-row">
-            <el-button type="primary" :loading="savingConfig" :disabled="savingConfig || configLoading" @click="saveTrustConfig">保存匿名与信誉规则</el-button>
+            <el-button type="primary" :loading="savingConfig" :disabled="savingConfig || configLoading || Boolean(loadError)" @click="saveTrustConfig">保存匿名与信誉规则</el-button>
           </div>
         </div>
       </div>
@@ -172,7 +185,7 @@
               inline-prompt
               active-text="开"
               inactive-text="关"
-              :disabled="loading || pendingKey !== null"
+              :disabled="loading || Boolean(loadError) || pendingKey !== null"
               @change="(v: boolean | string | number) => toggle(f.key, Boolean(v))"
             />
           </div>
@@ -194,6 +207,7 @@ type FKey = "forum" | "market" | "coursereview" | "electric" | "sponsor";
 const site = useSiteStore();
 const loading = ref(false);
 const configLoading = ref(false);
+const loadError = ref("");
 const savingConfig = ref(false);
 const pendingKey = ref<FKey | null>(null);
 const aiConfigExpanded = ref(false);
@@ -281,8 +295,12 @@ async function reload() {
   const seq = ++featureLoadSeq;
   loading.value = true;
   configLoading.value = true;
+  loadError.value = "";
   try {
-    const [r, config] = await Promise.all([adminApi.features(), adminApi.siteConfig()]);
+    const [r, config] = await Promise.all([
+      adminApi.features({ suppressErrorMessage: true }),
+      adminApi.siteConfig({ suppressErrorMessage: true }),
+    ]);
     if (seq !== featureLoadSeq) return;
     Object.assign(features, r);
     site.apply(r);
@@ -317,6 +335,10 @@ async function reload() {
     forumEnabledBonus.value = config.forumEnabledBonus;
     anonymousTiers.value = (config.anonymousTiers ?? []).map((item) => ({ ...item }));
     reputationLevels.value = (config.reputationLevels ?? []).map((item) => ({ ...item }));
+  } catch (error) {
+    if (seq === featureLoadSeq) {
+      loadError.value = requestMessage(error) || "功能开关配置加载失败，请稍后重试";
+    }
   } finally {
     if (seq === featureLoadSeq) {
       loading.value = false;
@@ -326,7 +348,7 @@ async function reload() {
 }
 
 async function saveSiteConfig() {
-  if (savingConfig.value) return;
+  if (savingConfig.value || loadError.value) return;
   savingConfig.value = true;
   try {
     const config = await adminApi.updateSiteConfig({
@@ -346,7 +368,7 @@ async function saveSiteConfig() {
 }
 
 async function saveAiReviewConfig() {
-  if (savingConfig.value) return;
+  if (savingConfig.value || loadError.value) return;
   savingConfig.value = true;
   try {
     const config = await adminApi.updateSiteConfig({
@@ -394,7 +416,7 @@ async function saveAiReviewConfig() {
 }
 
 async function saveTrustConfig() {
-  if (savingConfig.value) return;
+  if (savingConfig.value || loadError.value) return;
   savingConfig.value = true;
   try {
     const config = await adminApi.updateSiteConfig({
@@ -435,7 +457,7 @@ async function saveTrustConfig() {
 }
 
 async function toggle(key: FKey, on: boolean) {
-  if (pendingKey.value !== null || loading.value) {
+  if (pendingKey.value !== null || loading.value || loadError.value) {
     features[key] = !on;
     return;
   }
@@ -462,11 +484,25 @@ async function toggle(key: FKey, on: boolean) {
     features[key] = !on;
   } finally { pendingKey.value = null; }
 }
+
+function requestMessage(error: unknown) {
+  if (typeof error !== "object" || error === null) return "";
+  const responseMessage = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+  if (typeof responseMessage === "string") return responseMessage;
+  return error instanceof Error ? error.message : "";
+}
 </script>
 
 <style scoped>
 .features-pane { display: flex; flex-direction: column; gap: 14px; }
 .warn :deep(.el-alert__title) { font-size: 14px; }
+.pane-alert :deep(.el-alert__content) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
 .settings-card {
   display: flex;
   flex-direction: column;

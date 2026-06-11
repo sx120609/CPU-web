@@ -9,6 +9,18 @@
     </div>
 
     <el-alert
+      v-if="loadError"
+      type="error"
+      :closable="false"
+      :title="loadError"
+      show-icon
+    >
+      <template #default>
+        <el-button size="small" :loading="loading" @click="loadStatus">重试</el-button>
+      </template>
+    </el-alert>
+
+    <el-alert
       v-if="status?.maintenanceActive"
       type="warning"
       :closable="false"
@@ -121,6 +133,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { adminApi, type DatabaseBackupStatus, type DatabaseRestoreResult } from "@/api/admin";
 
 const loading = ref(false);
+const loadError = ref("");
 const downloading = ref(false);
 const restoring = ref(false);
 const restoreConfirming = ref(false);
@@ -137,12 +150,25 @@ onMounted(() => {
 async function loadStatus() {
   const seq = ++statusLoadSeq;
   loading.value = true;
+  loadError.value = "";
   try {
-    const next = await adminApi.databaseStatus();
+    const next = await adminApi.databaseStatus({ suppressErrorMessage: true });
     if (seq === statusLoadSeq) status.value = next;
+  } catch (error) {
+    if (seq === statusLoadSeq) {
+      status.value = null;
+      loadError.value = requestMessage(error) || "数据库状态加载失败，请稍后重试";
+    }
   } finally {
     if (seq === statusLoadSeq) loading.value = false;
   }
+}
+
+function requestMessage(error: unknown) {
+  if (typeof error !== "object" || error === null) return "";
+  const responseMessage = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+  if (typeof responseMessage === "string") return responseMessage;
+  return error instanceof Error ? error.message : "";
 }
 
 function formatBytes(value: number | null | undefined) {
@@ -252,7 +278,14 @@ function clearRestoreFile(force = false) {
 function onRestoreFileChange(event: Event) {
   if (restoreBusy.value) return;
   const input = event.target as HTMLInputElement | null;
-  restoreFile.value = input?.files?.[0] || null;
+  const file = input?.files?.[0] || null;
+  const maxBytes = status.value?.maxRestoreUploadBytes;
+  if (file && maxBytes && file.size > maxBytes) {
+    ElMessage.warning(`备份文件超过上传限制：${formatBytes(maxBytes)}`);
+    clearRestoreFile(true);
+    return;
+  }
+  restoreFile.value = file;
 }
 
 async function downloadBackup() {

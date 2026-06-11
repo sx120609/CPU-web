@@ -1,5 +1,17 @@
 <template>
-  <div class="user-page" v-if="user">
+  <div v-if="loading && !user" class="user-page">
+    <div class="cpu-card state-card">正在加载用户资料...</div>
+  </div>
+
+  <div v-else-if="error && !user" class="user-page">
+    <div class="cpu-card state-card">
+      <el-empty :description="error">
+        <el-button type="primary" :loading="loading" @click="load">重试</el-button>
+      </el-empty>
+    </div>
+  </div>
+
+  <div class="user-page" v-else-if="user">
     <button type="button" class="back-btn" @click="goBack">
       <el-icon><ArrowLeft /></el-icon>
       返回上一页
@@ -58,7 +70,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from "vue";
+import { ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
@@ -72,14 +84,43 @@ const router = useRouter();
 const auth = useAuthStore();
 const user = ref<any>(null);
 const topics = ref<any[]>([]);
+const loading = ref(false);
+const error = ref("");
+let loadSeq = 0;
 
-watch(() => route.params.id, load);
-onMounted(load);
+watch(() => route.params.id, () => {
+  void load();
+}, { immediate: true });
 
 async function load() {
+  const seq = ++loadSeq;
   const id = Number(route.params.id);
-  user.value = await request.get<any>(`/user/${id}`);
-  topics.value = await request.get<any[]>(`/user/${id}/topics`);
+  if (!Number.isFinite(id) || id <= 0) {
+    user.value = null;
+    topics.value = [];
+    error.value = "用户不存在或已被删除";
+    return;
+  }
+  loading.value = true;
+  error.value = "";
+  user.value = null;
+  topics.value = [];
+  try {
+    const [nextUser, nextTopics] = await Promise.all([
+      request.get<any>(`/user/${id}`, undefined, { suppressErrorMessage: true }),
+      request.get<any[]>(`/user/${id}/topics`, undefined, { suppressErrorMessage: true }),
+    ]);
+    if (seq !== loadSeq) return;
+    user.value = nextUser;
+    topics.value = nextTopics;
+  } catch (loadError) {
+    if (seq !== loadSeq) return;
+    user.value = null;
+    topics.value = [];
+    error.value = normalizeUserLoadError(loadError);
+  } finally {
+    if (seq === loadSeq) loading.value = false;
+  }
 }
 
 function applyModerationUpdate(patch: Record<string, unknown>) {
@@ -103,10 +144,25 @@ function goBack() {
 function openTopic(id: number) {
   router.push(`/forum/topic/${id}`);
 }
+
+function normalizeUserLoadError(loadError: unknown) {
+  const status = (loadError as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
+  if (status === 404) return "用户不存在或已被删除";
+  if (status && status < 500) {
+    return (loadError as { response?: { data?: { message?: string } } })?.response?.data?.message || "用户资料加载失败";
+  }
+  return "用户资料加载失败，请稍后再试";
+}
 </script>
 
 <style scoped>
 .user-page { display: flex; flex-direction: column; gap: 16px; }
+.state-card {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  color: #6b7280;
+}
 .back-btn {
   width: fit-content;
   display: inline-flex;

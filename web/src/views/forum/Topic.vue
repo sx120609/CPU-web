@@ -633,9 +633,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, nextTick, watch } from "vue";
+import { ref, reactive, computed, nextTick, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { AxiosError } from "axios";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { toPng } from "html-to-image";
 import QRCode from "qrcode";
@@ -706,6 +705,7 @@ const blockedReplyInfo = reactive<{ reason: string; riskScore: number | null }>(
   riskScore: null,
 });
 const liked = ref(false);
+let loadSeq = 0;
 const repliesEl = ref<HTMLElement | null>(null);
 const replyEditorRef = ref<InstanceType<typeof RichTextEditor> | null>(null);
 const shareCardExportRef = ref<HTMLElement | null>(null);
@@ -1017,7 +1017,9 @@ function openWeiwallSource() {
   weiwallSourceDialogOpen.value = true;
 }
 
-onMounted(async () => { await load(); });
+watch(() => route.params.id, () => {
+  void load();
+}, { immediate: true });
 
 watch(replyAnonymousEnabled, (enabled) => {
   if (!enabled) replyAnonymous.value = false;
@@ -1056,68 +1058,75 @@ watch(showWeiwallContactSection, (visible) => {
 }, { immediate: true });
 
 async function load() {
+  const seq = ++loadSeq;
+  const id = Number(route.params.id);
   loading.value = true;
   repliesLoading.value = true;
+  topic.value = null;
   replies.value = [];
   loadError.value = "";
   liked.value = false;
   weiwallContactExpanded.value = false;
+  if (!Number.isFinite(id) || id <= 0) {
+    loadError.value = "帖子不存在或已被删除";
+    loading.value = false;
+    repliesLoading.value = false;
+    return;
+  }
   try {
-    const id = Number(route.params.id);
-    const topicPromise = loadTopicDetail(id)
-      .then((result) => {
-        topic.value = result;
-        return result;
-      })
-      .finally(() => {
-        loading.value = false;
-      });
+    const topicPromise = topicApi.detail(id, { suppressErrorMessage: true });
     const repliesPromise = topicApi.replies(id, { suppressErrorMessage: true })
-      .catch((error: AxiosError) => {
-        if (error.response?.status === 403) {
+      .catch((error: unknown) => {
+        if ((error as { response?: { status?: number } })?.response?.status === 403) {
           router.replace({ name: "forum", query: { redirect: route.fullPath } });
         }
         return [];
-      })
-      .then((result) => {
-        replies.value = result;
-        return result;
-      })
-      .finally(() => {
-        repliesLoading.value = false;
       });
     const [nextTopic, nextReplies] = await Promise.all([topicPromise, repliesPromise]);
-    if (!nextTopic) {
-      replies.value = [];
-      return;
-    }
+    if (seq !== loadSeq) return;
+    topic.value = nextTopic;
+    replies.value = nextReplies;
     // 我是否赞过
     if (auth.isLoggedIn) {
       try {
         const mine = await likeApi.mine([id], nextReplies.map((r) => r.id), { suppressErrorMessage: true });
+        if (seq !== loadSeq) return;
         liked.value = mine.topics.includes(id);
         // 标记每条回复 liked
         const set = new Set(mine.replies);
         nextReplies.forEach((r: any) => (r._liked = set.has(r.id)));
       } catch {
-        liked.value = false;
+        if (seq === loadSeq) liked.value = false;
       }
     }
+  } catch (error) {
+    if (seq !== loadSeq) return;
+    if ((error as { response?: { status?: number } })?.response?.status === 403) {
+      router.replace({ name: "forum", query: { redirect: route.fullPath } });
+      return;
+    }
+    loadError.value = normalizeTopicLoadError(error);
+    topic.value = null;
+    replies.value = [];
   } finally {
-    loading.value = false;
-    repliesLoading.value = false;
+    if (seq === loadSeq) {
+      loading.value = false;
+      repliesLoading.value = false;
+    }
   }
 }
 
 async function loadTopicDetail(id: number) {
-  return topicApi.detail(id, { suppressErrorMessage: true }).catch((error: AxiosError) => {
-    if (error.response?.status === 403) {
+  try {
+    return await topicApi.detail(id, { suppressErrorMessage: true });
+  } catch (error) {
+    if ((error as { response?: { status?: number } })?.response?.status === 403) {
       router.replace({ name: "forum", query: { redirect: route.fullPath } });
       return null;
     }
-    loadError.value = normalizeTopicLoadError(error);
+    ElMessage.error(normalizeTopicLoadError(error));
     return null;
-  });
+  }
 }
 
 function normalizeTopicLoadError(error: unknown) {

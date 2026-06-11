@@ -59,13 +59,16 @@
         </form>
       </template>
 
-      <el-empty v-else-if="!loading" :description="error || '收集任务不存在'" />
+      <el-empty v-else-if="!loading" :description="error || '收集任务不存在'">
+        <el-button v-if="error" type="primary" :loading="loading" @click="load">重新加载</el-button>
+        <el-button v-else type="primary" @click="$router.push('/services/tools/file_collect')">返回文件收集</el-button>
+      </el-empty>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
@@ -84,20 +87,37 @@ const fileInput = ref<HTMLInputElement | null>(null);
 const normalizedAllowedTypes = computed(() => normalizeAllowedTypes(task.value?.fileRules.allowedTypes ?? []));
 const acceptTypes = computed(() => normalizedAllowedTypes.value.map((item) => `.${item}`).join(","));
 const allowedTypeText = computed(() => normalizedAllowedTypes.value.join(", ") || "任意类型");
+let loadSeq = 0;
 
-onMounted(load);
+watch(() => route.params.slug, () => {
+  void load();
+}, { immediate: true });
 
 async function load() {
+  const seq = ++loadSeq;
+  const slug = String(route.params.slug || "").trim();
   loading.value = true;
   error.value = "";
+  task.value = null;
+  files.value = [];
+  Object.keys(answers).forEach((key) => delete answers[key]);
+  if (fileInput.value) fileInput.value.value = "";
+  if (!slug) {
+    error.value = "收集任务地址无效";
+    loading.value = false;
+    return;
+  }
   try {
-    task.value = await toolsApi.fileCollection(String(route.params.slug || ""), {
+    const next = await toolsApi.fileCollection(slug, {
       suppressAuthRedirect: true,
       suppressAuthMessage: true,
       suppressErrorMessage: true,
     });
-    for (const field of task.value.fields) answers[field.id] = "";
+    if (seq !== loadSeq) return;
+    task.value = next;
+    for (const field of next.fields) answers[field.id] = "";
   } catch (e) {
+    if (seq !== loadSeq) return;
     const response = (e as { response?: { status?: number; data?: { message?: string } } }).response;
     const status = response?.status;
     if (status === 401) {
@@ -112,7 +132,7 @@ async function load() {
       error.value = "收集任务加载失败，请稍后再试";
     }
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
 }
 

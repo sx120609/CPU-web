@@ -143,10 +143,13 @@ let strongNoticeTimer: number | null = null;
 let strongNoticePoller: number | null = null;
 let strongNoticeLoading = false;
 let pendingStrongNoticeOpen = false;
+let strongNoticeLoadSeq = 0;
+let disposed = false;
 
 const currentStrongNotice = computed(() => strongNoticeQueue.value[0] ?? null);
 
 onMounted(() => {
+  disposed = false;
   window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
   if (isSchedulePage()) return;
   const info = detectInAppBrowser();
@@ -169,6 +172,9 @@ watch(inAppTipOpen, (open) => {
 });
 
 onBeforeUnmount(() => {
+  disposed = true;
+  strongNoticeLoadSeq += 1;
+  strongNoticeLoading = false;
   window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
   clearInAppReadTimer();
   clearDataAuthTimer();
@@ -178,6 +184,8 @@ onBeforeUnmount(() => {
 
 function handleAuthExpired() {
   auth.expireSession();
+  strongNoticeLoadSeq += 1;
+  strongNoticeLoading = false;
   dataAuthOpen.value = false;
   strongNoticeOpen.value = false;
   strongNoticeQueue.value = [];
@@ -218,6 +226,8 @@ function clearInAppReadTimer() {
 watch(
   () => [auth.token, auth.user?.id, auth.needDataAuthAgreement],
   () => {
+    strongNoticeLoadSeq += 1;
+    strongNoticeLoading = false;
     if (auth.isLoggedIn) {
       if (auth.needDataAuthAgreement) {
         suspendStrongNotice();
@@ -252,6 +262,7 @@ watch(dataAuthOpen, async (open) => {
     return;
   }
   await nextTick();
+  if (disposed) return;
   requestStrongNoticeOpen();
 });
 
@@ -284,20 +295,24 @@ function clearDataAuthTimer() {
 async function acceptDataAuth() {
   if (dataAuthReadSeconds.value > 0) return;
   await auth.acceptDataAuthAgreement();
+  if (disposed) return;
   dataAuthOpen.value = false;
   clearDataAuthTimer();
   await nextTick();
+  if (disposed) return;
   requestStrongNoticeOpen();
 }
 
 async function loadStrongNotices() {
-  if (!auth.isLoggedIn || auth.needDataAuthAgreement || strongNoticeLoading) return;
+  if (disposed || !auth.isLoggedIn || auth.needDataAuthAgreement || strongNoticeLoading) return;
+  const seq = ++strongNoticeLoadSeq;
   strongNoticeLoading = true;
   try {
     const [list, settings] = await Promise.all([
       messageApi.list("system").catch(() => []),
       messageApi.settings().catch(() => null),
     ]);
+    if (disposed || seq !== strongNoticeLoadSeq || !auth.isLoggedIn || auth.needDataAuthAgreement) return;
     if (settings && settings.subscribeSystem === false) {
       strongNoticeQueue.value = [];
       strongNoticeOpen.value = false;
@@ -310,11 +325,12 @@ async function loadStrongNotices() {
       .sort((a, b) => (new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()));
     requestStrongNoticeOpen();
   } finally {
-    strongNoticeLoading = false;
+    if (seq === strongNoticeLoadSeq) strongNoticeLoading = false;
   }
 }
 
 function openStrongNotice() {
+  if (disposed) return;
   if (auth.needDataAuthAgreement) return;
   if (inAppTipOpen.value) return;
   if (!currentStrongNotice.value) return;
@@ -323,6 +339,7 @@ function openStrongNotice() {
 }
 
 function requestStrongNoticeOpen() {
+  if (disposed) return;
   if (!currentStrongNotice.value) {
     pendingStrongNoticeOpen = false;
     return;
@@ -369,7 +386,7 @@ function clearStrongNoticeTimer() {
 }
 
 function startStrongNoticePoller() {
-  if (strongNoticePoller || !auth.isLoggedIn) return;
+  if (disposed || strongNoticePoller || !auth.isLoggedIn) return;
   strongNoticePoller = window.setInterval(() => {
     if (document.hidden) return;
     void loadStrongNotices();
@@ -389,6 +406,7 @@ async function ackStrongNotice() {
   if (!current) return;
   try {
     await messageApi.read(current.id);
+    if (disposed) return;
     msg.refresh();
     strongNoticeQueue.value.shift();
     if (strongNoticeQueue.value.length) {

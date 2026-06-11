@@ -495,9 +495,9 @@ export type QqBotGroup = {
 
 export const adminApi = {
   // 概览
-  overview: () => request.get<AdminOverview>("/admin/overview"),
+  overview: (options?: RequestOptions) => request.get<AdminOverview>("/admin/overview", undefined, options),
   // 数据库备份
-  databaseStatus: () => request.get<DatabaseBackupStatus>("/admin/database/status"),
+  databaseStatus: (options?: RequestOptions) => request.get<DatabaseBackupStatus>("/admin/database/status", undefined, options),
   downloadDatabaseBackup: () =>
     request.get<Blob>("/admin/database/backup", undefined, {
       responseType: "blob",
@@ -507,23 +507,26 @@ export const adminApi = {
   restoreDatabaseBackup: (formData: FormData, options?: RequestOptions) =>
     request.post<DatabaseRestoreResult>("/admin/database/restore", formData, options),
   // 用户
-  users: (params: {
-    q?: string;
-    role?: string;
-    status?: string;
-    forumEnabled?: string;
-    loginClient?: string;
-    usedClient?: string;
-    usedIosClient?: string;
-    usedAndroidClient?: string;
-    usedHarmonyClient?: string;
-    loginFrom?: string;
-    loginTo?: string;
-    sort?: string;
-    page?: number;
-    size?: number;
-  }) =>
-    request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/users", params),
+  users: (
+    params: {
+      q?: string;
+      role?: string;
+      status?: string;
+      forumEnabled?: string;
+      loginClient?: string;
+      usedClient?: string;
+      usedIosClient?: string;
+      usedAndroidClient?: string;
+      usedHarmonyClient?: string;
+      loginFrom?: string;
+      loginTo?: string;
+      sort?: string;
+      page?: number;
+      size?: number;
+    },
+    options?: RequestOptions,
+  ) =>
+    request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/users", params, options),
   updateUser: (id: number, patch: {
     status?: string;
     role?: string;
@@ -543,9 +546,9 @@ export const adminApi = {
   deleteUser: (id: number) =>
     request.delete<{ deletedUserId: number; deletedTopics: number; deletedReplies: number }>(`/admin/users/${id}`),
   // 站点功能开关
-  siteConfig: () => request.get<SiteConfig>("/admin/site-config"),
-  sitePromptDefaults: () => request.get<SitePromptDefaults>("/admin/site-config/prompt-defaults"),
-  mediaStorageConfig: () => request.get<MediaStorageConfig>("/admin/media-storage"),
+  siteConfig: (options?: RequestOptions) => request.get<SiteConfig>("/admin/site-config", undefined, options),
+  sitePromptDefaults: (options?: RequestOptions) => request.get<SitePromptDefaults>("/admin/site-config/prompt-defaults", undefined, options),
+  mediaStorageConfig: (options?: RequestOptions) => request.get<MediaStorageConfig>("/admin/media-storage", undefined, options),
   updateMediaStorageConfig: (patch: {
     mediaStorageProvider?: "local" | "onedrive-cn";
     mediaStorageImageProvider?: "local" | "onedrive-cn";
@@ -561,7 +564,7 @@ export const adminApi = {
     request.post<{ callbackUrl: string; authorizeUrl: string }>("/admin/media-storage/onedrive-cn/authorize", {}),
   validateOneDriveChinaClient: () =>
     request.post<{ ok: true; message: string; detail?: string }>("/admin/media-storage/onedrive-cn/validate-client", {}),
-  oneDriveChinaDrives: () =>
+  oneDriveChinaDrives: (options?: RequestOptions) =>
     request.get<{
       siteId: string;
       siteName: string;
@@ -571,12 +574,12 @@ export const adminApi = {
       selectedDriveId: string;
       selectedDriveName: string;
       list: OneDriveChinaDriveOption[];
-    }>("/admin/media-storage/onedrive-cn/drives"),
+    }>("/admin/media-storage/onedrive-cn/drives", undefined, options),
   saveOneDriveChinaDrive: (driveId: string) =>
     request.patch<{ driveId: string; driveName: string }>("/admin/media-storage/onedrive-cn/drive", { driveId }),
   clearOneDriveChinaAuthorization: () =>
     request.delete<{ ok: true }>("/admin/media-storage/onedrive-cn/authorization"),
-  mediaStorageFiles: () => request.get<MediaStorageAdminInventory>("/admin/media-storage/files"),
+  mediaStorageFiles: (options?: RequestOptions) => request.get<MediaStorageAdminInventory>("/admin/media-storage/files", undefined, options),
   migrateMediaStorageFiles: () => request.post<MediaStorageMigrationResult>("/admin/media-storage/migrate", {}),
   cleanupMediaStorageLocalFiles: () => request.post<MediaStorageCleanupResult>("/admin/media-storage/cleanup-local", {}),
   cloudDrive: (path = "") =>
@@ -647,17 +650,18 @@ export const adminApi = {
     reputationLevels?: Array<{ level: number; name: string; minReputation: number }>;
   }) =>
     request.patch<SiteConfig>("/admin/site-config", patch),
-  aiReviewLogs: (params: { kind?: string; status?: string; page?: number; size?: number }) =>
-    request.get<{ page: number; size: number; total: number; list: AiReviewLogRow[] }>("/admin/ai-review/logs", params),
+  aiReviewLogs: (params: { kind?: string; status?: string; page?: number; size?: number }, options?: RequestOptions) =>
+    request.get<{ page: number; size: number; total: number; list: AiReviewLogRow[] }>("/admin/ai-review/logs", params, options),
   sweepForumImages: () =>
     request.post<ForumImageSweepResult>("/admin/ai-review/images/sweep", {}, { timeout: 120000 }),
   sweepForumVideos: () =>
     request.post<ForumVideoSweepResult>("/admin/ai-review/videos/sweep", {}, { timeout: 120000 }),
-  features: () => request.get<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>("/admin/features"),
+  features: (options?: RequestOptions) =>
+    request.get<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>("/admin/features", undefined, options),
   updateFeatures: (patch: { forum?: boolean; market?: boolean; coursereview?: boolean; electric?: boolean; sponsor?: boolean }) =>
     request.patch<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>("/admin/features", patch),
   // 易支付
-  epayConfig: () => request.get<EpayConfig>("/admin/epay-config"),
+  epayConfig: (options?: RequestOptions) => request.get<EpayConfig>("/admin/epay-config", undefined, options),
   updateEpayConfig: (patch: Partial<{
     enabled: boolean;
     gatewayUrl: string;
@@ -690,7 +694,7 @@ export const adminApi = {
   sponsorLogs: (params: { q?: string; signOk?: "0" | "1"; page?: number; size?: number }) =>
     request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/sponsor-logs", params),
   // QQBot / NapCat
-  qqBotConfig: () => request.get<QqBotConfig>("/admin/qqbot/config"),
+  qqBotConfig: (options?: RequestOptions) => request.get<QqBotConfig>("/admin/qqbot/config", undefined, options),
   updateQqBotConfig: (payload: Partial<{
     enabled: boolean;
     botQqId: string;
@@ -704,10 +708,10 @@ export const adminApi = {
     notificationEnabled: boolean;
     notifyCategories: string[];
   }>) => request.patch<QqBotConfig>("/admin/qqbot/config", payload),
-  qqBotBindings: (params?: { q?: string }) => request.get<any[]>("/admin/qqbot/bindings", params),
+  qqBotBindings: (params?: { q?: string }, options?: RequestOptions) => request.get<any[]>("/admin/qqbot/bindings", params, options),
   updateQqBotBinding: (id: number, payload: { enabled: boolean }) => request.patch<any>(`/admin/qqbot/bindings/${id}`, payload),
   deleteQqBotBinding: (id: number) => request.delete<{ ok: true }>(`/admin/qqbot/bindings/${id}`),
-  qqBotGroups: () => request.get<QqBotGroup[]>("/admin/qqbot/groups"),
+  qqBotGroups: (options?: RequestOptions) => request.get<QqBotGroup[]>("/admin/qqbot/groups", undefined, options),
   upsertQqBotGroup: (payload: {
     groupId: string;
     name?: string;
@@ -719,15 +723,18 @@ export const adminApi = {
     notifyAudiences?: Array<"public" | "staff">;
   }) => request.post<QqBotGroup>("/admin/qqbot/groups", payload),
   deleteQqBotGroup: (id: number) => request.delete<{ ok: true }>(`/admin/qqbot/groups/${id}`),
-  qqBotLogs: (params: { status?: string; eventType?: string; page?: number; size?: number }) =>
-    request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/qqbot/logs", params),
+  qqBotLogs: (params: { status?: string; eventType?: string; page?: number; size?: number }, options?: RequestOptions) =>
+    request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/qqbot/logs", params, options),
   sendQqBotTestMessage: (payload: { qqId?: string; groupId?: string; message: string }) =>
     request.post<{ ok: true }>("/admin/qqbot/test-message", payload),
   dispatchQqBotNotifications: () => request.post<{ sent: number }>("/admin/qqbot/dispatch-notifications"),
   createQqBotBindToken: () => request.post<{ token: string; expiresAt: string }>("/qqbot/bind-token"),
   // 帖子
-  topics: (params: { q?: string; board?: string; hidden?: "0" | "1"; reviewStatus?: string; page?: number; size?: number }) =>
-    request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/topics", params),
+  topics: (
+    params: { q?: string; board?: string; hidden?: "0" | "1"; reviewStatus?: string; page?: number; size?: number },
+    options?: RequestOptions,
+  ) =>
+    request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/topics", params, options),
   updateTopic: (id: number, patch: {
     hidden?: boolean;
     pinned?: boolean;
@@ -754,12 +761,15 @@ export const adminApi = {
     manualReviewNote?: string;
   }) =>
     request.patch<ForumImageReviewAsset>(`/admin/forum-images/${id}`, patch),
-  forumVideos: (params?: {
-    status?: "pending" | "manual_review" | "rejected" | "approved" | "error";
-    page?: number;
-    size?: number;
-  }) =>
-    request.get<{ page: number; size: number; total: number; list: ForumVideoQueueRow[] }>("/admin/forum-videos", params),
+  forumVideos: (
+    params?: {
+      status?: "pending" | "manual_review" | "rejected" | "approved" | "error";
+      page?: number;
+      size?: number;
+    },
+    options?: RequestOptions,
+  ) =>
+    request.get<{ page: number; size: number; total: number; list: ForumVideoQueueRow[] }>("/admin/forum-videos", params, options),
   updateForumVideo: (id: number, patch: {
     status: "approved" | "rejected";
     manualReviewNote?: string;
@@ -768,7 +778,7 @@ export const adminApi = {
   deleteTopic: (id: number) => request.delete<any>(`/admin/topics/${id}`),
   destroyTopic: (id: number) => request.delete<any>(`/admin/topics/${id}?hard=1`),
   // 板块
-  boards: () => request.get<any[]>("/admin/boards"),
+  boards: (options?: RequestOptions) => request.get<any[]>("/admin/boards", undefined, options),
   createBoard: (payload: {
     slug: string;
     name: string;
@@ -791,7 +801,7 @@ export const adminApi = {
   }>) => request.patch<any>(`/admin/boards/${id}`, payload),
   deleteBoard: (id: number) => request.delete<any>(`/admin/boards/${id}`),
   // 爬虫
-  feeds: () => request.get<any[]>("/admin/feeds"),
+  feeds: (options?: RequestOptions) => request.get<any[]>("/admin/feeds", undefined, options),
   updateFeed: (id: number, patch: { enabled?: boolean; cronMinutes?: number; maxPages?: number }) =>
     request.patch<any>(`/admin/feeds/${id}`, patch),
   runFeed: (id: number) => request.post<any>(`/admin/feeds/${id}/run`),
@@ -816,7 +826,7 @@ export const adminApi = {
   createWeiwallAuthLink: (origin?: string) => request.post<WeiwallTokenAuthSession>("/admin/weiwall-sync/auth-link", origin ? { origin } : {}),
   getWeiwallAuthStatus: (flowId: string) => request.get<WeiwallTokenAuthStatus>(`/admin/weiwall-sync/auth-status/${flowId}`),
   // 公告
-  announcements: () => request.get<any[]>("/admin/announcements"),
+  announcements: (options?: RequestOptions) => request.get<any[]>("/admin/announcements", undefined, options),
   createAnnouncement: (p: { title: string; content: string; level?: string; link?: string; source?: string; targetClient?: "all" | "ios" | "android" | "harmony" }) =>
     request.post<any>("/admin/announcements", p),
   updateAnnouncement: (id: number, p: { title?: string; content?: string; level?: string; link?: string | null; source?: string | null; targetClient?: "all" | "ios" | "android" | "harmony" }) =>

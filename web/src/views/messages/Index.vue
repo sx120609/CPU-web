@@ -16,16 +16,16 @@
     </div>
     <el-tabs v-else v-model="tab" class="cpu-card messages-tabs">
       <el-tab-pane label="全部" name="all">
-        <MessageList :list="filtered('')" @read="onRead" @open="openNotification" />
+        <MessageList :list="filteredMessages('')" @read="onRead" @open="openNotification" />
       </el-tab-pane>
       <el-tab-pane label="回复 / 提及" name="reply">
-        <MessageList :list="filtered('reply')" @read="onRead" @open="openNotification" />
+        <MessageList :list="filteredMessages('reply')" @read="onRead" @open="openNotification" />
       </el-tab-pane>
       <el-tab-pane label="点赞" name="like">
-        <MessageList :list="filtered('like')" @read="onRead" @open="openNotification" />
+        <MessageList :list="filteredMessages('like')" @read="onRead" @open="openNotification" />
       </el-tab-pane>
       <el-tab-pane label="系统 / 站务" name="system">
-        <MessageList :list="filtered('system')" @read="onRead" @open="openNotification" />
+        <MessageList :list="filteredMessages('system')" @read="onRead" @open="openNotification" />
       </el-tab-pane>
       <el-tab-pane label="设置" name="settings">
         <div v-if="settings" class="settings">
@@ -151,6 +151,7 @@ const reviewing = ref(false);
 const requestingManualReview = ref(false);
 const reviewTarget = ref<{ kind: "topic" | "reply"; id: number; title: string; aiReviewStatus: string; hidden: boolean; topicId?: number; reviewable: boolean } | null>(null);
 const reviewTargetLoading = ref(false);
+let loadSeq = 0;
 
 const unreadCount = computed(() => list.value.filter((item) => !item.readAt).length);
 
@@ -159,7 +160,11 @@ onMounted(loadPage);
 watch(() => route.query.tab, (value) => {
   const next = normalizeMessageTab(value);
   if (tab.value !== next) tab.value = next;
-});
+  const raw = typeof value === "string" ? value : "";
+  if (raw && (raw === "all" || !messageTabs.has(raw))) {
+    router.replace({ query: { ...route.query, tab: undefined } }).catch(() => null);
+  }
+}, { immediate: true });
 
 watch(tab, (value) => {
   const nextQuery = { ...route.query, tab: value === "all" ? undefined : value };
@@ -168,30 +173,52 @@ watch(tab, (value) => {
 });
 
 async function reloadNoticeState() {
-  [list.value, settings.value] = await Promise.all([messageApi.list(), messageApi.settings()]);
-  msg.refresh();
+  const seq = ++loadSeq;
+  const [nextList, nextSettings] = await Promise.all([
+    messageApi.list(undefined, { suppressErrorMessage: true }),
+    messageApi.settings({ suppressErrorMessage: true }),
+  ]);
+  if (seq !== loadSeq) return;
+  list.value = nextList;
+  settings.value = nextSettings;
+  pageError.value = "";
+  void msg.refresh();
 }
 
-const filtered = (cat: string) => computed(() => {
+async function refreshNoticeStateAfterAction() {
+  try {
+    await reloadNoticeState();
+  } catch (error) {
+    ElMessage.warning(normalizeMessageActionError(error, "操作已完成，但消息列表刷新失败"));
+  }
+}
+
+function filteredMessages(cat: string) {
   if (!cat) return list.value;
   return list.value.filter((n) => n.category === cat);
-}).value;
+}
 
 async function onRead(id: number) {
-  await messageApi.read(id);
-  const n = list.value.find((x) => x.id === id);
-  if (n) n.readAt = new Date().toISOString();
-  msg.refresh();
+  try {
+    await messageApi.read(id, { suppressErrorMessage: true });
+    const n = list.value.find((x) => x.id === id);
+    if (n) n.readAt = new Date().toISOString();
+    void msg.refresh();
+  } catch (error) {
+    ElMessage.error(normalizeMessageActionError(error, "消息标记已读失败"));
+  }
 }
 
 async function readAll() {
   if (!unreadCount.value || markingAll.value) return;
   markingAll.value = true;
   try {
-    await messageApi.readAll();
+    await messageApi.readAll({ suppressErrorMessage: true });
     list.value.forEach((n) => (n.readAt = new Date().toISOString()));
     ElMessage.success("已全部已读");
-    msg.refresh();
+    void msg.refresh();
+  } catch (error) {
+    ElMessage.error(normalizeMessageActionError(error, "全部已读失败"));
   } finally {
     markingAll.value = false;
   }
@@ -202,26 +229,33 @@ async function saveSettings() {
   saving.value = true;
   try {
     const { id, userId, ...payload } = settings.value;
-    settings.value = await messageApi.updateSettings(payload);
+    settings.value = await messageApi.updateSettings(payload, { suppressErrorMessage: true });
     ElMessage.success("已保存");
+  } catch (error) {
+    ElMessage.error(normalizeMessageActionError(error, "设置保存失败"));
   } finally { saving.value = false; }
 }
 
 async function loadPage() {
+  const seq = ++loadSeq;
   loading.value = true;
   pageError.value = "";
   try {
-    [list.value, settings.value] = await Promise.all([
+    const [nextList, nextSettings] = await Promise.all([
       messageApi.list(undefined, { suppressErrorMessage: true }),
       messageApi.settings({ suppressErrorMessage: true }),
     ]);
-    msg.refresh();
+    if (seq !== loadSeq) return;
+    list.value = nextList;
+    settings.value = nextSettings;
+    void msg.refresh();
   } catch (error) {
+    if (seq !== loadSeq) return;
     list.value = [];
     settings.value = null;
     pageError.value = normalizeMessageLoadError(error);
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
 }
 
@@ -275,7 +309,7 @@ async function requestManualReviewFromNotice() {
   try {
     await topicApi.requestManualReview(topicId);
     await auth.fetchMe();
-    await reloadNoticeState();
+    await refreshNoticeStateAfterAction();
     detailOpen.value = false;
     ElMessage.success("已提交人工复核申请");
   } finally {
@@ -300,7 +334,7 @@ async function approveFromNotice() {
     }
     ElMessage.success("已审核通过");
     detailOpen.value = false;
-    await reloadNoticeState();
+    await refreshNoticeStateAfterAction();
   } finally {
     reviewing.value = false;
   }
@@ -331,7 +365,7 @@ async function rejectFromNotice() {
     }
     ElMessage.success("已驳回");
     detailOpen.value = false;
-    await reloadNoticeState();
+    await refreshNoticeStateAfterAction();
   } finally {
     reviewing.value = false;
   }
@@ -384,6 +418,12 @@ function normalizeMessageLoadError(error: unknown) {
     return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "消息加载失败";
   }
   return "消息加载失败，请稍后再试";
+}
+
+function normalizeMessageActionError(error: unknown, fallback: string) {
+  const message = (error as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message
+    || (error as { message?: string })?.message;
+  return message || fallback;
 }
 </script>
 

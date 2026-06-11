@@ -116,7 +116,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
@@ -134,46 +134,72 @@ const feedbackSubmitting = ref(false);
 const lookup = ref<GradeCheckLookup | null>(null);
 const feedbackQuestionnaire = ref<Questionnaire | null>(null);
 const feedbackAnswers = reactive<Record<string, string | string[]>>({});
+let loadSeq = 0;
+let feedbackLoadSeq = 0;
 
-onMounted(load);
+watch(() => route.params.slug, () => {
+  void load();
+}, { immediate: true });
 
 async function load() {
+  const seq = ++loadSeq;
+  const slug = String(route.params.slug || "").trim();
   loading.value = true;
   loadError.value = "";
   lookup.value = null;
+  resetFeedbackState(true);
+  if (!slug) {
+    loadError.value = "成绩核对单地址无效";
+    loading.value = false;
+    return;
+  }
   try {
-    lookup.value = await toolsApi.gradeCheck(String(route.params.slug), { suppressErrorMessage: true });
+    const next = await toolsApi.gradeCheck(slug, { suppressErrorMessage: true });
+    if (seq !== loadSeq) return;
+    lookup.value = next;
     await loadFeedbackQuestionnaire();
   } catch (error) {
+    if (seq !== loadSeq) return;
     loadError.value = normalizeLookupError(error);
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
 }
 
 async function loadFeedbackQuestionnaire() {
-  feedbackQuestionnaire.value = null;
-  feedbackError.value = "";
-  feedbackEmptyText.value = "";
-  Object.keys(feedbackAnswers).forEach((key) => delete feedbackAnswers[key]);
-  const slug = lookup.value?.feedbackQuestionnaireSlug || lookup.value?.table.feedbackQuestionnaireSlug;
+  const seq = ++feedbackLoadSeq;
+  resetFeedbackState();
+  const currentLookup = lookup.value;
+  const slug = currentLookup?.feedbackQuestionnaireSlug || currentLookup?.table.feedbackQuestionnaireSlug;
   if (!slug) {
     feedbackEmptyText.value = "当前核对单未配置反馈问卷";
     return;
   }
   feedbackLoading.value = true;
   try {
-    feedbackQuestionnaire.value = await toolsApi.questionnaire(slug, { suppressErrorMessage: true });
-    for (const field of feedbackQuestionnaire.value.fields ?? []) {
+    const next = await toolsApi.questionnaire(slug, { suppressErrorMessage: true });
+    if (seq !== feedbackLoadSeq) return;
+    feedbackQuestionnaire.value = next;
+    for (const field of next.fields ?? []) {
       if (field.type === "multiple") feedbackAnswers[field.id] = [];
-      else if (field.id === "student_id") feedbackAnswers[field.id] = lookup.value?.studentId ?? "";
+      else if (field.id === "student_id") feedbackAnswers[field.id] = currentLookup?.studentId ?? "";
       else feedbackAnswers[field.id] = "";
     }
   } catch (error) {
+    if (seq !== feedbackLoadSeq) return;
     feedbackError.value = normalizeFeedbackError(error);
   } finally {
-    feedbackLoading.value = false;
+    if (seq === feedbackLoadSeq) feedbackLoading.value = false;
   }
+}
+
+function resetFeedbackState(invalidate = false) {
+  if (invalidate) feedbackLoadSeq += 1;
+  feedbackQuestionnaire.value = null;
+  feedbackError.value = "";
+  feedbackEmptyText.value = "";
+  feedbackLoading.value = false;
+  Object.keys(feedbackAnswers).forEach((key) => delete feedbackAnswers[key]);
 }
 
 function requestStatus(error: unknown) {

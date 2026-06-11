@@ -116,6 +116,8 @@ const deferredPrompt = ref<BeforeInstallPromptEvent | null>(null);
 const isStandalone = ref(false);
 const isNativeApp = ref(false);
 const inAppBrowser = computed(() => detectInAppBrowser());
+let autoPromptTimer: number | null = null;
+let disposed = false;
 
 const platform = computed<"ios" | "android" | "desktop">(() => {
   const ua = navigator.userAgent.toLowerCase();
@@ -174,15 +176,25 @@ function onAppInstalled() {
 }
 
 onMounted(() => {
+  disposed = false;
   detectStandalone();
   detectNativeApp();
   window.addEventListener("beforeinstallprompt", onBeforeInstall);
   window.addEventListener("appinstalled", onAppInstalled);
 });
 onBeforeUnmount(() => {
+  disposed = true;
+  clearAutoPromptTimer();
   window.removeEventListener("beforeinstallprompt", onBeforeInstall);
   window.removeEventListener("appinstalled", onAppInstalled);
 });
+
+function clearAutoPromptTimer() {
+  if (autoPromptTimer) {
+    window.clearTimeout(autoPromptTimer);
+    autoPromptTimer = null;
+  }
+}
 
 async function installNow() {
   if (!deferredPrompt.value) return;
@@ -213,6 +225,7 @@ function dismissDialog() {
 
 /** 父组件主动调用：手动打开 install 引导（任何平台都打开） */
 function openDialog() {
+  if (disposed) return;
   detectNativeApp();
   if (isStandalone.value || isNativeApp.value) return;
   open.value = true;
@@ -220,6 +233,7 @@ function openDialog() {
 
 /** 父组件主动调用：用户点安装按钮时，安卓显示 APK 下载提示，其他平台走系统安装/手动引导 */
 async function requestInstall() {
+  if (disposed) return;
   detectNativeApp();
   if (isStandalone.value || isNativeApp.value) return;
   if (platform.value === "android") {
@@ -241,11 +255,15 @@ async function requestInstall() {
  *  - 延迟 1.5s 后弹（让页面先有内容）
  */
 function autoPromptIfEligible() {
+  if (disposed) return;
   detectNativeApp();
   if (isStandalone.value || isNativeApp.value) return;
   if (inAppBrowser.value.isInApp) return;
   if (platform.value === "desktop") return;
-  setTimeout(() => {
+  clearAutoPromptTimer();
+  autoPromptTimer = window.setTimeout(() => {
+    autoPromptTimer = null;
+    if (disposed) return;
     // 重新核对 standalone（用户可能在等待期间已经手动加了）
     detectStandalone();
     detectNativeApp();

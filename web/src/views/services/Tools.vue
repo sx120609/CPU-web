@@ -85,9 +85,14 @@ onMounted(async () => {
   }
   if (!getToken()) return;
   try {
-    manageable.value = (await toolsApi.myPermissions()).toolCodes;
+    const perms = await toolsApi.myPermissions();
+    manageable.value = uniqueToolCodes([
+      ...manageable.value,
+      ...perms.toolCodes,
+      ...(perms.adminToolCodes ?? []),
+    ]);
   } catch {
-    manageable.value = [];
+    manageable.value = uniqueToolCodes(manageable.value);
   }
 });
 
@@ -100,7 +105,12 @@ function openTool(tool: ServiceTool) {
 }
 
 function openManage() {
-  router.push({ path: "/services/tools/manage", query: { tool: manageable.value[0] ?? "questionnaire" } });
+  const fallback = toolMetas.value.find((item) => item.canManage)?.code;
+  router.push({ path: "/services/tools/manage", query: { tool: manageable.value[0] ?? fallback ?? "questionnaire" } });
+}
+
+function uniqueToolCodes(items: ServiceToolCode[]) {
+  return Array.from(new Set(items));
 }
 </script>
 

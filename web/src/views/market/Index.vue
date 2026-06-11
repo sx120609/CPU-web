@@ -7,7 +7,7 @@
       </el-button>
     </div>
 
-    <el-radio-group v-model="filter" size="default" @change="reload">
+    <el-radio-group v-model="filter" size="default">
       <el-radio-button value="all">全部</el-radio-button>
       <el-radio-button value="sell">出售</el-radio-button>
       <el-radio-button value="buy">求购</el-radio-button>
@@ -45,7 +45,7 @@
           <span>💬 {{ t.replyCount }}</span>
         </div>
       </div>
-      <el-empty v-if="!loading && !list.length" description="还没有商品" />
+      <el-empty v-if="!loading && !filteredList.length" :description="emptyDescription" />
     </div>
   </div>
 </template>
@@ -64,6 +64,7 @@ const list = ref<any[]>([]);
 const loading = ref(false);
 const filter = ref("all");
 const error = ref("");
+let loadSeq = 0;
 
 onMounted(async () => { await reload(); });
 
@@ -72,21 +73,32 @@ function openTopic(id: number) {
 }
 
 async function reload() {
+  const seq = ++loadSeq;
   loading.value = true;
   error.value = "";
   try {
     const r = await topicApi.list({ board: "market", size: 50, sort: "new" }, { suppressErrorMessage: true });
-    list.value = r.list;
+    if (seq === loadSeq) list.value = r.list;
   } catch (e) {
-    list.value = [];
-    error.value = normalizeMarketError(e);
-  } finally { loading.value = false; }
+    if (seq === loadSeq) {
+      list.value = [];
+      error.value = normalizeMarketError(e);
+    }
+  } finally {
+    if (seq === loadSeq) loading.value = false;
+  }
 }
 
 const filteredList = computed(() => {
   if (filter.value === "all") return list.value;
   if (filter.value === "buy") return list.value.filter((t) => t.metadata?.condition === "求购");
   return list.value.filter((t) => t.metadata?.condition !== "求购");
+});
+
+const emptyDescription = computed(() => {
+  if (filter.value === "buy") return "还没有求购信息";
+  if (filter.value === "sell") return "还没有出售商品";
+  return "还没有商品";
 });
 
 function normalizeMarketError(error: unknown) {

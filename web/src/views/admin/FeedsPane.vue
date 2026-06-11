@@ -1,11 +1,24 @@
 <template>
   <div class="feeds-pane">
     <div class="ctrl-bar">
-      <el-button type="primary" :loading="runningAll" :disabled="runningAll" @click="runAll">
+      <el-button type="primary" :loading="runningAll" :disabled="runningAll || loading" @click="runAll">
         <el-icon><Refresh /></el-icon> 全量同步
       </el-button>
-      <el-button :loading="loading" :disabled="loading" @click="reload">刷新</el-button>
+      <el-button :loading="loading" :disabled="loading || runningAll" @click="reload()">刷新</el-button>
     </div>
+
+    <el-alert
+      v-if="loadError"
+      type="error"
+      :closable="false"
+      show-icon
+      class="pane-alert"
+      :title="loadError"
+    >
+      <template #default>
+        <el-button size="small" :loading="loading" :disabled="runningAll" @click="reload()">重试</el-button>
+      </template>
+    </el-alert>
 
     <el-table :data="list" v-loading="loading" stripe size="default" class="admin-table">
       <el-table-column prop="id" label="ID" width="60" />
@@ -116,17 +129,30 @@ import { fmtRelative } from "@/utils/format";
 
 const list = ref<any[]>([]);
 const loading = ref(false);
+const loadError = ref("");
 const runningAll = ref(false);
 const runningId = ref<number | null>(null);
 const resettingId = ref<number | null>(null);
 const togglingId = ref<number | null>(null);
+let feedLoadSeq = 0;
 
 onMounted(reload);
-async function reload() {
-  if (loading.value) return;
+async function reload(force = false) {
+  if (loading.value || (runningAll.value && !force)) return;
+  const seq = ++feedLoadSeq;
   loading.value = true;
-  try { list.value = await adminApi.feeds(); }
-  finally { loading.value = false; }
+  loadError.value = "";
+  try {
+    const next = await adminApi.feeds({ suppressErrorMessage: true });
+    if (seq === feedLoadSeq) list.value = next;
+  } catch (error) {
+    if (seq === feedLoadSeq) {
+      list.value = [];
+      loadError.value = requestMessage(error) || "同步源列表加载失败，请稍后重试";
+    }
+  } finally {
+    if (seq === feedLoadSeq) loading.value = false;
+  }
 }
 
 function handleFeedCommand(command: string, row: any) {
@@ -181,20 +207,37 @@ async function resetRun(row: any) {
 }
 
 async function runAll() {
-  if (runningAll.value) return;
+  if (runningAll.value || loading.value) return;
   runningAll.value = true;
   try {
     const r = await adminApi.runAllFeeds();
     const total = (r as any[]).reduce((s, x) => s + (x.newCount ?? 0), 0);
     ElMessage.success(`全量同步完成，共新增 ${total} 条`);
-    await reload();
-  } finally { runningAll.value = false; }
+    runningAll.value = false;
+    await reload(true);
+  } finally {
+    runningAll.value = false;
+  }
+}
+
+function requestMessage(error: unknown) {
+  if (typeof error !== "object" || error === null) return "";
+  const responseMessage = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+  if (typeof responseMessage === "string") return responseMessage;
+  return error instanceof Error ? error.message : "";
 }
 </script>
 
 <style scoped>
 .feeds-pane { display: flex; flex-direction: column; gap: 12px; }
 .ctrl-bar { display: flex; gap: 10px; }
+.pane-alert :deep(.el-alert__content) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
 .muted { color: #9ca3af; }
 .admin-table { display: none; }
 .mobile-list {

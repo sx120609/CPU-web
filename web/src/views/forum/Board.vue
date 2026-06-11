@@ -92,6 +92,7 @@ const sort = ref<"new" | "hot">("new");
 const loading = ref(false);
 const error = ref("");
 let pendingRestoreState: BoardRestoreState | null = null;
+let loadSeq = 0;
 
 const canPost = computed(() => !!board.value && !board.value.readOnly && auth.canAccessForum);
 const boardDisplayName = computed(() => board.value?.slug === "campus-wall" ? "逛逛" : (board.value?.name || ""));
@@ -120,19 +121,23 @@ watch(() => route.fullPath, async () => {
 }, { immediate: true });
 
 async function reload(options: { scrollToTop?: boolean } = {}) {
+  const seq = ++loadSeq;
   loading.value = true;
   error.value = "";
   try {
     const slug = String(route.params.slug);
-    board.value = await boardApi.detail(slug, { suppressErrorMessage: true });
+    const nextBoard = await boardApi.detail(slug, { suppressErrorMessage: true });
     const [pins, normal] = await Promise.all([
       topicApi.list({ board: slug, size: 20, sort: "new", pinned: "only" }, { suppressErrorMessage: true }),
       topicApi.list({ board: slug, page: page.value, size: size.value, sort: sort.value, pinned: "exclude" }, { suppressErrorMessage: true }),
     ]);
+    if (seq !== loadSeq) return;
+    board.value = nextBoard;
     pinnedList.value = (pins?.list ?? []).filter((item) => !item?.metadata?.weiwallHotEntry);
     list.value = normal.list.filter((item: any) => !item?.metadata?.weiwallHotEntry);
     total.value = normal.total;
   } catch (e) {
+    if (seq !== loadSeq) return;
     if ((e as { response?: { status?: number } })?.response?.status === 403) {
       router.replace({ name: "forum", query: { redirect: route.fullPath } });
       return;
@@ -145,6 +150,7 @@ async function reload(options: { scrollToTop?: boolean } = {}) {
     total.value = 0;
     error.value = normalizeBoardError(e);
   } finally {
+    if (seq !== loadSeq) return;
     loading.value = false;
     if (!error.value && pendingRestoreState) {
       await restoreScrollIfNeeded();

@@ -1,5 +1,11 @@
 <template>
-  <div class="profile">
+  <div class="profile" v-loading="profileLoading">
+    <div v-if="profileLoadError" class="cpu-card profile-load-error">
+      <el-empty :description="profileLoadError">
+        <el-button type="primary" :loading="profileLoading" @click="loadProfilePage">重试</el-button>
+      </el-empty>
+    </div>
+
     <div class="cpu-card profile-card">
       <UserAvatar :size="80" class="avatar" :src="user?.avatar" :name="user?.nickname" alt="用户头像" />
       <div class="avatar-actions">
@@ -555,6 +561,8 @@ const sponsorMessage = ref("");
 const sponsorDisplayMode = ref<"public" | "anonymous" | "hidden">("public");
 const sponsorConfirmOpen = ref(false);
 const sponsorOrders = ref<any[]>([]);
+const profileLoading = ref(false);
+const profileLoadError = ref("");
 const sponsorOptions = reactive<SponsorOptions>({
   enabled: false,
   payTypes: [],
@@ -567,6 +575,9 @@ const sponsorOptions = reactive<SponsorOptions>({
   allowMessage: true,
 });
 let qqBotProfileSeq = 0;
+let profileLoadSeq = 0;
+let handledSponsorReturnKey = "";
+let sponsorReturnInFlightKey = "";
 
 const editForm = reactive({ nickname: "", bio: "", college: "", enrollYear: undefined as any });
 
@@ -640,23 +651,12 @@ watch(passwordDialog, (v) => {
   if (!v) { pwForm.oldPassword = ""; pwForm.newPassword = ""; pwForm.confirm = ""; }
 });
 
-onMounted(async () => {
-  if (!auth.user) await auth.fetchMe();
-  if (!auth.user) return;
-  if (!site.loaded) await site.fetch();
-  const sponsorQuery = String(route.query.sponsor ?? "");
-  if (sponsorQuery === "success") {
-    await pollSponsorReturn(String(route.query.outTradeNo ?? ""));
-  }
-  const [topicList, boardList] = await Promise.all([
-    request.get<any[]>(`/user/${auth.user.id}/topics`),
-    boardApi.list(),
-  ]);
-  myTopics.value = topicList;
-  boards.value = boardList;
-  await loadQqBotProfile();
-  if (site.features.sponsor || (user.value?.sponsorAmount ?? 0) > 0) await loadSponsorOptions();
-  await loadSponsorOrders();
+onMounted(() => {
+  void loadProfilePage();
+});
+
+watch(() => [route.query.sponsor, route.query.outTradeNo], () => {
+  void handleSponsorReturnFromQuery();
 });
 
 watch(editing, (v) => {
@@ -667,6 +667,45 @@ watch(editing, (v) => {
     editForm.enrollYear = user.value.enrollYear ?? undefined;
   }
 });
+
+async function loadProfilePage() {
+  const seq = ++profileLoadSeq;
+  profileLoading.value = true;
+  profileLoadError.value = "";
+  try {
+    if (!auth.user) await auth.fetchMe();
+    if (seq !== profileLoadSeq) return;
+    if (!auth.user) {
+      profileLoadError.value = "登录状态已失效，请重新登录";
+      return;
+    }
+    if (!site.loaded) await site.fetch();
+    if (seq !== profileLoadSeq) return;
+    await handleSponsorReturnFromQuery();
+
+    const [topicResult, boardResult] = await Promise.allSettled([
+      request.get<any[]>(`/user/${auth.user.id}/topics`, undefined, { suppressErrorMessage: true }),
+      boardApi.list({ suppressErrorMessage: true }),
+    ]);
+    if (seq !== profileLoadSeq) return;
+    myTopics.value = topicResult.status === "fulfilled" ? topicResult.value : [];
+    boards.value = boardResult.status === "fulfilled" ? boardResult.value : [];
+    if (topicResult.status === "rejected" || boardResult.status === "rejected") {
+      profileLoadError.value = "部分个人资料加载失败，已显示可用内容";
+    }
+
+    await Promise.all([
+      loadQqBotProfile({ silent: true }),
+      (site.features.sponsor || (user.value?.sponsorAmount ?? 0) > 0) ? loadSponsorOptions() : Promise.resolve(),
+      loadSponsorOrders(),
+    ]);
+  } catch (error) {
+    if (seq !== profileLoadSeq) return;
+    profileLoadError.value = normalizeProfileLoadError(error);
+  } finally {
+    if (seq === profileLoadSeq) profileLoading.value = false;
+  }
+}
 
 async function saveEdit() {
   if (saving.value) return;
@@ -691,7 +730,7 @@ async function saveEdit() {
 
 async function loadSponsorOptions() {
   try {
-    Object.assign(sponsorOptions, await paymentsApi.sponsorOptions());
+    Object.assign(sponsorOptions, await paymentsApi.sponsorOptions({ suppressErrorMessage: true }));
     if (sponsorOptions.amounts.length) sponsorAmount.value = String(sponsorOptions.amounts[1] ?? sponsorOptions.amounts[0]);
     if (sponsorOptions.payTypes.length) sponsorPayType.value = sponsorOptions.payTypes[0];
   } catch {
@@ -701,9 +740,24 @@ async function loadSponsorOptions() {
 
 async function loadSponsorOrders() {
   try {
-    sponsorOrders.value = (await paymentsApi.sponsorOrders({ page: 1, size: 10, status: "paid" })).list;
+    sponsorOrders.value = (await paymentsApi.sponsorOrders({ page: 1, size: 10, status: "paid" }, { suppressErrorMessage: true })).list;
   } catch {
     sponsorOrders.value = [];
+  }
+}
+
+async function handleSponsorReturnFromQuery() {
+  const sponsorQuery = String(route.query.sponsor ?? "");
+  if (sponsorQuery !== "success") return;
+  const key = String(route.query.outTradeNo ?? "__no_trade_no");
+  if (handledSponsorReturnKey === key || sponsorReturnInFlightKey === key) return;
+  sponsorReturnInFlightKey = key;
+  try {
+    await pollSponsorReturn(String(route.query.outTradeNo ?? ""));
+    await loadSponsorOrders();
+    handledSponsorReturnKey = key;
+  } finally {
+    if (sponsorReturnInFlightKey === key) sponsorReturnInFlightKey = "";
   }
 }
 
@@ -778,7 +832,7 @@ async function pollSponsorReturn(outTradeNo: string) {
     return;
   }
   for (let i = 0; i < 6; i += 1) {
-    const order = await paymentsApi.sponsorOrder(outTradeNo).catch(() => null);
+    const order = await paymentsApi.sponsorOrder(outTradeNo, { suppressErrorMessage: true }).catch(() => null);
     if (order?.status === "paid") {
       await auth.fetchMe();
       ElMessage.success("赞助已到账，感谢支持");
@@ -831,8 +885,13 @@ async function loadQqBotProfile(opts?: { silent?: boolean }) {
   const seq = ++qqBotProfileSeq;
   if (!opts?.silent) qqBotLoading.value = true;
   try {
-    const profile = await authApi.qqBotProfile();
+    const profile = await authApi.qqBotProfile({ suppressErrorMessage: true });
     if (seq === qqBotProfileSeq) qqBotProfile.value = profile;
+  } catch (error) {
+    if (seq === qqBotProfileSeq) {
+      qqBotProfile.value = null;
+      if (!opts?.silent) ElMessage.error(normalizeProfileLoadError(error, "QQBot 状态加载失败"));
+    }
   } finally {
     if (!opts?.silent && seq === qqBotProfileSeq) qqBotLoading.value = false;
   }
@@ -945,6 +1004,15 @@ async function removeAvatar() {
 function openMyTopic(id: number) {
   router.push(`/forum/topic/${id}`);
 }
+
+function normalizeProfileLoadError(error: unknown, fallback = "个人中心加载失败，请稍后重试") {
+  const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
+  if (status === 401) return "登录状态已失效，请重新登录";
+  if (status && status < 500) {
+    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || fallback;
+  }
+  return fallback;
+}
 </script>
 
 <style scoped>
@@ -952,6 +1020,9 @@ function openMyTopic(id: number) {
 .cpu-card { background: #fff; border-radius: 12px; padding: 20px 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
 
 .profile-card { text-align: center; }
+.profile-load-error {
+  padding: 18px;
+}
 .avatar { font-size: 28px; font-weight: 600; }
 .avatar-actions {
   margin-top: 10px;

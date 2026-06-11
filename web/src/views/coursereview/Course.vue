@@ -88,7 +88,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Edit } from "@element-plus/icons-vue";
@@ -103,18 +103,34 @@ const data = ref<any>(null);
 const loading = ref(false);
 const addingTeacher = ref(false);
 const error = ref("");
+let loadSeq = 0;
 
 onMounted(reload);
+watch(() => route.params.id, () => {
+  void reload();
+});
 
 async function reload() {
+  const courseId = Number(route.params.id);
+  if (!Number.isFinite(courseId) || courseId <= 0) {
+    data.value = null;
+    error.value = "课程不存在或已被删除";
+    return;
+  }
+  const seq = ++loadSeq;
   loading.value = true;
   error.value = "";
   try {
-    data.value = await courseApi.detail(Number(route.params.id), { suppressErrorMessage: true });
+    const nextData = await courseApi.detail(courseId, { suppressErrorMessage: true });
+    if (seq === loadSeq) data.value = nextData;
   } catch (e) {
-    data.value = null;
-    error.value = normalizeCourseDetailError(e);
-  } finally { loading.value = false; }
+    if (seq === loadSeq) {
+      data.value = null;
+      error.value = normalizeCourseDetailError(e);
+    }
+  } finally {
+    if (seq === loadSeq) loading.value = false;
+  }
 }
 
 function goReview() {
@@ -127,6 +143,8 @@ function openTopic(topicId: number) {
 
 async function onAddTeacher() {
   if (addingTeacher.value) return;
+  const courseId = Number(route.params.id);
+  if (!Number.isFinite(courseId) || courseId <= 0) return;
   const { value } = await ElMessageBox.prompt(
     "请输入这位老师的姓名（与教务系统一致更好）",
     "添加授课老师",
@@ -140,7 +158,7 @@ async function onAddTeacher() {
   if (!name) return;
   addingTeacher.value = true;
   try {
-    await courseApi.addTeacher(Number(route.params.id), name);
+    await courseApi.addTeacher(courseId, name);
     ElMessage.success("已添加");
     await reload();
   } finally {

@@ -1,4 +1,4 @@
-import { request } from "./request";
+import { request, type RequestOptions } from "./request";
 
 export interface LoginPayload { username: string; password: string }
 export interface RegisterPayload { username: string; password: string; nickname: string; college?: string; enrollYear?: number }
@@ -121,7 +121,7 @@ export const authApi = {
   enableForumAccess: (confirmText: string) => request.post<UserInfo>("/user/forum-access/enable", { confirmText }),
   changePassword: (oldPassword: string, newPassword: string) =>
     request.patch<{ ok: true }>("/user/password", { oldPassword, newPassword }),
-  qqBotProfile: () => request.get<QqBotProfile>("/qqbot/me"),
-  createQqBotBindToken: () => request.post<{ token: string; expiresAt: string }>("/qqbot/bind-token"),
-  deleteQqBotBinding: () => request.delete<{ ok: true }>("/qqbot/binding"),
+  qqBotProfile: (options?: RequestOptions) => request.get<QqBotProfile>("/qqbot/me", undefined, options),
+  createQqBotBindToken: (options?: RequestOptions) => request.post<{ token: string; expiresAt: string }>("/qqbot/bind-token", undefined, options),
+  deleteQqBotBinding: (options?: RequestOptions) => request.delete<{ ok: true }>("/qqbot/binding", options),
 };
