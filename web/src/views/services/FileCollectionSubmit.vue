@@ -31,13 +31,13 @@
         <form class="submit-card" @submit.prevent="submit">
           <label v-for="field in task.fields" :key="field.id" class="submit-field">
             <span>{{ field.label }}<b v-if="field.required">*</b></span>
-            <el-input v-model="answers[field.id]" :placeholder="field.placeholder || ''" />
+            <el-input v-model="answers[field.id]" :placeholder="field.placeholder || ''" :disabled="submitting" />
           </label>
 
           <div class="file-rule-box">
             <b>上传文件</b>
-            <span>允许 {{ task.fileRules.allowedTypes.join(", ") || "任意类型" }}；单个不超过 {{ task.fileRules.maxSizeMb }} MB；最多 {{ task.fileRules.maxCount }} 个。</span>
-            <input ref="fileInput" type="file" multiple :accept="acceptTypes" @change="pickFiles" />
+            <span>允许 {{ allowedTypeText }}；单个不超过 {{ task.fileRules.maxSizeMb }} MB；最多 {{ task.fileRules.maxCount }} 个。</span>
+            <input ref="fileInput" type="file" multiple :accept="acceptTypes" :disabled="submitting" @change="pickFiles" />
           </div>
 
           <div v-if="files.length" class="file-list">
@@ -47,13 +47,13 @@
                 <small>{{ savedPathPreview(file, index + 1, files.length) }}</small>
               </span>
               <small>{{ formatBytes(file.size) }}</small>
-              <button type="button" :disabled="index === 0" @click="moveFile(index, index - 1)">上移</button>
-              <button type="button" :disabled="index === files.length - 1" @click="moveFile(index, index + 1)">下移</button>
-              <button type="button" @click="removeFile(index)">删除</button>
+              <button type="button" class="file-move-action" :disabled="submitting || index === 0" @click="moveFile(index, index - 1)">上移</button>
+              <button type="button" class="file-move-action" :disabled="submitting || index === files.length - 1" @click="moveFile(index, index + 1)">下移</button>
+              <button type="button" class="file-delete-action" :disabled="submitting" @click="removeFile(index)">删除</button>
             </div>
           </div>
 
-          <el-button type="primary" native-type="submit" :loading="submitting" :disabled="task.status !== 'open'">
+          <el-button type="primary" native-type="submit" :loading="submitting" :disabled="submitting || task.status !== 'open'">
             提交文件
           </el-button>
         </form>
@@ -81,7 +81,9 @@ const error = ref("");
 const answers = reactive<Record<string, string>>({});
 const files = ref<File[]>([]);
 const fileInput = ref<HTMLInputElement | null>(null);
-const acceptTypes = computed(() => task.value?.fileRules.allowedTypes.map((item) => `.${item}`).join(",") || "");
+const normalizedAllowedTypes = computed(() => normalizeAllowedTypes(task.value?.fileRules.allowedTypes ?? []));
+const acceptTypes = computed(() => normalizedAllowedTypes.value.map((item) => `.${item}`).join(","));
+const allowedTypeText = computed(() => normalizedAllowedTypes.value.join(", ") || "任意类型");
 
 onMounted(load);
 
@@ -96,28 +98,57 @@ async function load() {
     });
     for (const field of task.value.fields) answers[field.id] = "";
   } catch (e) {
-    const status = (e as { response?: { status?: number } }).response?.status;
+    const response = (e as { response?: { status?: number; data?: { message?: string } } }).response;
+    const status = response?.status;
     if (status === 401) {
       router.push({ name: "login", query: { redirect: route.fullPath } });
       return;
     }
-    error.value = (e as { response?: { data?: { message?: string } }; message?: string }).response?.data?.message ?? "收集任务加载失败";
+    if (status === 404) {
+      error.value = "收集任务不存在或暂未开放";
+    } else if (status && status < 500) {
+      error.value = response?.data?.message ?? "收集任务加载失败";
+    } else {
+      error.value = "收集任务加载失败，请稍后再试";
+    }
   } finally {
     loading.value = false;
   }
 }
 
 function pickFiles(event: Event) {
-  files.value = [...files.value, ...((event.target as HTMLInputElement).files ?? [])];
+  if (submitting.value) return;
+  const selected = Array.from((event.target as HTMLInputElement).files ?? []);
+  if (!selected.length) {
+    if (fileInput.value) fileInput.value.value = "";
+    return;
+  }
+  const nextFiles = [...files.value];
+  const maxCount = task.value?.fileRules.maxCount ?? selected.length;
+  for (const file of selected) {
+    const reason = validateFile(file);
+    if (reason) {
+      ElMessage.warning(reason);
+      continue;
+    }
+    if (nextFiles.length >= maxCount) {
+      ElMessage.warning(`最多只能上传 ${maxCount} 个文件`);
+      break;
+    }
+    nextFiles.push(file);
+  }
+  files.value = nextFiles;
   if (fileInput.value) fileInput.value.value = "";
 }
 
 function removeFile(index: number) {
+  if (submitting.value) return;
   files.value.splice(index, 1);
   if (fileInput.value) fileInput.value.value = "";
 }
 
 function moveFile(from: number, to: number) {
+  if (submitting.value) return;
   if (to < 0 || to >= files.value.length) return;
   const [item] = files.value.splice(from, 1);
   files.value.splice(to, 0, item);
@@ -131,7 +162,12 @@ function validate() {
       ElMessage.warning(`请填写：${field.label}`);
       return false;
     }
-    if (field.pattern && value && !(new RegExp(field.pattern).test(value))) {
+    const patternMatch = matchesFieldPattern(field.pattern, value);
+    if (!patternMatch.valid) {
+      ElMessage.warning(`“${field.label}”的校验规则暂不可用，请联系管理员`);
+      return false;
+    }
+    if (!patternMatch.matched) {
       ElMessage.warning(`“${field.label}”格式不正确`);
       return false;
     }
@@ -144,23 +180,47 @@ function validate() {
     ElMessage.warning(`最多只能上传 ${task.value.fileRules.maxCount} 个文件`);
     return false;
   }
-  const allowed = new Set(task.value.fileRules.allowedTypes);
-  const maxBytes = task.value.fileRules.maxSizeMb * 1024 * 1024;
   for (const file of files.value) {
-    const ext = file.name.includes(".") ? file.name.split(".").pop()!.toLowerCase() : "";
-    if (allowed.size && !allowed.has(ext)) {
-      ElMessage.warning(`${file.name} 类型不允许`);
-      return false;
-    }
-    if (file.size > maxBytes) {
-      ElMessage.warning(`${file.name} 超过大小限制`);
+    const reason = validateFile(file);
+    if (reason) {
+      ElMessage.warning(reason);
       return false;
     }
   }
   return true;
 }
 
+function matchesFieldPattern(pattern: string | undefined, value: string) {
+  if (!pattern || !value) return { valid: true, matched: true };
+  try {
+    return { valid: true, matched: new RegExp(pattern).test(value) };
+  } catch {
+    return { valid: false, matched: false };
+  }
+}
+
+function validateFile(file: File) {
+  if (!task.value) return "";
+  const allowed = new Set(normalizedAllowedTypes.value);
+  const ext = fileExtension(file.name);
+  if (allowed.size && !allowed.has(ext)) return `${file.name} 类型不允许`;
+  const maxBytes = task.value.fileRules.maxSizeMb * 1024 * 1024;
+  if (file.size > maxBytes) return `${file.name} 超过大小限制`;
+  return "";
+}
+
+function fileExtension(name: string) {
+  return name.includes(".") ? name.split(".").pop()!.trim().toLowerCase().replace(/^\.+/, "") : "";
+}
+
+function normalizeAllowedTypes(types: string[]) {
+  return types
+    .map((item) => item.trim().toLowerCase().replace(/^\.+/, ""))
+    .filter(Boolean);
+}
+
 async function submit() {
+  if (submitting.value) return;
   if (!task.value || !validate()) return;
   submitting.value = true;
   try {
@@ -265,7 +325,7 @@ function cleanRenderedName(value: string) {
 
 <style scoped>
 .file-submit-page {
-  min-height: calc(100vh - 64px);
+  min-height: calc(100dvh - 64px);
   background: #f6f8fb;
   padding: 22px;
 }
@@ -376,12 +436,17 @@ function cleanRenderedName(value: string) {
   border: 1px solid transparent;
   border-radius: 7px;
   background: transparent;
-  color: #dc2626;
+  color: #2563eb;
   cursor: pointer;
   font: inherit;
   min-width: 0;
 }
+.file-list .file-delete-action {
+  color: #dc2626;
+}
 .file-list button:disabled {
+  border-color: #e5e7eb;
+  background: #f8fafc;
   color: #cbd5e1;
   cursor: not-allowed;
 }
@@ -404,6 +469,10 @@ function cleanRenderedName(value: string) {
   }
   .file-list button {
     min-height: 40px;
+    border-color: #dbeafe;
+    background: #eff6ff;
+  }
+  .file-list .file-delete-action {
     border-color: #fee2e2;
     background: #fff7f7;
   }

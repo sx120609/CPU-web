@@ -48,11 +48,10 @@
           </div>
           <span class="ov-chip">按登录去重</span>
         </div>
-        <VChart
+        <DailyActiveChart
           v-if="dailyActiveSeries.length"
           class="ov-chart"
           :option="dailyActiveChartOption"
-          autoresize
         />
       </div>
     </div>
@@ -76,31 +75,26 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, watch } from "vue";
-import { use } from "echarts/core";
-import { CanvasRenderer } from "echarts/renderers";
-import { LineChart } from "echarts/charts";
-import { GridComponent, TooltipComponent } from "echarts/components";
+import { computed, defineAsyncComponent, ref, onMounted, watch } from "vue";
 import type { EChartsOption } from "echarts";
-import VChart from "vue-echarts";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { adminApi, type AdminOverview } from "@/api/admin";
-import UsersPane from "./UsersPane.vue";
-import BoardsPane from "./BoardsPane.vue";
-import TopicsPane from "./TopicsPane.vue";
-import FeedsPane from "./FeedsPane.vue";
-import WeiwallPane from "./WeiwallPane.vue";
-import AnnouncementsPane from "./AnnouncementsPane.vue";
-import EpayPane from "./EpayPane.vue";
-import SponsorPane from "./SponsorPane.vue";
-import QqBotPane from "./QqBotPane.vue";
-import AiReviewPane from "./AiReviewPane.vue";
-import DatabasePane from "./DatabasePane.vue";
-import MediaStoragePane from "./MediaStoragePane.vue";
-import FeaturesPane from "./FeaturesPane.vue";
 
-use([CanvasRenderer, LineChart, GridComponent, TooltipComponent]);
+const DailyActiveChart = defineAsyncComponent(() => import("./DailyActiveChart.vue"));
+const UsersPane = defineAsyncComponent(() => import("./UsersPane.vue"));
+const BoardsPane = defineAsyncComponent(() => import("./BoardsPane.vue"));
+const TopicsPane = defineAsyncComponent(() => import("./TopicsPane.vue"));
+const FeedsPane = defineAsyncComponent(() => import("./FeedsPane.vue"));
+const WeiwallPane = defineAsyncComponent(() => import("./WeiwallPane.vue"));
+const AnnouncementsPane = defineAsyncComponent(() => import("./AnnouncementsPane.vue"));
+const EpayPane = defineAsyncComponent(() => import("./EpayPane.vue"));
+const SponsorPane = defineAsyncComponent(() => import("./SponsorPane.vue"));
+const QqBotPane = defineAsyncComponent(() => import("./QqBotPane.vue"));
+const AiReviewPane = defineAsyncComponent(() => import("./AiReviewPane.vue"));
+const DatabasePane = defineAsyncComponent(() => import("./DatabasePane.vue"));
+const MediaStoragePane = defineAsyncComponent(() => import("./MediaStoragePane.vue"));
+const FeaturesPane = defineAsyncComponent(() => import("./FeaturesPane.vue"));
 
 const auth = useAuthStore();
 const route = useRoute();

@@ -1,15 +1,20 @@
 <template>
-  <div class="msg-page">
+  <div class="msg-page" v-loading="loading">
     <div class="page-head">
       <div class="page-head-main">
         <h2 class="page-title">消息中心</h2>
         <span v-if="tab !== 'settings'" class="page-sub">{{ unreadCount ? `${unreadCount} 条未读` : "当前全部已读" }}</span>
       </div>
       <div v-if="tab !== 'settings'" class="page-head-actions">
-        <el-button text :disabled="!unreadCount" @click="readAll">全部标为已读</el-button>
+        <el-button text :loading="markingAll" :disabled="!unreadCount || markingAll" @click="readAll">全部标为已读</el-button>
       </div>
     </div>
-    <el-tabs v-model="tab" class="cpu-card messages-tabs">
+    <div v-if="pageError" class="cpu-card page-error">
+      <el-empty :description="pageError">
+        <el-button type="primary" @click="loadPage">重试</el-button>
+      </el-empty>
+    </div>
+    <el-tabs v-else v-model="tab" class="cpu-card messages-tabs">
       <el-tab-pane label="全部" name="all">
         <MessageList :list="filtered('')" @read="onRead" @open="openNotification" />
       </el-tab-pane>
@@ -51,8 +56,9 @@
               <el-switch v-model="settings.subscribeSystem" />
             </label>
           </div>
-          <el-button type="primary" :loading="saving" class="save-btn" @click="saveSettings">保存设置</el-button>
+          <el-button type="primary" :loading="saving" :disabled="saving" class="save-btn" @click="saveSettings">保存设置</el-button>
         </div>
+        <el-empty v-else description="设置暂不可用" />
       </el-tab-pane>
     </el-tabs>
 
@@ -84,6 +90,7 @@
             v-if="canRequestManualReviewFromNotice"
             type="warning"
             :loading="requestingManualReview"
+            :disabled="requestingManualReview"
             @click="requestManualReviewFromNotice"
           >
             申请人工复核
@@ -92,6 +99,7 @@
             v-if="canReviewActiveNotice"
             type="success"
             :loading="reviewing"
+            :disabled="reviewing"
             @click="approveFromNotice"
           >
             {{ reviewActionLabel }}通过
@@ -100,6 +108,7 @@
             v-if="canReviewActiveNotice"
             type="warning"
             :loading="reviewing"
+            :disabled="reviewing"
             @click="rejectFromNotice"
           >
             {{ reviewActionLabel }}驳回
@@ -112,7 +121,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import MessageList from "@/components/messages/MessageList.vue";
@@ -128,10 +137,14 @@ const router = useRouter();
 const msg = useMessageStore();
 const auth = useAuthStore();
 
-const tab = ref(route.query.tab === "settings" ? "settings" : "all");
+const messageTabs = new Set(["all", "reply", "like", "system", "settings"]);
+const tab = ref(normalizeMessageTab(route.query.tab));
 const list = ref<any[]>([]);
 const settings = ref<any>(null);
+const loading = ref(false);
+const pageError = ref("");
 const saving = ref(false);
+const markingAll = ref(false);
 const detailOpen = ref(false);
 const activeNotice = ref<any | null>(null);
 const reviewing = ref(false);
@@ -141,9 +154,17 @@ const reviewTargetLoading = ref(false);
 
 const unreadCount = computed(() => list.value.filter((item) => !item.readAt).length);
 
-onMounted(async () => {
-  [list.value, settings.value] = await Promise.all([messageApi.list(), messageApi.settings()]);
-  msg.refresh();
+onMounted(loadPage);
+
+watch(() => route.query.tab, (value) => {
+  const next = normalizeMessageTab(value);
+  if (tab.value !== next) tab.value = next;
+});
+
+watch(tab, (value) => {
+  const nextQuery = { ...route.query, tab: value === "all" ? undefined : value };
+  if ((route.query.tab || "all") === (nextQuery.tab || "all")) return;
+  router.replace({ query: nextQuery }).catch(() => null);
 });
 
 async function reloadNoticeState() {
@@ -164,19 +185,44 @@ async function onRead(id: number) {
 }
 
 async function readAll() {
-  await messageApi.readAll();
-  list.value.forEach((n) => (n.readAt = new Date().toISOString()));
-  ElMessage.success("已全部已读");
-  msg.refresh();
+  if (!unreadCount.value || markingAll.value) return;
+  markingAll.value = true;
+  try {
+    await messageApi.readAll();
+    list.value.forEach((n) => (n.readAt = new Date().toISOString()));
+    ElMessage.success("已全部已读");
+    msg.refresh();
+  } finally {
+    markingAll.value = false;
+  }
 }
 
 async function saveSettings() {
+  if (!settings.value || saving.value) return;
   saving.value = true;
   try {
     const { id, userId, ...payload } = settings.value;
     settings.value = await messageApi.updateSettings(payload);
     ElMessage.success("已保存");
   } finally { saving.value = false; }
+}
+
+async function loadPage() {
+  loading.value = true;
+  pageError.value = "";
+  try {
+    [list.value, settings.value] = await Promise.all([
+      messageApi.list(undefined, { suppressErrorMessage: true }),
+      messageApi.settings({ suppressErrorMessage: true }),
+    ]);
+    msg.refresh();
+  } catch (error) {
+    list.value = [];
+    settings.value = null;
+    pageError.value = normalizeMessageLoadError(error);
+  } finally {
+    loading.value = false;
+  }
 }
 
 async function openNotification(item: any) {
@@ -261,12 +307,17 @@ async function approveFromNotice() {
 }
 
 async function rejectFromNotice() {
-  if (!reviewTarget.value?.reviewable) return;
-  const { value } = await ElMessageBox.prompt("填写驳回说明（选填）", "人工驳回", {
-    inputPlaceholder: "例如：存在明显人身攻击 / 泄露隐私信息",
-  }).catch(() => ({ value: "" }));
+  if (!reviewTarget.value?.reviewable || reviewing.value) return;
   reviewing.value = true;
   try {
+    let value = "";
+    try {
+      ({ value } = await ElMessageBox.prompt("填写驳回说明（选填）", "人工驳回", {
+        inputPlaceholder: "例如：存在明显人身攻击 / 泄露隐私信息",
+      }));
+    } catch {
+      return;
+    }
     if (reviewTarget.value.kind === "reply") {
       await adminApi.updateReply(reviewTarget.value.id, {
         aiReviewStatus: "rejected_manual",
@@ -320,6 +371,20 @@ function resolveNoticeLink(item: any) {
 function formatNoticeTime(value?: string) {
   return fmtDate(value, "YYYY-MM-DD HH:mm");
 }
+
+function normalizeMessageTab(value: unknown) {
+  const tabName = typeof value === "string" ? value : "all";
+  return messageTabs.has(tabName) ? tabName : "all";
+}
+
+function normalizeMessageLoadError(error: unknown) {
+  const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
+  if (status === 401) return "登录已过期，请重新登录";
+  if (status && status < 500) {
+    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "消息加载失败";
+  }
+  return "消息加载失败，请稍后再试";
+}
 </script>
 
 <style scoped>
@@ -347,6 +412,9 @@ function formatNoticeTime(value?: string) {
   flex-shrink: 0;
 }
 .cpu-card { background: #fff; border-radius: 12px; padding: 16px 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
+.page-error {
+  padding: 24px 16px;
+}
 .notice-detail { display: flex; flex-direction: column; gap: 12px; }
 .notice-head {
   display: flex;
@@ -531,9 +599,9 @@ function formatNoticeTime(value?: string) {
   }
 
   :deep(.notice-dialog) {
-    width: calc(100vw - 20px) !important;
-    max-width: calc(100vw - 20px) !important;
-    margin-top: 4vh;
+    width: calc(100dvw - 20px) !important;
+    max-width: calc(100dvw - 20px) !important;
+    margin-top: 4dvh;
   }
 
   :deep(.notice-dialog .el-dialog) {
@@ -555,15 +623,14 @@ function formatNoticeTime(value?: string) {
   }
 
   .notice-actions {
-    display: flex;
-    flex-wrap: nowrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 118px), 1fr));
     gap: 8px;
-    justify-content: stretch;
+    width: 100%;
   }
 
   .notice-actions :deep(.el-button) {
-    flex: 1 1 0;
-    width: auto;
+    width: 100%;
     min-width: 0;
     margin-left: 0;
     padding-inline: 10px;

@@ -78,12 +78,29 @@
         <h3>输入验证码后继续</h3>
         <p>账号已经准备好了，只需补一次验证码。</p>
         <div class="captcha-row">
-          <el-input v-model="captchaInput" placeholder="看图输入验证码" maxlength="8" style="flex:1; min-width:160px" @keyup.enter="submitCaptcha" />
-          <img v-if="jwxt.captchaImage" :src="jwxt.captchaImage" alt="captcha" class="vcode-img" loading="lazy" decoding="async" fetchpriority="low" @click="reloadCaptcha" />
-          <el-button text @click="reloadCaptcha"><el-icon><Refresh /></el-icon></el-button>
+          <el-input
+            v-model="captchaInput"
+            placeholder="看图输入验证码"
+            maxlength="8"
+            style="flex:1; min-width:160px"
+            :disabled="captchaSubmitting || captchaRefreshing"
+            @keyup.enter="submitCaptcha"
+          />
+          <button
+            v-if="jwxt.captchaImage"
+            type="button"
+            class="vcode-img-button"
+            :disabled="captchaSubmitting || captchaRefreshing"
+            aria-label="刷新验证码"
+            title="刷新验证码"
+            @click="reloadCaptcha"
+          >
+            <img :src="jwxt.captchaImage" alt="captcha" class="vcode-img" loading="lazy" decoding="async" fetchpriority="low" />
+          </button>
+          <el-button text :loading="captchaRefreshing" :disabled="captchaSubmitting" @click="reloadCaptcha"><el-icon><Refresh /></el-icon></el-button>
         </div>
         <div v-if="captchaError" class="captcha-err">{{ captchaError }}</div>
-        <el-button class="captcha-submit" type="primary" :loading="captchaSubmitting" size="large" @click="submitCaptcha">完成授权</el-button>
+        <el-button class="captcha-submit" type="primary" :loading="captchaSubmitting" :disabled="captchaRefreshing" size="large" @click="submitCaptcha">完成授权</el-button>
       </div>
     </div>
 
@@ -102,12 +119,12 @@
     <div v-if="!jwxt.isLoggedIn && !autoLoading" class="fallback">
       <h4 class="fb-title">公开入口</h4>
       <div class="fb-grid">
-        <a href="http://lib.cpu.edu.cn" target="_blank" class="fb-card"><span class="fb-icon">📚</span><span>图书馆</span></a>
-        <a href="http://opac.cpu.edu.cn" target="_blank" class="fb-card"><span class="fb-icon">🔍</span><span>馆藏检索</span></a>
-        <a href="https://i.cpu.edu.cn" target="_blank" class="fb-card"><span class="fb-icon">🏛️</span><span>融合门户</span></a>
-        <a href="http://jwc.cpu.edu.cn" target="_blank" class="fb-card"><span class="fb-icon">📋</span><span>教务处</span></a>
-        <a href="http://news.cpu.edu.cn" target="_blank" class="fb-card"><span class="fb-icon">📢</span><span>校园新闻</span></a>
-        <a href="https://cpu.91job.org.cn/sub-station/home/10316" target="_blank" class="fb-card"><span class="fb-icon">💼</span><span>就业平台</span></a>
+        <a href="http://lib.cpu.edu.cn" target="_blank" rel="noopener noreferrer" class="fb-card"><span class="fb-icon">📚</span><span>图书馆</span></a>
+        <a href="http://opac.cpu.edu.cn" target="_blank" rel="noopener noreferrer" class="fb-card"><span class="fb-icon">🔍</span><span>馆藏检索</span></a>
+        <a href="https://i.cpu.edu.cn" target="_blank" rel="noopener noreferrer" class="fb-card"><span class="fb-icon">🏛️</span><span>融合门户</span></a>
+        <a href="http://jwc.cpu.edu.cn" target="_blank" rel="noopener noreferrer" class="fb-card"><span class="fb-icon">📋</span><span>教务处</span></a>
+        <a href="http://news.cpu.edu.cn" target="_blank" rel="noopener noreferrer" class="fb-card"><span class="fb-icon">📢</span><span>校园新闻</span></a>
+        <a href="https://cpu.91job.org.cn/sub-station/home/10316" target="_blank" rel="noopener noreferrer" class="fb-card"><span class="fb-icon">💼</span><span>就业平台</span></a>
       </div>
     </div>
 
@@ -134,6 +151,7 @@ const autoLoading = ref(false);
 const hasCreds = ref(false);
 const captchaInput = ref("");
 const captchaSubmitting = ref(false);
+const captchaRefreshing = ref(false);
 const captchaError = ref("");
 const electricOpen = ref(false);
 const toolMetas = ref<ToolMeta[]>([]);
@@ -148,13 +166,18 @@ onMounted(async () => {
   }
   jwxt.hydrate();
   hasCreds.value = hasSavedCreds();
-  await jwxt.refreshStatus();
+  try {
+    await jwxt.refreshStatus();
+  } catch {
+    ElMessage.warning("教务登录状态暂时无法刷新，基础服务仍可继续使用");
+  }
   if (jwxt.isLoggedIn) return;
 
   // 只要本地存了学校账号就尝试，不再要求"rememberSaved"
   if (hasCreds.value) {
     autoLoading.value = true;
     try { await jwxt.tryAutoLogin({ force: true }); }
+    catch { ElMessage.warning("自动登录未完成，请前往教务数据授权页手动登录"); }
     finally { autoLoading.value = false; }
     // 如果 tryAutoLogin 命中 captcha，模板会自动切到 captcha-card；用户输入完点按钮 submitCaptcha
   }
@@ -165,14 +188,20 @@ function isLoginRequired(slug: string) {
 }
 
 async function reloadCaptcha() {
+  if (captchaSubmitting.value || captchaRefreshing.value) return;
+  captchaRefreshing.value = true;
   captchaInput.value = "";
   captchaError.value = "";
   try {
     await jwxt.beginLogin();
   } catch { /* store 内部已 set error */ }
+  finally {
+    captchaRefreshing.value = false;
+  }
 }
 
 async function submitCaptcha() {
+  if (captchaSubmitting.value || captchaRefreshing.value) return;
   if (!captchaInput.value.trim()) {
     captchaError.value = "请输入验证码";
     return;
@@ -236,7 +265,7 @@ async function submitCaptcha() {
 }
 .tool-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   gap: 10px;
 }
 .tool-entry {
@@ -316,6 +345,7 @@ async function submitCaptcha() {
   color: #6b7280;
   font-size: 12px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .login-hint {
@@ -354,12 +384,31 @@ async function submitCaptcha() {
   gap: 8px;
   flex-wrap: wrap;
 }
+.vcode-img-button {
+  height: 38px;
+  min-width: 112px;
+  border: 1px solid #e5e7eb;
+  border-radius: 5px;
+  background: #fff;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+  overflow: hidden;
+}
 .vcode-img {
   height: 36px;
-  border-radius: 4px;
-  cursor: pointer;
-  border: 1px solid #e5e7eb;
-  background: #fff;
+  max-width: 112px;
+  object-fit: contain;
+  display: block;
+}
+.vcode-img-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+.vcode-img-button:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
 }
 .captcha-err {
   font-size: 12px;
@@ -378,7 +427,7 @@ async function submitCaptcha() {
 .fb-title { margin: 0 0 12px; font-size: 14px; color: #6b7280; font-weight: 500; }
 .fb-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 140px), 1fr));
   gap: 10px;
 }
 .fb-card {
@@ -391,12 +440,19 @@ async function submitCaptcha() {
   text-decoration: none;
   color: #1f2937;
   transition: border-color 0.15s, background 0.15s;
+  min-width: 0;
 }
 .fb-card:hover {
   border-color: var(--cpu-primary);
   background: #f0fdf4;
 }
 .fb-icon { font-size: 22px; }
+.fb-card span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .quick-row {
   display: flex;

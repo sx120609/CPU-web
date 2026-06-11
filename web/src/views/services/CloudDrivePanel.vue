@@ -19,8 +19,8 @@
           </div>
 
           <div v-if="canManage" class="sidebar-actions">
-            <el-button type="primary" @click="triggerFilePicker">上传文件</el-button>
-            <el-button @click="promptCreateFolder">新建文件夹</el-button>
+            <el-button type="primary" :loading="isDriveAction('upload')" :disabled="driveBusy" @click="triggerFilePicker">上传文件</el-button>
+            <el-button :loading="isDriveAction('create')" :disabled="driveBusy" @click="promptCreateFolder">新建文件夹</el-button>
           </div>
           <input ref="fileInputRef" type="file" multiple hidden @change="onFileInputChange" />
         </div>
@@ -31,7 +31,7 @@
               <div class="card-title">存储摘要</div>
               <div class="card-sub">和媒体存储配置共用同一套授权与文档库。</div>
             </div>
-            <el-button text @click="reload()">刷新</el-button>
+            <el-button text :loading="loading" :disabled="driveActionBusy" @click="reload()">刷新</el-button>
           </div>
 
           <div class="metric-grid">
@@ -156,19 +156,20 @@
                 :key="item.path || 'root'"
                 type="button"
                 class="crumb"
+                :disabled="driveBusy"
                 @click="openFolder(item.path)"
               >
                 {{ item.name }}
               </button>
             </div>
             <div class="toolbar-actions">
-              <el-button @click="goUp" :disabled="!directory?.currentPath">返回上级</el-button>
-              <el-button v-if="canManage" @click="triggerFilePicker">上传</el-button>
-              <el-button v-if="canManage" @click="promptCreateFolder">新建文件夹</el-button>
-              <el-button @click="openSelected" :disabled="!selectedEntry">打开</el-button>
-              <el-button @click="downloadSelected" :disabled="!selectedEntry || selectedEntry.kind !== 'file'">下载</el-button>
-              <el-button v-if="canManage" @click="promptRename(selectedEntry || undefined)" :disabled="!selectedEntry">重命名</el-button>
-              <el-button v-if="canManage" type="danger" plain @click="removeEntry(selectedEntry || undefined)" :disabled="!selectedEntry">删除</el-button>
+              <el-button @click="goUp" :disabled="driveBusy || !directory?.currentPath">返回上级</el-button>
+              <el-button v-if="canManage" :loading="isDriveAction('upload')" :disabled="driveBusy" @click="triggerFilePicker">上传</el-button>
+              <el-button v-if="canManage" :loading="isDriveAction('create')" :disabled="driveBusy" @click="promptCreateFolder">新建文件夹</el-button>
+              <el-button :loading="isDriveAction('open')" @click="openSelected" :disabled="driveBusy || !selectedEntry">打开</el-button>
+              <el-button :loading="isDriveAction('download')" @click="downloadSelected" :disabled="driveBusy || !selectedEntry || selectedEntry.kind !== 'file'">下载</el-button>
+              <el-button v-if="canManage" :loading="isDriveAction('rename')" @click="promptRename(selectedEntry || undefined)" :disabled="driveBusy || !selectedEntry">重命名</el-button>
+              <el-button v-if="canManage" :loading="isDriveAction('delete')" type="danger" plain @click="removeEntry(selectedEntry || undefined)" :disabled="driveBusy || !selectedEntry">删除</el-button>
             </div>
           </div>
 
@@ -196,14 +197,18 @@
                   <span>操作</span>
                 </div>
 
-                <button
+                <div
                   v-for="entry in filteredEntries"
                   :key="entry.relativePath"
-                  type="button"
                   class="entry-row entry-button"
                   :class="{ 'is-selected': selectedPath === entry.relativePath }"
-                  @click="selectedPath = entry.relativePath"
+                  role="button"
+                  :tabindex="driveBusy ? -1 : 0"
+                  :aria-disabled="driveBusy"
+                  @click="selectEntry(entry)"
                   @dblclick="handleEntryOpen(entry)"
+                  @keydown.enter.prevent="handleEntryOpen(entry)"
+                  @keydown.space.prevent="selectEntry(entry)"
                 >
                   <span class="entry-name">
                     <span class="entry-icon" :class="entry.kind === 'folder' ? 'icon-folder' : 'icon-file'"></span>
@@ -214,13 +219,13 @@
                   <span>{{ entry.kind === "folder" ? "—" : formatBytes(entry.sizeBytes) }}</span>
                   <span>{{ fmtDate(entry.updatedAt) }}</span>
                   <span class="entry-row-actions" @click.stop>
-                    <el-button text size="small" @click="handleEntryOpen(entry)">打开</el-button>
-                    <el-button v-if="entry.kind === 'file'" text size="small" @click="downloadEntry(entry)">下载</el-button>
-                    <el-button v-if="entry.webUrl" text size="small" @click="openRemoteUrl(entry)">远端页</el-button>
-                    <el-button v-if="canManage" text size="small" @click="promptRename(entry)">重命名</el-button>
-                    <el-button v-if="canManage" text size="small" type="danger" @click="removeEntry(entry)">删除</el-button>
+                    <el-button text size="small" :disabled="driveBusy" @click="handleEntryOpen(entry)">打开</el-button>
+                    <el-button v-if="entry.kind === 'file'" text size="small" :disabled="driveBusy" @click="downloadEntry(entry)">下载</el-button>
+                    <el-button v-if="entry.webUrl" text size="small" :disabled="driveBusy" @click="openRemoteUrl(entry)">远端页</el-button>
+                    <el-button v-if="canManage" text size="small" :disabled="driveBusy" @click="promptRename(entry)">重命名</el-button>
+                    <el-button v-if="canManage" text size="small" type="danger" :disabled="driveBusy" @click="removeEntry(entry)">删除</el-button>
                   </span>
-                </button>
+                </div>
               </div>
             </template>
 
@@ -232,6 +237,7 @@
                   type="button"
                   class="grid-card"
                   :class="{ 'is-selected': selectedPath === entry.relativePath }"
+                  :disabled="driveBusy"
                   @click="selectedPath = entry.relativePath"
                   @dblclick="handleEntryOpen(entry)"
                 >
@@ -274,11 +280,14 @@ type UploadTask = {
   detail: string;
 };
 
+type DriveAction = "upload" | "create" | "rename" | "delete" | "open" | "download";
+
 const ONEDRIVE_UPLOAD_CHUNK_BYTES = 32 * 320 * 1024;
 
 const route = useRoute();
 const router = useRouter();
 const loading = ref(false);
+const activeDriveAction = ref<DriveAction | null>(null);
 const search = ref("");
 const viewMode = ref<"list" | "grid">("list");
 const directory = ref<CloudDriveDirectory | null>(null);
@@ -289,6 +298,9 @@ const uploadTasks = ref<UploadTask[]>([]);
 const needLogin = ref(false);
 const loadError = ref("");
 const canManage = computed(() => props.canManage);
+const driveActionBusy = computed(() => activeDriveAction.value !== null);
+const driveBusy = computed(() => loading.value || driveActionBusy.value);
+let driveLoadSeq = 0;
 
 const filteredEntries = computed(() => {
   const keyword = search.value.trim().toLowerCase();
@@ -317,6 +329,7 @@ onMounted(() => {
 });
 
 async function reload(path = directory.value?.currentPath || "") {
+  const seq = ++driveLoadSeq;
   loading.value = true;
   try {
     needLogin.value = false;
@@ -326,11 +339,13 @@ async function reload(path = directory.value?.currentPath || "") {
       suppressAuthMessage: true,
       suppressErrorMessage: true,
     });
+    if (seq !== driveLoadSeq) return;
     directory.value = data;
     if (!(data.entries || []).some((entry) => entry.relativePath === selectedPath.value)) {
       selectedPath.value = "";
     }
   } catch (error: any) {
+    if (seq !== driveLoadSeq) return;
     if (error?.response?.status === 401) {
       needLogin.value = true;
       directory.value = null;
@@ -339,22 +354,48 @@ async function reload(path = directory.value?.currentPath || "") {
     loadError.value = error?.response?.data?.message ?? error?.message ?? "云盘加载失败";
     directory.value = null;
   } finally {
-    loading.value = false;
+    if (seq === driveLoadSeq) loading.value = false;
   }
 }
 
 async function openFolder(path: string) {
+  if (driveBusy.value) return;
   await reload(path);
 }
 
 async function goUp() {
+  if (driveBusy.value) return;
   const currentPath = directory.value?.currentPath || "";
   if (!currentPath) return;
   const index = currentPath.lastIndexOf("/");
   await reload(index >= 0 ? currentPath.slice(0, index) : "");
 }
 
+function isDriveAction(action: DriveAction) {
+  return activeDriveAction.value === action;
+}
+
+function selectEntry(entry: CloudDriveEntry) {
+  if (driveBusy.value) return;
+  selectedPath.value = entry.relativePath;
+}
+
+async function runDriveAction(action: DriveAction, task: () => Promise<void>) {
+  if (driveBusy.value) return;
+  activeDriveAction.value = action;
+  try {
+    await task();
+  } finally {
+    activeDriveAction.value = null;
+  }
+}
+
 function triggerFilePicker() {
+  if (!canManage.value) {
+    ElMessage.warning("你当前没有上传权限");
+    return;
+  }
+  if (driveBusy.value) return;
   fileInputRef.value?.click();
 }
 
@@ -371,6 +412,10 @@ async function onDropFiles(event: DragEvent) {
     ElMessage.warning("你当前没有上传权限");
     return;
   }
+  if (driveBusy.value) {
+    ElMessage.warning("请等待当前云盘操作完成");
+    return;
+  }
   const files = Array.from(event.dataTransfer?.files || []);
   await enqueueFiles(files);
 }
@@ -381,32 +426,39 @@ async function enqueueFiles(files: File[]) {
     return;
   }
   if (!files.length) return;
-  for (const file of files) {
-    const task: UploadTask = {
-      id: `${Date.now()}-${Math.random()}`,
-      name: file.name,
-      status: "preparing",
-      percent: 0,
-      detail: "正在准备上传",
-    };
-    uploadTasks.value.unshift(task);
-    try {
-      await uploadSingleFile(file, task);
-      task.status = "done";
-      task.percent = 100;
-      task.detail = "上传完成";
-    } catch (error: any) {
-      task.status = "error";
-      task.detail = error?.message || "上传失败";
-      ElMessage.error(`${file.name} 上传失败`);
-    }
+  if (driveBusy.value) {
+    ElMessage.warning("请等待当前云盘操作完成");
+    return;
   }
-  await reload();
+  await runDriveAction("upload", async () => {
+    const uploadPath = directory.value?.currentPath || "";
+    for (const file of files) {
+      const task: UploadTask = {
+        id: `${Date.now()}-${Math.random()}`,
+        name: file.name,
+        status: "preparing",
+        percent: 0,
+        detail: "正在准备上传",
+      };
+      uploadTasks.value.unshift(task);
+      try {
+        await uploadSingleFile(file, task, uploadPath);
+        task.status = "done";
+        task.percent = 100;
+        task.detail = "上传完成";
+      } catch (error: any) {
+        task.status = "error";
+        task.detail = error?.message || "上传失败";
+        ElMessage.error(`${file.name} 上传失败`);
+      }
+    }
+    await reload(uploadPath);
+  });
 }
 
-async function uploadSingleFile(file: File, task: UploadTask) {
+async function uploadSingleFile(file: File, task: UploadTask, uploadPath: string) {
   const init = await toolsApi.initCloudDriveUpload({
-    path: directory.value?.currentPath || "",
+    path: uploadPath,
     fileName: file.name,
     mimeType: file.type || "",
     fileSize: file.size,
@@ -426,7 +478,7 @@ async function uploadSingleFile(file: File, task: UploadTask) {
   }
 
   const formData = new FormData();
-  formData.append("path", directory.value?.currentPath || "");
+  formData.append("path", uploadPath);
   formData.append("file", file, file.name);
   task.status = "uploading";
   task.detail = uploadStageLabel("uploading", 0, file.size);
@@ -443,6 +495,7 @@ async function uploadSingleFile(file: File, task: UploadTask) {
 }
 
 async function handleEntryOpen(entry: CloudDriveEntry) {
+  if (driveBusy.value) return;
   selectedPath.value = entry.relativePath;
   if (entry.kind === "folder") {
     await openFolder(entry.relativePath);
@@ -466,76 +519,105 @@ async function downloadEntry(entry: CloudDriveEntry) {
 }
 
 async function openAccessUrl(entry: CloudDriveEntry, download: boolean) {
-  const { url } = await toolsApi.cloudDriveAccessUrl({
-    path: entry.relativePath,
-    download,
-  }, {
-    suppressAuthRedirect: true,
-    suppressAuthMessage: true,
-    suppressErrorMessage: true,
+  await runDriveAction(download ? "download" : "open", async () => {
+    try {
+      const { url } = await toolsApi.cloudDriveAccessUrl({
+        path: entry.relativePath,
+        download,
+      }, {
+        suppressAuthRedirect: true,
+        suppressAuthMessage: true,
+        suppressErrorMessage: true,
+      });
+      const opened = window.open(url, "_blank", "noopener,noreferrer");
+      if (!opened) ElMessage.warning("浏览器阻止了新窗口，请允许弹窗后重试");
+    } catch {
+      ElMessage.error(download ? "下载链接获取失败" : "文件链接获取失败");
+    }
   });
-  window.open(url, "_blank", "noopener");
 }
 
 async function openRemoteUrl(entry: CloudDriveEntry) {
-  if (!entry.webUrl) return;
-  window.open(entry.webUrl, "_blank", "noopener");
+  if (!entry.webUrl || driveBusy.value) return;
+  const opened = window.open(entry.webUrl, "_blank", "noopener,noreferrer");
+  if (!opened) ElMessage.warning("浏览器阻止了新窗口，请允许弹窗后重试");
 }
 
 async function promptCreateFolder() {
-  try {
-    const { value } = await ElMessageBox.prompt("输入新文件夹名称", "新建文件夹", {
-      inputPlaceholder: "例如：素材归档",
-      confirmButtonText: "创建",
-      cancelButtonText: "取消",
-    });
-    if (!value) return;
+  if (!canManage.value) {
+    ElMessage.warning("你当前没有管理权限");
+    return;
+  }
+  await runDriveAction("create", async () => {
+    let value = "";
+    try {
+      ({ value } = await ElMessageBox.prompt("输入新文件夹名称", "新建文件夹", {
+        inputPlaceholder: "例如：素材归档",
+        inputValidator: (input) => !!String(input || "").trim() || "请输入文件夹名称",
+        confirmButtonText: "创建",
+        cancelButtonText: "取消",
+      }));
+    } catch {
+      return;
+    }
+    const name = String(value || "").trim();
+    if (!name) return;
     await toolsApi.createCloudDriveFolder({
       path: directory.value?.currentPath || "",
-      name: value,
+      name,
     });
     ElMessage.success("文件夹已创建");
     await reload();
-  } catch {
-    /* ignore */
-  }
+  });
 }
 
 async function promptRename(entry = selectedEntry.value || undefined) {
+  if (!canManage.value) {
+    ElMessage.warning("你当前没有管理权限");
+    return;
+  }
   if (!entry) return;
-  try {
-    const { value } = await ElMessageBox.prompt("输入新的名称", "重命名", {
-      inputValue: entry.name,
-      confirmButtonText: "保存",
-      cancelButtonText: "取消",
-    });
-    if (!value) return;
+  await runDriveAction("rename", async () => {
+    let value = "";
+    try {
+      ({ value } = await ElMessageBox.prompt("输入新的名称", "重命名", {
+        inputValue: entry.name,
+        inputValidator: (input) => !!String(input || "").trim() || "请输入新的名称",
+        confirmButtonText: "保存",
+        cancelButtonText: "取消",
+      }));
+    } catch {
+      return;
+    }
+    const name = String(value || "").trim();
+    if (!name || name === entry.name) return;
     await toolsApi.renameCloudDriveEntry({
       path: entry.relativePath,
-      name: value,
+      name,
     });
     ElMessage.success("已重命名");
     await reload(directory.value?.currentPath || "");
-  } catch {
-    /* ignore */
-  }
+  });
 }
 
 async function removeEntry(entry = selectedEntry.value || undefined) {
+  if (!canManage.value) {
+    ElMessage.warning("你当前没有管理权限");
+    return;
+  }
   if (!entry) return;
-  try {
-    await ElMessageBox.confirm(
+  await runDriveAction("delete", async () => {
+    const confirmed = await ElMessageBox.confirm(
       `确认删除 ${entry.name}？${entry.kind === "folder" ? "文件夹会连同内部内容一起删除。" : ""}`,
       "删除确认",
       { type: "warning" },
-    );
+    ).then(() => true).catch(() => false);
+    if (!confirmed) return;
     await toolsApi.deleteCloudDriveEntry(entry.relativePath);
     ElMessage.success("已删除");
     selectedPath.value = "";
     await reload(directory.value?.currentPath || "");
-  } catch {
-    /* ignore */
-  }
+  });
 }
 
 function uploadStatusLabel(status: UploadTaskStatus) {
@@ -867,6 +949,11 @@ async function uploadFileToOneDriveSession(
   font-size: 12px;
 }
 
+.crumb:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .toolbar-actions {
   display: flex;
   flex-wrap: wrap;
@@ -940,10 +1027,20 @@ async function uploadFileToOneDriveSession(
   transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
-.entry-button:hover {
+.entry-button:not([aria-disabled="true"]):hover {
   transform: translateY(-1px);
   border-color: #cfe0ff;
   box-shadow: 0 10px 24px rgba(27, 55, 103, 0.08);
+}
+
+.entry-button:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.45);
+  outline-offset: 2px;
+}
+
+.entry-button[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.62;
 }
 
 .entry-button.is-selected {
@@ -992,7 +1089,7 @@ async function uploadFileToOneDriveSession(
 
 .entry-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr));
   gap: 14px;
 }
 
@@ -1007,10 +1104,15 @@ async function uploadFileToOneDriveSession(
   transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
-.grid-card:hover {
+.grid-card:not(:disabled):hover {
   transform: translateY(-2px);
   border-color: #d3e3ff;
   box-shadow: 0 14px 30px rgba(18, 35, 63, 0.08);
+}
+
+.grid-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
 }
 
 .grid-card.is-selected {

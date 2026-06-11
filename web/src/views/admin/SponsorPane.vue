@@ -14,7 +14,7 @@
           <h3 class="section-title">赞助配置</h3>
           <p class="section-desc">控制个人中心文案、金额按钮、最低最高金额和鸣谢墙。</p>
         </div>
-        <el-button type="primary" :loading="savingConfig" @click="saveConfig">保存配置</el-button>
+        <el-button type="primary" :loading="savingConfig" :disabled="savingConfig" @click="saveConfig">保存配置</el-button>
       </div>
       <div class="config-grid" v-loading="configLoading">
         <label class="field">
@@ -54,7 +54,7 @@
           <h3 class="section-title">赞助订单</h3>
           <p class="section-desc">可查询订单、修改展示方式、关闭待支付订单，或在对账后手动修复状态。</p>
         </div>
-        <el-button @click="reloadOrders">刷新</el-button>
+        <el-button :loading="ordersLoading" :disabled="ordersLoading" @click="reloadOrders">刷新</el-button>
       </div>
       <div class="filters">
         <el-input v-model="filters.q" clearable placeholder="订单号 / 用户 / 流水号" @keyup.enter="reloadOrders" />
@@ -64,7 +64,7 @@
           <el-option label="已支付" value="paid" />
           <el-option label="已关闭" value="closed" />
         </el-select>
-        <el-button type="primary" @click="reloadOrders">查询</el-button>
+        <el-button type="primary" :loading="ordersLoading" :disabled="ordersLoading" @click="reloadOrders">查询</el-button>
       </div>
       <el-table :data="orders" v-loading="ordersLoading" border size="small" class="interactive-table">
         <el-table-column prop="outTradeNo" label="订单号" min-width="190" show-overflow-tooltip />
@@ -82,7 +82,7 @@
         </el-table-column>
         <el-table-column label="展示" width="120">
           <template #default="{ row }">
-            <el-select v-model="row.displayMode" size="small" @change="saveOrder(row, { displayMode: row.displayMode })">
+            <el-select v-model="row.displayMode" size="small" :disabled="isOrderBusy(row)" @change="saveOrder(row, { displayMode: row.displayMode })">
               <el-option label="公开" value="public" />
               <el-option label="匿名" value="anonymous" />
               <el-option label="隐藏" value="hidden" />
@@ -95,9 +95,9 @@
         </el-table-column>
         <el-table-column label="操作" width="170" fixed="right">
           <template #default="{ row }">
-            <el-button v-if="row.status === 'pending'" text size="small" @click="saveOrder(row, { status: 'closed' })">关闭</el-button>
-            <el-button v-if="row.status !== 'paid'" text size="small" type="warning" @click="markPaid(row)">标记已付</el-button>
-            <el-button text size="small" @click="editMessage(row)">改留言</el-button>
+            <el-button v-if="row.status === 'pending'" text size="small" :loading="isOrderBusy(row)" :disabled="isOrderBusy(row)" @click="saveOrder(row, { status: 'closed' })">关闭</el-button>
+            <el-button v-if="row.status !== 'paid'" text size="small" type="warning" :loading="isOrderBusy(row)" :disabled="isOrderBusy(row)" @click="markPaid(row)">标记已付</el-button>
+            <el-button text size="small" :disabled="isOrderBusy(row)" @click="editMessage(row)">改留言</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -118,14 +118,14 @@
             <span>时间：{{ row.paidAt ? fmtDate(row.paidAt) : fmtDate(row.createdAt) }}</span>
           </div>
           <div class="record-actions">
-            <el-select v-model="row.displayMode" size="small" @change="saveOrder(row, { displayMode: row.displayMode })">
+            <el-select v-model="row.displayMode" size="small" :disabled="isOrderBusy(row)" @change="saveOrder(row, { displayMode: row.displayMode })">
               <el-option label="公开" value="public" />
               <el-option label="匿名" value="anonymous" />
               <el-option label="隐藏" value="hidden" />
             </el-select>
-            <el-button v-if="row.status === 'pending'" text size="small" @click="saveOrder(row, { status: 'closed' })">关闭</el-button>
-            <el-button v-if="row.status !== 'paid'" text size="small" type="warning" @click="markPaid(row)">标记已付</el-button>
-            <el-button text size="small" @click="editMessage(row)">改留言</el-button>
+            <el-button v-if="row.status === 'pending'" text size="small" :loading="isOrderBusy(row)" :disabled="isOrderBusy(row)" @click="saveOrder(row, { status: 'closed' })">关闭</el-button>
+            <el-button v-if="row.status !== 'paid'" text size="small" type="warning" :loading="isOrderBusy(row)" :disabled="isOrderBusy(row)" @click="markPaid(row)">标记已付</el-button>
+            <el-button text size="small" :disabled="isOrderBusy(row)" @click="editMessage(row)">改留言</el-button>
           </div>
         </article>
         <el-empty v-if="!ordersLoading && !orders.length" description="暂无订单" />
@@ -178,6 +178,7 @@ const configLoading = ref(false);
 const savingConfig = ref(false);
 const ordersLoading = ref(false);
 const logsLoading = ref(false);
+const orderBusyId = ref<number | null>(null);
 const orders = ref<any[]>([]);
 const logs = ref<any[]>([]);
 const ordersTotal = ref(0);
@@ -192,6 +193,7 @@ const config = reactive<SponsorConfig>({
   allowMessage: true,
 });
 const filters = reactive({ q: "", status: "all", page: 1, size: 20 });
+let sponsorOrdersSeq = 0;
 
 onMounted(async () => {
   await Promise.all([reloadOverview(), reloadConfig(), reloadOrders(), reloadLogs()]);
@@ -212,6 +214,7 @@ async function reloadConfig() {
 }
 
 async function saveConfig() {
+  if (savingConfig.value) return;
   savingConfig.value = true;
   try {
     const amounts = presetAmountsText.value.split(/[,，\s]+/).map((item) => Number(item)).filter((item) => Number.isFinite(item) && item > 0);
@@ -222,12 +225,17 @@ async function saveConfig() {
 }
 
 async function reloadOrders() {
+  const seq = ++sponsorOrdersSeq;
   ordersLoading.value = true;
   try {
     const r = await adminApi.sponsorOrders(filters);
-    orders.value = r.list;
-    ordersTotal.value = r.total;
-  } finally { ordersLoading.value = false; }
+    if (seq === sponsorOrdersSeq) {
+      orders.value = r.list;
+      ordersTotal.value = r.total;
+    }
+  } finally {
+    if (seq === sponsorOrdersSeq) ordersLoading.value = false;
+  }
 }
 
 async function reloadLogs() {
@@ -249,24 +257,77 @@ function statusType(status: string) {
 }
 
 async function saveOrder(row: any, patch: Record<string, unknown>) {
-  const updated = await adminApi.updateSponsorOrder(row.id, patch as any);
-  Object.assign(row, updated);
-  await reloadOverview();
-  ElMessage.success("订单已更新");
+  await runOrderAction(row, async () => {
+    try {
+      const updated = await adminApi.updateSponsorOrder(row.id, patch as any);
+      Object.assign(row, updated);
+      await reloadOverview();
+      ElMessage.success("订单已更新");
+    } catch (error) {
+      await reloadOrders().catch(() => undefined);
+      throw error;
+    }
+  });
+}
+
+function isOrderBusy(row: any) {
+  return orderBusyId.value === row.id;
+}
+
+async function runOrderAction(row: any, action: () => Promise<void>) {
+  if (orderBusyId.value !== null) return;
+  orderBusyId.value = row.id;
+  try {
+    await action();
+  } finally {
+    orderBusyId.value = null;
+  }
 }
 
 async function markPaid(row: any) {
-  await ElMessageBox.confirm(`确认将订单 ${row.outTradeNo} 标记为已支付？这会累计用户赞助金额。`, "手动修复订单", { type: "warning" });
-  await saveOrder(row, { status: "paid" });
+  await runOrderAction(row, async () => {
+    const snapshot = { ...row };
+    const confirmed = await ElMessageBox.confirm(
+      `确认将订单 ${row.outTradeNo} 标记为已支付？这会累计用户赞助金额。`,
+      "手动修复订单",
+      { type: "warning" }
+    ).then(() => true).catch(() => false);
+    if (!confirmed) return;
+    try {
+      const updated = await adminApi.updateSponsorOrder(row.id, { status: "paid" });
+      Object.assign(row, updated);
+      await reloadOverview();
+      ElMessage.success("订单已更新");
+    } catch (error) {
+      Object.assign(row, snapshot);
+      throw error;
+    }
+  });
 }
 
 async function editMessage(row: any) {
-  const { value } = await ElMessageBox.prompt("修改赞助留言", "赞助留言", {
-    inputValue: row.message || "",
-    inputType: "textarea",
-    inputValidator: (v) => String(v || "").length <= 80 || "最多 80 字",
+  await runOrderAction(row, async () => {
+    let value: string | null = null;
+    try {
+      ({ value } = await ElMessageBox.prompt("修改赞助留言", "赞助留言", {
+        inputValue: row.message || "",
+        inputType: "textarea",
+        inputValidator: (v) => String(v || "").length <= 80 || "最多 80 字",
+      }));
+    } catch {
+      return;
+    }
+    const snapshot = { ...row };
+    try {
+      const updated = await adminApi.updateSponsorOrder(row.id, { message: value || "" });
+      Object.assign(row, updated);
+      await reloadOverview();
+      ElMessage.success("订单已更新");
+    } catch (error) {
+      Object.assign(row, snapshot);
+      throw error;
+    }
   });
-  await saveOrder(row, { message: value || "" });
 }
 </script>
 
@@ -289,7 +350,7 @@ async function editMessage(row: any) {
 .interactive-table { display: none; }
 .record-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: 12px;
 }
 .record-card {

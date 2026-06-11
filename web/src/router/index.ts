@@ -44,7 +44,6 @@ export const router = createRouter({
   routes: [
     { path: "/login", name: "login", component: () => import("@/views/Login.vue"), meta: { public: true, title: "登录" } },
     { path: "/register", name: "register", component: () => import("@/views/Register.vue"), meta: { public: true, title: "注册" } },
-    { path: "/schedule", name: "schedule", component: () => import("@/views/Schedule.vue"), meta: { public: true, title: "课表" } },
     {
       path: "/",
       component: MainLayout,
@@ -93,6 +92,7 @@ router.beforeEach(async (to) => {
   const featureName = to.name ? FEATURE_GATED[String(to.name)] : undefined;
   if (featureName && !site.loaded) await site.fetch();
   if (featureName && !site.features[featureName]) {
+    if (auth.token && !auth.user) await auth.fetchMe();
     const isStaff = auth.user?.role === "admin" || auth.user?.role === "mod";
     if (!isStaff) {
       ElMessage.info("该功能当前不可用");
@@ -109,7 +109,7 @@ router.beforeEach(async (to) => {
 
   // 公开页：游客也能看
   if (to.meta.public) {
-    if (auth.token && !auth.user) auth.fetchMe();
+    if (auth.token && !auth.user) void auth.fetchMe();
     return true;
   }
   // 需登录

@@ -44,7 +44,11 @@
         :key="a.id"
         class="app-card"
         :class="{ fav: a.favorite }"
+        role="button"
+        tabindex="0"
         @click="openApp(a)"
+        @keydown.enter.self.prevent="openApp(a)"
+        @keydown.space.self.prevent="openApp(a)"
         :title="a.detail || a.name"
       >
         <div class="app-icon">
@@ -87,7 +91,7 @@
         <h3>暂时没能加载出应用列表</h3>
         <p>{{ error }}。你可以稍后再试。</p>
       </div>
-      <el-button type="primary" plain :loading="loading" @click="reload()">重新加载</el-button>
+      <el-button type="primary" plain :loading="loading" :disabled="loading" @click="reload()">重新加载</el-button>
     </div>
     <el-empty v-else-if="!loading && !apps.length" description="暂时还没有拿到应用列表，请稍后再试" />
   </div>
@@ -301,12 +305,21 @@ function toggleFavorite(a: IServiceApp) {
 }
 
 async function openApp(a: IServiceApp) {
-  if (!a.url) return;
+  if (!a.url) {
+    ElMessage.warning("该应用暂未配置链接");
+    return;
+  }
   openRawApp(a);
 }
 
 function openRawApp(a: IServiceApp) {
-  window.open(a.url, "_blank", "noopener");
+  const url = typeof a.url === "string" ? a.url.trim() : "";
+  if (!/^https?:\/\//i.test(url)) {
+    ElMessage.warning("该应用链接格式暂不支持");
+    return;
+  }
+  const opened = window.open(url, "_blank", "noopener,noreferrer");
+  if (!opened) ElMessage.warning("浏览器阻止了新窗口，请允许弹窗后重试");
 }
 </script>
 
@@ -375,7 +388,7 @@ function openRawApp(a: IServiceApp) {
 
 .app-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 120px), 1fr));
   gap: 12px;
 }
 
@@ -398,6 +411,10 @@ function openRawApp(a: IServiceApp) {
   border-color: var(--cpu-primary);
   box-shadow: 0 6px 20px rgba(22, 135, 118, 0.12);
   transform: translateY(-2px);
+}
+.app-card:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
 }
 .app-card.fav {
   border-color: #fcd34d;

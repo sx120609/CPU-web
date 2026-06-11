@@ -30,9 +30,10 @@
             clearable
             maxlength="240"
             placeholder="https://cpu.example.com"
+            :disabled="savingConfig || configLoading"
             @keyup.enter="saveSiteConfig"
           />
-          <el-button type="primary" :loading="savingConfig" @click="saveSiteConfig">保存</el-button>
+          <el-button type="primary" :loading="savingConfig" :disabled="savingConfig || configLoading" @click="saveSiteConfig">保存</el-button>
         </div>
       </div>
 
@@ -47,9 +48,10 @@
             clearable
             maxlength="120"
             placeholder="苏ICP备2024000000号-1"
+            :disabled="savingConfig || configLoading"
             @keyup.enter="saveSiteConfig"
           />
-          <el-button type="primary" :loading="savingConfig" @click="saveSiteConfig">保存</el-button>
+          <el-button type="primary" :loading="savingConfig" :disabled="savingConfig || configLoading" @click="saveSiteConfig">保存</el-button>
         </div>
       </div>
 
@@ -139,7 +141,7 @@
           </div>
 
           <div class="actions-row">
-            <el-button type="primary" :loading="savingConfig" @click="saveTrustConfig">保存匿名与信誉规则</el-button>
+            <el-button type="primary" :loading="savingConfig" :disabled="savingConfig || configLoading" @click="saveTrustConfig">保存匿名与信誉规则</el-button>
           </div>
         </div>
       </div>
@@ -170,6 +172,7 @@
               inline-prompt
               active-text="开"
               inactive-text="关"
+              :disabled="loading || pendingKey !== null"
               @change="(v: boolean | string | number) => toggle(f.key, Boolean(v))"
             />
           </div>
@@ -242,6 +245,7 @@ const features = reactive<{ forum: boolean; market: boolean; coursereview: boole
   forum: true, market: true, coursereview: true, electric: true, sponsor: true,
 });
 const enabledFeatureCount = computed(() => featureMeta.filter((item) => features[item.key]).length);
+let featureLoadSeq = 0;
 
 const featureMeta: { key: FKey; icon: string; title: string; desc: string; paths: string[] }[] = [
   {
@@ -274,10 +278,12 @@ const featureMeta: { key: FKey; icon: string; title: string; desc: string; paths
 onMounted(reload);
 
 async function reload() {
+  const seq = ++featureLoadSeq;
   loading.value = true;
   configLoading.value = true;
   try {
     const [r, config] = await Promise.all([adminApi.features(), adminApi.siteConfig()]);
+    if (seq !== featureLoadSeq) return;
     Object.assign(features, r);
     site.apply(r);
     siteOrigin.value = config.siteOrigin;
@@ -312,17 +318,20 @@ async function reload() {
     anonymousTiers.value = (config.anonymousTiers ?? []).map((item) => ({ ...item }));
     reputationLevels.value = (config.reputationLevels ?? []).map((item) => ({ ...item }));
   } finally {
-    loading.value = false;
-    configLoading.value = false;
+    if (seq === featureLoadSeq) {
+      loading.value = false;
+      configLoading.value = false;
+    }
   }
 }
 
 async function saveSiteConfig() {
+  if (savingConfig.value) return;
   savingConfig.value = true;
   try {
     const config = await adminApi.updateSiteConfig({
-      siteOrigin: siteOrigin.value,
-      siteFilingNumber: siteFilingNumber.value,
+      siteOrigin: siteOrigin.value.trim(),
+      siteFilingNumber: siteFilingNumber.value.trim(),
     });
     siteOrigin.value = config.siteOrigin;
     siteFilingNumber.value = config.siteFilingNumber;
@@ -337,6 +346,7 @@ async function saveSiteConfig() {
 }
 
 async function saveAiReviewConfig() {
+  if (savingConfig.value) return;
   savingConfig.value = true;
   try {
     const config = await adminApi.updateSiteConfig({
@@ -384,6 +394,7 @@ async function saveAiReviewConfig() {
 }
 
 async function saveTrustConfig() {
+  if (savingConfig.value) return;
   savingConfig.value = true;
   try {
     const config = await adminApi.updateSiteConfig({
@@ -424,21 +435,24 @@ async function saveTrustConfig() {
 }
 
 async function toggle(key: FKey, on: boolean) {
+  if (pendingKey.value !== null || loading.value) {
+    features[key] = !on;
+    return;
+  }
+  pendingKey.value = key;
   if (!on) {
-    try {
-      await ElMessageBox.confirm(
-        `确认关闭「${featureMeta.find((m) => m.key === key)?.title}」？\n` +
+    const confirmed = await ElMessageBox.confirm(
+      `确认关闭「${featureMeta.find((m) => m.key === key)?.title || key}」？\n` +
         `普通用户立刻看不到对应入口，无法发新内容。已发布内容会保留。`,
-        "确认关闭",
-        { type: "warning", confirmButtonText: "关闭", cancelButtonText: "取消" }
-      );
-    } catch {
-      // 用户取消 —— 强制还原 switch 状态
+      "确认关闭",
+      { type: "warning", confirmButtonText: "关闭", cancelButtonText: "取消" }
+    ).then(() => true).catch(() => false);
+    if (!confirmed) {
       features[key] = !on;
+      pendingKey.value = null;
       return;
     }
   }
-  pendingKey.value = key;
   try {
     const r = await adminApi.updateFeatures({ [key]: on });
     Object.assign(features, r);

@@ -112,6 +112,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
 import { router } from "@/router";
 import { messageApi } from "@/api/message";
+import { AUTH_EXPIRED_EVENT } from "@/api/request";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 
 const auth = useAuthStore();
@@ -146,6 +147,7 @@ let pendingStrongNoticeOpen = false;
 const currentStrongNotice = computed(() => strongNoticeQueue.value[0] ?? null);
 
 onMounted(() => {
+  window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
   if (isSchedulePage()) return;
   const info = detectInAppBrowser();
   if (!info.isInApp) return;
@@ -167,11 +169,23 @@ watch(inAppTipOpen, (open) => {
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
   clearInAppReadTimer();
   clearDataAuthTimer();
   clearStrongNoticeTimer();
   clearStrongNoticePoller();
 });
+
+function handleAuthExpired() {
+  auth.expireSession();
+  dataAuthOpen.value = false;
+  strongNoticeOpen.value = false;
+  strongNoticeQueue.value = [];
+  pendingStrongNoticeOpen = false;
+  clearDataAuthTimer();
+  clearStrongNoticeTimer();
+  clearStrongNoticePoller();
+}
 
 function dismissInAppTip() {
   if (inAppReadSeconds.value > 0) return;
@@ -357,6 +371,7 @@ function clearStrongNoticeTimer() {
 function startStrongNoticePoller() {
   if (strongNoticePoller || !auth.isLoggedIn) return;
   strongNoticePoller = window.setInterval(() => {
+    if (document.hidden) return;
     void loadStrongNotices();
   }, 60_000);
 }
@@ -396,7 +411,7 @@ function openStrongNoticeLink() {
   if (current.link.startsWith("/")) {
     router.push(current.link);
   } else {
-    window.open(current.link, "_blank", "noopener");
+    window.open(current.link, "_blank", "noopener,noreferrer");
   }
 }
 </script>

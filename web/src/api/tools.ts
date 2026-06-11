@@ -299,8 +299,8 @@ export const toolsApi = {
     request.get<GradeCheckTable[]>("/tools/grade-checks", params),
   relatedGradeChecks: () =>
     request.get<GradeCheckTable[]>("/tools/grade-checks/related"),
-  gradeCheck: (slug: string) =>
-    request.get<GradeCheckLookup>(`/tools/grade-checks/${slug}`),
+  gradeCheck: (slug: string, options?: RequestOptions) =>
+    request.get<GradeCheckLookup>(`/tools/grade-checks/${slug}`, undefined, options),
   createGradeCheck: (payload: GradeCheckPayload) =>
     request.post<GradeCheckTable>("/tools/grade-checks", payload),
   updateGradeCheck: (id: number, payload: Partial<GradeCheckPayload>) =>

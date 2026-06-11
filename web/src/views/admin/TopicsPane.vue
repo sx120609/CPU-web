@@ -35,7 +35,7 @@
           <span v-if="row.pinned" style="color:#dc2626;margin-right:4px">📌</span>
           <span v-if="row.locked" style="margin-right:4px">🔒</span>
           <span v-if="row.hidden" style="color:#9ca3af;text-decoration:line-through">{{ row.title }}</span>
-          <a v-else :href="`/forum/topic/${row.id}`" target="_blank">{{ row.title }}</a>
+          <a v-else :href="`/forum/topic/${row.id}`" target="_blank" rel="noopener noreferrer">{{ row.title }}</a>
         </template>
       </el-table-column>
       <el-table-column label="作者" width="120">
@@ -64,32 +64,34 @@
       <el-table-column label="操作" width="108" fixed="right" align="center">
         <template #default="{ row }">
           <el-dropdown trigger="click" @command="handleTopicCommand($event, row)">
-            <el-button text size="small" class="action-trigger">
+            <el-button text size="small" class="action-trigger" :loading="isTopicBusy(row)" :disabled="isTopicBusy(row)">
               操作<el-icon class="more-icon"><MoreFilled /></el-icon>
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="open">查看原帖</el-dropdown-item>
-                <el-dropdown-item command="pin">{{ row.pinned ? "取消板块置顶" : "板块置顶" }}</el-dropdown-item>
-                <el-dropdown-item command="globalPin">{{ row.globalPinned ? "取消全局置顶" : "全局置顶" }}</el-dropdown-item>
-                <el-dropdown-item command="lock">{{ row.locked ? "解锁" : "锁定" }}</el-dropdown-item>
+                <el-dropdown-item command="pin" :disabled="isTopicBusy(row)">{{ row.pinned ? "取消板块置顶" : "板块置顶" }}</el-dropdown-item>
+                <el-dropdown-item command="globalPin" :disabled="isTopicBusy(row)">{{ row.globalPinned ? "取消全局置顶" : "全局置顶" }}</el-dropdown-item>
+                <el-dropdown-item command="lock" :disabled="isTopicBusy(row)">{{ row.locked ? "解锁" : "锁定" }}</el-dropdown-item>
                 <el-dropdown-item
                   v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'"
                   command="approve"
+                  :disabled="isTopicBusy(row)"
                 >
                   审核通过
                 </el-dropdown-item>
                 <el-dropdown-item
                   v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'"
                   command="reject"
+                  :disabled="isTopicBusy(row)"
                 >
                   驳回
                 </el-dropdown-item>
-                <el-dropdown-item :command="row.hidden ? 'unhide' : 'hide'">
+                <el-dropdown-item :command="row.hidden ? 'unhide' : 'hide'" :disabled="isTopicBusy(row)">
                   {{ row.hidden ? "恢复" : "隐藏" }}
                 </el-dropdown-item>
-                <el-dropdown-item command="move">转版</el-dropdown-item>
-                <el-dropdown-item command="destroy" divided>删除</el-dropdown-item>
+                <el-dropdown-item command="move" :disabled="isTopicBusy(row)">转版</el-dropdown-item>
+                <el-dropdown-item command="destroy" divided :disabled="isTopicBusy(row)">删除</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -104,7 +106,7 @@
           <span v-if="row.pinned" class="state danger">板块置顶</span>
           <span v-if="row.locked" class="state">锁定</span>
           <span v-if="row.hidden" class="state muted-state">已隐</span>
-          <a :class="{ hidden: row.hidden }" :href="`/forum/topic/${row.id}`" target="_blank">{{ row.title }}</a>
+          <a :class="{ hidden: row.hidden }" :href="`/forum/topic/${row.id}`" target="_blank" rel="noopener noreferrer">{{ row.title }}</a>
         </div>
         <div class="topic-meta">
           <span>{{ row.board.name }}</span>
@@ -120,32 +122,34 @@
         </div>
         <div class="mobile-actions">
           <el-dropdown trigger="click" @command="handleTopicCommand($event, row)">
-            <el-button plain size="small" class="mobile-action-trigger">
+            <el-button plain size="small" class="mobile-action-trigger" :loading="isTopicBusy(row)" :disabled="isTopicBusy(row)">
               操作<el-icon class="more-icon"><MoreFilled /></el-icon>
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="open">查看原帖</el-dropdown-item>
-                <el-dropdown-item command="pin">{{ row.pinned ? "取消板块置顶" : "板块置顶" }}</el-dropdown-item>
-                <el-dropdown-item command="globalPin">{{ row.globalPinned ? "取消全局置顶" : "全局置顶" }}</el-dropdown-item>
-                <el-dropdown-item command="lock">{{ row.locked ? "解锁" : "锁定" }}</el-dropdown-item>
+                <el-dropdown-item command="pin" :disabled="isTopicBusy(row)">{{ row.pinned ? "取消板块置顶" : "板块置顶" }}</el-dropdown-item>
+                <el-dropdown-item command="globalPin" :disabled="isTopicBusy(row)">{{ row.globalPinned ? "取消全局置顶" : "全局置顶" }}</el-dropdown-item>
+                <el-dropdown-item command="lock" :disabled="isTopicBusy(row)">{{ row.locked ? "解锁" : "锁定" }}</el-dropdown-item>
                 <el-dropdown-item
                   v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'"
                   command="approve"
+                  :disabled="isTopicBusy(row)"
                 >
                   审核通过
                 </el-dropdown-item>
                 <el-dropdown-item
                   v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'"
                   command="reject"
+                  :disabled="isTopicBusy(row)"
                 >
                   驳回
                 </el-dropdown-item>
-                <el-dropdown-item :command="row.hidden ? 'unhide' : 'hide'">
+                <el-dropdown-item :command="row.hidden ? 'unhide' : 'hide'" :disabled="isTopicBusy(row)">
                   {{ row.hidden ? "恢复" : "隐藏" }}
                 </el-dropdown-item>
-                <el-dropdown-item command="move">转版</el-dropdown-item>
-                <el-dropdown-item command="destroy" divided>删除</el-dropdown-item>
+                <el-dropdown-item command="move" :disabled="isTopicBusy(row)">转版</el-dropdown-item>
+                <el-dropdown-item command="destroy" divided :disabled="isTopicBusy(row)">删除</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -180,6 +184,7 @@ const total = ref(0);
 const page = ref(1);
 const size = ref(20);
 const loading = ref(false);
+const topicBusyId = ref<number | null>(null);
 const q = ref("");
 const boardSlug = ref("");
 const hidden = ref<"" | "0" | "1">("");
@@ -205,8 +210,23 @@ async function reload() {
 }
 function onPage(p: number) { page.value = p; reload(); }
 
+function isTopicBusy(row: any) {
+  return topicBusyId.value === row.id;
+}
+
+async function runTopicAction(row: any, action: () => Promise<void>) {
+  if (topicBusyId.value !== null) return;
+  topicBusyId.value = row.id;
+  try {
+    await action();
+  } finally {
+    topicBusyId.value = null;
+  }
+}
+
 function handleTopicCommand(command: string, row: any) {
   if (command === "open") return openTopic(row);
+  if (topicBusyId.value !== null) return;
   if (command === "pin") return togglePin(row);
   if (command === "globalPin") return toggleGlobalPin(row);
   if (command === "lock") return toggleLock(row);
@@ -223,52 +243,71 @@ function openTopic(row: any) {
 }
 
 async function togglePin(row: any) {
-  await adminApi.updateTopic(row.id, { pinned: !row.pinned });
-  ElMessage.success(row.pinned ? "已取消板块置顶" : "已设为板块置顶");
-  reload();
+  await runTopicAction(row, async () => {
+    await adminApi.updateTopic(row.id, { pinned: !row.pinned });
+    ElMessage.success(row.pinned ? "已取消板块置顶" : "已设为板块置顶");
+    await reload();
+  });
 }
 async function toggleGlobalPin(row: any) {
-  await adminApi.updateTopic(row.id, { globalPinned: !row.globalPinned });
-  ElMessage.success(row.globalPinned ? "已取消全局置顶" : "已设为全局置顶");
-  reload();
+  await runTopicAction(row, async () => {
+    await adminApi.updateTopic(row.id, { globalPinned: !row.globalPinned });
+    ElMessage.success(row.globalPinned ? "已取消全局置顶" : "已设为全局置顶");
+    await reload();
+  });
 }
 async function toggleLock(row: any) {
-  await adminApi.updateTopic(row.id, { locked: !row.locked });
-  ElMessage.success(row.locked ? "已解锁" : "已锁定");
-  reload();
+  await runTopicAction(row, async () => {
+    await adminApi.updateTopic(row.id, { locked: !row.locked });
+    ElMessage.success(row.locked ? "已解锁" : "已锁定");
+    await reload();
+  });
 }
 async function hideRow(row: any) {
-  await ElMessageBox.confirm(`隐藏帖子《${row.title.slice(0, 30)}》？`, "确认", { type: "warning" });
-  await adminApi.updateTopic(row.id, { hidden: true });
-  ElMessage.success("已隐藏");
-  reload();
+  await runTopicAction(row, async () => {
+    const confirmed = await ElMessageBox.confirm(`隐藏帖子《${row.title.slice(0, 30)}》？`, "确认", { type: "warning" })
+      .then(() => true)
+      .catch(() => false);
+    if (!confirmed) return;
+    await adminApi.updateTopic(row.id, { hidden: true });
+    ElMessage.success("已隐藏");
+    await reload();
+  });
 }
 async function destroyRow(row: any) {
-  await ElMessageBox.confirm(
-    `永久删除帖子《${row.title.slice(0, 30)}》？\n该操作会删除回复、点赞以及爬虫去重记录，无法恢复。`,
-    "永久删除",
-    { type: "error", confirmButtonText: "删除", cancelButtonText: "取消" }
-  );
-  await adminApi.destroyTopic(row.id);
-  ElMessage.success("已删除");
-  reload();
+  await runTopicAction(row, async () => {
+    const confirmed = await ElMessageBox.confirm(
+      `永久删除帖子《${row.title.slice(0, 30)}》？\n该操作会删除回复、点赞以及爬虫去重记录，无法恢复。`,
+      "永久删除",
+      { type: "error", confirmButtonText: "删除", cancelButtonText: "取消" }
+    ).then(() => true).catch(() => false);
+    if (!confirmed) return;
+    await adminApi.destroyTopic(row.id);
+    ElMessage.success("已删除");
+    await reload();
+  });
 }
 async function unhide(row: any) {
-  await adminApi.updateTopic(row.id, { hidden: false });
-  ElMessage.success("已恢复");
-  reload();
+  await runTopicAction(row, async () => {
+    await adminApi.updateTopic(row.id, { hidden: false });
+    ElMessage.success("已恢复");
+    await reload();
+  });
 }
 async function moveBoard(row: any) {
-  const writable = boards.value.filter((b) => !b.readOnly);
-  const slugs = writable.map((b) => `${b.slug} (${b.name})`).join(", ");
-  const { value } = await ElMessageBox.prompt(
-    `将《${row.title.slice(0, 30)}》转到哪个板块？\n可选 slug：\n${slugs}`,
-    "转板块",
-    { inputValidator: (v) => writable.some((b) => b.slug === v) }
-  );
-  await adminApi.updateTopic(row.id, { boardSlug: value });
-  ElMessage.success("已转移");
-  reload();
+  await runTopicAction(row, async () => {
+    const writable = boards.value.filter((b) => !b.readOnly);
+    const slugs = writable.map((b) => `${b.slug} (${b.name})`).join(", ");
+    const { value } = await ElMessageBox.prompt(
+      `将《${row.title.slice(0, 30)}》转到哪个板块？\n可选 slug：\n${slugs}`,
+      "转板块",
+      { inputValidator: (v) => writable.some((b) => b.slug === v) }
+    ).catch(() => ({ value: "" }));
+    if (!value) return;
+    await adminApi.updateTopic(row.id, { boardSlug: value });
+    ElMessage.success("已转移");
+    await reload();
+  });
 }
 
 function reviewLabel(status?: string) {
@@ -282,18 +321,27 @@ function reviewLabel(status?: string) {
 }
 
 async function approveReview(row: any) {
-  await adminApi.updateTopic(row.id, { aiReviewStatus: "approved_manual", manualReviewNote: "管理员人工审核通过" });
-  ElMessage.success("已审核通过");
-  reload();
+  await runTopicAction(row, async () => {
+    await adminApi.updateTopic(row.id, { aiReviewStatus: "approved_manual", manualReviewNote: "管理员人工审核通过" });
+    ElMessage.success("已审核通过");
+    await reload();
+  });
 }
 
 async function rejectReview(row: any) {
-  const { value } = await ElMessageBox.prompt("填写驳回说明（选填）", "人工驳回", {
-    inputPlaceholder: "例如：存在明显人身攻击 / 泄露隐私信息",
-  }).catch(() => ({ value: "" }));
-  await adminApi.updateTopic(row.id, { aiReviewStatus: "rejected_manual", manualReviewNote: value || "管理员人工驳回" });
-  ElMessage.success("已驳回");
-  reload();
+  await runTopicAction(row, async () => {
+    let value = "";
+    try {
+      ({ value } = await ElMessageBox.prompt("填写驳回说明（选填）", "人工驳回", {
+        inputPlaceholder: "例如：存在明显人身攻击 / 泄露隐私信息",
+      }));
+    } catch {
+      return;
+    }
+    await adminApi.updateTopic(row.id, { aiReviewStatus: "rejected_manual", manualReviewNote: value || "管理员人工驳回" });
+    ElMessage.success("已驳回");
+    await reload();
+  });
 }
 </script>
 
@@ -306,7 +354,7 @@ a:hover { text-decoration: underline; }
 .admin-table { display: none; }
 .mobile-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: 12px;
   min-height: 120px;
 }

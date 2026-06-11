@@ -41,7 +41,7 @@
         <ul>
           <li>切换上方<b>学期</b>或<b>类型</b>（期末/期中/期初）重新查询</li>
           <li>
-            <a href="http://jsxsd.cpu.edu.cn/zgykdx/xsks/xsksap_query?Ves632DSdyV=NEW_XSD_KSBM" target="_blank">
+            <a href="http://jsxsd.cpu.edu.cn/zgykdx/xsks/xsksap_query?Ves632DSdyV=NEW_XSD_KSBM" target="_blank" rel="noopener noreferrer">
               去学校教务系统原站
             </a>
             查看是否有数据

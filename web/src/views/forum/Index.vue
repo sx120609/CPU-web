@@ -3,56 +3,91 @@
     <template v-if="auth.canAccessForum">
       <h2 class="page-title">讨论板块</h2>
 
-      <button type="button" class="latest-entry cpu-card" @click="$router.push('/forum/latest')">
-        <div class="latest-entry-icon">🆕</div>
-        <div class="latest-entry-body">
-          <div class="latest-entry-title">最新内容</div>
-          <div class="latest-entry-desc">按时间看看最近有哪些新帖子和新回复</div>
-        </div>
-        <span class="latest-entry-arrow">查看全部 →</span>
-      </button>
+      <div v-if="error && !loading" class="cpu-card forum-error">
+        <el-empty :description="error">
+          <el-button type="primary" @click="loadBoards">重试</el-button>
+        </el-empty>
+      </div>
 
-      <div class="cluster" v-if="general.length">
-        <h3 class="cluster-title">💬 综合讨论</h3>
-        <div class="grid">
-          <div v-for="b in general" :key="b.slug" class="board-card" @click="$router.push(`/forum/b/${b.slug}`)">
-            <div class="icon" :style="{ background: b.color || '#168776' }">{{ b.icon || "💬" }}</div>
-            <div class="body">
-              <div class="name">{{ b.name }}</div>
-              <div class="desc">{{ b.description }}</div>
-              <div class="meta">{{ b.topicCount }} 帖</div>
+      <template v-else>
+        <button type="button" class="latest-entry cpu-card" @click="$router.push('/forum/latest')">
+          <div class="latest-entry-icon">🆕</div>
+          <div class="latest-entry-body">
+            <div class="latest-entry-title">最新内容</div>
+            <div class="latest-entry-desc">按时间看看最近有哪些新帖子和新回复</div>
+          </div>
+          <span class="latest-entry-arrow">查看全部 →</span>
+        </button>
+
+        <div v-loading="loading" class="boards-content">
+          <div class="cluster" v-if="general.length">
+            <h3 class="cluster-title">💬 综合讨论</h3>
+            <div class="grid">
+              <div
+                v-for="b in general"
+                :key="b.slug"
+                class="board-card"
+                role="button"
+                tabindex="0"
+                @click="openBoard(b.slug)"
+                @keydown.enter.prevent="openBoard(b.slug)"
+                @keydown.space.prevent="openBoard(b.slug)"
+              >
+                <div class="icon" :style="{ background: b.color || '#168776' }">{{ b.icon || "💬" }}</div>
+                <div class="body">
+                  <div class="name">{{ b.name }}</div>
+                  <div class="desc">{{ b.description }}</div>
+                  <div class="meta">{{ b.topicCount }} 帖</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="cluster" v-if="ugc.length">
+            <h3 class="cluster-title">🎒 学生共建</h3>
+            <div class="grid">
+              <div
+                v-for="b in ugc"
+                :key="b.slug"
+                class="board-card"
+                role="button"
+                tabindex="0"
+                @click="openBoard(b.slug)"
+                @keydown.enter.prevent="openBoard(b.slug)"
+                @keydown.space.prevent="openBoard(b.slug)"
+              >
+                <div class="icon" :style="{ background: b.color || '#168776' }">{{ b.icon || "🎒" }}</div>
+                <div class="body">
+                  <div class="name">{{ b.name }}</div>
+                  <div class="desc">{{ b.description }}</div>
+                  <div class="meta">{{ b.topicCount }} 帖</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="cluster" v-if="campusWall">
+            <h3 class="cluster-title">📮 外部镜像</h3>
+            <div class="grid">
+              <div
+                class="board-card readonly"
+                role="button"
+                tabindex="0"
+                @click="openBoard(campusWall.slug)"
+                @keydown.enter.prevent="openBoard(campusWall.slug)"
+                @keydown.space.prevent="openBoard(campusWall.slug)"
+              >
+                <div class="icon" :style="{ background: campusWall.color || '#0ea5e9' }">{{ campusWall.icon || "📮" }}</div>
+                <div class="body">
+                  <div class="name">{{ campusWall.name }}</div>
+                  <div class="desc">单独展示的逛逛镜像内容，不参与本站热榜和最新流；仅补充近 3 天稿件的后续更新，超过三天的稿件不再更新。</div>
+                  <div class="meta">{{ campusWall.topicCount }} 帖</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-
-      <div class="cluster" v-if="ugc.length">
-        <h3 class="cluster-title">🎒 学生共建</h3>
-        <div class="grid">
-          <div v-for="b in ugc" :key="b.slug" class="board-card" @click="$router.push(`/forum/b/${b.slug}`)">
-            <div class="icon" :style="{ background: b.color || '#168776' }">{{ b.icon || "🎒" }}</div>
-            <div class="body">
-              <div class="name">{{ b.name }}</div>
-              <div class="desc">{{ b.description }}</div>
-              <div class="meta">{{ b.topicCount }} 帖</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="cluster" v-if="campusWall">
-        <h3 class="cluster-title">📮 外部镜像</h3>
-        <div class="grid">
-          <div class="board-card readonly" @click="$router.push(`/forum/b/${campusWall.slug}`)">
-            <div class="icon" :style="{ background: campusWall.color || '#0ea5e9' }">{{ campusWall.icon || "📮" }}</div>
-            <div class="body">
-              <div class="name">{{ campusWall.name }}</div>
-              <div class="desc">单独展示的逛逛镜像内容，不参与本站热榜和最新流；仅补充近 3 天稿件的后续更新，超过三天的稿件不再更新。</div>
-              <div class="meta">{{ campusWall.topicCount }} 帖</div>
-            </div>
-          </div>
-        </div>
-      </div>
+      </template>
 
       <div class="footer-tip">
         <el-icon><InfoFilled /></el-icon>
@@ -131,7 +166,7 @@
             <el-button
               type="primary"
               :loading="enabling"
-              :disabled="readSeconds > 0 || confirmText.trim() !== '我知道了'"
+              :disabled="enabling || readSeconds > 0 || confirmText.trim() !== '我知道了'"
               @click="confirmEnable"
             >
               确认开启论坛
@@ -144,12 +179,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { useRoute, useRouter } from "vue-router";
 import { InfoFilled } from "@element-plus/icons-vue";
 import { boardApi, type Board } from "@/api/board";
 import { useAuthStore } from "@/stores/auth";
+import { resolveSafeRedirect } from "@/utils/redirect";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 
 const auth = useAuthStore();
@@ -158,6 +194,8 @@ const router = useRouter();
 const CAMPUS_WALL_SLUG = "campus-wall";
 
 const all = ref<Board[]>([]);
+const loading = ref(false);
+const error = ref("");
 const enableDialogOpen = ref(false);
 const enabling = ref(false);
 const readSeconds = ref(0);
@@ -171,12 +209,9 @@ watch(() => auth.canAccessForum, async (enabled) => {
     await loadBoards();
   } else {
     all.value = [];
+    error.value = "";
   }
 }, { immediate: true });
-
-onMounted(async () => {
-  if (auth.canAccessForum) await loadBoards();
-});
 
 onBeforeUnmount(() => {
   window.clearInterval(readTimer);
@@ -187,14 +222,33 @@ const ugc = computed(() => all.value.filter((b) => ["market", "question", "cours
 const campusWall = computed(() => all.value.find((b) => b.slug === CAMPUS_WALL_SLUG) ?? null);
 
 async function loadBoards() {
-  all.value = await boardApi.list();
+  loading.value = true;
+  error.value = "";
+  try {
+    all.value = await boardApi.list({ suppressErrorMessage: true });
+  } catch (e) {
+    all.value = [];
+    error.value = normalizeBoardListError(e);
+  } finally {
+    loading.value = false;
+  }
+}
+
+function normalizeBoardListError(error: unknown) {
+  const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
+  if (status && status < 500) {
+    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "板块列表加载失败";
+  }
+  return "板块列表加载失败，请稍后再试";
 }
 
 function goLogin() {
-  const redirect = typeof route.query.redirect === "string" && route.query.redirect.startsWith("/")
-    ? route.query.redirect
-    : "/forum";
+  const redirect = resolveSafeRedirect(route.query.redirect, "/forum");
   router.push({ name: "login", query: { redirect } });
+}
+
+function openBoard(slug: string) {
+  router.push(`/forum/b/${slug}`);
 }
 
 function openEnableDialog() {
@@ -226,6 +280,7 @@ function startReadTimer() {
 }
 
 async function confirmEnable() {
+  if (enabling.value) return;
   if (readSeconds.value > 0) return;
   if (confirmText.value.trim() !== "我知道了") {
     ElMessage.warning("请输入“我知道了”后继续");
@@ -234,9 +289,7 @@ async function confirmEnable() {
   enabling.value = true;
   try {
     await auth.enableForumAccess(confirmText.value.trim());
-    const redirect = typeof route.query.redirect === "string" && route.query.redirect.startsWith("/")
-      ? route.query.redirect
-      : "/forum";
+    const redirect = resolveSafeRedirect(route.query.redirect, "/forum");
     ElMessage.success("论坛功能已开启");
     await router.replace(redirect);
   } finally {
@@ -254,6 +307,15 @@ async function confirmEnable() {
   border-radius: 14px;
   border: 1px solid #eef0f4;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+}
+.boards-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-height: 120px;
+}
+.forum-error {
+  padding: 24px 16px;
 }
 .latest-entry {
   width: 100%;
@@ -365,7 +427,7 @@ async function confirmEnable() {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
   gap: 12px;
 }
 
@@ -383,6 +445,11 @@ async function confirmEnable() {
 .board-card:hover {
   border-color: var(--cpu-primary);
   box-shadow: 0 4px 14px rgba(22, 135, 118, 0.08);
+}
+
+.board-card:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
 }
 
 .board-card.readonly { background: linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%); }
@@ -408,7 +475,7 @@ async function confirmEnable() {
 .footer-tip a:hover { text-decoration: underline; }
 
 .forum-notice {
-  max-height: min(52vh, 520px);
+  max-height: min(52dvh, 520px);
   overflow: auto;
   padding-right: 4px;
   color: #374151;
@@ -522,6 +589,16 @@ async function confirmEnable() {
   }
 
   .gate-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .dialog-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dialog-actions {
     display: grid;
     grid-template-columns: 1fr;
   }

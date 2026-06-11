@@ -14,7 +14,7 @@
             <el-icon><Money /></el-icon>
             我要赞助
           </el-button>
-          <el-button plain :loading="loading" @click="loadWall">
+      <el-button plain :loading="loading" :disabled="loading" @click="loadWall">
             <el-icon><Refresh /></el-icon>
             刷新
           </el-button>

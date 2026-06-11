@@ -13,8 +13,23 @@
       <el-radio-button value="buy">求购</el-radio-button>
     </el-radio-group>
 
-    <div class="goods-grid" v-loading="loading">
-      <div v-for="t in filteredList" :key="t.id" class="goods" @click="$router.push(`/forum/topic/${t.id}`)">
+    <div v-if="error && !loading" class="market-error">
+      <el-empty :description="error">
+        <el-button type="primary" @click="reload">重试</el-button>
+      </el-empty>
+    </div>
+
+    <div v-else class="goods-grid" v-loading="loading">
+      <div
+        v-for="t in filteredList"
+        :key="t.id"
+        class="goods"
+        role="button"
+        tabindex="0"
+        @click="openTopic(t.id)"
+        @keydown.enter.prevent="openTopic(t.id)"
+        @keydown.space.prevent="openTopic(t.id)"
+      >
         <div class="g-head">
           <span class="title">{{ t.title }}</span>
           <span v-if="t.metadata?.condition === '求购'" class="badge badge-buy">求购</span>
@@ -37,23 +52,34 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
 import { Plus } from "@element-plus/icons-vue";
 import { topicApi } from "@/api/topic";
 import { useAuthStore } from "@/stores/auth";
 import { fmtRelative } from "@/utils/format";
 
 const auth = useAuthStore();
+const router = useRouter();
 const list = ref<any[]>([]);
 const loading = ref(false);
 const filter = ref("all");
+const error = ref("");
 
 onMounted(async () => { await reload(); });
 
+function openTopic(id: number) {
+  router.push(`/forum/topic/${id}`);
+}
+
 async function reload() {
   loading.value = true;
+  error.value = "";
   try {
-    const r = await topicApi.list({ board: "market", size: 50, sort: "new" });
+    const r = await topicApi.list({ board: "market", size: 50, sort: "new" }, { suppressErrorMessage: true });
     list.value = r.list;
+  } catch (e) {
+    list.value = [];
+    error.value = normalizeMarketError(e);
   } finally { loading.value = false; }
 }
 
@@ -62,6 +88,14 @@ const filteredList = computed(() => {
   if (filter.value === "buy") return list.value.filter((t) => t.metadata?.condition === "求购");
   return list.value.filter((t) => t.metadata?.condition !== "求购");
 });
+
+function normalizeMarketError(error: unknown) {
+  const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
+  if (status && status < 500) {
+    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "商品列表加载失败";
+  }
+  return "商品列表加载失败，请稍后再试";
+}
 </script>
 
 <style scoped>
@@ -71,8 +105,14 @@ const filteredList = computed(() => {
 
 .goods-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
   gap: 14px;
+}
+.market-error {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px 16px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.04);
 }
 .goods {
   background: #fff;
@@ -83,6 +123,10 @@ const filteredList = computed(() => {
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .goods:hover { border-color: var(--cpu-primary); box-shadow: 0 4px 12px rgba(22,135,118,0.08); }
+.goods:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
+}
 
 .g-head { display: flex; gap: 6px; align-items: center; }
 .title { font-size: 14px; color: #1f2937; font-weight: 500; flex: 1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }

@@ -146,9 +146,9 @@
       </div>
 
       <div class="actions-row">
-        <el-button type="primary" :loading="saving" @click="saveConfig">保存审核配置</el-button>
+        <el-button type="primary" :loading="saving" :disabled="saving" @click="saveConfig">保存审核配置</el-button>
         <el-button plain :disabled="loadingPromptDefaults" @click="resetAllPrompts">重置全部 Prompt</el-button>
-        <el-button plain :loading="sweepingImages" @click="sweepForumImages">一键补扫全站图片</el-button>
+        <el-button plain :loading="sweepingImages" :disabled="sweepingImages" @click="sweepForumImages">一键补扫全站图片</el-button>
       </div>
       <p v-if="lastImageSweepSummary" class="actions-note">{{ lastImageSweepSummary }}</p>
     </section>
@@ -216,9 +216,9 @@
       </div>
 
       <div class="actions-row">
-        <el-button type="primary" :loading="saving" @click="saveConfig">保存审核配置</el-button>
+        <el-button type="primary" :loading="saving" :disabled="saving" @click="saveConfig">保存审核配置</el-button>
         <el-button plain :disabled="loadingPromptDefaults" @click="resetAllPrompts">重置全部 Prompt</el-button>
-        <el-button plain :loading="sweepingVideos" @click="sweepForumVideos">一键补扫全站视频</el-button>
+        <el-button plain :loading="sweepingVideos" :disabled="sweepingVideos" @click="sweepForumVideos">一键补扫全站视频</el-button>
       </div>
       <p v-if="lastVideoSweepSummary" class="actions-note">{{ lastVideoSweepSummary }}</p>
 
@@ -230,46 +230,48 @@
           <el-option label="已驳回" value="rejected" />
           <el-option label="已通过" value="approved" />
         </el-select>
-        <el-button plain :loading="loadingVideos" @click="loadVideos">刷新</el-button>
+        <el-button plain :loading="loadingVideos" :disabled="loadingVideos" @click="loadVideos">刷新</el-button>
       </div>
 
-      <el-table :data="videoRows" v-loading="loadingVideos" size="small" class="admin-table">
-        <el-table-column prop="createdAt" label="入队时间" width="170">
-          <template #default="{ row }">{{ fmtDate(row.createdAt, "YYYY-MM-DD HH:mm:ss") }}</template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="videoStatusTagType(row.status)" effect="plain">{{ videoStatusLabel(row.status) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="targetLabel" label="目标" min-width="180">
-          <template #default="{ row }">
-            <a v-if="row.targetUrl" :href="row.targetUrl" target="_blank" rel="noreferrer">{{ row.targetLabel }}</a>
-            <span v-else>{{ row.targetLabel }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="url" label="视频" min-width="220" show-overflow-tooltip />
-        <el-table-column label="信息" min-width="160">
-          <template #default="{ row }">
-            {{ row.durationMs ? `${Math.round(row.durationMs / 1000)} 秒` : "时长未知" }}
-            <span v-if="row.width && row.height"> · {{ row.width }}x{{ row.height }}</span>
-            <span> · {{ row.hasAudio ? "有音轨" : "无音轨" }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="原因 / 异常" min-width="260" show-overflow-tooltip>
-          <template #default="{ row }">
-            {{ row.reason || row.lastError || row.detail || "-" }}
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="180">
-          <template #default="{ row }">
-            <div class="table-actions">
-              <el-button size="small" type="success" plain @click="approveVideo(row)">通过</el-button>
-              <el-button size="small" type="danger" plain @click="rejectVideo(row)">驳回</el-button>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
+      <div class="admin-table-scroll">
+        <el-table :data="videoRows" v-loading="loadingVideos" size="small" class="admin-table admin-table--videos">
+          <el-table-column prop="createdAt" label="入队时间" width="170">
+            <template #default="{ row }">{{ fmtDate(row.createdAt, "YYYY-MM-DD HH:mm:ss") }}</template>
+          </el-table-column>
+          <el-table-column prop="status" label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="videoStatusTagType(row.status)" effect="plain">{{ videoStatusLabel(row.status) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="targetLabel" label="目标" min-width="180">
+            <template #default="{ row }">
+              <a v-if="row.targetUrl" :href="row.targetUrl" target="_blank" rel="noopener noreferrer">{{ row.targetLabel }}</a>
+              <span v-else>{{ row.targetLabel }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="url" label="视频" min-width="220" show-overflow-tooltip />
+          <el-table-column label="信息" min-width="160">
+            <template #default="{ row }">
+              {{ row.durationMs ? `${Math.round(row.durationMs / 1000)} 秒` : "时长未知" }}
+              <span v-if="row.width && row.height"> · {{ row.width }}x{{ row.height }}</span>
+              <span> · {{ row.hasAudio ? "有音轨" : "无音轨" }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="原因 / 异常" min-width="260" show-overflow-tooltip>
+            <template #default="{ row }">
+              {{ row.reason || row.lastError || row.detail || "-" }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="180">
+            <template #default="{ row }">
+              <div class="table-actions">
+                <el-button size="small" type="success" plain :loading="isVideoReviewBusy(row)" :disabled="loadingVideos || isVideoReviewBusy(row)" @click="approveVideo(row)">通过</el-button>
+                <el-button size="small" type="danger" plain :loading="isVideoReviewBusy(row)" :disabled="loadingVideos || isVideoReviewBusy(row)" @click="rejectVideo(row)">驳回</el-button>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
     </section>
 
     <section class="settings-card">
@@ -293,21 +295,23 @@
           <el-option label="成功" value="success" />
           <el-option label="失败" value="error" />
         </el-select>
-        <el-button plain :loading="loadingLogs" @click="loadLogs">刷新</el-button>
+        <el-button plain :loading="loadingLogs" :disabled="loadingLogs" @click="loadLogs">刷新</el-button>
       </div>
 
-      <el-table :data="logs" v-loading="loadingLogs" size="small" class="admin-table">
-        <el-table-column prop="startedAt" label="时间" width="170">
-          <template #default="{ row }">{{ fmtDate(row.startedAt, "YYYY-MM-DD HH:mm:ss") }}</template>
-        </el-table-column>
-        <el-table-column prop="kind" label="类型" width="110" />
-        <el-table-column prop="status" label="状态" width="90" />
-        <el-table-column prop="model" label="模型" min-width="140" />
-        <el-table-column prop="targetLabel" label="目标" min-width="180" />
-        <el-table-column prop="requestSummary" label="请求摘要" min-width="240" show-overflow-tooltip />
-        <el-table-column prop="responseSummary" label="返回摘要" min-width="240" show-overflow-tooltip />
-        <el-table-column prop="errorMessage" label="错误" min-width="220" show-overflow-tooltip />
-      </el-table>
+      <div class="admin-table-scroll">
+        <el-table :data="logs" v-loading="loadingLogs" size="small" class="admin-table admin-table--logs">
+          <el-table-column prop="startedAt" label="时间" width="170">
+            <template #default="{ row }">{{ fmtDate(row.startedAt, "YYYY-MM-DD HH:mm:ss") }}</template>
+          </el-table-column>
+          <el-table-column prop="kind" label="类型" width="110" />
+          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column prop="model" label="模型" min-width="140" />
+          <el-table-column prop="targetLabel" label="目标" min-width="180" />
+          <el-table-column prop="requestSummary" label="请求摘要" min-width="240" show-overflow-tooltip />
+          <el-table-column prop="responseSummary" label="返回摘要" min-width="240" show-overflow-tooltip />
+          <el-table-column prop="errorMessage" label="错误" min-width="220" show-overflow-tooltip />
+        </el-table>
+      </div>
     </section>
   </div>
 </template>
@@ -332,6 +336,7 @@ const saving = ref(false);
 const sweepingImages = ref(false);
 const sweepingVideos = ref(false);
 const loadingVideos = ref(false);
+const videoReviewBusyId = ref<number | null>(null);
 const loadingPromptDefaults = ref(false);
 const textPromptsExpanded = ref(false);
 const imagePromptsExpanded = ref(false);
@@ -425,6 +430,7 @@ async function loadPromptDefaults() {
 }
 
 async function saveConfig() {
+  if (saving.value) return;
   saving.value = true;
   try {
     Object.assign(form, await adminApi.updateSiteConfig({
@@ -511,6 +517,7 @@ async function resetAllPrompts() {
 }
 
 async function loadLogs() {
+  if (loadingLogs.value) return;
   loadingLogs.value = true;
   try {
     const result = await adminApi.aiReviewLogs(filters);
@@ -521,6 +528,7 @@ async function loadLogs() {
 }
 
 async function sweepForumImages() {
+  if (sweepingImages.value) return;
   sweepingImages.value = true;
   try {
     const result = await adminApi.sweepForumImages();
@@ -533,6 +541,7 @@ async function sweepForumImages() {
 }
 
 async function loadVideos() {
+  if (loadingVideos.value) return;
   loadingVideos.value = true;
   try {
     const result = await adminApi.forumVideos({
@@ -547,6 +556,7 @@ async function loadVideos() {
 }
 
 async function sweepForumVideos() {
+  if (sweepingVideos.value) return;
   sweepingVideos.value = true;
   try {
     const result = await adminApi.sweepForumVideos();
@@ -569,28 +579,45 @@ function buildVideoSweepSummary(result: ForumVideoSweepResult) {
   return parts.join("，");
 }
 
+function isVideoReviewBusy(row: ForumVideoQueueRow) {
+  return videoReviewBusyId.value === row.id;
+}
+
 async function approveVideo(row: ForumVideoQueueRow) {
-  await ElMessageBox.confirm("确认将这条视频人工审核通过并恢复展示？", "人工通过", {
-    type: "warning",
-    confirmButtonText: "通过",
-    cancelButtonText: "取消",
-  });
-  await adminApi.updateForumVideo(row.id, { status: "approved" });
-  ElMessage.success("视频已人工审核通过");
-  await loadVideos();
+  if (videoReviewBusyId.value !== null) return;
+  videoReviewBusyId.value = row.id;
+  try {
+    const confirmed = await ElMessageBox.confirm("确认将这条视频人工审核通过并恢复展示？", "人工通过", {
+      type: "warning",
+      confirmButtonText: "通过",
+      cancelButtonText: "取消",
+    }).then(() => true).catch(() => false);
+    if (!confirmed) return;
+    await adminApi.updateForumVideo(row.id, { status: "approved" });
+    ElMessage.success("视频已人工审核通过");
+    await loadVideos();
+  } finally {
+    videoReviewBusyId.value = null;
+  }
 }
 
 async function rejectVideo(row: ForumVideoQueueRow) {
-  const { value } = await ElMessageBox.prompt("可选填写人工驳回备注，留空会保留当前审核说明。", "继续隐藏", {
-    inputPlaceholder: "例如：画面中可识别隐私信息较多，不适合公开展示",
-  }).catch(() => ({ value: null }));
-  if (value === null) return;
-  await adminApi.updateForumVideo(row.id, {
-    status: "rejected",
-    manualReviewNote: value || undefined,
-  });
-  ElMessage.success("视频已维持隐藏");
-  await loadVideos();
+  if (videoReviewBusyId.value !== null) return;
+  videoReviewBusyId.value = row.id;
+  try {
+    const { value } = await ElMessageBox.prompt("可选填写人工驳回备注，留空会保留当前审核说明。", "继续隐藏", {
+      inputPlaceholder: "例如：画面中可识别隐私信息较多，不适合公开展示",
+    }).catch(() => ({ value: null }));
+    if (value === null) return;
+    await adminApi.updateForumVideo(row.id, {
+      status: "rejected",
+      manualReviewNote: value || undefined,
+    });
+    ElMessage.success("视频已维持隐藏");
+    await loadVideos();
+  } finally {
+    videoReviewBusyId.value = null;
+  }
 }
 
 function videoStatusLabel(status?: string) {
@@ -769,6 +796,21 @@ function buildImageSweepSummary(result: ForumImageSweepResult) {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.admin-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.admin-table-scroll :deep(.admin-table) {
+  min-width: 1120px;
+}
+
+.admin-table-scroll :deep(.admin-table--logs) {
+  min-width: 1360px;
 }
 
 .table-actions {

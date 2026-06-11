@@ -31,10 +31,10 @@
           </el-radio-group>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" :loading="publishing" :disabled="!form.title || !form.content" @click="publish">
+          <el-button type="primary" :loading="publishing" :disabled="publishing || !form.title.trim() || !form.content.trim()" @click="publish">
             {{ editingId ? "保存修改" : "发布公告" }}
           </el-button>
-          <el-button v-if="editingId" @click="resetForm">取消编辑</el-button>
+          <el-button v-if="editingId" :disabled="publishing" @click="resetForm">取消编辑</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -43,35 +43,37 @@
       <template #header>
         <div class="hdr">
           <h3 style="margin:0;font-size:15px">📜 历史公告</h3>
-          <el-button text @click="reload">刷新</el-button>
+          <el-button text :loading="loading" :disabled="loading" @click="reload">刷新</el-button>
         </div>
       </template>
-      <el-empty v-if="!list.length" description="还没发布过公告" />
-      <div v-for="a in list" :key="a.id" class="ann-row">
-        <div class="ann-main">
-          <div class="ann-title">
-            <el-tag size="small" :type="a.level === 'strong' ? 'danger' : a.level === 'normal' ? 'primary' : 'info'" effect="plain">
-              {{ a.level }}
-            </el-tag>
-            <el-tag v-if="targetLabel(a.targetClient) !== '全部'" size="small" effect="plain">
-              {{ targetLabel(a.targetClient) }}
-            </el-tag>
-            {{ a.title }}
+      <div v-loading="loading" class="ann-list">
+        <el-empty v-if="!list.length" description="还没发布过公告" />
+        <div v-for="a in list" :key="a.id" class="ann-row">
+          <div class="ann-main">
+            <div class="ann-title">
+              <el-tag size="small" :type="a.level === 'strong' ? 'danger' : a.level === 'normal' ? 'primary' : 'info'" effect="plain">
+                {{ a.level }}
+              </el-tag>
+              <el-tag v-if="targetLabel(a.targetClient) !== '全部'" size="small" effect="plain">
+                {{ targetLabel(a.targetClient) }}
+              </el-tag>
+              {{ a.title }}
+            </div>
+            <div class="ann-content">{{ a.content }}</div>
+            <div class="ann-meta">{{ fmtDate(a.createdAt) }} · {{ a.source || "站务组" }}</div>
           </div>
-          <div class="ann-content">{{ a.content }}</div>
-          <div class="ann-meta">{{ fmtDate(a.createdAt) }} · {{ a.source || "站务组" }}</div>
+          <el-dropdown trigger="click" @command="handleAnnouncementCommand($event, a)">
+            <el-button text size="small" class="action-trigger" :loading="isAnnouncementBusy(a)" :disabled="isAnnouncementBusy(a)">
+              操作<el-icon class="more-icon"><MoreFilled /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="edit" :disabled="isAnnouncementBusy(a)">编辑</el-dropdown-item>
+                <el-dropdown-item command="delete" divided :disabled="isAnnouncementBusy(a)">删除</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
-        <el-dropdown trigger="click" @command="handleAnnouncementCommand($event, a)">
-          <el-button text size="small" class="action-trigger">
-            操作<el-icon class="more-icon"><MoreFilled /></el-icon>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="edit">编辑</el-dropdown-item>
-              <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
       </div>
     </el-card>
   </div>
@@ -87,10 +89,22 @@ import { fmtDate } from "@/utils/format";
 const list = ref<any[]>([]);
 const editingId = ref<number | null>(null);
 const form = reactive({ title: "", content: "", level: "normal", link: "", source: "站务组", targetClient: "all" });
+const loading = ref(false);
 const publishing = ref(false);
+const announcementBusyId = ref<number | null>(null);
+let announcementLoadSeq = 0;
 
 onMounted(reload);
-async function reload() { list.value = await adminApi.announcements(); }
+async function reload() {
+  const seq = ++announcementLoadSeq;
+  loading.value = true;
+  try {
+    const next = await adminApi.announcements();
+    if (seq === announcementLoadSeq) list.value = next;
+  } finally {
+    if (seq === announcementLoadSeq) loading.value = false;
+  }
+}
 
 function targetLabel(value?: string | null) {
   if (value === "ios") return "仅 iOS";
@@ -100,6 +114,11 @@ function targetLabel(value?: string | null) {
 }
 
 async function publish() {
+  if (publishing.value) return;
+  if (!form.title.trim() || !form.content.trim()) {
+    ElMessage.warning("请填写公告标题和内容");
+    return;
+  }
   publishing.value = true;
   try {
     if (editingId.value) {
@@ -129,8 +148,13 @@ async function publish() {
 }
 
 function handleAnnouncementCommand(command: string, row: any) {
+  if (announcementBusyId.value !== null) return;
   if (command === "edit") return startEdit(row);
   if (command === "delete") return removeAnn(row);
+}
+
+function isAnnouncementBusy(row: any) {
+  return announcementBusyId.value === row.id;
 }
 
 function startEdit(row: any) {
@@ -155,11 +179,20 @@ function resetForm() {
 }
 
 async function removeAnn(a: any) {
-  await ElMessageBox.confirm(`删除公告《${a.title}》？`, "确认", { type: "warning" });
-  await adminApi.deleteAnnouncement(a.id);
-  ElMessage.success("已删除");
-  if (editingId.value === a.id) resetForm();
-  reload();
+  if (announcementBusyId.value !== null) return;
+  announcementBusyId.value = a.id;
+  try {
+    const confirmed = await ElMessageBox.confirm(`删除公告《${a.title}》？`, "确认", { type: "warning" })
+      .then(() => true)
+      .catch(() => false);
+    if (!confirmed) return;
+    await adminApi.deleteAnnouncement(a.id);
+    ElMessage.success("已删除");
+    if (editingId.value === a.id) resetForm();
+    await reload();
+  } finally {
+    announcementBusyId.value = null;
+  }
 }
 </script>
 
@@ -167,6 +200,7 @@ async function removeAnn(a: any) {
 .ann-pane { display: flex; flex-direction: column; gap: 14px; }
 .composer .el-card__header { padding-bottom: 0; }
 .hdr { display: flex; justify-content: space-between; align-items: center; }
+.ann-list { min-height: 80px; }
 .ann-row {
   display: flex;
   justify-content: space-between;

@@ -166,7 +166,7 @@ onBeforeUnmount(() => {
 .theme-panel {
   position: fixed;
   z-index: 4000;
-  max-height: min(360px, calc(100vh - 92px));
+  max-height: min(360px, calc(100dvh - 92px));
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 8px;

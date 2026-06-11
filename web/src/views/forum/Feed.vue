@@ -10,8 +10,23 @@
     </div>
 
     <section class="cpu-card" v-loading="loading">
-      <template v-if="isHot">
-        <div v-for="item in hotList" :key="item.id" class="rank-row" @click="openHotTopic(item.id)">
+      <div v-if="error && !loading" class="feed-error">
+        <el-empty :description="error">
+          <el-button type="primary" @click="load">重试</el-button>
+        </el-empty>
+      </div>
+
+      <template v-else-if="isHot">
+        <div
+          v-for="item in hotList"
+          :key="item.id"
+          class="rank-row"
+          role="button"
+          tabindex="0"
+          @click="openHotTopic(item.id)"
+          @keydown.enter.prevent="openHotTopic(item.id)"
+          @keydown.space.prevent="openHotTopic(item.id)"
+        >
           <div class="rank-no" :class="{ top3: item.rank <= 3 }">#{{ item.rank }}</div>
           <div class="rank-main">
             <div class="rank-title">{{ item.title }}</div>
@@ -57,13 +72,13 @@
         </div>
       </template>
 
-      <el-empty v-if="!loading && !currentList.length" description="暂无内容" />
+      <el-empty v-if="!error && !loading && !currentList.length" description="暂无内容" />
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import { homeApi } from "@/api/home";
@@ -81,6 +96,7 @@ const router = useRouter();
 const isHot = computed(() => route.name === "forum-hot");
 const loading = ref(false);
 const loadingMore = ref(false);
+const error = ref("");
 const hotList = ref<any[]>([]);
 const pinnedList = ref<any[]>([]);
 const latestList = ref<any[]>([]);
@@ -132,9 +148,10 @@ onBeforeUnmount(() => {
 
 async function load() {
   loading.value = true;
+  error.value = "";
   try {
     if (isHot.value) {
-      hotList.value = await homeApi.hotRanking();
+      hotList.value = await homeApi.hotRanking({ suppressErrorMessage: true });
       pinnedList.value = [];
       latestList.value = [];
       latestTotal.value = 0;
@@ -142,20 +159,26 @@ async function load() {
     }
     if (latestPage.value > 1) {
       const pages = await Promise.all(
-        Array.from({ length: latestPage.value }, (_, index) => homeApi.latestFeed({ page: index + 1, size: latestSize.value })),
+        Array.from({ length: latestPage.value }, (_, index) => homeApi.latestFeed({ page: index + 1, size: latestSize.value }, { suppressErrorMessage: true })),
       );
       pinnedList.value = pages[0]?.pins ?? [];
       latestTotal.value = pages[0]?.total ?? 0;
       latestList.value = dedupeTopicsById(pages.flatMap((pageResult) => pageResult.list ?? []));
     } else {
-      const res = await homeApi.latestFeed({ page: latestPage.value, size: latestSize.value });
+      const res = await homeApi.latestFeed({ page: latestPage.value, size: latestSize.value }, { suppressErrorMessage: true });
       pinnedList.value = res.pins ?? [];
       latestList.value = res.list ?? [];
       latestTotal.value = res.total;
     }
+  } catch (e) {
+    hotList.value = [];
+    pinnedList.value = [];
+    latestList.value = [];
+    latestTotal.value = 0;
+    error.value = normalizeFeedError(e);
   } finally {
     loading.value = false;
-    if (!isHot.value) {
+    if (!isHot.value && !error.value) {
       await nextTick();
       await restoreScrollIfNeeded();
       if (loadMoreObserver && canLoadMore.value && loadMoreSentinelRef.value) {
@@ -208,6 +231,14 @@ function dedupeTopicsById(items: any[]) {
   });
 }
 
+function normalizeFeedError(error: unknown) {
+  const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
+  if (status && status < 500) {
+    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "内容加载失败";
+  }
+  return "内容加载失败，请稍后再试";
+}
+
 async function restoreScrollIfNeeded() {
   if (!pendingRestoreState) return;
   const scrollY = Math.max(0, Number(pendingRestoreState.scrollY || 0));
@@ -247,6 +278,9 @@ onBeforeRouteLeave((to) => {
 .title { margin: 0; font-size: 22px; color: #111827; }
 .desc { margin: 6px 0 0; font-size: 13px; color: #6b7280; line-height: 1.65; }
 .cpu-card { background: #fff; border-radius: 12px; padding: 14px 16px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04); }
+.feed-error {
+  padding: 24px 12px;
+}
 .pin-section {
   margin-bottom: 12px;
   border: 1px solid #fee2e2;
@@ -282,6 +316,10 @@ onBeforeRouteLeave((to) => {
   overflow: hidden;
 }
 .rank-row:last-child { border-bottom: none; }
+.rank-row:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
+}
 .rank-no {
   min-width: 44px;
   font-size: 13px;

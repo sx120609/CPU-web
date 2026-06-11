@@ -53,21 +53,23 @@
         class="form"
       >
         <el-form-item label="学号 / 工号" prop="username">
-          <el-input v-model="form.username" placeholder="学号 / 工号" autocomplete="off">
+          <el-input v-model="form.username" placeholder="学号 / 工号" autocomplete="off" :disabled="jwxt.loading">
             <template #prefix><el-icon><User /></el-icon></template>
           </el-input>
         </el-form-item>
         <el-form-item label="密码" prop="password">
-          <el-input v-model="form.password" type="password" show-password placeholder="统一认证密码" autocomplete="off">
+          <el-input v-model="form.password" type="password" show-password placeholder="统一认证密码" autocomplete="off" :disabled="jwxt.loading">
             <template #prefix><el-icon><Lock /></el-icon></template>
           </el-input>
         </el-form-item>
         <el-form-item v-if="jwxt.needCaptcha" label="验证码" prop="captcha">
           <div class="vcode-row">
-            <el-input v-model="form.captcha" placeholder="看图输入" maxlength="8" class="vcode-input" />
+            <el-input v-model="form.captcha" placeholder="看图输入" maxlength="8" class="vcode-input" :disabled="jwxt.loading || captchaLoading" />
             <div class="vcode-side">
-              <img v-if="jwxt.captchaImage" :src="jwxt.captchaImage" alt="captcha" class="vcode-img" loading="lazy" decoding="async" fetchpriority="low" @click="reloadCaptcha" :title="'点击换一张'" />
-              <el-button text class="vcode-refresh" @click="reloadCaptcha"><el-icon><Refresh /></el-icon></el-button>
+              <button v-if="jwxt.captchaImage" type="button" class="vcode-img-button" :disabled="jwxt.loading || captchaLoading" @click="reloadCaptcha">
+                <img :src="jwxt.captchaImage" alt="captcha" class="vcode-img" loading="lazy" decoding="async" fetchpriority="low" :title="'点击换一张'" />
+              </button>
+              <el-button text class="vcode-refresh" :loading="captchaLoading" :disabled="jwxt.loading || captchaLoading" @click="reloadCaptcha"><el-icon><Refresh /></el-icon></el-button>
             </div>
           </div>
         </el-form-item>
@@ -88,7 +90,7 @@
                 <el-icon class="hint-icon"><InfoFilled /></el-icon>
               </el-tooltip>
             </div>
-            <el-button v-if="jwxt.rememberSaved" text type="danger" size="small" class="forget-saved-btn" @click="jwxt.forgetSavedCreds()">
+            <el-button v-if="jwxt.rememberSaved" text type="danger" size="small" class="forget-saved-btn" :loading="forgetBusy" :disabled="jwxt.loading || forgetBusy" @click="onForget">
               忘记已保存账号
             </el-button>
           </div>
@@ -99,7 +101,7 @@
         </el-form-item>
 
         <el-form-item>
-          <el-button type="primary" :loading="jwxt.loading" @click="onSubmit" class="btn-submit">
+          <el-button type="primary" :loading="jwxt.loading" :disabled="jwxt.loading || captchaLoading" @click="onSubmit" class="btn-submit">
             登录并查看
           </el-button>
         </el-form-item>
@@ -108,7 +110,7 @@
       <PrivacyPolicyNotice />
 
       <div class="alt-link">
-        暂不授权？也可以 <a :href="schoolSystemLink" target="_blank">{{ schoolSystemLabel }}</a>
+        暂不授权？也可以 <a :href="schoolSystemLink" target="_blank" rel="noopener noreferrer">{{ schoolSystemLabel }}</a>
       </div>
     </div>
 
@@ -127,10 +129,10 @@
           <el-tag v-if="jwxt.rememberSaved" size="small" type="warning" class="remember-tag">
             已保存登录信息
           </el-tag>
-          <el-button v-if="jwxt.rememberSaved" plain type="warning" size="small" @click="onForget">
+          <el-button v-if="jwxt.rememberSaved" plain type="warning" size="small" :loading="forgetBusy" :disabled="logoutBusy || forgetBusy" @click="onForget">
             清除已保存信息
           </el-button>
-          <el-button plain type="danger" size="small" @click="onLogout">
+          <el-button plain type="danger" size="small" :loading="logoutBusy" :disabled="logoutBusy || forgetBusy" @click="onLogout">
             <el-icon><CircleClose /></el-icon> 断开连接
           </el-button>
         </div>
@@ -155,7 +157,7 @@
         <el-tab-pane label="🛠 调试" name="debug" v-if="isDev">
           <div class="debug-pane">
             <p class="cpu-muted">开发模式：点击「拉取调试快照」后端会把教务页面 HTML 落到 <code>server/.debug/</code>，供解析器开发用。</p>
-            <el-button type="primary" :loading="snapping" @click="onSnapshot">📸 拉取调试快照</el-button>
+            <el-button type="primary" :loading="snapping" :disabled="snapping" @click="onSnapshot">📸 拉取调试快照</el-button>
             <ul v-if="snapResult?.saved?.length" class="snap-list">
               <li v-for="s in snapResult.saved" :key="s">✅ {{ s }}</li>
               <li v-for="e in snapResult.errors" :key="e" style="color:#dc2626">❌ {{ e }}</li>
@@ -163,8 +165,8 @@
             <el-divider />
             <p class="cpu-muted">自定义路径探针（仅 dev）：</p>
             <div class="probe-row">
-              <el-input v-model="probePath" placeholder="例如 /jsxsd/xskb/xskb_list.do?xnxqid=2024-2025-2-1" />
-              <el-button @click="onProbe" :loading="probing">GET</el-button>
+              <el-input v-model="probePath" placeholder="例如 /jsxsd/xskb/xskb_list.do?xnxqid=2024-2025-2-1" :disabled="probing" />
+              <el-button @click="onProbe" :loading="probing" :disabled="probing">GET</el-button>
             </div>
             <el-input v-if="probeHtml" v-model="probeHtml" type="textarea" :rows="14" readonly style="margin-top:8px;font-family:monospace" />
           </div>
@@ -211,6 +213,10 @@ const tabLoading = ref(false);
 const CACHE_TTL = 12 * 60 * 60 * 1000;
 const CACHE_PREFIX = "cpu-jwxt-tab-cache-v4";
 const activeRequests = new Map<string, Promise<any>>();
+const captchaLoading = ref(false);
+const logoutBusy = ref(false);
+const forgetBusy = ref(false);
+let tabLoadSeq = 0;
 
 const probePath = ref("/zgykdx/framework/xsMain.jsp");
 const probeHtml = ref("");
@@ -416,11 +422,18 @@ function fetchTab(t: DataTab, identity = auth.academicIdentity) {
 }
 
 async function reloadCaptcha() {
-  await jwxt.beginLogin();
-  form.captcha = "";
+  if (captchaLoading.value || jwxt.loading) return;
+  captchaLoading.value = true;
+  try {
+    await jwxt.beginLogin();
+    form.captcha = "";
+  } finally {
+    captchaLoading.value = false;
+  }
 }
 
 async function onSubmit() {
+  if (jwxt.loading || captchaLoading.value) return;
   try { await formRef.value?.validate(); } catch { return; }
   if (jwxt.needCaptcha && !form.captcha) { ElMessage.warning("请输入验证码"); return; }
   const ok = await jwxt.submitLogin(
@@ -439,18 +452,36 @@ async function onSubmit() {
 }
 
 async function onLogout() {
-  await ElMessageBox.confirm("断开当前教务连接？\n如果勾选了“记住登录信息”，下次打开时仍可快速登录。", "确认", { type: "warning" });
-  await jwxt.logout();
-  ElMessage.success("已断开教务连接");
-  resetTabData();
-  tab.value = "schedule";
-  await jwxt.beginLogin();
+  if (logoutBusy.value || forgetBusy.value) return;
+  const confirmed = await ElMessageBox.confirm("断开当前教务连接？\n如果勾选了“记住登录信息”，下次打开时仍可快速登录。", "确认", { type: "warning" })
+    .then(() => true)
+    .catch(() => false);
+  if (!confirmed) return;
+  logoutBusy.value = true;
+  try {
+    await jwxt.logout();
+    ElMessage.success("已断开教务连接");
+    resetTabData();
+    tab.value = "schedule";
+    await jwxt.beginLogin();
+  } finally {
+    logoutBusy.value = false;
+  }
 }
 
 async function onForget() {
-  await ElMessageBox.confirm("清除已保存的账号？之后将不再自动登录。", "确认", { type: "warning" });
-  jwxt.forgetSavedCreds();
-  ElMessage.success("已清除保存的账号");
+  if (forgetBusy.value || logoutBusy.value) return;
+  const confirmed = await ElMessageBox.confirm("清除已保存的账号？之后将不再自动登录。", "确认", { type: "warning" })
+    .then(() => true)
+    .catch(() => false);
+  if (!confirmed) return;
+  forgetBusy.value = true;
+  try {
+    jwxt.forgetSavedCreds();
+    ElMessage.success("已清除保存的账号");
+  } finally {
+    forgetBusy.value = false;
+  }
 }
 
 async function loadCurrentTab(force = false) {
@@ -463,6 +494,7 @@ async function loadCurrentTab(force = false) {
   const identity = auth.academicIdentity;
   const cached = restoreCachedTab(current);
   if (cached && !force && !isStale(cached.savedAt)) return;
+  const seq = ++tabLoadSeq;
   tabLoading.value = force || !getTabData(current);
   try {
     const data = await fetchTab(current, identity);
@@ -471,18 +503,22 @@ async function loadCurrentTab(force = false) {
     writeCache(current, data);
   } catch {
     // 已有缓存时保留旧数据；错误提示由 API 拦截器统一处理。
-  } finally { tabLoading.value = false; }
+  } finally {
+    if (seq === tabLoadSeq) tabLoading.value = false;
+  }
 }
 
 function onTabChange() { loadCurrentTab(false); }
 
 async function onSnapshot() {
+  if (snapping.value) return;
   snapping.value = true;
   try { snapResult.value = await jwxtApi.debugSnapshot(); }
   finally { snapping.value = false; }
 }
 
 async function onProbe() {
+  if (probing.value) return;
   if (!probePath.value.startsWith("/")) { ElMessage.warning("path 必须以 / 开头"); return; }
   probing.value = true;
   try {
@@ -574,11 +610,29 @@ async function onProbe() {
   gap: 8px;
   flex-shrink: 0;
 }
+.vcode-img-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+.vcode-img-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+.vcode-img-button:focus-visible {
+  outline: 2px solid rgba(22, 135, 118, 0.35);
+  outline-offset: 2px;
+}
 .vcode-img {
   height: 36px;
   border-radius: 4px;
-  cursor: pointer;
   border: 1px solid #e5e7eb;
+  display: block;
 }
 .vcode-refresh {
   flex-shrink: 0;

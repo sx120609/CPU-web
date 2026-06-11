@@ -924,7 +924,7 @@ onMounted(() => {
 }
 .md-video-lightbox__video {
   width: 100%;
-  max-height: min(72vh, 640px);
+  max-height: min(72dvh, 640px);
   display: block;
   background: #000;
 }
@@ -1285,7 +1285,7 @@ onMounted(() => {
   }
 
   .md-video-lightbox__video {
-    max-height: min(56vh, 420px);
+    max-height: min(56dvh, 420px);
   }
 
   .md-video-lightbox__meta {
@@ -1380,7 +1380,7 @@ onMounted(() => {
   display: inline-flex;
   flex-wrap: wrap;
   justify-content: center;
-  max-width: calc(100vw - 20px);
+  max-width: calc(100dvw - 20px);
   gap: 4px;
   padding: 6px;
 }
@@ -1401,7 +1401,7 @@ onMounted(() => {
 }
 
 :global(.cpu-markdown-viewer .viewer-title) {
-  max-width: min(760px, 90vw);
+  max-width: min(760px, 90dvw);
   color: #f9fafb;
   font-size: 13px;
 }

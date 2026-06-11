@@ -1,9 +1,10 @@
 <template>
   <div class="message-list">
     <el-empty v-if="!list.length" description="暂无消息" class="empty-state" />
-    <div
+    <button
       v-for="n in list"
       :key="n.id"
+      type="button"
       class="row"
       :class="{ unread: !n.readAt }"
       @click="onClick(n)"
@@ -24,7 +25,7 @@
         <div class="meta">{{ n.source || "校内" }}<span v-if="n.link"> · 点按查看</span></div>
       </div>
       <el-icon class="arrow"><ArrowRight /></el-icon>
-    </div>
+    </button>
   </div>
 </template>
 
@@ -75,8 +76,12 @@ function categoryLabel(category?: string | null) {
   background: #fff;
   cursor: pointer;
   border-radius: 14px;
+  appearance: none;
+  color: inherit;
+  font: inherit;
   min-width: 0;
   overflow: hidden;
+  text-align: left;
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.15s;
 }
 .row:hover {
@@ -87,6 +92,10 @@ function categoryLabel(category?: string | null) {
 .row.unread {
   border-color: #cfe0ff;
   background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+}
+.row:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
 }
 
 .tag {

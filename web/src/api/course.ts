@@ -1,4 +1,4 @@
-import { request } from "./request";
+import { request, type RequestOptions } from "./request";
 
 export interface CourseTeacherInfo {
   /** Teacher.id */
@@ -51,9 +51,10 @@ export interface CourseSyncResult {
 }
 
 export const courseApi = {
-  list: (q?: string, mine = false) =>
-    request.get<Course[]>("/courses", { ...(q ? { q } : {}), ...(mine ? { mine: 1 } : {}) }),
-  detail: (id: number) => request.get<{ course: Course; ratings: CourseRating[] }>(`/courses/${id}`),
+  list: (q?: string, mine = false, options?: RequestOptions) =>
+    request.get<Course[]>("/courses", { ...(q ? { q } : {}), ...(mine ? { mine: 1 } : {}) }, options),
+  detail: (id: number, options?: RequestOptions) =>
+    request.get<{ course: Course; ratings: CourseRating[] }>(`/courses/${id}`, undefined, options),
   /** 同步当前用户的教务课程（X-Jwxt-Token 由全局拦截器自动注入） */
   sync: () => request.post<CourseSyncResult>("/courses/sync"),
   /** 为课程添加一位授课老师（登录用户即可；重复时返回已有关联） */

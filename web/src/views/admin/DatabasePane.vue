@@ -5,7 +5,7 @@
         <h2>数据管理</h2>
         <p>当前服务端已统一使用 PostgreSQL。这里可以查看主库状态、下载备份，也可以上传已有备份并直接恢复当前主库。</p>
       </div>
-      <el-button :loading="loading" @click="loadStatus">刷新状态</el-button>
+      <el-button :loading="loading" :disabled="loading || restoreBusy" @click="loadStatus">刷新状态</el-button>
     </div>
 
     <el-alert
@@ -80,7 +80,7 @@
         <h3>下载 PostgreSQL 备份</h3>
         <p>{{ downloadHint }}</p>
       </div>
-      <el-button type="primary" :loading="downloading" :disabled="!canDownload" @click="downloadBackup">
+      <el-button type="primary" :loading="downloading" :disabled="!canDownload || downloading || restoreBusy" @click="downloadBackup">
         下载数据库备份
       </el-button>
     </article>
@@ -102,11 +102,12 @@
           class="hidden-file-input"
           type="file"
           :accept="status.restoreUploadAccept || '.dump,.backup,.tar'"
+          :disabled="restoreBusy"
           @change="onRestoreFileChange"
         />
-        <el-button :disabled="!canRestore" @click="selectRestoreFile">选择备份文件</el-button>
-        <el-button v-if="restoreFile" @click="clearRestoreFile">清空</el-button>
-        <el-button type="danger" :loading="restoring" :disabled="!canRestore || !restoreFile" @click="confirmRestore">
+        <el-button :disabled="!canRestore || restoreBusy" @click="selectRestoreFile">选择备份文件</el-button>
+        <el-button v-if="restoreFile" :disabled="restoreBusy" @click="clearRestoreFile()">清空</el-button>
+        <el-button type="danger" :loading="restoreBusy" :disabled="!canRestore || !restoreFile || restoreBusy" @click="confirmRestore">
           上传并恢复
         </el-button>
       </div>
@@ -122,20 +123,25 @@ import { adminApi, type DatabaseBackupStatus, type DatabaseRestoreResult } from 
 const loading = ref(false);
 const downloading = ref(false);
 const restoring = ref(false);
+const restoreConfirming = ref(false);
 const status = ref<DatabaseBackupStatus | null>(null);
 const restoreInput = ref<HTMLInputElement | null>(null);
 const restoreFile = ref<File | null>(null);
+const restoreBusy = computed(() => restoring.value || restoreConfirming.value);
+let statusLoadSeq = 0;
 
 onMounted(() => {
   void loadStatus();
 });
 
 async function loadStatus() {
+  const seq = ++statusLoadSeq;
   loading.value = true;
   try {
-    status.value = await adminApi.databaseStatus();
+    const next = await adminApi.databaseStatus();
+    if (seq === statusLoadSeq) status.value = next;
   } finally {
-    loading.value = false;
+    if (seq === statusLoadSeq) loading.value = false;
   }
 }
 
@@ -232,29 +238,33 @@ const restoreHint = computed(() => {
 });
 
 function selectRestoreFile() {
+  if (restoreBusy.value || !canRestore.value) return;
   if (restoreInput.value) restoreInput.value.value = "";
   restoreInput.value?.click();
 }
 
-function clearRestoreFile() {
+function clearRestoreFile(force = false) {
+  if (restoreBusy.value && !force) return;
   restoreFile.value = null;
   if (restoreInput.value) restoreInput.value.value = "";
 }
 
 function onRestoreFileChange(event: Event) {
+  if (restoreBusy.value) return;
   const input = event.target as HTMLInputElement | null;
   restoreFile.value = input?.files?.[0] || null;
 }
 
 async function downloadBackup() {
-  if (!status.value?.supported || !status.value.exists) return;
+  const currentStatus = status.value;
+  if (downloading.value || restoreBusy.value || !canDownload.value || !currentStatus) return;
   downloading.value = true;
   try {
     const blob = await adminApi.downloadDatabaseBackup();
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = status.value.downloadFileName || buildFallbackFileName();
+    anchor.download = currentStatus.downloadFileName || buildFallbackFileName();
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
@@ -268,27 +278,28 @@ async function downloadBackup() {
 }
 
 async function confirmRestore() {
-  if (!restoreFile.value || !canRestore.value) return;
-  try {
-    await ElMessageBox.prompt(
-      "这会覆盖当前 PostgreSQL 主库，恢复期间站点会进入维护模式。请输入 RESTORE 确认继续。",
-      "确认恢复数据库",
-      {
-        confirmButtonText: "上传并恢复",
-        cancelButtonText: "取消",
-        inputPattern: /^RESTORE$/,
-        inputErrorMessage: "请输入 RESTORE",
-        type: "warning",
-      },
-    );
-  } catch {
+  if (!restoreFile.value || !canRestore.value || restoreBusy.value) return;
+  restoreConfirming.value = true;
+  const confirmed = await ElMessageBox.prompt(
+    "这会覆盖当前 PostgreSQL 主库，恢复期间站点会进入维护模式。请输入 RESTORE 确认继续。",
+    "确认恢复数据库",
+    {
+      confirmButtonText: "上传并恢复",
+      cancelButtonText: "取消",
+      inputPattern: /^RESTORE$/,
+      inputErrorMessage: "请输入 RESTORE",
+      type: "warning",
+    },
+  ).then(() => true).catch(() => false);
+  restoreConfirming.value = false;
+  if (!confirmed) {
     return;
   }
   await uploadAndRestore();
 }
 
 async function uploadAndRestore() {
-  if (!restoreFile.value) return;
+  if (!restoreFile.value || restoring.value) return;
   restoring.value = true;
   try {
     const formData = new FormData();
@@ -298,7 +309,7 @@ async function uploadAndRestore() {
       suppressErrorMessage: true,
     });
     handleRestoreSuccess(result);
-    clearRestoreFile();
+    clearRestoreFile(true);
     await loadStatus();
   } catch (error: any) {
     ElMessage.error(error?.response?.data?.message || error?.message || "数据库恢复失败");

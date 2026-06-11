@@ -7,6 +7,8 @@
         :text="text"
         :plain="plain"
         type="danger"
+        :loading="moderationBusy"
+        :disabled="moderationBusy"
         @click="ban"
       >
         封禁
@@ -17,6 +19,8 @@
         :text="text"
         :plain="plain"
         type="success"
+        :loading="moderationBusy"
+        :disabled="moderationBusy"
         @click="unban"
       >
         解禁
@@ -27,6 +31,7 @@
         :text="text"
         :plain="plain"
         :type="isMuted ? 'primary' : 'warning'"
+        :disabled="moderationBusy"
         @click="openMuteDialog"
       >
         {{ isMuted ? "调整禁言" : "禁言" }}
@@ -37,6 +42,8 @@
         :text="text"
         :plain="plain"
         type="success"
+        :loading="moderationBusy"
+        :disabled="moderationBusy"
         @click="unmute"
       >
         取消禁言
@@ -44,17 +51,17 @@
     </template>
 
     <el-dropdown v-else trigger="click" @command="handleCommand">
-      <el-button :size="size" :text="text" :plain="plain">
+      <el-button :size="size" :text="text" :plain="plain" :loading="moderationBusy" :disabled="moderationBusy">
         {{ label }}
       </el-button>
       <template #dropdown>
         <el-dropdown-menu>
-          <el-dropdown-item v-if="!isBanned" command="ban">封禁用户</el-dropdown-item>
-          <el-dropdown-item v-else command="unban">解除封禁</el-dropdown-item>
-          <el-dropdown-item v-if="!isBanned" command="mute">
+          <el-dropdown-item v-if="!isBanned" command="ban" :disabled="moderationBusy">封禁用户</el-dropdown-item>
+          <el-dropdown-item v-else command="unban" :disabled="moderationBusy">解除封禁</el-dropdown-item>
+          <el-dropdown-item v-if="!isBanned" command="mute" :disabled="moderationBusy">
             {{ isMuted ? "调整禁言时间" : "禁言用户" }}
           </el-dropdown-item>
-          <el-dropdown-item v-if="isMuted" command="unmute">取消禁言</el-dropdown-item>
+          <el-dropdown-item v-if="isMuted" command="unmute" :disabled="moderationBusy">取消禁言</el-dropdown-item>
         </el-dropdown-menu>
       </template>
     </el-dropdown>
@@ -88,8 +95,8 @@
         </p>
       </el-form>
       <template #footer>
-        <el-button @click="muteDialogOpen = false">取消</el-button>
-        <el-button type="primary" :loading="savingMute" @click="submitMute">确认禁言</el-button>
+        <el-button :disabled="savingMute" @click="muteDialogOpen = false">取消</el-button>
+        <el-button type="primary" :loading="savingMute" :disabled="savingMute" @click="submitMute">确认禁言</el-button>
       </template>
     </el-dialog>
   </div>
@@ -133,6 +140,7 @@ const emit = defineEmits<{
 
 const auth = useAuthStore();
 const muteDialogOpen = ref(false);
+const moderationBusy = ref(false);
 const savingMute = ref(false);
 const durationPreset = ref("1d");
 const muteUntil = ref<Date | null>(null);
@@ -157,6 +165,7 @@ const displayName = computed(() => {
 });
 
 function handleCommand(command: string) {
+  if (moderationBusy.value) return;
   if (command === "ban") return ban();
   if (command === "unban") return unban();
   if (command === "mute") return openMuteDialog();
@@ -198,36 +207,55 @@ function openMuteDialog() {
 }
 
 async function ban() {
+  if (moderationBusy.value) return;
   if (!props.user) return;
-  const confirmed = await ElMessageBox.confirm(
-    `封禁 ${displayName.value}？封禁后该用户将无法登录和发言。`,
-    "确认",
-    { type: "warning" }
-  ).then(() => true).catch(() => false);
-  if (!confirmed) return;
-  await adminApi.updateUser(props.user.id, { status: "banned" });
-  emit("updated", { status: "banned", mutedUntil: null });
-  emit("changed");
-  ElMessage.success("已封禁");
+  moderationBusy.value = true;
+  try {
+    const confirmed = await ElMessageBox.confirm(
+      `封禁 ${displayName.value}？封禁后该用户将无法登录和发言。`,
+      "确认",
+      { type: "warning" }
+    ).then(() => true).catch(() => false);
+    if (!confirmed) return;
+    await adminApi.updateUser(props.user.id, { status: "banned" });
+    emit("updated", { status: "banned", mutedUntil: null });
+    emit("changed");
+    ElMessage.success("已封禁");
+  } finally {
+    moderationBusy.value = false;
+  }
 }
 
 async function unban() {
+  if (moderationBusy.value) return;
   if (!props.user) return;
-  await adminApi.updateUser(props.user.id, { status: "active" });
-  emit("updated", { status: "active", mutedUntil: null });
-  emit("changed");
-  ElMessage.success("已解禁");
+  moderationBusy.value = true;
+  try {
+    await adminApi.updateUser(props.user.id, { status: "active" });
+    emit("updated", { status: "active", mutedUntil: null });
+    emit("changed");
+    ElMessage.success("已解禁");
+  } finally {
+    moderationBusy.value = false;
+  }
 }
 
 async function unmute() {
+  if (moderationBusy.value) return;
   if (!props.user) return;
-  await adminApi.updateUser(props.user.id, { status: "active" });
-  emit("updated", { status: "active", mutedUntil: null });
-  emit("changed");
-  ElMessage.success("已取消禁言");
+  moderationBusy.value = true;
+  try {
+    await adminApi.updateUser(props.user.id, { status: "active" });
+    emit("updated", { status: "active", mutedUntil: null });
+    emit("changed");
+    ElMessage.success("已取消禁言");
+  } finally {
+    moderationBusy.value = false;
+  }
 }
 
 async function submitMute() {
+  if (savingMute.value) return;
   if (!props.user) return;
   if (!muteUntil.value || Number.isNaN(muteUntil.value.getTime())) {
     ElMessage.warning("请选择禁言截止时间");
@@ -237,6 +265,7 @@ async function submitMute() {
     ElMessage.warning("禁言截止时间必须晚于当前时间");
     return;
   }
+  moderationBusy.value = true;
   savingMute.value = true;
   try {
     const mutedUntilIso = muteUntil.value.toISOString();
@@ -247,6 +276,7 @@ async function submitMute() {
     ElMessage.success("已设置禁言");
   } finally {
     savingMute.value = false;
+    moderationBusy.value = false;
   }
 }
 </script>

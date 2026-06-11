@@ -31,6 +31,9 @@ export default defineConfig({
           if (id.includes("/echarts/") || id.includes("/vue-echarts/")) {
             return "charts";
           }
+          if (id.includes("/zrender/")) {
+            return "zrender";
+          }
           if (id.includes("/viewerjs/") || id.includes("/artplayer/") || id.includes("/html-to-image/") || id.includes("/qrcode/")) {
             return "media-tools";
           }

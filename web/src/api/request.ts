@@ -10,6 +10,7 @@ export interface ApiResponse<T> {
 }
 
 const TOKEN_KEY = "cpu-web-token";
+export const AUTH_EXPIRED_EVENT = "cpu-auth-expired";
 
 export type RequestOptions = AxiosRequestConfig & {
   suppressAuthRedirect?: boolean;
@@ -50,10 +51,11 @@ instance.interceptors.request.use((config) => {
 
 instance.interceptors.response.use(
   (resp) => {
+    const config = resp.config as RequestOptions | undefined;
     const body = resp.data as ApiResponse<unknown>;
     if (body && typeof body.code === "number") {
       if (body.code !== 0) {
-        ElMessage.error(body.message || "请求失败");
+        if (!config?.suppressErrorMessage) ElMessage.error(body.message || "请求失败");
         return Promise.reject(new Error(body.message || "请求失败"));
       }
       return body.data;
@@ -66,6 +68,7 @@ instance.interceptors.response.use(
       clearToken();
       sessionStorage.removeItem("cpu-jwxt-token");
       clearJwxtDataCaches();
+      window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
       if (!config?.suppressAuthMessage) ElMessage.warning("登录已过期，请重新登录");
       if (!config?.suppressAuthRedirect && window.location.pathname !== "/login") {
         const redirect = encodeURIComponent(window.location.pathname + window.location.search);

@@ -201,7 +201,7 @@ function openManage() {
 
 .tools-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
   gap: 12px;
 }
 
@@ -269,6 +269,8 @@ function openManage() {
 }
 
 .tool-title {
+  flex: 1 1 auto;
+  min-width: 0;
   color: #111827;
   font-size: 15px;
   font-weight: 650;
@@ -277,15 +279,21 @@ function openManage() {
   white-space: nowrap;
 }
 
+.tool-title-row :deep(.el-tag) {
+  flex: 0 0 auto;
+}
+
 .tool-summary {
   color: #4b5563;
   font-size: 13px;
   line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 
 .tool-meta {
   color: #9ca3af;
   font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .tool-arrow {

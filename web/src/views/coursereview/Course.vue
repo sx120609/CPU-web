@@ -1,5 +1,6 @@
 <template>
-  <div class="course-detail" v-if="data" v-loading="loading">
+  <div class="course-detail" v-loading="loading">
+    <template v-if="data">
     <div class="cpu-card head">
       <div class="left">
         <div class="code">{{ data.course.code }}</div>
@@ -20,6 +21,8 @@
             v-if="auth.canAccessForum"
             text size="small"
             class="add-teacher-btn"
+            :loading="addingTeacher"
+            :disabled="addingTeacher"
             @click="onAddTeacher"
           >+ 添加老师</el-button>
         </div>
@@ -48,7 +51,16 @@
         </el-button>
       </div>
       <el-empty v-if="!data.ratings.length" description="还没有点评，做第一个吧" />
-      <div v-for="r in data.ratings" :key="r.id" class="rating-item" @click="$router.push(`/forum/topic/${r.topicId}`)">
+      <div
+        v-for="r in data.ratings"
+        :key="r.id"
+        class="rating-item"
+        role="button"
+        tabindex="0"
+        @click="openTopic(r.topicId)"
+        @keydown.enter.prevent="openTopic(r.topicId)"
+        @keydown.space.prevent="openTopic(r.topicId)"
+      >
         <div class="r-bars">
           <div>难度 <el-rate :model-value="r.difficulty" disabled size="small" /></div>
           <div>收获 <el-rate :model-value="r.reward" disabled size="small" /></div>
@@ -64,6 +76,14 @@
         </div>
       </div>
     </div>
+    </template>
+
+    <div v-else-if="error && !loading" class="cpu-card detail-error">
+      <el-empty :description="error">
+        <el-button type="primary" @click="reload">重试</el-button>
+      </el-empty>
+    </div>
+    <div v-else class="cpu-card loading-state">正在加载课程...</div>
   </div>
 </template>
 
@@ -81,13 +101,19 @@ const router = useRouter();
 const auth = useAuthStore();
 const data = ref<any>(null);
 const loading = ref(false);
+const addingTeacher = ref(false);
+const error = ref("");
 
 onMounted(reload);
 
 async function reload() {
   loading.value = true;
+  error.value = "";
   try {
-    data.value = await courseApi.detail(Number(route.params.id));
+    data.value = await courseApi.detail(Number(route.params.id), { suppressErrorMessage: true });
+  } catch (e) {
+    data.value = null;
+    error.value = normalizeCourseDetailError(e);
   } finally { loading.value = false; }
 }
 
@@ -95,7 +121,12 @@ function goReview() {
   router.push({ name: "post", query: { board: "coursereview", courseId: route.params.id } });
 }
 
+function openTopic(topicId: number) {
+  router.push(`/forum/topic/${topicId}`);
+}
+
 async function onAddTeacher() {
+  if (addingTeacher.value) return;
   const { value } = await ElMessageBox.prompt(
     "请输入这位老师的姓名（与教务系统一致更好）",
     "添加授课老师",
@@ -105,16 +136,40 @@ async function onAddTeacher() {
       inputErrorMessage: "1-40 个字",
     }
   ).catch(() => ({ value: null as any }));
-  if (!value) return;
-  await courseApi.addTeacher(Number(route.params.id), value.trim());
-  ElMessage.success("已添加");
-  await reload();
+  const name = String(value || "").trim();
+  if (!name) return;
+  addingTeacher.value = true;
+  try {
+    await courseApi.addTeacher(Number(route.params.id), name);
+    ElMessage.success("已添加");
+    await reload();
+  } finally {
+    addingTeacher.value = false;
+  }
+}
+
+function normalizeCourseDetailError(error: unknown) {
+  const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
+  if (status === 404) return "课程不存在或已被删除";
+  if (status && status < 500) {
+    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "课程详情加载失败";
+  }
+  return "课程详情加载失败，请稍后再试";
 }
 </script>
 
 <style scoped>
 .course-detail { display: flex; flex-direction: column; gap: 16px; }
 .cpu-card { background: #fff; border-radius: 12px; padding: 20px 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
+.detail-error,
+.loading-state {
+  min-height: 180px;
+}
+.loading-state {
+  display: grid;
+  place-items: center;
+  color: #6b7280;
+}
 
 .head {
   display: flex;
@@ -166,6 +221,11 @@ async function onAddTeacher() {
 }
 .rating-item:last-child { border-bottom: none; }
 .rating-item:hover { background: #f9fafb; border-radius: 8px; }
+.rating-item:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
 
 .r-bars {
   display: grid;

@@ -32,6 +32,20 @@ export function renderMarkdown(md: string): string {
   return normalizeRenderedMarkup(sanitized);
 }
 
+export function normalizeSafeBlankTargets(html: string) {
+  if (!html || typeof document === "undefined") return html;
+  const container = document.createElement("div");
+  container.innerHTML = html;
+  container.querySelectorAll<HTMLAnchorElement>("a[target]").forEach((anchor) => {
+    if (anchor.getAttribute("target")?.toLowerCase() !== "_blank") return;
+    const relTokens = new Set((anchor.getAttribute("rel") || "").split(/\s+/).filter(Boolean));
+    relTokens.add("noopener");
+    relTokens.add("noreferrer");
+    anchor.setAttribute("rel", Array.from(relTokens).join(" "));
+  });
+  return container.innerHTML;
+}
+
 /** 从 Markdown 提取纯文本摘要 */
 export function mdSummary(md: string, max = 80): string {
   const text = md
@@ -63,5 +77,5 @@ function normalizeRenderedMarkup(html: string) {
     }
     element.removeAttribute("align");
   });
-  return container.innerHTML;
+  return normalizeSafeBlankTargets(container.innerHTML);
 }

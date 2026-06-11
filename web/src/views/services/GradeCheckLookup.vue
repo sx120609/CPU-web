@@ -6,7 +6,11 @@
         <span>成绩表核对</span>
       </button>
 
-      <template v-if="lookup">
+      <el-empty v-if="loadError && !loading" :description="loadError">
+        <el-button type="primary" :loading="loading" @click="load">重新查询</el-button>
+      </el-empty>
+
+      <template v-else-if="lookup">
         <header class="lookup-head">
           <div class="head-copy">
             <span>成绩核对单</span>
@@ -59,6 +63,7 @@
                     :maxlength="field.maxLength || 300"
                     :placeholder="field.placeholder"
                     clearable
+                    :disabled="feedbackSubmitting"
                   />
                   <el-input
                     v-else-if="field.type === 'textarea'"
@@ -68,25 +73,38 @@
                     :maxlength="field.maxLength || 2000"
                     show-word-limit
                     :placeholder="field.placeholder"
+                    :disabled="feedbackSubmitting"
                   />
-                  <el-radio-group v-else-if="field.type === 'single'" v-model="feedbackAnswers[field.id] as string" class="option-list">
+                  <el-radio-group v-else-if="field.type === 'single'" v-model="feedbackAnswers[field.id] as string" class="option-list" :disabled="feedbackSubmitting">
                     <el-radio v-for="option in field.options || []" :key="option" :label="option">{{ option }}</el-radio>
                   </el-radio-group>
-                  <el-checkbox-group v-else-if="field.type === 'multiple'" :model-value="multiValue(field.id)" class="option-list" @change="setMulti(field.id, $event)">
+                  <el-checkbox-group v-else-if="field.type === 'multiple'" :model-value="multiValue(field.id)" class="option-list" :disabled="feedbackSubmitting" @change="setMulti(field.id, $event)">
                     <el-checkbox v-for="option in field.options || []" :key="option" :label="option">{{ option }}</el-checkbox>
                   </el-checkbox-group>
                 </el-form-item>
                 <div class="feedback-actions">
-                  <el-button type="primary" native-type="submit" :loading="feedbackSubmitting">提交反馈</el-button>
+                  <el-button type="primary" native-type="submit" :loading="feedbackSubmitting" :disabled="feedbackSubmitting">提交反馈</el-button>
                 </div>
               </el-form>
             </div>
-            <div v-else class="feedback-loading">正在准备反馈问卷...</div>
+            <div v-else-if="feedbackLoading" class="feedback-loading">正在准备反馈问卷...</div>
+            <div v-else class="feedback-state" :class="{ error: Boolean(feedbackError) }">
+              <span>{{ feedbackError || feedbackEmptyText }}</span>
+              <el-button
+                v-if="feedbackError"
+                plain
+                size="small"
+                :loading="feedbackLoading"
+                @click="loadFeedbackQuestionnaire"
+              >
+                重试
+              </el-button>
+            </div>
           </section>
         </template>
 
         <el-empty v-else description="未找到与你学号匹配的信息">
-          <el-button plain @click="load">重新查询</el-button>
+          <el-button plain :loading="loading" @click="load">重新查询</el-button>
         </el-empty>
       </template>
 
@@ -108,6 +126,10 @@ import { toolsApi, type GradeCheckLookup, type Questionnaire } from "@/api/tools
 const route = useRoute();
 const router = useRouter();
 const loading = ref(false);
+const loadError = ref("");
+const feedbackLoading = ref(false);
+const feedbackError = ref("");
+const feedbackEmptyText = ref("");
 const feedbackSubmitting = ref(false);
 const lookup = ref<GradeCheckLookup | null>(null);
 const feedbackQuestionnaire = ref<Questionnaire | null>(null);
@@ -117,9 +139,13 @@ onMounted(load);
 
 async function load() {
   loading.value = true;
+  loadError.value = "";
+  lookup.value = null;
   try {
-    lookup.value = await toolsApi.gradeCheck(String(route.params.slug));
+    lookup.value = await toolsApi.gradeCheck(String(route.params.slug), { suppressErrorMessage: true });
     await loadFeedbackQuestionnaire();
+  } catch (error) {
+    loadError.value = normalizeLookupError(error);
   } finally {
     loading.value = false;
   }
@@ -127,15 +153,54 @@ async function load() {
 
 async function loadFeedbackQuestionnaire() {
   feedbackQuestionnaire.value = null;
+  feedbackError.value = "";
+  feedbackEmptyText.value = "";
   Object.keys(feedbackAnswers).forEach((key) => delete feedbackAnswers[key]);
   const slug = lookup.value?.feedbackQuestionnaireSlug || lookup.value?.table.feedbackQuestionnaireSlug;
-  if (!slug) return;
-  feedbackQuestionnaire.value = await toolsApi.questionnaire(slug);
-  for (const field of feedbackQuestionnaire.value.fields ?? []) {
-    if (field.type === "multiple") feedbackAnswers[field.id] = [];
-    else if (field.id === "student_id") feedbackAnswers[field.id] = lookup.value?.studentId ?? "";
-    else feedbackAnswers[field.id] = "";
+  if (!slug) {
+    feedbackEmptyText.value = "当前核对单未配置反馈问卷";
+    return;
   }
+  feedbackLoading.value = true;
+  try {
+    feedbackQuestionnaire.value = await toolsApi.questionnaire(slug, { suppressErrorMessage: true });
+    for (const field of feedbackQuestionnaire.value.fields ?? []) {
+      if (field.type === "multiple") feedbackAnswers[field.id] = [];
+      else if (field.id === "student_id") feedbackAnswers[field.id] = lookup.value?.studentId ?? "";
+      else feedbackAnswers[field.id] = "";
+    }
+  } catch (error) {
+    feedbackError.value = normalizeFeedbackError(error);
+  } finally {
+    feedbackLoading.value = false;
+  }
+}
+
+function requestStatus(error: unknown) {
+  return typeof error === "object" && error !== null
+    ? (error as { response?: { status?: number } }).response?.status
+    : undefined;
+}
+
+function requestMessage(error: unknown) {
+  if (typeof error !== "object" || error === null) return "";
+  const responseMessage = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+  if (typeof responseMessage === "string") return responseMessage;
+  return error instanceof Error ? error.message : "";
+}
+
+function normalizeLookupError(error: unknown) {
+  const status = requestStatus(error);
+  if (status === 401) return "请先登录后再查看成绩核对单";
+  if (status === 403) return "你没有权限查看这张成绩核对单";
+  if (status === 404) return "查询表不存在或暂未开放";
+  return requestMessage(error) || "成绩核对单加载失败，请稍后重试";
+}
+
+function normalizeFeedbackError(error: unknown) {
+  const status = requestStatus(error);
+  if (status === 404) return "反馈问卷不存在或暂未开放";
+  return requestMessage(error) || "反馈问卷加载失败，请稍后重试";
 }
 
 function multiValue(fieldId: string) {
@@ -156,6 +221,7 @@ function openManage() {
 }
 
 async function submitFeedback() {
+  if (feedbackSubmitting.value) return;
   if (!feedbackQuestionnaire.value) return;
   if (!getToken()) {
     ElMessage.warning("请先登录后再提交反馈");
@@ -196,7 +262,7 @@ async function submitFeedback() {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  min-height: calc(100vh - 150px);
+  min-height: calc(100dvh - 150px);
   padding: 18px 0 34px;
   background:
     linear-gradient(180deg, #f5f8fc 0%, #ffffff 45%),
@@ -405,6 +471,18 @@ async function submitFeedback() {
   color: #64748b;
   font-size: 13px;
 }
+.feedback-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px;
+  color: #64748b;
+  font-size: 13px;
+}
+.feedback-state.error {
+  color: #dc2626;
+}
 .manage-link {
   width: 100%;
   margin: 0;
@@ -454,11 +532,16 @@ async function submitFeedback() {
     width: 100%;
     min-height: 42px;
   }
+  .feedback-state {
+    align-items: stretch;
+    flex-direction: column;
+  }
   .option-list {
     display: grid;
     grid-template-columns: 1fr;
     gap: 8px;
   }
+  .option-list :deep(.el-radio),
   .option-list :deep(.el-checkbox) {
     min-height: 40px;
     margin-right: 0;

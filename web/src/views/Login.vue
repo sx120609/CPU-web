@@ -32,20 +32,30 @@
         @keyup.enter="onSubmit"
       >
         <el-form-item prop="username">
-          <el-input v-model="form.username" placeholder="学号 / 工号">
+          <el-input v-model="form.username" placeholder="学号 / 工号" :disabled="auth.ssoLoading || captchaRefreshing">
             <template #prefix><el-icon><User /></el-icon></template>
           </el-input>
         </el-form-item>
         <el-form-item prop="password">
-          <el-input v-model="form.password" type="password" show-password placeholder="密码">
+          <el-input v-model="form.password" type="password" show-password placeholder="密码" :disabled="auth.ssoLoading || captchaRefreshing">
             <template #prefix><el-icon><Lock /></el-icon></template>
           </el-input>
         </el-form-item>
         <el-form-item v-if="auth.ssoNeedCaptcha" prop="captcha">
           <div class="vcode-row">
-            <el-input v-model="form.captcha" placeholder="看图输入验证码" maxlength="8" style="flex:1" />
-            <img v-if="auth.ssoCaptchaImage" :src="auth.ssoCaptchaImage" alt="captcha" class="vcode-img" loading="lazy" decoding="async" fetchpriority="low" @click="reloadCaptcha" />
-            <el-button text @click="reloadCaptcha"><el-icon><Refresh /></el-icon></el-button>
+            <el-input v-model="form.captcha" placeholder="看图输入验证码" maxlength="8" style="flex:1" :disabled="auth.ssoLoading || captchaRefreshing" />
+            <button
+              v-if="auth.ssoCaptchaImage"
+              type="button"
+              class="vcode-img-button"
+              :disabled="auth.ssoLoading || captchaRefreshing"
+              aria-label="刷新验证码"
+              title="刷新验证码"
+              @click="reloadCaptcha"
+            >
+              <img :src="auth.ssoCaptchaImage" alt="captcha" class="vcode-img" loading="lazy" decoding="async" fetchpriority="low" />
+            </button>
+            <el-button text :loading="captchaRefreshing" :disabled="auth.ssoLoading" @click="reloadCaptcha"><el-icon><Refresh /></el-icon></el-button>
           </div>
         </el-form-item>
         <el-form-item v-if="auth.ssoError">
@@ -55,7 +65,7 @@
           <el-checkbox v-model="remember">记住登录信息（仅保存在当前设备）</el-checkbox>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" class="btn-submit" :loading="auth.ssoLoading" @click="onSubmit">
+          <el-button type="primary" class="btn-submit" :loading="auth.ssoLoading" :disabled="captchaRefreshing" @click="onSubmit">
             登 录
           </el-button>
         </el-form-item>
@@ -70,15 +80,15 @@
           适用于暂时无法使用统一认证的账号，例如新生、毕业生或站务账号。
         </div>
         <el-form size="default" class="dev-form" @keyup.enter="onDevSubmit">
-          <el-input v-model="dev.username" placeholder="用户名" />
-          <el-input v-model="dev.password" type="password" show-password placeholder="密码" />
-          <el-button :loading="dev.loading" @click="onDevSubmit">登录</el-button>
+          <el-input v-model="dev.username" placeholder="用户名" :disabled="dev.loading" />
+          <el-input v-model="dev.password" type="password" show-password placeholder="密码" :disabled="dev.loading" />
+          <el-button :loading="dev.loading" :disabled="dev.loading" @click="onDevSubmit">登录</el-button>
         </el-form>
         <div v-if="isDev" class="dev-accounts">
-          <span @click="fillDev('alice', '123456')">alice / 123456</span>
-          <span @click="fillDev('bob', '123456')">bob / 123456</span>
-          <span @click="fillDev('carol', '123456')">carol / 123456</span>
-          <span @click="fillDev('admin', 'admin123')">admin / admin123</span>
+          <button type="button" @click="fillDev('alice', '123456')">alice / 123456</button>
+          <button type="button" @click="fillDev('bob', '123456')">bob / 123456</button>
+          <button type="button" @click="fillDev('carol', '123456')">carol / 123456</button>
+          <button type="button" @click="fillDev('admin', 'admin123')">admin / admin123</button>
         </div>
       </details>
 
@@ -99,6 +109,7 @@ import { User, Lock, Refresh, ArrowLeft } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { loadCreds, hasCreds } from "@/utils/credCrypto";
+import { resolveSafeRedirect } from "@/utils/redirect";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 
 const router = useRouter();
@@ -108,6 +119,7 @@ const site = useSiteStore();
 const formRef = ref<FormInstance>();
 const remember = ref(true);
 const isDev = computed(() => import.meta.env.DEV);
+const captchaRefreshing = ref(false);
 
 const form = reactive({ username: "", password: "", captcha: "" });
 const rules: FormRules = {
@@ -159,20 +171,20 @@ onMounted(async () => {
 });
 
 async function reloadCaptcha() {
+  if (auth.ssoLoading || captchaRefreshing.value) return;
+  captchaRefreshing.value = true;
   try {
     await auth.ssoBegin();
   } catch {
     auth.ssoError = "统一认证暂时不可用，请稍后再试";
+  } finally {
+    captchaRefreshing.value = false;
   }
   form.captcha = "";
 }
 
 function redirectTarget() {
-  const redirect = route.query.redirect;
-  if (typeof redirect === "string" && redirect.startsWith("/") && !redirect.startsWith("//")) {
-    return redirect;
-  }
-  return "/home";
+  return resolveSafeRedirect(route.query.redirect);
 }
 
 function goHome() {
@@ -180,6 +192,7 @@ function goHome() {
 }
 
 async function onSubmit() {
+  if (auth.ssoLoading || captchaRefreshing.value) return;
   try { await formRef.value?.validate(); } catch { return; }
   if (auth.ssoNeedCaptcha && !form.captcha) {
     ElMessage.warning("请输入验证码");
@@ -201,6 +214,7 @@ function fillDev(u: string, p: string) {
 }
 
 async function onDevSubmit() {
+  if (dev.loading) return;
   if (!dev.username || !dev.password) {
     ElMessage.warning("请填写账号和密码");
     return;
@@ -218,6 +232,7 @@ async function onDevSubmit() {
 <style scoped lang="scss">
 .auth-wrap {
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   background: linear-gradient(135deg, #f4f6f8, #e0f2ef);
@@ -280,11 +295,34 @@ async function onDevSubmit() {
 .btn-submit { width: 100%; letter-spacing: 4px; }
 
 .vcode-row { display: flex; gap: 8px; align-items: center; }
+.vcode-img-button {
+  height: 38px;
+  min-width: 112px;
+  border: 1px solid #e5e7eb;
+  border-radius: 5px;
+  background: #fff;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+  overflow: hidden;
+}
+
 .vcode-img {
   height: 36px;
-  border-radius: 4px;
-  cursor: pointer;
-  border: 1px solid #e5e7eb;
+  max-width: 112px;
+  object-fit: contain;
+  display: block;
+}
+
+.vcode-img-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.vcode-img-button:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
 }
 
 .dev-fallback {
@@ -310,7 +348,21 @@ async function onDevSubmit() {
   flex-wrap: wrap;
   margin-top: 6px;
 }
-.dev-accounts span { cursor: pointer; text-decoration: underline; }
+.dev-accounts button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--cpu-primary);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.dev-accounts button:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 
 .alt-actions {
   display: flex;

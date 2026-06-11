@@ -254,5 +254,19 @@ export const useAuthStore = defineStore("auth", {
       // 真正想擦凭据请去 /jwxt 点"忘记账号"。
       try { sessionStorage.setItem("cpu-just-logged-out", "1"); } catch { /* ignore */ }
     },
+
+    expireSession() {
+      clearToken();
+      this.token = "";
+      this.user = null;
+      this.dataAuthAgreed = false;
+      this.ready = true;
+      this._pendingFetchMe = null;
+      this._pendingIdentityDetection = null;
+      this.academicIdentityDetecting = false;
+      clearJwxtToken();
+      clearJwxtDataCaches();
+      this.clearAcademicIdentity();
+    },
   },
 });

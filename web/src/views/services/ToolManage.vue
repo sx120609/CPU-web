@@ -92,8 +92,8 @@
               </div>
             </div>
             <div class="add-manager">
-              <el-input v-model="managerUsername" placeholder="输入用户名" clearable @keyup.enter="addManager" />
-              <el-button type="primary" :loading="managerSaving" @click="addManager">添加</el-button>
+              <el-input v-model="managerUsername" placeholder="输入用户名" clearable :disabled="managerSaving || managerRemovingId !== null" @keyup.enter="addManager" />
+              <el-button type="primary" :loading="managerSaving" :disabled="managerSaving || managerRemovingId !== null || !managerUsername.trim()" @click="addManager">添加</el-button>
             </div>
             <div class="manager-list">
               <div v-for="manager in managers" :key="manager.id" class="manager-row">
@@ -101,7 +101,7 @@
                   <b>{{ manager.user.nickname || manager.user.username }}</b>
                   <span>{{ manager.user.username }}</span>
                 </div>
-                <el-button text type="danger" @click="removeManager(manager.user.id)">移除</el-button>
+                <el-button text type="danger" :loading="managerRemovingId === manager.user.id" :disabled="managerSaving || managerRemovingId !== null" @click="removeManager(manager.user.id)">移除</el-button>
               </div>
               <el-empty v-if="!managers.length" description="暂无单独分配的管理器" />
             </div>
@@ -175,8 +175,8 @@
               </div>
             </div>
             <div class="add-manager">
-              <el-input v-model="managerUsername" placeholder="输入用户名" clearable @keyup.enter="addManager" />
-              <el-button type="primary" :loading="managerSaving" @click="addManager">添加</el-button>
+              <el-input v-model="managerUsername" placeholder="输入用户名" clearable :disabled="managerSaving || managerRemovingId !== null" @keyup.enter="addManager" />
+              <el-button type="primary" :loading="managerSaving" :disabled="managerSaving || managerRemovingId !== null || !managerUsername.trim()" @click="addManager">添加</el-button>
             </div>
             <div class="manager-list">
               <div v-for="manager in managers" :key="manager.id" class="manager-row">
@@ -184,7 +184,7 @@
                   <b>{{ manager.user.nickname || manager.user.username }}</b>
                   <span>{{ manager.user.username }}</span>
                 </div>
-                <el-button text type="danger" @click="removeManager(manager.user.id)">移除</el-button>
+                <el-button text type="danger" :loading="managerRemovingId === manager.user.id" :disabled="managerSaving || managerRemovingId !== null" @click="removeManager(manager.user.id)">移除</el-button>
               </div>
               <el-empty v-if="!managers.length" description="暂无单独分配的管理器" />
             </div>
@@ -239,20 +239,20 @@
                   </div>
                 </div>
                 <div class="q-row-actions">
-                  <el-button v-if="!row.isSystem" size="small" @click="openEdit(row)">
+                  <el-button v-if="!row.isSystem" size="small" :disabled="isQuestionnaireBusy(row)" @click="openEdit(row)">
                     <el-icon><Edit /></el-icon>
                     编辑
                   </el-button>
-                  <el-button size="small" @click="openPreview(row)">
+                  <el-button size="small" :disabled="isQuestionnaireBusy(row)" @click="openPreview(row)">
                     <el-icon><View /></el-icon>
                     预览
                   </el-button>
-                  <el-button size="small" @click="openResponses(row)">
+                  <el-button size="small" :loading="isQuestionnaireBusy(row)" :disabled="isQuestionnaireBusy(row)" @click="openResponses(row)">
                     <el-icon><DataAnalysis /></el-icon>
                     结果
                   </el-button>
                   <el-dropdown trigger="click" @command="handleQuestionnaireCommand($event, row)">
-                    <el-button size="small">
+                    <el-button size="small" :loading="isQuestionnaireBusy(row)" :disabled="isQuestionnaireBusy(row)">
                       更多<el-icon><ArrowDown /></el-icon>
                     </el-button>
                     <template #dropdown>
@@ -261,14 +261,14 @@
                           <el-icon><Link /></el-icon>
                           复制链接
                         </el-dropdown-item>
-                        <el-dropdown-item v-if="!row.isSystem" command="duplicate">
+                        <el-dropdown-item v-if="!row.isSystem" command="duplicate" :disabled="isQuestionnaireBusy(row)">
                           <el-icon><CopyDocument /></el-icon>
                           复制问卷
                         </el-dropdown-item>
-                        <el-dropdown-item v-if="!row.isSystem" command="open" divided>开放</el-dropdown-item>
-                        <el-dropdown-item v-if="!row.isSystem" command="close">关闭</el-dropdown-item>
-                        <el-dropdown-item v-if="!row.isSystem" command="draft">设为草稿</el-dropdown-item>
-                        <el-dropdown-item v-if="!row.isSystem" command="delete" divided>
+                        <el-dropdown-item v-if="!row.isSystem" command="open" divided :disabled="isQuestionnaireBusy(row)">开放</el-dropdown-item>
+                        <el-dropdown-item v-if="!row.isSystem" command="close" :disabled="isQuestionnaireBusy(row)">关闭</el-dropdown-item>
+                        <el-dropdown-item v-if="!row.isSystem" command="draft" :disabled="isQuestionnaireBusy(row)">设为草稿</el-dropdown-item>
+                        <el-dropdown-item v-if="!row.isSystem" command="delete" divided :disabled="isQuestionnaireBusy(row)">
                           <el-icon><Delete /></el-icon>
                           删除
                         </el-dropdown-item>
@@ -314,7 +314,7 @@
                   <b>任务模板</b>
                   <span>{{ selectedFileTemplate?.description || "选择模板后可一键套用字段、文件规则和命名规则。" }}</span>
                 </div>
-                <el-select v-model="fileCollectTemplateKey" placeholder="选择模板">
+                <el-select v-model="fileCollectTemplateKey" placeholder="选择模板" :disabled="fileCollectTemplateSaving">
                   <el-option-group label="内置模板">
                     <el-option
                       v-for="item in builtInFileCollectTemplates"
@@ -332,12 +332,14 @@
                     />
                   </el-option-group>
                 </el-select>
-                <el-button plain @click="applySelectedFileTemplate">套用</el-button>
-                <el-button plain :loading="fileCollectTemplateSaving" @click="saveCurrentFileTemplate">保存为模板</el-button>
+                <el-button plain :disabled="fileCollectTemplateSaving" @click="applySelectedFileTemplate">套用</el-button>
+                <el-button plain :loading="fileCollectTemplateSaving" :disabled="fileCollectTemplateSaving" @click="saveCurrentFileTemplate">保存为模板</el-button>
                 <el-button
                   v-if="selectedFileTemplate?.customId"
                   text
                   type="danger"
+                  :loading="fileCollectTemplateSaving"
+                  :disabled="fileCollectTemplateSaving"
                   @click="deleteSelectedFileTemplate"
                 >
                   删除模板
@@ -518,7 +520,7 @@
                   <b>命名变量</b>
                   <span>字段变量支持完整值、前几位、后几位；文件名还可用 {original} 和 {index}。</span>
                 </div>
-                <el-button type="primary" :loading="fileCollectSaving" @click="createFileCollection">
+                <el-button type="primary" :loading="fileCollectSaving" :disabled="fileCollectSaving" @click="createFileCollection">
                   <el-icon><Plus /></el-icon>
                   创建收集任务
                 </el-button>
@@ -544,34 +546,34 @@
                   </div>
                 </div>
                 <div class="file-collection-actions">
-                  <el-button class="file-primary-action" type="primary" @click="openFileSubmissions(row)">
+                  <el-button class="file-primary-action" type="primary" :loading="isFileCollectBusy(row)" :disabled="isFileCollectBusy(row)" @click="openFileSubmissions(row)">
                     <el-icon><DataAnalysis /></el-icon>
                     提交记录
                   </el-button>
                   <div class="file-secondary-actions">
-                    <button type="button" class="file-tool-action" @click="copyFileCollectLink(row)">
+                    <button type="button" class="file-tool-action" :disabled="isFileCollectBusy(row)" @click="copyFileCollectLink(row)">
                       <el-icon><Link /></el-icon>
                       <span>链接</span>
                     </button>
-                    <button type="button" class="file-tool-action" @click="openFileManager(row)">
+                    <button type="button" class="file-tool-action" :disabled="isFileCollectBusy(row)" @click="openFileManager(row)">
                       <el-icon><View /></el-icon>
                       <span>文件</span>
                     </button>
-                    <button type="button" class="file-tool-action" :disabled="zipDownloading" @click="downloadFileCollectionZip(row)">
+                    <button type="button" class="file-tool-action" :disabled="zipDownloading || isFileCollectBusy(row)" @click="downloadFileCollectionZip(row)">
                       <el-icon><Download /></el-icon>
                       <span>{{ zipDownloading ? "打包中" : "ZIP" }}</span>
                     </button>
                   </div>
                   <el-dropdown trigger="click" class="file-more-dropdown" @command="handleFileCollectCommand($event, row)">
-                    <button type="button" class="file-menu-action">
+                    <button type="button" class="file-menu-action" :disabled="isFileCollectBusy(row)">
                       更多<el-icon><ArrowDown /></el-icon>
                     </button>
                     <template #dropdown>
                       <el-dropdown-menu>
-                        <el-dropdown-item command="open">开放</el-dropdown-item>
-                        <el-dropdown-item command="close">关闭</el-dropdown-item>
-                        <el-dropdown-item command="draft">设为草稿</el-dropdown-item>
-                        <el-dropdown-item command="delete" divided>
+                        <el-dropdown-item command="open" :disabled="isFileCollectBusy(row)">开放</el-dropdown-item>
+                        <el-dropdown-item command="close" :disabled="isFileCollectBusy(row)">关闭</el-dropdown-item>
+                        <el-dropdown-item command="draft" :disabled="isFileCollectBusy(row)">设为草稿</el-dropdown-item>
+                        <el-dropdown-item command="delete" divided :disabled="isFileCollectBusy(row)">
                           <el-icon><Delete /></el-icon>
                           删除
                         </el-dropdown-item>
@@ -665,7 +667,7 @@
                     <b>{{ gradeFileName || "已读取表格" }}</b>
                     <span>{{ gradeForm.rows.length }} 行 · {{ gradeForm.columns.length }} 个字段</span>
                   </div>
-                  <el-button type="primary" :loading="gradeSaving" @click="createGradeCheck">
+                  <el-button type="primary" :loading="gradeSaving" :disabled="gradeSaving" @click="createGradeCheck">
                     <el-icon><Plus /></el-icon>
                     创建查询表
                   </el-button>
@@ -717,20 +719,20 @@
                   </div>
                 </div>
                 <div class="q-row-actions">
-                  <el-button size="small" @click="copyGradeLink(row)">
+                  <el-button size="small" :disabled="isGradeCheckBusy(row)" @click="copyGradeLink(row)">
                     <el-icon><Link /></el-icon>
                     复制链接
                   </el-button>
                   <el-dropdown trigger="click" @command="handleGradeCommand($event, row)">
-                    <el-button size="small">
+                    <el-button size="small" :loading="isGradeCheckBusy(row)" :disabled="isGradeCheckBusy(row)">
                       更多<el-icon><ArrowDown /></el-icon>
                     </el-button>
                     <template #dropdown>
                       <el-dropdown-menu>
-                        <el-dropdown-item command="open">开放</el-dropdown-item>
-                        <el-dropdown-item command="close">关闭</el-dropdown-item>
-                        <el-dropdown-item command="draft">设为草稿</el-dropdown-item>
-                        <el-dropdown-item command="delete" divided>
+                        <el-dropdown-item command="open" :disabled="isGradeCheckBusy(row)">开放</el-dropdown-item>
+                        <el-dropdown-item command="close" :disabled="isGradeCheckBusy(row)">关闭</el-dropdown-item>
+                        <el-dropdown-item command="draft" :disabled="isGradeCheckBusy(row)">设为草稿</el-dropdown-item>
+                        <el-dropdown-item command="delete" divided :disabled="isGradeCheckBusy(row)">
                           <el-icon><Delete /></el-icon>
                           删除
                         </el-dropdown-item>
@@ -793,8 +795,8 @@
               </div>
             </div>
             <div class="add-manager">
-              <el-input v-model="managerUsername" placeholder="输入用户名" clearable @keyup.enter="addManager" />
-              <el-button type="primary" :loading="managerSaving" @click="addManager">添加</el-button>
+              <el-input v-model="managerUsername" placeholder="输入用户名" clearable :disabled="managerSaving || managerRemovingId !== null" @keyup.enter="addManager" />
+              <el-button type="primary" :loading="managerSaving" :disabled="managerSaving || managerRemovingId !== null || !managerUsername.trim()" @click="addManager">添加</el-button>
             </div>
             <div class="manager-list">
               <div v-for="manager in managers" :key="manager.id" class="manager-row">
@@ -802,7 +804,7 @@
                   <b>{{ manager.user.nickname || manager.user.username }}</b>
                   <span>{{ manager.user.username }}</span>
                 </div>
-                <el-button text type="danger" @click="removeManager(manager.user.id)">移除</el-button>
+                <el-button text type="danger" :loading="managerRemovingId === manager.user.id" :disabled="managerSaving || managerRemovingId !== null" @click="removeManager(manager.user.id)">移除</el-button>
               </div>
               <el-empty v-if="!managers.length" description="暂无单独分配的管理器" />
             </div>
@@ -835,9 +837,9 @@
               <el-icon><View /></el-icon>
               预览
             </el-button>
-            <el-button :loading="saving" @click="submitEditor('draft')">保存草稿</el-button>
-            <el-button type="primary" plain :loading="saving" @click="submitEditor()">保存</el-button>
-            <el-button type="primary" :loading="saving" @click="submitEditor('open')">保存并开放</el-button>
+            <el-button :loading="saving" :disabled="saving" @click="submitEditor('draft')">保存草稿</el-button>
+            <el-button type="primary" plain :loading="saving" :disabled="saving" @click="submitEditor()">保存</el-button>
+            <el-button type="primary" :loading="saving" :disabled="saving" @click="submitEditor('open')">保存并开放</el-button>
           </div>
         </div>
       </template>
@@ -991,7 +993,7 @@
       </div>
     </el-dialog>
 
-    <el-drawer v-model="previewOpen" title="问卷预览" size="min(760px, 92vw)">
+    <el-drawer v-model="previewOpen" title="问卷预览" size="min(760px, 92dvw)">
       <div class="preview-shell">
         <div class="preview-head">
           <h2>{{ previewQuestionnaire.title || "未命名问卷" }}</h2>
@@ -1027,7 +1029,7 @@
       </div>
     </el-drawer>
 
-    <el-dialog v-model="responsesOpen" width="min(920px, 96vw)" class="responsive-tool-dialog">
+    <el-dialog v-model="responsesOpen" width="min(920px, 96dvw)" class="responsive-tool-dialog">
       <template #header>
         <div class="responses-title">
           <div>
@@ -1106,7 +1108,7 @@
       </el-tabs>
     </el-dialog>
 
-    <el-dialog v-model="fileSubmissionsOpen" width="min(920px, 96vw)" class="responsive-tool-dialog">
+    <el-dialog v-model="fileSubmissionsOpen" width="min(920px, 96dvw)" class="responsive-tool-dialog">
       <template #header>
         <div class="responses-title">
           <div>
@@ -1126,7 +1128,7 @@
               <b>{{ item.identity || `提交 #${item.id}` }}</b>
               <span>{{ fmtDate(item.createdAt) }} · {{ item.files.length }} 个文件</span>
             </div>
-            <el-button text type="danger" @click="deleteFileSubmission(item.id)">删除</el-button>
+            <el-button text type="danger" :loading="fileSubmissionDeletingId === item.id" :disabled="fileSubmissionDeletingId === item.id" @click="deleteFileSubmission(item.id)">删除</el-button>
           </div>
           <div class="answer-list">
             <div v-for="field in fileSubmissionTask?.fields || []" :key="field.id" class="answer-row">
@@ -1146,14 +1148,14 @@
       </div>
     </el-dialog>
 
-    <el-dialog v-model="fileManagerOpen" width="min(980px, 96vw)" class="responsive-tool-dialog file-manager-dialog">
+    <el-dialog v-model="fileManagerOpen" width="min(980px, 96dvw)" class="responsive-tool-dialog file-manager-dialog">
       <template #header>
         <div class="responses-title">
           <div>
             <b>{{ fileManagerTask?.title || "文件管理" }}</b>
             <span>{{ fileManagerFiles.length }} 个文件</span>
           </div>
-          <el-button v-if="fileManagerTask" size="small" plain :loading="zipDownloading" @click="downloadFileCollectionZip(fileManagerTask)">
+          <el-button v-if="fileManagerTask" size="small" plain :loading="zipDownloading" :disabled="zipDownloading" @click="downloadFileCollectionZip(fileManagerTask)">
             <el-icon><Download /></el-icon>
             下载 ZIP
           </el-button>
@@ -1170,15 +1172,15 @@
             <small>{{ item.submission.identity || `提交 #${item.submission.id}` }} · {{ fmtDate(item.submission.createdAt) }} · {{ formatBytes(item.size) }}</small>
           </div>
           <div class="file-manager-actions">
-            <button type="button" @click="previewFileCollectFile(item.id, item.storedName)">
+            <button type="button" :disabled="fileDeletingId === item.id" @click="previewFileCollectFile(item.id, item.storedName)">
               <el-icon><View /></el-icon>
               预览
             </button>
-            <button type="button" @click="downloadFileCollectFile(item.id, item.storedName)">
+            <button type="button" :disabled="fileDeletingId === item.id" @click="downloadFileCollectFile(item.id, item.storedName)">
               <el-icon><Download /></el-icon>
               下载
             </button>
-            <button type="button" @click="deleteFileCollectFile(item.id)">
+            <button type="button" :disabled="fileDeletingId === item.id" @click="deleteFileCollectFile(item.id)">
               <el-icon><Delete /></el-icon>
               删除
             </button>
@@ -1193,7 +1195,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import * as XLSX from "xlsx";
 import { ElMessage, ElMessageBox } from "element-plus";
 import type { UploadFile } from "element-plus";
 import {
@@ -1344,26 +1345,33 @@ const manageableCodes = ref<ServiceToolCode[]>([]);
 const adminCodes = ref<ServiceToolCode[]>([]);
 const activeTool = ref<ServiceToolCode>("questionnaire");
 const questionnaires = ref<Questionnaire[]>([]);
+const questionnaireBusyId = ref<number | null>(null);
 const managers = ref<ToolManager[]>([]);
 const managerUsername = ref("");
 const managerSaving = ref(false);
+const managerRemovingId = ref<number | null>(null);
 const settingSaving = ref(false);
 const gradeChecks = ref<GradeCheckTable[]>([]);
+const gradeCheckBusyId = ref<number | null>(null);
 const gradeSaving = ref(false);
 const gradeFileName = ref("");
 const fileCollections = ref<FileCollectTask[]>([]);
+const fileCollectBusyId = ref<number | null>(null);
 const fileCollectTemplates = ref<FileCollectTemplate[]>([]);
 const fileCollectTemplateKey = ref("builtin:student");
 const fileCollectSaving = ref(false);
 const fileCollectTemplateSaving = ref(false);
 const fileSubmissionLoading = ref(false);
+const fileSubmissionDeletingId = ref<number | null>(null);
 const fileSubmissionsOpen = ref(false);
 const fileSubmissionTask = ref<FileCollectTask | null>(null);
 const fileSubmissions = ref<FileCollectSubmission[]>([]);
 const fileManagerOpen = ref(false);
 const fileManagerTask = ref<FileCollectTask | null>(null);
 const fileManagerSubmissions = ref<FileCollectSubmission[]>([]);
+const fileDeletingId = ref<number | null>(null);
 const fileManagerKeyword = ref("");
+let xlsxModule: typeof import("xlsx") | null = null;
 const zipDownloading = ref(false);
 const fileCollectForm = reactive({
   title: "",
@@ -1744,6 +1752,7 @@ function moveField(index: number, delta: number) {
 }
 
 async function submitEditor(statusOverride?: QuestionnaireStatus) {
+  if (saving.value) return;
   if (statusOverride) form.status = statusOverride;
   const fields = buildFields();
   if (!validateEditor(fields)) return;
@@ -1832,38 +1841,60 @@ function validateEditor(fields: QuestionnaireField[]) {
   return true;
 }
 
+function isQuestionnaireBusy(row: Questionnaire) {
+  return questionnaireBusyId.value === row.id;
+}
+
+async function runQuestionnaireAction(row: Questionnaire, action: () => Promise<void>) {
+  if (questionnaireBusyId.value !== null) return;
+  questionnaireBusyId.value = row.id;
+  try {
+    await action();
+  } finally {
+    questionnaireBusyId.value = null;
+  }
+}
+
 async function handleQuestionnaireCommand(command: string | number | object, row: Questionnaire) {
   const action = String(command);
   if (action === "link") return copyLink(row);
   if (action === "duplicate") return duplicateQuestionnaire(row);
+  if (questionnaireBusyId.value !== null) return;
   if (action === "delete") {
-    const ok = await ElMessageBox.confirm(`删除问卷“${row.title}”？答卷也会一起删除。`, "确认删除", { type: "warning" })
-      .then(() => true).catch(() => false);
-    if (!ok) return;
-    await toolsApi.deleteQuestionnaire(row.id);
-    ElMessage.success("已删除");
+    await runQuestionnaireAction(row, async () => {
+      const ok = await ElMessageBox.confirm(`删除问卷“${row.title}”？答卷也会一起删除。`, "确认删除", { type: "warning" })
+        .then(() => true).catch(() => false);
+      if (!ok) return;
+      await toolsApi.deleteQuestionnaire(row.id);
+      ElMessage.success("已删除");
+      await reloadActive();
+    });
   } else {
-    const status = action === "open" ? "open" : action === "close" ? "closed" : "draft";
-    await toolsApi.updateQuestionnaire(row.id, { status });
-    ElMessage.success("状态已更新");
+    await runQuestionnaireAction(row, async () => {
+      const status = action === "open" ? "open" : action === "close" ? "closed" : "draft";
+      await toolsApi.updateQuestionnaire(row.id, { status });
+      ElMessage.success("状态已更新");
+      await reloadActive();
+    });
   }
-  await reloadActive();
 }
 
 async function duplicateQuestionnaire(row: Questionnaire) {
-  const source = row.fields ? row : await toolsApi.questionnaire(row.slug);
-  await toolsApi.createQuestionnaire({
-    toolCode: "questionnaire",
-    title: `${source.title} 副本`,
-    description: source.description ?? undefined,
-    status: "draft",
-    visibility: source.visibility,
-    allowAnonymous: source.allowAnonymous,
-    oneResponsePerUser: source.oneResponsePerUser,
-    fields: (source.fields ?? []).map((field) => ({ ...field, id: makeFieldId() })),
+  await runQuestionnaireAction(row, async () => {
+    const source = row.fields ? row : await toolsApi.questionnaire(row.slug);
+    await toolsApi.createQuestionnaire({
+      toolCode: "questionnaire",
+      title: `${source.title} 副本`,
+      description: source.description ?? undefined,
+      status: "draft",
+      visibility: source.visibility,
+      allowAnonymous: source.allowAnonymous,
+      oneResponsePerUser: source.oneResponsePerUser,
+      fields: (source.fields ?? []).map((field) => ({ ...field, id: makeFieldId() })),
+    });
+    ElMessage.success("已复制为草稿");
+    await reloadActive();
   });
-  ElMessage.success("已复制为草稿");
-  await reloadActive();
 }
 
 function openPreview(row?: Questionnaire) {
@@ -1899,6 +1930,7 @@ async function handleGradeExcelFile(uploadFile: UploadFile) {
   const file = uploadFile.raw;
   if (!file) return;
   try {
+    const XLSX = await loadXlsx();
     const buffer = await file.arrayBuffer();
     const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
     const sheetName = workbook.SheetNames[0];
@@ -1957,6 +1989,7 @@ async function handleGradeExcelFile(uploadFile: UploadFile) {
 }
 
 async function createGradeCheck() {
+  if (gradeSaving.value) return;
   if (!gradeForm.title.trim()) {
     ElMessage.warning("请填写查询表标题");
     return;
@@ -1983,20 +2016,40 @@ async function createGradeCheck() {
   }
 }
 
+function isGradeCheckBusy(row: GradeCheckTable) {
+  return gradeCheckBusyId.value === row.id;
+}
+
+async function runGradeCheckAction(row: GradeCheckTable, action: () => Promise<void>) {
+  if (gradeCheckBusyId.value !== null) return;
+  gradeCheckBusyId.value = row.id;
+  try {
+    await action();
+  } finally {
+    gradeCheckBusyId.value = null;
+  }
+}
+
 async function handleGradeCommand(command: string | number | object, row: GradeCheckTable) {
   const action = String(command);
+  if (gradeCheckBusyId.value !== null) return;
   if (action === "delete") {
-    const ok = await ElMessageBox.confirm(`删除查询表“${row.title}”？`, "确认删除", { type: "warning" })
-      .then(() => true).catch(() => false);
-    if (!ok) return;
-    await toolsApi.deleteGradeCheck(row.id);
-    ElMessage.success("已删除");
+    await runGradeCheckAction(row, async () => {
+      const ok = await ElMessageBox.confirm(`删除查询表“${row.title}”？`, "确认删除", { type: "warning" })
+        .then(() => true).catch(() => false);
+      if (!ok) return;
+      await toolsApi.deleteGradeCheck(row.id);
+      ElMessage.success("已删除");
+      await reloadActive();
+    });
   } else {
-    const status = action === "open" ? "open" : action === "close" ? "closed" : "draft";
-    await toolsApi.updateGradeCheck(row.id, { status });
-    ElMessage.success("状态已更新");
+    await runGradeCheckAction(row, async () => {
+      const status = action === "open" ? "open" : action === "close" ? "closed" : "draft";
+      await toolsApi.updateGradeCheck(row.id, { status });
+      ElMessage.success("状态已更新");
+      await reloadActive();
+    });
   }
-  await reloadActive();
 }
 
 function copyGradeLink(row: GradeCheckTable) {
@@ -2091,20 +2144,21 @@ function clampSliceCount(value: number) {
 }
 
 async function saveCurrentFileTemplate() {
-  const fields = normalizeFileCollectFields();
-  if (!fields.length || fields.some((field) => !field.id || !field.label)) {
-    ElMessage.warning("请先完善填写字段");
-    return;
-  }
-  const name = await ElMessageBox.prompt("给这个模板起个名字", "保存模板", {
-    inputValue: fileCollectForm.title.trim() || "我的文件收集模板",
-    inputPattern: /^.{1,60}$/,
-    inputErrorMessage: "模板名称需在 1-60 个字符内",
-  }).then((result) => result.value.trim()).catch(() => "");
-  if (!name) return;
-
+  if (fileCollectTemplateSaving.value) return;
   fileCollectTemplateSaving.value = true;
   try {
+    const fields = normalizeFileCollectFields();
+    if (!fields.length || fields.some((field) => !field.id || !field.label)) {
+      ElMessage.warning("请先完善填写字段");
+      return;
+    }
+    const name = await ElMessageBox.prompt("给这个模板起个名字", "保存模板", {
+      inputValue: fileCollectForm.title.trim() || "我的文件收集模板",
+      inputPattern: /^.{1,60}$/,
+      inputErrorMessage: "模板名称需在 1-60 个字符内",
+    }).then((result) => result.value.trim()).catch(() => "");
+    if (!name) return;
+
     const created = await toolsApi.createFileCollectionTemplate({
       name,
       description: fileCollectForm.description.trim() || undefined,
@@ -2129,14 +2183,19 @@ async function saveCurrentFileTemplate() {
 
 async function deleteSelectedFileTemplate() {
   const template = selectedFileTemplate.value;
-  if (!template?.customId) return;
-  const ok = await ElMessageBox.confirm(`删除模板“${template.name}”？`, "确认删除", { type: "warning" })
-    .then(() => true).catch(() => false);
-  if (!ok) return;
-  await toolsApi.deleteFileCollectionTemplate(template.customId);
-  fileCollectTemplates.value = fileCollectTemplates.value.filter((item) => item.id !== template.customId);
-  fileCollectTemplateKey.value = "builtin:student";
-  ElMessage.success("模板已删除");
+  if (!template?.customId || fileCollectTemplateSaving.value) return;
+  fileCollectTemplateSaving.value = true;
+  try {
+    const ok = await ElMessageBox.confirm(`删除模板“${template.name}”？`, "确认删除", { type: "warning" })
+      .then(() => true).catch(() => false);
+    if (!ok) return;
+    await toolsApi.deleteFileCollectionTemplate(template.customId);
+    fileCollectTemplates.value = fileCollectTemplates.value.filter((item) => item.id !== template.customId);
+    fileCollectTemplateKey.value = "builtin:student";
+    ElMessage.success("模板已删除");
+  } finally {
+    fileCollectTemplateSaving.value = false;
+  }
 }
 
 function addFileCollectField() {
@@ -2191,6 +2250,7 @@ function validateFileCollectForm() {
 }
 
 async function createFileCollection() {
+  if (fileCollectSaving.value) return;
   if (!validateFileCollectForm()) return;
   fileCollectSaving.value = true;
   try {
@@ -2232,21 +2292,42 @@ function copyFileCollectLink(row: FileCollectTask) {
 
 async function handleFileCollectCommand(command: string | number | object, row: FileCollectTask) {
   const action = String(command);
+  if (fileCollectBusyId.value !== null) return;
   if (action === "delete") {
-    const ok = await ElMessageBox.confirm(`删除收集任务“${row.title}”？提交记录和文件也会一起删除。`, "确认删除", { type: "warning" })
-      .then(() => true).catch(() => false);
-    if (!ok) return;
-    await toolsApi.deleteFileCollection(row.id);
-    ElMessage.success("已删除");
+    await runFileCollectAction(row, async () => {
+      const ok = await ElMessageBox.confirm(`删除收集任务“${row.title}”？提交记录和文件也会一起删除。`, "确认删除", { type: "warning" })
+        .then(() => true).catch(() => false);
+      if (!ok) return;
+      await toolsApi.deleteFileCollection(row.id);
+      ElMessage.success("已删除");
+      await reloadActive();
+    });
   } else {
-    const status = action === "open" ? "open" : action === "close" ? "closed" : "draft";
-    await toolsApi.updateFileCollection(row.id, { status });
-    ElMessage.success("状态已更新");
+    await runFileCollectAction(row, async () => {
+      const status = action === "open" ? "open" : action === "close" ? "closed" : "draft";
+      await toolsApi.updateFileCollection(row.id, { status });
+      ElMessage.success("状态已更新");
+      await reloadActive();
+    });
   }
-  await reloadActive();
+}
+
+function isFileCollectBusy(row: FileCollectTask) {
+  return fileCollectBusyId.value === row.id;
+}
+
+async function runFileCollectAction(row: FileCollectTask, action: () => Promise<void>) {
+  if (fileCollectBusyId.value !== null) return;
+  fileCollectBusyId.value = row.id;
+  try {
+    await action();
+  } finally {
+    fileCollectBusyId.value = null;
+  }
 }
 
 async function openFileSubmissions(row: FileCollectTask) {
+  if (fileSubmissionLoading.value) return;
   fileSubmissionsOpen.value = true;
   fileSubmissionLoading.value = true;
   try {
@@ -2263,16 +2344,23 @@ async function loadFileCollectionSubmissions(id: number) {
 }
 
 async function deleteFileSubmission(id: number) {
-  const ok = await ElMessageBox.confirm("删除这条提交记录及其文件？", "确认删除", { type: "warning" })
-    .then(() => true).catch(() => false);
-  if (!ok) return;
-  await toolsApi.deleteFileCollectionSubmission(id);
-  fileSubmissions.value = fileSubmissions.value.filter((item) => item.id !== id);
-  ElMessage.success("已删除");
-  await reloadActive();
+  if (fileSubmissionDeletingId.value !== null) return;
+  fileSubmissionDeletingId.value = id;
+  try {
+    const ok = await ElMessageBox.confirm("删除这条提交记录及其文件？", "确认删除", { type: "warning" })
+      .then(() => true).catch(() => false);
+    if (!ok) return;
+    await toolsApi.deleteFileCollectionSubmission(id);
+    fileSubmissions.value = fileSubmissions.value.filter((item) => item.id !== id);
+    ElMessage.success("已删除");
+    await reloadActive();
+  } finally {
+    fileSubmissionDeletingId.value = null;
+  }
 }
 
 async function openFileManager(row: FileCollectTask) {
+  if (fileSubmissionLoading.value) return;
   fileManagerOpen.value = true;
   fileSubmissionLoading.value = true;
   try {
@@ -2286,20 +2374,26 @@ async function openFileManager(row: FileCollectTask) {
 }
 
 async function deleteFileCollectFile(id: number) {
-  const ok = await ElMessageBox.confirm("删除这个文件？提交记录会保留，但该文件无法恢复。", "确认删除", { type: "warning" })
-    .then(() => true).catch(() => false);
-  if (!ok) return;
-  await toolsApi.deleteFileCollectionFile(id);
-  fileManagerSubmissions.value = fileManagerSubmissions.value.map((submission) => ({
-    ...submission,
-    files: submission.files.filter((file) => file.id !== id),
-  }));
-  fileSubmissions.value = fileSubmissions.value.map((submission) => ({
-    ...submission,
-    files: submission.files.filter((file) => file.id !== id),
-  }));
-  ElMessage.success("文件已删除");
-  await reloadActive();
+  if (fileDeletingId.value !== null) return;
+  fileDeletingId.value = id;
+  try {
+    const ok = await ElMessageBox.confirm("删除这个文件？提交记录会保留，但该文件无法恢复。", "确认删除", { type: "warning" })
+      .then(() => true).catch(() => false);
+    if (!ok) return;
+    await toolsApi.deleteFileCollectionFile(id);
+    fileManagerSubmissions.value = fileManagerSubmissions.value.map((submission) => ({
+      ...submission,
+      files: submission.files.filter((file) => file.id !== id),
+    }));
+    fileSubmissions.value = fileSubmissions.value.map((submission) => ({
+      ...submission,
+      files: submission.files.filter((file) => file.id !== id),
+    }));
+    ElMessage.success("文件已删除");
+    await reloadActive();
+  } finally {
+    fileDeletingId.value = null;
+  }
 }
 
 async function fetchFileCollectBlob(id: number, action: "download" | "preview") {
@@ -2311,19 +2405,22 @@ async function fetchFileCollectBlob(id: number, action: "download" | "preview") 
 }
 
 async function downloadFileCollectFile(id: number, filename: string) {
+  if (fileDeletingId.value === id) return;
   const blob = await fetchFileCollectBlob(id, "download");
   saveBlob(blob, filename);
 }
 
 async function previewFileCollectFile(id: number, filename: string) {
+  if (fileDeletingId.value === id) return;
   const blob = await fetchFileCollectBlob(id, "preview");
   const url = URL.createObjectURL(blob);
-  const opened = window.open(url, "_blank", "noopener");
+  const opened = window.open(url, "_blank", "noopener,noreferrer");
   if (!opened) ElMessage.info(filename);
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 async function downloadFileCollectionZip(row: FileCollectTask) {
+  if (zipDownloading.value) return;
   zipDownloading.value = true;
   try {
     const data = await loadFileCollectionSubmissions(row.id);
@@ -2516,7 +2613,8 @@ function resetGradeForm() {
   gradeForm.rows = [];
 }
 
-function downloadGradeTemplate() {
+async function downloadGradeTemplate() {
+  const XLSX = await loadXlsx();
   const dataRows = [
     { 学号: "20260001", 姓名: "张三", 课程: "药理学", 平时成绩: "88", 期末成绩: "91", 总评成绩: "90", 备注: "请核对姓名和成绩" },
     { 学号: "20260002", 姓名: "李四", 课程: "药理学", 平时成绩: "84", 期末成绩: "86", 总评成绩: "85", 备注: "" },
@@ -2541,6 +2639,11 @@ function downloadGradeTemplate() {
   XLSX.writeFile(workbook, "成绩表核对示例.xlsx");
 }
 
+async function loadXlsx() {
+  if (!xlsxModule) xlsxModule = await import("xlsx");
+  return xlsxModule;
+}
+
 function findDuplicateStudentId(rows: Array<Record<string, string>>, column: string) {
   const seen = new Set<string>();
   for (const row of rows) {
@@ -2553,6 +2656,7 @@ function findDuplicateStudentId(rows: Array<Record<string, string>>, column: str
 }
 
 async function addManager() {
+  if (managerSaving.value || managerRemovingId.value !== null) return;
   const username = managerUsername.value.trim();
   if (!username) {
     ElMessage.warning("请输入用户名");
@@ -2570,12 +2674,18 @@ async function addManager() {
 }
 
 async function removeManager(userId: number) {
-  const ok = await ElMessageBox.confirm("移除该用户的小工具管理权限？", "确认", { type: "warning" })
-    .then(() => true).catch(() => false);
-  if (!ok) return;
-  await toolsApi.removeManager(activeTool.value, userId);
-  ElMessage.success("已移除");
-  await reloadActive();
+  if (managerSaving.value || managerRemovingId.value !== null) return;
+  managerRemovingId.value = userId;
+  try {
+    const ok = await ElMessageBox.confirm("移除该用户的小工具管理权限？", "确认", { type: "warning" })
+      .then(() => true).catch(() => false);
+    if (!ok) return;
+    await toolsApi.removeManager(activeTool.value, userId);
+    ElMessage.success("已移除");
+    await reloadActive();
+  } finally {
+    managerRemovingId.value = null;
+  }
 }
 
 function buildFieldStat(field: QuestionnaireField): FieldStat {
@@ -2732,10 +2842,10 @@ function round(value: number) {
   --builder-primary-soft: #eef5ff;
   --builder-border: #e5eaf3;
   --builder-muted: #6b7280;
-  width: 100vw !important;
-  height: 100vh !important;
+  width: 100dvw !important;
+  height: 100dvh !important;
   max-height: none !important;
-  min-height: 100vh;
+  min-height: 100dvh;
   max-width: none;
   margin: 0 !important;
   padding: 0 !important;
@@ -2762,7 +2872,7 @@ function round(value: number) {
 }
 :global(.questionnaire-builder-dialog .el-dialog__body) {
   padding: 0;
-  height: calc(100vh - 64px);
+  height: calc(100dvh - 64px);
   overflow: hidden;
 }
 .builder-topbar {
@@ -3432,7 +3542,7 @@ function round(value: number) {
 }
 .advanced-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
   gap: 8px;
 }
 .advanced-grid :deep(.el-form-item) { margin-bottom: 0; }
@@ -3870,7 +3980,7 @@ function round(value: number) {
 .file-manager-list {
   display: grid;
   gap: 10px;
-  max-height: min(62vh, 620px);
+  max-height: min(62dvh, 620px);
   overflow: auto;
 }
 .file-manager-card {
@@ -3965,7 +4075,7 @@ function round(value: number) {
 }
 @media (max-width: 760px) {
   :global(.questionnaire-builder-dialog .el-dialog__body) {
-    height: calc(100vh - 116px);
+    height: calc(100dvh - 116px);
     overflow: auto;
   }
   .builder-topbar {
@@ -3996,14 +4106,14 @@ function round(value: number) {
 }
 @media (max-width: 700px) {
   :global(.responsive-tool-dialog.el-dialog) {
-    width: 96vw !important;
+    width: 96dvw !important;
     margin-top: 10px !important;
   }
   :global(.responsive-tool-dialog .el-dialog__header) {
     padding: 14px 14px 10px;
   }
   :global(.responsive-tool-dialog .el-dialog__body) {
-    max-height: calc(100vh - 112px);
+    max-height: calc(100dvh - 112px);
     overflow: auto;
     padding: 12px 14px 16px;
   }

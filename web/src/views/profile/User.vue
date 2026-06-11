@@ -38,7 +38,16 @@
     <div class="cpu-card">
       <h3 class="cpu-section-title">TA 发布的帖子（{{ topics.length }}）</h3>
       <el-empty v-if="!topics.length" description="还没有发过帖子" />
-      <div v-for="t in topics" :key="t.id" class="topic-line" @click="$router.push(`/forum/topic/${t.id}`)">
+      <div
+        v-for="t in topics"
+        :key="t.id"
+        class="topic-line"
+        role="button"
+        tabindex="0"
+        @click="openTopic(t.id)"
+        @keydown.enter.prevent="openTopic(t.id)"
+        @keydown.space.prevent="openTopic(t.id)"
+      >
         <span class="tag" :style="{ background: t.board?.color || '#168776' }">{{ t.board?.name }}</span>
         <span v-if="t.isAnonymous" class="anon-tag">匿名</span>
         <span class="title">{{ t.title }}</span>
@@ -90,6 +99,10 @@ function goBack() {
   }
   router.push("/forum");
 }
+
+function openTopic(id: number) {
+  router.push(`/forum/topic/${id}`);
+}
 </script>
 
 <style scoped>
@@ -130,6 +143,10 @@ function goBack() {
 }
 .topic-line:last-child { border-bottom: none; }
 .topic-line:hover { background: #f4f6f8; }
+.topic-line:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
+}
 .tag { color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
 .anon-tag { color: #7c3aed; font-size: 12px; font-weight: 600; }
 .title { font-size: 14px; flex: 1; min-width: 0; overflow-wrap: anywhere; }

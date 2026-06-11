@@ -23,7 +23,7 @@
           <div style="line-height:1.7">
             <p style="margin:0 0 6px"><b>公开注册已关闭。</b></p>
             <p style="margin:0">
-              药大学生请在 <a href="javascript:" @click.prevent="goLogin">登录页</a> 使用<b>学校统一认证</b>登录，首次登录会自动创建账号。<br>
+              药大学生请在 <button type="button" class="inline-link" @click="goLogin">登录页</button> 使用<b>学校统一认证</b>登录，首次登录会自动创建账号。<br>
               暂时无法使用统一认证的账号，可联系站务协助处理。
             </p>
           </div>
@@ -38,25 +38,25 @@
       <template v-else>
         <el-form ref="formRef" :model="form" :rules="rules" size="large" label-position="top" @keyup.enter="submit">
           <el-form-item label="用户名（登录用）" prop="username">
-            <el-input v-model="form.username" placeholder="3-20 位英文/数字/下划线" />
+            <el-input v-model="form.username" placeholder="3-20 位英文/数字/下划线" :disabled="loading" />
           </el-form-item>
           <el-form-item label="昵称（显示用）" prop="nickname">
-            <el-input v-model="form.nickname" placeholder="支持中文" maxlength="20" show-word-limit />
+            <el-input v-model="form.nickname" placeholder="支持中文" maxlength="20" show-word-limit :disabled="loading" />
           </el-form-item>
           <el-form-item label="密码" prop="password">
-            <el-input v-model="form.password" type="password" show-password placeholder="至少 6 位" />
+            <el-input v-model="form.password" type="password" show-password placeholder="至少 6 位" :disabled="loading" />
           </el-form-item>
           <el-form-item label="院系（选填）">
-            <el-input v-model="form.college" placeholder="例如 药学院" maxlength="40" />
+            <el-input v-model="form.college" placeholder="例如 药学院" maxlength="40" :disabled="loading" />
           </el-form-item>
           <el-form-item label="入学年份（选填）">
-            <el-input-number v-model="form.enrollYear" :min="2010" :max="2030" :step="1" style="width:100%" />
+            <el-input-number v-model="form.enrollYear" :min="2010" :max="2030" :step="1" style="width:100%" :disabled="loading" />
           </el-form-item>
           <el-form-item>
-            <el-checkbox v-model="agree">我已阅读并同意 <a href="javascript:" @click.prevent="showTerms = true">用户协议</a></el-checkbox>
+            <el-checkbox v-model="agree" :disabled="loading">我已阅读并同意 <button type="button" class="inline-link" @click.stop="showTerms = true">用户协议</button></el-checkbox>
           </el-form-item>
           <el-form-item>
-            <el-button type="primary" class="btn-submit" :loading="loading" :disabled="!agree" @click="submit">注 册</el-button>
+            <el-button type="primary" class="btn-submit" :loading="loading" :disabled="loading || !agree" @click="submit">注 册</el-button>
           </el-form-item>
         </el-form>
 
@@ -90,6 +90,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage, type FormInstance, type FormRules } from "element-plus";
 import { ArrowLeft } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
+import { resolveSafeRedirect } from "@/utils/redirect";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 
 const router = useRouter();
@@ -123,11 +124,7 @@ onMounted(() => {
 });
 
 function redirectTarget() {
-  const redirect = route.query.redirect;
-  if (typeof redirect === "string" && redirect.startsWith("/") && !redirect.startsWith("//")) {
-    return redirect;
-  }
-  return "/home";
+  return resolveSafeRedirect(route.query.redirect);
 }
 
 function goHome() {
@@ -139,6 +136,7 @@ function goLogin() {
 }
 
 async function submit() {
+  if (loading.value) return;
   try { await formRef.value?.validate(); } catch { return; }
   if (!agree.value) { ElMessage.warning("请先同意用户协议"); return; }
   loading.value = true;
@@ -160,6 +158,7 @@ async function submit() {
 <style scoped lang="scss">
 .auth-wrap {
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   background: linear-gradient(135deg, #f4f6f8, #e0f2ef);
@@ -212,6 +211,21 @@ async function submit() {
 .brand p { margin: 2px 0 0; font-size: 12px; color: #6b7280; }
 
 .btn-submit { width: 100%; letter-spacing: 4px; }
+
+.inline-link {
+  border: 0;
+  background: transparent;
+  color: var(--el-color-primary);
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  vertical-align: baseline;
+}
+
+.inline-link:hover,
+.inline-link:focus-visible {
+  text-decoration: underline;
+}
 
 .alt {
   text-align: center;

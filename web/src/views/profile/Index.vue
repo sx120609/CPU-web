@@ -3,8 +3,8 @@
     <div class="cpu-card profile-card">
       <UserAvatar :size="80" class="avatar" :src="user?.avatar" :name="user?.nickname" alt="用户头像" />
       <div class="avatar-actions">
-        <el-button size="small" plain :loading="avatarSaving" @click="pickAvatar">上传头像</el-button>
-        <el-button v-if="user?.avatar" size="small" text :loading="avatarSaving" @click="removeAvatar">移除头像</el-button>
+        <el-button size="small" plain :loading="avatarSaving" :disabled="avatarSaving" @click="pickAvatar">上传头像</el-button>
+        <el-button v-if="user?.avatar" size="small" text :loading="avatarSaving" :disabled="avatarSaving" @click="removeAvatar">移除头像</el-button>
       </div>
       <h3 class="name">
         {{ user?.nickname }}
@@ -25,9 +25,9 @@
         <li v-if="(user?.sponsorAmount ?? 0) > 0"><span>赞助</span><span class="sponsor-total">¥{{ formatMoney(user?.sponsorAmount) }}</span></li>
       </ul>
       <div class="profile-actions">
-        <el-button type="primary" plain @click="editing = true">编辑资料</el-button>
-        <el-button v-if="!user?.studentSso" plain @click="passwordDialog = true">修改密码</el-button>
-        <el-button type="danger" plain @click="onLogout">退出登录</el-button>
+        <el-button type="primary" plain :disabled="saving || logoutBusy" @click="editing = true">编辑资料</el-button>
+        <el-button v-if="!user?.studentSso" plain :disabled="savingPw || logoutBusy" @click="passwordDialog = true">修改密码</el-button>
+        <el-button type="danger" plain :loading="logoutBusy" :disabled="logoutBusy" @click="onLogout">退出登录</el-button>
       </div>
     </div>
 
@@ -48,23 +48,24 @@
               <div class="amount-grid">
                 <button
                   v-for="amount in sponsorOptions.amounts"
-                :key="amount"
-                type="button"
-                :class="{ active: sponsorAmount === String(amount) }"
-                @click="sponsorAmount = String(amount)"
-              >
+                  :key="amount"
+                  type="button"
+                  :class="{ active: sponsorAmount === String(amount) }"
+                  :disabled="sponsorSubmitting"
+                  @click="sponsorAmount = String(amount)"
+                >
                   ¥{{ amount }}
                 </button>
               </div>
 
               <div class="sponsor-pay-row">
-                <el-input v-model="sponsorAmount" placeholder="自定义金额" maxlength="8" class="sponsor-money-input">
+                <el-input v-model="sponsorAmount" placeholder="自定义金额" maxlength="8" class="sponsor-money-input" :disabled="sponsorSubmitting">
                   <template #prepend>¥</template>
                 </el-input>
-                <el-select v-model="sponsorPayType" class="sponsor-pay-select">
+                <el-select v-model="sponsorPayType" class="sponsor-pay-select" :disabled="sponsorSubmitting">
                   <el-option v-for="item in enabledPayTypes" :key="item.value" :label="item.label" :value="item.value" />
                 </el-select>
-                <el-button class="sponsor-submit-btn" type="primary" :loading="sponsorSubmitting" @click="openSponsorConfirm">去支付</el-button>
+                <el-button class="sponsor-submit-btn" type="primary" :loading="sponsorSubmitting" :disabled="sponsorSubmitting" @click="openSponsorConfirm">去支付</el-button>
               </div>
             </div>
             <el-alert v-else type="info" :closable="false" show-icon title="赞助支付暂不可用，请稍后再试。" />
@@ -93,6 +94,9 @@
       width="420px"
       class="sponsor-confirm-dialog"
       append-to-body
+      :close-on-click-modal="!sponsorSubmitting"
+      :close-on-press-escape="!sponsorSubmitting"
+      :show-close="!sponsorSubmitting"
     >
       <div class="sponsor-confirm">
         <div class="sponsor-confirm-summary">
@@ -113,6 +117,7 @@
               :class="{ active: sponsorDisplayMode === item.value }"
               role="radio"
               :aria-checked="sponsorDisplayMode === item.value"
+              :disabled="sponsorSubmitting"
               @click="sponsorDisplayMode = item.value"
             >
               {{ item.label }}
@@ -125,11 +130,12 @@
           maxlength="80"
           show-word-limit
           placeholder="给本站留一句话（选填）"
+          :disabled="sponsorSubmitting"
         />
       </div>
       <template #footer>
-        <el-button @click="sponsorConfirmOpen = false">取消</el-button>
-        <el-button type="primary" :loading="sponsorSubmitting" @click="submitSponsor">确认并支付</el-button>
+        <el-button :disabled="sponsorSubmitting" @click="sponsorConfirmOpen = false">取消</el-button>
+        <el-button type="primary" :loading="sponsorSubmitting" :disabled="sponsorSubmitting" @click="submitSponsor">确认并支付</el-button>
       </template>
     </el-dialog>
 
@@ -297,13 +303,14 @@
           <el-button type="primary" plain @click="openQqBotGuide">
             {{ qqBotProfile.binding ? "查看绑定流程" : "绑定 / 使用指南" }}
           </el-button>
-          <el-button v-if="!qqBotProfile.binding" type="primary" :loading="qqBotLoading" @click="refreshQqBotToken">
+          <el-button v-if="!qqBotProfile.binding" type="primary" :loading="qqBotLoading" :disabled="qqBotLoading" @click="refreshQqBotToken">
             {{ qqBotProfile.activeBindToken ? "重新生成绑定码" : "生成绑定码" }}
           </el-button>
           <el-button
             v-if="qqBotProfile.activeBindToken"
             plain
             :loading="qqBotLoading"
+            :disabled="qqBotLoading"
             @click="copyQqBotCommand"
           >
             复制绑定指令
@@ -313,11 +320,12 @@
             type="danger"
             plain
             :loading="qqBotLoading"
+            :disabled="qqBotLoading"
             @click="unbindQqBot"
           >
             解绑 QQ
           </el-button>
-          <el-button plain :loading="qqBotLoading" @click="refreshQqBotProfile">刷新状态</el-button>
+          <el-button plain :loading="qqBotLoading" :disabled="qqBotLoading" @click="refreshQqBotProfile">刷新状态</el-button>
         </div>
       </div>
 
@@ -347,7 +355,16 @@
     <div class="cpu-card">
       <h3 class="cpu-section-title">我发布的帖子</h3>
       <el-empty v-if="!myTopics.length" description="还没有发过帖子" />
-      <div v-for="t in myTopics" :key="t.id" class="topic-line" @click="$router.push(`/forum/topic/${t.id}`)">
+      <div
+        v-for="t in myTopics"
+        :key="t.id"
+        class="topic-line"
+        role="button"
+        tabindex="0"
+        @click="openMyTopic(t.id)"
+        @keydown.enter.prevent="openMyTopic(t.id)"
+        @keydown.space.prevent="openMyTopic(t.id)"
+      >
         <span class="tag" :style="{ background: t.board?.color || '#168776' }">{{ t.board?.name }}</span>
         <span v-if="t.isAnonymous" class="anon-tag">匿名</span>
         <span class="title">{{ t.title }}</span>
@@ -355,42 +372,42 @@
       </div>
     </div>
 
-    <el-dialog v-model="editing" title="编辑资料" width="420">
+    <el-dialog v-model="editing" title="编辑资料" width="420" :close-on-click-modal="!saving" :close-on-press-escape="!saving" :show-close="!saving">
       <el-form label-position="top" :model="editForm">
         <el-form-item label="昵称">
-          <el-input v-model="editForm.nickname" maxlength="20" show-word-limit />
+          <el-input v-model="editForm.nickname" maxlength="20" show-word-limit :disabled="saving" />
         </el-form-item>
         <el-form-item label="一句话签名">
-          <el-input v-model="editForm.bio" type="textarea" :rows="3" maxlength="120" show-word-limit />
+          <el-input v-model="editForm.bio" type="textarea" :rows="3" maxlength="120" show-word-limit :disabled="saving" />
         </el-form-item>
         <el-form-item label="院系">
-          <el-input v-model="editForm.college" maxlength="40" />
+          <el-input v-model="editForm.college" maxlength="40" :disabled="saving" />
         </el-form-item>
         <el-form-item label="入学年份">
-          <el-input-number v-model="editForm.enrollYear" :min="2010" :max="2030" style="width:100%" />
+          <el-input-number v-model="editForm.enrollYear" :min="2010" :max="2030" style="width:100%" :disabled="saving" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="editing = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="saveEdit">保存</el-button>
+        <el-button :disabled="saving" @click="editing = false">取消</el-button>
+        <el-button type="primary" :loading="saving" :disabled="saving" @click="saveEdit">保存</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="passwordDialog" title="修改密码" width="420" :close-on-click-modal="false">
+    <el-dialog v-model="passwordDialog" title="修改密码" width="420" :close-on-click-modal="false" :close-on-press-escape="!savingPw" :show-close="!savingPw">
       <el-form label-position="top" :model="pwForm" @keyup.enter="savePassword">
         <el-form-item label="原密码" required>
-          <el-input v-model="pwForm.oldPassword" type="password" show-password autocomplete="current-password" />
+          <el-input v-model="pwForm.oldPassword" type="password" show-password autocomplete="current-password" :disabled="savingPw" />
         </el-form-item>
         <el-form-item label="新密码（至少 6 位）" required>
-          <el-input v-model="pwForm.newPassword" type="password" show-password autocomplete="new-password" maxlength="64" />
+          <el-input v-model="pwForm.newPassword" type="password" show-password autocomplete="new-password" maxlength="64" :disabled="savingPw" />
         </el-form-item>
         <el-form-item label="再次输入新密码" required>
-          <el-input v-model="pwForm.confirm" type="password" show-password autocomplete="new-password" maxlength="64" />
+          <el-input v-model="pwForm.confirm" type="password" show-password autocomplete="new-password" maxlength="64" :disabled="savingPw" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="passwordDialog = false">取消</el-button>
-        <el-button type="primary" :loading="savingPw" @click="savePassword">保存</el-button>
+        <el-button :disabled="savingPw" @click="passwordDialog = false">取消</el-button>
+        <el-button type="primary" :loading="savingPw" :disabled="savingPw" @click="savePassword">保存</el-button>
       </template>
     </el-dialog>
 
@@ -434,7 +451,7 @@
               <div class="qqbot-step-title">站内生成绑定码</div>
               <p>{{ qqBotProfile?.binding ? "当前已经绑定。如需更换 QQ，请先解绑后再生成新绑定码。" : "绑定码有效期 10 分钟，过期后可以重新生成。" }}</p>
               <div class="qqbot-step-actions">
-                <el-button v-if="!qqBotProfile?.binding" type="primary" :loading="qqBotLoading" @click="refreshQqBotToken">
+                <el-button v-if="!qqBotProfile?.binding" type="primary" :loading="qqBotLoading" :disabled="qqBotLoading" @click="refreshQqBotToken">
                   {{ qqBotProfile?.activeBindToken ? "重新生成绑定码" : "生成绑定码" }}
                 </el-button>
                 <span v-if="qqBotProfile?.activeBindToken" class="qqbot-step-hint">
@@ -451,7 +468,7 @@
               <p>先在 QQ 里添加上面的机器人账号，再私聊发送下面这条命令。绑定码不要发到群里。</p>
               <div class="qqbot-code-box">
                 <code>{{ qqBotBindCommandText }}</code>
-                <el-button plain size="small" :disabled="!qqBotProfile?.activeBindToken" :loading="qqBotLoading" @click="copyQqBotCommand">
+                <el-button plain size="small" :disabled="qqBotLoading || !qqBotProfile?.activeBindToken" :loading="qqBotLoading" @click="copyQqBotCommand">
                   复制命令
                 </el-button>
               </div>
@@ -491,6 +508,7 @@
       class="hidden-file-input"
       type="file"
       accept="image/*"
+      :disabled="avatarSaving"
       @change="onAvatarChange"
     />
   </div>
@@ -521,6 +539,7 @@ const myTopics = ref<any[]>([]);
 const boards = ref<Board[]>([]);
 const editing = ref(false);
 const saving = ref(false);
+const logoutBusy = ref(false);
 const avatarSaving = ref(false);
 const avatarInputRef = ref<HTMLInputElement | null>(null);
 const qqBotProfile = ref<QqBotProfile | null>(null);
@@ -547,6 +566,7 @@ const sponsorOptions = reactive<SponsorOptions>({
   wallEnabled: true,
   allowMessage: true,
 });
+let qqBotProfileSeq = 0;
 
 const editForm = reactive({ nickname: "", bio: "", college: "", enrollYear: undefined as any });
 
@@ -649,9 +669,20 @@ watch(editing, (v) => {
 });
 
 async function saveEdit() {
+  if (saving.value) return;
+  const nickname = editForm.nickname.trim();
+  if (!nickname) {
+    ElMessage.warning("昵称不能为空");
+    return;
+  }
   saving.value = true;
   try {
-    const u = await authApi.updateMe(editForm as any);
+    const u = await authApi.updateMe({
+      ...editForm,
+      nickname,
+      bio: editForm.bio.trim(),
+      college: editForm.college.trim(),
+    } as any);
     auth.user = u;
     ElMessage.success("已保存");
     editing.value = false;
@@ -709,18 +740,28 @@ function validateSponsorAmount() {
 }
 
 function openSponsorConfirm() {
+  if (sponsorSubmitting.value) return;
   if (!validateSponsorAmount()) return;
+  if (!enabledPayTypes.value.length) {
+    ElMessage.warning("当前没有可用支付方式");
+    return;
+  }
   sponsorConfirmOpen.value = true;
 }
 
 async function submitSponsor() {
+  if (sponsorSubmitting.value) return;
   if (!validateSponsorAmount()) return;
+  if (!enabledPayTypes.value.length) {
+    ElMessage.warning("当前没有可用支付方式");
+    return;
+  }
   sponsorSubmitting.value = true;
   try {
     const result = await paymentsApi.createSponsorOrderWithOptions({
       amount: sponsorAmount.value,
       payType: sponsorPayType.value,
-      message: sponsorMessage.value,
+      message: sponsorMessage.value.trim(),
       displayMode: sponsorDisplayMode.value,
     });
     sponsorConfirmOpen.value = false;
@@ -754,6 +795,7 @@ async function pollSponsorReturn(outTradeNo: string) {
 }
 
 async function savePassword() {
+  if (savingPw.value) return;
   if (pwForm.newPassword.length < 6) { ElMessage.warning("新密码至少 6 位"); return; }
   if (pwForm.newPassword !== pwForm.confirm) { ElMessage.warning("两次输入的新密码不一致"); return; }
   if (pwForm.newPassword === pwForm.oldPassword) { ElMessage.warning("新密码不能与原密码相同"); return; }
@@ -766,9 +808,18 @@ async function savePassword() {
 }
 
 async function onLogout() {
-  await ElMessageBox.confirm("确认退出登录？", "提示");
-  await auth.logout();
-  router.push("/login");
+  if (logoutBusy.value) return;
+  const confirmed = await ElMessageBox.confirm("确认退出登录？", "提示")
+    .then(() => true)
+    .catch(() => false);
+  if (!confirmed) return;
+  logoutBusy.value = true;
+  try {
+    await auth.logout();
+    router.push("/login");
+  } finally {
+    logoutBusy.value = false;
+  }
 }
 
 async function copyUserGroup() {
@@ -777,11 +828,13 @@ async function copyUserGroup() {
 }
 
 async function loadQqBotProfile(opts?: { silent?: boolean }) {
+  const seq = ++qqBotProfileSeq;
   if (!opts?.silent) qqBotLoading.value = true;
   try {
-    qqBotProfile.value = await authApi.qqBotProfile();
+    const profile = await authApi.qqBotProfile();
+    if (seq === qqBotProfileSeq) qqBotProfile.value = profile;
   } finally {
-    if (!opts?.silent) qqBotLoading.value = false;
+    if (!opts?.silent && seq === qqBotProfileSeq) qqBotLoading.value = false;
   }
 }
 
@@ -794,6 +847,7 @@ function openQqBotGuide() {
 }
 
 async function refreshQqBotToken() {
+  if (qqBotLoading.value) return;
   qqBotLoading.value = true;
   try {
     await authApi.createQqBotBindToken();
@@ -805,6 +859,7 @@ async function refreshQqBotToken() {
 }
 
 async function copyQqBotCommand() {
+  if (qqBotLoading.value) return;
   if (!qqBotProfile.value?.activeBindToken) {
     ElMessage.warning("请先生成绑定码");
     return;
@@ -824,7 +879,11 @@ async function copyQqBotAccount() {
 }
 
 async function unbindQqBot() {
-  await ElMessageBox.confirm("确认解绑当前 QQBot 绑定？解绑后将不能继续通过 QQ 投稿。", "解绑 QQBot", { type: "warning" });
+  if (qqBotLoading.value) return;
+  const confirmed = await ElMessageBox.confirm("确认解绑当前 QQBot 绑定？解绑后将不能继续通过 QQ 投稿。", "解绑 QQBot", { type: "warning" })
+    .then(() => true)
+    .catch(() => false);
+  if (!confirmed) return;
   qqBotLoading.value = true;
   try {
     await authApi.deleteQqBotBinding();
@@ -840,6 +899,7 @@ function joinUserGroup() {
 }
 
 function pickAvatar() {
+  if (avatarSaving.value) return;
   avatarInputRef.value?.click();
 }
 
@@ -847,6 +907,10 @@ async function onAvatarChange(event: Event) {
   const target = event.target as HTMLInputElement | null;
   const file = target?.files?.[0];
   if (!file) return;
+  if (avatarSaving.value) {
+    if (target) target.value = "";
+    return;
+  }
 
   avatarSaving.value = true;
   try {
@@ -868,6 +932,7 @@ async function onAvatarChange(event: Event) {
 }
 
 async function removeAvatar() {
+  if (avatarSaving.value) return;
   avatarSaving.value = true;
   try {
     await auth.updateProfile({ avatar: null });
@@ -875,6 +940,10 @@ async function removeAvatar() {
   } finally {
     avatarSaving.value = false;
   }
+}
+
+function openMyTopic(id: number) {
+  router.push(`/forum/topic/${id}`);
 }
 </script>
 
@@ -997,9 +1066,14 @@ async function removeAvatar() {
   cursor: pointer;
   transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
 }
-.amount-grid button:hover {
+.amount-grid button:not(:disabled):hover {
   border-color: #168776;
   color: #168776;
+}
+.amount-grid button:disabled,
+.sponsor-display-tabs button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
 }
 .amount-grid button.active {
   border-color: #168776;
@@ -1135,6 +1209,12 @@ async function removeAvatar() {
   z-index: 1;
   outline: 2px solid rgba(22, 135, 118, 0.35);
   outline-offset: -2px;
+}
+.sponsor-display-tabs button:disabled {
+  background: #f9fafb;
+}
+.sponsor-display-tabs button.active:disabled {
+  background: #168776;
 }
 
 .trust-card {
@@ -1610,6 +1690,11 @@ async function removeAvatar() {
 }
 .topic-line:last-child { border-bottom: none; }
 .topic-line:hover { background: #f4f6f8; }
+.topic-line:focus-visible {
+  outline: 2px solid rgba(22, 135, 118, 0.35);
+  outline-offset: 2px;
+  background: #f4f6f8;
+}
 .tag { color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
 .anon-tag { color: #7c3aed; font-size: 12px; font-weight: 600; }
 .title { font-size: 14px; flex: 1; min-width: 0; overflow-wrap: anywhere; }

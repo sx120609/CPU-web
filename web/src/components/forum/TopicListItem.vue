@@ -1,5 +1,12 @@
 <template>
-  <div class="topic-row" @click="openTopic">
+  <div
+    class="topic-row"
+    role="button"
+    tabindex="0"
+    @click="openTopic"
+    @keydown.enter.prevent="openTopic"
+    @keydown.space.prevent="openTopic"
+  >
     <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" alt="作者头像" />
     <div class="main">
       <div class="line1">
@@ -113,6 +120,10 @@ function openTopic() {
   transition: background 0.15s;
 }
 .topic-row:hover { background: #f4f6f8; }
+.topic-row:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
+}
 
 .avatar { background: var(--cpu-primary); color: #fff; font-weight: 600; flex-shrink: 0; }
 
@@ -121,7 +132,7 @@ function openTopic() {
 .line1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .tag { flex-shrink: 0; }
 .ai-tag { --el-tag-border-color: #fdba74; --el-tag-hover-color: #9a3412; }
-.title { font-size: 15px; color: #1f2937; font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+.title { flex: 1 1 240px; font-size: 15px; color: #1f2937; font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
 
 .line2 {
   display: flex;
@@ -153,13 +164,14 @@ function openTopic() {
 .line2 .dot { color: #d1d5db; }
 
 .price {
+  flex: 0 0 auto;
   font-size: 16px;
   font-weight: 700;
   color: #ef4444;
   white-space: nowrap;
   margin-left: 8px;
 }
-.rating { white-space: nowrap; }
+.rating { flex: 0 0 auto; white-space: nowrap; }
 
 @media (max-width: 640px) {
   .topic-row {

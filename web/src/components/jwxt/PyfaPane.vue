@@ -198,7 +198,7 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
 
 .sem-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
   gap: 10px;
   margin: 4px 0 8px;
 }

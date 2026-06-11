@@ -1,8 +1,8 @@
 <template>
   <div class="boards-pane">
     <div class="ctrl-bar">
-      <el-button type="primary" @click="openCreate">新增板块</el-button>
-      <el-button @click="reload">刷新</el-button>
+      <el-button type="primary" :disabled="saving || loading" @click="openCreate">新增板块</el-button>
+      <el-button :loading="loading" :disabled="loading" @click="reload">刷新</el-button>
     </div>
 
     <el-table :data="list" v-loading="loading" stripe class="admin-table">
@@ -31,13 +31,13 @@
       <el-table-column label="操作" width="108" fixed="right" align="center">
         <template #default="{ row }">
           <el-dropdown trigger="click" @command="handleBoardCommand($event, row)">
-            <el-button text size="small" class="action-trigger" :disabled="row.readOnly || row.feedSourceId">
+            <el-button text size="small" class="action-trigger" :loading="isBoardBusy(row)" :disabled="row.readOnly || row.feedSourceId || isBoardBusy(row)">
               操作<el-icon class="more-icon"><MoreFilled /></el-icon>
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="edit">编辑</el-dropdown-item>
-                <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
+                <el-dropdown-item command="edit" :disabled="isBoardBusy(row)">编辑</el-dropdown-item>
+                <el-dropdown-item command="delete" divided :disabled="isBoardBusy(row)">删除</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -62,13 +62,13 @@
         </div>
         <div class="board-actions">
           <el-dropdown trigger="click" @command="handleBoardCommand($event, row)">
-            <el-button plain size="small" class="mobile-action-trigger" :disabled="row.readOnly || row.feedSourceId">
+            <el-button plain size="small" class="mobile-action-trigger" :loading="isBoardBusy(row)" :disabled="row.readOnly || row.feedSourceId || isBoardBusy(row)">
               操作<el-icon class="more-icon"><MoreFilled /></el-icon>
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="edit">编辑</el-dropdown-item>
-                <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
+                <el-dropdown-item command="edit" :disabled="isBoardBusy(row)">编辑</el-dropdown-item>
+                <el-dropdown-item command="delete" divided :disabled="isBoardBusy(row)">删除</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -115,8 +115,8 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogOpen = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="submitBoard">{{ editingId ? "保存" : "创建" }}</el-button>
+        <el-button :disabled="saving" @click="dialogOpen = false">取消</el-button>
+        <el-button type="primary" :loading="saving" :disabled="saving" @click="submitBoard">{{ editingId ? "保存" : "创建" }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -130,9 +130,11 @@ import { adminApi } from "@/api/admin";
 
 const loading = ref(false);
 const saving = ref(false);
+const boardBusyId = ref<number | null>(null);
 const dialogOpen = ref(false);
 const editingId = ref<number | null>(null);
 const list = ref<any[]>([]);
+let boardLoadSeq = 0;
 
 const form = reactive({
   slug: "",
@@ -148,20 +150,28 @@ const form = reactive({
 onMounted(reload);
 
 async function reload() {
+  const seq = ++boardLoadSeq;
   loading.value = true;
   try {
-    list.value = await adminApi.boards();
+    const next = await adminApi.boards();
+    if (seq === boardLoadSeq) list.value = next;
   } finally {
-    loading.value = false;
+    if (seq === boardLoadSeq) loading.value = false;
   }
 }
 
 function handleBoardCommand(command: string, row: any) {
+  if (boardBusyId.value !== null) return;
   if (command === "edit") return openEdit(row);
   if (command === "delete") return removeBoard(row);
 }
 
+function isBoardBusy(row: any) {
+  return boardBusyId.value === row.id;
+}
+
 function openCreate() {
+  if (saving.value) return;
   editingId.value = null;
   Object.assign(form, {
     slug: "",
@@ -177,6 +187,7 @@ function openCreate() {
 }
 
 function openEdit(row: any) {
+  if (saving.value || boardBusyId.value !== null) return;
   editingId.value = row.id;
   Object.assign(form, {
     slug: row.slug,
@@ -192,6 +203,7 @@ function openEdit(row: any) {
 }
 
 async function submitBoard() {
+  if (saving.value) return;
   if (!/^[a-z0-9-]{2,40}$/.test(form.slug.trim())) { ElMessage.warning("Slug 仅支持小写字母、数字和中划线"); return; }
   if (!form.name.trim()) { ElMessage.warning("请填写板块名称"); return; }
   saving.value = true;
@@ -217,10 +229,19 @@ async function submitBoard() {
 }
 
 async function removeBoard(row: any) {
-  await ElMessageBox.confirm(`确认删除板块「${row.name}」？仅空板块可删除。`, "删除板块", { type: "warning" });
-  await adminApi.deleteBoard(row.id);
-  ElMessage.success("已删除");
-  await reload();
+  if (boardBusyId.value !== null) return;
+  boardBusyId.value = row.id;
+  try {
+    const confirmed = await ElMessageBox.confirm(`确认删除板块「${row.name}」？仅空板块可删除。`, "删除板块", { type: "warning" })
+      .then(() => true)
+      .catch(() => false);
+    if (!confirmed) return;
+    await adminApi.deleteBoard(row.id);
+    ElMessage.success("已删除");
+    await reload();
+  } finally {
+    boardBusyId.value = null;
+  }
 }
 </script>
 
@@ -243,7 +264,7 @@ async function removeBoard(row: any) {
 .admin-table { display: none; }
 .mobile-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: 12px;
 }
 .board-card {

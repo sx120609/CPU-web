@@ -97,14 +97,14 @@
 
     <footer v-if="!hideChrome" class="footer">
       <span class="footer-item">© 2026 药大拾间 · 校园互助与服务平台</span>
-      <a class="footer-item" href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener">GitHub</a>
+      <a class="footer-item" href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener noreferrer">GitHub</a>
       <span class="footer-item">非学校官方站点</span>
       <a
         v-if="site.siteFilingNumber"
         class="footer-item"
         href="https://beian.miit.gov.cn/"
         target="_blank"
-        rel="noopener"
+        rel="noopener noreferrer"
       >
         {{ site.siteFilingNumber }}
       </a>
@@ -185,7 +185,7 @@
         @keyup.enter="saveNickname"
       />
       <template #footer>
-        <el-button type="primary" size="large" :loading="savingNickname" @click="saveNickname">
+        <el-button type="primary" size="large" :loading="savingNickname" :disabled="savingNickname" @click="saveNickname">
           完成设置
         </el-button>
       </template>
@@ -482,8 +482,8 @@ async function onUserCmd(cmd: string) {
 
 <style scoped lang="scss">
 .layout-root {
-  min-height: var(--layout-viewport-height, 100dvh);
   min-height: 100dvh;
+  min-height: var(--layout-viewport-height, 100dvh);
   display: flex;
   flex-direction: column;
   background: var(--cpu-bg);
@@ -518,6 +518,7 @@ async function onUserCmd(cmd: string) {
   text-decoration: none;
   color: inherit;
   flex-shrink: 0;
+  min-width: 0;
 }
 
 .brand-logo {
@@ -537,12 +538,16 @@ async function onUserCmd(cmd: string) {
   display: flex;
   flex-direction: column;
   line-height: 1.1;
+  min-width: 0;
 }
 
 .brand-name {
   font-size: 17px;
   font-weight: 700;
   color: var(--cpu-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .brand-sub {
@@ -756,6 +761,12 @@ async function onUserCmd(cmd: string) {
   font-size: 14px;
 }
 
+.drawer-user > div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .drawer-user button {
   border: none;
   background: none;
@@ -815,6 +826,10 @@ async function onUserCmd(cmd: string) {
     flex-wrap: wrap;
   }
 
+  .brand {
+    flex: 1 1 auto;
+  }
+
   .brand-logo {
     width: 34px;
     height: 34px;
@@ -854,6 +869,7 @@ async function onUserCmd(cmd: string) {
 
   .mobile-actions {
     display: flex;
+    flex: 0 0 auto;
   }
 
   .main {
@@ -917,6 +933,13 @@ async function onUserCmd(cmd: string) {
     font-size: 20px;
   }
 
+  .mobile-tab span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .mobile-tab.active {
     color: var(--cpu-primary);
     background: #ecfdf5;
@@ -949,6 +972,30 @@ async function onUserCmd(cmd: string) {
 
   .touch-icon-btn {
     width: 38px;
+  }
+}
+
+@media (max-width: 360px) {
+  .topbar-inner {
+    padding-inline: 10px;
+  }
+
+  .brand-logo {
+    width: 32px;
+    height: 32px;
+    font-size: 18px;
+  }
+
+  .brand-name {
+    font-size: 15px;
+  }
+
+  .mobile-actions {
+    gap: 2px;
+  }
+
+  .touch-icon-btn {
+    width: 36px;
   }
 }
 </style>

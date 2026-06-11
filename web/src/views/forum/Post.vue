@@ -2,7 +2,13 @@
   <div class="post-page">
     <h2 class="page-title">{{ editingId ? '编辑帖子' : '发表新帖' }}</h2>
 
-    <div class="cpu-card form">
+    <div v-if="loadError && !loading" class="cpu-card post-load-state">
+      <el-empty :description="loadError">
+        <el-button type="primary" :loading="loading" @click="loadInitial">重试</el-button>
+      </el-empty>
+    </div>
+
+    <div v-else v-loading="loading" class="cpu-card form">
       <el-form label-position="top" :model="form">
         <el-form-item label="选择板块" required>
           <el-select v-model="form.boardSlug" placeholder="选择要发帖的板块" :disabled="!!editingId" @change="onBoardChange">
@@ -70,7 +76,15 @@
         <!-- 课程点评特化 -->
         <template v-if="boardType === 'coursereview'">
           <el-form-item label="评价的课程" required>
-            <el-select v-model="meta.courseId" filterable placeholder="搜课程名 / 代码" @change="onCourseChange">
+            <el-select
+              v-model="meta.courseId"
+              filterable
+              placeholder="搜课程名 / 代码"
+              :loading="coursesLoading"
+              :disabled="coursesLoading"
+              no-data-text="暂无课程数据"
+              @change="onCourseChange"
+            >
               <el-option
                 v-for="c in courses"
                 :key="c.id"
@@ -83,6 +97,12 @@
                 </span>
               </el-option>
             </el-select>
+            <div v-if="courseLoadError" class="field-error">
+              <span>{{ courseLoadError }}</span>
+              <button type="button" class="text-retry-btn" :disabled="coursesLoading" @click="loadCoursesForReview(true)">
+                重试
+              </button>
+            </div>
           </el-form-item>
           <el-form-item label="授课老师" required>
             <div class="teacher-pick-row">
@@ -152,7 +172,7 @@
                   Markdown / HTML
                 </button>
               </div>
-              <el-button size="small" :loading="autoFormatting" @click="autoFormatContent">
+              <el-button size="small" :loading="autoFormatting" :disabled="autoFormatting" @click="autoFormatContent">
                 {{ autoFormatting ? "排版中" : "AI 自动排版" }}
               </el-button>
             </div>
@@ -224,9 +244,9 @@
           title="你有内容正在人工复核，暂时不能继续提交新内容"
         />
 
-        <el-form-item>
-          <el-button type="primary" :loading="submitting" :disabled="auth.user?.status === 'muted' || auth.user?.topicSubmissionLocked" @click="submit">{{ editingId ? '预览并保存' : '预览并发布' }}</el-button>
-          <el-button @click="$router.back()">取消</el-button>
+        <el-form-item class="form-actions">
+          <el-button type="primary" :loading="submitting" :disabled="submitDisabled" @click="submit">{{ editingId ? '预览并保存' : '预览并发布' }}</el-button>
+          <el-button :disabled="submitting" @click="$router.back()">取消</el-button>
         </el-form-item>
       </el-form>
     </div>
@@ -248,8 +268,8 @@
         <MarkdownView :content="form.content" />
       </div>
       <template #footer>
-        <el-button @click="previewOpen = false">返回修改</el-button>
-        <el-button type="primary" :loading="submitting" @click="confirmSubmit">
+        <el-button :disabled="submitting" @click="previewOpen = false">返回修改</el-button>
+        <el-button type="primary" :loading="submitting" :disabled="submitting" @click="confirmSubmit">
           {{ editingId ? '确认保存' : '确认发布' }}
         </el-button>
       </template>
@@ -268,7 +288,7 @@
       </div>
       <template #footer>
         <el-button @click="reviewBlockedOpen = false">返回修改</el-button>
-        <el-button type="warning" :loading="requestingManualReview" @click="manualReviewConfirmOpen = true">申请人工复核</el-button>
+        <el-button type="warning" :loading="requestingManualReview" :disabled="requestingManualReview" @click="manualReviewConfirmOpen = true">申请人工复核</el-button>
       </template>
     </el-dialog>
 
@@ -299,6 +319,11 @@ const auth = useAuthStore();
 
 const boards = ref<Board[]>([]);
 const courses = ref<Course[]>([]);
+const loading = ref(false);
+const loadError = ref("");
+const coursesLoading = ref(false);
+const coursesLoaded = ref(false);
+const courseLoadError = ref("");
 const submitting = ref(false);
 const editingId = computed(() => (route.params.id ? Number(route.params.id) : null));
 const CONTENT_MAX = 20000;
@@ -372,6 +397,13 @@ const anonymousHint = computed(() => {
 
 const selectedCourse = computed(() => courses.value.find((c) => c.id === meta.courseId));
 const teacherOptions = computed(() => selectedCourse.value?.teachers ?? []);
+const submitDisabled = computed(() =>
+  submitting.value ||
+  loading.value ||
+  Boolean(loadError.value) ||
+  auth.user?.status === "muted" ||
+  Boolean(auth.user?.topicSubmissionLocked)
+);
 
 const groupedBoards = computed(() => {
   const groups: Record<string, Board[]> = { "💬 综合讨论": [], "🎒 学生共建": [], "📢 校园公告": [] };
@@ -384,25 +416,7 @@ const groupedBoards = computed(() => {
 });
 const mutedNotice = computed(() => auth.user?.mutedUntil ? `你已被禁言至 ${fmtDate(auth.user.mutedUntil)}，当前不能发帖或编辑发言内容` : "你当前已被禁言，暂时不能发帖或编辑发言内容");
 
-onMounted(async () => {
-  boards.value = await boardApi.list();
-  normalizeSelectedBoard();
-  if (editingId.value) {
-    const t = await topicApi.detail(editingId.value);
-    form.boardSlug = t.board?.slug ?? "";
-    form.title = t.title;
-    form.content = t.content;
-    form.anonymous = Boolean(t.isAnonymous);
-    if (t.metadata) Object.assign(meta, t.metadata);
-    editorMode.value = resolveInitialEditorMode(t.content, t.metadata);
-    normalizeSelectedBoard();
-  } else {
-    restoreFormDraft();
-    restoreContentDraft();
-  }
-  normalizeSelectedBoard();
-  if (boardType.value === "coursereview") await loadCoursesForReview();
-});
+onMounted(loadInitial);
 
 onBeforeUnmount(() => {
   window.clearTimeout(formDraftTimer);
@@ -410,6 +424,15 @@ onBeforeUnmount(() => {
 });
 
 watch(boardType, async () => {
+  if (boardType.value === "coursereview") await loadCoursesForReview();
+});
+
+watch(() => route.query.board, async (value) => {
+  if (editingId.value) return;
+  const nextBoard = typeof value === "string" ? value : "";
+  if (!nextBoard || nextBoard === form.boardSlug) return;
+  form.boardSlug = nextBoard;
+  normalizeSelectedBoard();
   if (boardType.value === "coursereview") await loadCoursesForReview();
 });
 
@@ -429,17 +452,83 @@ watch(() => form.content, (value) => {
   if (editorMode.value === "markup") scheduleMarkupDraftSave(value);
 });
 
-async function loadCoursesForReview() {
-  if (courses.value.length) return;
-  courses.value = await courseApi.list();
+async function loadInitial() {
+  loading.value = true;
+  loadError.value = "";
+  try {
+    boards.value = await boardApi.list({ suppressErrorMessage: true });
+    normalizeSelectedBoard();
+    if (editingId.value) {
+      const t = await topicApi.detail(editingId.value, { suppressErrorMessage: true });
+      form.boardSlug = t.board?.slug ?? "";
+      form.title = t.title;
+      form.content = t.content;
+      form.anonymous = Boolean(t.isAnonymous);
+      if (t.metadata) Object.assign(meta, t.metadata);
+      editorMode.value = resolveInitialEditorMode(t.content, t.metadata);
+      normalizeSelectedBoard();
+    } else {
+      restoreFormDraft();
+      restoreContentDraft();
+    }
+    normalizeSelectedBoard();
+    if (boardType.value === "coursereview") await loadCoursesForReview();
+  } catch (error) {
+    loadError.value = normalizePostLoadError(error);
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function loadCoursesForReview(force = false) {
+  if (coursesLoading.value || (!force && coursesLoaded.value)) return;
+  coursesLoading.value = true;
+  courseLoadError.value = "";
+  try {
+    courses.value = await courseApi.list(undefined, false, { suppressErrorMessage: true });
+    coursesLoaded.value = true;
+  } catch (error) {
+    courses.value = [];
+    coursesLoaded.value = false;
+    courseLoadError.value = normalizeCourseListError(error);
+  } finally {
+    coursesLoading.value = false;
+  }
 }
 
 function onBoardChange() {
   if (boardType.value === "coursereview") void loadCoursesForReview();
 }
 
+function getRequestStatus(error: unknown) {
+  return typeof error === "object" && error !== null
+    ? (error as { response?: { status?: number } }).response?.status
+    : undefined;
+}
+
+function getRequestMessage(error: unknown) {
+  if (typeof error !== "object" || error === null) return "";
+  const responseMessage = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+  if (typeof responseMessage === "string") return responseMessage;
+  return error instanceof Error ? error.message : "";
+}
+
+function normalizePostLoadError(error: unknown) {
+  const status = getRequestStatus(error);
+  if (status === 401) return "登录状态已失效，请重新登录后再试";
+  if (status === 403) return "你没有权限编辑这篇帖子";
+  if (status === 404) return "帖子不存在或已被删除";
+  return getRequestMessage(error) || "发帖页加载失败，请稍后重试";
+}
+
+function normalizeCourseListError(error: unknown) {
+  const message = getRequestMessage(error);
+  return message ? `课程列表加载失败：${message}` : "课程列表加载失败，请稍后重试";
+}
+
 function normalizeSelectedBoard() {
   if (!form.boardSlug) return;
+  if (!boards.value.length) return;
   if (boards.value.some((b) => b.slug === form.boardSlug)) return;
   form.boardSlug = "";
 }
@@ -634,6 +723,9 @@ async function autoFormatContent() {
 }
 
 async function submit() {
+  if (submitting.value) return;
+  if (loading.value) { ElMessage.warning("页面还在加载，请稍后再试"); return; }
+  if (loadError.value) { ElMessage.warning("页面加载失败，请重试后再发布"); return; }
   if (auth.user?.status === "muted") { ElMessage.warning(mutedNotice.value); return; }
   if (auth.user?.topicSubmissionLocked) { ElMessage.warning("你有内容正在人工复核，暂时不能继续提交新内容"); return; }
   if (!form.boardSlug) { ElMessage.warning("请选择板块"); return; }
@@ -676,6 +768,7 @@ function buildMetadata() {
 }
 
 async function confirmSubmit() {
+  if (submitting.value) return;
   const metadata = pendingMetadata.value;
   if (!metadata) return;
   submitting.value = true;
@@ -780,6 +873,7 @@ function notifyVideoReviewState(summary?: {
 .post-page { display: flex; flex-direction: column; gap: 16px; }
 .page-title { margin: 0; font-size: 22px; }
 .cpu-card { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
+.post-load-state { min-height: 280px; display: grid; place-items: center; }
 
 .post-editor-shell {
   width: 100%;
@@ -925,6 +1019,36 @@ function notifyVideoReviewState(summary?: {
 }
 
 .board-hint { font-size: 12px; color: #6b7280; margin-top: 6px; }
+.field-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  color: #dc2626;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.text-retry-btn {
+  border: 0;
+  background: transparent;
+  color: #2563eb;
+  padding: 0;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.text-retry-btn:disabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.text-retry-btn:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.32);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .anonymous-box {
   width: 100%;
   display: flex;
@@ -997,7 +1121,7 @@ function notifyVideoReviewState(summary?: {
 }
 
 .publish-preview :deep(.md) {
-  max-height: min(58vh, 520px);
+  max-height: min(58dvh, 520px);
   overflow: auto;
   padding: 12px;
   border: 1px solid #edf0f5;
@@ -1080,14 +1204,24 @@ function notifyVideoReviewState(summary?: {
     align-self: center;
   }
 
-  :deep(.el-form-item:last-child .el-form-item__content) {
+  .field-error {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .form-actions :deep(.el-form-item__content) {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
   }
 
-  :deep(.el-form-item:last-child .el-button) {
+  .form-actions :deep(.el-button) {
     margin-left: 0;
+  }
+
+  :global(.publish-preview-dialog) {
+    width: calc(100dvw - 24px) !important;
+    max-width: calc(100dvw - 24px) !important;
   }
 }
 </style>

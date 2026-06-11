@@ -8,8 +8,8 @@
             <p>把外部逛逛的帖子和评论同步进本站，并按设定频率持续刷新。</p>
           </div>
           <div class="pane-actions">
-            <el-button :loading="loading" @click="reload">刷新状态</el-button>
-            <el-button type="primary" :loading="running" @click="runNow">立即同步一次</el-button>
+            <el-button :loading="loading" :disabled="loading" @click="reload">刷新状态</el-button>
+            <el-button type="primary" :loading="running" :disabled="running" @click="runNow">立即同步一次</el-button>
           </div>
         </div>
       </template>
@@ -106,9 +106,9 @@
         </el-form-item>
 
         <div class="form-actions">
-          <el-button type="primary" :loading="saving" @click="save">保存配置</el-button>
-          <el-button :loading="authLinkLoading" @click="startWechatAuth">微信授权更新 Token</el-button>
-          <el-button :disabled="!config.tokenPresent" :loading="clearingToken" @click="clearToken">清空已保存 Token</el-button>
+          <el-button type="primary" :loading="saving" :disabled="saving" @click="save">保存配置</el-button>
+          <el-button :loading="authLinkLoading" :disabled="authLinkLoading" @click="startWechatAuth">微信授权更新 Token</el-button>
+          <el-button :disabled="clearingToken || !config.tokenPresent" :loading="clearingToken" @click="clearToken">清空已保存 Token</el-button>
           <span class="muted">上次成功同步：{{ config.lastSyncedAt ? fmtDate(config.lastSyncedAt) : "暂无" }}</span>
         </div>
       </el-form>
@@ -132,35 +132,37 @@
       </div>
       <div v-if="runResult.topicTraces?.length" class="trace-block">
         <div class="trace-title">本轮评论补抓明细</div>
-        <el-table :data="runResult.topicTraces" size="small" stripe>
-          <el-table-column label="阶段" min-width="88">
-            <template #default="{ row }">{{ row.phase === "latest" ? "最新窗口" : "历史补扫" }}</template>
-          </el-table-column>
-          <el-table-column label="动作" min-width="88">
-            <template #default="{ row }">{{ row.action === "fetched" ? "抓评论" : row.action === "probed" ? "只探测" : "跳过" }}</template>
-          </el-table-column>
-          <el-table-column prop="title" label="帖子" min-width="220" show-overflow-tooltip />
-          <el-table-column label="评论数" min-width="110">
-            <template #default="{ row }">{{ row.remoteCommentCount ?? "-" }} / {{ row.localReplyCountBefore ?? "-" }}</template>
-          </el-table-column>
-          <el-table-column label="抓到" min-width="70">
-            <template #default="{ row }">{{ row.commentsFetched }}</template>
-          </el-table-column>
-          <el-table-column label="新增/更新" min-width="92">
-            <template #default="{ row }">{{ row.repliesCreated }}/{{ row.repliesUpdated }}</template>
-          </el-table-column>
-          <el-table-column label="抓后可见" min-width="92">
-            <template #default="{ row }">{{ row.visibleReplyCountAfter ?? "-" }}</template>
-          </el-table-column>
-          <el-table-column prop="externalTopicId" label="外部 ID" min-width="110" />
-          <el-table-column prop="note" label="说明" min-width="260" show-overflow-tooltip />
-        </el-table>
+        <div class="trace-table-scroll">
+          <el-table :data="runResult.topicTraces" size="small" stripe class="trace-table">
+            <el-table-column label="阶段" min-width="88">
+              <template #default="{ row }">{{ row.phase === "latest" ? "最新窗口" : "历史补扫" }}</template>
+            </el-table-column>
+            <el-table-column label="动作" min-width="88">
+              <template #default="{ row }">{{ row.action === "fetched" ? "抓评论" : row.action === "probed" ? "只探测" : "跳过" }}</template>
+            </el-table-column>
+            <el-table-column prop="title" label="帖子" min-width="220" show-overflow-tooltip />
+            <el-table-column label="评论数" min-width="110">
+              <template #default="{ row }">{{ row.remoteCommentCount ?? "-" }} / {{ row.localReplyCountBefore ?? "-" }}</template>
+            </el-table-column>
+            <el-table-column label="抓到" min-width="70">
+              <template #default="{ row }">{{ row.commentsFetched }}</template>
+            </el-table-column>
+            <el-table-column label="新增/更新" min-width="92">
+              <template #default="{ row }">{{ row.repliesCreated }}/{{ row.repliesUpdated }}</template>
+            </el-table-column>
+            <el-table-column label="抓后可见" min-width="92">
+              <template #default="{ row }">{{ row.visibleReplyCountAfter ?? "-" }}</template>
+            </el-table-column>
+            <el-table-column prop="externalTopicId" label="外部 ID" min-width="110" />
+            <el-table-column prop="note" label="说明" min-width="260" show-overflow-tooltip />
+          </el-table>
+        </div>
         <div class="field-tip">“评论数”列表示“远端 commentCount / 本地 replyCount(抓前)”。如果这里只显示别的帖子，说明本轮拉到的新评论并不是你正在看的那条。</div>
       </div>
       <el-alert v-if="runResult.error" class="run-error" type="error" :closable="false" :title="runResult.error" show-icon />
     </el-card>
 
-    <el-dialog v-model="authDialogOpen" title="微信授权更新 Token" width="min(560px, 92vw)">
+    <el-dialog v-model="authDialogOpen" title="微信授权更新 Token" width="min(560px, 92dvw)">
       <div v-if="authSession" class="auth-dialog">
         <p class="auth-tip">用微信扫描下方二维码，完成授权后服务器会自动换取并保存新的逛逛 Token。</p>
         <el-alert
@@ -308,6 +310,7 @@ function readSiteOrigin(next: SiteConfig) {
 }
 
 async function save() {
+  if (saving.value) return;
   saving.value = true;
   try {
     const next = await adminApi.updateWeiwallSync({
@@ -330,6 +333,7 @@ async function save() {
 }
 
 async function clearToken() {
+  if (clearingToken.value) return;
   clearingToken.value = true;
   try {
     const next = await adminApi.updateWeiwallSync({ clearToken: true });
@@ -363,6 +367,7 @@ async function pollAuthStatus() {
 }
 
 async function startWechatAuth() {
+  if (authLinkLoading.value) return;
   if (!siteOrigin.value.trim() && isLoopbackHost(window.location.hostname.trim().toLowerCase())) {
     ElMessage.error("当前页面是本地地址，请先到“基础配置”里设置可公网访问的站点域名，再生成微信授权二维码");
     return;
@@ -390,7 +395,7 @@ async function startWechatAuth() {
 
 function openAuthorizeUrl() {
   if (!authSession.value?.authorizeUrl) return;
-  window.open(authSession.value.authorizeUrl, "_blank", "noopener");
+  window.open(authSession.value.authorizeUrl, "_blank", "noopener,noreferrer");
 }
 
 async function copyAuthorizeUrl() {
@@ -400,6 +405,7 @@ async function copyAuthorizeUrl() {
 }
 
 async function runNow() {
+  if (running.value) return;
   running.value = true;
   try {
     runResult.value = await adminApi.runWeiwallSync();
@@ -531,6 +537,16 @@ onBeforeUnmount(stopAuthPolling);
   color: #1f2937;
 }
 
+.trace-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.trace-table-scroll :deep(.trace-table) {
+  min-width: 1180px;
+}
+
 .run-error {
   margin-bottom: 14px;
 }
@@ -549,7 +565,7 @@ onBeforeUnmount(stopAuthPolling);
 }
 
 .auth-qr {
-  width: min(320px, 78vw);
+  width: min(320px, 78dvw);
   max-width: 100%;
   border-radius: 14px;
   border: 1px solid #e5e7eb;

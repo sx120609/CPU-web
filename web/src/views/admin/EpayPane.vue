@@ -58,8 +58,8 @@
       </div>
 
       <div class="actions-row">
-        <el-button v-if="form.hasMerchantKey" plain type="danger" :loading="saving" @click="clearKey">清空密钥</el-button>
-        <el-button type="primary" :loading="saving" @click="saveConfig">保存配置</el-button>
+        <el-button v-if="form.hasMerchantKey" plain type="danger" :loading="saving" :disabled="saving" @click="clearKey">清空密钥</el-button>
+        <el-button type="primary" :loading="saving" :disabled="saving" @click="saveConfig">保存配置</el-button>
       </div>
     </section>
 
@@ -102,7 +102,7 @@
 
       <div class="actions-row">
         <el-button :icon="Refresh" @click="resetPreviewNo">换订单号</el-button>
-        <el-button type="primary" :loading="previewing" @click="previewPayment">生成签名</el-button>
+        <el-button type="primary" :loading="previewing" :disabled="previewing" @click="previewPayment">生成签名</el-button>
       </div>
 
       <div v-if="preview" class="preview-result">
@@ -113,10 +113,12 @@
           </div>
           <el-button :icon="CopyDocument" plain @click="copyPreview">复制 JSON</el-button>
         </div>
-        <el-table :data="previewRows" size="small" border>
-          <el-table-column prop="key" label="字段" min-width="150" />
-          <el-table-column prop="value" label="值" min-width="260" show-overflow-tooltip />
-        </el-table>
+        <div class="preview-table-scroll">
+          <el-table :data="previewRows" size="small" border class="preview-table">
+            <el-table-column prop="key" label="字段" min-width="150" />
+            <el-table-column prop="value" label="值" min-width="260" show-overflow-tooltip />
+          </el-table>
+        </div>
       </div>
     </section>
   </div>
@@ -201,6 +203,7 @@ async function reload() {
 }
 
 async function saveConfig() {
+  if (saving.value) return;
   saving.value = true;
   try {
     const config = await adminApi.updateEpayConfig({
@@ -220,6 +223,8 @@ async function saveConfig() {
 }
 
 async function clearKey() {
+  if (saving.value) return;
+  saving.value = true;
   try {
     await ElMessageBox.confirm("确认清空当前易支付商户密钥？", "清空密钥", {
       type: "warning",
@@ -227,9 +232,9 @@ async function clearKey() {
       cancelButtonText: "取消",
     });
   } catch {
+    saving.value = false;
     return;
   }
-  saving.value = true;
   try {
     applyConfig(await adminApi.updateEpayConfig({ clearMerchantKey: true }));
     ElMessage.success("商户密钥已清空");
@@ -244,6 +249,7 @@ function resetPreviewNo() {
 }
 
 async function previewPayment() {
+  if (previewing.value) return;
   previewing.value = true;
   try {
     preview.value = await adminApi.previewEpayPayment({
@@ -353,6 +359,14 @@ async function copyPreview() {
   flex-direction: column;
   gap: 12px;
   padding-top: 2px;
+}
+.preview-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.preview-table-scroll :deep(.preview-table) {
+  min-width: 520px;
 }
 .result-title {
   font-size: 14px;

@@ -104,7 +104,7 @@ const open = ref(false);
 const inAppBrowser = computed(() => detectInAppBrowser());
 const selectedPlatform = ref<"android" | "ios">(detectDevicePlatform());
 
-const dialogWidth = computed(() => window.innerWidth < 480 ? "92vw" : "380px");
+const dialogWidth = computed(() => window.innerWidth < 480 ? "92dvw" : "380px");
 const androidDownloadUrl = computed(() => new URL(ANDROID_APP_DOWNLOAD_URL, window.location.origin).toString());
 const schedulePageUrl = computed(() => new URL("/schedule", window.location.origin).toString());
 

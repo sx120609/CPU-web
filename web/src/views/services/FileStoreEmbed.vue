@@ -39,7 +39,7 @@ async function loadPermission() {
 
 <style scoped>
 .filestore-page {
-  min-height: calc(100vh - 64px);
+  min-height: calc(100dvh - 64px);
   background: #f6f8fb;
   padding: 22px;
 }

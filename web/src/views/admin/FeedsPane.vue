@@ -1,10 +1,10 @@
 <template>
   <div class="feeds-pane">
     <div class="ctrl-bar">
-      <el-button type="primary" :loading="runningAll" @click="runAll">
+      <el-button type="primary" :loading="runningAll" :disabled="runningAll" @click="runAll">
         <el-icon><Refresh /></el-icon> 全量同步
       </el-button>
-      <el-button @click="reload">刷新</el-button>
+      <el-button :loading="loading" :disabled="loading" @click="reload">刷新</el-button>
     </div>
 
     <el-table :data="list" v-loading="loading" stripe size="default" class="admin-table">
@@ -18,7 +18,7 @@
       <el-table-column prop="maxPages" label="最多页数" width="90" align="right" />
       <el-table-column label="启用" width="80">
         <template #default="{ row }">
-          <el-switch :model-value="row.enabled" @change="toggleEnabled(row)" />
+          <el-switch :model-value="row.enabled" :disabled="isFeedBusy(row) || runningAll" @change="toggleEnabled(row)" />
         </template>
       </el-table-column>
       <el-table-column label="上次" width="170">
@@ -66,7 +66,7 @@
             <b>{{ row.name }}</b>
             <span>{{ row.slug }} · ID {{ row.id }}</span>
           </div>
-          <el-switch :model-value="row.enabled" @change="toggleEnabled(row)" />
+          <el-switch :model-value="row.enabled" :disabled="isFeedBusy(row) || runningAll" @change="toggleEnabled(row)" />
         </div>
         <div class="feed-meta">
           <span>板块：{{ row.board?.name }}（{{ row.board?.topicCount }} 帖）</span>
@@ -119,9 +119,11 @@ const loading = ref(false);
 const runningAll = ref(false);
 const runningId = ref<number | null>(null);
 const resettingId = ref<number | null>(null);
+const togglingId = ref<number | null>(null);
 
 onMounted(reload);
 async function reload() {
+  if (loading.value) return;
   loading.value = true;
   try { list.value = await adminApi.feeds(); }
   finally { loading.value = false; }
@@ -133,45 +135,59 @@ function handleFeedCommand(command: string, row: any) {
 }
 
 function isFeedBusy(row: any) {
-  return runningId.value === row.id || resettingId.value === row.id;
+  return runningId.value === row.id || resettingId.value === row.id || togglingId.value === row.id;
 }
 
 async function toggleEnabled(row: any) {
-  await adminApi.updateFeed(row.id, { enabled: !row.enabled });
-  ElMessage.success(row.enabled ? "已禁用" : "已启用");
-  reload();
+  if (isFeedBusy(row) || runningAll.value) return;
+  togglingId.value = row.id;
+  try {
+    await adminApi.updateFeed(row.id, { enabled: !row.enabled });
+    ElMessage.success(row.enabled ? "已禁用" : "已启用");
+    await reload();
+  } finally {
+    togglingId.value = null;
+  }
 }
 
 async function runOne(row: any) {
+  if (isFeedBusy(row) || runningAll.value) return;
   runningId.value = row.id;
   try {
     const r = await adminApi.runFeed(row.id);
     ElMessage.success(`同步完成，新增 ${r?.newCount ?? 0} 条`);
-    reload();
+    await reload();
   } finally { runningId.value = null; }
 }
 
 async function resetRun(row: any) {
-  await ElMessageBox.confirm(
-    `删除「${row.name}」已抓取的 ${row.board?.topicCount ?? 0} 篇文章并重新抓取？\n用于切换到代理后重新获取正文，删除后不可恢复。`,
-    "删除并重爬",
-    { type: "warning", confirmButtonText: "删除重爬", cancelButtonText: "取消" }
-  );
+  if (isFeedBusy(row) || runningAll.value) return;
   resettingId.value = row.id;
+  try {
+    await ElMessageBox.confirm(
+      `删除「${row.name}」已抓取的 ${row.board?.topicCount ?? 0} 篇文章并重新抓取？\n用于切换到代理后重新获取正文，删除后不可恢复。`,
+      "删除并重爬",
+      { type: "warning", confirmButtonText: "删除重爬", cancelButtonText: "取消" }
+    );
+  } catch {
+    resettingId.value = null;
+    return;
+  }
   try {
     const r = await adminApi.resetRunFeed(row.id);
     ElMessage.success(`重爬完成，新增 ${r?.newCount ?? 0} 条`);
-    reload();
+    await reload();
   } finally { resettingId.value = null; }
 }
 
 async function runAll() {
+  if (runningAll.value) return;
   runningAll.value = true;
   try {
     const r = await adminApi.runAllFeeds();
     const total = (r as any[]).reduce((s, x) => s + (x.newCount ?? 0), 0);
     ElMessage.success(`全量同步完成，共新增 ${total} 条`);
-    reload();
+    await reload();
   } finally { runningAll.value = false; }
 }
 </script>
@@ -183,7 +199,7 @@ async function runAll() {
 .admin-table { display: none; }
 .mobile-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: 12px;
   min-height: 120px;
 }

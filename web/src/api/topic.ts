@@ -1,5 +1,5 @@
 import axios from "axios";
-import { request } from "./request";
+import { request, type RequestOptions } from "./request";
 
 export interface Topic {
   id: number;
@@ -102,10 +102,10 @@ export type TopicAutoFormatResult = {
 };
 
 export const topicApi = {
-  list: (params: { board?: string; page?: number; size?: number; sort?: "new" | "hot"; pinned?: "only" | "exclude" }) =>
-    request.get<{ page: number; size: number; total: number; list: Topic[] }>("/topics", params),
-  detail: (id: number) => request.get<Topic>(`/topics/${id}`),
-  replies: (id: number) => request.get<Reply[]>(`/topics/${id}/replies`),
+  list: (params: { board?: string; page?: number; size?: number; sort?: "new" | "hot"; pinned?: "only" | "exclude" }, options?: RequestOptions) =>
+    request.get<{ page: number; size: number; total: number; list: Topic[] }>("/topics", params, options),
+  detail: (id: number, options?: RequestOptions) => request.get<Topic>(`/topics/${id}`, undefined, options),
+  replies: (id: number, options?: RequestOptions) => request.get<Reply[]>(`/topics/${id}/replies`, undefined, options),
   create: (payload: { boardSlug: string; title: string; content: string; metadata?: any; tags?: string[]; anonymous?: boolean }) =>
     request.post<Topic & { submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string; imageReview?: ImageReviewSummary | null; videoReview?: VideoReviewSummary | null } }>("/topics", payload),
   update: (id: number, payload: Partial<Topic>) =>
@@ -128,10 +128,10 @@ export const replyApi = {
 export const likeApi = {
   toggleTopic: (id: number) => request.post<{ liked: boolean; likeCount: number }>(`/likes/topic/${id}`),
   toggleReply: (id: number) => request.post<{ liked: boolean; likeCount: number }>(`/likes/reply/${id}`),
-  mine: (topicIds: number[], replyIds: number[] = []) =>
+  mine: (topicIds: number[], replyIds: number[] = [], options?: RequestOptions) =>
     request.get<{ topics: number[]; replies: number[] }>("/likes/mine", {
       topics: topicIds.join(","), replies: replyIds.join(","),
-    }),
+    }, options),
 };
 
 export const uploadApi = {

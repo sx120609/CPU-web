@@ -121,7 +121,7 @@ const FeedbackPanel = defineComponent({
         if ((e as { response?: { status?: number } }).response?.status === 401) {
           needLogin.value = true;
         } else {
-          loadError.value = (e as { response?: { data?: { message?: string } }; message?: string }).response?.data?.message ?? "反馈问卷加载失败";
+          loadError.value = normalizeFeedbackLoadError(e);
           ElMessage.error(loadError.value);
         }
       } finally {
@@ -130,7 +130,7 @@ const FeedbackPanel = defineComponent({
     }
 
     async function submit() {
-      if (!questionnaire.value) return;
+      if (!questionnaire.value || submitting.value) return;
       submitting.value = true;
       try {
         await toolsApi.submitResponse(questionnaire.value.slug, answers, {
@@ -322,7 +322,7 @@ const QuestionnaireForm = defineComponent({
       ...props.fields.map((field) => h("label", { class: "field", key: field.id }, [
         h("span", [field.label, field.required ? h("b", " *") : null]),
         field.description ? h("small", field.description) : null,
-        renderField(field, props.answers[field.id], setValue),
+        renderField(field, props.answers[field.id], setValue, props.submitting),
       ])),
       h("button", {
         class: "submit-btn",
@@ -333,19 +333,21 @@ const QuestionnaireForm = defineComponent({
   },
 });
 
-function renderField(field: QuestionnaireField, value: string | string[] | undefined, setValue: (id: string, value: string | string[]) => void) {
+function renderField(field: QuestionnaireField, value: string | string[] | undefined, setValue: (id: string, value: string | string[]) => void, disabled = false) {
   if (field.type === "textarea") {
     return h("textarea", {
       value: String(value ?? ""),
       rows: 6,
       maxlength: field.maxLength ?? 2000,
       placeholder: field.placeholder ?? "",
+      disabled,
       onInput: (event: Event) => setValue(field.id, (event.target as HTMLTextAreaElement).value),
     });
   }
   if (field.type === "single") {
     return h("select", {
       value: String(value ?? ""),
+      disabled,
       onChange: (event: Event) => setValue(field.id, (event.target as HTMLSelectElement).value),
     }, [
       h("option", { value: "" }, "请选择"),
@@ -354,10 +356,11 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
   }
   if (field.type === "multiple") {
     const selected = Array.isArray(value) ? value : [];
-    return h("div", { class: "choice-list" }, (field.options ?? []).map((option) => h("label", { class: "choice-item" }, [
+    return h("div", { class: "choice-list" }, (field.options ?? []).map((option) => h("label", { class: ["choice-item", disabled ? "disabled" : ""] }, [
       h("input", {
         type: "checkbox",
         checked: selected.includes(option),
+        disabled,
         onChange: (event: Event) => {
           const checked = (event.target as HTMLInputElement).checked;
           setValue(field.id, checked ? [...selected, option] : selected.filter((item) => item !== option));
@@ -374,6 +377,7 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
       max: field.max,
       step: field.step ?? 1,
       placeholder: field.placeholder ?? "",
+      disabled,
       onInput: (event: Event) => setValue(field.id, (event.target as HTMLInputElement).value),
     });
   }
@@ -381,6 +385,7 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
     return h("input", {
       value: String(value ?? ""),
       type: "date",
+      disabled,
       onInput: (event: Event) => setValue(field.id, (event.target as HTMLInputElement).value),
     });
   }
@@ -390,6 +395,7 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
     return h("div", { class: "rating-list" }, Array.from({ length: Math.max(0, max - min + 1) }, (_, i) => String(min + i)).map((score) => h("button", {
       type: "button",
       class: ["rating-btn", String(value ?? "") === score ? "active" : ""],
+      disabled,
       onClick: () => setValue(field.id, score),
     }, score)));
   }
@@ -397,8 +403,17 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
     value: String(value ?? ""),
     maxlength: field.maxLength ?? 300,
     placeholder: field.placeholder ?? "",
+    disabled,
     onInput: (event: Event) => setValue(field.id, (event.target as HTMLInputElement).value),
   });
+}
+
+function normalizeFeedbackLoadError(error: unknown) {
+  const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
+  if (status && status < 500) {
+    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "反馈问卷加载失败";
+  }
+  return "反馈问卷加载失败，请稍后再试";
 }
 </script>
 
@@ -525,6 +540,10 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
   font-weight: 500;
 }
 .choice-item input { width: auto; }
+.choice-item.disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
 .rating-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .rating-btn {
   width: 34px;
@@ -541,6 +560,10 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
   color: #fff;
   border-color: var(--cpu-primary);
   background: var(--cpu-primary);
+}
+.rating-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 .submit-btn,
 .plain-action {

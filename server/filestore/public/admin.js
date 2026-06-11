@@ -614,7 +614,7 @@ function renderTaskList() {
     const active = state.current?.id === task.id ? " active" : "";
     const creator = state.viewer.isSuperAdmin ? `<small>${escapeHtml(formatCreator(task))}</small>` : "";
     return `
-      <button class="task-card${active}" data-task="${task.id}">
+      <button type="button" class="task-card${active}" data-task="${task.id}">
         <span class="status-dot ${task.status}"></span>
         <strong>${escapeHtml(task.title)}</strong>
         <small>${task.status === "open" ? "开放提交" : "停止提交"} · ${task.deadline ? new Date(task.deadline).toLocaleDateString() : "无截止时间"}</small>
@@ -718,9 +718,9 @@ function fileSearchText(file) {
 function fileActions(file) {
   return `
     <div class="file-actions">
-      <button data-file-preview="${file.id}">查看</button>
-      <button data-file-download="${file.id}">下载</button>
-      <button class="danger" data-file-delete="${file.id}">删除</button>
+      <button type="button" data-file-preview="${file.id}">查看</button>
+      <button type="button" data-file-download="${file.id}">下载</button>
+      <button type="button" class="danger" data-file-delete="${file.id}">删除</button>
     </div>
   `;
 }
@@ -901,7 +901,7 @@ function renderSubmissionTable() {
                 </div>
               `).join("")}</td>
               <td>${new Date(item.createdAt).toLocaleString()}</td>
-              <td><button class="icon-button danger" data-delete="${item.id}" title="删除">×</button></td>
+              <td><button type="button" class="icon-button danger" data-delete="${item.id}" title="删除">×</button></td>
             </tr>
           `).join("")}
         </tbody>
@@ -963,8 +963,9 @@ async function fetchProtectedBlob(path) {
 }
 
 async function previewFile(id) {
-  const previewWindow = window.open("", "_blank");
+  const previewWindow = window.open("about:blank", "_blank");
   if (previewWindow) {
+    previewWindow.opener = null;
     previewWindow.document.write("<title>正在加载文件...</title><p style='font-family:sans-serif;padding:16px'>正在加载文件...</p>");
     previewWindow.document.close();
   }
@@ -974,7 +975,7 @@ async function previewFile(id) {
     if (previewWindow) {
       previewWindow.location.replace(objectUrl);
     } else {
-      window.open(objectUrl, "_blank");
+      window.open(objectUrl, "_blank", "noopener,noreferrer");
     }
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
   } catch (error) {

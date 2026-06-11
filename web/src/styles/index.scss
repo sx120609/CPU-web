@@ -14,7 +14,7 @@
   --cpu-dialog-width: 420px;
   --cpu-dialog-max-width: 560px;
   --cpu-dialog-side-gap: 16px;
-  --cpu-dialog-viewport-width: calc(100vw - 32px);
+  --cpu-dialog-viewport-width: calc(100dvw - 32px);
   --cpu-dialog-max-height: calc(100dvh - 48px);
   --el-color-primary: #{$cpu-primary};
   --el-color-primary-light-3: #{color.adjust($cpu-primary, $lightness: 8%)};
@@ -119,7 +119,7 @@ canvas {
   left: auto !important;
   right: 18px !important;
   transform: none !important;
-  max-width: min(420px, calc(100vw - 32px));
+  max-width: min(420px, calc(100dvw - 32px));
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
 }
 
@@ -136,7 +136,7 @@ canvas {
 .el-overlay-dialog .el-dialog,
 .el-overlay-message-box .el-message-box {
   margin: 0 auto !important;
-  transform: translateY(1vh);
+  transform: translateY(1dvh);
   border-radius: var(--cpu-dialog-radius);
   box-shadow: 0 24px 70px rgba(15, 23, 42, 0.2);
   overflow: hidden;
@@ -319,7 +319,7 @@ canvas {
   :root {
     --cpu-dialog-radius: 10px;
     --cpu-dialog-side-gap: 12px;
-    --cpu-dialog-viewport-width: calc(100vw - 24px);
+    --cpu-dialog-viewport-width: calc(100dvw - 24px);
     --cpu-dialog-max-height: calc(100dvh - 24px);
   }
 
@@ -362,6 +362,6 @@ canvas {
 
   .el-message {
     right: 12px !important;
-    max-width: calc(100vw - 24px);
+    max-width: calc(100dvw - 24px);
   }
 }

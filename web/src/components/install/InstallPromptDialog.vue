@@ -135,7 +135,7 @@ const title = computed(() => {
 });
 
 const dialogWidth = computed(() => {
-  return window.innerWidth < 480 ? "92vw" : "360px";
+  return window.innerWidth < 480 ? "92dvw" : "360px";
 });
 
 function detectStandalone() {

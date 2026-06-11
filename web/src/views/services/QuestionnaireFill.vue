@@ -39,6 +39,7 @@
               :maxlength="field.maxLength || 300"
               :placeholder="field.placeholder"
               clearable
+              :disabled="submitting"
             />
             <el-input
               v-else-if="field.type === 'textarea'"
@@ -48,11 +49,12 @@
               :maxlength="field.maxLength || 2000"
               show-word-limit
               :placeholder="field.placeholder"
+              :disabled="submitting"
             />
-            <el-radio-group v-else-if="field.type === 'single'" v-model="answers[field.id] as string" class="vertical-options">
+            <el-radio-group v-else-if="field.type === 'single'" v-model="answers[field.id] as string" class="vertical-options" :disabled="submitting">
               <el-radio v-for="option in field.options || []" :key="option" :label="option">{{ option }}</el-radio>
             </el-radio-group>
-            <el-checkbox-group v-else-if="field.type === 'multiple'" :model-value="multiValue(field.id)" class="vertical-options" @change="setMulti(field.id, $event)">
+            <el-checkbox-group v-else-if="field.type === 'multiple'" :model-value="multiValue(field.id)" class="vertical-options" :disabled="submitting" @change="setMulti(field.id, $event)">
               <el-checkbox v-for="option in field.options || []" :key="option" :label="option">{{ option }}</el-checkbox>
             </el-checkbox-group>
             <el-input
@@ -63,6 +65,7 @@
               :max="field.max"
               :step="field.step || 1"
               :placeholder="field.placeholder || '请输入数字'"
+              :disabled="submitting"
             />
             <el-date-picker
               v-else-if="field.type === 'date'"
@@ -70,6 +73,7 @@
               type="date"
               value-format="YYYY-MM-DD"
               placeholder="选择日期"
+              :disabled="submitting"
               @update:model-value="answers[field.id] = String($event || '')"
             />
             <div v-else-if="field.type === 'rating'" class="rating-field">
@@ -78,6 +82,7 @@
                 :key="score"
                 type="button"
                 :class="{ active: answers[field.id] === String(score) }"
+                :disabled="submitting"
                 @click="answers[field.id] = answers[field.id] === String(score) ? '' : String(score)"
               >
                 {{ score }}
@@ -87,13 +92,14 @@
           </section>
 
           <div class="submit-row">
-            <el-button type="primary" size="large" native-type="submit" :loading="submitting">提交问卷</el-button>
+            <el-button type="primary" size="large" native-type="submit" :loading="submitting" :disabled="submitting">提交问卷</el-button>
           </div>
         </form>
       </template>
 
-      <el-empty v-else-if="!loading" description="问卷不存在或暂未开放">
-        <el-button type="primary" @click="$router.push('/services/tools')">返回小工具</el-button>
+      <el-empty v-else-if="!loading" :description="error || '问卷不存在或暂未开放'">
+        <el-button v-if="error" type="primary" :loading="loading" @click="load">重新加载</el-button>
+        <el-button v-else type="primary" @click="$router.push('/services/tools')">返回小工具</el-button>
       </el-empty>
     </section>
   </div>
@@ -112,6 +118,7 @@ const router = useRouter();
 const loading = ref(false);
 const submitting = ref(false);
 const questionnaire = ref<Questionnaire | null>(null);
+const error = ref("");
 const answers = reactive<Record<string, string | string[]>>({});
 
 const fieldCount = computed(() => questionnaire.value?.fields?.length ?? 0);
@@ -122,10 +129,31 @@ onMounted(load);
 
 async function load() {
   loading.value = true;
+  error.value = "";
+  questionnaire.value = null;
+  Object.keys(answers).forEach((key) => delete answers[key]);
   try {
-    questionnaire.value = await toolsApi.questionnaire(String(route.params.slug));
+    questionnaire.value = await toolsApi.questionnaire(String(route.params.slug), {
+      suppressErrorMessage: true,
+      suppressAuthRedirect: true,
+      suppressAuthMessage: true,
+    });
     for (const field of questionnaire.value.fields ?? []) {
       answers[field.id] = field.type === "multiple" ? [] : "";
+    }
+  } catch (e) {
+    const status = (e as { response?: { status?: number; data?: { message?: string } } }).response?.status;
+    if (status === 401) {
+      error.value = "请先登录后再填写问卷";
+      router.push({ name: "login", query: { redirect: route.fullPath } });
+      return;
+    }
+    if (status === 404) {
+      error.value = "问卷不存在或暂未开放";
+    } else if (status && status < 500) {
+      error.value = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "问卷加载失败";
+    } else {
+      error.value = "问卷加载失败，请稍后再试";
     }
   } finally {
     loading.value = false;
@@ -152,6 +180,7 @@ function ratingRange(field: QuestionnaireField) {
 }
 
 async function submit() {
+  if (submitting.value) return;
   if (!questionnaire.value) return;
   const missing = (questionnaire.value.fields ?? []).find((field) => field.required && !hasAnswer(answers[field.id]));
   if (missing) {
@@ -160,9 +189,24 @@ async function submit() {
   }
   submitting.value = true;
   try {
-    await toolsApi.submitResponse(questionnaire.value.slug, answers);
+    await toolsApi.submitResponse(questionnaire.value.slug, answers, {
+      suppressAuthRedirect: true,
+      suppressAuthMessage: true,
+      suppressErrorMessage: true,
+    });
     ElMessage.success("提交成功");
     router.push("/services/tools/questionnaire");
+  } catch (error) {
+    const status = (error as { response?: { status?: number } }).response?.status;
+    if (status === 401) {
+      ElMessage.warning("请先登录后再提交问卷");
+      router.push({ name: "login", query: { redirect: route.fullPath } });
+      return;
+    }
+    ElMessage.error(
+      (error as { response?: { data?: { message?: string } }; message?: string }).response?.data?.message
+        ?? "提交失败，请稍后再试"
+    );
   } finally {
     submitting.value = false;
   }
@@ -309,6 +353,10 @@ async function submit() {
   color: #fff;
   border-color: var(--cpu-primary);
   background: var(--cpu-primary);
+}
+.rating-field button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 .rating-field span { color: #6b7280; font-size: 13px; }
 .submit-row {

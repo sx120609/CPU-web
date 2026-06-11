@@ -61,9 +61,9 @@
         </el-form>
 
         <div class="actions">
-          <el-button type="primary" :loading="saving" @click="saveConfig">保存配置</el-button>
-          <el-button :loading="dispatching" @click="dispatchNow">立即派发最近通知</el-button>
-          <el-button v-if="config?.hasAccessToken" text type="danger" @click="clearToken">清除 Token</el-button>
+          <el-button type="primary" :loading="saving" :disabled="saving" @click="saveConfig">保存配置</el-button>
+          <el-button :loading="dispatching" :disabled="dispatching" @click="dispatchNow">立即派发最近通知</el-button>
+          <el-button v-if="config?.hasAccessToken" text type="danger" :loading="clearingToken" :disabled="clearingToken" @click="clearToken">清除 Token</el-button>
         </div>
       </div>
 
@@ -75,7 +75,7 @@
         </div>
       </div>
         <div class="bind-box">
-          <el-button type="primary" plain @click="createBindToken">生成我的绑定码</el-button>
+          <el-button type="primary" plain :loading="creatingBindToken" :disabled="creatingBindToken" @click="createBindToken">生成我的绑定码</el-button>
           <div v-if="bindToken" class="bind-token">
             <b>{{ bindToken.token }}</b>
             <span>10 分钟内私聊发送：绑定 {{ bindToken.token }}</span>
@@ -94,7 +94,7 @@
           </el-form-item>
         </el-form>
         <div class="actions">
-          <el-button :loading="testing" @click="sendTest">发送测试消息</el-button>
+          <el-button :loading="testing" :disabled="testing" @click="sendTest">发送测试消息</el-button>
         </div>
       </div>
     </section>
@@ -105,7 +105,7 @@
           <h3>QQ群配置</h3>
           <p>群配置用于控制群内投稿、公告通知，以及管理群专用的站务提醒。</p>
         </div>
-        <el-button type="primary" plain @click="openGroupDialog()">添加群</el-button>
+        <el-button type="primary" plain :disabled="savingGroup || groupBusyId !== null" @click="openGroupDialog()">添加群</el-button>
       </div>
       <el-table :data="groups" size="small" class="interactive-table">
         <el-table-column prop="groupId" label="群号" width="150" />
@@ -128,8 +128,8 @@
         <el-table-column prop="defaultBoardSlug" label="默认板块" width="130" />
         <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openGroupDialog(row)">编辑</el-button>
-            <el-button link type="danger" @click="removeGroup(row)">删除</el-button>
+            <el-button link type="primary" :disabled="isGroupBusy(row)" @click="openGroupDialog(row)">编辑</el-button>
+            <el-button link type="danger" :loading="isGroupBusy(row)" :disabled="isGroupBusy(row)" @click="removeGroup(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -152,8 +152,8 @@
             <span>通知受众：{{ formatGroupNotifyAudiences(row.notifyAudiences).join(" / ") || "未设置" }}</span>
           </div>
           <div class="record-actions">
-            <el-button link type="primary" @click="openGroupDialog(row)">编辑</el-button>
-            <el-button link type="danger" @click="removeGroup(row)">删除</el-button>
+            <el-button link type="primary" :disabled="isGroupBusy(row)" @click="openGroupDialog(row)">编辑</el-button>
+            <el-button link type="danger" :loading="isGroupBusy(row)" :disabled="isGroupBusy(row)" @click="removeGroup(row)">删除</el-button>
           </div>
         </article>
         <el-empty v-if="!groups.length" description="暂无群配置" />
@@ -178,12 +178,12 @@
         <el-table-column prop="nickname" label="QQ 昵称" min-width="140" />
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-switch v-model="row.enabled" @change="toggleBinding(row)" />
+            <el-switch v-model="row.enabled" :loading="isBindingBusy(row)" :disabled="isBindingBusy(row)" @change="toggleBinding(row)" />
           </template>
         </el-table-column>
         <el-table-column label="操作" width="90">
           <template #default="{ row }">
-            <el-button link type="danger" @click="removeBinding(row)">解绑</el-button>
+            <el-button link type="danger" :loading="isBindingBusy(row)" :disabled="isBindingBusy(row)" @click="removeBinding(row)">解绑</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -194,14 +194,14 @@
               <b>{{ row.user?.nickname || "未命名用户" }}</b>
               <span>{{ row.user?.username }} · QQ {{ row.qqId }}</span>
             </div>
-            <el-switch v-model="row.enabled" @change="toggleBinding(row)" />
+            <el-switch v-model="row.enabled" :loading="isBindingBusy(row)" :disabled="isBindingBusy(row)" @change="toggleBinding(row)" />
           </div>
           <div class="record-meta">
             <span>QQ 昵称：{{ row.nickname || "未记录" }}</span>
             <span>站内身份：{{ row.user?.role || "user" }}</span>
           </div>
           <div class="record-actions">
-            <el-button link type="danger" @click="removeBinding(row)">解绑</el-button>
+            <el-button link type="danger" :loading="isBindingBusy(row)" :disabled="isBindingBusy(row)" @click="removeBinding(row)">解绑</el-button>
           </div>
         </article>
         <el-empty v-if="!bindings.length" description="暂无绑定记录" />
@@ -227,21 +227,23 @@
             <el-option label="错误" value="error" />
           </el-select>
           <span class="log-meta">{{ lastLogAtText }}</span>
-          <el-button plain :loading="refreshingLogs" @click="refreshLogs">刷新</el-button>
-          <el-button plain :icon="Download" :loading="debugDownloading" @click="downloadDebugLogs">下载调试日志</el-button>
+          <el-button plain :loading="refreshingLogs" :disabled="refreshingLogs" @click="refreshLogs">刷新</el-button>
+          <el-button plain :icon="Download" :loading="debugDownloading" :disabled="debugDownloading" @click="downloadDebugLogs">下载调试日志</el-button>
         </div>
       </div>
-      <el-table :data="logs" size="small">
-        <el-table-column prop="createdAt" label="时间" width="170">
-          <template #default="{ row }">{{ formatLogTime(row.createdAt) }}</template>
-        </el-table-column>
-        <el-table-column prop="eventType" label="事件" width="110" />
-        <el-table-column prop="status" label="状态" width="90" />
-        <el-table-column prop="qqId" label="QQ" width="120" />
-        <el-table-column prop="groupId" label="群" width="120" />
-        <el-table-column prop="content" label="内容" min-width="220" show-overflow-tooltip />
-        <el-table-column prop="result" label="结果" min-width="180" show-overflow-tooltip />
-      </el-table>
+      <div class="log-table-scroll">
+        <el-table :data="logs" size="small" class="log-table">
+          <el-table-column prop="createdAt" label="时间" width="170">
+            <template #default="{ row }">{{ formatLogTime(row.createdAt) }}</template>
+          </el-table-column>
+          <el-table-column prop="eventType" label="事件" width="110" />
+          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column prop="qqId" label="QQ" width="120" />
+          <el-table-column prop="groupId" label="群" width="120" />
+          <el-table-column prop="content" label="内容" min-width="220" show-overflow-tooltip />
+          <el-table-column prop="result" label="结果" min-width="180" show-overflow-tooltip />
+        </el-table>
+      </div>
       <div class="pager">
         <el-pagination layout="prev, pager, next" :total="logTotal" :page-size="logFilter.size" v-model:current-page="logFilter.page" @current-change="loadLogs" />
       </div>
@@ -281,8 +283,8 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="groupDialog.visible = false">取消</el-button>
-        <el-button type="primary" @click="saveGroup">保存</el-button>
+        <el-button :disabled="savingGroup" @click="groupDialog.visible = false">取消</el-button>
+        <el-button type="primary" :loading="savingGroup" :disabled="savingGroup" @click="saveGroup">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -304,6 +306,11 @@ const logTotal = ref(0);
 const saving = ref(false);
 const testing = ref(false);
 const dispatching = ref(false);
+const clearingToken = ref(false);
+const creatingBindToken = ref(false);
+const savingGroup = ref(false);
+const bindingBusyId = ref<number | null>(null);
+const groupBusyId = ref<number | null>(null);
 const debugDownloading = ref(false);
 const refreshingLogs = ref(false);
 const bindingQuery = ref("");
@@ -392,6 +399,7 @@ async function loadBoards() {
 }
 
 async function saveConfig() {
+  if (saving.value) return;
   saving.value = true;
   try {
     config.value = await adminApi.updateQqBotConfig({
@@ -407,18 +415,36 @@ async function saveConfig() {
 }
 
 async function clearToken() {
-  await ElMessageBox.confirm("确认清除 NapCat Access Token？", "清除 Token", { type: "warning" });
-  config.value = await adminApi.updateQqBotConfig({ clearAccessToken: true });
-  await loadConfig();
-  ElMessage.success("Token 已清除");
+  if (clearingToken.value) return;
+  clearingToken.value = true;
+  try {
+    await ElMessageBox.confirm("确认清除 NapCat Access Token？", "清除 Token", { type: "warning" });
+  } catch {
+    clearingToken.value = false;
+    return;
+  }
+  try {
+    config.value = await adminApi.updateQqBotConfig({ clearAccessToken: true });
+    await loadConfig();
+    ElMessage.success("Token 已清除");
+  } finally {
+    clearingToken.value = false;
+  }
 }
 
 async function createBindToken() {
-  bindToken.value = await adminApi.createQqBotBindToken();
-  ElMessage.success("绑定码已生成");
+  if (creatingBindToken.value) return;
+  creatingBindToken.value = true;
+  try {
+    bindToken.value = await adminApi.createQqBotBindToken();
+    ElMessage.success("绑定码已生成");
+  } finally {
+    creatingBindToken.value = false;
+  }
 }
 
 async function sendTest() {
+  if (testing.value) return;
   testing.value = true;
   try {
     await adminApi.sendQqBotTestMessage({ ...test });
@@ -433,6 +459,7 @@ async function sendTest() {
 }
 
 async function dispatchNow() {
+  if (dispatching.value) return;
   dispatching.value = true;
   try {
     const result = await adminApi.dispatchQqBotNotifications();
@@ -447,14 +474,37 @@ async function loadBindings() {
   bindings.value = await adminApi.qqBotBindings({ q: bindingQuery.value || undefined });
 }
 
+function isBindingBusy(row: any) {
+  return bindingBusyId.value === row.id;
+}
+
 async function toggleBinding(row: any) {
-  await adminApi.updateQqBotBinding(row.id, { enabled: Boolean(row.enabled) });
+  if (bindingBusyId.value !== null) return;
+  bindingBusyId.value = row.id;
+  const nextEnabled = Boolean(row.enabled);
+  try {
+    await adminApi.updateQqBotBinding(row.id, { enabled: nextEnabled });
+  } catch (error) {
+    row.enabled = !nextEnabled;
+    throw error;
+  } finally {
+    bindingBusyId.value = null;
+  }
 }
 
 async function removeBinding(row: any) {
-  await ElMessageBox.confirm(`确认解绑 QQ ${row.qqId}？`, "解绑 QQ", { type: "warning" });
-  await adminApi.deleteQqBotBinding(row.id);
-  await loadBindings();
+  if (bindingBusyId.value !== null) return;
+  bindingBusyId.value = row.id;
+  try {
+    const confirmed = await ElMessageBox.confirm(`确认解绑 QQ ${row.qqId}？`, "解绑 QQ", { type: "warning" })
+      .then(() => true)
+      .catch(() => false);
+    if (!confirmed) return;
+    await adminApi.deleteQqBotBinding(row.id);
+    await loadBindings();
+  } finally {
+    bindingBusyId.value = null;
+  }
 }
 
 async function loadGroups() {
@@ -462,6 +512,7 @@ async function loadGroups() {
 }
 
 function openGroupDialog(row?: any) {
+  if (savingGroup.value || groupBusyId.value !== null) return;
   groupDialog.editingId = row?.id || 0;
   Object.assign(groupDialog.form, {
     groupId: row?.groupId || "",
@@ -477,18 +528,39 @@ function openGroupDialog(row?: any) {
 }
 
 async function saveGroup() {
-  await adminApi.upsertQqBotGroup({
-    ...groupDialog.form,
-    defaultBoardSlug: groupDialog.form.defaultBoardSlug || null,
-  });
-  groupDialog.visible = false;
-  await loadGroups();
+  if (savingGroup.value) return;
+  savingGroup.value = true;
+  groupBusyId.value = groupDialog.editingId || null;
+  try {
+    await adminApi.upsertQqBotGroup({
+      ...groupDialog.form,
+      defaultBoardSlug: groupDialog.form.defaultBoardSlug || null,
+    });
+    groupDialog.visible = false;
+    await loadGroups();
+  } finally {
+    savingGroup.value = false;
+    groupBusyId.value = null;
+  }
+}
+
+function isGroupBusy(row: any) {
+  return groupBusyId.value === row.id;
 }
 
 async function removeGroup(row: any) {
-  await ElMessageBox.confirm(`确认删除群 ${row.groupId}？`, "删除群配置", { type: "warning" });
-  await adminApi.deleteQqBotGroup(row.id);
-  await loadGroups();
+  if (groupBusyId.value !== null) return;
+  groupBusyId.value = row.id;
+  try {
+    const confirmed = await ElMessageBox.confirm(`确认删除群 ${row.groupId}？`, "删除群配置", { type: "warning" })
+      .then(() => true)
+      .catch(() => false);
+    if (!confirmed) return;
+    await adminApi.deleteQqBotGroup(row.id);
+    await loadGroups();
+  } finally {
+    groupBusyId.value = null;
+  }
 }
 
 function formatGroupNotifyCategories(items: Array<"system" | "school-feed"> = []) {
@@ -699,12 +771,20 @@ function formatLogTime(value: string) {
   color: #6b7280;
   font-size: 12px;
 }
+.log-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.log-table-scroll :deep(.log-table) {
+  min-width: 1010px;
+}
 .interactive-table {
   display: none;
 }
 .record-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: 12px;
 }
 .record-card {
@@ -771,9 +851,15 @@ function formatLogTime(value: string) {
     display: none;
   }
   .card-head,
-  .actions {
+  .actions,
+  .filters {
     align-items: stretch;
     flex-direction: column;
+  }
+  .filters :deep(.el-select),
+  .filters :deep(.el-button),
+  .log-meta {
+    width: 100% !important;
   }
   .setup-guide {
     grid-template-columns: 1fr;

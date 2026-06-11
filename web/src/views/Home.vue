@@ -26,7 +26,13 @@
       </div>
     </section>
 
-    <div class="grid" :class="{ 'single-col': !showForumContent }">
+    <section v-if="homeError && !loading" class="block home-error">
+      <el-empty :description="homeError">
+        <el-button type="primary" @click="loadSummary">重试</el-button>
+      </el-empty>
+    </section>
+
+    <div v-else class="grid" :class="{ 'single-col': !showForumContent }" v-loading="loading">
       <!-- 左：热帖 + 最新 -->
       <div class="col-left" v-if="showForumContent">
         <section class="block" v-if="summary?.pinnedTopics?.length">
@@ -42,7 +48,16 @@
             <h3>🔥 热议</h3>
             <router-link to="/forum/hot" class="more">查看前十 →</router-link>
           </div>
-          <div v-for="t in hotPreview" :key="'hot-' + t.id" class="hot-row" @click="$router.push(`/forum/topic/${t.id}`)">
+          <div
+            v-for="t in hotPreview"
+            :key="'hot-' + t.id"
+            class="hot-row"
+            role="button"
+            tabindex="0"
+            @click="openTopic(t.id)"
+            @keydown.enter.prevent="openTopic(t.id)"
+            @keydown.space.prevent="openTopic(t.id)"
+          >
             <div class="hot-rank" :class="{ top3: t.rank <= 3 }">#{{ t.rank }}</div>
             <div class="hot-main">
               <div class="hot-title">{{ t.title }}</div>
@@ -81,7 +96,15 @@
             <span class="cpu-muted">学校公开信息</span>
           </div>
           <ul v-if="summary?.announce?.length" class="announce-list">
-            <li v-for="t in summary.announce" :key="'ann-' + t.id" @click="$router.push(`/forum/topic/${t.id}`)">
+            <li
+              v-for="t in summary.announce"
+              :key="'ann-' + t.id"
+              role="button"
+              tabindex="0"
+              @click="openTopic(t.id)"
+              @keydown.enter.prevent="openTopic(t.id)"
+              @keydown.space.prevent="openTopic(t.id)"
+            >
               <div class="ann-title">{{ t.title }}</div>
               <div class="ann-meta">
                 <span class="ann-source">{{ t.board?.name }}</span>
@@ -97,7 +120,14 @@
             <h3>📮 逛逛</h3>
             <span class="cpu-muted">外部镜像内容</span>
           </div>
-          <div class="wall-card" @click="$router.push('/forum/b/campus-wall')">
+          <div
+            class="wall-card"
+            role="button"
+            tabindex="0"
+            @click="openBoard('campus-wall')"
+            @keydown.enter.prevent="openBoard('campus-wall')"
+            @keydown.space.prevent="openBoard('campus-wall')"
+          >
             <div class="wall-icon">📮</div>
             <div class="wall-body">
               <div class="wall-title">单独查看逛逛镜像</div>
@@ -115,13 +145,26 @@
             <div
               v-if="auth.isLoggedIn && site.features.electric"
               class="svc svc-special"
+              role="button"
+              tabindex="0"
               @click="electricOpen = true"
+              @keydown.enter.prevent="electricOpen = true"
+              @keydown.space.prevent="electricOpen = true"
             >
               <div class="svc-icon">💡</div>
               <div class="svc-name">宿舍电费</div>
               <div class="svc-tag svc-tag-fresh">站内查</div>
             </div>
-            <div v-for="s in summary?.services ?? []" :key="s.id" class="svc" @click="openUrl(s.url)">
+            <div
+              v-for="s in summary?.services ?? []"
+              :key="s.id"
+              class="svc"
+              role="button"
+              tabindex="0"
+              @click="openUrl(s.url)"
+              @keydown.enter.prevent="openUrl(s.url)"
+              @keydown.space.prevent="openUrl(s.url)"
+            >
               <div class="svc-icon">{{ s.icon || "🔗" }}</div>
               <div class="svc-name">{{ s.name }}</div>
               <div class="svc-tag" v-if="s.needSso">需登录</div>
@@ -139,6 +182,7 @@
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ChatLineRound, Edit, Bell, Service } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 import { homeApi, type HomeSummary } from "@/api/home";
@@ -150,6 +194,8 @@ const auth = useAuthStore();
 const site = useSiteStore();
 const router = useRouter();
 const summary = ref<HomeSummary | null>(null);
+const loading = ref(false);
+const homeError = ref("");
 const electricOpen = ref(false);
 const hotPreview = computed(() => (summary.value?.hotTopics ?? []).slice(0, 3));
 
@@ -176,23 +222,57 @@ const heroIntro = computed(() => {
 
 const loginActionText = computed(() => site.features.forum ? "登录" : "登录使用");
 
-onMounted(async () => {
-  // 不区分游客 / 登录态，统一调 home/summary —— 后端按 token 自动决定 identity 是否返回
+onMounted(loadSummary);
+
+async function loadSummary() {
+  loading.value = true;
+  homeError.value = "";
   try {
-    summary.value = await homeApi.summary();
-  } catch {
+    // 不区分游客 / 登录态，统一调 home/summary —— 后端按 token 自动决定 identity 是否返回
+    summary.value = await homeApi.summary({ suppressErrorMessage: true });
+  } catch (e) {
     summary.value = { identity: null, pinnedTopics: [], hotTopics: [], latestTopics: [], announce: [], services: [] };
+    homeError.value = normalizeHomeError(e);
+  } finally {
+    loading.value = false;
   }
-});
+}
 
 function openUrl(url: string) {
-  if (url.startsWith("/")) {
-    router.push(url);
-  } else if (url.startsWith("tel:")) {
-    window.location.href = url;
-  } else {
-    window.open(url, "_blank", "noopener");
+  const target = typeof url === "string" ? url.trim() : "";
+  if (!target) {
+    ElMessage.warning("该服务暂未配置链接");
+    return;
   }
+  if (target.startsWith("/")) {
+    router.push(target);
+    return;
+  }
+  if (target.startsWith("tel:") || target.startsWith("mailto:")) {
+    window.location.href = target;
+    return;
+  }
+  if (/^https?:\/\//i.test(target)) {
+    window.open(target, "_blank", "noopener,noreferrer");
+    return;
+  }
+  ElMessage.warning("该服务链接格式暂不支持");
+}
+
+function openTopic(id: number) {
+  router.push(`/forum/topic/${id}`);
+}
+
+function openBoard(slug: string) {
+  router.push(`/forum/b/${slug}`);
+}
+
+function normalizeHomeError(error: unknown) {
+  const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
+  if (status && status < 500) {
+    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "首页内容加载失败";
+  }
+  return "首页内容加载失败，请稍后再试";
 }
 </script>
 
@@ -256,6 +336,9 @@ function openUrl(url: string) {
   padding: 16px 20px 12px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
+.home-error {
+  padding: 24px 16px;
+}
 
 .block-head {
   display: flex;
@@ -275,6 +358,10 @@ function openUrl(url: string) {
   border-radius: 6px;
 }
 .announce-list li:hover { background: #f4f6f8; }
+.announce-list li:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
+}
 .announce-list li:last-child { border-bottom: none; }
 .ann-title {
   font-size: 14px;
@@ -303,6 +390,10 @@ function openUrl(url: string) {
   cursor: pointer;
 }
 .hot-row:last-of-type { border-bottom: none; }
+.hot-row:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
+}
 .hot-rank {
   min-width: 46px;
   font-size: 13px;
@@ -381,6 +472,10 @@ function openUrl(url: string) {
 .wall-card:hover {
   border-color: #93c5fd;
 }
+.wall-card:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
+}
 .wall-icon {
   width: 42px;
   height: 42px;
@@ -411,6 +506,10 @@ function openUrl(url: string) {
   position: relative;
 }
 .svc:hover { border-color: var(--cpu-primary); background: #f0fdf4; }
+.svc:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
+}
 .svc-icon { font-size: 22px; }
 .svc-name { font-size: 12px; color: #374151; margin-top: 4px; line-height: 1.3; }
 .svc-tag {

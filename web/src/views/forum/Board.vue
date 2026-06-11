@@ -10,7 +10,7 @@
             <span>{{ board.topicCount }} 帖</span>
             <span v-if="board.anonymousEnabled" class="anon-tag">支持匿名</span>
             <span v-if="board.readOnly" class="ro-tag">{{ board.slug === 'campus-wall' ? '逛逛镜像' : '公告板' }}</span>
-            <a v-if="board.feedSource?.homepage" :href="board.feedSource.homepage" target="_blank" class="ro-link">查看来源 →</a>
+            <a v-if="board.feedSource?.homepage" :href="board.feedSource.homepage" target="_blank" rel="noopener noreferrer" class="ro-link">查看来源 →</a>
           </div>
         </div>
       </div>
@@ -25,38 +25,45 @@
       </div>
     </div>
 
-    <div v-if="orderedPinnedList.length" class="topic-list cpu-card pinned-list">
-      <div class="section-head">
-        <h3>置顶帖</h3>
-        <span>{{ orderedPinnedList.length }} 条</span>
-      </div>
-      <TopicListItem v-for="t in orderedPinnedList" :key="`pin-${t.id}`" :topic="t" />
+    <div v-if="error && !loading" class="topic-list cpu-card board-error">
+      <el-empty :description="error">
+        <el-button type="primary" @click="reload()">重试</el-button>
+      </el-empty>
     </div>
 
-    <div class="topic-list cpu-card" v-loading="loading">
-      <div class="section-head">
-        <h3>{{ sort === "hot" ? "按热度查看" : "按时间查看" }}</h3>
-        <span>{{ total }} 条</span>
+    <template v-else>
+      <div v-if="orderedPinnedList.length" class="topic-list cpu-card pinned-list">
+        <div class="section-head">
+          <h3>置顶帖</h3>
+          <span>{{ orderedPinnedList.length }} 条</span>
+        </div>
+        <TopicListItem v-for="t in orderedPinnedList" :key="`pin-${t.id}`" :topic="t" />
       </div>
-      <TopicListItem v-for="t in list" :key="t.id" :topic="t" />
-      <el-empty v-if="!loading && !list.length" description="还没有帖子" />
-      <el-pagination
-        v-if="total > size"
-        :current-page="page"
-        :page-size="size"
-        :total="total"
-        layout="prev, pager, next"
-        class="pager"
-        @current-change="onPage"
-      />
-    </div>
+
+      <div class="topic-list cpu-card" v-loading="loading">
+        <div class="section-head">
+          <h3>{{ sort === "hot" ? "按热度查看" : "按时间查看" }}</h3>
+          <span>{{ total }} 条</span>
+        </div>
+        <TopicListItem v-for="t in list" :key="t.id" :topic="t" />
+        <el-empty v-if="!loading && !list.length" description="还没有帖子" />
+        <el-pagination
+          v-if="total > size"
+          :current-page="page"
+          :page-size="size"
+          :total="total"
+          layout="prev, pager, next"
+          class="pager"
+          @current-change="onPage"
+        />
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from "vue";
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
-import { AxiosError } from "axios";
 import { Edit } from "@element-plus/icons-vue";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import { boardApi, type Board } from "@/api/board";
@@ -83,6 +90,7 @@ const page = ref(1);
 const size = ref(20);
 const sort = ref<"new" | "hot">("new");
 const loading = ref(false);
+const error = ref("");
 let pendingRestoreState: BoardRestoreState | null = null;
 
 const canPost = computed(() => !!board.value && !board.value.readOnly && auth.canAccessForum);
@@ -113,51 +121,46 @@ watch(() => route.fullPath, async () => {
 
 async function reload(options: { scrollToTop?: boolean } = {}) {
   loading.value = true;
+  error.value = "";
   try {
     const slug = String(route.params.slug);
-    board.value = await boardApi.detail(slug).catch((error: AxiosError) => {
-      if (error.response?.status === 403) {
-        router.replace({ name: "forum", query: { redirect: route.fullPath } });
-      }
-      return null;
-    });
-    if (!board.value) {
-      pinnedList.value = [];
-      list.value = [];
-      total.value = 0;
-      return;
-    }
+    board.value = await boardApi.detail(slug, { suppressErrorMessage: true });
     const [pins, normal] = await Promise.all([
-      topicApi.list({ board: slug, size: 20, sort: "new", pinned: "only" }).catch((error: AxiosError) => {
-        if (error.response?.status === 403) {
-          router.replace({ name: "forum", query: { redirect: route.fullPath } });
-        }
-        return null;
-      }),
-      topicApi.list({ board: slug, page: page.value, size: size.value, sort: sort.value, pinned: "exclude" }).catch((error: AxiosError) => {
-        if (error.response?.status === 403) {
-          router.replace({ name: "forum", query: { redirect: route.fullPath } });
-        }
-        return null;
-      }),
+      topicApi.list({ board: slug, size: 20, sort: "new", pinned: "only" }, { suppressErrorMessage: true }),
+      topicApi.list({ board: slug, page: page.value, size: size.value, sort: sort.value, pinned: "exclude" }, { suppressErrorMessage: true }),
     ]);
-    if (!normal) {
-      pinnedList.value = [];
-      list.value = [];
-      total.value = 0;
-      return;
-    }
     pinnedList.value = (pins?.list ?? []).filter((item) => !item?.metadata?.weiwallHotEntry);
     list.value = normal.list.filter((item: any) => !item?.metadata?.weiwallHotEntry);
     total.value = normal.total;
+  } catch (e) {
+    if ((e as { response?: { status?: number } })?.response?.status === 403) {
+      router.replace({ name: "forum", query: { redirect: route.fullPath } });
+      return;
+    }
+    if ((e as { response?: { status?: number } })?.response?.status === 404) {
+      board.value = null;
+    }
+    pinnedList.value = [];
+    list.value = [];
+    total.value = 0;
+    error.value = normalizeBoardError(e);
   } finally {
     loading.value = false;
-    if (pendingRestoreState) {
+    if (!error.value && pendingRestoreState) {
       await restoreScrollIfNeeded();
-    } else if (options.scrollToTop) {
+    } else if (!error.value && options.scrollToTop) {
       await scrollToTop();
     }
   }
+}
+
+function normalizeBoardError(error: unknown) {
+  const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
+  if (status === 404) return "板块不存在或已关闭";
+  if (status && status < 500) {
+    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "板块内容加载失败";
+  }
+  return "板块内容加载失败，请稍后再试";
 }
 
 function onPage(p: number) {
@@ -226,7 +229,8 @@ onBeforeRouteLeave((to) => {
   gap: 16px;
 }
 
-.head-left { display: flex; gap: 14px; align-items: flex-start; }
+.head-left { display: flex; gap: 14px; align-items: flex-start; min-width: 0; }
+.head-left > div:last-child { min-width: 0; }
 .head-icon {
   width: 56px; height: 56px; border-radius: 12px;
   display: grid; place-items: center;
@@ -235,7 +239,7 @@ onBeforeRouteLeave((to) => {
 }
 
 .head-name { margin: 0; font-size: 22px; color: #1f2937; }
-.head-desc { margin: 4px 0 6px; font-size: 13px; color: #6b7280; }
+.head-desc { margin: 4px 0 6px; font-size: 13px; color: #6b7280; overflow-wrap: anywhere; }
 .head-meta {
   display: flex;
   gap: 14px;
@@ -271,6 +275,9 @@ onBeforeRouteLeave((to) => {
 .pinned-list {
   border: 1px solid #fee2e2;
   background: linear-gradient(180deg, #fff9f9 0%, #ffffff 100%);
+}
+.board-error {
+  padding: 24px 12px;
 }
 
 .pager { padding: 12px; display: flex; justify-content: center; }

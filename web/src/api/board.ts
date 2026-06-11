@@ -1,4 +1,4 @@
-import { request } from "./request";
+import { request, type RequestOptions } from "./request";
 
 export interface Board {
   id: number;
@@ -16,6 +16,6 @@ export interface Board {
 }
 
 export const boardApi = {
-  list: () => request.get<Board[]>("/boards"),
-  detail: (slug: string) => request.get<Board>(`/boards/${slug}`),
+  list: (options?: RequestOptions) => request.get<Board[]>("/boards", undefined, options),
+  detail: (slug: string, options?: RequestOptions) => request.get<Board>(`/boards/${slug}`, undefined, options),
 };

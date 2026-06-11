@@ -51,7 +51,7 @@
       <p>统一管理提交链接、回收记录、名单核对与文件导出。</p>
     </section>
 
-    <button id="newTask" class="primary full">新建收集任务</button>
+    <button id="newTask" type="button" class="primary full">新建收集任务</button>
     <input id="taskSearch" class="sidebar-search" placeholder="搜索任务">
     <div id="taskList" class="task-list"></div>
   </aside>
@@ -64,11 +64,11 @@
         <p id="activeMeta">任务链接、统计、提交记录和缺交名单会集中显示在这里。</p>
       </div>
       <div class="top-actions">
-        <button id="editTask" disabled>编辑任务</button>
-        <button id="bindTaskOwner" hidden disabled>绑定创建者</button>
-        <button id="copyLink" disabled>复制链接</button>
-        <button id="showQr" disabled>二维码</button>
-        <button id="openFileManager" disabled>文件管理</button>
+        <button id="editTask" type="button" disabled>编辑任务</button>
+        <button id="bindTaskOwner" type="button" hidden disabled>绑定创建者</button>
+        <button id="copyLink" type="button" disabled>复制链接</button>
+        <button id="showQr" type="button" disabled>二维码</button>
+        <button id="openFileManager" type="button" disabled>文件管理</button>
       </div>
     </header>
 
@@ -77,7 +77,7 @@
         <span class="empty-icon">+</span>
         <h2>还没有选中任务</h2>
         <p>创建一个收集任务后，系统会生成提交链接。提交者无需登录，填写表单并上传文件即可。</p>
-        <button id="emptyNewTask" class="primary">新建收集任务</button>
+        <button id="emptyNewTask" type="button" class="primary">新建收集任务</button>
       </div>
     </section>
 
@@ -93,12 +93,12 @@
           <div class="share-row">
             <span class="share-label">提交链接</span>
             <input id="shareLink" readonly>
-            <button id="copyLinkInline">复制</button>
+            <button id="copyLinkInline" type="button">复制</button>
           </div>
           <div class="share-row">
             <span class="share-label">成功名单</span>
             <input id="statusLink" readonly>
-            <button id="copyStatusLink">复制</button>
+            <button id="copyStatusLink" type="button">复制</button>
           </div>
         </div>
       </section>
@@ -112,9 +112,9 @@
             </div>
             <div class="table-tools">
               <input id="submissionSearch" placeholder="搜索姓名、学号/考试号、文件">
-              <button id="openFileManagerInline">文件管理</button>
-              <button id="exportCsv">导出 CSV</button>
-              <button id="downloadZip">下载 ZIP</button>
+              <button id="openFileManagerInline" type="button">文件管理</button>
+              <button id="exportCsv" type="button">导出 CSV</button>
+              <button id="downloadZip" type="button">下载 ZIP</button>
             </div>
           </div>
           <div id="submissionTable" class="table-empty"></div>
@@ -124,7 +124,7 @@
           <div class="side-block">
             <div class="side-head">
               <h2>缺交名单</h2>
-              <button id="copyMissing" disabled>复制</button>
+              <button id="copyMissing" type="button" disabled>复制</button>
             </div>
             <div id="missingList" class="missing-list"></div>
           </div>
@@ -154,7 +154,7 @@
         <p class="eyebrow">任务配置</p>
         <h2 id="editorTitle">新建任务</h2>
       </div>
-      <button id="closeEditor" class="icon-button" title="关闭">×</button>
+      <button id="closeEditor" type="button" class="icon-button" title="关闭">×</button>
     </div>
 
     <label>任务标题<input id="title" placeholder="例如：毕业材料收集"></label>
@@ -175,9 +175,9 @@
         <h3>表单字段</h3>
         <div class="field-tools">
           <select id="templateSelect" title="选择模板"></select>
-          <button id="applyTemplate" class="chip">应用模板</button>
-          <button id="deleteTemplate" class="chip danger">删除模板</button>
-          <button id="addField" class="chip">添加字段</button>
+          <button id="applyTemplate" type="button" class="chip">应用模板</button>
+          <button id="deleteTemplate" type="button" class="chip danger">删除模板</button>
+          <button id="addField" type="button" class="chip">添加字段</button>
         </div>
       </div>
       <div id="fields" class="field-stack"></div>
@@ -252,10 +252,10 @@
     </section>
 
     <div class="drawer-actions">
-      <button id="saveTask" class="primary">保存任务</button>
-      <button id="saveTemplate">保存当前模板</button>
-      <button id="resetEditor">重置</button>
-      <button id="deleteTask" class="danger" disabled>删除任务</button>
+      <button id="saveTask" type="button" class="primary">保存任务</button>
+      <button id="saveTemplate" type="button">保存当前模板</button>
+      <button id="resetEditor" type="button">重置</button>
+      <button id="deleteTask" type="button" class="danger" disabled>删除任务</button>
     </div>
     <p id="createMessage" class="message"></p>
   </aside>
@@ -264,7 +264,7 @@
   <dialog id="qrDialog">
     <div class="dialog-head">
       <h2>提交二维码</h2>
-      <button id="closeQr" class="icon-button">×</button>
+      <button id="closeQr" type="button" class="icon-button">×</button>
     </div>
     <img id="qrImage" alt="提交二维码">
     <p id="qrLink" class="hint"></p>
@@ -276,7 +276,7 @@
         <h2>文件管理</h2>
         <p id="fileDialogMeta" class="hint"></p>
       </div>
-      <button id="closeFileDialog" class="icon-button">×</button>
+      <button id="closeFileDialog" type="button" class="icon-button">×</button>
     </div>
     <div class="file-manager-tools">
       <input id="fileSearch" placeholder="搜索文件名、姓名、编号">
@@ -292,8 +292,8 @@
       </div>
     </div>
     <div class="dialog-actions">
-      <button id="confirmOk" class="danger">确认</button>
-      <button id="confirmCancel">取消</button>
+      <button id="confirmOk" type="button" class="danger">确认</button>
+      <button id="confirmCancel" type="button">取消</button>
     </div>
   </dialog>
 
@@ -308,8 +308,8 @@
       <input id="promptInput">
     </label>
     <div class="dialog-actions">
-      <button id="promptOk" class="primary">保存</button>
-      <button id="promptCancel">取消</button>
+      <button id="promptOk" type="button" class="primary">保存</button>
+      <button id="promptCancel" type="button">取消</button>
     </div>
   </dialog>
 

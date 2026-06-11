@@ -3,7 +3,7 @@
     <div class="head">
       <h2>📊 课程点评</h2>
       <div class="head-right">
-        <el-button v-if="auth.canAccessForum" :loading="syncing" @click="onSync">
+        <el-button v-if="auth.canAccessForum" :loading="syncing" :disabled="syncing" @click="onSync">
           <el-icon><Refresh /></el-icon> 同步我的课程
         </el-button>
         <el-button v-if="auth.canAccessForum" type="primary" @click="$router.push({ name: 'post', query: { board: 'coursereview' } })">
@@ -22,16 +22,31 @@
       </el-input>
     </div>
 
-    <div v-if="scope === 'mine' && !list.length && !loading" class="empty-mine">
+    <div v-if="error && !loading" class="list-error">
+      <el-empty :description="error">
+        <el-button type="primary" @click="reload">重试</el-button>
+      </el-empty>
+    </div>
+
+    <div v-else-if="scope === 'mine' && !list.length && !loading" class="empty-mine">
       <p>还没有导入你的课程</p>
-      <el-button type="primary" :loading="syncing" @click="onSync">
+      <el-button type="primary" :loading="syncing" :disabled="syncing" @click="onSync">
         <el-icon><Refresh /></el-icon> 立即同步
       </el-button>
       <p class="sub">需要先在「教务数据」页完成统一认证授权。系统会从成绩与培养方案中整理你修过或计划修读的课程。</p>
     </div>
 
-    <div class="course-grid" v-loading="loading">
-      <div v-for="c in list" :key="c.id" class="course" @click="$router.push(`/coursereview/${c.id}`)">
+    <div v-else class="course-grid" v-loading="loading">
+      <div
+        v-for="c in list"
+        :key="c.id"
+        class="course"
+        role="button"
+        tabindex="0"
+        @click="openCourse(c.id)"
+        @keydown.enter.prevent="openCourse(c.id)"
+        @keydown.space.prevent="openCourse(c.id)"
+      >
         <div class="c-head">
           <div>
             <div class="code">{{ c.code }}</div>
@@ -63,29 +78,41 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from "vue";
+import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Plus, Search, Refresh } from "@element-plus/icons-vue";
 import { courseApi, type Course } from "@/api/course";
 import { useAuthStore } from "@/stores/auth";
 
 const auth = useAuthStore();
+const router = useRouter();
 const list = ref<Course[]>([]);
 const q = ref("");
 const scope = ref<"all" | "mine">("all");
 const loading = ref(false);
 const syncing = ref(false);
+const error = ref("");
 
 onMounted(reload);
 watch(() => auth.canAccessForum, (v) => { if (!v) scope.value = "all"; });
 
+function openCourse(id: number) {
+  router.push(`/coursereview/${id}`);
+}
+
 async function reload() {
   loading.value = true;
+  error.value = "";
   try {
-    list.value = await courseApi.list(q.value, scope.value === "mine");
+    list.value = await courseApi.list(q.value, scope.value === "mine", { suppressErrorMessage: true });
+  } catch (e) {
+    list.value = [];
+    error.value = normalizeCourseListError(e);
   } finally { loading.value = false; }
 }
 
 async function onSync() {
+  if (syncing.value) return;
   if (!auth.canAccessForum) {
     ElMessage.warning("请先登录并开启论坛功能");
     return;
@@ -98,7 +125,7 @@ async function onSync() {
         "需要授权",
         { confirmButtonText: "前往授权", cancelButtonText: "取消" }
       );
-      window.location.href = "/jwxt";
+      await router.push("/jwxt");
     } catch { /* 取消 */ }
     return;
   }
@@ -116,6 +143,14 @@ async function onSync() {
       ElMessage.error("教务授权已失效，请到「教务数据」页重新授权");
     }
   } finally { syncing.value = false; }
+}
+
+function normalizeCourseListError(error: unknown) {
+  const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
+  if (status && status < 500) {
+    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "课程列表加载失败";
+  }
+  return "课程列表加载失败，请稍后再试";
 }
 </script>
 
@@ -146,9 +181,16 @@ async function onSync() {
 .empty-mine p { margin: 0 0 10px; }
 .empty-mine .sub { font-size: 12px; color: #6b7280; margin-top: 14px; }
 
+.list-error {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px 16px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+}
+
 .course-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
   gap: 14px;
 }
 .course {
@@ -160,6 +202,10 @@ async function onSync() {
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .course:hover { border-color: var(--cpu-primary); box-shadow: 0 4px 12px rgba(22,135,118,0.08); }
+.course:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
+}
 
 .c-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .code { font-size: 11px; color: #9ca3af; }

@@ -38,11 +38,11 @@
           <el-icon><ArrowLeft /></el-icon> {{ backLabel }}
         </button>
         <div class="actions">
-          <el-button v-if="canEdit" text @click="onEdit">编辑</el-button>
-          <el-button v-if="canPin && !isReadOnly" text @click="onPin">{{ topic.pinned ? '取消板块置顶' : '板块置顶' }}</el-button>
-          <el-button v-if="canPin && !isReadOnly" text @click="onGlobalPin">{{ topic.globalPinned ? '取消全局置顶' : '全局置顶' }}</el-button>
-          <el-button v-if="canPin" text @click="onLock">{{ topic.locked ? '解锁' : '锁帖' }}</el-button>
-          <el-button v-if="canEdit" text type="danger" @click="onDelete">删除</el-button>
+          <el-button v-if="canEdit" text :disabled="isTopicActionBusy" @click="onEdit">编辑</el-button>
+          <el-button v-if="canPin && !isReadOnly" text :loading="topicActionBusy === 'pin'" :disabled="isTopicActionBusy" @click="onPin">{{ topic.pinned ? '取消板块置顶' : '板块置顶' }}</el-button>
+          <el-button v-if="canPin && !isReadOnly" text :loading="topicActionBusy === 'globalPin'" :disabled="isTopicActionBusy" @click="onGlobalPin">{{ topic.globalPinned ? '取消全局置顶' : '全局置顶' }}</el-button>
+          <el-button v-if="canPin" text :loading="topicActionBusy === 'lock'" :disabled="isTopicActionBusy" @click="onLock">{{ topic.locked ? '解锁' : '锁帖' }}</el-button>
+          <el-button v-if="canEdit" text type="danger" :loading="topicActionBusy === 'delete'" :disabled="isTopicActionBusy" @click="onDelete">删除</el-button>
         </div>
       </header>
 
@@ -122,7 +122,7 @@
           <el-icon><Link /></el-icon>
           前往逛逛原帖
         </button>
-        <a v-else :href="topic.metadata.sourceUrl" target="_blank" class="src-link">
+        <a v-else :href="topic.metadata.sourceUrl" target="_blank" rel="noopener noreferrer" class="src-link">
           <el-icon><Link /></el-icon>
           {{ topic.metadata?.externalType === 'wechat' ? '前往微信阅读全文' : '在学校原站查看' }}
         </a>
@@ -169,6 +169,7 @@
           <el-button
             type="success"
             :loading="topicAdminReviewAction === 'approved'"
+            :disabled="topicAdminReviewAction !== ''"
             @click="approveTopicManualReview"
           >
             人工通过
@@ -177,6 +178,7 @@
             type="danger"
             plain
             :loading="topicAdminReviewAction === 'rejected'"
+            :disabled="topicAdminReviewAction !== ''"
             @click="rejectTopicManualReview"
           >
             人工驳回
@@ -191,7 +193,7 @@
           <p class="cpu-muted">你可以修改后再试，或申请人工复核。复核期间暂时不能继续提交新内容。</p>
         </div>
         <div class="topic-review-actions">
-          <el-button type="warning" :loading="requestingTopicManualReview" @click="topicManualReviewConfirmOpen = true">申请人工复核</el-button>
+          <el-button type="warning" :loading="requestingTopicManualReview" :disabled="requestingTopicManualReview" @click="topicManualReviewConfirmOpen = true">申请人工复核</el-button>
         </div>
       </div>
       <div v-else-if="isOwnTopicManualReviewPending" class="topic-review-tip cpu-card topic-review-tip-pending">
@@ -201,7 +203,7 @@
       <MarkdownView :content="displayContent" class="post-body topic-markdown" clickable-images media-loading="eager" />
 
       <footer class="post-foot">
-        <el-button :type="liked ? 'primary' : 'default'" :icon="Star" @click="onLike">
+        <el-button :type="liked ? 'primary' : 'default'" :icon="Star" :loading="topicActionBusy === 'like'" :disabled="isTopicActionBusy" @click="onLike">
           {{ liked ? '已点赞' : '点赞' }} · {{ topic.likeCount }}
         </el-button>
         <el-button :icon="ChatLineRound" @click="openReplyDialog">回复 · {{ topic.replyCount }}</el-button>
@@ -278,8 +280,8 @@
             <div class="reply-actions">
               <el-button text size="small" @click="quoteReply(entry.item)">引用</el-button>
               <el-button v-if="canEditReply(entry.item)" text size="small" @click="editReply(entry.item)">编辑</el-button>
-              <el-button v-if="canEditReply(entry.item)" text size="small" type="danger" @click="removeReply(entry.item)">删除</el-button>
-              <el-button text size="small" @click="onLikeReply(entry.item)">👍 {{ entry.item.likeCount }}</el-button>
+              <el-button v-if="canEditReply(entry.item)" text size="small" type="danger" :loading="replyActionBusyId === entry.item.id" :disabled="replyActionBusyId !== null" @click="removeReply(entry.item)">删除</el-button>
+              <el-button text size="small" :loading="replyLikeBusyId === entry.item.id" :disabled="replyLikeBusyId !== null" @click="onLikeReply(entry.item)">👍 {{ entry.item.likeCount }}</el-button>
             </div>
           </div>
         </div>
@@ -290,7 +292,7 @@
       v-if="canReply"
       v-model="replyDialogOpen"
       title="回复"
-      width="min(720px, calc(100vw - 24px))"
+      width="min(720px, calc(100dvw - 24px))"
       append-to-body
       align-center
       class="reply-dialog"
@@ -320,8 +322,8 @@
       <div class="reply-form-actions reply-dialog-actions">
         <span class="cpu-muted">离开页面后会保留未发送的内容。</span>
         <div class="reply-submit-actions">
-          <el-button v-if="editingReplyId" @click="cancelReplyEdit">取消编辑</el-button>
-          <el-button type="primary" :loading="replying" @click="submitReply">
+          <el-button v-if="editingReplyId" :disabled="replying" @click="cancelReplyEdit">取消编辑</el-button>
+          <el-button type="primary" :loading="replying" :disabled="replying" @click="submitReply">
             {{ editingReplyId ? "保存修改" : "发布回复" }}
           </el-button>
         </div>
@@ -361,7 +363,7 @@
     <el-dialog
       v-model="weiwallSourceDialogOpen"
       title="打开逛逛原帖"
-      width="min(420px, calc(100vw - 24px))"
+      width="min(420px, calc(100dvw - 24px))"
       append-to-body
       class="weiwall-source-dialog"
     >
@@ -391,10 +393,10 @@
     <el-dialog
       v-model="shareCardDialogOpen"
       title="分享卡片"
-    width="min(460px, calc(100vw - 24px))"
-    append-to-body
-    class="share-card-dialog"
-  >
+      width="min(460px, calc(100dvw - 24px))"
+      append-to-body
+      class="share-card-dialog"
+    >
       <div class="share-card-panel">
         <div v-if="shareCardRendering" class="share-card-loading">正在生成图片…</div>
         <img
@@ -420,7 +422,7 @@
     <el-dialog
       v-model="shareCardPreviewOpen"
       title="分享卡片预览"
-      width="min(520px, calc(100vw - 24px))"
+      width="min(520px, calc(100dvw - 24px))"
       append-to-body
       class="share-card-preview-dialog"
     >
@@ -431,7 +433,7 @@
     <el-dialog
       v-model="topicImageReviewDialogOpen"
       title="图片人工复核"
-      width="min(920px, calc(100vw - 24px))"
+      width="min(920px, calc(100dvw - 24px))"
       append-to-body
       class="topic-image-review-dialog"
     >
@@ -464,6 +466,7 @@
                   type="success"
                   size="small"
                   :loading="topicImageReviewSavingId === asset.id && topicImageReviewSavingAction === 'approved'"
+                  :disabled="topicImageReviewSavingId !== null"
                   @click="approveTopicImage(asset)"
                 >
                   人工通过
@@ -473,6 +476,7 @@
                   plain
                   size="small"
                   :loading="topicImageReviewSavingId === asset.id && topicImageReviewSavingAction === 'rejected'"
+                  :disabled="topicImageReviewSavingId !== null"
                   @click="rejectTopicImage(asset)"
                 >
                   继续隐藏
@@ -487,7 +491,7 @@
     <el-dialog
       v-model="topicVideoReviewDialogOpen"
       title="视频人工复核"
-      width="min(920px, calc(100vw - 24px))"
+      width="min(920px, calc(100dvw - 24px))"
       append-to-body
       class="topic-video-review-dialog"
     >
@@ -526,6 +530,7 @@
                   type="success"
                   size="small"
                   :loading="topicVideoReviewSavingId === asset.id && topicVideoReviewSavingAction === 'approved'"
+                  :disabled="topicVideoReviewSavingId !== null"
                   @click="approveTopicVideo(asset)"
                 >
                   人工通过
@@ -535,6 +540,7 @@
                   plain
                   size="small"
                   :loading="topicVideoReviewSavingId === asset.id && topicVideoReviewSavingAction === 'rejected'"
+                  :disabled="topicVideoReviewSavingId !== null"
                   @click="rejectTopicVideo(asset)"
                 >
                   继续隐藏
@@ -594,7 +600,7 @@
       </div>
       <template #footer>
         <el-button @click="replyReviewBlockedOpen = false">返回修改</el-button>
-        <el-button type="warning" :loading="requestingReplyManualReview" @click="replyManualReviewConfirmOpen = true">申请人工复核</el-button>
+        <el-button type="warning" :loading="requestingReplyManualReview" :disabled="requestingReplyManualReview" @click="replyManualReviewConfirmOpen = true">申请人工复核</el-button>
       </template>
     </el-dialog>
 
@@ -619,7 +625,9 @@
 
   <div v-else class="topic-page topic-page-empty">
     <section class="cpu-card topic-empty-card">
-      <el-empty description="帖子不存在或暂时不可见" />
+      <el-empty :description="loadError || '帖子不存在或暂时不可见'">
+        <el-button v-if="loadError" type="primary" @click="load">重试</el-button>
+      </el-empty>
     </section>
   </div>
 </template>
@@ -655,6 +663,7 @@ const topic = ref<Topic | null>(null);
 const replies = ref<Reply[]>([]);
 const loading = ref(false);
 const repliesLoading = ref(false);
+const loadError = ref("");
 const replying = ref(false);
 const replyText = ref("");
 const replyAnonymous = ref(false);
@@ -687,6 +696,10 @@ const replyManualReviewConfirmOpen = ref(false);
 const requestingTopicManualReview = ref(false);
 const topicManualReviewConfirmOpen = ref(false);
 const topicAdminReviewAction = ref<"" | "approved" | "rejected">("");
+type TopicAction = "" | "like" | "pin" | "globalPin" | "lock" | "delete";
+const topicActionBusy = ref<TopicAction>("");
+const replyActionBusyId = ref<number | null>(null);
+const replyLikeBusyId = ref<number | null>(null);
 const blockedReplyId = ref<number | null>(null);
 const blockedReplyInfo = reactive<{ reason: string; riskScore: number | null }>({
   reason: "",
@@ -697,6 +710,7 @@ const repliesEl = ref<HTMLElement | null>(null);
 const replyEditorRef = ref<InstanceType<typeof RichTextEditor> | null>(null);
 const shareCardExportRef = ref<HTMLElement | null>(null);
 const REPLY_MAX = 10000;
+const isTopicActionBusy = computed(() => topicActionBusy.value !== "");
 
 type WeiwallContact = {
   name: string;
@@ -1045,6 +1059,7 @@ async function load() {
   loading.value = true;
   repliesLoading.value = true;
   replies.value = [];
+  loadError.value = "";
   liked.value = false;
   weiwallContactExpanded.value = false;
   try {
@@ -1057,7 +1072,7 @@ async function load() {
       .finally(() => {
         loading.value = false;
       });
-    const repliesPromise = topicApi.replies(id)
+    const repliesPromise = topicApi.replies(id, { suppressErrorMessage: true })
       .catch((error: AxiosError) => {
         if (error.response?.status === 403) {
           router.replace({ name: "forum", query: { redirect: route.fullPath } });
@@ -1078,11 +1093,15 @@ async function load() {
     }
     // 我是否赞过
     if (auth.isLoggedIn) {
-      const mine = await likeApi.mine([id], nextReplies.map((r) => r.id));
-      liked.value = mine.topics.includes(id);
-      // 标记每条回复 liked
-      const set = new Set(mine.replies);
-      nextReplies.forEach((r: any) => (r._liked = set.has(r.id)));
+      try {
+        const mine = await likeApi.mine([id], nextReplies.map((r) => r.id), { suppressErrorMessage: true });
+        liked.value = mine.topics.includes(id);
+        // 标记每条回复 liked
+        const set = new Set(mine.replies);
+        nextReplies.forEach((r: any) => (r._liked = set.has(r.id)));
+      } catch {
+        liked.value = false;
+      }
     }
   } finally {
     loading.value = false;
@@ -1091,26 +1110,49 @@ async function load() {
 }
 
 async function loadTopicDetail(id: number) {
-  return topicApi.detail(id).catch((error: AxiosError) => {
+  return topicApi.detail(id, { suppressErrorMessage: true }).catch((error: AxiosError) => {
     if (error.response?.status === 403) {
       router.replace({ name: "forum", query: { redirect: route.fullPath } });
+      return null;
     }
+    loadError.value = normalizeTopicLoadError(error);
     return null;
   });
 }
 
+function normalizeTopicLoadError(error: unknown) {
+  const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
+  if (status === 404) return "帖子不存在或已被删除";
+  if (status && status < 500) {
+    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "帖子加载失败";
+  }
+  return "帖子加载失败，请稍后再试";
+}
+
 async function onLike() {
+  if (topicActionBusy.value) return;
   if (!auth.isLoggedIn) { router.push({ name: "login", query: { redirect: route.fullPath } }); return; }
-  const r = await likeApi.toggleTopic(topic.value!.id);
-  liked.value = r.liked;
-  if (topic.value) topic.value.likeCount = r.likeCount;
+  topicActionBusy.value = "like";
+  try {
+    const r = await likeApi.toggleTopic(topic.value!.id);
+    liked.value = r.liked;
+    if (topic.value) topic.value.likeCount = r.likeCount;
+  } finally {
+    topicActionBusy.value = "";
+  }
 }
 
 async function onLikeReply(reply: any) {
+  if (replyLikeBusyId.value !== null) return;
   if (!auth.isLoggedIn) { router.push({ name: "login", query: { redirect: route.fullPath } }); return; }
-  const r = await likeApi.toggleReply(reply.id);
-  reply.likeCount = r.likeCount;
-  reply._liked = r.liked;
+  replyLikeBusyId.value = reply.id;
+  try {
+    const r = await likeApi.toggleReply(reply.id);
+    reply.likeCount = r.likeCount;
+    reply._liked = r.liked;
+  } finally {
+    replyLikeBusyId.value = null;
+  }
 }
 
 function quoteReply(r: Reply) {
@@ -1168,6 +1210,7 @@ function openReplyDialog() {
 }
 
 async function submitReply() {
+  if (replying.value) return;
   if (!auth.isLoggedIn) { router.push({ name: "login", query: { redirect: route.fullPath } }); return; }
   if (auth.user?.status === "muted") { ElMessage.warning(currentMuteMessage.value); return; }
   if (replyEditorRef.value?.isContentEmpty()) { ElMessage.warning("请填写回复内容"); return; }
@@ -1214,21 +1257,30 @@ async function submitReply() {
 }
 
 async function removeReply(reply: Reply) {
+  if (replyActionBusyId.value !== null) return;
   if (!canEditReply(reply)) return;
-  await ElMessageBox.confirm("确认删除这条回复？", "提示", { type: "warning" });
-  await replyApi.remove(reply.id);
-  replies.value = replies.value.filter((item) => item.id !== reply.id);
-  if (topic.value && topic.value.replyCount > 0) topic.value.replyCount -= 1;
-  if (editingReplyId.value === reply.id) {
-    editingReplyId.value = null;
-    replyText.value = "";
-    replyDialogOpen.value = false;
+  replyActionBusyId.value = reply.id;
+  try {
+    const confirmed = await ElMessageBox.confirm("确认删除这条回复？", "提示", { type: "warning" })
+      .then(() => true)
+      .catch(() => false);
+    if (!confirmed) return;
+    await replyApi.remove(reply.id);
+    replies.value = replies.value.filter((item) => item.id !== reply.id);
+    if (topic.value && topic.value.replyCount > 0) topic.value.replyCount -= 1;
+    if (editingReplyId.value === reply.id) {
+      editingReplyId.value = null;
+      replyText.value = "";
+      replyDialogOpen.value = false;
+    }
+    ElMessage.success("已删除回复");
+  } finally {
+    replyActionBusyId.value = null;
   }
-  ElMessage.success("已删除回复");
 }
 
 async function confirmReplyManualReviewRequest() {
-  if (!blockedReplyId.value) return;
+  if (!blockedReplyId.value || requestingReplyManualReview.value) return;
   requestingReplyManualReview.value = true;
   try {
     await replyApi.requestManualReview(blockedReplyId.value);
@@ -1245,7 +1297,7 @@ async function confirmReplyManualReviewRequest() {
 }
 
 async function confirmTopicManualReviewRequest() {
-  if (!topic.value?.id || !canRequestTopicManualReview.value) return;
+  if (!topic.value?.id || !canRequestTopicManualReview.value || requestingTopicManualReview.value) return;
   requestingTopicManualReview.value = true;
   try {
     await topicApi.requestManualReview(topic.value.id);
@@ -1259,13 +1311,17 @@ async function confirmTopicManualReviewRequest() {
 }
 
 async function approveTopicManualReview() {
-  if (!topic.value?.id || !canAdminReviewTopicManual.value) return;
-  await ElMessageBox.confirm("确认将这篇稿件人工审核通过并公开展示？", "人工通过", {
+  if (!topic.value?.id || !canAdminReviewTopicManual.value || topicAdminReviewAction.value) return;
+  topicAdminReviewAction.value = "approved";
+  const confirmed = await ElMessageBox.confirm("确认将这篇稿件人工审核通过并公开展示？", "人工通过", {
     type: "warning",
     confirmButtonText: "通过",
     cancelButtonText: "取消",
-  });
-  topicAdminReviewAction.value = "approved";
+  }).then(() => true).catch(() => false);
+  if (!confirmed) {
+    topicAdminReviewAction.value = "";
+    return;
+  }
   try {
     await adminApi.updateTopic(topic.value.id, {
       aiReviewStatus: "approved_manual",
@@ -1279,12 +1335,15 @@ async function approveTopicManualReview() {
 }
 
 async function rejectTopicManualReview() {
-  if (!topic.value?.id || !canAdminReviewTopicManual.value) return;
+  if (!topic.value?.id || !canAdminReviewTopicManual.value || topicAdminReviewAction.value) return;
+  topicAdminReviewAction.value = "rejected";
   const { value } = await ElMessageBox.prompt("填写驳回说明（选填）", "人工驳回", {
     inputPlaceholder: "例如：仍存在明显人身攻击 / 隐私泄露 / 引流信息",
   }).catch(() => ({ value: null }));
-  if (value === null) return;
-  topicAdminReviewAction.value = "rejected";
+  if (value === null) {
+    topicAdminReviewAction.value = "";
+    return;
+  }
   try {
     await adminApi.updateTopic(topic.value.id, {
       aiReviewStatus: "rejected_manual",
@@ -1350,13 +1409,19 @@ async function refreshTopicAfterAdminReview() {
 }
 
 async function approveTopicImage(asset: ForumImageReviewAsset) {
-  await ElMessageBox.confirm("确认将这张图片人工审核通过并恢复展示？", "人工通过", {
+  if (topicImageReviewSavingId.value !== null) return;
+  topicImageReviewSavingId.value = asset.id;
+  topicImageReviewSavingAction.value = "approved";
+  const confirmed = await ElMessageBox.confirm("确认将这张图片人工审核通过并恢复展示？", "人工通过", {
     type: "warning",
     confirmButtonText: "通过",
     cancelButtonText: "取消",
-  });
-  topicImageReviewSavingId.value = asset.id;
-  topicImageReviewSavingAction.value = "approved";
+  }).then(() => true).catch(() => false);
+  if (!confirmed) {
+    topicImageReviewSavingId.value = null;
+    topicImageReviewSavingAction.value = "";
+    return;
+  }
   try {
     await adminApi.updateForumImage(asset.id, { status: "approved" });
     await Promise.all([
@@ -1371,12 +1436,17 @@ async function approveTopicImage(asset: ForumImageReviewAsset) {
 }
 
 async function rejectTopicImage(asset: ForumImageReviewAsset) {
+  if (topicImageReviewSavingId.value !== null) return;
+  topicImageReviewSavingId.value = asset.id;
+  topicImageReviewSavingAction.value = "rejected";
   const { value } = await ElMessageBox.prompt("可选填写人工驳回备注，留空会保留当前审核说明。", "继续隐藏", {
     inputPlaceholder: "例如：群二维码和群号可直接识别，不适合公开展示",
   }).catch(() => ({ value: null }));
-  if (value === null) return;
-  topicImageReviewSavingId.value = asset.id;
-  topicImageReviewSavingAction.value = "rejected";
+  if (value === null) {
+    topicImageReviewSavingId.value = null;
+    topicImageReviewSavingAction.value = "";
+    return;
+  }
   try {
     await adminApi.updateForumImage(asset.id, {
       status: "rejected",
@@ -1394,13 +1464,19 @@ async function rejectTopicImage(asset: ForumImageReviewAsset) {
 }
 
 async function approveTopicVideo(asset: ForumVideoReviewAsset) {
-  await ElMessageBox.confirm("确认将这个视频人工审核通过并恢复展示？", "人工通过", {
+  if (topicVideoReviewSavingId.value !== null) return;
+  topicVideoReviewSavingId.value = asset.id;
+  topicVideoReviewSavingAction.value = "approved";
+  const confirmed = await ElMessageBox.confirm("确认将这个视频人工审核通过并恢复展示？", "人工通过", {
     type: "warning",
     confirmButtonText: "通过",
     cancelButtonText: "取消",
-  });
-  topicVideoReviewSavingId.value = asset.id;
-  topicVideoReviewSavingAction.value = "approved";
+  }).then(() => true).catch(() => false);
+  if (!confirmed) {
+    topicVideoReviewSavingId.value = null;
+    topicVideoReviewSavingAction.value = "";
+    return;
+  }
   try {
     await adminApi.updateForumVideo(asset.id, { status: "approved" });
     await Promise.all([
@@ -1415,12 +1491,17 @@ async function approveTopicVideo(asset: ForumVideoReviewAsset) {
 }
 
 async function rejectTopicVideo(asset: ForumVideoReviewAsset) {
+  if (topicVideoReviewSavingId.value !== null) return;
+  topicVideoReviewSavingId.value = asset.id;
+  topicVideoReviewSavingAction.value = "rejected";
   const { value } = await ElMessageBox.prompt("可选填写人工驳回备注，留空会保留当前审核说明。", "继续隐藏", {
     inputPlaceholder: "例如：画面中存在可识别隐私信息，不适合公开展示",
   }).catch(() => ({ value: null }));
-  if (value === null) return;
-  topicVideoReviewSavingId.value = asset.id;
-  topicVideoReviewSavingAction.value = "rejected";
+  if (value === null) {
+    topicVideoReviewSavingId.value = null;
+    topicVideoReviewSavingAction.value = "";
+    return;
+  }
   try {
     await adminApi.updateForumVideo(asset.id, {
       status: "rejected",
@@ -1620,7 +1701,18 @@ function hexToRgba(hex: string, alpha: number) {
 }
 
 function onEdit() {
+  if (isTopicActionBusy.value) return;
   router.push({ name: "edit-post", params: { id: topic.value!.id } });
+}
+
+async function runTopicAction(action: TopicAction, task: () => Promise<void>) {
+  if (!action || topicActionBusy.value) return;
+  topicActionBusy.value = action;
+  try {
+    await task();
+  } finally {
+    topicActionBusy.value = "";
+  }
 }
 
 function applyTopicAuthorModeration(patch: Record<string, unknown>) {
@@ -1640,31 +1732,49 @@ function applyReplyAuthorModeration(reply: any, patch: Record<string, unknown>) 
 }
 
 async function onPin() {
-  await topicApi.update(topic.value!.id, { pinned: !topic.value!.pinned });
-  topic.value!.pinned = !topic.value!.pinned;
+  await runTopicAction("pin", async () => {
+    if (!topic.value) return;
+    const nextPinned = !topic.value.pinned;
+    await topicApi.update(topic.value.id, { pinned: nextPinned });
+    topic.value.pinned = nextPinned;
+  });
 }
 async function onGlobalPin() {
-  await topicApi.update(topic.value!.id, { globalPinned: !topic.value!.globalPinned });
-  topic.value!.globalPinned = !topic.value!.globalPinned;
+  await runTopicAction("globalPin", async () => {
+    if (!topic.value) return;
+    const nextGlobalPinned = !topic.value.globalPinned;
+    await topicApi.update(topic.value.id, { globalPinned: nextGlobalPinned });
+    topic.value.globalPinned = nextGlobalPinned;
+  });
 }
 async function onLock() {
-  await topicApi.update(topic.value!.id, { locked: !topic.value!.locked });
-  topic.value!.locked = !topic.value!.locked;
+  await runTopicAction("lock", async () => {
+    if (!topic.value) return;
+    const nextLocked = !topic.value.locked;
+    await topicApi.update(topic.value.id, { locked: nextLocked });
+    topic.value.locked = nextLocked;
+  });
 }
 async function onDelete() {
-  await ElMessageBox.confirm("确认删除此帖？此操作不可撤销", "提示", { type: "warning" });
-  await topicApi.remove(topic.value!.id);
-  ElMessage.success("已删除");
-  if (isCampusWallTopic.value) {
-    router.replace("/forum/b/campus-wall");
-    return;
-  }
-  if (isAnnouncementTopic.value) {
-    if (window.history.length > 1) router.back();
-    else router.replace("/announcements");
-    return;
-  }
-  router.replace({ name: "forum-latest" });
+  await runTopicAction("delete", async () => {
+    if (!topic.value) return;
+    const confirmed = await ElMessageBox.confirm("确认删除此帖？此操作不可撤销", "提示", { type: "warning" })
+      .then(() => true)
+      .catch(() => false);
+    if (!confirmed) return;
+    await topicApi.remove(topic.value.id);
+    ElMessage.success("已删除");
+    if (isCampusWallTopic.value) {
+      router.replace("/forum/b/campus-wall");
+      return;
+    }
+    if (isAnnouncementTopic.value) {
+      if (window.history.length > 1) router.back();
+      else router.replace("/announcements");
+      return;
+    }
+    router.replace({ name: "forum-latest" });
+  });
 }
 </script>
 
@@ -2406,25 +2516,25 @@ async function onDelete() {
   width: auto;
   height: auto;
   max-width: 100%;
-  max-height: min(70vh, 560px);
+  max-height: min(70dvh, 560px);
   object-fit: contain;
 }
 
 .topic-video-review-preview video {
   display: block;
   width: 100%;
-  max-height: min(70vh, 560px);
+  max-height: min(70dvh, 560px);
   background: #000;
 }
 
 :deep(.topic-image-review-dialog .el-dialog__body) {
-  max-height: calc(100vh - 180px);
+  max-height: calc(100dvh - 180px);
   overflow-y: auto;
   display: block;
 }
 
 :deep(.topic-video-review-dialog .el-dialog__body) {
-  max-height: calc(100vh - 180px);
+  max-height: calc(100dvh - 180px);
   overflow-y: auto;
   display: block;
 }
@@ -3226,7 +3336,7 @@ async function onDelete() {
   }
 
   :deep(.reply-dialog) {
-    width: calc(100vw - 16px) !important;
+    width: calc(100dvw - 16px) !important;
   }
 
   :deep(.reply-dialog .el-dialog) {

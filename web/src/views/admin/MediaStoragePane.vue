@@ -87,11 +87,11 @@
           </div>
 
           <div class="storage-actions">
-            <el-button type="primary" :loading="savingMediaStorage" @click="saveMediaStorageConfig">保存媒体存储配置</el-button>
-            <el-button :loading="validatingOneDriveChinaClient" @click="validateOneDriveChinaClient">校验密钥</el-button>
-            <el-button :loading="authorizingOneDriveChina" @click="startOneDriveChinaAuth">登录授权</el-button>
-            <el-button :disabled="!oneDriveChinaRefreshTokenConfigured" :loading="loadingOneDriveChinaDrives" @click="loadOneDriveChinaDrives">刷新文档库</el-button>
-            <el-button :disabled="!oneDriveChinaRefreshTokenConfigured" @click="clearOneDriveChinaAuth">清除授权</el-button>
+            <el-button type="primary" :loading="savingMediaStorage" :disabled="savingMediaStorage" @click="saveMediaStorageConfig">保存媒体存储配置</el-button>
+            <el-button :loading="validatingOneDriveChinaClient" :disabled="validatingOneDriveChinaClient" @click="validateOneDriveChinaClient">校验密钥</el-button>
+            <el-button :loading="authorizingOneDriveChina" :disabled="authorizingOneDriveChina" @click="startOneDriveChinaAuth">登录授权</el-button>
+            <el-button :disabled="!oneDriveChinaRefreshTokenConfigured || loadingOneDriveChinaDrives" :loading="loadingOneDriveChinaDrives" @click="loadOneDriveChinaDrives">刷新文档库</el-button>
+            <el-button :disabled="!oneDriveChinaRefreshTokenConfigured || clearingOneDriveChinaAuth" :loading="clearingOneDriveChinaAuth" @click="clearOneDriveChinaAuth">清除授权</el-button>
           </div>
 
           <div v-if="oneDriveChinaDriveOptions.length" class="storage-drive-box">
@@ -99,7 +99,7 @@
               <el-select v-model="oneDriveChinaDriveId" class="drive-select" placeholder="选择要写入的 SharePoint 文档库">
                 <el-option v-for="item in oneDriveChinaDriveOptions" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
-              <el-button type="primary" plain :loading="savingOneDriveChinaDrive" @click="saveOneDriveChinaDriveSelection">保存文档库</el-button>
+              <el-button type="primary" plain :loading="savingOneDriveChinaDrive" :disabled="savingOneDriveChinaDrive" @click="saveOneDriveChinaDriveSelection">保存文档库</el-button>
             </div>
             <div class="section-desc drive-desc">
               当前站点：{{ oneDriveChinaSiteName || "未解析" }}。如果粘贴的是文档库或列表页面 URL，系统会自动向上回退成可用站点路径。
@@ -116,7 +116,7 @@
           <p class="section-desc">展示当前由 <code>/uploads</code> 管理的文件，并标出它们在本地、缓存和世纪互联远端的存在情况。</p>
         </div>
         <div class="inventory-actions">
-          <el-button :loading="loadingInventory" @click="reloadInventory">刷新列表</el-button>
+          <el-button :loading="loadingInventory" :disabled="loadingInventory" @click="reloadInventory">刷新列表</el-button>
           <el-button
             type="primary"
             :disabled="migrationDisabled"
@@ -218,55 +218,56 @@
         </div>
       </div>
 
-      <el-table
-        v-if="filteredFiles.length"
-        :data="filteredFiles"
-        stripe
-        size="default"
-        class="inventory-table"
-        max-height="620"
-      >
-        <el-table-column label="文件" min-width="280">
-          <template #default="{ row }">
-            <div class="file-main">
-              <div class="file-path">{{ row.relativePath }}</div>
-              <a class="file-link" :href="row.url" target="_blank" rel="noreferrer">{{ row.url }}</a>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="类型 / 目标后端" width="180">
-          <template #default="{ row }">
-            <div class="time-stack">
-              <span>{{ row.mediaKind === "image" ? "图片" : row.mediaKind === "video" ? "视频" : "未知" }}</span>
-              <span>{{ row.configuredBackend === "onedrive-cn" ? "当前应走世纪互联" : "当前应走本地" }}</span>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="170">
-          <template #default="{ row }">
-            <el-tag :type="resolveState(row).type" round>{{ resolveState(row).label }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="位置" min-width="220">
-          <template #default="{ row }">
-            <div class="location-tags">
-              <el-tag size="small" :type="row.localExists ? 'success' : 'info'">本地{{ row.localExists ? ` ${formatBytes(row.localSizeBytes)}` : " -" }}</el-tag>
-              <el-tag size="small" :type="row.cacheExists ? 'warning' : 'info'">缓存{{ row.cacheExists ? ` ${formatBytes(row.cacheSizeBytes)}` : " -" }}</el-tag>
-              <el-tag size="small" :type="row.remoteExists ? 'primary' : 'info'">远端{{ row.remoteExists ? ` ${formatBytes(row.remoteSizeBytes)}` : " -" }}</el-tag>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="最近更新" min-width="160">
-          <template #default="{ row }">
-            <div class="time-stack">
-              <span v-if="row.localUpdatedAt">本地：{{ formatTime(row.localUpdatedAt) }}</span>
-              <span v-else-if="row.cacheUpdatedAt">缓存：{{ formatTime(row.cacheUpdatedAt) }}</span>
-              <span v-else-if="row.remoteUpdatedAt">远端：{{ formatTime(row.remoteUpdatedAt) }}</span>
-              <span v-else>-</span>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
+      <div v-if="filteredFiles.length" class="inventory-table-scroll">
+        <el-table
+          :data="filteredFiles"
+          stripe
+          size="default"
+          class="inventory-table"
+          max-height="620"
+        >
+          <el-table-column label="文件" min-width="280">
+            <template #default="{ row }">
+              <div class="file-main">
+                <div class="file-path">{{ row.relativePath }}</div>
+                <a class="file-link" :href="row.url" target="_blank" rel="noopener noreferrer">{{ row.url }}</a>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="类型 / 目标后端" width="180">
+            <template #default="{ row }">
+              <div class="time-stack">
+                <span>{{ row.mediaKind === "image" ? "图片" : row.mediaKind === "video" ? "视频" : "未知" }}</span>
+                <span>{{ row.configuredBackend === "onedrive-cn" ? "当前应走世纪互联" : "当前应走本地" }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="170">
+            <template #default="{ row }">
+              <el-tag :type="resolveState(row).type" round>{{ resolveState(row).label }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="位置" min-width="220">
+            <template #default="{ row }">
+              <div class="location-tags">
+                <el-tag size="small" :type="row.localExists ? 'success' : 'info'">本地{{ row.localExists ? ` ${formatBytes(row.localSizeBytes)}` : " -" }}</el-tag>
+                <el-tag size="small" :type="row.cacheExists ? 'warning' : 'info'">缓存{{ row.cacheExists ? ` ${formatBytes(row.cacheSizeBytes)}` : " -" }}</el-tag>
+                <el-tag size="small" :type="row.remoteExists ? 'primary' : 'info'">远端{{ row.remoteExists ? ` ${formatBytes(row.remoteSizeBytes)}` : " -" }}</el-tag>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="最近更新" min-width="160">
+            <template #default="{ row }">
+              <div class="time-stack">
+                <span v-if="row.localUpdatedAt">本地：{{ formatTime(row.localUpdatedAt) }}</span>
+                <span v-else-if="row.cacheUpdatedAt">缓存：{{ formatTime(row.cacheUpdatedAt) }}</span>
+                <span v-else-if="row.remoteUpdatedAt">远端：{{ formatTime(row.remoteUpdatedAt) }}</span>
+                <span v-else>-</span>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
       <el-empty v-else description="当前筛选条件下没有文件" />
     </section>
   </div>
@@ -306,6 +307,7 @@ const authorizingOneDriveChina = ref(false);
 const validatingOneDriveChinaClient = ref(false);
 const loadingOneDriveChinaDrives = ref(false);
 const savingOneDriveChinaDrive = ref(false);
+const clearingOneDriveChinaAuth = ref(false);
 const migratingFiles = ref(false);
 const cleaningLocalFiles = ref(false);
 
@@ -435,6 +437,7 @@ async function saveMediaStorageConfig() {
 }
 
 async function startOneDriveChinaAuth() {
+  if (authorizingOneDriveChina.value) return;
   authorizingOneDriveChina.value = true;
   try {
     await persistMediaStorageConfig(true);
@@ -446,6 +449,7 @@ async function startOneDriveChinaAuth() {
 }
 
 async function validateOneDriveChinaClient() {
+  if (validatingOneDriveChinaClient.value) return;
   validatingOneDriveChinaClient.value = true;
   try {
     await persistMediaStorageConfig(true);
@@ -457,6 +461,7 @@ async function validateOneDriveChinaClient() {
 }
 
 async function fetchOneDriveChinaDrives(silent = false) {
+  if (loadingOneDriveChinaDrives.value) return;
   loadingOneDriveChinaDrives.value = true;
   try {
     const result = await adminApi.oneDriveChinaDrives();
@@ -479,6 +484,7 @@ async function loadOneDriveChinaDrives() {
 }
 
 async function saveOneDriveChinaDriveSelection() {
+  if (savingOneDriveChinaDrive.value) return;
   if (!oneDriveChinaDriveId.value) {
     ElMessage.warning("请先选择文档库");
     return;
@@ -495,6 +501,8 @@ async function saveOneDriveChinaDriveSelection() {
 }
 
 async function clearOneDriveChinaAuth() {
+  if (clearingOneDriveChinaAuth.value) return;
+  clearingOneDriveChinaAuth.value = true;
   try {
     await ElMessageBox.confirm(
       "确认清除当前世纪互联 OneDrive / SharePoint 授权吗？已保存的应用 ID、密钥和 SharePoint 地址会保留，但 refresh token 与已解析文档库会被清空。",
@@ -502,18 +510,23 @@ async function clearOneDriveChinaAuth() {
       { type: "warning", confirmButtonText: "清除", cancelButtonText: "取消" },
     );
   } catch {
+    clearingOneDriveChinaAuth.value = false;
     return;
   }
-  await adminApi.clearOneDriveChinaAuthorization();
-  oneDriveChinaRefreshTokenConfigured.value = false;
-  oneDriveChinaAuthorizedAt.value = "";
-  oneDriveChinaDriveId.value = "";
-  oneDriveChinaDriveName.value = "";
-  oneDriveChinaSiteId.value = "";
-  oneDriveChinaSiteName.value = "";
-  oneDriveChinaDriveOptions.value = [];
-  await reloadInventory();
-  ElMessage.success("已清除世纪互联 OneDrive 授权");
+  try {
+    await adminApi.clearOneDriveChinaAuthorization();
+    oneDriveChinaRefreshTokenConfigured.value = false;
+    oneDriveChinaAuthorizedAt.value = "";
+    oneDriveChinaDriveId.value = "";
+    oneDriveChinaDriveName.value = "";
+    oneDriveChinaSiteId.value = "";
+    oneDriveChinaSiteName.value = "";
+    oneDriveChinaDriveOptions.value = [];
+    await reloadInventory();
+    ElMessage.success("已清除世纪互联 OneDrive 授权");
+  } finally {
+    clearingOneDriveChinaAuth.value = false;
+  }
 }
 
 async function reloadInventory() {
@@ -546,10 +559,12 @@ async function handleStorageAuthQuery() {
 }
 
 async function migrateLocalFiles() {
+  if (migratingFiles.value) return;
   if (!inventory.value?.summary.eligibleMigrationCount) {
     ElMessage.warning("当前没有需要同步到当前后端的文件");
     return;
   }
+  migratingFiles.value = true;
   try {
     await ElMessageBox.confirm(
       `确认按当前配置同步这 ${inventory.value.summary.eligibleMigrationCount} 个文件吗？每个文件都会按它自己的目标后端处理：当前应走本地的会回迁到本地，当前应走世纪互联的会补传到远端。站内访问链接会继续保持 /uploads 路径。`,
@@ -557,10 +572,10 @@ async function migrateLocalFiles() {
       { type: "warning", confirmButtonText: "开始同步", cancelButtonText: "取消" },
     );
   } catch {
+    migratingFiles.value = false;
     return;
   }
 
-  migratingFiles.value = true;
   try {
     const result = await adminApi.migrateMediaStorageFiles();
     lastMigrationResult.value = result;
@@ -576,10 +591,12 @@ async function migrateLocalFiles() {
 }
 
 async function cleanupLocalFiles() {
+  if (cleaningLocalFiles.value) return;
   if (!cleanupEligibleCount.value) {
     ElMessage.warning("当前没有可清理的本地或缓存副本");
     return;
   }
+  cleaningLocalFiles.value = true;
   try {
     await ElMessageBox.confirm(
       `确认删除这 ${cleanupEligibleCount.value} 个已完成远端落盘文件的本地/缓存副本吗？删除后仍会优先从世纪互联读取，后续如需审核会自动回源到缓存。当前配置为本地的媒体不会受影响。`,
@@ -587,10 +604,10 @@ async function cleanupLocalFiles() {
       { type: "warning", confirmButtonText: "开始清理", cancelButtonText: "取消" },
     );
   } catch {
+    cleaningLocalFiles.value = false;
     return;
   }
 
-  cleaningLocalFiles.value = true;
   try {
     const result = await adminApi.cleanupMediaStorageLocalFiles();
     lastCleanupResult.value = result;
@@ -880,7 +897,17 @@ function formatTime(value: string) {
   font-size: 13px;
 }
 
-.inventory-table :deep(.el-table__cell) {
+.inventory-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.inventory-table-scroll :deep(.inventory-table) {
+  min-width: 980px;
+}
+
+.inventory-table-scroll :deep(.el-table__cell) {
   vertical-align: top;
 }
 

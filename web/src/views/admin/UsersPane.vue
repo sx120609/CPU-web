@@ -42,9 +42,9 @@
           @change="applyFilters"
         />
         <div class="actions">
-          <el-button @click="reload">刷新</el-button>
-          <el-button @click="resetFilters">重置</el-button>
-          <el-button v-if="auth.isAdmin" type="primary" @click="openCreate">
+          <el-button :loading="loading" :disabled="loading" @click="reload">刷新</el-button>
+          <el-button :disabled="loading" @click="resetFilters">重置</el-button>
+          <el-button v-if="auth.isAdmin" type="primary" :disabled="loading || creating" @click="openCreate">
             <el-icon><Plus /></el-icon> 新增用户
           </el-button>
         </div>
@@ -123,25 +123,25 @@
       <el-table-column label="操作" width="108" fixed="right" align="center">
         <template #default="{ row }">
           <el-dropdown trigger="click" @command="handleUserCommand($event, row)">
-            <el-button text size="small" class="action-trigger">
+            <el-button text size="small" class="action-trigger" :loading="isUserBusy(row)" :disabled="isUserBusy(row)">
               操作<el-icon class="more-icon"><MoreFilled /></el-icon>
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="rename">改名</el-dropdown-item>
-                <el-dropdown-item v-if="row.status !== 'banned'" command="ban">封禁</el-dropdown-item>
-                <el-dropdown-item v-else command="unban">解禁</el-dropdown-item>
-                <el-dropdown-item v-if="row.status !== 'banned'" command="mute">
+                <el-dropdown-item command="rename" :disabled="isUserBusy(row)">改名</el-dropdown-item>
+                <el-dropdown-item v-if="row.status !== 'banned'" command="ban" :disabled="isUserBusy(row)">封禁</el-dropdown-item>
+                <el-dropdown-item v-else command="unban" :disabled="isUserBusy(row)">解禁</el-dropdown-item>
+                <el-dropdown-item v-if="row.status !== 'banned'" command="mute" :disabled="isUserBusy(row)">
                   {{ row.status === "muted" ? "调整禁言" : "禁言" }}
                 </el-dropdown-item>
-                <el-dropdown-item v-if="row.status === 'muted'" command="unmute">取消禁言</el-dropdown-item>
-                <el-dropdown-item v-if="auth.isAdmin" command="role" divided>改身份</el-dropdown-item>
-                <el-dropdown-item v-if="auth.isAdmin" command="whitelist">
+                <el-dropdown-item v-if="row.status === 'muted'" command="unmute" :disabled="isUserBusy(row)">取消禁言</el-dropdown-item>
+                <el-dropdown-item v-if="auth.isAdmin" command="role" divided :disabled="isUserBusy(row)">改身份</el-dropdown-item>
+                <el-dropdown-item v-if="auth.isAdmin" command="whitelist" :disabled="isUserBusy(row)">
                   {{ row.aiReviewWhitelisted ? "取消 AI 白名单" : "设为 AI 白名单" }}
                 </el-dropdown-item>
-                <el-dropdown-item v-if="auth.isAdmin" command="anonymity">匿名额度</el-dropdown-item>
-                <el-dropdown-item v-if="auth.isAdmin && !row.studentSso" command="password">重置密码</el-dropdown-item>
-                <el-dropdown-item v-if="auth.isAdmin && row.id !== auth.user?.id" command="delete" divided>删除用户</el-dropdown-item>
+                <el-dropdown-item v-if="auth.isAdmin" command="anonymity" :disabled="isUserBusy(row)">匿名额度</el-dropdown-item>
+                <el-dropdown-item v-if="auth.isAdmin && !row.studentSso" command="password" :disabled="isUserBusy(row)">重置密码</el-dropdown-item>
+                <el-dropdown-item v-if="auth.isAdmin && row.id !== auth.user?.id" command="delete" divided :disabled="isUserBusy(row)">删除用户</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -187,25 +187,25 @@
         </div>
         <div class="mobile-actions">
           <el-dropdown trigger="click" @command="handleUserCommand($event, row)">
-            <el-button plain size="small" class="mobile-action-trigger">
+            <el-button plain size="small" class="mobile-action-trigger" :loading="isUserBusy(row)" :disabled="isUserBusy(row)">
               操作<el-icon class="more-icon"><MoreFilled /></el-icon>
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="rename">改名</el-dropdown-item>
-                <el-dropdown-item v-if="row.status !== 'banned'" command="ban">封禁</el-dropdown-item>
-                <el-dropdown-item v-else command="unban">解禁</el-dropdown-item>
-                <el-dropdown-item v-if="row.status !== 'banned'" command="mute">
+                <el-dropdown-item command="rename" :disabled="isUserBusy(row)">改名</el-dropdown-item>
+                <el-dropdown-item v-if="row.status !== 'banned'" command="ban" :disabled="isUserBusy(row)">封禁</el-dropdown-item>
+                <el-dropdown-item v-else command="unban" :disabled="isUserBusy(row)">解禁</el-dropdown-item>
+                <el-dropdown-item v-if="row.status !== 'banned'" command="mute" :disabled="isUserBusy(row)">
                   {{ row.status === "muted" ? "调整禁言" : "禁言" }}
                 </el-dropdown-item>
-                <el-dropdown-item v-if="row.status === 'muted'" command="unmute">取消禁言</el-dropdown-item>
-                <el-dropdown-item v-if="auth.isAdmin" command="role" divided>改身份</el-dropdown-item>
-                <el-dropdown-item v-if="auth.isAdmin" command="whitelist">
+                <el-dropdown-item v-if="row.status === 'muted'" command="unmute" :disabled="isUserBusy(row)">取消禁言</el-dropdown-item>
+                <el-dropdown-item v-if="auth.isAdmin" command="role" divided :disabled="isUserBusy(row)">改身份</el-dropdown-item>
+                <el-dropdown-item v-if="auth.isAdmin" command="whitelist" :disabled="isUserBusy(row)">
                   {{ row.aiReviewWhitelisted ? "取消 AI 白名单" : "设为 AI 白名单" }}
                 </el-dropdown-item>
-                <el-dropdown-item v-if="auth.isAdmin" command="anonymity">匿名额度</el-dropdown-item>
-                <el-dropdown-item v-if="auth.isAdmin && !row.studentSso" command="password">重置密码</el-dropdown-item>
-                <el-dropdown-item v-if="auth.isAdmin && row.id !== auth.user?.id" command="delete" divided>删除用户</el-dropdown-item>
+                <el-dropdown-item v-if="auth.isAdmin" command="anonymity" :disabled="isUserBusy(row)">匿名额度</el-dropdown-item>
+                <el-dropdown-item v-if="auth.isAdmin && !row.studentSso" command="password" :disabled="isUserBusy(row)">重置密码</el-dropdown-item>
+                <el-dropdown-item v-if="auth.isAdmin && row.id !== auth.user?.id" command="delete" divided :disabled="isUserBusy(row)">删除用户</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -250,8 +250,8 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="createOpen = false">取消</el-button>
-        <el-button type="primary" :loading="creating" @click="submitCreate">创建</el-button>
+        <el-button :disabled="creating" @click="createOpen = false">取消</el-button>
+        <el-button type="primary" :loading="creating" :disabled="creating" @click="submitCreate">创建</el-button>
       </template>
     </el-dialog>
 
@@ -267,8 +267,8 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="roleDialogOpen = false">取消</el-button>
-        <el-button type="primary" :loading="roleSaving" @click="submitRoleChange">保存</el-button>
+        <el-button :disabled="roleSaving" @click="roleDialogOpen = false">取消</el-button>
+        <el-button type="primary" :loading="roleSaving" :disabled="roleSaving" @click="submitRoleChange">保存</el-button>
       </template>
     </el-dialog>
 
@@ -296,8 +296,8 @@
         </div>
       </el-form>
       <template #footer>
-        <el-button @click="muteDialogOpen = false">取消</el-button>
-        <el-button type="primary" :loading="muteSaving" @click="submitMute">确认禁言</el-button>
+        <el-button :disabled="muteSaving" @click="muteDialogOpen = false">取消</el-button>
+        <el-button type="primary" :loading="muteSaving" :disabled="muteSaving" @click="submitMute">确认禁言</el-button>
       </template>
     </el-dialog>
 
@@ -321,8 +321,8 @@
         <div class="dlg-tip">周额度会按信誉值自动刷新；这里调整的是当前周可用积分与冻结状态。</div>
       </el-form>
       <template #footer>
-        <el-button @click="anonymityDialogOpen = false">取消</el-button>
-        <el-button type="primary" :loading="anonymitySaving" @click="submitAnonymityChange">保存</el-button>
+        <el-button :disabled="anonymitySaving" @click="anonymityDialogOpen = false">取消</el-button>
+        <el-button type="primary" :loading="anonymitySaving" :disabled="anonymitySaving" @click="submitAnonymityChange">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -342,6 +342,7 @@ const total = ref(0);
 const page = ref(1);
 const size = ref(30);
 const loading = ref(false);
+const userBusyId = ref<number | null>(null);
 
 const q = ref("");
 const role = ref("");
@@ -429,6 +430,7 @@ function applyFilters() {
 }
 
 function resetFilters() {
+  if (loading.value) return;
   q.value = "";
   role.value = "";
   status.value = "";
@@ -441,6 +443,7 @@ function resetFilters() {
 }
 
 function openCreate() {
+  if (creating.value) return;
   Object.assign(createForm, {
     username: "", password: "", nickname: "",
     role: "user", college: "", enrollYear: undefined,
@@ -449,6 +452,7 @@ function openCreate() {
 }
 
 async function submitCreate() {
+  if (creating.value) return;
   const u = createForm.username.trim();
   if (!/^[a-zA-Z0-9_]{3,20}$/.test(u)) { ElMessage.warning("用户名 3-20 位英文/数字/下划线"); return; }
   if (createForm.password.length < 6) { ElMessage.warning("初始密码至少 6 位"); return; }
@@ -499,6 +503,7 @@ function clientTagType(client?: string | null): "success" | "warning" | "info" |
 }
 
 function handleUserCommand(command: string, row: any) {
+  if (userBusyId.value !== null) return;
   if (command === "rename") return rename(row);
   if (command === "ban") return ban(row);
   if (command === "unban") return unban(row);
@@ -514,35 +519,57 @@ function handleUserCommand(command: string, row: any) {
 function applyUserUpdate(row: any, patch: Record<string, unknown>) {
   Object.assign(row, patch);
 }
+
+function isUserBusy(row: any) {
+  return userBusyId.value === row.id;
+}
+
+async function runUserAction(row: any, action: () => Promise<void>) {
+  if (userBusyId.value !== null) return;
+  userBusyId.value = row.id;
+  try {
+    await action();
+  } finally {
+    userBusyId.value = null;
+  }
+}
+
 async function rename(row: any) {
-  const { value } = await ElMessageBox.prompt(`修改 ${row.username} 的昵称`, "改昵称", {
-    inputValue: row.nickname,
-    inputValidator: (v) => v.trim().length >= 1 && v.trim().length <= 20,
-    inputErrorMessage: "昵称长度 1-20",
+  await runUserAction(row, async () => {
+    const { value } = await ElMessageBox.prompt(`修改 ${row.username} 的昵称`, "改昵称", {
+      inputValue: row.nickname,
+      inputValidator: (v) => v.trim().length >= 1 && v.trim().length <= 20,
+      inputErrorMessage: "昵称长度 1-20",
+    }).catch(() => ({ value: "" }));
+    if (!value) return;
+    await adminApi.updateUser(row.id, { nickname: value.trim() });
+    ElMessage.success("已修改");
+    await reload();
   });
-  await adminApi.updateUser(row.id, { nickname: value.trim() });
-  ElMessage.success("已修改");
-  reload();
 }
 
 async function ban(row: any) {
-  const confirmed = await ElMessageBox.confirm(
-    `封禁 ${row.nickname || row.username}？封禁后该用户将无法登录和发言。`,
-    "确认",
-    { type: "warning" }
-  ).then(() => true).catch(() => false);
-  if (!confirmed) return;
-  const patch = await adminApi.updateUser(row.id, { status: "banned" });
-  applyUserUpdate(row, patch);
-  ElMessage.success("已封禁");
-  await reload();
+  await runUserAction(row, async () => {
+    const confirmed = await ElMessageBox.confirm(
+      `封禁 ${row.nickname || row.username}？封禁后该用户将无法登录和发言。`,
+      "确认",
+      { type: "warning" }
+    ).then(() => true).catch(() => false);
+    if (!confirmed) return;
+    const patch = await adminApi.updateUser(row.id, { status: "banned" });
+    applyUserUpdate(row, patch);
+    ElMessage.success("已封禁");
+    await reload();
+  });
 }
 
 async function unban(row: any) {
-  const patch = await adminApi.updateUser(row.id, { status: "active" });
-  applyUserUpdate(row, patch);
-  ElMessage.success("已解禁");
-  await reload();
+  await runUserAction(row, async () => {
+    const patch = await adminApi.updateUser(row.id, { status: "active" });
+    applyUserUpdate(row, patch);
+    ElMessage.success("已解禁");
+    await reload();
+  });
 }
 
 function minutesFromPreset(value: string) {
@@ -568,6 +595,7 @@ function applyMutePreset(value: string) {
 }
 
 function openMuteDialog(row: any) {
+  if (userBusyId.value !== null) return;
   muteTarget.value = row;
   const existing = row.mutedUntil ? new Date(row.mutedUntil) : null;
   if (existing && !Number.isNaN(existing.getTime()) && existing.getTime() > Date.now()) {
@@ -581,7 +609,7 @@ function openMuteDialog(row: any) {
 }
 
 async function submitMute() {
-  if (!muteTarget.value) return;
+  if (muteSaving.value || !muteTarget.value) return;
   if (!muteUntil.value || Number.isNaN(muteUntil.value.getTime())) {
     ElMessage.warning("请选择禁言截止时间");
     return;
@@ -591,6 +619,7 @@ async function submitMute() {
     return;
   }
   muteSaving.value = true;
+  userBusyId.value = muteTarget.value.id;
   try {
     const mutedUntilIso = muteUntil.value.toISOString();
     const patch = await adminApi.updateUser(muteTarget.value.id, {
@@ -603,23 +632,28 @@ async function submitMute() {
     await reload();
   } finally {
     muteSaving.value = false;
+    userBusyId.value = null;
   }
 }
 
 async function unmute(row: any) {
-  const patch = await adminApi.updateUser(row.id, { status: "active" });
-  applyUserUpdate(row, patch);
-  ElMessage.success("已取消禁言");
-  await reload();
+  await runUserAction(row, async () => {
+    const patch = await adminApi.updateUser(row.id, { status: "active" });
+    applyUserUpdate(row, patch);
+    ElMessage.success("已取消禁言");
+    await reload();
+  });
 }
 
 async function changeRole(row: any) {
+  if (userBusyId.value !== null) return;
   roleDialogTarget.value = row;
   selectedRole.value = row.role;
   roleDialogOpen.value = true;
 }
 
 function changeAnonymity(row: any) {
+  if (userBusyId.value !== null) return;
   anonymityTarget.value = row;
   anonymityCredits.value = row.anonymousState?.availableCredits ?? row.anonymousCredits ?? 0;
   anonymityFrozen.value = Boolean(row.anonymousState?.frozen ?? row.anonymousCreditsFrozen);
@@ -627,8 +661,9 @@ function changeAnonymity(row: any) {
 }
 
 async function submitRoleChange() {
-  if (!roleDialogTarget.value) return;
+  if (roleSaving.value || !roleDialogTarget.value) return;
   roleSaving.value = true;
+  userBusyId.value = roleDialogTarget.value.id;
   try {
     await adminApi.updateUser(roleDialogTarget.value.id, { role: selectedRole.value });
     ElMessage.success("已修改身份");
@@ -636,12 +671,14 @@ async function submitRoleChange() {
     await reload();
   } finally {
     roleSaving.value = false;
+    userBusyId.value = null;
   }
 }
 
 async function submitAnonymityChange() {
-  if (!anonymityTarget.value) return;
+  if (anonymitySaving.value || !anonymityTarget.value) return;
   anonymitySaving.value = true;
+  userBusyId.value = anonymityTarget.value.id;
   try {
     const patch = await adminApi.updateUser(anonymityTarget.value.id, {
       anonymousCredits: Number(anonymityCredits.value || 0),
@@ -652,49 +689,56 @@ async function submitAnonymityChange() {
     ElMessage.success("已更新匿名额度");
   } finally {
     anonymitySaving.value = false;
+    userBusyId.value = null;
   }
 }
 
 async function toggleAiWhitelist(row: any) {
-  await adminApi.updateUser(row.id, { aiReviewWhitelisted: !row.aiReviewWhitelisted });
-  ElMessage.success(row.aiReviewWhitelisted ? "已取消 AI 白名单" : "已加入 AI 白名单");
-  reload();
+  await runUserAction(row, async () => {
+    await adminApi.updateUser(row.id, { aiReviewWhitelisted: !row.aiReviewWhitelisted });
+    ElMessage.success(row.aiReviewWhitelisted ? "已取消 AI 白名单" : "已加入 AI 白名单");
+    await reload();
+  });
 }
 
 async function resetPw(row: any) {
-  const { value } = await ElMessageBox.prompt(
-    `为 ${row.nickname}（${row.username}）设置新密码（至少 6 位）`,
-    "重置密码",
-    {
-      inputType: "password",
-      inputValidator: (v) => !!v && v.length >= 6 && v.length <= 64,
-      inputErrorMessage: "密码 6-64 位",
-      confirmButtonText: "重置",
-    }
-  ).catch(() => ({ value: null as any }));
-  if (!value) return;
-  await adminApi.resetUserPassword(row.id, value);
-  ElMessage.success(`已重置 ${row.username} 的密码，请妥善告知本人`);
+  await runUserAction(row, async () => {
+    const { value } = await ElMessageBox.prompt(
+      `为 ${row.nickname}（${row.username}）设置新密码（至少 6 位）`,
+      "重置密码",
+      {
+        inputType: "password",
+        inputValidator: (v) => !!v && v.length >= 6 && v.length <= 64,
+        inputErrorMessage: "密码 6-64 位",
+        confirmButtonText: "重置",
+      }
+    ).catch(() => ({ value: null as any }));
+    if (!value) return;
+    await adminApi.resetUserPassword(row.id, value);
+    ElMessage.success(`已重置 ${row.username} 的密码，请妥善告知本人`);
+  });
 }
 
 async function deleteUser(row: any) {
-  const { value } = await ElMessageBox.prompt(
-    `此操作会永久删除用户 ${row.nickname || row.username}（${row.username}）及其帖子、回复、点赞、课程评分和消息记录。\n请输入账号 ${row.username} 确认删除。`,
-    "删除用户",
-    {
-      inputPlaceholder: row.username,
-      inputValidator: (v) => v.trim() === row.username,
-      inputErrorMessage: "请输入完整账号以确认删除",
-      confirmButtonText: "永久删除",
-      cancelButtonText: "取消",
-      type: "warning",
-    }
-  ).catch(() => ({ value: null as any }));
-  if (!value) return;
-  const result = await adminApi.deleteUser(row.id);
-  ElMessage.success(`已删除 ${row.username}，同时删除 ${result.deletedTopics} 个帖子、${result.deletedReplies} 条回复`);
-  if (list.value.length === 1 && page.value > 1) page.value -= 1;
-  await reload();
+  await runUserAction(row, async () => {
+    const { value } = await ElMessageBox.prompt(
+      `此操作会永久删除用户 ${row.nickname || row.username}（${row.username}）及其帖子、回复、点赞、课程评分和消息记录。\n请输入账号 ${row.username} 确认删除。`,
+      "删除用户",
+      {
+        inputPlaceholder: row.username,
+        inputValidator: (v) => v.trim() === row.username,
+        inputErrorMessage: "请输入完整账号以确认删除",
+        confirmButtonText: "永久删除",
+        cancelButtonText: "取消",
+        type: "warning",
+      }
+    ).catch(() => ({ value: null as any }));
+    if (!value) return;
+    const result = await adminApi.deleteUser(row.id);
+    ElMessage.success(`已删除 ${row.username}，同时删除 ${result.deletedTopics} 个帖子、${result.deletedReplies} 条回复`);
+    if (list.value.length === 1 && page.value > 1) page.value -= 1;
+    await reload();
+  });
 }
 </script>
 
@@ -739,7 +783,7 @@ async function deleteUser(row: any) {
 .admin-table { display: none; }
 .mobile-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: 12px;
   min-height: 120px;
 }
@@ -792,8 +836,8 @@ async function deleteUser(row: any) {
   }
   .pager { overflow-x: auto; justify-content: flex-start; padding-bottom: 2px; }
   .users-pane :deep(.el-dialog) {
-    width: calc(100vw - 24px) !important;
-    margin-top: 5vh;
+    width: calc(100dvw - 24px) !important;
+    margin-top: 5dvh;
   }
 }
 </style>

@@ -1,5 +1,5 @@
 <template>
-  <div class="search-page">
+  <div class="search-page" v-loading="loading">
     <div class="head">
       <h2>搜索 "{{ q }}"</h2>
       <div class="counts" v-if="result">
@@ -17,7 +17,16 @@
 
       <section v-if="result.courses.length" class="cpu-card">
         <h3 class="title">📚 课程（{{ result.courses.length }}）</h3>
-        <div v-for="c in result.courses" :key="c.id" class="course-row" @click="$router.push(`/coursereview/${c.id}`)">
+        <div
+          v-for="c in result.courses"
+          :key="c.id"
+          class="course-row"
+          role="button"
+          tabindex="0"
+          @click="openCourse(c.id)"
+          @keydown.enter.prevent="openCourse(c.id)"
+          @keydown.space.prevent="openCourse(c.id)"
+        >
           <div>
             <div class="c-name">{{ c.code }} · {{ c.name }}</div>
             <div class="c-meta">{{ c.teachers?.length ? c.teachers.map((t: any) => t.name).join("、") : (c.teacher || "—") }} · {{ c.ratingCount }} 评价</div>
@@ -28,7 +37,16 @@
 
       <section v-if="result.services.length" class="cpu-card">
         <h3 class="title">🧭 服务（{{ result.services.length }}）</h3>
-        <div v-for="s in result.services" :key="s.id" class="svc-row" @click="open(s)">
+        <div
+          v-for="s in result.services"
+          :key="s.id"
+          class="svc-row"
+          role="button"
+          tabindex="0"
+          @click="open(s)"
+          @keydown.enter.prevent="open(s)"
+          @keydown.space.prevent="open(s)"
+        >
           <span class="icon">{{ s.icon || "🔗" }}</span>
           <div>
             <div class="s-name">{{ s.name }}</div>
@@ -49,6 +67,7 @@
 import { ref, computed, watch, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Right } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import { searchApi, type SearchResult } from "@/api/search";
 
@@ -56,6 +75,8 @@ const route = useRoute();
 const router = useRouter();
 const q = ref((route.query.q as string) ?? "");
 const result = ref<SearchResult | null>(null);
+const loading = ref(false);
+let searchSeq = 0;
 
 const hasResult = computed(() =>
   result.value && (result.value.topics.length + result.value.courses.length + result.value.services.length) > 0
@@ -69,14 +90,48 @@ watch(() => route.query.q, async (v) => {
 onMounted(reload);
 
 async function reload() {
-  if (!q.value) { result.value = null; return; }
-  result.value = await searchApi.search(q.value);
+  const keyword = q.value.trim();
+  if (!keyword) {
+    searchSeq += 1;
+    result.value = null;
+    loading.value = false;
+    return;
+  }
+  const seq = ++searchSeq;
+  loading.value = true;
+  try {
+    const next = await searchApi.search(keyword);
+    if (seq === searchSeq) result.value = next;
+  } catch {
+    if (seq === searchSeq) result.value = { topics: [], courses: [], services: [] };
+  } finally {
+    if (seq === searchSeq) loading.value = false;
+  }
 }
 
 function open(s: any) {
-  if (s.url.startsWith("/")) router.push(s.url);
-  else if (s.url.startsWith("tel:")) window.location.href = s.url;
-  else window.open(s.url, "_blank", "noopener");
+  const url = typeof s?.url === "string" ? s.url.trim() : "";
+  if (!url) {
+    ElMessage.warning("该服务暂未配置链接");
+    return;
+  }
+  if (url.startsWith("/")) {
+    router.push(url);
+    return;
+  }
+  if (url.startsWith("tel:") || url.startsWith("mailto:")) {
+    window.location.href = url;
+    return;
+  }
+  if (/^https?:\/\//i.test(url)) {
+    window.open(url, "_blank", "noopener,noreferrer");
+    return;
+  }
+  ElMessage.warning("该服务链接格式暂不支持");
+}
+
+function openCourse(id: number) {
+  router.push(`/coursereview/${id}`);
 }
 </script>
 
@@ -100,7 +155,12 @@ function open(s: any) {
 }
 .course-row:last-child, .svc-row:last-child { border-bottom: none; }
 .course-row:hover, .svc-row:hover { background: #f4f6f8; }
+.course-row:focus-visible, .svc-row:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
+}
 .course-row > div, .svc-row > div { flex: 1; min-width: 0; }
+.course-row > .el-icon, .svc-row > .el-icon { flex: 0 0 auto; }
 .c-name, .s-name { font-size: 14px; color: #1f2937; overflow-wrap: anywhere; }
 .c-meta, .s-desc { font-size: 12px; color: #6b7280; margin-top: 2px; overflow-wrap: anywhere; }
 .icon { font-size: 20px; }

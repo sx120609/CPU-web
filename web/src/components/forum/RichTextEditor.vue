@@ -136,9 +136,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import DOMPurify from "dompurify";
 import { uploadApi } from "@/api/topic";
 import { compressImageFile, dataUrlToBlob, normalizeImageUploadError } from "@/utils/imageUpload";
-import { renderMarkdown } from "@/utils/markdown";
+import { normalizeSafeBlankTargets, renderMarkdown } from "@/utils/markdown";
 type Alignment = "left" | "center" | "right";
 type MobileToolbarKey = "heading" | "format" | "tools" | "align" | "image";
 
@@ -398,7 +399,7 @@ watch(() => props.draftKey, () => {
 
 function hydrateEditor(value: string) {
   if (!editorRef.value) return;
-  editorRef.value.innerHTML = contentLooksLikeHtml(value) ? value : renderMarkdown(value);
+  editorRef.value.innerHTML = contentLooksLikeHtml(value) ? sanitizeEditorHtml(value) : renderMarkdown(value);
   normalizeEditorStructure(editorRef.value);
   clearSelectedImage();
   syncEditorContent();
@@ -406,6 +407,33 @@ function hydrateEditor(value: string) {
 
 function contentLooksLikeHtml(value: string) {
   return /<\/?(p|div|h[1-6]|ul|ol|li|blockquote|img|a|strong|em|br)\b/i.test(value);
+}
+
+function sanitizeEditorHtml(value: string) {
+  return normalizeSafeBlankTargets(DOMPurify.sanitize(value, {
+    ADD_ATTR: [
+      "class",
+      "href",
+      "target",
+      "rel",
+      "src",
+      "alt",
+      "title",
+      "type",
+      "controls",
+      "preload",
+      "playsinline",
+      "webkit-playsinline",
+      "poster",
+      "muted",
+      "loop",
+      "data-size",
+      "data-align",
+      "data-image-album",
+      "data-media-kind",
+    ],
+    ADD_TAGS: ["video", "source"],
+  }));
 }
 
 function syncEditorContent() {
@@ -1613,7 +1641,7 @@ defineExpose({ clearDraft, isContentEmpty });
 
 @media (min-width: 701px) {
   .desktop-same-toolbar .mobile-toolbar-tabs {
-    grid-template-columns: repeat(5, minmax(88px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 88px), 1fr));
   }
 
   .desktop-same-toolbar .mobile-toolbar-tab {

@@ -10,10 +10,12 @@
 
 <style scoped>
 .not-found {
-  height: 100vh;
+  min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   background: #f5f7fb;
+  padding: 24px;
 }
 .content { text-align: center; }
 .logo {
