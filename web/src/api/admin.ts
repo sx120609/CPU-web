@@ -5,6 +5,7 @@ export type SiteConfig = {
   siteFilingNumber: string;
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
+  aiReviewApiUrl: string;
   aiReviewModel: string;
   aiReviewFallbackModels: string;
   aiReviewApiKey: string;
@@ -607,6 +608,7 @@ export const adminApi = {
     siteFilingNumber?: string;
     aiReviewEnabled?: boolean;
     aiReviewProvider?: string;
+    aiReviewApiUrl?: string;
     aiReviewModel?: string;
     aiReviewFallbackModels?: string;
     aiReviewApiKey?: string;

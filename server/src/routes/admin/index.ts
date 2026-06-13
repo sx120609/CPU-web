@@ -1937,6 +1937,7 @@ const siteConfigPatchSchema = z.object({
   siteFilingNumber: z.string().trim().max(120).optional(),
   aiReviewEnabled: z.boolean().optional(),
   aiReviewProvider: z.string().trim().max(40).optional(),
+  aiReviewApiUrl: z.string().trim().max(240).optional(),
   aiReviewModel: z.string().trim().max(80).optional(),
   aiReviewFallbackModels: z.string().trim().max(400).optional(),
   aiReviewApiKey: z.string().trim().max(240).optional(),
@@ -1998,6 +1999,7 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
     if (
       req.body.aiReviewEnabled !== undefined ||
       req.body.aiReviewProvider !== undefined ||
+      req.body.aiReviewApiUrl !== undefined ||
       req.body.aiReviewModel !== undefined ||
       req.body.aiReviewFallbackModels !== undefined ||
       req.body.aiReviewApiKey !== undefined ||

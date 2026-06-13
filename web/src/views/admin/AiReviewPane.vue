@@ -39,12 +39,24 @@
           <el-switch v-model="form.aiReviewEnabled" inline-prompt active-text="开" inactive-text="关" />
         </div>
         <div class="ai-row">
-          <span class="ai-label">Provider</span>
-          <el-input v-model="form.aiReviewProvider" maxlength="40" placeholder="deepseek" />
+          <span class="ai-label">服务商</span>
+          <el-select
+            v-model="form.aiReviewProvider"
+            filterable
+            allow-create
+            default-first-option
+            placeholder="选择或输入服务商"
+          >
+            <el-option v-for="option in aiReviewProviderOptions" :key="option.value" :label="option.label" :value="option.value" />
+          </el-select>
         </div>
         <div class="ai-row">
           <span class="ai-label">模型</span>
           <el-input v-model="form.aiReviewModel" maxlength="80" placeholder="deepseek-v4-flash" />
+        </div>
+        <div class="ai-row ai-row--stretch">
+          <span class="ai-label">文字审核 API 地址</span>
+          <el-input v-model="form.aiReviewApiUrl" maxlength="240" placeholder="https://api.openai.com/v1/chat/completions" />
         </div>
         <div class="ai-row ai-row--stretch">
           <span class="ai-label">模型备选</span>
@@ -409,11 +421,18 @@ const videoFilters = reactive<{ status: "" | "pending" | "manual_review" | "reje
   page: 1,
   size: 20,
 });
+const aiReviewProviderOptions = [
+  { label: "DeepSeek", value: "deepseek" },
+  { label: "OpenAI", value: "openai" },
+  { label: "硅基流动", value: "siliconflow" },
+  { label: "火山方舟", value: "volcengine" },
+];
 const form = reactive<SiteConfig>({
   siteOrigin: "",
   siteFilingNumber: "",
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
+  aiReviewApiUrl: "https://api.deepseek.com/chat/completions",
   aiReviewModel: "deepseek-v4-flash",
   aiReviewFallbackModels: "",
   aiReviewApiKey: "",
@@ -508,6 +527,7 @@ async function saveConfig() {
     Object.assign(form, await adminApi.updateSiteConfig({
       aiReviewEnabled: form.aiReviewEnabled,
       aiReviewProvider: form.aiReviewProvider,
+      aiReviewApiUrl: form.aiReviewApiUrl,
       aiReviewModel: form.aiReviewModel,
       aiReviewFallbackModels: form.aiReviewFallbackModels,
       aiReviewApiKey: form.aiReviewApiKey,

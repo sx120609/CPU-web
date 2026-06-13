@@ -65,7 +65,7 @@ type DeepSeekEditSimilarityResponse = {
   detail?: string;
 };
 
-const REVIEW_API_URL = "https://api.deepseek.com/chat/completions";
+const DEFAULT_REVIEW_API_URL = "https://api.deepseek.com/chat/completions";
 const MARKDOWN_IMAGE_RE = /!\[[^\]]*\]\([^)]*\)/g;
 const HTML_IMAGE_RE = /<img\b[^>]*>/gi;
 const HTML_TAG_RE = /<[^>]+>/g;
@@ -112,6 +112,7 @@ type AiReviewLogContext = {
 
 export async function requestAiJson(messages: AiJsonMessage[], logContext?: AiReviewLogContext) {
   const config = getSiteConfig();
+  const endpoint = normalizeTextReviewApiUrl(config.aiReviewApiUrl);
   const userPrompt = messages.filter((item) => item.role === "user").map((item) => item.content).join("\n\n");
   const candidates = resolveModelCandidates(config.aiReviewModel, config.aiReviewFallbackModels);
   let lastError: Error | null = null;
@@ -126,12 +127,12 @@ export async function requestAiJson(messages: AiJsonMessage[], logContext?: AiRe
         createdById: logContext.createdById ?? null,
         provider: config.aiReviewProvider,
         model,
-        endpoint: REVIEW_API_URL,
+        endpoint,
         requestSummary: userPrompt,
       });
       logId = started?.id ?? null;
     }
-    const response = await fetch(REVIEW_API_URL, {
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -155,11 +156,35 @@ export async function requestAiJson(messages: AiJsonMessage[], logContext?: AiRe
       throw Errors.server(`AI 审核请求失败：${response.status}${text ? ` ${text.slice(0, 120)}` : ""}`);
     }
     const json: any = await response.json();
-    const content = json?.choices?.[0]?.message?.content;
+    const content = extractChatCompletionContent(json);
     await finishAiReviewLogSuccess(logId, typeof content === "string" ? content : JSON.stringify(content ?? {}).slice(0, 4000));
     return { content, model };
   }
   throw lastError || Errors.server("AI 审核请求失败");
+}
+
+function normalizeTextReviewApiUrl(input: string) {
+  const raw = String(input || "").trim();
+  if (!raw) return DEFAULT_REVIEW_API_URL;
+  if (/\/chat\/completions\/?$/i.test(raw)) return raw.replace(/\/+$/, "");
+  if (/\/v1\/?$/i.test(raw)) return `${raw.replace(/\/+$/, "")}/chat/completions`;
+  if (/^https?:\/\/[^/]+$/i.test(raw)) return `${raw.replace(/\/+$/, "")}/v1/chat/completions`;
+  return raw.replace(/\/+$/, "");
+}
+
+function extractChatCompletionContent(json: any) {
+  const content = json?.choices?.[0]?.message?.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => {
+        if (typeof item?.text === "string") return item.text;
+        if (typeof item?.content === "string") return item.content;
+        return "";
+      })
+      .join("\n");
+  }
+  return "";
 }
 
 export async function reviewTopicContent(input: {

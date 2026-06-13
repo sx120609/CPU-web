@@ -25,6 +25,7 @@ export type SiteConfig = {
   siteFilingNumber: string;
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
+  aiReviewApiUrl: string;
   aiReviewModel: string;
   aiReviewFallbackModels: string;
   aiReviewApiKey: string;
@@ -101,6 +102,7 @@ const SITE_ORIGIN_KEY = "site.origin";
 const SITE_FILING_NUMBER_KEY = "site.filingNumber";
 const AI_REVIEW_ENABLED_KEY = "ai.review.enabled";
 const AI_REVIEW_PROVIDER_KEY = "ai.review.provider";
+const AI_REVIEW_API_URL_KEY = "ai.review.apiUrl";
 const AI_REVIEW_MODEL_KEY = "ai.review.model";
 const AI_REVIEW_FALLBACK_MODELS_KEY = "ai.review.fallbackModels";
 const AI_REVIEW_API_KEY = "ai.review.apiKey";
@@ -257,6 +259,7 @@ const configCache: SiteConfig = {
   siteFilingNumber: "",
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
+  aiReviewApiUrl: "https://api.deepseek.com/chat/completions",
   aiReviewModel: "deepseek-v4-flash",
   aiReviewFallbackModels: "",
   aiReviewApiKey: "",
@@ -344,6 +347,7 @@ export async function loadFeatures(): Promise<void> {
           SITE_FILING_NUMBER_KEY,
           AI_REVIEW_ENABLED_KEY,
           AI_REVIEW_PROVIDER_KEY,
+          AI_REVIEW_API_URL_KEY,
           AI_REVIEW_MODEL_KEY,
           AI_REVIEW_FALLBACK_MODELS_KEY,
           AI_REVIEW_API_KEY,
@@ -414,6 +418,10 @@ export async function loadFeatures(): Promise<void> {
     }
     if (r.key === AI_REVIEW_PROVIDER_KEY) {
       configCache.aiReviewProvider = String(r.value || "deepseek").trim() || "deepseek";
+      continue;
+    }
+    if (r.key === AI_REVIEW_API_URL_KEY) {
+      configCache.aiReviewApiUrl = normalizePromptTemplate(r.value, "https://api.deepseek.com/chat/completions");
       continue;
     }
     if (r.key === AI_REVIEW_MODEL_KEY) {
@@ -860,6 +868,7 @@ function sanitizeAiReviewConfig() {
   configCache.aiEditSimilaritySystemPrompt = normalizePromptTemplate(configCache.aiEditSimilaritySystemPrompt, DEFAULT_AI_PROMPTS.editSimilaritySystem);
   configCache.aiEditSimilarityUserPrompt = normalizePromptTemplate(configCache.aiEditSimilarityUserPrompt, DEFAULT_AI_PROMPTS.editSimilarityUser);
   if (!configCache.aiReviewProvider) configCache.aiReviewProvider = "deepseek";
+  configCache.aiReviewApiUrl = normalizePromptTemplate(configCache.aiReviewApiUrl, "https://api.deepseek.com/chat/completions");
   if (!configCache.aiReviewModel) configCache.aiReviewModel = "deepseek-v4-flash";
   configCache.aiReviewFallbackModels = normalizeFallbackModelList(configCache.aiReviewFallbackModels, configCache.aiReviewModel);
   configCache.imageReviewApiUrl = normalizePromptTemplate(configCache.imageReviewApiUrl, "https://api.openai.com/v1/chat/completions");
@@ -910,6 +919,7 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
     ...configCache,
     aiReviewEnabled: input.aiReviewEnabled ?? configCache.aiReviewEnabled,
     aiReviewProvider: String(input.aiReviewProvider ?? configCache.aiReviewProvider ?? "deepseek").trim() || "deepseek",
+    aiReviewApiUrl: normalizePromptTemplate(input.aiReviewApiUrl, configCache.aiReviewApiUrl),
     aiReviewModel: String(input.aiReviewModel ?? configCache.aiReviewModel ?? "deepseek-v4-flash").trim() || "deepseek-v4-flash",
     aiReviewFallbackModels: normalizeFallbackModelList(input.aiReviewFallbackModels, input.aiReviewModel ?? configCache.aiReviewModel),
     aiReviewApiKey: String(input.aiReviewApiKey ?? configCache.aiReviewApiKey ?? "").trim(),
@@ -966,6 +976,11 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       where: { key: AI_REVIEW_PROVIDER_KEY },
       update: { value: next.aiReviewProvider },
       create: { key: AI_REVIEW_PROVIDER_KEY, value: next.aiReviewProvider },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: AI_REVIEW_API_URL_KEY },
+      update: { value: next.aiReviewApiUrl },
+      create: { key: AI_REVIEW_API_URL_KEY, value: next.aiReviewApiUrl },
     }),
     prisma.siteSetting.upsert({
       where: { key: AI_REVIEW_MODEL_KEY },
