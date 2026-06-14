@@ -121,7 +121,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import MessageList from "@/components/messages/MessageList.vue";
@@ -152,10 +152,27 @@ const requestingManualReview = ref(false);
 const reviewTarget = ref<{ kind: "topic" | "reply"; id: number; title: string; aiReviewStatus: string; hidden: boolean; topicId?: number; reviewable: boolean } | null>(null);
 const reviewTargetLoading = ref(false);
 let loadSeq = 0;
+let reviewTargetSeq = 0;
+let disposed = false;
 
 const unreadCount = computed(() => list.value.filter((item) => !item.readAt).length);
 
-onMounted(loadPage);
+onMounted(() => {
+  disposed = false;
+  void loadPage();
+});
+
+onBeforeUnmount(() => {
+  disposed = true;
+  loadSeq += 1;
+  reviewTargetSeq += 1;
+  loading.value = false;
+  saving.value = false;
+  markingAll.value = false;
+  reviewing.value = false;
+  requestingManualReview.value = false;
+  reviewTargetLoading.value = false;
+});
 
 watch(() => route.query.tab, (value) => {
   const next = normalizeMessageTab(value);
@@ -173,12 +190,13 @@ watch(tab, (value) => {
 });
 
 async function reloadNoticeState() {
+  if (disposed) return;
   const seq = ++loadSeq;
   const [nextList, nextSettings] = await Promise.all([
     messageApi.list(undefined, { suppressErrorMessage: true }),
     messageApi.settings({ suppressErrorMessage: true }),
   ]);
-  if (seq !== loadSeq) return;
+  if (disposed || seq !== loadSeq) return;
   list.value = nextList;
   settings.value = nextSettings;
   pageError.value = "";
@@ -189,6 +207,7 @@ async function refreshNoticeStateAfterAction() {
   try {
     await reloadNoticeState();
   } catch (error) {
+    if (disposed) return;
     ElMessage.warning(normalizeMessageActionError(error, "操作已完成，但消息列表刷新失败"));
   }
 }
@@ -199,44 +218,55 @@ function filteredMessages(cat: string) {
 }
 
 async function onRead(id: number) {
+  if (disposed) return;
   try {
     await messageApi.read(id, { suppressErrorMessage: true });
+    if (disposed) return;
     const n = list.value.find((x) => x.id === id);
     if (n) n.readAt = new Date().toISOString();
     void msg.refresh();
   } catch (error) {
+    if (disposed) return;
     ElMessage.error(normalizeMessageActionError(error, "消息标记已读失败"));
   }
 }
 
 async function readAll() {
-  if (!unreadCount.value || markingAll.value) return;
+  if (disposed || !unreadCount.value || markingAll.value) return;
   markingAll.value = true;
   try {
     await messageApi.readAll({ suppressErrorMessage: true });
+    if (disposed) return;
     list.value.forEach((n) => (n.readAt = new Date().toISOString()));
     ElMessage.success("已全部已读");
     void msg.refresh();
   } catch (error) {
+    if (disposed) return;
     ElMessage.error(normalizeMessageActionError(error, "全部已读失败"));
   } finally {
-    markingAll.value = false;
+    if (!disposed) markingAll.value = false;
   }
 }
 
 async function saveSettings() {
-  if (!settings.value || saving.value) return;
+  if (disposed || !settings.value || saving.value) return;
   saving.value = true;
   try {
     const { id, userId, ...payload } = settings.value;
-    settings.value = await messageApi.updateSettings(payload, { suppressErrorMessage: true });
+    const nextSettings = await messageApi.updateSettings(payload, { suppressErrorMessage: true });
+    if (disposed) return;
+    settings.value = nextSettings;
     ElMessage.success("已保存");
   } catch (error) {
+    if (disposed) return;
     ElMessage.error(normalizeMessageActionError(error, "设置保存失败"));
-  } finally { saving.value = false; }
+  } finally {
+    if (!disposed) saving.value = false;
+  }
 }
 
 async function loadPage() {
+  if (disposed) return;
   const seq = ++loadSeq;
   loading.value = true;
   pageError.value = "";
@@ -245,33 +275,41 @@ async function loadPage() {
       messageApi.list(undefined, { suppressErrorMessage: true }),
       messageApi.settings({ suppressErrorMessage: true }),
     ]);
-    if (seq !== loadSeq) return;
+    if (disposed || seq !== loadSeq) return;
     list.value = nextList;
     settings.value = nextSettings;
     void msg.refresh();
   } catch (error) {
-    if (seq !== loadSeq) return;
+    if (disposed || seq !== loadSeq) return;
     list.value = [];
     settings.value = null;
     pageError.value = normalizeMessageLoadError(error);
   } finally {
-    if (seq === loadSeq) loading.value = false;
+    if (!disposed && seq === loadSeq) loading.value = false;
   }
 }
 
 async function openNotification(item: any) {
+  if (disposed) return;
   activeNotice.value = item;
   reviewTarget.value = null;
   detailOpen.value = true;
+  const seq = ++reviewTargetSeq;
   const target = getReviewTargetFromNotice(item);
-  if (!target || !auth.isMod) return;
+  if (!target || !auth.isMod) {
+    reviewTargetLoading.value = false;
+    return;
+  }
   reviewTargetLoading.value = true;
   try {
-    reviewTarget.value = await adminApi.reviewTarget(target.kind, target.id);
+    const nextTarget = await adminApi.reviewTarget(target.kind, target.id);
+    if (disposed || seq !== reviewTargetSeq || activeNotice.value?.id !== item.id) return;
+    reviewTarget.value = nextTarget;
   } catch {
+    if (disposed || seq !== reviewTargetSeq || activeNotice.value?.id !== item.id) return;
     reviewTarget.value = null;
   } finally {
-    reviewTargetLoading.value = false;
+    if (!disposed && seq === reviewTargetSeq) reviewTargetLoading.value = false;
   }
 }
 
@@ -303,45 +341,52 @@ function goNoticeLink() {
 }
 
 async function requestManualReviewFromNotice() {
+  if (disposed) return;
   const topicId = Number(activeNotice.value?.payload?.topicId || 0);
   if (!topicId) return;
   requestingManualReview.value = true;
   try {
     await topicApi.requestManualReview(topicId);
+    if (disposed) return;
     await auth.fetchMe();
+    if (disposed) return;
     await refreshNoticeStateAfterAction();
+    if (disposed) return;
     detailOpen.value = false;
     ElMessage.success("已提交人工复核申请");
   } finally {
-    requestingManualReview.value = false;
+    if (!disposed) requestingManualReview.value = false;
   }
 }
 
 async function approveFromNotice() {
-  if (!reviewTarget.value?.reviewable) return;
+  const target = reviewTarget.value;
+  if (disposed || !target?.reviewable) return;
   reviewing.value = true;
   try {
-    if (reviewTarget.value.kind === "reply") {
-      await adminApi.updateReply(reviewTarget.value.id, {
+    if (target.kind === "reply") {
+      await adminApi.updateReply(target.id, {
         aiReviewStatus: "approved_manual",
         manualReviewNote: "管理员通过消息中心审核通过",
       });
     } else {
-      await adminApi.updateTopic(reviewTarget.value.id, {
+      await adminApi.updateTopic(target.id, {
         aiReviewStatus: "approved_manual",
         manualReviewNote: "管理员通过消息中心审核通过",
       });
     }
+    if (disposed) return;
     ElMessage.success("已审核通过");
     detailOpen.value = false;
     await refreshNoticeStateAfterAction();
   } finally {
-    reviewing.value = false;
+    if (!disposed) reviewing.value = false;
   }
 }
 
 async function rejectFromNotice() {
-  if (!reviewTarget.value?.reviewable || reviewing.value) return;
+  const target = reviewTarget.value;
+  if (disposed || !target?.reviewable || reviewing.value) return;
   reviewing.value = true;
   try {
     let value = "";
@@ -352,22 +397,24 @@ async function rejectFromNotice() {
     } catch {
       return;
     }
-    if (reviewTarget.value.kind === "reply") {
-      await adminApi.updateReply(reviewTarget.value.id, {
+    if (disposed) return;
+    if (target.kind === "reply") {
+      await adminApi.updateReply(target.id, {
         aiReviewStatus: "rejected_manual",
         manualReviewNote: value || "管理员通过消息中心人工驳回",
       });
     } else {
-      await adminApi.updateTopic(reviewTarget.value.id, {
+      await adminApi.updateTopic(target.id, {
         aiReviewStatus: "rejected_manual",
         manualReviewNote: value || "管理员通过消息中心人工驳回",
       });
     }
+    if (disposed) return;
     ElMessage.success("已驳回");
     detailOpen.value = false;
     await refreshNoticeStateAfterAction();
   } finally {
-    reviewing.value = false;
+    if (!disposed) reviewing.value = false;
   }
 }
 

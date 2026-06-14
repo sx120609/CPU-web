@@ -211,6 +211,11 @@ const authSession = ref<WeiwallTokenAuthSession | null>(null);
 const authStatus = ref<WeiwallTokenAuthStatus | null>(null);
 const siteOrigin = ref("");
 let authPollTimer: number | null = null;
+let configSeq = 0;
+let reloadSeq = 0;
+let authPollSeq = 0;
+let runSeq = 0;
+let disposed = false;
 const form = reactive({
   enabled: false,
   baseUrl: "https://s.weiwall.com",
@@ -292,16 +297,20 @@ function hydrate(next: WeiwallSyncConfig) {
 }
 
 async function reload() {
+  if (disposed) return;
+  const seq = ++configSeq;
+  const loadingSeq = ++reloadSeq;
   loading.value = true;
   try {
     const [nextConfig, nextSiteConfig] = await Promise.all([
       adminApi.weiwallSync(),
       adminApi.siteConfig(),
     ]);
+    if (disposed || seq !== configSeq) return;
     hydrate(nextConfig);
     siteOrigin.value = readSiteOrigin(nextSiteConfig);
   } finally {
-    loading.value = false;
+    if (!disposed && loadingSeq === reloadSeq) loading.value = false;
   }
 }
 
@@ -310,7 +319,8 @@ function readSiteOrigin(next: SiteConfig) {
 }
 
 async function save() {
-  if (saving.value) return;
+  if (disposed || saving.value) return;
+  const seq = ++configSeq;
   saving.value = true;
   try {
     const next = await adminApi.updateWeiwallSync({
@@ -325,22 +335,25 @@ async function save() {
       maxReplyPages: Number(form.maxReplyPages),
       token: form.token.trim() || undefined,
     });
+    if (disposed || seq !== configSeq) return;
     hydrate(next);
     ElMessage.success("逛逛同步配置已保存");
   } finally {
-    saving.value = false;
+    if (!disposed) saving.value = false;
   }
 }
 
 async function clearToken() {
-  if (clearingToken.value) return;
+  if (disposed || clearingToken.value) return;
+  const seq = ++configSeq;
   clearingToken.value = true;
   try {
     const next = await adminApi.updateWeiwallSync({ clearToken: true });
+    if (disposed || seq !== configSeq) return;
     hydrate(next);
     ElMessage.success("已清空保存的 Token");
   } finally {
-    clearingToken.value = false;
+    if (!disposed) clearingToken.value = false;
   }
 }
 
@@ -352,8 +365,12 @@ function stopAuthPolling() {
 }
 
 async function pollAuthStatus() {
+  if (disposed) return;
   if (!authSession.value?.flowId) return;
-  const next = await adminApi.getWeiwallAuthStatus(authSession.value.flowId);
+  const seq = authPollSeq;
+  const flowId = authSession.value.flowId;
+  const next = await adminApi.getWeiwallAuthStatus(flowId);
+  if (disposed || seq !== authPollSeq || authSession.value?.flowId !== flowId) return;
   authStatus.value = next;
   if (next.status === "success") {
     stopAuthPolling();
@@ -367,14 +384,17 @@ async function pollAuthStatus() {
 }
 
 async function startWechatAuth() {
-  if (authLinkLoading.value) return;
+  if (disposed || authLinkLoading.value) return;
   if (!siteOrigin.value.trim() && isLoopbackHost(window.location.hostname.trim().toLowerCase())) {
     ElMessage.error("当前页面是本地地址，请先到“基础配置”里设置可公网访问的站点域名，再生成微信授权二维码");
     return;
   }
+  const seq = ++authPollSeq;
   authLinkLoading.value = true;
   try {
-    authSession.value = await adminApi.createWeiwallAuthLink(window.location.origin);
+    const nextSession = await adminApi.createWeiwallAuthLink(window.location.origin);
+    if (disposed || seq !== authPollSeq) return;
+    authSession.value = nextSession;
     authStatus.value = {
       flowId: authSession.value.flowId,
       status: "pending",
@@ -385,11 +405,12 @@ async function startWechatAuth() {
     authDialogOpen.value = true;
     stopAuthPolling();
     authPollTimer = window.setInterval(() => {
+      if (disposed || seq !== authPollSeq) return;
       pollAuthStatus().catch(() => null);
     }, 3000);
     await pollAuthStatus();
   } finally {
-    authLinkLoading.value = false;
+    if (!disposed && seq === authPollSeq) authLinkLoading.value = false;
   }
 }
 
@@ -405,20 +426,38 @@ async function copyAuthorizeUrl() {
 }
 
 async function runNow() {
-  if (running.value) return;
+  if (disposed || running.value) return;
+  const seq = ++runSeq;
   running.value = true;
   try {
-    runResult.value = await adminApi.runWeiwallSync();
-    if (runResult.value.ok) ElMessage.success("逛逛同步已完成");
-    else ElMessage.warning(runResult.value.error || "逛逛同步未完成");
+    const nextResult = await adminApi.runWeiwallSync();
+    if (disposed || seq !== runSeq) return;
+    runResult.value = nextResult;
+    if (nextResult.ok) ElMessage.success("逛逛同步已完成");
+    else ElMessage.warning(nextResult.error || "逛逛同步未完成");
     await reload();
   } finally {
-    running.value = false;
+    if (!disposed && seq === runSeq) running.value = false;
   }
 }
 
-onMounted(reload);
-onBeforeUnmount(stopAuthPolling);
+onMounted(() => {
+  disposed = false;
+  void reload();
+});
+onBeforeUnmount(() => {
+  disposed = true;
+  configSeq += 1;
+  reloadSeq += 1;
+  authPollSeq += 1;
+  runSeq += 1;
+  loading.value = false;
+  saving.value = false;
+  running.value = false;
+  clearingToken.value = false;
+  authLinkLoading.value = false;
+  stopAuthPolling();
+});
 </script>
 
 <style scoped>

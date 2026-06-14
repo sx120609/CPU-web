@@ -128,7 +128,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { adminApi, type DatabaseBackupStatus, type DatabaseRestoreResult } from "@/api/admin";
 
@@ -142,25 +142,41 @@ const restoreInput = ref<HTMLInputElement | null>(null);
 const restoreFile = ref<File | null>(null);
 const restoreBusy = computed(() => restoring.value || restoreConfirming.value);
 let statusLoadSeq = 0;
+let downloadSeq = 0;
+let restoreSeq = 0;
+let disposed = false;
 
 onMounted(() => {
+  disposed = false;
   void loadStatus();
 });
 
+onBeforeUnmount(() => {
+  disposed = true;
+  statusLoadSeq++;
+  downloadSeq++;
+  restoreSeq++;
+  loading.value = false;
+  downloading.value = false;
+  restoring.value = false;
+  restoreConfirming.value = false;
+});
+
 async function loadStatus() {
+  if (disposed) return;
   const seq = ++statusLoadSeq;
   loading.value = true;
   loadError.value = "";
   try {
     const next = await adminApi.databaseStatus({ suppressErrorMessage: true });
-    if (seq === statusLoadSeq) status.value = next;
+    if (!disposed && seq === statusLoadSeq) status.value = next;
   } catch (error) {
-    if (seq === statusLoadSeq) {
+    if (!disposed && seq === statusLoadSeq) {
       status.value = null;
       loadError.value = requestMessage(error) || "数据库状态加载失败，请稍后重试";
     }
   } finally {
-    if (seq === statusLoadSeq) loading.value = false;
+    if (!disposed && seq === statusLoadSeq) loading.value = false;
   }
 }
 
@@ -264,18 +280,21 @@ const restoreHint = computed(() => {
 });
 
 function selectRestoreFile() {
+  if (disposed) return;
   if (restoreBusy.value || !canRestore.value) return;
   if (restoreInput.value) restoreInput.value.value = "";
   restoreInput.value?.click();
 }
 
 function clearRestoreFile(force = false) {
+  if (disposed) return;
   if (restoreBusy.value && !force) return;
   restoreFile.value = null;
   if (restoreInput.value) restoreInput.value.value = "";
 }
 
 function onRestoreFileChange(event: Event) {
+  if (disposed) return;
   if (restoreBusy.value) return;
   const input = event.target as HTMLInputElement | null;
   const file = input?.files?.[0] || null;
@@ -290,10 +309,12 @@ function onRestoreFileChange(event: Event) {
 
 async function downloadBackup() {
   const currentStatus = status.value;
-  if (downloading.value || restoreBusy.value || !canDownload.value || !currentStatus) return;
+  if (disposed || downloading.value || restoreBusy.value || !canDownload.value || !currentStatus) return;
+  const seq = ++downloadSeq;
   downloading.value = true;
   try {
     const blob = await adminApi.downloadDatabaseBackup();
+    if (disposed || seq !== downloadSeq) return;
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -304,14 +325,15 @@ async function downloadBackup() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     ElMessage.success("数据库备份已开始下载");
   } catch (error: any) {
-    ElMessage.error(error?.message || "数据库备份下载失败");
+    if (!disposed && seq === downloadSeq) ElMessage.error(error?.message || "数据库备份下载失败");
   } finally {
-    downloading.value = false;
+    if (!disposed && seq === downloadSeq) downloading.value = false;
   }
 }
 
 async function confirmRestore() {
-  if (!restoreFile.value || !canRestore.value || restoreBusy.value) return;
+  if (disposed || !restoreFile.value || !canRestore.value || restoreBusy.value) return;
+  const seq = ++restoreSeq;
   restoreConfirming.value = true;
   const confirmed = await ElMessageBox.prompt(
     "这会覆盖当前 PostgreSQL 主库，恢复期间站点会进入维护模式。请输入 RESTORE 确认继续。",
@@ -324,31 +346,36 @@ async function confirmRestore() {
       type: "warning",
     },
   ).then(() => true).catch(() => false);
+  if (disposed || seq !== restoreSeq) return;
   restoreConfirming.value = false;
   if (!confirmed) {
     return;
   }
-  await uploadAndRestore();
+  await uploadAndRestore(seq);
 }
 
-async function uploadAndRestore() {
-  if (!restoreFile.value || restoring.value) return;
+async function uploadAndRestore(seq = ++restoreSeq) {
+  const file = restoreFile.value;
+  if (disposed || !file || restoring.value) return;
   restoring.value = true;
   try {
     const formData = new FormData();
-    formData.append("file", restoreFile.value);
+    formData.append("file", file);
     const result = await adminApi.restoreDatabaseBackup(formData, {
       timeout: 10 * 60 * 1000,
       suppressErrorMessage: true,
     });
+    if (disposed || seq !== restoreSeq) return;
     handleRestoreSuccess(result);
     clearRestoreFile(true);
     await loadStatus();
   } catch (error: any) {
-    ElMessage.error(error?.response?.data?.message || error?.message || "数据库恢复失败");
-    await loadStatus().catch(() => undefined);
+    if (!disposed && seq === restoreSeq) {
+      ElMessage.error(error?.response?.data?.message || error?.message || "数据库恢复失败");
+      await loadStatus().catch(() => undefined);
+    }
   } finally {
-    restoring.value = false;
+    if (!disposed && seq === restoreSeq) restoring.value = false;
   }
 }
 

@@ -2,7 +2,7 @@
   <div class="iservice-pane" v-loading="loading">
     <div class="ctrl-bar" v-if="apps.length">
       <div class="ctrl-left">
-        <el-input v-model="keyword" size="default" placeholder="搜索应用..." clearable style="width:240px">
+        <el-input v-model="keyword" class="search-input" size="default" placeholder="搜索应用..." clearable>
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
         <el-radio-group v-model="filterFav" size="default">
@@ -132,16 +132,23 @@ const APPS_CACHE_KEY = "cpu-iservice-apps-cache-v1";
 const CACHE_TTL = 12 * 60 * 60 * 1000;
 let retryTimer: number | null = null;
 let activeRequest: Promise<any> | null = null;
+let disposed = false;
 
 onMounted(() => {
+  disposed = false;
   reload(false);
 });
 
 onBeforeUnmount(() => {
-  if (retryTimer) window.clearTimeout(retryTimer);
+  disposed = true;
+  if (retryTimer) {
+    window.clearTimeout(retryTimer);
+    retryTimer = null;
+  }
 });
 
 async function reload(force = true) {
+  if (disposed) return;
   if (retryTimer) {
     window.clearTimeout(retryTimer);
     retryTimer = null;
@@ -152,12 +159,14 @@ async function reload(force = true) {
 }
 
 async function loadApps(force = false) {
+  if (disposed) return;
   const cached = restoreAppsCache();
   if (cached && !force && !isStale(cached.savedAt)) return;
   loading.value = force || !apps.value.length;
   retrying.value = retryCount.value > 0;
   try {
     const r: any = await fetchApps();
+    if (disposed) return;
     const overrides = loadFavoriteOverrides();
     apps.value = (r.apps ?? []).map((a: IServiceApp) => ({
       ...a,
@@ -167,6 +176,7 @@ async function loadApps(force = false) {
     writeAppsCache(r.apps ?? []);
     error.value = "";
   } catch (e: any) {
+    if (disposed) return;
     error.value = e?.message || "网络请求失败";
     if (retryCount.value < MAX_RETRIES) {
       retryCount.value += 1;
@@ -174,13 +184,14 @@ async function loadApps(force = false) {
       const delay = RETRY_DELAYS[retryCount.value - 1] ?? RETRY_DELAYS[RETRY_DELAYS.length - 1];
       retryTimer = window.setTimeout(() => {
         retryTimer = null;
+        if (disposed) return;
         loadApps(false);
       }, delay);
     } else {
       retrying.value = false;
     }
   } finally {
-    loading.value = false;
+    if (!disposed) loading.value = false;
   }
 }
 
@@ -328,6 +339,7 @@ function openRawApp(a: IServiceApp) {
 
 .ctrl-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
 .ctrl-left { display: flex; gap: 10px; align-items: center; }
+.search-input { width: 240px; max-width: 100%; }
 .ctrl-left :deep(.el-radio-group) {
   flex-shrink: 0;
 }

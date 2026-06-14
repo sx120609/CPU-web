@@ -44,11 +44,20 @@
           <b>自定义 GPA</b>
           <span>{{ selectionSummaryText }}</span>
         </div>
-        <el-radio-group v-model="statMode" size="small">
-          <el-radio-button label="all">全部</el-radio-button>
-          <el-radio-button label="only">仅选中</el-radio-button>
-          <el-radio-button label="exclude">排除选中</el-radio-button>
-        </el-radio-group>
+        <div class="calc-mode-switch" role="group" aria-label="GPA 统计口径">
+          <button
+            v-for="mode in statModeOptions"
+            :key="mode.value"
+            type="button"
+            class="calc-mode-btn"
+            :class="{ active: statMode === mode.value }"
+            :aria-pressed="statMode === mode.value"
+            :disabled="mode.value !== 'all' && !selectedCourseKeys.length"
+            @click="statMode = mode.value"
+          >
+            {{ mode.label }}
+          </button>
+        </div>
       </div>
       <div class="calc-controls">
         <label class="filter-field course-picker">
@@ -222,6 +231,12 @@ interface GradeRow {
 }
 
 type StatMode = "all" | "only" | "exclude";
+
+const statModeOptions: Array<{ value: StatMode; label: string }> = [
+  { value: "all", label: "全部" },
+  { value: "only", label: "仅选中" },
+  { value: "exclude", label: "排除选中" },
+];
 
 const props = defineProps<{ data: any; loading?: boolean }>();
 const parsed = ref<any>(props.data?.parsed ?? null);
@@ -605,6 +620,52 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
   font-size: 12px;
 }
 
+.calc-mode-switch {
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(72px, 1fr));
+  gap: 2px;
+  flex: 0 0 auto;
+  padding: 3px;
+  border: 1px solid #d8eee9;
+  border-radius: 8px;
+  background: #f2faf7;
+}
+
+.calc-mode-btn {
+  min-width: 0;
+  height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #52616f;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.calc-mode-btn:hover:not(:disabled) {
+  color: var(--cpu-primary);
+}
+
+.calc-mode-btn.active {
+  background: #fff;
+  color: var(--cpu-primary);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+.calc-mode-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--cpu-primary) 45%, transparent);
+  outline-offset: 2px;
+}
+
+.calc-mode-btn:disabled {
+  color: #a7b1ba;
+  cursor: not-allowed;
+}
+
 .calc-controls {
   display: grid;
   grid-template-columns: minmax(260px, 1fr) auto;
@@ -838,19 +899,16 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
     flex-direction: column;
   }
 
-  .calc-head :deep(.el-radio-group) {
+  .calc-mode-switch {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     width: 100%;
   }
 
-  .calc-head :deep(.el-radio-button) {
-    min-width: 0;
-  }
-
-  .calc-head :deep(.el-radio-button__inner) {
-    width: 100%;
-    padding-inline: 6px;
+  .calc-mode-btn {
+    height: 34px;
+    padding-inline: 4px;
+    font-size: 13px;
   }
 
   .quick-actions {

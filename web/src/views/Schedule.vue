@@ -1771,6 +1771,7 @@ onBeforeUnmount(() => {
   window.removeEventListener("offline", syncNetworkStatus);
   window.visualViewport?.removeEventListener("resize", updateViewportHeight);
   window.visualViewport?.removeEventListener("scroll", updateViewportHeight);
+  clearDragTimers();
   clearStaticWeekAnimation();
   stopWidgetInstructionCountdown();
   stopAndroidUpdateCountdown();
@@ -1908,6 +1909,8 @@ let dragFrame = 0;
 let pendingTrackOffset = 0;
 let dragCommitDelta = 0;
 let dragCommitTimer = 0;
+let dragResetTimer = 0;
+let dragSuppressClickTimer = 0;
 let dragCaptureTarget: HTMLElement | null = null;
 const staticWeekAnimationClass = ref<"" | "week-slide-in-next" | "week-slide-in-prev">("");
 let staticWeekAnimationTimer = 0;
@@ -2235,7 +2238,7 @@ async function onSchedulePointerEnd(event: PointerEvent) {
   const shouldChange = (Math.abs(offset) >= threshold || fastSwipe) && canChangeByDrag(direction);
   if (!shouldChange) {
     animateDragTo(0);
-    window.setTimeout(resetDrag, 180);
+    scheduleDragReset();
     return;
   }
   if (useStaticWeekSwipe.value) {
@@ -2257,7 +2260,7 @@ function onSchedulePointerCancel() {
   if (!dragState.tracking) return;
   releaseDragPointer();
   animateDragTo(0);
-  window.setTimeout(resetDrag, 180);
+  scheduleDragReset();
 }
 
 function canChangeDay(delta: number) {
@@ -2337,19 +2340,15 @@ function animateDragTo(targetX: number) {
   dragState.settling = true;
   dragOffsetX = targetX;
   setDragClasses(false, true);
-  window.requestAnimationFrame(() => setTrackOffset(targetX));
+  dragFrame = window.requestAnimationFrame(() => {
+    dragFrame = 0;
+    setTrackOffset(targetX);
+  });
 }
 
 function resetDrag() {
   releaseDragPointer();
-  if (dragFrame) {
-    window.cancelAnimationFrame(dragFrame);
-    dragFrame = 0;
-  }
-  if (dragCommitTimer) {
-    window.clearTimeout(dragCommitTimer);
-    dragCommitTimer = 0;
-  }
+  clearDragTimers();
   clearStaticWeekAnimation();
   dragCommitDelta = 0;
   dragState.tracking = false;
@@ -2361,9 +2360,37 @@ function resetDrag() {
   dragVelocityX = 0;
   setDragClasses(false, false);
   clearTrackOffset();
-  window.setTimeout(() => {
+  dragSuppressClickTimer = window.setTimeout(() => {
+    dragSuppressClickTimer = 0;
     dragState.suppressClick = false;
   }, 220);
+}
+
+function scheduleDragReset() {
+  if (dragResetTimer) window.clearTimeout(dragResetTimer);
+  dragResetTimer = window.setTimeout(() => {
+    dragResetTimer = 0;
+    resetDrag();
+  }, 180);
+}
+
+function clearDragTimers() {
+  if (dragFrame) {
+    window.cancelAnimationFrame(dragFrame);
+    dragFrame = 0;
+  }
+  if (dragCommitTimer) {
+    window.clearTimeout(dragCommitTimer);
+    dragCommitTimer = 0;
+  }
+  if (dragResetTimer) {
+    window.clearTimeout(dragResetTimer);
+    dragResetTimer = 0;
+  }
+  if (dragSuppressClickTimer) {
+    window.clearTimeout(dragSuppressClickTimer);
+    dragSuppressClickTimer = 0;
+  }
 }
 
 function captureDragPointer(event: PointerEvent) {
