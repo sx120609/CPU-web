@@ -1,4 +1,4 @@
-import type { Request, RequestHandler, Response } from "express";
+import express, { type Request, type RequestHandler, type Response } from "express";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import http from "node:http";
@@ -143,6 +143,7 @@ function upstreamPath(req: Request) {
 function isPublicFilestoreRequest(req: Request) {
   const target = upstreamPath(req).split("?")[0];
   if (req.method === "GET" && target === "/api/health") return true;
+  if (req.method === "GET" && target === "/api/platform/site-config") return true;
   if (req.method === "GET" && /^\/api\/public\/(tasks|status)\/[A-Za-z0-9_-]+$/.test(target)) return true;
   if (req.method === "POST" && /^\/api\/submit\/[A-Za-z0-9_-]+$/.test(target)) return true;
   return !target.startsWith("/api/");
@@ -279,7 +280,14 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       res.status(401).json({ error: "请先登录平台账号" });
       return true;
     }
-    const { prompt } = req.body;
+    // Parse JSON body on demand since express.json() is registered after filestoreProxy
+    await new Promise<void>((resolve, reject) => {
+      express.json()(req, res, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    const { prompt } = req.body || {};
     if (!prompt || typeof prompt !== "string") {
       res.status(400).json({ error: "提示词不能为空" });
       return true;
