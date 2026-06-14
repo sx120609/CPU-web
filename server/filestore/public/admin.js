@@ -561,7 +561,7 @@ function renderRenameTools() {
       btn.className = "chip rename-token";
       btn.dataset.target = target;
       btn.dataset.token = `{${f.key}}`;
-      btn.textContent = f.title;
+      btn.textContent = f.label || f.key;
       btn.addEventListener("click", () => insertAtCursor($(`#${target}`), `{${f.key}}`));
       container.appendChild(btn);
     });

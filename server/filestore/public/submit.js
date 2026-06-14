@@ -151,9 +151,11 @@ function savedPathPreview(file, index, totalCount) {
 }
 
 function submitDescription() {
-  const updateTip = "如果提交后发现文件或信息有误，请使用相同的姓名和学号/考试号重新提交，系统会自动用新提交覆盖旧提交。";
-  if (!task.description) return `请按要求填写信息并上传文件。${updateTip}`;
-  return `${task.description}\n${updateTip}`;
+  const fields = (task.fields || []).slice(0, 2).map(f => f.label || f.key);
+  const identifier = fields.length > 0 ? fields.join("和") : "身份信息";
+  const updateTip = `如果提交后发现文件或信息有误，请使用相同的${identifier}重新提交，系统会自动用新提交覆盖旧提交。`;
+  if (!task.description) return `请按要求填写信息并上传文件。\n${updateTip}`;
+  return `${task.description}\n\n${updateTip}`;
 }
 
 function fileIcon(file) {

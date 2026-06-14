@@ -1430,7 +1430,7 @@ dialog.wide-dialog {
 }
 
 .submit-card {
-  width: min(580px, 100%);
+  width: min(720px, 100%);
   background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -1703,6 +1703,18 @@ dialog.wide-dialog {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 4px;
+}
+
+.status-tools {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 32px;
+  margin-bottom: 24px;
+}
+
+.status-tools input {
+  flex: 1;
 }
 
 .submit-actions {
