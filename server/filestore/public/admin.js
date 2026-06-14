@@ -475,7 +475,36 @@ function templatePayload() {
   };
 }
 
+let currentStep = 1;
+
+function updateStepNavigation() {
+  $$(".step-dot").forEach((dot) => {
+    const step = Number(dot.dataset.step);
+    dot.classList.toggle("active", step === currentStep);
+    dot.classList.toggle("completed", step < currentStep);
+  });
+
+  $$(".step-content").forEach((content) => {
+    const step = Number(content.dataset.stepContent);
+    content.hidden = step !== currentStep;
+  });
+
+  $("#prevStep").disabled = currentStep === 1;
+  
+  if (currentStep === 4) {
+    $("#nextStep").hidden = true;
+    $("#saveTask").hidden = false;
+    $("#saveTemplate").hidden = !state.viewer.isManager;
+  } else {
+    $("#nextStep").hidden = false;
+    $("#saveTask").hidden = true;
+    $("#saveTemplate").hidden = true;
+  }
+}
+
 function fillEditor(task) {
+  currentStep = 1;
+  updateStepNavigation();
   $("#editorTitle").textContent = task ? "编辑任务" : "新建任务";
   renderTemplateSelect(state.templateKey);
   $("#title").value = task?.title || "";
@@ -632,6 +661,8 @@ async function selectTask(id) {
     state.detail = task;
     renderTaskList();
     renderDetail(task);
+    $(".app-sidebar")?.classList.remove("open");
+    $("#sidebarScrim")?.classList.remove("open");
   } catch (error) {
     toast(error.message, "error");
   }
@@ -1333,6 +1364,85 @@ function bind() {
   $("#fileSearch").addEventListener("input", renderFileManager);
   $("#exportCsv").addEventListener("click", safe(() => download(`/api/tasks/${state.current.id}/export.csv`, `${state.current.title}.csv`)));
   $("#downloadZip").addEventListener("click", safe(downloadClientZip));
+
+  // Wizard Navigation
+  $("#prevStep").addEventListener("click", () => {
+    if (currentStep > 1) {
+      currentStep -= 1;
+      updateStepNavigation();
+    }
+  });
+  $("#nextStep").addEventListener("click", () => {
+    if (currentStep === 1) {
+      if (!$("#title").value.trim()) {
+        toast("请填写任务标题", "error");
+        $("#title").focus();
+        return;
+      }
+    }
+    if (currentStep === 2) {
+      const fields = collectFields();
+      if (!fields.length) {
+        toast("请至少添加一个表单字段", "error");
+        return;
+      }
+      if (fields.some(f => !f.label || !f.key)) {
+        toast("字段名称和 Key 不能为空", "error");
+        return;
+      }
+    }
+    if (currentStep < 4) {
+      currentStep += 1;
+      updateStepNavigation();
+    }
+  });
+  $$(".step-dot").forEach((dot) => {
+    dot.addEventListener("click", () => {
+      const targetStep = Number(dot.dataset.step);
+      if (targetStep > currentStep) {
+        if (currentStep === 1 || targetStep > 1) {
+          if (!$("#title").value.trim()) {
+            toast("请填写任务标题", "error");
+            return;
+          }
+        }
+        if (currentStep === 2 || targetStep > 2) {
+          const fields = collectFields();
+          if (!fields.length || fields.some(f => !f.label || !f.key)) {
+            toast("请配置正确的表单字段", "error");
+            return;
+          }
+        }
+      }
+      currentStep = targetStep;
+      updateStepNavigation();
+    });
+  });
+
+  // Mobile sidebar toggle
+  const toggleSidebar = $("#toggleSidebar");
+  const closeSidebar = $("#closeSidebar");
+  const sidebarScrim = $("#sidebarScrim");
+  const sidebar = $(".app-sidebar");
+
+  if (toggleSidebar) {
+    toggleSidebar.addEventListener("click", () => {
+      sidebar.classList.add("open");
+      sidebarScrim.classList.add("open");
+    });
+  }
+  if (closeSidebar) {
+    closeSidebar.addEventListener("click", () => {
+      sidebar.classList.remove("open");
+      sidebarScrim.classList.remove("open");
+    });
+  }
+  if (sidebarScrim) {
+    sidebarScrim.addEventListener("click", () => {
+      sidebar.classList.remove("open");
+      sidebarScrim.classList.remove("open");
+    });
+  }
 }
 
 fillEditor(null);
