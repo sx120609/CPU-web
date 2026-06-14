@@ -3747,6 +3747,8 @@ function prewarmScheduleCacheForWeek(wk: string) {
   --schedule-bg-blur: 0px;
   --schedule-surface-bg: #ffffff;
   --schedule-surface-bg-soft: #f9fafb;
+  --schedule-bottom-obscured-space: 0px;
+  --schedule-scroll-bottom-gap: calc(14px + env(safe-area-inset-bottom) + var(--schedule-bottom-obscured-space));
   position: relative;
   isolation: isolate;
   display: flex;
@@ -4546,7 +4548,8 @@ function prewarmScheduleCacheForWeek(wk: string) {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
-  padding-bottom: calc(14px + env(safe-area-inset-bottom));
+  padding-bottom: var(--schedule-scroll-bottom-gap);
+  scroll-padding-bottom: var(--schedule-scroll-bottom-gap);
 }
 .day-grid-body {
   display: grid;
@@ -5473,6 +5476,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   .toolbar { display: none; }
   .summary { display: none; }
   .schedule-page {
+    --schedule-bottom-obscured-space: 74px;
     padding-top: calc(env(safe-area-inset-top) + 8px);
     padding-left: 8px;
     padding-right: 8px;
