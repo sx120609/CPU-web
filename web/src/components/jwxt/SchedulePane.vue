@@ -3426,8 +3426,8 @@ function prewarmScheduleCacheForWeek(wk: string) {
   :global(.schedule-edit-dialog .el-dialog) {
     position: fixed;
     inset: auto 0 0 0;
-    width: 100dvw !important;
-    max-width: 100dvw;
+    width: 100% !important;
+    max-width: 100%;
     height: min(82dvh, calc(100dvh - env(safe-area-inset-top) - 18px));
     max-height: min(82dvh, calc(100dvh - env(safe-area-inset-top) - 18px));
     margin: 0 !important;

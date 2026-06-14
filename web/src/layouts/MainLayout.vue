@@ -492,12 +492,16 @@ async function onUserCmd(cmd: string) {
 }
 
 .topbar {
-  background: #fff;
-  border-bottom: 1px solid #eef0f4;
+  background: var(--cpu-glass-bg);
+  backdrop-filter: var(--cpu-glass-blur);
+  -webkit-backdrop-filter: var(--cpu-glass-blur);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02), 0 4px 16px -4px rgba(0, 0, 0, 0.02);
   position: sticky;
   top: 0;
   z-index: 100;
   padding-top: env(safe-area-inset-top);
+  transition: all 0.3s ease;
 }
 
 .topbar-inner {
@@ -589,8 +593,8 @@ async function onUserCmd(cmd: string) {
   transition: background 0.15s, color 0.15s;
 }
 
-.top-nav a:hover { background: #f3f4f6; color: var(--cpu-primary); }
-.top-nav a.router-link-active { color: var(--cpu-primary); font-weight: 600; }
+.top-nav a:hover { background: rgba(0, 0, 0, 0.04); color: var(--cpu-primary); }
+.top-nav a.router-link-active { color: var(--cpu-primary); font-weight: 600; background: rgba(20, 143, 123, 0.08); }
 
 .top-right {
   display: flex;
@@ -897,11 +901,25 @@ async function onUserCmd(cmd: string) {
     display: grid;
     /* 列数由 inline style 提供（mobileNavItems.length），保证关闭某项后剩余项仍均匀分布 */
     padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
-    border-top: 1px solid #e5e7eb;
-    background: rgba(255, 255, 255, 0.96);
-    box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.5);
+    background: var(--cpu-glass-bg);
+    backdrop-filter: var(--cpu-glass-blur);
+    -webkit-backdrop-filter: var(--cpu-glass-blur);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.06);
     pointer-events: auto;
-    transition: transform 0.18s ease, opacity 0.18s ease, visibility 0.18s ease;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease, visibility 0.3s ease;
+  }
+
+  .mobile-tab.active {
+    color: var(--cpu-primary);
+    background: rgba(20, 143, 123, 0.1);
+    transform: scale(1.05);
+  }
+
+  :deep(.mobile-drawer) {
+    border-radius: 18px 18px 0 0;
+    height: min(420px, calc(100dvh - 16px)) !important;
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   .mobile-tabbar.is-hidden {
@@ -927,6 +945,7 @@ async function onUserCmd(cmd: string) {
     touch-action: manipulation;
     -webkit-tap-highlight-color: rgba(22, 135, 118, 0.18);
     cursor: pointer;
+    transition: transform 0.2s ease, background 0.2s ease;
   }
 
   .mobile-tab .el-icon {
@@ -939,16 +958,6 @@ async function onUserCmd(cmd: string) {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-
-  .mobile-tab.active {
-    color: var(--cpu-primary);
-    background: #ecfdf5;
-  }
-
-  :deep(.mobile-drawer) {
-    border-radius: 18px 18px 0 0;
-    height: min(420px, calc(100dvh - 16px)) !important;
-    padding-bottom: env(safe-area-inset-bottom);
   }
 
   :deep(.mobile-drawer .el-drawer__header) {

@@ -875,7 +875,7 @@ async function deleteUser(row: any) {
   }
   .pager { overflow-x: auto; justify-content: flex-start; padding-bottom: 2px; }
   .users-pane :deep(.el-dialog) {
-    width: calc(100dvw - 24px) !important;
+    width: 100% !important;
     margin-top: 5dvh;
   }
 }

@@ -639,8 +639,8 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
   }
 
   :deep(.notice-dialog) {
-    width: calc(100dvw - 20px) !important;
-    max-width: calc(100dvw - 20px) !important;
+    width: 100% !important;
+    max-width: 100% !important;
     margin-top: 4dvh;
   }
 

@@ -1261,8 +1261,8 @@ function notifyVideoReviewState(summary?: {
   }
 
   :global(.publish-preview-dialog) {
-    width: calc(100dvw - 24px) !important;
-    max-width: calc(100dvw - 24px) !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 }
 </style>
