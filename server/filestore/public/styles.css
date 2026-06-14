@@ -142,6 +142,12 @@ button:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--accent);
   background: var(--accent-wash);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -2px rgba(80, 70, 229, 0.08);
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 button:disabled {
@@ -150,15 +156,16 @@ button:disabled {
 }
 
 button.primary {
-  border-color: var(--accent);
-  background: var(--accent);
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--accent-light), var(--accent));
   color: #fff;
+  box-shadow: 0 4px 12px rgba(80, 70, 229, 0.2);
 }
 
 button.primary:hover:not(:disabled) {
-  background: var(--accent-dark);
-  border-color: var(--accent-dark);
+  background: linear-gradient(135deg, var(--accent), var(--accent-dark));
   color: #fff;
+  box-shadow: 0 6px 16px rgba(80, 70, 229, 0.3);
   transform: translateY(-1px);
 }
 
@@ -175,7 +182,7 @@ button.danger:hover:not(:disabled) {
 
 input, textarea, select {
   width: 100%;
-  min-height: 40px;
+  min-height: 44px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   padding: 10px 14px;
@@ -186,8 +193,8 @@ input, textarea, select {
 }
 
 input:focus, textarea:focus, select:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(80, 70, 229, 0.15);
+  border-color: var(--accent-light);
+  box-shadow: 0 0 0 4px var(--accent-wash);
 }
 
 textarea {
@@ -503,6 +510,7 @@ p {
 .metric:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-hover);
+  border-color: var(--accent-light);
 }
 
 .metric span {
@@ -781,6 +789,7 @@ tr:hover td {
   z-index: 50;
   width: min(580px, 100vw);
   height: 100vh;
+  height: 100dvh;
   background: var(--surface);
   box-shadow: -10px 0 40px rgba(15, 23, 42, 0.15);
   transform: translateX(100%);
@@ -959,12 +968,20 @@ tr:hover td {
   padding: 6px 10px;
 }
 
+.field-tools, .rename-tools {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
 .chip {
   min-height: 32px;
-  padding: 6px 12px;
+  padding: 6px 14px;
   font-size: 12px;
-  border-radius: var(--radius-sm);
+  border-radius: 99px;
   background: var(--surface-2);
+  transition: var(--transition);
 }
 
 .chip.danger {
@@ -973,13 +990,15 @@ tr:hover td {
 }
 
 .chip.primary {
-  background: var(--accent);
+  background: linear-gradient(135deg, var(--accent-light), var(--accent));
   color: #fff;
-  border-color: var(--accent);
+  border-color: transparent;
+  box-shadow: 0 2px 8px rgba(80, 70, 229, 0.2);
 }
 
 .chip.primary:hover {
-  background: var(--accent-dark);
+  background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+  box-shadow: 0 4px 12px rgba(80, 70, 229, 0.3);
 }
 
 /* Fields Stack Designer */
@@ -1231,7 +1250,7 @@ tr:hover td {
 
 /* Drawer actions footer */
 .drawer-actions {
-  padding: 16px 24px;
+  padding: 16px 24px calc(16px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--line);
   background: var(--surface);
   display: flex;
@@ -1387,10 +1406,12 @@ dialog.wide-dialog {
 
 .submit-card {
   width: min(580px, 100%);
-  background: var(--surface);
-  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-soft);
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.15);
   overflow: hidden;
 }
 
@@ -1661,7 +1682,9 @@ dialog.wide-dialog {
 
 .submit-actions {
   display: flex;
-  gap: 10px;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
 }
 
 /* Success dialog and animations */

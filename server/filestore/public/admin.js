@@ -572,9 +572,11 @@ function updateStepNavigation() {
   if (currentStep === 4) {
     $("#nextStep").hidden = true;
     $("#saveTask").hidden = false;
+    $("#saveTemplate").hidden = false;
   } else {
     $("#nextStep").hidden = false;
     $("#saveTask").hidden = true;
+    $("#saveTemplate").hidden = true;
   }
 }
 
