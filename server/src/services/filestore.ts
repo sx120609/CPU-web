@@ -3,6 +3,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import QRCode from "qrcode";
 import { config } from "../config";
 import { prisma } from "../prisma";
 import { hasToolContentManagePermission, hasToolManagerPermission } from "./serviceTools";
@@ -144,6 +145,7 @@ function isPublicFilestoreRequest(req: Request) {
   const target = upstreamPath(req).split("?")[0];
   if (req.method === "GET" && target === "/api/health") return true;
   if (req.method === "GET" && target === "/api/platform/site-config") return true;
+  if (req.method === "GET" && target === "/api/qrcode") return true;
   if (req.method === "GET" && /^\/api\/public\/(tasks|status)\/[A-Za-z0-9_-]+$/.test(target)) return true;
   if (req.method === "POST" && /^\/api\/submit\/[A-Za-z0-9_-]+$/.test(target)) return true;
   return !target.startsWith("/api/");
@@ -219,8 +221,42 @@ function writeHeaders(res: Response, upstream: http.IncomingMessage, rewrittenBo
   if (rewrittenBody) res.setHeader("content-length", String(rewrittenBody.byteLength));
 }
 
+function queryStringValue(value: unknown) {
+  if (Array.isArray(value)) return typeof value[0] === "string" ? value[0] : "";
+  return typeof value === "string" ? value : "";
+}
+
 async function handleFilestoreUtilityRoute(req: Request, res: Response, user: FilestoreAccessUser | null) {
   const target = upstreamPath(req).split("?")[0];
+  if (req.method === "GET" && target === "/api/qrcode") {
+    const data = queryStringValue(req.query.data).trim();
+    if (!data) {
+      res.status(400).type("text/plain; charset=utf-8").send("二维码内容不能为空");
+      return true;
+    }
+    if (data.length > 4096) {
+      res.status(400).type("text/plain; charset=utf-8").send("二维码内容过长");
+      return true;
+    }
+    const requestedSize = Number(queryStringValue(req.query.size));
+    const width = Number.isFinite(requestedSize)
+      ? Math.min(640, Math.max(120, Math.round(requestedSize)))
+      : 260;
+    const png = await QRCode.toBuffer(data, {
+      type: "png",
+      width,
+      margin: 1,
+      errorCorrectionLevel: "M",
+      color: {
+        dark: "#172033",
+        light: "#ffffffff",
+      },
+    });
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Cache-Control", "private, max-age=300");
+    res.end(png);
+    return true;
+  }
   if (req.method === "GET" && target === "/api/platform/site-config") {
     res.json({
       siteFilingNumber: getSiteFilingNumber(),

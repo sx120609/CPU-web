@@ -577,7 +577,8 @@
             <div class="share-card-brand-host">cpu.lizmt.cn</div>
           </div>
           <div class="share-card-qr-box">
-            <img :src="shareCardQrDataUrl" alt="分享二维码" loading="lazy" decoding="async" fetchpriority="low" class="share-card-qr" />
+            <img v-if="shareCardQrDataUrl" :src="shareCardQrDataUrl" alt="分享二维码" loading="lazy" decoding="async" fetchpriority="low" class="share-card-qr" />
+            <div v-else class="share-card-qr share-card-qr-placeholder"></div>
           </div>
         </div>
       </div>
@@ -677,6 +678,7 @@ const shareCardDialogOpen = ref(false);
 const shareCardSaving = ref(false);
 const shareCardRendering = ref(false);
 const shareCardRenderedUrl = ref("");
+const shareCardQrDataUrl = ref("");
 const shareCardPreviewOpen = ref(false);
 const weiwallContactExpanded = ref(false);
 const topicImageReviewDialogOpen = ref(false);
@@ -706,6 +708,7 @@ const blockedReplyInfo = reactive<{ reason: string; riskScore: number | null }>(
 });
 const liked = ref(false);
 let loadSeq = 0;
+let shareCardQrSeq = 0;
 const repliesEl = ref<HTMLElement | null>(null);
 const replyEditorRef = ref<InstanceType<typeof RichTextEditor> | null>(null);
 const shareCardExportRef = ref<HTMLElement | null>(null);
@@ -888,10 +891,6 @@ const shareCardSubtitle = computed(() => {
   return `${board} · ${author}`;
 });
 const shareCardStats = computed(() => `${topic.value?.replyCount ?? 0} 条回复 · ${topic.value?.viewCount ?? 0} 浏览`);
-const shareCardQrDataUrl = computed(() => {
-  if (!topic.value) return "";
-  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(shareLandingUrl.value)}`;
-});
 const inAppBrowser = computed(() => detectInAppBrowser());
 const weiwallSourceUrl = computed(() => String(topic.value?.metadata?.sourceUrl ?? "").trim());
 const weiwallSourceHint = computed(() => {
@@ -1017,6 +1016,17 @@ function openWeiwallSource() {
   weiwallSourceDialogOpen.value = true;
 }
 
+function renderLocalQrDataUrl(value: string, width: number) {
+  return QRCode.toDataURL(value, {
+    width,
+    margin: 1,
+    color: {
+      dark: "#172033",
+      light: "#ffffffff",
+    },
+  });
+}
+
 watch(() => route.params.id, () => {
   void load();
 }, { immediate: true });
@@ -1031,17 +1041,24 @@ watch(weiwallSourceUrl, async (url) => {
     return;
   }
   try {
-    weiwallSourceQrDataUrl.value = await QRCode.toDataURL(url, {
-      width: 240,
-      margin: 1,
-      color: {
-        dark: "#172033",
-        light: "#ffffffff",
-      },
-    });
+    weiwallSourceQrDataUrl.value = await renderLocalQrDataUrl(url, 240);
   } catch (error) {
     console.warn("[topic] failed to render weiwall source QR code", error);
     weiwallSourceQrDataUrl.value = "";
+  }
+}, { immediate: true });
+
+watch(shareLandingUrl, async (url) => {
+  const seq = ++shareCardQrSeq;
+  shareCardQrDataUrl.value = "";
+  shareCardRenderedUrl.value = "";
+  if (!url) return;
+  try {
+    const dataUrl = await renderLocalQrDataUrl(url, 220);
+    if (seq === shareCardQrSeq) shareCardQrDataUrl.value = dataUrl;
+  } catch (error) {
+    console.warn("[topic] failed to render share card QR code", error);
+    if (seq === shareCardQrSeq) shareCardQrDataUrl.value = "";
   }
 }, { immediate: true });
 
@@ -1629,6 +1646,22 @@ function openShareCardImagePreview() {
   shareCardPreviewOpen.value = true;
 }
 
+async function ensureShareCardQrCode() {
+  if (shareCardQrDataUrl.value) return shareCardQrDataUrl.value;
+  const url = shareLandingUrl.value;
+  if (!url) return "";
+  const seq = ++shareCardQrSeq;
+  try {
+    const dataUrl = await renderLocalQrDataUrl(url, 220);
+    if (seq !== shareCardQrSeq || url !== shareLandingUrl.value) return "";
+    shareCardQrDataUrl.value = dataUrl;
+    return dataUrl;
+  } catch (error) {
+    console.warn("[topic] failed to render share card QR code", error);
+    return "";
+  }
+}
+
 async function saveShareCardAsPng() {
   const dataUrl = await ensureShareCardRendered();
   if (!dataUrl) return;
@@ -1661,6 +1694,12 @@ async function ensureShareCardRendered() {
   if (!exportNode) return "";
   shareCardRendering.value = true;
   try {
+    const qrDataUrl = await ensureShareCardQrCode();
+    if (!qrDataUrl) {
+      ElMessage.error("生成分享二维码失败，请稍后重试");
+      return "";
+    }
+    await nextTick();
     const width = 720;
     const height = Math.ceil(exportNode.scrollHeight);
     const dataUrl = await toPng(exportNode, {
@@ -3067,6 +3106,13 @@ async function onDelete() {
   width: 100%;
   height: 100%;
   display: block;
+}
+
+.share-card-qr-placeholder {
+  border-radius: 10px;
+  background:
+    linear-gradient(90deg, rgba(23, 32, 51, 0.06) 25%, rgba(23, 32, 51, 0.12) 37%, rgba(23, 32, 51, 0.06) 63%);
+  background-size: 400% 100%;
 }
 
 :deep(.share-dialog .el-dialog),

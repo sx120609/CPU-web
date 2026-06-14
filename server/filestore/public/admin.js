@@ -283,6 +283,14 @@ function absoluteStatusUrl(task) {
   return `${base}/status/${task.token}`;
 }
 
+function qrCodeImageUrl(data, size = 260) {
+  const params = new URLSearchParams({
+    data,
+    size: String(size),
+  });
+  return `/api/qrcode?${params.toString()}`;
+}
+
 function defaultTemplate() {
   return builtInTemplates["builtin:student"];
 }
@@ -1458,7 +1466,7 @@ function bind() {
   $("#showQr").addEventListener("click", safe(() => {
     const url = absoluteSubmitUrl(state.current);
     if (!url) throw new Error("请先选择任务");
-    $("#qrImage").src = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(url)}`;
+    $("#qrImage").src = qrCodeImageUrl(url);
     $("#qrLink").textContent = url;
     $("#qrDialog").showModal();
   }));
