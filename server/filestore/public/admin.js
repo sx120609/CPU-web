@@ -322,19 +322,97 @@ function renderTemplateSelect(selectedKey = state.templateKey) {
 function addField(field = {}) {
   const row = document.createElement("div");
   row.className = "field-card";
+  
+  const hasValidation = Boolean(field.pattern || field.placeholder);
+  
   row.innerHTML = `
     <div class="field-top">
       <input class="field-label" value="${escapeHtml(field.label || "")}" placeholder="字段名">
       <input class="field-key" value="${escapeHtml(field.key || "")}" placeholder="key">
       <button class="icon-button remove-field" type="button" title="删除">×</button>
     </div>
-    <input class="field-pattern" value="${escapeHtml(field.pattern || "")}" placeholder="正则规则，例如 \\d{11}">
+    
+    <div class="field-validation-toggle-row">
+      <button class="text-button toggle-validation" type="button">
+        ${hasValidation ? "收起校验与提示 ▲" : "✨ 智能校验与提示 ▼"}
+      </button>
+    </div>
+    
+    <div class="field-validation-box" style="${hasValidation ? "" : "display: none;"}">
+      <div class="field-ai-row">
+        <input class="field-ai-prompt" placeholder="用自然语言描述规则，例如：学号必须以20开头，十位数字">
+        <button class="btn-ai-generate" type="button">AI 生成</button>
+      </div>
+      <div class="field-validation-outputs">
+        <div class="field-output-col">
+          <span class="field-sublabel">正则规则</span>
+          <input class="field-pattern" value="${escapeHtml(field.pattern || "")}" placeholder="正则规则，例如 \\d{11}">
+        </div>
+        <div class="field-output-col">
+          <span class="field-sublabel">输入提示</span>
+          <input class="field-placeholder" value="${escapeHtml(field.placeholder || "")}" placeholder="输入提示，例如 例如 2020240444">
+        </div>
+      </div>
+    </div>
+    
     <div class="field-bottom">
-      <input class="field-placeholder" value="${escapeHtml(field.placeholder || "")}" placeholder="输入提示">
-      <label class="checkline"><input class="field-required" type="checkbox" ${field.required === false ? "" : "checked"}> 必填</label>
+      <label class="checkline"><input class="field-required" type="checkbox" ${field.required === false ? "" : "checked"}> 必填字段</label>
     </div>
   `;
-  row.querySelector(".remove-field").addEventListener("click", () => row.remove());
+
+  row.querySelector(".remove-field").addEventListener("click", () => {
+    row.remove();
+    renderRenameFieldOptions();
+    updateRenamePreview();
+  });
+
+  const toggleBtn = row.querySelector(".toggle-validation");
+  const valBox = row.querySelector(".field-validation-box");
+  toggleBtn.addEventListener("click", () => {
+    const isHidden = valBox.style.display === "none";
+    valBox.style.display = isHidden ? "" : "none";
+    toggleBtn.textContent = isHidden ? "收起校验与提示 ▲" : "✨ 智能校验与提示 ▼";
+  });
+
+  const aiBtn = row.querySelector(".btn-ai-generate");
+  const aiPromptInput = row.querySelector(".field-ai-prompt");
+  const patternInput = row.querySelector(".field-pattern");
+  const placeholderInput = row.querySelector(".field-placeholder");
+
+  aiBtn.addEventListener("click", safe(async () => {
+    const prompt = aiPromptInput.value.trim();
+    if (!prompt) {
+      toast("请输入规则描述", "error");
+      return;
+    }
+    aiBtn.disabled = true;
+    aiBtn.textContent = "生成中...";
+    try {
+      const res = await api("/api/platform/ai/regex", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+      if (res.regex) {
+        patternInput.value = res.regex;
+      }
+      let hint = "";
+      if (res.placeholder) {
+        hint = res.placeholder.startsWith("例如") ? res.placeholder : `例如 ${res.placeholder}`;
+      } else {
+        hint = res.description || "";
+      }
+      placeholderInput.value = hint;
+      updateRenamePreview();
+      toast("AI 生成成功", "ok");
+    } catch (err) {
+      toast(err.message || "AI 生成失败", "error");
+    } finally {
+      aiBtn.disabled = false;
+      aiBtn.textContent = "AI 生成";
+    }
+  }));
+
   $("#fields").appendChild(row);
 }
 
@@ -494,11 +572,9 @@ function updateStepNavigation() {
   if (currentStep === 4) {
     $("#nextStep").hidden = true;
     $("#saveTask").hidden = false;
-    $("#saveTemplate").hidden = !state.viewer.isManager;
   } else {
     $("#nextStep").hidden = false;
     $("#saveTask").hidden = true;
-    $("#saveTemplate").hidden = true;
   }
 }
 

@@ -8,6 +8,7 @@ import { prisma } from "../prisma";
 import { hasToolContentManagePermission, hasToolManagerPermission } from "./serviceTools";
 import { getSiteFilingNumber } from "./siteSettings";
 import { verifyToken } from "../utils/jwt";
+import { requestAiJson } from "./topicAiReview";
 
 const MOUNT_PATH = "/filestore";
 const TEXT_RESPONSE_RE = /^(text\/|application\/json\b|application\/javascript\b|text\/javascript\b)/i;
@@ -271,6 +272,48 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       displayName: item.nickname || item.username,
       role: item.role,
     })));
+    return true;
+  }
+  if (req.method === "POST" && target === "/api/platform/ai/regex") {
+    if (!user?.userId) {
+      res.status(401).json({ error: "请先登录平台账号" });
+      return true;
+    }
+    const { prompt } = req.body;
+    if (!prompt || typeof prompt !== "string") {
+      res.status(400).json({ error: "提示词不能为空" });
+      return true;
+    }
+    try {
+      const messages = [
+        {
+          role: "system" as const,
+          content: "你是一个正则表达式生成助手。请根据用户的自然语言描述（例如：必须以20开头，十位数字），生成且仅生成一个符合要求的 JavaScript/Python 正则表达式，并且返回一个 JSON 对象，格式为 {\"regex\": \"正则表达式\", \"description\": \"对正则表达式的简短中文解释\", \"placeholder\": \"符合此规则的输入示例（如 2018010101）\"}。注意：只能返回合法的 JSON 对象，不要用 markdown 代码块包裹，也不要有任何多余文字。"
+        },
+        {
+          role: "user" as const,
+          content: prompt
+        }
+      ];
+      const { content } = await requestAiJson(messages);
+      let parsed = { regex: "", description: "", placeholder: "" };
+      try {
+        const cleanContent = content.trim().replace(/^```json\s*/i, "").replace(/```$/, "").trim();
+        parsed = JSON.parse(cleanContent);
+      } catch (err) {
+        const regexMatch = content.match(/"regex"\\s*:\\s*"([^"]+)"/);
+        const descMatch = content.match(/"description"\\s*:\\s*"([^"]+)"/);
+        const placeholderMatch = content.match(/"placeholder"\\s*:\\s*"([^"]+)"/);
+        parsed = {
+          regex: regexMatch ? regexMatch[1] : "",
+          description: descMatch ? descMatch[1] : "",
+          placeholder: placeholderMatch ? placeholderMatch[1] : "",
+        };
+      }
+      res.json(parsed);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "AI 生成失败" });
+    }
     return true;
   }
   return false;

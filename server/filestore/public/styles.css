@@ -1003,18 +1003,143 @@ tr:hover td {
   gap: 8px;
 }
 
-.field-top input,
-.field-bottom input {
+.field-top input {
   min-height: 34px;
   font-size: 13px;
   padding: 6px 10px;
 }
 
 .field-bottom {
-  display: grid;
-  grid-template-columns: 1fr 70px;
-  gap: 8px;
+  display: flex;
   align-items: center;
+  margin-top: 2px;
+}
+
+/* AI Validation Assistant Styling */
+.field-validation-toggle-row {
+  display: flex;
+  justify-content: flex-start;
+  margin: 2px 0;
+}
+
+.toggle-validation {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toggle-validation:hover {
+  background: var(--accent-light);
+  color: var(--accent-dark);
+}
+
+.field-validation-box {
+  background: var(--surface-3);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+  animation: slideDown 0.25s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.field-ai-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.field-ai-prompt {
+  min-height: 34px;
+  font-size: 12.5px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text);
+}
+
+.btn-ai-generate {
+  min-height: 34px;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--accent) 0%, #8b5cf6 100%);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(139, 92, 246, 0.15);
+}
+
+.btn-ai-generate:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(139, 92, 246, 0.25);
+}
+
+.btn-ai-generate:disabled {
+  background: var(--line-strong);
+  color: var(--text-muted);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.field-validation-outputs {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 10px;
+}
+
+.field-output-col {
+  display: grid;
+  gap: 4px;
+}
+
+.field-sublabel {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.field-validation-outputs input {
+  min-height: 34px;
+  font-size: 12.5px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text);
+}
+
+@media (max-width: 600px) {
+  .field-validation-outputs {
+    grid-template-columns: 1fr;
+  }
+  .field-ai-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .remove-field {
