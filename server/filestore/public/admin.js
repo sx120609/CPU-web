@@ -1344,7 +1344,10 @@ function bind() {
   $("#deleteTemplate").addEventListener("click", safe(deleteSelectedTemplate));
   $("#saveTask").addEventListener("click", safe(saveTask));
   $("#saveTemplate").addEventListener("click", safe(saveTemplate));
-  $("#resetEditor").addEventListener("click", safe(() => fillEditor(state.mode === "edit" ? state.current : null)));
+  const resetEditor = $("#resetEditor");
+  if (resetEditor) {
+    resetEditor.addEventListener("click", safe(() => fillEditor(state.mode === "edit" ? state.current : null)));
+  }
   $("#deleteTask").addEventListener("click", safe(deleteTask));
   $("#copyLink").addEventListener("click", safe(() => copyText(absoluteSubmitUrl(state.current), "提交链接已复制")));
   $("#copyLinkInline").addEventListener("click", safe(() => copyText(absoluteSubmitUrl(state.current), "提交链接已复制")));
