@@ -958,7 +958,6 @@ async function onUserCmd(cmd: string) {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  }
 
   :deep(.mobile-drawer .el-drawer__header) {
     margin-bottom: 8px;
