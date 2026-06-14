@@ -347,9 +347,9 @@ async function editMessage(row: any) {
 .field--switch { align-items: center; flex-direction: row; justify-content: space-between; padding: 8px 0; }
 .filters { display: grid; grid-template-columns: minmax(0, 1fr) 140px 90px; gap: 8px; }
 .muted { color: #9ca3af; font-size: 12px; }
-.interactive-table { display: none; }
+.interactive-table { display: block; }
 .record-list {
-  display: grid;
+  display: none;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: 12px;
 }
@@ -411,7 +411,7 @@ async function editMessage(row: any) {
   .filters { grid-template-columns: 1fr; }
   .field--wide { grid-column: auto; }
   .panel-head { flex-direction: column; }
-  .record-list { grid-template-columns: 1fr; gap: 10px; }
   .interactive-table { display: none; }
+  .record-list { display: grid; grid-template-columns: 1fr; gap: 10px; }
 }
 </style>

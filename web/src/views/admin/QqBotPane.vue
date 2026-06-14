@@ -392,6 +392,7 @@ let boardsLoadSeq = 0;
 let bindingsLoadSeq = 0;
 let groupsLoadSeq = 0;
 let logsLoadSeq = 0;
+let disposed = false;
 
 const form = reactive({
   enabled: false,
@@ -441,7 +442,9 @@ const lastLogAtText = computed(() => {
 });
 
 onMounted(async () => {
+  disposed = false;
   await Promise.all([loadConfig(), loadBoards(), loadBindings(), loadGroups(), loadLogs()]);
+  if (disposed) return;
   logRefreshTimer = window.setInterval(() => {
     if (document.hidden) return;
     loadLogs().catch(() => undefined);
@@ -449,6 +452,12 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  disposed = true;
+  configLoadSeq += 1;
+  boardsLoadSeq += 1;
+  bindingsLoadSeq += 1;
+  groupsLoadSeq += 1;
+  logsLoadSeq += 1;
   if (logRefreshTimer !== null) {
     window.clearInterval(logRefreshTimer);
     logRefreshTimer = null;
@@ -940,10 +949,10 @@ function requestMessage(error: unknown) {
   min-width: 1010px;
 }
 .interactive-table {
-  display: none;
+  display: block;
 }
 .record-list {
-  display: grid;
+  display: none;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: 12px;
 }
@@ -1004,6 +1013,7 @@ function requestMessage(error: unknown) {
     padding: 12px;
   }
   .record-list {
+    display: grid;
     grid-template-columns: 1fr;
     gap: 10px;
   }

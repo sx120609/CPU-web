@@ -233,6 +233,7 @@ const editorFocused = ref(false);
 const mobileViewportBaseHeight = ref(0);
 const isMobileViewport = ref(false);
 let focusOutTimer = 0;
+let disposed = false;
 
 /** 某些路由（如 /schedule）希望"裸壳"渲染，没有顶栏/免责声明/footer，仅保留 main + tabbar */
 const hideChrome = computed(() => Boolean(route.meta?.hideChrome));
@@ -326,7 +327,9 @@ async function saveNickname() {
 }
 
 onMounted(async () => {
+  disposed = false;
   if (auth.token && !auth.user) await auth.fetchMe();
+  if (disposed) return;
   if (auth.isLoggedIn) msg.refresh();
   syncViewportMetrics();
   if (typeof window !== "undefined") {
@@ -339,6 +342,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  disposed = true;
   window.clearTimeout(focusOutTimer);
   if (typeof window !== "undefined") {
     window.removeEventListener("resize", handleViewportMetricsChange);

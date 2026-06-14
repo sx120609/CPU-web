@@ -239,9 +239,9 @@ function requestMessage(error: unknown) {
   width: 100%;
 }
 .muted { color: #9ca3af; }
-.admin-table { display: none; }
+.admin-table { display: block; }
 .mobile-list {
-  display: grid;
+  display: none;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: 12px;
   min-height: 120px;
@@ -295,6 +295,12 @@ function requestMessage(error: unknown) {
 .more-icon { margin-left: 2px; transform: rotate(90deg); }
 
 @media (max-width: 768px) {
+  .admin-table { display: none; }
+  .mobile-list {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
   .ctrl-bar {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -302,10 +308,6 @@ function requestMessage(error: unknown) {
   .ctrl-bar :deep(.el-button) {
     width: 100%;
     margin-left: 0;
-  }
-  .mobile-list {
-    grid-template-columns: 1fr;
-    gap: 10px;
   }
 }
 </style>

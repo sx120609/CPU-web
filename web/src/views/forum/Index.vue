@@ -201,6 +201,8 @@ const enabling = ref(false);
 const readSeconds = ref(0);
 const confirmText = ref("");
 let readTimer = 0;
+let disposed = false;
+let boardLoadSeq = 0;
 
 watch(() => auth.canAccessForum, async (enabled) => {
   if (enabled) {
@@ -208,12 +210,17 @@ watch(() => auth.canAccessForum, async (enabled) => {
     closeEnableDialog(true);
     await loadBoards();
   } else {
+    boardLoadSeq += 1;
     all.value = [];
     error.value = "";
+    loading.value = false;
   }
 }, { immediate: true });
 
 onBeforeUnmount(() => {
+  disposed = true;
+  boardLoadSeq += 1;
+  enabling.value = false;
   window.clearInterval(readTimer);
 });
 
@@ -222,15 +229,20 @@ const ugc = computed(() => all.value.filter((b) => ["market", "question", "cours
 const campusWall = computed(() => all.value.find((b) => b.slug === CAMPUS_WALL_SLUG) ?? null);
 
 async function loadBoards() {
+  if (disposed) return;
+  const seq = ++boardLoadSeq;
   loading.value = true;
   error.value = "";
   try {
-    all.value = await boardApi.list({ suppressErrorMessage: true });
+    const next = await boardApi.list({ suppressErrorMessage: true });
+    if (disposed || seq !== boardLoadSeq) return;
+    all.value = next;
   } catch (e) {
+    if (disposed || seq !== boardLoadSeq) return;
     all.value = [];
     error.value = normalizeBoardListError(e);
   } finally {
-    loading.value = false;
+    if (!disposed && seq === boardLoadSeq) loading.value = false;
   }
 }
 
@@ -289,11 +301,12 @@ async function confirmEnable() {
   enabling.value = true;
   try {
     await auth.enableForumAccess(confirmText.value.trim());
+    if (disposed) return;
     const redirect = resolveSafeRedirect(route.query.redirect, "/forum");
     ElMessage.success("论坛功能已开启");
     await router.replace(redirect);
   } finally {
-    enabling.value = false;
+    if (!disposed) enabling.value = false;
   }
 }
 </script>

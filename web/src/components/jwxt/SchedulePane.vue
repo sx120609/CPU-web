@@ -504,6 +504,7 @@ const staticWeekAnimationClass = ref<"" | "week-slide-in-next" | "week-slide-in-
 let staticWeekAnimationTimer = 0;
 let scheduleLoadSeq = 0;
 let foregroundScheduleLoadSeq = 0;
+let disposed = false;
 const activePageScrollKey = computed(() => (
   viewMode.value === "week"
     ? `week:${currentWeekValue()}`
@@ -700,6 +701,7 @@ watch([() => props.data, () => props.source], ([data, source]) => {
 }, { immediate: true });
 
 onMounted(async () => {
+  disposed = false;
   updateViewportHeight();
   window.addEventListener("resize", updateViewportHeight);
   window.visualViewport?.addEventListener("resize", updateViewportHeight);
@@ -718,6 +720,7 @@ onMounted(async () => {
   }
   loadScheduleEdits();
   await loadCalendar();
+  if (disposed) return;
   if (parsed.value && selectedScheduleDiffers(parsed.value)) {
     await loadSchedule(false);
   } else if (!parsed.value) {
@@ -726,6 +729,10 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  disposed = true;
+  scheduleLoadSeq += 1;
+  foregroundScheduleLoadSeq = scheduleLoadSeq;
+  loading.value = false;
   window.removeEventListener("resize", updateViewportHeight);
   window.visualViewport?.removeEventListener("resize", updateViewportHeight);
   window.visualViewport?.removeEventListener("scroll", updateViewportHeight);
@@ -813,9 +820,11 @@ const canJumpToCurrentWeek = computed(() => {
 });
 
 async function loadCalendar() {
+  if (disposed) return;
   restoreCachedCalendar();
   if (isGraduateSource.value) {
     const normalized = normalizeIncomingScheduleData({ parsed: parsed.value, source: graduateSourceMeta.value, calendar: calendar.value }, "graduate");
+    if (disposed) return;
     if (normalized.calendar) {
       calendar.value = normalized.calendar;
       writeCache(calendarCacheKey(), calendar.value);
@@ -825,6 +834,7 @@ async function loadCalendar() {
   }
   try {
     const r: any = await jwxtApi.calendar();
+    if (disposed) return;
     calendar.value = hydrateCalendar(r.parsed);
     writeCache(calendarCacheKey(), calendar.value);
     if (calendar.value?.currentWeek && !week.value) week.value = String(calendar.value.currentWeek);
@@ -834,6 +844,7 @@ async function loadCalendar() {
 }
 
 async function loadSchedule(force = false, background = false) {
+  if (disposed) return;
   if (loading.value && !background) return;
   const hadCache = !force && restoreScheduleCache();
   if (hadCache) {
@@ -851,6 +862,7 @@ async function loadSchedule(force = false, background = false) {
     if (isGraduateSource.value) {
       const raw = await jwxtApi.graduateSchedule({ semester: semester.value || undefined });
       if (!isCurrentScheduleLoad(requestSeq, requestedSemester, requestedWeek)) return;
+      if (disposed) return;
       const normalized = normalizeIncomingScheduleData(raw, "graduate");
       parsed.value = normalized.parsed;
       calendar.value = normalized.calendar;
@@ -868,6 +880,7 @@ async function loadSchedule(force = false, background = false) {
       return;
     }
     const r: any = await jwxtApi.schedule({ semester: semester.value, week: week.value });
+    if (disposed) return;
     if (!isCurrentScheduleLoad(requestSeq, requestedSemester, requestedWeek)) {
       if (r?.parsed) writeScheduleCache(scheduleCacheKey(r.parsed.currentSemester || requestedSemester, requestedWeek), r.parsed);
       return;
@@ -881,11 +894,12 @@ async function loadSchedule(force = false, background = false) {
     saveLastState();
     prewarmAdjacentWeekCaches();
   } finally {
-    if (!background && requestSeq === foregroundScheduleLoadSeq) loading.value = false;
+    if (!disposed && !background && requestSeq === foregroundScheduleLoadSeq) loading.value = false;
   }
 }
 
 function isCurrentScheduleLoad(seq: number, requestedSemester: string, requestedWeek: string) {
+  if (disposed) return false;
   if (seq !== scheduleLoadSeq) return false;
   if (requestedSemester && semester.value && semester.value !== requestedSemester) return false;
   if (!isGraduateSource.value && requestedWeek && week.value && week.value !== requestedWeek) return false;
@@ -1932,6 +1946,7 @@ function clampSlot(value: number) {
 }
 
 function loadScheduleEdits() {
+  if (disposed) return Promise.resolve();
   if (!canUseScheduleEdit()) {
     scheduleEdits.value = emptyScheduleEdits();
     return Promise.resolve();
@@ -1941,8 +1956,10 @@ function loadScheduleEdits() {
   scheduleEditsLoadPromise = (async () => {
     try {
       const r = await jwxtApi.getScheduleEdits(sem, { silent: true });
+      if (disposed) return;
       scheduleEdits.value = normalizeScheduleEditsState(r.edits);
     } catch {
+      if (disposed) return;
       scheduleEdits.value = emptyScheduleEdits();
     } finally {
       scheduleEditsLoadPromise = null;

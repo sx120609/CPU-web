@@ -137,7 +137,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from "vue";
+import { computed, ref, onBeforeUnmount, onMounted } from "vue";
 import { Lock, Loading, Picture, Refresh, Right, Tools } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { useJwxtStore } from "@/stores/jwxt";
@@ -162,28 +162,36 @@ const toolMetas = ref<ToolMeta[]>([]);
 const toolsLoading = ref(false);
 const toolsError = ref("");
 let toolsLoadSeq = 0;
+let disposed = false;
 const toolAccessMap = computed(() => Object.fromEntries(toolMetas.value.map((item) => [item.code, item])));
 const visibleTools = computed(() => serviceTools.filter((tool) => toolAccessMap.value[tool.slug]?.isVisible !== false));
 
 onMounted(async () => {
+  disposed = false;
   void loadToolMetas();
   jwxt.hydrate();
   hasCreds.value = hasSavedCreds();
   try {
     await jwxt.refreshStatus();
   } catch {
-    ElMessage.warning("教务登录状态暂时无法刷新，基础服务仍可继续使用");
+    if (!disposed) ElMessage.warning("教务登录状态暂时无法刷新，基础服务仍可继续使用");
   }
+  if (disposed) return;
   if (jwxt.isLoggedIn) return;
 
   // 只要本地存了学校账号就尝试，不再要求"rememberSaved"
   if (hasCreds.value) {
     autoLoading.value = true;
     try { await jwxt.tryAutoLogin({ force: true }); }
-    catch { ElMessage.warning("自动登录未完成，请前往教务数据授权页手动登录"); }
-    finally { autoLoading.value = false; }
+    catch { if (!disposed) ElMessage.warning("自动登录未完成，请前往教务数据授权页手动登录"); }
+    finally { if (!disposed) autoLoading.value = false; }
     // 如果 tryAutoLogin 命中 captcha，模板会自动切到 captcha-card；用户输入完点按钮 submitCaptcha
   }
+});
+
+onBeforeUnmount(() => {
+  disposed = true;
+  toolsLoadSeq += 1;
 });
 
 async function loadToolMetas() {

@@ -4,6 +4,7 @@
   :class="{
     'theme-color-glass': scheduleTheme === 'color-glass',
     'is-native-app': isNativeScheduleApp,
+    'is-android-native-app': isAndroidScheduleApp,
     'is-static-week-swipe': useStaticWeekSwipe,
     'view-day': viewMode === 'day',
     'view-week': viewMode === 'week',
@@ -104,7 +105,7 @@
                 <el-icon class="more-chevron"><ArrowRight /></el-icon>
               </button>
               <button
-                v-if="isAndroidNativeApp()"
+                v-if="isAndroidScheduleApp"
                 type="button"
                 class="more-action"
                 @click="checkAndroidAppUpdate"
@@ -901,6 +902,7 @@ const OFFICIAL_GRADUATE_SEMESTER_CALENDARS: Record<string, OfficialSemesterCalen
 const scheduleCacheStore = new Map<string, CacheEnvelope<ScheduleResult>>();
 const prewarmingScheduleKeys = new Set<string>();
 const isNativeScheduleApp = ["android", "harmony", "ios"].includes(detectClientPlatform());
+const isAndroidScheduleApp = isAndroidNativeApp();
 const isDev = computed(() => import.meta.env.DEV);
 let scheduleEditsSaveTimer = 0;
 let scheduleEditsLoadPromise: Promise<void> | null = null;
@@ -1097,6 +1099,7 @@ async function loadGraduateSchedule(
   targetSemester?: string,
   options?: { background?: boolean },
 ) {
+  if (disposed) return;
   const background = Boolean(options?.background);
   const requestSeq = ++scheduleRequestSeq;
   if (!background) {
@@ -1108,6 +1111,7 @@ async function loadGraduateSchedule(
       || (scheduleSource.value === "graduate" ? semester.value || undefined : undefined);
     const result = await jwxtApi.graduateSchedule({ semester: requestedSemester });
     if (!isCurrentScheduleRequest(requestSeq, requestedSemester || "")) return;
+    if (disposed) return;
     const fallbackCalendar = buildGraduateFallbackCalendar(result.parsed);
     const normalizedParsed = extendScheduleWeeksToCalendar(result.parsed, fallbackCalendar);
     const initialWeek = resolveGraduateInitialWeek(normalizedParsed, fallbackCalendar);
@@ -1127,7 +1131,7 @@ async function loadGraduateSchedule(
     saveScheduleCache();
     saveLastState();
   } finally {
-    if (!background && requestSeq === foregroundScheduleRequestSeq) loading.value = false;
+    if (!disposed && !background && requestSeq === foregroundScheduleRequestSeq) loading.value = false;
   }
 }
 
@@ -1135,6 +1139,7 @@ async function loadGraduateDebugSchedule(
   targetSemester?: string,
   options?: { background?: boolean; announce?: boolean },
 ) {
+  if (disposed) return;
   const background = Boolean(options?.background);
   const requestSeq = ++scheduleRequestSeq;
   gradDebugLoading.value = true;
@@ -1147,6 +1152,7 @@ async function loadGraduateDebugSchedule(
       || (scheduleSource.value === "graduate-debug" ? semester.value || undefined : undefined);
     const result = await jwxtApi.graduateDebugSchedule({ semester: requestedSemester });
     if (!isCurrentScheduleRequest(requestSeq, requestedSemester || "")) return;
+    if (disposed) return;
     const fallbackCalendar = buildGraduateFallbackCalendar(result.parsed);
     const normalizedParsed = extendScheduleWeeksToCalendar(result.parsed, fallbackCalendar);
     const initialWeek = resolveGraduateInitialWeek(normalizedParsed, fallbackCalendar);
@@ -1172,8 +1178,8 @@ async function loadGraduateDebugSchedule(
       ElMessage.success("已载入研究生课表调试样例");
     }
   } finally {
-    gradDebugLoading.value = false;
-    if (!background && requestSeq === foregroundScheduleRequestSeq) loading.value = false;
+    if (!disposed) gradDebugLoading.value = false;
+    if (!disposed && !background && requestSeq === foregroundScheduleRequestSeq) loading.value = false;
   }
 }
 
@@ -1694,6 +1700,7 @@ Script.complete();
 }
 
 onMounted(async () => {
+  disposed = false;
   document.documentElement.classList.add("schedule-scroll-lock");
   document.body.classList.add("schedule-scroll-lock");
   jwxt.hydrate();
@@ -1702,6 +1709,7 @@ onMounted(async () => {
   syncNetworkStatus();
   restoreScheduleTheme();
   await restoreScheduleBackground();
+  if (disposed) return;
   updateViewportHeight();
   window.addEventListener("resize", updateViewportHeight);
   window.addEventListener("online", syncNetworkStatus);
@@ -1726,11 +1734,15 @@ onMounted(async () => {
   void (async () => {
     try {
       try { await jwxt.refreshStatus(); } catch { /* ignore */ }
+      if (disposed) return;
       if (!jwxt.isLoggedIn && hasCreds.value) {
         autoLoading.value = !parsed.value;
         try { await jwxt.tryAutoLogin({ force: true }); }
-        finally { autoLoading.value = false; }
+        finally {
+          if (!disposed) autoLoading.value = false;
+        }
       }
+      if (disposed) return;
       if (jwxt.isLoggedIn) {
         if (prefersGraduateIdentity.value) {
           await loadGraduateSchedule();
@@ -1746,6 +1758,12 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  disposed = true;
+  scheduleRequestSeq += 1;
+  foregroundScheduleRequestSeq = scheduleRequestSeq;
+  loading.value = false;
+  autoLoading.value = false;
+  gradDebugLoading.value = false;
   document.documentElement.classList.remove("schedule-scroll-lock");
   document.body.classList.remove("schedule-scroll-lock");
   window.removeEventListener("resize", updateViewportHeight);
@@ -1895,6 +1913,7 @@ const staticWeekAnimationClass = ref<"" | "week-slide-in-next" | "week-slide-in-
 let staticWeekAnimationTimer = 0;
 let scheduleRequestSeq = 0;
 let foregroundScheduleRequestSeq = 0;
+let disposed = false;
 const activePageScrollKey = computed(() => (
   viewMode.value === "week"
     ? `week:${currentWeekValue()}`
@@ -1911,9 +1930,11 @@ watch(activePageScrollKey, (value, previousValue) => {
 });
 
 async function loadCalendar() {
+  if (disposed) return;
   restoreCachedCalendar();
   try {
     const r: any = await jwxtApi.calendar();
+    if (disposed) return;
     calendar.value = hydrateCalendar(r.parsed);
     writeCache(calendarCacheKey(), calendar.value);
     if (calendar.value?.currentWeek && !week.value) week.value = String(calendar.value.currentWeek);
@@ -1957,6 +1978,7 @@ async function refreshCurrentSchedule() {
 }
 
 async function loadSchedule(force = false, background = false) {
+  if (disposed) return;
   if (!jwxt.isLoggedIn || (loading.value && !background)) return;
   const hadCache = !force && restoreScheduleCache();
   const canFallbackToVisibleSchedule = Boolean(parsed.value) && (
@@ -1980,6 +2002,7 @@ async function loadSchedule(force = false, background = false) {
       { semester: semester.value, week: week.value },
       { silent: background || hadCache || (offlineMode.value && canFallbackToVisibleSchedule) },
     );
+    if (disposed) return;
     if (!isCurrentScheduleRequest(requestSeq, requestedSemester, requestedWeek)) {
       if (r?.parsed) writeScheduleCache(scheduleCacheKey(r.parsed.currentSemester || requestedSemester, requestedWeek), r.parsed);
       return;
@@ -1998,11 +2021,12 @@ async function loadSchedule(force = false, background = false) {
     if (!isCurrentScheduleRequest(requestSeq, requestedSemester, requestedWeek)) return;
     if (!hadCache && !canFallbackToVisibleSchedule) throw error;
   } finally {
-    if (!background && requestSeq === foregroundScheduleRequestSeq) loading.value = false;
+    if (!disposed && !background && requestSeq === foregroundScheduleRequestSeq) loading.value = false;
   }
 }
 
 function isCurrentScheduleRequest(seq: number, requestedSemester = "", requestedWeek = "") {
+  if (disposed) return false;
   if (seq !== scheduleRequestSeq) return false;
   if (requestedSemester && semester.value && semester.value !== requestedSemester) return false;
   if (requestedWeek && week.value && week.value !== requestedWeek) return false;
@@ -3181,6 +3205,7 @@ function clampSlot(value: number) {
 }
 
 function loadScheduleEdits() {
+  if (disposed) return Promise.resolve();
   if (!canUseScheduleEdit()) {
     scheduleEdits.value = emptyScheduleEdits();
     return Promise.resolve();
@@ -3190,8 +3215,10 @@ function loadScheduleEdits() {
   scheduleEditsLoadPromise = (async () => {
     try {
       const r = await jwxtApi.getScheduleEdits(sem, { silent: true });
+      if (disposed) return;
       scheduleEdits.value = normalizeScheduleEditsState(r.edits);
     } catch {
+      if (disposed) return;
       scheduleEdits.value = emptyScheduleEdits();
     } finally {
       scheduleEditsLoadPromise = null;
@@ -4548,8 +4575,14 @@ function prewarmScheduleCacheForWeek(wk: string) {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
-  padding-bottom: var(--schedule-scroll-bottom-gap);
+  padding-bottom: 0;
   scroll-padding-bottom: var(--schedule-scroll-bottom-gap);
+}
+.schedule-body-scroll::after {
+  content: "";
+  display: block;
+  height: var(--schedule-scroll-bottom-gap);
+  min-height: var(--schedule-scroll-bottom-gap);
 }
 .day-grid-body {
   display: grid;
@@ -5480,6 +5513,10 @@ function prewarmScheduleCacheForWeek(wk: string) {
     padding-top: calc(env(safe-area-inset-top) + 8px);
     padding-left: 8px;
     padding-right: 8px;
+  }
+
+  .schedule-page.is-android-native-app {
+    --schedule-bottom-obscured-space: 118px;
   }
 
   .top {

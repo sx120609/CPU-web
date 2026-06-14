@@ -295,9 +295,9 @@ async function removeBoard(row: any) {
 .name { font-size: 14px; font-weight: 600; color: #111827; }
 .desc { margin-top: 2px; font-size: 12px; color: #6b7280; line-height: 1.55; }
 .topic-count { margin-left: 8px; font-size: 12px; color: #9ca3af; }
-.admin-table { display: none; }
+.admin-table { display: block; }
 .mobile-list {
-  display: grid;
+  display: none;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: 12px;
 }
@@ -334,7 +334,9 @@ async function removeBoard(row: any) {
 .more-icon { margin-left: 2px; transform: rotate(90deg); }
 
 @media (max-width: 768px) {
+  .admin-table { display: none; }
   .mobile-list {
+    display: grid;
     grid-template-columns: 1fr;
     gap: 10px;
   }

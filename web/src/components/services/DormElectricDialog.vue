@@ -101,9 +101,15 @@ const rechargeConfirmOpen = ref(false);
 const rechargeReadSeconds = ref(0);
 const inAppBrowser = computed(() => detectInAppBrowser());
 let rechargeReadTimer: number | null = null;
+let disposed = false;
+let refreshSeq = 0;
 
 watch(() => props.modelValue, (v) => {
   if (v) refresh();
+  else {
+    refreshSeq += 1;
+    loading.value = false;
+  }
 });
 
 watch(rechargeConfirmOpen, (open) => {
@@ -112,18 +118,28 @@ watch(rechargeConfirmOpen, (open) => {
 });
 
 onBeforeUnmount(() => {
+  disposed = true;
+  refreshSeq += 1;
+  loading.value = false;
   clearRechargeReadTimer();
 });
 
 async function refresh() {
+  if (disposed) return;
+  const seq = ++refreshSeq;
   loading.value = true;
   error.value = "";
   try {
-    data.value = await servicesApi.dormElectric();
+    const next = await servicesApi.dormElectric();
+    if (disposed || seq !== refreshSeq || !props.modelValue) return;
+    data.value = next;
   } catch (e: any) {
+    if (disposed || seq !== refreshSeq || !props.modelValue) return;
     error.value = e?.message || "查询失败";
     data.value = null;
-  } finally { loading.value = false; }
+  } finally {
+    if (!disposed && seq === refreshSeq) loading.value = false;
+  }
 }
 
 function confirmRecharge() {

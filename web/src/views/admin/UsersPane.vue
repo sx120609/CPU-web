@@ -819,9 +819,9 @@ async function deleteUser(row: any) {
 .forum-time { font-size: 12px; color: #6b7280; }
 .action-trigger { justify-content: center; }
 .more-icon { margin-left: 2px; transform: rotate(90deg); }
-.admin-table { display: none; }
+.admin-table { display: block; }
 .mobile-list {
-  display: grid;
+  display: none;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: 12px;
   min-height: 120px;
@@ -860,6 +860,7 @@ async function deleteUser(row: any) {
 }
 
 @media (max-width: 768px) {
+  .admin-table { display: none; }
   .filter-panel { padding: 10px; }
   .filter-row,
   .actions { width: 100%; }
@@ -870,6 +871,7 @@ async function deleteUser(row: any) {
   .actions { justify-content: flex-start; margin-left: 0; }
   .actions :deep(.el-button) { flex: 1; min-width: 96px; margin-left: 0; }
   .mobile-list {
+    display: grid;
     grid-template-columns: 1fr;
     gap: 10px;
   }

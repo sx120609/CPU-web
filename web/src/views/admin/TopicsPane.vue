@@ -408,9 +408,9 @@ async function rejectReview(row: any) {
 .pager { display: flex; justify-content: center; padding-top: 12px; }
 a { color: var(--cpu-primary); text-decoration: none; }
 a:hover { text-decoration: underline; }
-.admin-table { display: none; }
+.admin-table { display: block; }
 .mobile-list {
-  display: grid;
+  display: none;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: 12px;
   min-height: 120px;
@@ -473,6 +473,12 @@ a:hover { text-decoration: underline; }
 .more-icon { margin-left: 2px; transform: rotate(90deg); }
 
 @media (max-width: 768px) {
+  .admin-table { display: none; }
+  .mobile-list {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
   .ctrl-bar { align-items: stretch; }
   .ctrl-bar :deep(.el-input),
   .ctrl-bar :deep(.el-select),
@@ -488,10 +494,6 @@ a:hover { text-decoration: underline; }
     width: 100%;
     padding-left: 0;
     padding-right: 0;
-  }
-  .mobile-list {
-    grid-template-columns: 1fr;
-    gap: 10px;
   }
   .mobile-actions {
     margin-top: 12px;
