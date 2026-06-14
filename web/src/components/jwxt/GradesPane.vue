@@ -895,6 +895,10 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
     grid-template-columns: 1fr;
   }
 
+  .course-picker {
+    display: none;
+  }
+
   .calc-head {
     flex-direction: column;
   }
