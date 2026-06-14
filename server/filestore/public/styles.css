@@ -65,7 +65,8 @@ body {
 .toast-host {
   position: fixed;
   top: 24px;
-  right: 24px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 100;
   display: grid;
   gap: 10px;
@@ -440,6 +441,28 @@ p {
   gap: 20px;
   padding: 24px;
   min-height: 100vh;
+}
+
+.app-footer {
+  text-align: center;
+  padding: 10px 20px;
+  font-size: 13px;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.app-footer a {
+  color: var(--muted);
+  text-decoration: none;
+  transition: var(--transition);
+}
+
+.app-footer a:hover {
+  color: var(--accent);
 }
 
 .topbar {
@@ -1399,8 +1422,10 @@ dialog.wide-dialog {
 .submit-shell {
   min-height: 100vh;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 24px;
   padding: 40px 20px;
 }
 

@@ -269,11 +269,9 @@
                 <input id="renameTemplate" value="{name}-{student_id}">
               </label>
               <div class="rename-tools">
-                <button type="button" class="chip rename-token" data-target="renameTemplate" data-token="{name}">姓名</button>
-                <button type="button" class="chip rename-token" data-target="renameTemplate" data-token="{student_id}">学号/考试号</button>
-                <button type="button" class="chip rename-token" data-target="renameTemplate" data-token="{student_id|last:2}">编号后 2 位</button>
-                <button type="button" class="chip rename-token" data-target="renameTemplate" data-token="{original}">原文件名</button>
-                <button type="button" class="chip rename-token" data-target="renameTemplate" data-token="{index}">序号</button>
+                <span class="dynamic-rename-tokens" data-target="renameTemplate"></span>
+                <button type="button" class="chip static-rename-token" data-target="renameTemplate" data-token="{original}">原文件名</button>
+                <button type="button" class="chip static-rename-token" data-target="renameTemplate" data-token="{index}">序号</button>
                 <button type="button" class="chip reset-rename-template" data-target="renameTemplate">恢复默认</button>
               </div>
               <div class="rename-custom">
@@ -298,9 +296,7 @@
                 <input id="folderTemplate" value="{name}-{student_id}">
               </label>
               <div class="rename-tools">
-                <button type="button" class="chip rename-token" data-target="folderTemplate" data-token="{name}">姓名</button>
-                <button type="button" class="chip rename-token" data-target="folderTemplate" data-token="{student_id}">学号/考试号</button>
-                <button type="button" class="chip rename-token" data-target="folderTemplate" data-token="{student_id|last:2}">编号后 2 位</button>
+                <span class="dynamic-rename-tokens" data-target="folderTemplate"></span>
                 <button type="button" class="chip reset-rename-template" data-target="folderTemplate">恢复默认</button>
               </div>
               <div class="rename-custom">
@@ -341,7 +337,6 @@
       <button id="saveTemplate" type="button" class="secondary" hidden>保存当前模版</button>
       <button id="deleteTask" type="button" class="danger" disabled>删除任务</button>
     </div>
-    <p id="createMessage" class="message"></p>
   </aside>
   <div id="drawerScrim" class="drawer-scrim"></div>
 

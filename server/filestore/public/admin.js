@@ -179,11 +179,6 @@ async function login(password) {
 }
 
 function toast(text, type = "") {
-  const inline = $("#createMessage");
-  if (inline) {
-    inline.textContent = text;
-    inline.className = `message ${type}`;
-  }
   const item = document.createElement("div");
   item.className = `toast ${type}`;
   item.textContent = text;
@@ -555,6 +550,24 @@ function templatePayload() {
 
 let currentStep = 1;
 
+function renderRenameTools() {
+  const fields = collectFields().filter(f => f.key);
+  $$(".dynamic-rename-tokens").forEach(container => {
+    container.innerHTML = "";
+    const target = container.dataset.target;
+    fields.forEach(f => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "chip rename-token";
+      btn.dataset.target = target;
+      btn.dataset.token = `{${f.key}}`;
+      btn.textContent = f.title;
+      btn.addEventListener("click", () => insertAtCursor($(`#${target}`), `{${f.key}}`));
+      container.appendChild(btn);
+    });
+  });
+}
+
 function updateStepNavigation() {
   $$(".step-dot").forEach((dot) => {
     const step = Number(dot.dataset.step);
@@ -568,6 +581,10 @@ function updateStepNavigation() {
   });
 
   $("#prevStep").disabled = currentStep === 1;
+  
+  if (currentStep === 3) {
+    renderRenameTools();
+  }
   
   if (currentStep === 4) {
     $("#nextStep").hidden = true;
@@ -1402,7 +1419,7 @@ function bind() {
   });
   $("#renameTemplate").addEventListener("input", updateRenamePreview);
   $("#folderTemplate").addEventListener("input", updateRenamePreview);
-  $$(".rename-token").forEach((button) => {
+  $$(".static-rename-token").forEach((button) => {
     button.addEventListener("click", () => insertAtCursor($(`#${button.dataset.target}`), button.dataset.token || ""));
   });
   $$(".insert-rename-field").forEach((button) => {
@@ -1410,7 +1427,14 @@ function bind() {
   });
   $$(".reset-rename-template").forEach((button) => {
     button.addEventListener("click", () => {
-      $(`#${button.dataset.target}`).value = "{name}-{student_id}";
+      const fields = collectFields().filter(f => f.key);
+      let defaultTpl = "{original}";
+      if (fields.length >= 2) {
+        defaultTpl = `{${fields[0].key}}-{${fields[1].key}}`;
+      } else if (fields.length === 1) {
+        defaultTpl = `{${fields[0].key}}`;
+      }
+      $(`#${button.dataset.target}`).value = defaultTpl;
       updateRenamePreview();
     });
   });
