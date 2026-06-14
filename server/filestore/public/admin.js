@@ -545,7 +545,7 @@ function templatePayload() {
     fields: payload.fields,
     fileRules: {
       allowedTypes: normalizeAllowedTypes(payload.fileRules.allowedTypes),
-      maxSizeMb: Number(payload.fileRules.maxSizeMb || 20),
+      maxSizeMb: Math.min(100, Number(payload.fileRules.maxSizeMb || 20)),
       maxCount: Number(payload.fileRules.maxCount || 1),
     },
     renameTemplate: payload.renameTemplate,
