@@ -281,7 +281,7 @@ p {
 }
 
 .mobile-only-close {
-  display: none;
+  display: none !important;
 }
 
 /* Sidebar scrim */
@@ -1913,7 +1913,7 @@ dialog.wide-dialog {
   }
 
   .mobile-only-close {
-    display: inline-grid;
+    display: inline-grid !important;
     margin-left: auto;
   }
 
