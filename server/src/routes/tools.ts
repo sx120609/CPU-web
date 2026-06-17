@@ -560,7 +560,7 @@ toolsRouter.post("/grade-checks", authRequired, validate(createGradeCheckSchema)
           slug: feedbackSlug,
           title: `${req.body.title} 问题反馈`,
           description: "如成绩或个人信息存在问题，请在这里提交说明，发起者会在结果中查看。",
-          status: (req.body.status ?? "open") === "open" ? "open" : "draft",
+          status: gradeFeedbackStatus(req.body.status ?? "open"),
           visibility: "login",
           allowAnonymous: false,
           oneResponsePerUser: false,
@@ -648,7 +648,7 @@ toolsRouter.patch("/grade-checks/:id", authRequired, validate(patchGradeCheckSch
             slug,
             title: `${refreshed.title} 问题反馈`,
             description: "如核对项目存在问题，请提交说明。",
-            status: refreshed.status === "open" ? "open" : "draft",
+            status: gradeFeedbackStatus(refreshed.status),
             visibility: "login",
             allowAnonymous: false,
             oneResponsePerUser: false,
@@ -659,13 +659,34 @@ toolsRouter.patch("/grade-checks/:id", authRequired, validate(patchGradeCheckSch
             closedAt: refreshed.status === "closed" ? now : null,
           },
         });
-        return tx.gradeCheckTable.update({
+        const rowWithFeedback = await tx.gradeCheckTable.update({
           where: { id: updated.id },
           data: { feedbackQuestionnaireSlug: slug },
           include: {
             createdBy: { select: { id: true, username: true, nickname: true, role: true } },
           },
         });
+        if (current.feedbackQuestionnaireSlug) {
+          await tx.questionnaire.deleteMany({ where: { slug: current.feedbackQuestionnaireSlug } });
+        }
+        return rowWithFeedback;
+      }
+      if (current.feedbackQuestionnaireSlug) {
+        const feedback = await tx.questionnaire.findUnique({
+          where: { slug: current.feedbackQuestionnaireSlug },
+          select: { publishedAt: true },
+        });
+        if (feedback) {
+          await tx.questionnaire.update({
+            where: { slug: current.feedbackQuestionnaireSlug },
+            data: {
+              title: req.body.title === undefined ? undefined : `${refreshed.title} 问题反馈`,
+              status: req.body.status === undefined ? undefined : gradeFeedbackStatus(refreshed.status),
+              publishedAt: req.body.status === "open" && !feedback.publishedAt ? now : undefined,
+              closedAt: req.body.status === "closed" ? now : req.body.status === "open" ? null : undefined,
+            },
+          });
+        }
       }
       return refreshed;
     });
@@ -679,7 +700,12 @@ toolsRouter.delete("/grade-checks/:id", authRequired, async (req, res, next) => 
     const current = await prisma.gradeCheckTable.findUnique({ where: { id } });
     if (!current) throw Errors.notFound("查询表不存在");
     if (!(await canManageGradeCheckTable(current, req.user))) throw Errors.forbidden("没有该查询表的管理权限");
-    await prisma.gradeCheckTable.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      await tx.gradeCheckTable.delete({ where: { id } });
+      if (current.feedbackQuestionnaireSlug) {
+        await tx.questionnaire.deleteMany({ where: { slug: current.feedbackQuestionnaireSlug } });
+      }
+    });
     ok(res, { ok: true });
   } catch (e) { next(e); }
 });
@@ -1603,6 +1629,12 @@ function buildGradeCheckFeedbackFields(columns: string[], studentIdColumn: strin
   ];
 }
 
+function gradeFeedbackStatus(status: string) {
+  if (status === "open") return "open";
+  if (status === "closed") return "closed";
+  return "draft";
+}
+
 async function ensureGradeCheckFeedbackQuestionnaire(table: {
   id: number;
   title: string;
@@ -1628,7 +1660,7 @@ async function ensureGradeCheckFeedbackQuestionnaire(table: {
       slug,
       title: `${table.title} 问题反馈`,
       description: "如核对项目存在问题，请提交说明。",
-      status: table.status === "open" ? "open" : "draft",
+      status: gradeFeedbackStatus(table.status),
       visibility: "login",
       allowAnonymous: false,
       oneResponsePerUser: false,
@@ -1646,10 +1678,19 @@ async function ensureGradeCheckFeedbackQuestionnaire(table: {
   return slug;
 }
 
-async function canManageQuestionnaire(row: { toolCode: string; createdById: number | null }, user: Express.Request["user"]) {
+async function canManageQuestionnaire(row: { toolCode: string; slug?: string; createdById: number | null }, user: Express.Request["user"]) {
   if (!user?.userId) return false;
   if (await hasToolManagerPermission(row.toolCode, user)) return true;
+  if (row.slug && await canManageGradeFeedbackQuestionnaire(row.slug, user)) return true;
   return row.createdById === user.userId && await hasToolContentManagePermission(row.toolCode, user);
+}
+
+async function canManageGradeFeedbackQuestionnaire(slug: string, user: Express.Request["user"]) {
+  const table = await prisma.gradeCheckTable.findFirst({
+    where: { feedbackQuestionnaireSlug: slug },
+    select: { createdById: true },
+  });
+  return table ? canManageGradeCheckTable(table, user) : false;
 }
 
 async function canManageGradeCheckTable(row: { createdById: number | null }, user: Express.Request["user"]) {

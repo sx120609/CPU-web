@@ -634,7 +634,7 @@
                 <div>
                   <b>自动生成</b>
                   <span>问题反馈问卷</span>
-                  <small>学生可反馈哪些项目存在问题</small>
+                  <small>学生提交后，可在列表中的“反馈结果”查看</small>
                 </div>
               </div>
               <div class="grade-form-grid">
@@ -718,10 +718,14 @@
                     <span v-if="row.createdBy">发起人 {{ row.createdBy.nickname || row.createdBy.username }}</span>
                   </div>
                 </div>
-                <div class="q-row-actions">
+                <div class="q-row-actions grade-check-actions">
                   <el-button size="small" :disabled="isGradeCheckBusy(row)" @click="copyGradeLink(row)">
                     <el-icon><Link /></el-icon>
                     复制链接
+                  </el-button>
+                  <el-button size="small" :loading="isGradeCheckBusy(row)" :disabled="isGradeCheckBusy(row) || !row.feedbackQuestionnaireSlug" @click="openGradeFeedback(row)">
+                    <el-icon><DataAnalysis /></el-icon>
+                    反馈结果
                   </el-button>
                   <el-dropdown trigger="click" @command="handleGradeCommand($event, row)">
                     <el-button size="small" :loading="isGradeCheckBusy(row)" :disabled="isGradeCheckBusy(row)">
@@ -2065,11 +2069,11 @@ async function handleGradeCommand(command: string | number | object, row: GradeC
   if (gradeCheckBusyId.value !== null) return;
   if (action === "delete") {
     await runGradeCheckAction(row, async () => {
-      const ok = await ElMessageBox.confirm(`删除查询表“${row.title}”？`, "确认删除", { type: "warning" })
+      const ok = await ElMessageBox.confirm(`删除查询表“${row.title}”？关联的反馈问卷和已提交答卷也会一起删除。`, "确认删除", { type: "warning" })
         .then(() => true).catch(() => false);
       if (!ok) return;
       await toolsApi.deleteGradeCheck(row.id);
-      ElMessage.success("已删除");
+      ElMessage.success("已删除查询表和关联反馈");
       await reloadActive();
     });
   } else {
@@ -2088,6 +2092,17 @@ function copyGradeLink(row: GradeCheckTable) {
     () => ElMessage.success("链接已复制"),
     () => ElMessage.info(path)
   );
+}
+
+async function openGradeFeedback(row: GradeCheckTable) {
+  if (!row.feedbackQuestionnaireSlug) {
+    ElMessage.info("该查询表暂未生成反馈问卷");
+    return;
+  }
+  await runGradeCheckAction(row, async () => {
+    const feedback = await toolsApi.questionnaire(row.feedbackQuestionnaireSlug!);
+    await openResponses(feedback);
+  });
 }
 
 function applyFileTemplate(template: FileCollectTemplateDraft, resetTitle = false) {
@@ -4317,6 +4332,9 @@ function round(value: number) {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     justify-content: stretch;
+  }
+  .grade-check-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .q-row-actions .el-button,
   .q-row-actions :deep(.el-dropdown),
