@@ -16,12 +16,6 @@
             <span>成绩核对单</span>
             <h2>{{ lookup.table.title }}</h2>
             <p>{{ lookup.table.description || "请核对下方项目。若存在问题，请在底部提交反馈。" }}</p>
-          </div>
-          <div class="head-side">
-            <div class="student-id">
-              <span>当前学号</span>
-              <b>{{ lookup.studentId }}</b>
-            </div>
             <el-button v-if="lookup.canManage" class="manage-link" plain @click="openManage">进入管理</el-button>
           </div>
         </header>
@@ -326,10 +320,8 @@ async function submitFeedback() {
   background: #f8fbff;
 }
 .lookup-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 24px;
-  align-items: stretch;
+  display: flex;
+  align-items: flex-start;
   padding: 4px 2px 22px;
   border-bottom: 1px solid #edf2f7;
   margin-bottom: 18px;
@@ -362,33 +354,6 @@ async function submitFeedback() {
   color: #64748b;
   font-size: 14px;
   line-height: 1.7;
-}
-.head-side {
-  width: 220px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: stretch;
-}
-.student-id {
-  min-height: 98px;
-  padding: 15px 16px;
-  border: 1px solid #dbe7f5;
-  border-radius: 12px;
-  background:
-    linear-gradient(135deg, #f8fbff 0%, #fff 100%);
-}
-.student-id span {
-  display: block;
-  color: #64748b;
-  font-size: 12px;
-  margin-bottom: 6px;
-}
-.student-id b {
-  color: #0f172a;
-  font-size: 26px;
-  line-height: 1.25;
-  word-break: break-all;
 }
 .record-panel,
 .feedback-panel {
@@ -510,8 +475,8 @@ async function submitFeedback() {
   color: #dc2626;
 }
 .manage-link {
-  width: 100%;
-  margin: 0;
+  width: fit-content;
+  margin-top: 14px;
   border-radius: 8px;
 }
 @media (max-width: 700px) {
@@ -527,16 +492,12 @@ async function submitFeedback() {
     box-shadow: none;
   }
   .lookup-head {
-    grid-template-columns: 1fr;
     gap: 14px;
   }
   .lookup-head h2 {
     font-size: 22px;
   }
-  .head-side {
-    width: 100%;
-  }
-  .student-id {
+  .manage-link {
     width: 100%;
   }
   .record-row,
