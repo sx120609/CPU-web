@@ -4,6 +4,7 @@ export type ServiceToolCode = "feedback" | "questionnaire" | "grade_check" | "fi
 export type QuestionnaireStatus = "draft" | "open" | "closed";
 export type QuestionnaireVisibility = "public" | "login";
 export type QuestionnaireFieldType = "text" | "textarea" | "single" | "multiple" | "number" | "date" | "rating";
+export type QuestionnaireBranchAction = "end" | "jump";
 export type GradeCheckStatus = "draft" | "open" | "closed";
 export type FileCollectStatus = "draft" | "open" | "closed";
 export type FileCollectVisibility = "public" | "login";
@@ -31,6 +32,12 @@ export interface QuestionnaireField {
   max?: number;
   step?: number;
   maxLength?: number;
+  branching?: Record<string, QuestionnaireBranchRule>;
+}
+
+export interface QuestionnaireBranchRule {
+  action: QuestionnaireBranchAction;
+  targetId?: string;
 }
 
 export interface Questionnaire {

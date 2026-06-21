@@ -938,6 +938,39 @@
                   type="textarea"
                   :rows="4"
                 />
+                <div v-if="field.type === 'single'" class="branch-editor">
+                  <div class="branch-head">
+                    <b>选项分支</b>
+                    <span>默认继续下一题，可让某个选项提前结束问卷。</span>
+                  </div>
+                  <div v-if="editableOptions(field).length" class="branch-rule-list">
+                    <div v-for="option in editableOptions(field)" :key="option" class="branch-rule-row">
+                      <span>{{ option }}</span>
+                      <el-select
+                        :model-value="branchRuleAction(field, option)"
+                        @update:model-value="setBranchRuleAction(field, option, $event as EditableBranchAction, index)"
+                      >
+                        <el-option label="继续下一题" value="next" />
+                        <el-option label="结束问卷" value="end" />
+                        <el-option label="跳到后面的题" value="jump" :disabled="!branchTargetOptions(index).length" />
+                      </el-select>
+                      <el-select
+                        v-if="branchRuleAction(field, option) === 'jump'"
+                        :model-value="field.branching[option]?.targetId || ''"
+                        placeholder="选择目标题"
+                        @update:model-value="setBranchRuleTarget(field, option, String($event))"
+                      >
+                        <el-option
+                          v-for="target in branchTargetOptions(index)"
+                          :key="target.id"
+                          :label="target.label"
+                          :value="target.id"
+                        />
+                      </el-select>
+                    </div>
+                  </div>
+                  <p v-else>先在上方填写选项，再配置分支。</p>
+                </div>
                 <div v-if="field.type === 'number' || field.type === 'rating' || field.type === 'text' || field.type === 'textarea'" class="advanced-grid">
                   <el-form-item v-if="field.type === 'number'" label="最小值">
                     <el-input-number v-model="field.min" :precision="2" controls-position="right" />
@@ -1274,6 +1307,8 @@ import {
   type GradeCheckStatus,
   type GradeCheckTable,
   type Questionnaire,
+  type QuestionnaireBranchAction,
+  type QuestionnaireBranchRule,
   type QuestionnaireField,
   type QuestionnaireFieldType,
   type QuestionnaireResponse,
@@ -1299,7 +1334,10 @@ type EditableField = {
   max?: number;
   step?: number;
   maxLength?: number;
+  branching: Record<string, QuestionnaireBranchRule>;
 };
+
+type EditableBranchAction = "next" | QuestionnaireBranchAction;
 
 type FieldStat = {
   field: QuestionnaireField;
@@ -1754,6 +1792,7 @@ function toEditableField(field: QuestionnaireField): EditableField {
     max: field.max,
     step: field.step,
     maxLength: field.maxLength,
+    branching: cloneBranching(field.branching),
   };
 }
 
@@ -1773,6 +1812,7 @@ function makeEditableField(type: QuestionnaireFieldType): EditableField {
     placeholder: "",
     description: "",
     optionsText: "",
+    branching: {},
   };
   normalizeEditableField(field);
   return field;
@@ -1783,6 +1823,11 @@ function normalizeEditableField(field: EditableField) {
     if (!field.optionsText.trim()) field.optionsText = "选项1\n选项2";
   } else {
     field.optionsText = "";
+  }
+  if (field.type === "single") {
+    syncBranchRules(field);
+  } else {
+    field.branching = {};
   }
   if (field.type === "rating") {
     field.min = field.min ?? 1;
@@ -1805,6 +1850,7 @@ function duplicateField(index: number) {
     id: makeFieldId(),
     localKey: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     label: source.label ? `${source.label} 副本` : "",
+    branching: cloneBranching(source.branching),
   };
   form.fields.splice(index + 1, 0, copy);
 }
@@ -1860,6 +1906,9 @@ function buildFields(): QuestionnaireField[] {
 function normalizeField(field: EditableField, allowUntitled: boolean): QuestionnaireField | null {
   const label = field.label.trim();
   if (!label && !allowUntitled) return null;
+  const options = field.type === "single" || field.type === "multiple"
+    ? editableOptions(field)
+    : undefined;
   const result: QuestionnaireField = {
     id: field.id,
     label: label || "未命名题目",
@@ -1867,15 +1916,92 @@ function normalizeField(field: EditableField, allowUntitled: boolean): Questionn
     required: field.required,
     placeholder: field.placeholder.trim() || undefined,
     description: field.description.trim() || undefined,
-    options: field.type === "single" || field.type === "multiple"
-      ? field.optionsText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
-      : undefined,
+    options,
     min: field.min,
     max: field.max,
     step: field.step,
     maxLength: field.maxLength,
   };
+  const branching = normalizeBranching(field, options ?? []);
+  if (branching) result.branching = branching;
   return result;
+}
+
+function editableOptions(field: EditableField) {
+  return field.optionsText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+}
+
+function cloneBranching(source?: Record<string, QuestionnaireBranchRule>): Record<string, QuestionnaireBranchRule> {
+  return Object.fromEntries(
+    Object.entries(source ?? {}).map(([option, rule]) => [option, { ...rule }])
+  );
+}
+
+function syncBranchRules(field: EditableField) {
+  const options = new Set(editableOptions(field));
+  for (const option of Object.keys(field.branching)) {
+    if (!options.has(option)) delete field.branching[option];
+  }
+}
+
+function normalizeBranching(field: EditableField, options: string[]) {
+  if (field.type !== "single") return undefined;
+  const optionSet = new Set(options);
+  const rules: Record<string, QuestionnaireBranchRule> = {};
+  for (const [option, rule] of Object.entries(field.branching)) {
+    if (!optionSet.has(option)) continue;
+    if (rule.action === "end") {
+      rules[option] = { action: "end" };
+    } else if (rule.action === "jump" && rule.targetId) {
+      rules[option] = { action: "jump", targetId: rule.targetId };
+    }
+  }
+  return Object.keys(rules).length ? rules : undefined;
+}
+
+function remapBranchingTargets(source: Record<string, QuestionnaireBranchRule> | undefined, idMap: Map<string, string>) {
+  if (!source) return undefined;
+  const rules: Record<string, QuestionnaireBranchRule> = {};
+  for (const [option, rule] of Object.entries(source)) {
+    if (rule.action === "end") {
+      rules[option] = { action: "end" };
+    } else if (rule.action === "jump" && rule.targetId && idMap.has(rule.targetId)) {
+      rules[option] = { action: "jump", targetId: idMap.get(rule.targetId) };
+    }
+  }
+  return Object.keys(rules).length ? rules : undefined;
+}
+
+function branchRuleAction(field: EditableField, option: string): EditableBranchAction {
+  return field.branching[option]?.action ?? "next";
+}
+
+function branchTargetOptions(index: number) {
+  return form.fields.slice(index + 1).map((field, offset) => ({
+    id: field.id,
+    label: `Q${index + offset + 2} ${field.label.trim() || "未命名题目"}`,
+  }));
+}
+
+function setBranchRuleAction(field: EditableField, option: string, action: EditableBranchAction, index: number) {
+  if (action === "next") {
+    delete field.branching[option];
+    return;
+  }
+  if (action === "end") {
+    field.branching[option] = { action: "end" };
+    return;
+  }
+  const currentTarget = field.branching[option]?.targetId;
+  const targets = branchTargetOptions(index);
+  field.branching[option] = {
+    action: "jump",
+    targetId: targets.some((item) => item.id === currentTarget) ? currentTarget : targets[0]?.id,
+  };
+}
+
+function setBranchRuleTarget(field: EditableField, option: string, targetId: string) {
+  field.branching[option] = { action: "jump", targetId };
 }
 
 function validateEditor(fields: QuestionnaireField[]) {
@@ -1888,7 +2014,8 @@ function validateEditor(fields: QuestionnaireField[]) {
     return false;
   }
   const ids = new Set<string>();
-  for (const field of fields) {
+  const fieldIndexById = new Map(fields.map((field, index) => [field.id, index]));
+  for (const [index, field] of fields.entries()) {
     if (ids.has(field.id)) {
       ElMessage.warning(`题目 ID 重复：${field.id}`);
       return false;
@@ -1897,6 +2024,26 @@ function validateEditor(fields: QuestionnaireField[]) {
     if ((field.type === "single" || field.type === "multiple") && (!field.options || field.options.length < 2)) {
       ElMessage.warning(`选项题“${field.label}”至少需要 2 个选项`);
       return false;
+    }
+    if (field.branching) {
+      if (field.type !== "single") {
+        ElMessage.warning(`只有单选题“${field.label}”可以配置分支`);
+        return false;
+      }
+      const allowed = new Set(field.options ?? []);
+      for (const [option, rule] of Object.entries(field.branching)) {
+        if (!allowed.has(option)) {
+          ElMessage.warning(`题目“${field.label}”的分支选项不存在：${option}`);
+          return false;
+        }
+        if (rule.action === "jump") {
+          const targetIndex = fieldIndexById.get(rule.targetId ?? "");
+          if (targetIndex === undefined || targetIndex <= index) {
+            ElMessage.warning(`题目“${field.label}”只能跳到后面的题`);
+            return false;
+          }
+        }
+      }
     }
     if (field.type === "rating" && (field.min ?? 1) >= (field.max ?? 5)) {
       ElMessage.warning(`评分题“${field.label}”的最高分需要大于最低分`);
@@ -1951,6 +2098,8 @@ async function handleQuestionnaireCommand(command: string | number | object, row
 async function duplicateQuestionnaire(row: Questionnaire) {
   await runQuestionnaireAction(row, async () => {
     const source = row.fields ? row : await toolsApi.questionnaire(row.slug);
+    const sourceFields = source.fields ?? [];
+    const idMap = new Map(sourceFields.map((field) => [field.id, makeFieldId()]));
     await toolsApi.createQuestionnaire({
       toolCode: "questionnaire",
       title: `${source.title} 副本`,
@@ -1959,7 +2108,11 @@ async function duplicateQuestionnaire(row: Questionnaire) {
       visibility: source.visibility,
       allowAnonymous: source.allowAnonymous,
       oneResponsePerUser: source.oneResponsePerUser,
-      fields: (source.fields ?? []).map((field) => ({ ...field, id: makeFieldId() })),
+      fields: sourceFields.map((field) => ({
+        ...field,
+        id: idMap.get(field.id) ?? makeFieldId(),
+        branching: remapBranchingTargets(field.branching, idMap),
+      })),
     });
     ElMessage.success("已复制为草稿");
     await reloadActive();
@@ -3717,6 +3870,51 @@ function round(value: number) {
   gap: 8px;
 }
 .advanced-grid :deep(.el-form-item) { margin-bottom: 0; }
+.branch-editor {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+.branch-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.branch-head b {
+  color: #1d4ed8;
+  font-size: 13px;
+}
+.branch-head span,
+.branch-editor p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.branch-rule-list {
+  display: grid;
+  gap: 8px;
+}
+.branch-rule-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 150px minmax(170px, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+.branch-rule-row > span {
+  min-width: 0;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.branch-rule-row :deep(.el-select) {
+  width: 100%;
+}
 .field-actions {
   display: flex;
   flex-wrap: wrap;
@@ -4437,6 +4635,22 @@ function round(value: number) {
   .field-editor :deep(.el-input-number),
   .advanced-grid :deep(.el-input-number) {
     width: 100%;
+  }
+  .branch-editor {
+    padding: 10px;
+  }
+  .branch-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .branch-rule-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    padding: 8px;
+    border: 1px solid #e5edf8;
+    border-radius: 8px;
+    background: #fff;
   }
   .field-actions {
     display: grid;

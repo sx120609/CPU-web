@@ -24,7 +24,7 @@
         <el-progress v-if="fieldCount" class="fill-progress" :percentage="progressPercent" :show-text="false" />
 
         <form class="questionnaire-form" @submit.prevent="submit">
-          <section v-for="(field, index) in questionnaire.fields || []" :key="field.id" class="field-card">
+          <section v-for="(field, index) in visibleFields" :key="field.id" class="field-card">
             <div class="field-title">
               <span>{{ index + 1 }}</span>
               <div>
@@ -122,8 +122,9 @@ const error = ref("");
 const answers = reactive<Record<string, string | string[]>>({});
 let loadSeq = 0;
 
-const fieldCount = computed(() => questionnaire.value?.fields?.length ?? 0);
-const answeredCount = computed(() => (questionnaire.value?.fields ?? []).filter((field) => hasAnswer(answers[field.id])).length);
+const visibleFields = computed(() => resolveVisibleFields(questionnaire.value?.fields ?? []));
+const fieldCount = computed(() => visibleFields.value.length);
+const answeredCount = computed(() => visibleFields.value.filter((field) => hasAnswer(answers[field.id])).length);
 const progressPercent = computed(() => fieldCount.value ? Math.round((answeredCount.value / fieldCount.value) * 100) : 0);
 
 watch(() => route.params.slug, () => {
@@ -192,17 +193,48 @@ function ratingRange(field: QuestionnaireField) {
   return Array.from({ length: Math.max(0, max - min + 1) }, (_, index) => min + index);
 }
 
+function resolveVisibleFields(fields: QuestionnaireField[]) {
+  const result: QuestionnaireField[] = [];
+  const indexById = new Map(fields.map((field, index) => [field.id, index]));
+  for (let index = 0; index < fields.length;) {
+    const field = fields[index];
+    result.push(field);
+    if (field.type === "single") {
+      const value = String(answers[field.id] ?? "").trim();
+      const rule = value ? field.branching?.[value] : undefined;
+      if (rule?.action === "end") break;
+      if (rule?.action === "jump" && rule.targetId) {
+        const targetIndex = indexById.get(rule.targetId);
+        if (targetIndex !== undefined && targetIndex > index) {
+          index = targetIndex;
+          continue;
+        }
+      }
+    }
+    index += 1;
+  }
+  return result;
+}
+
+function visibleAnswers() {
+  const result: Record<string, string | string[]> = {};
+  for (const field of visibleFields.value) {
+    result[field.id] = answers[field.id] ?? (field.type === "multiple" ? [] : "");
+  }
+  return result;
+}
+
 async function submit() {
   if (submitting.value) return;
   if (!questionnaire.value) return;
-  const missing = (questionnaire.value.fields ?? []).find((field) => field.required && !hasAnswer(answers[field.id]));
+  const missing = visibleFields.value.find((field) => field.required && !hasAnswer(answers[field.id]));
   if (missing) {
     ElMessage.warning(`请填写：${missing.label}`);
     return;
   }
   submitting.value = true;
   try {
-    await toolsApi.submitResponse(questionnaire.value.slug, answers, {
+    await toolsApi.submitResponse(questionnaire.value.slug, visibleAnswers(), {
       suppressAuthRedirect: true,
       suppressAuthMessage: true,
       suppressErrorMessage: true,

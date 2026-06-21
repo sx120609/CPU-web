@@ -2,6 +2,12 @@ import { prisma } from "../prisma";
 import { SERVICE_TOOL_META, type ServiceToolCode } from "./serviceTools";
 
 export type QuestionnaireFieldType = "text" | "textarea" | "single" | "multiple" | "number" | "date" | "rating";
+export type QuestionnaireBranchAction = "end" | "jump";
+
+export interface QuestionnaireBranchRule {
+  action: QuestionnaireBranchAction;
+  targetId?: string;
+}
 
 export interface QuestionnaireField {
   id: string;
@@ -15,6 +21,7 @@ export interface QuestionnaireField {
   max?: number;
   step?: number;
   maxLength?: number;
+  branching?: Record<string, QuestionnaireBranchRule>;
 }
 
 export function parseFields(raw: string | null | undefined): QuestionnaireField[] {
