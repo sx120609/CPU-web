@@ -841,9 +841,9 @@
               <el-icon><View /></el-icon>
               预览
             </el-button>
-            <el-button :loading="saving" :disabled="saving" @click="submitEditor('draft')">保存草稿</el-button>
-            <el-button type="primary" plain :loading="saving" :disabled="saving" @click="submitEditor()">保存</el-button>
-            <el-button type="primary" :loading="saving" :disabled="saving" @click="submitEditor('open')">保存并开放</el-button>
+            <el-button class="builder-desktop-action" :loading="saving" :disabled="saving" @click="submitEditor('draft')">保存草稿</el-button>
+            <el-button class="builder-desktop-action" type="primary" plain :loading="saving" :disabled="saving" @click="submitEditor()">保存</el-button>
+            <el-button class="builder-desktop-action" type="primary" :loading="saving" :disabled="saving" @click="submitEditor('open')">保存并开放</el-button>
           </div>
         </div>
       </template>
@@ -861,6 +861,31 @@
               <small>{{ type.hint }}</small>
             </span>
           </button>
+        </section>
+
+        <section class="mobile-publish-card builder-mobile-only">
+          <div class="mobile-publish-head">
+            <div>
+              <b>发布设置</b>
+              <span>{{ statusText(form.status) }} · {{ form.visibility === "login" ? "登录填写" : "公开填写" }}</span>
+            </div>
+            <strong>{{ form.fields.length }} 题</strong>
+          </div>
+          <div class="mobile-publish-grid">
+            <el-select v-model="form.status" aria-label="问卷状态">
+              <el-option label="草稿" value="draft" />
+              <el-option label="开放" value="open" />
+              <el-option label="关闭" value="closed" />
+            </el-select>
+            <el-select v-model="form.visibility" aria-label="填写权限">
+              <el-option label="公开填写" value="public" />
+              <el-option label="登录后填写" value="login" />
+            </el-select>
+          </div>
+          <div class="mobile-publish-checks">
+            <el-checkbox v-model="form.allowAnonymous">匿名</el-checkbox>
+            <el-checkbox v-model="form.oneResponsePerUser">限每人一次</el-checkbox>
+          </div>
         </section>
 
         <el-form label-position="top" class="questionnaire-editor">
@@ -946,6 +971,10 @@
                     <el-icon><CopyDocument /></el-icon>
                     复制
                   </button>
+                  <button type="button" @click="addField('single', index)">
+                    <el-icon><Plus /></el-icon>
+                    下方加题
+                  </button>
                   <button type="button" class="danger" @click="removeField(index)">
                     <el-icon><Delete /></el-icon>
                     删除
@@ -953,7 +982,7 @@
                 </div>
               </div>
             </article>
-            <el-empty v-if="!form.fields.length" description="从左侧选择题型开始设计问卷" />
+            <el-empty v-if="!form.fields.length" description="从题型条添加题目" />
           </div>
         </el-form>
 
@@ -994,6 +1023,12 @@
             <p>发布前确认必填题、选项数量、匿名设置和登录限制。发布后仍可编辑，已有答卷会按题目 ID 保留。</p>
           </section>
         </aside>
+      </div>
+
+      <div class="builder-mobile-savebar builder-mobile-only">
+        <el-button :loading="saving" :disabled="saving" @click="submitEditor('draft')">草稿</el-button>
+        <el-button type="primary" plain :loading="saving" :disabled="saving" @click="submitEditor()">保存</el-button>
+        <el-button type="primary" :loading="saving" :disabled="saving" @click="submitEditor('open')">开放</el-button>
       </div>
     </el-dialog>
 
@@ -2952,6 +2987,9 @@ function round(value: number) {
   height: calc(100dvh - 64px);
   overflow: hidden;
 }
+.builder-mobile-only {
+  display: none;
+}
 .builder-topbar {
   height: 64px;
   display: flex;
@@ -3379,7 +3417,8 @@ function round(value: number) {
 .type-palette,
 .editor-card,
 .field-editor,
-.inspector-card {
+.inspector-card,
+.mobile-publish-card {
   border: 1px solid var(--builder-border);
   border-radius: 8px;
   background: #fff;
@@ -3457,6 +3496,61 @@ function round(value: number) {
 }
 .type-palette b { font-size: 13px; }
 .type-palette small { color: #9ca3af; font-size: 11px; line-height: 1.35; }
+.mobile-publish-card {
+  gap: 12px;
+  padding: 14px;
+  border-color: #d7f3ea;
+  background: #f7fffb;
+}
+.mobile-publish-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.mobile-publish-head div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.mobile-publish-head b {
+  color: #0f172a;
+  font-size: 15px;
+}
+.mobile-publish-head span {
+  color: #64748b;
+  font-size: 12px;
+}
+.mobile-publish-head strong {
+  flex: 0 0 auto;
+  color: #0f766e;
+  font-size: 13px;
+}
+.mobile-publish-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.mobile-publish-grid :deep(.el-select) {
+  width: 100%;
+}
+.mobile-publish-checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.mobile-publish-checks :deep(.el-checkbox) {
+  min-width: 0;
+  height: 32px;
+  margin-right: 0;
+}
+.mobile-publish-checks :deep(.el-checkbox__label) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .questionnaire-editor {
   display: flex;
   flex-direction: column;
@@ -4159,35 +4253,221 @@ function round(value: number) {
   .managers-section { order: -1; }
 }
 @media (max-width: 760px) {
+  :global(.questionnaire-builder-dialog.el-dialog) {
+    background: #f6f8fb;
+  }
+  :global(.questionnaire-builder-dialog .el-dialog__header) {
+    position: relative;
+    z-index: 12;
+  }
   :global(.questionnaire-builder-dialog .el-dialog__body) {
-    height: calc(100dvh - 116px);
-    overflow: auto;
-  }
-  .builder-topbar {
-    height: auto;
-    align-items: stretch;
-    flex-direction: column;
-    padding: 12px;
-  }
-  .builder-top-actions {
-    overflow-x: auto;
-    padding-bottom: 2px;
-  }
-  .builder-layout {
     display: flex;
     flex-direction: column;
+    height: calc(100dvh - 72px);
+    overflow: hidden;
+    background: #f6f8fb;
+  }
+  .builder-mobile-only {
+    display: block;
+  }
+  .builder-topbar {
+    height: 72px;
+    align-items: center;
+    flex-direction: row;
+    gap: 10px;
+    padding: 10px 12px;
+  }
+  .builder-titlebar {
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 10px;
+  }
+  .builder-titlebar b,
+  .builder-titlebar span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .builder-titlebar b {
+    font-size: 16px;
+  }
+  .builder-titlebar span {
+    font-size: 11px;
+  }
+  .builder-back {
+    width: 40px;
+    height: 40px;
+    flex: 0 0 auto;
+  }
+  .builder-top-actions {
+    flex: 0 0 auto;
     overflow: visible;
-    padding: 12px;
+    padding-bottom: 0;
+  }
+  .builder-top-actions .builder-desktop-action,
+  .builder-top-actions :deep(.builder-desktop-action) {
+    display: none;
+  }
+  .builder-top-actions :deep(.el-button) {
+    min-width: 70px;
+    height: 38px;
+    padding: 0 10px;
+  }
+  .builder-layout {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow: auto;
+    padding: 0 12px 16px;
+    -webkit-overflow-scrolling: touch;
   }
   .type-palette {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    overflow: visible;
+    position: sticky;
+    top: 0;
+    z-index: 8;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin: 0 -12px;
+    padding: 10px 12px;
+    overflow-x: auto;
+    border: 0;
+    border-bottom: 1px solid #e6edf6;
+    border-radius: 0;
+    background: rgba(246, 248, 251, 0.96);
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+    scrollbar-width: none;
   }
-  .palette-title { grid-column: 1 / -1; }
+  .type-palette::-webkit-scrollbar {
+    display: none;
+  }
+  .palette-title { display: none; }
+  .type-palette button {
+    flex: 0 0 108px;
+    min-height: 48px;
+    gap: 7px;
+    padding: 8px;
+    border-radius: 8px;
+  }
+  .type-palette button:hover {
+    transform: none;
+    box-shadow: none;
+  }
+  .type-palette .el-icon {
+    width: 28px;
+    height: 28px;
+    font-size: 16px;
+  }
+  .type-palette b {
+    font-size: 12px;
+  }
+  .type-palette small {
+    display: none;
+  }
+  .mobile-publish-card.builder-mobile-only {
+    display: grid;
+  }
+  .questionnaire-editor {
+    gap: 12px;
+    overflow: visible;
+    padding: 0 0 82px;
+    background: transparent;
+  }
+  .editor-card,
+  .fields-head,
+  .field-editor-list {
+    width: 100%;
+    max-width: none;
+    align-self: stretch;
+  }
+  .editor-card {
+    padding: 18px;
+    border-top: 0;
+    border-left: 4px solid var(--builder-primary);
+    box-shadow: none;
+  }
+  .cover-kicker {
+    margin-bottom: 8px;
+  }
+  .title-field :deep(.el-input__wrapper) {
+    min-height: 42px;
+  }
+  .title-field :deep(.el-input__inner) {
+    height: 42px;
+    font-size: 18px;
+  }
+  .fields-head {
+    margin-top: 0;
+    padding: 0 1px;
+  }
+  .fields-head :deep(.el-button) {
+    min-height: 36px;
+    margin-left: 0;
+  }
+  .field-editor-list {
+    gap: 10px;
+  }
+  .field-editor {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 14px;
+    border-left: 1px solid var(--builder-border);
+    border-top: 4px solid transparent;
+    box-shadow: none;
+  }
+  .field-editor:hover {
+    transform: none;
+    box-shadow: none;
+  }
+  .field-editor.is-required {
+    border-top-color: var(--builder-primary);
+    border-left-color: var(--builder-border);
+  }
+  .field-index {
+    width: auto;
+    min-width: 44px;
+    justify-self: start;
+  }
   .field-editor-main,
   .advanced-grid { grid-template-columns: 1fr; }
-  .builder-side { display: flex; }
+  .field-editor :deep(.el-select),
+  .field-editor :deep(.el-input-number),
+  .advanced-grid :deep(.el-input-number) {
+    width: 100%;
+  }
+  .field-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    justify-content: stretch;
+    gap: 7px;
+    padding-top: 8px;
+  }
+  .field-actions button {
+    justify-content: center;
+    height: 36px;
+    min-width: 0;
+    padding: 0 6px;
+  }
+  .builder-side { display: none; }
+  .builder-mobile-savebar.builder-mobile-only {
+    display: grid;
+    grid-template-columns: 0.85fr 1fr 1fr;
+    gap: 8px;
+    flex: 0 0 auto;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    border-top: 1px solid #e5eaf3;
+    background: #fff;
+    box-shadow: 0 -10px 26px rgba(15, 23, 42, 0.1);
+  }
+  .builder-mobile-savebar :deep(.el-button) {
+    height: 42px;
+    margin-left: 0;
+    border-radius: 8px;
+    font-weight: 650;
+  }
 }
 @media (max-width: 700px) {
   :global(.responsive-tool-dialog.el-dialog) {
