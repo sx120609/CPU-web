@@ -19,7 +19,7 @@ import {
   ensureMediaLocalPathFromUploadUrl,
   shouldUseRemoteMediaStorageForRelativePath,
 } from "./mediaStorage";
-import { getOneDriveChinaItemMetadata } from "./oneDriveChina";
+import { getOneDriveChinaItemMetadata, resolveOneDriveChinaDirectDownloadUrl } from "./oneDriveChina";
 import { getMediaStorageRuntimeConfig } from "./storageConfig";
 
 const MOUNT_PATH = "/filestore";
@@ -826,6 +826,13 @@ async function filestoreRemoteUploadPolicy(taskId: number, files: Array<{ size: 
   };
 }
 
+async function resolveFileCollectRemoteAccess(file: { path: string; size: number }) {
+  const meta = await getOneDriveChinaItemMetadata(file.path).catch(() => null);
+  if (!meta || meta.kind !== "file") return "";
+  if (meta.size !== null && Number(meta.size) !== Number(file.size)) return "";
+  return resolveOneDriveChinaDirectDownloadUrl(file.path).catch(() => "");
+}
+
 async function rerenameFilestoreTaskFiles(taskId: number, renameTemplate: string) {
   const rows = await prisma.fileCollectSubmission.findMany({
     where: { taskId, status: "submitted" },
@@ -1530,6 +1537,31 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       taskTitle: file.submission.task.title,
       submissionData: parseJsonObject(file.submission.data),
       submissionCreatedAt: isoDate(file.submission.createdAt),
+    });
+    return true;
+  }
+  const fileAccessMatch = target.match(/^\/api\/files\/(\d+)\/access$/);
+  if (req.method === "GET" && fileAccessMatch) {
+    const file = await prisma.fileCollectFile.findUnique({
+      where: { id: Number(fileAccessMatch[1]) },
+      include: { submission: { include: { task: true } } },
+    });
+    if (!file || !canAccessFilestoreTask(user, file.submission.task)) {
+      res.status(404).json({ error: "文件不存在" });
+      return true;
+    }
+    const action = new URL(req.originalUrl || req.url || "/", "http://filestore.local").searchParams.get("action") === "preview"
+      ? "preview"
+      : "download";
+    const remoteUrl = await resolveFileCollectRemoteAccess(file);
+    res.json({
+      ok: true,
+      id: file.id,
+      action,
+      backend: remoteUrl ? "onedrive-cn" : "local",
+      url: remoteUrl,
+      filename: file.storedName,
+      mimeType: file.mimeType || "application/octet-stream",
     });
     return true;
   }

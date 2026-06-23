@@ -34,6 +34,14 @@ import {
   saveCloudDriveFile,
 } from "../services/cloudDrive";
 import {
+  deleteMediaAsset,
+  ensureMediaLocalPathFromUploadUrl,
+} from "../services/mediaStorage";
+import {
+  getOneDriveChinaItemMetadata,
+  resolveOneDriveChinaDirectDownloadUrl,
+} from "../services/oneDriveChina";
+import {
   ensureSystemQuestionnaires,
   normalizeQuestionnaire,
   normalizeResponse,
@@ -974,6 +982,30 @@ toolsRouter.post("/file-collections/:slug/submissions", authOptional, fileCollec
   }
 });
 
+toolsRouter.get("/file-collection-files/:id/access", authRequired, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const file = await prisma.fileCollectFile.findUnique({
+      where: { id },
+      include: { submission: { include: { task: true } } },
+    });
+    if (!file) throw Errors.notFound("文件不存在");
+    if (!(await canManageFileCollectTask(file.submission.task, req.user))) throw Errors.forbidden("没有该文件的下载权限");
+    const meta = await getOneDriveChinaItemMetadata(file.path).catch(() => null);
+    const remoteUrl = meta?.kind === "file" && (meta.size === null || Number(meta.size) === Number(file.size))
+      ? await resolveOneDriveChinaDirectDownloadUrl(file.path).catch(() => "")
+      : "";
+    ok(res, {
+      id: file.id,
+      action: req.query.action === "preview" ? "preview" : "download",
+      backend: remoteUrl ? "onedrive-cn" : "local",
+      url: remoteUrl,
+      filename: file.storedName,
+      mimeType: file.mimeType || "application/octet-stream",
+    });
+  } catch (e) { next(e); }
+});
+
 toolsRouter.get("/file-collection-files/:id/:action(download|preview)", authRequired, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
@@ -983,7 +1015,8 @@ toolsRouter.get("/file-collection-files/:id/:action(download|preview)", authRequ
     });
     if (!file) throw Errors.notFound("文件不存在");
     if (!(await canManageFileCollectTask(file.submission.task, req.user))) throw Errors.forbidden("没有该文件的下载权限");
-    const absolute = resolveFileCollectPath(file.path);
+    const absolute = await ensureMediaLocalPathFromUploadUrl(`/uploads/${file.path}`);
+    if (!absolute) throw Errors.notFound("文件已丢失");
     if (req.params.action === "preview") {
       res.type(file.mimeType || "application/octet-stream");
       res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(file.storedName)}`);
@@ -1503,7 +1536,7 @@ function resolveFileCollectPath(relative: string) {
 }
 
 async function unlinkFileCollectPath(relative: string) {
-  await unlink(resolveFileCollectPath(relative)).catch(() => null);
+  await deleteMediaAsset(relative).catch(() => null);
 }
 
 async function refreshFileCollectStats(taskId: number) {

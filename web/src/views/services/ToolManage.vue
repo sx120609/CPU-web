@@ -2647,6 +2647,35 @@ async function fetchFileCollectBlob(id: number, action: "download" | "preview") 
   return response.blob();
 }
 
+type FileCollectFileAccess = {
+  backend: "local" | "onedrive-cn";
+  url: string;
+  filename?: string;
+  mimeType?: string;
+};
+
+async function fetchFileCollectAccess(id: number, action: "download" | "preview") {
+  const response = await fetch(`/api/tools/file-collection-files/${id}/access?action=${action}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.message || payload?.error || (action === "preview" ? "预览失败" : "下载失败"));
+  }
+  return payload as FileCollectFileAccess;
+}
+
+function openDirectFileAccess(url: string, filename: string, action: "download" | "preview") {
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.target = "_blank";
+  anchor.rel = "noopener noreferrer";
+  if (action === "download") anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
 function requestMessage(error: unknown) {
   if (typeof error === "object" && error !== null) {
     const responseMessage = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
@@ -2659,6 +2688,11 @@ async function downloadFileCollectFile(id: number, filename: string) {
   if (isFileActionDisabled(id)) return;
   fileDownloadingId.value = id;
   try {
+    const access = await fetchFileCollectAccess(id, "download");
+    if (access.backend === "onedrive-cn" && access.url) {
+      openDirectFileAccess(access.url, access.filename || filename, "download");
+      return;
+    }
     const blob = await fetchFileCollectBlob(id, "download");
     saveBlob(blob, filename);
   } catch (error) {
@@ -2672,6 +2706,11 @@ async function previewFileCollectFile(id: number, filename: string) {
   if (isFileActionDisabled(id)) return;
   filePreviewingId.value = id;
   try {
+    const access = await fetchFileCollectAccess(id, "preview");
+    if (access.backend === "onedrive-cn" && access.url) {
+      openDirectFileAccess(access.url, access.filename || filename, "preview");
+      return;
+    }
     const blob = await fetchFileCollectBlob(id, "preview");
     const url = URL.createObjectURL(blob);
     const opened = window.open(url, "_blank", "noopener,noreferrer");
