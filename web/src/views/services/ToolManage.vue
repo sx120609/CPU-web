@@ -108,6 +108,78 @@
           </section>
         </div>
 
+        <div v-else-if="activeTool === 'pdf_tools'" class="tool-admin-grid permission-only-grid">
+          <section class="admin-section questionnaire-section">
+            <div class="section-head">
+              <div>
+                <h3>PDF 工具</h3>
+                <p>PDF 工具在浏览器本地完成合并、拆分、压缩和转换。这里维护入口可见性、登录要求和管理器。</p>
+              </div>
+              <el-button type="primary" @click="openPdfTool">
+                <el-icon><View /></el-icon>
+                打开工具
+              </el-button>
+            </div>
+            <div class="empty-panel">
+              工具不会保存用户上传的文件；常见处理会在当前设备完成，适合公开给同学临时整理 PDF 材料。
+            </div>
+          </section>
+
+          <section v-if="canAdminActiveTool" class="admin-section managers-section">
+            <div class="section-head">
+              <div>
+                <h3>使用权限</h3>
+                <p>可决定 PDF 工具是否展示在小工具入口，以及是否要求登录后使用。</p>
+              </div>
+            </div>
+            <div class="access-setting">
+              <div>
+                <b>展示在工具列表</b>
+                <span>{{ currentToolMeta?.isVisible ? "当前会显示在小工具入口中" : "当前已从小工具入口中隐藏" }}</span>
+              </div>
+              <el-switch
+                v-model="toolVisible"
+                :loading="settingSaving"
+                @change="saveToolVisibilitySetting"
+              />
+            </div>
+            <div class="access-setting">
+              <div>
+                <b>登录后使用</b>
+                <span>{{ currentToolMeta?.requireLogin ? "当前需要登录" : "当前允许游客使用" }}</span>
+              </div>
+              <el-switch
+                v-model="toolRequireLogin"
+                :loading="settingSaving"
+                @change="saveToolSetting"
+              />
+            </div>
+          </section>
+
+          <section v-if="canAdminActiveTool" class="admin-section managers-section">
+            <div class="section-head">
+              <div>
+                <h3>管理器</h3>
+                <p>被分配后可维护 PDF 工具入口设置。</p>
+              </div>
+            </div>
+            <div class="add-manager">
+              <el-input v-model="managerUsername" placeholder="输入用户名" clearable :disabled="managerSaving || managerRemovingId !== null" @keyup.enter="addManager" />
+              <el-button type="primary" :loading="managerSaving" :disabled="managerSaving || managerRemovingId !== null || !managerUsername.trim()" @click="addManager">添加</el-button>
+            </div>
+            <div class="manager-list">
+              <div v-for="manager in managers" :key="manager.id" class="manager-row">
+                <div>
+                  <b>{{ manager.user.nickname || manager.user.username }}</b>
+                  <span>{{ manager.user.username }}</span>
+                </div>
+                <el-button text type="danger" :loading="managerRemovingId === manager.user.id" :disabled="managerSaving || managerRemovingId !== null" @click="removeManager(manager.user.id)">移除</el-button>
+              </div>
+              <el-empty v-if="!managers.length" description="暂无单独分配的管理器" />
+            </div>
+          </section>
+        </div>
+
         <div v-else-if="activeTool === 'cloud_drive'" class="tool-admin-grid permission-only-grid">
           <section class="admin-section questionnaire-section">
             <div class="section-head">
@@ -1650,7 +1722,7 @@ function pickInitialTool(): ServiceToolCode {
 function normalizeToolQuery(value: unknown): ServiceToolCode | "" {
   const raw = Array.isArray(value) ? value[0] : value;
   if (typeof raw !== "string") return "";
-  return (["feedback", "questionnaire", "grade_check", "file_collect", "cloud_drive"] as ServiceToolCode[]).includes(raw as ServiceToolCode)
+  return (["feedback", "questionnaire", "grade_check", "file_collect", "cloud_drive", "pdf_tools"] as ServiceToolCode[]).includes(raw as ServiceToolCode)
     ? raw as ServiceToolCode
     : "";
 }
@@ -1690,7 +1762,7 @@ async function reloadActive() {
     gradeChecks.value = [];
     return;
   }
-  if (activeTool.value === "cloud_drive") {
+  if (activeTool.value === "cloud_drive" || activeTool.value === "pdf_tools") {
     questionnaires.value = [];
     gradeChecks.value = [];
     fileCollections.value = [];
@@ -1704,6 +1776,10 @@ async function reloadActive() {
 
 function openCloudDriveTool() {
   router.push("/services/tools/cloud_drive");
+}
+
+function openPdfTool() {
+  router.push("/services/tools/pdf_tools");
 }
 
 function openFilestoreTool() {

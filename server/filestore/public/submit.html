@@ -71,6 +71,21 @@
       <button id="closeSuccessDialog" type="button">关闭</button>
     </div>
   </dialog>
+
+  <dialog id="overwriteDialog" class="overwrite-dialog">
+    <div class="dialog-head">
+      <div>
+        <h2>发现已有提交</h2>
+        <p id="overwriteSummary" class="hint"></p>
+      </div>
+    </div>
+    <div id="overwriteFiles" class="overwrite-files"></div>
+    <p class="overwrite-warning">继续提交会用本次填写的信息和文件覆盖旧提交。</p>
+    <div class="dialog-actions">
+      <button id="cancelOverwrite" type="button">取消</button>
+      <button id="confirmOverwrite" class="primary" type="button">覆盖旧提交</button>
+    </div>
+  </dialog>
   <script src="/submit.js"></script>
 </body>
 </html>

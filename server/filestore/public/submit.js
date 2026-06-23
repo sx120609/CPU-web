@@ -342,7 +342,62 @@ async function readJsonResponse(response, fallback = "请求失败") {
   return payload;
 }
 
-async function prepareRemoteSubmission(files) {
+function renderOverwriteFileList(files = []) {
+  if (!files.length) return "<span>旧提交没有可显示的文件名</span>";
+  return files.map((file) => `<span>${escapeHtml(file)}</span>`).join("");
+}
+
+function askOverwriteSubmission(payload) {
+  return new Promise((resolve) => {
+    const dialog = $("#overwriteDialog");
+    const submission = payload.submission || {};
+    const label = payload.identityLabel || "身份信息";
+    const identity = payload.identity || "";
+    const createdAt = submission.createdAt ? new Date(submission.createdAt).toLocaleString() : "";
+    $("#overwriteSummary").textContent = `${label}“${identity}”已经提交过${createdAt ? `，提交时间 ${createdAt}` : ""}。`;
+    $("#overwriteFiles").innerHTML = renderOverwriteFileList(submission.files || []);
+
+    const cleanup = (value) => {
+      $("#confirmOverwrite").removeEventListener("click", onConfirm);
+      $("#cancelOverwrite").removeEventListener("click", onCancel);
+      dialog.removeEventListener("close", onClose);
+      if (dialog.open) dialog.close();
+      resolve(value);
+    };
+    const onConfirm = () => cleanup(true);
+    const onCancel = () => cleanup(false);
+    const onClose = () => cleanup(false);
+
+    $("#confirmOverwrite").addEventListener("click", onConfirm);
+    $("#cancelOverwrite").addEventListener("click", onCancel);
+    dialog.addEventListener("close", onClose);
+    dialog.showModal();
+  });
+}
+
+async function confirmOverwriteIfNeeded() {
+  message("正在检查是否已有提交...");
+  const response = await fetch(`/api/submit/${token}/check-duplicate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ data: currentData() }),
+  });
+  const payload = await readJsonResponse(response, "检查已有提交失败");
+  if (!payload.exists) {
+    message("");
+    return false;
+  }
+  const confirmed = await askOverwriteSubmission(payload);
+  if (!confirmed) {
+    message("已取消提交。", "warn");
+    return null;
+  }
+  return true;
+}
+
+async function prepareRemoteSubmission(files, overwrite) {
   const response = await fetch(`/api/submit/${token}/prepare-remote`, {
     method: "POST",
     headers: {
@@ -350,6 +405,7 @@ async function prepareRemoteSubmission(files) {
     },
     body: JSON.stringify({
       data: currentData(),
+      overwrite,
       files: files.map((file) => ({
         name: file.name,
         size: file.size,
@@ -383,13 +439,14 @@ async function uploadFileToSession(file, uploadFile, onProgress) {
   }
 }
 
-async function completeRemoteSubmission(submissionId, remoteFileIds, localEntries, onLocalProgress) {
+async function completeRemoteSubmission(submissionId, remoteFileIds, localEntries, onLocalProgress, overwrite) {
   if (localEntries.length) {
     return new Promise((resolve, reject) => {
       const formData = new FormData();
       formData.append("submissionId", String(submissionId));
       formData.append("remoteFileIds", JSON.stringify(remoteFileIds));
       formData.append("localFileIds", JSON.stringify(localEntries.map((entry) => entry.preparedFile.id)));
+      formData.append("overwrite", overwrite ? "true" : "false");
       localEntries.forEach((entry) => formData.append("files", entry.file, entry.file.name));
       const xhr = new XMLHttpRequest();
       xhr.upload.addEventListener("progress", (event) => {
@@ -411,16 +468,16 @@ async function completeRemoteSubmission(submissionId, remoteFileIds, localEntrie
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ submissionId, remoteFileIds }),
+    body: JSON.stringify({ submissionId, remoteFileIds, overwrite }),
   });
   return readJsonResponse(response, "确认提交失败");
 }
 
-async function submitRemote(form, files) {
+async function submitRemote(form, files, overwrite) {
   $("#progress").hidden = false;
   $("#progress").value = 0;
   message("正在创建世纪互联直传会话...");
-  const prepared = await prepareRemoteSubmission(files);
+  const prepared = await prepareRemoteSubmission(files, overwrite);
   const uploadFiles = Array.isArray(prepared.files) ? prepared.files : [];
   const localFiles = Array.isArray(prepared.localFiles) ? prepared.localFiles : [];
   const remoteByIndex = new Map(uploadFiles.map((item) => [Number(item.index), item]));
@@ -461,13 +518,15 @@ async function submitRemote(form, files) {
       const done = uploadedBytes + localUploadedBytes;
       $("#progress").value = totalBytes ? Math.min(99, Math.round((done / totalBytes) * 100)) : 0;
     },
+    overwrite,
   );
   applySubmitSuccess(form, payload);
 }
 
-function submitMultipart(form, files) {
+function submitMultipart(form, files, overwrite) {
   const formData = new FormData(form);
   formData.delete("files");
+  formData.set("overwrite", overwrite ? "true" : "false");
   files.forEach((file) => formData.append("files", file, file.name));
   const xhr = new XMLHttpRequest();
   $("#progress").hidden = false;
@@ -555,16 +614,26 @@ $("#submitForm").addEventListener("submit", async (event) => {
     return;
   }
 
+  let overwrite = false;
+  try {
+    const overwriteDecision = await confirmOverwriteIfNeeded();
+    if (overwriteDecision === null) return;
+    overwrite = overwriteDecision;
+  } catch (error) {
+    message(error && error.message ? error.message : "检查已有提交失败，请重试", "error");
+    return;
+  }
+
   if (shouldUseDirectUpload(files)) {
     try {
-      await submitRemote(form, files);
+      await submitRemote(form, files, overwrite);
     } catch (error) {
       message(error && error.message ? error.message : "直传失败，请重试", "error");
     }
     return;
   }
 
-  submitMultipart(form, files);
+  submitMultipart(form, files, overwrite);
 });
 
 loadSiteFooter();

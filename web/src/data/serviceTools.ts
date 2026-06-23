@@ -1,4 +1,4 @@
-import { ChatDotRound, DataLine, DocumentChecked, FolderOpened, Tools } from "@element-plus/icons-vue";
+import { ChatDotRound, DataLine, Document, DocumentChecked, FolderOpened, Tools } from "@element-plus/icons-vue";
 import type { Component } from "vue";
 
 export type ServiceToolStatus = "ready" | "planned";
@@ -12,7 +12,7 @@ export interface ServiceTool {
   status: ServiceToolStatus;
   category: string;
   routeName: string;
-  componentKey: "feedback" | "questionnaire" | "grade_check" | "file_collect" | "cloud_drive";
+  componentKey: "feedback" | "questionnaire" | "grade_check" | "file_collect" | "cloud_drive" | "pdf_tools";
   accent: string;
   iconComponent: Component;
 }
@@ -82,6 +82,19 @@ export const serviceTools: ServiceTool[] = [
     componentKey: "cloud_drive",
     accent: "#2563eb",
     iconComponent: FolderOpened,
+  },
+  {
+    slug: "pdf_tools",
+    name: "PDF 工具",
+    summary: "合并、拆分、压缩、转图片和提取文字",
+    description: "浏览器本地处理常见 PDF 操作，适合整理作业、通知和课程材料。",
+    icon: "📄",
+    status: "ready",
+    category: "文件",
+    routeName: "service-tool-detail",
+    componentKey: "pdf_tools",
+    accent: "#0f766e",
+    iconComponent: Document,
   },
 ];
 

@@ -366,6 +366,10 @@ p {
   color: var(--danger);
 }
 
+.message.warn {
+  color: var(--warning);
+}
+
 .full {
   width: 100%;
 }
@@ -2055,6 +2059,39 @@ progress::-moz-progress-bar {
   font-size: 14px;
   font-weight: 700;
   width: 100%;
+}
+
+.overwrite-dialog {
+  width: min(440px, 95vw);
+}
+
+.overwrite-dialog .dialog-head {
+  margin-bottom: 12px;
+}
+
+.overwrite-files {
+  display: grid;
+  gap: 6px;
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.overwrite-files span {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.overwrite-warning {
+  margin: 12px 0 0;
+  color: var(--warning);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 /* Success status list page */
