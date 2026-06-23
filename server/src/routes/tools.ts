@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 import { z } from "zod";
 import multer from "multer";
 import path from "node:path";
@@ -1047,7 +1047,7 @@ toolsRouter.get("/file-collection-files/:id/access", authRequired, async (req, r
   } catch (e) { next(e); }
 });
 
-toolsRouter.get("/file-collection-files/:id/public-preview/:filename?", async (req, res, next) => {
+const fileCollectPublicPreviewHandler: RequestHandler = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const file = await prisma.fileCollectFile.findUnique({
@@ -1072,7 +1072,10 @@ toolsRouter.get("/file-collection-files/:id/public-preview/:filename?", async (r
     res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(file.storedName)}`);
     res.sendFile(absolute);
   } catch (e) { next(e); }
-});
+};
+
+toolsRouter.get("/file-collection-files/:id/public-preview/:filename?", fileCollectPublicPreviewHandler);
+toolsRouter.head("/file-collection-files/:id/public-preview/:filename?", fileCollectPublicPreviewHandler);
 
 toolsRouter.get("/file-collection-files/:id/:action(download|preview)", authRequired, async (req, res, next) => {
   try {

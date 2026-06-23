@@ -179,7 +179,7 @@ function isPublicFilestoreRequest(req: Request) {
   if (req.method === "GET" && target === "/api/platform/site-config") return true;
   if (req.method === "GET" && target === "/api/qrcode") return true;
   if (req.method === "GET" && /^\/api\/public\/(tasks|status)\/[A-Za-z0-9_-]+$/.test(target)) return true;
-  if (req.method === "GET" && /^\/api\/files\/\d+\/public-preview(?:\/[^/]+)?$/.test(target)) return true;
+  if ((req.method === "GET" || req.method === "HEAD") && /^\/api\/files\/\d+\/public-preview(?:\/[^/]+)?$/.test(target)) return true;
   if (req.method === "POST" && /^\/api\/submit\/[A-Za-z0-9_-]+$/.test(target)) return true;
   if (req.method === "POST" && /^\/api\/submit\/[A-Za-z0-9_-]+\/(prepare-remote|complete-remote)$/.test(target)) return true;
   return !target.startsWith("/api/");
@@ -342,7 +342,7 @@ function buildFilestorePublicUrl(base: string, mountedPath: string) {
       targetPath = targetPath.slice(MOUNT_PATH.length) || "/";
     }
   } catch {
-    // Invalid configured URLs are ignored by joinPublicUrl below.
+    return "";
   }
   return joinPublicUrl(normalizedBase, targetPath);
 }
@@ -1612,9 +1612,10 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
     const remotePreviewUrl = action === "preview" && remoteUrl
       ? await resolveOneDriveChinaPreviewUrl(file.path).catch(() => "")
       : "";
-    const origin = requestPublicOrigin(req);
-    const publicOfficePreviewUrl = origin && action === "preview" && !remotePreviewUrl && !remoteUrl && canUseOfficeWebViewer(file)
-      ? `${origin}${MOUNT_PATH}/api/files/${file.id}/public-preview/${encodeURIComponent(file.storedName)}?token=${encodeURIComponent(signFileCollectPreviewToken(file))}`
+    const publicOfficePreviewPath = `${MOUNT_PATH}/api/files/${file.id}/public-preview/${encodeURIComponent(file.storedName)}?token=${encodeURIComponent(signFileCollectPreviewToken(file))}`;
+    const publicOfficePreviewUrl = action === "preview" && !remotePreviewUrl && !remoteUrl && canUseOfficeWebViewer(file)
+      ? buildFilestorePublicUrl(await getFilestoreSiteSetting(FILESTORE_SITE_URL_KEY, ""), publicOfficePreviewPath)
+        || joinPublicUrl(requestPublicOrigin(req), publicOfficePreviewPath)
       : "";
     const previewSourceUrl = action === "preview" && isOfficePreviewFile(file.storedName)
       ? publicOfficePreviewUrl
@@ -1638,7 +1639,7 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
     return true;
   }
   const filePublicPreviewMatch = target.match(/^\/api\/files\/(\d+)\/public-preview(?:\/[^/]+)?$/);
-  if (req.method === "GET" && filePublicPreviewMatch) {
+  if ((req.method === "GET" || req.method === "HEAD") && filePublicPreviewMatch) {
     const file = await prisma.fileCollectFile.findUnique({
       where: { id: Number(filePublicPreviewMatch[1]) },
       include: { submission: { include: { task: true } } },
