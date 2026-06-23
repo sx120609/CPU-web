@@ -20,6 +20,7 @@ import {
   shouldUseRemoteMediaStorageForRelativePath,
 } from "./mediaStorage";
 import { getOneDriveChinaItemMetadata } from "./oneDriveChina";
+import { getMediaStorageRuntimeConfig } from "./storageConfig";
 
 const MOUNT_PATH = "/filestore";
 const TEXT_RESPONSE_RE = /^(text\/|application\/json\b|application\/javascript\b|text\/javascript\b)/i;
@@ -784,8 +785,23 @@ function buildFileCollectRelativePath(taskId: number, physicalName: string) {
   return path.posix.join("file-collect", String(taskId), physicalName);
 }
 
-async function filestoreRemoteDirectUploadEnabled(taskId: number) {
-  return shouldUseRemoteMediaStorageForRelativePath(buildFileCollectRelativePath(taskId, "__probe__"));
+async function filestoreRemoteUploadPolicy(taskId: number, files: Array<{ size: number }> = []) {
+  const runtime = await getMediaStorageRuntimeConfig();
+  const remoteReady = Boolean(
+    (runtime.oneDriveChinaRefreshToken.trim() || runtime.legacyClientSecret.trim())
+    && (runtime.oneDriveChinaDriveId.trim() || runtime.legacyDriveId.trim()),
+  );
+  const available = remoteReady
+    && await shouldUseRemoteMediaStorageForRelativePath(buildFileCollectRelativePath(taskId, "__probe__"));
+  const minSizeMb = Math.max(0, Number(runtime.filestoreRemoteMinSizeMb || 0));
+  const minSizeBytes = Math.round(minSizeMb * 1024 * 1024);
+  const triggered = !files.length || minSizeBytes <= 0 || files.some((file) => Number(file.size || 0) >= minSizeBytes);
+  return {
+    available,
+    shouldDirect: available && triggered,
+    minSizeMb,
+    minSizeBytes,
+  };
 }
 
 async function rerenameFilestoreTaskFiles(taskId: number, renameTemplate: string) {
@@ -956,13 +972,20 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       res.status(404).json({ error: "提交链接不存在" });
       return true;
     }
-    const remoteUploadEnabled = await filestoreRemoteDirectUploadEnabled(row.id).catch(() => false);
+    const remoteUploadPolicy = await filestoreRemoteUploadPolicy(row.id).catch(() => ({
+      available: false,
+      shouldDirect: false,
+      minSizeMb: 0,
+      minSizeBytes: 0,
+    }));
     res.json({
       ...normalizeFilestoreTask(row),
       siteTitle: (await filestoreSettings()).siteTitle,
       remoteUpload: {
-        enabled: remoteUploadEnabled,
-        mode: remoteUploadEnabled ? "onedrive-cn" : "local",
+        enabled: remoteUploadPolicy.available,
+        mode: remoteUploadPolicy.available ? "onedrive-cn" : "local",
+        minSizeMb: remoteUploadPolicy.minSizeMb,
+        minSizeBytes: remoteUploadPolicy.minSizeBytes,
       },
     });
     return true;
@@ -1145,7 +1168,8 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
     if (!task) throw filestoreApiError(404, "提交链接不存在");
     if (normalizeStatus(task.status) !== "open") throw filestoreApiError(400, "任务未开放提交");
     if (task.deadline && Date.now() > task.deadline.getTime()) throw filestoreApiError(400, "已超过截止时间");
-    if (!(await filestoreRemoteDirectUploadEnabled(task.id))) {
+    const remotePolicy = await filestoreRemoteUploadPolicy(task.id);
+    if (!remotePolicy.available) {
       throw filestoreApiError(400, "当前任务未启用世纪互联直传");
     }
     const fields = parseStoredFields(task.fields);
@@ -1156,6 +1180,9 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
     const data = normalizeSubmissionData(fields, dataSource);
     const files = normalizeDirectUploadFiles(payload.files);
     validateUploadFiles(files, rules);
+    if (!(await filestoreRemoteUploadPolicy(task.id, files)).shouldDirect) {
+      throw filestoreApiError(400, "所选文件未达到世纪互联直传阈值，请使用普通上传");
+    }
     const identity = submissionIdentity(data);
 
     const created = await prisma.$transaction(async (tx) => {
@@ -1304,15 +1331,15 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       if (!task) throw filestoreApiError(404, "提交链接不存在");
       if (normalizeStatus(task.status) !== "open") throw filestoreApiError(400, "任务未开放提交");
       if (task.deadline && Date.now() > task.deadline.getTime()) throw filestoreApiError(400, "已超过截止时间");
-      if (await filestoreRemoteDirectUploadEnabled(task.id)) {
-        throw filestoreApiError(400, "当前任务已启用世纪互联直传，请刷新页面后重试");
-      }
       uploadedFiles = await parseFilestoreUpload(req, res);
       const fields = parseStoredFields(task.fields);
       const rules = parseStoredRules(task.fileRules);
       const body = (req.body && typeof req.body === "object") ? req.body as Record<string, unknown> : {};
       const data = normalizeSubmissionData(fields, body);
       validateUploadFiles(uploadedFiles, rules);
+      if ((await filestoreRemoteUploadPolicy(task.id, uploadedFiles)).shouldDirect) {
+        throw filestoreApiError(400, "本次提交包含达到直传阈值的文件，请刷新页面后重试");
+      }
       const identity = submissionIdentity(data);
       const taskDir = path.resolve(process.cwd(), "uploads", "file-collect", String(task.id));
       mkdirSync(taskDir, { recursive: true });

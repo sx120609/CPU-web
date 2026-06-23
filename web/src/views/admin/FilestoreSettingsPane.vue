@@ -46,10 +46,33 @@
         />
       </div>
 
+      <div class="threshold-row">
+        <div>
+          <div class="toggle-title">直传阈值</div>
+          <p class="section-desc">一次提交中只要有文件达到这个大小，整次提交就走世纪互联；填 0 表示开启后全部直传。</p>
+        </div>
+        <div class="threshold-control">
+          <el-input-number
+            v-model="minSizeMb"
+            :min="0"
+            :max="10240"
+            :precision="2"
+            :step="1"
+            controls-position="right"
+            :disabled="saving || loading || Boolean(loadError)"
+          />
+          <span>MB</span>
+        </div>
+      </div>
+
       <div v-if="config" class="storage-status">
         <div class="status-item">
           <span>写入前缀</span>
           <b>{{ config.fileCollectPrefix }}</b>
+        </div>
+        <div class="status-item">
+          <span>直传策略</span>
+          <b>{{ thresholdLabel }}</b>
         </div>
         <div class="status-item">
           <span>SharePoint 站点</span>
@@ -143,9 +166,16 @@ const saving = ref(false);
 const loadError = ref("");
 const config = ref<FilestoreStorageConfig | null>(null);
 const enabled = ref(false);
+const minSizeMb = ref(0);
 let loadSeq = 0;
 
 const remoteReady = computed(() => Boolean(config.value?.remoteReady));
+const thresholdLabel = computed(() => {
+  if (!config.value?.enabled) return "未开启";
+  return Number(config.value.minSizeMb || 0) > 0
+    ? `${config.value.minSizeMb} MB 及以上`
+    : "全部直传";
+});
 
 onMounted(reload);
 
@@ -167,6 +197,7 @@ async function reload() {
 function applyConfig(next: FilestoreStorageConfig) {
   config.value = next;
   enabled.value = next.enabled;
+  minSizeMb.value = Number(next.minSizeMb || 0);
 }
 
 async function save() {
@@ -176,7 +207,10 @@ async function save() {
   }
   saving.value = true;
   try {
-    const next = await adminApi.updateFilestoreStorageConfig({ enabled: enabled.value });
+    const next = await adminApi.updateFilestoreStorageConfig({
+      enabled: enabled.value,
+      minSizeMb: minSizeMb.value,
+    });
     applyConfig(next);
     ElMessage.success("文件收集存储设置已保存");
   } catch (error) {
@@ -278,6 +312,25 @@ function requestMessage(error: unknown) {
   background: #ffffff;
 }
 
+.threshold-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 14px 16px;
+  border: 1px solid #edf2f7;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.threshold-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #667085;
+  font-size: 13px;
+}
+
 .toggle-title {
   font-size: 15px;
   font-weight: 700;
@@ -329,6 +382,7 @@ function requestMessage(error: unknown) {
 @media (max-width: 720px) {
   .section-head,
   .toggle-row,
+  .threshold-row,
   .alert-action {
     align-items: stretch;
     flex-direction: column;

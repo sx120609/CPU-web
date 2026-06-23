@@ -11,6 +11,7 @@ export type MediaStorageStoredConfig = {
   mediaStorageVideoProvider: MediaStorageProvider;
   mediaStorageRemotePrefixes: string[];
   filestoreRemoteStorageEnabled: boolean;
+  filestoreRemoteMinSizeMb: number;
   oneDriveChinaClientId: string;
   oneDriveChinaClientSecret: string;
   oneDriveChinaSharepointUrl: string;
@@ -48,6 +49,7 @@ const MEDIA_STORAGE_IMAGE_PROVIDER_KEY = "storage.media.imageProvider";
 const MEDIA_STORAGE_VIDEO_PROVIDER_KEY = "storage.media.videoProvider";
 const MEDIA_STORAGE_REMOTE_PREFIXES_KEY = "storage.media.remotePrefixes";
 const FILESTORE_REMOTE_STORAGE_ENABLED_KEY = "filestore.remoteStorageEnabled";
+const FILESTORE_REMOTE_MIN_SIZE_MB_KEY = "filestore.remoteMinSizeMb";
 const ONEDRIVE_CN_CLIENT_ID_KEY = "storage.onedriveCn.clientId";
 const ONEDRIVE_CN_CLIENT_SECRET_KEY = "storage.onedriveCn.clientSecret";
 const ONEDRIVE_CN_SHAREPOINT_URL_KEY = "storage.onedriveCn.sharepointUrl";
@@ -68,6 +70,7 @@ const STORAGE_KEYS = [
   MEDIA_STORAGE_VIDEO_PROVIDER_KEY,
   MEDIA_STORAGE_REMOTE_PREFIXES_KEY,
   FILESTORE_REMOTE_STORAGE_ENABLED_KEY,
+  FILESTORE_REMOTE_MIN_SIZE_MB_KEY,
   ONEDRIVE_CN_CLIENT_ID_KEY,
   ONEDRIVE_CN_CLIENT_SECRET_KEY,
   ONEDRIVE_CN_SHAREPOINT_URL_KEY,
@@ -97,6 +100,7 @@ const storageConfigCache: MediaStorageStoredConfig = {
   ),
   mediaStorageRemotePrefixes: normalizeRemotePrefixes(config.mediaStorageRemotePrefixes, ["forum"]),
   filestoreRemoteStorageEnabled: false,
+  filestoreRemoteMinSizeMb: 0,
   oneDriveChinaClientId: "",
   oneDriveChinaClientSecret: "",
   oneDriveChinaSharepointUrl: "",
@@ -125,6 +129,7 @@ export async function loadStorageConfig(): Promise<void> {
     ),
     mediaStorageRemotePrefixes: normalizeRemotePrefixes(config.mediaStorageRemotePrefixes, ["forum"]),
     filestoreRemoteStorageEnabled: false,
+    filestoreRemoteMinSizeMb: 0,
     oneDriveChinaClientId: "",
     oneDriveChinaClientSecret: "",
     oneDriveChinaSharepointUrl: "",
@@ -163,6 +168,10 @@ export async function loadStorageConfig(): Promise<void> {
     }
     if (row.key === FILESTORE_REMOTE_STORAGE_ENABLED_KEY) {
       next.filestoreRemoteStorageEnabled = parseBooleanSetting(row.value, false);
+      continue;
+    }
+    if (row.key === FILESTORE_REMOTE_MIN_SIZE_MB_KEY) {
+      next.filestoreRemoteMinSizeMb = normalizeFileSizeThresholdMb(row.value, 0);
       continue;
     }
     if (row.key === ONEDRIVE_CN_CLIENT_ID_KEY) {
@@ -342,6 +351,8 @@ export async function getFilestoreStorageAdminConfig() {
   );
   return {
     enabled: runtime.filestoreRemoteStorageEnabled,
+    minSizeMb: runtime.filestoreRemoteMinSizeMb,
+    minSizeBytes: Math.round(runtime.filestoreRemoteMinSizeMb * 1024 * 1024),
     remoteReady,
     remoteConfigured: Boolean(runtime.oneDriveChinaDriveId.trim() || runtime.legacyDriveId.trim()),
     mediaStorageProvider: runtime.effectiveProvider,
@@ -357,7 +368,7 @@ export async function getFilestoreStorageAdminConfig() {
   };
 }
 
-export async function updateFilestoreStorageAdminConfig(input: { enabled?: boolean }) {
+export async function updateFilestoreStorageAdminConfig(input: { enabled?: boolean; minSizeMb?: number }) {
   await ensureLoaded();
   const next = cloneStorageConfig(storageConfigCache);
   if (input.enabled !== undefined) {
@@ -370,6 +381,9 @@ export async function updateFilestoreStorageAdminConfig(input: { enabled?: boole
       if (!remoteReady) throw new Error("请先在媒体存储页完成世纪互联授权并选择文档库");
     }
     next.filestoreRemoteStorageEnabled = Boolean(input.enabled);
+  }
+  if (input.minSizeMb !== undefined) {
+    next.filestoreRemoteMinSizeMb = normalizeFileSizeThresholdMb(input.minSizeMb, next.filestoreRemoteMinSizeMb);
   }
   sanitizeStorageConfig(next);
   await persistStorageConfig(next);
@@ -464,6 +478,7 @@ function sanitizeStorageConfig(target: MediaStorageStoredConfig) {
   target.mediaStorageVideoProvider = normalizeMediaStorageProvider(target.mediaStorageVideoProvider, target.mediaStorageProvider);
   target.mediaStorageRemotePrefixes = normalizeRemotePrefixes(target.mediaStorageRemotePrefixes, ["forum"]);
   target.filestoreRemoteStorageEnabled = Boolean(target.filestoreRemoteStorageEnabled);
+  target.filestoreRemoteMinSizeMb = normalizeFileSizeThresholdMb(target.filestoreRemoteMinSizeMb, 0);
   target.oneDriveChinaSharepointUrl = normalizeOptionalUrl(target.oneDriveChinaSharepointUrl);
   target.oneDriveChinaSharepointHost = String(target.oneDriveChinaSharepointHost || "").trim().toLowerCase();
   target.oneDriveChinaSharepointPath = normalizeSharePointPath(target.oneDriveChinaSharepointPath);
@@ -488,6 +503,7 @@ async function persistStorageConfig(next: MediaStorageStoredConfig) {
     [MEDIA_STORAGE_VIDEO_PROVIDER_KEY, next.mediaStorageVideoProvider],
     [MEDIA_STORAGE_REMOTE_PREFIXES_KEY, next.mediaStorageRemotePrefixes.join(",")],
     [FILESTORE_REMOTE_STORAGE_ENABLED_KEY, next.filestoreRemoteStorageEnabled ? "on" : "off"],
+    [FILESTORE_REMOTE_MIN_SIZE_MB_KEY, String(next.filestoreRemoteMinSizeMb)],
     [ONEDRIVE_CN_CLIENT_ID_KEY, next.oneDriveChinaClientId],
     [ONEDRIVE_CN_CLIENT_SECRET_KEY, next.oneDriveChinaClientSecret],
     [ONEDRIVE_CN_SHAREPOINT_URL_KEY, next.oneDriveChinaSharepointUrl],
@@ -535,6 +551,12 @@ function parseBooleanSetting(input: unknown, fallback: boolean) {
   if (["1", "true", "yes", "on"].includes(raw)) return true;
   if (["0", "false", "no", "off"].includes(raw)) return false;
   return fallback;
+}
+
+function normalizeFileSizeThresholdMb(input: unknown, fallback: number) {
+  const value = Number(input);
+  if (!Number.isFinite(value) || value < 0) return fallback;
+  return Math.min(10240, Math.round(value * 100) / 100);
 }
 
 function normalizeRemotePrefixes(input: string[] | string | unknown, fallback: string[]) {

@@ -94,6 +94,9 @@ export type MediaStorageMigrationResult = {
   mediaStorageVideoProvider: MediaStorageBackend;
   remotePrefixes: string[];
   eligible: number;
+  processed: number;
+  remaining: number;
+  batchLimit: number;
   migrated: number;
   failed: number;
   list: MediaStorageMigrationItem[];
@@ -406,14 +409,21 @@ export async function listMediaStorageAdminInventory(): Promise<MediaStorageAdmi
   };
 }
 
-export async function migrateLocalMediaAssetsToRemote(): Promise<MediaStorageMigrationResult> {
+export async function migrateLocalMediaAssetsToRemote(input: {
+  limit?: number;
+  excludePaths?: string[];
+} = {}): Promise<MediaStorageMigrationResult> {
   const runtime = await getMediaStorageRuntimeConfig();
   const startedAt = new Date().toISOString();
   const inventory = await listMediaStorageAdminInventory();
-  const eligibleFiles = inventory.list
+  const batchLimit = normalizeMigrationBatchLimit(input.limit);
+  const excluded = new Set((input.excludePaths ?? []).map((item) => normalizeRequestRelativePath(item)).filter(Boolean));
+  const allEligibleFiles = inventory.list
     .filter((item) => needsMigrationToConfiguredBackend(item))
     .map((item) => item.relativePath)
     .sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
+  const pendingFiles = allEligibleFiles.filter((item) => !excluded.has(normalizeUploadRelativePath(item)));
+  const eligibleFiles = pendingFiles.slice(0, batchLimit);
 
   const results: MediaStorageMigrationItem[] = [];
   for (const relativePath of eligibleFiles) {
@@ -469,7 +479,10 @@ export async function migrateLocalMediaAssetsToRemote(): Promise<MediaStorageMig
     mediaStorageImageProvider: runtime.effectiveImageProvider,
     mediaStorageVideoProvider: runtime.effectiveVideoProvider,
     remotePrefixes: [...runtime.effectiveRemotePrefixes],
-    eligible: eligibleFiles.length,
+    eligible: allEligibleFiles.length,
+    processed: eligibleFiles.length,
+    remaining: Math.max(0, pendingFiles.length - eligibleFiles.length),
+    batchLimit,
     migrated: results.filter((item) => item.status === "migrated").length,
     failed: results.filter((item) => item.status === "failed").length,
     list: results,
@@ -614,6 +627,12 @@ function normalizeUploadRelativePath(value: string) {
     throw new Error("媒体路径不合法");
   }
   return parts.join("/");
+}
+
+function normalizeMigrationBatchLimit(input: unknown) {
+  const value = Number(input);
+  if (!Number.isFinite(value)) return 10;
+  return Math.min(100, Math.max(1, Math.round(value)));
 }
 
 function normalizeRequestRelativePath(value: string) {

@@ -277,7 +277,8 @@ function renderTask() {
   `).join("");
   const rules = task.fileRules;
   $("#files").setAttribute("accept", rules.allowedTypes.map((item) => `.${item}`).join(","));
-  $("#fileRules").textContent = `允许 ${rules.allowedTypes.join(", ") || "任意类型"}；单文件不超过 ${rules.maxSizeMb} MB；最多 ${rules.maxCount} 个。`;
+  const remoteHint = directUploadHint();
+  $("#fileRules").textContent = `允许 ${rules.allowedTypes.join(", ") || "任意类型"}；单文件不超过 ${rules.maxSizeMb} MB；最多 ${rules.maxCount} 个。${remoteHint}`;
   $("#submitForm").hidden = false;
 }
 
@@ -305,6 +306,24 @@ function validateFiles(files) {
     if (file.size > maxBytes) return `${file.name} 超过大小限制`;
   }
   return "";
+}
+
+function directUploadThresholdBytes() {
+  return Math.max(0, Number(task.remoteUpload?.minSizeBytes || 0));
+}
+
+function directUploadHint() {
+  if (!task.remoteUpload?.enabled) return "";
+  const threshold = directUploadThresholdBytes();
+  if (threshold <= 0) return "；提交将直传世纪互联";
+  return `；本次提交含 ${formatBytes(threshold)} 及以上文件时直传世纪互联`;
+}
+
+function shouldUseDirectUpload(files) {
+  if (!task.remoteUpload?.enabled) return false;
+  const threshold = directUploadThresholdBytes();
+  if (threshold <= 0) return true;
+  return files.some((file) => file.size >= threshold);
 }
 
 function applySubmitSuccess(form, payload) {
@@ -492,7 +511,7 @@ $("#submitForm").addEventListener("submit", async (event) => {
     return;
   }
 
-  if (task.remoteUpload?.enabled) {
+  if (shouldUseDirectUpload(files)) {
     try {
       await submitRemote(form, files);
     } catch (error) {

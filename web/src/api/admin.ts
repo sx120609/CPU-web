@@ -71,6 +71,8 @@ export type MediaStorageConfig = {
 
 export type FilestoreStorageConfig = {
   enabled: boolean;
+  minSizeMb: number;
+  minSizeBytes: number;
   remoteReady: boolean;
   remoteConfigured: boolean;
   mediaStorageProvider: "local" | "onedrive-cn";
@@ -139,6 +141,9 @@ export type MediaStorageMigrationResult = {
   mediaStorageVideoProvider: "local" | "onedrive-cn";
   remotePrefixes: string[];
   eligible: number;
+  processed: number;
+  remaining: number;
+  batchLimit: number;
   migrated: number;
   failed: number;
   list: Array<{
@@ -566,7 +571,7 @@ export const adminApi = {
   siteConfig: (options?: RequestOptions) => request.get<SiteConfig>("/admin/site-config", undefined, options),
   sitePromptDefaults: (options?: RequestOptions) => request.get<SitePromptDefaults>("/admin/site-config/prompt-defaults", undefined, options),
   filestoreStorageConfig: (options?: RequestOptions) => request.get<FilestoreStorageConfig>("/admin/filestore-settings", undefined, options),
-  updateFilestoreStorageConfig: (patch: { enabled?: boolean }) =>
+  updateFilestoreStorageConfig: (patch: { enabled?: boolean; minSizeMb?: number }) =>
     request.patch<FilestoreStorageConfig>("/admin/filestore-settings", patch),
   mediaStorageConfig: (options?: RequestOptions) => request.get<MediaStorageConfig>("/admin/media-storage", undefined, options),
   updateMediaStorageConfig: (patch: {
@@ -600,7 +605,8 @@ export const adminApi = {
   clearOneDriveChinaAuthorization: () =>
     request.delete<{ ok: true }>("/admin/media-storage/onedrive-cn/authorization"),
   mediaStorageFiles: (options?: RequestOptions) => request.get<MediaStorageAdminInventory>("/admin/media-storage/files", undefined, options),
-  migrateMediaStorageFiles: () => request.post<MediaStorageMigrationResult>("/admin/media-storage/migrate", {}),
+  migrateMediaStorageFiles: (payload?: { limit?: number; excludePaths?: string[] }) =>
+    request.post<MediaStorageMigrationResult>("/admin/media-storage/migrate", payload ?? {}),
   cleanupMediaStorageLocalFiles: () => request.post<MediaStorageCleanupResult>("/admin/media-storage/cleanup-local", {}),
   cloudDrive: (path = "") =>
     request.get<CloudDriveDirectory>("/admin/cloud-drive", { path }),

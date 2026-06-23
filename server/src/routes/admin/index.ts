@@ -1627,6 +1627,7 @@ adminRouter.get("/filestore-settings", adminOnly, async (_req, res, next) => {
 
 const filestoreSettingsPatchSchema = z.object({
   enabled: z.boolean().optional(),
+  minSizeMb: z.number().min(0).max(10240).optional(),
 });
 
 adminRouter.patch("/filestore-settings", adminOnly, validate(filestoreSettingsPatchSchema), async (req, res, next) => {
@@ -1749,9 +1750,14 @@ adminRouter.get("/media-storage/files", adminOnly, async (_req, res, next) => {
   } catch (e) { next(e); }
 });
 
-adminRouter.post("/media-storage/migrate", adminOnly, async (_req, res, next) => {
+const mediaStorageMigrationSchema = z.object({
+  limit: z.number().int().min(1).max(100).optional(),
+  excludePaths: z.array(z.string().trim().min(1).max(800)).max(5000).optional(),
+});
+
+adminRouter.post("/media-storage/migrate", adminOnly, validate(mediaStorageMigrationSchema), async (req, res, next) => {
   try {
-    ok(res, await migrateLocalMediaAssetsToRemote());
+    ok(res, await migrateLocalMediaAssetsToRemote(req.body));
   } catch (e: any) {
     if (
       e?.message === "请先将媒体存储后端切换为世纪互联 OneDrive / SharePoint"

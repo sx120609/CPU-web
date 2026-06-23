@@ -197,6 +197,14 @@
         class="inventory-alert"
         title="有一部分当前应走远端的本地文件不在远端前缀内，这些文件不会参与迁移，否则会影响原路径访问。"
       />
+      <el-alert
+        v-if="migrationProgressText"
+        type="info"
+        :closable="false"
+        show-icon
+        class="inventory-alert"
+        :title="migrationProgressText"
+      />
 
       <div class="filters">
         <el-input v-model="fileQuery" clearable placeholder="搜索路径 / 文件名" class="filter-search" />
@@ -365,6 +373,8 @@ const lastMigrationResult = ref<MediaStorageMigrationResult | null>(null);
 const lastCleanupResult = ref<MediaStorageCleanupResult | null>(null);
 const fileQuery = ref("");
 const fileFilter = ref<FileFilterKey>("all");
+const migrationProgressText = ref("");
+const migrationBatchLimit = 8;
 
 const oneDriveCallbackUrl = computed(() => `${(siteOrigin.value || window.location.origin).replace(/\/+$/, "")}/api/storage/onedrive-cn/callback`);
 const migrationCandidates = computed(() => (inventory.value?.list ?? []).filter((row) => needsMigration(row)));
@@ -644,15 +654,65 @@ async function migrateLocalFiles() {
   }
 
   try {
-    const result = await adminApi.migrateMediaStorageFiles();
-    lastMigrationResult.value = result;
+    const totalEligible = inventory.value.summary.eligibleMigrationCount;
+    const allItems: MediaStorageMigrationResult["list"] = [];
+    const failedPaths = new Set<string>();
+    let migrated = 0;
+    let failed = 0;
+    let processed = 0;
+    let remaining = totalEligible;
+    let aggregate: MediaStorageMigrationResult | null = null;
+
+    while (remaining > 0) {
+      migrationProgressText.value = `正在同步：已处理 ${processed} / ${totalEligible}，本批最多 ${migrationBatchLimit} 个`;
+      const result = await adminApi.migrateMediaStorageFiles({
+        limit: migrationBatchLimit,
+        excludePaths: [...failedPaths],
+      });
+      if (!result.processed && !result.list.length) {
+        remaining = 0;
+        aggregate = {
+          ...result,
+          eligible: totalEligible,
+          processed,
+          remaining,
+          migrated,
+          failed,
+          list: allItems,
+        };
+        break;
+      }
+
+      for (const item of result.list) {
+        allItems.push(item);
+        if (item.status === "failed") failedPaths.add(item.relativePath);
+      }
+      migrated += result.migrated;
+      failed += result.failed;
+      processed += result.processed;
+      remaining = result.remaining;
+      aggregate = {
+        ...result,
+        eligible: totalEligible,
+        processed,
+        remaining,
+        migrated,
+        failed,
+        list: [...allItems],
+      };
+      lastMigrationResult.value = aggregate;
+      if (result.remaining <= 0) break;
+    }
+
+    if (aggregate) lastMigrationResult.value = aggregate;
     await reloadInventory();
-    if (result.failed) {
-      ElMessage.warning(`同步完成：成功 ${result.migrated}，失败 ${result.failed}`);
+    if (failed) {
+      ElMessage.warning(`同步完成：成功 ${migrated}，失败 ${failed}`);
     } else {
-      ElMessage.success(`同步完成，共处理 ${result.migrated} 个文件`);
+      ElMessage.success(`同步完成，共处理 ${migrated} 个文件`);
     }
   } finally {
+    migrationProgressText.value = "";
     migratingFiles.value = false;
   }
 }
