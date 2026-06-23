@@ -21,6 +21,7 @@ import { fail } from "./utils/response";
 export function createApp() {
   const app = express();
 
+  app.set("trust proxy", true);
   app.use(cors());
   app.use(compression({
     threshold: 1024,

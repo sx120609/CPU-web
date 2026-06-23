@@ -31,6 +31,7 @@ import {
   buildOfficeViewerUrl,
   canUseOfficeWebViewer,
   isOfficePreviewFile,
+  joinPublicUrl,
   officeWebViewerLimitMessage,
   requestPublicOrigin,
   signFileCollectPreviewToken,
@@ -328,6 +329,22 @@ function normalizeSiteTitle(value: unknown) {
 
 function normalizeSiteUrl(value: unknown) {
   return String(value ?? "").trim().replace(/\/+$/, "").slice(0, 240);
+}
+
+function buildFilestorePublicUrl(base: string, mountedPath: string) {
+  const normalizedBase = normalizeSiteUrl(base);
+  if (!normalizedBase) return "";
+  let targetPath = mountedPath.startsWith("/") ? mountedPath : `/${mountedPath}`;
+  try {
+    const url = new URL(normalizedBase);
+    const basePath = url.pathname.replace(/\/+$/, "");
+    if (basePath.endsWith(MOUNT_PATH) && targetPath.startsWith(`${MOUNT_PATH}/`)) {
+      targetPath = targetPath.slice(MOUNT_PATH.length) || "/";
+    }
+  } catch {
+    // Invalid configured URLs are ignored by joinPublicUrl below.
+  }
+  return joinPublicUrl(normalizedBase, targetPath);
 }
 
 function normalizeFieldKey(value: unknown) {

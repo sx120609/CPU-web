@@ -15,8 +15,8 @@ const OFFICE_PREVIEW_EXTENSIONS = new Set([
 ]);
 
 const OFFICE_WEB_VIEWER_LIMITS = {
-  wordAndPowerPoint: 10 * 1024 * 1024,
-  excel: 5 * 1024 * 1024,
+  wordAndPowerPoint: 100 * 1024 * 1024,
+  excel: 25 * 1024 * 1024,
 };
 
 const FILE_COLLECT_PREVIEW_PURPOSE = "file-collect-office-preview";
@@ -56,10 +56,27 @@ export function buildOfficeViewerUrl(sourceUrl: string) {
   return `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(sourceUrl)}`;
 }
 
+function isLocalHost(host: string) {
+  const normalized = host.split(":")[0]?.replace(/^\[|\]$/g, "").toLowerCase();
+  return !normalized
+    || normalized === "localhost"
+    || normalized === "127.0.0.1"
+    || normalized === "::1"
+    || normalized.endsWith(".local");
+}
+
 export function requestPublicOrigin(req: Request) {
-  const proto = String(req.headers["x-forwarded-proto"] ?? req.protocol ?? "https").split(",")[0].trim() || "https";
+  let proto = String(req.headers["x-forwarded-proto"] ?? req.protocol ?? "https").split(",")[0].trim() || "https";
   const host = String(req.headers["x-forwarded-host"] ?? req.headers.host ?? "").split(",")[0].trim();
+  if (proto === "http" && !isLocalHost(host) && config.nodeEnv === "production") proto = "https";
   return host ? `${proto}://${host}` : "";
+}
+
+export function joinPublicUrl(base: string, pathname: string) {
+  const normalizedBase = String(base || "").trim().replace(/\/+$/, "");
+  if (!normalizedBase) return "";
+  const normalizedPath = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  return `${normalizedBase}${normalizedPath}`;
 }
 
 export function signFileCollectPreviewToken(file: { id: number; path: string }) {

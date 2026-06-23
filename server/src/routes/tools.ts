@@ -13,6 +13,7 @@ import {
   buildOfficeViewerUrl,
   canUseOfficeWebViewer,
   isOfficePreviewFile,
+  joinPublicUrl,
   officeWebViewerLimitMessage,
   requestPublicOrigin,
   signFileCollectPreviewToken,
@@ -1023,7 +1024,7 @@ toolsRouter.get("/file-collection-files/:id/access", authRequired, async (req, r
       : "";
     const origin = requestPublicOrigin(req);
     const publicOfficePreviewUrl = origin && action === "preview" && !remotePreviewUrl && !remoteUrl && canUseOfficeWebViewer(file)
-      ? `${origin}/api/tools/file-collection-files/${file.id}/public-preview/${encodeURIComponent(file.storedName)}?token=${encodeURIComponent(signFileCollectPreviewToken(file))}`
+      ? joinPublicUrl(origin, `/api/tools/file-collection-files/${file.id}/public-preview/${encodeURIComponent(file.storedName)}?token=${encodeURIComponent(signFileCollectPreviewToken(file))}`)
       : "";
     const previewSourceUrl = action === "preview" && isOfficePreviewFile(file.storedName)
       ? publicOfficePreviewUrl
