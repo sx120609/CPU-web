@@ -55,6 +55,12 @@ function escapeHtml(value = "") {
     .replaceAll('"', "&quot;");
 }
 
+function normalizeSiteTitle(value) {
+  const title = String(value || "").trim();
+  if (!title || /^filestore(?:\s|$)/i.test(title)) return SITE_TITLE_DEFAULT;
+  return title;
+}
+
 function headers() {
   const token = localStorage.getItem("cpu-web-token") || "";
   return {
@@ -95,8 +101,8 @@ function setAuthed(isAuthed) {
 }
 
 function applyBranding() {
-  const title = state.settings.siteTitle || SITE_TITLE_DEFAULT;
-  document.title = `${title} 管理系统`;
+  const title = normalizeSiteTitle(state.settings.siteTitle);
+  document.title = `${title} · 工作台`;
   $$("[data-site-title]").forEach((node) => {
     node.textContent = title;
   });
@@ -251,7 +257,7 @@ function promptInApp({ title = "输入名称", body = "", label = "名称", valu
 function normalizeSettings(settings = {}) {
   return {
     siteUrl: settings.siteUrl || "",
-    siteTitle: settings.siteTitle || SITE_TITLE_DEFAULT,
+    siteTitle: normalizeSiteTitle(settings.siteTitle),
     taskTemplates: Array.isArray(settings.taskTemplates) ? settings.taskTemplates : [],
   };
 }

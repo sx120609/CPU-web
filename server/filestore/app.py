@@ -412,6 +412,13 @@ def normalize_site_url(value: str) -> str:
     return site_url
 
 
+def normalize_site_title(value: str | None) -> str:
+    title = str(value or "").strip()
+    if not title or re.match(r"^filestore(?:\s|$)", title, re.IGNORECASE):
+        return SITE_TITLE_DEFAULT
+    return title[:60]
+
+
 def app_settings() -> dict:
     raw_template = get_setting("task_template")
     legacy_template = json.loads(raw_template) if raw_template else None
@@ -423,7 +430,7 @@ def app_settings() -> dict:
         templates = [legacy_template]
     return {
         "siteUrl": get_setting("site_url"),
-        "siteTitle": get_setting("site_title", SITE_TITLE_DEFAULT) or SITE_TITLE_DEFAULT,
+        "siteTitle": normalize_site_title(get_setting("site_title", SITE_TITLE_DEFAULT)),
         "taskTemplates": templates,
     }
 
@@ -832,7 +839,7 @@ def build_public_status(token: str) -> dict | None:
         "title": detail["title"],
         "deadline": detail["deadline"],
         "status": detail["status"],
-        "siteTitle": get_setting("site_title", SITE_TITLE_DEFAULT) or SITE_TITLE_DEFAULT,
+        "siteTitle": normalize_site_title(get_setting("site_title", SITE_TITLE_DEFAULT)),
         "stats": {
             "submitted": detail["stats"]["submitted"],
             "expected": detail["stats"]["expected"],
@@ -1085,7 +1092,7 @@ class AppHandler(SimpleHTTPRequestHandler):
                 send_json(self, {"error": "提交链接不存在"}, HTTPStatus.NOT_FOUND)
                 return
             public_task = {key: task[key] for key in ["title", "description", "deadline", "fields", "fileRules", "renameTemplate", "folderTemplate", "status"]}
-            public_task["siteTitle"] = get_setting("site_title", SITE_TITLE_DEFAULT) or SITE_TITLE_DEFAULT
+            public_task["siteTitle"] = normalize_site_title(get_setting("site_title", SITE_TITLE_DEFAULT))
             send_json(self, public_task)
             return
         match = re.fullmatch(r"/api/public/status/([A-Za-z0-9_-]+)", path)
@@ -1196,7 +1203,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             try:
                 payload = read_json_body(self)
                 site_url = normalize_site_url(str(payload.get("siteUrl", "")))
-                site_title = str(payload.get("siteTitle", SITE_TITLE_DEFAULT)).strip()[:60] or SITE_TITLE_DEFAULT
+                site_title = normalize_site_title(payload.get("siteTitle", SITE_TITLE_DEFAULT))
                 templates_value = None
                 should_update_templates = "taskTemplates" in payload
                 if should_update_templates:

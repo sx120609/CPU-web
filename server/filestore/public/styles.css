@@ -400,11 +400,16 @@ p {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .mobile-brand strong {
   font-size: 15px;
   color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mobile-only-close {
@@ -428,7 +433,7 @@ p {
 /* Sidebar */
 .app-sidebar {
   display: grid;
-  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto auto auto minmax(0, 1fr);
   gap: 16px;
   padding: 24px 20px;
   background: var(--sidebar);
@@ -470,6 +475,47 @@ p {
   font-weight: 600;
   letter-spacing: 0;
   display: block;
+}
+
+.back-to-site {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  background: #fff;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.2;
+  transition: var(--transition);
+}
+
+.back-to-site:hover {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+  color: var(--accent-dark);
+}
+
+.sidebar-back-to-site,
+.login-back-to-site {
+  width: 100%;
+}
+
+.login-back-to-site {
+  margin-top: 10px;
+}
+
+.mobile-back-to-site {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding-inline: 10px;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .sidebar-intro {
