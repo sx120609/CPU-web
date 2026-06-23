@@ -159,6 +159,19 @@ function resolveConfiguredBackendForRelativePath(
   return runtime.effectiveProvider;
 }
 
+function resolveConfiguredBackendForInventoryRow(
+  relativePath: string,
+  runtime: Awaited<ReturnType<typeof getMediaStorageRuntimeConfigSync>>,
+  sizeBytes: number | null,
+): MediaStorageBackend {
+  if (isFileCollectRelativePath(relativePath) && runtime.filestoreRemoteStorageEnabled) {
+    const thresholdBytes = Math.round(Math.max(0, Number(runtime.filestoreRemoteMinSizeMb || 0)) * 1024 * 1024);
+    if (thresholdBytes > 0 && sizeBytes !== null && sizeBytes < thresholdBytes) return "local";
+    return "onedrive-cn";
+  }
+  return resolveConfiguredBackendForRelativePath(relativePath, runtime);
+}
+
 function remoteStorageConfigured(runtime: Awaited<ReturnType<typeof getMediaStorageRuntimeConfigSync>>) {
   return Boolean(runtime.oneDriveChinaDriveId.trim() || runtime.legacyDriveId.trim());
 }
@@ -366,7 +379,8 @@ export async function listMediaStorageAdminInventory(): Promise<MediaStorageAdmi
       const cache = cacheFiles.get(relativePath);
       const remote = remoteFiles.get(relativePath);
       const mediaKind = resolveMediaKindForRelativePath(relativePath);
-      const configuredBackend = resolveConfiguredBackendForRelativePath(relativePath, runtime);
+      const sizeBytes = local?.sizeBytes ?? cache?.sizeBytes ?? remote?.sizeBytes ?? null;
+      const configuredBackend = resolveConfiguredBackendForInventoryRow(relativePath, runtime, sizeBytes);
       const eligibleForRemote = configuredBackend === "onedrive-cn" && pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes);
       return {
         relativePath,
@@ -403,7 +417,7 @@ export async function listMediaStorageAdminInventory(): Promise<MediaStorageAdmi
       eligibleMigrationCount: list.filter((item) => needsMigrationToConfiguredBackend(item)).length,
       syncedCount: list.filter((item) => hasRedundantCopiesForConfiguredBackend(item)).length,
       migratedCount: list.filter((item) => isStoredOnConfiguredBackend(item)).length,
-      outOfScopeLocalCount: list.filter((item) => item.localExists && !item.inRemotePrefix).length,
+      outOfScopeLocalCount: list.filter((item) => item.configuredBackend === "onedrive-cn" && item.localExists && !item.inRemotePrefix).length,
     },
     list,
   };
@@ -427,12 +441,12 @@ export async function migrateLocalMediaAssetsToRemote(input: {
 
   const results: MediaStorageMigrationItem[] = [];
   for (const relativePath of eligibleFiles) {
-    const targetBackend = resolveConfiguredBackendForRelativePath(relativePath, runtime);
     const localPath = localAssetAbsolutePath(relativePath);
     const cachePath = cachedAssetAbsolutePath(relativePath);
     try {
       const inventoryRow = inventory.list.find((item) => item.relativePath === relativePath);
       if (!inventoryRow) continue;
+      const targetBackend = inventoryRow.configuredBackend;
       if (targetBackend === "onedrive-cn") {
         const sourcePath = inventoryRow.localExists ? localPath : inventoryRow.cacheExists ? cachePath : "";
         if (!sourcePath) throw new Error("缺少可上传的本地源文件");

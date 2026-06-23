@@ -316,14 +316,18 @@ function directUploadHint() {
   if (!task.remoteUpload?.enabled) return "";
   const threshold = directUploadThresholdBytes();
   if (threshold <= 0) return "；提交将直传世纪互联";
-  return `；本次提交含 ${formatBytes(threshold)} 及以上文件时直传世纪互联`;
+  return `；${formatBytes(threshold)} 及以上文件将直传世纪互联，小文件仍走本地`;
 }
 
-function shouldUseDirectUpload(files) {
+function shouldUseFileDirectUpload(file) {
   if (!task.remoteUpload?.enabled) return false;
   const threshold = directUploadThresholdBytes();
   if (threshold <= 0) return true;
-  return files.some((file) => file.size >= threshold);
+  return file.size >= threshold;
+}
+
+function shouldUseDirectUpload(files) {
+  return files.some((file) => shouldUseFileDirectUpload(file));
 }
 
 function applySubmitSuccess(form, payload) {
@@ -387,13 +391,35 @@ async function uploadFileToSession(file, uploadFile, onProgress) {
   }
 }
 
-async function completeRemoteSubmission(submissionId) {
+async function completeRemoteSubmission(submissionId, remoteFileIds, localEntries, onLocalProgress) {
+  if (localEntries.length) {
+    return new Promise((resolve, reject) => {
+      const formData = new FormData();
+      formData.append("submissionId", String(submissionId));
+      formData.append("remoteFileIds", JSON.stringify(remoteFileIds));
+      formData.append("localFileIds", JSON.stringify(localEntries.map((entry) => entry.preparedFile.id)));
+      localEntries.forEach((entry) => formData.append("files", entry.file, entry.file.name));
+      const xhr = new XMLHttpRequest();
+      xhr.upload.addEventListener("progress", (event) => {
+        if (event.lengthComputable) onLocalProgress(event.loaded);
+      });
+      xhr.addEventListener("load", () => {
+        const payload = JSON.parse(xhr.responseText || "{}");
+        if (xhr.status >= 200 && xhr.status < 300) resolve(payload);
+        else reject(new Error(responseErrorMessage(payload, "确认提交失败")));
+      });
+      xhr.addEventListener("error", () => reject(new Error("网络错误，确认提交失败")));
+      xhr.open("POST", `/api/submit/${token}/complete-remote`);
+      xhr.send(formData);
+    });
+  }
+
   const response = await fetch(`/api/submit/${token}/complete-remote`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ submissionId }),
+    body: JSON.stringify({ submissionId, remoteFileIds }),
   });
   return readJsonResponse(response, "确认提交失败");
 }
@@ -404,20 +430,46 @@ async function submitRemote(form, files) {
   message("正在创建世纪互联直传会话...");
   const prepared = await prepareRemoteSubmission(files);
   const uploadFiles = Array.isArray(prepared.files) ? prepared.files : [];
-  if (uploadFiles.length !== files.length) throw new Error("直传会话数量不匹配，请重试");
+  const localFiles = Array.isArray(prepared.localFiles) ? prepared.localFiles : [];
+  const remoteByIndex = new Map(uploadFiles.map((item) => [Number(item.index), item]));
+  const localByIndex = new Map(localFiles.map((item) => [Number(item.index), item]));
+  const remoteEntries = files
+    .map((file, index) => ({ file, preparedFile: remoteByIndex.get(index) }))
+    .filter((entry) => entry.preparedFile);
+  const localEntries = files
+    .map((file, index) => ({ file, preparedFile: localByIndex.get(index) }))
+    .filter((entry) => entry.preparedFile);
+  if (remoteEntries.length !== uploadFiles.length || localEntries.length !== localFiles.length) {
+    throw new Error("上传会话数量不匹配，请刷新后重试");
+  }
+  if (remoteEntries.length + localEntries.length !== files.length) {
+    throw new Error("上传会话缺少部分文件，请刷新后重试");
+  }
 
   let uploadedBytes = 0;
-  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+  let localUploadedBytes = 0;
+  const remoteBytes = remoteEntries.reduce((sum, entry) => sum + entry.file.size, 0);
+  const localBytes = localEntries.reduce((sum, entry) => sum + entry.file.size, 0);
+  const totalBytes = remoteBytes + localBytes;
   message("正在直传至世纪互联...");
-  for (let index = 0; index < files.length; index += 1) {
-    await uploadFileToSession(files[index], uploadFiles[index], (bytes) => {
+  for (const entry of remoteEntries) {
+    await uploadFileToSession(entry.file, entry.preparedFile, (bytes) => {
       uploadedBytes += bytes;
       $("#progress").value = totalBytes ? Math.min(99, Math.round((uploadedBytes / totalBytes) * 100)) : 0;
     });
   }
 
-  message("正在确认提交...");
-  const payload = await completeRemoteSubmission(prepared.submissionId);
+  message(localEntries.length ? "正在上传小文件并确认提交..." : "正在确认提交...");
+  const payload = await completeRemoteSubmission(
+    prepared.submissionId,
+    remoteEntries.map((entry) => entry.preparedFile.id),
+    localEntries,
+    (bytes) => {
+      localUploadedBytes = bytes;
+      const done = uploadedBytes + localUploadedBytes;
+      $("#progress").value = totalBytes ? Math.min(99, Math.round((done / totalBytes) * 100)) : 0;
+    },
+  );
   applySubmitSuccess(form, payload);
 }
 

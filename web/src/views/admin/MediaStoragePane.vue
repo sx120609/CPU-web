@@ -773,7 +773,7 @@ function resolveState(row: MediaStorageAdminFileEntry) {
   if (row.localExists && row.remoteExists) {
     return {
       key: "synced" as const,
-      label: row.inRemotePrefix ? "本地 + 远端并存" : "历史本地 + 远端并存",
+      label: row.configuredBackend === "local" || row.inRemotePrefix ? "本地 + 远端并存" : "历史本地 + 远端并存",
       type: "warning" as const,
     };
   }
@@ -791,6 +791,9 @@ function resolveState(row: MediaStorageAdminFileEntry) {
     return { key: "eligible" as const, label: "待同步", type: "warning" as const };
   }
   if (row.localExists && !row.inRemotePrefix) {
+    if (row.configuredBackend === "local") {
+      return { key: "migrated" as const, label: "已在当前后端", type: "success" as const };
+    }
     return { key: "out-of-scope" as const, label: "前缀外本地", type: "info" as const };
   }
   if (row.remoteExists && !row.localExists && !row.cacheExists) {

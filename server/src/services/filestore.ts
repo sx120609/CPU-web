@@ -772,7 +772,6 @@ function normalizeDirectUploadFiles(input: unknown) {
     if (!Number.isFinite(size) || size < 0 || size > Number.MAX_SAFE_INTEGER) {
       throw filestoreApiError(400, `${name} 大小不正确`);
     }
-    if (size === 0) throw filestoreApiError(400, `${name} 是空文件，暂不支持直传`);
     return {
       originalname: name,
       size: Math.round(size),
@@ -781,8 +780,31 @@ function normalizeDirectUploadFiles(input: unknown) {
   });
 }
 
+function parseNumericIdList(value: unknown): number[] {
+  if (Array.isArray(value)) return value.flatMap((item) => parseNumericIdList(item));
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith("[")) {
+      try {
+        return parseNumericIdList(JSON.parse(trimmed));
+      } catch {
+        return [];
+      }
+    }
+    return trimmed.split(",").map((item) => Number(item.trim())).filter((item) => Number.isInteger(item) && item > 0);
+  }
+  const numberValue = Number(value);
+  return Number.isInteger(numberValue) && numberValue > 0 ? [numberValue] : [];
+}
+
 function buildFileCollectRelativePath(taskId: number, physicalName: string) {
   return path.posix.join("file-collect", String(taskId), physicalName);
+}
+
+function shouldFilestoreFileUseRemote(size: number, minSizeBytes: number) {
+  if (minSizeBytes <= 0) return true;
+  return Number(size || 0) >= minSizeBytes;
 }
 
 async function filestoreRemoteUploadPolicy(taskId: number, files: Array<{ size: number }> = []) {
@@ -795,7 +817,7 @@ async function filestoreRemoteUploadPolicy(taskId: number, files: Array<{ size: 
     && await shouldUseRemoteMediaStorageForRelativePath(buildFileCollectRelativePath(taskId, "__probe__"));
   const minSizeMb = Math.max(0, Number(runtime.filestoreRemoteMinSizeMb || 0));
   const minSizeBytes = Math.round(minSizeMb * 1024 * 1024);
-  const triggered = !files.length || minSizeBytes <= 0 || files.some((file) => Number(file.size || 0) >= minSizeBytes);
+  const triggered = !files.length || files.some((file) => shouldFilestoreFileUseRemote(Number(file.size || 0), minSizeBytes));
   return {
     available,
     shouldDirect: available && triggered,
@@ -1180,9 +1202,16 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
     const data = normalizeSubmissionData(fields, dataSource);
     const files = normalizeDirectUploadFiles(payload.files);
     validateUploadFiles(files, rules);
-    if (!(await filestoreRemoteUploadPolicy(task.id, files)).shouldDirect) {
+    const uploadPolicy = await filestoreRemoteUploadPolicy(task.id, files);
+    if (!uploadPolicy.shouldDirect) {
       throw filestoreApiError(400, "所选文件未达到世纪互联直传阈值，请使用普通上传");
     }
+    const directFileIndexes = new Set(
+      files
+        .map((file, index) => ({ file, index }))
+        .filter(({ file }) => shouldFilestoreFileUseRemote(file.size, uploadPolicy.minSizeBytes))
+        .map(({ index }) => index),
+    );
     const identity = submissionIdentity(data);
 
     const created = await prisma.$transaction(async (tx) => {
@@ -1218,7 +1247,21 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
 
     try {
       const uploadFiles = [];
-      for (const file of created.files) {
+      const localFiles = [];
+      for (let index = 0; index < created.files.length; index += 1) {
+        const file = created.files[index];
+        if (!directFileIndexes.has(index)) {
+          localFiles.push({
+            id: file.id,
+            index,
+            originalName: file.originalName,
+            storedName: file.storedName,
+            size: file.size,
+            mimeType: file.mimeType,
+          });
+          continue;
+        }
+        if (file.size <= 0) throw filestoreApiError(400, `${file.storedName} 是空文件，暂不支持直传`);
         const session = await createRemoteMediaUploadSession({
           relativePath: file.path,
           contentType: file.mimeType || "application/octet-stream",
@@ -1226,6 +1269,7 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
         if (!session) throw filestoreApiError(400, "当前任务未启用世纪互联直传");
         uploadFiles.push({
           id: file.id,
+          index,
           originalName: file.originalName,
           storedName: file.storedName,
           size: file.size,
@@ -1239,6 +1283,7 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
         directUpload: true,
         submissionId: created.submission.id,
         files: uploadFiles,
+        localFiles,
       });
     } catch (error) {
       await prisma.fileCollectSubmission.delete({ where: { id: created.submission.id } }).catch(() => null);
@@ -1249,20 +1294,122 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
   }
   const completeRemoteSubmitMatch = target.match(/^\/api\/submit\/([A-Za-z0-9_-]+)\/complete-remote$/);
   if (req.method === "POST" && completeRemoteSubmitMatch) {
-    const payload = await parseFilestoreJsonBody(req, res);
-    const submissionId = Number(payload.submissionId ?? payload.id);
-    if (!Number.isInteger(submissionId) || submissionId <= 0) throw filestoreApiError(400, "提交编号无效");
-    const submission = await prisma.fileCollectSubmission.findUnique({
-      where: { id: submissionId },
-      include: {
-        task: true,
-        files: { orderBy: { id: "asc" } },
-      },
-    });
-    if (!submission || submission.task.slug !== completeRemoteSubmitMatch[1]) {
-      throw filestoreApiError(404, "提交记录不存在");
-    }
-    if (submission.status === "submitted") {
+    let uploadedFiles: Express.Multer.File[] = [];
+    const movedPaths: string[] = [];
+    try {
+      const contentType = String(req.headers["content-type"] || "");
+      const isMultipart = contentType.includes("multipart/form-data");
+      let body: Record<string, unknown>;
+      if (isMultipart) {
+        uploadedFiles = await parseFilestoreUpload(req, res);
+        body = (req.body && typeof req.body === "object") ? req.body as Record<string, unknown> : {};
+      } else {
+        body = await parseFilestoreJsonBody(req, res);
+      }
+      const submissionId = Number(body.submissionId ?? body.id);
+      if (!Number.isInteger(submissionId) || submissionId <= 0) throw filestoreApiError(400, "提交编号无效");
+      const submission = await prisma.fileCollectSubmission.findUnique({
+        where: { id: submissionId },
+        include: {
+          task: true,
+          files: { orderBy: { id: "asc" } },
+        },
+      });
+      if (!submission || submission.task.slug !== completeRemoteSubmitMatch[1]) {
+        throw filestoreApiError(404, "提交记录不存在");
+      }
+      if (submission.status === "submitted") {
+        res.json({
+          ok: true,
+          id: submission.id,
+          submissionId: submission.id,
+          createdAt: isoDate(submission.createdAt),
+          files: submission.files.map((file) => file.storedName),
+        });
+        return true;
+      }
+      if (submission.status !== "uploading") throw filestoreApiError(400, "提交状态无法完成");
+      if (!submission.files.length) throw filestoreApiError(400, "没有待确认文件");
+
+      const uploadPolicy = await filestoreRemoteUploadPolicy(submission.taskId, submission.files);
+      const expectedRemoteFiles = uploadPolicy.available
+        ? submission.files.filter((file) => shouldFilestoreFileUseRemote(file.size, uploadPolicy.minSizeBytes))
+        : [];
+      const expectedRemoteIds = new Set(expectedRemoteFiles.map((file) => file.id));
+      const expectedLocalFiles = submission.files.filter((file) => !expectedRemoteIds.has(file.id));
+      const confirmedRemoteIds = new Set(parseNumericIdList(body.remoteFileIds));
+      const submittedLocalIds = parseNumericIdList(body.localFileIds);
+      if (confirmedRemoteIds.size && expectedRemoteFiles.some((file) => !confirmedRemoteIds.has(file.id))) {
+        throw filestoreApiError(400, "直传文件列表不完整，请刷新后重试");
+      }
+      if (expectedLocalFiles.length) {
+        if (submittedLocalIds.length !== expectedLocalFiles.length) {
+          throw filestoreApiError(400, "本地文件列表不完整，请刷新后重试");
+        }
+        const expectedLocalIds = new Set(expectedLocalFiles.map((file) => file.id));
+        if (submittedLocalIds.some((id) => !expectedLocalIds.has(id))) {
+          throw filestoreApiError(400, "本地文件列表与提交记录不匹配");
+        }
+      }
+      if (uploadedFiles.length !== expectedLocalFiles.length) {
+        throw filestoreApiError(400, "本地文件数量与提交记录不匹配");
+      }
+
+      for (const file of expectedRemoteFiles) {
+        const meta = await getOneDriveChinaItemMetadata(file.path);
+        if (!meta || meta.kind !== "file") throw filestoreApiError(400, `${file.storedName} 尚未上传完成`);
+        if (meta.size !== null && Number(meta.size) !== Number(file.size)) {
+          throw filestoreApiError(400, `${file.storedName} 上传大小不一致`);
+        }
+      }
+
+      if (expectedLocalFiles.length) {
+        const taskDir = path.resolve(process.cwd(), "uploads", "file-collect", String(submission.taskId));
+        mkdirSync(taskDir, { recursive: true });
+        const localById = new Map(expectedLocalFiles.map((file) => [file.id, file]));
+        for (let index = 0; index < submittedLocalIds.length; index += 1) {
+          const expected = localById.get(submittedLocalIds[index]);
+          const uploaded = uploadedFiles[index];
+          if (!expected || !uploaded) throw filestoreApiError(400, "本地文件列表与提交记录不匹配");
+          if (uploaded.size !== expected.size) throw filestoreApiError(400, `${expected.storedName} 上传大小不一致`);
+          if (uploaded.originalname !== expected.originalName) throw filestoreApiError(400, `${expected.storedName} 文件名不一致`);
+          const absoluteTarget = path.join(taskDir, path.basename(expected.path));
+          await rename(uploaded.path, absoluteTarget);
+          movedPaths.push(expected.path);
+        }
+      }
+
+      const stalePaths = await prisma.$transaction(async (tx) => {
+        const oldPaths: string[] = [];
+        if (submission.identity) {
+          const oldRows = await tx.fileCollectSubmission.findMany({
+            where: {
+              taskId: submission.taskId,
+              identity: submission.identity,
+              status: "submitted",
+              id: { not: submission.id },
+            },
+            include: { files: true },
+          });
+          for (const old of oldRows) {
+            await tx.fileCollectSubmission.delete({ where: { id: old.id } });
+            oldPaths.push(...old.files.map((file) => file.path));
+          }
+        }
+        await tx.fileCollectSubmission.update({
+          where: { id: submission.id },
+          data: { status: "submitted" },
+        });
+        await tx.fileCollectTask.update({
+          where: { id: submission.taskId },
+          data: {
+            submissionCount: await tx.fileCollectSubmission.count({ where: { taskId: submission.taskId, status: "submitted" } }),
+            fileCount: await tx.fileCollectFile.count({ where: { submission: { taskId: submission.taskId, status: "submitted" } } }),
+          },
+        });
+        return oldPaths;
+      });
+      await Promise.all(stalePaths.map((item) => unlinkFileCollectPath(item)));
       res.json({
         ok: true,
         id: submission.id,
@@ -1270,56 +1417,11 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
         createdAt: isoDate(submission.createdAt),
         files: submission.files.map((file) => file.storedName),
       });
-      return true;
+    } catch (error) {
+      await Promise.all(uploadedFiles.map((file) => unlink(file.path).catch(() => null)));
+      if (movedPaths.length) await Promise.all(movedPaths.map((item) => unlinkFileCollectPath(item)));
+      throw error;
     }
-    if (submission.status !== "uploading") throw filestoreApiError(400, "提交状态无法完成");
-    if (!submission.files.length) throw filestoreApiError(400, "没有待确认文件");
-    for (const file of submission.files) {
-      const meta = await getOneDriveChinaItemMetadata(file.path);
-      if (!meta || meta.kind !== "file") throw filestoreApiError(400, `${file.storedName} 尚未上传完成`);
-      if (meta.size !== null && Number(meta.size) !== Number(file.size)) {
-        throw filestoreApiError(400, `${file.storedName} 上传大小不一致`);
-      }
-    }
-
-    const stalePaths = await prisma.$transaction(async (tx) => {
-      const oldPaths: string[] = [];
-      if (submission.identity) {
-        const oldRows = await tx.fileCollectSubmission.findMany({
-          where: {
-            taskId: submission.taskId,
-            identity: submission.identity,
-            status: "submitted",
-            id: { not: submission.id },
-          },
-          include: { files: true },
-        });
-        for (const old of oldRows) {
-          await tx.fileCollectSubmission.delete({ where: { id: old.id } });
-          oldPaths.push(...old.files.map((file) => file.path));
-        }
-      }
-      await tx.fileCollectSubmission.update({
-        where: { id: submission.id },
-        data: { status: "submitted" },
-      });
-      await tx.fileCollectTask.update({
-        where: { id: submission.taskId },
-        data: {
-          submissionCount: await tx.fileCollectSubmission.count({ where: { taskId: submission.taskId, status: "submitted" } }),
-          fileCount: await tx.fileCollectFile.count({ where: { submission: { taskId: submission.taskId, status: "submitted" } } }),
-        },
-      });
-      return oldPaths;
-    });
-    await Promise.all(stalePaths.map((item) => unlinkFileCollectPath(item)));
-    res.json({
-      ok: true,
-      id: submission.id,
-      submissionId: submission.id,
-      createdAt: isoDate(submission.createdAt),
-      files: submission.files.map((file) => file.storedName),
-    });
     return true;
   }
   const submitMatch = target.match(/^\/api\/submit\/([A-Za-z0-9_-]+)$/);
