@@ -163,6 +163,7 @@ function isPublicFilestoreRequest(req: Request) {
   if (req.method === "GET" && target === "/api/qrcode") return true;
   if (req.method === "GET" && /^\/api\/public\/(tasks|status)\/[A-Za-z0-9_-]+$/.test(target)) return true;
   if (req.method === "POST" && /^\/api\/submit\/[A-Za-z0-9_-]+$/.test(target)) return true;
+  if (req.method === "POST" && /^\/api\/submit\/[A-Za-z0-9_-]+\/(prepare-remote|complete-remote)$/.test(target)) return true;
   return !target.startsWith("/api/");
 }
 

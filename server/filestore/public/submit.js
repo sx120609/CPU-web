@@ -277,8 +277,7 @@ function renderTask() {
   `).join("");
   const rules = task.fileRules;
   $("#files").setAttribute("accept", rules.allowedTypes.map((item) => `.${item}`).join(","));
-  const remoteHint = directUploadHint();
-  $("#fileRules").textContent = `允许 ${rules.allowedTypes.join(", ") || "任意类型"}；单文件不超过 ${rules.maxSizeMb} MB；最多 ${rules.maxCount} 个。${remoteHint}`;
+  $("#fileRules").textContent = `允许 ${rules.allowedTypes.join(", ") || "任意类型"}；单文件不超过 ${rules.maxSizeMb} MB；最多 ${rules.maxCount} 个。`;
   $("#submitForm").hidden = false;
 }
 
@@ -310,13 +309,6 @@ function validateFiles(files) {
 
 function directUploadThresholdBytes() {
   return Math.max(0, Number(task.remoteUpload?.minSizeBytes || 0));
-}
-
-function directUploadHint() {
-  if (!task.remoteUpload?.enabled) return "";
-  const threshold = directUploadThresholdBytes();
-  if (threshold <= 0) return "；提交将直传世纪互联";
-  return `；${formatBytes(threshold)} 及以上文件将直传世纪互联，小文件仍走本地`;
 }
 
 function shouldUseFileDirectUpload(file) {
