@@ -604,10 +604,12 @@ export const adminApi = {
     request.patch<{ driveId: string; driveName: string }>("/admin/media-storage/onedrive-cn/drive", { driveId }),
   clearOneDriveChinaAuthorization: () =>
     request.delete<{ ok: true }>("/admin/media-storage/onedrive-cn/authorization"),
-  mediaStorageFiles: (options?: RequestOptions) => request.get<MediaStorageAdminInventory>("/admin/media-storage/files", undefined, options),
+  mediaStorageFiles: (options?: RequestOptions) =>
+    request.get<MediaStorageAdminInventory>("/admin/media-storage/files", undefined, { timeout: 120000, ...options }),
   migrateMediaStorageFiles: (payload?: { limit?: number; excludePaths?: string[] }) =>
-    request.post<MediaStorageMigrationResult>("/admin/media-storage/migrate", payload ?? {}),
-  cleanupMediaStorageLocalFiles: () => request.post<MediaStorageCleanupResult>("/admin/media-storage/cleanup-local", {}),
+    request.post<MediaStorageMigrationResult>("/admin/media-storage/migrate", payload ?? {}, { timeout: 10 * 60 * 1000 }),
+  cleanupMediaStorageLocalFiles: () =>
+    request.post<MediaStorageCleanupResult>("/admin/media-storage/cleanup-local", {}, { timeout: 10 * 60 * 1000 }),
   cloudDrive: (path = "") =>
     request.get<CloudDriveDirectory>("/admin/cloud-drive", { path }),
   createCloudDriveFolder: (data: { path?: string; name: string }) =>

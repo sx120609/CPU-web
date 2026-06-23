@@ -374,7 +374,7 @@ const lastCleanupResult = ref<MediaStorageCleanupResult | null>(null);
 const fileQuery = ref("");
 const fileFilter = ref<FileFilterKey>("all");
 const migrationProgressText = ref("");
-const migrationBatchLimit = 8;
+const migrationBatchLimit = 3;
 
 const oneDriveCallbackUrl = computed(() => `${(siteOrigin.value || window.location.origin).replace(/\/+$/, "")}/api/storage/onedrive-cn/callback`);
 const migrationCandidates = computed(() => (inventory.value?.list ?? []).filter((row) => needsMigration(row)));
