@@ -785,7 +785,7 @@ function clearDashboardSelection() {
   $("#activeMeta").textContent = "任务链接、统计、提交记录和缺交名单会集中显示在这里。";
   $("#dashboard").hidden = true;
   $("#emptyDashboard").hidden = false;
-  ["editTask", "copyLink", "showQr", "openFileManager", "exportCsv", "downloadZip"].forEach((id) => $(`#${id}`).disabled = true);
+  ["editTask", "copyLink", "showQr", "openFileManager", "repairFilenamesInline", "exportCsv", "downloadZip"].forEach((id) => $(`#${id}`).disabled = true);
   syncOwnerBindButton(null);
 }
 
@@ -927,7 +927,7 @@ function renderDetail(task) {
   $("#activeMeta").textContent = metaParts.join(" · ");
   $("#shareLink").value = absoluteSubmitUrl(task);
   $("#statusLink").value = absoluteStatusUrl(task);
-  ["editTask", "copyLink", "showQr", "openFileManager", "exportCsv", "downloadZip"].forEach((id) => $(`#${id}`).disabled = false);
+  ["editTask", "copyLink", "showQr", "openFileManager", "repairFilenamesInline", "exportCsv", "downloadZip"].forEach((id) => $(`#${id}`).disabled = false);
   syncOwnerBindButton(task);
   renderMetrics(task);
   renderRules(task);
@@ -1194,6 +1194,28 @@ async function deleteFile(id) {
   await selectTask(state.current.id);
   if ($("#fileDialog").open) renderFileManager();
   toast("文件已删除", "ok");
+}
+
+async function repairFilenames() {
+  if (!state.current) throw new Error("请先选择任务");
+  const ok = await confirmInApp({
+    title: "修复乱码文件名",
+    body: "系统会尝试恢复由上传编码导致的历史乱码文件名，只更新可明确恢复的原始名和展示名，不移动实际文件。",
+    okText: "开始修复",
+    danger: false,
+  });
+  if (!ok) return;
+  const repairButtons = ["repairFilenamesInline", "repairFilenames"].map((id) => $(`#${id}`)).filter(Boolean);
+  repairButtons.forEach((button) => { button.disabled = true; });
+  try {
+    const result = await api(`/api/tasks/${state.current.id}/repair-filenames`, { method: "POST" });
+    await selectTask(state.current.id);
+    if ($("#fileDialog").open) renderFileManager();
+    const lostText = result.unrecoverable ? `，${result.unrecoverable} 个已丢失编码信息无法自动恢复` : "";
+    toast(result.updated ? `已恢复 ${result.updated} 个文件名${lostText}` : `没有发现可恢复的乱码文件名${lostText}`, "ok");
+  } finally {
+    repairButtons.forEach((button) => { button.disabled = false; });
+  }
 }
 
 function openFileManager() {
@@ -1526,6 +1548,8 @@ function bind() {
   $("#closeQr").addEventListener("click", () => $("#qrDialog").close());
   $("#openFileManager").addEventListener("click", safe(openFileManager));
   $("#openFileManagerInline").addEventListener("click", safe(openFileManager));
+  $("#repairFilenamesInline").addEventListener("click", safe(repairFilenames));
+  $("#repairFilenames").addEventListener("click", safe(repairFilenames));
   $("#closeFileDialog").addEventListener("click", () => $("#fileDialog").close());
   $("#fileSearch").addEventListener("input", renderFileManager);
   $("#exportCsv").addEventListener("click", safe(() => download(`/api/tasks/${state.current.id}/export.csv`, `${state.current.title}.csv`)));
