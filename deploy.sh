@@ -12,7 +12,7 @@
 #   ./deploy.sh reset-db         # 重置 PostgreSQL schema 并重新写入种子数据
 #   ./deploy.sh postgres-init [db] [user]            # 安装 PostgreSQL、创建应用库和账号，并写入 server/.env
 #   ./deploy.sh postgres-config "postgresql://..."   # 手动写入 PostgreSQL 连接串并刷新后端环境
-#   ./deploy.sh filestore-migrate                    # 将旧 server/filestore/data/filestore.db 导入 PostgreSQL
+#   ./deploy.sh filestore-migrate                    # 将旧 server/filestore/data/filestore.db 导入 PostgreSQL 并删除旧 SQLite
 #   ./deploy.sh redis-init [db-index]                # 安装 Redis 并写入 REDIS_URL
 #   ./deploy.sh redis-config "redis://..."           # 手动写入 Redis 连接串并刷新后端环境
 #   ./deploy.sh proxy-init       # 代理端首次部署：装依赖 + 构建后端 + 启动教务代理
@@ -564,12 +564,18 @@ do_db_init() {
 }
 
 do_filestore_migrate() {
-  if [ ! -f server/filestore/data/filestore.db ]; then
+  local sqlite_path="${FILESTORE_SQLITE_PATH:-server/filestore/data/filestore.db}"
+  if [ ! -f "$sqlite_path" ]; then
     log "未发现旧 Filestore SQLite，跳过文件收集数据迁移"
     return
   fi
   log "发现旧 Filestore SQLite，迁移到 PostgreSQL"
   npm run filestore:migrate --prefix server || err "Filestore SQLite 迁移失败"
+  if rm -f "$sqlite_path" "$sqlite_path-wal" "$sqlite_path-shm"; then
+    log "已删除旧 Filestore SQLite：$sqlite_path"
+  else
+    warn "Filestore SQLite 已迁移，但删除旧文件失败：$sqlite_path"
+  fi
 }
 
 do_db_reset() {
