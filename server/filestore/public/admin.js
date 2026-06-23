@@ -1144,6 +1144,10 @@ async function previewFile(id) {
       openDirectFileUrl(access.url, previewWindow);
       return;
     }
+    if (access.previewMessage) {
+      if (previewWindow && !previewWindow.closed) previewWindow.close();
+      throw new Error(access.previewMessage);
+    }
     const { blob, type } = await fetchProtectedBlob(`/api/files/${id}/preview`);
     const objectUrl = URL.createObjectURL(type ? blob.slice(0, blob.size, type) : blob);
     if (previewWindow) {

@@ -11,7 +11,9 @@ import { validate } from "../middleware/validate";
 import { Errors, ok } from "../utils/response";
 import {
   buildOfficeViewerUrl,
+  canUseOfficeWebViewer,
   isOfficePreviewFile,
+  officeWebViewerLimitMessage,
   requestPublicOrigin,
   signFileCollectPreviewToken,
   verifyFileCollectPreviewToken,
@@ -48,6 +50,7 @@ import {
 import {
   getOneDriveChinaItemMetadata,
   resolveOneDriveChinaDirectDownloadUrl,
+  resolveOneDriveChinaPreviewUrl,
 } from "../services/oneDriveChina";
 import {
   ensureSystemQuestionnaires,
@@ -56,6 +59,7 @@ import {
   parseFields,
   type QuestionnaireField,
 } from "../services/questionnaires";
+import { repairFileCollectTaskFilenames } from "../services/fileCollectFilenameRepair";
 
 export const toolsRouter = Router();
 
@@ -914,6 +918,16 @@ toolsRouter.get("/file-collections/:id/submissions", authRequired, async (req, r
   } catch (e) { next(e); }
 });
 
+toolsRouter.post("/file-collections/:id/repair-filenames", authRequired, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const task = await prisma.fileCollectTask.findUnique({ where: { id } });
+    if (!task) throw Errors.notFound("收集任务不存在");
+    if (!(await canManageFileCollectTask(task, req.user))) throw Errors.forbidden("没有该收集任务的管理权限");
+    ok(res, await repairFileCollectTaskFilenames(id));
+  } catch (e) { next(e); }
+});
+
 toolsRouter.post("/file-collections/:slug/submissions", authOptional, fileCollectUpload.array("files", 20), async (req, res, next) => {
   const uploadedFiles = normalizeMulterOriginalNames((req.files as Express.Multer.File[] | undefined) ?? []);
   try {
@@ -1004,20 +1018,28 @@ toolsRouter.get("/file-collection-files/:id/access", authRequired, async (req, r
       ? meta.downloadUrl || await resolveOneDriveChinaDirectDownloadUrl(file.path).catch(() => "")
       : "";
     const action = req.query.action === "preview" ? "preview" : "download";
+    const remotePreviewUrl = action === "preview" && remoteUrl
+      ? await resolveOneDriveChinaPreviewUrl(file.path).catch(() => "")
+      : "";
     const origin = requestPublicOrigin(req);
-    const publicOfficePreviewUrl = origin && action === "preview" && isOfficePreviewFile(file.storedName)
+    const publicOfficePreviewUrl = origin && action === "preview" && !remotePreviewUrl && !remoteUrl && canUseOfficeWebViewer(file)
       ? `${origin}/api/tools/file-collection-files/${file.id}/public-preview/${encodeURIComponent(file.storedName)}?token=${encodeURIComponent(signFileCollectPreviewToken(file))}`
       : "";
     const previewSourceUrl = action === "preview" && isOfficePreviewFile(file.storedName)
-      ? publicOfficePreviewUrl || remoteUrl
+      ? publicOfficePreviewUrl
       : "";
     const viewerUrl = previewSourceUrl ? buildOfficeViewerUrl(previewSourceUrl) : "";
+    const previewUrl = remotePreviewUrl || viewerUrl;
+    const previewMessage = action === "preview" && isOfficePreviewFile(file.storedName) && !previewUrl
+      ? officeWebViewerLimitMessage(file) || "该文件暂不支持在线预览，请下载后查看。"
+      : "";
     ok(res, {
       id: file.id,
       action,
       backend: remoteUrl ? "onedrive-cn" : "local",
-      url: viewerUrl || remoteUrl,
-      viewer: viewerUrl ? "office" : null,
+      url: action === "preview" ? previewUrl : remoteUrl,
+      viewer: remotePreviewUrl ? "onedrive" : (viewerUrl ? "office" : null),
+      previewMessage,
       filename: file.storedName,
       mimeType: file.mimeType || "application/octet-stream",
     });

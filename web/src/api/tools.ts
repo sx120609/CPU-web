@@ -203,6 +203,20 @@ export interface FileCollectSubmission {
   }>;
 }
 
+export interface FileCollectFilenameRepairResult {
+  total: number;
+  updated: number;
+  unchanged: number;
+  unrecoverable: number;
+  samples: Array<{
+    id: number;
+    beforeOriginalName: string;
+    afterOriginalName: string;
+    beforeStoredName: string;
+    afterStoredName: string;
+  }>;
+}
+
 export interface FileCollectPayload {
   title: string;
   description?: string;
@@ -333,6 +347,8 @@ export const toolsApi = {
     request.delete<{ ok: true }>(`/tools/file-collections/${id}`),
   fileCollectionSubmissions: (id: number) =>
     request.get<{ task: FileCollectTask; list: FileCollectSubmission[] }>(`/tools/file-collections/${id}/submissions`),
+  repairFileCollectionFilenames: (id: number) =>
+    request.post<FileCollectFilenameRepairResult>(`/tools/file-collections/${id}/repair-filenames`),
   submitFileCollection: (slug: string, form: FormData, options?: RequestOptions) =>
     request.post<{ id: number; createdAt: string; files: string[] }>(`/tools/file-collections/${slug}/submissions`, form, options),
   deleteFileCollectionSubmission: (id: number) =>

@@ -387,6 +387,28 @@ export async function resolveOneDriveChinaDirectDownloadUrl(relativePath: string
   throw new Error(detail ? `获取世纪互联文件直链失败：${detail}` : `获取世纪互联文件直链失败：HTTP ${response.status}`);
 }
 
+export async function resolveOneDriveChinaPreviewUrl(relativePath: string) {
+  const runtime = await getMediaStorageRuntimeConfig();
+  const drive = await requireActiveRemoteDrive(runtime);
+  const remotePath = buildRemoteStoragePath(relativePath, drive.rootPath);
+  const item = await fetchRemoteItemMetadataByPath(drive.driveId, remotePath);
+  if (!item?.id || item.folder) return "";
+  const response = await graphRequestWithCurrentMode(`/drives/${drive.driveId}/items/${encodeURIComponent(item.id)}/preview`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: "{}",
+  });
+  if (response.status === 404) return "";
+  if (!response.ok) {
+    const detail = await safeReadResponseText(response);
+    throw new Error(detail ? `获取世纪互联文件预览链接失败：${detail}` : `获取世纪互联文件预览链接失败：HTTP ${response.status}`);
+  }
+  const payload = await response.json() as { getUrl?: string; postUrl?: string; postParameters?: string };
+  return String(payload.getUrl || "").trim();
+}
+
 export async function getOneDriveChinaItemMetadata(relativePath: string): Promise<OneDriveChinaItemMetadata | null> {
   const runtime = await getMediaStorageRuntimeConfig();
   const drive = await requireActiveRemoteDrive(runtime);

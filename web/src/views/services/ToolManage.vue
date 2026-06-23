@@ -1191,6 +1191,10 @@
             <el-icon><Link /></el-icon>
             复制提交链接
           </el-button>
+          <el-button v-if="fileSubmissionTask" size="small" plain :loading="fileNameRepairing" :disabled="fileNameRepairing" @click="repairFileCollectionFilenames(fileSubmissionTask)">
+            <el-icon><Refresh /></el-icon>
+            修复乱码文件名
+          </el-button>
         </div>
       </template>
       <div v-loading="fileSubmissionLoading" class="responses-list">
@@ -1238,6 +1242,10 @@
           <el-button v-if="fileManagerTask" size="small" plain :loading="zipDownloading" :disabled="zipDownloading" @click="downloadFileCollectionZip(fileManagerTask)">
             <el-icon><Download /></el-icon>
             下载 ZIP
+          </el-button>
+          <el-button v-if="fileManagerTask" size="small" plain :loading="fileNameRepairing" :disabled="fileNameRepairing" @click="repairFileCollectionFilenames(fileManagerTask)">
+            <el-icon><Refresh /></el-icon>
+            修复乱码文件名
           </el-button>
         </div>
       </template>
@@ -1291,6 +1299,7 @@ import {
   Link,
   Plus,
   Rank,
+  Refresh,
   Star,
   Tickets,
   UploadFilled,
@@ -1457,6 +1466,7 @@ const fileManagerSubmissions = ref<FileCollectSubmission[]>([]);
 const fileDeletingId = ref<number | null>(null);
 const fileDownloadingId = ref<number | null>(null);
 const filePreviewingId = ref<number | null>(null);
+const fileNameRepairing = ref(false);
 const fileManagerKeyword = ref("");
 let xlsxModule: typeof import("xlsx") | null = null;
 const zipDownloading = ref(false);
@@ -2606,6 +2616,40 @@ async function openFileManager(row: FileCollectTask) {
   }
 }
 
+async function refreshFileCollectionDetail(id: number) {
+  const data = await loadFileCollectionSubmissions(id);
+  if (fileSubmissionTask.value?.id === id) {
+    fileSubmissionTask.value = data.task;
+    fileSubmissions.value = data.list;
+  }
+  if (fileManagerTask.value?.id === id) {
+    fileManagerTask.value = data.task;
+    fileManagerSubmissions.value = data.list;
+  }
+}
+
+async function repairFileCollectionFilenames(row: FileCollectTask) {
+  if (fileNameRepairing.value) return;
+  const ok = await ElMessageBox.confirm(
+    "系统会尝试恢复由上传编码导致的历史乱码文件名，只更新可明确恢复的原始名和展示名，不移动实际文件。继续？",
+    "修复乱码文件名",
+    { type: "warning", confirmButtonText: "开始修复" },
+  ).then(() => true).catch(() => false);
+  if (!ok) return;
+  fileNameRepairing.value = true;
+  try {
+    const result = await toolsApi.repairFileCollectionFilenames(row.id);
+    await refreshFileCollectionDetail(row.id);
+    await reloadActive();
+    const lostText = result.unrecoverable ? `，${result.unrecoverable} 个已丢失编码信息无法自动恢复` : "";
+    ElMessage.success(result.updated ? `已恢复 ${result.updated} 个文件名${lostText}` : `没有发现可恢复的乱码文件名${lostText}`);
+  } catch (error) {
+    ElMessage.error(requestMessage(error) || "修复失败");
+  } finally {
+    fileNameRepairing.value = false;
+  }
+}
+
 async function deleteFileCollectFile(id: number) {
   if (fileDeletingId.value !== null) return;
   fileDeletingId.value = id;
@@ -2650,7 +2694,8 @@ async function fetchFileCollectBlob(id: number, action: "download" | "preview") 
 type FileCollectFileAccess = {
   backend: "local" | "onedrive-cn";
   url: string;
-  viewer?: "office" | null;
+  viewer?: "office" | "onedrive" | null;
+  previewMessage?: string;
   filename?: string;
   mimeType?: string;
 };
@@ -2713,6 +2758,10 @@ async function previewFileCollectFile(id: number, filename: string) {
     const access = await fetchFileCollectAccess(id, "preview");
     if (access.url) {
       openDirectFileAccess(access.url, access.filename || filename, "preview");
+      return;
+    }
+    if (access.previewMessage) {
+      ElMessage.warning(access.previewMessage);
       return;
     }
     const blob = await fetchFileCollectBlob(id, "preview");

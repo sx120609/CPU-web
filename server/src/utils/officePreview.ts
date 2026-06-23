@@ -14,6 +14,11 @@ const OFFICE_PREVIEW_EXTENSIONS = new Set([
   "xlsx",
 ]);
 
+const OFFICE_WEB_VIEWER_LIMITS = {
+  wordAndPowerPoint: 10 * 1024 * 1024,
+  excel: 5 * 1024 * 1024,
+};
+
 const FILE_COLLECT_PREVIEW_PURPOSE = "file-collect-office-preview";
 const FILE_COLLECT_PREVIEW_EXPIRES_IN = "30m";
 
@@ -26,6 +31,25 @@ type FileCollectPreviewTokenPayload = {
 export function isOfficePreviewFile(filename: string) {
   const ext = path.extname(filename || "").replace(/^\./, "").toLowerCase();
   return OFFICE_PREVIEW_EXTENSIONS.has(ext);
+}
+
+export function officeWebViewerLimitBytes(filename: string) {
+  const ext = path.extname(filename || "").replace(/^\./, "").toLowerCase();
+  if (["xls", "xlsx"].includes(ext)) return OFFICE_WEB_VIEWER_LIMITS.excel;
+  if (OFFICE_PREVIEW_EXTENSIONS.has(ext)) return OFFICE_WEB_VIEWER_LIMITS.wordAndPowerPoint;
+  return 0;
+}
+
+export function canUseOfficeWebViewer(file: { storedName: string; size: number }) {
+  const limit = officeWebViewerLimitBytes(file.storedName);
+  return limit > 0 && Number(file.size || 0) > 0 && Number(file.size || 0) <= limit;
+}
+
+export function officeWebViewerLimitMessage(file: { storedName: string; size: number }) {
+  const limit = officeWebViewerLimitBytes(file.storedName);
+  if (!limit) return "";
+  const mb = Math.round(limit / 1024 / 1024);
+  return `该文件超过 Microsoft Office 在线预览约 ${mb} MB 的大小限制，请下载后查看。`;
 }
 
 export function buildOfficeViewerUrl(sourceUrl: string) {

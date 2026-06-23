@@ -20,11 +20,18 @@ import {
   ensureMediaLocalPathFromUploadUrl,
   shouldUseRemoteMediaStorageForRelativePath,
 } from "./mediaStorage";
-import { getOneDriveChinaItemMetadata, resolveOneDriveChinaDirectDownloadUrl } from "./oneDriveChina";
+import {
+  getOneDriveChinaItemMetadata,
+  resolveOneDriveChinaDirectDownloadUrl,
+  resolveOneDriveChinaPreviewUrl,
+} from "./oneDriveChina";
 import { getMediaStorageRuntimeConfig } from "./storageConfig";
+import { repairFileCollectTaskFilenames } from "./fileCollectFilenameRepair";
 import {
   buildOfficeViewerUrl,
+  canUseOfficeWebViewer,
   isOfficePreviewFile,
+  officeWebViewerLimitMessage,
   requestPublicOrigin,
   signFileCollectPreviewToken,
   verifyFileCollectPreviewToken,
@@ -1136,6 +1143,16 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
     res.json(detail);
     return true;
   }
+  const repairFilenamesMatch = target.match(/^\/api\/tasks\/(\d+)\/repair-filenames$/);
+  if (req.method === "POST" && repairFilenamesMatch) {
+    const current = await getFilestoreTaskForActor(Number(repairFilenamesMatch[1]), user, false);
+    if (!current) {
+      res.status(404).json({ error: "任务不存在" });
+      return true;
+    }
+    res.json(await repairFileCollectTaskFilenames(current.id));
+    return true;
+  }
   if (req.method === "DELETE" && taskDetailMatch) {
     const current = await getFilestoreTaskForActor(Number(taskDetailMatch[1]), user, false);
     if (!current) {
@@ -1575,21 +1592,29 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       ? "preview"
       : "download";
     const remoteUrl = await resolveFileCollectRemoteAccess(file);
+    const remotePreviewUrl = action === "preview" && remoteUrl
+      ? await resolveOneDriveChinaPreviewUrl(file.path).catch(() => "")
+      : "";
     const origin = requestPublicOrigin(req);
-    const publicOfficePreviewUrl = origin && action === "preview" && isOfficePreviewFile(file.storedName)
+    const publicOfficePreviewUrl = origin && action === "preview" && !remotePreviewUrl && !remoteUrl && canUseOfficeWebViewer(file)
       ? `${origin}${MOUNT_PATH}/api/files/${file.id}/public-preview/${encodeURIComponent(file.storedName)}?token=${encodeURIComponent(signFileCollectPreviewToken(file))}`
       : "";
     const previewSourceUrl = action === "preview" && isOfficePreviewFile(file.storedName)
-      ? publicOfficePreviewUrl || remoteUrl
+      ? publicOfficePreviewUrl
       : "";
     const viewerUrl = previewSourceUrl ? buildOfficeViewerUrl(previewSourceUrl) : "";
+    const previewUrl = remotePreviewUrl || viewerUrl;
+    const previewMessage = action === "preview" && isOfficePreviewFile(file.storedName) && !previewUrl
+      ? officeWebViewerLimitMessage(file) || "该文件暂不支持在线预览，请下载后查看。"
+      : "";
     res.json({
       ok: true,
       id: file.id,
       action,
       backend: remoteUrl ? "onedrive-cn" : "local",
-      url: viewerUrl || remoteUrl,
-      viewer: viewerUrl ? "office" : null,
+      url: action === "preview" ? previewUrl : remoteUrl,
+      viewer: remotePreviewUrl ? "onedrive" : (viewerUrl ? "office" : null),
+      previewMessage,
       filename: file.storedName,
       mimeType: file.mimeType || "application/octet-stream",
     });

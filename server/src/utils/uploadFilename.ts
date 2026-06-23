@@ -34,6 +34,18 @@ export function normalizeUploadOriginalName(value: unknown) {
   return raw;
 }
 
+export function uploadOriginalNameRepairCandidate(value: unknown) {
+  const raw = uploadBasename(String(value ?? ""));
+  if (!raw) return { raw: "file", repaired: "file", changed: false, probablyLost: false };
+  const repaired = normalizeUploadOriginalName(raw);
+  return {
+    raw,
+    repaired,
+    changed: repaired !== raw,
+    probablyLost: repaired === raw && /[?�]/.test(raw),
+  };
+}
+
 export function normalizeMulterOriginalNames<T extends { originalname: string }>(files: T[]) {
   for (const file of files) {
     file.originalname = normalizeUploadOriginalName(file.originalname);
