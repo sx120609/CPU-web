@@ -50,6 +50,7 @@ export type OneDriveChinaDirectoryEntry = {
   size: number | null;
   lastModifiedAt: string;
   webUrl: string;
+  downloadUrl?: string;
 };
 
 export type OneDriveChinaItemMetadata = OneDriveChinaDirectoryEntry;
@@ -367,6 +368,9 @@ export async function resolveOneDriveChinaDirectDownloadUrl(relativePath: string
   const runtime = await getMediaStorageRuntimeConfig();
   const drive = await requireActiveRemoteDrive(runtime);
   const remotePath = buildRemoteStoragePath(relativePath, drive.rootPath);
+  const item = await fetchRemoteItemMetadataByPath(drive.driveId, remotePath);
+  const metadataDownloadUrl = String(item?.["@microsoft.graph.downloadUrl"] || "").trim();
+  if (metadataDownloadUrl) return metadataDownloadUrl;
   const response = await graphRequestWithCurrentMode(`/drives/${drive.driveId}/root:/${encodeGraphPath(remotePath)}:/content`, {
     method: "GET",
     redirect: "manual",
@@ -395,6 +399,7 @@ export async function getOneDriveChinaItemMetadata(relativePath: string): Promis
     size: typeof response.size === "number" ? response.size : null,
     lastModifiedAt: String(response.lastModifiedDateTime || "").trim(),
     webUrl: String(response.webUrl || "").trim(),
+    downloadUrl: String(response["@microsoft.graph.downloadUrl"] || "").trim(),
   };
 }
 
@@ -414,6 +419,7 @@ export async function listOneDriveChinaDirectory(relativePath: string): Promise<
       size: item.folder ? null : (typeof item.size === "number" ? item.size : null),
       lastModifiedAt: String(item.lastModifiedDateTime || "").trim(),
       webUrl: String(item.webUrl || "").trim(),
+      downloadUrl: String(item["@microsoft.graph.downloadUrl"] || "").trim(),
     }))
     .sort((a, b) => {
       if (a.kind !== b.kind) return a.kind === "folder" ? -1 : 1;
@@ -782,6 +788,7 @@ async function fetchRemoteItemMetadataByPath(driveId: string, remotePath: string
     name?: string;
     size?: number;
     webUrl?: string;
+    "@microsoft.graph.downloadUrl"?: string;
     lastModifiedDateTime?: string;
     folder?: Record<string, unknown>;
     file?: Record<string, unknown>;
@@ -829,6 +836,7 @@ async function listDriveChildrenByItemId(driveId: string, itemId: string) {
     name: string;
     size?: number;
     webUrl?: string;
+    "@microsoft.graph.downloadUrl"?: string;
     lastModifiedDateTime?: string;
     folder?: Record<string, unknown>;
     file?: Record<string, unknown>;
@@ -846,6 +854,7 @@ async function listDriveChildrenByItemId(driveId: string, itemId: string) {
         name?: string;
         size?: number;
         webUrl?: string;
+        "@microsoft.graph.downloadUrl"?: string;
         lastModifiedDateTime?: string;
         folder?: Record<string, unknown>;
         file?: Record<string, unknown>;
@@ -861,6 +870,7 @@ async function listDriveChildrenByItemId(driveId: string, itemId: string) {
         name,
         size: typeof item.size === "number" ? item.size : undefined,
         webUrl: String(item.webUrl || "").trim(),
+        "@microsoft.graph.downloadUrl": String(item["@microsoft.graph.downloadUrl"] || "").trim(),
         lastModifiedDateTime: String(item.lastModifiedDateTime || "").trim(),
         folder: item.folder,
         file: item.file,

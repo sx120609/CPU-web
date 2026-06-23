@@ -829,8 +829,7 @@ async function filestoreRemoteUploadPolicy(taskId: number, files: Array<{ size: 
 async function resolveFileCollectRemoteAccess(file: { path: string; size: number }) {
   const meta = await getOneDriveChinaItemMetadata(file.path).catch(() => null);
   if (!meta || meta.kind !== "file") return "";
-  if (meta.size !== null && Number(meta.size) !== Number(file.size)) return "";
-  return resolveOneDriveChinaDirectDownloadUrl(file.path).catch(() => "");
+  return meta.downloadUrl || resolveOneDriveChinaDirectDownloadUrl(file.path).catch(() => "");
 }
 
 async function rerenameFilestoreTaskFiles(taskId: number, renameTemplate: string) {

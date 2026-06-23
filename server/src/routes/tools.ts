@@ -992,8 +992,8 @@ toolsRouter.get("/file-collection-files/:id/access", authRequired, async (req, r
     if (!file) throw Errors.notFound("文件不存在");
     if (!(await canManageFileCollectTask(file.submission.task, req.user))) throw Errors.forbidden("没有该文件的下载权限");
     const meta = await getOneDriveChinaItemMetadata(file.path).catch(() => null);
-    const remoteUrl = meta?.kind === "file" && (meta.size === null || Number(meta.size) === Number(file.size))
-      ? await resolveOneDriveChinaDirectDownloadUrl(file.path).catch(() => "")
+    const remoteUrl = meta?.kind === "file"
+      ? meta.downloadUrl || await resolveOneDriveChinaDirectDownloadUrl(file.path).catch(() => "")
       : "";
     ok(res, {
       id: file.id,
