@@ -6,6 +6,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { rename, rm, unlink } from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import QRCode from "qrcode";
 import { config } from "../config";
 import { prisma } from "../prisma";
@@ -833,6 +834,20 @@ async function resolveFileCollectRemoteAccess(file: { path: string; size: number
   return meta.downloadUrl || resolveOneDriveChinaDirectDownloadUrl(file.path).catch(() => "");
 }
 
+async function waitForFileCollectRemoteUpload(file: { path: string; size: number; storedName: string }) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const meta = await getOneDriveChinaItemMetadata(file.path).catch(() => null);
+    if (meta?.kind === "file") {
+      if (meta.size !== null && Number(meta.size) !== Number(file.size)) {
+        console.warn(`[filestore] direct upload size metadata differs for ${file.path}: expected=${file.size} remote=${meta.size}`);
+      }
+      return true;
+    }
+    await sleep(500 + attempt * 350);
+  }
+  return false;
+}
+
 async function rerenameFilestoreTaskFiles(taskId: number, renameTemplate: string) {
   const rows = await prisma.fileCollectSubmission.findMany({
     where: { taskId, status: "submitted" },
@@ -1363,11 +1378,8 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       }
 
       for (const file of expectedRemoteFiles) {
-        const meta = await getOneDriveChinaItemMetadata(file.path);
-        if (!meta || meta.kind !== "file") throw filestoreApiError(400, `${file.storedName} 尚未上传完成`);
-        if (meta.size !== null && Number(meta.size) !== Number(file.size)) {
-          throw filestoreApiError(400, `${file.storedName} 上传大小不一致`);
-        }
+        const uploaded = await waitForFileCollectRemoteUpload(file);
+        if (!uploaded) throw filestoreApiError(400, `${file.storedName} 尚未上传完成`);
       }
 
       if (expectedLocalFiles.length) {
