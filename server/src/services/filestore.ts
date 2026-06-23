@@ -22,6 +22,13 @@ import {
 } from "./mediaStorage";
 import { getOneDriveChinaItemMetadata, resolveOneDriveChinaDirectDownloadUrl } from "./oneDriveChina";
 import { getMediaStorageRuntimeConfig } from "./storageConfig";
+import {
+  buildOfficeViewerUrl,
+  isOfficePreviewFile,
+  requestPublicOrigin,
+  signFileCollectPreviewToken,
+  verifyFileCollectPreviewToken,
+} from "../utils/officePreview";
 import { normalizeMulterOriginalNames, normalizeUploadOriginalName } from "../utils/uploadFilename";
 
 const MOUNT_PATH = "/filestore";
@@ -164,6 +171,7 @@ function isPublicFilestoreRequest(req: Request) {
   if (req.method === "GET" && target === "/api/platform/site-config") return true;
   if (req.method === "GET" && target === "/api/qrcode") return true;
   if (req.method === "GET" && /^\/api\/public\/(tasks|status)\/[A-Za-z0-9_-]+$/.test(target)) return true;
+  if (req.method === "GET" && /^\/api\/files\/\d+\/public-preview(?:\/[^/]+)?$/.test(target)) return true;
   if (req.method === "POST" && /^\/api\/submit\/[A-Za-z0-9_-]+$/.test(target)) return true;
   if (req.method === "POST" && /^\/api\/submit\/[A-Za-z0-9_-]+\/(prepare-remote|complete-remote)$/.test(target)) return true;
   return !target.startsWith("/api/");
@@ -1567,15 +1575,47 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       ? "preview"
       : "download";
     const remoteUrl = await resolveFileCollectRemoteAccess(file);
+    const origin = requestPublicOrigin(req);
+    const publicOfficePreviewUrl = origin && action === "preview" && isOfficePreviewFile(file.storedName)
+      ? `${origin}${MOUNT_PATH}/api/files/${file.id}/public-preview/${encodeURIComponent(file.storedName)}?token=${encodeURIComponent(signFileCollectPreviewToken(file))}`
+      : "";
+    const previewSourceUrl = action === "preview" && isOfficePreviewFile(file.storedName)
+      ? publicOfficePreviewUrl || remoteUrl
+      : "";
+    const viewerUrl = previewSourceUrl ? buildOfficeViewerUrl(previewSourceUrl) : "";
     res.json({
       ok: true,
       id: file.id,
       action,
       backend: remoteUrl ? "onedrive-cn" : "local",
-      url: remoteUrl,
+      url: viewerUrl || remoteUrl,
+      viewer: viewerUrl ? "office" : null,
       filename: file.storedName,
       mimeType: file.mimeType || "application/octet-stream",
     });
+    return true;
+  }
+  const filePublicPreviewMatch = target.match(/^\/api\/files\/(\d+)\/public-preview(?:\/[^/]+)?$/);
+  if (req.method === "GET" && filePublicPreviewMatch) {
+    const file = await prisma.fileCollectFile.findUnique({
+      where: { id: Number(filePublicPreviewMatch[1]) },
+      include: { submission: { include: { task: true } } },
+    });
+    if (!file || !verifyFileCollectPreviewToken(queryStringValue(req.query.token), file)) {
+      res.status(404).json({ error: "文件不存在" });
+      return true;
+    }
+    if (!isOfficePreviewFile(file.storedName)) throw filestoreApiError(400, "该文件不支持在线预览");
+    const remoteUrl = await resolveFileCollectRemoteAccess(file);
+    if (remoteUrl) {
+      res.redirect(302, remoteUrl);
+      return true;
+    }
+    const absolute = await ensureMediaLocalPathFromUploadUrl(`/uploads/${file.path}`);
+    if (!absolute) throw filestoreApiError(404, "文件已丢失");
+    res.type(file.mimeType || "application/octet-stream");
+    res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(file.storedName)}`);
+    res.sendFile(absolute);
     return true;
   }
   const fileDownloadMatch = target.match(/^\/api\/files\/(\d+)\/(download|preview)$/);

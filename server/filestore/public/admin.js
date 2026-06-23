@@ -1107,7 +1107,7 @@ async function fetchFileAccess(id, action) {
   return api(`/api/files/${id}/access?action=${encodeURIComponent(action)}`);
 }
 
-function openDirectFileUrl(url, filename, targetWindow = null) {
+function openDirectFileUrl(url, targetWindow = null) {
   if (targetWindow) {
     targetWindow.location.replace(url);
     return;
@@ -1116,7 +1116,6 @@ function openDirectFileUrl(url, filename, targetWindow = null) {
   anchor.href = url;
   anchor.target = "_blank";
   anchor.rel = "noopener noreferrer";
-  if (filename) anchor.download = filename;
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
@@ -1141,8 +1140,8 @@ async function previewFile(id) {
   }
   try {
     const access = await fetchFileAccess(id, "preview");
-    if (access.backend === "onedrive-cn" && access.url) {
-      openDirectFileUrl(access.url, access.filename, previewWindow);
+    if (access.url) {
+      openDirectFileUrl(access.url, previewWindow);
       return;
     }
     const { blob, type } = await fetchProtectedBlob(`/api/files/${id}/preview`);

@@ -9,6 +9,13 @@ import { prisma } from "../prisma";
 import { authOptional, authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { Errors, ok } from "../utils/response";
+import {
+  buildOfficeViewerUrl,
+  isOfficePreviewFile,
+  requestPublicOrigin,
+  signFileCollectPreviewToken,
+  verifyFileCollectPreviewToken,
+} from "../utils/officePreview";
 import { normalizeMulterOriginalNames, normalizeUploadOriginalName } from "../utils/uploadFilename";
 import {
   assertToolUsable,
@@ -996,14 +1003,51 @@ toolsRouter.get("/file-collection-files/:id/access", authRequired, async (req, r
     const remoteUrl = meta?.kind === "file"
       ? meta.downloadUrl || await resolveOneDriveChinaDirectDownloadUrl(file.path).catch(() => "")
       : "";
+    const action = req.query.action === "preview" ? "preview" : "download";
+    const origin = requestPublicOrigin(req);
+    const publicOfficePreviewUrl = origin && action === "preview" && isOfficePreviewFile(file.storedName)
+      ? `${origin}/api/tools/file-collection-files/${file.id}/public-preview/${encodeURIComponent(file.storedName)}?token=${encodeURIComponent(signFileCollectPreviewToken(file))}`
+      : "";
+    const previewSourceUrl = action === "preview" && isOfficePreviewFile(file.storedName)
+      ? publicOfficePreviewUrl || remoteUrl
+      : "";
+    const viewerUrl = previewSourceUrl ? buildOfficeViewerUrl(previewSourceUrl) : "";
     ok(res, {
       id: file.id,
-      action: req.query.action === "preview" ? "preview" : "download",
+      action,
       backend: remoteUrl ? "onedrive-cn" : "local",
-      url: remoteUrl,
+      url: viewerUrl || remoteUrl,
+      viewer: viewerUrl ? "office" : null,
       filename: file.storedName,
       mimeType: file.mimeType || "application/octet-stream",
     });
+  } catch (e) { next(e); }
+});
+
+toolsRouter.get("/file-collection-files/:id/public-preview/:filename?", async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const file = await prisma.fileCollectFile.findUnique({
+      where: { id },
+      include: { submission: { include: { task: true } } },
+    });
+    if (!file || !verifyFileCollectPreviewToken(String(req.query.token || ""), file)) {
+      throw Errors.notFound("文件不存在");
+    }
+    if (!isOfficePreviewFile(file.storedName)) throw Errors.badRequest("该文件不支持在线预览");
+    const meta = await getOneDriveChinaItemMetadata(file.path).catch(() => null);
+    const remoteUrl = meta?.kind === "file"
+      ? meta.downloadUrl || await resolveOneDriveChinaDirectDownloadUrl(file.path).catch(() => "")
+      : "";
+    if (remoteUrl) {
+      res.redirect(302, remoteUrl);
+      return;
+    }
+    const absolute = await ensureMediaLocalPathFromUploadUrl(`/uploads/${file.path}`);
+    if (!absolute) throw Errors.notFound("文件已丢失");
+    res.type(file.mimeType || "application/octet-stream");
+    res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(file.storedName)}`);
+    res.sendFile(absolute);
   } catch (e) { next(e); }
 });
 

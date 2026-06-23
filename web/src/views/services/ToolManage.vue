@@ -2650,6 +2650,7 @@ async function fetchFileCollectBlob(id: number, action: "download" | "preview") 
 type FileCollectFileAccess = {
   backend: "local" | "onedrive-cn";
   url: string;
+  viewer?: "office" | null;
   filename?: string;
   mimeType?: string;
 };
@@ -2710,7 +2711,7 @@ async function previewFileCollectFile(id: number, filename: string) {
   filePreviewingId.value = id;
   try {
     const access = await fetchFileCollectAccess(id, "preview");
-    if (access.backend === "onedrive-cn" && access.url) {
+    if (access.url) {
       openDirectFileAccess(access.url, access.filename || filename, "preview");
       return;
     }
