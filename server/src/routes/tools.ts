@@ -14,12 +14,14 @@ import {
   canUseOfficeWebViewer,
   isOfficePreviewFile,
   joinPublicUrl,
+  normalizePreviewPublicOrigin,
   officeWebViewerLimitMessage,
   requestPublicOrigin,
   signFileCollectPreviewToken,
   verifyFileCollectPreviewToken,
 } from "../utils/officePreview";
 import { normalizeMulterOriginalNames, normalizeUploadOriginalName } from "../utils/uploadFilename";
+import { getSiteOrigin } from "../services/siteSettings";
 import {
   assertToolUsable,
   hasToolContentManagePermission,
@@ -1022,7 +1024,7 @@ toolsRouter.get("/file-collection-files/:id/access", authRequired, async (req, r
     const remotePreviewUrl = action === "preview" && remoteUrl
       ? await resolveOneDriveChinaPreviewUrl(file.path).catch(() => "")
       : "";
-    const origin = requestPublicOrigin(req);
+    const origin = normalizePreviewPublicOrigin(getSiteOrigin()) || requestPublicOrigin(req);
     const previewToken = signFileCollectPreviewToken(file);
     const publicOfficePreviewUrl = origin && action === "preview" && !remotePreviewUrl && !remoteUrl && canUseOfficeWebViewer(file)
       ? joinPublicUrl(origin, `/api/tools/file-collection-files/${file.id}/public-preview/${encodeURIComponent(previewToken)}/${encodeURIComponent(file.storedName)}`)

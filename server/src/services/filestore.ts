@@ -11,7 +11,7 @@ import QRCode from "qrcode";
 import { config } from "../config";
 import { prisma } from "../prisma";
 import { hasToolContentManagePermission, hasToolManagerPermission } from "./serviceTools";
-import { getSiteFilingNumber } from "./siteSettings";
+import { getSiteFilingNumber, getSiteOrigin } from "./siteSettings";
 import { verifyToken } from "../utils/jwt";
 import { requestAiJson } from "./topicAiReview";
 import {
@@ -30,8 +30,10 @@ import { repairFileCollectTaskFilenames } from "./fileCollectFilenameRepair";
 import {
   buildOfficeViewerUrl,
   canUseOfficeWebViewer,
+  isLocalOrPrivateHost,
   isOfficePreviewFile,
   joinPublicUrl,
+  normalizePreviewPublicOrigin,
   officeWebViewerLimitMessage,
   requestPublicOrigin,
   signFileCollectPreviewToken,
@@ -337,6 +339,7 @@ function buildFilestorePublicUrl(base: string, mountedPath: string) {
   let targetPath = mountedPath.startsWith("/") ? mountedPath : `/${mountedPath}`;
   try {
     const url = new URL(normalizedBase);
+    if (config.nodeEnv === "production" && isLocalOrPrivateHost(url.host)) return "";
     const basePath = url.pathname.replace(/\/+$/, "");
     if (basePath.endsWith(MOUNT_PATH) && targetPath.startsWith(`${MOUNT_PATH}/`)) {
       targetPath = targetPath.slice(MOUNT_PATH.length) || "/";
@@ -1616,6 +1619,7 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
     const publicOfficePreviewPath = `${MOUNT_PATH}/api/files/${file.id}/public-preview/${encodeURIComponent(previewToken)}/${encodeURIComponent(file.storedName)}`;
     const publicOfficePreviewUrl = action === "preview" && !remotePreviewUrl && !remoteUrl && canUseOfficeWebViewer(file)
       ? buildFilestorePublicUrl(await getFilestoreSiteSetting(FILESTORE_SITE_URL_KEY, ""), publicOfficePreviewPath)
+        || joinPublicUrl(normalizePreviewPublicOrigin(getSiteOrigin()), publicOfficePreviewPath)
         || joinPublicUrl(requestPublicOrigin(req), publicOfficePreviewPath)
       : "";
     const previewSourceUrl = action === "preview" && isOfficePreviewFile(file.storedName)

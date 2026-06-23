@@ -47,7 +47,7 @@ export function canUseOfficeWebViewer(file: { storedName: string; size: number }
 
 export function officeWebViewerLimitMessage(file: { storedName: string; size: number }) {
   const limit = officeWebViewerLimitBytes(file.storedName);
-  if (!limit) return "";
+  if (!limit || Number(file.size || 0) <= limit) return "";
   const mb = Math.round(limit / 1024 / 1024);
   return `该文件超过 Microsoft Office 在线预览约 ${mb} MB 的大小限制，请下载后查看。`;
 }
@@ -56,19 +56,45 @@ export function buildOfficeViewerUrl(sourceUrl: string) {
   return `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(sourceUrl)}`;
 }
 
-function isLocalHost(host: string) {
-  const normalized = host.split(":")[0]?.replace(/^\[|\]$/g, "").toLowerCase();
+export function isLocalOrPrivateHost(host: string) {
+  const normalized = host.trim().split(":")[0]?.replace(/^\[|\]$/g, "").toLowerCase();
+  const ipv4 = normalized.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4) {
+    const [a, b] = ipv4.slice(1, 3).map((item) => Number(item));
+    return a === 0
+      || a === 10
+      || a === 127
+      || (a === 169 && b === 254)
+      || (a === 172 && b >= 16 && b <= 31)
+      || (a === 192 && b === 168);
+  }
   return !normalized
     || normalized === "localhost"
-    || normalized === "127.0.0.1"
     || normalized === "::1"
     || normalized.endsWith(".local");
 }
 
+export function normalizePreviewPublicOrigin(value: unknown) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const text = String(raw || "").split(",")[0].trim();
+  if (!text) return "";
+  try {
+    const url = new URL(/^https?:\/\//i.test(text) ? text : `https://${text}`);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+    if (config.nodeEnv === "production" && isLocalOrPrivateHost(url.host)) return "";
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return "";
+  }
+}
+
 export function requestPublicOrigin(req: Request) {
+  const browserOrigin = normalizePreviewPublicOrigin(req.headers.origin) || normalizePreviewPublicOrigin(req.headers.referer);
+  if (browserOrigin) return browserOrigin;
   let proto = String(req.headers["x-forwarded-proto"] ?? req.protocol ?? "https").split(",")[0].trim() || "https";
   const host = String(req.headers["x-forwarded-host"] ?? req.headers.host ?? "").split(",")[0].trim();
-  if (proto === "http" && !isLocalHost(host) && config.nodeEnv === "production") proto = "https";
+  if (config.nodeEnv === "production" && isLocalOrPrivateHost(host)) return "";
+  if (proto === "http" && !isLocalOrPrivateHost(host) && config.nodeEnv === "production") proto = "https";
   return host ? `${proto}://${host}` : "";
 }
 
