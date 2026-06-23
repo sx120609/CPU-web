@@ -179,7 +179,7 @@ function isPublicFilestoreRequest(req: Request) {
   if (req.method === "GET" && target === "/api/platform/site-config") return true;
   if (req.method === "GET" && target === "/api/qrcode") return true;
   if (req.method === "GET" && /^\/api\/public\/(tasks|status)\/[A-Za-z0-9_-]+$/.test(target)) return true;
-  if ((req.method === "GET" || req.method === "HEAD") && /^\/api\/files\/\d+\/public-preview(?:\/[^/]+)?$/.test(target)) return true;
+  if ((req.method === "GET" || req.method === "HEAD") && /^\/api\/files\/\d+\/public-preview(?:\/[^/]+){0,2}$/.test(target)) return true;
   if (req.method === "POST" && /^\/api\/submit\/[A-Za-z0-9_-]+$/.test(target)) return true;
   if (req.method === "POST" && /^\/api\/submit\/[A-Za-z0-9_-]+\/(prepare-remote|complete-remote)$/.test(target)) return true;
   return !target.startsWith("/api/");
@@ -1612,7 +1612,8 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
     const remotePreviewUrl = action === "preview" && remoteUrl
       ? await resolveOneDriveChinaPreviewUrl(file.path).catch(() => "")
       : "";
-    const publicOfficePreviewPath = `${MOUNT_PATH}/api/files/${file.id}/public-preview/${encodeURIComponent(file.storedName)}?token=${encodeURIComponent(signFileCollectPreviewToken(file))}`;
+    const previewToken = signFileCollectPreviewToken(file);
+    const publicOfficePreviewPath = `${MOUNT_PATH}/api/files/${file.id}/public-preview/${encodeURIComponent(previewToken)}/${encodeURIComponent(file.storedName)}`;
     const publicOfficePreviewUrl = action === "preview" && !remotePreviewUrl && !remoteUrl && canUseOfficeWebViewer(file)
       ? buildFilestorePublicUrl(await getFilestoreSiteSetting(FILESTORE_SITE_URL_KEY, ""), publicOfficePreviewPath)
         || joinPublicUrl(requestPublicOrigin(req), publicOfficePreviewPath)
@@ -1638,13 +1639,14 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
     });
     return true;
   }
-  const filePublicPreviewMatch = target.match(/^\/api\/files\/(\d+)\/public-preview(?:\/[^/]+)?$/);
+  const filePublicPreviewMatch = target.match(/^\/api\/files\/(\d+)\/public-preview(?:\/([^/]+))?(?:\/[^/]+)?$/);
   if ((req.method === "GET" || req.method === "HEAD") && filePublicPreviewMatch) {
     const file = await prisma.fileCollectFile.findUnique({
       where: { id: Number(filePublicPreviewMatch[1]) },
       include: { submission: { include: { task: true } } },
     });
-    if (!file || !verifyFileCollectPreviewToken(queryStringValue(req.query.token), file)) {
+    const token = queryStringValue(req.query.token) || decodeURIComponent(filePublicPreviewMatch[2] || "");
+    if (!file || !verifyFileCollectPreviewToken(token, file)) {
       res.status(404).json({ error: "文件不存在" });
       return true;
     }

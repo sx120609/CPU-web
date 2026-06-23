@@ -1023,8 +1023,9 @@ toolsRouter.get("/file-collection-files/:id/access", authRequired, async (req, r
       ? await resolveOneDriveChinaPreviewUrl(file.path).catch(() => "")
       : "";
     const origin = requestPublicOrigin(req);
+    const previewToken = signFileCollectPreviewToken(file);
     const publicOfficePreviewUrl = origin && action === "preview" && !remotePreviewUrl && !remoteUrl && canUseOfficeWebViewer(file)
-      ? joinPublicUrl(origin, `/api/tools/file-collection-files/${file.id}/public-preview/${encodeURIComponent(file.storedName)}?token=${encodeURIComponent(signFileCollectPreviewToken(file))}`)
+      ? joinPublicUrl(origin, `/api/tools/file-collection-files/${file.id}/public-preview/${encodeURIComponent(previewToken)}/${encodeURIComponent(file.storedName)}`)
       : "";
     const previewSourceUrl = action === "preview" && isOfficePreviewFile(file.storedName)
       ? publicOfficePreviewUrl
@@ -1050,11 +1051,12 @@ toolsRouter.get("/file-collection-files/:id/access", authRequired, async (req, r
 const fileCollectPublicPreviewHandler: RequestHandler = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    const token = String(req.params.token || req.query.token || "");
     const file = await prisma.fileCollectFile.findUnique({
       where: { id },
       include: { submission: { include: { task: true } } },
     });
-    if (!file || !verifyFileCollectPreviewToken(String(req.query.token || ""), file)) {
+    if (!file || !verifyFileCollectPreviewToken(token, file)) {
       throw Errors.notFound("文件不存在");
     }
     if (!isOfficePreviewFile(file.storedName)) throw Errors.badRequest("该文件不支持在线预览");
@@ -1076,6 +1078,8 @@ const fileCollectPublicPreviewHandler: RequestHandler = async (req, res, next) =
 
 toolsRouter.get("/file-collection-files/:id/public-preview/:filename?", fileCollectPublicPreviewHandler);
 toolsRouter.head("/file-collection-files/:id/public-preview/:filename?", fileCollectPublicPreviewHandler);
+toolsRouter.get("/file-collection-files/:id/public-preview/:token/:filename?", fileCollectPublicPreviewHandler);
+toolsRouter.head("/file-collection-files/:id/public-preview/:token/:filename?", fileCollectPublicPreviewHandler);
 
 toolsRouter.get("/file-collection-files/:id/:action(download|preview)", authRequired, async (req, res, next) => {
   try {
