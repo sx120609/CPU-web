@@ -565,10 +565,13 @@ p {
 .task-card {
   position: relative;
   display: grid;
-  gap: 4px;
+  grid-template-columns: 8px minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 4px;
+  align-items: start;
   min-width: 0;
   width: 100%;
-  padding: 14px 14px 14px 24px;
+  padding: 14px;
   text-align: left;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -590,6 +593,7 @@ p {
 }
 
 .task-card strong {
+  grid-column: 2;
   font-size: 14px;
   font-weight: 700;
   color: var(--text);
@@ -599,6 +603,7 @@ p {
 }
 
 .task-card small {
+  grid-column: 2;
   font-size: 12px;
   color: var(--muted);
   overflow: hidden;
@@ -607,9 +612,10 @@ p {
 }
 
 .status-dot {
-  position: absolute;
-  left: 10px;
-  top: 19px;
+  grid-column: 1;
+  grid-row: 1 / span 3;
+  align-self: start;
+  margin-top: 5px;
   width: 7px;
   height: 7px;
   border-radius: var(--radius-full);
