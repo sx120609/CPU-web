@@ -439,19 +439,13 @@ function syncImageShellMetrics(img: HTMLImageElement, shell: HTMLSpanElement) {
   const naturalWidth = img.naturalWidth;
   const naturalHeight = img.naturalHeight;
   const ratioKind = readImageRatioKind(naturalWidth, naturalHeight);
+  const inAlbum = shell.parentElement?.classList.contains("md-image-album") ?? false;
   shell.classList.toggle("is-tall", ratioKind === "tall");
   shell.classList.toggle("is-wide", ratioKind === "wide");
-  shell.classList.toggle("is-full-ratio", ratioKind !== "normal");
+  shell.classList.toggle("is-full-ratio", !inAlbum && ratioKind !== "normal");
   if (!naturalWidth || !naturalHeight) {
     shell.style.setProperty("--md-image-target-width", `${max.width}px`);
     shell.style.setProperty("--md-image-aspect-ratio", `${max.width} / ${max.height}`);
-    return;
-  }
-  if (shell.parentElement?.classList.contains("md-image-album") && ratioKind !== "normal") {
-    const widthCap = ratioKind === "tall" ? 320 : 520;
-    const width = Math.max(96, Math.min(naturalWidth, widthCap));
-    shell.style.setProperty("--md-image-target-width", `${width}px`);
-    shell.style.setProperty("--md-image-aspect-ratio", `${naturalWidth} / ${naturalHeight}`);
     return;
   }
   const scale = Math.min(max.width / naturalWidth, max.height / naturalHeight, 1);
@@ -990,6 +984,10 @@ onMounted(() => {
 .md :deep(img:not([data-size])) {
   max-width: min(100%, 220px) !important;
   max-height: 180px !important;
+}
+.md :deep(.md-image-shell img) {
+  max-width: none !important;
+  max-height: none !important;
 }
 .md :deep(.image-review-placeholder) {
   display: inline-flex;
