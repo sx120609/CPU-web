@@ -711,7 +711,8 @@ async function saveTemplate() {
     }),
   });
   state.settings = normalizeSettings(settings);
-  renderTemplateSelect(`custom:${template.id}`);
+  const savedTemplate = state.settings.taskTemplates.find((item) => item.name === name) || template;
+  renderTemplateSelect(`custom:${savedTemplate.id}`);
   toast(`模板「${name}」已保存`, "ok");
 }
 

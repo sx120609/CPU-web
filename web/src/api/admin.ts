@@ -69,6 +69,22 @@ export type MediaStorageConfig = {
   oneDriveChinaLastError: string;
 };
 
+export type FilestoreStorageConfig = {
+  enabled: boolean;
+  remoteReady: boolean;
+  remoteConfigured: boolean;
+  mediaStorageProvider: "local" | "onedrive-cn";
+  imageProvider: "local" | "onedrive-cn";
+  videoProvider: "local" | "onedrive-cn";
+  remotePrefixes: string[];
+  fileCollectPrefix: string;
+  oneDriveChinaSiteName: string;
+  oneDriveChinaDriveName: string;
+  oneDriveChinaRootPath: string;
+  oneDriveChinaAuthorizedAt: string;
+  oneDriveChinaLastError: string;
+};
+
 export type OneDriveChinaDriveOption = {
   id: string;
   name: string;
@@ -549,6 +565,9 @@ export const adminApi = {
   // 站点功能开关
   siteConfig: (options?: RequestOptions) => request.get<SiteConfig>("/admin/site-config", undefined, options),
   sitePromptDefaults: (options?: RequestOptions) => request.get<SitePromptDefaults>("/admin/site-config/prompt-defaults", undefined, options),
+  filestoreStorageConfig: (options?: RequestOptions) => request.get<FilestoreStorageConfig>("/admin/filestore-settings", undefined, options),
+  updateFilestoreStorageConfig: (patch: { enabled?: boolean }) =>
+    request.patch<FilestoreStorageConfig>("/admin/filestore-settings", patch),
   mediaStorageConfig: (options?: RequestOptions) => request.get<MediaStorageConfig>("/admin/media-storage", undefined, options),
   updateMediaStorageConfig: (patch: {
     mediaStorageProvider?: "local" | "onedrive-cn";

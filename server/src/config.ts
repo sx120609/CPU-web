@@ -27,7 +27,6 @@ export const config = {
   filestoreEnabled: process.env.FILESTORE_ENABLED !== "false",
   filestorePort: Number(process.env.FILESTORE_PORT ?? 8974),
   filestorePython: process.env.FILESTORE_PYTHON ?? "",
-  filestoreAdminPassword: process.env.FILESTORE_ADMIN_PASSWORD ?? "admin123",
   mediaStorageProvider: (process.env.MEDIA_STORAGE_PROVIDER ?? "local").trim().toLowerCase(),
   mediaStorageImageProvider: (process.env.MEDIA_STORAGE_IMAGE_PROVIDER ?? "").trim().toLowerCase(),
   mediaStorageVideoProvider: (process.env.MEDIA_STORAGE_VIDEO_PROVIDER ?? "").trim().toLowerCase(),

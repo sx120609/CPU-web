@@ -307,6 +307,128 @@ function validateFiles(files) {
   return "";
 }
 
+function applySubmitSuccess(form, payload) {
+  successReset = true;
+  form.reset();
+  clearFiles();
+  $("#progress").value = 100;
+  message(`提交成功，编号 ${payload.submissionId}。文件：${payload.files.join("、")}`, "ok");
+  showSuccessDialog(payload);
+}
+
+function responseErrorMessage(payload, fallback = "提交失败") {
+  if (Array.isArray(payload?.details) && payload.details.length) return payload.details.join("；");
+  return payload?.error || fallback;
+}
+
+async function readJsonResponse(response, fallback = "请求失败") {
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(responseErrorMessage(payload, fallback));
+  return payload;
+}
+
+async function prepareRemoteSubmission(files) {
+  const response = await fetch(`/api/submit/${token}/prepare-remote`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      data: currentData(),
+      files: files.map((file) => ({
+        name: file.name,
+        size: file.size,
+        type: file.type || "application/octet-stream",
+      })),
+    }),
+  });
+  return readJsonResponse(response, "创建直传会话失败");
+}
+
+async function uploadFileToSession(file, uploadFile, onProgress) {
+  const chunkSize = 5 * 1024 * 1024;
+  let start = 0;
+  while (start < file.size) {
+    const end = Math.min(start + chunkSize, file.size) - 1;
+    const chunk = file.slice(start, end + 1);
+    const response = await fetch(uploadFile.uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Range": `bytes ${start}-${end}/${file.size}`,
+        "Content-Type": uploadFile.mimeType || file.type || "application/octet-stream",
+      },
+      body: chunk,
+    });
+    if (![200, 201, 202].includes(response.status)) {
+      const detail = await response.text().catch(() => "");
+      throw new Error(detail ? `${uploadFile.storedName} 上传失败：${detail.slice(0, 160)}` : `${uploadFile.storedName} 上传失败`);
+    }
+    onProgress(chunk.size);
+    start = end + 1;
+  }
+}
+
+async function completeRemoteSubmission(submissionId) {
+  const response = await fetch(`/api/submit/${token}/complete-remote`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ submissionId }),
+  });
+  return readJsonResponse(response, "确认提交失败");
+}
+
+async function submitRemote(form, files) {
+  $("#progress").hidden = false;
+  $("#progress").value = 0;
+  message("正在创建世纪互联直传会话...");
+  const prepared = await prepareRemoteSubmission(files);
+  const uploadFiles = Array.isArray(prepared.files) ? prepared.files : [];
+  if (uploadFiles.length !== files.length) throw new Error("直传会话数量不匹配，请重试");
+
+  let uploadedBytes = 0;
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+  message("正在直传至世纪互联...");
+  for (let index = 0; index < files.length; index += 1) {
+    await uploadFileToSession(files[index], uploadFiles[index], (bytes) => {
+      uploadedBytes += bytes;
+      $("#progress").value = totalBytes ? Math.min(99, Math.round((uploadedBytes / totalBytes) * 100)) : 0;
+    });
+  }
+
+  message("正在确认提交...");
+  const payload = await completeRemoteSubmission(prepared.submissionId);
+  applySubmitSuccess(form, payload);
+}
+
+function submitMultipart(form, files) {
+  const formData = new FormData(form);
+  formData.delete("files");
+  files.forEach((file) => formData.append("files", file, file.name));
+  const xhr = new XMLHttpRequest();
+  $("#progress").hidden = false;
+  $("#progress").value = 0;
+
+  xhr.upload.addEventListener("progress", (event) => {
+    if (event.lengthComputable) $("#progress").value = Math.round((event.loaded / event.total) * 100);
+  });
+
+  xhr.addEventListener("load", () => {
+    const payload = JSON.parse(xhr.responseText || "{}");
+    if (xhr.status >= 200 && xhr.status < 300) {
+      applySubmitSuccess(form, payload);
+    } else {
+      message(responseErrorMessage(payload), "error");
+    }
+  });
+
+  xhr.addEventListener("error", () => message("网络错误，提交失败", "error"));
+  xhr.open("POST", `/api/submit/${token}`);
+  xhr.send(formData);
+  message("正在上传...");
+}
+
 $("#files").addEventListener("change", (event) => {
   addFiles([...event.currentTarget.files]);
   event.currentTarget.value = "";
@@ -360,7 +482,7 @@ $("#submitForm").addEventListener("reset", () => {
   });
 });
 
-$("#submitForm").addEventListener("submit", (event) => {
+$("#submitForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
   const files = selectedFiles.map((item) => item.file);
@@ -370,35 +492,16 @@ $("#submitForm").addEventListener("submit", (event) => {
     return;
   }
 
-  const formData = new FormData(form);
-  formData.delete("files");
-  selectedFiles.forEach((item) => formData.append("files", item.file, item.file.name));
-  const xhr = new XMLHttpRequest();
-  $("#progress").hidden = false;
-  $("#progress").value = 0;
-
-  xhr.upload.addEventListener("progress", (event) => {
-    if (event.lengthComputable) $("#progress").value = Math.round((event.loaded / event.total) * 100);
-  });
-
-  xhr.addEventListener("load", () => {
-    const payload = JSON.parse(xhr.responseText || "{}");
-    if (xhr.status >= 200 && xhr.status < 300) {
-      successReset = true;
-      form.reset();
-      clearFiles();
-      $("#progress").value = 100;
-      message(`提交成功，编号 ${payload.submissionId}。文件：${payload.files.join("、")}`, "ok");
-      showSuccessDialog(payload);
-    } else {
-      message(payload.details ? payload.details.join("；") : payload.error || "提交失败", "error");
+  if (task.remoteUpload?.enabled) {
+    try {
+      await submitRemote(form, files);
+    } catch (error) {
+      message(error && error.message ? error.message : "直传失败，请重试", "error");
     }
-  });
+    return;
+  }
 
-  xhr.addEventListener("error", () => message("网络错误，提交失败", "error"));
-  xhr.open("POST", `/api/submit/${token}`);
-  xhr.send(formData);
-  message("正在上传...");
+  submitMultipart(form, files);
 });
 
 loadSiteFooter();

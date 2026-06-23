@@ -149,6 +149,7 @@ function resolveConfiguredBackendForRelativePath(
   relativePath: string,
   runtime: Awaited<ReturnType<typeof getMediaStorageRuntimeConfigSync>>,
 ): MediaStorageBackend {
+  if (isFileCollectRelativePath(relativePath) && runtime.filestoreRemoteStorageEnabled) return "onedrive-cn";
   const kind = resolveMediaKindForRelativePath(relativePath);
   if (kind === "video") return runtime.effectiveVideoProvider;
   if (kind === "image") return runtime.effectiveImageProvider;
@@ -299,6 +300,29 @@ export async function saveMediaAsset(input: SaveMediaAssetInput): Promise<SaveMe
     url: buildUploadUrl(relativePath),
     localPath: cachePath,
   };
+}
+
+export async function deleteMediaAsset(relativePathInput: string) {
+  const relativePath = normalizeUploadRelativePath(relativePathInput);
+  const [runtime] = await Promise.all([getMediaStorageRuntimeConfig()]);
+  const localPath = localAssetAbsolutePath(relativePath);
+  const cachePath = cachedAssetAbsolutePath(relativePath);
+  await Promise.all([
+    unlink(localPath).catch((error: any) => {
+      if (error?.code !== "ENOENT") throw error;
+    }),
+    unlink(cachePath).catch((error: any) => {
+      if (error?.code !== "ENOENT") throw error;
+    }),
+  ]);
+  const shouldDeleteRemote = remoteStorageConfigured(runtime)
+    && (pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes) || isFileCollectRelativePath(relativePath));
+  if (shouldDeleteRemote) {
+    await deleteOneDriveChinaFile(relativePath).catch((error: any) => {
+      if (String(error?.message || "").includes("404")) return false;
+      throw error;
+    });
+  }
 }
 
 export async function listMediaStorageAdminInventory(): Promise<MediaStorageAdminInventory> {
@@ -621,6 +645,7 @@ async function shouldUseRemoteMediaStorage(relativePath: string) {
 
 async function shouldPreferRemoteMediaStorage(relativePath: string, mediaKind?: MediaStorageKind) {
   const runtime = await getMediaStorageRuntimeConfig();
+  if (isFileCollectRelativePath(relativePath) && runtime.filestoreRemoteStorageEnabled) return true;
   const kind = mediaKind || resolveMediaKindForRelativePath(relativePath);
   const configuredBackend = kind === "video"
     ? runtime.effectiveVideoProvider
@@ -634,6 +659,7 @@ async function shouldPreferRemoteMediaStorage(relativePath: string, mediaKind?: 
 async function canUseRemoteMediaStorageFallback(relativePath: string) {
   const runtime = await getMediaStorageRuntimeConfig();
   if (!remoteStorageConfigured(runtime)) return false;
+  if (isFileCollectRelativePath(relativePath)) return true;
   return pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes);
 }
 
@@ -686,6 +712,11 @@ function hasRedundantCopiesForConfiguredBackend(row: MediaStorageAdminFileEntry)
 
 function isStoredOnConfiguredBackend(row: MediaStorageAdminFileEntry) {
   return row.configuredBackend === "onedrive-cn" ? row.remoteExists : row.localExists;
+}
+
+function isFileCollectRelativePath(relativePath: string) {
+  const normalized = String(relativePath || "").replace(/\\/g, "/").replace(/^\/+/, "");
+  return normalized === "file-collect" || normalized.startsWith("file-collect/");
 }
 
 function localAssetAbsolutePath(relativePath: string) {

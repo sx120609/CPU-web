@@ -1,6 +1,9 @@
 import express, { type Request, type RequestHandler, type Response } from "express";
+import multer from "multer";
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync } from "node:fs";
+import { rename, rm, unlink } from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import QRCode from "qrcode";
@@ -10,10 +13,36 @@ import { hasToolContentManagePermission, hasToolManagerPermission } from "./serv
 import { getSiteFilingNumber } from "./siteSettings";
 import { verifyToken } from "../utils/jwt";
 import { requestAiJson } from "./topicAiReview";
+import {
+  createRemoteMediaUploadSession,
+  deleteMediaAsset,
+  ensureMediaLocalPathFromUploadUrl,
+  shouldUseRemoteMediaStorageForRelativePath,
+} from "./mediaStorage";
+import { getOneDriveChinaItemMetadata } from "./oneDriveChina";
 
 const MOUNT_PATH = "/filestore";
 const TEXT_RESPONSE_RE = /^(text\/|application\/json\b|application\/javascript\b|text\/javascript\b)/i;
 const TRUSTED_PROXY_TOKEN = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+const FILESTORE_SITE_TITLE_DEFAULT = "药大拾间文件收集";
+const FILESTORE_SITE_TITLE_KEY = "filestore.siteTitle";
+const FILESTORE_SITE_URL_KEY = "filestore.siteUrl";
+const FILESTORE_TEMPLATE_VISIBILITY = "filestore-global";
+const fileCollectTmpDir = path.resolve(process.cwd(), "uploads", "file-collect", "_tmp");
+
+mkdirSync(fileCollectTmpDir, { recursive: true });
+
+const filestoreUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, fileCollectTmpDir),
+    filename: (_req, file, cb) => cb(null, `${Date.now()}-${randomUUID()}${path.extname(file.originalname || "")}`),
+  }),
+  limits: {
+    files: 20,
+    fileSize: 100 * 1024 * 1024,
+    fieldSize: 1024 * 1024,
+  },
+});
 
 let filestoreProcess: ChildProcess | null = null;
 let startupPromise: Promise<void> | null = null;
@@ -75,21 +104,10 @@ async function healthCheck() {
   return status >= 200 && status < 500;
 }
 
-async function trustedProxyCheck() {
-  const status = await requestStatus("/api/admin/me", {
-    "X-CPU-Filestore-Admin": TRUSTED_PROXY_TOKEN,
-    "X-CPU-Filestore-User-Id": "0",
-    "X-CPU-Filestore-Username": "system",
-    "X-CPU-Filestore-Display-Name": "system",
-    "X-CPU-Filestore-Role": "admin",
-  });
-  return status >= 200 && status < 300;
-}
-
 async function waitForHealth(timeoutMs = 7000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    if (await healthCheck() && await trustedProxyCheck()) return;
+    if (await healthCheck()) return;
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
   throw new Error(`Filestore 未能在 ${timeoutMs}ms 内启动`);
@@ -97,10 +115,7 @@ async function waitForHealth(timeoutMs = 7000) {
 
 async function ensureFilestoreStarted() {
   if (!config.filestoreEnabled) throw new Error("Filestore 已通过 FILESTORE_ENABLED=false 禁用");
-  if (await healthCheck()) {
-    if (await trustedProxyCheck()) return;
-    throw new Error(`Filestore 端口 ${config.filestorePort} 正在运行旧实例，请重启 CPU-web 后端或停止旧的 python app.py 进程`);
-  }
+  if (await healthCheck()) return;
   if (startupPromise) return startupPromise;
 
   startupPromise = (async () => {
@@ -111,7 +126,6 @@ async function ensureFilestoreStarted() {
       env: {
         ...process.env,
         PORT: String(config.filestorePort),
-        FILESTORE_ADMIN_PASSWORD: process.env.FILESTORE_ADMIN_PASSWORD ?? config.filestoreAdminPassword,
         FILESTORE_TRUSTED_PROXY_TOKEN: TRUSTED_PROXY_TOKEN,
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -226,6 +240,587 @@ function queryStringValue(value: unknown) {
   return typeof value === "string" ? value : "";
 }
 
+class FilestoreApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
+type FilestoreField = {
+  id: string;
+  key: string;
+  label: string;
+  required: boolean;
+  pattern: string;
+  placeholder: string;
+};
+
+type FilestoreRules = {
+  allowedTypes: string[];
+  maxSizeMb: number;
+  maxCount: number;
+};
+
+function filestoreApiError(status: number, message: string) {
+  return new FilestoreApiError(status, message);
+}
+
+function sendFilestoreApiError(res: Response, error: unknown) {
+  const status = error instanceof FilestoreApiError ? error.status : 500;
+  const message = error instanceof Error ? error.message : "请求失败";
+  res.status(status).json({ error: message });
+}
+
+async function parseFilestoreJsonBody(req: Request, res: Response) {
+  await new Promise<void>((resolve, reject) => {
+    express.json({ limit: "10mb" })(req, res, (err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+  return (req.body && typeof req.body === "object") ? req.body as Record<string, unknown> : {};
+}
+
+async function parseFilestoreUpload(req: Request, res: Response) {
+  return new Promise<Express.Multer.File[]>((resolve, reject) => {
+    filestoreUpload.array("files", 20)(req, res, (err) => {
+      if (err) reject(err);
+      else resolve((req.files as Express.Multer.File[] | undefined) ?? []);
+    });
+  });
+}
+
+function parseJsonObject(raw: string | null | undefined): Record<string, string> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).map(([key, value]) => [key, String(value ?? "")]));
+  } catch {
+    return {};
+  }
+}
+
+function normalizeSiteTitle(value: unknown) {
+  const title = String(value ?? "").trim();
+  if (!title || /^filestore(?:\s|$)/i.test(title)) return FILESTORE_SITE_TITLE_DEFAULT;
+  return title.slice(0, 80);
+}
+
+function normalizeSiteUrl(value: unknown) {
+  return String(value ?? "").trim().replace(/\/+$/, "").slice(0, 240);
+}
+
+function normalizeFieldKey(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_\u4e00-\u9fa5]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+}
+
+function normalizeFilestoreFields(input: unknown): FilestoreField[] {
+  if (!Array.isArray(input) || !input.length) throw filestoreApiError(400, "至少需要一个表单字段");
+  const seen = new Set<string>();
+  return input.map((item) => {
+    const field = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    const key = normalizeFieldKey(field.key ?? field.id);
+    const label = String(field.label ?? "").trim().slice(0, 80);
+    if (!key || !label) throw filestoreApiError(400, "字段 key 和名称不能为空");
+    if (seen.has(key)) throw filestoreApiError(400, `字段 key 重复：${key}`);
+    const pattern = String(field.pattern ?? "").trim().slice(0, 200);
+    if (pattern) {
+      try {
+        new RegExp(pattern);
+      } catch {
+        throw filestoreApiError(400, `字段“${label}”的正则规则不合法`);
+      }
+    }
+    seen.add(key);
+    return {
+      id: key,
+      key,
+      label,
+      required: field.required !== false,
+      pattern,
+      placeholder: String(field.placeholder ?? "").trim().slice(0, 120),
+    };
+  });
+}
+
+function storedFields(fields: FilestoreField[]) {
+  return fields.map((field) => ({
+    id: field.key,
+    label: field.label,
+    required: field.required,
+    pattern: field.pattern,
+    placeholder: field.placeholder,
+  }));
+}
+
+function parseStoredFields(raw: string | null | undefined): FilestoreField[] {
+  try {
+    const parsed = JSON.parse(raw || "[]");
+    return normalizeFilestoreFields(Array.isArray(parsed)
+      ? parsed.map((item) => ({ ...item, key: item?.key ?? item?.id }))
+      : []);
+  } catch {
+    return [];
+  }
+}
+
+function normalizeAllowedTypes(value: unknown) {
+  const list = Array.isArray(value)
+    ? value
+    : String(value ?? "").split(",");
+  return [...new Set(list
+    .map((item) => String(item ?? "").trim().toLowerCase().replace(/^\.+/, ""))
+    .filter((item) => /^[a-z0-9]+$/.test(item))
+    .slice(0, 30))];
+}
+
+function normalizeFilestoreRules(input: unknown): FilestoreRules {
+  const source = input && typeof input === "object" ? input as Record<string, unknown> : {};
+  const maxSizeMb = Number(source.maxSizeMb || 20);
+  const maxCount = Number(source.maxCount || 1);
+  if (!Number.isFinite(maxSizeMb) || maxSizeMb <= 0 || maxSizeMb > 100) {
+    throw filestoreApiError(400, "单文件大小必须在 0 到 100 MB 之间");
+  }
+  if (!Number.isInteger(maxCount) || maxCount <= 0 || maxCount > 20) {
+    throw filestoreApiError(400, "文件数量必须在 1 到 20 个之间");
+  }
+  return {
+    allowedTypes: normalizeAllowedTypes(source.allowedTypes),
+    maxSizeMb,
+    maxCount,
+  };
+}
+
+function parseStoredRules(raw: string | null | undefined): FilestoreRules {
+  try {
+    return normalizeFilestoreRules(JSON.parse(raw || "{}"));
+  } catch {
+    return { allowedTypes: [], maxSizeMb: 20, maxCount: 1 };
+  }
+}
+
+function normalizeDeadline(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) throw filestoreApiError(400, "截止时间不合法");
+  return date;
+}
+
+function isoDate(value: unknown) {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
+function normalizeStatus(value: unknown) {
+  const status = String(value ?? "open").trim();
+  return status === "closed" ? "closed" : "open";
+}
+
+function normalizeFilestoreTaskPayload(input: Record<string, unknown>) {
+  const title = String(input.title ?? "").trim().slice(0, 120);
+  if (!title) throw filestoreApiError(400, "任务标题不能为空");
+  const fields = normalizeFilestoreFields(input.fields);
+  const fileRules = normalizeFilestoreRules(input.fileRules);
+  return {
+    title,
+    description: String(input.description ?? "").trim().slice(0, 1000),
+    deadline: normalizeDeadline(input.deadline),
+    status: normalizeStatus(input.status),
+    fields,
+    fileRules,
+    renameTemplate: String(input.renameTemplate ?? "{name}-{student_id}").trim().slice(0, 120) || "{name}-{student_id}",
+    folderTemplate: String(input.folderTemplate ?? "{name}-{student_id}").trim().slice(0, 120) || "{name}-{student_id}",
+    expectedEntries: String(input.expectedEntries ?? "").trim().slice(0, 20000),
+  };
+}
+
+function normalizeTemplatePayload(input: unknown) {
+  const source = input && typeof input === "object" ? input as Record<string, unknown> : {};
+  const name = String(source.name ?? "").trim().slice(0, 60);
+  if (!name) throw filestoreApiError(400, "模板名称不能为空");
+  const fields = normalizeFilestoreFields(source.fields);
+  const fileRules = normalizeFilestoreRules(source.fileRules);
+  return {
+    id: source.id,
+    name,
+    description: String(source.description ?? "").trim().slice(0, 1000),
+    fields,
+    fileRules,
+    renameTemplate: String(source.renameTemplate ?? "{name}-{student_id}").trim().slice(0, 120) || "{name}-{student_id}",
+    folderTemplate: String(source.folderTemplate ?? "{name}-{student_id}").trim().slice(0, 120) || "{name}-{student_id}",
+    expectedEntries: String(source.expectedEntries ?? "").trim().slice(0, 20000),
+  };
+}
+
+function userIsSuperAdmin(user: FilestoreAccessUser | null | undefined) {
+  return user?.role === "admin";
+}
+
+function userCanManageGlobalFilestore(user: FilestoreAccessUser | null | undefined) {
+  return Boolean(user?.isToolManager);
+}
+
+function canAccessFilestoreTask(user: FilestoreAccessUser | null | undefined, row: { createdById: number | null }) {
+  if (!user?.userId) return false;
+  if (userIsSuperAdmin(user)) return true;
+  return row.createdById === user.userId;
+}
+
+function filestoreCreatedBy(row: any) {
+  if (!row.createdBy) return null;
+  return {
+    userId: row.createdBy.id,
+    username: row.createdBy.username,
+    displayName: row.createdBy.nickname || row.createdBy.username,
+    role: row.createdBy.role,
+  };
+}
+
+function normalizeFilestoreSubmission(row: any) {
+  return {
+    id: row.id,
+    data: parseJsonObject(row.data),
+    ip: row.ip || "",
+    status: row.status || "submitted",
+    createdAt: isoDate(row.createdAt),
+    files: (row.files ?? []).map((file: any) => ({
+      id: file.id,
+      originalName: file.originalName,
+      storedName: file.storedName,
+      mimeType: file.mimeType,
+      size: file.size,
+      createdAt: isoDate(file.createdAt),
+    })),
+  };
+}
+
+function submissionIdentity(data: Record<string, string>) {
+  return String(data.student_id || data.name || "").trim();
+}
+
+function buildFilestoreStats(task: { expectedEntries: string }, submissions: Array<{ id: number; data: Record<string, string>; createdAt: string }>) {
+  const expected = task.expectedEntries.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+  const expectedKeys = new Set(expected);
+  const matched = new Set<string>();
+  const unexpected: Array<{ id: number; name: string; identity: string; createdAt: string }> = [];
+  for (const item of submissions) {
+    const identity = submissionIdentity(item.data);
+    if (expectedKeys.size && expectedKeys.has(identity)) {
+      matched.add(identity);
+    } else if (expectedKeys.size) {
+      unexpected.push({
+        id: item.id,
+        name: item.data.name || "",
+        identity,
+        createdAt: item.createdAt,
+      });
+    }
+  }
+  return {
+    submitted: submissions.length,
+    inListSubmitted: expected.length ? matched.size : submissions.length,
+    expected: expected.length,
+    missing: expected.filter((item) => !matched.has(item)),
+    unexpected,
+  };
+}
+
+function normalizeFilestoreTask(row: any, options: { includeCreator?: boolean; includeSubmissions?: boolean } = {}) {
+  const fields = parseStoredFields(row.fields);
+  const submissions = options.includeSubmissions
+    ? (row.submissions ?? []).map(normalizeFilestoreSubmission)
+    : undefined;
+  const task: Record<string, unknown> = {
+    id: row.id,
+    slug: row.slug,
+    token: row.slug,
+    title: row.title,
+    description: row.description || "",
+    deadline: isoDate(row.deadline),
+    fields,
+    fileRules: parseStoredRules(row.fileRules),
+    renameTemplate: row.renameTemplate || "{name}-{student_id}",
+    folderTemplate: row.folderTemplate || "{name}-{student_id}",
+    expectedEntries: row.expectedEntries || "",
+    status: normalizeStatus(row.status),
+    createdAt: isoDate(row.createdAt),
+    updatedAt: isoDate(row.updatedAt),
+    submitUrl: `${MOUNT_PATH}/submit/${row.slug}`,
+  };
+  if (options.includeCreator) task.createdBy = filestoreCreatedBy(row);
+  if (submissions) {
+    task.submissions = submissions;
+    task.stats = buildFilestoreStats({ expectedEntries: String(task.expectedEntries || "") }, submissions);
+  }
+  return task;
+}
+
+function normalizeFilestoreTemplate(row: any) {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description || "",
+    fields: parseStoredFields(row.fields),
+    fileRules: parseStoredRules(row.fileRules),
+    renameTemplate: row.renameTemplate || "{name}-{student_id}",
+    folderTemplate: row.folderTemplate || "{name}-{student_id}",
+    expectedEntries: row.expectedEntries || "",
+    createdAt: isoDate(row.createdAt),
+    updatedAt: isoDate(row.updatedAt),
+  };
+}
+
+async function getFilestoreSiteSetting(key: string, fallback = "") {
+  const row = await prisma.siteSetting.findUnique({ where: { key }, select: { value: true } });
+  return row?.value ?? fallback;
+}
+
+async function setFilestoreSiteSetting(key: string, value: string) {
+  await prisma.siteSetting.upsert({
+    where: { key },
+    update: { value },
+    create: { key, value },
+  });
+}
+
+async function listFilestoreTemplates() {
+  const rows = await prisma.fileCollectTemplate.findMany({
+    where: { visibility: FILESTORE_TEMPLATE_VISIBILITY },
+    orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+  });
+  return rows.map(normalizeFilestoreTemplate);
+}
+
+async function filestoreSettings() {
+  const [siteUrl, siteTitle, taskTemplates] = await Promise.all([
+    getFilestoreSiteSetting(FILESTORE_SITE_URL_KEY, ""),
+    getFilestoreSiteSetting(FILESTORE_SITE_TITLE_KEY, FILESTORE_SITE_TITLE_DEFAULT),
+    listFilestoreTemplates(),
+  ]);
+  return {
+    siteUrl,
+    siteTitle: normalizeSiteTitle(siteTitle),
+    taskTemplates,
+  };
+}
+
+async function saveFilestoreTemplates(input: unknown[]) {
+  const templates = input.map(normalizeTemplatePayload);
+  const numericIds = templates
+    .map((template) => Number(template.id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  await prisma.$transaction(async (tx) => {
+    await tx.fileCollectTemplate.deleteMany({
+      where: {
+        visibility: FILESTORE_TEMPLATE_VISIBILITY,
+        ...(numericIds.length ? { id: { notIn: numericIds } } : {}),
+      },
+    });
+    for (const template of templates) {
+      const id = Number(template.id);
+      const data = {
+        name: template.name,
+        description: template.description || null,
+        visibility: FILESTORE_TEMPLATE_VISIBILITY,
+        fields: JSON.stringify(storedFields(template.fields)),
+        fileRules: JSON.stringify(template.fileRules),
+        renameTemplate: template.renameTemplate,
+        folderTemplate: template.folderTemplate,
+        expectedEntries: template.expectedEntries,
+        createdById: null,
+      };
+      if (Number.isInteger(id) && id > 0) {
+        const updated = await tx.fileCollectTemplate.updateMany({
+          where: { id, visibility: FILESTORE_TEMPLATE_VISIBILITY },
+          data,
+        });
+        if (updated.count) continue;
+      }
+      await tx.fileCollectTemplate.create({ data });
+    }
+  });
+}
+
+async function nextFilestoreToken() {
+  for (let i = 0; i < 20; i += 1) {
+    const token = `fs-${Date.now().toString(36)}-${randomUUID().replace(/-/g, "").slice(0, 10)}`;
+    const exists = await prisma.fileCollectTask.findUnique({ where: { slug: token }, select: { id: true } });
+    if (!exists) return token;
+  }
+  return `fs-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function taskInclude(includeSubmissions = false) {
+  return {
+    createdBy: { select: { id: true, username: true, nickname: true, role: true } },
+    ...(includeSubmissions ? {
+      submissions: {
+        where: { status: "submitted" as const },
+        orderBy: { createdAt: "desc" as const },
+        include: { files: { orderBy: { id: "asc" as const } } },
+      },
+    } : {}),
+  };
+}
+
+async function getFilestoreTaskForActor(id: number, user: FilestoreAccessUser | null, includeSubmissions = true) {
+  const row = await prisma.fileCollectTask.findUnique({
+    where: { id },
+    include: taskInclude(includeSubmissions),
+  });
+  if (!row || !canAccessFilestoreTask(user, row)) return null;
+  return row;
+}
+
+function safeStoredFilename(value: string) {
+  const cleaned = String(value || "")
+    .replace(/[\\/:*?"<>|]+/g, "_")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^[. ]+|[. ]+$/g, "")
+    .slice(0, 160);
+  return cleaned || "file";
+}
+
+function renderTemplateBase(template: string, data: Record<string, string>, originalName = "", index = 1, total = 1) {
+  const ext = path.extname(originalName || "");
+  const stem = path.basename(originalName || "file", ext);
+  const values: Record<string, string> = {
+    ...Object.fromEntries(Object.entries(data).map(([key, value]) => [key, safeStoredFilename(value)])),
+    original: safeStoredFilename(stem),
+    index: total > 1 ? String(index) : "",
+  };
+  const rendered = String(template || "{name}-{student_id}").replace(/\{([a-zA-Z0-9_\u4e00-\u9fa5]+)(?:\|(last|first):(\d{1,2}))?\}/g, (_match, key, op, rawCount) => {
+    const value = values[key] || "";
+    const count = Number(rawCount || 0);
+    if (op === "last") return count > 0 ? value.slice(-count) : "";
+    if (op === "first") return count > 0 ? value.slice(0, count) : "";
+    return value;
+  });
+  return safeStoredFilename(rendered).replace(/[-_ ]{2,}/g, "-").replace(/^[\s\-_.]+|[\s\-_.]+$/g, "") || "file";
+}
+
+function renderStoredName(template: string, data: Record<string, string>, originalName: string, index: number, total: number) {
+  const ext = path.extname(originalName || "").toLowerCase();
+  const base = renderTemplateBase(template, data, originalName, index, total);
+  const withIndex = total > 1 && !template.includes("{index}") ? `${base}-${index}` : base;
+  return `${withIndex}${ext}`;
+}
+
+async function unlinkFileCollectPath(relative: string) {
+  await deleteMediaAsset(relative).catch(() => null);
+}
+
+async function refreshFileCollectStats(taskId: number) {
+  const [submissionCount, fileCount] = await Promise.all([
+    prisma.fileCollectSubmission.count({ where: { taskId, status: "submitted" } }),
+    prisma.fileCollectFile.count({ where: { submission: { taskId, status: "submitted" } } }),
+  ]);
+  await prisma.fileCollectTask.update({
+    where: { id: taskId },
+    data: { submissionCount, fileCount },
+  }).catch(() => null);
+}
+
+function normalizeSubmissionData(fields: FilestoreField[], input: Record<string, unknown>) {
+  const result: Record<string, string> = {};
+  for (const field of fields) {
+    const value = String(input[field.key] ?? input[field.id] ?? "").trim();
+    if (field.required && !value) throw filestoreApiError(400, `${field.label}不能为空`);
+    if (value && field.pattern && !(new RegExp(field.pattern).test(value))) {
+      throw filestoreApiError(400, `${field.label}格式不正确`);
+    }
+    result[field.key] = value.slice(0, 300);
+  }
+  return result;
+}
+
+type UploadFileForValidation = {
+  originalname: string;
+  size: number;
+};
+
+function validateUploadFiles(files: UploadFileForValidation[], rules: FilestoreRules) {
+  if (!files.length) throw filestoreApiError(400, "至少需要上传一个文件");
+  if (files.length > rules.maxCount) throw filestoreApiError(400, `最多只能上传 ${rules.maxCount} 个文件`);
+  const allowed = new Set(rules.allowedTypes);
+  const maxBytes = rules.maxSizeMb * 1024 * 1024;
+  for (const file of files) {
+    const ext = path.extname(file.originalname || "").slice(1).toLowerCase();
+    if (allowed.size && !allowed.has(ext)) throw filestoreApiError(400, `${file.originalname} 类型不允许`);
+    if (file.size > maxBytes) throw filestoreApiError(400, `${file.originalname} 超过 ${rules.maxSizeMb} MB`);
+  }
+}
+
+function normalizeDirectUploadFiles(input: unknown) {
+  if (!Array.isArray(input)) throw filestoreApiError(400, "文件列表格式不正确");
+  return input.slice(0, 50).map((item) => {
+    const row = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    const name = String(row.name ?? row.originalName ?? "").trim().slice(0, 255);
+    const size = Number(row.size);
+    const type = String(row.type ?? row.mimeType ?? "").trim().slice(0, 120) || "application/octet-stream";
+    if (!name) throw filestoreApiError(400, "文件名不能为空");
+    if (!Number.isFinite(size) || size < 0 || size > Number.MAX_SAFE_INTEGER) {
+      throw filestoreApiError(400, `${name} 大小不正确`);
+    }
+    if (size === 0) throw filestoreApiError(400, `${name} 是空文件，暂不支持直传`);
+    return {
+      originalname: name,
+      size: Math.round(size),
+      mimetype: type,
+    };
+  });
+}
+
+function buildFileCollectRelativePath(taskId: number, physicalName: string) {
+  return path.posix.join("file-collect", String(taskId), physicalName);
+}
+
+async function filestoreRemoteDirectUploadEnabled(taskId: number) {
+  return shouldUseRemoteMediaStorageForRelativePath(buildFileCollectRelativePath(taskId, "__probe__"));
+}
+
+async function rerenameFilestoreTaskFiles(taskId: number, renameTemplate: string) {
+  const rows = await prisma.fileCollectSubmission.findMany({
+    where: { taskId, status: "submitted" },
+    include: { files: { orderBy: { id: "asc" } } },
+    orderBy: { id: "asc" },
+  });
+  const result = { renamed: 0, unchanged: 0, missing: 0 };
+  for (const submission of rows) {
+    const data = parseJsonObject(submission.data);
+    const total = submission.files.length;
+    for (let index = 0; index < submission.files.length; index += 1) {
+      const file = submission.files[index];
+      const storedName = renderStoredName(renameTemplate, data, file.originalName, index + 1, total);
+      if (storedName === file.storedName) {
+        result.unchanged += 1;
+        continue;
+      }
+      await prisma.fileCollectFile.update({ where: { id: file.id }, data: { storedName } });
+      result.renamed += 1;
+    }
+  }
+  return result;
+}
+
+function csvCell(value: unknown) {
+  const text = String(value ?? "");
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function filenameHeader(name: string) {
+  return `attachment; filename*=UTF-8''${encodeURIComponent(name)}`;
+}
+
 async function handleFilestoreUtilityRoute(req: Request, res: Response, user: FilestoreAccessUser | null) {
   const target = upstreamPath(req).split("?")[0];
   if (req.method === "GET" && target === "/api/qrcode") {
@@ -261,6 +856,604 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
     res.json({
       siteFilingNumber: getSiteFilingNumber(),
     });
+    return true;
+  }
+  if (req.method === "GET" && target === "/api/admin/me") {
+    if (!user?.userId) {
+      res.status(401).json({ error: "请先登录平台账号" });
+      return true;
+    }
+    res.json({
+      ok: true,
+      role: user.role,
+      isSuperAdmin: userIsSuperAdmin(user),
+      isManager: userCanManageGlobalFilestore(user),
+      user: {
+        userId: user.userId,
+        username: user.username,
+        displayName: user.nickname || user.username,
+      },
+      settings: await filestoreSettings(),
+    });
+    return true;
+  }
+  if (req.method === "GET" && target === "/api/settings") {
+    if (!userCanManageGlobalFilestore(user)) {
+      res.status(403).json({ error: "仅文件收集管理器可操作全局配置" });
+      return true;
+    }
+    res.json(await filestoreSettings());
+    return true;
+  }
+  if (req.method === "POST" && target === "/api/settings") {
+    if (!userCanManageGlobalFilestore(user)) {
+      res.status(403).json({ error: "仅文件收集管理器可操作全局配置" });
+      return true;
+    }
+    const payload = await parseFilestoreJsonBody(req, res);
+    if (payload.siteUrl !== undefined) {
+      await setFilestoreSiteSetting(FILESTORE_SITE_URL_KEY, normalizeSiteUrl(payload.siteUrl));
+    }
+    if (payload.siteTitle !== undefined) {
+      await setFilestoreSiteSetting(FILESTORE_SITE_TITLE_KEY, normalizeSiteTitle(payload.siteTitle));
+    }
+    if (payload.taskTemplates !== undefined) {
+      if (!Array.isArray(payload.taskTemplates)) throw filestoreApiError(400, "模板数据格式不正确");
+      await saveFilestoreTemplates(payload.taskTemplates);
+    }
+    res.json(await filestoreSettings());
+    return true;
+  }
+  if (req.method === "GET" && target === "/api/tasks") {
+    if (!user?.userId) {
+      res.status(401).json({ error: "请先登录平台账号" });
+      return true;
+    }
+    const rows = await prisma.fileCollectTask.findMany({
+      where: userIsSuperAdmin(user) ? {} : { createdById: user.userId },
+      orderBy: [{ createdAt: "desc" }],
+      include: taskInclude(false),
+    });
+    res.json(rows.map((row) => normalizeFilestoreTask(row, { includeCreator: userIsSuperAdmin(user) })));
+    return true;
+  }
+  if (req.method === "POST" && target === "/api/tasks") {
+    if (!user?.userId) {
+      res.status(401).json({ error: "请先登录平台账号" });
+      return true;
+    }
+    const payload = normalizeFilestoreTaskPayload(await parseFilestoreJsonBody(req, res));
+    const now = new Date();
+    const row = await prisma.fileCollectTask.create({
+      data: {
+        slug: await nextFilestoreToken(),
+        title: payload.title,
+        description: payload.description || null,
+        status: payload.status,
+        visibility: "public",
+        fields: JSON.stringify(storedFields(payload.fields)),
+        fileRules: JSON.stringify(payload.fileRules),
+        renameTemplate: payload.renameTemplate,
+        folderTemplate: payload.folderTemplate,
+        expectedEntries: payload.expectedEntries,
+        deadline: payload.deadline,
+        createdById: user.userId,
+        publishedAt: payload.status === "open" ? now : null,
+        closedAt: payload.status === "closed" ? now : null,
+      },
+      include: taskInclude(true),
+    });
+    res.status(201).json(normalizeFilestoreTask(row, { includeCreator: userIsSuperAdmin(user), includeSubmissions: true }));
+    return true;
+  }
+  const publicTaskMatch = target.match(/^\/api\/public\/tasks\/([A-Za-z0-9_-]+)$/);
+  if (req.method === "GET" && publicTaskMatch) {
+    const row = await prisma.fileCollectTask.findUnique({
+      where: { slug: publicTaskMatch[1] },
+      include: taskInclude(false),
+    });
+    if (!row) {
+      res.status(404).json({ error: "提交链接不存在" });
+      return true;
+    }
+    const remoteUploadEnabled = await filestoreRemoteDirectUploadEnabled(row.id).catch(() => false);
+    res.json({
+      ...normalizeFilestoreTask(row),
+      siteTitle: (await filestoreSettings()).siteTitle,
+      remoteUpload: {
+        enabled: remoteUploadEnabled,
+        mode: remoteUploadEnabled ? "onedrive-cn" : "local",
+      },
+    });
+    return true;
+  }
+  const publicStatusMatch = target.match(/^\/api\/public\/status\/([A-Za-z0-9_-]+)$/);
+  if (req.method === "GET" && publicStatusMatch) {
+    const row = await prisma.fileCollectTask.findUnique({
+      where: { slug: publicStatusMatch[1] },
+      include: taskInclude(true),
+    });
+    if (!row) {
+      res.status(404).json({ error: "成功名单不存在" });
+      return true;
+    }
+    const detail = normalizeFilestoreTask(row, { includeSubmissions: true }) as any;
+    const fieldKeys = (detail.fields ?? []).map((field: FilestoreField) => field.key);
+    res.json({
+      title: detail.title,
+      deadline: detail.deadline,
+      status: detail.status,
+      siteTitle: (await filestoreSettings()).siteTitle,
+      stats: {
+        submitted: detail.stats.submitted,
+        expected: detail.stats.expected,
+        missing: detail.stats.missing.length,
+      },
+      submissions: detail.submissions.map((item: any) => {
+        let displayName = String(item.data.name || "").trim();
+        let identity = String(item.data.student_id || "").trim();
+        if (!displayName && fieldKeys.length) displayName = String(item.data[fieldKeys[0]] || "").trim();
+        if (!identity) {
+          for (const key of fieldKeys) {
+            const value = String(item.data[key] || "").trim();
+            if (value && value !== displayName) {
+              identity = value;
+              break;
+            }
+          }
+        }
+        return {
+          id: item.id,
+          displayName: displayName || `提交 #${item.id}`,
+          identity,
+          createdAt: item.createdAt,
+          files: item.files.map((file: any) => ({
+            storedName: file.storedName,
+            size: file.size,
+          })),
+        };
+      }),
+    });
+    return true;
+  }
+  const taskDetailMatch = target.match(/^\/api\/tasks\/(\d+)$/);
+  if (req.method === "GET" && taskDetailMatch) {
+    const row = await getFilestoreTaskForActor(Number(taskDetailMatch[1]), user, true);
+    if (!row) {
+      res.status(404).json({ error: "任务不存在" });
+      return true;
+    }
+    res.json(normalizeFilestoreTask(row, { includeCreator: userIsSuperAdmin(user), includeSubmissions: true }));
+    return true;
+  }
+  if (req.method === "PATCH" && taskDetailMatch) {
+    const current = await getFilestoreTaskForActor(Number(taskDetailMatch[1]), user, false);
+    if (!current) {
+      res.status(404).json({ error: "任务不存在" });
+      return true;
+    }
+    const rawPayload = await parseFilestoreJsonBody(req, res);
+    const payload = normalizeFilestoreTaskPayload(rawPayload);
+    const now = new Date();
+    await prisma.fileCollectTask.update({
+      where: { id: current.id },
+      data: {
+        title: payload.title,
+        description: payload.description || null,
+        status: payload.status,
+        fields: JSON.stringify(storedFields(payload.fields)),
+        fileRules: JSON.stringify(payload.fileRules),
+        renameTemplate: payload.renameTemplate,
+        folderTemplate: payload.folderTemplate,
+        expectedEntries: payload.expectedEntries,
+        deadline: payload.deadline,
+        publishedAt: payload.status === "open" && !current.publishedAt ? now : undefined,
+        closedAt: payload.status === "closed" ? now : payload.status === "open" ? null : undefined,
+      },
+    });
+    const renameResult = rawPayload.renameExistingFiles
+      ? await rerenameFilestoreTaskFiles(current.id, payload.renameTemplate)
+      : null;
+    const row = await getFilestoreTaskForActor(current.id, user, true);
+    const detail = normalizeFilestoreTask(row, { includeCreator: userIsSuperAdmin(user), includeSubmissions: true }) as any;
+    if (renameResult) detail.renameResult = renameResult;
+    res.json(detail);
+    return true;
+  }
+  if (req.method === "DELETE" && taskDetailMatch) {
+    const current = await getFilestoreTaskForActor(Number(taskDetailMatch[1]), user, false);
+    if (!current) {
+      res.status(404).json({ error: "任务不存在" });
+      return true;
+    }
+    const files = await prisma.fileCollectFile.findMany({
+      where: { submission: { taskId: current.id } },
+      select: { path: true },
+    });
+    await prisma.fileCollectTask.delete({ where: { id: current.id } });
+    await Promise.all(files.map((file) => unlinkFileCollectPath(file.path)));
+    await rm(path.resolve(process.cwd(), "uploads", "file-collect", String(current.id)), { recursive: true, force: true });
+    res.json({ ok: true });
+    return true;
+  }
+  const ownerMatch = target.match(/^\/api\/tasks\/(\d+)\/owner$/);
+  if (req.method === "PATCH" && ownerMatch) {
+    if (!userIsSuperAdmin(user)) {
+      res.status(403).json({ error: "仅超级管理员可操作" });
+      return true;
+    }
+    const task = await prisma.fileCollectTask.findUnique({ where: { id: Number(ownerMatch[1]) } });
+    if (!task) {
+      res.status(404).json({ error: "任务不存在" });
+      return true;
+    }
+    const payload = await parseFilestoreJsonBody(req, res);
+    const userId = Number(payload.userId);
+    if (!Number.isInteger(userId) || userId <= 0) throw filestoreApiError(400, "绑定用户 ID 无效");
+    const owner = await prisma.user.findFirst({
+      where: {
+        id: userId,
+        status: { not: "banned" },
+        OR: [
+          { role: "admin" },
+          { toolPermissions: { some: { toolCode: "file_collect" } } },
+        ],
+      },
+      select: { id: true },
+    });
+    if (!owner) throw filestoreApiError(400, "未找到可绑定的文件收集管理员");
+    await prisma.fileCollectTask.update({ where: { id: task.id }, data: { createdById: userId } });
+    const row = await getFilestoreTaskForActor(task.id, user, true);
+    res.json(normalizeFilestoreTask(row, { includeCreator: true, includeSubmissions: true }));
+    return true;
+  }
+  const exportMatch = target.match(/^\/api\/tasks\/(\d+)\/export\.csv$/);
+  if (req.method === "GET" && exportMatch) {
+    const row = await getFilestoreTaskForActor(Number(exportMatch[1]), user, true);
+    if (!row) {
+      res.status(404).json({ error: "任务不存在" });
+      return true;
+    }
+    const detail = normalizeFilestoreTask(row, { includeCreator: userIsSuperAdmin(user), includeSubmissions: true }) as any;
+    const fields = detail.fields as FilestoreField[];
+    const headers = ["提交编号", "提交时间", "IP", ...fields.map((field) => field.label), "文件"];
+    const lines = [headers.map(csvCell).join(",")];
+    for (const submission of detail.submissions) {
+      lines.push([
+        submission.id,
+        submission.createdAt,
+        submission.ip,
+        ...fields.map((field) => submission.data[field.key] || ""),
+        submission.files.map((file: any) => file.storedName).join("; "),
+      ].map(csvCell).join(","));
+    }
+    const body = `\uFEFF${lines.join("\r\n")}\r\n`;
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", filenameHeader(`${detail.title}.csv`));
+    res.send(body);
+    return true;
+  }
+  const zipMatch = target.match(/^\/api\/tasks\/(\d+)\/download\.zip$/);
+  if (req.method === "GET" && zipMatch) {
+    res.status(410).json({ error: "ZIP 已改为浏览器端打包，请在管理界面点击下载 ZIP" });
+    return true;
+  }
+  const prepareRemoteSubmitMatch = target.match(/^\/api\/submit\/([A-Za-z0-9_-]+)\/prepare-remote$/);
+  if (req.method === "POST" && prepareRemoteSubmitMatch) {
+    const payload = await parseFilestoreJsonBody(req, res);
+    const task = await prisma.fileCollectTask.findUnique({ where: { slug: prepareRemoteSubmitMatch[1] } });
+    if (!task) throw filestoreApiError(404, "提交链接不存在");
+    if (normalizeStatus(task.status) !== "open") throw filestoreApiError(400, "任务未开放提交");
+    if (task.deadline && Date.now() > task.deadline.getTime()) throw filestoreApiError(400, "已超过截止时间");
+    if (!(await filestoreRemoteDirectUploadEnabled(task.id))) {
+      throw filestoreApiError(400, "当前任务未启用世纪互联直传");
+    }
+    const fields = parseStoredFields(task.fields);
+    const rules = parseStoredRules(task.fileRules);
+    const dataSource = payload.data && typeof payload.data === "object"
+      ? payload.data as Record<string, unknown>
+      : payload;
+    const data = normalizeSubmissionData(fields, dataSource);
+    const files = normalizeDirectUploadFiles(payload.files);
+    validateUploadFiles(files, rules);
+    const identity = submissionIdentity(data);
+
+    const created = await prisma.$transaction(async (tx) => {
+      const submission = await tx.fileCollectSubmission.create({
+        data: {
+          taskId: task.id,
+          submitterId: null,
+          identity,
+          data: JSON.stringify(data),
+          ip: req.ip,
+          status: "uploading",
+        },
+      });
+      const fileRows = [];
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        const storedName = renderStoredName(task.renameTemplate, data, file.originalname, index + 1, files.length);
+        const physicalName = `${submission.id}-${index + 1}-${randomUUID()}-${safeStoredFilename(storedName)}`;
+        const relativePath = buildFileCollectRelativePath(task.id, physicalName);
+        fileRows.push(await tx.fileCollectFile.create({
+          data: {
+            submissionId: submission.id,
+            originalName: file.originalname,
+            storedName,
+            mimeType: file.mimetype || "application/octet-stream",
+            size: file.size,
+            path: relativePath,
+          },
+        }));
+      }
+      return { submission, files: fileRows };
+    });
+
+    try {
+      const uploadFiles = [];
+      for (const file of created.files) {
+        const session = await createRemoteMediaUploadSession({
+          relativePath: file.path,
+          contentType: file.mimeType || "application/octet-stream",
+        });
+        if (!session) throw filestoreApiError(400, "当前任务未启用世纪互联直传");
+        uploadFiles.push({
+          id: file.id,
+          originalName: file.originalName,
+          storedName: file.storedName,
+          size: file.size,
+          mimeType: file.mimeType,
+          uploadUrl: session.uploadUrl,
+          expiresAt: session.expiresAt,
+        });
+      }
+      res.json({
+        ok: true,
+        directUpload: true,
+        submissionId: created.submission.id,
+        files: uploadFiles,
+      });
+    } catch (error) {
+      await prisma.fileCollectSubmission.delete({ where: { id: created.submission.id } }).catch(() => null);
+      await Promise.all(created.files.map((file) => unlinkFileCollectPath(file.path)));
+      throw error;
+    }
+    return true;
+  }
+  const completeRemoteSubmitMatch = target.match(/^\/api\/submit\/([A-Za-z0-9_-]+)\/complete-remote$/);
+  if (req.method === "POST" && completeRemoteSubmitMatch) {
+    const payload = await parseFilestoreJsonBody(req, res);
+    const submissionId = Number(payload.submissionId ?? payload.id);
+    if (!Number.isInteger(submissionId) || submissionId <= 0) throw filestoreApiError(400, "提交编号无效");
+    const submission = await prisma.fileCollectSubmission.findUnique({
+      where: { id: submissionId },
+      include: {
+        task: true,
+        files: { orderBy: { id: "asc" } },
+      },
+    });
+    if (!submission || submission.task.slug !== completeRemoteSubmitMatch[1]) {
+      throw filestoreApiError(404, "提交记录不存在");
+    }
+    if (submission.status === "submitted") {
+      res.json({
+        ok: true,
+        id: submission.id,
+        submissionId: submission.id,
+        createdAt: isoDate(submission.createdAt),
+        files: submission.files.map((file) => file.storedName),
+      });
+      return true;
+    }
+    if (submission.status !== "uploading") throw filestoreApiError(400, "提交状态无法完成");
+    if (!submission.files.length) throw filestoreApiError(400, "没有待确认文件");
+    for (const file of submission.files) {
+      const meta = await getOneDriveChinaItemMetadata(file.path);
+      if (!meta || meta.kind !== "file") throw filestoreApiError(400, `${file.storedName} 尚未上传完成`);
+      if (meta.size !== null && Number(meta.size) !== Number(file.size)) {
+        throw filestoreApiError(400, `${file.storedName} 上传大小不一致`);
+      }
+    }
+
+    const stalePaths = await prisma.$transaction(async (tx) => {
+      const oldPaths: string[] = [];
+      if (submission.identity) {
+        const oldRows = await tx.fileCollectSubmission.findMany({
+          where: {
+            taskId: submission.taskId,
+            identity: submission.identity,
+            status: "submitted",
+            id: { not: submission.id },
+          },
+          include: { files: true },
+        });
+        for (const old of oldRows) {
+          await tx.fileCollectSubmission.delete({ where: { id: old.id } });
+          oldPaths.push(...old.files.map((file) => file.path));
+        }
+      }
+      await tx.fileCollectSubmission.update({
+        where: { id: submission.id },
+        data: { status: "submitted" },
+      });
+      await tx.fileCollectTask.update({
+        where: { id: submission.taskId },
+        data: {
+          submissionCount: await tx.fileCollectSubmission.count({ where: { taskId: submission.taskId, status: "submitted" } }),
+          fileCount: await tx.fileCollectFile.count({ where: { submission: { taskId: submission.taskId, status: "submitted" } } }),
+        },
+      });
+      return oldPaths;
+    });
+    await Promise.all(stalePaths.map((item) => unlinkFileCollectPath(item)));
+    res.json({
+      ok: true,
+      id: submission.id,
+      submissionId: submission.id,
+      createdAt: isoDate(submission.createdAt),
+      files: submission.files.map((file) => file.storedName),
+    });
+    return true;
+  }
+  const submitMatch = target.match(/^\/api\/submit\/([A-Za-z0-9_-]+)$/);
+  if (req.method === "POST" && submitMatch) {
+    let uploadedFiles: Express.Multer.File[] = [];
+    const movedPaths: string[] = [];
+    try {
+      const task = await prisma.fileCollectTask.findUnique({ where: { slug: submitMatch[1] } });
+      if (!task) throw filestoreApiError(404, "提交链接不存在");
+      if (normalizeStatus(task.status) !== "open") throw filestoreApiError(400, "任务未开放提交");
+      if (task.deadline && Date.now() > task.deadline.getTime()) throw filestoreApiError(400, "已超过截止时间");
+      if (await filestoreRemoteDirectUploadEnabled(task.id)) {
+        throw filestoreApiError(400, "当前任务已启用世纪互联直传，请刷新页面后重试");
+      }
+      uploadedFiles = await parseFilestoreUpload(req, res);
+      const fields = parseStoredFields(task.fields);
+      const rules = parseStoredRules(task.fileRules);
+      const body = (req.body && typeof req.body === "object") ? req.body as Record<string, unknown> : {};
+      const data = normalizeSubmissionData(fields, body);
+      validateUploadFiles(uploadedFiles, rules);
+      const identity = submissionIdentity(data);
+      const taskDir = path.resolve(process.cwd(), "uploads", "file-collect", String(task.id));
+      mkdirSync(taskDir, { recursive: true });
+      const result = await prisma.$transaction(async (tx) => {
+        if (identity) {
+          const oldRows = await tx.fileCollectSubmission.findMany({
+            where: { taskId: task.id, identity },
+            include: { files: true },
+          });
+          for (const old of oldRows) {
+            await tx.fileCollectSubmission.delete({ where: { id: old.id } });
+            for (const file of old.files) await unlinkFileCollectPath(file.path);
+          }
+        }
+        const submission = await tx.fileCollectSubmission.create({
+          data: {
+            taskId: task.id,
+            submitterId: null,
+            identity,
+            data: JSON.stringify(data),
+            ip: req.ip,
+            status: "submitted",
+          },
+        });
+        const fileRows = [];
+        for (let index = 0; index < uploadedFiles.length; index += 1) {
+          const file = uploadedFiles[index];
+          const storedName = renderStoredName(task.renameTemplate, data, file.originalname, index + 1, uploadedFiles.length);
+          const physicalName = `${submission.id}-${index + 1}-${randomUUID()}-${safeStoredFilename(storedName)}`;
+          const relativePath = buildFileCollectRelativePath(task.id, physicalName);
+          const absoluteTarget = path.join(taskDir, physicalName);
+          await rename(file.path, absoluteTarget);
+          movedPaths.push(relativePath);
+          fileRows.push(await tx.fileCollectFile.create({
+            data: {
+              submissionId: submission.id,
+              originalName: file.originalname,
+              storedName,
+              mimeType: file.mimetype || "application/octet-stream",
+              size: file.size,
+              path: relativePath,
+            },
+          }));
+        }
+        await tx.fileCollectTask.update({
+          where: { id: task.id },
+          data: {
+            submissionCount: await tx.fileCollectSubmission.count({ where: { taskId: task.id, status: "submitted" } }),
+            fileCount: await tx.fileCollectFile.count({ where: { submission: { taskId: task.id, status: "submitted" } } }),
+          },
+        });
+        return { submission, files: fileRows };
+      });
+      res.json({
+        ok: true,
+        id: result.submission.id,
+        submissionId: result.submission.id,
+        createdAt: isoDate(result.submission.createdAt),
+        files: result.files.map((file) => file.storedName),
+      });
+    } catch (error) {
+      await Promise.all(uploadedFiles.map((file) => unlink(file.path).catch(() => null)));
+      if (movedPaths.length) await Promise.all(movedPaths.map((item) => unlinkFileCollectPath(item)));
+      throw error;
+    }
+    return true;
+  }
+  const fileInfoMatch = target.match(/^\/api\/files\/(\d+)$/);
+  if (req.method === "GET" && fileInfoMatch) {
+    const file = await prisma.fileCollectFile.findUnique({
+      where: { id: Number(fileInfoMatch[1]) },
+      include: { submission: { include: { task: { include: { createdBy: { select: { id: true, username: true, nickname: true, role: true } } } } } } },
+    });
+    if (!file || !canAccessFilestoreTask(user, file.submission.task)) {
+      res.status(404).json({ error: "文件不存在" });
+      return true;
+    }
+    res.json({
+      id: file.id,
+      submissionId: file.submissionId,
+      taskId: file.submission.taskId,
+      originalName: file.originalName,
+      storedName: file.storedName,
+      mimeType: file.mimeType,
+      size: file.size,
+      taskTitle: file.submission.task.title,
+      submissionData: parseJsonObject(file.submission.data),
+      submissionCreatedAt: isoDate(file.submission.createdAt),
+    });
+    return true;
+  }
+  const fileDownloadMatch = target.match(/^\/api\/files\/(\d+)\/(download|preview)$/);
+  if (req.method === "GET" && fileDownloadMatch) {
+    const file = await prisma.fileCollectFile.findUnique({
+      where: { id: Number(fileDownloadMatch[1]) },
+      include: { submission: { include: { task: true } } },
+    });
+    if (!file || !canAccessFilestoreTask(user, file.submission.task)) {
+      res.status(404).json({ error: "文件不存在" });
+      return true;
+    }
+    const absolute = await ensureMediaLocalPathFromUploadUrl(`/uploads/${file.path}`);
+    if (!absolute) throw filestoreApiError(404, "文件已丢失");
+    if (fileDownloadMatch[2] === "preview") {
+      res.type(file.mimeType || "application/octet-stream");
+      res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(file.storedName)}`);
+      res.sendFile(absolute);
+    } else {
+      res.download(absolute, file.storedName);
+    }
+    return true;
+  }
+  if (req.method === "DELETE" && fileInfoMatch) {
+    const file = await prisma.fileCollectFile.findUnique({
+      where: { id: Number(fileInfoMatch[1]) },
+      include: { submission: { include: { task: true } } },
+    });
+    if (!file || !canAccessFilestoreTask(user, file.submission.task)) {
+      res.status(404).json({ error: "文件不存在" });
+      return true;
+    }
+    await prisma.fileCollectFile.delete({ where: { id: file.id } });
+    await unlinkFileCollectPath(file.path);
+    await refreshFileCollectStats(file.submission.taskId);
+    res.json({ ok: true });
+    return true;
+  }
+  const submissionMatch = target.match(/^\/api\/submissions\/(\d+)$/);
+  if (req.method === "DELETE" && submissionMatch) {
+    const submission = await prisma.fileCollectSubmission.findUnique({
+      where: { id: Number(submissionMatch[1]) },
+      include: { task: true, files: true },
+    });
+    if (!submission || !canAccessFilestoreTask(user, submission.task)) {
+      res.status(404).json({ error: "提交记录不存在" });
+      return true;
+    }
+    await prisma.fileCollectSubmission.delete({ where: { id: submission.id } });
+    await Promise.all(submission.files.map((file) => unlinkFileCollectPath(file.path)));
+    await refreshFileCollectStats(submission.taskId);
+    res.json({ ok: true });
     return true;
   }
   if (req.method === "GET" && target === "/api/platform/users") {
@@ -413,10 +1606,19 @@ function proxyToFilestore(req: Request, res: Response, user: FilestoreAccessUser
 
 export const filestoreProxy: RequestHandler = async (req, res) => {
   try {
-    await ensureFilestoreStarted();
     const user = await assertFilestoreAccess(req, res);
     if (user === false) return;
-    if (await handleFilestoreUtilityRoute(req, res, user)) return;
+    try {
+      if (await handleFilestoreUtilityRoute(req, res, user)) return;
+    } catch (error) {
+      sendFilestoreApiError(res, error);
+      return;
+    }
+    if (upstreamPath(req).split("?")[0].startsWith("/api/")) {
+      res.status(404).json({ error: "接口不存在" });
+      return;
+    }
+    await ensureFilestoreStarted();
     proxyToFilestore(req, res, user);
   } catch (error) {
     res.status(503).send(error instanceof Error ? error.message : "Filestore 暂不可用");

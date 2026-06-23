@@ -43,7 +43,7 @@
 - 课表增强：支持周/日视图、PWA 离线打开、本地背景定制、客户端云同步编辑、iOS Scriptable / Android 小组件。
 - 校园服务：聚合教务、就业、图书馆、心理、信息化等常用入口，并内置宿舍电费查询代理。
 - 校园小工具：当前内置需求反馈、在线问卷、成绩表核对、文件收集。
-- 文件收集：后端会自动拉起 `server/filestore/`，前端通过 `/filestore` 与 `/services/tools/filestore` 嵌入访问。
+- 文件收集：`server/filestore/` 只承载静态工作台页面，任务、提交、模板与文件记录统一写入主站 PostgreSQL。
 - 支付与赞助：支持易支付配置、赞助下单、订单状态管理、鸣谢墙展示、过期订单自动关闭。
 - QQBot：支持绑定 QQ、私聊/群投稿、Webhook 接入、通知派发、审核提醒。
 - 多端容器：内置 Android 与 HarmonyOS WebView 壳，便于直接打包课表与站点能力。
@@ -57,7 +57,7 @@
 | 内容处理 | marked、DOMPurify、Cheerio、Turndown、iconv-lite、`@resvg/resvg-js` |
 | 文件与表格 | multer、xlsx、viewerjs、html-to-image |
 | 鉴权与安全 | JWT、bcryptjs、学校统一认证会话、Zod |
-| 辅助子系统 | Python Filestore、Android WebView、HarmonyOS ArkUI Web 容器 |
+| 辅助子系统 | Filestore 静态工作台、Android WebView、HarmonyOS ArkUI Web 容器 |
 
 ## 目录结构
 
@@ -66,7 +66,7 @@ CPU-web/
 ├── android/                 # Android WebView 壳 + 课表桌面小组件
 ├── harmony/                 # HarmonyOS Stage 工程 + JS Bridge
 ├── server/
-│   ├── filestore/           # 嵌入式 Python 文件收集系统
+│   ├── filestore/           # 文件收集静态工作台页面
 │   ├── prisma/              # Prisma schema、迁移、种子数据
 │   ├── scripts/             # 调试脚本与数据修复脚本
 │   └── src/
@@ -131,7 +131,6 @@ PROXY_PORT=23334
 FILESTORE_ENABLED=true
 FILESTORE_PORT=8974
 FILESTORE_PYTHON=""
-FILESTORE_ADMIN_PASSWORD="admin123"
 
 MEDIA_STORAGE_PROVIDER="local"
 MEDIA_STORAGE_IMAGE_PROVIDER="local"
@@ -252,9 +251,8 @@ Vite 已代理以下路径到后端：
 | `PROXY_AUTH` | 空 | 教务代理端校验密钥 |
 | `PROXY_PORT` | `23334` | 教务代理监听端口 |
 | `FILESTORE_ENABLED` | `true` | 是否启用嵌入式 Filestore |
-| `FILESTORE_PORT` | `8974` | Filestore Python 服务端口 |
+| `FILESTORE_PORT` | `8974` | Filestore 静态页面服务端口 |
 | `FILESTORE_PYTHON` | 自动探测 | 指定 Python 可执行文件 |
-| `FILESTORE_ADMIN_PASSWORD` | `admin123` | Filestore 初始管理员密码 |
 | `MEDIA_STORAGE_PROVIDER` | `local` | 媒体资源默认存储后端；可设为 `local` 或 `onedrive-cn`，未单独指定图片/视频时作为回退值 |
 | `MEDIA_STORAGE_IMAGE_PROVIDER` | 空 | 图片资源存储后端；可单独设为 `local` 或 `onedrive-cn` |
 | `MEDIA_STORAGE_VIDEO_PROVIDER` | 空 | 视频资源存储后端；可单独设为 `local` 或 `onedrive-cn` |

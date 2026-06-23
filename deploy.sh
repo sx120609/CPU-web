@@ -12,6 +12,7 @@
 #   ./deploy.sh reset-db         # 重置 PostgreSQL schema 并重新写入种子数据
 #   ./deploy.sh postgres-init [db] [user]            # 安装 PostgreSQL、创建应用库和账号，并写入 server/.env
 #   ./deploy.sh postgres-config "postgresql://..."   # 手动写入 PostgreSQL 连接串并刷新后端环境
+#   ./deploy.sh filestore-migrate                    # 将旧 server/filestore/data/filestore.db 导入 PostgreSQL
 #   ./deploy.sh redis-init [db-index]                # 安装 Redis 并写入 REDIS_URL
 #   ./deploy.sh redis-config "redis://..."           # 手动写入 Redis 连接串并刷新后端环境
 #   ./deploy.sh proxy-init       # 代理端首次部署：装依赖 + 构建后端 + 启动教务代理
@@ -562,6 +563,15 @@ do_db_init() {
   npm run prisma:generate --prefix server
 }
 
+do_filestore_migrate() {
+  if [ ! -f server/filestore/data/filestore.db ]; then
+    log "未发现旧 Filestore SQLite，跳过文件收集数据迁移"
+    return
+  fi
+  log "发现旧 Filestore SQLite，迁移到 PostgreSQL"
+  npm run filestore:migrate --prefix server || err "Filestore SQLite 迁移失败"
+}
+
 do_db_reset() {
   warn "⚠️  将重置当前 PostgreSQL schema 并删除所有论坛数据！5 秒内 Ctrl+C 取消..."
   sleep 5
@@ -767,6 +777,7 @@ do_update() {
   fi
   do_install
   do_db_init   # 自动应用新 migration（不会动既有数据）
+  do_filestore_migrate
   do_build
   do_restart || do_start
 }
@@ -800,6 +811,7 @@ case "$CMD" in
     fi
     do_install
     do_db_init
+    do_filestore_migrate
     do_build
     do_start
     ;;
@@ -831,6 +843,15 @@ case "$CMD" in
   postgres-config)
     log "=== 配置 PostgreSQL 目标连接串 ==="
     do_postgres_config
+    ;;
+  filestore-migrate)
+    log "=== 迁移 Filestore SQLite 到 PostgreSQL ==="
+    ensure_node
+    ensure_env
+    runtime_uses_postgres || err "当前部署脚本已切换为 PostgreSQL-only。请先运行 ./deploy.sh postgres-init 或 ./deploy.sh postgres-config"
+    do_install
+    do_db_init
+    do_filestore_migrate
     ;;
   redis-init)
     log "=== 安装并初始化 Redis ==="

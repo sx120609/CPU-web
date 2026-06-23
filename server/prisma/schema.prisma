@@ -708,6 +708,7 @@ model FileCollectTask {
   renameTemplate  String   @default("{name}-{student_id}")
   folderTemplate  String   @default("{name}-{student_id}")
   expectedEntries String   @default("")
+  deadline        DateTime?
   submissionCount Int      @default(0)
   fileCount       Int      @default(0)
   createdById     Int?
@@ -749,6 +750,7 @@ model FileCollectSubmission {
   identity    String   @default("")
   data        String   @default("{}")
   ip          String?
+  status      String   @default("submitted")
   createdAt   DateTime @default(now())
 
   task      FileCollectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
@@ -758,6 +760,7 @@ model FileCollectSubmission {
   @@index([taskId, createdAt])
   @@index([submitterId])
   @@index([identity])
+  @@index([status])
 }
 
 model FileCollectFile {

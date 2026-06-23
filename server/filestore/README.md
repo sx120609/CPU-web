@@ -110,12 +110,6 @@ python app.py
 http://127.0.0.1:8974
 ```
 
-默认管理员密码：
-
-```text
-admin123
-```
-
 可通过环境变量修改默认端口：
 
 ```powershell
@@ -123,26 +117,21 @@ $env:PORT="8974"
 python app.py
 ```
 
-可通过环境变量修改初始管理员密码：
-
-```powershell
-$env:FILESTORE_ADMIN_PASSWORD="your-strong-password"
-python app.py
-```
-
-管理员密码也可以登录后在 `系统设置` 中修改。
-
 ## 数据目录
 
-默认数据位置：
+Filestore 的任务、提交记录、模板和设置已统一迁移到主站 PostgreSQL：
+
+- 任务与提交：`FileCollectTask` / `FileCollectSubmission` / `FileCollectFile`
+- 全局模板：`FileCollectTemplate`，标记为 `filestore-global`
+- 工作台标题等设置：`SiteSetting`
+
+上传文件统一存放在主后端目录：
 
 ```text
-data/filestore.db
-uploads/
+server/uploads/file-collect/
 ```
 
-- `data/filestore.db`：SQLite 数据库
-- `uploads/`：上传文件
+旧版本遗留的 `data/filestore.db` 可通过主项目根目录执行 `./deploy.sh filestore-migrate` 导入 PostgreSQL；`init` / `update` 部署流程也会自动检查并迁移。
 
 ## 反向代理
 

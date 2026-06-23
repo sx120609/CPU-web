@@ -67,7 +67,9 @@ import {
   restoreDatabaseBackupSnapshot,
 } from "../../services/databaseBackup";
 import {
+  getFilestoreStorageAdminConfig,
   getMediaStorageAdminConfig,
+  updateFilestoreStorageAdminConfig,
   updateMediaStorageAdminConfig,
 } from "../../services/storageConfig";
 import {
@@ -1615,6 +1617,28 @@ adminRouter.get("/media-storage", adminOnly, async (_req, res, next) => {
   try {
     ok(res, await getMediaStorageAdminConfig());
   } catch (e) { next(e); }
+});
+
+adminRouter.get("/filestore-settings", adminOnly, async (_req, res, next) => {
+  try {
+    ok(res, await getFilestoreStorageAdminConfig());
+  } catch (e) { next(e); }
+});
+
+const filestoreSettingsPatchSchema = z.object({
+  enabled: z.boolean().optional(),
+});
+
+adminRouter.patch("/filestore-settings", adminOnly, validate(filestoreSettingsPatchSchema), async (req, res, next) => {
+  try {
+    ok(res, await updateFilestoreStorageAdminConfig(req.body));
+  } catch (e: any) {
+    if (e?.message === "请先在媒体存储页完成世纪互联授权并选择文档库") {
+      next(Errors.badRequest(e.message));
+      return;
+    }
+    next(e);
+  }
 });
 
 const mediaStoragePatchSchema = z.object({

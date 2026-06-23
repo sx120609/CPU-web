@@ -10,6 +10,7 @@ export type MediaStorageStoredConfig = {
   mediaStorageImageProvider: MediaStorageProvider;
   mediaStorageVideoProvider: MediaStorageProvider;
   mediaStorageRemotePrefixes: string[];
+  filestoreRemoteStorageEnabled: boolean;
   oneDriveChinaClientId: string;
   oneDriveChinaClientSecret: string;
   oneDriveChinaSharepointUrl: string;
@@ -46,6 +47,7 @@ const MEDIA_STORAGE_PROVIDER_KEY = "storage.media.provider";
 const MEDIA_STORAGE_IMAGE_PROVIDER_KEY = "storage.media.imageProvider";
 const MEDIA_STORAGE_VIDEO_PROVIDER_KEY = "storage.media.videoProvider";
 const MEDIA_STORAGE_REMOTE_PREFIXES_KEY = "storage.media.remotePrefixes";
+const FILESTORE_REMOTE_STORAGE_ENABLED_KEY = "filestore.remoteStorageEnabled";
 const ONEDRIVE_CN_CLIENT_ID_KEY = "storage.onedriveCn.clientId";
 const ONEDRIVE_CN_CLIENT_SECRET_KEY = "storage.onedriveCn.clientSecret";
 const ONEDRIVE_CN_SHAREPOINT_URL_KEY = "storage.onedriveCn.sharepointUrl";
@@ -65,6 +67,7 @@ const STORAGE_KEYS = [
   MEDIA_STORAGE_IMAGE_PROVIDER_KEY,
   MEDIA_STORAGE_VIDEO_PROVIDER_KEY,
   MEDIA_STORAGE_REMOTE_PREFIXES_KEY,
+  FILESTORE_REMOTE_STORAGE_ENABLED_KEY,
   ONEDRIVE_CN_CLIENT_ID_KEY,
   ONEDRIVE_CN_CLIENT_SECRET_KEY,
   ONEDRIVE_CN_SHAREPOINT_URL_KEY,
@@ -93,6 +96,7 @@ const storageConfigCache: MediaStorageStoredConfig = {
     normalizeMediaStorageProvider(config.mediaStorageProvider, "local"),
   ),
   mediaStorageRemotePrefixes: normalizeRemotePrefixes(config.mediaStorageRemotePrefixes, ["forum"]),
+  filestoreRemoteStorageEnabled: false,
   oneDriveChinaClientId: "",
   oneDriveChinaClientSecret: "",
   oneDriveChinaSharepointUrl: "",
@@ -120,6 +124,7 @@ export async function loadStorageConfig(): Promise<void> {
       normalizeMediaStorageProvider(config.mediaStorageProvider, "local"),
     ),
     mediaStorageRemotePrefixes: normalizeRemotePrefixes(config.mediaStorageRemotePrefixes, ["forum"]),
+    filestoreRemoteStorageEnabled: false,
     oneDriveChinaClientId: "",
     oneDriveChinaClientSecret: "",
     oneDriveChinaSharepointUrl: "",
@@ -154,6 +159,10 @@ export async function loadStorageConfig(): Promise<void> {
     }
     if (row.key === MEDIA_STORAGE_REMOTE_PREFIXES_KEY) {
       next.mediaStorageRemotePrefixes = normalizeRemotePrefixes(row.value, ["forum"]);
+      continue;
+    }
+    if (row.key === FILESTORE_REMOTE_STORAGE_ENABLED_KEY) {
+      next.filestoreRemoteStorageEnabled = parseBooleanSetting(row.value, false);
       continue;
     }
     if (row.key === ONEDRIVE_CN_CLIENT_ID_KEY) {
@@ -236,14 +245,18 @@ export async function getMediaStorageRuntimeConfig(): Promise<MediaStorageRuntim
 export function getMediaStorageRuntimeConfigSync(): MediaStorageRuntimeConfig {
   const current = cloneStorageConfig(storageConfigCache);
   const fallbackProvider = current.mediaStorageProvider || normalizeMediaStorageProvider(config.mediaStorageProvider, "local");
+  const effectiveRemotePrefixes = current.mediaStorageRemotePrefixes.length
+    ? [...current.mediaStorageRemotePrefixes]
+    : normalizeRemotePrefixes(config.mediaStorageRemotePrefixes, ["forum"]);
+  if (current.filestoreRemoteStorageEnabled && !effectiveRemotePrefixes.includes("file-collect")) {
+    effectiveRemotePrefixes.push("file-collect");
+  }
   return {
     ...current,
     effectiveProvider: fallbackProvider,
     effectiveImageProvider: current.mediaStorageImageProvider || normalizeMediaStorageProvider(config.mediaStorageImageProvider, fallbackProvider),
     effectiveVideoProvider: current.mediaStorageVideoProvider || normalizeMediaStorageProvider(config.mediaStorageVideoProvider, fallbackProvider),
-    effectiveRemotePrefixes: current.mediaStorageRemotePrefixes.length
-      ? [...current.mediaStorageRemotePrefixes]
-      : normalizeRemotePrefixes(config.mediaStorageRemotePrefixes, ["forum"]),
+    effectiveRemotePrefixes,
     legacyTenantId: String(config.oneDriveChinaTenantId || "").trim(),
     legacyClientId: String(config.oneDriveChinaClientId || "").trim(),
     legacyClientSecret: String(config.oneDriveChinaClientSecret || "").trim(),
@@ -318,6 +331,50 @@ export async function updateMediaStorageAdminConfig(input: {
   await persistStorageConfig(next);
   Object.assign(storageConfigCache, next);
   return getMediaStorageAdminConfig();
+}
+
+export async function getFilestoreStorageAdminConfig() {
+  await ensureLoaded();
+  const runtime = getMediaStorageRuntimeConfigSync();
+  const remoteReady = Boolean(
+    (runtime.oneDriveChinaRefreshToken.trim() || runtime.legacyClientSecret.trim())
+    && (runtime.oneDriveChinaDriveId.trim() || runtime.legacyDriveId.trim()),
+  );
+  return {
+    enabled: runtime.filestoreRemoteStorageEnabled,
+    remoteReady,
+    remoteConfigured: Boolean(runtime.oneDriveChinaDriveId.trim() || runtime.legacyDriveId.trim()),
+    mediaStorageProvider: runtime.effectiveProvider,
+    imageProvider: runtime.effectiveImageProvider,
+    videoProvider: runtime.effectiveVideoProvider,
+    remotePrefixes: [...runtime.effectiveRemotePrefixes],
+    fileCollectPrefix: "file-collect",
+    oneDriveChinaSiteName: runtime.oneDriveChinaSiteName,
+    oneDriveChinaDriveName: runtime.oneDriveChinaDriveName || runtime.oneDriveChinaDriveId || runtime.legacyDriveId,
+    oneDriveChinaRootPath: runtime.oneDriveChinaRootPath || runtime.legacyRootPath,
+    oneDriveChinaAuthorizedAt: runtime.oneDriveChinaAuthorizedAt,
+    oneDriveChinaLastError: runtime.oneDriveChinaLastError,
+  };
+}
+
+export async function updateFilestoreStorageAdminConfig(input: { enabled?: boolean }) {
+  await ensureLoaded();
+  const next = cloneStorageConfig(storageConfigCache);
+  if (input.enabled !== undefined) {
+    if (input.enabled) {
+      const runtime = getMediaStorageRuntimeConfigSync();
+      const remoteReady = Boolean(
+        (runtime.oneDriveChinaRefreshToken.trim() || runtime.legacyClientSecret.trim())
+        && (runtime.oneDriveChinaDriveId.trim() || runtime.legacyDriveId.trim()),
+      );
+      if (!remoteReady) throw new Error("请先在媒体存储页完成世纪互联授权并选择文档库");
+    }
+    next.filestoreRemoteStorageEnabled = Boolean(input.enabled);
+  }
+  sanitizeStorageConfig(next);
+  await persistStorageConfig(next);
+  Object.assign(storageConfigCache, next);
+  return getFilestoreStorageAdminConfig();
 }
 
 export async function setOneDriveChinaResolvedSite(input: {
@@ -406,6 +463,7 @@ function sanitizeStorageConfig(target: MediaStorageStoredConfig) {
   target.mediaStorageImageProvider = normalizeMediaStorageProvider(target.mediaStorageImageProvider, target.mediaStorageProvider);
   target.mediaStorageVideoProvider = normalizeMediaStorageProvider(target.mediaStorageVideoProvider, target.mediaStorageProvider);
   target.mediaStorageRemotePrefixes = normalizeRemotePrefixes(target.mediaStorageRemotePrefixes, ["forum"]);
+  target.filestoreRemoteStorageEnabled = Boolean(target.filestoreRemoteStorageEnabled);
   target.oneDriveChinaSharepointUrl = normalizeOptionalUrl(target.oneDriveChinaSharepointUrl);
   target.oneDriveChinaSharepointHost = String(target.oneDriveChinaSharepointHost || "").trim().toLowerCase();
   target.oneDriveChinaSharepointPath = normalizeSharePointPath(target.oneDriveChinaSharepointPath);
@@ -429,6 +487,7 @@ async function persistStorageConfig(next: MediaStorageStoredConfig) {
     [MEDIA_STORAGE_IMAGE_PROVIDER_KEY, next.mediaStorageImageProvider],
     [MEDIA_STORAGE_VIDEO_PROVIDER_KEY, next.mediaStorageVideoProvider],
     [MEDIA_STORAGE_REMOTE_PREFIXES_KEY, next.mediaStorageRemotePrefixes.join(",")],
+    [FILESTORE_REMOTE_STORAGE_ENABLED_KEY, next.filestoreRemoteStorageEnabled ? "on" : "off"],
     [ONEDRIVE_CN_CLIENT_ID_KEY, next.oneDriveChinaClientId],
     [ONEDRIVE_CN_CLIENT_SECRET_KEY, next.oneDriveChinaClientSecret],
     [ONEDRIVE_CN_SHAREPOINT_URL_KEY, next.oneDriveChinaSharepointUrl],
@@ -467,6 +526,14 @@ function normalizeMediaStorageProvider(input: unknown, fallback: MediaStoragePro
   const raw = String(input || "").trim().toLowerCase();
   if (raw === "onedrive-cn") return "onedrive-cn";
   if (raw === "local") return "local";
+  return fallback;
+}
+
+function parseBooleanSetting(input: unknown, fallback: boolean) {
+  const raw = String(input || "").trim().toLowerCase();
+  if (!raw) return fallback;
+  if (["1", "true", "yes", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "off"].includes(raw)) return false;
   return fallback;
 }
 

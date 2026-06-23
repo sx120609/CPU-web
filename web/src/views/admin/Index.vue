@@ -82,6 +82,7 @@
       <el-tab-pane label="🧠 审核" name="ai-review" v-if="auth.isAdmin"><AiReviewPane v-if="tab === 'ai-review'" /></el-tab-pane>
       <el-tab-pane label="🗄 数据备份" name="database" v-if="auth.isAdmin"><DatabasePane v-if="tab === 'database'" /></el-tab-pane>
       <el-tab-pane label="🗂 媒体存储" name="media-storage" v-if="auth.isAdmin"><MediaStoragePane v-if="tab === 'media-storage'" /></el-tab-pane>
+      <el-tab-pane label="📦 文件收集" name="filestore-settings" v-if="auth.isAdmin"><FilestoreSettingsPane v-if="tab === 'filestore-settings'" /></el-tab-pane>
       <el-tab-pane label="⚙ 功能开关" name="features" v-if="auth.isAdmin"><FeaturesPane v-if="tab === 'features'" /></el-tab-pane>
     </el-tabs>
   </div>
@@ -107,6 +108,7 @@ const QqBotPane = defineAsyncComponent(() => import("./QqBotPane.vue"));
 const AiReviewPane = defineAsyncComponent(() => import("./AiReviewPane.vue"));
 const DatabasePane = defineAsyncComponent(() => import("./DatabasePane.vue"));
 const MediaStoragePane = defineAsyncComponent(() => import("./MediaStoragePane.vue"));
+const FilestoreSettingsPane = defineAsyncComponent(() => import("./FilestoreSettingsPane.vue"));
 const FeaturesPane = defineAsyncComponent(() => import("./FeaturesPane.vue"));
 
 const auth = useAuthStore();
