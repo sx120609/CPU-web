@@ -2668,9 +2668,9 @@ async function fetchFileCollectAccess(id: number, action: "download" | "preview"
 function openDirectFileAccess(url: string, filename: string, action: "download" | "preview") {
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.target = "_blank";
   anchor.rel = "noopener noreferrer";
-  if (action === "download") anchor.download = filename;
+  if (action === "preview") anchor.target = "_blank";
+  if (action === "download" && filename) anchor.download = filename;
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
@@ -2688,13 +2688,16 @@ async function downloadFileCollectFile(id: number, filename: string) {
   if (isFileActionDisabled(id)) return;
   fileDownloadingId.value = id;
   try {
+    ElMessage.info("正在获取下载链接...");
     const access = await fetchFileCollectAccess(id, "download");
     if (access.backend === "onedrive-cn" && access.url) {
       openDirectFileAccess(access.url, access.filename || filename, "download");
+      ElMessage.success("已向浏览器发起下载，请查看下载列表");
       return;
     }
     const blob = await fetchFileCollectBlob(id, "download");
     saveBlob(blob, filename);
+    ElMessage.success("已向浏览器发起下载，请查看下载列表");
   } catch (error) {
     ElMessage.error(requestMessage(error) || "下载失败");
   } finally {

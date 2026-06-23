@@ -9,6 +9,7 @@ import { prisma } from "../prisma";
 import { authOptional, authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { Errors, ok } from "../utils/response";
+import { normalizeMulterOriginalNames, normalizeUploadOriginalName } from "../utils/uploadFilename";
 import {
   assertToolUsable,
   hasToolContentManagePermission,
@@ -56,7 +57,7 @@ mkdirSync(fileCollectTmpDir, { recursive: true });
 const fileCollectUpload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, fileCollectTmpDir),
-    filename: (_req, file, cb) => cb(null, `${Date.now()}-${randomUUID()}${path.extname(file.originalname || "")}`),
+    filename: (_req, file, cb) => cb(null, `${Date.now()}-${randomUUID()}${path.extname(normalizeUploadOriginalName(file.originalname))}`),
   }),
   limits: {
     files: 20,
@@ -907,7 +908,7 @@ toolsRouter.get("/file-collections/:id/submissions", authRequired, async (req, r
 });
 
 toolsRouter.post("/file-collections/:slug/submissions", authOptional, fileCollectUpload.array("files", 20), async (req, res, next) => {
-  const uploadedFiles = (req.files as Express.Multer.File[] | undefined) ?? [];
+  const uploadedFiles = normalizeMulterOriginalNames((req.files as Express.Multer.File[] | undefined) ?? []);
   try {
     const task = await prisma.fileCollectTask.findUnique({ where: { slug: String(req.params.slug) } });
     if (!task) throw Errors.notFound("收集任务不存在");

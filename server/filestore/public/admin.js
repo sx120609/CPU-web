@@ -1122,6 +1122,16 @@ function openDirectFileUrl(url, filename, targetWindow = null) {
   anchor.remove();
 }
 
+function triggerDirectDownload(url, filename) {
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.rel = "noopener noreferrer";
+  if (filename) anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
 async function previewFile(id) {
   const previewWindow = window.open("about:blank", "_blank");
   if (previewWindow) {
@@ -1150,11 +1160,14 @@ async function previewFile(id) {
 }
 
 async function downloadFile(id) {
+  toast("正在获取下载链接...");
   const access = await fetchFileAccess(id, "download");
   if (access.backend === "onedrive-cn" && access.url) {
-    openDirectFileUrl(access.url, access.filename);
+    triggerDirectDownload(access.url, access.filename);
+    toast("已向浏览器发起下载，请查看下载列表", "ok");
     return;
   }
+  toast("正在读取文件...");
   const { blob, filename } = await fetchProtectedBlob(`/api/files/${id}/download`);
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -1164,6 +1177,7 @@ async function downloadFile(id) {
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
+  toast("已向浏览器发起下载，请查看下载列表", "ok");
 }
 
 async function deleteFile(id) {

@@ -22,6 +22,7 @@ import {
 } from "./mediaStorage";
 import { getOneDriveChinaItemMetadata, resolveOneDriveChinaDirectDownloadUrl } from "./oneDriveChina";
 import { getMediaStorageRuntimeConfig } from "./storageConfig";
+import { normalizeMulterOriginalNames, normalizeUploadOriginalName } from "../utils/uploadFilename";
 
 const MOUNT_PATH = "/filestore";
 const TEXT_RESPONSE_RE = /^(text\/|application\/json\b|application\/javascript\b|text\/javascript\b)/i;
@@ -37,7 +38,7 @@ mkdirSync(fileCollectTmpDir, { recursive: true });
 const filestoreUpload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, fileCollectTmpDir),
-    filename: (_req, file, cb) => cb(null, `${Date.now()}-${randomUUID()}${path.extname(file.originalname || "")}`),
+    filename: (_req, file, cb) => cb(null, `${Date.now()}-${randomUUID()}${path.extname(normalizeUploadOriginalName(file.originalname))}`),
   }),
   limits: {
     files: 20,
@@ -288,7 +289,7 @@ async function parseFilestoreUpload(req: Request, res: Response) {
   return new Promise<Express.Multer.File[]>((resolve, reject) => {
     filestoreUpload.array("files", 20)(req, res, (err) => {
       if (err) reject(err);
-      else resolve((req.files as Express.Multer.File[] | undefined) ?? []);
+      else resolve(normalizeMulterOriginalNames((req.files as Express.Multer.File[] | undefined) ?? []));
     });
   });
 }
@@ -767,7 +768,7 @@ function normalizeDirectUploadFiles(input: unknown) {
   if (!Array.isArray(input)) throw filestoreApiError(400, "文件列表格式不正确");
   return input.slice(0, 50).map((item) => {
     const row = item && typeof item === "object" ? item as Record<string, unknown> : {};
-    const name = String(row.name ?? row.originalName ?? "").trim().slice(0, 255);
+    const name = normalizeUploadOriginalName(row.name ?? row.originalName).slice(0, 255);
     const size = Number(row.size);
     const type = String(row.type ?? row.mimeType ?? "").trim().slice(0, 120) || "application/octet-stream";
     if (!name) throw filestoreApiError(400, "文件名不能为空");
