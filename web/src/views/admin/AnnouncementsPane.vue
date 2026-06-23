@@ -23,12 +23,14 @@
           <el-input v-model="form.source" maxlength="40" placeholder="默认显示为 站务组" />
         </el-form-item>
         <el-form-item label="投放平台">
-          <el-radio-group v-model="form.targetClient">
-            <el-radio-button value="all">全部</el-radio-button>
-            <el-radio-button value="ios">仅 iOS</el-radio-button>
-            <el-radio-button value="android">仅安卓</el-radio-button>
-            <el-radio-button value="harmony">仅鸿蒙</el-radio-button>
-          </el-radio-group>
+          <div class="target-picker">
+            <el-checkbox v-model="targetAll" border>全部</el-checkbox>
+            <el-checkbox-group v-model="form.targetClients" class="target-options" :disabled="targetAll">
+              <el-checkbox-button v-for="item in targetOptions" :key="item.value" :label="item.value">
+                {{ item.label }}
+              </el-checkbox-button>
+            </el-checkbox-group>
+          </div>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" :loading="publishing" :disabled="publishing || !form.title.trim() || !form.content.trim()" @click="publish">
@@ -98,9 +100,25 @@ import { MoreFilled } from "@element-plus/icons-vue";
 import { adminApi } from "@/api/admin";
 import { fmtDate } from "@/utils/format";
 
+type AnnouncementTargetClient = "ios" | "android" | "harmony" | "web";
+
+const targetOptions: Array<{ value: AnnouncementTargetClient; label: string }> = [
+  { value: "ios", label: "iOS" },
+  { value: "android", label: "安卓" },
+  { value: "harmony", label: "鸿蒙" },
+  { value: "web", label: "网页版" },
+];
+const targetLabelMap: Record<AnnouncementTargetClient, string> = {
+  ios: "iOS",
+  android: "安卓",
+  harmony: "鸿蒙",
+  web: "网页版",
+};
+
 const list = ref<any[]>([]);
 const editingId = ref<number | null>(null);
-const form = reactive({ title: "", content: "", level: "normal", link: "", source: "站务组", targetClient: "all" });
+const form = reactive({ title: "", content: "", level: "normal", link: "", source: "站务组", targetClients: [] as AnnouncementTargetClient[] });
+const targetAll = ref(true);
 const loading = ref(false);
 const loadError = ref("");
 const publishing = ref(false);
@@ -132,11 +150,36 @@ function requestMessage(error: unknown) {
   return error instanceof Error ? error.message : "";
 }
 
-function targetLabel(value?: string | null) {
-  if (value === "ios") return "仅 iOS";
-  if (value === "android") return "仅安卓";
-  if (value === "harmony") return "仅鸿蒙";
-  return "全部";
+function isAnnouncementTargetClient(value: string): value is AnnouncementTargetClient {
+  return targetOptions.some((item) => item.value === value);
+}
+
+function parseTargetClients(value?: string | AnnouncementTargetClient[] | null): AnnouncementTargetClient[] {
+  const raw = Array.isArray(value) ? value : String(value || "").split(",");
+  const selected = new Set(
+    raw
+      .map((item) => item.trim().toLowerCase())
+      .filter(isAnnouncementTargetClient),
+  );
+  return targetOptions.map((item) => item.value).filter((value) => selected.has(value));
+}
+
+function targetLabel(value?: string | AnnouncementTargetClient[] | null) {
+  const clients = parseTargetClients(value);
+  if (!clients.length || clients.length === targetOptions.length) return "全部";
+  return clients.map((client) => targetLabelMap[client]).join("、");
+}
+
+function selectedTargetPayload(): "all" | AnnouncementTargetClient[] {
+  if (targetAll.value) return "all";
+  return parseTargetClients(form.targetClients);
+}
+
+function validateTargetSelection() {
+  if (targetAll.value) return true;
+  if (parseTargetClients(form.targetClients).length) return true;
+  ElMessage.warning("请选择至少一个投放平台，或勾选全部");
+  return false;
 }
 
 async function publish() {
@@ -145,8 +188,10 @@ async function publish() {
     ElMessage.warning("请填写公告标题和内容");
     return;
   }
+  if (!validateTargetSelection()) return;
   publishing.value = true;
   try {
+    const targetClient = selectedTargetPayload();
     if (editingId.value) {
       await adminApi.updateAnnouncement(editingId.value, {
         title: form.title.trim(),
@@ -154,7 +199,7 @@ async function publish() {
         level: form.level,
         link: form.link.trim() || null,
         source: form.source.trim() || "站务组",
-        targetClient: form.targetClient as "all" | "ios" | "android" | "harmony",
+        targetClient,
       });
       ElMessage.success("公告已更新");
     } else {
@@ -164,7 +209,7 @@ async function publish() {
         level: form.level,
         link: form.link.trim() || undefined,
         source: form.source.trim() || "站务组",
-        targetClient: form.targetClient as "all" | "ios" | "android" | "harmony",
+        targetClient,
       });
       ElMessage.success("公告已发布");
     }
@@ -190,7 +235,8 @@ function startEdit(row: any) {
   form.level = row.level || "normal";
   form.link = row.link || "";
   form.source = row.source || "站务组";
-  form.targetClient = row.targetClient || "all";
+  form.targetClients = parseTargetClients(row.targetClient);
+  targetAll.value = !form.targetClients.length;
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -201,7 +247,8 @@ function resetForm() {
   form.level = "normal";
   form.link = "";
   form.source = "站务组";
-  form.targetClient = "all";
+  form.targetClients = [];
+  targetAll.value = true;
 }
 
 async function removeAnn(a: any) {
@@ -251,20 +298,38 @@ async function removeAnn(a: any) {
 .ann-meta { font-size: 11px; color: #9ca3af; }
 .action-trigger { justify-content: center; }
 .more-icon { margin-left: 2px; transform: rotate(90deg); }
+.target-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.target-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+}
 
 @media (max-width: 768px) {
   .ann-pane :deep(.el-card__body) {
     padding: 12px;
   }
-  .ann-pane :deep(.el-radio-group) {
+  .ann-pane :deep(.el-radio-group),
+  .target-picker,
+  .target-options {
     display: grid;
     width: 100%;
     gap: 8px;
   }
-  .ann-pane :deep(.el-radio-button__inner) {
+  .ann-pane :deep(.el-radio-button__inner),
+  .target-options :deep(.el-checkbox-button__inner),
+  .target-picker :deep(.el-checkbox) {
     width: 100%;
     border-left: var(--el-border);
     border-radius: var(--el-border-radius-base);
+  }
+  .target-picker :deep(.el-checkbox) {
+    margin-right: 0;
   }
   .ann-pane :deep(.el-form-item:last-child .el-button) {
     width: 100%;

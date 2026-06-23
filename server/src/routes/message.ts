@@ -12,12 +12,40 @@ function safeJson(value: string | null | undefined) {
   try { return JSON.parse(value); } catch { return {}; }
 }
 
+const notificationTargetClients = ["ios", "android", "harmony", "web"] as const;
+
+function effectiveMessageClient(client: string) {
+  return client === "unknown" ? "web" : client;
+}
+
+function parseNotificationTargets(value?: string | null) {
+  if (!value || value === "all") return null;
+  const allowed = new Set<string>(notificationTargetClients);
+  const targets = value
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => allowed.has(item));
+  return targets.length ? new Set(targets) : null;
+}
+
 function notificationVisibleToClient(notification: { targetClient?: string | null }, client: string) {
-  if (!notification.targetClient || notification.targetClient === "all") return true;
-  if (notification.targetClient === "ios") return client === "ios";
-  if (notification.targetClient === "android") return client === "android";
-  if (notification.targetClient === "harmony") return client === "harmony";
-  return true;
+  const targets = parseNotificationTargets(notification.targetClient);
+  if (!targets) return true;
+  return targets.has(effectiveMessageClient(client));
+}
+
+function notificationTargetClientWhere(client: string) {
+  const target = effectiveMessageClient(client);
+  return {
+    OR: [
+      { targetClient: null },
+      { targetClient: "all" },
+      { targetClient: target },
+      { targetClient: { startsWith: `${target},` } },
+      { targetClient: { endsWith: `,${target}` } },
+      { targetClient: { contains: `,${target},` } },
+    ],
+  };
 }
 
 messageRouter.get("/", async (req, res, next) => {
@@ -79,22 +107,14 @@ messageRouter.post("/read-all", async (req, res, next) => {
       where: {
         userId,
         readAt: null,
-        OR: [
-          { targetClient: null },
-          { targetClient: "all" },
-          { targetClient: client },
-        ],
+        ...notificationTargetClientWhere(client),
       },
       data: { readAt: now },
     });
     const globals = await prisma.notification.findMany({
       where: {
         userId: null,
-        OR: [
-          { targetClient: null },
-          { targetClient: "all" },
-          { targetClient: client },
-        ],
+        ...notificationTargetClientWhere(client),
       },
       select: { id: true },
     });

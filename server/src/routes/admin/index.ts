@@ -1212,6 +1212,27 @@ adminRouter.get("/weiwall-sync/auth-status/:flowId", adminOnly, async (req, res,
 
 // ============ 站务公告 ============
 
+const announcementTargetClients = ["ios", "android", "harmony", "web"] as const;
+const announcementTargetClientSchema = z.union([z.string(), z.array(z.string())]).optional();
+type AnnouncementTargetClient = typeof announcementTargetClients[number];
+
+function normalizeAnnouncementTargetClient(input: string | string[] | undefined): string | null {
+  if (input === undefined || input === null) return null;
+  const rawValues = Array.isArray(input)
+    ? input
+    : input.split(",");
+  const values = rawValues.map((value) => value.trim().toLowerCase()).filter(Boolean);
+  if (!values.length || values.includes("all")) return null;
+
+  const allowed = new Set<string>(announcementTargetClients);
+  const invalid = values.find((value) => !allowed.has(value));
+  if (invalid) throw Errors.badRequest("投放平台不合法");
+
+  const selected = announcementTargetClients.filter((value): value is AnnouncementTargetClient => values.includes(value));
+  if (!selected.length || selected.length === announcementTargetClients.length) return null;
+  return selected.join(",");
+}
+
 adminRouter.get("/announcements", adminOnly, async (_req, res, next) => {
   try {
     const list = await prisma.notification.findMany({
@@ -1229,14 +1250,14 @@ adminRouter.post("/announcements", adminOnly, validate(z.object({
   level: z.enum(["strong", "normal", "weak"]).optional(),
   link: z.string().max(500).optional(),
   source: z.string().max(40).optional(),
-  targetClient: z.enum(["all", "ios", "android", "harmony"]).optional(),
+  targetClient: announcementTargetClientSchema,
 })), async (req, res, next) => {
   try {
     const n = await prisma.notification.create({
       data: {
         userId: null, // 全站广播
         category: "system",
-        targetClient: req.body.targetClient && req.body.targetClient !== "all" ? req.body.targetClient : null,
+        targetClient: normalizeAnnouncementTargetClient(req.body.targetClient),
         level: req.body.level ?? "normal",
         title: req.body.title,
         content: req.body.content,
@@ -1254,7 +1275,7 @@ const announcementPatchSchema = z.object({
   level: z.enum(["strong", "normal", "weak"]).optional(),
   link: z.string().max(500).nullable().optional(),
   source: z.string().max(40).nullable().optional(),
-  targetClient: z.enum(["all", "ios", "android", "harmony"]).optional(),
+  targetClient: announcementTargetClientSchema,
 });
 
 adminRouter.patch("/announcements/:id", adminOnly, validate(announcementPatchSchema), async (req, res, next) => {
@@ -1276,7 +1297,7 @@ adminRouter.patch("/announcements/:id", adminOnly, validate(announcementPatchSch
         source: req.body.source === undefined ? undefined : (req.body.source?.trim() || "站务组"),
         targetClient: req.body.targetClient === undefined
           ? undefined
-          : (req.body.targetClient === "all" ? null : req.body.targetClient),
+          : normalizeAnnouncementTargetClient(req.body.targetClient),
       },
     });
     ok(res, updated);

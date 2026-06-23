@@ -13,7 +13,7 @@
         <div class="top-line">
           <div class="tags">
             <span class="tag" :class="[`tag-${n.category}`, `lv-${n.level}`]">{{ categoryLabel(n.category) }}</span>
-            <span v-if="platformTag(n.targetClient)" class="tag tag-target" :class="`tag-target-${n.targetClient}`">
+            <span v-if="platformTag(n.targetClient)" class="tag tag-target" :class="platformTagClass(n.targetClient)">
               {{ platformTag(n.targetClient) }}
             </span>
             <span v-if="n.level === 'strong'" class="tag tag-strong">强提醒</span>
@@ -36,16 +36,37 @@ import { fmtRelative } from "@/utils/format";
 const emit = defineEmits<{ (e: "read", id: number): void; (e: "open", item: any): void }>();
 defineProps<{ list: any[] }>();
 
+const platformLabels: Record<string, string> = {
+  ios: "iOS",
+  android: "安卓",
+  harmony: "鸿蒙",
+  web: "网页版",
+};
+
 function onClick(n: any) {
   if (!n.readAt) emit("read", n.id);
   emit("open", n);
 }
 
+function parseTargetClient(targetClient?: string | null) {
+  if (!targetClient || targetClient === "all") return [];
+  const selected = new Set(
+    targetClient
+      .split(",")
+      .map((item) => item.trim().toLowerCase())
+      .filter((item) => platformLabels[item]),
+  );
+  return Object.keys(platformLabels).filter((item) => selected.has(item));
+}
+
 function platformTag(targetClient?: string | null) {
-  if (targetClient === "ios") return "iOS";
-  if (targetClient === "android") return "安卓";
-  if (targetClient === "harmony") return "鸿蒙";
-  return "";
+  const targets = parseTargetClient(targetClient);
+  return targets.map((item) => platformLabels[item]).join(" / ");
+}
+
+function platformTagClass(targetClient?: string | null) {
+  const targets = parseTargetClient(targetClient);
+  return targets.length === 1 ? `tag-target-${targets[0]}` : "tag-target-multi";
 }
 
 function categoryLabel(category?: string | null) {
@@ -127,6 +148,8 @@ function categoryLabel(category?: string | null) {
 .tag-target-ios { background: #e0e7ff; color: #4338ca; }
 .tag-target-android { background: #dcfce7; color: #15803d; }
 .tag-target-harmony { background: #fef3c7; color: #92400e; }
+.tag-target-web { background: #e0f2fe; color: #0369a1; }
+.tag-target-multi { background: #f1f5f9; color: #475569; }
 
 .info { flex: 1; min-width: 0; }
 .top-line {

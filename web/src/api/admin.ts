@@ -856,9 +856,9 @@ export const adminApi = {
   getWeiwallAuthStatus: (flowId: string) => request.get<WeiwallTokenAuthStatus>(`/admin/weiwall-sync/auth-status/${flowId}`),
   // 公告
   announcements: (options?: RequestOptions) => request.get<any[]>("/admin/announcements", undefined, options),
-  createAnnouncement: (p: { title: string; content: string; level?: string; link?: string; source?: string; targetClient?: "all" | "ios" | "android" | "harmony" }) =>
+  createAnnouncement: (p: { title: string; content: string; level?: string; link?: string; source?: string; targetClient?: "all" | "ios" | "android" | "harmony" | "web" | Array<"ios" | "android" | "harmony" | "web"> }) =>
     request.post<any>("/admin/announcements", p),
-  updateAnnouncement: (id: number, p: { title?: string; content?: string; level?: string; link?: string | null; source?: string | null; targetClient?: "all" | "ios" | "android" | "harmony" }) =>
+  updateAnnouncement: (id: number, p: { title?: string; content?: string; level?: string; link?: string | null; source?: string | null; targetClient?: "all" | "ios" | "android" | "harmony" | "web" | Array<"ios" | "android" | "harmony" | "web"> }) =>
     request.patch<any>(`/admin/announcements/${id}`, p),
   deleteAnnouncement: (id: number) => request.delete<any>(`/admin/announcements/${id}`),
 };
