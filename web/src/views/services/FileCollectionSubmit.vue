@@ -39,6 +39,13 @@
             <span>允许 {{ allowedTypeText }}；单个不超过 {{ task.fileRules.maxSizeMb }} MB；最多 {{ task.fileRules.maxCount }} 个。</span>
             <input ref="fileInput" type="file" multiple :accept="acceptTypes" :disabled="submitting" @change="pickFiles" />
           </div>
+          <div class="pdf-tool-shortcut">
+            <div>
+              <b>PDF 工具</b>
+              <span>上传前可先合并、拆分或压缩 PDF。</span>
+            </div>
+            <a href="/services/tools/pdf_tools" target="_blank" rel="noopener">打开 PDF 工具</a>
+          </div>
 
           <div v-if="files.length" class="file-list">
             <div v-for="(file, index) in files" :key="`${file.name}-${file.size}-${index}`">
@@ -423,6 +430,50 @@ function cleanRenderedName(value: string) {
   color: #64748b;
   font-size: 13px;
 }
+.pdf-tool-shortcut {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  border-radius: 8px;
+  background: #ecfdf5;
+}
+.pdf-tool-shortcut div {
+  min-width: 0;
+}
+.pdf-tool-shortcut b {
+  display: block;
+  color: #111827;
+  font-size: 14px;
+}
+.pdf-tool-shortcut span {
+  display: block;
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.pdf-tool-shortcut a {
+  flex: 0 0 auto;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: 1px solid #0f766e;
+  border-radius: 7px;
+  color: #0f766e;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.pdf-tool-shortcut a:hover {
+  color: #fff;
+  background: #0f766e;
+}
 .file-list {
   display: grid;
   gap: 8px;
@@ -479,6 +530,13 @@ function cleanRenderedName(value: string) {
   }
   .submit-card { padding: 14px; }
   .file-rule-box input { width: 100%; }
+  .pdf-tool-shortcut {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .pdf-tool-shortcut a {
+    width: 100%;
+  }
   .file-list div {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;

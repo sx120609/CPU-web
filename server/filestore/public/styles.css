@@ -1806,6 +1806,58 @@ progress::-moz-progress-bar {
   display: none;
 }
 
+.pdf-tool-shortcut {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(20, 143, 123, 0.18);
+  border-radius: var(--radius-md);
+  background: var(--surface-3);
+}
+
+.pdf-tool-shortcut div {
+  min-width: 0;
+}
+
+.pdf-tool-shortcut strong {
+  display: block;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.pdf-tool-shortcut span {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pdf-tool-shortcut a {
+  flex: 0 0 auto;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: var(--transition);
+}
+
+.pdf-tool-shortcut a:hover {
+  color: #fff;
+  background: var(--accent);
+  box-shadow: 0 6px 16px rgba(20, 143, 123, 0.16);
+}
+
 /* File Upload Queue (Submitter) */
 .submit-file-queue {
   display: grid;
@@ -2393,6 +2445,15 @@ progress::-moz-progress-bar {
 
   .submit-actions {
     flex-direction: column;
+  }
+
+  .pdf-tool-shortcut {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pdf-tool-shortcut a {
+    width: 100%;
   }
 
   .success-actions {
