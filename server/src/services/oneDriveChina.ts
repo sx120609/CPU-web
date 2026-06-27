@@ -505,6 +505,69 @@ export async function renameOneDriveChinaItem(relativePath: string, newName: str
   };
 }
 
+export async function moveOneDriveChinaItem(relativePath: string, targetRelativePath: string): Promise<OneDriveChinaItemMetadata> {
+  const runtime = await getMediaStorageRuntimeConfig();
+  const drive = await requireActiveRemoteDrive(runtime);
+  const sourceRemotePath = buildRemoteStoragePath(relativePath, drive.rootPath);
+  const targetRemotePath = buildRemoteStoragePath(targetRelativePath, drive.rootPath);
+  if (sourceRemotePath === targetRemotePath) {
+    const item = await fetchRemoteItemMetadataByPath(drive.driveId, sourceRemotePath);
+    if (!item?.id) throw new Error("文件或文件夹不存在");
+    return {
+      name: item.name || pathBasename(sourceRemotePath),
+      kind: item.folder ? "folder" : "file",
+      size: item.folder ? null : (typeof item.size === "number" ? item.size : null),
+      lastModifiedAt: String(item.lastModifiedDateTime || "").trim(),
+      webUrl: String(item.webUrl || "").trim(),
+    };
+  }
+
+  const source = await fetchRemoteItemMetadataByPath(drive.driveId, sourceRemotePath);
+  if (!source?.id) throw new Error("文件或文件夹不存在");
+  const existingTarget = await fetchRemoteItemMetadataByPath(drive.driveId, targetRemotePath);
+  if (existingTarget?.id) throw new Error("目标位置已存在同名文件或文件夹");
+
+  const targetParentPath = pathDirname(targetRemotePath);
+  await ensureRemoteFolder(drive.driveId, targetParentPath);
+  const targetParent = await resolveConfiguredRootFolder(drive.driveId, targetParentPath);
+  if (!targetParent?.id) throw new Error("目标目录不存在");
+  const targetName = pathBasename(targetRemotePath);
+  if (!targetName) throw new Error("目标文件名不能为空");
+
+  const response = await graphRequestWithCurrentMode(`/drives/${drive.driveId}/items/${encodeURIComponent(source.id)}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: targetName,
+      parentReference: {
+        id: targetParent.id,
+      },
+    }),
+  });
+  if (response.status === 409) throw new Error("目标位置已存在同名文件或文件夹");
+  if (!response.ok) {
+    const detail = await safeReadResponseText(response);
+    throw new Error(detail ? `移动世纪互联文件失败：${detail}` : `移动世纪互联文件失败：HTTP ${response.status}`);
+  }
+  const payload = await response.json() as {
+    name?: string;
+    size?: number;
+    webUrl?: string;
+    lastModifiedDateTime?: string;
+    folder?: Record<string, unknown>;
+    file?: Record<string, unknown>;
+  };
+  return {
+    name: String(payload.name || targetName).trim() || targetName,
+    kind: payload.folder ? "folder" : "file",
+    size: payload.folder ? null : (typeof payload.size === "number" ? payload.size : null),
+    lastModifiedAt: String(payload.lastModifiedDateTime || "").trim(),
+    webUrl: String(payload.webUrl || "").trim(),
+  };
+}
+
 async function requireActiveRemoteDrive(runtime: Awaited<ReturnType<typeof getMediaStorageRuntimeConfig>>) {
   if (runtime.oneDriveChinaRefreshToken.trim() && runtime.oneDriveChinaDriveId.trim()) {
     return {

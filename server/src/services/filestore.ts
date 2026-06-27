@@ -22,6 +22,7 @@ import {
 } from "./mediaStorage";
 import {
   getOneDriveChinaItemMetadata,
+  moveOneDriveChinaItem,
   resolveOneDriveChinaDirectDownloadUrl,
   resolveOneDriveChinaPreviewUrl,
 } from "./oneDriveChina";
@@ -902,6 +903,14 @@ function buildFileCollectRelativePath(taskId: number, physicalName: string) {
   return path.posix.join("file-collect", String(taskId), physicalName);
 }
 
+function buildFileCollectRemoteRelativePath(taskId: number, submissionId: number, index: number, storedName: string) {
+  return path.posix.join("file-collect", String(taskId), String(submissionId), String(index), safeStoredFilename(storedName));
+}
+
+function remoteDownloadNameMatchesStoredName(remoteName: string | null | undefined, storedName: string) {
+  return safeStoredFilename(String(remoteName || "")) === safeStoredFilename(storedName);
+}
+
 function shouldFilestoreFileUseRemote(size: number, minSizeBytes: number) {
   if (minSizeBytes <= 0) return true;
   return Number(size || 0) >= minSizeBytes;
@@ -926,10 +935,13 @@ async function filestoreRemoteUploadPolicy(taskId: number, files: Array<{ size: 
   };
 }
 
-async function resolveFileCollectRemoteAccess(file: { path: string; size: number }) {
+async function resolveFileCollectRemoteAccess(file: { path: string; size: number; storedName: string }) {
   const meta = await getOneDriveChinaItemMetadata(file.path).catch(() => null);
-  if (!meta || meta.kind !== "file") return "";
-  return meta.downloadUrl || resolveOneDriveChinaDirectDownloadUrl(file.path).catch(() => "");
+  if (!meta || meta.kind !== "file") return { url: "", downloadNameSafe: false };
+  return {
+    url: meta.downloadUrl || await resolveOneDriveChinaDirectDownloadUrl(file.path).catch(() => ""),
+    downloadNameSafe: remoteDownloadNameMatchesStoredName(meta.name, file.storedName),
+  };
 }
 
 async function waitForFileCollectRemoteUpload(file: { path: string; size: number; storedName: string }) {
@@ -967,6 +979,89 @@ async function rerenameFilestoreTaskFiles(taskId: number, renameTemplate: string
       result.renamed += 1;
     }
   }
+  return result;
+}
+
+async function repairFileCollectRemoteFilenames(taskId: number) {
+  const submissions = await prisma.fileCollectSubmission.findMany({
+    where: { taskId, status: "submitted" },
+    include: { files: { orderBy: { id: "asc" } } },
+    orderBy: { id: "asc" },
+  });
+  const result = {
+    scanned: 0,
+    repaired: 0,
+    synced: 0,
+    unchanged: 0,
+    skippedLocal: 0,
+    conflicts: 0,
+    failed: 0,
+    details: [] as Array<{ fileId: number; storedName: string; from: string; to: string; status: string; message?: string }>,
+  };
+
+  for (const submission of submissions) {
+    for (let index = 0; index < submission.files.length; index += 1) {
+      const file = submission.files[index];
+      result.scanned += 1;
+      const targetPath = buildFileCollectRemoteRelativePath(taskId, submission.id, index + 1, file.storedName);
+      const detail = { fileId: file.id, storedName: file.storedName, from: file.path, to: targetPath, status: "", message: "" };
+      const currentMeta = await getOneDriveChinaItemMetadata(file.path).catch(() => null);
+      if (file.path === targetPath && currentMeta?.kind === "file" && remoteDownloadNameMatchesStoredName(currentMeta.name, file.storedName)) {
+        result.unchanged += 1;
+        detail.status = "unchanged";
+        result.details.push(detail);
+        continue;
+      }
+
+      const targetMeta = file.path === targetPath
+        ? null
+        : await getOneDriveChinaItemMetadata(targetPath).catch(() => null);
+      if (targetMeta?.kind === "file") {
+        if (currentMeta?.kind === "file" && file.path !== targetPath) {
+          result.conflicts += 1;
+          detail.status = "conflict";
+          detail.message = "当前路径和目标路径都存在文件，已跳过以避免误删";
+          result.details.push(detail);
+          continue;
+        }
+        if (targetMeta.size === null || Number(targetMeta.size) === Number(file.size)) {
+          await prisma.fileCollectFile.update({ where: { id: file.id }, data: { path: targetPath } });
+          result.synced += 1;
+          detail.status = "synced";
+          detail.message = "目标文件已存在，已同步数据库路径";
+          result.details.push(detail);
+          continue;
+        }
+        result.conflicts += 1;
+        detail.status = "conflict";
+        detail.message = "目标位置已有同名文件且大小不一致";
+        result.details.push(detail);
+        continue;
+      }
+
+      if (!currentMeta || currentMeta.kind !== "file") {
+        result.skippedLocal += 1;
+        detail.status = "skipped";
+        detail.message = "未在世纪互联找到当前文件，可能是本地文件或远端已被移除";
+        result.details.push(detail);
+        continue;
+      }
+
+      try {
+        await moveOneDriveChinaItem(file.path, targetPath);
+        await prisma.fileCollectFile.update({ where: { id: file.id }, data: { path: targetPath } });
+        result.repaired += 1;
+        detail.status = "repaired";
+        result.details.push(detail);
+      } catch (error) {
+        result.failed += 1;
+        detail.status = "failed";
+        detail.message = error instanceof Error ? error.message : "修复失败";
+        result.details.push(detail);
+      }
+    }
+  }
+
   return result;
 }
 
@@ -1235,6 +1330,16 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
     res.json(await repairFileCollectTaskFilenames(current.id));
     return true;
   }
+  const repairRemoteFilenamesMatch = target.match(/^\/api\/tasks\/(\d+)\/repair-remote-filenames$/);
+  if (req.method === "POST" && repairRemoteFilenamesMatch) {
+    const current = await getFilestoreTaskForActor(Number(repairRemoteFilenamesMatch[1]), user, false);
+    if (!current) {
+      res.status(404).json({ error: "任务不存在" });
+      return true;
+    }
+    res.json(await repairFileCollectRemoteFilenames(current.id));
+    return true;
+  }
   if (req.method === "DELETE" && taskDetailMatch) {
     const current = await getFilestoreTaskForActor(Number(taskDetailMatch[1]), user, false);
     if (!current) {
@@ -1387,8 +1492,9 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       for (let index = 0; index < files.length; index += 1) {
         const file = files[index];
         const storedName = renderStoredName(task.renameTemplate, data, file.originalname, index + 1, files.length);
-        const physicalName = `${submission.id}-${index + 1}-${randomUUID()}-${safeStoredFilename(storedName)}`;
-        const relativePath = buildFileCollectRelativePath(task.id, physicalName);
+        const relativePath = directFileIndexes.has(index)
+          ? buildFileCollectRemoteRelativePath(task.id, submission.id, index + 1, storedName)
+          : buildFileCollectRelativePath(task.id, `${submission.id}-${index + 1}-${randomUUID()}-${safeStoredFilename(storedName)}`);
         fileRows.push(await tx.fileCollectFile.create({
           data: {
             submissionId: submission.id,
@@ -1712,8 +1818,9 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
     const action = new URL(req.originalUrl || req.url || "/", "http://filestore.local").searchParams.get("action") === "preview"
       ? "preview"
       : "download";
-    const remoteUrl = await resolveFileCollectRemoteAccess(file);
-    const remotePreviewUrl = action === "preview" && remoteUrl
+    const remoteAccess = await resolveFileCollectRemoteAccess(file);
+    const remoteUrl = action === "download" && !remoteAccess.downloadNameSafe ? "" : remoteAccess.url;
+    const remotePreviewUrl = action === "preview" && remoteAccess.url
       ? await resolveOneDriveChinaPreviewUrl(file.path).catch(() => "")
       : "";
     const previewToken = signFileCollectPreviewToken(file);
@@ -1756,9 +1863,9 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       return true;
     }
     if (!isOfficePreviewFile(file.storedName)) throw filestoreApiError(400, "该文件不支持在线预览");
-    const remoteUrl = await resolveFileCollectRemoteAccess(file);
-    if (remoteUrl) {
-      res.redirect(302, remoteUrl);
+    const remoteAccess = await resolveFileCollectRemoteAccess(file);
+    if (remoteAccess.url) {
+      res.redirect(302, remoteAccess.url);
       return true;
     }
     const absolute = await ensureMediaLocalPathFromUploadUrl(`/uploads/${file.path}`);

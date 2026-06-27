@@ -1017,11 +1017,13 @@ toolsRouter.get("/file-collection-files/:id/access", authRequired, async (req, r
     if (!file) throw Errors.notFound("文件不存在");
     if (!(await canManageFileCollectTask(file.submission.task, req.user))) throw Errors.forbidden("没有该文件的下载权限");
     const meta = await getOneDriveChinaItemMetadata(file.path).catch(() => null);
-    const remoteUrl = meta?.kind === "file"
+    const rawRemoteUrl = meta?.kind === "file"
       ? meta.downloadUrl || await resolveOneDriveChinaDirectDownloadUrl(file.path).catch(() => "")
       : "";
+    const remoteDownloadNameSafe = meta?.kind === "file" && remoteDownloadNameMatchesStoredName(meta.name, file.storedName);
     const action = req.query.action === "preview" ? "preview" : "download";
-    const remotePreviewUrl = action === "preview" && remoteUrl
+    const remoteUrl = action === "download" && !remoteDownloadNameSafe ? "" : rawRemoteUrl;
+    const remotePreviewUrl = action === "preview" && rawRemoteUrl
       ? await resolveOneDriveChinaPreviewUrl(file.path).catch(() => "")
       : "";
     const origin = normalizePreviewPublicOrigin(getSiteOrigin()) || requestPublicOrigin(req);
@@ -1581,6 +1583,10 @@ function safeStoredFilename(value: string) {
     .replace(/^[. ]+|[. ]+$/g, "")
     .slice(0, 160);
   return cleaned || "file";
+}
+
+function remoteDownloadNameMatchesStoredName(remoteName: string | null | undefined, storedName: string) {
+  return safeStoredFilename(String(remoteName || "")) === safeStoredFilename(storedName);
 }
 
 function renderFileCollectName(template: string, data: Record<string, string>, originalName: string, index: number, total: number) {

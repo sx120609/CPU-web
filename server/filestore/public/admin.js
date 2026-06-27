@@ -785,7 +785,7 @@ function clearDashboardSelection() {
   $("#activeMeta").textContent = "任务链接、统计、提交记录和缺交名单会集中显示在这里。";
   $("#dashboard").hidden = true;
   $("#emptyDashboard").hidden = false;
-  ["editTask", "copyLink", "showQr", "openFileManager", "repairFilenamesInline", "exportCsv", "downloadZip"].forEach((id) => $(`#${id}`).disabled = true);
+  ["editTask", "copyLink", "showQr", "openFileManager", "repairFilenamesInline", "repairRemoteFilenamesInline", "exportCsv", "downloadZip"].forEach((id) => $(`#${id}`).disabled = true);
   syncOwnerBindButton(null);
 }
 
@@ -927,7 +927,7 @@ function renderDetail(task) {
   $("#activeMeta").textContent = metaParts.join(" · ");
   $("#shareLink").value = absoluteSubmitUrl(task);
   $("#statusLink").value = absoluteStatusUrl(task);
-  ["editTask", "copyLink", "showQr", "openFileManager", "repairFilenamesInline", "exportCsv", "downloadZip"].forEach((id) => $(`#${id}`).disabled = false);
+  ["editTask", "copyLink", "showQr", "openFileManager", "repairFilenamesInline", "repairRemoteFilenamesInline", "exportCsv", "downloadZip"].forEach((id) => $(`#${id}`).disabled = false);
   syncOwnerBindButton(task);
   renderMetrics(task);
   renderRules(task);
@@ -1213,6 +1213,35 @@ async function repairFilenames() {
     if ($("#fileDialog").open) renderFileManager();
     const lostText = result.unrecoverable ? `，${result.unrecoverable} 个已丢失编码信息无法自动恢复` : "";
     toast(result.updated ? `已恢复 ${result.updated} 个文件名${lostText}` : `没有发现可恢复的乱码文件名${lostText}`, "ok");
+  } finally {
+    repairButtons.forEach((button) => { button.disabled = false; });
+  }
+}
+
+async function repairRemoteFilenames() {
+  if (!state.current) throw new Error("请先选择任务");
+  const ok = await confirmInApp({
+    title: "修复云端文件名",
+    body: "系统会把世纪互联中仍使用旧物理名的文件移动到提交专属目录，并改回提交页展示的文件名。目标位置已存在且大小不一致的文件会跳过。",
+    okText: "开始修复",
+    danger: false,
+  });
+  if (!ok) return;
+  const repairButtons = ["repairRemoteFilenamesInline", "repairRemoteFilenames"].map((id) => $(`#${id}`)).filter(Boolean);
+  repairButtons.forEach((button) => { button.disabled = true; });
+  try {
+    const result = await api(`/api/tasks/${state.current.id}/repair-remote-filenames`, { method: "POST" });
+    await selectTask(state.current.id);
+    if ($("#fileDialog").open) renderFileManager();
+    const parts = [
+      `修复 ${result.repaired || 0}`,
+      `同步 ${result.synced || 0}`,
+      `已正确 ${result.unchanged || 0}`,
+      `跳过 ${result.skippedLocal || 0}`,
+      `冲突 ${result.conflicts || 0}`,
+      `失败 ${result.failed || 0}`,
+    ];
+    toast(`云端文件名修复完成：${parts.join("，")}`, result.failed || result.conflicts ? "error" : "ok");
   } finally {
     repairButtons.forEach((button) => { button.disabled = false; });
   }
@@ -1550,6 +1579,8 @@ function bind() {
   $("#openFileManagerInline").addEventListener("click", safe(openFileManager));
   $("#repairFilenamesInline").addEventListener("click", safe(repairFilenames));
   $("#repairFilenames").addEventListener("click", safe(repairFilenames));
+  $("#repairRemoteFilenamesInline").addEventListener("click", safe(repairRemoteFilenames));
+  $("#repairRemoteFilenames").addEventListener("click", safe(repairRemoteFilenames));
   $("#closeFileDialog").addEventListener("click", () => $("#fileDialog").close());
   $("#fileSearch").addEventListener("input", renderFileManager);
   $("#exportCsv").addEventListener("click", safe(() => download(`/api/tasks/${state.current.id}/export.csv`, `${state.current.title}.csv`)));
