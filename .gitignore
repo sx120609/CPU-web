@@ -54,6 +54,8 @@ Thumbs.db
 .parcel-cache/
 .eslintcache
 .vite/
+__pycache__/
+*.pyc
 
 # Misc
 coverage/

@@ -131,7 +131,7 @@ Filestore 的任务、提交记录、模板和设置已统一迁移到主站 Pos
 server/uploads/file-collect/
 ```
 
-旧版本遗留的 `data/filestore.db` 可通过主项目根目录执行 `./deploy.sh filestore-migrate` 导入 PostgreSQL；`init` / `update` 部署流程也会自动检查并迁移，迁移成功后会删除旧 SQLite 及其 WAL/SHM 辅助文件，避免后续部署反复触发。
+Filestore 不再维护独立数据库，也不再提供旧数据迁移入口。所有新功能和部署流程都应以主站 PostgreSQL 为唯一数据源。
 
 ## 反向代理
 
