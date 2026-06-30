@@ -27,6 +27,7 @@ const WEIWALL_TRACE_LIMIT = 40;
 const WEIWALL_BOT_USERNAME = "weiwall_sync_bot";
 const WEIWALL_BOT_NICKNAME = "逛逛同步";
 const WEIWALL_AUTH_FLOW_TTL_MS = 15 * 60_000;
+const PRISMA_ID_IN_BATCH_SIZE = 10_000;
 
 type WeiwallUserInfo = {
   uuid?: number | string | null;
@@ -78,6 +79,16 @@ type WeiwallCommentPage = {
   page?: number;
   pageSize?: number;
 };
+
+function* chunks<T>(items: readonly T[], size: number) {
+  for (let index = 0; index < items.length; index += size) {
+    yield items.slice(index, index + size);
+  }
+}
+
+function uniquePositiveIds(ids: Array<number | null | undefined>) {
+  return Array.from(new Set(ids.filter((id): id is number => typeof id === "number" && Number.isInteger(id) && id > 0)));
+}
 
 type WeiwallReadOnlyTopicDetail = WeiwallContactSourceFields & {
   id?: number | string;
@@ -661,17 +672,23 @@ async function normalizeLegacyMirroredAuthorAssignments(botUserId: number) {
     prisma.weiwallTopicMap.findMany({ select: { localTopicId: true } }),
     prisma.weiwallReplyMap.findMany({ select: { localReplyId: true } }),
   ]);
-  if (topicMaps.length) {
-    await prisma.topic.updateMany({
-      where: { id: { in: topicMaps.map((item) => item.localTopicId) }, authorId: { not: botUserId } },
-      data: { authorId: botUserId },
-    });
+  const topicIds = uniquePositiveIds(topicMaps.map((item) => item.localTopicId));
+  if (topicIds.length) {
+    for (const batch of chunks(topicIds, PRISMA_ID_IN_BATCH_SIZE)) {
+      await prisma.topic.updateMany({
+        where: { id: { in: batch }, authorId: { not: botUserId } },
+        data: { authorId: botUserId },
+      });
+    }
   }
-  if (replyMaps.length) {
-    await prisma.reply.updateMany({
-      where: { id: { in: replyMaps.map((item) => item.localReplyId) }, authorId: { not: botUserId } },
-      data: { authorId: botUserId },
-    });
+  const replyIds = uniquePositiveIds(replyMaps.map((item) => item.localReplyId));
+  if (replyIds.length) {
+    for (const batch of chunks(replyIds, PRISMA_ID_IN_BATCH_SIZE)) {
+      await prisma.reply.updateMany({
+        where: { id: { in: batch }, authorId: { not: botUserId } },
+        data: { authorId: botUserId },
+      });
+    }
   }
 }
 
