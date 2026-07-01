@@ -7,7 +7,8 @@ import axios from "axios";
 // 生产默认线上后端；开发通过 CPU_API_BASE=http://localhost:3000 覆盖
 const API_BASE = process.env.CPU_API_BASE || "https://cpu.lizmt.cn";
 
-const http = axios.create({ baseURL: API_BASE, timeout: 20_000 });
+// 后端所有业务路由挂在 /api 前缀下（见 server/src/app.ts: app.use("/api", router)）
+const http = axios.create({ baseURL: `${API_BASE}/api`, timeout: 20_000 });
 
 export function setAuthToken(t: string | null) {
   http.defaults.headers.common.Authorization = t ? `Bearer ${t}` : undefined;

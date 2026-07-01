@@ -25,3 +25,9 @@
 ## 环境配置注意
 - server/.env 的 DATABASE_URL 曾被改成本地 SQLite(file:./dev.db)，但 schema 是 postgresql。正确格式见 .env.example
 - prisma generate 会写 AppData，sandbox 下可能被拦，需用户本地跑
+
+## 线上部署
+- 后端地址：https://cpu.lizmt.cn
+- **API 前缀 /api**：所有业务路由挂在 /api 下（app.ts: `app.use("/api", router)`）。前端/桌面端请求必须带 /api 前缀，否则命中 SPA fallback 返回 HTML
+- 部署：deploy.sh update（db:migrate 实为 `prisma db push --skip-generate`，改 schema 后直接 update 即建表，无需手写 migration）
+- 端口 23333，pm2 管理，服务名 cpu-web
