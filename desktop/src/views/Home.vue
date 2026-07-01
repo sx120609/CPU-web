@@ -1,177 +1,300 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
+import { ElMessage } from "element-plus";
 
 const router = useRouter();
 const route = useRoute();
-
-const courseName = ref((route.query.courseName as string) || "");
+const courseName = ref(String(route.query.courseName || "刷课中"));
 const progress = ref(0);
-const status = ref<"running" | "stopped" | "done">("running");
-const logs = ref<{ time: string; type: string; message: string }[]>([]);
 const currentChapter = ref("");
+const totalChapters = ref(0);
+const currentIdx = ref(0);
+const status = ref<"waiting" | "running" | "done" | "error" | "stopped">("waiting");
+const logs = ref<{ time: string; text: string; type: string }[]>([]);
+const showWindow = ref(true);
 
-function pushLog(type: string, message: string) {
-  const now = new Date().toLocaleTimeString("zh-CN", { hour12: false });
-  logs.value.unshift({ time: now, type, message });
-  if (logs.value.length > 100) logs.value.pop();
+let removeListener: (() => void) | null = null;
+
+function formatTime() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
 }
 
-const statusText = computed(() => {
-  if (status.value === "done") return "已完成";
-  if (status.value === "stopped") return "已停止";
-  return "运行中";
+function addLog(text: string, type: string = "info") {
+  logs.value.unshift({ time: formatTime(), text, type });
+  if (logs.value.length > 200) logs.value.length = 200;
+}
+
+onMounted(() => {
+  removeListener = window.courseBot.onProgress((e) => {
+    if (e.progress !== undefined) progress.value = e.progress;
+    if (e.chapter) currentChapter.value = e.chapter;
+    if ((e as any).total) totalChapters.value = (e as any).total;
+    if ((e as any).current) currentIdx.value = (e as any).current;
+
+    switch (e.type) {
+      case "start":
+        status.value = "running";
+        addLog(e.message, "info");
+        break;
+      case "chapter":
+        addLog(e.message, "chapter");
+        break;
+      case "task":
+        addLog(e.message, "task");
+        break;
+      case "tick":
+        break;
+      case "done":
+        status.value = "done";
+        addLog(e.message, "success");
+        break;
+      case "error":
+        status.value = "error";
+        addLog(e.message, "error");
+        break;
+      case "stopped":
+        status.value = "stopped";
+        addLog(e.message, "warn");
+        break;
+    }
+  });
 });
 
-const statusColor = computed(() => {
-  if (status.value === "done") return "#00b42a";
-  if (status.value === "stopped") return "#86909c";
-  return "#165dff";
+onUnmounted(() => {
+  removeListener?.();
 });
+
+async function beginEngine() {
+  const r = await window.courseBot.startCourse();
+  if (!r.ok) {
+    ElMessage.warning(r.message);
+  }
+}
 
 async function stop() {
   await window.courseBot.stopCourse();
-  status.value = "stopped";
 }
 
-function backToCourses() {
+function toggleWindow() {
+  showWindow.value = !showWindow.value;
+  if (showWindow.value) window.courseBot.showChaoxingWindow();
+}
+
+function goBack() {
   router.replace("/courses");
 }
 
-async function showWindow() {
-  await window.courseBot.showChaoxingWindow();
-}
-
-let offProgress: (() => void) | null = null;
-onMounted(() => {
-  offProgress = window.courseBot.onProgress((e) => {
-    pushLog(e.type, e.message);
-
-    if (e.progress !== undefined) progress.value = e.progress;
-    if (e.chapter) currentChapter.value = e.chapter;
-
-    if (e.type === "done") status.value = "done";
-    if (e.type === "stopped") status.value = "stopped";
-    if (e.type === "error" && e.message.includes("已关闭")) status.value = "stopped";
-  });
-
-  pushLog("info", "刷课任务已启动");
+const statusText = computed(() => {
+  switch (status.value) {
+    case "waiting": return "等待开始";
+    case "running": return "刷课中";
+    case "done": return "已完成";
+    case "error": return "出错了";
+    case "stopped": return "已停止";
+  }
 });
 
-onUnmounted(() => { offProgress?.(); });
+const statusColor = computed(() => {
+  switch (status.value) {
+    case "waiting": return "#3b82f6";
+    case "running": return "#148f7b";
+    case "done": return "#10b981";
+    case "error": return "#ef4444";
+    case "stopped": return "#f59e0b";
+  }
+});
 </script>
 
 <template>
-  <div class="dashboard">
-    <header class="header">
-      <el-button link @click="backToCourses">&larr; 返回</el-button>
-      <el-button link @click="showWindow">查看窗口</el-button>
+  <div class="page">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="mini-logo">药</div>
+        <span>{{ courseName }}</span>
+      </div>
+      <button class="link-btn" @click="toggleWindow">
+        {{ showWindow ? '隐藏窗口' : '查看窗口' }}
+      </button>
     </header>
 
-    <section class="status-card">
-      <div class="course-title">{{ courseName || "刷课中" }}</div>
-      <div class="status-row">
-        <span class="status-dot" :style="{ background: statusColor }" />
-        <span class="status-label">{{ statusText }}</span>
+    <!-- 等待开始 -->
+    <div v-if="status === 'waiting'" class="waiting-section">
+      <div class="waiting-card">
+        <div class="waiting-icon">📖</div>
+        <h3>请在学习通窗口中操作</h3>
+        <p class="waiting-hint">
+          在弹出的学习通窗口中打开要刷的课程，<br/>
+          确认页面<b>左侧能看到章节列表</b>后，<br/>
+          点击下方「开始刷课」按钮。
+        </p>
       </div>
-      <div class="chapter-name" v-if="currentChapter">{{ currentChapter }}</div>
-      <el-progress
-        :percentage="progress"
-        :stroke-width="10"
-        :color="statusColor"
-        class="progress-bar"
-      />
-    </section>
+      <div class="waiting-actions">
+        <button class="action-btn action-btn-start" @click="beginEngine">
+          开始刷课
+        </button>
+        <button class="action-btn action-btn-secondary" @click="goBack">
+          返回课程列表
+        </button>
+      </div>
+    </div>
 
-    <section class="action-row">
-      <el-button
-        v-if="status === 'running'"
-        type="danger"
-        class="action-btn"
-        @click="stop"
-      >
-        停止刷课
-      </el-button>
-      <el-button
-        v-else
-        type="primary"
-        class="action-btn"
-        @click="backToCourses"
-      >
-        选择其他课程
-      </el-button>
-    </section>
+    <!-- 运行中 / 完成 / 错误 / 停止 -->
+    <template v-else>
+      <div class="status-card">
+        <div class="status-header">
+          <div class="status-dot" :style="{ background: statusColor }">
+            <div v-if="status === 'running'" class="dot-pulse"></div>
+          </div>
+          <span class="status-label" :style="{ color: statusColor }">{{ statusText }}</span>
+          <span class="status-progress" v-if="totalChapters > 0">
+            {{ currentIdx }} / {{ totalChapters }}
+          </span>
+        </div>
 
-    <section class="log-section">
-      <div class="log-header">运行日志</div>
-      <div class="log-list">
-        <div v-if="logs.length === 0" class="log-empty">暂无日志</div>
-        <div
-          v-for="(l, i) in logs"
-          :key="i"
-          class="log-item"
-          :class="'log-' + l.type"
-        >
-          <span class="log-time">{{ l.time }}</span>
-          <span class="log-msg">{{ l.message }}</span>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar" :style="{ width: progress + '%' }"></div>
+        </div>
+        <div class="progress-text">
+          <span>{{ progress }}%</span>
+          <span v-if="currentChapter" class="current-chapter">{{ currentChapter }}</span>
         </div>
       </div>
-    </section>
+
+      <div class="log-section">
+        <div class="log-header">运行日志</div>
+        <div class="log-list">
+          <div v-if="logs.length === 0" class="log-empty">等待任务开始...</div>
+          <div v-for="(log, i) in logs" :key="i" class="log-item" :class="'log-' + log.type">
+            <span class="log-time">{{ log.time }}</span>
+            <span class="log-text">{{ log.text }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button v-if="status === 'running'" class="action-btn action-btn-stop" @click="stop">
+          停止刷课
+        </button>
+        <button v-else class="action-btn action-btn-back" @click="goBack">
+          返回课程列表
+        </button>
+      </div>
+    </template>
   </div>
 </template>
 
 <style scoped>
-.dashboard {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  padding: 16px;
-  gap: 14px;
-  background: #f7f8fa;
-  overflow-y: auto;
+.page { height: 100%; display: flex; flex-direction: column; background: #f5f7f9; }
+
+.topbar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 18px; background: #fff;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.05); flex-shrink: 0;
 }
-.header { display: flex; justify-content: space-between; }
+.topbar-brand {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 15px; font-weight: 600; color: #1e293b; min-width: 0;
+}
+.topbar-brand span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-logo {
+  width: 28px; height: 28px; border-radius: 8px;
+  background: linear-gradient(135deg, #168776, #0f6557);
+  color: #e8a317; display: grid; place-items: center;
+  font-family: serif; font-size: 15px; font-weight: 700; flex-shrink: 0;
+}
+.link-btn {
+  border: none; background: none; font: inherit;
+  font-size: 13px; color: #148f7b; cursor: pointer;
+  padding: 4px 10px; border-radius: 6px; white-space: nowrap; flex-shrink: 0;
+}
+.link-btn:hover { background: rgba(20,143,123,0.08); }
+
+/* 等待开始 */
+.waiting-section {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; padding: 24px 20px; gap: 28px;
+}
+.waiting-card {
+  text-align: center; padding: 32px 24px;
+  background: #fff; border-radius: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  width: 100%;
+}
+.waiting-icon { font-size: 48px; margin-bottom: 12px; }
+.waiting-card h3 { font-size: 17px; font-weight: 600; color: #1e293b; margin: 0 0 12px; }
+.waiting-hint { font-size: 13px; color: #64748b; line-height: 2; margin: 0; }
+.waiting-hint b { color: #148f7b; }
+.waiting-actions { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+
+.action-btn {
+  width: 100%; height: 46px; border: none; border-radius: 12px;
+  font: inherit; font-size: 15px; font-weight: 600;
+  cursor: pointer; transition: opacity 0.15s;
+}
+.action-btn:hover { opacity: 0.9; }
+.action-btn-start {
+  background: linear-gradient(135deg, #148f7b, #0d6e5e); color: #fff;
+  box-shadow: 0 4px 14px rgba(20,143,123,0.3);
+}
+.action-btn-secondary { background: #f1f5f9; color: #64748b; }
+.action-btn-stop { background: #fee2e2; color: #dc2626; }
+.action-btn-back { background: linear-gradient(135deg, #148f7b, #0d6e5e); color: #fff; }
+
+/* 运行状态 */
 .status-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 20px;
+  margin: 12px 14px 0; padding: 18px 18px 14px;
+  background: #fff; border-radius: 14px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
 }
-.course-title {
-  font-size: 17px;
-  font-weight: 600;
-  color: #1d2129;
-  margin-bottom: 8px;
+.status-header { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+.status-dot { width: 10px; height: 10px; border-radius: 50%; position: relative; }
+.dot-pulse {
+  position: absolute; inset: -3px; border-radius: 50%;
+  background: inherit; opacity: 0.3;
+  animation: pulse-ring 1.5s ease-in-out infinite;
 }
-.status-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-.status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.status-label { font-size: 13px; color: #4e5969; }
-.chapter-name {
-  font-size: 12px;
-  color: #86909c;
-  margin-bottom: 10px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.3; }
+  50% { transform: scale(1.8); opacity: 0; }
+  100% { transform: scale(1); opacity: 0.3; }
 }
-.progress-bar { margin-top: 4px; }
-.action-row { display: flex; gap: 12px; }
-.action-btn { flex: 1; }
+.status-label { font-size: 15px; font-weight: 600; }
+.status-progress { margin-left: auto; font-size: 13px; color: #94a3b8; }
+
+.progress-bar-wrap { height: 6px; background: #f1f5f9; border-radius: 3px; overflow: hidden; }
+.progress-bar {
+  height: 100%; background: linear-gradient(90deg, #148f7b, #34b39e);
+  border-radius: 3px; transition: width 0.5s ease; min-width: 2px;
+}
+.progress-text {
+  display: flex; justify-content: space-between;
+  margin-top: 8px; font-size: 12px; color: #94a3b8;
+}
+.current-chapter {
+  max-width: 200px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+
 .log-section {
-  flex: 1;
-  background: #fff;
-  border-radius: 12px;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  min-height: 180px;
+  flex: 1; margin: 10px 14px 0; background: #fff;
+  border-radius: 14px; display: flex; flex-direction: column;
+  overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.04);
 }
-.log-header { font-size: 13px; font-weight: 500; color: #4e5969; margin-bottom: 8px; }
-.log-list { flex: 1; overflow-y: auto; font-size: 12px; }
-.log-empty { color: #c9cdd4; text-align: center; padding: 20px; }
-.log-item { padding: 4px 0; display: flex; gap: 8px; border-bottom: 1px solid #f7f8fa; }
-.log-time { color: #c9cdd4; flex-shrink: 0; }
-.log-msg { color: #4e5969; word-break: break-all; }
-.log-error .log-msg { color: #f53f3f; }
-.log-start .log-msg, .log-done .log-msg { color: #00b42a; }
-.log-chapter .log-msg { color: #165dff; }
+.log-header {
+  padding: 12px 16px; font-size: 13px; font-weight: 600;
+  color: #64748b; border-bottom: 1px solid #f1f5f9; flex-shrink: 0;
+}
+.log-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+.log-empty { padding: 20px; text-align: center; color: #cbd5e1; font-size: 13px; }
+.log-item { padding: 5px 16px; font-size: 12px; display: flex; gap: 8px; line-height: 1.5; }
+.log-time { color: #cbd5e1; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.log-text { color: #475569; word-break: break-all; }
+.log-chapter .log-text { color: #148f7b; font-weight: 500; }
+.log-success .log-text { color: #10b981; font-weight: 600; }
+.log-error .log-text { color: #ef4444; }
+.log-warn .log-text { color: #f59e0b; }
+
+.actions { padding: 12px 14px; flex-shrink: 0; }
 </style>

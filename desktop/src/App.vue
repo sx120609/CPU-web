@@ -8,7 +8,7 @@ const ready = ref(false);
 onMounted(async () => {
   const token = await window.courseBot.loadToken();
   if (token) {
-    // 已登录平台，检查学习通状态
+    // 已登录平台，检查学习通
     try {
       const cx = await window.courseBot.chaoxingStatus();
       router.replace(cx.loggedIn ? "/courses" : "/chaoxing-login");
@@ -16,7 +16,7 @@ onMounted(async () => {
       router.replace("/chaoxing-login");
     }
   } else {
-    router.replace("/login");
+    router.replace("/welcome");
   }
   ready.value = true;
 });

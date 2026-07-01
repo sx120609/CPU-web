@@ -3,12 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "description": "药大刷课助手桌面端 —— 登录平台账号后驱动学习通视频自动播放",
-  "main": "dist-electron/main.cjs",
+  "main": "dist-electron/main.js",
   "scripts": {
     "dev": "concurrently -k -n vite,electron -c green,blue \"vite\" \"wait-on tcp:5174 && cross-env NODE_ENV=development tsx watch electron/main.ts\"",
     "dev:vite": "vite",
     "dev:electron": "cross-env NODE_ENV=development tsx watch electron/main.ts",
-    "build": "vue-tsc --noEmit && vite build && tsup electron/main.ts electron/preload.ts --format cjs --outDir dist-electron --no-shims",
+    "build": "vue-tsc --noEmit && vite build && tsup electron/main.ts electron/preload.ts --format cjs --outDir dist-electron --no-shims --external electron",
     "package": "npm run build && electron-builder",
     "package:win": "npm run build && electron-builder --win",
     "typecheck": "vue-tsc --noEmit"
@@ -17,8 +17,8 @@
     "appId": "cn.cpu.coursebot",
     "productName": "药大刷课助手",
     "directories": { "output": "release" },
-    "files": ["dist/**", "dist-electron/**"],
-    "win": { "target": ["nsis"], "icon": "build/icon.ico" },
+    "files": ["dist/**", "dist-electron/**", "assets/**"],
+    "win": { "target": ["nsis"] },
     "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
   },
   "dependencies": {

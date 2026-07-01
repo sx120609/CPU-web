@@ -9,9 +9,20 @@ contextBridge.exposeInMainWorld("courseBot", {
   getQuota: () => ipcRenderer.invoke("coursebot:get-quota"),
   heartbeat: () => ipcRenderer.invoke("coursebot:heartbeat"),
 
-  // 学习通
-  chaoxingLogin: (phone, password) =>
-    ipcRenderer.invoke("coursebot:chaoxing-login", { phone, password }),
+  // 凭据持久化
+  saveCredentials: (key, data) =>
+    ipcRenderer.invoke("coursebot:save-credentials", { key, data }),
+  loadCredentials: (key) => ipcRenderer.invoke("coursebot:load-credentials", key),
+  clearCredentials: (key) => ipcRenderer.invoke("coursebot:clear-credentials", key),
+
+  // 学习通 - 官方页面登录
+  chaoxingOpenLogin: () => ipcRenderer.invoke("coursebot:chaoxing-open-login"),
+  onChaoxingLoginSuccess: (cb) => {
+    const handler = (_e, user) => cb(user);
+    ipcRenderer.on("coursebot:chaoxing-login-success", handler);
+    return () => ipcRenderer.removeListener("coursebot:chaoxing-login-success", handler);
+  },
+  // 学习通 - 通用
   chaoxingLogout: () => ipcRenderer.invoke("coursebot:chaoxing-logout"),
   chaoxingStatus: () => ipcRenderer.invoke("coursebot:chaoxing-status"),
   getCourses: () => ipcRenderer.invoke("coursebot:get-courses"),
@@ -19,8 +30,11 @@ contextBridge.exposeInMainWorld("courseBot", {
     ipcRenderer.invoke("coursebot:get-chapters", { courseId, clazzId, cpi }),
 
   // 刷课控制
-  startCourse: (courseId, clazzId, cpi, chapters) =>
-    ipcRenderer.invoke("coursebot:start-course", { courseId, clazzId, cpi, chapters }),
+  openCourse: (courseId, clazzId, cpi) =>
+    ipcRenderer.invoke("coursebot:open-course", { courseId, clazzId, cpi }),
+  startCourse: () => ipcRenderer.invoke("coursebot:start-course"),
+  startCourseAuto: (courseId, clazzId, cpi) =>
+    ipcRenderer.invoke("coursebot:start-course-auto", { courseId, clazzId, cpi }),
   stopCourse: () => ipcRenderer.invoke("coursebot:stop-course"),
   showChaoxingWindow: () => ipcRenderer.invoke("coursebot:show-chaoxing-window"),
 

@@ -1,15 +1,11 @@
 /**
- * 课程级自动遍历引擎
+ * 课程级自动遍历引擎 v4
  *
- * 接收课程的章节列表，按顺序遍历每个章节：
- *   - 视频任务点 → 导航到学习页面 → 注入播放脚本 → 等播完
- *   - 文档/PPT → 导航到页面 → 注入滚动+标记已读
- *   - 其他类型 → 跳过
- *
- * 进度通过回调实时上报给渲染进程。
+ * 支持两种模式：
+ *   手动模式：用户在 BrowserWindow 中打开章节页 → 点击开始
+ *   自动模式（小工具）：引擎自动导航到课程页面 → 发现章节 → 处理
  */
 import type { BrowserWindow } from "electron";
-import { buildStudyUrl, type CxChapter, type CxTaskPoint } from "./chaoxing";
 
 // ──────────── 进度事件 ────────────
 
@@ -18,54 +14,159 @@ export interface CourseProgressEvent {
   message: string;
   chapter?: string;
   task?: string;
-  /** 0-100 */
   progress?: number;
+  total?: number;
+  current?: number;
   data?: unknown;
 }
 
 // ──────────── 注入脚本 ────────────
 
-/** 视频自动播放脚本：找到 iframe 内的 video 并播放 */
+/** 在课程列表页面找到指定课程并点击 */
+function makeFindCourseScript(courseId: string, clazzId: string): string {
+  return `
+(function() {
+  var links = document.querySelectorAll('a[href]');
+  for (var i = 0; i < links.length; i++) {
+    var href = links[i].href || '';
+    if (href.indexOf('courseid=' + ${JSON.stringify(courseId)}) > -1 ||
+        href.indexOf('courseId=' + ${JSON.stringify(courseId)}) > -1 ||
+        (href.indexOf(${JSON.stringify(courseId)}) > -1 && href.indexOf(${JSON.stringify(clazzId)}) > -1)) {
+      links[i].click();
+      return { ok: true, method: 'link-click', href: href };
+    }
+  }
+  var cards = document.querySelectorAll('[onclick]');
+  for (var i = 0; i < cards.length; i++) {
+    var onclick = cards[i].getAttribute('onclick') || '';
+    if (onclick.indexOf(${JSON.stringify(courseId)}) > -1) {
+      cards[i].click();
+      return { ok: true, method: 'card-click' };
+    }
+  }
+  try {
+    var iframes = document.querySelectorAll('iframe');
+    for (var f = 0; f < iframes.length; f++) {
+      try {
+        var doc = iframes[f].contentDocument;
+        if (!doc) continue;
+        var ilinks = doc.querySelectorAll('a[href]');
+        for (var i = 0; i < ilinks.length; i++) {
+          var href = ilinks[i].href || '';
+          if (href.indexOf(${JSON.stringify(courseId)}) > -1) {
+            ilinks[i].click();
+            return { ok: true, method: 'iframe-click', href: href };
+          }
+        }
+      } catch(e) {}
+    }
+  } catch(e) {}
+  return { ok: false, linksCount: links.length };
+})();
+`;
+}
+
+/** 从课程学习页面 DOM 提取所有章节 */
+const DISCOVER_CHAPTERS = `
+(function() {
+  try {
+    if (typeof mArrange !== 'undefined' && Array.isArray(mArrange) && mArrange.length > 0) {
+      return { ok: true, source: 'mArrange', chapters: mArrange.map(function(item) {
+        return { id: String(item.id || ''), name: item.name || '', status: item.status };
+      })};
+    }
+  } catch(e) {}
+  try {
+    var scripts = document.querySelectorAll('script');
+    for (var i = 0; i < scripts.length; i++) {
+      var text = scripts[i].textContent || '';
+      var match = text.match(/mArrange\\s*=\\s*(\\[[\\s\\S]*?\\])\\s*;/);
+      if (match) {
+        var arr = JSON.parse(match[1]);
+        if (arr.length > 0) {
+          return { ok: true, source: 'script', chapters: arr.map(function(item) {
+            return { id: String(item.id || ''), name: item.name || '', status: item.status };
+          })};
+        }
+      }
+    }
+  } catch(e) {}
+  var selectors = ['.prev_ul .prev_list', '.chapter_unit', '.posCatalog_level', '.catalogFirst_level'];
+  for (var s = 0; s < selectors.length; s++) {
+    var nodes = document.querySelectorAll(selectors[s]);
+    if (nodes.length > 0) {
+      var chapters = [];
+      nodes.forEach(function(el, idx) {
+        var nameEl = el.querySelector('.chapter_item, .posCatalog_name, .catalog_name, .chaptertitle, span, a');
+        var name = (nameEl || el).textContent.trim().replace(/\\s+/g, ' ').substring(0, 100);
+        var id = el.getAttribute('id') || el.getAttribute('data-id') || String(idx);
+        if (name.length > 0) chapters.push({ id: id, name: name, status: -1 });
+      });
+      if (chapters.length > 0) return { ok: true, source: selectors[s], chapters: chapters };
+    }
+  }
+  return { ok: false, url: location.href, title: document.title, source: 'none', chapters: [] };
+})();
+`;
+
+/** 点击侧边栏第 N 个章节 */
+function makeClickChapterScript(index: number): string {
+  return `
+(function() {
+  try {
+    if (typeof mArrange !== 'undefined' && mArrange[${index}] && typeof getmark === 'function') {
+      getmark(mArrange[${index}].id);
+      return { ok: true, method: 'getmark' };
+    }
+  } catch(e) {}
+  var selectors = ['.prev_ul .prev_list', '.chapter_unit', '.posCatalog_level', '.catalogFirst_level'];
+  for (var s = 0; s < selectors.length; s++) {
+    var nodes = document.querySelectorAll(selectors[s]);
+    if (nodes.length > ${index}) {
+      var el = nodes[${index}];
+      var link = el.querySelector('a') || el;
+      link.click();
+      return { ok: true, method: 'dom-click' };
+    }
+  }
+  return { ok: false };
+})();
+`;
+}
+
+/** 视频自动播放 */
 const VIDEO_INJECT = `
-(function () {
-  // 学习通的视频通常在 iframe 里，先尝试主页面，再遍历 iframe
+(function() {
   function findVideo(doc) {
-    var v = doc.querySelector("video");
+    var v = doc.querySelector('video');
     if (v) return v;
     try {
-      var iframes = doc.querySelectorAll("iframe");
+      var iframes = doc.querySelectorAll('iframe');
       for (var i = 0; i < iframes.length; i++) {
         try {
-          var iv = iframes[i].contentDocument && iframes[i].contentDocument.querySelector("video");
+          var iv = iframes[i].contentDocument && iframes[i].contentDocument.querySelector('video');
           if (iv) return iv;
         } catch(e) {}
       }
     } catch(e) {}
     return null;
   }
-
   var v = findVideo(document);
-  if (!v) return { ok: false, status: "no-video" };
-
-  if (v.ended) return { ok: true, status: "ended", currentTime: v.duration, duration: v.duration };
-
-  // 确保播放
+  if (!v) return { ok: false, status: 'no-video' };
+  if (v.ended) return { ok: true, status: 'ended', currentTime: v.duration, duration: v.duration };
   v.muted = true;
   v.playbackRate = 1.0;
   if (v.paused) v.play().catch(function(){});
-
-  // 关闭弹窗（防挂机检测、答题弹窗等）
-  document.querySelectorAll(".vjs-modal-dialog, .el-dialog, .popboxes_box, .ans-attach-ct, [id*=popbox]").forEach(function (box) {
-    var btn = box.querySelector("button, .closeBtn, [class*=close]")
-      || Array.prototype.find.call(box.querySelectorAll("*"), function(e) {
-        return /关闭|确认|继续|确定|close/i.test(e.textContent||"");
+  document.querySelectorAll('.vjs-modal-dialog, .el-dialog, .popboxes_box, .ans-attach-ct, [id*=popbox]').forEach(function(box) {
+    var btn = box.querySelector('button, .closeBtn, [class*=close]')
+      || Array.prototype.find.call(box.querySelectorAll('*'), function(e) {
+        return /关闭|确认|继续|确定|close/i.test(e.textContent || '');
       });
     if (btn) btn.click();
   });
-
   return {
     ok: true,
-    status: v.paused ? "paused" : "playing",
+    status: v.paused ? 'paused' : 'playing',
     currentTime: v.currentTime || 0,
     duration: v.duration || 0,
     progress: v.duration ? Math.floor((v.currentTime / v.duration) * 100) : 0,
@@ -73,39 +174,25 @@ const VIDEO_INJECT = `
 })();
 `;
 
-/** 文档/PPT 自动阅读脚本 */
+/** 文档/PPT 自动阅读 */
 const DOC_INJECT = `
-(function () {
-  // 尝试在 iframe 中找到文档内容并滚动到底部
+(function() {
   function scrollAll(doc) {
-    var scrollable = doc.querySelector(".reader_Cnt_Holder, .pdf-viewer, .ans-attach-ct, [class*=reader], [class*=document]");
-    if (scrollable) {
-      scrollable.scrollTop = scrollable.scrollHeight;
-      return true;
-    }
-    // 通用滚动
+    var el = doc.querySelector('.reader_Cnt_Holder, .pdf-viewer, .ans-attach-ct, [class*=reader], [class*=document]');
+    if (el) { el.scrollTop = el.scrollHeight; return true; }
     doc.documentElement.scrollTop = doc.documentElement.scrollHeight;
     return true;
   }
-
   scrollAll(document);
-
-  // 遍历 iframe
   try {
-    var iframes = document.querySelectorAll("iframe");
+    var iframes = document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {
       try { scrollAll(iframes[i].contentDocument); } catch(e) {}
     }
   } catch(e) {}
-
-  // 点击翻到最后一页（PDF阅读器的翻页按钮）
-  var pageButtons = document.querySelectorAll(".next_page, .nextPage, [class*=lastPage], [class*=last-page]");
-  pageButtons.forEach(function(btn) { btn.click(); });
-
-  // 检测是否有"任务完成"标记
-  var done = document.querySelector(".ans-job-finished, .finishTip, [class*=finish]");
-
-  return { ok: true, status: done ? "finished" : "reading" };
+  document.querySelectorAll('.next_page, .nextPage, [class*=lastPage]').forEach(function(btn) { btn.click(); });
+  var done = document.querySelector('.ans-job-finished, .finishTip, [class*=finish]');
+  return { ok: true, status: done ? 'finished' : 'reading' };
 })();
 `;
 
@@ -113,42 +200,198 @@ const DOC_INJECT = `
 
 let running = false;
 let abortFlag = false;
-let currentWin: BrowserWindow | null = null;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
-    const base = ms;
-    // 随机浮动 ±30%
-    const jitter = base * 0.3 * (Math.random() * 2 - 1);
-    setTimeout(resolve, Math.max(500, base + jitter));
+    const jitter = ms * 0.3 * (Math.random() * 2 - 1);
+    setTimeout(resolve, Math.max(500, ms + jitter));
   });
 }
 
-/** 等待页面加载完成 */
 function waitForLoad(win: BrowserWindow, timeoutMs = 30_000): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      resolve(); // 超时也继续，不阻塞
-    }, timeoutMs);
-
-    const handler = () => {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, timeoutMs);
+    win.webContents.once("did-finish-load", () => {
       clearTimeout(timer);
-      // 页面 DOMContentLoaded 后再等一会让 AJAX 加载
       setTimeout(resolve, 3000);
-    };
-
-    win.webContents.once("did-finish-load", handler);
+    });
   });
 }
 
-// ──────────── 主入口 ────────────
+function waitForNavigation(win: BrowserWindow, timeoutMs = 15_000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), timeoutMs);
+    win.webContents.once("did-navigate", () => { clearTimeout(timer); resolve(true); });
+    win.webContents.once("did-navigate-in-page", () => { clearTimeout(timer); resolve(true); });
+  });
+}
 
-export async function startCourseEngine(
+// ──────────── 自动导航 ────────────
+
+async function autoNavigateToCourse(
   win: BrowserWindow,
   courseId: string,
   clazzId: string,
   cpi: string,
-  chapters: CxChapter[],
+  onProgress: (e: CourseProgressEvent) => void,
+): Promise<boolean> {
+  // 尝试多种课程页面 URL
+  const courseUrls = [
+    `https://mooc2-ans.chaoxing.com/mycourse/stu?courseid=${courseId}&clazzid=${clazzId}&cpi=${cpi}&ut=s`,
+    `https://mooc1.chaoxing.com/mycourse/studentcourse?courseid=${courseId}&clazzid=${clazzId}&cpi=${cpi}`,
+  ];
+
+  for (const url of courseUrls) {
+    if (abortFlag) return false;
+    onProgress({ type: "start", message: "正在尝试进入课程页面..." });
+    console.log("[engine-auto] trying:", url);
+
+    win.loadURL(url);
+    await waitForLoad(win);
+    await delay(2000);
+
+    const pageCheck = await win.webContents.executeJavaScript(`
+      (function() {
+        var title = document.title || '';
+        var bodyText = (document.body.innerText || '').substring(0, 500);
+        var hasError = /enc校验|不存在|404|错误|error/i.test(bodyText);
+        var isLogin = /登录/.test(title) && !/学习/.test(title);
+        var hasChapter = !!(
+          typeof mArrange !== 'undefined' ||
+          document.querySelector('.prev_ul, .chapter_unit, .posCatalog_level, .catalogFirst_level, [class*=chapter]')
+        );
+        return { title: title, hasError: hasError, isLogin: isLogin, hasChapter: hasChapter, url: location.href };
+      })();
+    `, true).catch(() => ({ hasError: true, hasChapter: false }));
+
+    console.log("[engine-auto] page check:", JSON.stringify(pageCheck));
+
+    if (pageCheck.hasChapter && !pageCheck.hasError) return true;
+
+    // 页面没报错但也没章节，多等一会再检查
+    if (!pageCheck.hasError && !pageCheck.isLogin) {
+      await delay(3000);
+      const recheck = await win.webContents.executeJavaScript(`
+        !!(typeof mArrange !== 'undefined' ||
+           document.querySelector('.prev_ul, .chapter_unit, .posCatalog_level, [class*=chapter]'))
+      `, true).catch(() => false);
+      if (recheck) return true;
+    }
+  }
+
+  // URL 直接进入都失败，尝试从课程列表点击
+  if (!abortFlag) {
+    onProgress({ type: "start", message: "正在从课程列表查找..." });
+
+    const listUrls = [
+      "https://mooc2-ans.chaoxing.com/visit/interaction",
+      "https://i.chaoxing.com/base",
+    ];
+
+    for (const listUrl of listUrls) {
+      if (abortFlag) return false;
+      win.loadURL(listUrl);
+      await waitForLoad(win);
+      await delay(3000);
+
+      try {
+        const r = await win.webContents.executeJavaScript(makeFindCourseScript(courseId, clazzId), true);
+        console.log("[engine-auto] find course:", JSON.stringify(r));
+        if (r?.ok) {
+          const navigated = await waitForNavigation(win);
+          if (navigated) {
+            await waitForLoad(win);
+            await delay(3000);
+            return true;
+          }
+        }
+      } catch (e) {
+        console.error("[engine-auto] find course failed:", e);
+      }
+    }
+  }
+
+  return false;
+}
+
+// ──────────── 章节发现与处理（共享逻辑） ────────────
+
+async function discoverAndProcess(
+  win: BrowserWindow,
+  onProgress: (e: CourseProgressEvent) => void,
+): Promise<void> {
+  onProgress({ type: "start", message: "正在发现章节..." });
+  let result: any = null;
+
+  for (let retry = 0; retry < 3; retry++) {
+    try {
+      result = await win.webContents.executeJavaScript(DISCOVER_CHAPTERS, true);
+      console.log("[engine] discover attempt", retry, ":", result?.ok, "source:", result?.source, "count:", result?.chapters?.length);
+      if (result?.ok && result.chapters.length > 0) break;
+    } catch (e) {
+      console.error("[engine] discover failed:", e);
+    }
+    await delay(3000);
+  }
+
+  const chapters = result?.chapters || [];
+
+  if (chapters.length === 0) {
+    const pageTitle = await win.webContents.executeJavaScript("document.title", true).catch(() => "");
+    const pageUrl = win.webContents.getURL();
+    onProgress({
+      type: "error",
+      message: `未发现章节。页面: ${pageTitle || pageUrl}。请确认当前页面左侧有章节列表。`,
+    });
+    return;
+  }
+
+  const total = chapters.length;
+  onProgress({ type: "start", message: `发现 ${total} 个章节，开始刷课`, progress: 0, total });
+
+  for (let i = 0; i < total; i++) {
+    if (abortFlag) break;
+
+    const ch = chapters[i];
+    onProgress({
+      type: "chapter",
+      message: `[${i + 1}/${total}] ${ch.name}`,
+      chapter: ch.name,
+      progress: Math.floor((i / total) * 100),
+      current: i + 1,
+      total,
+    });
+
+    try {
+      const clickResult = await win.webContents.executeJavaScript(makeClickChapterScript(i), true);
+      console.log("[engine] click chapter", i, ":", JSON.stringify(clickResult));
+    } catch (e) {
+      console.error("[engine] click chapter failed:", e);
+    }
+
+    await delay(3000);
+    if (abortFlag) break;
+
+    await processPageTasks(win, ch.name, i, total, onProgress);
+
+    onProgress({
+      type: "chapter",
+      message: `[${i + 1}/${total}] ${ch.name} ✓`,
+      chapter: ch.name,
+      progress: Math.floor(((i + 1) / total) * 100),
+      current: i + 1,
+      total,
+    });
+
+    if (!abortFlag && i < total - 1) await delay(5000);
+  }
+}
+
+// ──────────── 主入口 ────────────
+
+/** 手动模式：从当前页面开始 */
+export async function startCourseEngine(
+  win: BrowserWindow,
   onProgress: (e: CourseProgressEvent) => void,
   onHeartbeat?: () => Promise<void>
 ) {
@@ -159,74 +402,71 @@ export async function startCourseEngine(
 
   running = true;
   abortFlag = false;
-  currentWin = win;
 
-  // 扁平化所有叶子节点（含任务点的章节）
-  const flatChapters = flattenChapters(chapters);
-  const total = flatChapters.length;
-  let completed = 0;
-
-  onProgress({
-    type: "start",
-    message: `开始刷课，共 ${total} 个章节`,
-    progress: 0,
-  });
-
-  // 心跳定时器
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   if (onHeartbeat) {
     heartbeatTimer = setInterval(async () => {
-      try { await onHeartbeat(); } catch { /* 静默 */ }
+      try { await onHeartbeat(); } catch {}
     }, 75_000);
   }
 
   try {
-    for (const ch of flatChapters) {
-      if (abortFlag) break;
-
-      onProgress({
-        type: "chapter",
-        message: `进入章节：${ch.name}`,
-        chapter: ch.name,
-        progress: Math.floor((completed / total) * 100),
-      });
-
-      if (ch.status === "finished") {
-        onProgress({ type: "chapter", message: `章节已完成，跳过：${ch.name}`, chapter: ch.name });
-        completed++;
-        continue;
-      }
-
-      // 导航到章节学习页面
-      const url = buildStudyUrl(courseId, clazzId, ch.id, cpi);
-      win.loadURL(url);
-      await waitForLoad(win);
-
-      if (abortFlag) break;
-
-      // 处理页面上的任务点
-      await processPageTasks(win, ch, onProgress);
-
-      completed++;
-      onProgress({
-        type: "chapter",
-        message: `章节完成：${ch.name}`,
-        chapter: ch.name,
-        progress: Math.floor((completed / total) * 100),
-      });
-
-      // 章节间随机等待
-      if (!abortFlag && completed < total) {
-        await delay(5000);
-      }
-    }
+    await discoverAndProcess(win, onProgress);
   } catch (e: any) {
     onProgress({ type: "error", message: `引擎异常：${e.message}` });
   } finally {
     if (heartbeatTimer) clearInterval(heartbeatTimer);
     running = false;
-    currentWin = null;
+    if (abortFlag) {
+      onProgress({ type: "stopped", message: "已手动停止" });
+    } else {
+      onProgress({ type: "done", message: "全部章节处理完成", progress: 100 });
+    }
+  }
+}
 
+/** 自动模式：自动导航到课程页面再开始 */
+export async function startCourseEngineAuto(
+  win: BrowserWindow,
+  courseId: string,
+  clazzId: string,
+  cpi: string,
+  onProgress: (e: CourseProgressEvent) => void,
+  onHeartbeat?: () => Promise<void>
+) {
+  if (running) {
+    onProgress({ type: "error", message: "已有任务在运行中" });
+    return;
+  }
+
+  running = true;
+  abortFlag = false;
+
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  if (onHeartbeat) {
+    heartbeatTimer = setInterval(async () => {
+      try { await onHeartbeat(); } catch {}
+    }, 75_000);
+  }
+
+  try {
+    const found = await autoNavigateToCourse(win, courseId, clazzId, cpi, onProgress);
+    if (abortFlag) return;
+
+    if (!found) {
+      onProgress({
+        type: "error",
+        message: "自动进入课程失败，请使用手动模式（从课程列表点击刷课）。",
+      });
+      return;
+    }
+
+    await discoverAndProcess(win, onProgress);
+  } catch (e: any) {
+    onProgress({ type: "error", message: `引擎异常：${e.message}` });
+  } finally {
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    running = false;
     if (abortFlag) {
       onProgress({ type: "stopped", message: "已手动停止" });
     } else {
@@ -248,95 +488,55 @@ export function isEngineRunning(): boolean {
 
 async function processPageTasks(
   win: BrowserWindow,
-  chapter: CxChapter,
+  chapterName: string,
+  chapterIdx: number,
+  totalChapters: number,
   onProgress: (e: CourseProgressEvent) => void
 ) {
-  // 先检测页面上有什么类型的任务
-  // 学习通每个章节页面可能有多个任务点（多个视频、文档等）
-  // 通过多轮注入处理
-
-  let hasVideo = true;
   let videoAttempts = 0;
-  const maxVideoWait = 600; // 最多等10分钟（每轮5秒）
+  const maxVideoWait = 600;
 
-  // 先尝试视频
-  while (hasVideo && !abortFlag && videoAttempts < maxVideoWait) {
+  while (!abortFlag && videoAttempts < maxVideoWait) {
     try {
       const result = await win.webContents.executeJavaScript(VIDEO_INJECT, true);
 
-      if (!result?.ok && result?.status === "no-video") {
-        // 没有视频，尝试文档处理
-        hasVideo = false;
-        break;
-      }
+      if (!result?.ok && result?.status === "no-video") break;
 
       if (result?.status === "ended") {
-        onProgress({
-          type: "task",
-          message: `视频播放完成`,
-          task: chapter.name,
-          progress: 100,
-        });
-        // 视频结束后等一会，看是否有下一个任务点
+        onProgress({ type: "task", message: "视频播放完成", task: chapterName, progress: 100 });
         await delay(3000);
-        // 检查是否还有视频（同一章节可能有多段）
         const check = await win.webContents.executeJavaScript(VIDEO_INJECT, true);
-        if (!check?.ok || check?.status === "ended" || check?.status === "no-video") {
-          hasVideo = false;
-        }
+        if (!check?.ok || check?.status === "ended" || check?.status === "no-video") break;
         continue;
       }
 
       if (result?.status === "playing" || result?.status === "paused") {
+        const overallProgress = Math.floor(((chapterIdx + (result.progress || 0) / 100) / totalChapters) * 100);
         onProgress({
           type: "tick",
-          message: `视频播放中 ${result.progress || 0}%`,
-          task: chapter.name,
-          progress: result.progress || 0,
+          message: `视频 ${result.progress || 0}%`,
+          task: chapterName,
+          progress: overallProgress,
+          current: chapterIdx + 1,
+          total: totalChapters,
           data: result,
         });
       }
 
       videoAttempts++;
       await delay(5000);
-    } catch (e: any) {
-      onProgress({ type: "error", message: `注入失败：${e.message}` });
+    } catch {
       videoAttempts++;
       await delay(5000);
     }
   }
 
-  // 然后处理文档
   if (!abortFlag) {
     try {
       const docResult = await win.webContents.executeJavaScript(DOC_INJECT, true);
       if (docResult?.ok) {
-        onProgress({
-          type: "task",
-          message: `文档/PPT处理完成`,
-          task: chapter.name,
-        });
+        onProgress({ type: "task", message: "文档处理完成", task: chapterName });
       }
-    } catch {
-      // 文档处理失败不阻塞
-    }
+    } catch {}
   }
-}
-
-// ──────────── 工具函数 ────────────
-
-function flattenChapters(chapters: CxChapter[]): CxChapter[] {
-  const result: CxChapter[] = [];
-  function walk(nodes: CxChapter[]) {
-    for (const n of nodes) {
-      if (n.children && n.children.length > 0) {
-        walk(n.children);
-      } else {
-        // 叶子节点 = 实际的学习单元
-        result.push(n);
-      }
-    }
-  }
-  walk(chapters);
-  return result;
 }

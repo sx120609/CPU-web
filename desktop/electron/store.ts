@@ -35,3 +35,36 @@ export function loadToken(): string | null {
 export function clearToken(): void {
   if (existsSync(TOKEN_FILE)) unlinkSync(TOKEN_FILE);
 }
+
+/** 通用加密数据存取（用于保存凭据等敏感数据） */
+function dataFile(key: string): string {
+  return join(app.getPath("userData"), `coursebot-${key}.dat`);
+}
+
+export function saveData(key: string, value: string): void {
+  const file = dataFile(key);
+  if (!safeStorage.isEncryptionAvailable()) {
+    writeFileSync(file, Buffer.from(value, "utf8").toString("base64"));
+    return;
+  }
+  writeFileSync(file, safeStorage.encryptString(value));
+}
+
+export function loadData(key: string): string | null {
+  const file = dataFile(key);
+  if (!existsSync(file)) return null;
+  try {
+    const buf = readFileSync(file);
+    if (!safeStorage.isEncryptionAvailable()) {
+      return Buffer.from(buf.toString("utf8"), "base64").toString("utf8");
+    }
+    return safeStorage.decryptString(buf);
+  } catch {
+    return null;
+  }
+}
+
+export function clearData(key: string): void {
+  const file = dataFile(key);
+  if (existsSync(file)) unlinkSync(file);
+}

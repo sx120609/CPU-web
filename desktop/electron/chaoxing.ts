@@ -1,8 +1,10 @@
 /**
  * 学习通 API 客户端
  *
- * 使用 HTTP 请求直接与学习通通信，不依赖浏览器。
- * 登录后维护 cookies，供后续 API 调用和 BrowserWindow 共用。
+ * 登录方式：用户在官方登录页完成登录 → 主进程从 BrowserWindow session
+ * 读取 cookies → 通过 injectCookies() 注入到本模块的 HTTP 客户端。
+ *
+ * 本模块负责：课程列表、章节树、构造学习页面 URL。
  */
 import axios, { type AxiosInstance } from "axios";
 
@@ -38,10 +40,8 @@ export interface CxTaskPoint {
   title: string;
   type: "video" | "document" | "ppt" | "quiz" | "other";
   status: "unfinished" | "finished";
-  // 视频相关
   objectId?: string;
   duration?: number;
-  // 构造学习页面 URL 所需参数
   cardIndex?: number;
 }
 
@@ -50,27 +50,14 @@ export interface CxTaskPoint {
 let cookieStr = "";
 let currentUser: CxUser | null = null;
 
-function parseCookies(setCookieHeaders: string[]): Record<string, string> {
-  const jar: Record<string, string> = {};
-  for (const h of setCookieHeaders) {
-    const m = h.match(/^([^=]+)=([^;]*)/);
-    if (m) jar[m[1].trim()] = m[2].trim();
-  }
-  return jar;
-}
+/** 从 Electron session 拿到的 cookies 注入到 HTTP 客户端 */
+export function injectCookies(entries: { name: string; value: string }[]) {
+  cookieStr = entries.map((e) => `${e.name}=${e.value}`).join("; ");
 
-function mergeCookies(newCookies: Record<string, string>) {
-  const existing: Record<string, string> = {};
-  if (cookieStr) {
-    for (const pair of cookieStr.split("; ")) {
-      const [k, ...v] = pair.split("=");
-      if (k) existing[k.trim()] = v.join("=");
-    }
+  const uid = entries.find((e) => e.name === "_uid")?.value || "";
+  if (uid && uid !== "0") {
+    currentUser = { uid, name: uid, phone: "" };
   }
-  Object.assign(existing, newCookies);
-  cookieStr = Object.entries(existing)
-    .map(([k, v]) => `${k}=${v}`)
-    .join("; ");
 }
 
 function createHttp(baseURL: string): AxiosInstance {
@@ -87,68 +74,33 @@ function createHttp(baseURL: string): AxiosInstance {
     if (cookieStr) cfg.headers.Cookie = cookieStr;
     return cfg;
   });
+  // 跟踪 set-cookie（部分接口会刷新 cookies）
   inst.interceptors.response.use((res) => {
     const sc = res.headers["set-cookie"];
-    if (sc) mergeCookies(parseCookies(Array.isArray(sc) ? sc : [sc]));
+    if (sc) {
+      const arr = Array.isArray(sc) ? sc : [sc];
+      const existing: Record<string, string> = {};
+      for (const pair of cookieStr.split("; ")) {
+        const [k, ...v] = pair.split("=");
+        if (k) existing[k.trim()] = v.join("=");
+      }
+      for (const h of arr) {
+        const m = h.match(/^([^=]+)=([^;]*)/);
+        if (m) existing[m[1].trim()] = m[2].trim();
+      }
+      cookieStr = Object.entries(existing)
+        .map(([k, v]) => `${k}=${v}`)
+        .join("; ");
+    }
     return res;
   });
   return inst;
 }
 
-const passport = createHttp("https://passport2.chaoxing.com");
 const mooc1 = createHttp("https://mooc1.chaoxing.com");
 const mooc1Api = createHttp("https://mooc1-api.chaoxing.com");
-const moocApi = createHttp("https://mooc2-ans.chaoxing.com");
 
-// ──────────── 登录 ────────────
-
-export async function chaoxingLogin(
-  phone: string,
-  password: string
-): Promise<{ ok: boolean; user?: CxUser; error?: string }> {
-  try {
-    const encoded = Buffer.from(password, "utf-8").toString("base64");
-    const { data } = await passport.post(
-      "/fanyalogin",
-      new URLSearchParams({
-        fid: "-1",
-        uname: phone,
-        password: encoded,
-        refer: "https://i.chaoxing.com",
-        t: "true",
-        forbidotherlogin: "0",
-        validate: "",
-      }).toString(),
-      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
-    );
-
-    if (!data.status) {
-      return { ok: false, error: data.msg2 || data.msg || "登录失败" };
-    }
-
-    // 从 cookies 中提取 uid
-    const uid = cookieStr.match(/_uid=([^;]+)/)?.[1] || "";
-    const user: CxUser = { uid, name: "", phone };
-
-    // 获取用户名
-    try {
-      const profile = await mooc1Api.get("/mycourse/backclazzdata", {
-        params: { view: "json", rss: 1 },
-      });
-      // backclazzdata 有时在 channelList 里返回用户信息
-      if (profile.data?.result === 1) {
-        user.name = phone; // 兜底
-      }
-    } catch {
-      user.name = phone;
-    }
-
-    currentUser = user;
-    return { ok: true, user };
-  } catch (e: any) {
-    return { ok: false, error: e.message || "网络错误" };
-  }
-}
+// ──────────── 公共方法 ────────────
 
 export function chaoxingLogout() {
   cookieStr = "";
@@ -163,22 +115,11 @@ export function isLoggedIn(): boolean {
   return !!cookieStr && cookieStr.includes("_uid=");
 }
 
-/** 返回当前 cookies 的键值对，供 BrowserWindow session 注入 */
-export function getCookieEntries(): { name: string; value: string }[] {
-  if (!cookieStr) return [];
-  return cookieStr.split("; ").map((pair) => {
-    const [name, ...rest] = pair.split("=");
-    return { name: name.trim(), value: rest.join("=") };
-  });
-}
-
 // ──────────── 课程列表 ────────────
 
 export async function getCourses(): Promise<CxCourse[]> {
   const courses: CxCourse[] = [];
-
   try {
-    // 尝试 backclazzdata 接口
     const { data } = await mooc1Api.get("/mycourse/backclazzdata", {
       params: { view: "json", rss: 1 },
     });
@@ -199,10 +140,7 @@ export async function getCourses(): Promise<CxCourse[]> {
         });
       }
     }
-  } catch {
-    // 接口出错则返回空列表
-  }
-
+  } catch { /* 返回空列表 */ }
   return courses;
 }
 
@@ -213,58 +151,90 @@ export async function getChapters(
   clazzId: string,
   cpi: string
 ): Promise<CxChapter[]> {
+  // 方式 1：通过 /gas/clazz 接口
   try {
-    // 获取章节列表页面（JSON格式）
-    const { data } = await mooc1.get(
-      "/gas/clazz",
-      {
-        params: {
-          id: clazzId,
-          courseId,
-          fields: "id,bbsid,classscore,isstart,allowdownload,chatid,name,state,isfiled,visiblescore,begindate,coursesetting.fields(id,courseid,hiddencoursecover,closedali498498,hiddenwrongset),course.fields(id,name,infocontent,objectid,app,bulletformat,mappingcourseid,imageurl,teacherfactor,knowledge.fields(id,name,indexOrder,parentnodeid,status,layer,label,begintime,createtime,endtime,attachment.fields(id,type,objectId,extension).type(video)))",
-        },
+    const { data } = await mooc1.get("/gas/clazz", {
+      params: {
+        id: clazzId,
+        courseId,
+        fields:
+          "id,bbsid,classscore,isstart,allowdownload,chatid,name,state,isfiled,visiblescore,begindate,coursesetting.fields(id,courseid,hiddencoursecover,closedali498498,hiddenwrongset),course.fields(id,name,infocontent,objectid,app,bulletformat,mappingcourseid,imageurl,teacherfactor,knowledge.fields(id,name,indexOrder,parentnodeid,status,layer,label,begintime,createtime,endtime,attachment.fields(id,type,objectId,extension).type(video)))",
+      },
+    });
+    console.log("[chaoxing] /gas/clazz response keys:", data ? Object.keys(data) : "null");
+
+    // 尝试多种可能的数据路径
+    let knowledgeNodes: any[] | null = null;
+
+    if (data?.data && Array.isArray(data.data)) {
+      // 可能是 data.data 直接就是章节数组
+      const first = data.data[0];
+      if (first?.course?.data?.[0]?.knowledge) {
+        knowledgeNodes = first.course.data[0].knowledge;
+        console.log("[chaoxing] found knowledge at data.data[0].course.data[0].knowledge, count:", knowledgeNodes!.length);
+      } else if (first?.knowledge) {
+        knowledgeNodes = first.knowledge;
+        console.log("[chaoxing] found knowledge at data.data[0].knowledge, count:", knowledgeNodes!.length);
+      } else if (first?.id && first?.name) {
+        // data.data 本身就是章节列表
+        const result = parseChapterTree(data.data);
+        console.log("[chaoxing] data.data is chapter list, count:", result.length);
+        if (result.length > 0) return result;
       }
-    );
-
-    if (!data?.data) return [];
-
-    return parseChapterTree(data.data);
-  } catch (e) {
-    // 备用方案：通过课程学习页面解析章节
-    try {
-      return await getChaptersFromStudyPage(courseId, clazzId, cpi);
-    } catch {
-      return [];
     }
+
+    if (knowledgeNodes && knowledgeNodes.length > 0) {
+      return parseKnowledgeNodes(knowledgeNodes);
+    }
+  } catch (e) {
+    console.error("[chaoxing] /gas/clazz failed:", String(e));
   }
+
+  // 方式 2：从学习页面 HTML 提取章节
+  try {
+    console.log("[chaoxing] trying studentstudy page fallback...");
+    const chapters = await getChaptersFromStudyPage(courseId, clazzId, cpi);
+    console.log("[chaoxing] studentstudy fallback got:", chapters.length, "chapters");
+    if (chapters.length > 0) return chapters;
+  } catch (e) {
+    console.error("[chaoxing] studentstudy fallback failed:", String(e));
+  }
+
+  // 方式 3：通过 /mycourse/studentstudyAjax 接口
+  try {
+    console.log("[chaoxing] trying studentstudyAjax fallback...");
+    const { data } = await mooc1.get("/mycourse/studentstudyAjax", {
+      params: { courseId, clazzid: clazzId, cpi, verificationcode: "" },
+    });
+    if (data?.data) {
+      const chapters = parseFlatChapterList(data.data);
+      console.log("[chaoxing] studentstudyAjax got:", chapters.length, "chapters");
+      if (chapters.length > 0) return chapters;
+    }
+  } catch (e) {
+    console.error("[chaoxing] studentstudyAjax failed:", String(e));
+  }
+
+  console.error("[chaoxing] all chapter fetch methods failed");
+  return [];
 }
 
 function parseChapterTree(nodes: any[]): CxChapter[] {
   if (!Array.isArray(nodes)) return [];
-  return nodes.map((n) => {
-    const chapter: CxChapter = {
-      id: String(n.id || ""),
-      name: n.name || "未知章节",
-      layer: n.layer || 0,
-      status: n.status === 2 ? "finished" : n.status === 0 ? "locked" : "unfinished",
-      children: [],
-      taskPoints: [],
-    };
-
-    // 解析知识点中的附件（视频等）
-    if (n.knowledge) {
-      chapter.children = parseKnowledgeNodes(n.knowledge);
-    }
-
-    return chapter;
-  });
+  return nodes.map((n) => ({
+    id: String(n.id || ""),
+    name: n.name || "未知章节",
+    layer: n.layer || 0,
+    status: n.status === 2 ? "finished" as const : n.status === 0 ? "locked" as const : "unfinished" as const,
+    children: n.knowledge ? parseKnowledgeNodes(n.knowledge) : [],
+    taskPoints: [],
+  }));
 }
 
 function parseKnowledgeNodes(nodes: any[]): CxChapter[] {
   if (!Array.isArray(nodes)) return [];
   return nodes.map((k) => {
     const points: CxTaskPoint[] = [];
-
     if (k.attachment) {
       for (const att of Array.isArray(k.attachment) ? k.attachment : []) {
         points.push({
@@ -276,15 +246,14 @@ function parseKnowledgeNodes(nodes: any[]): CxChapter[] {
         });
       }
     }
-
     return {
       id: String(k.id || ""),
       name: k.name || "",
       layer: k.layer || 1,
-      status: k.status === 2 ? "finished" : "unfinished",
+      status: k.status === 2 ? "finished" as const : "unfinished" as const,
       children: [],
       taskPoints: points,
-    } as CxChapter;
+    };
   });
 }
 
@@ -293,7 +262,7 @@ function detectTaskType(type: string | number, ext?: string): CxTaskPoint["type"
   if (t === "video" || ext === "mp4" || ext === "flv") return "video";
   if (t === "document" || ext === "pdf" || ext === "doc" || ext === "docx") return "document";
   if (t === "ppt" || ext === "ppt" || ext === "pptx") return "ppt";
-  if (t === "workOrExam" || t === "work") return "quiz";
+  if (t === "workorexam" || t === "work") return "quiz";
   return "other";
 }
 
@@ -306,18 +275,15 @@ async function getChaptersFromStudyPage(
     params: { chapterId: "", courseId, clazzid: clazzId, cpi, mooc2: 1 },
     responseType: "text",
   });
-
-  // 从页面 HTML 中提取章节 JSON
   const match = (html as string).match(/try\s*\{\s*mArrange\s*=\s*(\[[\s\S]*?\])\s*;/);
   if (!match) return [];
-
   try {
     const arr = JSON.parse(match[1]);
     return arr.map((item: any) => ({
       id: String(item.id || ""),
       name: item.name || "",
       layer: item.layer || 0,
-      status: item.status === 2 ? "finished" : "unfinished",
+      status: item.status === 2 ? "finished" as const : "unfinished" as const,
       children: [],
       taskPoints: [],
     }));
@@ -326,7 +292,17 @@ async function getChaptersFromStudyPage(
   }
 }
 
-// ──────────── 构造学习页面 URL ────────────
+function parseFlatChapterList(nodes: any[]): CxChapter[] {
+  if (!Array.isArray(nodes)) return [];
+  return nodes.map((item: any) => ({
+    id: String(item.id || item.chapterId || ""),
+    name: item.name || item.title || "",
+    layer: item.layer || 0,
+    status: item.status === 2 ? "finished" as const : "unfinished" as const,
+    children: [],
+    taskPoints: [],
+  }));
+}
 
 export function buildStudyUrl(
   courseId: string,

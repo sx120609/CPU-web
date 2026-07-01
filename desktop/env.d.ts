@@ -32,15 +32,18 @@ interface Window {
       config: Record<string, unknown>;
     }>;
 
-    // ── 学习通 ──
-    chaoxingLogin(
-      phone: string,
-      password: string
-    ): Promise<{
-      ok: boolean;
-      user?: { uid: string; name: string; phone: string };
-      error?: string;
-    }>;
+    // ── 凭据持久化 ──
+    saveCredentials(key: string, data: any): Promise<void>;
+    loadCredentials(key: string): Promise<any>;
+    clearCredentials(key: string): Promise<void>;
+
+    // ── 学习通 - 官方页面登录 ──
+    chaoxingOpenLogin(): Promise<void>;
+    onChaoxingLoginSuccess(
+      cb: (user: { uid: string; name: string; phone: string } | null) => void
+    ): () => void;
+
+    // ── 学习通 - 通用 ──
     chaoxingLogout(): Promise<void>;
     chaoxingStatus(): Promise<{
       loggedIn: boolean;
@@ -57,19 +60,12 @@ interface Window {
         progress: number | null;
       }>
     >;
-    getChapters(
-      courseId: string,
-      clazzId: string,
-      cpi: string
-    ): Promise<any[]>;
+    getChapters(courseId: string, clazzId: string, cpi: string): Promise<any[]>;
 
     // ── 刷课控制 ──
-    startCourse(
-      courseId: string,
-      clazzId: string,
-      cpi: string,
-      chapters: any[]
-    ): Promise<{ ok: boolean; message: string }>;
+    openCourse(courseId: string, clazzId: string, cpi: string): Promise<{ ok: boolean }>;
+    startCourse(): Promise<{ ok: boolean; message: string }>;
+    startCourseAuto(courseId: string, clazzId: string, cpi: string): Promise<{ ok: boolean; message: string }>;
     stopCourse(): Promise<void>;
     showChaoxingWindow(): Promise<void>;
 
