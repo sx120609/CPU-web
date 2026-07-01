@@ -76,6 +76,8 @@ model User {
   forumImageAssets  ForumImageAsset[]
   forumVideoAssets  ForumVideoAsset[]
   aiReviewLogs      AiReviewLog[]
+  courseBotQuota    CourseBotQuota?
+  courseBotUsageLogs CourseBotUsageLog[]
 }
 
 // ============ 论坛核心 ============
@@ -1008,4 +1010,43 @@ model SiteSetting {
   key       String   @unique
   value     String
   updatedAt DateTime @updatedAt
+}
+
+// ============ 刷课工具：AI 答题额度与消耗 ============
+// 视频刷课免费（拉人气），仅 AI 答题计费。
+//   CourseBotQuota: 每用户一行，存 AI 答题余额与累计统计
+//   CourseBotUsageLog: 每次答题消耗流水，同时作为"错题沉淀"库（questionHash 去重）
+
+model CourseBotQuota {
+  id            Int      @id @default(autoincrement())
+  userId        Int      @unique
+  aiBalance     Int      @default(0) // AI 答题剩余额度（题数）
+  totalConsumed Int      @default(0) // 累计消耗
+  totalGranted  Int      @default(0) // 累计获得（admin 发放 + 购买）
+  note          String?  // 备注（admin 发放时填写）
+  updatedAt     DateTime @updatedAt
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([aiBalance])
+}
+
+model CourseBotUsageLog {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  questionHash String   // 题干归一化指纹，用于错题沉淀与命中去重
+  questionText String   // 题干快照（截断存储）
+  aiAnswer     String   // AI 给出的答案
+  correct      Boolean? // 是否答对：null=未知/填空待确认，true/false=已知
+  cost         Int      @default(1) // 本次消耗额度
+  model        String?  // 使用的 AI 模型
+  platform     String   @default("chaoxing") // chaoxing / zhihuiredao
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([questionHash])
+  @@index([userId, questionHash])
 }

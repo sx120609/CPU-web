@@ -1,0 +1,44 @@
+{
+  "name": "cpu-course-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "药大刷课助手桌面端 —— 登录平台账号后驱动学习通视频自动播放",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "dev": "concurrently -k -n vite,electron -c green,blue \"vite\" \"wait-on tcp:5174 && cross-env NODE_ENV=development tsx watch electron/main.ts\"",
+    "dev:vite": "vite",
+    "dev:electron": "cross-env NODE_ENV=development tsx watch electron/main.ts",
+    "build": "vue-tsc --noEmit && vite build && tsup electron/main.ts electron/preload.ts --format cjs --outDir dist-electron --no-shims",
+    "package": "npm run build && electron-builder",
+    "package:win": "npm run build && electron-builder --win",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "build": {
+    "appId": "cn.cpu.coursebot",
+    "productName": "药大刷课助手",
+    "directories": { "output": "release" },
+    "files": ["dist/**", "dist-electron/**"],
+    "win": { "target": ["nsis"], "icon": "build/icon.ico" },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "element-plus": "^2.8.7",
+    "pinia": "^2.2.6",
+    "vue": "^3.5.12",
+    "vue-router": "^4.4.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.1.4",
+    "cross-env": "^7.0.3",
+    "electron": "^31.7.7",
+    "electron-builder": "^25.1.8",
+    "concurrently": "^9.0.1",
+    "tsx": "^4.19.2",
+    "tsup": "^8.3.5",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vue-tsc": "^2.1.10",
+    "wait-on": "^8.0.1"
+  }
+}
