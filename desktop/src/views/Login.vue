@@ -47,7 +47,7 @@ async function submit() {
     });
     if (r.ok) {
       ElMessage.success("登录成功");
-      router.replace("/home");
+      router.replace("/chaoxing-login");
     } else {
       ElMessage.error(r.error || "登录失败");
       // 密码错或验证码错 → 重新拉验证码

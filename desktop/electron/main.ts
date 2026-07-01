@@ -1,8 +1,22 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, session } from "electron";
 import { join } from "path";
 import { saveToken, loadToken, clearToken } from "./store";
 import { setAuthToken, ssoBegin, ssoLogin, getQuota, heartbeat } from "./api";
-import { startAutoPlay, stopAutoPlay, type ProgressEvent } from "./autoPlay";
+import {
+  chaoxingLogin,
+  chaoxingLogout,
+  getCourses,
+  getChapters,
+  getCxUser,
+  isLoggedIn as isCxLoggedIn,
+  getCookieEntries,
+} from "./chaoxing";
+import {
+  startCourseEngine,
+  stopCourseEngine,
+  isEngineRunning,
+  type CourseProgressEvent,
+} from "./courseEngine";
 
 let mainWindow: BrowserWindow | null = null;
 let chaoxingWindow: BrowserWindow | null = null;
@@ -14,9 +28,9 @@ function isDev() {
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
-    width: 460,
-    height: 720,
-    minWidth: 400,
+    width: 520,
+    height: 780,
+    minWidth: 420,
     minHeight: 600,
     title: "药大刷课助手",
     autoHideMenuBar: true,
@@ -37,47 +51,73 @@ function createMainWindow() {
 
   mainWindow.on("closed", () => {
     mainWindow = null;
-    stopAutoPlay();
+    stopCourseEngine();
     if (chaoxingWindow && !chaoxingWindow.isDestroyed()) chaoxingWindow.close();
   });
 }
 
-function createChaoxingWindow() {
+/** 创建/复用学习通浏览器窗口（自动注入 cookies） */
+async function ensureChaoxingWindow(show = false): Promise<BrowserWindow> {
   if (chaoxingWindow && !chaoxingWindow.isDestroyed()) {
-    chaoxingWindow.focus();
-    return;
+    if (show) chaoxingWindow.show();
+    return chaoxingWindow;
   }
+
   chaoxingWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    title: "学习通 · 请登录并打开课程",
+    show,
+    title: "学习通",
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      partition: "persist:chaoxing", // 独立 cookie 空间，持久化学习通登录态
+      partition: "persist:chaoxing",
     },
   });
-  chaoxingWindow.loadURL("https://i.chaoxing.com/");
-  chaoxingWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
-    return { action: "deny" };
-  });
+
   chaoxingWindow.on("closed", () => {
     chaoxingWindow = null;
-    stopAutoPlay();
+    stopCourseEngine();
     sendProgress({ type: "stopped", message: "学习通窗口已关闭" });
   });
+
+  // 把 API 登录拿到的 cookies 注入到 BrowserWindow session
+  await syncCookiesToSession();
+
+  return chaoxingWindow;
 }
 
-function sendProgress(e: ProgressEvent) {
+/** 将 chaoxing.ts 中的 cookies 同步到 Electron session */
+async function syncCookiesToSession() {
+  const ses = session.fromPartition("persist:chaoxing");
+  const entries = getCookieEntries();
+  const domains = [
+    "chaoxing.com",
+    ".chaoxing.com",
+  ];
+  for (const { name, value } of entries) {
+    for (const domain of domains) {
+      try {
+        await ses.cookies.set({
+          url: `https://${domain.replace(/^\./, "")}`,
+          name,
+          value,
+          domain,
+          path: "/",
+        });
+      } catch { /* 某些 cookie 写入可能失败，忽略 */ }
+    }
+  }
+}
+
+function sendProgress(e: CourseProgressEvent) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("coursebot:progress", e);
   }
 }
 
 app.whenReady().then(async () => {
-  // 启动时尝试恢复会话
   const t = loadToken();
   if (t) {
     cachedToken = t;
@@ -87,11 +127,11 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
-  stopAutoPlay();
+  stopCourseEngine();
   app.quit();
 });
 
-// ============ IPC ============
+// ============ 平台 IPC（保留原有） ============
 
 ipcMain.handle("coursebot:sso-begin", async () => {
   return await ssoBegin();
@@ -121,7 +161,7 @@ ipcMain.handle("coursebot:clear-token", async () => {
   cachedToken = null;
   setAuthToken(null);
   clearToken();
-  stopAutoPlay();
+  stopCourseEngine();
 });
 
 ipcMain.handle("coursebot:get-quota", async () => {
@@ -132,26 +172,67 @@ ipcMain.handle("coursebot:heartbeat", async () => {
   return await heartbeat();
 });
 
-ipcMain.handle("coursebot:open-chaoxing", async () => {
-  createChaoxingWindow();
+// ============ 学习通 IPC（新增） ============
+
+ipcMain.handle("coursebot:chaoxing-login", async (_e, args: { phone: string; password: string }) => {
+  const result = await chaoxingLogin(args.phone, args.password);
+  if (result.ok) {
+    await syncCookiesToSession();
+  }
+  return result;
 });
 
-ipcMain.handle("coursebot:start-auto-play", async () => {
-  if (!chaoxingWindow || chaoxingWindow.isDestroyed()) {
-    return { ok: false, message: "请先打开学习通窗口并登录" };
+ipcMain.handle("coursebot:chaoxing-logout", async () => {
+  chaoxingLogout();
+  // 清除 session cookies
+  const ses = session.fromPartition("persist:chaoxing");
+  await ses.clearStorageData({ storages: ["cookies"] });
+});
+
+ipcMain.handle("coursebot:chaoxing-status", async () => {
+  return { loggedIn: isCxLoggedIn(), user: getCxUser() };
+});
+
+ipcMain.handle("coursebot:get-courses", async () => {
+  return await getCourses();
+});
+
+ipcMain.handle("coursebot:get-chapters", async (_e, args: { courseId: string; clazzId: string; cpi: string }) => {
+  return await getChapters(args.courseId, args.clazzId, args.cpi);
+});
+
+ipcMain.handle("coursebot:start-course", async (_e, args: {
+  courseId: string;
+  clazzId: string;
+  cpi: string;
+  chapters: any[];
+}) => {
+  if (isEngineRunning()) {
+    return { ok: false, message: "已有任务在运行中" };
   }
-  startAutoPlay(
-    chaoxingWindow,
+
+  const win = await ensureChaoxingWindow(false);
+
+  startCourseEngine(
+    win,
+    args.courseId,
+    args.clazzId,
+    args.cpi,
+    args.chapters,
     sendProgress,
     async () => {
-      if (!cachedToken) throw new Error("no token");
-      await heartbeat();
+      if (cachedToken) await heartbeat();
     }
   );
-  return { ok: true, message: "已开始" };
+
+  return { ok: true, message: "已开始刷课" };
 });
 
-ipcMain.handle("coursebot:stop-auto-play", async () => {
-  stopAutoPlay();
+ipcMain.handle("coursebot:stop-course", async () => {
+  stopCourseEngine();
   sendProgress({ type: "stopped", message: "已手动停止" });
+});
+
+ipcMain.handle("coursebot:show-chaoxing-window", async () => {
+  await ensureChaoxingWindow(true);
 });

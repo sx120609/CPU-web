@@ -6,9 +6,18 @@ const router = useRouter();
 const ready = ref(false);
 
 onMounted(async () => {
-  // 启动时尝试恢复会话：有 token 直接进主页，否则进登录页
   const token = await window.courseBot.loadToken();
-  router.replace(token ? "/home" : "/login");
+  if (token) {
+    // 已登录平台，检查学习通状态
+    try {
+      const cx = await window.courseBot.chaoxingStatus();
+      router.replace(cx.loggedIn ? "/courses" : "/chaoxing-login");
+    } catch {
+      router.replace("/chaoxing-login");
+    }
+  } else {
+    router.replace("/login");
+  }
   ready.value = true;
 });
 </script>
