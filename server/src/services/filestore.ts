@@ -28,6 +28,7 @@ import {
 } from "./oneDriveChina";
 import { getMediaStorageRuntimeConfig } from "./storageConfig";
 import { repairFileCollectTaskFilenames } from "./fileCollectFilenameRepair";
+import { notifyFileCollectSubmissionForQqBot } from "./toolQqReminders";
 import {
   buildOfficeViewerUrl,
   canUseOfficeWebViewer,
@@ -1677,6 +1678,16 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
         return oldPaths;
       });
       await Promise.all(stalePaths.map((item) => unlinkFileCollectPath(item)));
+      await notifyFileCollectSubmissionForQqBot({
+        task: submission.task,
+        submission: {
+          id: submission.id,
+          identity: submission.identity,
+          submitterId: submission.submitterId,
+          data: submission.data,
+        },
+        fileCount: submission.files.length,
+      }).catch((error) => console.warn("[filestore] qqbot reminder failed", error));
       res.json({
         ok: true,
         id: submission.id,
@@ -1767,6 +1778,16 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
         return { submission, files: fileRows, oldPaths };
       });
       await Promise.all(result.oldPaths.map((item) => unlinkFileCollectPath(item)));
+      await notifyFileCollectSubmissionForQqBot({
+        task,
+        submission: {
+          id: result.submission.id,
+          identity: result.submission.identity,
+          submitterId: result.submission.submitterId,
+          data: result.submission.data,
+        },
+        fileCount: result.files.length,
+      }).catch((error) => console.warn("[filestore] qqbot reminder failed", error));
       res.json({
         ok: true,
         id: result.submission.id,

@@ -80,6 +80,7 @@
               <el-checkbox label="mention">提及</el-checkbox>
               <el-checkbox label="like">点赞</el-checkbox>
               <el-checkbox label="system">系统</el-checkbox>
+              <el-checkbox label="service-tool">小工具提醒</el-checkbox>
               <el-checkbox label="school-feed">校园公告</el-checkbox>
             </el-checkbox-group>
           </el-form-item>
@@ -404,7 +405,7 @@ const form = reactive({
   allowPrivatePost: true,
   allowGroupPost: false,
   notificationEnabled: true,
-  notifyCategories: ["reply", "mention", "like", "system"] as string[],
+  notifyCategories: ["reply", "mention", "like", "system", "service-tool"] as string[],
 });
 
 const test = reactive({ qqId: "", groupId: "", message: "药大拾间 QQBot 测试消息" });

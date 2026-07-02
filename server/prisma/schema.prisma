@@ -630,6 +630,8 @@ model Questionnaire {
   allowAnonymous     Boolean  @default(true)
   oneResponsePerUser Boolean  @default(false)
   isSystem           Boolean  @default(false)
+  qqBotNotifyEnabled Boolean  @default(false)
+  qqBotNotifyConfig  String   @default("{}")
   fields             String   @default("[]")
   createdById        Int?
   publishedAt        DateTime?
@@ -670,6 +672,8 @@ model GradeCheckTable {
   columns         String   @default("[]")
   rowCount        Int      @default(0)
   feedbackQuestionnaireSlug String?
+  qqBotNotifyEnabled Boolean @default(false)
+  qqBotNotifyConfig String @default("{}")
   createdById     Int?
   publishedAt     DateTime?
   closedAt        DateTime?
@@ -713,6 +717,8 @@ model FileCollectTask {
   deadline        DateTime?
   submissionCount Int      @default(0)
   fileCount       Int      @default(0)
+  qqBotNotifyEnabled Boolean @default(false)
+  qqBotNotifyConfig String @default("{}")
   createdById     Int?
   publishedAt     DateTime?
   closedAt        DateTime?
@@ -905,7 +911,7 @@ model QqBotConfig {
   allowPrivatePost  Boolean  @default(true)
   allowGroupPost    Boolean  @default(false)
   notificationEnabled Boolean @default(true)
-  notifyCategories  String   @default("[\"reply\",\"mention\",\"like\",\"system\"]")
+  notifyCategories  String   @default("[\"reply\",\"mention\",\"like\",\"system\",\"service-tool\"]")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }

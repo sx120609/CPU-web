@@ -63,6 +63,14 @@ import {
   type QuestionnaireField,
 } from "../services/questionnaires";
 import { repairFileCollectTaskFilenames } from "../services/fileCollectFilenameRepair";
+import {
+  listToolQqReminderItems,
+  normalizeToolQqReminderTargetType,
+  notifyFileCollectSubmissionForQqBot,
+  notifyGradeCheckLookupForQqBot,
+  notifyQuestionnaireResponseForQqBot,
+  updateToolQqReminderItem,
+} from "../services/toolQqReminders";
 
 export const toolsRouter = Router();
 
@@ -128,6 +136,15 @@ const patchQuestionnaireSchema = createQuestionnaireSchema.partial().extend({
 
 const responseSchema = z.object({
   answers: z.record(z.union([z.string(), z.array(z.string())])),
+});
+
+const toolQqReminderPatchSchema = z.object({
+  enabled: z.boolean().optional(),
+  events: z.array(z.string().trim().min(1).max(40)).max(10).optional(),
+  timing: z.enum(["instant", "after", "deadline"]).optional(),
+  afterAt: z.string().datetime().nullable().optional(),
+  deadlineAt: z.string().datetime().nullable().optional(),
+  beforeDeadlineHours: z.number().int().min(1).max(720).nullable().optional(),
 });
 
 const gradeCheckCellSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
@@ -285,6 +302,29 @@ toolsRouter.get("/permissions/me", authRequired, async (req, res, next) => {
       listManagerToolCodes(req.user),
     ]);
     ok(res, { toolCodes, adminToolCodes });
+  } catch (e) { next(e); }
+});
+
+toolsRouter.get("/qqbot-reminders", authRequired, async (req, res, next) => {
+  try {
+    const [items, binding] = await Promise.all([
+      listToolQqReminderItems(req.user),
+      prisma.qqBotBinding.findFirst({
+        where: { userId: req.user!.userId },
+        orderBy: [{ enabled: "desc" }, { updatedAt: "desc" }],
+        select: { id: true, qqId: true, nickname: true, enabled: true, updatedAt: true },
+      }),
+    ]);
+    ok(res, { binding, items });
+  } catch (e) { next(e); }
+});
+
+toolsRouter.patch("/qqbot-reminders/:targetType/:id", authRequired, validate(toolQqReminderPatchSchema), async (req, res, next) => {
+  try {
+    const targetType = normalizeToolQqReminderTargetType(req.params.targetType);
+    const id = Number(req.params.id);
+    if (!targetType || !Number.isInteger(id) || id <= 0) throw Errors.badRequest("提醒对象不合法");
+    ok(res, await updateToolQqReminderItem(req.user, targetType, id, req.body));
   } catch (e) { next(e); }
 });
 
@@ -552,6 +592,13 @@ toolsRouter.get("/grade-checks/:slug", authRequired, async (req, res, next) => {
       },
     });
     const feedbackQuestionnaireSlug = row ? await ensureGradeCheckFeedbackQuestionnaire(table) : table.feedbackQuestionnaireSlug;
+    if (row) {
+      await notifyGradeCheckLookupForQqBot({
+        table,
+        studentId,
+        actorUserId: req.user!.userId,
+      }).catch((error) => console.warn("[tools] grade check qqbot reminder failed", error));
+    }
     ok(res, {
       table: normalizeGradeCheckTable(table),
       studentId,
@@ -996,6 +1043,16 @@ toolsRouter.post("/file-collections/:slug/submissions", authOptional, fileCollec
       });
       return { submission, files: fileRows };
     });
+    await notifyFileCollectSubmissionForQqBot({
+      task,
+      submission: {
+        id: result.submission.id,
+        identity: result.submission.identity,
+        submitterId: result.submission.submitterId,
+        data: result.submission.data,
+      },
+      fileCount: result.files.length,
+    }).catch((error) => console.warn("[tools] file collect qqbot reminder failed", error));
     ok(res, {
       id: result.submission.id,
       createdAt: result.submission.createdAt,
@@ -1297,6 +1354,11 @@ toolsRouter.post("/questionnaires/:slug/responses", authOptional, validate(respo
         answers: JSON.stringify(answers),
       },
     });
+    await notifyQuestionnaireResponseForQqBot({
+      questionnaire: row,
+      responseId: created.id,
+      respondentId: req.user?.userId ?? null,
+    }).catch((error) => console.warn("[tools] questionnaire qqbot reminder failed", error));
     ok(res, { id: created.id, createdAt: created.createdAt });
   } catch (e) { next(e); }
 });

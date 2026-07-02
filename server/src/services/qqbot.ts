@@ -155,7 +155,7 @@ type QqBotDoubtFriendRequest = {
 const qqBotCooldowns = new Map<string, { cancelledAt?: number }>();
 
 const CONFIG_ID = 1;
-const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "like", "system"];
+const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "like", "system", "service-tool"];
 const GROUP_NOTIFY_CATEGORY_OPTIONS = ["system", "school-feed"] as const;
 const GROUP_NOTIFY_AUDIENCE_OPTIONS = ["public", "staff"] as const;
 const DEFAULT_GROUP_NOTIFY_CATEGORIES = ["system", "school-feed"];

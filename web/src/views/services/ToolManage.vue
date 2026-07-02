@@ -10,6 +10,10 @@
         <el-icon><ArrowLeft /></el-icon>
         返回小工具
       </el-button>
+      <el-button plain type="primary" @click="$router.push('/services/tools/qqbot-reminders')">
+        <el-icon><Bell /></el-icon>
+        QQBot 提醒
+      </el-button>
     </section>
 
     <section class="manage-panel" v-loading="loading">
@@ -1361,6 +1365,7 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
+  Bell,
   Calendar,
   CopyDocument,
   DataAnalysis,

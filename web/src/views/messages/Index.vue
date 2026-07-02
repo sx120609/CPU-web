@@ -27,6 +27,9 @@
       <el-tab-pane label="系统 / 站务" name="system">
         <MessageList :list="filteredMessages('system')" @read="onRead" @open="openNotification" />
       </el-tab-pane>
+      <el-tab-pane label="小工具" name="service-tool">
+        <MessageList :list="filteredMessages('service-tool')" @read="onRead" @open="openNotification" />
+      </el-tab-pane>
       <el-tab-pane label="设置" name="settings">
         <div v-if="settings" class="settings">
           <h4>静默时段</h4>
@@ -137,7 +140,7 @@ const router = useRouter();
 const msg = useMessageStore();
 const auth = useAuthStore();
 
-const messageTabs = new Set(["all", "reply", "like", "system", "settings"]);
+const messageTabs = new Set(["all", "reply", "like", "system", "service-tool", "settings"]);
 const tab = ref(normalizeMessageTab(route.query.tab));
 const list = ref<any[]>([]);
 const settings = ref<any>(null);

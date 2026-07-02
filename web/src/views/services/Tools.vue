@@ -22,6 +22,10 @@
             <el-icon><Setting /></el-icon>
             管理
           </el-button>
+          <el-button v-if="canManageAny" plain @click="openQqBotReminders">
+            <el-icon><Bell /></el-icon>
+            QQBot 提醒
+          </el-button>
           <el-tag round type="success">{{ visibleTools.length }} 个入口</el-tag>
         </div>
       </div>
@@ -62,7 +66,7 @@
 </template>
 
 <script setup lang="ts">
-import { Right, Setting } from "@element-plus/icons-vue";
+import { Bell, Right, Setting } from "@element-plus/icons-vue";
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { getToken } from "@/api/request";
@@ -107,6 +111,10 @@ function openTool(tool: ServiceTool) {
 function openManage() {
   const fallback = toolMetas.value.find((item) => item.canManage)?.code;
   router.push({ path: "/services/tools/manage", query: { tool: manageable.value[0] ?? fallback ?? "questionnaire" } });
+}
+
+function openQqBotReminders() {
+  router.push("/services/tools/qqbot-reminders");
 }
 
 function uniqueToolCodes(items: ServiceToolCode[]) {

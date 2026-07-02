@@ -73,7 +73,8 @@ function categoryLabel(category?: string | null) {
   if (category === "reply") return "回复";
   if (category === "like") return "点赞";
   if (category === "system") return "系统";
-  if (category === "school") return "公告";
+  if (category === "school" || category === "school-feed") return "公告";
+  if (category === "service-tool") return "小工具";
   return category || "消息";
 }
 </script>
