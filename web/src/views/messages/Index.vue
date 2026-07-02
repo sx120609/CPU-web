@@ -59,6 +59,18 @@
               <el-switch v-model="settings.subscribeSystem" />
             </label>
           </div>
+          <el-divider />
+          <h4>QQBot 提醒</h4>
+          <button type="button" class="settings-action-row" @click="openQqBotReminderSettings">
+            <span class="settings-action-icon">
+              <el-icon><Bell /></el-icon>
+            </span>
+            <span class="settings-action-copy">
+              <b>小工具提醒规则</b>
+              <span>选择哪些问卷、文件收集和成绩表通过 QQBot 私聊提醒。</span>
+            </span>
+            <el-icon class="settings-action-arrow"><ArrowRight /></el-icon>
+          </button>
           <el-button type="primary" :loading="saving" :disabled="saving" class="save-btn" @click="saveSettings">保存设置</el-button>
         </div>
         <el-empty v-else description="设置暂不可用" />
@@ -127,6 +139,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { ArrowRight, Bell } from "@element-plus/icons-vue";
 import MessageList from "@/components/messages/MessageList.vue";
 import { messageApi } from "@/api/message";
 import { topicApi } from "@/api/topic";
@@ -266,6 +279,10 @@ async function saveSettings() {
   } finally {
     if (!disposed) saving.value = false;
   }
+}
+
+function openQqBotReminderSettings() {
+  router.push("/messages/qqbot-reminders");
 }
 
 async function loadPage() {
@@ -559,6 +576,59 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
   color: #374151;
   font-size: 14px;
 }
+.settings-action-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 62px;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+}
+.settings-action-row:hover {
+  border-color: rgba(20, 143, 123, 0.35);
+  background: #f8fffc;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
+}
+.settings-action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: rgba(20, 143, 123, 0.1);
+  color: var(--cpu-primary);
+}
+.settings-action-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+.settings-action-copy b {
+  color: #1f2937;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.settings-action-copy span {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.settings-action-arrow {
+  flex: 0 0 auto;
+  color: #94a3b8;
+}
 .save-btn {
   margin-top: 14px;
 }
@@ -676,6 +746,12 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
     padding: 12px;
   }
 
+  .settings-action-row {
+    align-items: flex-start;
+    min-height: 0;
+    padding: 12px;
+  }
+
   .settings .el-button {
     width: 100%;
   }
@@ -732,9 +808,14 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
 }
 
 @media (max-width: 420px) {
-  .switch-item {
+  .switch-item,
+  .settings-action-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .settings-action-arrow {
+    display: none;
   }
 }
 </style>

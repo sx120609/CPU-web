@@ -2,14 +2,14 @@
   <div class="qqbot-reminder-page">
     <section class="reminder-head">
       <div>
-        <div class="kicker">校园小工具</div>
+        <div class="kicker">通知设置</div>
         <h2>QQBot 提醒</h2>
         <p>按问卷、收集任务和成绩核对表分别设置通知事件与触发时间。</p>
       </div>
       <div class="head-actions">
-        <el-button plain @click="router.push('/services/tools')">
+        <el-button plain @click="router.push('/messages?tab=settings')">
           <el-icon><ArrowLeft /></el-icon>
-          返回小工具
+          返回通知设置
         </el-button>
         <el-button plain type="primary" @click="router.push('/profile')">
           <el-icon><Bell /></el-icon>

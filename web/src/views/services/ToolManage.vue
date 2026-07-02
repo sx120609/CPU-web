@@ -11,10 +11,6 @@
           <el-icon><ArrowLeft /></el-icon>
           小工具列表
         </el-button>
-        <el-button plain type="primary" @click="$router.push('/services/tools/qqbot-reminders')">
-          <el-icon><Bell /></el-icon>
-          提醒设置
-        </el-button>
       </div>
     </section>
 
@@ -1367,7 +1363,6 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
-  Bell,
   Calendar,
   CopyDocument,
   DataAnalysis,
