@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import path from "node:path";
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import { runWithDistributedLock } from "./cache";
@@ -13,6 +13,55 @@ import { ensureUserCanSpeak } from "./userModeration";
 import { ensureForumVideoAssetsForContent } from "./videoModeration";
 import { createVideoPosterAsset } from "./videoPoster";
 import {
+  callQqBotAction,
+  configureQqBotConnection,
+  connectQqBotWebSocket,
+  getQqBotConnectionError,
+  getQqBotConnectionStatus,
+  isWebSocketUrl,
+  resetQqBotWebSocket,
+  sendQqMessageByWebSocket,
+} from "./qqbot/connection";
+import {
+  extractConversationBoardSwitchTarget,
+  extractConversationTitleCommandValue,
+  extractFinishCommandPayload,
+  isBoardListCommand,
+  isCancelMessage,
+  isCommandMessage,
+  isConfirmPublishMessage,
+  isConversationPreviewCommand,
+  isConversationRetitleCommand,
+  isConversationStatusCommand,
+  isGreetingMessage,
+  isHelpCommand,
+  isLikelyConversationCommandMessage,
+  isMyPostsCommand,
+  isPrivatePlainCommand,
+  isStatusCommand,
+  isUnbindCommand,
+  normalizeInboundCommandText,
+  normalizeShortReplyText,
+} from "./qqbot/commands";
+import {
+  buildGroupNotificationDeliveryKey,
+  isNotificationVisibleToQq,
+  parseNotificationPayload,
+  shouldDeliverQqNotificationToGroup,
+  shouldDeliverQqNotificationToUser,
+  toPositiveInt,
+} from "./qqbot/notifications";
+import { buildQqBotDebugExport, queueQqBotForwardDebug } from "./qqbot/forwardDebug";
+import {
+  escapeShareCardHtml,
+  parseCqParams,
+  parseJsonShareCard,
+  parseMusicSegmentCard,
+  parseShareSegmentCard,
+  parseXmlShareCard,
+  renderShareCardBlock,
+} from "./qqbot/shareCards";
+import {
   ensureUserCanSubmitTopic,
   generateTopicAiTags,
   notifyTopicAiBlocked,
@@ -21,6 +70,9 @@ import {
   shouldRunAiReview,
   syncTopicAiTags,
 } from "./topicAiReview";
+
+export { buildQqBotDebugExport };
+export { connectQqBotWebSocket };
 
 export type QqBotConfigView = {
   id: number;
@@ -128,13 +180,6 @@ type ParsedForwardEntry = {
   messageCount: number;
   imageCount: number;
 };
-type ParsedShareCard = {
-  source?: string;
-  title?: string;
-  summary?: string;
-  url?: string;
-};
-
 type ForwardSource = "direct-forward" | "reply-forward" | "reply-message";
 type QqMessageExtractOptions = {
   forwardDepth?: number;
@@ -155,23 +200,20 @@ type QqBotDoubtFriendRequest = {
 const qqBotCooldowns = new Map<string, { cancelledAt?: number }>();
 
 const CONFIG_ID = 1;
-const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "like", "system", "service-tool"];
+const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "like", "system", "service-tool", "school-feed"];
 const GROUP_NOTIFY_CATEGORY_OPTIONS = ["system", "school-feed"] as const;
 const GROUP_NOTIFY_AUDIENCE_OPTIONS = ["public", "staff"] as const;
 const DEFAULT_GROUP_NOTIFY_CATEGORIES = ["system", "school-feed"];
 const DEFAULT_GROUP_NOTIFY_AUDIENCES = ["public"];
 const QQBOT_MESSAGE_SOFT_LIMIT = 720;
 const QQBOT_DRAFT_PREVIEW_LIMIT = 220;
-const STAFF_GROUP_ACTIONABLE_NOTIFICATION_TYPES = new Set([
-  "topic-manual-review-admin",
-  "reply-manual-review-admin",
-]);
 let pollerStarted = false;
-let wsClient: any = null;
-let wsConnecting = false;
-let wsReconnectTimer: NodeJS.Timeout | null = null;
-let wsLastError = "";
-const wsPendingActions = new Map<string, { resolve: (value: any) => void; reject: (reason?: unknown) => void; timer: NodeJS.Timeout }>();
+
+configureQqBotConnection({
+  getConfig: getQqBotConfigRaw,
+  handleWebhook: handleQqBotWebhook,
+  logMessage: logQqBotMessage,
+});
 
 export async function getQqBotConfigRaw() {
   return prisma.qqBotConfig.upsert({
@@ -723,7 +765,7 @@ async function ensureQqBotPostingGroup(input: {
       enabled: true,
       allowPosting: true,
       defaultBoardSlug: boardSlug,
-      notificationEnabled: false,
+      notificationEnabled: true,
       notifyCategories: JSON.stringify(DEFAULT_GROUP_NOTIFY_CATEGORIES),
       notifyAudiences: JSON.stringify(DEFAULT_GROUP_NOTIFY_AUDIENCES),
     },
@@ -2485,98 +2527,6 @@ export async function logQqBotMessage(input: {
   });
 }
 
-export async function buildQqBotDebugExport(input: {
-  status?: string;
-  eventType?: string;
-  take?: number;
-}) {
-  const take = Math.min(200, Math.max(20, Number(input.take ?? 80) || 80));
-  const where: any = {};
-  if (input.status) where.status = input.status;
-  if (input.eventType) where.eventType = input.eventType;
-  const [messageLogs, forwardDebugEntries] = await Promise.all([
-    prisma.qqBotMessageLog.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take,
-      include: { user: { select: { id: true, username: true, nickname: true } } },
-    }),
-    readQqBotForwardDebugEntries(),
-  ]);
-  return {
-    exportedAt: new Date().toISOString(),
-    filters: {
-      status: input.status || "",
-      eventType: input.eventType || "",
-      take,
-    },
-    messageLogs: messageLogs.map((row) => ({
-      ...row,
-      rawPayload: parseJsonTextMaybe(row.rawPayload),
-    })),
-    forwardDebugEntries,
-  };
-}
-
-function parseJsonTextMaybe(value: string) {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
-  }
-}
-
-async function readQqBotForwardDebugEntries(limit = QQBOT_FORWARD_DEBUG_EXPORT_LIMIT) {
-  const raw = await readFile(QQBOT_FORWARD_DEBUG_FILE, "utf8").catch(() => "");
-  if (!raw.trim()) return [] as any[];
-  return raw
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .slice(-limit)
-    .map((line) => parseJsonTextMaybe(line));
-}
-
-function trimDebugValue(value: unknown, depth = 0): unknown {
-  if (value == null) return value;
-  if (depth >= 5) return "[depth-limit]";
-  if (typeof value === "string") {
-    return value.length > 4000 ? `${value.slice(0, 4000)}...[truncated ${value.length - 4000} chars]` : value;
-  }
-  if (typeof value === "number" || typeof value === "boolean") return value;
-  if (Array.isArray(value)) {
-    const trimmed = value.slice(0, 20).map((item) => trimDebugValue(item, depth + 1));
-    if (value.length > 20) trimmed.push(`[truncated ${value.length - 20} items]`);
-    return trimmed;
-  }
-  if (typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>);
-    const out: Record<string, unknown> = {};
-    for (const [key, item] of entries.slice(0, 30)) out[key] = trimDebugValue(item, depth + 1);
-    if (entries.length > 30) out.__truncatedKeys = `[truncated ${entries.length - 30} keys]`;
-    return out;
-  }
-  return String(value);
-}
-
-async function appendQqBotForwardDebug(stage: string, payload: Record<string, unknown>) {
-  const trimmedPayload = trimDebugValue(payload);
-  const entry = JSON.stringify({
-    at: new Date().toISOString(),
-    stage,
-    ...(
-      trimmedPayload && typeof trimmedPayload === "object" && !Array.isArray(trimmedPayload)
-        ? trimmedPayload as Record<string, unknown>
-        : { payload: trimmedPayload }
-    ),
-  });
-  await mkdir(path.dirname(QQBOT_FORWARD_DEBUG_FILE), { recursive: true });
-  await appendFile(QQBOT_FORWARD_DEBUG_FILE, `${entry}\n`, "utf8").catch(() => undefined);
-}
-
-function queueQqBotForwardDebug(stage: string, payload: Record<string, unknown>) {
-  void appendQqBotForwardDebug(stage, payload);
-}
-
 function debugMessagePreview(value: string, limit = 240) {
   const normalized = normalizeRenderedMessage(value).replace(/\n+/g, " ");
   return normalized.length > limit ? `${normalized.slice(0, limit)}...` : normalized;
@@ -2585,8 +2535,6 @@ function debugMessagePreview(value: string, limit = 240) {
 const MAX_FORWARD_DEPTH = 4;
 const QQBOT_IMAGE_MAX_BYTES = 12 * 1024 * 1024;
 const QQBOT_VIDEO_MAX_BYTES = 80 * 1024 * 1024;
-const QQBOT_FORWARD_DEBUG_FILE = path.resolve(process.cwd(), "runtime", "qqbot-forward-debug.ndjson");
-const QQBOT_FORWARD_DEBUG_EXPORT_LIMIT = 200;
 const QQBOT_POST_SUBMIT_PENDING_MESSAGE = [
   "已收到投稿确认，开始为你投递",
   "长消息、多图、多视频时速度会比较慢",
@@ -3027,311 +2975,6 @@ async function cleanCqMessage(value: string, options: QqMessageExtractOptions = 
   return normalizeRenderedMessage(normalized);
 }
 
-function parseCqParams(raw: string) {
-  const out: Record<string, string> = {};
-  const parts = String(raw || "").split(",");
-  for (const item of parts) {
-    const [key, ...rest] = item.split("=");
-    const normalizedKey = String(key || "").trim();
-    if (!normalizedKey) continue;
-    out[normalizedKey] = rest.join("=").trim();
-  }
-  return out;
-}
-
-function parseShareSegmentCard(data: any): ParsedShareCard | null {
-  return finalizeShareCard({
-    source: undefined,
-    title: data?.title,
-    summary: data?.content,
-    url: pickShareCardUrl(data),
-  });
-}
-
-function parseMusicSegmentCard(data: any): ParsedShareCard | null {
-  const sourceMap: Record<string, string> = {
-    qq: "QQ音乐",
-    "163": "网易云音乐",
-    kugou: "酷狗音乐",
-    kuwo: "酷我音乐",
-    migu: "咪咕音乐",
-    xm: "虾米音乐",
-    custom: "音乐分享",
-  };
-  return finalizeShareCard({
-    source: sourceMap[String(data?.type || "").trim().toLowerCase()] || "音乐分享",
-    title: data?.title,
-    summary: data?.content || data?.singer,
-    url: pickShareCardUrl(data),
-  });
-}
-
-function parseJsonShareCard(raw: unknown): ParsedShareCard | null {
-  const root = normalizeJsonCardValue(raw);
-  if (!root || typeof root !== "object" || Array.isArray(root)) return null;
-  const metaCandidates = Object.values((root as any).meta || {}).filter((item) => item && typeof item === "object");
-  const candidates = [
-    ...metaCandidates.map((item) => extractShareCardFromObject(item, root)),
-    extractShareCardFromObject(root, root),
-  ].filter(Boolean) as ParsedShareCard[];
-  return finalizeShareCard(pickBestShareCard(candidates));
-}
-
-function parseXmlShareCard(raw: unknown): ParsedShareCard | null {
-  const xml = decodeCqEntities(String(raw || "").trim());
-  if (!xml) return null;
-  return finalizeShareCard({
-    source: extractXmlAttr(xml, "source", "name") || extractXmlAttr(xml, "msg", "brief"),
-    title: extractXmlTagText(xml, "title"),
-    summary: extractXmlTagText(xml, "summary"),
-    url: firstNonEmpty([
-      extractXmlAttr(xml, "msg", "url"),
-      extractXmlAttr(xml, "item", "url"),
-      extractXmlShareCardUrl(xml),
-    ]),
-  });
-}
-
-function pickBestShareCard(cards: ParsedShareCard[]) {
-  let best: ParsedShareCard | null = null;
-  let bestScore = -1;
-  for (const card of cards) {
-    const score = Number(Boolean(card.url)) * 3
-      + Number(Boolean(card.title)) * 2
-      + Number(Boolean(card.summary))
-      + Number(Boolean(card.source)) * 0.5;
-    if (score > bestScore) {
-      best = card;
-      bestScore = score;
-    }
-  }
-  return best;
-}
-
-function extractShareCardFromObject(candidate: any, fallbackRoot?: any): ParsedShareCard | null {
-  if (!candidate || typeof candidate !== "object") return null;
-  return {
-    source: firstNonEmpty([
-      candidate.tag,
-      candidate.source,
-      candidate.sourceName,
-      fallbackRoot?.prompt,
-      fallbackRoot?.desc,
-      fallbackRoot?.app,
-    ]),
-    title: firstNonEmpty([
-      candidate.title,
-      candidate.name,
-      candidate.headline,
-      fallbackRoot?.title,
-    ]),
-    summary: firstNonEmpty([
-      candidate.desc,
-      candidate.description,
-      candidate.summary,
-      candidate.content,
-      candidate.text,
-      candidate.brief,
-      candidate.subtitle,
-      fallbackRoot?.summary,
-    ]),
-    url: firstNonEmpty([
-      pickShareCardUrl(candidate),
-      pickShareCardUrl(fallbackRoot),
-      candidate.url,
-      fallbackRoot?.url,
-    ]),
-  };
-}
-
-function normalizeJsonCardValue(raw: unknown): unknown {
-  if (raw && typeof raw === "object") return raw;
-  const text = decodeCqEntities(String(raw || "").trim());
-  if (!text) return null;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
-
-function renderShareCardBlock(card: ParsedShareCard | null) {
-  const normalized = finalizeShareCard(card);
-  if (!normalized) return "\n[分享卡片]\n";
-  const title = escapeShareCardHtml(normalized.title || normalized.source || extractUrlHostLabel(normalized.url) || "分享卡片");
-  const summary = normalized.summary ? escapeShareCardHtml(normalized.summary) : "";
-  const source = normalized.source ? escapeShareCardHtml(normalized.source) : "";
-  const host = extractUrlHostLabel(normalized.url);
-  const hostLabel = host && host !== normalized.source ? escapeShareCardHtml(host) : "";
-  const hasLink = Boolean(normalized.url);
-  const linkAttrs = hasLink
-    ? ` href="${escapeShareCardHtml(normalized.url!)}" target="_blank" rel="noopener noreferrer nofollow"`
-    : "";
-  const wrapperTag = hasLink ? "a" : "div";
-  const metaBits = [
-    source ? `<span class="qq-share-card__source">${source}</span>` : "",
-    hostLabel ? `<span class="qq-share-card__host">${hostLabel}</span>` : "",
-  ].filter(Boolean).join("");
-  return [
-    "",
-    `<${wrapperTag} class="qq-share-card${hasLink ? " qq-share-card--linked" : ""}"${linkAttrs}>`,
-    `<div class="qq-share-card__eyebrow">分享卡片</div>`,
-    `<div class="qq-share-card__title">${title}</div>`,
-    summary ? `<div class="qq-share-card__summary">${summary}</div>` : "",
-    metaBits ? `<div class="qq-share-card__meta">${metaBits}</div>` : "",
-    hasLink ? `<div class="qq-share-card__action"><span class="qq-share-card__action-link">打开链接</span></div>` : "",
-    `</${wrapperTag}>`,
-    "",
-  ].filter(Boolean).join("\n");
-}
-
-function finalizeShareCard(card: ParsedShareCard | null | undefined): ParsedShareCard | null {
-  if (!card) return null;
-  const source = normalizeShareCardText(card.source, { allowGenericShareText: false, allowPackageName: false });
-  const title = normalizeShareCardText(card.title, { allowGenericShareText: false });
-  const summary = normalizeShareCardText(card.summary, { allowGenericShareText: false });
-  const url = normalizeShareCardUrl(card.url);
-  const resolvedSource = source && source !== title ? source : "";
-  const resolvedSummary = summary && summary !== title ? summary : "";
-  if (!resolvedSource && !title && !resolvedSummary && !url) return null;
-  return {
-    source: resolvedSource || undefined,
-    title: title || undefined,
-    summary: resolvedSummary || undefined,
-    url: url || undefined,
-  };
-}
-
-function normalizeShareCardText(
-  value: unknown,
-  options: { allowGenericShareText?: boolean; allowPackageName?: boolean } = {},
-) {
-  let text = decodeCqEntities(String(value || "").trim());
-  if (!text) return "";
-  text = text
-    .replace(/\r/g, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .replace(/^\[(?:分享|链接分享)\]\s*/u, "")
-    .trim();
-  if (!text) return "";
-  if (!options.allowPackageName && looksLikePackageName(text)) return "";
-  if (!options.allowGenericShareText && /^(分享|链接分享|QQ分享)$/iu.test(text)) return "";
-  return text.slice(0, 300);
-}
-
-function normalizeShareCardUrl(value: unknown): string {
-  const raw = decodeCqEntities(String(value || "").trim());
-  if (!raw) return "";
-  if (raw.startsWith("//")) return `https:${raw}`;
-  if (/^https?:\/\//i.test(raw)) return raw.slice(0, 1000);
-  const extracted = extractEmbeddedShareCardUrl(raw);
-  if (extracted) return extracted;
-  const decodedOnce = safeDecodeUriComponent(raw);
-  if (decodedOnce && decodedOnce !== raw) {
-    const decodedUrl = normalizeShareCardUrl(decodedOnce);
-    if (decodedUrl) return decodedUrl;
-  }
-  try {
-    const parsed = new URL(raw);
-    for (const [key, valueText] of parsed.searchParams.entries()) {
-      if (!looksLikeShareCardUrlKey(key)) continue;
-      const nestedUrl = normalizeShareCardUrl(valueText);
-      if (nestedUrl) return nestedUrl;
-    }
-  } catch {
-    /* ignore */
-  }
-  return "";
-}
-
-function pickShareCardUrl(value: unknown): string {
-  return findShareCardUrl(value, 0, new Set<object>());
-}
-
-function findShareCardUrl(value: unknown, depth: number, seen: Set<object>): string {
-  if (depth > 5 || value == null) return "";
-  if (typeof value === "string") return normalizeShareCardUrl(value);
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const nestedUrl = findShareCardUrl(item, depth + 1, seen);
-      if (nestedUrl) return nestedUrl;
-    }
-    return "";
-  }
-  if (typeof value !== "object") return "";
-  if (seen.has(value as object)) return "";
-  seen.add(value as object);
-  const entries = Object.entries(value as Record<string, unknown>);
-  const prioritized = entries.filter(([key]) => looksLikeShareCardUrlKey(key));
-  for (const [, nested] of prioritized) {
-    const nestedUrl = findShareCardUrl(nested, depth + 1, seen);
-    if (nestedUrl) return nestedUrl;
-  }
-  for (const [, nested] of entries) {
-    if (!nested || typeof nested !== "object") continue;
-    const nestedUrl = findShareCardUrl(nested, depth + 1, seen);
-    if (nestedUrl) return nestedUrl;
-  }
-  return "";
-}
-
-function looksLikeShareCardUrlKey(value: string): boolean {
-  const normalized = String(value || "").replace(/[^a-z0-9]/gi, "").toLowerCase();
-  return normalized === "url"
-    || normalized.endsWith("url")
-    || normalized.endsWith("href")
-    || normalized.endsWith("link");
-}
-
-function firstNonEmpty(values: unknown[]) {
-  for (const value of values) {
-    if (value === null || value === undefined) continue;
-    const text = String(value).trim();
-    if (text) return text;
-  }
-  return "";
-}
-
-function looksLikePackageName(value: string) {
-  return /^[a-z0-9_.-]+\.[a-z0-9_.-]+$/i.test(value.trim());
-}
-
-function decodeCqEntities(value: string) {
-  let out = String(value || "");
-  for (let index = 0; index < 2; index += 1) {
-    out = out
-      .replace(/&amp;/g, "&")
-      .replace(/&#91;/g, "[")
-      .replace(/&#93;/g, "]")
-      .replace(/&#44;/g, ",")
-      .replace(/&quot;/g, "\"")
-      .replace(/&apos;/g, "'")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">");
-  }
-  return out;
-}
-
-function escapeShareCardHtml(value: string) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function extractUrlHostLabel(value?: string) {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  try {
-    return new URL(raw).host.replace(/^www\./i, "");
-  } catch {
-    return "";
-  }
-}
-
 function renderQqVideoBlock(url: string, posterUrl?: string) {
   const safeUrl = escapeShareCardHtml(String(url || "").trim());
   if (!safeUrl) return "[视频]";
@@ -3344,51 +2987,6 @@ function renderQqVideoBlock(url: string, posterUrl?: string) {
     `</video>`,
     `</div>`,
   ].join("\n");
-}
-
-function extractXmlTagText(xml: string, tagName: string) {
-  const pattern = new RegExp(`<${tagName}\\b[^>]*>([\\s\\S]*?)</${tagName}>`, "i");
-  const match = xml.match(pattern);
-  return match ? decodeCqEntities(match[1]).replace(/<!\\[CDATA\\[|\\]\\]>/g, "").trim() : "";
-}
-
-function extractXmlAttr(xml: string, tagName: string, attrName: string) {
-  const pattern = new RegExp(`<${tagName}\\b[^>]*\\b${attrName}=(["'])([\\s\\S]*?)\\1`, "i");
-  const match = xml.match(pattern);
-  return match ? decodeCqEntities(match[2]).trim() : "";
-}
-
-function extractXmlShareCardUrl(xml: string): string {
-  const attrRe = /\b([a-zA-Z0-9_:-]*(?:url|link|href)[a-zA-Z0-9_:-]*)=(["'])([\s\S]*?)\2/gi;
-  for (const match of xml.matchAll(attrRe)) {
-    const resolved = normalizeShareCardUrl(match[3]);
-    if (resolved) return resolved;
-  }
-  return "";
-}
-
-function extractEmbeddedShareCardUrl(value: string): string {
-  const candidates = [String(value || "").trim()];
-  const decodedOnce = safeDecodeUriComponent(candidates[0]);
-  if (decodedOnce && decodedOnce !== candidates[0]) candidates.push(decodedOnce);
-  const decodedTwice = safeDecodeUriComponent(decodedOnce);
-  if (decodedTwice && decodedTwice !== decodedOnce) candidates.push(decodedTwice);
-  for (const candidate of candidates) {
-    const match = candidate.match(/https?:\/\/[^\s"'<>`]+/i);
-    if (!match) continue;
-    return match[0].slice(0, 1000);
-  }
-  return "";
-}
-
-function safeDecodeUriComponent(value: string): string {
-  const raw = String(value || "").trim();
-  if (!raw.includes("%")) return raw;
-  try {
-    return decodeURIComponent(raw);
-  } catch {
-    return raw;
-  }
 }
 
 async function resolveQqImageUrl(urlLike: unknown, fileLike: unknown): Promise<string> {
@@ -4013,121 +3611,6 @@ function appendSourceFooter(content: string, context: { groupId?: string; event:
   return `${content}\n\n> 转自 QQBot（${source}）。`;
 }
 
-function isHelpCommand(text: string) {
-  return /^(?:[/／])?(帮助|help|菜单|命令|功能)$/i.test(normalizeCommandKeywordText(text));
-}
-
-function isBoardListCommand(text: string) {
-  return /^(?:[/／])?(板块|板块列表|boards?|版块|分区)$/i.test(normalizeCommandKeywordText(text));
-}
-
-function isMyPostsCommand(text: string) {
-  return /^(?:[/／])?(我的投稿|我的帖子|最近投稿|最近帖子|recent|mine)$/i.test(normalizeCommandKeywordText(text));
-}
-
-function isStatusCommand(text: string) {
-  return /^(?:[/／])?状态$/i.test(normalizeCommandKeywordText(text));
-}
-
-function isConversationStatusCommand(text: string) {
-  return /^(?:[/／])?(状态|进度)$/i.test(normalizeCommandKeywordText(text));
-}
-
-function isConversationPreviewCommand(text: string) {
-  return /^(?:[/／])?(预览|草稿)$/i.test(normalizeCommandKeywordText(text));
-}
-
-function extractConversationBoardSwitchTarget(text: string) {
-  const match = String(text || "").trim().match(/^(?:[/／])?(?:板块|版块|分区|投稿区|改板块|换板块|切换板块)\s+(.+)$/i);
-  if (!match) return "";
-  return normalizeCommandKeywordText(match[1]);
-}
-
-function extractConversationTitleCommandValue(text: string) {
-  const match = String(text || "").trim().match(/^(?:[/／])?(?:标题|改标题|重新标题|换标题|title)\s+([\s\S]+)$/i);
-  if (!match) return "";
-  return match[1].trim();
-}
-
-function isConversationRetitleCommand(text: string) {
-  return /^(?:[/／])?(标题|改标题|重新标题|换标题|title)$/i.test(normalizeCommandKeywordText(text));
-}
-
-function isLikelyConversationCommandMessage(text: string) {
-  const normalized = String(text || "").trim();
-  if (!normalized.startsWith("/") && !normalized.startsWith("／")) return false;
-  if (/[\r\n]/.test(normalized)) return false;
-  return normalized.length <= 24;
-}
-
-function isUnbindCommand(text: string) {
-  return /^(?:[/／])?(解绑|解除绑定|unbind)$/i.test(normalizeCommandKeywordText(text));
-}
-
-function isCommandMessage(text: string) {
-  const normalized = text.trim();
-  return normalized.startsWith("/") || normalized.startsWith("／");
-}
-
-function normalizeInboundCommandText(text: string) {
-  let normalized = String(text || "").trim();
-  if (!normalized) return "";
-  for (let index = 0; index < 2; index += 1) {
-    const next = normalized.replace(/^(?:@?\s*)?(?:qqbot|药大拾间bot|助手|bot)\s*[，,:：-]?\s*/i, "").trim();
-    if (!next || next === normalized) break;
-    normalized = next;
-  }
-  return normalized;
-}
-
-function normalizeCommandKeywordText(text: string) {
-  let normalized = String(text || "").trim();
-  if (!normalized) return "";
-  for (let index = 0; index < 3; index += 1) {
-    const next = normalized
-      .replace(/[?？!！~～。．,，、…]+$/g, "")
-      .replace(/(?:啊|呀|呢|嘛|吧|哈|呗|哦|噢|啦|喔|哇)+$/g, "")
-      .trim();
-    if (!next || next === normalized) break;
-    normalized = next;
-  }
-  return normalized;
-}
-
-function isPrivatePlainCommand(text: string, keyword: string) {
-  const normalized = text.trim();
-  return !isCommandMessage(normalized) && normalized === keyword;
-}
-
-function extractFinishCommandPayload(text: string) {
-  const finishRegex = /(^|\n)\s*(?:[/／])?(结束|完成|提交)(?:\s|$)/m;
-  const normalized = String(text || "").trim();
-  if (!finishRegex.test(normalized)) return null;
-  return String(text || "").replace(finishRegex, "$1").trim();
-}
-
-function isConfirmPublishMessage(text: string) {
-  const normalized = normalizeShortReplyText(text);
-  return /^(是|是的|确认|确认发布|发布|发吧|就这样|没问题)$/.test(normalized) || /^[/／](发布|确认发布)(?:\s|$)/i.test(String(text || "").trim());
-}
-
-function isCancelMessage(text: string) {
-  const raw = String(text || "").trim();
-  const normalized = normalizeShortReplyText(raw);
-  return /^[/／]取消(?:\s|$)/.test(raw)
-    || /^(取消|算了|不发了|我不发了|先不发了|不要发了|不投了|我不投了|先不投了|不了|不用了)$/.test(normalized);
-}
-
-function normalizeShortReplyText(text: string) {
-  return normalizeCommandKeywordText(String(text || "").trim()).replace(/\s+/g, "");
-}
-
-function isGreetingMessage(text: string) {
-  const normalized = text.trim().toLowerCase();
-  if (!normalized) return false;
-  return /^(你好|您好|哈喽|hello|hi|嗨|在吗|有人吗|bot|qqbot)[!！。?？ ]*$/.test(normalized);
-}
-
 async function renderHelp(defaultBoardSlug: string) {
   const defaultBoardName = await resolveBoardDisplayName(defaultBoardSlug);
   return [
@@ -4309,90 +3792,6 @@ function buildReplyLink(topicId: number, replyId?: number | null) {
   return replyId && Number.isFinite(replyId) && replyId > 0
     ? `${topicLink}#reply-${replyId}`
     : topicLink;
-}
-
-function isNotificationVisibleToQq(notification: { targetClient?: string | null }) {
-  return !notification.targetClient || notification.targetClient === "all";
-}
-
-function shouldDeliverQqNotificationToUser(
-  notification: { category?: string | null; targetClient?: string | null },
-  messageSetting?: {
-    subscribeReply?: boolean;
-    subscribeLike?: boolean;
-    subscribeSchool?: boolean;
-    subscribeSystem?: boolean;
-  } | null,
-) {
-  if (!isNotificationVisibleToQq(notification)) return false;
-  if (notification.category === "reply") return messageSetting?.subscribeReply !== false;
-  if (notification.category === "like") return messageSetting?.subscribeLike !== false;
-  if (notification.category === "school-feed") return messageSetting?.subscribeSchool !== false;
-  if (notification.category === "system") return messageSetting?.subscribeSystem !== false;
-  return true;
-}
-
-function shouldDeliverQqNotificationToGroup(
-  group: QqBotGroupView,
-  notification: { userId?: number | null; category?: string | null; targetClient?: string | null; payload?: unknown },
-  recipientRole?: string | null,
-) {
-  if (!group.notificationEnabled) return false;
-  if (!notification.category || !group.notifyCategories.includes(notification.category as QqBotGroupNotifyCategory)) return false;
-  if (notification.userId == null) {
-    return group.notifyAudiences.includes("public") && isNotificationVisibleToQq(notification);
-  }
-  if (!group.notifyAudiences.includes("staff")) return false;
-  if (recipientRole !== "admin" && recipientRole !== "mod") return false;
-  return isStaffGroupActionableNotification(notification);
-}
-
-function buildGroupNotificationDeliveryKey(notification: {
-  id?: number | null;
-  userId?: number | null;
-  category?: string | null;
-  title?: string | null;
-  content?: string | null;
-  payload?: unknown;
-  link?: string | null;
-  source?: string | null;
-}) {
-  if (notification.userId == null) return `global:${notification.id || 0}`;
-  const payload = parseNotificationPayload(notification.payload);
-  const topicId = toPositiveInt(payload.topicId);
-  const replyId = toPositiveInt(payload.replyId);
-  const type = String(payload.type || "").trim();
-  return [
-    "staff",
-    type || notification.category || "",
-    topicId || 0,
-    replyId || 0,
-  ].join(":");
-}
-
-function isStaffGroupActionableNotification(notification: { category?: string | null; payload?: unknown }) {
-  if (notification.category !== "system") return false;
-  const payload = parseNotificationPayload(notification.payload);
-  const type = String(payload.type || "").trim();
-  return STAFF_GROUP_ACTIONABLE_NOTIFICATION_TYPES.has(type);
-}
-
-function parseNotificationPayload(payload: unknown): Record<string, any> {
-  if (!payload) return {};
-  if (typeof payload === "string") {
-    try {
-      return JSON.parse(payload);
-    } catch {
-      return {};
-    }
-  }
-  if (typeof payload === "object") return payload as Record<string, any>;
-  return {};
-}
-
-function toPositiveInt(value: unknown) {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 function resolveNotificationLink(notification: { link?: string | null; payload?: unknown }) {
@@ -4601,273 +4000,4 @@ function maskSecret(value: string) {
   if (!value) return "";
   if (value.length <= 8) return "********";
   return `${value.slice(0, 4)}****${value.slice(-4)}`;
-}
-
-function isWebSocketUrl(value: string) {
-  return /^wss?:\/\//i.test(value.trim());
-}
-
-function buildWebSocketUrl(config: Awaited<ReturnType<typeof getQqBotConfigRaw>>) {
-  let url = config.napcatBaseUrl.trim();
-  if (!config.accessToken || /[?&]access_token=/.test(url)) return url;
-  const joiner = url.includes("?") ? "&" : "?";
-  return `${url}${joiner}access_token=${encodeURIComponent(config.accessToken)}`;
-}
-
-function getQqBotConnectionStatus(config: Awaited<ReturnType<typeof getQqBotConfigRaw>>): QqBotConfigView["connectionStatus"] {
-  if (!config.enabled) return "disabled";
-  if (!isWebSocketUrl(config.napcatBaseUrl)) return "http";
-  if (wsClient?.readyState === 1) return "connected";
-  if (wsConnecting || wsClient?.readyState === 0) return "connecting";
-  if (wsLastError) return "error";
-  return "idle";
-}
-
-function getQqBotConnectionError(config: Awaited<ReturnType<typeof getQqBotConfigRaw>>) {
-  if (!config.enabled || !isWebSocketUrl(config.napcatBaseUrl)) return "";
-  return wsLastError;
-}
-
-function describeWebSocketError(error: unknown) {
-  if (!error) return "未知错误";
-  if (typeof error === "string") return error;
-  const maybeError = error as { message?: string; error?: unknown; cause?: unknown };
-  if (typeof maybeError.message === "string" && maybeError.message.trim()) return maybeError.message.trim();
-  if (maybeError.error) return describeWebSocketError(maybeError.error);
-  if (maybeError.cause) return describeWebSocketError(maybeError.cause);
-  return String(error);
-}
-
-function setWebSocketError(message: string) {
-  wsLastError = message;
-}
-
-function rejectPendingWebSocketActions(reason: string) {
-  for (const [echo, pending] of wsPendingActions.entries()) {
-    clearTimeout(pending.timer);
-    pending.reject(new Error(reason));
-    wsPendingActions.delete(echo);
-  }
-}
-
-function getQqBotWebSocketCtor() {
-  const globalCtor = (globalThis as any).WebSocket;
-  if (typeof globalCtor === "function") return globalCtor;
-  try {
-    const wsModule = require("ws");
-    return wsModule?.WebSocket ?? wsModule?.default ?? wsModule;
-  } catch (error) {
-    console.warn("[qqbot] failed to load ws fallback", error);
-    return null;
-  }
-}
-
-function bindWebSocketEvent(socket: any, event: "open" | "message" | "close" | "error", handler: (payload?: any) => void) {
-  if (typeof socket?.addEventListener === "function") {
-    socket.addEventListener(event, handler);
-    return;
-  }
-  if (typeof socket?.on !== "function") {
-    throw new Error("当前 WebSocket 实例不支持事件监听");
-  }
-  if (event === "open") {
-    socket.on("open", () => handler());
-    return;
-  }
-  if (event === "message") {
-    socket.on("message", (data: any) => handler({ data }));
-    return;
-  }
-  if (event === "close") {
-    socket.on("close", (code: number, reason: Buffer | string) => {
-      handler({
-        code,
-        reason: Buffer.isBuffer(reason) ? reason.toString("utf8") : String(reason || ""),
-      });
-    });
-    return;
-  }
-  socket.on("error", (error: any) => handler(error));
-}
-
-export async function connectQqBotWebSocket() {
-  const config = await getQqBotConfigRaw();
-  if (!config.enabled || !isWebSocketUrl(config.napcatBaseUrl)) return;
-  if (wsClient && (wsClient.readyState === 0 || wsClient.readyState === 1)) return;
-  if (wsConnecting) return;
-  const WebSocketCtor = getQqBotWebSocketCtor();
-  if (!WebSocketCtor) {
-    setWebSocketError("当前 Node.js 运行环境不支持 WebSocket（缺少全局 WebSocket，且 ws 兼容包未加载成功）");
-    console.warn("[qqbot] current Node.js runtime has no usable WebSocket implementation");
-    return;
-  }
-  wsConnecting = true;
-  try {
-    const socket = new WebSocketCtor(buildWebSocketUrl(config));
-    wsClient = socket;
-    bindWebSocketEvent(socket, "open", () => {
-      wsConnecting = false;
-      wsLastError = "";
-      logQqBotMessage({ direction: "outbound", eventType: "websocket", status: "ok", result: "connected" });
-    });
-    bindWebSocketEvent(socket, "message", (event: any) => {
-      const text = typeof event.data === "string" ? event.data : Buffer.from(event.data).toString("utf8");
-      handleWebSocketPayload(text).catch((error) => {
-        console.warn("[qqbot] websocket message failed", error);
-      });
-    });
-    bindWebSocketEvent(socket, "close", (event: any) => {
-      wsConnecting = false;
-      if (wsClient === socket) wsClient = null;
-      const message = event?.code === 1000
-        ? "连接已关闭"
-        : `连接已关闭（code ${event?.code ?? "unknown"}${event?.reason ? `, ${String(event.reason)}` : ""}）`;
-      if (event?.code === 1000) wsLastError = "";
-      else if (!wsLastError) setWebSocketError(message);
-      rejectPendingWebSocketActions(message);
-      scheduleWebSocketReconnect();
-    });
-    bindWebSocketEvent(socket, "error", (event: any) => {
-      wsConnecting = false;
-      if (wsClient === socket) wsClient = null;
-      const message = `WebSocket 握手失败：${describeWebSocketError(event)}`;
-      setWebSocketError(message);
-      rejectPendingWebSocketActions(message);
-      scheduleWebSocketReconnect();
-    });
-  } catch (error) {
-    wsConnecting = false;
-    setWebSocketError(`创建 WebSocket 失败：${describeWebSocketError(error)}`);
-    rejectPendingWebSocketActions(wsLastError);
-    scheduleWebSocketReconnect();
-    throw error;
-  }
-}
-
-function resetQqBotWebSocket() {
-  if (wsReconnectTimer) {
-    clearTimeout(wsReconnectTimer);
-    wsReconnectTimer = null;
-  }
-  if (wsClient) {
-    try { wsClient.close(); } catch { /* ignore */ }
-    wsClient = null;
-  }
-  wsConnecting = false;
-  wsLastError = "";
-  rejectPendingWebSocketActions("QQBot WebSocket 已重置");
-}
-
-function scheduleWebSocketReconnect() {
-  if (wsReconnectTimer) return;
-  wsReconnectTimer = setTimeout(() => {
-    wsReconnectTimer = null;
-    connectQqBotWebSocket().catch(() => undefined);
-  }, 5000);
-}
-
-async function handleWebSocketPayload(text: string) {
-  let payload: any;
-  try {
-    payload = JSON.parse(text);
-  } catch {
-    await logQqBotMessage({ direction: "inbound", eventType: "websocket", status: "error", result: "JSON 解析失败", content: text.slice(0, 1000) });
-    return;
-  }
-  if (payload?.echo) {
-    const pending = wsPendingActions.get(String(payload.echo));
-    if (pending) {
-      clearTimeout(pending.timer);
-      wsPendingActions.delete(String(payload.echo));
-      if (payload.status === "ok") pending.resolve(payload);
-      else pending.reject(new Error(String(payload?.wording || payload?.msg || payload?.message || "NapCat 动作失败")));
-    }
-    await logQqBotMessage({
-      direction: "inbound",
-      eventType: "websocket-response",
-      status: payload.status === "ok" ? "ok" : "error",
-      result: JSON.stringify(payload).slice(0, 1000),
-      rawPayload: payload,
-    });
-    return;
-  }
-  await handleQqBotWebhook(payload, (await getQqBotConfigRaw()).webhookSecret);
-}
-
-async function callQqBotAction(action: string, params: Record<string, unknown>) {
-  const config = await getQqBotConfigRaw();
-  if (!config.enabled || !config.napcatBaseUrl) throw Errors.badRequest("QQBot 未启用或 NapCat 地址未配置");
-  if (!isWebSocketUrl(config.napcatBaseUrl)) {
-    const response = await fetch(`${config.napcatBaseUrl.replace(/\/+$/, "")}/${action}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(config.accessToken ? { Authorization: `Bearer ${config.accessToken}` } : {}),
-      },
-      body: JSON.stringify(params),
-    });
-    const data = await response.json().catch(() => null);
-    if (!response.ok) throw Errors.server(`NapCat 动作失败：${response.status}`);
-    if (data && typeof data === "object") {
-      const status = String((data as any).status || "").trim().toLowerCase();
-      const retcode = Number((data as any).retcode ?? 0);
-      if ((status && status !== "ok") || retcode !== 0) {
-        const message = String((data as any).wording || (data as any).message || (data as any).msg || `${action} failed`).trim();
-        throw Errors.badRequest(message || `NapCat 动作失败：${action}`);
-      }
-    }
-    return data;
-  }
-  await connectQqBotWebSocket();
-  await waitWebSocketOpen();
-  const echo = `cpu-action-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const result = await new Promise<any>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      wsPendingActions.delete(echo);
-      reject(Errors.badRequest(`NapCat 动作超时：${action}`));
-    }, 8000);
-    wsPendingActions.set(echo, { resolve, reject, timer });
-    wsClient.send(JSON.stringify({ action, params, echo }));
-  });
-  return result;
-}
-
-async function sendQqMessageByWebSocket(
-  action: "send_private_msg" | "send_group_msg",
-  params: Record<string, unknown>,
-  target: { qqId?: string; groupId?: string },
-  message: string,
-) {
-  await connectQqBotWebSocket();
-  await waitWebSocketOpen();
-  const echo = `cpu-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  wsClient.send(JSON.stringify({ action, params, echo }));
-  await logQqBotMessage({
-    direction: "outbound",
-    eventType: target.groupId ? "group-message" : "private-message",
-    status: "ok",
-    qqId: target.qqId,
-    groupId: target.groupId,
-    content: message.slice(0, 1000),
-    result: `queued:${echo}`,
-  });
-}
-
-function waitWebSocketOpen() {
-  if (wsClient?.readyState === 1) return Promise.resolve();
-  return new Promise<void>((resolve, reject) => {
-    const started = Date.now();
-    const timer = setInterval(() => {
-      if (wsClient?.readyState === 1) {
-        clearInterval(timer);
-        resolve();
-        return;
-      }
-      if (Date.now() - started > 3000) {
-        clearInterval(timer);
-        const reason = wsLastError ? `：${wsLastError}` : "";
-        reject(Errors.badRequest(`NapCat WebSocket 尚未连接${reason}`));
-      }
-    }, 100);
-  });
 }

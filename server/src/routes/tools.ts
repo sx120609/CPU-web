@@ -27,6 +27,7 @@ import {
   hasToolContentManagePermission,
   hasToolManagerPermission,
   isServiceToolCode,
+  isSiteAdmin,
   listContentManageableToolCodes,
   listManagerToolCodes,
   listToolSettings,
@@ -35,17 +36,6 @@ import {
   SERVICE_TOOL_META,
   updateToolSetting,
 } from "../services/serviceTools";
-import {
-  buildCloudDriveAccessUrl,
-  cloudDriveProxyUploadLimitBytes,
-  completeCloudDriveUpload,
-  createCloudDriveFolder,
-  deleteCloudDriveEntry,
-  listCloudDriveDirectory,
-  prepareCloudDriveUpload,
-  renameCloudDriveEntry,
-  saveCloudDriveFile,
-} from "../services/cloudDrive";
 import {
   deleteMediaAsset,
   ensureMediaLocalPathFromUploadUrl,
@@ -87,15 +77,6 @@ const fileCollectUpload = multer({
     fieldSize: 1024 * 1024,
   },
 });
-const cloudDriveUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    files: 1,
-    fileSize: cloudDriveProxyUploadLimitBytes(),
-    fieldSize: 1024 * 1024,
-  },
-});
-
 const questionnaireBranchRuleSchema = z.object({
   action: z.enum(["end", "jump"]),
   targetId: z.string().trim().min(1).max(40).regex(/^[a-zA-Z0-9_-]+$/, "字段 ID 仅支持英文、数字、下划线和中划线").optional(),
@@ -214,40 +195,6 @@ const toolSettingPatchSchema = z.object({
   isVisible: z.boolean().optional(),
   requireLogin: z.boolean().optional(),
   allowPublicManage: z.boolean().optional(),
-});
-
-const cloudDrivePathSchema = z.object({
-  path: z.string().trim().max(800).optional().default(""),
-});
-
-const cloudDriveFolderSchema = z.object({
-  path: z.string().trim().max(800).optional().default(""),
-  name: z.string().trim().min(1).max(255),
-});
-
-const cloudDriveRenameSchema = z.object({
-  path: z.string().trim().min(1).max(800),
-  name: z.string().trim().min(1).max(255),
-});
-
-const cloudDriveDeleteSchema = z.object({
-  path: z.string().trim().min(1).max(800),
-});
-
-const cloudDriveAccessSchema = z.object({
-  path: z.string().trim().min(1).max(800),
-  download: z.boolean().optional(),
-});
-
-const cloudDriveUploadInitSchema = z.object({
-  path: z.string().trim().max(800).optional().default(""),
-  fileName: z.string().trim().min(1).max(255),
-  mimeType: z.string().trim().max(200).optional().default(""),
-  fileSize: z.number().int().positive().max(20 * 1024 * 1024 * 1024),
-});
-
-const cloudDriveUploadCompleteSchema = z.object({
-  uploadToken: z.string().trim().min(1).max(2000),
 });
 
 toolsRouter.use(async (_req, _res, next) => {
@@ -380,153 +327,6 @@ toolsRouter.delete("/:toolCode/managers/:userId", authRequired, async (req, res,
   } catch (e) { next(e); }
 });
 
-toolsRouter.get("/cloud-drive", authOptional, validate(cloudDrivePathSchema, "query"), async (req, res, next) => {
-  try {
-    await ensureToolUsableForRequest("cloud_drive", req.user);
-    ok(res, await listCloudDriveDirectory(String(req.query.path || "")));
-  } catch (e: any) {
-    if (e?.message === "文件夹不存在" || e?.message === "当前路径不是文件夹") {
-      next(Errors.badRequest(e.message));
-      return;
-    }
-    next(e);
-  }
-});
-
-toolsRouter.post("/cloud-drive/folders", authRequired, validate(cloudDriveFolderSchema), async (req, res, next) => {
-  try {
-    if (!(await hasToolContentManagePermission("cloud_drive", req.user))) throw Errors.forbidden("没有该小工具的管理权限");
-    ok(res, await createCloudDriveFolder(req.body.path || "", req.body.name));
-  } catch (e: any) {
-    if (e?.message === "同名文件或文件夹已存在" || e?.message === "名称不能为空" || e?.message === "名称不合法") {
-      next(Errors.badRequest(e.message));
-      return;
-    }
-    next(e);
-  }
-});
-
-toolsRouter.patch("/cloud-drive/rename", authRequired, validate(cloudDriveRenameSchema), async (req, res, next) => {
-  try {
-    if (!(await hasToolContentManagePermission("cloud_drive", req.user))) throw Errors.forbidden("没有该小工具的管理权限");
-    ok(res, await renameCloudDriveEntry(req.body.path, req.body.name));
-  } catch (e: any) {
-    if (
-      e?.message === "文件或文件夹不存在"
-      || e?.message === "同名文件或文件夹已存在"
-      || e?.message === "名称不能为空"
-      || e?.message === "名称不合法"
-    ) {
-      next(Errors.badRequest(e.message));
-      return;
-    }
-    next(e);
-  }
-});
-
-toolsRouter.delete("/cloud-drive", authRequired, validate(cloudDriveDeleteSchema, "query"), async (req, res, next) => {
-  try {
-    if (!(await hasToolContentManagePermission("cloud_drive", req.user))) throw Errors.forbidden("没有该小工具的管理权限");
-    ok(res, await deleteCloudDriveEntry(String(req.query.path || "")));
-  } catch (e: any) {
-    if (e?.message === "文件或文件夹不存在") {
-      next(Errors.badRequest(e.message));
-      return;
-    }
-    next(e);
-  }
-});
-
-toolsRouter.post("/cloud-drive/access", authOptional, validate(cloudDriveAccessSchema), async (req, res, next) => {
-  try {
-    await ensureToolUsableForRequest("cloud_drive", req.user);
-    ok(res, await buildCloudDriveAccessUrl({
-      relativePath: req.body.path,
-      adminUserId: req.user?.userId ?? 0,
-      download: Boolean(req.body.download),
-    }));
-  } catch (e: any) {
-    if (e?.message === "路径不能为空" || e?.message === "路径不合法") {
-      next(Errors.badRequest(e.message));
-      return;
-    }
-    next(e);
-  }
-});
-
-toolsRouter.post("/cloud-drive/upload/init", authRequired, validate(cloudDriveUploadInitSchema), async (req, res, next) => {
-  try {
-    if (!(await hasToolContentManagePermission("cloud_drive", req.user))) throw Errors.forbidden("没有该小工具的管理权限");
-    ok(res, await prepareCloudDriveUpload({
-      parentPath: req.body.path || "",
-      fileName: req.body.fileName,
-      mimeType: req.body.mimeType,
-      fileSize: req.body.fileSize,
-      adminUserId: req.user!.userId,
-    }));
-  } catch (e: any) {
-    if (
-      e?.message === "同名文件或文件夹已存在"
-      || e?.message === "名称不能为空"
-      || e?.message === "名称不合法"
-    ) {
-      next(Errors.badRequest(e.message));
-      return;
-    }
-    next(e);
-  }
-});
-
-toolsRouter.post("/cloud-drive/upload/complete", authRequired, validate(cloudDriveUploadCompleteSchema), async (req, res, next) => {
-  try {
-    if (!(await hasToolContentManagePermission("cloud_drive", req.user))) throw Errors.forbidden("没有该小工具的管理权限");
-    ok(res, await completeCloudDriveUpload(req.body.uploadToken, req.user!.userId));
-  } catch (e: any) {
-    if (
-      e?.message === "上传会话与当前账号不匹配"
-      || e?.message === "文件还没上传完成，请稍后再试"
-      || e?.message === "上传令牌无效"
-    ) {
-      next(Errors.badRequest(e.message));
-      return;
-    }
-    next(e);
-  }
-});
-
-toolsRouter.post("/cloud-drive/upload", authRequired, (req, res, next) => {
-  cloudDriveUpload.single("file")(req, res, (error: any) => {
-    if (!error) return next();
-    if (error?.code === "LIMIT_FILE_SIZE") {
-      return next(Errors.badRequest("当前本地兜底上传仅支持 200MB 以内单文件"));
-    }
-    return next(error);
-  });
-}, async (req, res, next) => {
-  try {
-    if (!(await hasToolContentManagePermission("cloud_drive", req.user))) throw Errors.forbidden("没有该小工具的管理权限");
-    const file = req.file;
-    if (!file?.buffer?.length) throw Errors.badRequest("请先选择要上传的文件");
-    ok(res, await saveCloudDriveFile({
-      parentPath: String(req.body.path || ""),
-      fileName: file.originalname,
-      buffer: file.buffer,
-      contentType: file.mimetype,
-    }));
-  } catch (e: any) {
-    if (
-      e?.message === "当前后端请使用直传会话上传"
-      || e?.message === "同名文件或文件夹已存在"
-      || e?.message === "名称不能为空"
-      || e?.message === "名称不合法"
-    ) {
-      next(Errors.badRequest(e.message));
-      return;
-    }
-    next(e);
-  }
-});
-
 toolsRouter.get("/grade-checks", authRequired, async (req, res, next) => {
   try {
     if (req.query.manage !== "1") {
@@ -534,9 +334,9 @@ toolsRouter.get("/grade-checks", authRequired, async (req, res, next) => {
       return;
     }
     if (!(await hasToolContentManagePermission("grade_check", req.user))) throw Errors.forbidden("没有该小工具的管理权限");
-    const isManager = await hasToolManagerPermission("grade_check", req.user);
+    const canSeeAll = isSiteAdmin(req.user?.role);
     const list = await prisma.gradeCheckTable.findMany({
-      where: isManager ? {} : { createdById: req.user!.userId },
+      where: canSeeAll ? {} : { createdById: req.user!.userId },
       orderBy: [{ createdAt: "desc" }],
       include: {
         createdBy: { select: { id: true, username: true, nickname: true, role: true } },
@@ -789,8 +589,9 @@ toolsRouter.delete("/grade-checks/:id", authRequired, async (req, res, next) => 
 toolsRouter.get("/file-collection-templates", authRequired, async (req, res, next) => {
   try {
     if (!(await hasToolContentManagePermission("file_collect", req.user))) throw Errors.forbidden("没有该小工具的管理权限");
+    const canSeeAll = isSiteAdmin(req.user?.role);
     const list = await prisma.fileCollectTemplate.findMany({
-      where: { createdById: req.user!.userId },
+      where: canSeeAll ? {} : { createdById: req.user!.userId },
       orderBy: [{ updatedAt: "desc" }],
       include: {
         createdBy: { select: { id: true, username: true, nickname: true, role: true } },
@@ -829,7 +630,7 @@ toolsRouter.delete("/file-collection-templates/:id", authRequired, async (req, r
     const id = Number(req.params.id);
     const current = await prisma.fileCollectTemplate.findUnique({ where: { id } });
     if (!current) throw Errors.notFound("模板不存在");
-    const canDelete = current.createdById === req.user!.userId || await hasToolManagerPermission("file_collect", req.user);
+    const canDelete = current.createdById === req.user!.userId || isSiteAdmin(req.user?.role);
     if (!canDelete) throw Errors.forbidden("没有该模板的管理权限");
     await prisma.fileCollectTemplate.delete({ where: { id } });
     ok(res, { ok: true });
@@ -843,9 +644,9 @@ toolsRouter.get("/file-collections", authRequired, async (req, res, next) => {
       return;
     }
     if (!(await hasToolContentManagePermission("file_collect", req.user))) throw Errors.forbidden("没有该小工具的管理权限");
-    const isManager = await hasToolManagerPermission("file_collect", req.user);
+    const canSeeAll = isSiteAdmin(req.user?.role);
     const list = await prisma.fileCollectTask.findMany({
-      where: isManager ? {} : { createdById: req.user!.userId },
+      where: canSeeAll ? {} : { createdById: req.user!.userId },
       orderBy: [{ createdAt: "desc" }],
       include: {
         createdBy: { select: { id: true, username: true, nickname: true, role: true } },
@@ -1205,15 +1006,13 @@ toolsRouter.get("/questionnaires", authOptional, async (req, res, next) => {
       ok(res, []);
       return;
     }
-    const [contentManageCodes, managerCodes] = req.user
-      ? await Promise.all([listContentManageableToolCodes(req.user), listManagerToolCodes(req.user)])
-      : [[], []];
+    const contentManageCodes = req.user ? await listContentManageableToolCodes(req.user) : [];
     if (includeDraft && toolCode && !contentManageCodes.includes(toolCode)) throw Errors.forbidden("没有该小工具的管理权限");
     if (includeDraft && !toolCode && !contentManageCodes.length) throw Errors.forbidden("没有小工具管理权限");
-    const isManagerForRequestedTool = Boolean(toolCode && managerCodes.includes(toolCode));
+    const canSeeAll = isSiteAdmin(req.user?.role);
     const manageScope = toolCode
-      ? (isManagerForRequestedTool ? {} : { createdById: req.user!.userId })
-      : { OR: [{ toolCode: { in: managerCodes } }, { createdById: req.user!.userId }] };
+      ? (canSeeAll ? {} : { createdById: req.user!.userId })
+      : (canSeeAll ? {} : { createdById: req.user!.userId });
     const list = await prisma.questionnaire.findMany({
       where: {
         ...(toolCode ? { toolCode } : { toolCode: { in: contentManageCodes } }),
@@ -1226,8 +1025,8 @@ toolsRouter.get("/questionnaires", authOptional, async (req, res, next) => {
       },
     });
     ok(res, list.map((row) => normalizeQuestionnaire(row, {
-      includeFields: includeDraft && canManageQuestionnaireRow(row, req.user, managerCodes),
-      includeStats: canManageQuestionnaireRow(row, req.user, managerCodes),
+      includeFields: includeDraft && canManageQuestionnaireRow(row, req.user),
+      includeStats: canManageQuestionnaireRow(row, req.user),
     })));
   } catch (e) { next(e); }
 });
@@ -1864,7 +1663,7 @@ async function ensureGradeCheckFeedbackQuestionnaire(table: {
 
 async function canManageQuestionnaire(row: { toolCode: string; slug?: string; createdById: number | null }, user: Express.Request["user"]) {
   if (!user?.userId) return false;
-  if (await hasToolManagerPermission(row.toolCode, user)) return true;
+  if (isSiteAdmin(user.role)) return true;
   if (row.slug && await canManageGradeFeedbackQuestionnaire(row.slug, user)) return true;
   return row.createdById === user.userId && await hasToolContentManagePermission(row.toolCode, user);
 }
@@ -1879,23 +1678,22 @@ async function canManageGradeFeedbackQuestionnaire(slug: string, user: Express.R
 
 async function canManageGradeCheckTable(row: { createdById: number | null }, user: Express.Request["user"]) {
   if (!user?.userId) return false;
-  if (await hasToolManagerPermission("grade_check", user)) return true;
+  if (isSiteAdmin(user.role)) return true;
   return row.createdById === user.userId && await hasToolContentManagePermission("grade_check", user);
 }
 
 async function canManageFileCollectTask(row: { createdById: number | null }, user: Express.Request["user"]) {
   if (!user?.userId) return false;
-  if (await hasToolManagerPermission("file_collect", user)) return true;
+  if (isSiteAdmin(user.role)) return true;
   return row.createdById === user.userId && await hasToolContentManagePermission("file_collect", user);
 }
 
 function canManageQuestionnaireRow(
   row: { toolCode: string; createdById: number | null },
   user: Express.Request["user"],
-  managerCodes: string[],
 ) {
   if (!user?.userId) return false;
-  return managerCodes.includes(row.toolCode) || row.createdById === user.userId;
+  return isSiteAdmin(user.role) || row.createdById === user.userId;
 }
 
 function validateFields(fields: QuestionnaireField[]) {

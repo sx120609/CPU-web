@@ -2,6 +2,7 @@ import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import {
   hasToolContentManagePermission,
+  isSiteAdmin,
   listContentManageableToolCodes,
   type ServiceToolCode,
 } from "./serviceTools";
@@ -67,6 +68,7 @@ export function normalizeToolQqReminderTargetType(value: unknown): ToolQqReminde
 export async function listToolQqReminderItems(user: AccessUser) {
   if (!user?.userId) return [];
   const manageableCodes = await listContentManageableToolCodes(user);
+  const canSeeAll = isSiteAdmin(user.role);
   const tasks: Array<Promise<any[]>> = [];
 
   if (manageableCodes.includes("questionnaire")) {
@@ -74,7 +76,7 @@ export async function listToolQqReminderItems(user: AccessUser) {
       where: {
         toolCode: "questionnaire",
         isSystem: false,
-        createdById: user.userId,
+        ...(canSeeAll ? {} : { createdById: user.userId }),
       },
       orderBy: [{ updatedAt: "desc" }],
       include: { _count: { select: { responses: true } } },
@@ -84,7 +86,7 @@ export async function listToolQqReminderItems(user: AccessUser) {
 
   if (manageableCodes.includes("grade_check")) {
     tasks.push(prisma.gradeCheckTable.findMany({
-      where: { createdById: user.userId },
+      where: canSeeAll ? {} : { createdById: user.userId },
       orderBy: [{ updatedAt: "desc" }],
       take: 200,
     }).then((rows) => rows.map((row) => normalizeGradeCheckReminderItem(row))));
@@ -92,7 +94,7 @@ export async function listToolQqReminderItems(user: AccessUser) {
 
   if (manageableCodes.includes("file_collect")) {
     tasks.push(prisma.fileCollectTask.findMany({
-      where: { createdById: user.userId },
+      where: canSeeAll ? {} : { createdById: user.userId },
       orderBy: [{ updatedAt: "desc" }],
       take: 200,
     }).then((rows) => rows.map((row) => normalizeFileCollectReminderItem(row))));
@@ -120,7 +122,7 @@ export async function updateToolQqReminderItem(
       select: { id: true, createdById: true, toolCode: true, isSystem: true, qqBotNotifyEnabled: true, qqBotNotifyConfig: true },
     });
     if (!current || current.toolCode !== "questionnaire" || current.isSystem) throw Errors.notFound("问卷不存在");
-    assertReminderOwner(current.createdById, user.userId);
+    assertReminderOwner(current.createdById, user);
     const reminder = normalizeReminderPatch(targetType, current.qqBotNotifyEnabled, current.qqBotNotifyConfig, patch);
     const updated = await prisma.questionnaire.update({
       where: { id: targetId },
@@ -136,7 +138,7 @@ export async function updateToolQqReminderItem(
       select: { id: true, createdById: true, qqBotNotifyEnabled: true, qqBotNotifyConfig: true },
     });
     if (!current) throw Errors.notFound("成绩核对表不存在");
-    assertReminderOwner(current.createdById, user.userId);
+    assertReminderOwner(current.createdById, user);
     const reminder = normalizeReminderPatch(targetType, current.qqBotNotifyEnabled, current.qqBotNotifyConfig, patch);
     const updated = await prisma.gradeCheckTable.update({
       where: { id: targetId },
@@ -150,7 +152,7 @@ export async function updateToolQqReminderItem(
     select: { id: true, createdById: true, qqBotNotifyEnabled: true, qqBotNotifyConfig: true },
   });
   if (!current) throw Errors.notFound("收集任务不存在");
-  assertReminderOwner(current.createdById, user.userId);
+  assertReminderOwner(current.createdById, user);
   const reminder = normalizeReminderPatch(targetType, current.qqBotNotifyEnabled, current.qqBotNotifyConfig, patch);
   const updated = await prisma.fileCollectTask.update({
     where: { id: targetId },
@@ -345,8 +347,10 @@ async function createReminderNotification(input: ReminderNotificationInput) {
   });
 }
 
-function assertReminderOwner(createdById: number | null, userId: number) {
-  if (createdById !== userId) throw Errors.forbidden("只能设置自己发起的小工具提醒");
+function assertReminderOwner(createdById: number | null, user: AccessUser) {
+  if (!user?.userId || (!isSiteAdmin(user.role) && createdById !== user.userId)) {
+    throw Errors.forbidden("只能设置自己发起的小工具提醒");
+  }
 }
 
 function normalizeReminderPatch(

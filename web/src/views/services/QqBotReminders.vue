@@ -3,7 +3,7 @@
     <section class="reminder-head">
       <div>
         <div class="kicker">通知设置</div>
-        <h2>QQBot 提醒</h2>
+        <h2>小工具提醒规则</h2>
         <p>按问卷、收集任务和成绩核对表分别设置通知事件与触发时间。</p>
       </div>
       <div class="head-actions">
@@ -11,9 +11,9 @@
           <el-icon><ArrowLeft /></el-icon>
           返回通知设置
         </el-button>
-        <el-button plain type="primary" @click="router.push('/profile')">
+        <el-button plain type="primary" @click="router.push('/messages?tab=settings')">
           <el-icon><Bell /></el-icon>
-          QQBot 绑定
+          QQ 私聊绑定
         </el-button>
       </div>
     </section>
@@ -38,7 +38,7 @@
             <b>{{ bindingTitle }}</b>
             <span>{{ bindingHint }}</span>
           </div>
-          <el-button v-if="!page?.binding?.enabled" type="primary" plain @click="router.push('/profile')">去绑定</el-button>
+          <el-button v-if="!page?.binding?.enabled" type="primary" plain @click="router.push('/messages?tab=settings')">去绑定</el-button>
         </div>
 
         <el-empty v-if="!loading && !items.length" description="暂无可设置提醒的小工具">
@@ -177,12 +177,12 @@ const drafts = reactive<Record<string, ReminderDraft>>({});
 
 const items = computed(() => page.value?.items ?? []);
 const bindingTitle = computed(() => {
-  if (!page.value?.binding) return "尚未绑定 QQBot";
+  if (!page.value?.binding) return "尚未绑定 QQ 私聊";
   return page.value.binding.enabled ? `已绑定 QQ ${page.value.binding.qqId}` : `QQ ${page.value.binding.qqId} 已停用`;
 });
 const bindingHint = computed(() => {
-  if (!page.value?.binding) return "提醒设置会保存，但需要绑定并启用 QQBot 后才能收到私聊通知。";
-  return page.value.binding.enabled ? "符合策略的新消息会通过 QQBot 私聊提醒你。" : "当前绑定已停用，请在个人中心重新绑定或联系管理员。";
+  if (!page.value?.binding) return "提醒设置会保存，但需要绑定并启用 QQ 私聊后才能收到提醒。";
+  return page.value.binding.enabled ? "符合策略的新消息会通过 QQ 私聊提醒你。" : "当前绑定已停用，请在通知设置中重新绑定或联系管理员。";
 });
 
 onMounted(loadPage);
@@ -196,7 +196,7 @@ async function loadPage() {
     syncDrafts(next.items);
   } catch (error) {
     page.value = null;
-    pageError.value = requestMessage(error) || "QQBot 提醒加载失败，请稍后重试";
+    pageError.value = requestMessage(error) || "小工具提醒加载失败，请稍后重试";
   } finally {
     loading.value = false;
   }

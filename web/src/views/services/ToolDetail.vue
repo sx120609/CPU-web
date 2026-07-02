@@ -29,7 +29,6 @@
       <FeedbackPanel v-if="tool.componentKey === 'feedback'" />
       <QuestionnairePanel v-else-if="tool.componentKey === 'questionnaire'" />
       <GradeCheckPanel v-else-if="tool.componentKey === 'grade_check'" />
-      <CloudDrivePanel v-else-if="tool.componentKey === 'cloud_drive'" :can-manage="canManage" />
       <PdfToolPanel v-else-if="tool.componentKey === 'pdf_tools'" :require-login="currentRequireLogin" />
       <FileCollectPanel v-else />
     </section>
@@ -51,7 +50,6 @@ import { getToken } from "@/api/request";
 import { toolsApi, type GradeCheckTable, type Questionnaire, type QuestionnaireField, type ServiceToolCode, type ToolMeta } from "@/api/tools";
 import { findServiceTool } from "@/data/serviceTools";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
-import CloudDrivePanel from "./CloudDrivePanel.vue";
 
 const PdfToolPanel = defineAsyncComponent(() => import("./PdfToolPanel.vue"));
 

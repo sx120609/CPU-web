@@ -12,7 +12,7 @@ export interface ServiceTool {
   status: ServiceToolStatus;
   category: string;
   routeName: string;
-  componentKey: "feedback" | "questionnaire" | "grade_check" | "file_collect" | "cloud_drive" | "pdf_tools";
+  componentKey: "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools";
   accent: string;
   iconComponent: Component;
 }
@@ -68,19 +68,6 @@ export const serviceTools: ServiceTool[] = [
     routeName: "service-tool-detail",
     componentKey: "file_collect",
     accent: "#0f766e",
-    iconComponent: FolderOpened,
-  },
-  {
-    slug: "cloud_drive",
-    name: "云盘",
-    summary: "把共享资料、模板和媒体文件集中放进一个在线文件盘",
-    description: "复用世纪互联 OneDrive / SharePoint 存储能力，提供接近 Cloudreve 的目录浏览、上传下载和共享资料管理体验。",
-    icon: "☁️",
-    status: "ready",
-    category: "文件",
-    routeName: "service-tool-detail",
-    componentKey: "cloud_drive",
-    accent: "#2563eb",
     iconComponent: FolderOpened,
   },
   {

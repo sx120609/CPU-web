@@ -50,7 +50,7 @@
         <el-form label-width="150px" class="config-form">
           <el-form-item label="Bot QQ 号">
             <el-input v-model="form.botQqId" placeholder="例如 123456789" :disabled="configDisabled" />
-            <div class="form-tip">展示在个人中心，告诉用户应该在 QQ 里联系哪个 QQBot 账号。</div>
+            <div class="form-tip">展示在通知设置里，告诉用户应该在 QQ 里联系哪个机器人账号。</div>
           </el-form-item>
           <el-form-item label="WebSocket 地址">
             <el-input v-model="form.napcatBaseUrl" placeholder="例如 ws://127.0.0.1:3001" :disabled="configDisabled" />
@@ -405,7 +405,7 @@ const form = reactive({
   allowPrivatePost: true,
   allowGroupPost: false,
   notificationEnabled: true,
-  notifyCategories: ["reply", "mention", "like", "system", "service-tool"] as string[],
+  notifyCategories: ["reply", "mention", "like", "system", "service-tool", "school-feed"] as string[],
 });
 
 const test = reactive({ qqId: "", groupId: "", message: "药大拾间 QQBot 测试消息" });
@@ -419,7 +419,7 @@ const groupDialog = reactive({
     enabled: true,
     allowPosting: false,
     defaultBoardSlug: "",
-    notificationEnabled: false,
+    notificationEnabled: true,
     notifyCategories: ["system", "school-feed"] as Array<"system" | "school-feed">,
     notifyAudiences: ["public"] as Array<"public" | "staff">,
   },
@@ -663,7 +663,7 @@ function openGroupDialog(row?: any) {
     enabled: row?.enabled ?? true,
     allowPosting: row?.allowPosting ?? false,
     defaultBoardSlug: row?.defaultBoardSlug || "",
-    notificationEnabled: row?.notificationEnabled ?? false,
+    notificationEnabled: row?.notificationEnabled ?? true,
     notifyCategories: row?.notifyCategories?.length ? [...row.notifyCategories] : ["system", "school-feed"],
     notifyAudiences: row?.notifyAudiences?.length ? [...row.notifyAudiences] : ["public"],
   });

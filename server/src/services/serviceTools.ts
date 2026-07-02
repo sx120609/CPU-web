@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 
-export const SERVICE_TOOL_CODES = ["feedback", "questionnaire", "grade_check", "file_collect", "cloud_drive", "pdf_tools"] as const;
+export const SERVICE_TOOL_CODES = ["feedback", "questionnaire", "grade_check", "file_collect", "pdf_tools"] as const;
 export type ServiceToolCode = typeof SERVICE_TOOL_CODES[number];
 
 export const SERVICE_TOOL_META: Record<ServiceToolCode, { code: ServiceToolCode; name: string; description: string }> = {
@@ -24,11 +24,6 @@ export const SERVICE_TOOL_META: Record<ServiceToolCode, { code: ServiceToolCode;
     code: "file_collect",
     name: "文件收集",
     description: "创建免登录提交链接并集中收取文件",
-  },
-  cloud_drive: {
-    code: "cloud_drive",
-    name: "云盘",
-    description: "基于世纪互联 OneDrive / SharePoint 的共享文件盘",
   },
   pdf_tools: {
     code: "pdf_tools",

@@ -44,70 +44,31 @@
             </div>
           </section>
 
-          <section v-if="canAdminActiveTool" class="admin-section managers-section">
-            <div class="section-head">
-              <div>
-                <h3>使用权限</h3>
-                <p>可决定文件收集是否显示在小工具入口中，以及是否向所有登录用户开放“只管理自己任务”的工作台。</p>
-              </div>
-            </div>
-            <div class="access-setting">
-              <div>
-                <b>展示在工具列表</b>
-                <span>{{ currentToolMeta?.isVisible ? "当前会显示在小工具入口中" : "当前已从小工具入口中隐藏" }}</span>
-              </div>
-              <el-switch
-                v-model="toolVisible"
-                :loading="settingSaving"
-                @change="saveToolVisibilitySetting"
-              />
-            </div>
-            <div class="access-setting">
-              <div>
-                <b>登录后使用</b>
-                <span>{{ currentToolMeta?.requireLogin ? "当前需要登录" : "当前允许游客打开工具详情页" }}</span>
-              </div>
-              <el-switch
-                v-model="toolRequireLogin"
-                :loading="settingSaving"
-                @change="saveToolSetting"
-              />
-            </div>
-            <div class="access-setting">
-              <div>
-                <b>开放管理入口</b>
-                <span>{{ currentToolMeta?.allowPublicManage ? "所有登录用户都可进入工作台，但只能看到并管理自己创建的任务" : "仅管理器可进入文件收集工作台" }}</span>
-              </div>
-              <el-switch
-                v-model="toolAllowPublicManage"
-                :loading="settingSaving"
-                @change="savePublicManageSetting"
-              />
-            </div>
-          </section>
+          <ToolAccessSettings
+            v-if="canAdminActiveTool"
+            description="可决定文件收集是否显示在小工具入口中，以及是否向所有登录用户开放“只管理自己任务”的工作台。"
+            :visible="Boolean(currentToolMeta?.isVisible)"
+            :visible-text="currentToolMeta?.isVisible ? '当前会显示在小工具入口中' : '当前已从小工具入口中隐藏'"
+            :require-login="Boolean(currentToolMeta?.requireLogin)"
+            :require-login-text="currentToolMeta?.requireLogin ? '当前需要登录' : '当前允许游客打开工具详情页'"
+            :allow-public-manage="Boolean(currentToolMeta?.allowPublicManage)"
+            :public-manage-text="currentToolMeta?.allowPublicManage ? '所有登录用户都可进入工作台，但只能看到并管理自己创建的任务' : '仅管理器可进入文件收集工作台'"
+            :saving="settingSaving"
+            @change:visible="saveToolVisibilitySetting"
+            @change:require-login="saveToolSetting"
+            @change:public-manage="savePublicManageSetting"
+          />
 
-          <section v-if="canAdminActiveTool" class="admin-section managers-section">
-            <div class="section-head">
-              <div>
-                <h3>管理器</h3>
-                <p>被分配后可维护文件收集入口设置、全局模板，并查看全部任务。</p>
-              </div>
-            </div>
-            <div class="add-manager">
-              <el-input v-model="managerUsername" placeholder="输入用户名" clearable :disabled="managerSaving || managerRemovingId !== null" @keyup.enter="addManager" />
-              <el-button type="primary" :loading="managerSaving" :disabled="managerSaving || managerRemovingId !== null || !managerUsername.trim()" @click="addManager">添加</el-button>
-            </div>
-            <div class="manager-list">
-              <div v-for="manager in managers" :key="manager.id" class="manager-row">
-                <div>
-                  <b>{{ manager.user.nickname || manager.user.username }}</b>
-                  <span>{{ manager.user.username }}</span>
-                </div>
-                <el-button text type="danger" :loading="managerRemovingId === manager.user.id" :disabled="managerSaving || managerRemovingId !== null" @click="removeManager(manager.user.id)">移除</el-button>
-              </div>
-              <el-empty v-if="!managers.length" description="暂无单独分配的管理器" />
-            </div>
-          </section>
+          <ToolManagerPanel
+            v-if="canAdminActiveTool"
+            v-model:username="managerUsername"
+            description="被分配后可维护文件收集入口设置和全局模板；任务内容仍按创建者隔离，只有超级管理员可查看全部任务。"
+            :managers="managers"
+            :saving="managerSaving"
+            :removing-id="managerRemovingId"
+            @add="addManager"
+            @remove="removeManager"
+          />
         </div>
 
         <div v-else-if="activeTool === 'pdf_tools'" class="tool-admin-grid permission-only-grid">
@@ -127,142 +88,29 @@
             </div>
           </section>
 
-          <section v-if="canAdminActiveTool" class="admin-section managers-section">
-            <div class="section-head">
-              <div>
-                <h3>使用权限</h3>
-                <p>可决定 PDF 工具是否展示在小工具入口，以及是否要求登录后使用。</p>
-              </div>
-            </div>
-            <div class="access-setting">
-              <div>
-                <b>展示在工具列表</b>
-                <span>{{ currentToolMeta?.isVisible ? "当前会显示在小工具入口中" : "当前已从小工具入口中隐藏" }}</span>
-              </div>
-              <el-switch
-                v-model="toolVisible"
-                :loading="settingSaving"
-                @change="saveToolVisibilitySetting"
-              />
-            </div>
-            <div class="access-setting">
-              <div>
-                <b>登录后使用</b>
-                <span>{{ currentToolMeta?.requireLogin ? "当前需要登录" : "当前允许游客使用" }}</span>
-              </div>
-              <el-switch
-                v-model="toolRequireLogin"
-                :loading="settingSaving"
-                @change="saveToolSetting"
-              />
-            </div>
-          </section>
+          <ToolAccessSettings
+            v-if="canAdminActiveTool"
+            description="可决定 PDF 工具是否展示在小工具入口，以及是否要求登录后使用。"
+            :visible="Boolean(currentToolMeta?.isVisible)"
+            :visible-text="currentToolMeta?.isVisible ? '当前会显示在小工具入口中' : '当前已从小工具入口中隐藏'"
+            :require-login="Boolean(currentToolMeta?.requireLogin)"
+            :require-login-text="currentToolMeta?.requireLogin ? '当前需要登录' : '当前允许游客使用'"
+            :show-public-manage="false"
+            :saving="settingSaving"
+            @change:visible="saveToolVisibilitySetting"
+            @change:require-login="saveToolSetting"
+          />
 
-          <section v-if="canAdminActiveTool" class="admin-section managers-section">
-            <div class="section-head">
-              <div>
-                <h3>管理器</h3>
-                <p>被分配后可维护 PDF 工具入口设置。</p>
-              </div>
-            </div>
-            <div class="add-manager">
-              <el-input v-model="managerUsername" placeholder="输入用户名" clearable :disabled="managerSaving || managerRemovingId !== null" @keyup.enter="addManager" />
-              <el-button type="primary" :loading="managerSaving" :disabled="managerSaving || managerRemovingId !== null || !managerUsername.trim()" @click="addManager">添加</el-button>
-            </div>
-            <div class="manager-list">
-              <div v-for="manager in managers" :key="manager.id" class="manager-row">
-                <div>
-                  <b>{{ manager.user.nickname || manager.user.username }}</b>
-                  <span>{{ manager.user.username }}</span>
-                </div>
-                <el-button text type="danger" :loading="managerRemovingId === manager.user.id" :disabled="managerSaving || managerRemovingId !== null" @click="removeManager(manager.user.id)">移除</el-button>
-              </div>
-              <el-empty v-if="!managers.length" description="暂无单独分配的管理器" />
-            </div>
-          </section>
-        </div>
-
-        <div v-else-if="activeTool === 'cloud_drive'" class="tool-admin-grid permission-only-grid">
-          <section class="admin-section questionnaire-section">
-            <div class="section-head">
-              <div>
-                <h3>云盘</h3>
-                <p>云盘本体在小工具页里使用，这里只维护访问权限和管理器。接好世纪互联文档库后，管理器可直接在工具页上传、整理和删除文件。</p>
-              </div>
-              <el-button type="primary" @click="openCloudDriveTool">
-                <el-icon><View /></el-icon>
-                打开云盘
-              </el-button>
-            </div>
-            <div class="empty-panel">
-              共享文件目录、上传队列和预览下载都在“云盘”工具页里完成；此页面保留通用权限配置，方便控制谁能看、谁能改。
-            </div>
-          </section>
-
-          <section v-if="canAdminActiveTool" class="admin-section managers-section">
-            <div class="section-head">
-              <div>
-                <h3>使用权限</h3>
-                <p>可决定云盘是否需要登录浏览，以及是否允许所有登录用户一起管理文件。</p>
-              </div>
-            </div>
-            <div class="access-setting">
-              <div>
-                <b>展示在工具列表</b>
-                <span>{{ currentToolMeta?.isVisible ? "当前会显示在小工具入口中" : "当前已从小工具入口中隐藏" }}</span>
-              </div>
-              <el-switch
-                v-model="toolVisible"
-                :loading="settingSaving"
-                @change="saveToolVisibilitySetting"
-              />
-            </div>
-            <div class="access-setting">
-              <div>
-                <b>登录后使用</b>
-                <span>{{ currentToolMeta?.requireLogin ? "当前需要登录" : "当前允许游客访问" }}</span>
-              </div>
-              <el-switch
-                v-model="toolRequireLogin"
-                :loading="settingSaving"
-                @change="saveToolSetting"
-              />
-            </div>
-            <div class="access-setting">
-              <div>
-                <b>开放管理入口</b>
-                <span>{{ currentToolMeta?.allowPublicManage ? "所有登录用户都可上传和整理文件" : "仅管理器可修改文件" }}</span>
-              </div>
-              <el-switch
-                v-model="toolAllowPublicManage"
-                :loading="settingSaving"
-                @change="savePublicManageSetting"
-              />
-            </div>
-          </section>
-
-          <section v-if="canAdminActiveTool" class="admin-section managers-section">
-            <div class="section-head">
-              <div>
-                <h3>管理器</h3>
-                <p>被分配后可直接进入云盘工具页管理目录、上传文件和删除内容。</p>
-              </div>
-            </div>
-            <div class="add-manager">
-              <el-input v-model="managerUsername" placeholder="输入用户名" clearable :disabled="managerSaving || managerRemovingId !== null" @keyup.enter="addManager" />
-              <el-button type="primary" :loading="managerSaving" :disabled="managerSaving || managerRemovingId !== null || !managerUsername.trim()" @click="addManager">添加</el-button>
-            </div>
-            <div class="manager-list">
-              <div v-for="manager in managers" :key="manager.id" class="manager-row">
-                <div>
-                  <b>{{ manager.user.nickname || manager.user.username }}</b>
-                  <span>{{ manager.user.username }}</span>
-                </div>
-                <el-button text type="danger" :loading="managerRemovingId === manager.user.id" :disabled="managerSaving || managerRemovingId !== null" @click="removeManager(manager.user.id)">移除</el-button>
-              </div>
-              <el-empty v-if="!managers.length" description="暂无单独分配的管理器" />
-            </div>
-          </section>
+          <ToolManagerPanel
+            v-if="canAdminActiveTool"
+            v-model:username="managerUsername"
+            description="被分配后可维护 PDF 工具入口设置。"
+            :managers="managers"
+            :saving="managerSaving"
+            :removing-id="managerRemovingId"
+            @add="addManager"
+            @remove="removeManager"
+          />
         </div>
 
         <div v-else class="tool-admin-grid">
@@ -823,70 +671,31 @@
             </div>
           </section>
 
-          <section v-if="canAdminActiveTool" class="admin-section managers-section">
-            <div class="section-head">
-              <div>
-                <h3>使用权限</h3>
-                <p>开启后，未登录用户不能打开或提交当前小工具。</p>
-              </div>
-            </div>
-            <div class="access-setting">
-              <div>
-                <b>展示在工具列表</b>
-                <span>{{ currentToolMeta?.isVisible ? "当前会显示在小工具入口中" : "当前已从小工具入口中隐藏" }}</span>
-              </div>
-              <el-switch
-                v-model="toolVisible"
-                :loading="settingSaving"
-                @change="saveToolVisibilitySetting"
-              />
-            </div>
-            <div class="access-setting">
-              <div>
-                <b>登录后使用</b>
-                <span>{{ currentToolMeta?.requireLogin ? "当前需要登录" : "当前允许游客使用" }}</span>
-              </div>
-              <el-switch
-                v-model="toolRequireLogin"
-                :loading="settingSaving"
-                @change="saveToolSetting"
-              />
-            </div>
-            <div class="access-setting">
-              <div>
-                <b>开放管理入口</b>
-                <span>{{ currentToolMeta?.allowPublicManage ? "所有登录用户可进入并管理自己创建的内容" : "仅管理器可进入管理" }}</span>
-              </div>
-              <el-switch
-                v-model="toolAllowPublicManage"
-                :loading="settingSaving"
-                @change="savePublicManageSetting"
-              />
-            </div>
-          </section>
+          <ToolAccessSettings
+            v-if="canAdminActiveTool"
+            description="开启后，未登录用户不能打开或提交当前小工具。"
+            :visible="Boolean(currentToolMeta?.isVisible)"
+            :visible-text="currentToolMeta?.isVisible ? '当前会显示在小工具入口中' : '当前已从小工具入口中隐藏'"
+            :require-login="Boolean(currentToolMeta?.requireLogin)"
+            :require-login-text="currentToolMeta?.requireLogin ? '当前需要登录' : '当前允许游客使用'"
+            :allow-public-manage="Boolean(currentToolMeta?.allowPublicManage)"
+            :public-manage-text="currentToolMeta?.allowPublicManage ? '所有登录用户可进入并管理自己创建的内容' : '仅管理器可进入管理'"
+            :saving="settingSaving"
+            @change:visible="saveToolVisibilitySetting"
+            @change:require-login="saveToolSetting"
+            @change:public-manage="savePublicManageSetting"
+          />
 
-          <section v-if="canAdminActiveTool" class="admin-section managers-section">
-            <div class="section-head">
-              <div>
-                <h3>管理器</h3>
-                <p>被分配后可进入此页面管理当前小工具。</p>
-              </div>
-            </div>
-            <div class="add-manager">
-              <el-input v-model="managerUsername" placeholder="输入用户名" clearable :disabled="managerSaving || managerRemovingId !== null" @keyup.enter="addManager" />
-              <el-button type="primary" :loading="managerSaving" :disabled="managerSaving || managerRemovingId !== null || !managerUsername.trim()" @click="addManager">添加</el-button>
-            </div>
-            <div class="manager-list">
-              <div v-for="manager in managers" :key="manager.id" class="manager-row">
-                <div>
-                  <b>{{ manager.user.nickname || manager.user.username }}</b>
-                  <span>{{ manager.user.username }}</span>
-                </div>
-                <el-button text type="danger" :loading="managerRemovingId === manager.user.id" :disabled="managerSaving || managerRemovingId !== null" @click="removeManager(manager.user.id)">移除</el-button>
-              </div>
-              <el-empty v-if="!managers.length" description="暂无单独分配的管理器" />
-            </div>
-          </section>
+          <ToolManagerPanel
+            v-if="canAdminActiveTool"
+            v-model:username="managerUsername"
+            description="被分配后可进入此页面管理当前小工具。"
+            :managers="managers"
+            :saving="managerSaving"
+            :removing-id="managerRemovingId"
+            @add="addManager"
+            @remove="removeManager"
+          />
         </div>
       </template>
     </section>
@@ -1403,6 +1212,8 @@ import {
 } from "@/api/tools";
 import { getToken } from "@/api/request";
 import { fmtDate } from "@/utils/format";
+import ToolAccessSettings from "@/views/services/components/ToolAccessSettings.vue";
+import ToolManagerPanel from "@/views/services/components/ToolManagerPanel.vue";
 
 type EditableField = {
   localKey: string;
@@ -1666,28 +1477,6 @@ function isFileActionDisabled(id: number) {
 
 const editorTitle = computed(() => editorMode.value === "create" ? "新建问卷" : "编辑问卷");
 const requiredCount = computed(() => form.fields.filter((field) => field.required).length);
-const toolRequireLogin = computed({
-  get: () => Boolean(currentToolMeta.value?.requireLogin),
-  set: (value: boolean) => {
-    const target = currentToolMeta.value;
-    if (target) target.requireLogin = value;
-  },
-});
-const toolVisible = computed({
-  get: () => currentToolMeta.value?.isVisible !== false,
-  set: (value: boolean) => {
-    const target = currentToolMeta.value;
-    if (target) target.isVisible = value;
-  },
-});
-const toolAllowPublicManage = computed({
-  get: () => Boolean(currentToolMeta.value?.allowPublicManage),
-  set: (value: boolean) => {
-    const target = currentToolMeta.value;
-    if (target) target.allowPublicManage = value;
-  },
-});
-
 const responseStats = computed<FieldStat[]>(() => activeResponseFields.value.map((field) => buildFieldStat(field)));
 
 onMounted(init);
@@ -1724,7 +1513,7 @@ function pickInitialTool(): ServiceToolCode {
 function normalizeToolQuery(value: unknown): ServiceToolCode | "" {
   const raw = Array.isArray(value) ? value[0] : value;
   if (typeof raw !== "string") return "";
-  return (["feedback", "questionnaire", "grade_check", "file_collect", "cloud_drive", "pdf_tools"] as ServiceToolCode[]).includes(raw as ServiceToolCode)
+  return (["feedback", "questionnaire", "grade_check", "file_collect", "pdf_tools"] as ServiceToolCode[]).includes(raw as ServiceToolCode)
     ? raw as ServiceToolCode
     : "";
 }
@@ -1764,7 +1553,7 @@ async function reloadActive() {
     gradeChecks.value = [];
     return;
   }
-  if (activeTool.value === "cloud_drive" || activeTool.value === "pdf_tools") {
+  if (activeTool.value === "pdf_tools") {
     questionnaires.value = [];
     gradeChecks.value = [];
     fileCollections.value = [];
@@ -1774,10 +1563,6 @@ async function reloadActive() {
   questionnaires.value = questionnaireList;
   gradeChecks.value = [];
   fileCollections.value = [];
-}
-
-function openCloudDriveTool() {
-  router.push("/services/tools/cloud_drive");
 }
 
 function openPdfTool() {
@@ -3707,44 +3492,6 @@ function round(value: number) {
 .file-more-dropdown {
   min-width: 0;
 }
-.add-manager {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-.manager-list { display: flex; flex-direction: column; gap: 8px; }
-.access-setting {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 12px;
-  border: 1px solid #eef0f4;
-  border-radius: 8px;
-  background: #fafafa;
-}
-.access-setting + .access-setting { margin-top: 10px; }
-.access-setting div {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.access-setting b { color: #111827; }
-.access-setting span { color: #6b7280; font-size: 12px; }
-.manager-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px;
-  border: 1px solid #eef0f4;
-  border-radius: 8px;
-  background: #fafafa;
-}
-.manager-row div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.manager-row b { color: #111827; overflow-wrap: anywhere; }
-.manager-row span { color: #6b7280; font-size: 12px; }
 .builder-layout {
   height: 100%;
   display: grid;
@@ -5033,7 +4780,6 @@ function round(value: number) {
     width: 100%;
     margin-left: 0;
   }
-  .add-manager { flex-direction: column; }
   .answer-row,
   .choice-stat-row { grid-template-columns: 1fr; gap: 5px; }
   .choice-stat-row b { text-align: left; }

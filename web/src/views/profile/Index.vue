@@ -258,106 +258,6 @@
       </div>
     </div>
 
-    <div class="cpu-card qqbot-card" v-if="qqBotProfile">
-      <div class="qqbot-head">
-        <div>
-          <h3 class="cpu-section-title">QQBot 绑定</h3>
-          <p>绑定后可以直接在 QQ 里投稿、查状态、看最近投稿。</p>
-        </div>
-        <div class="qqbot-head-actions">
-          <el-button type="primary" plain @click="openQqBotGuide">
-            {{ qqBotProfile.binding ? "使用指南" : "去绑定" }}
-          </el-button>
-          <el-tag :type="qqBotProfile.enabled ? 'success' : 'info'" effect="plain">
-            {{ qqBotProfile.enabled ? "已启用" : "未启用" }}
-          </el-tag>
-        </div>
-      </div>
-
-      <div class="qqbot-grid">
-        <div class="qqbot-item">
-          <span>绑定状态</span>
-          <b>{{ qqBotProfile.binding ? (qqBotProfile.binding.enabled ? "已绑定" : "已停用") : "未绑定" }}</b>
-        </div>
-        <div class="qqbot-item">
-          <span>QQBot 账号</span>
-          <b>{{ qqBotProfile.botQqId || "未配置" }}</b>
-        </div>
-        <div class="qqbot-item">
-          <span>绑定 QQ</span>
-          <b>{{ qqBotProfile.binding?.qqId || "—" }}</b>
-        </div>
-        <div class="qqbot-item">
-          <span>投稿开关</span>
-          <b>{{ qqPostingText }}</b>
-        </div>
-      </div>
-
-      <div class="qqbot-bind-box">
-        <template v-if="qqBotProfile.activeBindToken">
-          <div class="qqbot-token">
-            <strong>{{ qqBotProfile.activeBindToken.token }}</strong>
-            <span v-if="qqBotProfile.botQqId">请在 QQ 里添加并私聊机器人 {{ qqBotProfile.botQqId }}</span>
-            <span>发送：绑定 {{ qqBotProfile.activeBindToken.token }}</span>
-            <span>有效期至 {{ fmtDate(qqBotProfile.activeBindToken.expiresAt, "MM-DD HH:mm") }}</span>
-          </div>
-        </template>
-        <template v-else>
-          <p class="qqbot-empty">{{ qqBotProfile.binding ? "当前已绑定 QQ，如需更换请先解绑。" : "还没有可用绑定码，生成后可直接去 QQ 完成绑定。" }}</p>
-        </template>
-        <div class="qqbot-actions">
-          <el-button type="primary" plain @click="openQqBotGuide">
-            {{ qqBotProfile.binding ? "查看绑定流程" : "绑定 / 使用指南" }}
-          </el-button>
-          <el-button v-if="!qqBotProfile.binding" type="primary" :loading="qqBotLoading" :disabled="qqBotLoading" @click="refreshQqBotToken">
-            {{ qqBotProfile.activeBindToken ? "重新生成绑定码" : "生成绑定码" }}
-          </el-button>
-          <el-button
-            v-if="qqBotProfile.activeBindToken"
-            plain
-            :loading="qqBotLoading"
-            :disabled="qqBotLoading"
-            @click="copyQqBotCommand"
-          >
-            复制绑定指令
-          </el-button>
-          <el-button
-            v-if="qqBotProfile.binding"
-            type="danger"
-            plain
-            :loading="qqBotLoading"
-            :disabled="qqBotLoading"
-            @click="unbindQqBot"
-          >
-            解绑 QQ
-          </el-button>
-          <el-button plain :loading="qqBotLoading" :disabled="qqBotLoading" @click="refreshQqBotProfile">刷新状态</el-button>
-        </div>
-      </div>
-
-      <div class="qqbot-help">
-        <div class="qqbot-help-head">
-          <div class="sub-title">QQ 内可用命令</div>
-          <el-button text type="primary" @click="qqBotCommandsVisible = !qqBotCommandsVisible">
-            {{ qqBotCommandsVisible ? "收起" : "点击查看" }}
-          </el-button>
-        </div>
-        <p v-if="!qqBotCommandsVisible" class="qqbot-help-tip">需要时再展开查看完整命令列表。</p>
-        <div v-else class="qqbot-command-groups">
-          <div v-for="section in qqBotCommandSections" :key="section.title" class="qqbot-command-group">
-            <div class="qqbot-command-group-title">{{ section.title }}</div>
-            <div class="qqbot-command-list">
-              <div v-for="item in section.items" :key="item.command" class="qqbot-command-row">
-                <code>{{ item.command }}</code>
-                <span>{{ item.desc }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-    </div>
-
     <div class="cpu-card">
       <h3 class="cpu-section-title">我发布的帖子</h3>
       <el-empty v-if="!myTopics.length" description="还没有发过帖子" />
@@ -417,98 +317,6 @@
       </template>
     </el-dialog>
 
-    <el-dialog
-      v-model="qqBotGuideVisible"
-      :title="qqBotProfile?.binding ? 'QQBot 使用指南' : 'QQBot 绑定指南'"
-      width="560px"
-      append-to-body
-    >
-      <div class="qqbot-guide">
-        <el-alert
-          v-if="!qqBotProfile?.enabled"
-          type="warning"
-          :closable="false"
-          show-icon
-          title="当前站点暂未启用 QQBot，请稍后再试或联系管理员。"
-        />
-        <el-alert
-          v-else-if="!qqBotProfile?.botQqId"
-          type="warning"
-          :closable="false"
-          show-icon
-          title="管理员还没有配置 QQBot 账号，暂时无法完成绑定。"
-        />
-
-        <div class="qqbot-guide-account">
-          <div>
-            <div class="qqbot-guide-label">QQBot 账号</div>
-            <strong>{{ qqBotProfile?.botQqId || "暂未配置" }}</strong>
-            <p>绑定时请在 QQ 搜索这个账号，添加好友后私聊发送绑定命令。</p>
-          </div>
-          <div class="qqbot-guide-account-actions">
-            <el-button plain :disabled="!qqBotProfile?.botQqId" @click="copyQqBotAccount">复制 QQBot 号</el-button>
-          </div>
-        </div>
-
-        <div class="qqbot-guide-steps">
-          <div class="qqbot-guide-step">
-            <div class="qqbot-step-index">1</div>
-            <div class="qqbot-step-body">
-              <div class="qqbot-step-title">站内生成绑定码</div>
-              <p>{{ qqBotProfile?.binding ? "当前已经绑定。如需更换 QQ，请先解绑后再生成新绑定码。" : "绑定码有效期 10 分钟，过期后可以重新生成。" }}</p>
-              <div class="qqbot-step-actions">
-                <el-button v-if="!qqBotProfile?.binding" type="primary" :loading="qqBotLoading" :disabled="qqBotLoading" @click="refreshQqBotToken">
-                  {{ qqBotProfile?.activeBindToken ? "重新生成绑定码" : "生成绑定码" }}
-                </el-button>
-                <span v-if="qqBotProfile?.activeBindToken" class="qqbot-step-hint">
-                  当前绑定码：{{ qqBotProfile.activeBindToken.token }}，有效期至 {{ fmtDate(qqBotProfile.activeBindToken.expiresAt, "MM-DD HH:mm") }}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div class="qqbot-guide-step">
-            <div class="qqbot-step-index">2</div>
-            <div class="qqbot-step-body">
-              <div class="qqbot-step-title">添加 QQBot 并发送绑定命令</div>
-              <p>先在 QQ 里添加上面的机器人账号，再私聊发送下面这条命令。绑定码不要发到群里。</p>
-              <div class="qqbot-code-box">
-                <code>{{ qqBotBindCommandText }}</code>
-                <el-button plain size="small" :disabled="qqBotLoading || !qqBotProfile?.activeBindToken" :loading="qqBotLoading" @click="copyQqBotCommand">
-                  复制命令
-                </el-button>
-              </div>
-            </div>
-          </div>
-
-          <div class="qqbot-guide-step">
-            <div class="qqbot-step-index">3</div>
-            <div class="qqbot-step-body">
-              <div class="qqbot-step-title">绑定完成后可直接在 QQ 里使用</div>
-              <p>常用命令就是“帮助”、“状态”、“板块”、“我的投稿”和“投稿”。投稿流程也很直接：先发送“投稿”，接着发标题，再逐条发正文，写完发“结束”，最后回复“确认发布”。想改标题就发“/标题 新标题”或直接回复“改标题”，想换板块就发“/板块 树洞”。</p>
-              <div class="qqbot-inline-examples">
-                <el-tag effect="plain">帮助</el-tag>
-                <el-tag effect="plain">状态</el-tag>
-                <el-tag effect="plain">板块</el-tag>
-                <el-tag effect="plain">我的投稿</el-tag>
-                <el-tag effect="plain">投稿</el-tag>
-                <el-tag effect="plain">结束</el-tag>
-                <el-tag effect="plain">确认发布</el-tag>
-                <el-tag effect="plain">取消</el-tag>
-                <el-tag effect="plain">/进度</el-tag>
-                <el-tag effect="plain">/预览</el-tag>
-                <el-tag effect="plain">/板块 树洞</el-tag>
-                <el-tag effect="plain">/标题 新标题</el-tag>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <template #footer>
-        <el-button @click="qqBotGuideVisible = false">关闭</el-button>
-      </template>
-    </el-dialog>
-
     <input
       ref="avatarInputRef"
       class="hidden-file-input"
@@ -527,7 +335,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { ChatDotRound, CopyDocument } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
-import { authApi, type QqBotProfile } from "@/api/auth";
+import { authApi } from "@/api/auth";
 import { boardApi, type Board } from "@/api/board";
 import { paymentsApi, type PayType, type SponsorOptions } from "@/api/payments";
 import { request } from "@/api/request";
@@ -548,10 +356,6 @@ const saving = ref(false);
 const logoutBusy = ref(false);
 const avatarSaving = ref(false);
 const avatarInputRef = ref<HTMLInputElement | null>(null);
-const qqBotProfile = ref<QqBotProfile | null>(null);
-const qqBotLoading = ref(false);
-const qqBotGuideVisible = ref(false);
-const qqBotCommandsVisible = ref(false);
 const trustDetailsOpen = ref(false);
 const anonymousBoardsOpen = ref(false);
 const sponsorSubmitting = ref(false);
@@ -574,7 +378,6 @@ const sponsorOptions = reactive<SponsorOptions>({
   wallEnabled: true,
   allowMessage: true,
 });
-let qqBotProfileSeq = 0;
 let profileLoadSeq = 0;
 let handledSponsorReturnKey = "";
 let sponsorReturnInFlightKey = "";
@@ -585,43 +388,6 @@ const passwordDialog = ref(false);
 const savingPw = ref(false);
 const pwForm = reactive({ oldPassword: "", newPassword: "", confirm: "" });
 const anonymousBoards = computed(() => boards.value.filter((board) => board.anonymousEnabled));
-const qqPostingText = computed(() => {
-  if (!qqBotProfile.value) return "—";
-  if (qqBotProfile.value.allowPrivatePost && qqBotProfile.value.allowGroupPost) return "私聊 / 群聊已开启";
-  if (qqBotProfile.value.allowPrivatePost) return "仅私聊";
-  if (qqBotProfile.value.allowGroupPost) return "仅群聊";
-  return "未开启";
-});
-const qqBotBindCommandText = computed(() => {
-  if (qqBotProfile.value?.activeBindToken) return `绑定 ${qqBotProfile.value.activeBindToken.token}`;
-  return "先生成绑定码，再私聊发送：绑定 绑定码";
-});
-const qqBotCommandSections = [
-  {
-    title: "账号与状态",
-    items: [
-      { command: "帮助 / 命令 / 功能", desc: "查看功能说明和常用命令" },
-      { command: "绑定 绑定码", desc: "把当前 QQ 绑定到站内账号" },
-      { command: "状态", desc: "查看绑定状态、默认投稿区和投稿开关" },
-      { command: "解绑", desc: "解除当前 QQ 绑定" },
-    ],
-  },
-  {
-    title: "查询与投稿",
-    items: [
-      { command: "板块 / 版块 / 分区", desc: "查看可投稿板块和默认投稿区" },
-      { command: "我的投稿 / 最近投稿", desc: "查看最近 5 条投稿记录" },
-      { command: "投稿", desc: "开始分步投稿，机器人会一步步提示" },
-      { command: "结束", desc: "提交当前稿件，进入最终确认" },
-      { command: "确认发布", desc: "按当前标题和正文正式投稿" },
-      { command: "取消", desc: "取消这次投稿会话" },
-      { command: "/进度", desc: "会话里查看当前草稿进度" },
-      { command: "/预览", desc: "会话里查看当前草稿完整预览" },
-      { command: "/板块 树洞", desc: "会话里把当前草稿切换到指定板块" },
-      { command: "/标题 新标题", desc: "会话里直接修改当前草稿标题" },
-    ],
-  },
-] as const;
 const anonymousStatusText = computed(() => {
   const state = user.value?.anonymousState;
   if (!state) return "—";
@@ -695,7 +461,6 @@ async function loadProfilePage() {
     }
 
     await Promise.all([
-      loadQqBotProfile({ silent: true }),
       (site.features.sponsor || (user.value?.sponsorAmount ?? 0) > 0) ? loadSponsorOptions() : Promise.resolve(),
       loadSponsorOrders(),
     ]);
@@ -879,78 +644,6 @@ async function onLogout() {
 async function copyUserGroup() {
   await copyText(USER_QQ_GROUP);
   ElMessage.success(`已复制QQ群号 ${USER_QQ_GROUP}`);
-}
-
-async function loadQqBotProfile(opts?: { silent?: boolean }) {
-  const seq = ++qqBotProfileSeq;
-  if (!opts?.silent) qqBotLoading.value = true;
-  try {
-    const profile = await authApi.qqBotProfile({ suppressErrorMessage: true });
-    if (seq === qqBotProfileSeq) qqBotProfile.value = profile;
-  } catch (error) {
-    if (seq === qqBotProfileSeq) {
-      qqBotProfile.value = null;
-      if (!opts?.silent) ElMessage.error(normalizeProfileLoadError(error, "QQBot 状态加载失败"));
-    }
-  } finally {
-    if (!opts?.silent && seq === qqBotProfileSeq) qqBotLoading.value = false;
-  }
-}
-
-function refreshQqBotProfile() {
-  return loadQqBotProfile();
-}
-
-function openQqBotGuide() {
-  qqBotGuideVisible.value = true;
-}
-
-async function refreshQqBotToken() {
-  if (qqBotLoading.value) return;
-  qqBotLoading.value = true;
-  try {
-    await authApi.createQqBotBindToken();
-    await loadQqBotProfile({ silent: true });
-    ElMessage.success("绑定码已生成");
-  } finally {
-    qqBotLoading.value = false;
-  }
-}
-
-async function copyQqBotCommand() {
-  if (qqBotLoading.value) return;
-  if (!qqBotProfile.value?.activeBindToken) {
-    ElMessage.warning("请先生成绑定码");
-    return;
-  }
-  await copyText(`绑定 ${qqBotProfile.value.activeBindToken.token}`);
-  ElMessage.success(qqBotProfile.value.botQqId ? `已复制绑定指令，请发送给 QQBot ${qqBotProfile.value.botQqId}` : "已复制绑定指令");
-}
-
-async function copyQqBotAccount() {
-  const qqId = qqBotProfile.value?.botQqId?.trim();
-  if (!qqId) {
-    ElMessage.warning("管理员还没有配置 QQBot 账号");
-    return;
-  }
-  await copyText(qqId);
-  ElMessage.success(`已复制 QQBot 账号 ${qqId}`);
-}
-
-async function unbindQqBot() {
-  if (qqBotLoading.value) return;
-  const confirmed = await ElMessageBox.confirm("确认解绑当前 QQBot 绑定？解绑后将不能继续通过 QQ 投稿。", "解绑 QQBot", { type: "warning" })
-    .then(() => true)
-    .catch(() => false);
-  if (!confirmed) return;
-  qqBotLoading.value = true;
-  try {
-    await authApi.deleteQqBotBinding();
-    await loadQqBotProfile({ silent: true });
-    ElMessage.success("QQBot 已解绑");
-  } finally {
-    qqBotLoading.value = false;
-  }
 }
 
 function joinUserGroup() {
@@ -1464,290 +1157,6 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   margin-left: 0 !important;
 }
 
-.qqbot-card {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.qqbot-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.qqbot-head-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.qqbot-head p {
-  margin: 4px 0 0;
-  color: #6b7280;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.qqbot-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.qqbot-item {
-  padding: 12px;
-  border-radius: 12px;
-  background: #f5fbf9;
-  border: 1px solid #d7efe8;
-}
-
-.qqbot-item span {
-  display: block;
-  color: #6b7280;
-  font-size: 12px;
-  margin-bottom: 6px;
-}
-
-.qqbot-item b {
-  color: #0f5132;
-  font-size: 16px;
-}
-
-.qqbot-bind-box {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px;
-  border-radius: 12px;
-  background: #fcfffd;
-  border: 1px dashed #cfe7df;
-}
-
-.qqbot-token {
-  display: grid;
-  gap: 6px;
-}
-
-.qqbot-token strong {
-  font-size: 24px;
-  color: #168776;
-  letter-spacing: 1px;
-}
-
-.qqbot-token span,
-.qqbot-empty {
-  color: #64748b;
-  font-size: 13px;
-  line-height: 1.6;
-  margin: 0;
-}
-
-.qqbot-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.qqbot-actions .el-button {
-  margin-left: 0 !important;
-}
-
-.qqbot-help {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.qqbot-help-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.qqbot-help-tip {
-  margin: 0;
-  color: #64748b;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.qqbot-command-groups {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.qqbot-command-group {
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px solid #e6eef5;
-  background: #f8fbfd;
-}
-
-.qqbot-command-group-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #0f172a;
-  margin-bottom: 10px;
-}
-
-.qqbot-command-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.qqbot-command-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.qqbot-command-row code,
-.qqbot-code-box code {
-  width: fit-content;
-  max-width: 100%;
-  padding: 4px 8px;
-  border-radius: 8px;
-  background: #e9f7f1;
-  color: #0f766e;
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-
-.qqbot-command-row span {
-  color: #64748b;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.qqbot-guide {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.qqbot-guide-account {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #eff8ff 0%, #f8fbff 100%);
-  border: 1px solid #d8e7fb;
-}
-
-.qqbot-guide-label {
-  color: #64748b;
-  font-size: 12px;
-  margin-bottom: 6px;
-}
-
-.qqbot-guide-account strong {
-  display: block;
-  font-size: 24px;
-  color: #0f172a;
-}
-
-.qqbot-guide-account p {
-  margin: 6px 0 0;
-  color: #64748b;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.qqbot-guide-account-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.qqbot-guide-steps {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.qqbot-guide-step {
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr);
-  gap: 12px;
-  align-items: flex-start;
-  padding: 14px;
-  border-radius: 12px;
-  border: 1px solid #e6eef5;
-  background: #fff;
-}
-
-.qqbot-step-index {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 999px;
-  background: #168776;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.qqbot-step-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.qqbot-step-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #0f172a;
-}
-
-.qqbot-step-body p {
-  margin: 0;
-  color: #64748b;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.qqbot-step-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.qqbot-step-hint {
-  color: #0f766e;
-  font-size: 12px;
-}
-
-.qqbot-code-box {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-  padding: 12px;
-  border-radius: 12px;
-  background: #f8fbfd;
-  border: 1px dashed #d7e7f3;
-}
-
-.qqbot-inline-examples {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 .topic-line {
   display: flex;
   align-items: center;
@@ -1863,8 +1272,7 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   }
 
   .trust-grid,
-  .trust-breakdown,
-  .qqbot-grid {
+  .trust-breakdown {
     grid-template-columns: 1fr;
   }
 
@@ -1873,42 +1281,6 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   }
 
   .user-group-card {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .qqbot-head {
-    flex-direction: column;
-  }
-
-  .qqbot-head-actions,
-  .qqbot-guide-account-actions {
-    justify-content: flex-start;
-  }
-
-  .qqbot-guide-account {
-    flex-direction: column;
-  }
-
-  .qqbot-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .qqbot-command-groups {
-    grid-template-columns: 1fr;
-  }
-
-  .qqbot-guide-step {
-    grid-template-columns: 1fr;
-  }
-
-  .qqbot-step-index {
-    width: 28px;
-    height: 28px;
-  }
-
-  .qqbot-code-box {
     align-items: stretch;
     flex-direction: column;
   }

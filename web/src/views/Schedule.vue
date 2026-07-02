@@ -774,11 +774,6 @@ import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
 import { jwxtScopedStorageKey } from "@/utils/jwxtCache";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 import {
-  clearScheduleBackgroundBlob,
-  readScheduleBackgroundBlob,
-  saveScheduleBackgroundBlob,
-} from "@/utils/scheduleBackgroundStorage";
-import {
   ANDROID_APP_DOWNLOAD_URL,
   ANDROID_APP_LATEST_VERSION_CODE,
   ANDROID_APP_LATEST_VERSION_NAME,
@@ -806,61 +801,43 @@ import {
   type ScheduleThemeKey,
 } from "@/components/jwxt/scheduleTheme";
 import {
-  applyScheduleEditsToCells,
   courseEditKey,
   createCustomCourseId,
   emptyScheduleEdits,
   type CustomScheduleItem,
   type ScheduleEditState,
 } from "@/utils/scheduleEdits";
-import { courseMatchesWeek, normalizedCourseWeekList } from "@/utils/scheduleWeeks";
-
-interface ScheduleCourse {
-  name: string;
-  teacher?: string;
-  weeks: string;
-  weekList: number[];
-  location?: string;
-  slotNote?: string;
-  startSlot?: number;
-  endSlot?: number;
-  sourceKey?: string;
-  customId?: string;
-  custom?: boolean;
-}
-interface ScheduleCell { day: number; bigSlot: number; courses: ScheduleCourse[] }
-interface ScheduleResult {
-  semesters: { value: string; label: string; current: boolean }[];
-  weeks: { value: string; label: string; current: boolean }[];
-  currentSemester: string;
-  currentWeek: string;
-  cells: ScheduleCell[];
-}
-interface CalendarWeek { week: number; days: string[]; monday: string; sunday: string }
-interface CalendarResult { currentWeek: number; semesterStart: string; semesterEnd: string; weeks: CalendarWeek[] }
-interface SemesterDescriptor { startYear: number; endYear: number; season: "first" | "second" }
-interface OfficialSemesterCalendar { start: string; end: string; weeks: number }
-interface FlatCourse { bigSlot: number; index: number; course: ScheduleCourse }
-interface CacheEnvelope<T> { savedAt: number; data: T }
-type ViewMode = "day" | "week";
-interface LastState { semester: string; week: string; activeDay: number; viewMode?: ViewMode }
-interface WeekCourseBlock { day: number; bigSlot: number; startSlot: number; endSlot: number; index: number; course: ScheduleCourse }
-interface ScheduleBackgroundSettings {
-  imageDataUrl: string;
-  overlayOpacity: number;
-  blur: number;
-}
-interface SchedulePageModel {
-  delta: number;
-  key: string;
-  weekValue: string;
-  day: number;
-  title: string;
-  dayTabs: Array<{ day: number; label: string; date: string; isToday: boolean }>;
-  courseCount: number;
-  dayCourseBlocks: WeekCourseBlock[];
-  weekCourseBlocks: WeekCourseBlock[];
-}
+import { normalizedCourseWeekList } from "@/utils/scheduleWeeks";
+import {
+  buildGraduateFallbackCalendar,
+  dayOfWeek,
+  extendScheduleWeeksToCalendar,
+  formatCacheTime,
+  hydrateCalendar,
+  officialGraduateSemesterCalendarFor,
+  resolveGraduateActiveDay,
+  resolveGraduateInitialWeek,
+} from "@/views/schedule/calendar";
+import { buildScriptableWidgetScript } from "@/views/schedule/scriptableWidget";
+import {
+  MAX_SMALL_SLOT,
+  clampSlot,
+  smallSlots,
+} from "@/views/schedule/slots";
+import { useScheduleBackground } from "@/views/schedule/useScheduleBackground";
+import { createScheduleViewModelHelpers } from "@/views/schedule/viewModels";
+import type {
+  CalendarResult,
+  CacheEnvelope,
+  FlatCourse,
+  LastState,
+  ScheduleCell,
+  ScheduleCourse,
+  SchedulePageModel,
+  ScheduleResult,
+  ViewMode,
+  WeekCourseBlock,
+} from "@/views/schedule/types";
 
 const auth = useAuthStore();
 const jwxt = useJwxtStore();
@@ -888,17 +865,8 @@ const CALENDAR_CACHE_BASE = "cpu-schedule-calendar-v1";
 const LAST_STATE_BASE = "cpu-schedule-last-state-v1";
 const LAST_CACHE_BASE = "cpu-schedule-last-cache-key-v1";
 const THEME_KEY = "cpu-schedule-theme-v1";
-const BACKGROUND_KEY = "cpu-schedule-background-v1";
 const GRAD_DEBUG_URL = "http://ygl.cpu.edu.cn/gmis5/oauthLogin/zgyk";
 const GRAD_DEBUG_FIXTURE_PATH = "server/.debug/grad-schedule.html";
-const OFFICIAL_GRADUATE_SEMESTER_CALENDARS: Record<string, OfficialSemesterCalendar> = {
-  "2025-2026学年一学期": { start: "2025-09-01", end: "2026-01-18", weeks: 20 },
-  "2025-2026学年二学期": { start: "2026-03-02", end: "2026-07-05", weeks: 18 },
-  "2024-2025学年一学期": { start: "2024-09-02", end: "2025-01-19", weeks: 20 },
-  "2024-2025学年二学期": { start: "2025-02-24", end: "2025-07-06", weeks: 19 },
-  "2023-2024学年一学期": { start: "2023-09-04", end: "2024-01-14", weeks: 19 },
-  "2023-2024学年二学期": { start: "2024-02-26", end: "2024-07-07", weeks: 19 },
-};
 const scheduleCacheStore = new Map<string, CacheEnvelope<ScheduleResult>>();
 const prewarmingScheduleKeys = new Set<string>();
 const isNativeScheduleApp = ["android", "harmony", "ios"].includes(detectClientPlatform());
@@ -907,20 +875,6 @@ const isDev = computed(() => import.meta.env.DEV);
 let scheduleEditsSaveTimer = 0;
 let scheduleEditsLoadPromise: Promise<void> | null = null;
 let pendingScheduleEditsSave: { semester: string; edits: ScheduleEditState } | null = null;
-const smallSlots = [
-  { no: 1, start: "08:00", end: "08:45" },
-  { no: 2, start: "08:55", end: "09:40" },
-  { no: 3, start: "09:55", end: "10:40" },
-  { no: 4, start: "10:50", end: "11:35" },
-  { no: 5, start: "13:30", end: "14:15" },
-  { no: 6, start: "14:25", end: "15:10" },
-  { no: 7, start: "15:25", end: "16:10" },
-  { no: 8, start: "16:20", end: "17:05" },
-  { no: 9, start: "18:30", end: "19:15" },
-  { no: 10, start: "19:25", end: "20:10" },
-  { no: 11, start: "20:20", end: "21:05" },
-];
-const MAX_SMALL_SLOT = smallSlots[smallSlots.length - 1]?.no ?? 10;
 const editDialogOpen = ref(false);
 const customCourseForm = reactive({
   name: "",
@@ -993,9 +947,47 @@ const moreMenuView = ref<"menu" | "theme" | "background">("menu");
 const widgetConfigCopying = ref(false);
 const widgetConfigCopied = ref(false);
 const androidWidgetInstalling = ref(false);
-const backgroundImageInputRef = ref<HTMLInputElement | null>(null);
-const backgroundSaving = ref(false);
-const scheduleBackground = reactive<ScheduleBackgroundSettings>(createDefaultScheduleBackground());
+const {
+  backgroundImageInputRef,
+  backgroundPreviewStyle,
+  backgroundSaving,
+  backgroundVisibility,
+  clearScheduleBackground,
+  clearScheduleBackgroundPreview,
+  hasScheduleBackground,
+  onBackgroundBlurInput,
+  onBackgroundVisibilityInput,
+  onScheduleBackgroundPicked,
+  pickScheduleBackground,
+  restoreScheduleBackground,
+  scheduleBackground,
+} = useScheduleBackground();
+const {
+  weekInfoFor,
+  weekRangeFor,
+  dayTabsForWeek,
+  cellsForWeek,
+  dayCoursesFor,
+  weekCourseBlocksFor,
+  dayCourseBlocksFor,
+  weekPageModel,
+  dayPageModel,
+  dayTarget,
+  nextWeekValueFrom,
+  courseTitle,
+  courseFamilyKey,
+  courseFamilySourceKeys,
+  dayLabel,
+} = createScheduleViewModelHelpers({
+  calendar: () => calendar.value,
+  parsed: () => parsed.value,
+  weeks: () => weeks.value,
+  scheduleEdits: () => scheduleEdits.value,
+  activeDay: () => activeDay.value,
+  currentWeekValue: () => currentWeekValue(),
+  scheduleForWeek,
+  allKnownScheduleSources,
+});
 const androidUpdateKind = ref<"app" | "widget">("widget");
 const scriptableWidgetScript = ref("");
 const widgetCopyMessage = ref("");
@@ -1005,7 +997,6 @@ const ANDROID_APP_UPDATE_PROMPT_KEY = "cpu-android-app-update-prompt-v1";
 let widgetInstructionTimer = 0;
 let androidUpdateTimer = 0;
 let androidAppUpdatePromptTimer = 0;
-let scheduleBackgroundPreviewUrl = "";
 const prefersGraduateIdentity = computed(() => auth.academicIdentity === "graduate");
 const scheduleLoginScopeText = computed(() => (
   "登录后会自动识别你当前可用的教务入口。本科生默认显示本科课表，研究生当前显示研究生课表。"
@@ -1052,47 +1043,6 @@ function getAndroidWidgetBridge(): AndroidWidgetBridge | null {
 async function copyGradDebugGuide() {
   await copyText(gradDebugGuideText.value);
   ElMessage.success("已复制调试说明");
-}
-
-function normalizeSemesterLabel(value: string) {
-  return String(value || "")
-    .replace(/\s+/g, "")
-    .replace(/第一学期/g, "一学期")
-    .replace(/第二学期/g, "二学期")
-    .trim();
-}
-
-function officialGraduateSemesterCalendarFor(value: string) {
-  return OFFICIAL_GRADUATE_SEMESTER_CALENDARS[normalizeSemesterLabel(value)] ?? null;
-}
-
-function pickFirstCourseDay(data: ScheduleResult | null, weekValue: number) {
-  if (!data) return 1;
-  const courseDays = data.cells
-    .filter((cell) => cell.courses.some((course) => courseMatchesWeek(course, weekValue)))
-    .map((cell) => cell.day)
-    .filter((day) => day >= 1 && day <= 7)
-    .sort((a, b) => a - b);
-  return courseDays[0] || 1;
-}
-
-function resolveGraduateInitialWeek(data: ScheduleResult | null, fallbackCalendar: CalendarResult | null) {
-  const weekValues = new Set((data?.weeks ?? []).map((item) => String(item.value || "")));
-  const currentByDate = String(fallbackCalendar?.currentWeek || "");
-  if (currentByDate && weekValues.has(currentByDate)) return currentByDate;
-  const currentBySchedule = String(data?.currentWeek || "");
-  if (currentBySchedule && weekValues.has(currentBySchedule)) return currentBySchedule;
-  return String(data?.weeks?.find((item) => item.current)?.value || data?.weeks?.[0]?.value || currentByDate || "");
-}
-
-function resolveGraduateActiveDay(
-  data: ScheduleResult | null,
-  weekValue: string,
-  fallbackCalendar: CalendarResult | null,
-) {
-  const weekNumber = Number(weekValue || 0);
-  if (weekNumber && weekNumber === Number(fallbackCalendar?.currentWeek || 0)) return dayOfWeek();
-  return pickFirstCourseDay(data, weekNumber);
 }
 
 async function loadGraduateSchedule(
@@ -1472,233 +1422,6 @@ async function writeClipboard(text: string): Promise<boolean> {
   return false;
 }
 
-function buildScriptableWidgetScript(endpoint: string) {
-  return `// 药大课表小组件
-// 复制到 Scriptable 后，添加桌面小组件并选择本脚本。
-const API_ENDPOINT = ${JSON.stringify(endpoint)};
-const MINUTES_22_00 = 22 * 60;
-
-async function loadSchedule() {
-  const req = new Request(API_ENDPOINT);
-  req.timeoutInterval = 20;
-  const body = await req.loadJSON();
-  if (!body || body.code !== 0) {
-    throw new Error(body?.message || "课表读取失败");
-  }
-  return body.data;
-}
-
-function color(light, dark) {
-  return Color.dynamic(new Color(light), new Color(dark));
-}
-
-function addLine(stack, text, font, colorValue) {
-  const line = stack.addText(String(text || ""));
-  line.font = font;
-  line.textColor = colorValue;
-  line.lineLimit = 1;
-  return line;
-}
-
-function coursePrimaryText(course, withEnd) {
-  const end = withEnd && course.endTime ? "-" + course.endTime : "";
-  const time = course.startTime ? course.startTime + end + " " : "";
-  return time + (course.name || "课程");
-}
-
-function courseMetaText(course) {
-  const parts = [];
-  if (course.location) parts.push("@" + course.location);
-  if (course.teacher) parts.push(course.teacher);
-  if (course.note) parts.push(course.note);
-  return parts.join(" · ");
-}
-
-function shortDate(value) {
-  const match = String(value || "").match(/-(\\d{2})-(\\d{2})$/);
-  return match ? match[1] + "/" + match[2] : "";
-}
-
-function deviceDate(offset) {
-  const date = new Date(Date.now() + offset * 24 * 60 * 60 * 1000);
-  const formatter = new DateFormatter();
-  formatter.locale = "zh-CN";
-  formatter.dateFormat = "yyyy-MM-dd";
-  return formatter.string(date);
-}
-
-function deviceMinutes() {
-  const date = new Date();
-  return date.getHours() * 60 + date.getMinutes();
-}
-
-function deviceDayOfWeek(offset) {
-  const date = new Date(Date.now() + offset * 24 * 60 * 60 * 1000);
-  const day = date.getDay();
-  return day === 0 ? 7 : day;
-}
-
-function parseMinutes(value) {
-  const match = String(value || "").match(/^(\\d{2}):(\\d{2})/);
-  return match ? Number(match[1]) * 60 + Number(match[2]) : -1;
-}
-
-function courseEndMinutes(course) {
-  const end = parseMinutes(course?.endTime);
-  if (end >= 0) return end;
-  const start = parseMinutes(course?.startTime);
-  return start >= 0 ? start + 45 : 0;
-}
-
-function resolveDay(data, offset) {
-  const target = deviceDate(offset);
-  const days = data.days || [];
-  const byDate = days.find((day) => String(day.date || "") === target);
-  if (byDate) return byDate;
-  const targetDay = deviceDayOfWeek(offset);
-  return days.find((day) => Number(day.day) === targetDay) || (offset === 0 ? data.today : null);
-}
-
-function shouldPreferTomorrow(data) {
-  const now = deviceMinutes();
-  if (now >= MINUTES_22_00) return true;
-  const courses = resolveDay(data, 0)?.courses || [];
-  if (!courses.length) return false;
-  return courses.every((course) => courseEndMinutes(course) < now);
-}
-
-function firstCourses(day, limit) {
-  return (day?.courses || []).slice(0, limit);
-}
-
-function nextCourses(day, limit) {
-  const now = deviceMinutes();
-  return (day?.courses || []).filter((course) => {
-    const start = parseMinutes(course?.startTime);
-    return start >= now || (start < 0 && courseEndMinutes(course) >= now);
-  }).slice(0, limit);
-}
-
-function dayTitle(day, fallback) {
-  const date = shortDate(day?.date);
-  return (day?.label || fallback) + (date ? " " + date : "");
-}
-
-function header(widget, data, day, modeText) {
-  addLine(widget, "药大课表", Font.boldSystemFont(15), color("#172033", "#f8fafc"));
-  const dateText = shortDate(day?.date);
-  const sub = "第 " + (data.week || "--") + " 周 · " + modeText + (dateText ? " " + dateText : "");
-  addLine(widget, sub, Font.systemFont(11), color("#64748b", "#cbd5e1"));
-  widget.addSpacer(8);
-}
-
-function footer(widget, data) {
-  widget.addSpacer();
-  const updated = new Date(data.cachedAt || data.generatedAt || Date.now());
-  const updatePrefix = data.stale ? "缓存 " : "更新 ";
-  addLine(widget, updatePrefix + updated.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }), Font.systemFont(9), color("#98a2b3", "#94a3b8"));
-}
-
-function renderSmall(widget, data) {
-  let preferTomorrow = shouldPreferTomorrow(data);
-  let day = resolveDay(data, preferTomorrow ? 1 : 0);
-  let courses = preferTomorrow ? firstCourses(day, 1) : nextCourses(day, 1);
-  if (!courses.length && !preferTomorrow) {
-    preferTomorrow = true;
-    day = resolveDay(data, 1);
-    courses = firstCourses(day, 1);
-  }
-  header(widget, data, day, preferTomorrow ? "明日课程" : "今日课程");
-  if (!courses.length) {
-    addLine(widget, preferTomorrow ? "明天没有课程" : "今日暂无课程", Font.mediumSystemFont(13), color("#475467", "#e2e8f0"));
-  } else {
-    const next = courses[0];
-    const time = (next.startTime || "") + (next.endTime ? "-" + next.endTime : "");
-    addLine(widget, (preferTomorrow ? "明日下节 " : "下节 ") + time, Font.systemFont(10), color("#168776", "#5eead4"));
-    addLine(widget, next.name || "课程", Font.boldSystemFont(13), color("#172033", "#f8fafc"));
-    addLine(widget, courseMetaText(next) || "地点待确认", Font.systemFont(10), color("#667085", "#cbd5e1"));
-  }
-  footer(widget, data);
-}
-
-function renderCourseList(stack, title, courses, emptyText) {
-  addLine(stack, title, Font.boldSystemFont(12), color("#168776", "#5eead4"));
-  stack.addSpacer(4);
-  if (!courses.length) {
-    addLine(stack, emptyText || "没有课程", Font.mediumSystemFont(11), color("#475467", "#e2e8f0"));
-    return;
-  }
-  for (const course of courses) {
-    addLine(stack, coursePrimaryText(course, true), Font.mediumSystemFont(11), color("#1f2937", "#f8fafc"));
-    const meta = courseMetaText(course);
-    if (meta) {
-      addLine(stack, meta, Font.systemFont(8), color("#7a8496", "#94a3b8"));
-    }
-    stack.addSpacer(4);
-  }
-}
-
-function renderSingleDay(widget, data, day, title, limit) {
-  header(widget, data, day, title);
-  renderCourseList(widget, dayTitle(day, title), firstCourses(day, limit), "没有课程");
-  footer(widget, data);
-}
-
-function renderHorizontalSplit(widget, data, topDay, bottomDay, topTitle, bottomTitle) {
-  header(widget, data, topDay, topTitle);
-  renderCourseList(widget, dayTitle(topDay, topTitle), firstCourses(topDay, 6), "没有课程");
-  widget.addSpacer(6);
-  const divider = widget.addStack();
-  divider.backgroundColor = color("#e2eaf4", "#334155");
-  divider.size = new Size(320, 1);
-  widget.addSpacer(6);
-  renderCourseList(widget, dayTitle(bottomDay, bottomTitle), firstCourses(bottomDay, 5), "没有课程");
-  footer(widget, data);
-}
-
-async function render() {
-  const data = await loadSchedule();
-  const widget = new ListWidget();
-  widget.backgroundColor = color("#f8fbff", "#111827");
-  widget.setPadding(12, 12, 12, 12);
-  widget.refreshAfterDate = new Date(Date.now() + 15 * 60 * 1000);
-
-  const preferTomorrow = shouldPreferTomorrow(data);
-  const leftDay = resolveDay(data, preferTomorrow ? 1 : 0);
-  const rightDay = resolveDay(data, preferTomorrow ? 2 : 1);
-
-  if (config.widgetFamily === "small") {
-    renderSmall(widget, data);
-  } else if (config.widgetFamily === "large") {
-    renderHorizontalSplit(widget, data, leftDay, rightDay, preferTomorrow ? "明日时间线" : "今日时间线", preferTomorrow ? "后天预览" : "明日预览");
-  } else {
-    renderSingleDay(widget, data, leftDay, preferTomorrow ? "明日课程" : "今日课程", 6);
-  }
-  return widget;
-}
-
-try {
-  const widget = await render();
-  if (config.runsInWidget) {
-    Script.setWidget(widget);
-  } else {
-    await widget.presentMedium();
-  }
-} catch (error) {
-  const widget = new ListWidget();
-  widget.backgroundColor = color("#fff7ed", "#1f2937");
-  widget.setPadding(12, 12, 12, 12);
-  addLine(widget, "课表读取失败", Font.boldSystemFont(14), color("#9a3412", "#fed7aa"));
-  widget.addSpacer(6);
-  addLine(widget, String(error.message || error), Font.systemFont(11), color("#7c2d12", "#fdba74"));
-  if (config.runsInWidget) Script.setWidget(widget);
-  else await widget.presentMedium();
-}
-
-Script.complete();
-`;
-}
-
 onMounted(async () => {
   disposed = false;
   document.documentElement.classList.add("schedule-scroll-lock");
@@ -1809,15 +1532,6 @@ const activeWeekNumber = computed(() => {
 });
 const currentThemePreview = computed(() => (
   scheduleThemeOptions.find((item) => item.key === scheduleTheme.value)?.preview ?? scheduleThemeOptions[0]?.preview ?? "#22c55e"
-));
-const hasScheduleBackground = computed(() => Boolean(scheduleBackground.imageDataUrl));
-const backgroundVisibility = computed(() => Math.round((1 - scheduleBackground.overlayOpacity) * 100));
-const backgroundPreviewStyle = computed(() => (
-  hasScheduleBackground.value
-    ? {
-        backgroundImage: `linear-gradient(180deg, rgba(248, 251, 255, ${scheduleBackground.overlayOpacity}) 0%, rgba(248, 251, 255, ${Math.min(0.92, scheduleBackground.overlayOpacity + 0.1)}) 100%), url("${scheduleBackground.imageDataUrl}")`,
-      }
-    : {}
 ));
 const isViewingToday = computed(() => {
   const cur = calendar.value?.currentWeek;
@@ -2530,28 +2244,6 @@ async function submitCaptcha() {
   }
 }
 
-function chinaTodayParts() {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
-  return {
-    year: Number(value("year")),
-    month: Number(value("month")),
-    day: Number(value("day")),
-    ymd: `${value("year")}-${value("month")}-${value("day")}`,
-  };
-}
-
-function dayOfWeek() {
-  const today = chinaTodayParts();
-  const d = new Date(Date.UTC(today.year, today.month - 1, today.day)).getUTCDay();
-  return d === 0 ? 7 : d;
-}
-
 function updateViewportHeight() {
   const visualHeight = window.visualViewport?.height ?? window.innerHeight;
   const height = Math.min(visualHeight, window.innerHeight);
@@ -2561,191 +2253,6 @@ function updateViewportHeight() {
 
 function syncNetworkStatus() {
   offlineMode.value = navigator.onLine === false;
-}
-
-function todayKey() {
-  return chinaTodayParts().ymd;
-}
-
-function shortDate(value: string) {
-  const m = value.match(/-(\d{2})-(\d{2})$/);
-  return m ? `${m[1]}/${m[2]}` : "";
-}
-
-function formatYmd(year: number, month: number, day: number) {
-  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-}
-
-function addDaysToCalendarYmd(ymd: string, days: number): string {
-  const match = String(ymd || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return "";
-  const d = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + days));
-  return formatYmd(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
-}
-
-/** 给 "YYYY-MM-DD" 加一天 */
-function plusOneDay(ymd: string): string {
-  return addDaysToCalendarYmd(ymd, 1);
-}
-
-function dayOfWeekForCalendarYmd(ymd: string) {
-  const match = String(ymd || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return 0;
-  const d = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
-  const day = d.getUTCDay();
-  return day === 0 ? 7 : day;
-}
-
-function normalizeCalendarWeekDays(days: string[]) {
-  const raw = (days ?? []).map((item) => String(item || "").trim());
-  if (raw.length >= 7 && dayOfWeekForCalendarYmd(raw[0]) === 7 && dayOfWeekForCalendarYmd(raw[1]) === 1) {
-    return [...raw.slice(1, 7), plusOneDay(raw[6])];
-  }
-
-  const normalized = Array.from({ length: 7 }, () => "");
-  for (const date of raw) {
-    const day = dayOfWeekForCalendarYmd(date);
-    if (day >= 1 && day <= 7) normalized[day - 1] = date;
-  }
-  return normalized.some(Boolean) ? normalized : raw;
-}
-
-function parseSemesterDescriptor(value: string): SemesterDescriptor | null {
-  const normalized = String(value || "").trim();
-  const match = normalized.match(/(\d{4})-(\d{4})/);
-  if (!match) return null;
-  const season = /第一学期|第1学期|1学期|一学期|秋学期|秋/.test(normalized)
-    ? "first"
-    : /第二学期|第2学期|2学期|二学期|春学期|春/.test(normalized)
-      ? "second"
-      : null;
-  if (!season) return null;
-  return {
-    startYear: Number(match[1]),
-    endYear: Number(match[2]),
-    season,
-  };
-}
-
-function inferSemesterDescriptorFromToday(): SemesterDescriptor {
-  const today = chinaTodayParts();
-  if (today.month >= 9) {
-    return { startYear: today.year, endYear: today.year + 1, season: "first" };
-  }
-  if (today.month === 1) {
-    return { startYear: today.year - 1, endYear: today.year, season: "first" };
-  }
-  return { startYear: today.year - 1, endYear: today.year, season: "second" };
-}
-
-function semesterAnchorMonday(descriptor: SemesterDescriptor) {
-  const anchor = descriptor.season === "first"
-    ? formatYmd(descriptor.startYear, 9, 1)
-    : formatYmd(descriptor.endYear, 3, 1);
-  const day = dayOfWeekForCalendarYmd(anchor);
-  return day ? addDaysToCalendarYmd(anchor, 1 - day) : anchor;
-}
-
-function scheduleWeekCount(data: ScheduleResult | null) {
-  const maxFromOptions = Math.max(
-    0,
-    ...(data?.weeks ?? []).map((item) => Number(item.value) || 0),
-  );
-  const maxFromCourses = Math.max(
-    0,
-    ...(data?.cells ?? []).flatMap((cell) => cell.courses.flatMap((course) => normalizedCourseWeekList(course))),
-  );
-  return Math.max(1, maxFromOptions, maxFromCourses, Number(data?.currentWeek || 0) || 0);
-}
-
-function extendScheduleWeeksToCalendar(data: ScheduleResult | null, source: CalendarResult | null) {
-  if (!data || !source?.weeks?.length) return data;
-  const totalWeeks = Math.max(scheduleWeekCount(data), source.weeks.length);
-  const weeks = Array.from({ length: totalWeeks }, (_, index) => {
-    const value = String(index + 1);
-    return {
-      value,
-      label: `第 ${value} 周`,
-      current: value === String(source.currentWeek || data.currentWeek || ""),
-    };
-  });
-  return {
-    ...data,
-    weeks,
-  };
-}
-
-function buildGraduateFallbackCalendar(data: ScheduleResult | null): CalendarResult | null {
-  if (!data) return null;
-  const officialCalendar = officialGraduateSemesterCalendarFor(data.currentSemester);
-  const descriptor = parseSemesterDescriptor(data.currentSemester) ?? inferSemesterDescriptorFromToday();
-  const semesterStart = officialCalendar?.start || semesterAnchorMonday(descriptor);
-  const totalWeeks = Math.max(scheduleWeekCount(data), officialCalendar?.weeks || 0);
-  const weeks = Array.from({ length: totalWeeks }, (_, index) => {
-    const monday = addDaysToCalendarYmd(semesterStart, index * 7);
-    const days = Array.from({ length: 7 }, (_, offset) => addDaysToCalendarYmd(monday, offset));
-    return {
-      week: index + 1,
-      days,
-      monday,
-      sunday: days[6] || monday,
-    };
-  });
-  const today = todayKey();
-  const currentWeekByDate = weeks.find((item) => item.days.includes(today))?.week ?? 0;
-  return {
-    currentWeek: currentWeekByDate || 0,
-    semesterStart,
-    semesterEnd: officialCalendar?.end || weeks[weeks.length - 1]?.sunday || semesterStart,
-    weeks,
-  };
-}
-
-function resolveCalendarCurrentWeek(source: CalendarResult | null | undefined) {
-  if (!source?.weeks?.length) return source?.currentWeek ?? 0;
-  const today = todayKey();
-  const matched = source.weeks.find((item) => normalizeCalendarWeekDays(item.days).includes(today));
-  return matched?.week ?? source.currentWeek ?? 0;
-}
-
-function hydrateCalendar(source: CalendarResult | null | undefined): CalendarResult | null {
-  if (!source) return null;
-  return {
-    ...source,
-    currentWeek: resolveCalendarCurrentWeek(source),
-  };
-}
-
-function formatCacheTime(ts: number) {
-  const d = new Date(ts);
-  const h = String(d.getHours()).padStart(2, "0");
-  const m = String(d.getMinutes()).padStart(2, "0");
-  return `${h}:${m}`;
-}
-
-function weekInfoFor(value: string | number) {
-  return calendar.value?.weeks.find((w) => w.week === Number(value)) ?? null;
-}
-
-function weekRangeFor(value: string | number) {
-  const w = weekInfoFor(value);
-  if (!w || w.days.length < 7) return "";
-  const dates = normalizeCalendarWeekDays(w.days);
-  const monday = dates[0];
-  const sunday = dates[6];
-  return `${shortDate(monday)} - ${shortDate(sunday)}`;
-}
-
-function dayTabsForWeek(value: string | number) {
-  const labels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
-  const dates = normalizeCalendarWeekDays(weekInfoFor(value)?.days ?? []);
-  const today = todayKey();
-  return labels.map((label, i) => ({
-    day: i + 1,
-    label,
-    date: shortDate(dates[i] ?? ""),
-    isToday: dates[i] === today,
-  }));
 }
 
 function scheduleForWeek(weekValue: string | number) {
@@ -2760,105 +2267,12 @@ function cachedScheduleEnvelopeForWeek(weekValue: string | number) {
   return scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
 }
 
-function cellsForWeek(wk: number, source: ScheduleResult | null = parsed.value) {
-  return applyScheduleEditsToCells((source?.cells ?? []), scheduleEdits.value)
-    .map((cell) => ({
-      ...cell,
-      courses: wk ? cell.courses.filter((course) => courseMatchesWeek(course, wk)) : cell.courses,
-    }))
-    .filter((cell) => cell.courses.length);
-}
-
-function dayCoursesFor(wk: number, day: number, source: ScheduleResult | null = parsed.value) {
-  const list: FlatCourse[] = [];
-  for (const cell of cellsForWeek(wk, source)) {
-    if (cell.day !== day) continue;
-    cell.courses.forEach((course, index) => list.push({ bigSlot: cell.bigSlot, index, course }));
-  }
-  return list.sort((a, b) => a.bigSlot - b.bigSlot);
-}
-
-function weekCourseBlocksFor(wk: number, source: ScheduleResult | null = parsed.value) {
-  const byCourse = new Map<string, WeekCourseBlock[]>();
-  for (const cell of cellsForWeek(wk, source)) {
-    cell.courses.forEach((course, index) => {
-      const range = normalizeSlotRangeForTablePosition(cell.bigSlot, course);
-      const key = [
-        cell.day,
-        normalizeKeyPart(course.name),
-        normalizeKeyPart(course.teacher),
-        normalizeKeyPart(course.location),
-        normalizeKeyPart(course.weeks),
-      ].join("|");
-      const list = byCourse.get(key) ?? [];
-      list.push({ day: cell.day, bigSlot: cell.bigSlot, startSlot: range.start, endSlot: range.end, index, course });
-      byCourse.set(key, list);
-    });
-  }
-  const blocks: WeekCourseBlock[] = [];
-  for (const list of byCourse.values()) {
-    for (const block of mergeContinuousCourseBlocks(list)) blocks.push(block);
-  }
-  return blocks.sort((a, b) => a.startSlot - b.startSlot || a.day - b.day || a.index - b.index);
-}
-
-function dayCourseBlocksFor(wk: number, day: number, source: ScheduleResult | null = parsed.value) {
-  return weekCourseBlocksFor(wk, source).filter((block) => block.day === day);
-}
-
 function syncGraduateActiveDayForWeek(targetWeek = week.value) {
   if (scheduleStorageScope() !== "graduate" || !parsed.value) return;
   const weekNo = Number(targetWeek || 0);
   if (!weekNo) return;
   if (dayCourseBlocksFor(weekNo, activeDay.value, parsed.value).length) return;
   activeDay.value = resolveGraduateActiveDay(parsed.value, String(targetWeek || ""), calendar.value);
-}
-
-function weekPageModel(delta: number): SchedulePageModel {
-  const weekValue = delta === 0 ? currentWeekValue() : nextWeekValueFrom(currentWeekValue(), delta) || currentWeekValue();
-  const weekNo = Number(weekValue || 0);
-  const source = scheduleForWeek(weekValue);
-  const blocks = weekCourseBlocksFor(weekNo, source);
-  return {
-    delta,
-    key: `week-${delta}`,
-    weekValue,
-    day: activeDay.value,
-    title: "整周",
-    dayTabs: dayTabsForWeek(weekValue),
-    courseCount: blocks.length,
-    dayCourseBlocks: dayCourseBlocksFor(weekNo, activeDay.value, source),
-    weekCourseBlocks: blocks,
-  };
-}
-
-function dayPageModel(delta: number): SchedulePageModel {
-  const target = dayTarget(delta);
-  const weekNo = Number(target.weekValue || 0);
-  const source = scheduleForWeek(target.weekValue);
-  const blocks = dayCourseBlocksFor(weekNo, target.day, source);
-  const tabs = dayTabsForWeek(target.weekValue);
-  return {
-    delta,
-    key: `day-${delta}`,
-    weekValue: target.weekValue,
-    day: target.day,
-    title: tabs.find((d) => d.day === target.day)?.label ?? "今日",
-    dayTabs: tabs,
-    courseCount: blocks.length,
-    dayCourseBlocks: blocks,
-    weekCourseBlocks: weekCourseBlocksFor(weekNo, source),
-  };
-}
-
-function dayTarget(delta: number) {
-  if (delta === 0) return { weekValue: currentWeekValue(), day: activeDay.value };
-  if (delta < 0) {
-    if (activeDay.value > 1) return { weekValue: currentWeekValue(), day: activeDay.value - 1 };
-    return { weekValue: nextWeekValueFrom(currentWeekValue(), -1) || currentWeekValue(), day: 7 };
-  }
-  if (activeDay.value < 7) return { weekValue: currentWeekValue(), day: activeDay.value + 1 };
-  return { weekValue: nextWeekValueFrom(currentWeekValue(), 1) || currentWeekValue(), day: 1 };
 }
 
 function currentWeekValue() {
@@ -2869,61 +2283,10 @@ function nextWeekValue(delta: number) {
   return nextWeekValueFrom(currentWeekValue(), delta);
 }
 
-function nextWeekValueFrom(current: string, delta: number) {
-  const values = weeks.value.map((w) => String(w.value)).filter(Boolean);
-  const index = values.indexOf(current);
-  if (index >= 0) return values[index + delta] || "";
-  const next = Number(current) + delta;
-  if (!Number.isFinite(next) || next < 1) return "";
-  if (calendar.value?.weeks.length && next > calendar.value.weeks.length) return "";
-  return String(next);
-}
-
-function courseTitle(course: ScheduleCourse) {
-  return [
-    course.name,
-    course.teacher ? `教师：${course.teacher}` : "",
-    course.location ? `地点：${course.location}` : "",
-    course.weeks,
-    course.slotNote,
-  ].filter(Boolean).join("\n");
-}
-
-function courseFamilyKey(day: number, bigSlot: number, course: ScheduleCourse) {
-  const range = normalizeSlotRange(bigSlot, course);
-  return [
-    "jwxt-family",
-    day,
-    range.start,
-    range.end,
-    normalizeKeyPart(course.name),
-    normalizeKeyPart(course.teacher),
-    normalizeKeyPart(course.location),
-  ].join("|");
-}
-
-function courseFamilySourceKeys(day: number, bigSlot: number, course: ScheduleCourse) {
-  const targetFamilyKey = courseFamilyKey(day, bigSlot, course);
-  const keys = new Set<string>();
-  for (const source of allKnownScheduleSources()) {
-    for (const cell of source.cells ?? []) {
-      for (const sourceCourse of cell.courses ?? []) {
-        if (courseFamilyKey(cell.day, cell.bigSlot, sourceCourse) !== targetFamilyKey) continue;
-        keys.add(courseEditKey(cell.day, cell.bigSlot, sourceCourse));
-      }
-    }
-  }
-  return keys;
-}
-
 function toneFor(name: string): CourseTone {
   if (scheduleTheme.value === "color-glass") return getColorGlassCourseTone(name);
   const theme = getScheduleThemePalette(scheduleTheme.value);
   return { bg: theme.courseBg, border: theme.courseBorder, text: theme.courseText };
-}
-
-function dayLabel(day: number) {
-  return ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][day - 1] ?? `周${day}`;
 }
 
 function hasScheduleEditAuth() {
@@ -3227,10 +2590,6 @@ function noteFromCourse(course: ScheduleCourse) {
   return /^第\s*\d+\s*-\s*\d+\s*节$/.test(note) ? "" : note;
 }
 
-function clampSlot(value: number) {
-  return Math.max(1, Math.min(MAX_SMALL_SLOT, Number(value) || 1));
-}
-
 function loadScheduleEdits() {
   if (disposed) return Promise.resolve();
   if (!canUseScheduleEdit()) {
@@ -3324,50 +2683,6 @@ function allKnownScheduleSources() {
   return sources;
 }
 
-function createDefaultScheduleBackground(): ScheduleBackgroundSettings {
-  return {
-    imageDataUrl: "",
-    overlayOpacity: 0.34,
-    blur: 0,
-  };
-}
-
-function normalizeScheduleBackground(input: unknown): ScheduleBackgroundSettings {
-  const data = (input && typeof input === "object") ? input as Partial<ScheduleBackgroundSettings> : {};
-  return {
-    imageDataUrl: typeof data.imageDataUrl === "string" ? data.imageDataUrl : "",
-    overlayOpacity: clampNumber(data.overlayOpacity, 0.34, 0.12, 0.78),
-    blur: Math.round(clampNumber(data.blur, 0, 0, 18)),
-  };
-}
-
-function applyScheduleBackground(next: ScheduleBackgroundSettings) {
-  scheduleBackground.imageDataUrl = next.imageDataUrl;
-  scheduleBackground.overlayOpacity = next.overlayOpacity;
-  scheduleBackground.blur = next.blur;
-}
-
-function snapshotScheduleBackgroundSettings() {
-  return {
-    overlayOpacity: scheduleBackground.overlayOpacity,
-    blur: scheduleBackground.blur,
-  };
-}
-
-function setScheduleBackgroundPreview(url: string) {
-  clearScheduleBackgroundPreview();
-  scheduleBackgroundPreviewUrl = url.startsWith("blob:") ? url : "";
-  scheduleBackground.imageDataUrl = url;
-}
-
-function clearScheduleBackgroundPreview() {
-  if (scheduleBackgroundPreviewUrl) {
-    URL.revokeObjectURL(scheduleBackgroundPreviewUrl);
-    scheduleBackgroundPreviewUrl = "";
-  }
-  scheduleBackground.imageDataUrl = "";
-}
-
 function restoreScheduleTheme() {
   try {
     const saved = localStorage.getItem(THEME_KEY);
@@ -3384,188 +2699,6 @@ function persistScheduleTheme(value = scheduleTheme.value) {
   } catch {
     /* ignore */
   }
-}
-
-async function restoreScheduleBackground() {
-  let legacyImageDataUrl = "";
-  try {
-    const raw = localStorage.getItem(BACKGROUND_KEY);
-    if (raw) {
-      const normalized = normalizeScheduleBackground(JSON.parse(raw));
-      legacyImageDataUrl = normalized.imageDataUrl;
-      applyScheduleBackground({
-        imageDataUrl: "",
-        overlayOpacity: normalized.overlayOpacity,
-        blur: normalized.blur,
-      });
-    } else {
-      applyScheduleBackground(createDefaultScheduleBackground());
-    }
-  } catch {
-    applyScheduleBackground(createDefaultScheduleBackground());
-  }
-  try {
-    const storedBlob = await readScheduleBackgroundBlob();
-    if (storedBlob) {
-      setScheduleBackgroundPreview(URL.createObjectURL(storedBlob));
-      return;
-    }
-  } catch {
-    /* ignore */
-  }
-  if (!legacyImageDataUrl) return;
-  setScheduleBackgroundPreview(legacyImageDataUrl);
-  try {
-    const migratedBlob = await dataUrlToBlob(legacyImageDataUrl);
-    await saveScheduleBackgroundBlob(migratedBlob);
-    setScheduleBackgroundPreview(URL.createObjectURL(migratedBlob));
-    persistScheduleBackground();
-  } catch {
-    /* keep legacy preview */
-  }
-}
-
-function persistScheduleBackground() {
-  if (!scheduleBackground.imageDataUrl) {
-    localStorage.removeItem(BACKGROUND_KEY);
-    return;
-  }
-  const payload = JSON.stringify(snapshotScheduleBackgroundSettings());
-  localStorage.setItem(BACKGROUND_KEY, payload);
-}
-
-function persistScheduleBackgroundSafe(message = "背景设置保存失败，请稍后重试") {
-  try {
-    persistScheduleBackground();
-    return true;
-  } catch {
-    ElMessage.warning(message);
-    return false;
-  }
-}
-
-function pickScheduleBackground() {
-  backgroundImageInputRef.value?.click();
-}
-
-async function onScheduleBackgroundPicked(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  input.value = "";
-  if (!file) return;
-  if (!file.type.startsWith("image/")) {
-    ElMessage.warning("请选择图片文件");
-    return;
-  }
-  backgroundSaving.value = true;
-  try {
-    await saveScheduleBackgroundBlob(file);
-    setScheduleBackgroundPreview(URL.createObjectURL(file));
-    persistScheduleBackgroundSafe();
-    ElMessage.success(file.size > 6 * 1024 * 1024 ? "已设置课表背景，大图首次显示可能会稍慢" : "已设置课表背景");
-  } catch (error: any) {
-    ElMessage.warning(String(error?.message || "背景保存失败，可能是浏览器本地空间不足"));
-  } finally {
-    backgroundSaving.value = false;
-  }
-}
-
-async function clearScheduleBackground() {
-  if (!hasScheduleBackground.value || backgroundSaving.value) return;
-  backgroundSaving.value = true;
-  try {
-    await clearScheduleBackgroundBlob();
-    applyScheduleBackground(createDefaultScheduleBackground());
-    clearScheduleBackgroundPreview();
-    persistScheduleBackgroundSafe("清除背景失败，请稍后重试");
-    ElMessage.success("已清除课表背景");
-  } catch {
-    ElMessage.warning("清除背景失败，请稍后重试");
-  } finally {
-    backgroundSaving.value = false;
-  }
-}
-
-function onBackgroundVisibilityInput(event: Event) {
-  const target = event.target as HTMLInputElement;
-  const next = Math.max(22, Math.min(88, Number(target.value) || 0));
-  scheduleBackground.overlayOpacity = clampNumber(1 - next / 100, 0.34, 0.12, 0.78);
-  persistScheduleBackgroundSafe("背景设置保存失败");
-}
-
-function onBackgroundBlurInput(event: Event) {
-  const target = event.target as HTMLInputElement;
-  scheduleBackground.blur = Math.round(clampNumber(target.value, scheduleBackground.blur, 0, 18));
-  persistScheduleBackgroundSafe("背景设置保存失败");
-}
-
-async function dataUrlToBlob(dataUrl: string) {
-  const response = await fetch(dataUrl);
-  return response.blob();
-}
-
-function clampNumber(value: unknown, fallback: number, min: number, max: number) {
-  const next = Number(value);
-  if (!Number.isFinite(next)) return fallback;
-  return Math.max(min, Math.min(max, next));
-}
-
-function normalizeSlotRange(bigSlot: number, course: ScheduleCourse) {
-  const fallbackStart = Math.max(1, Math.min(MAX_SMALL_SLOT, bigSlot * 2 - 1));
-  const fallbackEnd = Math.max(fallbackStart, Math.min(MAX_SMALL_SLOT, bigSlot * 2));
-  const start = Number.isFinite(course.startSlot) ? Number(course.startSlot) : fallbackStart;
-  const end = Number.isFinite(course.endSlot) ? Number(course.endSlot) : fallbackEnd;
-  const safeStart = Math.max(1, Math.min(MAX_SMALL_SLOT, start));
-  const safeEnd = Math.max(safeStart, Math.min(MAX_SMALL_SLOT, end));
-  return { start: safeStart, end: safeEnd };
-}
-
-function normalizeSlotRangeForTablePosition(bigSlot: number, course: ScheduleCourse) {
-  const range = normalizeSlotRange(bigSlot, course);
-  const fallbackStart = Math.max(1, Math.min(MAX_SMALL_SLOT, bigSlot * 2 - 1));
-  const fallbackEnd = Math.max(fallbackStart, Math.min(MAX_SMALL_SLOT, bigSlot * 2));
-  const overlapsCurrentBigSlot = range.end >= fallbackStart && range.start <= fallbackEnd;
-  return overlapsCurrentBigSlot ? range : { start: fallbackStart, end: fallbackEnd };
-}
-
-function mergeContinuousCourseBlocks(list: WeekCourseBlock[]) {
-  const sorted = [...list].sort((a, b) => a.day - b.day || a.startSlot - b.startSlot || a.endSlot - b.endSlot);
-  const merged: WeekCourseBlock[] = [];
-  for (const block of sorted) {
-    const prev = merged[merged.length - 1];
-    if (prev && block.startSlot <= prev.endSlot + 1) {
-      prev.startSlot = Math.min(prev.startSlot, block.startSlot);
-      prev.endSlot = Math.max(prev.endSlot, block.endSlot);
-      prev.bigSlot = Math.max(1, Math.ceil(prev.startSlot / 2));
-      prev.course = {
-        ...prev.course,
-        startSlot: prev.startSlot,
-        endSlot: prev.endSlot,
-        slotNote: formatSlotNote(prev.startSlot, prev.endSlot),
-      };
-    } else {
-      merged.push({
-        ...block,
-        bigSlot: Math.max(1, Math.ceil(block.startSlot / 2)),
-        course: {
-          ...block.course,
-          startSlot: block.startSlot,
-          endSlot: block.endSlot,
-          slotNote: formatSlotNote(block.startSlot, block.endSlot),
-        },
-      });
-    }
-  }
-  return merged;
-}
-
-function formatSlotNote(start: number, end: number) {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return start === end ? `${pad(start)}节` : `${pad(start)}-${pad(end)}节`;
-}
-
-function normalizeKeyPart(value?: string) {
-  return String(value ?? "").trim().replace(/\s+/g, " ");
 }
 
 function courseBlockStyle(block: WeekCourseBlock) {

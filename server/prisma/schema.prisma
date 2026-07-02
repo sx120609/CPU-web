@@ -630,7 +630,7 @@ model Questionnaire {
   allowAnonymous     Boolean  @default(true)
   oneResponsePerUser Boolean  @default(false)
   isSystem           Boolean  @default(false)
-  qqBotNotifyEnabled Boolean  @default(false)
+  qqBotNotifyEnabled Boolean  @default(true)
   qqBotNotifyConfig  String   @default("{}")
   fields             String   @default("[]")
   createdById        Int?
@@ -672,7 +672,7 @@ model GradeCheckTable {
   columns         String   @default("[]")
   rowCount        Int      @default(0)
   feedbackQuestionnaireSlug String?
-  qqBotNotifyEnabled Boolean @default(false)
+  qqBotNotifyEnabled Boolean @default(true)
   qqBotNotifyConfig String @default("{}")
   createdById     Int?
   publishedAt     DateTime?
@@ -717,7 +717,7 @@ model FileCollectTask {
   deadline        DateTime?
   submissionCount Int      @default(0)
   fileCount       Int      @default(0)
-  qqBotNotifyEnabled Boolean @default(false)
+  qqBotNotifyEnabled Boolean @default(true)
   qqBotNotifyConfig String @default("{}")
   createdById     Int?
   publishedAt     DateTime?
@@ -911,7 +911,7 @@ model QqBotConfig {
   allowPrivatePost  Boolean  @default(true)
   allowGroupPost    Boolean  @default(false)
   notificationEnabled Boolean @default(true)
-  notifyCategories  String   @default("[\"reply\",\"mention\",\"like\",\"system\",\"service-tool\"]")
+  notifyCategories  String   @default("[\"reply\",\"mention\",\"like\",\"system\",\"service-tool\",\"school-feed\"]")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
@@ -951,7 +951,7 @@ model QqBotGroup {
   enabled           Boolean  @default(true)
   allowPosting      Boolean  @default(false)
   defaultBoardSlug  String?
-  notificationEnabled Boolean @default(false)
+  notificationEnabled Boolean @default(true)
   notifyCategories  String   @default("[\"system\",\"school-feed\"]")
   notifyAudiences   String   @default("[\"public\"]")
   createdAt         DateTime @default(now())

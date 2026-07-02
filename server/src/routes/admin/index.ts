@@ -84,17 +84,6 @@ import {
   listMediaStorageAdminInventory,
   migrateLocalMediaAssetsToRemote,
 } from "../../services/mediaStorage";
-import {
-  buildCloudDriveAccessUrl,
-  cloudDriveProxyUploadLimitBytes,
-  completeCloudDriveUpload,
-  createCloudDriveFolder,
-  deleteCloudDriveEntry,
-  listCloudDriveDirectory,
-  prepareCloudDriveUpload,
-  renameCloudDriveEntry,
-  saveCloudDriveFile,
-} from "../../services/cloudDrive";
 import { qqBotAdminRouter } from "./qqbot";
 import {
   createWeiwallTokenAuthSession,
@@ -118,11 +107,6 @@ const databaseRestoreUpload = multer({
     },
   }),
   limits: { fileSize: databaseRestoreUploadLimitBytes() },
-});
-
-const cloudDriveUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: cloudDriveProxyUploadLimitBytes() },
 });
 
 function requestOrigin(req: any) {
@@ -1802,179 +1786,6 @@ adminRouter.post("/media-storage/cleanup-local", adminOnly, async (_req, res, ne
       || e?.message === "请先至少将图片或视频中的一种媒体后端切换为世纪互联 OneDrive / SharePoint"
       || e?.message === "世纪互联 OneDrive / SharePoint 尚未完成授权或未选择文档库"
       || e?.message === "请先在后台点击登录授权"
-    ) {
-      next(Errors.badRequest(e.message));
-      return;
-    }
-    next(e);
-  }
-});
-
-const cloudDrivePathSchema = z.object({
-  path: z.string().trim().max(800).optional().default(""),
-});
-
-const cloudDriveFolderSchema = z.object({
-  path: z.string().trim().max(800).optional().default(""),
-  name: z.string().trim().min(1).max(255),
-});
-
-const cloudDriveRenameSchema = z.object({
-  path: z.string().trim().min(1).max(800),
-  name: z.string().trim().min(1).max(255),
-});
-
-const cloudDriveDeleteSchema = z.object({
-  path: z.string().trim().min(1).max(800),
-});
-
-const cloudDriveAccessSchema = z.object({
-  path: z.string().trim().min(1).max(800),
-  download: z.boolean().optional(),
-});
-
-const cloudDriveUploadInitSchema = z.object({
-  path: z.string().trim().max(800).optional().default(""),
-  fileName: z.string().trim().min(1).max(255),
-  mimeType: z.string().trim().max(200).optional().default(""),
-  fileSize: z.number().int().positive().max(20 * 1024 * 1024 * 1024),
-});
-
-const cloudDriveUploadCompleteSchema = z.object({
-  uploadToken: z.string().trim().min(1).max(2000),
-});
-
-adminRouter.get("/cloud-drive", adminOnly, validate(cloudDrivePathSchema, "query"), async (req, res, next) => {
-  try {
-    ok(res, await listCloudDriveDirectory(String(req.query.path || "")));
-  } catch (e: any) {
-    if (e?.message === "文件夹不存在" || e?.message === "当前路径不是文件夹") {
-      next(Errors.badRequest(e.message));
-      return;
-    }
-    next(e);
-  }
-});
-
-adminRouter.post("/cloud-drive/folders", adminOnly, validate(cloudDriveFolderSchema), async (req, res, next) => {
-  try {
-    ok(res, await createCloudDriveFolder(req.body.path || "", req.body.name));
-  } catch (e: any) {
-    if (e?.message === "同名文件或文件夹已存在" || e?.message === "名称不能为空" || e?.message === "名称不合法") {
-      next(Errors.badRequest(e.message));
-      return;
-    }
-    next(e);
-  }
-});
-
-adminRouter.patch("/cloud-drive/rename", adminOnly, validate(cloudDriveRenameSchema), async (req, res, next) => {
-  try {
-    ok(res, await renameCloudDriveEntry(req.body.path, req.body.name));
-  } catch (e: any) {
-    if (
-      e?.message === "文件或文件夹不存在"
-      || e?.message === "同名文件或文件夹已存在"
-      || e?.message === "名称不能为空"
-      || e?.message === "名称不合法"
-    ) {
-      next(Errors.badRequest(e.message));
-      return;
-    }
-    next(e);
-  }
-});
-
-adminRouter.delete("/cloud-drive", adminOnly, validate(cloudDriveDeleteSchema, "query"), async (req, res, next) => {
-  try {
-    ok(res, await deleteCloudDriveEntry(String(req.query.path || "")));
-  } catch (e: any) {
-    if (e?.message === "文件或文件夹不存在") {
-      next(Errors.badRequest(e.message));
-      return;
-    }
-    next(e);
-  }
-});
-
-adminRouter.post("/cloud-drive/access", adminOnly, validate(cloudDriveAccessSchema), async (req, res, next) => {
-  try {
-    ok(res, await buildCloudDriveAccessUrl({
-      relativePath: req.body.path,
-      adminUserId: req.user!.userId,
-      download: Boolean(req.body.download),
-    }));
-  } catch (e: any) {
-    if (e?.message === "路径不能为空" || e?.message === "路径不合法") {
-      next(Errors.badRequest(e.message));
-      return;
-    }
-    next(e);
-  }
-});
-
-adminRouter.post("/cloud-drive/upload/init", adminOnly, validate(cloudDriveUploadInitSchema), async (req, res, next) => {
-  try {
-    ok(res, await prepareCloudDriveUpload({
-      parentPath: req.body.path || "",
-      fileName: req.body.fileName,
-      mimeType: req.body.mimeType,
-      fileSize: req.body.fileSize,
-      adminUserId: req.user!.userId,
-    }));
-  } catch (e: any) {
-    if (
-      e?.message === "同名文件或文件夹已存在"
-      || e?.message === "名称不能为空"
-      || e?.message === "名称不合法"
-    ) {
-      next(Errors.badRequest(e.message));
-      return;
-    }
-    next(e);
-  }
-});
-
-adminRouter.post("/cloud-drive/upload/complete", adminOnly, validate(cloudDriveUploadCompleteSchema), async (req, res, next) => {
-  try {
-    ok(res, await completeCloudDriveUpload(req.body.uploadToken, req.user!.userId));
-  } catch (e: any) {
-    if (
-      e?.message === "上传会话与当前账号不匹配"
-      || e?.message === "文件还没上传完成，请稍后再试"
-      || e?.message === "上传令牌无效"
-    ) {
-      next(Errors.badRequest(e.message));
-      return;
-    }
-    next(e);
-  }
-});
-
-adminRouter.post("/cloud-drive/upload", adminOnly, (req, res, next) => {
-  cloudDriveUpload.single("file")(req, res, (error: any) => {
-    if (!error) return next();
-    if (error?.code === "LIMIT_FILE_SIZE") {
-      return next(Errors.badRequest("当前本地兜底上传仅支持 200MB 以内单文件"));
-    }
-    return next(error);
-  });
-}, async (req, res, next) => {
-  try {
-    const file = req.file;
-    if (!file?.buffer?.length) throw Errors.badRequest("请先选择要上传的文件");
-    ok(res, await saveCloudDriveFile({
-      parentPath: String(req.body.path || ""),
-      fileName: file.originalname,
-      buffer: file.buffer,
-      contentType: file.mimetype,
-    }));
-  } catch (e: any) {
-    if (
-      e?.message === "当前后端请使用直传会话上传"
-      || e?.message === "同名文件或文件夹已存在"
-      || e?.message === "名称不能为空"
-      || e?.message === "名称不合法"
     ) {
       next(Errors.badRequest(e.message));
       return;

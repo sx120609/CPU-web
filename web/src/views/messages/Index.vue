@@ -32,6 +32,85 @@
       </el-tab-pane>
       <el-tab-pane label="设置" name="settings">
         <div v-if="settings" class="settings">
+          <h4>通知渠道</h4>
+          <div class="qq-channel-card" v-loading="qqBotLoading">
+            <div class="qq-channel-head">
+              <div>
+                <b>QQ 私聊</b>
+                <span>绑定后，开启的通知可通过 QQ 私聊送达。</span>
+              </div>
+              <el-tag :type="qqChannelTagType" effect="plain">{{ qqChannelStateText }}</el-tag>
+            </div>
+            <el-alert
+              v-if="qqBotProfileError"
+              type="warning"
+              :closable="false"
+              show-icon
+              class="qq-channel-alert"
+              :title="qqBotProfileError"
+            >
+              <template #default>
+                <el-button size="small" :loading="qqBotLoading" @click="refreshQqBotProfile">重试</el-button>
+              </template>
+            </el-alert>
+            <template v-else>
+              <div class="qq-channel-grid">
+                <div>
+                  <span>机器人账号</span>
+                  <b>{{ qqBotProfile?.botQqId || "未配置" }}</b>
+                </div>
+                <div>
+                  <span>绑定 QQ</span>
+                  <b>{{ qqBotProfile?.binding?.qqId || "未绑定" }}</b>
+                </div>
+                <div>
+                  <span>QQ 投稿</span>
+                  <b>{{ qqPostingText }}</b>
+                </div>
+              </div>
+              <div v-if="qqBotProfile?.activeBindToken" class="qq-token-box">
+                <strong>{{ qqBotProfile.activeBindToken.token }}</strong>
+                <span>请在 QQ 私聊机器人发送：{{ qqBotBindCommandText }}</span>
+                <span>有效期至 {{ formatNoticeTime(qqBotProfile.activeBindToken.expiresAt) }}</span>
+              </div>
+              <p v-else class="qq-channel-hint">
+                {{ qqBotProfile?.binding ? "当前账号已绑定 QQ，如需更换请先解绑。" : "生成绑定码后，在 QQ 私聊机器人发送绑定命令即可完成绑定。" }}
+              </p>
+              <div class="qq-channel-actions">
+                <el-button
+                  v-if="!qqBotProfile?.binding"
+                  type="primary"
+                  plain
+                  :loading="qqBotLoading"
+                  :disabled="qqBotLoading || !qqBotProfile?.enabled"
+                  @click="refreshQqBotToken"
+                >
+                  {{ qqBotProfile?.activeBindToken ? "重新生成绑定码" : "生成绑定码" }}
+                </el-button>
+                <el-button
+                  v-if="qqBotProfile?.activeBindToken"
+                  plain
+                  :loading="qqBotLoading"
+                  :disabled="qqBotLoading"
+                  @click="copyQqBotCommand"
+                >
+                  复制绑定指令
+                </el-button>
+                <el-button
+                  v-if="qqBotProfile?.binding"
+                  type="danger"
+                  plain
+                  :loading="qqBotLoading"
+                  :disabled="qqBotLoading"
+                  @click="unbindQqBot"
+                >
+                  解绑 QQ
+                </el-button>
+                <el-button plain :loading="qqBotLoading" :disabled="qqBotLoading" @click="refreshQqBotProfile">刷新状态</el-button>
+              </div>
+            </template>
+          </div>
+          <el-divider />
           <h4>静默时段</h4>
           <p class="hint">在此时段内，平台仅向您推送强提醒消息。</p>
           <div class="setting-block time-row">
@@ -60,14 +139,14 @@
             </label>
           </div>
           <el-divider />
-          <h4>QQBot 提醒</h4>
+          <h4>小工具提醒</h4>
           <button type="button" class="settings-action-row" @click="openQqBotReminderSettings">
             <span class="settings-action-icon">
               <el-icon><Bell /></el-icon>
             </span>
             <span class="settings-action-copy">
               <b>小工具提醒规则</b>
-              <span>选择哪些问卷、文件收集和成绩表通过 QQBot 私聊提醒。</span>
+              <span>选择哪些问卷、文件收集和成绩表通过 QQ 私聊提醒。</span>
             </span>
             <el-icon class="settings-action-arrow"><ArrowRight /></el-icon>
           </button>
@@ -143,10 +222,12 @@ import { ArrowRight, Bell } from "@element-plus/icons-vue";
 import MessageList from "@/components/messages/MessageList.vue";
 import { messageApi } from "@/api/message";
 import { topicApi } from "@/api/topic";
+import { authApi, type QqBotProfile } from "@/api/auth";
 import { useMessageStore } from "@/stores/message";
 import { useAuthStore } from "@/stores/auth";
 import { adminApi } from "@/api/admin";
 import { fmtDate } from "@/utils/format";
+import { copyText } from "@/utils/userGroup";
 
 const route = useRoute();
 const router = useRouter();
@@ -157,6 +238,9 @@ const messageTabs = new Set(["all", "reply", "like", "system", "service-tool", "
 const tab = ref(normalizeMessageTab(route.query.tab));
 const list = ref<any[]>([]);
 const settings = ref<any>(null);
+const qqBotProfile = ref<QqBotProfile | null>(null);
+const qqBotLoading = ref(false);
+const qqBotProfileError = ref("");
 const loading = ref(false);
 const pageError = ref("");
 const saving = ref(false);
@@ -168,21 +252,47 @@ const requestingManualReview = ref(false);
 const reviewTarget = ref<{ kind: "topic" | "reply"; id: number; title: string; aiReviewStatus: string; hidden: boolean; topicId?: number; reviewable: boolean } | null>(null);
 const reviewTargetLoading = ref(false);
 let loadSeq = 0;
+let qqBotProfileSeq = 0;
 let reviewTargetSeq = 0;
 let disposed = false;
 
 const unreadCount = computed(() => list.value.filter((item) => !item.readAt).length);
+const qqChannelStateText = computed(() => {
+  if (qqBotProfileError.value) return "状态未知";
+  if (!qqBotProfile.value?.enabled) return "未启用";
+  if (!qqBotProfile.value.binding) return "未绑定";
+  return qqBotProfile.value.binding.enabled ? "已绑定" : "已停用";
+});
+const qqChannelTagType = computed(() => {
+  if (qqBotProfileError.value) return "warning";
+  if (!qqBotProfile.value?.enabled || !qqBotProfile.value.binding) return "info";
+  return qqBotProfile.value.binding.enabled ? "success" : "warning";
+});
+const qqPostingText = computed(() => {
+  if (!qqBotProfile.value) return "—";
+  if (qqBotProfile.value.allowPrivatePost && qqBotProfile.value.allowGroupPost) return "私聊 / 群聊";
+  if (qqBotProfile.value.allowPrivatePost) return "仅私聊";
+  if (qqBotProfile.value.allowGroupPost) return "仅群聊";
+  return "未开启";
+});
+const qqBotBindCommandText = computed(() => {
+  if (qqBotProfile.value?.activeBindToken) return `绑定 ${qqBotProfile.value.activeBindToken.token}`;
+  return "绑定 绑定码";
+});
 
 onMounted(() => {
   disposed = false;
   void loadPage();
+  void loadQqBotProfile({ silent: true });
 });
 
 onBeforeUnmount(() => {
   disposed = true;
   loadSeq += 1;
+  qqBotProfileSeq += 1;
   reviewTargetSeq += 1;
   loading.value = false;
+  qqBotLoading.value = false;
   saving.value = false;
   markingAll.value = false;
   reviewing.value = false;
@@ -283,6 +393,73 @@ async function saveSettings() {
 
 function openQqBotReminderSettings() {
   router.push("/messages/qqbot-reminders");
+}
+
+async function loadQqBotProfile(opts?: { silent?: boolean }) {
+  if (disposed) return;
+  const seq = ++qqBotProfileSeq;
+  qqBotLoading.value = true;
+  qqBotProfileError.value = "";
+  try {
+    const profile = await authApi.qqBotProfile({ suppressErrorMessage: true });
+    if (disposed || seq !== qqBotProfileSeq) return;
+    qqBotProfile.value = profile;
+  } catch (error) {
+    if (disposed || seq !== qqBotProfileSeq) return;
+    qqBotProfile.value = null;
+    qqBotProfileError.value = normalizeMessageActionError(error, "QQ 私聊状态加载失败");
+    if (!opts?.silent) ElMessage.error(qqBotProfileError.value);
+  } finally {
+    if (!disposed && seq === qqBotProfileSeq) qqBotLoading.value = false;
+  }
+}
+
+function refreshQqBotProfile() {
+  return loadQqBotProfile();
+}
+
+async function refreshQqBotToken() {
+  if (disposed || qqBotLoading.value) return;
+  qqBotLoading.value = true;
+  try {
+    await authApi.createQqBotBindToken({ suppressErrorMessage: true });
+    await loadQqBotProfile({ silent: true });
+    if (disposed) return;
+    ElMessage.success("绑定码已生成");
+  } catch (error) {
+    if (!disposed) ElMessage.error(normalizeMessageActionError(error, "绑定码生成失败"));
+  } finally {
+    if (!disposed) qqBotLoading.value = false;
+  }
+}
+
+async function copyQqBotCommand() {
+  if (disposed || qqBotLoading.value) return;
+  if (!qqBotProfile.value?.activeBindToken) {
+    ElMessage.warning("请先生成绑定码");
+    return;
+  }
+  await copyText(`绑定 ${qqBotProfile.value.activeBindToken.token}`);
+  ElMessage.success("已复制绑定指令");
+}
+
+async function unbindQqBot() {
+  if (disposed || qqBotLoading.value) return;
+  const confirmed = await ElMessageBox.confirm("确认解绑当前 QQ 私聊绑定？解绑后将不能通过 QQ 私聊接收提醒或投稿。", "解绑 QQ", { type: "warning" })
+    .then(() => true)
+    .catch(() => false);
+  if (!confirmed) return;
+  qqBotLoading.value = true;
+  try {
+    await authApi.deleteQqBotBinding({ suppressErrorMessage: true });
+    await loadQqBotProfile({ silent: true });
+    if (disposed) return;
+    ElMessage.success("QQ 私聊绑定已解绑");
+  } catch (error) {
+    if (!disposed) ElMessage.error(normalizeMessageActionError(error, "解绑失败"));
+  } finally {
+    if (!disposed) qqBotLoading.value = false;
+  }
 }
 
 async function loadPage() {
@@ -558,6 +735,97 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
 
 .settings h4 { margin: 8px 0 6px; color: #1f2937; }
 .hint { font-size: 12px; color: #6b7280; margin: 0 0 10px; }
+.qq-channel-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+.qq-channel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.qq-channel-head > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+.qq-channel-head b {
+  color: #1f2937;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.qq-channel-head span,
+.qq-channel-hint {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.qq-channel-hint {
+  margin: 0;
+}
+.qq-channel-alert {
+  margin-top: 2px;
+}
+.qq-channel-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.qq-channel-grid > div {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.qq-channel-grid span {
+  display: block;
+  margin-bottom: 5px;
+  color: #64748b;
+  font-size: 12px;
+}
+.qq-channel-grid b {
+  display: block;
+  color: #0f172a;
+  font-size: 14px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.qq-token-box {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px dashed rgba(20, 143, 123, 0.35);
+  border-radius: 8px;
+  background: #f8fffc;
+}
+.qq-token-box strong {
+  color: var(--cpu-primary);
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: 1px;
+}
+.qq-token-box span {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.qq-channel-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.qq-channel-actions .el-button {
+  margin-left: 0 !important;
+}
 .setting-block {
   display: flex;
   gap: 10px;
@@ -746,6 +1014,15 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
     padding: 12px;
   }
 
+  .qq-channel-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .qq-channel-grid {
+    grid-template-columns: 1fr;
+  }
+
   .settings-action-row {
     align-items: flex-start;
     min-height: 0;
@@ -809,9 +1086,14 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
 
 @media (max-width: 420px) {
   .switch-item,
-  .settings-action-row {
+  .settings-action-row,
+  .qq-channel-actions {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .qq-channel-actions .el-button {
+    width: 100%;
   }
 
   .settings-action-arrow {
