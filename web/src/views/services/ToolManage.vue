@@ -1,19 +1,21 @@
 <template>
   <div class="tool-manage-page">
     <section class="manage-head">
-      <div>
+      <div class="manage-head-copy">
         <div class="kicker">校园小工具</div>
         <h2>小工具管理</h2>
         <p>管理器可维护工具设置和人员；开放管理入口后，登录用户可维护自己发起的内容。</p>
       </div>
-      <el-button plain @click="$router.push('/services/tools')">
-        <el-icon><ArrowLeft /></el-icon>
-        返回小工具
-      </el-button>
-      <el-button plain type="primary" @click="$router.push('/services/tools/qqbot-reminders')">
-        <el-icon><Bell /></el-icon>
-        QQBot 提醒
-      </el-button>
+      <div class="manage-head-actions">
+        <el-button plain @click="$router.push('/services/tools')">
+          <el-icon><ArrowLeft /></el-icon>
+          小工具列表
+        </el-button>
+        <el-button plain type="primary" @click="$router.push('/services/tools/qqbot-reminders')">
+          <el-icon><Bell /></el-icon>
+          提醒设置
+        </el-button>
+      </div>
     </section>
 
     <section class="manage-panel" v-loading="loading">
@@ -3265,6 +3267,22 @@ function round(value: number) {
   gap: 16px;
   padding: 22px 24px;
 }
+.manage-head-copy {
+  min-width: 0;
+  max-width: 720px;
+}
+.manage-head-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+.manage-head-actions .el-button {
+  min-width: 116px;
+  margin-left: 0;
+}
 .kicker {
   color: var(--cpu-primary);
   font-size: 12px;
@@ -4873,7 +4891,18 @@ function round(value: number) {
     flex-direction: column;
     padding: 16px;
   }
-  .manage-head .el-button { width: 100%; }
+  .manage-head-copy {
+    max-width: none;
+  }
+  .manage-head-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+  .manage-head-actions .el-button {
+    width: 100%;
+    min-width: 0;
+  }
   .manage-panel,
   .admin-section { padding: 14px; }
   .manage-tool-tabs {
