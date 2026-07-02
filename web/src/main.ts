@@ -4,9 +4,11 @@ import App from "./App.vue";
 import { router } from "./router";
 import { useAuthStore } from "./stores/auth";
 import { useSiteStore } from "./stores/site";
+import { applyInitialAppearance, useAppearanceStore } from "./stores/appearance";
 import { installIosNativeImageBridge } from "./utils/nativeBridge";
 
 import "element-plus/dist/index.css";
+import "element-plus/theme-chalk/dark/css-vars.css";
 import "./styles/index.scss";
 
 const SCHEDULE_OFFLINE_WARMUP_MESSAGE = "cpu-schedule-offline-warmup";
@@ -178,6 +180,7 @@ installTouchGuards();
 installFeedbackLayerGuard();
 installIosNativeImageBridge();
 installNativeAppMarker();
+applyInitialAppearance();
 
 // 注册 Service Worker —— Chrome PWA "installable" 条件之一（manifest + SW + HTTPS）
 // 不满足时 beforeinstallprompt 不会触发，"添加到主屏幕"按钮就不会出现
@@ -200,6 +203,7 @@ if ("serviceWorker" in navigator) {
 
 const app = createApp(App);
 app.use(createPinia());
+useAppearanceStore().hydrate();
 useAuthStore().hydrate();
 // 站点功能开关：尽早拉一次，不阻塞挂载（导航默认乐观显示，拿到结果后自动收敛）
 useSiteStore().fetch();

@@ -145,6 +145,7 @@ messageRouter.patch(
   validate(z.object({
     quietStart: z.string().regex(/^\d{2}:\d{2}$/).optional(),
     quietEnd: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+    qqBotNotifyEnabled: z.boolean().optional(),
     subscribeReply: z.boolean().optional(),
     subscribeLike: z.boolean().optional(),
     subscribeSchool: z.boolean().optional(),

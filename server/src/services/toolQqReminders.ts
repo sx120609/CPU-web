@@ -6,6 +6,7 @@ import {
   listContentManageableToolCodes,
   type ServiceToolCode,
 } from "./serviceTools";
+import { dispatchRecentQqNotifications } from "./qqbot";
 
 export const TOOL_QQ_NOTIFICATION_CATEGORY = "service-tool";
 export const TOOL_QQ_NOTIFICATION_SOURCE = "小工具提醒";
@@ -41,6 +42,7 @@ type ReminderNotificationInput = {
 };
 
 const GRADE_LOOKUP_DEDUPE_WINDOW_MS = 6 * 60 * 60 * 1000;
+let toolQqDispatchQueued = false;
 
 const targetToolCode: Record<ToolQqReminderTargetType, ServiceToolCode> = {
   questionnaire: "questionnaire",
@@ -332,7 +334,7 @@ async function createReminderNotification(input: ReminderNotificationInput) {
     });
     if (duplicated) return null;
   }
-  return prisma.notification.create({
+  const notification = await prisma.notification.create({
     data: {
       userId: input.ownerId,
       category: TOOL_QQ_NOTIFICATION_CATEGORY,
@@ -344,6 +346,8 @@ async function createReminderNotification(input: ReminderNotificationInput) {
       source: TOOL_QQ_NOTIFICATION_SOURCE,
     },
   });
+  queueToolQqDispatch();
+  return notification;
 }
 
 function assertReminderOwner(createdById: number | null, user: AccessUser) {
@@ -449,6 +453,17 @@ function parseTime(value: string | null) {
   if (!value) return null;
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function queueToolQqDispatch() {
+  if (toolQqDispatchQueued) return;
+  toolQqDispatchQueued = true;
+  setTimeout(() => {
+    toolQqDispatchQueued = false;
+    dispatchRecentQqNotifications().catch((error) => {
+      console.warn("[tools] qqbot reminder dispatch failed", error);
+    });
+  }, 0);
 }
 
 function normalizeQuestionnaireReminderItem(row: any) {

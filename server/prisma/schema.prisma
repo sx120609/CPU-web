@@ -890,6 +890,7 @@ model MessageSetting {
   userId          Int     @unique
   quietStart      String  @default("23:00")
   quietEnd        String  @default("07:00")
+  qqBotNotifyEnabled Boolean @default(true)
   subscribeReply  Boolean @default(true)
   subscribeLike   Boolean @default(true)
   subscribeSchool Boolean @default(true)

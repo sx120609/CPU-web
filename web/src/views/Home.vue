@@ -340,10 +340,11 @@ function normalizeHomeError(error: unknown) {
 .col-left, .col-right { display: flex; flex-direction: column; gap: 16px; }
 
 .block {
-  background: #fff;
+  background: var(--cpu-card);
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 12px;
   padding: 16px 20px 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--cpu-shadow-sm);
 }
 .home-error {
   padding: 24px 16px;
@@ -355,18 +356,18 @@ function normalizeHomeError(error: unknown) {
   align-items: baseline;
   margin-bottom: 10px;
 }
-.block-head h3 { margin: 0; font-size: 16px; color: #1f2937; font-weight: 600; }
+.block-head h3 { margin: 0; font-size: 16px; color: var(--cpu-text); font-weight: 600; }
 .more { font-size: 12px; color: var(--cpu-primary); text-decoration: none; }
 
 .announce-list { list-style: none; padding: 0; margin: 0; }
 .announce-list li {
   padding: 10px 4px;
-  border-bottom: 1px dashed #f1f5f9;
+  border-bottom: 1px dashed var(--cpu-border-soft);
   cursor: pointer;
   transition: background 0.15s;
   border-radius: 6px;
 }
-.announce-list li:hover { background: #f4f6f8; }
+.announce-list li:hover { background: var(--cpu-surface-soft); }
 .announce-list li:focus-visible {
   outline: 2px solid var(--cpu-primary);
   outline-offset: 2px;
@@ -374,7 +375,7 @@ function normalizeHomeError(error: unknown) {
 .announce-list li:last-child { border-bottom: none; }
 .ann-title {
   font-size: 14px;
-  color: #1f2937;
+  color: var(--cpu-text);
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 1;
@@ -382,7 +383,7 @@ function normalizeHomeError(error: unknown) {
 }
 .ann-meta {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--cpu-text-muted);
   margin-top: 2px;
   display: flex;
   gap: 8px;
@@ -395,7 +396,7 @@ function normalizeHomeError(error: unknown) {
   gap: 12px;
   align-items: center;
   padding: 10px 4px;
-  border-bottom: 1px dashed #f1f5f9;
+  border-bottom: 1px dashed var(--cpu-border-soft);
   cursor: pointer;
 }
 .hot-row:last-of-type { border-bottom: none; }
@@ -407,12 +408,12 @@ function normalizeHomeError(error: unknown) {
   min-width: 46px;
   font-size: 13px;
   font-weight: 800;
-  color: #94a3b8;
+  color: var(--cpu-text-muted);
 }
 .hot-rank.top3 { color: #dc2626; }
 .hot-title {
   font-size: 14px;
-  color: #111827;
+  color: var(--cpu-text);
   line-height: 1.5;
   overflow: hidden;
   display: -webkit-box;
@@ -425,7 +426,7 @@ function normalizeHomeError(error: unknown) {
   flex-wrap: wrap;
   margin-top: 2px;
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--cpu-text-muted);
 }
 .hot-tags {
   display: flex;
@@ -473,9 +474,9 @@ function normalizeHomeError(error: unknown) {
   gap: 12px;
   align-items: center;
   padding: 12px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 12px;
-  background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+  background: var(--cpu-surface-soft);
   cursor: pointer;
 }
 .wall-card:hover {
@@ -492,35 +493,36 @@ function normalizeHomeError(error: unknown) {
   display: grid;
   place-items: center;
   font-size: 22px;
-  background: #dbeafe;
+  background: var(--cpu-surface-subtle);
   flex-shrink: 0;
 }
 .wall-title {
   font-size: 14px;
   font-weight: 600;
-  color: #111827;
+  color: var(--cpu-text);
 }
 .wall-desc {
   margin-top: 4px;
   font-size: 12px;
   line-height: 1.6;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
 }
 .svc {
   padding: 10px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 10px;
+  background: var(--cpu-surface);
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
   position: relative;
 }
-.svc:hover { border-color: var(--cpu-primary); background: #f0fdf4; }
+.svc:hover { border-color: var(--cpu-primary); background: var(--cpu-surface-soft); }
 .svc:focus-visible {
   outline: 2px solid var(--cpu-primary);
   outline-offset: 2px;
 }
 .svc-icon { font-size: 22px; }
-.svc-name { font-size: 12px; color: #374151; margin-top: 4px; line-height: 1.3; }
+.svc-name { font-size: 12px; color: var(--cpu-text-secondary); margin-top: 4px; line-height: 1.3; }
 .svc-tag {
   position: absolute;
   top: 6px;
@@ -540,7 +542,7 @@ function normalizeHomeError(error: unknown) {
   background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
 }
 .svc-tag-fresh { background: #fbbf24; color: #78350f; font-weight: 500; }
-.cpu-muted { font-size: 12px; color: #9ca3af; }
+.cpu-muted { font-size: 12px; color: var(--cpu-text-muted); }
 
 @media (max-width: 768px) {
   .home {

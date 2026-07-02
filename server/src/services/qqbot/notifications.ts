@@ -9,20 +9,24 @@ type QqGroupNotificationPolicy = {
   notifyAudiences: readonly string[];
 };
 
+type UserMessageSetting = {
+  qqBotNotifyEnabled?: boolean;
+  subscribeReply?: boolean;
+  subscribeLike?: boolean;
+  subscribeSchool?: boolean;
+  subscribeSystem?: boolean;
+} | null | undefined;
+
 export function isNotificationVisibleToQq(notification: { targetClient?: string | null }) {
   return !notification.targetClient || notification.targetClient === "all";
 }
 
 export function shouldDeliverQqNotificationToUser(
-  notification: { category?: string | null; targetClient?: string | null },
-  messageSetting?: {
-    subscribeReply?: boolean;
-    subscribeLike?: boolean;
-    subscribeSchool?: boolean;
-    subscribeSystem?: boolean;
-  } | null,
+  notification: { category?: string | null; targetClient?: string | null; level?: string | null },
+  messageSetting?: UserMessageSetting,
 ) {
   if (!isNotificationVisibleToQq(notification)) return false;
+  if (messageSetting?.qqBotNotifyEnabled === false) return false;
   if (notification.category === "reply") return messageSetting?.subscribeReply !== false;
   if (notification.category === "like") return messageSetting?.subscribeLike !== false;
   if (notification.category === "school-feed") return messageSetting?.subscribeSchool !== false;

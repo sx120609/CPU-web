@@ -26,6 +26,25 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="药大拾间" />
     <meta name="application-name" content="药大拾间" />
+    <script>
+      (() => {
+        const storageKey = "cpu-appearance-mode-v1";
+        let mode = "system";
+        try {
+          const stored = localStorage.getItem(storageKey);
+          if (stored === "light" || stored === "dark" || stored === "system") mode = stored;
+        } catch {}
+        const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        const resolved = mode === "system" ? (prefersDark ? "dark" : "light") : mode;
+        const root = document.documentElement;
+        root.dataset.theme = resolved;
+        root.dataset.appearanceMode = mode;
+        root.classList.toggle("dark", resolved === "dark");
+        root.style.colorScheme = resolved;
+        const themeColor = document.querySelector("meta[name='theme-color']");
+        if (themeColor) themeColor.setAttribute("content", resolved === "dark" ? "#0f766e" : "#168776");
+      })();
+    </script>
     <style>
       html, body {
         margin: 0;
@@ -85,6 +104,19 @@
         font-size: 15px;
         line-height: 1.45;
         color: #667085;
+      }
+      html[data-theme="dark"] body {
+        background: #07110f;
+      }
+      html[data-theme="dark"] .app-launch-screen {
+        background: linear-gradient(180deg, #07110f 0%, #0b1715 48%, #101816 100%);
+        color: #e5f4f1;
+      }
+      html[data-theme="dark"] .app-launch-subtitle {
+        color: #8ea6a0;
+      }
+      html[data-theme="dark"] .app-launch-logo {
+        box-shadow: 0 14px 42px rgba(16, 185, 129, 0.18);
       }
     </style>
     <title>药大拾间 · 中国药科大学校园互助与服务平台</title>

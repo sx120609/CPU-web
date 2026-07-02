@@ -180,6 +180,8 @@ const qqBotCooldowns = new Map<string, { cancelledAt?: number }>();
 
 const CONFIG_ID = 1;
 const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "like", "system", "service-tool", "school-feed"];
+const LEGACY_PERSONAL_NOTIFY_CORE = ["reply", "mention", "like", "system"];
+const REQUIRED_PERSONAL_NOTIFY_CATEGORIES = ["service-tool", "school-feed"];
 const GROUP_NOTIFY_CATEGORY_OPTIONS = ["system", "school-feed"] as const;
 const GROUP_NOTIFY_AUDIENCE_OPTIONS = ["public", "staff"] as const;
 const DEFAULT_GROUP_NOTIFY_CATEGORIES = ["system", "school-feed"];
@@ -201,10 +203,16 @@ configureQqBotConnection({
 });
 
 export async function getQqBotConfigRaw() {
-  return prisma.qqBotConfig.upsert({
+  const config = await prisma.qqBotConfig.upsert({
     where: { id: CONFIG_ID },
     create: { id: CONFIG_ID },
     update: {},
+  });
+  const backfilledCategories = backfillLegacyPersonalNotifyCategories(config.notifyCategories);
+  if (!backfilledCategories) return config;
+  return prisma.qqBotConfig.update({
+    where: { id: config.id },
+    data: { notifyCategories: JSON.stringify(backfilledCategories) },
   });
 }
 
@@ -227,11 +235,29 @@ export function formatQqBotConfig(config: Awaited<ReturnType<typeof getQqBotConf
     allowPrivatePost: config.allowPrivatePost,
     allowGroupPost: config.allowGroupPost,
     notificationEnabled: config.notificationEnabled,
-    notifyCategories: parseStringArray(config.notifyCategories, DEFAULT_NOTIFY_CATEGORIES),
+    notifyCategories: parseQqBotNotifyCategories(config.notifyCategories),
     webhookPath: "/api/qqbot/webhook",
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
   };
+}
+
+function parseQqBotNotifyCategories(value: string | null | undefined) {
+  return normalizePersonalNotifyCategories(parseStringArray(value || "", DEFAULT_NOTIFY_CATEGORIES));
+}
+
+function normalizePersonalNotifyCategories(input?: readonly string[] | null) {
+  return normalizeAllowedStringArray(input, DEFAULT_NOTIFY_CATEGORIES, DEFAULT_NOTIFY_CATEGORIES);
+}
+
+function backfillLegacyPersonalNotifyCategories(value: string | null | undefined) {
+  const parsed = normalizeAllowedStringArray(parseStringArray(value || "", []), [], DEFAULT_NOTIFY_CATEGORIES);
+  const missing = REQUIRED_PERSONAL_NOTIFY_CATEGORIES.filter((category) => !parsed.includes(category));
+  if (!missing.length) return null;
+  const looksLikeLegacyDefault = LEGACY_PERSONAL_NOTIFY_CORE.every((category) => parsed.includes(category))
+    && parsed.every((category) => DEFAULT_NOTIFY_CATEGORIES.includes(category));
+  if (!looksLikeLegacyDefault) return null;
+  return Array.from(new Set([...parsed, ...missing]));
 }
 
 export function normalizeQqBotGroupNotifyCategories(input?: string[] | null): QqBotGroupNotifyCategory[] {
@@ -310,7 +336,7 @@ export async function updateQqBotConfig(input: {
   if (input.allowGroupPost !== undefined) data.allowGroupPost = input.allowGroupPost;
   if (input.notificationEnabled !== undefined) data.notificationEnabled = input.notificationEnabled;
   if (input.notifyCategories !== undefined) {
-    data.notifyCategories = JSON.stringify(input.notifyCategories.map((item) => item.trim()).filter(Boolean));
+    data.notifyCategories = JSON.stringify(normalizePersonalNotifyCategories(input.notifyCategories));
   }
   const updated = await prisma.qqBotConfig.upsert({
     where: { id: CONFIG_ID },
@@ -1971,7 +1997,7 @@ export function startQqNotificationPoller() {
 export async function dispatchRecentQqNotifications() {
   const config = await getQqBotConfigRaw();
   if (!config.enabled || !config.notificationEnabled || !config.napcatBaseUrl) return { sent: 0 };
-  const personalCategories = parseStringArray(config.notifyCategories, DEFAULT_NOTIFY_CATEGORIES);
+  const personalCategories = parseQqBotNotifyCategories(config.notifyCategories);
   const since = new Date(Date.now() - 10 * 60 * 1000);
   const rawGroups = await prisma.qqBotGroup.findMany({ where: { enabled: true, notificationEnabled: true } });
   const groups = rawGroups.map((group) => formatQqBotGroup(group));
@@ -2012,6 +2038,7 @@ export async function dispatchRecentQqNotifications() {
                 subscribeLike: true,
                 subscribeSchool: true,
                 subscribeSystem: true,
+                qqBotNotifyEnabled: true,
               },
             },
             role: true,

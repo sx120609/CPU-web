@@ -29,6 +29,24 @@
         </nav>
 
         <div class="top-right">
+          <el-dropdown trigger="click" @command="setAppearanceMode">
+            <button type="button" class="appearance-cycle-btn" :aria-label="`外观：${appearance.modeLabel}`">
+              <el-icon size="20"><component :is="appearanceIcon" /></el-icon>
+            </button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item
+                  v-for="item in appearanceOptions"
+                  :key="item.value"
+                  :command="item.value"
+                  :class="{ 'is-current-appearance': appearance.mode === item.value }"
+                >
+                  <el-icon><component :is="item.icon" /></el-icon>
+                  <span>{{ item.label }}</span>
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
           <template v-if="auth.isLoggedIn">
             <el-tooltip content="刷新页面">
               <el-button text @click="reloadPage">
@@ -146,6 +164,23 @@
           <span>刷新页面</span>
         </button>
       </div>
+      <div class="drawer-appearance">
+        <span>外观</span>
+        <div class="appearance-segmented" role="radiogroup" aria-label="外观模式">
+          <button
+            v-for="item in appearanceOptions"
+            :key="item.value"
+            type="button"
+            :class="{ active: appearance.mode === item.value }"
+            :aria-checked="appearance.mode === item.value"
+            role="radio"
+            @click="appearance.setMode(item.value)"
+          >
+            <el-icon><component :is="item.icon" /></el-icon>
+            <span>{{ item.label }}</span>
+          </button>
+        </div>
+      </div>
       <div class="drawer-account">
         <template v-if="auth.isLoggedIn">
           <UserAvatar :size="34" class="user-avatar" :src="auth.user?.avatar" :name="auth.user?.nickname" alt="用户头像" />
@@ -213,15 +248,20 @@ import {
   Message,
   Refresh,
   Tools,
+  Sunny,
+  Moon,
+  Monitor,
 } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
 import { useSiteStore } from "@/stores/site";
+import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
 
 const auth = useAuthStore();
 const msg = useMessageStore();
 const site = useSiteStore();
+const appearance = useAppearanceStore();
 const router = useRouter();
 const route = useRoute();
 const q = ref("");
@@ -234,6 +274,15 @@ const mobileViewportBaseHeight = ref(0);
 const isMobileViewport = ref(false);
 let focusOutTimer = 0;
 let disposed = false;
+
+const appearanceOptions: Array<{ value: AppearanceMode; label: string; icon: unknown }> = [
+  { value: "system", label: "跟随", icon: Monitor },
+  { value: "light", label: "浅色", icon: Sunny },
+  { value: "dark", label: "深色", icon: Moon },
+];
+const appearanceIcon = computed(() => (
+  appearance.mode === "system" ? Monitor : appearance.resolved === "dark" ? Moon : Sunny
+));
 
 /** 某些路由（如 /schedule）希望"裸壳"渲染，没有顶栏/免责声明/footer，仅保留 main + tabbar */
 const hideChrome = computed(() => Boolean(route.meta?.hideChrome));
@@ -482,6 +531,11 @@ async function onUserCmd(cmd: string) {
     router.push("/login");
   }
 }
+
+function setAppearanceMode(command: string | number | object) {
+  const mode = String(command);
+  if (mode === "system" || mode === "light" || mode === "dark") appearance.setMode(mode);
+}
 </script>
 
 <style scoped lang="scss">
@@ -499,7 +553,7 @@ async function onUserCmd(cmd: string) {
   background: var(--cpu-glass-bg);
   backdrop-filter: var(--cpu-glass-blur);
   -webkit-backdrop-filter: var(--cpu-glass-blur);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.4);
+  border-bottom: 1px solid var(--cpu-border-soft);
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02), 0 4px 16px -4px rgba(0, 0, 0, 0.02);
   position: sticky;
   top: 0;
@@ -560,7 +614,7 @@ async function onUserCmd(cmd: string) {
 
 .brand-sub {
   font-size: 11px;
-  color: #9ca3af;
+  color: var(--cpu-text-muted);
   letter-spacing: 1px;
 }
 
@@ -589,7 +643,7 @@ async function onUserCmd(cmd: string) {
   flex: 0 0 auto;
   padding: 8px 12px;
   border-radius: 6px;
-  color: #4b5563;
+  color: var(--cpu-text-secondary);
   text-decoration: none;
   font-size: 14px;
   line-height: 1;
@@ -597,7 +651,7 @@ async function onUserCmd(cmd: string) {
   transition: background 0.15s, color 0.15s;
 }
 
-.top-nav a:hover { background: rgba(0, 0, 0, 0.04); color: var(--cpu-primary); }
+.top-nav a:hover { background: var(--cpu-surface-subtle); color: var(--cpu-primary); }
 .top-nav a.router-link-active { color: var(--cpu-primary); font-weight: 600; background: rgba(20, 143, 123, 0.08); }
 
 .top-right {
@@ -605,6 +659,35 @@ async function onUserCmd(cmd: string) {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
+}
+
+.appearance-cycle-btn {
+  display: inline-flex;
+  width: 38px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--cpu-text-secondary);
+  cursor: pointer;
+  font: inherit;
+}
+
+.appearance-cycle-btn:hover {
+  color: var(--cpu-primary);
+  background: var(--cpu-surface-subtle);
+}
+
+:global(.el-dropdown-menu__item.is-current-appearance) {
+  color: var(--cpu-primary);
+  background: rgba(20, 143, 123, 0.1);
+  font-weight: 650;
+}
+
+:global(.el-dropdown-menu__item.is-current-appearance .el-icon) {
+  color: var(--cpu-primary);
 }
 
 .mobile-actions {
@@ -619,12 +702,12 @@ async function onUserCmd(cmd: string) {
   height: 42px;
   padding: 0;
   border-radius: 10px;
-  color: #374151;
+  color: var(--cpu-text-secondary);
   -webkit-tap-highlight-color: rgba(22, 135, 118, 0.18);
 }
 
 .touch-icon-btn:active {
-  background: #f3f4f6;
+  background: var(--cpu-surface-subtle);
 }
 
 .touch-icon-btn .el-icon {
@@ -648,7 +731,7 @@ async function onUserCmd(cmd: string) {
   border-radius: 6px;
 }
 
-.user-info:hover { background: #f3f4f6; }
+.user-info:hover { background: var(--cpu-surface-subtle); }
 
 .user-avatar {
   background: var(--cpu-primary);
@@ -658,7 +741,7 @@ async function onUserCmd(cmd: string) {
 
 .user-name {
   font-size: 13px;
-  color: #374151;
+  color: var(--cpu-text-secondary);
   max-width: 96px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -681,8 +764,8 @@ async function onUserCmd(cmd: string) {
 }
 
 .footer {
-  background: #fff;
-  border-top: 1px solid #eef0f4;
+  background: var(--cpu-surface);
+  border-top: 1px solid var(--cpu-border-soft);
   padding: 16px 20px;
   display: flex;
   flex-wrap: wrap;
@@ -690,7 +773,7 @@ async function onUserCmd(cmd: string) {
   justify-content: center;
   gap: 8px 14px;
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--cpu-text-muted);
 }
 
 .footer-item {
@@ -716,13 +799,13 @@ async function onUserCmd(cmd: string) {
 }
 
 .drawer-link {
-  border: 1px solid #eef0f4;
-  background: #fff;
+  border: 1px solid var(--cpu-border-soft);
+  background: var(--cpu-surface);
   border-radius: 10px;
   height: 76px;
   min-height: 76px;
   padding: 10px 8px;
-  color: #374151;
+  color: var(--cpu-text-secondary);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -756,7 +839,7 @@ async function onUserCmd(cmd: string) {
 .drawer-account {
   margin-top: 14px;
   padding-top: 14px;
-  border-top: 1px solid #eef0f4;
+  border-top: 1px solid var(--cpu-border-soft);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -765,7 +848,7 @@ async function onUserCmd(cmd: string) {
 .drawer-user {
   flex: 1;
   min-width: 0;
-  color: #1f2937;
+  color: var(--cpu-text);
   font-size: 14px;
 }
 
@@ -784,12 +867,64 @@ async function onUserCmd(cmd: string) {
   font-size: 12px;
 }
 
+.drawer-appearance {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--cpu-border-soft);
+}
+
+.drawer-appearance > span {
+  color: var(--cpu-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.appearance-segmented {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 12px;
+  background: var(--cpu-surface-soft);
+}
+
+.appearance-segmented button {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--cpu-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.appearance-segmented button.active {
+  color: #05201c;
+  background: var(--cpu-primary);
+  box-shadow: 0 6px 16px rgba(20, 143, 123, 0.18);
+}
+
+.appearance-segmented button:not(.active):hover {
+  color: var(--cpu-primary);
+  background: rgba(20, 143, 123, 0.1);
+}
+
 .fade-enter-active, .fade-leave-active { transition: opacity 0.15s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
-.dlg-tip { font-size: 15px; color: #1f2937; margin: 0 0 6px; }
+.dlg-tip { font-size: 15px; color: var(--cpu-text); margin: 0 0 6px; }
 .dlg-tip b { color: var(--cpu-primary); }
-.dlg-hint { font-size: 13px; color: #6b7280; margin: 0 0 14px; }
+.dlg-hint { font-size: 13px; color: var(--cpu-text-secondary); margin: 0 0 14px; }
 .dlg-hint b { color: #b45309; }
 
 @media (max-width: 1120px) {
@@ -905,7 +1040,7 @@ async function onUserCmd(cmd: string) {
     display: grid;
     /* 列数由 inline style 提供（mobileNavItems.length），保证关闭某项后剩余项仍均匀分布 */
     padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
-    border-top: 1px solid rgba(255, 255, 255, 0.5);
+    border-top: 1px solid var(--cpu-border-soft);
     background: var(--cpu-glass-bg);
     backdrop-filter: var(--cpu-glass-blur);
     -webkit-backdrop-filter: var(--cpu-glass-blur);
@@ -937,7 +1072,7 @@ async function onUserCmd(cmd: string) {
     min-width: 0;
     height: 50px;
     border-radius: 12px;
-    color: #6b7280;
+    color: var(--cpu-text-secondary);
     text-decoration: none;
     display: flex;
     flex-direction: column;

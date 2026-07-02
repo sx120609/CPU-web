@@ -76,6 +76,13 @@
               <p v-else class="qq-channel-hint">
                 {{ qqBotProfile?.binding ? "当前账号已绑定 QQ，如需更换请先解绑。" : "生成绑定码后，在 QQ 私聊机器人发送绑定命令即可完成绑定。" }}
               </p>
+              <label class="qq-channel-toggle">
+                <span>
+                  <b>QQ 私聊提醒</b>
+                  <small>开启后，已订阅的通知会通过 QQ 私聊发送；关闭后仅保留站内消息。</small>
+                </span>
+                <el-switch v-model="settings.qqBotNotifyEnabled" />
+              </label>
               <div class="qq-channel-actions">
                 <el-button
                   v-if="!qqBotProfile?.binding"
@@ -109,14 +116,6 @@
                 <el-button plain :loading="qqBotLoading" :disabled="qqBotLoading" @click="refreshQqBotProfile">刷新状态</el-button>
               </div>
             </template>
-          </div>
-          <el-divider />
-          <h4>静默时段</h4>
-          <p class="hint">在此时段内，平台仅向您推送强提醒消息。</p>
-          <div class="setting-block time-row">
-            <el-time-select v-model="settings.quietStart" start="00:00" step="00:30" end="23:30" />
-            <span class="time-sep">至</span>
-            <el-time-select v-model="settings.quietEnd" start="00:00" step="00:30" end="23:30" />
           </div>
           <el-divider />
           <h4>订阅偏好</h4>
@@ -324,7 +323,7 @@ async function reloadNoticeState() {
   ]);
   if (disposed || seq !== loadSeq) return;
   list.value = nextList;
-  settings.value = nextSettings;
+  settings.value = normalizeMessageSettings(nextSettings);
   pageError.value = "";
   void msg.refresh();
 }
@@ -381,7 +380,7 @@ async function saveSettings() {
     const { id, userId, ...payload } = settings.value;
     const nextSettings = await messageApi.updateSettings(payload, { suppressErrorMessage: true });
     if (disposed) return;
-    settings.value = nextSettings;
+    settings.value = normalizeMessageSettings(nextSettings);
     ElMessage.success("已保存");
   } catch (error) {
     if (disposed) return;
@@ -474,7 +473,7 @@ async function loadPage() {
     ]);
     if (disposed || seq !== loadSeq) return;
     list.value = nextList;
-    settings.value = nextSettings;
+    settings.value = normalizeMessageSettings(nextSettings);
     void msg.refresh();
   } catch (error) {
     if (disposed || seq !== loadSeq) return;
@@ -669,6 +668,13 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
     || (error as { message?: string })?.message;
   return message || fallback;
 }
+
+function normalizeMessageSettings(value: any) {
+  return {
+    ...value,
+    qqBotNotifyEnabled: value?.qqBotNotifyEnabled !== false,
+  };
+}
 </script>
 
 <style scoped>
@@ -733,16 +739,16 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
 .draft-title { font-size: 14px; font-weight: 600; color: #111827; }
 .draft-note { margin-top: 8px; font-size: 13px; color: #6b7280; }
 
-.settings h4 { margin: 8px 0 6px; color: #1f2937; }
-.hint { font-size: 12px; color: #6b7280; margin: 0 0 10px; }
+.settings h4 { margin: 8px 0 6px; color: var(--cpu-text); }
+.hint { font-size: 12px; color: var(--cpu-text-secondary); margin: 0 0 10px; }
 .qq-channel-card {
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 14px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 8px;
-  background: #fff;
+  background: var(--cpu-card);
 }
 .qq-channel-head {
   display: flex;
@@ -757,13 +763,13 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
   gap: 4px;
 }
 .qq-channel-head b {
-  color: #1f2937;
+  color: var(--cpu-text);
   font-size: 14px;
   line-height: 1.35;
 }
 .qq-channel-head span,
 .qq-channel-hint {
-  color: #64748b;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
   line-height: 1.55;
 }
@@ -781,19 +787,19 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
 .qq-channel-grid > div {
   min-width: 0;
   padding: 10px 12px;
-  border: 1px solid #eef2f7;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 8px;
-  background: #f8fafc;
+  background: var(--cpu-surface-soft);
 }
 .qq-channel-grid span {
   display: block;
   margin-bottom: 5px;
-  color: #64748b;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
 }
 .qq-channel-grid b {
   display: block;
-  color: #0f172a;
+  color: var(--cpu-text);
   font-size: 14px;
   line-height: 1.35;
   overflow-wrap: anywhere;
@@ -804,7 +810,7 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
   padding: 12px;
   border: 1px dashed rgba(20, 143, 123, 0.35);
   border-radius: 8px;
-  background: #f8fffc;
+  background: rgba(20, 143, 123, 0.08);
 }
 .qq-token-box strong {
   color: var(--cpu-primary);
@@ -813,7 +819,7 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
   letter-spacing: 1px;
 }
 .qq-token-box span {
-  color: #64748b;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -826,10 +832,31 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
 .qq-channel-actions .el-button {
   margin-left: 0 !important;
 }
-.setting-block {
+.qq-channel-toggle {
   display: flex;
-  gap: 10px;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 8px;
+  background: var(--cpu-surface-soft);
+}
+.qq-channel-toggle > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+.qq-channel-toggle b {
+  color: var(--cpu-text);
+  font-size: 14px;
+  line-height: 1.35;
+}
+.qq-channel-toggle small {
+  color: var(--cpu-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
 }
 .switches { display: flex; flex-direction: column; gap: 12px; }
 .switch-item {
@@ -838,10 +865,10 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 14px;
-  border: 1px solid #eef0f4;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 12px;
-  background: #fafbfc;
-  color: #374151;
+  background: var(--cpu-surface-soft);
+  color: var(--cpu-text);
   font-size: 14px;
 }
 .settings-action-row {
@@ -851,9 +878,9 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
   width: 100%;
   min-height: 62px;
   padding: 12px 14px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 8px;
-  background: #fff;
+  background: var(--cpu-card);
   color: inherit;
   cursor: pointer;
   text-align: left;
@@ -861,7 +888,7 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
 }
 .settings-action-row:hover {
   border-color: rgba(20, 143, 123, 0.35);
-  background: #f8fffc;
+  background: rgba(20, 143, 123, 0.08);
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
 }
 .settings-action-icon {
@@ -883,19 +910,19 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
   gap: 4px;
 }
 .settings-action-copy b {
-  color: #1f2937;
+  color: var(--cpu-text);
   font-size: 14px;
   line-height: 1.35;
 }
 .settings-action-copy span {
-  color: #64748b;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
 .settings-action-arrow {
   flex: 0 0 auto;
-  color: #94a3b8;
+  color: var(--cpu-text-muted);
 }
 .save-btn {
   margin-top: 14px;
@@ -937,19 +964,32 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
   .messages-tabs {
     margin: 0 -4px;
     padding: 10px 8px 12px;
+    min-width: 0;
+    overflow: hidden;
   }
 
   .messages-tabs :deep(.el-tabs__header) {
+    min-width: 0;
     margin-bottom: 12px;
     overflow: visible;
   }
 
   .messages-tabs :deep(.el-tabs__nav-wrap) {
+    padding: 0 0 2px;
+    overflow: hidden;
+  }
+
+  .messages-tabs :deep(.el-tabs__nav-scroll) {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     padding: 0 4px 2px;
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x;
   }
 
   .messages-tabs :deep(.el-tabs__nav-wrap::after),
@@ -957,22 +997,19 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
     display: none;
   }
 
-  .messages-tabs :deep(.el-tabs__nav-wrap::-webkit-scrollbar) {
+  .messages-tabs :deep(.el-tabs__nav-scroll::-webkit-scrollbar) {
     display: none;
   }
 
-  .messages-tabs :deep(.el-tabs__nav-scroll) {
-    padding: 0 0 2px;
-  }
-
   .messages-tabs :deep(.el-tabs__nav) {
+    display: flex;
     float: none;
     width: max-content;
     min-width: max-content;
     white-space: nowrap;
     gap: 8px;
     padding-inline: 4px;
-    padding-right: 4px;
+    padding-right: max(16px, env(safe-area-inset-right));
   }
 
   .messages-tabs :deep(.el-tabs__item) {
@@ -991,23 +1028,6 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
 
   .messages-tabs :deep(.el-tabs__content) {
     overflow: visible;
-  }
-
-  .time-row {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .time-sep {
-    align-self: center;
-    color: #94a3b8;
-    font-size: 12px;
-  }
-
-  .time-row :deep(.el-select),
-  .time-row :deep(.el-input) {
-    width: 100% !important;
   }
 
   .switch-item {
@@ -1085,6 +1105,7 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
 }
 
 @media (max-width: 420px) {
+  .qq-channel-toggle,
   .switch-item,
   .settings-action-row,
   .qq-channel-actions {

@@ -37,6 +37,27 @@
       </div>
     </div>
 
+    <div class="cpu-card appearance-card">
+      <div class="appearance-copy">
+        <h3 class="cpu-section-title">外观偏好</h3>
+        <p>当前为{{ appearance.modeLabel }}，{{ appearance.isDark ? "正在使用深色界面。" : "正在使用浅色界面。" }}</p>
+      </div>
+      <div class="appearance-options" role="radiogroup" aria-label="外观模式">
+        <button
+          v-for="item in appearanceOptions"
+          :key="item.value"
+          type="button"
+          :class="{ active: appearance.mode === item.value }"
+          :aria-checked="appearance.mode === item.value"
+          role="radio"
+          @click="appearance.setMode(item.value)"
+        >
+          <el-icon><component :is="item.icon" /></el-icon>
+          <span>{{ item.label }}</span>
+        </button>
+      </div>
+    </div>
+
     <div v-if="site.features.sponsor || (user?.sponsorAmount ?? 0) > 0" class="cpu-card sponsor-card">
       <div class="sponsor-main">
         <div class="sponsor-copy">
@@ -332,9 +353,10 @@
 import { ref, reactive, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { ChatDotRound, CopyDocument } from "@element-plus/icons-vue";
+import { ChatDotRound, CopyDocument, Monitor, Moon, Sunny } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
+import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
 import { authApi } from "@/api/auth";
 import { boardApi, type Board } from "@/api/board";
 import { paymentsApi, type PayType, type SponsorOptions } from "@/api/payments";
@@ -346,6 +368,7 @@ import { copyText, openUserGroup, USER_QQ_GROUP } from "@/utils/userGroup";
 
 const auth = useAuthStore();
 const site = useSiteStore();
+const appearance = useAppearanceStore();
 const route = useRoute();
 const router = useRouter();
 const user = computed(() => auth.user);
@@ -412,6 +435,11 @@ const sponsorDisplayOptions = [
   { value: "hidden", label: "不展示" },
 ] as const;
 const enabledPayTypes = computed(() => sponsorOptions.payTypes.map((value) => ({ value, label: payTypeLabels[value] })));
+const appearanceOptions: Array<{ value: AppearanceMode; label: string; icon: unknown }> = [
+  { value: "system", label: "跟随系统", icon: Monitor },
+  { value: "light", label: "浅色", icon: Sunny },
+  { value: "dark", label: "深色", icon: Moon },
+];
 
 watch(passwordDialog, (v) => {
   if (!v) { pwForm.oldPassword = ""; pwForm.newPassword = ""; pwForm.confirm = ""; }
@@ -710,7 +738,7 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 
 <style scoped>
 .profile { display: flex; flex-direction: column; gap: 16px; }
-.cpu-card { background: #fff; border-radius: 12px; padding: 20px 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
+.cpu-card { background: var(--cpu-card); border: 1px solid var(--cpu-border-soft); border-radius: 12px; padding: 20px 24px; box-shadow: var(--cpu-shadow-sm); }
 
 .profile-card { text-align: center; }
 .profile-load-error {
@@ -733,8 +761,8 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   align-items: center;
   gap: 8px;
 }
-.account-note { font-size: 12px; color: #9ca3af; margin: 0 0 8px; }
-.bio { font-size: 13px; color: #6b7280; margin: 0 0 16px; }
+.account-note { font-size: 12px; color: var(--cpu-text-muted); margin: 0 0 8px; }
+.bio { font-size: 13px; color: var(--cpu-text-secondary); margin: 0 0 16px; }
 
 .kv {
   list-style: none;
@@ -747,12 +775,12 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   justify-content: space-between;
   padding: 8px 0;
   font-size: 13px;
-  border-bottom: 1px dashed #f1f5f9;
+  border-bottom: 1px dashed var(--cpu-border-soft);
 }
 .kv li:last-child { border-bottom: none; }
-.kv li span:first-child { color: #6b7280; }
-.kv li span:last-child { color: #1f2937; font-weight: 500; }
-.sponsor-total { color: #b45309 !important; }
+.kv li span:first-child { color: var(--cpu-text-secondary); }
+.kv li span:last-child { color: var(--cpu-text); font-weight: 500; }
+.sponsor-total { color: var(--cpu-warn) !important; }
 
 .profile-actions {
   display: flex;
@@ -761,6 +789,57 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   flex-wrap: wrap;
 }
 .profile-actions .el-button { flex: 1 1 auto; min-width: 100px; margin-left: 0 !important; }
+
+.appearance-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.appearance-copy {
+  min-width: 0;
+}
+.appearance-copy p {
+  margin: 4px 0 0;
+  color: var(--cpu-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.appearance-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  min-width: min(360px, 100%);
+  padding: 4px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 12px;
+  background: var(--cpu-surface-soft);
+}
+.appearance-options button {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--cpu-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+}
+.appearance-options button.active {
+  color: #05201c;
+  background: var(--cpu-primary);
+  box-shadow: 0 6px 18px rgba(20, 143, 123, 0.18);
+}
+.appearance-options button:not(.active):hover {
+  color: var(--cpu-primary);
+  background: rgba(20, 143, 123, 0.1);
+}
 
 .sponsor-card {
   display: flex;
@@ -779,13 +858,13 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 }
 .sponsor-copy p {
   margin: 4px 0 8px;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 13px;
   line-height: 1.6;
 }
 .sponsor-copy strong {
   display: block;
-  color: #168776;
+  color: var(--cpu-primary);
   font-size: 20px;
   letter-spacing: 0;
   margin-bottom: 12px;
@@ -817,10 +896,10 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 }
 .amount-grid button {
   height: 38px;
-  border: 1px solid #d8e2ec;
+  border: 1px solid var(--cpu-border);
   border-radius: 8px;
-  background: #fff;
-  color: #1f2937;
+  background: var(--cpu-surface);
+  color: var(--cpu-text);
   font-weight: 700;
   line-height: 1;
   display: inline-flex;
@@ -831,8 +910,8 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
 }
 .amount-grid button:not(:disabled):hover {
-  border-color: #168776;
-  color: #168776;
+  border-color: var(--cpu-primary);
+  color: var(--cpu-primary);
 }
 .amount-grid button:disabled,
 .sponsor-display-tabs button:disabled {
@@ -840,9 +919,9 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   opacity: 0.62;
 }
 .amount-grid button.active {
-  border-color: #168776;
-  background: #ecfdf5;
-  color: #168776;
+  border-color: var(--cpu-primary);
+  background: rgba(20, 143, 123, 0.12);
+  color: var(--cpu-primary);
   box-shadow: inset 0 0 0 1px rgba(22, 135, 118, 0.18);
 }
 .sponsor-pay-row {
@@ -859,7 +938,7 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 .sponsor-money-input :deep(.el-input-group__prepend),
 .sponsor-money-input :deep(.el-input__wrapper),
 .sponsor-pay-select :deep(.el-select__wrapper) {
-  background: #fff;
+  background: var(--cpu-surface);
   min-height: 40px;
 }
 .sponsor-history {
@@ -867,12 +946,12 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border-top: 1px dashed #e5e7eb;
+  border-top: 1px dashed var(--cpu-border-soft);
 }
 .sub-title {
   font-size: 13px;
   font-weight: 700;
-  color: #374151;
+  color: var(--cpu-text);
 }
 .sponsor-order-row {
   display: flex;
@@ -883,10 +962,10 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 }
 .sponsor-order-row b {
   display: block;
-  color: #b45309;
+  color: var(--cpu-warn);
 }
 .sponsor-order-row span {
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
 }
 .order-actions {
@@ -913,21 +992,21 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 .sponsor-confirm-summary {
   padding: 12px 14px;
   border-radius: 8px;
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
+  background: var(--cpu-surface-soft);
+  border: 1px solid var(--cpu-border-soft);
 }
 .sponsor-confirm-summary span,
 .sponsor-confirm-line span,
 .sponsor-confirm-field > span {
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 13px;
 }
 .sponsor-confirm-summary b {
-  color: #168776;
+  color: var(--cpu-primary);
   font-size: 22px;
 }
 .sponsor-confirm-line strong {
-  color: #1f2937;
+  color: var(--cpu-text);
 }
 .sponsor-confirm-field {
   align-items: flex-start;
@@ -941,9 +1020,9 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   grid-template-columns: repeat(3, minmax(0, 1fr));
   width: 100%;
   overflow: hidden;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--cpu-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--cpu-surface);
 }
 .sponsor-display-tabs button {
   appearance: none;
@@ -952,9 +1031,9 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   height: 36px;
   padding: 0 8px;
   border: 0;
-  border-right: 1px solid #d1d5db;
-  background: #fff;
-  color: #374151;
+  border-right: 1px solid var(--cpu-border);
+  background: var(--cpu-surface);
+  color: var(--cpu-text-secondary);
   font-size: 13px;
   font-weight: 700;
   line-height: 1;
@@ -965,8 +1044,8 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   border-right: 0;
 }
 .sponsor-display-tabs button.active {
-  background: #168776;
-  color: #fff;
+  background: var(--cpu-primary);
+  color: #05201c;
 }
 .sponsor-display-tabs button:focus-visible {
   position: relative;
@@ -975,10 +1054,10 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   outline-offset: -2px;
 }
 .sponsor-display-tabs button:disabled {
-  background: #f9fafb;
+  background: var(--cpu-surface-soft);
 }
 .sponsor-display-tabs button.active:disabled {
-  background: #168776;
+  background: var(--cpu-primary);
 }
 
 .trust-card {
@@ -1001,7 +1080,7 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 
 .trust-sub {
   margin: 4px 0 0;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -1016,8 +1095,8 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 .trust-inline-summary span {
   padding: 5px 10px;
   border-radius: 999px;
-  background: #f4f7fb;
-  color: #475569;
+  background: var(--cpu-surface-subtle);
+  color: var(--cpu-text-secondary);
   font-size: 12px;
   line-height: 1;
 }
@@ -1042,26 +1121,26 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 .trust-item {
   padding: 12px 14px;
   border-radius: 12px;
-  background: #f7f7fb;
+  background: var(--cpu-surface-soft);
 }
 
 .trust-item span {
   display: block;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
   margin-bottom: 6px;
 }
 
 .trust-item b {
-  color: #111827;
+  color: var(--cpu-text);
   font-size: 18px;
 }
 
 .trust-section {
   padding: 14px;
   border-radius: 14px;
-  border: 1px solid #ebeef5;
-  background: #fbfcff;
+  border: 1px solid var(--cpu-border-soft);
+  background: var(--cpu-surface-soft);
 }
 
 .trust-section-head {
@@ -1072,14 +1151,14 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 }
 
 .trust-section-title {
-  color: #111827;
+  color: var(--cpu-text);
   font-size: 14px;
   font-weight: 600;
 }
 
 .trust-section-tip {
   margin: 4px 0 0;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -1099,16 +1178,16 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   justify-content: space-between;
   gap: 12px;
   padding-bottom: 10px;
-  border-bottom: 1px dashed #eceff3;
+  border-bottom: 1px dashed var(--cpu-border-soft);
   font-size: 13px;
 }
 
 .trust-row span {
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
 }
 
 .trust-row b {
-  color: #111827;
+  color: var(--cpu-text);
 }
 
 .trust-next {
@@ -1139,12 +1218,12 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 }
 .user-group-card p {
   margin: 4px 0 8px;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 13px;
   line-height: 1.6;
 }
 .user-group-card strong {
-  color: #168776;
+  color: var(--cpu-primary);
   font-size: 20px;
   letter-spacing: 0;
 }
@@ -1162,23 +1241,23 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   align-items: center;
   gap: 10px;
   padding: 10px 4px;
-  border-bottom: 1px dashed #f1f5f9;
+  border-bottom: 1px dashed var(--cpu-border-soft);
   cursor: pointer;
   border-radius: 6px;
   min-width: 0;
   overflow: hidden;
 }
 .topic-line:last-child { border-bottom: none; }
-.topic-line:hover { background: #f4f6f8; }
+.topic-line:hover { background: var(--cpu-surface-soft); }
 .topic-line:focus-visible {
   outline: 2px solid rgba(22, 135, 118, 0.35);
   outline-offset: 2px;
-  background: #f4f6f8;
+  background: var(--cpu-surface-soft);
 }
 .tag { color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
 .anon-tag { color: #7c3aed; font-size: 12px; font-weight: 600; }
 .title { font-size: 14px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.meta { font-size: 12px; color: #9ca3af; flex-shrink: 0; }
+.meta { font-size: 12px; color: var(--cpu-text-muted); flex-shrink: 0; }
 
 .cpu-section-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
 .hidden-file-input { display: none; }
@@ -1195,6 +1274,21 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   .profile-actions .el-button {
     flex: 1 1 calc(50% - 4px);
     min-width: 0;
+  }
+
+  .appearance-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .appearance-options {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .appearance-options button {
+    min-height: 42px;
+    font-size: 12px;
   }
 
   .avatar-actions {

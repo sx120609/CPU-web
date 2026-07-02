@@ -123,10 +123,10 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
 
 .tools-hero,
 .tools-panel {
-  background: #fff;
-  border: 1px solid #eef0f4;
+  background: var(--cpu-card);
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--cpu-shadow-sm);
 }
 
 .tools-hero {
@@ -143,7 +143,7 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
   display: grid;
   place-items: center;
   color: var(--cpu-primary);
-  background: #ecfdf5;
+  background: var(--cpu-surface-subtle);
   flex: 0 0 auto;
 }
 
@@ -164,13 +164,13 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
 
 .hero-copy h2 {
   margin: 0;
-  color: #111827;
+  color: var(--cpu-text);
   font-size: 22px;
 }
 
 .hero-copy p {
   margin: 6px 0 0;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 13px;
   line-height: 1.7;
 }
@@ -199,13 +199,13 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
 
 .panel-head h3 {
   margin: 0;
-  color: #111827;
+  color: var(--cpu-text);
   font-size: 17px;
 }
 
 .panel-head p {
   margin: 5px 0 0;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 13px;
 }
 
@@ -222,10 +222,10 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
   gap: 13px;
   min-height: 126px;
   padding: 16px 14px;
-  border: 1px solid #eef0f4;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 10px;
-  background: #fff;
-  color: inherit;
+  background: var(--cpu-surface);
+  color: var(--cpu-text);
   cursor: pointer;
   font: inherit;
   text-align: left;
@@ -240,7 +240,7 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
 }
 
 .tool-card.planned {
-  background: #fafafa;
+  background: var(--cpu-surface-soft);
 }
 
 .tool-accent {
@@ -255,7 +255,7 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
   border-radius: 12px;
   display: grid;
   place-items: center;
-  background: #f9fafb;
+  background: var(--cpu-surface-subtle);
   flex: 0 0 auto;
 }
 
@@ -281,7 +281,7 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
 .tool-title {
   flex: 1 1 auto;
   min-width: 0;
-  color: #111827;
+  color: var(--cpu-text);
   font-size: 15px;
   font-weight: 650;
   overflow: hidden;
@@ -294,20 +294,20 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
 }
 
 .tool-summary {
-  color: #4b5563;
+  color: var(--cpu-text-secondary);
   font-size: 13px;
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
 
 .tool-meta {
-  color: #9ca3af;
+  color: var(--cpu-text-muted);
   font-size: 12px;
   overflow-wrap: anywhere;
 }
 
 .tool-arrow {
-  color: #9ca3af;
+  color: var(--cpu-text-muted);
   flex: 0 0 auto;
 }
 
