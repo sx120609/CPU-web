@@ -508,10 +508,10 @@ function requestMessage(error: unknown) {
   flex-direction: column;
   gap: 16px;
   padding: 18px;
-  border: 1px solid #e7edf5;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 16px;
-  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.04);
+  background: var(--cpu-card);
+  box-shadow: var(--cpu-shadow-sm);
 }
 .section-head {
   display: flex;
@@ -523,20 +523,20 @@ function requestMessage(error: unknown) {
   margin: 0;
   font-size: 16px;
   font-weight: 700;
-  color: #111827;
+  color: var(--cpu-text);
 }
 .section-desc {
   margin: 6px 0 0;
   font-size: 13px;
   line-height: 1.7;
-  color: #667085;
+  color: var(--cpu-text-secondary);
 }
 .section-meta {
   flex-shrink: 0;
   padding: 8px 12px;
   border-radius: 999px;
-  background: #eef6ff;
-  color: #2454a6;
+  background: rgba(54, 208, 183, 0.14);
+  color: var(--cpu-primary-light);
   font-size: 12px;
   font-weight: 600;
 }
@@ -546,9 +546,9 @@ function requestMessage(error: unknown) {
   justify-content: space-between;
   gap: 16px;
   padding: 16px;
-  border: 1px solid #edf2f7;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 14px;
-  background: #ffffff;
+  background: var(--cpu-surface);
 }
 .config-copy {
   flex: 1;
@@ -557,7 +557,7 @@ function requestMessage(error: unknown) {
 .card-title {
   font-size: 15px;
   font-weight: 700;
-  color: #1f2937;
+  color: var(--cpu-text);
 }
 .config-form {
   display: flex;
@@ -585,8 +585,8 @@ function requestMessage(error: unknown) {
   gap: 8px;
   padding: 12px;
   border-radius: 12px;
-  border: 1px solid #edf2f7;
-  background: #fff;
+  border: 1px solid var(--cpu-border-soft);
+  background: var(--cpu-surface-subtle);
 }
 .trust-subcard {
   display: flex;
@@ -594,13 +594,13 @@ function requestMessage(error: unknown) {
   gap: 12px;
   padding: 14px;
   border-radius: 14px;
-  background: #fcfdff;
-  border: 1px dashed #d7e2f0;
+  background: var(--cpu-surface-subtle);
+  border: 1px dashed var(--cpu-border);
 }
 .subcard-title {
   font-size: 14px;
   font-weight: 700;
-  color: #1f2937;
+  color: var(--cpu-text);
 }
 .tier-grid,
 .level-grid {
@@ -615,11 +615,11 @@ function requestMessage(error: unknown) {
 }
 .field-label {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
 }
 .field-inline-label {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--cpu-text-muted);
 }
 .section-toggle,
 .sub-toggle {
@@ -647,14 +647,14 @@ function requestMessage(error: unknown) {
 .toggle-pill {
   padding: 4px 10px;
   border-radius: 999px;
-  background: #f3f4f6;
-  color: #6b7280;
+  background: var(--cpu-surface-subtle);
+  color: var(--cpu-text-secondary);
   font-size: 12px;
   font-weight: 600;
 }
 .toggle-pill.on {
-  background: #e8fff1;
-  color: #0f8a4b;
+  background: rgba(54, 208, 183, 0.16);
+  color: var(--cpu-primary-light);
 }
 .summary-row {
   display: flex;
@@ -665,16 +665,16 @@ function requestMessage(error: unknown) {
 .summary-pill {
   padding: 6px 10px;
   border-radius: 999px;
-  background: #f7f9fc;
-  border: 1px solid #e9eef5;
-  color: #4b5563;
+  background: var(--cpu-surface-subtle);
+  border: 1px solid var(--cpu-border-soft);
+  color: var(--cpu-text-secondary);
   font-size: 12px;
 }
 .toggle-arrow {
   flex-shrink: 0;
   margin-top: 2px;
   font-size: 18px;
-  color: #64748b;
+  color: var(--cpu-text-muted);
   transition: transform 0.2s ease;
 }
 .section-toggle.expanded .toggle-arrow,
@@ -692,8 +692,8 @@ function requestMessage(error: unknown) {
   gap: 12px;
   padding: 16px;
   border-radius: 14px;
-  background: #ffffff;
-  border: 1px solid #edf2f7;
+  background: var(--cpu-surface);
+  border: 1px solid var(--cpu-border-soft);
 }
 .ai-row {
   display: flex;
@@ -708,7 +708,7 @@ function requestMessage(error: unknown) {
 }
 .ai-label {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
 }
 .prompt-card {
   display: flex;
@@ -716,8 +716,8 @@ function requestMessage(error: unknown) {
   gap: 14px;
   padding: 16px;
   border-radius: 14px;
-  background: #fcfdff;
-  border: 1px dashed #d7e2f0;
+  background: var(--cpu-surface-subtle);
+  border: 1px dashed var(--cpu-border);
 }
 .prompt-grid {
   display: grid;
@@ -736,9 +736,9 @@ function requestMessage(error: unknown) {
   flex-direction: column;
   gap: 12px;
   padding: 16px;
-  border: 1px solid #eef2f7;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 14px;
-  background: #fff;
+  background: var(--cpu-surface);
   min-width: 0;
 }
 .feature-head {
@@ -749,9 +749,9 @@ function requestMessage(error: unknown) {
 }
 .left { flex: 1; min-width: 0; }
 .icon { margin-right: 4px; }
-.desc { font-size: 12px; color: #6b7280; margin-top: 4px; line-height: 1.6; }
-.paths { font-size: 11px; color: #9ca3af; }
-.paths code { background: #f3f4f6; padding: 1px 5px; border-radius: 3px; }
+.desc { font-size: 12px; color: var(--cpu-text-secondary); margin-top: 4px; line-height: 1.6; }
+.paths { font-size: 11px; color: var(--cpu-text-muted); }
+.paths code { background: var(--cpu-surface-subtle); padding: 1px 5px; border-radius: 3px; }
 
 @media (max-width: 960px) {
   .feature-grid { grid-template-columns: 1fr; }

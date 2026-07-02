@@ -49,37 +49,37 @@ html[data-theme="dark"] {
   --cpu-warn: #fb923c;
   --cpu-danger: #f87171;
   --cpu-success: #34d399;
-  --cpu-bg: #07110f;
-  --cpu-card: #101816;
-  --cpu-surface: #121c1a;
-  --cpu-surface-soft: #0d1715;
-  --cpu-surface-subtle: #182522;
-  --cpu-glass-bg: rgba(12, 23, 21, 0.78);
-  --cpu-border: rgba(148, 163, 184, 0.26);
-  --cpu-border-soft: rgba(148, 163, 184, 0.16);
-  --cpu-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32);
-  --cpu-shadow-md: 0 14px 36px rgba(0, 0, 0, 0.34);
-  --cpu-shadow-lg: 0 24px 70px rgba(0, 0, 0, 0.42);
-  --cpu-shadow-hover: 0 28px 80px rgba(0, 0, 0, 0.48);
-  --cpu-text: #e5f4f1;
-  --cpu-text-secondary: #9bb5af;
-  --cpu-text-muted: #718982;
+  --cpu-bg: #101c19;
+  --cpu-card: #16231f;
+  --cpu-surface: #1a2925;
+  --cpu-surface-soft: #20312c;
+  --cpu-surface-subtle: #263a34;
+  --cpu-glass-bg: rgba(22, 35, 31, 0.84);
+  --cpu-border: rgba(163, 186, 179, 0.30);
+  --cpu-border-soft: rgba(163, 186, 179, 0.20);
+  --cpu-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.24);
+  --cpu-shadow-md: 0 14px 34px rgba(0, 0, 0, 0.28);
+  --cpu-shadow-lg: 0 24px 68px rgba(0, 0, 0, 0.34);
+  --cpu-shadow-hover: 0 28px 76px rgba(0, 0, 0, 0.40);
+  --cpu-text: #eef8f5;
+  --cpu-text-secondary: #abc5be;
+  --cpu-text-muted: #819d95;
   --el-bg-color: var(--cpu-surface);
   --el-bg-color-page: var(--cpu-bg);
-  --el-bg-color-overlay: #16211f;
+  --el-bg-color-overlay: #1f302b;
   --el-border-color: var(--cpu-border);
   --el-border-color-light: var(--cpu-border-soft);
-  --el-border-color-lighter: rgba(148, 163, 184, 0.12);
-  --el-fill-color: #16211f;
-  --el-fill-color-light: #1a2926;
-  --el-fill-color-lighter: #20302d;
-  --el-fill-color-extra-light: #0d1715;
+  --el-border-color-lighter: rgba(163, 186, 179, 0.14);
+  --el-fill-color: #1f302b;
+  --el-fill-color-light: #263a34;
+  --el-fill-color-lighter: #2d443d;
+  --el-fill-color-extra-light: #20312c;
   --el-fill-color-blank: var(--cpu-surface);
   --el-text-color-primary: var(--cpu-text);
-  --el-text-color-regular: #c2d5d1;
+  --el-text-color-regular: #d2e4df;
   --el-text-color-secondary: var(--cpu-text-secondary);
-  --el-text-color-placeholder: #6f8580;
-  --el-mask-color: rgba(0, 0, 0, 0.58);
+  --el-text-color-placeholder: #829990;
+  --el-mask-color: rgba(4, 12, 10, 0.52);
   --el-box-shadow-light: var(--cpu-shadow-md);
   --el-color-primary: var(--cpu-primary);
   --el-color-primary-light-3: #2ebba7;
@@ -366,7 +366,7 @@ html[data-theme="dark"] {
   .el-input__wrapper,
   .el-select__wrapper,
   .el-textarea__inner {
-    background-color: #0d1715;
+    background-color: var(--cpu-surface);
     box-shadow: 0 0 0 1px var(--cpu-border-soft) inset;
   }
 
@@ -385,8 +385,8 @@ html[data-theme="dark"] {
   .el-table {
     --el-table-bg-color: var(--cpu-surface);
     --el-table-tr-bg-color: var(--cpu-surface);
-    --el-table-header-bg-color: #0d1715;
-    --el-table-row-hover-bg-color: #182522;
+    --el-table-header-bg-color: var(--cpu-surface-soft);
+    --el-table-row-hover-bg-color: var(--cpu-surface-subtle);
     --el-table-border-color: var(--cpu-border-soft);
     color: var(--el-text-color-regular);
   }
@@ -755,6 +755,8 @@ html[data-theme="dark"] {
   .pdf-tool-panel :is(.pdf-login-panel, .mode-button, .upload-panel, .settings-panel, .drop-zone, .file-row, .control-grid input, .control-grid select, .result-strip),
   .tool-manage-page :is(
     .admin-section,
+    .access-setting,
+    .manager-row,
     .questionnaire-summary div,
     .grade-upload-panel,
     .field-rule-list div,
@@ -1038,7 +1040,7 @@ html[data-theme="dark"] {
   }
 
   .el-table {
-    --el-table-row-hover-bg-color: #fff;
+    --el-table-row-hover-bg-color: var(--cpu-surface-subtle);
   }
 
   .el-table__body-wrapper,

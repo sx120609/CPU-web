@@ -263,10 +263,10 @@ function requestMessage(error: unknown) {
   flex-direction: column;
   gap: 16px;
   padding: 18px;
-  border: 1px solid #e7edf5;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 16px;
-  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.04);
+  background: var(--cpu-card);
+  box-shadow: var(--cpu-shadow-sm);
 }
 
 .section-head {
@@ -280,14 +280,14 @@ function requestMessage(error: unknown) {
   margin: 0;
   font-size: 16px;
   font-weight: 700;
-  color: #111827;
+  color: var(--cpu-text);
 }
 
 .section-desc {
   margin: 6px 0 0;
   font-size: 13px;
   line-height: 1.7;
-  color: #667085;
+  color: var(--cpu-text-secondary);
 }
 
 .summary-row {
@@ -307,9 +307,9 @@ function requestMessage(error: unknown) {
   justify-content: space-between;
   gap: 24px;
   padding: 14px 16px;
-  border: 1px solid #edf2f7;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--cpu-surface);
 }
 
 .threshold-row {
@@ -318,23 +318,23 @@ function requestMessage(error: unknown) {
   justify-content: space-between;
   gap: 24px;
   padding: 14px 16px;
-  border: 1px solid #edf2f7;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--cpu-surface);
 }
 
 .threshold-control {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #667085;
+  color: var(--cpu-text-secondary);
   font-size: 13px;
 }
 
 .toggle-title {
   font-size: 15px;
   font-weight: 700;
-  color: #172033;
+  color: var(--cpu-text);
 }
 
 .storage-status {
@@ -349,21 +349,21 @@ function requestMessage(error: unknown) {
   gap: 5px;
   min-width: 0;
   padding: 12px;
-  border: 1px solid #edf2f7;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--cpu-surface);
 }
 
 .status-item span {
   font-size: 12px;
-  color: #7b8794;
+  color: var(--cpu-text-muted);
 }
 
 .status-item b {
   min-width: 0;
   overflow-wrap: anywhere;
   font-size: 14px;
-  color: #172033;
+  color: var(--cpu-text);
 }
 
 .alert-action {

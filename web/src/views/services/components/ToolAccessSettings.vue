@@ -69,10 +69,10 @@ const emit = defineEmits<{
 
 <style scoped lang="scss">
 .admin-section {
-  border: 1px solid #eef0f4;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 10px;
   padding: 16px;
-  background: #fff;
+  background: var(--cpu-card);
 }
 
 .section-head {
@@ -85,13 +85,13 @@ const emit = defineEmits<{
 
 .section-head h3 {
   margin: 0;
-  color: #111827;
+  color: var(--cpu-text);
   font-size: 16px;
 }
 
 .section-head p {
   margin: 5px 0 0;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -102,9 +102,9 @@ const emit = defineEmits<{
   justify-content: space-between;
   gap: 14px;
   padding: 12px;
-  border: 1px solid #eef0f4;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 8px;
-  background: #fafafa;
+  background: var(--cpu-surface-subtle);
 }
 
 .access-setting + .access-setting {
@@ -119,11 +119,11 @@ const emit = defineEmits<{
 }
 
 .access-setting b {
-  color: #111827;
+  color: var(--cpu-text);
 }
 
 .access-setting span {
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
 }
 

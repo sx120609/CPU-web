@@ -70,10 +70,10 @@ const usernameModel = computed({
 
 <style scoped lang="scss">
 .admin-section {
-  border: 1px solid #eef0f4;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 10px;
   padding: 16px;
-  background: #fff;
+  background: var(--cpu-card);
 }
 
 .section-head {
@@ -86,13 +86,13 @@ const usernameModel = computed({
 
 .section-head h3 {
   margin: 0;
-  color: #111827;
+  color: var(--cpu-text);
   font-size: 16px;
 }
 
 .section-head p {
   margin: 5px 0 0;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -115,9 +115,9 @@ const usernameModel = computed({
   justify-content: space-between;
   gap: 10px;
   padding: 10px;
-  border: 1px solid #eef0f4;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 8px;
-  background: #fafafa;
+  background: var(--cpu-surface-subtle);
 }
 
 .manager-row div {
@@ -128,12 +128,12 @@ const usernameModel = computed({
 }
 
 .manager-row b {
-  color: #111827;
+  color: var(--cpu-text);
   overflow-wrap: anywhere;
 }
 
 .manager-row span {
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
 }
 
