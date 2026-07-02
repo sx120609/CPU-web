@@ -1,0 +1,211 @@
+.file-field-editor {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+}
+.file-template-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px auto auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #e0f2fe;
+  border-radius: 8px;
+  margin: 14px 0;
+  background: #f0f9ff;
+  min-width: 0;
+}
+.file-template-bar > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.file-template-bar b { color: #0f172a; }
+.file-template-bar span {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.file-template-bar :deep(.el-select) { width: 100%; }
+.file-field-head,
+.file-field-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.file-field-head {
+  justify-content: space-between;
+  color: #111827;
+}
+.file-field-row {
+  padding: 10px;
+  border: 1px solid #eef0f4;
+  border-radius: 8px;
+  background: #fff;
+}
+.compact-field,
+.config-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.compact-field { flex: 1; }
+.compact-field span,
+.config-field span {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 650;
+}
+.config-field small,
+.rename-example {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.file-rule-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px 180px;
+  gap: 12px;
+  align-items: start;
+  margin-top: 14px;
+}
+.file-rule-grid :deep(.el-input-number) { width: 100%; }
+.rename-builder,
+.expected-list-box {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #dbe7f3;
+  border-radius: 8px;
+  margin-top: 12px;
+  background: #fff;
+}
+.rename-head {
+  display: grid;
+  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+.rename-head > div {
+  display: grid;
+  gap: 4px;
+}
+.rename-head b {
+  color: #111827;
+}
+.rename-head span {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.rename-token-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 2px;
+}
+.rename-insert-grid {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.2fr) minmax(220px, 1fr) 112px;
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.rename-insert-grid .config-field {
+  gap: 7px;
+}
+.rename-insert-grid :deep(.el-select),
+.rename-insert-grid :deep(.el-input-number) {
+  width: 100%;
+}
+.rename-insert-grid :deep(.el-radio-group) {
+  display: flex;
+  width: 100%;
+}
+.rename-insert-grid :deep(.el-radio-button) {
+  flex: 1;
+}
+.rename-insert-grid :deep(.el-radio-button__inner) {
+  width: 100%;
+  height: 34px;
+  padding: 0 8px;
+  color: #475569;
+  background: #fff;
+  font-weight: 650;
+  line-height: 32px;
+}
+.rename-insert-grid :deep(.el-radio-button.is-active .el-radio-button__inner) {
+  border-color: #0f766e;
+  background: #0f766e;
+  box-shadow: -1px 0 0 0 #0f766e;
+  color: #fff;
+}
+.rename-insert-action {
+  grid-column: 1 / -1;
+  justify-self: end;
+  min-width: 118px;
+  min-height: 36px;
+  border-radius: 8px;
+  font-weight: 650;
+}
+.rename-token-label {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 650;
+}
+.rename-token {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid #d7dee8;
+  border-radius: 999px;
+  color: #334155;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+  transition: border-color 0.15s, background 0.15s, color 0.15s, transform 0.15s;
+}
+.rename-token:hover {
+  border-color: #99f6e4;
+  color: #0f766e;
+  background: #f0fdfa;
+  transform: translateY(-1px);
+}
+.rename-token-system {
+  border-color: #d7dee8;
+  color: #334155;
+  background: #fff;
+}
+.file-download-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.file-download-list button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  cursor: pointer;
+}
+.file-download-list button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+.file-download-list span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.file-download-list small { color: #64748b; }

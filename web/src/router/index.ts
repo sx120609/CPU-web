@@ -64,7 +64,6 @@ export const router = createRouter({
         { path: "services/tools", name: "service-tools", component: () => import("@/views/services/Tools.vue"), meta: { title: "校园小工具", public: true } },
         { path: "services/tools/manage", name: "service-tools-manage", component: () => import("@/views/services/ToolManage.vue"), meta: { title: "小工具管理" } },
         { path: "services/tools/qqbot-reminders", redirect: "/messages/qqbot-reminders" },
-        { path: "services/tools/filestore", name: "service-filestore", component: () => import("@/views/services/FileStoreEmbed.vue"), meta: { title: "文件收集" } },
         { path: "services/tools/:slug", name: "service-tool-detail", component: () => import("@/views/services/ToolDetail.vue"), meta: { title: "校园小工具", public: true } },
         { path: "services/tools/questionnaires/:slug", name: "questionnaire-fill", component: () => import("@/views/services/QuestionnaireFill.vue"), meta: { title: "填写问卷", public: true } },
         { path: "services/tools/grade-checks/:slug", name: "grade-check-lookup", component: () => import("@/views/services/GradeCheckLookup.vue"), meta: { title: "成绩核对" } },

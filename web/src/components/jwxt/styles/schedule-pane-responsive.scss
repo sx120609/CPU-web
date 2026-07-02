@@ -1,0 +1,251 @@
+@media (max-width: 760px) {
+  .summary { display: none; }
+
+  .top {
+    gap: 6px;
+  }
+
+  .sem-select {
+    max-width: none;
+  }
+
+  .view-switch {
+    grid-template-columns: repeat(2, 30px);
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  :global(.schedule-edit-dialog.el-dialog),
+  :global(.schedule-edit-dialog .el-dialog) {
+    position: fixed;
+    inset: auto 0 0 0;
+    width: 100% !important;
+    max-width: 100%;
+    height: min(82dvh, calc(100dvh - env(safe-area-inset-top) - 18px));
+    max-height: min(82dvh, calc(100dvh - env(safe-area-inset-top) - 18px));
+    margin: 0 !important;
+    border-radius: 18px 18px 0 0;
+    overflow: hidden;
+  }
+
+  :global(.schedule-edit-dialog.el-dialog .el-dialog__header),
+  :global(.schedule-edit-dialog .el-dialog__header) {
+    flex: none;
+    padding: 14px 16px 8px;
+    margin-right: 0;
+  }
+
+  :global(.schedule-edit-dialog.el-dialog .el-dialog__body),
+  :global(.schedule-edit-dialog .el-dialog__body) {
+    flex: 1;
+    min-height: 0;
+    padding: 6px 14px 10px;
+    overflow: auto;
+  }
+
+  :global(.schedule-edit-dialog.el-dialog .el-dialog__footer),
+  :global(.schedule-edit-dialog .el-dialog__footer) {
+    position: sticky;
+    bottom: 0;
+    z-index: 4;
+    flex: none;
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+    border-top: 1px solid #eef0f4;
+    background: #fff;
+    box-shadow: 0 -8px 18px rgba(24, 34, 51, 0.06);
+  }
+
+  :global(.schedule-edit-dialog.el-dialog .el-dialog__footer .el-button),
+  :global(.schedule-edit-dialog .el-dialog__footer .el-button) {
+    min-width: 72px;
+    margin-left: 6px;
+  }
+
+  .edit-section {
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .custom-course-form :deep(.el-form-item) {
+    margin-bottom: 8px;
+  }
+
+  .week-list-form-item {
+    grid-column: auto;
+  }
+
+  .day-grid-body {
+    grid-template-columns: 42px minmax(0, 1fr);
+    grid-template-rows: repeat(11, minmax(52px, calc(var(--schedule-vh, 1vh) * 6)));
+    gap: 4px;
+  }
+
+  .day-slot-cell {
+    border-radius: 10px;
+  }
+
+  .day-course-block {
+    border-radius: 12px;
+    padding: 10px 12px;
+    gap: 5px;
+  }
+
+  .day-course-name {
+    font-size: 16px;
+    -webkit-line-clamp: 3;
+  }
+
+  .day-course-meta {
+    font-size: 12px;
+  }
+
+  .day-course-note {
+    font-size: 11px;
+  }
+
+  .week-grid-head,
+  .week-grid-body {
+    grid-template-columns: 38px repeat(7, minmax(0, 1fr));
+    gap: 3px;
+  }
+
+  .week-day-head {
+    height: 42px;
+    border-radius: 8px;
+  }
+
+  .week-day-head span {
+    font-size: 12px;
+  }
+
+  .week-day-head b {
+    font-size: 10px;
+  }
+
+  .week-grid-body {
+    grid-template-rows: repeat(11, minmax(44px, calc(var(--schedule-vh, 1vh) * 5.5)));
+  }
+
+  .slot-axis b {
+    font-size: 12px;
+  }
+
+  .slot-axis span {
+    font-size: 8px;
+  }
+
+  .week-slot-cell {
+    border-radius: 8px;
+  }
+
+  .week-course {
+    border-radius: 7px;
+    padding: 4px 2px;
+  }
+
+  .week-course strong {
+    font-size: 9px;
+  }
+
+  .week-course span {
+    font-size: 8px;
+  }
+
+  .week-course em {
+    display: none;
+  }
+}
+
+@media (max-width: 390px) {
+  .week-strip {
+    gap: 3px;
+  }
+
+  .day-pill {
+    border-radius: 10px;
+    padding: 7px 1px;
+    gap: 1px;
+  }
+
+  .day-pill span {
+    font-size: 11px;
+  }
+
+  .day-pill b {
+    font-size: 11px;
+  }
+
+  .week-switcher {
+    grid-template-columns: 82px minmax(0, 1fr) 82px;
+    gap: 6px;
+  }
+
+  .week-btn {
+    font-size: 12px;
+  }
+
+  .view-switch {
+    grid-template-columns: repeat(2, 28px);
+    height: 36px;
+  }
+
+  .view-switch button {
+    font-size: 12px;
+  }
+
+  .icon-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  .week-grid-head,
+  .week-grid-body {
+    grid-template-columns: 34px repeat(7, minmax(0, 1fr));
+    gap: 2px;
+  }
+
+  .day-grid-body {
+    grid-template-columns: 36px minmax(0, 1fr);
+    grid-template-rows: repeat(11, minmax(48px, calc(var(--schedule-vh, 1vh) * 5.6)));
+    gap: 3px;
+  }
+
+  .day-course-block {
+    padding: 9px 10px;
+  }
+
+  .day-course-name {
+    font-size: 15px;
+  }
+
+  .day-course-meta {
+    font-size: 11px;
+  }
+
+  .day-course-note {
+    font-size: 10px;
+  }
+
+  .week-grid-body {
+    grid-template-rows: repeat(11, minmax(40px, calc(var(--schedule-vh, 1vh) * 5.2)));
+  }
+
+  .slot-axis b {
+    font-size: 11px;
+  }
+
+  .slot-axis span {
+    font-size: 7px;
+  }
+
+  .week-course strong {
+    font-size: 8px;
+  }
+
+  .week-course span {
+    font-size: 7px;
+  }
+}

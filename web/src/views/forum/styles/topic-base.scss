@@ -1,0 +1,73 @@
+.topic-page { display: flex; flex-direction: column; gap: 16px; }
+
+.cpu-card { background: #fff; border-radius: 12px; padding: 20px 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
+
+.topic-page-loading,
+.topic-page-empty {
+  min-height: 360px;
+}
+
+.topic-skeleton-card {
+  .el-skeleton {
+    width: 100%;
+  }
+}
+
+.topic-skeleton-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.topic-skeleton-back {
+  width: 120px;
+}
+
+.topic-skeleton-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.topic-skeleton-title {
+  width: min(100%, 480px);
+  height: 30px;
+  margin-bottom: 18px;
+}
+
+.topic-skeleton-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.topic-skeleton-avatar {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+
+.topic-skeleton-meta-copy {
+  flex: 1;
+}
+
+.topic-skeleton-author {
+  width: 160px;
+  margin-bottom: 8px;
+}
+
+.topic-skeleton-submeta {
+  width: min(100%, 280px);
+}
+
+.topic-skeleton-body {
+  display: grid;
+  gap: 10px;
+}
+
+.topic-skeleton-line:last-child {
+  width: 72%;
+}
+

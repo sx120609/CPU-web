@@ -291,15 +291,15 @@ const FileCollectPanel = defineComponent({
       h("div", { class: "list-head" }, [
         h("div", [
           h("h3", "文件收集"),
-          h("p", "已接入 Filestore 文件收集系统，管理端和提交端保留原项目交互。"),
+          h("p", "创建提交链接，集中收取作业、材料、照片等文件。发起者可在管理页查看提交记录并打包下载。"),
         ]),
         canManageFileCollect.value
-          ? h("button", { class: "plain-action", type: "button", onClick: () => router.push("/services/tools/filestore") }, "打开系统")
+          ? h("button", { class: "plain-action", type: "button", onClick: () => openToolManage("file_collect") }, "进入管理")
           : null,
       ]),
       h("div", { class: "empty-panel" }, canManageFileCollect.value
-        ? "进入系统后可创建任务、复制提交链接、查看提交记录和下载文件。"
-        : "请通过发起者分享的 Filestore 提交链接上传文件。"),
+        ? "在管理页创建任务、复制提交链接、查看提交记录和下载文件。"
+        : "请通过发起者分享的文件收集链接上传文件。"),
     ]);
   },
 });

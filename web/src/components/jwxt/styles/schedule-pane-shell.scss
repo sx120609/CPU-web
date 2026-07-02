@@ -1,0 +1,245 @@
+.schedule-pane {
+  position: relative;
+  overflow: hidden;
+  color: #172033;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 auto 14px;
+  max-width: 720px;
+}
+
+.top-placeholder {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  color: #667085;
+  font-size: 13px;
+}
+
+.sem-select {
+  flex: 1;
+  min-width: 0;
+  max-width: 260px;
+}
+
+.sem-select :deep(.el-select__wrapper) {
+  min-height: 38px;
+  border-radius: 10px;
+  border: 1px solid #dde4ee;
+  box-shadow: none;
+  background: #fff;
+  padding: 4px 10px;
+}
+
+.sem-select :deep(.el-select__wrapper:hover) {
+  border-color: #c2cdda;
+}
+
+.sem-select :deep(.el-select__wrapper.is-focused) {
+  border-color: var(--schedule-accent);
+  box-shadow: none;
+}
+
+.sem-select :deep(.el-select__placeholder),
+.sem-select :deep(.el-select__selected-item) {
+  font-size: 13px;
+  color: #172033;
+}
+
+.top-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.view-switch {
+  height: 38px;
+  padding: 3px;
+  border: 1px solid #dde4ee;
+  border-radius: 10px;
+  background: #fff;
+  display: inline-grid;
+  grid-template-columns: repeat(2, 34px);
+  gap: 2px;
+}
+
+.view-switch button {
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #5c6677;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: var(--schedule-accent-soft-hover);
+}
+
+.view-switch button.active {
+  background: var(--schedule-accent);
+  color: var(--schedule-accent-contrast);
+}
+
+.view-switch button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.icon-btn {
+  width: 38px;
+  height: 38px;
+  border: 1px solid #dde4ee;
+  border-radius: 10px;
+  background: #fff;
+  color: #172033;
+  display: grid;
+  place-items: center;
+  touch-action: manipulation;
+  cursor: pointer;
+  -webkit-tap-highlight-color: var(--schedule-accent-soft-hover);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.icon-btn:active { background: #f3f4f6; }
+
+.icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.icon-btn.active {
+  background: var(--schedule-accent);
+  border-color: var(--schedule-accent);
+  color: var(--schedule-accent-contrast);
+}
+
+.icon-btn.spinning .el-icon {
+  animation: spin 0.9s linear infinite;
+}
+
+.icon-btn .el-icon {
+  font-size: 18px;
+}
+
+@keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+
+.week-switcher {
+  max-width: 720px;
+  margin: 0 auto 12px;
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) 96px;
+  align-items: center;
+  gap: 8px;
+}
+
+.week-btn {
+  height: 42px;
+  border: 1px solid #dde4ee;
+  border-radius: 13px;
+  background: #fff;
+  color: #172033;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 13px;
+  touch-action: manipulation;
+}
+
+.week-btn:disabled {
+  color: #b7bfcc;
+  background: #f9fafb;
+}
+
+.week-title {
+  min-width: 0;
+  height: 42px;
+  border: none;
+  border-radius: 13px;
+  background: var(--schedule-accent-pale);
+  color: var(--schedule-accent-strong);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 0 10px;
+  font: inherit;
+  cursor: default;
+}
+
+.week-title.clickable {
+  cursor: pointer;
+  -webkit-tap-highlight-color: var(--schedule-accent-soft-hover);
+  transition: background 0.15s;
+}
+
+.week-title.clickable:hover,
+.week-title.clickable:active {
+  background: var(--schedule-accent-pale-hover);
+}
+
+.week-title:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.week-title b {
+  font-size: 15px;
+}
+
+.week-title span {
+  font-size: 11px;
+}
+
+.week-strip {
+  max-width: 720px;
+  margin: 0 auto 14px;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  overflow: hidden;
+}
+
+.day-pill {
+  min-width: 0;
+  border: 1px solid #dde4ee;
+  border-radius: 13px;
+  background: #fff;
+  padding: 8px 3px;
+  color: #5c6677;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  touch-action: manipulation;
+}
+
+.day-pill span {
+  font-size: 12px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.day-pill b {
+  font-size: 13px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.day-pill.today {
+  border-color: var(--schedule-accent-border);
+}
+
+.day-pill.active {
+  background: var(--schedule-accent);
+  border-color: var(--schedule-accent);
+  color: var(--schedule-accent-contrast);
+}
+

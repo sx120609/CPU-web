@@ -1,0 +1,496 @@
+.day-timeline {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  touch-action: pan-y;
+}
+.schedule-body-scroll {
+  flex: 1 1 auto;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  padding-bottom: 0;
+  scroll-padding-bottom: var(--schedule-scroll-bottom-gap);
+}
+.schedule-body-scroll::after {
+  content: "";
+  display: block;
+  height: var(--schedule-scroll-bottom-gap);
+  min-height: var(--schedule-scroll-bottom-gap);
+}
+.day-grid-body {
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr);
+  grid-template-rows: repeat(11, minmax(58px, calc(var(--schedule-vh, 1vh) * 6.2)));
+  gap: 5px;
+  position: relative;
+}
+.day-axis {
+  padding-top: 0;
+}
+.day-slot-cell {
+  min-width: 0;
+  min-height: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.36);
+  border: 1px solid rgba(218, 227, 239, 0.82);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.46);
+  cursor: pointer;
+  touch-action: pan-y;
+}
+.day-course-block {
+  z-index: 2;
+  margin: 1px;
+  border-radius: 16px;
+  border: 1.5px solid var(--course-border);
+  background: var(--course-bg);
+  color: var(--course-text);
+  padding: 12px 14px;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.58),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.22),
+    0 10px 24px rgba(24, 34, 51, 0.08);
+  backdrop-filter: blur(14px) saturate(145%);
+  -webkit-backdrop-filter: blur(14px) saturate(145%);
+  touch-action: pan-y;
+}
+.day-course-name {
+  font-size: 18px;
+  line-height: 1.25;
+  font-weight: 800;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+.day-course-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 13px;
+  line-height: 1.3;
+  font-weight: 700;
+  opacity: 0.94;
+}
+.day-course-note {
+  font-size: 12px;
+  line-height: 1.25;
+  opacity: 0.86;
+}
+.week-overview {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  touch-action: pan-y;
+}
+.week-grid-head,
+.week-grid-body {
+  display: grid;
+  grid-template-columns: 44px repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.week-grid-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  margin-bottom: 6px;
+  padding: 3px 0;
+  background: rgba(247, 251, 255, 0.86);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+:global(body[data-cpu-native-app="1"]) .schedule-page .week-grid-head {
+  position: static;
+  top: auto;
+  z-index: auto;
+  background: #f7fbff;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.schedule-page.is-native-app.view-week .week-grid-head {
+  position: static;
+  top: auto;
+  z-index: auto;
+  background: #f7fbff;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.time-head,
+.week-day-head {
+  min-width: 0;
+  height: 38px;
+  border-radius: 10px;
+  color: #667085;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.1;
+}
+.time-head {
+  font-size: 11px;
+}
+.week-day-head {
+  background: rgba(255, 255, 255, 0.56);
+  border: 1px solid rgba(218, 227, 239, 0.88);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.week-day-head span {
+  font-size: 12px;
+  font-weight: 700;
+}
+.week-day-head b {
+  margin-top: 3px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.week-day-head.today {
+  border-color: var(--schedule-accent);
+  background: var(--schedule-accent-pale);
+  color: var(--schedule-accent-strong);
+}
+.week-grid-body {
+  position: relative;
+  grid-template-rows: repeat(11, minmax(48px, calc(var(--schedule-vh, 1vh) * 5.8)));
+  align-items: stretch;
+}
+.slot-axis {
+  min-width: 0;
+  min-height: 0;
+  padding-top: 4px;
+  color: #667085;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.slot-axis b {
+  color: #172033;
+  font-size: 13px;
+}
+.slot-axis span {
+  text-align: center;
+  font-size: 9px;
+  line-height: 1.12;
+}
+.week-slot-cell {
+  min-width: 0;
+  min-height: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.30);
+  border: 1px solid rgba(226, 234, 244, 0.78);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38);
+  cursor: pointer;
+  touch-action: pan-y;
+}
+.week-slot-cell.today {
+  background: rgba(232, 246, 243, 0.48);
+}
+.week-course {
+  min-width: 0;
+  min-height: 0;
+  z-index: 2;
+  margin: 1px;
+  border-radius: 9px;
+  border: 1.5px solid var(--course-border);
+  background: var(--course-bg);
+  color: var(--course-text);
+  padding: 5px 3px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.58),
+    0 6px 14px rgba(24, 34, 51, 0.08);
+  backdrop-filter: blur(12px) saturate(145%);
+  -webkit-backdrop-filter: blur(12px) saturate(145%);
+  cursor: pointer;
+  touch-action: pan-y;
+}
+
+.theme-color-glass .day-course-block,
+.theme-color-glass .week-course {
+  border-width: 1px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.58),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.16),
+    0 3px 10px rgba(44, 62, 94, 0.05);
+  backdrop-filter: blur(10px) saturate(130%);
+  -webkit-backdrop-filter: blur(10px) saturate(130%);
+}
+
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 760px) {
+    .carousel-viewport,
+    .schedule-panel {
+      contain: layout;
+    }
+
+    .week-grid-head {
+      position: static;
+      background: #f7fbff;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+
+    .day-slot-cell,
+    .week-slot-cell,
+    .week-day-head {
+      box-shadow: none;
+    }
+
+    .day-course-block,
+    .week-course {
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      box-shadow: 0 2px 7px rgba(24, 34, 51, 0.06);
+    }
+
+    .content.dragging .day-course-block,
+    .content.dragging .week-course {
+      box-shadow: none;
+    }
+  }
+}
+.week-course strong,
+.week-course span,
+.week-course em {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
+  text-align: center;
+}
+.week-course strong {
+  -webkit-line-clamp: 4;
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 800;
+}
+.week-course span {
+  -webkit-line-clamp: 2;
+  font-size: 9px;
+  line-height: 1.12;
+  font-weight: 700;
+  opacity: 0.94;
+}
+.week-course em {
+  -webkit-line-clamp: 1;
+  font-size: 8px;
+  line-height: 1.1;
+  font-style: normal;
+  opacity: 0.86;
+}
+.empty-day {
+  min-height: 240px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  color: #8a94a6;
+}
+.empty-day .el-icon {
+  font-size: 36px;
+}
+
+.day-pane {
+  will-change: transform, opacity;
+}
+.next-card,
+.next-card span,
+.next-card em,
+.next-card b {
+  display: none;
+}
+
+/* ===== 周次选择 dialog 里的网格 ===== */
+.week-grid-pick {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.widget-guide {
+  display: grid;
+  gap: 10px;
+}
+
+.widget-dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #172033;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.widget-help-btn {
+  width: 24px;
+  height: 24px;
+  border: 1px solid #dde4ee;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--schedule-accent-strong);
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+:global(.widget-help-popover) {
+  line-height: 1.65;
+}
+
+.widget-help-text {
+  margin: 0;
+  color: #475467;
+  font-size: 12px;
+}
+
+.widget-step {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #dde4ee;
+  border-radius: 10px;
+  background: #fff;
+  color: #172033;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s, transform 0.15s;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.widget-step:hover {
+  border-color: var(--schedule-accent);
+  background: var(--schedule-accent-pale);
+  box-shadow: 0 6px 16px rgba(24, 34, 51, 0.08);
+}
+
+.widget-step:active {
+  transform: translateY(1px);
+}
+
+.widget-step:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.widget-step b {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--schedule-accent-pale);
+  color: var(--schedule-accent-strong);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+}
+
+.widget-step span {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 650;
+  text-align: center;
+}
+
+.widget-step-arrow {
+  color: #98a2b3;
+  font-size: 14px;
+}
+
+.widget-note {
+  margin: 12px 0 0;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.support-note {
+  margin: 12px 0 0;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.support-note button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--schedule-accent-strong);
+  font: inherit;
+  font-weight: 650;
+  padding: 0;
+  cursor: pointer;
+}
+
+.widget-copy-message {
+  margin: 8px 0 0;
+  color: var(--schedule-accent-strong);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.widget-copy-message.warn {
+  color: #b45309;
+}
+
+.widget-instruction-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #1f2937;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.widget-instruction-list li + li {
+  margin-top: 8px;
+}
+
+.widget-countdown {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.android-update-panel {
+  color: #1f2937;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.android-update-panel p {
+  margin: 0;
+}
+
+.android-update-panel p + p {
+  margin-top: 10px;
+}

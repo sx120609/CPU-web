@@ -241,7 +241,7 @@ export async function notifyFileCollectSubmissionForQqBot(input: {
     actorUserId: input.submission.submitterId,
     title: "文件收集收到新提交",
     content: `${who}提交了《${limitText(input.task.title, 48)}》${fileText}。`,
-    link: "/services/tools/filestore",
+    link: "/services/tools/manage?tool=file_collect",
     payload: {
       type: "file-collect-submission",
       targetType: "file_collect",
@@ -316,7 +316,6 @@ async function notifyGradeCheckFeedbackForQqBot(input: {
 
 async function createReminderNotification(input: ReminderNotificationInput) {
   if (!input.enabled || !input.ownerId) return null;
-  if (input.actorUserId && input.actorUserId === input.ownerId) return null;
   const payload = input.dedupeKey
     ? { ...input.payload, dedupeKey: input.dedupeKey }
     : input.payload;
@@ -508,8 +507,8 @@ function normalizeFileCollectReminderItem(row: any) {
     eventOptions: reminderEvents.file_collect.map((event) => ({ value: event, label: reminderEventLabels[event] })),
     eventLabel: "收到新提交",
     metricLabel: `${Number(row.submissionCount ?? 0)} 次提交`,
-    link: `/filestore/submit/${row.slug}`,
-    manageLink: "/services/tools/filestore",
+    link: `/services/tools/file-collections/${row.slug}`,
+    manageLink: "/services/tools/manage?tool=file_collect",
     deadlineAt: row.deadline,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

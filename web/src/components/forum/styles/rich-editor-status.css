@@ -1,0 +1,126 @@
+.upload-progress-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  border-top: 1px solid #edf1f5;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0.92), rgba(255, 255, 255, 0.96));
+}
+
+.upload-progress-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  color: #4b5563;
+  font-size: 12px;
+}
+
+.upload-progress-head strong {
+  display: block;
+  margin-bottom: 3px;
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.upload-progress-list {
+  display: grid;
+  gap: 10px;
+}
+
+.upload-progress-item {
+  padding: 10px 12px;
+  border: 1px solid #e3eaf2;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.upload-progress-item.is-error {
+  border-color: rgba(220, 38, 38, 0.22);
+  background: rgba(254, 242, 242, 0.86);
+}
+
+.upload-progress-item.is-done {
+  border-color: rgba(22, 135, 118, 0.18);
+}
+
+.upload-progress-item__top,
+.upload-progress-item__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.upload-progress-item__top {
+  margin-bottom: 8px;
+}
+
+.upload-progress-item__meta {
+  margin-top: 8px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.upload-progress-item__name {
+  min-width: 0;
+  color: #111827;
+  font-size: 13px;
+  font-weight: 700;
+  word-break: break-all;
+}
+
+.upload-progress-item__status {
+  flex: 0 0 auto;
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.upload-progress-item.is-error .upload-progress-item__status,
+.upload-progress-item__error {
+  color: #dc2626;
+}
+
+.upload-progress-item__error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.editor-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  padding: 9px 12px 10px;
+  border-top: 1px solid #edf0f5;
+  background: #fff;
+  border-radius: 0 0 14px 14px;
+}
+
+.rich-editor.toolbar-static .editor-foot {
+  border-radius: 0 0 18px 18px;
+}
+
+.editor-foot .warn {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.foot-note {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.draft-state,
+.foot-count {
+  flex: 0 0 auto;
+}
+
+.hidden-file {
+  display: none;
+}
+

@@ -60,8 +60,8 @@ export const serviceTools: ServiceTool[] = [
   {
     slug: "file_collect",
     name: "文件收集",
-    summary: "接入 Filestore，集中收作业、材料和照片",
-    description: "嵌入 Filestore 文件收集系统，保留原项目的任务创建、提交链接、缺交统计和批量下载能力。",
+    summary: "集中收作业、材料和照片",
+    description: "发起者创建收集任务并分享提交链接，系统负责字段校验、文件命名、提交统计和批量下载。",
     icon: "📁",
     status: "ready",
     category: "收集",

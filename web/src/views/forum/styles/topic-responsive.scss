@@ -1,0 +1,247 @@
+@media (max-width: 700px) {
+  .topic-page {
+    gap: 12px;
+  }
+
+  .topic-skeleton-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .topic-skeleton-actions {
+    width: 100%;
+  }
+
+  .cpu-card {
+    border-radius: 10px;
+    padding: 14px;
+  }
+
+  .main-post {
+    .post-head {
+      align-items: flex-start;
+      gap: 8px;
+      flex-direction: column;
+    }
+
+    .actions {
+      width: 100%;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .actions::-webkit-scrollbar {
+      display: none;
+    }
+
+    .post-title {
+      font-size: 20px;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+
+    .post-meta {
+      align-items: flex-start;
+      gap: 10px;
+      flex-wrap: wrap;
+
+      .meta-author {
+        min-width: 0;
+      }
+
+      .name,
+      .meta {
+        flex-wrap: wrap;
+        line-height: 1.5;
+      }
+
+      .meta-price {
+        width: 100%;
+        font-size: 20px;
+      }
+    }
+
+    .source-bar {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px;
+    }
+
+    .src-link {
+      width: 100%;
+      justify-content: center;
+    }
+
+    .extra-bar {
+      gap: 8px;
+      padding: 10px 12px;
+    }
+
+    .weiwall-hot-hero {
+      padding: 16px;
+      border-radius: 18px;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .weiwall-hot-hero h3 {
+      font-size: 20px;
+    }
+
+    .weiwall-hot-hero-meta {
+      min-width: 0;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      flex-direction: row;
+    }
+
+    .weiwall-hot-item {
+      grid-template-columns: auto 1fr;
+      padding: 14px;
+    }
+
+    .weiwall-hot-rank {
+      min-width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      font-size: 15px;
+    }
+
+    .weiwall-hot-title {
+      font-size: 15px;
+    }
+
+    .weiwall-hot-summary {
+      font-size: 13px;
+    }
+
+    .weiwall-hot-action {
+      grid-column: 1 / -1;
+      width: 100%;
+      justify-self: stretch;
+    }
+
+    .post-foot {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .weiwall-contact-row,
+    .weiwall-contact-row-action {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .weiwall-contact-action {
+      width: 100%;
+    }
+  }
+
+  .replies {
+    .reply {
+      gap: 10px;
+      padding: 12px 0;
+    }
+
+    .reply-meta {
+      flex-wrap: wrap;
+      line-height: 1.5;
+    }
+  }
+
+  .reply-form-actions {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .reply-submit-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .reply-form-actions .el-button,
+  .reply-submit-actions .el-button {
+    width: 100%;
+  }
+
+  .share-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .share-card-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .topic-image-review-card {
+    grid-template-columns: 1fr;
+  }
+
+  .topic-video-review-card {
+    grid-template-columns: 1fr;
+  }
+
+  .reply-anonymous-box {
+    padding: 12px;
+  }
+
+  :deep(.reply-dialog .rich-editor.toolbar-static) {
+    border-radius: 16px;
+  }
+
+  :deep(.reply-dialog .rich-editor.toolbar-static .editor-toolbar) {
+    border-radius: 16px 16px 0 0;
+    padding: 8px 8px 6px;
+  }
+
+  :deep(.reply-dialog .rich-editor.toolbar-static .editor-foot) {
+    border-radius: 0 0 16px 16px;
+  }
+
+  :deep(.reply-dialog .rich-editor.toolbar-static .toolbar-head) {
+    display: none;
+  }
+
+  :deep(.reply-dialog .rich-editor.toolbar-static .toolbar-scroll) {
+    gap: 6px;
+  }
+
+  :deep(.reply-dialog .rich-editor.toolbar-static .toolbar-group) {
+    flex: 0 1 auto;
+    gap: 4px;
+    padding: 6px;
+    border-radius: 10px;
+  }
+
+  :deep(.reply-dialog .rich-editor.toolbar-static .toolbar-group + .toolbar-group) {
+    padding-left: 6px;
+  }
+
+  :deep(.reply-dialog .rich-editor.toolbar-static .editor-toolbar button) {
+    min-height: 32px;
+    padding: 0 8px;
+    border-radius: 8px;
+    font-size: 11px;
+  }
+
+  :deep(.reply-dialog .rich-editor.toolbar-static .size-btn),
+  :deep(.reply-dialog .rich-editor.toolbar-static .align-btn) {
+    min-width: 32px;
+    padding: 0 7px !important;
+  }
+
+  :deep(.reply-dialog .rich-editor.toolbar-static .size-label) {
+    font-size: 11px;
+  }
+
+  :deep(.reply-dialog) {
+    width: calc(100dvw - 16px) !important;
+  }
+
+  :deep(.reply-dialog .el-dialog) {
+    margin: 0 auto;
+    border-radius: 16px;
+  }
+}

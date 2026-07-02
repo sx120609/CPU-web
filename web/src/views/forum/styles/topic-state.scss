@@ -1,0 +1,26 @@
+.locked-tip, .login-tip {
+  text-align: center;
+  color: #6b7280;
+  font-size: 14px;
+  padding: 24px;
+  a { color: var(--cpu-primary); margin: 0 4px; }
+  p { margin: 0; }
+}
+
+.review-blocked p {
+  margin: 0 0 10px;
+  line-height: 1.7;
+  color: #374151;
+}
+
+.review-blocked p:last-child {
+  margin-bottom: 0;
+}
+
+:deep(.reply-dialog .el-dialog) {
+  border-radius: 18px;
+}
+
+.cpu-section-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
+.cpu-muted { font-size: 12px; color: #9ca3af; }
+

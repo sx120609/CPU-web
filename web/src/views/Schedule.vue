@@ -771,7 +771,6 @@ import { jwxtApi } from "@/api/jwxt";
 import { useAuthStore } from "@/stores/auth";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
-import { jwxtScopedStorageKey } from "@/utils/jwxtCache";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 import {
   ANDROID_APP_DOWNLOAD_URL,
@@ -802,12 +801,36 @@ import {
 } from "@/components/jwxt/scheduleTheme";
 import {
   courseEditKey,
-  createCustomCourseId,
   emptyScheduleEdits,
-  type CustomScheduleItem,
+  normalizeScheduleEditsState,
   type ScheduleEditState,
 } from "@/utils/scheduleEdits";
-import { normalizedCourseWeekList } from "@/utils/scheduleWeeks";
+import {
+  buildScheduleCacheKey,
+  isStale,
+  readCache,
+  readStoredLastScheduleCacheKey,
+  readStoredLastState,
+  scheduleCalendarCacheKey,
+  scheduleLastCacheKey,
+  scheduleLastStateCacheKey,
+  writeCache,
+  writeStoredLastScheduleCacheKey,
+  writeStoredLastState,
+} from "@/views/schedule/cache";
+import {
+  buildCustomCourseItem,
+  createCustomCourseForm,
+  customCourseWeekList as resolveCustomCourseWeekList,
+  deleteCourseEdit,
+  fillFormForExistingCourse,
+  fillFormForNewCourse,
+  restoreHiddenCourseEdit,
+  restoreOriginalCourseEdit,
+  saveCustomCourseEdit,
+  toggleCustomCourseWeek as toggleCustomCourseWeekSelection,
+  type CourseEditAction,
+} from "@/views/schedule/courseEditor";
 import {
   buildGraduateFallbackCalendar,
   dayOfWeek,
@@ -821,7 +844,6 @@ import {
 import { buildScriptableWidgetScript } from "@/views/schedule/scriptableWidget";
 import {
   MAX_SMALL_SLOT,
-  clampSlot,
   smallSlots,
 } from "@/views/schedule/slots";
 import { useScheduleBackground } from "@/views/schedule/useScheduleBackground";
@@ -830,9 +852,7 @@ import type {
   CalendarResult,
   CacheEnvelope,
   FlatCourse,
-  LastState,
   ScheduleCell,
-  ScheduleCourse,
   SchedulePageModel,
   ScheduleResult,
   ViewMode,
@@ -860,10 +880,6 @@ const scheduleSavedAt = ref(0);
 const scheduleEdits = ref<ScheduleEditState>(emptyScheduleEdits());
 const viewportHeight = ref(0);
 const compactViewport = ref(false);
-const CACHE_TTL = 12 * 60 * 60 * 1000;
-const CALENDAR_CACHE_BASE = "cpu-schedule-calendar-v1";
-const LAST_STATE_BASE = "cpu-schedule-last-state-v1";
-const LAST_CACHE_BASE = "cpu-schedule-last-cache-key-v1";
 const THEME_KEY = "cpu-schedule-theme-v1";
 const GRAD_DEBUG_URL = "http://ygl.cpu.edu.cn/gmis5/oauthLogin/zgyk";
 const GRAD_DEBUG_FIXTURE_PATH = "server/.debug/grad-schedule.html";
@@ -876,22 +892,10 @@ let scheduleEditsSaveTimer = 0;
 let scheduleEditsLoadPromise: Promise<void> | null = null;
 let pendingScheduleEditsSave: { semester: string; edits: ScheduleEditState } | null = null;
 const editDialogOpen = ref(false);
-const customCourseForm = reactive({
-  name: "",
-  day: dayOfWeek(),
-  startSlot: 1,
-  endSlot: 2,
-  weekMode: "current" as "current" | "all" | "custom",
-  weekList: [] as number[],
-  weekText: "",
-  location: "",
-  teacher: "",
-  note: "",
-});
+const customCourseForm = reactive(createCustomCourseForm(dayOfWeek()));
 const editingCourseBlock = ref<WeekCourseBlock | null>(null);
 const editingCourseKey = ref("");
 const editingWeekValue = ref("");
-type CourseEditAction = "" | "save" | "delete" | "restore" | "restoreHidden";
 const courseEditAction = ref<CourseEditAction>("");
 const courseEditBusy = computed(() => courseEditAction.value !== "");
 
@@ -2327,22 +2331,11 @@ async function restoreHiddenCourse(key: string) {
       type: "warning",
     }).then(() => true).catch(() => false);
     if (!confirmed) return;
-    const keysToRestore = new Set<string>();
-    for (const source of allKnownScheduleSources()) {
-      for (const cell of source.cells ?? []) {
-        for (const course of cell.courses ?? []) {
-          const sourceKey = courseEditKey(cell.day, cell.bigSlot, course);
-          if (sourceKey === key || courseFamilyKey(cell.day, cell.bigSlot, course) === key) {
-            keysToRestore.add(sourceKey);
-          }
-        }
-      }
-    }
-    keysToRestore.add(key);
-    scheduleEdits.value = {
-      ...scheduleEdits.value,
-      hidden: scheduleEdits.value.hidden.filter((item) => !keysToRestore.has(item)),
-    };
+    scheduleEdits.value = restoreHiddenCourseEdit(scheduleEdits.value, {
+      key,
+      sources: allKnownScheduleSources(),
+      courseFamilyKey,
+    });
     persistScheduleEdits();
   } finally {
     if (courseEditAction.value === "restoreHidden") courseEditAction.value = "";
@@ -2356,16 +2349,13 @@ async function openAddCourse(day = activeDay.value, slot = 1, targetWeek = curre
   editingCourseBlock.value = null;
   editingCourseKey.value = "";
   editingWeekValue.value = String(targetWeek || currentWeekValue());
-  customCourseForm.name = "";
-  customCourseForm.day = day;
-  customCourseForm.startSlot = clampSlot(slot);
-  customCourseForm.endSlot = Math.min(MAX_SMALL_SLOT, customCourseForm.startSlot + 1);
-  customCourseForm.weekMode = "current";
-  customCourseForm.weekList = [Number(editingWeekValue.value || activeWeekNumber.value || week.value || 1)].filter(Boolean);
-  customCourseForm.weekText = customCourseWeeksText(customCourseForm.weekList);
-  customCourseForm.location = "";
-  customCourseForm.teacher = "";
-  customCourseForm.note = "";
+  fillFormForNewCourse(customCourseForm, {
+    day,
+    slot,
+    targetWeek: editingWeekValue.value,
+    activeWeekNumber: activeWeekNumber.value,
+    currentWeek: week.value,
+  });
   editDialogOpen.value = true;
 }
 
@@ -2376,14 +2366,7 @@ async function openCourseEditor(block: WeekCourseBlock, targetWeek = currentWeek
   editingCourseBlock.value = block;
   editingCourseKey.value = courseEditKey(block.day, block.bigSlot, block.course);
   editingWeekValue.value = String(targetWeek || currentWeekValue());
-  customCourseForm.name = block.course.name;
-  customCourseForm.day = block.day;
-  customCourseForm.startSlot = block.startSlot;
-  customCourseForm.endSlot = block.endSlot;
-  customCourseForm.location = block.course.location || "";
-  customCourseForm.teacher = block.course.teacher || "";
-  customCourseForm.note = noteFromCourse(block.course);
-  setFormWeeksFromCourse(block.course);
+  fillFormForExistingCourse(customCourseForm, block, courseEditorWeekContext());
   editDialogOpen.value = true;
 }
 
@@ -2394,8 +2377,6 @@ function saveCourseEdit() {
     showEditorMessage("warning", "请填写课程名称");
     return;
   }
-  const startSlot = clampSlot(customCourseForm.startSlot);
-  const endSlot = Math.max(startSlot, clampSlot(customCourseForm.endSlot));
   const weekList = customCourseWeekList();
   if (customCourseForm.weekMode === "custom" && !weekList.length) {
     showEditorMessage("warning", "请选择周次");
@@ -2406,40 +2387,17 @@ function saveCourseEdit() {
     const existing = editingCourseBlock.value?.course.customId
       ? scheduleEdits.value.custom.find((item) => item.id === editingCourseBlock.value?.course.customId)
       : null;
-    const item: CustomScheduleItem = {
-      id: existing?.id || createCustomCourseId(),
-      sourceKey: existing?.sourceKey || editingCourseKey.value || undefined,
-      day: customCourseForm.day,
-      bigSlot: Math.ceil(startSlot / 2),
-      course: {
-        name,
-        teacher: customCourseForm.teacher.trim() || undefined,
-        location: customCourseForm.location.trim() || undefined,
-        weeks: customCourseWeeksLabel(weekList),
-        weekList,
-        startSlot,
-        endSlot,
-        slotNote: customCourseForm.note.trim() || `第 ${startSlot}-${endSlot} 节`,
-      },
-    };
-    const editingBlock = editingCourseBlock.value;
-    const editingFamilyKey = editingBlock ? courseFamilyKey(editingBlock.day, editingBlock.bigSlot, editingBlock.course) : "";
-    const hiddenSourceKeys = new Set<string>();
-    if (editingBlock && !editingBlock.course.customId) {
-      for (const key of courseFamilySourceKeys(editingBlock.day, editingBlock.bigSlot, editingBlock.course)) {
-        hiddenSourceKeys.add(key);
-      }
-      if (item.sourceKey) hiddenSourceKeys.add(item.sourceKey);
-      if (editingCourseKey.value) hiddenSourceKeys.add(editingCourseKey.value);
-    }
-    const custom = scheduleEdits.value.custom.filter((entry) => {
-      if (entry.id === item.id) return false;
-      if (Boolean(item.sourceKey) && entry.sourceKey === item.sourceKey) return false;
-      if (editingFamilyKey && courseFamilyKey(entry.day, entry.bigSlot, entry.course) === editingFamilyKey) return false;
-      return true;
+    const { item } = buildCustomCourseItem(customCourseForm, {
+      weekList,
+      existing,
+      editingCourseKey: editingCourseKey.value,
     });
-    const hidden = [...new Set([...scheduleEdits.value.hidden, ...hiddenSourceKeys])];
-    scheduleEdits.value = { hidden, custom: [...custom, item] };
+    scheduleEdits.value = saveCustomCourseEdit(scheduleEdits.value, item, {
+      editingBlock: editingCourseBlock.value,
+      editingCourseKey: editingCourseKey.value,
+      courseFamilyKey,
+      courseFamilySourceKeys,
+    });
     persistScheduleEdits();
     editDialogOpen.value = false;
     showEditorMessage("success", editingCourseBlock.value ? "已保存课程" : "已添加到课表");
@@ -2465,22 +2423,11 @@ async function deleteEditingCourse() {
       },
     ).then(() => true).catch(() => false);
     if (!confirmed) return;
-    let next = { ...scheduleEdits.value };
-    const targetFamilyKey = courseFamilyKey(block.day, block.bigSlot, block.course);
-    const hiddenKeysToRemove = courseFamilySourceKeys(block.day, block.bigSlot, block.course);
-    hiddenKeysToRemove.add(editingCourseKey.value || courseEditKey(block.day, block.bigSlot, block.course));
-    if (block.course.customId) {
-      next = {
-        ...next,
-        custom: next.custom.filter((item) => courseFamilyKey(item.day, item.bigSlot, item.course) !== targetFamilyKey),
-      };
-    } else {
-      next = {
-        hidden: [...new Set([...next.hidden, ...hiddenKeysToRemove])],
-        custom: next.custom.filter((item) => courseFamilyKey(item.day, item.bigSlot, item.course) !== targetFamilyKey),
-      };
-    }
-    scheduleEdits.value = next;
+    scheduleEdits.value = deleteCourseEdit(scheduleEdits.value, block, {
+      editingCourseKey: editingCourseKey.value,
+      courseFamilyKey,
+      courseFamilySourceKeys,
+    });
     persistScheduleEdits();
     editDialogOpen.value = false;
     showEditorMessage("success", block.course.customId ? "已删除课程" : "已从课表隐藏");
@@ -2504,17 +2451,12 @@ async function restoreOriginalCourse() {
       type: "warning",
     }).then(() => true).catch(() => false);
     if (!confirmed) return;
-    const keysToRestore = block ? courseFamilySourceKeys(block.day, block.bigSlot, block.course) : new Set<string>();
-    keysToRestore.add(sourceKey);
-    const familyKey = block ? courseFamilyKey(block.day, block.bigSlot, block.course) : "";
-    scheduleEdits.value = {
-      hidden: scheduleEdits.value.hidden.filter((key) => !keysToRestore.has(key)),
-      custom: scheduleEdits.value.custom.filter((item) => (
-        item.id !== customId &&
-        item.sourceKey !== sourceKey &&
-        (!familyKey || courseFamilyKey(item.day, item.bigSlot, item.course) !== familyKey)
-      )),
-    };
+    scheduleEdits.value = restoreOriginalCourseEdit(scheduleEdits.value, block, {
+      sourceKey,
+      customId,
+      courseFamilyKey,
+      courseFamilySourceKeys,
+    });
     persistScheduleEdits();
     editDialogOpen.value = false;
     showEditorMessage("success", "已恢复原始课程");
@@ -2523,71 +2465,22 @@ async function restoreOriginalCourse() {
   }
 }
 
-function setFormWeeksFromCourse(course: ScheduleCourse) {
-  const list = normalizedCourseWeekList(course);
-  const all = weekNumberOptions.value;
-  const current = Number(editingWeekValue.value || activeWeekNumber.value || week.value || 1);
-  if (!list.length || (all.length > 0 && list.length === all.length && all.every((w) => list.includes(w)))) {
-    customCourseForm.weekMode = "all";
-    customCourseForm.weekList = [...all];
-    customCourseForm.weekText = customCourseWeeksText(customCourseForm.weekList);
-    return;
-  }
-  if (list.length === 1 && list[0] === current) {
-    customCourseForm.weekMode = "current";
-    customCourseForm.weekList = list;
-    customCourseForm.weekText = customCourseWeeksText(list);
-    return;
-  }
-  customCourseForm.weekMode = "custom";
-  customCourseForm.weekList = list;
-  customCourseForm.weekText = customCourseWeeksText(list);
-}
-
 function customCourseWeekList() {
-  if (customCourseForm.weekMode === "all") return weekNumberOptions.value;
-  if (customCourseForm.weekMode === "custom") {
-    return [...new Set(customCourseForm.weekList.map(Number).filter(Boolean))].sort((a, b) => a - b);
-  }
-  return [Number(editingWeekValue.value || activeWeekNumber.value || week.value) || 1];
+  return resolveCustomCourseWeekList(customCourseForm, courseEditorWeekContext());
 }
 
 function toggleCustomWeek(weekNo: number) {
   if (courseEditBusy.value) return;
-  const set = new Set(customCourseForm.weekList);
-  if (set.has(weekNo)) set.delete(weekNo);
-  else set.add(weekNo);
-  customCourseForm.weekList = [...set].sort((a, b) => a - b);
-  customCourseForm.weekText = customCourseWeeksText(customCourseForm.weekList);
+  toggleCustomCourseWeekSelection(customCourseForm, weekNo);
 }
 
-function customCourseWeeksLabel(weekList: number[]) {
-  if (!weekList.length) return "全部周";
-  if (weekList.length === 1) return `第 ${weekList[0]} 周`;
-  const sorted = [...weekList].sort((a, b) => a - b);
-  const ranges: string[] = [];
-  let start = sorted[0];
-  let prev = sorted[0];
-  for (const value of sorted.slice(1)) {
-    if (value === prev + 1) {
-      prev = value;
-      continue;
-    }
-    ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
-    start = value;
-    prev = value;
-  }
-  ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
-  return `第 ${ranges.join("、")} 周`;
-}
-
-function customCourseWeeksText(weekList: number[]) {
-  return [...new Set(weekList.map(Number).filter(Boolean))].sort((a, b) => a - b).join(",");
-}
-
-function noteFromCourse(course: ScheduleCourse) {
-  const note = course.slotNote?.trim() || "";
-  return /^第\s*\d+\s*-\s*\d+\s*节$/.test(note) ? "" : note;
+function courseEditorWeekContext() {
+  return {
+    editingWeekValue: editingWeekValue.value,
+    activeWeekNumber: activeWeekNumber.value,
+    currentWeek: week.value,
+    weekNumberOptions: weekNumberOptions.value,
+  };
 }
 
 function loadScheduleEdits() {
@@ -2637,41 +2530,6 @@ function flushScheduleEditsSave() {
   pendingScheduleEditsSave = null;
   void jwxtApi.saveScheduleEdits({ semester: pending.semester, edits: pending.edits }, { silent: true })
     .catch(() => null);
-}
-
-function normalizeScheduleEditsState(input: ScheduleEditState | null | undefined): ScheduleEditState {
-  const hidden = Array.isArray(input?.hidden)
-    ? [...new Set(input.hidden.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim()))]
-    : [];
-  const custom = Array.isArray(input?.custom)
-    ? input.custom
-      .filter((item) => Boolean(
-        item &&
-        typeof item.id === "string" &&
-        Number.isFinite(item.day) &&
-        Number.isFinite(item.bigSlot) &&
-        item.course &&
-        typeof item.course.name === "string" &&
-        Array.isArray(item.course.weekList)
-      ))
-      .map((item) => ({
-        ...item,
-        id: String(item.id).trim(),
-        sourceKey: item.sourceKey?.trim() || undefined,
-        course: {
-          ...item.course,
-          name: String(item.course.name || "").trim(),
-          teacher: item.course.teacher?.trim() || undefined,
-          location: item.course.location?.trim() || undefined,
-          weeks: String(item.course.weeks || "").trim() || "全部周",
-          weekList: [...new Set(item.course.weekList.map((w) => Number(w)).filter((w) => Number.isFinite(w) && w > 0))].sort((a, b) => a - b),
-          slotNote: item.course.slotNote?.trim() || undefined,
-          startSlot: Number.isFinite(item.course.startSlot) ? Number(item.course.startSlot) : undefined,
-          endSlot: Number.isFinite(item.course.endSlot) ? Number(item.course.endSlot) : undefined,
-        },
-      }))
-    : [];
-  return { hidden, custom };
 }
 
 function allKnownScheduleSources() {
@@ -2724,64 +2582,36 @@ function dayCourseBlockStyle(block: WeekCourseBlock) {
 }
 
 function scheduleCacheKey(sem = semester.value, wk = week.value) {
-  const s = sem || parsed.value?.currentSemester || "current";
-  const w = scheduleStorageScope() === "graduate"
-    ? "all"
-    : (wk || calendar.value?.currentWeek || parsed.value?.currentWeek || "current");
-  return jwxtScopedStorageKey("cpu-schedule-cache-v3", scheduleStorageScope(), s, w);
-}
-
-function readCache<T>(key: string): CacheEnvelope<T> | null {
-  if (!key) return null;
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    const parsedValue = JSON.parse(raw);
-    if (!parsedValue || typeof parsedValue.savedAt !== "number") return null;
-    return parsedValue as CacheEnvelope<T>;
-  } catch {
-    return null;
-  }
-}
-
-function writeCache<T>(key: string, data: T) {
-  if (!key) return;
-  try {
-    localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), data }));
-  } catch {
-    /* ignore */
-  }
+  return buildScheduleCacheKey({
+    scope: scheduleStorageScope(),
+    semester: sem,
+    week: wk,
+    currentSemester: parsed.value?.currentSemester,
+    currentWeek: parsed.value?.currentWeek,
+    calendarWeek: calendar.value?.currentWeek,
+    graduate: scheduleStorageScope() === "graduate",
+  });
 }
 
 function writeScheduleCache(key: string, data: ScheduleResult) {
-  if (!key) return;
-  const envelope = { savedAt: Date.now(), data };
-  rememberScheduleCache(key, envelope);
-  try {
-    localStorage.setItem(key, JSON.stringify(envelope));
-  } catch {
-    /* ignore */
-  }
+  const envelope = writeCache(key, data);
+  if (envelope) rememberScheduleCache(key, envelope);
 }
 
 function rememberScheduleCache(key: string, envelope: CacheEnvelope<ScheduleResult>) {
   scheduleCacheStore.set(key, envelope);
 }
 
-function isStale(savedAt: number) {
-  return !savedAt || Date.now() - savedAt > CACHE_TTL;
-}
-
 function calendarCacheKey() {
-  return jwxtScopedStorageKey(CALENDAR_CACHE_BASE, scheduleStorageScope());
+  return scheduleCalendarCacheKey(scheduleStorageScope());
 }
 
 function lastStateCacheKey() {
-  return jwxtScopedStorageKey(LAST_STATE_BASE, scheduleStorageScope());
+  return scheduleLastStateCacheKey(scheduleStorageScope());
 }
 
 function lastScheduleCacheKey() {
-  return jwxtScopedStorageKey(LAST_CACHE_BASE, scheduleStorageScope());
+  return scheduleLastCacheKey(scheduleStorageScope());
 }
 
 function restoreCachedCalendar() {
@@ -2790,48 +2620,28 @@ function restoreCachedCalendar() {
 }
 
 function restoreLastState() {
-  try {
-    const key = lastStateCacheKey();
-    if (!key) return;
-    const raw = localStorage.getItem(key);
-    if (!raw) return;
-    const state = JSON.parse(raw) as LastState;
-    if (scheduleStorageScope() !== "graduate") {
-      if (state.semester) semester.value = state.semester;
-      if (state.week) week.value = state.week;
-    }
-    if (state.activeDay >= 1 && state.activeDay <= 7) activeDay.value = state.activeDay;
-    if (state.viewMode === "day" || state.viewMode === "week") viewMode.value = state.viewMode;
-  } catch {
-    /* ignore */
+  const state = readStoredLastState(lastStateCacheKey());
+  if (!state) return;
+  if (scheduleStorageScope() !== "graduate") {
+    if (state.semester) semester.value = state.semester;
+    if (state.week) week.value = state.week;
   }
+  if (state.activeDay >= 1 && state.activeDay <= 7) activeDay.value = state.activeDay;
+  if (state.viewMode === "day" || state.viewMode === "week") viewMode.value = state.viewMode;
 }
 
 function saveLastState() {
-  try {
-    const key = lastStateCacheKey();
-    if (!key) return;
-    localStorage.setItem(key, JSON.stringify({
-      semester: semester.value,
-      week: week.value,
-      activeDay: activeDay.value,
-      viewMode: viewMode.value,
-    }));
-  } catch {
-    /* ignore */
-  }
+  writeStoredLastState(lastStateCacheKey(), {
+    semester: semester.value,
+    week: week.value,
+    activeDay: activeDay.value,
+    viewMode: viewMode.value,
+  });
 }
 
 function restoreLastScheduleCache() {
-  try {
-    const lastKey = lastScheduleCacheKey();
-    if (!lastKey) return false;
-    const key = localStorage.getItem(lastKey);
-    if (!key) return false;
-    return applyScheduleCache(key);
-  } catch {
-    return false;
-  }
+  const key = readStoredLastScheduleCacheKey(lastScheduleCacheKey());
+  return key ? applyScheduleCache(key) : false;
 }
 
 function restoreScheduleCache() {
@@ -2870,7 +2680,7 @@ function saveScheduleCache() {
   const key = scheduleCacheKey(parsed.value.currentSemester || semester.value, week.value || parsed.value.currentWeek);
   writeScheduleCache(key, parsed.value);
   const lastKey = lastScheduleCacheKey();
-  try { if (lastKey && key) localStorage.setItem(lastKey, key); } catch { /* ignore */ }
+  writeStoredLastScheduleCacheKey(lastKey, key);
 }
 
 function prewarmAdjacentWeekCaches() {
@@ -2904,2033 +2714,8 @@ function prewarmScheduleCacheForWeek(wk: string) {
 }
 </script>
 
-<style scoped lang="scss">
-:global(html.schedule-scroll-lock),
-:global(body.schedule-scroll-lock) {
-  height: 100%;
-  overflow: hidden;
-  overscroll-behavior: none;
-}
-
-:global(body.schedule-scroll-lock #app) {
-  height: 100%;
-  overflow: hidden;
-}
-
-:global(body.schedule-scroll-lock .layout-root),
-:global(body.schedule-scroll-lock .main--bare) {
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
-}
-
-:global(body.schedule-scroll-lock .main--bare) {
-  padding: 0 !important;
-}
-
-.schedule-page {
-  --schedule-bg-image: none;
-  --schedule-bg-overlay: rgba(248, 251, 255, 0.84);
-  --schedule-bg-blur: 0px;
-  --schedule-surface-bg: #ffffff;
-  --schedule-surface-bg-soft: #f9fafb;
-  --schedule-bottom-obscured-space: 0px;
-  --schedule-scroll-bottom-gap: calc(14px + env(safe-area-inset-bottom) + var(--schedule-bottom-obscured-space));
-  position: relative;
-  isolation: isolate;
-  display: flex;
-  flex-direction: column;
-  height: calc(var(--schedule-vh, 1vh) * 100);
-  min-height: calc(var(--schedule-vh, 1vh) * 100);
-  box-sizing: border-box;
-  overflow: hidden;
-  padding: calc(env(safe-area-inset-top) + 14px) 14px calc(env(safe-area-inset-bottom) + 18px);
-  background:
-    radial-gradient(circle at 18% 0%, rgba(174, 211, 255, 0.36), transparent 32%),
-    radial-gradient(circle at 88% 14%, rgba(183, 232, 219, 0.32), transparent 30%),
-    var(--schedule-page-bg);
-  color: #172033;
-}
-.schedule-page > * {
-  position: relative;
-  z-index: 1;
-}
-.schedule-page::before,
-.schedule-page::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-.schedule-page::before {
-  z-index: 0;
-  background-image: var(--schedule-bg-image);
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover;
-  filter: blur(var(--schedule-bg-blur));
-  transform: scale(1.04);
-  transform-origin: center;
-}
-.schedule-page::after {
-  background:
-    linear-gradient(180deg, var(--schedule-bg-overlay) 0%, var(--schedule-bg-overlay) 100%),
-    radial-gradient(circle at 18% 0%, rgba(174, 211, 255, 0.36), transparent 32%),
-    radial-gradient(circle at 88% 14%, rgba(183, 232, 219, 0.32), transparent 30%),
-    linear-gradient(180deg, rgba(245, 249, 253, 0.82) 0%, rgba(248, 251, 255, 0.84) 44%, rgba(250, 252, 255, 0.94) 100%);
-}
-.top {
-  flex: 0 0 auto;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin: 0 auto 14px;
-  max-width: 720px;
-}
-.sem-select {
-  flex: 1;
-  min-width: 0;
-  max-width: 260px;
-}
-/* 把 el-select 撑成 38px 高（默认 size=small 是 28-32px，太矮），跟 icon-btn 对齐 */
-.sem-select :deep(.el-select__wrapper) {
-  min-height: 38px;
-  border-radius: 10px;
-  border: 1px solid #dde4ee;
-  box-shadow: none;
-  background: var(--schedule-surface-bg-soft);
-  padding: 4px 10px;
-}
-.sem-select :deep(.el-select__wrapper:hover) {
-  border-color: #c2cdda;
-}
-.sem-select :deep(.el-select__wrapper.is-focused) {
-  border-color: var(--schedule-accent);
-  box-shadow: none;
-}
-.sem-select :deep(.el-select__placeholder),
-.sem-select :deep(.el-select__selected-item) {
-  font-size: 13px;
-  color: #172033;
-}
-.top-actions {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-.view-switch {
-  height: 38px;
-  padding: 3px;
-  border: 1px solid #dde4ee;
-  border-radius: 10px;
-  background: var(--schedule-surface-bg-soft);
-  display: inline-grid;
-  grid-template-columns: repeat(2, 34px);
-  gap: 2px;
-}
-.view-switch button {
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: #5c6677;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: var(--schedule-accent-soft-hover);
-}
-.view-switch button.active {
-  background: var(--schedule-accent);
-  color: var(--schedule-accent-contrast);
-}
-.view-switch button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-.icon-btn {
-  width: 38px;
-  height: 38px;
-  border: 1px solid #dde4ee;
-  border-radius: 10px;
-  background: var(--schedule-surface-bg-soft);
-  color: #172033;
-  display: grid;
-  place-items: center;
-  touch-action: manipulation;
-  cursor: pointer;
-  -webkit-tap-highlight-color: var(--schedule-accent-soft-hover);
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-.icon-btn:active { background: #f3f4f6; }
-.icon-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.62;
-}
-.icon-btn.active {
-  background: var(--schedule-accent);
-  border-color: var(--schedule-accent);
-  color: var(--schedule-accent-contrast);
-}
-.theme-color-glass {
-  --schedule-colorful-control-ring: linear-gradient(135deg, rgba(244, 63, 94, 0.58) 0%, rgba(249, 115, 22, 0.50) 22%, rgba(34, 197, 94, 0.45) 48%, rgba(59, 130, 246, 0.54) 74%, rgba(139, 92, 246, 0.52) 100%);
-  --schedule-colorful-control-soft: linear-gradient(135deg, rgba(244, 63, 94, 0.09), rgba(249, 115, 22, 0.07) 24%, rgba(34, 197, 94, 0.07) 48%, rgba(59, 130, 246, 0.10) 74%, rgba(139, 92, 246, 0.09));
-  --schedule-colorful-control-border: rgba(118, 105, 255, 0.22);
-  --schedule-colorful-control-text: #334155;
-}
-.theme-color-glass .view-switch button.active,
-.theme-color-glass .day-pill.active,
-.theme-color-glass .icon-btn.active,
-.theme-color-glass .week-cell.active {
-  border: 1px solid transparent;
-  background:
-    linear-gradient(rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.84)) padding-box,
-    var(--schedule-colorful-control-ring) border-box;
-  color: var(--schedule-colorful-control-text);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.56),
-    0 3px 10px rgba(78, 99, 188, 0.07);
-}
-.theme-color-glass .week-title,
-.theme-color-glass .week-day-head.today {
-  border: 0;
-  background: var(--schedule-colorful-control-soft);
-  color: #3b2f9a;
-  box-shadow: inset 0 0 0 1px var(--schedule-colorful-control-border);
-}
-.theme-color-glass .week-title.clickable:hover,
-.theme-color-glass .week-title.clickable:active {
-  background: linear-gradient(135deg, rgba(244, 63, 94, 0.12), rgba(249, 115, 22, 0.09) 24%, rgba(34, 197, 94, 0.09) 48%, rgba(59, 130, 246, 0.13) 74%, rgba(139, 92, 246, 0.12));
-}
-.theme-color-glass .day-pill.today,
-.theme-color-glass .week-cell.current {
-  border-color: var(--schedule-colorful-control-border);
-  color: #3b2f9a;
-}
-.icon-btn.spinning .el-icon {
-  animation: spin 0.9s linear infinite;
-}
-.icon-btn .el-icon {
-  font-size: 18px;
-}
-.more-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.grad-debug-panel {
-  display: grid;
-  gap: 14px;
-}
-.grad-debug-intro {
-  margin: 0;
-  color: #516074;
-  line-height: 1.75;
-}
-.grad-debug-target {
-  display: grid;
-  gap: 6px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  background: rgba(248, 250, 252, 0.88);
-}
-.grad-debug-target span {
-  font-size: 12px;
-  font-weight: 700;
-  color: #475569;
-}
-.grad-debug-target code {
-  word-break: break-all;
-  color: #0f172a;
-}
-.grad-debug-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.grad-debug-tips {
-  display: grid;
-  gap: 8px;
-  padding: 12px 14px;
-  border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(255, 255, 255, 0.9);
-  color: #475569;
-}
-.grad-debug-tips b {
-  color: #172033;
-}
-.grad-debug-tips ol {
-  margin: 0;
-  padding-left: 20px;
-  display: grid;
-  gap: 6px;
-}
-.grad-debug-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-  color: #64748b;
-  font-size: 12px;
-}
-.grad-debug-foot-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.background-panel {
-  display: grid;
-  gap: 10px;
-}
-.background-preview {
-  min-height: 118px;
-  border: 1px solid #dbe4ee;
-  border-radius: 12px;
-  background:
-    linear-gradient(180deg, rgba(248, 251, 255, 0.86) 0%, rgba(248, 251, 255, 0.92) 100%),
-    var(--schedule-page-bg);
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover;
-  display: grid;
-  place-items: center;
-  color: #667085;
-  font-size: 12px;
-  text-align: center;
-  padding: 12px;
-  overflow: hidden;
-}
-.background-preview.empty {
-  border-style: dashed;
-}
-.background-note {
-  margin: 0;
-  color: #667085;
-  font-size: 12px;
-  line-height: 1.6;
-}
-.background-actions {
-  display: flex;
-  gap: 8px;
-}
-.more-subaction {
-  flex: 1;
-  min-height: 38px;
-  border: 1px solid #dde4ee;
-  border-radius: 10px;
-  background: var(--schedule-surface-bg-soft);
-  color: #172033;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.more-subaction:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-.more-subaction:active {
-  background: #f3f4f6;
-}
-.more-subaction.primary {
-  border-color: var(--schedule-accent);
-  background: var(--schedule-accent-pale);
-  color: var(--schedule-accent-strong);
-}
-.background-control {
-  display: grid;
-  gap: 6px;
-}
-.background-control-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.background-control-head b,
-.background-control-head em {
-  font-size: 12px;
-  line-height: 1.3;
-  font-style: normal;
-}
-.background-control-head b {
-  color: #172033;
-}
-.background-control-head em {
-  color: #667085;
-}
-.background-control input[type="range"] {
-  width: 100%;
-  accent-color: var(--schedule-accent);
-}
-.more-theme-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-.more-theme-choice {
-  min-width: 0;
-  border: 1px solid transparent;
-  border-radius: 9px;
-  background: transparent;
-  color: #374151;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.2;
-  padding: 8px 5px;
-  display: grid;
-  justify-items: center;
-  align-items: center;
-  gap: 5px;
-  cursor: pointer;
-}
-.more-theme-choice:active {
-  background: #f3f4f6;
-}
-.more-theme-choice.active {
-  border-color: var(--schedule-accent-border);
-  background: var(--schedule-accent-pale);
-  color: var(--schedule-accent-strong);
-}
-.theme-color-glass .more-theme-choice.active {
-  border-color: transparent;
-  background:
-    linear-gradient(rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.84)) padding-box,
-    var(--schedule-colorful-control-ring) border-box;
-  color: var(--schedule-colorful-control-text);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
-}
-.more-theme-swatch {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.82);
-  box-shadow: inset 0 0 0 1px rgba(24, 34, 51, 0.08);
-}
-.more-action {
-  width: 100%;
-  min-height: 42px;
-  border: 1px solid #e5eaf2;
-  border-radius: 10px;
-  background: #fff;
-  color: #172033;
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 18px;
-  align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.more-action:active {
-  background: #f3f4f6;
-}
-.more-action .el-icon {
-  color: var(--schedule-accent);
-}
-.more-action span:not(.more-theme-swatch) {
-  min-width: 0;
-  text-align: left;
-}
-.more-chevron {
-  color: #98a2b3 !important;
-  font-size: 14px;
-}
-.more-back {
-  min-height: 34px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: #172033;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 4px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 750;
-  cursor: pointer;
-}
-.more-back:active {
-  background: #f3f4f6;
-}
-.more-theme-swatch.current {
-  justify-self: center;
-}
-:global(.schedule-more-popover.el-popper) {
-  z-index: 4200 !important;
-  padding: 8px;
-  border-radius: 13px;
-  border-color: rgba(222, 229, 239, 0.92);
-  box-shadow: 0 18px 44px rgba(24, 34, 51, 0.18);
-}
-.hidden-file-input {
-  display: none;
-}
-@keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
-.toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
-  gap: 10px;
-  max-width: 720px;
-  margin: 0 auto 12px;
-}
-.week-switcher {
-  flex: 0 0 auto;
-  width: 100%;
-  max-width: 720px;
-  margin: 0 auto 12px;
-  display: grid;
-  grid-template-columns: 96px minmax(0, 1fr) 96px;
-  align-items: center;
-  gap: 8px;
-}
-.week-btn {
-  height: 42px;
-  border: 1px solid #dde4ee;
-  border-radius: 13px;
-  background: var(--schedule-surface-bg);
-  color: #172033;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  font-size: 13px;
-  touch-action: manipulation;
-}
-.week-btn:disabled {
-  color: #b7bfcc;
-  background: var(--schedule-surface-bg-soft);
-}
-.week-title {
-  min-width: 0;
-  height: 42px;
-  border: none;
-  border-radius: 13px;
-  background: var(--schedule-accent-pale);
-  color: var(--schedule-accent-strong);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1px;
-  padding: 0 10px;
-  font: inherit;
-  cursor: default;
-}
-.week-title.clickable {
-  cursor: pointer;
-  -webkit-tap-highlight-color: var(--schedule-accent-soft-hover);
-  transition: background 0.15s;
-}
-.week-title.clickable:hover,
-.week-title.clickable:active {
-  background: var(--schedule-accent-pale-hover);
-}
-.week-title:disabled {
-  cursor: not-allowed;
-  opacity: 0.68;
-}
-.week-title b {
-  font-size: 15px;
-}
-.week-title span {
-  font-size: 11px;
-}
-.week-strip {
-  flex: 0 0 auto;
-  width: 100%;
-  max-width: 720px;
-  margin: 0 auto 14px;
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 6px;
-  overflow: hidden;
-}
-.day-pill {
-  min-width: 0;
-  border: 1px solid #dde4ee;
-  border-radius: 13px;
-  background: var(--schedule-surface-bg);
-  padding: 8px 3px;
-  color: #5c6677;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  touch-action: manipulation;
-}
-.day-pill span {
-  font-size: 12px;
-  line-height: 1.15;
-  white-space: nowrap;
-}
-.day-pill b {
-  font-size: 13px;
-  line-height: 1.15;
-  white-space: nowrap;
-}
-.day-pill.today {
-  border-color: var(--schedule-accent-border);
-}
-.day-pill.active {
-  background: var(--schedule-accent);
-  border-color: var(--schedule-accent);
-  color: var(--schedule-accent-contrast);
-}
-.content,
-.state-card {
-  max-width: 720px;
-  margin: 0 auto;
-}
-.content {
-  flex: 1 1 auto;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  touch-action: pan-y;
-  -webkit-overflow-scrolling: touch;
-  min-height: 0;
-  overflow: hidden;
-}
-.content.dragging {
-  cursor: grabbing;
-  user-select: none;
-}
-.state-card {
-  min-height: calc(var(--schedule-vh, 1vh) * 100 - 180px);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  gap: 12px;
-  padding: 20px;
-  border: 1px solid rgba(221, 228, 238, 0.72);
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.66);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-}
-.state-card .big {
-  font-size: 44px;
-  color: var(--schedule-accent);
-}
-.state-card h2 {
-  margin: 0;
-  font-size: 20px;
-}
-.state-card p {
-  margin: 0;
-  color: #667085;
-  line-height: 1.7;
-}
-.state-card .scope-note {
-  font-size: 12px;
-  color: #b45309;
-  background: #fef3c7;
-  padding: 8px 12px;
-  border-radius: 8px;
-  line-height: 1.6;
-  max-width: 320px;
-}
-.state-card .scope-note b { color: #92400e; }
-.captcha-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  width: min(100%, 360px);
-}
-.captcha-image-button {
-  width: 112px;
-  height: 42px;
-  flex: 0 0 112px;
-  border: 1px solid #dde4ee;
-  border-radius: 9px;
-  background: var(--schedule-surface-bg-soft);
-  display: grid;
-  place-items: center;
-  padding: 0;
-  cursor: pointer;
-  overflow: hidden;
-}
-.captcha-image-button img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: block;
-}
-.captcha-image-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.62;
-}
-.captcha-image-button:focus-visible {
-  outline: 2px solid var(--schedule-accent);
-  outline-offset: 2px;
-}
-.error-text {
-  color: #dc2626 !important;
-  font-size: 13px;
-}
-.summary {
-  flex: 0 0 auto;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-  color: #667085;
-}
-.summary div {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.summary b {
-  color: #172033;
-  font-size: 20px;
-}
-.summary small {
-  color: #98a2b3;
-  font-size: 11px;
-}
-.summary em {
-  font-style: normal;
-  color: var(--schedule-accent);
-  font-weight: 700;
-}
-.carousel-viewport {
-  flex: 1 1 auto;
-  min-height: 0;
-  height: 100%;
-  width: 100%;
-  overflow: hidden;
-  touch-action: pan-y;
-  -webkit-overflow-scrolling: touch;
-  contain: layout paint;
-}
-.carousel-track {
-  display: grid;
-  min-height: 0;
-  max-height: 100%;
-  height: 100%;
-  width: 300%;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-rows: minmax(0, 1fr);
-  align-items: stretch;
-  transform: translate3d(-33.333333%, 0, 0);
-  will-change: transform;
-  backface-visibility: hidden;
-  transform-style: preserve-3d;
-}
-.content.dragging .carousel-track {
-  transition: none;
-}
-.content.settling .carousel-track {
-  transition: transform 0.18s cubic-bezier(0.2, 0, 0.2, 1);
-}
-.schedule-page.is-static-week-swipe.view-week .content.settling .schedule-panel.active {
-  transition: transform 0.18s cubic-bezier(0.2, 0, 0.2, 1);
-}
-.schedule-panel {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  width: 100%;
-  height: 100%;
-  max-height: 100%;
-  overflow: hidden;
-  contain: layout paint;
-  transform: translateZ(0);
-}
-.schedule-panel:not(.active) {
-  pointer-events: none;
-}
-.schedule-page.is-static-week-swipe.view-week .carousel-viewport {
-  overflow: visible;
-  contain: none;
-}
-.schedule-page.is-static-week-swipe.view-week .carousel-track {
-  display: block;
-  width: 100%;
-  transform: none !important;
-  transition: none !important;
-  will-change: auto;
-  backface-visibility: visible;
-  transform-style: flat;
-}
-.schedule-page.is-static-week-swipe.view-week .schedule-panel {
-  min-height: 0;
-  height: 100%;
-  contain: none;
-  transform: none;
-}
-.schedule-page.is-static-week-swipe.view-week .schedule-panel.active {
-  pointer-events: auto;
-}
-.schedule-page.is-static-week-swipe.view-week .schedule-panel.week-slide-in-next,
-.schedule-page.is-static-week-swipe.view-week .schedule-panel.week-slide-in-prev {
-  animation-duration: 220ms;
-  animation-timing-function: cubic-bezier(0.2, 0, 0.2, 1);
-  animation-fill-mode: both;
-}
-.schedule-page.is-static-week-swipe.view-week .schedule-panel.week-slide-in-next {
-  animation-name: weekSlideInNext;
-}
-.schedule-page.is-static-week-swipe.view-week .schedule-panel.week-slide-in-prev {
-  animation-name: weekSlideInPrev;
-}
-.schedule-page.is-static-week-swipe.view-week .schedule-panel.active {
-  transform: translate3d(var(--static-week-offset, 0), 0, 0);
-}
-
-@keyframes weekSlideInNext {
-  from {
-    opacity: 0.9;
-    transform: translate3d(22px, 0, 0);
-  }
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0);
-  }
-}
-
-@keyframes weekSlideInPrev {
-  from {
-    opacity: 0.9;
-    transform: translate3d(-22px, 0, 0);
-  }
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .schedule-page.is-static-week-swipe.view-week .schedule-panel.week-slide-in-next,
-  .schedule-page.is-static-week-swipe.view-week .schedule-panel.week-slide-in-prev {
-    animation: none;
-  }
-}
-.day-timeline {
-  width: 100%;
-  max-width: 720px;
-  margin: 0 auto;
-  touch-action: pan-y;
-}
-.schedule-body-scroll {
-  flex: 1 1 auto;
-  height: 100%;
-  max-height: 100%;
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;
-  padding-bottom: 0;
-  scroll-padding-bottom: var(--schedule-scroll-bottom-gap);
-}
-.schedule-body-scroll::after {
-  content: "";
-  display: block;
-  height: var(--schedule-scroll-bottom-gap);
-  min-height: var(--schedule-scroll-bottom-gap);
-}
-.day-grid-body {
-  display: grid;
-  grid-template-columns: 50px minmax(0, 1fr);
-  grid-template-rows: repeat(11, minmax(58px, calc(var(--schedule-vh, 1vh) * 6.2)));
-  gap: 5px;
-  position: relative;
-}
-.day-axis {
-  padding-top: 0;
-}
-.day-slot-cell {
-  min-width: 0;
-  min-height: 0;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.36);
-  border: 1px solid rgba(218, 227, 239, 0.82);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.46);
-  cursor: pointer;
-  touch-action: pan-y;
-}
-.day-course-block {
-  z-index: 2;
-  margin: 1px;
-  border-radius: 16px;
-  border: 1.5px solid var(--course-border);
-  background: var(--course-bg);
-  color: var(--course-text);
-  padding: 12px 14px;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 7px;
-  overflow: hidden;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.58),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.22),
-    0 10px 24px rgba(24, 34, 51, 0.08);
-  backdrop-filter: blur(14px) saturate(145%);
-  -webkit-backdrop-filter: blur(14px) saturate(145%);
-  touch-action: pan-y;
-}
-.day-course-name {
-  font-size: 18px;
-  line-height: 1.25;
-  font-weight: 800;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  word-break: break-word;
-}
-.day-course-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-  font-size: 13px;
-  line-height: 1.3;
-  font-weight: 700;
-  opacity: 0.94;
-}
-.day-course-note {
-  font-size: 12px;
-  line-height: 1.25;
-  opacity: 0.86;
-}
-.week-overview {
-  width: 100%;
-  max-width: 720px;
-  margin: 0 auto;
-  touch-action: pan-y;
-}
-.week-grid-head,
-.week-grid-body {
-  display: grid;
-  grid-template-columns: 44px repeat(7, minmax(0, 1fr));
-  gap: 4px;
-}
-.week-grid-head {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  margin-bottom: 6px;
-  padding: 3px 0;
-  background: rgba(247, 251, 255, 0.86);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-}
-:global(body[data-cpu-native-app="1"]) .schedule-page .week-grid-head {
-  position: static;
-  top: auto;
-  z-index: auto;
-  background: #f7fbff;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-.schedule-page.is-native-app.view-week .week-grid-head {
-  position: static;
-  top: auto;
-  z-index: auto;
-  background: #f7fbff;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-.time-head,
-.week-day-head {
-  min-width: 0;
-  height: 38px;
-  border-radius: 10px;
-  color: #667085;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  line-height: 1.1;
-}
-.time-head {
-  font-size: 11px;
-}
-.week-day-head {
-  background: rgba(255, 255, 255, 0.56);
-  border: 1px solid rgba(218, 227, 239, 0.88);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
-  cursor: pointer;
-  touch-action: manipulation;
-}
-.week-day-head span {
-  font-size: 12px;
-  font-weight: 700;
-}
-.week-day-head b {
-  margin-top: 3px;
-  font-size: 10px;
-  font-weight: 600;
-}
-.week-day-head.today {
-  border-color: var(--schedule-accent);
-  background: var(--schedule-accent-pale);
-  color: var(--schedule-accent-strong);
-}
-.week-grid-body {
-  position: relative;
-  grid-template-rows: repeat(11, minmax(48px, calc(var(--schedule-vh, 1vh) * 5.8)));
-  align-items: stretch;
-}
-.slot-axis {
-  min-width: 0;
-  min-height: 0;
-  padding-top: 4px;
-  color: #667085;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-}
-.slot-axis b {
-  color: #172033;
-  font-size: 13px;
-}
-.slot-axis span {
-  text-align: center;
-  font-size: 9px;
-  line-height: 1.12;
-}
-.week-slot-cell {
-  min-width: 0;
-  min-height: 0;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.30);
-  border: 1px solid rgba(226, 234, 244, 0.78);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38);
-  cursor: pointer;
-  touch-action: pan-y;
-}
-.week-slot-cell.today {
-  background: rgba(232, 246, 243, 0.48);
-}
-.week-course {
-  min-width: 0;
-  min-height: 0;
-  z-index: 2;
-  margin: 1px;
-  border-radius: 9px;
-  border: 1.5px solid var(--course-border);
-  background: var(--course-bg);
-  color: var(--course-text);
-  padding: 5px 3px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 2px;
-  overflow: hidden;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.58),
-    0 6px 14px rgba(24, 34, 51, 0.08);
-  backdrop-filter: blur(12px) saturate(145%);
-  -webkit-backdrop-filter: blur(12px) saturate(145%);
-  cursor: pointer;
-  touch-action: pan-y;
-}
-
-.theme-color-glass .day-course-block,
-.theme-color-glass .week-course {
-  border-width: 1px;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.58),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.16),
-    0 3px 10px rgba(44, 62, 94, 0.05);
-  backdrop-filter: blur(10px) saturate(130%);
-  -webkit-backdrop-filter: blur(10px) saturate(130%);
-}
-
-@supports (-webkit-touch-callout: none) {
-  @media (max-width: 760px) {
-    .carousel-viewport,
-    .schedule-panel {
-      contain: layout;
-    }
-
-    .week-grid-head {
-      position: static;
-      background: #f7fbff;
-      backdrop-filter: none;
-      -webkit-backdrop-filter: none;
-    }
-
-    .day-slot-cell,
-    .week-slot-cell,
-    .week-day-head {
-      box-shadow: none;
-    }
-
-    .day-course-block,
-    .week-course {
-      backdrop-filter: none;
-      -webkit-backdrop-filter: none;
-      box-shadow: 0 2px 7px rgba(24, 34, 51, 0.06);
-    }
-
-    .content.dragging .day-course-block,
-    .content.dragging .week-course {
-      box-shadow: none;
-    }
-  }
-}
-.week-course strong,
-.week-course span,
-.week-course em {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  word-break: break-all;
-  text-align: center;
-}
-.week-course strong {
-  -webkit-line-clamp: 4;
-  font-size: 10px;
-  line-height: 1.2;
-  font-weight: 800;
-}
-.week-course span {
-  -webkit-line-clamp: 2;
-  font-size: 9px;
-  line-height: 1.12;
-  font-weight: 700;
-  opacity: 0.94;
-}
-.week-course em {
-  -webkit-line-clamp: 1;
-  font-size: 8px;
-  line-height: 1.1;
-  font-style: normal;
-  opacity: 0.86;
-}
-.empty-day {
-  min-height: 240px;
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 10px;
-  color: #8a94a6;
-}
-.empty-day .el-icon {
-  font-size: 36px;
-}
-
-.day-pane {
-  will-change: transform, opacity;
-}
-.next-card,
-.next-card span,
-.next-card em,
-.next-card b {
-  display: none;
-}
-
-/* ===== 周次选择 dialog 里的网格 ===== */
-.week-grid-pick {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
-}
-
-.widget-guide {
-  display: grid;
-  gap: 10px;
-}
-
-.widget-dialog-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #172033;
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.widget-help-btn {
-  width: 24px;
-  height: 24px;
-  border: 1px solid #dde4ee;
-  border-radius: 50%;
-  background: #fff;
-  color: var(--schedule-accent-strong);
-  display: inline-grid;
-  place-items: center;
-  cursor: pointer;
-  padding: 0;
-}
-
-:global(.widget-help-popover) {
-  line-height: 1.65;
-}
-
-.widget-help-text {
-  margin: 0;
-  color: #475467;
-  font-size: 12px;
-}
-
-.widget-step {
-  width: 100%;
-  min-height: 48px;
-  border: 1px solid #dde4ee;
-  border-radius: 10px;
-  background: #fff;
-  color: #172033;
-  display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) 16px;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  font: inherit;
-  text-decoration: none;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s, transform 0.15s;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-}
-
-.widget-step:hover {
-  border-color: var(--schedule-accent);
-  background: var(--schedule-accent-pale);
-  box-shadow: 0 6px 16px rgba(24, 34, 51, 0.08);
-}
-
-.widget-step:active {
-  transform: translateY(1px);
-}
-
-.widget-step:disabled {
-  cursor: wait;
-  opacity: 0.72;
-}
-
-.widget-step b {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: var(--schedule-accent-pale);
-  color: var(--schedule-accent-strong);
-  display: grid;
-  place-items: center;
-  font-size: 13px;
-}
-
-.widget-step span {
-  flex: 1;
-  min-width: 0;
-  font-size: 14px;
-  font-weight: 650;
-  text-align: center;
-}
-
-.widget-step-arrow {
-  color: #98a2b3;
-  font-size: 14px;
-}
-
-.widget-note {
-  margin: 12px 0 0;
-  color: #667085;
-  font-size: 12px;
-  line-height: 1.65;
-}
-
-.support-note {
-  margin: 12px 0 0;
-  color: #667085;
-  font-size: 12px;
-  line-height: 1.65;
-}
-
-.support-note button {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  color: var(--schedule-accent-strong);
-  font: inherit;
-  font-weight: 650;
-  padding: 0;
-  cursor: pointer;
-}
-
-.widget-copy-message {
-  margin: 8px 0 0;
-  color: var(--schedule-accent-strong);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.widget-copy-message.warn {
-  color: #b45309;
-}
-
-.widget-instruction-list {
-  margin: 0;
-  padding-left: 18px;
-  color: #1f2937;
-  font-size: 14px;
-  line-height: 1.75;
-}
-
-.widget-instruction-list li + li {
-  margin-top: 8px;
-}
-
-.widget-countdown {
-  margin: 14px 0 0;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: #f8fafc;
-  color: #667085;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.android-update-panel {
-  color: #1f2937;
-  font-size: 14px;
-  line-height: 1.75;
-}
-
-.android-update-panel p {
-  margin: 0;
-}
-
-.android-update-panel p + p {
-  margin-top: 10px;
-}
-.week-cell {
-  border: 1px solid #dde4ee;
-  background: #fff;
-  border-radius: 10px;
-  padding: 10px 4px;
-  font: inherit;
-  font-size: 14px;
-  color: #374151;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
-  -webkit-tap-highlight-color: var(--schedule-accent-soft-hover);
-}
-.week-cell:active { background: #f3f4f6; }
-.week-cell.current { border-color: var(--schedule-accent); color: var(--schedule-accent); }
-.week-cell.active {
-  background: var(--schedule-accent);
-  border-color: var(--schedule-accent);
-  color: var(--schedule-accent-contrast);
-}
-.week-cell:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.course-editor-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 4000;
-  background: rgba(16, 24, 40, 0.08);
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding: 0 8px 8px;
-}
-
-.course-editor-panel {
-  width: 100%;
-  height: auto;
-  max-height: min(92svh, 760px);
-  max-height: min(92dvh, 760px);
-  max-width: 720px;
-  background: #f6f7fb;
-  color: #0f172a;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-radius: 22px;
-  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.16);
-}
-
-.course-editor-enter-active,
-.course-editor-leave-active {
-  transition: background-color 0.22s ease;
-}
-
-.course-editor-enter-active .course-editor-panel,
-.course-editor-leave-active .course-editor-panel {
-  transition: transform 0.24s cubic-bezier(0.2, 0, 0.2, 1), opacity 0.2s ease;
-}
-
-.course-editor-enter-from,
-.course-editor-leave-to {
-  background: rgba(16, 24, 40, 0);
-}
-
-.course-editor-enter-from .course-editor-panel,
-.course-editor-leave-to .course-editor-panel {
-  opacity: 0.98;
-  transform: translateY(100%);
-}
-
-.course-editor-nav {
-  flex: none;
-  display: grid;
-  grid-template-columns: 68px minmax(0, 1fr) 68px;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 12px 8px;
-}
-
-.course-editor-nav h2 {
-  margin: 0;
-  text-align: center;
-  font-size: 17px;
-  line-height: 1.2;
-  font-weight: 650;
-  color: #0b1220;
-}
-
-.course-editor-nav button {
-  border: 0;
-  border-radius: 15px;
-  background: rgba(255, 255, 255, 0.76);
-  color: #111827;
-  min-height: 36px;
-  padding: 0 10px;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 560;
-  box-shadow: none;
-}
-
-.course-editor-nav button.primary {
-  color: #0f766e;
-}
-.course-editor-nav button:disabled,
-.editor-section-title button:disabled,
-.week-chip-grid button:disabled,
-.hidden-restore-card .hidden-list button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.course-editor-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  max-height: none;
-  padding: 0 12px calc(12px + env(safe-area-inset-bottom));
-}
-
-.editor-card {
-  overflow: hidden;
-  border-radius: 16px;
-  background: #fff;
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
-}
-
-.editor-row {
-  min-height: 52px;
-  display: grid;
-  grid-template-columns: 86px minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-  margin: 0 14px;
-  border-bottom: 1px solid #e7e9ee;
-}
-
-.editor-row:last-child {
-  border-bottom: 0;
-}
-
-.editor-row span,
-.editor-card-title,
-.editor-section-title span {
-  font-size: 17px;
-  font-weight: 560;
-  color: #0b1220;
-}
-
-.editor-row input,
-.editor-row select {
-  min-width: 0;
-  width: 100%;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: #0b1220;
-  font: inherit;
-  font-size: 17px;
-  font-weight: 500;
-  text-align: right;
-}
-
-.editor-row input::placeholder {
-  color: #b9bec8;
-}
-.editor-row input:disabled,
-.editor-row select:disabled {
-  cursor: not-allowed;
-  color: #98a2b3;
-}
-
-.editor-row select {
-  appearance: none;
-  -webkit-appearance: none;
-  direction: rtl;
-}
-
-.slot-range-input {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.slot-range-input input {
-  width: 46px;
-  text-align: center;
-}
-
-.slot-range-input em,
-.slot-range-input b {
-  font-style: normal;
-  color: #0b1220;
-  font-size: 17px;
-  font-weight: 500;
-}
-
-.editor-section-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 14px 8px;
-}
-
-.editor-actions {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.editor-section-title button {
-  border: 0;
-  background: transparent;
-  color: #0f766e;
-  font: inherit;
-  font-size: 15px;
-  font-weight: 650;
-}
-
-.editor-section-title button.danger {
-  color: #f04455;
-}
-
-.editor-week-picker {
-  display: grid;
-  grid-template-columns: 70px minmax(0, 1fr);
-  align-items: start;
-  gap: 12px;
-  margin: 0 18px;
-  padding: 15px 0;
-  border-bottom: 1px solid #e7e9ee;
-}
-
-.editor-week-picker > span {
-  font-size: 16px;
-  font-weight: 650;
-  color: #0b1220;
-  padding-top: 5px;
-}
-
-.week-chip-grid {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 6px;
-  max-height: 130px;
-  overflow-y: auto;
-  padding-right: 2px;
-}
-
-.week-chip-grid button {
-  min-width: 0;
-  min-height: 30px;
-  border: 1px solid #d8dee8;
-  border-radius: 9px;
-  background: #fff;
-  color: #475467;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.week-chip-grid button.active {
-  border-color: var(--schedule-accent);
-  background: var(--schedule-accent-pale);
-  color: var(--schedule-accent-strong);
-}
-
-.hidden-restore-card {
-  margin-top: 18px;
-  padding: 16px 18px;
-}
-
-.hidden-restore-card .hidden-list {
-  margin-top: 12px;
-}
-
-.hidden-restore-card .hidden-list button {
-  border: 1px solid #e2e8f0;
-  border-radius: 999px;
-  background: #fff;
-  color: #475467;
-  padding: 7px 10px;
-  font: inherit;
-  font-size: 13px;
-}
-
-@media (min-width: 761px) {
-  .course-editor-overlay {
-    align-items: center;
-    padding: 24px;
-  }
-
-  .course-editor-panel {
-    height: auto;
-    max-height: min(760px, 90dvh);
-    border-radius: 24px;
-  }
-}
-
-@media (max-width: 380px) {
-  .editor-week-picker {
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
-
-  .editor-week-picker > span {
-    padding-top: 0;
-  }
-}
-
-.edit-section {
-  display: grid;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-:global(.schedule-edit-dialog.el-dialog),
-:global(.schedule-edit-dialog .el-dialog) {
-  max-height: min(86dvh, 680px);
-  display: flex;
-  flex-direction: column;
-}
-
-:global(.grad-debug-dialog.el-dialog),
-:global(.grad-debug-dialog .el-dialog) {
-  border-radius: 22px;
-  overflow: hidden;
-}
-
-:global(.schedule-edit-dialog.el-dialog .el-dialog__body),
-:global(.schedule-edit-dialog .el-dialog__body) {
-  flex: 1;
-  min-height: 0;
-  max-height: none;
-  overflow: auto;
-}
-
-:global(.schedule-edit-dialog.el-dialog .el-dialog__footer),
-:global(.schedule-edit-dialog .el-dialog__footer) {
-  flex: none;
-}
-
-.edit-section:last-child {
-  margin-bottom: 0;
-}
-
-.edit-section.compact {
-  padding-top: 4px;
-  border-top: 1px solid #eef0f4;
-}
-
-.edit-section-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.edit-section-head b {
-  font-size: 14px;
-  color: #172033;
-}
-
-.edit-section-head span {
-  font-size: 12px;
-  color: #8a94a6;
-}
-
-.edit-course-list {
-  display: grid;
-  gap: 8px;
-  max-height: 240px;
-  overflow: auto;
-}
-
-.edit-course-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-  padding: 10px 12px;
-  border: 1px solid #eef0f4;
-  border-radius: 8px;
-  background: #fff;
-}
-
-.edit-course-row div {
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-}
-
-.edit-course-row b {
-  color: #172033;
-  font-size: 14px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.edit-course-row span,
-.edit-course-row em {
-  color: #667085;
-  font-size: 12px;
-  font-style: normal;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.hidden-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.custom-course-form {
-  display: grid;
-  gap: 2px;
-}
-
-.custom-course-form :deep(.el-form-item) {
-  margin-bottom: 12px;
-}
-
-.custom-course-form :deep(.el-form-item__label) {
-  margin-bottom: 4px;
-  line-height: 1.25;
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.form-grid :deep(.el-select),
-.form-grid :deep(.el-input-number) {
-  width: 100%;
-}
-
-.week-list-form-item {
-  grid-column: span 2;
-}
-
-/* ===== 移动端：恢复显示 top（紧凑学期+刷新+视图切换） + 仍隐藏旧 toolbar/summary ===== */
-@media (max-width: 760px) {
-  /* toolbar 旧的双选择器已经从模板移除，但保险起见仍 hide 类 */
-  .toolbar { display: none; }
-  .summary { display: none; }
-  .schedule-page {
-    --schedule-bottom-obscured-space: 74px;
-    padding-top: calc(env(safe-area-inset-top) + 8px);
-    padding-left: 8px;
-    padding-right: 8px;
-  }
-
-  .schedule-page.is-android-native-app {
-    --schedule-bottom-obscured-space: 118px;
-  }
-
-  .top {
-    gap: 6px;
-  }
-
-  .sem-select {
-    max-width: none;
-  }
-
-  .view-switch {
-    grid-template-columns: repeat(2, 30px);
-  }
-
-  .grad-debug-actions,
-  .grad-debug-foot-actions {
-    width: 100%;
-  }
-
-  .grad-debug-actions :deep(.el-button),
-  .grad-debug-foot-actions :deep(.el-button) {
-    flex: 1 1 0;
-    min-width: 0;
-  }
-
-  .form-grid {
-    grid-template-columns: 1fr;
-    gap: 0;
-  }
-
-  :global(.schedule-edit-dialog.el-dialog),
-  :global(.schedule-edit-dialog .el-dialog) {
-    position: fixed;
-    inset: auto 0 0 0;
-    width: 100% !important;
-    max-width: 100%;
-    height: min(82dvh, calc(100dvh - env(safe-area-inset-top) - 18px));
-    max-height: min(82dvh, calc(100dvh - env(safe-area-inset-top) - 18px));
-    margin: 0 !important;
-    border-radius: 18px 18px 0 0;
-    overflow: hidden;
-  }
-
-  :global(.schedule-edit-dialog.el-dialog .el-dialog__header),
-  :global(.schedule-edit-dialog .el-dialog__header) {
-    flex: none;
-    padding: 14px 16px 8px;
-    margin-right: 0;
-  }
-
-  :global(.schedule-edit-dialog.el-dialog .el-dialog__body),
-  :global(.schedule-edit-dialog .el-dialog__body) {
-    flex: 1;
-    min-height: 0;
-    padding: 6px 14px 10px;
-    overflow: auto;
-  }
-
-  :global(.schedule-edit-dialog.el-dialog .el-dialog__footer),
-  :global(.schedule-edit-dialog .el-dialog__footer) {
-    position: sticky;
-    bottom: 0;
-    z-index: 4;
-    flex: none;
-    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
-    border-top: 1px solid #eef0f4;
-    background: #fff;
-    box-shadow: 0 -8px 18px rgba(24, 34, 51, 0.06);
-  }
-
-  :global(.schedule-edit-dialog.el-dialog .el-dialog__footer .el-button),
-  :global(.schedule-edit-dialog .el-dialog__footer .el-button) {
-    min-width: 72px;
-    margin-left: 6px;
-  }
-
-  .edit-section {
-    gap: 8px;
-    margin-bottom: 10px;
-  }
-
-  .custom-course-form :deep(.el-form-item) {
-    margin-bottom: 8px;
-  }
-
-  .week-list-form-item {
-    grid-column: auto;
-  }
-
-  .day-grid-body {
-    grid-template-columns: 42px minmax(0, 1fr);
-    grid-template-rows: repeat(11, minmax(52px, calc(var(--schedule-vh, 1vh) * 6)));
-    gap: 4px;
-  }
-
-  .day-slot-cell {
-    border-radius: 10px;
-  }
-
-  .day-course-block {
-    border-radius: 12px;
-    padding: 10px 12px;
-    gap: 5px;
-  }
-
-  .day-course-name {
-    font-size: 16px;
-    -webkit-line-clamp: 3;
-  }
-
-  .day-course-meta {
-    font-size: 12px;
-  }
-
-  .day-course-note {
-    font-size: 11px;
-  }
-
-  .week-grid-head,
-  .week-grid-body {
-    grid-template-columns: 38px repeat(7, minmax(0, 1fr));
-    gap: 3px;
-  }
-
-  .week-grid-head {
-    top: 0;
-  }
-
-  .week-day-head {
-    height: 34px;
-    border-radius: 8px;
-  }
-
-  .week-day-head span {
-    font-size: 11px;
-  }
-
-  .week-day-head b {
-    font-size: 9px;
-  }
-
-  .week-grid-body {
-    grid-template-rows: repeat(11, minmax(44px, calc(var(--schedule-vh, 1vh) * 5.5)));
-  }
-
-  .slot-axis b {
-    font-size: 12px;
-  }
-
-  .slot-axis span {
-    font-size: 8px;
-  }
-
-  .week-slot-cell {
-    border-radius: 8px;
-  }
-
-  .week-course {
-    border-radius: 7px;
-    padding: 4px 2px;
-  }
-
-  .week-course strong {
-    font-size: 9px;
-  }
-
-  .week-course span {
-    font-size: 8px;
-  }
-
-  .week-course em {
-    display: none;
-  }
-}
-
-@media (min-width: 760px) {
-  .schedule-page {
-    padding-top: 28px;
-  }
-}
-
-@media (max-width: 390px) {
-  .schedule-page {
-    padding-left: 6px;
-    padding-right: 6px;
-  }
-  .week-strip {
-    gap: 3px;
-  }
-  .day-pill {
-    border-radius: 10px;
-    padding: 7px 1px;
-    gap: 1px;
-  }
-  .day-pill span {
-    font-size: 11px;
-  }
-  .day-pill b {
-    font-size: 11px;
-  }
-  .week-switcher {
-    grid-template-columns: 82px minmax(0, 1fr) 82px;
-    gap: 6px;
-  }
-  .week-btn {
-    font-size: 12px;
-  }
-  .view-switch {
-    grid-template-columns: repeat(2, 28px);
-    height: 36px;
-  }
-  .view-switch button {
-    font-size: 12px;
-  }
-  .icon-btn {
-    width: 36px;
-    height: 36px;
-  }
-  .week-grid-head,
-  .week-grid-body {
-    grid-template-columns: 34px repeat(7, minmax(0, 1fr));
-    gap: 2px;
-  }
-  .day-grid-body {
-    grid-template-columns: 36px minmax(0, 1fr);
-    grid-template-rows: repeat(11, minmax(48px, calc(var(--schedule-vh, 1vh) * 5.6)));
-    gap: 3px;
-  }
-  .day-course-block {
-    padding: 9px 10px;
-  }
-  .day-course-name {
-    font-size: 15px;
-  }
-  .day-course-meta {
-    font-size: 11px;
-  }
-  .day-course-note {
-    font-size: 10px;
-  }
-  .week-grid-body {
-    grid-template-rows: repeat(11, minmax(40px, calc(var(--schedule-vh, 1vh) * 5.2)));
-  }
-  .slot-axis b {
-    font-size: 11px;
-  }
-  .slot-axis span {
-    font-size: 7px;
-  }
-  .week-course strong {
-    font-size: 8px;
-  }
-  .week-course span {
-    font-size: 7px;
-  }
-}
-</style>
+<style scoped lang="scss" src="./schedule/styles/schedule-shell.scss"></style>
+<style scoped lang="scss" src="./schedule/styles/schedule-layout.scss"></style>
+<style scoped lang="scss" src="./schedule/styles/schedule-grid.scss"></style>
+<style scoped lang="scss" src="./schedule/styles/schedule-editor.scss"></style>
+<style scoped lang="scss" src="./schedule/styles/schedule-responsive.scss"></style>

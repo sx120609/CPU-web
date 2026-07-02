@@ -1,0 +1,453 @@
+.week-grid-pick {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.week-cell {
+  border: 1px solid #dde4ee;
+  background: #fff;
+  border-radius: 10px;
+  padding: 10px 4px;
+  font: inherit;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: var(--schedule-accent-soft-hover);
+}
+
+.week-cell:active { background: #f3f4f6; }
+.week-cell.current { border-color: var(--schedule-accent); color: var(--schedule-accent); }
+
+.week-cell.active {
+  background: var(--schedule-accent);
+  border-color: var(--schedule-accent);
+  color: var(--schedule-accent-contrast);
+}
+
+.week-cell:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.course-editor-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  background: rgba(16, 24, 40, 0.08);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 8px 8px;
+}
+
+.course-editor-panel {
+  width: 100%;
+  height: auto;
+  max-height: min(92svh, 760px);
+  max-height: min(92dvh, 760px);
+  max-width: 720px;
+  background: #f6f7fb;
+  color: #0f172a;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 22px;
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.16);
+}
+
+.course-editor-enter-active,
+.course-editor-leave-active {
+  transition: background-color 0.22s ease;
+}
+
+.course-editor-enter-active .course-editor-panel,
+.course-editor-leave-active .course-editor-panel {
+  transition: transform 0.24s cubic-bezier(0.2, 0, 0.2, 1), opacity 0.2s ease;
+}
+
+.course-editor-enter-from,
+.course-editor-leave-to {
+  background: rgba(16, 24, 40, 0);
+}
+
+.course-editor-enter-from .course-editor-panel,
+.course-editor-leave-to .course-editor-panel {
+  opacity: 0.98;
+  transform: translateY(100%);
+}
+
+.course-editor-nav {
+  flex: none;
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr) 68px;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px 8px;
+}
+
+.course-editor-nav h2 {
+  margin: 0;
+  text-align: center;
+  font-size: 17px;
+  line-height: 1.2;
+  font-weight: 650;
+  color: #0b1220;
+}
+
+.course-editor-nav button {
+  border: 0;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.76);
+  color: #111827;
+  min-height: 36px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 560;
+  box-shadow: none;
+}
+
+.course-editor-nav button.primary {
+  color: #0f766e;
+}
+
+.course-editor-nav button:disabled,
+.editor-section-title button:disabled,
+.week-chip-grid button:disabled,
+.hidden-restore-card .hidden-list button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.course-editor-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  max-height: none;
+  padding: 0 12px calc(12px + env(safe-area-inset-bottom));
+}
+
+.editor-card {
+  overflow: hidden;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
+}
+
+.editor-row {
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin: 0 14px;
+  border-bottom: 1px solid #e7e9ee;
+}
+
+.editor-row:last-child {
+  border-bottom: 0;
+}
+
+.editor-row span,
+.editor-card-title,
+.editor-section-title span {
+  font-size: 17px;
+  font-weight: 560;
+  color: #0b1220;
+}
+
+.editor-row input,
+.editor-row select {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #0b1220;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 500;
+  text-align: right;
+}
+
+.editor-row input::placeholder {
+  color: #b9bec8;
+}
+
+.editor-row input:disabled,
+.editor-row select:disabled {
+  cursor: not-allowed;
+  color: #98a2b3;
+}
+
+.editor-row select {
+  appearance: none;
+  -webkit-appearance: none;
+  direction: rtl;
+}
+
+.slot-range-input {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.slot-range-input input {
+  width: 46px;
+  text-align: center;
+}
+
+.slot-range-input em,
+.slot-range-input b {
+  font-style: normal;
+  color: #0b1220;
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.editor-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 14px 8px;
+}
+
+.editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.editor-section-title button {
+  border: 0;
+  background: transparent;
+  color: #0f766e;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.editor-section-title button.danger {
+  color: #f04455;
+}
+
+.editor-week-picker {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  margin: 0 18px;
+  padding: 15px 0;
+  border-bottom: 1px solid #e7e9ee;
+}
+
+.editor-week-picker > span {
+  font-size: 16px;
+  font-weight: 650;
+  color: #0b1220;
+  padding-top: 5px;
+}
+
+.week-chip-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+  max-height: 130px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.week-chip-grid button {
+  min-width: 0;
+  min-height: 30px;
+  border: 1px solid #d8dee8;
+  border-radius: 9px;
+  background: #fff;
+  color: #475467;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.week-chip-grid button.active {
+  border-color: var(--schedule-accent);
+  background: var(--schedule-accent-pale);
+  color: var(--schedule-accent-strong);
+}
+
+.hidden-restore-card {
+  margin-top: 18px;
+  padding: 16px 18px;
+}
+
+.hidden-restore-card .hidden-list {
+  margin-top: 12px;
+}
+
+.hidden-restore-card .hidden-list button {
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #fff;
+  color: #475467;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 13px;
+}
+
+@media (min-width: 761px) {
+  .course-editor-overlay {
+    align-items: center;
+    padding: 24px;
+  }
+
+  .course-editor-panel {
+    height: auto;
+    max-height: min(760px, 90dvh);
+    border-radius: 24px;
+  }
+}
+
+@media (max-width: 380px) {
+  .editor-week-picker {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .editor-week-picker > span {
+    padding-top: 0;
+  }
+}
+
+.edit-section {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+:global(.schedule-edit-dialog.el-dialog),
+:global(.schedule-edit-dialog .el-dialog) {
+  max-height: min(86dvh, 680px);
+  display: flex;
+  flex-direction: column;
+}
+
+:global(.schedule-edit-dialog.el-dialog .el-dialog__body),
+:global(.schedule-edit-dialog .el-dialog__body) {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+}
+
+:global(.schedule-edit-dialog.el-dialog .el-dialog__footer),
+:global(.schedule-edit-dialog .el-dialog__footer) {
+  flex: none;
+}
+
+.edit-section:last-child {
+  margin-bottom: 0;
+}
+
+.edit-section.compact {
+  padding-top: 4px;
+  border-top: 1px solid #eef0f4;
+}
+
+.edit-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.edit-section-head b {
+  font-size: 14px;
+  color: #172033;
+}
+
+.edit-section-head span {
+  font-size: 12px;
+  color: #8a94a6;
+}
+
+.edit-course-list {
+  display: grid;
+  gap: 8px;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.edit-course-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid #eef0f4;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.edit-course-row div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.edit-course-row b {
+  color: #172033;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edit-course-row span,
+.edit-course-row em {
+  color: #667085;
+  font-size: 12px;
+  font-style: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hidden-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.custom-course-form {
+  display: grid;
+  gap: 2px;
+}
+
+.custom-course-form :deep(.el-form-item) {
+  margin-bottom: 12px;
+}
+
+.custom-course-form :deep(.el-form-item__label) {
+  margin-bottom: 4px;
+  line-height: 1.25;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.form-grid :deep(.el-select),
+.form-grid :deep(.el-input-number) {
+  width: 100%;
+}
+
+.week-list-form-item {
+  grid-column: span 2;
+}
+

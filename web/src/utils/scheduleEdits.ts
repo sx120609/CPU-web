@@ -37,6 +37,70 @@ export function emptyScheduleEdits(): ScheduleEditState {
   return { hidden: [], custom: [] };
 }
 
+export function normalizeScheduleEditsState(input: ScheduleEditState | null | undefined): ScheduleEditState {
+  const hidden = Array.isArray(input?.hidden)
+    ? [...new Set(input.hidden.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim()))]
+    : [];
+  const custom = Array.isArray(input?.custom)
+    ? input.custom
+      .filter((item) => Boolean(
+        item &&
+        typeof item.id === "string" &&
+        Number.isFinite(item.day) &&
+        Number.isFinite(item.bigSlot) &&
+        item.course &&
+        typeof item.course.name === "string" &&
+        Array.isArray(item.course.weekList)
+      ))
+      .map((item) => ({
+        ...item,
+        id: String(item.id).trim(),
+        sourceKey: item.sourceKey?.trim() || undefined,
+        course: {
+          ...item.course,
+          name: String(item.course.name || "").trim(),
+          teacher: item.course.teacher?.trim() || undefined,
+          location: item.course.location?.trim() || undefined,
+          weeks: String(item.course.weeks || "").trim() || "全部周",
+          weekList: [...new Set(item.course.weekList.map((w) => Number(w)).filter((w) => Number.isFinite(w) && w > 0))].sort((a, b) => a - b),
+          slotNote: item.course.slotNote?.trim() || undefined,
+          startSlot: Number.isFinite(item.course.startSlot) ? Number(item.course.startSlot) : undefined,
+          endSlot: Number.isFinite(item.course.endSlot) ? Number(item.course.endSlot) : undefined,
+        },
+      }))
+    : [];
+  return { hidden, custom };
+}
+
+export function customCourseWeeksLabel(weekList: number[]) {
+  if (!weekList.length) return "全部周";
+  if (weekList.length === 1) return `第 ${weekList[0]} 周`;
+  const sorted = [...weekList].sort((a, b) => a - b);
+  const ranges: string[] = [];
+  let start = sorted[0];
+  let prev = sorted[0];
+  for (const value of sorted.slice(1)) {
+    if (value === prev + 1) {
+      prev = value;
+      continue;
+    }
+    ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
+    start = value;
+    prev = value;
+  }
+  ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
+  return `第 ${ranges.join("、")} 周`;
+}
+
+export function customCourseWeeksText(weekList: number[]) {
+  return [...new Set(weekList.map(Number).filter(Boolean))].sort((a, b) => a - b).join(",");
+}
+
+export function noteFromCourse(course: EditableScheduleCourse) {
+  const note = course.slotNote?.trim() || "";
+  return /^第\s*\d+\s*-\s*\d+\s*节$/.test(note) ? "" : note;
+}
+
 export function scheduleEditKey(semester?: string | null) {
   return `${EDIT_KEY_PREFIX}:${semester || "current"}`;
 }

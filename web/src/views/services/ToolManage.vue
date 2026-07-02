@@ -27,51 +27,7 @@
           />
         </el-tabs>
 
-        <div v-if="activeTool === 'file_collect'" class="tool-admin-grid permission-only-grid">
-          <section class="admin-section questionnaire-section">
-            <div class="section-head">
-              <div>
-                <h3>文件收集</h3>
-                <p>文件收集管理端已经接入 Filestore。任务创建、收件统计、文件浏览和导出都在工作台里完成，这里负责统一维护入口权限和管理器。</p>
-              </div>
-              <el-button type="primary" @click="openFilestoreTool">
-                <el-icon><View /></el-icon>
-                打开工作台
-              </el-button>
-            </div>
-            <div class="empty-panel">
-              {{ canAdminActiveTool ? "可在这里决定是否展示工具、是否要求登录，以及是否允许所有登录用户进入后只管理自己创建的任务。" : "你可以进入工作台创建和管理自己发起的文件收集任务；工具入口和权限开关由管理器维护。" }}
-            </div>
-          </section>
-
-          <ToolAccessSettings
-            v-if="canAdminActiveTool"
-            description="可决定文件收集是否显示在小工具入口中，以及是否向所有登录用户开放“只管理自己任务”的工作台。"
-            :visible="Boolean(currentToolMeta?.isVisible)"
-            :visible-text="currentToolMeta?.isVisible ? '当前会显示在小工具入口中' : '当前已从小工具入口中隐藏'"
-            :require-login="Boolean(currentToolMeta?.requireLogin)"
-            :require-login-text="currentToolMeta?.requireLogin ? '当前需要登录' : '当前允许游客打开工具详情页'"
-            :allow-public-manage="Boolean(currentToolMeta?.allowPublicManage)"
-            :public-manage-text="currentToolMeta?.allowPublicManage ? '所有登录用户都可进入工作台，但只能看到并管理自己创建的任务' : '仅管理器可进入文件收集工作台'"
-            :saving="settingSaving"
-            @change:visible="saveToolVisibilitySetting"
-            @change:require-login="saveToolSetting"
-            @change:public-manage="savePublicManageSetting"
-          />
-
-          <ToolManagerPanel
-            v-if="canAdminActiveTool"
-            v-model:username="managerUsername"
-            description="被分配后可维护文件收集入口设置和全局模板；任务内容仍按创建者隔离，只有超级管理员可查看全部任务。"
-            :managers="managers"
-            :saving="managerSaving"
-            :removing-id="managerRemovingId"
-            @add="addManager"
-            @remove="removeManager"
-          />
-        </div>
-
-        <div v-else-if="activeTool === 'pdf_tools'" class="tool-admin-grid permission-only-grid">
+        <div v-if="activeTool === 'pdf_tools'" class="tool-admin-grid permission-only-grid">
           <section class="admin-section questionnaire-section">
             <div class="section-head">
               <div>
@@ -114,7 +70,7 @@
         </div>
 
         <div v-else class="tool-admin-grid">
-          <section v-if="activeTool !== 'grade_check'" class="admin-section questionnaire-section">
+          <section v-if="activeTool !== 'grade_check' && activeTool !== 'file_collect'" class="admin-section questionnaire-section">
             <div class="section-head">
               <div>
                 <h3>问卷</h3>
@@ -203,7 +159,7 @@
             </div>
           </section>
 
-          <section v-else-if="false" class="admin-section questionnaire-section grade-check-section">
+          <section v-else-if="activeTool === 'file_collect'" class="admin-section questionnaire-section grade-check-section">
             <div class="section-head">
               <div>
                 <h3>文件收集</h3>
@@ -1115,51 +1071,22 @@
       </div>
     </el-dialog>
 
-    <el-dialog v-model="fileManagerOpen" width="min(980px, 96dvw)" class="responsive-tool-dialog file-manager-dialog">
-      <template #header>
-        <div class="responses-title">
-          <div>
-            <b>{{ fileManagerTask?.title || "文件管理" }}</b>
-            <span>{{ fileManagerFiles.length }} 个文件</span>
-          </div>
-          <el-button v-if="fileManagerTask" size="small" plain :loading="zipDownloading" :disabled="zipDownloading" @click="downloadFileCollectionZip(fileManagerTask)">
-            <el-icon><Download /></el-icon>
-            下载 ZIP
-          </el-button>
-          <el-button v-if="fileManagerTask" size="small" plain :loading="fileNameRepairing" :disabled="fileNameRepairing" @click="repairFileCollectionFilenames(fileManagerTask)">
-            <el-icon><Refresh /></el-icon>
-            修复乱码文件名
-          </el-button>
-        </div>
-      </template>
-      <div class="file-manager-toolbar">
-        <el-input v-model="fileManagerKeyword" clearable placeholder="搜索文件名、提交人、学号或填写内容" />
-      </div>
-      <div class="file-manager-list">
-        <article v-for="item in fileManagerFiles" :key="item.id" class="file-manager-card">
-          <div class="file-manager-main">
-            <strong>{{ item.storedName }}</strong>
-            <span>{{ item.folderPath }}</span>
-            <small>{{ item.submission.identity || `提交 #${item.submission.id}` }} · {{ fmtDate(item.submission.createdAt) }} · {{ formatBytes(item.size) }}</small>
-          </div>
-          <div class="file-manager-actions">
-            <button type="button" :disabled="isFileActionDisabled(item.id)" @click="previewFileCollectFile(item.id, item.storedName)">
-              <el-icon><View /></el-icon>
-              {{ filePreviewingId === item.id ? "预览中" : "预览" }}
-            </button>
-            <button type="button" :disabled="isFileActionDisabled(item.id)" @click="downloadFileCollectFile(item.id, item.storedName)">
-              <el-icon><Download /></el-icon>
-              {{ fileDownloadingId === item.id ? "下载中" : "下载" }}
-            </button>
-            <button type="button" :disabled="isFileActionDisabled(item.id)" @click="deleteFileCollectFile(item.id)">
-              <el-icon><Delete /></el-icon>
-              删除
-            </button>
-          </div>
-        </article>
-        <el-empty v-if="!fileManagerFiles.length" description="暂无匹配文件" />
-      </div>
-    </el-dialog>
+    <FileCollectFileManagerDialog
+      v-model="fileManagerOpen"
+      :task="fileManagerTask"
+      :submissions="fileManagerSubmissions"
+      :loading="fileSubmissionLoading"
+      :zip-downloading="zipDownloading"
+      :file-name-repairing="fileNameRepairing"
+      :deleting-id="fileDeletingId"
+      :downloading-id="fileDownloadingId"
+      :previewing-id="filePreviewingId"
+      @download-zip="downloadFileCollectionZip"
+      @repair-names="repairFileCollectionFilenames"
+      @preview-file="previewFileCollectFile"
+      @download-file="downloadFileCollectFile"
+      @delete-file="deleteFileCollectFile"
+    />
   </div>
 </template>
 
@@ -1190,17 +1117,13 @@ import {
 } from "@element-plus/icons-vue";
 import {
   toolsApi,
-  type FileCollectField,
   type FileCollectStatus,
   type FileCollectSubmission,
   type FileCollectTask,
   type FileCollectTemplate,
-  type FileCollectVisibility,
   type GradeCheckStatus,
   type GradeCheckTable,
   type Questionnaire,
-  type QuestionnaireBranchAction,
-  type QuestionnaireBranchRule,
   type QuestionnaireField,
   type QuestionnaireFieldType,
   type QuestionnaireResponse,
@@ -1210,101 +1133,66 @@ import {
   type ToolManager,
   type ToolMeta,
 } from "@/api/tools";
-import { getToken } from "@/api/request";
 import { fmtDate } from "@/utils/format";
+import {
+  fetchFileCollectAccess,
+  fetchFileCollectBlob,
+  openDirectFileAccess,
+  requestMessage,
+  saveBlob,
+} from "@/views/services/fileCollectFiles";
+import {
+  buildZip,
+  formatBytes,
+  uniqueZipPath,
+  zipEntryPath,
+  zipSafePathSegment,
+  type FileCollectZipEntry,
+} from "@/views/services/fileCollectExport";
+import {
+  applyFileTemplateToForm,
+  buildFieldVariableToken as buildFileCollectFieldVariableToken,
+  buildFileCollectionPayload,
+  buildFileCollectionTemplatePayload,
+  buildFileTemplateOptions,
+  builtInFileCollectTemplates,
+  createDefaultFileCollectForm,
+  fileCollectVariableFields as buildFileCollectVariableFields,
+  fileFolderQuickTokens,
+  fileRenameQuickTokens,
+  getFileCollectValidationMessage,
+  makeFileCollectField,
+  normalizeFileCollectFields as normalizeEditableFileCollectFields,
+  syncRenameInsertFields as syncFileRenameInsertFields,
+  type FileCollectTemplateDraft,
+  type RenameInsertState,
+} from "@/views/services/fileCollectManage";
+import {
+  branchRuleAction,
+  branchTargetOptions as buildBranchTargetOptions,
+  buildFieldStat as buildQuestionnaireFieldStat,
+  buildFields as buildQuestionnaireFields,
+  cloneEditableField,
+  csvEscape,
+  duplicateQuestionnaireFields,
+  editableOptions,
+  formatAnswer,
+  getEditorValidationMessage,
+  makeEditableField,
+  normalizeEditableField,
+  normalizeField,
+  ratingRange,
+  sanitizeFilename,
+  setBranchRuleAction as updateBranchRuleAction,
+  setBranchRuleTarget,
+  toEditableField,
+  type EditableBranchAction,
+  type EditableField,
+  type FieldStat,
+} from "@/views/services/questionnaireManage";
+import FileCollectFileManagerDialog from "@/views/services/components/FileCollectFileManagerDialog.vue";
 import ToolAccessSettings from "@/views/services/components/ToolAccessSettings.vue";
 import ToolManagerPanel from "@/views/services/components/ToolManagerPanel.vue";
-
-type EditableField = {
-  localKey: string;
-  id: string;
-  label: string;
-  type: QuestionnaireFieldType;
-  required: boolean;
-  placeholder: string;
-  description: string;
-  optionsText: string;
-  min?: number;
-  max?: number;
-  step?: number;
-  maxLength?: number;
-  branching: Record<string, QuestionnaireBranchRule>;
-};
-
-type EditableBranchAction = "next" | QuestionnaireBranchAction;
-
-type FieldStat = {
-  field: QuestionnaireField;
-  answered: number;
-  choices: Array<{ label: string; count: number; percent: number }>;
-  numericCount: number;
-  average?: number;
-  min?: number;
-  max?: number;
-  samples: string[];
-};
-
-type FileCollectTemplateDraft = {
-  key: string;
-  name: string;
-  description?: string | null;
-  visibility: FileCollectVisibility;
-  fields: FileCollectField[];
-  fileRules: {
-    allowedTypes: string[];
-    maxSizeMb: number;
-    maxCount: number;
-  };
-  renameTemplate: string;
-  folderTemplate: string;
-  expectedEntries: string;
-  customId?: number;
-};
-
-type RenameSliceMode = "whole" | "last" | "first";
-
-type RenameInsertState = {
-  fieldId: string;
-  mode: RenameSliceMode;
-  count: number;
-};
-
-type RenameQuickToken = {
-  label: string;
-  token: string;
-  group: "system";
-};
-
-const builtInFileCollectTemplates: FileCollectTemplateDraft[] = [
-  {
-    key: "builtin:student",
-    name: "学号模板",
-    description: "适合按姓名和学号收作业、照片、报名材料。",
-    visibility: "public",
-    fields: [
-      { id: "name", label: "姓名", required: true, placeholder: "请输入姓名" },
-      { id: "student_id", label: "学号", required: true, placeholder: "请输入学号" },
-    ],
-    fileRules: { allowedTypes: ["pdf", "doc", "docx", "jpg", "png", "zip"], maxSizeMb: 20, maxCount: 1 },
-    renameTemplate: "{name}-{student_id}",
-    folderTemplate: "{name}-{student_id}",
-    expectedEntries: "",
-  },
-  {
-    key: "builtin:exam",
-    name: "考试号模板",
-    description: "适合按姓名和考试号收准考证、考试材料或确认文件。",
-    visibility: "public",
-    fields: [
-      { id: "name", label: "姓名", required: true, placeholder: "请输入姓名" },
-      { id: "student_id", label: "考试号", required: true, placeholder: "请输入考试号" },
-    ],
-    fileRules: { allowedTypes: ["pdf", "jpg", "png", "zip"], maxSizeMb: 20, maxCount: 1 },
-    renameTemplate: "{name}-{student_id}",
-    folderTemplate: "{name}-{student_id}",
-    expectedEntries: "",
-  },
-];
 
 const fieldTypeOptions: Array<{ value: QuestionnaireFieldType; label: string; hint: string; icon: unknown }> = [
   { value: "single", label: "单选", hint: "从多个选项中选一项", icon: Tickets },
@@ -1352,25 +1240,9 @@ const fileDeletingId = ref<number | null>(null);
 const fileDownloadingId = ref<number | null>(null);
 const filePreviewingId = ref<number | null>(null);
 const fileNameRepairing = ref(false);
-const fileManagerKeyword = ref("");
 let xlsxModule: typeof import("xlsx") | null = null;
 const zipDownloading = ref(false);
-const fileCollectForm = reactive({
-  title: "",
-  description: "",
-  status: "open" as FileCollectStatus,
-  visibility: "public" as FileCollectVisibility,
-  allowedTypes: "pdf,doc,docx,jpg,png,zip",
-  maxSizeMb: 20,
-  maxCount: 1,
-  renameTemplate: "{name}-{student_id}",
-  folderTemplate: "{name}-{student_id}",
-  expectedEntries: "",
-  fields: [
-    { localKey: "fc-name", id: "name", label: "姓名", required: true, placeholder: "请输入姓名", pattern: "" },
-    { localKey: "fc-student", id: "student_id", label: "学号", required: true, placeholder: "请输入学号", pattern: "" },
-  ] as Array<FileCollectField & { localKey: string }>,
-});
+const fileCollectForm = reactive(createDefaultFileCollectForm());
 const fileRenameInsert = reactive<RenameInsertState>({
   fieldId: "name",
   mode: "whole",
@@ -1428,45 +1300,9 @@ const gradeOpenCount = computed(() => gradeChecks.value.filter((item) => item.st
 const gradeTotalRows = computed(() => gradeChecks.value.reduce((sum, item) => sum + item.rowCount, 0));
 const fileOpenCount = computed(() => fileCollections.value.filter((item) => item.status === "open").length);
 const fileTotalSubmissions = computed(() => fileCollections.value.reduce((sum, item) => sum + item.submissionCount, 0));
-const fileTemplateOptions = computed<FileCollectTemplateDraft[]>(() => [
-  ...builtInFileCollectTemplates,
-  ...fileCollectTemplates.value.map((item) => ({
-    key: `custom:${item.id}`,
-    customId: item.id,
-    name: item.name,
-    description: item.description,
-    visibility: item.visibility,
-    fields: item.fields,
-    fileRules: item.fileRules,
-    renameTemplate: item.renameTemplate,
-    folderTemplate: item.folderTemplate,
-    expectedEntries: item.expectedEntries,
-  })),
-]);
+const fileTemplateOptions = computed<FileCollectTemplateDraft[]>(() => buildFileTemplateOptions(fileCollectTemplates.value));
 const selectedFileTemplate = computed(() => fileTemplateOptions.value.find((item) => item.key === fileCollectTemplateKey.value));
-const fileCollectVariableFields = computed(() => normalizeFileCollectFields().filter((field) => field.id && field.label).slice(0, 20));
-const fileRenameQuickTokens: RenameQuickToken[] = [
-  { label: "连接符 -", token: "-", group: "system" },
-  { label: "原文件名", token: "{original}", group: "system" },
-  { label: "多文件序号", token: "{index}", group: "system" },
-];
-const fileFolderQuickTokens: RenameQuickToken[] = [
-  { label: "连接符 -", token: "-", group: "system" },
-];
-const fileManagerFiles = computed(() => {
-  const keyword = fileManagerKeyword.value.trim().toLowerCase();
-  const task = fileManagerTask.value;
-  return fileManagerSubmissions.value.flatMap((submission) => submission.files.map((file) => ({
-    ...file,
-    submission,
-    folderPath: task ? zipEntryPath(task, submission, file) : file.storedName,
-  }))).filter((item) => {
-    if (!keyword) return true;
-    const dataText = JSON.stringify(item.submission.data).toLowerCase();
-    return `${item.storedName} ${item.originalName} ${item.submission.identity} ${dataText}`.toLowerCase().includes(keyword);
-  });
-});
-
+const fileCollectVariableFields = computed(() => buildFileCollectVariableFields(fileCollectForm.fields));
 function isFileTransferBusy(id: number) {
   return zipDownloading.value || fileDownloadingId.value === id || filePreviewingId.value === id;
 }
@@ -1477,7 +1313,7 @@ function isFileActionDisabled(id: number) {
 
 const editorTitle = computed(() => editorMode.value === "create" ? "新建问卷" : "编辑问卷");
 const requiredCount = computed(() => form.fields.filter((field) => field.required).length);
-const responseStats = computed<FieldStat[]>(() => activeResponseFields.value.map((field) => buildFieldStat(field)));
+const responseStats = computed<FieldStat[]>(() => activeResponseFields.value.map((field) => buildQuestionnaireFieldStat(field, responses.value)));
 
 onMounted(init);
 
@@ -1569,10 +1405,6 @@ function openPdfTool() {
   router.push("/services/tools/pdf_tools");
 }
 
-function openFilestoreTool() {
-  router.push("/services/tools/filestore");
-}
-
 async function saveToolSetting(value: string | number | boolean) {
   settingSaving.value = true;
   const previous = !Boolean(value);
@@ -1651,81 +1483,16 @@ function resetEditorForm(source?: Questionnaire) {
   form.fields = (source?.fields ?? []).map(toEditableField);
 }
 
-function toEditableField(field: QuestionnaireField): EditableField {
-  return {
-    localKey: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    id: field.id,
-    label: field.label,
-    type: field.type,
-    required: Boolean(field.required),
-    placeholder: field.placeholder ?? "",
-    description: field.description ?? "",
-    optionsText: (field.options ?? []).join("\n"),
-    min: field.min,
-    max: field.max,
-    step: field.step,
-    maxLength: field.maxLength,
-    branching: cloneBranching(field.branching),
-  };
-}
-
 function addField(type: QuestionnaireFieldType = "text", afterIndex?: number) {
   const field = makeEditableField(type);
   if (typeof afterIndex === "number") form.fields.splice(afterIndex + 1, 0, field);
   else form.fields.push(field);
 }
 
-function makeEditableField(type: QuestionnaireFieldType): EditableField {
-  const field: EditableField = {
-    localKey: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    id: makeFieldId(),
-    label: "",
-    type,
-    required: false,
-    placeholder: "",
-    description: "",
-    optionsText: "",
-    branching: {},
-  };
-  normalizeEditableField(field);
-  return field;
-}
-
-function normalizeEditableField(field: EditableField) {
-  if (field.type === "single" || field.type === "multiple") {
-    if (!field.optionsText.trim()) field.optionsText = "选项1\n选项2";
-  } else {
-    field.optionsText = "";
-  }
-  if (field.type === "single") {
-    syncBranchRules(field);
-  } else {
-    field.branching = {};
-  }
-  if (field.type === "rating") {
-    field.min = field.min ?? 1;
-    field.max = field.max ?? 5;
-    field.step = undefined;
-  } else if (field.type === "number") {
-    field.step = field.step ?? 1;
-  } else if (field.type === "text") {
-    field.maxLength = field.maxLength ?? 300;
-  } else if (field.type === "textarea") {
-    field.maxLength = field.maxLength ?? 2000;
-  }
-}
-
 function duplicateField(index: number) {
   const source = form.fields[index];
   if (!source) return;
-  const copy: EditableField = {
-    ...source,
-    id: makeFieldId(),
-    localKey: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    label: source.label ? `${source.label} 副本` : "",
-    branching: cloneBranching(source.branching),
-  };
-  form.fields.splice(index + 1, 0, copy);
+  form.fields.splice(index + 1, 0, cloneEditableField(source));
 }
 
 function removeField(index: number) {
@@ -1742,7 +1509,7 @@ function moveField(index: number, delta: number) {
 async function submitEditor(statusOverride?: QuestionnaireStatus) {
   if (saving.value) return;
   if (statusOverride) form.status = statusOverride;
-  const fields = buildFields();
+  const fields = buildQuestionnaireFields(form.fields);
   if (!validateEditor(fields)) return;
 
   saving.value = true;
@@ -1770,164 +1537,19 @@ async function submitEditor(statusOverride?: QuestionnaireStatus) {
   }
 }
 
-function buildFields(): QuestionnaireField[] {
-  return form.fields
-    .map((field) => normalizeField(field, false))
-    .filter((field): field is QuestionnaireField => Boolean(field));
-}
-
-function normalizeField(field: EditableField, allowUntitled: boolean): QuestionnaireField | null {
-  const label = field.label.trim();
-  if (!label && !allowUntitled) return null;
-  const options = field.type === "single" || field.type === "multiple"
-    ? editableOptions(field)
-    : undefined;
-  const result: QuestionnaireField = {
-    id: field.id,
-    label: label || "未命名题目",
-    type: field.type,
-    required: field.required,
-    placeholder: field.placeholder.trim() || undefined,
-    description: field.description.trim() || undefined,
-    options,
-    min: field.min,
-    max: field.max,
-    step: field.step,
-    maxLength: field.maxLength,
-  };
-  const branching = normalizeBranching(field, options ?? []);
-  if (branching) result.branching = branching;
-  return result;
-}
-
-function editableOptions(field: EditableField) {
-  return field.optionsText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
-}
-
-function cloneBranching(source?: Record<string, QuestionnaireBranchRule>): Record<string, QuestionnaireBranchRule> {
-  return Object.fromEntries(
-    Object.entries(source ?? {}).map(([option, rule]) => [option, { ...rule }])
-  );
-}
-
-function syncBranchRules(field: EditableField) {
-  const options = new Set(editableOptions(field));
-  for (const option of Object.keys(field.branching)) {
-    if (!options.has(option)) delete field.branching[option];
-  }
-}
-
-function normalizeBranching(field: EditableField, options: string[]) {
-  if (field.type !== "single") return undefined;
-  const optionSet = new Set(options);
-  const rules: Record<string, QuestionnaireBranchRule> = {};
-  for (const [option, rule] of Object.entries(field.branching)) {
-    if (!optionSet.has(option)) continue;
-    if (rule.action === "end") {
-      rules[option] = { action: "end" };
-    } else if (rule.action === "jump" && rule.targetId) {
-      rules[option] = { action: "jump", targetId: rule.targetId };
-    }
-  }
-  return Object.keys(rules).length ? rules : undefined;
-}
-
-function remapBranchingTargets(source: Record<string, QuestionnaireBranchRule> | undefined, idMap: Map<string, string>) {
-  if (!source) return undefined;
-  const rules: Record<string, QuestionnaireBranchRule> = {};
-  for (const [option, rule] of Object.entries(source)) {
-    if (rule.action === "end") {
-      rules[option] = { action: "end" };
-    } else if (rule.action === "jump" && rule.targetId && idMap.has(rule.targetId)) {
-      rules[option] = { action: "jump", targetId: idMap.get(rule.targetId) };
-    }
-  }
-  return Object.keys(rules).length ? rules : undefined;
-}
-
-function branchRuleAction(field: EditableField, option: string): EditableBranchAction {
-  return field.branching[option]?.action ?? "next";
-}
-
 function branchTargetOptions(index: number) {
-  return form.fields.slice(index + 1).map((field, offset) => ({
-    id: field.id,
-    label: `Q${index + offset + 2} ${field.label.trim() || "未命名题目"}`,
-  }));
+  return buildBranchTargetOptions(form.fields, index);
 }
 
 function setBranchRuleAction(field: EditableField, option: string, action: EditableBranchAction, index: number) {
-  if (action === "next") {
-    delete field.branching[option];
-    return;
-  }
-  if (action === "end") {
-    field.branching[option] = { action: "end" };
-    return;
-  }
-  const currentTarget = field.branching[option]?.targetId;
-  const targets = branchTargetOptions(index);
-  field.branching[option] = {
-    action: "jump",
-    targetId: targets.some((item) => item.id === currentTarget) ? currentTarget : targets[0]?.id,
-  };
-}
-
-function setBranchRuleTarget(field: EditableField, option: string, targetId: string) {
-  field.branching[option] = { action: "jump", targetId };
+  updateBranchRuleAction(field, option, action, branchTargetOptions(index));
 }
 
 function validateEditor(fields: QuestionnaireField[]) {
-  if (!form.title.trim()) {
-    ElMessage.warning("请填写标题");
-    return false;
-  }
-  if (!fields.length) {
-    ElMessage.warning("至少添加 1 个题目");
-    return false;
-  }
-  const ids = new Set<string>();
-  const fieldIndexById = new Map(fields.map((field, index) => [field.id, index]));
-  for (const [index, field] of fields.entries()) {
-    if (ids.has(field.id)) {
-      ElMessage.warning(`题目 ID 重复：${field.id}`);
-      return false;
-    }
-    ids.add(field.id);
-    if ((field.type === "single" || field.type === "multiple") && (!field.options || field.options.length < 2)) {
-      ElMessage.warning(`选项题“${field.label}”至少需要 2 个选项`);
-      return false;
-    }
-    if (field.branching) {
-      if (field.type !== "single") {
-        ElMessage.warning(`只有单选题“${field.label}”可以配置分支`);
-        return false;
-      }
-      const allowed = new Set(field.options ?? []);
-      for (const [option, rule] of Object.entries(field.branching)) {
-        if (!allowed.has(option)) {
-          ElMessage.warning(`题目“${field.label}”的分支选项不存在：${option}`);
-          return false;
-        }
-        if (rule.action === "jump") {
-          const targetIndex = fieldIndexById.get(rule.targetId ?? "");
-          if (targetIndex === undefined || targetIndex <= index) {
-            ElMessage.warning(`题目“${field.label}”只能跳到后面的题`);
-            return false;
-          }
-        }
-      }
-    }
-    if (field.type === "rating" && (field.min ?? 1) >= (field.max ?? 5)) {
-      ElMessage.warning(`评分题“${field.label}”的最高分需要大于最低分`);
-      return false;
-    }
-    if (field.type === "number" && field.min !== undefined && field.max !== undefined && field.min > field.max) {
-      ElMessage.warning(`数字题“${field.label}”的最小值不能大于最大值`);
-      return false;
-    }
-  }
-  return true;
+  const message = getEditorValidationMessage(form.title, fields);
+  if (!message) return true;
+  ElMessage.warning(message);
+  return false;
 }
 
 function isQuestionnaireBusy(row: Questionnaire) {
@@ -1971,8 +1593,6 @@ async function handleQuestionnaireCommand(command: string | number | object, row
 async function duplicateQuestionnaire(row: Questionnaire) {
   await runQuestionnaireAction(row, async () => {
     const source = row.fields ? row : await toolsApi.questionnaire(row.slug);
-    const sourceFields = source.fields ?? [];
-    const idMap = new Map(sourceFields.map((field) => [field.id, makeFieldId()]));
     await toolsApi.createQuestionnaire({
       toolCode: "questionnaire",
       title: `${source.title} 副本`,
@@ -1981,11 +1601,7 @@ async function duplicateQuestionnaire(row: Questionnaire) {
       visibility: source.visibility,
       allowAnonymous: source.allowAnonymous,
       oneResponsePerUser: source.oneResponsePerUser,
-      fields: sourceFields.map((field) => ({
-        ...field,
-        id: idMap.get(field.id) ?? makeFieldId(),
-        branching: remapBranchingTargets(field.branching, idMap),
-      })),
+      fields: duplicateQuestionnaireFields(source),
     });
     ElMessage.success("已复制为草稿");
     await reloadActive();
@@ -2167,28 +1783,7 @@ async function openGradeFeedback(row: GradeCheckTable) {
 }
 
 function applyFileTemplate(template: FileCollectTemplateDraft, resetTitle = false) {
-  if (resetTitle) {
-    fileCollectForm.title = "";
-    fileCollectForm.description = "";
-    fileCollectForm.status = "open";
-  } else if (!fileCollectForm.description.trim() && template.description) {
-    fileCollectForm.description = template.description;
-  }
-  fileCollectForm.visibility = template.visibility;
-  fileCollectForm.allowedTypes = template.fileRules.allowedTypes.join(",");
-  fileCollectForm.maxSizeMb = template.fileRules.maxSizeMb;
-  fileCollectForm.maxCount = template.fileRules.maxCount;
-  fileCollectForm.renameTemplate = template.renameTemplate;
-  fileCollectForm.folderTemplate = template.folderTemplate;
-  fileCollectForm.expectedEntries = template.expectedEntries;
-  fileCollectForm.fields = template.fields.map((field, index) => ({
-    localKey: `fc-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
-    id: field.id,
-    label: field.label,
-    required: Boolean(field.required),
-    placeholder: field.placeholder || "",
-    pattern: field.pattern || "",
-  }));
+  applyFileTemplateToForm(fileCollectForm, template, resetTitle);
   syncRenameInsertFields();
 }
 
@@ -2208,45 +1803,23 @@ function insertFolderToken(token: string) {
 }
 
 function insertRenameVariable() {
-  const token = buildFieldVariableToken(fileRenameInsert);
+  const token = makeFieldVariableToken(fileRenameInsert);
   if (token) insertRenameToken(token);
 }
 
 function insertFolderVariable() {
-  const token = buildFieldVariableToken(fileFolderInsert);
+  const token = makeFieldVariableToken(fileFolderInsert);
   if (token) insertFolderToken(token);
 }
 
-function buildFieldVariableToken(state: RenameInsertState) {
-  const fields = fileCollectVariableFields.value;
-  const fallback = fields[0]?.id || "";
-  const fieldId = fields.some((field) => field.id === state.fieldId) ? state.fieldId : fallback;
-  if (!fieldId) {
-    ElMessage.warning("请先添加可用于命名的填写字段");
-    return "";
-  }
-  state.fieldId = fieldId;
-  if (state.mode === "whole") return `{${fieldId}}`;
-  const count = clampSliceCount(state.count);
-  state.count = count;
-  return `{${fieldId}|${state.mode}:${count}}`;
+function makeFieldVariableToken(state: RenameInsertState) {
+  const result = buildFileCollectFieldVariableToken(state, fileCollectVariableFields.value);
+  if (result.message) ElMessage.warning(result.message);
+  return result.token;
 }
 
 function syncRenameInsertFields() {
-  const fields = fileCollectVariableFields.value;
-  const fallback = fields[0]?.id || "";
-  for (const state of [fileRenameInsert, fileFolderInsert]) {
-    if (!fallback) {
-      state.fieldId = "";
-    } else if (!fields.some((field) => field.id === state.fieldId)) {
-      state.fieldId = fallback;
-    }
-  }
-}
-
-function clampSliceCount(value: number) {
-  const count = Math.round(Number(value) || 1);
-  return Math.min(99, Math.max(1, count));
+  syncFileRenameInsertFields([fileRenameInsert, fileFolderInsert], fileCollectVariableFields.value);
 }
 
 async function saveCurrentFileTemplate() {
@@ -2265,20 +1838,7 @@ async function saveCurrentFileTemplate() {
     }).then((result) => result.value.trim()).catch(() => "");
     if (!name) return;
 
-    const created = await toolsApi.createFileCollectionTemplate({
-      name,
-      description: fileCollectForm.description.trim() || undefined,
-      visibility: fileCollectForm.visibility,
-      fields,
-      fileRules: {
-        allowedTypes: fileCollectForm.allowedTypes.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean),
-        maxSizeMb: Number(fileCollectForm.maxSizeMb) || 20,
-        maxCount: Number(fileCollectForm.maxCount) || 1,
-      },
-      renameTemplate: fileCollectForm.renameTemplate.trim() || "{name}-{student_id}",
-      folderTemplate: fileCollectForm.folderTemplate.trim() || "{name}-{student_id}",
-      expectedEntries: fileCollectForm.expectedEntries.trim() || "",
-    });
+    const created = await toolsApi.createFileCollectionTemplate(buildFileCollectionTemplatePayload(name, fileCollectForm));
     fileCollectTemplates.value = [created, ...fileCollectTemplates.value];
     fileCollectTemplateKey.value = `custom:${created.id}`;
     ElMessage.success("模板已保存");
@@ -2305,17 +1865,10 @@ async function deleteSelectedFileTemplate() {
 }
 
 function addFileCollectField() {
-  const id = `field_${fileCollectForm.fields.length + 1}`;
-  fileCollectForm.fields.push({
-    localKey: `fc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    id,
-    label: "新字段",
-    required: false,
-    placeholder: "",
-    pattern: "",
-  });
-  fileRenameInsert.fieldId = id;
-  fileFolderInsert.fieldId = id;
+  const field = makeFileCollectField(fileCollectForm.fields.length);
+  fileCollectForm.fields.push(field);
+  fileRenameInsert.fieldId = field.id;
+  fileFolderInsert.fieldId = field.id;
 }
 
 function removeFileCollectField(index: number) {
@@ -2324,32 +1877,13 @@ function removeFileCollectField(index: number) {
 }
 
 function normalizeFileCollectFields() {
-  return fileCollectForm.fields.map((field) => ({
-    id: field.id.trim(),
-    label: field.label.trim(),
-    required: Boolean(field.required),
-    placeholder: field.placeholder?.trim() || undefined,
-    pattern: field.pattern?.trim() || undefined,
-  }));
+  return normalizeEditableFileCollectFields(fileCollectForm.fields);
 }
 
 function validateFileCollectForm() {
-  if (!fileCollectForm.title.trim()) {
-    ElMessage.warning("请填写收集任务标题");
-    return false;
-  }
-  const fields = normalizeFileCollectFields();
-  if (!fields.length || fields.some((field) => !field.id || !field.label)) {
-    ElMessage.warning("请完善填写字段");
-    return false;
-  }
-  if (new Set(fields.map((field) => field.id)).size !== fields.length) {
-    ElMessage.warning("字段 ID 不能重复");
-    return false;
-  }
-  const invalid = fields.find((field) => !/^[a-zA-Z0-9_\u4e00-\u9fa5]+$/.test(field.id));
-  if (invalid) {
-    ElMessage.warning(`变量名“${invalid.id}”只能包含中文、英文、数字和下划线`);
+  const message = getFileCollectValidationMessage(fileCollectForm);
+  if (message) {
+    ElMessage.warning(message);
     return false;
   }
   return true;
@@ -2360,21 +1894,7 @@ async function createFileCollection() {
   if (!validateFileCollectForm()) return;
   fileCollectSaving.value = true;
   try {
-    await toolsApi.createFileCollection({
-      title: fileCollectForm.title.trim(),
-      description: fileCollectForm.description.trim() || undefined,
-      status: fileCollectForm.status,
-      visibility: fileCollectForm.visibility,
-      fields: normalizeFileCollectFields(),
-      fileRules: {
-        allowedTypes: fileCollectForm.allowedTypes.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean),
-        maxSizeMb: Number(fileCollectForm.maxSizeMb) || 20,
-        maxCount: Number(fileCollectForm.maxCount) || 1,
-      },
-      renameTemplate: fileCollectForm.renameTemplate.trim() || "{name}-{student_id}",
-      folderTemplate: fileCollectForm.folderTemplate.trim() || "{name}-{student_id}",
-      expectedEntries: fileCollectForm.expectedEntries.trim() || undefined,
-    });
+    await toolsApi.createFileCollection(buildFileCollectionPayload(fileCollectForm));
     ElMessage.success(fileCollectForm.status === "open" ? "收集任务已创建并开放" : "收集任务已创建");
     resetFileCollectForm();
     await reloadActive();
@@ -2473,7 +1993,6 @@ async function openFileManager(row: FileCollectTask) {
     const data = await loadFileCollectionSubmissions(row.id);
     fileManagerTask.value = data.task;
     fileManagerSubmissions.value = data.list;
-    fileManagerKeyword.value = "";
   } finally {
     fileSubmissionLoading.value = false;
   }
@@ -2536,63 +2055,6 @@ async function deleteFileCollectFile(id: number) {
   }
 }
 
-async function fetchFileCollectBlob(id: number, action: "download" | "preview") {
-  const response = await fetch(`/api/tools/file-collection-files/${id}/${action}`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  });
-  if (!response.ok) {
-    const fallback = action === "preview" ? "预览失败" : "下载失败";
-    let message = await response.text().catch(() => "");
-    try {
-      const parsed = JSON.parse(message);
-      message = parsed?.message || message;
-    } catch {
-      // Non-JSON error body; use the raw text if present.
-    }
-    throw new Error(message || fallback);
-  }
-  return response.blob();
-}
-
-type FileCollectFileAccess = {
-  backend: "local" | "onedrive-cn";
-  url: string;
-  viewer?: "office" | "onedrive" | null;
-  previewMessage?: string;
-  filename?: string;
-  mimeType?: string;
-};
-
-async function fetchFileCollectAccess(id: number, action: "download" | "preview") {
-  const response = await fetch(`/api/tools/file-collection-files/${id}/access?action=${action}`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload?.message || payload?.error || (action === "preview" ? "预览失败" : "下载失败"));
-  }
-  return payload as FileCollectFileAccess;
-}
-
-function openDirectFileAccess(url: string, filename: string, action: "download" | "preview") {
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.rel = "noopener noreferrer";
-  if (action === "preview") anchor.target = "_blank";
-  if (action === "download" && filename) anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-}
-
-function requestMessage(error: unknown) {
-  if (typeof error === "object" && error !== null) {
-    const responseMessage = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
-    if (typeof responseMessage === "string") return responseMessage;
-  }
-  return error instanceof Error ? error.message : "";
-}
-
 async function downloadFileCollectFile(id: number, filename: string) {
   if (isFileActionDisabled(id)) return;
   fileDownloadingId.value = id;
@@ -2649,7 +2111,7 @@ async function downloadFileCollectionZip(row: FileCollectTask) {
       ElMessage.info("当前任务还没有可下载的文件");
       return;
     }
-    const entries: Array<{ path: string; bytes: Uint8Array; date: Date }> = [];
+    const entries: FileCollectZipEntry[] = [];
     const usedPaths = new Set<string>();
     let current = 0;
     for (const submission of data.list) {
@@ -2669,158 +2131,6 @@ async function downloadFileCollectionZip(row: FileCollectTask) {
   } finally {
     zipDownloading.value = false;
   }
-}
-
-function saveBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-}
-
-function zipSafePathSegment(value: string) {
-  return cleanRenderedName(String(value || "file").replace(/[\\/:*?"<>|]+/g, "_"));
-}
-
-function cleanRenderedName(value: string) {
-  return safeStoredName(value).replace(/[-_ ]{2,}/g, "-").replace(/^[\s\-_.]+|[\s\-_.]+$/g, "") || "file";
-}
-
-function safeStoredName(value: string) {
-  return String(value || "")
-    .replace(/[\\/:*?"<>|]+/g, "_")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/^[. ]+|[. ]+$/g, "")
-    .slice(0, 160) || "file";
-}
-
-function renderFileCollectTemplate(template: string, data: Record<string, string>, originalName = "", index = 1, totalCount = 1) {
-  const extIndex = originalName.lastIndexOf(".");
-  const original = extIndex > 0 ? originalName.slice(0, extIndex) : originalName;
-  const values: Record<string, string> = {
-    ...Object.fromEntries(Object.entries(data).map(([key, value]) => [key, zipSafePathSegment(value)])),
-    index: totalCount > 1 ? String(index) : "",
-    original: zipSafePathSegment(original),
-  };
-  const rendered = String(template || "{name}-{student_id}").replace(/\{([a-zA-Z0-9_\u4e00-\u9fa5]+)(?:\|(last|first):(\d{1,2}))?\}/g, (_match, key, op, rawCount) => {
-    const value = values[key] || "";
-    const count = Number(rawCount || 0);
-    if (op === "last") return count > 0 ? value.slice(-count) : "";
-    if (op === "first") return count > 0 ? value.slice(0, count) : "";
-    return value;
-  });
-  return cleanRenderedName(rendered);
-}
-
-function zipEntryPath(task: FileCollectTask, submission: FileCollectSubmission, file: FileCollectSubmission["files"][number]) {
-  if (submission.files.length <= 1) return zipSafePathSegment(file.storedName);
-  const folder = renderFileCollectTemplate(task.folderTemplate || "{name}-{student_id}", submission.data);
-  return `${folder}/${zipSafePathSegment(file.storedName)}`;
-}
-
-function uniqueZipPath(path: string, used: Set<string>) {
-  if (!used.has(path)) {
-    used.add(path);
-    return path;
-  }
-  const slash = path.lastIndexOf("/");
-  const dir = slash >= 0 ? path.slice(0, slash + 1) : "";
-  const name = slash >= 0 ? path.slice(slash + 1) : path;
-  const dot = name.lastIndexOf(".");
-  const stem = dot > 0 ? name.slice(0, dot) : name;
-  const ext = dot > 0 ? name.slice(dot) : "";
-  let index = 2;
-  let next = `${dir}${stem}-${index}${ext}`;
-  while (used.has(next)) {
-    index += 1;
-    next = `${dir}${stem}-${index}${ext}`;
-  }
-  used.add(next);
-  return next;
-}
-
-const crcTable = (() => {
-  const table = new Uint32Array(256);
-  for (let i = 0; i < 256; i += 1) {
-    let value = i;
-    for (let bit = 0; bit < 8; bit += 1) {
-      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
-    }
-    table[i] = value >>> 0;
-  }
-  return table;
-})();
-
-function crc32(bytes: Uint8Array) {
-  let crc = 0xffffffff;
-  for (const byte of bytes) crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
-  return (crc ^ 0xffffffff) >>> 0;
-}
-
-function dosDateTime(date = new Date()) {
-  const time = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
-  const day = ((date.getFullYear() - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
-  return { time, day };
-}
-
-function zipHeader(fields: Array<[number, number]>) {
-  const bytes = new Uint8Array(fields.reduce((sum, item) => sum + item[1], 0));
-  const view = new DataView(bytes.buffer);
-  let offset = 0;
-  for (const [value, size] of fields) {
-    if (size === 2) view.setUint16(offset, value, true);
-    if (size === 4) view.setUint32(offset, value, true);
-    offset += size;
-  }
-  return bytes;
-}
-
-function buildZip(entries: Array<{ path: string; bytes: Uint8Array; date: Date }>) {
-  const encoder = new TextEncoder();
-  const parts: BlobPart[] = [];
-  const central: BlobPart[] = [];
-  let offset = 0;
-
-  for (const entry of entries) {
-    const name = encoder.encode(entry.path);
-    const data = entry.bytes;
-    const crc = crc32(data);
-    const { time, day } = dosDateTime(entry.date);
-    const local = zipHeader([
-      [0x04034b50, 4], [20, 2], [0x0800, 2], [0, 2], [time, 2], [day, 2],
-      [crc, 4], [data.length, 4], [data.length, 4], [name.length, 2], [0, 2],
-    ]);
-    parts.push(blobPart(local), blobPart(name), blobPart(data));
-    const centralHeader = zipHeader([
-      [0x02014b50, 4], [20, 2], [20, 2], [0x0800, 2], [0, 2], [time, 2], [day, 2],
-      [crc, 4], [data.length, 4], [data.length, 4], [name.length, 2], [0, 2],
-      [0, 2], [0, 2], [0, 2], [0, 4], [offset, 4],
-    ]);
-    central.push(blobPart(centralHeader), blobPart(name));
-    offset += local.length + name.length + data.length;
-  }
-  const centralSize = central.reduce((sum, part) => sum + (part as ArrayBuffer).byteLength, 0);
-  const end = zipHeader([
-    [0x06054b50, 4], [0, 2], [0, 2], [entries.length, 2], [entries.length, 2],
-    [centralSize, 4], [offset, 4], [0, 2],
-  ]);
-  return new Blob([...parts, ...central, blobPart(end)], { type: "application/zip" });
-}
-
-function blobPart(bytes: Uint8Array): ArrayBuffer {
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-}
-
-function formatBytes(bytes: number) {
-  if (!bytes) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  return `${(bytes / 1024 ** index).toFixed(index ? 1 : 0)} ${units[index]}`;
 }
 
 function resetGradeForm() {
@@ -2908,68 +2218,6 @@ async function removeManager(userId: number) {
   }
 }
 
-function buildFieldStat(field: QuestionnaireField): FieldStat {
-  const optionCounts = new Map<string, number>();
-  const samples: string[] = [];
-  const numbers: number[] = [];
-  let answered = 0;
-
-  if (field.type === "single" || field.type === "multiple") {
-    for (const option of field.options ?? []) optionCounts.set(option, 0);
-  }
-  if (field.type === "rating") {
-    const min = Math.max(0, Math.round(field.min ?? 1));
-    const max = Math.min(10, Math.round(field.max ?? 5));
-    for (let value = min; value <= max; value += 1) optionCounts.set(String(value), 0);
-  }
-
-  for (const response of responses.value) {
-    const raw = response.answers[field.id];
-    if (Array.isArray(raw)) {
-      const values = raw.map(String).map((item) => item.trim()).filter(Boolean);
-      if (!values.length) continue;
-      answered += 1;
-      for (const value of values) optionCounts.set(value, (optionCounts.get(value) ?? 0) + 1);
-      continue;
-    }
-
-    const value = String(raw ?? "").trim();
-    if (!value) continue;
-    answered += 1;
-    if (field.type === "single" || field.type === "date" || field.type === "rating") {
-      optionCounts.set(value, (optionCounts.get(value) ?? 0) + 1);
-    }
-    if (field.type === "number" || field.type === "rating") {
-      const numeric = Number(value);
-      if (Number.isFinite(numeric)) numbers.push(numeric);
-    }
-    if ((field.type === "text" || field.type === "textarea") && samples.length < 8) {
-      samples.push(value);
-    }
-  }
-
-  const choices = Array.from(optionCounts.entries())
-    .filter(([, count]) => field.type !== "date" || count > 0)
-    .slice(0, field.type === "date" ? 10 : undefined)
-    .map(([label, count]) => ({
-      label,
-      count,
-      percent: answered ? Math.round((count / answered) * 100) : 0,
-    }));
-
-  const sum = numbers.reduce((total, item) => total + item, 0);
-  return {
-    field,
-    answered,
-    choices,
-    numericCount: numbers.length,
-    average: numbers.length ? round(sum / numbers.length) : undefined,
-    min: numbers.length ? Math.min(...numbers) : undefined,
-    max: numbers.length ? Math.max(...numbers) : undefined,
-    samples,
-  };
-}
-
 function exportResponses() {
   const headers = ["提交时间", "填写人", ...activeResponseFields.value.map((field) => field.label)];
   const rows = responses.value.map((item) => [
@@ -2987,10 +2235,6 @@ function exportResponses() {
   URL.revokeObjectURL(url);
 }
 
-function makeFieldId() {
-  return `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
-}
-
 function statusText(status: QuestionnaireStatus | GradeCheckStatus | FileCollectStatus) {
   if (status === "open") return "开放";
   if (status === "closed") return "关闭";
@@ -3006,1783 +2250,11 @@ function statusTag(status: QuestionnaireStatus | GradeCheckStatus | FileCollectS
 function fieldTypeText(type: QuestionnaireFieldType) {
   return fieldTypeOptions.find((item) => item.value === type)?.label ?? type;
 }
-
-function ratingRange(field: QuestionnaireField) {
-  const min = Math.max(0, Math.round(field.min ?? 1));
-  const max = Math.min(10, Math.round(field.max ?? 5));
-  return Array.from({ length: Math.max(0, max - min + 1) }, (_, index) => min + index);
-}
-
-function formatAnswer(value: string | string[] | undefined) {
-  if (Array.isArray(value)) return value.join("、") || "-";
-  return value || "-";
-}
-
-function csvEscape(value: string) {
-  return `"${String(value ?? "").replace(/"/g, '""')}"`;
-}
-
-function sanitizeFilename(value: string) {
-  return value.replace(/[\\/:*?"<>|]/g, "_").slice(0, 60) || "questionnaire";
-}
-
-function round(value: number) {
-  return Math.round(value * 100) / 100;
-}
 </script>
 
-<style scoped>
-.tool-manage-page { display: flex; flex-direction: column; gap: 18px; }
-.manage-head,
-.manage-panel {
-  background: #fff;
-  border: 1px solid #eef0f4;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
-}
-.manage-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 22px 24px;
-}
-.manage-head-copy {
-  min-width: 0;
-  max-width: 720px;
-}
-.manage-head-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  flex: 0 0 auto;
-  margin-top: 2px;
-}
-.manage-head-actions .el-button {
-  min-width: 116px;
-  margin-left: 0;
-}
-.kicker {
-  color: var(--cpu-primary);
-  font-size: 12px;
-  font-weight: 650;
-  margin-bottom: 5px;
-}
-.manage-head h2 { margin: 0; font-size: 22px; color: #111827; }
-.manage-head p { margin: 6px 0 0; color: #6b7280; font-size: 13px; line-height: 1.7; }
-.manage-panel { padding: 16px 18px 20px; min-height: 240px; }
-:global(.questionnaire-builder-dialog.el-dialog) {
-  --builder-primary: #267dff;
-  --builder-primary-dark: #1765d8;
-  --builder-primary-soft: #eef5ff;
-  --builder-border: #e5eaf3;
-  --builder-muted: #6b7280;
-  width: 100dvw !important;
-  height: 100dvh !important;
-  max-height: none !important;
-  min-height: 100dvh;
-  max-width: none;
-  margin: 0 !important;
-  padding: 0 !important;
-  border-radius: 0;
-  background: #f3f6fb;
-  box-shadow: none;
-  transform: none !important;
-}
-:global(.questionnaire-builder-overlay) {
-  background: #f3f6fb !important;
-}
-:global(.questionnaire-builder-overlay .el-overlay-dialog) {
-  align-items: stretch !important;
-  justify-content: stretch !important;
-  padding: 0 !important;
-  overflow: hidden;
-}
-:global(.questionnaire-builder-dialog .el-dialog__header) {
-  padding: 0;
-  margin: 0;
-  border-bottom: 1px solid var(--builder-border);
-  background: #fff;
-  box-shadow: 0 1px 10px rgba(17, 24, 39, 0.04);
-}
-:global(.questionnaire-builder-dialog .el-dialog__body) {
-  padding: 0;
-  height: calc(100dvh - 64px);
-  overflow: hidden;
-}
-.builder-mobile-only {
-  display: none;
-}
-.builder-topbar {
-  height: 64px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 0 24px;
-}
-.builder-titlebar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-.builder-titlebar div {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.builder-titlebar b { color: #111827; font-size: 17px; }
-.builder-titlebar span { color: #6b7280; font-size: 12px; }
-.builder-back {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--builder-border);
-  border-radius: 8px;
-  color: #4b5563;
-  background: #fff;
-  cursor: pointer;
-  transition: all 0.18s ease;
-}
-.builder-back:hover {
-  color: var(--builder-primary);
-  border-color: #b8d7ff;
-  background: var(--builder-primary-soft);
-}
-.builder-top-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
-}
-.builder-top-actions :deep(.el-button) {
-  height: 34px;
-  border-radius: 6px;
-}
-.builder-top-actions :deep(.el-button--primary) {
-  --el-button-bg-color: var(--builder-primary);
-  --el-button-border-color: var(--builder-primary);
-  --el-button-hover-bg-color: var(--builder-primary-dark);
-  --el-button-hover-border-color: var(--builder-primary-dark);
-}
-.builder-top-actions :deep(.el-button--primary.is-plain) {
-  --el-button-bg-color: #fff;
-  --el-button-border-color: #b8d7ff;
-  --el-button-text-color: var(--builder-primary);
-  --el-button-hover-bg-color: var(--builder-primary-soft);
-  --el-button-hover-border-color: var(--builder-primary);
-  --el-button-hover-text-color: var(--builder-primary);
-}
-.tool-admin-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 14px;
-}
-.permission-only-grid {
-  grid-template-columns: minmax(0, 520px);
-}
-.admin-section {
-  border: 1px solid #eef0f4;
-  border-radius: 10px;
-  padding: 16px;
-  background: #fff;
-}
-.questionnaire-section { grid-row: span 2; }
-.section-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
-}
-.section-head h3 { margin: 0; color: #111827; font-size: 16px; }
-.section-head p { margin: 5px 0 0; color: #6b7280; font-size: 13px; line-height: 1.6; }
-.questionnaire-summary {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 12px;
-}
-.questionnaire-summary div {
-  padding: 10px 12px;
-  border: 1px solid #eef0f4;
-  border-radius: 8px;
-  background: #fafafa;
-}
-.questionnaire-summary b { display: block; color: #111827; font-size: 20px; }
-.questionnaire-summary span { color: #6b7280; font-size: 12px; }
-.grade-upload-panel {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 16px;
-  border: 1px solid #e5eaf3;
-  border-radius: 10px;
-  background: #f8fbff;
-  margin-bottom: 14px;
-}
-.upload-copy h4 {
-  margin: 0;
-  color: #111827;
-  font-size: 15px;
-}
-.upload-copy p {
-  margin: 5px 0 0;
-  color: #6b7280;
-  font-size: 12px;
-  line-height: 1.6;
-}
-.template-actions {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-}
-.template-actions :deep(.el-button) {
-  height: 32px;
-  border-radius: 6px;
-}
-.field-rule-list {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  padding-top: 2px;
-}
-.field-rule-list div {
-  min-width: 0;
-  padding: 11px 12px;
-  border: 1px solid #dbeafe;
-  border-radius: 8px;
-  background: #fff;
-}
-.field-rule-list b,
-.field-rule-list span,
-.field-rule-list small {
-  display: block;
-}
-.field-rule-list b {
-  color: #2563eb;
-  font-size: 12px;
-  margin-bottom: 5px;
-}
-.field-rule-list span {
-  color: #111827;
-  font-weight: 700;
-  overflow-wrap: anywhere;
-}
-.field-rule-list small {
-  margin-top: 5px;
-  color: #6b7280;
-  font-size: 11px;
-  line-height: 1.5;
-}
-.grade-form-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 160px;
-  gap: 10px;
-}
-.grade-desc {
-  grid-column: 1 / -1;
-}
-.grade-uploader :deep(.el-upload-dragger) {
-  padding: 24px 16px;
-  border-radius: 10px;
-  background: #fff;
-}
-.grade-uploader :deep(.el-icon) {
-  color: #2563eb;
-}
-.grade-preview-box {
-  border: 1px solid #dbeafe;
-  border-radius: 10px;
-  padding: 12px;
-  background: #fff;
-}
-.grade-preview-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-.grade-preview-head div {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.grade-preview-head b {
-  color: #111827;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.grade-preview-head span {
-  color: #6b7280;
-  font-size: 12px;
-}
-.grade-columns {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-.grade-preview-table-wrap {
-  width: 100%;
-  overflow-x: auto;
-  border: 1px solid #eef0f4;
-  border-radius: 8px;
-}
-.grade-preview-table {
-  width: 100%;
-  min-width: 620px;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-.grade-preview-table th,
-.grade-preview-table td {
-  padding: 9px 10px;
-  border-bottom: 1px solid #eef0f4;
-  color: #374151;
-  text-align: left;
-  white-space: nowrap;
-}
-.grade-preview-table th {
-  color: #6b7280;
-  background: #f9fafb;
-  font-weight: 650;
-}
-.questionnaire-list-cards {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-}
-.questionnaire-row-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: center;
-  padding: 14px;
-  border: 1px solid #eef0f4;
-  border-radius: 10px;
-  background: #fff;
-  min-width: 0;
-  overflow: hidden;
-}
-.q-row-main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.q-title-cell { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.q-title-cell b { color: #111827; font-size: 15px; overflow-wrap: anywhere; line-height: 1.45; }
-.q-title-cell span { color: #9ca3af; font-size: 12px; word-break: break-all; }
-.q-row-tags,
-.q-row-meta,
-.q-row-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 7px;
-  min-width: 0;
-}
-.q-row-meta {
-  color: #6b7280;
-  font-size: 12px;
-}
-.q-row-meta span {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-}
-.q-row-meta span + span::before {
-  content: "";
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: #c4cdd8;
-}
-.q-row-actions {
-  justify-content: flex-end;
-}
-.file-collection-card {
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
-  align-items: stretch;
-  border-color: #dbeafe;
-  background:
-    linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
-}
-.file-collection-card .q-row-main {
-  justify-content: center;
-}
-.file-collection-actions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: auto auto;
-  gap: 8px;
-  align-content: center;
-  padding-left: 14px;
-  border-left: 1px solid #e5edf8;
-}
-.file-primary-action {
-  grid-column: 1 / -1;
-  width: 100%;
-  min-height: 38px;
-  border-radius: 8px;
-  font-weight: 650;
-}
-.file-secondary-actions {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  min-width: 0;
-}
-.file-tool-action,
-.file-menu-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 36px;
-  border: 1px solid #dbeafe;
-  border-radius: 8px;
-  color: #1d4ed8;
-  background: #eff6ff;
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 650;
-  min-width: 0;
-  transition: border-color 0.15s, background 0.15s, color 0.15s, transform 0.15s;
-}
-.file-tool-action span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.file-tool-action:hover,
-.file-menu-action:hover {
-  border-color: #93c5fd;
-  background: #dbeafe;
-  transform: translateY(-1px);
-}
-.file-tool-action:disabled {
-  color: #94a3b8;
-  cursor: not-allowed;
-  background: #f8fafc;
-  border-color: #e5e7eb;
-  transform: none;
-}
-.file-menu-action {
-  min-width: 78px;
-  color: #475569;
-  border-color: #e5e7eb;
-  background: #fff;
-}
-.file-more-dropdown {
-  min-width: 0;
-}
-.builder-layout {
-  height: 100%;
-  display: grid;
-  grid-template-columns: 236px minmax(0, 1fr) 286px;
-  gap: 0;
-  padding: 0;
-  overflow: hidden;
-}
-.type-palette,
-.editor-card,
-.field-editor,
-.inspector-card,
-.mobile-publish-card {
-  border: 1px solid var(--builder-border);
-  border-radius: 8px;
-  background: #fff;
-}
-.type-palette {
-  align-self: stretch;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 18px 16px;
-  height: 100%;
-  max-height: 100%;
-  overflow: auto;
-  border-width: 0 1px 0 0;
-  border-radius: 0;
-  box-shadow: 5px 0 18px rgba(17, 24, 39, 0.025);
-}
-.palette-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  width: 100%;
-  padding: 2px 2px 8px;
-}
-.palette-title span {
-  color: #6b7280;
-  font-size: 12px;
-}
-.type-palette h4,
-.fields-head h4 {
-  margin: 0;
-  color: #111827;
-  font-size: 16px;
-}
-.type-palette button {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 10px;
-  min-height: 58px;
-  padding: 10px 11px;
-  border: 1px solid var(--builder-border);
-  border-radius: 8px;
-  background: #f9fbff;
-  color: #374151;
-  cursor: pointer;
-  text-align: left;
-  font: inherit;
-  transition: all 0.18s ease;
-}
-.type-palette button:hover {
-  transform: translateY(-1px);
-  border-color: #b8d7ff;
-  color: var(--builder-primary);
-  background: var(--builder-primary-soft);
-  box-shadow: 0 6px 16px rgba(38, 125, 255, 0.12);
-}
-.type-palette .el-icon {
-  width: 30px;
-  height: 30px;
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  border-radius: 7px;
-  color: var(--builder-primary);
-  background: #eaf3ff;
-  font-size: 17px;
-}
-.type-palette button span {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.type-palette b { font-size: 13px; }
-.type-palette small { color: #9ca3af; font-size: 11px; line-height: 1.35; }
-.mobile-publish-card {
-  gap: 12px;
-  padding: 14px;
-  border-color: #d7f3ea;
-  background: #f7fffb;
-}
-.mobile-publish-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-.mobile-publish-head div {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.mobile-publish-head b {
-  color: #0f172a;
-  font-size: 15px;
-}
-.mobile-publish-head span {
-  color: #64748b;
-  font-size: 12px;
-}
-.mobile-publish-head strong {
-  flex: 0 0 auto;
-  color: #0f766e;
-  font-size: 13px;
-}
-.mobile-publish-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-.mobile-publish-grid :deep(.el-select) {
-  width: 100%;
-}
-.mobile-publish-checks {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-.mobile-publish-checks :deep(.el-checkbox) {
-  min-width: 0;
-  height: 32px;
-  margin-right: 0;
-}
-.mobile-publish-checks :deep(.el-checkbox__label) {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.questionnaire-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-width: 0;
-  overflow: auto;
-  padding: 26px 24px 44px;
-  background:
-    linear-gradient(90deg, rgba(229, 234, 243, 0.55) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(229, 234, 243, 0.55) 1px, transparent 1px),
-    #f3f6fb;
-  background-size: 28px 28px;
-}
-.editor-card {
-  max-width: 850px;
-  width: 100%;
-  align-self: center;
-  padding: 30px 34px 28px;
-  border-top: 4px solid var(--builder-primary);
-  box-shadow: 0 12px 32px rgba(17, 24, 39, 0.08);
-}
-.cover-kicker {
-  color: var(--builder-primary);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0;
-  margin-bottom: 12px;
-}
-.editor-card :deep(.el-select) { width: 100%; }
-.editor-card :deep(.el-form-item__label),
-.field-editor :deep(.el-form-item__label),
-.inspector-card :deep(.el-form-item__label) {
-  color: #4b5563;
-  font-weight: 600;
-}
-.title-field :deep(.el-input__wrapper) {
-  min-height: 48px;
-  padding: 0 2px;
-  border-radius: 0;
-  box-shadow: 0 1px 0 #d1d9e6;
-}
-.title-field :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 2px 0 var(--builder-primary);
-}
-.title-field :deep(.el-input__inner) {
-  height: 48px;
-  color: #111827;
-  font-size: 22px;
-  font-weight: 700;
-}
-.editor-card :deep(.el-textarea__inner) {
-  min-height: 86px !important;
-  border-radius: 8px;
-  box-shadow: 0 0 0 1px #e5eaf3 inset;
-}
-.title-field { min-width: 0; }
-.fields-head {
-  max-width: 850px;
-  width: 100%;
-  align-self: center;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 2px;
-  padding: 0 2px;
-}
-.fields-head > div { display: flex; gap: 8px; }
-.fields-head :deep(.el-button--primary.is-plain) {
-  --el-button-bg-color: #fff;
-  --el-button-border-color: #b8d7ff;
-  --el-button-text-color: var(--builder-primary);
-  --el-button-hover-bg-color: var(--builder-primary-soft);
-  --el-button-hover-border-color: var(--builder-primary);
-  --el-button-hover-text-color: var(--builder-primary);
-}
-.field-editor-list {
-  max-width: 850px;
-  width: 100%;
-  align-self: center;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.field-editor {
-  display: grid;
-  grid-template-columns: 52px minmax(0, 1fr);
-  gap: 16px;
-  padding: 20px 22px;
-  background: #fff;
-  border-left: 4px solid transparent;
-  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.055);
-  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
-}
-.field-editor:hover {
-  transform: translateY(-1px);
-  border-color: #b8d7ff;
-  border-left-color: var(--builder-primary);
-  box-shadow: 0 12px 30px rgba(38, 125, 255, 0.13);
-}
-.field-editor.is-required {
-  border-left-color: var(--builder-primary);
-}
-.field-index {
-  width: 42px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border: 1px solid #b8d7ff;
-  border-radius: 999px;
-  color: var(--builder-primary);
-  background: var(--builder-primary-soft);
-  font-size: 11px;
-  font-weight: 700;
-}
-.field-editor-body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.field-meta-line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #9ca3af;
-  font-size: 12px;
-}
-.field-meta-line span {
-  color: var(--builder-primary);
-  font-weight: 700;
-}
-.field-meta-line b {
-  padding: 1px 7px;
-  border-radius: 999px;
-  color: #dc2626;
-  background: #fef2f2;
-  font-size: 11px;
-}
-.field-editor-main {
-  display: grid;
-  grid-template-columns: minmax(280px, 1fr) 160px 80px;
-  gap: 10px;
-  align-items: center;
-}
-.field-editor :deep(.el-input__wrapper),
-.field-editor :deep(.el-select__wrapper),
-.inspector-card :deep(.el-select__wrapper) {
-  border-radius: 7px;
-  box-shadow: 0 0 0 1px #e5eaf3 inset;
-}
-.field-editor :deep(.el-input__wrapper.is-focus),
-.field-editor :deep(.el-select__wrapper.is-focused),
-.inspector-card :deep(.el-select__wrapper.is-focused) {
-  box-shadow: 0 0 0 1px var(--builder-primary) inset;
-}
-.field-editor :deep(.el-checkbox__input.is-checked .el-checkbox__inner),
-.inspector-card :deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
-  background-color: var(--builder-primary);
-  border-color: var(--builder-primary);
-}
-.field-editor :deep(.el-checkbox__input.is-checked + .el-checkbox__label),
-.inspector-card :deep(.el-checkbox__input.is-checked + .el-checkbox__label) {
-  color: var(--builder-primary);
-}
-.advanced-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
-  gap: 8px;
-}
-.advanced-grid :deep(.el-form-item) { margin-bottom: 0; }
-.branch-editor {
-  display: grid;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid #dbeafe;
-  border-radius: 8px;
-  background: #f8fbff;
-}
-.branch-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.branch-head b {
-  color: #1d4ed8;
-  font-size: 13px;
-}
-.branch-head span,
-.branch-editor p {
-  margin: 0;
-  color: #64748b;
-  font-size: 12px;
-  line-height: 1.5;
-}
-.branch-rule-list {
-  display: grid;
-  gap: 8px;
-}
-.branch-rule-row {
-  display: grid;
-  grid-template-columns: minmax(120px, 1fr) 150px minmax(170px, 1fr);
-  gap: 8px;
-  align-items: center;
-}
-.branch-rule-row > span {
-  min-width: 0;
-  color: #334155;
-  font-size: 13px;
-  font-weight: 650;
-  overflow-wrap: anywhere;
-}
-.branch-rule-row :deep(.el-select) {
-  width: 100%;
-}
-.field-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: flex-end;
-  padding-top: 4px;
-  border-top: 1px dashed #e5eaf3;
-}
-.field-actions button {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 28px;
-  padding: 0 9px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: #6b7280;
-  background: transparent;
-  cursor: pointer;
-  font: inherit;
-  font-size: 12px;
-  transition: all 0.16s ease;
-}
-.field-actions button:hover:not(:disabled) {
-  color: var(--builder-primary);
-  border-color: #b8d7ff;
-  background: var(--builder-primary-soft);
-}
-.field-actions button.danger:hover:not(:disabled) {
-  color: #dc2626;
-  border-color: #fecaca;
-  background: #fef2f2;
-}
-.field-actions button:disabled {
-  color: #c4cdd8;
-  cursor: not-allowed;
-}
-.builder-side {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-width: 0;
-  overflow: auto;
-  padding: 18px 16px;
-  border-left: 1px solid var(--builder-border);
-  background: #fff;
-  box-shadow: -5px 0 18px rgba(17, 24, 39, 0.025);
-}
-.inspector-card {
-  padding: 16px;
-  background: #fbfcff;
-}
-.inspector-card h4 {
-  margin: 0 0 14px;
-  color: #111827;
-  font-size: 16px;
-}
-.inspector-card :deep(.el-select) { width: 100%; }
-.inspector-checks {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.check-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 0;
-  border-bottom: 1px solid #edf1f7;
-  color: #6b7280;
-  font-size: 13px;
-}
-.check-row b { color: var(--builder-primary); font-size: 18px; }
-.inspector-card p {
-  margin: 12px 0 0;
-  color: #6b7280;
-  font-size: 12px;
-  line-height: 1.7;
-}
-.preview-shell { max-width: 720px; margin: 0 auto; }
-.preview-head {
-  padding-bottom: 18px;
-  border-bottom: 1px solid #eef0f4;
-  margin-bottom: 14px;
-}
-.preview-head h2 { margin: 0; color: #111827; font-size: 22px; }
-.preview-head p { margin: 7px 0 0; color: #6b7280; line-height: 1.7; }
-.meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-.preview-form { display: flex; flex-direction: column; gap: 12px; }
-.preview-field {
-  padding: 14px;
-  border: 1px solid #eef0f4;
-  border-radius: 8px;
-  background: #fff;
-}
-.preview-label {
-  display: flex;
-  gap: 4px;
-  color: #111827;
-  margin-bottom: 8px;
-}
-.preview-label span { color: #dc2626; }
-.preview-field p { margin: 0 0 10px; color: #6b7280; font-size: 12px; line-height: 1.6; }
-.preview-field :deep(.el-radio-group),
-.preview-field :deep(.el-checkbox-group) {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-}
-.preview-rating {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.preview-rating span {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  color: #4b5563;
-  background: #fff;
-  font-weight: 650;
-}
-.responses-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding-right: 32px;
-}
-.responses-title div { display: flex; flex-direction: column; gap: 3px; }
-.responses-title b { color: #111827; font-size: 16px; }
-.responses-title span { color: #6b7280; font-size: 12px; }
-.stats-list,
-.responses-list { display: flex; flex-direction: column; gap: 12px; }
-.stat-card,
-.response-card {
-  border: 1px solid #eef0f4;
-  border-radius: 8px;
-  padding: 12px;
-  background: #fff;
-  min-width: 0;
-  overflow: hidden;
-}
-.stat-head,
-.response-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #f3f4f6;
-  margin-bottom: 10px;
-  min-width: 0;
-}
-.stat-head div,
-.response-head div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.stat-head b,
-.response-head b {
-  color: #111827;
-  min-width: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-}
-.stat-head span,
-.response-head span {
-  color: #9ca3af;
-  font-size: 12px;
-  min-width: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-}
-.choice-stats { display: flex; flex-direction: column; gap: 10px; }
-.choice-stat-row {
-  display: grid;
-  grid-template-columns: 130px minmax(0, 1fr) 76px;
-  gap: 10px;
-  align-items: center;
-  color: #374151;
-  font-size: 13px;
-}
-.choice-stat-row span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.choice-stat-row b { color: #111827; font-weight: 600; text-align: right; }
-.metric-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-.metric-grid div {
-  padding: 10px;
-  border: 1px solid #eef0f4;
-  border-radius: 8px;
-  background: #fafafa;
-}
-.metric-grid span { display: block; color: #6b7280; font-size: 12px; }
-.metric-grid b { color: #111827; font-size: 18px; }
-.text-samples { display: flex; flex-direction: column; gap: 8px; }
-.text-samples p {
-  margin: 0;
-  padding: 9px 10px;
-  border: 1px solid #eef0f4;
-  border-radius: 8px;
-  color: #374151;
-  background: #fafafa;
-  line-height: 1.6;
-}
-.answer-list { display: grid; gap: 7px; }
-.answer-row {
-  display: grid;
-  grid-template-columns: 140px minmax(0, 1fr);
-  gap: 10px;
-  color: #374151;
-  font-size: 13px;
-}
-.answer-row span { color: #6b7280; }
-.answer-row b { font-weight: 500; word-break: break-word; overflow-wrap: anywhere; min-width: 0; }
-.file-field-editor {
-  display: grid;
-  gap: 10px;
-  margin: 14px 0;
-}
-.file-template-bar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 220px auto auto auto;
-  gap: 10px;
-  align-items: center;
-  padding: 12px;
-  border: 1px solid #e0f2fe;
-  border-radius: 8px;
-  margin: 14px 0;
-  background: #f0f9ff;
-  min-width: 0;
-}
-.file-template-bar > div {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-.file-template-bar b { color: #0f172a; }
-.file-template-bar span {
-  color: #64748b;
-  font-size: 12px;
-  line-height: 1.5;
-}
-.file-template-bar :deep(.el-select) { width: 100%; }
-.file-field-head,
-.file-field-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.file-field-head {
-  justify-content: space-between;
-  color: #111827;
-}
-.file-field-row {
-  padding: 10px;
-  border: 1px solid #eef0f4;
-  border-radius: 8px;
-  background: #fff;
-}
-.compact-field,
-.config-field {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-.compact-field { flex: 1; }
-.compact-field span,
-.config-field span {
-  color: #334155;
-  font-size: 12px;
-  font-weight: 650;
-}
-.config-field small,
-.rename-example {
-  color: #64748b;
-  font-size: 12px;
-  line-height: 1.6;
-}
-.file-rule-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 180px 180px;
-  gap: 12px;
-  align-items: start;
-  margin-top: 14px;
-}
-.file-rule-grid :deep(.el-input-number) { width: 100%; }
-.rename-builder,
-.expected-list-box {
-  display: grid;
-  gap: 10px;
-  padding: 14px;
-  border: 1px solid #dbe7f3;
-  border-radius: 8px;
-  margin-top: 12px;
-  background: #fff;
-}
-.rename-head {
-  display: grid;
-  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
-  gap: 12px;
-  align-items: center;
-}
-.rename-head > div {
-  display: grid;
-  gap: 4px;
-}
-.rename-head b {
-  color: #111827;
-}
-.rename-head span {
-  color: #64748b;
-  font-size: 12px;
-  line-height: 1.5;
-}
-.rename-token-list {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding-top: 2px;
-}
-.rename-insert-grid {
-  display: grid;
-  grid-template-columns: minmax(200px, 1.2fr) minmax(220px, 1fr) 112px;
-  gap: 10px;
-  align-items: end;
-  padding: 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #f8fafc;
-}
-.rename-insert-grid .config-field {
-  gap: 7px;
-}
-.rename-insert-grid :deep(.el-select),
-.rename-insert-grid :deep(.el-input-number) {
-  width: 100%;
-}
-.rename-insert-grid :deep(.el-radio-group) {
-  display: flex;
-  width: 100%;
-}
-.rename-insert-grid :deep(.el-radio-button) {
-  flex: 1;
-}
-.rename-insert-grid :deep(.el-radio-button__inner) {
-  width: 100%;
-  height: 34px;
-  padding: 0 8px;
-  color: #475569;
-  background: #fff;
-  font-weight: 650;
-  line-height: 32px;
-}
-.rename-insert-grid :deep(.el-radio-button.is-active .el-radio-button__inner) {
-  border-color: #0f766e;
-  background: #0f766e;
-  box-shadow: -1px 0 0 0 #0f766e;
-  color: #fff;
-}
-.rename-insert-action {
-  grid-column: 1 / -1;
-  justify-self: end;
-  min-width: 118px;
-  min-height: 36px;
-  border-radius: 8px;
-  font-weight: 650;
-}
-.rename-token-label {
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 650;
-}
-.rename-token {
-  min-height: 32px;
-  padding: 0 12px;
-  border: 1px solid #d7dee8;
-  border-radius: 999px;
-  color: #334155;
-  background: #fff;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 650;
-  transition: border-color 0.15s, background 0.15s, color 0.15s, transform 0.15s;
-}
-.rename-token:hover {
-  border-color: #99f6e4;
-  color: #0f766e;
-  background: #f0fdfa;
-  transform: translateY(-1px);
-}
-.rename-token-system {
-  border-color: #d7dee8;
-  color: #334155;
-  background: #fff;
-}
-.file-download-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-}
-.file-download-list button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 100%;
-  min-width: 0;
-  padding: 7px 10px;
-  border: 1px solid #dbeafe;
-  border-radius: 8px;
-  color: #1d4ed8;
-  background: #eff6ff;
-  cursor: pointer;
-}
-.file-download-list button:disabled {
-  cursor: wait;
-  opacity: 0.65;
-}
-.file-download-list span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.file-download-list small { color: #64748b; }
-.file-manager-toolbar { margin-bottom: 12px; }
-.file-manager-list {
-  display: grid;
-  gap: 10px;
-  max-height: min(62dvh, 620px);
-  overflow: auto;
-}
-.file-manager-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-  padding: 12px;
-  border: 1px solid #eef0f4;
-  border-radius: 8px;
-  background: #fff;
-  min-width: 0;
-  overflow: hidden;
-}
-.file-manager-main {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-.file-manager-main strong,
-.file-manager-main span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.file-manager-main strong { color: #111827; }
-.file-manager-main span { color: #2563eb; font-size: 13px; }
-.file-manager-main small { color: #64748b; overflow-wrap: anywhere; min-width: 0; }
-.file-manager-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
-}
-.file-manager-actions button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  min-height: 34px;
-  padding: 6px 12px;
-  background: #fff;
-  color: #334155;
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 650;
-  min-width: 0;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
-}
-.file-manager-actions button:hover {
-  color: #1d4ed8;
-  border-color: #bfdbfe;
-  background: #eff6ff;
-}
-.file-manager-actions button:disabled {
-  cursor: not-allowed;
-  opacity: 0.58;
-}
-.file-manager-actions button:last-child {
-  color: #dc2626;
-  border-color: #fecaca;
-  background: #fef2f2;
-}
-.file-manager-actions button:last-child:hover {
-  border-color: #fca5a5;
-  background: #fee2e2;
-}
-@media (max-width: 1100px) {
-  .file-template-bar {
-    grid-template-columns: minmax(0, 1fr) 220px;
-  }
-  .file-template-bar :deep(.el-button) {
-    min-width: 0;
-    margin-left: 0;
-  }
-  .builder-layout {
-    grid-template-columns: 190px minmax(0, 1fr);
-  }
-  .builder-side {
-    grid-column: 1 / -1;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    overflow: visible;
-  }
-}
-@media (max-width: 980px) {
-  .rename-insert-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-@media (max-width: 900px) {
-  .tool-admin-grid { grid-template-columns: 1fr; }
-  .managers-section { order: -1; }
-}
-@media (max-width: 760px) {
-  :global(.questionnaire-builder-dialog.el-dialog) {
-    background: #f6f8fb;
-  }
-  :global(.questionnaire-builder-dialog .el-dialog__header) {
-    position: relative;
-    z-index: 12;
-  }
-  :global(.questionnaire-builder-dialog .el-dialog__body) {
-    display: flex;
-    flex-direction: column;
-    height: calc(100dvh - 72px);
-    overflow: hidden;
-    background: #f6f8fb;
-  }
-  .builder-mobile-only {
-    display: block;
-  }
-  .builder-topbar {
-    height: 72px;
-    align-items: center;
-    flex-direction: row;
-    gap: 10px;
-    padding: 10px 12px;
-  }
-  .builder-titlebar {
-    flex: 1 1 auto;
-    min-width: 0;
-    gap: 10px;
-  }
-  .builder-titlebar b,
-  .builder-titlebar span {
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .builder-titlebar b {
-    font-size: 16px;
-  }
-  .builder-titlebar span {
-    font-size: 11px;
-  }
-  .builder-back {
-    width: 40px;
-    height: 40px;
-    flex: 0 0 auto;
-  }
-  .builder-top-actions {
-    flex: 0 0 auto;
-    overflow: visible;
-    padding-bottom: 0;
-  }
-  .builder-top-actions .builder-desktop-action,
-  .builder-top-actions :deep(.builder-desktop-action) {
-    display: none;
-  }
-  .builder-top-actions :deep(.el-button) {
-    min-width: 70px;
-    height: 38px;
-    padding: 0 10px;
-  }
-  .builder-layout {
-    flex: 1 1 auto;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    overflow: auto;
-    padding: 0 12px 16px;
-    -webkit-overflow-scrolling: touch;
-  }
-  .type-palette {
-    position: sticky;
-    top: 0;
-    z-index: 8;
-    display: flex;
-    flex-direction: row;
-    flex-wrap: nowrap;
-    gap: 8px;
-    margin: 0 -12px;
-    padding: 10px 12px;
-    overflow-x: auto;
-    border: 0;
-    border-bottom: 1px solid #e6edf6;
-    border-radius: 0;
-    background: rgba(246, 248, 251, 0.96);
-    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
-    scrollbar-width: none;
-  }
-  .type-palette::-webkit-scrollbar {
-    display: none;
-  }
-  .palette-title { display: none; }
-  .type-palette button {
-    flex: 0 0 108px;
-    min-height: 48px;
-    gap: 7px;
-    padding: 8px;
-    border-radius: 8px;
-  }
-  .type-palette button:hover {
-    transform: none;
-    box-shadow: none;
-  }
-  .type-palette .el-icon {
-    width: 28px;
-    height: 28px;
-    font-size: 16px;
-  }
-  .type-palette b {
-    font-size: 12px;
-  }
-  .type-palette small {
-    display: none;
-  }
-  .mobile-publish-card.builder-mobile-only {
-    display: grid;
-  }
-  .questionnaire-editor {
-    gap: 12px;
-    overflow: visible;
-    padding: 0 0 82px;
-    background: transparent;
-  }
-  .editor-card,
-  .fields-head,
-  .field-editor-list {
-    width: 100%;
-    max-width: none;
-    align-self: stretch;
-  }
-  .editor-card {
-    padding: 18px;
-    border-top: 0;
-    border-left: 4px solid var(--builder-primary);
-    box-shadow: none;
-  }
-  .cover-kicker {
-    margin-bottom: 8px;
-  }
-  .title-field :deep(.el-input__wrapper) {
-    min-height: 42px;
-  }
-  .title-field :deep(.el-input__inner) {
-    height: 42px;
-    font-size: 18px;
-  }
-  .fields-head {
-    margin-top: 0;
-    padding: 0 1px;
-  }
-  .fields-head :deep(.el-button) {
-    min-height: 36px;
-    margin-left: 0;
-  }
-  .field-editor-list {
-    gap: 10px;
-  }
-  .field-editor {
-    grid-template-columns: 1fr;
-    gap: 10px;
-    padding: 14px;
-    border-left: 1px solid var(--builder-border);
-    border-top: 4px solid transparent;
-    box-shadow: none;
-  }
-  .field-editor:hover {
-    transform: none;
-    box-shadow: none;
-  }
-  .field-editor.is-required {
-    border-top-color: var(--builder-primary);
-    border-left-color: var(--builder-border);
-  }
-  .field-index {
-    width: auto;
-    min-width: 44px;
-    justify-self: start;
-  }
-  .field-editor-main,
-  .advanced-grid { grid-template-columns: 1fr; }
-  .field-editor :deep(.el-select),
-  .field-editor :deep(.el-input-number),
-  .advanced-grid :deep(.el-input-number) {
-    width: 100%;
-  }
-  .branch-editor {
-    padding: 10px;
-  }
-  .branch-head {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .branch-rule-row {
-    grid-template-columns: 1fr;
-    gap: 6px;
-    padding: 8px;
-    border: 1px solid #e5edf8;
-    border-radius: 8px;
-    background: #fff;
-  }
-  .field-actions {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    justify-content: stretch;
-    gap: 7px;
-    padding-top: 8px;
-  }
-  .field-actions button {
-    justify-content: center;
-    height: 36px;
-    min-width: 0;
-    padding: 0 6px;
-  }
-  .builder-side { display: none; }
-  .builder-mobile-savebar.builder-mobile-only {
-    display: grid;
-    grid-template-columns: 0.85fr 1fr 1fr;
-    gap: 8px;
-    flex: 0 0 auto;
-    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
-    border-top: 1px solid #e5eaf3;
-    background: #fff;
-    box-shadow: 0 -10px 26px rgba(15, 23, 42, 0.1);
-  }
-  .builder-mobile-savebar :deep(.el-button) {
-    height: 42px;
-    margin-left: 0;
-    border-radius: 8px;
-    font-weight: 650;
-  }
-}
-@media (max-width: 700px) {
-  :global(.responsive-tool-dialog.el-dialog) {
-    width: 96dvw !important;
-    margin-top: 10px !important;
-  }
-  :global(.responsive-tool-dialog .el-dialog__header) {
-    padding: 14px 14px 10px;
-  }
-  :global(.responsive-tool-dialog .el-dialog__body) {
-    max-height: calc(100dvh - 112px);
-    overflow: auto;
-    padding: 12px 14px 16px;
-  }
-  .manage-head {
-    flex-direction: column;
-    padding: 16px;
-  }
-  .manage-head-copy {
-    max-width: none;
-  }
-  .manage-head-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    width: 100%;
-  }
-  .manage-head-actions .el-button {
-    width: 100%;
-    min-width: 0;
-  }
-  .manage-panel,
-  .admin-section { padding: 14px; }
-  .manage-tool-tabs {
-    margin-inline: -14px;
-    padding-inline: 14px;
-  }
-  .manage-tool-tabs :deep(.el-tabs__header) {
-    margin-bottom: 14px;
-  }
-  .manage-tool-tabs :deep(.el-tabs__nav-wrap) {
-    overflow: visible;
-  }
-  .manage-tool-tabs :deep(.el-tabs__nav-scroll) {
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
-  .manage-tool-tabs :deep(.el-tabs__nav-scroll::-webkit-scrollbar) {
-    display: none;
-  }
-  .manage-tool-tabs :deep(.el-tabs__nav) {
-    float: none;
-    min-width: max-content;
-    white-space: nowrap;
-  }
-  .manage-tool-tabs :deep(.el-tabs__item) {
-    flex: 0 0 auto;
-    padding: 0 16px;
-  }
-  .section-head { flex-direction: column; align-items: stretch; }
-  .section-head .el-button { width: 100%; }
-  .questionnaire-summary { grid-template-columns: 1fr; }
-  .template-actions {
-    position: static;
-  }
-  .template-actions .el-button { width: 100%; }
-  .field-rule-list { grid-template-columns: 1fr; }
-  .grade-form-grid { grid-template-columns: 1fr; }
-  .grade-preview-head { align-items: stretch; flex-direction: column; }
-  .grade-preview-head .el-button { width: 100%; }
-  .responses-title {
-    align-items: stretch;
-    flex-direction: column;
-    padding-right: 26px;
-  }
-  .responses-title .el-button {
-    width: 100%;
-  }
-  .response-head,
-  .stat-head {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .file-template-bar { grid-template-columns: 1fr; }
-  .file-rule-grid,
-  .rename-head,
-  .rename-insert-grid { grid-template-columns: 1fr; }
-  .file-field-row { flex-direction: column; align-items: stretch; }
-  .rename-insert-grid {
-    padding: 10px;
-  }
-  .rename-insert-action {
-    width: 100%;
-    justify-self: stretch;
-  }
-  .rename-insert-grid > .el-button,
-  .rename-token,
-  .file-manager-actions button,
-  .file-download-list button {
-    min-height: 40px;
-  }
-  .rename-token {
-    flex: 1 1 112px;
-  }
-  .file-download-list {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
-  .file-download-list button {
-    justify-content: center;
-  }
-  .file-manager-card { grid-template-columns: 1fr; }
-  .file-manager-actions {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .file-manager-actions button {
-    width: 100%;
-  }
-  .file-collection-card {
-    background: #fff;
-  }
-  .file-collection-actions {
-    padding-left: 0;
-    padding-top: 10px;
-    border-left: 0;
-    border-top: 1px solid #e5edf8;
-  }
-  .file-primary-action {
-    min-height: 42px;
-  }
-  .file-secondary-actions {
-    grid-column: 1 / -1;
-  }
-  .file-tool-action,
-  .file-menu-action {
-    min-height: 40px;
-  }
-  .file-more-dropdown {
-    grid-column: 1 / -1;
-  }
-  .file-menu-action {
-    width: 100%;
-  }
-  .questionnaire-row-card {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-  }
-  .q-row-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    justify-content: stretch;
-  }
-  .grade-check-actions {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .q-row-actions .el-button,
-  .q-row-actions :deep(.el-dropdown),
-  .q-row-actions :deep(.el-dropdown .el-button) {
-    width: 100%;
-    margin-left: 0;
-  }
-  .answer-row,
-  .choice-stat-row { grid-template-columns: 1fr; gap: 5px; }
-  .choice-stat-row b { text-align: left; }
-  .metric-grid { grid-template-columns: 1fr; }
-}
-</style>
+<style scoped src="./styles/tool-manage-shell.css"></style>
+<style scoped src="./styles/tool-manage-admin.css"></style>
+<style scoped src="./styles/tool-manage-builder.css"></style>
+<style scoped src="./styles/tool-manage-results.css"></style>
+<style scoped src="./styles/tool-manage-files.css"></style>
+<style scoped src="./styles/tool-manage-responsive.css"></style>
