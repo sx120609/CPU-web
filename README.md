@@ -29,7 +29,7 @@
 | 教务页壳 | `/jwxt` `/schedule` | 页面可公开访问 | 真正拉取课表、成绩、考试等数据时需要学校 SSO 授权得到 `jwxtToken` |
 | 校园服务导航 | `/services` | 公开 | 聚合校内外常用入口与说明 |
 | 校园小工具入口 | `/services/tools` `/services/tools/:slug` | 公开 | 具体工具是否要求登录由工具配置决定 |
-| 问卷填写 / 文件提交 | `/services/tools/questionnaires/:slug` `/services/tools/file-collections/:slug` | 通常公开 | 支持按工具设置切换是否要求登录 |
+| 问卷填写 / 文件提交 | `/services/tools/questionnaires/:slug` `/filestore/submit/:slug` | 通常公开 | 支持按工具设置切换是否要求登录 |
 | 成绩核对查询 | `/services/tools/grade-checks/:slug` | 默认需登录 | 登录后只看自己的学号记录 |
 | 个人中心 / 赞助 / QQBot 绑定 | `/profile` `/u/:id` `/sponsor-wall` | 部分公开、部分登录 | 鸣谢墙公开；个人资料、赞助订单、QQBot 绑定需登录 |
 | 管理后台 | `/admin` | `mod` / `admin` | 含用户、板块、站务、AI 审核、支付、QQBot、数据库等后台 |

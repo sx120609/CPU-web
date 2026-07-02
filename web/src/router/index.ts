@@ -31,6 +31,12 @@ const COMMUNITY_ACCESS_GATED = new Set([
   "edit-post",
 ]);
 
+const LEGACY_FILE_COLLECTION_SUBMIT_PREFIX = "/services/tools/file-collections/";
+
+function firstRouteValue(value: unknown) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 export const router = createRouter({
   history: createWebHistory(),
   scrollBehavior(to, from, savedPosition) {
@@ -89,6 +95,17 @@ router.beforeEach(async (to) => {
   const auth = useAuthStore();
   const site = useSiteStore();
   if (to.meta.title) document.title = `${to.meta.title} · 药大拾间`;
+
+  const requestedManageTool = firstRouteValue(to.query.tool);
+  if (to.name === "service-tools-manage" && requestedManageTool === "file_collect") {
+    return { name: "service-filestore" };
+  }
+
+  if (to.fullPath.startsWith(LEGACY_FILE_COLLECTION_SUBMIT_PREFIX)) {
+    const target = to.fullPath.slice(LEGACY_FILE_COLLECTION_SUBMIT_PREFIX.length);
+    window.location.replace(`/filestore/submit/${target}`);
+    return false;
+  }
 
   // 功能开关 gate：admin / mod 不受限（便于在关闭期间巡查）
   const featureName = to.name ? FEATURE_GATED[String(to.name)] : undefined;

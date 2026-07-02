@@ -1325,11 +1325,16 @@ async function init() {
       toolsApi.myPermissions(),
     ]);
     allTools.value = tools;
-    manageableCodes.value = uniqueToolCodes([
+    const availableCodes = uniqueToolCodes([
       ...perms.toolCodes,
       ...(perms.adminToolCodes ?? []),
     ]);
-    adminCodes.value = perms.adminToolCodes ?? [];
+    if (availableCodes.includes("file_collect") && availableCodes.length === 1) {
+      await router.replace({ name: "service-filestore" });
+      return;
+    }
+    manageableCodes.value = availableCodes.filter((code) => code !== "file_collect");
+    adminCodes.value = (perms.adminToolCodes ?? []).filter((code) => code !== "file_collect");
     activeTool.value = pickInitialTool();
     if (manageableCodes.value.length) {
       await syncActiveToolQuery();
@@ -1909,7 +1914,7 @@ function resetFileCollectForm() {
 }
 
 function copyFileCollectLink(row: FileCollectTask) {
-  const link = `${window.location.origin}/services/tools/file-collections/${row.slug}`;
+  const link = `${window.location.origin}/filestore/submit/${row.slug}`;
   navigator.clipboard?.writeText(link).then(
     () => ElMessage.success("链接已复制"),
     () => ElMessage.info(link)
