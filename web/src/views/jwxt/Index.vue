@@ -579,7 +579,7 @@ async function onProbe() {
 }
 
 .page-head h2 { margin: 0; font-size: 22px; }
-.page-head .hint { font-size: 13px; color: #6b7280; margin: 6px 0 0; line-height: 1.7; }
+.page-head .hint { font-size: 13px; color: var(--text-secondary); margin: 6px 0 0; line-height: 1.7; }
 .page-head .hint b { color: #b45309; }
 .scope-tip {
   max-width: 760px;
@@ -591,7 +591,13 @@ async function onProbe() {
   gap: 16px;
 }
 
-.cpu-card { background: #fff; border-radius: 12px; padding: 20px 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
+.cpu-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px 24px;
+  box-shadow: var(--shadow-sm);
+}
 
 .login-card {
   width: min(100%, 620px);
@@ -608,7 +614,7 @@ async function onProbe() {
   border-radius: 12px;
 }
 .login-head h3 { margin: 0; font-size: 17px; }
-.login-head p { margin: 2px 0 0; font-size: 12px; color: #6b7280; }
+.login-head p { margin: 2px 0 0; font-size: 12px; color: var(--text-secondary); }
 .login-head b { color: var(--cpu-primary); }
 
 .safety { padding-left: 20px; margin: 4px 0 0; line-height: 1.7; font-size: 12px; }
@@ -689,6 +695,11 @@ async function onProbe() {
   background: #ecfdf5 !important;
   border: 1px solid #cdecdc;
 }
+:global(html.dark) .session-info {
+  color: #bbf7d0;
+  background: rgba(20, 83, 45, 0.22) !important;
+  border-color: rgba(34, 197, 94, 0.28);
+}
 .session-main {
   display: flex;
   align-items: center;
@@ -707,9 +718,12 @@ async function onProbe() {
   font-weight: 600;
   color: #14532d;
 }
+:global(html.dark) .session-title {
+  color: #dcfce7;
+}
 .session-sub {
   margin-top: 2px;
-  color: #4b5563;
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -727,16 +741,16 @@ async function onProbe() {
 .remember-tag {
   margin-right: 0;
 }
-.hint-icon { color: #6b7280; cursor: help; margin-left: 4px; }
+.hint-icon { color: var(--text-secondary); cursor: help; margin-left: 4px; }
 
 .debug-pane { padding: 8px 0; }
 .probe-row {
   display: flex;
   gap: 8px;
 }
-.snap-list { font-size: 12px; color: #4b5563; list-style: none; padding: 0; margin: 10px 0; }
+.snap-list { font-size: 12px; color: var(--text-secondary); list-style: none; padding: 0; margin: 10px 0; }
 .snap-list li { padding: 2px 0; font-family: monospace; }
-.cpu-muted { font-size: 12px; color: #9ca3af; }
+.cpu-muted { font-size: 12px; color: var(--text-muted); }
 
 @media (max-width: 700px) {
   .jwxt-page {
@@ -820,8 +834,8 @@ async function onProbe() {
     font-size: 13px;
     border-radius: 999px;
     border: 1px solid transparent;
-    background: #f3f4f6;
-    color: #4b5563;
+    background: var(--surface-muted);
+    color: var(--text-secondary);
     transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
   }
 

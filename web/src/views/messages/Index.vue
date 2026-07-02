@@ -692,7 +692,7 @@ function normalizeMessageSettings(value: any) {
 }
 .page-title { margin: 0; font-size: 22px; }
 .page-sub {
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 13px;
 }
 .page-head-actions {
@@ -701,7 +701,13 @@ function normalizeMessageSettings(value: any) {
   justify-content: flex-end;
   flex-shrink: 0;
 }
-.cpu-card { background: #fff; border-radius: 12px; padding: 16px 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
+.cpu-card {
+  background: var(--cpu-card);
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 12px;
+  padding: 16px 20px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+}
 .page-error {
   padding: 24px 16px;
 }
@@ -722,7 +728,7 @@ function normalizeMessageSettings(value: any) {
   margin: 0;
   font-size: 18px;
   line-height: 1.45;
-  color: #1f2937;
+  color: var(--cpu-text);
   overflow-wrap: anywhere;
 }
 .notice-meta {
@@ -731,13 +737,13 @@ function normalizeMessageSettings(value: any) {
   line-height: 1.5;
   word-break: break-word;
 }
-.notice-content { margin: 0; color: #374151; line-height: 1.75; white-space: pre-wrap; }
+.notice-content { margin: 0; color: var(--cpu-text-secondary); line-height: 1.75; white-space: pre-wrap; }
 .review-state { font-size: 13px; color: #166534; background: #ecfdf5; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 12px; }
-.review-state.done { color: #6b7280; background: #f8fafc; border-color: #e2e8f0; }
-.notice-risk { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #92400e; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 10px 12px; }
-.notice-draft { border: 1px solid #e5e7eb; border-radius: 8px; background: #f9fafb; padding: 12px; }
-.draft-title { font-size: 14px; font-weight: 600; color: #111827; }
-.draft-note { margin-top: 8px; font-size: 13px; color: #6b7280; }
+.review-state.done { color: var(--cpu-text-secondary); background: var(--cpu-surface-subtle); border-color: var(--cpu-border-soft); }
+.notice-risk { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #92400e; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.34); border-radius: 8px; padding: 10px 12px; }
+.notice-draft { border: 1px solid var(--cpu-border); border-radius: 8px; background: var(--cpu-surface-subtle); padding: 12px; }
+.draft-title { font-size: 14px; font-weight: 600; color: var(--cpu-text); }
+.draft-note { margin-top: 8px; font-size: 13px; color: var(--cpu-text-secondary); }
 
 .settings h4 { margin: 8px 0 6px; color: var(--cpu-text); }
 .hint { font-size: 12px; color: var(--cpu-text-secondary); margin: 0 0 10px; }
@@ -1017,8 +1023,8 @@ function normalizeMessageSettings(value: any) {
     padding: 0 12px;
     font-size: 13px;
     border-radius: 999px;
-    background: #f3f4f6;
-    color: #4b5563;
+    background: var(--cpu-surface-subtle);
+    color: var(--cpu-text-secondary);
   }
 
   .messages-tabs :deep(.el-tabs__item.is-active) {

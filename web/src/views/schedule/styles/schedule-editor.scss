@@ -1,16 +1,16 @@
 .week-cell {
-  border: 1px solid #dde4ee;
-  background: #fff;
+  border: 1px solid var(--schedule-border);
+  background: var(--schedule-surface-bg);
   border-radius: 10px;
   padding: 10px 4px;
   font: inherit;
   font-size: 14px;
-  color: #374151;
+  color: var(--schedule-text-secondary);
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s, color 0.15s;
   -webkit-tap-highlight-color: var(--schedule-accent-soft-hover);
 }
-.week-cell:active { background: #f3f4f6; }
+.week-cell:active { background: var(--schedule-surface-bg-soft); }
 .week-cell.current { border-color: var(--schedule-accent); color: var(--schedule-accent); }
 .week-cell.active {
   background: var(--schedule-accent);
@@ -39,8 +39,8 @@
   max-height: min(92svh, 760px);
   max-height: min(92dvh, 760px);
   max-width: 720px;
-  background: #f6f7fb;
-  color: #0f172a;
+  background: var(--schedule-surface-bg-soft);
+  color: var(--schedule-text);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -84,14 +84,14 @@
   font-size: 17px;
   line-height: 1.2;
   font-weight: 650;
-  color: #0b1220;
+  color: var(--schedule-text);
 }
 
 .course-editor-nav button {
   border: 0;
   border-radius: 15px;
-  background: rgba(255, 255, 255, 0.76);
-  color: #111827;
+  background: var(--schedule-surface-bg);
+  color: var(--schedule-text);
   min-height: 36px;
   padding: 0 10px;
   font: inherit;
@@ -122,7 +122,7 @@
 .editor-card {
   overflow: hidden;
   border-radius: 16px;
-  background: #fff;
+  background: var(--schedule-surface-bg);
   box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
 }
 
@@ -133,7 +133,7 @@
   align-items: center;
   gap: 12px;
   margin: 0 14px;
-  border-bottom: 1px solid #e7e9ee;
+  border-bottom: 1px solid var(--schedule-border);
 }
 
 .editor-row:last-child {
@@ -145,7 +145,7 @@
 .editor-section-title span {
   font-size: 17px;
   font-weight: 560;
-  color: #0b1220;
+  color: var(--schedule-text);
 }
 
 .editor-row input,
@@ -155,7 +155,7 @@
   border: 0;
   outline: 0;
   background: transparent;
-  color: #0b1220;
+  color: var(--schedule-text);
   font: inherit;
   font-size: 17px;
   font-weight: 500;
@@ -163,12 +163,12 @@
 }
 
 .editor-row input::placeholder {
-  color: #b9bec8;
+  color: var(--schedule-text-muted);
 }
 .editor-row input:disabled,
 .editor-row select:disabled {
   cursor: not-allowed;
-  color: #98a2b3;
+  color: var(--schedule-text-muted);
 }
 
 .editor-row select {
@@ -193,7 +193,7 @@
 .slot-range-input em,
 .slot-range-input b {
   font-style: normal;
-  color: #0b1220;
+  color: var(--schedule-text);
   font-size: 17px;
   font-weight: 500;
 }
@@ -231,13 +231,13 @@
   gap: 12px;
   margin: 0 18px;
   padding: 15px 0;
-  border-bottom: 1px solid #e7e9ee;
+  border-bottom: 1px solid var(--schedule-border);
 }
 
 .editor-week-picker > span {
   font-size: 16px;
   font-weight: 650;
-  color: #0b1220;
+  color: var(--schedule-text);
   padding-top: 5px;
 }
 
@@ -253,10 +253,10 @@
 .week-chip-grid button {
   min-width: 0;
   min-height: 30px;
-  border: 1px solid #d8dee8;
+  border: 1px solid var(--schedule-border);
   border-radius: 9px;
-  background: #fff;
-  color: #475467;
+  background: var(--schedule-surface-bg);
+  color: var(--schedule-text-secondary);
   font: inherit;
   font-size: 13px;
   font-weight: 500;
@@ -278,10 +278,10 @@
 }
 
 .hidden-restore-card .hidden-list button {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--schedule-border);
   border-radius: 999px;
-  background: #fff;
-  color: #475467;
+  background: var(--schedule-surface-bg);
+  color: var(--schedule-text-secondary);
   padding: 7px 10px;
   font: inherit;
   font-size: 13px;
@@ -349,7 +349,7 @@
 
 .edit-section.compact {
   padding-top: 4px;
-  border-top: 1px solid #eef0f4;
+  border-top: 1px solid var(--schedule-border);
 }
 
 .edit-section-head {
@@ -361,12 +361,12 @@
 
 .edit-section-head b {
   font-size: 14px;
-  color: #172033;
+  color: var(--schedule-text);
 }
 
 .edit-section-head span {
   font-size: 12px;
-  color: #8a94a6;
+  color: var(--schedule-text-muted);
 }
 
 .edit-course-list {
@@ -382,9 +382,9 @@
   gap: 10px;
   align-items: center;
   padding: 10px 12px;
-  border: 1px solid #eef0f4;
+  border: 1px solid var(--schedule-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--schedule-surface-bg);
 }
 
 .edit-course-row div {
@@ -394,7 +394,7 @@
 }
 
 .edit-course-row b {
-  color: #172033;
+  color: var(--schedule-text);
   font-size: 14px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -403,7 +403,7 @@
 
 .edit-course-row span,
 .edit-course-row em {
-  color: #667085;
+  color: var(--schedule-text-secondary);
   font-size: 12px;
   font-style: normal;
   overflow: hidden;

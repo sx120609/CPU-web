@@ -418,8 +418,51 @@ html[data-theme="dark"] {
   .settings-card,
   .settings-panel,
   .admin-section,
+  .admin-card,
+  .filter-panel,
+  .mobile-card,
   .manage-panel,
+  .manage-head,
   .panel,
+  .panel-card,
+  .section-card,
+  .feature-card,
+  .config-card,
+  .info-card,
+  .form-card,
+  .summary-card,
+  .history-card,
+  .list-card,
+  .item-card,
+  .file-card,
+  .task-card,
+  .question-card,
+  .answer-card,
+  .lookup-card,
+  .grade-card,
+  .tool-shell,
+  .missing-card,
+  .market-error,
+  .goods,
+  .message-list .row,
+  .questionnaire-builder-dialog,
+  .questionnaire-builder-dialog .el-dialog__header,
+  .type-palette,
+  .editor-card,
+  .field-editor,
+  .inspector-card,
+  .mobile-publish-card,
+  .grade-upload-panel,
+  .grade-preview-box,
+  .field-rule-list div,
+  .questionnaire-row-card,
+  .related-grade-item,
+  .rich-editor,
+  .toolbar-scroll,
+  .notice-card,
+  .wall-card,
+  .qq-share-card,
+  .qq-forward-card,
   .stat,
   .block,
   .field-card,
@@ -428,21 +471,44 @@ html[data-theme="dark"] {
   .notice-detail,
   .profile-card,
   .page-error {
-    background: var(--cpu-card);
-    border-color: var(--cpu-border-soft);
-    color: var(--cpu-text);
+    background: var(--cpu-card) !important;
+    border-color: var(--cpu-border-soft) !important;
+    color: var(--cpu-text) !important;
   }
 
   .cpu-muted,
   .hint,
+  .tip,
+  .note,
+  .help,
+  .muted,
   .page-sub,
   .desc,
+  .description,
+  .summary,
   .meta,
+  .time,
+  .count,
+  .field-tip,
+  .form-tip,
   .sub,
   .lbl,
   .notice-meta,
+  .manage-head p,
+  .builder-titlebar span,
+  .palette-title span,
+  .type-palette small,
+  .section-head p,
+  .questionnaire-summary span,
+  .upload-copy p,
+  .field-rule-list small,
+  .grade-preview-head span,
+  .form-head p,
+  .side-note p,
+  .questionnaire-list p,
+  .related-grade-main small,
   .draft-note {
-    color: var(--cpu-text-secondary);
+    color: var(--cpu-text-secondary) !important;
   }
 
   h1,
@@ -452,22 +518,114 @@ html[data-theme="dark"] {
   .title,
   .name,
   .section-title,
+  .card-title,
+  .item-title,
+  .manage-head h2,
+  .builder-titlebar b,
+  .type-palette h4,
+  .fields-head h4,
+  .section-head h3,
+  .questionnaire-summary b,
+  .upload-copy h4,
+  .field-rule-list span,
+  .grade-preview-head b,
+  .form-head h3,
+  .side-note h3,
+  .questionnaire-list h3,
+  .related-grade-main b,
   .quick-title,
   .head-name,
   .page-title,
   .draft-title {
-    color: var(--cpu-text);
+    color: var(--cpu-text) !important;
+  }
+
+  .el-card,
+  .el-dialog,
+  .el-message-box,
+  .el-drawer,
+  .el-popover,
+  .el-picker-panel {
+    background-color: var(--cpu-surface) !important;
+    border-color: var(--cpu-border-soft) !important;
+    color: var(--cpu-text) !important;
+  }
+
+  .questionnaire-builder-overlay {
+    background: var(--cpu-bg) !important;
+  }
+
+  .questionnaire-builder-dialog {
+    --builder-primary-soft: rgba(59, 130, 246, 0.14);
+    --builder-border: var(--cpu-border-soft);
+    --builder-muted: var(--cpu-text-secondary);
+  }
+
+  .editor-toolbar,
+  .rich-editor.toolbar-static,
+  .rich-editor.toolbar-static .editor-toolbar,
+  .type-palette button,
+  .builder-back,
+  .field input,
+  .field select,
+  .field textarea,
+  .choice-item,
+  .rating-btn,
+  .plain-action,
+  .note-list span {
+    background: var(--cpu-card) !important;
+    border-color: var(--cpu-border-soft) !important;
+    color: var(--cpu-text) !important;
+  }
+
+  .el-divider {
+    border-color: var(--cpu-border-soft);
+  }
+
+  .el-checkbox,
+  .el-radio,
+  .el-switch__label,
+  .el-descriptions__label,
+  .el-descriptions__content {
+    color: var(--cpu-text-secondary);
+  }
+
+  .el-tag--info,
+  .el-tag.el-tag--info {
+    --el-tag-bg-color: var(--cpu-surface-subtle);
+    --el-tag-border-color: var(--cpu-border-soft);
+    --el-tag-text-color: var(--cpu-text-secondary);
+  }
+
+  .topic-row:hover,
+  .list-row:hover,
+  .list-item:hover,
+  .ann-item:hover,
+  .board-card:hover,
+  .item-card:hover {
+    background: var(--cpu-surface-soft) !important;
+  }
+
+  table,
+  th,
+  td {
+    border-color: var(--cpu-border-soft) !important;
+  }
+
+  th,
+  tr:nth-child(even) td {
+    background: var(--cpu-surface-soft) !important;
   }
 
   .notice-content,
   .el-empty__description {
-    color: var(--el-text-color-regular);
+    color: var(--el-text-color-regular) !important;
   }
 
   .notice-draft,
   .review-state.done {
-    background: var(--cpu-surface-soft);
-    border-color: var(--cpu-border-soft);
+    background: var(--cpu-surface-soft) !important;
+    border-color: var(--cpu-border-soft) !important;
   }
 }
 

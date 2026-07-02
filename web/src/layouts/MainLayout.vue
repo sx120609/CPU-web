@@ -23,9 +23,36 @@
         </div>
 
         <nav class="top-nav" aria-label="主导航">
-          <router-link v-for="item in desktopNavItems" :key="item.to" :to="item.to">
+          <router-link
+            v-for="item in desktopPrimaryNavItems"
+            :key="item.to"
+            :to="item.to"
+            :title="item.fullLabel || item.label"
+          >
             {{ item.label }}
           </router-link>
+          <el-dropdown
+            v-if="desktopOverflowNavItems.length"
+            class="top-nav-more"
+            trigger="click"
+            @command="goDesktopNav"
+          >
+            <button type="button" class="top-nav-more-btn">
+              <span>更多</span>
+              <el-icon><ArrowDown /></el-icon>
+            </button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item
+                  v-for="item in desktopOverflowNavItems"
+                  :key="item.to"
+                  :command="item.to"
+                >
+                  {{ item.fullLabel || item.label }}
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </nav>
 
         <div class="top-right">
@@ -53,8 +80,9 @@
                 <el-icon size="20"><Refresh /></el-icon>
               </el-button>
             </el-tooltip>
-            <el-button v-if="auth.canAccessForum && site.features.forum" type="primary" size="default" @click="$router.push('/post')">
-              <el-icon><Edit /></el-icon> 发帖
+            <el-button v-if="auth.canAccessForum && site.features.forum" class="post-btn" type="primary" size="default" @click="$router.push('/post')">
+              <el-icon><Edit /></el-icon>
+              <span class="post-label">发帖</span>
             </el-button>
             <el-tooltip content="消息">
               <el-button text @click="$router.push('/messages')">
@@ -301,6 +329,8 @@ const searchPlaceholder = computed(() => {
   return `搜索${scopes.join(" / ")}`;
 });
 
+type DesktopNavItem = { to: string; label: string; fullLabel?: string };
+
 const nicknameHint = computed(() => {
   const actions: string[] = [];
   if (site.features.forum) actions.push("发帖、回复");
@@ -314,15 +344,25 @@ function reloadPage() {
 }
 
 const desktopNavItems = computed(() => {
-  const items: { to: string; label: string }[] = [];
+  const items: DesktopNavItem[] = [];
   items.push({ to: "/home", label: "首页" });
   if (site.features.forum) items.push({ to: "/forum", label: "论坛" });
   items.push({ to: "/announcements", label: "公告" });
-  items.push({ to: "/jwxt", label: "教务数据" });
-  if (site.features.coursereview && auth.canAccessForum) items.push({ to: "/coursereview", label: "课评" });
-  if (site.features.market && auth.canAccessForum) items.push({ to: "/market", label: "二手" });
-  items.push({ to: "/services", label: "校园服务" });
+  items.push({ to: "/jwxt", label: "教务", fullLabel: "教务数据" });
+  items.push({ to: "/services", label: "服务", fullLabel: "校园服务" });
+  if (site.features.coursereview && auth.canAccessForum) items.push({ to: "/coursereview", label: "课评", fullLabel: "课程点评" });
+  if (site.features.market && auth.canAccessForum) items.push({ to: "/market", label: "二手", fullLabel: "二手市场" });
   return items;
+});
+
+const desktopPrimaryNavItems = computed(() => {
+  const primary = new Set(["/home", "/forum", "/announcements", "/jwxt", "/services"]);
+  return desktopNavItems.value.filter((item) => primary.has(item.to));
+});
+
+const desktopOverflowNavItems = computed(() => {
+  const primary = new Set(desktopPrimaryNavItems.value.map((item) => item.to));
+  return desktopNavItems.value.filter((item) => !primary.has(item.to));
 });
 
 const mobileNavItems = computed(() => {
@@ -480,6 +520,11 @@ function goSearch() {
   if (q.value.trim()) router.push({ name: "search", query: { q: q.value.trim() } });
 }
 
+function goDesktopNav(command: string | number | object) {
+  const to = String(command || "");
+  if (to) router.push(to);
+}
+
 function resolveMobileTo(item: { to: string; auth?: boolean }) {
   if (item.auth && !auth.isLoggedIn) {
     return { name: "login", query: { redirect: item.to } };
@@ -563,13 +608,13 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 .topbar-inner {
-  max-width: 1280px;
+  max-width: 1440px;
   margin: 0 auto;
   height: 60px;
   padding: 0 20px;
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 14px;
   min-width: 0;
 }
 
@@ -619,29 +664,25 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 .top-search {
-  width: 320px;
-  max-width: 30%;
-  flex: 0 1 320px;
+  width: clamp(210px, 22vw, 320px);
+  max-width: 320px;
+  flex: 1 1 260px;
   min-width: 180px;
 }
 
 .top-nav {
   display: flex;
   gap: 4px;
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
-  overflow-x: auto;
+  overflow-x: visible;
   overflow-y: hidden;
-  scrollbar-width: none;
-}
-
-.top-nav::-webkit-scrollbar {
-  display: none;
+  align-items: center;
 }
 
 .top-nav a {
   flex: 0 0 auto;
-  padding: 8px 12px;
+  padding: 8px 10px;
   border-radius: 6px;
   color: var(--cpu-text-secondary);
   text-decoration: none;
@@ -654,10 +695,39 @@ function setAppearanceMode(command: string | number | object) {
 .top-nav a:hover { background: var(--cpu-surface-subtle); color: var(--cpu-primary); }
 .top-nav a.router-link-active { color: var(--cpu-primary); font-weight: 600; background: rgba(20, 143, 123, 0.08); }
 
+.top-nav-more {
+  flex: 0 0 auto;
+}
+
+.top-nav-more-btn {
+  display: inline-flex;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--cpu-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 9px;
+  white-space: nowrap;
+}
+
+.top-nav-more-btn:hover,
+.top-nav-more-btn:focus-visible {
+  color: var(--cpu-primary);
+  background: var(--cpu-surface-subtle);
+  outline: none;
+}
+
 .top-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
@@ -929,17 +999,39 @@ function setAppearanceMode(command: string | number | object) {
 
 @media (max-width: 1120px) {
   .topbar-inner {
-    gap: 12px;
+    gap: 10px;
   }
 
   .top-nav a {
-    padding: 8px 9px;
+    padding: 8px 8px;
   }
 
   .top-search {
-    width: 240px;
-    flex-basis: 240px;
-    max-width: 24%;
+    width: 220px;
+    flex: 0 1 220px;
+    max-width: 220px;
+  }
+
+  .brand-sub,
+  .user-name {
+    display: none;
+  }
+}
+
+@media (max-width: 1040px) {
+  .top-search {
+    width: 190px;
+    flex-basis: 190px;
+    min-width: 160px;
+  }
+
+  .post-btn {
+    width: 38px;
+    padding: 0;
+  }
+
+  .post-label {
+    display: none;
   }
 }
 

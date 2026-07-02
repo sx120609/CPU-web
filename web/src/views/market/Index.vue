@@ -121,14 +121,15 @@ function normalizeMarketError(error: unknown) {
   gap: 14px;
 }
 .market-error {
-  background: #fff;
+  background: var(--cpu-card);
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 12px;
   padding: 24px 16px;
   box-shadow: 0 2px 12px rgba(0,0,0,0.04);
 }
 .goods {
-  background: #fff;
-  border: 1px solid #eef0f4;
+  background: var(--cpu-card);
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 12px;
   padding: 14px;
   cursor: pointer;
@@ -141,19 +142,19 @@ function normalizeMarketError(error: unknown) {
 }
 
 .g-head { display: flex; gap: 6px; align-items: center; }
-.title { font-size: 14px; color: #1f2937; font-weight: 500; flex: 1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.title { font-size: 14px; color: var(--cpu-text); font-weight: 500; flex: 1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
-.badge-buy { background: #fef3c7; color: #b45309; }
+.badge-buy { background: rgba(245, 158, 11, 0.14); color: #fb923c; }
 
 .g-price { font-size: 22px; font-weight: 700; color: #ef4444; margin: 8px 0; }
-.g-meta { display: flex; gap: 10px; font-size: 12px; color: #6b7280; flex-wrap: wrap; }
+.g-meta { display: flex; gap: 10px; font-size: 12px; color: var(--cpu-text-secondary); flex-wrap: wrap; }
 
 .g-foot {
   display: flex;
   justify-content: space-between;
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px dashed #f1f5f9;
+  border-top: 1px dashed var(--cpu-border-soft);
   font-size: 11px;
   color: #9ca3af;
 }

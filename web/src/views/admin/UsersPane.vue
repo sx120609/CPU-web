@@ -787,9 +787,9 @@ async function deleteUser(row: any) {
   display: grid;
   gap: 10px;
   padding: 12px;
-  border: 1px solid #eef0f4;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 8px;
-  background: #fafbfc;
+  background: var(--cpu-surface-subtle);
 }
 .filter-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .main-row { align-items: stretch; }
@@ -800,23 +800,23 @@ async function deleteUser(row: any) {
 .date-range { width: 250px; }
 .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-left: auto; }
 .pager { display: flex; justify-content: center; padding-top: 12px; }
-.dlg-tip { font-size: 12px; color: #6b7280; margin: 0 0 12px; }
+.dlg-tip { font-size: 12px; color: var(--cpu-text-secondary); margin: 0 0 12px; }
 .user-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.user-cell b { font-size: 14px; color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.user-cell span { font-size: 12px; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-cell b { font-size: 14px; color: var(--cpu-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-cell span { font-size: 12px; color: var(--cpu-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag-stack { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .login-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .login-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .login-flags { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-width: 0; }
-.login-time { font-size: 12px; color: #4b5563; }
+.login-time { font-size: 12px; color: var(--cpu-text-secondary); }
 .login-empty { font-size: 12px; color: #9ca3af; }
 .anon-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.anon-main { font-size: 13px; font-weight: 600; color: #111827; }
-.anon-sub { font-size: 12px; color: #6b7280; }
+.anon-main { font-size: 13px; font-weight: 600; color: var(--cpu-text); }
+.anon-sub { font-size: 12px; color: var(--cpu-text-secondary); }
 .content-count,
-.muted-date { font-size: 12px; color: #4b5563; }
+.muted-date { font-size: 12px; color: var(--cpu-text-secondary); }
 .forum-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.forum-time { font-size: 12px; color: #6b7280; }
+.forum-time { font-size: 12px; color: var(--cpu-text-secondary); }
 .action-trigger { justify-content: center; }
 .more-icon { margin-left: 2px; transform: rotate(90deg); }
 .admin-table { display: block; }
@@ -828,9 +828,9 @@ async function deleteUser(row: any) {
 }
 .mobile-card {
   padding: 14px;
-  border: 1px solid #e7edf5;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 14px;
-  background: #fff;
+  background: var(--cpu-card);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 .mobile-card-head {
@@ -844,7 +844,7 @@ async function deleteUser(row: any) {
   gap: 4px;
   margin-top: 10px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
 }
 .mobile-actions {
   margin-top: 12px;

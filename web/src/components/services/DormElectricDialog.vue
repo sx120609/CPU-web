@@ -181,25 +181,25 @@ function clearRechargeReadTimer() {
   padding: 20px 0;
   text-align: center;
 }
-.loading p { margin: 0; font-size: 13px; color: #6b7280; }
+.loading p { margin: 0; font-size: 13px; color: var(--cpu-text-secondary); }
 .loading .sub-hint { font-size: 11px; color: #9ca3af; }
 .is-loading { animation: spin 1.2s linear infinite; color: var(--cpu-primary); }
 @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
 
-.error .msg { margin: 0; font-size: 14px; color: #1f2937; }
-.error .hint { margin: 0; font-size: 12px; color: #6b7280; line-height: 1.6; max-width: 320px; }
+.error .msg { margin: 0; font-size: 14px; color: var(--cpu-text); }
+.error .hint { margin: 0; font-size: 12px; color: var(--cpu-text-secondary); line-height: 1.6; max-width: 320px; }
 
 .result { display: flex; flex-direction: column; gap: 14px; }
 .balance-row {
   padding: 18px 0;
-  border-bottom: 1px dashed #f1f5f9;
+  border-bottom: 1px dashed var(--cpu-border-soft);
 }
 .balance-main {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
 }
-.balance-main .lbl { font-size: 13px; color: #6b7280; }
+.balance-main .lbl { font-size: 13px; color: var(--cpu-text-secondary); }
 .balance-main .num {
   font-size: 32px;
   font-weight: 700;
@@ -210,7 +210,7 @@ function clearRechargeReadTimer() {
   margin-top: 6px;
   text-align: right;
   font-size: 13px;
-  color: #4b5563;
+  color: var(--cpu-text-secondary);
 }
 .balance-sub .muted { color: #9ca3af; font-size: 12px; }
 
@@ -220,11 +220,11 @@ function clearRechargeReadTimer() {
   justify-content: space-between;
   font-size: 13px;
 }
-.kv > div span:first-child { color: #6b7280; }
-.kv > div span:last-child { color: #1f2937; }
+.kv > div span:first-child { color: var(--cpu-text-secondary); }
+.kv > div span:last-child { color: var(--cpu-text); }
 
 .warn {
-  background: #fef3c7;
+  background: rgba(245, 158, 11, 0.14);
   color: #92400e;
   padding: 10px 12px;
   border-radius: 8px;
@@ -240,7 +240,7 @@ function clearRechargeReadTimer() {
   justify-content: space-between;
   align-items: center;
   padding-top: 8px;
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid var(--cpu-border-soft);
 }
 .link-btn {
   border: none;
@@ -254,7 +254,7 @@ function clearRechargeReadTimer() {
 .link-btn:hover { text-decoration: underline; }
 
 .recharge-confirm {
-  color: #374151;
+  color: var(--cpu-text-secondary);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -271,9 +271,9 @@ function clearRechargeReadTimer() {
 .in-app-warning {
   margin-bottom: 10px;
   padding: 10px 12px;
-  border: 1px solid #fde68a;
+  border: 1px solid rgba(245, 158, 11, 0.34);
   border-radius: 8px;
-  background: #fffbeb;
+  background: rgba(245, 158, 11, 0.12);
   color: #92400e;
   font-size: 13px;
   line-height: 1.6;

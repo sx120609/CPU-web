@@ -94,8 +94,8 @@ function categoryLabel(category?: string | null) {
   align-items: center;
   gap: 12px;
   padding: 14px 16px;
-  border: 1px solid #edf2f7;
-  background: #fff;
+  border: 1px solid var(--cpu-border-soft);
+  background: var(--cpu-card);
   cursor: pointer;
   border-radius: 14px;
   appearance: none;
@@ -107,13 +107,13 @@ function categoryLabel(category?: string | null) {
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.15s;
 }
 .row:hover {
-  background: #f8fafc;
-  border-color: #dbe5f0;
+  background: var(--cpu-surface-soft);
+  border-color: var(--cpu-border);
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
 }
 .row.unread {
-  border-color: #cfe0ff;
-  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+  border-color: rgba(59, 130, 246, 0.35);
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.1) 0%, var(--cpu-card) 100%);
 }
 .row:focus-visible {
   outline: 2px solid var(--cpu-primary);
@@ -133,24 +133,24 @@ function categoryLabel(category?: string | null) {
 .tag-target {
   min-width: 0;
 }
-.tag-reply { background: #dbeafe; color: #1d4ed8; }
-.tag-like { background: #fee2e2; color: #dc2626; }
-.tag-system { background: #ede9fe; color: #6d28d9; }
-.tag-school { background: #dcfce7; color: #15803d; }
-.tag-事务 { background: #fee2e2; color: #dc2626; }
-.tag-通知 { background: #dbeafe; color: #1d4ed8; }
-.tag-服务 { background: #dcfce7; color: #15803d; }
-.tag-资讯 { background: #f3e8ff; color: #7c3aed; }
+.tag-reply { background: rgba(59, 130, 246, 0.14); color: #60a5fa; }
+.tag-like { background: rgba(239, 68, 68, 0.14); color: #f87171; }
+.tag-system { background: rgba(124, 58, 237, 0.14); color: #a78bfa; }
+.tag-school { background: rgba(34, 197, 94, 0.14); color: #4ade80; }
+.tag-事务 { background: rgba(239, 68, 68, 0.14); color: #f87171; }
+.tag-通知 { background: rgba(59, 130, 246, 0.14); color: #60a5fa; }
+.tag-服务 { background: rgba(34, 197, 94, 0.14); color: #4ade80; }
+.tag-资讯 { background: rgba(124, 58, 237, 0.14); color: #a78bfa; }
 .tag-strong {
-  background: #fff7ed;
-  color: #c2410c;
+  background: rgba(245, 158, 11, 0.14);
+  color: #fb923c;
 }
 .lv-strong { box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.18); }
-.tag-target-ios { background: #e0e7ff; color: #4338ca; }
-.tag-target-android { background: #dcfce7; color: #15803d; }
-.tag-target-harmony { background: #fef3c7; color: #92400e; }
-.tag-target-web { background: #e0f2fe; color: #0369a1; }
-.tag-target-multi { background: #f1f5f9; color: #475569; }
+.tag-target-ios { background: rgba(99, 102, 241, 0.14); color: #818cf8; }
+.tag-target-android { background: rgba(34, 197, 94, 0.14); color: #4ade80; }
+.tag-target-harmony { background: rgba(245, 158, 11, 0.14); color: #fb923c; }
+.tag-target-web { background: rgba(14, 165, 233, 0.14); color: #38bdf8; }
+.tag-target-multi { background: var(--cpu-surface-subtle); color: var(--cpu-text-secondary); }
 
 .info { flex: 1; min-width: 0; }
 .top-line {
@@ -174,7 +174,7 @@ function categoryLabel(category?: string | null) {
 .title {
   margin-top: 8px;
   font-size: 14px;
-  color: #1f2937;
+  color: var(--cpu-text);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -190,7 +190,7 @@ function categoryLabel(category?: string | null) {
 }
 .content {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   margin-top: 4px;
   overflow: hidden;
   display: -webkit-box;

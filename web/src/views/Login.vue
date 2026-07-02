@@ -235,14 +235,17 @@ async function onDevSubmit() {
   min-height: 100dvh;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, #f4f6f8, #e0f2ef);
+  background:
+    radial-gradient(circle at top right, rgba(20, 184, 166, 0.16), transparent 34%),
+    linear-gradient(135deg, var(--cpu-bg), var(--cpu-surface));
   padding: 20px;
 }
 
 .auth-card {
   width: 440px;
   max-width: 100%;
-  background: #fff;
+  background: var(--cpu-card);
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 16px;
   padding: 32px 36px 24px;
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.1);
@@ -282,11 +285,11 @@ async function onDevSubmit() {
 }
 
 .brand h1 { margin: 0; font-size: 20px; color: #168776; }
-.brand p { margin: 2px 0 0; font-size: 12px; color: #6b7280; }
+.brand p { margin: 2px 0 0; font-size: 12px; color: var(--cpu-text-secondary); }
 
-.welcome { font-size: 18px; color: #111827; margin: 6px 0 4px; font-weight: 600; }
+.welcome { font-size: 18px; color: var(--cpu-text); margin: 6px 0 4px; font-weight: 600; }
 .welcome strong { color: var(--cpu-primary); }
-.hint { font-size: 13px; color: #6b7280; margin: 0 0 14px; line-height: 1.6; }
+.hint { font-size: 13px; color: var(--cpu-text-secondary); margin: 0 0 14px; line-height: 1.6; }
 .identity-picker { margin-bottom: 14px; }
 
 .safety { margin-bottom: 14px; font-size: 12px; }
@@ -298,9 +301,9 @@ async function onDevSubmit() {
 .vcode-img-button {
   height: 38px;
   min-width: 112px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--cpu-border);
   border-radius: 5px;
-  background: #fff;
+  background: var(--cpu-card);
   display: grid;
   place-items: center;
   padding: 0;
@@ -328,9 +331,9 @@ async function onDevSubmit() {
 .dev-fallback {
   margin-top: 18px;
   padding: 10px 14px;
-  background: #f9fafb;
+  background: var(--cpu-surface-subtle);
   border-radius: 8px;
-  border: 1px dashed #e5e7eb;
+  border: 1px dashed var(--cpu-border);
 }
 .dev-fallback summary {
   cursor: pointer;

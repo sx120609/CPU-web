@@ -37,9 +37,9 @@
   min-width: 0;
   min-height: 0;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.36);
-  border: 1px solid rgba(218, 227, 239, 0.82);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.46);
+  background: var(--schedule-cell-bg);
+  border: 1px solid var(--schedule-cell-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
   cursor: pointer;
   touch-action: pan-y;
 }
@@ -108,7 +108,7 @@
   z-index: 3;
   margin-bottom: 6px;
   padding: 3px 0;
-  background: rgba(247, 251, 255, 0.86);
+  background: var(--schedule-surface-bg);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
 }
@@ -116,7 +116,7 @@
   position: static;
   top: auto;
   z-index: auto;
-  background: #f7fbff;
+  background: var(--schedule-surface-bg);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -124,7 +124,7 @@
   position: static;
   top: auto;
   z-index: auto;
-  background: #f7fbff;
+  background: var(--schedule-surface-bg);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -133,7 +133,7 @@
   min-width: 0;
   height: 38px;
   border-radius: 10px;
-  color: #667085;
+  color: var(--schedule-text-secondary);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -144,9 +144,9 @@
   font-size: 11px;
 }
 .week-day-head {
-  background: rgba(255, 255, 255, 0.56);
-  border: 1px solid rgba(218, 227, 239, 0.88);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
+  background: var(--schedule-cell-bg-strong);
+  border: 1px solid var(--schedule-cell-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
   cursor: pointer;
   touch-action: manipulation;
 }
@@ -173,7 +173,7 @@
   min-width: 0;
   min-height: 0;
   padding-top: 4px;
-  color: #667085;
+  color: var(--schedule-text-secondary);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -181,7 +181,7 @@
   gap: 2px;
 }
 .slot-axis b {
-  color: #172033;
+  color: var(--schedule-text);
   font-size: 13px;
 }
 .slot-axis span {
@@ -193,9 +193,9 @@
   min-width: 0;
   min-height: 0;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.30);
-  border: 1px solid rgba(226, 234, 244, 0.78);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38);
+  background: var(--schedule-cell-bg);
+  border: 1px solid var(--schedule-cell-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
   cursor: pointer;
   touch-action: pan-y;
 }
@@ -246,7 +246,7 @@
 
     .week-grid-head {
       position: static;
-      background: #f7fbff;
+      background: var(--schedule-surface-bg);
       backdrop-filter: none;
       -webkit-backdrop-filter: none;
     }
@@ -305,7 +305,7 @@
   place-items: center;
   align-content: center;
   gap: 10px;
-  color: #8a94a6;
+  color: var(--schedule-text-muted);
 }
 .empty-day .el-icon {
   font-size: 36px;
@@ -337,7 +337,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #172033;
+  color: var(--schedule-text);
   font-size: 16px;
   font-weight: 700;
 }
@@ -345,9 +345,9 @@
 .widget-help-btn {
   width: 24px;
   height: 24px;
-  border: 1px solid #dde4ee;
+  border: 1px solid var(--schedule-border);
   border-radius: 50%;
-  background: #fff;
+  background: var(--schedule-surface-bg);
   color: var(--schedule-accent-strong);
   display: inline-grid;
   place-items: center;
@@ -361,17 +361,17 @@
 
 .widget-help-text {
   margin: 0;
-  color: #475467;
+  color: var(--schedule-text-secondary);
   font-size: 12px;
 }
 
 .widget-step {
   width: 100%;
   min-height: 48px;
-  border: 1px solid #dde4ee;
+  border: 1px solid var(--schedule-border);
   border-radius: 10px;
-  background: #fff;
-  color: #172033;
+  background: var(--schedule-surface-bg);
+  color: var(--schedule-text);
   display: grid;
   grid-template-columns: 26px minmax(0, 1fr) 16px;
   align-items: center;
@@ -419,20 +419,20 @@
 }
 
 .widget-step-arrow {
-  color: #98a2b3;
+  color: var(--schedule-text-muted);
   font-size: 14px;
 }
 
 .widget-note {
   margin: 12px 0 0;
-  color: #667085;
+  color: var(--schedule-text-secondary);
   font-size: 12px;
   line-height: 1.65;
 }
 
 .support-note {
   margin: 12px 0 0;
-  color: #667085;
+  color: var(--schedule-text-secondary);
   font-size: 12px;
   line-height: 1.65;
 }
@@ -462,7 +462,7 @@
 .widget-instruction-list {
   margin: 0;
   padding-left: 18px;
-  color: #1f2937;
+  color: var(--schedule-text);
   font-size: 14px;
   line-height: 1.75;
 }
@@ -475,14 +475,14 @@
   margin: 14px 0 0;
   padding: 10px 12px;
   border-radius: 10px;
-  background: #f8fafc;
-  color: #667085;
+  background: var(--schedule-surface-bg-soft);
+  color: var(--schedule-text-secondary);
   font-size: 12px;
   line-height: 1.5;
 }
 
 .android-update-panel {
-  color: #1f2937;
+  color: var(--schedule-text);
   font-size: 14px;
   line-height: 1.75;
 }

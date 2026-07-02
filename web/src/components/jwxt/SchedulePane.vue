@@ -209,6 +209,8 @@
       :width="320"
       align-center
       :show-close="true"
+      class="schedule-pane-themed-dialog"
+      :style="pageStyle"
     >
       <div class="week-grid-pick">
         <button
@@ -231,7 +233,7 @@
 
     <Teleport to="body">
       <Transition name="course-editor">
-        <div v-if="editDialogOpen" class="course-editor-overlay" @click.self="closeCourseEditor">
+        <div v-if="editDialogOpen" class="course-editor-overlay" :style="pageStyle" @click.self="closeCourseEditor">
           <section class="course-editor-panel" role="dialog" aria-modal="true">
             <header class="course-editor-nav">
               <button type="button" :disabled="courseEditBusy" @click="closeCourseEditor">取消</button>
@@ -335,6 +337,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Aim, ArrowLeft, ArrowRight, Moon, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
+import { useAppearanceStore } from "@/stores/appearance";
 import { detectClientPlatform } from "@/utils/clientInfo";
 import {
   getScheduleThemePalette,
@@ -400,6 +403,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   source: "jwxt",
 });
+const appearance = useAppearanceStore();
 
 const graduateSourceMeta = ref<{
   mode?: "live" | "debug" | "debug-fallback";
@@ -614,6 +618,36 @@ const isViewingToday = computed(() => {
 });
 const pageStyle = computed(() => ({
   ...scheduleThemeCssVars("green"),
+  ...(appearance.isDark ? {
+    "--schedule-accent-strong": "#7dd3c7",
+    "--schedule-accent-pale": "rgba(20, 184, 166, 0.16)",
+    "--schedule-accent-pale-hover": "rgba(20, 184, 166, 0.24)",
+    "--schedule-accent-border": "rgba(45, 212, 191, 0.36)",
+    "--schedule-surface-bg": "rgba(12, 31, 27, 0.92)",
+    "--schedule-surface-bg-soft": "rgba(16, 39, 34, 0.86)",
+    "--schedule-text": "#e5f4f1",
+    "--schedule-text-secondary": "#a7bdb8",
+    "--schedule-text-muted": "#7f9994",
+    "--schedule-border": "rgba(148, 163, 184, 0.22)",
+    "--schedule-cell-bg": "rgba(15, 35, 31, 0.46)",
+    "--schedule-cell-bg-strong": "rgba(17, 42, 37, 0.62)",
+    "--schedule-cell-border": "rgba(148, 163, 184, 0.18)",
+    "--schedule-panel-shadow": "0 14px 34px rgba(0, 0, 0, 0.26)",
+    "--schedule-course-bg": "rgba(20, 184, 166, 0.16)",
+    "--schedule-course-border": "rgba(45, 212, 191, 0.42)",
+    "--schedule-course-text": "#d9fffa",
+  } : {
+    "--schedule-surface-bg": "#ffffff",
+    "--schedule-surface-bg-soft": "#f9fafb",
+    "--schedule-text": "#172033",
+    "--schedule-text-secondary": "#667085",
+    "--schedule-text-muted": "#8a94a6",
+    "--schedule-border": "#dde4ee",
+    "--schedule-cell-bg": "rgba(255, 255, 255, 0.36)",
+    "--schedule-cell-bg-strong": "rgba(255, 255, 255, 0.56)",
+    "--schedule-cell-border": "rgba(218, 227, 239, 0.82)",
+    "--schedule-panel-shadow": "0 10px 24px rgba(24, 34, 51, 0.08)",
+  }),
   ...(viewportHeight.value ? { "--schedule-vh": `${viewportHeight.value / 100}px` } : {}),
 }));
 const useStaticWeekSwipe = computed(() => false);
@@ -1834,23 +1868,29 @@ function normalizeKeyPart(value?: string) {
 
 function courseBlockStyle(block: WeekCourseBlock) {
   const tone = toneFor(block.course.name);
+  const colors = appearance.isDark
+    ? { bg: "var(--schedule-course-bg)", border: "var(--schedule-course-border)", text: "var(--schedule-course-text)" }
+    : tone;
   return {
     gridColumn: `${block.day + 1} / ${block.day + 2}`,
     gridRow: `${block.startSlot} / ${block.endSlot + 1}`,
-    "--course-bg": tone.bg,
-    "--course-border": tone.border,
-    "--course-text": tone.text,
+    "--course-bg": colors.bg,
+    "--course-border": colors.border,
+    "--course-text": colors.text,
   };
 }
 
 function dayCourseBlockStyle(block: WeekCourseBlock) {
   const tone = toneFor(block.course.name);
+  const colors = appearance.isDark
+    ? { bg: "var(--schedule-course-bg)", border: "var(--schedule-course-border)", text: "var(--schedule-course-text)" }
+    : tone;
   return {
     gridColumn: "2 / 3",
     gridRow: `${block.startSlot} / ${block.endSlot + 1}`,
-    "--course-bg": tone.bg,
-    "--course-border": tone.border,
-    "--course-text": tone.text,
+    "--course-bg": colors.bg,
+    "--course-border": colors.border,
+    "--course-text": colors.text,
   };
 }
 

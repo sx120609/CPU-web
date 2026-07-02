@@ -67,6 +67,7 @@
           :width="296"
           :teleported="true"
           popper-class="schedule-more-popover"
+          :popper-style="pageStyle"
           @show="moreMenuView = 'menu'"
           @hide="moreMenuView = 'menu'"
         >
@@ -437,6 +438,8 @@
       align-center
       :show-close="true"
       append-to-body
+      class="schedule-themed-dialog"
+      :style="pageStyle"
     >
       <div class="week-grid-pick">
         <button
@@ -465,7 +468,8 @@
       align-center
       :show-close="true"
       append-to-body
-      class="grad-debug-dialog"
+      class="grad-debug-dialog schedule-themed-dialog"
+      :style="pageStyle"
     >
       <div class="grad-debug-panel">
         <p class="grad-debug-intro">
@@ -516,11 +520,13 @@
       align-center
       :show-close="true"
       append-to-body
+      class="schedule-themed-dialog"
+      :style="pageStyle"
     >
       <template #header>
         <div class="widget-dialog-title">
           <span>导入 iOS 课表小组件</span>
-          <el-popover trigger="click" placement="bottom" :width="286" popper-class="widget-help-popover">
+          <el-popover trigger="click" placement="bottom" :width="286" popper-class="widget-help-popover" :popper-style="pageStyle">
             <p class="widget-help-text">
               小组件只能读取你的课表；如果登录状态失效，会先显示最近一次成功加载的内容。重新登录后会自动恢复，不需要重新添加组件。
             </p>
@@ -572,6 +578,8 @@
       align-center
       :show-close="true"
       append-to-body
+      class="schedule-themed-dialog"
+      :style="pageStyle"
       @open="startWidgetInstructionCountdown"
       @closed="stopWidgetInstructionCountdown"
     >
@@ -605,6 +613,8 @@
       align-center
       :show-close="true"
       append-to-body
+      class="schedule-themed-dialog"
+      :style="pageStyle"
       @open="startAndroidUpdateCountdown"
       @closed="stopAndroidUpdateCountdown"
     >
@@ -641,6 +651,8 @@
       align-center
       :show-close="true"
       append-to-body
+      class="schedule-themed-dialog"
+      :style="pageStyle"
     >
       <ol class="widget-instruction-list">
         <li>如果系统弹出添加小组件或卡片确认，请直接确认添加。</li>
@@ -664,7 +676,7 @@
 
     <Teleport to="body">
       <Transition name="course-editor">
-        <div v-if="editDialogOpen" class="course-editor-overlay" @click.self="closeCourseEditor">
+        <div v-if="editDialogOpen" class="course-editor-overlay" :style="pageStyle" @click.self="closeCourseEditor">
           <section class="course-editor-panel" role="dialog" aria-modal="true">
             <header class="course-editor-nav">
               <button type="button" :disabled="courseEditBusy" @click="closeCourseEditor">取消</button>
@@ -769,6 +781,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { Aim, ArrowLeft, ArrowRight, Download, Iphone, Loading, Lock, Moon, MoreFilled, Picture, QuestionFilled, Refresh, Tools } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useAuthStore } from "@/stores/auth";
+import { useAppearanceStore } from "@/stores/appearance";
 import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
@@ -860,6 +873,7 @@ import type {
 } from "@/views/schedule/types";
 
 const auth = useAuthStore();
+const appearance = useAppearanceStore();
 const jwxt = useJwxtStore();
 const parsed = ref<ScheduleResult | null>(null);
 const calendar = ref<CalendarResult | null>(null);
@@ -1544,11 +1558,43 @@ const isViewingToday = computed(() => {
 });
 const pageStyle = computed(() => ({
   ...scheduleThemeCssVars(scheduleTheme.value),
+  ...(appearance.isDark ? {
+    "--schedule-accent-strong": "#7dd3c7",
+    "--schedule-accent-pale": "rgba(20, 184, 166, 0.16)",
+    "--schedule-accent-pale-hover": "rgba(20, 184, 166, 0.24)",
+    "--schedule-accent-border": "rgba(45, 212, 191, 0.36)",
+    "--schedule-page-bg": "linear-gradient(180deg, #061411 0%, #071f1a 48%, #050f0d 100%)",
+    "--schedule-bg-overlay": hasScheduleBackground.value
+      ? `rgba(5, 18, 15, ${Math.max(0.42, scheduleBackground.overlayOpacity * 0.72)})`
+      : "rgba(5, 18, 15, 0.86)",
+    "--schedule-surface-bg": hasScheduleBackground.value ? "rgba(12, 31, 27, 0.74)" : "rgba(12, 31, 27, 0.92)",
+    "--schedule-surface-bg-soft": hasScheduleBackground.value ? "rgba(16, 39, 34, 0.76)" : "rgba(16, 39, 34, 0.86)",
+    "--schedule-text": "#e5f4f1",
+    "--schedule-text-secondary": "#a7bdb8",
+    "--schedule-text-muted": "#7f9994",
+    "--schedule-border": "rgba(148, 163, 184, 0.22)",
+    "--schedule-cell-bg": "rgba(15, 35, 31, 0.46)",
+    "--schedule-cell-bg-strong": "rgba(17, 42, 37, 0.62)",
+    "--schedule-cell-border": "rgba(148, 163, 184, 0.18)",
+    "--schedule-panel-shadow": "0 14px 34px rgba(0, 0, 0, 0.26)",
+    "--schedule-course-bg": "rgba(20, 184, 166, 0.16)",
+    "--schedule-course-border": "rgba(45, 212, 191, 0.42)",
+    "--schedule-course-text": "#d9fffa",
+  } : {
+    "--schedule-bg-overlay": `rgba(248, 251, 255, ${hasScheduleBackground.value ? scheduleBackground.overlayOpacity : 0.84})`,
+    "--schedule-surface-bg": hasScheduleBackground.value ? "rgba(255, 255, 255, 0.72)" : "#ffffff",
+    "--schedule-surface-bg-soft": hasScheduleBackground.value ? "rgba(255, 255, 255, 0.84)" : "#f9fafb",
+    "--schedule-text": "#172033",
+    "--schedule-text-secondary": "#667085",
+    "--schedule-text-muted": "#8a94a6",
+    "--schedule-border": "#dde4ee",
+    "--schedule-cell-bg": "rgba(255, 255, 255, 0.36)",
+    "--schedule-cell-bg-strong": "rgba(255, 255, 255, 0.56)",
+    "--schedule-cell-border": "rgba(218, 227, 239, 0.82)",
+    "--schedule-panel-shadow": "0 10px 24px rgba(24, 34, 51, 0.08)",
+  }),
   "--schedule-bg-image": hasScheduleBackground.value ? `url("${scheduleBackground.imageDataUrl}")` : "none",
-  "--schedule-bg-overlay": `rgba(248, 251, 255, ${hasScheduleBackground.value ? scheduleBackground.overlayOpacity : 0.84})`,
   "--schedule-bg-blur": `${scheduleBackground.blur}px`,
-  "--schedule-surface-bg": hasScheduleBackground.value ? "rgba(255, 255, 255, 0.72)" : "#ffffff",
-  "--schedule-surface-bg-soft": hasScheduleBackground.value ? "rgba(255, 255, 255, 0.84)" : "#f9fafb",
   ...(viewportHeight.value ? { "--schedule-vh": `${viewportHeight.value / 100}px` } : {}),
 }));
 const useStaticWeekSwipe = computed(() => false);
@@ -2561,23 +2607,29 @@ function persistScheduleTheme(value = scheduleTheme.value) {
 
 function courseBlockStyle(block: WeekCourseBlock) {
   const tone = toneFor(block.course.name);
+  const colors = appearance.isDark
+    ? { bg: "var(--schedule-course-bg)", border: "var(--schedule-course-border)", text: "var(--schedule-course-text)" }
+    : tone;
   return {
     gridColumn: `${block.day + 1} / ${block.day + 2}`,
     gridRow: `${block.startSlot} / ${block.endSlot + 1}`,
-    "--course-bg": tone.bg,
-    "--course-border": tone.border,
-    "--course-text": tone.text,
+    "--course-bg": colors.bg,
+    "--course-border": colors.border,
+    "--course-text": colors.text,
   };
 }
 
 function dayCourseBlockStyle(block: WeekCourseBlock) {
   const tone = toneFor(block.course.name);
+  const colors = appearance.isDark
+    ? { bg: "var(--schedule-course-bg)", border: "var(--schedule-course-border)", text: "var(--schedule-course-text)" }
+    : tone;
   return {
     gridColumn: "2 / 3",
     gridRow: `${block.startSlot} / ${block.endSlot + 1}`,
-    "--course-bg": tone.bg,
-    "--course-border": tone.border,
-    "--course-text": tone.text,
+    "--course-bg": colors.bg,
+    "--course-border": colors.border,
+    "--course-text": colors.text,
   };
 }
 

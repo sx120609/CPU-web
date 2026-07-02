@@ -16,7 +16,7 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
-  color: #667085;
+  color: var(--schedule-text-secondary);
 }
 
 .summary div {
@@ -26,12 +26,12 @@
 }
 
 .summary b {
-  color: #172033;
+  color: var(--schedule-text);
   font-size: 20px;
 }
 
 .summary small {
-  color: #98a2b3;
+  color: var(--schedule-text-muted);
   font-size: 11px;
 }
 
@@ -166,9 +166,9 @@
   min-width: 0;
   min-height: 0;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.36);
-  border: 1px solid rgba(218, 227, 239, 0.82);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.46);
+  background: var(--schedule-cell-bg);
+  border: 1px solid var(--schedule-cell-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
   cursor: pointer;
   touch-action: manipulation;
 }
@@ -246,7 +246,7 @@
   position: static;
   top: auto;
   z-index: auto;
-  background: #f7fbff;
+  background: var(--schedule-surface-bg);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -256,7 +256,7 @@
   min-width: 0;
   height: 46px;
   border-radius: 10px;
-  color: #667085;
+  color: var(--schedule-text-secondary);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -269,9 +269,9 @@
 }
 
 .week-day-head {
-  background: rgba(255, 255, 255, 0.56);
-  border: 1px solid rgba(218, 227, 239, 0.88);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
+  background: var(--schedule-cell-bg-strong);
+  border: 1px solid var(--schedule-cell-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
   cursor: pointer;
   touch-action: manipulation;
 }
@@ -303,7 +303,7 @@
   min-width: 0;
   min-height: 0;
   padding-top: 4px;
-  color: #667085;
+  color: var(--schedule-text-secondary);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -312,7 +312,7 @@
 }
 
 .slot-axis b {
-  color: #172033;
+  color: var(--schedule-text);
   font-size: 13px;
 }
 
@@ -326,9 +326,9 @@
   min-width: 0;
   min-height: 0;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.30);
-  border: 1px solid rgba(226, 234, 244, 0.78);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38);
+  background: var(--schedule-cell-bg);
+  border: 1px solid var(--schedule-cell-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
   cursor: pointer;
   touch-action: manipulation;
 }
@@ -396,7 +396,7 @@
   place-items: center;
   align-content: center;
   gap: 10px;
-  color: #8a94a6;
+  color: var(--schedule-text-muted);
 }
 
 .empty-day .el-icon {

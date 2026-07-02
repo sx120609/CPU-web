@@ -431,8 +431,8 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
 .tool-detail-page { display: flex; flex-direction: column; gap: 18px; }
 .tool-shell,
 .missing-card {
-  background: #fff;
-  border: 1px solid #eef0f4;
+  background: var(--cpu-card);
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 12px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
@@ -445,10 +445,10 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
   gap: 5px;
   height: 34px;
   padding: 0 10px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--cpu-border);
   border-radius: 8px;
-  background: #fff;
-  color: #4b5563;
+  background: var(--cpu-card);
+  color: var(--cpu-text-secondary);
   cursor: pointer;
   font: inherit;
   font-size: 13px;
@@ -459,7 +459,7 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
   width: 50px;
   height: 50px;
   border-radius: 12px;
-  background: #f9fafb;
+  background: var(--cpu-surface-subtle);
   display: grid;
   place-items: center;
   flex: 0 0 auto;
@@ -467,8 +467,8 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
 .head-icon .el-icon { font-size: 26px; }
 .head-copy { flex: 1; min-width: 0; }
 .head-title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.head-title-row h2 { margin: 0; color: #111827; font-size: 22px; }
-.head-main p { margin: 6px 0 0; color: #6b7280; font-size: 13px; line-height: 1.7; }
+.head-title-row h2 { margin: 0; color: var(--cpu-text); font-size: 22px; }
+.head-main p { margin: 6px 0 0; color: var(--cpu-text-secondary); font-size: 13px; line-height: 1.7; }
 .manage-btn { flex: 0 0 auto; }
 .missing-card { padding: 28px; }
 .tool-content {
@@ -479,9 +479,9 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
 .form-card,
 .side-note,
 .questionnaire-list {
-  border: 1px solid #eef0f4;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 10px;
-  background: #fff;
+  background: var(--cpu-card);
 }
 .form-card { padding: 18px; }
 .form-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px; }
@@ -492,7 +492,7 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
   display: grid;
   place-items: center;
   color: var(--cpu-primary);
-  background: #ecfdf5;
+  background: rgba(16, 185, 129, 0.12);
   flex: 0 0 auto;
 }
 .form-head-icon .el-icon,
@@ -501,34 +501,34 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
 .side-note h3,
 .questionnaire-list h3 {
   margin: 0;
-  color: #111827;
+  color: var(--cpu-text);
   font-size: 16px;
 }
 .form-head p,
 .side-note p,
 .questionnaire-list p {
   margin: 5px 0 0;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 13px;
   line-height: 1.7;
 }
 .questionnaire-form { display: flex; flex-direction: column; gap: 12px; }
-.field { display: flex; flex-direction: column; gap: 7px; color: #374151; font-size: 13px; font-weight: 600; }
+.field { display: flex; flex-direction: column; gap: 7px; color: var(--cpu-text-secondary); font-size: 13px; font-weight: 600; }
 .field b { color: #dc2626; }
-.field small { color: #6b7280; font-size: 12px; font-weight: 400; line-height: 1.6; }
+.field small { color: var(--cpu-text-secondary); font-size: 12px; font-weight: 400; line-height: 1.6; }
 .field input,
 .field select,
 .field textarea {
   width: 100%;
   min-height: 42px;
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--cpu-border);
   border-radius: 8px;
   padding: 10px 12px;
-  color: #1f2937;
+  color: var(--cpu-text);
   font: inherit;
   line-height: 1.5;
   outline: none;
-  background: #fff;
+  background: var(--cpu-card);
 }
 .field textarea { resize: vertical; min-height: 132px; }
 .field input:focus,
@@ -544,9 +544,9 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
   gap: 6px;
   min-height: 40px;
   padding: 8px 10px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--cpu-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--cpu-card);
   font-weight: 500;
 }
 .choice-item input { width: auto; }
@@ -558,10 +558,10 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
 .rating-btn {
   width: 34px;
   height: 34px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--cpu-border);
   border-radius: 8px;
-  background: #fff;
-  color: #4b5563;
+  background: var(--cpu-card);
+  color: var(--cpu-text-secondary);
   cursor: pointer;
   font: inherit;
   font-weight: 650;
@@ -597,16 +597,16 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
 .plain-action {
   border: 1px solid var(--cpu-primary);
   color: var(--cpu-primary);
-  background: #fff;
+  background: var(--cpu-card);
 }
-.side-note { padding: 16px; align-self: start; background: #f9fafb; }
+.side-note { padding: 16px; align-self: start; background: var(--cpu-surface-subtle); }
 .note-list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
 .note-list span {
   padding: 8px 10px;
   border-radius: 8px;
-  background: #fff;
-  border: 1px solid #eef0f4;
-  color: #4b5563;
+  background: var(--cpu-card);
+  border: 1px solid var(--cpu-border-soft);
+  color: var(--cpu-text-secondary);
   font-size: 12px;
 }
 .questionnaire-list { padding: 18px; }
@@ -622,7 +622,7 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
   padding: 22px;
   border: 1px dashed #d1d5db;
   border-radius: 10px;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   text-align: center;
 }
 .empty-panel-copy { margin: 0; }
@@ -639,9 +639,9 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
   gap: 12px;
   min-height: 72px;
   padding: 12px;
-  border: 1px solid #e5eaf3;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 8px;
-  background: #fff;
+  background: var(--cpu-card);
   color: inherit;
   cursor: pointer;
   font: inherit;
@@ -671,11 +671,11 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
   gap: 4px;
 }
 .related-grade-main b {
-  color: #111827;
+  color: var(--cpu-text);
   overflow-wrap: anywhere;
 }
 .related-grade-main small {
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
   overflow-wrap: anywhere;
 }

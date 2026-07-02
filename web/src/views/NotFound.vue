@@ -14,7 +14,7 @@
   min-height: 100dvh;
   display: grid;
   place-items: center;
-  background: #f5f7fb;
+  background: var(--cpu-bg);
   padding: 24px;
 }
 .content { text-align: center; }
@@ -26,7 +26,7 @@
   margin-bottom: 12px;
 }
 .content p {
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   margin-bottom: 16px;
 }
 </style>

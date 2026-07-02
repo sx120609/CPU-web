@@ -119,7 +119,7 @@ function openTopic() {
   overflow: hidden;
   transition: background 0.15s;
 }
-.topic-row:hover { background: #f4f6f8; }
+.topic-row:hover { background: var(--cpu-surface-soft); }
 .topic-row:focus-visible {
   outline: 2px solid var(--cpu-primary);
   outline-offset: 2px;
@@ -132,7 +132,7 @@ function openTopic() {
 .line1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .tag { flex-shrink: 0; }
 .ai-tag { --el-tag-border-color: #fdba74; --el-tag-hover-color: #9a3412; }
-.title { flex: 1 1 240px; font-size: 15px; color: #1f2937; font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+.title { flex: 1 1 240px; font-size: 15px; color: var(--cpu-text); font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
 
 .line2 {
   display: flex;
@@ -140,7 +140,7 @@ function openTopic() {
   flex-wrap: wrap;
   gap: 10px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   margin-top: 4px;
   min-width: 0;
 }
@@ -148,7 +148,7 @@ function openTopic() {
   margin-top: 6px;
   font-size: 14px;
   line-height: 1.6;
-  color: #1f2937;
+  color: var(--cpu-text);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -161,7 +161,7 @@ function openTopic() {
 .line2 .bot { color: #ef4444; }
 .line2 .edited { color: #b45309; }
 .line2 .heat { color: #0f766e; font-weight: 600; }
-.line2 .dot { color: #d1d5db; }
+.line2 .dot { color: var(--cpu-border); }
 
 .price {
   flex: 0 0 auto;

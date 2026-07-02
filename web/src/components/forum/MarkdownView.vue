@@ -1,5 +1,12 @@
 <template>
-  <div class="md" :class="{ 'md-clickable-images': clickableImages }" ref="el" v-html="renderedHtml"></div>
+  <div
+    v-bind="rootAttrs"
+    class="md"
+    :class="[attrs.class, { 'md-clickable-images': clickableImages }]"
+    :style="attrs.style"
+    ref="el"
+    v-html="renderedHtml"
+  ></div>
   <div v-if="videoGalleryOpen" class="md-video-lightbox" @click.self="closeVideoGallery">
     <button type="button" class="md-video-lightbox__close" @click="closeVideoGallery">关闭</button>
     <button
@@ -44,7 +51,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, nextTick, watch, onBeforeUnmount } from "vue";
+import { computed, ref, onMounted, nextTick, watch, onBeforeUnmount, useAttrs } from "vue";
 import Viewer from "viewerjs";
 import "viewerjs/dist/viewer.css";
 import { renderMarkdown } from "@/utils/markdown";
@@ -57,6 +64,12 @@ const props = withDefaults(defineProps<{
 }>(), {
   clickableImages: false,
   mediaLoading: "lazy",
+});
+defineOptions({ inheritAttrs: false });
+const attrs = useAttrs();
+const rootAttrs = computed(() => {
+  const { class: _class, style: _style, ...rest } = attrs;
+  return rest;
 });
 const renderedHtml = computed(() => enhanceRenderedHtml(renderMarkdown(props.content), props.mediaLoading));
 const el = ref<HTMLElement | null>(null);
@@ -655,7 +668,7 @@ onMounted(() => {
 .md {
   font-size: 15px;
   line-height: 1.75;
-  color: #1f2937;
+  color: var(--cpu-text);
   word-break: break-word;
 }
 .md :deep(h1), .md :deep(h2), .md :deep(h3) {
@@ -698,13 +711,13 @@ onMounted(() => {
 .md :deep(li) { margin: 0.2em 0; }
 .md :deep(blockquote) {
   border-left: 3px solid var(--cpu-primary);
-  background: #ecfdf5;
+  background: rgba(20, 143, 123, 0.1);
   padding: 6px 12px;
-  color: #4b5563;
+  color: var(--cpu-text-secondary);
   margin: 0.6em 0;
 }
 .md :deep(code) {
-  background: #f3f4f6;
+  background: var(--cpu-surface-subtle);
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 0.9em;
@@ -1361,10 +1374,68 @@ onMounted(() => {
   caption-side: top;
   font-weight: 600;
   padding: 4px 0;
-  color: #4b5563;
+  color: var(--cpu-text-secondary);
   text-align: left;
 }
 .md :deep(sub), .md :deep(sup) { font-size: 0.75em; }
+
+:global(html[data-theme="dark"]) .md {
+  color: var(--cpu-text);
+}
+
+:global(html[data-theme="dark"]) .md :deep(.md-image-album > .md-image-shell.is-full-ratio),
+:global(html[data-theme="dark"]) .md :deep(.md-video-thumb) {
+  background: var(--cpu-surface-soft);
+}
+
+:global(html[data-theme="dark"]) .md :deep(.md-image-shell__placeholder),
+:global(html[data-theme="dark"]) .md :deep(.md-video-thumb__fallback),
+:global(html[data-theme="dark"]) .md :deep(.md-image-shell.is-error .md-image-shell__placeholder) {
+  background:
+    linear-gradient(110deg, rgba(255, 255, 255, 0) 24%, rgba(154, 178, 172, 0.18) 48%, rgba(255, 255, 255, 0) 72%),
+    linear-gradient(135deg, #172522 0%, #0d1715 100%);
+}
+
+:global(html[data-theme="dark"]) .md :deep(.md-image-shell__state) {
+  color: var(--cpu-text-secondary);
+  background: rgba(13, 23, 21, 0.9);
+}
+
+:global(html[data-theme="dark"]) .md :deep(.md-image-album > .md-image-shell.is-full-ratio img) {
+  background: var(--cpu-surface-soft);
+}
+
+:global(html[data-theme="dark"]) .md :deep(.qq-share-card),
+:global(html[data-theme="dark"]) .md :deep(.qq-forward-card),
+:global(html[data-theme="dark"]) .md :deep(.qq-forward-entry) {
+  background: var(--cpu-surface-soft);
+  border-color: var(--cpu-border-soft);
+  color: var(--cpu-text);
+  box-shadow: none;
+}
+
+:global(html[data-theme="dark"]) .md :deep(.qq-share-card__title),
+:global(html[data-theme="dark"]) .md :deep(.qq-forward-entry__name) {
+  color: var(--cpu-text);
+}
+
+:global(html[data-theme="dark"]) .md :deep(.qq-share-card__summary),
+:global(html[data-theme="dark"]) .md :deep(.qq-share-card__source),
+:global(html[data-theme="dark"]) .md :deep(.qq-share-card__host),
+:global(html[data-theme="dark"]) .md :deep(.qq-forward-placeholder) {
+  color: var(--cpu-text-secondary);
+  background: var(--cpu-surface-subtle);
+}
+
+:global(html[data-theme="dark"]) .md :deep(th),
+:global(html[data-theme="dark"]) .md :deep(td) {
+  border-color: var(--cpu-border-soft);
+}
+
+:global(html[data-theme="dark"]) .md :deep(th),
+:global(html[data-theme="dark"]) .md :deep(tr:nth-child(even) td) {
+  background: var(--cpu-surface-soft);
+}
 
 :global(.cpu-markdown-viewer.viewer-container) {
   z-index: 3000;

@@ -17,10 +17,10 @@
 }
 .week-btn {
   height: 42px;
-  border: 1px solid #dde4ee;
+  border: 1px solid var(--schedule-border);
   border-radius: 13px;
   background: var(--schedule-surface-bg);
-  color: #172033;
+  color: var(--schedule-text);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -29,7 +29,7 @@
   touch-action: manipulation;
 }
 .week-btn:disabled {
-  color: #b7bfcc;
+  color: var(--schedule-text-muted);
   background: var(--schedule-surface-bg-soft);
 }
 .week-title {
@@ -79,11 +79,11 @@
 }
 .day-pill {
   min-width: 0;
-  border: 1px solid #dde4ee;
+  border: 1px solid var(--schedule-border);
   border-radius: 13px;
   background: var(--schedule-surface-bg);
   padding: 8px 3px;
-  color: #5c6677;
+  color: var(--schedule-text-secondary);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -136,9 +136,9 @@
   text-align: center;
   gap: 12px;
   padding: 20px;
-  border: 1px solid rgba(221, 228, 238, 0.72);
+  border: 1px solid var(--schedule-border);
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.66);
+  background: var(--schedule-surface-bg);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
 }
@@ -152,13 +152,13 @@
 }
 .state-card p {
   margin: 0;
-  color: #667085;
+  color: var(--schedule-text-secondary);
   line-height: 1.7;
 }
 .state-card .scope-note {
   font-size: 12px;
   color: #b45309;
-  background: #fef3c7;
+  background: rgba(251, 191, 36, 0.18);
   padding: 8px 12px;
   border-radius: 8px;
   line-height: 1.6;
@@ -175,7 +175,7 @@
   width: 112px;
   height: 42px;
   flex: 0 0 112px;
-  border: 1px solid #dde4ee;
+  border: 1px solid var(--schedule-border);
   border-radius: 9px;
   background: var(--schedule-surface-bg-soft);
   display: grid;
@@ -208,7 +208,7 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
-  color: #667085;
+  color: var(--schedule-text-secondary);
 }
 .summary div {
   display: flex;
@@ -216,11 +216,11 @@
   gap: 2px;
 }
 .summary b {
-  color: #172033;
+  color: var(--schedule-text);
   font-size: 20px;
 }
 .summary small {
-  color: #98a2b3;
+  color: var(--schedule-text-muted);
   font-size: 11px;
 }
 .summary em {

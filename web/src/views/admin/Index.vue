@@ -275,7 +275,7 @@ watch(tab, (next) => {
 .admin-head { display: flex; justify-content: space-between; align-items: center; }
 .title { margin: 0; font-size: 24px; }
 .user-tag { display: flex; gap: 8px; align-items: center; }
-.me { font-size: 13px; color: #4b5563; }
+.me { font-size: 13px; color: var(--cpu-text-secondary); }
 .overview-alert :deep(.el-alert__content) {
   display: flex;
   align-items: center;
@@ -290,8 +290,8 @@ watch(tab, (next) => {
   gap: 12px;
 }
 .ov-card {
-  background: #fff;
-  border: 1px solid #eef0f4;
+  background: var(--cpu-card);
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 8px;
   padding: 14px 16px;
   min-width: 0;
@@ -300,7 +300,7 @@ watch(tab, (next) => {
   grid-column: span 2;
   background:
     radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 30%),
-    linear-gradient(135deg, #f8fbff 0%, #ffffff 54%, #f3f8ff 100%);
+    linear-gradient(135deg, var(--cpu-surface-subtle) 0%, var(--cpu-card) 54%, rgba(59, 130, 246, 0.08) 100%);
 }
 .ov-card-head {
   display: flex;
@@ -318,14 +318,20 @@ watch(tab, (next) => {
   font-weight: 600;
 }
 .ov-num { font-size: 24px; font-weight: 700; color: var(--cpu-primary); line-height: 1; white-space: nowrap; }
-.ov-lbl { font-size: 12px; color: #6b7280; margin-top: 4px; }
-.ov-sub { font-size: 11px; color: #6b7280; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-lbl { font-size: 12px; color: var(--cpu-text-secondary); margin-top: 4px; }
+.ov-sub { font-size: 11px; color: var(--cpu-text-secondary); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ov-chart {
   margin-top: 10px;
   height: 180px;
   width: 100%;
 }
-.cpu-card { background: #fff; border-radius: 12px; padding: 12px 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
+.cpu-card {
+  background: var(--cpu-card);
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 12px;
+  padding: 12px 16px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+}
 
 @media (max-width: 1100px) {
   .overview { grid-template-columns: repeat(3, minmax(0, 1fr)); }

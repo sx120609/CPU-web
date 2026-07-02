@@ -314,11 +314,11 @@ async function confirmEnable() {
 <style scoped>
 .forum-index { display: flex; flex-direction: column; gap: 24px; }
 .page-title { margin: 0; font-size: 22px; }
-.cluster-title { margin: 0 0 12px; font-size: 16px; color: #1f2937; font-weight: 600; }
+.cluster-title { margin: 0 0 12px; font-size: 16px; color: var(--cpu-text); font-weight: 600; }
 .cpu-card {
-  background: #fff;
+  background: var(--cpu-card);
   border-radius: 14px;
-  border: 1px solid #eef0f4;
+  border: 1px solid var(--cpu-border-soft);
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
 }
 .boards-content {
@@ -362,12 +362,12 @@ async function confirmEnable() {
 .latest-entry-title {
   font-size: 16px;
   font-weight: 700;
-  color: #111827;
+  color: var(--cpu-text);
 }
 .latest-entry-desc {
   margin-top: 4px;
   font-size: 13px;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   line-height: 1.55;
 }
 .latest-entry-arrow {
@@ -378,8 +378,8 @@ async function confirmEnable() {
 }
 
 .gate-card {
-  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-  border: 1px solid #e5e7eb;
+  background: linear-gradient(135deg, var(--cpu-card) 0%, var(--cpu-surface-subtle) 100%);
+  border: 1px solid var(--cpu-border);
   border-radius: 16px;
   padding: 24px;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
@@ -395,14 +395,14 @@ async function confirmEnable() {
 .gate-head h2 {
   margin: 0;
   font-size: 24px;
-  color: #111827;
+  color: var(--cpu-text);
 }
 
 .gate-badge {
   width: fit-content;
   padding: 4px 10px;
   border-radius: 999px;
-  background: #fee2e2;
+  background: rgba(239, 68, 68, 0.14);
   color: #b91c1c;
   font-size: 12px;
   font-weight: 700;
@@ -412,7 +412,7 @@ async function confirmEnable() {
   margin: 0;
   font-size: 14px;
   line-height: 1.8;
-  color: #374151;
+  color: var(--cpu-text-secondary);
 }
 
 .gate-points {
@@ -421,14 +421,14 @@ async function confirmEnable() {
   gap: 10px;
   font-size: 13px;
   line-height: 1.7;
-  color: #4b5563;
+  color: var(--cpu-text-secondary);
 }
 
 .gate-points > div {
   padding: 12px 14px;
   border-radius: 12px;
-  background: #f8fafc;
-  border: 1px solid #eef2f7;
+  background: var(--cpu-surface-subtle);
+  border: 1px solid var(--cpu-border-soft);
 }
 
 .gate-actions {
@@ -445,8 +445,8 @@ async function confirmEnable() {
 }
 
 .board-card {
-  background: #fff;
-  border: 1px solid #eef0f4;
+  background: var(--cpu-card);
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 12px;
   padding: 14px;
   cursor: pointer;
@@ -465,15 +465,15 @@ async function confirmEnable() {
   outline-offset: 2px;
 }
 
-.board-card.readonly { background: linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%); }
+.board-card.readonly { background: linear-gradient(135deg, var(--cpu-card) 0%, rgba(16, 185, 129, 0.08) 100%); }
 
 .footer-tip {
   margin-top: 8px;
   padding: 10px 14px;
-  background: #f9fafb;
+  background: var(--cpu-surface-subtle);
   border-radius: 10px;
   font-size: 13px;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -491,7 +491,7 @@ async function confirmEnable() {
   max-height: min(52dvh, 520px);
   overflow: auto;
   padding-right: 4px;
-  color: #374151;
+  color: var(--cpu-text-secondary);
 }
 
 .forum-notice p {
@@ -504,8 +504,8 @@ async function confirmEnable() {
   margin-top: 16px;
   padding: 14px 16px;
   border-radius: 12px;
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.34);
 }
 
 .forum-notice-disclaimer h3 {
@@ -537,7 +537,7 @@ async function confirmEnable() {
 
 .read-hint {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
 }
 
 .icon {
@@ -552,11 +552,11 @@ async function confirmEnable() {
 }
 
 .body { flex: 1; min-width: 0; }
-.name { font-size: 15px; font-weight: 600; color: #1f2937; overflow-wrap: anywhere; }
+.name { font-size: 15px; font-weight: 600; color: var(--cpu-text); overflow-wrap: anywhere; }
 
 .desc {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   margin-top: 2px;
   overflow: hidden;
   display: -webkit-box;
