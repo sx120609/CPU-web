@@ -439,6 +439,7 @@ function openRawApp(a: IServiceApp) {
   display: grid;
   place-items: center;
   background: var(--cpu-surface-subtle);
+  border: 1px solid transparent;
   border-radius: 12px;
   overflow: hidden;
 }
@@ -508,6 +509,20 @@ function openRawApp(a: IServiceApp) {
 }
 .fav-btn :deep(.el-icon) {
   font-size: 15px;
+}
+
+:global(html[data-theme="dark"]) .app-icon {
+  background: rgba(241, 245, 249, 0.92) !important;
+  border-color: rgba(226, 232, 240, 0.86) !important;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18), inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+}
+
+:global(html[data-theme="dark"]) .app-icon img {
+  filter: saturate(1.05) contrast(1.08);
+}
+
+:global(html[data-theme="dark"]) .icon-fallback {
+  color: #0f766e !important;
 }
 
 @media (max-width: 700px) {

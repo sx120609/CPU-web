@@ -727,6 +727,258 @@ html[data-theme="dark"] {
     background: var(--cpu-surface-soft) !important;
     border-color: var(--cpu-border-soft) !important;
   }
+
+  .search-page,
+  .tools-page,
+  .tool-detail-page,
+  .questionnaire-page,
+  .file-submit-page,
+  .grade-lookup-page,
+  .pdf-tool-panel,
+  .tool-manage-page {
+    color: var(--cpu-text);
+  }
+
+  .file-submit-page,
+  .grade-lookup-page,
+  .questionnaire-editor,
+  .questionnaire-builder-overlay {
+    background: var(--cpu-bg) !important;
+  }
+
+  .search-page :is(.course-row, .svc-row),
+  .tools-page :is(.tools-hero, .tools-panel, .tool-card),
+  .tool-detail-page :is(.tool-shell, .missing-card, .form-card, .side-note, .questionnaire-list, .related-grade-item),
+  .questionnaire-page :is(.fill-card, .field-card, .back-btn, .rating-field button),
+  .file-submit-page :is(.submit-head, .submit-card, .file-rule-box, .pdf-tool-shortcut, .file-list div),
+  .grade-lookup-page :is(.grade-sheet, .record-panel, .feedback-panel, .panel-head, .record-row, .back-btn),
+  .pdf-tool-panel :is(.pdf-login-panel, .mode-button, .upload-panel, .settings-panel, .drop-zone, .file-row, .control-grid input, .control-grid select, .result-strip),
+  .tool-manage-page :is(
+    .admin-section,
+    .questionnaire-summary div,
+    .grade-upload-panel,
+    .field-rule-list div,
+    .grade-uploader .el-upload-dragger,
+    .grade-preview-box,
+    .grade-preview-table-wrap,
+    .questionnaire-row-card,
+    .file-collection-card,
+    .file-template-bar,
+    .file-field-row,
+    .rename-builder,
+    .expected-list-box,
+    .rename-insert-grid,
+    .rename-token,
+    .file-download-list button,
+    .preview-field,
+    .preview-rating span,
+    .stat-card,
+    .response-card,
+    .metric-grid div,
+    .text-samples p
+  ),
+  .questionnaire-builder-dialog :is(
+    .el-dialog__header,
+    .el-dialog__body,
+    .builder-topbar,
+    .type-palette,
+    .editor-card,
+    .field-editor,
+    .builder-side,
+    .inspector-card,
+    .mobile-publish-card,
+    .branch-editor,
+    .type-palette button,
+    .builder-back
+  ),
+  .responsive-tool-dialog :is(.file-manager-card, .file-manager-actions button) {
+    background: var(--cpu-card) !important;
+    border-color: var(--cpu-border-soft) !important;
+    color: var(--cpu-text) !important;
+  }
+
+  .tool-manage-page :is(
+    .grade-upload-panel,
+    .rename-insert-grid,
+    .file-template-bar,
+    .field-rule-list div,
+    .file-tool-action,
+    .file-download-list button
+  ),
+  .questionnaire-builder-dialog :is(.mobile-publish-card, .branch-editor),
+  .pdf-tool-panel :is(.drop-zone, .result-strip),
+  .file-submit-page :is(.file-rule-box, .pdf-tool-shortcut),
+  .grade-lookup-page :is(.panel-head),
+  .tool-detail-page :is(.side-note, .related-grade-icon) {
+    background: var(--cpu-surface-subtle) !important;
+  }
+
+  .tool-manage-page :is(
+    .section-head p,
+    .questionnaire-summary span,
+    .upload-copy p,
+    .field-rule-list small,
+    .grade-preview-head span,
+    .q-title-cell span,
+    .q-row-meta,
+    .file-template-bar span,
+    .config-field small,
+    .rename-example,
+    .rename-token-label,
+    .file-download-list small,
+    .preview-head p,
+    .preview-field p,
+    .responses-title span,
+    .stat-head span,
+    .response-head span,
+    .metric-grid span,
+    .answer-row span
+  ),
+  .tool-detail-page :is(.head-main p, .form-head p, .side-note p, .questionnaire-list p, .field, .field small, .note-list span, .related-grade-main small),
+  .questionnaire-page :is(.fill-head p, .field-title p, .rating-field span),
+  .file-submit-page :is(.submit-head p, .file-rule-box span, .pdf-tool-shortcut span, .file-list small),
+  .grade-lookup-page :is(.lookup-head p, .panel-head span, .record-row span, .feedback-loading, .feedback-state),
+  .pdf-tool-panel :is(.pdf-login-panel p, .mode-button small, .drop-zone span, .file-main small, .panel-heading p, .result-strip),
+  .responsive-tool-dialog :is(.responses-title span, .file-manager-main small) {
+    color: var(--cpu-text-secondary) !important;
+  }
+
+  .tool-manage-page :is(
+    .section-head h3,
+    .questionnaire-summary b,
+    .upload-copy h4,
+    .field-rule-list span,
+    .grade-preview-head b,
+    .q-title-cell b,
+    .file-template-bar b,
+    .file-field-head,
+    .compact-field span,
+    .config-field span,
+    .rename-head b,
+    .preview-head h2,
+    .preview-label,
+    .responses-title b,
+    .stat-head b,
+    .response-head b,
+    .choice-stat-row b,
+    .metric-grid b
+  ),
+  .tool-detail-page :is(.head-title-row h2, .form-head h3, .side-note h3, .questionnaire-list h3, .related-grade-main b),
+  .questionnaire-page :is(.fill-head h2, .field-title b),
+  .file-submit-page :is(.submit-head h2, .submit-field span, .file-rule-box b, .pdf-tool-shortcut b),
+  .grade-lookup-page :is(.lookup-head h2, .panel-head h3, .record-row b),
+  .pdf-tool-panel :is(.pdf-login-panel h3, .mode-button span, .drop-zone strong, .file-main b, .panel-heading h3),
+  .responsive-tool-dialog :is(.responses-title b, .file-manager-main strong) {
+    color: var(--cpu-text) !important;
+  }
+
+  .search-page :is(.course-row, .svc-row),
+  .tool-manage-page :is(.grade-preview-table th, .grade-preview-table td, .stat-head, .response-head),
+  .grade-lookup-page :is(.lookup-head, .panel-head, .record-row),
+  .questionnaire-page .fill-head {
+    border-color: var(--cpu-border-soft) !important;
+  }
+
+  .search-page :is(.course-row:hover, .svc-row:hover),
+  .grade-lookup-page .record-row:hover,
+  .tool-manage-page :is(.file-tool-action:hover, .file-menu-action:hover, .rename-token:hover, .file-download-list button:hover),
+  .responsive-tool-dialog .file-manager-actions button:hover {
+    background: var(--cpu-surface-subtle) !important;
+  }
+
+  .tool-manage-page :is(.file-menu-action, .file-tool-action:disabled, .file-menu-action:disabled),
+  .file-submit-page .file-list button:disabled,
+  .questionnaire-page .rating-field button:disabled {
+    background: var(--cpu-surface-soft) !important;
+    border-color: var(--cpu-border-soft) !important;
+    color: var(--cpu-text-muted) !important;
+  }
+
+  .tool-manage-page :is(.file-tool-action, .file-menu-action, .related-grade-action),
+  .tool-detail-page :is(.back-btn:hover, .related-grade-action),
+  .file-submit-page :is(.back-link, .file-list button),
+  .grade-lookup-page :is(.back-btn:hover, .head-copy > span),
+  .pdf-tool-panel :is(.file-actions button) {
+    color: var(--cpu-primary) !important;
+  }
+
+  .admin-page :is(
+    .meta-row,
+    .setup-guide > div,
+    .status-box,
+    .bind-token,
+    .record-card,
+    .status-card,
+    .action-card,
+    .site-config,
+    .trust-field,
+    .trust-subcard,
+    .feature-row,
+    .storage-drive-box,
+    .migration-result,
+    .storage-field,
+    .storage-meta,
+    .summary-pill,
+    .toggle-pill,
+    .paths code,
+    .ai-form,
+    .prompt-card,
+    .storage-layout,
+    .danger-card
+  ) {
+    background: var(--cpu-card) !important;
+    border-color: var(--cpu-border-soft) !important;
+    color: var(--cpu-text) !important;
+  }
+
+  .admin-page :is(.summary-pill, .toggle-pill, .paths code, .setup-guide > div, .prompt-card, .storage-drive-box, .migration-result) {
+    background: var(--cpu-surface-subtle) !important;
+  }
+
+  .admin-page :is(.storage-error, .migration-error-row, .danger-card) {
+    background: rgba(245, 158, 11, 0.12) !important;
+    border-color: rgba(245, 158, 11, 0.28) !important;
+  }
+
+  .admin-page :is(
+    .section-desc,
+    .field-label,
+    .field-inline-label,
+    .desc,
+    .hint,
+    .storage-meta,
+    .storage-hint,
+    .drive-desc,
+    .result-sub,
+    .record-meta,
+    .log-meta,
+    .restore-file-hint
+  ) {
+    color: var(--cpu-text-secondary) !important;
+  }
+
+  .admin-page :is(.result-title, .value, .restore-file, .subcard-title, .file-path) {
+    color: var(--cpu-text) !important;
+  }
+
+  .admin-page :is(.value.path, code) {
+    color: var(--cpu-primary-light) !important;
+  }
+
+  .app-icon {
+    background: rgba(241, 245, 249, 0.92) !important;
+    border: 1px solid rgba(226, 232, 240, 0.86) !important;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18), inset 0 0 0 1px rgba(255, 255, 255, 0.72) !important;
+    color: #0f172a !important;
+  }
+
+  .app-icon img {
+    filter: saturate(1.05) contrast(1.08);
+  }
+
+  .app-icon .icon-fallback {
+    color: #0f766e !important;
+  }
 }
 
 @media (max-width: 768px) {
