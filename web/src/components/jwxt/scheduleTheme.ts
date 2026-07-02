@@ -227,7 +227,7 @@ export const scheduleThemeOptions: ScheduleThemeOption[] = [
   scheduleThemePalettes["color-glass"],
 ].map(({ key, label, preview }) => ({ key, label, preview }));
 
-export function getColorGlassCourseTone(name: string): CourseTone {
+export function getColorGlassCourseTone(name: string, dark = false): CourseTone {
   let hash = 0;
   const seed = name.trim().replace(/\s+/g, " ");
   for (let i = 0; i < seed.length; i += 1) {
@@ -235,6 +235,13 @@ export function getColorGlassCourseTone(name: string): CourseTone {
   }
   const hue = hash % 360;
   const saturation = 58 + ((hash >>> 8) % 18);
+  if (dark) {
+    return {
+      bg: `hsla(${hue}, ${Math.min(86, saturation + 8)}%, 24%, 0.76)`,
+      border: `hsla(${hue}, ${Math.min(88, saturation + 10)}%, 62%, 0.58)`,
+      text: `hsl(${hue}, ${Math.min(86, saturation + 8)}%, 88%)`,
+    };
+  }
   const bgLightness = 89 + ((hash >>> 16) % 5);
   const borderLightness = 48 + ((hash >>> 20) % 10);
   const textLightness = 25 + ((hash >>> 24) % 8);
@@ -279,5 +286,22 @@ export function scheduleThemeCssVars(value?: string | null): Record<string, stri
     "--schedule-course-bg": theme.courseBg,
     "--schedule-course-border": theme.courseBorder,
     "--schedule-course-text": theme.courseText,
+  };
+}
+
+export function scheduleThemeDarkCssVars(value?: string | null): Record<string, string> {
+  const theme = getScheduleThemePalette(value);
+  return {
+    "--schedule-accent": theme.accent,
+    "--schedule-accent-strong": `color-mix(in srgb, ${theme.accent} 58%, white)`,
+    "--schedule-accent-soft": `color-mix(in srgb, ${theme.accent} 14%, transparent)`,
+    "--schedule-accent-soft-hover": `color-mix(in srgb, ${theme.accent} 22%, transparent)`,
+    "--schedule-accent-pale": `color-mix(in srgb, ${theme.accent} 18%, transparent)`,
+    "--schedule-accent-pale-hover": `color-mix(in srgb, ${theme.accent} 26%, transparent)`,
+    "--schedule-accent-border": `color-mix(in srgb, ${theme.accent} 42%, transparent)`,
+    "--schedule-accent-contrast": "#ffffff",
+    "--schedule-course-bg": `color-mix(in srgb, ${theme.courseBg} 26%, #07110f)`,
+    "--schedule-course-border": `color-mix(in srgb, ${theme.courseBorder} 62%, transparent)`,
+    "--schedule-course-text": `color-mix(in srgb, ${theme.courseText} 34%, white)`,
   };
 }

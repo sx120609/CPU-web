@@ -172,7 +172,7 @@
     <el-drawer
       v-model="mobileMenuOpen"
       direction="btt"
-      size="420px"
+      size="min(92dvh, 640px)"
       class="mobile-drawer"
       title="快捷入口"
     >
@@ -608,7 +608,7 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 .topbar-inner {
-  max-width: 1440px;
+  max-width: 1280px;
   margin: 0 auto;
   height: 60px;
   padding: 0 20px;
@@ -728,6 +728,7 @@ function setAppearanceMode(command: string | number | object) {
   display: flex;
   align-items: center;
   gap: 6px;
+  margin-left: auto;
   flex-shrink: 0;
 }
 
@@ -862,44 +863,44 @@ function setAppearanceMode(command: string | number | object) {
 
 .drawer-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-auto-rows: 76px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: 62px;
   align-items: stretch;
-  gap: 10px;
+  gap: 8px;
 }
 
 .drawer-link {
   border: 1px solid var(--cpu-border-soft);
   background: var(--cpu-surface);
   border-radius: 10px;
-  height: 76px;
-  min-height: 76px;
-  padding: 10px 8px;
+  height: 62px;
+  min-height: 62px;
+  padding: 8px 6px;
   color: var(--cpu-text-secondary);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   line-height: 1;
   font: inherit;
   overflow: hidden;
 }
 
 .drawer-link .el-icon {
-  font-size: 22px;
-  width: 24px;
-  height: 24px;
+  font-size: 20px;
+  width: 22px;
+  height: 22px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 24px;
+  flex: 0 0 22px;
   color: var(--cpu-primary);
 }
 
 .drawer-link span {
   max-width: 100%;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
@@ -907,8 +908,8 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 .drawer-account {
-  margin-top: 14px;
-  padding-top: 14px;
+  margin-top: 10px;
+  padding-top: 10px;
   border-top: 1px solid var(--cpu-border-soft);
   display: flex;
   align-items: center;
@@ -939,9 +940,9 @@ function setAppearanceMode(command: string | number | object) {
 
 .drawer-appearance {
   display: grid;
-  gap: 8px;
-  margin-top: 14px;
-  padding-top: 14px;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
   border-top: 1px solid var(--cpu-border-soft);
 }
 
@@ -964,7 +965,7 @@ function setAppearanceMode(command: string | number | object) {
 .appearance-segmented button {
   display: inline-flex;
   min-width: 0;
-  min-height: 38px;
+  min-height: 34px;
   align-items: center;
   justify-content: center;
   gap: 5px;
@@ -1149,7 +1150,7 @@ function setAppearanceMode(command: string | number | object) {
 
   :deep(.mobile-drawer) {
     border-radius: 18px 18px 0 0;
-    height: min(420px, calc(100dvh - 16px)) !important;
+    height: min(92dvh, 640px) !important;
     padding-bottom: env(safe-area-inset-bottom);
   }
 
@@ -1191,12 +1192,13 @@ function setAppearanceMode(command: string | number | object) {
   }
 
   :deep(.mobile-drawer .el-drawer__header) {
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
 
   :deep(.mobile-drawer .el-drawer__body) {
     display: flex;
     flex-direction: column;
+    overflow: visible;
   }
 
   .dlg-tip {
@@ -1206,7 +1208,7 @@ function setAppearanceMode(command: string | number | object) {
 
 @media (max-width: 420px) {
   .drawer-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .touch-icon-btn {
@@ -1235,6 +1237,25 @@ function setAppearanceMode(command: string | number | object) {
 
   .touch-icon-btn {
     width: 36px;
+  }
+
+  .drawer-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-rows: 58px;
+    gap: 7px;
+  }
+
+  .drawer-link {
+    height: 58px;
+    min-height: 58px;
+    padding: 7px 5px;
+  }
+
+  .drawer-link .el-icon {
+    font-size: 19px;
+    width: 21px;
+    height: 21px;
+    flex-basis: 21px;
   }
 }
 </style>

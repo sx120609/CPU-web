@@ -351,7 +351,8 @@ async function confirmEnable() {
   border-radius: 14px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(16, 185, 129, 0.22);
   font-size: 24px;
   flex-shrink: 0;
 }

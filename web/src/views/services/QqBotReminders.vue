@@ -279,8 +279,8 @@ function requestMessage(error: unknown) {
 
 .reminder-head,
 .reminder-panel {
-  background: #fff;
-  border: 1px solid #edf1f5;
+  background: var(--cpu-card);
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 12px;
   box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
 }
@@ -302,11 +302,12 @@ function requestMessage(error: unknown) {
 .reminder-head h2 {
   margin: 4px 0 6px;
   font-size: 24px;
+  color: var(--cpu-text);
 }
 
 .reminder-head p {
   margin: 0;
-  color: #64748b;
+  color: var(--cpu-text-secondary);
 }
 
 .head-actions {
@@ -331,14 +332,16 @@ function requestMessage(error: unknown) {
   gap: 12px;
   padding: 14px 16px;
   border-radius: 8px;
-  background: #ecfdf5;
-  color: #065f46;
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  color: var(--cpu-text);
   margin-bottom: 16px;
 }
 
 .binding-strip.muted {
-  background: #fff7ed;
-  color: #9a3412;
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.28);
+  color: var(--cpu-text);
 }
 
 .binding-strip div {
@@ -349,6 +352,7 @@ function requestMessage(error: unknown) {
 
 .binding-strip span {
   font-size: 13px;
+  color: var(--cpu-text-secondary);
 }
 
 .reminder-list {
@@ -358,10 +362,10 @@ function requestMessage(error: unknown) {
 }
 
 .reminder-item {
-  border: 1px solid #edf1f5;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 8px;
   padding: 16px;
-  background: #fff;
+  background: var(--cpu-card);
 }
 
 .item-head {
@@ -381,7 +385,7 @@ function requestMessage(error: unknown) {
   height: 24px;
   padding: 0 8px;
   border-radius: 6px;
-  background: #eef6ff;
+  background: rgba(37, 99, 235, 0.12);
   color: #2563eb;
   font-size: 12px;
   font-weight: 700;
@@ -391,13 +395,14 @@ function requestMessage(error: unknown) {
   margin: 8px 0 6px;
   font-size: 18px;
   line-height: 1.35;
+  color: var(--cpu-text);
 }
 
 .item-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  color: #64748b;
+  color: var(--cpu-text-secondary);
   font-size: 13px;
 }
 
@@ -416,9 +421,13 @@ function requestMessage(error: unknown) {
 }
 
 .setting-block > span {
-  color: #475569;
+  color: var(--cpu-text-secondary);
   font-size: 13px;
   font-weight: 700;
+}
+
+:global(html[data-theme="dark"]) .tool-badge {
+  color: #93c5fd;
 }
 
 .timing-group {

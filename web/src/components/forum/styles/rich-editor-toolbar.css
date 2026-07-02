@@ -2,11 +2,11 @@
   --editor-toolbar-top: 0px;
   width: 100%;
   position: relative;
-  border: 1px solid #d8e2ec;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 14px;
-  background: #fff;
+  background: var(--cpu-card);
   overflow: visible;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+  box-shadow: var(--cpu-shadow-sm);
 }
 
 .editor-toolbar {
@@ -17,17 +17,17 @@
   flex-direction: column;
   gap: 8px;
   padding: 12px 14px 10px;
-  border-bottom: 1px solid #e6edf5;
+  border-bottom: 1px solid var(--cpu-border-soft);
   border-radius: 14px 14px 0 0;
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(244, 247, 251, 0.94));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--cpu-card) 96%, transparent), color-mix(in srgb, var(--cpu-surface-soft) 92%, transparent));
   backdrop-filter: blur(14px);
 }
 
 .rich-editor.toolbar-static {
-  border-color: #e6ecf3;
+  border-color: var(--cpu-border-soft);
   border-radius: 18px;
-  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.07);
-  background: linear-gradient(180deg, #fcfdff 0%, #ffffff 100%);
+  box-shadow: var(--cpu-shadow-sm);
+  background: linear-gradient(180deg, var(--cpu-surface-subtle) 0%, var(--cpu-card) 100%);
 }
 
 .rich-editor.toolbar-static .editor-toolbar {
@@ -35,11 +35,11 @@
   top: auto;
   gap: 10px;
   padding: 14px 14px 12px;
-  border-bottom: 1px solid #edf1f5;
+  border-bottom: 1px solid var(--cpu-border-soft);
   border-radius: 18px 18px 0 0;
   background:
     radial-gradient(circle at top left, rgba(22, 135, 118, 0.08), transparent 34%),
-    linear-gradient(180deg, #f8fbfd 0%, #fdfefe 100%);
+    linear-gradient(180deg, var(--cpu-surface-subtle) 0%, var(--cpu-card) 100%);
   backdrop-filter: none;
 }
 
@@ -48,14 +48,14 @@
 }
 
 .rich-editor.toolbar-static .toolbar-title {
-  color: #14532d;
+  color: var(--cpu-primary);
 }
 
 .rich-editor.toolbar-static .toolbar-status {
   padding: 4px 8px;
   border-radius: 999px;
-  background: #eefbf6;
-  color: #0f766e;
+  background: rgba(20, 143, 123, 0.12);
+  color: var(--cpu-primary);
 }
 
 .toolbar-head {
@@ -67,7 +67,7 @@
 }
 
 .toolbar-title {
-  color: #0f766e;
+  color: var(--cpu-primary);
   font-size: 13px;
   font-weight: 800;
   line-height: 1.2;
@@ -78,7 +78,7 @@
 .toolbar-status {
   min-width: 0;
   font-size: 12px;
-  color: #7b8794;
+  color: var(--cpu-text-secondary);
   line-height: 1.3;
   text-align: right;
 }
@@ -88,11 +88,11 @@
   flex-wrap: wrap;
   gap: 0;
   align-items: flex-start;
-  border: 1px solid #dde6f0;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 14px;
-  background: #fff;
+  background: var(--cpu-card);
   padding: 6px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--cpu-card) 80%, white);
 }
 
 .rich-editor.toolbar-static .toolbar-scroll {
@@ -116,16 +116,16 @@
 .rich-editor.toolbar-static .toolbar-group {
   gap: 6px;
   padding: 8px;
-  border: 1px solid #e6edf5;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+  background: color-mix(in srgb, var(--cpu-card) 94%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--cpu-card) 80%, white);
 }
 
 .toolbar-group + .toolbar-group {
   margin-left: 6px;
   padding-left: 12px;
-  border-left: 1px solid #e7edf4;
+  border-left: 1px solid var(--cpu-border-soft);
 }
 
 .rich-editor.toolbar-static .toolbar-group + .toolbar-group {
@@ -141,10 +141,10 @@
 .editor-toolbar button {
   appearance: none;
   flex: 0 0 auto;
-  border: 1px solid #d5e1ec;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 10px;
-  background: #fff;
-  color: #344054;
+  background: var(--cpu-card);
+  color: var(--cpu-text-secondary);
   cursor: pointer;
   font: inherit;
   font-size: 13px;
@@ -159,9 +159,9 @@
 
 .rich-editor.toolbar-static .editor-toolbar button {
   min-height: 38px;
-  border-color: #dbe5ee;
+  border-color: var(--cpu-border-soft);
   border-radius: 11px;
-  background: #fbfdff;
+  background: var(--cpu-surface-subtle);
 }
 
 .editor-toolbar button:hover {
@@ -170,9 +170,9 @@
 }
 
 .editor-toolbar button.active {
-  border-color: #168776;
-  background: #e8f7f3;
-  color: #0f766e;
+  border-color: var(--cpu-primary);
+  background: rgba(20, 143, 123, 0.14);
+  color: var(--cpu-primary);
   box-shadow: inset 0 0 0 1px rgba(22, 135, 118, 0.12);
 }
 
@@ -214,9 +214,9 @@
   flex-direction: column;
   gap: 8px;
   padding: 8px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 12px;
-  background: #fff;
+  background: var(--cpu-card);
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
@@ -232,7 +232,7 @@
 
 .mobile-toolbar-note {
   font-size: 11px;
-  color: #7b8794;
+  color: var(--cpu-text-secondary);
   line-height: 1.4;
 }
 
@@ -240,7 +240,7 @@
 .draft-state,
 .foot-note,
 .foot-count {
-  color: #98a2b3;
+  color: var(--cpu-text-muted);
   font-size: 12px;
 }
 

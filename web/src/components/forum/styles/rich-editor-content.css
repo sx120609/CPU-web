@@ -6,17 +6,17 @@
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
   padding: 16px;
-  color: #1f2937;
+  color: var(--cpu-text);
   font-size: 15px;
   line-height: 1.75;
   outline: none;
   word-break: break-word;
-  background: #fff;
+  background: var(--cpu-card);
 }
 
 .editor-surface:empty::before {
   content: attr(data-placeholder);
-  color: #98a2b3;
+  color: var(--cpu-text-muted);
 }
 
 .editor-surface:focus {
@@ -45,8 +45,8 @@
   margin: 0.6em 0;
   padding: 6px 12px;
   border-left: 3px solid var(--cpu-primary);
-  background: #ecfdf5;
-  color: #4b5563;
+  background: rgba(20, 143, 123, 0.12);
+  color: var(--cpu-text-secondary);
 }
 
 .editor-surface :deep(a) {
@@ -58,16 +58,16 @@
   display: inline-block;
   width: auto;
   object-fit: contain;
-  border: 1px solid #dbe4ee;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 8px;
-  background: #f8fafc;
+  background: var(--cpu-surface-subtle);
   margin: 8px 0;
   padding: 4px;
   vertical-align: top;
 }
 
 .editor-surface :deep(img[data-editor-selected="true"]) {
-  border-color: #168776;
+  border-color: var(--cpu-primary);
   box-shadow: 0 0 0 3px rgba(22, 135, 118, 0.16);
 }
 
@@ -167,7 +167,7 @@
   width: 100%;
   max-width: none;
   aspect-ratio: 16 / 9;
-  border: 1px solid #dbe4ee;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 14px;
   background: linear-gradient(180deg, #0f172a 0%, #020617 100%);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);

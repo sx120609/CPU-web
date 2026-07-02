@@ -143,8 +143,8 @@ function normalizeSponsorWallError(error_: unknown) {
   align-items: end;
   background:
     radial-gradient(circle at 88% 18%, rgba(22, 135, 118, 0.18), transparent 30%),
-    linear-gradient(135deg, #f8fafc 0%, #ecfdf5 48%, #fff7ed 100%);
-  border: 1px solid #e2e8f0;
+    linear-gradient(135deg, var(--cpu-surface-soft) 0%, rgba(16, 185, 129, 0.12) 48%, rgba(245, 158, 11, 0.12) 100%);
+  border: 1px solid var(--cpu-border-soft);
 }
 
 .hero-copy {
@@ -166,14 +166,14 @@ function normalizeSponsorWallError(error_: unknown) {
 
 .wall-hero h1 {
   margin: 0;
-  color: #0f172a;
+  color: var(--cpu-text);
   font-size: 38px;
   line-height: 1.15;
 }
 
 .hero-desc {
   margin: 12px 0 0;
-  color: #475569;
+  color: var(--cpu-text-secondary);
   font-size: 15px;
   line-height: 1.8;
 }
@@ -193,14 +193,14 @@ function normalizeSponsorWallError(error_: unknown) {
 .hero-stats div {
   border-radius: 8px;
   padding: 16px;
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: color-mix(in srgb, var(--cpu-card) 78%, transparent);
+  border: 1px solid var(--cpu-border-soft);
   backdrop-filter: blur(10px);
 }
 
 .hero-stats span {
   display: block;
-  color: #64748b;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
   margin-bottom: 8px;
 }
@@ -213,7 +213,7 @@ function normalizeSponsorWallError(error_: unknown) {
 .wall-loading {
   padding: 20px;
   border-radius: 12px;
-  background: #fff;
+  background: var(--cpu-card);
 }
 
 .wall-content {
@@ -231,13 +231,13 @@ function normalizeSponsorWallError(error_: unknown) {
 
 .section-head h2 {
   margin: 0;
-  color: #111827;
+  color: var(--cpu-text);
   font-size: 20px;
 }
 
 .section-head p {
   margin: 4px 0 0;
-  color: #64748b;
+  color: var(--cpu-text-secondary);
   font-size: 13px;
 }
 
@@ -251,8 +251,8 @@ function normalizeSponsorWallError(error_: unknown) {
   min-height: 170px;
   border-radius: 8px;
   padding: 16px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: var(--cpu-card);
+  border: 1px solid var(--cpu-border-soft);
   box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
   display: flex;
   flex-direction: column;
@@ -273,7 +273,7 @@ function normalizeSponsorWallError(error_: unknown) {
 
 .item-user strong {
   display: block;
-  color: #111827;
+  color: var(--cpu-text);
   font-size: 15px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -283,7 +283,7 @@ function normalizeSponsorWallError(error_: unknown) {
 .item-user span {
   display: block;
   margin-top: 2px;
-  color: #94a3b8;
+  color: var(--cpu-text-muted);
   font-size: 12px;
 }
 
@@ -297,14 +297,14 @@ function normalizeSponsorWallError(error_: unknown) {
 .item-message {
   flex: 1;
   margin: 0;
-  color: #374151;
+  color: var(--cpu-text-secondary);
   line-height: 1.7;
   font-size: 14px;
   overflow-wrap: anywhere;
 }
 
 .item-message.muted {
-  color: #94a3b8;
+  color: var(--cpu-text-muted);
 }
 
 .item-mark {

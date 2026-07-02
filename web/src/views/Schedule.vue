@@ -809,6 +809,7 @@ import {
   normalizeScheduleTheme,
   scheduleThemeOptions,
   scheduleThemeCssVars,
+  scheduleThemeDarkCssVars,
   type CourseTone,
   type ScheduleThemeKey,
 } from "@/components/jwxt/scheduleTheme";
@@ -1559,10 +1560,7 @@ const isViewingToday = computed(() => {
 const pageStyle = computed(() => ({
   ...scheduleThemeCssVars(scheduleTheme.value),
   ...(appearance.isDark ? {
-    "--schedule-accent-strong": "#7dd3c7",
-    "--schedule-accent-pale": "rgba(20, 184, 166, 0.16)",
-    "--schedule-accent-pale-hover": "rgba(20, 184, 166, 0.24)",
-    "--schedule-accent-border": "rgba(45, 212, 191, 0.36)",
+    ...scheduleThemeDarkCssVars(scheduleTheme.value),
     "--schedule-page-bg": "linear-gradient(180deg, #061411 0%, #071f1a 48%, #050f0d 100%)",
     "--schedule-bg-overlay": hasScheduleBackground.value
       ? `rgba(5, 18, 15, ${Math.max(0.42, scheduleBackground.overlayOpacity * 0.72)})`
@@ -1577,9 +1575,6 @@ const pageStyle = computed(() => ({
     "--schedule-cell-bg-strong": "rgba(17, 42, 37, 0.62)",
     "--schedule-cell-border": "rgba(148, 163, 184, 0.18)",
     "--schedule-panel-shadow": "0 14px 34px rgba(0, 0, 0, 0.26)",
-    "--schedule-course-bg": "rgba(20, 184, 166, 0.16)",
-    "--schedule-course-border": "rgba(45, 212, 191, 0.42)",
-    "--schedule-course-text": "#d9fffa",
   } : {
     "--schedule-bg-overlay": `rgba(248, 251, 255, ${hasScheduleBackground.value ? scheduleBackground.overlayOpacity : 0.84})`,
     "--schedule-surface-bg": hasScheduleBackground.value ? "rgba(255, 255, 255, 0.72)" : "#ffffff",
@@ -2334,8 +2329,15 @@ function nextWeekValue(delta: number) {
 }
 
 function toneFor(name: string): CourseTone {
-  if (scheduleTheme.value === "color-glass") return getColorGlassCourseTone(name);
+  if (scheduleTheme.value === "color-glass") return getColorGlassCourseTone(name, appearance.isDark);
   const theme = getScheduleThemePalette(scheduleTheme.value);
+  if (appearance.isDark) {
+    return {
+      bg: "var(--schedule-course-bg)",
+      border: "var(--schedule-course-border)",
+      text: "var(--schedule-course-text)",
+    };
+  }
   return { bg: theme.courseBg, border: theme.courseBorder, text: theme.courseText };
 }
 
@@ -2606,10 +2608,7 @@ function persistScheduleTheme(value = scheduleTheme.value) {
 }
 
 function courseBlockStyle(block: WeekCourseBlock) {
-  const tone = toneFor(block.course.name);
-  const colors = appearance.isDark
-    ? { bg: "var(--schedule-course-bg)", border: "var(--schedule-course-border)", text: "var(--schedule-course-text)" }
-    : tone;
+  const colors = toneFor(block.course.name);
   return {
     gridColumn: `${block.day + 1} / ${block.day + 2}`,
     gridRow: `${block.startSlot} / ${block.endSlot + 1}`,
@@ -2620,10 +2619,7 @@ function courseBlockStyle(block: WeekCourseBlock) {
 }
 
 function dayCourseBlockStyle(block: WeekCourseBlock) {
-  const tone = toneFor(block.course.name);
-  const colors = appearance.isDark
-    ? { bg: "var(--schedule-course-bg)", border: "var(--schedule-course-border)", text: "var(--schedule-course-text)" }
-    : tone;
+  const colors = toneFor(block.course.name);
   return {
     gridColumn: "2 / 3",
     gridRow: `${block.startSlot} / ${block.endSlot + 1}`,

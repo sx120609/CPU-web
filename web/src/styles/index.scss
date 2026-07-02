@@ -461,6 +461,26 @@ html[data-theme="dark"] {
   .toolbar-scroll,
   .notice-card,
   .wall-card,
+  .wall-hero,
+  .wall-loading,
+  .wall-item,
+  .hero-stats div,
+  .reminder-head,
+  .reminder-panel,
+  .reminder-item,
+  .app-card,
+  .app-icon,
+  .retry-card,
+  .error-card,
+  .gpa-tool,
+  .service-reco,
+  .pyfa-card,
+  .sem-stat,
+  .summary-card,
+  .course-card,
+  .pin-section,
+  .pinned-list,
+  .auto-load-sentinel,
   .qq-share-card,
   .qq-forward-card,
   .stat,
@@ -473,6 +493,86 @@ html[data-theme="dark"] {
   .page-error {
     background: var(--cpu-card) !important;
     border-color: var(--cpu-border-soft) !important;
+    color: var(--cpu-text) !important;
+  }
+
+  .admin-page .el-tabs__header {
+    border-color: var(--cpu-border-soft) !important;
+  }
+
+  .admin-page .el-tabs__nav-wrap::after {
+    background-color: var(--cpu-border-soft) !important;
+  }
+
+  .admin-page .el-tabs__content {
+    color: var(--cpu-text) !important;
+  }
+
+  .admin-page :is(
+    .ov-card,
+    .panel,
+    .section,
+    .section-panel,
+    .feature-section,
+    .feature-card,
+    .source-card,
+    .feed-card,
+    .board-row,
+    .topic-card,
+    .user-row,
+    .config-card,
+    .setting-panel,
+    .media-card,
+    .storage-card,
+    .log-card,
+    .order-card,
+    .stat-card,
+    .rule-card,
+    .review-card,
+    .sync-card,
+    .backup-card,
+    .card,
+    .table-card,
+    .list-card,
+    .result-card,
+    .history-card,
+    .empty-card
+  ) {
+    background: var(--cpu-card) !important;
+    border-color: var(--cpu-border-soft) !important;
+    color: var(--cpu-text) !important;
+  }
+
+  .admin-page :is(
+    .section-desc,
+    .desc,
+    .meta,
+    .note,
+    .hint,
+    .sub,
+    .field,
+    .path,
+    .status-copy,
+    .empty-desc,
+    .helper,
+    .copy,
+    .tip
+  ) {
+    color: var(--cpu-text-secondary) !important;
+  }
+
+  .admin-page :is(
+    .section-title,
+    .panel-title,
+    .card-title,
+    .name,
+    .ann-title,
+    .source-title,
+    .feature-title,
+    .topic-title,
+    .user-name,
+    .config-title
+  ) {
     color: var(--cpu-text) !important;
   }
 

@@ -244,19 +244,19 @@
 }
 
 :global(.schedule-pane-themed-dialog.el-dialog) {
-  border: 1px solid var(--schedule-border, var(--border-color));
-  background: var(--schedule-surface-bg, var(--card-bg));
-  color: var(--schedule-text, var(--text-primary));
+  border: 1px solid var(--schedule-border, var(--cpu-border-soft));
+  background: var(--schedule-surface-bg, var(--cpu-card));
+  color: var(--schedule-text, var(--cpu-text));
 }
 
 :global(.schedule-pane-themed-dialog.el-dialog .el-dialog__title),
 :global(.schedule-pane-themed-dialog.el-dialog .el-dialog__body) {
-  color: var(--schedule-text, var(--text-primary));
+  color: var(--schedule-text, var(--cpu-text));
 }
 
 :global(.schedule-pane-themed-dialog.el-dialog .el-dialog__header),
 :global(.schedule-pane-themed-dialog.el-dialog .el-dialog__footer) {
-  border-color: var(--schedule-border, var(--border-color));
+  border-color: var(--schedule-border, var(--cpu-border-soft));
   background: transparent;
 }
 

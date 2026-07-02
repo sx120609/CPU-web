@@ -45,7 +45,7 @@
         请先在上方选择学期，再查看考试安排。
       </el-alert>
       <div v-else-if="parsed && !parsed.list?.length" class="empty-card">
-        <el-icon size="48" color="#cbd5e1"><Calendar /></el-icon>
+        <el-icon size="48" color="var(--cpu-text-muted)"><Calendar /></el-icon>
         <h3>这个学期暂时没有查到考试安排</h3>
         <p>
           你可以切换学期或考试类型再试，也可以去学校教务系统确认：
@@ -166,7 +166,7 @@ function requestMessage(error: unknown) {
 .filter-field :deep(.el-input .el-input__wrapper) {
   min-height: 36px;
 }
-.lbl { font-size: 12px; color: #6b7280; }
+.lbl { font-size: 12px; color: var(--cpu-text-secondary); }
 .stat { font-size: 13px; color: var(--cpu-primary); font-weight: 500; }
 
 .pane-alert {
@@ -187,28 +187,28 @@ function requestMessage(error: unknown) {
   display: flex;
   gap: 16px;
   padding: 14px 16px;
-  border: 1px solid #eef0f4;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 10px;
-  background: #fff;
+  background: var(--cpu-card);
   align-items: center;
 }
-.cname { font-size: 15px; font-weight: 600; color: #1f2937; }
-.meta { font-size: 12px; color: #6b7280; margin-top: 2px; display: flex; gap: 6px; }
+.cname { font-size: 15px; font-weight: 600; color: var(--cpu-text); }
+.meta { font-size: 12px; color: var(--cpu-text-secondary); margin-top: 2px; display: flex; gap: 6px; }
 .left { flex: 1; min-width: 0; }
-.middle { font-size: 13px; color: #4b5563; text-align: right; }
+.middle { font-size: 13px; color: var(--cpu-text-secondary); text-align: right; }
 .time { font-weight: 500; color: #b45309; }
 .loc { margin-top: 3px; }
-.seat { font-size: 12px; color: #9ca3af; margin-top: 3px; }
+.seat { font-size: 12px; color: var(--cpu-text-muted); margin-top: 3px; }
 
 .empty-card {
-  background: #f9fafb;
-  border: 1px dashed #e5e7eb;
+  background: var(--cpu-surface-subtle);
+  border: 1px dashed var(--cpu-border-soft);
   border-radius: 12px;
   padding: 32px 24px;
   text-align: center;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
 }
-.empty-card h3 { margin: 12px 0 6px; font-size: 16px; color: #1f2937; }
+.empty-card h3 { margin: 12px 0 6px; font-size: 16px; color: var(--cpu-text); }
 .empty-card p { margin: 0 0 8px; font-size: 13px; }
 .empty-card ul {
   text-align: left;

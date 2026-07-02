@@ -286,9 +286,9 @@ function progressStatus(earned: number, required: number): "success" | "warning"
 
 function scoreColor(s: string) {
   const n = parseFloat(s);
-  if (!Number.isFinite(n)) return "#9ca3af";
+  if (!Number.isFinite(n)) return "var(--cpu-text-muted)";
   if (n >= 85) return "#16a34a";
-  if (n >= 60) return "#1f2937";
+  if (n >= 60) return "var(--cpu-text)";
   return "#dc2626";
 }
 </script>
@@ -297,10 +297,10 @@ function scoreColor(s: string) {
 .progress-pane { display: flex; flex-direction: column; gap: 16px; }
 
 .data-note {
-  border: 1px solid #fde68a;
+  border: 1px solid rgba(245, 158, 11, 0.34);
   border-radius: 8px;
-  background: #fffbeb;
-  color: #92400e;
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--cpu-warn);
   font-size: 12px;
   line-height: 1.6;
   padding: 10px 12px;
@@ -371,15 +371,15 @@ function scoreColor(s: string) {
   gap: 12px;
 }
 .summary-card {
-  background: #fff;
-  border: 1px solid #eef0f4;
+  background: var(--cpu-card);
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 12px;
   padding: 14px 16px;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .summary-card:hover { border-color: var(--cpu-primary); box-shadow: 0 4px 12px rgba(22, 135, 118, 0.08); }
 
-.card-title { font-size: 13px; color: #6b7280; font-weight: 500; }
+.card-title { font-size: 13px; color: var(--cpu-text-secondary); font-weight: 500; }
 .card-stat {
   margin: 8px 0 10px;
   display: flex;
@@ -387,10 +387,10 @@ function scoreColor(s: string) {
   gap: 4px;
 }
 .big { font-size: 24px; font-weight: 700; color: var(--cpu-primary); line-height: 1; }
-.sep { font-size: 16px; color: #9ca3af; margin: 0 2px; }
-.goal { font-size: 16px; color: #6b7280; }
-.lbl { font-size: 12px; color: #9ca3af; margin-left: 2px; }
-.card-note { font-size: 11px; color: #9ca3af; padding: 4px 0; font-style: italic; }
+.sep { font-size: 16px; color: var(--cpu-text-muted); margin: 0 2px; }
+.goal { font-size: 16px; color: var(--cpu-text-secondary); }
+.lbl { font-size: 12px; color: var(--cpu-text-muted); margin-left: 2px; }
+.card-note { font-size: 11px; color: var(--cpu-text-muted); padding: 4px 0; font-style: italic; }
 .card-done {
   font-size: 12px;
   color: #16a34a;
@@ -401,25 +401,25 @@ function scoreColor(s: string) {
 .card-detail {
   margin-top: 8px;
   font-size: 11px;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
 }
 .card-detail .left-warn {
-  color: #b45309;
-  background: #fef3c7;
+  color: var(--cpu-warn);
+  background: rgba(245, 158, 11, 0.16);
   padding: 1px 6px;
   border-radius: 4px;
 }
 
-.block { border-radius: 12px; border: 1px solid #eef0f4; }
+.block { border-radius: 12px; border: 1px solid var(--cpu-border-soft); }
 .block-head { display: flex; justify-content: space-between; align-items: baseline; }
 .title { margin: 0; font-size: 15px; font-weight: 600; }
 .title.warn { color: #b45309; }
 .title.ok { color: #16a34a; }
-.cnt { font-size: 12px; color: #9ca3af; }
-.cpu-muted { color: #9ca3af; }
+.cnt { font-size: 12px; color: var(--cpu-text-muted); }
+.cpu-muted { color: var(--cpu-text-muted); }
 .table-scroll {
   width: 100%;
   overflow-x: auto;
@@ -431,9 +431,9 @@ function scoreColor(s: string) {
 .course-card-list { display: none; }
 
 .course-card {
-  border: 1px solid #eef0f4;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 12px;
-  background: #fff;
+  background: var(--cpu-card);
   padding: 12px;
 }
 
@@ -446,7 +446,7 @@ function scoreColor(s: string) {
 
 .course-card-head b {
   display: block;
-  color: #111827;
+  color: var(--cpu-text);
   font-size: 14px;
   line-height: 1.45;
 }
@@ -454,7 +454,7 @@ function scoreColor(s: string) {
 .course-card-head span {
   display: block;
   margin-top: 3px;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
 }
 
@@ -468,7 +468,7 @@ function scoreColor(s: string) {
   flex-wrap: wrap;
   gap: 6px 10px;
   margin-top: 10px;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
 }
 

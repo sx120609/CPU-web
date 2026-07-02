@@ -342,6 +342,7 @@ import { detectClientPlatform } from "@/utils/clientInfo";
 import {
   getScheduleThemePalette,
   scheduleThemeCssVars,
+  scheduleThemeDarkCssVars,
   type CourseTone,
 } from "./scheduleTheme";
 import {
@@ -619,10 +620,7 @@ const isViewingToday = computed(() => {
 const pageStyle = computed(() => ({
   ...scheduleThemeCssVars("green"),
   ...(appearance.isDark ? {
-    "--schedule-accent-strong": "#7dd3c7",
-    "--schedule-accent-pale": "rgba(20, 184, 166, 0.16)",
-    "--schedule-accent-pale-hover": "rgba(20, 184, 166, 0.24)",
-    "--schedule-accent-border": "rgba(45, 212, 191, 0.36)",
+    ...scheduleThemeDarkCssVars("green"),
     "--schedule-surface-bg": "rgba(12, 31, 27, 0.92)",
     "--schedule-surface-bg-soft": "rgba(16, 39, 34, 0.86)",
     "--schedule-text": "#e5f4f1",
@@ -633,9 +631,6 @@ const pageStyle = computed(() => ({
     "--schedule-cell-bg-strong": "rgba(17, 42, 37, 0.62)",
     "--schedule-cell-border": "rgba(148, 163, 184, 0.18)",
     "--schedule-panel-shadow": "0 14px 34px rgba(0, 0, 0, 0.26)",
-    "--schedule-course-bg": "rgba(20, 184, 166, 0.16)",
-    "--schedule-course-border": "rgba(45, 212, 191, 0.42)",
-    "--schedule-course-text": "#d9fffa",
   } : {
     "--schedule-surface-bg": "#ffffff",
     "--schedule-surface-bg-soft": "#f9fafb",
@@ -1805,6 +1800,13 @@ function selectedScheduleDiffers(data: ScheduleResult) {
 
 function toneFor(name: string): CourseTone {
   const theme = getScheduleThemePalette("green");
+  if (appearance.isDark) {
+    return {
+      bg: "var(--schedule-course-bg)",
+      border: "var(--schedule-course-border)",
+      text: "var(--schedule-course-text)",
+    };
+  }
   return { bg: theme.courseBg, border: theme.courseBorder, text: theme.courseText };
 }
 
@@ -1867,10 +1869,7 @@ function normalizeKeyPart(value?: string) {
 }
 
 function courseBlockStyle(block: WeekCourseBlock) {
-  const tone = toneFor(block.course.name);
-  const colors = appearance.isDark
-    ? { bg: "var(--schedule-course-bg)", border: "var(--schedule-course-border)", text: "var(--schedule-course-text)" }
-    : tone;
+  const colors = toneFor(block.course.name);
   return {
     gridColumn: `${block.day + 1} / ${block.day + 2}`,
     gridRow: `${block.startSlot} / ${block.endSlot + 1}`,
@@ -1881,10 +1880,7 @@ function courseBlockStyle(block: WeekCourseBlock) {
 }
 
 function dayCourseBlockStyle(block: WeekCourseBlock) {
-  const tone = toneFor(block.course.name);
-  const colors = appearance.isDark
-    ? { bg: "var(--schedule-course-bg)", border: "var(--schedule-course-border)", text: "var(--schedule-course-text)" }
-    : tone;
+  const colors = toneFor(block.course.name);
   return {
     gridColumn: "2 / 3",
     gridRow: `${block.startSlot} / ${block.endSlot + 1}`,

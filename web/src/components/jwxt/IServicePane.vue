@@ -349,9 +349,9 @@ function openRawApp(a: IServiceApp) {
 .stat { font-size: 13px; color: var(--cpu-primary); font-weight: 500; }
 .retry-card,
 .error-card {
-  border: 1px solid #eef0f4;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 12px;
-  background: #fff;
+  background: var(--cpu-card);
 }
 .retry-card {
   display: flex;
@@ -359,7 +359,7 @@ function openRawApp(a: IServiceApp) {
   justify-content: center;
   gap: 8px;
   padding: 18px 14px;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 13px;
 }
 .retry-card .is-loading {
@@ -376,11 +376,11 @@ function openRawApp(a: IServiceApp) {
 .error-card h3 {
   margin: 0 0 4px;
   font-size: 15px;
-  color: #1f2937;
+  color: var(--cpu-text);
 }
 .error-card p {
   margin: 0;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -406,8 +406,8 @@ function openRawApp(a: IServiceApp) {
 
 .app-card {
   position: relative;
-  background: #fff;
-  border: 1px solid #eef0f4;
+  background: var(--cpu-card);
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 12px;
   padding: 16px 10px 12px;
   text-align: center;
@@ -430,7 +430,7 @@ function openRawApp(a: IServiceApp) {
 }
 .app-card.fav {
   border-color: #fcd34d;
-  background: linear-gradient(180deg, #fffbeb 0%, #fff 30%);
+  background: linear-gradient(180deg, rgba(251, 191, 36, 0.16) 0%, var(--cpu-card) 34%);
 }
 
 .app-icon {
@@ -438,7 +438,7 @@ function openRawApp(a: IServiceApp) {
   height: 48px;
   display: grid;
   place-items: center;
-  background: #f9fafb;
+  background: var(--cpu-surface-subtle);
   border-radius: 12px;
   overflow: hidden;
 }
@@ -455,7 +455,7 @@ function openRawApp(a: IServiceApp) {
 
 .app-name {
   font-size: 13px;
-  color: #1f2937;
+  color: var(--cpu-text);
   font-weight: 500;
   line-height: 1.3;
   word-break: break-word;
@@ -473,8 +473,8 @@ function openRawApp(a: IServiceApp) {
 }
 .type-pill {
   font-size: 10px;
-  color: #6b7280;
-  background: #f3f4f6;
+  color: var(--cpu-text-secondary);
+  background: var(--cpu-surface-subtle);
   border-radius: 4px;
   padding: 1px 5px;
 }
@@ -485,10 +485,10 @@ function openRawApp(a: IServiceApp) {
   right: 8px;
   width: 30px;
   height: 30px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
-  color: #9ca3af;
+  background: color-mix(in srgb, var(--cpu-card) 92%, transparent);
+  color: var(--cpu-text-muted);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -499,12 +499,12 @@ function openRawApp(a: IServiceApp) {
 .fav-btn:hover {
   border-color: #f59e0b;
   color: #d97706;
-  background: #fffbeb;
+  background: rgba(251, 191, 36, 0.14);
 }
 .fav-btn.active {
   border-color: #fcd34d;
   color: #f59e0b;
-  background: #fffbeb;
+  background: rgba(251, 191, 36, 0.16);
 }
 .fav-btn :deep(.el-icon) {
   font-size: 15px;
@@ -541,7 +541,7 @@ function openRawApp(a: IServiceApp) {
     width: 100%;
     min-height: 38px;
     justify-content: center;
-    border: 1px solid #dcdfe6;
+    border: 1px solid var(--cpu-border-soft);
     border-radius: 10px !important;
     box-shadow: none !important;
     display: inline-flex;

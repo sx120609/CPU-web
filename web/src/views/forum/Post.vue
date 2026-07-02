@@ -20,8 +20,8 @@
                 :label="`${b.icon ?? ''} ${b.name}`"
                 :disabled="b.readOnly"
               >
-                <span style="margin-right:6px">{{ b.icon }}</span>{{ b.name }}
-                <span style="float:right;color:#9ca3af;font-size:12px">{{ b.readOnly ? '不可发帖' : '' }}</span>
+                <span class="option-icon">{{ b.icon }}</span>{{ b.name }}
+                <span class="option-note">{{ b.readOnly ? '不可发帖' : '' }}</span>
               </el-option>
             </el-option-group>
           </el-select>
@@ -92,7 +92,7 @@
                 :label="`${c.code} ${c.name}${c.teachers?.length ? ' - ' + c.teachers.map((t: any) => t.name).join('、') : ''}`"
               >
                 <span>{{ c.code }} · {{ c.name }}</span>
-                <span style="float:right;color:#9ca3af;font-size:12px">
+                <span class="option-note">
                   {{ c.teachers?.length ? c.teachers.map((t: any) => t.name).join('、') : '暂无老师' }}
                 </span>
               </el-option>
@@ -913,8 +913,24 @@ function notifyVideoReviewState(summary?: {
 <style scoped>
 .post-page { display: flex; flex-direction: column; gap: 16px; }
 .page-title { margin: 0; font-size: 22px; }
-.cpu-card { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
+.cpu-card {
+  background: var(--cpu-card);
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: var(--cpu-shadow-sm);
+}
 .post-load-state { min-height: 280px; display: grid; place-items: center; }
+
+.option-icon {
+  margin-right: 6px;
+}
+
+.option-note {
+  float: right;
+  color: var(--cpu-text-muted);
+  font-size: 12px;
+}
 
 .post-editor-shell {
   width: 100%;
@@ -937,14 +953,14 @@ function notifyVideoReviewState(summary?: {
   gap: 6px;
   padding: 4px;
   border-radius: 999px;
-  background: #f4f7fb;
-  border: 1px solid #dfe8f2;
+  background: var(--cpu-surface-subtle);
+  border: 1px solid var(--cpu-border-soft);
 }
 
 .editor-mode-btn {
   border: 0;
   background: transparent;
-  color: #64748b;
+  color: var(--cpu-text-secondary);
   border-radius: 999px;
   padding: 8px 14px;
   font-size: 13px;
@@ -954,14 +970,14 @@ function notifyVideoReviewState(summary?: {
 }
 
 .editor-mode-btn.active {
-  background: #fff;
-  color: #0f172a;
+  background: var(--cpu-card);
+  color: var(--cpu-text);
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
 .editor-mode-hint {
   margin: 0;
-  color: #64748b;
+  color: var(--cpu-text-secondary);
   font-size: 13px;
   line-height: 1.7;
 }
@@ -970,10 +986,10 @@ function notifyVideoReviewState(summary?: {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  border: 1px solid #d8e2ec;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 16px;
   padding: 14px;
-  background: linear-gradient(180deg, #fbfdff 0%, #f7fafc 100%);
+  background: linear-gradient(180deg, var(--cpu-surface-subtle) 0%, var(--cpu-card) 100%);
 }
 
 .markup-helper-row {
@@ -983,9 +999,9 @@ function notifyVideoReviewState(summary?: {
 }
 
 .markup-helper-btn {
-  border: 1px solid #d7e1eb;
-  background: #fff;
-  color: #334155;
+  border: 1px solid var(--cpu-border-soft);
+  background: var(--cpu-card);
+  color: var(--cpu-text-secondary);
   border-radius: 999px;
   padding: 6px 12px;
   font-size: 12px;
@@ -996,7 +1012,7 @@ function notifyVideoReviewState(summary?: {
   width: 100%;
   min-height: 320px;
   resize: vertical;
-  border: 1px solid #d7e1eb;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 14px;
   padding: 14px 16px;
   background: #0f172a;
@@ -1015,7 +1031,7 @@ function notifyVideoReviewState(summary?: {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  color: #64748b;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
 }
 
@@ -1026,8 +1042,8 @@ function notifyVideoReviewState(summary?: {
 
 .markup-preview {
   border-radius: 14px;
-  border: 1px solid #e2e8f0;
-  background: #fff;
+  border: 1px solid var(--cpu-border-soft);
+  background: var(--cpu-card);
   padding: 14px;
 }
 
@@ -1037,20 +1053,20 @@ function notifyVideoReviewState(summary?: {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
-  color: #64748b;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
 }
 
 .markup-preview__head strong {
-  color: #0f172a;
+  color: var(--cpu-text);
   font-size: 14px;
 }
 
 .markup-preview__empty {
   border-radius: 12px;
   padding: 20px 16px;
-  background: #f8fafc;
-  color: #94a3b8;
+  background: var(--cpu-surface-subtle);
+  color: var(--cpu-text-muted);
   font-size: 13px;
   text-align: center;
 }
@@ -1059,7 +1075,7 @@ function notifyVideoReviewState(summary?: {
   padding: 0;
 }
 
-.board-hint { font-size: 12px; color: #6b7280; margin-top: 6px; }
+.board-hint { font-size: 12px; color: var(--cpu-text-secondary); margin-top: 6px; }
 .field-error {
   display: flex;
   align-items: center;
@@ -1080,7 +1096,7 @@ function notifyVideoReviewState(summary?: {
 }
 
 .text-retry-btn:disabled {
-  color: #9ca3af;
+  color: var(--cpu-text-muted);
   cursor: not-allowed;
 }
 
@@ -1097,8 +1113,8 @@ function notifyVideoReviewState(summary?: {
   gap: 12px;
   padding: 12px 14px;
   border-radius: 12px;
-  border: 1px solid #ebe8ff;
-  background: linear-gradient(180deg, #faf7ff 0%, #ffffff 100%);
+  border: 1px solid var(--cpu-border-soft);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--cpu-card) 94%, #7c3aed), var(--cpu-card) 100%);
 }
 
 .anonymous-box.disabled {
@@ -1108,13 +1124,13 @@ function notifyVideoReviewState(summary?: {
 .anonymous-copy b {
   display: block;
   font-size: 14px;
-  color: #4c1d95;
+  color: var(--cpu-primary);
   margin-bottom: 4px;
 }
 
 .anonymous-copy p {
   margin: 0;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -1135,24 +1151,24 @@ function notifyVideoReviewState(summary?: {
   flex-wrap: wrap;
   width: 100%;
 }
-.or-text { color: #9ca3af; font-size: 12px; }
+.or-text { color: var(--cpu-text-muted); font-size: 12px; }
 
 .publish-preview {
-  color: #1f2937;
+  color: var(--cpu-text);
 }
 
 .preview-meta {
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  color: #667085;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
   margin-bottom: 8px;
 }
 
 .publish-preview h3 {
   margin: 0 0 12px;
-  color: #111827;
+  color: var(--cpu-text);
   font-size: 20px;
   line-height: 1.35;
 }
@@ -1165,13 +1181,13 @@ function notifyVideoReviewState(summary?: {
   max-height: min(58dvh, 520px);
   overflow: auto;
   padding: 12px;
-  border: 1px solid #edf0f5;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 8px;
-  background: #fff;
+  background: var(--cpu-card);
 }
 
-.cpu-muted { font-size: 12px; color: #9ca3af; }
-.review-blocked p { margin: 0 0 10px; line-height: 1.7; color: #374151; }
+.cpu-muted { font-size: 12px; color: var(--cpu-text-muted); }
+.review-blocked p { margin: 0 0 10px; line-height: 1.7; color: var(--cpu-text-secondary); }
 .review-blocked p:last-child { margin-bottom: 0; }
 
 @media (max-width: 700px) {

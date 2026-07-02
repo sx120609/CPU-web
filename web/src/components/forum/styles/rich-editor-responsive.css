@@ -6,25 +6,25 @@
   .desktop-same-toolbar .mobile-toolbar-tab {
     min-height: 36px;
     padding: 0 8px;
-    border: 1px solid #d5e1ec;
+    border: 1px solid var(--cpu-border-soft);
     border-radius: 11px;
-    background: #fbfdff;
-    color: #344054;
+    background: var(--cpu-surface-subtle);
+    color: var(--cpu-text-secondary);
     font: inherit;
     font-size: 13px;
     font-weight: 700;
   }
 
   .desktop-same-toolbar .mobile-toolbar-tab.active {
-    border-color: #168776;
-    background: #e8f7f3;
-    color: #0f766e;
+    border-color: var(--cpu-primary);
+    background: rgba(20, 143, 123, 0.14);
+    color: var(--cpu-primary);
   }
 
   .desktop-same-toolbar .mobile-toolbar-panel {
     padding: 10px;
     border-radius: 14px;
-    border-color: #dfe8f1;
+    border-color: var(--cpu-border-soft);
   }
 
   .desktop-same-toolbar .mobile-toolbar-actions button {
@@ -44,8 +44,8 @@
     top: calc(var(--editor-toolbar-top, 0px) + 8px);
     margin: 0 -1px;
     padding: 10px 10px 8px;
-    border: 1px solid #dfe8f1;
-    border-bottom-color: #e6edf5;
+    border: 1px solid var(--cpu-border-soft);
+    border-bottom-color: var(--cpu-border-soft);
     box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
   }
 
@@ -63,7 +63,7 @@
     border-radius: 10px;
     font-size: 12px;
     font-weight: 700;
-    background: #f8fafc;
+    background: var(--cpu-surface-subtle);
   }
 
   .mobile-toolbar-panel {
@@ -85,8 +85,8 @@
   .toolbar-status {
     padding: 4px 8px;
     border-radius: 999px;
-    background: #ecfdf5;
-    color: #0f766e;
+    background: rgba(20, 143, 123, 0.12);
+    color: var(--cpu-primary);
     font-size: 11px;
     white-space: nowrap;
   }
@@ -219,7 +219,7 @@
     margin: 0;
     padding: 12px 12px 10px;
     border: none;
-    border-bottom: 1px solid #edf1f5;
+    border-bottom: 1px solid var(--cpu-border-soft);
     border-radius: 16px 16px 0 0;
     box-shadow: none;
   }
@@ -235,8 +235,8 @@
   }
 
   .rich-editor.toolbar-static .mobile-toolbar-panel {
-    background: rgba(255, 255, 255, 0.96);
-    border-color: #e6edf5;
+    background: var(--cpu-card);
+    border-color: var(--cpu-border-soft);
   }
 
   .rich-editor.toolbar-static .editor-surface {

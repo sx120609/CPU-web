@@ -238,16 +238,16 @@ function sortRowsByPublishedMidterm(rows: GradeRow[]) {
 }
 
 function midtermColor(n: number | null) {
-  if (n === null) return "#9ca3af";
+  if (n === null) return "var(--cpu-text-muted)";
   if (n >= 85) return "#16a34a";
-  if (n >= 60) return "#1f2937";
+  if (n >= 60) return "var(--cpu-text)";
   return "#dc2626";
 }
 
 function totalColor(n: number | null) {
-  if (n === null) return "#9ca3af";
+  if (n === null) return "var(--cpu-text-muted)";
   if (n >= 85) return "#16a34a";
-  if (n >= 60) return "#1f2937";
+  if (n >= 60) return "var(--cpu-text)";
   return "#dc2626";
 }
 
@@ -295,8 +295,8 @@ function requestMessage(error: unknown) {
 .filter-field :deep(.el-input .el-input__wrapper) {
   min-height: 36px;
 }
-.lbl { font-size: 12px; color: #6b7280; }
-.stat { font-size: 13px; color: #6b7280; }
+.lbl { font-size: 12px; color: var(--cpu-text-secondary); }
+.stat { font-size: 13px; color: var(--cpu-text-secondary); }
 .stat b { color: var(--cpu-primary); font-size: 15px; }
 .scope-tip { margin-top: -2px; }
 .scope-tip :deep(.el-alert__title) { line-height: 1.55; }
@@ -321,7 +321,7 @@ function requestMessage(error: unknown) {
   margin: 0 0 8px;
 }
 .sem-head h3 { margin: 0; font-size: 15px; color: var(--cpu-primary); font-weight: 600; }
-.sem-sum { font-size: 12px; color: #9ca3af; }
+.sem-sum { font-size: 12px; color: var(--cpu-text-muted); }
 .table-scroll {
   width: 100%;
   overflow-x: auto;
@@ -334,10 +334,10 @@ function requestMessage(error: unknown) {
 
 .grade-card {
   position: relative;
-  border: 1px solid #eef0f4;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 14px;
   padding: 14px;
-  background: #fff;
+  background: var(--cpu-card);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
@@ -349,7 +349,7 @@ function requestMessage(error: unknown) {
   line-height: 1.45;
   font-size: 15px;
   font-weight: 600;
-  color: #111827;
+  color: var(--cpu-text);
 }
 
 .course-sub,
@@ -358,7 +358,7 @@ function requestMessage(error: unknown) {
   flex-wrap: wrap;
   gap: 6px 10px;
   margin-top: 8px;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
   line-height: 1.4;
 }
@@ -376,7 +376,7 @@ function requestMessage(error: unknown) {
   justify-content: center;
   padding: 7px 8px;
   border-radius: 8px;
-  background: #f8fafc;
+  background: var(--cpu-surface-subtle);
   font-size: 13px;
   font-weight: 700;
 }
@@ -403,7 +403,7 @@ function requestMessage(error: unknown) {
     align-items: center;
     padding: 6px 10px;
     border-radius: 999px;
-    background: #f5f7fb;
+    background: var(--cpu-surface-subtle);
     white-space: nowrap;
   }
 
