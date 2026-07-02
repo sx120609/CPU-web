@@ -211,8 +211,9 @@
   color: #3b2f9a;
 }
 :global(html[data-theme="dark"]) .theme-color-glass {
-  --schedule-colorful-control-soft: linear-gradient(135deg, rgba(244, 63, 94, 0.16), rgba(249, 115, 22, 0.13) 24%, rgba(34, 197, 94, 0.13) 48%, rgba(59, 130, 246, 0.18) 74%, rgba(139, 92, 246, 0.16));
-  --schedule-colorful-control-border: rgba(148, 163, 184, 0.26);
+  --schedule-colorful-control-ring: linear-gradient(135deg, rgba(251, 113, 133, 0.92) 0%, rgba(251, 146, 60, 0.86) 22%, rgba(74, 222, 128, 0.78) 48%, rgba(96, 165, 250, 0.88) 74%, rgba(196, 181, 253, 0.86) 100%);
+  --schedule-colorful-control-soft: linear-gradient(135deg, rgba(251, 113, 133, 0.24), rgba(251, 146, 60, 0.20) 24%, rgba(74, 222, 128, 0.18) 48%, rgba(96, 165, 250, 0.24) 74%, rgba(196, 181, 253, 0.22));
+  --schedule-colorful-control-border: rgba(196, 181, 253, 0.42);
   --schedule-colorful-control-text: var(--schedule-text);
 }
 :global(html[data-theme="dark"]) .theme-color-glass .view-switch button.active,
@@ -231,6 +232,14 @@
 :global(html[data-theme="dark"]) .theme-color-glass .day-pill.today,
 :global(html[data-theme="dark"]) .theme-color-glass .week-cell.current {
   color: var(--schedule-text);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.36);
+}
+:global(html[data-theme="dark"]) .theme-color-glass .week-title,
+:global(html[data-theme="dark"]) .theme-color-glass .week-day-head.today {
+  background: var(--schedule-colorful-control-soft);
+  box-shadow:
+    inset 0 0 0 1px var(--schedule-colorful-control-border),
+    0 8px 18px rgba(0, 0, 0, 0.16);
 }
 .icon-btn.spinning .el-icon {
   animation: spin 0.9s linear infinite;

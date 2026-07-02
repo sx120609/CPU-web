@@ -236,10 +236,11 @@ export function getColorGlassCourseTone(name: string, dark = false): CourseTone 
   const hue = hash % 360;
   const saturation = 58 + ((hash >>> 8) % 18);
   if (dark) {
+    const darkSaturation = Math.min(82, saturation + 4);
     return {
-      bg: `hsla(${hue}, ${Math.min(86, saturation + 8)}%, 24%, 0.76)`,
-      border: `hsla(${hue}, ${Math.min(88, saturation + 10)}%, 62%, 0.58)`,
-      text: `hsl(${hue}, ${Math.min(86, saturation + 8)}%, 88%)`,
+      bg: `linear-gradient(180deg, hsla(${hue}, ${darkSaturation}%, 34%, 0.84), hsla(${hue}, ${darkSaturation}%, 24%, 0.88))`,
+      border: `hsla(${hue}, ${Math.min(86, saturation + 8)}%, 72%, 0.72)`,
+      text: "#f8fffd",
     };
   }
   const bgLightness = 89 + ((hash >>> 16) % 5);
@@ -300,8 +301,8 @@ export function scheduleThemeDarkCssVars(value?: string | null): Record<string, 
     "--schedule-accent-pale-hover": `color-mix(in srgb, ${theme.accent} 26%, transparent)`,
     "--schedule-accent-border": `color-mix(in srgb, ${theme.accent} 42%, transparent)`,
     "--schedule-accent-contrast": "#ffffff",
-    "--schedule-course-bg": `color-mix(in srgb, ${theme.courseBg} 26%, #07110f)`,
-    "--schedule-course-border": `color-mix(in srgb, ${theme.courseBorder} 62%, transparent)`,
-    "--schedule-course-text": `color-mix(in srgb, ${theme.courseText} 34%, white)`,
+    "--schedule-course-bg": `color-mix(in srgb, ${theme.courseBg} 32%, #101c19)`,
+    "--schedule-course-border": `color-mix(in srgb, ${theme.courseBorder} 72%, white)`,
+    "--schedule-course-text": `color-mix(in srgb, ${theme.courseText} 22%, white)`,
   };
 }

@@ -288,18 +288,28 @@
     min-width: 0;
   }
   .manage-panel,
-  .admin-section { padding: 14px; }
+  .admin-section {
+    min-width: 0;
+    max-width: 100%;
+    padding: 14px;
+  }
   .manage-tool-tabs {
-    margin-inline: -14px;
-    padding-inline: 14px;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
   }
   .manage-tool-tabs :deep(.el-tabs__header) {
+    max-width: 100%;
     margin-bottom: 14px;
+    overflow: hidden;
   }
   .manage-tool-tabs :deep(.el-tabs__nav-wrap) {
-    overflow: visible;
+    max-width: 100%;
+    overflow: hidden;
   }
   .manage-tool-tabs :deep(.el-tabs__nav-scroll) {
+    max-width: 100%;
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
@@ -310,12 +320,19 @@
   }
   .manage-tool-tabs :deep(.el-tabs__nav) {
     float: none;
-    min-width: max-content;
+    width: max-content;
+    min-width: 100%;
     white-space: nowrap;
   }
   .manage-tool-tabs :deep(.el-tabs__item) {
     flex: 0 0 auto;
     padding: 0 16px;
+  }
+  .manage-tool-tabs :deep(.el-tabs__content),
+  .manage-tool-tabs :deep(.el-tab-pane),
+  .tool-admin-grid {
+    min-width: 0;
+    max-width: 100%;
   }
   .section-head { flex-direction: column; align-items: stretch; }
   .section-head .el-button { width: 100%; }

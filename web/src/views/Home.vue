@@ -325,17 +325,24 @@ function normalizeHomeError(error: unknown) {
 .hero-actions .el-button--primary { background: #fff; color: #168776; }
 
 :global(html[data-theme="dark"] .hero-actions .el-button) {
-  background: rgba(5, 22, 19, 0.72);
-  border: 1px solid rgba(229, 244, 241, 0.18);
-  color: #e5f4f1;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(238, 248, 245, 0.22);
+  color: #eef8f5;
 }
 :global(html[data-theme="dark"] .hero-actions .el-button:hover) {
-  background: rgba(5, 22, 19, 0.9);
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(238, 248, 245, 0.34);
+  color: #ffffff;
 }
 :global(html[data-theme="dark"] .hero-actions .el-button--primary) {
   background: rgba(45, 212, 191, 0.95);
   border-color: rgba(45, 212, 191, 0.95);
   color: #05201c;
+}
+:global(html[data-theme="dark"] .hero-actions .el-button--primary:hover) {
+  background: #5eead4;
+  border-color: #5eead4;
+  color: #04201c;
 }
 
 .grid {

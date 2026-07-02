@@ -1561,20 +1561,20 @@ const pageStyle = computed(() => ({
   ...scheduleThemeCssVars(scheduleTheme.value),
   ...(appearance.isDark ? {
     ...scheduleThemeDarkCssVars(scheduleTheme.value),
-    "--schedule-page-bg": "linear-gradient(180deg, #061411 0%, #071f1a 48%, #050f0d 100%)",
+    "--schedule-page-bg": "linear-gradient(180deg, #12231f 0%, #162d27 48%, #101c19 100%)",
     "--schedule-bg-overlay": hasScheduleBackground.value
-      ? `rgba(5, 18, 15, ${Math.max(0.42, scheduleBackground.overlayOpacity * 0.72)})`
-      : "rgba(5, 18, 15, 0.86)",
-    "--schedule-surface-bg": hasScheduleBackground.value ? "rgba(12, 31, 27, 0.74)" : "rgba(12, 31, 27, 0.92)",
-    "--schedule-surface-bg-soft": hasScheduleBackground.value ? "rgba(16, 39, 34, 0.76)" : "rgba(16, 39, 34, 0.86)",
-    "--schedule-text": "#e5f4f1",
-    "--schedule-text-secondary": "#a7bdb8",
-    "--schedule-text-muted": "#7f9994",
-    "--schedule-border": "rgba(148, 163, 184, 0.22)",
-    "--schedule-cell-bg": "rgba(15, 35, 31, 0.46)",
-    "--schedule-cell-bg-strong": "rgba(17, 42, 37, 0.62)",
-    "--schedule-cell-border": "rgba(148, 163, 184, 0.18)",
-    "--schedule-panel-shadow": "0 14px 34px rgba(0, 0, 0, 0.26)",
+      ? `rgba(11, 27, 24, ${Math.max(0.36, scheduleBackground.overlayOpacity * 0.66)})`
+      : "rgba(11, 27, 24, 0.78)",
+    "--schedule-surface-bg": hasScheduleBackground.value ? "rgba(26, 41, 37, 0.76)" : "rgba(26, 41, 37, 0.94)",
+    "--schedule-surface-bg-soft": hasScheduleBackground.value ? "rgba(32, 49, 44, 0.78)" : "rgba(32, 49, 44, 0.88)",
+    "--schedule-text": "#eef8f5",
+    "--schedule-text-secondary": "#abc5be",
+    "--schedule-text-muted": "#819d95",
+    "--schedule-border": "rgba(163, 186, 179, 0.28)",
+    "--schedule-cell-bg": "rgba(30, 48, 43, 0.52)",
+    "--schedule-cell-bg-strong": "rgba(38, 58, 52, 0.68)",
+    "--schedule-cell-border": "rgba(163, 186, 179, 0.20)",
+    "--schedule-panel-shadow": "0 14px 34px rgba(0, 0, 0, 0.22)",
   } : {
     "--schedule-bg-overlay": `rgba(248, 251, 255, ${hasScheduleBackground.value ? scheduleBackground.overlayOpacity : 0.84})`,
     "--schedule-surface-bg": hasScheduleBackground.value ? "rgba(255, 255, 255, 0.72)" : "#ffffff",

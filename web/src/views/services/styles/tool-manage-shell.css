@@ -1,4 +1,10 @@
-.tool-manage-page { display: flex; flex-direction: column; gap: 18px; }
+.tool-manage-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+  overflow-x: clip;
+}
 .manage-head,
 .manage-panel {
   background: #fff;
@@ -37,7 +43,13 @@
 }
 .manage-head h2 { margin: 0; font-size: 22px; color: #111827; }
 .manage-head p { margin: 6px 0 0; color: #6b7280; font-size: 13px; line-height: 1.7; }
-.manage-panel { padding: 16px 18px 20px; min-height: 240px; }
+.manage-panel {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+  padding: 16px 18px 20px;
+  min-height: 240px;
+}
 :global(.questionnaire-builder-dialog.el-dialog) {
   --builder-primary: #267dff;
   --builder-primary-dark: #1765d8;

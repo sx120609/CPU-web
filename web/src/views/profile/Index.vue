@@ -272,6 +272,10 @@
           <el-icon><ChatDotRound /></el-icon>
           加入群聊
         </el-button>
+        <el-button plain @click="openQqBotManage">
+          <el-icon><Bell /></el-icon>
+          QQBot 管理
+        </el-button>
         <el-button plain @click="copyUserGroup">
           <el-icon><CopyDocument /></el-icon>
           复制群号
@@ -353,7 +357,7 @@
 import { ref, reactive, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { ChatDotRound, CopyDocument, Monitor, Moon, Sunny } from "@element-plus/icons-vue";
+import { Bell, ChatDotRound, CopyDocument, Monitor, Moon, Sunny } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
@@ -676,6 +680,10 @@ async function copyUserGroup() {
 
 function joinUserGroup() {
   openUserGroup();
+}
+
+function openQqBotManage() {
+  router.push("/messages?tab=settings");
 }
 
 function pickAvatar() {
@@ -1381,7 +1389,7 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 
   .user-group-actions {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   }
 
   .topic-line {
