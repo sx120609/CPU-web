@@ -32,6 +32,7 @@ const COMMUNITY_ACCESS_GATED = new Set([
 ]);
 
 const LEGACY_FILE_COLLECTION_SUBMIT_PREFIX = "/services/tools/file-collections/";
+const BlankRouteView = { render: () => null };
 
 function firstRouteValue(value: unknown) {
   return Array.isArray(value) ? value[0] : value;
@@ -74,7 +75,7 @@ export const router = createRouter({
         { path: "services/tools/:slug", name: "service-tool-detail", component: () => import("@/views/services/ToolDetail.vue"), meta: { title: "校园小工具", public: true } },
         { path: "services/tools/questionnaires/:slug", name: "questionnaire-fill", component: () => import("@/views/services/QuestionnaireFill.vue"), meta: { title: "填写问卷", public: true } },
         { path: "services/tools/grade-checks/:slug", name: "grade-check-lookup", component: () => import("@/views/services/GradeCheckLookup.vue"), meta: { title: "成绩核对" } },
-        { path: "services/tools/file-collections/:slug", name: "file-collection-submit", component: () => import("@/views/services/FileCollectionSubmit.vue"), meta: { title: "文件提交", public: true } },
+        { path: "services/tools/file-collections/:slug", name: "file-collection-submit", component: BlankRouteView, meta: { title: "文件提交", public: true } },
         { path: "announcements", name: "announcements", component: () => import("@/views/announcements/Index.vue"), meta: { title: "校园公告", public: true } },
         { path: "jwxt", name: "jwxt", component: () => import("@/views/jwxt/Index.vue"), meta: { title: "教务数据", public: true } },
         { path: "schedule", name: "schedule", component: () => import("@/views/Schedule.vue"), meta: { title: "课表", public: true, hideChrome: true } },
