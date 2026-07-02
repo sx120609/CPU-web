@@ -3,7 +3,7 @@ import { z } from "zod";
 import multer from "multer";
 import path from "node:path";
 import { mkdirSync } from "node:fs";
-import { unlink, rm, rename } from "node:fs/promises";
+import { readFile, unlink, rm } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { prisma } from "../prisma";
 import { authOptional, authRequired } from "../middleware/auth";
@@ -39,6 +39,7 @@ import {
 import {
   deleteMediaAsset,
   ensureMediaLocalPathFromUploadUrl,
+  saveMediaAsset,
 } from "../services/mediaStorage";
 import {
   getOneDriveChinaItemMetadata,
@@ -64,7 +65,7 @@ import {
 
 export const toolsRouter = Router();
 
-const fileCollectTmpDir = path.resolve(process.cwd(), "uploads", "file-collect", "_tmp");
+const fileCollectTmpDir = path.resolve(process.cwd(), "runtime", "file-collect-tmp");
 mkdirSync(fileCollectTmpDir, { recursive: true });
 const fileCollectUpload = multer({
   storage: multer.diskStorage({
@@ -781,6 +782,7 @@ toolsRouter.post("/file-collections/:id/repair-filenames", authRequired, async (
 
 toolsRouter.post("/file-collections/:slug/submissions", authOptional, fileCollectUpload.array("files", 20), async (req, res, next) => {
   const uploadedFiles = normalizeMulterOriginalNames((req.files as Express.Multer.File[] | undefined) ?? []);
+  const storedRelativePaths: string[] = [];
   try {
     const task = await prisma.fileCollectTask.findUnique({ where: { slug: String(req.params.slug) } });
     if (!task) throw Errors.notFound("收集任务不存在");
@@ -793,8 +795,6 @@ toolsRouter.post("/file-collections/:slug/submissions", authOptional, fileCollec
     const data = normalizeFileCollectSubmissionData(fields, parseJsonObject(String(req.body.data || "{}")));
     validateFileCollectUpload(uploadedFiles, rules);
     const identity = fileCollectIdentity(data, fields);
-    const taskDir = path.resolve(process.cwd(), "uploads", "file-collect", String(task.id));
-    mkdirSync(taskDir, { recursive: true });
 
     const result = await prisma.$transaction(async (tx) => {
       if (identity) {
@@ -823,7 +823,14 @@ toolsRouter.post("/file-collections/:slug/submissions", authOptional, fileCollec
         const storedName = renderFileCollectName(task.renameTemplate, data, file.originalname, index + 1, uploadedFiles.length);
         const physicalName = `${submission.id}-${index + 1}-${randomUUID()}-${safeStoredFilename(storedName)}`;
         const relativePath = path.posix.join("file-collect", String(task.id), physicalName);
-        await rename(file.path, path.join(taskDir, physicalName));
+        const buffer = await readFile(file.path);
+        await saveMediaAsset({
+          relativePath,
+          buffer,
+          contentType: file.mimetype || "application/octet-stream",
+        });
+        storedRelativePaths.push(relativePath);
+        await unlink(file.path).catch(() => null);
         fileRows.push(await tx.fileCollectFile.create({
           data: {
             submissionId: submission.id,
@@ -860,7 +867,10 @@ toolsRouter.post("/file-collections/:slug/submissions", authOptional, fileCollec
       files: result.files.map((file) => file.storedName),
     });
   } catch (e) {
-    await Promise.all(uploadedFiles.map((file) => unlink(file.path).catch(() => null)));
+    await Promise.all([
+      ...uploadedFiles.map((file) => unlink(file.path).catch(() => null)),
+      ...storedRelativePaths.map((relativePath) => unlinkFileCollectPath(relativePath)),
+    ]);
     next(e);
   }
 });

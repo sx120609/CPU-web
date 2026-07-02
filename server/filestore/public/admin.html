@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>药大拾间文件收集 · 工作台</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon-v3.png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="admin-body auth-pending">
+  <div id="sidebarScrim" class="sidebar-scrim"></div>
+  <div class="mobile-nav">
+    <button id="toggleSidebar" type="button" class="icon-button" title="菜单">☰</button>
+    <div class="mobile-brand">
+      <span class="brand-mark">药</span>
+      <strong data-site-title>药大拾间文件收集</strong>
+    </div>
+    <a class="back-to-site mobile-back-to-site" href="/services/tools/file_collect">返回主站</a>
+  </div>
+  <div id="toastHost" class="toast-host" aria-live="polite"></div>
+
+  <section id="loginScreen" class="login-screen">
+    <form id="loginForm" class="login-card">
+      <div class="login-brand">
+        <span class="brand-mark">药</span>
+        <div>
+          <strong data-site-title>药大拾间文件收集</strong>
+          <small>CPU 校园互助服务 · 文件收集</small>
+        </div>
+      </div>
+      <span class="login-badge">校园小工具</span>
+      <h1>使用药大拾间平台账号进入</h1>
+      <p>这里是药大拾间内置的文件收集系统，任务权限、身份与平台账号统一同步。</p>
+      <label hidden>平台登录
+        <input id="loginPassword" type="password" autocomplete="current-password" placeholder="请先登录平台">
+      </label>
+      <button class="primary full" type="submit">前往药大拾间登录</button>
+      <a class="back-to-site login-back-to-site" href="/services/tools/file_collect">返回文件收集菜单</a>
+      <p class="login-privacy">
+        前往登录前可先阅读 <a href="/privacy.html">隐私政策</a>
+      </p>
+      <p id="loginMessage" class="message"></p>
+      <footer class="app-footer login-card-footer">
+        <span>© 2026 药大拾间 · 校园互助与服务平台</span>
+        <span>非学校官方站点</span>
+        <a data-filing-link href="https://beian.miit.gov.cn/" target="_blank" rel="noopener" hidden></a>
+        <a href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener">GitHub</a>
+      </footer>
+    </form>
+  </section>
+
+  <aside class="app-sidebar">
+    <div class="brand">
+      <span class="brand-mark">药</span>
+      <div>
+        <strong data-site-title>药大拾间文件收集</strong>
+        <small>CPU 校园小工具</small>
+      </div>
+      <button id="closeSidebar" type="button" class="icon-button mobile-only-close" title="关闭">×</button>
+    </div>
+    <a class="back-to-site sidebar-back-to-site" href="/services/tools/file_collect">← 返回文件收集菜单</a>
+    <section class="sidebar-intro">
+      <p class="sidebar-kicker">药大拾间小工具</p>
+      <h2>文件收集工作台</h2>
+      <p>统一管理提交链接、回收记录、名单核对与文件导出。</p>
+    </section>
+
+    <button id="newTask" type="button" class="primary full">新建收集任务</button>
+    <input id="taskSearch" class="sidebar-search" placeholder="搜索任务">
+    <div id="taskList" class="task-list"></div>
+  </aside>
+
+  <main class="app-main">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">任务工作台</p>
+        <h1 id="activeTitle">请选择或新建任务</h1>
+        <p id="activeMeta">任务链接、统计、提交记录和缺交名单会集中显示在这里。</p>
+      </div>
+      <div class="top-actions">
+        <button id="editTask" type="button" disabled>编辑任务</button>
+        <button id="bindTaskOwner" type="button" hidden disabled>绑定创建者</button>
+        <button id="copyLink" type="button" disabled>复制链接</button>
+        <button id="showQr" type="button" disabled>二维码</button>
+        <button id="openFileManager" type="button" disabled>文件管理</button>
+      </div>
+    </header>
+
+    <section id="emptyDashboard" class="empty-dashboard">
+      <div>
+        <span class="empty-icon">+</span>
+        <h2>还没有选中任务</h2>
+        <p>创建一个收集任务后，系统会生成提交链接。提交者无需登录，填写表单并上传文件即可。</p>
+        <button id="emptyNewTask" type="button" class="primary">新建收集任务</button>
+      </div>
+    </section>
+
+    <section id="dashboard" class="dashboard" hidden>
+      <section class="summary-grid" id="metrics"></section>
+
+      <section class="share-panel">
+        <div>
+          <h2>提交入口</h2>
+          <p>发给同学或放进通知里，提交者不需要账号。</p>
+        </div>
+        <div class="share-links">
+          <div class="share-row">
+            <span class="share-label">提交链接</span>
+            <input id="shareLink" readonly>
+            <button id="copyLinkInline" type="button">复制</button>
+          </div>
+          <div class="share-row">
+            <span class="share-label">成功名单</span>
+            <input id="statusLink" readonly>
+            <button id="copyStatusLink" type="button">复制</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="work-grid">
+        <div class="records-panel">
+          <div class="panel-head">
+            <div>
+              <h2>提交记录</h2>
+              <p id="tableHint">搜索提交人、编号或文件名，错误提交可以直接删除。</p>
+            </div>
+            <div class="table-tools">
+              <input id="submissionSearch" placeholder="搜索姓名、学号/考试号、文件">
+              <button id="openFileManagerInline" type="button">文件管理</button>
+              <button id="repairFilenamesInline" type="button">修复乱码文件名</button>
+              <button id="repairRemoteFilenamesInline" type="button">修复云端文件名</button>
+              <button id="exportCsv" type="button">导出 CSV</button>
+              <button id="downloadZip" type="button">下载 ZIP</button>
+            </div>
+          </div>
+          <div id="submissionTable" class="table-empty"></div>
+        </div>
+
+        <aside class="side-panel">
+          <div class="side-block">
+            <div class="side-head">
+              <h2>缺交名单</h2>
+              <button id="copyMissing" type="button" disabled>复制</button>
+            </div>
+            <div id="missingList" class="missing-list"></div>
+          </div>
+
+          <div class="side-block">
+            <h2>名单外提交</h2>
+            <div id="unexpectedList" class="missing-list"></div>
+          </div>
+
+          <div class="side-block">
+            <h2>任务规则</h2>
+            <dl id="ruleList" class="rule-list"></dl>
+          </div>
+        </aside>
+      </section>
+    </section>
+    <footer class="app-footer">
+      <span>© 2026 药大拾间 · 校园互助与服务平台</span>
+      <span>非学校官方站点</span>
+      <a data-filing-link href="https://beian.miit.gov.cn/" target="_blank" rel="noopener" hidden></a>
+      <a href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener">GitHub</a>
+    </footer>
+  </main>
+
+  <aside id="editorDrawer" class="editor-drawer" aria-hidden="true">
+    <div class="drawer-header-sticky">
+      <div class="drawer-head">
+        <div>
+          <p class="eyebrow">任务配置</p>
+          <h2 id="editorTitle">新建任务</h2>
+        </div>
+        <button id="closeEditor" type="button" class="icon-button" title="关闭">×</button>
+      </div>
+
+      <!-- Steps Indicator -->
+      <div class="steps-container">
+        <div class="step-dot active" data-step="1">
+          <span class="dot-num">1</span>
+          <span class="dot-text">基本信息</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step-dot" data-step="2">
+          <span class="dot-num">2</span>
+          <span class="dot-text">表单设计</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step-dot" data-step="3">
+          <span class="dot-num">3</span>
+          <span class="dot-text">上传规则</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step-dot" data-step="4">
+          <span class="dot-num">4</span>
+          <span class="dot-text">核对名单</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="drawer-scroll-content">
+      <!-- Step 1: Basic Info -->
+      <div class="step-content" data-step-content="1">
+        <div class="step-guide">
+          <h3>第 1 步：填写基本信息</h3>
+          <p>起一个清晰的任务名称，并添加指引或截止时间，方便大家按时提交。</p>
+        </div>
+        <label>任务标题<span class="required-star">*</span>
+          <input id="title" placeholder="例如：期末作业收集、证件照收集">
+        </label>
+        <label>说明/公告
+          <textarea id="description" placeholder="说明提交范围、格式要求等..."></textarea>
+        </label>
+        <div class="form-row">
+          <label>截止时间
+            <input id="deadline" type="datetime-local">
+          </label>
+          <label>提交状态
+            <select id="taskStatus">
+              <option value="open">开放提交</option>
+              <option value="closed">停止提交</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <!-- Step 2: Form Fields -->
+      <div class="step-content" data-step-content="2" hidden>
+        <div class="step-guide">
+          <h3>第 2 步：设计表单字段</h3>
+          <p>定制提交者上传文件前需要填写的个人信息字段（如姓名、学号等）。</p>
+        </div>
+        <div class="editor-section">
+          <div class="section-line">
+            <h3>选择表单模板</h3>
+            <div class="field-tools">
+              <select id="templateSelect" title="选择模板"></select>
+              <button id="applyTemplate" type="button" class="chip">应用模板</button>
+              <button id="deleteTemplate" type="button" class="chip danger">删除模板</button>
+            </div>
+          </div>
+          <div class="section-line" style="margin-top: 16px;">
+            <h3>表单字段列表</h3>
+            <button id="addField" type="button" class="chip primary">+ 添加自定义字段</button>
+          </div>
+          <div id="fields" class="field-stack" style="margin-top: 10px;"></div>
+        </div>
+      </div>
+
+      <!-- Step 3: Rules & Renaming -->
+      <div class="step-content" data-step-content="3" hidden>
+        <div class="step-guide">
+          <h3>第 3 步：配置文件规则与命名</h3>
+          <p>限制上传的文件格式与数量，并配置系统自动重命名规则，告别手动改名！</p>
+        </div>
+        <div class="editor-section">
+          <h3>限制条件</h3>
+          <div class="form-row three">
+            <label>格式 (如 pdf,zip)
+              <input id="allowedTypes" value="pdf,doc,docx,jpg,png,zip">
+            </label>
+            <label>单文件大小 (MB)
+              <input id="maxSizeMb" type="number" min="1" max="100" value="20">
+            </label>
+            <label>文件数量上限
+              <input id="maxCount" type="number" min="1" value="1">
+            </label>
+          </div>
+          
+          <div class="rename-builder" style="margin-top: 18px;">
+            <div class="rename-panel" data-rename-panel="file">
+              <label>文件命名格式
+                <input id="renameTemplate" value="{name}-{student_id}">
+              </label>
+              <div class="rename-tools">
+                <span class="dynamic-rename-tokens" data-target="renameTemplate"></span>
+                <button type="button" class="chip static-rename-token" data-target="renameTemplate" data-token="{original}">原文件名</button>
+                <button type="button" class="chip static-rename-token" data-target="renameTemplate" data-token="{index}">序号</button>
+                <button type="button" class="chip reset-rename-template" data-target="renameTemplate">恢复默认</button>
+              </div>
+              <div class="rename-custom">
+                <select class="rename-field-select" data-target="renameTemplate" title="选择字段"></select>
+                <select class="rename-slice-mode" data-target="renameTemplate" title="截取方式">
+                  <option value="">完整内容</option>
+                  <option value="last">后几位</option>
+                  <option value="first">前几位</option>
+                </select>
+                <input class="rename-slice-count" data-target="renameTemplate" type="number" min="1" max="20" value="2" title="位数">
+                <button type="button" class="chip insert-rename-field" data-target="renameTemplate">插入</button>
+              </div>
+              <p id="renamePreview" class="rename-preview"></p>
+              <label class="checkline rename-existing">
+                <input id="renameExistingFiles" type="checkbox">
+                同步重命名已有文件
+              </label>
+            </div>
+
+            <div class="rename-panel" data-rename-panel="folder">
+              <label>归档文件夹命名格式 (仅多文件有效)
+                <input id="folderTemplate" value="{name}-{student_id}">
+              </label>
+              <div class="rename-tools">
+                <span class="dynamic-rename-tokens" data-target="folderTemplate"></span>
+                <button type="button" class="chip reset-rename-template" data-target="folderTemplate">恢复默认</button>
+              </div>
+              <div class="rename-custom">
+                <select class="rename-field-select" data-target="folderTemplate" title="选择字段"></select>
+                <select class="rename-slice-mode" data-target="folderTemplate" title="截取方式">
+                  <option value="">完整内容</option>
+                  <option value="last">后几位</option>
+                  <option value="first">前几位</option>
+                </select>
+                <input class="rename-slice-count" data-target="folderTemplate" type="number" min="1" max="20" value="2" title="位数">
+                <button type="button" class="chip insert-rename-field" data-target="folderTemplate">插入</button>
+              </div>
+              <p id="folderPreview" class="rename-preview"></p>
+            </div>
+            <p class="hint">常用命名可以直接点击上方预设按钮。例如：{student_id|last:2} 会取学号/考试号的最后 2 位。</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 4: Expected List -->
+      <div class="step-content" data-step-content="4" hidden>
+        <div class="step-guide">
+          <h3>第 4 步：导入名单（可选）</h3>
+          <p>提供全班同学学号或姓名名单，系统会自动计算出谁没提交，并能一键催缴。</p>
+        </div>
+        <div class="editor-section">
+          <label>应提交人员名单 (每行一个，如学号/考试号/姓名)
+            <textarea id="expectedEntries" placeholder="2020240444&#10;2020240445&#10;2020240446"></textarea>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="drawer-actions">
+      <button id="prevStep" type="button" class="secondary" disabled>上一步</button>
+      <button id="nextStep" type="button" class="primary">下一步</button>
+      <button id="saveTask" type="button" class="primary" hidden>保存任务</button>
+      <button id="saveTemplate" type="button" class="secondary" hidden>保存当前模版</button>
+      <button id="deleteTask" type="button" class="danger" disabled>删除任务</button>
+    </div>
+  </aside>
+  <div id="drawerScrim" class="drawer-scrim"></div>
+
+  <dialog id="qrDialog">
+    <div class="dialog-head">
+      <h2>提交二维码</h2>
+      <button id="closeQr" type="button" class="icon-button">×</button>
+    </div>
+    <img id="qrImage" alt="提交二维码">
+    <p id="qrLink" class="hint"></p>
+  </dialog>
+
+  <dialog id="fileDialog" class="wide-dialog">
+    <div class="dialog-head">
+      <div>
+        <h2>文件管理</h2>
+        <p id="fileDialogMeta" class="hint"></p>
+      </div>
+      <button id="closeFileDialog" type="button" class="icon-button">×</button>
+    </div>
+    <div class="file-manager-tools">
+      <input id="fileSearch" placeholder="搜索文件名、姓名、编号">
+      <button id="repairFilenames" type="button">修复乱码文件名</button>
+      <button id="repairRemoteFilenames" type="button">修复云端文件名</button>
+    </div>
+    <div id="fileManager" class="file-manager"></div>
+  </dialog>
+
+  <dialog id="confirmDialog">
+    <div class="dialog-head">
+      <div>
+        <h2 id="confirmTitle">确认操作</h2>
+        <p id="confirmBody" class="hint"></p>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button id="confirmOk" type="button" class="danger">确认</button>
+      <button id="confirmCancel" type="button">取消</button>
+    </div>
+  </dialog>
+
+  <dialog id="promptDialog">
+    <div class="dialog-head">
+      <div>
+        <h2 id="promptTitle">输入名称</h2>
+        <p id="promptBody" class="hint"></p>
+      </div>
+    </div>
+    <label id="promptLabel">名称
+      <input id="promptInput">
+    </label>
+    <div class="dialog-actions">
+      <button id="promptOk" type="button" class="primary">保存</button>
+      <button id="promptCancel" type="button">取消</button>
+    </div>
+  </dialog>
+
+  <script src="/admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>药大拾间文件收集 · 提交成功名单</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon-v3.png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="submit-shell status-shell">
+    <section class="submit-card status-card">
+      <div class="submit-brandbar">
+        <div class="submit-brand">
+          <span class="brand-mark">药</span>
+          <div>
+            <strong>药大拾间文件收集</strong>
+            <small>CPU 校园互助服务 · 成功提交名单</small>
+          </div>
+        </div>
+        <span class="submit-brand-tag">校园小工具</span>
+      </div>
+      <div id="statusHeader" class="submit-hero">
+        <p class="eyebrow">药大拾间 · 成功提交名单</p>
+        <h1>加载成功名单中</h1>
+        <p>请稍候。</p>
+      </div>
+
+      <section id="statusBody" class="status-body" hidden>
+        <div id="statusMetrics" class="summary-grid status-summary"></div>
+        <div class="status-tools">
+          <button type="button" class="chip" onclick="location.href = location.href.replace('/status/', '/submit/')">返回提交</button>
+          <input id="statusSearch" placeholder="搜索姓名、编号或文件名">
+        </div>
+        <div id="statusList" class="status-list"></div>
+      </section>
+    </section>
+    <footer class="app-footer submit-footer">
+      <span>© 2026 药大拾间 · 校园互助与服务平台</span>
+      <span>非学校官方站点</span>
+      <a data-filing-link href="https://beian.miit.gov.cn/" target="_blank" rel="noopener" hidden></a>
+      <a href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener">GitHub</a>
+    </footer>
+  </main>
+  <script src="/status.js"></script>
+</body>
+</html>

@@ -106,7 +106,12 @@ function openTool(tool: ServiceTool) {
 
 function openManage() {
   const fallback = toolMetas.value.find((item) => item.canManage)?.code;
-  router.push({ path: "/services/tools/manage", query: { tool: manageable.value[0] ?? fallback ?? "questionnaire" } });
+  const target = manageable.value[0] ?? fallback ?? "questionnaire";
+  if (target === "file_collect") {
+    router.push("/services/tools/filestore");
+    return;
+  }
+  router.push({ path: "/services/tools/manage", query: { tool: target } });
 }
 
 function uniqueToolCodes(items: ServiceToolCode[]) {

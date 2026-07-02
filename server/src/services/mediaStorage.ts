@@ -258,9 +258,10 @@ export async function createRemoteMediaUploadSession(input: {
   relativePath: string;
   contentType?: string | null;
   mediaKind?: MediaStorageKind | null;
+  sizeBytes?: number | null;
 }) {
   const relativePath = normalizeUploadRelativePath(input.relativePath);
-  const remote = await shouldPreferRemoteMediaStorage(relativePath, input.mediaKind ?? undefined);
+  const remote = await shouldPreferRemoteMediaStorage(relativePath, input.mediaKind ?? undefined, input.sizeBytes ?? undefined);
   if (!remote) return null;
   return createOneDriveChinaUploadSession(relativePath, input.contentType);
 }
@@ -294,7 +295,7 @@ export async function prepareMediaLocalFileForProcessing(url: string): Promise<M
 
 export async function saveMediaAsset(input: SaveMediaAssetInput): Promise<SaveMediaAssetResult> {
   const relativePath = normalizeUploadRelativePath(input.relativePath);
-  if (!(await shouldPreferRemoteMediaStorage(relativePath, input.mediaKind ?? undefined))) {
+  if (!(await shouldPreferRemoteMediaStorage(relativePath, input.mediaKind ?? undefined, input.buffer.byteLength))) {
     const localPath = localAssetAbsolutePath(relativePath);
     await mkdir(path.dirname(localPath), { recursive: true });
     await writeFile(localPath, input.buffer);
@@ -676,9 +677,13 @@ async function shouldUseRemoteMediaStorage(relativePath: string) {
   return shouldPreferRemoteMediaStorage(relativePath);
 }
 
-async function shouldPreferRemoteMediaStorage(relativePath: string, mediaKind?: MediaStorageKind) {
+async function shouldPreferRemoteMediaStorage(relativePath: string, mediaKind?: MediaStorageKind, sizeBytes?: number | null) {
   const runtime = await getMediaStorageRuntimeConfig();
-  if (isFileCollectRelativePath(relativePath) && runtime.filestoreRemoteStorageEnabled) return true;
+  if (isFileCollectRelativePath(relativePath) && runtime.filestoreRemoteStorageEnabled) {
+    const thresholdBytes = Math.round(Math.max(0, Number(runtime.filestoreRemoteMinSizeMb || 0)) * 1024 * 1024);
+    if (thresholdBytes > 0 && typeof sizeBytes === "number" && sizeBytes < thresholdBytes) return false;
+    return true;
+  }
   const kind = mediaKind || resolveMediaKindForRelativePath(relativePath);
   const configuredBackend = kind === "video"
     ? runtime.effectiveVideoProvider

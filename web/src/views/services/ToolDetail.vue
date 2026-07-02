@@ -66,6 +66,10 @@ const canManage = computed(() => Boolean(tool.value && (
 )));
 
 function openToolManage(toolCode: ServiceToolCode) {
+  if (toolCode === "file_collect") {
+    router.push("/services/tools/filestore");
+    return;
+  }
   router.push({ path: "/services/tools/manage", query: { tool: toolCode } });
 }
 
@@ -291,14 +295,14 @@ const FileCollectPanel = defineComponent({
       h("div", { class: "list-head" }, [
         h("div", [
           h("h3", "文件收集"),
-          h("p", "创建提交链接，集中收取作业、材料、照片等文件。发起者可在管理页查看提交记录并打包下载。"),
+          h("p", "进入 Filestore 创建提交链接，集中收取作业、材料、照片等文件。"),
         ]),
         canManageFileCollect.value
-          ? h("button", { class: "plain-action", type: "button", onClick: () => openToolManage("file_collect") }, "进入管理")
+          ? h("button", { class: "plain-action", type: "button", onClick: () => router.push("/services/tools/filestore") }, "进入 Filestore")
           : null,
       ]),
       h("div", { class: "empty-panel" }, canManageFileCollect.value
-        ? "在管理页创建任务、复制提交链接、查看提交记录和下载文件。"
+        ? "在 Filestore 工作台创建任务、复制提交链接、查看提交记录和下载文件。"
         : "请通过发起者分享的文件收集链接上传文件。"),
     ]);
   },

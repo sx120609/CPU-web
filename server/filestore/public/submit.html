@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>药大拾间文件收集 · 文件提交</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon-v3.png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="submit-shell">
+    <section class="submit-card">
+      <div class="submit-brandbar">
+        <div class="submit-brand">
+          <span class="brand-mark">药</span>
+          <div>
+            <strong>药大拾间文件收集</strong>
+            <small>CPU 校园互助服务 · 文件提交入口</small>
+          </div>
+        </div>
+        <span class="submit-brand-tag">校园小工具</span>
+      </div>
+      <div id="submitHeader" class="submit-hero">
+        <p class="eyebrow">药大拾间 · 文件提交</p>
+        <h1>加载任务中</h1>
+        <p>请稍候。</p>
+      </div>
+
+      <div id="statusShortcut" class="status-shortcut" hidden></div>
+
+      <form id="submitForm" class="submit-form" hidden>
+        <div id="dynamicFields"></div>
+
+        <label class="upload-zone">
+          <strong>上传文件</strong>
+          <span id="fileRules" class="hint"></span>
+          <input id="files" name="files" type="file" multiple>
+        </label>
+        <div class="pdf-tool-shortcut">
+          <div>
+            <strong>PDF 工具</strong>
+            <span>上传前可先合并、拆分或压缩 PDF。</span>
+          </div>
+          <a href="/services/tools/pdf_tools" target="_blank" rel="noopener">打开 PDF 工具</a>
+        </div>
+        <div id="fileQueue" class="submit-file-queue" hidden></div>
+
+        <progress id="progress" value="0" max="100" hidden></progress>
+
+        <div class="submit-actions">
+          <button class="primary" type="submit">提交文件</button>
+          <button type="reset">重填</button>
+        </div>
+      </form>
+      <p id="submitMessage" class="message submit-form"></p>
+    </section>
+    <footer class="app-footer submit-footer">
+      <span>© 2026 药大拾间 · 校园互助与服务平台</span>
+      <span>非学校官方站点</span>
+      <a data-filing-link href="https://beian.miit.gov.cn/" target="_blank" rel="noopener" hidden></a>
+      <a href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener">GitHub</a>
+    </footer>
+  </main>
+
+  <dialog id="successDialog" class="success-dialog">
+    <div class="success-check" aria-hidden="true">
+      <svg viewBox="0 0 64 64" role="img">
+        <circle cx="32" cy="32" r="28"></circle>
+        <path d="M19 33.5 28 42 46 23"></path>
+      </svg>
+    </div>
+    <h2>提交成功</h2>
+    <p id="successSummary"></p>
+    <div id="successFiles" class="success-files"></div>
+    <div class="success-actions">
+      <a id="successStatusLink" class="primary success-status-link" href="#">查看提交成功名单</a>
+      <button id="closeSuccessDialog" type="button">关闭</button>
+    </div>
+  </dialog>
+
+  <dialog id="overwriteDialog" class="overwrite-dialog">
+    <div class="dialog-head">
+      <div>
+        <h2>发现已有提交</h2>
+        <p id="overwriteSummary" class="hint"></p>
+      </div>
+    </div>
+    <div id="overwriteFiles" class="overwrite-files"></div>
+    <p class="overwrite-warning">继续提交会用本次填写的信息和文件覆盖旧提交。</p>
+    <div class="dialog-actions">
+      <button id="cancelOverwrite" type="button">取消</button>
+      <button id="confirmOverwrite" class="primary" type="button">覆盖旧提交</button>
+    </div>
+  </dialog>
+  <script src="/submit.js"></script>
+</body>
+</html>

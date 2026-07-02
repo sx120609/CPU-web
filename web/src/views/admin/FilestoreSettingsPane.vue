@@ -3,7 +3,7 @@
     <el-alert type="info" :closable="false" show-icon class="info-banner">
       <template #title>仅超级管理员可见</template>
       <div class="banner-copy">
-        文件收集可复用媒体存储页的世纪互联 OneDrive / SharePoint 配置。开启后，提交页会走浏览器直传，服务器只负责生成上传会话和确认上传结果。
+        文件收集统一写入 Filestore 的 file-collect 前缀。开启远端后，符合阈值的提交文件会保存到世纪互联文档库，未命中的文件继续留在本地 Filestore。
       </div>
     </el-alert>
 
@@ -14,7 +14,7 @@
           <p class="section-desc">提交规则仍由每个文件收集任务控制，包含文件类型、数量和单文件大小限制。</p>
         </div>
         <div class="summary-row" v-if="config">
-          <el-tag :type="enabled ? 'success' : 'info'" round>{{ enabled ? "直传已开启" : "使用本地上传" }}</el-tag>
+          <el-tag :type="enabled ? 'success' : 'info'" round>{{ enabled ? "远端已开启" : "本地 Filestore" }}</el-tag>
           <el-tag :type="config.remoteReady ? 'success' : 'warning'" round>{{ config.remoteReady ? "世纪互联就绪" : "世纪互联未就绪" }}</el-tag>
         </div>
       </div>
@@ -34,8 +34,8 @@
 
       <div class="toggle-row">
         <div>
-          <div class="toggle-title">世纪互联直传</div>
-          <p class="section-desc">公开提交页会先拿到 Graph 上传会话，再把文件分片直接传到文档库，不占用站点服务器上传带宽。</p>
+          <div class="toggle-title">Filestore 远端存储</div>
+          <p class="section-desc">提交文件先进入文件收集的 Filestore 流程，再按策略保存到本地或世纪互联文档库。</p>
         </div>
         <el-switch
           v-model="enabled"
@@ -48,8 +48,8 @@
 
       <div class="threshold-row">
         <div>
-          <div class="toggle-title">直传阈值</div>
-          <p class="section-desc">一次提交中只要有文件达到这个大小，整次提交就走世纪互联；填 0 表示开启后全部直传。</p>
+          <div class="toggle-title">远端阈值</div>
+          <p class="section-desc">单个文件达到这个大小时保存到世纪互联；填 0 表示开启后全部文件都走远端存储。</p>
         </div>
         <div class="threshold-control">
           <el-input-number
@@ -71,7 +71,7 @@
           <b>{{ config.fileCollectPrefix }}</b>
         </div>
         <div class="status-item">
-          <span>直传策略</span>
+          <span>远端策略</span>
           <b>{{ thresholdLabel }}</b>
         </div>
         <div class="status-item">
@@ -106,8 +106,8 @@
       >
         <template #default>
           <div class="alert-action">
-            <span>文件收集直传直接复用媒体存储页的数据，不在这里重复配置 Azure 应用。</span>
-            <el-button size="small" type="primary" plain @click="goMediaStorage">去媒体存储</el-button>
+            <span>文件收集远端存储复用站点的世纪互联授权，不在这里重复配置 Azure 应用。</span>
+            <el-button size="small" type="primary" plain @click="goMediaStorage">去远端存储配置</el-button>
           </div>
         </template>
       </el-alert>
@@ -125,7 +125,7 @@
         <el-button type="primary" :loading="saving" :disabled="saving || loading || Boolean(loadError)" @click="save">
           保存文件收集设置
         </el-button>
-        <el-button @click="goMediaStorage">媒体存储配置</el-button>
+        <el-button @click="goMediaStorage">远端存储配置</el-button>
       </div>
     </section>
 
@@ -133,7 +133,7 @@
       <div class="section-head">
         <div>
           <h3 class="section-title">打包下载</h3>
-          <p class="section-desc">当前仍使用站点现有的浏览器端打包下载。</p>
+          <p class="section-desc">当前仍使用站点现有的浏览器端打包下载，文件来源由 Filestore 自动解析。</p>
         </div>
         <el-tag type="info" round>暂不开放云端打包</el-tag>
       </div>
@@ -202,7 +202,7 @@ function applyConfig(next: FilestoreStorageConfig) {
 
 async function save() {
   if (enabled.value && !remoteReady.value) {
-    ElMessage.warning("请先在媒体存储页完成世纪互联授权并选择文档库");
+    ElMessage.warning("请先完成世纪互联授权并选择文档库");
     return;
   }
   saving.value = true;
