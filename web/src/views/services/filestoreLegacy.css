@@ -946,6 +946,14 @@ p {
   max-width: 100%;
 }
 
+.submission-results {
+  min-width: 0;
+}
+
+.mobile-submission-list {
+  display: none;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -2670,9 +2678,30 @@ progress::-moz-progress-bar {
     width: 56px;
   }
 
+  .records-panel {
+    display: block;
+    overflow: visible;
+  }
+
   .panel-head {
     flex-direction: column;
     align-items: stretch;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .panel-head > div:first-child {
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+
+  .panel-head h2 {
+    font-size: 18px;
+  }
+
+  .panel-head p {
+    line-height: 1.5;
   }
 
   .table-tools {
@@ -2707,6 +2736,140 @@ progress::-moz-progress-bar {
     font-size: 12px;
     line-height: 1.15;
     white-space: normal;
+  }
+
+  .submission-results .table-wrap {
+    display: none;
+  }
+
+  .mobile-submission-list {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .mobile-submission-card {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+  }
+
+  .mobile-submission-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface-2);
+  }
+
+  .mobile-submission-head strong {
+    display: block;
+    font-size: 15px;
+    line-height: 1.35;
+    color: var(--text);
+  }
+
+  .mobile-submission-head span {
+    display: block;
+    margin-top: 3px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .mobile-delete-submission {
+    flex: 0 0 auto;
+    min-height: 30px;
+    padding: 4px 10px;
+    border-color: rgba(239, 68, 68, 0.22);
+    color: var(--danger);
+    font-size: 12px;
+  }
+
+  .mobile-submission-fields {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 6px 10px;
+    margin: 0;
+    padding: 10px 12px 0;
+  }
+
+  .mobile-submission-fields dt,
+  .mobile-submission-fields dd {
+    margin: 0;
+    min-width: 0;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .mobile-submission-fields dt {
+    color: var(--muted);
+    font-weight: 700;
+  }
+
+  .mobile-submission-fields dd {
+    color: var(--text);
+    font-weight: 650;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-submission-files {
+    display: grid;
+    gap: 8px;
+    padding: 10px 12px 12px;
+  }
+
+  .mobile-file-card {
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+  }
+
+  .mobile-file-main {
+    min-width: 0;
+  }
+
+  .mobile-file-main strong,
+  .mobile-file-main span {
+    display: block;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-file-main strong {
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.35;
+  }
+
+  .mobile-file-main span {
+    margin-top: 3px;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .mobile-file-card .file-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .mobile-file-card .file-actions button {
+    width: 100%;
+    min-height: 30px;
+    padding: 4px 6px;
+    font-size: 11px;
+  }
+
+  .records-panel .table-empty {
+    padding: 28px 14px;
   }
 
   .drawer-actions {

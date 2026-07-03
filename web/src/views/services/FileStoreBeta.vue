@@ -175,46 +175,80 @@
                 <strong>{{ detail.submissions?.length ? "没有匹配结果" : "暂无提交记录" }}</strong>
                 <span>{{ detail.submissions?.length ? "换个关键词再试。" : "提交者上传后会显示在这里。" }}</span>
               </div>
-              <div v-else class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>提交人</th>
-                      <th v-for="field in detail.fields.filter((field) => field.key !== 'name')" :key="field.key">{{ field.label }}</th>
-                      <th>文件</th>
-                      <th>提交时间</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="submission in filteredSubmissions" :key="submission.id">
-                      <td>
+              <div v-else class="submission-results">
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>提交人</th>
+                        <th v-for="field in detail.fields.filter((field) => field.key !== 'name')" :key="field.key">{{ field.label }}</th>
+                        <th>文件</th>
+                        <th>提交时间</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="submission in filteredSubmissions" :key="submission.id">
+                        <td>
+                          <strong>{{ submission.data.name || `#${submission.id}` }}</strong>
+                          <span class="cell-sub">IP {{ submission.ip || "-" }}</span>
+                        </td>
+                        <td v-for="field in detail.fields.filter((field) => field.key !== 'name')" :key="field.key">{{ submission.data[field.key] || "" }}</td>
+                        <td class="file-cell">
+                          <div v-for="file in submission.files" :key="file.id" class="file-row">
+                            <div>
+                              <strong>{{ file.storedName }}</strong>
+                              <span class="cell-sub">{{ file.originalName }} · {{ formatBytes(file.size) }}</span>
+                            </div>
+                            <div class="file-actions">
+                              <button type="button" @click="previewFile(file)">查看</button>
+                              <button type="button" @click="downloadFile(file)">下载</button>
+                              <button type="button" class="danger" @click="deleteFile(file)">删除</button>
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          {{ formatDateTime(submission.createdAt) }}
+                        </td>
+                        <td>
+                          <button type="button" class="icon-button danger" title="删除" @click="deleteSubmission(submission.id)">×</button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="mobile-submission-list" aria-label="移动端提交记录">
+                  <article v-for="submission in filteredSubmissions" :key="submission.id" class="mobile-submission-card">
+                    <div class="mobile-submission-head">
+                      <div>
                         <strong>{{ submission.data.name || `#${submission.id}` }}</strong>
-                        <span class="cell-sub">IP {{ submission.ip || "-" }}</span>
-                      </td>
-                      <td v-for="field in detail.fields.filter((field) => field.key !== 'name')" :key="field.key">{{ submission.data[field.key] || "" }}</td>
-                      <td class="file-cell">
-                        <div v-for="file in submission.files" :key="file.id" class="file-row">
-                          <div>
-                            <strong>{{ file.storedName }}</strong>
-                            <span class="cell-sub">{{ file.originalName }} · {{ formatBytes(file.size) }}</span>
-                          </div>
-                          <div class="file-actions">
-                            <button type="button" @click="previewFile(file)">查看</button>
-                            <button type="button" @click="downloadFile(file)">下载</button>
-                            <button type="button" class="danger" @click="deleteFile(file)">删除</button>
-                          </div>
+                        <span>IP {{ submission.ip || "-" }}</span>
+                      </div>
+                      <button type="button" class="mobile-delete-submission" title="删除提交" @click="deleteSubmission(submission.id)">删除</button>
+                    </div>
+                    <dl class="mobile-submission-fields">
+                      <template v-for="field in detail.fields.filter((field) => field.key !== 'name')" :key="field.key">
+                        <dt>{{ field.label }}</dt>
+                        <dd>{{ submission.data[field.key] || "-" }}</dd>
+                      </template>
+                      <dt>提交时间</dt>
+                      <dd>{{ formatDateTime(submission.createdAt) }}</dd>
+                    </dl>
+                    <div class="mobile-submission-files">
+                      <div v-for="file in submission.files" :key="file.id" class="mobile-file-card">
+                        <div class="mobile-file-main">
+                          <strong>{{ file.storedName }}</strong>
+                          <span>{{ file.originalName }} · {{ formatBytes(file.size) }}</span>
                         </div>
-                      </td>
-                      <td>
-                        {{ formatDateTime(submission.createdAt) }}
-                      </td>
-                      <td>
-                        <button type="button" class="icon-button danger" title="删除" @click="deleteSubmission(submission.id)">×</button>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                        <div class="file-actions">
+                          <button type="button" @click="previewFile(file)">查看</button>
+                          <button type="button" @click="downloadFile(file)">下载</button>
+                          <button type="button" class="danger" @click="deleteFile(file)">删除</button>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                </div>
               </div>
             </div>
 
