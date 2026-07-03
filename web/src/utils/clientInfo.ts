@@ -1,7 +1,7 @@
 export type ClientPlatform = "ios" | "android" | "harmony" | "web" | "unknown";
 
-export const ANDROID_APP_LATEST_VERSION_CODE = 18;
-export const ANDROID_APP_LATEST_VERSION_NAME = "2.0.9";
+export const ANDROID_APP_LATEST_VERSION_CODE = 19;
+export const ANDROID_APP_LATEST_VERSION_NAME = "2.1.0";
 export const HARMONY_APP_LATEST_VERSION_CODE = 17;
 export const HARMONY_APP_LATEST_VERSION_NAME = "2.0.8";
 export const ANDROID_APP_DOWNLOAD_URL = "/api/site/downloads/android-app";
