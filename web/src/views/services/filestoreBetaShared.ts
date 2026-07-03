@@ -8,6 +8,10 @@ import type {
 import { onBeforeUnmount, onMounted } from "vue";
 import legacyFilestoreCss from "./filestoreLegacy.css?raw";
 
+const scopedLegacyPageClass = "filestore-beta-page";
+const scopedLegacyGlobalStyleId = "filestore-beta-global-shell-style";
+let scopedLegacyMounts = 0;
+
 export interface FilestoreBetaDraft {
   title: string;
   description: string;
@@ -302,6 +306,31 @@ export function useLegacyFilestoreCss(bodyClasses: string[] = []) {
 export function useScopedLegacyFilestoreCss(scopeClass = "filestore-beta-legacy") {
   const styleId = `${scopeClass}-style`;
   onMounted(() => {
+    scopedLegacyMounts += 1;
+    document.body.classList.add(scopedLegacyPageClass);
+    if (!document.getElementById(scopedLegacyGlobalStyleId)) {
+      const globalStyle = document.createElement("style");
+      globalStyle.id = scopedLegacyGlobalStyleId;
+      globalStyle.textContent = `
+body.${scopedLegacyPageClass} .main {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+body.${scopedLegacyPageClass} .main > * {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+body.${scopedLegacyPageClass} .filestore-beta-legacy {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+`;
+      document.head.appendChild(globalStyle);
+    }
     if (document.getElementById(styleId)) return;
     const style = document.createElement("style");
     style.id = styleId;
@@ -309,6 +338,11 @@ export function useScopedLegacyFilestoreCss(scopeClass = "filestore-beta-legacy"
     document.head.appendChild(style);
   });
   onBeforeUnmount(() => {
+    scopedLegacyMounts = Math.max(0, scopedLegacyMounts - 1);
+    if (scopedLegacyMounts === 0) {
+      document.body.classList.remove(scopedLegacyPageClass);
+      document.getElementById(scopedLegacyGlobalStyleId)?.remove();
+    }
     document.getElementById(styleId)?.remove();
   });
 }

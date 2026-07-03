@@ -1,5 +1,9 @@
 <template>
-  <div class="layout-root" :class="{ 'keyboard-open': keyboardOpen }" :style="layoutStyle">
+  <div
+    class="layout-root"
+    :class="{ 'keyboard-open': keyboardOpen, 'layout-root--full-width': fullWidthContent && !hideChrome }"
+    :style="layoutStyle"
+  >
     <!-- 顶栏 -->
     <header v-if="!hideChrome" class="topbar">
       <div class="topbar-inner">
@@ -838,6 +842,21 @@ function setAppearanceMode(command: string | number | object) {
 .main--full-width {
   padding: 0;
   max-width: none;
+  margin: 0;
+  width: 100%;
+}
+
+.layout-root--full-width .main {
+  padding: 0;
+  max-width: none;
+  margin: 0;
+  width: 100%;
+}
+
+.layout-root--full-width .main > :deep(*) {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
 }
 
 .footer {
