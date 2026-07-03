@@ -1334,7 +1334,7 @@ tr:hover td {
 
 .field-row {
   display: grid;
-  grid-template-columns: minmax(86px, 0.8fr) minmax(100px, 1fr) minmax(120px, 1.2fr) minmax(110px, 1fr) auto minmax(118px, auto);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   align-items: end;
   padding: 12px;
@@ -1355,22 +1355,26 @@ tr:hover td {
 }
 
 .field-row .checkline {
+  grid-column: 1;
   min-height: 36px;
   align-items: center;
   align-self: end;
 }
 
 .field-row-actions {
+  grid-column: 2;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
   gap: 6px;
   min-width: 0;
 }
 
 .field-row-actions .chip {
+  flex: 0 1 auto;
   min-height: 34px;
   padding-inline: 10px;
+  white-space: nowrap;
 }
 
 .field-card {
@@ -2855,20 +2859,24 @@ progress::-moz-progress-bar {
   }
 
   .field-row label:nth-child(3),
-  .field-row label:nth-child(4),
-  .field-row .checkline,
-  .field-row-actions {
-    grid-column: 1 / -1;
+  .field-row label:nth-child(4) {
+    grid-column: auto;
+  }
+
+  .field-row .checkline {
+    grid-column: 1;
   }
 
   .field-row-actions {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) max-content;
+    grid-column: 2;
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
     gap: 6px;
   }
 
   .field-row-actions .chip {
-    width: 100%;
+    width: auto;
   }
 
   .rename-tools {
@@ -3074,15 +3082,19 @@ progress::-moz-progress-bar {
 
   .field-tools,
   .field-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .field-tools {
     grid-template-columns: minmax(0, 1fr) repeat(2, max-content);
   }
 
+  .field-row .checkline {
+    grid-column: 1;
+  }
+
   .field-row-actions {
-    grid-template-columns: minmax(0, 1fr) max-content;
+    grid-column: 2;
   }
 
   .rename-tools {
@@ -3202,6 +3214,23 @@ progress::-moz-progress-bar {
 
   .field-tools {
     grid-template-columns: minmax(0, 1fr) repeat(2, max-content);
+  }
+
+  .field-row {
+    grid-template-columns: 1fr;
+  }
+
+  .field-row .checkline,
+  .field-row-actions {
+    grid-column: 1;
+  }
+
+  .field-row-actions {
+    justify-content: stretch;
+  }
+
+  .field-row-actions .chip {
+    flex: 1 1 0;
   }
 
   .rename-tools .chip {

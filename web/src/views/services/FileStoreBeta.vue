@@ -342,7 +342,7 @@
                     必填
                   </label>
                   <div class="field-row-actions">
-                    <button type="button" class="chip" @click="generateRegex(field)">AI 生成正则</button>
+                    <button type="button" class="chip" title="AI 生成正则" @click="generateRegex(field)">AI 正则</button>
                     <button type="button" class="chip danger" :disabled="draft.fields.length <= 1" @click="draft.fields.splice(index, 1)">删除</button>
                   </div>
                 </div>
