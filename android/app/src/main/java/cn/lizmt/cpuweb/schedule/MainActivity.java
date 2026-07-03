@@ -30,9 +30,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowCompat;
 
 public final class MainActivity extends Activity {
     private static final int REQUEST_FILE_CHOOSER = 2001;
@@ -44,8 +42,6 @@ public final class MainActivity extends Activity {
     private String appHost;
     private boolean mainFrameLoadFailed;
     private ValueCallback<Uri[]> filePathCallback;
-    private int safeAreaTop;
-    private int safeAreaBottom;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -73,7 +69,6 @@ public final class MainActivity extends Activity {
                 FrameLayout.LayoutParams.MATCH_PARENT
         ));
 
-        bindSystemBarInsets(root);
         setContentView(root);
         configureWebView();
         webView.loadUrl(BuildConfig.APP_URL);
@@ -81,6 +76,7 @@ public final class MainActivity extends Activity {
 
     private void configureSystemBars() {
         Window window = getWindow();
+        WindowCompat.setDecorFitsSystemWindows(window, true);
         window.setStatusBarColor(Color.rgb(237, 244, 255));
         window.setNavigationBarColor(Color.rgb(248, 250, 252));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -217,7 +213,6 @@ public final class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 CookieManager.getInstance().flush();
-                publishSafeAreaInsets();
                 if (!mainFrameLoadFailed) {
                     showWebView();
                 }
@@ -230,31 +225,6 @@ public final class MainActivity extends Activity {
                     showErrorView();
                 }
             }
-        });
-    }
-
-    private void bindSystemBarInsets(View root) {
-        ViewCompat.setOnApplyWindowInsetsListener(root, (view, insets) -> {
-            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            safeAreaTop = Math.max(0, systemBars.top);
-            safeAreaBottom = Math.max(0, systemBars.bottom);
-            publishSafeAreaInsets();
-            return insets;
-        });
-        ViewCompat.requestApplyInsets(root);
-        root.post(() -> ViewCompat.requestApplyInsets(root));
-    }
-
-    private void publishSafeAreaInsets() {
-        if (webView == null) return;
-        final int top = safeAreaTop;
-        final int bottom = safeAreaBottom;
-        webView.post(() -> {
-            String script = "window.__CPU_NATIVE_SAFE_AREA__={top:" + top + ",bottom:" + bottom + "};"
-                    + "document.documentElement.style.setProperty('--native-safe-area-top','" + top + "px');"
-                    + "document.documentElement.style.setProperty('--native-safe-area-bottom','" + bottom + "px');"
-                    + "window.dispatchEvent(new CustomEvent('cpu-native-safe-area',{detail:window.__CPU_NATIVE_SAFE_AREA__}));";
-            webView.evaluateJavascript(script, null);
         });
     }
 

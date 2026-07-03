@@ -4,7 +4,6 @@
     :class="{
       'keyboard-open': keyboardOpen,
       'layout-root--full-width': fullWidthContent && !hideChrome,
-      'layout-root--android-native': isAndroidNativeShell,
     }"
     :style="layoutStyle"
   >
@@ -293,7 +292,6 @@ import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
 import { useSiteStore } from "@/stores/site";
 import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
-import { isAndroidNativeApp } from "@/utils/clientInfo";
 
 const auth = useAuthStore();
 const msg = useMessageStore();
@@ -309,8 +307,6 @@ const editableFocused = ref(false);
 const editorFocused = ref(false);
 const mobileViewportBaseHeight = ref(0);
 const isMobileViewport = ref(false);
-const clientSafeAreaBottom = ref(0);
-const isAndroidNativeShell = typeof navigator !== "undefined" && isAndroidNativeApp();
 let focusOutTimer = 0;
 let disposed = false;
 
@@ -326,10 +322,11 @@ const appearanceIcon = computed(() => (
 /** 某些路由（如 /schedule）希望"裸壳"渲染，没有顶栏/免责声明/footer，仅保留 main + tabbar */
 const hideChrome = computed(() => Boolean(route.meta?.hideChrome));
 const fullWidthContent = computed(() => Boolean(route.meta?.fullWidthContent));
-const layoutStyle = computed(() => ({
-  ...(mobileViewportHeight.value ? { "--layout-viewport-height": `${mobileViewportHeight.value}px` } : {}),
-  ...(clientSafeAreaBottom.value ? { "--layout-client-safe-area-bottom": `${clientSafeAreaBottom.value}px` } : {}),
-}));
+const layoutStyle = computed(() => (
+  mobileViewportHeight.value
+    ? { "--layout-viewport-height": `${mobileViewportHeight.value}px` }
+    : {}
+));
 
 const searchPlaceholder = computed(() => {
   const scopes: string[] = [];
@@ -434,7 +431,6 @@ onMounted(async () => {
   syncViewportMetrics();
   if (typeof window !== "undefined") {
     window.addEventListener("resize", handleViewportMetricsChange, { passive: true });
-    window.addEventListener("cpu-native-safe-area", handleViewportMetricsChange, { passive: true });
     window.visualViewport?.addEventListener("resize", handleViewportMetricsChange);
     window.visualViewport?.addEventListener("scroll", handleViewportMetricsChange);
     document.addEventListener("focusin", handleFocusIn);
@@ -447,7 +443,6 @@ onBeforeUnmount(() => {
   window.clearTimeout(focusOutTimer);
   if (typeof window !== "undefined") {
     window.removeEventListener("resize", handleViewportMetricsChange);
-    window.removeEventListener("cpu-native-safe-area", handleViewportMetricsChange);
     window.visualViewport?.removeEventListener("resize", handleViewportMetricsChange);
     window.visualViewport?.removeEventListener("scroll", handleViewportMetricsChange);
     document.removeEventListener("focusin", handleFocusIn);
@@ -509,32 +504,9 @@ function syncViewportMetrics() {
   const visualWidth = Math.round(window.visualViewport?.width ?? window.innerWidth);
   mobileViewportHeight.value = visualHeight;
   isMobileViewport.value = visualWidth <= 768;
-  clientSafeAreaBottom.value = detectAndroidBottomOverlayFallback(visualHeight);
   if (!keyboardOpen.value) {
     mobileViewportBaseHeight.value = Math.max(mobileViewportBaseHeight.value, visualHeight, window.innerHeight);
   }
-}
-
-function detectAndroidBottomOverlayFallback(visualHeight: number) {
-  if (!isAndroidNativeShell || !isMobileViewport.value) return 0;
-  if (readCssPixelVariable("--native-safe-area-bottom") > 0) return 0;
-
-  const screenHeight = Math.round(window.screen?.height || 0);
-  const innerHeight = Math.round(window.innerHeight || visualHeight);
-  const viewportHeight = Math.max(visualHeight, innerHeight);
-  if (!screenHeight || !viewportHeight) return 0;
-
-  // Some WebViews include the Android navigation area in the viewport. If the
-  // viewport is already shorter than the screen, the system has reserved it.
-  const reservedSystemSpace = screenHeight - viewportHeight;
-  return reservedSystemSpace < 32 ? 48 : 0;
-}
-
-function readCssPixelVariable(name: string) {
-  if (typeof window === "undefined") return 0;
-  const value = window.getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function updateKeyboardState() {
@@ -621,9 +593,6 @@ function setAppearanceMode(command: string | number | object) {
 
 <style scoped lang="scss">
 .layout-root {
-  --layout-css-safe-area-bottom: env(safe-area-inset-bottom);
-  --layout-native-safe-area-bottom: max(var(--native-safe-area-bottom, 0px), var(--layout-client-safe-area-bottom, 0px));
-  --layout-tabbar-bottom-offset: max(0px, calc(var(--layout-native-safe-area-bottom) - var(--layout-css-safe-area-bottom)));
   min-height: 100dvh;
   min-height: var(--layout-viewport-height, 100dvh);
   display: flex;
@@ -1172,7 +1141,7 @@ function setAppearanceMode(command: string | number | object) {
   }
 
   .main {
-    padding: 14px 12px calc(88px + var(--layout-css-safe-area-bottom) + var(--layout-tabbar-bottom-offset));
+    padding: 14px 12px calc(88px + env(safe-area-inset-bottom));
     max-width: none;
   }
 
@@ -1183,11 +1152,11 @@ function setAppearanceMode(command: string | number | object) {
 
   /* 移动端裸壳模式：去掉 top/side padding，仅保留 tabbar 底部空间，让子组件自己管 */
   .main--bare {
-    padding: 0 0 calc(88px + var(--layout-css-safe-area-bottom) + var(--layout-tabbar-bottom-offset)) !important;
+    padding: 0 0 calc(88px + env(safe-area-inset-bottom)) !important;
   }
 
   .footer {
-    padding: 12px 12px calc(12px + 68px + var(--layout-css-safe-area-bottom) + var(--layout-tabbar-bottom-offset));
+    padding: 12px 12px calc(12px + 68px + env(safe-area-inset-bottom));
     gap: 6px 12px;
     font-size: 11px;
   }
@@ -1196,11 +1165,11 @@ function setAppearanceMode(command: string | number | object) {
     position: fixed;
     left: 0;
     right: 0;
-    bottom: var(--layout-tabbar-bottom-offset);
+    bottom: 0;
     z-index: 1100;
     display: grid;
     /* 列数由 inline style 提供（mobileNavItems.length），保证关闭某项后剩余项仍均匀分布 */
-    padding: 6px 8px calc(6px + var(--layout-css-safe-area-bottom));
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
     border-top: 1px solid var(--cpu-border-soft);
     background: var(--cpu-glass-bg);
     backdrop-filter: var(--cpu-glass-blur);
@@ -1219,14 +1188,14 @@ function setAppearanceMode(command: string | number | object) {
   :deep(.mobile-drawer) {
     border-radius: 18px 18px 0 0;
     height: min(92dvh, 640px) !important;
-    padding-bottom: calc(var(--layout-css-safe-area-bottom) + var(--layout-tabbar-bottom-offset));
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   .mobile-tabbar.is-hidden {
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
-    transform: translateY(calc(100% + var(--layout-css-safe-area-bottom) + var(--layout-tabbar-bottom-offset)));
+    transform: translateY(calc(100% + env(safe-area-inset-bottom)));
   }
 
   .mobile-tab {
