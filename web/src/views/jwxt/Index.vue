@@ -138,8 +138,8 @@
         </div>
       </div>
 
-      <el-tabs v-model="tab" class="cpu-card jwxt-tabs" @tab-change="onTabChange">
-        <el-tab-pane label="📅 课表" name="schedule">
+      <el-tabs v-if="hasJwxtTabs" v-model="tab" class="cpu-card jwxt-tabs" @tab-change="onTabChange">
+        <el-tab-pane v-if="showScheduleTab" label="📅 课表" name="schedule">
           <SchedulePane :data="schedule" :loading="tabLoading" :source="isGraduateIdentity ? 'graduate' : 'jwxt'" />
         </el-tab-pane>
         <el-tab-pane v-if="!isGraduateIdentity" label="📊 成绩" name="grades">
@@ -172,6 +172,13 @@
           </div>
         </el-tab-pane>
       </el-tabs>
+      <div v-else class="cpu-card mobile-schedule-hint">
+        <div>
+          <h3>移动端课表已放到单独入口</h3>
+          <p>当前账号已连接教务系统。请从底部「课表」入口查看课表。</p>
+        </div>
+        <RouterLink class="mobile-schedule-link" to="/schedule">打开课表</RouterLink>
+      </div>
     </div>
   </div>
 </template>
@@ -201,9 +208,10 @@ const rules: FormRules = {
   password: [{ required: true, message: "请输入密码" }],
 };
 const isGraduateIdentity = computed(() => auth.academicIdentity === "graduate");
-
-const tab = ref<"schedule" | "grades" | "midterm" | "progress" | "pyfa" | "debug">("schedule");
 type DataTab = "schedule" | "grades" | "midterm" | "progress" | "pyfa";
+type JwxtTab = DataTab | "debug";
+const isMobileViewport = ref(typeof window !== "undefined" ? window.matchMedia("(max-width: 768px)").matches : false);
+const tab = ref<JwxtTab>(isMobileViewport.value ? "grades" : "schedule");
 const schedule = ref<any>(null);
 const grades = ref<any>(null);
 const midtermGrades = ref<any>(null);
@@ -219,6 +227,8 @@ const forgetBusy = ref(false);
 let tabLoadSeq = 0;
 let pageInitSeq = 0;
 let disposed = false;
+let mobileViewportMedia: MediaQueryList | null = null;
+let cleanupMobileViewportWatcher: (() => void) | null = null;
 
 const probePath = ref("/zgykdx/framework/xsMain.jsp");
 const probeHtml = ref("");
@@ -227,16 +237,34 @@ const snapping = ref(false);
 const snapResult = ref<{ saved: string[]; errors: string[] } | null>(null);
 
 const isDev = computed(() => import.meta.env.DEV);
+const showScheduleTab = computed(() => !isMobileViewport.value);
+const availableDataTabs = computed<DataTab[]>(() => {
+  if (isGraduateIdentity.value) {
+    return showScheduleTab.value ? ["schedule"] : [];
+  }
+  return showScheduleTab.value
+    ? ["schedule", "grades", "midterm", "progress", "pyfa"]
+    : ["grades", "midterm", "progress", "pyfa"];
+});
+const hasJwxtTabs = computed(() => availableDataTabs.value.length > 0 || isDev.value);
 const pageHintText = computed(() => (
   isGraduateIdentity.value
-    ? "通过学校统一认证查看研究生课表，信息会整理成更方便阅读的样子。"
-    : "通过学校统一认证查看课表、成绩和培养方案，信息会整理成更方便阅读的样子。"
+    ? showScheduleTab.value
+      ? "通过学校统一认证查看研究生课表，信息会整理成更方便阅读的样子。"
+      : "通过学校统一认证连接研究生入口，移动端课表请使用单独课表页。"
+    : showScheduleTab.value
+      ? "通过学校统一认证查看课表、成绩和培养方案，信息会整理成更方便阅读的样子。"
+      : "通过学校统一认证查看成绩和培养方案，移动端课表请使用单独课表页。"
 ));
 const loginCardHintText = computed(() => (
-  "登录后会自动识别你可用的教务入口。本科生会显示完整教务数据，研究生当前会直接进入课表。"
+  showScheduleTab.value
+    ? "登录后会自动识别你可用的教务入口。本科生会显示完整教务数据，研究生当前会直接进入课表。"
+    : "登录后会自动识别你可用的教务入口。本科生会显示成绩等教务数据，课表请使用移动端单独入口。"
 ));
 const scopeTipText = computed(() => (
-  "登录后会根据这次实际读取到的数据自动选择可用入口，不需要手动切换。本科生默认显示完整教务，研究生当前显示课表。"
+  showScheduleTab.value
+    ? "登录后会根据这次实际读取到的数据自动选择可用入口，不需要手动切换。本科生默认显示完整教务，研究生当前显示课表。"
+    : "登录后会根据这次实际读取到的数据自动选择可用入口。移动端课表请从单独课表入口查看。"
 ));
 const schoolSystemLink = computed(() => (
   !auth.academicIdentityResolved
@@ -254,6 +282,9 @@ const sessionSubText = computed(() => {
   if (auth.academicIdentityDetecting && !auth.academicIdentityResolved) {
     return "正在识别当前账号可用的教务入口…";
   }
+  if (isGraduateIdentity.value && !showScheduleTab.value) {
+    return "已自动识别到研究生入口，课表请从移动端独立课表页查看。";
+  }
   return isGraduateIdentity.value
     ? "已自动识别到研究生课表入口。"
     : "已自动识别到本科教务入口。";
@@ -264,6 +295,7 @@ const identityBadgeText = computed(() => (
 
 onMounted(() => {
   disposed = false;
+  setupMobileViewportWatcher();
   void initPage();
 });
 
@@ -272,15 +304,19 @@ onBeforeUnmount(() => {
   pageInitSeq += 1;
   tabLoadSeq += 1;
   activeRequests.clear();
+  cleanupMobileViewportWatcher?.();
+  cleanupMobileViewportWatcher = null;
+  mobileViewportMedia = null;
 });
 
 async function initPage() {
   const seq = ++pageInitSeq;
   jwxt.hydrate();
-  if (isGraduateIdentity.value && tab.value !== "schedule") tab.value = "schedule";
+  ensureVisibleTab();
   restoreAllTabCaches();
   await jwxt.refreshStatus();
   if (disposed || seq !== pageInitSeq) return;
+  ensureVisibleTab();
   if (!jwxt.isLoggedIn) {
     // 1. 先尝试自动登录（用本地保存的账号）
     if (jwxt.rememberSaved) {
@@ -304,15 +340,50 @@ async function initPage() {
 
 watch(() => auth.academicIdentity, async (next, prev) => {
   if (!next || next === prev) return;
-  if (next === "graduate" && tab.value !== "schedule" && tab.value !== "debug") {
-    tab.value = "schedule";
-  }
+  ensureVisibleTab();
   resetTabData();
   restoreAllTabCaches();
   if (jwxt.isLoggedIn) {
     await loadCurrentTab(true);
   }
 });
+
+watch(showScheduleTab, async () => {
+  ensureVisibleTab();
+  restoreAllTabCaches();
+  if (jwxt.isLoggedIn) {
+    await loadCurrentTab(false);
+  }
+});
+
+function setupMobileViewportWatcher() {
+  if (typeof window === "undefined" || cleanupMobileViewportWatcher) return;
+  mobileViewportMedia = window.matchMedia("(max-width: 768px)");
+  const syncViewport = (event?: MediaQueryListEvent) => {
+    isMobileViewport.value = event?.matches ?? Boolean(mobileViewportMedia?.matches);
+  };
+  syncViewport();
+  mobileViewportMedia.addEventListener("change", syncViewport);
+  cleanupMobileViewportWatcher = () => {
+    mobileViewportMedia?.removeEventListener("change", syncViewport);
+  };
+}
+
+function firstVisibleTab(): JwxtTab {
+  const firstDataTab = availableDataTabs.value[0];
+  if (firstDataTab) return firstDataTab;
+  return isDev.value ? "debug" : "schedule";
+}
+
+function ensureVisibleTab() {
+  if (tab.value === "debug") {
+    if (!isDev.value) tab.value = firstVisibleTab();
+    return;
+  }
+  if (!availableDataTabs.value.includes(tab.value as DataTab)) {
+    tab.value = firstVisibleTab();
+  }
+}
 
 function cacheKey(t: DataTab) {
   return jwxtScopedStorageKey(CACHE_PREFIX, auth.academicIdentity, t);
@@ -403,10 +474,7 @@ function normalizeTabData(t: DataTab, data: any) {
 }
 
 function restoreAllTabCaches() {
-  const tabs = isGraduateIdentity.value
-    ? (["schedule"] as DataTab[])
-    : (["schedule", "grades", "midterm", "progress", "pyfa"] as DataTab[]);
-  tabs.forEach((t) => restoreCachedTab(t));
+  availableDataTabs.value.forEach((t) => restoreCachedTab(t));
 }
 
 function resetTabData() {
@@ -490,7 +558,7 @@ async function onLogout() {
     await jwxt.logout();
     ElMessage.success("已断开教务连接");
     resetTabData();
-    tab.value = "schedule";
+    tab.value = firstVisibleTab();
     try {
       await jwxt.beginLogin();
     } catch {
@@ -518,11 +586,9 @@ async function onForget() {
 
 async function loadCurrentTab(force = false) {
   if (disposed) return;
+  ensureVisibleTab();
   if (tab.value === "debug") return;
-  if (isGraduateIdentity.value && tab.value !== "schedule") {
-    tab.value = "schedule";
-    return;
-  }
+  if (!availableDataTabs.value.includes(tab.value as DataTab)) return;
   const current = tab.value as DataTab;
   const identity = auth.academicIdentity;
   const cached = restoreCachedTab(current);
@@ -751,6 +817,44 @@ async function onProbe() {
 .snap-list { font-size: 12px; color: var(--cpu-text-secondary); list-style: none; padding: 0; margin: 10px 0; }
 .snap-list li { padding: 2px 0; font-family: monospace; }
 .cpu-muted { font-size: 12px; color: var(--cpu-text-muted); }
+.mobile-schedule-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-color: rgba(20, 184, 166, 0.2);
+  background: linear-gradient(180deg, rgba(20, 184, 166, 0.08), var(--cpu-card) 62%);
+}
+.mobile-schedule-hint h3 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--cpu-text);
+}
+.mobile-schedule-hint p {
+  margin: 6px 0 0;
+  color: var(--cpu-text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.mobile-schedule-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: var(--cpu-primary);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: 0 8px 18px rgba(0, 150, 136, 0.16);
+}
+.mobile-schedule-link:focus-visible {
+  outline: 2px solid rgba(0, 150, 136, 0.35);
+  outline-offset: 3px;
+}
 
 @media (max-width: 700px) {
   .jwxt-page {
@@ -848,6 +952,15 @@ async function onProbe() {
   .jwxt-tabs :deep(.el-tabs__content) {
     overflow: visible;
     padding-top: 2px;
+  }
+
+  .mobile-schedule-hint {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .mobile-schedule-link {
+    width: 100%;
   }
 
   .login-card {

@@ -6,13 +6,29 @@
         <button type="button" class="icon-button" title="菜单" @click="sidebarOpen = true">☰</button>
         <div class="mobile-brand">
           <span class="brand-mark">药</span>
-          <strong>{{ siteTitle }}</strong>
+          <strong>文件收集工作台</strong>
         </div>
-        <a class="back-to-site mobile-back-to-site" href="/services/tools/file_collect">返回主站</a>
+        <a class="back-to-site mobile-back-to-site" href="/services/tools/file_collect">返回</a>
       </div>
       <div class="toast-host" aria-live="polite">
         <div v-for="item in toasts" :key="item.id" :class="['toast', item.type]">{{ item.text }}</div>
       </div>
+
+      <dialog ref="busyDialog" class="busy-dialog" aria-live="polite" @cancel.prevent>
+        <div class="busy-content">
+          <span class="busy-spinner" aria-hidden="true"></span>
+          <div>
+            <p class="eyebrow">{{ busyState.eyebrow }}</p>
+            <h2>{{ busyState.title }}</h2>
+            <p class="hint">{{ busyState.message }}</p>
+            <p v-if="busyState.detail" class="busy-detail">{{ busyState.detail }}</p>
+            <div v-if="busyState.total > 0" class="busy-progress">
+              <progress :value="busyState.current" :max="busyState.total"></progress>
+              <span>{{ busyState.current }}/{{ busyState.total }}</span>
+            </div>
+          </div>
+        </div>
+      </dialog>
 
       <aside :class="['app-sidebar', { open: sidebarOpen }]">
         <div class="brand">
@@ -25,7 +41,7 @@
         </div>
         <a class="back-to-site sidebar-back-to-site" href="/services/tools/file_collect">← 返回文件收集菜单</a>
         <section class="sidebar-intro">
-          <p class="sidebar-kicker">药大拾间小工具</p>
+          <p class="sidebar-kicker">工作台</p>
           <h2>文件收集工作台</h2>
           <p>统一管理提交链接、回收记录、名单核对与文件导出。</p>
         </section>
@@ -395,11 +411,11 @@
         </div>
 
         <div class="drawer-actions">
-          <button type="button" class="secondary" :disabled="currentStep <= 1" @click="currentStep -= 1">上一步</button>
-          <button v-if="currentStep < 4" type="button" class="primary" @click="currentStep += 1">下一步</button>
-          <button v-else type="button" class="primary" :disabled="saving" @click="saveTask">保存任务</button>
-          <button type="button" class="secondary" :disabled="!viewer?.isManager" @click="saveTemplateFromDraft">保存当前模版</button>
-          <button type="button" class="danger" :disabled="editorMode !== 'edit' || saving" @click="deleteTask">删除任务</button>
+          <button type="button" class="secondary prev-action" :disabled="currentStep <= 1" @click="currentStep -= 1">上一步</button>
+          <button v-if="currentStep < 4" type="button" class="primary main-action" @click="currentStep += 1">下一步</button>
+          <button v-else type="button" class="primary main-action" :disabled="saving" @click="saveTask">保存任务</button>
+          <button type="button" class="secondary template-action" :disabled="!viewer?.isManager" @click="saveTemplateFromDraft">保存当前模版</button>
+          <button type="button" class="danger delete-action" :disabled="editorMode !== 'edit' || saving" @click="deleteTask">删除任务</button>
         </div>
       </aside>
       <div :class="['drawer-scrim', { open: editorVisible }]" @click="closeEditor"></div>
@@ -548,9 +564,18 @@ const qrDialog = ref<HTMLDialogElement | null>(null);
 const fileDialog = ref<HTMLDialogElement | null>(null);
 const confirmDialog = ref<HTMLDialogElement | null>(null);
 const promptDialog = ref<HTMLDialogElement | null>(null);
+const busyDialog = ref<HTMLDialogElement | null>(null);
 const toasts = ref<Array<{ id: number; text: string; type: ToastType }>>([]);
 const confirmState = reactive({ title: "确认操作", body: "", okText: "确认", danger: true });
 const promptState = reactive({ title: "输入名称", body: "", label: "名称", value: "", okText: "保存" });
+const busyState = reactive({
+  eyebrow: "请稍候",
+  title: "正在处理",
+  message: "系统正在读取数据，请不要关闭页面。",
+  detail: "",
+  current: 0,
+  total: 0,
+});
 let confirmResolver: ((value: boolean) => void) | null = null;
 let promptResolver: ((value: string | null) => void) | null = null;
 let toastId = 0;
@@ -632,6 +657,53 @@ function toast(text: string, type: ToastType = "") {
   window.setTimeout(() => {
     toasts.value = toasts.value.filter((item) => item.id !== id);
   }, 2800);
+}
+
+type BusyOptions = {
+  eyebrow?: string;
+  title?: string;
+  message?: string;
+  detail?: string;
+  current?: number;
+  total?: number;
+};
+
+function setBusy(options: BusyOptions = {}) {
+  busyState.eyebrow = options.eyebrow || "请稍候";
+  busyState.title = options.title || "正在处理";
+  busyState.message = options.message || "系统正在读取数据，请不要关闭页面。";
+  busyState.detail = options.detail || "";
+  busyState.current = Math.max(0, Number(options.current || 0));
+  busyState.total = Math.max(0, Number(options.total || 0));
+}
+
+async function showBusy(options: BusyOptions = {}) {
+  setBusy(options);
+  await nextTick();
+  if (!busyDialog.value?.open) busyDialog.value?.showModal();
+}
+
+function updateBusy(options: BusyOptions = {}) {
+  if (options.eyebrow !== undefined) busyState.eyebrow = options.eyebrow;
+  if (options.title !== undefined) busyState.title = options.title;
+  if (options.message !== undefined) busyState.message = options.message;
+  if (options.detail !== undefined) busyState.detail = options.detail;
+  if (options.current !== undefined) busyState.current = Math.max(0, Number(options.current));
+  if (options.total !== undefined) busyState.total = Math.max(0, Number(options.total));
+}
+
+function hideBusy() {
+  if (busyDialog.value?.open) busyDialog.value.close();
+  setBusy();
+}
+
+async function withBusy<T>(options: BusyOptions, work: () => Promise<T>) {
+  await showBusy(options);
+  try {
+    return await work();
+  } finally {
+    hideBusy();
+  }
 }
 
 function confirmInApp(options: { title?: string; body?: string; okText?: string; danger?: boolean } = {}) {
@@ -862,10 +934,15 @@ async function copyMissing() {
 }
 
 async function exportCsv() {
-  if (!detail.value) return;
+  const task = detail.value;
+  if (!task) return;
   try {
-    const { blob, filename } = await filestoreBetaBlob(`/api/tasks/${detail.value.id}/export.csv`);
-    saveBlob(blob, filename || `${detail.value.title}.csv`);
+    const { blob, filename } = await withBusy(
+      { title: "正在导出 CSV", message: "正在读取提交记录并生成表格文件。" },
+      () => filestoreBetaBlob(`/api/tasks/${task.id}/export.csv`),
+    );
+    saveBlob(blob, filename || `${task.title}.csv`);
+    toast("CSV 已生成", "ok");
   } catch (error) {
     toast(requestErrorMessage(error, "CSV 导出失败"), "error");
   }
@@ -877,22 +954,37 @@ async function downloadZip() {
     toast("暂无文件可打包");
     return;
   }
+  const fileCount = fileTotal(task);
   zipDownloading.value = true;
-  toast("正在读取文件并打包...");
   try {
-    const entries = [];
-    const usedPaths = new Set<string>();
-    for (const submission of task.submissions) {
-      for (const file of submission.files) {
-        const { blob } = await filestoreBetaBlob(`/api/files/${file.id}/download`);
-        entries.push({
-          path: uniqueZipPath(zipEntryPath(task, submission, file), usedPaths),
-          bytes: new Uint8Array(await blob.arrayBuffer()),
-          date: new Date(file.createdAt || submission.createdAt),
-        });
+    const zipBlob = await withBusy(
+      { title: "正在下载 ZIP", message: "正在读取文件 0/" + fileCount, current: 0, total: fileCount },
+      async () => {
+        const entries = [];
+        const usedPaths = new Set<string>();
+        let current = 0;
+        for (const submission of task.submissions || []) {
+          for (const file of submission.files) {
+            current += 1;
+            updateBusy({
+              message: `正在读取文件 ${current}/${fileCount}`,
+              detail: file.storedName,
+              current,
+              total: fileCount,
+            });
+            const { blob } = await filestoreBetaBlob(`/api/files/${file.id}/download`);
+            entries.push({
+              path: uniqueZipPath(zipEntryPath(task, submission, file), usedPaths),
+              bytes: new Uint8Array(await blob.arrayBuffer()),
+              date: new Date(file.createdAt || submission.createdAt),
+            });
+          }
+        }
+        updateBusy({ title: "正在生成 ZIP", message: "浏览器正在打包文件，请稍候。", detail: "", current: fileCount, total: fileCount });
+        return buildZip(entries);
       }
-    }
-    saveBlob(buildZip(entries), `${zipSafePathSegment(task.title)}.zip`);
+    );
+    saveBlob(zipBlob, `${zipSafePathSegment(task.title)}.zip`);
     toast("ZIP 已生成", "ok");
   } catch (error) {
     toast(requestErrorMessage(error, "ZIP 打包失败"), "error");
@@ -908,12 +1000,19 @@ function zipEntryPath(task: FilestoreBetaTask, submission: FilestoreBetaSubmissi
 }
 
 async function repairFilenames() {
-  if (!detail.value || repairing.value) return;
+  const taskId = detail.value?.id;
+  if (!taskId || repairing.value) return;
   if (!await confirmInApp({ title: "修复乱码文件名", body: "将按当前数据库中的编码信息修复历史文件名，是否继续？", okText: "开始修复" })) return;
   repairing.value = true;
   try {
-    const result = await filestoreBetaApi.repairFilenames(detail.value.id);
-    await selectTask(detail.value.id);
+    const result = await withBusy(
+      { title: "正在修复乱码文件名", message: "系统正在扫描历史文件名并更新可恢复项。" },
+      () => filestoreBetaApi.repairFilenames(taskId),
+    );
+    await withBusy(
+      { title: "正在刷新任务", message: "正在读取修复后的提交记录。" },
+      () => selectTask(taskId),
+    );
     toast(`已修复 ${result.updated} 个，保持不变 ${result.unchanged} 个`, "ok");
   } catch (error) {
     toast(requestErrorMessage(error, "修复失败"), "error");
@@ -923,12 +1022,19 @@ async function repairFilenames() {
 }
 
 async function repairRemoteFilenames() {
-  if (!detail.value || repairing.value) return;
+  const taskId = detail.value?.id;
+  if (!taskId || repairing.value) return;
   if (!await confirmInApp({ title: "修复云端文件名", body: "将检查世纪互联中的文件路径和远端文件名，冲突项会跳过。是否继续？", okText: "开始修复" })) return;
   repairing.value = true;
   try {
-    const result = await filestoreBetaApi.repairRemoteFilenames(detail.value.id);
-    await selectTask(detail.value.id);
+    const result = await withBusy(
+      { title: "正在修复云端文件名", message: "正在检查世纪互联文件路径和远端文件名。" },
+      () => filestoreBetaApi.repairRemoteFilenames(taskId),
+    );
+    await withBusy(
+      { title: "正在刷新任务", message: "正在读取修复后的提交记录。" },
+      () => selectTask(taskId),
+    );
     toast(`修复 ${result.repaired} 个，同步 ${result.synced} 个，冲突 ${result.conflicts} 个，失败 ${result.failed} 个`, "ok");
   } catch (error) {
     toast(requestErrorMessage(error, "云端修复失败"), "error");
@@ -937,45 +1043,93 @@ async function repairRemoteFilenames() {
   }
 }
 
+function escapeHtml(value = "") {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function openPreviewLoadingWindow(file: FilestoreBetaFile) {
+  const previewWindow = window.open("about:blank", "_blank");
+  if (!previewWindow) return null;
+  previewWindow.opener = null;
+  previewWindow.document.write(`
+    <title>正在加载文件...</title>
+    <body style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8fafc;color:#0f172a;">
+      <div style="padding:24px;">
+        <h1 style="font-size:18px;margin:0 0 8px;">正在加载文件...</h1>
+        <p style="margin:0;color:#64748b;font-size:14px;">${escapeHtml(file.storedName)}</p>
+      </div>
+    </body>
+  `);
+  previewWindow.document.close();
+  return previewWindow;
+}
+
 async function previewFile(file: FilestoreBetaFile) {
+  const previewWindow = openPreviewLoadingWindow(file);
   try {
+    await showBusy({ title: "正在查看文件", message: "正在获取文件预览地址。", detail: file.storedName });
     const access = await filestoreBetaApi.fileAccess(file.id, "preview");
     if (access.url) {
-      openDirectUrl(access.url, access.filename, "preview");
+      if (previewWindow && !previewWindow.closed) previewWindow.location.replace(access.url);
+      else openDirectUrl(access.url, access.filename || file.storedName, "preview");
       return;
     }
     if (access.previewMessage) {
+      if (previewWindow && !previewWindow.closed) previewWindow.close();
       toast(access.previewMessage);
       return;
     }
+    updateBusy({ message: "正在读取文件内容。", detail: file.storedName });
     const { blob, type } = await filestoreBetaApi.fileBlob(file.id, "preview");
     const url = URL.createObjectURL(type ? blob.slice(0, blob.size, type) : blob);
-    window.open(url, "_blank", "noopener,noreferrer");
+    if (previewWindow && !previewWindow.closed) previewWindow.location.replace(url);
+    else window.open(url, "_blank", "noopener,noreferrer");
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   } catch (error) {
+    if (previewWindow && !previewWindow.closed) previewWindow.close();
     toast(requestErrorMessage(error, "预览失败"), "error");
+  } finally {
+    hideBusy();
   }
 }
 
 async function downloadFile(file: FilestoreBetaFile) {
   try {
+    await showBusy({ title: "正在下载文件", message: "正在获取下载链接。", detail: file.storedName });
     const access = await filestoreBetaApi.fileAccess(file.id, "download");
     if (access.url) {
       openDirectUrl(access.url, access.filename || file.storedName, "download");
+      toast("已向浏览器发起下载，请查看下载列表", "ok");
       return;
     }
+    updateBusy({ message: "正在读取文件内容。", detail: file.storedName });
     const { blob, filename } = await filestoreBetaApi.fileBlob(file.id, "download");
     saveBlob(blob, filename || file.storedName);
+    toast("已向浏览器发起下载，请查看下载列表", "ok");
   } catch (error) {
     toast(requestErrorMessage(error, "下载失败"), "error");
+  } finally {
+    hideBusy();
   }
 }
 
 async function deleteFile(file: FilestoreBetaFile) {
-  if (!detail.value || !await confirmInApp({ title: "删除文件", body: `删除文件「${file.storedName}」？`, okText: "删除" })) return;
+  const taskId = detail.value?.id;
+  if (!taskId || !await confirmInApp({ title: "删除文件", body: `删除文件「${file.storedName}」？`, okText: "删除" })) return;
   try {
-    await filestoreBetaApi.deleteFile(file.id);
-    await selectTask(detail.value.id);
+    await withBusy(
+      { title: "正在删除文件", message: "正在从服务器移除文件。", detail: file.storedName },
+      () => filestoreBetaApi.deleteFile(file.id),
+    );
+    await withBusy(
+      { title: "正在刷新任务", message: "正在读取最新提交记录。" },
+      () => selectTask(taskId),
+    );
     toast("文件已删除", "ok");
   } catch (error) {
     toast(requestErrorMessage(error, "删除失败"), "error");
@@ -983,10 +1137,17 @@ async function deleteFile(file: FilestoreBetaFile) {
 }
 
 async function deleteSubmission(id: number) {
-  if (!detail.value || !await confirmInApp({ title: "删除提交", body: `删除提交 #${id} 及其文件？`, okText: "删除" })) return;
+  const taskId = detail.value?.id;
+  if (!taskId || !await confirmInApp({ title: "删除提交", body: `删除提交 #${id} 及其文件？`, okText: "删除" })) return;
   try {
-    await filestoreBetaApi.deleteSubmission(id);
-    await selectTask(detail.value.id);
+    await withBusy(
+      { title: "正在删除提交", message: "正在删除该提交记录及其文件。", detail: `#${id}` },
+      () => filestoreBetaApi.deleteSubmission(id),
+    );
+    await withBusy(
+      { title: "正在刷新任务", message: "正在读取最新提交记录。" },
+      () => selectTask(taskId),
+    );
     toast("提交已删除", "ok");
   } catch (error) {
     toast(requestErrorMessage(error, "删除失败"), "error");

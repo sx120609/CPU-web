@@ -32,6 +32,7 @@
   --filestore-beta-shell-top: 61px;
   --filestore-beta-shell-top-mobile: 112px;
   --filestore-beta-active-shell-top: var(--filestore-beta-shell-top);
+  --filestore-beta-sidebar-width: clamp(248px, 18vw, 280px);
 }
 
 * {
@@ -67,7 +68,7 @@ body {
   top: calc(var(--filestore-beta-active-shell-top, 61px) + 16px);
   left: 50%;
   transform: translateX(-50%);
-  z-index: 120;
+  z-index: 1320;
   display: grid;
   gap: 10px;
   width: min(380px, calc(100vw - 48px));
@@ -383,7 +384,7 @@ p {
 /* Grid Layout for Admin Dashboard */
 .admin-body {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: var(--filestore-beta-sidebar-width) minmax(0, 1fr);
   min-height: calc(100vh - var(--filestore-beta-active-shell-top, 61px));
   min-height: calc(100dvh - var(--filestore-beta-active-shell-top, 61px));
   overflow-x: hidden;
@@ -431,7 +432,7 @@ p {
 .sidebar-scrim {
   position: fixed;
   inset: 0;
-  z-index: 18;
+  z-index: 1250;
   background: rgba(15, 23, 42, 0.3);
   backdrop-filter: blur(4px);
   display: none;
@@ -445,11 +446,15 @@ p {
 .app-sidebar {
   display: grid;
   grid-template-rows: auto auto auto auto auto minmax(0, 1fr);
-  gap: 16px;
-  padding: 24px 20px;
+  gap: 14px;
+  padding: 22px 20px;
   background: var(--sidebar);
   border-right: 1px solid var(--line);
-  z-index: 19;
+  z-index: 1260;
+  min-width: 0;
+  max-height: calc(100vh - var(--filestore-beta-active-shell-top, 61px));
+  max-height: calc(100dvh - var(--filestore-beta-active-shell-top, 61px));
+  overflow: hidden;
 }
 
 .brand {
@@ -530,9 +535,9 @@ p {
 }
 
 .sidebar-intro {
-  padding: 16px;
+  padding: 14px;
   border-radius: var(--radius-md);
-  background: var(--surface-3);
+  background: linear-gradient(180deg, rgba(20, 143, 123, 0.08), rgba(20, 143, 123, 0.03));
   border: 1px solid rgba(20, 143, 123, 0.12);
 }
 
@@ -571,6 +576,7 @@ p {
   gap: 10px;
   overflow-y: auto;
   padding: 2px 4px 10px 0;
+  min-height: 0;
 }
 
 .task-card {
@@ -643,6 +649,7 @@ p {
   grid-template-rows: auto minmax(0, 1fr);
   gap: 20px;
   padding: 24px;
+  min-width: 0;
   min-height: calc(100vh - var(--filestore-beta-active-shell-top, 61px));
   min-height: calc(100dvh - var(--filestore-beta-active-shell-top, 61px));
 }
@@ -679,12 +686,38 @@ p {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
+  min-width: 0;
+}
+
+.topbar > div:first-child {
+  min-width: 0;
+}
+
+.topbar h1 {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
+}
+
+.topbar p:not(.eyebrow) {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  line-height: 1.65;
 }
 
 .top-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 10px;
+  flex: 0 1 520px;
+}
+
+.top-actions button {
+  min-height: 36px;
+  padding: 8px 14px;
+  white-space: normal;
 }
 
 /* Empty Dashboard State */
@@ -721,7 +754,7 @@ p {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
   gap: 12px;
 }
 
@@ -766,7 +799,7 @@ p {
 /* Share Panel */
 .share-panel {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
   gap: 20px;
   align-items: center;
   padding: 16px 20px;
@@ -793,8 +826,9 @@ p {
 
 .share-row {
   display: grid;
-  grid-template-columns: 76px 1fr 64px;
+  grid-template-columns: 76px minmax(0, 1fr) 64px;
   gap: 10px;
+  min-width: 0;
 }
 
 .share-label {
@@ -820,7 +854,7 @@ p {
 /* Work Grid Area */
 .work-grid {
   display: grid;
-  grid-template-columns: 1fr 300px;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
   gap: 16px;
   min-height: 0;
 }
@@ -828,6 +862,7 @@ p {
 .records-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
@@ -1038,8 +1073,9 @@ tr:hover td {
   position: fixed;
   top: var(--filestore-beta-active-shell-top, 61px);
   right: 0;
-  z-index: 90;
+  z-index: 1300;
   width: min(580px, 100vw);
+  max-width: 100vw;
   height: calc(100vh - var(--filestore-beta-active-shell-top, 61px));
   height: calc(100dvh - var(--filestore-beta-active-shell-top, 61px));
   background: var(--surface);
@@ -1049,6 +1085,7 @@ tr:hover td {
   display: grid;
   grid-template-rows: auto 1fr auto;
   overflow: hidden;
+  overflow-x: hidden;
 }
 
 .editor-drawer.open {
@@ -1061,7 +1098,7 @@ tr:hover td {
   right: 0;
   bottom: 0;
   left: 0;
-  z-index: 80;
+  z-index: 1290;
   background: rgba(15, 23, 42, 0.3);
   backdrop-filter: blur(4px);
   display: none;
@@ -1081,7 +1118,17 @@ tr:hover td {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  min-width: 0;
   margin-bottom: 16px;
+}
+
+.drawer-head > div {
+  min-width: 0;
+}
+
+.drawer-head .icon-button {
+  flex: 0 0 32px;
 }
 
 .drawer-head h2 {
@@ -1260,6 +1307,47 @@ tr:hover td {
 .field-stack {
   display: grid;
   gap: 10px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: minmax(86px, 0.8fr) minmax(100px, 1fr) minmax(120px, 1.2fr) minmax(110px, 1fr) auto minmax(118px, auto);
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.field-row label {
+  min-width: 0;
+  margin: 0;
+}
+
+.field-row input {
+  min-height: 36px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.field-row .checkline {
+  min-height: 36px;
+  align-items: center;
+  align-self: end;
+}
+
+.field-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.field-row-actions .chip {
+  min-height: 34px;
+  padding-inline: 10px;
 }
 
 .field-card {
@@ -1577,6 +1665,74 @@ dialog.wide-dialog {
   width: min(800px, 95vw);
   max-height: calc(100vh - var(--filestore-beta-active-shell-top, 61px) - 32px);
   max-height: calc(100dvh - var(--filestore-beta-active-shell-top, 61px) - 32px);
+}
+
+dialog.busy-dialog {
+  width: min(430px, calc(100vw - 32px));
+  padding: 0;
+  overflow: hidden;
+}
+
+.busy-content {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 16px;
+  padding: 22px;
+  align-items: start;
+}
+
+.busy-spinner {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-full);
+  border: 3px solid var(--accent-wash);
+  border-top-color: var(--accent);
+  animation: busySpin 0.8s linear infinite;
+}
+
+.busy-content h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.busy-content .hint {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.busy-detail {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.busy-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.busy-progress progress {
+  width: 100%;
+  height: 8px;
+}
+
+@keyframes busySpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .file-manager-tools {
@@ -2257,6 +2413,33 @@ progress::-moz-progress-bar {
 }
 
 /* Responsive Media Queries */
+@media (max-width: 1360px) {
+  :root {
+    --filestore-beta-sidebar-width: 260px;
+  }
+
+  .app-main {
+    padding: 20px;
+  }
+
+  .topbar {
+    align-items: flex-start;
+  }
+
+  .top-actions {
+    flex-basis: 440px;
+    gap: 8px;
+  }
+
+  .metric {
+    padding: 14px;
+  }
+
+  .share-panel {
+    grid-template-columns: minmax(160px, 220px) minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 1180px) {
   .admin-body {
     grid-template-columns: 1fr;
@@ -2264,7 +2447,10 @@ progress::-moz-progress-bar {
 
   .mobile-nav {
     display: flex;
-    top: var(--filestore-beta-active-shell-top, 61px);
+    position: relative;
+    top: auto;
+    gap: 10px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
   }
 
   .sidebar-scrim {
@@ -2273,10 +2459,12 @@ progress::-moz-progress-bar {
 
   .app-sidebar {
     position: fixed;
-    top: calc(var(--filestore-beta-active-shell-top, 61px) + 56px);
+    top: var(--filestore-beta-active-shell-top, 61px);
     left: 0;
     bottom: 0;
-    width: 280px;
+    width: min(320px, 88vw);
+    max-height: none;
+    padding: 18px 16px;
     transform: translateX(-100%);
     transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     box-shadow: 10px 0 30px rgba(15, 23, 42, 0.1);
@@ -2297,13 +2485,41 @@ progress::-moz-progress-bar {
   }
 
   .app-main {
-    padding: 16px;
+    padding: 18px 16px;
     min-height: calc(100vh - var(--filestore-beta-active-shell-top, 61px) - 56px);
     min-height: calc(100dvh - var(--filestore-beta-active-shell-top, 61px) - 56px);
   }
 
   .work-grid {
     grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .top-actions {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    flex-basis: auto;
+    width: 100%;
+  }
+
+  .top-actions button {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 10px;
+  }
+
+  .share-panel {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .side-panel {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -2312,14 +2528,58 @@ progress::-moz-progress-bar {
     --filestore-beta-active-shell-top: var(--filestore-beta-shell-top-mobile);
   }
 
+  .mobile-nav {
+    min-height: 52px;
+    height: auto;
+    padding: 8px 12px;
+  }
+
+  .mobile-nav .icon-button {
+    flex: 0 0 38px;
+    width: 38px;
+    height: 38px;
+  }
+
+  .mobile-brand {
+    flex: 1 1 auto;
+  }
+
+  .mobile-brand .brand-mark {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    font-size: 18px;
+  }
+
+  .mobile-back-to-site {
+    min-height: 34px;
+    padding-inline: 9px;
+  }
+
+  .app-sidebar {
+    top: var(--filestore-beta-active-shell-top, 61px);
+    width: min(340px, 90vw);
+  }
+
+  .sidebar-back-to-site {
+    display: none;
+  }
+
+  .sidebar-intro {
+    padding: 12px;
+  }
+
   .summary-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 
   .topbar {
-    flex-direction: column;
-    align-items: stretch;
-    padding: 16px;
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .topbar h1 {
+    font-size: 22px;
   }
 
   .top-actions {
@@ -2336,6 +2596,20 @@ progress::-moz-progress-bar {
 
   .share-panel {
     grid-template-columns: 1fr;
+    padding: 14px;
+  }
+
+  .share-row {
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+
+  .share-label {
+    grid-column: 1 / -1;
+  }
+
+  .share-row button {
+    width: 56px;
   }
 
   .panel-head {
@@ -2368,9 +2642,11 @@ progress::-moz-progress-bar {
 
   .drawer-actions {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
     gap: 8px;
     padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    width: 100%;
+    max-width: 100vw;
   }
 
   .drawer-actions button {
@@ -2380,6 +2656,144 @@ progress::-moz-progress-bar {
 
   .drawer-actions button.danger {
     grid-column: 1 / -1;
+  }
+
+  .drawer-actions .template-action {
+    grid-column: 1 / -1;
+  }
+
+  .drawer-actions .delete-action {
+    grid-column: 1 / -1;
+    order: 5;
+  }
+
+  .editor-drawer {
+    top: var(--filestore-beta-active-shell-top, 61px);
+    width: 100vw;
+    height: calc(100vh - var(--filestore-beta-active-shell-top, 61px));
+    height: calc(100dvh - var(--filestore-beta-active-shell-top, 61px));
+    border-radius: 0;
+  }
+
+  .drawer-header-sticky {
+    padding: 14px 14px 10px;
+    width: 100%;
+    max-width: 100vw;
+  }
+
+  .drawer-head {
+    margin-bottom: 12px;
+  }
+
+  .drawer-head h2 {
+    font-size: 17px;
+  }
+
+  .steps-container {
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 0 2px 2px;
+    width: 100%;
+    max-width: calc(100vw - 28px);
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .steps-container::-webkit-scrollbar {
+    display: none;
+  }
+
+  .step-line {
+    display: none;
+  }
+
+  .step-dot {
+    flex: 0 0 auto;
+    flex-direction: row;
+    gap: 6px;
+    min-width: 92px;
+    padding: 6px 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-full);
+    background: var(--surface-2);
+  }
+
+  .step-dot.active {
+    border-color: rgba(20, 143, 123, 0.35);
+    background: var(--surface-3);
+  }
+
+  .dot-num {
+    width: 22px;
+    height: 22px;
+    border-width: 1px;
+    font-size: 11px;
+  }
+
+  .dot-text {
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .drawer-scroll-content {
+    padding: 16px 14px 18px;
+    width: 100%;
+    max-width: 100vw;
+  }
+
+  .step-guide {
+    padding: 12px;
+    margin-bottom: 16px;
+  }
+
+  .section-line {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .field-tools {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px;
+  }
+
+  .field-tools select {
+    width: 100%;
+  }
+
+  .field-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .field-row label:nth-child(3),
+  .field-row label:nth-child(4),
+  .field-row .checkline,
+  .field-row-actions {
+    grid-column: 1 / -1;
+  }
+
+  .field-row-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .field-row-actions .chip {
+    width: 100%;
+  }
+
+  .rename-tools {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rename-tools .chip {
+    width: 100%;
+  }
+
+  .side-panel {
+    grid-template-columns: 1fr;
   }
 
   .form-row {
@@ -2468,7 +2882,15 @@ progress::-moz-progress-bar {
   }
 
   .top-actions {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .top-actions button:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .mobile-back-to-site {
+    display: none;
   }
 
   .status-tools,
@@ -2478,6 +2900,15 @@ progress::-moz-progress-bar {
   }
 
   .drawer-actions {
+    grid-template-columns: 1fr;
+    width: 100%;
+    max-width: 100vw;
+  }
+
+  .field-tools,
+  .field-row,
+  .field-row-actions,
+  .rename-tools {
     grid-template-columns: 1fr;
   }
 
