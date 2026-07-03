@@ -298,7 +298,10 @@ const FileCollectPanel = defineComponent({
           h("p", "进入 Filestore 创建提交链接，集中收取作业、材料、照片等文件。"),
         ]),
         canManageFileCollect.value
-          ? h("button", { class: "plain-action", type: "button", onClick: () => router.push("/services/tools/filestore") }, "进入 Filestore")
+          ? h("div", { class: "file-collect-entry-actions" }, [
+            h("button", { class: "plain-action", type: "button", onClick: () => router.push("/services/tools/filestore") }, "旧版 Filestore"),
+            h("button", { class: "plain-action beta-action", type: "button", onClick: () => router.push("/services/tools/filestore-beta") }, "Beta 工作台"),
+          ])
           : null,
       ]),
       h("div", { class: "empty-panel" }, canManageFileCollect.value
@@ -620,6 +623,16 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 14px;
+}
+.file-collect-entry-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.beta-action {
+  color: #fff;
+  background: var(--cpu-primary);
 }
 .loading-card,
 .empty-panel {
