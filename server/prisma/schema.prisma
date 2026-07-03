@@ -710,6 +710,7 @@ model FileCollectTask {
   status          String   @default("open") // draft / open / closed
   visibility      String   @default("public") // public / login
   fields          String   @default("[]")
+  surveyFields    String   @default("[]")
   fileRules       String   @default("{}")
   renameTemplate  String   @default("{name}-{student_id}")
   folderTemplate  String   @default("{name}-{student_id}")
@@ -738,6 +739,7 @@ model FileCollectTemplate {
   description     String?
   visibility      String   @default("public")
   fields          String   @default("[]")
+  surveyFields    String   @default("[]")
   fileRules       String   @default("{}")
   renameTemplate  String   @default("{name}-{student_id}")
   folderTemplate  String   @default("{name}-{student_id}")
@@ -757,6 +759,7 @@ model FileCollectSubmission {
   submitterId Int?
   identity    String   @default("")
   data        String   @default("{}")
+  answers     String   @default("{}")
   ip          String?
   status      String   @default("submitted")
   createdAt   DateTime @default(now())

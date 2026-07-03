@@ -1,4 +1,5 @@
 import { getToken } from "@/api/request";
+import type { QuestionnaireField } from "@/api/tools";
 
 export type FilestoreBetaStatus = "open" | "closed";
 
@@ -11,6 +12,9 @@ export interface FilestoreBetaField {
   placeholder: string;
 }
 
+export type FilestoreBetaSurveyField = QuestionnaireField;
+export type FilestoreBetaSurveyAnswer = string | string[];
+
 export interface FilestoreBetaRules {
   allowedTypes: string[];
   maxSizeMb: number;
@@ -22,6 +26,7 @@ export interface FilestoreBetaTemplate {
   name: string;
   description: string;
   fields: FilestoreBetaField[];
+  surveyFields: FilestoreBetaSurveyField[];
   fileRules: FilestoreBetaRules;
   renameTemplate: string;
   folderTemplate: string;
@@ -68,6 +73,7 @@ export interface FilestoreBetaFile {
 export interface FilestoreBetaSubmission {
   id: number;
   data: Record<string, string>;
+  answers: Record<string, FilestoreBetaSurveyAnswer>;
   ip: string;
   status: string;
   createdAt: string;
@@ -95,6 +101,7 @@ export interface FilestoreBetaTask {
   description: string;
   deadline: string;
   fields: FilestoreBetaField[];
+  surveyFields: FilestoreBetaSurveyField[];
   fileRules: FilestoreBetaRules;
   renameTemplate: string;
   folderTemplate: string;
@@ -119,6 +126,7 @@ export interface FilestoreBetaTaskPayload {
   deadline: string | null;
   status: FilestoreBetaStatus;
   fields: FilestoreBetaField[];
+  surveyFields: FilestoreBetaSurveyField[];
   fileRules: FilestoreBetaRules;
   renameTemplate: string;
   folderTemplate: string;
@@ -378,7 +386,7 @@ export const filestoreBetaApi = {
       method: "POST",
       json: { data },
     }),
-  prepareRemote: (slug: string, payload: { data: Record<string, string>; overwrite: boolean; files: Array<{ name: string; size: number; type: string }> }) =>
+  prepareRemote: (slug: string, payload: { data: Record<string, string>; answers?: Record<string, FilestoreBetaSurveyAnswer>; overwrite: boolean; files: Array<{ name: string; size: number; type: string }> }) =>
     filestoreBetaFetch<FilestoreBetaPrepareRemoteResult>(`/api/submit/${encodeURIComponent(slug)}/prepare-remote`, {
       method: "POST",
       json: payload,
@@ -403,4 +411,3 @@ export const filestoreBetaApi = {
   deleteSubmission: (id: number) =>
     filestoreBetaFetch<{ ok: true }>(`/api/submissions/${id}`, { method: "DELETE" }),
 };
-

@@ -28,6 +28,10 @@
 
         <form v-if="task && task.status === 'open'" class="submit-form" @submit.prevent="submit" @reset.prevent="resetForm">
           <div>
+            <div class="submit-section-title">
+              <strong>身份信息</strong>
+              <span>用于匹配提交记录和文件命名</span>
+            </div>
             <label v-for="field in task.fields" :key="field.key">
               {{ field.label }}<span v-if="field.required" class="required-star">*</span>
               <input
@@ -39,6 +43,80 @@
                 @input="renderQueue"
               >
             </label>
+          </div>
+
+          <div v-if="visibleSurveyFields.length" class="submit-survey-section">
+            <div class="submit-section-title">
+              <strong>问卷信息</strong>
+              <span>请按实际情况填写</span>
+            </div>
+            <section v-for="(field, index) in visibleSurveyFields" :key="field.id" class="submit-survey-field">
+              <div class="submit-question-title">
+                <span>{{ index + 1 }}</span>
+                <div>
+                  <strong>{{ field.label }}<em v-if="field.required">*</em></strong>
+                  <p v-if="field.description">{{ field.description }}</p>
+                </div>
+              </div>
+              <input
+                v-if="field.type === 'text'"
+                v-model="surveyAnswers[field.id] as string"
+                :maxlength="field.maxLength || 300"
+                :placeholder="field.placeholder || ''"
+                :required="field.required"
+                :disabled="submitting"
+              >
+              <textarea
+                v-else-if="field.type === 'textarea'"
+                v-model="surveyAnswers[field.id] as string"
+                :maxlength="field.maxLength || 2000"
+                :placeholder="field.placeholder || ''"
+                :required="field.required"
+                :disabled="submitting"
+              ></textarea>
+              <div v-else-if="field.type === 'single'" class="submit-option-list">
+                <label v-for="option in field.options || []" :key="option" class="submit-option">
+                  <input v-model="surveyAnswers[field.id]" type="radio" :name="field.id" :value="option" :required="field.required" :disabled="submitting">
+                  <span>{{ option }}</span>
+                </label>
+              </div>
+              <div v-else-if="field.type === 'multiple'" class="submit-option-list">
+                <label v-for="option in field.options || []" :key="option" class="submit-option">
+                  <input :checked="multiValue(field.id).includes(option)" type="checkbox" :value="option" :disabled="submitting" @change="toggleMulti(field.id, option, $event)">
+                  <span>{{ option }}</span>
+                </label>
+              </div>
+              <input
+                v-else-if="field.type === 'number'"
+                v-model="surveyAnswers[field.id] as string"
+                type="number"
+                :min="field.min"
+                :max="field.max"
+                :step="field.step || 1"
+                :placeholder="field.placeholder || '请输入数字'"
+                :required="field.required"
+                :disabled="submitting"
+              >
+              <input
+                v-else-if="field.type === 'date'"
+                v-model="surveyAnswers[field.id] as string"
+                type="date"
+                :required="field.required"
+                :disabled="submitting"
+              >
+              <div v-else-if="field.type === 'rating'" class="submit-rating-field">
+                <button
+                  v-for="score in ratingRange(field)"
+                  :key="score"
+                  type="button"
+                  :class="{ active: surveyAnswers[field.id] === String(score) }"
+                  :disabled="submitting"
+                  @click="surveyAnswers[field.id] = surveyAnswers[field.id] === String(score) ? '' : String(score)"
+                >
+                  {{ score }}
+                </button>
+              </div>
+            </section>
           </div>
 
           <label class="upload-zone">
@@ -148,6 +226,8 @@ import {
   type FilestoreBetaPreparedLocalFile,
   type FilestoreBetaPreparedRemoteFile,
   type FilestoreBetaPublicTask,
+  type FilestoreBetaSurveyAnswer,
+  type FilestoreBetaSurveyField,
   type FilestoreBetaSubmitResult,
 } from "@/api/filestoreBeta";
 import {
@@ -174,6 +254,7 @@ const progress = ref(0);
 const task = ref<FilestoreBetaPublicTask | null>(null);
 const error = ref("");
 const answers = reactive<Record<string, string>>({});
+const surveyAnswers = reactive<Record<string, FilestoreBetaSurveyAnswer>>({});
 const fileEntries = ref<FileEntry[]>([]);
 const fileInput = ref<HTMLInputElement | null>(null);
 const draggedFileId = ref("");
@@ -206,6 +287,7 @@ const submitDescription = computed(() => {
   return [task.value.description || "请按要求填写信息并上传文件。", updateTip].filter(Boolean).join("\n");
 });
 const successSummary = computed(() => successPayload.value ? `提交成功，编号 ${successPayload.value.submissionId}。` : "");
+const visibleSurveyFields = computed(() => resolveVisibleSurveyFields(task.value?.surveyFields || []));
 
 watch(slug, load, { immediate: true });
 
@@ -228,6 +310,7 @@ async function load() {
     task.value = next;
     document.title = `${next.siteTitle || "药大拾间文件收集"} - ${next.title}`;
     for (const field of next.fields) answers[field.key] = "";
+    for (const field of next.surveyFields || []) surveyAnswers[field.id] = field.type === "multiple" ? [] : "";
   } catch (err) {
     if (seq !== loadSeq) return;
     error.value = requestErrorMessage(err, "任务加载失败");
@@ -243,6 +326,7 @@ function message(text: string, type: MessageType = "") {
 
 function resetForm() {
   Object.keys(answers).forEach((key) => delete answers[key]);
+  Object.keys(surveyAnswers).forEach((key) => delete surveyAnswers[key]);
   clearFiles();
   progress.value = 0;
   message("");
@@ -320,6 +404,61 @@ function currentData() {
   return Object.fromEntries((task.value?.fields || []).map((field) => [field.key, answers[field.key]?.trim() || ""]));
 }
 
+function currentSurveyAnswers() {
+  const result: Record<string, FilestoreBetaSurveyAnswer> = {};
+  for (const field of visibleSurveyFields.value) {
+    const value = surveyAnswers[field.id];
+    result[field.id] = Array.isArray(value) ? value.map(String).filter(Boolean) : String(value ?? "").trim();
+  }
+  return result;
+}
+
+function multiValue(fieldId: string) {
+  const value = surveyAnswers[fieldId];
+  return Array.isArray(value) ? value : [];
+}
+
+function toggleMulti(fieldId: string, option: string, event: Event) {
+  const checked = (event.target as HTMLInputElement).checked;
+  const values = new Set(multiValue(fieldId));
+  if (checked) values.add(option);
+  else values.delete(option);
+  surveyAnswers[fieldId] = Array.from(values);
+}
+
+function hasSurveyAnswer(value: FilestoreBetaSurveyAnswer | undefined) {
+  return Array.isArray(value) ? value.length > 0 : Boolean(String(value ?? "").trim());
+}
+
+function ratingRange(field: FilestoreBetaSurveyField) {
+  const min = Math.max(0, Math.round(Number(field.min ?? 1)));
+  const max = Math.min(10, Math.round(Number(field.max ?? 5)));
+  return Array.from({ length: Math.max(0, max - min + 1) }, (_, index) => min + index);
+}
+
+function resolveVisibleSurveyFields(fields: FilestoreBetaSurveyField[]) {
+  const result: FilestoreBetaSurveyField[] = [];
+  const indexById = new Map(fields.map((field, index) => [field.id, index]));
+  for (let index = 0; index < fields.length;) {
+    const field = fields[index];
+    result.push(field);
+    if (field.type === "single") {
+      const value = String(surveyAnswers[field.id] ?? "").trim();
+      const rule = value ? field.branching?.[value] : undefined;
+      if (rule?.action === "end") break;
+      if (rule?.action === "jump" && rule.targetId) {
+        const targetIndex = indexById.get(rule.targetId);
+        if (targetIndex !== undefined && targetIndex > index) {
+          index = targetIndex;
+          continue;
+        }
+      }
+    }
+    index += 1;
+  }
+  return result;
+}
+
 function validateFields() {
   if (!task.value) return "任务未加载";
   const data = currentData();
@@ -332,6 +471,27 @@ function validateFields() {
       } catch {
         return `${field.label}校验规则暂不可用`;
       }
+    }
+  }
+  return "";
+}
+
+function validateSurveyFields() {
+  for (const field of visibleSurveyFields.value) {
+    const value = surveyAnswers[field.id];
+    if (field.required && !hasSurveyAnswer(value)) return `请填写：${field.label}`;
+    if (field.type === "single" && value) {
+      if (!(field.options || []).includes(String(value))) return `“${field.label}”包含无效选项`;
+    }
+    if (field.type === "multiple") {
+      const invalid = multiValue(field.id).find((item) => !(field.options || []).includes(item));
+      if (invalid) return `“${field.label}”包含无效选项`;
+    }
+    if ((field.type === "number" || field.type === "rating") && value) {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return `“${field.label}”需要填写数字`;
+      if (field.min !== undefined && numeric < Number(field.min)) return `“${field.label}”不能小于 ${field.min}`;
+      if (field.max !== undefined && numeric > Number(field.max)) return `“${field.label}”不能大于 ${field.max}`;
     }
   }
   return "";
@@ -426,6 +586,11 @@ async function submit() {
     message(fieldError, "error");
     return;
   }
+  const surveyError = validateSurveyFields();
+  if (surveyError) {
+    message(surveyError, "error");
+    return;
+  }
   const fileError = validateFiles();
   if (fileError) {
     message(fileError, "error");
@@ -453,6 +618,7 @@ async function submitRemote(files: File[], overwrite: boolean) {
   message("正在创建世纪互联直传会话...");
   const prepared = await filestoreBetaApi.prepareRemote(slug.value, {
     data: currentData(),
+    answers: currentSurveyAnswers(),
     overwrite,
     files: files.map((file) => ({
       name: file.name,
@@ -529,6 +695,7 @@ async function uploadFileToSession(file: File, uploadFile: FilestoreBetaPrepared
 function submitMultipart(files: File[], overwrite: boolean) {
   const form = new FormData();
   for (const [key, value] of Object.entries(currentData())) form.append(key, value);
+  form.append("answers", JSON.stringify(currentSurveyAnswers()));
   form.append("overwrite", overwrite ? "true" : "false");
   files.forEach((file) => form.append("files", file, file.name));
   message("正在上传...");

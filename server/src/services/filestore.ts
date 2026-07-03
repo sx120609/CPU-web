@@ -280,6 +280,28 @@ type FilestoreField = {
   placeholder: string;
 };
 
+type FilestoreSurveyFieldType = "text" | "textarea" | "single" | "multiple" | "number" | "date" | "rating";
+
+type FilestoreSurveyBranchRule = {
+  action: "end" | "jump";
+  targetId?: string;
+};
+
+type FilestoreSurveyField = {
+  id: string;
+  label: string;
+  type: FilestoreSurveyFieldType;
+  required?: boolean;
+  placeholder?: string;
+  options?: string[];
+  description?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  maxLength?: number;
+  branching?: Record<string, FilestoreSurveyBranchRule>;
+};
+
 type FilestoreRules = {
   allowedTypes: string[];
   maxSizeMb: number;
@@ -325,6 +347,21 @@ function parseJsonObject(raw: string | null | undefined): Record<string, string>
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
     return Object.fromEntries(Object.entries(parsed).map(([key, value]) => [key, String(value ?? "")]));
+  } catch {
+    return {};
+  }
+}
+
+function parseJsonAnswers(raw: string | null | undefined): Record<string, string | string[]> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const result: Record<string, string | string[]> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      result[key] = Array.isArray(value) ? value.map((item) => String(item ?? "")) : String(value ?? "");
+    }
+    return result;
   } catch {
     return {};
   }
@@ -405,6 +442,144 @@ function storedFields(fields: FilestoreField[]) {
   }));
 }
 
+const filestoreSurveyFieldTypes = new Set<FilestoreSurveyFieldType>(["text", "textarea", "single", "multiple", "number", "date", "rating"]);
+
+function normalizeSurveyFieldId(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+}
+
+function normalizeSurveyOptions(value: unknown) {
+  const list = Array.isArray(value)
+    ? value
+    : String(value ?? "").split(/\r?\n|,/);
+  return [...new Set(list
+    .map((item) => String(item ?? "").trim().slice(0, 80))
+    .filter(Boolean))]
+    .slice(0, 20);
+}
+
+function normalizeOptionalNumber(value: unknown) {
+  if (value === undefined || value === null || value === "") return undefined;
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : undefined;
+}
+
+function normalizeSurveyBranching(
+  source: unknown,
+  field: { id: string; label: string; type: FilestoreSurveyFieldType; options?: string[] },
+  indexById: Map<string, number>,
+) {
+  if (!source || typeof source !== "object" || field.type !== "single") return undefined;
+  const options = new Set(field.options ?? []);
+  const currentIndex = indexById.get(field.id) ?? 0;
+  const result: Record<string, FilestoreSurveyBranchRule> = {};
+  for (const [option, rawRule] of Object.entries(source as Record<string, unknown>)) {
+    if (!options.has(option) || !rawRule || typeof rawRule !== "object") continue;
+    const rule = rawRule as Record<string, unknown>;
+    const action = String(rule.action || "").trim();
+    if (action === "end") {
+      result[option] = { action: "end" };
+      continue;
+    }
+    const targetId = normalizeSurveyFieldId(rule.targetId);
+    const targetIndex = indexById.get(targetId);
+    if (action === "jump" && targetId && targetIndex !== undefined && targetIndex > currentIndex) {
+      result[option] = { action: "jump", targetId };
+    }
+  }
+  return Object.keys(result).length ? result : undefined;
+}
+
+function normalizeFilestoreSurveyFields(input: unknown): FilestoreSurveyField[] {
+  if (!Array.isArray(input)) return [];
+  const drafts = input.slice(0, 30).map((item) => {
+    const row = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    const id = normalizeSurveyFieldId(row.id);
+    const label = String(row.label ?? "").trim().slice(0, 80);
+    const type = String(row.type ?? "text") as FilestoreSurveyFieldType;
+    if (!id || !label) throw filestoreApiError(400, "问卷题目的 ID 和标题不能为空");
+    if (!filestoreSurveyFieldTypes.has(type)) throw filestoreApiError(400, `问卷题目“${label}”类型不支持`);
+    const field: FilestoreSurveyField = {
+      id,
+      label,
+      type,
+      required: row.required === true,
+      placeholder: String(row.placeholder ?? "").trim().slice(0, 120) || undefined,
+      description: String(row.description ?? "").trim().slice(0, 300) || undefined,
+      min: normalizeOptionalNumber(row.min),
+      max: normalizeOptionalNumber(row.max),
+      step: normalizeOptionalNumber(row.step),
+      maxLength: Math.min(2000, Math.max(1, Math.round(Number(row.maxLength || (type === "textarea" ? 2000 : 300))))),
+    };
+    if (type === "single" || type === "multiple") {
+      field.options = normalizeSurveyOptions(row.options);
+      if (field.options.length < 2) throw filestoreApiError(400, `选项题“${label}”至少需要 2 个选项`);
+    } else {
+      delete field.options;
+    }
+    if (type === "rating") {
+      const min = Math.max(0, Math.round(field.min ?? 1));
+      const max = Math.min(10, Math.round(field.max ?? 5));
+      if (min >= max) throw filestoreApiError(400, `评分题“${label}”的最高分需要大于最低分`);
+      field.min = min;
+      field.max = max;
+      delete field.step;
+    } else if (type === "number") {
+      if (field.min !== undefined && field.max !== undefined && field.min > field.max) {
+        throw filestoreApiError(400, `数字题“${label}”的最小值不能大于最大值`);
+      }
+      field.step = field.step && field.step > 0 ? field.step : 1;
+    } else {
+      delete field.min;
+      delete field.max;
+      delete field.step;
+    }
+    return { field, rawBranching: row.branching };
+  });
+  const ids = new Set<string>();
+  for (const { field } of drafts) {
+    if (ids.has(field.id)) throw filestoreApiError(400, `问卷题目 ID 重复：${field.id}`);
+    ids.add(field.id);
+  }
+  const indexById = new Map(drafts.map(({ field }, index) => [field.id, index]));
+  return drafts.map(({ field, rawBranching }) => {
+    const branching = normalizeSurveyBranching(rawBranching, field, indexById);
+    if (branching) field.branching = branching;
+    return field;
+  });
+}
+
+function storedSurveyFields(fields: FilestoreSurveyField[]) {
+  return fields.map((field) => ({
+    id: field.id,
+    label: field.label,
+    type: field.type,
+    required: field.required === true,
+    placeholder: field.placeholder,
+    description: field.description,
+    options: field.options,
+    min: field.min,
+    max: field.max,
+    step: field.step,
+    maxLength: field.maxLength,
+    branching: field.branching,
+  }));
+}
+
+function parseStoredSurveyFields(raw: string | null | undefined): FilestoreSurveyField[] {
+  try {
+    const parsed = JSON.parse(raw || "[]");
+    return normalizeFilestoreSurveyFields(parsed);
+  } catch {
+    return [];
+  }
+}
+
 function parseStoredFields(raw: string | null | undefined): FilestoreField[] {
   try {
     const parsed = JSON.parse(raw || "[]");
@@ -474,6 +649,7 @@ function normalizeFilestoreTaskPayload(input: Record<string, unknown>) {
   const title = String(input.title ?? "").trim().slice(0, 120);
   if (!title) throw filestoreApiError(400, "任务标题不能为空");
   const fields = normalizeFilestoreFields(input.fields);
+  const surveyFields = normalizeFilestoreSurveyFields(input.surveyFields);
   const fileRules = normalizeFilestoreRules(input.fileRules);
   return {
     title,
@@ -481,6 +657,7 @@ function normalizeFilestoreTaskPayload(input: Record<string, unknown>) {
     deadline: normalizeDeadline(input.deadline),
     status: normalizeStatus(input.status),
     fields,
+    surveyFields,
     fileRules,
     renameTemplate: String(input.renameTemplate ?? "{name}-{student_id}").trim().slice(0, 120) || "{name}-{student_id}",
     folderTemplate: String(input.folderTemplate ?? "{name}-{student_id}").trim().slice(0, 120) || "{name}-{student_id}",
@@ -493,12 +670,14 @@ function normalizeTemplatePayload(input: unknown) {
   const name = String(source.name ?? "").trim().slice(0, 60);
   if (!name) throw filestoreApiError(400, "模板名称不能为空");
   const fields = normalizeFilestoreFields(source.fields);
+  const surveyFields = normalizeFilestoreSurveyFields(source.surveyFields);
   const fileRules = normalizeFilestoreRules(source.fileRules);
   return {
     id: source.id,
     name,
     description: String(source.description ?? "").trim().slice(0, 1000),
     fields,
+    surveyFields,
     fileRules,
     renameTemplate: String(source.renameTemplate ?? "{name}-{student_id}").trim().slice(0, 120) || "{name}-{student_id}",
     folderTemplate: String(source.folderTemplate ?? "{name}-{student_id}").trim().slice(0, 120) || "{name}-{student_id}",
@@ -534,6 +713,7 @@ function normalizeFilestoreSubmission(row: any) {
   return {
     id: row.id,
     data: parseJsonObject(row.data),
+    answers: parseJsonAnswers(row.answers),
     ip: row.ip || "",
     status: row.status || "submitted",
     createdAt: isoDate(row.createdAt),
@@ -650,6 +830,7 @@ function normalizeFilestoreTask(row: any, options: { includeCreator?: boolean; i
     description: row.description || "",
     deadline: isoDate(row.deadline),
     fields,
+    surveyFields: parseStoredSurveyFields(row.surveyFields),
     fileRules: parseStoredRules(row.fileRules),
     renameTemplate: row.renameTemplate || "{name}-{student_id}",
     folderTemplate: row.folderTemplate || "{name}-{student_id}",
@@ -673,6 +854,7 @@ function normalizeFilestoreTemplate(row: any) {
     name: row.name,
     description: row.description || "",
     fields: parseStoredFields(row.fields),
+    surveyFields: parseStoredSurveyFields(row.surveyFields),
     fileRules: parseStoredRules(row.fileRules),
     renameTemplate: row.renameTemplate || "{name}-{student_id}",
     folderTemplate: row.folderTemplate || "{name}-{student_id}",
@@ -735,6 +917,7 @@ async function saveFilestoreTemplates(input: unknown[]) {
         description: template.description || null,
         visibility: FILESTORE_TEMPLATE_VISIBILITY,
         fields: JSON.stringify(storedFields(template.fields)),
+        surveyFields: JSON.stringify(storedSurveyFields(template.surveyFields)),
         fileRules: JSON.stringify(template.fileRules),
         renameTemplate: template.renameTemplate,
         folderTemplate: template.folderTemplate,
@@ -843,6 +1026,84 @@ function normalizeSubmissionData(fields: FilestoreField[], input: Record<string,
       throw filestoreApiError(400, `${field.label}格式不正确`);
     }
     result[field.key] = value.slice(0, 300);
+  }
+  return result;
+}
+
+function normalizeSurveyAnswerInput(value: unknown): Record<string, string | string[]> {
+  if (typeof value === "string") return parseJsonAnswers(value);
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const result: Record<string, string | string[]> = {};
+    for (const [key, raw] of Object.entries(value)) {
+      result[key] = Array.isArray(raw) ? raw.map((item) => String(item ?? "")) : String(raw ?? "");
+    }
+    return result;
+  }
+  return {};
+}
+
+function activeSurveyFields(fields: FilestoreSurveyField[], input: Record<string, string | string[]>) {
+  const result: FilestoreSurveyField[] = [];
+  const indexById = new Map(fields.map((field, index) => [field.id, index]));
+  for (let index = 0; index < fields.length;) {
+    const field = fields[index];
+    result.push(field);
+    if (field.type === "single") {
+      const raw = input[field.id];
+      const value = Array.isArray(raw) ? "" : String(raw ?? "").trim();
+      const rule = value ? field.branching?.[value] : undefined;
+      if (rule?.action === "end") break;
+      if (rule?.action === "jump" && rule.targetId) {
+        const targetIndex = indexById.get(rule.targetId);
+        if (targetIndex !== undefined && targetIndex > index) {
+          index = targetIndex;
+          continue;
+        }
+      }
+    }
+    index += 1;
+  }
+  return result;
+}
+
+function normalizeSurveyAnswers(fields: FilestoreSurveyField[], input: Record<string, string | string[]>) {
+  const result: Record<string, string | string[]> = {};
+  for (const field of activeSurveyFields(fields, input)) {
+    const raw = input[field.id];
+    if (field.type === "multiple") {
+      const values = Array.isArray(raw) ? raw.map(String).map((item) => item.trim()).filter(Boolean) : [];
+      if (field.required && !values.length) throw filestoreApiError(400, `请填写：${field.label}`);
+      const allowed = new Set(field.options ?? []);
+      const invalid = values.find((value) => !allowed.has(value));
+      if (invalid) throw filestoreApiError(400, `“${field.label}”包含无效选项`);
+      result[field.id] = values;
+      continue;
+    }
+    const value = Array.isArray(raw) ? "" : String(raw ?? "").trim();
+    if (field.required && !value) throw filestoreApiError(400, `请填写：${field.label}`);
+    if (field.type === "single" && value) {
+      const allowed = new Set(field.options ?? []);
+      if (!allowed.has(value)) throw filestoreApiError(400, `“${field.label}”包含无效选项`);
+    }
+    if (field.type === "number" && value) {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) throw filestoreApiError(400, `“${field.label}”需要填写数字`);
+      if (field.min !== undefined && numeric < field.min) throw filestoreApiError(400, `“${field.label}”不能小于 ${field.min}`);
+      if (field.max !== undefined && numeric > field.max) throw filestoreApiError(400, `“${field.label}”不能大于 ${field.max}`);
+    }
+    if (field.type === "rating" && value) {
+      const numeric = Number(value);
+      const min = field.min ?? 1;
+      const max = field.max ?? 5;
+      if (!Number.isFinite(numeric) || numeric < min || numeric > max) {
+        throw filestoreApiError(400, `“${field.label}”评分不合法`);
+      }
+    }
+    if (field.type === "date" && value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      throw filestoreApiError(400, `“${field.label}”日期格式不合法`);
+    }
+    const maxLength = field.maxLength ?? (field.type === "textarea" ? 2000 : 300);
+    result[field.id] = value.slice(0, Math.max(1, Math.min(maxLength, 2000)));
   }
   return result;
 }
@@ -1082,6 +1343,10 @@ function csvCell(value: unknown) {
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
+function surveyAnswerText(value: unknown) {
+  return Array.isArray(value) ? value.map((item) => String(item ?? "")).join("; ") : String(value ?? "");
+}
+
 function filenameHeader(name: string) {
   return `attachment; filename*=UTF-8''${encodeURIComponent(name)}`;
 }
@@ -1201,6 +1466,7 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
         status: payload.status,
         visibility: "public",
         fields: JSON.stringify(storedFields(payload.fields)),
+        surveyFields: JSON.stringify(storedSurveyFields(payload.surveyFields)),
         fileRules: JSON.stringify(payload.fileRules),
         renameTemplate: payload.renameTemplate,
         folderTemplate: payload.folderTemplate,
@@ -1318,6 +1584,7 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
         description: payload.description || null,
         status: payload.status,
         fields: JSON.stringify(storedFields(payload.fields)),
+        surveyFields: JSON.stringify(storedSurveyFields(payload.surveyFields)),
         fileRules: JSON.stringify(payload.fileRules),
         renameTemplate: payload.renameTemplate,
         folderTemplate: payload.folderTemplate,
@@ -1412,7 +1679,8 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
     }
     const detail = normalizeFilestoreTask(row, { includeCreator: userIsSuperAdmin(user), includeSubmissions: true }) as any;
     const fields = detail.fields as FilestoreField[];
-    const headers = ["提交编号", "提交时间", "IP", ...fields.map((field) => field.label), "文件"];
+    const surveyFields = detail.surveyFields as FilestoreSurveyField[];
+    const headers = ["提交编号", "提交时间", "IP", ...fields.map((field) => field.label), ...surveyFields.map((field) => field.label), "文件"];
     const lines = [headers.map(csvCell).join(",")];
     for (const submission of detail.submissions) {
       lines.push([
@@ -1420,6 +1688,7 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
         submission.createdAt,
         submission.ip,
         ...fields.map((field) => submission.data[field.key] || ""),
+        ...surveyFields.map((field) => surveyAnswerText(submission.answers?.[field.id])),
         submission.files.map((file: any) => file.storedName).join("; "),
       ].map(csvCell).join(","));
     }
@@ -1476,6 +1745,8 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       ? payload.data as Record<string, unknown>
       : payload;
     const data = normalizeSubmissionData(fields, dataSource);
+    const surveyFields = parseStoredSurveyFields(task.surveyFields);
+    const answers = normalizeSurveyAnswers(surveyFields, normalizeSurveyAnswerInput(payload.answers));
     const files = normalizeDirectUploadFiles(payload.files);
     validateUploadFiles(files, rules);
     const uploadPolicy = await filestoreRemoteUploadPolicy(task.id, files);
@@ -1500,6 +1771,7 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
           submitterId: null,
           identity,
           data: JSON.stringify(data),
+          answers: JSON.stringify(answers),
           ip: req.ip,
           status: "uploading",
         },
@@ -1728,6 +2000,8 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       const rules = parseStoredRules(task.fileRules);
       const body = (req.body && typeof req.body === "object") ? req.body as Record<string, unknown> : {};
       const data = normalizeSubmissionData(fields, body);
+      const surveyFields = parseStoredSurveyFields(task.surveyFields);
+      const answers = normalizeSurveyAnswers(surveyFields, normalizeSurveyAnswerInput(body.answers));
       validateUploadFiles(uploadedFiles, rules);
       if ((await filestoreRemoteUploadPolicy(task.id, uploadedFiles)).shouldDirect) {
         throw filestoreApiError(400, "本次提交包含达到直传阈值的文件，请刷新页面后重试");
@@ -1754,6 +2028,7 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
             submitterId: null,
             identity,
             data: JSON.stringify(data),
+            answers: JSON.stringify(answers),
             ip: req.ip,
             status: "submitted",
           },

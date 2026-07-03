@@ -182,6 +182,7 @@
                       <tr>
                         <th>提交人</th>
                         <th v-for="field in detail.fields.filter((field) => field.key !== 'name')" :key="field.key">{{ field.label }}</th>
+                        <th v-for="field in detail.surveyFields || []" :key="field.id">{{ field.label }}</th>
                         <th>文件</th>
                         <th>提交时间</th>
                         <th></th>
@@ -194,6 +195,7 @@
                           <span class="cell-sub">IP {{ submission.ip || "-" }}</span>
                         </td>
                         <td v-for="field in detail.fields.filter((field) => field.key !== 'name')" :key="field.key">{{ submission.data[field.key] || "" }}</td>
+                        <td v-for="field in detail.surveyFields || []" :key="field.id">{{ formatSurveyAnswer(submission.answers?.[field.id]) }}</td>
                         <td class="file-cell">
                           <div v-for="file in submission.files" :key="file.id" class="file-row">
                             <div>
@@ -230,6 +232,10 @@
                       <template v-for="field in detail.fields.filter((field) => field.key !== 'name')" :key="field.key">
                         <dt>{{ field.label }}</dt>
                         <dd>{{ submission.data[field.key] || "-" }}</dd>
+                      </template>
+                      <template v-for="field in detail.surveyFields || []" :key="field.id">
+                        <dt>{{ field.label }}</dt>
+                        <dd>{{ formatSurveyAnswer(submission.answers?.[field.id]) || "-" }}</dd>
                       </template>
                       <dt>提交时间</dt>
                       <dd>{{ formatDateTime(submission.createdAt) }}</dd>
@@ -276,7 +282,8 @@
                 <h2>任务规则</h2>
                 <dl class="rule-list">
                   <dt>状态</dt><dd><span :class="['status-dot', detail.status === 'closed' ? 'closed' : '']"></span>{{ detail.status === 'open' ? "开放提交" : "停止提交" }}</dd>
-                  <dt>字段</dt><dd>{{ detail.fields.map((field) => field.label).join("、") }}</dd>
+                  <dt>身份字段</dt><dd>{{ detail.fields.map((field) => field.label).join("、") }}</dd>
+                  <dt>问卷题目</dt><dd>{{ detail.surveyFields?.length ? detail.surveyFields.map((field) => field.label).join("、") : "未启用" }}</dd>
                   <dt>文件类型</dt><dd>{{ detail.fileRules.allowedTypes.join(", ") || "不限" }}</dd>
                   <dt>大小/数量</dt><dd>{{ detail.fileRules.maxSizeMb }} MB · 最多 {{ detail.fileRules.maxCount }} 个</dd>
                   <dt>文件命名</dt><dd>{{ detail.renameTemplate }}</dd>
@@ -339,8 +346,8 @@
 
           <div v-show="currentStep === 2" class="step-content">
             <div class="step-guide">
-              <h3>第 2 步：设计表单字段</h3>
-              <p>定制提交者上传文件前需要填写的个人信息字段（如姓名、学号等）。</p>
+              <h3>第 2 步：设置身份字段</h3>
+              <p>这些字段用于识别提交人、覆盖旧提交、名单核对和文件自动命名，建议保留姓名和学号/考试号。</p>
             </div>
             <div class="editor-section">
               <div class="section-line">
@@ -386,7 +393,80 @@
 
           <div v-show="currentStep === 3" class="step-content">
             <div class="step-guide">
-              <h3>第 3 步：配置文件规则与命名</h3>
+              <h3>第 3 步：添加问卷题目（可选）</h3>
+              <p>需要在上传文件前额外收集说明、选择或评分时，把题目放在这里；答案会进入提交记录和 CSV。</p>
+            </div>
+            <div class="editor-section">
+              <div class="section-line">
+                <div>
+                  <h3>问卷题目</h3>
+                  <p class="hint">不会参与文件命名，也不会影响覆盖提交的身份判断。</p>
+                </div>
+                <button type="button" class="chip primary" @click="addSurveyField">+ 添加题目</button>
+              </div>
+
+              <div v-if="!draft.surveyFields.length" class="survey-empty">
+                <strong>暂未添加问卷题目</strong>
+                <span>只需要收文件时可以跳过；需要备注、选项或评分时再添加。</span>
+              </div>
+
+              <div v-else class="survey-field-stack">
+                <article v-for="(field, index) in draft.surveyFields" :key="field.id || index" class="survey-field-row">
+                  <div class="survey-field-head">
+                    <strong>题目 {{ index + 1 }}</strong>
+                    <div class="field-row-actions">
+                      <button type="button" class="chip" @click="duplicateSurveyField(index)">复制</button>
+                      <button type="button" class="chip danger" @click="draft.surveyFields.splice(index, 1)">删除</button>
+                    </div>
+                  </div>
+                  <div class="survey-field-grid">
+                    <label>题目 ID
+                      <input v-model="field.id" placeholder="q_1" @blur="field.id = normalizeSurveyFieldId(field.id)">
+                    </label>
+                    <label>题目标题
+                      <input v-model="field.label" placeholder="例如：是否需要纸质版">
+                    </label>
+                    <label>题型
+                      <select v-model="field.type" @change="normalizeSurveyField(field)">
+                        <option v-for="type in filestoreBetaSurveyFieldTypes" :key="type.value" :value="type.value">{{ type.label }}</option>
+                      </select>
+                    </label>
+                    <label class="checkline survey-required">
+                      <input v-model="field.required" type="checkbox">
+                      必填
+                    </label>
+                    <label>题目说明
+                      <input v-model="field.description" placeholder="选填，展示在题目下方">
+                    </label>
+                    <label>占位提示
+                      <input v-model="field.placeholder" placeholder="选填">
+                    </label>
+                  </div>
+                  <label v-if="field.type === 'single' || field.type === 'multiple'" class="survey-options-label">选项（每行一个）
+                    <textarea :value="(field.options || []).join('\n')" placeholder="选项1&#10;选项2" @input="setSurveyOptions(field, $event)"></textarea>
+                  </label>
+                  <div v-if="field.type === 'number' || field.type === 'rating'" class="form-row three survey-number-row">
+                    <label>最小值
+                      <input v-model.number="field.min" type="number">
+                    </label>
+                    <label>最大值
+                      <input v-model.number="field.max" type="number">
+                    </label>
+                    <label v-if="field.type === 'number'">步进
+                      <input v-model.number="field.step" type="number" min="0.01" step="0.01">
+                    </label>
+                  </div>
+                  <label v-if="field.type === 'text' || field.type === 'textarea'" class="survey-max-length">最大字数
+                    <input v-model.number="field.maxLength" type="number" min="1" max="2000">
+                  </label>
+                </article>
+              </div>
+            </div>
+          </div>
+
+          <div v-show="currentStep === 4" class="step-content">
+            <div class="step-guide">
+              <h3>第 4 步：配置文件规则与命名</h3>
               <p>限制上传的文件格式与数量，并配置系统自动重命名规则，告别手动改名！</p>
             </div>
             <div class="editor-section">
@@ -436,9 +516,9 @@
             </div>
           </div>
 
-          <div v-show="currentStep === 4" class="step-content">
+          <div v-show="currentStep === 5" class="step-content">
             <div class="step-guide">
-              <h3>第 4 步：导入名单（可选）</h3>
+              <h3>第 5 步：导入名单（可选）</h3>
               <p>提供全班同学学号或姓名名单，系统会自动计算出谁没提交，并能一键催缴。</p>
             </div>
             <div class="editor-section">
@@ -451,7 +531,7 @@
 
         <div class="drawer-actions">
           <button type="button" class="secondary prev-action" :disabled="currentStep <= 1" @click="currentStep -= 1">上一步</button>
-          <button v-if="currentStep < 4" type="button" class="primary main-action" @click="currentStep += 1">下一步</button>
+          <button v-if="currentStep < lastStep" type="button" class="primary main-action" @click="currentStep += 1">下一步</button>
           <button v-else type="button" class="primary main-action" :disabled="saving" @click="saveTask">保存任务</button>
           <button type="button" class="secondary template-action" :disabled="!viewer?.isManager" @click="saveTemplateFromDraft">保存当前模版</button>
           <button type="button" class="danger delete-action" :disabled="editorMode !== 'edit' || saving" @click="deleteTask">删除任务</button>
@@ -544,6 +624,7 @@ import {
   type FilestoreBetaFile,
   type FilestoreBetaSettings,
   type FilestoreBetaSubmission,
+  type FilestoreBetaSurveyField,
   type FilestoreBetaTask,
   type FilestoreBetaTemplate,
   type FilestoreBetaViewer,
@@ -553,12 +634,16 @@ import {
   builtInFilestoreBetaTemplates,
   buildFilestoreBetaPayload,
   cloneFields,
+  cloneSurveyFields,
   copyText,
   createFilestoreBetaDraft,
+  filestoreBetaSurveyFieldTypes,
   formatDateForInput,
   formatDateTime,
   makeFilestoreBetaField,
+  makeFilestoreBetaSurveyField,
   normalizeFieldKey,
+  normalizeSurveyFieldId,
   openDirectUrl,
   previewStoredFileName,
   renderFilestoreBetaTemplate,
@@ -625,10 +710,12 @@ useScopedLegacyFilestoreCss();
 
 const steps = [
   { value: 1, label: "基本信息" },
-  { value: 2, label: "表单设计" },
-  { value: 3, label: "上传规则" },
-  { value: 4, label: "核对名单" },
+  { value: 2, label: "身份字段" },
+  { value: 3, label: "问卷题目" },
+  { value: 4, label: "上传规则" },
+  { value: 5, label: "核对名单" },
 ];
+const lastStep = steps[steps.length - 1].value;
 
 const siteTitle = computed(() => settings.value.siteTitle || "药大拾间文件收集");
 const filteredTasks = computed(() => {
@@ -640,7 +727,7 @@ const filteredSubmissions = computed(() => {
   const rows = detail.value?.submissions || [];
   const query = submissionQuery.value.trim().toLowerCase();
   if (!query) return rows;
-  return rows.filter((submission) => `${JSON.stringify(submission.data)} ${submission.files.map((file) => file.storedName).join(" ")}`.toLowerCase().includes(query));
+  return rows.filter((submission) => `${JSON.stringify(submission.data)} ${JSON.stringify(submission.answers || {})} ${submission.files.map((file) => file.storedName).join(" ")}`.toLowerCase().includes(query));
 });
 const totalFileSize = computed(() => (detail.value?.submissions || []).reduce((sum, item) => sum + item.files.reduce((inner, file) => inner + file.size, 0), 0));
 const completionRate = computed(() => {
@@ -861,6 +948,7 @@ function openEditor(task?: FilestoreBetaTask | null) {
     draft.deadline = formatDateForInput(task.deadline);
     draft.status = task.status;
     draft.fields = cloneFields(task.fields);
+    draft.surveyFields = cloneSurveyFields(task.surveyFields || []);
     draft.allowedTypes = task.fileRules.allowedTypes.join(",");
     draft.maxSizeMb = task.fileRules.maxSizeMb;
     draft.maxCount = task.fileRules.maxCount;
@@ -891,6 +979,47 @@ function applySelectedTemplate() {
 
 function addDraftField() {
   draft.fields.push(makeFilestoreBetaField(draft.fields.length));
+}
+
+function addSurveyField() {
+  draft.surveyFields.push(makeFilestoreBetaSurveyField(draft.surveyFields.length));
+}
+
+function duplicateSurveyField(index: number) {
+  const source = draft.surveyFields[index];
+  if (!source) return;
+  draft.surveyFields.splice(index + 1, 0, {
+    ...source,
+    id: normalizeSurveyFieldId(`${source.id || "q"}_copy_${Date.now().toString(36).slice(-4)}`),
+    label: source.label ? `${source.label} 副本` : "",
+    options: [...(source.options || [])],
+    branching: source.branching ? { ...source.branching } : undefined,
+  });
+}
+
+function normalizeSurveyField(field: FilestoreBetaSurveyField) {
+  if (field.type === "single" || field.type === "multiple") {
+    if (!field.options?.length) field.options = ["选项1", "选项2"];
+  } else {
+    field.options = undefined;
+    field.branching = undefined;
+  }
+  if (field.type === "rating") {
+    field.min = field.min ?? 1;
+    field.max = field.max ?? 5;
+    field.step = undefined;
+  } else if (field.type === "number") {
+    field.step = field.step || 1;
+  } else if (field.type === "text") {
+    field.maxLength = field.maxLength || 300;
+  } else if (field.type === "textarea") {
+    field.maxLength = field.maxLength || 2000;
+  }
+}
+
+function setSurveyOptions(field: FilestoreBetaSurveyField, event: Event) {
+  const value = (event.target as HTMLTextAreaElement).value;
+  field.options = value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
 }
 
 function sampleData() {
@@ -986,6 +1115,10 @@ function formatDateOnly(value?: string | null) {
   if (!value) return "";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("zh-CN");
+}
+
+function formatSurveyAnswer(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value.join("、") : String(value || "");
 }
 
 async function copyMissing() {
@@ -1285,6 +1418,7 @@ async function saveTemplateFromDraft() {
         name,
         description: draft.description.trim(),
         fields: payload.fields,
+        surveyFields: payload.surveyFields,
         fileRules: payload.fileRules,
         renameTemplate: payload.renameTemplate,
         folderTemplate: payload.folderTemplate,

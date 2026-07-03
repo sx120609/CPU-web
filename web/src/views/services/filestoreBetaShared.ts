@@ -2,9 +2,11 @@ import type {
   FilestoreBetaField,
   FilestoreBetaRules,
   FilestoreBetaStatus,
+  FilestoreBetaSurveyField,
   FilestoreBetaTaskPayload,
   FilestoreBetaTemplate,
 } from "@/api/filestoreBeta";
+import type { QuestionnaireFieldType } from "@/api/tools";
 import { onBeforeUnmount, onMounted } from "vue";
 import legacyFilestoreCss from "./filestoreLegacy.css?raw";
 
@@ -24,6 +26,7 @@ export interface FilestoreBetaDraft {
   folderTemplate: string;
   expectedEntries: string;
   fields: FilestoreBetaField[];
+  surveyFields: FilestoreBetaSurveyField[];
   renameExistingFiles: boolean;
 }
 
@@ -35,6 +38,7 @@ export const builtInFilestoreBetaTemplates: FilestoreBetaTemplate[] = [
       { id: "name", key: "name", label: "姓名", required: true, pattern: "^[\\u4e00-\\u9fa5·]{2,20}$", placeholder: "请输入中文姓名" },
       { id: "student_id", key: "student_id", label: "学号", required: true, pattern: "^2020\\d{6}$", placeholder: "例如 2020240444" },
     ],
+    surveyFields: [],
     fileRules: { allowedTypes: ["pdf", "doc", "docx", "jpg", "png", "zip"], maxSizeMb: 20, maxCount: 1 },
     renameTemplate: "{name}-{student_id}",
     folderTemplate: "{name}-{student_id}",
@@ -47,6 +51,7 @@ export const builtInFilestoreBetaTemplates: FilestoreBetaTemplate[] = [
       { id: "name", key: "name", label: "姓名", required: true, pattern: "^[\\u4e00-\\u9fa5·]{2,20}$", placeholder: "请输入中文姓名" },
       { id: "student_id", key: "student_id", label: "考试号", required: true, pattern: "^24201505\\d{2}$", placeholder: "例如 2420150508" },
     ],
+    surveyFields: [],
     fileRules: { allowedTypes: ["pdf", "jpg", "png", "zip"], maxSizeMb: 20, maxCount: 1 },
     renameTemplate: "{name}-{student_id}",
     folderTemplate: "{name}-{student_id}",
@@ -67,6 +72,7 @@ export function createFilestoreBetaDraft(): FilestoreBetaDraft {
     folderTemplate: "{name}-{student_id}",
     expectedEntries: "",
     fields: cloneFields(builtInFilestoreBetaTemplates[0].fields),
+    surveyFields: [],
     renameExistingFiles: false,
   };
 }
@@ -94,6 +100,82 @@ export function makeFilestoreBetaField(index: number): FilestoreBetaField {
   };
 }
 
+export const filestoreBetaSurveyFieldTypes: Array<{ value: QuestionnaireFieldType; label: string }> = [
+  { value: "text", label: "短文本" },
+  { value: "textarea", label: "长文本" },
+  { value: "single", label: "单选" },
+  { value: "multiple", label: "多选" },
+  { value: "number", label: "数字" },
+  { value: "date", label: "日期" },
+  { value: "rating", label: "评分" },
+];
+
+export function makeFilestoreBetaSurveyField(index: number, type: QuestionnaireFieldType = "text"): FilestoreBetaSurveyField {
+  const id = `q_${index + 1}`;
+  const field: FilestoreBetaSurveyField = {
+    id,
+    label: "",
+    type,
+    required: false,
+    placeholder: "",
+    description: "",
+    maxLength: type === "textarea" ? 2000 : 300,
+  };
+  return normalizeFilestoreBetaSurveyField(field, true);
+}
+
+export function cloneSurveyFields(fields: FilestoreBetaSurveyField[] = []) {
+  return fields.map((field, index) => normalizeFilestoreBetaSurveyField({
+    ...field,
+    id: normalizeSurveyFieldId(field.id) || `q_${index + 1}`,
+    options: [...(field.options || [])],
+    branching: field.branching ? { ...field.branching } : undefined,
+  }, true));
+}
+
+export function normalizeSurveyFieldId(value: string) {
+  return String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+}
+
+export function normalizeFilestoreBetaSurveyField(field: FilestoreBetaSurveyField, allowUntitled = false): FilestoreBetaSurveyField {
+  const type = filestoreBetaSurveyFieldTypes.some((item) => item.value === field.type) ? field.type : "text";
+  const normalized: FilestoreBetaSurveyField = {
+    id: normalizeSurveyFieldId(field.id),
+    label: field.label?.trim() || (allowUntitled ? "" : "未命名题目"),
+    type,
+    required: Boolean(field.required),
+    placeholder: field.placeholder?.trim() || undefined,
+    description: field.description?.trim() || undefined,
+    maxLength: field.maxLength,
+  };
+  if (type === "single" || type === "multiple") {
+    normalized.options = (field.options || []).map((item) => String(item || "").trim()).filter(Boolean).slice(0, 20);
+    if (!normalized.options.length && allowUntitled) normalized.options = ["选项1", "选项2"];
+    if (field.branching && type === "single") normalized.branching = { ...field.branching };
+  }
+  if (type === "number") {
+    normalized.min = field.min;
+    normalized.max = field.max;
+    normalized.step = field.step || 1;
+  }
+  if (type === "rating") {
+    normalized.min = Math.max(0, Math.round(Number(field.min ?? 1)));
+    normalized.max = Math.min(10, Math.round(Number(field.max ?? 5)));
+  }
+  if (type === "text") normalized.maxLength = field.maxLength || 300;
+  if (type === "textarea") normalized.maxLength = field.maxLength || 2000;
+  return normalized;
+}
+
+export function normalizeFilestoreBetaSurveyFields(fields: FilestoreBetaSurveyField[]) {
+  return fields.map((field) => normalizeFilestoreBetaSurveyField(field)).filter((field) => field.id && field.label);
+}
+
 export function applyTemplateToDraft(draft: FilestoreBetaDraft, template: FilestoreBetaTemplate, resetTitle = false) {
   if (resetTitle) {
     draft.title = "";
@@ -104,6 +186,7 @@ export function applyTemplateToDraft(draft: FilestoreBetaDraft, template: Filest
     draft.description = template.description;
   }
   draft.fields = cloneFields(template.fields);
+  draft.surveyFields = cloneSurveyFields(template.surveyFields || []);
   draft.allowedTypes = template.fileRules.allowedTypes.join(",");
   draft.maxSizeMb = template.fileRules.maxSizeMb;
   draft.maxCount = template.fileRules.maxCount;
@@ -150,6 +233,7 @@ export function buildFilestoreBetaPayload(draft: FilestoreBetaDraft): FilestoreB
     deadline: draft.deadline ? new Date(draft.deadline).toISOString() : null,
     status: draft.status,
     fields: normalizeFilestoreBetaFields(draft.fields),
+    surveyFields: normalizeFilestoreBetaSurveyFields(draft.surveyFields),
     fileRules: normalizeFilestoreBetaRules(draft),
     renameTemplate: draft.renameTemplate.trim() || "{name}-{student_id}",
     folderTemplate: draft.folderTemplate.trim() || "{name}-{student_id}",
@@ -172,6 +256,24 @@ export function validateFilestoreBetaDraft(draft: FilestoreBetaDraft) {
       new RegExp(field.pattern);
     } catch {
       return `字段“${field.label}”的正则规则不合法`;
+    }
+  }
+  for (const field of draft.surveyFields) {
+    if (!normalizeSurveyFieldId(field.id)) return "问卷题目 ID 不能为空";
+    if (!field.label?.trim()) return "问卷题目标题不能为空";
+  }
+  const surveyFields = normalizeFilestoreBetaSurveyFields(draft.surveyFields);
+  if (new Set(surveyFields.map((field) => field.id)).size !== surveyFields.length) return "问卷题目 ID 不能重复";
+  for (const field of surveyFields) {
+    if (!/^[a-zA-Z0-9_-]+$/.test(field.id)) return `问卷题目 ID“${field.id}”只能包含英文、数字、下划线和中划线`;
+    if ((field.type === "single" || field.type === "multiple") && (!field.options || field.options.length < 2)) {
+      return `选项题“${field.label}”至少需要 2 个选项`;
+    }
+    if (field.type === "number" && field.min !== undefined && field.max !== undefined && field.min > field.max) {
+      return `数字题“${field.label}”的最小值不能大于最大值`;
+    }
+    if (field.type === "rating" && Number(field.min ?? 1) >= Number(field.max ?? 5)) {
+      return `评分题“${field.label}”的最高分需要大于最低分`;
     }
   }
   const rules = normalizeFilestoreBetaRules(draft);
