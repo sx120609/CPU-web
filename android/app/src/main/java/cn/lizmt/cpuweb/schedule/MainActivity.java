@@ -30,7 +30,10 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 public final class MainActivity extends Activity {
     private static final int REQUEST_FILE_CHOOSER = 2001;
@@ -39,6 +42,7 @@ public final class MainActivity extends Activity {
     private WebView webView;
     private LinearLayout errorView;
     private LinearLayout launchView;
+    private FrameLayout contentHost;
     private String appHost;
     private boolean mainFrameLoadFailed;
     private ValueCallback<Uri[]> filePathCallback;
@@ -52,31 +56,38 @@ public final class MainActivity extends Activity {
         configureSystemBars();
 
         FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(Color.rgb(248, 250, 252));
+        contentHost = new FrameLayout(this);
         webView = new WebView(this);
         errorView = createErrorView();
         launchView = createLaunchView();
 
-        root.addView(webView, new FrameLayout.LayoutParams(
+        contentHost.addView(webView, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
         ));
-        root.addView(errorView, new FrameLayout.LayoutParams(
+        contentHost.addView(errorView, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
         ));
-        root.addView(launchView, new FrameLayout.LayoutParams(
+        contentHost.addView(launchView, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+        ));
+        root.addView(contentHost, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
         ));
 
         setContentView(root);
+        bindSystemBarInsets(contentHost);
         configureWebView();
         webView.loadUrl(BuildConfig.APP_URL);
     }
 
     private void configureSystemBars() {
         Window window = getWindow();
-        WindowCompat.setDecorFitsSystemWindows(window, true);
+        WindowCompat.setDecorFitsSystemWindows(window, false);
         window.setStatusBarColor(Color.rgb(237, 244, 255));
         window.setNavigationBarColor(Color.rgb(248, 250, 252));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -86,6 +97,18 @@ public final class MainActivity extends Activity {
             }
             window.getDecorView().setSystemUiVisibility(flags);
         }
+    }
+
+    private void bindSystemBarInsets(View target) {
+        ViewCompat.setOnApplyWindowInsetsListener(target, (view, insets) -> {
+            int mask = WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout();
+            Insets bars = insets.getInsets(mask);
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            return new WindowInsetsCompat.Builder(insets)
+                    .setInsets(mask, Insets.NONE)
+                    .build();
+        });
+        ViewCompat.requestApplyInsets(target);
     }
 
     @SuppressLint("SetJavaScriptEnabled")
