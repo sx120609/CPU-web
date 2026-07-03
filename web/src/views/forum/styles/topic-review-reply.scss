@@ -2,9 +2,13 @@
   margin-bottom: 12px;
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid #bfdbfe;
-  background: linear-gradient(180deg, #eff6ff 0%, #f8fbff 100%);
-  color: #1d4ed8;
+  border: 1px solid color-mix(in srgb, #60a5fa 34%, var(--cpu-border));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, #60a5fa 14%, var(--cpu-card)) 0%,
+    color-mix(in srgb, #60a5fa 5%, var(--cpu-card)) 100%
+  );
+  color: color-mix(in srgb, #2563eb 88%, var(--cpu-text));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -212,9 +216,13 @@
   align-items: flex-start;
   gap: 12px;
   padding: 12px 14px;
-  border: 1px solid #ebe8ff;
+  border: 1px solid color-mix(in srgb, #8b5cf6 26%, var(--cpu-border));
   border-radius: 12px;
-  background: linear-gradient(180deg, #faf7ff 0%, #ffffff 100%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, #8b5cf6 10%, var(--cpu-card)) 0%,
+    color-mix(in srgb, #8b5cf6 3%, var(--cpu-card)) 100%
+  );
   margin-bottom: 14px;
 }
 
@@ -229,13 +237,13 @@
 .reply-anonymous-copy b {
   display: block;
   font-size: 14px;
-  color: #4c1d95;
+  color: color-mix(in srgb, #7c3aed 78%, var(--cpu-text));
   margin-bottom: 4px;
 }
 
 .reply-anonymous-copy p {
   margin: 0;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -255,7 +263,7 @@
 :deep(.reply-dialog .rich-editor.toolbar-static) {
   border-radius: 20px;
   box-shadow: none;
-  border-color: #e8edf3;
+  border-color: var(--cpu-border-soft);
 }
 
 :deep(.reply-dialog .rich-editor.toolbar-static .editor-toolbar) {
@@ -263,7 +271,7 @@
 }
 
 :deep(.reply-dialog .rich-editor.toolbar-static .editor-surface) {
-  background: #fff;
+  background: var(--cpu-card);
 }
 
 :deep(.reply-dialog .rich-editor.toolbar-static .editor-foot) {

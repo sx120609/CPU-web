@@ -404,6 +404,10 @@ function prefixSelectorList(selector: string, scope: string) {
 function prefixSelector(selector: string, scope: string) {
   if (!selector) return selector;
   if (selector === ":root" || selector === "html" || selector === "body") return scope;
+  const htmlCondition = selector.match(/^html((?:\[[^\]]+\]|:[\w-]+|\.[\w-]+)+)(.*)$/);
+  if (htmlCondition) {
+    return `html${htmlCondition[1]} ${scope}${htmlCondition[2] || ""}`;
+  }
   if (selector.startsWith("body.")) return `${scope}${selector.slice("body".length)}`;
   if (selector.startsWith("html.")) return `${scope}${selector.slice("html".length)}`;
   if (selector === "*") return `${scope} *`;

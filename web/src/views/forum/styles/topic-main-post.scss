@@ -52,10 +52,15 @@
     margin-bottom: 14px;
     .avatar { background: var(--cpu-primary); color: #fff; font-weight: 600; }
     .meta-author { flex: 1; }
-    .name { font-size: 14px; font-weight: 500; color: #1f2937; display: flex; gap: 6px; align-items: center; }
+    .name { font-size: 14px; font-weight: 500; color: var(--cpu-text); display: flex; gap: 6px; align-items: center; }
     .name a { color: var(--cpu-primary); text-decoration: none; }
-    .real-author-line { font-size: 12px; color: #6b7280; margin-top: 2px; }
-    .meta { font-size: 12px; color: #9ca3af; margin-top: 2px; }
+    .real-author-line {
+      font-size: 12px;
+      color: color-mix(in srgb, var(--cpu-gold) 78%, var(--cpu-text));
+      margin-top: 2px;
+      font-weight: 600;
+    }
+    .meta { font-size: 12px; color: var(--cpu-text-muted); margin-top: 2px; }
     .meta-price { font-size: 22px; color: #ef4444; font-weight: 700; }
   }
 

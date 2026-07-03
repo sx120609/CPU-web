@@ -3,24 +3,36 @@
   --accent: #148f7b;
   --accent-light: #34b39e;
   --accent-dark: #0d6e5e;
+  --accent-text: #0d6e5e;
   --accent-wash: rgba(20, 143, 123, 0.08);
+  --accent-wash-strong: rgba(20, 143, 123, 0.12);
+  --accent-border: rgba(20, 143, 123, 0.16);
   --bg: #f8fafc;
   --sidebar: #ffffff;
   --surface: #ffffff;
+  --surface-1: #ffffff;
   --surface-2: #f8fafc;
   --surface-3: #ecfdf5;
+  --surface-hover: #ffffff;
   --text: #0f172a;
   --text-muted: #475569;
   --muted: #64748b;
   --line: #e2e8f0;
+  --line-soft: #eef0f4;
   --line-strong: #cbd5e1;
   --gold: #f59e0b;
   --gold-soft: #fef3c7;
   --danger: #ef4444;
   --danger-light: #fee2e2;
+  --danger-border: rgba(239, 68, 68, 0.2);
   --warning: #f97316;
   --ok: #10b981;
   --ok-light: #d1fae5;
+  --glass-nav: rgba(255, 255, 255, 0.85);
+  --scrim: rgba(15, 23, 42, 0.3);
+  --row-hover: rgba(241, 245, 249, 0.4);
+  --drawer-shadow: -10px 0 40px rgba(15, 23, 42, 0.15);
+  --dialog-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
   --shadow-soft: 0 18px 42px -24px rgba(15, 23, 42, 0.22);
   --shadow-card: 0 2px 12px rgba(15, 23, 42, 0.04);
   --shadow-hover: 0 8px 24px rgba(20, 143, 123, 0.11);
@@ -33,6 +45,46 @@
   --filestore-beta-shell-top-mobile: 112px;
   --filestore-beta-active-shell-top: var(--filestore-beta-shell-top);
   --filestore-beta-sidebar-width: clamp(248px, 18vw, 280px);
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --accent: #36d0b7;
+  --accent-light: #5ee4cc;
+  --accent-dark: #0f766e;
+  --accent-text: #7ff0dc;
+  --accent-wash: rgba(54, 208, 183, 0.12);
+  --accent-wash-strong: rgba(54, 208, 183, 0.18);
+  --accent-border: rgba(54, 208, 183, 0.26);
+  --bg: #101c19;
+  --sidebar: #16231f;
+  --surface: #1a2925;
+  --surface-1: #1a2925;
+  --surface-2: #20312c;
+  --surface-3: rgba(54, 208, 183, 0.12);
+  --surface-hover: #243832;
+  --text: #eef8f5;
+  --text-muted: #d2e4df;
+  --muted: #abc5be;
+  --line: rgba(163, 186, 179, 0.26);
+  --line-soft: rgba(163, 186, 179, 0.18);
+  --line-strong: rgba(190, 214, 207, 0.38);
+  --gold: #fbbf24;
+  --gold-soft: rgba(251, 191, 36, 0.16);
+  --danger: #f87171;
+  --danger-light: rgba(248, 113, 113, 0.14);
+  --danger-border: rgba(248, 113, 113, 0.3);
+  --warning: #fb923c;
+  --ok: #34d399;
+  --ok-light: rgba(52, 211, 153, 0.16);
+  --glass-nav: rgba(22, 35, 31, 0.86);
+  --scrim: rgba(4, 12, 10, 0.62);
+  --row-hover: rgba(54, 208, 183, 0.06);
+  --drawer-shadow: -14px 0 42px rgba(0, 0, 0, 0.36);
+  --dialog-shadow: 0 28px 70px rgba(0, 0, 0, 0.42);
+  --shadow-soft: 0 18px 46px -24px rgba(0, 0, 0, 0.72);
+  --shadow-card: 0 2px 16px rgba(0, 0, 0, 0.18);
+  --shadow-hover: 0 10px 28px rgba(0, 0, 0, 0.28);
 }
 
 * {
@@ -137,7 +189,7 @@ body.auth-pending.admin-body {
   margin: 0;
   padding: 24px;
   background: var(--surface);
-  border: 1px solid #eef0f4;
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-soft);
 }
@@ -167,7 +219,7 @@ body.auth-pending.admin-body {
   align-items: center;
   min-height: 26px;
   padding: 0 10px;
-  border: 1px solid rgba(20, 143, 123, 0.16);
+  border: 1px solid var(--accent-border);
   border-radius: var(--radius-full);
   color: var(--accent);
   background: var(--surface-3);
@@ -199,7 +251,7 @@ body.auth-pending.admin-body {
 .login-card-footer {
   margin: 18px -4px -8px;
   padding-top: 16px;
-  border-top: 1px solid #eef0f4;
+  border-top: 1px solid var(--line-soft);
 }
 
 /* Global elements */
@@ -388,7 +440,7 @@ p {
   min-height: calc(100vh - var(--filestore-beta-active-shell-top, 61px));
   min-height: calc(100dvh - var(--filestore-beta-active-shell-top, 61px));
   overflow-x: hidden;
-  background: #f8fafc;
+  background: var(--bg);
 }
 
 /* Mobile Nav Styles */
@@ -399,7 +451,7 @@ p {
   z-index: 15;
   width: 100%;
   height: 56px;
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--glass-nav);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--line);
@@ -433,7 +485,7 @@ p {
   position: fixed;
   inset: 0;
   z-index: 1250;
-  background: rgba(15, 23, 42, 0.3);
+  background: var(--scrim);
   backdrop-filter: blur(4px);
   display: none;
 }
@@ -503,7 +555,7 @@ p {
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   color: var(--accent);
-  background: #fff;
+  background: var(--surface);
   text-decoration: none;
   font-size: 13px;
   font-weight: 650;
@@ -514,7 +566,7 @@ p {
 .back-to-site:hover {
   border-color: var(--accent);
   background: var(--accent-wash);
-  color: var(--accent-dark);
+  color: var(--accent-text);
 }
 
 .sidebar-back-to-site,
@@ -537,8 +589,8 @@ p {
 .sidebar-intro {
   padding: 14px;
   border-radius: var(--radius-md);
-  background: linear-gradient(180deg, rgba(20, 143, 123, 0.08), rgba(20, 143, 123, 0.03));
-  border: 1px solid rgba(20, 143, 123, 0.12);
+  background: linear-gradient(180deg, var(--accent-wash), transparent);
+  border: 1px solid var(--accent-border);
 }
 
 .sidebar-kicker {
@@ -612,7 +664,7 @@ p {
 .task-card.active {
   background: var(--surface-3);
   border-color: var(--accent);
-  box-shadow: 0 8px 20px -12px rgba(20, 143, 123, 0.35);
+  box-shadow: var(--shadow-hover);
 }
 
 .task-card strong {
@@ -694,7 +746,7 @@ p {
 }
 
 .app-footer a:hover {
-  color: var(--accent-dark);
+  color: var(--accent-text);
 }
 
 .topbar {
@@ -978,7 +1030,7 @@ th {
 }
 
 tr:hover td {
-  background: rgba(241, 245, 249, 0.4);
+  background: var(--row-hover);
 }
 
 .cell-sub {
@@ -1108,7 +1160,7 @@ tr:hover td {
   height: calc(100vh - var(--filestore-beta-active-shell-top, 61px));
   height: calc(100dvh - var(--filestore-beta-active-shell-top, 61px));
   background: var(--surface);
-  box-shadow: -10px 0 40px rgba(15, 23, 42, 0.15);
+  box-shadow: var(--drawer-shadow);
   transform: translateX(100%);
   transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   display: grid;
@@ -1128,7 +1180,7 @@ tr:hover td {
   bottom: 0;
   left: 0;
   z-index: 1290;
-  background: rgba(15, 23, 42, 0.3);
+  background: var(--scrim);
   backdrop-filter: blur(4px);
   display: none;
 }
@@ -1248,7 +1300,7 @@ tr:hover td {
 
 .step-guide {
   background: var(--surface-3);
-  border: 1px solid rgba(20, 143, 123, 0.12);
+  border: 1px solid var(--accent-border);
   border-radius: var(--radius-md);
   padding: 14px 16px;
   margin-bottom: 20px;
@@ -1256,7 +1308,7 @@ tr:hover td {
 
 .step-guide h3 {
   font-size: 14px;
-  color: var(--accent-dark);
+  color: var(--accent-text);
   margin-bottom: 4px;
 }
 
@@ -1319,7 +1371,7 @@ tr:hover td {
 
 .chip.danger {
   color: var(--danger);
-  border-color: rgba(239, 68, 68, 0.2);
+  border-color: var(--danger-border);
 }
 
 .chip.primary {
@@ -1435,8 +1487,8 @@ tr:hover td {
 }
 
 .toggle-validation:hover {
-  background: var(--accent-light);
-  color: var(--accent-dark);
+  background: var(--accent-wash-strong);
+  color: var(--accent-text);
 }
 
 .field-validation-box {
@@ -1543,7 +1595,7 @@ tr:hover td {
   min-height: 34px;
   padding: 0;
   color: var(--danger);
-  border-color: rgba(239, 68, 68, 0.2);
+  border-color: var(--danger-border);
   font-size: 16px;
 }
 
@@ -1644,7 +1696,7 @@ tr:hover td {
 dialog {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
+  box-shadow: var(--dialog-shadow);
   margin: calc(var(--filestore-beta-active-shell-top, 61px) + 16px) auto 16px;
   padding: 24px;
   width: min(460px, 95vw);
@@ -1656,7 +1708,7 @@ dialog {
 }
 
 dialog::backdrop {
-  background: rgba(15, 23, 42, 0.3);
+  background: var(--scrim);
   backdrop-filter: blur(4px);
 }
 
@@ -1819,8 +1871,8 @@ dialog.busy-dialog {
 }
 
 .file-manager-row:hover {
-  border-color: rgba(20, 143, 123, 0.28);
-  background: #fff;
+  border-color: var(--accent-border);
+  background: var(--surface-hover);
 }
 
 .file-manager-row > div:first-child {
@@ -1899,7 +1951,7 @@ dialog.busy-dialog {
 .submit-card {
   width: min(720px, 100%);
   background: var(--surface);
-  border: 1px solid #eef0f4;
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
   overflow: hidden;
@@ -1910,7 +1962,7 @@ dialog.busy-dialog {
   justify-content: space-between;
   align-items: center;
   padding: 16px 24px;
-  background: #fff;
+  background: var(--surface);
   border-bottom: 1px solid var(--line);
   gap: 12px;
 }
@@ -1939,14 +1991,14 @@ dialog.busy-dialog {
   color: var(--accent);
   background: var(--surface-3);
   padding: 4px 8px;
-  border: 1px solid rgba(20, 143, 123, 0.12);
+  border: 1px solid var(--accent-border);
   border-radius: var(--radius-full);
   white-space: nowrap;
 }
 
 .submit-hero {
   padding: 28px 24px 20px;
-  background: #fff;
+  background: var(--surface);
   border-bottom: 1px solid var(--line);
 }
 
@@ -1978,17 +2030,17 @@ dialog.busy-dialog {
   display: block;
   text-decoration: none;
   background: var(--accent-wash);
-  border: 1px solid rgba(20, 143, 123, 0.12);
+  border: 1px solid var(--accent-border);
   border-radius: var(--radius-md);
   padding: 10px 14px;
-  color: var(--accent-dark);
+  color: var(--accent-text);
   font-size: 13px;
   font-weight: 700;
   transition: var(--transition);
 }
 
 .status-shortcut a:hover {
-  background: rgba(20, 143, 123, 0.12);
+  background: var(--accent-wash-strong);
 }
 
 .status-shortcut a span {
@@ -2059,7 +2111,7 @@ progress::-moz-progress-bar {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 14px;
-  border: 1px solid rgba(20, 143, 123, 0.18);
+  border: 1px solid var(--accent-border);
   border-radius: var(--radius-md);
   background: var(--surface-3);
 }
@@ -2154,7 +2206,7 @@ progress::-moz-progress-bar {
   width: 80px;
   height: 80px;
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   display: flex;
   align-items: center;
@@ -2402,7 +2454,7 @@ progress::-moz-progress-bar {
 
 .status-card {
   background: var(--surface);
-  border: 1px solid #eef0f4;
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
   overflow: hidden;
@@ -2959,7 +3011,7 @@ progress::-moz-progress-bar {
   }
 
   .step-dot.active {
-    border-color: rgba(20, 143, 123, 0.35);
+    border-color: var(--accent-border);
     background: var(--surface-3);
   }
 
