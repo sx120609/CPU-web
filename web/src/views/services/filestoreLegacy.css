@@ -583,12 +583,18 @@ p {
   position: relative;
   display: grid;
   grid-template-columns: 8px minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  grid-auto-rows: min-content;
   column-gap: 12px;
-  row-gap: 4px;
+  row-gap: 3px;
   align-items: start;
+  align-content: start;
+  justify-content: stretch;
+  justify-items: stretch;
   min-width: 0;
+  min-height: 78px;
   width: 100%;
-  padding: 14px;
+  padding: 12px 14px;
   text-align: left;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -611,8 +617,12 @@ p {
 
 .task-card strong {
   grid-column: 2;
+  grid-row: 1;
+  display: block;
+  min-width: 0;
   font-size: 14px;
   font-weight: 700;
+  line-height: 1.35;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -621,18 +631,29 @@ p {
 
 .task-card small {
   grid-column: 2;
+  display: block;
+  min-width: 0;
   font-size: 12px;
+  line-height: 1.35;
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.task-card small:nth-of-type(1) {
+  grid-row: 2;
+}
+
+.task-card small:nth-of-type(2) {
+  grid-row: 3;
+}
+
 .status-dot {
   grid-column: 1;
-  grid-row: 1 / span 3;
+  grid-row: 1 / 4;
   align-self: start;
-  margin-top: 5px;
+  margin-top: 6px;
   width: 7px;
   height: 7px;
   border-radius: var(--radius-full);
@@ -1662,9 +1683,10 @@ dialog::backdrop {
 }
 
 dialog.wide-dialog {
-  width: min(800px, 95vw);
+  width: min(860px, calc(100vw - 40px));
   max-height: calc(100vh - var(--filestore-beta-active-shell-top, 61px) - 32px);
   max-height: calc(100dvh - var(--filestore-beta-active-shell-top, 61px) - 32px);
+  overflow: hidden;
 }
 
 dialog.busy-dialog {
@@ -1729,6 +1751,18 @@ dialog.busy-dialog {
   height: 8px;
 }
 
+.busy-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.busy-actions button {
+  min-height: 34px;
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
 @keyframes busySpin {
   to {
     transform: rotate(360deg);
@@ -1737,70 +1771,83 @@ dialog.busy-dialog {
 
 .file-manager-tools {
   margin-bottom: 16px;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
   gap: 10px;
   align-items: center;
 }
 
 .file-manager-tools input {
   min-height: 38px;
-  flex: 1;
 }
 
-.file-manager-list {
+.file-manager {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
+  gap: 10px;
   max-height: calc(100vh - var(--filestore-beta-active-shell-top, 61px) - 220px);
   max-height: calc(100dvh - var(--filestore-beta-active-shell-top, 61px) - 220px);
   overflow-y: auto;
-  padding: 2px;
+  padding: 2px 4px 2px 2px;
+  overscroll-behavior: contain;
 }
 
-.file-manager-list .file-card {
+.file-manager-row {
   background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  padding: 14px;
   display: grid;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  min-width: 0;
+  padding: 12px 14px;
   box-shadow: var(--shadow-card);
 }
 
-.file-manager-list .file-card strong {
+.file-manager-row:hover {
+  border-color: rgba(20, 143, 123, 0.28);
+  background: #fff;
+}
+
+.file-manager-row > div:first-child {
+  min-width: 0;
+}
+
+.file-manager-row strong {
   display: block;
+  min-width: 0;
+  color: var(--text);
   font-size: 13px;
-  word-break: break-all;
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.file-manager-list .file-card span {
+.file-manager-row span {
   display: block;
-  font-size: 11px;
+  margin-top: 3px;
   color: var(--muted);
-  margin-top: 2px;
-}
-
-.file-manager-list .file-card dl {
-  margin: 0;
-  display: grid;
-  grid-template-columns: 60px 1fr;
-  gap: 4px 8px;
   font-size: 12px;
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.file-manager-list .file-card dt {
-  color: var(--muted);
-}
-
-.file-manager-list .file-card dd {
-  margin: 0;
-  font-weight: 600;
-}
-
-.file-manager-list .file-actions {
+.file-manager-row .file-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.file-manager-row .file-actions button {
+  min-height: 32px;
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 7px;
 }
 
 /* Table empty state */
@@ -2632,6 +2679,7 @@ progress::-moz-progress-bar {
   .status-tools button,
   .submit-actions button,
   .dialog-actions button,
+  .file-manager-tools button,
   .success-actions button,
   .success-actions a,
   .pdf-tool-shortcut a {
@@ -2796,6 +2844,54 @@ progress::-moz-progress-bar {
     grid-template-columns: 1fr;
   }
 
+  dialog.wide-dialog {
+    width: calc(100vw - 24px);
+    padding: 18px 14px;
+  }
+
+  .file-manager-tools {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .file-manager-tools input {
+    grid-column: 1 / -1;
+  }
+
+  .file-manager {
+    max-height: calc(100vh - var(--filestore-beta-active-shell-top, 61px) - 240px);
+    max-height: calc(100dvh - var(--filestore-beta-active-shell-top, 61px) - 240px);
+  }
+
+  .file-manager-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .file-manager-row strong,
+  .file-manager-row span {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .file-manager-row .file-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .file-manager-row .file-actions button {
+    width: 100%;
+  }
+
+  .busy-actions {
+    align-items: stretch;
+  }
+
+  .busy-actions button {
+    width: 100%;
+  }
+
   .form-row {
     grid-template-columns: 1fr;
   }
@@ -2897,6 +2993,11 @@ progress::-moz-progress-bar {
   .dialog-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .file-manager-tools,
+  .file-manager-row .file-actions {
+    grid-template-columns: 1fr;
   }
 
   .drawer-actions {

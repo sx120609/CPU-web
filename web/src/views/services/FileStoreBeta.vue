@@ -26,6 +26,11 @@
               <progress :value="busyState.current" :max="busyState.total"></progress>
               <span>{{ busyState.current }}/{{ busyState.total }}</span>
             </div>
+            <div v-if="busyState.cancelable" class="busy-actions">
+              <button type="button" class="secondary" :disabled="busyState.cancelRequested" @click="cancelBusy">
+                {{ busyState.cancelRequested ? "正在取消" : "取消" }}
+              </button>
+            </div>
           </div>
         </div>
       </dialog>
@@ -575,6 +580,8 @@ const busyState = reactive({
   detail: "",
   current: 0,
   total: 0,
+  cancelable: false,
+  cancelRequested: false,
 });
 let confirmResolver: ((value: boolean) => void) | null = null;
 let promptResolver: ((value: string | null) => void) | null = null;
@@ -666,7 +673,15 @@ type BusyOptions = {
   detail?: string;
   current?: number;
   total?: number;
+  cancelable?: boolean;
 };
+
+class BusyCanceledError extends Error {
+  constructor() {
+    super("操作已取消");
+    this.name = "BusyCanceledError";
+  }
+}
 
 function setBusy(options: BusyOptions = {}) {
   busyState.eyebrow = options.eyebrow || "请稍候";
@@ -675,6 +690,8 @@ function setBusy(options: BusyOptions = {}) {
   busyState.detail = options.detail || "";
   busyState.current = Math.max(0, Number(options.current || 0));
   busyState.total = Math.max(0, Number(options.total || 0));
+  busyState.cancelable = Boolean(options.cancelable);
+  busyState.cancelRequested = false;
 }
 
 async function showBusy(options: BusyOptions = {}) {
@@ -690,11 +707,22 @@ function updateBusy(options: BusyOptions = {}) {
   if (options.detail !== undefined) busyState.detail = options.detail;
   if (options.current !== undefined) busyState.current = Math.max(0, Number(options.current));
   if (options.total !== undefined) busyState.total = Math.max(0, Number(options.total));
+  if (options.cancelable !== undefined) busyState.cancelable = Boolean(options.cancelable);
 }
 
 function hideBusy() {
   if (busyDialog.value?.open) busyDialog.value.close();
   setBusy();
+}
+
+function cancelBusy() {
+  if (!busyState.cancelable || busyState.cancelRequested) return;
+  busyState.cancelRequested = true;
+  busyState.message = "正在取消当前操作，已读取的临时数据会被丢弃。";
+}
+
+function throwIfBusyCanceled() {
+  if (busyState.cancelRequested) throw new BusyCanceledError();
 }
 
 async function withBusy<T>(options: BusyOptions, work: () => Promise<T>) {
@@ -958,13 +986,14 @@ async function downloadZip() {
   zipDownloading.value = true;
   try {
     const zipBlob = await withBusy(
-      { title: "正在下载 ZIP", message: "正在读取文件 0/" + fileCount, current: 0, total: fileCount },
+      { title: "正在下载 ZIP", message: "正在读取文件 0/" + fileCount, current: 0, total: fileCount, cancelable: true },
       async () => {
         const entries = [];
         const usedPaths = new Set<string>();
         let current = 0;
         for (const submission of task.submissions || []) {
           for (const file of submission.files) {
+            throwIfBusyCanceled();
             current += 1;
             updateBusy({
               message: `正在读取文件 ${current}/${fileCount}`,
@@ -973,21 +1002,25 @@ async function downloadZip() {
               total: fileCount,
             });
             const { blob } = await filestoreBetaBlob(`/api/files/${file.id}/download`);
+            throwIfBusyCanceled();
             entries.push({
               path: uniqueZipPath(zipEntryPath(task, submission, file), usedPaths),
               bytes: new Uint8Array(await blob.arrayBuffer()),
               date: new Date(file.createdAt || submission.createdAt),
             });
+            throwIfBusyCanceled();
           }
         }
         updateBusy({ title: "正在生成 ZIP", message: "浏览器正在打包文件，请稍候。", detail: "", current: fileCount, total: fileCount });
+        throwIfBusyCanceled();
         return buildZip(entries);
       }
     );
     saveBlob(zipBlob, `${zipSafePathSegment(task.title)}.zip`);
     toast("ZIP 已生成", "ok");
   } catch (error) {
-    toast(requestErrorMessage(error, "ZIP 打包失败"), "error");
+    if (error instanceof BusyCanceledError) toast("已取消 ZIP 下载");
+    else toast(requestErrorMessage(error, "ZIP 打包失败"), "error");
   } finally {
     zipDownloading.value = false;
   }
