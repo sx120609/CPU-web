@@ -133,7 +133,7 @@
     </header>
 
     <!-- 主内容 -->
-    <main class="main" :class="{ 'main--bare': hideChrome }">
+    <main class="main" :class="{ 'main--bare': hideChrome, 'main--full-width': fullWidthContent && !hideChrome }">
       <router-view v-slot="{ Component }">
         <transition name="fade" mode="out-in">
           <component :is="Component" />
@@ -314,6 +314,7 @@ const appearanceIcon = computed(() => (
 
 /** 某些路由（如 /schedule）希望"裸壳"渲染，没有顶栏/免责声明/footer，仅保留 main + tabbar */
 const hideChrome = computed(() => Boolean(route.meta?.hideChrome));
+const fullWidthContent = computed(() => Boolean(route.meta?.fullWidthContent));
 const layoutStyle = computed(() => (
   mobileViewportHeight.value
     ? { "--layout-viewport-height": `${mobileViewportHeight.value}px` }
@@ -834,6 +835,11 @@ function setAppearanceMode(command: string | number | object) {
   max-width: none;
 }
 
+.main--full-width {
+  padding: 0;
+  max-width: none;
+}
+
 .footer {
   background: var(--cpu-surface);
   border-top: 1px solid var(--cpu-border-soft);
@@ -1050,6 +1056,10 @@ function setAppearanceMode(command: string | number | object) {
     padding-bottom: 0 !important;
   }
 
+  .layout-root.keyboard-open .main--full-width {
+    padding: 0;
+  }
+
   .topbar {
     box-shadow: 0 1px 10px rgba(15, 23, 42, 0.05);
   }
@@ -1110,6 +1120,11 @@ function setAppearanceMode(command: string | number | object) {
 
   .main {
     padding: 14px 12px calc(88px + env(safe-area-inset-bottom));
+    max-width: none;
+  }
+
+  .main--full-width {
+    padding: 0;
     max-width: none;
   }
 

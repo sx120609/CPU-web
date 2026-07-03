@@ -234,12 +234,6 @@
           </section>
         </section>
 
-        <footer class="app-footer">
-          <span>© 2026 药大拾间 · 校园互助与服务平台</span>
-          <span>非学校官方站点</span>
-          <a data-filing-link href="https://beian.miit.gov.cn/" target="_blank" rel="noopener" hidden></a>
-          <a href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener">GitHub</a>
-        </footer>
       </main>
 
       <aside :class="['editor-drawer', { open: editorVisible }]" :aria-hidden="editorVisible ? 'false' : 'true'">
@@ -500,7 +494,6 @@ import {
   type FilestoreBetaViewer,
 } from "@/api/filestoreBeta";
 import {
-  applyLegacyFilingFooter,
   applyTemplateToDraft,
   builtInFilestoreBetaTemplates,
   buildFilestoreBetaPayload,
@@ -630,7 +623,7 @@ const filteredFiles = computed(() => {
 });
 
 onMounted(async () => {
-  await Promise.all([load(), applyLegacyFilingFooter()]);
+  await load();
 });
 
 function toast(text: string, type: ToastType = "") {

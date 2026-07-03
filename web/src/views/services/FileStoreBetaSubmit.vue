@@ -99,12 +99,6 @@
         </form>
         <p :class="['message', messageType, 'submit-form']">{{ submitMessage }}</p>
       </section>
-      <footer class="app-footer submit-footer">
-        <span>© 2026 药大拾间 · 校园互助与服务平台</span>
-        <span>非学校官方站点</span>
-        <a data-filing-link href="https://beian.miit.gov.cn/" target="_blank" rel="noopener" hidden></a>
-        <a href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener">GitHub</a>
-      </footer>
     </main>
 
     <dialog ref="successDialog" class="success-dialog">
@@ -157,7 +151,6 @@ import {
   type FilestoreBetaSubmitResult,
 } from "@/api/filestoreBeta";
 import {
-  applyLegacyFilingFooter,
   formatDateTime,
   normalizeAllowedTypes,
   previewStoredFileName,
@@ -235,7 +228,6 @@ async function load() {
     task.value = next;
     document.title = `${next.siteTitle || "药大拾间文件收集"} - ${next.title}`;
     for (const field of next.fields) answers[field.key] = "";
-    await applyLegacyFilingFooter();
   } catch (err) {
     if (seq !== loadSeq) return;
     error.value = requestErrorMessage(err, "任务加载失败");

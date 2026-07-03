@@ -29,6 +29,9 @@
   --radius-md: 10px;
   --radius-lg: 12px;
   --radius-full: 9999px;
+  --filestore-beta-shell-top: 61px;
+  --filestore-beta-shell-top-mobile: 112px;
+  --filestore-beta-active-shell-top: var(--filestore-beta-shell-top);
 }
 
 * {
@@ -61,10 +64,10 @@ body {
 /* Toast System */
 .toast-host {
   position: fixed;
-  top: 24px;
+  top: calc(var(--filestore-beta-active-shell-top, 61px) + 16px);
   left: 50%;
   transform: translateX(-50%);
-  z-index: 100;
+  z-index: 120;
   display: grid;
   gap: 10px;
   width: min(380px, calc(100vw - 48px));
@@ -381,7 +384,8 @@ p {
 .admin-body {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
-  min-height: 100vh;
+  min-height: calc(100vh - var(--filestore-beta-active-shell-top, 61px));
+  min-height: calc(100dvh - var(--filestore-beta-active-shell-top, 61px));
   overflow-x: hidden;
   background: #f8fafc;
 }
@@ -636,10 +640,11 @@ p {
 /* App Main */
 .app-main {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 20px;
   padding: 24px;
-  min-height: 100vh;
+  min-height: calc(100vh - var(--filestore-beta-active-shell-top, 61px));
+  min-height: calc(100dvh - var(--filestore-beta-active-shell-top, 61px));
 }
 
 .app-footer {
@@ -839,8 +844,14 @@ p {
   gap: 16px;
 }
 
+.panel-head > div:first-child {
+  flex: 1 1 180px;
+  min-width: 180px;
+}
+
 .panel-head h2 {
   font-size: 16px;
+  line-height: 1.35;
   margin-bottom: 4px;
 }
 
@@ -852,17 +863,24 @@ p {
 .table-tools {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
   gap: 8px;
+  max-width: min(100%, 760px);
 }
 
 .table-tools input {
-  width: 220px;
+  width: min(220px, 100%);
+  min-width: 180px;
+  flex: 1 1 220px;
   min-height: 36px;
   font-size: 13px;
   padding: 8px 12px;
 }
 
 .table-tools button {
+  flex: 0 0 auto;
   min-height: 36px;
 }
 
@@ -1018,12 +1036,12 @@ tr:hover td {
 /* Step-by-Step Wizard inside Drawer */
 .editor-drawer {
   position: fixed;
-  top: 0;
+  top: var(--filestore-beta-active-shell-top, 61px);
   right: 0;
-  z-index: 50;
+  z-index: 90;
   width: min(580px, 100vw);
-  height: 100vh;
-  height: 100dvh;
+  height: calc(100vh - var(--filestore-beta-active-shell-top, 61px));
+  height: calc(100dvh - var(--filestore-beta-active-shell-top, 61px));
   background: var(--surface);
   box-shadow: -10px 0 40px rgba(15, 23, 42, 0.15);
   transform: translateX(100%);
@@ -1039,8 +1057,11 @@ tr:hover td {
 
 .drawer-scrim {
   position: fixed;
-  inset: 0;
-  z-index: 40;
+  top: var(--filestore-beta-active-shell-top, 61px);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 80;
   background: rgba(15, 23, 42, 0.3);
   backdrop-filter: blur(4px);
   display: none;
@@ -1501,8 +1522,12 @@ dialog {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
+  margin: calc(var(--filestore-beta-active-shell-top, 61px) + 16px) auto 16px;
   padding: 24px;
   width: min(460px, 95vw);
+  max-height: calc(100vh - var(--filestore-beta-active-shell-top, 61px) - 32px);
+  max-height: calc(100dvh - var(--filestore-beta-active-shell-top, 61px) - 32px);
+  overflow: auto;
   background: var(--surface);
   outline: none;
 }
@@ -1550,7 +1575,8 @@ dialog::backdrop {
 
 dialog.wide-dialog {
   width: min(800px, 95vw);
-  max-height: 85vh;
+  max-height: calc(100vh - var(--filestore-beta-active-shell-top, 61px) - 32px);
+  max-height: calc(100dvh - var(--filestore-beta-active-shell-top, 61px) - 32px);
 }
 
 .file-manager-tools {
@@ -1569,7 +1595,8 @@ dialog.wide-dialog {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 12px;
-  max-height: calc(85vh - 180px);
+  max-height: calc(100vh - var(--filestore-beta-active-shell-top, 61px) - 220px);
+  max-height: calc(100dvh - var(--filestore-beta-active-shell-top, 61px) - 220px);
   overflow-y: auto;
   padding: 2px;
 }
@@ -2237,11 +2264,16 @@ progress::-moz-progress-bar {
 
   .mobile-nav {
     display: flex;
+    top: var(--filestore-beta-active-shell-top, 61px);
+  }
+
+  .sidebar-scrim {
+    top: var(--filestore-beta-active-shell-top, 61px);
   }
 
   .app-sidebar {
     position: fixed;
-    top: 56px;
+    top: calc(var(--filestore-beta-active-shell-top, 61px) + 56px);
     left: 0;
     bottom: 0;
     width: 280px;
@@ -2266,7 +2298,8 @@ progress::-moz-progress-bar {
 
   .app-main {
     padding: 16px;
-    min-height: calc(100vh - 56px);
+    min-height: calc(100vh - var(--filestore-beta-active-shell-top, 61px) - 56px);
+    min-height: calc(100dvh - var(--filestore-beta-active-shell-top, 61px) - 56px);
   }
 
   .work-grid {
@@ -2275,6 +2308,10 @@ progress::-moz-progress-bar {
 }
 
 @media (max-width: 768px) {
+  :root {
+    --filestore-beta-active-shell-top: var(--filestore-beta-shell-top-mobile);
+  }
+
   .summary-grid {
     grid-template-columns: repeat(2, 1fr);
   }
