@@ -32,8 +32,8 @@ export const builtInFilestoreBetaTemplates: FilestoreBetaTemplate[] = [
     name: "学号模板",
     description: "适合按姓名和学号收作业、照片、报名材料。",
     fields: [
-      { id: "name", key: "name", label: "姓名", required: true, pattern: "", placeholder: "请输入姓名" },
-      { id: "student_id", key: "student_id", label: "学号", required: true, pattern: "", placeholder: "请输入学号" },
+      { id: "name", key: "name", label: "姓名", required: true, pattern: "^[\\u4e00-\\u9fa5·]{2,20}$", placeholder: "请输入中文姓名" },
+      { id: "student_id", key: "student_id", label: "学号", required: true, pattern: "^2020\\d{6}$", placeholder: "例如 2020240444" },
     ],
     fileRules: { allowedTypes: ["pdf", "doc", "docx", "jpg", "png", "zip"], maxSizeMb: 20, maxCount: 1 },
     renameTemplate: "{name}-{student_id}",
@@ -44,8 +44,8 @@ export const builtInFilestoreBetaTemplates: FilestoreBetaTemplate[] = [
     name: "考试号模板",
     description: "适合按姓名和考试号收准考证、考试材料或确认文件。",
     fields: [
-      { id: "name", key: "name", label: "姓名", required: true, pattern: "", placeholder: "请输入姓名" },
-      { id: "student_id", key: "student_id", label: "考试号", required: true, pattern: "", placeholder: "请输入考试号" },
+      { id: "name", key: "name", label: "姓名", required: true, pattern: "^[\\u4e00-\\u9fa5·]{2,20}$", placeholder: "请输入中文姓名" },
+      { id: "student_id", key: "student_id", label: "考试号", required: true, pattern: "^24201505\\d{2}$", placeholder: "例如 2420150508" },
     ],
     fileRules: { allowedTypes: ["pdf", "jpg", "png", "zip"], maxSizeMb: 20, maxCount: 1 },
     renameTemplate: "{name}-{student_id}",
