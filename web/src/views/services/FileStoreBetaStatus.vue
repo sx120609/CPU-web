@@ -1,97 +1,99 @@
 <template>
-  <div class="fs-status-beta">
-    <section class="fs-status-shell" v-loading="loading">
-      <button type="button" class="fs-status-back" @click="$router.push('/services/tools/file_collect')">
-        <el-icon><ArrowLeft /></el-icon>
-        文件收集
-      </button>
-
-      <template v-if="statusData">
-        <header class="fs-status-hero">
-          <div>
-            <div class="fs-status-kicker">
-              <span>成功提交名单</span>
-              <el-tag size="small" effect="plain">Beta</el-tag>
-            </div>
-            <h1>{{ statusData.title }}</h1>
-            <p>这里显示已经成功提交的记录和文件名。文件内容不会在此页面公开。</p>
-            <small v-if="statusData.deadline">截止时间：{{ formatDateTime(statusData.deadline) }}</small>
-          </div>
-          <a :href="submitPath" target="_blank" rel="noopener">前往提交</a>
-        </header>
-
-        <section class="fs-status-metrics">
-          <div>
-            <span>已提交</span>
-            <b>{{ statusData.stats.submitted }}</b>
-            <small>成功记录数</small>
-          </div>
-          <div>
-            <span>应提交</span>
-            <b>{{ statusData.stats.expected || "-" }}</b>
-            <small>{{ statusData.stats.expected ? "来自名单行数" : "未设置名单" }}</small>
-          </div>
-          <div>
-            <span>未提交</span>
-            <b>{{ statusData.stats.missing }}</b>
-            <small>{{ statusData.stats.expected ? "名单内尚未提交" : "未设置名单" }}</small>
-          </div>
-        </section>
-
-        <section class="fs-status-panel">
-          <div class="fs-status-panel-head">
+  <div class="filestore-beta-legacy">
+    <main class="submit-shell status-shell">
+      <section class="submit-card status-card">
+        <div class="submit-brandbar">
+          <div class="submit-brand">
+            <span class="brand-mark">药</span>
             <div>
-              <b>提交记录</b>
-              <span>{{ filteredRows.length }} / {{ statusData.submissions.length }}</span>
+              <strong>{{ statusData?.siteTitle || "药大拾间文件收集" }}</strong>
+              <small>CPU 校园互助服务 · 成功提交名单</small>
             </div>
-            <el-input v-model="query" class="fs-status-search" placeholder="搜索姓名、编号或文件名" clearable>
-              <template #prefix>
-                <el-icon><Search /></el-icon>
-              </template>
-            </el-input>
           </div>
-          <div class="fs-status-list">
-            <article v-for="item in filteredRows" :key="item.id" class="fs-status-item">
-              <div class="fs-status-person">
-                <b>{{ item.displayName }}</b>
+          <span class="submit-brand-tag">校园小工具</span>
+        </div>
+        <div class="submit-hero">
+          <p class="eyebrow">药大拾间 · 成功提交名单</p>
+          <h1>{{ statusData?.title || (loading ? "加载成功名单中" : "无法查看") }}</h1>
+          <p>{{ statusData ? "这里显示已经成功提交的记录和文件名。文件内容不会在此页面公开。" : (error || "请稍候。") }}</p>
+          <p v-if="statusData?.deadline" class="hint hero-deadline">截止时间：{{ formatDateTime(statusData.deadline) }}</p>
+        </div>
+
+        <section v-if="statusData" class="status-body">
+          <div class="summary-grid status-summary">
+            <div class="metric">
+              <span>已提交</span>
+              <b>{{ statusData.stats.submitted }}</b>
+              <small>成功记录数</small>
+            </div>
+            <div class="metric">
+              <span>应提交</span>
+              <b>{{ statusData.stats.expected || "-" }}</b>
+              <small>{{ statusData.stats.expected ? "来自名单行数" : "未设置名单" }}</small>
+            </div>
+            <div class="metric">
+              <span>未提交</span>
+              <b>{{ statusData.stats.missing }}</b>
+              <small>{{ statusData.stats.expected ? "名单内尚未提交" : "未设置名单" }}</small>
+            </div>
+          </div>
+          <div class="status-tools">
+            <button type="button" class="chip" @click="goSubmit">返回提交</button>
+            <input v-model="query" placeholder="搜索姓名、编号或文件名">
+          </div>
+          <div class="status-list">
+            <article v-for="item in filteredRows" :key="item.id" class="status-item">
+              <div class="status-person">
+                <strong>{{ item.displayName }}</strong>
                 <span>{{ item.identity || `提交 #${item.id}` }} · {{ formatDateTime(item.createdAt) }}</span>
               </div>
-              <div class="fs-status-files">
-                <span v-for="file in item.files" :key="file.storedName">
-                  <b>{{ file.storedName }}</b>
-                  <small>{{ formatBytes(file.size) }}</small>
-                </span>
+              <div class="status-files">
+                <div v-for="file in item.files" :key="file.storedName" class="status-file">
+                  <strong>{{ file.storedName }}</strong>
+                  <span>{{ formatBytes(file.size) }}</span>
+                </div>
               </div>
             </article>
-            <el-empty v-if="!filteredRows.length" :description="statusData.submissions.length ? '没有匹配结果' : '暂无成功提交'" />
+            <div v-if="!filteredRows.length" class="table-empty">
+              <strong>{{ statusData.submissions.length ? "没有匹配结果" : "暂无成功提交" }}</strong>
+              <span>{{ statusData.submissions.length ? "换个关键词再试。" : "提交成功后会显示在这里。" }}</span>
+            </div>
           </div>
         </section>
-      </template>
-
-      <el-empty v-else-if="!loading" :description="error || '成功名单不存在'">
-        <el-button type="primary" :loading="loading" @click="load">重新加载</el-button>
-      </el-empty>
-    </section>
+      </section>
+      <footer class="app-footer submit-footer">
+        <span>© 2026 药大拾间 · 校园互助与服务平台</span>
+        <span>非学校官方站点</span>
+        <a data-filing-link href="https://beian.miit.gov.cn/" target="_blank" rel="noopener" hidden></a>
+        <a href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener">GitHub</a>
+      </footer>
+    </main>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { useRoute } from "vue-router";
-import { ArrowLeft, Search } from "@element-plus/icons-vue";
+import { useRoute, useRouter } from "vue-router";
 import { filestoreBetaApi, type FilestoreBetaPublicStatus } from "@/api/filestoreBeta";
-import { formatDateTime, requestErrorMessage } from "@/views/services/filestoreBetaShared";
+import {
+  applyLegacyFilingFooter,
+  formatDateTime,
+  requestErrorMessage,
+  useScopedLegacyFilestoreCss,
+} from "@/views/services/filestoreBetaShared";
 import { formatBytes } from "@/views/services/fileCollectExport";
 
 const route = useRoute();
+const router = useRouter();
 const loading = ref(false);
 const error = ref("");
 const statusData = ref<FilestoreBetaPublicStatus | null>(null);
 const query = ref("");
 let loadSeq = 0;
 
+useScopedLegacyFilestoreCss();
+
 const slug = computed(() => String(route.params.slug || "").trim());
-const submitPath = computed(() => `/services/tools/filestore-beta/submit/${slug.value}`);
 const filteredRows = computed(() => {
   const data = statusData.value;
   if (!data) return [];
@@ -116,7 +118,8 @@ async function load() {
     const next = await filestoreBetaApi.publicStatus(slug.value);
     if (seq !== loadSeq) return;
     statusData.value = next;
-    document.title = `${next.siteTitle || "药大拾间文件收集"} · 提交成功名单`;
+    document.title = `${next.siteTitle || "药大拾间文件收集"} - 提交成功名单`;
+    await applyLegacyFilingFooter();
   } catch (err) {
     if (seq !== loadSeq) return;
     error.value = requestErrorMessage(err, "成功名单加载失败");
@@ -124,222 +127,8 @@ async function load() {
     if (seq === loadSeq) loading.value = false;
   }
 }
+
+function goSubmit() {
+  router.push(`/services/tools/filestore-beta/submit/${slug.value}`);
+}
 </script>
-
-<style scoped>
-.fs-status-beta {
-  min-height: calc(100dvh - 64px);
-  padding: 22px;
-  background: var(--cpu-bg);
-}
-
-.fs-status-shell {
-  width: min(960px, 100%);
-  margin: 0 auto;
-  display: grid;
-  gap: 14px;
-}
-
-.fs-status-back {
-  justify-self: start;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 36px;
-  border: 0;
-  background: transparent;
-  color: var(--cpu-primary);
-  cursor: pointer;
-}
-
-.fs-status-hero,
-.fs-status-panel {
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
-  background: var(--cpu-surface);
-  box-shadow: var(--cpu-shadow-sm);
-}
-
-.fs-status-hero {
-  display: flex;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 22px;
-}
-
-.fs-status-kicker {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.fs-status-kicker span:first-child {
-  color: var(--cpu-primary);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.fs-status-hero h1 {
-  margin: 8px 0;
-  color: var(--cpu-text);
-  font-size: 26px;
-}
-
-.fs-status-hero p {
-  margin: 0;
-  color: var(--cpu-text-secondary);
-  line-height: 1.7;
-}
-
-.fs-status-hero small {
-  display: block;
-  margin-top: 8px;
-  color: var(--cpu-text-secondary);
-}
-
-.fs-status-hero a {
-  align-self: flex-start;
-  min-height: 38px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 14px;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
-  color: var(--cpu-primary);
-  background: var(--cpu-surface-soft);
-  text-decoration: none;
-}
-
-.fs-status-metrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.fs-status-metrics div {
-  padding: 14px;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
-  background: var(--cpu-surface);
-}
-
-.fs-status-metrics span,
-.fs-status-metrics small {
-  display: block;
-  color: var(--cpu-text-secondary);
-  font-size: 12px;
-}
-
-.fs-status-metrics b {
-  display: block;
-  margin: 6px 0 4px;
-  color: var(--cpu-text);
-  font-size: 24px;
-}
-
-.fs-status-panel {
-  padding: 14px;
-}
-
-.fs-status-panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.fs-status-panel-head div {
-  display: grid;
-  gap: 2px;
-}
-
-.fs-status-panel-head b {
-  color: var(--cpu-text);
-}
-
-.fs-status-panel-head span {
-  color: var(--cpu-text-secondary);
-  font-size: 12px;
-}
-
-.fs-status-search {
-  max-width: 320px;
-}
-
-.fs-status-list {
-  display: grid;
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.fs-status-item {
-  display: grid;
-  grid-template-columns: minmax(180px, 0.7fr) minmax(0, 1fr);
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
-  background: var(--cpu-surface-soft);
-}
-
-.fs-status-person b,
-.fs-status-files b {
-  color: var(--cpu-text);
-}
-
-.fs-status-person span {
-  display: block;
-  margin-top: 4px;
-  color: var(--cpu-text-secondary);
-  font-size: 12px;
-}
-
-.fs-status-files {
-  display: grid;
-  gap: 7px;
-}
-
-.fs-status-files span {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
-
-.fs-status-files b {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.fs-status-files small {
-  flex: 0 0 auto;
-  color: var(--cpu-text-secondary);
-}
-
-@media (max-width: 720px) {
-  .fs-status-beta {
-    padding: 14px;
-  }
-
-  .fs-status-hero,
-  .fs-status-panel-head {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .fs-status-metrics,
-  .fs-status-item {
-    grid-template-columns: 1fr;
-  }
-
-  .fs-status-search {
-    max-width: none;
-  }
-
-  .fs-status-files span {
-    display: grid;
-  }
-}
-</style>

@@ -1,166 +1,178 @@
 <template>
-  <div class="fs-submit-beta">
-    <section class="fs-submit-shell" v-loading="loading">
-      <button type="button" class="fs-submit-back" @click="$router.push('/services/tools/file_collect')">
-        <el-icon><ArrowLeft /></el-icon>
-        文件收集
-      </button>
+  <div class="filestore-beta-legacy">
+    <main class="submit-shell">
+      <section class="submit-card">
+        <div class="submit-brandbar">
+          <div class="submit-brand">
+            <span class="brand-mark">药</span>
+            <div>
+              <strong>{{ task?.siteTitle || "药大拾间文件收集" }}</strong>
+              <small>CPU 校园互助服务 · 文件提交入口</small>
+            </div>
+          </div>
+          <span class="submit-brand-tag">校园小工具</span>
+        </div>
+        <div class="submit-hero">
+          <p class="eyebrow">{{ task?.status === "closed" ? "药大拾间 · 已停止提交" : "药大拾间 · 文件提交" }}</p>
+          <h1>{{ task?.title || (loading ? "加载任务中" : "无法提交") }}</h1>
+          <p>{{ task ? submitDescription : (error || "请稍候。") }}</p>
+          <p v-if="task?.deadline" class="hint hero-deadline">截止时间：{{ formatDateTime(task.deadline) }}</p>
+        </div>
 
-      <template v-if="task">
-        <header class="fs-submit-hero">
+        <div v-if="task" class="status-shortcut">
+          <a :href="statusPath" target="_blank" rel="noopener">
+            查看提交成功名单
+            <span>只展示已提交记录和文件名，不公开文件内容。</span>
+          </a>
+        </div>
+
+        <form v-if="task && task.status === 'open'" class="submit-form" @submit.prevent="submit" @reset.prevent="resetForm">
           <div>
-            <div class="fs-submit-kicker">
-              <span>{{ task.status === "open" ? "文件提交" : "已停止提交" }}</span>
-              <el-tag size="small" effect="plain">Beta</el-tag>
-            </div>
-            <h1>{{ task.title }}</h1>
-            <p>{{ submitDescription }}</p>
-            <small v-if="task.deadline">截止时间：{{ formatDateTime(task.deadline) }}</small>
+            <label v-for="field in task.fields" :key="field.key">
+              {{ field.label }}<span v-if="field.required" class="required-star">*</span>
+              <input
+                v-model="answers[field.key]"
+                :placeholder="field.placeholder || ''"
+                :required="field.required"
+                :pattern="field.pattern || undefined"
+                :disabled="submitting"
+                @input="renderQueue"
+              >
+            </label>
           </div>
-          <div class="fs-submit-hero-actions">
-            <a :href="statusPath" target="_blank" rel="noopener">成功名单</a>
-            <a :href="legacyPath" target="_blank" rel="noopener">旧版提交页</a>
-          </div>
-        </header>
 
-        <el-alert
-          v-if="task.remoteUpload?.enabled"
-          class="fs-submit-alert"
-          type="info"
-          :closable="false"
-          show-icon
-          :title="task.remoteUpload.minSizeBytes > 0 ? `大于 ${formatBytes(task.remoteUpload.minSizeBytes)} 的文件会直传世纪互联。` : '本任务启用世纪互联直传。'"
-        />
-
-        <form v-if="task.status === 'open'" class="fs-submit-form" @submit.prevent="submit">
-          <label v-for="field in task.fields" :key="field.key" class="fs-submit-field">
-            <span>{{ field.label }}<b v-if="field.required">*</b></span>
-            <el-input
-              v-model="answers[field.key]"
-              :placeholder="field.placeholder || ''"
-              :disabled="submitting"
-              @input="refreshFilePreview"
-            />
+          <label class="upload-zone">
+            <strong>上传文件</strong>
+            <span class="hint">{{ fileRulesText }}</span>
+            <input ref="fileInput" name="files" type="file" multiple :accept="acceptTypes" :disabled="submitting" @change="pickFiles">
           </label>
-
-          <section class="fs-submit-files">
-            <div class="fs-submit-files-head">
-              <div>
-                <b>上传文件</b>
-                <span>允许 {{ allowedTypeText }}；单个不超过 {{ task.fileRules.maxSizeMb }} MB；最多 {{ task.fileRules.maxCount }} 个。</span>
-              </div>
-              <el-button plain @click.prevent="fileInput?.click()">
-                <el-icon><Upload /></el-icon>
-                选择文件
-              </el-button>
+          <div class="pdf-tool-shortcut">
+            <div>
+              <strong>PDF 工具</strong>
+              <span>上传前可先合并、拆分或压缩 PDF。</span>
             </div>
-            <input ref="fileInput" type="file" multiple :accept="acceptTypes" :disabled="submitting" hidden @change="pickFiles" />
-            <div
-              class="fs-submit-drop"
-              @dragover.prevent
-              @drop.prevent="dropFiles"
-              @click="fileInput?.click()"
-            >
-              <el-icon><FolderOpened /></el-icon>
-              <span>点击选择文件，或拖到这里</span>
+            <a href="/services/tools/pdf_tools" target="_blank" rel="noopener">打开 PDF 工具</a>
+          </div>
+          <div v-if="fileEntries.length" class="submit-file-queue">
+            <div class="submit-file-head">
+              <strong>待上传文件</strong>
+              <span>可拖拽或使用按钮调整顺序</span>
             </div>
-            <div v-if="fileEntries.length" class="fs-submit-file-list">
+            <div class="submit-file-grid">
               <article
                 v-for="(entry, index) in fileEntries"
                 :key="entry.id"
-                class="fs-submit-file"
+                class="submit-file-card"
                 draggable="true"
                 @dragstart="draggedFileId = entry.id"
+                @dragend="draggedFileId = ''"
                 @dragover.prevent
                 @drop.prevent="moveDraggedFile(entry.id)"
               >
-                <div class="fs-submit-file-thumb">
-                  <img v-if="entry.previewUrl" :src="entry.previewUrl" alt="" />
-                  <el-icon v-else><Document /></el-icon>
+                <div class="submit-file-preview">
+                  <img v-if="entry.previewUrl" :src="entry.previewUrl" alt="">
+                  <span v-else class="submit-file-icon">{{ fileIcon(entry.file.name) }}</span>
                 </div>
-                <div class="fs-submit-file-main">
-                  <b>{{ entry.file.name }}</b>
-                  <span>{{ savedPathPreview(entry.file, index + 1) }}</span>
-                  <small>{{ formatBytes(entry.file.size) }}</small>
+                <div class="submit-file-title">
+                  <span class="file-type-badge">{{ fileExt(entry.file.name).toUpperCase() || "FILE" }}</span>
+                  <strong>{{ entry.file.name }}</strong>
                 </div>
-                <div class="fs-submit-file-actions">
-                  <button type="button" :disabled="index === 0 || submitting" @click="moveFile(index, index - 1)">上移</button>
-                  <button type="button" :disabled="index === fileEntries.length - 1 || submitting" @click="moveFile(index, index + 1)">下移</button>
-                  <button type="button" :disabled="submitting" class="danger" @click="removeFile(entry.id)">删除</button>
+                <button type="button" class="submit-file-remove" :disabled="submitting" @click="removeFile(entry.id)">×</button>
+                <dl class="submit-file-meta">
+                  <dt>保存为</dt><dd>{{ savedPathPreview(entry.file, index + 1) }}</dd>
+                  <dt>大小</dt><dd>{{ formatBytes(entry.file.size) }}</dd>
+                </dl>
+                <div class="submit-file-actions">
+                  <button type="button" :disabled="submitting || index === 0" @click="moveFile(index, index - 1)">上移</button>
+                  <button type="button" :disabled="submitting || index === fileEntries.length - 1" @click="moveFile(index, index + 1)">下移</button>
                 </div>
               </article>
             </div>
-          </section>
+          </div>
 
-          <section class="fs-submit-tool-row">
-            <div>
-              <b>PDF 工具</b>
-              <span>上传前可先合并、拆分或压缩 PDF。</span>
-            </div>
-            <a href="/services/tools/pdf_tools" target="_blank" rel="noopener">打开</a>
-          </section>
+          <progress v-if="submitting || progress > 0" :value="progress" max="100"></progress>
 
-          <el-progress v-if="submitting || progress > 0" :percentage="progress" :status="progress >= 100 ? 'success' : undefined" />
-          <el-button class="fs-submit-button" type="primary" native-type="submit" :loading="submitting" :disabled="submitting">
-            提交文件
-          </el-button>
+          <div class="submit-actions">
+            <button class="primary" type="submit" :disabled="submitting">{{ submitting ? "提交中" : "提交文件" }}</button>
+            <button type="reset" :disabled="submitting">重填</button>
+          </div>
         </form>
+        <p :class="['message', messageType, 'submit-form']">{{ submitMessage }}</p>
+      </section>
+      <footer class="app-footer submit-footer">
+        <span>© 2026 药大拾间 · 校园互助与服务平台</span>
+        <span>非学校官方站点</span>
+        <a data-filing-link href="https://beian.miit.gov.cn/" target="_blank" rel="noopener" hidden></a>
+        <a href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener">GitHub</a>
+      </footer>
+    </main>
 
-        <section v-else class="fs-submit-closed">
-          <b>该任务已停止提交</b>
-          <span>如需补交，请联系任务发起者重新开放。</span>
-        </section>
-      </template>
-
-      <el-empty v-else-if="!loading" :description="error || '提交任务不存在'">
-        <el-button type="primary" :loading="loading" @click="load">重新加载</el-button>
-      </el-empty>
-    </section>
-
-    <el-dialog v-model="successVisible" title="提交成功" width="420px">
-      <div class="fs-submit-success">
-        <b>提交编号 #{{ successPayload?.submissionId }}</b>
-        <span>系统已保存以下文件：</span>
-        <ul>
-          <li v-for="file in successPayload?.files || []" :key="file">{{ file }}</li>
-        </ul>
+    <dialog ref="successDialog" class="success-dialog">
+      <div class="success-check" aria-hidden="true">
+        <svg viewBox="0 0 64 64" role="img">
+          <circle cx="32" cy="32" r="28"></circle>
+          <path d="M19 33.5 28 42 46 23"></path>
+        </svg>
       </div>
-      <template #footer>
-        <el-button @click="successVisible = false">继续留在此页</el-button>
-        <el-button type="primary" @click="openStatus">查看成功名单</el-button>
-      </template>
-    </el-dialog>
+      <h2>提交成功</h2>
+      <p>{{ successSummary }}</p>
+      <div class="success-files">
+        <span v-for="file in successPayload?.files || []" :key="file">{{ file }}</span>
+      </div>
+      <div class="success-actions">
+        <a class="primary success-status-link" :href="statusPath">查看提交成功名单</a>
+        <button type="button" @click="successDialog?.close()">关闭</button>
+      </div>
+    </dialog>
+
+    <dialog ref="overwriteDialog" class="overwrite-dialog">
+      <div class="dialog-head">
+        <div>
+          <h2>发现已有提交</h2>
+          <p class="hint">{{ overwriteSummary }}</p>
+        </div>
+      </div>
+      <div class="overwrite-files">
+        <span v-for="file in overwriteFiles" :key="file">{{ file }}</span>
+      </div>
+      <p class="overwrite-warning">继续提交会用本次填写的信息和文件覆盖旧提交。</p>
+      <div class="dialog-actions">
+        <button type="button" @click="resolveOverwrite(false)">取消</button>
+        <button class="primary" type="button" @click="resolveOverwrite(true)">覆盖旧提交</button>
+      </div>
+    </dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { ArrowLeft, Document, FolderOpened, Upload } from "@element-plus/icons-vue";
-import { ElMessage, ElMessageBox } from "element-plus";
 import {
   filestoreBetaApi,
   filestoreBetaUrl,
+  type FilestoreBetaDuplicatePayload,
   type FilestoreBetaPreparedLocalFile,
   type FilestoreBetaPreparedRemoteFile,
   type FilestoreBetaPublicTask,
   type FilestoreBetaSubmitResult,
 } from "@/api/filestoreBeta";
 import {
+  applyLegacyFilingFooter,
   formatDateTime,
   normalizeAllowedTypes,
   previewStoredFileName,
   renderFilestoreBetaTemplate,
   requestErrorMessage,
-  safeFileName,
+  useScopedLegacyFilestoreCss,
 } from "@/views/services/filestoreBetaShared";
 import { formatBytes } from "@/views/services/fileCollectExport";
 
-interface FileEntry {
+type MessageType = "" | "ok" | "error" | "warn";
+type FileEntry = {
   id: string;
   file: File;
   previewUrl: string;
-}
+};
 
 const route = useRoute();
 const loading = ref(false);
@@ -172,29 +184,39 @@ const answers = reactive<Record<string, string>>({});
 const fileEntries = ref<FileEntry[]>([]);
 const fileInput = ref<HTMLInputElement | null>(null);
 const draggedFileId = ref("");
-const successVisible = ref(false);
+const submitMessage = ref("");
+const messageType = ref<MessageType>("");
 const successPayload = ref<FilestoreBetaSubmitResult | null>(null);
+const successDialog = ref<HTMLDialogElement | null>(null);
+const overwriteDialog = ref<HTMLDialogElement | null>(null);
+const overwriteSummary = ref("");
+const overwriteFiles = ref<string[]>([]);
+let overwriteResolve: ((value: boolean | null) => void) | null = null;
 let loadSeq = 0;
 
+useScopedLegacyFilestoreCss();
+
 const slug = computed(() => String(route.params.slug || "").trim());
+const statusPath = computed(() => `/services/tools/filestore-beta/status/${slug.value}`);
 const normalizedAllowedTypes = computed(() => normalizeAllowedTypes(task.value?.fileRules.allowedTypes ?? []));
 const acceptTypes = computed(() => normalizedAllowedTypes.value.map((item) => `.${item}`).join(","));
-const allowedTypeText = computed(() => normalizedAllowedTypes.value.join(", ") || "任意类型");
-const statusPath = computed(() => `/services/tools/filestore-beta/status/${slug.value}`);
-const legacyPath = computed(() => `/filestore/submit/${slug.value}`);
+const fileRulesText = computed(() => {
+  const rules = task.value?.fileRules;
+  if (!rules) return "";
+  return `允许 ${normalizedAllowedTypes.value.join(", ") || "任意类型"}；单文件不超过 ${rules.maxSizeMb} MB；最多 ${rules.maxCount} 个。`;
+});
 const submitDescription = computed(() => {
   if (!task.value) return "";
   const fields = task.value.fields.slice(0, 2).map((field) => field.label || field.key);
-  const identifier = fields.length ? fields.join("和") : "身份信息";
-  const updateTip = `如果提交后发现文件或信息有误，请使用相同的${identifier}重新提交，系统会提示你覆盖旧提交。`;
+  const identifier = fields.length > 0 ? fields.join("和") : "身份信息";
+  const updateTip = `如果提交后发现文件或信息有误，请使用相同的${identifier}重新提交，系统会自动用新提交覆盖旧提交。`;
   return [task.value.description || "请按要求填写信息并上传文件。", updateTip].filter(Boolean).join("\n");
 });
+const successSummary = computed(() => successPayload.value ? `提交成功，编号 ${successPayload.value.submissionId}。` : "");
 
 watch(slug, load, { immediate: true });
 
-onBeforeUnmount(() => {
-  clearFiles();
-});
+onBeforeUnmount(clearFiles);
 
 async function load() {
   const seq = ++loadSeq;
@@ -211,19 +233,27 @@ async function load() {
     const next = await filestoreBetaApi.publicTask(slug.value);
     if (seq !== loadSeq) return;
     task.value = next;
+    document.title = `${next.siteTitle || "药大拾间文件收集"} - ${next.title}`;
     for (const field of next.fields) answers[field.key] = "";
+    await applyLegacyFilingFooter();
   } catch (err) {
     if (seq !== loadSeq) return;
-    error.value = requestErrorMessage(err, "提交任务加载失败");
+    error.value = requestErrorMessage(err, "任务加载失败");
   } finally {
     if (seq === loadSeq) loading.value = false;
   }
+}
+
+function message(text: string, type: MessageType = "") {
+  submitMessage.value = text;
+  messageType.value = type;
 }
 
 function resetForm() {
   Object.keys(answers).forEach((key) => delete answers[key]);
   clearFiles();
   progress.value = 0;
+  message("");
   if (fileInput.value) fileInput.value.value = "";
 }
 
@@ -234,34 +264,29 @@ function clearFiles() {
   fileEntries.value = [];
 }
 
-function refreshFilePreview() {
+function renderQueue() {
   fileEntries.value = [...fileEntries.value];
 }
 
 function pickFiles(event: Event) {
-  const files = Array.from((event.target as HTMLInputElement).files || []);
-  addFiles(files);
+  addFiles(Array.from((event.target as HTMLInputElement).files || []));
   if (fileInput.value) fileInput.value.value = "";
 }
 
-function dropFiles(event: DragEvent) {
-  addFiles(Array.from(event.dataTransfer?.files || []));
-}
-
 function addFiles(files: File[]) {
-  if (!task.value || submitting.value || !files.length) return;
-  const known = new Set(fileEntries.value.map((entry) => `${entry.file.name}:${entry.file.size}:${entry.file.lastModified}`));
+  if (!task.value || submitting.value) return;
+  const known = new Set(fileEntries.value.map((entry) => fileKey(entry.file)));
   const next = [...fileEntries.value];
   for (const file of files) {
-    const key = `${file.name}:${file.size}:${file.lastModified}`;
+    const key = fileKey(file);
     if (known.has(key)) continue;
     const reason = validateOneFile(file);
     if (reason) {
-      ElMessage.warning(reason);
+      message(reason, "error");
       continue;
     }
     if (next.length >= task.value.fileRules.maxCount) {
-      ElMessage.warning(`最多只能上传 ${task.value.fileRules.maxCount} 个文件`);
+      message(`最多只能上传 ${task.value.fileRules.maxCount} 个文件`, "error");
       break;
     }
     known.add(key);
@@ -272,6 +297,10 @@ function addFiles(files: File[]) {
     });
   }
   fileEntries.value = next;
+}
+
+function fileKey(file: File) {
+  return `${file.name}:${file.size}:${file.lastModified}`;
 }
 
 function removeFile(id: string) {
@@ -291,9 +320,8 @@ function moveFile(from: number, to: number) {
 function moveDraggedFile(targetId: string) {
   const from = fileEntries.value.findIndex((item) => item.id === draggedFileId.value);
   const to = fileEntries.value.findIndex((item) => item.id === targetId);
+  if (from >= 0 && to >= 0 && from !== to) moveFile(from, to);
   draggedFileId.value = "";
-  if (from < 0 || to < 0 || from === to) return;
-  moveFile(from, to);
 }
 
 function currentData() {
@@ -305,12 +333,12 @@ function validateFields() {
   const data = currentData();
   for (const field of task.value.fields) {
     const value = data[field.key] || "";
-    if (field.required && !value) return `请填写：${field.label}`;
+    if (field.required && !value) return `${field.label}不能为空`;
     if (value && field.pattern) {
       try {
-        if (!new RegExp(field.pattern).test(value)) return `“${field.label}”格式不正确`;
+        if (!new RegExp(field.pattern).test(value)) return `${field.label}格式不正确`;
       } catch {
-        return `“${field.label}”的校验规则暂不可用，请联系管理员`;
+        return `${field.label}校验规则暂不可用`;
       }
     }
   }
@@ -319,7 +347,7 @@ function validateFields() {
 
 function validateFiles() {
   if (!task.value) return "任务未加载";
-  if (!fileEntries.value.length) return "请选择要上传的文件";
+  if (!fileEntries.value.length) return "请上传文件";
   if (fileEntries.value.length > task.value.fileRules.maxCount) return `最多只能上传 ${task.value.fileRules.maxCount} 个文件`;
   for (const entry of fileEntries.value) {
     const reason = validateOneFile(entry.file);
@@ -331,11 +359,24 @@ function validateFiles() {
 function validateOneFile(file: File) {
   if (!task.value) return "";
   const allowed = new Set(normalizedAllowedTypes.value);
-  const ext = file.name.includes(".") ? file.name.split(".").pop()!.trim().toLowerCase().replace(/^\.+/, "") : "";
+  const ext = fileExt(file.name);
   if (allowed.size && !allowed.has(ext)) return `${file.name} 类型不允许`;
   const maxBytes = task.value.fileRules.maxSizeMb * 1024 * 1024;
-  if (file.size > maxBytes) return `${file.name} 超过 ${task.value.fileRules.maxSizeMb} MB`;
+  if (file.size > maxBytes) return `${file.name} 超过大小限制`;
   return "";
+}
+
+function fileExt(fileName: string) {
+  return fileName.includes(".") ? fileName.split(".").pop()!.trim().toLowerCase().replace(/^\.+/, "") : "";
+}
+
+function fileIcon(fileName: string) {
+  const ext = fileExt(fileName);
+  if (["jpg", "jpeg", "png", "webp", "gif"].includes(ext)) return "IMG";
+  if (ext === "pdf") return "PDF";
+  if (["doc", "docx"].includes(ext)) return "DOC";
+  if (["zip", "rar", "7z"].includes(ext)) return "ZIP";
+  return ext.slice(0, 3).toUpperCase() || "FILE";
 }
 
 function savedPathPreview(file: File, index: number) {
@@ -357,46 +398,67 @@ function shouldUseRemoteUpload(files: File[]) {
 }
 
 async function confirmOverwriteIfNeeded() {
+  message("正在检查是否已有提交...");
   const duplicate = await filestoreBetaApi.checkDuplicate(slug.value, currentData());
-  if (!duplicate.exists) return false;
-  const files = duplicate.submission?.files?.length ? `\n旧文件：${duplicate.submission.files.join("、")}` : "";
-  await ElMessageBox.confirm(
-    `${duplicate.identityLabel || "身份信息"}“${duplicate.identity}”已经提交过，是否用本次提交覆盖？${files}`,
-    "发现重复提交",
-    { type: "warning", confirmButtonText: "覆盖旧提交", cancelButtonText: "取消" },
-  );
+  if (!duplicate.exists) {
+    message("");
+    return false;
+  }
+  const confirmed = await askOverwriteSubmission(duplicate);
+  if (!confirmed) {
+    message("已取消提交。", "warn");
+    return null;
+  }
   return true;
+}
+
+function askOverwriteSubmission(payload: FilestoreBetaDuplicatePayload) {
+  overwriteSummary.value = `${payload.identityLabel || "身份信息"}“${payload.identity}”已经提交过${payload.submission?.createdAt ? `，提交时间 ${formatDateTime(payload.submission.createdAt)}` : ""}。`;
+  overwriteFiles.value = payload.submission?.files || [];
+  overwriteDialog.value?.showModal();
+  return new Promise<boolean | null>((resolve) => {
+    overwriteResolve = resolve;
+  });
+}
+
+function resolveOverwrite(value: boolean) {
+  overwriteDialog.value?.close();
+  overwriteResolve?.(value);
+  overwriteResolve = null;
 }
 
 async function submit() {
   if (submitting.value || !task.value) return;
   const fieldError = validateFields();
   if (fieldError) {
-    ElMessage.warning(fieldError);
+    message(fieldError, "error");
     return;
   }
   const fileError = validateFiles();
   if (fileError) {
-    ElMessage.warning(fileError);
+    message(fileError, "error");
     return;
   }
   submitting.value = true;
   progress.value = 0;
   try {
     const overwrite = await confirmOverwriteIfNeeded();
+    if (overwrite === null) return;
     const files = fileEntries.value.map((entry) => entry.file);
     const result = shouldUseRemoteUpload(files)
       ? await submitRemote(files, overwrite)
       : await submitMultipart(files, overwrite);
     applySuccess(result);
   } catch (err) {
-    if (err !== "cancel") ElMessage.error(requestErrorMessage(err, "提交失败"));
+    message(requestErrorMessage(err, "提交失败"), "error");
   } finally {
     submitting.value = false;
   }
 }
 
 async function submitRemote(files: File[], overwrite: boolean) {
+  progress.value = 0;
+  message("正在创建世纪互联直传会话...");
   const prepared = await filestoreBetaApi.prepareRemote(slug.value, {
     data: currentData(),
     overwrite,
@@ -414,7 +476,6 @@ async function submitRemote(files: File[], overwrite: boolean) {
   const localEntries = files
     .map((file, index) => ({ file, preparedFile: localByIndex.get(index) }))
     .filter((entry): entry is { file: File; preparedFile: FilestoreBetaPreparedLocalFile } => Boolean(entry.preparedFile));
-
   if (remoteEntries.length + localEntries.length !== files.length) throw new Error("上传会话缺少部分文件，请刷新后重试");
 
   let uploadedBytes = 0;
@@ -422,7 +483,7 @@ async function submitRemote(files: File[], overwrite: boolean) {
   const remoteBytes = remoteEntries.reduce((sum, entry) => sum + entry.file.size, 0);
   const localBytes = localEntries.reduce((sum, entry) => sum + entry.file.size, 0);
   const totalBytes = remoteBytes + localBytes;
-
+  message("正在直传至世纪互联...");
   for (const entry of remoteEntries) {
     await uploadFileToSession(entry.file, entry.preparedFile, (bytes) => {
       uploadedBytes += bytes;
@@ -430,6 +491,7 @@ async function submitRemote(files: File[], overwrite: boolean) {
     });
   }
 
+  message(localEntries.length ? "正在上传小文件并确认提交..." : "正在确认提交...");
   if (localEntries.length) {
     const form = new FormData();
     form.append("submissionId", String(prepared.submissionId));
@@ -442,7 +504,6 @@ async function submitRemote(files: File[], overwrite: boolean) {
       progress.value = totalBytes ? Math.min(99, Math.round(((uploadedBytes + localUploadedBytes) / totalBytes) * 100)) : 0;
     });
   }
-
   return filestoreBetaApi.completeRemote(slug.value, {
     submissionId: prepared.submissionId,
     remoteFileIds: remoteEntries.map((entry) => entry.preparedFile.id),
@@ -478,6 +539,7 @@ function submitMultipart(files: File[], overwrite: boolean) {
   for (const [key, value] of Object.entries(currentData())) form.append(key, value);
   form.append("overwrite", overwrite ? "true" : "false");
   files.forEach((file) => form.append("files", file, file.name));
+  message("正在上传...");
   return xhrJson<FilestoreBetaSubmitResult>(filestoreBetaUrl(`/api/submit/${slug.value}`), form, (loaded, total) => {
     progress.value = total ? Math.round((loaded / total) * 100) : 0;
   });
@@ -503,324 +565,8 @@ function xhrJson<T>(url: string, form: FormData, onProgress: (loaded: number, to
 function applySuccess(result: FilestoreBetaSubmitResult) {
   progress.value = 100;
   successPayload.value = result;
-  successVisible.value = true;
+  message(`提交成功，编号 ${result.submissionId}。文件：${result.files.join("、")}`, "ok");
+  successDialog.value?.showModal();
   resetForm();
-  ElMessage.success(`提交成功，编号 #${result.submissionId}`);
-}
-
-function openStatus() {
-  successVisible.value = false;
-  window.open(statusPath.value, "_blank", "noopener,noreferrer");
 }
 </script>
-
-<style scoped>
-.fs-submit-beta {
-  min-height: calc(100dvh - 64px);
-  padding: 22px;
-  background: var(--cpu-bg);
-}
-
-.fs-submit-shell {
-  width: min(920px, 100%);
-  margin: 0 auto;
-  display: grid;
-  gap: 14px;
-}
-
-.fs-submit-back {
-  justify-self: start;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 36px;
-  border: 0;
-  background: transparent;
-  color: var(--cpu-primary);
-  cursor: pointer;
-}
-
-.fs-submit-hero,
-.fs-submit-form,
-.fs-submit-closed {
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
-  background: var(--cpu-surface);
-  box-shadow: var(--cpu-shadow-sm);
-}
-
-.fs-submit-hero {
-  display: flex;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 22px;
-}
-
-.fs-submit-kicker,
-.fs-submit-hero-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.fs-submit-kicker span:first-child {
-  color: var(--cpu-primary);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.fs-submit-hero h1 {
-  margin: 8px 0;
-  color: var(--cpu-text);
-  font-size: 26px;
-}
-
-.fs-submit-hero p {
-  margin: 0;
-  color: var(--cpu-text-secondary);
-  line-height: 1.7;
-  white-space: pre-wrap;
-}
-
-.fs-submit-hero small {
-  display: block;
-  margin-top: 8px;
-  color: var(--cpu-text-secondary);
-}
-
-.fs-submit-hero-actions a,
-.fs-submit-tool-row a {
-  min-height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 12px;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
-  color: var(--cpu-primary);
-  background: var(--cpu-surface-soft);
-  text-decoration: none;
-}
-
-.fs-submit-form {
-  display: grid;
-  gap: 14px;
-  padding: 18px;
-}
-
-.fs-submit-field {
-  display: grid;
-  gap: 7px;
-}
-
-.fs-submit-field span,
-.fs-submit-files-head b,
-.fs-submit-tool-row b {
-  color: var(--cpu-text);
-  font-weight: 650;
-}
-
-.fs-submit-field b {
-  color: var(--cpu-danger);
-  margin-left: 3px;
-}
-
-.fs-submit-files {
-  display: grid;
-  gap: 12px;
-  padding: 14px;
-  border: 1px dashed var(--cpu-border);
-  border-radius: 8px;
-  background: var(--cpu-surface-soft);
-}
-
-.fs-submit-files-head,
-.fs-submit-tool-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.fs-submit-files-head span,
-.fs-submit-tool-row span {
-  display: block;
-  margin-top: 3px;
-  color: var(--cpu-text-secondary);
-  font-size: 12px;
-}
-
-.fs-submit-drop {
-  min-height: 96px;
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 8px;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
-  background: var(--cpu-surface);
-  color: var(--cpu-text-secondary);
-  cursor: pointer;
-}
-
-.fs-submit-drop .el-icon {
-  color: var(--cpu-primary);
-  font-size: 26px;
-}
-
-.fs-submit-file-list {
-  display: grid;
-  gap: 10px;
-}
-
-.fs-submit-file {
-  display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-  padding: 10px;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
-  background: var(--cpu-surface);
-}
-
-.fs-submit-file-thumb {
-  width: 58px;
-  height: 58px;
-  border-radius: 8px;
-  overflow: hidden;
-  display: grid;
-  place-items: center;
-  background: var(--cpu-surface-soft);
-  color: var(--cpu-primary);
-}
-
-.fs-submit-file-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.fs-submit-file-main {
-  min-width: 0;
-}
-
-.fs-submit-file-main b,
-.fs-submit-file-main span,
-.fs-submit-file-main small {
-  display: block;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.fs-submit-file-main b {
-  color: var(--cpu-text);
-}
-
-.fs-submit-file-main span,
-.fs-submit-file-main small {
-  color: var(--cpu-text-secondary);
-  font-size: 12px;
-}
-
-.fs-submit-file-actions {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.fs-submit-file-actions button {
-  min-height: 32px;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
-  background: var(--cpu-surface-soft);
-  color: var(--cpu-primary);
-  cursor: pointer;
-}
-
-.fs-submit-file-actions button.danger {
-  color: var(--cpu-danger);
-}
-
-.fs-submit-file-actions button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.fs-submit-tool-row {
-  padding: 12px 14px;
-  border: 1px solid rgba(20, 143, 123, 0.18);
-  border-radius: 8px;
-  background: rgba(20, 143, 123, 0.08);
-}
-
-.fs-submit-button {
-  justify-self: end;
-  min-width: 140px;
-}
-
-.fs-submit-closed {
-  min-height: 220px;
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 8px;
-  text-align: center;
-}
-
-.fs-submit-closed b {
-  color: var(--cpu-text);
-  font-size: 18px;
-}
-
-.fs-submit-closed span {
-  color: var(--cpu-text-secondary);
-}
-
-.fs-submit-success {
-  display: grid;
-  gap: 8px;
-}
-
-.fs-submit-success b {
-  color: var(--cpu-text);
-}
-
-.fs-submit-success span,
-.fs-submit-success li {
-  color: var(--cpu-text-secondary);
-}
-
-@media (max-width: 720px) {
-  .fs-submit-beta {
-    padding: 14px;
-  }
-
-  .fs-submit-hero,
-  .fs-submit-files-head,
-  .fs-submit-tool-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .fs-submit-file {
-    grid-template-columns: 48px minmax(0, 1fr);
-  }
-
-  .fs-submit-file-actions {
-    grid-column: 1 / -1;
-    justify-content: stretch;
-  }
-
-  .fs-submit-file-actions button {
-    flex: 1 1 0;
-  }
-
-  .fs-submit-button,
-  .fs-submit-form :deep(.el-button) {
-    width: 100%;
-  }
-}
-</style>

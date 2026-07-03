@@ -5,6 +5,8 @@ import type {
   FilestoreBetaTaskPayload,
   FilestoreBetaTemplate,
 } from "@/api/filestoreBeta";
+import { onBeforeUnmount, onMounted } from "vue";
+import legacyFilestoreCss from "./filestoreLegacy.css?raw";
 
 export interface FilestoreBetaDraft {
   title: string;
@@ -278,3 +280,116 @@ export function requestErrorMessage(error: unknown, fallback = "操作失败") {
   return fallback;
 }
 
+export function useLegacyFilestoreCss(bodyClasses: string[] = []) {
+  const linkId = "filestore-beta-legacy-css";
+  onMounted(() => {
+    if (!document.getElementById(linkId)) {
+      const link = document.createElement("link");
+      link.id = linkId;
+      link.rel = "stylesheet";
+      link.href = "/filestore/styles.css";
+      document.head.appendChild(link);
+    }
+    document.body.classList.add(...bodyClasses);
+  });
+  onBeforeUnmount(() => {
+    document.body.classList.remove(...bodyClasses);
+    const link = document.getElementById(linkId);
+    if (link) link.remove();
+  });
+}
+
+export function useScopedLegacyFilestoreCss(scopeClass = "filestore-beta-legacy") {
+  const styleId = `${scopeClass}-style`;
+  onMounted(() => {
+    if (document.getElementById(styleId)) return;
+    const style = document.createElement("style");
+    style.id = styleId;
+    style.textContent = scopeLegacyCss(legacyFilestoreCss, scopeClass);
+    document.head.appendChild(style);
+  });
+  onBeforeUnmount(() => {
+    document.getElementById(styleId)?.remove();
+  });
+}
+
+function scopeLegacyCss(css: string, scopeClass: string) {
+  return scopeCssBlocks(css.replace(/\/\*[\s\S]*?\*\//g, ""), `.${scopeClass}`);
+}
+
+function scopeCssBlocks(css: string, scope: string): string {
+  let output = "";
+  let index = 0;
+  while (index < css.length) {
+    const open = css.indexOf("{", index);
+    if (open < 0) {
+      output += css.slice(index);
+      break;
+    }
+    const selector = css.slice(index, open).trim();
+    const close = findMatchingBrace(css, open);
+    if (close < 0) {
+      output += css.slice(index);
+      break;
+    }
+    const body = css.slice(open + 1, close);
+    if (selector.startsWith("@media") || selector.startsWith("@supports") || selector.startsWith("@container")) {
+      output += `${selector} {\n${scopeCssBlocks(body, scope)}\n}`;
+    } else if (selector.startsWith("@keyframes") || selector.startsWith("@font-face") || selector.startsWith("@property")) {
+      output += `${selector} {${body}}`;
+    } else if (selector.startsWith("@")) {
+      output += `${selector} {${body}}`;
+    } else {
+      output += `${prefixSelectorList(selector, scope)} {${body}}`;
+    }
+    index = close + 1;
+  }
+  return output;
+}
+
+function findMatchingBrace(css: string, open: number) {
+  let depth = 0;
+  for (let index = open; index < css.length; index += 1) {
+    const char = css[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+}
+
+function prefixSelectorList(selector: string, scope: string) {
+  return selector
+    .split(",")
+    .map((item) => prefixSelector(item.trim(), scope))
+    .join(",\n");
+}
+
+function prefixSelector(selector: string, scope: string) {
+  if (!selector) return selector;
+  if (selector === ":root" || selector === "html" || selector === "body") return scope;
+  if (selector.startsWith("body.")) return `${scope}${selector.slice("body".length)}`;
+  if (selector.startsWith("html.")) return `${scope}${selector.slice("html".length)}`;
+  if (selector === "*") return `${scope} *`;
+  if (selector.startsWith("*")) return `${scope} ${selector}`;
+  return `${scope} ${selector}`;
+}
+
+export async function applyLegacyFilingFooter() {
+  try {
+    const response = await fetch("/filestore/api/platform/site-config", { credentials: "same-origin" });
+    const payload = await response.json().catch(() => ({}));
+    const filingNumber = String(payload.siteFilingNumber || "").trim();
+    document.querySelectorAll("[data-filing-link]").forEach((node) => {
+      if (!(node instanceof HTMLElement)) return;
+      node.hidden = !filingNumber;
+      node.textContent = filingNumber;
+    });
+  } catch {
+    document.querySelectorAll("[data-filing-link]").forEach((node) => {
+      if (node instanceof HTMLElement) node.hidden = true;
+    });
+  }
+}
