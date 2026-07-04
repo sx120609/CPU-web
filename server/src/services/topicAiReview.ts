@@ -132,19 +132,28 @@ export async function requestAiJson(messages: AiJsonMessage[], logContext?: AiRe
       });
       logId = started?.id ?? null;
     }
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.aiReviewApiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.1,
-        response_format: { type: "json_object" },
-        messages,
-      }),
-    });
+    let response: Response;
+    try {
+      response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.aiReviewApiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.1,
+          response_format: { type: "json_object" },
+          messages,
+        }),
+      });
+    } catch (error) {
+      const detail = describeAiRequestError(error);
+      await finishAiReviewLogError(logId, "FETCH_ERROR", detail);
+      lastError = Errors.server(`AI 审核请求失败：${detail}`);
+      if (index < candidates.length - 1) continue;
+      throw lastError;
+    }
     if (!response.ok) {
       const text = await response.text().catch(() => "");
       await finishAiReviewLogError(logId, `HTTP ${response.status}`, text);
@@ -155,7 +164,14 @@ export async function requestAiJson(messages: AiJsonMessage[], logContext?: AiRe
       }
       throw Errors.server(`AI 审核请求失败：${response.status}${text ? ` ${text.slice(0, 120)}` : ""}`);
     }
-    const json: any = await response.json();
+    let json: any;
+    try {
+      json = await response.json();
+    } catch (error) {
+      const detail = describeAiRequestError(error);
+      await finishAiReviewLogError(logId, "INVALID_JSON", detail);
+      throw Errors.server(`AI 审核返回解析失败：${detail}`);
+    }
     const content = extractChatCompletionContent(json);
     await finishAiReviewLogSuccess(logId, typeof content === "string" ? content : JSON.stringify(content ?? {}).slice(0, 4000));
     return { content, model };
@@ -170,6 +186,39 @@ function normalizeTextReviewApiUrl(input: string) {
   if (/\/v1\/?$/i.test(raw)) return `${raw.replace(/\/+$/, "")}/chat/completions`;
   if (/^https?:\/\/[^/]+$/i.test(raw)) return `${raw.replace(/\/+$/, "")}/v1/chat/completions`;
   return raw.replace(/\/+$/, "");
+}
+
+function describeAiRequestError(error: unknown) {
+  const parts: string[] = [];
+  const maybeError = error as { message?: unknown; cause?: unknown; code?: unknown };
+  if (typeof maybeError?.message === "string" && maybeError.message.trim()) parts.push(maybeError.message.trim());
+  if (typeof maybeError?.code === "string" && maybeError.code.trim()) parts.push(maybeError.code.trim());
+  const cause = maybeError?.cause as { message?: unknown; code?: unknown } | undefined;
+  if (typeof cause?.message === "string" && cause.message.trim()) parts.push(cause.message.trim());
+  if (typeof cause?.code === "string" && cause.code.trim()) parts.push(cause.code.trim());
+  if (!parts.length && error) parts.push(String(error));
+  return Array.from(new Set(parts)).join("；").slice(0, 500) || "网络请求失败";
+}
+
+function buildAiReviewUnavailableResult(
+  config: ReturnType<typeof getSiteConfig>,
+  scope: "topic" | "reply",
+  error: unknown,
+  model = config.aiReviewModel,
+): TopicAiReviewResult {
+  const detail = describeAiRequestError(error);
+  return {
+    status: "blocked_ai",
+    riskLevel: "medium",
+    riskScore: Math.max(1, Number(config.aiReviewThreshold || 70)),
+    reason: "AI 审核服务暂不可用，已转人工复核",
+    detail: JSON.stringify({
+      unavailable: true,
+      scope,
+      detail,
+    }),
+    model,
+  };
 }
 
 function extractChatCompletionContent(json: any) {
@@ -206,26 +255,39 @@ export async function reviewTopicContent(input: {
     };
   }
 
-  const { content, model } = await requestAiJson([
-    {
-      role: "system",
-      content: config.aiTopicReviewSystemPrompt,
-    },
-    {
-      role: "user",
-      content: renderPromptTemplate(config.aiTopicReviewUserPrompt, {
-        boardName: input.boardName,
-        boardType: input.boardType,
-        title: input.title,
-        content: normalizeTextContentForAiReview(input.content),
-        metadataJson: JSON.stringify(input.metadata ?? {}),
-      }),
-    },
-  ], {
-    kind: "topic",
-    targetLabel: input.title,
-  });
-  const parsed = parseReviewJson(content);
+  let content = "";
+  let model = config.aiReviewModel;
+  try {
+    const result = await requestAiJson([
+      {
+        role: "system",
+        content: config.aiTopicReviewSystemPrompt,
+      },
+      {
+        role: "user",
+        content: renderPromptTemplate(config.aiTopicReviewUserPrompt, {
+          boardName: input.boardName,
+          boardType: input.boardType,
+          title: input.title,
+          content: normalizeTextContentForAiReview(input.content),
+          metadataJson: JSON.stringify(input.metadata ?? {}),
+        }),
+      },
+    ], {
+      kind: "topic",
+      targetLabel: input.title,
+    });
+    content = result.content;
+    model = result.model;
+  } catch (error) {
+    return buildAiReviewUnavailableResult(config, "topic", error);
+  }
+  let parsed: DeepSeekReviewResponse;
+  try {
+    parsed = parseReviewJson(content);
+  } catch (error) {
+    return buildAiReviewUnavailableResult(config, "topic", error, model);
+  }
   const riskScore = clampScore(parsed.risk_score);
   const riskLevel = normalizeRiskLevel(parsed.risk_level, riskScore);
   const decision = decideByThreshold(riskScore, config.aiReviewThreshold);
@@ -263,26 +325,39 @@ export async function reviewReplyContent(input: {
     };
   }
 
-  const { content, model } = await requestAiJson([
-    {
-      role: "system",
-      content: config.aiReplyReviewSystemPrompt,
-    },
-    {
-      role: "user",
-      content: renderPromptTemplate(config.aiReplyReviewUserPrompt, {
-        topicTitle: input.topicTitle,
-        boardName: input.boardName,
-        boardType: input.boardType,
-        parentContent: normalizeTextContentForAiReview(input.parentContent || ""),
-        content: normalizeTextContentForAiReview(input.content),
-      }),
-    },
-  ], {
-    kind: "reply",
-    targetLabel: input.topicTitle || input.content.slice(0, 60),
-  });
-  const parsed = parseReviewJson(content);
+  let content = "";
+  let model = config.aiReviewModel;
+  try {
+    const result = await requestAiJson([
+      {
+        role: "system",
+        content: config.aiReplyReviewSystemPrompt,
+      },
+      {
+        role: "user",
+        content: renderPromptTemplate(config.aiReplyReviewUserPrompt, {
+          topicTitle: input.topicTitle,
+          boardName: input.boardName,
+          boardType: input.boardType,
+          parentContent: normalizeTextContentForAiReview(input.parentContent || ""),
+          content: normalizeTextContentForAiReview(input.content),
+        }),
+      },
+    ], {
+      kind: "reply",
+      targetLabel: input.topicTitle || input.content.slice(0, 60),
+    });
+    content = result.content;
+    model = result.model;
+  } catch (error) {
+    return buildAiReviewUnavailableResult(config, "reply", error);
+  }
+  let parsed: DeepSeekReviewResponse;
+  try {
+    parsed = parseReviewJson(content);
+  } catch (error) {
+    return buildAiReviewUnavailableResult(config, "reply", error, model);
+  }
   const riskScore = clampScore(parsed.risk_score);
   const riskLevel = normalizeRiskLevel(parsed.risk_level, riskScore);
   const decision = decideByThreshold(riskScore, config.aiReviewThreshold);

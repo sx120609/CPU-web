@@ -1951,6 +1951,18 @@ adminRouter.post("/ai-review/videos/sweep", adminOnly, async (_req, res, next) =
 
 adminRouter.get("/ai-review/logs", adminOnly, async (req, res, next) => {
   try {
+    const staleStartedBefore = new Date(Date.now() - 10 * 60 * 1000);
+    await prisma.aiReviewLog.updateMany({
+      where: {
+        status: "started",
+        startedAt: { lt: staleStartedBefore },
+      },
+      data: {
+        status: "error",
+        errorMessage: "AI 审核请求中断或服务重启，未收到接口返回",
+        finishedAt: new Date(),
+      },
+    }).catch(() => null);
     const kind = String(req.query.kind ?? "").trim();
     const status = String(req.query.status ?? "").trim();
     const page = Math.max(1, Number(req.query.page ?? 1));
