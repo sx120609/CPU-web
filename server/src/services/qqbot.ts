@@ -518,7 +518,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     if (handled) return handled;
   }
   const canHandlePlainCommand = event.message_type !== "group" || isExplicitBotMention(event, messageText);
-  const groupAdminCommand = event.message_type === "group" && groupId && (isCommandMessage(commandText) || canHandlePlainCommand)
+  const groupAdminCommand = event.message_type === "group" && groupId && canHandlePlainCommand
     ? parseQqGroupAdminCommand(commandText)
     : null;
 
@@ -535,7 +535,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     if (handled) return { ok: true };
   }
 
-  if ((isCommandMessage(commandText) || canHandlePlainCommand) && isHelpCommand(commandText)) {
+  if (canHandlePlainCommand && isHelpCommand(commandText)) {
     if (event.message_type === "group" && groupId) {
       await logHandledInboundMessage(context, "message", "assistant:group-help");
       await replyToEvent(context, await renderGroupHelp(config, groupId, event));
@@ -545,12 +545,12 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, await renderHelp(config.defaultBoardSlug));
     return { ok: true };
   }
-  if ((isCommandMessage(commandText) || canHandlePlainCommand) && isBoardListCommand(commandText)) {
+  if (canHandlePlainCommand && isBoardListCommand(commandText)) {
     await logHandledInboundMessage(context, "message", "assistant:boards");
     await replyToEvent(context, await renderBoardList(config.defaultBoardSlug, groupId));
     return { ok: true };
   }
-  if ((isCommandMessage(commandText) || canHandlePlainCommand) && isMyPostsCommand(commandText)) {
+  if (canHandlePlainCommand && isMyPostsCommand(commandText)) {
     if (event.message_type === "group") {
       await replyToEvent(context, "这个功能只支持私聊使用。请私聊我后发送“我的投稿”。");
       return { ok: true };
@@ -559,7 +559,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, await renderRecentQqTopics(qqId));
     return { ok: true };
   }
-  if ((isCommandMessage(commandText) || canHandlePlainCommand) && isStatusCommand(commandText)) {
+  if (canHandlePlainCommand && isStatusCommand(commandText)) {
     if (event.message_type === "group") {
       await logHandledInboundMessage(context, "message", "assistant:group-status");
       await replyToEvent(context, await renderGroupStatus(config, groupId, event));
@@ -569,7 +569,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, await renderBindingStatus(qqId, config, groupId));
     return { ok: true };
   }
-  if ((isCommandMessage(commandText) || canHandlePlainCommand) && isUnbindCommand(commandText)) {
+  if (canHandlePlainCommand && isUnbindCommand(commandText)) {
     if (event.message_type === "group") {
       await replyToEvent(context, "这个功能只支持私聊使用。请私聊我后发送“解绑”。");
       return { ok: true };
@@ -578,7 +578,9 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, await unbindQqAccount(qqId));
     return { ok: true };
   }
-  const bindMatch = commandText.trim().match(/^(?:[/／])?绑定\s+([A-Z0-9]{6,16})$/i);
+  const bindMatch = canHandlePlainCommand
+    ? commandText.trim().match(/^(?:[/／])?绑定\s+([A-Z0-9]{6,16})$/i)
+    : null;
   if (bindMatch) {
     if (event.message_type === "group") {
       await replyToEvent(context, "绑定码只支持私聊发送。请私聊我后再发送“绑定 绑定码”。");
@@ -593,7 +595,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, result);
     return { ok: true };
   }
-  if (commandText.trim().match(/^(?:[/／])?绑定(?:\s|$)/i)) {
+  if (canHandlePlainCommand && commandText.trim().match(/^(?:[/／])?绑定(?:\s|$)/i)) {
     if (event.message_type === "group") {
       await replyToEvent(context, "绑定码只支持私聊发送。请先私聊我，再发送“绑定 绑定码”。");
       return { ok: true };
@@ -606,7 +608,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     ].join("\n"));
     return { ok: true };
   }
-  const isSlashPostCommand = isCommandMessage(commandText) && /^[/／]投稿(?:\s|$)/.test(commandText.trim());
+  const isSlashPostCommand = canHandlePlainCommand && isCommandMessage(commandText) && /^[/／]投稿(?:\s|$)/.test(commandText.trim());
   const isPlainPrivatePostCommand = event.message_type !== "group" && isPrivatePlainCommand(commandText, "投稿");
   const isQuickPostTrigger = isSlashPostCommand || isPlainPrivatePostCommand;
   const forwardPayload = await maybeExtractForwardPayloadForPosting(event.message, messageText, event);
@@ -2589,6 +2591,8 @@ async function renderGroupHelp(
   return [
     "QQBot 群聊帮助",
     "",
+    "群聊里请先 @我，再发送下面这些命令。",
+    "",
     `当前群：${group.name || group.groupId}`,
     `群内投稿：${postingStatus}`,
     `默认投稿区：${defaultBoardName}`,
@@ -2812,11 +2816,11 @@ async function handleQqBotGroupAdminCommand(input: {
       }
       const target = extractCommandTarget(input.command.argText, input.event);
       if (!target?.qqId) {
-        return replyAndLog("请带上目标 QQ 号，例如：禁言 123456789 10m。", "mute-target-missing", "ignored");
+        return replyAndLog("请带上目标 QQ 号或直接 @对方，例如：禁言 123456789 10m 或 禁言@某某 10m。", "mute-target-missing", "ignored");
       }
       const durationSeconds = parseMuteDurationSeconds(target.restText);
       if (!durationSeconds) {
-        return replyAndLog("请填写禁言时长，例如：禁言 123456789 10m / 1h / 1天。", "mute-duration-missing", "ignored");
+        return replyAndLog("请填写禁言时长，例如：禁言 123456789 10m / 禁言@某某 1h / 1天。", "mute-duration-missing", "ignored");
       }
       ensureModerationTargetAllowed(target.qqId, input.config, input.event);
       await callQqBotAction("set_group_ban", {
@@ -2839,7 +2843,9 @@ async function handleQqBotGroupAdminCommand(input: {
       const target = extractCommandTarget(input.command.argText, input.event);
       if (!target?.qqId) {
         return replyAndLog(
-          input.command.type === "kick" ? "请带上目标 QQ 号，例如：踢出 123456789。" : "请带上目标 QQ 号，例如：踢黑 123456789。",
+          input.command.type === "kick"
+            ? "请带上目标 QQ 号或直接 @对方，例如：踢出 123456789 或 踢出@某某。"
+            : "请带上目标 QQ 号或直接 @对方，例如：踢黑 123456789 或 踢黑@某某。",
           `${input.command.type}-target-missing`,
           "ignored",
         );
@@ -2865,7 +2871,9 @@ async function handleQqBotGroupAdminCommand(input: {
       const target = extractCommandTarget(input.command.argText, input.event);
       if (!target?.qqId) {
         return replyAndLog(
-          input.command.type === "add-command-user" ? "请带上要授权的 QQ 号，例如：添加群管 123456789。" : "请带上要移除的 QQ 号，例如：移除群管 123456789。",
+          input.command.type === "add-command-user"
+            ? "请带上要授权的 QQ 号或直接 @对方，例如：添加群管 123456789 或 添加群管@某某。"
+            : "请带上要移除的 QQ 号或直接 @对方，例如：移除群管 123456789 或 移除群管@某某。",
           "command-user-target-missing",
           "ignored",
         );
@@ -3073,14 +3081,14 @@ function buildQqGroupAdminCommandLines(group: QqBotGroupView) {
   } else {
     lines.push("• 快速审核加群：未开启");
   }
-  if (group.allowMute) lines.push("• 禁言 QQ号 10m：支持 10m / 1h / 1天");
+  if (group.allowMute) lines.push("• 禁言 QQ号/@某人 10m：支持 10m / 1h / 1天");
   else lines.push("• 禁言：未开启");
-  if (group.allowKick) lines.push("• 踢出 QQ号");
+  if (group.allowKick) lines.push("• 踢出 QQ号/@某人");
   else lines.push("• 踢出：未开启");
-  if (group.allowKickAndBlock) lines.push("• 踢黑 QQ号");
+  if (group.allowKickAndBlock) lines.push("• 踢黑 QQ号/@某人");
   else lines.push("• 踢黑：未开启");
   lines.push("• 群管列表：查看本群授权用户");
-  lines.push("• 添加群管 QQ号 / 移除群管 QQ号：维护授权用户");
+  lines.push("• 添加群管 QQ号/@某人 / 移除群管 QQ号/@某人：维护授权用户");
   return lines;
 }
 
@@ -3088,6 +3096,13 @@ function extractCommandTarget(argText: string, event: OneBotEvent) {
   const mentionedQqIds = extractMentionedQqIds(event.message, event.self_id);
   if (mentionedQqIds.length) {
     return { qqId: mentionedQqIds[0], restText: String(argText || "").trim() };
+  }
+  const cqMention = String(argText || "").match(/\[CQ:at,qq=(\d{5,20})[^\]]*\]/i);
+  if (cqMention) {
+    return {
+      qqId: cqMention[1],
+      restText: String(argText || "").replace(cqMention[0], "").trim(),
+    };
   }
   const match = String(argText || "").trim().match(/^(\d{5,20})(?:\s+([\s\S]+))?$/);
   if (match) {

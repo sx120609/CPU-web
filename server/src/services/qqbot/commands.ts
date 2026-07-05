@@ -137,13 +137,13 @@ export function parseQqGroupAdminCommand(text: string): QqGroupAdminCommand | nu
   }
 
   const patterns: Array<[QqGroupAdminCommand["type"], RegExp]> = [
-    ["approve-join", /^(?:[/／])?(?:通过加群|同意加群|批准加群|通过入群|同意入群)\s+([\s\S]+)$/i],
-    ["reject-join", /^(?:[/／])?(?:拒绝加群|驳回加群|拒绝入群|驳回入群)\s+([\s\S]+)$/i],
-    ["mute", /^(?:[/／])?禁言\s+([\s\S]+)$/i],
-    ["kick-block", /^(?:[/／])?(?:踢黑|拉黑踢|踢出并拉黑)\s+([\s\S]+)$/i],
-    ["kick", /^(?:[/／])?踢出\s+([\s\S]+)$/i],
-    ["add-command-user", /^(?:[/／])?(?:添加群管|添加管理|授权群管|授权管理)\s+([\s\S]+)$/i],
-    ["remove-command-user", /^(?:[/／])?(?:移除群管|取消群管|取消管理|移除管理)\s+([\s\S]+)$/i],
+    ["approve-join", /^(?:[/／])?(?:通过加群|同意加群|批准加群|通过入群|同意入群)\s*([\s\S]+)$/i],
+    ["reject-join", /^(?:[/／])?(?:拒绝加群|驳回加群|拒绝入群|驳回入群)\s*([\s\S]+)$/i],
+    ["mute", /^(?:[/／])?禁言\s*([\s\S]+)$/i],
+    ["kick-block", /^(?:[/／])?(?:踢黑|拉黑踢|踢出并拉黑)\s*([\s\S]+)$/i],
+    ["kick", /^(?:[/／])?踢出\s*([\s\S]+)$/i],
+    ["add-command-user", /^(?:[/／])?(?:添加群管|添加管理|授权群管|授权管理)\s*([\s\S]+)$/i],
+    ["remove-command-user", /^(?:[/／])?(?:移除群管|取消群管|取消管理|移除管理)\s*([\s\S]+)$/i],
   ];
 
   for (const [type, regex] of patterns) {
