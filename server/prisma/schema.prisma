@@ -992,6 +992,22 @@ model QqBotGroupJoinRequest {
   @@index([qqId, status, createdAt])
 }
 
+model QqBotGroupBlockedUser {
+  id            Int      @id @default(autoincrement())
+  groupId       String
+  qqId          String
+  nickname      String?
+  blockedByQqId String?
+  source        String   @default("manual") // manual / command / join-request
+  reason        String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([groupId, qqId])
+  @@index([groupId, createdAt])
+  @@index([qqId, createdAt])
+}
+
 model QqBotMessageLog {
   id             Int      @id @default(autoincrement())
   direction      String   // inbound / outbound

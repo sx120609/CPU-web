@@ -938,6 +938,57 @@ async function handleQqBotGroupJoinRequestEvent(
     });
     return { ignored: true };
   }
+  const blockedUser = await prisma.qqBotGroupBlockedUser.findUnique({
+    where: {
+      groupId_qqId: {
+        groupId: target.groupId,
+        qqId: target.qqId,
+      },
+    },
+  });
+  if (blockedUser) {
+    await callQqBotAction("set_group_add_request", {
+      flag: target.flag,
+      sub_type: "add",
+      approve: false,
+    }).catch(() => undefined);
+    await prisma.qqBotGroupJoinRequest.upsert({
+      where: { flag: target.flag },
+      create: {
+        groupId: target.groupId,
+        qqId: target.qqId,
+        nickname: target.nickname || blockedUser.nickname || null,
+        comment: target.comment || null,
+        flag: target.flag,
+        status: "rejected",
+        handledAction: "blacklist",
+        handledByQqId: blockedUser.blockedByQqId || null,
+        handledAt: new Date(),
+        rawPayload: JSON.stringify(event).slice(0, 8000),
+      },
+      update: {
+        qqId: target.qqId,
+        nickname: target.nickname || blockedUser.nickname || null,
+        comment: target.comment || null,
+        status: "rejected",
+        handledAction: "blacklist",
+        handledByQqId: blockedUser.blockedByQqId || null,
+        handledAt: new Date(),
+        rawPayload: JSON.stringify(event).slice(0, 8000),
+      },
+    });
+    await logQqBotMessage({
+      direction: "inbound",
+      eventType: "group-join-request",
+      status: "ok",
+      qqId: target.qqId,
+      groupId: target.groupId,
+      content: `${target.nickname || blockedUser.nickname || ""} ${target.comment || ""}`.trim().slice(0, 500),
+      result: "命中本群黑名单，已自动拒绝加群申请",
+      rawPayload: event,
+    });
+    return { ok: true, autoRejected: "blacklist" };
+  }
   if (!group.joinReviewEnabled) {
     await logQqBotMessage({
       direction: "inbound",
@@ -2801,17 +2852,26 @@ async function handleQqBotGroupAdminCommand(input: {
       );
     }
 
-    if (input.command.type === "mute") {
+    if (input.command.type === "mute" || input.command.type === "unmute") {
       if (!group.allowMute) {
         return replyAndLog("当前群未开启禁言功能。", "mute-disabled", "ignored");
       }
       const target = extractCommandTarget(input.command.argText, input.event);
       if (!target?.qqId) {
-        return replyAndLog("请带上目标 QQ 号或直接 @对方，例如：禁言 123456789 10m 或 禁言@某某 10m。", "mute-target-missing", "ignored");
+        return replyAndLog(
+          input.command.type === "mute"
+            ? "请带上目标 QQ 号或直接 @对方，例如：禁言 123456789 10m 或 禁言@某某 10m。"
+            : "请带上目标 QQ 号或直接 @对方，例如：解除禁言 123456789 或 解除禁言@某某。",
+          `${input.command.type}-target-missing`,
+          "ignored",
+        );
       }
-      const durationSeconds = parseMuteDurationSeconds(target.restText);
-      if (!durationSeconds) {
-        return replyAndLog("请填写禁言时长，例如：禁言 123456789 10m / 禁言@某某 1h / 1天。", "mute-duration-missing", "ignored");
+      let durationSeconds = 0;
+      if (input.command.type === "mute") {
+        durationSeconds = parseMuteDurationSeconds(target.restText);
+        if (!durationSeconds) {
+          return replyAndLog("请填写禁言时长，例如：禁言 123456789 10m / 禁言@某某 1h / 1天。", "mute-duration-missing", "ignored");
+        }
       }
       ensureModerationTargetAllowed(target.qqId, input.config, input.event);
       await callQqBotAction("set_group_ban", {
@@ -2819,7 +2879,24 @@ async function handleQqBotGroupAdminCommand(input: {
         user_id: Number(target.qqId) || target.qqId,
         duration: durationSeconds,
       });
-      return replyAndLog(`已禁言 QQ ${target.qqId}，时长 ${formatMuteDuration(durationSeconds)}。`, "assistant:mute");
+      return replyAndLog(
+        input.command.type === "mute"
+          ? `已禁言 QQ ${target.qqId}，时长 ${formatMuteDuration(durationSeconds)}。`
+          : `已解除 QQ ${target.qqId} 的禁言。`,
+        `assistant:${input.command.type}`,
+      );
+    }
+
+    if (input.command.type === "list-blocked-users") {
+      if (!group.allowKickAndBlock) {
+        return replyAndLog("当前群未开启踢出并拉黑功能。", "kick-block-disabled", "ignored");
+      }
+      const rows = await prisma.qqBotGroupBlockedUser.findMany({
+        where: { groupId: input.groupId },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      });
+      return replyAndLog(renderBlockedUserList(rows), "assistant:list-blocked-users");
     }
 
     if (input.command.type === "kick" || input.command.type === "kick-block") {
@@ -2845,14 +2922,55 @@ async function handleQqBotGroupAdminCommand(input: {
       await callQqBotAction("set_group_kick", {
         group_id: Number(input.groupId) || input.groupId,
         user_id: Number(target.qqId) || target.qqId,
-        reject_add_request: input.command.type === "kick-block",
+        reject_add_request: false,
       });
+      if (input.command.type === "kick-block") {
+        await prisma.qqBotGroupBlockedUser.upsert({
+          where: {
+            groupId_qqId: {
+              groupId: input.groupId,
+              qqId: target.qqId,
+            },
+          },
+          create: {
+            groupId: input.groupId,
+            qqId: target.qqId,
+            blockedByQqId: input.qqId,
+            source: "command",
+          },
+          update: {
+            blockedByQqId: input.qqId,
+            source: "command",
+          },
+        });
+      }
       return replyAndLog(
         input.command.type === "kick"
           ? `已将 QQ ${target.qqId} 踢出群聊。`
-          : `已将 QQ ${target.qqId} 踢出群聊并加入拒绝名单。`,
+          : `已将 QQ ${target.qqId} 踢出群聊，并加入本群黑名单。`,
         `assistant:${input.command.type}`,
       );
+    }
+
+    if (input.command.type === "remove-blocked-user") {
+      if (!group.allowKickAndBlock) {
+        return replyAndLog("当前群未开启踢出并拉黑功能。", "kick-block-disabled", "ignored");
+      }
+      const target = extractCommandTarget(input.command.argText, input.event);
+      if (!target?.qqId) {
+        return replyAndLog(
+          "请带上要移出黑名单的 QQ 号或直接 @对方，例如：移出黑名单 123456789 或 移出黑名单@某某。",
+          "remove-blocked-user-target-missing",
+          "ignored",
+        );
+      }
+      const removed = await prisma.qqBotGroupBlockedUser.deleteMany({
+        where: { groupId: input.groupId, qqId: target.qqId },
+      });
+      if (!removed.count) {
+        return replyAndLog(`QQ ${target.qqId} 当前不在本群黑名单里。`, "remove-blocked-user-not-found", "ignored");
+      }
+      return replyAndLog(`已将 QQ ${target.qqId} 从本群黑名单移出。`, "assistant:remove-blocked-user");
     }
 
     if (input.command.type === "add-command-user" || input.command.type === "remove-command-user") {
@@ -2924,7 +3042,6 @@ async function maybeHandleQqGroupAdFilter(input: {
       content: messageText,
       metadata: {
         messageId: input.event.message_id ? String(input.event.message_id) : "",
-        rawMessage: String(input.event.raw_message || "").slice(0, 500),
       },
     });
     if (review.action !== "block") return false;
@@ -3072,11 +3189,18 @@ function buildQqGroupAdminCommandLines(group: QqBotGroupView) {
   } else {
     lines.push("• 快速审核加群：未开启");
   }
-  if (group.allowMute) lines.push("• 禁言 QQ号/@某人 10m：支持 10m / 1h / 1天");
+  if (group.allowMute) {
+    lines.push("• 禁言 QQ号/@某人 10m：支持 10m / 1h / 1天");
+    lines.push("• 解除禁言 QQ号/@某人");
+  }
   else lines.push("• 禁言：未开启");
   if (group.allowKick) lines.push("• 踢出 QQ号/@某人");
   else lines.push("• 踢出：未开启");
-  if (group.allowKickAndBlock) lines.push("• 踢黑 QQ号/@某人");
+  if (group.allowKickAndBlock) {
+    lines.push("• 踢黑 QQ号/@某人");
+    lines.push("• 黑名单列表：查看本群黑名单");
+    lines.push("• 移出黑名单 QQ号/@某人");
+  }
   else lines.push("• 踢黑：未开启");
   lines.push("• 群管列表：查看本群授权用户");
   lines.push("• 添加群管 QQ号/@某人 / 移除群管 QQ号/@某人：维护授权用户");
@@ -3174,6 +3298,21 @@ function renderPendingJoinRequests(
       `验证：${row.comment || "无"}`,
       `时间：${row.createdAt.toLocaleString("zh-CN", { hour12: false })}`,
     ].join("\n")).join("\n\n"),
+  ].join("\n");
+}
+
+function renderBlockedUserList(
+  rows: Array<{ qqId: string; nickname: string | null; blockedByQqId: string | null; createdAt: Date }>,
+) {
+  if (!rows.length) return "当前群黑名单为空。";
+  return [
+    "本群黑名单：",
+    "",
+    rows.map((row, index) => [
+      `${index + 1}. QQ ${row.qqId}${row.nickname ? ` · ${row.nickname}` : ""}`,
+      `加入时间：${row.createdAt.toLocaleString("zh-CN", { hour12: false })}`,
+      row.blockedByQqId ? `操作人：${row.blockedByQqId}` : "",
+    ].filter(Boolean).join("\n")).join("\n\n"),
   ].join("\n");
 }
 

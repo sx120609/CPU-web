@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import { Errors } from "../utils/response";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
+import { getCachedJson, setCachedJson } from "./cache";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 import { getSiteConfig } from "./siteSettings";
 
@@ -21,6 +23,9 @@ export type QqGroupAdReviewResult = {
   model: string;
   modelDecision: string;
 };
+
+const QQ_GROUP_AD_REVIEW_RESULT_CACHE_TTL_MS = 10 * 60_000;
+const promptCacheKeySupport = new Map<string, boolean>();
 
 export function shouldRunQqGroupAdReview() {
   const config = getSiteConfig();
@@ -48,6 +53,18 @@ export async function reviewQqGroupMessageForAd(input: {
     };
   }
 
+  const configHash = buildQqGroupAdReviewConfigHash(config);
+  const normalizedContent = normalizeMessageForCache(input.content);
+  const resultCacheKey = buildQqGroupAdReviewResultCacheKey({
+    configHash,
+    groupId: input.groupId,
+    content: normalizedContent,
+  });
+  const cached = await getCachedJson<QqGroupAdReviewResult>(resultCacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const messages = [
     { role: "system" as const, content: config.qqGroupAdReviewSystemPrompt },
     {
@@ -58,12 +75,16 @@ export async function reviewQqGroupMessageForAd(input: {
         qqId: input.qqId,
         nickname: input.nickname || "",
         content: input.content,
-        metadataJson: JSON.stringify(input.metadata || {}, null, 2),
+        metadataJson: JSON.stringify(input.metadata || {}),
       }),
     },
   ];
   const endpoint = normalizeReviewApiUrl(config.qqGroupAdReviewApiUrl);
   const candidates = resolveModelCandidates(config.qqGroupAdReviewModel, config.qqGroupAdReviewFallbackModels);
+  const promptCacheKey = buildQqGroupAdPromptCacheKey({
+    configHash,
+    groupId: input.groupId,
+  });
   let lastError: Error | null = null;
 
   for (let index = 0; index < candidates.length; index += 1) {
@@ -81,19 +102,15 @@ export async function reviewQqGroupMessageForAd(input: {
     const logId = started?.id ?? null;
 
     let response: Response;
+    let usedPromptCacheKey = isPromptCacheKeyEnabledForEndpoint(endpoint);
     try {
-      response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${config.qqGroupAdReviewApiKey}`,
-        },
-        body: JSON.stringify({
-          model,
-          temperature: 0.1,
-          response_format: { type: "json_object" },
-          messages,
-        }),
+      response = await sendQqGroupAdReviewRequest({
+        endpoint,
+        apiKey: config.qqGroupAdReviewApiKey,
+        model,
+        messages,
+        promptCacheKey,
+        enablePromptCacheKey: usedPromptCacheKey,
       });
     } catch (error) {
       const detail = describeRequestError(error);
@@ -104,14 +121,41 @@ export async function reviewQqGroupMessageForAd(input: {
     }
 
     if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      await finishAiReviewLogError(logId, `HTTP ${response.status}`, text);
-      const canFallback = index < candidates.length - 1 && shouldFallbackToNextModel(response.status, text);
-      if (canFallback) {
-        lastError = Errors.server(`QQ群广告过滤模型 ${model} 当前不可用，已自动尝试下一个备选模型`);
-        continue;
+      let text = await response.text().catch(() => "");
+      if (usedPromptCacheKey && shouldDisablePromptCacheKey(response.status, text)) {
+        promptCacheKeySupport.set(endpoint, false);
+        usedPromptCacheKey = false;
+        try {
+          response = await sendQqGroupAdReviewRequest({
+            endpoint,
+            apiKey: config.qqGroupAdReviewApiKey,
+            model,
+            messages,
+            promptCacheKey,
+            enablePromptCacheKey: false,
+          });
+        } catch (error) {
+          const detail = describeRequestError(error);
+          await finishAiReviewLogError(logId, "FETCH_ERROR", detail);
+          lastError = Errors.server(`QQ群广告过滤请求失败：${detail}`);
+          if (index < candidates.length - 1) continue;
+          throw lastError;
+        }
+        if (response.ok) {
+          promptCacheKeySupport.set(endpoint, false);
+        } else {
+          text = await response.text().catch(() => "");
+        }
       }
-      throw Errors.server(`QQ群广告过滤请求失败：${response.status}${text ? ` ${text.slice(0, 120)}` : ""}`);
+      if (!response.ok) {
+        await finishAiReviewLogError(logId, `HTTP ${response.status}`, text);
+        const canFallback = index < candidates.length - 1 && shouldFallbackToNextModel(response.status, text);
+        if (canFallback) {
+          lastError = Errors.server(`QQ群广告过滤模型 ${model} 当前不可用，已自动尝试下一个备选模型`);
+          continue;
+        }
+        throw Errors.server(`QQ群广告过滤请求失败：${response.status}${text ? ` ${text.slice(0, 120)}` : ""}`);
+      }
     }
 
     let json: any;
@@ -130,7 +174,7 @@ export async function reviewQqGroupMessageForAd(input: {
     const riskScore = clampScore(parsed.risk_score);
     const modelDecision = String(parsed.decision || "").trim().toLowerCase();
     const action = riskScore >= config.qqGroupAdReviewThreshold || modelDecision === "block" ? "block" : "allow";
-    return {
+    const result: QqGroupAdReviewResult = {
       action,
       riskScore,
       riskLevel: normalizeRiskLevel(parsed.risk_level),
@@ -139,9 +183,41 @@ export async function reviewQqGroupMessageForAd(input: {
       model,
       modelDecision,
     };
+    await setCachedJson(resultCacheKey, result, QQ_GROUP_AD_REVIEW_RESULT_CACHE_TTL_MS).catch(() => undefined);
+    return result;
   }
 
   throw lastError || Errors.server("QQ群广告过滤请求失败");
+}
+
+async function sendQqGroupAdReviewRequest(input: {
+  endpoint: string;
+  apiKey: string;
+  model: string;
+  messages: Array<{ role: "system" | "user"; content: string }>;
+  promptCacheKey: string;
+  enablePromptCacheKey: boolean;
+}) {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${input.apiKey}`,
+  };
+  const body: Record<string, unknown> = {
+    model: input.model,
+    temperature: 0.1,
+    response_format: { type: "json_object" },
+    messages: input.messages,
+  };
+  if (input.enablePromptCacheKey) {
+    body.prompt_cache_key = input.promptCacheKey;
+    headers.session_id = input.promptCacheKey;
+    headers.conversation_id = input.promptCacheKey;
+  }
+  return fetch(input.endpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
 }
 
 function normalizeReviewApiUrl(input: string) {
@@ -155,6 +231,61 @@ function normalizeReviewApiUrl(input: string) {
 
 function fillPromptTemplate(template: string, values: Record<string, string>) {
   return String(template || "").replace(/\{\{(\w+)\}\}/g, (_, key) => values[key] ?? "");
+}
+
+function isPromptCacheKeyEnabledForEndpoint(endpoint: string) {
+  return promptCacheKeySupport.get(endpoint) ?? true;
+}
+
+function shouldDisablePromptCacheKey(status: number, responseText: string) {
+  if (status !== 400 && status !== 422) return false;
+  const text = String(responseText || "").toLowerCase();
+  return (
+    text.includes("prompt_cache_key")
+    && (
+      text.includes("unknown")
+      || text.includes("unsupported")
+      || text.includes("not allowed")
+      || text.includes("extra inputs")
+      || text.includes("unrecognized")
+      || text.includes("invalid")
+    )
+  );
+}
+
+function normalizeMessageForCache(input: string) {
+  return String(input || "").replace(/\s+/g, " ").trim();
+}
+
+function buildQqGroupAdReviewConfigHash(config: ReturnType<typeof getSiteConfig>) {
+  return hashString([
+    config.qqGroupAdReviewProvider,
+    config.qqGroupAdReviewApiUrl,
+    config.qqGroupAdReviewModel,
+    config.qqGroupAdReviewFallbackModels,
+    config.qqGroupAdReviewThreshold,
+    config.qqGroupAdReviewSystemPrompt,
+    config.qqGroupAdReviewUserPrompt,
+  ].join("\n"));
+}
+
+function buildQqGroupAdReviewResultCacheKey(input: {
+  configHash: string;
+  groupId: string;
+  content: string;
+}) {
+  return `qqbot:group-ad-review:${hashString(`${input.configHash}\n${input.groupId}\n${input.content}`)}`;
+}
+
+function buildQqGroupAdPromptCacheKey(input: {
+  configHash: string;
+  groupId: string;
+}) {
+  return `qqbot-group-ad:${hashString(`${input.configHash}\n${input.groupId}`)}`;
+}
+
+function hashString(input: string) {
+  return createHash("sha256").update(input).digest("hex").slice(0, 24);
 }
 
 function describeRequestError(error: unknown) {

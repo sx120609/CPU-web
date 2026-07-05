@@ -119,10 +119,13 @@ export type QqGroupAdminCommand =
   | { type: "approve-join"; argText: string }
   | { type: "reject-join"; argText: string }
   | { type: "mute"; argText: string }
+  | { type: "unmute"; argText: string }
   | { type: "kick"; argText: string }
   | { type: "kick-block"; argText: string }
   | { type: "add-command-user"; argText: string }
   | { type: "remove-command-user"; argText: string }
+  | { type: "list-blocked-users" }
+  | { type: "remove-blocked-user"; argText: string }
   | { type: "list-command-users" };
 
 export function parseQqGroupAdminCommand(text: string): QqGroupAdminCommand | null {
@@ -135,21 +138,29 @@ export function parseQqGroupAdminCommand(text: string): QqGroupAdminCommand | nu
   if (/^(?:[/／])?(?:待审加群|加群审核|入群审核|审核列表)$/i.test(normalized)) {
     return { type: "list-join-requests" };
   }
+  if (/^(?:[/／])?(?:黑名单列表|群黑名单|本群黑名单)$/i.test(normalized)) {
+    return { type: "list-blocked-users" };
+  }
 
   const patterns: Array<[QqGroupAdminCommand["type"], RegExp]> = [
     ["approve-join", /^(?:[/／])?(?:通过加群|同意加群|批准加群|通过入群|同意入群)\s*([\s\S]+)$/i],
     ["reject-join", /^(?:[/／])?(?:拒绝加群|驳回加群|拒绝入群|驳回入群)\s*([\s\S]+)$/i],
+    ["unmute", /^(?:[/／])?(?:解除禁言|取消禁言|解禁)\s*([\s\S]+)$/i],
     ["mute", /^(?:[/／])?禁言\s*([\s\S]+)$/i],
     ["kick-block", /^(?:[/／])?(?:踢黑|拉黑踢|踢出并拉黑)\s*([\s\S]+)$/i],
     ["kick", /^(?:[/／])?踢出\s*([\s\S]+)$/i],
     ["add-command-user", /^(?:[/／])?(?:添加群管|添加管理|授权群管|授权管理)\s*([\s\S]+)$/i],
     ["remove-command-user", /^(?:[/／])?(?:移除群管|取消群管|取消管理|移除管理)\s*([\s\S]+)$/i],
+    ["remove-blocked-user", /^(?:[/／])?(?:移出黑名单|移除黑名单|解除拉黑|取消拉黑)\s*([\s\S]+)$/i],
   ];
 
   for (const [type, regex] of patterns) {
     const match = normalized.match(regex);
     if (!match) continue;
-    return { type: type as Exclude<QqGroupAdminCommand["type"], "help" | "list-join-requests" | "list-command-users">, argText: match[1].trim() };
+    return {
+      type: type as Exclude<QqGroupAdminCommand["type"], "help" | "list-join-requests" | "list-command-users" | "list-blocked-users">,
+      argText: match[1].trim(),
+    };
   }
 
   if (/^(?:[/／])?(?:群管列表|管理列表|授权列表)$/i.test(normalized)) {
