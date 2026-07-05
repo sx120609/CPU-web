@@ -27,8 +27,6 @@ const configPatchSchema = z.object({
   defaultBoardSlug: z.string().trim().max(80).optional(),
   allowPrivatePost: z.boolean().optional(),
   allowGroupPost: z.boolean().optional(),
-  memberWelcomeEnabled: z.boolean().optional(),
-  memberWelcomeMessage: z.string().trim().max(1500).optional(),
   notificationEnabled: z.boolean().optional(),
   notifyCategories: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
 });
@@ -100,6 +98,8 @@ const groupUpsertSchema = z.object({
   notificationEnabled: z.boolean().optional(),
   notifyCategories: z.array(z.enum(["system", "school-feed"])).max(10).optional(),
   notifyAudiences: z.array(z.enum(["public", "staff"])).max(10).optional(),
+  memberWelcomeEnabled: z.boolean().optional(),
+  memberWelcomeMessage: z.string().trim().max(1500).optional(),
 });
 
 qqBotAdminRouter.post("/groups", validate(groupUpsertSchema), async (req, res, next) => {
@@ -117,6 +117,8 @@ qqBotAdminRouter.post("/groups", validate(groupUpsertSchema), async (req, res, n
       notificationEnabled: req.body.notificationEnabled,
       notifyCategories: JSON.stringify(normalizeQqBotGroupNotifyCategories(req.body.notifyCategories)),
       notifyAudiences: JSON.stringify(normalizeQqBotGroupNotifyAudiences(req.body.notifyAudiences)),
+      memberWelcomeEnabled: req.body.memberWelcomeEnabled,
+      memberWelcomeMessage: req.body.memberWelcomeMessage,
     };
     const row = await prisma.qqBotGroup.upsert({
       where: { groupId: req.body.groupId },

@@ -1,5 +1,5 @@
-ALTER TABLE "QqBotConfig" ADD COLUMN "memberWelcomeEnabled" BOOLEAN NOT NULL DEFAULT false;
-ALTER TABLE "QqBotConfig" ADD COLUMN "memberWelcomeMessage" TEXT NOT NULL DEFAULT '欢迎加入本群，请先查看群公告了解群内规则和使用说明。
+ALTER TABLE "QqBotGroup" ADD COLUMN "memberWelcomeEnabled" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "QqBotGroup" ADD COLUMN "memberWelcomeMessage" TEXT NOT NULL DEFAULT '欢迎加入本群，请先查看群公告了解群内规则和使用说明。
 
 如果想把课表添加到手机桌面，可以先打开站内课表页，再按页面提示完成添加。
 

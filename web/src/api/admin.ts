@@ -462,8 +462,6 @@ export type QqBotConfig = {
   defaultBoardSlug: string;
   allowPrivatePost: boolean;
   allowGroupPost: boolean;
-  memberWelcomeEnabled: boolean;
-  memberWelcomeMessage: string;
   notificationEnabled: boolean;
   notifyCategories: string[];
   webhookPath: string;
@@ -481,6 +479,8 @@ export type QqBotGroup = {
   notificationEnabled: boolean;
   notifyCategories: Array<"system" | "school-feed">;
   notifyAudiences: Array<"public" | "staff">;
+  memberWelcomeEnabled: boolean;
+  memberWelcomeMessage: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -684,8 +684,6 @@ export const adminApi = {
     defaultBoardSlug: string;
     allowPrivatePost: boolean;
     allowGroupPost: boolean;
-    memberWelcomeEnabled: boolean;
-    memberWelcomeMessage: string;
     notificationEnabled: boolean;
     notifyCategories: string[];
   }>) => request.patch<QqBotConfig>("/admin/qqbot/config", payload),
@@ -702,6 +700,8 @@ export const adminApi = {
     notificationEnabled?: boolean;
     notifyCategories?: Array<"system" | "school-feed">;
     notifyAudiences?: Array<"public" | "staff">;
+    memberWelcomeEnabled?: boolean;
+    memberWelcomeMessage?: string;
   }) => request.post<QqBotGroup>("/admin/qqbot/groups", payload),
   deleteQqBotGroup: (id: number) => request.delete<{ ok: true }>(`/admin/qqbot/groups/${id}`),
   qqBotLogs: (params: { status?: string; eventType?: string; page?: number; size?: number }, options?: RequestOptions) =>

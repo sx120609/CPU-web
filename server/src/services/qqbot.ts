@@ -97,8 +97,6 @@ export type QqBotConfigView = {
   defaultBoardSlug: string;
   allowPrivatePost: boolean;
   allowGroupPost: boolean;
-  memberWelcomeEnabled: boolean;
-  memberWelcomeMessage: string;
   notificationEnabled: boolean;
   notifyCategories: string[];
   webhookPath: string;
@@ -119,6 +117,8 @@ export type QqBotGroupView = {
   notificationEnabled: boolean;
   notifyCategories: QqBotGroupNotifyCategory[];
   notifyAudiences: QqBotGroupNotifyAudience[];
+  memberWelcomeEnabled: boolean;
+  memberWelcomeMessage: string;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -237,8 +237,6 @@ export function formatQqBotConfig(config: Awaited<ReturnType<typeof getQqBotConf
     defaultBoardSlug: config.defaultBoardSlug || "general",
     allowPrivatePost: config.allowPrivatePost,
     allowGroupPost: config.allowGroupPost,
-    memberWelcomeEnabled: config.memberWelcomeEnabled,
-    memberWelcomeMessage: config.memberWelcomeMessage || DEFAULT_MEMBER_WELCOME_MESSAGE,
     notificationEnabled: config.notificationEnabled,
     notifyCategories: parseQqBotNotifyCategories(config.notifyCategories),
     webhookPath: "/api/qqbot/webhook",
@@ -293,6 +291,8 @@ export function formatQqBotGroup(group: {
   notificationEnabled: boolean;
   notifyCategories?: string | null;
   notifyAudiences?: string | null;
+  memberWelcomeEnabled: boolean;
+  memberWelcomeMessage: string | null;
   createdAt: Date;
   updatedAt: Date;
 }): QqBotGroupView {
@@ -306,6 +306,8 @@ export function formatQqBotGroup(group: {
     notificationEnabled: group.notificationEnabled,
     notifyCategories: normalizeQqBotGroupNotifyCategories(parseStringArray(group.notifyCategories || "", DEFAULT_GROUP_NOTIFY_CATEGORIES)),
     notifyAudiences: normalizeQqBotGroupNotifyAudiences(parseStringArray(group.notifyAudiences || "", DEFAULT_GROUP_NOTIFY_AUDIENCES)),
+    memberWelcomeEnabled: group.memberWelcomeEnabled,
+    memberWelcomeMessage: group.memberWelcomeMessage || DEFAULT_MEMBER_WELCOME_MESSAGE,
     createdAt: group.createdAt,
     updatedAt: group.updatedAt,
   };
@@ -321,8 +323,6 @@ export async function updateQqBotConfig(input: {
   defaultBoardSlug?: string;
   allowPrivatePost?: boolean;
   allowGroupPost?: boolean;
-  memberWelcomeEnabled?: boolean;
-  memberWelcomeMessage?: string;
   notificationEnabled?: boolean;
   notifyCategories?: string[];
 }) {
@@ -341,10 +341,6 @@ export async function updateQqBotConfig(input: {
   }
   if (input.allowPrivatePost !== undefined) data.allowPrivatePost = input.allowPrivatePost;
   if (input.allowGroupPost !== undefined) data.allowGroupPost = input.allowGroupPost;
-  if (input.memberWelcomeEnabled !== undefined) data.memberWelcomeEnabled = input.memberWelcomeEnabled;
-  if (input.memberWelcomeMessage !== undefined) {
-    data.memberWelcomeMessage = String(input.memberWelcomeMessage || "").trim().slice(0, 1500);
-  }
   if (input.notificationEnabled !== undefined) data.notificationEnabled = input.notificationEnabled;
   if (input.notifyCategories !== undefined) {
     data.notifyCategories = JSON.stringify(normalizePersonalNotifyCategories(input.notifyCategories));
@@ -763,7 +759,7 @@ async function handleQqBotNoticeEvent(
     return { ok: true, synced: "group" };
   }
   if (event.notice_type === "group_increase" && groupId && qqId) {
-    return handleQqBotGroupMemberIncrease(event, config, { qqId, groupId });
+    return handleQqBotGroupMemberIncrease(event, { qqId, groupId });
   }
   await logQqBotMessage({
     direction: "inbound",
@@ -778,21 +774,8 @@ async function handleQqBotNoticeEvent(
 
 async function handleQqBotGroupMemberIncrease(
   event: OneBotEvent,
-  config: Awaited<ReturnType<typeof getQqBotConfigRaw>>,
   target: { qqId: string; groupId: string },
 ) {
-  if (!config.memberWelcomeEnabled) {
-    await logQqBotMessage({
-      direction: "inbound",
-      eventType: "group-member-increase",
-      status: "ignored",
-      qqId: target.qqId,
-      groupId: target.groupId,
-      result: "新成员私聊欢迎未开启",
-      rawPayload: event,
-    });
-    return { ignored: true };
-  }
   const group = await prisma.qqBotGroup.findUnique({ where: { groupId: target.groupId } });
   if (!group?.enabled) {
     await logQqBotMessage({
@@ -806,7 +789,19 @@ async function handleQqBotGroupMemberIncrease(
     });
     return { ignored: true };
   }
-  const message = renderMemberWelcomeMessage(config.memberWelcomeMessage, event, group);
+  if (!group.memberWelcomeEnabled) {
+    await logQqBotMessage({
+      direction: "inbound",
+      eventType: "group-member-increase",
+      status: "ignored",
+      qqId: target.qqId,
+      groupId: target.groupId,
+      result: "该群新成员私聊欢迎未开启",
+      rawPayload: event,
+    });
+    return { ignored: true };
+  }
+  const message = renderMemberWelcomeMessage(group.memberWelcomeMessage, event, group);
   if (!message) {
     await logQqBotMessage({
       direction: "inbound",

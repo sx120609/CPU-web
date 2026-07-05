@@ -71,21 +71,8 @@
             <div class="check-grid">
               <el-checkbox v-model="form.allowPrivatePost" :disabled="configDisabled">允许私聊投稿</el-checkbox>
               <el-checkbox v-model="form.allowGroupPost" :disabled="configDisabled">允许群内投稿</el-checkbox>
-              <el-checkbox v-model="form.memberWelcomeEnabled" :disabled="configDisabled">新成员私聊欢迎</el-checkbox>
               <el-checkbox v-model="form.notificationEnabled" :disabled="configDisabled">推送站内通知</el-checkbox>
             </div>
-          </el-form-item>
-          <el-form-item label="欢迎私聊内容">
-            <el-input
-              v-model="form.memberWelcomeMessage"
-              type="textarea"
-              :rows="4"
-              maxlength="1500"
-              show-word-limit
-              placeholder="欢迎 {nickname} 加入 {groupName}。"
-              :disabled="configDisabled || !form.memberWelcomeEnabled"
-            />
-            <div class="form-tip">变量：{qq} / {nickname} / {groupId} / {groupName}</div>
           </el-form-item>
           <el-form-item label="私聊通知类型">
             <el-checkbox-group v-model="form.notifyCategories" :disabled="configDisabled">
@@ -166,6 +153,7 @@
             <el-tag :type="row.enabled ? 'success' : 'info'" size="small">{{ row.enabled ? "启用" : "停用" }}</el-tag>
             <el-tag :type="row.allowPosting ? 'warning' : 'info'" size="small">投稿 {{ row.allowPosting ? "开" : "关" }}</el-tag>
             <el-tag :type="row.notificationEnabled ? 'success' : 'info'" size="small">通知 {{ row.notificationEnabled ? "开" : "关" }}</el-tag>
+            <el-tag :type="row.memberWelcomeEnabled ? 'success' : 'info'" size="small">欢迎 {{ row.memberWelcomeEnabled ? "开" : "关" }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="通知规则" min-width="240">
@@ -195,12 +183,14 @@
               <el-tag :type="row.enabled ? 'success' : 'info'" size="small">{{ row.enabled ? "启用" : "停用" }}</el-tag>
               <el-tag :type="row.allowPosting ? 'warning' : 'info'" size="small">投稿 {{ row.allowPosting ? "开" : "关" }}</el-tag>
               <el-tag :type="row.notificationEnabled ? 'success' : 'info'" size="small">通知 {{ row.notificationEnabled ? "开" : "关" }}</el-tag>
+              <el-tag :type="row.memberWelcomeEnabled ? 'success' : 'info'" size="small">欢迎 {{ row.memberWelcomeEnabled ? "开" : "关" }}</el-tag>
             </div>
           </div>
           <div class="record-meta">
             <span>默认板块：{{ row.defaultBoardSlug || "未设置" }}</span>
             <span>通知类型：{{ formatGroupNotifyCategories(row.notifyCategories).join(" / ") || "未设置" }}</span>
             <span>通知受众：{{ formatGroupNotifyAudiences(row.notifyAudiences).join(" / ") || "未设置" }}</span>
+            <span>新成员欢迎：{{ row.memberWelcomeEnabled ? "开启" : "关闭" }}</span>
           </div>
           <div class="record-actions">
             <el-button link type="primary" :disabled="isGroupBusy(row)" @click="openGroupDialog(row)">编辑</el-button>
@@ -344,7 +334,20 @@
             <el-checkbox v-model="groupDialog.form.enabled">启用</el-checkbox>
             <el-checkbox v-model="groupDialog.form.allowPosting">允许投稿</el-checkbox>
             <el-checkbox v-model="groupDialog.form.notificationEnabled">接收群通知</el-checkbox>
+            <el-checkbox v-model="groupDialog.form.memberWelcomeEnabled">新成员欢迎</el-checkbox>
           </div>
+        </el-form-item>
+        <el-form-item label="欢迎私聊">
+          <el-input
+            v-model="groupDialog.form.memberWelcomeMessage"
+            type="textarea"
+            :rows="5"
+            maxlength="1500"
+            show-word-limit
+            placeholder="欢迎 {nickname} 加入 {groupName}。"
+            :disabled="!groupDialog.form.memberWelcomeEnabled"
+          />
+          <div class="form-tip">只对当前群生效。变量：{qq} / {nickname} / {groupId} / {groupName}</div>
         </el-form-item>
         <el-form-item label="通知类型">
           <el-checkbox-group v-model="groupDialog.form.notifyCategories">
@@ -419,14 +422,13 @@ const form = reactive({
   defaultBoardSlug: "general",
   allowPrivatePost: true,
   allowGroupPost: false,
-  memberWelcomeEnabled: false,
-  memberWelcomeMessage: "欢迎加入本群，请先查看群公告了解群内规则和使用说明。\n\n如果想把课表添加到手机桌面，可以先打开站内课表页，再按页面提示完成添加。\n\n也欢迎前往个人中心绑定本 QQBot，绑定后可在 QQ 同步接收站内通知。建议顺手把本 QQBot 添加为好友，消息接收和后续操作体验会更顺畅。后续还会陆续接入更多实用功能，敬请期待。",
   notificationEnabled: true,
   notifyCategories: ["reply", "mention", "like", "system", "service-tool", "school-feed"] as string[],
 });
 
 const test = reactive({ qqId: "", groupId: "", message: "药大拾间 QQBot 测试消息" });
 const logFilter = reactive({ eventType: "", status: "", page: 1, size: 30 });
+const defaultMemberWelcomeMessage = "欢迎加入本群，请先查看群公告了解群内规则和使用说明。\n\n如果想把课表添加到手机桌面，可以先打开站内课表页，再按页面提示完成添加。\n\n也欢迎前往个人中心绑定本 QQBot，绑定后可在 QQ 同步接收站内通知。建议顺手把本 QQBot 添加为好友，消息接收和后续操作体验会更顺畅。后续还会陆续接入更多实用功能，敬请期待。";
 const groupDialog = reactive({
   visible: false,
   editingId: 0,
@@ -439,6 +441,8 @@ const groupDialog = reactive({
     notificationEnabled: true,
     notifyCategories: ["system", "school-feed"] as Array<"system" | "school-feed">,
     notifyAudiences: ["public"] as Array<"public" | "staff">,
+    memberWelcomeEnabled: false,
+    memberWelcomeMessage: defaultMemberWelcomeMessage,
   },
 });
 
@@ -507,8 +511,6 @@ async function loadConfig() {
     defaultBoardSlug: config.value.defaultBoardSlug,
     allowPrivatePost: config.value.allowPrivatePost,
     allowGroupPost: config.value.allowGroupPost,
-    memberWelcomeEnabled: config.value.memberWelcomeEnabled,
-    memberWelcomeMessage: config.value.memberWelcomeMessage,
     notificationEnabled: config.value.notificationEnabled,
     notifyCategories: [...config.value.notifyCategories],
   });
@@ -685,6 +687,8 @@ function openGroupDialog(row?: any) {
     notificationEnabled: row?.notificationEnabled ?? true,
     notifyCategories: row?.notifyCategories?.length ? [...row.notifyCategories] : ["system", "school-feed"],
     notifyAudiences: row?.notifyAudiences?.length ? [...row.notifyAudiences] : ["public"],
+    memberWelcomeEnabled: row?.memberWelcomeEnabled ?? false,
+    memberWelcomeMessage: row?.memberWelcomeMessage || defaultMemberWelcomeMessage,
   });
   groupDialog.visible = true;
 }
