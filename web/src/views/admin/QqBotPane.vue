@@ -316,7 +316,7 @@
       </div>
     </section>
 
-    <el-dialog v-model="groupDialog.visible" title="QQ群配置" width="520px" class="group-dialog">
+    <el-dialog v-model="groupDialog.visible" title="QQ群配置" width="520px">
       <el-form label-width="100px">
         <el-form-item label="群号">
           <el-input v-model="groupDialog.form.groupId" :disabled="Boolean(groupDialog.editingId)" />
@@ -926,26 +926,6 @@ function requestMessage(error: unknown) {
   flex-wrap: wrap;
   gap: 8px 16px;
 }
-:deep(.group-dialog.el-dialog),
-:deep(.group-dialog .el-dialog) {
-  display: flex;
-  flex-direction: column;
-  max-height: calc(100vh - 48px);
-  margin-top: 24px !important;
-  margin-bottom: 24px;
-}
-:deep(.group-dialog.el-dialog .el-dialog__body),
-:deep(.group-dialog .el-dialog .el-dialog__body) {
-  min-height: 0;
-  overflow-y: auto;
-  padding-bottom: 10px;
-}
-:deep(.group-dialog.el-dialog .el-dialog__footer),
-:deep(.group-dialog .el-dialog .el-dialog__footer) {
-  flex-shrink: 0;
-  border-top: 1px solid #eef0f4;
-  padding-top: 14px;
-}
 .group-meta-tags {
   display: flex;
   flex-wrap: wrap;
@@ -1052,13 +1032,6 @@ function requestMessage(error: unknown) {
   }
 }
 @media (max-width: 720px) {
-  :deep(.group-dialog.el-dialog),
-  :deep(.group-dialog .el-dialog) {
-    width: calc(100vw - 24px) !important;
-    max-height: calc(100vh - 24px);
-    margin-top: 12px !important;
-    margin-bottom: 12px;
-  }
   .config-card,
   .list-card {
     padding: 12px;
