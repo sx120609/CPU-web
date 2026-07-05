@@ -2685,16 +2685,7 @@ function markConversationCancelled(qqId: string, groupId?: string) {
 function isExplicitBotMention(event: OneBotEvent, text: string) {
   const raw = text.trim();
   if (!raw) return false;
-  if (/(qqbot|药大拾间bot|助手|bot)\b/i.test(raw)) return true;
-  if (isDirectBotKeywordMessage(raw)) return true;
   return isMessageAtBot(event.message, event.self_id);
-}
-
-function isDirectBotKeywordMessage(text: string) {
-  const raw = String(text || "").trim();
-  if (!raw) return false;
-  if (/^(帮助|help|菜单|命令|功能|板块|板块列表|版块|分区|我的投稿|我的帖子|最近投稿|最近帖子|状态|解绑|解除绑定|投稿|群管帮助|管理帮助|群管命令|管理命令|待审加群|加群审核|入群审核|审核列表|通过加群|同意加群|拒绝加群|驳回加群|禁言|踢出|踢黑|拉黑踢|添加群管|授权群管|移除群管|取消群管|群管列表)(?:\s|$)/i.test(raw)) return true;
-  return false;
 }
 
 function isMessageAtBot(message: unknown, selfId?: number | string) {
