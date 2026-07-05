@@ -536,6 +536,11 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
   }
 
   if ((isCommandMessage(commandText) || canHandlePlainCommand) && isHelpCommand(commandText)) {
+    if (event.message_type === "group" && groupId) {
+      await logHandledInboundMessage(context, "message", "assistant:group-help");
+      await replyToEvent(context, await renderGroupHelp(config, groupId, event));
+      return { ok: true };
+    }
     await logHandledInboundMessage(context, "message", "assistant:help");
     await replyToEvent(context, await renderHelp(config.defaultBoardSlug));
     return { ok: true };
@@ -556,7 +561,8 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
   }
   if ((isCommandMessage(commandText) || canHandlePlainCommand) && isStatusCommand(commandText)) {
     if (event.message_type === "group") {
-      await replyToEvent(context, "这个功能只支持私聊使用。请私聊我后发送“状态”。");
+      await logHandledInboundMessage(context, "message", "assistant:group-status");
+      await replyToEvent(context, await renderGroupStatus(config, groupId, event));
       return { ok: true };
     }
     await logHandledInboundMessage(context, "message", "assistant:status");
@@ -1267,6 +1273,16 @@ async function submitQqPost(context: {
   if (context.event.message_type === "group" && !context.config.allowGroupPost) {
     return { message: "群内投稿暂未开启，请私聊投稿。", topicId: null };
   }
+  if (context.event.message_type === "group") {
+    try {
+      await ensureQqGroupPostingEnabled(context.groupId);
+    } catch (error) {
+      return {
+        message: getQqBotUserFacingErrorMessage(error, "当前群暂不支持投稿。"),
+        topicId: null,
+      };
+    }
+  }
   if (context.event.message_type !== "group" && !context.config.allowPrivatePost) {
     return { message: "私聊投稿暂未开启。", topicId: null };
   }
@@ -1785,9 +1801,21 @@ async function ensureQqPostingAllowed(context: {
   if (context.event.message_type === "group" && !context.config.allowGroupPost) {
     throw Errors.badRequest("群内投稿暂未开启，请私聊投稿。");
   }
+  if (context.event.message_type === "group") {
+    await ensureQqGroupPostingEnabled(context.groupId);
+  }
   if (context.event.message_type !== "group" && !context.config.allowPrivatePost) {
     throw Errors.badRequest("私聊投稿暂未开启。");
   }
+}
+
+async function ensureQqGroupPostingEnabled(groupId?: string) {
+  const normalizedGroupId = String(groupId || "").trim();
+  if (!normalizedGroupId) throw Errors.badRequest("当前群上下文缺失，暂时无法群内投稿。");
+  const group = await prisma.qqBotGroup.findUnique({ where: { groupId: normalizedGroupId } });
+  if (!group?.enabled) throw Errors.badRequest("当前群未启用 QQBot 群配置，暂不支持群内投稿。");
+  if (!group.allowPosting) throw Errors.badRequest("当前群未开启投稿功能，请私聊投稿。");
+  return group;
 }
 
 async function ensureQqBinding(qqId: string) {
@@ -2549,6 +2577,70 @@ async function renderHelp(defaultBoardSlug: string) {
   ].join("\n");
 }
 
+async function renderGroupHelp(
+  config: Awaited<ReturnType<typeof getQqBotConfigRaw>>,
+  groupId: string,
+  event?: OneBotEvent,
+) {
+  const group = await resolveQqBotGroupViewForReply(groupId, event);
+  const defaultBoardName = await resolveBoardDisplayName(group.defaultBoardSlug || config.defaultBoardSlug || "general");
+  const postingStatus = describeQqGroupPostingStatus(config, group);
+  const adminCommandLines = buildQqGroupAdminCommandLines(group);
+  return [
+    "QQBot 群聊帮助",
+    "",
+    `当前群：${group.name || group.groupId}`,
+    `群内投稿：${postingStatus}`,
+    `默认投稿区：${defaultBoardName}`,
+    "",
+    "群聊可用",
+    "• 帮助：查看当前群可用命令",
+    "• 状态：查看当前群开关状态",
+    "• 板块 / 版块 / 分区：查看当前群可投稿板块",
+    group.enabled && config.allowGroupPost && group.allowPosting
+      ? "• 投稿：开始群内投稿"
+      : "• 投稿：当前群未开启",
+    "",
+    "群管命令",
+    "• 群管帮助 / 管理命令：查看群管命令",
+    ...adminCommandLines,
+    "",
+    "私聊专用",
+    "• 绑定 绑定码：绑定站内账号",
+    "• 我的投稿：查看最近投稿记录",
+    "• 解绑：解除当前 QQ 绑定",
+    "• 个人绑定状态请私聊发送“状态”查看",
+  ].join("\n");
+}
+
+async function renderGroupStatus(
+  config: Awaited<ReturnType<typeof getQqBotConfigRaw>>,
+  groupId?: string,
+  event?: OneBotEvent,
+) {
+  const normalizedGroupId = String(groupId || "").trim();
+  if (!normalizedGroupId) {
+    return "当前消息不在已识别的群上下文里，请稍后再试。";
+  }
+  const group = await resolveQqBotGroupViewForReply(normalizedGroupId, event);
+  const defaultBoardName = await resolveBoardDisplayName(group.defaultBoardSlug || config.defaultBoardSlug || "general");
+  return [
+    "当前群状态",
+    `群名：${group.name || group.groupId}`,
+    `群内投稿：${describeQqGroupPostingStatus(config, group)}`,
+    `默认投稿区：${defaultBoardName}`,
+    `站内通知：${group.enabled && group.notificationEnabled ? "已开启" : "未开启"}`,
+    `新成员欢迎：${group.enabled && group.memberWelcomeEnabled ? "已开启" : "未开启"}`,
+    `广告过滤：${group.enabled && group.adFilterEnabled ? "已开启" : "未开启"}`,
+    `快速审核加群：${group.enabled && group.joinReviewEnabled ? "已开启" : "未开启"}`,
+    `禁言：${group.enabled && group.allowMute ? "已开启" : "未开启"}`,
+    `踢出：${group.enabled && group.allowKick ? "已开启" : "未开启"}`,
+    `踢黑：${group.enabled && group.allowKickAndBlock ? "已开启" : "未开启"}`,
+    "",
+    "个人绑定状态、最近投稿、解绑请私聊使用。",
+  ].join("\n");
+}
+
 async function renderGreetingReply(defaultBoardSlug: string) {
   const defaultBoardName = await resolveBoardDisplayName(defaultBoardSlug);
   return [
@@ -2646,27 +2738,7 @@ async function handleQqBotGroupAdminCommand(input: {
 
   if (input.command.type === "help") {
     return replyAndLog(
-      renderQqGroupAdminHelp(formatQqBotGroup(group ?? {
-        id: 0,
-        groupId: input.groupId,
-        name: extractQqBotGroupName(input.event),
-        enabled: false,
-        allowPosting: false,
-        defaultBoardSlug: null,
-        notificationEnabled: false,
-        notifyCategories: JSON.stringify(DEFAULT_GROUP_NOTIFY_CATEGORIES),
-        notifyAudiences: JSON.stringify(DEFAULT_GROUP_NOTIFY_AUDIENCES),
-        memberWelcomeEnabled: false,
-        memberWelcomeMessage: DEFAULT_MEMBER_WELCOME_MESSAGE,
-        adFilterEnabled: false,
-        joinReviewEnabled: false,
-        allowMute: false,
-        allowKick: false,
-        allowKickAndBlock: false,
-        commandUserQqIds: "[]",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })),
+      renderQqGroupAdminHelp(group ? formatQqBotGroup(group) : buildQqBotGroupFallbackView(input.groupId, input.event)),
       "assistant:group-admin-help",
     );
   }
@@ -2954,6 +3026,64 @@ function normalizeQqGroupMemberRole(value: unknown) {
   return "";
 }
 
+function buildQqBotGroupFallbackView(groupId: string, event?: OneBotEvent) {
+  return formatQqBotGroup({
+    id: 0,
+    groupId,
+    name: extractQqBotGroupName(event || {}),
+    enabled: false,
+    allowPosting: false,
+    defaultBoardSlug: null,
+    notificationEnabled: false,
+    notifyCategories: JSON.stringify(DEFAULT_GROUP_NOTIFY_CATEGORIES),
+    notifyAudiences: JSON.stringify(DEFAULT_GROUP_NOTIFY_AUDIENCES),
+    memberWelcomeEnabled: false,
+    memberWelcomeMessage: DEFAULT_MEMBER_WELCOME_MESSAGE,
+    adFilterEnabled: false,
+    joinReviewEnabled: false,
+    allowMute: false,
+    allowKick: false,
+    allowKickAndBlock: false,
+    commandUserQqIds: "[]",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+}
+
+async function resolveQqBotGroupViewForReply(groupId: string, event?: OneBotEvent) {
+  const group = await prisma.qqBotGroup.findUnique({ where: { groupId } });
+  return group ? formatQqBotGroup(group) : buildQqBotGroupFallbackView(groupId, event);
+}
+
+function describeQqGroupPostingStatus(
+  config: Awaited<ReturnType<typeof getQqBotConfigRaw>>,
+  group: QqBotGroupView,
+) {
+  if (!group.enabled) return "未开启（当前群未启用 QQBot 群配置）";
+  if (!config.allowGroupPost) return "未开启（总站群内投稿开关关闭）";
+  if (!group.allowPosting) return "未开启（当前群未开启投稿）";
+  return "已开启";
+}
+
+function buildQqGroupAdminCommandLines(group: QqBotGroupView) {
+  const lines = [`• 当前群管开关：${group.enabled ? "已启用" : "未启用"}`];
+  if (group.joinReviewEnabled) {
+    lines.push("• 待审加群：查看待审核列表");
+    lines.push("• 通过加群 QQ号 / 拒绝加群 QQ号");
+  } else {
+    lines.push("• 快速审核加群：未开启");
+  }
+  if (group.allowMute) lines.push("• 禁言 QQ号 10m：支持 10m / 1h / 1天");
+  else lines.push("• 禁言：未开启");
+  if (group.allowKick) lines.push("• 踢出 QQ号");
+  else lines.push("• 踢出：未开启");
+  if (group.allowKickAndBlock) lines.push("• 踢黑 QQ号");
+  else lines.push("• 踢黑：未开启");
+  lines.push("• 群管列表：查看本群授权用户");
+  lines.push("• 添加群管 QQ号 / 移除群管 QQ号：维护授权用户");
+  return lines;
+}
+
 function extractCommandTarget(argText: string, event: OneBotEvent) {
   const mentionedQqIds = extractMentionedQqIds(event.message, event.self_id);
   if (mentionedQqIds.length) {
@@ -3013,17 +3143,10 @@ function ensureModerationTargetAllowed(targetQqId: string, config: Awaited<Retur
 function renderQqGroupAdminHelp(group: QqBotGroupView) {
   const parts = [
     "群管命令",
-    "待审加群",
-    "通过加群 QQ号",
-    "拒绝加群 QQ号",
-    "禁言 QQ号 10m",
-    "踢出 QQ号",
-    "踢黑 QQ号",
-    "添加群管 QQ号",
-    "移除群管 QQ号",
-    "群管列表",
+    ...buildQqGroupAdminCommandLines(group),
     "",
     `当前群：${group.name || group.groupId}`,
+    `群管配置：${group.enabled ? "开" : "关"}`,
     `加群快审：${group.joinReviewEnabled ? "开" : "关"}`,
     `禁言：${group.allowMute ? "开" : "关"}`,
     `踢出：${group.allowKick ? "开" : "关"}`,
