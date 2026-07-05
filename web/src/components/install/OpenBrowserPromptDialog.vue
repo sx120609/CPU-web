@@ -181,7 +181,7 @@ defineExpose({ openDialog, autoPromptIfEligible });
 
 <style scoped>
 .content {
-  color: #1f2937;
+  color: var(--cpu-text);
   font-size: 14px;
   line-height: 1.7;
   max-width: 100%;
@@ -195,7 +195,7 @@ defineExpose({ openDialog, autoPromptIfEligible });
 
 .content b,
 .content strong {
-  color: #168776;
+  color: var(--cpu-primary);
 }
 
 .platform-picker {
@@ -207,10 +207,10 @@ defineExpose({ openDialog, autoPromptIfEligible });
 
 .platform-picker button {
   appearance: none;
-  border: 1px solid #d7e7e3;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 8px;
-  background: #f8fbff;
-  color: #475467;
+  background: var(--cpu-surface-soft);
+  color: var(--cpu-text-secondary);
   cursor: pointer;
   font: inherit;
   font-size: 13px;
@@ -220,9 +220,9 @@ defineExpose({ openDialog, autoPromptIfEligible });
 }
 
 .platform-picker button.active {
-  border-color: #168776;
-  background: #e8f7f3;
-  color: #0f766e;
+  border-color: var(--cpu-primary);
+  background: var(--el-color-primary-light-9);
+  color: var(--cpu-primary);
 }
 
 .steps {
@@ -238,7 +238,7 @@ defineExpose({ openDialog, autoPromptIfEligible });
   grid-template-columns: 24px minmax(0, 1fr);
   align-items: start;
   gap: 8px;
-  color: #374151;
+  color: var(--cpu-text);
   min-width: 0;
 }
 
@@ -257,14 +257,14 @@ defineExpose({ openDialog, autoPromptIfEligible });
   width: 22px;
   height: 22px;
   border-radius: 999px;
-  background: #e8f7f3;
-  color: #168776;
+  background: var(--el-color-primary-light-9);
+  color: var(--cpu-primary);
   font-size: 12px;
   font-weight: 700;
 }
 
 .muted {
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
 }
 
@@ -275,15 +275,15 @@ defineExpose({ openDialog, autoPromptIfEligible });
   gap: 8px;
   margin: 12px 0;
   padding: 10px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 8px;
-  background: #f8fafc;
+  background: var(--cpu-surface-soft);
 }
 
 .copy-card code {
   display: block;
   min-width: 0;
-  color: #475467;
+  color: var(--cpu-text-secondary);
   font-size: 11px;
   line-height: 1.5;
   overflow: hidden;
@@ -292,7 +292,7 @@ defineExpose({ openDialog, autoPromptIfEligible });
 }
 
 .support-note {
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -301,7 +301,7 @@ defineExpose({ openDialog, autoPromptIfEligible });
   appearance: none;
   border: 0;
   background: transparent;
-  color: #168776;
+  color: var(--cpu-primary);
   font: inherit;
   font-weight: 650;
   padding: 0;

@@ -333,6 +333,11 @@ watch(tab, (next) => {
   box-shadow: 0 2px 12px rgba(0,0,0,0.04);
 }
 
+.cpu-card:hover {
+  transform: none;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+}
+
 @media (max-width: 1100px) {
   .overview { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .ov-card-wide { grid-column: span 3; }

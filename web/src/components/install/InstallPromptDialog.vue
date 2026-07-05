@@ -277,17 +277,17 @@ defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platfo
 </script>
 
 <style scoped>
-.content { font-size: 14px; line-height: 1.7; color: #1f2937; }
+.content { font-size: 14px; line-height: 1.7; color: var(--cpu-text); }
 .content p { margin: 0 0 10px; }
-.content .muted { color: #6b7280; font-size: 12px; line-height: 1.6; }
-.content b { color: #168776; }
+.content .muted { color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.6; }
+.content b { color: var(--cpu-primary); }
 
 .bullets {
   list-style: none;
   padding: 0;
   margin: 8px 0 0;
   font-size: 13px;
-  color: #4b5563;
+  color: var(--cpu-text-secondary);
 }
 .bullets li {
   padding: 4px 0 4px 18px;
@@ -297,7 +297,7 @@ defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platfo
   content: "✓";
   position: absolute;
   left: 0;
-  color: #168776;
+  color: var(--cpu-primary);
   font-weight: 700;
 }
 
@@ -314,7 +314,7 @@ defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platfo
   align-items: center;
   gap: 10px;
   font-size: 13px;
-  color: #374151;
+  color: var(--cpu-text);
   line-height: 1.5;
 }
 .steps .num {
@@ -322,20 +322,20 @@ defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platfo
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: #168776;
-  color: #fff;
+  background: var(--cpu-primary);
+  color: #ffffff;
   display: grid;
   place-items: center;
   font-size: 12px;
   font-weight: 600;
 }
-.steps strong { color: #168776; }
+.steps strong { color: var(--cpu-primary); }
 .ic {
   display: inline-block;
   width: 18px;
   height: 18px;
   vertical-align: -3px;
-  color: #168776;
+  color: var(--cpu-primary);
   margin-left: 2px;
 }
 
@@ -347,7 +347,7 @@ defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platfo
 
 .support-note {
   margin: 12px 0 0;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -356,7 +356,7 @@ defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platfo
   appearance: none;
   border: 0;
   background: transparent;
-  color: #168776;
+  color: var(--cpu-primary);
   font: inherit;
   font-weight: 650;
   padding: 0;

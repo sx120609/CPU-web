@@ -342,7 +342,13 @@
       </div>
     </section>
 
-    <el-dialog v-model="groupDialog.visible" title="QQ群配置" width="660px">
+    <el-dialog
+      v-model="groupDialog.visible"
+      title="QQ群配置"
+      width="660px"
+      append-to-body
+      class="qqbot-group-dialog"
+    >
       <el-form label-width="100px">
         <el-form-item label="群号">
           <el-input v-model="groupDialog.form.groupId" :disabled="Boolean(groupDialog.editingId)" />
