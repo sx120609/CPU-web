@@ -29,6 +29,14 @@ export type SiteConfig = {
   aiReviewModel: string;
   aiReviewFallbackModels: string;
   aiReviewApiKey: string;
+  qqGroupAdReviewEnabled: boolean;
+  qqGroupAdReviewProvider: string;
+  qqGroupAdReviewApiUrl: string;
+  qqGroupAdReviewModel: string;
+  qqGroupAdReviewFallbackModels: string;
+  qqGroupAdReviewApiKey: string;
+  qqGroupAdReviewSystemPrompt: string;
+  qqGroupAdReviewUserPrompt: string;
   imageReviewEnabled: boolean;
   imageReviewApiUrl: string;
   imageReviewModel: string;
@@ -47,6 +55,7 @@ export type SiteConfig = {
   videoReviewUserPrompt: string;
   videoReviewConcurrency: number;
   aiReviewThreshold: number;
+  qqGroupAdReviewThreshold: number;
   imageReviewThreshold: number;
   videoReviewThreshold: number;
   aiEditSimilarityThreshold: number;
@@ -70,6 +79,8 @@ export type SiteConfig = {
 };
 export type SitePromptDefaults = Pick<
   SiteConfig,
+  | "qqGroupAdReviewSystemPrompt"
+  | "qqGroupAdReviewUserPrompt"
   | "imageReviewSystemPrompt"
   | "imageReviewUserPrompt"
   | "videoReviewSystemPrompt"
@@ -106,6 +117,14 @@ const AI_REVIEW_API_URL_KEY = "ai.review.apiUrl";
 const AI_REVIEW_MODEL_KEY = "ai.review.model";
 const AI_REVIEW_FALLBACK_MODELS_KEY = "ai.review.fallbackModels";
 const AI_REVIEW_API_KEY = "ai.review.apiKey";
+const QQ_GROUP_AD_REVIEW_ENABLED_KEY = "ai.qqGroupAdReview.enabled";
+const QQ_GROUP_AD_REVIEW_PROVIDER_KEY = "ai.qqGroupAdReview.provider";
+const QQ_GROUP_AD_REVIEW_API_URL_KEY = "ai.qqGroupAdReview.apiUrl";
+const QQ_GROUP_AD_REVIEW_MODEL_KEY = "ai.qqGroupAdReview.model";
+const QQ_GROUP_AD_REVIEW_FALLBACK_MODELS_KEY = "ai.qqGroupAdReview.fallbackModels";
+const QQ_GROUP_AD_REVIEW_API_KEY = "ai.qqGroupAdReview.apiKey";
+const QQ_GROUP_AD_REVIEW_SYSTEM_PROMPT_KEY = "ai.qqGroupAdReview.systemPrompt";
+const QQ_GROUP_AD_REVIEW_USER_PROMPT_KEY = "ai.qqGroupAdReview.userPrompt";
 const IMAGE_REVIEW_ENABLED_KEY = "ai.imageReview.enabled";
 const IMAGE_REVIEW_API_URL_KEY = "ai.imageReview.apiUrl";
 const IMAGE_REVIEW_MODEL_KEY = "ai.imageReview.model";
@@ -124,6 +143,7 @@ const VIDEO_REVIEW_SYSTEM_PROMPT_KEY = "ai.videoReview.systemPrompt";
 const VIDEO_REVIEW_USER_PROMPT_KEY = "ai.videoReview.userPrompt";
 const VIDEO_REVIEW_CONCURRENCY_KEY = "ai.videoReview.concurrency";
 const AI_REVIEW_THRESHOLD_KEY = "ai.review.threshold";
+const QQ_GROUP_AD_REVIEW_THRESHOLD_KEY = "ai.qqGroupAdReview.threshold";
 const IMAGE_REVIEW_THRESHOLD_KEY = "ai.imageReview.threshold";
 const VIDEO_REVIEW_THRESHOLD_KEY = "ai.videoReview.threshold";
 const AI_REVIEW_AUTO_PASS_SCORE_KEY = "ai.review.autoPassScore";
@@ -205,6 +225,27 @@ export const DEFAULT_IMAGE_REVIEW_PROMPTS = {
   ].join("\n"),
 } as const;
 
+export const DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS = {
+  system: [
+    "你是 QQ 群广告过滤助手。",
+    "你的任务是判断这条群消息是否属于广告、推广、拉新、招代理、刷单、兼职引流、交易导流、二维码/链接拉群或重复营销。",
+    "正常的校园交流、功能使用咨询、普通求助、二手闲聊、课程讨论、个人经验分享通常不算广告。",
+    "不要仅因出现联系方式、群号、二维码、链接或价格数字就直接判广告，要结合整段语义、营销意图、利益承诺、频率和导流倾向综合判断。",
+    "只返回 JSON。",
+  ].join(" "),
+  user: [
+    "请审核这条 QQ 群消息是否应按广告过滤，输出 JSON：",
+    "{\"risk_score\":0-100,\"risk_level\":\"low|medium|high\",\"decision\":\"auto_pass|manual_review|block\",\"reason\":\"一句短原因\",\"detail\":\"补充说明\",\"categories\":{\"spam\":0-100,\"traffic\":0-100,\"fraud\":0-100,\"marketing\":0-100,\"recruitment\":0-100}}",
+    "",
+    "群号：{{groupId}}",
+    "群名：{{groupName}}",
+    "发送者 QQ：{{qqId}}",
+    "发送者昵称：{{nickname}}",
+    "消息内容：{{content}}",
+    "附加 metadata：{{metadataJson}}",
+  ].join("\n"),
+} as const;
+
 export const DEFAULT_VIDEO_REVIEW_PROMPTS = {
   system: [
     "你是校园社区视频公开展示审核助手。",
@@ -263,6 +304,14 @@ const configCache: SiteConfig = {
   aiReviewModel: "deepseek-v4-flash",
   aiReviewFallbackModels: "",
   aiReviewApiKey: "",
+  qqGroupAdReviewEnabled: false,
+  qqGroupAdReviewProvider: "deepseek",
+  qqGroupAdReviewApiUrl: "https://api.deepseek.com/chat/completions",
+  qqGroupAdReviewModel: "deepseek-v4-flash",
+  qqGroupAdReviewFallbackModels: "",
+  qqGroupAdReviewApiKey: "",
+  qqGroupAdReviewSystemPrompt: DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.system,
+  qqGroupAdReviewUserPrompt: DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.user,
   imageReviewEnabled: false,
   imageReviewApiUrl: "https://api.openai.com/v1/chat/completions",
   imageReviewModel: "gpt-4o-mini",
@@ -281,6 +330,7 @@ const configCache: SiteConfig = {
   videoReviewUserPrompt: DEFAULT_VIDEO_REVIEW_PROMPTS.user,
   videoReviewConcurrency: 1,
   aiReviewThreshold: 24,
+  qqGroupAdReviewThreshold: 70,
   imageReviewThreshold: 36,
   videoReviewThreshold: 36,
   aiEditSimilarityThreshold: 0,
@@ -351,6 +401,14 @@ export async function loadFeatures(): Promise<void> {
           AI_REVIEW_MODEL_KEY,
           AI_REVIEW_FALLBACK_MODELS_KEY,
           AI_REVIEW_API_KEY,
+          QQ_GROUP_AD_REVIEW_ENABLED_KEY,
+          QQ_GROUP_AD_REVIEW_PROVIDER_KEY,
+          QQ_GROUP_AD_REVIEW_API_URL_KEY,
+          QQ_GROUP_AD_REVIEW_MODEL_KEY,
+          QQ_GROUP_AD_REVIEW_FALLBACK_MODELS_KEY,
+          QQ_GROUP_AD_REVIEW_API_KEY,
+          QQ_GROUP_AD_REVIEW_SYSTEM_PROMPT_KEY,
+          QQ_GROUP_AD_REVIEW_USER_PROMPT_KEY,
           IMAGE_REVIEW_ENABLED_KEY,
           IMAGE_REVIEW_API_URL_KEY,
           IMAGE_REVIEW_MODEL_KEY,
@@ -369,6 +427,7 @@ export async function loadFeatures(): Promise<void> {
           VIDEO_REVIEW_USER_PROMPT_KEY,
           VIDEO_REVIEW_CONCURRENCY_KEY,
           AI_REVIEW_THRESHOLD_KEY,
+          QQ_GROUP_AD_REVIEW_THRESHOLD_KEY,
           IMAGE_REVIEW_THRESHOLD_KEY,
           VIDEO_REVIEW_THRESHOLD_KEY,
           AI_REVIEW_AUTO_PASS_SCORE_KEY,
@@ -434,6 +493,38 @@ export async function loadFeatures(): Promise<void> {
     }
     if (r.key === AI_REVIEW_API_KEY) {
       configCache.aiReviewApiKey = String(r.value || "");
+      continue;
+    }
+    if (r.key === QQ_GROUP_AD_REVIEW_ENABLED_KEY) {
+      configCache.qqGroupAdReviewEnabled = r.value === "on";
+      continue;
+    }
+    if (r.key === QQ_GROUP_AD_REVIEW_PROVIDER_KEY) {
+      configCache.qqGroupAdReviewProvider = String(r.value || "deepseek").trim() || "deepseek";
+      continue;
+    }
+    if (r.key === QQ_GROUP_AD_REVIEW_API_URL_KEY) {
+      configCache.qqGroupAdReviewApiUrl = normalizePromptTemplate(r.value, "https://api.deepseek.com/chat/completions");
+      continue;
+    }
+    if (r.key === QQ_GROUP_AD_REVIEW_MODEL_KEY) {
+      configCache.qqGroupAdReviewModel = String(r.value || "deepseek-v4-flash").trim() || "deepseek-v4-flash";
+      continue;
+    }
+    if (r.key === QQ_GROUP_AD_REVIEW_FALLBACK_MODELS_KEY) {
+      configCache.qqGroupAdReviewFallbackModels = normalizeFallbackModelList(r.value, configCache.qqGroupAdReviewModel);
+      continue;
+    }
+    if (r.key === QQ_GROUP_AD_REVIEW_API_KEY) {
+      configCache.qqGroupAdReviewApiKey = String(r.value || "");
+      continue;
+    }
+    if (r.key === QQ_GROUP_AD_REVIEW_SYSTEM_PROMPT_KEY) {
+      configCache.qqGroupAdReviewSystemPrompt = normalizePromptTemplate(r.value, DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.system);
+      continue;
+    }
+    if (r.key === QQ_GROUP_AD_REVIEW_USER_PROMPT_KEY) {
+      configCache.qqGroupAdReviewUserPrompt = normalizePromptTemplate(r.value, DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.user);
       continue;
     }
     if (r.key === IMAGE_REVIEW_ENABLED_KEY) {
@@ -507,6 +598,10 @@ export async function loadFeatures(): Promise<void> {
     if (r.key === AI_REVIEW_THRESHOLD_KEY) {
       configCache.aiReviewThreshold = normalizeAiScore(r.value, 24);
       hasAiReviewThreshold = true;
+      continue;
+    }
+    if (r.key === QQ_GROUP_AD_REVIEW_THRESHOLD_KEY) {
+      configCache.qqGroupAdReviewThreshold = normalizeAiScore(r.value, 70);
       continue;
     }
     if (r.key === IMAGE_REVIEW_THRESHOLD_KEY) {
@@ -655,6 +750,8 @@ export function getSiteConfig(): SiteConfig {
 
 export function getSitePromptDefaults(): SitePromptDefaults {
   return {
+    qqGroupAdReviewSystemPrompt: DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.system,
+    qqGroupAdReviewUserPrompt: DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.user,
     imageReviewSystemPrompt: DEFAULT_IMAGE_REVIEW_PROMPTS.system,
     imageReviewUserPrompt: DEFAULT_IMAGE_REVIEW_PROMPTS.user,
     videoReviewSystemPrompt: DEFAULT_VIDEO_REVIEW_PROMPTS.system,
@@ -858,6 +955,7 @@ function normalizeReputationLevels(
 
 function sanitizeAiReviewConfig() {
   configCache.aiReviewThreshold = normalizeAiScore(configCache.aiReviewThreshold, 24);
+  configCache.qqGroupAdReviewThreshold = normalizeAiScore(configCache.qqGroupAdReviewThreshold, 70);
   configCache.imageReviewThreshold = normalizeAiScore(configCache.imageReviewThreshold, 36);
   configCache.videoReviewThreshold = normalizeAiScore(configCache.videoReviewThreshold, 36);
   configCache.aiEditSimilarityThreshold = normalizeAiRatio(configCache.aiEditSimilarityThreshold, 0);
@@ -871,6 +969,12 @@ function sanitizeAiReviewConfig() {
   configCache.aiReviewApiUrl = normalizePromptTemplate(configCache.aiReviewApiUrl, "https://api.deepseek.com/chat/completions");
   if (!configCache.aiReviewModel) configCache.aiReviewModel = "deepseek-v4-flash";
   configCache.aiReviewFallbackModels = normalizeFallbackModelList(configCache.aiReviewFallbackModels, configCache.aiReviewModel);
+  if (!configCache.qqGroupAdReviewProvider) configCache.qqGroupAdReviewProvider = "deepseek";
+  configCache.qqGroupAdReviewApiUrl = normalizePromptTemplate(configCache.qqGroupAdReviewApiUrl, "https://api.deepseek.com/chat/completions");
+  configCache.qqGroupAdReviewModel = String(configCache.qqGroupAdReviewModel || "deepseek-v4-flash").trim() || "deepseek-v4-flash";
+  configCache.qqGroupAdReviewFallbackModels = normalizeFallbackModelList(configCache.qqGroupAdReviewFallbackModels, configCache.qqGroupAdReviewModel);
+  configCache.qqGroupAdReviewSystemPrompt = normalizePromptTemplate(configCache.qqGroupAdReviewSystemPrompt, DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.system);
+  configCache.qqGroupAdReviewUserPrompt = normalizePromptTemplate(configCache.qqGroupAdReviewUserPrompt, DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.user);
   configCache.imageReviewApiUrl = normalizePromptTemplate(configCache.imageReviewApiUrl, "https://api.openai.com/v1/chat/completions");
   configCache.imageReviewModel = String(configCache.imageReviewModel || "gpt-4o-mini").trim() || "gpt-4o-mini";
   configCache.imageReviewFallbackModels = normalizeFallbackModelList(configCache.imageReviewFallbackModels, configCache.imageReviewModel);
@@ -923,6 +1027,14 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
     aiReviewModel: String(input.aiReviewModel ?? configCache.aiReviewModel ?? "deepseek-v4-flash").trim() || "deepseek-v4-flash",
     aiReviewFallbackModels: normalizeFallbackModelList(input.aiReviewFallbackModels, input.aiReviewModel ?? configCache.aiReviewModel),
     aiReviewApiKey: String(input.aiReviewApiKey ?? configCache.aiReviewApiKey ?? "").trim(),
+    qqGroupAdReviewEnabled: input.qqGroupAdReviewEnabled ?? configCache.qqGroupAdReviewEnabled,
+    qqGroupAdReviewProvider: String(input.qqGroupAdReviewProvider ?? configCache.qqGroupAdReviewProvider ?? "deepseek").trim() || "deepseek",
+    qqGroupAdReviewApiUrl: normalizePromptTemplate(input.qqGroupAdReviewApiUrl, configCache.qqGroupAdReviewApiUrl),
+    qqGroupAdReviewModel: String(input.qqGroupAdReviewModel ?? configCache.qqGroupAdReviewModel ?? "deepseek-v4-flash").trim() || "deepseek-v4-flash",
+    qqGroupAdReviewFallbackModels: normalizeFallbackModelList(input.qqGroupAdReviewFallbackModels, input.qqGroupAdReviewModel ?? configCache.qqGroupAdReviewModel),
+    qqGroupAdReviewApiKey: String(input.qqGroupAdReviewApiKey ?? configCache.qqGroupAdReviewApiKey ?? "").trim(),
+    qqGroupAdReviewSystemPrompt: resolvePromptTemplate(input.qqGroupAdReviewSystemPrompt, configCache.qqGroupAdReviewSystemPrompt, DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.system),
+    qqGroupAdReviewUserPrompt: resolvePromptTemplate(input.qqGroupAdReviewUserPrompt, configCache.qqGroupAdReviewUserPrompt, DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.user),
     imageReviewEnabled: input.imageReviewEnabled ?? configCache.imageReviewEnabled,
     imageReviewApiUrl: normalizePromptTemplate(input.imageReviewApiUrl, configCache.imageReviewApiUrl),
     imageReviewModel: String(input.imageReviewModel ?? configCache.imageReviewModel ?? "gpt-4o-mini").trim() || "gpt-4o-mini",
@@ -946,6 +1058,7 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
         ?? (input as any).aiReviewBlockScore,
       configCache.aiReviewThreshold,
     ),
+    qqGroupAdReviewThreshold: normalizeAiScore(input.qqGroupAdReviewThreshold, configCache.qqGroupAdReviewThreshold),
     imageReviewThreshold: normalizeAiScore(
       (input as Partial<SiteConfig> & { imageReviewAutoPassScore?: number; imageReviewBlockScore?: number }).imageReviewThreshold
         ?? (input as any).imageReviewAutoPassScore
@@ -996,6 +1109,46 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       where: { key: AI_REVIEW_API_KEY },
       update: { value: next.aiReviewApiKey },
       create: { key: AI_REVIEW_API_KEY, value: next.aiReviewApiKey },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: QQ_GROUP_AD_REVIEW_ENABLED_KEY },
+      update: { value: next.qqGroupAdReviewEnabled ? "on" : "off" },
+      create: { key: QQ_GROUP_AD_REVIEW_ENABLED_KEY, value: next.qqGroupAdReviewEnabled ? "on" : "off" },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: QQ_GROUP_AD_REVIEW_PROVIDER_KEY },
+      update: { value: next.qqGroupAdReviewProvider },
+      create: { key: QQ_GROUP_AD_REVIEW_PROVIDER_KEY, value: next.qqGroupAdReviewProvider },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: QQ_GROUP_AD_REVIEW_API_URL_KEY },
+      update: { value: next.qqGroupAdReviewApiUrl },
+      create: { key: QQ_GROUP_AD_REVIEW_API_URL_KEY, value: next.qqGroupAdReviewApiUrl },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: QQ_GROUP_AD_REVIEW_MODEL_KEY },
+      update: { value: next.qqGroupAdReviewModel },
+      create: { key: QQ_GROUP_AD_REVIEW_MODEL_KEY, value: next.qqGroupAdReviewModel },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: QQ_GROUP_AD_REVIEW_FALLBACK_MODELS_KEY },
+      update: { value: next.qqGroupAdReviewFallbackModels },
+      create: { key: QQ_GROUP_AD_REVIEW_FALLBACK_MODELS_KEY, value: next.qqGroupAdReviewFallbackModels },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: QQ_GROUP_AD_REVIEW_API_KEY },
+      update: { value: next.qqGroupAdReviewApiKey },
+      create: { key: QQ_GROUP_AD_REVIEW_API_KEY, value: next.qqGroupAdReviewApiKey },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: QQ_GROUP_AD_REVIEW_SYSTEM_PROMPT_KEY },
+      update: { value: next.qqGroupAdReviewSystemPrompt },
+      create: { key: QQ_GROUP_AD_REVIEW_SYSTEM_PROMPT_KEY, value: next.qqGroupAdReviewSystemPrompt },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: QQ_GROUP_AD_REVIEW_USER_PROMPT_KEY },
+      update: { value: next.qqGroupAdReviewUserPrompt },
+      create: { key: QQ_GROUP_AD_REVIEW_USER_PROMPT_KEY, value: next.qqGroupAdReviewUserPrompt },
     }),
     prisma.siteSetting.upsert({
       where: { key: IMAGE_REVIEW_ENABLED_KEY },
@@ -1086,6 +1239,11 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       where: { key: AI_REVIEW_THRESHOLD_KEY },
       update: { value: String(next.aiReviewThreshold) },
       create: { key: AI_REVIEW_THRESHOLD_KEY, value: String(next.aiReviewThreshold) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: QQ_GROUP_AD_REVIEW_THRESHOLD_KEY },
+      update: { value: String(next.qqGroupAdReviewThreshold) },
+      create: { key: QQ_GROUP_AD_REVIEW_THRESHOLD_KEY, value: String(next.qqGroupAdReviewThreshold) },
     }),
     prisma.siteSetting.upsert({
       where: { key: IMAGE_REVIEW_THRESHOLD_KEY },

@@ -84,6 +84,21 @@
               <el-checkbox label="school-feed">校园公告</el-checkbox>
             </el-checkbox-group>
           </el-form-item>
+          <el-form-item label="超级管理员">
+            <el-select
+              v-model="form.superAdminQqIds"
+              multiple
+              filterable
+              allow-create
+              default-first-option
+              clearable
+              collapse-tags
+              collapse-tags-tooltip
+              :disabled="configDisabled"
+              placeholder="输入可跨群执行群管命令的 QQ 号"
+            />
+            <div class="form-tip">超级管理员按 QQ 号识别，不依赖站内绑定。可跨群执行加群审核、禁言、踢出和授权维护。</div>
+          </el-form-item>
         </el-form>
 
         <div class="actions">
@@ -148,12 +163,17 @@
       <el-table :data="groups" v-loading="groupsLoading" size="small" class="interactive-table">
         <el-table-column prop="groupId" label="群号" width="150" />
         <el-table-column prop="name" label="名称" min-width="160" />
-        <el-table-column label="开关" min-width="220">
+        <el-table-column label="开关" min-width="420">
           <template #default="{ row }">
             <el-tag :type="row.enabled ? 'success' : 'info'" size="small">{{ row.enabled ? "启用" : "停用" }}</el-tag>
             <el-tag :type="row.allowPosting ? 'warning' : 'info'" size="small">投稿 {{ row.allowPosting ? "开" : "关" }}</el-tag>
             <el-tag :type="row.notificationEnabled ? 'success' : 'info'" size="small">通知 {{ row.notificationEnabled ? "开" : "关" }}</el-tag>
             <el-tag :type="row.memberWelcomeEnabled ? 'success' : 'info'" size="small">欢迎 {{ row.memberWelcomeEnabled ? "开" : "关" }}</el-tag>
+            <el-tag :type="row.adFilterEnabled ? 'danger' : 'info'" size="small">广告 {{ row.adFilterEnabled ? "开" : "关" }}</el-tag>
+            <el-tag :type="row.joinReviewEnabled ? 'warning' : 'info'" size="small">加群审 {{ row.joinReviewEnabled ? "开" : "关" }}</el-tag>
+            <el-tag :type="row.allowMute ? 'warning' : 'info'" size="small">禁言 {{ row.allowMute ? "开" : "关" }}</el-tag>
+            <el-tag :type="row.allowKick ? 'warning' : 'info'" size="small">踢出 {{ row.allowKick ? "开" : "关" }}</el-tag>
+            <el-tag :type="row.allowKickAndBlock ? 'danger' : 'info'" size="small">踢黑 {{ row.allowKickAndBlock ? "开" : "关" }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="通知规则" min-width="240">
@@ -184,6 +204,8 @@
               <el-tag :type="row.allowPosting ? 'warning' : 'info'" size="small">投稿 {{ row.allowPosting ? "开" : "关" }}</el-tag>
               <el-tag :type="row.notificationEnabled ? 'success' : 'info'" size="small">通知 {{ row.notificationEnabled ? "开" : "关" }}</el-tag>
               <el-tag :type="row.memberWelcomeEnabled ? 'success' : 'info'" size="small">欢迎 {{ row.memberWelcomeEnabled ? "开" : "关" }}</el-tag>
+              <el-tag :type="row.adFilterEnabled ? 'danger' : 'info'" size="small">广告 {{ row.adFilterEnabled ? "开" : "关" }}</el-tag>
+              <el-tag :type="row.joinReviewEnabled ? 'warning' : 'info'" size="small">加群审 {{ row.joinReviewEnabled ? "开" : "关" }}</el-tag>
             </div>
           </div>
           <div class="record-meta">
@@ -191,6 +213,7 @@
             <span>通知类型：{{ formatGroupNotifyCategories(row.notifyCategories).join(" / ") || "未设置" }}</span>
             <span>通知受众：{{ formatGroupNotifyAudiences(row.notifyAudiences).join(" / ") || "未设置" }}</span>
             <span>新成员欢迎：{{ row.memberWelcomeEnabled ? "开启" : "关闭" }}</span>
+            <span>群管授权：{{ row.commandUserQqIds.length ? `${row.commandUserQqIds.length} 人` : "未设置" }}</span>
           </div>
           <div class="record-actions">
             <el-button link type="primary" :disabled="isGroupBusy(row)" @click="openGroupDialog(row)">编辑</el-button>
@@ -272,6 +295,9 @@
             <el-option label="投稿" value="post" />
             <el-option label="通知" value="notification" />
             <el-option label="消息" value="message" />
+            <el-option label="群管命令" value="group-command" />
+            <el-option label="加群审核" value="group-join-request" />
+            <el-option label="广告过滤" value="group-ad-filter" />
             <el-option label="入群事件" value="group-member-increase" />
             <el-option label="新成员欢迎" value="group-member-welcome" />
             <el-option label="Webhook" value="webhook" />
@@ -316,7 +342,7 @@
       </div>
     </section>
 
-    <el-dialog v-model="groupDialog.visible" title="QQ群配置" width="520px">
+    <el-dialog v-model="groupDialog.visible" title="QQ群配置" width="660px">
       <el-form label-width="100px">
         <el-form-item label="群号">
           <el-input v-model="groupDialog.form.groupId" :disabled="Boolean(groupDialog.editingId)" />
@@ -335,6 +361,11 @@
             <el-checkbox v-model="groupDialog.form.allowPosting">允许投稿</el-checkbox>
             <el-checkbox v-model="groupDialog.form.notificationEnabled">接收群通知</el-checkbox>
             <el-checkbox v-model="groupDialog.form.memberWelcomeEnabled">新成员欢迎</el-checkbox>
+            <el-checkbox v-model="groupDialog.form.adFilterEnabled">广告过滤</el-checkbox>
+            <el-checkbox v-model="groupDialog.form.joinReviewEnabled">快速审核加群</el-checkbox>
+            <el-checkbox v-model="groupDialog.form.allowMute">允许禁言</el-checkbox>
+            <el-checkbox v-model="groupDialog.form.allowKick">允许踢出</el-checkbox>
+            <el-checkbox v-model="groupDialog.form.allowKickAndBlock">允许踢出并拉黑</el-checkbox>
           </div>
         </el-form-item>
         <el-form-item label="欢迎私聊">
@@ -360,6 +391,20 @@
             <el-checkbox label="public">普通用户群</el-checkbox>
             <el-checkbox label="staff">管理群（管理员 / 论坛管理员）</el-checkbox>
           </el-checkbox-group>
+        </el-form-item>
+        <el-form-item label="授权用户">
+          <el-select
+            v-model="groupDialog.form.commandUserQqIds"
+            multiple
+            filterable
+            allow-create
+            default-first-option
+            clearable
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="输入可在群里执行群管命令的 QQ 号"
+          />
+          <div class="form-tip">这些用户可在当前群执行已开启的群管命令；新增/移除授权用户仍建议由群管理员或超级管理员执行。</div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -424,6 +469,7 @@ const form = reactive({
   allowGroupPost: false,
   notificationEnabled: true,
   notifyCategories: ["reply", "mention", "like", "system", "service-tool", "school-feed"] as string[],
+  superAdminQqIds: [] as string[],
 });
 
 const test = reactive({ qqId: "", groupId: "", message: "药大拾间 QQBot 测试消息" });
@@ -443,6 +489,12 @@ const groupDialog = reactive({
     notifyAudiences: ["public"] as Array<"public" | "staff">,
     memberWelcomeEnabled: false,
     memberWelcomeMessage: defaultMemberWelcomeMessage,
+    adFilterEnabled: false,
+    joinReviewEnabled: false,
+    allowMute: false,
+    allowKick: false,
+    allowKickAndBlock: false,
+    commandUserQqIds: [] as string[],
   },
 });
 
@@ -513,6 +565,7 @@ async function loadConfig() {
     allowGroupPost: config.value.allowGroupPost,
     notificationEnabled: config.value.notificationEnabled,
     notifyCategories: [...config.value.notifyCategories],
+    superAdminQqIds: [...config.value.superAdminQqIds],
   });
 }
 
@@ -689,6 +742,12 @@ function openGroupDialog(row?: any) {
     notifyAudiences: row?.notifyAudiences?.length ? [...row.notifyAudiences] : ["public"],
     memberWelcomeEnabled: row?.memberWelcomeEnabled ?? false,
     memberWelcomeMessage: row?.memberWelcomeMessage || defaultMemberWelcomeMessage,
+    adFilterEnabled: row?.adFilterEnabled ?? false,
+    joinReviewEnabled: row?.joinReviewEnabled ?? false,
+    allowMute: row?.allowMute ?? false,
+    allowKick: row?.allowKick ?? false,
+    allowKickAndBlock: row?.allowKickAndBlock ?? false,
+    commandUserQqIds: row?.commandUserQqIds?.length ? [...row.commandUserQqIds] : [],
   });
   groupDialog.visible = true;
 }
@@ -704,6 +763,7 @@ async function saveGroup() {
     });
     groupDialog.visible = false;
     await loadGroups();
+    ElMessage.success("群配置已保存");
   } finally {
     savingGroup.value = false;
     groupBusyId.value = null;
@@ -724,6 +784,7 @@ async function removeGroup(row: any) {
     if (!confirmed) return;
     await adminApi.deleteQqBotGroup(row.id);
     await loadGroups();
+    ElMessage.success("群配置已删除");
   } finally {
     groupBusyId.value = null;
   }

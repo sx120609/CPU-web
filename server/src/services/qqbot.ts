@@ -33,6 +33,7 @@ import {
   isHelpCommand,
   isLikelyConversationCommandMessage,
   isMyPostsCommand,
+  parseQqGroupAdminCommand,
   isPrivatePlainCommand,
   isStatusCommand,
   isUnbindCommand,
@@ -80,6 +81,7 @@ import {
   shouldRunAiReview,
   syncTopicAiTags,
 } from "./topicAiReview";
+import { reviewQqGroupMessageForAd } from "./qqbotGroupAdReview";
 
 export { buildQqBotDebugExport };
 export { connectQqBotWebSocket };
@@ -99,6 +101,7 @@ export type QqBotConfigView = {
   allowGroupPost: boolean;
   notificationEnabled: boolean;
   notifyCategories: string[];
+  superAdminQqIds: string[];
   webhookPath: string;
   createdAt: Date;
   updatedAt: Date;
@@ -119,6 +122,12 @@ export type QqBotGroupView = {
   notifyAudiences: QqBotGroupNotifyAudience[];
   memberWelcomeEnabled: boolean;
   memberWelcomeMessage: string;
+  adFilterEnabled: boolean;
+  joinReviewEnabled: boolean;
+  allowMute: boolean;
+  allowKick: boolean;
+  allowKickAndBlock: boolean;
+  commandUserQqIds: string[];
   createdAt: Date;
   updatedAt: Date;
 };
@@ -166,7 +175,7 @@ type OneBotEvent = {
   request_id?: number | string;
   message?: unknown;
   raw_message?: string;
-  sender?: { nickname?: string; card?: string; user_id?: number | string };
+  sender?: { nickname?: string; card?: string; user_id?: number | string; role?: string };
 };
 
 type QqBotDoubtFriendRequest = {
@@ -239,6 +248,7 @@ export function formatQqBotConfig(config: Awaited<ReturnType<typeof getQqBotConf
     allowGroupPost: config.allowGroupPost,
     notificationEnabled: config.notificationEnabled,
     notifyCategories: parseQqBotNotifyCategories(config.notifyCategories),
+    superAdminQqIds: normalizeQqBotQqIdList(parseStringArray(config.superAdminQqIds || "", [])),
     webhookPath: "/api/qqbot/webhook",
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
@@ -293,6 +303,12 @@ export function formatQqBotGroup(group: {
   notifyAudiences?: string | null;
   memberWelcomeEnabled: boolean;
   memberWelcomeMessage: string | null;
+  adFilterEnabled: boolean;
+  joinReviewEnabled: boolean;
+  allowMute: boolean;
+  allowKick: boolean;
+  allowKickAndBlock: boolean;
+  commandUserQqIds?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }): QqBotGroupView {
@@ -308,6 +324,12 @@ export function formatQqBotGroup(group: {
     notifyAudiences: normalizeQqBotGroupNotifyAudiences(parseStringArray(group.notifyAudiences || "", DEFAULT_GROUP_NOTIFY_AUDIENCES)),
     memberWelcomeEnabled: group.memberWelcomeEnabled,
     memberWelcomeMessage: group.memberWelcomeMessage || DEFAULT_MEMBER_WELCOME_MESSAGE,
+    adFilterEnabled: group.adFilterEnabled,
+    joinReviewEnabled: group.joinReviewEnabled,
+    allowMute: group.allowMute,
+    allowKick: group.allowKick,
+    allowKickAndBlock: group.allowKickAndBlock,
+    commandUserQqIds: normalizeQqBotQqIdList(parseStringArray(group.commandUserQqIds || "", [])),
     createdAt: group.createdAt,
     updatedAt: group.updatedAt,
   };
@@ -325,6 +347,7 @@ export async function updateQqBotConfig(input: {
   allowGroupPost?: boolean;
   notificationEnabled?: boolean;
   notifyCategories?: string[];
+  superAdminQqIds?: string[];
 }) {
   const data: any = {};
   if (input.enabled !== undefined) data.enabled = input.enabled;
@@ -344,6 +367,9 @@ export async function updateQqBotConfig(input: {
   if (input.notificationEnabled !== undefined) data.notificationEnabled = input.notificationEnabled;
   if (input.notifyCategories !== undefined) {
     data.notifyCategories = JSON.stringify(normalizePersonalNotifyCategories(input.notifyCategories));
+  }
+  if (input.superAdminQqIds !== undefined) {
+    data.superAdminQqIds = JSON.stringify(normalizeQqBotQqIdList(input.superAdminQqIds));
   }
   const updated = await prisma.qqBotConfig.upsert({
     where: { id: CONFIG_ID },
@@ -492,6 +518,22 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     if (handled) return handled;
   }
   const canHandlePlainCommand = event.message_type !== "group" || isExplicitBotMention(event, messageText);
+  const groupAdminCommand = event.message_type === "group" && groupId && (isCommandMessage(commandText) || canHandlePlainCommand)
+    ? parseQqGroupAdminCommand(commandText)
+    : null;
+
+  if (groupAdminCommand && groupId) {
+    const handled = await handleQqBotGroupAdminCommand({
+      config,
+      event,
+      qqId,
+      groupId,
+      messageText,
+      commandText,
+      command: groupAdminCommand,
+    });
+    if (handled) return { ok: true };
+  }
 
   if ((isCommandMessage(commandText) || canHandlePlainCommand) && isHelpCommand(commandText)) {
     await logHandledInboundMessage(context, "message", "assistant:help");
@@ -643,6 +685,26 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, renderPrivateFallbackReply());
     return { ok: true };
   }
+  if (!groupId) {
+    await logQqBotMessage({
+      direction: "inbound",
+      eventType: "message",
+      status: "ignored",
+      qqId,
+      result: "group message 缺少 group_id",
+      rawPayload: event,
+    });
+    return { ignored: true };
+  }
+
+  const adFiltered = await maybeHandleQqGroupAdFilter({
+    config,
+    event,
+    qqId,
+    groupId,
+    messageText,
+  });
+  if (adFiltered) return { ok: true };
 
   await logQqBotMessage({
     direction: "inbound",
@@ -712,6 +774,15 @@ async function handleQqBotRequestEvent(
       rawPayload: event,
     });
     return { ok: true, autoAccepted: "group-invite" };
+  }
+  if (requestType === "group" && subType === "add" && groupId && qqId) {
+    return handleQqBotGroupJoinRequestEvent(event, {
+      flag,
+      qqId,
+      groupId,
+      nickname: extractQqRequesterNickname(event),
+      comment: String(event.comment || "").trim(),
+    });
   }
   await logQqBotMessage({
     direction: "inbound",
@@ -842,6 +913,95 @@ async function handleQqBotGroupMemberIncrease(
   }
 }
 
+async function handleQqBotGroupJoinRequestEvent(
+  event: OneBotEvent,
+  target: { flag: string; qqId: string; groupId: string; nickname?: string | null; comment?: string | null },
+) {
+  const group = await prisma.qqBotGroup.findUnique({ where: { groupId: target.groupId } });
+  if (!group?.enabled) {
+    await logQqBotMessage({
+      direction: "inbound",
+      eventType: "group-join-request",
+      status: "ignored",
+      qqId: target.qqId,
+      groupId: target.groupId,
+      result: group ? "QQ群配置已停用" : "QQ群未配置",
+      rawPayload: event,
+    });
+    return { ignored: true };
+  }
+  if (!group.joinReviewEnabled) {
+    await logQqBotMessage({
+      direction: "inbound",
+      eventType: "group-join-request",
+      status: "ignored",
+      qqId: target.qqId,
+      groupId: target.groupId,
+      result: "该群未开启快速审核加群",
+      rawPayload: event,
+    });
+    return { ignored: true };
+  }
+
+  await prisma.qqBotGroupJoinRequest.upsert({
+    where: { flag: target.flag },
+    create: {
+      groupId: target.groupId,
+      qqId: target.qqId,
+      nickname: target.nickname || null,
+      comment: target.comment || null,
+      flag: target.flag,
+      status: "pending",
+      rawPayload: JSON.stringify(event).slice(0, 8000),
+    },
+    update: {
+      qqId: target.qqId,
+      nickname: target.nickname || null,
+      comment: target.comment || null,
+      status: "pending",
+      handledAction: null,
+      handledByQqId: null,
+      handledAt: null,
+      rawPayload: JSON.stringify(event).slice(0, 8000),
+    },
+  });
+
+  const groupView = formatQqBotGroup(group);
+  const noticeMessage = [
+    "收到新的加群申请",
+    `申请 QQ：${target.qqId}`,
+    `申请昵称：${target.nickname || "未提供"}`,
+    `验证信息：${target.comment || "无"}`,
+    "可用命令：待审加群 / 通过加群 QQ号 / 拒绝加群 QQ号",
+  ].join("\n");
+
+  await sendQqMessage({ groupId: target.groupId }, noticeMessage).catch(async (error) => {
+    await logQqBotMessage({
+      direction: "outbound",
+      eventType: "group-join-request-notice",
+      status: "error",
+      qqId: target.qqId,
+      groupId: target.groupId,
+      content: noticeMessage.slice(0, 1000),
+      result: String((error as any)?.message || error || "发送加群审核通知失败").slice(0, 500),
+      rawPayload: event,
+    });
+    return null;
+  });
+
+  await logQqBotMessage({
+    direction: "inbound",
+    eventType: "group-join-request",
+    status: "ok",
+    qqId: target.qqId,
+    groupId: target.groupId,
+    content: `${target.nickname || ""} ${target.comment || ""}`.trim().slice(0, 500),
+    result: `已记录待审申请并通知群内管理员（${groupView.name || target.groupId}）`,
+    rawPayload: event,
+  });
+  return { ok: true, pendingJoinRequest: true };
+}
+
 async function ensureQqBotPostingGroup(input: {
   groupId?: string;
   config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
@@ -880,6 +1040,18 @@ function extractQqBotGroupName(event: OneBotEvent) {
     || payload?.group?.group_name
     || payload?.group?.name
     || payload?.name
+    || "",
+  ).trim() || null;
+}
+
+function extractQqRequesterNickname(event: OneBotEvent) {
+  const payload = event as Record<string, any>;
+  return String(
+    event.sender?.card
+    || event.sender?.nickname
+    || payload?.nickname
+    || payload?.user?.nickname
+    || payload?.requester_nickname
     || "",
   ).trim() || null;
 }
@@ -2425,7 +2597,7 @@ function isExplicitBotMention(event: OneBotEvent, text: string) {
 function isDirectBotKeywordMessage(text: string) {
   const raw = String(text || "").trim();
   if (!raw) return false;
-  if (/^(帮助|help|菜单|命令|功能|板块|板块列表|版块|分区|我的投稿|我的帖子|最近投稿|最近帖子|状态|解绑|解除绑定|投稿)(?:\s|$)/i.test(raw)) return true;
+  if (/^(帮助|help|菜单|命令|功能|板块|板块列表|版块|分区|我的投稿|我的帖子|最近投稿|最近帖子|状态|解绑|解除绑定|投稿|群管帮助|管理帮助|群管命令|管理命令|待审加群|加群审核|入群审核|审核列表|通过加群|同意加群|拒绝加群|驳回加群|禁言|踢出|踢黑|拉黑踢|添加群管|授权群管|移除群管|取消群管|群管列表)(?:\s|$)/i.test(raw)) return true;
   return false;
 }
 
@@ -2443,6 +2615,446 @@ function shouldHandleForwardPostInContext(context: {
   if (!context.forwardPayload) return false;
   if (context.event.message_type !== "group") return true;
   return isExplicitBotMention(context.event, context.messageText);
+}
+
+async function handleQqBotGroupAdminCommand(input: {
+  config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
+  event: OneBotEvent;
+  qqId: string;
+  groupId: string;
+  messageText: string;
+  commandText: string;
+  command: NonNullable<ReturnType<typeof parseQqGroupAdminCommand>>;
+}) {
+  const group = await prisma.qqBotGroup.findUnique({ where: { groupId: input.groupId } });
+  const replyAndLog = async (message: string, result: string, status: "ok" | "ignored" | "error" = "ok") => {
+    await sendQqMessage({ groupId: input.groupId }, message).catch(() => undefined);
+    await logQqBotMessage({
+      direction: "inbound",
+      eventType: "group-command",
+      status,
+      qqId: input.qqId,
+      groupId: input.groupId,
+      messageId: input.event.message_id ? String(input.event.message_id) : undefined,
+      command: input.command.type,
+      content: input.messageText.slice(0, 500),
+      result,
+      rawPayload: input.event,
+    });
+    return true;
+  };
+
+  if (input.command.type === "help") {
+    return replyAndLog(
+      renderQqGroupAdminHelp(formatQqBotGroup(group ?? {
+        id: 0,
+        groupId: input.groupId,
+        name: extractQqBotGroupName(input.event),
+        enabled: false,
+        allowPosting: false,
+        defaultBoardSlug: null,
+        notificationEnabled: false,
+        notifyCategories: JSON.stringify(DEFAULT_GROUP_NOTIFY_CATEGORIES),
+        notifyAudiences: JSON.stringify(DEFAULT_GROUP_NOTIFY_AUDIENCES),
+        memberWelcomeEnabled: false,
+        memberWelcomeMessage: DEFAULT_MEMBER_WELCOME_MESSAGE,
+        adFilterEnabled: false,
+        joinReviewEnabled: false,
+        allowMute: false,
+        allowKick: false,
+        allowKickAndBlock: false,
+        commandUserQqIds: "[]",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })),
+      "assistant:group-admin-help",
+    );
+  }
+
+  if (!group?.enabled) {
+    return replyAndLog("当前群还没有启用 QQBot 群管配置，请先在后台开启对应群功能。", "group-disabled", "ignored");
+  }
+
+  const permission = await resolveQqGroupCommandPermission({
+    config: input.config,
+    group,
+    qqId: input.qqId,
+    event: input.event,
+  });
+  if (!permission.allowed) {
+    return replyAndLog("只有群管理员、已授权用户或 QQBot 超级管理员可以执行群管命令。", "permission-denied", "ignored");
+  }
+
+  try {
+    if (input.command.type === "list-join-requests") {
+      if (!group.joinReviewEnabled) {
+        return replyAndLog("当前群未开启快速审核加群。", "join-review-disabled", "ignored");
+      }
+      const rows = await prisma.qqBotGroupJoinRequest.findMany({
+        where: { groupId: input.groupId, status: "pending" },
+        orderBy: { createdAt: "asc" },
+        take: 10,
+      });
+      return replyAndLog(renderPendingJoinRequests(rows), "assistant:list-join-requests");
+    }
+
+    if (input.command.type === "approve-join" || input.command.type === "reject-join") {
+      if (!group.joinReviewEnabled) {
+        return replyAndLog("当前群未开启快速审核加群。", "join-review-disabled", "ignored");
+      }
+      const target = extractCommandTarget(input.command.argText, input.event);
+      if (!target?.qqId) {
+        return replyAndLog("请带上待审核的 QQ 号，例如：通过加群 123456789。", "join-target-missing", "ignored");
+      }
+      const request = await prisma.qqBotGroupJoinRequest.findFirst({
+        where: { groupId: input.groupId, qqId: target.qqId, status: "pending" },
+        orderBy: { createdAt: "desc" },
+      });
+      if (!request) {
+        return replyAndLog(`没有找到 QQ ${target.qqId} 的待审加群申请。`, "join-request-not-found", "ignored");
+      }
+      const approve = input.command.type === "approve-join";
+      await callQqBotAction("set_group_add_request", {
+        flag: request.flag,
+        sub_type: "add",
+        approve,
+      });
+      await prisma.qqBotGroupJoinRequest.update({
+        where: { id: request.id },
+        data: {
+          status: approve ? "approved" : "rejected",
+          handledAction: approve ? "approve" : "reject",
+          handledByQqId: input.qqId,
+          handledAt: new Date(),
+        },
+      });
+      return replyAndLog(
+        approve ? `已通过 QQ ${target.qqId} 的加群申请。` : `已拒绝 QQ ${target.qqId} 的加群申请。`,
+        `assistant:${input.command.type}`,
+      );
+    }
+
+    if (input.command.type === "mute") {
+      if (!group.allowMute) {
+        return replyAndLog("当前群未开启禁言功能。", "mute-disabled", "ignored");
+      }
+      const target = extractCommandTarget(input.command.argText, input.event);
+      if (!target?.qqId) {
+        return replyAndLog("请带上目标 QQ 号，例如：禁言 123456789 10m。", "mute-target-missing", "ignored");
+      }
+      const durationSeconds = parseMuteDurationSeconds(target.restText);
+      if (!durationSeconds) {
+        return replyAndLog("请填写禁言时长，例如：禁言 123456789 10m / 1h / 1天。", "mute-duration-missing", "ignored");
+      }
+      ensureModerationTargetAllowed(target.qqId, input.config, input.event);
+      await callQqBotAction("set_group_ban", {
+        group_id: Number(input.groupId) || input.groupId,
+        user_id: Number(target.qqId) || target.qqId,
+        duration: durationSeconds,
+      });
+      return replyAndLog(`已禁言 QQ ${target.qqId}，时长 ${formatMuteDuration(durationSeconds)}。`, "assistant:mute");
+    }
+
+    if (input.command.type === "kick" || input.command.type === "kick-block") {
+      const featureEnabled = input.command.type === "kick" ? group.allowKick : group.allowKickAndBlock;
+      if (!featureEnabled) {
+        return replyAndLog(
+          input.command.type === "kick" ? "当前群未开启踢出功能。" : "当前群未开启踢出并拉黑功能。",
+          `${input.command.type}-disabled`,
+          "ignored",
+        );
+      }
+      const target = extractCommandTarget(input.command.argText, input.event);
+      if (!target?.qqId) {
+        return replyAndLog(
+          input.command.type === "kick" ? "请带上目标 QQ 号，例如：踢出 123456789。" : "请带上目标 QQ 号，例如：踢黑 123456789。",
+          `${input.command.type}-target-missing`,
+          "ignored",
+        );
+      }
+      ensureModerationTargetAllowed(target.qqId, input.config, input.event);
+      await callQqBotAction("set_group_kick", {
+        group_id: Number(input.groupId) || input.groupId,
+        user_id: Number(target.qqId) || target.qqId,
+        reject_add_request: input.command.type === "kick-block",
+      });
+      return replyAndLog(
+        input.command.type === "kick"
+          ? `已将 QQ ${target.qqId} 踢出群聊。`
+          : `已将 QQ ${target.qqId} 踢出群聊并加入拒绝名单。`,
+        `assistant:${input.command.type}`,
+      );
+    }
+
+    if (input.command.type === "add-command-user" || input.command.type === "remove-command-user") {
+      if (!permission.canManageCommandUsers) {
+        return replyAndLog("只有群管理员或 QQBot 超级管理员可以维护群管授权用户。", "command-user-manage-denied", "ignored");
+      }
+      const target = extractCommandTarget(input.command.argText, input.event);
+      if (!target?.qqId) {
+        return replyAndLog(
+          input.command.type === "add-command-user" ? "请带上要授权的 QQ 号，例如：添加群管 123456789。" : "请带上要移除的 QQ 号，例如：移除群管 123456789。",
+          "command-user-target-missing",
+          "ignored",
+        );
+      }
+      const next = new Set(normalizeQqBotQqIdList(parseStringArray(group.commandUserQqIds || "", [])));
+      if (input.command.type === "add-command-user") next.add(target.qqId);
+      else next.delete(target.qqId);
+      await prisma.qqBotGroup.update({
+        where: { id: group.id },
+        data: { commandUserQqIds: JSON.stringify(Array.from(next)) },
+      });
+      return replyAndLog(
+        input.command.type === "add-command-user"
+          ? `已把 QQ ${target.qqId} 加入本群授权用户。`
+          : `已把 QQ ${target.qqId} 从本群授权用户中移除。`,
+        `assistant:${input.command.type}`,
+      );
+    }
+
+    if (input.command.type === "list-command-users") {
+      const commandUsers = normalizeQqBotQqIdList(parseStringArray(group.commandUserQqIds || "", []));
+      return replyAndLog(renderCommandUserList(commandUsers), "assistant:list-command-users");
+    }
+  } catch (error) {
+    return replyAndLog(
+      getQqBotUserFacingErrorMessage(error, "群管命令执行失败，请稍后再试。"),
+      String((error as any)?.message || error || "group-command-error").slice(0, 500),
+      "error",
+    );
+  }
+
+  return false;
+}
+
+async function maybeHandleQqGroupAdFilter(input: {
+  config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
+  event: OneBotEvent;
+  qqId: string;
+  groupId: string;
+  messageText: string;
+}) {
+  const messageText = String(input.messageText || "").trim();
+  const botQqId = readConfigBotQqId(input.config);
+  if (!messageText) return false;
+  if (isCommandMessage(messageText) || isExplicitBotMention(input.event, messageText)) return false;
+  if (input.qqId && (input.qqId === botQqId || String(input.event.self_id || "") === input.qqId)) return false;
+
+  const group = await prisma.qqBotGroup.findUnique({ where: { groupId: input.groupId } });
+  if (!group?.enabled || !group.adFilterEnabled) return false;
+
+  try {
+    const review = await reviewQqGroupMessageForAd({
+      groupId: input.groupId,
+      groupName: group.name,
+      qqId: input.qqId,
+      nickname: input.event.sender?.card || input.event.sender?.nickname || null,
+      content: messageText,
+      metadata: {
+        messageId: input.event.message_id ? String(input.event.message_id) : "",
+        rawMessage: String(input.event.raw_message || "").slice(0, 500),
+      },
+    });
+    if (review.action !== "block") return false;
+    if (!input.event.message_id) {
+      await logQqBotMessage({
+        direction: "inbound",
+        eventType: "group-ad-filter",
+        status: "error",
+        qqId: input.qqId,
+        groupId: input.groupId,
+        content: messageText.slice(0, 500),
+        result: `命中广告过滤，但缺少 message_id，无法撤回。原因：${review.reason}`,
+        rawPayload: input.event,
+      });
+      return false;
+    }
+
+    await callQqBotAction("delete_msg", {
+      message_id: Number(input.event.message_id) || input.event.message_id,
+    });
+    await sendQqMessage(
+      { qqId: input.qqId },
+      [
+        `你在群 ${group.name || input.groupId} 的一条消息因疑似广告/引流已被撤回。`,
+        `原因：${review.reason}`,
+      ].join("\n"),
+    ).catch(() => undefined);
+    await logQqBotMessage({
+      direction: "inbound",
+      eventType: "group-ad-filter",
+      status: "ok",
+      qqId: input.qqId,
+      groupId: input.groupId,
+      messageId: String(input.event.message_id),
+      content: messageText.slice(0, 500),
+      result: `已撤回疑似广告消息（${review.riskScore}分，${review.reason}）`,
+      rawPayload: input.event,
+    });
+    return true;
+  } catch (error) {
+    await logQqBotMessage({
+      direction: "inbound",
+      eventType: "group-ad-filter",
+      status: "error",
+      qqId: input.qqId,
+      groupId: input.groupId,
+      messageId: input.event.message_id ? String(input.event.message_id) : undefined,
+      content: messageText.slice(0, 500),
+      result: String((error as any)?.message || error || "group ad filter failed").slice(0, 500),
+      rawPayload: input.event,
+    });
+    return false;
+  }
+}
+
+async function resolveQqGroupCommandPermission(input: {
+  config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
+  group: { groupId: string; commandUserQqIds: string | null };
+  qqId: string;
+  event: OneBotEvent;
+}) {
+  const superAdminQqIds = normalizeQqBotQqIdList(parseStringArray(input.config.superAdminQqIds || "", []));
+  if (superAdminQqIds.includes(input.qqId)) {
+    return { allowed: true, canManageCommandUsers: true, source: "super-admin" as const };
+  }
+
+  const senderRole = await resolveQqGroupMemberRole(input.group.groupId, input.qqId, input.event);
+  if (senderRole === "owner" || senderRole === "admin") {
+    return { allowed: true, canManageCommandUsers: true, source: senderRole };
+  }
+
+  const commandUsers = normalizeQqBotQqIdList(parseStringArray(input.group.commandUserQqIds || "", []));
+  if (commandUsers.includes(input.qqId)) {
+    return { allowed: true, canManageCommandUsers: false, source: "command-user" as const };
+  }
+
+  return { allowed: false, canManageCommandUsers: false, source: "member" as const };
+}
+
+async function resolveQqGroupMemberRole(groupId: string, qqId: string, event: OneBotEvent) {
+  const senderRole = normalizeQqGroupMemberRole(event.sender?.role);
+  if (senderRole) return senderRole;
+  const payload = await callQqBotAction("get_group_member_info", {
+    group_id: Number(groupId) || groupId,
+    user_id: Number(qqId) || qqId,
+    no_cache: true,
+  }).catch(() => null);
+  return normalizeQqGroupMemberRole(
+    (payload as any)?.data?.role
+      || (payload as any)?.role
+      || (payload as any)?.data?.member?.role,
+  );
+}
+
+function normalizeQqGroupMemberRole(value: unknown) {
+  const role = String(value || "").trim().toLowerCase();
+  if (role === "owner" || role === "admin" || role === "member") return role;
+  return "";
+}
+
+function extractCommandTarget(argText: string, event: OneBotEvent) {
+  const mentionedQqIds = extractMentionedQqIds(event.message, event.self_id);
+  if (mentionedQqIds.length) {
+    return { qqId: mentionedQqIds[0], restText: String(argText || "").trim() };
+  }
+  const match = String(argText || "").trim().match(/^(\d{5,20})(?:\s+([\s\S]+))?$/);
+  if (match) {
+    return { qqId: match[1], restText: String(match[2] || "").trim() };
+  }
+  const fallback = String(argText || "").trim().match(/(\d{5,20})/);
+  if (!fallback) return null;
+  return {
+    qqId: fallback[1],
+    restText: String(argText || "").replace(fallback[1], "").trim(),
+  };
+}
+
+function extractMentionedQqIds(message: unknown, selfId?: number | string) {
+  if (!Array.isArray(message)) return [];
+  const botId = String(selfId || "").trim();
+  return Array.from(new Set(
+    message
+      .filter((segment: any) => segment?.type === "at")
+      .map((segment: any) => String(segment?.data?.qq || "").trim())
+      .filter((qqId) => qqId && qqId !== "all" && qqId !== botId),
+  ));
+}
+
+function parseMuteDurationSeconds(value: string) {
+  const match = String(value || "").trim().match(/(\d+)\s*(秒钟?|分钟?|分|小时|时|天|d|h|m|s)(?:\s|$)/i);
+  if (!match) return 0;
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  const unit = match[2].toLowerCase();
+  let seconds = amount;
+  if (["m", "分", "分钟"].includes(unit)) seconds = amount * 60;
+  else if (["h", "时", "小时"].includes(unit)) seconds = amount * 3600;
+  else if (["d", "天"].includes(unit)) seconds = amount * 86400;
+  return Math.max(60, Math.min(30 * 86400, seconds));
+}
+
+function formatMuteDuration(seconds: number) {
+  if (seconds % 86400 === 0) return `${seconds / 86400}天`;
+  if (seconds % 3600 === 0) return `${seconds / 3600}小时`;
+  if (seconds % 60 === 0) return `${seconds / 60}分钟`;
+  return `${seconds}秒`;
+}
+
+function ensureModerationTargetAllowed(targetQqId: string, config: Awaited<ReturnType<typeof getQqBotConfigRaw>>, event: OneBotEvent) {
+  const botQqId = readConfigBotQqId(config);
+  const selfQqId = String(event.self_id || "").trim();
+  if (targetQqId === botQqId || (selfQqId && targetQqId === selfQqId)) {
+    throw Errors.badRequest("不能对 QQBot 自己执行这个操作");
+  }
+}
+
+function renderQqGroupAdminHelp(group: QqBotGroupView) {
+  const parts = [
+    "群管命令",
+    "待审加群",
+    "通过加群 QQ号",
+    "拒绝加群 QQ号",
+    "禁言 QQ号 10m",
+    "踢出 QQ号",
+    "踢黑 QQ号",
+    "添加群管 QQ号",
+    "移除群管 QQ号",
+    "群管列表",
+    "",
+    `当前群：${group.name || group.groupId}`,
+    `加群快审：${group.joinReviewEnabled ? "开" : "关"}`,
+    `禁言：${group.allowMute ? "开" : "关"}`,
+    `踢出：${group.allowKick ? "开" : "关"}`,
+    `踢黑：${group.allowKickAndBlock ? "开" : "关"}`,
+    `广告过滤：${group.adFilterEnabled ? "开" : "关"}`,
+  ];
+  return parts.join("\n");
+}
+
+function renderPendingJoinRequests(
+  rows: Array<{ qqId: string; nickname: string | null; comment: string | null; createdAt: Date }>,
+) {
+  if (!rows.length) return "当前没有待审核的加群申请。";
+  return [
+    "待审核加群申请：",
+    "",
+    rows.map((row, index) => [
+      `${index + 1}. QQ ${row.qqId}${row.nickname ? ` · ${row.nickname}` : ""}`,
+      `验证：${row.comment || "无"}`,
+      `时间：${row.createdAt.toLocaleString("zh-CN", { hour12: false })}`,
+    ].join("\n")).join("\n\n"),
+  ].join("\n");
+}
+
+function renderCommandUserList(commandUsers: string[]) {
+  if (!commandUsers.length) return "当前群还没有授权用户。";
+  return [
+    "当前群授权用户：",
+    "",
+    commandUsers.map((qqId, index) => `${index + 1}. ${qqId}`).join("\n"),
+  ].join("\n");
 }
 
 async function renderBindingStatus(
@@ -2717,6 +3329,15 @@ function parseStringArray(value: string, fallback: string[]) {
     /* ignore */
   }
   return [...fallback];
+}
+
+export function normalizeQqBotQqIdList(input: readonly string[] | null | undefined) {
+  const values = Array.isArray(input) ? input : [];
+  return Array.from(new Set(
+    values
+      .map((item) => String(item || "").trim())
+      .filter((item) => /^\d{5,20}$/.test(item)),
+  ));
 }
 
 function normalizeAllowedStringArray(

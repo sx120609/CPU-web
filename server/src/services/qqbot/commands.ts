@@ -112,3 +112,49 @@ export function isGreetingMessage(text: string) {
   if (!normalized) return false;
   return /^(你好|您好|哈喽|hello|hi|嗨|在吗|有人吗|bot|qqbot)[!！。?？ ]*$/.test(normalized);
 }
+
+export type QqGroupAdminCommand =
+  | { type: "help" }
+  | { type: "list-join-requests" }
+  | { type: "approve-join"; argText: string }
+  | { type: "reject-join"; argText: string }
+  | { type: "mute"; argText: string }
+  | { type: "kick"; argText: string }
+  | { type: "kick-block"; argText: string }
+  | { type: "add-command-user"; argText: string }
+  | { type: "remove-command-user"; argText: string }
+  | { type: "list-command-users" };
+
+export function parseQqGroupAdminCommand(text: string): QqGroupAdminCommand | null {
+  const normalized = String(text || "").trim();
+  if (!normalized) return null;
+
+  if (/^(?:[/／])?(?:群管帮助|管理帮助|群管命令|管理命令)$/i.test(normalized)) {
+    return { type: "help" };
+  }
+  if (/^(?:[/／])?(?:待审加群|加群审核|入群审核|审核列表)$/i.test(normalized)) {
+    return { type: "list-join-requests" };
+  }
+
+  const patterns: Array<[QqGroupAdminCommand["type"], RegExp]> = [
+    ["approve-join", /^(?:[/／])?(?:通过加群|同意加群|批准加群|通过入群|同意入群)\s+([\s\S]+)$/i],
+    ["reject-join", /^(?:[/／])?(?:拒绝加群|驳回加群|拒绝入群|驳回入群)\s+([\s\S]+)$/i],
+    ["mute", /^(?:[/／])?禁言\s+([\s\S]+)$/i],
+    ["kick-block", /^(?:[/／])?(?:踢黑|拉黑踢|踢出并拉黑)\s+([\s\S]+)$/i],
+    ["kick", /^(?:[/／])?踢出\s+([\s\S]+)$/i],
+    ["add-command-user", /^(?:[/／])?(?:添加群管|添加管理|授权群管|授权管理)\s+([\s\S]+)$/i],
+    ["remove-command-user", /^(?:[/／])?(?:移除群管|取消群管|取消管理|移除管理)\s+([\s\S]+)$/i],
+  ];
+
+  for (const [type, regex] of patterns) {
+    const match = normalized.match(regex);
+    if (!match) continue;
+    return { type: type as Exclude<QqGroupAdminCommand["type"], "help" | "list-join-requests" | "list-command-users">, argText: match[1].trim() };
+  }
+
+  if (/^(?:[/／])?(?:群管列表|管理列表|授权列表)$/i.test(normalized)) {
+    return { type: "list-command-users" };
+  }
+
+  return null;
+}

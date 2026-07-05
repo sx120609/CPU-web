@@ -9,6 +9,7 @@ import {
   formatQqBotGroup,
   formatQqBotConfig,
   getQqBotConfigRaw,
+  normalizeQqBotQqIdList,
   normalizeQqBotGroupNotifyAudiences,
   normalizeQqBotGroupNotifyCategories,
   sendQqMessage,
@@ -29,6 +30,7 @@ const configPatchSchema = z.object({
   allowGroupPost: z.boolean().optional(),
   notificationEnabled: z.boolean().optional(),
   notifyCategories: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
+  superAdminQqIds: z.array(z.string().trim().min(5).max(20)).max(50).optional(),
 });
 
 qqBotAdminRouter.get("/config", async (_req, res, next) => {
@@ -100,6 +102,12 @@ const groupUpsertSchema = z.object({
   notifyAudiences: z.array(z.enum(["public", "staff"])).max(10).optional(),
   memberWelcomeEnabled: z.boolean().optional(),
   memberWelcomeMessage: z.string().trim().max(1500).optional(),
+  adFilterEnabled: z.boolean().optional(),
+  joinReviewEnabled: z.boolean().optional(),
+  allowMute: z.boolean().optional(),
+  allowKick: z.boolean().optional(),
+  allowKickAndBlock: z.boolean().optional(),
+  commandUserQqIds: z.array(z.string().trim().min(5).max(20)).max(50).optional(),
 });
 
 qqBotAdminRouter.post("/groups", validate(groupUpsertSchema), async (req, res, next) => {
@@ -119,6 +127,12 @@ qqBotAdminRouter.post("/groups", validate(groupUpsertSchema), async (req, res, n
       notifyAudiences: JSON.stringify(normalizeQqBotGroupNotifyAudiences(req.body.notifyAudiences)),
       memberWelcomeEnabled: req.body.memberWelcomeEnabled,
       memberWelcomeMessage: req.body.memberWelcomeMessage,
+      adFilterEnabled: req.body.adFilterEnabled,
+      joinReviewEnabled: req.body.joinReviewEnabled,
+      allowMute: req.body.allowMute,
+      allowKick: req.body.allowKick,
+      allowKickAndBlock: req.body.allowKickAndBlock,
+      commandUserQqIds: JSON.stringify(normalizeQqBotQqIdList(req.body.commandUserQqIds)),
     };
     const row = await prisma.qqBotGroup.upsert({
       where: { groupId: req.body.groupId },

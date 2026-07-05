@@ -9,6 +9,14 @@ export type SiteConfig = {
   aiReviewModel: string;
   aiReviewFallbackModels: string;
   aiReviewApiKey: string;
+  qqGroupAdReviewEnabled: boolean;
+  qqGroupAdReviewProvider: string;
+  qqGroupAdReviewApiUrl: string;
+  qqGroupAdReviewModel: string;
+  qqGroupAdReviewFallbackModels: string;
+  qqGroupAdReviewApiKey: string;
+  qqGroupAdReviewSystemPrompt: string;
+  qqGroupAdReviewUserPrompt: string;
   imageReviewEnabled: boolean;
   imageReviewApiUrl: string;
   imageReviewModel: string;
@@ -27,6 +35,7 @@ export type SiteConfig = {
   videoReviewUserPrompt: string;
   videoReviewConcurrency: number;
   aiReviewThreshold: number;
+  qqGroupAdReviewThreshold: number;
   imageReviewThreshold: number;
   videoReviewThreshold: number;
   aiEditSimilarityThreshold: number;
@@ -172,6 +181,8 @@ export type MediaStorageCleanupResult = {
 
 export type SitePromptDefaults = Pick<
   SiteConfig,
+  | "qqGroupAdReviewSystemPrompt"
+  | "qqGroupAdReviewUserPrompt"
   | "imageReviewSystemPrompt"
   | "imageReviewUserPrompt"
   | "videoReviewSystemPrompt"
@@ -464,6 +475,7 @@ export type QqBotConfig = {
   allowGroupPost: boolean;
   notificationEnabled: boolean;
   notifyCategories: string[];
+  superAdminQqIds: string[];
   webhookPath: string;
   createdAt: string;
   updatedAt: string;
@@ -481,6 +493,12 @@ export type QqBotGroup = {
   notifyAudiences: Array<"public" | "staff">;
   memberWelcomeEnabled: boolean;
   memberWelcomeMessage: string;
+  adFilterEnabled: boolean;
+  joinReviewEnabled: boolean;
+  allowMute: boolean;
+  allowKick: boolean;
+  allowKickAndBlock: boolean;
+  commandUserQqIds: string[];
   createdAt: string;
   updatedAt: string;
 };
@@ -589,6 +607,14 @@ export const adminApi = {
     aiReviewModel?: string;
     aiReviewFallbackModels?: string;
     aiReviewApiKey?: string;
+    qqGroupAdReviewEnabled?: boolean;
+    qqGroupAdReviewProvider?: string;
+    qqGroupAdReviewApiUrl?: string;
+    qqGroupAdReviewModel?: string;
+    qqGroupAdReviewFallbackModels?: string;
+    qqGroupAdReviewApiKey?: string;
+    qqGroupAdReviewSystemPrompt?: string;
+    qqGroupAdReviewUserPrompt?: string;
     imageReviewEnabled?: boolean;
     imageReviewApiUrl?: string;
     imageReviewModel?: string;
@@ -607,6 +633,7 @@ export const adminApi = {
     videoReviewUserPrompt?: string;
     videoReviewConcurrency?: number;
     aiReviewThreshold?: number;
+    qqGroupAdReviewThreshold?: number;
     imageReviewThreshold?: number;
     videoReviewThreshold?: number;
     aiEditSimilarityThreshold?: number;
@@ -686,6 +713,7 @@ export const adminApi = {
     allowGroupPost: boolean;
     notificationEnabled: boolean;
     notifyCategories: string[];
+    superAdminQqIds: string[];
   }>) => request.patch<QqBotConfig>("/admin/qqbot/config", payload),
   qqBotBindings: (params?: { q?: string }, options?: RequestOptions) => request.get<any[]>("/admin/qqbot/bindings", params, options),
   updateQqBotBinding: (id: number, payload: { enabled: boolean }) => request.patch<any>(`/admin/qqbot/bindings/${id}`, payload),
@@ -702,6 +730,12 @@ export const adminApi = {
     notifyAudiences?: Array<"public" | "staff">;
     memberWelcomeEnabled?: boolean;
     memberWelcomeMessage?: string;
+    adFilterEnabled?: boolean;
+    joinReviewEnabled?: boolean;
+    allowMute?: boolean;
+    allowKick?: boolean;
+    allowKickAndBlock?: boolean;
+    commandUserQqIds?: string[];
   }) => request.post<QqBotGroup>("/admin/qqbot/groups", payload),
   deleteQqBotGroup: (id: number) => request.delete<{ ok: true }>(`/admin/qqbot/groups/${id}`),
   qqBotLogs: (params: { status?: string; eventType?: string; page?: number; size?: number }, options?: RequestOptions) =>

@@ -1803,6 +1803,14 @@ const siteConfigPatchSchema = z.object({
   aiReviewModel: z.string().trim().max(80).optional(),
   aiReviewFallbackModels: z.string().trim().max(400).optional(),
   aiReviewApiKey: z.string().trim().max(240).optional(),
+  qqGroupAdReviewEnabled: z.boolean().optional(),
+  qqGroupAdReviewProvider: z.string().trim().max(40).optional(),
+  qqGroupAdReviewApiUrl: z.string().trim().max(240).optional(),
+  qqGroupAdReviewModel: z.string().trim().max(80).optional(),
+  qqGroupAdReviewFallbackModels: z.string().trim().max(400).optional(),
+  qqGroupAdReviewApiKey: z.string().trim().max(240).optional(),
+  qqGroupAdReviewSystemPrompt: z.string().max(8000).optional(),
+  qqGroupAdReviewUserPrompt: z.string().max(12000).optional(),
   imageReviewEnabled: z.boolean().optional(),
   imageReviewApiUrl: z.string().trim().max(240).optional(),
   imageReviewModel: z.string().trim().max(80).optional(),
@@ -1821,6 +1829,7 @@ const siteConfigPatchSchema = z.object({
   videoReviewUserPrompt: z.string().max(12000).optional(),
   videoReviewConcurrency: z.number().int().min(1).max(2).optional(),
   aiReviewThreshold: z.number().int().min(0).max(100).optional(),
+  qqGroupAdReviewThreshold: z.number().int().min(0).max(100).optional(),
   imageReviewThreshold: z.number().int().min(0).max(100).optional(),
   videoReviewThreshold: z.number().int().min(0).max(100).optional(),
   aiReviewAutoPassScore: z.number().int().min(0).max(100).optional(),
@@ -1865,6 +1874,14 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       req.body.aiReviewModel !== undefined ||
       req.body.aiReviewFallbackModels !== undefined ||
       req.body.aiReviewApiKey !== undefined ||
+      req.body.qqGroupAdReviewEnabled !== undefined ||
+      req.body.qqGroupAdReviewProvider !== undefined ||
+      req.body.qqGroupAdReviewApiUrl !== undefined ||
+      req.body.qqGroupAdReviewModel !== undefined ||
+      req.body.qqGroupAdReviewFallbackModels !== undefined ||
+      req.body.qqGroupAdReviewApiKey !== undefined ||
+      req.body.qqGroupAdReviewSystemPrompt !== undefined ||
+      req.body.qqGroupAdReviewUserPrompt !== undefined ||
       req.body.imageReviewEnabled !== undefined ||
       req.body.imageReviewApiUrl !== undefined ||
       req.body.imageReviewModel !== undefined ||
@@ -1883,6 +1900,7 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       req.body.videoReviewUserPrompt !== undefined ||
       req.body.videoReviewConcurrency !== undefined ||
       req.body.aiReviewThreshold !== undefined ||
+      req.body.qqGroupAdReviewThreshold !== undefined ||
       req.body.imageReviewThreshold !== undefined ||
       req.body.videoReviewThreshold !== undefined ||
       req.body.aiReviewAutoPassScore !== undefined ||
