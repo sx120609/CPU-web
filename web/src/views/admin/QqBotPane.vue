@@ -71,8 +71,21 @@
             <div class="check-grid">
               <el-checkbox v-model="form.allowPrivatePost" :disabled="configDisabled">允许私聊投稿</el-checkbox>
               <el-checkbox v-model="form.allowGroupPost" :disabled="configDisabled">允许群内投稿</el-checkbox>
+              <el-checkbox v-model="form.memberWelcomeEnabled" :disabled="configDisabled">新成员私聊欢迎</el-checkbox>
               <el-checkbox v-model="form.notificationEnabled" :disabled="configDisabled">推送站内通知</el-checkbox>
             </div>
+          </el-form-item>
+          <el-form-item label="欢迎私聊内容">
+            <el-input
+              v-model="form.memberWelcomeMessage"
+              type="textarea"
+              :rows="4"
+              maxlength="1500"
+              show-word-limit
+              placeholder="欢迎 {nickname} 加入 {groupName}。"
+              :disabled="configDisabled || !form.memberWelcomeEnabled"
+            />
+            <div class="form-tip">变量：{qq} / {nickname} / {groupId} / {groupName}</div>
           </el-form-item>
           <el-form-item label="私聊通知类型">
             <el-checkbox-group v-model="form.notifyCategories" :disabled="configDisabled">
@@ -269,6 +282,8 @@
             <el-option label="投稿" value="post" />
             <el-option label="通知" value="notification" />
             <el-option label="消息" value="message" />
+            <el-option label="入群事件" value="group-member-increase" />
+            <el-option label="新成员欢迎" value="group-member-welcome" />
             <el-option label="Webhook" value="webhook" />
           </el-select>
           <el-select v-model="logFilter.status" clearable placeholder="状态" style="width: 120px" @change="loadLogs">
@@ -404,6 +419,8 @@ const form = reactive({
   defaultBoardSlug: "general",
   allowPrivatePost: true,
   allowGroupPost: false,
+  memberWelcomeEnabled: false,
+  memberWelcomeMessage: "欢迎加入本群，请先查看群公告了解群内规则和使用说明。\n\n如果想把课表添加到手机桌面，可以先打开站内课表页，再按页面提示完成添加。\n\n也欢迎前往个人中心绑定本 QQBot，绑定后可在 QQ 同步接收站内通知。后续还会陆续接入更多实用功能，敬请期待。",
   notificationEnabled: true,
   notifyCategories: ["reply", "mention", "like", "system", "service-tool", "school-feed"] as string[],
 });
@@ -490,6 +507,8 @@ async function loadConfig() {
     defaultBoardSlug: config.value.defaultBoardSlug,
     allowPrivatePost: config.value.allowPrivatePost,
     allowGroupPost: config.value.allowGroupPost,
+    memberWelcomeEnabled: config.value.memberWelcomeEnabled,
+    memberWelcomeMessage: config.value.memberWelcomeMessage,
     notificationEnabled: config.value.notificationEnabled,
     notifyCategories: [...config.value.notifyCategories],
   });

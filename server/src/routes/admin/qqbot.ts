@@ -27,6 +27,8 @@ const configPatchSchema = z.object({
   defaultBoardSlug: z.string().trim().max(80).optional(),
   allowPrivatePost: z.boolean().optional(),
   allowGroupPost: z.boolean().optional(),
+  memberWelcomeEnabled: z.boolean().optional(),
+  memberWelcomeMessage: z.string().trim().max(1500).optional(),
   notificationEnabled: z.boolean().optional(),
   notifyCategories: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
 });

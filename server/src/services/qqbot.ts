@@ -97,6 +97,8 @@ export type QqBotConfigView = {
   defaultBoardSlug: string;
   allowPrivatePost: boolean;
   allowGroupPost: boolean;
+  memberWelcomeEnabled: boolean;
+  memberWelcomeMessage: string;
   notificationEnabled: boolean;
   notifyCategories: string[];
   webhookPath: string;
@@ -186,6 +188,7 @@ const GROUP_NOTIFY_CATEGORY_OPTIONS = ["system", "school-feed"] as const;
 const GROUP_NOTIFY_AUDIENCE_OPTIONS = ["public", "staff"] as const;
 const DEFAULT_GROUP_NOTIFY_CATEGORIES = ["system", "school-feed"];
 const DEFAULT_GROUP_NOTIFY_AUDIENCES = ["public"];
+const DEFAULT_MEMBER_WELCOME_MESSAGE = "欢迎加入本群，请先查看群公告了解群内规则和使用说明。\n\n如果想把课表添加到手机桌面，可以先打开站内课表页，再按页面提示完成添加。\n\n也欢迎前往个人中心绑定本 QQBot，绑定后可在 QQ 同步接收站内通知。后续还会陆续接入更多实用功能，敬请期待。";
 let pollerStarted = false;
 
 const {
@@ -234,6 +237,8 @@ export function formatQqBotConfig(config: Awaited<ReturnType<typeof getQqBotConf
     defaultBoardSlug: config.defaultBoardSlug || "general",
     allowPrivatePost: config.allowPrivatePost,
     allowGroupPost: config.allowGroupPost,
+    memberWelcomeEnabled: config.memberWelcomeEnabled,
+    memberWelcomeMessage: config.memberWelcomeMessage || DEFAULT_MEMBER_WELCOME_MESSAGE,
     notificationEnabled: config.notificationEnabled,
     notifyCategories: parseQqBotNotifyCategories(config.notifyCategories),
     webhookPath: "/api/qqbot/webhook",
@@ -316,6 +321,8 @@ export async function updateQqBotConfig(input: {
   defaultBoardSlug?: string;
   allowPrivatePost?: boolean;
   allowGroupPost?: boolean;
+  memberWelcomeEnabled?: boolean;
+  memberWelcomeMessage?: string;
   notificationEnabled?: boolean;
   notifyCategories?: string[];
 }) {
@@ -334,6 +341,10 @@ export async function updateQqBotConfig(input: {
   }
   if (input.allowPrivatePost !== undefined) data.allowPrivatePost = input.allowPrivatePost;
   if (input.allowGroupPost !== undefined) data.allowGroupPost = input.allowGroupPost;
+  if (input.memberWelcomeEnabled !== undefined) data.memberWelcomeEnabled = input.memberWelcomeEnabled;
+  if (input.memberWelcomeMessage !== undefined) {
+    data.memberWelcomeMessage = String(input.memberWelcomeMessage || "").trim().slice(0, 1500);
+  }
   if (input.notificationEnabled !== undefined) data.notificationEnabled = input.notificationEnabled;
   if (input.notifyCategories !== undefined) {
     data.notifyCategories = JSON.stringify(normalizePersonalNotifyCategories(input.notifyCategories));
@@ -724,11 +735,15 @@ async function handleQqBotNoticeEvent(
 ) {
   const qqId = event.user_id ? String(event.user_id) : "";
   const groupId = event.group_id ? String(event.group_id) : undefined;
+  const botQqId = readConfigBotQqId(config);
+  const isBotUser = Boolean(
+    (event.self_id && String(event.user_id || "") === String(event.self_id))
+    || (botQqId && qqId === botQqId),
+  );
   if (
     event.notice_type === "group_increase"
     && groupId
-    && event.self_id
-    && String(event.user_id || "") === String(event.self_id)
+    && isBotUser
   ) {
     await ensureQqBotPostingGroup({
       groupId,
@@ -747,6 +762,9 @@ async function handleQqBotNoticeEvent(
     });
     return { ok: true, synced: "group" };
   }
+  if (event.notice_type === "group_increase" && groupId && qqId) {
+    return handleQqBotGroupMemberIncrease(event, config, { qqId, groupId });
+  }
   await logQqBotMessage({
     direction: "inbound",
     eventType: event.notice_type || "notice",
@@ -756,6 +774,77 @@ async function handleQqBotNoticeEvent(
     rawPayload: event,
   });
   return { ignored: true };
+}
+
+async function handleQqBotGroupMemberIncrease(
+  event: OneBotEvent,
+  config: Awaited<ReturnType<typeof getQqBotConfigRaw>>,
+  target: { qqId: string; groupId: string },
+) {
+  if (!config.memberWelcomeEnabled) {
+    await logQqBotMessage({
+      direction: "inbound",
+      eventType: "group-member-increase",
+      status: "ignored",
+      qqId: target.qqId,
+      groupId: target.groupId,
+      result: "新成员私聊欢迎未开启",
+      rawPayload: event,
+    });
+    return { ignored: true };
+  }
+  const group = await prisma.qqBotGroup.findUnique({ where: { groupId: target.groupId } });
+  if (!group?.enabled) {
+    await logQqBotMessage({
+      direction: "inbound",
+      eventType: "group-member-increase",
+      status: "ignored",
+      qqId: target.qqId,
+      groupId: target.groupId,
+      result: group ? "QQ群配置已停用" : "QQ群未配置",
+      rawPayload: event,
+    });
+    return { ignored: true };
+  }
+  const message = renderMemberWelcomeMessage(config.memberWelcomeMessage, event, group);
+  if (!message) {
+    await logQqBotMessage({
+      direction: "inbound",
+      eventType: "group-member-welcome",
+      status: "ignored",
+      qqId: target.qqId,
+      groupId: target.groupId,
+      result: "欢迎消息为空",
+      rawPayload: event,
+    });
+    return { ignored: true };
+  }
+  try {
+    await sendQqMessage({ qqId: target.qqId }, message);
+    await logQqBotMessage({
+      direction: "inbound",
+      eventType: "group-member-welcome",
+      status: "ok",
+      qqId: target.qqId,
+      groupId: target.groupId,
+      content: message.slice(0, 1000),
+      result: "已向新成员发送私聊欢迎",
+      rawPayload: event,
+    });
+    return { ok: true, welcomeSent: true };
+  } catch (error: any) {
+    await logQqBotMessage({
+      direction: "inbound",
+      eventType: "group-member-welcome",
+      status: "error",
+      qqId: target.qqId,
+      groupId: target.groupId,
+      content: message.slice(0, 1000),
+      result: String(error?.message || error || "私聊欢迎发送失败").slice(0, 500),
+      rawPayload: event,
+    });
+    return { ok: true, welcomeSent: false };
+  }
 }
 
 async function ensureQqBotPostingGroup(input: {
@@ -811,6 +900,42 @@ async function resolveQqBotGroupName(groupId: string, fallback?: string | null) 
     || "",
   ).trim();
   return name ? name.slice(0, 80) : null;
+}
+
+function renderMemberWelcomeMessage(
+  template: string | null | undefined,
+  event: OneBotEvent,
+  group: { groupId: string; name: string | null },
+) {
+  const qqId = event.user_id ? String(event.user_id) : "";
+  const nickname = extractQqBotMemberNickname(event) || "同学";
+  const groupName = group.name || extractQqBotGroupName(event) || group.groupId;
+  const values: Record<string, string> = {
+    qq: qqId,
+    nickname,
+    groupId: group.groupId,
+    groupName,
+  };
+  return String(template || DEFAULT_MEMBER_WELCOME_MESSAGE)
+    .trim()
+    .replace(/\{\{\s*(qq|nickname|groupId|groupName)\s*\}\}|\{(qq|nickname|groupId|groupName)\}/g, (_match, doubleKey, singleKey) => {
+      const key = String(doubleKey || singleKey);
+      return values[key] ?? "";
+    });
+}
+
+function extractQqBotMemberNickname(event: OneBotEvent) {
+  const payload = event as Record<string, any>;
+  return String(
+    event.sender?.card
+    || event.sender?.nickname
+    || payload?.card
+    || payload?.nickname
+    || payload?.user_nickname
+    || payload?.member?.card
+    || payload?.member?.nickname
+    || "",
+  ).trim();
 }
 
 async function bindQqAccount(input: { qqId: string; nickname?: string; token: string }) {

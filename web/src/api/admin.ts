@@ -462,6 +462,8 @@ export type QqBotConfig = {
   defaultBoardSlug: string;
   allowPrivatePost: boolean;
   allowGroupPost: boolean;
+  memberWelcomeEnabled: boolean;
+  memberWelcomeMessage: string;
   notificationEnabled: boolean;
   notifyCategories: string[];
   webhookPath: string;
@@ -682,6 +684,8 @@ export const adminApi = {
     defaultBoardSlug: string;
     allowPrivatePost: boolean;
     allowGroupPost: boolean;
+    memberWelcomeEnabled: boolean;
+    memberWelcomeMessage: string;
     notificationEnabled: boolean;
     notifyCategories: string[];
   }>) => request.patch<QqBotConfig>("/admin/qqbot/config", payload),
