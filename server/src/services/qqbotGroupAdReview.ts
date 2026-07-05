@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { Errors } from "../utils/response";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
-import { getCachedJson, setCachedJson } from "./cache";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 import { getSiteConfig } from "./siteSettings";
 
@@ -26,6 +25,7 @@ export type QqGroupAdReviewResult = {
 
 const QQ_GROUP_AD_REVIEW_RESULT_CACHE_TTL_MS = 10 * 60_000;
 const promptCacheKeySupport = new Map<string, boolean>();
+const localResultCache = new Map<string, { expiresAt: number; value: QqGroupAdReviewResult }>();
 
 export function shouldRunQqGroupAdReview() {
   const config = getSiteConfig();
@@ -60,7 +60,7 @@ export async function reviewQqGroupMessageForAd(input: {
     groupId: input.groupId,
     content: normalizedContent,
   });
-  const cached = await getCachedJson<QqGroupAdReviewResult>(resultCacheKey);
+  const cached = readLocalResultCache(resultCacheKey);
   if (cached) {
     return cached;
   }
@@ -173,7 +173,11 @@ export async function reviewQqGroupMessageForAd(input: {
     const parsed = parseAdReviewResponse(content);
     const riskScore = clampScore(parsed.risk_score);
     const modelDecision = String(parsed.decision || "").trim().toLowerCase();
-    const action = riskScore >= config.qqGroupAdReviewThreshold || modelDecision === "block" ? "block" : "allow";
+    const action = resolveQqGroupAdReviewAction({
+      riskScore,
+      threshold: config.qqGroupAdReviewThreshold,
+      modelDecision,
+    });
     const result: QqGroupAdReviewResult = {
       action,
       riskScore,
@@ -183,7 +187,7 @@ export async function reviewQqGroupMessageForAd(input: {
       model,
       modelDecision,
     };
-    await setCachedJson(resultCacheKey, result, QQ_GROUP_AD_REVIEW_RESULT_CACHE_TTL_MS).catch(() => undefined);
+    writeLocalResultCache(resultCacheKey, result, QQ_GROUP_AD_REVIEW_RESULT_CACHE_TTL_MS);
     return result;
   }
 
@@ -210,8 +214,6 @@ async function sendQqGroupAdReviewRequest(input: {
   };
   if (input.enablePromptCacheKey) {
     body.prompt_cache_key = input.promptCacheKey;
-    headers.session_id = input.promptCacheKey;
-    headers.conversation_id = input.promptCacheKey;
   }
   return fetch(input.endpoint, {
     method: "POST",
@@ -231,6 +233,33 @@ function normalizeReviewApiUrl(input: string) {
 
 function fillPromptTemplate(template: string, values: Record<string, string>) {
   return String(template || "").replace(/\{\{(\w+)\}\}/g, (_, key) => values[key] ?? "");
+}
+
+function readLocalResultCache(key: string) {
+  const cached = localResultCache.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    localResultCache.delete(key);
+    return null;
+  }
+  return cached.value;
+}
+
+function writeLocalResultCache(key: string, value: QqGroupAdReviewResult, ttlMs: number) {
+  pruneLocalResultCache();
+  localResultCache.set(key, {
+    value,
+    expiresAt: Date.now() + Math.max(1, ttlMs),
+  });
+}
+
+function pruneLocalResultCache() {
+  const now = Date.now();
+  if (localResultCache.size > 500) {
+    for (const [key, cached] of localResultCache.entries()) {
+      if (cached.expiresAt <= now) localResultCache.delete(key);
+    }
+  }
 }
 
 function isPromptCacheKeyEnabledForEndpoint(endpoint: string) {
@@ -337,4 +366,14 @@ function normalizeRiskLevel(value: unknown): "low" | "medium" | "high" {
   if (normalized === "high") return "high";
   if (normalized === "medium") return "medium";
   return "low";
+}
+
+function resolveQqGroupAdReviewAction(input: {
+  riskScore: number;
+  threshold: number;
+  modelDecision: string;
+}): "allow" | "block" {
+  if (input.modelDecision === "manual_review") return "allow";
+  if (input.modelDecision === "block") return "block";
+  return input.riskScore >= input.threshold ? "block" : "allow";
 }

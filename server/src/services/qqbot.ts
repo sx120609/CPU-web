@@ -198,6 +198,7 @@ const GROUP_NOTIFY_AUDIENCE_OPTIONS = ["public", "staff"] as const;
 const DEFAULT_GROUP_NOTIFY_CATEGORIES = ["system", "school-feed"];
 const DEFAULT_GROUP_NOTIFY_AUDIENCES = ["public"];
 const DEFAULT_MEMBER_WELCOME_MESSAGE = "欢迎加入本群，请先查看群公告了解群内规则和使用说明。\n\n如果想把课表添加到手机桌面，可以先打开站内课表页，再按页面提示完成添加。\n\n也欢迎前往个人中心绑定本 QQBot，绑定后可在 QQ 同步接收站内通知。建议顺手把本 QQBot 添加为好友，消息接收和后续操作体验会更顺畅。后续还会陆续接入更多实用功能，敬请期待。";
+const QQ_GROUP_AD_FILTER_MUTE_SECONDS = 3600;
 let pollerStarted = false;
 
 const {
@@ -3032,13 +3033,14 @@ async function maybeHandleQqGroupAdFilter(input: {
 
   const group = await prisma.qqBotGroup.findUnique({ where: { groupId: input.groupId } });
   if (!group?.enabled || !group.adFilterEnabled) return false;
+  const senderNickname = input.event.sender?.card || input.event.sender?.nickname || null;
 
   try {
     const review = await reviewQqGroupMessageForAd({
       groupId: input.groupId,
       groupName: group.name,
       qqId: input.qqId,
-      nickname: input.event.sender?.card || input.event.sender?.nickname || null,
+      nickname: senderNickname,
       content: messageText,
       metadata: {
         messageId: input.event.message_id ? String(input.event.message_id) : "",
@@ -3062,11 +3064,26 @@ async function maybeHandleQqGroupAdFilter(input: {
     await callQqBotAction("delete_msg", {
       message_id: Number(input.event.message_id) || input.event.message_id,
     });
+    const strike = await recordQqGroupAdStrikeHit({
+      groupId: input.groupId,
+      qqId: input.qqId,
+      nickname: senderNickname,
+      review,
+    });
+    const penalty = await applyQqGroupAdPenalty({
+      config: input.config,
+      event: input.event,
+      group,
+      qqId: input.qqId,
+      hitCount: strike.hitCount,
+    });
     await sendQqMessage(
       { qqId: input.qqId },
       [
         `你在群 ${group.name || input.groupId} 的一条消息因疑似广告/引流已被撤回。`,
         `原因：${review.reason}`,
+        `累计命中：第 ${strike.hitCount} 次。`,
+        ...(penalty.userNotice ? [penalty.userNotice] : []),
       ].join("\n"),
     ).catch(() => undefined);
     await logQqBotMessage({
@@ -3077,7 +3094,10 @@ async function maybeHandleQqGroupAdFilter(input: {
       groupId: input.groupId,
       messageId: String(input.event.message_id),
       content: messageText.slice(0, 500),
-      result: `已撤回疑似广告消息（${review.riskScore}分，${review.reason}）`,
+      result: [
+        `已撤回疑似广告消息（第${strike.hitCount}次，${review.riskScore}分，${review.reason}）`,
+        penalty.logSummary,
+      ].filter(Boolean).join("；"),
       rawPayload: input.event,
     });
     return true;
@@ -3095,6 +3115,117 @@ async function maybeHandleQqGroupAdFilter(input: {
     });
     return false;
   }
+}
+
+async function recordQqGroupAdStrikeHit(input: {
+  groupId: string;
+  qqId: string;
+  nickname?: string | null;
+  review: Awaited<ReturnType<typeof reviewQqGroupMessageForAd>>;
+}) {
+  const now = new Date();
+  return prisma.qqBotGroupAdStrike.upsert({
+    where: {
+      groupId_qqId: {
+        groupId: input.groupId,
+        qqId: input.qqId,
+      },
+    },
+    create: {
+      groupId: input.groupId,
+      qqId: input.qqId,
+      nickname: input.nickname || null,
+      hitCount: 1,
+      lastReason: input.review.reason,
+      lastRiskScore: input.review.riskScore,
+      lastModel: input.review.model,
+      lastHitAt: now,
+    },
+    update: {
+      nickname: input.nickname || undefined,
+      hitCount: { increment: 1 },
+      lastReason: input.review.reason,
+      lastRiskScore: input.review.riskScore,
+      lastModel: input.review.model,
+      lastHitAt: now,
+    },
+  });
+}
+
+async function applyQqGroupAdPenalty(input: {
+  config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
+  event: OneBotEvent;
+  group: {
+    groupId: string;
+    name: string | null;
+    allowMute: boolean;
+    allowKick: boolean;
+    allowKickAndBlock: boolean;
+  };
+  qqId: string;
+  hitCount: number;
+}) {
+  const canKick = input.group.allowKick || input.group.allowKickAndBlock;
+  if (input.hitCount >= 5 && canKick) {
+    try {
+      ensureModerationTargetAllowed(input.qqId, input.config, input.event);
+      await callQqBotAction("set_group_kick", {
+        group_id: Number(input.group.groupId) || input.group.groupId,
+        user_id: Number(input.qqId) || input.qqId,
+        reject_add_request: false,
+      });
+      return {
+        userNotice: "累计命中 5 次，已自动踢出群聊。",
+        logSummary: "已自动踢出群聊",
+      };
+    } catch (error) {
+      if (!input.group.allowMute || input.hitCount < 2) {
+        return {
+          userNotice: `累计命中 5 次，本应自动踢出，但执行失败：${getQqBotActionErrorMessage(error) || "未知错误"}`,
+          logSummary: `自动踢出失败：${getQqBotActionErrorMessage(error) || "未知错误"}`,
+        };
+      }
+    }
+  }
+
+  if (input.hitCount >= 2 && input.group.allowMute) {
+    try {
+      ensureModerationTargetAllowed(input.qqId, input.config, input.event);
+      await callQqBotAction("set_group_ban", {
+        group_id: Number(input.group.groupId) || input.group.groupId,
+        user_id: Number(input.qqId) || input.qqId,
+        duration: QQ_GROUP_AD_FILTER_MUTE_SECONDS,
+      });
+      return {
+        userNotice: `累计命中 ${input.hitCount} 次，已自动禁言 1 小时。`,
+        logSummary: "已自动禁言 1 小时",
+      };
+    } catch (error) {
+      return {
+        userNotice: `累计命中 ${input.hitCount} 次，本应自动禁言 1 小时，但执行失败：${getQqBotActionErrorMessage(error) || "未知错误"}`,
+        logSummary: `自动禁言失败：${getQqBotActionErrorMessage(error) || "未知错误"}`,
+      };
+    }
+  }
+
+  if (input.hitCount >= 5 && !canKick) {
+    return {
+      userNotice: "累计命中 5 次，但当前群未开启自动踢出能力。",
+      logSummary: "累计 5 次，但当前群未开启自动踢出",
+    };
+  }
+
+  if (input.hitCount >= 2 && !input.group.allowMute) {
+    return {
+      userNotice: `累计命中 ${input.hitCount} 次，但当前群未开启自动禁言能力。`,
+      logSummary: "累计 2 次以上，但当前群未开启自动禁言",
+    };
+  }
+
+  return {
+    userNotice: "",
+    logSummary: "",
+  };
 }
 
 async function resolveQqGroupCommandPermission(input: {

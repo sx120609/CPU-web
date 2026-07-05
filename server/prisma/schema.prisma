@@ -1008,6 +1008,24 @@ model QqBotGroupBlockedUser {
   @@index([qqId, createdAt])
 }
 
+model QqBotGroupAdStrike {
+  id            Int      @id @default(autoincrement())
+  groupId       String
+  qqId          String
+  nickname      String?
+  hitCount      Int      @default(0)
+  lastReason    String?
+  lastRiskScore Int?
+  lastModel     String?
+  lastHitAt     DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([groupId, qqId])
+  @@index([groupId, lastHitAt])
+  @@index([qqId, lastHitAt])
+}
+
 model QqBotMessageLog {
   id             Int      @id @default(autoincrement())
   direction      String   // inbound / outbound
