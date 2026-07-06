@@ -5,7 +5,7 @@ import type {
 } from "@/api/radio";
 
 export const radioBrandName = "药苑之声";
-export const radioBrandTitle = `${radioBrandName} beta`;
+export const radioBrandTitle = `${radioBrandName}beta`;
 
 export const weekdayOptions = [
   { value: 1, label: "周一" },

@@ -74,6 +74,7 @@ model User {
   createdRadioScheduleItems RadioScheduleItem[]
   radioSongRequests  RadioSongRequest[] @relation("RadioSongRequestRequester")
   reviewedRadioSongRequests RadioSongRequest[] @relation("RadioSongRequestReviewedBy")
+  updatedRadioMusicAuthRecords RadioMusicAuth[]
   sponsorOrders    SponsorOrder[]
   qqBotBindings     QqBotBinding[]
   qqBotBindTokens   QqBotBindToken[]
@@ -898,6 +899,19 @@ model RadioSongRequest {
   @@index([scheduleItemId, createdAt])
   @@index([requesterId, createdAt])
   @@index([sourceProvider, createdAt])
+}
+
+model RadioMusicAuth {
+  id          Int      @id @default(autoincrement())
+  provider    String   @unique
+  cookieText  String   @default("")
+  updatedById Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  updatedBy User? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([updatedById])
 }
 
 // ============ 支付对接：易支付 ============

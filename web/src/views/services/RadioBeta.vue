@@ -182,9 +182,12 @@
           </div>
 
           <div v-if="songPreview.streamUrl || songPreview.notice" class="song-preview-bar">
-            <div class="preview-meta">
-              <strong>{{ songPreview.title }}</strong>
-              <span>{{ songPreview.subtitle }}</span>
+            <div class="preview-head">
+              <div class="preview-meta">
+                <strong>{{ songPreview.title }}</strong>
+                <span>{{ songPreview.subtitle }}</span>
+              </div>
+              <el-button text @click="closePreview('songs')">关闭试听</el-button>
             </div>
             <audio ref="songPreviewAudioRef" :src="songPreview.streamUrl" controls preload="none" />
             <small v-if="songPreview.notice">{{ songPreview.notice }}</small>
@@ -333,9 +336,12 @@
           </div>
 
           <div v-if="requestPreview.streamUrl" class="request-preview-player">
-            <div class="preview-meta">
-              <strong>{{ requestPreview.title }}</strong>
-              <span>{{ requestPreview.subtitle }}</span>
+            <div class="preview-head">
+              <div class="preview-meta">
+                <strong>{{ requestPreview.title }}</strong>
+                <span>{{ requestPreview.subtitle }}</span>
+              </div>
+              <el-button text @click="closePreview('request')">关闭试听</el-button>
             </div>
             <audio ref="requestPreviewAudioRef" :src="requestPreview.streamUrl" controls preload="none" />
             <small v-if="requestPreview.notice">{{ requestPreview.notice }}</small>
@@ -800,6 +806,23 @@ function pauseOtherPreview(target: PreviewTarget) {
       // ignore
     }
   }
+}
+
+function stopPreviewAudio(audio: HTMLAudioElement | null) {
+  if (!audio) return;
+  try {
+    audio.pause();
+    audio.currentTime = 0;
+    audio.removeAttribute("src");
+    audio.load();
+  } catch {
+    // ignore
+  }
+}
+
+function closePreview(target: PreviewTarget) {
+  stopPreviewAudio(target === "songs" ? songPreviewAudioRef.value : requestPreviewAudioRef.value);
+  resetPreviewState(target);
 }
 
 function resetPreviewState(target: PreviewTarget) {
@@ -1440,6 +1463,13 @@ function formatDateTime(value?: string | null) {
   gap: 16px;
 }
 
+.preview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .form-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -1516,6 +1546,11 @@ function formatDateTime(value?: string | null) {
   .search-result-main,
   .weekday-item {
     grid-template-columns: 1fr;
+  }
+
+  .preview-head {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .hero-actions,

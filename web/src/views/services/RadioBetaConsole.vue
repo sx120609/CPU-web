@@ -294,6 +294,26 @@
                 <p>查看歌曲来源、试听已锁定音源，并直接完成审核流转。</p>
               </div>
             </div>
+            <div class="music-auth-card" v-loading="musicAuthLoading">
+              <div class="music-auth-main">
+                <div v-if="qqMusicAuth?.loggedIn" class="music-auth-avatar">
+                  <img v-if="qqMusicAuth.avatarUrl" :src="qqMusicAuth.avatarUrl" :alt="qqMusicAuth.nickname || 'QQ 音乐'" referrerpolicy="no-referrer" />
+                  <span v-else>{{ (qqMusicAuth.nickname || "Q").slice(0, 1) }}</span>
+                </div>
+                <div v-else class="music-auth-avatar fallback">Q</div>
+                <div class="music-auth-copy">
+                  <strong>{{ qqMusicAuth?.nickname || "QQ 音乐未登录" }}</strong>
+                  <p>{{ qqMusicAuthSummary }}</p>
+                  <small>{{ qqMusicAuthDetail }}</small>
+                </div>
+              </div>
+              <div class="music-auth-actions">
+                <el-button plain @click="openQqMusicSite">打开 QQ 音乐</el-button>
+                <el-button type="primary" plain @click="openQqSyncDialog">{{ qqMusicAuth?.loggedIn ? "重新同步登录态" : "傻瓜版登录" }}</el-button>
+                <el-button plain @click="openQqCookieDialog">高级方式</el-button>
+                <el-button v-if="qqMusicAuth?.source === 'database'" plain @click="clearQqMusicCookie">清除共享登录态</el-button>
+              </div>
+            </div>
             <el-table :data="manageData.requests" stripe>
               <el-table-column prop="nickname" label="投稿人" min-width="120" />
               <el-table-column prop="songTitle" label="歌曲名" min-width="180" />
@@ -494,7 +514,49 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="requestDialog.visible" :title="requestDialog.row ? `处理投稿 #${requestDialog.row.id}` : '处理投稿'" width="720px">
+    <el-dialog v-model="qqSyncDialog.visible" title="QQ 音乐傻瓜版登录" width="760px">
+      <div class="dialog-form" v-loading="qqSyncDialog.loading">
+        <div class="cookie-login-note">
+          <strong>怎么用</strong>
+          <p>先把下面这个红色按钮拖到浏览器收藏栏，然后点“打开 QQ 音乐”去登录。</p>
+          <p>登录完成后，在 QQ 音乐网页里点一下刚刚收藏的“同步 QQ 音乐登录态”，系统会自动把共享登录态带回控制台。</p>
+          <p>如果当前只有网页登录态，没有播放票据，同步按钮会自动帮你打开 QQ 音乐播放器预热，不需要你自己翻 Cookie。</p>
+          <p v-if="qqSyncExpiresText">这次生成的同步按钮有效期到：{{ qqSyncExpiresText }}。</p>
+        </div>
+        <div class="bookmarklet-card">
+          <span>拖到收藏栏</span>
+          <a class="bookmarklet-chip" :href="qqSyncDialog.bookmarklet">同步 QQ 音乐登录态</a>
+          <small>以后需要更新登录态时，直接去 QQ 音乐网页点这个收藏按钮就行。</small>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="qqSyncDialog.visible = false">先关掉</el-button>
+        <el-button plain @click="openQqCookieDialog">高级手动方式</el-button>
+        <el-button plain :loading="qqSyncDialog.loading" @click="refreshQqSyncDialog">重新生成同步按钮</el-button>
+        <el-button type="primary" plain @click="openQqMusicSite">打开 QQ 音乐</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="qqCookieDialog.visible" title="保存 QQ 音乐共享登录态" width="720px">
+      <div class="dialog-form">
+        <div class="cookie-login-note">
+          <strong>高级手动方式</strong>
+          <p>如果你不想用上面的傻瓜版同步，也可以先在浏览器打开 QQ 音乐并完成登录，再把浏览器里的 Cookie 粘贴到这里保存。</p>
+          <p>保存后控制台会复用这份共享登录态去拉试听；如果仍提示缺少播放授权，通常需要在 QQ 音乐网页播放器里真正打开一次歌曲，再重新复制一遍 Cookie。</p>
+        </div>
+        <label class="field">
+          <span>QQ 音乐 Cookie</span>
+          <textarea v-model.trim="qqCookieDialog.cookie" maxlength="20000" placeholder="uin=...; qm_keyst=...; p_skey=...;" />
+        </label>
+      </div>
+      <template #footer>
+        <el-button @click="qqCookieDialog.visible = false">取消</el-button>
+        <el-button plain @click="openQqMusicSite">打开 QQ 音乐</el-button>
+        <el-button type="primary" :loading="qqCookieDialog.saving" @click="saveQqMusicCookie">保存登录态</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="requestDialog.visible" :title="requestDialog.row ? `处理投稿 #${requestDialog.row.id}` : '处理投稿'" width="720px" @closed="closeManagePreview">
       <div v-if="requestDialog.row" class="dialog-form">
         <div class="request-note-card">
           <strong>{{ requestDialog.row.songTitle }}</strong>
@@ -515,9 +577,12 @@
         </div>
 
         <div v-if="managePreview.streamUrl || managePreview.notice" class="request-preview-player">
-          <div class="preview-meta">
-            <strong>{{ managePreview.title }}</strong>
-            <span>{{ managePreview.subtitle }}</span>
+          <div class="preview-head">
+            <div class="preview-meta">
+              <strong>{{ managePreview.title }}</strong>
+              <span>{{ managePreview.subtitle }}</span>
+            </div>
+            <el-button text @click="closeManagePreview">关闭试听</el-button>
           </div>
           <audio ref="managePreviewAudioRef" :src="managePreview.streamUrl" controls preload="none" />
           <small v-if="managePreview.notice">{{ managePreview.notice }}</small>
@@ -561,6 +626,8 @@ import { ElMessage } from "element-plus";
 import {
   radioApi,
   type RadioManageBootstrap,
+  type RadioMusicAuthStatus,
+  type RadioMusicSyncSession,
   type RadioMusicSelection,
   type RadioOverview,
   type RadioPlayTime,
@@ -630,6 +697,20 @@ const managePreview = reactive({
   title: "",
   subtitle: "",
   notice: "",
+});
+
+const musicAuthLoading = ref(false);
+const musicAuth = ref<RadioMusicAuthStatus | null>(null);
+const qqSyncDialog = reactive({
+  visible: false,
+  loading: false,
+  bookmarklet: "",
+  session: null as RadioMusicSyncSession | null,
+});
+const qqCookieDialog = reactive({
+  visible: false,
+  saving: false,
+  cookie: "",
 });
 
 const semesterDialog = reactive({
@@ -716,6 +797,35 @@ const activeWeekdayCount = computed(() =>
   new Set(manageData.playTimes.filter((item) => item.enabled).map((item) => item.weekday)).size
 );
 
+const qqMusicAuth = computed(() => musicAuth.value?.qq ?? null);
+
+const qqMusicAuthSummary = computed(() => {
+  const status = qqMusicAuth.value;
+  if (!status?.loggedIn) return "当前还没有可用的 QQ 音乐共享登录态，部分歌曲会因为缺少播放授权而无法试听。";
+  if (!status.playbackKeyReady) return "网页登录态已经存在，但还没有拿到播放票据，当前依然可能拉不起试听。";
+  return "共享登录态可用，控制台现在会优先用这份 QQ 音乐登录态去拉试听。";
+});
+
+const qqMusicAuthDetail = computed(() => {
+  const status = qqMusicAuth.value;
+  if (!status) return "正在读取 QQ 音乐登录状态。";
+  const sourceText = status.source === "database"
+    ? "来自控制台保存的共享登录态"
+    : status.source === "env"
+      ? "来自服务端环境变量"
+      : "当前没有可用登录态";
+  const playbackText = status.loggedIn
+    ? (status.playbackKeyReady ? "已拿到播放票据" : "缺少播放票据")
+    : "未登录";
+  return [sourceText, playbackText, status.updatedAt ? `最近保存：${formatDateTime(status.updatedAt)}` : ""]
+    .filter(Boolean)
+    .join(" · ");
+});
+
+const qqSyncExpiresText = computed(() =>
+  qqSyncDialog.session?.expiresAt ? formatDateTime(qqSyncDialog.session.expiresAt) : ""
+);
+
 onMounted(async () => {
   const panel = String(route.query.panel || "");
   if (panel === "overview" || panel === "semesters" || panel === "playTimes" || panel === "schedules" || panel === "requests") {
@@ -725,6 +835,7 @@ onMounted(async () => {
   if (canManage.value) {
     await refreshConsole();
   }
+  await handleQqMusicSyncFeedback();
 });
 
 async function initPermission() {
@@ -755,7 +866,7 @@ async function initPermission() {
 
 async function refreshConsole() {
   if (!canManage.value) return;
-  await Promise.all([loadOverview(), loadManageData()]);
+  await Promise.all([loadOverview(), loadManageData(), loadMusicAuth()]);
 }
 
 async function loadOverview() {
@@ -804,8 +915,159 @@ async function loadManageData() {
   }
 }
 
+async function loadMusicAuth() {
+  musicAuthLoading.value = true;
+  try {
+    musicAuth.value = await radioApi.musicAuthStatus();
+  } catch (error) {
+    const status = responseStatus(error);
+    if (status === 401) {
+      loginRequired.value = true;
+      return;
+    }
+    if (status === 403) return;
+    ElMessage.error(responseMessage(error) || "QQ 音乐登录态读取失败");
+  } finally {
+    musicAuthLoading.value = false;
+  }
+}
+
+function buildQqMusicSyncReturnPath() {
+  return router.resolve({
+    name: "service-radio-beta-console",
+    query: {
+      panel: currentPanel.value,
+    },
+  }).href;
+}
+
+function buildQqMusicBookmarklet(token: string) {
+  const endpoint = `${window.location.origin}/api/radio/music-auth/qq-sync/complete`;
+  const playerUrl = "https://y.qq.com/n/ryqq/player";
+  const script = [
+    "(function(){",
+    `const token=${JSON.stringify(token)};`,
+    `const endpoint=${JSON.stringify(endpoint)};`,
+    `const playerUrl=${JSON.stringify(playerUrl)};`,
+    'const parse=function(text){const out={};String(text||"").split(";").forEach(function(part){const raw=String(part||"").trim();if(!raw)return;const idx=raw.indexOf("=");if(idx<=0)return;out[raw.slice(0,idx).trim()]=raw.slice(idx+1).trim();});return out;};',
+    'const normalizeUin=function(raw){const digits=String(raw||"").replace(/\\D/g,"");return digits.replace(/^0+/,"")||digits;};',
+    'const hasLogin=function(obj){const uin=normalizeUin(Number(obj.login_type)===2?(obj.wxuin||obj.uin||obj.p_uin||""):(obj.uin||obj.qqmusic_uin||obj.wxuin||obj.p_uin||""));const key=obj.qm_keyst||obj.qqmusic_key||obj.music_key||obj.p_skey||obj.skey||obj.psrf_qqaccess_token||obj.psrf_qqrefresh_token||obj.wxrefresh_token||obj.wxskey||"";return !!(uin&&key);};',
+    'const hasPlayback=function(obj){const uin=normalizeUin(Number(obj.login_type)===2?(obj.wxuin||obj.uin||obj.p_uin||""):(obj.uin||obj.qqmusic_uin||obj.wxuin||obj.p_uin||""));const key=obj.qm_keyst||obj.qqmusic_key||obj.music_key||obj.wxskey||"";return !!(uin&&key);};',
+    'const submit=function(cookie){const form=document.createElement("form");form.method="POST";form.action=endpoint;form.style.display="none";const push=function(name,value){const input=document.createElement("input");input.type="hidden";input.name=name;input.value=value;form.appendChild(input);};push("token",token);push("cookie",cookie);(document.body||document.documentElement).appendChild(form);form.submit();};',
+    'if(!/(^|\\.)y\\.qq\\.com$/i.test(location.hostname)){alert("请先在 QQ 音乐网页里点击这个同步按钮。");return;}',
+    'const currentCookie=document.cookie||"";const currentObj=parse(currentCookie);',
+    'if(hasPlayback(currentObj)){submit(currentCookie);return;}',
+    'if(!hasLogin(currentObj)){alert("请先在当前 QQ 音乐页面完成登录，再点一次同步按钮。");return;}',
+    'const popup=window.open(playerUrl,"_blank");',
+    'if(!popup){alert("已经检测到你登录了 QQ，但浏览器拦住了播放器预热窗口。请允许弹窗后重试，或者手动打开 QQ 音乐播放器页再点一次同步按钮。");return;}',
+    'alert("已检测到 QQ 登录，正在自动补全播放授权，请稍等几秒，不用自己找 Cookie。");',
+    'const started=Date.now();',
+    'const timer=setInterval(function(){try{const cookie=popup.document.cookie||"";const obj=parse(cookie);if(hasPlayback(obj)){clearInterval(timer);try{popup.close();}catch(e){}submit(cookie);return;}if(Date.now()-started>25000){clearInterval(timer);alert("已经帮你打开播放器预热，但暂时还没拿到播放票据。请在打开的 QQ 音乐页面停留几秒后，再点一次同步按钮。");}}catch(e){}},1200);',
+    "})();",
+  ].join("");
+  return `javascript:${script}`;
+}
+
+async function openQqSyncDialog() {
+  qqSyncDialog.visible = true;
+  qqSyncDialog.loading = true;
+  try {
+    const session = await radioApi.createQqMusicSyncSession({
+      returnPath: buildQqMusicSyncReturnPath(),
+    });
+    qqSyncDialog.session = session;
+    qqSyncDialog.bookmarklet = buildQqMusicBookmarklet(session.token);
+  } catch (error) {
+    qqSyncDialog.visible = false;
+    ElMessage.error(responseMessage(error) || "QQ 音乐同步按钮生成失败");
+  } finally {
+    qqSyncDialog.loading = false;
+  }
+}
+
+async function refreshQqSyncDialog() {
+  if (!qqSyncDialog.visible) {
+    await openQqSyncDialog();
+    return;
+  }
+  qqSyncDialog.loading = true;
+  try {
+    const session = await radioApi.createQqMusicSyncSession({
+      returnPath: buildQqMusicSyncReturnPath(),
+    });
+    qqSyncDialog.session = session;
+    qqSyncDialog.bookmarklet = buildQqMusicBookmarklet(session.token);
+    ElMessage.success("同步按钮已重新生成");
+  } catch (error) {
+    ElMessage.error(responseMessage(error) || "同步按钮刷新失败");
+  } finally {
+    qqSyncDialog.loading = false;
+  }
+}
+
+async function handleQqMusicSyncFeedback() {
+  const result = String(route.query.qqMusicSync || "").trim();
+  if (!result) return;
+  const message = String(route.query.qqMusicSyncMessage || "").trim();
+  await loadMusicAuth().catch(() => undefined);
+  if (result === "success") ElMessage.success(message || "QQ 音乐共享登录态已同步");
+  else if (result === "partial") ElMessage.warning(message || "QQ 音乐登录态已同步，但还没拿到播放票据");
+  else ElMessage.error(message || "QQ 音乐共享登录态同步失败");
+  const nextQuery = { ...route.query };
+  delete nextQuery.qqMusicSync;
+  delete nextQuery.qqMusicSyncMessage;
+  await router.replace({ query: nextQuery }).catch(() => undefined);
+}
+
 function switchPanel(panel: ConsolePanel) {
   currentPanel.value = panel;
+}
+
+function openQqMusicSite() {
+  window.open("https://y.qq.com/n/ryqq/player", "_blank", "noopener,noreferrer");
+}
+
+function openQqCookieDialog() {
+  qqSyncDialog.visible = false;
+  qqCookieDialog.visible = true;
+  qqCookieDialog.saving = false;
+  qqCookieDialog.cookie = "";
+}
+
+async function saveQqMusicCookie() {
+  const cookie = qqCookieDialog.cookie.trim();
+  if (!cookie) {
+    ElMessage.warning("先粘贴 QQ 音乐 Cookie 再保存");
+    return;
+  }
+  qqCookieDialog.saving = true;
+  try {
+    const status = await radioApi.saveQqMusicCookie({ cookie });
+    musicAuth.value = status;
+    qqCookieDialog.visible = false;
+    qqCookieDialog.cookie = "";
+    if (status.qq.loggedIn && status.qq.playbackKeyReady) {
+      ElMessage.success("QQ 音乐共享登录态已保存，当前可以直接拉试听");
+    } else if (status.qq.loggedIn) {
+      ElMessage.warning("登录态已保存，但还没拿到播放票据；建议在 QQ 音乐网页播放器里打开一次歌曲后重新复制 Cookie");
+    } else {
+      ElMessage.warning("Cookie 已提交，但当前还没有识别到有效的 QQ 音乐登录态");
+    }
+  } catch (error) {
+    ElMessage.error(responseMessage(error) || "QQ 音乐登录态保存失败");
+  } finally {
+    qqCookieDialog.saving = false;
+  }
+}
+
+async function clearQqMusicCookie() {
+  try {
+    const status = await radioApi.clearQqMusicCookie();
+    musicAuth.value = status;
+    ElMessage.success("QQ 音乐共享登录态已清除");
+  } catch (error) {
+    ElMessage.error(responseMessage(error) || "QQ 音乐登录态清除失败");
+  }
 }
 
 function openSemesterDialog(row?: RadioSemester) {
@@ -1034,6 +1296,23 @@ async function previewSource(selection: RadioMusicSelection, title: string, arti
   } finally {
     managePreview.loading = false;
   }
+}
+
+function stopPreviewAudio(audio: HTMLAudioElement | null) {
+  if (!audio) return;
+  try {
+    audio.pause();
+    audio.currentTime = 0;
+    audio.removeAttribute("src");
+    audio.load();
+  } catch {
+    // ignore
+  }
+}
+
+function closeManagePreview() {
+  stopPreviewAudio(managePreviewAudioRef.value);
+  resetPreviewState();
 }
 
 function resetPreviewState() {
@@ -1464,6 +1743,130 @@ function formatDateTime(value?: string | null) {
   padding: 16px;
 }
 
+.music-auth-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--console-line);
+  background: linear-gradient(135deg, rgba(180, 50, 37, 0.06) 0%, rgba(255, 255, 255, 0.94) 100%);
+}
+
+.music-auth-main,
+.music-auth-actions,
+.preview-head,
+.cookie-login-note {
+  display: flex;
+  gap: 12px;
+}
+
+.music-auth-main {
+  align-items: center;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.music-auth-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  overflow: hidden;
+  background: rgba(180, 50, 37, 0.1);
+  color: var(--console-red);
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.music-auth-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.music-auth-avatar.fallback {
+  border: 1px dashed rgba(180, 50, 37, 0.22);
+}
+
+.music-auth-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.music-auth-copy strong,
+.cookie-login-note strong {
+  color: var(--console-ink);
+}
+
+.music-auth-copy p,
+.music-auth-copy small,
+.cookie-login-note p {
+  margin: 0;
+  color: #5b6858;
+  line-height: 1.7;
+}
+
+.music-auth-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.bookmarklet-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px dashed rgba(180, 50, 37, 0.26);
+  background: linear-gradient(135deg, rgba(180, 50, 37, 0.08) 0%, rgba(247, 243, 235, 0.94) 100%);
+}
+
+.bookmarklet-card span,
+.bookmarklet-card small {
+  color: #5b6858;
+}
+
+.bookmarklet-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 0 20px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #b43225 0%, #d04f39 100%);
+  color: #fff8f5;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  box-shadow: 0 14px 28px rgba(180, 50, 37, 0.18);
+  width: fit-content;
+}
+
+.bookmarklet-chip:hover {
+  color: #fffdfb;
+  transform: translateY(-1px);
+}
+
+.preview-head {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.cookie-login-note {
+  flex-direction: column;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(180, 50, 37, 0.14);
+  background: rgba(247, 243, 235, 0.72);
+}
+
 @media (max-width: 1280px) {
   .console-shell {
     grid-template-columns: 1fr;
@@ -1501,6 +1904,16 @@ function formatDateTime(value?: string | null) {
   .source-preview-card {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .music-auth-card,
+  .preview-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .bookmarklet-chip {
+    width: 100%;
   }
 
   .console-title h2 {

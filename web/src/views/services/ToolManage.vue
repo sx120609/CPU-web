@@ -1334,7 +1334,7 @@ async function init() {
       return;
     }
     if (availableCodes.includes("radio_beta") && availableCodes.length === 1) {
-      await router.replace({ name: "service-radio-beta", query: { manage: "1" } });
+      await router.replace({ name: "service-radio-beta-console" });
       return;
     }
     manageableCodes.value = availableCodes.filter((code) => code !== "file_collect" && code !== "radio_beta");

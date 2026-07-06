@@ -85,7 +85,7 @@ export const serviceTools: ServiceTool[] = [
   },
   {
     slug: "radio_beta",
-    name: "药苑之声 beta",
+    name: "药苑之声beta",
     summary: "先把药苑之声的节目时段、栏目编排和点歌留言收进来",
     description: "第一期先承接药苑之声的播出时段、节目安排和点歌留言，后续再逐步补齐投票、通知和更多站务工作流。",
     icon: "📻",

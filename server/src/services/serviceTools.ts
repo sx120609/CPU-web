@@ -32,7 +32,7 @@ export const SERVICE_TOOL_META: Record<ServiceToolCode, { code: ServiceToolCode;
   },
   radio_beta: {
     code: "radio_beta",
-    name: "药苑之声 beta",
+    name: "药苑之声beta",
     description: "药苑之声的播出时段、节目编排与点歌留言一期工作台",
   },
 };

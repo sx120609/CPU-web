@@ -51,6 +51,30 @@ export interface RadioMusicResolveResponse {
   streamUrl?: string | null;
 }
 
+export type RadioMusicAuthSource = "database" | "env" | "none";
+
+export interface RadioMusicProviderAuthStatus {
+  provider: RadioMusicProvider;
+  source: RadioMusicAuthSource;
+  hasCookie: boolean;
+  loggedIn: boolean;
+  playbackKeyReady: boolean;
+  userId?: string | null;
+  nickname?: string | null;
+  avatarUrl?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface RadioMusicAuthStatus {
+  qq: RadioMusicProviderAuthStatus;
+}
+
+export interface RadioMusicSyncSession {
+  token: string;
+  expiresAt: string;
+  returnPath: string;
+}
+
 export interface RadioSimpleUser {
   id: number;
   username: string;
@@ -237,6 +261,10 @@ export const radioApi = {
   resolveMusic: (params: { provider: RadioMusicProvider; trackId: string; mediaMid?: string | null; quality?: string }) => request.get<RadioMusicResolveResponse>("/radio/music/resolve", params),
   submitRequest: (payload: RadioSongRequestPayload) => request.post<RadioSongRequest>("/radio/requests", payload),
   manageBootstrap: () => request.get<RadioManageBootstrap>("/radio/manage/bootstrap"),
+  musicAuthStatus: () => request.get<RadioMusicAuthStatus>("/radio/manage/music-auth"),
+  createQqMusicSyncSession: (payload: { returnPath?: string }) => request.post<RadioMusicSyncSession>("/radio/manage/music-auth/qq-sync-session", payload),
+  saveQqMusicCookie: (payload: { cookie: string }) => request.post<RadioMusicAuthStatus>("/radio/manage/music-auth/qq-cookie", payload),
+  clearQqMusicCookie: () => request.delete<RadioMusicAuthStatus>("/radio/manage/music-auth/qq-cookie"),
   createSemester: (payload: RadioSemesterPayload) => request.post<RadioSemester>("/radio/manage/semesters", payload),
   updateSemester: (id: number, payload: Partial<RadioSemesterPayload>) => request.patch<RadioSemester>(`/radio/manage/semesters/${id}`, payload),
   createPlayTime: (payload: RadioPlayTimePayload) => request.post<RadioPlayTime>("/radio/manage/play-times", payload),

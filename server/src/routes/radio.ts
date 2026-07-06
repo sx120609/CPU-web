@@ -12,11 +12,18 @@ import {
   audioContentTypeForUrl,
   audioProxyHeadersFor,
   buildRadioMusicStreamPath,
+  buildQqRadioMusicSyncRedirectPath,
+  clearQqRadioMusicCookie,
+  createQqRadioMusicSyncSession,
+  getRadioMusicAuthStatus,
   issueRadioMusicStreamToken,
+  readQqRadioMusicSyncSession,
   readRadioMusicStreamPayload,
   resolveRadioMusicUrl,
+  saveQqRadioMusicCookie,
   searchRadioMusic,
   serializeRadioMusicSelection,
+  touchQqRadioMusicSyncSession,
 } from "../services/radioMusic";
 import {
   normalizeRadioPlayTime,
@@ -128,6 +135,14 @@ const resolveMusicSchema = z.object({
   trackId: z.string().trim().min(1).max(120),
   mediaMid: optionalNullableString(120),
   quality: z.string().trim().max(40).optional(),
+});
+
+const saveQqMusicCookieSchema = z.object({
+  cookie: z.string().trim().min(1).max(20_000),
+});
+
+const createQqMusicSyncSessionSchema = z.object({
+  returnPath: z.string().trim().max(500).optional(),
 });
 
 async function ensureRadioUsable(user?: { userId?: number; role?: string } | null) {
@@ -449,6 +464,70 @@ radioRouter.get("/manage/bootstrap", authRequired, async (req, res, next) => {
     ok(res, await loadManageBootstrap());
   } catch (error) {
     next(error);
+  }
+});
+
+radioRouter.get("/manage/music-auth", authRequired, async (req, res, next) => {
+  try {
+    await ensureRadioManager(req.user);
+    ok(res, await getRadioMusicAuthStatus());
+  } catch (error) {
+    next(error);
+  }
+});
+
+radioRouter.post("/manage/music-auth/qq-sync-session", authRequired, validate(createQqMusicSyncSessionSchema), async (req, res, next) => {
+  try {
+    await ensureRadioManager(req.user);
+    ok(res, await createQqRadioMusicSyncSession(req.user?.userId ?? null, req.body.returnPath));
+  } catch (error) {
+    next(error);
+  }
+});
+
+radioRouter.post("/manage/music-auth/qq-cookie", authRequired, validate(saveQqMusicCookieSchema), async (req, res, next) => {
+  try {
+    await ensureRadioManager(req.user);
+    ok(res, await saveQqRadioMusicCookie(req.body.cookie, req.user?.userId ?? null));
+  } catch (error) {
+    next(error);
+  }
+});
+
+radioRouter.delete("/manage/music-auth/qq-cookie", authRequired, async (req, res, next) => {
+  try {
+    await ensureRadioManager(req.user);
+    ok(res, await clearQqRadioMusicCookie());
+  } catch (error) {
+    next(error);
+  }
+});
+
+radioRouter.post("/music-auth/qq-sync/complete", async (req, res) => {
+  const fallbackPath = buildQqRadioMusicSyncRedirectPath(null, "error", "同步按钮已失效，请回控制台重新生成");
+  const token = String(req.body?.token ?? "").trim();
+  const cookie = String(req.body?.cookie ?? "").trim();
+  const session = token ? await readQqRadioMusicSyncSession(token) : null;
+  if (!session) {
+    res.redirect(303, fallbackPath);
+    return;
+  }
+  if (!cookie) {
+    res.redirect(303, buildQqRadioMusicSyncRedirectPath(session.returnPath, "error", "没有读取到 QQ 音乐登录态，请确认你是在 QQ 音乐网页里点的同步按钮"));
+    return;
+  }
+  try {
+    const status = await saveQqRadioMusicCookie(cookie, session.updatedById);
+    await touchQqRadioMusicSyncSession(token).catch(() => undefined);
+    const message = status.qq.playbackKeyReady
+      ? "QQ 音乐共享登录态已同步，现在可以直接拉试听了"
+      : status.qq.loggedIn
+        ? "登录态已同步，但还没拿到播放票据；请在 QQ 音乐网页播放器停留几秒后再点一次同步按钮"
+        : "登录态已提交，但当前还没有识别到有效的 QQ 音乐登录态";
+    const result = status.qq.playbackKeyReady ? "success" : status.qq.loggedIn ? "partial" : "error";
+    res.redirect(303, buildQqRadioMusicSyncRedirectPath(session.returnPath, result, message));
+  } catch (error: any) {
+    res.redirect(303, buildQqRadioMusicSyncRedirectPath(session.returnPath, "error", error?.message || "QQ 音乐登录态同步失败"));
   }
 });
 

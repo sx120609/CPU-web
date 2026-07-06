@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { config } from "../config";
+import { prisma } from "../prisma";
+import { Errors } from "../utils/response";
 import { withCache, setEphemeralValue, getEphemeralValue, touchEphemeralValue } from "./cache";
 import { buildRedisKey } from "./redis";
 
@@ -65,6 +67,38 @@ export type RadioMusicResolveResult = {
   message?: string;
 };
 
+export type RadioMusicAuthSource = "database" | "env" | "none";
+
+export type RadioMusicProviderAuthStatus = {
+  provider: RadioMusicProvider;
+  source: RadioMusicAuthSource;
+  hasCookie: boolean;
+  loggedIn: boolean;
+  playbackKeyReady: boolean;
+  userId: string | null;
+  nickname: string | null;
+  avatarUrl: string | null;
+  updatedAt: string | null;
+};
+
+export type RadioMusicAuthStatus = {
+  qq: RadioMusicProviderAuthStatus;
+};
+
+export type RadioMusicSyncResult = "success" | "partial" | "error";
+
+export type RadioMusicSyncSession = {
+  token: string;
+  expiresAt: string;
+  returnPath: string;
+};
+
+type RadioMusicSyncSessionPayload = {
+  updatedById: number | null;
+  returnPath: string;
+  expiresAt: string;
+};
+
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36";
 const QQ_MUSICU_URL = "https://u.y.qq.com/cgi-bin/musicu.fcg";
 const QQ_SMARTBOX_URL = "https://c.y.qq.com/splcloud/fcgi-bin/smartbox_new.fcg";
@@ -76,6 +110,16 @@ const SEARCH_TTL_MS = 5 * 60_000;
 const URL_TTL_MS = 45_000;
 const STREAM_TOKEN_TTL_MS = 10 * 60_000;
 const STREAM_TOKEN_PREFIX = buildRedisKey("radio", "music", "stream");
+const QQ_SYNC_SESSION_TTL_MS = 30 * 60_000;
+const QQ_SYNC_SESSION_PREFIX = buildRedisKey("radio", "music", "qq-sync");
+const SHARED_QQ_PROVIDER = "qq";
+const DEFAULT_QQ_SYNC_RETURN_PATH = "/services/tools/radio-beta/console?panel=requests";
+
+const radioMusicAuthCache = {
+  loaded: false,
+  qqCookieText: "",
+  qqUpdatedAt: null as string | null,
+};
 
 const NETEASE_QUALITY_CANDIDATES = [
   { level: "jymaster", br: 1_999_000, label: "超清母带" },
@@ -97,12 +141,39 @@ function normalizeCookieHeader(input: string | undefined) {
   return String(input ?? "").trim().replace(/^['"]|['"]$/g, "");
 }
 
+function serializeCookieObject(input: Record<string, unknown>) {
+  return Object.keys(input || {})
+    .filter((key) => input[key] != null && String(input[key]) !== "")
+    .map((key) => `${key}=${String(input[key])}`)
+    .join("; ");
+}
+
 function neteaseCookie() {
   return normalizeCookieHeader(config.radioNeteaseCookie);
 }
 
+function qqStoredCookie() {
+  return normalizeCookieHeader(radioMusicAuthCache.qqCookieText);
+}
+
+function qqCookieSource(): RadioMusicAuthSource {
+  if (qqStoredCookie()) return "database";
+  if (normalizeCookieHeader(config.radioQqCookie)) return "env";
+  return "none";
+}
+
 function qqCookie() {
-  return normalizeCookieHeader(config.radioQqCookie);
+  return qqStoredCookie() || normalizeCookieHeader(config.radioQqCookie);
+}
+
+async function ensureRadioMusicAuthLoaded(force = false) {
+  if (radioMusicAuthCache.loaded && !force) return;
+  const row = await prisma.radioMusicAuth.findUnique({
+    where: { provider: SHARED_QQ_PROVIDER },
+  });
+  radioMusicAuthCache.qqCookieText = normalizeCookieHeader(row?.cookieText ?? "");
+  radioMusicAuthCache.qqUpdatedAt = row?.updatedAt ? row.updatedAt.toISOString() : null;
+  radioMusicAuthCache.loaded = true;
 }
 
 function clampInt(value: number, min: number, max: number) {
@@ -183,6 +254,10 @@ function streamTokenKey(token: string) {
   return `${STREAM_TOKEN_PREFIX}:${token}`;
 }
 
+function qqSyncSessionKey(token: string) {
+  return `${QQ_SYNC_SESSION_PREFIX}:${token}`;
+}
+
 type RadioMusicStreamPayload = {
   provider: RadioMusicProvider;
   url: string;
@@ -209,6 +284,61 @@ export async function readRadioMusicStreamPayload(token: string) {
 
 export function buildRadioMusicStreamPath(token: string) {
   return `/api/radio/music/stream/${encodeURIComponent(token)}`;
+}
+
+function normalizeQqSyncReturnPath(input: unknown) {
+  const raw = String(input ?? "").trim();
+  if (!raw.startsWith("/") || raw.startsWith("//")) return DEFAULT_QQ_SYNC_RETURN_PATH;
+  return raw.slice(0, 500);
+}
+
+function qqSyncRedirectUrl(returnPath?: string | null) {
+  return new URL(normalizeQqSyncReturnPath(returnPath), "https://cpu-web.local");
+}
+
+export function buildQqRadioMusicSyncRedirectPath(
+  returnPath: string | null | undefined,
+  result: RadioMusicSyncResult,
+  message?: string | null,
+) {
+  const url = qqSyncRedirectUrl(returnPath);
+  url.searchParams.set("qqMusicSync", result);
+  if (message) url.searchParams.set("qqMusicSyncMessage", String(message).slice(0, 200));
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+export async function createQqRadioMusicSyncSession(updatedById?: number | null, returnPath?: string) {
+  const token = randomUUID().replace(/-/g, "");
+  const payload: RadioMusicSyncSessionPayload = {
+    updatedById: updatedById ?? null,
+    returnPath: normalizeQqSyncReturnPath(returnPath),
+    expiresAt: new Date(Date.now() + QQ_SYNC_SESSION_TTL_MS).toISOString(),
+  };
+  await setEphemeralValue(qqSyncSessionKey(token), JSON.stringify(payload), QQ_SYNC_SESSION_TTL_MS);
+  return {
+    token,
+    expiresAt: payload.expiresAt,
+    returnPath: payload.returnPath,
+  } satisfies RadioMusicSyncSession;
+}
+
+export async function readQqRadioMusicSyncSession(token: string) {
+  const raw = await getEphemeralValue(qqSyncSessionKey(String(token || "").trim()));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as RadioMusicSyncSessionPayload;
+    return {
+      updatedById: typeof parsed.updatedById === "number" ? parsed.updatedById : null,
+      returnPath: normalizeQqSyncReturnPath(parsed.returnPath),
+      expiresAt: String(parsed.expiresAt || ""),
+    } satisfies RadioMusicSyncSessionPayload;
+  } catch {
+    return null;
+  }
+}
+
+export async function touchQqRadioMusicSyncSession(token: string) {
+  await touchEphemeralValue(qqSyncSessionKey(String(token || "").trim()), QQ_SYNC_SESSION_TTL_MS);
 }
 
 function playbackRestriction(
@@ -284,6 +414,14 @@ function parseCookieString(cookieText: string) {
   return out;
 }
 
+function decodeQQCookieValue(value: unknown) {
+  try {
+    return decodeURIComponent(String(value ?? "").replace(/\+/g, "%20")).trim();
+  } catch {
+    return String(value ?? "").trim();
+  }
+}
+
 function qqCookieObject() {
   return parseCookieString(qqCookie());
 }
@@ -305,6 +443,113 @@ function qqCookieMusicKey(obj = qqCookieObject()) {
 
 function qqCookiePlaybackKey(obj = qqCookieObject()) {
   return obj.qm_keyst || obj.qqmusic_key || obj.music_key || obj.wxskey || "";
+}
+
+function qqCookieNickname(obj = qqCookieObject(), uin = qqCookieUin(obj)) {
+  const normalizedUin = normalizeQQUin(uin);
+  const padded = normalizedUin ? `0${normalizedUin}` : "";
+  const keys = [
+    normalizedUin && `ptnick_${normalizedUin}`,
+    padded && `ptnick_${padded}`,
+    "ptnick",
+    "nick",
+    "nickname",
+    "qq_nickname",
+  ].filter(Boolean) as string[];
+  for (const key of keys) {
+    if (!obj[key]) continue;
+    const nickname = decodeQQCookieValue(obj[key]);
+    if (nickname) return nickname;
+  }
+  const fallback = Object.keys(obj).find((key) => /^ptnick_/i.test(key) && obj[key]);
+  return fallback ? decodeQQCookieValue(obj[fallback]) : "";
+}
+
+function qqCookieAvatar(obj = qqCookieObject(), uin = qqCookieUin(obj)) {
+  const direct = obj.qqmusic_avatar || obj.avatar || obj.avatarUrl || obj.headpic || "";
+  if (direct) return decodeQQCookieValue(direct);
+  const normalizedUin = normalizeQQUin(uin);
+  return normalizedUin ? `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(normalizedUin)}&s=100` : "";
+}
+
+function normalizeQQCookieInput(cookieText: string) {
+  const obj = parseCookieString(cookieText);
+  if (Number(obj.login_type) === 2 && obj.wxuin && !obj.uin) obj.uin = obj.wxuin;
+  if (!obj.uin && (obj.qqmusic_uin || obj.p_uin)) obj.uin = obj.qqmusic_uin || obj.p_uin;
+  if (obj.uin) obj.uin = normalizeQQUin(obj.uin);
+  return serializeCookieObject(obj);
+}
+
+function buildQQAuthStatus(): RadioMusicProviderAuthStatus {
+  const source = qqCookieSource();
+  const cookieText = qqCookie();
+  const cookieObj = parseCookieString(cookieText);
+  const userId = qqCookieUin(cookieObj) || null;
+  const loggedIn = Boolean(userId && qqCookieMusicKey(cookieObj));
+  const playbackKeyReady = Boolean(userId && qqCookiePlaybackKey(cookieObj));
+  return {
+    provider: "qq",
+    source,
+    hasCookie: Boolean(cookieText),
+    loggedIn,
+    playbackKeyReady,
+    userId,
+    nickname: loggedIn ? (qqCookieNickname(cookieObj, userId || undefined) || `QQ ${userId}`) : null,
+    avatarUrl: loggedIn ? (qqCookieAvatar(cookieObj, userId || undefined) || null) : null,
+    updatedAt: source === "database" ? radioMusicAuthCache.qqUpdatedAt : null,
+  };
+}
+
+function sharedAuthStateKey() {
+  const qqState = qqSessionState();
+  return [
+    `netease:${neteaseCookie() ? 1 : 0}`,
+    `qq:${qqState.loggedIn ? 1 : 0}`,
+    `qqplay:${qqState.hasPlaybackKey ? 1 : 0}`,
+  ].join("|");
+}
+
+export async function getRadioMusicAuthStatus(): Promise<RadioMusicAuthStatus> {
+  await ensureRadioMusicAuthLoaded();
+  return {
+    qq: buildQQAuthStatus(),
+  };
+}
+
+export async function saveQqRadioMusicCookie(cookieText: string, updatedById?: number | null) {
+  const normalized = normalizeQQCookieInput(cookieText);
+  const cookieObj = parseCookieString(normalized);
+  const userId = qqCookieUin(cookieObj);
+  const musicKey = qqCookieMusicKey(cookieObj);
+  if (!userId || !musicKey) {
+    throw Errors.badRequest("QQ 音乐登录 Cookie 缺少 uin 或有效登录票据");
+  }
+  const row = await prisma.radioMusicAuth.upsert({
+    where: { provider: SHARED_QQ_PROVIDER },
+    update: {
+      cookieText: normalized,
+      updatedById: updatedById ?? null,
+    },
+    create: {
+      provider: SHARED_QQ_PROVIDER,
+      cookieText: normalized,
+      updatedById: updatedById ?? null,
+    },
+  });
+  radioMusicAuthCache.loaded = true;
+  radioMusicAuthCache.qqCookieText = normalizeCookieHeader(row.cookieText);
+  radioMusicAuthCache.qqUpdatedAt = row.updatedAt.toISOString();
+  return await getRadioMusicAuthStatus();
+}
+
+export async function clearQqRadioMusicCookie() {
+  await prisma.radioMusicAuth.deleteMany({
+    where: { provider: SHARED_QQ_PROVIDER },
+  });
+  radioMusicAuthCache.loaded = true;
+  radioMusicAuthCache.qqCookieText = "";
+  radioMusicAuthCache.qqUpdatedAt = null;
+  return await getRadioMusicAuthStatus();
 }
 
 function qqSessionState() {
@@ -713,6 +958,7 @@ async function resolveQQSongUrl(trackId: string, mediaMid: string | null | undef
 }
 
 export async function searchRadioMusic(query: string, mode: RadioMusicSearchMode, limit: number) {
+  await ensureRadioMusicAuthLoaded();
   const keyword = String(query ?? "").trim();
   const providerMode = RADIO_MUSIC_SEARCH_MODES.includes(mode) ? mode : "all";
   const cappedLimit = clampInt(limit, 1, 18);
@@ -724,7 +970,7 @@ export async function searchRadioMusic(query: string, mode: RadioMusicSearchMode
       results: [] as RadioMusicSearchItem[],
     };
   }
-  return withCache("radio-music", ["search", providerMode, keyword, cappedLimit], SEARCH_TTL_MS, async () => {
+  return withCache("radio-music", ["search", providerMode, keyword, cappedLimit, sharedAuthStateKey()], SEARCH_TTL_MS, async () => {
     if (providerMode === "netease") {
       return {
         query: keyword,
@@ -766,11 +1012,12 @@ export async function resolveRadioMusicUrl(input: {
   mediaMid?: string | null;
   quality?: string;
 }) {
+  await ensureRadioMusicAuthLoaded();
   const provider = input.provider === "qq" ? "qq" : "netease";
   const trackId = String(input.trackId ?? "").trim();
   const mediaMid = String(input.mediaMid ?? "").trim();
   const quality = normalizeQualityPreference(input.quality);
-  return withCache("radio-music", ["resolve", provider, trackId, mediaMid || "_", quality], URL_TTL_MS, async () => {
+  return withCache("radio-music", ["resolve", provider, trackId, mediaMid || "_", quality, sharedAuthStateKey()], URL_TTL_MS, async () => {
     if (provider === "qq") return resolveQQSongUrl(trackId, mediaMid, quality);
     return resolveNeteaseSongUrl(trackId, quality);
   });

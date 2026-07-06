@@ -71,7 +71,7 @@ function openToolManage(toolCode: ServiceToolCode) {
     return;
   }
   if (toolCode === "radio_beta") {
-    router.push({ name: "service-radio-beta", query: { manage: "1" } });
+    router.push({ name: "service-radio-beta-console" });
     return;
   }
   router.push({ path: "/services/tools/manage", query: { tool: toolCode } });
