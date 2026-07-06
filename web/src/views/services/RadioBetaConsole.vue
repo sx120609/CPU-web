@@ -1,124 +1,182 @@
 <template>
-  <div class="radio-console-page">
-    <div class="console-shell">
-      <aside class="console-sidebar">
-        <div class="sidebar-brand">
-          <div class="sidebar-logo-shell">
-            <img :src="brandLogo" :alt="radioBrandName" class="sidebar-logo" />
+  <div class="voicehub-dashboard">
+    <div class="admin-layout">
+      <aside :class="['admin-sidebar', { open: sidebarOpen }]">
+        <div class="sidebar-inner">
+          <div class="sidebar-brand">
+            <button class="sidebar-close" type="button" @click="closeSidebar">×</button>
+            <div class="brand-main">
+              <div class="brand-logo">
+                <img :src="brandLogo" :alt="radioBrandName" class="brand-logo-image" />
+              </div>
+              <div class="brand-copy">
+                <span>VoiceHub Admin</span>
+                <strong>{{ radioBrandTitle }}</strong>
+                <small>药苑之声独立控制台，负责学期、时段、节目与投稿审核。</small>
+              </div>
+            </div>
           </div>
-          <div class="sidebar-copy">
-            <span class="sidebar-kicker">Radio Console</span>
-            <h1>{{ radioBrandTitle }}</h1>
-            <p>真正独立出来的后台工作台，负责时段、节目、投稿和审核流转。</p>
-          </div>
-        </div>
 
-        <nav class="sidebar-nav" aria-label="药苑之声控制台导航">
-          <button
-            v-for="item in consolePanels"
-            :key="item.value"
-            :class="['sidebar-link', { active: currentPanel === item.value }]"
-            type="button"
-            @click="switchPanel(item.value)"
-          >
-            <span>{{ item.kicker }}</span>
-            <strong>{{ item.label }}</strong>
-          </button>
-        </nav>
+          <nav class="sidebar-nav" aria-label="药苑之声控制台导航">
+            <section v-for="group in consolePanelGroups" :key="group.section" class="nav-group">
+              <h3>{{ group.section }}</h3>
+              <button
+                v-for="item in group.items"
+                :key="item.value"
+                :class="['nav-link', { active: currentPanel === item.value }]"
+                type="button"
+                @click="switchPanel(item.value)"
+              >
+                <span class="nav-dot" />
+                <span class="nav-copy">
+                  <strong>{{ item.label }}</strong>
+                  <small>{{ item.kicker }}</small>
+                </span>
+              </button>
+            </section>
+          </nav>
 
-        <div class="sidebar-summary">
-          <div class="summary-card">
-            <span>当前学期</span>
-            <strong>{{ overview?.currentSemester?.name || "待配置" }}</strong>
-            <small>{{ overview?.currentSemester?.code || "尚未指定当前学期" }}</small>
-          </div>
-          <div class="summary-grid">
-            <article>
-              <b>{{ manageData.semesters.length }}</b>
-              <span>学期</span>
-            </article>
-            <article>
-              <b>{{ manageData.playTimes.length }}</b>
-              <span>时段</span>
-            </article>
-            <article>
-              <b>{{ manageData.scheduleItems.length }}</b>
-              <span>节目</span>
-            </article>
-            <article>
-              <b>{{ pendingRequests.length }}</b>
-              <span>待处理</span>
-            </article>
-          </div>
-        </div>
+          <div class="sidebar-footer">
+            <div class="sidebar-status">
+              <span>当前学期</span>
+              <strong>{{ overview?.currentSemester?.name || "待配置" }}</strong>
+              <small>{{ overview?.currentSemester?.code || "尚未指定当前学期" }}</small>
+            </div>
 
-        <div class="sidebar-actions">
-          <el-button plain @click="goPublic">返回前台</el-button>
-          <el-button plain :loading="loadingOverview || loadingManage" @click="refreshConsole">刷新数据</el-button>
+            <div class="sidebar-stats">
+              <article>
+                <b>{{ manageData.semesters.length }}</b>
+                <span>学期</span>
+              </article>
+              <article>
+                <b>{{ manageData.playTimes.length }}</b>
+                <span>时段</span>
+              </article>
+              <article>
+                <b>{{ manageData.scheduleItems.length }}</b>
+                <span>节目</span>
+              </article>
+              <article>
+                <b>{{ pendingRequests.length }}</b>
+                <span>待处理</span>
+              </article>
+            </div>
+
+            <div class="sidebar-actions">
+              <button class="panel-button ghost" type="button" @click="goPublic">返回前台</button>
+              <button
+                class="panel-button ghost"
+                type="button"
+                :disabled="loadingOverview || loadingManage"
+                @click="refreshConsole"
+              >
+                {{ loadingOverview || loadingManage ? "刷新中..." : "刷新数据" }}
+              </button>
+            </div>
+          </div>
         </div>
       </aside>
 
-      <main class="console-main">
-        <header class="console-header">
-          <div class="console-title">
-            <span class="console-kicker">{{ currentPanelMeta.kicker }}</span>
-            <h2>{{ currentPanelMeta.label }}</h2>
-            <p>{{ currentPanelMeta.description }}</p>
+      <div v-if="sidebarOpen" class="sidebar-mask" @click="closeSidebar" />
+
+      <main class="admin-main">
+        <header class="admin-header">
+          <div class="header-left">
+            <button class="menu-button" type="button" @click="toggleSidebar">☰</button>
+            <div class="header-copy">
+              <span class="header-kicker">{{ currentPanelMeta.kicker }}</span>
+              <h2>{{ currentPanelMeta.label }}</h2>
+              <p>{{ currentPanelMeta.description }}</p>
+            </div>
           </div>
-          <div class="console-header-actions">
-            <el-button v-if="loginRequired && !hasToken" type="primary" @click="goLogin">去登录</el-button>
-            <el-button plain @click="goPublic">返回前台</el-button>
+
+          <div class="header-actions">
+            <button
+              class="panel-button ghost"
+              type="button"
+              :disabled="loadingOverview || loadingManage"
+              @click="refreshConsole"
+            >
+              {{ loadingOverview || loadingManage ? "刷新中..." : "刷新" }}
+            </button>
+            <button class="panel-button ghost" type="button" @click="goPublic">返回前台</button>
+            <button
+              v-if="loginRequired && !hasToken"
+              class="panel-button primary"
+              type="button"
+              @click="goLogin"
+            >
+              去登录
+            </button>
           </div>
         </header>
 
-        <section v-if="pageError" class="console-alert">
-          <el-alert :title="pageError" type="warning" :closable="false" show-icon>
-            <template #default>
-              <div class="alert-actions">
-                <el-button size="small" :loading="loadingOverview || loadingManage" @click="refreshConsole">重试</el-button>
-                <el-button v-if="loginRequired" size="small" plain @click="goLogin">去登录</el-button>
-              </div>
-            </template>
-          </el-alert>
+        <section v-if="pageError" class="status-banner warning">
+          <div class="status-banner-copy">
+            <strong>{{ pageError }}</strong>
+            <p>可以直接刷新重试，或者切换到登录态后重新进入控制台。</p>
+          </div>
+          <div class="status-banner-actions">
+            <button class="panel-button ghost" type="button" @click="refreshConsole">重试</button>
+            <button
+              v-if="loginRequired"
+              class="panel-button primary"
+              type="button"
+              @click="goLogin"
+            >
+              去登录
+            </button>
+          </div>
         </section>
 
         <section v-if="!canManage" class="permission-shell">
-          <el-empty description="当前账号没有药苑之声管理权限">
-            <el-button v-if="loginRequired && !hasToken" type="primary" @click="goLogin">登录后重试</el-button>
-            <el-button plain @click="goPublic">返回前台</el-button>
-          </el-empty>
+          <div class="empty-panel">
+            <h3>当前账号没有药苑之声管理权限</h3>
+            <p>请使用具备广播站管理权限的账号登录后再进入控制台。</p>
+            <div class="empty-actions">
+              <button
+                v-if="loginRequired && !hasToken"
+                class="panel-button primary"
+                type="button"
+                @click="goLogin"
+              >
+                登录后重试
+              </button>
+              <button class="panel-button ghost" type="button" @click="goPublic">返回前台</button>
+            </div>
+          </div>
         </section>
 
-        <section v-else class="console-content" v-loading="loadingOverview || loadingManage">
+        <section v-else class="admin-body" v-loading="loadingOverview || loadingManage">
           <template v-if="currentPanel === 'overview'">
-            <div class="overview-grid">
-              <article class="overview-card stat-card">
+            <div class="stats-grid">
+              <article class="stat-card">
                 <span>当前学期</span>
                 <b>{{ overview?.currentSemester?.code || "未设置" }}</b>
                 <small>{{ overview?.currentSemester?.name || "待配置当前学期" }}</small>
               </article>
-              <article class="overview-card stat-card">
+              <article class="stat-card">
                 <span>播出时段</span>
                 <b>{{ manageData.playTimes.length }}</b>
                 <small>按周维护基础播出结构</small>
               </article>
-              <article class="overview-card stat-card">
+              <article class="stat-card">
                 <span>已发布节目</span>
                 <b>{{ publishedSchedules.length }}</b>
                 <small>正在前台展示的栏目数量</small>
               </article>
-              <article class="overview-card stat-card accent">
+              <article class="stat-card accent">
                 <span>待处理投稿</span>
                 <b>{{ pendingRequests.length }}</b>
                 <small>{{ manageData.requests.length }} 条近期待审记录</small>
               </article>
             </div>
 
-            <div class="overview-grid split">
-              <article class="console-card">
-                <div class="card-head">
-                  <div>
-                    <span class="card-kicker">Semester</span>
+            <div class="overview-grid">
+              <article class="panel-shell">
+                <div class="panel-header">
+                  <div class="panel-title">
+                    <span class="panel-kicker">Semester</span>
                     <h3>当前学期与排期骨架</h3>
                   </div>
                 </div>
@@ -138,10 +196,10 @@
                 </div>
               </article>
 
-              <article class="console-card">
-                <div class="card-head">
-                  <div>
-                    <span class="card-kicker">Queue</span>
+              <article class="panel-shell">
+                <div class="panel-header">
+                  <div class="panel-title">
+                    <span class="panel-kicker">Queue</span>
                     <h3>待处理投稿队列</h3>
                   </div>
                 </div>
@@ -160,14 +218,14 @@
                     <small>{{ formatDateTime(item.createdAt) }}</small>
                   </button>
                 </div>
-                <el-empty v-else description="当前没有待处理投稿" />
+                <div v-else class="empty-panel subtle">当前没有待处理投稿。</div>
               </article>
             </div>
 
-            <article class="console-card">
-              <div class="card-head">
-                <div>
-                  <span class="card-kicker">Recent</span>
+            <article class="panel-shell">
+              <div class="panel-header">
+                <div class="panel-title">
+                  <span class="panel-kicker">Recent</span>
                   <h3>前台近期投稿预览</h3>
                 </div>
               </div>
@@ -175,129 +233,160 @@
                 <article v-for="item in overview?.recentRequests.slice(0, 8)" :key="item.id" class="recent-card">
                   <div class="recent-head">
                     <strong>{{ item.songTitle }}</strong>
-                    <el-tag :type="requestStatusTag(item.status)" size="small" round>{{ requestStatusText(item.status) }}</el-tag>
+                    <el-tag :type="requestStatusTag(item.status)" size="small" round>
+                      {{ requestStatusText(item.status) }}
+                    </el-tag>
                   </div>
                   <p>{{ item.artist || "歌手待补充" }}</p>
                   <small>{{ item.nickname || "匿名" }} · {{ formatDateTime(item.createdAt) }}</small>
                 </article>
               </div>
-              <el-empty v-else description="前台还没有投稿记录" />
+              <div v-else class="empty-panel subtle">前台还没有投稿记录。</div>
             </article>
           </template>
 
-          <article v-else-if="currentPanel === 'semesters'" class="console-card">
-            <div class="card-head">
-              <div>
-                <span class="card-kicker">Semester</span>
+          <article v-else-if="currentPanel === 'semesters'" class="panel-shell">
+            <div class="panel-header">
+              <div class="panel-title">
+                <span class="panel-kicker">Semester</span>
                 <h3>学期管理</h3>
                 <p>维护广播站运行周期、当前学期标记和基础说明。</p>
               </div>
-              <el-button type="primary" @click="openSemesterDialog()">新增学期</el-button>
+              <button class="panel-button primary" type="button" @click="openSemesterDialog()">
+                新增学期
+              </button>
             </div>
-            <el-table :data="manageData.semesters" stripe>
-              <el-table-column prop="code" label="编码" min-width="120" />
-              <el-table-column prop="name" label="名称" min-width="160" />
-              <el-table-column label="状态" width="120">
-                <template #default="{ row }">
-                  <el-tag :type="semesterStatusTag(row.status)" size="small" round>{{ semesterStatusText(row.status) }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="当前学期" width="110">
-                <template #default="{ row }">{{ row.isCurrent ? "是" : "否" }}</template>
-              </el-table-column>
-              <el-table-column label="时间范围" min-width="180">
-                <template #default="{ row }">
-                  {{ formatDate(row.startDate) || "未设开始" }} - {{ formatDate(row.endDate) || "未设结束" }}
-                </template>
-              </el-table-column>
-              <el-table-column label="操作" width="120" fixed="right">
-                <template #default="{ row }">
-                  <el-button link type="primary" @click="openSemesterDialog(row)">编辑</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
+
+            <div class="table-shell">
+              <el-table :data="manageData.semesters" stripe>
+                <el-table-column prop="code" label="编码" min-width="120" />
+                <el-table-column prop="name" label="名称" min-width="160" />
+                <el-table-column label="状态" width="120">
+                  <template #default="{ row }">
+                    <el-tag :type="semesterStatusTag(row.status)" size="small" round>
+                      {{ semesterStatusText(row.status) }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="当前学期" width="110">
+                  <template #default="{ row }">{{ row.isCurrent ? "是" : "否" }}</template>
+                </el-table-column>
+                <el-table-column label="时间范围" min-width="180">
+                  <template #default="{ row }">
+                    {{ formatDate(row.startDate) || "未设开始" }} - {{ formatDate(row.endDate) || "未设结束" }}
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="120" fixed="right">
+                  <template #default="{ row }">
+                    <el-button link type="primary" @click="openSemesterDialog(row)">编辑</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
           </article>
 
-          <article v-else-if="currentPanel === 'playTimes'" class="console-card">
-            <div class="card-head">
-              <div>
-                <span class="card-kicker">Play Times</span>
+          <article v-else-if="currentPanel === 'playTimes'" class="panel-shell">
+            <div class="panel-header">
+              <div class="panel-title">
+                <span class="panel-kicker">Play Times</span>
                 <h3>播出时段</h3>
                 <p>管理每周常规时段，为节目编排和点歌归属提供基础槽位。</p>
               </div>
-              <el-button type="primary" @click="openPlayTimeDialog()">新增时段</el-button>
+              <button class="panel-button primary" type="button" @click="openPlayTimeDialog()">
+                新增时段
+              </button>
             </div>
-            <el-table :data="manageData.playTimes" stripe>
-              <el-table-column label="星期" width="90">
-                <template #default="{ row }">{{ weekdayLabel(row.weekday) }}</template>
-              </el-table-column>
-              <el-table-column prop="name" label="时段名" min-width="140" />
-              <el-table-column label="时间" width="140">
-                <template #default="{ row }">{{ row.startTime }} - {{ row.endTime }}</template>
-              </el-table-column>
-              <el-table-column prop="location" label="地点" min-width="120" />
-              <el-table-column label="启用" width="90">
-                <template #default="{ row }">{{ row.enabled ? "是" : "否" }}</template>
-              </el-table-column>
-              <el-table-column label="所属学期" min-width="150">
-                <template #default="{ row }">{{ row.semester?.name || "通用" }}</template>
-              </el-table-column>
-              <el-table-column label="操作" width="120" fixed="right">
-                <template #default="{ row }">
-                  <el-button link type="primary" @click="openPlayTimeDialog(row)">编辑</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
+
+            <div class="table-shell">
+              <el-table :data="manageData.playTimes" stripe>
+                <el-table-column label="星期" width="90">
+                  <template #default="{ row }">{{ weekdayLabel(row.weekday) }}</template>
+                </el-table-column>
+                <el-table-column prop="name" label="时段名" min-width="140" />
+                <el-table-column label="时间" width="140">
+                  <template #default="{ row }">{{ row.startTime }} - {{ row.endTime }}</template>
+                </el-table-column>
+                <el-table-column prop="location" label="地点" min-width="120" />
+                <el-table-column label="启用" width="90">
+                  <template #default="{ row }">{{ row.enabled ? "是" : "否" }}</template>
+                </el-table-column>
+                <el-table-column label="所属学期" min-width="150">
+                  <template #default="{ row }">{{ row.semester?.name || "通用" }}</template>
+                </el-table-column>
+                <el-table-column label="操作" width="120" fixed="right">
+                  <template #default="{ row }">
+                    <el-button link type="primary" @click="openPlayTimeDialog(row)">编辑</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
           </article>
 
-          <article v-else-if="currentPanel === 'schedules'" class="console-card">
-            <div class="card-head">
-              <div>
-                <span class="card-kicker">Programs</span>
+          <article v-else-if="currentPanel === 'schedules'" class="panel-shell">
+            <div class="panel-header">
+              <div class="panel-title">
+                <span class="panel-kicker">Programs</span>
                 <h3>节目管理</h3>
                 <p>维护前台公开展示的栏目内容、主持人信息和可点歌开关。</p>
               </div>
-              <el-button type="primary" @click="openScheduleDialog()">新增节目</el-button>
+              <button class="panel-button primary" type="button" @click="openScheduleDialog()">
+                新增节目
+              </button>
             </div>
-            <el-table :data="manageData.scheduleItems" stripe>
-              <el-table-column prop="title" label="节目名" min-width="180" />
-              <el-table-column prop="subtitle" label="副标题" min-width="160" />
-              <el-table-column label="状态" width="110">
-                <template #default="{ row }">
-                  <el-tag :type="scheduleStatusTag(row.status)" size="small" round>{{ scheduleStatusText(row.status) }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="时段" min-width="180">
-                <template #default="{ row }">
-                  {{ row.playTime ? `${weekdayLabel(row.playTime.weekday)} ${row.playTime.startTime} ${row.playTime.name}` : "未绑定时段" }}
-                </template>
-              </el-table-column>
-              <el-table-column label="点歌" width="90">
-                <template #default="{ row }">{{ row.requestEnabled ? "开放" : "关闭" }}</template>
-              </el-table-column>
-              <el-table-column label="投稿数" width="90">
-                <template #default="{ row }">{{ row.requestCount }}</template>
-              </el-table-column>
-              <el-table-column label="操作" width="120" fixed="right">
-                <template #default="{ row }">
-                  <el-button link type="primary" @click="openScheduleDialog(row)">编辑</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
+
+            <div class="table-shell">
+              <el-table :data="manageData.scheduleItems" stripe>
+                <el-table-column prop="title" label="节目名" min-width="180" />
+                <el-table-column prop="subtitle" label="副标题" min-width="160" />
+                <el-table-column label="状态" width="110">
+                  <template #default="{ row }">
+                    <el-tag :type="scheduleStatusTag(row.status)" size="small" round>
+                      {{ scheduleStatusText(row.status) }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="时段" min-width="180">
+                  <template #default="{ row }">
+                    {{
+                      row.playTime
+                        ? `${weekdayLabel(row.playTime.weekday)} ${row.playTime.startTime} ${row.playTime.name}`
+                        : "未绑定时段"
+                    }}
+                  </template>
+                </el-table-column>
+                <el-table-column label="点歌" width="90">
+                  <template #default="{ row }">{{ row.requestEnabled ? "开放" : "关闭" }}</template>
+                </el-table-column>
+                <el-table-column label="投稿数" width="90">
+                  <template #default="{ row }">{{ row.requestCount }}</template>
+                </el-table-column>
+                <el-table-column label="操作" width="120" fixed="right">
+                  <template #default="{ row }">
+                    <el-button link type="primary" @click="openScheduleDialog(row)">编辑</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
           </article>
 
-          <article v-else class="console-card">
-            <div class="card-head">
-              <div>
-                <span class="card-kicker">Requests</span>
+          <article v-else class="panel-shell">
+            <div class="panel-header">
+              <div class="panel-title">
+                <span class="panel-kicker">Requests</span>
                 <h3>投稿审核</h3>
                 <p>查看歌曲来源、试听已锁定音源，并直接完成审核流转。</p>
               </div>
             </div>
+
             <div class="music-auth-card" v-loading="musicAuthLoading">
               <div class="music-auth-main">
                 <div v-if="qqMusicAuth?.loggedIn" class="music-auth-avatar">
-                  <img v-if="qqMusicAuth.avatarUrl" :src="qqMusicAuth.avatarUrl" :alt="qqMusicAuth.nickname || 'QQ 音乐'" referrerpolicy="no-referrer" />
+                  <img
+                    v-if="qqMusicAuth.avatarUrl"
+                    :src="qqMusicAuth.avatarUrl"
+                    :alt="qqMusicAuth.nickname || 'QQ 音乐'"
+                    referrerpolicy="no-referrer"
+                  />
                   <span v-else>{{ (qqMusicAuth.nickname || "Q").slice(0, 1) }}</span>
                 </div>
                 <div v-else class="music-auth-avatar fallback">Q</div>
@@ -309,34 +398,43 @@
               </div>
               <div class="music-auth-actions">
                 <el-button plain @click="openQqMusicSite">打开 QQ 音乐</el-button>
-                <el-button type="primary" plain @click="openQqSyncDialog">{{ qqMusicAuth?.loggedIn ? "重新同步登录态" : "傻瓜版登录" }}</el-button>
+                <el-button type="primary" plain @click="openQqSyncDialog">
+                  {{ qqMusicAuth?.loggedIn ? "重新同步登录态" : "傻瓜版登录" }}
+                </el-button>
                 <el-button plain @click="openQqCookieDialog">高级方式</el-button>
-                <el-button v-if="qqMusicAuth?.source === 'database'" plain @click="clearQqMusicCookie">清除共享登录态</el-button>
+                <el-button v-if="qqMusicAuth?.source === 'database'" plain @click="clearQqMusicCookie">
+                  清除共享登录态
+                </el-button>
               </div>
             </div>
-            <el-table :data="manageData.requests" stripe>
-              <el-table-column prop="nickname" label="投稿人" min-width="120" />
-              <el-table-column prop="songTitle" label="歌曲名" min-width="180" />
-              <el-table-column prop="artist" label="歌手" min-width="160" />
-              <el-table-column label="音源" width="120">
-                <template #default="{ row }">
-                  {{ row.sourceProvider ? musicProviderLabel(row.sourceProvider) : "未锁定" }}
-                </template>
-              </el-table-column>
-              <el-table-column label="状态" width="120">
-                <template #default="{ row }">
-                  <el-tag :type="requestStatusTag(row.status)" size="small" round>{{ requestStatusText(row.status) }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="提交时间" min-width="160">
-                <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
-              </el-table-column>
-              <el-table-column label="操作" width="140" fixed="right">
-                <template #default="{ row }">
-                  <el-button link type="primary" @click="openRequestDialog(row)">处理</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
+
+            <div class="table-shell">
+              <el-table :data="manageData.requests" stripe>
+                <el-table-column prop="nickname" label="投稿人" min-width="120" />
+                <el-table-column prop="songTitle" label="歌曲名" min-width="180" />
+                <el-table-column prop="artist" label="歌手" min-width="160" />
+                <el-table-column label="音源" width="120">
+                  <template #default="{ row }">
+                    {{ row.sourceProvider ? musicProviderLabel(row.sourceProvider) : "未锁定" }}
+                  </template>
+                </el-table-column>
+                <el-table-column label="状态" width="120">
+                  <template #default="{ row }">
+                    <el-tag :type="requestStatusTag(row.status)" size="small" round>
+                      {{ requestStatusText(row.status) }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="提交时间" min-width="160">
+                  <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
+                </el-table-column>
+                <el-table-column label="操作" width="140" fixed="right">
+                  <template #default="{ row }">
+                    <el-button link type="primary" @click="openRequestDialog(row)">处理</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
           </article>
         </section>
       </main>
@@ -673,12 +771,19 @@ const consolePanels: Array<{ value: ConsolePanel; label: string; kicker: string;
   { value: "requests", label: "投稿审核", kicker: "Requests", description: "查看用户投稿、试听锁定音源并完成审核流转。" },
 ];
 
+const consolePanelGroups: Array<{ section: string; items: typeof consolePanels }> = [
+  { section: "概览", items: [consolePanels[0]] },
+  { section: "内容管理", items: [consolePanels[1], consolePanels[2], consolePanels[3]] },
+  { section: "审核与音源", items: [consolePanels[4]] },
+];
+
 const loadingOverview = ref(false);
 const loadingManage = ref(false);
 const loginRequired = ref(false);
 const canManage = ref(false);
 const pageError = ref("");
 const currentPanel = ref<ConsolePanel>("overview");
+const sidebarOpen = ref(false);
 const hasToken = computed(() => Boolean(getToken()));
 const overview = ref<RadioOverview | null>(null);
 const managePreviewAudioRef = ref<HTMLAudioElement | null>(null);
@@ -1021,6 +1126,21 @@ async function handleQqMusicSyncFeedback() {
 
 function switchPanel(panel: ConsolePanel) {
   currentPanel.value = panel;
+  sidebarOpen.value = false;
+  router.replace({
+    query: {
+      ...route.query,
+      panel,
+    },
+  }).catch(() => undefined);
+}
+
+function toggleSidebar() {
+  sidebarOpen.value = !sidebarOpen.value;
+}
+
+function closeSidebar() {
+  sidebarOpen.value = false;
 }
 
 function openQqMusicSite() {
@@ -1358,306 +1478,554 @@ function formatDateTime(value?: string | null) {
 </script>
 
 <style scoped>
-.radio-console-page {
-  --console-red: #b43225;
-  --console-ink: #233429;
-  --console-line: rgba(84, 98, 77, 0.16);
-  --console-green: #2f7d4f;
-  min-height: calc(100vh - 160px);
+.voicehub-dashboard {
+  min-height: calc(100vh - 120px);
+  background: #f6f8f2;
 }
 
-.console-shell {
-  display: grid;
-  grid-template-columns: 312px minmax(0, 1fr);
-  gap: 18px;
+.admin-layout {
+  display: flex;
+  min-height: calc(100vh - 120px);
+  border: 1px solid #d5dfcd;
+  border-radius: 28px;
+  overflow: hidden;
+  background: #f6f8f2;
+  box-shadow: 0 24px 38px rgba(43, 61, 43, 0.14);
+  position: relative;
 }
 
-.console-sidebar,
-.console-main {
-  border-radius: 24px;
-  border: 1px solid var(--console-line);
-  background:
-    linear-gradient(180deg, rgba(248, 245, 239, 0.94) 0%, rgba(255, 255, 255, 0.98) 100%);
-  box-shadow: 0 20px 48px rgba(35, 52, 41, 0.08);
+.admin-sidebar {
+  width: 272px;
+  flex: 0 0 272px;
+  background: #f8fbf5;
+  border-right: 1px solid #d5dfcd;
 }
 
-.console-sidebar {
+.sidebar-inner,
+.brand-copy,
+.nav-copy,
+.sidebar-footer,
+.sidebar-status,
+.header-copy,
+.panel-title,
+.stat-card,
+.recent-head,
+.request-note-card,
+.preview-meta,
+.music-auth-copy,
+.dialog-form,
+.field,
+.cookie-login-note,
+.bookmarklet-card {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  padding: 22px;
-  position: sticky;
-  top: 88px;
-  align-self: start;
+}
+
+.sidebar-inner {
+  height: 100%;
+  padding: 18px 16px;
+  gap: 18px;
 }
 
 .sidebar-brand {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
-.sidebar-logo-shell {
+.sidebar-close {
+  display: none;
+  align-self: flex-end;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 10px;
+  background: #e8efe1;
+  color: #526452;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.brand-main,
+.header-left,
+.header-actions,
+.status-banner,
+.status-banner-actions,
+.panel-header,
+.overview-row,
+.queue-item,
+.music-auth-card,
+.music-auth-main,
+.music-auth-actions,
+.preview-head,
+.source-preview-card,
+.empty-actions {
+  display: flex;
+  align-items: center;
+}
+
+.brand-main {
+  gap: 12px;
+  padding: 8px 6px;
+}
+
+.brand-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid #d5dfcd;
   display: grid;
   place-items: center;
-  width: 108px;
-  height: 108px;
-  padding: 12px;
-  border-radius: 28px;
-  border: 1px solid rgba(180, 50, 37, 0.14);
-  background: rgba(255, 249, 247, 0.96);
+  box-shadow: 0 8px 20px rgba(43, 61, 43, 0.08);
 }
 
-.sidebar-logo {
-  width: 100%;
-  height: auto;
+.brand-logo-image {
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
 }
 
-.sidebar-copy,
-.console-title,
-.summary-card,
-.card-head > div,
-.preview-meta {
+.brand-copy {
+  gap: 4px;
+  min-width: 0;
+}
+
+.brand-copy span,
+.header-kicker,
+.panel-kicker,
+.nav-group h3 {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #788878;
+}
+
+.brand-copy strong,
+.header-copy h2,
+.panel-title h3,
+.sidebar-status strong,
+.queue-item strong,
+.recent-head strong,
+.request-note-card strong,
+.preview-meta strong,
+.music-auth-copy strong,
+.empty-panel h3 {
+  color: #1f2a1f;
+}
+
+.brand-copy strong {
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.brand-copy small,
+.header-copy p,
+.status-banner-copy p,
+.panel-title p,
+.sidebar-status span,
+.sidebar-status small,
+.sidebar-stats span,
+.stat-card span,
+.stat-card small,
+.overview-row span,
+.queue-item span,
+.queue-item small,
+.recent-card p,
+.recent-card small,
+.request-note-card p,
+.request-note-card small,
+.preview-meta span,
+.request-preview-player small,
+.music-auth-copy p,
+.music-auth-copy small,
+.cookie-login-note p,
+.bookmarklet-card span,
+.bookmarklet-card small,
+.empty-panel p {
+  margin: 0;
+  color: #5f715f;
+  line-height: 1.7;
+}
+
+.sidebar-nav {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding-right: 4px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 20px;
 }
 
-.sidebar-kicker,
-.console-kicker,
-.card-kicker,
-.sidebar-link span {
-  color: var(--console-red);
-  font-size: 12px;
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nav-group h3 {
+  padding: 0 10px;
+}
+
+.nav-link,
+.panel-button {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nav-link {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #556555;
+  text-align: left;
+}
+
+.nav-link:hover {
+  background: #edf3e7;
+  color: #1f2a1f;
+}
+
+.nav-link.active {
+  background: rgba(47, 125, 79, 0.12);
+  color: #2f7d4f;
+  border-color: rgba(47, 125, 79, 0.25);
+}
+
+.nav-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #c0cdb8;
+  flex: 0 0 auto;
+}
+
+.nav-link.active .nav-dot {
+  background: #2f7d4f;
+  box-shadow: 0 0 10px rgba(47, 125, 79, 0.35);
+}
+
+.nav-copy {
+  min-width: 0;
+  gap: 2px;
+}
+
+.nav-copy strong {
+  font-size: 14px;
   font-weight: 700;
+}
+
+.nav-copy small {
+  color: #7a887a;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.sidebar-copy h1,
-.console-title h2,
-.card-head h3 {
-  margin: 0;
-  color: var(--console-ink);
+.sidebar-footer {
+  gap: 12px;
 }
 
-.sidebar-copy h1 {
-  font-size: 28px;
+.sidebar-status,
+.sidebar-stats article,
+.panel-shell,
+.stat-card,
+.recent-card,
+.request-note-card,
+.source-preview-card,
+.request-preview-player,
+.music-auth-card,
+.empty-panel,
+.status-banner {
+  border-radius: 20px;
+  border: 1px solid #d5dfcd;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(43, 61, 43, 0.06);
 }
 
-.sidebar-copy p,
-.console-title p,
-.summary-card small,
-.overview-row span,
-.recent-card p,
-.recent-card small,
-.queue-item span,
-.queue-item small,
-.preview-meta span,
-.request-preview-player small,
-.request-note-card p,
-.request-note-card small {
-  margin: 0;
-  color: #5b6858;
-  line-height: 1.7;
+.sidebar-status {
+  gap: 4px;
+  padding: 14px 16px;
 }
 
-.sidebar-nav,
-.sidebar-actions,
-.queue-list {
+.sidebar-status strong {
+  font-size: 16px;
+}
+
+.sidebar-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sidebar-stats article {
+  padding: 12px 14px;
+}
+
+.sidebar-stats b,
+.stat-card b {
+  font-size: 26px;
+  line-height: 1;
+  color: #2f7d4f;
+}
+
+.sidebar-actions {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.sidebar-link {
+.panel-button {
+  min-height: 42px;
+  padding: 0 18px;
+  border-radius: 14px;
+  font-weight: 700;
+}
+
+.panel-button.ghost {
+  background: #eef4e8;
+  color: #243424;
+  border: 1px solid #d3decb;
+}
+
+.panel-button.primary {
+  background: linear-gradient(180deg, #2f7d4f 0%, #246a41 100%);
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(47, 125, 79, 0.2);
+}
+
+.panel-button:hover {
+  transform: translateY(-1px);
+}
+
+.panel-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.sidebar-mask {
+  display: none;
+}
+
+.admin-main {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 14px 16px;
-  border-radius: 18px;
-  border: 1px solid var(--console-line);
-  background: rgba(255, 255, 255, 0.84);
-  color: var(--console-ink);
-  text-align: left;
-  cursor: pointer;
+  background: #f6f8f2;
 }
 
-.sidebar-link strong {
-  font-size: 17px;
-}
-
-.sidebar-link.active {
-  border-color: rgba(180, 50, 37, 0.26);
-  background: linear-gradient(135deg, rgba(180, 50, 37, 0.08) 0%, rgba(255, 255, 255, 0.96) 100%);
-  box-shadow: 0 10px 20px rgba(180, 50, 37, 0.08);
-}
-
-.sidebar-summary {
+.admin-header {
+  min-height: 78px;
+  padding: 16px 24px;
+  border-bottom: 1px solid #d5dfcd;
+  background: rgba(251, 253, 248, 0.92);
+  backdrop-filter: blur(18px);
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
 }
 
-.summary-card,
-.summary-grid article,
-.overview-card,
-.console-card,
-.recent-card,
-.request-note-card,
-.source-preview-card,
-.request-preview-player {
-  border-radius: 20px;
-  border: 1px solid var(--console-line);
-  background: rgba(255, 255, 255, 0.92);
-}
-
-.summary-card {
-  padding: 16px;
-}
-
-.summary-card strong,
-.overview-row strong,
-.request-note-card strong,
-.preview-meta strong {
-  color: var(--console-ink);
-}
-
-.summary-grid,
-.overview-grid,
-.recent-grid,
-.dialog-grid {
-  display: grid;
+.header-left,
+.header-actions {
   gap: 14px;
 }
 
-.summary-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.menu-button {
+  display: none;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 12px;
+  background: #e8efe1;
+  color: #526452;
+  font-size: 18px;
+  cursor: pointer;
 }
 
-.summary-grid article {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 14px;
+.header-copy {
+  gap: 2px;
 }
 
-.summary-grid b,
-.overview-card b {
-  font-size: 26px;
-  line-height: 1;
-  color: var(--console-red);
+.header-copy h2 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.1;
 }
 
-.console-main {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  padding: 22px;
-}
-
-.console-header,
-.card-head,
-.source-preview-card {
-  display: flex;
-  align-items: flex-start;
+.status-banner {
+  margin: 20px 24px 0;
+  padding: 18px 20px;
   justify-content: space-between;
   gap: 16px;
 }
 
-.console-header-actions,
-.alert-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+.status-banner.warning {
+  background: linear-gradient(135deg, rgba(194, 138, 38, 0.1) 0%, rgba(255, 255, 255, 0.96) 100%);
 }
 
-.console-title h2 {
-  font-size: 32px;
-  line-height: 1.12;
-}
-
-.permission-shell {
-  min-height: 320px;
-  display: grid;
-  place-items: center;
-}
-
-.console-content {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.overview-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.overview-grid.split {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.overview-card,
-.console-card {
-  padding: 20px;
-}
-
-.stat-card {
+.status-banner-copy {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.stat-card span,
-.stat-card small {
-  color: #5b6858;
+.status-banner-copy strong {
+  color: #1f2a1f;
 }
 
-.stat-card.accent {
-  background: linear-gradient(135deg, rgba(47, 125, 79, 0.08) 0%, rgba(180, 50, 37, 0.08) 100%);
+.status-banner-actions {
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.overview-list {
+.permission-shell {
+  flex: 1 1 auto;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.empty-panel {
+  padding: 28px;
+  max-width: 520px;
+  text-align: center;
+  gap: 10px;
+}
+
+.empty-panel.subtle {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  background: #f4f8ef;
+  border-style: dashed;
+}
+
+.empty-panel h3 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.empty-actions {
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.admin-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px;
+}
+
+.stats-grid,
+.overview-grid,
+.recent-grid,
+.dialog-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.stats-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.overview-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.panel-shell,
+.stat-card,
+.recent-card {
+  padding: 20px;
+}
+
+.stat-card {
+  gap: 4px;
+}
+
+.stat-card.accent,
+.music-auth-card {
+  background: linear-gradient(135deg, rgba(47, 125, 79, 0.08) 0%, rgba(255, 255, 255, 1) 100%);
+}
+
+.panel-header,
+.source-preview-card,
+.preview-head {
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.panel-header {
+  margin-bottom: 16px;
+}
+
+.panel-title {
+  gap: 6px;
+}
+
+.panel-title h3 {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.15;
+}
+
+.overview-list,
+.queue-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
 .overview-row {
-  display: flex;
-  align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 14px;
   border-radius: 16px;
-  background: rgba(247, 243, 235, 0.72);
+  background: #f2f6ee;
+  border: 1px solid #d3decb;
+}
+
+.overview-row strong {
+  color: #1f2a1f;
 }
 
 .queue-item {
-  display: flex;
-  align-items: center;
   justify-content: space-between;
   gap: 14px;
   padding: 14px;
   border-radius: 16px;
-  border: 1px solid var(--console-line);
-  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #d3decb;
+  background: #f4f8ef;
   cursor: pointer;
   text-align: left;
 }
 
-.queue-item div,
-.recent-head,
-.request-note-card {
+.queue-item:hover {
+  border-color: rgba(47, 125, 79, 0.25);
+  background: #eef4e8;
+}
+
+.queue-item > div,
+.recent-head {
   display: flex;
   flex-direction: column;
   gap: 4px;
-}
-
-.queue-item strong,
-.recent-head strong {
-  color: var(--console-ink);
 }
 
 .recent-grid {
@@ -1665,15 +2033,16 @@ function formatDateTime(value?: string | null) {
 }
 
 .recent-card {
-  display: flex;
-  flex-direction: column;
   gap: 8px;
-  padding: 16px;
+}
+
+.table-shell {
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid #d5dfcd;
 }
 
 .dialog-form {
-  display: flex;
-  flex-direction: column;
   gap: 16px;
 }
 
@@ -1686,8 +2055,6 @@ function formatDateTime(value?: string | null) {
 }
 
 .field {
-  display: flex;
-  flex-direction: column;
   gap: 8px;
 }
 
@@ -1708,11 +2075,12 @@ function formatDateTime(value?: string | null) {
   min-height: 44px;
   padding: 11px 12px;
   border-radius: 12px;
-  border: 1px solid var(--console-line);
-  background: rgba(255, 255, 255, 0.96);
-  color: var(--console-ink);
+  border: 1px solid #c8d5c0;
+  background: #ffffff;
+  color: #1f2a1f;
   font: inherit;
   outline: none;
+  transition: all 0.2s ease;
 }
 
 .field textarea {
@@ -1723,8 +2091,8 @@ function formatDateTime(value?: string | null) {
 .field input:focus,
 .field select:focus,
 .field textarea:focus {
-  border-color: rgba(180, 50, 37, 0.3);
-  box-shadow: 0 0 0 4px rgba(180, 50, 37, 0.08);
+  border-color: #2f7d4f;
+  box-shadow: 0 0 0 3px rgba(47, 125, 79, 0.12);
 }
 
 .checkbox-field {
@@ -1739,32 +2107,26 @@ function formatDateTime(value?: string | null) {
 
 .request-note-card,
 .source-preview-card,
-.request-preview-player {
+.request-preview-player,
+.bookmarklet-card,
+.cookie-login-note {
   padding: 16px;
 }
 
 .music-auth-card {
-  display: flex;
-  align-items: center;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 16px;
   padding: 16px;
-  border-radius: 18px;
-  border: 1px solid var(--console-line);
-  background: linear-gradient(135deg, rgba(180, 50, 37, 0.06) 0%, rgba(255, 255, 255, 0.94) 100%);
 }
 
 .music-auth-main,
 .music-auth-actions,
-.preview-head,
-.cookie-login-note {
-  display: flex;
+.preview-head {
   gap: 12px;
 }
 
 .music-auth-main {
-  align-items: center;
   min-width: 0;
   flex: 1 1 auto;
 }
@@ -1774,8 +2136,8 @@ function formatDateTime(value?: string | null) {
   height: 64px;
   border-radius: 18px;
   overflow: hidden;
-  background: rgba(180, 50, 37, 0.1);
-  color: var(--console-red);
+  background: rgba(47, 125, 79, 0.12);
+  color: #2f7d4f;
   display: grid;
   place-items: center;
   font-size: 24px;
@@ -1790,27 +2152,12 @@ function formatDateTime(value?: string | null) {
 }
 
 .music-auth-avatar.fallback {
-  border: 1px dashed rgba(180, 50, 37, 0.22);
+  border: 1px dashed rgba(47, 125, 79, 0.24);
 }
 
 .music-auth-copy {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
   gap: 4px;
-}
-
-.music-auth-copy strong,
-.cookie-login-note strong {
-  color: var(--console-ink);
-}
-
-.music-auth-copy p,
-.music-auth-copy small,
-.cookie-login-note p {
-  margin: 0;
-  color: #5b6858;
-  line-height: 1.7;
 }
 
 .music-auth-actions {
@@ -1818,19 +2165,19 @@ function formatDateTime(value?: string | null) {
   justify-content: flex-end;
 }
 
-.bookmarklet-card {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 18px;
-  border-radius: 18px;
-  border: 1px dashed rgba(180, 50, 37, 0.26);
-  background: linear-gradient(135deg, rgba(180, 50, 37, 0.08) 0%, rgba(247, 243, 235, 0.94) 100%);
+.preview-head {
+  justify-content: space-between;
 }
 
-.bookmarklet-card span,
-.bookmarklet-card small {
-  color: #5b6858;
+.request-preview-player audio {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.bookmarklet-card {
+  gap: 12px;
+  border-style: dashed;
+  background: linear-gradient(135deg, rgba(47, 125, 79, 0.08) 0%, rgba(244, 248, 239, 0.98) 100%);
 }
 
 .bookmarklet-chip {
@@ -1840,88 +2187,180 @@ function formatDateTime(value?: string | null) {
   min-height: 52px;
   padding: 0 20px;
   border-radius: 16px;
-  background: linear-gradient(135deg, #b43225 0%, #d04f39 100%);
-  color: #fff8f5;
+  background: linear-gradient(135deg, #2f7d4f 0%, #246a41 100%);
+  color: #f8fff7;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-decoration: none;
-  box-shadow: 0 14px 28px rgba(180, 50, 37, 0.18);
+  box-shadow: 0 14px 28px rgba(47, 125, 79, 0.22);
   width: fit-content;
 }
 
 .bookmarklet-chip:hover {
-  color: #fffdfb;
+  color: #ffffff;
   transform: translateY(-1px);
 }
 
-.preview-head {
-  align-items: flex-start;
-  justify-content: space-between;
-}
-
 .cookie-login-note {
-  flex-direction: column;
-  padding: 14px 16px;
-  border-radius: 16px;
-  border: 1px solid rgba(180, 50, 37, 0.14);
-  background: rgba(247, 243, 235, 0.72);
+  gap: 6px;
+  border: 1px solid #d3decb;
+  background: #f4f8ef;
 }
 
-@media (max-width: 1280px) {
-  .console-shell {
-    grid-template-columns: 1fr;
+.voicehub-dashboard :deep(.el-button--primary) {
+  --el-button-bg-color: #2f7d4f;
+  --el-button-border-color: #2f7d4f;
+  --el-button-hover-bg-color: #246a41;
+  --el-button-hover-border-color: #246a41;
+  --el-button-active-bg-color: #246a41;
+  --el-button-active-border-color: #246a41;
+}
+
+.voicehub-dashboard :deep(.el-button.is-plain) {
+  --el-button-hover-text-color: #2f7d4f;
+  --el-button-hover-bg-color: rgba(47, 125, 79, 0.08);
+  --el-button-hover-border-color: rgba(47, 125, 79, 0.2);
+}
+
+.voicehub-dashboard :deep(.el-tag) {
+  border-radius: 999px;
+}
+
+.voicehub-dashboard :deep(.el-table) {
+  --el-table-border-color: #d5dfcd;
+  --el-table-header-bg-color: #eef3e9;
+  --el-table-tr-bg-color: #ffffff;
+  --el-table-row-hover-bg-color: #f6f9f2;
+}
+
+.voicehub-dashboard :deep(.el-alert) {
+  border-radius: 18px;
+}
+
+.voicehub-dashboard :deep(.el-dialog) {
+  border-radius: 22px;
+  overflow: hidden;
+}
+
+.voicehub-dashboard :deep(.el-dialog__header),
+.voicehub-dashboard :deep(.el-dialog__body),
+.voicehub-dashboard :deep(.el-dialog__footer) {
+  background: #fbfdf8;
+}
+
+.voicehub-dashboard :deep(.el-dialog__header) {
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e0e8da;
+}
+
+.voicehub-dashboard :deep(.el-dialog__footer) {
+  border-top: 1px solid #e0e8da;
+}
+
+@media (max-width: 1080px) {
+  .admin-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 40;
+    height: 100vh;
+    transform: translateX(-100%);
+    transition: transform 0.28s ease;
   }
 
-  .console-sidebar {
-    position: static;
+  .admin-sidebar.open {
+    transform: translateX(0);
   }
 
-  .overview-grid,
-  .recent-grid {
+  .sidebar-mask {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    background: rgba(31, 42, 31, 0.26);
+    backdrop-filter: blur(6px);
+  }
+
+  .sidebar-close,
+  .menu-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 960px) {
+@media (max-width: 880px) {
   .overview-grid,
-  .overview-grid.split,
+  .recent-grid,
   .dialog-grid,
-  .dialog-grid.triple,
-  .recent-grid {
+  .dialog-grid.triple {
     grid-template-columns: 1fr;
+  }
+
+  .status-banner,
+  .status-banner-actions,
+  .music-auth-card,
+  .preview-head,
+  .panel-header {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 
 @media (max-width: 720px) {
-  .console-main,
-  .console-sidebar {
+  .admin-layout {
+    border-radius: 22px;
+  }
+
+  .admin-header {
     padding: 16px;
-    border-radius: 20px;
-  }
-
-  .console-header,
-  .card-head,
-  .source-preview-card {
+    align-items: flex-start;
     flex-direction: column;
-    align-items: stretch;
   }
 
-  .music-auth-card,
-  .preview-head {
+  .header-left,
+  .header-actions,
+  .empty-actions {
+    width: 100%;
+  }
+
+  .header-actions {
+    justify-content: stretch;
+    flex-wrap: wrap;
+  }
+
+  .header-actions > *,
+  .sidebar-actions > *,
+  .empty-actions > * {
+    width: 100%;
+  }
+
+  .admin-body {
+    padding: 16px;
+  }
+
+  .stats-grid,
+  .sidebar-stats {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .recent-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .queue-item,
+  .source-preview-card,
+  .music-auth-main,
+  .music-auth-actions {
     flex-direction: column;
     align-items: stretch;
   }
 
   .bookmarklet-chip {
     width: 100%;
-  }
-
-  .console-title h2 {
-    font-size: 26px;
-  }
-
-  .summary-grid {
-    grid-template-columns: 1fr 1fr;
   }
 }
 </style>

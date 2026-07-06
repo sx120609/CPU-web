@@ -1,394 +1,551 @@
 <template>
-  <div class="radio-home-page">
-    <section class="radio-home-shell" v-loading="loadingOverview">
-      <header class="home-topbar">
-        <div class="topbar-brand">
-          <div class="brand-mark">
-            <img :src="brandLogo" :alt="radioBrandName" class="brand-logo" />
-          </div>
-          <div class="brand-copy">
-            <span class="brand-kicker">Campus Radio</span>
-            <h1>{{ radioBrandTitle }}</h1>
-            <p>沿用 VoiceHub 的前台结构，把排期、歌曲列表和点歌入口收敛成一套真正可用的广播站首页。</p>
-          </div>
-        </div>
-        <div class="topbar-actions">
-          <el-button v-if="canManage" plain @click="goConsole">进入控制台</el-button>
-          <el-button v-else-if="loginRequired" plain @click="goLogin">登录后使用</el-button>
-        </div>
-      </header>
+  <div class="voicehub-home">
+    <div class="ellipse-effect" />
 
-      <section class="hero-board">
-        <div class="hero-main">
-          <span class="hero-badge">复刻版前台</span>
-          <h2>把药苑之声做成一套像广播站主页的前台，不再把后台硬塞进同一屏里。</h2>
-          <p>
-            这里保留你原系统的浅色业务壳和红色站标，同时按 VoiceHub 的方式拆成
-            <strong>播出排期</strong>、<strong>歌曲列表</strong>、<strong>投稿歌曲</strong>
-            三个主工作区。
-          </p>
-          <div class="hero-actions">
-            <el-button type="primary" @click="switchTab('request')">我要点歌</el-button>
-            <el-button plain @click="switchTab('songs')">看近期投稿</el-button>
+    <div class="main-content" v-loading="loadingOverview">
+      <div class="top-bar">
+        <div class="logo-section">
+          <div class="logo-link">
+            <img alt="药苑之声 Logo" class="logo-image" :src="brandLogo" />
+          </div>
+
+          <div class="logo-divider-container">
+            <div class="logo-divider" />
+            <div class="school-mark">
+              <span class="school-kicker">VoiceHub Front</span>
+              <strong>{{ radioBrandTitle }}</strong>
+            </div>
           </div>
         </div>
 
-        <div class="hero-side">
-          <div class="hero-metric">
-            <span>当前学期</span>
-            <strong>{{ overview?.currentSemester?.name || "待配置" }}</strong>
-            <small>{{ overview?.currentSemester?.code || "未设置当前学期" }}</small>
-          </div>
-          <div class="hero-metric-grid">
-            <article>
-              <b>{{ overview?.playTimes.length || 0 }}</b>
-              <span>播出时段</span>
-            </article>
-            <article>
-              <b>{{ overview?.scheduleItems.length || 0 }}</b>
-              <span>节目栏目</span>
-            </article>
-            <article>
-              <b>{{ overview?.recentRequests.length || 0 }}</b>
-              <span>近期投稿</span>
-            </article>
-            <article>
-              <b>{{ overview?.requestSummary.pending || 0 }}</b>
-              <span>待处理</span>
-            </article>
+        <div class="user-section">
+          <button v-if="canManage" class="action-chip" type="button" @click="goConsole">
+            管理后台
+          </button>
+          <button
+            v-else-if="loginRequired"
+            class="action-chip primary"
+            type="button"
+            @click="goLogin"
+          >
+            登录后使用
+          </button>
+          <button v-else class="action-chip primary" type="button" @click="switchTab('request')">
+            立即投稿
+          </button>
+        </div>
+      </div>
+
+      <div class="site-title">
+        <div class="title-container">
+          <p class="eyebrow">中国药科大学广播站</p>
+          <h1 class="main-title">药苑之声 beta</h1>
+          <div class="title-divider" />
+          <div class="sub-title-row">
+            <span>{{ overview?.currentSemester?.name || "当前学期待配置" }}</span>
+            <span>{{ overview?.playTimes.length || 0 }} 个播出时段</span>
+            <span>{{ overview?.scheduleItems.length || 0 }} 个栏目</span>
+            <span>{{ overview?.recentRequests.length || 0 }} 条近期投稿</span>
           </div>
         </div>
-      </section>
+      </div>
 
-      <section v-if="pageError" class="page-alert">
-        <el-alert :title="pageError" type="warning" :closable="false" show-icon>
-          <template #default>
-            <div class="alert-actions">
-              <el-button size="small" :loading="loadingOverview" @click="loadOverview">重试</el-button>
-              <el-button v-if="loginRequired" size="small" plain @click="goLogin">去登录</el-button>
-            </div>
-          </template>
-        </el-alert>
-      </section>
+      <div v-if="pageError" class="status-banner warning">
+        <div class="status-banner-copy">
+          <strong>{{ pageError }}</strong>
+          <p>可以直接重试，或者先登录后再继续使用投稿和试听功能。</p>
+        </div>
+        <div class="status-banner-actions">
+          <button class="mini-btn" type="button" @click="loadOverview">重试</button>
+          <button v-if="loginRequired" class="mini-btn ghost" type="button" @click="goLogin">
+            去登录
+          </button>
+        </div>
+      </div>
 
-      <nav class="section-tabs" aria-label="药苑之声前台主导航">
-        <button
-          v-for="item in publicTabs"
-          :key="item.value"
-          :class="['section-tab', { active: activeTab === item.value }]"
-          type="button"
-          @click="switchTab(item.value)"
-        >
-          <span class="tab-kicker">{{ item.kicker }}</span>
-          <strong>{{ item.label }}</strong>
-        </button>
-      </nav>
+      <div class="content-area">
+        <div class="tabs-row">
+          <button
+            v-for="item in publicTabs"
+            :key="item.value"
+            :class="['section-tab', { active: activeTab === item.value }]"
+            type="button"
+            @click="switchTab(item.value)"
+          >
+            <span class="tab-kicker">{{ item.kicker }}</span>
+            <span class="tab-text">{{ item.label }}</span>
+          </button>
+        </div>
 
-      <section v-if="activeTab === 'schedule'" class="tab-panel schedule-panel">
-        <article class="panel-card">
-          <div class="panel-head">
-            <div>
-              <span class="panel-kicker">Schedule</span>
-              <h3>播出排期</h3>
-              <p>按 VoiceHub 首页的排期视角展示一周时段，再把对应的栏目编排压到同一工作台里。</p>
-            </div>
-            <el-tag type="success" effect="plain" round>{{ overview?.playTimes.length || 0 }} 个时段</el-tag>
-          </div>
-          <div v-if="playTimeGroups.length" class="weekday-board">
-            <article v-for="group in playTimeGroups" :key="group.weekday" class="weekday-card">
-              <div class="weekday-head">
-                <strong>{{ group.label }}</strong>
-                <span>{{ group.items.length }} 个时段</span>
-              </div>
-              <div class="weekday-list">
-                <div v-for="item in group.items" :key="item.id" class="weekday-item">
-                  <div class="weekday-time">{{ item.startTime }} - {{ item.endTime }}</div>
-                  <div class="weekday-copy">
-                    <b>{{ item.name }}</b>
-                    <small>{{ item.location || "地点待补充" }}</small>
+        <div class="tab-content-container">
+          <Transition mode="out-in" name="tab-fade">
+            <div v-if="activeTab === 'schedule'" key="schedule" class="tab-pane schedule-tab-pane">
+              <div class="schedule-columns">
+                <section class="surface-card">
+                  <div class="panel-heading">
+                    <div>
+                      <span class="panel-kicker">Weekly Slots</span>
+                      <h2>播出排期</h2>
+                      <p>按星期梳理当前学期的固定时段，让听众先看到什么时候播。</p>
+                    </div>
+                    <span class="meta-chip">{{ overview?.playTimes.length || 0 }} 个时段</span>
                   </div>
-                </div>
-              </div>
-            </article>
-          </div>
-          <el-empty v-else description="还没有配置播出时段" />
-        </article>
 
-        <article class="panel-card">
-          <div class="panel-head">
-            <div>
-              <span class="panel-kicker">Programs</span>
-              <h3>栏目编排</h3>
-              <p>公开页只显示已发布节目，让前台更像真实电台站点，而不是后台数据表。</p>
-            </div>
-            <el-tag type="warning" effect="plain" round>{{ overview?.scheduleItems.length || 0 }} 个节目</el-tag>
-          </div>
-          <div v-if="overview?.scheduleItems.length" class="program-grid">
-            <article v-for="item in overview?.scheduleItems" :key="item.id" class="program-card">
-              <div class="program-head">
-                <span class="program-slot">{{ item.playTime ? `${weekdayLabel(item.playTime.weekday)} ${item.playTime.startTime}` : "待排期" }}</span>
-                <el-tag :type="scheduleStatusTag(item.status)" size="small" round>{{ scheduleStatusText(item.status) }}</el-tag>
-              </div>
-              <h4>{{ item.title }}</h4>
-              <p v-if="item.subtitle" class="program-subtitle">{{ item.subtitle }}</p>
-              <p v-if="item.summary" class="program-summary">{{ item.summary }}</p>
-              <div class="program-meta">
-                <span>{{ item.hostNames || "主持人待补充" }}</span>
-                <span>{{ item.requestEnabled ? "可点歌" : "暂不开放点歌" }}</span>
-              </div>
-              <div v-if="item.tags.length" class="tag-row">
-                <span v-for="tag in item.tags" :key="tag" class="tag-chip">{{ tag }}</span>
-              </div>
-            </article>
-          </div>
-          <el-empty v-else description="还没有发布节目安排" />
-        </article>
-      </section>
+                  <div v-if="playTimeGroups.length" class="weekday-grid">
+                    <article v-for="group in playTimeGroups" :key="group.weekday" class="weekday-panel">
+                      <div class="weekday-head">
+                        <strong>{{ group.label }}</strong>
+                        <span>{{ group.items.length }} 个时段</span>
+                      </div>
 
-      <section v-else-if="activeTab === 'songs'" class="tab-panel songs-panel">
-        <article class="panel-card">
-          <div class="panel-head">
-            <div>
-              <span class="panel-kicker">Requests</span>
-              <h3>歌曲列表</h3>
-              <p>这里展示最近投稿记录和审核状态，延续 VoiceHub 的歌曲列表语义，但样式回到你原系统的业务界面里。</p>
-            </div>
-            <el-button plain @click="switchTab('request')">去投稿</el-button>
-          </div>
-
-          <div class="songs-toolbar">
-            <label class="toolbar-field">
-              <span>搜索</span>
-              <input v-model.trim="songFilters.query" type="text" placeholder="按歌曲名、歌手、栏目搜索" />
-            </label>
-            <label class="toolbar-field compact">
-              <span>状态</span>
-              <select v-model="songFilters.status">
-                <option value="all">全部状态</option>
-                <option value="pending">待处理</option>
-                <option value="approved">已通过</option>
-                <option value="fulfilled">已播出</option>
-                <option value="rejected">已拒绝</option>
-              </select>
-            </label>
-            <label class="toolbar-field compact">
-              <span>音源</span>
-              <select v-model="songFilters.provider">
-                <option value="all">全部音源</option>
-                <option value="netease">网易云</option>
-                <option value="qq">QQ 音乐</option>
-              </select>
-            </label>
-          </div>
-
-          <div v-if="songPreview.streamUrl || songPreview.notice" class="song-preview-bar">
-            <div class="preview-head">
-              <div class="preview-meta">
-                <strong>{{ songPreview.title }}</strong>
-                <span>{{ songPreview.subtitle }}</span>
-              </div>
-              <el-button text @click="closePreview('songs')">关闭试听</el-button>
-            </div>
-            <audio ref="songPreviewAudioRef" :src="songPreview.streamUrl" controls preload="none" />
-            <small v-if="songPreview.notice">{{ songPreview.notice }}</small>
-          </div>
-
-          <div v-if="filteredRecentRequests.length" class="song-list-grid">
-            <article v-for="item in filteredRecentRequests" :key="item.id" class="song-record-card">
-              <div class="song-record-main">
-                <div class="song-record-avatar">
-                  <img
-                    v-if="item.sourceSelection?.cover"
-                    :src="item.sourceSelection.cover"
-                    :alt="item.songTitle"
-                    referrerpolicy="no-referrer"
-                  />
-                  <span v-else>{{ sourceAvatarText(item.songTitle) }}</span>
-                </div>
-                <div class="song-record-copy">
-                  <div class="song-record-head">
-                    <h4>{{ item.songTitle }}</h4>
-                    <el-tag :type="requestStatusTag(item.status)" size="small" round>{{ requestStatusText(item.status) }}</el-tag>
+                      <div class="weekday-list">
+                        <div v-for="item in group.items" :key="item.id" class="weekday-item">
+                          <span class="time-pill">{{ item.startTime }} - {{ item.endTime }}</span>
+                          <div class="weekday-copy">
+                            <strong>{{ item.name }}</strong>
+                            <p>{{ item.location || "地点待补充" }}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </article>
                   </div>
-                  <p>{{ item.artist || "歌手待补充" }}</p>
-                  <div class="song-record-meta">
-                    <span>投稿人：{{ item.nickname || "匿名" }}</span>
-                    <span v-if="item.scheduleItem">栏目：{{ item.scheduleItem.title }}</span>
-                    <span v-if="item.sourceProvider">音源：{{ musicProviderLabel(item.sourceProvider) }}</span>
-                    <span>{{ formatDateTime(item.createdAt) }}</span>
+
+                  <div v-else class="empty-state">当前还没有配置播出时段。</div>
+                </section>
+
+                <section class="surface-card">
+                  <div class="panel-heading">
+                    <div>
+                      <span class="panel-kicker">Programs</span>
+                      <h2>栏目编排</h2>
+                      <p>前台只展示已经整理好的栏目内容，而不是后台原始数据表。</p>
+                    </div>
+                    <span class="meta-chip">{{ overview?.scheduleItems.length || 0 }} 个栏目</span>
                   </div>
-                </div>
-              </div>
-              <div class="song-record-actions">
-                <el-button v-if="item.sourceSelection" plain @click="previewRecentRequestSource(item)">试听</el-button>
-                <el-button type="primary" plain @click="reuseRequest(item)">继续投稿</el-button>
-              </div>
-            </article>
-          </div>
-          <el-empty v-else description="还没有符合筛选条件的投稿记录" />
-        </article>
-      </section>
 
-      <section v-else ref="requestSectionRef" class="tab-panel request-panel">
-        <article class="panel-card rules-card">
-          <div class="panel-head compact">
-            <div>
-              <span class="panel-kicker">Guidelines</span>
-              <h3>投稿须知</h3>
-            </div>
-          </div>
-          <ol class="rules-list">
-            <li>歌曲名和歌手尽量填写准确，方便后续审核和排期。</li>
-            <li>如果系统已经搜到对应音源，优先锁定音源再提交，后台就能直接试听和复核。</li>
-            <li>投稿后不代表立即播出，管理员仍会按时段、内容和版权可用性进行处理。</li>
-            <li>系统只做搜索、解析和播放中转，不存储第三方平台的音乐文件。</li>
-            <li>若你已登录，后台会直接关联你的账号；未登录时也可以用昵称投稿。</li>
-          </ol>
-        </article>
+                  <div v-if="overview?.scheduleItems.length" class="program-list">
+                    <article v-for="item in overview?.scheduleItems" :key="item.id" class="program-card">
+                      <div class="program-top">
+                        <span class="slot-label">
+                          {{
+                            item.playTime
+                              ? `${weekdayLabel(item.playTime.weekday)} ${item.playTime.startTime}`
+                              : "待排期"
+                          }}
+                        </span>
+                        <span :class="['status-pill', scheduleStatusTag(item.status)]">
+                          {{ scheduleStatusText(item.status) }}
+                        </span>
+                      </div>
 
-        <article class="panel-card composer-card">
-          <div class="panel-head">
-            <div>
-              <span class="panel-kicker">Request</span>
-              <h3>投稿歌曲</h3>
-              <p>这里沿用 VoiceHub 的“先搜歌、再锁音源、最后补投稿信息”的工作流。</p>
-            </div>
-            <div class="provider-pills">
-              <button
-                v-for="item in providerOptions"
-                :key="item.value"
-                :class="['provider-pill', { active: musicSearch.providerMode === item.value }]"
-                type="button"
-                @click="musicSearch.providerMode = item.value"
-              >
-                {{ item.label }}
-              </button>
-            </div>
-          </div>
+                      <h3>{{ item.title }}</h3>
+                      <p v-if="item.subtitle" class="program-subtitle">{{ item.subtitle }}</p>
+                      <p class="program-summary">{{ item.summary || "该栏目尚未补充简介。" }}</p>
 
-          <div v-if="loginRequired && !hasToken" class="login-block">
-            <p>{{ radioBrandName }} 当前要求登录后使用，登录后点歌记录和后台审核都会直接关联到你的账号。</p>
-            <el-button type="primary" @click="goLogin">去登录</el-button>
-          </div>
+                      <div class="program-meta">
+                        <span>{{ item.hostNames || "主持人待补充" }}</span>
+                        <span>{{ item.requestEnabled ? "开放点歌" : "暂不开放点歌" }}</span>
+                      </div>
 
-          <div class="search-box">
-            <label class="toolbar-field">
-              <span>歌曲搜索</span>
-              <input
-                v-model.trim="musicSearch.keyword"
-                type="text"
-                placeholder="输入歌曲名、歌手或两者一起搜"
-                @keyup.enter.prevent="searchMusic"
-              />
-            </label>
-            <el-button plain :loading="musicSearch.loading" @click="searchMusic">搜索音源</el-button>
-          </div>
-
-          <p v-if="musicSearchHint" class="search-hint">{{ musicSearchHint }}</p>
-
-          <div v-if="selectedSource" class="selected-source-card">
-            <div class="selected-source-main">
-              <div class="selected-source-cover">
-                <img
-                  v-if="selectedSource.cover"
-                  :src="selectedSource.cover"
-                  :alt="selectedSource.name"
-                  referrerpolicy="no-referrer"
-                />
-                <span v-else>{{ sourceAvatarText(selectedSource.name) }}</span>
-              </div>
-              <div class="selected-source-copy">
-                <strong>{{ selectedSource.name }}</strong>
-                <span>{{ selectedSource.artist || "歌手未知" }}</span>
-                <small>{{ musicProviderLabel(selectedSource.provider) }} · {{ formatDurationMs(selectedSource.duration) }}</small>
-              </div>
-            </div>
-            <div class="selected-source-actions">
-              <el-button plain :loading="requestPreview.loading" @click="previewSelectedSource">试听</el-button>
-              <el-button plain @click="clearSelectedSource">取消锁定</el-button>
-            </div>
-          </div>
-
-          <div v-if="musicSearch.error" class="search-feedback error">{{ musicSearch.error }}</div>
-          <div v-else-if="musicSearch.searched && !musicSearch.results.length" class="search-feedback empty">没有搜到可用结果，可以直接手填歌曲信息提交。</div>
-
-          <div v-if="musicSearch.results.length" class="search-results">
-            <article v-for="item in musicSearch.results" :key="resultTrackKey(item)" class="search-result-card">
-              <div class="search-result-main">
-                <div class="search-result-cover">
-                  <img v-if="item.cover" :src="item.cover" :alt="item.name" referrerpolicy="no-referrer" />
-                  <span v-else>{{ sourceAvatarText(item.name) }}</span>
-                </div>
-                <div class="search-result-copy">
-                  <div class="search-result-head">
-                    <strong>{{ item.name }}</strong>
-                    <el-tag size="small" round>{{ musicProviderLabel(item.provider) }}</el-tag>
+                      <div v-if="item.tags.length" class="tag-list">
+                        <span v-for="tag in item.tags" :key="tag" class="tag-chip">{{ tag }}</span>
+                      </div>
+                    </article>
                   </div>
-                  <span>{{ item.artist || "歌手未知" }}</span>
-                  <small>{{ item.album || "专辑未知" }} · {{ formatDurationMs(item.duration) }}</small>
+
+                  <div v-else class="empty-state">当前还没有发布栏目。</div>
+                </section>
+              </div>
+            </div>
+
+            <div v-else-if="activeTab === 'songs'" key="songs" class="tab-pane">
+              <section class="surface-card">
+                <div class="panel-heading">
+                  <div>
+                    <span class="panel-kicker">Song Requests</span>
+                    <h2>歌曲列表</h2>
+                    <p>公开查看近期投稿、审核状态和已锁定音源，前台也能直接试听。</p>
+                  </div>
+                  <button class="mini-btn ghost" type="button" @click="switchTab('request')">
+                    去投稿
+                  </button>
                 </div>
-              </div>
-              <div class="search-result-actions">
-                <el-button plain :loading="requestPreview.loading && requestPreview.trackKey === resultTrackKey(item)" @click="previewSearchResult(item)">试听</el-button>
-                <el-button type="primary" @click="pickSearchResult(item)">锁定</el-button>
-              </div>
-            </article>
-          </div>
 
-          <div v-if="requestPreview.streamUrl" class="request-preview-player">
-            <div class="preview-head">
-              <div class="preview-meta">
-                <strong>{{ requestPreview.title }}</strong>
-                <span>{{ requestPreview.subtitle }}</span>
-              </div>
-              <el-button text @click="closePreview('request')">关闭试听</el-button>
-            </div>
-            <audio ref="requestPreviewAudioRef" :src="requestPreview.streamUrl" controls preload="none" />
-            <small v-if="requestPreview.notice">{{ requestPreview.notice }}</small>
-          </div>
+                <div class="list-toolbar">
+                  <label class="filter-field filter-wide">
+                    <span>搜索</span>
+                    <input
+                      v-model.trim="songFilters.query"
+                      type="text"
+                      placeholder="按歌曲名、歌手、栏目搜索"
+                    />
+                  </label>
 
-          <form class="request-form" @submit.prevent="submitRequest">
-            <div class="form-grid">
-              <label class="form-field">
-                <span>昵称</span>
-                <input v-model.trim="requestForm.nickname" type="text" maxlength="40" placeholder="不填则使用账号昵称或匿名" />
-              </label>
-              <label class="form-field">
-                <span>投稿栏目</span>
-                <select v-model="requestForm.scheduleItemId">
-                  <option :value="null">暂不指定栏目</option>
-                  <option v-for="item in requestablePrograms" :key="item.id" :value="item.id">{{ item.title }}</option>
-                </select>
-              </label>
-              <label class="form-field">
-                <span>歌曲名</span>
-                <input v-model.trim="requestForm.songTitle" type="text" maxlength="120" placeholder="例如：晴天" />
-              </label>
-              <label class="form-field">
-                <span>歌手</span>
-                <input v-model.trim="requestForm.artist" type="text" maxlength="120" placeholder="例如：周杰伦" />
-              </label>
-              <label class="form-field">
-                <span>联系方式</span>
-                <input v-model.trim="requestForm.contact" type="text" maxlength="120" placeholder="可选，便于联系你确认信息" />
-              </label>
-              <label class="form-field">
-                <span>点歌祝福</span>
-                <input v-model.trim="requestForm.dedication" type="text" maxlength="200" placeholder="想送给谁，可以写在这里" />
-              </label>
+                  <label class="filter-field">
+                    <span>状态</span>
+                    <select v-model="songFilters.status">
+                      <option value="all">全部状态</option>
+                      <option value="pending">待处理</option>
+                      <option value="approved">已通过</option>
+                      <option value="fulfilled">已播出</option>
+                      <option value="rejected">已拒绝</option>
+                    </select>
+                  </label>
+
+                  <label class="filter-field">
+                    <span>音源</span>
+                    <select v-model="songFilters.provider">
+                      <option value="all">全部音源</option>
+                      <option value="netease">网易云</option>
+                      <option value="qq">QQ 音乐</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div v-if="songPreview.streamUrl || songPreview.notice" class="audio-player">
+                  <div class="audio-top">
+                    <div class="audio-meta">
+                      <strong>{{ songPreview.title }}</strong>
+                      <span>{{ songPreview.subtitle }}</span>
+                    </div>
+                    <button class="text-link" type="button" @click="closePreview('songs')">
+                      关闭试听
+                    </button>
+                  </div>
+                  <audio ref="songPreviewAudioRef" :src="songPreview.streamUrl" controls preload="none" />
+                  <small v-if="songPreview.notice" class="audio-notice">{{ songPreview.notice }}</small>
+                </div>
+
+                <div v-if="filteredRecentRequests.length" class="request-list">
+                  <article v-for="item in filteredRecentRequests" :key="item.id" class="request-row">
+                    <div class="request-cover">
+                      <img
+                        v-if="item.sourceSelection?.cover"
+                        :src="item.sourceSelection.cover"
+                        :alt="item.songTitle"
+                        referrerpolicy="no-referrer"
+                      />
+                      <span v-else>{{ sourceAvatarText(item.songTitle) }}</span>
+                    </div>
+
+                    <div class="request-copy">
+                      <div class="request-title-row">
+                        <h3>{{ item.songTitle }}</h3>
+                        <span :class="['status-pill', requestStatusTag(item.status)]">
+                          {{ requestStatusText(item.status) }}
+                        </span>
+                      </div>
+                      <p>{{ item.artist || "歌手待补充" }}</p>
+                      <div class="request-meta">
+                        <span>投稿人：{{ item.nickname || "匿名" }}</span>
+                        <span v-if="item.scheduleItem">栏目：{{ item.scheduleItem.title }}</span>
+                        <span v-if="item.sourceProvider">音源：{{ musicProviderLabel(item.sourceProvider) }}</span>
+                        <span>{{ formatDateTime(item.createdAt) }}</span>
+                      </div>
+                    </div>
+
+                    <div class="request-actions">
+                      <button
+                        v-if="item.sourceSelection"
+                        class="mini-btn ghost"
+                        type="button"
+                        @click="previewRecentRequestSource(item)"
+                      >
+                        试听
+                      </button>
+                      <button class="mini-btn primary" type="button" @click="reuseRequest(item)">
+                        继续投稿
+                      </button>
+                    </div>
+                  </article>
+                </div>
+
+                <div v-else class="empty-state">当前没有符合筛选条件的投稿。</div>
+              </section>
             </div>
-            <label class="form-field">
-              <span>留言补充</span>
-              <textarea v-model.trim="requestForm.message" maxlength="1000" placeholder="想补充的说明、原因或者节目语境都可以写在这里" />
-            </label>
-            <div class="form-actions">
-              <span v-if="selectedSource" class="source-lock-note">已锁定 {{ musicProviderLabel(selectedSource.provider) }} 音源，后台可直接试听</span>
-              <el-button type="primary" native-type="submit" :loading="submittingRequest" :disabled="loginRequired && !hasToken">提交投稿</el-button>
+
+            <div v-else key="request" ref="requestSectionRef" class="tab-pane request-pane">
+              <div class="request-form">
+                <section class="rules-section">
+                  <h2 class="section-title">投稿须知</h2>
+                  <div class="rules-content-desktop">
+                    <p>1. 歌曲名和歌手尽量填写准确，方便后台快速核对。</p>
+                    <p>2. 优先先锁定音源再提交，管理员就可以直接试听和审核。</p>
+                    <p>3. 投稿并不代表立即播出，仍会按排期和内容规则处理。</p>
+                    <p>4. 系统只做搜索、解析和播放中转，不存储第三方音乐文件。</p>
+                    <p>5. 已登录用户会自动关联账号，未登录时也可以用昵称投稿。</p>
+                  </div>
+                </section>
+
+                <section class="form-container">
+                  <form class="song-request-form" @submit.prevent="submitRequest">
+                    <div class="form-header-row">
+                      <div class="search-section">
+                        <div class="search-label">歌曲搜索</div>
+                        <div class="search-input-group">
+                          <input
+                            v-model.trim="musicSearch.keyword"
+                            class="search-input"
+                            type="text"
+                            placeholder="输入歌曲名、歌手或两者一起搜"
+                            @keyup.enter.prevent="searchMusic"
+                          />
+                          <button
+                            class="search-button"
+                            type="button"
+                            :disabled="musicSearch.loading"
+                            @click="searchMusic"
+                          >
+                            {{ musicSearch.loading ? "搜索中..." : "搜索" }}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="search-results-container">
+                      <div v-if="loginRequired && !hasToken" class="login-entry">
+                        <div class="login-desc">
+                          <p class="login-title">{{ radioBrandName }} 当前要求登录后使用</p>
+                          <p class="login-hint">登录后，投稿记录和后台审核都会直接关联到你的账号。</p>
+                        </div>
+                        <button class="mini-btn primary" type="button" @click="goLogin">去登录</button>
+                      </div>
+
+                      <div class="platform-selection-container">
+                        <div class="platform-selection">
+                          <button
+                            v-for="item in providerOptions"
+                            :key="item.value"
+                            :class="['platform-btn', { active: musicSearch.providerMode === item.value }]"
+                            type="button"
+                            @click="musicSearch.providerMode = item.value"
+                          >
+                            {{ item.label }}
+                          </button>
+                        </div>
+
+                        <div v-if="musicSearchHint" class="source-status-display">
+                          <div class="status-header">
+                            <span class="status-title">音源说明</span>
+                            <span class="status-summary">当前解析状态</span>
+                          </div>
+                          <p class="status-copy">{{ musicSearchHint }}</p>
+                        </div>
+                      </div>
+
+                      <div v-if="selectedSource" class="selected-source-banner">
+                        <div class="selected-source-main">
+                          <div class="selected-source-cover">
+                            <img
+                              v-if="selectedSource.cover"
+                              :src="selectedSource.cover"
+                              :alt="selectedSource.name"
+                              referrerpolicy="no-referrer"
+                            />
+                            <span v-else>{{ sourceAvatarText(selectedSource.name) }}</span>
+                          </div>
+                          <div class="selected-source-copy">
+                            <strong>{{ selectedSource.name }}</strong>
+                            <span>{{ selectedSource.artist || "歌手未知" }}</span>
+                            <small>
+                              {{ musicProviderLabel(selectedSource.provider) }}
+                              ·
+                              {{ formatDurationMs(selectedSource.duration) }}
+                            </small>
+                          </div>
+                        </div>
+                        <div class="selected-source-actions">
+                          <button
+                            class="mini-btn ghost"
+                            type="button"
+                            :disabled="requestPreview.loading"
+                            @click="previewSelectedSource"
+                          >
+                            试听
+                          </button>
+                          <button class="mini-btn ghost" type="button" @click="clearSelectedSource">
+                            取消锁定
+                          </button>
+                        </div>
+                      </div>
+
+                      <div v-if="requestPreview.streamUrl || requestPreview.notice" class="audio-player request-audio">
+                        <div class="audio-top">
+                          <div class="audio-meta">
+                            <strong>{{ requestPreview.title }}</strong>
+                            <span>{{ requestPreview.subtitle }}</span>
+                          </div>
+                          <button class="text-link" type="button" @click="closePreview('request')">
+                            关闭试听
+                          </button>
+                        </div>
+                        <audio ref="requestPreviewAudioRef" :src="requestPreview.streamUrl" controls preload="none" />
+                        <small v-if="requestPreview.notice" class="audio-notice">{{ requestPreview.notice }}</small>
+                      </div>
+
+                      <div class="results-content">
+                        <div v-if="musicSearch.error" class="status-inline error">
+                          {{ musicSearch.error }}
+                        </div>
+
+                        <div v-else-if="musicSearch.results.length" class="results-list">
+                          <article
+                            v-for="item in musicSearch.results"
+                            :key="resultTrackKey(item)"
+                            class="result-item"
+                          >
+                            <div class="result-cover">
+                              <img
+                                v-if="item.cover"
+                                :src="item.cover"
+                                :alt="item.name"
+                                referrerpolicy="no-referrer"
+                              />
+                              <span v-else>{{ sourceAvatarText(item.name) }}</span>
+                            </div>
+
+                            <div class="result-info">
+                              <h3 class="result-title">{{ item.name }}</h3>
+                              <p class="result-artist">{{ item.artist || "歌手未知" }}</p>
+                              <div class="result-meta">
+                                <span>{{ musicProviderLabel(item.provider) }}</span>
+                                <span>{{ item.album || "专辑未知" }}</span>
+                                <span>{{ formatDurationMs(item.duration) }}</span>
+                              </div>
+                            </div>
+
+                            <div class="result-actions">
+                              <button
+                                class="mini-btn ghost"
+                                type="button"
+                                :disabled="requestPreview.loading && requestPreview.trackKey === resultTrackKey(item)"
+                                @click="previewSearchResult(item)"
+                              >
+                                试听
+                              </button>
+                              <button class="mini-btn primary" type="button" @click="pickSearchResult(item)">
+                                锁定
+                              </button>
+                            </div>
+                          </article>
+                        </div>
+
+                        <div v-else-if="musicSearch.searched" class="empty-state compact">
+                          没有搜到可用结果，可以直接手动填写后提交。
+                        </div>
+
+                        <div v-else class="empty-state compact">
+                          先搜索歌曲，再锁定音源，最后提交投稿。
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="submission-form-shell">
+                      <div class="panel-heading compact">
+                        <div>
+                          <span class="panel-kicker">Request Form</span>
+                          <h2>投稿信息</h2>
+                          <p>把基础信息补齐后提交，后台就能直接接手这条投稿。</p>
+                        </div>
+                      </div>
+
+                      <div class="form-grid">
+                        <label class="form-field">
+                          <span>昵称</span>
+                          <input
+                            v-model.trim="requestForm.nickname"
+                            type="text"
+                            maxlength="40"
+                            placeholder="不填则使用账号昵称或匿名"
+                          />
+                        </label>
+
+                        <label class="form-field">
+                          <span>投稿栏目</span>
+                          <select v-model="requestForm.scheduleItemId">
+                            <option :value="null">暂不指定栏目</option>
+                            <option v-for="item in requestablePrograms" :key="item.id" :value="item.id">
+                              {{ item.title }}
+                            </option>
+                          </select>
+                        </label>
+
+                        <label class="form-field">
+                          <span>歌曲名</span>
+                          <input
+                            v-model.trim="requestForm.songTitle"
+                            type="text"
+                            maxlength="120"
+                            placeholder="例如：晴天"
+                          />
+                        </label>
+
+                        <label class="form-field">
+                          <span>歌手</span>
+                          <input
+                            v-model.trim="requestForm.artist"
+                            type="text"
+                            maxlength="120"
+                            placeholder="例如：周杰伦"
+                          />
+                        </label>
+
+                        <label class="form-field">
+                          <span>联系方式</span>
+                          <input
+                            v-model.trim="requestForm.contact"
+                            type="text"
+                            maxlength="120"
+                            placeholder="可选，便于联系你确认信息"
+                          />
+                        </label>
+
+                        <label class="form-field">
+                          <span>点歌祝福</span>
+                          <input
+                            v-model.trim="requestForm.dedication"
+                            type="text"
+                            maxlength="200"
+                            placeholder="想送给谁，可以写在这里"
+                          />
+                        </label>
+                      </div>
+
+                      <label class="form-field full">
+                        <span>留言补充</span>
+                        <textarea
+                          v-model.trim="requestForm.message"
+                          maxlength="1000"
+                          placeholder="想补充的说明、原因或者节目语境都可以写在这里"
+                        />
+                      </label>
+
+                      <div class="form-actions">
+                        <span class="form-note">
+                          {{
+                            selectedSource
+                              ? `已锁定 ${musicProviderLabel(selectedSource.provider)} 音源，后台可直接试听`
+                              : "也可以不锁定音源直接投稿，但后台处理会更慢。"
+                          }}
+                        </span>
+
+                        <button
+                          class="submit-button"
+                          type="submit"
+                          :disabled="submittingRequest || (loginRequired && !hasToken)"
+                        >
+                          {{ submittingRequest ? "提交中..." : "提交投稿" }}
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                </section>
+              </div>
             </div>
-          </form>
-        </article>
-      </section>
-    </section>
+          </Transition>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -689,6 +846,12 @@ async function searchMusic() {
 
 function switchTab(tab: PublicTab) {
   activeTab.value = tab;
+  router.replace({
+    query: {
+      ...route.query,
+      tab,
+    },
+  }).catch(() => undefined);
   if (tab === "request") {
     nextTick(() => requestSectionRef.value?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
@@ -858,222 +1021,308 @@ function formatDateTime(value?: string | null) {
 </script>
 
 <style scoped>
-.radio-home-page {
-  --radio-red: #b43225;
-  --radio-ink: #24362b;
-  --radio-soft: #f7f3eb;
-  --radio-panel: rgba(255, 255, 255, 0.94);
-  --radio-line: rgba(84, 98, 77, 0.16);
-  --radio-green: #2f7d4f;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+.voicehub-home {
+  position: relative;
+  min-height: calc(100vh - 120px);
+  padding: 24px 0 40px;
+  background: #f6f8f2;
+  overflow: hidden;
 }
 
-.radio-home-shell {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  padding: 24px;
-  border-radius: 24px;
-  border: 1px solid var(--radio-line);
+.ellipse-effect {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
   background:
-    radial-gradient(circle at top left, rgba(180, 50, 37, 0.12), transparent 28%),
-    radial-gradient(circle at top right, rgba(47, 125, 79, 0.14), transparent 30%),
-    linear-gradient(180deg, rgba(248, 245, 239, 0.94) 0%, rgba(255, 255, 255, 0.98) 45%, rgba(246, 248, 242, 0.96) 100%);
-  box-shadow: 0 22px 48px rgba(36, 54, 43, 0.08);
+    radial-gradient(circle at 12% 16%, rgba(47, 125, 79, 0.14) 0%, transparent 30%),
+    radial-gradient(circle at 88% 10%, rgba(194, 138, 38, 0.12) 0%, transparent 26%),
+    radial-gradient(circle at 54% 84%, rgba(46, 111, 174, 0.08) 0%, transparent 28%);
 }
 
-.home-topbar {
+.main-content {
+  position: relative;
+  z-index: 1;
+  width: min(1240px, calc(100vw - 32px));
+  margin: 0 auto;
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
+  flex-direction: column;
+  gap: 20px;
 }
 
-.topbar-brand {
+.top-bar,
+.content-area,
+.surface-card,
+.rules-section,
+.form-container,
+.audio-player,
+.selected-source-banner,
+.status-banner {
+  border: 1px solid #d5dfcd;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 18px 34px rgba(43, 61, 43, 0.1);
+}
+
+.top-bar {
   display: flex;
   align-items: center;
-  gap: 18px;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 22px;
+  border-radius: 26px;
+  backdrop-filter: blur(18px);
 }
 
-.brand-mark {
-  flex: 0 0 auto;
+.logo-section,
+.logo-divider-container,
+.user-section,
+.audio-top,
+.selected-source-main,
+.selected-source-actions,
+.result-actions,
+.request-actions,
+.status-banner-actions,
+.form-actions,
+.program-top,
+.request-title-row,
+.weekday-head {
+  display: flex;
+  align-items: center;
+}
+
+.logo-section {
+  gap: 16px;
+  min-width: 0;
+}
+
+.logo-link {
+  width: 72px;
+  height: 72px;
+  padding: 10px;
   display: grid;
   place-items: center;
-  width: 116px;
-  height: 116px;
-  padding: 14px;
-  border-radius: 30px;
-  background: rgba(255, 249, 247, 0.95);
-  border: 1px solid rgba(180, 50, 37, 0.14);
-  box-shadow: 0 14px 26px rgba(180, 50, 37, 0.08);
+  border-radius: 22px;
+  border: 1px solid #d5dfcd;
+  background: #fff;
+  box-shadow: 0 12px 24px rgba(43, 61, 43, 0.08);
 }
 
-.brand-logo {
+.logo-image {
   width: 100%;
-  height: auto;
+  height: 100%;
+  object-fit: contain;
 }
 
-.brand-copy {
+.logo-divider-container {
+  gap: 16px;
+  min-width: 0;
+}
+
+.logo-divider {
+  width: 1px;
+  height: 56px;
+  background: linear-gradient(180deg, transparent 0%, #c8d5c0 20%, #c8d5c0 80%, transparent 100%);
+}
+
+.school-mark {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-width: 720px;
+  gap: 4px;
+  min-width: 0;
 }
 
-.brand-kicker,
-.panel-kicker,
-.tab-kicker {
-  color: var(--radio-red);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+.school-kicker,
+.eyebrow,
+.tab-kicker,
+.panel-kicker {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
+  color: #788878;
 }
 
-.brand-copy h1,
-.hero-main h2,
-.panel-head h3,
-.song-record-head h4,
-.program-card h4 {
-  margin: 0;
-  color: var(--radio-ink);
-}
-
-.brand-copy h1 {
-  font-size: 34px;
+.school-mark strong {
+  font-size: 26px;
   line-height: 1.1;
+  color: #1f2a1f;
 }
 
-.brand-copy p,
-.hero-main p,
-.panel-head p,
-.program-summary,
-.rules-list,
-.song-record-copy p {
-  margin: 0;
-  color: #54624d;
-  line-height: 1.8;
-}
-
-.topbar-actions {
-  display: flex;
+.user-section {
   gap: 10px;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
-.hero-board {
-  display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.85fr);
-  gap: 18px;
+.action-chip,
+.mini-btn,
+.search-button,
+.submit-button,
+.platform-btn,
+.section-tab,
+.text-link {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-.hero-main,
-.hero-side,
-.panel-card {
-  border-radius: 22px;
-  border: 1px solid var(--radio-line);
-  background: var(--radio-panel);
-}
-
-.hero-main {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 24px;
-}
-
-.hero-badge {
-  align-self: flex-start;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: rgba(180, 50, 37, 0.1);
-  color: var(--radio-red);
-  font-size: 12px;
+.action-chip,
+.mini-btn,
+.search-button,
+.submit-button {
+  min-height: 42px;
+  padding: 0 18px;
+  border-radius: 14px;
   font-weight: 700;
 }
 
-.hero-main h2 {
-  font-size: 30px;
-  line-height: 1.2;
+.action-chip,
+.mini-btn.ghost {
+  color: #2b3d2b;
+  background: #eef4e8;
+  border: 1px solid #d3decb;
 }
 
-.hero-actions {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
+.action-chip.primary,
+.mini-btn.primary,
+.search-button,
+.submit-button,
+.platform-btn.active {
+  color: #fff;
+  background: linear-gradient(180deg, #2f7d4f 0%, #246a41 100%);
+  box-shadow: 0 10px 24px rgba(47, 125, 79, 0.2);
 }
 
-.hero-side {
+.action-chip:hover,
+.mini-btn:hover,
+.search-button:hover,
+.submit-button:hover,
+.platform-btn:hover,
+.section-tab:hover {
+  transform: translateY(-1px);
+}
+
+.action-chip:disabled,
+.mini-btn:disabled,
+.search-button:disabled,
+.submit-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.site-title {
+  padding: 6px 2px 2px;
+}
+
+.title-container {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 22px;
-  background:
-    linear-gradient(180deg, rgba(255, 248, 246, 0.98) 0%, rgba(255, 255, 255, 0.98) 100%);
+  gap: 12px;
 }
 
-.hero-metric {
+.eyebrow {
+  color: #5f715f;
+}
+
+.main-title {
+  margin: 0;
+  font-size: clamp(36px, 6vw, 64px);
+  line-height: 0.96;
+  letter-spacing: -0.04em;
+  color: #1f2a1f;
+  font-weight: 800;
+}
+
+.title-divider {
+  width: min(420px, 100%);
+  height: 1px;
+  background: linear-gradient(90deg, #9cad9c 0%, #d9e4d1 58%, transparent 100%);
+}
+
+.sub-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  color: #5f715f;
+  font-size: 14px;
+}
+
+.sub-title-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sub-title-row span::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #2f7d4f;
+  box-shadow: 0 0 10px rgba(47, 125, 79, 0.32);
+}
+
+.status-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border-radius: 22px;
+}
+
+.status-banner.warning {
+  background: linear-gradient(135deg, rgba(194, 138, 38, 0.1) 0%, rgba(255, 255, 255, 0.96) 100%);
+}
+
+.status-banner-copy {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.hero-metric span,
-.hero-metric small,
-.hero-metric-grid span,
-.song-record-meta,
-.program-meta,
+.status-banner-copy strong,
+.panel-heading h2,
+.weekday-copy strong,
+.request-copy h3,
+.result-title,
+.selected-source-copy strong,
+.program-card h3 {
+  color: #1f2a1f;
+}
+
+.status-banner-copy p,
+.panel-heading p,
+.weekday-copy p,
+.request-copy p,
+.request-meta,
+.result-artist,
+.result-meta,
 .selected-source-copy span,
 .selected-source-copy small,
-.search-result-copy span,
-.search-result-copy small,
-.preview-meta span,
-.search-hint,
-.source-lock-note,
-.request-preview-player small,
-.song-preview-bar small {
-  color: #5c6a5b;
+.audio-meta span,
+.audio-notice,
+.form-note,
+.status-copy,
+.rules-content-desktop p,
+.program-summary,
+.program-meta,
+.program-subtitle {
+  margin: 0;
+  color: #5f715f;
 }
 
-.hero-metric strong {
-  font-size: 24px;
-  color: var(--radio-ink);
-}
-
-.hero-metric-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.hero-metric-grid article {
+.content-area {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 14px;
-  border-radius: 18px;
-  background: rgba(247, 243, 235, 0.72);
+  gap: 18px;
+  padding: 18px;
+  border-radius: 30px;
+  background: rgba(251, 253, 248, 0.84);
 }
 
-.hero-metric-grid b {
-  font-size: 28px;
-  color: var(--radio-red);
-  line-height: 1;
-}
-
-.page-alert {
-  margin-top: -4px;
-}
-
-.alert-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.section-tabs {
+.tabs-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
@@ -1082,490 +1331,651 @@ function formatDateTime(value?: string | null) {
 .section-tab {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 6px;
   padding: 16px 18px;
   border-radius: 18px;
-  border: 1px solid var(--radio-line);
-  background: rgba(255, 255, 255, 0.78);
-  color: var(--radio-ink);
-  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #556555;
   text-align: left;
-  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.section-tab strong {
-  font-size: 17px;
 }
 
 .section-tab.active {
-  border-color: rgba(180, 50, 37, 0.3);
-  background: linear-gradient(135deg, rgba(180, 50, 37, 0.08) 0%, rgba(255, 255, 255, 0.96) 100%);
-  box-shadow: 0 12px 24px rgba(180, 50, 37, 0.08);
-  transform: translateY(-1px);
+  color: #2f7d4f;
+  background: rgba(47, 125, 79, 0.1);
+  border-color: rgba(47, 125, 79, 0.24);
 }
 
-.tab-panel {
+.tab-text {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.tab-content-container {
+  min-height: 520px;
+}
+
+.tab-pane {
   display: flex;
   flex-direction: column;
   gap: 18px;
 }
 
-.schedule-panel {
+.schedule-columns,
+.request-form {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
 }
 
-.panel-card {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+.surface-card,
+.rules-section,
+.form-container {
+  border-radius: 24px;
   padding: 22px;
 }
 
-.panel-head {
+.panel-heading {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+  margin-bottom: 16px;
 }
 
-.panel-head.compact {
-  margin-bottom: -6px;
+.panel-heading.compact {
+  margin-bottom: 14px;
 }
 
-.panel-head h3 {
-  font-size: 24px;
-  line-height: 1.2;
+.panel-heading h2 {
+  margin: 4px 0 8px;
+  font-size: 28px;
+  line-height: 1.1;
 }
 
-.weekday-board,
-.program-grid,
-.song-list-grid,
-.search-results {
-  display: grid;
-  gap: 14px;
+.meta-chip,
+.slot-label,
+.time-pill,
+.tag-chip,
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
 }
 
-.weekday-board {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.meta-chip,
+.slot-label,
+.time-pill,
+.tag-chip {
+  background: rgba(47, 125, 79, 0.1);
+  color: #2f7d4f;
 }
 
-.weekday-card,
+.status-pill.success {
+  background: rgba(47, 125, 79, 0.14);
+  color: #2f7d4f;
+}
+
+.status-pill.warning {
+  background: rgba(194, 138, 38, 0.14);
+  color: #a5741f;
+}
+
+.status-pill.danger {
+  background: rgba(209, 73, 91, 0.14);
+  color: #b93c4e;
+}
+
+.weekday-grid,
+.program-list,
+.request-list,
+.results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.weekday-panel,
 .program-card,
-.song-record-card,
-.search-result-card,
-.selected-source-card,
-.request-preview-player,
-.song-preview-bar {
-  border-radius: 18px;
-  border: 1px solid var(--radio-line);
-  background: rgba(255, 255, 255, 0.92);
+.request-row,
+.result-item,
+.selected-source-banner,
+.audio-player,
+.submission-form-shell {
+  border-radius: 20px;
+  border: 1px solid #d7e1cf;
+  background: #f8fbf5;
 }
 
-.weekday-card {
-  padding: 16px;
+.weekday-panel,
+.program-card,
+.submission-form-shell {
+  padding: 18px;
 }
 
 .weekday-head,
-.song-record-head,
-.program-head,
-.search-result-head {
-  display: flex;
-  align-items: center;
+.request-title-row,
+.program-top {
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
 }
 
-.weekday-head strong,
-.song-record-head h4,
-.search-result-copy strong {
-  font-size: 16px;
+.weekday-head strong {
+  font-size: 18px;
 }
 
 .weekday-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-top: 12px;
+  margin-top: 14px;
 }
 
 .weekday-item {
   display: grid;
-  grid-template-columns: 110px minmax(0, 1fr);
+  grid-template-columns: 140px minmax(0, 1fr);
   gap: 12px;
-  padding: 12px;
-  border-radius: 14px;
-  background: rgba(247, 243, 235, 0.68);
+  align-items: start;
+  padding: 14px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid #e0e8da;
 }
 
-.weekday-time,
-.program-slot {
-  color: var(--radio-green);
-  font-weight: 700;
-}
-
-.weekday-copy,
-.song-record-copy,
-.selected-source-copy,
-.search-result-copy,
-.preview-meta {
+.weekday-copy {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-width: 0;
-}
-
-.weekday-copy b,
-.selected-source-copy strong,
-.preview-meta strong {
-  color: var(--radio-ink);
-}
-
-.weekday-copy small {
-  color: #6d786c;
-}
-
-.program-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .program-card {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 18px;
-  background:
-    radial-gradient(circle at top right, rgba(47, 125, 79, 0.08), transparent 36%),
-    linear-gradient(180deg, rgba(249, 251, 247, 0.92) 0%, rgba(255, 255, 255, 0.96) 100%);
 }
 
-.program-card h4 {
+.program-card h3,
+.request-copy h3,
+.result-title {
+  margin: 0;
   font-size: 20px;
+  line-height: 1.2;
 }
 
 .program-subtitle {
-  margin: -4px 0 0;
-  color: #38604c;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .program-meta,
-.song-record-meta {
+.request-meta,
+.result-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 14px;
-  font-size: 12px;
+  font-size: 13px;
 }
 
-.tag-row {
+.tag-list {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.tag-chip {
-  padding: 4px 9px;
-  border-radius: 999px;
-  background: rgba(47, 125, 79, 0.1);
-  color: var(--radio-green);
-  font-size: 12px;
-}
-
-.songs-toolbar,
-.search-box,
-.form-grid,
-.song-record-main,
-.selected-source-main,
-.search-result-main {
+.list-toolbar {
   display: grid;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(0, 0.45fr));
+  gap: 12px;
+  margin-bottom: 14px;
 }
 
-.songs-toolbar {
-  grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(140px, 0.5fr));
-}
-
-.toolbar-field,
+.filter-field,
 .form-field {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.toolbar-field span,
-.form-field span {
-  font-size: 13px;
-  font-weight: 600;
-  color: #5b6a58;
+.filter-field span,
+.form-field span,
+.search-label,
+.section-title {
+  color: #334233;
+  font-size: 14px;
+  font-weight: 700;
 }
 
-.toolbar-field input,
-.toolbar-field select,
+.filter-field input,
+.filter-field select,
 .form-field input,
 .form-field select,
-.form-field textarea {
+.form-field textarea,
+.search-input {
   width: 100%;
-  min-height: 44px;
-  padding: 11px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--radio-line);
-  background: rgba(255, 255, 255, 0.96);
-  color: var(--radio-ink);
+  min-height: 46px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid #c8d5c0;
+  background: #fff;
+  color: #1f2a1f;
   font: inherit;
   outline: none;
+  transition: all 0.2s ease;
 }
 
 .form-field textarea {
-  min-height: 128px;
+  min-height: 126px;
+  padding: 12px 14px;
   resize: vertical;
 }
 
-.toolbar-field input:focus,
-.toolbar-field select:focus,
+.filter-field input:focus,
+.filter-field select:focus,
 .form-field input:focus,
 .form-field select:focus,
-.form-field textarea:focus {
-  border-color: rgba(180, 50, 37, 0.3);
-  box-shadow: 0 0 0 4px rgba(180, 50, 37, 0.08);
+.form-field textarea:focus,
+.search-input:focus {
+  border-color: #2f7d4f;
+  box-shadow: 0 0 0 3px rgba(47, 125, 79, 0.12);
 }
 
-.toolbar-field.compact {
-  min-width: 0;
-}
-
-.song-list-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.song-record-card,
-.selected-source-card,
-.search-result-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.request-row,
+.result-item,
+.selected-source-banner {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) auto;
   gap: 16px;
+  align-items: center;
   padding: 16px;
 }
 
-.song-record-main,
-.selected-source-main,
-.search-result-main {
-  grid-template-columns: 72px minmax(0, 1fr);
-  align-items: center;
-  flex: 1 1 auto;
-}
-
-.song-record-avatar,
-.selected-source-cover,
-.search-result-cover {
-  width: 72px;
-  height: 72px;
+.request-cover,
+.result-cover,
+.selected-source-cover {
+  width: 88px;
+  height: 88px;
   border-radius: 18px;
   overflow: hidden;
-  background: rgba(180, 50, 37, 0.1);
-  color: var(--radio-red);
-  font-size: 26px;
-  font-weight: 700;
+  background: #e8efe1;
+  color: #2f7d4f;
   display: grid;
   place-items: center;
+  font-size: 28px;
+  font-weight: 800;
 }
 
-.song-record-avatar img,
-.selected-source-cover img,
-.search-result-cover img {
+.request-cover img,
+.result-cover img,
+.selected-source-cover img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.song-record-actions,
-.selected-source-actions,
-.search-result-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.rules-card,
-.composer-card {
-  min-height: 100%;
-}
-
-.request-panel {
-  display: grid;
-  grid-template-columns: minmax(280px, 0.82fr) minmax(0, 1.18fr);
-}
-
-.rules-list {
+.request-copy,
+.result-info,
+.selected-source-copy,
+.audio-meta {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding-left: 18px;
+  gap: 6px;
+  min-width: 0;
 }
 
-.provider-pills {
-  display: flex;
+.request-actions,
+.result-actions,
+.selected-source-actions,
+.status-banner-actions,
+.form-actions {
+  justify-content: flex-end;
   gap: 10px;
   flex-wrap: wrap;
 }
 
-.provider-pill {
-  padding: 9px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--radio-line);
-  background: rgba(247, 243, 235, 0.72);
-  color: var(--radio-ink);
-  cursor: pointer;
-  font: inherit;
-}
-
-.provider-pill.active {
-  border-color: rgba(180, 50, 37, 0.24);
-  background: rgba(180, 50, 37, 0.1);
-  color: var(--radio-red);
+.text-link {
+  padding: 0;
+  background: transparent;
+  color: #2f7d4f;
   font-weight: 700;
 }
 
-.login-block,
-.search-feedback,
-.song-preview-bar,
-.request-preview-player {
+.audio-player {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   padding: 16px;
 }
 
-.login-block {
-  border-radius: 18px;
-  border: 1px solid rgba(245, 158, 11, 0.26);
-  background: rgba(245, 158, 11, 0.08);
-}
-
-.search-feedback {
-  border-radius: 16px;
-}
-
-.search-feedback.error {
-  background: rgba(220, 38, 38, 0.08);
-  color: #b42318;
-}
-
-.search-feedback.empty {
-  background: rgba(47, 125, 79, 0.08);
-  color: var(--radio-green);
-}
-
-.request-form {
-  display: flex;
-  flex-direction: column;
+.audio-top {
+  justify-content: space-between;
   gap: 16px;
 }
 
-.preview-head {
+.audio-player audio {
+  width: 100%;
+}
+
+.empty-state {
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+  padding: 24px;
+  border-radius: 20px;
+  border: 1px dashed #c8d5c0;
+  background: #f4f8ef;
+  color: #627262;
+  text-align: center;
+}
+
+.empty-state.compact {
+  min-height: 120px;
+}
+
+.request-pane {
+  gap: 0;
+}
+
+.request-form {
+  align-items: start;
+}
+
+.rules-section {
+  position: sticky;
+  top: 24px;
+}
+
+.rules-content-desktop {
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.form-container {
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.song-request-form,
+.search-results-container,
+.submission-form-shell {
+  display: flex;
+  flex-direction: column;
+}
+
+.song-request-form {
+  gap: 18px;
+}
+
+.search-results-container {
+  gap: 14px;
+  padding: 18px;
+  border-radius: 20px;
+  background: #f4f8ef;
+  border: 1px solid #d8e2d1;
+}
+
+.form-header-row {
+  display: flex;
+}
+
+.search-section {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.search-input-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.login-entry,
+.source-status-display {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid #d8e2d1;
+}
+
+.login-desc {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.login-title {
+  margin: 0;
+  color: #1f2a1f;
+  font-weight: 800;
+}
+
+.login-hint {
+  margin: 0;
+  color: #5f715f;
+}
+
+.platform-selection-container {
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
 
-.form-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.platform-selection {
+  display: flex;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 16px;
+  background: #e9f0e2;
+  border: 1px solid #d3decb;
 }
 
-.form-actions {
+.platform-btn {
+  flex: 1 1 0;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 12px;
+  color: #4b5d4b;
+  background: transparent;
+  font-weight: 700;
+}
+
+.status-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  flex-wrap: wrap;
 }
 
-.source-lock-note {
+.status-title {
+  color: #1f2a1f;
+  font-weight: 700;
+}
+
+.status-summary {
+  color: #708070;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.results-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.status-inline {
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid #d8e2d1;
+  background: #fff;
+  color: #5f715f;
+}
+
+.status-inline.error {
+  color: #b93c4e;
+  border-color: rgba(209, 73, 91, 0.24);
+  background: rgba(209, 73, 91, 0.08);
+}
+
+.result-cover {
+  width: 72px;
+  height: 72px;
+}
+
+.result-meta {
+  font-size: 12px;
+}
+
+.submission-form-shell {
+  gap: 0;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.form-field.full {
+  margin-top: 14px;
+}
+
+.form-actions {
+  margin-top: 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.form-note {
   font-size: 13px;
+  line-height: 1.6;
+}
+
+.submit-button {
+  min-width: 148px;
+}
+
+.tab-fade-enter-active,
+.tab-fade-leave-active {
+  transition: opacity 0.24s ease, transform 0.24s ease;
+}
+
+.tab-fade-enter-from,
+.tab-fade-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
 }
 
 @media (max-width: 1180px) {
-  .schedule-panel,
-  .request-panel,
-  .hero-board,
-  .song-list-grid {
+  .schedule-columns,
+  .request-form {
     grid-template-columns: 1fr;
   }
 
-  .songs-toolbar,
-  .form-grid {
-    grid-template-columns: 1fr 1fr;
+  .rules-section {
+    position: static;
   }
 }
 
-@media (max-width: 860px) {
-  .radio-home-shell {
-    padding: 16px;
-    border-radius: 20px;
+@media (max-width: 920px) {
+  .main-content {
+    width: min(100vw - 24px, 100%);
   }
 
-  .home-topbar,
-  .topbar-brand,
-  .panel-head,
-  .song-record-card,
-  .selected-source-card,
-  .search-result-card {
+  .top-bar,
+  .list-toolbar,
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .top-bar,
+  .logo-section,
+  .logo-divider-container,
+  .status-banner,
+  .status-banner-actions,
+  .audio-top,
+  .request-actions,
+  .result-actions,
+  .selected-source-actions,
+  .form-actions {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .section-tabs,
-  .weekday-board,
-  .program-grid,
-  .songs-toolbar,
-  .form-grid {
+  .user-section {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .user-section > * {
+    width: 100%;
+  }
+
+  .tabs-row {
     grid-template-columns: 1fr;
-  }
-
-  .brand-mark {
-    width: 88px;
-    height: 88px;
-    padding: 12px;
-  }
-
-  .brand-copy h1 {
-    font-size: 28px;
-  }
-
-  .hero-main h2,
-  .panel-head h3 {
-    font-size: 22px;
   }
 }
 
-@media (max-width: 640px) {
-  .song-record-main,
-  .selected-source-main,
-  .search-result-main,
+@media (max-width: 720px) {
+  .voicehub-home {
+    padding-top: 16px;
+  }
+
+  .top-bar,
+  .content-area,
+  .surface-card,
+  .rules-section,
+  .form-container {
+    border-radius: 22px;
+  }
+
+  .content-area {
+    padding: 14px;
+  }
+
+  .panel-heading h2,
+  .program-card h3,
+  .request-copy h3,
+  .result-title {
+    font-size: 22px;
+  }
+
+  .main-title {
+    font-size: clamp(32px, 12vw, 52px);
+  }
+
+  .request-row,
+  .result-item,
+  .selected-source-banner,
   .weekday-item {
     grid-template-columns: 1fr;
   }
 
-  .preview-head {
-    flex-direction: column;
-    align-items: stretch;
+  .request-cover,
+  .result-cover,
+  .selected-source-cover {
+    width: 72px;
+    height: 72px;
   }
 
-  .hero-actions,
-  .song-record-actions,
-  .selected-source-actions,
-  .search-result-actions,
-  .form-actions,
-  .provider-pills,
-  .topbar-actions {
+  .platform-selection {
     flex-direction: column;
-    align-items: stretch;
   }
 
-  .hero-metric-grid {
-    grid-template-columns: 1fr 1fr;
+  .search-input-group {
+    grid-template-columns: 1fr;
   }
 }
 </style>
