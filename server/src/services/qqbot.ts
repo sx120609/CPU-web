@@ -3088,13 +3088,17 @@ async function maybeHandleQqGroupAdFilter(input: {
       hitCount: strike.hitCount,
     });
     await sendQqMessage(
-      { qqId: input.qqId },
-      [
-        `你在群 ${group.name || input.groupId} 的一条消息因疑似广告/引流已被撤回。`,
-        `原因：${review.reason}`,
-        `累计命中：第 ${strike.hitCount} 次。`,
-        ...(penalty.userNotice ? [penalty.userNotice] : []),
-      ].join("\n"),
+      { qqId: input.qqId, tempGroupId: input.groupId },
+      renderQqGroupAdFilterPrivateNotice({
+        groupName: group.name || input.groupId,
+        review,
+        hitCount: strike.hitCount,
+        penaltyUserNotice: penalty.userNotice,
+      }),
+    ).catch(() => undefined);
+    await sendQqMessage(
+      { groupId: input.groupId },
+      renderQqGroupAdFilterGroupNotice(review),
     ).catch(() => undefined);
     await logQqBotMessage({
       direction: "inbound",
@@ -3125,6 +3129,31 @@ async function maybeHandleQqGroupAdFilter(input: {
     });
     return false;
   }
+}
+
+function renderQqGroupAdFilterPrivateNotice(input: {
+  groupName: string;
+  review: Awaited<ReturnType<typeof reviewQqGroupMessageForAd>>;
+  hitCount: number;
+  penaltyUserNotice?: string;
+}) {
+  return [
+    `你在群 ${input.groupName} 的一条消息刚刚被广告过滤撤回了。`,
+    `系统说明：${input.review.reason}`,
+    "如果你本意只是普通交流、玩梗或求助，换个更直接、没那么像招募导流的说法再发一次就行。",
+    `累计命中：第 ${input.hitCount} 次。`,
+    ...(input.penaltyUserNotice ? [input.penaltyUserNotice] : []),
+  ].join("\n");
+}
+
+function renderQqGroupAdFilterGroupNotice(
+  review: Awaited<ReturnType<typeof reviewQqGroupMessageForAd>>,
+) {
+  return [
+    "刚刚撤回了一条消息。",
+    `说明：${review.reason}`,
+    "如果本意只是普通交流、玩梗或求助，建议改成更日常、更直接的说法后再发一次。",
+  ].join("\n");
 }
 
 async function recordQqGroupAdStrikeHit(input: {
