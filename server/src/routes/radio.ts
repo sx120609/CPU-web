@@ -1,4 +1,5 @@
-import { Router } from "express";
+import { Readable } from "node:stream";
+import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma";
 import { authOptional, authRequired } from "../middleware/auth";
@@ -6,7 +7,20 @@ import { validate } from "../middleware/validate";
 import { withCache } from "../services/cache";
 import { invalidateRadioCaches } from "../services/cacheInvalidation";
 import {
+  RADIO_MUSIC_PROVIDER_KEYS,
+  RADIO_MUSIC_SEARCH_MODES,
+  audioContentTypeForUrl,
+  audioProxyHeadersFor,
+  buildRadioMusicStreamPath,
+  issueRadioMusicStreamToken,
+  readRadioMusicStreamPayload,
+  resolveRadioMusicUrl,
+  searchRadioMusic,
+  serializeRadioMusicSelection,
+} from "../services/radioMusic";
+import {
   normalizeRadioPlayTime,
+  normalizeRadioPublicSongRequest,
   normalizeRadioScheduleItem,
   normalizeRadioSemester,
   normalizeRadioSongRequest,
@@ -31,6 +45,16 @@ const optionalDateInput = z.union([z.string().trim().max(40), z.null()]).optiona
 const semesterStatusSchema = z.enum(RADIO_SEMESTER_STATUSES);
 const scheduleStatusSchema = z.enum(RADIO_SCHEDULE_STATUSES);
 const requestStatusSchema = z.enum(RADIO_REQUEST_STATUSES);
+const radioMusicProviderSchema = z.enum(RADIO_MUSIC_PROVIDER_KEYS);
+const radioMusicSearchModeSchema = z.enum(RADIO_MUSIC_SEARCH_MODES);
+const radioMusicSelectionSchema = z.object({
+  provider: radioMusicProviderSchema,
+  trackId: z.string().trim().min(1).max(120),
+  mediaMid: optionalNullableString(120),
+  album: optionalNullableString(200),
+  cover: optionalNullableString(1000),
+  duration: z.number().int().min(0).max(24 * 60 * 60 * 1000).optional(),
+});
 
 const createSemesterSchema = z.object({
   code: z.string().trim().min(2).max(40),
@@ -82,6 +106,7 @@ const createRequestSchema = z.object({
   contact: optionalString(120),
   songTitle: z.string().trim().min(1).max(120),
   artist: optionalString(120),
+  sourceSelection: radioMusicSelectionSchema.optional(),
   dedication: optionalString(200),
   message: optionalString(1000),
 });
@@ -90,6 +115,19 @@ const patchRequestSchema = z.object({
   scheduleItemId: z.number().int().positive().nullable().optional(),
   status: requestStatusSchema.optional(),
   adminNote: optionalNullableString(1000),
+});
+
+const searchMusicSchema = z.object({
+  q: z.string().trim().min(1).max(120),
+  provider: radioMusicSearchModeSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(18).optional(),
+});
+
+const resolveMusicSchema = z.object({
+  provider: radioMusicProviderSchema,
+  trackId: z.string().trim().min(1).max(120),
+  mediaMid: optionalNullableString(120),
+  quality: z.string().trim().max(40).optional(),
 });
 
 async function ensureRadioUsable(user?: { userId?: number; role?: string } | null) {
@@ -117,6 +155,22 @@ function parseOptionalDate(input: unknown) {
 
 function compareTimes(startTime: string, endTime: string) {
   return startTime.localeCompare(endTime);
+}
+
+function forwardHeaderIfPresent(res: Response, upstream: globalThis.Response, name: string) {
+  const value = upstream.headers.get(name);
+  if (value) res.setHeader(name, value);
+}
+
+function writeMusicStreamHeaders(res: Response, upstream: globalThis.Response, audioUrl: string) {
+  res.status(upstream.status);
+  res.setHeader("Content-Type", audioContentTypeForUrl(audioUrl, upstream.headers.get("content-type")));
+  forwardHeaderIfPresent(res, upstream, "content-length");
+  forwardHeaderIfPresent(res, upstream, "content-range");
+  forwardHeaderIfPresent(res, upstream, "accept-ranges");
+  forwardHeaderIfPresent(res, upstream, "cache-control");
+  forwardHeaderIfPresent(res, upstream, "etag");
+  forwardHeaderIfPresent(res, upstream, "last-modified");
 }
 
 async function ensureSemesterExists(semesterId: number | null | undefined) {
@@ -178,6 +232,9 @@ async function loadManageBootstrap() {
   };
 }
 
+type SearchMusicQuery = z.infer<typeof searchMusicSchema>;
+type ResolveMusicQuery = z.infer<typeof resolveMusicSchema>;
+
 radioRouter.get("/overview", authOptional, async (req, res, next) => {
   try {
     await ensureRadioUsable(req.user);
@@ -185,7 +242,7 @@ radioRouter.get("/overview", authOptional, async (req, res, next) => {
       const currentSemester = await resolveCurrentRadioSemester();
       const semesterId = currentSemester?.id ?? null;
       const semesterWhere = semesterId ? { OR: [{ semesterId }, { semesterId: null }] } : {};
-      const [playTimes, scheduleItems, pendingRequests, fulfilledRequests, totalRequests] = await Promise.all([
+      const [playTimes, scheduleItems, recentRequests, pendingRequests, fulfilledRequests, totalRequests] = await Promise.all([
         prisma.radioPlayTime.findMany({
           where: {
             enabled: true,
@@ -205,6 +262,14 @@ radioRouter.get("/overview", authOptional, async (req, res, next) => {
             semester: { select: { id: true, code: true, name: true, status: true, isCurrent: true } },
             playTime: { select: { id: true, name: true, weekday: true, startTime: true, endTime: true, location: true, enabled: true, sortOrder: true } },
             _count: { select: { songRequests: true } },
+          },
+        }),
+        prisma.radioSongRequest.findMany({
+          where: semesterId ? { OR: [{ scheduleItem: { semesterId } }, { scheduleItemId: null }] } : undefined,
+          orderBy: [{ createdAt: "desc" }],
+          take: 120,
+          include: {
+            scheduleItem: { select: { id: true, title: true, subtitle: true, requestEnabled: true } },
           },
         }),
         prisma.radioSongRequest.count({ where: { status: "pending" } }),
@@ -230,6 +295,7 @@ radioRouter.get("/overview", authOptional, async (req, res, next) => {
         currentSemester: currentSemester ? normalizeRadioSemester(currentSemester) : null,
         playTimes: normalizedPlayTimes,
         scheduleItems: normalizedScheduleItems,
+        recentRequests: recentRequests.map(normalizeRadioPublicSongRequest),
         requestSummary: {
           total: totalRequests,
           pending: pendingRequests,
@@ -243,10 +309,104 @@ radioRouter.get("/overview", authOptional, async (req, res, next) => {
   }
 });
 
+radioRouter.get("/music/search", authOptional, validate(searchMusicSchema, "query"), async (req, res, next) => {
+  try {
+    await ensureRadioUsable(req.user);
+    const query = req.query as unknown as SearchMusicQuery;
+    ok(res, await searchRadioMusic(query.q, query.provider ?? "all", query.limit ?? 12));
+  } catch (error) {
+    next(error);
+  }
+});
+
+radioRouter.get("/music/resolve", authOptional, validate(resolveMusicSchema, "query"), async (req, res, next) => {
+  try {
+    await ensureRadioUsable(req.user);
+    const query = req.query as unknown as ResolveMusicQuery;
+    const resolved = await resolveRadioMusicUrl({
+      provider: query.provider,
+      trackId: query.trackId,
+      mediaMid: query.mediaMid ?? null,
+      quality: query.quality,
+    });
+    if (!resolved.url) {
+      ok(res, {
+        provider: resolved.provider,
+        playable: resolved.playable,
+        trial: resolved.trial,
+        level: resolved.level ?? null,
+        quality: resolved.quality ?? null,
+        requestedQuality: resolved.requestedQuality,
+        reason: resolved.reason ?? "",
+        message: resolved.message ?? "",
+        restriction: resolved.restriction ?? null,
+        streamToken: null,
+        streamUrl: null,
+      });
+      return;
+    }
+    const streamToken = await issueRadioMusicStreamToken({
+      provider: resolved.provider,
+      url: resolved.url,
+    });
+    ok(res, {
+      provider: resolved.provider,
+      playable: resolved.playable,
+      trial: resolved.trial,
+      level: resolved.level ?? null,
+      quality: resolved.quality ?? null,
+      requestedQuality: resolved.requestedQuality,
+      reason: resolved.reason ?? "",
+      message: resolved.message ?? "",
+      restriction: resolved.restriction ?? null,
+      streamToken,
+      streamUrl: buildRadioMusicStreamPath(streamToken),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+async function handleMusicStream(req: Request<{ token: string }>, res: Response, next: (error?: unknown) => void) {
+  try {
+    const token = String(req.params.token ?? "").trim();
+    if (!token) throw Errors.notFound("播放令牌不存在");
+    const payload = await readRadioMusicStreamPayload(token);
+    if (!payload?.url) throw Errors.notFound("播放令牌已失效，请重新试听");
+    const upstream = await fetch(payload.url, {
+      method: req.method,
+      headers: audioProxyHeadersFor(payload.url, req.headers.range),
+      redirect: "follow",
+    });
+    if (!upstream.ok && upstream.status !== 206 && upstream.status !== 304) {
+      const detail = await upstream.text().catch(() => "");
+      res.status(502).send(detail ? `音频回源失败：${detail}` : `音频回源失败：HTTP ${upstream.status}`);
+      return;
+    }
+    writeMusicStreamHeaders(res, upstream, payload.url);
+    if (req.method === "HEAD" || !upstream.body) {
+      res.end();
+      return;
+    }
+    Readable.fromWeb(upstream.body as any).pipe(res);
+  } catch (error) {
+    next(error);
+  }
+}
+
+radioRouter.get("/music/stream/:token", (req, res, next) => {
+  void handleMusicStream(req, res, next);
+});
+
+radioRouter.head("/music/stream/:token", (req, res, next) => {
+  void handleMusicStream(req, res, next);
+});
+
 radioRouter.post("/requests", authOptional, validate(createRequestSchema), async (req, res, next) => {
   try {
     await ensureRadioUsable(req.user);
     const scheduleItemId = req.body.scheduleItemId ?? null;
+    const sourceSelection = req.body.sourceSelection ?? null;
     let scheduleItem = null as Awaited<ReturnType<typeof prisma.radioScheduleItem.findUnique>> | null;
     if (scheduleItemId) {
       scheduleItem = await prisma.radioScheduleItem.findUnique({ where: { id: scheduleItemId } });
@@ -264,6 +424,9 @@ radioRouter.post("/requests", authOptional, validate(createRequestSchema), async
         contact: req.body.contact || null,
         songTitle: req.body.songTitle,
         artist: req.body.artist || null,
+        sourceProvider: sourceSelection?.provider ?? null,
+        sourceTrackId: sourceSelection?.trackId ?? null,
+        sourceTrackMeta: serializeRadioMusicSelection(sourceSelection),
         dedication: req.body.dedication || null,
         message: req.body.message || null,
       },

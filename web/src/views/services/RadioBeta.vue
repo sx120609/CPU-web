@@ -1,543 +1,388 @@
 <template>
-  <div class="radio-page">
-    <section class="radio-hero">
-      <div class="hero-copy">
-        <div class="hero-brand">
-          <img :src="brandLogo" :alt="brandName" class="hero-logo" />
+  <div class="radio-home-page">
+    <section class="radio-home-shell" v-loading="loadingOverview">
+      <header class="home-topbar">
+        <div class="topbar-brand">
+          <div class="brand-mark">
+            <img :src="brandLogo" :alt="radioBrandName" class="brand-logo" />
+          </div>
+          <div class="brand-copy">
+            <span class="brand-kicker">Campus Radio</span>
+            <h1>{{ radioBrandTitle }}</h1>
+            <p>沿用 VoiceHub 的前台结构，把排期、歌曲列表和点歌入口收敛成一套真正可用的广播站首页。</p>
+          </div>
         </div>
-        <div class="hero-kicker">校园小工具 / {{ brandName }}</div>
-        <h1>{{ brandTitle }}</h1>
-        <p>
-          先把药苑之声的播出时段、节目排班和点歌留言收进来。整体还是药大拾间的壳，
-          但会保留一点原站首页那种更像“真实站务工作台”的业务气质。
-        </p>
-        <div class="hero-actions">
-          <el-button type="primary" @click="scrollToRequest">我要点歌</el-button>
-          <el-button v-if="canManage" plain @click="scrollToManage">进入工作台</el-button>
+        <div class="topbar-actions">
+          <el-button v-if="canManage" plain @click="goConsole">进入控制台</el-button>
           <el-button v-else-if="loginRequired" plain @click="goLogin">登录后使用</el-button>
         </div>
-      </div>
-      <div class="hero-side">
-        <div class="hero-badge">一期复刻</div>
-        <div class="hero-semester">{{ overview?.currentSemester?.name || "待配置当前学期" }}</div>
-        <div class="hero-sub">
-          {{ overview?.currentSemester?.description || "先接入节目编排、时段管理和点歌留言，后续再补投票、通知与更多站务流程。" }}
-        </div>
-      </div>
-    </section>
+      </header>
 
-    <section v-if="pageError" class="radio-alert">
-      <el-alert :title="pageError" type="warning" :closable="false" show-icon>
-        <template #default>
-          <div class="alert-actions">
-            <el-button size="small" :loading="loadingOverview" @click="loadOverview">重试</el-button>
-            <el-button v-if="loginRequired" size="small" plain @click="goLogin">去登录</el-button>
+      <section class="hero-board">
+        <div class="hero-main">
+          <span class="hero-badge">复刻版前台</span>
+          <h2>把药苑之声做成一套像广播站主页的前台，不再把后台硬塞进同一屏里。</h2>
+          <p>
+            这里保留你原系统的浅色业务壳和红色站标，同时按 VoiceHub 的方式拆成
+            <strong>播出排期</strong>、<strong>歌曲列表</strong>、<strong>投稿歌曲</strong>
+            三个主工作区。
+          </p>
+          <div class="hero-actions">
+            <el-button type="primary" @click="switchTab('request')">我要点歌</el-button>
+            <el-button plain @click="switchTab('songs')">看近期投稿</el-button>
           </div>
-        </template>
-      </el-alert>
-    </section>
+        </div>
 
-    <section class="radio-overview" v-loading="loadingOverview">
-      <article class="stat-card">
-        <span class="stat-label">当前学期</span>
-        <b>{{ overview?.currentSemester?.code || "未设置" }}</b>
-        <small>{{ overview?.currentSemester?.status === "active" ? "进行中" : "待启用" }}</small>
-      </article>
-      <article class="stat-card">
-        <span class="stat-label">播出时段</span>
-        <b>{{ overview?.playTimes.length || 0 }}</b>
-        <small>按周常规时段</small>
-      </article>
-      <article class="stat-card">
-        <span class="stat-label">已发布节目</span>
-        <b>{{ overview?.scheduleItems.length || 0 }}</b>
-        <small>一期先做节目排班</small>
-      </article>
-      <article class="stat-card accent">
-        <span class="stat-label">点歌留言</span>
-        <b>{{ overview?.requestSummary.total || 0 }}</b>
-        <small>{{ overview?.requestSummary.pending || 0 }} 条待处理</small>
-      </article>
-    </section>
+        <div class="hero-side">
+          <div class="hero-metric">
+            <span>当前学期</span>
+            <strong>{{ overview?.currentSemester?.name || "待配置" }}</strong>
+            <small>{{ overview?.currentSemester?.code || "未设置当前学期" }}</small>
+          </div>
+          <div class="hero-metric-grid">
+            <article>
+              <b>{{ overview?.playTimes.length || 0 }}</b>
+              <span>播出时段</span>
+            </article>
+            <article>
+              <b>{{ overview?.scheduleItems.length || 0 }}</b>
+              <span>节目栏目</span>
+            </article>
+            <article>
+              <b>{{ overview?.recentRequests.length || 0 }}</b>
+              <span>近期投稿</span>
+            </article>
+            <article>
+              <b>{{ overview?.requestSummary.pending || 0 }}</b>
+              <span>待处理</span>
+            </article>
+          </div>
+        </div>
+      </section>
 
-    <section class="radio-main">
-      <div class="radio-column">
-        <article class="panel">
+      <section v-if="pageError" class="page-alert">
+        <el-alert :title="pageError" type="warning" :closable="false" show-icon>
+          <template #default>
+            <div class="alert-actions">
+              <el-button size="small" :loading="loadingOverview" @click="loadOverview">重试</el-button>
+              <el-button v-if="loginRequired" size="small" plain @click="goLogin">去登录</el-button>
+            </div>
+          </template>
+        </el-alert>
+      </section>
+
+      <nav class="section-tabs" aria-label="药苑之声前台主导航">
+        <button
+          v-for="item in publicTabs"
+          :key="item.value"
+          :class="['section-tab', { active: activeTab === item.value }]"
+          type="button"
+          @click="switchTab(item.value)"
+        >
+          <span class="tab-kicker">{{ item.kicker }}</span>
+          <strong>{{ item.label }}</strong>
+        </button>
+      </nav>
+
+      <section v-if="activeTab === 'schedule'" class="tab-panel schedule-panel">
+        <article class="panel-card">
           <div class="panel-head">
             <div>
-              <h2>本周播出时段</h2>
-              <p>先用结构化时段把药苑之声的节目安排沉淀下来，后面再接更复杂的排班逻辑。</p>
+              <span class="panel-kicker">Schedule</span>
+              <h3>播出排期</h3>
+              <p>按 VoiceHub 首页的排期视角展示一周时段，再把对应的栏目编排压到同一工作台里。</p>
             </div>
             <el-tag type="success" effect="plain" round>{{ overview?.playTimes.length || 0 }} 个时段</el-tag>
           </div>
-          <div v-if="playTimeGroups.length" class="weekday-grid">
-            <div v-for="group in playTimeGroups" :key="group.weekday" class="weekday-card">
+          <div v-if="playTimeGroups.length" class="weekday-board">
+            <article v-for="group in playTimeGroups" :key="group.weekday" class="weekday-card">
               <div class="weekday-head">
                 <strong>{{ group.label }}</strong>
                 <span>{{ group.items.length }} 个时段</span>
               </div>
-              <div class="weekday-items">
-                <div v-for="item in group.items" :key="item.id" class="slot-row">
-                  <div class="slot-time">{{ item.startTime }} - {{ item.endTime }}</div>
-                  <div class="slot-main">
+              <div class="weekday-list">
+                <div v-for="item in group.items" :key="item.id" class="weekday-item">
+                  <div class="weekday-time">{{ item.startTime }} - {{ item.endTime }}</div>
+                  <div class="weekday-copy">
                     <b>{{ item.name }}</b>
-                    <small>{{ item.location || "待定地点" }}</small>
+                    <small>{{ item.location || "地点待补充" }}</small>
                   </div>
                 </div>
               </div>
-            </div>
+            </article>
           </div>
           <el-empty v-else description="还没有配置播出时段" />
         </article>
 
-        <article class="panel">
+        <article class="panel-card">
           <div class="panel-head">
             <div>
-              <h2>节目安排</h2>
-              <p>这里展示当前学期已经发布的节目，风格会保留一点原药苑之声那种栏目化感觉。</p>
+              <span class="panel-kicker">Programs</span>
+              <h3>栏目编排</h3>
+              <p>公开页只显示已发布节目，让前台更像真实电台站点，而不是后台数据表。</p>
             </div>
             <el-tag type="warning" effect="plain" round>{{ overview?.scheduleItems.length || 0 }} 个节目</el-tag>
           </div>
-          <div v-if="overview?.scheduleItems.length" class="schedule-list">
-            <article v-for="item in overview.scheduleItems" :key="item.id" class="schedule-card">
-              <div class="schedule-topline">
-                <span class="schedule-pill">{{ weekdayLabel(item.playTime?.weekday) }}</span>
-                <span class="schedule-meta">{{ item.playTime?.startTime || "待定时间" }}{{ item.playTime?.location ? ` · ${item.playTime.location}` : "" }}</span>
+          <div v-if="overview?.scheduleItems.length" class="program-grid">
+            <article v-for="item in overview?.scheduleItems" :key="item.id" class="program-card">
+              <div class="program-head">
+                <span class="program-slot">{{ item.playTime ? `${weekdayLabel(item.playTime.weekday)} ${item.playTime.startTime}` : "待排期" }}</span>
+                <el-tag :type="scheduleStatusTag(item.status)" size="small" round>{{ scheduleStatusText(item.status) }}</el-tag>
               </div>
-              <h3>{{ item.title }}</h3>
-              <p v-if="item.subtitle" class="schedule-subtitle">{{ item.subtitle }}</p>
-              <p class="schedule-summary">{{ item.summary || "这个节目还在补充简介，先把主流程接进来。" }}</p>
-              <div class="schedule-foot">
+              <h4>{{ item.title }}</h4>
+              <p v-if="item.subtitle" class="program-subtitle">{{ item.subtitle }}</p>
+              <p v-if="item.summary" class="program-summary">{{ item.summary }}</p>
+              <div class="program-meta">
                 <span>{{ item.hostNames || "主持人待补充" }}</span>
-                <span>{{ item.requestCount }} 条相关点歌</span>
+                <span>{{ item.requestEnabled ? "可点歌" : "暂不开放点歌" }}</span>
               </div>
               <div v-if="item.tags.length" class="tag-row">
                 <span v-for="tag in item.tags" :key="tag" class="tag-chip">{{ tag }}</span>
               </div>
             </article>
           </div>
-          <el-empty v-else description="当前还没有发布节目" />
+          <el-empty v-else description="还没有发布节目安排" />
         </article>
-      </div>
+      </section>
 
-      <aside ref="requestSectionRef" class="radio-side-column">
-        <article class="panel request-panel">
-          <div class="panel-head compact">
+      <section v-else-if="activeTab === 'songs'" class="tab-panel songs-panel">
+        <article class="panel-card">
+          <div class="panel-head">
             <div>
-              <h2>点歌留言</h2>
-              <p>先做最小可用版本，后面再接审核、投票和自动通知。</p>
+              <span class="panel-kicker">Requests</span>
+              <h3>歌曲列表</h3>
+              <p>这里展示最近投稿记录和审核状态，延续 VoiceHub 的歌曲列表语义，但样式回到你原系统的业务界面里。</p>
             </div>
+            <el-button plain @click="switchTab('request')">去投稿</el-button>
           </div>
 
-          <div class="request-summary">
-            <div>
-              <b>{{ overview?.requestSummary.pending || 0 }}</b>
-              <span>待处理</span>
+          <div class="songs-toolbar">
+            <label class="toolbar-field">
+              <span>搜索</span>
+              <input v-model.trim="songFilters.query" type="text" placeholder="按歌曲名、歌手、栏目搜索" />
+            </label>
+            <label class="toolbar-field compact">
+              <span>状态</span>
+              <select v-model="songFilters.status">
+                <option value="all">全部状态</option>
+                <option value="pending">待处理</option>
+                <option value="approved">已通过</option>
+                <option value="fulfilled">已播出</option>
+                <option value="rejected">已拒绝</option>
+              </select>
+            </label>
+            <label class="toolbar-field compact">
+              <span>音源</span>
+              <select v-model="songFilters.provider">
+                <option value="all">全部音源</option>
+                <option value="netease">网易云</option>
+                <option value="qq">QQ 音乐</option>
+              </select>
+            </label>
+          </div>
+
+          <div v-if="songPreview.streamUrl || songPreview.notice" class="song-preview-bar">
+            <div class="preview-meta">
+              <strong>{{ songPreview.title }}</strong>
+              <span>{{ songPreview.subtitle }}</span>
             </div>
+            <audio ref="songPreviewAudioRef" :src="songPreview.streamUrl" controls preload="none" />
+            <small v-if="songPreview.notice">{{ songPreview.notice }}</small>
+          </div>
+
+          <div v-if="filteredRecentRequests.length" class="song-list-grid">
+            <article v-for="item in filteredRecentRequests" :key="item.id" class="song-record-card">
+              <div class="song-record-main">
+                <div class="song-record-avatar">
+                  <img
+                    v-if="item.sourceSelection?.cover"
+                    :src="item.sourceSelection.cover"
+                    :alt="item.songTitle"
+                    referrerpolicy="no-referrer"
+                  />
+                  <span v-else>{{ sourceAvatarText(item.songTitle) }}</span>
+                </div>
+                <div class="song-record-copy">
+                  <div class="song-record-head">
+                    <h4>{{ item.songTitle }}</h4>
+                    <el-tag :type="requestStatusTag(item.status)" size="small" round>{{ requestStatusText(item.status) }}</el-tag>
+                  </div>
+                  <p>{{ item.artist || "歌手待补充" }}</p>
+                  <div class="song-record-meta">
+                    <span>投稿人：{{ item.nickname || "匿名" }}</span>
+                    <span v-if="item.scheduleItem">栏目：{{ item.scheduleItem.title }}</span>
+                    <span v-if="item.sourceProvider">音源：{{ musicProviderLabel(item.sourceProvider) }}</span>
+                    <span>{{ formatDateTime(item.createdAt) }}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="song-record-actions">
+                <el-button v-if="item.sourceSelection" plain @click="previewRecentRequestSource(item)">试听</el-button>
+                <el-button type="primary" plain @click="reuseRequest(item)">继续投稿</el-button>
+              </div>
+            </article>
+          </div>
+          <el-empty v-else description="还没有符合筛选条件的投稿记录" />
+        </article>
+      </section>
+
+      <section v-else ref="requestSectionRef" class="tab-panel request-panel">
+        <article class="panel-card rules-card">
+          <div class="panel-head compact">
             <div>
-              <b>{{ overview?.requestSummary.fulfilled || 0 }}</b>
-              <span>已完成</span>
+              <span class="panel-kicker">Guidelines</span>
+              <h3>投稿须知</h3>
+            </div>
+          </div>
+          <ol class="rules-list">
+            <li>歌曲名和歌手尽量填写准确，方便后续审核和排期。</li>
+            <li>如果系统已经搜到对应音源，优先锁定音源再提交，后台就能直接试听和复核。</li>
+            <li>投稿后不代表立即播出，管理员仍会按时段、内容和版权可用性进行处理。</li>
+            <li>系统只做搜索、解析和播放中转，不存储第三方平台的音乐文件。</li>
+            <li>若你已登录，后台会直接关联你的账号；未登录时也可以用昵称投稿。</li>
+          </ol>
+        </article>
+
+        <article class="panel-card composer-card">
+          <div class="panel-head">
+            <div>
+              <span class="panel-kicker">Request</span>
+              <h3>投稿歌曲</h3>
+              <p>这里沿用 VoiceHub 的“先搜歌、再锁音源、最后补投稿信息”的工作流。</p>
+            </div>
+            <div class="provider-pills">
+              <button
+                v-for="item in providerOptions"
+                :key="item.value"
+                :class="['provider-pill', { active: musicSearch.providerMode === item.value }]"
+                type="button"
+                @click="musicSearch.providerMode = item.value"
+              >
+                {{ item.label }}
+              </button>
             </div>
           </div>
 
           <div v-if="loginRequired && !hasToken" class="login-block">
-            <p>当前药苑之声配置为登录后才能使用，登录后就能点歌和进入个人工作台。</p>
+            <p>{{ radioBrandName }} 当前要求登录后使用，登录后点歌记录和后台审核都会直接关联到你的账号。</p>
             <el-button type="primary" @click="goLogin">去登录</el-button>
           </div>
 
-          <form v-else class="request-form" @submit.prevent="submitRequest">
-            <label class="field">
-              <span>称呼</span>
-              <input v-model.trim="requestForm.nickname" maxlength="40" placeholder="例如 小王 / 23药学张同学" />
+          <div class="search-box">
+            <label class="toolbar-field">
+              <span>歌曲搜索</span>
+              <input
+                v-model.trim="musicSearch.keyword"
+                type="text"
+                placeholder="输入歌曲名、歌手或两者一起搜"
+                @keyup.enter.prevent="searchMusic"
+              />
             </label>
-            <label class="field">
-              <span>节目</span>
-              <select v-model="requestForm.scheduleItemId">
-                <option :value="null">不指定节目</option>
-                <option v-for="item in requestablePrograms" :key="item.id" :value="item.id">
-                  {{ item.title }}{{ item.playTime?.startTime ? ` · ${item.playTime.startTime}` : "" }}
-                </option>
-              </select>
+            <el-button plain :loading="musicSearch.loading" @click="searchMusic">搜索音源</el-button>
+          </div>
+
+          <p v-if="musicSearchHint" class="search-hint">{{ musicSearchHint }}</p>
+
+          <div v-if="selectedSource" class="selected-source-card">
+            <div class="selected-source-main">
+              <div class="selected-source-cover">
+                <img
+                  v-if="selectedSource.cover"
+                  :src="selectedSource.cover"
+                  :alt="selectedSource.name"
+                  referrerpolicy="no-referrer"
+                />
+                <span v-else>{{ sourceAvatarText(selectedSource.name) }}</span>
+              </div>
+              <div class="selected-source-copy">
+                <strong>{{ selectedSource.name }}</strong>
+                <span>{{ selectedSource.artist || "歌手未知" }}</span>
+                <small>{{ musicProviderLabel(selectedSource.provider) }} · {{ formatDurationMs(selectedSource.duration) }}</small>
+              </div>
+            </div>
+            <div class="selected-source-actions">
+              <el-button plain :loading="requestPreview.loading" @click="previewSelectedSource">试听</el-button>
+              <el-button plain @click="clearSelectedSource">取消锁定</el-button>
+            </div>
+          </div>
+
+          <div v-if="musicSearch.error" class="search-feedback error">{{ musicSearch.error }}</div>
+          <div v-else-if="musicSearch.searched && !musicSearch.results.length" class="search-feedback empty">没有搜到可用结果，可以直接手填歌曲信息提交。</div>
+
+          <div v-if="musicSearch.results.length" class="search-results">
+            <article v-for="item in musicSearch.results" :key="resultTrackKey(item)" class="search-result-card">
+              <div class="search-result-main">
+                <div class="search-result-cover">
+                  <img v-if="item.cover" :src="item.cover" :alt="item.name" referrerpolicy="no-referrer" />
+                  <span v-else>{{ sourceAvatarText(item.name) }}</span>
+                </div>
+                <div class="search-result-copy">
+                  <div class="search-result-head">
+                    <strong>{{ item.name }}</strong>
+                    <el-tag size="small" round>{{ musicProviderLabel(item.provider) }}</el-tag>
+                  </div>
+                  <span>{{ item.artist || "歌手未知" }}</span>
+                  <small>{{ item.album || "专辑未知" }} · {{ formatDurationMs(item.duration) }}</small>
+                </div>
+              </div>
+              <div class="search-result-actions">
+                <el-button plain :loading="requestPreview.loading && requestPreview.trackKey === resultTrackKey(item)" @click="previewSearchResult(item)">试听</el-button>
+                <el-button type="primary" @click="pickSearchResult(item)">锁定</el-button>
+              </div>
+            </article>
+          </div>
+
+          <div v-if="requestPreview.streamUrl" class="request-preview-player">
+            <div class="preview-meta">
+              <strong>{{ requestPreview.title }}</strong>
+              <span>{{ requestPreview.subtitle }}</span>
+            </div>
+            <audio ref="requestPreviewAudioRef" :src="requestPreview.streamUrl" controls preload="none" />
+            <small v-if="requestPreview.notice">{{ requestPreview.notice }}</small>
+          </div>
+
+          <form class="request-form" @submit.prevent="submitRequest">
+            <div class="form-grid">
+              <label class="form-field">
+                <span>昵称</span>
+                <input v-model.trim="requestForm.nickname" type="text" maxlength="40" placeholder="不填则使用账号昵称或匿名" />
+              </label>
+              <label class="form-field">
+                <span>投稿栏目</span>
+                <select v-model="requestForm.scheduleItemId">
+                  <option :value="null">暂不指定栏目</option>
+                  <option v-for="item in requestablePrograms" :key="item.id" :value="item.id">{{ item.title }}</option>
+                </select>
+              </label>
+              <label class="form-field">
+                <span>歌曲名</span>
+                <input v-model.trim="requestForm.songTitle" type="text" maxlength="120" placeholder="例如：晴天" />
+              </label>
+              <label class="form-field">
+                <span>歌手</span>
+                <input v-model.trim="requestForm.artist" type="text" maxlength="120" placeholder="例如：周杰伦" />
+              </label>
+              <label class="form-field">
+                <span>联系方式</span>
+                <input v-model.trim="requestForm.contact" type="text" maxlength="120" placeholder="可选，便于联系你确认信息" />
+              </label>
+              <label class="form-field">
+                <span>点歌祝福</span>
+                <input v-model.trim="requestForm.dedication" type="text" maxlength="200" placeholder="想送给谁，可以写在这里" />
+              </label>
+            </div>
+            <label class="form-field">
+              <span>留言补充</span>
+              <textarea v-model.trim="requestForm.message" maxlength="1000" placeholder="想补充的说明、原因或者节目语境都可以写在这里" />
             </label>
-            <label class="field">
-              <span>歌曲名</span>
-              <input v-model.trim="requestForm.songTitle" maxlength="120" placeholder="例如 晴天" />
-            </label>
-            <label class="field">
-              <span>歌手</span>
-              <input v-model.trim="requestForm.artist" maxlength="120" placeholder="例如 周杰伦" />
-            </label>
-            <label class="field">
-              <span>想对谁说</span>
-              <input v-model.trim="requestForm.dedication" maxlength="200" placeholder="例如 送给准备考试的室友" />
-            </label>
-            <label class="field">
-              <span>联系方式</span>
-              <input v-model.trim="requestForm.contact" maxlength="120" placeholder="选填，便于药苑之声回访" />
-            </label>
-            <label class="field">
-              <span>留言</span>
-              <textarea v-model.trim="requestForm.message" maxlength="1000" rows="5" placeholder="你想在广播里说的话、点歌原因或氛围描述都可以写在这里。" />
-            </label>
-            <el-button type="primary" native-type="submit" :loading="submittingRequest">提交点歌</el-button>
+            <div class="form-actions">
+              <span v-if="selectedSource" class="source-lock-note">已锁定 {{ musicProviderLabel(selectedSource.provider) }} 音源，后台可直接试听</span>
+              <el-button type="primary" native-type="submit" :loading="submittingRequest" :disabled="loginRequired && !hasToken">提交投稿</el-button>
+            </div>
           </form>
         </article>
-      </aside>
+      </section>
     </section>
-
-    <section v-if="canManage" ref="manageSectionRef" class="manage-shell" v-loading="loadingManage">
-      <div class="manage-head">
-        <div>
-          <div class="manage-kicker">工作台</div>
-          <h2>{{ brandName }}工作台</h2>
-          <p>这里先接学期、时段、节目和点歌处理四条主链，方便后面继续扩。</p>
-        </div>
-        <el-button plain @click="loadManageData">
-          <el-icon><Refresh /></el-icon>
-          刷新
-        </el-button>
-      </div>
-
-      <el-tabs v-model="manageTab" class="manage-tabs">
-        <el-tab-pane label="📚 学期" name="semesters">
-          <div class="manager-panel">
-            <div class="manager-head">
-              <div>
-                <h3>学期配置</h3>
-                <p>用来标记当前广播周期，也决定前台默认展示哪一批节目和时段。</p>
-              </div>
-              <el-button type="primary" @click="openSemesterDialog()">新增学期</el-button>
-            </div>
-            <el-table :data="manageData.semesters" stripe>
-              <el-table-column prop="name" label="学期名" min-width="180" />
-              <el-table-column prop="code" label="编码" width="140" />
-              <el-table-column label="状态" width="120">
-                <template #default="{ row }">
-                  <el-tag :type="semesterStatusTag(row.status)">{{ semesterStatusText(row.status) }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="当前学期" width="110">
-                <template #default="{ row }">
-                  <el-tag v-if="row.isCurrent" type="success">当前</el-tag>
-                  <span v-else class="muted">否</span>
-                </template>
-              </el-table-column>
-              <el-table-column label="节目 / 时段" width="130">
-                <template #default="{ row }">
-                  {{ row.counts?.scheduleItems || 0 }} / {{ row.counts?.playTimes || 0 }}
-                </template>
-              </el-table-column>
-              <el-table-column label="操作" width="120" fixed="right">
-                <template #default="{ row }">
-                  <el-button text type="primary" @click="openSemesterDialog(row)">编辑</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-          </div>
-        </el-tab-pane>
-
-        <el-tab-pane label="🕒 时段" name="playTimes">
-          <div class="manager-panel">
-            <div class="manager-head">
-              <div>
-                <h3>播出时段</h3>
-                <p>先按星期和固定时间配置时段，后面节目会挂在这些时段上。</p>
-              </div>
-              <el-button type="primary" @click="openPlayTimeDialog()">新增时段</el-button>
-            </div>
-            <el-table :data="manageData.playTimes" stripe>
-              <el-table-column label="星期" width="100">
-                <template #default="{ row }">{{ weekdayLabel(row.weekday) }}</template>
-              </el-table-column>
-              <el-table-column prop="name" label="时段名" min-width="160" />
-              <el-table-column label="时间" width="150">
-                <template #default="{ row }">{{ row.startTime }} - {{ row.endTime }}</template>
-              </el-table-column>
-              <el-table-column prop="location" label="地点" min-width="140" />
-              <el-table-column label="学期" min-width="150">
-                <template #default="{ row }">{{ row.semester?.name || "通用" }}</template>
-              </el-table-column>
-              <el-table-column label="启用" width="100">
-                <template #default="{ row }">
-                  <el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? "启用" : "停用" }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="操作" width="120" fixed="right">
-                <template #default="{ row }">
-                  <el-button text type="primary" @click="openPlayTimeDialog(row)">编辑</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-          </div>
-        </el-tab-pane>
-
-        <el-tab-pane label="🎙 节目" name="schedules">
-          <div class="manager-panel">
-            <div class="manager-head">
-              <div>
-                <h3>节目编排</h3>
-                <p>节目是广播站真正的业务主体，这里先把名称、主持人、简介和点歌开关收好。</p>
-              </div>
-              <el-button type="primary" @click="openScheduleDialog()">新增节目</el-button>
-            </div>
-            <el-table :data="manageData.scheduleItems" stripe>
-              <el-table-column prop="title" label="节目名" min-width="180" />
-              <el-table-column label="时段" min-width="180">
-                <template #default="{ row }">
-                  {{ row.playTime ? `${weekdayLabel(row.playTime.weekday)} ${row.playTime.startTime} ${row.playTime.name}` : "未绑定时段" }}
-                </template>
-              </el-table-column>
-              <el-table-column prop="hostNames" label="主持人" min-width="140" />
-              <el-table-column label="状态" width="120">
-                <template #default="{ row }">
-                  <el-tag :type="scheduleStatusTag(row.status)">{{ scheduleStatusText(row.status) }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="点歌" width="100">
-                <template #default="{ row }">
-                  <el-tag :type="row.requestEnabled ? 'success' : 'info'">{{ row.requestEnabled ? "开放" : "关闭" }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="留言数" width="100">
-                <template #default="{ row }">{{ row.requestCount }}</template>
-              </el-table-column>
-              <el-table-column label="操作" width="120" fixed="right">
-                <template #default="{ row }">
-                  <el-button text type="primary" @click="openScheduleDialog(row)">编辑</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-          </div>
-        </el-tab-pane>
-
-        <el-tab-pane label="💌 点歌" name="requests">
-          <div class="manager-panel">
-            <div class="manager-head">
-              <div>
-                <h3>点歌处理</h3>
-                <p>先保留最基础的处理状态和备注，足够一期人工流转。</p>
-              </div>
-            </div>
-            <el-table :data="manageData.requests" stripe>
-              <el-table-column prop="nickname" label="称呼" width="120" />
-              <el-table-column prop="songTitle" label="歌曲" min-width="160" />
-              <el-table-column prop="artist" label="歌手" min-width="140" />
-              <el-table-column label="节目" min-width="180">
-                <template #default="{ row }">{{ row.scheduleItem?.title || "未指定" }}</template>
-              </el-table-column>
-              <el-table-column label="状态" width="120">
-                <template #default="{ row }">
-                  <el-tag :type="requestStatusTag(row.status)">{{ requestStatusText(row.status) }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="留言" min-width="220">
-                <template #default="{ row }">
-                  <span class="line-clamp-two">{{ row.message || row.dedication || "无" }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column label="操作" width="170" fixed="right">
-                <template #default="{ row }">
-                  <el-button text type="primary" @click="openRequestDialog(row)">处理</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-          </div>
-        </el-tab-pane>
-      </el-tabs>
-    </section>
-
-    <el-dialog v-model="semesterDialog.visible" :title="semesterDialog.editingId ? '编辑学期' : '新增学期'" width="560px">
-      <el-form label-position="top" class="dialog-form">
-        <el-form-item label="学期名">
-          <el-input v-model.trim="semesterDialog.form.name" maxlength="80" />
-        </el-form-item>
-        <el-form-item label="编码">
-          <el-input v-model.trim="semesterDialog.form.code" maxlength="40" placeholder="例如 2026-fall" />
-        </el-form-item>
-        <el-form-item label="简介">
-          <el-input v-model.trim="semesterDialog.form.description" type="textarea" :rows="3" maxlength="1000" />
-        </el-form-item>
-        <div class="dialog-grid">
-          <el-form-item label="开始日期">
-            <el-input v-model="semesterDialog.form.startDate" type="date" />
-          </el-form-item>
-          <el-form-item label="结束日期">
-            <el-input v-model="semesterDialog.form.endDate" type="date" />
-          </el-form-item>
-        </div>
-        <div class="dialog-grid">
-          <el-form-item label="状态">
-            <el-select v-model="semesterDialog.form.status">
-              <el-option label="草稿" value="draft" />
-              <el-option label="进行中" value="active" />
-              <el-option label="已归档" value="archived" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="当前学期">
-            <el-switch v-model="semesterDialog.form.isCurrent" />
-          </el-form-item>
-        </div>
-      </el-form>
-      <template #footer>
-        <el-button @click="semesterDialog.visible = false">取消</el-button>
-        <el-button type="primary" :loading="semesterDialog.saving" @click="saveSemester">保存</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="playTimeDialog.visible" :title="playTimeDialog.editingId ? '编辑时段' : '新增时段'" width="560px">
-      <el-form label-position="top" class="dialog-form">
-        <el-form-item label="时段名">
-          <el-input v-model.trim="playTimeDialog.form.name" maxlength="80" />
-        </el-form-item>
-        <div class="dialog-grid triple">
-          <el-form-item label="星期">
-            <el-select v-model="playTimeDialog.form.weekday">
-              <el-option v-for="item in weekdayOptions" :key="item.value" :label="item.label" :value="item.value" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="开始时间">
-            <el-input v-model="playTimeDialog.form.startTime" type="time" />
-          </el-form-item>
-          <el-form-item label="结束时间">
-            <el-input v-model="playTimeDialog.form.endTime" type="time" />
-          </el-form-item>
-        </div>
-        <div class="dialog-grid">
-          <el-form-item label="所属学期">
-            <el-select v-model="playTimeDialog.form.semesterId" clearable placeholder="通用">
-              <el-option v-for="item in manageData.semesters" :key="item.id" :label="item.name" :value="item.id" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="排序">
-            <el-input-number v-model="playTimeDialog.form.sortOrder" :min="0" :max="999" style="width: 100%" />
-          </el-form-item>
-        </div>
-        <el-form-item label="地点">
-          <el-input v-model.trim="playTimeDialog.form.location" maxlength="120" />
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model.trim="playTimeDialog.form.note" type="textarea" :rows="3" maxlength="600" />
-        </el-form-item>
-        <el-form-item label="启用">
-          <el-switch v-model="playTimeDialog.form.enabled" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="playTimeDialog.visible = false">取消</el-button>
-        <el-button type="primary" :loading="playTimeDialog.saving" @click="savePlayTime">保存</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="scheduleDialog.visible" :title="scheduleDialog.editingId ? '编辑节目' : '新增节目'" width="720px">
-      <el-form label-position="top" class="dialog-form">
-        <el-form-item label="节目名">
-          <el-input v-model.trim="scheduleDialog.form.title" maxlength="120" />
-        </el-form-item>
-        <div class="dialog-grid">
-          <el-form-item label="副标题">
-            <el-input v-model.trim="scheduleDialog.form.subtitle" maxlength="120" />
-          </el-form-item>
-          <el-form-item label="主持人">
-            <el-input v-model.trim="scheduleDialog.form.hostNames" maxlength="160" placeholder="例如 阿青 / 小刘" />
-          </el-form-item>
-        </div>
-        <div class="dialog-grid">
-          <el-form-item label="所属学期">
-            <el-select v-model="scheduleDialog.form.semesterId" clearable placeholder="通用">
-              <el-option v-for="item in manageData.semesters" :key="item.id" :label="item.name" :value="item.id" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="绑定时段">
-            <el-select v-model="scheduleDialog.form.playTimeId" clearable placeholder="暂不绑定">
-              <el-option
-                v-for="item in manageData.playTimes"
-                :key="item.id"
-                :label="`${weekdayLabel(item.weekday)} ${item.startTime} ${item.name}`"
-                :value="item.id"
-              />
-            </el-select>
-          </el-form-item>
-        </div>
-        <div class="dialog-grid">
-          <el-form-item label="状态">
-            <el-select v-model="scheduleDialog.form.status">
-              <el-option label="草稿" value="draft" />
-              <el-option label="已发布" value="published" />
-              <el-option label="已归档" value="archived" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="排序">
-            <el-input-number v-model="scheduleDialog.form.sortOrder" :min="0" :max="999" style="width: 100%" />
-          </el-form-item>
-        </div>
-        <div class="dialog-grid">
-          <el-form-item label="开始时间">
-            <el-input v-model="scheduleDialog.form.startsAt" type="datetime-local" />
-          </el-form-item>
-          <el-form-item label="结束时间">
-            <el-input v-model="scheduleDialog.form.endsAt" type="datetime-local" />
-          </el-form-item>
-        </div>
-        <el-form-item label="标签">
-          <el-input v-model="scheduleDialog.tagsInput" maxlength="200" placeholder="用中文逗号分开，例如 校园 / 深夜 / 点歌" />
-        </el-form-item>
-        <el-form-item label="封面图">
-          <el-input v-model.trim="scheduleDialog.form.coverImage" maxlength="800" placeholder="先预留图片地址，后面可接上传流程" />
-        </el-form-item>
-        <el-form-item label="节目简介">
-          <el-input v-model.trim="scheduleDialog.form.summary" type="textarea" :rows="4" maxlength="2000" />
-        </el-form-item>
-        <el-form-item label="开放点歌">
-          <el-switch v-model="scheduleDialog.form.requestEnabled" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="scheduleDialog.visible = false">取消</el-button>
-        <el-button type="primary" :loading="scheduleDialog.saving" @click="saveSchedule">保存</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="requestDialog.visible" title="处理点歌" width="560px">
-      <el-form v-if="requestDialog.row" label-position="top" class="dialog-form">
-        <el-form-item label="点歌人">
-          <el-input :model-value="requestDialog.row.nickname" disabled />
-        </el-form-item>
-        <div class="dialog-grid">
-          <el-form-item label="歌曲">
-            <el-input :model-value="requestDialog.row.songTitle" disabled />
-          </el-form-item>
-          <el-form-item label="歌手">
-            <el-input :model-value="requestDialog.row.artist || '未填写'" disabled />
-          </el-form-item>
-        </div>
-        <el-form-item label="归属节目">
-          <el-select v-model="requestDialog.form.scheduleItemId" clearable placeholder="未指定">
-            <el-option v-for="item in manageData.scheduleItems" :key="item.id" :label="item.title" :value="item.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="处理状态">
-          <el-select v-model="requestDialog.form.status">
-            <el-option label="待处理" value="pending" />
-            <el-option label="已通过" value="approved" />
-            <el-option label="已播出" value="fulfilled" />
-            <el-option label="已拒绝" value="rejected" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="留言内容">
-          <div class="request-note-card">
-            <p>{{ requestDialog.row.dedication || "未填写送达对象" }}</p>
-            <p>{{ requestDialog.row.message || "未填写附加留言" }}</p>
-          </div>
-        </el-form-item>
-        <el-form-item label="管理备注">
-          <el-input v-model.trim="requestDialog.form.adminNote" type="textarea" :rows="4" maxlength="1000" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="requestDialog.visible = false">取消</el-button>
-        <el-button type="primary" :loading="requestDialog.saving" @click="saveRequestReview">保存</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -545,34 +390,67 @@
 import { computed, nextTick, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
-import { Refresh } from "@element-plus/icons-vue";
-import { radioApi, type RadioManageBootstrap, type RadioOverview, type RadioPlayTime, type RadioScheduleItem, type RadioSemester, type RadioSongRequest } from "@/api/radio";
+import {
+  radioApi,
+  type RadioMusicProvider,
+  type RadioMusicSearchMode,
+  type RadioMusicSearchResult,
+  type RadioMusicSelection,
+  type RadioOverview,
+  type RadioPlayTime,
+  type RadioPublicSongRequest,
+  type RadioScheduleItem,
+} from "@/api/radio";
 import { getToken } from "@/api/request";
 import { toolsApi } from "@/api/tools";
 import brandLogo from "@/assets/brands/yaoyuanzhisheng-seal.png";
+import {
+  formatDurationMs,
+  musicProviderLabel,
+  radioBrandName,
+  radioBrandTitle,
+  requestStatusTag,
+  requestStatusText,
+  responseMessage,
+  responseStatus,
+  resultTrackKey,
+  scheduleStatusTag,
+  scheduleStatusText,
+  sourceAvatarText,
+  toSourceSelection,
+  weekdayLabel,
+  weekdayOptions,
+} from "@/views/services/radio-beta/shared";
+
+type PublicTab = "schedule" | "songs" | "request";
+type PreviewTarget = "request" | "songs";
 
 const router = useRouter();
 const route = useRoute();
-const brandName = "药苑之声";
-const brandTitle = `${brandName} beta`;
+
+const publicTabs: Array<{ value: PublicTab; label: string; kicker: string }> = [
+  { value: "schedule", label: "播出排期", kicker: "Schedule" },
+  { value: "songs", label: "歌曲列表", kicker: "Songs" },
+  { value: "request", label: "投稿歌曲", kicker: "Request" },
+];
+
+const providerOptions: Array<{ value: RadioMusicSearchMode; label: string }> = [
+  { value: "all", label: "全部音源" },
+  { value: "netease", label: "网易云" },
+  { value: "qq", label: "QQ 音乐" },
+];
 
 const loadingOverview = ref(false);
-const loadingManage = ref(false);
 const submittingRequest = ref(false);
 const loginRequired = ref(false);
-const pageError = ref("");
-const hasToken = computed(() => Boolean(getToken()));
 const canManage = ref(false);
-const manageTab = ref("semesters");
+const pageError = ref("");
 const overview = ref<RadioOverview | null>(null);
-const manageData = reactive<RadioManageBootstrap>({
-  semesters: [],
-  playTimes: [],
-  scheduleItems: [],
-  requests: [],
-});
+const activeTab = ref<PublicTab>("schedule");
+const hasToken = computed(() => Boolean(getToken()));
 const requestSectionRef = ref<HTMLElement | null>(null);
-const manageSectionRef = ref<HTMLElement | null>(null);
+const requestPreviewAudioRef = ref<HTMLAudioElement | null>(null);
+const songPreviewAudioRef = ref<HTMLAudioElement | null>(null);
 
 const requestForm = reactive<{
   nickname: string;
@@ -592,79 +470,44 @@ const requestForm = reactive<{
   message: "",
 });
 
-const semesterDialog = reactive({
-  visible: false,
-  saving: false,
-  editingId: 0,
-  form: {
-    code: "",
-    name: "",
-    description: "",
-    status: "draft" as "draft" | "active" | "archived",
-    isCurrent: false,
-    startDate: "",
-    endDate: "",
+const songFilters = reactive({
+  query: "",
+  status: "all" as "all" | RadioPublicSongRequest["status"],
+  provider: "all" as "all" | RadioMusicProvider,
+});
+
+const musicSearch = reactive({
+  keyword: "",
+  providerMode: "all" as RadioMusicSearchMode,
+  loading: false,
+  searched: false,
+  error: "",
+  results: [] as RadioMusicSearchResult[],
+  sharedLogin: {
+    netease: false,
+    qq: false,
   },
 });
 
-const playTimeDialog = reactive({
-  visible: false,
-  saving: false,
-  editingId: 0,
-  form: {
-    semesterId: null as number | null,
-    name: "",
-    weekday: 1,
-    startTime: "12:00",
-    endTime: "13:00",
-    location: "",
-    note: "",
-    enabled: true,
-    sortOrder: 0,
-  },
+const selectedSource = ref<RadioMusicSearchResult | null>(null);
+
+const requestPreview = reactive({
+  loading: false,
+  trackKey: "",
+  streamUrl: "",
+  title: "",
+  subtitle: "",
+  notice: "",
 });
 
-const scheduleDialog = reactive({
-  visible: false,
-  saving: false,
-  editingId: 0,
-  tagsInput: "",
-  form: {
-    semesterId: null as number | null,
-    playTimeId: null as number | null,
-    title: "",
-    subtitle: "",
-    hostNames: "",
-    summary: "",
-    coverImage: "",
-    status: "draft" as "draft" | "published" | "archived",
-    requestEnabled: true,
-    startsAt: "",
-    endsAt: "",
-    sortOrder: 0,
-  },
+const songPreview = reactive({
+  loading: false,
+  trackKey: "",
+  streamUrl: "",
+  title: "",
+  subtitle: "",
+  notice: "",
 });
-
-const requestDialog = reactive({
-  visible: false,
-  saving: false,
-  row: null as RadioSongRequest | null,
-  form: {
-    scheduleItemId: null as number | null,
-    status: "pending" as "pending" | "approved" | "fulfilled" | "rejected",
-    adminNote: "",
-  },
-});
-
-const weekdayOptions = [
-  { value: 1, label: "周一" },
-  { value: 2, label: "周二" },
-  { value: 3, label: "周三" },
-  { value: 4, label: "周四" },
-  { value: 5, label: "周五" },
-  { value: 6, label: "周六" },
-  { value: 7, label: "周日" },
-];
 
 const playTimeGroups = computed(() => {
   const map = new Map<number, RadioPlayTime[]>();
@@ -677,24 +520,46 @@ const playTimeGroups = computed(() => {
     .map((option) => ({
       weekday: option.value,
       label: option.label,
-      items: (map.get(option.value) ?? []).slice().sort((left, right) => left.startTime.localeCompare(right.startTime) || left.sortOrder - right.sortOrder),
+      items: (map.get(option.value) ?? [])
+        .slice()
+        .sort((left, right) => left.startTime.localeCompare(right.startTime) || left.sortOrder - right.sortOrder),
     }))
     .filter((group) => group.items.length);
 });
 
-const requestablePrograms = computed(() =>
+const requestablePrograms = computed<RadioScheduleItem[]>(() =>
   (overview.value?.scheduleItems ?? []).filter((item) => item.requestEnabled)
 );
 
+const filteredRecentRequests = computed(() => {
+  const query = songFilters.query.trim().toLowerCase();
+  return (overview.value?.recentRequests ?? []).filter((item) => {
+    if (songFilters.status !== "all" && item.status !== songFilters.status) return false;
+    if (songFilters.provider !== "all" && item.sourceProvider !== songFilters.provider) return false;
+    if (!query) return true;
+    const text = [
+      item.songTitle,
+      item.artist || "",
+      item.nickname || "",
+      item.scheduleItem?.title || "",
+    ].join(" ").toLowerCase();
+    return text.includes(query);
+  });
+});
+
+const musicSearchHint = computed(() => {
+  const hints: string[] = [];
+  if (!musicSearch.sharedLogin.netease) hints.push("网易云当前按公共匿名能力解析");
+  if (!musicSearch.sharedLogin.qq) hints.push("QQ 音乐未配置共享登录，部分歌曲可能只能搜到但无法试听");
+  return hints.join("；");
+});
+
 onMounted(async () => {
+  const initialTab = String(route.query.tab || "");
+  if (initialTab === "schedule" || initialTab === "songs" || initialTab === "request") {
+    activeTab.value = initialTab;
+  }
   await Promise.all([loadOverview(), initPermission()]);
-  if (canManage.value) {
-    await loadManageData();
-  }
-  if (route.query.manage === "1" && canManage.value) {
-    await nextTick();
-    scrollToManage();
-  }
 });
 
 async function initPermission() {
@@ -714,7 +579,9 @@ async function initPermission() {
       suppressAuthMessage: true,
       suppressErrorMessage: true,
     });
-    canManage.value = canManage.value || perms.toolCodes.includes("radio_beta") || perms.adminToolCodes.includes("radio_beta");
+    canManage.value = canManage.value
+      || perms.toolCodes.includes("radio_beta")
+      || perms.adminToolCodes.includes("radio_beta");
   } catch {
     // ignore
   }
@@ -731,33 +598,12 @@ async function loadOverview() {
     const status = responseStatus(error);
     if (status === 401) {
       loginRequired.value = true;
-      pageError.value = `${brandName}当前需要登录后使用。`;
+      pageError.value = `${radioBrandName}当前需要登录后使用。`;
       return;
     }
-    pageError.value = responseMessage(error) || `${brandName}概览加载失败`;
+    pageError.value = responseMessage(error) || `${radioBrandName}概览加载失败`;
   } finally {
     loadingOverview.value = false;
-  }
-}
-
-async function loadManageData() {
-  if (!canManage.value) return;
-  loadingManage.value = true;
-  try {
-    const next = await radioApi.manageBootstrap();
-    manageData.semesters = next.semesters;
-    manageData.playTimes = next.playTimes;
-    manageData.scheduleItems = next.scheduleItems;
-    manageData.requests = next.requests;
-  } catch (error) {
-    const status = responseStatus(error);
-    if (status === 401 || status === 403) {
-      canManage.value = false;
-      return;
-    }
-    ElMessage.error(responseMessage(error) || `${brandName}工作台加载失败`);
-  } finally {
-    loadingManage.value = false;
   }
 }
 
@@ -773,11 +619,12 @@ async function submitRequest() {
       scheduleItemId: requestForm.scheduleItemId,
       songTitle: requestForm.songTitle,
       artist: requestForm.artist || undefined,
+      sourceSelection: selectedSource.value ? toSourceSelection(selectedSource.value) : undefined,
       dedication: requestForm.dedication || undefined,
       contact: requestForm.contact || undefined,
       message: requestForm.message || undefined,
     });
-    ElMessage.success(`点歌已提交，${brandName}后台现在能直接看到这条记录了`);
+    ElMessage.success(`投稿已提交，${radioBrandName}后台现在能直接查看并试听这条记录了`);
     requestForm.nickname = "";
     requestForm.scheduleItemId = null;
     requestForm.songTitle = "";
@@ -785,8 +632,13 @@ async function submitRequest() {
     requestForm.dedication = "";
     requestForm.contact = "";
     requestForm.message = "";
+    selectedSource.value = null;
+    musicSearch.keyword = "";
+    musicSearch.results = [];
+    musicSearch.searched = false;
+    musicSearch.error = "";
+    resetPreviewState("request");
     await loadOverview();
-    if (canManage.value) await loadManageData();
   } catch (error) {
     const status = responseStatus(error);
     if (status === 401) {
@@ -794,404 +646,402 @@ async function submitRequest() {
       goLogin();
       return;
     }
-    ElMessage.error(responseMessage(error) || "点歌提交失败");
+    ElMessage.error(responseMessage(error) || "投稿提交失败");
   } finally {
     submittingRequest.value = false;
   }
 }
 
-function openSemesterDialog(row?: RadioSemester) {
-  semesterDialog.visible = true;
-  semesterDialog.saving = false;
-  semesterDialog.editingId = row?.id ?? 0;
-  semesterDialog.form.code = row?.code ?? "";
-  semesterDialog.form.name = row?.name ?? "";
-  semesterDialog.form.description = row?.description ?? "";
-  semesterDialog.form.status = row?.status ?? "draft";
-  semesterDialog.form.isCurrent = row?.isCurrent ?? false;
-  semesterDialog.form.startDate = toDateInput(row?.startDate);
-  semesterDialog.form.endDate = toDateInput(row?.endDate);
-}
-
-async function saveSemester() {
-  if (!semesterDialog.form.code.trim() || !semesterDialog.form.name.trim()) {
-    ElMessage.warning("请先填写学期名和编码");
+async function searchMusic() {
+  const query = musicSearch.keyword.trim() || [requestForm.songTitle, requestForm.artist].filter(Boolean).join(" ").trim();
+  if (!query) {
+    ElMessage.warning("先输入歌名或歌手再搜索");
     return;
   }
-  semesterDialog.saving = true;
+  musicSearch.loading = true;
+  musicSearch.searched = false;
+  musicSearch.error = "";
   try {
-    const payload = {
-      code: semesterDialog.form.code.trim(),
-      name: semesterDialog.form.name.trim(),
-      description: semesterDialog.form.description.trim() || undefined,
-      status: semesterDialog.form.status,
-      isCurrent: semesterDialog.form.isCurrent,
-      startDate: normalizeDateField(semesterDialog.form.startDate),
-      endDate: normalizeDateField(semesterDialog.form.endDate),
-    };
-    if (semesterDialog.editingId) {
-      await radioApi.updateSemester(semesterDialog.editingId, payload);
-    } else {
-      await radioApi.createSemester(payload);
-    }
-    semesterDialog.visible = false;
-    ElMessage.success("学期已保存");
-    await Promise.all([loadOverview(), loadManageData()]);
-  } catch (error) {
-    ElMessage.error(responseMessage(error) || "学期保存失败");
-  } finally {
-    semesterDialog.saving = false;
-  }
-}
-
-function openPlayTimeDialog(row?: RadioPlayTime) {
-  playTimeDialog.visible = true;
-  playTimeDialog.saving = false;
-  playTimeDialog.editingId = row?.id ?? 0;
-  playTimeDialog.form.semesterId = row?.semesterId ?? null;
-  playTimeDialog.form.name = row?.name ?? "";
-  playTimeDialog.form.weekday = row?.weekday ?? 1;
-  playTimeDialog.form.startTime = row?.startTime ?? "12:00";
-  playTimeDialog.form.endTime = row?.endTime ?? "13:00";
-  playTimeDialog.form.location = row?.location ?? "";
-  playTimeDialog.form.note = row?.note ?? "";
-  playTimeDialog.form.enabled = row?.enabled ?? true;
-  playTimeDialog.form.sortOrder = row?.sortOrder ?? 0;
-}
-
-async function savePlayTime() {
-  if (!playTimeDialog.form.name.trim()) {
-    ElMessage.warning("请先填写时段名");
-    return;
-  }
-  playTimeDialog.saving = true;
-  try {
-    const payload = {
-      semesterId: playTimeDialog.form.semesterId,
-      name: playTimeDialog.form.name.trim(),
-      weekday: playTimeDialog.form.weekday,
-      startTime: playTimeDialog.form.startTime,
-      endTime: playTimeDialog.form.endTime,
-      location: playTimeDialog.form.location.trim() || undefined,
-      note: playTimeDialog.form.note.trim() || undefined,
-      enabled: playTimeDialog.form.enabled,
-      sortOrder: playTimeDialog.form.sortOrder,
-    };
-    if (playTimeDialog.editingId) {
-      await radioApi.updatePlayTime(playTimeDialog.editingId, payload);
-    } else {
-      await radioApi.createPlayTime(payload);
-    }
-    playTimeDialog.visible = false;
-    ElMessage.success("播出时段已保存");
-    await Promise.all([loadOverview(), loadManageData()]);
-  } catch (error) {
-    ElMessage.error(responseMessage(error) || "播出时段保存失败");
-  } finally {
-    playTimeDialog.saving = false;
-  }
-}
-
-function openScheduleDialog(row?: RadioScheduleItem) {
-  scheduleDialog.visible = true;
-  scheduleDialog.saving = false;
-  scheduleDialog.editingId = row?.id ?? 0;
-  scheduleDialog.form.semesterId = row?.semesterId ?? null;
-  scheduleDialog.form.playTimeId = row?.playTimeId ?? null;
-  scheduleDialog.form.title = row?.title ?? "";
-  scheduleDialog.form.subtitle = row?.subtitle ?? "";
-  scheduleDialog.form.hostNames = row?.hostNames ?? "";
-  scheduleDialog.form.summary = row?.summary ?? "";
-  scheduleDialog.form.coverImage = row?.coverImage ?? "";
-  scheduleDialog.form.status = row?.status ?? "draft";
-  scheduleDialog.form.requestEnabled = row?.requestEnabled ?? true;
-  scheduleDialog.form.startsAt = toDateTimeLocalInput(row?.startsAt);
-  scheduleDialog.form.endsAt = toDateTimeLocalInput(row?.endsAt);
-  scheduleDialog.form.sortOrder = row?.sortOrder ?? 0;
-  scheduleDialog.tagsInput = (row?.tags ?? []).join("，");
-}
-
-async function saveSchedule() {
-  if (!scheduleDialog.form.title.trim()) {
-    ElMessage.warning("请先填写节目名");
-    return;
-  }
-  scheduleDialog.saving = true;
-  try {
-    const payload = {
-      semesterId: scheduleDialog.form.semesterId,
-      playTimeId: scheduleDialog.form.playTimeId,
-      title: scheduleDialog.form.title.trim(),
-      subtitle: scheduleDialog.form.subtitle.trim() || undefined,
-      hostNames: scheduleDialog.form.hostNames.trim() || undefined,
-      summary: scheduleDialog.form.summary.trim() || undefined,
-      coverImage: scheduleDialog.form.coverImage.trim() || undefined,
-      status: scheduleDialog.form.status,
-      requestEnabled: scheduleDialog.form.requestEnabled,
-      startsAt: normalizeDateTimeField(scheduleDialog.form.startsAt),
-      endsAt: normalizeDateTimeField(scheduleDialog.form.endsAt),
-      sortOrder: scheduleDialog.form.sortOrder,
-      tags: splitTags(scheduleDialog.tagsInput),
-    };
-    if (scheduleDialog.editingId) {
-      await radioApi.updateSchedule(scheduleDialog.editingId, payload);
-    } else {
-      await radioApi.createSchedule(payload);
-    }
-    scheduleDialog.visible = false;
-    ElMessage.success("节目已保存");
-    await Promise.all([loadOverview(), loadManageData()]);
-  } catch (error) {
-    ElMessage.error(responseMessage(error) || "节目保存失败");
-  } finally {
-    scheduleDialog.saving = false;
-  }
-}
-
-function openRequestDialog(row: RadioSongRequest) {
-  requestDialog.visible = true;
-  requestDialog.saving = false;
-  requestDialog.row = row;
-  requestDialog.form.scheduleItemId = row.scheduleItemId ?? null;
-  requestDialog.form.status = row.status;
-  requestDialog.form.adminNote = row.adminNote ?? "";
-}
-
-async function saveRequestReview() {
-  if (!requestDialog.row) return;
-  requestDialog.saving = true;
-  try {
-    await radioApi.updateRequest(requestDialog.row.id, {
-      scheduleItemId: requestDialog.form.scheduleItemId,
-      status: requestDialog.form.status,
-      adminNote: requestDialog.form.adminNote.trim() || null,
+    const payload = await radioApi.searchMusic({
+      q: query,
+      provider: musicSearch.providerMode,
+      limit: 12,
     });
-    requestDialog.visible = false;
-    ElMessage.success("点歌处理结果已保存");
-    await Promise.all([loadOverview(), loadManageData()]);
+    musicSearch.keyword = query;
+    musicSearch.results = payload.results;
+    musicSearch.sharedLogin = payload.sharedLogin;
+    musicSearch.searched = true;
   } catch (error) {
-    ElMessage.error(responseMessage(error) || "点歌处理保存失败");
+    musicSearch.results = [];
+    musicSearch.sharedLogin = { netease: false, qq: false };
+    musicSearch.searched = true;
+    musicSearch.error = responseMessage(error) || "音源搜索失败";
   } finally {
-    requestDialog.saving = false;
+    musicSearch.loading = false;
   }
+}
+
+function switchTab(tab: PublicTab) {
+  activeTab.value = tab;
+  if (tab === "request") {
+    nextTick(() => requestSectionRef.value?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
+}
+
+function pickSearchResult(item: RadioMusicSearchResult) {
+  selectedSource.value = item;
+  requestForm.songTitle = item.name;
+  requestForm.artist = item.artist;
+}
+
+function clearSelectedSource() {
+  selectedSource.value = null;
+  resetPreviewState("request");
+}
+
+function reuseRequest(item: RadioPublicSongRequest) {
+  requestForm.songTitle = item.songTitle;
+  requestForm.artist = item.artist || "";
+  requestForm.scheduleItemId = item.scheduleItemId ?? null;
+  if (item.sourceSelection && item.sourceProvider && item.sourceTrackId) {
+    selectedSource.value = {
+      ...item.sourceSelection,
+      provider: item.sourceProvider,
+      trackId: item.sourceTrackId,
+      name: item.songTitle,
+      artist: item.artist || "",
+      fee: 0,
+      playable: true,
+    };
+  }
+  switchTab("request");
+}
+
+async function previewSearchResult(item: RadioMusicSearchResult) {
+  await previewSource(item, item.name, item.artist || "", "request");
+}
+
+async function previewSelectedSource() {
+  if (!selectedSource.value) {
+    ElMessage.warning("当前还没有锁定音源");
+    return;
+  }
+  await previewSource(selectedSource.value, selectedSource.value.name, selectedSource.value.artist || "", "request");
+}
+
+async function previewRecentRequestSource(item: RadioPublicSongRequest) {
+  const selection = item.sourceSelection;
+  if (!selection) {
+    ElMessage.warning("这条投稿没有锁定音源");
+    return;
+  }
+  await previewSource(selection, item.songTitle, item.artist || "", "songs");
+}
+
+async function previewSource(
+  selection: RadioMusicSelection | RadioMusicSearchResult,
+  title: string,
+  artist: string,
+  target: PreviewTarget,
+) {
+  const state = target === "songs" ? songPreview : requestPreview;
+  state.loading = true;
+  state.trackKey = resultTrackKey(selection);
+  state.notice = "";
+  try {
+    const resolved = await radioApi.resolveMusic({
+      provider: selection.provider,
+      trackId: selection.trackId,
+      mediaMid: selection.mediaMid ?? undefined,
+      quality: "standard",
+    });
+    if (!resolved.streamUrl) {
+      state.streamUrl = "";
+      state.title = title;
+      state.subtitle = [musicProviderLabel(selection.provider), artist].filter(Boolean).join(" · ");
+      state.notice = resolved.message || "当前音源没有返回可播放地址";
+      ElMessage.warning(state.notice);
+      return;
+    }
+    state.streamUrl = resolved.streamUrl;
+    state.title = title;
+    state.subtitle = [musicProviderLabel(selection.provider), artist].filter(Boolean).join(" · ");
+    state.notice = resolved.trial ? "当前返回的是试听片段。" : (resolved.message || "");
+    pauseOtherPreview(target);
+    await nextTick();
+    const audio = target === "songs" ? songPreviewAudioRef.value : requestPreviewAudioRef.value;
+    if (audio) {
+      try {
+        audio.pause();
+      } catch {
+        // ignore
+      }
+      audio.load();
+      await audio.play().catch(() => undefined);
+    }
+  } catch (error) {
+    state.streamUrl = "";
+    state.notice = responseMessage(error) || "试听解析失败";
+    ElMessage.error(state.notice);
+  } finally {
+    state.loading = false;
+  }
+}
+
+function pauseOtherPreview(target: PreviewTarget) {
+  const refs = target === "songs"
+    ? [requestPreviewAudioRef.value]
+    : [songPreviewAudioRef.value];
+  for (const audio of refs) {
+    if (!audio) continue;
+    try {
+      audio.pause();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function resetPreviewState(target: PreviewTarget) {
+  const state = target === "songs" ? songPreview : requestPreview;
+  state.loading = false;
+  state.trackKey = "";
+  state.streamUrl = "";
+  state.title = "";
+  state.subtitle = "";
+  state.notice = "";
 }
 
 function goLogin() {
   router.push({ name: "login", query: { redirect: route.fullPath } });
 }
 
-function scrollToRequest() {
-  requestSectionRef.value?.scrollIntoView({ behavior: "smooth", block: "start" });
+function goConsole() {
+  router.push({ name: "service-radio-beta-console" });
 }
 
-function scrollToManage() {
-  manageSectionRef.value?.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-function weekdayLabel(value?: number | null) {
-  return weekdayOptions.find((item) => item.value === value)?.label || "未排期";
-}
-
-function semesterStatusText(value: string) {
-  if (value === "active") return "进行中";
-  if (value === "archived") return "已归档";
-  return "草稿";
-}
-
-function semesterStatusTag(value: string) {
-  if (value === "active") return "success";
-  if (value === "archived") return "info";
-  return "warning";
-}
-
-function scheduleStatusText(value: string) {
-  if (value === "published") return "已发布";
-  if (value === "archived") return "已归档";
-  return "草稿";
-}
-
-function scheduleStatusTag(value: string) {
-  if (value === "published") return "success";
-  if (value === "archived") return "info";
-  return "warning";
-}
-
-function requestStatusText(value: string) {
-  if (value === "approved") return "已通过";
-  if (value === "fulfilled") return "已播出";
-  if (value === "rejected") return "已拒绝";
-  return "待处理";
-}
-
-function requestStatusTag(value: string) {
-  if (value === "approved") return "success";
-  if (value === "fulfilled") return "success";
-  if (value === "rejected") return "danger";
-  return "warning";
-}
-
-function splitTags(raw: string) {
-  return raw
-    .split(/[，,]/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, 20);
-}
-
-function toDateInput(value?: string | null) {
-  if (!value) return "";
-  return String(value).slice(0, 10);
-}
-
-function toDateTimeLocalInput(value?: string | null) {
-  if (!value) return "";
+function formatDateTime(value?: string | null) {
+  if (!value) return "时间待定";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  const hh = String(date.getHours()).padStart(2, "0");
-  const min = String(date.getMinutes()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
-}
-
-function normalizeDateField(value: string) {
-  return value.trim() ? value.trim() : null;
-}
-
-function normalizeDateTimeField(value: string) {
-  return value.trim() ? value.trim() : null;
-}
-
-function responseStatus(error: unknown) {
-  return (error as { response?: { status?: number } })?.response?.status;
-}
-
-function responseMessage(error: unknown) {
-  return (error as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message
-    || (error as { message?: string })?.message
-    || "";
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
 }
 </script>
 
 <style scoped>
-.radio-page {
+.radio-home-page {
+  --radio-red: #b43225;
+  --radio-ink: #24362b;
+  --radio-soft: #f7f3eb;
+  --radio-panel: rgba(255, 255, 255, 0.94);
+  --radio-line: rgba(84, 98, 77, 0.16);
+  --radio-green: #2f7d4f;
   display: flex;
   flex-direction: column;
   gap: 18px;
 }
 
-.radio-hero,
-.radio-overview,
-.panel,
-.manage-shell {
-  background: var(--cpu-card);
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 18px;
-  box-shadow: var(--cpu-shadow-sm);
-}
-
-.radio-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.9fr);
+.radio-home-shell {
+  display: flex;
+  flex-direction: column;
   gap: 18px;
   padding: 24px;
+  border-radius: 24px;
+  border: 1px solid var(--radio-line);
   background:
-    radial-gradient(circle at top left, rgba(166, 54, 42, 0.16), transparent 34%),
-    radial-gradient(circle at top right, rgba(47, 125, 79, 0.18), transparent 34%),
-    linear-gradient(135deg, rgba(246, 248, 242, 0.94) 0%, rgba(255, 255, 255, 0.96) 52%, rgba(20, 143, 123, 0.08) 100%);
+    radial-gradient(circle at top left, rgba(180, 50, 37, 0.12), transparent 28%),
+    radial-gradient(circle at top right, rgba(47, 125, 79, 0.14), transparent 30%),
+    linear-gradient(180deg, rgba(248, 245, 239, 0.94) 0%, rgba(255, 255, 255, 0.98) 45%, rgba(246, 248, 242, 0.96) 100%);
+  box-shadow: 0 22px 48px rgba(36, 54, 43, 0.08);
 }
 
-.hero-brand {
-  display: inline-flex;
+.home-topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.topbar-brand {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 132px;
-  height: 132px;
-  padding: 10px;
-  border-radius: 32px;
-  background: linear-gradient(180deg, rgba(255, 248, 245, 0.92) 0%, rgba(255, 255, 255, 0.98) 100%);
-  border: 1px solid rgba(166, 54, 42, 0.1);
-  box-shadow: 0 14px 28px rgba(166, 54, 42, 0.08);
+  gap: 18px;
 }
 
-.hero-logo {
+.brand-mark {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 116px;
+  height: 116px;
+  padding: 14px;
+  border-radius: 30px;
+  background: rgba(255, 249, 247, 0.95);
+  border: 1px solid rgba(180, 50, 37, 0.14);
+  box-shadow: 0 14px 26px rgba(180, 50, 37, 0.08);
+}
+
+.brand-logo {
   width: 100%;
   height: auto;
 }
 
-.hero-kicker {
-  color: #a6362a;
+.brand-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 720px;
+}
+
+.brand-kicker,
+.panel-kicker,
+.tab-kicker {
+  color: var(--radio-red);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.manage-kicker {
-  color: #2f7d4f;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.brand-copy h1,
+.hero-main h2,
+.panel-head h3,
+.song-record-head h4,
+.program-card h4 {
+  margin: 0;
+  color: var(--radio-ink);
 }
 
-.hero-copy h1,
-.manage-head h2 {
-  margin: 8px 0 0;
-  font-size: 30px;
-  color: var(--cpu-text);
+.brand-copy h1 {
+  font-size: 34px;
+  line-height: 1.1;
 }
 
-.hero-copy p,
-.manage-head p {
-  margin: 10px 0 0;
-  color: var(--cpu-text-secondary);
+.brand-copy p,
+.hero-main p,
+.panel-head p,
+.program-summary,
+.rules-list,
+.song-record-copy p {
+  margin: 0;
+  color: #54624d;
   line-height: 1.8;
-  font-size: 14px;
+}
+
+.topbar-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.hero-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.85fr);
+  gap: 18px;
+}
+
+.hero-main,
+.hero-side,
+.panel-card {
+  border-radius: 22px;
+  border: 1px solid var(--radio-line);
+  background: var(--radio-panel);
+}
+
+.hero-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+}
+
+.hero-badge {
+  align-self: flex-start;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(180, 50, 37, 0.1);
+  color: var(--radio-red);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.hero-main h2 {
+  font-size: 30px;
+  line-height: 1.2;
 }
 
 .hero-actions {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
-  margin-top: 18px;
 }
 
 .hero-side {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 18px;
-  border-radius: 16px;
-  background: rgba(255, 250, 248, 0.88);
-  border: 1px solid rgba(166, 54, 42, 0.12);
+  gap: 16px;
+  padding: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 248, 246, 0.98) 0%, rgba(255, 255, 255, 0.98) 100%);
 }
 
-.hero-badge {
-  align-self: flex-start;
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: rgba(166, 54, 42, 0.1);
-  color: #a6362a;
-  font-size: 12px;
-  font-weight: 700;
+.hero-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.hero-semester {
-  font-size: 22px;
-  font-weight: 700;
-  color: #1f3b2b;
+.hero-metric span,
+.hero-metric small,
+.hero-metric-grid span,
+.song-record-meta,
+.program-meta,
+.selected-source-copy span,
+.selected-source-copy small,
+.search-result-copy span,
+.search-result-copy small,
+.preview-meta span,
+.search-hint,
+.source-lock-note,
+.request-preview-player small,
+.song-preview-bar small {
+  color: #5c6a5b;
 }
 
-.hero-sub {
-  color: #537062;
-  line-height: 1.7;
-  font-size: 13px;
+.hero-metric strong {
+  font-size: 24px;
+  color: var(--radio-ink);
 }
 
-.radio-alert {
-  margin-top: -2px;
+.hero-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.hero-metric-grid article {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(247, 243, 235, 0.72);
+}
+
+.hero-metric-grid b {
+  font-size: 28px;
+  color: var(--radio-red);
+  line-height: 1;
+}
+
+.page-alert {
+  margin-top: -4px;
 }
 
 .alert-actions {
@@ -1200,447 +1050,487 @@ function responseMessage(error: unknown) {
   margin-top: 8px;
 }
 
-.radio-overview {
+.section-tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
-  padding: 16px;
 }
 
-.stat-card {
+.section-tab {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(247, 250, 247, 0.92) 100%);
-  border: 1px solid rgba(47, 125, 79, 0.1);
+  gap: 6px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid var(--radio-line);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--radio-ink);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.stat-card.accent {
-  background: linear-gradient(135deg, rgba(20, 143, 123, 0.12) 0%, rgba(245, 158, 11, 0.1) 100%);
+.section-tab strong {
+  font-size: 17px;
 }
 
-.stat-label {
-  color: var(--cpu-text-secondary);
-  font-size: 12px;
+.section-tab.active {
+  border-color: rgba(180, 50, 37, 0.3);
+  background: linear-gradient(135deg, rgba(180, 50, 37, 0.08) 0%, rgba(255, 255, 255, 0.96) 100%);
+  box-shadow: 0 12px 24px rgba(180, 50, 37, 0.08);
+  transform: translateY(-1px);
 }
 
-.stat-card b {
-  font-size: 26px;
-  color: #1f3b2b;
-  line-height: 1;
+.tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
-.stat-card small {
-  color: #5f6f67;
-  font-size: 12px;
-}
-
-.radio-main {
+.schedule-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.85fr);
-  gap: 16px;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
 }
 
-.radio-column,
-.radio-side-column {
+.panel-card {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  padding: 22px;
 }
 
-.panel {
-  padding: 18px;
-}
-
-.panel-head,
-.manager-head,
-.manage-head {
+.panel-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 16px;
 }
 
 .panel-head.compact {
-  margin-bottom: 12px;
+  margin-bottom: -6px;
 }
 
-.panel-head h2,
-.manager-head h3 {
-  margin: 0;
-  color: var(--cpu-text);
-  font-size: 18px;
+.panel-head h3 {
+  font-size: 24px;
+  line-height: 1.2;
 }
 
-.panel-head p,
-.manager-head p {
-  margin: 6px 0 0;
-  color: var(--cpu-text-secondary);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.weekday-grid {
+.weekday-board,
+.program-grid,
+.song-list-grid,
+.search-results {
   display: grid;
+  gap: 14px;
+}
+
+.weekday-board {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+}
+
+.weekday-card,
+.program-card,
+.song-record-card,
+.search-result-card,
+.selected-source-card,
+.request-preview-player,
+.song-preview-bar {
+  border-radius: 18px;
+  border: 1px solid var(--radio-line);
+  background: rgba(255, 255, 255, 0.92);
 }
 
 .weekday-card {
-  border: 1px solid rgba(47, 125, 79, 0.12);
-  border-radius: 14px;
-  padding: 14px;
-  background: linear-gradient(180deg, rgba(249, 251, 247, 0.86) 0%, rgba(255, 255, 255, 0.98) 100%);
+  padding: 16px;
 }
 
-.weekday-head {
+.weekday-head,
+.song-record-head,
+.program-head,
+.search-result-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 10px;
 }
 
-.weekday-head strong {
-  color: #1f3b2b;
-  font-size: 15px;
+.weekday-head strong,
+.song-record-head h4,
+.search-result-copy strong {
+  font-size: 16px;
 }
 
-.weekday-head span {
-  color: var(--cpu-text-muted);
-  font-size: 12px;
-}
-
-.weekday-items {
+.weekday-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  margin-top: 12px;
 }
 
-.slot-row {
+.weekday-item {
   display: grid;
   grid-template-columns: 110px minmax(0, 1fr);
   gap: 12px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.88);
-  border: 1px solid rgba(15, 118, 110, 0.08);
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(247, 243, 235, 0.68);
 }
 
-.slot-time {
+.weekday-time,
+.program-slot {
+  color: var(--radio-green);
   font-weight: 700;
-  color: #2f7d4f;
-  font-size: 13px;
 }
 
-.slot-main {
-  min-width: 0;
+.weekday-copy,
+.song-record-copy,
+.selected-source-copy,
+.search-result-copy,
+.preview-meta {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
+  min-width: 0;
 }
 
-.slot-main b,
-.schedule-card h3 {
-  color: var(--cpu-text);
+.weekday-copy b,
+.selected-source-copy strong,
+.preview-meta strong {
+  color: var(--radio-ink);
 }
 
-.slot-main small,
-.schedule-foot {
-  color: var(--cpu-text-secondary);
-  font-size: 12px;
+.weekday-copy small {
+  color: #6d786c;
 }
 
-.schedule-list {
-  display: grid;
+.program-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
 }
 
-.schedule-card {
-  padding: 16px;
-  border-radius: 16px;
-  border: 1px solid rgba(47, 125, 79, 0.12);
-  background:
-    radial-gradient(circle at top right, rgba(47, 125, 79, 0.08), transparent 30%),
-    linear-gradient(180deg, rgba(248, 252, 249, 0.92) 0%, rgba(255, 255, 255, 0.98) 100%);
-}
-
-.schedule-topline,
-.schedule-foot,
-.tag-row {
+.program-card {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  background:
+    radial-gradient(circle at top right, rgba(47, 125, 79, 0.08), transparent 36%),
+    linear-gradient(180deg, rgba(249, 251, 247, 0.92) 0%, rgba(255, 255, 255, 0.96) 100%);
 }
 
-.schedule-topline {
-  margin-bottom: 10px;
+.program-card h4 {
+  font-size: 20px;
 }
 
-.schedule-pill {
-  padding: 4px 9px;
-  border-radius: 999px;
-  background: rgba(47, 125, 79, 0.12);
-  color: #2f7d4f;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.schedule-meta {
-  color: #5d6f66;
-  font-size: 12px;
-}
-
-.schedule-card h3 {
-  margin: 0;
-  font-size: 18px;
-}
-
-.schedule-subtitle {
-  margin: 6px 0 0;
-  color: #36624c;
-  font-size: 13px;
+.program-subtitle {
+  margin: -4px 0 0;
+  color: #38604c;
   font-weight: 600;
 }
 
-.schedule-summary {
-  margin: 10px 0 0;
-  color: var(--cpu-text-secondary);
-  font-size: 13px;
-  line-height: 1.75;
-}
-
-.schedule-foot {
-  justify-content: space-between;
-  margin-top: 14px;
+.program-meta,
+.song-record-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-size: 12px;
 }
 
 .tag-row {
-  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .tag-chip {
   padding: 4px 9px;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.08);
-  color: #0f766e;
-  font-size: 11px;
+  background: rgba(47, 125, 79, 0.1);
+  color: var(--radio-green);
+  font-size: 12px;
+}
+
+.songs-toolbar,
+.search-box,
+.form-grid,
+.song-record-main,
+.selected-source-main,
+.search-result-main {
+  display: grid;
+  gap: 14px;
+}
+
+.songs-toolbar {
+  grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(140px, 0.5fr));
+}
+
+.toolbar-field,
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toolbar-field span,
+.form-field span {
+  font-size: 13px;
+  font-weight: 600;
+  color: #5b6a58;
+}
+
+.toolbar-field input,
+.toolbar-field select,
+.form-field input,
+.form-field select,
+.form-field textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--radio-line);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--radio-ink);
+  font: inherit;
+  outline: none;
+}
+
+.form-field textarea {
+  min-height: 128px;
+  resize: vertical;
+}
+
+.toolbar-field input:focus,
+.toolbar-field select:focus,
+.form-field input:focus,
+.form-field select:focus,
+.form-field textarea:focus {
+  border-color: rgba(180, 50, 37, 0.3);
+  box-shadow: 0 0 0 4px rgba(180, 50, 37, 0.08);
+}
+
+.toolbar-field.compact {
+  min-width: 0;
+}
+
+.song-list-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.song-record-card,
+.selected-source-card,
+.search-result-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+}
+
+.song-record-main,
+.selected-source-main,
+.search-result-main {
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  flex: 1 1 auto;
+}
+
+.song-record-avatar,
+.selected-source-cover,
+.search-result-cover {
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  overflow: hidden;
+  background: rgba(180, 50, 37, 0.1);
+  color: var(--radio-red);
+  font-size: 26px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+.song-record-avatar img,
+.selected-source-cover img,
+.search-result-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.song-record-actions,
+.selected-source-actions,
+.search-result-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.rules-card,
+.composer-card {
+  min-height: 100%;
 }
 
 .request-panel {
-  position: sticky;
-  top: 84px;
-}
-
-.request-summary {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 14px;
+  grid-template-columns: minmax(280px, 0.82fr) minmax(0, 1.18fr);
 }
 
-.request-summary > div {
-  padding: 12px;
-  border-radius: 14px;
-  background: rgba(47, 125, 79, 0.08);
-  border: 1px solid rgba(47, 125, 79, 0.1);
+.rules-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 12px;
+  padding-left: 18px;
 }
 
-.request-summary b {
-  font-size: 22px;
-  color: #1f3b2b;
+.provider-pills {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.request-summary span {
-  color: var(--cpu-text-secondary);
-  font-size: 12px;
+.provider-pill {
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--radio-line);
+  background: rgba(247, 243, 235, 0.72);
+  color: var(--radio-ink);
+  cursor: pointer;
+  font: inherit;
+}
+
+.provider-pill.active {
+  border-color: rgba(180, 50, 37, 0.24);
+  background: rgba(180, 50, 37, 0.1);
+  color: var(--radio-red);
+  font-weight: 700;
+}
+
+.login-block,
+.search-feedback,
+.song-preview-bar,
+.request-preview-player {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+
+.login-block {
+  border-radius: 18px;
+  border: 1px solid rgba(245, 158, 11, 0.26);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.search-feedback {
+  border-radius: 16px;
+}
+
+.search-feedback.error {
+  background: rgba(220, 38, 38, 0.08);
+  color: #b42318;
+}
+
+.search-feedback.empty {
+  background: rgba(47, 125, 79, 0.08);
+  color: var(--radio-green);
 }
 
 .request-form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.field span {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--cpu-text-secondary);
-}
-
-.field input,
-.field select,
-.field textarea {
-  width: 100%;
-  min-height: 42px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--cpu-border);
-  background: rgba(255, 255, 255, 0.92);
-  color: var(--cpu-text);
-  font: inherit;
-  outline: none;
-}
-
-.field textarea {
-  min-height: 118px;
-  resize: vertical;
-}
-
-.field input:focus,
-.field select:focus,
-.field textarea:focus {
-  border-color: #2f7d4f;
-  box-shadow: 0 0 0 3px rgba(47, 125, 79, 0.12);
-}
-
-.login-block {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px;
-  border-radius: 14px;
-  background: rgba(245, 158, 11, 0.08);
-  border: 1px solid rgba(245, 158, 11, 0.2);
-}
-
-.login-block p,
-.request-note-card p {
-  margin: 0;
-  color: var(--cpu-text-secondary);
-  line-height: 1.7;
-  font-size: 13px;
-}
-
-.manage-shell {
-  padding: 20px;
-}
-
-.manage-tabs :deep(.el-tabs__header) {
-  margin-bottom: 16px;
-}
-
-.manager-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.dialog-form {
-  display: flex;
-  flex-direction: column;
-}
-
-.dialog-grid {
-  display: grid;
+.form-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
 }
 
-.dialog-grid.triple {
-  grid-template-columns: 1fr 1fr 1fr;
-}
-
-.request-note-card {
+.form-actions {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  border-radius: 12px;
-  background: var(--cpu-surface-subtle);
-  border: 1px solid var(--cpu-border-soft);
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.line-clamp-two {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+.source-lock-note {
+  font-size: 13px;
 }
 
-.muted {
-  color: var(--cpu-text-muted);
-  font-size: 12px;
-}
-
-@media (max-width: 1100px) {
-  .radio-overview {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .radio-main {
+@media (max-width: 1180px) {
+  .schedule-panel,
+  .request-panel,
+  .hero-board,
+  .song-list-grid {
     grid-template-columns: 1fr;
   }
 
-  .request-panel {
-    position: static;
+  .songs-toolbar,
+  .form-grid {
+    grid-template-columns: 1fr 1fr;
   }
 }
 
 @media (max-width: 860px) {
-  .radio-hero {
-    grid-template-columns: 1fr;
-    padding: 18px;
+  .radio-home-shell {
+    padding: 16px;
+    border-radius: 20px;
   }
 
-  .schedule-list,
-  .weekday-grid {
+  .home-topbar,
+  .topbar-brand,
+  .panel-head,
+  .song-record-card,
+  .selected-source-card,
+  .search-result-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .section-tabs,
+  .weekday-board,
+  .program-grid,
+  .songs-toolbar,
+  .form-grid {
     grid-template-columns: 1fr;
   }
 
-  .dialog-grid,
-  .dialog-grid.triple {
-    grid-template-columns: 1fr;
-    gap: 0;
+  .brand-mark {
+    width: 88px;
+    height: 88px;
+    padding: 12px;
+  }
+
+  .brand-copy h1 {
+    font-size: 28px;
+  }
+
+  .hero-main h2,
+  .panel-head h3 {
+    font-size: 22px;
   }
 }
 
 @media (max-width: 640px) {
-  .radio-page {
-    gap: 14px;
-  }
-
-  .radio-overview {
+  .song-record-main,
+  .selected-source-main,
+  .search-result-main,
+  .weekday-item {
     grid-template-columns: 1fr;
-    padding: 14px;
   }
 
-  .hero-copy h1,
-  .manage-head h2 {
-    font-size: 24px;
-  }
-
-  .hero-actions {
+  .hero-actions,
+  .song-record-actions,
+  .selected-source-actions,
+  .search-result-actions,
+  .form-actions,
+  .provider-pills,
+  .topbar-actions {
     flex-direction: column;
+    align-items: stretch;
   }
 
-  .hero-actions .el-button {
-    width: 100%;
-  }
-
-  .slot-row {
-    grid-template-columns: 1fr;
-    gap: 6px;
-  }
-
-  .panel,
-  .manage-shell {
-    padding: 14px;
-    border-radius: 14px;
+  .hero-metric-grid {
+    grid-template-columns: 1fr 1fr;
   }
 }
 </style>

@@ -1,4 +1,5 @@
 import { prisma } from "../prisma";
+import { parseRadioMusicSelection } from "./radioMusic";
 
 export const RADIO_TOOL_CODE = "radio_beta" as const;
 export const RADIO_WEEKDAYS = [1, 2, 3, 4, 5, 6, 7] as const;
@@ -130,6 +131,7 @@ export function normalizeRadioScheduleItem(row: any) {
 }
 
 export function normalizeRadioSongRequest(row: any) {
+  const sourceSelection = parseRadioMusicSelection(row.sourceTrackMeta, row.sourceProvider, row.sourceTrackId);
   return {
     id: row.id,
     scheduleItemId: row.scheduleItemId,
@@ -138,6 +140,9 @@ export function normalizeRadioSongRequest(row: any) {
     contact: row.contact,
     songTitle: row.songTitle,
     artist: row.artist,
+    sourceProvider: row.sourceProvider,
+    sourceTrackId: row.sourceTrackId,
+    sourceSelection,
     dedication: row.dedication,
     message: row.message,
     status: row.status,
@@ -162,6 +167,29 @@ export function normalizeRadioSongRequest(row: any) {
       username: row.reviewedBy.username,
       nickname: row.reviewedBy.nickname,
       role: row.reviewedBy.role,
+    } : null,
+  };
+}
+
+export function normalizeRadioPublicSongRequest(row: any) {
+  const sourceSelection = parseRadioMusicSelection(row.sourceTrackMeta, row.sourceProvider, row.sourceTrackId);
+  return {
+    id: row.id,
+    scheduleItemId: row.scheduleItemId,
+    nickname: row.nickname,
+    songTitle: row.songTitle,
+    artist: row.artist,
+    sourceProvider: row.sourceProvider,
+    sourceTrackId: row.sourceTrackId,
+    sourceSelection,
+    status: row.status,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    scheduleItem: row.scheduleItem ? {
+      id: row.scheduleItem.id,
+      title: row.scheduleItem.title,
+      subtitle: row.scheduleItem.subtitle,
+      requestEnabled: row.scheduleItem.requestEnabled,
     } : null,
   };
 }

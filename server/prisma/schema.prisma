@@ -878,6 +878,9 @@ model RadioSongRequest {
   contact        String?
   songTitle      String
   artist         String?
+  sourceProvider String?
+  sourceTrackId  String?
+  sourceTrackMeta String  @default("{}")
   dedication     String?
   message        String?
   status         String   @default("pending") // pending / approved / fulfilled / rejected
@@ -894,6 +897,7 @@ model RadioSongRequest {
   @@index([status, createdAt])
   @@index([scheduleItemId, createdAt])
   @@index([requesterId, createdAt])
+  @@index([sourceProvider, createdAt])
 }
 
 // ============ 支付对接：易支付 ============

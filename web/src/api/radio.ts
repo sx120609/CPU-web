@@ -3,6 +3,53 @@ import { request } from "./request";
 export type RadioSemesterStatus = "draft" | "active" | "archived";
 export type RadioScheduleStatus = "draft" | "published" | "archived";
 export type RadioSongRequestStatus = "pending" | "approved" | "fulfilled" | "rejected";
+export type RadioMusicProvider = "netease" | "qq";
+export type RadioMusicSearchMode = "all" | RadioMusicProvider;
+
+export interface RadioMusicSelection {
+  provider: RadioMusicProvider;
+  trackId: string;
+  mediaMid?: string | null;
+  album?: string | null;
+  cover?: string | null;
+  duration?: number | null;
+}
+
+export interface RadioMusicSearchResult extends RadioMusicSelection {
+  name: string;
+  artist: string;
+  fee: number;
+  playable: boolean;
+}
+
+export interface RadioMusicSearchResponse {
+  query: string;
+  providerMode: RadioMusicSearchMode;
+  sharedLogin: {
+    netease: boolean;
+    qq: boolean;
+  };
+  results: RadioMusicSearchResult[];
+}
+
+export interface RadioMusicResolveResponse {
+  provider: RadioMusicProvider;
+  playable: boolean;
+  trial: boolean;
+  level?: string | null;
+  quality?: string | null;
+  requestedQuality: string;
+  reason: string;
+  message: string;
+  restriction?: {
+    provider: RadioMusicProvider;
+    category: string;
+    message: string;
+    action: "login" | "upgrade" | "purchase" | "switch_source";
+  } | null;
+  streamToken?: string | null;
+  streamUrl?: string | null;
+}
 
 export interface RadioSimpleUser {
   id: number;
@@ -80,6 +127,9 @@ export interface RadioSongRequest {
   contact?: string | null;
   songTitle: string;
   artist?: string | null;
+  sourceProvider?: RadioMusicProvider | null;
+  sourceTrackId?: string | null;
+  sourceSelection?: RadioMusicSelection | null;
   dedication?: string | null;
   message?: string | null;
   status: RadioSongRequestStatus;
@@ -92,10 +142,26 @@ export interface RadioSongRequest {
   reviewedBy?: RadioSimpleUser | null;
 }
 
+export interface RadioPublicSongRequest {
+  id: number;
+  scheduleItemId?: number | null;
+  nickname: string;
+  songTitle: string;
+  artist?: string | null;
+  sourceProvider?: RadioMusicProvider | null;
+  sourceTrackId?: string | null;
+  sourceSelection?: RadioMusicSelection | null;
+  status: RadioSongRequestStatus;
+  createdAt: string;
+  updatedAt: string;
+  scheduleItem?: Pick<RadioScheduleItem, "id" | "title" | "subtitle" | "requestEnabled"> | null;
+}
+
 export interface RadioOverview {
   currentSemester: RadioSemester | null;
   playTimes: RadioPlayTime[];
   scheduleItems: RadioScheduleItem[];
+  recentRequests: RadioPublicSongRequest[];
   requestSummary: {
     total: number;
     pending: number;
@@ -154,6 +220,7 @@ export interface RadioSongRequestPayload {
   contact?: string;
   songTitle: string;
   artist?: string;
+  sourceSelection?: RadioMusicSelection;
   dedication?: string;
   message?: string;
 }
@@ -166,6 +233,8 @@ export interface RadioSongRequestPatchPayload {
 
 export const radioApi = {
   overview: () => request.get<RadioOverview>("/radio/overview"),
+  searchMusic: (params: { q: string; provider?: RadioMusicSearchMode; limit?: number }) => request.get<RadioMusicSearchResponse>("/radio/music/search", params),
+  resolveMusic: (params: { provider: RadioMusicProvider; trackId: string; mediaMid?: string | null; quality?: string }) => request.get<RadioMusicResolveResponse>("/radio/music/resolve", params),
   submitRequest: (payload: RadioSongRequestPayload) => request.post<RadioSongRequest>("/radio/requests", payload),
   manageBootstrap: () => request.get<RadioManageBootstrap>("/radio/manage/bootstrap"),
   createSemester: (payload: RadioSemesterPayload) => request.post<RadioSemester>("/radio/manage/semesters", payload),
