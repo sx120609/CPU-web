@@ -177,7 +177,7 @@ export async function callQqBotAction(action: string, params: Record<string, unk
 export async function sendQqMessageByWebSocket(
   action: "send_private_msg" | "send_group_msg",
   params: Record<string, unknown>,
-  target: { qqId?: string; groupId?: string },
+  target: { qqId?: string; groupId?: string; tempGroupId?: string },
   message: string,
 ) {
   const deps = requireConnectionDeps();
@@ -190,7 +190,7 @@ export async function sendQqMessageByWebSocket(
     eventType: target.groupId ? "group-message" : "private-message",
     status: "ok",
     qqId: target.qqId,
-    groupId: target.groupId,
+    groupId: target.groupId || target.tempGroupId,
     content: message.slice(0, 1000),
     result: `queued:${echo}`,
   });

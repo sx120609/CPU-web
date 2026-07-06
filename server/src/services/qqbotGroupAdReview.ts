@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { Errors } from "../utils/response";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
+import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequest } from "./aiJsonApi";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 import { getSiteConfig } from "./siteSettings";
 
@@ -41,7 +42,6 @@ const QQ_GROUP_AD_KFC_MEME_BLOCKER_PATTERNS = [
   /兼职|刷单|返利|日结/u,
   /优惠|套餐|活动价|限时/u,
 ];
-const promptCacheKeySupport = new Map<string, boolean>();
 const localResultCache = new Map<string, { expiresAt: number; value: QqGroupAdReviewResult }>();
 
 export function shouldRunQqGroupAdReview() {
@@ -109,7 +109,7 @@ export async function reviewQqGroupMessageForAd(input: {
       }),
     },
   ];
-  const endpoint = normalizeReviewApiUrl(config.qqGroupAdReviewApiUrl);
+  const endpoint = normalizeAiJsonApiUrl(config.qqGroupAdReviewApiUrl, "https://api.deepseek.com/chat/completions");
   const candidates = resolveModelCandidates(config.qqGroupAdReviewModel, config.qqGroupAdReviewFallbackModels);
   const promptCacheKey = buildQqGroupAdPromptCacheKey({
     configHash,
@@ -132,16 +132,21 @@ export async function reviewQqGroupMessageForAd(input: {
     const logId = started?.id ?? null;
 
     let response: Response;
-    let usedPromptCacheKey = isPromptCacheKeyEnabledForEndpoint(endpoint);
+    let responseMode = detectReviewApiMode(endpoint);
+    let responseErrorText = "";
     try {
-      response = await sendQqGroupAdReviewRequest({
+      const result = await sendAiJsonRequest({
         endpoint,
         apiKey: config.qqGroupAdReviewApiKey,
         model,
+        temperature: 0.1,
         messages,
         promptCacheKey,
-        enablePromptCacheKey: usedPromptCacheKey,
+        enablePromptCacheRetention: true,
       });
+      response = result.response;
+      responseMode = result.mode;
+      responseErrorText = result.errorText;
     } catch (error) {
       const detail = describeRequestError(error);
       await finishAiReviewLogError(logId, "FETCH_ERROR", detail);
@@ -151,41 +156,14 @@ export async function reviewQqGroupMessageForAd(input: {
     }
 
     if (!response.ok) {
-      let text = await response.text().catch(() => "");
-      if (usedPromptCacheKey && shouldDisablePromptCacheKey(response.status, text)) {
-        promptCacheKeySupport.set(endpoint, false);
-        usedPromptCacheKey = false;
-        try {
-          response = await sendQqGroupAdReviewRequest({
-            endpoint,
-            apiKey: config.qqGroupAdReviewApiKey,
-            model,
-            messages,
-            promptCacheKey,
-            enablePromptCacheKey: false,
-          });
-        } catch (error) {
-          const detail = describeRequestError(error);
-          await finishAiReviewLogError(logId, "FETCH_ERROR", detail);
-          lastError = Errors.server(`QQ群广告过滤请求失败：${detail}`);
-          if (index < candidates.length - 1) continue;
-          throw lastError;
-        }
-        if (response.ok) {
-          promptCacheKeySupport.set(endpoint, false);
-        } else {
-          text = await response.text().catch(() => "");
-        }
+      const text = responseErrorText || await response.text().catch(() => "");
+      await finishAiReviewLogError(logId, `HTTP ${response.status}`, text);
+      const canFallback = index < candidates.length - 1 && shouldFallbackToNextModel(response.status, text);
+      if (canFallback) {
+        lastError = Errors.server(`QQ群广告过滤模型 ${model} 当前不可用，已自动尝试下一个备选模型`);
+        continue;
       }
-      if (!response.ok) {
-        await finishAiReviewLogError(logId, `HTTP ${response.status}`, text);
-        const canFallback = index < candidates.length - 1 && shouldFallbackToNextModel(response.status, text);
-        if (canFallback) {
-          lastError = Errors.server(`QQ群广告过滤模型 ${model} 当前不可用，已自动尝试下一个备选模型`);
-          continue;
-        }
-        throw Errors.server(`QQ群广告过滤请求失败：${response.status}${text ? ` ${text.slice(0, 120)}` : ""}`);
-      }
+      throw Errors.server(`QQ群广告过滤请求失败：${response.status}${text ? ` ${text.slice(0, 120)}` : ""}`);
     }
 
     let json: any;
@@ -197,7 +175,7 @@ export async function reviewQqGroupMessageForAd(input: {
       throw Errors.server(`QQ群广告过滤返回解析失败：${detail}`);
     }
 
-    const content = extractChatCompletionContent(json);
+    const content = extractAiJsonTextResponse(json, responseMode);
     await finishAiReviewLogSuccess(logId, typeof content === "string" ? content : JSON.stringify(content ?? {}).slice(0, 4000));
 
     const parsed = parseAdReviewResponse(content);
@@ -222,43 +200,6 @@ export async function reviewQqGroupMessageForAd(input: {
   }
 
   throw lastError || Errors.server("QQ群广告过滤请求失败");
-}
-
-async function sendQqGroupAdReviewRequest(input: {
-  endpoint: string;
-  apiKey: string;
-  model: string;
-  messages: Array<{ role: "system" | "user"; content: string }>;
-  promptCacheKey: string;
-  enablePromptCacheKey: boolean;
-}) {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${input.apiKey}`,
-  };
-  const body: Record<string, unknown> = {
-    model: input.model,
-    temperature: 0.1,
-    response_format: { type: "json_object" },
-    messages: input.messages,
-  };
-  if (input.enablePromptCacheKey) {
-    body.prompt_cache_key = input.promptCacheKey;
-  }
-  return fetch(input.endpoint, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
-}
-
-function normalizeReviewApiUrl(input: string) {
-  const raw = String(input || "").trim();
-  if (!raw) return "https://api.deepseek.com/chat/completions";
-  if (/\/chat\/completions\/?$/i.test(raw)) return raw.replace(/\/+$/, "");
-  if (/\/v1\/?$/i.test(raw)) return `${raw.replace(/\/+$/, "")}/chat/completions`;
-  if (/^https?:\/\/[^/]+$/i.test(raw)) return `${raw.replace(/\/+$/, "")}/v1/chat/completions`;
-  return raw.replace(/\/+$/, "");
 }
 
 export function detectHarmlessQqGroupAdBypassReason(input: string) {
@@ -302,26 +243,6 @@ function pruneLocalResultCache() {
       if (cached.expiresAt <= now) localResultCache.delete(key);
     }
   }
-}
-
-function isPromptCacheKeyEnabledForEndpoint(endpoint: string) {
-  return promptCacheKeySupport.get(endpoint) ?? true;
-}
-
-function shouldDisablePromptCacheKey(status: number, responseText: string) {
-  if (status !== 400 && status !== 422) return false;
-  const text = String(responseText || "").toLowerCase();
-  return (
-    text.includes("prompt_cache_key")
-    && (
-      text.includes("unknown")
-      || text.includes("unsupported")
-      || text.includes("not allowed")
-      || text.includes("extra inputs")
-      || text.includes("unrecognized")
-      || text.includes("invalid")
-    )
-  );
 }
 
 function normalizeMessageForCache(input: string) {
@@ -371,19 +292,8 @@ function describeRequestError(error: unknown) {
   return Array.from(new Set(parts)).join("；").slice(0, 500) || "网络请求失败";
 }
 
-function extractChatCompletionContent(json: any) {
-  const content = json?.choices?.[0]?.message?.content;
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((item) => {
-        if (typeof item?.text === "string") return item.text;
-        if (typeof item?.content === "string") return item.content;
-        return "";
-      })
-      .join("\n");
-  }
-  return "";
+function detectReviewApiMode(endpoint: string) {
+  return /\/responses\/?$/i.test(endpoint) ? "responses" as const : "chat_completions" as const;
 }
 
 function parseAdReviewResponse(content: unknown): QqGroupAdResponse {

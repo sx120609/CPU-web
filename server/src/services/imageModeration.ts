@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { readFile, rm } from "node:fs/promises";
 import { prisma } from "../prisma";
 import { runWithDistributedLock } from "./cache";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
+import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequest } from "./aiJsonApi";
 import { prepareMediaLocalFileForProcessing, resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 import { getSiteConfig } from "./siteSettings";
@@ -971,8 +973,12 @@ async function requestImageReview(input: {
   dataUrl: string;
 }): Promise<ImageReviewDecision> {
   const config = getSiteConfig();
-  const endpoint = normalizeImageReviewApiUrl(config.imageReviewApiUrl);
+  const endpoint = normalizeAiJsonApiUrl(config.imageReviewApiUrl, "https://api.openai.com/v1/chat/completions");
   const candidates = resolveModelCandidates(config.imageReviewModel, config.imageReviewFallbackModels);
+  const promptCacheKey = buildImageReviewPromptCacheKey({
+    configHash: buildImageReviewConfigHash(config),
+    batchSize: 1,
+  });
   let lastError: Error | null = null;
   for (let index = 0; index < candidates.length; index += 1) {
     const model = candidates[index];
@@ -986,43 +992,40 @@ async function requestImageReview(input: {
       requestSummary: `${input.mimeType}\n${input.url}`,
     });
     const logId = started?.id ?? null;
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.imageReviewApiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.1,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: config.imageReviewSystemPrompt },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: renderPromptTemplate(config.imageReviewUserPrompt, {
-                  imageUrl: input.url,
-                  mimeType: input.mimeType,
-                  fileName: path.basename(input.localPath),
-                }),
+    const requestResult = await sendAiJsonRequest({
+      endpoint,
+      apiKey: config.imageReviewApiKey,
+      model,
+      temperature: 0.1,
+      promptCacheKey,
+      enablePromptCacheRetention: true,
+      messages: [
+        { role: "system", content: config.imageReviewSystemPrompt },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: renderPromptTemplate(config.imageReviewUserPrompt, {
+                imageUrl: input.url,
+                mimeType: input.mimeType,
+                fileName: path.basename(input.localPath),
+              }),
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: input.dataUrl,
+                detail: "low",
               },
-              {
-                type: "image_url",
-                image_url: {
-                  url: input.dataUrl,
-                  detail: "low",
-                },
-              },
-            ],
-          },
-        ],
-      }),
+            },
+          ],
+        },
+      ],
     });
+    const response = requestResult.response;
     if (!response.ok) {
-      const text = await response.text().catch(() => "");
+      const text = requestResult.errorText || await response.text().catch(() => "");
       const providerBlock = extractProviderContentPolicyBlock(text);
       if (providerBlock) {
         const decision = {
@@ -1059,7 +1062,7 @@ async function requestImageReview(input: {
       throw new Error(`图片审核请求失败：${response.status}${text ? ` ${text.slice(0, 200)}` : ""}`);
     }
     const json: any = await response.json();
-    const content = extractChatCompletionContent(json);
+    const content = extractAiJsonTextResponse(json, requestResult.mode);
     await finishAiReviewLogSuccess(logId, content);
     return buildImageReviewDecision(parseImageReviewJson(content), config.imageReviewThreshold, model, endpoint);
   }
@@ -1068,7 +1071,7 @@ async function requestImageReview(input: {
 
 async function requestImageReviewBatch(inputs: PreparedImageReviewInput[]): Promise<ImageReviewDecision[]> {
   const config = getSiteConfig();
-  const endpoint = normalizeImageReviewApiUrl(config.imageReviewApiUrl);
+  const endpoint = normalizeAiJsonApiUrl(config.imageReviewApiUrl, "https://api.openai.com/v1/chat/completions");
   const requestSummary = inputs
     .map((item, index) => `${index + 1}. ${item.mimeType} ${item.asset.url}`)
     .join("\n")
@@ -1087,6 +1090,10 @@ async function requestImageReviewBatch(inputs: PreparedImageReviewInput[]): Prom
     })),
   ];
   const candidates = resolveModelCandidates(config.imageReviewModel, config.imageReviewFallbackModels);
+  const promptCacheKey = buildImageReviewPromptCacheKey({
+    configHash: buildImageReviewConfigHash(config),
+    batchSize: inputs.length,
+  });
   let lastError: Error | null = null;
   for (let index = 0; index < candidates.length; index += 1) {
     const model = candidates[index];
@@ -1100,24 +1107,21 @@ async function requestImageReviewBatch(inputs: PreparedImageReviewInput[]): Prom
       requestSummary,
     });
     const logId = started?.id ?? null;
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.imageReviewApiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.1,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: config.imageReviewSystemPrompt },
-          { role: "user", content: contentItems },
-        ],
-      }),
+    const requestResult = await sendAiJsonRequest({
+      endpoint,
+      apiKey: config.imageReviewApiKey,
+      model,
+      temperature: 0.1,
+      promptCacheKey,
+      enablePromptCacheRetention: true,
+      messages: [
+        { role: "system", content: config.imageReviewSystemPrompt },
+        { role: "user", content: contentItems },
+      ],
     });
+    const response = requestResult.response;
     if (!response.ok) {
-      const text = await response.text().catch(() => "");
+      const text = requestResult.errorText || await response.text().catch(() => "");
       await finishAiReviewLogError(logId, `HTTP ${response.status}`, text);
       if (index < candidates.length - 1 && shouldFallbackToNextModel(response.status, text)) {
         lastError = new Error(`批量图片审核模型 ${model} 当前不可用，已自动切换备选模型`);
@@ -1126,36 +1130,12 @@ async function requestImageReviewBatch(inputs: PreparedImageReviewInput[]): Prom
       throw new Error(`批量图片审核请求失败：${response.status}${text ? ` ${text.slice(0, 200)}` : ""}`);
     }
     const json: any = await response.json();
-    const content = extractChatCompletionContent(json);
+    const content = extractAiJsonTextResponse(json, requestResult.mode);
     await finishAiReviewLogSuccess(logId, content);
     return parseImageReviewBatchJson(content, inputs.length)
       .map((item) => buildImageReviewDecision(item, config.imageReviewThreshold, model, endpoint));
   }
   throw lastError || new Error("批量图片审核请求失败");
-}
-
-function normalizeImageReviewApiUrl(input: string) {
-  const raw = String(input || "").trim();
-  if (!raw) return "https://api.openai.com/v1/chat/completions";
-  if (/\/chat\/completions\/?$/i.test(raw)) return raw.replace(/\/+$/, "");
-  if (/\/v1\/?$/i.test(raw)) return `${raw.replace(/\/+$/, "")}/chat/completions`;
-  if (/^https?:\/\/[^/]+$/i.test(raw)) return `${raw.replace(/\/+$/, "")}/v1/chat/completions`;
-  return raw.replace(/\/+$/, "");
-}
-
-function extractChatCompletionContent(json: any) {
-  const content = json?.choices?.[0]?.message?.content;
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((item) => {
-        if (typeof item?.text === "string") return item.text;
-        if (typeof item?.content === "string") return item.content;
-        return "";
-      })
-      .join("\n");
-  }
-  return "";
 }
 
 function parseImageReviewJson(content: string): ParsedImageReviewJson {
@@ -1346,4 +1326,26 @@ function buildBatchImageReviewPrompt(inputs: PreparedImageReviewInput[], promptT
     "",
     ...perImageInstructions,
   ].join("\n\n");
+}
+
+function buildImageReviewConfigHash(config: ReturnType<typeof getSiteConfig>) {
+  return hashString([
+    config.imageReviewApiUrl,
+    config.imageReviewModel,
+    config.imageReviewFallbackModels,
+    config.imageReviewThreshold,
+    config.imageReviewSystemPrompt,
+    config.imageReviewUserPrompt,
+  ].join("\n"));
+}
+
+function buildImageReviewPromptCacheKey(input: {
+  configHash: string;
+  batchSize: number;
+}) {
+  return `image-review:${hashString(`${input.configHash}\n${input.batchSize}`)}`;
+}
+
+function hashString(input: string) {
+  return createHash("sha256").update(input).digest("hex").slice(0, 24);
 }

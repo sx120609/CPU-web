@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto";
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
+import { type AiJsonMessage, extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequest } from "./aiJsonApi";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 import { getSiteConfig } from "./siteSettings";
 
@@ -98,11 +100,6 @@ export function shouldRunAiReview() {
   return Boolean(config.aiReviewEnabled && config.aiReviewApiKey.trim());
 }
 
-type AiJsonMessage = {
-  role: "system" | "user";
-  content: string;
-};
-
 type AiReviewLogContext = {
   kind: "topic" | "reply" | "topic-edit";
   targetId?: number | null;
@@ -110,21 +107,33 @@ type AiReviewLogContext = {
   createdById?: number | null;
 };
 
-export async function requestAiJson(messages: AiJsonMessage[], logContext?: AiReviewLogContext) {
+type AiJsonRequestOptions = {
+  logContext?: AiReviewLogContext;
+  promptCacheScope?: string;
+};
+
+export async function requestAiJson(messages: AiJsonMessage[], options?: AiJsonRequestOptions) {
   const config = getSiteConfig();
-  const endpoint = normalizeTextReviewApiUrl(config.aiReviewApiUrl);
-  const userPrompt = messages.filter((item) => item.role === "user").map((item) => item.content).join("\n\n");
+  const endpoint = normalizeAiJsonApiUrl(config.aiReviewApiUrl, DEFAULT_REVIEW_API_URL);
+  const userPrompt = messages
+    .filter((item) => item.role === "user")
+    .map((item) => summarizeAiJsonMessageContent(item.content))
+    .join("\n\n");
   const candidates = resolveModelCandidates(config.aiReviewModel, config.aiReviewFallbackModels);
+  const promptCacheKey = buildAiReviewPromptCacheKey({
+    configHash: buildAiReviewConfigHash(config),
+    scope: options?.promptCacheScope || options?.logContext?.kind || "generic",
+  });
   let lastError: Error | null = null;
   for (let index = 0; index < candidates.length; index += 1) {
     const model = candidates[index];
     let logId: number | null = null;
-    if (logContext) {
+    if (options?.logContext) {
       const started = await startAiReviewLog({
-        kind: logContext.kind,
-        targetId: logContext.targetId ?? null,
-        targetLabel: logContext.targetLabel ?? null,
-        createdById: logContext.createdById ?? null,
+        kind: options.logContext.kind,
+        targetId: options.logContext.targetId ?? null,
+        targetLabel: options.logContext.targetLabel ?? null,
+        createdById: options.logContext.createdById ?? null,
         provider: config.aiReviewProvider,
         model,
         endpoint,
@@ -133,20 +142,21 @@ export async function requestAiJson(messages: AiJsonMessage[], logContext?: AiRe
       logId = started?.id ?? null;
     }
     let response: Response;
+    let responseMode = detectTextReviewApiMode(endpoint);
+    let responseErrorText = "";
     try {
-      response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${config.aiReviewApiKey}`,
-        },
-        body: JSON.stringify({
-          model,
-          temperature: 0.1,
-          response_format: { type: "json_object" },
-          messages,
-        }),
+      const result = await sendAiJsonRequest({
+        endpoint,
+        apiKey: config.aiReviewApiKey,
+        model,
+        temperature: 0.1,
+        messages,
+        promptCacheKey,
+        enablePromptCacheRetention: true,
       });
+      response = result.response;
+      responseMode = result.mode;
+      responseErrorText = result.errorText;
     } catch (error) {
       const detail = describeAiRequestError(error);
       await finishAiReviewLogError(logId, "FETCH_ERROR", detail);
@@ -155,7 +165,7 @@ export async function requestAiJson(messages: AiJsonMessage[], logContext?: AiRe
       throw lastError;
     }
     if (!response.ok) {
-      const text = await response.text().catch(() => "");
+      const text = responseErrorText || await response.text().catch(() => "");
       await finishAiReviewLogError(logId, `HTTP ${response.status}`, text);
       const canFallback = index < candidates.length - 1 && shouldFallbackToNextModel(response.status, text);
       if (canFallback) {
@@ -172,20 +182,11 @@ export async function requestAiJson(messages: AiJsonMessage[], logContext?: AiRe
       await finishAiReviewLogError(logId, "INVALID_JSON", detail);
       throw Errors.server(`AI 审核返回解析失败：${detail}`);
     }
-    const content = extractChatCompletionContent(json);
+    const content = extractAiJsonTextResponse(json, responseMode);
     await finishAiReviewLogSuccess(logId, typeof content === "string" ? content : JSON.stringify(content ?? {}).slice(0, 4000));
     return { content, model };
   }
   throw lastError || Errors.server("AI 审核请求失败");
-}
-
-function normalizeTextReviewApiUrl(input: string) {
-  const raw = String(input || "").trim();
-  if (!raw) return DEFAULT_REVIEW_API_URL;
-  if (/\/chat\/completions\/?$/i.test(raw)) return raw.replace(/\/+$/, "");
-  if (/\/v1\/?$/i.test(raw)) return `${raw.replace(/\/+$/, "")}/chat/completions`;
-  if (/^https?:\/\/[^/]+$/i.test(raw)) return `${raw.replace(/\/+$/, "")}/v1/chat/completions`;
-  return raw.replace(/\/+$/, "");
 }
 
 function describeAiRequestError(error: unknown) {
@@ -221,20 +222,6 @@ function buildAiReviewUnavailableResult(
   };
 }
 
-function extractChatCompletionContent(json: any) {
-  const content = json?.choices?.[0]?.message?.content;
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((item) => {
-        if (typeof item?.text === "string") return item.text;
-        if (typeof item?.content === "string") return item.content;
-        return "";
-      })
-      .join("\n");
-  }
-  return "";
-}
 
 export async function reviewTopicContent(input: {
   title: string;
@@ -274,8 +261,11 @@ export async function reviewTopicContent(input: {
         }),
       },
     ], {
-      kind: "topic",
-      targetLabel: input.title,
+      logContext: {
+        kind: "topic",
+        targetLabel: input.title,
+      },
+      promptCacheScope: "topic-review",
     });
     content = result.content;
     model = result.model;
@@ -344,8 +334,11 @@ export async function reviewReplyContent(input: {
         }),
       },
     ], {
-      kind: "reply",
-      targetLabel: input.topicTitle || input.content.slice(0, 60),
+      logContext: {
+        kind: "reply",
+        targetLabel: input.topicTitle || input.content.slice(0, 60),
+      },
+      promptCacheScope: "reply-review",
     });
     content = result.content;
     model = result.model;
@@ -410,8 +403,11 @@ export async function evaluateTopicEditSimilarity(input: {
       }),
     },
   ], {
-    kind: "topic-edit",
-    targetLabel: input.updatedTitle || input.originalTitle,
+    logContext: {
+      kind: "topic-edit",
+      targetLabel: input.updatedTitle || input.originalTitle,
+    },
+    promptCacheScope: "edit-similarity",
   });
   const parsed = parseEditSimilarityJson(content);
   return {
@@ -536,7 +532,9 @@ export async function generateTopicAiTags(input: {
         `补充 metadata：${JSON.stringify(input.metadata ?? {})}`,
       ].join("\n"),
     },
-  ]);
+  ], {
+    promptCacheScope: "topic-tags",
+  });
   const parsed = parseTagJson(content);
   const allowed = new Set<string>(AI_TOPIC_LABEL_VOCAB);
   const cleaned = Array.from(new Set((parsed.tags ?? []).map((tag) => String(tag).trim()).filter((tag) => allowed.has(tag))));
@@ -631,6 +629,43 @@ function fallbackReason(level: TopicAiRiskLevel) {
   if (level === "high") return "检测到较高风险内容";
   if (level === "medium") return "内容存在一定风险，需要人工复核";
   return "风险较低";
+}
+
+function buildAiReviewConfigHash(config: ReturnType<typeof getSiteConfig>) {
+  return hashString([
+    config.aiReviewProvider,
+    config.aiReviewApiUrl,
+    config.aiReviewModel,
+    config.aiReviewFallbackModels,
+    config.aiTopicReviewSystemPrompt,
+    config.aiTopicReviewUserPrompt,
+    config.aiReplyReviewSystemPrompt,
+    config.aiReplyReviewUserPrompt,
+    config.aiEditSimilaritySystemPrompt,
+    config.aiEditSimilarityUserPrompt,
+  ].join("\n"));
+}
+
+function buildAiReviewPromptCacheKey(input: {
+  configHash: string;
+  scope: string;
+}) {
+  return `ai-review:${hashString(`${input.configHash}\n${input.scope}`)}`;
+}
+
+function hashString(input: string) {
+  return createHash("sha256").update(input).digest("hex").slice(0, 24);
+}
+
+function summarizeAiJsonMessageContent(content: AiJsonMessage["content"]) {
+  if (typeof content === "string") return content;
+  return content
+    .map((item) => item.type === "text" ? item.text : "[image]")
+    .join("\n");
+}
+
+function detectTextReviewApiMode(endpoint: string) {
+  return /\/responses\/?$/i.test(endpoint) ? "responses" as const : "chat_completions" as const;
 }
 
 export async function requestManualTopicReview(topicId: number, userId: number) {

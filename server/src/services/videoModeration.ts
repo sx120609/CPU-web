@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { execFile as execFileCallback } from "node:child_process";
@@ -5,6 +6,7 @@ import { promisify } from "node:util";
 import { prisma } from "../prisma";
 import { runWithDistributedLock } from "./cache";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
+import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequest } from "./aiJsonApi";
 import { prepareMediaLocalFileForProcessing, resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 import { DEFAULT_VIDEO_REVIEW_PROMPTS, getSiteConfig } from "./siteSettings";
@@ -694,9 +696,13 @@ async function applyVideoReviewDecision(input: PreparedVideoReviewInput, decisio
 
 async function requestVideoReview(input: PreparedVideoReviewInput): Promise<VideoReviewDecision> {
   const config = getSiteConfig();
-  const endpoint = normalizeChatCompletionsUrl(config.videoReviewApiUrl);
+  const endpoint = normalizeAiJsonApiUrl(config.videoReviewApiUrl, "https://api.openai.com/v1/chat/completions");
   const requestSummary = buildVideoReviewTextPrompt(input).slice(0, 4000);
   const candidates = resolveModelCandidates(config.videoReviewModel, config.videoReviewFallbackModels);
+  const promptCacheKey = buildVideoReviewPromptCacheKey({
+    configHash: buildVideoReviewConfigHash(config),
+    frameCount: input.frames.length,
+  });
   let lastError: Error | null = null;
   for (let index = 0; index < candidates.length; index += 1) {
     const model = candidates[index];
@@ -710,39 +716,36 @@ async function requestVideoReview(input: PreparedVideoReviewInput): Promise<Vide
       requestSummary,
     });
     const logId = started?.id ?? null;
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.videoReviewApiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.1,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: config.videoReviewSystemPrompt || DEFAULT_VIDEO_REVIEW_PROMPTS.system },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: buildVideoReviewTextPrompt(input),
+    const requestResult = await sendAiJsonRequest({
+      endpoint,
+      apiKey: config.videoReviewApiKey,
+      model,
+      temperature: 0.1,
+      promptCacheKey,
+      enablePromptCacheRetention: true,
+      messages: [
+        { role: "system", content: config.videoReviewSystemPrompt || DEFAULT_VIDEO_REVIEW_PROMPTS.system },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: buildVideoReviewTextPrompt(input),
+            },
+            ...input.frames.map((frame) => ({
+              type: "image_url" as const,
+              image_url: {
+                url: frame.dataUrl,
+                detail: "low" as const,
               },
-              ...input.frames.map((frame) => ({
-                type: "image_url" as const,
-                image_url: {
-                  url: frame.dataUrl,
-                  detail: "low" as const,
-                },
-              })),
-            ],
-          },
-        ],
-      }),
+            })),
+          ],
+        },
+      ],
     });
+    const response = requestResult.response;
     if (!response.ok) {
-      const text = await response.text().catch(() => "");
+      const text = requestResult.errorText || await response.text().catch(() => "");
       const providerBlock = extractProviderContentPolicyBlock(text);
       if (providerBlock) {
         const decision = {
@@ -780,7 +783,7 @@ async function requestVideoReview(input: PreparedVideoReviewInput): Promise<Vide
       throw new Error(`视频审核请求失败：${response.status}${text ? ` ${text.slice(0, 200)}` : ""}`);
     }
     const json: any = await response.json();
-    const content = extractChatCompletionContent(json);
+    const content = extractAiJsonTextResponse(json, requestResult.mode);
     await finishAiReviewLogSuccess(logId, content);
     return buildVideoReviewDecision(parseVideoReviewJson(content), config.videoReviewThreshold, model, endpoint);
   }
@@ -974,6 +977,28 @@ function buildVideoReviewTextPrompt(input: PreparedVideoReviewInput) {
     contextText: input.context.contextText || "无",
     transcript: input.transcript || "无可用转写",
   });
+}
+
+function buildVideoReviewConfigHash(config: ReturnType<typeof getSiteConfig>) {
+  return hashString([
+    config.videoReviewApiUrl,
+    config.videoReviewModel,
+    config.videoReviewFallbackModels,
+    config.videoReviewThreshold,
+    config.videoReviewSystemPrompt || DEFAULT_VIDEO_REVIEW_PROMPTS.system,
+    config.videoReviewUserPrompt || DEFAULT_VIDEO_REVIEW_PROMPTS.user,
+  ].join("\n"));
+}
+
+function buildVideoReviewPromptCacheKey(input: {
+  configHash: string;
+  frameCount: number;
+}) {
+  return `video-review:${hashString(`${input.configHash}\n${input.frameCount}`)}`;
+}
+
+function hashString(input: string) {
+  return createHash("sha256").update(input).digest("hex").slice(0, 24);
 }
 
 function buildVideoReviewDecision(
@@ -1300,32 +1325,9 @@ function escapeHtmlAttribute(input: string) {
   return escapeHtml(input);
 }
 
-function normalizeChatCompletionsUrl(input: string) {
-  const raw = String(input || "").trim();
-  if (!raw) return "https://api.openai.com/v1/chat/completions";
-  if (/\/chat\/completions\/?$/i.test(raw)) return raw.replace(/\/+$/, "");
-  if (/\/v1\/?$/i.test(raw)) return `${raw.replace(/\/+$/, "")}/chat/completions`;
-  if (/^https?:\/\/[^/]+$/i.test(raw)) return `${raw.replace(/\/+$/, "")}/v1/chat/completions`;
-  return raw.replace(/\/+$/, "");
-}
-
 function normalizeTranscriptionsUrl(input: string) {
-  return normalizeChatCompletionsUrl(input).replace(/\/chat\/completions$/i, "/audio/transcriptions");
-}
-
-function extractChatCompletionContent(json: any) {
-  const content = json?.choices?.[0]?.message?.content;
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((item) => {
-        if (typeof item?.text === "string") return item.text;
-        if (typeof item?.content === "string") return item.content;
-        return "";
-      })
-      .join("\n");
-  }
-  return "";
+  return normalizeAiJsonApiUrl(input, "https://api.openai.com/v1/chat/completions")
+    .replace(/\/(?:chat\/completions|responses)$/i, "/audio/transcriptions");
 }
 
 function parseVideoReviewJson(content: string): ParsedVideoReviewJson {

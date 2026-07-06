@@ -56,7 +56,7 @@
         </div>
         <div class="ai-row ai-row--stretch">
           <span class="ai-label">文字审核 API 地址</span>
-          <el-input v-model="form.aiReviewApiUrl" maxlength="240" placeholder="https://api.openai.com/v1/chat/completions" />
+          <el-input v-model="form.aiReviewApiUrl" maxlength="240" placeholder="支持 /v1/chat/completions 或 /v1/responses" />
         </div>
         <div class="ai-row ai-row--stretch">
           <span class="ai-label">模型备选</span>
@@ -151,7 +151,7 @@
         </div>
         <div class="ai-row ai-row--stretch">
           <span class="ai-label">广告过滤 API 地址</span>
-          <el-input v-model="form.qqGroupAdReviewApiUrl" maxlength="240" placeholder="https://api.openai.com/v1/chat/completions" />
+          <el-input v-model="form.qqGroupAdReviewApiUrl" maxlength="240" placeholder="支持 /v1/chat/completions 或 /v1/responses" />
         </div>
         <div class="ai-row ai-row--stretch">
           <span class="ai-label">API Key</span>
@@ -215,7 +215,7 @@
         </div>
         <div class="ai-row ai-row--stretch">
           <span class="ai-label">图片审核 API 地址</span>
-          <el-input v-model="form.imageReviewApiUrl" maxlength="240" placeholder="https://api.openai.com/v1/chat/completions" />
+          <el-input v-model="form.imageReviewApiUrl" maxlength="240" placeholder="支持 /v1/chat/completions 或 /v1/responses" />
         </div>
         <div class="ai-row ai-row--stretch">
           <span class="ai-label">图片审核 API Key</span>
@@ -289,7 +289,7 @@
         </div>
         <div class="ai-row ai-row--stretch">
           <span class="ai-label">视频审核 API 地址</span>
-          <el-input v-model="form.videoReviewApiUrl" maxlength="240" placeholder="https://api.openai.com/v1/chat/completions" />
+          <el-input v-model="form.videoReviewApiUrl" maxlength="240" placeholder="支持 /v1/chat/completions 或 /v1/responses" />
         </div>
         <div class="ai-row ai-row--stretch">
           <span class="ai-label">视频审核 API Key</span>

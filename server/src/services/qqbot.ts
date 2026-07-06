@@ -187,6 +187,12 @@ type QqBotDoubtFriendRequest = {
   flag?: string | number;
 };
 
+type QqMessageTarget = {
+  qqId?: string;
+  groupId?: string;
+  tempGroupId?: string;
+};
+
 const qqBotCooldowns = new Map<string, { cancelledAt?: number }>();
 
 const CONFIG_ID = 1;
@@ -895,7 +901,7 @@ async function handleQqBotGroupMemberIncrease(
     return { ignored: true };
   }
   try {
-    await sendQqMessage({ qqId: target.qqId }, message);
+    await sendQqMessage({ qqId: target.qqId, tempGroupId: target.groupId }, message);
     await logQqBotMessage({
       direction: "inbound",
       eventType: "group-member-welcome",
@@ -2265,7 +2271,7 @@ async function createTopicFromQq(input: {
   return { ...topic, board };
 }
 
-export async function sendQqMessage(target: { qqId?: string; groupId?: string }, message: string) {
+export async function sendQqMessage(target: QqMessageTarget, message: string) {
   const chunks = splitQqMessageForDelivery(message);
   for (let index = 0; index < chunks.length; index += 1) {
     const chunk = chunks[index];
@@ -2274,13 +2280,17 @@ export async function sendQqMessage(target: { qqId?: string; groupId?: string },
   }
 }
 
-async function sendSingleQqMessage(target: { qqId?: string; groupId?: string }, message: string) {
+async function sendSingleQqMessage(target: QqMessageTarget, message: string) {
   const config = await getQqBotConfigRaw();
   if (!config.enabled || !config.napcatBaseUrl) throw Errors.badRequest("QQBot 未启用或 NapCat 地址未配置");
   const endpoint = target.groupId ? "send_group_msg" : "send_private_msg";
   const body = target.groupId
-    ? { group_id: Number(target.groupId), message }
-    : { user_id: Number(target.qqId), message };
+    ? { group_id: Number(target.groupId) || target.groupId, message }
+    : {
+      user_id: Number(target.qqId) || target.qqId,
+      message,
+      ...(target.tempGroupId ? { group_id: Number(target.tempGroupId) || target.tempGroupId } : {}),
+    };
   if (isWebSocketUrl(config.napcatBaseUrl)) {
     try {
       await sendQqMessageByWebSocket(endpoint, body, target, message);
@@ -2290,7 +2300,7 @@ async function sendSingleQqMessage(target: { qqId?: string; groupId?: string }, 
         eventType: target.groupId ? "group-message" : "private-message",
         status: "error",
         qqId: target.qqId,
-        groupId: target.groupId,
+        groupId: target.groupId || target.tempGroupId,
         content: message.slice(0, 1000),
         result: String(error?.message || error || "NapCat WebSocket 发送失败").slice(0, 500),
       });
@@ -2312,7 +2322,7 @@ async function sendSingleQqMessage(target: { qqId?: string; groupId?: string }, 
     eventType: target.groupId ? "group-message" : "private-message",
     status: response.ok ? "ok" : "error",
     qqId: target.qqId,
-    groupId: target.groupId,
+    groupId: target.groupId || target.tempGroupId,
     content: message.slice(0, 1000),
     result: text.slice(0, 500),
   });
@@ -2323,7 +2333,7 @@ async function replyToEvent(context: { event: OneBotEvent; qqId: string; groupId
   if (context.event.message_type === "group" && context.groupId) {
     await sendQqMessage({ groupId: context.groupId }, message);
   } else {
-    await sendQqMessage({ qqId: context.qqId }, message);
+    await sendQqMessage({ qqId: context.qqId, tempGroupId: context.groupId }, message);
   }
 }
 
@@ -2333,7 +2343,7 @@ async function replyToPrivateForPosting(
   groupHint = "已收到，请查看私信完成投稿。",
 ) {
   try {
-    await sendQqMessage({ qqId: context.qqId }, message);
+    await sendQqMessage({ qqId: context.qqId, tempGroupId: context.groupId }, message);
   } catch {
     if (context.event.message_type === "group" && context.groupId) {
       await sendQqMessage(
@@ -2495,7 +2505,7 @@ export async function dispatchRecentQqNotifications() {
 }
 
 async function sendNotificationMessage(
-  target: { qqId?: string; groupId?: string },
+  target: QqMessageTarget,
   notification: any,
   userId: number | null,
   options?: { command?: string },
