@@ -24,6 +24,23 @@ export type QqGroupAdReviewResult = {
 };
 
 const QQ_GROUP_AD_REVIEW_RESULT_CACHE_TTL_MS = 10 * 60_000;
+const QQ_GROUP_AD_KFC_MEME_PATTERNS = [
+  /疯狂星期四/u,
+  /[vV]\s*我\s*(?:50|五十)/u,
+  /肯德基|kfc/iu,
+];
+const QQ_GROUP_AD_KFC_MEME_BLOCKER_PATTERNS = [
+  /https?:\/\//iu,
+  /www\./iu,
+  /二维码|扫码/u,
+  /加群|进群|拉群|群号/u,
+  /加微|微信|v信|vx\b/iu,
+  /联系我|私聊我|加我/u,
+  /下单|购买|出售|代购|办理/u,
+  /代理|招代理|推广|合作/u,
+  /兼职|刷单|返利|日结/u,
+  /优惠|套餐|活动价|限时/u,
+];
 const promptCacheKeySupport = new Map<string, boolean>();
 const localResultCache = new Map<string, { expiresAt: number; value: QqGroupAdReviewResult }>();
 
@@ -49,6 +66,19 @@ export async function reviewQqGroupMessageForAd(input: {
       reason: "QQ群广告过滤未开启",
       detail: "",
       model: config.qqGroupAdReviewModel,
+      modelDecision: "auto_pass",
+    };
+  }
+
+  const localBypassReason = detectHarmlessQqGroupAdBypassReason(input.content);
+  if (localBypassReason) {
+    return {
+      action: "allow",
+      riskScore: 0,
+      riskLevel: "low",
+      reason: localBypassReason,
+      detail: "命中本地玩梗误判豁免，未见真实导流、交易或招募信号。",
+      model: "local-bypass",
       modelDecision: "auto_pass",
     };
   }
@@ -229,6 +259,18 @@ function normalizeReviewApiUrl(input: string) {
   if (/\/v1\/?$/i.test(raw)) return `${raw.replace(/\/+$/, "")}/chat/completions`;
   if (/^https?:\/\/[^/]+$/i.test(raw)) return `${raw.replace(/\/+$/, "")}/v1/chat/completions`;
   return raw.replace(/\/+$/, "");
+}
+
+export function detectHarmlessQqGroupAdBypassReason(input: string) {
+  const content = normalizeMessageForCache(input);
+  if (!content) return null;
+  const normalized = content.toLowerCase();
+  const memeSignalCount = QQ_GROUP_AD_KFC_MEME_PATTERNS.reduce((count, pattern) => (
+    pattern.test(content) ? count + 1 : count
+  ), 0);
+  if (memeSignalCount < 2) return null;
+  if (QQ_GROUP_AD_KFC_MEME_BLOCKER_PATTERNS.some((pattern) => pattern.test(normalized))) return null;
+  return "命中疯狂星期四等玩梗文案豁免";
 }
 
 function fillPromptTemplate(template: string, values: Record<string, string>) {
