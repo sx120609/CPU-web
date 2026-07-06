@@ -35,8 +35,6 @@ const QQ_GROUP_AD_KFC_MEME_BLOCKER_PATTERNS = [
   /www\./iu,
   /二维码|扫码/u,
   /加群|进群|拉群|群号/u,
-  /加微|微信|v信|vx\b/iu,
-  /联系我|私聊我|加我/u,
   /下单|购买|出售|代购|办理/u,
   /代理|招代理|推广|合作/u,
   /兼职|刷单|返利|日结/u,
@@ -77,7 +75,7 @@ export async function reviewQqGroupMessageForAd(input: {
       riskScore: 0,
       riskLevel: "low",
       reason: localBypassReason,
-      detail: "命中本地玩梗误判豁免，未见真实导流、交易或招募信号。",
+      detail: "命中本地玩梗误判豁免，未见真实卖货、拉群、招募、二维码或链接导流信号。",
       model: "local-bypass",
       modelDecision: "auto_pass",
     };
