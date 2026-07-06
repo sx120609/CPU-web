@@ -16,6 +16,10 @@ export async function invalidateServiceCaches() {
   await bumpMany(["services", "home", "search"]);
 }
 
+export async function invalidateRadioCaches() {
+  await bumpMany(["radio"]);
+}
+
 export async function invalidateForumCaches(options?: {
   includeBoards?: boolean;
   includeCourses?: boolean;

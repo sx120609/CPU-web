@@ -1,6 +1,6 @@
 import { request, type RequestOptions } from "./request";
 
-export type ServiceToolCode = "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools";
+export type ServiceToolCode = "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "radio_beta";
 export type QuestionnaireStatus = "draft" | "open" | "closed";
 export type QuestionnaireVisibility = "public" | "login";
 export type QuestionnaireFieldType = "text" | "textarea" | "single" | "multiple" | "number" | "date" | "rating";

@@ -12,7 +12,7 @@ export interface ServiceTool {
   status: ServiceToolStatus;
   category: string;
   routeName: string;
-  componentKey: "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools";
+  componentKey: "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "radio_beta";
   accent: string;
   iconComponent: Component;
 }
@@ -82,6 +82,19 @@ export const serviceTools: ServiceTool[] = [
     componentKey: "pdf_tools",
     accent: "#0f766e",
     iconComponent: Document,
+  },
+  {
+    slug: "radio_beta",
+    name: "药苑之声 beta",
+    summary: "先把药苑之声的节目时段、栏目编排和点歌留言收进来",
+    description: "第一期先承接药苑之声的播出时段、节目安排和点歌留言，后续再逐步补齐投票、通知和更多站务工作流。",
+    icon: "📻",
+    status: "ready",
+    category: "校园文化",
+    routeName: "service-tool-detail",
+    componentKey: "radio_beta",
+    accent: "#a6362a",
+    iconComponent: ChatDotRound,
   },
 ];
 

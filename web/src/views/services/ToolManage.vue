@@ -1333,8 +1333,12 @@ async function init() {
       await router.replace({ name: "service-filestore" });
       return;
     }
-    manageableCodes.value = availableCodes.filter((code) => code !== "file_collect");
-    adminCodes.value = (perms.adminToolCodes ?? []).filter((code) => code !== "file_collect");
+    if (availableCodes.includes("radio_beta") && availableCodes.length === 1) {
+      await router.replace({ name: "service-radio-beta", query: { manage: "1" } });
+      return;
+    }
+    manageableCodes.value = availableCodes.filter((code) => code !== "file_collect" && code !== "radio_beta");
+    adminCodes.value = (perms.adminToolCodes ?? []).filter((code) => code !== "file_collect" && code !== "radio_beta");
     activeTool.value = pickInitialTool();
     if (manageableCodes.value.length) {
       await syncActiveToolQuery();
