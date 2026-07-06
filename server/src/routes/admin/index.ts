@@ -92,7 +92,7 @@ import {
   runWeiwallSyncNow,
   updateWeiwallSyncConfig,
 } from "../../services/weiwallSync";
-import { listAdminDailyLoginSeries } from "../../services/adminStats";
+import { getChinaDayRange, listAdminDailyLoginSeries } from "../../services/adminStats";
 
 export const adminRouter = Router();
 const DATABASE_RESTORE_UPLOAD_DIR = path.join(tmpdir(), "cpu-web-db-restore-upload");
@@ -1540,8 +1540,7 @@ adminRouter.get("/sponsor-logs", adminOnly, async (req, res, next) => {
 
 adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
   try {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    const { start: todayStart, end: todayEnd } = getChinaDayRange();
     const regularUserWhere = { role: "user" as const };
 
     const [
@@ -1568,17 +1567,23 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       prisma.topic.count({ where: { hidden: true } }),
       prisma.reply.count({ where: { hidden: false } }),
       prisma.topic.count({
-        where: { createdAt: { gte: todayStart }, hidden: false },
+        where: { createdAt: { gte: todayStart, lt: todayEnd }, hidden: false },
       }),
       prisma.schoolFeedSource.count({ where: { enabled: true } }),
       prisma.board.count(),
       prisma.user.count({ where: { usedIosClient: true } }),
       prisma.user.count({ where: { usedAndroidClient: true } }),
       prisma.user.count({ where: { usedHarmonyClient: true } }),
-      prisma.user.count({ where: { lastLoginAt: { gte: todayStart } } }),
+      prisma.user.count({ where: { lastLoginAt: { gte: todayStart, lt: todayEnd } } }),
       prisma.user.count({ where: regularUserWhere }),
       prisma.user.count({ where: { ...regularUserWhere, forumEnabled: true } }),
-      prisma.user.count({ where: { ...regularUserWhere, forumEnabled: true, forumEnabledAt: { gte: todayStart } } }),
+      prisma.user.count({
+        where: {
+          ...regularUserWhere,
+          forumEnabled: true,
+          forumEnabledAt: { gte: todayStart, lt: todayEnd },
+        },
+      }),
       listAdminDailyLoginSeries(30),
     ]);
     const forumPendingUsers = Math.max(0, forumEligibleUsers - forumEnabledUsers);

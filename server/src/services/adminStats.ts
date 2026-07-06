@@ -3,6 +3,8 @@ import { getCachedJson, runWithDistributedLock, setCachedJson } from "./cache";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAILY_LOGIN_TTL_MS = 45 * DAY_MS;
 const DAILY_LOGIN_LOCK_MS = 4_000;
+const CHINA_TIME_ZONE = "Asia/Shanghai";
+const CHINA_UTC_OFFSET_MS = 8 * 60 * 60 * 1000;
 
 type AdminDailyLoginBucket = {
   date: string;
@@ -20,20 +22,37 @@ function pad2(value: number) {
   return String(value).padStart(2, "0");
 }
 
-function toLocalDateKey(input: Date) {
-  return `${input.getFullYear()}-${pad2(input.getMonth() + 1)}-${pad2(input.getDate())}`;
+function formatChinaDateParts(input: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: CHINA_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(input);
+  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return {
+    year: Number(value("year")),
+    month: Number(value("month")),
+    day: Number(value("day")),
+    ymd: `${value("year")}-${value("month")}-${value("day")}`,
+  };
 }
 
-function startOfLocalDay(input = new Date()) {
-  const next = new Date(input);
-  next.setHours(0, 0, 0, 0);
-  return next;
+function addDaysToDateKey(dateKey: string, delta: number) {
+  const match = String(dateKey || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return dateKey;
+  const next = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + delta));
+  return `${next.getUTCFullYear()}-${pad2(next.getUTCMonth() + 1)}-${pad2(next.getUTCDate())}`;
 }
 
-function addDays(input: Date, delta: number) {
-  const next = new Date(input);
-  next.setDate(next.getDate() + delta);
-  return next;
+export function getChinaDayRange(input = new Date()) {
+  const parts = formatChinaDateParts(input);
+  const start = new Date(Date.UTC(parts.year, parts.month - 1, parts.day) - CHINA_UTC_OFFSET_MS);
+  return {
+    dateKey: parts.ymd,
+    start,
+    end: new Date(start.getTime() + DAY_MS),
+  };
 }
 
 function dailyLoginCacheKey(dateKey: string) {
@@ -60,7 +79,7 @@ function delay(ms: number) {
 
 export async function recordAdminDailyLogin(userId: number, at = new Date()) {
   if (!Number.isInteger(userId) || userId <= 0) return;
-  const dateKey = toLocalDateKey(at);
+  const dateKey = formatChinaDateParts(at).ymd;
   const cacheKey = dailyLoginCacheKey(dateKey);
 
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -82,8 +101,8 @@ export async function recordAdminDailyLogin(userId: number, at = new Date()) {
 
 export async function listAdminDailyLoginSeries(days = 30, now = new Date()): Promise<AdminDailyLoginPoint[]> {
   const safeDays = Math.max(1, Math.min(90, Math.round(days)));
-  const today = startOfLocalDay(now);
-  const dateKeys = Array.from({ length: safeDays }, (_, index) => toLocalDateKey(addDays(today, index - (safeDays - 1))));
+  const today = formatChinaDateParts(now).ymd;
+  const dateKeys = Array.from({ length: safeDays }, (_, index) => addDaysToDateKey(today, index - (safeDays - 1)));
   const buckets = await Promise.all(dateKeys.map((dateKey) => getCachedJson<AdminDailyLoginBucket>(dailyLoginCacheKey(dateKey))));
   return dateKeys.map((dateKey, index) => {
     const bucket = normalizeBucket(buckets[index], dateKey);

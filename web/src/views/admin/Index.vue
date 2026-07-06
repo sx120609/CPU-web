@@ -55,8 +55,8 @@
       <div class="ov-card ov-card-wide">
         <div class="ov-card-head">
           <div>
-            <div class="ov-num">{{ overview.todayLogins }}</div>
-            <div class="ov-lbl">近 30 日日活</div>
+            <div class="ov-num">{{ dailyActiveToday }}</div>
+            <div class="ov-lbl">今日登录</div>
             <div class="ov-sub">{{ dailyActiveSummary }}</div>
           </div>
           <span class="ov-chip">按登录去重</span>
@@ -119,6 +119,7 @@ const overview = ref<AdminOverview | null>(null);
 const overviewLoading = ref(false);
 const overviewError = ref("");
 const dailyActiveSeries = computed(() => overview.value?.dailyActiveSeries ?? []);
+const dailyActiveToday = computed(() => dailyActiveSeries.value[dailyActiveSeries.value.length - 1]?.count ?? overview.value?.todayLogins ?? 0);
 const dailyActivePeak = computed(() => dailyActiveSeries.value.reduce((max, item) => Math.max(max, item.count), 0));
 const dailyActiveAverage = computed(() => {
   if (!dailyActiveSeries.value.length) return 0;
@@ -126,10 +127,10 @@ const dailyActiveAverage = computed(() => {
   return Math.round((total / dailyActiveSeries.value.length) * 10) / 10;
 });
 const dailyActiveSummary = computed(() => {
-  if (!dailyActiveSeries.value.length) return "按每日登录去重统计";
+  if (!dailyActiveSeries.value.length) return "近 30 天按每日登录去重统计";
   const trackedDays = dailyActiveSeries.value.filter((item) => item.count > 0).length;
-  if (trackedDays <= 1) return "按每日登录去重统计，历史数据会逐步累计";
-  return `30 日均 ${dailyActiveAverage.value} · 峰值 ${dailyActivePeak.value}`;
+  if (trackedDays <= 1) return "近 30 天按每日登录去重统计，历史数据会逐步累计";
+  return `近 30 天日均 ${dailyActiveAverage.value} · 峰值 ${dailyActivePeak.value}`;
 });
 const dailyActiveChartOption = computed<EChartsOption>(() => {
   const lastIndex = Math.max(0, dailyActiveSeries.value.length - 1);
