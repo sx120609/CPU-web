@@ -42,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, defineComponent, h, onMounted, reactive, ref, watch } from "vue";
+import { computed, defineAsyncComponent, defineComponent, h, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft, EditPen, Link, Setting } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
@@ -68,10 +68,6 @@ const canManage = computed(() => Boolean(tool.value && (
 function openToolManage(toolCode: ServiceToolCode) {
   if (toolCode === "file_collect") {
     router.push("/services/tools/filestore");
-    return;
-  }
-  if (toolCode === "radio_beta") {
-    router.push({ name: "service-radio-beta-console" });
     return;
   }
   router.push({ path: "/services/tools/manage", query: { tool: toolCode } });
@@ -105,12 +101,6 @@ onMounted(async () => {
     manageable.value = uniqueToolCodes(manageable.value);
   }
 });
-
-watch(() => tool.value?.componentKey, async (next) => {
-  if (next !== "radio_beta") return;
-  if (route.name === "service-radio-beta") return;
-  await router.replace({ name: "service-radio-beta" });
-}, { immediate: true });
 
 const FeedbackPanel = defineComponent({
   name: "FeedbackPanel",

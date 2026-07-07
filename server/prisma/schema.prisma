@@ -69,12 +69,6 @@ model User {
   createdFileCollectTasks FileCollectTask[] @relation("FileCollectCreatedBy")
   createdFileCollectTemplates FileCollectTemplate[] @relation("FileCollectTemplateCreatedBy")
   fileCollectSubmissions FileCollectSubmission[] @relation("FileCollectSubmittedBy")
-  createdRadioSemesters RadioSemester[]
-  createdRadioPlayTimes RadioPlayTime[]
-  createdRadioScheduleItems RadioScheduleItem[]
-  radioSongRequests  RadioSongRequest[] @relation("RadioSongRequestRequester")
-  reviewedRadioSongRequests RadioSongRequest[] @relation("RadioSongRequestReviewedBy")
-  updatedRadioMusicAuthRecords RadioMusicAuth[]
   sponsorOrders    SponsorOrder[]
   qqBotBindings     QqBotBinding[]
   qqBotBindTokens   QqBotBindToken[]
@@ -793,125 +787,6 @@ model FileCollectFile {
   submission FileCollectSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
   @@index([submissionId])
-}
-
-// ============ 小工具：广播站 / VoiceHub 一期复刻 ============
-
-model RadioSemester {
-  id          Int      @id @default(autoincrement())
-  code        String   @unique
-  name        String
-  description String?
-  status      String   @default("draft") // draft / active / archived
-  isCurrent   Boolean  @default(false)
-  startDate   DateTime?
-  endDate     DateTime?
-  createdById Int?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  playTimes RadioPlayTime[]
-  scheduleItems RadioScheduleItem[]
-
-  @@index([status, isCurrent])
-  @@index([createdById])
-}
-
-model RadioPlayTime {
-  id          Int      @id @default(autoincrement())
-  semesterId  Int?
-  name        String
-  weekday     Int
-  startTime   String
-  endTime     String
-  location    String?
-  note        String?
-  enabled     Boolean  @default(true)
-  sortOrder   Int      @default(0)
-  createdById Int?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  semester RadioSemester? @relation(fields: [semesterId], references: [id], onDelete: SetNull)
-  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  scheduleItems RadioScheduleItem[]
-
-  @@index([semesterId, weekday, sortOrder])
-  @@index([enabled, weekday, sortOrder])
-  @@index([createdById])
-}
-
-model RadioScheduleItem {
-  id            Int      @id @default(autoincrement())
-  semesterId    Int?
-  playTimeId    Int?
-  title         String
-  subtitle      String?
-  hostNames     String?
-  summary       String?
-  coverImage    String?
-  tags          String   @default("[]")
-  requestEnabled Boolean @default(true)
-  status        String   @default("draft") // draft / published / archived
-  startsAt      DateTime?
-  endsAt        DateTime?
-  sortOrder     Int      @default(0)
-  createdById   Int?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  semester RadioSemester? @relation(fields: [semesterId], references: [id], onDelete: SetNull)
-  playTime RadioPlayTime? @relation(fields: [playTimeId], references: [id], onDelete: SetNull)
-  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  songRequests RadioSongRequest[]
-
-  @@index([semesterId, status, sortOrder])
-  @@index([playTimeId, status, sortOrder])
-  @@index([createdById])
-}
-
-model RadioSongRequest {
-  id             Int      @id @default(autoincrement())
-  scheduleItemId Int?
-  requesterId    Int?
-  nickname       String
-  contact        String?
-  songTitle      String
-  artist         String?
-  sourceProvider String?
-  sourceTrackId  String?
-  sourceTrackMeta String  @default("{}")
-  dedication     String?
-  message        String?
-  status         String   @default("pending") // pending / approved / fulfilled / rejected
-  adminNote      String?
-  reviewedById   Int?
-  reviewedAt     DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  scheduleItem RadioScheduleItem? @relation(fields: [scheduleItemId], references: [id], onDelete: SetNull)
-  requester User? @relation("RadioSongRequestRequester", fields: [requesterId], references: [id], onDelete: SetNull)
-  reviewedBy User? @relation("RadioSongRequestReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
-
-  @@index([status, createdAt])
-  @@index([scheduleItemId, createdAt])
-  @@index([requesterId, createdAt])
-  @@index([sourceProvider, createdAt])
-}
-
-model RadioMusicAuth {
-  id          Int      @id @default(autoincrement())
-  provider    String   @unique
-  cookieText  String   @default("")
-  updatedById Int?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  updatedBy User? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
-
-  @@index([updatedById])
 }
 
 // ============ 支付对接：易支付 ============

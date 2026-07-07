@@ -111,10 +111,6 @@ function openManage() {
     router.push("/services/tools/filestore");
     return;
   }
-  if (target === "radio_beta") {
-    router.push({ name: "service-radio-beta-console" });
-    return;
-  }
   router.push({ path: "/services/tools/manage", query: { tool: target } });
 }
 

@@ -16,7 +16,6 @@ export type CacheDomain =
   | "site"
   | "boards"
   | "services"
-  | "radio"
   | "home"
   | "forum-list"
   | "search"
