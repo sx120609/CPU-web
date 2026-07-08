@@ -25,7 +25,7 @@ siteRouter.get("/config", async (_req, res, next) => {
 });
 
 siteRouter.get("/downloads/android-app", (_req, res) => {
-  const fileName = resolveLatestAndroidApkFileName() || "CPU-Web-Flutter-V1.apk";
+  const fileName = resolveLatestAndroidApkFileName() || "CPU-Web-Flutter-V2.apk";
   res.redirect(302, `/downloads/${encodeURIComponent(fileName)}`);
 });
 

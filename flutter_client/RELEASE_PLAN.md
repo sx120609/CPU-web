@@ -11,7 +11,7 @@
 - 应用名：药大拾间
 - Android package：`cn.lizmt.cpuweb`
 - iOS bundle id：`cn.lizmt.cpuweb`
-- 首发版本：`3.0.0+21`
+- 当前版本：`3.0.1+22`
 - 旧客户端最后版本：`2.1.1 (20)`
 
 版本号从 `21` 开始，是为了让旧客户端识别到“有新版客户端可下载”。
@@ -81,7 +81,7 @@ flutter_client/build/app/outputs/flutter-apk/app-release.apk
 复制为站点下载文件：
 
 ```text
-web/public/downloads/CPU-Web-Flutter-V1.apk
+web/public/downloads/CPU-Web-Flutter-V2.apk
 ```
 
 后续版本递增：
@@ -133,7 +133,7 @@ CPU-Web-V*.apk
 2. 确认 `flutter test` 通过。
 3. 生成并备份新签名密钥。
 4. 构建 `flutter build apk --release`。
-5. 重命名为 `CPU-Web-Flutter-V1.apk`。
+5. 重命名为 `CPU-Web-Flutter-V2.apk`。
 6. 放入 `web/public/downloads/`。
 7. 提交代码与 APK。
 8. 服务器执行 `./deploy.sh update`。
@@ -182,4 +182,4 @@ flutter_client/build/app/outputs/flutter-apk/app-debug.apk
 - 生成并妥善备份新的 release keystore。
 - 填写本机 `android/key.properties`。
 - 构建 `flutter build apk --release`。
-- 将 release APK 重命名为 `CPU-Web-Flutter-V1.apk` 并放入 `web/public/downloads/`。
+- 将 release APK 重命名为 `CPU-Web-Flutter-V2.apk` 并放入 `web/public/downloads/`。

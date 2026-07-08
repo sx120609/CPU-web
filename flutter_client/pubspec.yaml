@@ -1,7 +1,7 @@
 name: cpu_flutter_client
 description: Flutter shell for CPU Web mobile clients.
 publish_to: "none"
-version: 3.0.0+21
+version: 3.0.1+22
 
 environment:
   sdk: ">=3.4.0 <4.0.0"

@@ -10,7 +10,7 @@
     :style="layoutStyle"
   >
     <!-- 顶栏 -->
-    <header v-if="!hideChrome" class="topbar">
+    <header v-if="!hideChrome && !useNativeShell" class="topbar">
       <div class="topbar-inner">
         <router-link to="/home" class="brand">
           <span class="brand-logo">药</span>
@@ -150,7 +150,7 @@
       </router-view>
     </main>
 
-    <footer v-if="!hideChrome" class="footer">
+    <footer v-if="!hideChrome && !useNativeShell" class="footer">
       <span class="footer-item">© 2026 药大拾间 · 校园互助与服务平台</span>
       <a class="footer-item" href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener noreferrer">GitHub</a>
       <span class="footer-item">非学校官方站点</span>
@@ -891,6 +891,19 @@ function setAppearanceMode(command: string | number | object) {
   min-width: 0;
 }
 
+.layout-root--native-shell .main {
+  padding: 0;
+  max-width: none;
+  margin: 0;
+  width: 100%;
+}
+
+.layout-root--native-shell .main > :deep(*) {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+
 .footer {
   background: var(--cpu-surface);
   border-top: 1px solid var(--cpu-border-soft);
@@ -1281,7 +1294,7 @@ function setAppearanceMode(command: string | number | object) {
   }
 
   .layout-root--native-shell .main {
-    padding-bottom: 14px;
+    padding: 0;
   }
 
   .layout-root--native-shell .main--bare,
@@ -1394,7 +1407,7 @@ function setAppearanceMode(command: string | number | object) {
   }
 
   .layout-root--native-shell .main {
-    padding-bottom: 24px;
+    padding: 0;
   }
 
   .layout-root--native-shell .main--bare,

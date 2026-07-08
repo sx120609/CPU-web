@@ -9,10 +9,10 @@ cn.lizmt.cpuweb
 第一版版本号：
 
 ```text
-3.0.0+21
+3.0.1+22
 ```
 
-其中 `21` 是为了高于旧客户端 `2.1.1 (20)`，便于旧客户端迁移提示。
+其中 `22` 是当前 Flutter V2 release；首发 `21` 高于旧客户端 `2.1.1 (20)`，便于旧客户端迁移提示。
 
 ## 开发运行
 
@@ -66,13 +66,13 @@ flutter build apk --release
 发布文件命名为：
 
 ```text
-CPU-Web-Flutter-V1.apk
+CPU-Web-Flutter-V2.apk
 ```
 
 放到：
 
 ```text
-web/public/downloads/CPU-Web-Flutter-V1.apk
+web/public/downloads/CPU-Web-Flutter-V2.apk
 ```
 
 服务端部署后，`/api/site/downloads/android-app` 会优先跳转到最新的 `CPU-Web-Flutter-V*.apk`。

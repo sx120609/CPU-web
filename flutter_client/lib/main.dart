@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -19,19 +20,22 @@ final class CpuAppConfig {
     defaultValue: 'https://cpu.lizmt.cn',
   );
 
-  static const appVersionCode = 21;
-  static const appVersionName = '3.0.0';
+  static const appVersionCode = 22;
+  static const appVersionName = '3.0.1';
 }
 
 final class CpuPalette {
   const CpuPalette._();
 
-  static const teal = Color(0xFF168776);
-  static const tealDark = Color(0xFF0F6557);
-  static const gold = Color(0xFFE8A317);
+  static const teal = Color(0xFF148F7B);
+  static const tealDark = Color(0xFF0D6E5E);
+  static const gold = Color(0xFFF59E0B);
   static const page = Color(0xFFF8FAFC);
   static const text = Color(0xFF0F172A);
   static const muted = Color(0xFF64748B);
+  static const borderSoft = Color(0xFFEEF0F4);
+  static const glassBg = Color(0xBFFFFFFF);
+  static const tabActiveBg = Color(0x1A148F7B);
 }
 
 final class CpuFlutterApp extends StatelessWidget {
@@ -51,26 +55,6 @@ final class CpuFlutterApp extends StatelessWidget {
           surface: Colors.white,
         ),
         scaffoldBackgroundColor: CpuPalette.page,
-        navigationBarTheme: NavigationBarThemeData(
-          height: 66,
-          backgroundColor: Colors.white,
-          indicatorColor: CpuPalette.teal.withValues(alpha: 0.12),
-          labelTextStyle: WidgetStateProperty.resolveWith((states) {
-            final selected = states.contains(WidgetState.selected);
-            return TextStyle(
-              color: selected ? CpuPalette.teal : CpuPalette.muted,
-              fontSize: 12,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            );
-          }),
-          iconTheme: WidgetStateProperty.resolveWith((states) {
-            final selected = states.contains(WidgetState.selected);
-            return IconThemeData(
-              color: selected ? CpuPalette.teal : CpuPalette.muted,
-              size: selected ? 25 : 24,
-            );
-          }),
-        ),
       ),
       home: const CpuShell(),
     );
@@ -81,13 +65,11 @@ final class CpuTab {
   const CpuTab({
     required this.label,
     required this.icon,
-    required this.selectedIcon,
     required this.path,
   });
 
   final String label;
   final IconData icon;
-  final IconData selectedIcon;
   final String path;
 }
 
@@ -95,31 +77,26 @@ const cpuTabs = <CpuTab>[
   CpuTab(
     label: '首页',
     icon: Icons.home_outlined,
-    selectedIcon: Icons.home,
     path: '/home',
   ),
   CpuTab(
     label: '教务',
     icon: Icons.menu_book_outlined,
-    selectedIcon: Icons.menu_book,
     path: '/jwxt',
   ),
   CpuTab(
     label: '课表',
     icon: Icons.calendar_month_outlined,
-    selectedIcon: Icons.calendar_month,
     path: '/schedule',
   ),
   CpuTab(
     label: '服务',
     icon: Icons.widgets_outlined,
-    selectedIcon: Icons.widgets,
     path: '/services',
   ),
   CpuTab(
     label: '我的',
     icon: Icons.person_outline,
-    selectedIcon: Icons.person,
     path: '/profile',
   ),
 ];
@@ -224,37 +201,9 @@ final class _CpuShellState extends State<CpuShell> {
             ],
           ),
         ),
-        bottomNavigationBar: SafeArea(
-          top: false,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border(
-                top: BorderSide(
-                  color: const Color(0xFFE2E8F0).withValues(alpha: 0.82),
-                ),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.06),
-                  blurRadius: 18,
-                  offset: const Offset(0, -4),
-                ),
-              ],
-            ),
-            child: NavigationBar(
-              selectedIndex: _selectedIndex,
-              onDestinationSelected: _selectTab,
-              destinations: [
-                for (final tab in cpuTabs)
-                  NavigationDestination(
-                    icon: Icon(tab.icon),
-                    selectedIcon: Icon(tab.selectedIcon),
-                    label: tab.label,
-                  ),
-              ],
-            ),
-          ),
+        bottomNavigationBar: _CpuBottomTabBar(
+          selectedIndex: _selectedIndex,
+          onTap: _selectTab,
         ),
       ),
     );
@@ -360,11 +309,124 @@ final class _CpuShellState extends State<CpuShell> {
 
   bool _isSameAppOrigin(Uri uri) {
     final base = Uri.parse(CpuAppConfig.baseUrl);
-    return uri.scheme == base.scheme && uri.host == base.host && uri.port == base.port;
+    return uri.scheme == base.scheme &&
+        uri.host == base.host &&
+        uri.port == base.port;
   }
 
   Future<void> _openExternal(Uri uri) async {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+}
+
+final class _CpuBottomTabBar extends StatelessWidget {
+  const _CpuBottomTabBar({
+    required this.selectedIndex,
+    required this.onTap,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: CpuPalette.glassBg,
+        border: const Border(
+          top: BorderSide(color: CpuPalette.borderSoft),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: ClipRect(
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+              child: Row(
+                children: [
+                  for (var i = 0; i < cpuTabs.length; i++)
+                    Expanded(
+                      child: _CpuBottomTabItem(
+                        tab: cpuTabs[i],
+                        selected: i == selectedIndex,
+                        onTap: () => onTap(i),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final class _CpuBottomTabItem extends StatelessWidget {
+  const _CpuBottomTabItem({
+    required this.tab,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final CpuTab tab;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? CpuPalette.teal : CpuPalette.muted;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: tab.label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedScale(
+          scale: selected ? 1.05 : 1,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.ease,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.ease,
+            height: 50,
+            decoration: BoxDecoration(
+              color: selected ? CpuPalette.tabActiveBg : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(tab.icon, size: 20, color: color),
+                const SizedBox(height: 3),
+                Text(
+                  tab.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    height: 1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
