@@ -62,9 +62,10 @@
       <p class="muted">必须使用 Safari 浏览器；微信/QQ 等内置浏览器不支持。</p>
     </div>
 
-    <!-- 其他情况（Android 但浏览器没触发 prompt / 桌面浏览器 / 不支持） -->
+    <!-- 其他情况：保留桌面/PWA 说明，同时给 Android Pad 桌面 UA 一个兜底下载入口 -->
     <div v-else class="content">
       <p>请在浏览器菜单中找到 <b>「安装应用」</b>、<b>「添加到主屏幕」</b> 或 <b>「创建快捷方式」</b>。</p>
+      <p class="migration-note">如果你正在 Android Pad 上使用“请求桌面站点”，也可以直接下载 Android 客户端。</p>
       <p class="muted">部分浏览器（微信/QQ 内置 / 较老 Chrome）不支持安装。</p>
     </div>
 
@@ -77,12 +78,12 @@
     <template #footer>
       <div class="footer">
         <el-button
-          v-if="platform === 'android' && !isNativeApp && !inAppBrowser.isInApp"
-          type="primary"
+          v-if="canDownloadAndroidApk"
+          :type="deferredPrompt && platform !== 'android' ? 'default' : 'primary'"
           size="default"
           @click="downloadApk"
         >
-          下载 APK
+          下载 Android 客户端
         </el-button>
         <el-button
           v-else-if="deferredPrompt"
@@ -138,6 +139,9 @@ const title = computed(() => {
 
 const dialogWidth = computed(() => {
   return window.innerWidth < 480 ? "92dvw" : "360px";
+});
+const canDownloadAndroidApk = computed(() => {
+  return platform.value !== "ios" && !isNativeApp.value && !inAppBrowser.value.isInApp;
 });
 
 function detectStandalone() {

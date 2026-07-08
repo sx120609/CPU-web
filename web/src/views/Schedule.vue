@@ -815,7 +815,6 @@ import {
   isAndroidNativeApp,
   isFlutterNativeShell,
   isIosStandalone,
-  isLikelyAndroidDevice,
   supportsAndroidInAppApkDownload,
   supportsAndroidScheduleWidget,
 } from "@/utils/clientInfo";
@@ -1254,8 +1253,9 @@ const androidUpdateMenuLabel = computed(() => (
  ));
 const canShowAndroidClientDownload = computed(() => {
   if (isAndroidNativeApp() || isFlutterNativeShell()) return false;
-  if (detectClientPlatform() === "harmony" || isIosStandalone()) return false;
-  return isLikelyAndroidDevice();
+  const platform = detectClientPlatform();
+  if (platform === "ios" || platform === "harmony" || isIosStandalone()) return false;
+  return true;
 });
 
 function handleWidgetMenuAction() {
@@ -1601,8 +1601,7 @@ const isViewingToday = computed(() => {
   return viewMode.value === "week" || activeDay.value === dayOfWeek();
 });
 const showLandscapeExitButton = computed(() => (
-  touchLikeViewport.value
-  && viewportWidth.value > viewportHeight.value
+  true
 ));
 const pageStyle = computed(() => ({
   ...scheduleThemeCssVars(scheduleTheme.value),
