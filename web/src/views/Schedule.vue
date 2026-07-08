@@ -24,7 +24,7 @@
       </el-select>
       <div class="top-actions">
         <button
-          v-if="showLandscapeExitButton"
+          v-if="showScheduleExitButton"
           type="button"
           class="icon-btn schedule-exit-btn"
           aria-label="退出课表"
@@ -1600,9 +1600,12 @@ const isViewingToday = computed(() => {
   if (!cur || String(cur) !== currentWeekValue()) return false;
   return viewMode.value === "week" || activeDay.value === dayOfWeek();
 });
-const showLandscapeExitButton = computed(() => (
-  true
-));
+const scheduleHasBottomTabbar = computed(() => {
+  if (isFlutterNativeShell()) return false;
+  if (viewportWidth.value <= 768) return true;
+  return touchLikeViewport.value && viewportHeight.value >= viewportWidth.value;
+});
+const showScheduleExitButton = computed(() => !scheduleHasBottomTabbar.value);
 const pageStyle = computed(() => ({
   ...scheduleThemeCssVars(scheduleTheme.value),
   ...(appearance.isDark ? {
