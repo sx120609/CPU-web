@@ -12,6 +12,7 @@ android/**/build/
 !web/public/downloads/
 !web/public/downloads/CPU-Web.apk
 !web/public/downloads/CPU-Web-V*.apk
+!web/public/downloads/CPU-Web-Flutter-V*.apk
 *.aab
 
 # Environment

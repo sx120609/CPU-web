@@ -4,6 +4,7 @@
     :class="{
       'keyboard-open': keyboardOpen,
       'layout-root--full-width': fullWidthContent && !hideChrome,
+      'layout-root--native-shell': useNativeShell,
     }"
     :style="layoutStyle"
   >
@@ -163,7 +164,7 @@
       </a>
     </footer>
 
-    <nav class="mobile-tabbar" :class="{ 'is-hidden': keyboardOpen }" aria-label="移动端主导航" :style="{ gridTemplateColumns: `repeat(${mobileNavItems.length}, 1fr)` }">
+    <nav v-if="!useNativeShell" class="mobile-tabbar" :class="{ 'is-hidden': keyboardOpen }" aria-label="移动端主导航" :style="{ gridTemplateColumns: `repeat(${mobileNavItems.length}, 1fr)` }">
       <router-link
         v-for="item in mobileNavItems"
         :key="item.to"
@@ -292,6 +293,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
 import { useSiteStore } from "@/stores/site";
 import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
+import { isFlutterNativeShell } from "@/utils/clientInfo";
 
 const auth = useAuthStore();
 const msg = useMessageStore();
@@ -322,6 +324,7 @@ const appearanceIcon = computed(() => (
 /** 某些路由（如 /schedule）希望"裸壳"渲染，没有顶栏/免责声明/footer，仅保留 main + tabbar */
 const hideChrome = computed(() => Boolean(route.meta?.hideChrome));
 const fullWidthContent = computed(() => Boolean(route.meta?.fullWidthContent));
+const useNativeShell = computed(() => isFlutterNativeShell());
 const layoutStyle = computed(() => (
   mobileViewportHeight.value
     ? { "--layout-viewport-height": `${mobileViewportHeight.value}px` }
@@ -503,10 +506,18 @@ function syncViewportMetrics() {
   const visualHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
   const visualWidth = Math.round(window.visualViewport?.width ?? window.innerWidth);
   mobileViewportHeight.value = visualHeight;
-  isMobileViewport.value = visualWidth <= 768;
+  isMobileViewport.value = isTouchNavigationViewport(visualWidth);
   if (!keyboardOpen.value) {
     mobileViewportBaseHeight.value = Math.max(mobileViewportBaseHeight.value, visualHeight, window.innerHeight);
   }
+}
+
+function isTouchNavigationViewport(width: number) {
+  if (width <= 768) return true;
+  const touchLike = window.matchMedia?.("(pointer: coarse)").matches
+    || window.matchMedia?.("(hover: none)").matches
+    || navigator.maxTouchPoints > 0;
+  return Boolean(touchLike && width <= 1024);
 }
 
 function updateKeyboardState() {
@@ -1161,6 +1172,19 @@ function setAppearanceMode(command: string | number | object) {
     font-size: 11px;
   }
 
+  .layout-root--native-shell .main {
+    padding-bottom: 14px;
+  }
+
+  .layout-root--native-shell .main--bare,
+  .layout-root--native-shell .main--full-width {
+    padding-bottom: 0 !important;
+  }
+
+  .layout-root--native-shell .footer {
+    padding-bottom: 12px;
+  }
+
   .mobile-tabbar {
     position: fixed;
     left: 0;
@@ -1240,6 +1264,98 @@ function setAppearanceMode(command: string | number | object) {
 
   .dlg-tip {
     font-size: 14px;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) and (pointer: coarse),
+       (min-width: 769px) and (max-width: 1024px) and (hover: none) {
+  .main {
+    padding-bottom: calc(88px + env(safe-area-inset-bottom));
+  }
+
+  .main--bare {
+    padding-bottom: calc(88px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .main--full-width {
+    padding: 0;
+  }
+
+  .footer {
+    padding-bottom: calc(12px + 68px + env(safe-area-inset-bottom));
+  }
+
+  .layout-root--native-shell .main {
+    padding-bottom: 24px;
+  }
+
+  .layout-root--native-shell .main--bare,
+  .layout-root--native-shell .main--full-width {
+    padding-bottom: 0 !important;
+  }
+
+  .layout-root--native-shell .footer {
+    padding-bottom: 16px;
+  }
+
+  .mobile-tabbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1100;
+    display: grid;
+    padding: 6px 12px calc(6px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--cpu-border-soft);
+    background: var(--cpu-glass-bg);
+    backdrop-filter: var(--cpu-glass-blur);
+    -webkit-backdrop-filter: var(--cpu-glass-blur);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.06);
+    pointer-events: auto;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease, visibility 0.3s ease;
+  }
+
+  .mobile-tabbar.is-hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(calc(100% + env(safe-area-inset-bottom)));
+  }
+
+  .mobile-tab {
+    min-width: 0;
+    height: 52px;
+    border-radius: 12px;
+    color: var(--cpu-text-secondary);
+    text-decoration: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    font-size: 11px;
+    font-weight: 500;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(22, 135, 118, 0.18);
+    cursor: pointer;
+    transition: transform 0.2s ease, background 0.2s ease;
+  }
+
+  .mobile-tab.active {
+    color: var(--cpu-primary);
+    background: rgba(20, 143, 123, 0.1);
+    transform: scale(1.04);
+  }
+
+  .mobile-tab .el-icon {
+    font-size: 21px;
+  }
+
+  .mobile-tab span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 

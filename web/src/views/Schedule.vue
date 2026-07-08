@@ -795,6 +795,7 @@ import {
   getAndroidNativeVersionName,
   isAndroidAppUpdateAvailable,
   isAndroidNativeApp,
+  isFlutterNativeShell,
   isIosStandalone,
   supportsAndroidInAppApkDownload,
   supportsAndroidScheduleWidget,
@@ -901,7 +902,7 @@ const GRAD_DEBUG_FIXTURE_PATH = "server/.debug/grad-schedule.html";
 const scheduleCacheStore = new Map<string, CacheEnvelope<ScheduleResult>>();
 const prewarmingScheduleKeys = new Set<string>();
 const isNativeScheduleApp = ["android", "harmony", "ios"].includes(detectClientPlatform());
-const isAndroidScheduleApp = isAndroidNativeApp();
+const isAndroidScheduleApp = isAndroidNativeApp() && !isFlutterNativeShell();
 const isDev = computed(() => import.meta.env.DEV);
 let scheduleEditsSaveTimer = 0;
 let scheduleEditsLoadPromise: Promise<void> | null = null;
@@ -1205,6 +1206,7 @@ function openGradSystemDebug() {
 
 const widgetMenuPlatform = computed<WidgetMenuPlatform | null>(() => {
   if (isIosStandalone()) return "ios";
+  if (isFlutterNativeShell()) return null;
   if (!isAndroidNativeApp()) return null;
   return supportsAndroidScheduleWidget() ? "android" : "android-old";
 });
@@ -1284,7 +1286,7 @@ async function openAndroidDownload() {
   const absoluteUrl = new URL(APK_DOWNLOAD_URL, window.location.origin).toString();
   const bridge = getAndroidWidgetBridge();
   if (androidCanInAppUpdate.value && typeof bridge?.downloadAndInstallApk === "function") {
-    const started = bridge.downloadAndInstallApk(absoluteUrl, `CPU-Web-V${ANDROID_APP_LATEST_VERSION_CODE}.apk`);
+    const started = bridge.downloadAndInstallApk(absoluteUrl, "CPU-Web-Flutter-V1.apk");
     if (started !== false) {
       androidUpdateOpen.value = false;
       ElMessage.success("已开始应用内下载更新");

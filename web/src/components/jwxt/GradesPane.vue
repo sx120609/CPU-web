@@ -489,12 +489,13 @@ function clearSelection() {
   statMode.value = "all";
 }
 
-function isCourseSelected(row: GradeRow) {
-  return selectedCourseKeys.value.includes(courseKey(row));
+function isCourseSelected(row: unknown) {
+  return selectedCourseKeys.value.includes(courseKey(row as GradeRow));
 }
 
-function toggleCourse(row: GradeRow, checked: string | number | boolean) {
-  const key = courseKey(row);
+function toggleCourse(row: unknown, checked: string | number | boolean) {
+  const grade = row as GradeRow;
+  const key = courseKey(grade);
   const next = new Set(selectedCourseKeys.value);
   if (Boolean(checked)) next.add(key);
   else next.delete(key);

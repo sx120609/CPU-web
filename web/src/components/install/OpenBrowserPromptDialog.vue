@@ -97,7 +97,7 @@
 import { computed, onBeforeUnmount, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
-import { ANDROID_APP_DOWNLOAD_URL } from "@/utils/clientInfo";
+import { ANDROID_APP_DOWNLOAD_URL, isFlutterNativeShell } from "@/utils/clientInfo";
 import { USER_QQ_GROUP, copyText, openUserGroup } from "@/utils/userGroup";
 
 const open = ref(false);
@@ -125,6 +125,7 @@ function isNativeApp() {
   const params = new URLSearchParams(window.location.search);
   return ua.includes("cpuwebscheduleapp")
     || ua.includes("cpuwebharmonyapp")
+    || isFlutterNativeShell()
     || params.get("client") === "android-app"
     || params.get("client") === "harmony-app";
 }

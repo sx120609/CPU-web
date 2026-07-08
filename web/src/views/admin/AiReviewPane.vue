@@ -801,13 +801,14 @@ function buildVideoSweepSummary(result: ForumVideoSweepResult) {
   return parts.join("，");
 }
 
-function isVideoReviewBusy(row: ForumVideoQueueRow) {
-  return videoReviewBusyId.value === row.id;
+function isVideoReviewBusy(row: unknown) {
+  return videoReviewBusyId.value === (row as ForumVideoQueueRow).id;
 }
 
-async function approveVideo(row: ForumVideoQueueRow) {
+async function approveVideo(row: unknown) {
+  const video = row as ForumVideoQueueRow;
   if (videoReviewBusyId.value !== null) return;
-  videoReviewBusyId.value = row.id;
+  videoReviewBusyId.value = video.id;
   try {
     const confirmed = await ElMessageBox.confirm("确认将这条视频人工审核通过并恢复展示？", "人工通过", {
       type: "warning",
@@ -815,7 +816,7 @@ async function approveVideo(row: ForumVideoQueueRow) {
       cancelButtonText: "取消",
     }).then(() => true).catch(() => false);
     if (!confirmed) return;
-    await adminApi.updateForumVideo(row.id, { status: "approved" });
+    await adminApi.updateForumVideo(video.id, { status: "approved" });
     ElMessage.success("视频已人工审核通过");
     await loadVideos();
   } finally {
@@ -823,15 +824,16 @@ async function approveVideo(row: ForumVideoQueueRow) {
   }
 }
 
-async function rejectVideo(row: ForumVideoQueueRow) {
+async function rejectVideo(row: unknown) {
+  const video = row as ForumVideoQueueRow;
   if (videoReviewBusyId.value !== null) return;
-  videoReviewBusyId.value = row.id;
+  videoReviewBusyId.value = video.id;
   try {
     const { value } = await ElMessageBox.prompt("可选填写人工驳回备注，留空会保留当前审核说明。", "继续隐藏", {
       inputPlaceholder: "例如：画面中可识别隐私信息较多，不适合公开展示",
     }).catch(() => ({ value: null }));
     if (value === null) return;
-    await adminApi.updateForumVideo(row.id, {
+    await adminApi.updateForumVideo(video.id, {
       status: "rejected",
       manualReviewNote: value || undefined,
     });

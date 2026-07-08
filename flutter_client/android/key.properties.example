@@ -1,0 +1,4 @@
+storeFile=app/upload-release.jks
+storePassword=replace-with-store-password
+keyAlias=cpuweb-release
+keyPassword=replace-with-key-password

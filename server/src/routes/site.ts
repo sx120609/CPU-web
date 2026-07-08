@@ -25,7 +25,7 @@ siteRouter.get("/config", async (_req, res, next) => {
 });
 
 siteRouter.get("/downloads/android-app", (_req, res) => {
-  const fileName = resolveLatestAndroidApkFileName() || "CPU-Web-V10.apk";
+  const fileName = resolveLatestAndroidApkFileName() || "CPU-Web-Flutter-V1.apk";
   res.redirect(302, `/downloads/${encodeURIComponent(fileName)}`);
 });
 
@@ -36,14 +36,23 @@ function resolveLatestAndroidApkFileName() {
   ];
   for (const dir of dirs) {
     if (!existsSync(dir)) continue;
-    const latest = readdirSync(dir)
-      .map((name) => {
-        const match = /^CPU-Web-V(\d+)\.apk$/i.exec(name);
-        return match ? { name, version: Number(match[1]) } : null;
-      })
-      .filter((item): item is { name: string; version: number } => Boolean(item))
-      .sort((a, b) => b.version - a.version)[0];
-    if (latest?.name) return latest.name;
+    const names = readdirSync(dir);
+    const latestFlutterClient = latestApkByPattern(names, /^CPU-Web-Flutter-V(\d+)\.apk$/i);
+    if (latestFlutterClient) return latestFlutterClient;
+    const latestAndroidClient = latestApkByPattern(names, /^CPU-Web-Android-V(\d+)\.apk$/i);
+    if (latestAndroidClient) return latestAndroidClient;
+    const latestLegacyClient = latestApkByPattern(names, /^CPU-Web-V(\d+)\.apk$/i);
+    if (latestLegacyClient) return latestLegacyClient;
   }
   return "";
+}
+
+function latestApkByPattern(names: string[], pattern: RegExp) {
+  return names
+    .map((name) => {
+      const match = pattern.exec(name);
+      return match ? { name, version: Number(match[1]) } : null;
+    })
+    .filter((item): item is { name: string; version: number } => Boolean(item))
+    .sort((a, b) => b.version - a.version)[0]?.name ?? "";
 }

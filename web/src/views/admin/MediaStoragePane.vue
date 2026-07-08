@@ -769,7 +769,8 @@ function hasRedundantCopies(row: MediaStorageAdminFileEntry) {
   return row.localExists && (row.cacheExists || row.remoteExists);
 }
 
-function resolveState(row: MediaStorageAdminFileEntry) {
+function resolveState(rowInput: unknown) {
+  const row = rowInput as MediaStorageAdminFileEntry;
   if (row.localExists && row.remoteExists) {
     return {
       key: "synced" as const,

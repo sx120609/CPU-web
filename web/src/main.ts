@@ -6,6 +6,7 @@ import { useAuthStore } from "./stores/auth";
 import { useSiteStore } from "./stores/site";
 import { applyInitialAppearance, useAppearanceStore } from "./stores/appearance";
 import { installIosNativeImageBridge } from "./utils/nativeBridge";
+import { isFlutterNativeShell } from "./utils/clientInfo";
 
 import "element-plus/dist/index.css";
 import "element-plus/theme-chalk/dark/css-vars.css";
@@ -105,6 +106,7 @@ function installFeedbackLayerGuard() {
 function installNativeAppMarker() {
   const ua = navigator.userAgent;
   const platform = /cpuwebscheduleapp|cpuwebharmonyapp/i.test(ua)
+    || isFlutterNativeShell(ua)
     || window.matchMedia?.("(display-mode: standalone)").matches
     || (navigator as any).standalone === true;
   if (!platform) return;

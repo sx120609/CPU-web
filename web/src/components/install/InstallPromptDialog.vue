@@ -102,7 +102,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 import { USER_QQ_GROUP, openUserGroup } from "@/utils/userGroup";
-import { ANDROID_APP_DOWNLOAD_URL } from "@/utils/clientInfo";
+import { ANDROID_APP_DOWNLOAD_URL, isFlutterNativeShell } from "@/utils/clientInfo";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -159,6 +159,7 @@ function detectNativeApp() {
   const params = new URLSearchParams(window.location.search);
   isNativeApp.value = ua.includes("cpuwebscheduleapp")
     || ua.includes("cpuwebharmonyapp")
+    || isFlutterNativeShell()
     || params.get("client") === "android-app"
     || params.get("client") === "harmony-app";
 }

@@ -1,19 +1,26 @@
 export type ClientPlatform = "ios" | "android" | "harmony" | "web" | "unknown";
 
-export const ANDROID_APP_LATEST_VERSION_CODE = 20;
-export const ANDROID_APP_LATEST_VERSION_NAME = "2.1.1";
+export const ANDROID_APP_LATEST_VERSION_CODE = 21;
+export const ANDROID_APP_LATEST_VERSION_NAME = "3.0.0";
 export const HARMONY_APP_LATEST_VERSION_CODE = 17;
 export const HARMONY_APP_LATEST_VERSION_NAME = "2.0.8";
 export const ANDROID_APP_DOWNLOAD_URL = "/api/site/downloads/android-app";
 export const ANDROID_WIDGET_MIN_VERSION_CODE = 5;
 export const ANDROID_IN_APP_UPDATE_MIN_VERSION_CODE = 14;
+const CLIENT_OVERRIDE_KEY = "cpu-client-override";
+const FLUTTER_SHELL_KEY = "cpu-flutter-shell";
 
 export function detectClientPlatform(ua = navigator.userAgent): ClientPlatform {
   const source = (ua || "").toLowerCase();
-  const params = new URLSearchParams(window.location.search);
+  const override = resolveClientOverride();
+  if (override) return override;
 
   if (isHarmonyNativeApp(ua)) return "harmony";
   if (isAndroidNativeApp(ua)) return "android";
+  if (isFlutterNativeShell(ua)) {
+    if (source.includes("android")) return "android";
+    if (looksLikeIosUserAgent(source)) return "ios";
+  }
   if (isStandaloneMode() && source.includes("android")) return "android";
   if (isIosStandalone(ua)) return "ios";
   if (source) return "web";
@@ -27,23 +34,32 @@ export function isStandaloneMode() {
 
 export function isIosStandalone(ua = navigator.userAgent) {
   const source = (ua || "").toLowerCase();
-  const looksLikeIos = source.includes("iphone")
-    || source.includes("ipad")
-    || source.includes("ipod")
-    || (source.includes("macintosh") && navigator.maxTouchPoints > 1);
-  return isStandaloneMode() && looksLikeIos;
+  return isStandaloneMode() && looksLikeIosUserAgent(source);
 }
 
 export function isAndroidNativeApp(ua = navigator.userAgent) {
   const source = (ua || "").toLowerCase();
-  const params = new URLSearchParams(window.location.search);
-  return source.includes("cpuwebscheduleapp") || params.get("client") === "android-app";
+  return source.includes("cpuwebscheduleapp") || resolveClientOverride() === "android";
 }
 
 export function isHarmonyNativeApp(ua = navigator.userAgent) {
   const source = (ua || "").toLowerCase();
+  return source.includes("cpuwebharmonyapp") || resolveClientOverride() === "harmony";
+}
+
+export function isFlutterNativeShell(ua = navigator.userAgent) {
+  const source = (ua || "").toLowerCase();
   const params = new URLSearchParams(window.location.search);
-  return source.includes("cpuwebharmonyapp") || params.get("client") === "harmony-app";
+  const shell = params.get("shell")?.toLowerCase();
+  const client = params.get("client")?.toLowerCase();
+  const enabled = source.includes("cpuwebflutterapp")
+    || shell === "flutter"
+    || client === "flutter-app";
+  if (enabled) {
+    safeSessionSet(FLUTTER_SHELL_KEY, "1");
+    return true;
+  }
+  return safeSessionGet(FLUTTER_SHELL_KEY) === "1";
 }
 
 export function getHarmonyNativeVersionCode(ua = navigator.userAgent) {
@@ -119,6 +135,7 @@ export function getAndroidNativeVersionName(ua = navigator.userAgent) {
 }
 
 export function isAndroidAppUpdateAvailable(ua = navigator.userAgent) {
+  if (isFlutterNativeShell(ua)) return false;
   return isAndroidNativeApp(ua) && getAndroidNativeVersionCode(ua) < ANDROID_APP_LATEST_VERSION_CODE;
 }
 
@@ -142,4 +159,48 @@ export function clientPlatformLabel(platform: ClientPlatform) {
   if (platform === "harmony") return "鸿蒙";
   if (platform === "web") return "网页";
   return "未知";
+}
+
+function resolveClientOverride(): ClientPlatform | null {
+  const params = new URLSearchParams(window.location.search);
+  const fromQuery = normalizeClientParam(params.get("client") || params.get("platform"));
+  if (fromQuery) {
+    safeSessionSet(CLIENT_OVERRIDE_KEY, fromQuery);
+    return fromQuery;
+  }
+  return normalizeClientParam(safeSessionGet(CLIENT_OVERRIDE_KEY));
+}
+
+function normalizeClientParam(value?: string | null): ClientPlatform | null {
+  const client = (value || "").trim().toLowerCase();
+  if (!client) return null;
+  if (["ios", "ios-app", "iphone", "ipad"].includes(client)) return "ios";
+  if (["android", "android-app", "flutter-android"].includes(client)) return "android";
+  if (["harmony", "harmony-app", "harmonyos", "ohos"].includes(client)) return "harmony";
+  if (["web", "browser"].includes(client)) return "web";
+  if (client === "unknown") return "unknown";
+  return null;
+}
+
+function looksLikeIosUserAgent(source: string) {
+  return source.includes("iphone")
+    || source.includes("ipad")
+    || source.includes("ipod")
+    || (source.includes("macintosh") && navigator.maxTouchPoints > 1);
+}
+
+function safeSessionGet(key: string) {
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeSessionSet(key: string, value: string) {
+  try {
+    sessionStorage.setItem(key, value);
+  } catch {
+    /* ignore */
+  }
 }
