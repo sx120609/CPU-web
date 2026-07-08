@@ -37,6 +37,24 @@ export function isIosStandalone(ua = navigator.userAgent) {
   return isStandaloneMode() && looksLikeIosUserAgent(source);
 }
 
+export function isLikelyIosDevice(ua = navigator.userAgent) {
+  return looksLikeIosUserAgent((ua || "").toLowerCase());
+}
+
+export function isLikelyAndroidDevice(ua = navigator.userAgent) {
+  const source = (ua || "").toLowerCase();
+  const uaDataPlatform = String((navigator as any).userAgentData?.platform ?? "").toLowerCase();
+  const platform = String((navigator as any).platform ?? "").toLowerCase();
+  const hasTouch = navigator.maxTouchPoints > 0
+    || window.matchMedia?.("(pointer: coarse)").matches
+    || window.matchMedia?.("(hover: none)").matches;
+
+  if (source.includes("android") || uaDataPlatform.includes("android")) return true;
+  if (hasTouch && platform.includes("linux arm")) return true;
+  if (hasTouch && source.includes("linux x86_64") && !isLikelyIosDevice(ua)) return true;
+  return false;
+}
+
 export function isAndroidNativeApp(ua = navigator.userAgent) {
   const source = (ua || "").toLowerCase();
   return source.includes("cpuwebscheduleapp") || resolveClientOverride() === "android";

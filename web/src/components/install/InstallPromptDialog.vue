@@ -102,7 +102,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 import { USER_QQ_GROUP, openUserGroup } from "@/utils/userGroup";
-import { ANDROID_APP_DOWNLOAD_URL, isFlutterNativeShell } from "@/utils/clientInfo";
+import { ANDROID_APP_DOWNLOAD_URL, isFlutterNativeShell, isLikelyAndroidDevice } from "@/utils/clientInfo";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -125,7 +125,7 @@ const platform = computed<"ios" | "android" | "desktop">(() => {
   if (/iphone|ipod/.test(ua) || (/ipad/.test(ua)) || (ua.includes("mac") && navigator.maxTouchPoints > 1)) {
     return "ios";
   }
-  if (/android/.test(ua)) return "android";
+  if (isLikelyAndroidDevice()) return "android";
   return "desktop";
 });
 

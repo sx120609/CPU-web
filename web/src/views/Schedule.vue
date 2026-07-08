@@ -71,7 +71,7 @@
           <el-icon><Tools /></el-icon>
         </button>
         <el-popover
-          v-if="parsed"
+          v-if="parsed || canShowAndroidClientDownload"
           v-model:visible="moreMenuOpen"
           trigger="click"
           placement="bottom-end"
@@ -103,6 +103,16 @@
               <button type="button" class="more-action" @click="moreMenuView = 'background'">
                 <el-icon><Picture /></el-icon>
                 <span>{{ hasScheduleBackground ? "背景自定义（已启用）" : "背景自定义" }}</span>
+                <el-icon class="more-chevron"><ArrowRight /></el-icon>
+              </button>
+              <button
+                v-if="canShowAndroidClientDownload"
+                type="button"
+                class="more-action"
+                @click="openAndroidClientDownload"
+              >
+                <el-icon><Download /></el-icon>
+                <span>下载 Android 客户端</span>
                 <el-icon class="more-chevron"><ArrowRight /></el-icon>
               </button>
               <button
@@ -621,7 +631,10 @@
       @closed="stopAndroidUpdateCountdown"
     >
       <div class="android-update-panel">
-        <p v-if="androidUpdateKind === 'app'">
+        <p v-if="androidUpdateKind === 'install'">
+          可下载 <b>药大拾间</b> Android 客户端 {{ androidLatestVersionLabel }}，下次可从桌面图标直接打开。Pad 请求桌面站点时，也可以从这里下载。
+        </p>
+        <p v-else-if="androidUpdateKind === 'app'">
           当前客户端版本为 {{ androidCurrentVersionLabel }}，最新版本为 {{ androidLatestVersionLabel }}。
           {{ androidCanInAppUpdate ? "可直接在应用内下载并安装新版客户端。" : "请复制下载链接，到系统浏览器粘贴打开并安装新版客户端。" }}
         </p>
@@ -633,7 +646,7 @@
           这次新版客户端使用新的包名和签名，系统会把它作为新的客户端安装，不会覆盖最早的旧版。安装新版并确认可用后，请手动卸载旧版客户端；如已安装前一个新版试用包，则会直接覆盖更新。
         </p>
         <p class="widget-countdown">
-          {{ androidUpdateCountdown > 0 ? `请先阅读说明，${androidUpdateCountdown} 秒后可继续。` : androidCanInAppUpdate ? "已可开始下载新版。" : "已可复制新版下载链接。" }}
+          {{ androidUpdateCountdown > 0 ? `请先阅读说明，${androidUpdateCountdown} 秒后可继续。` : androidUpdateKind === "install" ? "已可开始下载客户端。" : androidCanInAppUpdate ? "已可开始下载新版。" : "已可复制新版下载链接。" }}
         </p>
         <p class="support-note">
           仍有疑问，建议
@@ -644,7 +657,7 @@
       <template #footer>
         <el-button @click="androidUpdateOpen = false">稍后</el-button>
         <el-button type="primary" :disabled="androidUpdateCountdown > 0" @click="openAndroidDownload">
-          {{ androidUpdateCountdown > 0 ? `${androidUpdateCountdown}s` : androidCanInAppUpdate ? "下载新版" : "复制下载链接" }}
+          {{ androidUpdateCountdown > 0 ? `${androidUpdateCountdown}s` : androidUpdateKind === "install" ? "下载客户端" : androidCanInAppUpdate ? "下载新版" : "复制下载链接" }}
         </el-button>
       </template>
     </el-dialog>
@@ -802,6 +815,7 @@ import {
   isAndroidNativeApp,
   isFlutterNativeShell,
   isIosStandalone,
+  isLikelyAndroidDevice,
   supportsAndroidInAppApkDownload,
   supportsAndroidScheduleWidget,
 } from "@/utils/clientInfo";
@@ -1014,7 +1028,7 @@ const {
   scheduleForWeek,
   allKnownScheduleSources,
 });
-const androidUpdateKind = ref<"app" | "widget">("widget");
+const androidUpdateKind = ref<"app" | "widget" | "install">("widget");
 const scriptableWidgetScript = ref("");
 const widgetCopyMessage = ref("");
 const APK_DOWNLOAD_URL = ANDROID_APP_DOWNLOAD_URL;
@@ -1238,6 +1252,11 @@ const androidCanInAppUpdate = computed(() => supportsAndroidInAppApkDownload());
 const androidUpdateMenuLabel = computed(() => (
   androidAppUpdateAvailable.value ? "更新安卓客户端" : "检查客户端更新"
  ));
+const canShowAndroidClientDownload = computed(() => {
+  if (isAndroidNativeApp() || isFlutterNativeShell()) return false;
+  if (detectClientPlatform() === "harmony" || isIosStandalone()) return false;
+  return isLikelyAndroidDevice();
+});
 
 function handleWidgetMenuAction() {
   if (widgetMenuPlatform.value === "ios") {
@@ -1254,6 +1273,16 @@ function handleWidgetMenuAction() {
 function openWidgetDialog() {
   moreMenuOpen.value = false;
   widgetDialogOpen.value = true;
+}
+
+function openAndroidClientDownload() {
+  moreMenuOpen.value = false;
+  if (detectInAppBrowser().isInApp) {
+    openBrowserPromptRef.value?.openDialog();
+    return;
+  }
+  androidUpdateKind.value = "install";
+  androidUpdateOpen.value = true;
 }
 
 async function installAndroidWidget() {
@@ -1282,7 +1311,7 @@ async function installAndroidWidget() {
   }
 }
 
-function showAndroidUpdateRequired(kind: "app" | "widget" = "widget") {
+function showAndroidUpdateRequired(kind: "app" | "widget" | "install" = "widget") {
   moreMenuOpen.value = false;
   androidUpdateKind.value = kind;
   androidUpdateOpen.value = true;
@@ -1290,6 +1319,11 @@ function showAndroidUpdateRequired(kind: "app" | "widget" = "widget") {
 
 async function openAndroidDownload() {
   const absoluteUrl = new URL(APK_DOWNLOAD_URL, window.location.origin).toString();
+  if (androidUpdateKind.value === "install") {
+    openApkDownloadInBrowser(absoluteUrl);
+    androidUpdateOpen.value = false;
+    return;
+  }
   const bridge = getAndroidWidgetBridge();
   if (androidCanInAppUpdate.value && typeof bridge?.downloadAndInstallApk === "function") {
     const started = bridge.downloadAndInstallApk(absoluteUrl, "CPU-Web-Android-V4.apk");
@@ -1321,6 +1355,16 @@ async function openAndroidDownload() {
     return;
   }
   ElMessage.warning("复制失败，请再点击一次复制下载链接");
+}
+
+function openApkDownloadInBrowser(url: string) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 function checkAndroidAppUpdate() {
