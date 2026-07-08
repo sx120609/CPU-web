@@ -92,7 +92,7 @@ import {
   runWeiwallSyncNow,
   updateWeiwallSyncConfig,
 } from "../../services/weiwallSync";
-import { getChinaDayRange, listAdminDailyLoginSeries } from "../../services/adminStats";
+import { backfillAdminDailyLoginsFromLastLogin, getChinaDayRange, listAdminDailyLoginSeries } from "../../services/adminStats";
 
 export const adminRouter = Router();
 const DATABASE_RESTORE_UPLOAD_DIR = path.join(tmpdir(), "cpu-web-db-restore-upload");
@@ -1542,6 +1542,9 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
   try {
     const { start: todayStart, end: todayEnd } = getChinaDayRange();
     const regularUserWhere = { role: "user" as const };
+    await backfillAdminDailyLoginsFromLastLogin(30).catch((error) => {
+      console.warn("[admin-stats] failed to backfill daily logins", error);
+    });
 
     const [
       users,

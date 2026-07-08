@@ -1,8 +1,11 @@
-import { getCachedJson, runWithDistributedLock, setCachedJson } from "./cache";
+import { prisma } from "../prisma";
+import { getCachedJson, getEphemeralValue, runWithDistributedLock, setCachedJson, setEphemeralValue } from "./cache";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAILY_LOGIN_TTL_MS = 45 * DAY_MS;
 const DAILY_LOGIN_LOCK_MS = 4_000;
+const DAILY_LOGIN_BACKFILL_TTL_MS = 6 * 60 * 60 * 1000;
+const DAILY_LOGIN_BACKFILL_LOCK_MS = 60_000;
 const CHINA_TIME_ZONE = "Asia/Shanghai";
 const CHINA_UTC_OFFSET_MS = 8 * 60 * 60 * 1000;
 
@@ -45,6 +48,23 @@ function addDaysToDateKey(dateKey: string, delta: number) {
   return `${next.getUTCFullYear()}-${pad2(next.getUTCMonth() + 1)}-${pad2(next.getUTCDate())}`;
 }
 
+function recentDateKeys(days: number, now = new Date()) {
+  const safeDays = Math.max(1, Math.min(90, Math.round(days)));
+  const today = formatChinaDateParts(now).ymd;
+  return Array.from({ length: safeDays }, (_, index) => addDaysToDateKey(today, index - (safeDays - 1)));
+}
+
+function getChinaDayRangeForDateKey(dateKey: string) {
+  const match = String(dateKey || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return getChinaDayRange();
+  const start = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) - CHINA_UTC_OFFSET_MS);
+  return {
+    dateKey,
+    start,
+    end: new Date(start.getTime() + DAY_MS),
+  };
+}
+
 export function getChinaDayRange(input = new Date()) {
   const parts = formatChinaDateParts(input);
   const start = new Date(Date.UTC(parts.year, parts.month - 1, parts.day) - CHINA_UTC_OFFSET_MS);
@@ -77,9 +97,39 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function recordAdminDailyLogin(userId: number, at = new Date()) {
-  if (!Number.isInteger(userId) || userId <= 0) return;
-  const dateKey = formatChinaDateParts(at).ymd;
+function normalizeLoginAt(input: Date) {
+  return input instanceof Date && !Number.isNaN(input.getTime()) ? input : new Date();
+}
+
+function normalizeClient(input: string | null | undefined) {
+  const value = String(input ?? "").trim();
+  return value || null;
+}
+
+async function writeAdminDailyLoginRow(userId: number, dateKey: string, at: Date, client?: string | null) {
+  const clientValue = normalizeClient(client);
+  await prisma.adminDailyLogin.upsert({
+    where: {
+      userId_dateKey: {
+        userId,
+        dateKey,
+      },
+    },
+    create: {
+      userId,
+      dateKey,
+      client: clientValue,
+      firstLoginAt: at,
+      lastLoginAt: at,
+    },
+    update: {
+      lastLoginAt: at,
+      ...(clientValue ? { client: clientValue } : {}),
+    },
+  });
+}
+
+async function writeAdminDailyLoginCache(userId: number, dateKey: string) {
   const cacheKey = dailyLoginCacheKey(dateKey);
 
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -99,13 +149,82 @@ export async function recordAdminDailyLogin(userId: number, at = new Date()) {
   }
 }
 
+export async function recordAdminDailyLogin(userId: number, at = new Date(), client?: string | null) {
+  if (!Number.isInteger(userId) || userId <= 0) return;
+  const loginAt = normalizeLoginAt(at);
+  const dateKey = formatChinaDateParts(loginAt).ymd;
+
+  await Promise.all([
+    writeAdminDailyLoginRow(userId, dateKey, loginAt, client).catch((error) => {
+      console.warn("[admin-stats] failed to write daily login row", error);
+    }),
+    writeAdminDailyLoginCache(userId, dateKey).catch((error) => {
+      console.warn("[admin-stats] failed to write daily login cache", error);
+    }),
+  ]);
+}
+
+export async function backfillAdminDailyLoginsFromLastLogin(days = 30, now = new Date()) {
+  const dateKeys = recentDateKeys(days, now);
+  const today = dateKeys[dateKeys.length - 1] ?? formatChinaDateParts(now).ymd;
+  const markerKey = `admin:daily-login-backfill:${today}:${dateKeys.length}`;
+  if (await getEphemeralValue(markerKey)) return { skipped: true, count: 0 };
+
+  const locked = await runWithDistributedLock(`admin-daily-login-backfill:${today}:${dateKeys.length}`, DAILY_LOGIN_BACKFILL_LOCK_MS, async () => {
+    if (await getEphemeralValue(markerKey)) return { skipped: true, count: 0 };
+
+    const firstRange = getChinaDayRangeForDateKey(dateKeys[0]);
+    const lastRange = getChinaDayRangeForDateKey(today);
+    const allowedDates = new Set(dateKeys);
+    const rows = await prisma.user.findMany({
+      where: {
+        lastLoginAt: {
+          gte: firstRange.start,
+          lt: lastRange.end,
+        },
+      },
+      select: {
+        id: true,
+        lastLoginAt: true,
+        lastLoginClient: true,
+      },
+    });
+
+    let count = 0;
+    for (const row of rows) {
+      if (!row.lastLoginAt) continue;
+      const dateKey = formatChinaDateParts(row.lastLoginAt).ymd;
+      if (!allowedDates.has(dateKey)) continue;
+      await writeAdminDailyLoginRow(row.id, dateKey, row.lastLoginAt, row.lastLoginClient);
+      count += 1;
+    }
+
+    await setEphemeralValue(markerKey, String(Date.now()), DAILY_LOGIN_BACKFILL_TTL_MS);
+    return { skipped: false, count };
+  });
+
+  return locked.acquired ? locked.result ?? { skipped: true, count: 0 } : { skipped: true, count: 0 };
+}
+
 export async function listAdminDailyLoginSeries(days = 30, now = new Date()): Promise<AdminDailyLoginPoint[]> {
-  const safeDays = Math.max(1, Math.min(90, Math.round(days)));
-  const today = formatChinaDateParts(now).ymd;
-  const dateKeys = Array.from({ length: safeDays }, (_, index) => addDaysToDateKey(today, index - (safeDays - 1)));
+  const dateKeys = recentDateKeys(days, now);
+  const dbCounts = new Map<string, number>();
+  try {
+    const rows = await prisma.adminDailyLogin.groupBy({
+      by: ["dateKey"],
+      where: { dateKey: { in: dateKeys } },
+      _count: { _all: true },
+    });
+    rows.forEach((row) => {
+      dbCounts.set(row.dateKey, row._count._all);
+    });
+  } catch (error) {
+    console.warn("[admin-stats] failed to read daily login rows", error);
+  }
+
   const buckets = await Promise.all(dateKeys.map((dateKey) => getCachedJson<AdminDailyLoginBucket>(dailyLoginCacheKey(dateKey))));
   return dateKeys.map((dateKey, index) => {
     const bucket = normalizeBucket(buckets[index], dateKey);
-    return { date: dateKey, count: bucket.count };
+    return { date: dateKey, count: Math.max(dbCounts.get(dateKey) ?? 0, bucket.count) };
   });
 }

@@ -60,7 +60,7 @@ authRouter.post("/login", validate(loginSchema), async (req, res, next) => {
       role: user.role,
       campus: "",
     });
-    await recordAdminDailyLogin(logged.id, logged.lastLoginAt ?? new Date()).catch((error) => {
+    await recordAdminDailyLogin(logged.id, logged.lastLoginAt ?? new Date(), client.client).catch((error) => {
       console.warn("[admin-stats] failed to record login", error);
     });
     ok(res, { token, user: buildSelfUser(logged) });
@@ -93,7 +93,7 @@ authRouter.post("/register", validate(registerSchema), async (req, res, next) =>
     });
     await prisma.messageSetting.create({ data: { userId: user.id } });
     const token = signToken({ userId: user.id, studentId: user.username, role: user.role, campus: "" });
-    await recordAdminDailyLogin(user.id, user.lastLoginAt ?? new Date()).catch((error) => {
+    await recordAdminDailyLogin(user.id, user.lastLoginAt ?? new Date(), client.client).catch((error) => {
       console.warn("[admin-stats] failed to record register login", error);
     });
     ok(res, { token, user: buildSelfUser(user) });
@@ -179,7 +179,7 @@ authRouter.post(
         role: user.role,
         campus: "",
       });
-      await recordAdminDailyLogin(user.id, user.lastLoginAt ?? new Date()).catch((error) => {
+      await recordAdminDailyLogin(user.id, user.lastLoginAt ?? new Date(), client.client).catch((error) => {
         console.warn("[admin-stats] failed to record sso login", error);
       });
       ok(res, {
