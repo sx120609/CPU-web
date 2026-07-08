@@ -1292,7 +1292,7 @@ async function openAndroidDownload() {
   const absoluteUrl = new URL(APK_DOWNLOAD_URL, window.location.origin).toString();
   const bridge = getAndroidWidgetBridge();
   if (androidCanInAppUpdate.value && typeof bridge?.downloadAndInstallApk === "function") {
-    const started = bridge.downloadAndInstallApk(absoluteUrl, "CPU-Web-Android-V3.apk");
+    const started = bridge.downloadAndInstallApk(absoluteUrl, "CPU-Web-Android-V4.apk");
     if (started !== false) {
       androidUpdateOpen.value = false;
       ElMessage.success("已开始应用内下载更新");

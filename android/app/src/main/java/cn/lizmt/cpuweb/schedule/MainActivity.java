@@ -27,6 +27,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -363,17 +364,14 @@ public final class MainActivity extends Activity {
         layout.setPadding(dp(24), dp(24), dp(24), dp(24));
         layout.setBackgroundResource(R.drawable.launch_background);
 
-        TextView logo = new TextView(this);
-        logo.setText("药");
-        logo.setTextColor(Color.WHITE);
-        logo.setTextSize(34);
-        logo.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        logo.setGravity(Gravity.CENTER);
-        logo.setBackgroundResource(R.drawable.launch_logo_background);
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(R.mipmap.ic_launcher);
+        logo.setAdjustViewBounds(true);
+        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             logo.setElevation(dp(8));
         }
-        LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(dp(84), dp(84));
+        LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(dp(68), dp(68));
         logoParams.setMargins(0, 0, 0, dp(18));
 
         TextView title = new TextView(this);
