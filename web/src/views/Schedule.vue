@@ -621,14 +621,17 @@
       <div class="android-update-panel">
         <p v-if="androidUpdateKind === 'app'">
           当前客户端版本为 {{ androidCurrentVersionLabel }}，最新版本为 {{ androidLatestVersionLabel }}。
-          {{ androidCanInAppUpdate ? "可直接在应用内下载并安装更新。" : "请复制下载链接，到系统浏览器粘贴打开并安装更新。" }}
+          {{ androidCanInAppUpdate ? "可直接在应用内下载并安装新版客户端。" : "请复制下载链接，到系统浏览器粘贴打开并安装新版客户端。" }}
         </p>
         <p v-else>
           当前安卓客户端版本过低，桌面小组件不可用。
-          {{ androidCanInAppUpdate ? `请先在应用内下载并安装最新版 ${androidLatestVersionLabel}。` : `请先复制下载链接，到系统浏览器粘贴打开并安装最新版 ${androidLatestVersionLabel}。` }}
+          {{ androidCanInAppUpdate ? `请先在应用内下载并安装新版客户端 ${androidLatestVersionLabel}。` : `请先复制下载链接，到系统浏览器粘贴打开并安装新版客户端 ${androidLatestVersionLabel}。` }}
+        </p>
+        <p class="android-migration-note">
+          这次采用新版 Flutter 架构，系统会把新版当作一个新的客户端安装，不会覆盖旧版。安装新版并确认可用后，请手动卸载旧版客户端。
         </p>
         <p class="widget-countdown">
-          {{ androidUpdateCountdown > 0 ? `请先阅读说明，${androidUpdateCountdown} 秒后可继续。` : androidCanInAppUpdate ? "已可开始应用内下载。" : "已可复制下载链接。" }}
+          {{ androidUpdateCountdown > 0 ? `请先阅读说明，${androidUpdateCountdown} 秒后可继续。` : androidCanInAppUpdate ? "已可开始下载新版。" : "已可复制新版下载链接。" }}
         </p>
         <p class="support-note">
           仍有疑问，建议
@@ -639,7 +642,7 @@
       <template #footer>
         <el-button @click="androidUpdateOpen = false">稍后</el-button>
         <el-button type="primary" :disabled="androidUpdateCountdown > 0" @click="openAndroidDownload">
-          {{ androidUpdateCountdown > 0 ? `${androidUpdateCountdown}s` : androidCanInAppUpdate ? "立即更新" : "复制下载链接" }}
+          {{ androidUpdateCountdown > 0 ? `${androidUpdateCountdown}s` : androidCanInAppUpdate ? "下载新版" : "复制下载链接" }}
         </el-button>
       </template>
     </el-dialog>

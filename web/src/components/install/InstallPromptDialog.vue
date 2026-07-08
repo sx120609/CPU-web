@@ -29,7 +29,7 @@
     <!-- Android 普通浏览器：优先提供 APK -->
     <div v-else-if="platform === 'android'" class="content">
       <p>建议安装 <b>药大拾间</b> Android 版，下次可从桌面图标直接打开。</p>
-      <p class="muted">如果手机里已经装过旧版，请先卸载旧版，再安装新版。</p>
+      <p class="migration-note">新版采用 Flutter 架构，系统会把它作为新的客户端安装，不会覆盖旧版。安装新版并确认可用后，请手动卸载旧版客户端。</p>
       <ul class="bullets">
         <li>安装包很小，只是课表页的轻量 App 壳</li>
         <li>网站正常访问时，App 内容会同步更新</li>
@@ -282,6 +282,15 @@ defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platfo
 .content p { margin: 0 0 10px; }
 .content .muted { color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.6; }
 .content b { color: var(--cpu-primary); }
+.migration-note {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--cpu-primary) 26%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--cpu-primary) 10%, transparent);
+  color: var(--cpu-primary);
+  font-size: 12px;
+  line-height: 1.6;
+}
 
 .bullets {
   list-style: none;
