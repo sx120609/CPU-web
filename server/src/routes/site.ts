@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
+import { config } from "../config";
 import { ok } from "../utils/response";
 import { withCache } from "../services/cache";
 import { getFeatures, getSiteFilingNumber, getSiteOrigin } from "../services/siteSettings";
@@ -25,9 +26,27 @@ siteRouter.get("/config", async (_req, res, next) => {
 });
 
 siteRouter.get("/downloads/android-app", (_req, res) => {
-  const fileName = resolveLatestAndroidApkFileName() || "CPU-Web-Flutter-V2.apk";
+  const configuredUrl = normalizeAndroidDownloadUrl(config.androidAppDownloadUrl);
+  if (configuredUrl) {
+    res.redirect(302, configuredUrl);
+    return;
+  }
+
+  const fileName = resolveLatestAndroidApkFileName() || "CPU-Web-Android-V3.apk";
   res.redirect(302, `/downloads/${encodeURIComponent(fileName)}`);
 });
+
+function normalizeAndroidDownloadUrl(value: string) {
+  const raw = value.trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:") return "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
 
 function resolveLatestAndroidApkFileName() {
   const dirs = [
@@ -37,8 +56,6 @@ function resolveLatestAndroidApkFileName() {
   for (const dir of dirs) {
     if (!existsSync(dir)) continue;
     const names = readdirSync(dir);
-    const latestFlutterClient = latestApkByPattern(names, /^CPU-Web-Flutter-V(\d+)\.apk$/i);
-    if (latestFlutterClient) return latestFlutterClient;
     const latestAndroidClient = latestApkByPattern(names, /^CPU-Web-Android-V(\d+)\.apk$/i);
     if (latestAndroidClient) return latestAndroidClient;
     const latestLegacyClient = latestApkByPattern(names, /^CPU-Web-V(\d+)\.apk$/i);

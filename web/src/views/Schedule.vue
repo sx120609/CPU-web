@@ -630,7 +630,7 @@
           {{ androidCanInAppUpdate ? `请先在应用内下载并安装新版客户端 ${androidLatestVersionLabel}。` : `请先复制下载链接，到系统浏览器粘贴打开并安装新版客户端 ${androidLatestVersionLabel}。` }}
         </p>
         <p class="android-migration-note">
-          这次采用新版 Flutter 架构，系统会把新版当作一个新的客户端安装，不会覆盖旧版。安装新版并确认可用后，请手动卸载旧版客户端。
+          这次新版客户端使用新的包名和签名，系统会把它作为新的客户端安装，不会覆盖最早的旧版。安装新版并确认可用后，请手动卸载旧版客户端；如已安装前一个新版试用包，则会直接覆盖更新。
         </p>
         <p class="widget-countdown">
           {{ androidUpdateCountdown > 0 ? `请先阅读说明，${androidUpdateCountdown} 秒后可继续。` : androidCanInAppUpdate ? "已可开始下载新版。" : "已可复制新版下载链接。" }}
@@ -1292,12 +1292,17 @@ async function openAndroidDownload() {
   const absoluteUrl = new URL(APK_DOWNLOAD_URL, window.location.origin).toString();
   const bridge = getAndroidWidgetBridge();
   if (androidCanInAppUpdate.value && typeof bridge?.downloadAndInstallApk === "function") {
-    const started = bridge.downloadAndInstallApk(absoluteUrl, "CPU-Web-Flutter-V2.apk");
+    const started = bridge.downloadAndInstallApk(absoluteUrl, "CPU-Web-Android-V3.apk");
     if (started !== false) {
       androidUpdateOpen.value = false;
       ElMessage.success("已开始应用内下载更新");
       return;
     }
+  }
+  if (isFlutterNativeShell()) {
+    window.open(absoluteUrl, "_blank", "noopener,noreferrer");
+    androidUpdateOpen.value = false;
+    return;
   }
   let copied = false;
   try {

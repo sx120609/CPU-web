@@ -10,6 +10,10 @@ def defaultAppUrl = "https://cpu.lizmt.cn/schedule"
 def resolvedAppUrl = (project.findProperty("appUrl") ?: defaultAppUrl).toString()
 def resolvedApplicationId = (project.findProperty("applicationId") ?: "cn.lizmt.cpuweb.schedule").toString()
 def resolvedAppName = (project.findProperty("appName") ?: "药大拾间").toString()
+def releaseStoreFile = (project.findProperty("releaseStoreFile") ?: "").toString()
+def releaseStorePassword = (project.findProperty("releaseStorePassword") ?: "").toString()
+def releaseKeyAlias = (project.findProperty("releaseKeyAlias") ?: "").toString()
+def releaseKeyPassword = (project.findProperty("releaseKeyPassword") ?: "").toString()
 
 def escapeJavaString = { value ->
     value.replace("\\", "\\\\").replace("\"", "\\\"")
@@ -23,11 +27,30 @@ android {
         applicationId resolvedApplicationId
         minSdk 23
         targetSdk 35
-        versionCode 20
-        versionName "2.1.1"
+        versionCode 23
+        versionName "3.0.2"
 
         buildConfigField "String", "APP_URL", "\"${escapeJavaString(resolvedAppUrl)}\""
         resValue "string", "app_name", resolvedAppName
+    }
+
+    signingConfigs {
+        release {
+            if (releaseStoreFile) {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            if (releaseStoreFile) {
+                signingConfig signingConfigs.release
+            }
+        }
     }
 
     buildFeatures {

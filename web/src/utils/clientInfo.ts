@@ -1,7 +1,7 @@
 export type ClientPlatform = "ios" | "android" | "harmony" | "web" | "unknown";
 
-export const ANDROID_APP_LATEST_VERSION_CODE = 22;
-export const ANDROID_APP_LATEST_VERSION_NAME = "3.0.1";
+export const ANDROID_APP_LATEST_VERSION_CODE = 23;
+export const ANDROID_APP_LATEST_VERSION_NAME = "3.0.2";
 export const HARMONY_APP_LATEST_VERSION_CODE = 17;
 export const HARMONY_APP_LATEST_VERSION_NAME = "2.0.8";
 export const ANDROID_APP_DOWNLOAD_URL = "/api/site/downloads/android-app";
@@ -135,7 +135,6 @@ export function getAndroidNativeVersionName(ua = navigator.userAgent) {
 }
 
 export function isAndroidAppUpdateAvailable(ua = navigator.userAgent) {
-  if (isFlutterNativeShell(ua)) return false;
   return isAndroidNativeApp(ua) && getAndroidNativeVersionCode(ua) < ANDROID_APP_LATEST_VERSION_CODE;
 }
 

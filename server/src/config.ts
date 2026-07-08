@@ -39,6 +39,10 @@ export const config = {
   redisEnabled: parseBooleanEnv(process.env.REDIS_ENABLED, true),
   redisUrl: process.env.REDIS_URL ?? "",
   redisPrefix: (process.env.REDIS_PREFIX ?? "cpu-web").trim() || "cpu-web",
+  androidAppDownloadUrl: (
+    process.env.ANDROID_APP_DOWNLOAD_URL
+    ?? "https://download.lizmt.cn/Android/CPU-Web-Android-V3.apk"
+  ).trim(),
 };
 
 export const isDev = config.nodeEnv !== "production";

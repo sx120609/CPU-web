@@ -29,7 +29,7 @@
     <!-- Android 普通浏览器：优先提供 APK -->
     <div v-else-if="platform === 'android'" class="content">
       <p>建议安装 <b>药大拾间</b> Android 版，下次可从桌面图标直接打开。</p>
-      <p class="migration-note">新版采用 Flutter 架构，系统会把它作为新的客户端安装，不会覆盖旧版。安装新版并确认可用后，请手动卸载旧版客户端。</p>
+      <p class="migration-note">新版客户端使用新的包名和签名，系统会把它作为新的客户端安装，不会覆盖最早的旧版。安装新版并确认可用后，请手动卸载旧版客户端。</p>
       <ul class="bullets">
         <li>安装包很小，只是课表页的轻量 App 壳</li>
         <li>网站正常访问时，App 内容会同步更新</li>
