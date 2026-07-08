@@ -2,14 +2,9 @@
   --schedule-bottom-obscured-space: 74px;
 }
 
-:global(.layout-root--tabbar-fallback) .summary {
-  display: none;
-}
-
 @media (max-width: 760px) {
   /* toolbar 旧的双选择器已经从模板移除，但保险起见仍 hide 类 */
   .toolbar { display: none; }
-  .summary { display: none; }
   .schedule-page {
     --schedule-bottom-obscured-space: 74px;
     padding-top: calc(env(safe-area-inset-top) + 8px);

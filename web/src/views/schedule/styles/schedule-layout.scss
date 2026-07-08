@@ -202,32 +202,6 @@
   color: #dc2626 !important;
   font-size: 13px;
 }
-.summary {
-  flex: 0 0 auto;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-  color: var(--schedule-text-secondary);
-}
-.summary div {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.summary b {
-  color: var(--schedule-text);
-  font-size: 20px;
-}
-.summary small {
-  color: var(--schedule-text-muted);
-  font-size: 11px;
-}
-.summary em {
-  font-style: normal;
-  color: var(--schedule-accent);
-  font-weight: 700;
-}
 .carousel-viewport {
   flex: 1 1 auto;
   min-height: 0;

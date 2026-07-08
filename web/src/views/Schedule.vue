@@ -23,6 +23,17 @@
         <el-option v-for="s in semesters" :key="s.value" :value="s.value" :label="s.label" />
       </el-select>
       <div class="top-actions">
+        <button
+          v-if="showLandscapeExitButton"
+          type="button"
+          class="icon-btn schedule-exit-btn"
+          aria-label="退出课表"
+          title="退出课表"
+          @click="$router.push('/home')"
+        >
+          <el-icon><ArrowLeft /></el-icon>
+          <span>退出</span>
+        </button>
         <div v-if="parsed" class="view-switch" aria-label="切换课表视图">
           <button type="button" :class="{ active: viewMode === 'day' }" :disabled="loading" @click="setViewMode('day')">日</button>
           <button type="button" :class="{ active: viewMode === 'week' }" :disabled="loading" @click="setViewMode('week')">周</button>
@@ -331,15 +342,6 @@
             ]"
             :aria-hidden="page.delta !== 0"
           >
-            <div class="summary">
-              <div>
-                <span>第 {{ page.weekValue || parsed?.currentWeek || "--" }} 周</span>
-                <b>{{ page.title }}</b>
-                <small v-if="cacheText">{{ cacheText }}</small>
-              </div>
-              <em>{{ page.courseCount }} 节课</em>
-            </div>
-
             <div class="schedule-body-scroll">
               <section v-if="viewMode === 'week'" class="week-overview" aria-label="整周课表">
                 <div class="week-grid-head">
@@ -855,7 +857,6 @@ import {
   extendScheduleWeeksToCalendar,
   formatCacheTime,
   hydrateCalendar,
-  officialGraduateSemesterCalendarFor,
   resolveGraduateActiveDay,
   resolveGraduateInitialWeek,
 } from "@/views/schedule/calendar";
@@ -898,6 +899,8 @@ const captchaError = ref("");
 const scheduleSavedAt = ref(0);
 const scheduleEdits = ref<ScheduleEditState>(emptyScheduleEdits());
 const viewportHeight = ref(0);
+const viewportWidth = ref(0);
+const touchLikeViewport = ref(false);
 const compactViewport = ref(false);
 const THEME_KEY = "cpu-schedule-theme-v1";
 const GRAD_DEBUG_URL = "http://ygl.cpu.edu.cn/gmis5/oauthLogin/zgyk";
@@ -1536,20 +1539,6 @@ const currentWeekInfo = computed(() => weekInfoFor(week.value));
 const currentWeekRange = computed(() => weekRangeFor(week.value));
 const dayTabs = computed(() => dayTabsForWeek(week.value));
 const activeDayLabel = computed(() => dayTabs.value.find((d) => d.day === activeDay.value)?.label ?? "今日");
-const cacheText = computed(() => {
-  const parts: string[] = [];
-  if (scheduleSource.value === "graduate" || scheduleSource.value === "graduate-debug") {
-    if (graduateSourceMeta.value?.mode === "live") parts.push("研究生实时课表");
-    else if (graduateSourceMeta.value?.mode === "debug-fallback") parts.push("研究生本地样例回退");
-    else parts.push("研究生调试样例");
-    parts.push(officialGraduateSemesterCalendarFor(semester.value || parsed.value?.currentSemester || "") ? "日期来自官方校历" : "日期为推算");
-    if (graduateSourceMeta.value?.fetchedAt) parts.push(`实时同步 ${formatCacheTime(Date.parse(graduateSourceMeta.value.fetchedAt))}`);
-    if (graduateSourceMeta.value?.savedAt) parts.push(`本地抓取 ${formatCacheTime(Date.parse(graduateSourceMeta.value.savedAt))}`);
-  }
-  if (offlineMode.value) parts.push("当前离线");
-  if (scheduleSavedAt.value && scheduleSource.value === "jwxt") parts.push(`本地缓存 ${formatCacheTime(scheduleSavedAt.value)}`);
-  return parts.join(" · ");
-});
 const activeWeekNumber = computed(() => {
   const value = Number(week.value || parsed.value?.currentWeek || calendar.value?.currentWeek || 0);
   return Number.isFinite(value) && value > 0 ? value : 0;
@@ -1562,6 +1551,10 @@ const isViewingToday = computed(() => {
   if (!cur || String(cur) !== currentWeekValue()) return false;
   return viewMode.value === "week" || activeDay.value === dayOfWeek();
 });
+const showLandscapeExitButton = computed(() => (
+  touchLikeViewport.value
+  && viewportWidth.value > viewportHeight.value
+));
 const pageStyle = computed(() => ({
   ...scheduleThemeCssVars(scheduleTheme.value),
   ...(appearance.isDark ? {
@@ -2296,9 +2289,21 @@ async function submitCaptcha() {
 
 function updateViewportHeight() {
   const visualHeight = window.visualViewport?.height ?? window.innerHeight;
+  const visualWidth = window.visualViewport?.width ?? window.innerWidth;
   const height = Math.min(visualHeight, window.innerHeight);
+  const width = Math.min(visualWidth, window.innerWidth);
   viewportHeight.value = Math.max(0, Math.round(height || 0));
-  compactViewport.value = window.matchMedia?.("(max-width: 760px)").matches ?? window.innerWidth <= 760;
+  viewportWidth.value = Math.max(0, Math.round(width || 0));
+  touchLikeViewport.value = isTouchLikeViewport();
+  compactViewport.value = window.matchMedia?.("(max-width: 760px)").matches ?? width <= 760;
+}
+
+function isTouchLikeViewport() {
+  return Boolean(
+    window.matchMedia?.("(pointer: coarse)").matches
+    || window.matchMedia?.("(hover: none)").matches
+    || navigator.maxTouchPoints > 0
+  );
 }
 
 function syncNetworkStatus() {

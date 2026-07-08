@@ -324,7 +324,7 @@ const appearanceIcon = computed(() => (
   appearance.mode === "system" ? Monitor : appearance.resolved === "dark" ? Moon : Sunny
 ));
 
-/** 某些路由（如 /schedule）希望"裸壳"渲染，没有顶栏/免责声明/footer，仅保留 main + tabbar */
+/** 某些路由（如 /schedule）希望"裸壳"渲染，没有顶栏/免责声明/footer */
 const hideChrome = computed(() => Boolean(route.meta?.hideChrome));
 const fullWidthContent = computed(() => Boolean(route.meta?.fullWidthContent));
 const useNativeShell = computed(() => isFlutterNativeShell());
@@ -332,7 +332,7 @@ const isPortraitViewport = computed(() => mobileViewportHeight.value >= mobileVi
 const useTabbarFallback = computed(() => (
   touchLikeViewport.value
   && !useNativeShell.value
-  && (isPortraitViewport.value || hideChrome.value)
+  && isPortraitViewport.value
 ));
 const layoutStyle = computed(() => (
   mobileViewportHeight.value
@@ -369,6 +369,7 @@ const desktopNavItems = computed(() => {
   if (site.features.forum) items.push({ to: "/forum", label: "论坛" });
   items.push({ to: "/announcements", label: "公告" });
   items.push({ to: "/jwxt", label: "教务", fullLabel: "教务数据" });
+  items.push({ to: "/schedule", label: "课表" });
   items.push({ to: "/services", label: "服务", fullLabel: "校园服务" });
   if (site.features.coursereview && auth.canAccessForum) items.push({ to: "/coursereview", label: "课评", fullLabel: "课程点评" });
   if (site.features.market && auth.canAccessForum) items.push({ to: "/market", label: "二手", fullLabel: "二手市场" });
@@ -376,7 +377,7 @@ const desktopNavItems = computed(() => {
 });
 
 const desktopPrimaryNavItems = computed(() => {
-  const primary = new Set(["/home", "/forum", "/announcements", "/jwxt", "/services"]);
+  const primary = new Set(["/home", "/forum", "/announcements", "/jwxt", "/schedule", "/services"]);
   return desktopNavItems.value.filter((item) => primary.has(item.to));
 });
 
@@ -404,6 +405,7 @@ const drawerItems = computed(() => {
   if (site.features.forum) items.push({ to: "/forum", label: "论坛", icon: ChatLineRound });
   items.push({ to: "/announcements", label: "校园公告", icon: Bell });
   items.push({ to: "/jwxt", label: "教务数据", icon: Calendar });
+  items.push({ to: "/schedule", label: "课表", icon: Calendar });
   if (site.features.coursereview && auth.canAccessForum) items.push({ to: "/coursereview", label: "课评", icon: Reading });
   if (site.features.market && auth.canAccessForum) items.push({ to: "/market", label: "二手市场", icon: Goods });
   items.push({ to: "/services", label: "校园服务", icon: Service });
@@ -1179,6 +1181,11 @@ function setAppearanceMode(command: string | number | object) {
 @media (max-width: 960px) {
   .top-nav { display: none; }
   .top-search { width: 200px; }
+  .top-right { display: none; }
+  .mobile-actions {
+    display: flex;
+    flex: 0 0 auto;
+  }
 }
 
 @media (max-width: 768px) {
@@ -1368,8 +1375,8 @@ function setAppearanceMode(command: string | number | object) {
   }
 }
 
-@media (min-width: 769px) and (max-width: 1366px) and (pointer: coarse),
-       (min-width: 769px) and (max-width: 1366px) and (hover: none) {
+@media (min-width: 769px) and (max-width: 1366px) and (orientation: portrait) and (pointer: coarse),
+       (min-width: 769px) and (max-width: 1366px) and (orientation: portrait) and (hover: none) {
   .main {
     padding-bottom: calc(88px + env(safe-area-inset-bottom));
   }
