@@ -139,6 +139,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import DOMPurify from "dompurify";
 import { uploadApi } from "@/api/topic";
 import { compressImageFile, dataUrlToBlob, normalizeImageUploadError } from "@/utils/imageUpload";
+import { isAndroidNativeApp } from "@/utils/clientInfo";
 import { normalizeSafeBlankTargets, renderMarkdown } from "@/utils/markdown";
 type Alignment = "left" | "center" | "right";
 type MobileToolbarKey = "heading" | "format" | "tools" | "align" | "image";
@@ -569,7 +570,7 @@ async function onContentImagePicked(event: Event) {
 }
 
 async function handleEditorPaste(event: ClipboardEvent) {
-  const files = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/"));
+  const files = Array.from(event.clipboardData?.files ?? []).filter(isSupportedMediaFile);
   if (!files.length) {
     setTimeout(syncEditorContent, 0);
     return;
@@ -580,7 +581,7 @@ async function handleEditorPaste(event: ClipboardEvent) {
 }
 
 async function handleEditorDrop(event: DragEvent) {
-  const files = Array.from(event.dataTransfer?.files ?? []).filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/"));
+  const files = Array.from(event.dataTransfer?.files ?? []).filter(isSupportedMediaFile);
   if (!files.length) return;
   rememberSelection();
   await uploadAndInsertMedia(files);
@@ -616,7 +617,8 @@ async function uploadAndInsertMedia(files: File[]) {
     let failedCount = 0;
     for (const [index, file] of files.entries()) {
       const task = mediaUploadTasks.value[index];
-      if (file.type.startsWith("image/")) {
+      const mediaKind = inferMediaKind(file);
+      if (mediaKind === "image") {
         try {
           updateUploadTask(task.id, {
             status: "preparing",
@@ -625,20 +627,23 @@ async function uploadAndInsertMedia(files: File[]) {
             totalBytes: file.size,
             errorMessage: "",
           });
-          const compressed = await compressImageFile(file, {
-            maxWidth: 1400,
-            maxHeight: 1400,
-            quality: 0.82,
-            mimeType: "image/jpeg",
-            maxBytes: 520 * 1024,
-          });
-          const imageBlob = dataUrlToBlob(compressed);
+          const useOriginalFile = shouldUploadImageOriginal(file);
+          const imageBlob = useOriginalFile
+            ? file
+            : dataUrlToBlob(await compressImageFile(file, {
+              maxWidth: 1400,
+              maxHeight: 1400,
+              quality: 0.82,
+              mimeType: "image/jpeg",
+              maxBytes: 520 * 1024,
+            }));
           if (editorDisposed) return;
           updateUploadTask(task.id, {
             totalBytes: imageBlob.size || file.size,
             loadedBytes: 0,
           });
-          const { url } = await uploadApi.media(imageBlob, replaceFileExtension(file.name || "image.jpg", "jpg"), {
+          const { url } = await uploadApi.media(imageBlob, useOriginalFile ? safeMediaFileName(file, "image.jpg") : replaceFileExtension(file.name || "image.jpg", "jpg"), {
+            forceProxy: isAndroidNativeApp(),
             onProgress: (state) => syncUploadTaskProgress(task.id, state),
           });
           if (editorDisposed) return;
@@ -659,7 +664,7 @@ async function uploadAndInsertMedia(files: File[]) {
         }
         continue;
       }
-      if (file.type.startsWith("video/")) {
+      if (mediaKind === "video") {
         try {
           updateUploadTask(task.id, {
             status: "preparing",
@@ -668,7 +673,7 @@ async function uploadAndInsertMedia(files: File[]) {
             totalBytes: file.size,
             errorMessage: "",
           });
-          const { url, posterUrl } = await uploadApi.media(file, file.name || "video.mp4", {
+          const { url, posterUrl } = await uploadApi.media(file, safeMediaFileName(file, "video.mp4"), {
             onProgress: (state) => syncUploadTaskProgress(task.id, state),
           });
           if (editorDisposed) return;
@@ -782,11 +787,35 @@ function replaceFileExtension(name: string, extension: string) {
   return `${base}.${extension}`;
 }
 
+function inferMediaKind(file: File): "image" | "video" | "" {
+  const mime = String(file.type || "").toLowerCase();
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  const ext = String(file.name || "").split(".").pop()?.toLowerCase() ?? "";
+  if (["jpg", "jpeg", "png", "webp", "gif"].includes(ext)) return "image";
+  if (["mp4", "webm", "ogv", "mov", "m4v", "mkv"].includes(ext)) return "video";
+  return "";
+}
+
+function isSupportedMediaFile(file: File) {
+  return Boolean(inferMediaKind(file));
+}
+
+function shouldUploadImageOriginal(file: File) {
+  const mime = String(file.type || "").toLowerCase();
+  return isAndroidNativeApp() || !mime.startsWith("image/") || mime === "image/gif";
+}
+
+function safeMediaFileName(file: File, fallback: string) {
+  return String(file.name || "").trim() || fallback;
+}
+
 function createUploadTask(file: File, index: number): MediaUploadTask {
+  const mediaKind = inferMediaKind(file);
   return {
     id: `media-upload-${Date.now().toString(36)}-${index}-${Math.random().toString(36).slice(2, 8)}`,
-    name: file.name || (file.type.startsWith("video/") ? "视频" : "图片"),
-    kind: file.type.startsWith("video/") ? "video" : "image",
+    name: file.name || (mediaKind === "video" ? "视频" : "图片"),
+    kind: mediaKind === "video" ? "video" : "image",
     status: "waiting",
     progress: 0,
     loadedBytes: 0,

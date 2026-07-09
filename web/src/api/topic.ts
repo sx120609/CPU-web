@@ -140,6 +140,7 @@ export const uploadApi = {
     file: Blob,
     fileName: string,
     options?: {
+      forceProxy?: boolean;
       onProgress?: (state: {
         stage: "preparing" | "uploading" | "processing";
         loaded: number;
@@ -164,31 +165,34 @@ export const uploadApi = {
       });
     };
 
-    const init = await request.post<{
-      mode: "direct" | "proxy";
-      kind: "image" | "video";
-      url?: string;
-      uploadUrl?: string;
-      uploadToken?: string;
-      expiresAt?: string;
-      mimeType?: string;
-    }>("/uploads/media/init", {
-      fileName,
-      mimeType: file.type || "",
-      fileSize: file.size,
-    }, { timeout: 30000 });
-
-    if (init.mode === "direct" && init.uploadUrl && init.uploadToken) {
-      await uploadFileToOneDriveSession(init.uploadUrl, file, file.type || init.mimeType || "application/octet-stream", reportProgress);
-      reportProgress("processing", file.size, file.size);
-      return request.post<{
+    const shouldForceProxy = options?.forceProxy === true;
+    if (!shouldForceProxy) {
+      const init = await request.post<{
+        mode: "direct" | "proxy";
         kind: "image" | "video";
-        url: string;
-        posterUrl?: string;
+        url?: string;
+        uploadUrl?: string;
+        uploadToken?: string;
+        expiresAt?: string;
         mimeType?: string;
-      }>("/uploads/media/complete", {
-        uploadToken: init.uploadToken,
-      }, { timeout: 180000 });
+      }>("/uploads/media/init", {
+        fileName,
+        mimeType: file.type || "",
+        fileSize: file.size,
+      }, { timeout: 30000 });
+
+      if (init.mode === "direct" && init.uploadUrl && init.uploadToken) {
+        await uploadFileToOneDriveSession(init.uploadUrl, file, file.type || init.mimeType || "application/octet-stream", reportProgress);
+        reportProgress("processing", file.size, file.size);
+        return request.post<{
+          kind: "image" | "video";
+          url: string;
+          posterUrl?: string;
+          mimeType?: string;
+        }>("/uploads/media/complete", {
+          uploadToken: init.uploadToken,
+        }, { timeout: 180000 });
+      }
     }
 
     const formData = new FormData();
