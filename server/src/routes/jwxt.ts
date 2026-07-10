@@ -883,7 +883,7 @@ jwxtRouter.post("/begin-login", async (_req, res, next) => {
 jwxtRouter.post(
   "/login",
   validate(z.object({
-    pendingId: z.string().min(8),
+    pendingId: z.string().min(8).max(2048),
     username: z.string().min(1),
     password: z.string().min(1),
     captcha: z.string().optional(),

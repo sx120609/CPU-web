@@ -67,6 +67,13 @@ export function submitLogin(args: Parameters<typeof local.submitLogin>[0]): Prom
   return call("/v1/login", args);
 }
 
+/** 在固定 JWXT_PROXY_URL 节点消费登录池颁发的一次性会话交接。 */
+export function consumeLoginHandoff(
+  handoff: Parameters<typeof local.consumeLoginHandoff>[0],
+): ReturnType<typeof local.consumeLoginHandoff> {
+  return call("/v1/login-pool/consume-handoff", { handoff }) as ReturnType<typeof local.consumeLoginHandoff>;
+}
+
 export async function logout(token: string): Promise<boolean> {
   const r = await call<{ ok: boolean }>("/v1/logout", { token });
   return r.ok;

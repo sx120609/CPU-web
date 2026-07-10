@@ -1,6 +1,8 @@
 import {
   beginLogin,
   submitLogin,
+  submitLoginForHandoff,
+  consumeLoginHandoff,
   logout as clientLogout,
   getSession,
   sessionStats as clientSessionStats,
@@ -20,7 +22,8 @@ import {
   parseSchedule,
 } from "./jwxtParser";
 
-export { beginLogin, submitLogin };
+export { beginLogin, submitLogin, submitLoginForHandoff, consumeLoginHandoff };
+export type { LoginSessionHandoff, LoginHandoffAttempt } from "./jwxtClient";
 
 export async function logout(token: string) {
   return clientLogout(token);

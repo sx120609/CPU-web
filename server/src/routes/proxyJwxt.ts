@@ -6,6 +6,8 @@ import { Errors, ok } from "../utils/response";
 import {
   beginLogin,
   submitLogin,
+  submitLoginForHandoff,
+  consumeLoginHandoff,
   logout,
   getStatus,
   sessionStats,
@@ -25,6 +27,19 @@ import { crawlSchoolFeedSource } from "../services/schoolCrawlerCore";
 export const proxyJwxtRouter = Router();
 
 const tokenSchema = z.object({ token: z.string().min(1) });
+const loginBodySchema = z.object({
+  pendingId: z.string().min(8).max(2048),
+  username: z.string().min(1),
+  password: z.string().min(1),
+  captcha: z.string().optional(),
+});
+const loginHandoffSchema = z.object({
+  id: z.string().min(32).max(128),
+  callbackUrl: z.string().url().max(4096),
+  cookies: z.record(z.record(z.string())),
+  username: z.string().min(1).max(128),
+  issuedAt: z.number().int(),
+}).strict();
 
 proxyJwxtRouter.get("/health", (_req, res) => {
   res.json({ ok: true });
@@ -36,6 +51,36 @@ proxyJwxtRouter.use((req, _res, next) => {
   return next();
 });
 
+proxyJwxtRouter.get("/v1/login-pool/probe", (_req, res) => {
+  ok(res, { ok: true, role: "login", now: Date.now() });
+});
+
+proxyJwxtRouter.post("/v1/login-pool/begin", async (_req, res, next) => {
+  try {
+    ok(res, await beginLogin());
+  } catch (e) { next(e); }
+});
+
+proxyJwxtRouter.post(
+  "/v1/login-pool/submit",
+  validate(loginBodySchema),
+  async (req, res, next) => {
+    try {
+      ok(res, await submitLoginForHandoff(req.body));
+    } catch (e) { next(e); }
+  },
+);
+
+proxyJwxtRouter.post(
+  "/v1/login-pool/consume-handoff",
+  validate(z.object({ handoff: loginHandoffSchema }).strict()),
+  async (req, res, next) => {
+    try {
+      ok(res, await consumeLoginHandoff(req.body.handoff));
+    } catch (e) { next(e); }
+  },
+);
+
 proxyJwxtRouter.post("/v1/begin-login", async (_req, res, next) => {
   try {
     ok(res, await beginLogin());
@@ -44,12 +89,7 @@ proxyJwxtRouter.post("/v1/begin-login", async (_req, res, next) => {
 
 proxyJwxtRouter.post(
   "/v1/login",
-  validate(z.object({
-    pendingId: z.string().min(8),
-    username: z.string().min(1),
-    password: z.string().min(1),
-    captcha: z.string().optional(),
-  })),
+  validate(loginBodySchema),
   async (req, res, next) => {
     try {
       ok(res, await submitLogin(req.body));

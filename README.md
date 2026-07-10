@@ -114,7 +114,13 @@ npm run install:all
 
 ### 2. 创建后端环境变量
 
-当前仓库没有 `server/.env.example`，请直接新建 `server/.env`：
+复制示例配置并按部署环境修改：
+
+```bash
+cp server/.env.example server/.env
+```
+
+核心配置示例：
 
 ```env
 PORT=3000
@@ -125,6 +131,12 @@ JWT_EXPIRES_IN="7d"
 
 JWXT_PROXY_URL=""
 JWXT_PROXY_AUTH=""
+SSO_LOGIN_NODES=""
+# 设为 true 时让本机加入登录池；配置非空远端节点列表也会启用独立登录池
+# SSO_LOGIN_LOCAL_ENABLED=false
+SSO_LOGIN_LOCAL_WEIGHT=1
+SSO_LOGIN_TIMEOUT_MS=15000
+SSO_LOGIN_FAILURE_COOLDOWN_MS=30000
 PROXY_AUTH=""
 PROXY_PORT=23334
 
@@ -248,6 +260,11 @@ Vite 已代理以下路径到后端：
 | `JWXT_PROXY_URL` | 空 | 配置后主服务通过教务代理访问教务/CMS |
 | `JWXT_PROXY_AUTH` | 空 | 主服务访问代理时使用的共享密钥 |
 | `JWXT_PROXY_TIMEOUT_MS` | `15000` | 主服务调用代理的超时（毫秒） |
+| `SSO_LOGIN_NODES` | 空 | 统一认证登录远端节点 JSON 数组；节点字段为 `id`、可选 `name`、`url`、可选 `auth`、`enabled`、`weight` |
+| `SSO_LOGIN_LOCAL_ENABLED` | `false` | 本机是否参与统一认证登录池；设为 `true` 可单独启用本机登录池 |
+| `SSO_LOGIN_LOCAL_WEIGHT` | `1` | 本机登录节点权重，范围 `1..100` |
+| `SSO_LOGIN_TIMEOUT_MS` | `JWXT_PROXY_TIMEOUT_MS` | 登录池单节点请求超时（毫秒） |
+| `SSO_LOGIN_FAILURE_COOLDOWN_MS` | `30000` | 登录节点失败后的临时冷却时间（毫秒） |
 | `PROXY_AUTH` | 空 | 教务代理端校验密钥 |
 | `PROXY_PORT` | `23334` | 教务代理监听端口 |
 | `FILESTORE_ENABLED` | `true` | 是否启用嵌入式 Filestore |
@@ -296,6 +313,30 @@ Vite 已代理以下路径到后端：
 - 配置后，教务抓取与公告网页抓取都可以走远端代理。
 - 主服务与代理通过 `JWXT_PROXY_AUTH` / `PROXY_AUTH` 做共享密钥校验。
 - 推荐用 HTTPS、FRP 或其它隧道暴露代理，不建议直接裸露公网 HTTP 端口。
+
+### 统一认证登录节点池
+
+登录节点池只负责学校统一认证的登录阶段，用来把高峰期登录流量分散到多个出口；它不是普通教务代理的替代品。`JWXT_PROXY_URL` 仍独立决定教务查询、学校 CMS 抓取等常规流量的执行位置。统一认证成功后，登录会话会由服务端内部 handoff 到普通查询执行端，浏览器端接口保持不变。
+
+远端节点使用代理服务受鉴权保护的 `/v1/login-pool/*` 内部接口，每个节点的 `auth` 应与该节点的 `PROXY_AUTH` 一致。所有主服务、登录节点和普通查询节点都应部署同一版本；生产环境请使用 HTTPS 或受保护的隧道。示例：
+
+```env
+SSO_LOGIN_NODES='[{"id":"campus-a","name":"校内节点 A","url":"https://proxy-a.example.com","auth":"secret-a","enabled":true,"weight":2},{"id":"campus-b","name":"校内节点 B","url":"https://proxy-b.example.com","auth":"secret-b","enabled":true,"weight":1}]'
+SSO_LOGIN_LOCAL_ENABLED=true
+SSO_LOGIN_LOCAL_WEIGHT=1
+SSO_LOGIN_TIMEOUT_MS=15000
+SSO_LOGIN_FAILURE_COOLDOWN_MS=30000
+```
+
+配置规则：
+
+- `id` 必须唯一且只使用字母、数字、点、下划线或短横线；`url` 必须是不含账号、查询串和 hash 的绝对 `http(s)` 地址；`weight` 必须是 `1..100` 的整数。
+- `enabled` 省略时默认为 `true`，`weight` 省略时默认为 `1`，`name` 省略时使用 `id`。
+- `SSO_LOGIN_NODES` 中至少有一个节点，或将 `SSO_LOGIN_LOCAL_ENABLED` 设为 `true` 时，才启用独立登录池模式。
+- 如果既未配置非空 `SSO_LOGIN_NODES`，也未将 `SSO_LOGIN_LOCAL_ENABLED` 设为 `true`，登录逻辑完全保持旧行为：有 `JWXT_PROXY_URL` 就使用该代理，没有则使用本机。
+- 远端节点列表非空且 `SSO_LOGIN_LOCAL_ENABLED=false` 时就是“仅远端登录池”；单独设置 `false` 不会改变旧逻辑。
+- 多个主服务实例必须使用相同的 `JWT_SECRET`，否则一个实例签发的登录 pending 无法由另一个实例校验。
+- 发布时先升级所有登录节点和 `JWXT_PROXY_URL` 指向的普通查询节点，再启用主服务登录池。修改节点 `id`/`url` 或移除节点前，应先停止给它分配新登录并等待旧 pending（最长约 5 分钟）排空。
 
 ## 部署
 
