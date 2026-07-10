@@ -25,6 +25,9 @@ const SCHEDULE_OFFLINE_STATIC_URLS = [
 let serviceWorkerReady: Promise<ServiceWorkerRegistration | null> | null = null;
 
 function installTouchGuards() {
+  const nativeShell = /cpuwebscheduleapp|cpuwebharmonyapp/i.test(navigator.userAgent)
+    || isFlutterNativeShell(navigator.userAgent);
+  if (!nativeShell) return;
   document.addEventListener("gesturestart", (event) => event.preventDefault());
   document.addEventListener("gesturechange", (event) => event.preventDefault());
   document.addEventListener("gestureend", (event) => event.preventDefault());
