@@ -106,11 +106,6 @@ body {
   transition: background-color 0.18s ease, color 0.18s ease;
 }
 
-:where(a, button, input, textarea, select, [role="button"], [tabindex]):focus-visible {
-  outline: 2px solid var(--cpu-primary);
-  outline-offset: 2px;
-}
-
 html {
   overscroll-behavior: none;
   touch-action: pan-y manipulation;
@@ -153,30 +148,13 @@ canvas {
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.18s ease, border-color 0.18s ease;
 }
 
-@media (hover: hover) and (pointer: fine) {
-  .cpu-card:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--cpu-shadow-md);
-  }
+.cpu-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--cpu-shadow-md);
 }
 
 .cpu-card + .cpu-card {
   margin-top: 16px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  html:focus-within {
-    scroll-behavior: auto;
-  }
-
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
-  }
 }
 
 .cpu-section-title {
@@ -204,24 +182,10 @@ canvas {
 }
 
 .el-button--primary {
-  --el-button-bg-color: var(--cpu-primary-dark);
-  --el-button-border-color: var(--cpu-primary-dark);
-  --el-button-hover-bg-color: #0a5f51;
-  --el-button-hover-border-color: #0a5f51;
-  --el-button-active-bg-color: #084c41;
-  --el-button-active-border-color: #084c41;
-}
-
-.el-button--primary.is-plain {
-  --el-button-text-color: var(--cpu-primary-dark);
-  --el-button-bg-color: rgba(13, 110, 94, 0.06);
-  --el-button-border-color: rgba(13, 110, 94, 0.45);
-  --el-button-hover-text-color: #ffffff;
-  --el-button-hover-bg-color: var(--cpu-primary-dark);
-  --el-button-hover-border-color: var(--cpu-primary-dark);
-  --el-button-active-text-color: #ffffff;
-  --el-button-active-bg-color: #0a5f51;
-  --el-button-active-border-color: #0a5f51;
+  --el-button-bg-color: var(--cpu-primary);
+  --el-button-border-color: var(--cpu-primary);
+  --el-button-hover-bg-color: #{$cpu-primary-light};
+  --el-button-hover-border-color: #{$cpu-primary-light};
 }
 
 .el-menu-item.is-active,
@@ -366,15 +330,8 @@ canvas {
 
 html[data-theme="dark"] {
   .el-button--primary {
-    --el-button-bg-color: var(--cpu-primary);
-    --el-button-border-color: var(--cpu-primary);
-    --el-button-hover-bg-color: var(--cpu-primary-light);
-    --el-button-hover-border-color: var(--cpu-primary-light);
     --el-button-text-color: #05201c;
     --el-button-hover-text-color: #05201c;
-    --el-button-active-text-color: #05201c;
-    --el-button-active-bg-color: var(--cpu-primary);
-    --el-button-active-border-color: var(--cpu-primary);
   }
 
   .el-button--primary.is-plain {

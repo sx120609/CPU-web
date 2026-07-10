@@ -9,7 +9,6 @@
     }"
     :style="layoutStyle"
   >
-    <a v-if="!hideChrome && !useNativeShell" class="skip-link" href="#main-content">跳到主要内容</a>
     <!-- 顶栏 -->
     <header v-if="!hideChrome && !useNativeShell" class="topbar">
       <div class="topbar-inner">
@@ -25,7 +24,6 @@
           <el-input
             v-model="q"
             :placeholder="searchPlaceholder"
-            aria-label="搜索校园内容"
             clearable
             @keyup.enter="goSearch"
           >
@@ -87,7 +85,7 @@
           </el-dropdown>
           <template v-if="auth.isLoggedIn">
             <el-tooltip content="刷新页面">
-              <el-button text aria-label="刷新页面" @click="reloadPage">
+              <el-button text @click="reloadPage">
                 <el-icon size="20"><Refresh /></el-icon>
               </el-button>
             </el-tooltip>
@@ -96,18 +94,18 @@
               <span class="post-label">发帖</span>
             </el-button>
             <el-tooltip content="消息">
-              <el-button text aria-label="查看消息" @click="$router.push('/messages')">
+              <el-button text @click="$router.push('/messages')">
                 <el-badge :value="msg.unreadCount" :hidden="msg.unreadCount === 0">
                   <el-icon size="20"><Bell /></el-icon>
                 </el-badge>
               </el-button>
             </el-tooltip>
             <el-dropdown @command="onUserCmd">
-              <button type="button" class="user-info" aria-label="打开用户菜单">
+              <span class="user-info">
                 <UserAvatar :size="30" class="user-avatar" :src="auth.user?.avatar" :name="auth.user?.nickname" alt="用户头像" />
                 <span class="user-name">{{ auth.user?.nickname }}</span>
                 <el-icon><ArrowDown /></el-icon>
-              </button>
+              </span>
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item command="profile">个人中心</el-dropdown-item>
@@ -124,7 +122,7 @@
         </div>
 
         <div class="mobile-actions">
-          <el-button text class="touch-icon-btn mobile-refresh-btn" aria-label="刷新页面" @click="reloadPage">
+          <el-button text class="touch-icon-btn" aria-label="刷新页面" @click="reloadPage">
             <el-icon><Refresh /></el-icon>
           </el-button>
           <el-button v-if="auth.canAccessForum && site.features.forum" text class="touch-icon-btn" aria-label="发帖" @click="$router.push('/post')">
@@ -144,26 +142,13 @@
     </header>
 
     <!-- 主内容 -->
-    <main id="main-content" class="main" :class="{ 'main--bare': hideChrome, 'main--full-width': fullWidthContent && !hideChrome }" tabindex="-1">
+    <main class="main" :class="{ 'main--bare': hideChrome, 'main--full-width': fullWidthContent && !hideChrome }">
       <router-view v-slot="{ Component }">
         <transition name="fade" mode="out-in">
           <component :is="Component" />
         </transition>
       </router-view>
     </main>
-
-    <nav v-if="!useNativeShell" class="mobile-tabbar" :class="{ 'is-hidden': keyboardOpen }" aria-label="移动端主导航" :style="{ gridTemplateColumns: `repeat(${mobileNavItems.length}, 1fr)` }">
-      <router-link
-        v-for="item in mobileNavItems"
-        :key="item.to"
-        :to="resolveMobileTo(item)"
-        class="mobile-tab"
-        :class="{ active: isMobileRouteActive(item) }"
-      >
-        <el-icon><component :is="item.icon" /></el-icon>
-        <span>{{ item.label }}</span>
-      </router-link>
-    </nav>
 
     <footer v-if="!hideChrome && !useNativeShell" class="footer">
       <span class="footer-item">© 2026 药大拾间 · 校园互助与服务平台</span>
@@ -179,6 +164,19 @@
         {{ site.siteFilingNumber }}
       </a>
     </footer>
+
+    <nav v-if="!useNativeShell" class="mobile-tabbar" :class="{ 'is-hidden': keyboardOpen }" aria-label="移动端主导航" :style="{ gridTemplateColumns: `repeat(${mobileNavItems.length}, 1fr)` }">
+      <router-link
+        v-for="item in mobileNavItems"
+        :key="item.to"
+        :to="resolveMobileTo(item)"
+        class="mobile-tab"
+        :class="{ active: isMobileRouteActive(item) }"
+      >
+        <el-icon><component :is="item.icon" /></el-icon>
+        <span>{{ item.label }}</span>
+      </router-link>
+    </nav>
 
     <el-drawer
       v-model="mobileMenuOpen"
@@ -633,33 +631,6 @@ function setAppearanceMode(command: string | number | object) {
   overscroll-behavior-y: none;
 }
 
-.skip-link {
-  position: fixed;
-  top: 10px;
-  left: 12px;
-  z-index: 2000;
-  padding: 9px 13px;
-  border-radius: 10px;
-  background: var(--cpu-primary-dark);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 700;
-  text-decoration: none;
-  transform: translateY(-160%);
-  transition: transform var(--cpu-motion-fast, 160ms) ease;
-}
-
-.skip-link:focus {
-  outline: 2px solid #fff;
-  outline-offset: 2px;
-  transform: translateY(0);
-}
-
-:global(html[data-theme="dark"]) .skip-link {
-  background: var(--cpu-primary);
-  color: #05201c;
-}
-
 .topbar {
   background: var(--cpu-glass-bg);
   backdrop-filter: var(--cpu-glass-blur);
@@ -670,7 +641,7 @@ function setAppearanceMode(command: string | number | object) {
   top: 0;
   z-index: 100;
   padding-top: env(safe-area-inset-top);
-  transition: background-color var(--cpu-motion-base, 220ms) ease, border-color var(--cpu-motion-base, 220ms) ease, box-shadow var(--cpu-motion-base, 220ms) ease;
+  transition: all 0.3s ease;
 }
 
 .topbar-inner {
@@ -717,7 +688,7 @@ function setAppearanceMode(command: string | number | object) {
 .brand-name {
   font-size: 17px;
   font-weight: 700;
-  color: var(--cpu-primary-dark);
+  color: var(--cpu-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -736,26 +707,6 @@ function setAppearanceMode(command: string | number | object) {
   min-width: 180px;
 }
 
-.top-search :deep(.el-input__wrapper) {
-  min-height: 36px;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
-  background: var(--cpu-surface-soft);
-  box-shadow: none;
-  transition: background-color var(--cpu-motion-fast, 160ms) ease, border-color var(--cpu-motion-fast, 160ms) ease, box-shadow var(--cpu-motion-fast, 160ms) ease;
-}
-
-.top-search :deep(.el-input__wrapper:hover) {
-  border-color: var(--cpu-border);
-  background: var(--cpu-surface);
-}
-
-.top-search :deep(.el-input__wrapper.is-focus) {
-  border-color: var(--cpu-primary);
-  background: var(--cpu-surface);
-  box-shadow: 0 0 0 3px rgba(20, 143, 123, 0.18);
-}
-
 .top-nav {
   display: flex;
   gap: 4px;
@@ -767,7 +718,6 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 .top-nav a {
-  position: relative;
   flex: 0 0 auto;
   padding: 8px 10px;
   border-radius: 6px;
@@ -779,23 +729,8 @@ function setAppearanceMode(command: string | number | object) {
   transition: background 0.15s, color 0.15s;
 }
 
-.top-nav a:hover { background: var(--cpu-surface-subtle); color: var(--cpu-primary-dark); }
-.top-nav a.router-link-active {
-  color: var(--cpu-primary-dark);
-  font-weight: 600;
-  background: transparent;
-}
-
-.top-nav a.router-link-active::after {
-  content: "";
-  position: absolute;
-  right: 10px;
-  bottom: 2px;
-  left: 10px;
-  height: 2px;
-  border-radius: 2px;
-  background: currentColor;
-}
+.top-nav a:hover { background: var(--cpu-surface-subtle); color: var(--cpu-primary); }
+.top-nav a.router-link-active { color: var(--cpu-primary); font-weight: 600; background: rgba(20, 143, 123, 0.08); }
 
 .top-nav-more {
   flex: 0 0 auto;
@@ -821,8 +756,9 @@ function setAppearanceMode(command: string | number | object) {
 
 .top-nav-more-btn:hover,
 .top-nav-more-btn:focus-visible {
-  color: var(--cpu-primary-dark);
+  color: var(--cpu-primary);
   background: var(--cpu-surface-subtle);
+  outline: none;
 }
 
 .top-right {
@@ -869,13 +805,9 @@ function setAppearanceMode(command: string | number | object) {
   margin-left: auto;
 }
 
-.mobile-actions :deep(.el-button + .el-button) {
-  margin-left: 0;
-}
-
 .touch-icon-btn {
-  width: 44px;
-  height: 44px;
+  width: 42px;
+  height: 42px;
   padding: 0;
   border-radius: 10px;
   color: var(--cpu-text-secondary);
@@ -892,7 +824,7 @@ function setAppearanceMode(command: string | number | object) {
 
 .mobile-login-btn {
   min-width: 60px;
-  height: 44px;
+  height: 42px;
   padding: 0 12px;
   color: var(--cpu-primary);
   font-weight: 500;
@@ -904,10 +836,7 @@ function setAppearanceMode(command: string | number | object) {
   gap: 8px;
   cursor: pointer;
   padding: 4px 8px;
-  border: 0;
   border-radius: 6px;
-  background: transparent;
-  font: inherit;
 }
 
 .user-info:hover { background: var(--cpu-surface-subtle); }
@@ -934,10 +863,6 @@ function setAppearanceMode(command: string | number | object) {
   max-width: 1280px;
   margin: 0 auto;
   box-sizing: border-box;
-}
-
-.main:focus {
-  outline: none;
 }
 
 /* hideChrome 模式：内容页（如课表）自己管 padding；这里只为 mobile tabbar 留底部空间 */
@@ -1075,7 +1000,7 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 .layout-root--tabbar-fallback .mobile-tab.active {
-  color: var(--cpu-primary-dark);
+  color: var(--cpu-primary);
   background: rgba(20, 143, 123, 0.1);
   transform: scale(1.04);
 }
@@ -1268,7 +1193,7 @@ function setAppearanceMode(command: string | number | object) {
 
 @media (max-width: 960px) {
   .top-nav { display: none; }
-  .top-search { display: none; }
+  .top-search { width: 200px; }
   .top-right { display: none; }
   .mobile-actions {
     display: flex;
@@ -1295,9 +1220,9 @@ function setAppearanceMode(command: string | number | object) {
 
   .topbar-inner {
     height: auto;
-    min-height: 54px;
-    padding: 6px 12px 8px;
-    gap: 6px;
+    min-height: 58px;
+    padding: 8px 12px 10px;
+    gap: 8px;
     flex-wrap: wrap;
   }
 
@@ -1321,7 +1246,13 @@ function setAppearanceMode(command: string | number | object) {
   }
 
   .top-search {
-    display: none;
+    order: 10;
+    width: 100%;
+    flex: 0 0 100%;
+    max-width: none;
+    min-width: 0;
+    display: flex;
+    justify-content: center;
   }
 
   .top-search :deep(.el-input) {
@@ -1329,7 +1260,6 @@ function setAppearanceMode(command: string | number | object) {
   }
 
   .top-search :deep(.el-input__wrapper) {
-    min-height: 36px;
     border-radius: 12px;
   }
 
@@ -1384,7 +1314,7 @@ function setAppearanceMode(command: string | number | object) {
     z-index: 1100;
     display: grid;
     /* 列数由 inline style 提供（mobileNavItems.length），保证关闭某项后剩余项仍均匀分布 */
-    padding: 6px max(8px, calc((100vw - 600px) / 2)) calc(6px + env(safe-area-inset-bottom));
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
     border-top: 1px solid var(--cpu-border-soft);
     background: var(--cpu-glass-bg);
     backdrop-filter: var(--cpu-glass-blur);
@@ -1395,7 +1325,7 @@ function setAppearanceMode(command: string | number | object) {
   }
 
   .mobile-tab.active {
-    color: var(--cpu-primary-dark);
+    color: var(--cpu-primary);
     background: rgba(20, 143, 123, 0.1);
     transform: scale(1.05);
   }
@@ -1496,7 +1426,7 @@ function setAppearanceMode(command: string | number | object) {
     bottom: 0;
     z-index: 1100;
     display: grid;
-    padding: 6px max(12px, calc((100vw - 600px) / 2)) calc(6px + env(safe-area-inset-bottom));
+    padding: 6px 12px calc(6px + env(safe-area-inset-bottom));
     border-top: 1px solid var(--cpu-border-soft);
     background: var(--cpu-glass-bg);
     backdrop-filter: var(--cpu-glass-blur);
@@ -1533,7 +1463,7 @@ function setAppearanceMode(command: string | number | object) {
   }
 
   .mobile-tab.active {
-    color: var(--cpu-primary-dark);
+    color: var(--cpu-primary);
     background: rgba(20, 143, 123, 0.1);
     transform: scale(1.04);
   }
@@ -1556,7 +1486,7 @@ function setAppearanceMode(command: string | number | object) {
   }
 
   .touch-icon-btn {
-    width: 44px;
+    width: 38px;
   }
 }
 
@@ -1579,12 +1509,8 @@ function setAppearanceMode(command: string | number | object) {
     gap: 2px;
   }
 
-  .mobile-refresh-btn {
-    display: none;
-  }
-
   .touch-icon-btn {
-    width: 44px;
+    width: 36px;
   }
 
   .drawer-grid {
@@ -1605,14 +1531,5 @@ function setAppearanceMode(command: string | number | object) {
     height: 21px;
     flex-basis: 21px;
   }
-}
-
-:global(html[data-theme="dark"]) .brand-name,
-:global(html[data-theme="dark"]) .top-nav a:hover,
-:global(html[data-theme="dark"]) .top-nav a.router-link-active,
-:global(html[data-theme="dark"]) .top-nav-more-btn:hover,
-:global(html[data-theme="dark"]) .top-nav-more-btn:focus-visible,
-:global(html[data-theme="dark"]) .mobile-tab.active {
-  color: var(--cpu-primary);
 }
 </style>

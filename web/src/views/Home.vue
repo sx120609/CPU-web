@@ -1,231 +1,176 @@
 <template>
   <div class="home">
-    <section class="welcome" aria-labelledby="home-title">
-      <div class="welcome-copy">
-        <div class="welcome-label">中国药科大学 · 校园生活入口</div>
-        <h1 id="home-title">{{ welcomeTitle }}</h1>
-        <p>{{ welcomeIntro }}</p>
-      </div>
-      <div class="welcome-actions">
-        <el-button
-          v-if="site.features.forum"
-          type="primary"
-          size="large"
-          @click="router.push('/forum')"
-        >
-          <el-icon><ChatLineRound /></el-icon>
-          {{ forumActionLabel }}
-        </el-button>
-        <el-button
-          v-else
-          type="primary"
-          size="large"
-          @click="router.push('/announcements')"
-        >
-          <el-icon><Bell /></el-icon>
-          查看公告
-        </el-button>
-        <button type="button" class="welcome-link" @click="router.push('/schedule')">
-          <el-icon><Calendar /></el-icon>
-          <span>查看课表</span>
-          <el-icon><ArrowRight /></el-icon>
-        </button>
+    <!-- Hero / 介绍 -->
+    <section class="hero">
+      <div class="hero-text">
+        <h1>药大拾间</h1>
+        <p>{{ heroIntro }}</p>
+        <div class="hero-actions">
+          <el-button v-if="site.features.forum" type="primary" size="large" @click="$router.push('/forum')">
+            <el-icon><ChatLineRound /></el-icon> {{ forumActionLabel }}
+          </el-button>
+          <el-button v-if="showForumContent" size="large" @click="$router.push('/forum/b/campus-wall')">
+            <span>📮</span> 逛逛
+          </el-button>
+          <el-button v-else type="primary" size="large" @click="$router.push('/announcements')">
+            <el-icon><Bell /></el-icon> 看校园公告
+          </el-button>
+          <el-button v-if="!auth.isLoggedIn" size="large" @click="$router.push('/login')">{{ loginActionText }}</el-button>
+          <el-button v-else-if="site.features.forum && auth.canAccessForum" size="large" @click="$router.push('/post')">
+            <el-icon><Edit /></el-icon> 发布内容
+          </el-button>
+          <el-button v-else size="large" @click="$router.push('/services')">
+            <el-icon><Service /></el-icon> 校园服务
+          </el-button>
+        </div>
       </div>
     </section>
 
-    <section v-if="homeError && !loading && !summary" class="home-alert" role="alert">
-      <span class="home-alert-icon"><el-icon><WarningFilled /></el-icon></span>
-      <div>
-        <strong>首页内容暂时不可用</strong>
-        <span>{{ homeError }}</span>
-      </div>
-      <el-button type="primary" plain @click="loadSummary">
-        <el-icon><Refresh /></el-icon>
-        重试
-      </el-button>
+    <section v-if="homeError && !loading" class="block home-error">
+      <el-empty :description="homeError">
+        <el-button type="primary" @click="loadSummary">重试</el-button>
+      </el-empty>
     </section>
 
-    <div v-else-if="loading && !summary" class="home-skeleton" aria-label="首页内容加载中" aria-busy="true">
-      <section class="panel skeleton-main"><el-skeleton animated :rows="6" /></section>
-      <section class="panel"><el-skeleton animated :rows="4" /></section>
-    </div>
-
-    <div
-      v-else
-      class="home-content"
-      :class="{ 'home-content--single': !showForumContent }"
-      v-loading="loading"
-    >
-      <div class="side-column">
-        <section class="panel panel--services">
-          <header class="section-head">
-            <div>
-              <h2>校园服务</h2>
-              <p>常用入口，直接到达</p>
-            </div>
-            <router-link to="/services" class="section-link">全部<el-icon><ArrowRight /></el-icon></router-link>
-          </header>
-
-          <div v-if="hasServiceEntries" class="service-list">
-            <button
-              v-if="showElectricEntry"
-              type="button"
-              class="service-item"
-              aria-label="宿舍电费，站内查询"
-              @click="electricOpen = true"
-            >
-              <span class="service-icon">💡</span>
-              <span class="service-copy">
-                <strong>宿舍电费</strong>
-                <small>站内查询</small>
-              </span>
-              <el-icon class="row-arrow"><ArrowRight /></el-icon>
-            </button>
-            <button
-              v-for="serviceItem in visibleServices"
-              :key="serviceItem.id"
-              type="button"
-              class="service-item"
-              :aria-label="`${serviceItem.name}，${serviceItem.needSso ? '需要登录' : '直接打开'}`"
-              @click="openUrl(serviceItem.url)"
-            >
-              <span class="service-icon">{{ serviceItem.icon || "🔗" }}</span>
-              <span class="service-copy">
-                <strong>{{ serviceItem.name }}</strong>
-                <small>{{ serviceItem.needSso ? "需要登录" : "直接打开" }}</small>
-              </span>
-              <el-icon class="row-arrow"><ArrowRight /></el-icon>
-            </button>
+    <div v-else class="grid" :class="{ 'single-col': !showForumContent }" v-loading="loading">
+      <!-- 左：热帖 + 最新 -->
+      <div class="col-left" v-if="showForumContent">
+        <section class="block" v-if="summary?.pinnedTopics?.length">
+          <div class="block-head">
+            <h3>📌 全局置顶</h3>
+            <span class="cpu-muted">重要内容</span>
           </div>
-          <div v-else class="empty-note">暂无可用服务</div>
+          <TopicListItem v-for="t in summary.pinnedTopics" :key="'pin-' + t.id" :topic="t" />
         </section>
 
-        <section class="panel panel--announcements">
-          <header class="section-head">
-            <div>
-              <h2>校园公告</h2>
-              <p>学校公开信息汇总</p>
+        <section class="block">
+          <div class="block-head">
+            <h3>🔥 热议</h3>
+            <router-link to="/forum/hot" class="more">查看前十 →</router-link>
+          </div>
+          <div
+            v-for="t in hotPreview"
+            :key="'hot-' + t.id"
+            class="hot-row"
+            role="button"
+            tabindex="0"
+            @click="openTopic(t.id)"
+            @keydown.enter.prevent="openTopic(t.id)"
+            @keydown.space.prevent="openTopic(t.id)"
+          >
+            <div class="hot-rank" :class="{ top3: t.rank <= 3 }">#{{ t.rank }}</div>
+            <div class="hot-main">
+              <div class="hot-title">{{ t.title }}</div>
+              <div v-if="t.tags?.length" class="hot-tags">
+                <span v-for="tag in t.tags.slice(0, 2)" :key="tag.name" class="hot-tag">{{ tag.name }}</span>
+              </div>
+              <div class="hot-meta">
+                <span>{{ t.board?.name }}</span>
+                <span>{{ t.replyCount }} 回 / {{ t.likeCount }} 赞</span>
+              </div>
             </div>
-            <router-link to="/announcements" class="section-link">全部<el-icon><ArrowRight /></el-icon></router-link>
-          </header>
+            <div class="hot-score">{{ Math.round(t.hotScore || 0) }}</div>
+          </div>
+          <div v-if="hotPreview.length" class="hot-foot">
+            <span class="cpu-muted">首页仅展示前三</span>
+            <router-link to="/forum/hot" class="more more-strong">进入热榜 Top 10 →</router-link>
+          </div>
+          <el-empty v-if="!hotPreview.length" description="暂无内容" />
+        </section>
 
-          <ul v-if="summary?.announce?.length" class="announcement-list">
-            <li v-for="topic in summary.announce" :key="'ann-' + topic.id">
-              <button type="button" @click="openTopic(topic.id)">
-                <span class="announcement-dot" aria-hidden="true"></span>
-                <span class="announcement-copy">
-                  <strong>{{ topic.title }}</strong>
-                  <small>{{ topic.board?.name || "校园公告" }} · {{ fmtRelative(topic.createdAt) }}</small>
-                </span>
-                <el-icon class="row-arrow"><ArrowRight /></el-icon>
-              </button>
+        <section class="block">
+          <div class="block-head">
+            <h3>🆕 最新</h3>
+            <router-link to="/forum/latest" class="more">更多 →</router-link>
+          </div>
+          <TopicListItem v-for="t in summary?.latestTopics ?? []" :key="'new-' + t.id" :topic="t" />
+          <el-empty v-if="!summary?.latestTopics?.length" description="暂无内容" />
+        </section>
+      </div>
+
+      <!-- 右：公告 + 服务 -->
+      <div class="col-right">
+        <section class="block">
+          <div class="block-head">
+            <h3>📢 校园公告</h3>
+            <span class="cpu-muted">学校公开信息</span>
+          </div>
+          <ul v-if="summary?.announce?.length" class="announce-list">
+            <li
+              v-for="t in summary.announce"
+              :key="'ann-' + t.id"
+              role="button"
+              tabindex="0"
+              @click="openTopic(t.id)"
+              @keydown.enter.prevent="openTopic(t.id)"
+              @keydown.space.prevent="openTopic(t.id)"
+            >
+              <div class="ann-title">{{ t.title }}</div>
+              <div class="ann-meta">
+                <span class="ann-source">{{ t.board?.name }}</span>
+                <span>{{ fmtRelative(t.createdAt) }}</span>
+              </div>
             </li>
           </ul>
-          <div v-else class="empty-note">暂无公告，稍后再来看看</div>
+          <el-empty v-else description="暂无公告，稍后再来看看" />
         </section>
 
-        <button
-          v-if="showForumContent"
-          type="button"
-          class="wall-link"
-          @click="openBoard('campus-wall')"
-        >
-          <span class="wall-icon">📮</span>
-          <span>
-            <strong>逛逛校园</strong>
-            <small>看看同学们正在分享的新鲜事</small>
-          </span>
-          <el-icon><ArrowRight /></el-icon>
-        </button>
-      </div>
-
-      <div v-if="showForumContent" class="main-column">
-        <section v-if="summary?.pinnedTopics?.length" class="panel panel--pinned">
-          <header class="section-head">
-            <div>
-              <h2>置顶内容</h2>
-              <p>重要信息</p>
+        <section class="block" v-if="showForumContent">
+          <div class="block-head">
+            <h3>📮 逛逛</h3>
+            <span class="cpu-muted">外部镜像内容</span>
+          </div>
+          <div
+            class="wall-card"
+            role="button"
+            tabindex="0"
+            @click="openBoard('campus-wall')"
+            @keydown.enter.prevent="openBoard('campus-wall')"
+            @keydown.space.prevent="openBoard('campus-wall')"
+          >
+            <div class="wall-icon">📮</div>
+            <div class="wall-body">
+              <div class="wall-title">单独查看逛逛镜像</div>
+              <div class="wall-desc">外部帖子和评论会持续同步，但仅补充近 3 天稿件的后续更新，超过三天的稿件不再更新。</div>
             </div>
-          </header>
-          <div class="simple-list">
-            <button
-              v-for="topic in summary.pinnedTopics"
-              :key="'pin-' + topic.id"
-              type="button"
-              class="simple-row"
-              @click="openTopic(topic.id)"
-            >
-              <span class="pin-mark">置顶</span>
-              <span class="simple-copy">
-                <strong>{{ topic.title }}</strong>
-                <small>{{ topic.board?.name || "校园讨论" }} · {{ fmtRelative(topic.lastReplyAt || topic.createdAt) }}</small>
-                <small v-if="topicMetaText(topic)" class="topic-extra">{{ topicMetaText(topic) }}</small>
-              </span>
-              <el-icon class="row-arrow"><ArrowRight /></el-icon>
-            </button>
           </div>
         </section>
 
-        <section class="panel panel--latest">
-          <header class="section-head">
-            <div>
-              <h2>最新动态</h2>
-              <p>刚刚发生在校园里的讨论</p>
-            </div>
-            <router-link to="/forum/latest" class="section-link">更多<el-icon><ArrowRight /></el-icon></router-link>
-          </header>
-
-          <div v-if="summary?.latestTopics?.length" class="simple-list">
-            <button
-              v-for="topic in summary.latestTopics"
-              :key="'new-' + topic.id"
-              type="button"
-              class="simple-row"
-              @click="openTopic(topic.id)"
-            >
-              <span class="board-mark" :style="{ '--board-color': topic.board?.color || 'var(--cpu-primary)' }">
-                {{ topic.board?.name?.slice(0, 1) || "新" }}
-              </span>
-              <span class="simple-copy">
-                <strong>{{ topic.title || topic.content || "无标题内容" }}</strong>
-                <small>
-                  {{ topic.board?.name || "校园讨论" }} · {{ fmtRelative(topic.lastReplyAt || topic.createdAt) }} · {{ topic.replyCount ?? 0 }} 回复
-                </small>
-                <small v-if="topicMetaText(topic)" class="topic-extra">{{ topicMetaText(topic) }}</small>
-              </span>
-              <el-icon class="row-arrow"><ArrowRight /></el-icon>
-            </button>
+        <section class="block">
+          <div class="block-head">
+            <h3>🧭 校园服务</h3>
+            <router-link to="/services" class="more">全部 →</router-link>
           </div>
-          <div v-else class="empty-note">暂时还没有最新内容</div>
-        </section>
-
-        <section class="panel panel--hot">
-          <header class="section-head">
-            <div>
-              <h2>校园热议</h2>
-              <p>此刻大家关注的话题</p>
-            </div>
-            <router-link to="/forum/hot" class="section-link">热榜<el-icon><ArrowRight /></el-icon></router-link>
-          </header>
-
-          <div v-if="hotPreview.length" class="hot-list">
-            <button
-              v-for="topic in hotPreview"
-              :key="'hot-' + topic.id"
-              type="button"
-              class="hot-row"
-              @click="openTopic(topic.id)"
+          <div v-if="hasServiceEntries" class="service-grid">
+            <div
+              v-if="showElectricEntry"
+              class="svc svc-special"
+              role="button"
+              tabindex="0"
+              @click="electricOpen = true"
+              @keydown.enter.prevent="electricOpen = true"
+              @keydown.space.prevent="electricOpen = true"
             >
-              <span class="hot-rank" :class="{ 'hot-rank--first': topic.rank === 1 }">{{ topic.rank }}</span>
-              <span class="hot-copy">
-                <strong>{{ topic.title }}</strong>
-                <small>{{ topic.board?.name || "校园讨论" }} · {{ topic.replyCount ?? 0 }} 回复 · {{ topic.likeCount ?? 0 }} 赞</small>
-                <small v-if="topicMetaText(topic)" class="topic-extra">{{ topicMetaText(topic) }}</small>
-              </span>
-              <span class="hot-score">{{ Math.round(topic.hotScore || 0) }}</span>
-            </button>
+              <div class="svc-icon">💡</div>
+              <div class="svc-name">宿舍电费</div>
+              <div class="svc-tag svc-tag-fresh">站内查</div>
+            </div>
+            <div
+              v-for="s in visibleServices"
+              :key="s.id"
+              class="svc"
+              role="button"
+              tabindex="0"
+              @click="openUrl(s.url)"
+              @keydown.enter.prevent="openUrl(s.url)"
+              @keydown.space.prevent="openUrl(s.url)"
+            >
+              <div class="svc-icon">{{ s.icon || "🔗" }}</div>
+              <div class="svc-name">{{ s.name }}</div>
+              <div class="svc-tag" v-if="s.needSso">需登录</div>
+            </div>
           </div>
-          <div v-else class="empty-note">暂时还没有热议内容</div>
+          <el-empty v-else description="暂无可用服务" />
         </section>
       </div>
     </div>
@@ -235,17 +180,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
-import {
-  ArrowRight,
-  Bell,
-  Calendar,
-  ChatLineRound,
-  Refresh,
-  WarningFilled,
-} from "@element-plus/icons-vue";
+import { ChatLineRound, Edit, Bell, Service } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
+import TopicListItem from "@/components/forum/TopicListItem.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 import { homeApi, type HomeSummary } from "@/api/home";
 import { useAuthStore } from "@/stores/auth";
@@ -263,23 +202,30 @@ const hotPreview = computed(() => (summary.value?.hotTopics ?? []).slice(0, 3));
 const visibleServices = computed(() => summary.value?.services ?? []);
 const showElectricEntry = computed(() => auth.isLoggedIn && site.features.electric);
 const hasServiceEntries = computed(() => showElectricEntry.value || visibleServices.value.length > 0);
-const showForumContent = computed(() => site.features.forum && auth.canAccessForum);
 let loadSeq = 0;
 
-const welcomeTitle = computed(() => {
-  const nickname = auth.nickname.trim();
-  return auth.isLoggedIn && nickname ? `欢迎回来，${nickname}` : "你好，这里是药大拾间";
+const enabledFeatureLabels = computed(() => {
+  const labels = ["公告聚合", "教务数据", "常用校园服务"];
+  if (site.features.coursereview && auth.canAccessForum) labels.splice(2, 0, "课程点评");
+  if (site.features.market && auth.canAccessForum) labels.splice(labels.length - 1, 0, "二手交易");
+  if (site.features.electric) labels.push("宿舍电费查询");
+  if (site.features.forum && auth.canAccessForum) labels.unshift("校园讨论");
+  return labels;
 });
-
-const welcomeIntro = computed(() => showForumContent.value
-  ? "校园讨论、公告、课表和常用服务，今天也从这里开始。"
-  : "校园公告、教务数据、课表和常用服务，都在这里。"
-);
-
+const showForumContent = computed(() => site.features.forum && auth.canAccessForum);
 const forumActionLabel = computed(() => {
+  if (!site.features.forum) return "看校园公告";
   if (auth.canAccessForum) return "进入论坛";
   return auth.isLoggedIn ? "开启论坛功能" : "论坛入口";
 });
+
+const heroIntro = computed(() => {
+  const labels = enabledFeatureLabels.value;
+  const text = labels.length > 1 ? `${labels.slice(0, -1).join("、")}与${labels.at(-1)}` : labels[0];
+  return `${text}，给药大学生一个更顺手的信息入口。`;
+});
+
+const loginActionText = computed(() => site.features.forum ? "登录" : "登录使用");
 
 onMounted(loadSummary);
 
@@ -288,12 +234,14 @@ async function loadSummary() {
   loading.value = true;
   homeError.value = "";
   try {
+    // 不区分游客 / 登录态，统一调 home/summary —— 后端按 token 自动决定 identity 是否返回
     const next = await homeApi.summary({ suppressErrorMessage: true });
     if (seq !== loadSeq) return;
     summary.value = next;
-  } catch (error) {
+  } catch (e) {
     if (seq !== loadSeq) return;
-    homeError.value = normalizeHomeError(error);
+    summary.value = { identity: null, pinnedTopics: [], hotTopics: [], latestTopics: [], announce: [], services: [] };
+    homeError.value = normalizeHomeError(e);
   } finally {
     if (seq === loadSeq) loading.value = false;
   }
@@ -328,656 +276,373 @@ function openBoard(slug: string) {
   router.push(`/forum/b/${slug}`);
 }
 
-function topicMetaText(topic: any) {
-  const metadata = topic?.metadata ?? {};
-  const labels: string[] = [];
-  if (metadata.price !== undefined && metadata.price !== null && metadata.price !== "") {
-    labels.push(`¥${metadata.price}`);
-  }
-  const recommend = metadata.ratings?.recommend;
-  if (typeof recommend === "number" && recommend > 0) {
-    labels.push(`推荐度 ${recommend.toFixed(1)}`);
-  }
-  if (metadata.resolved === true) labels.push("已解决");
-  if (metadata.bounty) labels.push(`悬赏 ${metadata.bounty}`);
-  if (topic?.locked) labels.push("已锁定");
-  return labels.join(" · ");
-}
-
 function normalizeHomeError(error: unknown) {
   const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
   if (status && status < 500) {
-    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "首页服务暂时不可用";
+    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "首页内容加载失败";
   }
-  return "服务暂时不可用，请稍后重试。";
+  return "首页内容加载失败，请稍后再试";
 }
 </script>
 
 <style scoped lang="scss">
 .home {
   display: flex;
-  width: 100%;
-  max-width: 1180px;
-  margin: 0 auto;
   flex-direction: column;
-  gap: 16px;
+  gap: 24px;
 }
 
-.welcome {
-  position: relative;
+.hero {
+  background: linear-gradient(135deg, #168776 0%, #2da391 60%, #0f6557 100%);
+  color: #fff;
+  border-radius: 16px;
+  padding: 32px 36px;
   display: flex;
-  min-height: 138px;
   align-items: center;
   justify-content: space-between;
-  gap: 28px;
-  padding: 24px 28px;
+  position: relative;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--cpu-primary) 16%, var(--cpu-border-soft));
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--cpu-primary) 4%, var(--cpu-card));
+
+  &::after {
+    content: "";
+    position: absolute;
+    right: -80px;
+    top: -80px;
+    width: 280px;
+    height: 280px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 40%, rgba(232, 163, 23, 0.45), transparent 60%);
+    pointer-events: none;
+  }
 }
 
-.welcome-copy {
-  position: relative;
-  z-index: 1;
-  min-width: 0;
+.hero-text { flex: 1; z-index: 1; }
+.hero h1 { margin: 0 0 6px; font-size: 32px; }
+.hero p { margin: 0 0 16px; opacity: 0.9; font-size: 15px; }
+.hero-actions { display: flex; gap: 10px; }
+.hero-actions .el-button { background: rgba(255,255,255,0.9); border: none; color: #168776; }
+.hero-actions .el-button:hover { background: #fff; }
+.hero-actions .el-button--primary { background: #fff; color: #168776; }
+
+:global(html[data-theme="dark"] .hero-actions .el-button) {
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(238, 248, 245, 0.22);
+  color: #eef8f5;
+}
+:global(html[data-theme="dark"] .hero-actions .el-button:hover) {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(238, 248, 245, 0.34);
+  color: #ffffff;
+}
+:global(html[data-theme="dark"] .hero-actions .el-button--primary) {
+  background: rgba(45, 212, 191, 0.95);
+  border-color: rgba(45, 212, 191, 0.95);
+  color: #05201c;
+}
+:global(html[data-theme="dark"] .hero-actions .el-button--primary:hover) {
+  background: #5eead4;
+  border-color: #5eead4;
+  color: #04201c;
 }
 
-.welcome-label {
-  margin-bottom: 6px;
-  color: var(--cpu-primary-dark);
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.08em;
-}
-
-.welcome h1 {
-  margin: 0;
-  color: var(--cpu-text);
-  font-size: clamp(24px, 2.4vw, 30px);
-  font-weight: 700;
-  line-height: 1.25;
-  letter-spacing: -0.02em;
-}
-
-.welcome p {
-  margin: 8px 0 0;
-  color: var(--cpu-text-secondary);
-  font-size: 14px;
-  line-height: 1.65;
-}
-
-.welcome-actions {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 14px;
-}
-
-.welcome-actions :deep(.el-button) {
-  min-height: 42px;
-  margin-left: 0;
-  border-radius: 9px;
-  padding-inline: 18px;
-  font-weight: 600;
-}
-
-.welcome-link {
-  display: inline-flex;
-  min-height: 42px;
-  align-items: center;
-  gap: 5px;
-  padding: 0 4px;
-  border: 0;
-  background: transparent;
-  color: var(--cpu-text-secondary);
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.welcome-link:hover { color: var(--cpu-primary-dark); }
-
-.home-alert {
+.grid {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-  min-height: 70px;
-  padding: 12px 16px;
-  border: 1px solid rgba(245, 158, 11, 0.28);
-  border-radius: 12px;
-  background: rgba(245, 158, 11, 0.07);
-}
-
-.home-alert-icon {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  place-items: center;
-  border-radius: 9px;
-  background: rgba(245, 158, 11, 0.12);
-  color: #92400e;
-}
-
-.home-alert > div {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-}
-
-.home-alert strong { color: var(--cpu-text); font-size: 13px; }
-.home-alert span { color: var(--cpu-text-secondary); font-size: 12px; }
-
-.home-skeleton,
-.home-content {
-  display: grid;
-  grid-template-columns: minmax(300px, 0.82fr) minmax(0, 1.75fr);
-  gap: 16px;
-  align-items: start;
-}
-
-.skeleton-main {
-  grid-column: 2;
-  grid-row: span 2;
-}
-
-.home-skeleton > .panel:not(.skeleton-main) {
-  grid-column: 1;
-  grid-row: 1;
-}
-
-.side-column {
-  grid-column: 1;
-  grid-row: 1;
-}
-
-.main-column {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.side-column,
-.main-column {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
+  grid-template-columns: 2fr 1fr;
   gap: 16px;
 }
-
-.home-content--single {
+/* 论坛被关掉时，左栏隐藏 → 右栏单独占满整行，避免出现 1/3 宽的"孤儿" */
+.grid.single-col {
   grid-template-columns: 1fr;
 }
-
-.home-content--single .side-column {
-  grid-column: 1;
+@media (max-width: 1100px) {
+  .grid { grid-template-columns: 1fr; }
 }
 
-.panel {
-  min-width: 0;
-  padding: 17px 18px;
+.col-left, .col-right { display: flex; flex-direction: column; gap: 16px; }
+
+.block {
+  background: var(--cpu-card);
   border: 1px solid var(--cpu-border-soft);
   border-radius: 12px;
-  background: var(--cpu-card);
+  padding: 16px 20px 12px;
+  box-shadow: var(--cpu-shadow-sm);
+}
+.home-error {
+  padding: 24px 16px;
 }
 
-.panel--pinned {
-  border-left: 3px solid var(--cpu-gold);
-}
-
-.section-head {
+.block-head {
   display: flex;
-  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  align-items: baseline;
   margin-bottom: 10px;
 }
+.block-head h3 { margin: 0; font-size: 16px; color: var(--cpu-text); font-weight: 600; }
+.more { font-size: 12px; color: var(--cpu-primary); text-decoration: none; }
 
-.section-head h2 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  color: var(--cpu-text);
-  font-size: 16px;
-  font-weight: 650;
-  line-height: 1.3;
-}
-
-.section-head h2::before {
-  content: "";
-  width: 3px;
-  height: 14px;
-  border-radius: 3px;
-  background: var(--cpu-primary);
-}
-
-.panel--pinned .section-head h2::before {
-  background: var(--cpu-gold);
-}
-
-.section-head p {
-  margin: 3px 0 0 11px;
-  color: var(--cpu-text-secondary);
-  font-size: 11px;
-  line-height: 1.4;
-}
-
-.section-link {
-  display: inline-flex;
-  min-height: 30px;
-  align-items: center;
-  gap: 2px;
-  flex: 0 0 auto;
-  color: var(--cpu-primary-dark);
-  font-size: 12px;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.section-link:hover { color: #0a5f51; }
-
-:global(html[data-theme="dark"]) .welcome-label,
-:global(html[data-theme="dark"]) .section-link,
-:global(html[data-theme="dark"]) .simple-copy .topic-extra,
-:global(html[data-theme="dark"]) .hot-copy .topic-extra,
-:global(html[data-theme="dark"]) .hot-score {
-  color: var(--cpu-primary);
-}
-
-:global(html[data-theme="dark"]) .welcome-link:hover,
-:global(html[data-theme="dark"]) .section-link:hover {
-  color: var(--cpu-primary-light);
-}
-
-.service-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.service-item {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 9px;
-  align-items: center;
-  min-width: 0;
-  min-height: 58px;
-  padding: 8px 9px;
-  border: 1px solid transparent;
-  border-radius: 9px;
-  background: var(--cpu-surface-soft);
-  color: inherit;
+.announce-list { list-style: none; padding: 0; margin: 0; }
+.announce-list li {
+  padding: 10px 4px;
+  border-bottom: 1px dashed var(--cpu-border-soft);
   cursor: pointer;
-  font: inherit;
-  text-align: left;
-  transition: border-color 0.16s ease, background-color 0.16s ease;
+  transition: background 0.15s;
+  border-radius: 6px;
 }
-
-.service-item:hover {
-  border-color: rgba(20, 143, 123, 0.3);
-  background: var(--cpu-surface-subtle);
+.announce-list li:hover { background: var(--cpu-surface-soft); }
+.announce-list li:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
 }
-
-.service-icon {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  border-radius: 8px;
-  background: var(--cpu-surface-subtle);
-  font-size: 17px;
-}
-
-.service-copy,
-.announcement-copy,
-.simple-copy,
-.hot-copy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-}
-
-.service-copy strong {
-  overflow: hidden;
-  color: var(--cpu-text);
-  font-size: 13px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.service-copy small {
-  margin-top: 2px;
-  color: var(--cpu-text-secondary);
-  font-size: 11px;
-}
-
-.row-arrow {
-  flex: 0 0 auto;
-  color: var(--cpu-text-muted);
-  font-size: 13px;
-}
-
-.announcement-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.announcement-list li + li,
-.simple-row + .simple-row,
-.hot-row + .hot-row {
-  border-top: 1px solid var(--cpu-border-soft);
-}
-
-.announcement-list button {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 9px;
-  align-items: center;
-  width: 100%;
-  padding: 10px 3px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-}
-
-.announcement-list button:hover { background: var(--cpu-surface-soft); }
-
-.announcement-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--cpu-primary);
-}
-
-.announcement-copy strong {
-  overflow: hidden;
-  color: var(--cpu-text);
+.announce-list li:last-child { border-bottom: none; }
+.ann-title {
   font-size: 14px;
-  font-weight: 600;
-  line-height: 1.45;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--cpu-text);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
 }
-
-.announcement-copy small {
-  margin-top: 3px;
-  color: var(--cpu-text-secondary);
-  font-size: 11px;
+.ann-meta {
+  font-size: 12px;
+  color: var(--cpu-text-muted);
+  margin-top: 2px;
+  display: flex;
+  gap: 8px;
 }
+.ann-source { color: var(--cpu-primary); }
 
-.wall-link {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-  width: 100%;
-  min-height: 64px;
-  padding: 11px 14px;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 11px;
-  background: var(--cpu-card);
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-}
-
-.wall-link:hover { border-color: rgba(20, 143, 123, 0.28); }
-.wall-link > span:nth-child(2) { display: flex; min-width: 0; flex-direction: column; }
-.wall-link strong { color: var(--cpu-text); font-size: 13px; }
-.wall-link small { margin-top: 2px; color: var(--cpu-text-secondary); font-size: 10px; }
-.wall-link > .el-icon { color: var(--cpu-text-muted); }
-.wall-icon { font-size: 20px; }
-
-.simple-list,
-.hot-list {
-  margin: 0 -4px -3px;
-}
-
-.simple-row,
 .hot-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 11px;
+  gap: 12px;
   align-items: center;
-  width: 100%;
-  min-height: 60px;
-  padding: 10px 7px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: inherit;
+  padding: 10px 4px;
+  border-bottom: 1px dashed var(--cpu-border-soft);
   cursor: pointer;
-  font: inherit;
-  text-align: left;
 }
-
-.simple-row:hover,
-.hot-row:hover {
-  background: var(--cpu-surface-soft);
+.hot-row:last-of-type { border-bottom: none; }
+.hot-row:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
 }
-
-.pin-mark {
-  display: inline-flex;
-  min-width: 34px;
-  height: 22px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 5px;
-  background: rgba(245, 158, 11, 0.11);
-  color: #92400e;
-  font-size: 10px;
-  font-weight: 650;
-}
-
-.board-mark,
 .hot-rank {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  flex: 0 0 auto;
-  border-radius: 8px;
-  background: var(--cpu-surface-subtle);
-  color: var(--cpu-text);
-  font-size: 11px;
-  font-weight: 700;
+  min-width: 46px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--cpu-text-muted);
 }
-
-.board-mark {
-  border-left: 3px solid var(--board-color);
-  color: var(--cpu-text);
-}
-
-.simple-copy strong,
-.hot-copy strong {
-  overflow: hidden;
-  color: var(--cpu-text);
+.hot-rank.top3 { color: #dc2626; }
+.hot-title {
   font-size: 14px;
-  font-weight: 580;
-  line-height: 1.45;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.simple-copy small,
-.hot-copy small {
+  color: var(--cpu-text);
+  line-height: 1.5;
   overflow: hidden;
-  margin-top: 4px;
-  color: var(--cpu-text-secondary);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
 }
-
-.simple-copy .topic-extra,
-.hot-copy .topic-extra {
-  color: var(--cpu-primary-dark);
+.hot-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--cpu-text-muted);
+}
+.hot-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.hot-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.34);
+  color: #9a3412;
+  font-size: 11px;
+  font-weight: 600;
+}
+.hot-score {
+  min-width: 44px;
+  text-align: right;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--cpu-primary);
+}
+.hot-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding-top: 12px;
+}
+.more-strong {
   font-weight: 600;
 }
 
-.hot-rank--first {
-  background: rgba(245, 158, 11, 0.11);
-  color: #92400e;
-}
-
-:global(html[data-theme="dark"]) .home-alert-icon,
-:global(html[data-theme="dark"]) .pin-mark,
-:global(html[data-theme="dark"]) .hot-rank--first {
-  color: #fbbf24;
-}
-
-.hot-score {
-  min-width: 38px;
-  color: var(--cpu-primary-dark);
-  font-size: 13px;
-  font-weight: 650;
-  text-align: right;
-}
-
-.empty-note {
+.service-grid {
   display: grid;
-  min-height: 68px;
-  place-items: center;
-  color: var(--cpu-text-secondary);
-  font-size: 12px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
 }
+.wall-card {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 12px;
+  background: var(--cpu-surface-soft);
+  cursor: pointer;
+}
+.wall-card:hover {
+  border-color: #93c5fd;
+}
+.wall-card:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
+}
+.wall-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  background: var(--cpu-surface-subtle);
+  flex-shrink: 0;
+}
+.wall-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cpu-text);
+}
+.wall-desc {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--cpu-text-secondary);
+}
+.svc {
+  padding: 10px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 10px;
+  background: var(--cpu-surface);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  position: relative;
+}
+.svc:hover { border-color: var(--cpu-primary); background: var(--cpu-surface-soft); }
+.svc:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
+}
+.svc-icon { font-size: 22px; }
+.svc-name { font-size: 12px; color: var(--cpu-text-secondary); margin-top: 4px; line-height: 1.3; }
+.svc-tag {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(245, 158, 11, 0.16);
+  color: #b45309;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.svc-special {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(251, 191, 36, 0.1) 100%);
+  border-color: rgba(245, 158, 11, 0.32);
+}
+.svc-special:hover {
+  border-color: #f59e0b;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.18) 0%, rgba(251, 191, 36, 0.14) 100%);
+}
+.svc-tag-fresh { background: rgba(251, 191, 36, 0.85); color: #78350f; font-weight: 500; }
+.cpu-muted { font-size: 12px; color: var(--cpu-text-muted); }
 
-@media (max-width: 960px) {
-  .home-content {
-    display: flex;
+@media (max-width: 768px) {
+  .home {
+    gap: 14px;
+  }
+
+  .hero {
+    border-radius: 12px;
+    padding: 22px 18px;
     align-items: stretch;
     flex-direction: column;
+    gap: 18px;
   }
 
-  .side-column,
-  .main-column {
-    display: contents;
+  .hero h1 {
+    font-size: 28px;
   }
 
-  .panel--services { order: 1; }
-  .panel--announcements { order: 2; }
-  .wall-link { order: 3; }
-  .panel--pinned { order: 4; }
-  .panel--latest { order: 5; }
-  .panel--hot { order: 6; }
+  .hero p {
+    font-size: 14px;
+    line-height: 1.6;
+  }
 
-  .home-skeleton {
+  .hero-actions {
+    display: grid;
     grid-template-columns: 1fr;
   }
 
-  .skeleton-main,
-  .home-skeleton > .panel:not(.skeleton-main) {
-    grid-column: auto;
-    grid-row: auto;
-  }
-}
-
-@media (min-width: 900px) {
-  .home-content--single .service-list {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .home-content--single .announcement-copy {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 16px;
-  }
-
-  .home-content--single .announcement-copy small {
-    margin-top: 0;
-    white-space: nowrap;
-  }
-}
-
-@media (max-width: 600px) {
-  .home { gap: 12px; }
-
-  .welcome {
-    min-height: 0;
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 14px;
-    padding: 17px 16px;
-    border-radius: 11px;
-  }
-
-  .welcome-label { font-size: 10px; }
-  .welcome h1 { font-size: 23px; }
-  .welcome p { margin-top: 6px; font-size: 13px; line-height: 1.55; }
-
-  .welcome-actions {
+  .hero-actions .el-button {
     width: 100%;
-    justify-content: space-between;
-  }
-
-  .welcome-actions :deep(.el-button) {
-    min-height: 40px;
-    padding-inline: 15px;
-  }
-
-  .welcome-link { min-height: 40px; }
-
-  .panel {
-    width: 100%;
-    padding: 14px 13px;
-    border-radius: 10px;
-  }
-
-  .side-column,
-  .main-column {
-    gap: 12px;
-  }
-
-  .section-head { margin-bottom: 8px; }
-  .section-head h2 { font-size: 15px; }
-  .section-head p { display: none; }
-  .section-link { min-height: 28px; font-size: 11px; }
-
-  .service-list { gap: 7px; }
-  .service-item { min-height: 54px; padding: 7px; }
-  .service-icon { width: 29px; height: 29px; font-size: 16px; }
-  .service-copy strong { font-size: 11px; }
-
-  .simple-row,
-  .hot-row { min-height: 56px; gap: 9px; padding: 9px 4px; }
-  .simple-copy strong,
-  .hot-copy strong { font-size: 13px; }
-
-  .announcement-copy strong {
-    white-space: normal;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-  }
-
-  .home-alert {
-    grid-template-columns: auto minmax(0, 1fr);
-    padding: 11px 12px;
-  }
-
-  .home-alert .el-button {
-    grid-column: 2;
-    justify-self: start;
     margin-left: 0;
   }
+
+  .grid {
+    gap: 14px;
+  }
+
+  .col-left,
+  .col-right {
+    gap: 14px;
+  }
+
+  .block {
+    border-radius: 10px;
+    padding: 14px 12px 10px;
+  }
+
+  .block-head {
+    align-items: center;
+  }
+
+  .service-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .svc {
+    min-height: 82px;
+    padding: 9px 7px;
+  }
+
+  .svc-icon {
+    font-size: 20px;
+  }
+
+  .hot-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .hot-score {
+    grid-column: 2;
+    text-align: left;
+    min-width: 0;
+    font-size: 13px;
+  }
 }
 
-@media (max-width: 360px) {
-  .service-list { gap: 6px; }
-  .service-item { gap: 6px; padding-inline: 6px; }
-  .service-item .row-arrow { display: none; }
-  .service-copy small { font-size: 10px; }
+@media (max-width: 420px) {
+  .service-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 </style>
