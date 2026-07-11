@@ -173,6 +173,14 @@ export const useAuthStore = defineStore("auth", {
       this.ssoLoading = true;
       this.ssoError = "";
       try {
+        if (this.ssoPendingId.trim().length < 8) {
+          await this.ssoBegin();
+          this.ssoLoading = true;
+          if (this.ssoNeedCaptcha && !captcha) {
+            this.ssoError = "登录会话已刷新，请输入验证码";
+            return false;
+          }
+        }
         const r = await authApi.ssoLogin({
           pendingId: this.ssoPendingId, username, password, captcha,
         });

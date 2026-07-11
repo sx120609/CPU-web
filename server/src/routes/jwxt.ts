@@ -883,14 +883,27 @@ jwxtRouter.post("/begin-login", async (_req, res, next) => {
 jwxtRouter.post(
   "/login",
   validate(z.object({
-    pendingId: z.string().min(8).max(2048),
+    pendingId: z.string().max(2048).optional().default(""),
     username: z.string().min(1),
     password: z.string().min(1),
     captcha: z.string().optional(),
   })),
   async (req, res, next) => {
     try {
-      const r = await submitLogin(req.body);
+      let pendingId = String(req.body.pendingId || "");
+      if (pendingId.length < 8) {
+        const fresh = await beginLogin();
+        if (fresh.needCaptcha) {
+          return ok(res, {
+            ok: false,
+            error: "登录会话已刷新，请输入验证码",
+            needCaptcha: true,
+            captcha: { image: fresh.captchaImage || "", pendingId: fresh.pendingId },
+          });
+        }
+        pendingId = fresh.pendingId;
+      }
+      const r = await submitLogin({ ...req.body, pendingId });
       if (r.ok) return ok(res, { token: r.token });
       // 失败：可能是要重新输验证码
       return ok(res, {

@@ -116,14 +116,31 @@ authRouter.post("/sso-begin", async (_req, res, next) => {
 authRouter.post(
   "/sso-login",
   validate(z.object({
-    pendingId: z.string().min(8).max(2048),
+    // 兼容旧页面/并发初始化尚未拿到 pendingId 的情况；路由内会自动补一次 begin。
+    pendingId: z.string().max(2048).optional().default(""),
     username: z.string().min(1),
     password: z.string().min(1),
     captcha: z.string().optional(),
   })),
   async (req, res, next) => {
     try {
-      const { pendingId, username, password, captcha } = req.body;
+      let { pendingId } = req.body;
+      const { username, password, captcha } = req.body;
+      if (String(pendingId || "").length < 8) {
+        const fresh = await beginLogin();
+        if (fresh.needCaptcha) {
+          return ok(res, {
+            ok: false,
+            error: "登录会话已刷新，请输入验证码",
+            needCaptcha: true,
+            captcha: {
+              image: fresh.captchaImage || "",
+              pendingId: fresh.pendingId,
+            },
+          });
+        }
+        pendingId = fresh.pendingId;
+      }
       const r = await submitLogin({ pendingId, username, password, captcha });
       if (!r.ok || !r.token) {
         return ok(res, {
