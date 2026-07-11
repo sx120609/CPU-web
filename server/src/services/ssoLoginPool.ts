@@ -5,10 +5,12 @@ import * as local from "./jwxtFacade";
 import * as queryRemote from "./jwxtRemote";
 import * as queryAgentRemote from "./jwxtAgentRemote";
 import type { LoginAttempt, LoginSessionHandoff } from "./jwxtClient";
-import { getJwxtAgentState, isJwxtAgentAvailable, requestJwxtAgent } from "./jwxtAgentGateway";
+import { getJwxtAgentCredentialPublicKey, getJwxtAgentState, isJwxtAgentAvailable, requestJwxtAgent } from "./jwxtAgentGateway";
 import { getJwxtAgentRuntimeConfig } from "./jwxtAgentConfig";
+import type { AgentEncryptedLoginCredentials } from "./jwxtAgentReplicaCrypto";
 
-type BeginResult = Awaited<ReturnType<typeof local.beginLogin>>;
+type BeginResult = Awaited<ReturnType<typeof local.beginLogin>> & { credentialPublicKey?: string };
+type SecureLoginArgs = Parameters<typeof local.submitLogin>[0] | { pendingId: string; credentials: AgentEncryptedLoginCredentials };
 
 type LoginNodeAttempt = Omit<LoginAttempt, "token"> & {
   handoff?: LoginSessionHandoff;
@@ -126,6 +128,9 @@ export async function beginLogin(): Promise<BeginResult> {
       return {
         ...result,
         pendingId: encodePendingRoute(runtime.node.key, result.pendingId),
+        ...(runtime.node.kind === "agent"
+          ? { credentialPublicKey: getJwxtAgentCredentialPublicKey(runtime.node.id) || undefined }
+          : {}),
       };
     } catch (error) {
       markFailure(runtime, error);
@@ -138,7 +143,7 @@ export async function beginLogin(): Promise<BeginResult> {
   throw new HttpError(503, 5000, `所有统一认证登录节点暂时不可用${suffix}`);
 }
 
-export async function submitLogin(args: Parameters<typeof local.submitLogin>[0]): Promise<LoginAttempt> {
+export async function submitLogin(args: SecureLoginArgs): Promise<LoginAttempt> {
   const route = decodePendingRoute(args.pendingId);
   syncRuntimes();
   const runtime = runtimeByKey.get(route.nodeKey);
@@ -156,10 +161,11 @@ export async function submitLogin(args: Parameters<typeof local.submitLogin>[0])
   try {
     let result: LoginNodeAttempt;
     try {
-      result = validateLoginNodeAttempt(await submitOnNode(runtime.node, {
-        ...args,
-        pendingId: route.pendingId,
-      }), args.username);
+      const rawResult = await submitOnNode(runtime.node, { ...args, pendingId: route.pendingId });
+      const expectedUsername = "credentials" in args
+        ? String((rawResult as LoginNodeAttempt).authenticatedUsername || "")
+        : args.username;
+      result = validateLoginNodeAttempt(rawResult, expectedUsername);
       markSuccess(runtime);
     } catch (error) {
       if (!(error instanceof HttpError) || error.status !== 409) markFailure(runtime, error);
@@ -181,7 +187,7 @@ export async function submitLogin(args: Parameters<typeof local.submitLogin>[0])
     }
 
     const token = await consumeAtQueryTransport(result.handoff, runtime.node);
-    return { ok: true, token };
+    return { ok: true, token, authenticatedUsername: result.handoff.username };
   } finally {
     runtime.inFlight = Math.max(0, runtime.inFlight - 1);
     activeSubmits.delete(submitKey);
@@ -256,8 +262,17 @@ async function runNodeBegin(runtime: NodeRuntime): Promise<BeginResult> {
 
 async function submitOnNode(
   node: LoginNode,
-  args: Parameters<typeof local.submitLogin>[0],
+  args: SecureLoginArgs,
 ): Promise<LoginNodeAttempt> {
+  if ("credentials" in args) {
+    if (node.kind !== "agent") throw Errors.badRequest("当前登录节点不支持浏览器凭据加密，请刷新后重试");
+    return requestJwxtAgent(
+      node.id,
+      "login.submit-handoff-encrypted",
+      { pendingId: args.pendingId, credentials: args.credentials },
+      config.ssoLoginPool.timeoutMs,
+    );
+  }
   if (node.kind === "local") return withLocalNodeTimeout(local.submitLoginForHandoff(args));
   if (node.kind === "agent") {
     return requestJwxtAgent(

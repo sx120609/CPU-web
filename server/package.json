@@ -21,7 +21,7 @@
     "db:reset": "prisma db push --force-reset --skip-generate && npm run db:seed",
     "db:studio": "prisma studio",
     "prisma:generate": "prisma generate",
-    "test:login-pool": "node --import tsx --test tests/ssoLoginPool.integration.test.ts tests/jwxtAgent.integration.test.ts"
+    "test:login-pool": "node --import tsx --test tests/ssoLoginPool.integration.test.ts tests/jwxtAgent.integration.test.ts tests/browserSecurity.integration.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

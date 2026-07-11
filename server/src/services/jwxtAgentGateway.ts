@@ -5,12 +5,20 @@ import { config, type JwxtAgentConfig } from "../config";
 import { Errors, HttpError } from "../utils/response";
 import {
   JWXT_AGENT_PROTOCOL_VERSION,
+  jwxtActionSessionToken,
   type JwxtAgentAction,
   type JwxtAgentInput,
   type JwxtAgentOutput,
   type JwxtAgentResponseMessage,
 } from "./jwxtAgentProtocol";
-import { getJwxtAgentRuntimeConfig, onJwxtAgentConfigChange } from "./jwxtAgentConfig";
+import { getJwxtAgentRuntimeConfig, onJwxtAgentConfigChange, pinJwxtAgentReplicaPublicKey } from "./jwxtAgentConfig";
+import { deleteJwxtSessionReplica, saveJwxtSessionReplica } from "./jwxtSessionReplica";
+import {
+  loadOrCreateAgentReplicaIdentity,
+  validateReplicaEnvelope,
+  type AgentReplicaIdentity,
+  type AgentReplicaRecipient,
+} from "./jwxtAgentReplicaCrypto";
 
 const { WebSocket, WebSocketServer } = require("ws") as {
   WebSocket: { OPEN: number };
@@ -22,6 +30,7 @@ type PendingAgentRequest = {
   reject: (error: unknown) => void;
   timer: NodeJS.Timeout;
   action: JwxtAgentAction;
+  payload: unknown;
 };
 
 type AgentSession = {
@@ -31,11 +40,39 @@ type AgentSession = {
   connectedAt: number;
   lastPongAt: number;
   pending: Map<string, PendingAgentRequest>;
+  replicaPublicKey: string;
 };
 
 const sessions = new Map<string, AgentSession>();
 let attachedServer: HttpServer | null = null;
 let heartbeatTimer: NodeJS.Timeout | null = null;
+let localReplicaIdentityCache: AgentReplicaIdentity | null = null;
+
+export function getLocalAgentReplicaIdentity() {
+  if (!localReplicaIdentityCache) {
+    localReplicaIdentityCache = loadOrCreateAgentReplicaIdentity(config.jwxtLocalAgentKeyFile);
+  }
+  return localReplicaIdentityCache;
+}
+
+export function getJwxtAgentReplicaRecipients(): AgentReplicaRecipient[] {
+  const recipients: AgentReplicaRecipient[] = [];
+  if (getJwxtAgentRuntimeConfig().localJwxtEnabled) {
+    recipients.push({ agentId: "local", publicKey: getLocalAgentReplicaIdentity().publicKey });
+  }
+  for (const [agentId, session] of sessions) {
+    if (session.ready && session.replicaPublicKey) recipients.push({ agentId, publicKey: session.replicaPublicKey });
+  }
+  return recipients;
+}
+
+export function getJwxtAgentCredentialPublicKey(agentId: string) {
+  if (agentId === "local" && getJwxtAgentRuntimeConfig().localJwxtEnabled) {
+    return getLocalAgentReplicaIdentity().publicKey;
+  }
+  const session = sessions.get(agentId);
+  return session?.ready ? session.replicaPublicKey : "";
+}
 
 export function attachJwxtAgentGateway(server: HttpServer) {
   if (attachedServer) {
@@ -151,6 +188,7 @@ export async function requestJwxtAgent<A extends JwxtAgentAction>(
       reject,
       timer,
       action,
+      payload,
     });
 
     session.socket.send(message, (error?: Error) => {
@@ -183,6 +221,7 @@ function registerAgentSocket(agent: JwxtAgentConfig, socket: any) {
     connectedAt: now,
     lastPongAt: now,
     pending: new Map(),
+    replicaPublicKey: "",
   };
   sessions.set(agent.id, session);
 
@@ -195,10 +234,12 @@ function registerAgentSocket(agent: JwxtAgentConfig, socket: any) {
       socket.close(4002, "仅支持 JSON 文本消息");
       return;
     }
-    handleAgentMessage(session, Buffer.isBuffer(data) ? data.toString("utf8") : String(data));
+    handleAgentMessage(session, Buffer.isBuffer(data) ? data.toString("utf8") : String(data))
+      .catch(() => socket.close(4002, "Agent 响应处理失败"));
   });
   socket.on("close", () => {
     if (sessions.get(agent.id) === session) sessions.delete(agent.id);
+    broadcastReplicaTargets();
     rejectSessionRequests(session, new HttpError(503, 5000, `教务 Agent ${agent.name} 已断开`));
     console.warn(`[jwxt-agent] ${agent.name} 已离线`);
   });
@@ -218,7 +259,7 @@ function registerAgentSocket(agent: JwxtAgentConfig, socket: any) {
   }));
 }
 
-function handleAgentMessage(session: AgentSession, text: string) {
+async function handleAgentMessage(session: AgentSession, text: string) {
   let message: any;
   try {
     message = JSON.parse(text);
@@ -228,12 +269,21 @@ function handleAgentMessage(session: AgentSession, text: string) {
   }
 
   if (message?.type === "ready") {
-    if (message.protocolVersion !== JWXT_AGENT_PROTOCOL_VERSION) {
+    if (message.protocolVersion !== JWXT_AGENT_PROTOCOL_VERSION || !validReplicaPublicKey(message.replicaPublicKey)) {
       session.socket.close(4003, "Agent 协议版本不兼容");
       return;
     }
+    if (session.config.replicaPublicKey && session.config.replicaPublicKey !== message.replicaPublicKey) {
+      session.socket.close(4007, "Agent 加密身份公钥不匹配");
+      return;
+    }
+    if (!session.config.replicaPublicKey) {
+      session.config = await pinJwxtAgentReplicaPublicKey(session.config.id, message.replicaPublicKey);
+    }
     if (!session.ready) console.log(`[jwxt-agent] ${session.config.name} 已上线`);
+    session.replicaPublicKey = message.replicaPublicKey;
     session.ready = true;
+    broadcastReplicaTargets();
     return;
   }
 
@@ -247,6 +297,7 @@ function handleAgentMessage(session: AgentSession, text: string) {
   session.pending.delete(message.id);
 
   const response = message as JwxtAgentResponseMessage;
+  await persistResponseSessionSnapshot(session, pending, response);
   if (response.ok) {
     pending.resolve(response.data);
     return;
@@ -255,6 +306,30 @@ function handleAgentMessage(session: AgentSession, text: string) {
   const code = Number.isFinite(response.error?.code) ? Number(response.error?.code) : 5000;
   const errorMessage = String(response.error?.message || "教务 Agent 请求失败").slice(0, 500);
   pending.reject(new HttpError(status, code, errorMessage));
+}
+
+async function persistResponseSessionSnapshot(
+  session: AgentSession,
+  pending: PendingAgentRequest,
+  response: JwxtAgentResponseMessage,
+) {
+  if (response.encryptedSessionReplicas === undefined) return;
+  const token = jwxtActionSessionToken(pending.action, pending.payload, response.data);
+  if (!token) return;
+  try {
+    if (response.encryptedSessionReplicas.length) {
+      const allowedRecipients = new Set(getJwxtAgentReplicaRecipients().map((item) => item.agentId));
+      for (const replica of response.encryptedSessionReplicas) {
+        validateReplicaEnvelope(replica);
+        if (!allowedRecipients.has(replica.recipientAgentId)) throw new Error("unknown replica recipient");
+      }
+      await saveJwxtSessionReplica(token, session.config.id, response.encryptedSessionReplicas);
+    } else if (pending.action === "session.logout") {
+      await deleteJwxtSessionReplica(token);
+    }
+  } catch {
+    console.warn(`[jwxt-agent] ${session.config.name} 的会话快照保存失败`);
+  }
 }
 
 function authenticateAgent(request: IncomingMessage) {
@@ -276,6 +351,25 @@ function reconcileAgentSessions() {
       continue;
     }
     session.config = next;
+  }
+  broadcastReplicaTargets();
+}
+
+function broadcastReplicaTargets() {
+  const message = JSON.stringify({ type: "replica-targets", targets: getJwxtAgentReplicaRecipients() });
+  for (const session of sessions.values()) {
+    if (!session.ready || session.socket.readyState !== WebSocket.OPEN) continue;
+    try { session.socket.send(message); } catch { /* next heartbeat will remove it */ }
+  }
+}
+
+function validReplicaPublicKey(value: unknown) {
+  if (typeof value !== "string" || value.length < 300 || value.length > 4096) return false;
+  try {
+    crypto.createPublicKey({ key: Buffer.from(value, "base64"), type: "spki", format: "der" });
+    return true;
+  } catch {
+    return false;
   }
 }
 

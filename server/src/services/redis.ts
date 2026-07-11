@@ -146,6 +146,24 @@ export async function incrementRedisKey(key: string) {
   }
 }
 
+export async function incrementRedisKeyWithTtl(key: string, ttlMs: number) {
+  const client = await getCommandClient();
+  if (!client) return null;
+  try {
+    const value = await client.eval(
+      "local n = redis.call('incr', KEYS[1]); if n == 1 then redis.call('pexpire', KEYS[1], ARGV[1]); end; return n",
+      1,
+      key,
+      String(ttlMs),
+    );
+    return Number(value);
+  } catch (error) {
+    logRedisIssue("command", error);
+    resetCommandClient();
+    return null;
+  }
+}
+
 export async function expireRedisKey(key: string, ttlMs: number) {
   const client = await getCommandClient();
   if (!client) return false;

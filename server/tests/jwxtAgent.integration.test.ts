@@ -30,17 +30,31 @@ async function waitFor(check: () => boolean, timeoutMs = 2_000) {
 
 test("outbound JWXT Agent handles login pool, handoff, queries, and crawler without FRP", async (t) => {
   const token = "agent-token-" + "a".repeat(48);
-  process.env.JWT_SECRET = "jwxt-agent-integration-secret";
-  process.env.JWXT_AGENTS = JSON.stringify([{
-    id: "campus-agent-a",
-    name: "Campus Agent A",
-    token,
-    enabled: true,
-    jwxtEnabled: true,
-    crawlEnabled: true,
-    weight: 1,
-    maxConcurrent: 4,
-  }]);
+  const tokenB = "agent-token-" + "b".repeat(48);
+  process.env.JWT_SECRET = "jwxt-agent-integration-secret-0123456789abcdef";
+  process.env.JWXT_SESSION_SYNC_KEY = "integration-session-sync-key-0123456789abcdef";
+  process.env.JWXT_AGENTS = JSON.stringify([
+    {
+      id: "campus-agent-a",
+      name: "Campus Agent A",
+      token,
+      enabled: true,
+      jwxtEnabled: true,
+      crawlEnabled: true,
+      weight: 1,
+      maxConcurrent: 4,
+    },
+    {
+      id: "campus-agent-b",
+      name: "Campus Agent B",
+      token: tokenB,
+      enabled: true,
+      jwxtEnabled: true,
+      crawlEnabled: false,
+      weight: 1,
+      maxConcurrent: 4,
+    },
+  ]);
   process.env.JWXT_PROXY_AGENT_ID = "campus-agent-a";
   process.env.JWXT_CRAWL_AGENT_ID = "campus-agent-a";
   process.env.JWXT_PROXY_URL = "";
@@ -66,6 +80,9 @@ test("outbound JWXT Agent handles login pool, handoff, queries, and crawler with
   const address = server.address() as AddressInfo;
 
   const actions: Array<{ action: string; payload: any }> = [];
+  const actionsB: Array<{ action: string; payload: any }> = [];
+  const snapshotsA = new Map<string, any>();
+  const snapshotsB = new Map<string, any>();
   const client = startJwxtAgentClient({
     serverUrl: `ws://127.0.0.1:${address.port}/api/internal/jwxt-agent/connect`,
     agentId: "campus-agent-a",
@@ -90,21 +107,60 @@ test("outbound JWXT Agent handles login pool, handoff, queries, and crawler with
           },
         };
       }
-      if (action === "session.consume-handoff") return "agent-query-token";
+      if (action === "session.consume-handoff") {
+        snapshotsA.set("agent-query-token", {
+          version: 1,
+          jar: { "jsxsd.cpu.edu.cn": { JSESSIONID: "private-cookie-value" } },
+          username: "20260001",
+          createdAt: Date.now(),
+          lastSeenAt: Date.now(),
+        });
+        return "agent-query-token";
+      }
+      if (action === "session.export-snapshot") return snapshotsA.get((payload as { token: string }).token) ?? null;
+      if (action === "session.import-snapshot") {
+        const input = payload as { token: string; snapshot: any };
+        snapshotsA.set(input.token, input.snapshot);
+        return true;
+      }
       if (action === "session.status") {
-        return { active: true, since: Date.now(), username: "20260001" };
+        const active = snapshotsA.has((payload as { token: string }).token);
+        return active ? { active: true, since: Date.now(), username: "20260001" } : { active: false };
       }
       if (action === "school-feed.crawl") return { items: [], pages: [] };
       throw new Error(`unexpected action: ${action}`);
     },
   });
+  const clientB = startJwxtAgentClient({
+    serverUrl: `ws://127.0.0.1:${address.port}/api/internal/jwxt-agent/connect`,
+    agentId: "campus-agent-b",
+    token: tokenB,
+    reconnectMs: 500,
+    log: () => undefined,
+    dispatch: async (action, payload) => {
+      actionsB.push({ action, payload });
+      if (action === "session.export-snapshot") return snapshotsB.get((payload as { token: string }).token) ?? null;
+      if (action === "session.import-snapshot") {
+        const input = payload as { token: string; snapshot: any };
+        snapshotsB.set(input.token, input.snapshot);
+        return true;
+      }
+      if (action === "session.status") {
+        const snapshot = snapshotsB.get((payload as { token: string }).token);
+        return snapshot ? { active: true, since: snapshot.createdAt, username: snapshot.username } : { active: false };
+      }
+      if (action === "login.begin") return { pendingId: "agent-b-inner-pending-0001", needCaptcha: false };
+      throw new Error(`unexpected B action: ${action}`);
+    },
+  });
 
   t.after(async () => {
     client.stop();
+    clientB.stop();
     await closeServer(server);
   });
-  await client.waitUntilReady();
-  await waitFor(() => gateway.getJwxtAgentState("campus-agent-a").ready);
+  await Promise.all([client.waitUntilReady(), clientB.waitUntilReady()]);
+  await waitFor(() => gateway.getJwxtAgentState("campus-agent-a").ready && gateway.getJwxtAgentState("campus-agent-b").ready);
   assert.equal(gateway.getJwxtAgentState("campus-agent-a").ready, true);
 
   const duplicateLogs: string[] = [];
@@ -123,11 +179,17 @@ test("outbound JWXT Agent handles login pool, handoff, queries, and crawler with
   const pool = await import("../src/services/ssoLoginPool");
   const begin = await pool.beginLogin();
   assert.equal(pool.isPooledPendingId(begin.pendingId), true);
+  assert.ok(begin.credentialPublicKey);
 
-  const login = await pool.submitLogin({
-    pendingId: begin.pendingId,
+  const { encryptAgentLoginCredentials } = await import("../src/services/jwxtAgentReplicaCrypto");
+  const credentials = encryptAgentLoginCredentials(begin.credentialPublicKey!, {
     username: "20260001",
     password: "not-logged-or-stored",
+  });
+  assert.equal(JSON.stringify(credentials).includes("not-logged-or-stored"), false);
+  const login = await pool.submitLogin({
+    pendingId: begin.pendingId,
+    credentials,
   });
   assert.equal(login.ok, true);
   assert.match(login.token || "", /^jqa1\./);
@@ -135,6 +197,31 @@ test("outbound JWXT Agent handles login pool, handoff, queries, and crawler with
   const transport = await import("../src/services/jwxtTransport");
   const status = await transport.getStatus(login.token);
   assert.equal(status.active, true);
+
+  const replica = await import("../src/services/jwxtSessionReplica");
+  const cache = await import("../src/services/cache");
+  const encryptedReplica = await cache.getEphemeralValue(replica.jwxtSessionReplicaKey("agent-query-token"));
+  assert.ok(encryptedReplica);
+  assert.equal(encryptedReplica.includes("private-cookie-value"), false);
+  assert.equal(encryptedReplica.includes("20260001"), false);
+  const replicaEnvelope = JSON.parse(encryptedReplica);
+  assert.equal(replicaEnvelope.version, 2);
+  assert.equal("encryptedSnapshot" in replicaEnvelope, false);
+  assert.deepEqual(
+    replicaEnvelope.replicas.map((item: any) => item.recipientAgentId).sort(),
+    ["campus-agent-a", "campus-agent-b"],
+  );
+  assert.ok(replicaEnvelope.replicas.every((item: any) => item.algorithm === "rsa-oaep-sha256+aes-256-gcm"));
+
+  const jwxtClient = await import("../src/services/jwxtClient");
+  const encryptedLocalToken = "local-encrypted-session-token";
+  await jwxtClient.importSessionSnapshot(encryptedLocalToken, snapshotsA.get("agent-query-token"));
+  const encryptedLocalSession = await cache.getEphemeralValue(cache.jwxtSessionKey(encryptedLocalToken));
+  assert.ok(encryptedLocalSession);
+  assert.equal(encryptedLocalSession.includes("private-cookie-value"), false);
+  assert.equal(encryptedLocalSession.includes("20260001"), false);
+  assert.equal((await jwxtClient.exportSessionSnapshot(encryptedLocalToken))?.username, "20260001");
+  await jwxtClient.logout(encryptedLocalToken);
 
   const crawler = await import("../src/services/schoolCrawlerTransport");
   const crawled = await crawler.crawlSchoolFeedSource({
@@ -144,17 +231,22 @@ test("outbound JWXT Agent handles login pool, handoff, queries, and crawler with
   });
   assert.deepEqual(crawled, { items: [], pages: [] });
 
-  assert.deepEqual(actions.map((item) => item.action), [
-    "login.begin",
-    "login.submit-handoff",
-    "session.consume-handoff",
-    "session.status",
-    "school-feed.crawl",
-  ]);
+  assert.ok(actions.some((item) => item.action === "session.export-snapshot"));
+  assert.ok(actions.some((item) => item.action === "school-feed.crawl"));
   assert.equal(actions[1].payload.password, "not-logged-or-stored");
 
   client.stop();
   await waitFor(() => !gateway.getJwxtAgentState("campus-agent-a").online);
+  const migratedStatus = await transport.getStatus(login.token);
+  assert.equal(migratedStatus.active, true);
+  assert.ok(actionsB.some((item) => item.action === "session.import-snapshot"));
+  assert.ok(actionsB.some((item) => item.action === "session.status"));
+  const migratedReplica = await replica.loadJwxtSessionReplica("agent-query-token");
+  assert.equal(migratedReplica?.ownerAgentId, "campus-agent-b");
+  assert.equal("snapshot" in (migratedReplica || {}), false);
+
+  clientB.stop();
+  await waitFor(() => !gateway.getJwxtAgentState("campus-agent-b").online);
   await assert.rejects(
     () => pool.beginLogin(),
     (error: unknown) => (

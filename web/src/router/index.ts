@@ -98,6 +98,9 @@ export const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
   const site = useSiteStore();
+  // HttpOnly Cookie 无法由前端直接读取；首次导航静默探测一次真实会话。
+  // 游客的 401 不提示、不跳转，避免公开页面被错误抢到登录页。
+  if (!auth.ready) await auth.fetchMe({ probe: true });
   if (to.meta.title) document.title = `${to.meta.title} · 药大拾间`;
 
   const requestedManageTool = firstRouteValue(to.query.tool);

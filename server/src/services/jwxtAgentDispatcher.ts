@@ -12,6 +12,13 @@ const loginSchema = z.object({
   captcha: z.string().max(64).optional(),
 }).strict();
 const tokenSchema = z.object({ token: z.string().min(1).max(512) }).strict();
+const sessionSnapshotSchema = z.object({
+  version: z.literal(1),
+  jar: z.record(z.record(z.string().max(8192))),
+  username: z.string().max(128),
+  createdAt: z.number().finite(),
+  lastSeenAt: z.number().finite(),
+}).strict();
 const handoffSchema = z.object({
   handoff: z.object({
     id: z.string().min(32).max(128),
@@ -44,6 +51,12 @@ export async function dispatchJwxtAgentAction(action: JwxtAgentAction, payload: 
     case "session.stats":
       emptySchema.parse(payload);
       return jwxt.sessionStats();
+    case "session.export-snapshot":
+      return jwxt.exportSessionSnapshot(tokenSchema.parse(payload).token);
+    case "session.import-snapshot": {
+      const input = tokenSchema.extend({ snapshot: sessionSnapshotSchema }).strict().parse(payload);
+      return jwxt.importSessionSnapshot(input.token, input.snapshot);
+    }
     case "jwxt.schedule": {
       const input = tokenSchema.extend({ semester: z.string().max(64).optional(), week: z.string().max(16).optional() }).parse(payload);
       return jwxt.getSchedule(input.token, input);

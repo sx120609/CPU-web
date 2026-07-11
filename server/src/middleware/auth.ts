@@ -2,6 +2,14 @@ import type { Request, Response, NextFunction } from "express";
 import { prisma } from "../prisma";
 import { verifyToken } from "../utils/jwt";
 import { Errors } from "../utils/response";
+import { isCookieAuthRequest, issueBrowserSession } from "../services/browserSession";
+
+function requestAuthToken(req: Request) {
+  if (req.browserSession?.siteToken) return req.browserSession.siteToken;
+  const header = req.headers.authorization;
+  if (header?.startsWith("Bearer ")) return header.slice(7);
+  return "";
+}
 
 async function hydrateUserFromToken(token: string) {
   const payload = verifyToken(token);
@@ -18,14 +26,18 @@ async function hydrateUserFromToken(token: string) {
   };
 }
 
-export async function authRequired(req: Request, _res: Response, next: NextFunction) {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith("Bearer ")) {
+export async function authRequired(req: Request, res: Response, next: NextFunction) {
+  const token = requestAuthToken(req);
+  if (!token) {
     return next(Errors.unauthorized());
   }
-  const token = header.slice(7);
   try {
     req.user = await hydrateUserFromToken(token);
+    if (!req.browserSession && isCookieAuthRequest(req) && req.headers.authorization?.startsWith("Bearer ")) {
+      const jwxtToken = String(req.headers["x-jwxt-token"] || "").trim();
+      const session = await issueBrowserSession(res, { siteToken: token, ...(jwxtToken ? { jwxtToken } : {}) });
+      req.browserSession = session;
+    }
     next();
   } catch (error: any) {
     if (error?.status && error?.code) {
@@ -37,12 +49,11 @@ export async function authRequired(req: Request, _res: Response, next: NextFunct
 }
 
 export async function authOptional(req: Request, _res: Response, next: NextFunction) {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith("Bearer ")) {
+  const token = requestAuthToken(req);
+  if (!token) {
     req.user = undefined;
     return next();
   }
-  const token = header.slice(7);
   try {
     req.user = await hydrateUserFromToken(token);
   } catch {

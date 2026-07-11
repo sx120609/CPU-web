@@ -468,6 +468,7 @@ ensure_ffmpeg() {
 }
 
 ensure_env() {
+  local current_jwt current_sync_key
   if [ ! -f "$ENV_FILE" ]; then
     log "首次部署，创建 server/.env"
     cat > "$ENV_FILE" <<EOF
@@ -485,6 +486,25 @@ MEDIA_STORAGE_IMAGE_PROVIDER="local"
 MEDIA_STORAGE_VIDEO_PROVIDER="local"
 EOF
     log "已生成随机 JWT_SECRET"
+  fi
+  current_jwt="$(env_get JWT_SECRET)"
+  if [ "${#current_jwt}" -lt 32 ]; then
+    env_set JWT_SECRET "$(openssl rand -hex 32 2>/dev/null || echo "please-change-me-$(date +%s)-$RANDOM")"
+    warn "已补齐随机 JWT_SECRET；此前使用默认密钥签发的站内 token 将失效一次"
+  fi
+  current_sync_key="$(env_get JWXT_SESSION_SYNC_KEY)"
+  if [ "${#current_sync_key}" -lt 32 ]; then
+    env_set JWXT_SESSION_SYNC_KEY "$(openssl rand -hex 32 2>/dev/null || echo "jwxt-session-sync-$(date +%s)-$RANDOM-$RANDOM")"
+    log "已生成 JWXT_SESSION_SYNC_KEY"
+  fi
+  if [ -z "$(env_get JWXT_LOCAL_AGENT_KEY_FILE)" ]; then
+    env_set JWXT_LOCAL_AGENT_KEY_FILE ".jwxt-local-agent-identity.json"
+  fi
+  if [ -z "$(env_get BROWSER_SESSION_IDLE_MS)" ]; then
+    env_set BROWSER_SESSION_IDLE_MS "1800000"
+  fi
+  if [ -z "$(env_get BROWSER_SESSION_ABSOLUTE_MS)" ]; then
+    env_set BROWSER_SESSION_ABSOLUTE_MS "604800000"
   fi
   if ! grep -q '^POSTGRES_DATABASE_URL=' "$ENV_FILE" 2>/dev/null; then
     echo 'POSTGRES_DATABASE_URL=""' >> "$ENV_FILE"
@@ -543,7 +563,7 @@ runtime_is_agent() {
 
 ensure_agent_env() {
   [ -f "$ENV_FILE" ] || err "缺少 $ENV_FILE；请先从管理后台复制 Agent 配置"
-  local server id token
+  local server id token current_jwt current_sync_key
   server="$(agent_env_value SERVER)"
   id="$(agent_env_value ID)"
   token="$(agent_env_value TOKEN)"
@@ -551,9 +571,18 @@ ensure_agent_env() {
   [[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || err "JWXT_AGENT_ID 格式无效"
   [ "${#token}" -ge 32 ] && [ "${#token}" -le 512 ] \
     || err "JWXT_AGENT_TOKEN 长度必须在 32 到 512 个字符之间"
-  if [ -z "$(env_get JWT_SECRET)" ]; then
+  current_jwt="$(env_get JWT_SECRET)"
+  if [ "${#current_jwt}" -lt 32 ]; then
     env_set JWT_SECRET "$(openssl rand -hex 32 2>/dev/null || echo "agent-local-secret-$(date +%s)-$RANDOM")"
     log "已为 Agent 生成本机 JWT_SECRET"
+  fi
+  current_sync_key="$(env_get JWXT_SESSION_SYNC_KEY)"
+  if [ "${#current_sync_key}" -lt 32 ]; then
+    env_set JWXT_SESSION_SYNC_KEY "$(openssl rand -hex 32 2>/dev/null || echo "agent-session-sync-$(date +%s)-$RANDOM-$RANDOM")"
+    log "已为 Agent 生成本机会话加密密钥"
+  fi
+  if [ -z "$(env_get JWXT_AGENT_KEY_FILE)" ]; then
+    env_set JWXT_AGENT_KEY_FILE ".jwxt-agent-identity.json"
   fi
   if [ -z "$(env_get REDIS_ENABLED)" ]; then
     env_set REDIS_ENABLED "false"
@@ -816,6 +845,9 @@ do_agent_start() {
       --merge-logs
   fi
   cd ..
+  if [ -f server/.jwxt-agent-identity.json ]; then
+    chmod 600 server/.jwxt-agent-identity.json
+  fi
   if pm2 describe "$PROXY_SERVICE_NAME" >/dev/null 2>&1; then
     warn "检测到旧教务代理 $PROXY_SERVICE_NAME 仍在运行；确认不再使用后可执行 pm2 delete $PROXY_SERVICE_NAME"
   fi

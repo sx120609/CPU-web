@@ -10,6 +10,8 @@ import {
   jwxtPostForm,
   fetchIServiceApps,
   jwxtDebugSnapshot,
+  exportSessionSnapshot,
+  importSessionSnapshot,
 } from "./jwxtClient";
 import { getGraduateSchedule as getGraduateScheduleLive } from "./graduateScheduleService";
 import {
@@ -22,8 +24,8 @@ import {
   parseSchedule,
 } from "./jwxtParser";
 
-export { beginLogin, submitLogin, submitLoginForHandoff, consumeLoginHandoff };
-export type { LoginSessionHandoff, LoginHandoffAttempt } from "./jwxtClient";
+export { beginLogin, submitLogin, submitLoginForHandoff, consumeLoginHandoff, exportSessionSnapshot, importSessionSnapshot };
+export type { LoginSessionHandoff, LoginHandoffAttempt, JwxtSessionSnapshot } from "./jwxtClient";
 
 export async function logout(token: string) {
   return clientLogout(token);

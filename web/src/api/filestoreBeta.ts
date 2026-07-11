@@ -1,4 +1,4 @@
-import { getToken } from "@/api/request";
+import { COOKIE_SESSION_MARKER, getCsrfToken, getToken } from "@/api/request";
 import type { QuestionnaireField } from "@/api/tools";
 
 export type FilestoreBetaStatus = "open" | "closed";
@@ -290,7 +290,12 @@ export function filestoreBetaUrl(path: string) {
 function headers(init?: JsonRequestInit) {
   const output = new Headers(init?.headers);
   const token = getToken();
-  if (token && !output.has("Authorization")) output.set("Authorization", `Bearer ${token}`);
+  if (token && token !== COOKIE_SESSION_MARKER && !output.has("Authorization")) {
+    output.set("Authorization", `Bearer ${token}`);
+  }
+  const csrf = getCsrfToken();
+  if (csrf && !output.has("X-CSRF-Token")) output.set("X-CSRF-Token", csrf);
+  output.set("X-CPU-Auth-Mode", "cookie");
   if (init?.json !== undefined && !output.has("Content-Type")) output.set("Content-Type", "application/json");
   return output;
 }

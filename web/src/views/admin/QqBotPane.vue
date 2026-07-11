@@ -426,7 +426,6 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Download } from "@element-plus/icons-vue";
 import { adminApi, type QqBotConfig, type QqBotGroup } from "@/api/admin";
-import { getToken } from "@/api/request";
 
 const config = ref<QqBotConfig | null>(null);
 const boards = ref<any[]>([]);
@@ -840,11 +839,8 @@ async function downloadDebugLogs() {
     if (logFilter.eventType) params.set("eventType", logFilter.eventType);
     if (logFilter.status) params.set("status", logFilter.status);
     params.set("take", String(Math.max(logFilter.size, 80)));
-    const token = getToken();
     const response = await fetch(`/api/admin/qqbot/debug-export?${params.toString()}`, {
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      credentials: "same-origin",
     });
     let message = "";
     if (!response.ok) {

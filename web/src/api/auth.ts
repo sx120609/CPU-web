@@ -1,4 +1,5 @@
 import { request, type RequestOptions } from "./request";
+import type { AgentEncryptedLoginCredentials } from "@/utils/agentCredentialCrypto";
 
 export interface LoginPayload { username: string; password: string }
 export interface RegisterPayload { username: string; password: string; nickname: string; college?: string; enrollYear?: number }
@@ -96,10 +97,13 @@ export interface SsoBeginResult {
   pendingId: string;
   needCaptcha: boolean;
   captchaImage?: string;
+  credentialPublicKey?: string;
 }
 
 export interface SsoLoginResult {
   ok: boolean;
+  sessionAuthenticated?: boolean;
+  jwxtAuthenticated?: boolean;
   siteToken?: string;
   jwxtToken?: string;
   user?: UserInfo;
@@ -110,13 +114,13 @@ export interface SsoLoginResult {
 }
 
 export const authApi = {
-  login: (payload: LoginPayload) => request.post<{ token: string; user: UserInfo }>("/auth/login", payload),
-  register: (payload: RegisterPayload) => request.post<{ token: string; user: UserInfo }>("/auth/register", payload),
+  login: (payload: LoginPayload) => request.post<{ token?: string; sessionAuthenticated?: boolean; user: UserInfo }>("/auth/login", payload),
+  register: (payload: RegisterPayload) => request.post<{ token?: string; sessionAuthenticated?: boolean; user: UserInfo }>("/auth/register", payload),
   ssoBegin: () => request.post<SsoBeginResult>("/auth/sso-begin"),
-  ssoLogin: (p: { pendingId: string; username: string; password: string; captcha?: string }) =>
+  ssoLogin: (p: { pendingId: string; username: string; password: string; captcha?: string } | { pendingId: string; credentials: AgentEncryptedLoginCredentials }) =>
     request.post<SsoLoginResult>("/auth/sso-login", p),
   logout: () => request.post<{ ok: true }>("/auth/logout"),
-  me: () => request.get<UserInfo>("/user/me"),
+  me: (options?: RequestOptions) => request.get<UserInfo>("/user/me", undefined, options),
   updateMe: (payload: Partial<UserInfo>) => request.patch<UserInfo>("/user/me", payload),
   enableForumAccess: (confirmText: string) => request.post<UserInfo>("/user/forum-access/enable", { confirmText }),
   changePassword: (oldPassword: string, newPassword: string) =>

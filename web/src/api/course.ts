@@ -55,7 +55,7 @@ export const courseApi = {
     request.get<Course[]>("/courses", { ...(q ? { q } : {}), ...(mine ? { mine: 1 } : {}) }, options),
   detail: (id: number, options?: RequestOptions) =>
     request.get<{ course: Course; ratings: CourseRating[] }>(`/courses/${id}`, undefined, options),
-  /** 同步当前用户的教务课程（X-Jwxt-Token 由全局拦截器自动注入） */
+  /** 使用当前 HttpOnly 浏览器会话中的教务身份同步课程。 */
   sync: () => request.post<CourseSyncResult>("/courses/sync"),
   /** 为课程添加一位授课老师（登录用户即可；重复时返回已有关联） */
   addTeacher: (courseId: number, name: string) =>

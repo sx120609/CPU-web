@@ -524,6 +524,8 @@ export type JwxtAgentAdminItem = {
   weight: number;
   maxConcurrent: number;
   tokenConfigured: boolean;
+  replicaIdentityPinned: boolean;
+  replicaKeyFingerprint: string;
   connection: JwxtAgentConnection;
   pool: null | {
     id: string;
@@ -589,6 +591,8 @@ export const adminApi = {
     request.patch<JwxtAgentsAdminConfig>("/admin/jwxt-agents", payload),
   generateJwxtAgentToken: () =>
     request.post<{ token: string }>("/admin/jwxt-agents/generate-token", {}),
+  resetJwxtAgentIdentity: (agentId: string) =>
+    request.post<JwxtAgentsAdminConfig>(`/admin/jwxt-agents/${encodeURIComponent(agentId)}/reset-identity`, {}),
   // 数据库备份
   databaseStatus: (options?: RequestOptions) => request.get<DatabaseBackupStatus>("/admin/database/status", undefined, options),
   downloadDatabaseBackup: () =>

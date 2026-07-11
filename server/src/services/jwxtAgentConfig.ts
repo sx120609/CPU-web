@@ -32,6 +32,7 @@ export type JwxtAgentConfigInput = {
     crawlEnabled?: boolean;
     weight?: number;
     maxConcurrent?: number;
+    replicaPublicKey?: string;
   }>;
 };
 
@@ -88,6 +89,55 @@ export function generateJwxtAgentToken() {
   return crypto.randomBytes(32).toString("hex");
 }
 
+export function jwxtAgentReplicaKeyFingerprint(publicKey: string) {
+  if (!publicKey) return "";
+  return crypto.createHash("sha256").update(Buffer.from(publicKey, "base64")).digest("hex").match(/.{1,4}/g)?.join(":") || "";
+}
+
+export async function pinJwxtAgentReplicaPublicKey(agentId: string, publicKey: string) {
+  normalizeReplicaPublicKey(publicKey);
+  const current = runtimeConfig.agents.find((agent) => agent.id === agentId);
+  if (!current) throw new Error(`Agent ${agentId} no longer exists`);
+  if (current.replicaPublicKey) {
+    if (current.replicaPublicKey !== publicKey) throw new Error(`Agent ${agentId} 加密身份与已固定公钥不一致`);
+    return current;
+  }
+  if (source === "environment") {
+    const pinned = { ...current, replicaPublicKey: publicKey };
+    applyRuntimeConfig({
+      ...runtimeConfig,
+      agents: runtimeConfig.agents.map((agent) => agent.id === agentId ? pinned : agent),
+    });
+    return pinned;
+  }
+  const next = await updateJwxtAgentRuntimeConfig({
+    localJwxtEnabled: runtimeConfig.localJwxtEnabled,
+    localJwxtWeight: runtimeConfig.localJwxtWeight,
+    crawlAgentId: runtimeConfig.crawlAgentId,
+    agents: runtimeConfig.agents.map((agent) => ({
+      ...agent,
+      ...(agent.id === agentId ? { replicaPublicKey: publicKey } : {}),
+    })),
+  });
+  return next.agents.find((agent) => agent.id === agentId)!;
+}
+
+export async function resetJwxtAgentReplicaPublicKey(agentId: string) {
+  const current = runtimeConfig.agents.find((agent) => agent.id === agentId);
+  if (!current) throw new Error(`Agent ${agentId} 不存在`);
+  const agents = runtimeConfig.agents.map((agent) => agent.id === agentId ? { ...agent, replicaPublicKey: "" } : agent);
+  if (source === "environment") {
+    applyRuntimeConfig({ ...runtimeConfig, agents });
+    return runtimeConfig;
+  }
+  return updateJwxtAgentRuntimeConfig({
+    localJwxtEnabled: runtimeConfig.localJwxtEnabled,
+    localJwxtWeight: runtimeConfig.localJwxtWeight,
+    crawlAgentId: runtimeConfig.crawlAgentId,
+    agents,
+  });
+}
+
 function buildEnvironmentDefault(): JwxtAgentRuntimeConfig {
   const agents = config.ssoLoginPool.agents.map((agent) => ({ ...agent }));
   const configuredCrawlId = String(process.env.JWXT_CRAWL_AGENT_ID ?? "").trim();
@@ -142,6 +192,7 @@ function normalizeConfig(input: JwxtAgentConfigInput, previous: JwxtAgentRuntime
       crawlEnabled: normalizeBoolean(raw.crawlEnabled, old?.crawlEnabled ?? false),
       weight: normalizeInteger(raw.weight, old?.weight ?? 1, 1, 100),
       maxConcurrent: normalizeInteger(raw.maxConcurrent, old?.maxConcurrent ?? 4, 1, 100),
+      replicaPublicKey: normalizeReplicaPublicKey(raw.replicaPublicKey ?? old?.replicaPublicKey ?? ""),
     };
   });
 
@@ -190,4 +241,16 @@ function normalizeInteger(value: unknown, fallback: number, min: number, max: nu
   const number = Number(value);
   if (!Number.isInteger(number)) return fallback;
   return Math.max(min, Math.min(max, number));
+}
+
+function normalizeReplicaPublicKey(value: unknown) {
+  const publicKey = String(value || "").trim();
+  if (!publicKey) return "";
+  if (publicKey.length < 300 || publicKey.length > 4096) throw new Error("Agent 会话加密公钥长度无效");
+  try {
+    crypto.createPublicKey({ key: Buffer.from(publicKey, "base64"), type: "spki", format: "der" });
+  } catch {
+    throw new Error("Agent 会话加密公钥格式无效");
+  }
+  return publicKey;
 }

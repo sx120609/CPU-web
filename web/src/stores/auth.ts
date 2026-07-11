@@ -1,9 +1,10 @@
 import { defineStore } from "pinia";
 import { authApi, type UserInfo, type RegisterPayload } from "@/api/auth";
-import { clearToken, getToken, setToken } from "@/api/request";
-import { jwxtApi, setJwxtToken, clearJwxtToken } from "@/api/jwxt";
+import { clearToken, COOKIE_SESSION_MARKER, getToken, hasAuthPresence, setToken } from "@/api/request";
+import { jwxtApi, setJwxtToken, clearJwxtToken, JWXT_COOKIE_SESSION_MARKER } from "@/api/jwxt";
 import { saveCreds } from "@/utils/credCrypto";
-import { clearJwxtDataCaches } from "@/utils/jwxtCache";
+import { encryptAgentLoginCredentials } from "@/utils/agentCredentialCrypto";
+import { clearJwxtDataCaches, purgeLegacySensitiveJwxtCaches } from "@/utils/jwxtCache";
 import {
   academicIdentityLabel,
   clearAcademicIdentity,
@@ -52,6 +53,7 @@ export const useAuthStore = defineStore("auth", {
     ssoPendingId: "",
     ssoNeedCaptcha: false,
     ssoCaptchaImage: "",
+    ssoCredentialPublicKey: "",
     ssoError: "",
     ssoLoading: false,
     _pendingFetchMe: null as Promise<void> | null,
@@ -71,7 +73,9 @@ export const useAuthStore = defineStore("auth", {
   },
   actions: {
     hydrate() {
-      this.token = getToken();
+      purgeLegacySensitiveJwxtCaches();
+      const legacyToken = getToken();
+      this.token = legacyToken || (hasAuthPresence() ? COOKIE_SESSION_MARKER : "");
       const storedIdentity = readAcademicIdentity();
       this.academicIdentity = storedIdentity ?? DEFAULT_ACADEMIC_IDENTITY;
       this.academicIdentityResolved = Boolean(storedIdentity);
@@ -142,19 +146,21 @@ export const useAuthStore = defineStore("auth", {
     },
 
     async login(username: string, password: string) {
-      const { token, user } = await authApi.login({ username, password });
+      const { token, sessionAuthenticated, user } = await authApi.login({ username, password });
       clearJwxtToken();
       clearJwxtDataCaches();
       this.clearAcademicIdentity();
-      setToken(token); this.token = token; this.user = user; this.syncDataAuthAgreement(user); this.ready = true;
+      const authToken = sessionAuthenticated ? COOKIE_SESSION_MARKER : (token || "");
+      setToken(authToken); this.token = authToken; this.user = user; this.syncDataAuthAgreement(user); this.ready = true;
     },
 
     async register(p: RegisterPayload) {
-      const { token, user } = await authApi.register(p);
+      const { token, sessionAuthenticated, user } = await authApi.register(p);
       clearJwxtToken();
       clearJwxtDataCaches();
       this.clearAcademicIdentity();
-      setToken(token); this.token = token; this.user = user; this.syncDataAuthAgreement(user); this.ready = true;
+      const authToken = sessionAuthenticated ? COOKIE_SESSION_MARKER : (token || "");
+      setToken(authToken); this.token = authToken; this.user = user; this.syncDataAuthAgreement(user); this.ready = true;
     },
 
     async ssoBegin() {
@@ -165,6 +171,7 @@ export const useAuthStore = defineStore("auth", {
         this.ssoPendingId = r.pendingId;
         this.ssoNeedCaptcha = r.needCaptcha;
         this.ssoCaptchaImage = r.captchaImage ?? "";
+        this.ssoCredentialPublicKey = r.credentialPublicKey ?? "";
       } finally { this.ssoLoading = false; }
     },
 
@@ -181,10 +188,16 @@ export const useAuthStore = defineStore("auth", {
             return false;
           }
         }
-        const r = await authApi.ssoLogin({
-          pendingId: this.ssoPendingId, username, password, captcha,
-        });
-        if (!r.ok || !r.siteToken || !r.user) {
+        const r = await authApi.ssoLogin(this.ssoCredentialPublicKey
+          ? {
+              pendingId: this.ssoPendingId,
+              credentials: await encryptAgentLoginCredentials(
+                this.ssoCredentialPublicKey,
+                { username, password, ...(captcha ? { captcha } : {}) },
+              ),
+            }
+          : { pendingId: this.ssoPendingId, username, password, captcha });
+        if (!r.ok || (!r.sessionAuthenticated && !r.siteToken) || !r.user) {
           this.ssoError = r.error || "登录失败";
           if (r.needCaptcha && r.captcha) {
             this.ssoPendingId = r.captcha.pendingId;
@@ -193,16 +206,17 @@ export const useAuthStore = defineStore("auth", {
           }
           return false;
         }
-        setToken(r.siteToken);
-        this.token = r.siteToken;
+        const authToken = r.sessionAuthenticated ? COOKIE_SESSION_MARKER : (r.siteToken || "");
+        setToken(authToken);
+        this.token = authToken;
         this.user = r.user;
         this.syncDataAuthAgreement(r.user);
         this.ready = true;
-        // 教务 token 同步存到 sessionStorage（用户进入 /jwxt /services 自动可用）
-        if (r.jwxtToken) {
+        // Cookie 会话只保留不含秘密的内存标记；兼容响应中的旧 token 也仅留在内存。
+        if (r.jwxtAuthenticated || r.jwxtToken) {
           clearJwxtToken();
           clearJwxtDataCaches();
-          setJwxtToken(r.jwxtToken);
+          setJwxtToken(r.jwxtAuthenticated ? JWXT_COOKIE_SESSION_MARKER : (r.jwxtToken || ""));
         }
         // 记住凭据（本地加密，下次自动登录）
         if (remember) {
@@ -211,6 +225,7 @@ export const useAuthStore = defineStore("auth", {
         this.ssoNeedCaptcha = false;
         this.ssoCaptchaImage = "";
         this.ssoPendingId = "";
+        this.ssoCredentialPublicKey = "";
         this.academicIdentityResolved = false;
         await this.detectAcademicIdentity({
           force: true,
@@ -221,12 +236,24 @@ export const useAuthStore = defineStore("auth", {
       } finally { this.ssoLoading = false; }
     },
 
-    async fetchMe() {
-      if (!this.token) return;
+    async fetchMe(options?: { probe?: boolean }) {
+      if (!this.token && !options?.probe) return;
       if (this._pendingFetchMe) return this._pendingFetchMe;
       const task = (async () => {
-        try { this.user = await authApi.me(); } catch { /* 401 由拦截器处理 */ }
+        try {
+          this.user = await authApi.me(options?.probe ? {
+            suppressAuthRedirect: true,
+            suppressAuthMessage: true,
+            suppressErrorMessage: true,
+          } : undefined);
+        } catch {
+          this.user = null;
+        }
         finally {
+          if (this.user) {
+            setToken(COOKIE_SESSION_MARKER);
+            this.token = COOKIE_SESSION_MARKER;
+          }
           this.syncDataAuthAgreement(this.user);
           this.ready = true;
           this._pendingFetchMe = null;

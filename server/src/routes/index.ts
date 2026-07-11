@@ -26,13 +26,13 @@ export const router = Router();
 
 // 公开路径
 router.use("/auth", authRouter);
-router.use("/boards", boardRouter);
+router.use("/boards", authOptional, boardRouter);
 router.use("/topics", authOptional, topicRouter);
 router.use("/replies", authOptional, replyRouter);
 router.use("/services", servicesRouter);
-router.use("/courses", courseRouter);
-router.use("/search", searchRouter);
-router.use("/home", homeRouter);
+router.use("/courses", authOptional, courseRouter);
+router.use("/search", authOptional, searchRouter);
+router.use("/home", authOptional, homeRouter);
 router.use("/site", siteRouter);
 router.use("/storage", storageRouter);
 router.use("/tools", toolsRouter);

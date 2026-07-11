@@ -58,6 +58,7 @@ export type JwxtAgentConfig = {
   crawlEnabled: boolean;
   weight: number;
   maxConcurrent: number;
+  replicaPublicKey: string;
 };
 
 export type SsoLoginPoolConfig = {
@@ -68,7 +69,6 @@ export type SsoLoginPoolConfig = {
   nodes: SsoLoginNodeConfig[];
   agents: JwxtAgentConfig[];
   timeoutMs: number;
-  failureCooldownMs: number;
 };
 
 function parseSsoLoginNodes(value: string | undefined): SsoLoginNodeConfig[] {
@@ -207,6 +207,7 @@ function parseJwxtAgents(value: string | undefined): JwxtAgentConfig[] {
       crawlEnabled: readBoolean("crawlEnabled", false),
       weight: readInteger("weight", 1, 1, 100),
       maxConcurrent: readInteger("maxConcurrent", 4, 1, 100),
+      replicaPublicKey: typeof agent.replicaPublicKey === "string" ? agent.replicaPublicKey.trim() : "",
     };
   });
 }
@@ -242,13 +243,6 @@ const ssoLoginPool: SsoLoginPoolConfig = {
     1,
     300_000,
   ),
-  failureCooldownMs: parseIntegerEnv(
-    "SSO_LOGIN_FAILURE_COOLDOWN_MS",
-    process.env.SSO_LOGIN_FAILURE_COOLDOWN_MS,
-    30000,
-    0,
-    3_600_000,
-  ),
 };
 
 const legacyJwxtProxyAgentId = String(process.env.JWXT_PROXY_AGENT_ID ?? "").trim();
@@ -277,12 +271,39 @@ const jwxtAgentOfflineMs = parseIntegerEnv(
   jwxtAgentHeartbeatMs * 2,
   300_000,
 );
+const jwxtSessionSyncKey = String(process.env.JWXT_SESSION_SYNC_KEY ?? "").trim();
+if (jwxtSessionSyncKey && jwxtSessionSyncKey.length < 32) {
+  throw new Error("JWXT_SESSION_SYNC_KEY must contain at least 32 characters");
+}
+const jwxtSessionSyncKeys = parseCsvEnv(process.env.JWXT_SESSION_SYNC_KEYS);
+for (const [index, key] of jwxtSessionSyncKeys.entries()) {
+  if (key.length < 32) throw new Error(`JWXT_SESSION_SYNC_KEYS item ${index + 1} must contain at least 32 characters`);
+}
+const nodeEnv = process.env.NODE_ENV ?? "development";
+const jwtSecret = process.env.JWT_SECRET ?? "cpu-web-dev-secret";
+if (nodeEnv === "production" && jwtSecret.length < 32) {
+  throw new Error("JWT_SECRET must contain at least 32 characters in production");
+}
+const browserSessionIdleMs = parseIntegerEnv(
+  "BROWSER_SESSION_IDLE_MS",
+  process.env.BROWSER_SESSION_IDLE_MS,
+  30 * 60 * 1000,
+  5 * 60 * 1000,
+  24 * 60 * 60 * 1000,
+);
+const browserSessionAbsoluteMs = parseIntegerEnv(
+  "BROWSER_SESSION_ABSOLUTE_MS",
+  process.env.BROWSER_SESSION_ABSOLUTE_MS,
+  7 * 24 * 60 * 60 * 1000,
+  browserSessionIdleMs,
+  30 * 24 * 60 * 60 * 1000,
+);
 
 export const config = {
   port: Number(process.env.PORT ?? 3000),
-  jwtSecret: process.env.JWT_SECRET ?? "cpu-web-dev-secret",
+  jwtSecret,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "7d",
-  nodeEnv: process.env.NODE_ENV ?? "development",
+  nodeEnv,
   jwxtProxyUrl: process.env.JWXT_PROXY_URL ?? "",
   jwxtProxyAuth: process.env.JWXT_PROXY_AUTH ?? "",
   jwxtProxyAgentId: jwxtProxyAgentIds[0] ?? "",
@@ -296,12 +317,22 @@ export const config = {
   jwxtAgentServer: String(process.env.JWXT_AGENT_SERVER ?? process.env.LOGIN_AGENT_SERVER ?? "").trim(),
   jwxtAgentId: String(process.env.JWXT_AGENT_ID ?? process.env.LOGIN_AGENT_ID ?? "").trim(),
   jwxtAgentToken: String(process.env.JWXT_AGENT_TOKEN ?? process.env.LOGIN_AGENT_TOKEN ?? "").trim(),
+  jwxtAgentKeyFile: String(process.env.JWXT_AGENT_KEY_FILE ?? ".jwxt-agent-identity.json").trim(),
+  jwxtLocalAgentKeyFile: String(process.env.JWXT_LOCAL_AGENT_KEY_FILE ?? ".jwxt-local-agent-identity.json").trim(),
   jwxtAgentReconnectMs: parseIntegerEnv(
     "JWXT_AGENT_RECONNECT_MS",
     process.env.JWXT_AGENT_RECONNECT_MS ?? process.env.LOGIN_AGENT_RECONNECT_MS,
     3_000,
     500,
     60_000,
+  ),
+  jwxtSessionSyncKey,
+  jwxtSessionSyncKeys,
+  browserSessionIdleMs,
+  browserSessionAbsoluteMs,
+  corsAllowedOrigins: parseCsvEnv(
+    process.env.CORS_ALLOWED_ORIGINS,
+    nodeEnv === "production" ? ["https://cpu.lizmt.cn"] : [],
   ),
   filestoreEnabled: process.env.FILESTORE_ENABLED !== "false",
   filestorePort: Number(process.env.FILESTORE_PORT ?? 8974),

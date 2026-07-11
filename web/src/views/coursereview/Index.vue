@@ -91,6 +91,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { Plus, Search, Refresh } from "@element-plus/icons-vue";
 import { courseApi, type Course } from "@/api/course";
 import { useAuthStore } from "@/stores/auth";
+import { getJwxtToken } from "@/api/jwxt";
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -136,7 +137,7 @@ async function onSync() {
     ElMessage.warning("请先登录并开启论坛功能");
     return;
   }
-  const jwxtToken = sessionStorage.getItem("cpu-jwxt-token");
+  const jwxtToken = getJwxtToken();
   if (!jwxtToken) {
     try {
       await ElMessageBox.confirm(

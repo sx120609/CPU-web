@@ -1,5 +1,4 @@
-const JWXT_TOKEN_KEY = "cpu-jwxt-token";
-const SITE_TOKEN_KEY = "cpu-web-token";
+const AUTH_PRESENCE_KEY = "cpu-authenticated";
 
 const DATA_CACHE_PREFIXES = [
   "cpu-jwxt-tab-cache-v3:",
@@ -20,20 +19,9 @@ const DATA_CACHE_KEYS = [
   "cpu-schedule-last-state-v1",
 ];
 
-function fingerprint(value: string) {
-  let hash = 5381;
-  for (let i = 0; i < value.length; i += 1) {
-    hash = ((hash << 5) + hash) ^ value.charCodeAt(i);
-  }
-  return (hash >>> 0).toString(36);
-}
-
 export function jwxtCacheScope() {
   try {
-    const siteToken = localStorage.getItem(SITE_TOKEN_KEY) ?? "";
-    if (siteToken) return `u:${fingerprint(siteToken)}`;
-    const token = sessionStorage.getItem(JWXT_TOKEN_KEY) ?? "";
-    return token ? `j:${fingerprint(token)}` : "";
+    return localStorage.getItem(AUTH_PRESENCE_KEY) === "1" ? "browser-session" : "";
   } catch {
     return "";
   }
@@ -60,4 +48,17 @@ export function clearJwxtDataCaches() {
   } catch {
     /* ignore */
   }
+}
+
+export function purgeLegacySensitiveJwxtCaches() {
+  try {
+    const sensitiveSuffixes = [":grades", ":midterm", ":progress", ":pyfa"];
+    for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+      const key = localStorage.key(i) || "";
+      if (
+        (key.startsWith("cpu-jwxt-tab-cache-v3:") || key.startsWith("cpu-jwxt-tab-cache-v4:"))
+        && sensitiveSuffixes.some((suffix) => key.endsWith(suffix))
+      ) localStorage.removeItem(key);
+    }
+  } catch { /* ignore */ }
 }

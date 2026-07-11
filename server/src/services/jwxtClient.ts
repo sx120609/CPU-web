@@ -10,8 +10,8 @@
  *
  * 安全约定：
  *  - 用户名密码绝不写入磁盘 / 数据库 / 日志
- *  - 仅在 server 进程内存的 sessionStore 里持有 cookie jar
- *  - 30 分钟无活动失效；进程退出时全部清空
+ *  - cookie jar 写入缓存前使用 AES-256-GCM 加密；不写入数据库或日志
+ *  - 30 分钟无活动失效；未启用 Redis 时进程退出即清空
  */
 import * as cheerio from "cheerio";
 import crypto from "node:crypto";
@@ -31,6 +31,7 @@ import {
 import { buildRedisKey } from "./redis";
 import { config, isDev } from "../config";
 import { Errors, HttpError } from "../utils/response";
+import { decryptJwxtSensitiveJson, encryptJwxtSensitiveJson } from "./jwxtSessionCrypto";
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
@@ -209,6 +210,7 @@ function throwForLoginUpstreamStatus(res: Response) {
 
 export interface LoginAttempt {
   ok: boolean;
+  authenticatedUsername?: string;
   /** 登录成功后用于后续请求的服务端 token（前端用 X-Jwxt-Token 头传回） */
   token?: string;
   /** 失败原因 / 错误消息 */
@@ -249,6 +251,14 @@ interface ActiveSession {
   lastSeenAt: number;
 }
 
+export type JwxtSessionSnapshot = {
+  version: 1;
+  jar: Record<string, Record<string, string>>;
+  username: string;
+  createdAt: number;
+  lastSeenAt: number;
+};
+
 const PENDING_TTL = 5 * 60 * 1000;          // 5 分钟未提交则丢弃
 const SESSION_IDLE_TTL = 30 * 60 * 1000;    // 30 分钟无活动失效
 const HANDOFF_TTL = 5 * 60 * 1000;
@@ -264,30 +274,38 @@ function genId() {
 }
 
 async function savePendingLogin(id: string, pending: PendingLogin) {
-  await setEphemeralValue(jwxtPendingKey(id), JSON.stringify({
+  const payload = {
     jar: pending.jar.toJson(),
     ssoUrl: pending.ssoUrl,
     hidden: pending.hidden,
     createdAt: pending.createdAt,
-  }), PENDING_TTL);
+  };
+  await setEphemeralValue(
+    jwxtPendingKey(id),
+    encryptJwxtSensitiveJson("pending-login", id, payload),
+    PENDING_TTL,
+  );
 }
 
 async function getPendingLogin(id: string): Promise<PendingLogin | null> {
   const raw = await getEphemeralValue(jwxtPendingKey(id));
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as {
+    const decrypted = decryptJwxtSensitiveJson<{
       jar?: Record<string, Record<string, string>>;
       ssoUrl?: string;
       hidden?: Record<string, string>;
       createdAt?: number;
-    };
-    return {
+    }>("pending-login", id, raw, { allowLegacyPlaintext: true });
+    const parsed = decrypted.value;
+    const pending = {
       jar: CookieJar.fromJson(parsed.jar),
       ssoUrl: String(parsed.ssoUrl || ""),
       hidden: parsed.hidden && typeof parsed.hidden === "object" ? parsed.hidden : {},
       createdAt: Number(parsed.createdAt || Date.now()),
     };
+    if (decrypted.legacyPlaintext) await savePendingLogin(id, pending);
+    return pending;
   } catch {
     await deletePendingLogin(id);
     return null;
@@ -299,12 +317,53 @@ async function deletePendingLogin(id: string) {
 }
 
 async function saveActiveSession(token: string, session: ActiveSession) {
-  await setEphemeralValue(jwxtSessionKey(token), JSON.stringify({
+  await setEphemeralValue(jwxtSessionKey(token), encryptJwxtSensitiveJson("active-session", token, activeSessionSnapshot(session)), SESSION_IDLE_TTL);
+}
+
+function activeSessionSnapshot(session: ActiveSession): JwxtSessionSnapshot {
+  return {
+    version: 1,
     jar: session.jar.toJson(),
     username: session.username,
     createdAt: session.createdAt,
     lastSeenAt: session.lastSeenAt,
-  }), SESSION_IDLE_TTL);
+  };
+}
+
+function activeSessionFromSnapshot(snapshot: JwxtSessionSnapshot): ActiveSession {
+  if (
+    snapshot?.version !== 1
+    || !snapshot.jar
+    || typeof snapshot.jar !== "object"
+    || Array.isArray(snapshot.jar)
+    || Object.keys(snapshot.jar).length > 32
+    || typeof snapshot.username !== "string"
+    || snapshot.username.length > 128
+    || !Number.isFinite(snapshot.createdAt)
+    || !Number.isFinite(snapshot.lastSeenAt)
+    || snapshot.createdAt <= 0
+    || snapshot.lastSeenAt < snapshot.createdAt
+    || snapshot.createdAt > Date.now() + 30_000
+    || snapshot.lastSeenAt > Date.now() + 30_000
+  ) {
+    throw new Error("JWXT session snapshot is invalid");
+  }
+  for (const [host, cookies] of Object.entries(snapshot.jar)) {
+    if (!host || host.length > 255 || !cookies || typeof cookies !== "object" || Array.isArray(cookies) || Object.keys(cookies).length > 128) {
+      throw new Error("JWXT session snapshot cookies are invalid");
+    }
+    for (const [name, value] of Object.entries(cookies)) {
+      if (!name || name.length > 256 || typeof value !== "string" || value.length > 8192) {
+        throw new Error("JWXT session snapshot cookie is invalid");
+      }
+    }
+  }
+  return {
+    jar: CookieJar.fromJson(snapshot.jar),
+    username: snapshot.username,
+    createdAt: snapshot.createdAt,
+    lastSeenAt: snapshot.lastSeenAt,
+  };
 }
 
 async function deleteActiveSession(token: string) {
@@ -321,18 +380,11 @@ async function getActiveSession(token: string | undefined | null): Promise<Activ
   const raw = await getEphemeralValue(jwxtSessionKey(token));
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as {
-      jar?: Record<string, Record<string, string>>;
-      username?: string;
-      createdAt?: number;
-      lastSeenAt?: number;
-    };
-    const session: ActiveSession = {
-      jar: CookieJar.fromJson(parsed.jar),
-      username: String(parsed.username || ""),
-      createdAt: Number(parsed.createdAt || Date.now()),
-      lastSeenAt: Date.now(),
-    };
+    const decrypted = decryptJwxtSensitiveJson<JwxtSessionSnapshot>("active-session", token, raw, { allowLegacyPlaintext: true });
+    const legacy = decrypted.value as JwxtSessionSnapshot & { version?: number };
+    if (legacy.version === undefined) legacy.version = 1;
+    const session = activeSessionFromSnapshot(legacy as JwxtSessionSnapshot);
+    session.lastSeenAt = Date.now();
     await saveActiveSession(token, session);
     return session;
   } catch {
@@ -400,6 +452,29 @@ async function fetchCaptchaOrEmpty(jar: CookieJar, refer: string) {
     if (error instanceof HttpError) throw error;
     return "";
   }
+}
+
+export async function exportSessionSnapshot(token: string): Promise<JwxtSessionSnapshot | null> {
+  if (!token) return null;
+  const raw = await getEphemeralValue(jwxtSessionKey(token));
+  if (!raw) return null;
+  try {
+    const decrypted = decryptJwxtSensitiveJson<JwxtSessionSnapshot>("active-session", token, raw, { allowLegacyPlaintext: true });
+    const legacy = decrypted.value as JwxtSessionSnapshot & { version?: number };
+    if (legacy.version === undefined) legacy.version = 1;
+    const session = activeSessionFromSnapshot(legacy as JwxtSessionSnapshot);
+    if (decrypted.legacyPlaintext) await saveActiveSession(token, session);
+    return activeSessionSnapshot(session);
+  } catch {
+    return null;
+  }
+}
+
+export async function importSessionSnapshot(token: string, snapshot: JwxtSessionSnapshot): Promise<boolean> {
+  if (!token || token.length > 512) throw Errors.badRequest("教务会话令牌无效");
+  const session = activeSessionFromSnapshot(snapshot);
+  await saveActiveSession(token, session);
+  return true;
 }
 
 interface LoginSubmitArgs {
@@ -559,11 +634,23 @@ async function withLoginSubmitClaim<T>(
   const claimKey = `${LOGIN_SUBMIT_CLAIM_PREFIX}${lockId}`;
   const resultKey = `${LOGIN_SUBMIT_RESULT_PREFIX}${fingerprint}`;
   const cached = await getEphemeralValue(resultKey);
-  if (cached) return JSON.parse(cached) as T;
+  if (cached) {
+    const decrypted = decryptJwxtSensitiveJson<T>("login-submit-result", fingerprint, cached, { allowLegacyPlaintext: true });
+    if (decrypted.legacyPlaintext) {
+      await setEphemeralValue(resultKey, encryptJwxtSensitiveJson("login-submit-result", fingerprint, decrypted.value), PENDING_TTL);
+    }
+    return decrypted.value;
+  }
 
   const locked = await runWithDistributedLock(`jwxt-login-submit:${lockId}`, LOGIN_SUBMIT_LOCK_TTL, async () => {
     const raced = await getEphemeralValue(resultKey);
-    if (raced) return JSON.parse(raced) as T;
+    if (raced) {
+      const decrypted = decryptJwxtSensitiveJson<T>("login-submit-result", fingerprint, raced, { allowLegacyPlaintext: true });
+      if (decrypted.legacyPlaintext) {
+        await setEphemeralValue(resultKey, encryptJwxtSensitiveJson("login-submit-result", fingerprint, decrypted.value), PENDING_TTL);
+      }
+      return decrypted.value;
+    }
     const existingClaim = await getEphemeralValue(claimKey);
     if (existingClaim) {
       const message = existingClaim === fingerprint
@@ -573,7 +660,11 @@ async function withLoginSubmitClaim<T>(
     }
     await setEphemeralValue(claimKey, fingerprint, PENDING_TTL);
     const result = await task();
-    await setEphemeralValue(resultKey, JSON.stringify(result), PENDING_TTL);
+    await setEphemeralValue(
+      resultKey,
+      encryptJwxtSensitiveJson("login-submit-result", fingerprint, result),
+      PENDING_TTL,
+    );
     return result;
   });
   if (!locked.acquired) throw Errors.conflict("这个登录会话正在处理中，请勿重复提交");
@@ -643,8 +734,16 @@ async function consumeValidatedLoginHandoff(
   handoff: LoginSessionHandoff,
   validated: ReturnType<typeof validateLoginHandoff>,
 ): Promise<string> {
-  const cachedToken = await getEphemeralValue(`${HANDOFF_RESULT_PREFIX}${handoff.id}`);
-  if (cachedToken && await getActiveSession(cachedToken)) return cachedToken;
+  const cachedTokenRaw = await getEphemeralValue(`${HANDOFF_RESULT_PREFIX}${handoff.id}`);
+  if (cachedTokenRaw) {
+    const cachedToken = decryptJwxtSensitiveJson<string>(
+      "handoff-result",
+      handoff.id,
+      cachedTokenRaw,
+      { allowLegacyPlaintext: true },
+    ).value;
+    if (cachedToken && await getActiveSession(cachedToken)) return cachedToken;
+  }
 
   const r = await followRedirects(validated.jar, validated.callbackUrl);
   throwForLoginUpstreamStatus(r.res);
@@ -661,7 +760,11 @@ async function consumeValidatedLoginHandoff(
     createdAt: now,
     lastSeenAt: now,
   });
-  await setEphemeralValue(`${HANDOFF_RESULT_PREFIX}${handoff.id}`, token, HANDOFF_TTL);
+  await setEphemeralValue(
+    `${HANDOFF_RESULT_PREFIX}${handoff.id}`,
+    encryptJwxtSensitiveJson("handoff-result", handoff.id, token),
+    HANDOFF_TTL,
+  );
   return token;
 }
 
@@ -679,7 +782,10 @@ export async function consumeLoginHandoff(handoff: LoginSessionHandoff): Promise
   // 另一个查询实例正在消费同一张一次性 ticket；等待它写入幂等结果，
   // 避免第二个实例再次请求学校并把已消费 ticket 误报为失效。
   for (let attempt = 0; attempt < 100; attempt++) {
-    const token = await getEphemeralValue(`${HANDOFF_RESULT_PREFIX}${handoff.id}`);
+    const tokenRaw = await getEphemeralValue(`${HANDOFF_RESULT_PREFIX}${handoff.id}`);
+    const token = tokenRaw
+      ? decryptJwxtSensitiveJson<string>("handoff-result", handoff.id, tokenRaw, { allowLegacyPlaintext: true }).value
+      : "";
     if (token && await getActiveSession(token)) return token;
     await new Promise<void>((resolve) => setTimeout(resolve, 50));
   }

@@ -1,5 +1,6 @@
 import { config } from "./config";
 import { startJwxtAgentClient } from "./services/jwxtAgentClient";
+import { loadOrCreateAgentReplicaIdentity } from "./services/jwxtAgentReplicaCrypto";
 
 if (!config.jwxtAgentServer || !config.jwxtAgentId || !config.jwxtAgentToken) {
   throw new Error("请配置 JWXT_AGENT_SERVER、JWXT_AGENT_ID 和 JWXT_AGENT_TOKEN");
@@ -13,6 +14,7 @@ const client = startJwxtAgentClient({
   agentId: config.jwxtAgentId,
   token: config.jwxtAgentToken,
   reconnectMs: config.jwxtAgentReconnectMs,
+  replicaIdentity: loadOrCreateAgentReplicaIdentity(config.jwxtAgentKeyFile),
 });
 
 const shutdown = () => {

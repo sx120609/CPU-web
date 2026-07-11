@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Request } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma";
 import { ok, Errors } from "../utils/response";
@@ -10,7 +11,6 @@ import type { GradeRow, PyfaCourse } from "../services/jwxtParser";
 import { invalidateCourseCaches } from "../services/cacheInvalidation";
 import { isFeatureOn } from "../services/siteSettings";
 import { ensureForumAccessEnabled, forumAccessErrorMessage, resolveForumAccess } from "../services/forumAccess";
-import { verifyToken } from "../utils/jwt";
 
 export const courseRouter = Router();
 
@@ -18,16 +18,9 @@ function assertCourseReviewEnabled() {
   if (!isFeatureOn("coursereview")) throw Errors.forbidden("课程点评当前已关闭");
 }
 
-async function ensureCanReadCourseReview(req: { headers: Record<string, any> }) {
-  const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ")) throw Errors.forbidden(forumAccessErrorMessage(false));
-  let token;
-  try {
-    token = verifyToken(auth.slice(7));
-  } catch {
-    throw Errors.forbidden(forumAccessErrorMessage(false));
-  }
-  const allowed = await resolveForumAccess(token.userId, token.role);
+async function ensureCanReadCourseReview(req: Request) {
+  if (!req.user) throw Errors.forbidden(forumAccessErrorMessage(false));
+  const allowed = await resolveForumAccess(req.user.userId, req.user.role);
   if (!allowed) throw Errors.forbidden(forumAccessErrorMessage(true));
 }
 
@@ -53,11 +46,9 @@ courseRouter.get("/", async (req, res, next) => {
 
     if (mine) {
       // 解析 token 拿 userId（公开路由，软鉴权）
-      const auth = req.headers.authorization;
-      if (!auth?.startsWith("Bearer ")) return ok(res, []);
+      if (!req.user) return ok(res, []);
       try {
-        const { verifyToken } = await import("../utils/jwt");
-        const userId = verifyToken(auth.slice(7)).userId;
+        const userId = req.user.userId;
         const ucs = await prisma.userCourse.findMany({ where: { userId }, select: { courseId: true } });
         if (!ucs.length) return ok(res, []);
         where.id = { in: ucs.map((u) => u.courseId) };
@@ -160,7 +151,7 @@ courseRouter.post("/sync", authRequired, async (req, res, next) => {
     assertCourseReviewEnabled();
     await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
     const userId = req.user!.userId;
-    const jwxtToken = (req.headers["x-jwxt-token"] as string) || "";
+    const jwxtToken = req.browserSession?.jwxtToken || (req.headers["x-jwxt-token"] as string) || "";
     if (!jwxtToken) throw Errors.badRequest("需要 X-Jwxt-Token，请先登录教务直连");
 
     // 1) 拉成绩

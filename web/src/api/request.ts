@@ -10,7 +10,13 @@ export interface ApiResponse<T> {
 }
 
 const TOKEN_KEY = "cpu-web-token";
+const AUTH_PRESENCE_KEY = "cpu-authenticated";
+export const COOKIE_SESSION_MARKER = "__cpu_cookie_session__";
 export const AUTH_EXPIRED_EVENT = "cpu-auth-expired";
+
+let memoryToken = (() => {
+  try { return localStorage.getItem(TOKEN_KEY) ?? ""; } catch { return ""; }
+})();
 
 export type RequestOptions = AxiosRequestConfig & {
   suppressAuthRedirect?: boolean;
@@ -19,33 +25,56 @@ export type RequestOptions = AxiosRequestConfig & {
 };
 
 export function getToken() {
-  return localStorage.getItem(TOKEN_KEY) ?? "";
+  return memoryToken;
+}
+
+export function hasAuthPresence() {
+  try { return localStorage.getItem(AUTH_PRESENCE_KEY) === "1"; } catch { return false; }
 }
 
 export function setToken(token: string) {
-  localStorage.setItem(TOKEN_KEY, token);
+  memoryToken = token;
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+    if (token) localStorage.setItem(AUTH_PRESENCE_KEY, "1");
+    else localStorage.removeItem(AUTH_PRESENCE_KEY);
+  } catch { /* ignore */ }
 }
 
 export function clearToken() {
-  localStorage.removeItem(TOKEN_KEY);
+  memoryToken = "";
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(AUTH_PRESENCE_KEY);
+  } catch { /* ignore */ }
+}
+
+function cookieValue(name: string) {
+  const prefix = `${name}=`;
+  const part = document.cookie.split(";").map((item) => item.trim()).find((item) => item.startsWith(prefix));
+  if (!part) return "";
+  try { return decodeURIComponent(part.slice(prefix.length)); } catch { return part.slice(prefix.length); }
+}
+
+export function getCsrfToken() {
+  return cookieValue("__Host-cpu-csrf") || cookieValue("cpu-csrf");
 }
 
 const instance: AxiosInstance = axios.create({
   baseURL: "/api",
   timeout: 15000,
+  withCredentials: true,
 });
 
 instance.interceptors.request.use((config) => {
   const token = getToken();
-  if (token) {
+  if (token && token !== COOKIE_SESSION_MARKER) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  config.headers["X-CPU-Auth-Mode"] = "cookie";
+  const csrf = getCsrfToken();
+  if (csrf) config.headers["X-CSRF-Token"] = csrf;
   config.headers["X-CPU-Client"] = detectClientPlatform();
-  // 同时注入教务 token（如果存在），便于后端跨域请求（如 /courses/sync 需要拉教务数据）
-  const jwxtToken = sessionStorage.getItem("cpu-jwxt-token");
-  if (jwxtToken) {
-    config.headers["X-Jwxt-Token"] = jwxtToken;
-  }
   return config;
 });
 

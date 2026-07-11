@@ -1,5 +1,3 @@
-import { getToken } from "@/api/request";
-
 export type FileCollectFileAction = "download" | "preview";
 
 export type FileCollectFileAccess = {
@@ -13,7 +11,7 @@ export type FileCollectFileAccess = {
 
 export async function fetchFileCollectBlob(id: number, action: FileCollectFileAction) {
   const response = await fetch(`/api/tools/file-collection-files/${id}/${action}`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
+    credentials: "same-origin",
   });
   if (!response.ok) {
     const fallback = action === "preview" ? "预览失败" : "下载失败";
@@ -31,7 +29,7 @@ export async function fetchFileCollectBlob(id: number, action: FileCollectFileAc
 
 export async function fetchFileCollectAccess(id: number, action: FileCollectFileAction) {
   const response = await fetch(`/api/tools/file-collection-files/${id}/access?action=${action}`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
+    credentials: "same-origin",
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {

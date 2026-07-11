@@ -206,13 +206,39 @@ function Ensure-AgentEnv {
     Fail "JWXT_AGENT_TOKEN 长度必须在 32 到 512 个字符之间"
   }
 
-  if (-not (Get-DotEnvValue "JWT_SECRET")) {
+  if ((Get-DotEnvValue "JWT_SECRET").Length -lt 32) {
     Set-DotEnvValue "JWT_SECRET" (New-RandomHex 32)
     Write-DeployLog "已生成 Agent 本机 JWT_SECRET"
+  }
+  if ((Get-DotEnvValue "JWXT_SESSION_SYNC_KEY").Length -lt 32) {
+    Set-DotEnvValue "JWXT_SESSION_SYNC_KEY" (New-RandomHex 32)
+    Write-DeployLog "已生成 Agent 本机会话加密密钥"
+  }
+  if (-not (Get-DotEnvValue "JWXT_AGENT_KEY_FILE")) {
+    Set-DotEnvValue "JWXT_AGENT_KEY_FILE" ".jwxt-agent-identity.json"
   }
   if (-not (Get-DotEnvValue "NODE_ENV")) { Set-DotEnvValue "NODE_ENV" "production" }
   if (-not (Get-DotEnvValue "REDIS_ENABLED")) { Set-DotEnvValue "REDIS_ENABLED" "false" }
   Write-DeployLog "Agent 环境配置检查通过：$agentId -> $serverUrl"
+}
+
+function Protect-AgentIdentityFile {
+  $configured = Get-DotEnvValue "JWXT_AGENT_KEY_FILE"
+  if (-not $configured) { $configured = ".jwxt-agent-identity.json" }
+  $identityPath = if ([IO.Path]::IsPathRooted($configured)) { $configured } else { Join-Path $ServerDir $configured }
+  for ($attempt = 0; $attempt -lt 20 -and -not (Test-Path -LiteralPath $identityPath); $attempt++) {
+    Start-Sleep -Milliseconds 100
+  }
+  if (-not (Test-Path -LiteralPath $identityPath)) {
+    Write-DeployWarning "Agent 加密身份文件尚未生成；请在首次连接后确认 $identityPath 仅运行账户可读"
+    return
+  }
+  $icacls = Get-Executable @("icacls.exe", "icacls")
+  if ($icacls) {
+    $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $code = Invoke-Native $icacls @($identityPath, "/inheritance:r", "/grant:r", "${currentUser}:(F)", "*S-1-5-18:(F)", "*S-1-5-32-544:(F)") -AllowFailure
+    if ($code -ne 0) { Write-DeployWarning "无法自动收紧 Agent 身份文件 ACL：$identityPath" }
+  }
 }
 
 function Test-Pm2Process([string]$ServiceName) {
@@ -278,6 +304,7 @@ function Start-Agent {
     }
   }
   $null = Invoke-Native $pm2 @("save")
+  Protect-AgentIdentityFile
 
   if (Test-Pm2Process $LegacyProxyServiceName) {
     Write-DeployWarning "检测到旧代理 $LegacyProxyServiceName；确认不再使用后可执行：pm2 delete $LegacyProxyServiceName"

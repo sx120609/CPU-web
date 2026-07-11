@@ -338,6 +338,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { Aim, ArrowLeft, ArrowRight, Moon, Refresh } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useAppearanceStore } from "@/stores/appearance";
+import { useAuthStore } from "@/stores/auth";
 import { detectClientPlatform } from "@/utils/clientInfo";
 import {
   getScheduleThemePalette,
@@ -1458,11 +1459,7 @@ function dayLabel(day: number) {
 }
 
 function hasScheduleEditAuth() {
-  try {
-    return Boolean(localStorage.getItem("cpu-web-token"));
-  } catch {
-    return false;
-  }
+  return useAuthStore().isLoggedIn;
 }
 
 function canUseScheduleEdit() {

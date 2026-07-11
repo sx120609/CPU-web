@@ -2403,11 +2403,7 @@ function toneFor(name: string): CourseTone {
 }
 
 function hasScheduleEditAuth() {
-  try {
-    return Boolean(localStorage.getItem("cpu-web-token"));
-  } catch {
-    return false;
-  }
+  return auth.isLoggedIn;
 }
 
 function canUseScheduleEdit() {

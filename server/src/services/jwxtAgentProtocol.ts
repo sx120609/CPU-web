@@ -1,8 +1,10 @@
 import type * as jwxt from "./jwxtFacade";
-import type { LoginHandoffAttempt, LoginSessionHandoff } from "./jwxtClient";
+import type { JwxtSessionSnapshot, LoginHandoffAttempt, LoginSessionHandoff } from "./jwxtClient";
 import type { CrawlSchoolFeedResult, SchoolFeedSourceInput } from "./schoolCrawlerCore";
+import type { AgentEncryptedLoginCredentials, AgentEncryptedSessionReplica, AgentReplicaRecipient } from "./jwxtAgentReplicaCrypto";
 
-export const JWXT_AGENT_PROTOCOL_VERSION = 1;
+// 会话快照是 v1 上的可选扩展字段，保持协议号不变以支持主服务与 Agent 滚动升级。
+export const JWXT_AGENT_PROTOCOL_VERSION = 2;
 
 export type JwxtAgentActionMap = {
   "login.begin": {
@@ -17,6 +19,14 @@ export type JwxtAgentActionMap = {
     input: Parameters<typeof jwxt.submitLogin>[0];
     output: Awaited<ReturnType<typeof jwxt.submitLogin>>;
   };
+  "login.submit-handoff-encrypted": {
+    input: { pendingId: string; credentials: AgentEncryptedLoginCredentials };
+    output: LoginHandoffAttempt & { authenticatedUsername?: string };
+  };
+  "login.submit-legacy-encrypted": {
+    input: { pendingId: string; credentials: AgentEncryptedLoginCredentials };
+    output: Awaited<ReturnType<typeof jwxt.submitLogin>> & { authenticatedUsername?: string };
+  };
   "session.consume-handoff": {
     input: { handoff: LoginSessionHandoff };
     output: string;
@@ -29,6 +39,18 @@ export type JwxtAgentActionMap = {
   "session.stats": {
     input: Record<string, never>;
     output: Awaited<ReturnType<typeof jwxt.sessionStats>>;
+  };
+  "session.export-snapshot": {
+    input: { token: string };
+    output: JwxtSessionSnapshot | null;
+  };
+  "session.import-snapshot": {
+    input: { token: string; snapshot: JwxtSessionSnapshot };
+    output: boolean;
+  };
+  "session.import-encrypted-snapshot": {
+    input: { token: string; replica: AgentEncryptedSessionReplica };
+    output: boolean;
   };
   "jwxt.schedule": {
     input: { token: string; semester?: string; week?: string };
@@ -84,6 +106,12 @@ export type JwxtAgentWelcomeMessage = {
 export type JwxtAgentReadyMessage = {
   type: "ready";
   protocolVersion: number;
+  replicaPublicKey: string;
+};
+
+export type JwxtAgentReplicaTargetsMessage = {
+  type: "replica-targets";
+  targets: AgentReplicaRecipient[];
 };
 
 export type JwxtAgentRequestMessage = {
@@ -99,10 +127,32 @@ export type JwxtAgentResponseMessage = {
   ok: boolean;
   data?: unknown;
   error?: { status: number; code: number; message: string };
+  encryptedSessionReplicas?: AgentEncryptedSessionReplica[];
 };
+
+export function jwxtActionSessionToken(action: JwxtAgentAction, payload: unknown, output?: unknown) {
+  if (action === "session.consume-handoff" && typeof output === "string") return output;
+  if (action === "login.submit-legacy" || action === "login.submit-legacy-encrypted") {
+    const token = (output as { token?: unknown } | null)?.token;
+    return typeof token === "string" ? token : "";
+  }
+  if (
+    action === "session.logout"
+    || action === "session.status"
+    || action === "session.export-snapshot"
+    || action === "session.import-snapshot"
+    || action === "session.import-encrypted-snapshot"
+    || action.startsWith("jwxt.")
+  ) {
+    const token = (payload as { token?: unknown } | null)?.token;
+    return typeof token === "string" ? token : "";
+  }
+  return "";
+}
 
 export type JwxtAgentWireMessage =
   | JwxtAgentWelcomeMessage
   | JwxtAgentReadyMessage
+  | JwxtAgentReplicaTargetsMessage
   | JwxtAgentRequestMessage
   | JwxtAgentResponseMessage;

@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { jwxtApi, getJwxtToken, clearJwxtToken, JWXT_AUTH_EXPIRED_EVENT } from "@/api/jwxt";
+import { jwxtApi, getJwxtToken, setJwxtToken, clearJwxtToken, JWXT_AUTH_EXPIRED_EVENT, JWXT_COOKIE_SESSION_MARKER } from "@/api/jwxt";
 import { clearCreds, hasCreds, loadCreds } from "@/utils/credCrypto";
 import { useAuthStore } from "@/stores/auth";
 import { clearJwxtDataCaches } from "@/utils/jwxtCache";
@@ -11,9 +11,9 @@ let authExpiredListenerInstalled = false;
  *
  * 原本两套登录（/auth/sso-login 与 /jwxt/login）是分开的：在教务页登录后，
  * 站内账号并不会同步登录，用户得再去 /login 走一次，体验割裂。
- * 现在统一改成 **复用 useAuthStore 的 ssoLogin** —— 一次操作同时拿到：
- *   • 站内 JWT（auth.token）+ 自动建/查 User
- *   • 教务 session token（写到 sessionStorage 由 jwxt API 拦截器自动带）
+ * 现在统一改成 **复用 useAuthStore 的 ssoLogin** —— 一次操作同时建立：
+ *   • 服务端站内身份 + 自动建/查 User
+ *   • 服务端教务会话（浏览器只持有 HttpOnly 会话 Cookie）
  * 本 store 保留主要是为了让 /jwxt 页面、SchedulePane、IServicePane 等老组件
  * 不用大改：它们读 jwxt.isLoggedIn / jwxt.error / jwxt.needCaptcha / jwxt.captchaImage
  * 等状态，本 store 把这些代理到 auth store。
@@ -50,6 +50,10 @@ export const useJwxtStore = defineStore("jwxt", {
   actions: {
     hydrate() {
       this.token = getJwxtToken();
+      if (!this.token && useAuthStore().token) {
+        setJwxtToken(JWXT_COOKIE_SESSION_MARKER);
+        this.token = JWXT_COOKIE_SESSION_MARKER;
+      }
       if (this.token) this.active = true;
       this.rememberSaved = hasCreds();
       if (!authExpiredListenerInstalled) {
@@ -85,6 +89,8 @@ export const useJwxtStore = defineStore("jwxt", {
           clearJwxtDataCaches();
           this.token = "";
         } else {
+          setJwxtToken(JWXT_COOKIE_SESSION_MARKER);
+          this.token = JWXT_COOKIE_SESSION_MARKER;
           await auth.detectAcademicIdentity({
             force: true,
             silent: true,
@@ -116,7 +122,7 @@ export const useJwxtStore = defineStore("jwxt", {
       const auth = useAuthStore();
       const ok = await auth.ssoLogin(username, password, captcha, remember);
       if (ok) {
-        // jwxt token 已经被 auth.ssoLogin 写入 sessionStorage；这里同步本地 state
+        // auth.ssoLogin 已建立服务端教务会话；这里同步不含秘密的本地状态标记。
         this.token = getJwxtToken();
         this.active = !!this.token;
         if (remember) this.rememberSaved = hasCreds();
@@ -128,8 +134,7 @@ export const useJwxtStore = defineStore("jwxt", {
     },
     /** 用本地保存的账号悄悄走一遍统一登录 */
     async tryAutoLogin(options?: { force?: boolean }): Promise<boolean> {
-      // Agent 重启后旧会话会返回 401；拦截器已清除 sessionStorage，
-      // 这里同步 Pinia 状态，避免把已失效 token 误判成仍然在线。
+      // Agent 重启后旧会话会返回 401；拦截器会清除内存状态，避免误判为在线。
       if (!getJwxtToken()) {
         this.token = "";
         this.active = false;

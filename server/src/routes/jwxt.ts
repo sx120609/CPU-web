@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import crypto from "node:crypto";
+import { isCookieAuthRequest, updateBrowserSession } from "../services/browserSession";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { ok, Errors } from "../utils/response";
@@ -83,7 +84,7 @@ const GRAD_SCHEDULE_DEBUG_FIXTURE_CANDIDATES = [
  * 该 token 与站内登录 token 完全独立 —— 站内可以未登录也用教务（但通常我们要求站内登录）。
  */
 function getToken(req: any): string | null {
-  return (req.headers["x-jwxt-token"] as string) || null;
+  return req.browserSession?.jwxtToken || (req.headers["x-jwxt-token"] as string) || null;
 }
 
 function jwxtTokenCacheId(token: string) {
@@ -908,7 +909,13 @@ jwxtRouter.post(
         pendingId = fresh.pendingId;
       }
       const r = await submitLogin({ ...req.body, pendingId });
-      if (r.ok) return ok(res, { token: r.token });
+      if (r.ok) {
+        if (req.browserSession && isCookieAuthRequest(req)) {
+          await updateBrowserSession(req, res, { jwxtToken: r.token });
+          return ok(res, { ok: true, sessionAuthenticated: true });
+        }
+        return ok(res, { token: r.token });
+      }
       // 失败：可能是要重新输验证码
       return ok(res, {
         ok: false,
@@ -924,7 +931,9 @@ jwxtRouter.post(
 jwxtRouter.post("/logout", async (req, res, next) => {
   try {
     const t = getToken(req);
-    ok(res, { ok: t ? await logout(t) : true });
+    const loggedOut = t ? await logout(t) : true;
+    if (req.browserSession) await updateBrowserSession(req, res, { jwxtToken: undefined });
+    ok(res, { ok: loggedOut });
   } catch (e) { next(e); }
 });
 

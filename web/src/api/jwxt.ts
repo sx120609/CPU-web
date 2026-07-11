@@ -1,29 +1,49 @@
 /**
  * 教务（jsxsd）代登录 API 封装
  *
- * 重要：教务 token 与站内登录 token 是分开的两条线。
- *  - 站内 token：localStorage / Authorization 头
- *  - 教务 token：sessionStorage / X-Jwxt-Token 头（关闭浏览器即清空）
+ * 浏览器只持有服务端 HttpOnly 会话 Cookie；旧版 sessionStorage token
+ * 仅在升级后的首次加载中读入内存完成迁移，并会立即从 Web Storage 删除。
  */
 import axios from "axios";
 import { ElMessage } from "element-plus";
 import { detectClientPlatform } from "@/utils/clientInfo";
 import { clearJwxtDataCaches } from "@/utils/jwxtCache";
+import { COOKIE_SESSION_MARKER, getToken } from "./request";
 
 const JWXT_TOKEN_KEY = "cpu-jwxt-token";
+export const JWXT_COOKIE_SESSION_MARKER = "__cpu_jwxt_cookie_session__";
 export const JWXT_AUTH_EXPIRED_EVENT = "cpu-jwxt-auth-expired";
 
+let memoryJwxtToken = (() => {
+  try {
+    const legacyToken = sessionStorage.getItem(JWXT_TOKEN_KEY) ?? "";
+    sessionStorage.removeItem(JWXT_TOKEN_KEY);
+    return legacyToken;
+  } catch {
+    return "";
+  }
+})();
+
 export function getJwxtToken() {
-  return sessionStorage.getItem(JWXT_TOKEN_KEY) ?? "";
+  return memoryJwxtToken;
 }
 export function setJwxtToken(t: string) {
-  sessionStorage.setItem(JWXT_TOKEN_KEY, t);
+  memoryJwxtToken = t;
+  try { sessionStorage.removeItem(JWXT_TOKEN_KEY); } catch { /* ignore */ }
 }
 export function clearJwxtToken() {
-  sessionStorage.removeItem(JWXT_TOKEN_KEY);
+  memoryJwxtToken = "";
+  try { sessionStorage.removeItem(JWXT_TOKEN_KEY); } catch { /* ignore */ }
 }
 
-const inst = axios.create({ baseURL: "/api/jwxt", timeout: 30000 });
+const inst = axios.create({ baseURL: "/api/jwxt", timeout: 30000, withCredentials: true });
+
+function cookieValue(name: string) {
+  const prefix = `${name}=`;
+  const part = document.cookie.split(";").map((item) => item.trim()).find((item) => item.startsWith(prefix));
+  if (!part) return "";
+  try { return decodeURIComponent(part.slice(prefix.length)); } catch { return part.slice(prefix.length); }
+}
 
 function normalizeJwxtError(message?: string) {
   const raw = (message || "").trim();
@@ -39,11 +59,14 @@ function shouldSuppressErrorMessage(config: unknown) {
 
 inst.interceptors.request.use((cfg) => {
   const tk = getJwxtToken();
-  if (tk) cfg.headers["X-Jwxt-Token"] = tk;
+  if (tk && tk !== JWXT_COOKIE_SESSION_MARKER) cfg.headers["X-Jwxt-Token"] = tk;
+  cfg.headers["X-CPU-Auth-Mode"] = "cookie";
+  const csrf = cookieValue("__Host-cpu-csrf") || cookieValue("cpu-csrf");
+  if (csrf) cfg.headers["X-CSRF-Token"] = csrf;
   cfg.headers["X-CPU-Client"] = detectClientPlatform();
   // 站内登录 token 也带上，便于后端识别用户
-  const siteToken = localStorage.getItem("cpu-web-token");
-  if (siteToken) cfg.headers.Authorization = `Bearer ${siteToken}`;
+  const siteToken = getToken();
+  if (siteToken && siteToken !== COOKIE_SESSION_MARKER) cfg.headers.Authorization = `Bearer ${siteToken}`;
   return cfg;
 });
 

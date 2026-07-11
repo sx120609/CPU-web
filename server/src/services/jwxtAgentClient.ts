@@ -3,9 +3,19 @@ import { HttpError } from "../utils/response";
 import { dispatchJwxtAgentAction } from "./jwxtAgentDispatcher";
 import {
   JWXT_AGENT_PROTOCOL_VERSION,
+  jwxtActionSessionToken,
   type JwxtAgentAction,
   type JwxtAgentRequestMessage,
 } from "./jwxtAgentProtocol";
+import type { JwxtSessionSnapshot } from "./jwxtClient";
+import {
+  decryptSessionSnapshotReplica,
+  decryptAgentLoginCredentials,
+  encryptSessionSnapshotForRecipients,
+  generateAgentReplicaIdentity,
+  type AgentReplicaIdentity,
+  type AgentReplicaRecipient,
+} from "./jwxtAgentReplicaCrypto";
 
 const { WebSocket } = require("ws") as { WebSocket: any };
 
@@ -16,6 +26,7 @@ export type JwxtAgentClientOptions = {
   reconnectMs?: number;
   dispatch?: (action: JwxtAgentAction, payload: unknown) => Promise<unknown>;
   log?: (message: string) => void;
+  replicaIdentity?: AgentReplicaIdentity;
 };
 
 export type JwxtAgentClient = {
@@ -29,6 +40,9 @@ export function startJwxtAgentClient(options: JwxtAgentClientOptions): JwxtAgent
   const dispatch = options.dispatch ?? dispatchJwxtAgentAction;
   const log = options.log ?? ((message: string) => console.log(message));
   const reconnectBaseMs = Math.max(500, Math.min(60_000, options.reconnectMs ?? 3_000));
+  const replicaIdentity = options.replicaIdentity ?? generateAgentReplicaIdentity();
+  const replicaRecipients = new Map<string, AgentReplicaRecipient>();
+  replicaRecipients.set(options.agentId, { agentId: options.agentId, publicKey: replicaIdentity.publicKey });
   let socket: any = null;
   let stopped = false;
   let ready = false;
@@ -92,9 +106,26 @@ export function startJwxtAgentClient(options: JwxtAgentClientOptions): JwxtAgent
       }
       maxConcurrent = normalizeConcurrent(message.agent?.maxConcurrent);
       ready = true;
-      originSocket.send(JSON.stringify({ type: "ready", protocolVersion: JWXT_AGENT_PROTOCOL_VERSION }));
+      originSocket.send(JSON.stringify({
+        type: "ready",
+        protocolVersion: JWXT_AGENT_PROTOCOL_VERSION,
+        replicaPublicKey: replicaIdentity.publicKey,
+      }));
       log(`[jwxt-agent] 已注册上线: ${String(message.agent?.name || options.agentId)}`);
       resolveReadyWaiters();
+      return;
+    }
+
+    if (message?.type === "replica-targets" && Array.isArray(message.targets)) {
+      replicaRecipients.clear();
+      replicaRecipients.set(options.agentId, { agentId: options.agentId, publicKey: replicaIdentity.publicKey });
+      for (const target of message.targets.slice(0, 32)) {
+        if (
+          target && typeof target.agentId === "string" && typeof target.publicKey === "string"
+          && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(target.agentId)
+          && target.publicKey.length <= 4096
+        ) replicaRecipients.set(target.agentId, target);
+      }
       return;
     }
 
@@ -104,6 +135,14 @@ export function startJwxtAgentClient(options: JwxtAgentClientOptions): JwxtAgent
     }
     if (!ready || originSocket !== socket) return;
     const request = message as JwxtAgentRequestMessage;
+    if (request.action === "session.export-snapshot" || request.action === "session.import-snapshot") {
+      sendResponse(originSocket, request.id, false, undefined, {
+        status: 403,
+        code: 4003,
+        message: "主服务无权读取或写入明文教务会话快照",
+      });
+      return;
+    }
     if (activeRequests >= maxConcurrent) {
       sendResponse(originSocket, request.id, false, undefined, {
         status: 503,
@@ -115,12 +154,54 @@ export function startJwxtAgentClient(options: JwxtAgentClientOptions): JwxtAgent
 
     activeRequests += 1;
     try {
-      const data = await dispatch(request.action, request.payload);
-      sendResponse(originSocket, request.id, true, data);
+      const data = request.action === "session.import-encrypted-snapshot"
+        ? await importEncryptedSnapshot(request.payload)
+        : request.action === "login.submit-handoff-encrypted" || request.action === "login.submit-legacy-encrypted"
+          ? await submitEncryptedLogin(request.action, request.payload)
+          : await dispatch(request.action, request.payload);
+      const encryptedSessionReplicas = await collectEncryptedSessionReplicas(request.action, request.payload, data);
+      sendResponse(originSocket, request.id, true, data, undefined, encryptedSessionReplicas);
     } catch (error) {
-      sendResponse(originSocket, request.id, false, undefined, serializeError(error));
+      const encryptedSessionReplicas = await collectEncryptedSessionReplicas(request.action, request.payload, undefined);
+      sendResponse(originSocket, request.id, false, undefined, serializeError(error), encryptedSessionReplicas);
     } finally {
       activeRequests = Math.max(0, activeRequests - 1);
+    }
+  };
+
+  const importEncryptedSnapshot = async (payload: unknown) => {
+    const input = payload as { token?: unknown; replica?: unknown };
+    if (typeof input?.token !== "string" || !input.token || !input.replica) throw new Error("加密会话快照参数无效");
+    const snapshot = decryptSessionSnapshotReplica(input.replica as any, input.token, options.agentId, replicaIdentity);
+    return dispatch("session.import-snapshot", { token: input.token, snapshot });
+  };
+
+  const submitEncryptedLogin = async (
+    action: "login.submit-handoff-encrypted" | "login.submit-legacy-encrypted",
+    payload: unknown,
+  ) => {
+    const input = payload as { pendingId?: unknown; credentials?: any };
+    if (typeof input?.pendingId !== "string" || !input.pendingId || !input.credentials) throw new Error("加密登录参数无效");
+    const credentials = decryptAgentLoginCredentials(input.credentials, replicaIdentity);
+    const plainAction = action === "login.submit-handoff-encrypted" ? "login.submit-handoff" : "login.submit-legacy";
+    const result = await dispatch(plainAction, { pendingId: input.pendingId, ...credentials }) as Record<string, unknown>;
+    return { ...result, authenticatedUsername: credentials.username };
+  };
+
+  const collectEncryptedSessionReplicas = async (
+    action: JwxtAgentAction,
+    payload: unknown,
+    output: unknown,
+  ) => {
+    if (action === "session.export-snapshot") return undefined;
+    const sessionToken = jwxtActionSessionToken(action, payload, output);
+    if (!sessionToken) return undefined;
+    try {
+      const snapshot = await dispatch("session.export-snapshot", { token: sessionToken }) as JwxtSessionSnapshot | null;
+      if (!snapshot) return action === "session.logout" ? [] : undefined;
+      return encryptSessionSnapshotForRecipients(snapshot, sessionToken, [...replicaRecipients.values()]);
+    } catch {
+      return undefined;
     }
   };
 
@@ -188,9 +269,16 @@ function sendResponse(
   ok: boolean,
   data?: unknown,
   error?: { status: number; code: number; message: string },
+  encryptedSessionReplicas?: ReturnType<typeof encryptSessionSnapshotForRecipients>,
 ) {
   if (socket.readyState !== WebSocket.OPEN) return;
-  const message = JSON.stringify({ type: "response", id, ok, ...(ok ? { data } : { error }) });
+  const message = JSON.stringify({
+    type: "response",
+    id,
+    ok,
+    ...(ok ? { data } : { error }),
+    ...(encryptedSessionReplicas !== undefined ? { encryptedSessionReplicas } : {}),
+  });
   if (Buffer.byteLength(message, "utf8") > 2 * 1024 * 1024) {
     socket.send(JSON.stringify({
       type: "response",

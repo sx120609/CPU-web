@@ -145,7 +145,7 @@ test("dedicated login pool fails over without cooldown, stays sticky, and hands 
     }
   });
 
-  process.env.JWT_SECRET = "login-pool-integration-secret";
+  process.env.JWT_SECRET = "login-pool-integration-secret-0123456789abcdef";
   process.env.JWXT_PROXY_URL = queryNode.url;
   process.env.JWXT_PROXY_AGENT_ID = "";
   process.env.JWXT_PROXY_AUTH = "auth-q";
@@ -195,7 +195,11 @@ test("dedicated login pool fails over without cooldown, stays sticky, and hands 
   const successful = submissions.find((entry) => entry.status === "fulfilled");
   const duplicate = submissions.find((entry) => entry.status === "rejected");
   assert.ok(successful && successful.status === "fulfilled");
-  assert.deepEqual(successful.value, { ok: true, token: "query-node-final-token" });
+  assert.deepEqual(successful.value, {
+    ok: true,
+    token: "query-node-final-token",
+    authenticatedUsername: "20260001",
+  });
   assert.ok(duplicate && duplicate.status === "rejected");
   assert.equal((duplicate.reason as { status?: number }).status, 409);
 

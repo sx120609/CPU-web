@@ -2,11 +2,30 @@ import crypto from "node:crypto";
 import { config } from "../config";
 import { Errors, HttpError } from "../utils/response";
 import type * as local from "./jwxtFacade";
-import type { LoginAttempt, LoginSessionHandoff } from "./jwxtClient";
-import { getJwxtAgentState, isJwxtAgentAvailable, requestJwxtAgent } from "./jwxtAgentGateway";
-import type { JwxtAgentAction, JwxtAgentInput, JwxtAgentOutput } from "./jwxtAgentProtocol";
+import type { JwxtSessionSnapshot, LoginAttempt, LoginSessionHandoff } from "./jwxtClient";
+import {
+  getJwxtAgentCredentialPublicKey,
+  getJwxtAgentReplicaRecipients,
+  getJwxtAgentState,
+  getLocalAgentReplicaIdentity,
+  isJwxtAgentAvailable,
+  requestJwxtAgent,
+} from "./jwxtAgentGateway";
+import { jwxtActionSessionToken, type JwxtAgentAction, type JwxtAgentInput, type JwxtAgentOutput } from "./jwxtAgentProtocol";
 import { getJwxtAgentRuntimeConfig } from "./jwxtAgentConfig";
 import { dispatchJwxtAgentAction } from "./jwxtAgentDispatcher";
+import {
+  deleteJwxtSessionReplica,
+  loadJwxtSessionReplica,
+  runWithJwxtSessionMigrationLock,
+  saveJwxtSessionReplica,
+} from "./jwxtSessionReplica";
+import { decryptSessionSnapshotReplica, encryptSessionSnapshotForRecipients, type AgentEncryptedLoginCredentials } from "./jwxtAgentReplicaCrypto";
+
+type SecureLoginArgs = Parameters<typeof local.submitLogin>[0] | {
+  pendingId: string;
+  credentials: AgentEncryptedLoginCredentials;
+};
 
 type QueryRuntime = {
   kind: "local" | "agent";
@@ -16,7 +35,6 @@ type QueryRuntime = {
   currentWeight: number;
   inFlight: number;
   consecutiveFailures: number;
-  cooldownUntil: number;
 };
 
 type TokenRoute = { version: 1; agentId: string; innerToken: string; issuedAt: number };
@@ -41,7 +59,7 @@ export function beginLogin(): ReturnType<typeof local.beginLogin> {
   return beginLegacyLogin() as ReturnType<typeof local.beginLogin>;
 }
 
-export function submitLogin(args: Parameters<typeof local.submitLogin>[0]): Promise<LoginAttempt> {
+export function submitLogin(args: SecureLoginArgs): Promise<LoginAttempt> {
   return submitLegacyLogin(args);
 }
 
@@ -65,7 +83,12 @@ export async function consumeLoginHandoffAt(serviceId: string, handoff: LoginSes
 
 export async function logout(token: string): Promise<boolean> {
   const route = resolveTokenRoute(token);
-  return callSticky(route.agentId, "session.logout", { token: route.innerToken });
+  const replica = await loadJwxtSessionReplica(route.innerToken);
+  try {
+    return await callSticky(replica?.ownerAgentId ?? route.agentId, "session.logout", { token: route.innerToken });
+  } finally {
+    await deleteJwxtSessionReplica(route.innerToken);
+  }
 }
 
 export function getStatus(token: string | undefined | null): ReturnType<typeof local.getStatus> {
@@ -164,7 +187,7 @@ export function getQueryAgentPoolSnapshot() {
     name: runtime.name,
     weight: runtime.weight,
     inFlight: runtime.inFlight,
-    cooldownRemainingMs: Math.max(0, runtime.cooldownUntil - Date.now()),
+    cooldownRemainingMs: 0,
     consecutiveFailures: runtime.consecutiveFailures,
     kind: runtime.kind,
     connection: runtime.kind === "agent" ? getJwxtAgentState(runtime.id) : {
@@ -191,7 +214,11 @@ async function beginLegacyLogin() {
     try {
       const result = await callRuntime(runtime, "login.begin", {});
       if (!result || typeof result.pendingId !== "string") throw protocolError(runtime.name);
-      return { ...result, pendingId: encodePendingRoute(runtime.id, result.pendingId) };
+      return {
+        ...result,
+        pendingId: encodePendingRoute(runtime.id, result.pendingId),
+        credentialPublicKey: getJwxtAgentCredentialPublicKey(runtime.id) || undefined,
+      };
     } catch (error) {
       lastError = error;
     }
@@ -200,12 +227,14 @@ async function beginLegacyLogin() {
   throw noQueryAgentError();
 }
 
-async function submitLegacyLogin(args: Parameters<typeof local.submitLogin>[0]): Promise<LoginAttempt> {
+async function submitLegacyLogin(args: SecureLoginArgs): Promise<LoginAttempt> {
   const route = decodePendingRoute(args.pendingId);
-  const result = await callSticky(route.agentId, "login.submit-legacy", {
-    ...args,
-    pendingId: route.innerPendingId,
-  });
+  const result = "credentials" in args
+    ? await callSticky(route.agentId, "login.submit-legacy-encrypted", {
+        pendingId: route.innerPendingId,
+        credentials: args.credentials,
+      })
+    : await callSticky(route.agentId, "login.submit-legacy", { ...args, pendingId: route.innerPendingId });
   if (!result.ok) {
     if (result.captcha?.pendingId) {
       result.captcha = {
@@ -225,7 +254,91 @@ async function requestWithToken<A extends JwxtAgentAction>(
   buildPayload: (innerToken: string) => JwxtAgentInput<A>,
 ): Promise<JwxtAgentOutput<A>> {
   const route = resolveTokenRoute(token);
-  return callSticky(route.agentId, action, buildPayload(route.innerToken));
+  const payload = buildPayload(route.innerToken);
+  const replica = await loadJwxtSessionReplica(route.innerToken);
+  const ownerAgentId = replica?.ownerAgentId ?? route.agentId;
+  try {
+    const result = await callSticky(ownerAgentId, action, payload);
+    if (action === "session.status" && replica && !(result as { active?: boolean }).active) {
+      throw Errors.unauthorized("当前节点未找到教务会话，尝试跨节点恢复");
+    }
+    return result;
+  } catch (error) {
+    if (!replica || !isSessionFailoverError(error)) throw error;
+    return migrateSessionAndRetry(route.innerToken, ownerAgentId, action, payload, error);
+  }
+}
+
+async function migrateSessionAndRetry<A extends JwxtAgentAction>(
+  innerToken: string,
+  failedAgentId: string,
+  action: A,
+  payload: JwxtAgentInput<A>,
+  originalError: unknown,
+): Promise<JwxtAgentOutput<A>> {
+  const locked = await runWithJwxtSessionMigrationLock(innerToken, async () => {
+    const latest = await loadJwxtSessionReplica(innerToken);
+    if (!latest) throw originalError;
+
+    const excluded = new Set<string>([failedAgentId]);
+    let lastError: unknown = originalError;
+    let attempted = 0;
+    let unauthorized = 0;
+
+    if (latest.ownerAgentId !== failedAgentId) {
+      try {
+        return await callSticky(latest.ownerAgentId, action, payload);
+      } catch (error) {
+        lastError = error;
+        excluded.add(latest.ownerAgentId);
+      }
+    }
+
+    while (true) {
+      const runtime = selectQueryAgent(excluded);
+      if (!runtime) break;
+      excluded.add(runtime.id);
+      const encryptedReplica = latest.replicas.find((item) => item.recipientAgentId === runtime.id);
+      if (!encryptedReplica) continue;
+      attempted += 1;
+      try {
+        if (runtime.kind === "local") {
+          const snapshot = decryptSessionSnapshotReplica(
+            encryptedReplica,
+            innerToken,
+            "local",
+            getLocalAgentReplicaIdentity(),
+          );
+          await dispatchJwxtAgentAction("session.import-snapshot", { token: innerToken, snapshot });
+        } else {
+          await callRuntime(runtime, "session.import-encrypted-snapshot", {
+            token: innerToken,
+            replica: encryptedReplica,
+          });
+        }
+        const result = await callRuntime(runtime, action, payload);
+        console.log(`[jwxt-agent] 教务会话已从 ${failedAgentId} 迁移到 ${runtime.id}`);
+        return result;
+      } catch (error) {
+        lastError = error;
+        if (error instanceof HttpError && error.status === 401) unauthorized += 1;
+      }
+    }
+
+    if (attempted > 0 && unauthorized === attempted) await deleteJwxtSessionReplica(innerToken);
+    throw lastError;
+  });
+
+  if (locked.acquired) return locked.result as JwxtAgentOutput<A>;
+  const latest = await loadJwxtSessionReplica(innerToken);
+  if (latest && latest.ownerAgentId !== failedAgentId) {
+    return callSticky(latest.ownerAgentId, action, payload);
+  }
+  throw new HttpError(503, 5000, "教务会话正在迁移，请稍后重试");
+}
+
+function isSessionFailoverError(error: unknown) {
+  return error instanceof HttpError && (error.status === 401 || error.status >= 500);
 }
 
 async function callSticky<A extends JwxtAgentAction>(
@@ -249,14 +362,33 @@ async function callRuntime<A extends JwxtAgentAction>(
     const result = runtime.kind === "local"
       ? await dispatchJwxtAgentAction(action, payload) as JwxtAgentOutput<A>
       : await requestJwxtAgent(runtime.id, action, payload, config.proxyTimeoutMs);
+    if (runtime.kind === "local") await syncLocalSessionReplica(runtime, action, payload, result);
     markSuccess(runtime);
     return result;
   } catch (error) {
+    if (runtime.kind === "local") await syncLocalSessionReplica(runtime, action, payload, undefined).catch(() => undefined);
     if (!(error instanceof HttpError) || error.status >= 500) markFailure(runtime);
     throw error;
   } finally {
     runtime.inFlight = Math.max(0, runtime.inFlight - 1);
   }
+}
+
+async function syncLocalSessionReplica<A extends JwxtAgentAction>(
+  runtime: QueryRuntime,
+  action: A,
+  payload: JwxtAgentInput<A>,
+  output: unknown,
+) {
+  if (action === "session.export-snapshot") return;
+  const token = jwxtActionSessionToken(action, payload, output);
+  if (!token) return;
+  const snapshot = await dispatchJwxtAgentAction("session.export-snapshot", { token }) as JwxtSessionSnapshot | null;
+  if (snapshot) {
+    const replicas = encryptSessionSnapshotForRecipients(snapshot, token, getJwxtAgentReplicaRecipients());
+    if (replicas.length) await saveJwxtSessionReplica(token, runtime.id, replicas);
+  }
+  else if (action === "session.logout") await deleteJwxtSessionReplica(token);
 }
 
 function selectQueryAgent(excluded: Set<string>) {
@@ -282,8 +414,7 @@ function selectQueryAgent(excluded: Set<string>) {
 }
 
 function isRuntimeAvailable(runtime: QueryRuntime) {
-  return runtime.cooldownUntil <= Date.now()
-    && (runtime.kind === "local" || isJwxtAgentAvailable(runtime.id, "jwxt"));
+  return runtime.kind === "local" || isJwxtAgentAvailable(runtime.id, "jwxt");
 }
 
 function resolveTokenRoute(token: string): TokenRoute {
@@ -325,7 +456,7 @@ function decodeSignedRoute<T extends { version: number; agentId: string; issuedA
     if (
       parsed.version !== 1
       || typeof parsed.agentId !== "string"
-      || !runtimeById.has(parsed.agentId)
+      || (prefix === PENDING_PREFIX && !runtimeById.has(parsed.agentId))
       || !Number.isFinite(parsed.issuedAt)
       || parsed.issuedAt > Date.now() + 30_000
       || Date.now() - parsed.issuedAt > maxAgeMs
@@ -387,19 +518,15 @@ function createRuntime(kind: QueryRuntime["kind"], id: string, name: string, wei
     currentWeight: 0,
     inFlight: 0,
     consecutiveFailures: 0,
-    cooldownUntil: 0,
   };
 }
 
 function markSuccess(runtime: QueryRuntime) {
   runtime.consecutiveFailures = 0;
-  runtime.cooldownUntil = 0;
 }
 
 function markFailure(runtime: QueryRuntime) {
   runtime.consecutiveFailures += 1;
-  runtime.cooldownUntil = Date.now()
-    + config.ssoLoginPool.failureCooldownMs * Math.min(4, runtime.consecutiveFailures);
 }
 
 function noQueryAgentError() {

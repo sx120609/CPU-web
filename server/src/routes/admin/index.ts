@@ -98,6 +98,8 @@ import {
   generateJwxtAgentToken,
   getJwxtAgentConfigSource,
   getJwxtAgentRuntimeConfig,
+  jwxtAgentReplicaKeyFingerprint,
+  resetJwxtAgentReplicaPublicKey,
   updateJwxtAgentRuntimeConfig,
 } from "../../services/jwxtAgentConfig";
 import { getJwxtAgentState } from "../../services/jwxtAgentGateway";
@@ -160,9 +162,11 @@ function jwxtAgentAdminSnapshot() {
       dedicated: loginPool.dedicated,
       queryTransport: loginPool.queryTransport,
     },
-    agents: runtime.agents.map(({ token: _token, ...agent }) => ({
+    agents: runtime.agents.map(({ token: _token, replicaPublicKey, ...agent }) => ({
       ...agent,
       tokenConfigured: true,
+      replicaIdentityPinned: Boolean(replicaPublicKey),
+      replicaKeyFingerprint: jwxtAgentReplicaKeyFingerprint(replicaPublicKey),
       connection: getJwxtAgentState(agent.id),
       pool: queryPoolById.get(agent.id) ?? null,
       loginPool: loginPoolById.get(agent.id) ?? null,
@@ -185,6 +189,15 @@ adminRouter.patch("/jwxt-agents", adminOnly, validate(jwxtAgentConfigSchema), as
 
 adminRouter.post("/jwxt-agents/generate-token", adminOnly, (_req, res) => {
   ok(res, { token: generateJwxtAgentToken() });
+});
+
+adminRouter.post("/jwxt-agents/:agentId/reset-identity", adminOnly, async (req, res, next) => {
+  try {
+    await resetJwxtAgentReplicaPublicKey(String(req.params.agentId || ""));
+    ok(res, jwxtAgentAdminSnapshot());
+  } catch (error) {
+    next(Errors.badRequest(error instanceof Error ? error.message : "Agent 加密身份重置失败"));
+  }
 });
 
 adminRouter.get("/database/status", adminOnly, async (_req, res, next) => {

@@ -192,9 +192,11 @@ function isPublicFilestoreRequest(req: Request) {
 
 async function platformUserFromRequest(req: Request) {
   const header = req.headers.authorization;
-  if (!header || !header.startsWith("Bearer ")) return null;
+  const token = req.browserSession?.siteToken
+    || (header?.startsWith("Bearer ") ? header.slice(7) : "");
+  if (!token) return null;
   try {
-    const payload = verifyToken(header.slice(7));
+    const payload = verifyToken(token);
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
       select: { id: true, username: true, nickname: true, role: true, status: true },

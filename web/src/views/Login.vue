@@ -62,7 +62,7 @@
           <el-alert :title="auth.ssoError" type="error" :closable="false" show-icon />
         </el-form-item>
         <el-form-item>
-          <el-checkbox v-model="remember">记住登录信息（仅保存在当前设备）</el-checkbox>
+          <el-checkbox v-model="remember">保持登录状态（不会保存学校密码）</el-checkbox>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" class="btn-submit" :loading="auth.ssoLoading" :disabled="captchaRefreshing" @click="onSubmit">
@@ -156,7 +156,7 @@ onMounted(async () => {
     justLoggedOut = sessionStorage.getItem("cpu-just-logged-out") === "1";
     if (justLoggedOut) sessionStorage.removeItem("cpu-just-logged-out");
   } catch { /* ignore */ }
-  // 若本地保存了凭据 → 静默自动登录
+  // 仅保留旧版流程兼容；当前版本不会在浏览器保存学校密码，hasCreds() 始终为 false。
   if (!justLoggedOut && hasCreds() && !auth.ssoError) {
     const creds = await loadCreds().catch(() => null);
     if (creds && !auth.ssoNeedCaptcha) {

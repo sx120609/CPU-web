@@ -3,7 +3,7 @@
     <div class="pane-head">
       <div>
         <h2>教务服务节点</h2>
-        <p>Agent 主动连接本站，不需要公网端口或 FRP。教务登录与查询是同一项能力，会话始终留在创建它的节点。</p>
+        <p>Agent 主动连接本站，不需要公网端口或 FRP。会话正常粘在创建节点，节点故障时可加密迁移到其他教务节点。</p>
       </div>
       <div class="head-actions">
         <el-button @click="load">刷新状态</el-button>
@@ -15,6 +15,14 @@
       v-if="source === 'environment'"
       title="当前显示环境变量中的初始配置；首次保存后将由管理面板配置接管。"
       type="info"
+      :closable="false"
+      show-icon
+    />
+
+    <el-alert
+      title="跨节点会话保护已启用"
+      description="源 Agent 会为每个目标节点分别加密 CookieJar，主服务与 Redis 只接触密文；身份首次上线固定，快照空闲 30 分钟自动过期，且只迁移幂等查询。"
+      type="success"
       :closable="false"
       show-icon
     />
@@ -145,8 +153,17 @@
         </div>
 
         <div class="agent-card-foot">
+          <span class="identity-state" :title="agent.replicaKeyFingerprint">
+            {{ agent.replicaIdentityPinned ? 'Agent 加密身份已固定' : '首次上线后固定加密身份' }}
+          </span>
           <span class="token-state">密钥已配置，服务端不会再次返回明文</span>
           <div>
+            <el-button
+              v-if="agent.replicaIdentityPinned"
+              text
+              type="warning"
+              @click="resetIdentity(agent)"
+            >解除身份固定</el-button>
             <el-button text type="primary" @click="rotateToken(agent)">重置密钥</el-button>
             <el-button text @click="removeAgent(agent)">移除</el-button>
           </div>
@@ -280,6 +297,8 @@ async function addAgent() {
       weight: 1,
       maxConcurrent: 4,
       tokenConfigured: true,
+      replicaIdentityPinned: false,
+      replicaKeyFingerprint: "",
       pendingToken: token,
       connection: {
         configured: false, online: false, ready: false, inFlight: 0, maxConcurrent: 4,
@@ -320,6 +339,21 @@ async function rotateToken(agent: EditableAgent) {
   }
   showSecret(agent.id, token);
   ElMessage.success("Agent 密钥已重置");
+}
+
+async function resetIdentity(agent: EditableAgent) {
+  await ElMessageBox.confirm(
+    `仅在 ${agent.name} 已停止、并且你准备更换该节点的 JWXT_AGENT_KEY_FILE 时继续。解除后，下一次成功连接的公钥会成为新的固定身份。`,
+    "确认解除 Agent 加密身份固定",
+    {
+      type: "warning",
+      confirmButtonText: "我已停止节点，继续",
+      cancelButtonText: "取消",
+    },
+  );
+  await adminApi.resetJwxtAgentIdentity(agent.id);
+  await load();
+  ElMessage.success("已解除身份固定，请立即用新的身份文件启动 Agent");
 }
 
 async function removeAgent(agent: EditableAgent) {

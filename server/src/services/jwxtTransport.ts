@@ -3,6 +3,7 @@ import * as local from "./jwxtFacade";
 import * as remote from "./jwxtRemote";
 import * as agentRemote from "./jwxtAgentRemote";
 import * as loginPool from "./ssoLoginPool";
+import type { AgentEncryptedLoginCredentials } from "./jwxtAgentReplicaCrypto";
 
 type Transport = typeof local;
 
@@ -22,8 +23,12 @@ export function beginLogin(): ReturnType<typeof local.beginLogin> {
     : queryImpl().beginLogin();
 }
 
-export function submitLogin(args: Parameters<typeof local.submitLogin>[0]) {
+export function submitLogin(args: Parameters<typeof local.submitLogin>[0] | { pendingId: string; credentials: AgentEncryptedLoginCredentials }) {
   if (loginPool.isPooledPendingId(args.pendingId)) return loginPool.submitLogin(args);
+  if ("credentials" in args) {
+    if (!agentRemote.isJwxtAgentQueryMode()) throw new Error("当前登录节点不支持加密登录凭据");
+    return agentRemote.submitLogin(args);
+  }
   return queryImpl().submitLogin(args);
 }
 

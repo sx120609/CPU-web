@@ -5,7 +5,6 @@ import { withCache } from "../services/cache";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
 import { getFeatures } from "../services/siteSettings";
 import { resolveForumAccess } from "../services/forumAccess";
-import { verifyToken } from "../utils/jwt";
 
 export const searchRouter = Router();
 
@@ -14,16 +13,8 @@ searchRouter.get("/", async (req, res, next) => {
   try {
     const q = String(req.query.q ?? "").trim();
     if (!q) return ok(res, { topics: [], courses: [], services: [] });
-    let userId: number | null = null;
-    let role: string | null = null;
-    const auth = req.headers.authorization;
-    if (auth?.startsWith("Bearer ")) {
-      try {
-        const token = verifyToken(auth.slice(7));
-        userId = token.userId;
-        role = token.role;
-      } catch { /* ignore */ }
-    }
+    const userId = req.user?.userId ?? null;
+    const role = req.user?.role ?? null;
     const forumAccessEnabled = await resolveForumAccess(userId, role);
     const features = getFeatures();
     const searchableBoardTypes = ["announce"];

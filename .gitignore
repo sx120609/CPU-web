@@ -19,6 +19,9 @@ android/**/build/
 .env
 .env.local
 .env.*.local
+*.jwxt-agent-identity.json
+.jwxt-agent-identity.json
+.jwxt-local-agent-identity.json
 local.properties
 *.jks
 *.keystore

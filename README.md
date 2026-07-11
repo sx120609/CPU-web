@@ -137,7 +137,6 @@ JWXT_PROXY_AUTH=""
 # SSO_LOGIN_LOCAL_ENABLED=false
 SSO_LOGIN_LOCAL_WEIGHT=1
 SSO_LOGIN_TIMEOUT_MS=15000
-SSO_LOGIN_FAILURE_COOLDOWN_MS=30000
 PROXY_AUTH=""
 PROXY_PORT=23334
 
@@ -255,8 +254,11 @@ Vite 已代理以下路径到后端：
 | `PORT` | `3000` | 主服务端口 |
 | `NODE_ENV` | `development` | 生产环境请设为 `production` |
 | `DATABASE_URL` | 无 | PostgreSQL 连接串 |
-| `JWT_SECRET` | `cpu-web-dev-secret` | 站内 JWT 签名密钥 |
+| `JWT_SECRET` | `cpu-web-dev-secret` | 站内 JWT 签名密钥；生产环境强制至少 32 位，部署脚本会自动生成 |
 | `JWT_EXPIRES_IN` | `7d` | 站内登录 token 有效期 |
+| `BROWSER_SESSION_IDLE_MS` | `1800000` | 浏览器安全会话空闲有效期，默认 30 分钟 |
+| `BROWSER_SESSION_ABSOLUTE_MS` | `604800000` | 浏览器安全会话最长有效期，默认 7 天 |
+| `CORS_ALLOWED_ORIGINS` | 空 | 额外允许的同源 Web 地址，逗号分隔；不要填写通配符 `*` |
 | `DORM_ELECTRIC_BASE` | `http://sz.weicheng.wang:8899` | 宿舍电费代理地址 |
 | `JWXT_PROXY_URL` | 空 | 配置后主服务通过教务代理访问教务/CMS |
 | `JWXT_PROXY_AUTH` | 空 | 主服务访问代理时使用的共享密钥 |
@@ -267,11 +269,14 @@ Vite 已代理以下路径到后端：
 | `JWXT_AGENT_SERVER` | 空 | Agent 节点连接的主服务 `ws(s)` 地址 |
 | `JWXT_AGENT_ID` | 空 | Agent ID，必须与后台一致 |
 | `JWXT_AGENT_TOKEN` | 空 | Agent 密钥，必须与后台生成值一致 |
+| `JWXT_AGENT_KEY_FILE` | `.jwxt-agent-identity.json` | Agent 的 RSA 加密身份文件；必须持久化并限制为运行账户可读 |
+| `JWXT_LOCAL_AGENT_KEY_FILE` | `.jwxt-local-agent-identity.json` | 本机参与教务池时使用的 RSA 加密身份文件 |
+| `JWXT_SESSION_SYNC_KEYS` | 空 | 本地敏感会话缓存的轮换密钥环，按“新密钥,旧密钥”排列，每项至少 32 位 |
+| `JWXT_SESSION_SYNC_KEY` | 从 `JWT_SECRET` 派生 | 单密钥兼容配置；新部署优先使用 `JWXT_SESSION_SYNC_KEYS` |
 | `SSO_LOGIN_NODES` | 空 | 统一认证登录远端节点 JSON 数组；节点字段为 `id`、可选 `name`、`url`、可选 `auth`、`enabled`、`weight` |
 | `SSO_LOGIN_LOCAL_ENABLED` | `false` | 兼容环境变量：本机是否参与完整教务服务池（登录与查询绑定） |
 | `SSO_LOGIN_LOCAL_WEIGHT` | `1` | 本机教务服务节点权重，范围 `1..100` |
 | `SSO_LOGIN_TIMEOUT_MS` | `JWXT_PROXY_TIMEOUT_MS` | 登录池单节点请求超时（毫秒） |
-| `SSO_LOGIN_FAILURE_COOLDOWN_MS` | `30000` | 登录节点失败后的临时冷却时间（毫秒） |
 | `PROXY_AUTH` | 空 | 教务代理端校验密钥 |
 | `PROXY_PORT` | `23334` | 教务代理监听端口 |
 | `FILESTORE_ENABLED` | `true` | 是否启用嵌入式 Filestore |
@@ -315,7 +320,7 @@ Vite 已代理以下路径到后端：
 在“管理后台 → 教务节点”中完成配置：
 
 - “教务服务”是一项完整能力，统一包含统一认证登录、教务登录、会话建立和课表/成绩等后续查询，不能分别开关。
-- 多台启用“教务服务”的 Agent 与可选的本机组成加权负载均衡池；某次登录选中节点后，该教务会话会始终粘在同一节点。
+- 多台启用“教务服务”的 Agent 与可选的本机组成加权负载均衡池；正常查询粘在创建会话的节点，节点离线、超时或丢失内存会话后，主服务会把加密快照恢复到另一节点。
 - “公告抓取”是独立能力。具有该能力的 Agent 可以有多台，但实际抓取只走后台明确指定的一台，不参与负载均衡；不指定时回退到旧 HTTP 代理或本机。
 - 管理接口不会返回已有密钥明文。新增或重置密钥时只显示一次，需立即复制到 Agent 机器。
 
@@ -325,6 +330,7 @@ Agent 机器使用与主服务相同版本的 `server` 代码，构建后配置�
 JWXT_AGENT_SERVER=wss://your-main-site.example.com/api/internal/jwxt-agent/connect
 JWXT_AGENT_ID=campus-a
 JWXT_AGENT_TOKEN=后台生成的密钥
+JWXT_AGENT_KEY_FILE=.jwxt-agent-identity.json
 NODE_ENV=production
 REDIS_ENABLED=false
 ```
@@ -373,9 +379,20 @@ location /api/internal/jwxt-agent/connect {
 
 安全与部署注意：
 
-- 每台 Agent 使用不同的至少 32 位密钥，只通过 WSS 传输；主服务不会记录请求载荷中的密码。
-- 移除、停用 Agent 或重置密钥会让该节点的既有教务会话失效，建议先停止分配并等待活跃会话自然退出。
+- 每台 Agent 使用不同的至少 32 位连接密钥并只通过 WSS 传输；Web 登录时，浏览器会用目标 Agent 的 RSA 公钥封装 AES-256-GCM 凭据，远程登录密码不会以明文经过主服务。启用本机教务服务时，主服务本身就是登录节点，因此仍会在该进程内处理密码。
+- Agent 首次成功连接时会固定其 RSA-3072 公钥。后续公钥不匹配的连接会被拒绝；合法轮换时应先停止 Agent、备份并移走旧 `JWXT_AGENT_KEY_FILE`，再在后台“解除身份固定”，随后启动 Agent。Linux 部署脚本会设置 `0600`，Windows 脚本会收紧 ACL。
+- 活动 CookieJar 由源 Agent 针对每个目标 Agent 分别使用 RSA-OAEP-SHA256 + AES-256-GCM 加密。主服务与 Redis 只保存目标节点可解密的密文，不能读取远程 Agent 的 CookieJar；快照空闲 30 分钟自动过期。
+- 跨节点仅自动重试课表、成绩、日历等幂等查询，不会重放密码提交。若学校按出口 IP 绑定会话，迁移失败时仍会要求用户重新登录。
+- pending 登录、浏览器会话和本机教务会话在写入 Redis/内存缓存前使用 AES-256-GCM 加密。生产环境建议配置 `JWXT_SESSION_SYNC_KEYS=新密钥,旧密钥`；轮换时先把新密钥放到首位，等待超过最长会话有效期后再删除旧密钥。多主服务实例必须共享同一密钥环。
+- 加密快照与凭据封装使用 Agent v2 协议，v1 Agent 会被明确拒绝。升级时先安排维护窗口，停止旧 Agent，更新主服务和所有 Agent 后再恢复连接，不能混跑 v1/v2。
 - 多个主服务实例必须共享 `JWT_SECRET`。目前 Agent WebSocket 会话属于接收连接的主服务实例，网关层需保证相关教务请求到达同一主实例。
+
+浏览器侧防护：
+
+- 站内与教务 token 只保存在服务端加密会话中；浏览器仅持有 `HttpOnly`、`Secure`、`SameSite=Strict` 的不透明会话 Cookie，旧版 Local Storage token 会在首次迁移后删除。
+- 所有 Cookie 认证的写请求必须同时通过同源/允许来源检查和双提交 CSRF 校验；登录入口另有按 IP 与账号散列计数的限流。
+- 认证、用户和教务响应均发送 `Cache-Control: no-store`。前端启用强制 CSP、Trusted Types 与 DOMPurify；生产响应同时启用 HSTS、`nosniff`、点击劫持和权限策略防护。
+- 浏览器不再保存学校账号密码，旧版保存的凭据和成绩等敏感离线缓存会被清理。课表仍可保留非凭据的离线展示缓存。
 
 ## 部署
 

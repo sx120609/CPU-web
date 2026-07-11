@@ -11,6 +11,7 @@ import { isDev } from "../config";
 import { detectLoginClient } from "../utils/loginClient";
 import { buildSelfUser } from "../utils/publicUser";
 import { recordAdminDailyLogin } from "../services/adminStats";
+import { isCookieAuthRequest, issueBrowserSession, revokeBrowserSession } from "../services/browserSession";
 
 export const authRouter = Router();
 
@@ -26,6 +27,14 @@ const registerSchema = z.object({
   college: z.string().max(40).optional(),
   enrollYear: z.number().int().min(2000).max(2100).optional(),
 });
+
+const encryptedCredentialsSchema = z.object({
+  version: z.literal(1),
+  algorithm: z.literal("rsa-oaep-sha256+aes-256-gcm"),
+  encryptedKey: z.string().min(100).max(2048),
+  iv: z.string().min(12).max(64),
+  ciphertext: z.string().min(20).max(32_000),
+}).strict();
 
 // 站内独立账号登录入口：
 //   - 走过学校 SSO 的账号（studentSso=true）禁用此入口，避免与统一身份认证混淆
@@ -63,7 +72,12 @@ authRouter.post("/login", validate(loginSchema), async (req, res, next) => {
     await recordAdminDailyLogin(logged.id, logged.lastLoginAt ?? new Date(), client.client).catch((error) => {
       console.warn("[admin-stats] failed to record login", error);
     });
-    ok(res, { token, user: buildSelfUser(logged) });
+    if (isCookieAuthRequest(req)) {
+      await issueBrowserSession(res, { siteToken: token });
+      ok(res, { sessionAuthenticated: true, user: buildSelfUser(logged) });
+    } else {
+      ok(res, { token, user: buildSelfUser(logged) });
+    }
   } catch (e) { next(e); }
 });
 
@@ -96,7 +110,12 @@ authRouter.post("/register", validate(registerSchema), async (req, res, next) =>
     await recordAdminDailyLogin(user.id, user.lastLoginAt ?? new Date(), client.client).catch((error) => {
       console.warn("[admin-stats] failed to record register login", error);
     });
-    ok(res, { token, user: buildSelfUser(user) });
+    if (isCookieAuthRequest(req)) {
+      await issueBrowserSession(res, { siteToken: token });
+      ok(res, { sessionAuthenticated: true, user: buildSelfUser(user) });
+    } else {
+      ok(res, { token, user: buildSelfUser(user) });
+    }
   } catch (e) { next(e); }
 });
 
@@ -118,15 +137,18 @@ authRouter.post(
   validate(z.object({
     // 兼容旧页面/并发初始化尚未拿到 pendingId 的情况；路由内会自动补一次 begin。
     pendingId: z.string().max(2048).optional().default(""),
-    username: z.string().min(1),
-    password: z.string().min(1),
+    username: z.string().min(1).max(128).optional(),
+    password: z.string().min(1).max(1024).optional(),
     captcha: z.string().optional(),
+    credentials: encryptedCredentialsSchema.optional(),
   })),
   async (req, res, next) => {
     try {
       let { pendingId } = req.body;
-      const { username, password, captcha } = req.body;
+      const { username, password, captcha, credentials } = req.body;
+      if (!credentials && (!username || !password)) throw Errors.badRequest("缺少登录凭据");
       if (String(pendingId || "").length < 8) {
+        if (credentials) throw Errors.badRequest("加密登录会话已失效，请刷新后重试");
         const fresh = await beginLogin();
         if (fresh.needCaptcha) {
           return ok(res, {
@@ -141,7 +163,9 @@ authRouter.post(
         }
         pendingId = fresh.pendingId;
       }
-      const r = await submitLogin({ pendingId, username, password, captcha });
+      const r = credentials
+        ? await submitLogin({ pendingId, credentials })
+        : await submitLogin({ pendingId, username, password, captcha });
       if (!r.ok || !r.token) {
         return ok(res, {
           ok: false,
@@ -152,7 +176,8 @@ authRouter.post(
       }
 
       // 学号 = username。查 / 建 User
-      const studentId = username.trim();
+      const studentId = String(r.authenticatedUsername || username || "").trim();
+      if (!studentId) throw Errors.server("登录节点未返回认证账号");
       let user = await prisma.user.findUnique({ where: { username: studentId } });
       const dummyHash = "$$sso$$"; // SSO 账号不存密码，占位
 
@@ -199,15 +224,33 @@ authRouter.post(
       await recordAdminDailyLogin(user.id, user.lastLoginAt ?? new Date(), client.client).catch((error) => {
         console.warn("[admin-stats] failed to record sso login", error);
       });
-      ok(res, {
-        ok: true,
-        siteToken,
-        jwxtToken: r.token,
-        user: buildSelfUser(user),
-        needNickname: !user.nickname || user.nickname.trim() === "",
-      });
+      if (isCookieAuthRequest(req)) {
+        await issueBrowserSession(res, { siteToken, jwxtToken: r.token });
+        ok(res, {
+          ok: true,
+          sessionAuthenticated: true,
+          jwxtAuthenticated: true,
+          user: buildSelfUser(user),
+          needNickname: !user.nickname || user.nickname.trim() === "",
+        });
+      } else {
+        ok(res, {
+          ok: true,
+          siteToken,
+          jwxtToken: r.token,
+          user: buildSelfUser(user),
+          needNickname: !user.nickname || user.nickname.trim() === "",
+        });
+      }
     } catch (e) { next(e); }
   }
 );
 
-authRouter.post("/logout", (_req, res) => ok(res, { ok: true }));
+authRouter.post("/logout", async (req, res, next) => {
+  try {
+    await revokeBrowserSession(req, res);
+    ok(res, { ok: true });
+  } catch (error) {
+    next(error);
+  }
+});

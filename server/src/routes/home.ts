@@ -2,7 +2,6 @@ import { Router } from "express";
 import { prisma } from "../prisma";
 import { ok } from "../utils/response";
 import { withCache } from "../services/cache";
-import { verifyToken } from "../utils/jwt";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
 import { enabledBoardTypes, getGlobalPinnedTopicIds } from "../services/siteSettings";
 import { isForumStaffRole, resolveForumAccess } from "../services/forumAccess";
@@ -22,16 +21,8 @@ const LATEST_FEED_DEFAULT_SIZE = 20;
  */
 homeRouter.get("/summary", async (req, res, next) => {
   try {
-    let userId: number | null = null;
-    let role: string | null = null;
-    const auth = req.headers.authorization;
-    if (auth?.startsWith("Bearer ")) {
-      try {
-        const token = verifyToken(auth.slice(7));
-        userId = token.userId;
-        role = token.role;
-      } catch { /* ignore */ }
-    }
+    const userId = req.user?.userId ?? null;
+    const role = req.user?.role ?? null;
 
     const [user, personalUnread, globalReads, globalCount] = await Promise.all([
       userId ? prisma.user.findUnique({ where: { id: userId } }) : Promise.resolve(null),
@@ -110,16 +101,8 @@ homeRouter.get("/summary", async (req, res, next) => {
 
 homeRouter.get("/hot-ranking", async (_req, res, next) => {
   try {
-    let userId: number | null = null;
-    let role: string | null = null;
-    const auth = _req.headers.authorization;
-    if (auth?.startsWith("Bearer ")) {
-      try {
-        const token = verifyToken(auth.slice(7));
-        userId = token.userId;
-        role = token.role;
-      } catch { /* ignore */ }
-    }
+    const userId = _req.user?.userId ?? null;
+    const role = _req.user?.role ?? null;
     const forumAccessEnabled = await resolveForumAccess(userId, role);
     if (!forumAccessEnabled) return ok(res, []);
     const contentBoardTypes = enabledBoardTypes().filter((type) => type !== "announce");
@@ -134,16 +117,8 @@ homeRouter.get("/hot-ranking", async (_req, res, next) => {
 
 homeRouter.get("/latest-feed", async (req, res, next) => {
   try {
-    let userId: number | null = null;
-    let role: string | null = null;
-    const auth = req.headers.authorization;
-    if (auth?.startsWith("Bearer ")) {
-      try {
-        const token = verifyToken(auth.slice(7));
-        userId = token.userId;
-        role = token.role;
-      } catch { /* ignore */ }
-    }
+    const userId = req.user?.userId ?? null;
+    const role = req.user?.role ?? null;
     const forumAccessEnabled = await resolveForumAccess(userId, role);
     if (!forumAccessEnabled) return ok(res, { page: 1, size: LATEST_FEED_DEFAULT_SIZE, total: 0, pins: [], list: [] });
     const page = Math.max(1, Number(req.query.page ?? 1));

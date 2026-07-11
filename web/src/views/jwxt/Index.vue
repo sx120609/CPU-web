@@ -78,14 +78,13 @@
           <div class="remember-row">
             <div class="remember-main">
               <el-checkbox v-model="remember">
-                记住登录信息（仅保存在当前设备）
+                保持登录状态（不会保存学校密码）
               </el-checkbox>
               <el-tooltip placement="top">
                 <template #content>
-                  学校账号和密码只保存在当前设备浏览器，<br/>
-                  <b>不会上传到本站</b>。<br/>
-                  下次打开时可更快完成登录。<br/>
-                  <b>共享电脑请勿勾选</b>。
+                  本站不会在浏览器保存学校密码。<br/>
+                  勾选后仅延长服务器安全会话，<br/>
+                  共享电脑使用后请主动退出。
                 </template>
                 <el-icon class="hint-icon"><InfoFilled /></el-icon>
               </el-tooltip>
@@ -390,6 +389,7 @@ function cacheKey(t: DataTab) {
 }
 
 function readCache(t: DataTab): { savedAt: number; data: any } | null {
+  if (t !== "schedule") return null;
   try {
     const key = cacheKey(t);
     if (!key) return null;
@@ -404,6 +404,7 @@ function readCache(t: DataTab): { savedAt: number; data: any } | null {
 }
 
 function writeCache(t: DataTab, data: any) {
+  if (t !== "schedule") return;
   try {
     const key = cacheKey(t);
     if (!key) return;
