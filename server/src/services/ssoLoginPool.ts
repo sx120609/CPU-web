@@ -198,7 +198,7 @@ export function getSsoLoginPoolSnapshot() {
   const now = Date.now();
   return {
     dedicated: isDedicatedSsoLoginPool(),
-    queryTransport: queryAgentRemote.isJwxtAgentQueryMode()
+    queryTransport: queryAgentRemote.hasRemoteJwxtAgent()
       ? "agent" as const
       : config.jwxtProxyUrl
         ? "remote" as const

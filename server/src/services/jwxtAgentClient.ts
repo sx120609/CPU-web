@@ -222,14 +222,14 @@ function normalizeConcurrent(value: unknown) {
 function validateOptions(options: JwxtAgentClientOptions) {
   let url: URL;
   try { url = new URL(options.serverUrl); }
-  catch { throw new Error("LOGIN_AGENT_SERVER 必须是有效的 ws:// 或 wss:// 地址"); }
+  catch { throw new Error("JWXT_AGENT_SERVER 必须是有效的 ws:// 或 wss:// 地址"); }
   if (!['ws:', 'wss:'].includes(url.protocol) || url.username || url.password || url.hash) {
-    throw new Error("LOGIN_AGENT_SERVER 必须是不含账号和 hash 的 ws:// 或 wss:// 地址");
+    throw new Error("JWXT_AGENT_SERVER 必须是不含账号和 hash 的 ws:// 或 wss:// 地址");
   }
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(options.agentId)) {
-    throw new Error("LOGIN_AGENT_ID 格式无效");
+    throw new Error("JWXT_AGENT_ID 格式无效");
   }
   if (options.token.length < 32 || options.token.length > 512) {
-    throw new Error("LOGIN_AGENT_TOKEN 长度必须在 32 到 512 个字符之间");
+    throw new Error("JWXT_AGENT_TOKEN 长度必须在 32 到 512 个字符之间");
   }
 }

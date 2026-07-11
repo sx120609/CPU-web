@@ -262,9 +262,9 @@ Vite 已代理以下路径到后端：
 | `JWXT_AGENTS` | 空 | 首次启动用的 Agent JSON 配置；后台保存后由数据库配置接管 |
 | `JWXT_CRAWL_AGENT_ID` | 空 | 初始公告抓取 Agent；公告抓取不参与负载均衡 |
 | `JWXT_AGENT_PATH` | `/api/internal/jwxt-agent/connect` | Agent 主动连接主服务的 WebSocket 路由 |
-| `LOGIN_AGENT_SERVER` | 空 | Agent 节点连接的主服务 `ws(s)` 地址 |
-| `LOGIN_AGENT_ID` | 空 | Agent ID，必须与后台一致 |
-| `LOGIN_AGENT_TOKEN` | 空 | Agent 密钥，必须与后台生成值一致 |
+| `JWXT_AGENT_SERVER` | 空 | Agent 节点连接的主服务 `ws(s)` 地址 |
+| `JWXT_AGENT_ID` | 空 | Agent ID，必须与后台一致 |
+| `JWXT_AGENT_TOKEN` | 空 | Agent 密钥，必须与后台生成值一致 |
 | `SSO_LOGIN_NODES` | 空 | 统一认证登录远端节点 JSON 数组；节点字段为 `id`、可选 `name`、`url`、可选 `auth`、`enabled`、`weight` |
 | `SSO_LOGIN_LOCAL_ENABLED` | `false` | 兼容环境变量：本机是否参与完整教务服务池（登录与查询绑定） |
 | `SSO_LOGIN_LOCAL_WEIGHT` | `1` | 本机教务服务节点权重，范围 `1..100` |
@@ -320,9 +320,9 @@ Vite 已代理以下路径到后端：
 Agent 机器使用与主服务相同版本的 `server` 代码，构建后配置：
 
 ```env
-LOGIN_AGENT_SERVER=wss://your-main-site.example.com/api/internal/jwxt-agent/connect
-LOGIN_AGENT_ID=campus-a
-LOGIN_AGENT_TOKEN=后台生成的密钥
+JWXT_AGENT_SERVER=wss://your-main-site.example.com/api/internal/jwxt-agent/connect
+JWXT_AGENT_ID=campus-a
+JWXT_AGENT_TOKEN=后台生成的密钥
 NODE_ENV=production
 REDIS_ENABLED=false
 ```
@@ -332,7 +332,7 @@ REDIS_ENABLED=false
 ```bash
 cd server
 npm run build
-npm run login-agent
+npm run jwxt-agent
 ```
 
 如果主服务前面有 Nginx，需要允许 WebSocket Upgrade：
@@ -348,7 +348,7 @@ location /api/internal/jwxt-agent/connect {
 }
 ```
 
-`JWXT_AGENTS`、`JWXT_CRAWL_AGENT_ID`、`SSO_LOGIN_LOCAL_ENABLED` 和 `SSO_LOGIN_LOCAL_WEIGHT` 仍可用于首次启动。管理后台首次保存后，数据库中的配置成为权威配置。旧 `JWXT_PROXY_URL` 和 `SSO_LOGIN_NODES` 路径保留用于平滑迁移，但新部署无需 FRP，也无需运行旧 `proxy` 服务。
+`JWXT_AGENTS`、`JWXT_CRAWL_AGENT_ID`、`SSO_LOGIN_LOCAL_ENABLED` 和 `SSO_LOGIN_LOCAL_WEIGHT` 仍可用于首次启动。管理后台首次保存后，数据库中的配置成为权威配置。旧 `LOGIN_AGENT_*` 变量、`login-agent` 命令、`JWXT_PROXY_URL` 和 `SSO_LOGIN_NODES` 路径保留用于平滑迁移，但新部署无需 FRP，也无需运行旧 `proxy` 服务。
 
 安全与部署注意：
 

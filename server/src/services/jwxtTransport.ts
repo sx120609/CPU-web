@@ -13,7 +13,7 @@ function queryImpl(): Transport {
 }
 
 export function isRemoteMode() {
-  return agentRemote.isJwxtAgentQueryMode() || Boolean(config.jwxtProxyUrl);
+  return agentRemote.hasRemoteJwxtAgent() || Boolean(config.jwxtProxyUrl);
 }
 
 export function beginLogin(): ReturnType<typeof local.beginLogin> {

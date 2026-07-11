@@ -33,6 +33,10 @@ export function isJwxtAgentQueryMode() {
   return syncQueryRuntimes().length > 0;
 }
 
+export function hasRemoteJwxtAgent() {
+  return syncQueryRuntimes().some((runtime) => runtime.kind === "agent");
+}
+
 export function beginLogin(): ReturnType<typeof local.beginLogin> {
   return beginLegacyLogin() as ReturnType<typeof local.beginLogin>;
 }

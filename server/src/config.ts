@@ -293,12 +293,12 @@ export const config = {
   jwxtAgentPath: parseAgentPath(process.env.JWXT_AGENT_PATH),
   jwxtAgentHeartbeatMs,
   jwxtAgentOfflineMs,
-  loginAgentServer: String(process.env.LOGIN_AGENT_SERVER ?? "").trim(),
-  loginAgentId: String(process.env.LOGIN_AGENT_ID ?? "").trim(),
-  loginAgentToken: String(process.env.LOGIN_AGENT_TOKEN ?? "").trim(),
-  loginAgentReconnectMs: parseIntegerEnv(
-    "LOGIN_AGENT_RECONNECT_MS",
-    process.env.LOGIN_AGENT_RECONNECT_MS,
+  jwxtAgentServer: String(process.env.JWXT_AGENT_SERVER ?? process.env.LOGIN_AGENT_SERVER ?? "").trim(),
+  jwxtAgentId: String(process.env.JWXT_AGENT_ID ?? process.env.LOGIN_AGENT_ID ?? "").trim(),
+  jwxtAgentToken: String(process.env.JWXT_AGENT_TOKEN ?? process.env.LOGIN_AGENT_TOKEN ?? "").trim(),
+  jwxtAgentReconnectMs: parseIntegerEnv(
+    "JWXT_AGENT_RECONNECT_MS",
+    process.env.JWXT_AGENT_RECONNECT_MS ?? process.env.LOGIN_AGENT_RECONNECT_MS,
     3_000,
     500,
     60_000,

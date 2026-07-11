@@ -150,12 +150,12 @@
       </el-form>
       <template #footer>
         <el-button @click="addVisible = false">取消</el-button>
-        <el-button type="primary" :loading="generating" @click="addAgent">生成密钥并添加</el-button>
+        <el-button type="primary" :loading="generating" @click="addAgent">生成密钥并保存</el-button>
       </template>
     </el-dialog>
 
     <el-dialog v-model="secretVisible" title="保存 Agent 连接配置" width="660px" append-to-body @closed="clearVisibleSecret">
-      <el-alert title="密钥只在本次操作中显示。请先复制到 Agent 机器，再保存后台配置。" type="warning" :closable="false" show-icon />
+      <el-alert title="Agent 已保存。密钥只在本次操作中显示，请关闭前复制到 Agent 机器。" type="warning" :closable="false" show-icon />
       <pre class="env-block">{{ visibleEnv }}</pre>
       <template #footer>
         <el-button @click="copyText(visibleEnv)">复制完整配置</el-button>
@@ -171,6 +171,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import {
   adminApi,
   type JwxtAgentAdminItem,
+  type JwxtAgentsAdminConfig,
   type JwxtAgentsAdminPatch,
 } from "@/api/admin";
 
@@ -200,9 +201,9 @@ const connectionUrl = computed(() => {
 const crawlCandidates = computed(() => form.agents.filter((agent) => agent.enabled && agent.crawlEnabled));
 const onlineCount = computed(() => form.agents.filter((agent) => agent.connection.ready).length);
 const visibleEnv = computed(() => [
-  `LOGIN_AGENT_SERVER=${connectionUrl.value}`,
-  `LOGIN_AGENT_ID=${visibleAgentId.value}`,
-  `LOGIN_AGENT_TOKEN=${visibleSecret.value}`,
+  `JWXT_AGENT_SERVER=${connectionUrl.value}`,
+  `JWXT_AGENT_ID=${visibleAgentId.value}`,
+  `JWXT_AGENT_TOKEN=${visibleSecret.value}`,
   "NODE_ENV=production",
   "REDIS_ENABLED=false",
 ].join("\n"));
@@ -211,12 +212,7 @@ async function load() {
   loading.value = true;
   try {
     const data = await adminApi.jwxtAgents();
-    source.value = data.source;
-    agentPath.value = data.agentPath;
-    form.localJwxtEnabled = data.localJwxtEnabled;
-    form.localJwxtWeight = data.localJwxtWeight;
-    form.crawlAgentId = data.crawlAgentId;
-    form.agents = data.agents.map((agent) => ({ ...agent }));
+    applySnapshot(data);
   } finally {
     loading.value = false;
   }
@@ -229,26 +225,8 @@ async function save() {
   }
   saving.value = true;
   try {
-    const payload: JwxtAgentsAdminPatch = {
-      localJwxtEnabled: form.localJwxtEnabled,
-      localJwxtWeight: form.localJwxtWeight,
-      crawlAgentId: form.crawlAgentId,
-      agents: form.agents.map((agent) => ({
-        id: agent.id,
-        name: agent.name.trim(),
-        ...(agent.pendingToken ? { token: agent.pendingToken } : {}),
-        enabled: agent.enabled,
-        jwxtEnabled: agent.jwxtEnabled,
-        crawlEnabled: agent.crawlEnabled,
-        weight: agent.weight,
-        maxConcurrent: agent.maxConcurrent,
-      })),
-    };
-    const data = await adminApi.updateJwxtAgents(payload);
-    source.value = data.source;
-    form.agents.forEach((agent) => { delete agent.pendingToken; });
+    await persistCurrentForm();
     ElMessage.success("教务 Agent 配置已生效");
-    await load();
   } finally {
     saving.value = false;
   }
@@ -272,7 +250,7 @@ async function addAgent() {
   generating.value = true;
   try {
     const { token } = await adminApi.generateJwxtAgentToken();
-    form.agents.push({
+    const newAgent: EditableAgent = {
       id,
       name: draft.name.trim() || id,
       enabled: true,
@@ -287,9 +265,17 @@ async function addAgent() {
         connectedAt: null, lastPongAt: null, jwxtEnabled: draft.jwxtEnabled, crawlEnabled: draft.crawlEnabled,
       },
       pool: null,
-    });
+    };
+    form.agents.push(newAgent);
+    try {
+      await persistCurrentForm();
+    } catch (error) {
+      form.agents = form.agents.filter((agent) => agent !== newAgent);
+      throw error;
+    }
     addVisible.value = false;
     showSecret(id, token);
+    ElMessage.success("Agent 已添加并保存");
   } finally {
     generating.value = false;
   }
@@ -297,19 +283,69 @@ async function addAgent() {
 
 async function rotateToken(agent: EditableAgent) {
   await ElMessageBox.confirm(
-    `重置后 ${agent.name} 会立即断线，必须更新该机器的 LOGIN_AGENT_TOKEN 才能重新连接。`,
+    `重置后 ${agent.name} 会立即断线，必须更新该机器的 JWXT_AGENT_TOKEN 才能重新连接。`,
     "确认重置密钥",
     { type: "warning", confirmButtonText: "继续重置" },
   );
   const { token } = await adminApi.generateJwxtAgentToken();
+  const previousToken = agent.pendingToken;
   agent.pendingToken = token;
+  try {
+    await persistCurrentForm();
+  } catch (error) {
+    agent.pendingToken = previousToken;
+    throw error;
+  }
   showSecret(agent.id, token);
+  ElMessage.success("Agent 密钥已重置");
 }
 
 async function removeAgent(agent: EditableAgent) {
   await ElMessageBox.confirm(`确定移除 ${agent.name}？已有会话将要求用户重新登录。`, "移除 Agent", { type: "warning" });
+  const previousAgents = form.agents;
+  const previousCrawlAgentId = form.crawlAgentId;
   form.agents = form.agents.filter((item) => item.id !== agent.id);
   if (form.crawlAgentId === agent.id) form.crawlAgentId = "";
+  try {
+    await persistCurrentForm();
+    ElMessage.success("Agent 已移除");
+  } catch (error) {
+    form.agents = previousAgents;
+    form.crawlAgentId = previousCrawlAgentId;
+    throw error;
+  }
+}
+
+function buildPayload(): JwxtAgentsAdminPatch {
+  return {
+    localJwxtEnabled: form.localJwxtEnabled,
+    localJwxtWeight: form.localJwxtWeight,
+    crawlAgentId: form.crawlAgentId,
+    agents: form.agents.map((agent) => ({
+      id: agent.id,
+      name: agent.name.trim(),
+      ...(agent.pendingToken ? { token: agent.pendingToken } : {}),
+      enabled: agent.enabled,
+      jwxtEnabled: agent.jwxtEnabled,
+      crawlEnabled: agent.crawlEnabled,
+      weight: agent.weight,
+      maxConcurrent: agent.maxConcurrent,
+    })),
+  };
+}
+
+async function persistCurrentForm() {
+  const data = await adminApi.updateJwxtAgents(buildPayload());
+  applySnapshot(data);
+}
+
+function applySnapshot(data: JwxtAgentsAdminConfig) {
+  source.value = data.source;
+  agentPath.value = data.agentPath;
+  form.localJwxtEnabled = data.localJwxtEnabled;
+  form.localJwxtWeight = data.localJwxtWeight;
+  form.crawlAgentId = data.crawlAgentId;
+  form.agents = data.agents.map((agent) => ({ ...agent }));
 }
 
 function onCrawlCapabilityChange(agent: EditableAgent) {
