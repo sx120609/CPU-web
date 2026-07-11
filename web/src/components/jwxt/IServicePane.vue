@@ -82,10 +82,6 @@
     </div>
 
     <el-empty v-if="!loading && apps.length && !filtered.length" description="没有符合条件的应用" />
-    <div v-else-if="retrying" class="retry-card">
-      <el-icon class="is-loading"><Refresh /></el-icon>
-      <span>正在重新加载应用列表（{{ retryCount }} / {{ MAX_RETRIES }}）…</span>
-    </div>
     <div v-else-if="!loading && error" class="error-card">
       <div>
         <h3>暂时没能加载出应用列表</h3>
@@ -99,7 +95,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onBeforeUnmount, onMounted } from "vue";
-import { Refresh, Search, Star, StarFilled } from "@element-plus/icons-vue";
+import { Search, Star, StarFilled } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { jwxtApi } from "@/api/jwxt";
 
@@ -119,18 +115,13 @@ interface IServiceApp {
 
 const apps = ref<IServiceApp[]>([]);
 const loading = ref(false);
-const retrying = ref(false);
-const retryCount = ref(0);
 const error = ref("");
 const keyword = ref("");
 const activeCat = ref("");
 const filterFav = ref<"" | "fav">("");
-const MAX_RETRIES = 3;
-const RETRY_DELAYS = [1000, 2200, 4200];
 const FAVORITES_KEY = "cpu-iservice-favorite-overrides";
 const APPS_CACHE_KEY = "cpu-iservice-apps-cache-v1";
 const CACHE_TTL = 12 * 60 * 60 * 1000;
-let retryTimer: number | null = null;
 let activeRequest: Promise<any> | null = null;
 let disposed = false;
 
@@ -141,19 +132,10 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   disposed = true;
-  if (retryTimer) {
-    window.clearTimeout(retryTimer);
-    retryTimer = null;
-  }
 });
 
 async function reload(force = true) {
   if (disposed) return;
-  if (retryTimer) {
-    window.clearTimeout(retryTimer);
-    retryTimer = null;
-  }
-  retryCount.value = 0;
   error.value = "";
   await loadApps(force);
 }
@@ -163,7 +145,6 @@ async function loadApps(force = false) {
   const cached = restoreAppsCache();
   if (cached && !force && !isStale(cached.savedAt)) return;
   loading.value = force || !apps.value.length;
-  retrying.value = retryCount.value > 0;
   try {
     const r: any = await fetchApps();
     if (disposed) return;
@@ -177,19 +158,7 @@ async function loadApps(force = false) {
     error.value = "";
   } catch (e: any) {
     if (disposed) return;
-    error.value = e?.message || "网络请求失败";
-    if (retryCount.value < MAX_RETRIES) {
-      retryCount.value += 1;
-      retrying.value = true;
-      const delay = RETRY_DELAYS[retryCount.value - 1] ?? RETRY_DELAYS[RETRY_DELAYS.length - 1];
-      retryTimer = window.setTimeout(() => {
-        retryTimer = null;
-        if (disposed) return;
-        loadApps(false);
-      }, delay);
-    } else {
-      retrying.value = false;
-    }
+    error.value = e?.message || "i 服务暂时不可用";
   } finally {
     if (!disposed) loading.value = false;
   }
@@ -197,7 +166,8 @@ async function loadApps(force = false) {
 
 function fetchApps() {
   if (activeRequest) return activeRequest;
-  activeRequest = jwxtApi.iapps();
+  // i 服务是可选上游，失败时只在当前卡片中提示，避免自动重试连续弹窗。
+  activeRequest = jwxtApi.iapps({ silent: true });
   activeRequest.then(
     () => { activeRequest = null; },
     () => { activeRequest = null; }

@@ -196,7 +196,9 @@ export const jwxtApi = {
   progress: () => inst.get<unknown, { parsed: any }>("/progress"),
   pyfa: () => inst.get<unknown, { parsed: any }>("/pyfa"),
   calendar: () => inst.get<unknown, { parsed: any }>("/calendar"),
-  iapps: () => inst.get<unknown, { apps: any[] }>("/iapps"),
+  iapps: (options?: { silent?: boolean }) => inst.get<unknown, { apps: any[] }>("/iapps", {
+    ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
+  }),
   getScheduleEdits: (semester: string, options?: { silent?: boolean }) =>
     inst.get<unknown, { semester: string; edits: CloudScheduleEdits }>("/schedule-edits", {
       params: { semester },

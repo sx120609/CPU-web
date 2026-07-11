@@ -890,17 +890,32 @@ export interface IServiceApp {
 export async function fetchIServiceApps(token: string): Promise<IServiceApp[]> {
   // _p 参数是 base64(as=2&t=5&d=133&p=1&f=44&m=N&) —— 来自首页布局 ID，固定即可
   const url =
-    "http://i.cpu.edu.cn/sopplus/mobile/getPortalIndexAppList.rst" +
+    "https://i.cpu.edu.cn/sopplus/mobile/getPortalIndexAppList.rst" +
     "?_p=YXM9MiZ0PTUmZD0xMzMmcD0xJmY9NDQmbT1OJg__&pageSize=200";
-  const text = await fetchAnyCpu(token, url);
+  const result = await fetchAnyCpuText(token, url, {
+    allowSso: true,
+    headers: {
+      Accept: "application/json, text/plain, */*",
+      "X-Requested-With": "XMLHttpRequest",
+    },
+  });
+  const finalHost = new URL(result.finalUrl).hostname.toLowerCase();
+  if (finalHost !== "i.cpu.edu.cn") {
+    throw Errors.badRequest("i 服务暂时需要单独认证");
+  }
+  if (result.status < 200 || result.status >= 300) {
+    throw Errors.badRequest(`i 服务暂时不可用（HTTP ${result.status}）`);
+  }
+  const text = result.text.replace(/^\uFEFF/, "").trim();
   let json: any;
   try {
     json = JSON.parse(text);
   } catch {
-    throw Errors.badRequest("i 服务接口返回非 JSON");
+    // 学校端偶尔返回统一认证/维护 HTML；这是可选上游异常，不代表教务会话失效。
+    throw Errors.badRequest("i 服务暂时未返回应用数据");
   }
   if (json.result !== "1") {
-    throw Errors.badRequest("i 服务接口异常: " + (json.reason || "result≠1"));
+    throw Errors.badRequest("i 服务暂时不可用: " + (json.reason || "未返回成功状态"));
   }
   const raw = (json.data || []) as any[];
   return raw
