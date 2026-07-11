@@ -107,6 +107,19 @@ test("outbound JWXT Agent handles login pool, handoff, queries, and crawler with
   await waitFor(() => gateway.getJwxtAgentState("campus-agent-a").ready);
   assert.equal(gateway.getJwxtAgentState("campus-agent-a").ready, true);
 
+  const duplicateLogs: string[] = [];
+  const duplicate = startJwxtAgentClient({
+    serverUrl: `ws://127.0.0.1:${address.port}/api/internal/jwxt-agent/connect`,
+    agentId: "campus-agent-a",
+    token,
+    reconnectMs: 60_000,
+    log: (message) => duplicateLogs.push(message),
+    dispatch: async () => { throw new Error("duplicate Agent must not receive requests"); },
+  });
+  t.after(() => duplicate.stop());
+  await waitFor(() => duplicateLogs.some((message) => message.includes("4006")));
+  assert.equal(gateway.getJwxtAgentState("campus-agent-a").ready, true);
+
   const pool = await import("../src/services/ssoLoginPool");
   const begin = await pool.beginLogin();
   assert.equal(pool.isPooledPendingId(begin.pendingId), true);

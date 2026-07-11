@@ -166,6 +166,13 @@ export async function requestJwxtAgent<A extends JwxtAgentAction>(
 
 function registerAgentSocket(agent: JwxtAgentConfig, socket: any) {
   const previous = sessions.get(agent.id);
+  if (previous && previous.socket.readyState === WebSocket.OPEN) {
+    // 同 ID 的两个进程若轮流抢占连接，会导致登录在 A 建立、查询却落到 B，
+    // 表现为“刚登录教务会话就失效”。保留现有连接，让重复进程持续报错便于定位。
+    try { socket.close(4006, "同 ID Agent 已在线，请停止重复进程"); } catch { /* disconnected */ }
+    console.warn(`[jwxt-agent] 拒绝重复连接: ${agent.name} (${agent.id})`);
+    return;
+  }
   if (previous) closeSession(previous, 4001, "同 ID Agent 已重新连接");
 
   const now = Date.now();

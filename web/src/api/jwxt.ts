@@ -8,8 +8,10 @@
 import axios from "axios";
 import { ElMessage } from "element-plus";
 import { detectClientPlatform } from "@/utils/clientInfo";
+import { clearJwxtDataCaches } from "@/utils/jwxtCache";
 
 const JWXT_TOKEN_KEY = "cpu-jwxt-token";
+export const JWXT_AUTH_EXPIRED_EVENT = "cpu-jwxt-auth-expired";
 
 export function getJwxtToken() {
   return sessionStorage.getItem(JWXT_TOKEN_KEY) ?? "";
@@ -62,10 +64,19 @@ inst.interceptors.response.use(
   },
   (err) => {
     const msg = normalizeJwxtError(err.response?.data?.message ?? err.message);
+    const status = Number(err.response?.status || 0);
+    if (status === 401) {
+      clearJwxtToken();
+      clearJwxtDataCaches();
+      window.dispatchEvent(new Event(JWXT_AUTH_EXPIRED_EVENT));
+    }
     if (!shouldSuppressErrorMessage(err.config)) {
       ElMessage.error(msg);
     }
-    return Promise.reject(new Error(msg));
+    const normalized = new Error(msg) as Error & { status?: number; response?: unknown };
+    normalized.status = status || undefined;
+    normalized.response = err.response;
+    return Promise.reject(normalized);
   }
 );
 

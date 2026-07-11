@@ -1,8 +1,10 @@
 import { defineStore } from "pinia";
-import { jwxtApi, getJwxtToken, clearJwxtToken } from "@/api/jwxt";
+import { jwxtApi, getJwxtToken, clearJwxtToken, JWXT_AUTH_EXPIRED_EVENT } from "@/api/jwxt";
 import { clearCreds, hasCreds, loadCreds } from "@/utils/credCrypto";
 import { useAuthStore } from "@/stores/auth";
 import { clearJwxtDataCaches } from "@/utils/jwxtCache";
+
+let authExpiredListenerInstalled = false;
 
 /**
  * 教务 jwxt store —— 现在是 auth store 的薄包装。
@@ -50,6 +52,15 @@ export const useJwxtStore = defineStore("jwxt", {
       this.token = getJwxtToken();
       if (this.token) this.active = true;
       this.rememberSaved = hasCreds();
+      if (!authExpiredListenerInstalled) {
+        authExpiredListenerInstalled = true;
+        window.addEventListener(JWXT_AUTH_EXPIRED_EVENT, () => {
+          const store = useJwxtStore();
+          store.token = "";
+          store.active = false;
+          store.autoLoginTried = false;
+        });
+      }
     },
     async refreshStatus() {
       if (!this.token) {
@@ -83,6 +94,10 @@ export const useJwxtStore = defineStore("jwxt", {
         }
       } catch {
         this.active = false;
+        if (!getJwxtToken()) {
+          this.token = "";
+          this.autoLoginTried = false;
+        }
       }
     },
     async beginLogin() {
@@ -113,6 +128,12 @@ export const useJwxtStore = defineStore("jwxt", {
     },
     /** 用本地保存的账号悄悄走一遍统一登录 */
     async tryAutoLogin(options?: { force?: boolean }): Promise<boolean> {
+      // Agent 重启后旧会话会返回 401；拦截器已清除 sessionStorage，
+      // 这里同步 Pinia 状态，避免把已失效 token 误判成仍然在线。
+      if (!getJwxtToken()) {
+        this.token = "";
+        this.active = false;
+      }
       if (this.autoLoginTried && !options?.force) return false;
       this.autoLoginTried = true;
       if (this.active && useAuthStore().isLoggedIn) return true;
