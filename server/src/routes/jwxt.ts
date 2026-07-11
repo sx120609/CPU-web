@@ -295,10 +295,14 @@ function hasUsableGraduateSchedule(result: any) {
 }
 
 async function detectAcademicIdentity(token: string) {
-  const [undergraduate, graduate] = await Promise.allSettled([
-    getSchedule(token, {}),
-    getGraduateSchedule(token, {}),
-  ]);
+  // 两个入口共享同一份 CookieJar。串行探测可避免并发请求各自写回旧 Cookie
+  // 快照，同时确保可选的研究生入口失败不会破坏本科教务会话。
+  const undergraduate = await getSchedule(token, {})
+    .then((value) => ({ status: "fulfilled" as const, value }))
+    .catch((reason) => ({ status: "rejected" as const, reason }));
+  const graduate = await getGraduateSchedule(token, {})
+    .then((value) => ({ status: "fulfilled" as const, value }))
+    .catch((reason) => ({ status: "rejected" as const, reason }));
 
   const undergraduateAvailable = undergraduate.status === "fulfilled"
     && hasUsableUndergraduateSchedule(undergraduate.value);

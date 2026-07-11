@@ -731,8 +731,9 @@ export async function fetchAnyCpuText(
   const { res, finalUrl } = await followRedirects(sess.jar, url, requestInit);
   const finalHost = new URL(finalUrl).host;
   if (finalHost === "id.cpu.edu.cn" && !allowSso) {
-    await deleteActiveSession(token);
-    throw Errors.unauthorized("学校 SSO 会话已失效，请重新登录");
+    // 这里只能说明当前可选子系统（例如研究生入口）未完成 SSO，不能据此
+    // 删除仍然有效的本科教务会话。基础教务会话是否失效由 jwxtFetchHtml 判定。
+    throw Errors.unauthorized("目标校园服务尚未完成统一认证");
   }
   if (!finalHost.endsWith("cpu.edu.cn")) {
     throw Errors.badRequest(`意外的最终域名: ${finalHost}`);

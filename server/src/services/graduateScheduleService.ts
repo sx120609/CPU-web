@@ -195,6 +195,7 @@ function unwrapGraduateTermArray(value: unknown): RawGraduateTermOption[] {
 
 async function warmupGraduateScheduleSession(token: string) {
   await fetchAnyCpuText(token, GRAD_OAUTH_ENTRY_URL, {
+    allowSso: true,
     expectedHost: GRAD_HOST,
     headers: {
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -205,6 +206,7 @@ async function warmupGraduateScheduleSession(token: string) {
 
 async function fetchGraduateTermsOnce(token: string) {
   const response = await fetchAnyCpuText(token, GRAD_BINDTERM_URL, {
+    allowSso: true,
     expectedHost: GRAD_HOST,
     headers: defaultGraduateRequestHeaders(),
   });
@@ -232,6 +234,7 @@ async function fetchGraduateSchedulePayload(token: string, termcode: string) {
     termcode,
   });
   const response = await fetchAnyCpuText(token, GRAD_SCHEDULE_URL, {
+    allowSso: true,
     expectedHost: GRAD_HOST,
     method: "POST",
     headers: {
