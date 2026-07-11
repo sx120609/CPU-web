@@ -19,6 +19,11 @@
 #   ./deploy.sh proxy-start      # 启动教务代理
 #   ./deploy.sh proxy-restart    # 重启教务代理
 #   ./deploy.sh proxy-logs       # 查看教务代理日志
+#   ./deploy.sh agent-init       # 出站教务 Agent 首次部署（无需公网端口）
+#   ./deploy.sh agent-update     # 更新并重启出站教务 Agent
+#   ./deploy.sh agent-start      # 启动出站教务 Agent
+#   ./deploy.sh agent-restart    # 重启出站教务 Agent
+#   ./deploy.sh agent-logs       # 查看出站教务 Agent 日志
 #
 # 默认监听端口：23333（避开 3000 / 8000 / 8080 等常见端口冲突）
 # 自定义端口：PORT=12345 ./deploy.sh
@@ -41,6 +46,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 SERVICE_NAME="cpu-web"
 PROXY_SERVICE_NAME="cpu-jwxt-proxy"
+AGENT_SERVICE_NAME="cpu-jwxt-agent"
 PORT="${PORT:-23333}"
 PROXY_PORT="${PROXY_PORT:-23334}"
 ENV_FILE="server/.env"
@@ -518,6 +524,42 @@ EOF
   fi
 }
 
+agent_env_value() {
+  local current legacy
+  current="$(env_get "JWXT_AGENT_$1")"
+  if [ -n "$current" ]; then
+    printf '%s' "$current"
+    return
+  fi
+  legacy="$(env_get "LOGIN_AGENT_$1")"
+  printf '%s' "$legacy"
+}
+
+runtime_is_agent() {
+  [ -n "$(agent_env_value SERVER)" ] \
+    && [ -n "$(agent_env_value ID)" ] \
+    && [ -n "$(agent_env_value TOKEN)" ]
+}
+
+ensure_agent_env() {
+  [ -f "$ENV_FILE" ] || err "缺少 $ENV_FILE；请先从管理后台复制 Agent 配置"
+  local server id token
+  server="$(agent_env_value SERVER)"
+  id="$(agent_env_value ID)"
+  token="$(agent_env_value TOKEN)"
+  [[ "$server" =~ ^wss?:// ]] || err "JWXT_AGENT_SERVER 必须是 ws:// 或 wss:// 地址"
+  [[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || err "JWXT_AGENT_ID 格式无效"
+  [ "${#token}" -ge 32 ] && [ "${#token}" -le 512 ] \
+    || err "JWXT_AGENT_TOKEN 长度必须在 32 到 512 个字符之间"
+  if [ -z "$(env_get JWT_SECRET)" ]; then
+    env_set JWT_SECRET "$(openssl rand -hex 32 2>/dev/null || echo "agent-local-secret-$(date +%s)-$RANDOM")"
+    log "已为 Agent 生成本机 JWT_SECRET"
+  fi
+  if [ -z "$(env_get REDIS_ENABLED)" ]; then
+    env_set REDIS_ENABLED "false"
+  fi
+}
+
 # ---------- 子步骤 ----------
 do_install() {
   log "安装依赖（root + server + web）..."
@@ -539,6 +581,13 @@ do_build_proxy() {
   log "代理构建前再次生成 Prisma Client"
   npm run prisma:generate --prefix server || err "代理构建前 Prisma Client 生成失败"
   log "构建代理端后端 TypeScript → server/dist"
+  npm run build --prefix server
+}
+
+do_build_agent() {
+  log "Agent 构建前再次生成 Prisma Client"
+  npm run prisma:generate --prefix server || err "Agent 构建前 Prisma Client 生成失败"
+  log "构建出站教务 Agent → server/dist/jwxtAgent.js"
   npm run build --prefix server
 }
 
@@ -749,6 +798,37 @@ do_proxy_start() {
   echo ""
 }
 
+do_agent_start() {
+  ensure_node
+  ensure_pm2
+  ensure_agent_env
+  [ -f server/dist/jwxtAgent.js ] || err "缺少 server/dist/jwxtAgent.js，请先执行 ./deploy.sh agent-update"
+  log "通过 pm2 启动 $AGENT_SERVICE_NAME"
+  cd server
+  if pm2 describe "$AGENT_SERVICE_NAME" >/dev/null 2>&1; then
+    pm2 restart "$AGENT_SERVICE_NAME" --update-env
+  else
+    NODE_ENV=production pm2 start "node dist/jwxtAgent.js" \
+      --name "$AGENT_SERVICE_NAME" \
+      --time \
+      --max-memory-restart 600M \
+      --log-date-format "YYYY-MM-DD HH:mm:ss" \
+      --merge-logs
+  fi
+  cd ..
+  if pm2 describe "$PROXY_SERVICE_NAME" >/dev/null 2>&1; then
+    warn "检测到旧教务代理 $PROXY_SERVICE_NAME 仍在运行；确认不再使用后可执行 pm2 delete $PROXY_SERVICE_NAME"
+  fi
+  pm2 save >/dev/null
+  echo ""
+  log "✅ 出站教务 Agent 已启动"
+  echo ""
+  echo "   查看状态：pm2 status"
+  echo "   查看日志：pm2 logs $AGENT_SERVICE_NAME"
+  echo "   后台显示在线后即可参与教务服务负载均衡"
+  echo ""
+}
+
 do_stop()    { ensure_pm2; pm2 stop "$SERVICE_NAME"; }
 do_restart() { ensure_node; ensure_pm2; pm2 restart "$SERVICE_NAME" --update-env; }
 do_logs()    { ensure_pm2; pm2 logs "$SERVICE_NAME"; }
@@ -757,6 +837,9 @@ do_status()  { ensure_pm2; pm2 status; }
 do_proxy_stop()    { ensure_pm2; pm2 stop "$PROXY_SERVICE_NAME"; }
 do_proxy_restart() { ensure_node; ensure_pm2; pm2 restart "$PROXY_SERVICE_NAME" --update-env; }
 do_proxy_logs()    { ensure_pm2; pm2 logs "$PROXY_SERVICE_NAME"; }
+do_agent_stop()    { ensure_pm2; pm2 stop "$AGENT_SERVICE_NAME"; }
+do_agent_restart() { ensure_node; ensure_pm2; ensure_agent_env; pm2 restart "$AGENT_SERVICE_NAME" --update-env; }
+do_agent_logs()    { ensure_pm2; pm2 logs "$AGENT_SERVICE_NAME"; }
 
 do_update() {
   if [ -d .git ]; then
@@ -784,12 +867,33 @@ do_proxy_update() {
   do_proxy_restart || do_proxy_start
 }
 
+do_agent_update() {
+  if [ -d .git ]; then
+    log "拉取最新代码"
+    git pull --ff-only || warn "git pull 失败，继续部署当前代码"
+  else
+    warn "非 git 仓库，跳过 git pull"
+  fi
+  ensure_agent_env
+  do_install
+  do_build_agent
+  do_agent_restart || do_agent_start
+}
+
 # ---------- 主入口 ----------
 CMD="${1:-init}"
 case "$CMD" in
   init|"")
     log "=== 首次部署模式 ==="
     ensure_node
+    if runtime_is_agent && ! runtime_uses_postgres; then
+      log "检测到出站教务 Agent 环境，切换为 Agent 首次部署"
+      ensure_agent_env
+      do_install
+      do_build_agent
+      do_agent_start
+      exit 0
+    fi
     ensure_ffmpeg
     ensure_env
     if ! runtime_uses_postgres; then
@@ -806,6 +910,11 @@ case "$CMD" in
   update)
     log "=== 更新部署 ==="
     ensure_node
+    if runtime_is_agent && ! runtime_uses_postgres; then
+      log "检测到出站教务 Agent 环境，切换为 Agent 更新部署"
+      do_agent_update
+      exit 0
+    fi
     ensure_ffmpeg
     ensure_env
     runtime_uses_postgres || err "当前部署脚本已切换为 PostgreSQL-only。请先运行 ./deploy.sh postgres-init 或 ./deploy.sh postgres-config"
@@ -822,7 +931,25 @@ case "$CMD" in
   proxy-update)
     log "=== 教务代理更新部署 ==="
     ensure_node
-    do_proxy_update
+    if runtime_is_agent; then
+      warn "检测到 JWXT_AGENT_* 配置，旧 proxy-update 自动切换为 agent-update"
+      do_agent_update
+    else
+      do_proxy_update
+    fi
+    ;;
+  agent-init)
+    log "=== 出站教务 Agent 首次部署 ==="
+    ensure_node
+    ensure_agent_env
+    do_install
+    do_build_agent
+    do_agent_start
+    ;;
+  agent-update)
+    log "=== 出站教务 Agent 更新部署 ==="
+    ensure_node
+    do_agent_update
     ;;
   postgres-init)
     log "=== 安装并初始化 PostgreSQL ==="
@@ -849,9 +976,13 @@ case "$CMD" in
   proxy-stop)    do_proxy_stop ;;
   proxy-restart) do_proxy_restart ;;
   proxy-logs)    do_proxy_logs ;;
+  agent-start)   do_agent_start ;;
+  agent-stop)    do_agent_stop ;;
+  agent-restart) do_agent_restart ;;
+  agent-logs)    do_agent_logs ;;
   reset-db)     do_db_reset && do_restart ;;
   help|-h|--help)
-    sed -n '2,20p' "$0"
+    sed -n '2,30p' "$0"
     ;;
   *)
     err "未知命令: $CMD（运行 ./deploy.sh help 查看用法）"

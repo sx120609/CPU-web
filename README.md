@@ -330,10 +330,14 @@ REDIS_ENABLED=false
 然后运行：
 
 ```bash
-cd server
-npm run build
-npm run jwxt-agent
+./deploy.sh agent-init
+# 后续更新
+./deploy.sh agent-update
+# 查看连接日志
+./deploy.sh agent-logs
 ```
+
+只配置了 `JWXT_AGENT_*` 且没有 `DATABASE_URL` 的 Agent 机器，也可以继续执行 `./deploy.sh update`，脚本会自动识别并切换到 Agent 更新流程。旧部署使用 `proxy-update` 时，如果检测到 `JWXT_AGENT_*`，也会自动迁移到 Agent 流程。
 
 如果主服务前面有 Nginx，需要允许 WebSocket Upgrade：
 
