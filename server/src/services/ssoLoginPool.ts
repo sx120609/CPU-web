@@ -56,7 +56,6 @@ type NodeRuntime = {
   currentWeight: number;
   inFlight: number;
   consecutiveFailures: number;
-  cooldownUntil: number;
   lastError: string;
 };
 
@@ -96,7 +95,6 @@ const baseRuntimes = [localNode, ...remoteNodes].map<NodeRuntime>((node) => ({
   currentWeight: 0,
   inFlight: 0,
   consecutiveFailures: 0,
-  cooldownUntil: 0,
   lastError: "",
 }));
 const agentRuntimeById = new Map<string, NodeRuntime>();
@@ -135,12 +133,8 @@ export async function beginLogin(): Promise<BeginResult> {
     }
   }
 
-  const cooled = nextCooldownDelay();
-  const suffix = cooled > 0
-    ? `，请约 ${Math.max(1, Math.ceil(cooled / 1000))} 秒后重试`
-    : failures.length
-      ? `（${failures.join("；")}）`
-      : "";
+  const details = failures.length ? failures : unavailableNodeReasons();
+  const suffix = details.length ? `（${details.join("；")}）` : "";
   throw new HttpError(503, 5000, `所有统一认证登录节点暂时不可用${suffix}`);
 }
 
@@ -195,7 +189,6 @@ export async function submitLogin(args: Parameters<typeof local.submitLogin>[0])
 }
 
 export function getSsoLoginPoolSnapshot() {
-  const now = Date.now();
   return {
     dedicated: isDedicatedSsoLoginPool(),
     queryTransport: queryAgentRemote.hasRemoteJwxtAgent()
@@ -210,8 +203,8 @@ export function getSsoLoginPoolSnapshot() {
       enabled: runtime.node.enabled,
       weight: runtime.node.weight,
       inFlight: runtime.inFlight,
-      available: runtime.node.enabled && runtime.cooldownUntil <= now,
-      cooldownRemainingMs: Math.max(0, runtime.cooldownUntil - now),
+      available: runtime.node.enabled
+        && (runtime.node.kind !== "agent" || isJwxtAgentAvailable(runtime.node.id, "jwxt")),
       consecutiveFailures: runtime.consecutiveFailures,
       lastError: runtime.lastError,
       ...(runtime.node.kind === "agent" ? { agent: getJwxtAgentState(runtime.node.id) } : {}),
@@ -220,11 +213,8 @@ export function getSsoLoginPoolSnapshot() {
 }
 
 function selectNode(excluded: Set<string>) {
-  const now = Date.now();
   const candidates = syncRuntimes().filter((runtime) => (
     runtime.node.enabled
-    && runtime.cooldownUntil <= now
-    && !(runtime.consecutiveFailures > 0 && runtime.inFlight > 0)
     && (runtime.node.kind !== "agent" || isJwxtAgentAvailable(runtime.node.id, "jwxt"))
     && !excluded.has(runtime.node.key)
   ));
@@ -446,24 +436,27 @@ async function parseEnvelope<T>(response: Response): Promise<ApiEnvelope<T>> {
 
 function markSuccess(runtime: NodeRuntime) {
   runtime.consecutiveFailures = 0;
-  runtime.cooldownUntil = 0;
   runtime.lastError = "";
 }
 
 function markFailure(runtime: NodeRuntime, error: unknown) {
   runtime.consecutiveFailures += 1;
   runtime.lastError = errorMessage(error);
-  const multiplier = Math.min(4, runtime.consecutiveFailures);
-  runtime.cooldownUntil = Date.now() + config.ssoLoginPool.failureCooldownMs * multiplier;
-  console.warn(`[sso-login] 节点 ${runtime.node.name} 暂时不可用: ${runtime.lastError}`);
+  console.warn(`[sso-login] 节点 ${runtime.node.name} 本次请求失败: ${runtime.lastError}`);
 }
 
-function nextCooldownDelay() {
-  const now = Date.now();
-  const remaining = syncRuntimes()
-    .filter((runtime) => runtime.node.enabled && runtime.cooldownUntil > now)
-    .map((runtime) => runtime.cooldownUntil - now);
-  return remaining.length ? Math.min(...remaining) : 0;
+function unavailableNodeReasons() {
+  return syncRuntimes()
+    .filter((runtime) => runtime.node.enabled)
+    .map((runtime) => {
+      if (runtime.node.kind === "agent") {
+        const state = getJwxtAgentState(runtime.node.id);
+        if (!state.ready) return `${runtime.node.name}: Agent 当前离线`;
+        if (state.inFlight >= runtime.node.config.maxConcurrent) return `${runtime.node.name}: Agent 当前繁忙`;
+      }
+      return "";
+    })
+    .filter(Boolean);
 }
 
 function syncRuntimes() {
@@ -493,7 +486,6 @@ function syncRuntimes() {
         currentWeight: 0,
         inFlight: 0,
         consecutiveFailures: 0,
-        cooldownUntil: 0,
         lastError: "",
       };
       agentRuntimeById.set(agent.id, runtime);

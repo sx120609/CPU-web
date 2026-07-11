@@ -102,6 +102,7 @@ import {
 } from "../../services/jwxtAgentConfig";
 import { getJwxtAgentState } from "../../services/jwxtAgentGateway";
 import { getQueryAgentPoolSnapshot } from "../../services/jwxtAgentRemote";
+import { getSsoLoginPoolSnapshot } from "../../services/ssoLoginPool";
 
 export const adminRouter = Router();
 const DATABASE_RESTORE_UPLOAD_DIR = path.join(tmpdir(), "cpu-web-db-restore-upload");
@@ -145,6 +146,8 @@ const jwxtAgentConfigSchema = z.object({
 function jwxtAgentAdminSnapshot() {
   const runtime = getJwxtAgentRuntimeConfig();
   const queryPoolById = new Map(getQueryAgentPoolSnapshot().map((item) => [item.id, item]));
+  const loginPool = getSsoLoginPoolSnapshot();
+  const loginPoolById = new Map(loginPool.nodes.map((item) => [item.id, item]));
   return {
     source: getJwxtAgentConfigSource(),
     agentPath: config.jwxtAgentPath,
@@ -152,11 +155,17 @@ function jwxtAgentAdminSnapshot() {
     localJwxtWeight: runtime.localJwxtWeight,
     crawlAgentId: runtime.crawlAgentId,
     local: queryPoolById.get("local") ?? null,
+    localLoginPool: loginPoolById.get("local") ?? null,
+    loginPool: {
+      dedicated: loginPool.dedicated,
+      queryTransport: loginPool.queryTransport,
+    },
     agents: runtime.agents.map(({ token: _token, ...agent }) => ({
       ...agent,
       tokenConfigured: true,
       connection: getJwxtAgentState(agent.id),
       pool: queryPoolById.get(agent.id) ?? null,
+      loginPool: loginPoolById.get(agent.id) ?? null,
     })),
   };
 }

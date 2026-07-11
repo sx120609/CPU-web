@@ -40,6 +40,10 @@
           <span>负载权重</span>
           <el-input-number v-model="form.localJwxtWeight" :min="1" :max="100" :disabled="!form.localJwxtEnabled" />
         </label>
+        <div v-if="form.localJwxtEnabled && localLoginPool" class="login-health" :class="localLoginPool.available ? 'healthy' : 'unavailable'">
+          <strong>{{ localLoginPool.available ? '登录池可用' : loginStatusText(localLoginPool) }}</strong>
+          <span v-if="localLoginPool.lastError">{{ localLoginPool.lastError }}</span>
+        </div>
       </div>
 
       <div class="setting-card crawl-card">
@@ -82,6 +86,13 @@
                   {{ agent.connection.ready ? '在线' : '离线' }}
                 </el-tag>
                 <el-tag v-if="!agent.enabled" size="small" type="warning">已停用</el-tag>
+                <el-tag
+                  v-else-if="agent.jwxtEnabled && agent.connection.ready && agent.loginPool && !agent.loginPool.available"
+                  size="small"
+                  type="danger"
+                >
+                  {{ loginStatusText(agent.loginPool) }}
+                </el-tag>
               </div>
               <code>{{ agent.id }}</code>
             </div>
@@ -104,6 +115,14 @@
             </div>
             <el-switch v-model="agent.crawlEnabled" :disabled="!agent.enabled" @change="onCrawlCapabilityChange(agent)" />
           </label>
+        </div>
+
+        <div
+          v-if="agent.jwxtEnabled && agent.loginPool?.lastError"
+          class="agent-login-error"
+        >
+          <strong>最近一次登录节点错误</strong>
+          <span>{{ agent.loginPool.lastError }}</span>
         </div>
 
         <div class="agent-fields">
@@ -173,6 +192,7 @@ import {
   type JwxtAgentAdminItem,
   type JwxtAgentsAdminConfig,
   type JwxtAgentsAdminPatch,
+  type JwxtLoginPoolNode,
 } from "@/api/admin";
 
 type EditableAgent = JwxtAgentAdminItem & { pendingToken?: string };
@@ -182,6 +202,7 @@ const saving = ref(false);
 const generating = ref(false);
 const source = ref<"environment" | "database">("environment");
 const agentPath = ref("/api/internal/jwxt-agent/connect");
+const localLoginPool = ref<JwxtLoginPoolNode | null>(null);
 const form = reactive<{ localJwxtEnabled: boolean; localJwxtWeight: number; crawlAgentId: string; agents: EditableAgent[] }>({
   localJwxtEnabled: false,
   localJwxtWeight: 1,
@@ -265,6 +286,7 @@ async function addAgent() {
         connectedAt: null, lastPongAt: null, jwxtEnabled: draft.jwxtEnabled, crawlEnabled: draft.crawlEnabled,
       },
       pool: null,
+      loginPool: null,
     };
     form.agents.push(newAgent);
     try {
@@ -342,10 +364,16 @@ async function persistCurrentForm() {
 function applySnapshot(data: JwxtAgentsAdminConfig) {
   source.value = data.source;
   agentPath.value = data.agentPath;
+  localLoginPool.value = data.localLoginPool;
   form.localJwxtEnabled = data.localJwxtEnabled;
   form.localJwxtWeight = data.localJwxtWeight;
   form.crawlAgentId = data.crawlAgentId;
   form.agents = data.agents.map((agent) => ({ ...agent }));
+}
+
+function loginStatusText(pool: JwxtLoginPoolNode) {
+  if (pool.available) return "登录池可用";
+  return "登录池不可用";
 }
 
 function onCrawlCapabilityChange(agent: EditableAgent) {
@@ -402,6 +430,13 @@ code { color: #334155; font-family: ui-monospace, SFMono-Regular, Menlo, Consola
 .capability-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 14px; border: 1px solid #e8edf3; border-radius: 12px; background: #fff; }
 .capability-item strong, .capability-item span { display: block; }
 .capability-item span { margin-top: 4px; color: #8a94a3; font-size: 12px; line-height: 1.45; }
+.login-health { display: grid; gap: 4px; margin-top: 14px; padding: 10px 12px; border-radius: 10px; font-size: 12px; }
+.login-health.healthy { background: #f0fdf4; color: #15803d; }
+.login-health.unavailable { background: #fff1f2; color: #be123c; }
+.login-health span { overflow-wrap: anywhere; opacity: .85; }
+.agent-login-error { display: flex; align-items: flex-start; gap: 10px; margin: 0 20px 2px; padding: 10px 12px; border: 1px solid #fecdd3; border-radius: 10px; background: #fff1f2; color: #9f1239; font-size: 12px; line-height: 1.5; }
+.agent-login-error strong { flex: 0 0 auto; }
+.agent-login-error span { min-width: 0; overflow-wrap: anywhere; }
 .agent-fields { display: grid; grid-template-columns: minmax(180px, 1.5fr) repeat(3, minmax(120px, 1fr)); gap: 14px; padding: 18px 20px; }
 .agent-fields label { display: grid; gap: 7px; color: #687386; font-size: 13px; }
 .agent-fields .el-input-number { width: 100%; }

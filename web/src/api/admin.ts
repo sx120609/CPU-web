@@ -534,6 +534,19 @@ export type JwxtAgentAdminItem = {
     cooldownRemainingMs: number;
     consecutiveFailures: number;
   };
+  loginPool: JwxtLoginPoolNode | null;
+};
+
+export type JwxtLoginPoolNode = {
+  id: string;
+  name: string;
+  kind: "local" | "remote" | "agent";
+  enabled: boolean;
+  weight: number;
+  inFlight: number;
+  available: boolean;
+  consecutiveFailures: number;
+  lastError: string;
 };
 
 export type JwxtAgentsAdminConfig = {
@@ -543,6 +556,11 @@ export type JwxtAgentsAdminConfig = {
   localJwxtWeight: number;
   crawlAgentId: string;
   local: unknown | null;
+  localLoginPool: JwxtLoginPoolNode | null;
+  loginPool: {
+    dedicated: boolean;
+    queryTransport: "local" | "remote" | "agent";
+  };
   agents: JwxtAgentAdminItem[];
 };
 

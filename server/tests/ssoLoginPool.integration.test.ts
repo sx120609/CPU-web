@@ -72,7 +72,7 @@ function requestsFor(server: FakeServer, path: string) {
   return server.requests.filter((request) => request.path === path);
 }
 
-test("dedicated login pool fails over, cools down, stays sticky, and hands off once", async (t) => {
+test("dedicated login pool fails over without cooldown, stays sticky, and hands off once", async (t) => {
   const events: string[] = [];
   let bPendingSequence = 0;
   const fakeHandoff = {
@@ -175,8 +175,13 @@ test("dedicated login pool fails over, cools down, stays sticky, and hands off o
   const secondBegin = await pool.beginLogin();
   assert.equal(pool.isPooledPendingId(secondBegin.pendingId), true);
   assert.notEqual(secondBegin.pendingId, firstBegin.pendingId);
-  assert.equal(requestsFor(nodeA, "/v1/login-pool/begin").length, 1, "A must remain in cooldown");
-  assert.equal(requestsFor(nodeB, "/v1/login-pool/begin").length, 2, "the next begin must use only B");
+  assert.equal(requestsFor(nodeA, "/v1/login-pool/begin").length, 1);
+  assert.equal(requestsFor(nodeB, "/v1/login-pool/begin").length, 2);
+
+  const thirdBegin = await pool.beginLogin();
+  assert.equal(pool.isPooledPendingId(thirdBegin.pendingId), true);
+  assert.equal(requestsFor(nodeA, "/v1/login-pool/begin").length, 2, "a failed node must be retried without cooldown");
+  assert.equal(requestsFor(nodeB, "/v1/login-pool/begin").length, 3, "the same request must still fail over to B");
 
   const loginArgs = {
     pendingId: firstBegin.pendingId,

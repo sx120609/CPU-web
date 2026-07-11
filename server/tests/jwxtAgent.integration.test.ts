@@ -157,6 +157,9 @@ test("outbound JWXT Agent handles login pool, handoff, queries, and crawler with
   await waitFor(() => !gateway.getJwxtAgentState("campus-agent-a").online);
   await assert.rejects(
     () => pool.beginLogin(),
-    (error: unknown) => (error as { status?: number }).status === 503,
+    (error: unknown) => (
+      (error as { status?: number }).status === 503
+      && String((error as { message?: string }).message).includes("Agent 当前离线")
+    ),
   );
 });
