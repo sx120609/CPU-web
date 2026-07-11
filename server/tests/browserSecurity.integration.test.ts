@@ -24,7 +24,7 @@ function cookiePair(setCookie: string, name: string) {
   return item?.trim().split(";", 1)[0] || "";
 }
 
-test("browser auth uses encrypted HttpOnly session and enforces origin plus CSRF", async (t) => {
+test("browser auth uses encrypted HttpOnly session and enforces CSRF", async (t) => {
   const { browserSessionMiddleware, requestOriginAndCsrfProtection } = await import("../src/middleware/browserSession");
   const { issueBrowserSession, browserSessionStorageKey } = await import("../src/services/browserSession");
   const { securityHeaders } = await import("../src/middleware/securityHeaders");
@@ -57,17 +57,24 @@ test("browser auth uses encrypted HttpOnly session and enforces origin plus CSRF
   const port = (server.address() as AddressInfo).port;
   const origin = `http://127.0.0.1:${port}`;
 
-  const rejected = await fetch(`${origin}/login`, { method: "POST", headers: { Origin: "https://evil.example" } });
+  const rejected = await fetch(`${origin}/login`, {
+    method: "POST",
+    headers: { Origin: "https://evil.example", "Sec-Fetch-Site": "cross-site" },
+  });
   assert.equal(rejected.status, 403);
   const spoofedForwardedHost = await fetch(`${origin}/login`, {
     method: "POST",
-    headers: { Origin: "https://evil.example", "X-Forwarded-Host": "evil.example" },
+    headers: {
+      Origin: "https://evil.example",
+      "Sec-Fetch-Site": "cross-site",
+      "X-Forwarded-Host": "evil.example",
+    },
   });
   assert.equal(spoofedForwardedHost.status, 403);
 
   const login = await fetch(`${origin}/login`, {
     method: "POST",
-    headers: { Origin: origin, "X-CPU-Auth-Mode": "cookie" },
+    headers: { Origin: "https://unexpected.example", "X-CPU-Auth-Mode": "cookie" },
   });
   assert.equal(login.status, 200);
   const setCookie = login.headers.get("set-cookie") || "";
@@ -93,7 +100,7 @@ test("browser auth uses encrypted HttpOnly session and enforces origin plus CSRF
   const accepted = await fetch(`${origin}/write`, {
     method: "POST",
     headers: {
-      Origin: origin,
+      Origin: "https://unexpected.example",
       Cookie: `${sessionCookie}; ${csrfCookie}`,
       "X-CPU-Auth-Mode": "cookie",
       "X-CSRF-Token": csrf,
