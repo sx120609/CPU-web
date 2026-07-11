@@ -141,11 +141,12 @@ authRouter.post(
     password: z.string().min(1).max(1024).optional(),
     captcha: z.string().optional(),
     credentials: encryptedCredentialsSchema.optional(),
+    remember: z.boolean().optional().default(true),
   })),
   async (req, res, next) => {
     try {
       let { pendingId } = req.body;
-      const { username, password, captcha, credentials } = req.body;
+      const { username, password, captcha, credentials, remember } = req.body;
       if (!credentials && (!username || !password)) throw Errors.badRequest("缺少登录凭据");
       if (String(pendingId || "").length < 8) {
         if (credentials) throw Errors.badRequest("加密登录会话已失效，请刷新后重试");
@@ -225,7 +226,7 @@ authRouter.post(
         console.warn("[admin-stats] failed to record sso login", error);
       });
       if (isCookieAuthRequest(req)) {
-        await issueBrowserSession(res, { siteToken, jwxtToken: r.token });
+        await issueBrowserSession(res, { siteToken, jwxtToken: r.token, persistent: remember });
         ok(res, {
           ok: true,
           sessionAuthenticated: true,

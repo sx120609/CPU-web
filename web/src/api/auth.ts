@@ -117,7 +117,9 @@ export const authApi = {
   login: (payload: LoginPayload) => request.post<{ token?: string; sessionAuthenticated?: boolean; user: UserInfo }>("/auth/login", payload),
   register: (payload: RegisterPayload) => request.post<{ token?: string; sessionAuthenticated?: boolean; user: UserInfo }>("/auth/register", payload),
   ssoBegin: () => request.post<SsoBeginResult>("/auth/sso-begin"),
-  ssoLogin: (p: { pendingId: string; username: string; password: string; captcha?: string } | { pendingId: string; credentials: AgentEncryptedLoginCredentials }) =>
+  ssoLogin: (p:
+    | { pendingId: string; username: string; password: string; captcha?: string; remember?: boolean }
+    | { pendingId: string; credentials: AgentEncryptedLoginCredentials; remember?: boolean }) =>
     request.post<SsoLoginResult>("/auth/sso-login", p),
   logout: () => request.post<{ ok: true }>("/auth/logout"),
   me: (options?: RequestOptions) => request.get<UserInfo>("/user/me", undefined, options),

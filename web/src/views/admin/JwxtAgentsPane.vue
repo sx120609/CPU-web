@@ -21,7 +21,7 @@
 
     <el-alert
       title="跨节点会话保护已启用"
-      description="源 Agent 会为每个目标节点分别加密 CookieJar，主服务与 Redis 只接触密文；身份首次上线固定，快照空闲 30 分钟自动过期，且只迁移幂等查询。"
+      description="源 Agent 会为每个目标节点分别加密 CookieJar，主服务与 Redis 只接触密文；身份首次上线固定，会话默认保留 365 天，且只迁移幂等查询。"
       type="success"
       :closable="false"
       show-icon

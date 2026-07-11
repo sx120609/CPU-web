@@ -195,8 +195,9 @@ export const useAuthStore = defineStore("auth", {
                 this.ssoCredentialPublicKey,
                 { username, password, ...(captcha ? { captcha } : {}) },
               ),
+              remember,
             }
-          : { pendingId: this.ssoPendingId, username, password, captcha });
+          : { pendingId: this.ssoPendingId, username, password, captcha, remember });
         if (!r.ok || (!r.sessionAuthenticated && !r.siteToken) || !r.user) {
           this.ssoError = r.error || "登录失败";
           if (r.needCaptcha && r.captcha) {

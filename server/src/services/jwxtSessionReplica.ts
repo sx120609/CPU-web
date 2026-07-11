@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { config } from "../config";
 import { deleteEphemeralValue, getEphemeralValue, runWithDistributedLock, setEphemeralValue } from "./cache";
 import { buildRedisKey } from "./redis";
 import { validateReplicaEnvelope, type AgentEncryptedSessionReplica } from "./jwxtAgentReplicaCrypto";
@@ -12,7 +13,7 @@ type StoredReplica = {
 };
 
 export type JwxtSessionReplica = StoredReplica;
-export const JWXT_SESSION_REPLICA_TTL_MS = 30 * 60 * 1000;
+export const JWXT_SESSION_REPLICA_TTL_MS = config.jwxtSessionIdleMs;
 const REPLICA_PREFIX = buildRedisKey("jwxt", "agent-session-replica");
 
 function tokenHash(token: string) {

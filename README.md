@@ -256,8 +256,9 @@ Vite 已代理以下路径到后端：
 | `DATABASE_URL` | 无 | PostgreSQL 连接串 |
 | `JWT_SECRET` | `cpu-web-dev-secret` | 站内 JWT 签名密钥；生产环境强制至少 32 位，部署脚本会自动生成 |
 | `JWT_EXPIRES_IN` | `7d` | 站内登录 token 有效期 |
-| `BROWSER_SESSION_IDLE_MS` | `1800000` | 浏览器安全会话空闲有效期，默认 30 分钟 |
-| `BROWSER_SESSION_ABSOLUTE_MS` | `604800000` | 浏览器安全会话最长有效期，默认 7 天 |
+| `BROWSER_SESSION_IDLE_MS` | `1800000` | 未勾选“保持登录”时的服务端会话空闲期，默认 30 分钟 |
+| `BROWSER_SESSION_ABSOLUTE_MS` | `31536000000` | 勾选“保持登录”时的滑动有效期，默认 365 天；活跃使用会自动续期 |
+| `JWXT_SESSION_IDLE_MS` | `31536000000` | 加密教务会话与跨 Agent 密文副本的空闲有效期，默认 365 天 |
 | `CORS_ALLOWED_ORIGINS` | 空 | 额外允许的同源 Web 地址，逗号分隔；不要填写通配符 `*` |
 | `DORM_ELECTRIC_BASE` | `http://sz.weicheng.wang:8899` | 宿舍电费代理地址 |
 | `JWXT_PROXY_URL` | 空 | 配置后主服务通过教务代理访问教务/CMS |
@@ -381,7 +382,7 @@ location /api/internal/jwxt-agent/connect {
 
 - 每台 Agent 使用不同的至少 32 位连接密钥并只通过 WSS 传输；Web 登录时，浏览器会用目标 Agent 的 RSA 公钥封装 AES-256-GCM 凭据，远程登录密码不会以明文经过主服务。启用本机教务服务时，主服务本身就是登录节点，因此仍会在该进程内处理密码。
 - Agent 首次成功连接时会固定其 RSA-3072 公钥。后续公钥不匹配的连接会被拒绝；合法轮换时应先停止 Agent、备份并移走旧 `JWXT_AGENT_KEY_FILE`，再在后台“解除身份固定”，随后启动 Agent。Linux 部署脚本会设置 `0600`，Windows 脚本会收紧 ACL。
-- 活动 CookieJar 由源 Agent 针对每个目标 Agent 分别使用 RSA-OAEP-SHA256 + AES-256-GCM 加密。主服务与 Redis 只保存目标节点可解密的密文，不能读取远程 Agent 的 CookieJar；快照空闲 30 分钟自动过期。
+- 活动 CookieJar 由源 Agent 针对每个目标 Agent 分别使用 RSA-OAEP-SHA256 + AES-256-GCM 加密。主服务与 Redis 只保存目标节点可解密的密文，不能读取远程 Agent 的 CookieJar；空闲期由 `JWXT_SESSION_IDLE_MS` 控制，默认 365 天。
 - 跨节点仅自动重试课表、成绩、日历等幂等查询，不会重放密码提交。若学校按出口 IP 绑定会话，迁移失败时仍会要求用户重新登录。
 - pending 登录、浏览器会话和本机教务会话在写入 Redis/内存缓存前使用 AES-256-GCM 加密。生产环境建议配置 `JWXT_SESSION_SYNC_KEYS=新密钥,旧密钥`；轮换时先把新密钥放到首位，等待超过最长会话有效期后再删除旧密钥。多主服务实例必须共享同一密钥环。
 - 加密快照与凭据封装使用 Agent v2 协议，v1 Agent 会被明确拒绝。升级时先安排维护窗口，停止旧 Agent，更新主服务和所有 Agent 后再恢复连接，不能混跑 v1/v2。

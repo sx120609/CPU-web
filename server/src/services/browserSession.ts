@@ -10,6 +10,7 @@ export type BrowserSession = {
   siteToken: string;
   jwxtToken?: string;
   csrfToken: string;
+  persistent: boolean;
   createdAt: number;
   lastSeenAt: number;
   absoluteExpiresAt: number;
@@ -55,23 +56,24 @@ export function csrfCookieValue(req: Request) {
   return parseCookies(req)[CSRF_COOKIE] || "";
 }
 
-function sessionCookieOptions(maxAge: number, httpOnly: boolean) {
+function sessionCookieOptions(maxAge: number | undefined, httpOnly: boolean) {
   return {
     httpOnly,
     secure: !isDev,
     sameSite: "strict" as const,
     path: "/",
-    maxAge,
+    ...(maxAge === undefined ? {} : { maxAge }),
   };
 }
 
 function setSessionCookies(res: Response, id: string, session: BrowserSession) {
   const remaining = Math.max(1, Math.min(
-    config.browserSessionIdleMs,
+    session.persistent ? config.browserSessionAbsoluteMs : config.browserSessionIdleMs,
     session.absoluteExpiresAt - Date.now(),
   ));
-  res.cookie(BROWSER_SESSION_COOKIE, id, sessionCookieOptions(remaining, true));
-  res.cookie(CSRF_COOKIE, session.csrfToken, sessionCookieOptions(remaining, false));
+  const cookieMaxAge = session.persistent ? remaining : undefined;
+  res.cookie(BROWSER_SESSION_COOKIE, id, sessionCookieOptions(cookieMaxAge, true));
+  res.cookie(CSRF_COOKIE, session.csrfToken, sessionCookieOptions(cookieMaxAge, false));
   res.setHeader("Cache-Control", "no-store");
 }
 
@@ -82,13 +84,17 @@ function validSession(value: BrowserSession): value is BrowserSession {
     && (!value.jwxtToken || (typeof value.jwxtToken === "string" && value.jwxtToken.length <= 2048))
     && typeof value.csrfToken === "string"
     && value.csrfToken.length >= 32
+    && (value.persistent === undefined || typeof value.persistent === "boolean")
     && Number.isFinite(value.createdAt)
     && Number.isFinite(value.lastSeenAt)
     && Number.isFinite(value.absoluteExpiresAt);
 }
 
 async function saveSession(id: string, session: BrowserSession) {
-  const remaining = Math.min(config.browserSessionIdleMs, session.absoluteExpiresAt - Date.now());
+  const remaining = Math.min(
+    session.persistent ? config.browserSessionAbsoluteMs : config.browserSessionIdleMs,
+    session.absoluteExpiresAt - Date.now(),
+  );
   if (remaining <= 0) {
     await deleteEphemeralValue(browserSessionStorageKey(id));
     return false;
@@ -112,12 +118,16 @@ export async function loadBrowserSession(req: Request, res?: Response) {
       sessionHash(id),
       raw,
     ).value;
+    // v1 初版没有该字段，但当时下发的是持久 Cookie；迁移时保持原有预期。
+    if (session && typeof session.persistent !== "boolean") session.persistent = true;
     if (!validSession(session) || session.absoluteExpiresAt <= Date.now()) {
       await deleteEphemeralValue(browserSessionStorageKey(id));
       return null;
     }
-    if (Date.now() - session.lastSeenAt >= TOUCH_INTERVAL_MS) {
-      session.lastSeenAt = Date.now();
+    const now = Date.now();
+    if (now - session.lastSeenAt >= TOUCH_INTERVAL_MS) {
+      session.lastSeenAt = now;
+      if (session.persistent) session.absoluteExpiresAt = now + config.browserSessionAbsoluteMs;
       await saveSession(id, session);
     }
     if (res) setSessionCookies(res, id, session);
@@ -130,7 +140,7 @@ export async function loadBrowserSession(req: Request, res?: Response) {
 
 export async function issueBrowserSession(
   res: Response,
-  input: { siteToken: string; jwxtToken?: string },
+  input: { siteToken: string; jwxtToken?: string; persistent?: boolean },
 ) {
   const id = crypto.randomBytes(32).toString("base64url");
   const now = Date.now();
@@ -139,6 +149,7 @@ export async function issueBrowserSession(
     siteToken: input.siteToken,
     ...(input.jwxtToken ? { jwxtToken: input.jwxtToken } : {}),
     csrfToken: crypto.randomBytes(32).toString("base64url"),
+    persistent: input.persistent !== false,
     createdAt: now,
     lastSeenAt: now,
     absoluteExpiresAt: now + config.browserSessionAbsoluteMs,

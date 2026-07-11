@@ -294,9 +294,16 @@ const browserSessionIdleMs = parseIntegerEnv(
 const browserSessionAbsoluteMs = parseIntegerEnv(
   "BROWSER_SESSION_ABSOLUTE_MS",
   process.env.BROWSER_SESSION_ABSOLUTE_MS,
-  7 * 24 * 60 * 60 * 1000,
+  365 * 24 * 60 * 60 * 1000,
   browserSessionIdleMs,
-  30 * 24 * 60 * 60 * 1000,
+  2 * 365 * 24 * 60 * 60 * 1000,
+);
+const jwxtSessionIdleMs = parseIntegerEnv(
+  "JWXT_SESSION_IDLE_MS",
+  process.env.JWXT_SESSION_IDLE_MS,
+  browserSessionAbsoluteMs,
+  browserSessionIdleMs,
+  2 * 365 * 24 * 60 * 60 * 1000,
 );
 
 export const config = {
@@ -330,6 +337,7 @@ export const config = {
   jwxtSessionSyncKeys,
   browserSessionIdleMs,
   browserSessionAbsoluteMs,
+  jwxtSessionIdleMs,
   corsAllowedOrigins: parseCsvEnv(
     process.env.CORS_ALLOWED_ORIGINS,
     nodeEnv === "production" ? ["https://cpu.lizmt.cn"] : [],

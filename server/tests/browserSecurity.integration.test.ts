@@ -39,6 +39,13 @@ test("browser auth uses encrypted HttpOnly session and enforces origin plus CSRF
     });
     res.json({ ok: true });
   });
+  app.post("/session-login", async (_req, res) => {
+    await issueBrowserSession(res, {
+      siteToken: "site-jwt-private-value-0123456789",
+      persistent: false,
+    });
+    res.json({ ok: true });
+  });
   app.post("/write", (_req, res) => res.json({ ok: true }));
   app.use((error: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     res.status(Number(error?.status || 500)).json({ error: String(error?.message || "error") });
@@ -66,6 +73,7 @@ test("browser auth uses encrypted HttpOnly session and enforces origin plus CSRF
   const setCookie = login.headers.get("set-cookie") || "";
   assert.match(setCookie, /cpu-session=[^;]+;.*HttpOnly/i);
   assert.match(setCookie, /SameSite=Strict/i);
+  assert.match(setCookie, /Max-Age=\d+/i);
   const sessionCookie = cookiePair(setCookie, "cpu-session");
   const csrfCookie = cookiePair(setCookie, "cpu-csrf");
   assert.ok(sessionCookie && csrfCookie);
@@ -93,4 +101,11 @@ test("browser auth uses encrypted HttpOnly session and enforces origin plus CSRF
   });
   assert.equal(accepted.status, 200);
   assert.match(accepted.headers.get("content-security-policy") || "", /require-trusted-types-for 'script'/);
+
+  const nonPersistentLogin = await fetch(`${origin}/session-login`, {
+    method: "POST",
+    headers: { Origin: origin, "X-CPU-Auth-Mode": "cookie" },
+  });
+  assert.equal(nonPersistentLogin.status, 200);
+  assert.doesNotMatch(nonPersistentLogin.headers.get("set-cookie") || "", /Max-Age=/i);
 });

@@ -15,3 +15,8 @@ export function signToken(payload: JwtPayload): string {
 export function verifyToken(token: string): JwtPayload {
   return jwt.verify(token, config.jwtSecret) as JwtPayload;
 }
+
+/** 仅供已经通过随机 HttpOnly 服务端会话定位到的 JWT 续签使用。 */
+export function verifySessionTokenSignature(token: string): JwtPayload {
+  return jwt.verify(token, config.jwtSecret, { ignoreExpiration: true }) as JwtPayload;
+}

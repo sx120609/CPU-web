@@ -11,7 +11,7 @@
  * 安全约定：
  *  - 用户名密码绝不写入磁盘 / 数据库 / 日志
  *  - cookie jar 写入缓存前使用 AES-256-GCM 加密；不写入数据库或日志
- *  - 30 分钟无活动失效；未启用 Redis 时进程退出即清空
+ *  - 会话空闲期由 JWXT_SESSION_IDLE_MS 控制（默认 365 天）；未启用 Redis 时进程退出即清空
  */
 import * as cheerio from "cheerio";
 import crypto from "node:crypto";
@@ -260,7 +260,7 @@ export type JwxtSessionSnapshot = {
 };
 
 const PENDING_TTL = 5 * 60 * 1000;          // 5 分钟未提交则丢弃
-const SESSION_IDLE_TTL = 30 * 60 * 1000;    // 30 分钟无活动失效
+const SESSION_IDLE_TTL = config.jwxtSessionIdleMs;
 const HANDOFF_TTL = 5 * 60 * 1000;
 const HANDOFF_FUTURE_SKEW = 30 * 1000;
 const LOGIN_SUBMIT_LOCK_TTL = 5 * 60 * 1000;

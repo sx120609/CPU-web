@@ -503,8 +503,13 @@ EOF
   if [ -z "$(env_get BROWSER_SESSION_IDLE_MS)" ]; then
     env_set BROWSER_SESSION_IDLE_MS "1800000"
   fi
-  if [ -z "$(env_get BROWSER_SESSION_ABSOLUTE_MS)" ]; then
-    env_set BROWSER_SESSION_ABSOLUTE_MS "604800000"
+  current_browser_absolute="$(env_get BROWSER_SESSION_ABSOLUTE_MS)"
+  if [ -z "$current_browser_absolute" ] || [ "$current_browser_absolute" = "604800000" ]; then
+    env_set BROWSER_SESSION_ABSOLUTE_MS "31536000000"
+  fi
+  current_jwxt_idle="$(env_get JWXT_SESSION_IDLE_MS)"
+  if [ -z "$current_jwxt_idle" ] || [ "$current_jwxt_idle" = "604800000" ]; then
+    env_set JWXT_SESSION_IDLE_MS "31536000000"
   fi
   if ! grep -q '^POSTGRES_DATABASE_URL=' "$ENV_FILE" 2>/dev/null; then
     echo 'POSTGRES_DATABASE_URL=""' >> "$ENV_FILE"
