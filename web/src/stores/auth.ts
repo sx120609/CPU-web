@@ -2,7 +2,7 @@ import { defineStore } from "pinia";
 import { authApi, type UserInfo, type RegisterPayload } from "@/api/auth";
 import { clearToken, COOKIE_SESSION_MARKER, getToken, hasAuthPresence, setToken } from "@/api/request";
 import { jwxtApi, setJwxtToken, clearJwxtToken, JWXT_COOKIE_SESSION_MARKER } from "@/api/jwxt";
-import { saveCreds } from "@/utils/credCrypto";
+import { clearCreds, saveCreds } from "@/utils/credCrypto";
 import { encryptAgentLoginCredentials } from "@/utils/agentCredentialCrypto";
 import { clearJwxtDataCaches, purgeLegacySensitiveJwxtCaches } from "@/utils/jwxtCache";
 import {
@@ -222,6 +222,8 @@ export const useAuthStore = defineStore("auth", {
         // 记住凭据（本地加密，下次自动登录）
         if (remember) {
           try { await saveCreds(username, password); } catch { /* ignore */ }
+        } else {
+          clearCreds();
         }
         this.ssoNeedCaptcha = false;
         this.ssoCaptchaImage = "";

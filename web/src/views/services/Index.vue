@@ -113,7 +113,7 @@
       <el-icon class="big-icon"><Lock /></el-icon>
       <div class="hint-body">
         <h3>登录后可查看更完整的服务列表</h3>
-        <p>登录后可查看更多校园应用和常用入口。学号 / 工号仅用于关联站内账号，<b>学校密码和验证码不会保存</b>。</p>
+        <p>登录后可查看更多校园应用和常用入口。学号 / 工号仅用于关联站内账号；勾选保持登录后会在当前浏览器加密保存账号密码，验证码不会保存。</p>
         <el-button class="hint-action" type="primary" size="large" @click="$router.push('/jwxt')">前往登录</el-button>
         <PrivacyPolicyNotice align="left" />
       </div>

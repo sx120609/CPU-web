@@ -322,7 +322,7 @@
     <section v-else-if="!jwxt.isLoggedIn && !parsed" class="state-card">
       <el-icon class="big"><Lock /></el-icon>
       <h2>需要先登录教务</h2>
-      <p>登录后可快速查看课表，也可以把这个页面加到桌面方便下次打开。学校密码和验证码不会保存。</p>
+      <p>登录后可快速查看课表，也可以把这个页面加到桌面方便下次打开。勾选保持登录后会在当前浏览器加密保存账号密码，验证码不会保存。</p>
       <p class="scope-note">{{ scheduleLoginScopeText }}</p>
       <el-button type="primary" size="large" @click="$router.push({ name: 'jwxt', query: { redirect: '/schedule' } })">
         前往登录

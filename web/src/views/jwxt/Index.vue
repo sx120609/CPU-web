@@ -4,7 +4,7 @@
       <h2>🎓 教务数据</h2>
       <p class="hint">
         {{ pageHintText }}
-        学号 / 工号仅用于关联站内账号，<b>学校密码和验证码不会保存</b>。
+        学号 / 工号仅用于关联站内账号；勾选保持登录后，<b>学校密码会加密保存在当前浏览器</b>，验证码不会保存。
       </p>
     </div>
 
@@ -39,7 +39,7 @@
       >
         <ul class="safety">
           <li>学号 / 工号会用于创建或关联站内账号</li>
-          <li>学校密码和验证码<b>不会保存</b>在本站</li>
+          <li>勾选保持登录后，学校密码会加密保存在当前浏览器；验证码不会保存</li>
         </ul>
       </el-alert>
 
@@ -48,17 +48,18 @@
         :rules="rules"
         ref="formRef"
         label-position="top"
-        @keyup.enter="onSubmit"
+        autocomplete="on"
+        @submit.prevent="onSubmit"
         size="large"
         class="form"
       >
         <el-form-item label="学号 / 工号" prop="username">
-          <el-input v-model="form.username" placeholder="学号 / 工号" autocomplete="off" :disabled="jwxt.loading">
+          <el-input v-model="form.username" name="username" placeholder="学号 / 工号" autocomplete="username" :disabled="jwxt.loading">
             <template #prefix><el-icon><User /></el-icon></template>
           </el-input>
         </el-form-item>
         <el-form-item label="密码" prop="password">
-          <el-input v-model="form.password" type="password" show-password placeholder="统一认证密码" autocomplete="off" :disabled="jwxt.loading">
+          <el-input v-model="form.password" name="password" type="password" show-password placeholder="统一认证密码" autocomplete="current-password" :disabled="jwxt.loading">
             <template #prefix><el-icon><Lock /></el-icon></template>
           </el-input>
         </el-form-item>
@@ -78,13 +79,13 @@
           <div class="remember-row">
             <div class="remember-main">
               <el-checkbox v-model="remember">
-                保持登录状态（不会保存学校密码）
+                保持登录状态并保存到本浏览器
               </el-checkbox>
               <el-tooltip placement="top">
                 <template #content>
-                  本站不会在浏览器保存学校密码。<br/>
-                  勾选后仅延长服务器安全会话，<br/>
-                  共享电脑使用后请主动退出。
+                  勾选后会在当前浏览器加密保存学校账号密码，<br/>
+                  用于会话过期后自动重新登录。<br/>
+                  共享电脑请不要勾选。
                 </template>
                 <el-icon class="hint-icon"><InfoFilled /></el-icon>
               </el-tooltip>
@@ -100,7 +101,7 @@
         </el-form-item>
 
         <el-form-item>
-          <el-button type="primary" :loading="jwxt.loading" :disabled="jwxt.loading || captchaLoading" @click="onSubmit" class="btn-submit">
+          <el-button type="primary" native-type="submit" :loading="jwxt.loading" :disabled="jwxt.loading || captchaLoading" class="btn-submit">
             登录并查看
           </el-button>
         </el-form-item>

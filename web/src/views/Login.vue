@@ -20,7 +20,7 @@
       <p class="hint">{{ loginHint }}</p>
 
       <el-alert type="warning" :closable="false" show-icon class="safety">
-        学号 / 工号仅用于识别身份并关联账号，<b>学校密码和验证码不会保存</b>
+        学号 / 工号仅用于识别身份并关联账号；勾选保持登录后，<b>学校密码会加密保存在当前浏览器</b>，验证码不会保存。
       </el-alert>
 
       <el-form
@@ -29,15 +29,16 @@
         :rules="rules"
         size="large"
         class="form"
-        @keyup.enter="onSubmit"
+        autocomplete="on"
+        @submit.prevent="onSubmit"
       >
         <el-form-item prop="username">
-          <el-input v-model="form.username" placeholder="学号 / 工号" :disabled="auth.ssoLoading || captchaRefreshing">
+          <el-input v-model="form.username" name="username" autocomplete="username" placeholder="学号 / 工号" :disabled="auth.ssoLoading || captchaRefreshing">
             <template #prefix><el-icon><User /></el-icon></template>
           </el-input>
         </el-form-item>
         <el-form-item prop="password">
-          <el-input v-model="form.password" type="password" show-password placeholder="密码" :disabled="auth.ssoLoading || captchaRefreshing">
+          <el-input v-model="form.password" name="password" type="password" show-password autocomplete="current-password" placeholder="密码" :disabled="auth.ssoLoading || captchaRefreshing">
             <template #prefix><el-icon><Lock /></el-icon></template>
           </el-input>
         </el-form-item>
@@ -62,10 +63,10 @@
           <el-alert :title="auth.ssoError" type="error" :closable="false" show-icon />
         </el-form-item>
         <el-form-item>
-          <el-checkbox v-model="remember">保持登录状态（不会保存学校密码）</el-checkbox>
+          <el-checkbox v-model="remember">保持登录状态并保存到本浏览器</el-checkbox>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" class="btn-submit" :loading="auth.ssoLoading" :disabled="captchaRefreshing" @click="onSubmit">
+          <el-button type="primary" native-type="submit" class="btn-submit" :loading="auth.ssoLoading" :disabled="captchaRefreshing">
             登 录
           </el-button>
         </el-form-item>
@@ -79,10 +80,10 @@
         <div class="dev-tip">
           适用于暂时无法使用统一认证的账号，例如新生、毕业生或站务账号。
         </div>
-        <el-form size="default" class="dev-form" @keyup.enter="onDevSubmit">
-          <el-input v-model="dev.username" placeholder="用户名" :disabled="dev.loading" />
-          <el-input v-model="dev.password" type="password" show-password placeholder="密码" :disabled="dev.loading" />
-          <el-button :loading="dev.loading" :disabled="dev.loading" @click="onDevSubmit">登录</el-button>
+        <el-form size="default" class="dev-form" autocomplete="on" @submit.prevent="onDevSubmit">
+          <el-input v-model="dev.username" name="username" autocomplete="username" placeholder="用户名" :disabled="dev.loading" />
+          <el-input v-model="dev.password" name="password" type="password" show-password autocomplete="current-password" placeholder="密码" :disabled="dev.loading" />
+          <el-button native-type="submit" :loading="dev.loading" :disabled="dev.loading">登录</el-button>
         </el-form>
         <div v-if="isDev" class="dev-accounts">
           <button type="button" @click="fillDev('alice', '123456')">alice / 123456</button>
@@ -156,7 +157,6 @@ onMounted(async () => {
     justLoggedOut = sessionStorage.getItem("cpu-just-logged-out") === "1";
     if (justLoggedOut) sessionStorage.removeItem("cpu-just-logged-out");
   } catch { /* ignore */ }
-  // 仅保留旧版流程兼容；当前版本不会在浏览器保存学校密码，hasCreds() 始终为 false。
   if (!justLoggedOut && hasCreds() && !auth.ssoError) {
     const creds = await loadCreds().catch(() => null);
     if (creds && !auth.ssoNeedCaptcha) {
@@ -199,7 +199,6 @@ async function onSubmit() {
     return;
   }
   const ok = await auth.ssoLogin(form.username, form.password, form.captcha || undefined, remember.value);
-  form.password = ""; // 凭据送出后立刻清空
   if (ok) {
     ElMessage.success(`欢迎，${auth.user?.nickname || form.username}`);
     router.replace(redirectTarget());
