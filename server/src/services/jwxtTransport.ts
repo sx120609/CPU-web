@@ -1,43 +1,44 @@
 import { config } from "../config";
 import * as local from "./jwxtFacade";
 import * as remote from "./jwxtRemote";
+import * as agentRemote from "./jwxtAgentRemote";
 import * as loginPool from "./ssoLoginPool";
 
-export const isRemoteMode = !!config.jwxtProxyUrl;
+type Transport = typeof local;
 
-const impl = isRemoteMode ? remote : local;
-
-if (isRemoteMode) {
-  console.log(`[jwxt] 使用远端代理: ${config.jwxtProxyUrl}`);
+function queryImpl(): Transport {
+  if (agentRemote.isJwxtAgentQueryMode()) return agentRemote as unknown as Transport;
+  if (config.jwxtProxyUrl) return remote as unknown as Transport;
+  return local;
 }
 
-/**
- * 登录池只接管 CAS begin/submit；课表、成绩、状态与注销仍由下方的
- * legacy impl（JWXT_PROXY_URL 或本机）执行。
- *
- * 对没有池前缀的 pendingId 继续走 legacy impl，以便滚动发布期间已经
- * 打开的旧登录页仍能完成提交。
- */
-export const beginLogin = loginPool.isDedicatedSsoLoginPool
-  ? loginPool.beginLogin
-  : impl.beginLogin;
+export function isRemoteMode() {
+  return agentRemote.isJwxtAgentQueryMode() || Boolean(config.jwxtProxyUrl);
+}
+
+export function beginLogin(): ReturnType<typeof local.beginLogin> {
+  return loginPool.isDedicatedSsoLoginPool()
+    ? loginPool.beginLogin()
+    : queryImpl().beginLogin();
+}
 
 export function submitLogin(args: Parameters<typeof local.submitLogin>[0]) {
-  if (!loginPool.isDedicatedSsoLoginPool || !loginPool.isPooledPendingId(args.pendingId)) {
-    return impl.submitLogin(args);
-  }
-  return loginPool.submitLogin(args);
+  if (loginPool.isPooledPendingId(args.pendingId)) return loginPool.submitLogin(args);
+  return queryImpl().submitLogin(args);
 }
-export const logout = impl.logout;
-export const getStatus = impl.getStatus;
-export const sessionStats = impl.sessionStats;
-export const getSchedule = impl.getSchedule;
-export const getGrades = impl.getGrades;
-export const getMidtermGrades = impl.getMidtermGrades;
-export const getExams = impl.getExams;
-export const getCalendar = impl.getCalendar;
-export const getProgress = impl.getProgress;
-export const getPyfa = impl.getPyfa;
-export const getIApps = impl.getIApps;
-export const getGraduateSchedule = impl.getGraduateSchedule;
-export const debugSnapshot = impl.debugSnapshot;
+
+export function logout(token: string) { return queryImpl().logout(token); }
+export function getStatus(token: string | undefined | null) { return queryImpl().getStatus(token); }
+export function sessionStats() { return queryImpl().sessionStats(); }
+export function getSchedule(token: string, args?: Parameters<typeof local.getSchedule>[1]) { return queryImpl().getSchedule(token, args); }
+export function getGrades(token: string, args?: Parameters<typeof local.getGrades>[1]) { return queryImpl().getGrades(token, args); }
+export function getMidtermGrades(token: string, args?: Parameters<typeof local.getMidtermGrades>[1]) { return queryImpl().getMidtermGrades(token, args); }
+export function getExams(token: string, args?: Parameters<typeof local.getExams>[1]) { return queryImpl().getExams(token, args); }
+export function getCalendar(token: string) { return queryImpl().getCalendar(token); }
+export function getProgress(token: string) { return queryImpl().getProgress(token); }
+export function getPyfa(token: string) { return queryImpl().getPyfa(token); }
+export function getIApps(token: string) { return queryImpl().getIApps(token); }
+export function getGraduateSchedule(token: string, args?: Parameters<typeof local.getGraduateSchedule>[1]) {
+  return queryImpl().getGraduateSchedule(token, args);
+}
+export function debugSnapshot(token: string) { return queryImpl().debugSnapshot(token); }

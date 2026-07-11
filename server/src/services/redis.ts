@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import IORedis from "ioredis";
 import { config } from "../config";
 
-type RedisBroadcastType = "site-settings-reload" | "storage-config-reload";
+type RedisBroadcastType = "site-settings-reload" | "storage-config-reload" | "jwxt-agent-config-reload";
 
 export type RedisBroadcastMessage = {
   type: RedisBroadcastType;

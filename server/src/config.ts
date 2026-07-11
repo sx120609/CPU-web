@@ -48,12 +48,25 @@ export type SsoLoginNodeConfig = {
   weight: number;
 };
 
+export type JwxtAgentConfig = {
+  id: string;
+  name: string;
+  token: string;
+  enabled: boolean;
+  /** 登录、教务会话建立和后续查询是同一项不可拆分的能力。 */
+  jwxtEnabled: boolean;
+  crawlEnabled: boolean;
+  weight: number;
+  maxConcurrent: number;
+};
+
 export type SsoLoginPoolConfig = {
   /** false means the existing JWXT_PROXY_URL/local transport selection remains authoritative. */
   dedicated: boolean;
   localEnabled: boolean;
   localWeight: number;
   nodes: SsoLoginNodeConfig[];
+  agents: JwxtAgentConfig[];
   timeoutMs: number;
   failureCooldownMs: number;
 };
@@ -126,18 +139,102 @@ function parseSsoLoginNodes(value: string | undefined): SsoLoginNodeConfig[] {
   });
 }
 
+function parseJwxtAgents(value: string | undefined): JwxtAgentConfig[] {
+  const raw = String(value ?? "").trim();
+  if (!raw) return [];
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`JWXT_AGENTS must be a valid JSON array: ${reason}`);
+  }
+  if (!Array.isArray(parsed)) throw new Error("JWXT_AGENTS must be a JSON array");
+
+  const ids = new Set<string>();
+  const tokens = new Set<string>();
+  return parsed.map((entry, index) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error(`JWXT_AGENTS[${index}] must be an object`);
+    }
+    const agent = entry as Record<string, unknown>;
+    const id = typeof agent.id === "string" ? agent.id.trim() : "";
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(id)) {
+      throw new Error(`JWXT_AGENTS[${index}].id must contain only letters, numbers, dot, underscore, or dash`);
+    }
+    if (ids.has(id)) throw new Error(`JWXT_AGENTS contains duplicate id: ${id}`);
+    ids.add(id);
+
+    const token = typeof agent.token === "string" ? agent.token.trim() : "";
+    if (token.length < 32 || token.length > 512) {
+      throw new Error(`JWXT_AGENTS[${index}].token must contain between 32 and 512 characters`);
+    }
+    if (tokens.has(token)) throw new Error("JWXT_AGENTS tokens must be unique per agent");
+    tokens.add(token);
+
+    const readBoolean = (field: "enabled" | "loginEnabled" | "queryEnabled" | "jwxtEnabled" | "crawlEnabled", fallback: boolean) => {
+      const value = agent[field];
+      if (value === undefined) return fallback;
+      if (typeof value !== "boolean") throw new Error(`JWXT_AGENTS[${index}].${field} must be a boolean`);
+      return value;
+    };
+    const readInteger = (field: "weight" | "maxConcurrent", fallback: number, min: number, max: number) => {
+      const value = agent[field];
+      if (value === undefined) return fallback;
+      const parsedValue = Number(value);
+      if (!Number.isInteger(parsedValue) || parsedValue < min || parsedValue > max) {
+        throw new Error(`JWXT_AGENTS[${index}].${field} must be an integer between ${min} and ${max}`);
+      }
+      return parsedValue;
+    };
+    if (agent.name !== undefined && typeof agent.name !== "string") {
+      throw new Error(`JWXT_AGENTS[${index}].name must be a string`);
+    }
+
+    const legacyLoginEnabled = readBoolean("loginEnabled", true);
+    const legacyQueryEnabled = readBoolean("queryEnabled", true);
+    const jwxtEnabled = agent.jwxtEnabled === undefined
+      ? legacyLoginEnabled || legacyQueryEnabled
+      : readBoolean("jwxtEnabled", true);
+
+    return {
+      id,
+      name: typeof agent.name === "string" && agent.name.trim() ? agent.name.trim().slice(0, 80) : id,
+      token,
+      enabled: readBoolean("enabled", true),
+      jwxtEnabled,
+      crawlEnabled: readBoolean("crawlEnabled", false),
+      weight: readInteger("weight", 1, 1, 100),
+      maxConcurrent: readInteger("maxConcurrent", 4, 1, 100),
+    };
+  });
+}
+
+function parseAgentPath(value: string | undefined) {
+  const raw = String(value ?? "/api/internal/jwxt-agent/connect").trim();
+  if (!/^\/[A-Za-z0-9/_-]{1,200}$/.test(raw) || raw.includes("//")) {
+    throw new Error("JWXT_AGENT_PATH must be a plain absolute path without query or hash");
+  }
+  return raw.replace(/\/+$/, "") || "/api/internal/jwxt-agent/connect";
+}
+
 const proxyTimeoutMs = parseIntegerEnv("JWXT_PROXY_TIMEOUT_MS", process.env.JWXT_PROXY_TIMEOUT_MS, 15000, 1);
 const ssoLoginNodes = parseSsoLoginNodes(process.env.SSO_LOGIN_NODES);
+const jwxtAgents = parseJwxtAgents(process.env.JWXT_AGENTS);
 const ssoLoginLocalEnabled = parseStrictBooleanEnv(
   "SSO_LOGIN_LOCAL_ENABLED",
   process.env.SSO_LOGIN_LOCAL_ENABLED,
   false,
 );
 const ssoLoginPool: SsoLoginPoolConfig = {
-  dedicated: ssoLoginLocalEnabled || ssoLoginNodes.length > 0,
+  dedicated: ssoLoginLocalEnabled
+    || ssoLoginNodes.length > 0
+    || jwxtAgents.some((agent) => agent.enabled && agent.jwxtEnabled),
   localEnabled: ssoLoginLocalEnabled,
   localWeight: parseIntegerEnv("SSO_LOGIN_LOCAL_WEIGHT", process.env.SSO_LOGIN_LOCAL_WEIGHT, 1, 1, 100),
   nodes: ssoLoginNodes,
+  agents: jwxtAgents,
   timeoutMs: parseIntegerEnv(
     "SSO_LOGIN_TIMEOUT_MS",
     process.env.SSO_LOGIN_TIMEOUT_MS,
@@ -154,6 +251,33 @@ const ssoLoginPool: SsoLoginPoolConfig = {
   ),
 };
 
+const legacyJwxtProxyAgentId = String(process.env.JWXT_PROXY_AGENT_ID ?? "").trim();
+const jwxtProxyAgentIds = Array.from(new Set(parseCsvEnv(
+  process.env.JWXT_PROXY_AGENT_IDS,
+  legacyJwxtProxyAgentId ? [legacyJwxtProxyAgentId] : [],
+)));
+for (const agentId of jwxtProxyAgentIds) {
+  const agent = jwxtAgents.find((item) => item.id === agentId);
+  if (!agent) throw new Error(`JWXT_PROXY_AGENT_IDS contains an unknown JWXT_AGENTS id: ${agentId}`);
+  if (!agent.enabled || !agent.jwxtEnabled) {
+    throw new Error(`JWXT_PROXY_AGENT_IDS must reference enabled query agents: ${agentId}`);
+  }
+}
+const jwxtAgentHeartbeatMs = parseIntegerEnv(
+  "JWXT_AGENT_HEARTBEAT_MS",
+  process.env.JWXT_AGENT_HEARTBEAT_MS,
+  10_000,
+  2_000,
+  60_000,
+);
+const jwxtAgentOfflineMs = parseIntegerEnv(
+  "JWXT_AGENT_OFFLINE_MS",
+  process.env.JWXT_AGENT_OFFLINE_MS,
+  30_000,
+  jwxtAgentHeartbeatMs * 2,
+  300_000,
+);
+
 export const config = {
   port: Number(process.env.PORT ?? 3000),
   jwtSecret: process.env.JWT_SECRET ?? "cpu-web-dev-secret",
@@ -161,9 +285,24 @@ export const config = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   jwxtProxyUrl: process.env.JWXT_PROXY_URL ?? "",
   jwxtProxyAuth: process.env.JWXT_PROXY_AUTH ?? "",
+  jwxtProxyAgentId: jwxtProxyAgentIds[0] ?? "",
+  jwxtProxyAgentIds,
   proxyAuth: process.env.PROXY_AUTH ?? "",
   proxyTimeoutMs,
   ssoLoginPool,
+  jwxtAgentPath: parseAgentPath(process.env.JWXT_AGENT_PATH),
+  jwxtAgentHeartbeatMs,
+  jwxtAgentOfflineMs,
+  loginAgentServer: String(process.env.LOGIN_AGENT_SERVER ?? "").trim(),
+  loginAgentId: String(process.env.LOGIN_AGENT_ID ?? "").trim(),
+  loginAgentToken: String(process.env.LOGIN_AGENT_TOKEN ?? "").trim(),
+  loginAgentReconnectMs: parseIntegerEnv(
+    "LOGIN_AGENT_RECONNECT_MS",
+    process.env.LOGIN_AGENT_RECONNECT_MS,
+    3_000,
+    500,
+    60_000,
+  ),
   filestoreEnabled: process.env.FILESTORE_ENABLED !== "false",
   filestorePort: Number(process.env.FILESTORE_PORT ?? 8974),
   filestorePython: process.env.FILESTORE_PYTHON ?? "",

@@ -503,9 +503,74 @@ export type QqBotGroup = {
   updatedAt: string;
 };
 
+export type JwxtAgentConnection = {
+  configured: boolean;
+  online: boolean;
+  ready: boolean;
+  inFlight: number;
+  maxConcurrent: number;
+  connectedAt: number | null;
+  lastPongAt: number | null;
+  jwxtEnabled: boolean;
+  crawlEnabled: boolean;
+};
+
+export type JwxtAgentAdminItem = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  jwxtEnabled: boolean;
+  crawlEnabled: boolean;
+  weight: number;
+  maxConcurrent: number;
+  tokenConfigured: boolean;
+  connection: JwxtAgentConnection;
+  pool: null | {
+    id: string;
+    name: string;
+    kind: "local" | "agent";
+    weight: number;
+    inFlight: number;
+    cooldownRemainingMs: number;
+    consecutiveFailures: number;
+  };
+};
+
+export type JwxtAgentsAdminConfig = {
+  source: "environment" | "database";
+  agentPath: string;
+  localJwxtEnabled: boolean;
+  localJwxtWeight: number;
+  crawlAgentId: string;
+  local: unknown | null;
+  agents: JwxtAgentAdminItem[];
+};
+
+export type JwxtAgentsAdminPatch = {
+  localJwxtEnabled: boolean;
+  localJwxtWeight: number;
+  crawlAgentId: string;
+  agents: Array<{
+    id: string;
+    name: string;
+    token?: string;
+    enabled: boolean;
+    jwxtEnabled: boolean;
+    crawlEnabled: boolean;
+    weight: number;
+    maxConcurrent: number;
+  }>;
+};
+
 export const adminApi = {
   // 概览
   overview: (options?: RequestOptions) => request.get<AdminOverview>("/admin/overview", undefined, options),
+  jwxtAgents: (options?: RequestOptions) =>
+    request.get<JwxtAgentsAdminConfig>("/admin/jwxt-agents", undefined, options),
+  updateJwxtAgents: (payload: JwxtAgentsAdminPatch) =>
+    request.patch<JwxtAgentsAdminConfig>("/admin/jwxt-agents", payload),
+  generateJwxtAgentToken: () =>
+    request.post<{ token: string }>("/admin/jwxt-agents/generate-token", {}),
   // 数据库备份
   databaseStatus: (options?: RequestOptions) => request.get<DatabaseBackupStatus>("/admin/database/status", undefined, options),
   downloadDatabaseBackup: () =>

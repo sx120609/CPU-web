@@ -1030,7 +1030,7 @@ jwxtRouter.post("/debug/snapshot", async (req, res, next) => {
 jwxtRouter.get("/probe", async (req, res, next) => {
   try {
     if (process.env.NODE_ENV === "production") throw Errors.forbidden();
-    if (isRemoteMode) throw Errors.badRequest("远端模式不支持 probe");
+    if (isRemoteMode()) throw Errors.badRequest("远端模式不支持 probe");
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const p = String(req.query.path ?? "");

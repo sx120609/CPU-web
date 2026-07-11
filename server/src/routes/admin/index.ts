@@ -93,6 +93,15 @@ import {
   updateWeiwallSyncConfig,
 } from "../../services/weiwallSync";
 import { backfillAdminDailyLoginsFromLastLogin, getChinaDayRange, listAdminDailyLoginSeries } from "../../services/adminStats";
+import { config } from "../../config";
+import {
+  generateJwxtAgentToken,
+  getJwxtAgentConfigSource,
+  getJwxtAgentRuntimeConfig,
+  updateJwxtAgentRuntimeConfig,
+} from "../../services/jwxtAgentConfig";
+import { getJwxtAgentState } from "../../services/jwxtAgentGateway";
+import { getQueryAgentPoolSnapshot } from "../../services/jwxtAgentRemote";
 
 export const adminRouter = Router();
 const DATABASE_RESTORE_UPLOAD_DIR = path.join(tmpdir(), "cpu-web-db-restore-upload");
@@ -116,6 +125,58 @@ function requestOrigin(req: any) {
 }
 
 adminRouter.use("/qqbot", adminOnly, qqBotAdminRouter);
+
+const jwxtAgentConfigSchema = z.object({
+  localJwxtEnabled: z.boolean(),
+  localJwxtWeight: z.number().int().min(1).max(100),
+  crawlAgentId: z.string().trim().max(64),
+  agents: z.array(z.object({
+    id: z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/),
+    name: z.string().trim().min(1).max(80),
+    token: z.string().trim().min(32).max(512).optional(),
+    enabled: z.boolean(),
+    jwxtEnabled: z.boolean(),
+    crawlEnabled: z.boolean(),
+    weight: z.number().int().min(1).max(100),
+    maxConcurrent: z.number().int().min(1).max(100),
+  }).strict()).max(100),
+}).strict();
+
+function jwxtAgentAdminSnapshot() {
+  const runtime = getJwxtAgentRuntimeConfig();
+  const queryPoolById = new Map(getQueryAgentPoolSnapshot().map((item) => [item.id, item]));
+  return {
+    source: getJwxtAgentConfigSource(),
+    agentPath: config.jwxtAgentPath,
+    localJwxtEnabled: runtime.localJwxtEnabled,
+    localJwxtWeight: runtime.localJwxtWeight,
+    crawlAgentId: runtime.crawlAgentId,
+    local: queryPoolById.get("local") ?? null,
+    agents: runtime.agents.map(({ token: _token, ...agent }) => ({
+      ...agent,
+      tokenConfigured: true,
+      connection: getJwxtAgentState(agent.id),
+      pool: queryPoolById.get(agent.id) ?? null,
+    })),
+  };
+}
+
+adminRouter.get("/jwxt-agents", adminOnly, (_req, res) => {
+  ok(res, jwxtAgentAdminSnapshot());
+});
+
+adminRouter.patch("/jwxt-agents", adminOnly, validate(jwxtAgentConfigSchema), async (req, res, next) => {
+  try {
+    await updateJwxtAgentRuntimeConfig(req.body);
+    ok(res, jwxtAgentAdminSnapshot());
+  } catch (error) {
+    next(Errors.badRequest(error instanceof Error ? error.message : "教务 Agent 配置无效"));
+  }
+});
+
+adminRouter.post("/jwxt-agents/generate-token", adminOnly, (_req, res) => {
+  ok(res, { token: generateJwxtAgentToken() });
+});
 
 adminRouter.get("/database/status", adminOnly, async (_req, res, next) => {
   try {

@@ -10,6 +10,8 @@
     "start": "node dist/index.js",
     "proxy": "node dist/proxy.js",
     "proxy:dev": "tsx watch src/proxy.ts",
+    "login-agent": "node dist/loginAgent.js",
+    "login-agent:dev": "tsx watch src/loginAgent.ts",
     "weiwall": "tsx scripts/weiwall.ts",
     "forum:recount-stats": "tsx scripts/recount-forum-stats.ts",
     "db:migrate": "prisma db push --skip-generate",
@@ -17,7 +19,7 @@
     "db:reset": "prisma db push --force-reset --skip-generate && npm run db:seed",
     "db:studio": "prisma studio",
     "prisma:generate": "prisma generate",
-    "test:login-pool": "node --import tsx --test tests/ssoLoginPool.integration.test.ts"
+    "test:login-pool": "node --import tsx --test tests/ssoLoginPool.integration.test.ts tests/jwxtAgent.integration.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

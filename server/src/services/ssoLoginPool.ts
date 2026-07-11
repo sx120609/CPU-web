@@ -1,9 +1,12 @@
 import crypto from "node:crypto";
-import { config, type SsoLoginNodeConfig } from "../config";
+import { config, type JwxtAgentConfig, type SsoLoginNodeConfig } from "../config";
 import { Errors, HttpError } from "../utils/response";
 import * as local from "./jwxtFacade";
 import * as queryRemote from "./jwxtRemote";
+import * as queryAgentRemote from "./jwxtAgentRemote";
 import type { LoginAttempt, LoginSessionHandoff } from "./jwxtClient";
+import { getJwxtAgentState, isJwxtAgentAvailable, requestJwxtAgent } from "./jwxtAgentGateway";
+import { getJwxtAgentRuntimeConfig } from "./jwxtAgentConfig";
 
 type BeginResult = Awaited<ReturnType<typeof local.beginLogin>>;
 
@@ -36,7 +39,17 @@ type RemoteNode = {
   config: SsoLoginNodeConfig;
 };
 
-type LoginNode = LocalNode | RemoteNode;
+type AgentNode = {
+  kind: "agent";
+  key: string;
+  id: string;
+  name: string;
+  enabled: boolean;
+  weight: number;
+  config: JwxtAgentConfig;
+};
+
+type LoginNode = LocalNode | RemoteNode | AgentNode;
 
 type NodeRuntime = {
   node: LoginNode;
@@ -78,7 +91,7 @@ const remoteNodes: RemoteNode[] = config.ssoLoginPool.nodes.map((node) => ({
   config: node,
 }));
 
-const runtimes = [localNode, ...remoteNodes].map<NodeRuntime>((node) => ({
+const baseRuntimes = [localNode, ...remoteNodes].map<NodeRuntime>((node) => ({
   node,
   currentWeight: 0,
   inFlight: 0,
@@ -86,14 +99,14 @@ const runtimes = [localNode, ...remoteNodes].map<NodeRuntime>((node) => ({
   cooldownUntil: 0,
   lastError: "",
 }));
+const agentRuntimeById = new Map<string, NodeRuntime>();
+const runtimeByKey = new Map(baseRuntimes.map((runtime) => [runtime.node.key, runtime]));
 
-const runtimeByKey = new Map(runtimes.map((runtime) => [runtime.node.key, runtime]));
-
-export const isDedicatedSsoLoginPool = config.ssoLoginPool.dedicated;
-
-if (isDedicatedSsoLoginPool) {
-  const enabled = runtimes.filter((runtime) => runtime.node.enabled).map((runtime) => runtime.node.name);
-  console.log(`[sso-login] 独立登录池已启用: ${enabled.length ? enabled.join(", ") : "无可用节点"}`);
+export function isDedicatedSsoLoginPool() {
+  const managed = getJwxtAgentRuntimeConfig();
+  return managed.localJwxtEnabled
+    || remoteNodes.some((node) => node.enabled)
+    || managed.agents.some((agent) => agent.enabled && agent.jwxtEnabled);
 }
 
 export function isPooledPendingId(pendingId: string) {
@@ -133,6 +146,7 @@ export async function beginLogin(): Promise<BeginResult> {
 
 export async function submitLogin(args: Parameters<typeof local.submitLogin>[0]): Promise<LoginAttempt> {
   const route = decodePendingRoute(args.pendingId);
+  syncRuntimes();
   const runtime = runtimeByKey.get(route.nodeKey);
   if (!runtime) {
     throw Errors.badRequest("该登录节点已被移除，请刷新页面重新登录");
@@ -172,7 +186,7 @@ export async function submitLogin(args: Parameters<typeof local.submitLogin>[0])
       throw Errors.server("登录节点未返回可移交的教务会话");
     }
 
-    const token = await consumeAtQueryTransport(result.handoff);
+    const token = await consumeAtQueryTransport(result.handoff, runtime.node);
     return { ok: true, token };
   } finally {
     runtime.inFlight = Math.max(0, runtime.inFlight - 1);
@@ -183,9 +197,13 @@ export async function submitLogin(args: Parameters<typeof local.submitLogin>[0])
 export function getSsoLoginPoolSnapshot() {
   const now = Date.now();
   return {
-    dedicated: isDedicatedSsoLoginPool,
-    queryTransport: config.jwxtProxyUrl ? "remote" as const : "local" as const,
-    nodes: runtimes.map((runtime) => ({
+    dedicated: isDedicatedSsoLoginPool(),
+    queryTransport: queryAgentRemote.isJwxtAgentQueryMode()
+      ? "agent" as const
+      : config.jwxtProxyUrl
+        ? "remote" as const
+        : "local" as const,
+    nodes: syncRuntimes().map((runtime) => ({
       id: runtime.node.id,
       name: runtime.node.name,
       kind: runtime.node.kind,
@@ -196,16 +214,18 @@ export function getSsoLoginPoolSnapshot() {
       cooldownRemainingMs: Math.max(0, runtime.cooldownUntil - now),
       consecutiveFailures: runtime.consecutiveFailures,
       lastError: runtime.lastError,
+      ...(runtime.node.kind === "agent" ? { agent: getJwxtAgentState(runtime.node.id) } : {}),
     })),
   };
 }
 
 function selectNode(excluded: Set<string>) {
   const now = Date.now();
-  const candidates = runtimes.filter((runtime) => (
+  const candidates = syncRuntimes().filter((runtime) => (
     runtime.node.enabled
     && runtime.cooldownUntil <= now
     && !(runtime.consecutiveFailures > 0 && runtime.inFlight > 0)
+    && (runtime.node.kind !== "agent" || isJwxtAgentAvailable(runtime.node.id, "jwxt"))
     && !excluded.has(runtime.node.key)
   ));
   if (!candidates.length) return null;
@@ -230,6 +250,14 @@ async function runNodeBegin(runtime: NodeRuntime): Promise<BeginResult> {
     if (runtime.node.kind === "local") {
       return await withLocalNodeTimeout(local.beginLogin());
     }
+    if (runtime.node.kind === "agent") {
+      return await requestJwxtAgent(
+        runtime.node.id,
+        "login.begin",
+        {},
+        config.ssoLoginPool.timeoutMs,
+      );
+    }
     return await callRemoteNode<BeginResult>(runtime.node, "/v1/login-pool/begin", {});
   } finally {
     runtime.inFlight = Math.max(0, runtime.inFlight - 1);
@@ -241,6 +269,14 @@ async function submitOnNode(
   args: Parameters<typeof local.submitLogin>[0],
 ): Promise<LoginNodeAttempt> {
   if (node.kind === "local") return withLocalNodeTimeout(local.submitLoginForHandoff(args));
+  if (node.kind === "agent") {
+    return requestJwxtAgent(
+      node.id,
+      "login.submit-handoff",
+      args,
+      config.ssoLoginPool.timeoutMs,
+    );
+  }
   return callRemoteNode<LoginNodeAttempt>(node, "/v1/login-pool/submit", args);
 }
 
@@ -256,7 +292,19 @@ async function withLocalNodeTimeout<T>(request: Promise<T>): Promise<T> {
   }
 }
 
-async function consumeAtQueryTransport(handoff: LoginSessionHandoff) {
+async function consumeAtQueryTransport(handoff: LoginSessionHandoff, loginNode: LoginNode) {
+  // 登录、教务会话建立和后续查询必须固定在同一完整教务服务节点。
+  if (loginNode.kind === "local" || loginNode.kind === "agent") {
+    return queryAgentRemote.consumeLoginHandoffAt(loginNode.id, handoff);
+  }
+  if (queryAgentRemote.isJwxtAgentQueryMode()) {
+    try {
+      return await queryAgentRemote.consumeLoginHandoff(handoff);
+    } catch (error) {
+      if (!(error instanceof HttpError) || (error.status < 500 && error.status !== 409)) throw error;
+      return queryAgentRemote.consumeLoginHandoff(handoff);
+    }
+  }
   if (!config.jwxtProxyUrl) return local.consumeLoginHandoff(handoff);
   try {
     return await queryRemote.consumeLoginHandoff(handoff);
@@ -412,10 +460,58 @@ function markFailure(runtime: NodeRuntime, error: unknown) {
 
 function nextCooldownDelay() {
   const now = Date.now();
-  const remaining = runtimes
+  const remaining = syncRuntimes()
     .filter((runtime) => runtime.node.enabled && runtime.cooldownUntil > now)
     .map((runtime) => runtime.cooldownUntil - now);
   return remaining.length ? Math.min(...remaining) : 0;
+}
+
+function syncRuntimes() {
+  const managed = getJwxtAgentRuntimeConfig();
+  localNode.enabled = managed.localJwxtEnabled;
+  localNode.weight = managed.localJwxtWeight;
+
+  const configuredIds = new Set<string>();
+  for (const agent of managed.agents) {
+    configuredIds.add(agent.id);
+    const node: AgentNode = {
+      kind: "agent",
+      key: `agent:${agent.id}`,
+      id: agent.id,
+      name: agent.name,
+      enabled: agent.enabled && agent.jwxtEnabled,
+      weight: agent.weight,
+      config: agent,
+    };
+    const existing = agentRuntimeById.get(agent.id);
+    if (existing) {
+      existing.node = node;
+      runtimeByKey.set(node.key, existing);
+    } else {
+      const runtime: NodeRuntime = {
+        node,
+        currentWeight: 0,
+        inFlight: 0,
+        consecutiveFailures: 0,
+        cooldownUntil: 0,
+        lastError: "",
+      };
+      agentRuntimeById.set(agent.id, runtime);
+      runtimeByKey.set(node.key, runtime);
+    }
+  }
+  for (const [agentId, runtime] of agentRuntimeById.entries()) {
+    if (configuredIds.has(agentId)) continue;
+    agentRuntimeById.delete(agentId);
+    runtimeByKey.delete(runtime.node.key);
+  }
+  const managedServiceEnabled = managed.localJwxtEnabled
+    || managed.agents.some((agent) => agent.enabled && agent.jwxtEnabled);
+  // 一旦启用完整教务服务节点，就不再把旧 HTTP “仅登录节点”混入新池；
+  // 旧 pending 仍保留在 runtimeByKey 中，可在迁移窗口内正常提交。
+  return managedServiceEnabled
+    ? [baseRuntimes[0], ...agentRuntimeById.values()]
+    : [...baseRuntimes, ...agentRuntimeById.values()];
 }
 
 function encodePendingRoute(nodeKey: string, pendingId: string) {

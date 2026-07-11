@@ -131,8 +131,7 @@ JWT_EXPIRES_IN="7d"
 
 JWXT_PROXY_URL=""
 JWXT_PROXY_AUTH=""
-SSO_LOGIN_NODES=""
-# 设为 true 时让本机加入登录池；配置非空远端节点列表也会启用独立登录池
+# 首次保存“管理后台 -> 教务节点”后，节点配置改由数据库接管
 # SSO_LOGIN_LOCAL_ENABLED=false
 SSO_LOGIN_LOCAL_WEIGHT=1
 SSO_LOGIN_TIMEOUT_MS=15000
@@ -260,9 +259,15 @@ Vite 已代理以下路径到后端：
 | `JWXT_PROXY_URL` | 空 | 配置后主服务通过教务代理访问教务/CMS |
 | `JWXT_PROXY_AUTH` | 空 | 主服务访问代理时使用的共享密钥 |
 | `JWXT_PROXY_TIMEOUT_MS` | `15000` | 主服务调用代理的超时（毫秒） |
+| `JWXT_AGENTS` | 空 | 首次启动用的 Agent JSON 配置；后台保存后由数据库配置接管 |
+| `JWXT_CRAWL_AGENT_ID` | 空 | 初始公告抓取 Agent；公告抓取不参与负载均衡 |
+| `JWXT_AGENT_PATH` | `/api/internal/jwxt-agent/connect` | Agent 主动连接主服务的 WebSocket 路由 |
+| `LOGIN_AGENT_SERVER` | 空 | Agent 节点连接的主服务 `ws(s)` 地址 |
+| `LOGIN_AGENT_ID` | 空 | Agent ID，必须与后台一致 |
+| `LOGIN_AGENT_TOKEN` | 空 | Agent 密钥，必须与后台生成值一致 |
 | `SSO_LOGIN_NODES` | 空 | 统一认证登录远端节点 JSON 数组；节点字段为 `id`、可选 `name`、`url`、可选 `auth`、`enabled`、`weight` |
-| `SSO_LOGIN_LOCAL_ENABLED` | `false` | 本机是否参与统一认证登录池；设为 `true` 可单独启用本机登录池 |
-| `SSO_LOGIN_LOCAL_WEIGHT` | `1` | 本机登录节点权重，范围 `1..100` |
+| `SSO_LOGIN_LOCAL_ENABLED` | `false` | 兼容环境变量：本机是否参与完整教务服务池（登录与查询绑定） |
+| `SSO_LOGIN_LOCAL_WEIGHT` | `1` | 本机教务服务节点权重，范围 `1..100` |
 | `SSO_LOGIN_TIMEOUT_MS` | `JWXT_PROXY_TIMEOUT_MS` | 登录池单节点请求超时（毫秒） |
 | `SSO_LOGIN_FAILURE_COOLDOWN_MS` | `30000` | 登录节点失败后的临时冷却时间（毫秒） |
 | `PROXY_AUTH` | 空 | 教务代理端校验密钥 |
@@ -291,52 +296,65 @@ Vite 已代理以下路径到后端：
 - 推荐在世纪互联环境给该应用授予 Microsoft Graph 委托权限 `offline_access`、`User.Read`、`Files.ReadWrite.All`、`Sites.ReadWrite.All`，并完成管理员同意。
 - `MEDIA_STORAGE_PROVIDER`、`MEDIA_STORAGE_IMAGE_PROVIDER`、`MEDIA_STORAGE_VIDEO_PROVIDER` 与 `ONEDRIVE_CN_*` 这些环境变量仍可作为后备方式使用，但新的后台授权流程优先面向管理后台配置。
 
-## 教务代理模式
+## 出站教务 Agent 与负载均衡
 
-当主服务不在校内网络时，可以使用“主服务 + 教务代理”双节点模式：
+推荐使用出站 Agent 替代 FRP。主服务只暴露一个 WebSocket 路由，校内机器主动连接主服务，因此 Agent 机器不需要公网 IP 或入站端口。
 
 ```text
-浏览器
-  │
-  ├── HTTPS ──► 主服务 server/src/index.ts
-  │              │
-  │              └── JWXT_PROXY_URL + JWXT_PROXY_AUTH
-  │
-  └────────────► 校内代理 server/src/proxy.ts
-                   │
-                   └── 教务系统 / 学校 CMS
+浏览器 ──HTTPS──► 主服务
+                   ▲
+                   │ WSS（Agent 主动发起）
+          ┌────────┼────────┐
+       校内 Agent A     校内 Agent B     其它 Agent
+          │                │
+          └──────► 统一认证 / 教务系统
 ```
 
-特点：
+在“管理后台 → 教务节点”中完成配置：
 
-- 不配置 `JWXT_PROXY_URL` 时，主服务会直接访问教务和公告源。
-- 配置后，教务抓取与公告网页抓取都可以走远端代理。
-- 主服务与代理通过 `JWXT_PROXY_AUTH` / `PROXY_AUTH` 做共享密钥校验。
-- 推荐用 HTTPS、FRP 或其它隧道暴露代理，不建议直接裸露公网 HTTP 端口。
+- “教务服务”是一项完整能力，统一包含统一认证登录、教务登录、会话建立和课表/成绩等后续查询，不能分别开关。
+- 多台启用“教务服务”的 Agent 与可选的本机组成加权负载均衡池；某次登录选中节点后，该教务会话会始终粘在同一节点。
+- “公告抓取”是独立能力。具有该能力的 Agent 可以有多台，但实际抓取只走后台明确指定的一台，不参与负载均衡；不指定时回退到旧 HTTP 代理或本机。
+- 管理接口不会返回已有密钥明文。新增或重置密钥时只显示一次，需立即复制到 Agent 机器。
 
-### 统一认证登录节点池
-
-登录节点池只负责学校统一认证的登录阶段，用来把高峰期登录流量分散到多个出口；它不是普通教务代理的替代品。`JWXT_PROXY_URL` 仍独立决定教务查询、学校 CMS 抓取等常规流量的执行位置。统一认证成功后，登录会话会由服务端内部 handoff 到普通查询执行端，浏览器端接口保持不变。
-
-远端节点使用代理服务受鉴权保护的 `/v1/login-pool/*` 内部接口，每个节点的 `auth` 应与该节点的 `PROXY_AUTH` 一致。所有主服务、登录节点和普通查询节点都应部署同一版本；生产环境请使用 HTTPS 或受保护的隧道。示例：
+Agent 机器使用与主服务相同版本的 `server` 代码，构建后配置：
 
 ```env
-SSO_LOGIN_NODES='[{"id":"campus-a","name":"校内节点 A","url":"https://proxy-a.example.com","auth":"secret-a","enabled":true,"weight":2},{"id":"campus-b","name":"校内节点 B","url":"https://proxy-b.example.com","auth":"secret-b","enabled":true,"weight":1}]'
-SSO_LOGIN_LOCAL_ENABLED=true
-SSO_LOGIN_LOCAL_WEIGHT=1
-SSO_LOGIN_TIMEOUT_MS=15000
-SSO_LOGIN_FAILURE_COOLDOWN_MS=30000
+LOGIN_AGENT_SERVER=wss://your-main-site.example.com/api/internal/jwxt-agent/connect
+LOGIN_AGENT_ID=campus-a
+LOGIN_AGENT_TOKEN=后台生成的密钥
+NODE_ENV=production
+REDIS_ENABLED=false
 ```
 
-配置规则：
+然后运行：
 
-- `id` 必须唯一且只使用字母、数字、点、下划线或短横线；`url` 必须是不含账号、查询串和 hash 的绝对 `http(s)` 地址；`weight` 必须是 `1..100` 的整数。
-- `enabled` 省略时默认为 `true`，`weight` 省略时默认为 `1`，`name` 省略时使用 `id`。
-- `SSO_LOGIN_NODES` 中至少有一个节点，或将 `SSO_LOGIN_LOCAL_ENABLED` 设为 `true` 时，才启用独立登录池模式。
-- 如果既未配置非空 `SSO_LOGIN_NODES`，也未将 `SSO_LOGIN_LOCAL_ENABLED` 设为 `true`，登录逻辑完全保持旧行为：有 `JWXT_PROXY_URL` 就使用该代理，没有则使用本机。
-- 远端节点列表非空且 `SSO_LOGIN_LOCAL_ENABLED=false` 时就是“仅远端登录池”；单独设置 `false` 不会改变旧逻辑。
-- 多个主服务实例必须使用相同的 `JWT_SECRET`，否则一个实例签发的登录 pending 无法由另一个实例校验。
-- 发布时先升级所有登录节点和 `JWXT_PROXY_URL` 指向的普通查询节点，再启用主服务登录池。修改节点 `id`/`url` 或移除节点前，应先停止给它分配新登录并等待旧 pending（最长约 5 分钟）排空。
+```bash
+cd server
+npm run build
+npm run login-agent
+```
+
+如果主服务前面有 Nginx，需要允许 WebSocket Upgrade：
+
+```nginx
+location /api/internal/jwxt-agent/connect {
+    proxy_pass http://127.0.0.1:23333;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_read_timeout 90s;
+}
+```
+
+`JWXT_AGENTS`、`JWXT_CRAWL_AGENT_ID`、`SSO_LOGIN_LOCAL_ENABLED` 和 `SSO_LOGIN_LOCAL_WEIGHT` 仍可用于首次启动。管理后台首次保存后，数据库中的配置成为权威配置。旧 `JWXT_PROXY_URL` 和 `SSO_LOGIN_NODES` 路径保留用于平滑迁移，但新部署无需 FRP，也无需运行旧 `proxy` 服务。
+
+安全与部署注意：
+
+- 每台 Agent 使用不同的至少 32 位密钥，只通过 WSS 传输；主服务不会记录请求载荷中的密码。
+- 移除、停用 Agent 或重置密钥会让该节点的既有教务会话失效，建议先停止分配并等待活跃会话自然退出。
+- 多个主服务实例必须共享 `JWT_SECRET`。目前 Agent WebSocket 会话属于接收连接的主服务实例，网关层需保证相关教务请求到达同一主实例。
 
 ## 部署
 

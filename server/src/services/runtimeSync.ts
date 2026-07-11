@@ -3,6 +3,7 @@ import { loadFeatures } from "./siteSettings";
 import { resetMediaStorageRuntimeCaches } from "./mediaStorage";
 import { resetOneDriveChinaTransientCaches } from "./oneDriveChina";
 import { loadStorageConfig } from "./storageConfig";
+import { loadJwxtAgentRuntimeConfig } from "./jwxtAgentConfig";
 
 let runtimeSyncStarted = false;
 
@@ -14,6 +15,11 @@ export function startRuntimeSync() {
   });
   onRedisBroadcast("storage-config-reload", () => {
     void reloadStorageConfig();
+  });
+  onRedisBroadcast("jwxt-agent-config-reload", () => {
+    void loadJwxtAgentRuntimeConfig().catch((error) => {
+      console.warn("[runtime-sync] reload jwxt agent config failed", error);
+    });
   });
   void startRedisSubscriptions();
 }

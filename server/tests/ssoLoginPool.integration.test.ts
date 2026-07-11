@@ -127,7 +127,9 @@ test("dedicated login pool fails over, cools down, stays sticky, and hands off o
   const envKeys = [
     "JWT_SECRET",
     "JWXT_PROXY_URL",
+    "JWXT_PROXY_AGENT_ID",
     "JWXT_PROXY_AUTH",
+    "JWXT_AGENTS",
     "SSO_LOGIN_NODES",
     "SSO_LOGIN_LOCAL_ENABLED",
     "SSO_LOGIN_TIMEOUT_MS",
@@ -145,7 +147,9 @@ test("dedicated login pool fails over, cools down, stays sticky, and hands off o
 
   process.env.JWT_SECRET = "login-pool-integration-secret";
   process.env.JWXT_PROXY_URL = queryNode.url;
+  process.env.JWXT_PROXY_AGENT_ID = "";
   process.env.JWXT_PROXY_AUTH = "auth-q";
+  process.env.JWXT_AGENTS = "";
   process.env.SSO_LOGIN_LOCAL_ENABLED = "false";
   process.env.SSO_LOGIN_TIMEOUT_MS = "2000";
   process.env.SSO_LOGIN_FAILURE_COOLDOWN_MS = "60000";
@@ -157,7 +161,7 @@ test("dedicated login pool fails over, cools down, stays sticky, and hands off o
   ]);
 
   const pool = await import("../src/services/ssoLoginPool");
-  assert.equal(pool.isDedicatedSsoLoginPool, true);
+  assert.equal(pool.isDedicatedSsoLoginPool(), true);
 
   const firstBegin = await pool.beginLogin();
   assert.equal(pool.isPooledPendingId(firstBegin.pendingId), true);

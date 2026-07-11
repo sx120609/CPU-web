@@ -8,6 +8,10 @@ export async function broadcastStorageConfigReload() {
   await publishRuntimeMessage({ type: "storage-config-reload", issuedAt: Date.now() });
 }
 
+export async function broadcastJwxtAgentConfigReload() {
+  await publishRuntimeMessage({ type: "jwxt-agent-config-reload", issuedAt: Date.now() });
+}
+
 async function publishRuntimeMessage(message: RedisBroadcastMessage) {
   await publishRedisBroadcast(message).catch(() => false);
 }
