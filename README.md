@@ -87,6 +87,8 @@ CPU-web/
 │       ├── utils/           # 客户端桥接、Markdown、缓存与格式化工具
 │       └── views/           # 页面视图
 ├── deploy.sh                # Debian / Ubuntu 一键部署脚本（主站 + 教务代理）
+├── deploy-agent.ps1         # Windows 出站教务 Agent 部署脚本
+├── deploy-agent.cmd         # Windows 命令行入口（自动绕过脚本执行策略）
 ├── package.json             # 根目录脚本入口
 └── README.md
 ```
@@ -98,7 +100,7 @@ CPU-web/
 - Node.js `>= 18`
 - npm `>= 9`
 - PostgreSQL `>= 14`
-- 建议本地和生产统一使用 Node 20+；`deploy.sh` 会按 Node 20 处理
+- 建议本地和生产统一使用 Node 22+；部署脚本会按 Node 22 处理
 
 ### 1. 安装依赖
 
@@ -337,6 +339,21 @@ REDIS_ENABLED=false
 ./deploy.sh agent-logs
 ```
 
+Windows Agent 使用仓库根目录的脚本：
+
+```powershell
+# 首次部署
+.\deploy-agent.cmd init
+# 后续更新
+.\deploy-agent.cmd update
+# 查看连接日志
+.\deploy-agent.cmd logs -Lines 200
+# 查看状态
+.\deploy-agent.cmd status
+```
+
+Windows 脚本会检查并安装 Node.js 22+ 与 PM2；更新前会停止 Agent，避免运行中的 Prisma DLL 阻止构建，失败时会尝试恢复原进程。`pm2 save` 会保存进程列表，但 Windows 开机自启仍需另行配置 PM2 resurrect 或计划任务。
+
 只配置了 `JWXT_AGENT_*` 且没有 `DATABASE_URL` 的 Agent 机器，也可以继续执行 `./deploy.sh update`，脚本会自动识别并切换到 Agent 更新流程。旧部署使用 `proxy-update` 时，如果检测到 `JWXT_AGENT_*`，也会自动迁移到 Agent 流程。
 
 如果主服务前面有 Nginx，需要允许 WebSocket Upgrade：
@@ -403,7 +420,7 @@ chmod +x deploy.sh
 
 - 主服务端口：`23333`
 - 教务代理端口：`23334`
-- Node 版本：按 Node 20+ 处理
+- Node 版本：按 Node 22+ 处理
 - 进程管理：`pm2`
 
 ## 多端与子项目说明
