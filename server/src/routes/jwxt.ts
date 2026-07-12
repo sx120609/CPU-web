@@ -1021,14 +1021,17 @@ jwxtRouter.get("/schedule", async (req, res, next) => {
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const semester = req.query.semester ? String(req.query.semester) : "";
     const week = req.query.week ? String(req.query.week) : "";
+    const refresh = req.query.refresh === "1" || req.query.refresh === "true";
     const cacheId = jwxtTokenCacheId(t);
-    const parsed = assertUsableUndergraduateSchedule(await withCache(
-      "jwxt-schedule",
-      [cacheId, semester || "_", week || "_"],
-      JWXT_SCHEDULE_CACHE_TTL_MS,
-      async () => assertUsableUndergraduateSchedule(await getSchedule(t, { semester, week })),
-    ));
-    res.setHeader("Cache-Control", "private, max-age=60");
+    const parsed = refresh
+      ? assertUsableUndergraduateSchedule(await getSchedule(t, { semester, week }))
+      : assertUsableUndergraduateSchedule(await withCache(
+        "jwxt-schedule",
+        [cacheId, semester || "_", week || "_"],
+        JWXT_SCHEDULE_CACHE_TTL_MS,
+        async () => assertUsableUndergraduateSchedule(await getSchedule(t, { semester, week })),
+      ));
+    res.setHeader("Cache-Control", refresh ? "private, no-store" : "private, max-age=60");
     ok(res, { parsed });
   } catch (e) { next(e); }
 });
@@ -1039,14 +1042,17 @@ jwxtRouter.get("/graduate-schedule", async (req, res, next) => {
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const semester = req.query.semester ? String(req.query.semester).trim() : "";
     const termcode = req.query.termcode ? String(req.query.termcode).trim() : "";
+    const refresh = req.query.refresh === "1" || req.query.refresh === "true";
     const cacheId = jwxtTokenCacheId(t);
-    const result = await withCache(
-      "jwxt-graduate-schedule",
-      [cacheId, semester || "_", termcode || "_"],
-      JWXT_SCHEDULE_CACHE_TTL_MS,
-      async () => loadGraduateScheduleResponse(t, semester, termcode),
-    );
-    res.setHeader("Cache-Control", "private, max-age=60");
+    const result = refresh
+      ? await loadGraduateScheduleResponse(t, semester, termcode)
+      : await withCache(
+        "jwxt-graduate-schedule",
+        [cacheId, semester || "_", termcode || "_"],
+        JWXT_SCHEDULE_CACHE_TTL_MS,
+        async () => loadGraduateScheduleResponse(t, semester, termcode),
+      );
+    res.setHeader("Cache-Control", refresh ? "private, no-store" : "private, max-age=60");
     ok(res, result);
   } catch (e) { next(e); }
 });

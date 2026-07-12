@@ -261,7 +261,7 @@
         :disabled="loading"
         @click="weekDialogOpen = true"
       >
-        <b>第 {{ week || parsed?.currentWeek || "--" }} 周</b>
+        <b>第 {{ currentWeekValue() || "--" }} 周</b>
         <span v-if="currentWeekRange">{{ currentWeekRange }}</span>
       </button>
       <button type="button" class="week-btn" :disabled="!canChangeWeek(1)" @click="changeWeek(1)">
@@ -951,7 +951,7 @@ function selectWeek(v: string | number) {
   const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
   if (cached?.data) {
     applyScheduleCache(key);
-    if (isStale(cached.savedAt)) void refreshScheduleForCurrentSource({ background: true });
+    void refreshScheduleForCurrentSource({ background: true });
     return;
   }
   void refreshScheduleForCurrentSource();
@@ -1102,7 +1102,7 @@ async function loadGraduateSchedule(
   try {
     const requestedSemester = targetSemester?.trim()
       || (scheduleSource.value === "graduate" ? semester.value || undefined : undefined);
-    const result = await jwxt.withSessionRetry(() => jwxtApi.graduateSchedule({ semester: requestedSemester }));
+    const result = await jwxt.withSessionRetry(() => jwxtApi.graduateSchedule({ semester: requestedSemester, refresh: "1" }));
     if (!isCurrentScheduleRequest(requestSeq, requestedSemester || "")) return;
     if (disposed) return;
     const fallbackCalendar = buildGraduateFallbackCalendar(result.parsed);
@@ -1584,9 +1584,9 @@ onBeforeUnmount(() => {
 
 const semesters = computed(() => parsed.value?.semesters ?? []);
 const weeks = computed(() => parsed.value?.weeks ?? []);
-const currentWeekInfo = computed(() => weekInfoFor(week.value));
-const currentWeekRange = computed(() => weekRangeFor(week.value));
-const dayTabs = computed(() => dayTabsForWeek(week.value));
+const currentWeekInfo = computed(() => weekInfoFor(currentWeekValue()));
+const currentWeekRange = computed(() => weekRangeFor(currentWeekValue()));
+const dayTabs = computed(() => dayTabsForWeek(currentWeekValue()));
 const activeDayLabel = computed(() => dayTabs.value.find((d) => d.day === activeDay.value)?.label ?? "今日");
 const activeWeekNumber = computed(() => {
   const value = Number(week.value || parsed.value?.currentWeek || calendar.value?.currentWeek || 0);
@@ -1750,7 +1750,7 @@ async function loadCalendar() {
     if (disposed) return;
     calendar.value = hydrateCalendar(r.parsed);
     writeCache(calendarCacheKey(), calendar.value);
-    if (calendar.value?.currentWeek && !week.value) week.value = String(calendar.value.currentWeek);
+    if (!week.value) week.value = currentWeekValue();
   } catch { /* calendar is best effort */ }
 }
 
@@ -1787,6 +1787,8 @@ async function refreshCurrentSchedule() {
     await loadGraduateDebugSchedule();
     return;
   }
+  await loadCalendar();
+  if (disposed) return;
   await loadSchedule(true);
 }
 
@@ -1801,7 +1803,6 @@ async function loadSchedule(force = false, background = false) {
   );
   if (hadCache) {
     saveLastState();
-    if (!isStale(scheduleSavedAt.value)) return;
   }
   if (!jwxt.isLoggedIn) {
     const ready = await jwxt.ensureSession();
@@ -1816,7 +1817,7 @@ async function loadSchedule(force = false, background = false) {
   }
   try {
     const r: any = await jwxt.withSessionRetry(() => jwxtApi.schedule(
-      { semester: semester.value, week: week.value },
+      { semester: semester.value, week: week.value, refresh: force || background || hadCache ? "1" : undefined },
       { silent: background || hadCache || (offlineMode.value && canFallbackToVisibleSchedule) },
     ));
     if (disposed) return;
@@ -1828,7 +1829,7 @@ async function loadSchedule(force = false, background = false) {
     graduateSourceMeta.value = null;
     parsed.value = r.parsed;
     if (!semester.value) semester.value = parsed.value?.currentSemester ?? "";
-    if (!week.value) week.value = String(calendar.value?.currentWeek || parsed.value?.currentWeek || "");
+    if (!week.value) week.value = currentWeekValue();
     loadScheduleEdits();
     scheduleSavedAt.value = Date.now();
     saveScheduleCache();
@@ -1865,7 +1866,7 @@ async function changeWeek(delta: number) {
   const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
   if (cached?.data) {
     applyScheduleCache(key);
-    if (isStale(cached.savedAt)) void refreshScheduleForCurrentSource({ background: true });
+    void refreshScheduleForCurrentSource({ background: true });
     return;
   }
   await refreshScheduleForCurrentSource();
@@ -1910,7 +1911,7 @@ async function jumpToCurrentWeek() {
   const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
   if (cached?.data) {
     applyScheduleCache(key);
-    if (isStale(cached.savedAt)) void refreshScheduleForCurrentSource({ background: true });
+    void refreshScheduleForCurrentSource({ background: true });
     return;
   }
   await refreshScheduleForCurrentSource();
@@ -2388,7 +2389,13 @@ function syncGraduateActiveDayForWeek(targetWeek = week.value) {
 }
 
 function currentWeekValue() {
-  return week.value || String(calendar.value?.currentWeek || parsed.value?.currentWeek || "");
+  const fallback = buildGraduateFallbackCalendar(parsed.value);
+  return week.value
+    || String(calendar.value?.currentWeek || "")
+    || String(fallback?.currentWeek || "")
+    || String(parsed.value?.currentWeek || "")
+    || String(parsed.value?.weeks.find((item) => item.current)?.value || "")
+    || String(parsed.value?.weeks[0]?.value || "");
 }
 
 function nextWeekValue(delta: number) {

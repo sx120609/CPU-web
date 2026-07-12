@@ -173,7 +173,7 @@ export const jwxtApi = {
       "/identity",
       options?.silent ? ({ suppressErrorMessage: true } as any) : undefined
     ),
-  schedule: (params?: { semester?: string; week?: string }, options?: { silent?: boolean }) =>
+  schedule: (params?: { semester?: string; week?: string; refresh?: boolean | string }, options?: { silent?: boolean }) =>
     inst.get<unknown, { html: string; parsed: any }>("/schedule", {
       params,
       ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
@@ -226,7 +226,7 @@ export const jwxtApi = {
     inst.delete<unknown, { ok: boolean }>(`/schedule-widget-tokens/${id}`),
   textbook: () => inst.get<unknown, { parsed: any }>("/textbook"),
   debugSnapshot: () => inst.post<unknown, { saved: string[]; errors: string[] }>("/debug/snapshot"),
-  graduateSchedule: (params?: { semester?: string; termcode?: string }, options?: { silent?: boolean }) =>
+  graduateSchedule: (params?: { semester?: string; termcode?: string; refresh?: boolean | string }, options?: { silent?: boolean }) =>
     inst.get<unknown, {
       parsed: any;
       source: {

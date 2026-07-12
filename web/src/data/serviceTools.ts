@@ -1,4 +1,4 @@
-import { ChatDotRound, DataLine, Document, DocumentChecked, FolderOpened, Tools } from "@element-plus/icons-vue";
+import { Calendar, ChatDotRound, DataLine, Document, DocumentChecked, FolderOpened, Tools } from "@element-plus/icons-vue";
 import type { Component } from "vue";
 
 export type ServiceToolStatus = "ready" | "planned";
@@ -12,7 +12,7 @@ export interface ServiceTool {
   status: ServiceToolStatus;
   category: string;
   routeName: string;
-  componentKey: "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools";
+  componentKey: "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar";
   accent: string;
   iconComponent: Component;
 }
@@ -82,6 +82,19 @@ export const serviceTools: ServiceTool[] = [
     componentKey: "pdf_tools",
     accent: "#0f766e",
     iconComponent: Document,
+  },
+  {
+    slug: "school_calendar",
+    name: "药大校历",
+    summary: "查看官方校历、学期周次、假期和关键节点",
+    description: "整理中国药科大学官方校历，保留原图，同时把学期、假期和重要日期拆成更容易查看的卡片。",
+    icon: "校",
+    status: "ready",
+    category: "校历",
+    routeName: "service-tool-detail",
+    componentKey: "school_calendar",
+    accent: "#7c3aed",
+    iconComponent: Calendar,
   },
 ];
 

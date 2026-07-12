@@ -30,6 +30,7 @@
       <QuestionnairePanel v-else-if="tool.componentKey === 'questionnaire'" />
       <GradeCheckPanel v-else-if="tool.componentKey === 'grade_check'" />
       <PdfToolPanel v-else-if="tool.componentKey === 'pdf_tools'" :require-login="currentRequireLogin" />
+      <SchoolCalendarPanel v-else-if="tool.componentKey === 'school_calendar'" />
       <FileCollectPanel v-else />
     </section>
 
@@ -52,6 +53,7 @@ import { findServiceTool } from "@/data/serviceTools";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 
 const PdfToolPanel = defineAsyncComponent(() => import("./PdfToolPanel.vue"));
+const SchoolCalendarPanel = defineAsyncComponent(() => import("./SchoolCalendarPanel.vue"));
 
 const route = useRoute();
 const router = useRouter();
