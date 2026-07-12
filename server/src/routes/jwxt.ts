@@ -277,6 +277,47 @@ function hasUsableUndergraduateSchedule(parsed: any) {
   );
 }
 
+function hasItems(value: unknown) {
+  return Array.isArray(value) && value.length > 0;
+}
+
+function staleJwxtSessionError() {
+  return Errors.unauthorized("教务会话已失效，请重新授权");
+}
+
+function isUnauthorizedReason(reason: any) {
+  return Number(reason?.status || 0) === 401 || Number(reason?.code || 0) === 4001;
+}
+
+function assertUsableUndergraduateSchedule<T>(parsed: T): T {
+  if (!hasUsableUndergraduateSchedule(parsed)) throw staleJwxtSessionError();
+  return parsed;
+}
+
+function assertUsableGrades<T extends { semesters?: unknown[]; list?: unknown[] }>(parsed: T): T {
+  if (!hasItems(parsed?.semesters) && !hasItems(parsed?.list)) throw staleJwxtSessionError();
+  return parsed;
+}
+
+function assertUsableProgress<T extends { summary?: unknown[]; completed?: unknown[]; uncompleted?: unknown[]; totals?: Record<string, unknown> }>(parsed: T): T {
+  const totals = parsed?.totals ?? {};
+  const hasTotals = Object.values(totals).some((value) => Number(value) > 0);
+  if (!hasItems(parsed?.summary) && !hasItems(parsed?.completed) && !hasItems(parsed?.uncompleted) && !hasTotals) {
+    throw staleJwxtSessionError();
+  }
+  return parsed;
+}
+
+function assertUsablePyfa<T extends { list?: unknown[]; bySemester?: unknown[] }>(parsed: T): T {
+  if (!hasItems(parsed?.list) && !hasItems(parsed?.bySemester)) throw staleJwxtSessionError();
+  return parsed;
+}
+
+function assertUsableIdentity<T extends { capabilities?: { undergraduate?: boolean; graduate?: boolean } }>(payload: T): T {
+  if (!payload?.capabilities?.undergraduate && !payload?.capabilities?.graduate) throw staleJwxtSessionError();
+  return payload;
+}
+
 function graduateScheduleCourseCount(result: any) {
   return (result?.parsed?.cells ?? []).reduce(
     (sum: number, cell: any) => sum + (cell?.courses?.length ?? 0),
@@ -299,6 +340,7 @@ async function detectAcademicIdentity(token: string) {
   // 两个入口共享同一份 CookieJar。串行探测可避免并发请求各自写回旧 Cookie
   // 快照，同时确保可选的研究生入口失败不会破坏本科教务会话。
   const undergraduate = await getSchedule(token, {})
+    .then((value) => assertUsableUndergraduateSchedule(value))
     .then((value) => ({ status: "fulfilled" as const, value }))
     .catch((reason) => ({ status: "rejected" as const, reason }));
   const graduate = await getGraduateSchedule(token, {})
@@ -310,6 +352,10 @@ async function detectAcademicIdentity(token: string) {
   const graduateAvailable = graduate.status === "fulfilled"
     && hasUsableGraduateSchedule(graduate.value);
   const graduateReachable = graduate.status === "fulfilled";
+
+  if (!undergraduateAvailable && !graduateAvailable && undergraduate.status === "rejected" && isUnauthorizedReason(undergraduate.reason)) {
+    throw undergraduate.reason;
+  }
 
   const identity = undergraduateAvailable
     ? "undergraduate"
@@ -957,12 +1003,12 @@ jwxtRouter.get("/identity", async (req, res, next) => {
     const token = getToken(req);
     if (!token) throw Errors.unauthorized("请先登录教务系统");
     const cacheId = jwxtTokenCacheId(token);
-    const payload = await withCache(
+    const payload = assertUsableIdentity(await withCache(
       "jwxt-identity",
       [cacheId],
       JWXT_IDENTITY_CACHE_TTL_MS,
-      async () => detectAcademicIdentity(token),
-    );
+      async () => assertUsableIdentity(await detectAcademicIdentity(token)),
+    ));
     res.setHeader("Cache-Control", "private, max-age=300");
     ok(res, payload);
   } catch (e) { next(e); }
@@ -976,7 +1022,12 @@ jwxtRouter.get("/schedule", async (req, res, next) => {
     const semester = req.query.semester ? String(req.query.semester) : "";
     const week = req.query.week ? String(req.query.week) : "";
     const cacheId = jwxtTokenCacheId(t);
-    const parsed = await withCache("jwxt-schedule", [cacheId, semester || "_", week || "_"], JWXT_SCHEDULE_CACHE_TTL_MS, async () => getSchedule(t, { semester, week }));
+    const parsed = assertUsableUndergraduateSchedule(await withCache(
+      "jwxt-schedule",
+      [cacheId, semester || "_", week || "_"],
+      JWXT_SCHEDULE_CACHE_TTL_MS,
+      async () => assertUsableUndergraduateSchedule(await getSchedule(t, { semester, week })),
+    ));
     res.setHeader("Cache-Control", "private, max-age=60");
     ok(res, { parsed });
   } catch (e) { next(e); }
@@ -1007,7 +1058,12 @@ jwxtRouter.get("/grades", async (req, res, next) => {
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const semester = req.query.semester ? String(req.query.semester) : "";
     const cacheId = jwxtTokenCacheId(t);
-    const parsed = await withCache("jwxt-grades", [cacheId, semester || "_"], JWXT_GRADES_CACHE_TTL_MS, async () => getGrades(t, { semester }));
+    const parsed = assertUsableGrades(await withCache(
+      "jwxt-grades",
+      [cacheId, semester || "_"],
+      JWXT_GRADES_CACHE_TTL_MS,
+      async () => assertUsableGrades(await getGrades(t, { semester })),
+    ));
     res.setHeader("Cache-Control", "private, max-age=300");
     ok(res, { parsed });
   } catch (e) { next(e); }
@@ -1020,7 +1076,12 @@ jwxtRouter.get("/midterm-grades", async (req, res, next) => {
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const semester = req.query.semester ? String(req.query.semester) : "";
     const cacheId = jwxtTokenCacheId(t);
-    const parsed = await withCache("jwxt-midterm-grades", [cacheId, semester || "_"], JWXT_MIDTERM_CACHE_TTL_MS, async () => getMidtermGrades(t, { semester }));
+    const parsed = assertUsableGrades(await withCache(
+      "jwxt-midterm-grades",
+      [cacheId, semester || "_"],
+      JWXT_MIDTERM_CACHE_TTL_MS,
+      async () => assertUsableGrades(await getMidtermGrades(t, { semester })),
+    ));
     res.setHeader("Cache-Control", "private, max-age=300");
     ok(res, { parsed });
   } catch (e) { next(e); }
@@ -1112,7 +1173,12 @@ jwxtRouter.get("/progress", async (req, res, next) => {
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const cacheId = jwxtTokenCacheId(t);
-    const parsed = await withCache("jwxt-progress", [cacheId], JWXT_PROGRESS_CACHE_TTL_MS, async () => getProgress(t));
+    const parsed = assertUsableProgress(await withCache(
+      "jwxt-progress",
+      [cacheId],
+      JWXT_PROGRESS_CACHE_TTL_MS,
+      async () => assertUsableProgress(await getProgress(t)),
+    ));
     res.setHeader("Cache-Control", "private, max-age=300");
     ok(res, { parsed });
   } catch (e) { next(e); }
@@ -1124,7 +1190,12 @@ jwxtRouter.get("/pyfa", async (req, res, next) => {
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const cacheId = jwxtTokenCacheId(t);
-    const parsed = await withCache("jwxt-pyfa", [cacheId], JWXT_PYFA_CACHE_TTL_MS, async () => getPyfa(t));
+    const parsed = assertUsablePyfa(await withCache(
+      "jwxt-pyfa",
+      [cacheId],
+      JWXT_PYFA_CACHE_TTL_MS,
+      async () => assertUsablePyfa(await getPyfa(t)),
+    ));
     res.setHeader("Cache-Control", "private, max-age=600");
     ok(res, { parsed });
   } catch (e) { next(e); }
