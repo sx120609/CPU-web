@@ -16,12 +16,15 @@
     "login-agent:dev": "npm run jwxt-agent:dev",
     "weiwall": "tsx scripts/weiwall.ts",
     "forum:recount-stats": "tsx scripts/recount-forum-stats.ts",
+    "market:check-db": "tsx scripts/check-market-db.ts",
+    "market:smoke": "tsx scripts/smoke-market.ts",
     "db:migrate": "prisma db push --skip-generate",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma db push --force-reset --skip-generate && npm run db:seed",
     "db:studio": "prisma studio",
     "prisma:generate": "prisma generate",
-    "test:login-pool": "node --import tsx --test tests/ssoLoginPool.integration.test.ts tests/jwxtAgent.integration.test.ts tests/browserSecurity.integration.test.ts"
+    "test:login-pool": "node --import tsx --test tests/ssoLoginPool.integration.test.ts tests/jwxtAgent.integration.test.ts tests/browserSecurity.integration.test.ts",
+    "test:market": "node --import tsx --test tests/marketPayment.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

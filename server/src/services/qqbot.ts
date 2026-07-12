@@ -2021,7 +2021,7 @@ async function detectBoardSelectionInTitleStep(text: string, defaultBoardSlug: s
   const boards = await prisma.board.findMany({
     where: {
       readOnly: false,
-      type: { in: ["normal", "question", "market", "coursereview"] },
+      type: { in: ["normal", "question", "coursereview"] },
     },
     select: { slug: true, name: true },
     take: 50,
@@ -2106,10 +2106,6 @@ function boardAliasCandidates(slug: string, name: string) {
     out.add("提问广场");
     out.add("求助");
   }
-  if (slug === "market") {
-    out.add("二手");
-    out.add("二手市场");
-  }
   if (slug === "coursereview") {
     out.add("课评");
     out.add("课程点评");
@@ -2191,6 +2187,7 @@ async function createTopicFromQq(input: {
   await ensureUserCanSubmitTopic(userId);
   const board = await prisma.board.findUnique({ where: { slug: input.boardSlug } });
   if (!board) throw Errors.notFound("板块不存在");
+  if (board.type === "market") throw Errors.badRequest("商城商品请使用商城发布功能，QQ 投稿不支持商城");
   if (board.readOnly && input.user.role !== "bot" && input.user.role !== "admin") throw Errors.forbidden("该板块为只读公告板，禁止发帖");
   if (board.type !== "announce" && input.user.role !== "admin") {
     const featureKey = featureForBoardType(board.type) ?? "forum";
@@ -3511,7 +3508,7 @@ async function getAvailableBoardOptions() {
   return prisma.board.findMany({
     where: {
       readOnly: false,
-      type: { in: ["normal", "question", "market", "coursereview"] },
+      type: { in: ["normal", "question", "coursereview"] },
     },
     orderBy: { order: "asc" },
     select: {

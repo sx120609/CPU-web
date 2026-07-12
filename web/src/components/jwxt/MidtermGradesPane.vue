@@ -116,6 +116,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { jwxtApi } from "@/api/jwxt";
+import { useJwxtStore } from "@/stores/jwxt";
 
 interface GradeRow {
   semester: string;
@@ -134,6 +135,7 @@ interface GradeRow {
 }
 
 const props = defineProps<{ data: any; loading?: boolean }>();
+const jwxt = useJwxtStore();
 const parsed = ref<any>(props.data?.parsed ?? null);
 const loading = ref(props.loading ?? false);
 const semester = ref("");
@@ -256,7 +258,7 @@ async function reload() {
   loading.value = true;
   loadError.value = "";
   try {
-    const result = await jwxtApi.midtermGrades({ semester: semester.value || undefined }, { silent: true });
+    const result = await jwxt.withSessionRetry(() => jwxtApi.midtermGrades({ semester: semester.value || undefined }, { silent: true }));
     if (seq === loadSeq) parsed.value = result.parsed;
   } catch (error) {
     if (seq === loadSeq) loadError.value = requestMessage(error) || "期中成绩加载失败，请稍后重试";

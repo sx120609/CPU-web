@@ -98,6 +98,7 @@ import { ref, computed, onBeforeUnmount, onMounted } from "vue";
 import { Search, Star, StarFilled } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { jwxtApi } from "@/api/jwxt";
+import { useJwxtStore } from "@/stores/jwxt";
 
 interface IServiceApp {
   id: number;
@@ -114,6 +115,7 @@ interface IServiceApp {
 }
 
 const apps = ref<IServiceApp[]>([]);
+const jwxt = useJwxtStore();
 const loading = ref(false);
 const error = ref("");
 const keyword = ref("");
@@ -167,7 +169,7 @@ async function loadApps(force = false) {
 function fetchApps() {
   if (activeRequest) return activeRequest;
   // i 服务是可选上游，失败时只在当前卡片中提示，避免自动重试连续弹窗。
-  activeRequest = jwxtApi.iapps({ silent: true });
+  activeRequest = jwxt.withSessionRetry(() => jwxtApi.iapps({ silent: true }));
   activeRequest.then(
     () => { activeRequest = null; },
     () => { activeRequest = null; }

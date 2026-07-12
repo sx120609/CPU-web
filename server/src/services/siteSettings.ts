@@ -3,7 +3,7 @@
  *
  * KV 持久化 + 内存缓存。修改后立即更新缓存，公开 API 直接读缓存（高频）。
  *
- * 用途："言论敏感时一键关闭论坛 / 二手 / 课评"。
+ * 用途："言论敏感时一键关闭论坛 / 商城 / 课评"。
  * 默认值：全部为 on（即不破坏现有上线体验）。
  */
 import { prisma } from "../prisma";
@@ -797,7 +797,7 @@ export function enabledBoardTypes(): string[] {
 
 export function featureClosedMessage(type: string | null | undefined): string {
   const feature = featureForBoardType(type);
-  if (feature === "market") return "二手市场当前已关闭";
+  if (feature === "market") return "商城当前已关闭";
   if (feature === "coursereview") return "课程点评当前已关闭";
   if (feature === "forum") return "论坛当前已关闭";
   return "该功能当前不可用";

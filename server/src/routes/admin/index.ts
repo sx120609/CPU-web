@@ -810,6 +810,7 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
         pinned: true,
         locked: true,
         board: { select: { type: true } },
+        marketItem: { select: { id: true, status: true } },
       },
     });
     if (!existing) throw Errors.notFound("帖子不存在");
@@ -819,6 +820,7 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
     if (typeof req.body.locked === "boolean") data.locked = req.body.locked;
     const wantsGlobalPinned = typeof req.body.globalPinned === "boolean" ? req.body.globalPinned : undefined;
     if (req.body.boardSlug) {
+      if (existing.marketItem) throw Errors.badRequest("商城商品不能通过论坛管理转板，请使用商城管理功能");
       const target = await prisma.board.findUnique({ where: { slug: req.body.boardSlug } });
       if (!target) throw Errors.notFound("目标板块不存在");
       if (target.readOnly) throw Errors.badRequest("不能转入只读板块");
@@ -843,6 +845,7 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
       data.manualReviewNote = req.body.manualReviewNote ?? "";
       if (req.body.aiReviewStatus === "approved_manual") {
         data.hidden = false;
+        if (existing.marketItem) data.locked = false;
       }
       if (req.body.aiReviewStatus === "rejected_manual") {
         data.hidden = true;
@@ -852,6 +855,20 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
     const boardChanged = typeof data.boardId === "number" && data.boardId !== existing.boardId;
     const u = await prisma.$transaction(async (tx) => {
       const updated = await tx.topic.update({ where: { id }, data });
+      if (existing.marketItem) {
+        const marketStatus = req.body.aiReviewStatus === "approved_manual"
+          ? "active"
+          : req.body.aiReviewStatus === "rejected_manual" || data.hidden === true
+            ? "hidden"
+            : req.body.aiReviewStatus === "manual_reviewing"
+              ? "reviewing"
+              : data.hidden === false && existing.marketItem.status === "hidden"
+                ? "active"
+                : null;
+        if (marketStatus) {
+          await tx.marketItem.update({ where: { id: existing.marketItem.id }, data: { status: marketStatus } });
+        }
+      }
       if (hiddenChanged || boardChanged) {
         const refreshJobs: Promise<unknown>[] = [
           refreshBoardTopicCounts([existing.boardId, updated.boardId], tx),
@@ -904,8 +921,9 @@ adminRouter.delete("/topics/:id", modOrAbove, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const hard = req.query.hard === "1" || req.query.hard === "true";
-    const topic = await prisma.topic.findUnique({ where: { id }, select: { boardId: true, hidden: true, authorId: true } });
+    const topic = await prisma.topic.findUnique({ where: { id }, select: { boardId: true, hidden: true, authorId: true, marketItem: { select: { id: true } } } });
     if (!topic) throw Errors.notFound("帖子不存在");
+    if (topic.marketItem) throw Errors.badRequest("商城商品不能通过论坛管理删除，请使用商城管理功能");
     if (hard) {
       await prisma.$transaction(async (tx) => {
         await tx.schoolFeedItem.deleteMany({ where: { topicId: id } });

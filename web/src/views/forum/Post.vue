@@ -40,7 +40,7 @@
           </div>
         </el-form-item>
 
-        <!-- 二手板块特化 -->
+        <!-- 商城板块兼容入口 -->
         <template v-if="boardType === 'market'">
           <div class="meta-row">
             <el-form-item label="价格（元）" required>
@@ -476,7 +476,9 @@ async function loadInitial() {
   try {
     const boardList = await boardApi.list({ suppressErrorMessage: true });
     if (seq !== loadSeq) return;
-    boards.value = boardList;
+    boards.value = editingId.value
+      ? boardList
+      : boardList.filter((board) => board.type !== "market");
     normalizeSelectedBoard();
     if (editingId.value) {
       const t = await topicApi.detail(editingId.value, { suppressErrorMessage: true });

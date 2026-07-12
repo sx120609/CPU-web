@@ -1090,6 +1090,10 @@ async function loadGraduateSchedule(
 ) {
   if (disposed) return;
   const background = Boolean(options?.background);
+  if (!jwxt.isLoggedIn) {
+    const ready = await jwxt.ensureSession();
+    if (!ready || disposed) return;
+  }
   const requestSeq = ++scheduleRequestSeq;
   if (!background) {
     foregroundScheduleRequestSeq = requestSeq;
@@ -1098,7 +1102,7 @@ async function loadGraduateSchedule(
   try {
     const requestedSemester = targetSemester?.trim()
       || (scheduleSource.value === "graduate" ? semester.value || undefined : undefined);
-    const result = await jwxtApi.graduateSchedule({ semester: requestedSemester });
+    const result = await jwxt.withSessionRetry(() => jwxtApi.graduateSchedule({ semester: requestedSemester }));
     if (!isCurrentScheduleRequest(requestSeq, requestedSemester || "")) return;
     if (disposed) return;
     const fallbackCalendar = buildGraduateFallbackCalendar(result.parsed);
@@ -1532,26 +1536,22 @@ onMounted(async () => {
   // 后台静默：刷新会话状态 + 自动登录 + 重新拉数据。失败也不影响已显示的缓存。
   void (async () => {
     try {
-      try { await jwxt.refreshStatus(); } catch { /* ignore */ }
-      if (disposed) return;
-      if (!jwxt.isLoggedIn && hasCreds.value) {
-        autoLoading.value = !parsed.value;
-        try { await jwxt.tryAutoLogin({ force: true }); }
-        finally {
-          if (!disposed) autoLoading.value = false;
-        }
-      }
+      autoLoading.value = !parsed.value && hasCreds.value;
+      await jwxt.ensureSession({ refresh: true });
+      if (!disposed) autoLoading.value = false;
       if (disposed) return;
       if (jwxt.isLoggedIn) {
         if (prefersGraduateIdentity.value) {
           await loadGraduateSchedule();
         } else {
           await loadCalendar();
-          await loadSchedule();
+          await loadSchedule(true);
         }
       }
     } catch {
       /* Keep visible cache when background sync fails. */
+    } finally {
+      if (!disposed) autoLoading.value = false;
     }
   })();
 });
@@ -1744,7 +1744,9 @@ async function loadCalendar() {
   if (disposed) return;
   restoreCachedCalendar();
   try {
-    const r: any = await jwxtApi.calendar();
+    const ready = await jwxt.ensureSession();
+    if (!ready || disposed) return;
+    const r: any = await jwxt.withSessionRetry(() => jwxtApi.calendar());
     if (disposed) return;
     calendar.value = hydrateCalendar(r.parsed);
     writeCache(calendarCacheKey(), calendar.value);
@@ -1790,7 +1792,7 @@ async function refreshCurrentSchedule() {
 
 async function loadSchedule(force = false, background = false) {
   if (disposed) return;
-  if (!jwxt.isLoggedIn || (loading.value && !background)) return;
+  if (loading.value && !background) return;
   const hadCache = !force && restoreScheduleCache();
   const canFallbackToVisibleSchedule = Boolean(parsed.value) && (
     !semester.value
@@ -1801,6 +1803,10 @@ async function loadSchedule(force = false, background = false) {
     saveLastState();
     if (!isStale(scheduleSavedAt.value)) return;
   }
+  if (!jwxt.isLoggedIn) {
+    const ready = await jwxt.ensureSession();
+    if (!ready || disposed) return;
+  }
   const requestSeq = ++scheduleRequestSeq;
   const requestedSemester = semester.value || parsed.value?.currentSemester || "";
   const requestedWeek = week.value || "";
@@ -1809,10 +1815,10 @@ async function loadSchedule(force = false, background = false) {
     loading.value = !parsed.value || force || !hadCache;
   }
   try {
-    const r: any = await jwxtApi.schedule(
+    const r: any = await jwxt.withSessionRetry(() => jwxtApi.schedule(
       { semester: semester.value, week: week.value },
       { silent: background || hadCache || (offlineMode.value && canFallbackToVisibleSchedule) },
-    );
+    ));
     if (disposed) return;
     if (!isCurrentScheduleRequest(requestSeq, requestedSemester, requestedWeek)) {
       if (r?.parsed) writeScheduleCache(scheduleCacheKey(r.parsed.currentSemester || requestedSemester, requestedWeek), r.parsed);
@@ -2799,7 +2805,6 @@ function prewarmAdjacentWeekCaches() {
 
 function prewarmScheduleCacheForWeek(wk: string) {
   if (scheduleStorageScope() === "graduate") return;
-  if (!jwxt.isLoggedIn) return;
   const key = scheduleCacheKey(parsed.value?.currentSemester || semester.value, wk);
   if (!key) return;
   const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
@@ -2809,7 +2814,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   }
   if (prewarmingScheduleKeys.has(key)) return;
   prewarmingScheduleKeys.add(key);
-  void jwxtApi.schedule({ semester: semester.value, week: wk })
+  void jwxt.withSessionRetry(() => jwxtApi.schedule({ semester: semester.value, week: wk }))
     .then((r: any) => {
       if (r?.parsed) writeScheduleCache(key, r.parsed);
     })

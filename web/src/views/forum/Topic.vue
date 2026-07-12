@@ -829,9 +829,11 @@ const replyAnonymousHint = computed(() => {
   return `本周还剩 ${anonymousState?.availableCredits ?? 0} / ${anonymousState?.weeklyQuota ?? 0} 点匿名积分。`;
 });
 const canEdit = computed(() =>
-  auth.user?.id === topic.value?.authorId ||
-  auth.isAdmin ||
-  (auth.isMod && !isReadOnly.value)
+  topic.value?.board?.type !== "market" && (
+    auth.user?.id === topic.value?.authorId ||
+    auth.isAdmin ||
+    (auth.isMod && !isReadOnly.value)
+  )
 );
 const canRequestTopicManualReview = computed(() => Boolean(
   auth.isLoggedIn &&

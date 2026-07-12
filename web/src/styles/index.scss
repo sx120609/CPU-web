@@ -5,6 +5,7 @@
   --cpu-primary: #{$cpu-primary};
   --cpu-primary-light: #{$cpu-primary-light};
   --cpu-primary-dark: #{$cpu-primary-dark};
+  --cpu-primary-soft: rgba(22, 135, 118, 0.1);
   --cpu-gold: #{$cpu-gold};
   --cpu-warn: #{$cpu-warn};
   --cpu-danger: #{$cpu-danger};
@@ -45,6 +46,7 @@ html[data-theme="dark"] {
   --cpu-primary: #36d0b7;
   --cpu-primary-light: #5ee4cc;
   --cpu-primary-dark: #0f766e;
+  --cpu-primary-soft: rgba(54, 208, 183, 0.12);
   --cpu-gold: #fbbf24;
   --cpu-warn: #fb923c;
   --cpu-danger: #f87171;

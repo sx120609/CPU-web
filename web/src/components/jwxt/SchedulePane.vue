@@ -339,6 +339,7 @@ import { Aim, ArrowLeft, ArrowRight, Moon, Refresh } from "@element-plus/icons-v
 import { jwxtApi } from "@/api/jwxt";
 import { useAppearanceStore } from "@/stores/appearance";
 import { useAuthStore } from "@/stores/auth";
+import { useJwxtStore } from "@/stores/jwxt";
 import { detectClientPlatform } from "@/utils/clientInfo";
 import {
   getScheduleThemePalette,
@@ -405,6 +406,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   source: "jwxt",
 });
+const jwxt = useJwxtStore();
 const appearance = useAppearanceStore();
 
 const graduateSourceMeta = ref<{
@@ -709,7 +711,7 @@ async function loadCalendar() {
     return;
   }
   try {
-    const r: any = await jwxtApi.calendar();
+    const r: any = await jwxt.withSessionRetry(() => jwxtApi.calendar());
     if (disposed) return;
     calendar.value = hydrateCalendar(r.parsed);
     writeCache(calendarCacheKey(), calendar.value);
@@ -736,7 +738,7 @@ async function loadSchedule(force = false, background = false) {
   }
   try {
     if (isGraduateSource.value) {
-      const raw = await jwxtApi.graduateSchedule({ semester: semester.value || undefined });
+      const raw = await jwxt.withSessionRetry(() => jwxtApi.graduateSchedule({ semester: semester.value || undefined }));
       if (!isCurrentScheduleLoad(requestSeq, requestedSemester, requestedWeek)) return;
       if (disposed) return;
       const normalized = normalizeIncomingScheduleData(raw, "graduate");
@@ -755,7 +757,7 @@ async function loadSchedule(force = false, background = false) {
       saveLastState();
       return;
     }
-    const r: any = await jwxtApi.schedule({ semester: semester.value, week: week.value });
+    const r: any = await jwxt.withSessionRetry(() => jwxtApi.schedule({ semester: semester.value, week: week.value }));
     if (disposed) return;
     if (!isCurrentScheduleLoad(requestSeq, requestedSemester, requestedWeek)) {
       if (r?.parsed) writeScheduleCache(scheduleCacheKey(r.parsed.currentSemester || requestedSemester, requestedWeek), r.parsed);
@@ -2010,7 +2012,7 @@ function prewarmScheduleCacheForWeek(wk: string) {
   }
   if (prewarmingScheduleKeys.has(key)) return;
   prewarmingScheduleKeys.add(key);
-  void jwxtApi.schedule({ semester: semester.value, week: wk })
+  void jwxt.withSessionRetry(() => jwxtApi.schedule({ semester: semester.value, week: wk }))
     .then((r: any) => {
       if (r?.parsed) writeScheduleCache(key, r.parsed);
     })

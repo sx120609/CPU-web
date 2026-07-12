@@ -9,6 +9,9 @@
           <el-button v-if="site.features.forum" type="primary" size="large" @click="$router.push('/forum')">
             <el-icon><ChatLineRound /></el-icon> {{ forumActionLabel }}
           </el-button>
+          <el-button v-if="site.features.market && auth.canAccessForum" size="large" @click="$router.push('/market')">
+            <span>🛍️</span> 校园商城
+          </el-button>
           <el-button v-if="showForumContent" size="large" @click="$router.push('/forum/b/campus-wall')">
             <span>📮</span> 逛逛
           </el-button>
@@ -136,6 +139,35 @@
           </div>
         </section>
 
+        <section class="block" v-if="site.features.market && auth.canAccessForum">
+          <div class="block-head">
+            <h3>🛍️ 校园商城</h3>
+            <router-link to="/market" class="more">全部商品 →</router-link>
+          </div>
+          <div v-if="marketPreview.length" class="market-preview-grid">
+            <router-link
+              v-for="item in marketPreview"
+              :key="item.id"
+              :to="{ name: 'market-item', params: { id: item.id } }"
+              class="market-preview-card"
+            >
+              <div class="market-preview-cover">
+                <img v-if="item.cover" :src="item.cover" :alt="item.title" />
+                <span v-else class="market-placeholder-icon">{{ marketCategoryIcon(item.category) }}</span>
+              </div>
+              <div class="market-preview-copy">
+                <strong>{{ item.title }}</strong>
+                <span>{{ item.listingType === 'wanted' ? '预算 ' : '' }}¥{{ item.price }}</span>
+                <small>{{ item.tradeMode === 'online' ? '线上发货' : (item.campus || '校内交易') }}</small>
+              </div>
+            </router-link>
+          </div>
+          <div v-else class="market-empty">
+            <span>校园好物与电子资料，都可以在这里发布</span>
+            <el-button size="small" type="primary" @click="$router.push('/market/publish')">发布第一件商品</el-button>
+          </div>
+        </section>
+
         <section class="block">
           <div class="block-head">
             <h3>🧭 校园服务</h3>
@@ -180,13 +212,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { ChatLineRound, Edit, Bell, Service } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 import { homeApi, type HomeSummary } from "@/api/home";
+import { marketApi, type MarketItem } from "@/api/market";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { fmtRelative } from "@/utils/format";
@@ -198,6 +231,7 @@ const summary = ref<HomeSummary | null>(null);
 const loading = ref(false);
 const homeError = ref("");
 const electricOpen = ref(false);
+const marketPreview = ref<MarketItem[]>([]);
 const hotPreview = computed(() => (summary.value?.hotTopics ?? []).slice(0, 3));
 const visibleServices = computed(() => summary.value?.services ?? []);
 const showElectricEntry = computed(() => auth.isLoggedIn && site.features.electric);
@@ -207,7 +241,7 @@ let loadSeq = 0;
 const enabledFeatureLabels = computed(() => {
   const labels = ["公告聚合", "教务数据", "常用校园服务"];
   if (site.features.coursereview && auth.canAccessForum) labels.splice(2, 0, "课程点评");
-  if (site.features.market && auth.canAccessForum) labels.splice(labels.length - 1, 0, "二手交易");
+  if (site.features.market && auth.canAccessForum) labels.splice(labels.length - 1, 0, "校园商城");
   if (site.features.electric) labels.push("宿舍电费查询");
   if (site.features.forum && auth.canAccessForum) labels.unshift("校园讨论");
   return labels;
@@ -227,7 +261,41 @@ const heroIntro = computed(() => {
 
 const loginActionText = computed(() => site.features.forum ? "登录" : "登录使用");
 
-onMounted(loadSummary);
+onMounted(() => {
+  void loadSummary();
+  if (site.features.market && auth.canAccessForum) void loadMarketPreview();
+});
+
+watch(() => site.features.market && auth.canAccessForum, (enabled) => {
+  if (enabled && !marketPreview.value.length) void loadMarketPreview();
+});
+
+async function loadMarketPreview() {
+  try {
+    const result = await marketApi.items({ page: 1, size: 4, sort: "new" }, {
+      suppressErrorMessage: true,
+      suppressAuthMessage: true,
+      suppressAuthRedirect: true,
+    });
+    marketPreview.value = result.list;
+  } catch {
+    marketPreview.value = [];
+  }
+}
+
+function marketCategoryIcon(category: string) {
+  return ({
+    digital: "💻",
+    books: "📚",
+    digital_goods: "📁",
+    dorm: "🛏️",
+    appliance: "🔌",
+    fashion: "👕",
+    sports: "🏸",
+    tickets: "🎫",
+    other: "📦",
+  } as Record<string, string>)[category] || "🛍️";
+}
 
 async function loadSummary() {
   const seq = ++loadSeq;
@@ -319,7 +387,7 @@ function normalizeHomeError(error: unknown) {
 .hero-text { flex: 1; z-index: 1; }
 .hero h1 { margin: 0 0 6px; font-size: 32px; }
 .hero p { margin: 0 0 16px; opacity: 0.9; font-size: 15px; }
-.hero-actions { display: flex; gap: 10px; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .hero-actions .el-button { background: rgba(255,255,255,0.9); border: none; color: #168776; }
 .hero-actions .el-button:hover { background: #fff; }
 .hero-actions .el-button--primary { background: #fff; color: #168776; }
@@ -528,6 +596,59 @@ function normalizeHomeError(error: unknown) {
   line-height: 1.6;
   color: var(--cpu-text-secondary);
 }
+.market-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.market-preview-card {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 12px;
+  color: inherit;
+  text-decoration: none;
+  background: var(--cpu-surface);
+  transition: border-color 0.15s, transform 0.15s;
+}
+.market-preview-card:hover { border-color: var(--cpu-primary); transform: translateY(-1px); }
+.market-preview-cover {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 9px;
+  background: linear-gradient(135deg, rgba(22, 135, 118, 0.12), rgba(45, 163, 145, 0.22));
+}
+.market-preview-cover img { width: 100%; height: 100%; object-fit: cover; }
+.market-placeholder-icon { font-size: 27px; filter: drop-shadow(0 3px 5px rgba(15, 118, 110, 0.12)); }
+.market-preview-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+}
+.market-preview-copy strong,
+.market-preview-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.market-preview-copy strong { font-size: 13px; }
+.market-preview-copy span { color: #e24a3b; font-size: 16px; font-weight: 800; }
+.market-preview-copy small { color: var(--cpu-text-muted); }
+.market-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(22, 135, 118, 0.08), rgba(232, 163, 23, 0.08));
+  color: var(--cpu-text-secondary);
+  font-size: 13px;
+}
 .svc {
   padding: 10px;
   border: 1px solid var(--cpu-border-soft);
@@ -619,6 +740,10 @@ function normalizeHomeError(error: unknown) {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .market-preview-grid {
+    grid-template-columns: 1fr;
+  }
+
   .svc {
     min-height: 82px;
     padding: 9px 7px;
@@ -638,6 +763,10 @@ function normalizeHomeError(error: unknown) {
     min-width: 0;
     font-size: 13px;
   }
+}
+
+:global(html[data-theme="dark"]) .market-preview-cover {
+  background: linear-gradient(135deg, rgba(45, 212, 191, 0.10), rgba(45, 163, 145, 0.18));
 }
 
 @media (max-width: 420px) {

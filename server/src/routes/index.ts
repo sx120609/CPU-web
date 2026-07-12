@@ -21,6 +21,7 @@ import { qqBotRouter } from "./qqbot";
 import { storageRouter } from "./storage";
 import { weiwallAuthRouter } from "./weiwallAuth";
 import { courseBotRouter } from "./courseBot";
+import { marketRouter } from "./market";
 
 export const router = Router();
 
@@ -40,6 +41,7 @@ router.use("/payments", paymentsRouter);
 router.use("/qqbot", qqBotRouter);
 router.use("/weiwall-auth", weiwallAuthRouter);
 router.use("/course-bot", authRequired, courseBotRouter);
+router.use("/market", marketRouter);
 
 // 教务代登录：begin-login / login 公开，其余 handler 内部验 token
 router.use("/jwxt", jwxtRouter);

@@ -6,6 +6,17 @@ import { clearJwxtDataCaches } from "@/utils/jwxtCache";
 
 let authExpiredListenerInstalled = false;
 
+function isJwxtAuthExpired(error: unknown) {
+  const candidate = error as {
+    status?: number;
+    message?: string;
+    response?: { status?: number; data?: { message?: string } };
+  };
+  const status = Number(candidate?.status || candidate?.response?.status || 0);
+  const message = String(candidate?.message || candidate?.response?.data?.message || "");
+  return status === 401 || /请先登录教务|教务会话已失效|重新登录|重新授权/.test(message);
+}
+
 /**
  * 教务 jwxt store —— 现在是 auth store 的薄包装。
  *
@@ -141,7 +152,7 @@ export const useJwxtStore = defineStore("jwxt", {
       }
       if (this.autoLoginTried && !options?.force) return false;
       this.autoLoginTried = true;
-      if (this.active && useAuthStore().isLoggedIn) return true;
+      if (this.active && useAuthStore().isLoggedIn && !options?.force) return true;
       const creds = await loadCreds().catch(() => null);
       if (!creds) return false;
       try {
@@ -153,6 +164,37 @@ export const useJwxtStore = defineStore("jwxt", {
         return await this.submitLogin(creds.username, creds.password, undefined, true);
       } catch {
         return false;
+      }
+    },
+    async ensureSession(options?: { refresh?: boolean; forceLogin?: boolean }): Promise<boolean> {
+      this.rememberSaved = hasCreds();
+      if (options?.refresh && this.token) {
+        await this.refreshStatus().catch(() => undefined);
+      }
+      if (this.active && this.token && !options?.forceLogin) return true;
+      if (!this.rememberSaved) return false;
+      return this.tryAutoLogin({ force: true });
+    },
+    async recoverSession(): Promise<boolean> {
+      clearJwxtToken();
+      clearJwxtDataCaches();
+      this.token = "";
+      this.active = false;
+      this.autoLoginTried = false;
+      this.rememberSaved = hasCreds();
+      if (!this.rememberSaved) return false;
+      return this.tryAutoLogin({ force: true });
+    },
+    async withSessionRetry<T>(task: () => Promise<T>): Promise<T> {
+      const ready = await this.ensureSession();
+      if (!ready) throw new Error("请先登录教务系统");
+      try {
+        return await task();
+      } catch (error) {
+        if (!isJwxtAuthExpired(error)) throw error;
+        const recovered = await this.recoverSession();
+        if (!recovered) throw error;
+        return task();
       }
     },
     async refreshWidgetTokens() {

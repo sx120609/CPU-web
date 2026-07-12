@@ -260,6 +260,11 @@ function goLogin() {
 }
 
 function openBoard(slug: string) {
+  const board = all.value.find((item) => item.slug === slug);
+  if (board?.type === "market") {
+    router.push("/market");
+    return;
+  }
   router.push(`/forum/b/${slug}`);
 }
 

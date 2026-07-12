@@ -211,6 +211,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { Check, Close, Filter, InfoFilled, Switch } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
+import { useJwxtStore } from "@/stores/jwxt";
 
 interface GradeRow {
   semester: string;
@@ -239,6 +240,7 @@ const statModeOptions: Array<{ value: StatMode; label: string }> = [
 ];
 
 const props = defineProps<{ data: any; loading?: boolean }>();
+const jwxt = useJwxtStore();
 const parsed = ref<any>(props.data?.parsed ?? null);
 const loading = ref(props.loading ?? false);
 const semester = ref<string>("");
@@ -542,7 +544,7 @@ async function reload() {
   loading.value = true;
   loadError.value = "";
   try {
-    const result = await jwxtApi.grades({ semester: semester.value || undefined }, { silent: true });
+    const result = await jwxt.withSessionRetry(() => jwxtApi.grades({ semester: semester.value || undefined }, { silent: true }));
     if (!disposed && seq === loadSeq) parsed.value = normalizeParsedGrades(result.parsed);
   } catch (error) {
     if (!disposed && seq === loadSeq) loadError.value = requestMessage(error) || "成绩加载失败，请稍后重试";

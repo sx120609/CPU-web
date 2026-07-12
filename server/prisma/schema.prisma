@@ -14,97 +14,111 @@ datasource db {
 // ============ 用户（站内独立账号，不接学校账号） ============
 
 model User {
-  id            Int      @id @default(autoincrement())
-  username      String   @unique // 登录名（学校账号登录时即为学号）
-  passwordHash  String
-  nickname      String   // 显示名（学校账号首次登录时为空，强制设置）
-  email         String?  @unique
-  avatar        String?
-  bio           String?  // 自我介绍
-  college       String?  // 自报院系（可选，仅展示用）
-  enrollYear    Int?     // 自报入学年份（可选）
-  role          String   @default("user") // user / mod / admin / bot
+  id                     Int       @id @default(autoincrement())
+  username               String    @unique // 登录名（学校账号登录时即为学号）
+  passwordHash           String
+  nickname               String // 显示名（学校账号首次登录时为空，强制设置）
+  email                  String?   @unique
+  avatar                 String?
+  bio                    String? // 自我介绍
+  college                String? // 自报院系（可选，仅展示用）
+  enrollYear             Int? // 自报入学年份（可选）
+  role                   String    @default("user") // user / mod / admin / bot
   // 是否通过学校 SSO 登录认证（学号身份已验证）。alice 等示例账号为 false
-  studentSso    Boolean  @default(false)
-  status        String   @default("active") // active / banned / muted
-  mutedUntil    DateTime?
-  postCount     Int      @default(0)
-  replyCount    Int      @default(0)
-  reputation    Int      @default(0)
-  lastSeenAt    DateTime @default(now())
-  lastLoginAt   DateTime?
-  lastLoginClient String?
-  usedIosClient Boolean  @default(false)
-  usedAndroidClient Boolean @default(false)
-  usedHarmonyClient Boolean @default(false)
-  topicSubmissionLocked Boolean @default(false)
-  aiReviewWhitelisted Boolean @default(false)
-  dataAuthAgreedAt DateTime?
-  forumEnabled  Boolean  @default(false)
-  forumEnabledAt DateTime?
-  anonymousCredits Int   @default(0)
-  anonymousWeekKey String?
-  anonymousCreditsFrozen Boolean @default(false)
-  sponsorTotalCents Int @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  studentSso             Boolean   @default(false)
+  status                 String    @default("active") // active / banned / muted
+  mutedUntil             DateTime?
+  postCount              Int       @default(0)
+  replyCount             Int       @default(0)
+  reputation             Int       @default(0)
+  lastSeenAt             DateTime  @default(now())
+  lastLoginAt            DateTime?
+  lastLoginClient        String?
+  usedIosClient          Boolean   @default(false)
+  usedAndroidClient      Boolean   @default(false)
+  usedHarmonyClient      Boolean   @default(false)
+  topicSubmissionLocked  Boolean   @default(false)
+  aiReviewWhitelisted    Boolean   @default(false)
+  dataAuthAgreedAt       DateTime?
+  forumEnabled           Boolean   @default(false)
+  forumEnabledAt         DateTime?
+  anonymousCredits       Int       @default(0)
+  anonymousWeekKey       String?
+  anonymousCreditsFrozen Boolean   @default(false)
+  sponsorTotalCents      Int       @default(0)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
-  topics            Topic[]
-  manualReviewedTopics Topic[] @relation("ManualReviewedTopics")
-  manualReviewedImages ForumImageAsset[] @relation("ManualReviewedImages")
-  manualReviewedVideos ForumVideoAsset[] @relation("ManualReviewedVideos")
-  replies           Reply[]
-  likes             Like[]
-  notifications     Notification[]
-  notificationReads NotificationRead[]
-  messageSetting    MessageSetting?
-  feedSources       SchoolFeedSource[] @relation("BotUser")
-  userCourses       UserCourse[]
-  scheduleEdits     UserScheduleEdit[]
-  scheduleWidgetTokens ScheduleWidgetToken[]
-  toolPermissions   ToolPermission[]
-  createdQuestionnaires Questionnaire[] @relation("QuestionnaireCreatedBy")
-  questionnaireResponses QuestionnaireResponse[]
-  createdGradeCheckTables GradeCheckTable[] @relation("GradeCheckCreatedBy")
-  createdFileCollectTasks FileCollectTask[] @relation("FileCollectCreatedBy")
-  createdFileCollectTemplates FileCollectTemplate[] @relation("FileCollectTemplateCreatedBy")
-  fileCollectSubmissions FileCollectSubmission[] @relation("FileCollectSubmittedBy")
-  sponsorOrders    SponsorOrder[]
-  qqBotBindings     QqBotBinding[]
-  qqBotBindTokens   QqBotBindToken[]
-  qqBotMessageLogs  QqBotMessageLog[]
-  forumImageAssets  ForumImageAsset[]
-  forumVideoAssets  ForumVideoAsset[]
-  aiReviewLogs      AiReviewLog[]
-  courseBotQuota    CourseBotQuota?
-  courseBotUsageLogs CourseBotUsageLog[]
-  adminDailyLogins  AdminDailyLogin[]
+  topics                      Topic[]
+  manualReviewedTopics        Topic[]                 @relation("ManualReviewedTopics")
+  manualReviewedImages        ForumImageAsset[]       @relation("ManualReviewedImages")
+  manualReviewedVideos        ForumVideoAsset[]       @relation("ManualReviewedVideos")
+  replies                     Reply[]
+  likes                       Like[]
+  notifications               Notification[]
+  notificationReads           NotificationRead[]
+  messageSetting              MessageSetting?
+  feedSources                 SchoolFeedSource[]      @relation("BotUser")
+  userCourses                 UserCourse[]
+  scheduleEdits               UserScheduleEdit[]
+  scheduleWidgetTokens        ScheduleWidgetToken[]
+  toolPermissions             ToolPermission[]
+  createdQuestionnaires       Questionnaire[]         @relation("QuestionnaireCreatedBy")
+  questionnaireResponses      QuestionnaireResponse[]
+  createdGradeCheckTables     GradeCheckTable[]       @relation("GradeCheckCreatedBy")
+  createdFileCollectTasks     FileCollectTask[]       @relation("FileCollectCreatedBy")
+  createdFileCollectTemplates FileCollectTemplate[]   @relation("FileCollectTemplateCreatedBy")
+  fileCollectSubmissions      FileCollectSubmission[] @relation("FileCollectSubmittedBy")
+  sponsorOrders               SponsorOrder[]
+  qqBotBindings               QqBotBinding[]
+  qqBotBindTokens             QqBotBindToken[]
+  qqBotMessageLogs            QqBotMessageLog[]
+  forumImageAssets            ForumImageAsset[]
+  forumVideoAssets            ForumVideoAsset[]
+  aiReviewLogs                AiReviewLog[]
+  courseBotQuota              CourseBotQuota?
+  courseBotUsageLogs          CourseBotUsageLog[]
+  adminDailyLogins            AdminDailyLogin[]
+  marketItems                 MarketItem[]            @relation("MarketSeller")
+  marketFavorites             MarketFavorite[]
+  marketOffers                MarketOffer[]           @relation("MarketOfferBuyer")
+  marketBuyerOrders           MarketOrder[]           @relation("MarketOrderBuyer")
+  marketSellerOrders          MarketOrder[]           @relation("MarketOrderSeller")
+  marketBuyerConversations    MarketConversation[]    @relation("MarketConversationBuyer")
+  marketSellerConversations   MarketConversation[]    @relation("MarketConversationSeller")
+  marketMessages              MarketMessage[]         @relation("MarketMessageSender")
+  marketReviewsAuthored       MarketReview[]          @relation("MarketReviewAuthor")
+  marketReviewsReceived       MarketReview[]          @relation("MarketReviewTarget")
+  marketReports               MarketReport[]          @relation("MarketReportReporter")
+  marketRefundRequests        MarketRefund[]          @relation("MarketRefundRequester")
+  marketSettlements           MarketSettlement[]      @relation("MarketSettlementSeller")
+  marketPayoutProfile         MarketPayoutProfile?
 }
 
 // ============ 论坛核心 ============
 
 model Board {
-  id          Int      @id @default(autoincrement())
-  slug        String   @unique // 路由用 slug，如 hot / question / market / coursereview / news-jwc
-  name        String
-  description String?
-  icon        String?  // emoji 或 element icon name
-  color       String?  // 板块色（hex）
-  order       Int      @default(0)
+  id                 Int                 @id @default(autoincrement())
+  slug               String              @unique // 路由用 slug，如 hot / question / market / coursereview / news-jwc
+  name               String
+  description        String?
+  icon               String? // emoji 或 element icon name
+  color              String? // 板块色（hex）
+  order              Int                 @default(0)
   // type 控制板块特殊行为：
   //   normal      普通板块
   //   announce    只读公告板（爬虫机器人发帖）
   //   market      二手市场（topic.metadata 含 price/condition/images）
   //   question    提问广场（topic.metadata 含 resolved/bounty）
   //   coursereview 课程点评（topic.metadata 含 courseId/ratings）
-  type        String   @default("normal")
+  type               String              @default("normal")
   // 只读板块发帖人必须是 bot
-  readOnly    Boolean  @default(false)
-  anonymousEnabled Boolean @default(false)
-  topicCount  Int      @default(0)
+  readOnly           Boolean             @default(false)
+  anonymousEnabled   Boolean             @default(false)
+  topicCount         Int                 @default(0)
   // 关联爬虫源（announce 类型板块独有）
-  feedSourceId Int?    @unique
-  feedSource  SchoolFeedSource? @relation(fields: [feedSourceId], references: [id])
+  feedSourceId       Int?                @unique
+  feedSource         SchoolFeedSource?   @relation(fields: [feedSourceId], references: [id])
   weiwallSyncConfigs WeiwallSyncConfig[]
 
   topics Topic[]
@@ -114,49 +128,50 @@ model Board {
 }
 
 model Topic {
-  id          Int       @id @default(autoincrement())
-  boardId     Int
-  authorId    Int
-  title       String
+  id                 Int       @id @default(autoincrement())
+  boardId            Int
+  authorId           Int
+  title              String
   // 正文内容（Markdown 源码）
-  content     String
+  content            String
   // 板块特化字段，JSON 字符串。
   //   market:       {"price": 100, "condition":"九成新", "images":["..."], "tradeMode":"当面"}
   //   question:     {"resolved":false, "bounty":0, "tags":["数据结构"]}
   //   coursereview: {"courseId":12,"ratings":{"difficulty":3,"reward":5,"recommend":4,"score":2}}
   //   announce:     {"sourceUrl":"...", "publishedAt":"2026-05-14"}
-  metadata    String    @default("{}")
-  aiReviewStatus String @default("none") // none / checking / auto_passed / blocked_ai / manual_requested / manual_reviewing / approved_manual / rejected_manual
-  aiRiskLevel String? // low / medium / high
-  aiRiskScore Int? // 0-100
-  aiReviewReason String?
-  aiReviewDetail String?
-  aiModel String?
-  aiReviewedAt DateTime?
+  metadata           String    @default("{}")
+  aiReviewStatus     String    @default("none") // none / checking / auto_passed / blocked_ai / manual_requested / manual_reviewing / approved_manual / rejected_manual
+  aiRiskLevel        String? // low / medium / high
+  aiRiskScore        Int? // 0-100
+  aiReviewReason     String?
+  aiReviewDetail     String?
+  aiModel            String?
+  aiReviewedAt       DateTime?
   manualReviewedById Int?
-  manualReviewedAt DateTime?
-  manualReviewNote String?
-  isAnonymous Boolean   @default(false)
-  anonymousAlias String?
-  editCount    Int       @default(0)
-  pinned      Boolean   @default(false)
-  locked      Boolean   @default(false) // 锁帖后不能回复
-  hidden      Boolean   @default(false) // 被管理员隐藏
-  viewCount   Int       @default(0)
-  replyCount  Int       @default(0)
-  likeCount   Int       @default(0)
-  lastReplyAt DateTime? // 用于排序
-  lastReplyById Int?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  manualReviewedAt   DateTime?
+  manualReviewNote   String?
+  isAnonymous        Boolean   @default(false)
+  anonymousAlias     String?
+  editCount          Int       @default(0)
+  pinned             Boolean   @default(false)
+  locked             Boolean   @default(false) // 锁帖后不能回复
+  hidden             Boolean   @default(false) // 被管理员隐藏
+  viewCount          Int       @default(0)
+  replyCount         Int       @default(0)
+  likeCount          Int       @default(0)
+  lastReplyAt        DateTime? // 用于排序
+  lastReplyById      Int?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  board   Board   @relation(fields: [boardId], references: [id])
-  author  User    @relation(fields: [authorId], references: [id])
-  replies Reply[]
-  likes   Like[]
-  tags    TopicTag[]
-  manualReviewedBy User? @relation("ManualReviewedTopics", fields: [manualReviewedById], references: [id])
-  weiwallMap WeiwallTopicMap?
+  board            Board            @relation(fields: [boardId], references: [id])
+  author           User             @relation(fields: [authorId], references: [id])
+  replies          Reply[]
+  likes            Like[]
+  tags             TopicTag[]
+  manualReviewedBy User?            @relation("ManualReviewedTopics", fields: [manualReviewedById], references: [id])
+  weiwallMap       WeiwallTopicMap?
+  marketItem       MarketItem?
 
   @@index([boardId, lastReplyAt])
   @@index([boardId, hidden, createdAt])
@@ -167,31 +182,31 @@ model Topic {
 }
 
 model Reply {
-  id            Int      @id @default(autoincrement())
-  topicId       Int
-  authorId      Int
-  content       String   // Markdown
-  aiReviewStatus String  @default("none") // none / auto_passed / blocked_ai / manual_requested / manual_reviewing / approved_manual / rejected_manual
-  aiRiskLevel   String?
-  aiRiskScore   Int?
+  id             Int       @id @default(autoincrement())
+  topicId        Int
+  authorId       Int
+  content        String // Markdown
+  aiReviewStatus String    @default("none") // none / auto_passed / blocked_ai / manual_requested / manual_reviewing / approved_manual / rejected_manual
+  aiRiskLevel    String?
+  aiRiskScore    Int?
   aiReviewReason String?
   aiReviewDetail String?
-  aiModel       String?
-  aiReviewedAt  DateTime?
+  aiModel        String?
+  aiReviewedAt   DateTime?
   // 楼中楼：parentReplyId 指向父级回复，null 表示直接对主帖
-  parentReplyId Int?
-  isAnonymous  Boolean  @default(false)
+  parentReplyId  Int?
+  isAnonymous    Boolean   @default(false)
   anonymousAlias String?
   // 排序楼层号
-  floor         Int      @default(0)
-  likeCount     Int      @default(0)
-  hidden        Boolean  @default(false)
-  createdAt     DateTime @default(now())
+  floor          Int       @default(0)
+  likeCount      Int       @default(0)
+  hidden         Boolean   @default(false)
+  createdAt      DateTime  @default(now())
 
-  topic       Topic   @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  author      User    @relation(fields: [authorId], references: [id])
-  parentReply Reply?  @relation("ReplyToReply", fields: [parentReplyId], references: [id])
-  children    Reply[] @relation("ReplyToReply")
+  topic       Topic            @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  author      User             @relation(fields: [authorId], references: [id])
+  parentReply Reply?           @relation("ReplyToReply", fields: [parentReplyId], references: [id])
+  children    Reply[]          @relation("ReplyToReply")
   likes       Like[]
   weiwallMap  WeiwallReplyMap?
 
@@ -214,29 +229,29 @@ model Like {
 }
 
 model ForumImageAsset {
-  id            Int      @id @default(autoincrement())
-  url           String   @unique
-  localPath     String
-  mimeType      String?
-  fileSize      Int?
-  status        String   @default("pending") // pending / approved / rejected / error
-  reason        String?
-  detail        String?
-  reviewModel   String?
-  reviewEndpoint String?
-  reviewedAt    DateTime?
-  lastAttemptAt DateTime?
-  nextRetryAt   DateTime?
-  attemptCount  Int      @default(0)
-  lastError     String?
-  createdById   Int?
+  id                 Int       @id @default(autoincrement())
+  url                String    @unique
+  localPath          String
+  mimeType           String?
+  fileSize           Int?
+  status             String    @default("pending") // pending / approved / rejected / error
+  reason             String?
+  detail             String?
+  reviewModel        String?
+  reviewEndpoint     String?
+  reviewedAt         DateTime?
+  lastAttemptAt      DateTime?
+  nextRetryAt        DateTime?
+  attemptCount       Int       @default(0)
+  lastError          String?
+  createdById        Int?
   manualReviewedById Int?
-  manualReviewedAt DateTime?
-  manualReviewNote String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  manualReviewedAt   DateTime?
+  manualReviewNote   String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy        User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
   manualReviewedBy User? @relation("ManualReviewedImages", fields: [manualReviewedById], references: [id], onDelete: SetNull)
 
   @@index([status, nextRetryAt, createdAt])
@@ -244,35 +259,35 @@ model ForumImageAsset {
 }
 
 model ForumVideoAsset {
-  id            Int      @id @default(autoincrement())
-  url           String   @unique
-  localPath     String
-  mimeType      String?
-  fileSize      Int?
-  durationMs    Int?
-  width         Int?
-  height        Int?
-  hasAudio      Boolean  @default(false)
-  transcript    String?
-  transcriptStatus String?
-  status        String   @default("pending") // pending / approved / rejected / manual_review / error
-  reason        String?
-  detail        String?
-  reviewModel   String?
-  reviewEndpoint String?
-  reviewedAt    DateTime?
-  lastAttemptAt DateTime?
-  nextRetryAt   DateTime?
-  attemptCount  Int      @default(0)
-  lastError     String?
-  createdById   Int?
+  id                 Int       @id @default(autoincrement())
+  url                String    @unique
+  localPath          String
+  mimeType           String?
+  fileSize           Int?
+  durationMs         Int?
+  width              Int?
+  height             Int?
+  hasAudio           Boolean   @default(false)
+  transcript         String?
+  transcriptStatus   String?
+  status             String    @default("pending") // pending / approved / rejected / manual_review / error
+  reason             String?
+  detail             String?
+  reviewModel        String?
+  reviewEndpoint     String?
+  reviewedAt         DateTime?
+  lastAttemptAt      DateTime?
+  nextRetryAt        DateTime?
+  attemptCount       Int       @default(0)
+  lastError          String?
+  createdById        Int?
   manualReviewedById Int?
-  manualReviewedAt DateTime?
-  manualReviewNote String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  manualReviewedAt   DateTime?
+  manualReviewNote   String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy        User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
   manualReviewedBy User? @relation("ManualReviewedVideos", fields: [manualReviewedById], references: [id], onDelete: SetNull)
 
   @@index([status, nextRetryAt, createdAt])
@@ -280,24 +295,24 @@ model ForumVideoAsset {
 }
 
 model AiReviewLog {
-  id              Int      @id @default(autoincrement())
-  kind            String   // topic / reply / topic-edit / image
+  id              Int       @id @default(autoincrement())
+  kind            String // topic / reply / topic-edit / image
   targetId        Int?
   targetLabel     String?
   targetUrl       String?
   provider        String
   model           String
   endpoint        String?
-  status          String   @default("started") // started / success / error
-  requestSummary  String   @default("")
-  responseSummary String   @default("")
+  status          String    @default("started") // started / success / error
+  requestSummary  String    @default("")
+  responseSummary String    @default("")
   errorMessage    String?
   createdById     Int?
-  startedAt       DateTime @default(now())
+  startedAt       DateTime  @default(now())
   finishedAt      DateTime?
   durationMs      Int?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
 
@@ -307,8 +322,8 @@ model AiReviewLog {
 }
 
 model Tag {
-  id    Int    @id @default(autoincrement())
-  name  String @unique
+  id     Int        @id @default(autoincrement())
+  name   String     @unique
   topics TopicTag[]
 }
 
@@ -325,8 +340,8 @@ model TopicTag {
 // ============ 课程点评聚合（衍生于 coursereview 板块的 Topic） ============
 
 model Course {
-  id       Int    @id @default(autoincrement())
-  code     String @unique
+  id       Int     @id @default(autoincrement())
+  code     String  @unique
   name     String
   // 旧字段：保留以兼容历史数据。新代码请通过 courseTeachers 读取多老师。
   // 数据迁移见 migrations/20260515090000_add_teachers。
@@ -348,27 +363,27 @@ model Course {
 
 // 老师（与课程多对多，由 CourseTeacher 关联）
 model Teacher {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique // 同名老师暂归为同一人；后续 admin 后台可拆分
-  college   String?
+  id          Int      @id @default(autoincrement())
+  name        String   @unique // 同名老师暂归为同一人；后续 admin 后台可拆分
+  college     String?
   // 用户自助添加来源标记：留作后续审核合并用
   createdById Int?
-  createdAt DateTime @default(now())
+  createdAt   DateTime @default(now())
 
   courseTeachers CourseTeacher[]
 }
 
 // 课程-老师 关联（一个老师在一门课上的"授课记录"，可跨学期累计）
 model CourseTeacher {
-  id        Int    @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   courseId  Int
   teacherId Int
   // 来源：'jwxt-pyfa' | 'jwxt-grade' | 'user-add' | 'seed' | 'backfill'
-  source    String @default("user-add")
+  source    String   @default("user-add")
   createdAt DateTime @default(now())
 
-  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  course  Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  teacher Teacher        @relation(fields: [teacherId], references: [id], onDelete: Cascade)
   ratings CourseRating[]
 
   @@unique([courseId, teacherId])
@@ -381,9 +396,9 @@ model UserCourse {
   id        Int      @id @default(autoincrement())
   userId    Int
   courseId  Int
-  source    String   // 'grade' (有成绩) / 'pyfa' (培养方案里)
-  semester  String?  // 学期，仅 grade 来源时有
-  score     String?  // 成绩，仅 grade 来源时有
+  source    String // 'grade' (有成绩) / 'pyfa' (培养方案里)
+  semester  String? // 学期，仅 grade 来源时有
+  score     String? // 成绩，仅 grade 来源时有
   createdAt DateTime @default(now())
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -411,19 +426,19 @@ model UserScheduleEdit {
 // iOS Scriptable 小组件只读 token。
 // 注意：这里保存的是服务端教务会话 token 和最近一次成功的小组件课表缓存，不保存学校账号密码。
 model ScheduleWidgetToken {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  name      String?
-  tokenHash String   @unique
-  tokenSuffix String
-  jwxtToken String
+  id            Int       @id @default(autoincrement())
+  userId        Int
+  name          String?
+  tokenHash     String    @unique
+  tokenSuffix   String
+  jwxtToken     String
   cachedPayload String?
-  cachedAt DateTime?
-  lastUsedAt DateTime?
-  expiresAt DateTime?
-  revokedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  cachedAt      DateTime?
+  lastUsedAt    DateTime?
+  expiresAt     DateTime?
+  revokedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -433,21 +448,21 @@ model ScheduleWidgetToken {
 
 // 一个学生对一门课的评分（与 Topic 1:1 关联）
 model CourseRating {
-  id         Int   @id @default(autoincrement())
-  topicId    Int   @unique
-  courseId   Int
+  id              Int     @id @default(autoincrement())
+  topicId         Int     @unique
+  courseId        Int
   // 关联到具体的"课程-老师"组合；旧数据 nullable
   courseTeacherId Int?
-  authorId   Int
+  authorId        Int
   // 评分维度（1-5）
-  difficulty Int   // 难度
-  reward     Int   // 收获
-  recommend  Int   // 推荐度
-  givingScore Int  // 给分（1=低 5=高）
+  difficulty      Int // 难度
+  reward          Int // 收获
+  recommend       Int // 推荐度
+  givingScore     Int // 给分（1=低 5=高）
   // 上学期 / 学年
-  semester   String?
+  semester        String?
 
-  createdAt  DateTime @default(now())
+  createdAt DateTime @default(now())
 
   courseTeacher CourseTeacher? @relation(fields: [courseTeacherId], references: [id], onDelete: SetNull)
 
@@ -458,17 +473,17 @@ model CourseRating {
 // ============ 学校爬虫源 ============
 
 model SchoolFeedSource {
-  id          Int     @id @default(autoincrement())
-  slug        String  @unique
-  name        String  // 显示名："教务通知" "学工动态"
-  homepage    String  // 学校原始入口（用于"查看原文"）
-  listUrl     String  // 列表 URL，可包含 {page} 占位符
-  pageSize    Int     @default(14) // 每页条数（学校 CMS 通常 14）
-  maxPages    Int     @default(2) // 抓多少页
+  id          Int       @id @default(autoincrement())
+  slug        String    @unique
+  name        String // 显示名："教务通知" "学工动态"
+  homepage    String // 学校原始入口（用于"查看原文"）
+  listUrl     String // 列表 URL，可包含 {page} 占位符
+  pageSize    Int       @default(14) // 每页条数（学校 CMS 通常 14）
+  maxPages    Int       @default(2) // 抓多少页
   // 解析规则（JSON，预留扩展。MVP 用硬编码 selector）
-  parser      String  @default("school-cms-v1")
-  cronMinutes Int     @default(15) // 每 N 分钟抓一次
-  enabled     Boolean @default(true)
+  parser      String    @default("school-cms-v1")
+  cronMinutes Int       @default(15) // 每 N 分钟抓一次
+  enabled     Boolean   @default(true)
   // 机器人账号（自动发帖用）
   botUserId   Int
   lastRunAt   DateTime?
@@ -485,11 +500,11 @@ model SchoolFeedSource {
 model SchoolFeedItem {
   id          Int      @id @default(autoincrement())
   sourceId    Int
-  externalId  String   // URL 中的 c{boardId}a{infoId} 部分，唯一
-  url         String   // 详情页全 URL
+  externalId  String // URL 中的 c{boardId}a{infoId} 部分，唯一
+  url         String // 详情页全 URL
   title       String
   publishedAt DateTime
-  topicId     Int?     // 对应在论坛中创建的 Topic
+  topicId     Int? // 对应在论坛中创建的 Topic
   createdAt   DateTime @default(now())
 
   @@unique([sourceId, externalId])
@@ -499,24 +514,24 @@ model SchoolFeedItem {
 // ============ 外部逛逛同步（WeiWall / 逛逛校园圈） ============
 
 model WeiwallSyncConfig {
-  id               Int      @id @default(autoincrement())
-  enabled          Boolean  @default(false)
-  baseUrl          String   @default("https://s.weiwall.com")
-  schoolEn         String   @default("cpu")
-  tenantId         Int      @default(7)
-  token            String   @default("")
-  intervalSeconds  Int      @default(120)
-  topicPages       Int      @default(3)
-  commentPageSize  Int      @default(20)
-  maxCommentPages  Int      @default(10)
-  maxReplyPages    Int      @default(10)
-  boardId          Int?
-  lastRunAt        DateTime?
-  lastRunOk        Boolean?
-  lastError        String?
-  lastSyncedAt     DateTime?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id              Int       @id @default(autoincrement())
+  enabled         Boolean   @default(false)
+  baseUrl         String    @default("https://s.weiwall.com")
+  schoolEn        String    @default("cpu")
+  tenantId        Int       @default(7)
+  token           String    @default("")
+  intervalSeconds Int       @default(120)
+  topicPages      Int       @default(3)
+  commentPageSize Int       @default(20)
+  maxCommentPages Int       @default(10)
+  maxReplyPages   Int       @default(10)
+  boardId         Int?
+  lastRunAt       DateTime?
+  lastRunOk       Boolean?
+  lastError       String?
+  lastSyncedAt    DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   board Board? @relation(fields: [boardId], references: [id], onDelete: SetNull)
 
@@ -524,20 +539,20 @@ model WeiwallSyncConfig {
 }
 
 model WeiwallTopicMap {
-  id               Int      @id @default(autoincrement())
-  externalTopicId  String   @unique
-  localTopicId     Int      @unique
-  externalAuthorKey String?
-  externalAuthorUuid String?
-  externalAuthorName String?
+  id                   Int       @id @default(autoincrement())
+  externalTopicId      String    @unique
+  localTopicId         Int       @unique
+  externalAuthorKey    String?
+  externalAuthorUuid   String?
+  externalAuthorName   String?
   externalAuthorAvatar String?
-  externalCreatedAt DateTime?
-  lastCommentCount Int      @default(0)
-  lastLikeCount    Int      @default(0)
-  lastStatus       String?
-  lastSyncedAt     DateTime @default(now())
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  externalCreatedAt    DateTime?
+  lastCommentCount     Int       @default(0)
+  lastLikeCount        Int       @default(0)
+  lastStatus           String?
+  lastSyncedAt         DateTime  @default(now())
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   localTopic Topic @relation(fields: [localTopicId], references: [id], onDelete: Cascade)
 
@@ -545,9 +560,9 @@ model WeiwallTopicMap {
 }
 
 model WeiwallReplyMap {
-  id                    Int      @id @default(autoincrement())
-  externalReplyId       String   @unique
-  localReplyId          Int      @unique
+  id                    Int       @id @default(autoincrement())
+  externalReplyId       String    @unique
+  localReplyId          Int       @unique
   externalTopicId       String
   externalCommentId     String?
   parentExternalReplyId String?
@@ -555,9 +570,9 @@ model WeiwallReplyMap {
   externalAuthorName    String?
   externalAuthorAvatar  String?
   externalCreatedAt     DateTime?
-  lastSyncedAt          DateTime @default(now())
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  lastSyncedAt          DateTime  @default(now())
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   localReply Reply @relation(fields: [localReplyId], references: [id], onDelete: Cascade)
 
@@ -570,14 +585,14 @@ model ServiceCard {
   id          Int      @id @default(autoincrement())
   code        String   @unique
   name        String
-  category    String   // 教务 / 卡务 / 健康 / 生活 / 就业 / 信息化
-  owner       String   // 责任部门
+  category    String // 教务 / 卡务 / 健康 / 生活 / 就业 / 信息化
+  owner       String // 责任部门
   icon        String?
   description String?
-  url         String   // 学校原入口
-  materials   String?  // 所需材料
-  duration    String?  // 办理时长
-  contact     String?  // 咨询方式
+  url         String // 学校原入口
+  materials   String? // 所需材料
+  duration    String? // 办理时长
+  contact     String? // 咨询方式
   needSso     Boolean  @default(false) // 是否需要先登录学校 SSO
   // 排序权重
   order       Int      @default(0)
@@ -621,26 +636,26 @@ model ToolSetting {
 // ============ 小工具：问卷系统 ============
 
 model Questionnaire {
-  id                 Int      @id @default(autoincrement())
-  toolCode           String   @default("questionnaire")
-  slug               String   @unique
+  id                 Int       @id @default(autoincrement())
+  toolCode           String    @default("questionnaire")
+  slug               String    @unique
   title              String
   description        String?
-  status             String   @default("draft") // draft / open / closed
-  visibility         String   @default("public") // public / login
-  allowAnonymous     Boolean  @default(true)
-  oneResponsePerUser Boolean  @default(false)
-  isSystem           Boolean  @default(false)
-  qqBotNotifyEnabled Boolean  @default(true)
-  qqBotNotifyConfig  String   @default("{}")
-  fields             String   @default("[]")
+  status             String    @default("draft") // draft / open / closed
+  visibility         String    @default("public") // public / login
+  allowAnonymous     Boolean   @default(true)
+  oneResponsePerUser Boolean   @default(false)
+  isSystem           Boolean   @default(false)
+  qqBotNotifyEnabled Boolean   @default(true)
+  qqBotNotifyConfig  String    @default("{}")
+  fields             String    @default("[]")
   createdById        Int?
   publishedAt        DateTime?
   closedAt           DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  createdBy User? @relation("QuestionnaireCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy User?                   @relation("QuestionnaireCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   responses QuestionnaireResponse[]
 
   @@index([toolCode, status])
@@ -655,7 +670,7 @@ model QuestionnaireResponse {
   createdAt       DateTime @default(now())
 
   questionnaire Questionnaire @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
-  respondent    User? @relation(fields: [respondentId], references: [id], onDelete: SetNull)
+  respondent    User?         @relation(fields: [respondentId], references: [id], onDelete: SetNull)
 
   @@index([questionnaireId, createdAt])
   @@index([respondentId])
@@ -664,24 +679,24 @@ model QuestionnaireResponse {
 // ============ 小工具：成绩表核对 ============
 
 model GradeCheckTable {
-  id              Int      @id @default(autoincrement())
-  slug            String   @unique
-  title           String
-  description     String?
-  status          String   @default("open") // draft / open / closed
-  studentIdColumn String   @default("学号")
-  columns         String   @default("[]")
-  rowCount        Int      @default(0)
+  id                        Int       @id @default(autoincrement())
+  slug                      String    @unique
+  title                     String
+  description               String?
+  status                    String    @default("open") // draft / open / closed
+  studentIdColumn           String    @default("学号")
+  columns                   String    @default("[]")
+  rowCount                  Int       @default(0)
   feedbackQuestionnaireSlug String?
-  qqBotNotifyEnabled Boolean @default(true)
-  qqBotNotifyConfig String @default("{}")
-  createdById     Int?
-  publishedAt     DateTime?
-  closedAt        DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  qqBotNotifyEnabled        Boolean   @default(true)
+  qqBotNotifyConfig         String    @default("{}")
+  createdById               Int?
+  publishedAt               DateTime?
+  closedAt                  DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
 
-  createdBy User? @relation("GradeCheckCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy User?           @relation("GradeCheckCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   rows      GradeCheckRow[]
 
   @@index([status])
@@ -704,30 +719,30 @@ model GradeCheckRow {
 // ============ 小工具：文件收集 ============
 
 model FileCollectTask {
-  id              Int      @id @default(autoincrement())
-  slug            String   @unique
-  title           String
-  description     String?
-  status          String   @default("open") // draft / open / closed
-  visibility      String   @default("public") // public / login
-  fields          String   @default("[]")
-  surveyFields    String   @default("[]")
-  fileRules       String   @default("{}")
-  renameTemplate  String   @default("{name}-{student_id}")
-  folderTemplate  String   @default("{name}-{student_id}")
-  expectedEntries String   @default("")
-  deadline        DateTime?
-  submissionCount Int      @default(0)
-  fileCount       Int      @default(0)
-  qqBotNotifyEnabled Boolean @default(true)
-  qqBotNotifyConfig String @default("{}")
-  createdById     Int?
-  publishedAt     DateTime?
-  closedAt        DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                 Int       @id @default(autoincrement())
+  slug               String    @unique
+  title              String
+  description        String?
+  status             String    @default("open") // draft / open / closed
+  visibility         String    @default("public") // public / login
+  fields             String    @default("[]")
+  surveyFields       String    @default("[]")
+  fileRules          String    @default("{}")
+  renameTemplate     String    @default("{name}-{student_id}")
+  folderTemplate     String    @default("{name}-{student_id}")
+  expectedEntries    String    @default("")
+  deadline           DateTime?
+  submissionCount    Int       @default(0)
+  fileCount          Int       @default(0)
+  qqBotNotifyEnabled Boolean   @default(true)
+  qqBotNotifyConfig  String    @default("{}")
+  createdById        Int?
+  publishedAt        DateTime?
+  closedAt           DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  createdBy   User? @relation("FileCollectCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?                   @relation("FileCollectCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   submissions FileCollectSubmission[]
 
   @@index([status])
@@ -765,8 +780,8 @@ model FileCollectSubmission {
   status      String   @default("submitted")
   createdAt   DateTime @default(now())
 
-  task      FileCollectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  submitter User? @relation("FileCollectSubmittedBy", fields: [submitterId], references: [id], onDelete: SetNull)
+  task      FileCollectTask   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  submitter User?             @relation("FileCollectSubmittedBy", fields: [submitterId], references: [id], onDelete: SetNull)
   files     FileCollectFile[]
 
   @@index([taskId, createdAt])
@@ -793,37 +808,37 @@ model FileCollectFile {
 // ============ 支付对接：易支付 ============
 
 model EpayConfig {
-  id          Int      @id @default(autoincrement())
-  enabled     Boolean  @default(false)
-  gatewayUrl  String   @default("")
-  pid         String   @default("")
-  merchantKey String   @default("")
-  signType    String   @default("MD5")
-  defaultType String   @default("alipay")
-  enabledTypes String  @default("[\"alipay\",\"wxpay\"]")
-  notifyUrl   String   @default("")
-  returnUrl   String   @default("")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           Int      @id @default(autoincrement())
+  enabled      Boolean  @default(false)
+  gatewayUrl   String   @default("")
+  pid          String   @default("")
+  merchantKey  String   @default("")
+  signType     String   @default("MD5")
+  defaultType  String   @default("alipay")
+  enabledTypes String   @default("[\"alipay\",\"wxpay\"]")
+  notifyUrl    String   @default("")
+  returnUrl    String   @default("")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model SponsorOrder {
-  id          Int      @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   userId      Int
-  outTradeNo  String   @unique
+  outTradeNo  String    @unique
   tradeNo     String?
   payType     String
   amountCents Int
-  message     String   @default("")
-  displayMode String   @default("public") // public / anonymous / hidden
-  status      String   @default("pending") // pending / paid / closed
+  message     String    @default("")
+  displayMode String    @default("public") // public / anonymous / hidden
+  status      String    @default("pending") // pending / paid / closed
   expiresAt   DateTime?
   paidAt      DateTime?
   closedAt    DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   paymentLogs SponsorPaymentLog[]
 
   @@index([userId, status])
@@ -832,16 +847,16 @@ model SponsorOrder {
 }
 
 model SponsorPaymentLog {
-  id          Int      @id @default(autoincrement())
-  orderId     Int?
-  outTradeNo  String?
-  provider    String   @default("epay")
-  event       String   @default("notify")
-  rawPayload  String   @default("{}")
-  signOk      Boolean  @default(false)
-  handled     Boolean  @default(false)
-  result      String?
-  createdAt   DateTime @default(now())
+  id         Int      @id @default(autoincrement())
+  orderId    Int?
+  outTradeNo String?
+  provider   String   @default("epay")
+  event      String   @default("notify")
+  rawPayload String   @default("{}")
+  signOk     Boolean  @default(false)
+  handled    Boolean  @default(false)
+  result     String?
+  createdAt  DateTime @default(now())
 
   order SponsorOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
@@ -849,23 +864,323 @@ model SponsorPaymentLog {
   @@index([createdAt])
 }
 
+// ============ 校园商城 ============
+
+model MarketItem {
+  id                       Int       @id @default(autoincrement())
+  topicId                  Int?      @unique
+  sellerId                 Int
+  listingType              String    @default("sell") // sell / wanted
+  title                    String
+  description              String
+  category                 String    @default("other")
+  deliveryType             String    @default("physical") // physical / digital
+  digitalDeliveryEncrypted String?
+  priceCents               Int
+  originalPriceCents       Int?
+  negotiable               Boolean   @default(false)
+  condition                String    @default("good")
+  tradeMode                String    @default("meetup") // meetup / shipping / both
+  campus                   String    @default("")
+  location                 String    @default("")
+  status                   String    @default("active") // draft / reviewing / active / reserved / sold / withdrawn / hidden
+  viewCount                Int       @default(0)
+  favoriteCount            Int       @default(0)
+  offerCount               Int       @default(0)
+  soldAt                   DateTime?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  topic         Topic?               @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  seller        User                 @relation("MarketSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  images        MarketImage[]
+  favorites     MarketFavorite[]
+  offers        MarketOffer[]
+  orders        MarketOrder[]
+  conversations MarketConversation[]
+  reports       MarketReport[]
+
+  @@index([status, createdAt])
+  @@index([category, status, createdAt])
+  @@index([sellerId, status, updatedAt])
+  @@index([listingType, status, createdAt])
+  @@index([priceCents])
+}
+
+model MarketImage {
+  id        Int      @id @default(autoincrement())
+  itemId    Int
+  url       String
+  sort      Int      @default(0)
+  createdAt DateTime @default(now())
+
+  item MarketItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId, sort])
+}
+
+model MarketFavorite {
+  id        Int      @id @default(autoincrement())
+  itemId    Int
+  userId    Int
+  createdAt DateTime @default(now())
+
+  item MarketItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, userId])
+  @@index([userId, createdAt])
+}
+
+model MarketOffer {
+  id         Int      @id @default(autoincrement())
+  itemId     Int
+  buyerId    Int
+  priceCents Int
+  message    String   @default("")
+  status     String   @default("pending") // pending / accepted / rejected / cancelled / expired
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  item  MarketItem   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  buyer User         @relation("MarketOfferBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  order MarketOrder?
+
+  @@index([itemId, status, createdAt])
+  @@index([buyerId, status, createdAt])
+}
+
+model MarketOrder {
+  id                       Int       @id @default(autoincrement())
+  itemId                   Int
+  offerId                  Int       @unique
+  buyerId                  Int
+  sellerId                 Int
+  outTradeNo               String    @unique
+  tradeNo                  String?
+  payType                  String    @default("")
+  amountCents              Int
+  platformFeeCents         Int       @default(0)
+  sellerAmountCents        Int
+  deliveryType             String    @default("physical") // order-time fulfillment snapshot
+  digitalDeliveryEncrypted String?
+  digitalDeliveredAt       DateTime?
+  status                   String    @default("pending_payment") // pending_payment / paid / delivering / completed / cancelled / refund_pending / refunded / disputed
+  meetupTime               DateTime?
+  meetupLocation           String    @default("")
+  note                     String    @default("")
+  buyerConfirmedAt         DateTime?
+  sellerConfirmedAt        DateTime?
+  expiresAt                DateTime?
+  paidAt                   DateTime?
+  completedAt              DateTime?
+  closedAt                 DateTime?
+  refundedAt               DateTime?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  item         MarketItem          @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  offer        MarketOffer         @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  buyer        User                @relation("MarketOrderBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
+  seller       User                @relation("MarketOrderSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+  conversation MarketConversation?
+  paymentLogs  MarketPaymentLog[]
+  refunds      MarketRefund[]
+  settlement   MarketSettlement?
+  reviews      MarketReview[]
+
+  @@index([buyerId, status, createdAt])
+  @@index([sellerId, status, createdAt])
+  @@index([status, expiresAt])
+  @@index([itemId, createdAt])
+}
+
+model MarketConversation {
+  id            Int       @id @default(autoincrement())
+  itemId        Int
+  orderId       Int?      @unique
+  buyerId       Int
+  sellerId      Int
+  lastMessageAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  item     MarketItem      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  order    MarketOrder?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  buyer    User            @relation("MarketConversationBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  seller   User            @relation("MarketConversationSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  messages MarketMessage[]
+
+  @@unique([itemId, buyerId, sellerId])
+  @@index([buyerId, lastMessageAt])
+  @@index([sellerId, lastMessageAt])
+}
+
+model MarketMessage {
+  id             Int       @id @default(autoincrement())
+  conversationId Int
+  senderId       Int
+  content        String
+  readAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  conversation MarketConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User               @relation("MarketMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([senderId, createdAt])
+}
+
+model MarketReview {
+  id           Int      @id @default(autoincrement())
+  orderId      Int
+  authorId     Int
+  targetUserId Int
+  rating       Int
+  content      String   @default("")
+  createdAt    DateTime @default(now())
+
+  order      MarketOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  author     User        @relation("MarketReviewAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  targetUser User        @relation("MarketReviewTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, authorId])
+  @@index([targetUserId, createdAt])
+}
+
+model MarketReport {
+  id          Int       @id @default(autoincrement())
+  itemId      Int
+  reporterId  Int
+  reason      String
+  detail      String    @default("")
+  status      String    @default("pending") // pending / resolved / rejected
+  handledById Int?
+  handledNote String    @default("")
+  handledAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  item     MarketItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  reporter User       @relation("MarketReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, reporterId])
+  @@index([status, createdAt])
+}
+
+model MarketPaymentLog {
+  id         Int      @id @default(autoincrement())
+  orderId    Int?
+  outTradeNo String?
+  provider   String   @default("epay")
+  event      String   @default("notify")
+  rawPayload String   @default("{}")
+  signOk     Boolean  @default(false)
+  handled    Boolean  @default(false)
+  result     String   @default("")
+  createdAt  DateTime @default(now())
+
+  order MarketOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([outTradeNo])
+  @@index([createdAt])
+}
+
+model MarketRefund {
+  id               Int       @id @default(autoincrement())
+  orderId          Int
+  requestedById    Int
+  amountCents      Int
+  reason           String
+  status           String    @default("pending") // pending / approved / completed / rejected / failed
+  providerRefundNo String?
+  handledById      Int?
+  handledNote      String    @default("")
+  handledAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  order       MarketOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  requestedBy User        @relation("MarketRefundRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+
+  @@index([orderId, status])
+  @@index([status, createdAt])
+}
+
+model MarketSettlement {
+  id          Int       @id @default(autoincrement())
+  orderId     Int       @unique
+  sellerId    Int
+  amountCents Int
+  status      String    @default("pending") // pending / available / held / settled
+  availableAt DateTime?
+  settledAt   DateTime?
+  reference   String    @default("")
+  note        String    @default("")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  order  MarketOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  seller User        @relation("MarketSettlementSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+
+  @@index([sellerId, status, createdAt])
+  @@index([status, availableAt])
+}
+
+model MarketPayoutProfile {
+  id                Int      @id @default(autoincrement())
+  userId            Int      @unique
+  method            String   @default("alipay")
+  accountEncrypted  String
+  accountMasked     String
+  realNameEncrypted String
+  realNameMasked    String
+  verified          Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// 商城全局交易配置。佣金使用基点保存：100 = 1%，避免浮点金额误差。
+model MarketConfig {
+  id            Int      @id @default(1)
+  commissionBps Int      @default(500)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model MarketCategory {
+  id              Int      @id @default(autoincrement())
+  slug            String   @unique
+  name            String
+  icon            String   @default("📦")
+  description     String   @default("")
+  fulfillmentType String   @default("physical") // physical / digital
+  imageRequired   Boolean  @default(true)
+  enabled         Boolean  @default(true)
+  sort            Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([enabled, sort])
+}
+
 // ============ 通知与待办（保留，但语义改为论坛事件） ============
 
 model Notification {
-  id        Int       @id @default(autoincrement())
-  userId    Int?      // null = 全局广播
+  id           Int       @id @default(autoincrement())
+  userId       Int? // null = 全局广播
   // 事件类型：reply / mention / like / system / school-feed
-  category  String
+  category     String
   // 目标客户端：null = 全部；仅对对应客户端可见
   targetClient String?
-  level     String    @default("normal") // strong / normal / weak
-  title     String
-  content   String
-  payload   String    @default("{}")
-  link      String?   // 站内路由
-  source    String?
-  readAt    DateTime?
-  createdAt DateTime  @default(now())
+  level        String    @default("normal") // strong / normal / weak
+  title        String
+  content      String
+  payload      String    @default("{}")
+  link         String? // 站内路由
+  source       String?
+  readAt       DateTime?
+  createdAt    DateTime  @default(now())
 
   user  User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
   reads NotificationRead[]
@@ -890,15 +1205,15 @@ model NotificationRead {
 }
 
 model MessageSetting {
-  id              Int     @id @default(autoincrement())
-  userId          Int     @unique
-  quietStart      String  @default("23:00")
-  quietEnd        String  @default("07:00")
+  id                 Int     @id @default(autoincrement())
+  userId             Int     @unique
+  quietStart         String  @default("23:00")
+  quietEnd           String  @default("07:00")
   qqBotNotifyEnabled Boolean @default(true)
-  subscribeReply  Boolean @default(true)
-  subscribeLike   Boolean @default(true)
-  subscribeSchool Boolean @default(true)
-  subscribeSystem Boolean @default(true)
+  subscribeReply     Boolean @default(true)
+  subscribeLike      Boolean @default(true)
+  subscribeSchool    Boolean @default(true)
+  subscribeSystem    Boolean @default(true)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -906,30 +1221,30 @@ model MessageSetting {
 // ============ QQBot / NapCat 对接 ============
 
 model QqBotConfig {
-  id                Int      @id @default(autoincrement())
-  enabled           Boolean  @default(false)
-  botQqId           String   @default("")
-  napcatBaseUrl     String   @default("")
-  accessToken       String   @default("")
-  webhookSecret     String   @default("")
-  defaultBoardSlug  String   @default("general")
-  allowPrivatePost  Boolean  @default(true)
-  allowGroupPost    Boolean  @default(false)
-  notificationEnabled Boolean @default(true)
-  notifyCategories  String   @default("[\"reply\",\"mention\",\"like\",\"system\",\"service-tool\",\"school-feed\"]")
-  superAdminQqIds   String   @default("[]")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                  Int      @id @default(autoincrement())
+  enabled             Boolean  @default(false)
+  botQqId             String   @default("")
+  napcatBaseUrl       String   @default("")
+  accessToken         String   @default("")
+  webhookSecret       String   @default("")
+  defaultBoardSlug    String   @default("general")
+  allowPrivatePost    Boolean  @default(true)
+  allowGroupPost      Boolean  @default(false)
+  notificationEnabled Boolean  @default(true)
+  notifyCategories    String   @default("[\"reply\",\"mention\",\"like\",\"system\",\"service-tool\",\"school-feed\"]")
+  superAdminQqIds     String   @default("[]")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 
 model QqBotBinding {
-  id          Int      @id @default(autoincrement())
-  userId      Int
-  qqId        String   @unique
-  nickname    String?
-  enabled     Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  qqId      String   @unique
+  nickname  String?
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -938,12 +1253,12 @@ model QqBotBinding {
 }
 
 model QqBotBindToken {
-  id          Int      @id @default(autoincrement())
-  userId      Int
-  token       String   @unique
-  usedAt      DateTime?
-  expiresAt   DateTime
-  createdAt   DateTime @default(now())
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  token     String    @unique
+  usedAt    DateTime?
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -951,43 +1266,43 @@ model QqBotBindToken {
 }
 
 model QqBotGroup {
-  id                Int      @id @default(autoincrement())
-  groupId           String   @unique
-  name              String?
-  enabled           Boolean  @default(true)
-  allowPosting      Boolean  @default(false)
-  defaultBoardSlug  String?
-  notificationEnabled Boolean @default(true)
-  notifyCategories  String   @default("[\"system\",\"school-feed\"]")
-  notifyAudiences   String   @default("[\"public\"]")
-  memberWelcomeEnabled Boolean @default(false)
+  id                   Int      @id @default(autoincrement())
+  groupId              String   @unique
+  name                 String?
+  enabled              Boolean  @default(true)
+  allowPosting         Boolean  @default(false)
+  defaultBoardSlug     String?
+  notificationEnabled  Boolean  @default(true)
+  notifyCategories     String   @default("[\"system\",\"school-feed\"]")
+  notifyAudiences      String   @default("[\"public\"]")
+  memberWelcomeEnabled Boolean  @default(false)
   memberWelcomeMessage String   @default("欢迎加入本群，请先查看群公告了解群内规则和使用说明。\n\n如果想把课表添加到手机桌面，可以先打开站内课表页，再按页面提示完成添加。\n\n也欢迎前往个人中心绑定本 QQBot，绑定后可在 QQ 同步接收站内通知。建议顺手把本 QQBot 添加为好友，消息接收和后续操作体验会更顺畅。后续还会陆续接入更多实用功能，敬请期待。")
-  adFilterEnabled   Boolean  @default(false)
-  joinReviewEnabled Boolean  @default(false)
-  allowMute         Boolean  @default(false)
-  allowKick         Boolean  @default(false)
-  allowKickAndBlock Boolean  @default(false)
-  commandUserQqIds  String   @default("[]")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  adFilterEnabled      Boolean  @default(false)
+  joinReviewEnabled    Boolean  @default(false)
+  allowMute            Boolean  @default(false)
+  allowKick            Boolean  @default(false)
+  allowKickAndBlock    Boolean  @default(false)
+  commandUserQqIds     String   @default("[]")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   @@index([enabled])
 }
 
 model QqBotGroupJoinRequest {
-  id           Int      @id @default(autoincrement())
-  groupId      String
-  qqId         String
-  nickname     String?
-  comment      String?
-  flag         String   @unique
-  status       String   @default("pending") // pending / approved / rejected / expired
+  id            Int       @id @default(autoincrement())
+  groupId       String
+  qqId          String
+  nickname      String?
+  comment       String?
+  flag          String    @unique
+  status        String    @default("pending") // pending / approved / rejected / expired
   handledAction String?
   handledByQqId String?
-  rawPayload   String   @default("{}")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  handledAt    DateTime?
+  rawPayload    String    @default("{}")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  handledAt     DateTime?
 
   @@index([groupId, status, createdAt])
   @@index([qqId, status, createdAt])
@@ -1029,7 +1344,7 @@ model QqBotGroupAdStrike {
 
 model QqBotMessageLog {
   id             Int      @id @default(autoincrement())
-  direction      String   // inbound / outbound
+  direction      String // inbound / outbound
   eventType      String
   status         String   @default("ok") // ok / ignored / error
   qqId           String?
@@ -1053,20 +1368,20 @@ model QqBotMessageLog {
 }
 
 model QqBotConversation {
-  id          Int      @id @default(autoincrement())
-  qqId        String
-  groupId     String?
-  scene       String
-  status      String   @default("active")
-  step        String
-  draftTitle  String?
-  draftContent String  @default("")
-  draftBoardSlug String?
+  id              Int      @id @default(autoincrement())
+  qqId            String
+  groupId         String?
+  scene           String
+  status          String   @default("active")
+  step            String
+  draftTitle      String?
+  draftContent    String   @default("")
+  draftBoardSlug  String?
   sourceMessageId String?
-  sourceSummary String?
-  metadata    String   @default("{}")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  sourceSummary   String?
+  metadata        String   @default("{}")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([qqId, status, updatedAt])
   @@index([groupId, status, updatedAt])
@@ -1096,7 +1411,7 @@ model CourseBotQuota {
   aiBalance     Int      @default(0) // AI 答题剩余额度（题数）
   totalConsumed Int      @default(0) // 累计消耗
   totalGranted  Int      @default(0) // 累计获得（admin 发放 + 购买）
-  note          String?  // 备注（admin 发放时填写）
+  note          String? // 备注（admin 发放时填写）
   updatedAt     DateTime @updatedAt
   createdAt     DateTime @default(now())
 
@@ -1108,12 +1423,12 @@ model CourseBotQuota {
 model CourseBotUsageLog {
   id           Int      @id @default(autoincrement())
   userId       Int
-  questionHash String   // 题干归一化指纹，用于错题沉淀与命中去重
-  questionText String   // 题干快照（截断存储）
-  aiAnswer     String   // AI 给出的答案
+  questionHash String // 题干归一化指纹，用于错题沉淀与命中去重
+  questionText String // 题干快照（截断存储）
+  aiAnswer     String // AI 给出的答案
   correct      Boolean? // 是否答对：null=未知/填空待确认，true/false=已知
   cost         Int      @default(1) // 本次消耗额度
-  model        String?  // 使用的 AI 模型
+  model        String? // 使用的 AI 模型
   platform     String   @default("chaoxing") // chaoxing / zhihuiredao
   createdAt    DateTime @default(now())
 

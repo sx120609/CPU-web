@@ -20,6 +20,21 @@ async function clean() {
   await prisma.tag.deleteMany();
   await prisma.reply.deleteMany();
   await prisma.courseRating.deleteMany();
+  await prisma.marketMessage.deleteMany();
+  await prisma.marketPaymentLog.deleteMany();
+  await prisma.marketRefund.deleteMany();
+  await prisma.marketReview.deleteMany();
+  await prisma.marketSettlement.deleteMany();
+  await prisma.marketConversation.deleteMany();
+  await prisma.marketOrder.deleteMany();
+  await prisma.marketOffer.deleteMany();
+  await prisma.marketFavorite.deleteMany();
+  await prisma.marketImage.deleteMany();
+  await prisma.marketReport.deleteMany();
+  await prisma.marketPayoutProfile.deleteMany();
+  await prisma.marketItem.deleteMany();
+  await prisma.marketCategory.deleteMany();
+  await prisma.marketConfig.deleteMany();
   await prisma.topic.deleteMany();
   // 先把 Board.feedSourceId 解绑，再删除爬虫源
   await prisma.board.updateMany({ data: { feedSourceId: null } });

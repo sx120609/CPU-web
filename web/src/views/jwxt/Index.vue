@@ -325,7 +325,7 @@ async function initPage() {
       if (disposed || seq !== pageInitSeq) return;
       if (ok) {
         ElMessage.success("已完成登录");
-        loadCurrentTab();
+        loadCurrentTab(true);
         return;
       }
       // 失败：保留 captcha / error 的状态以便用户手动补
@@ -334,7 +334,7 @@ async function initPage() {
     try { await jwxt.beginLogin(); } catch { /* ignore */ }
     if (disposed || seq !== pageInitSeq) return;
   } else {
-    loadCurrentTab();
+    loadCurrentTab(true);
   }
 }
 
@@ -490,7 +490,7 @@ function resetTabData() {
 function fetchTab(t: DataTab, identity = auth.academicIdentity) {
   const requestId = `${identity}:${t}`;
   if (activeRequests.has(requestId)) return activeRequests.get(requestId)!;
-  const request = (async () => {
+  const request = jwxt.withSessionRetry(async () => {
     if (identity === "graduate") {
       if (t === "schedule") return jwxtApi.graduateSchedule();
       throw new Error("研究生入口当前先支持课表，请直接查看课表。");
@@ -500,7 +500,7 @@ function fetchTab(t: DataTab, identity = auth.academicIdentity) {
     if (t === "midterm") return jwxtApi.midtermGrades();
     if (t === "progress") return jwxtApi.progress();
     return jwxtApi.pyfa();
-  })();
+  });
   activeRequests.set(requestId, request);
   request.then(
     () => activeRequests.delete(requestId),

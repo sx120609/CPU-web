@@ -372,7 +372,7 @@ const desktopNavItems = computed(() => {
   items.push({ to: "/schedule", label: "课表" });
   items.push({ to: "/services", label: "服务", fullLabel: "校园服务" });
   if (site.features.coursereview && auth.canAccessForum) items.push({ to: "/coursereview", label: "课评", fullLabel: "课程点评" });
-  if (site.features.market && auth.canAccessForum) items.push({ to: "/market", label: "二手", fullLabel: "二手市场" });
+  if (site.features.market && auth.canAccessForum) items.push({ to: "/market", label: "商城", fullLabel: "校园商城" });
   return items;
 });
 
@@ -407,7 +407,7 @@ const drawerItems = computed(() => {
   items.push({ to: "/jwxt", label: "教务数据", icon: Calendar });
   items.push({ to: "/schedule", label: "课表", icon: Calendar });
   if (site.features.coursereview && auth.canAccessForum) items.push({ to: "/coursereview", label: "课评", icon: Reading });
-  if (site.features.market && auth.canAccessForum) items.push({ to: "/market", label: "二手市场", icon: Goods });
+  if (site.features.market && auth.canAccessForum) items.push({ to: "/market", label: "校园商城", icon: Goods });
   items.push({ to: "/services", label: "校园服务", icon: Service });
   items.push({ to: "/search", label: "搜索", icon: Search });
   return items;

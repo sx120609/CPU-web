@@ -39,6 +39,7 @@ import { invalidateCourseCaches, invalidateForumCaches } from "../services/cache
 import { WEIWALL_BOARD_SLUG } from "../services/weiwallSync";
 
 export const topicRouter = Router();
+const MARKET_TOPIC_API_MESSAGE = "商城商品请使用商城发布、编辑和下架功能";
 
 /**
  * 列表：?board=slug&page=1&size=20&sort=hot|new
@@ -161,10 +162,11 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     await ensureUserCanSubmitTopic(userId);
     const board = await prisma.board.findUnique({ where: { slug: boardSlug } });
     if (!board) throw Errors.notFound("板块不存在");
+    if (board.type === "market") throw Errors.badRequest(MARKET_TOPIC_API_MESSAGE);
     if (board.readOnly && req.user!.role !== "bot" && req.user!.role !== "admin") {
       throw Errors.forbidden("该板块为只读公告板，禁止发帖");
     }
-    // 功能开关：admin 可一键关闭论坛 / 二手 / 课评 整块功能
+    // 功能开关：admin 可一键关闭论坛 / 商城 / 课评整块功能
     // type=announce 由系统/爬虫机器人发，不受用户开关约束
     if (board.type !== "announce" && req.user!.role !== "admin") {
       const featureKey = featureForBoardType(board.type) ?? "forum";
@@ -373,6 +375,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
       include: { board: { select: { type: true } } },
     });
     if (!t) throw Errors.notFound();
+    if (t.board?.type === "market") throw Errors.badRequest(MARKET_TOPIC_API_MESSAGE);
     const isOwner = t.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
     const canEditContent = isOwner || req.user!.role === "admin" || (req.user!.role === "mod" && t.board?.type !== "announce");
@@ -531,6 +534,7 @@ topicRouter.delete("/:id", authRequired, async (req, res, next) => {
       include: { board: { select: { type: true } } },
     });
     if (!t) throw Errors.notFound();
+    if (t.board?.type === "market") throw Errors.badRequest(MARKET_TOPIC_API_MESSAGE);
     const isOwner = t.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
     if (!isOwner && !isMod) throw Errors.forbidden();
