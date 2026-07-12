@@ -1330,7 +1330,7 @@ async function openAndroidDownload() {
   }
   const bridge = getAndroidWidgetBridge();
   if (androidCanInAppUpdate.value && typeof bridge?.downloadAndInstallApk === "function") {
-    const started = bridge.downloadAndInstallApk(absoluteUrl, "CPU-Web-Android-V4.apk");
+    const started = bridge.downloadAndInstallApk(absoluteUrl, "CPU-Web-Android-V5.apk");
     if (started !== false) {
       androidUpdateOpen.value = false;
       ElMessage.success("已开始应用内下载更新");

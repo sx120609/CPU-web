@@ -2,6 +2,7 @@ package cn.lizmt.cpuweb.schedule;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.ClipData;
 import android.content.pm.PackageManager;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
@@ -35,6 +36,8 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
+
+import java.util.ArrayList;
 
 public final class MainActivity extends Activity {
     private static final int REQUEST_FILE_CHOOSER = 2001;
@@ -155,14 +158,7 @@ public final class MainActivity extends Activity {
                 }
                 MainActivity.this.filePathCallback = filePathCallback;
 
-                Intent intent;
-                try {
-                    intent = fileChooserParams.createIntent();
-                } catch (Exception ignored) {
-                    intent = new Intent(Intent.ACTION_GET_CONTENT);
-                    intent.addCategory(Intent.CATEGORY_OPENABLE);
-                    intent.setType("image/*");
-                }
+                Intent intent = createFileChooserIntent(fileChooserParams);
 
                 try {
                     startActivityForResult(intent, REQUEST_FILE_CHOOSER);
@@ -252,6 +248,48 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private Intent createFileChooserIntent(WebChromeClient.FileChooserParams fileChooserParams) {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType(resolveChooserType(fileChooserParams));
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, resolveAcceptedMimeTypes(fileChooserParams));
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,
+                fileChooserParams.getMode() == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        return intent;
+    }
+
+    private String resolveChooserType(WebChromeClient.FileChooserParams fileChooserParams) {
+        String[] accepted = resolveAcceptedMimeTypes(fileChooserParams);
+        return accepted.length == 1 ? accepted[0] : "*/*";
+    }
+
+    private String[] resolveAcceptedMimeTypes(WebChromeClient.FileChooserParams fileChooserParams) {
+        ArrayList<String> result = new ArrayList<>();
+        String[] acceptTypes = fileChooserParams.getAcceptTypes();
+        if (acceptTypes != null) {
+            for (String acceptType : acceptTypes) {
+                if (acceptType == null) continue;
+                String[] parts = acceptType.split(",");
+                for (String part : parts) {
+                    String normalized = part.trim().toLowerCase();
+                    if (normalized.isEmpty()) continue;
+                    if (normalized.startsWith(".")) continue;
+                    if (!normalized.contains("/") && !"*".equals(normalized)) continue;
+                    if ("*".equals(normalized)) normalized = "*/*";
+                    if (!result.contains(normalized)) {
+                        result.add(normalized);
+                    }
+                }
+            }
+        }
+        if (result.isEmpty()) {
+            result.add("*/*");
+        }
+        return result.toArray(new String[0]);
+    }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -260,10 +298,53 @@ public final class MainActivity extends Activity {
 
         Uri[] results = null;
         if (resultCode == RESULT_OK) {
-            results = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+            results = parseFileChooserResult(data);
         }
         filePathCallback.onReceiveValue(results);
         filePathCallback = null;
+    }
+
+    private Uri[] parseFileChooserResult(Intent data) {
+        ArrayList<Uri> uris = new ArrayList<>();
+        if (data != null) {
+            ClipData clipData = data.getClipData();
+            if (clipData != null) {
+                for (int index = 0; index < clipData.getItemCount(); index += 1) {
+                    Uri uri = clipData.getItemAt(index).getUri();
+                    addChooserUri(uris, uri);
+                }
+            }
+            addChooserUri(uris, data.getData());
+            persistReadPermissionIfPossible(data, uris);
+        }
+
+        Uri[] parsed = WebChromeClient.FileChooserParams.parseResult(RESULT_OK, data);
+        if (parsed != null) {
+            for (Uri uri : parsed) {
+                addChooserUri(uris, uri);
+            }
+        }
+
+        return uris.isEmpty() ? null : uris.toArray(new Uri[0]);
+    }
+
+    private void addChooserUri(ArrayList<Uri> uris, Uri uri) {
+        if (uri == null) return;
+        if (!uris.contains(uri)) {
+            uris.add(uri);
+        }
+    }
+
+    private void persistReadPermissionIfPossible(Intent data, ArrayList<Uri> uris) {
+        int flags = data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
+        if (flags == 0) return;
+        for (Uri uri : uris) {
+            try {
+                getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            } catch (Exception ignored) {
+                // Some pickers grant only temporary read access, which is enough for WebView upload.
+            }
+        }
     }
 
     private boolean handleUrl(Uri uri) {

@@ -54,7 +54,7 @@
             </template>
 
             <template v-else-if="activeMobileToolbar === 'image'">
-              <button type="button" :disabled="imageUploading" @click="runMobileAction(() => pickContentMedia())">
+              <button type="button" :disabled="imageUploading" @click="runMobileAction(() => pickContentMedia(), true)">
                 {{ imageUploading ? "上传中" : "插入媒体" }}
               </button>
             </template>
@@ -566,6 +566,12 @@ async function onContentImagePicked(event: Event) {
   const input = event.target as HTMLInputElement;
   const files = Array.from(input.files ?? []);
   input.value = "";
+  if (!files.length) {
+    if (isAndroidNativeApp()) {
+      ElMessage.warning("没有收到系统相册返回的文件，请重试或换用系统文件管理器选择");
+    }
+    return;
+  }
   await uploadAndInsertMedia(files);
 }
 
