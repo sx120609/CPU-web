@@ -6,6 +6,14 @@ import { clearJwxtDataCaches } from "@/utils/jwxtCache";
 
 let authExpiredListenerInstalled = false;
 
+function justLoggedOutThisSession() {
+  try {
+    return sessionStorage.getItem("cpu-just-logged-out") === "1";
+  } catch {
+    return false;
+  }
+}
+
 function isJwxtAuthExpired(error: unknown) {
   const candidate = error as {
     status?: number;
@@ -117,9 +125,9 @@ export const useJwxtStore = defineStore("jwxt", {
         }
       }
     },
-    async beginLogin() {
+    async beginLogin(options?: { silent?: boolean }) {
       // 复用 auth store：拿 lt/execution + 可能的验证码
-      await useAuthStore().ssoBegin();
+      await useAuthStore().ssoBegin({ silent: options?.silent });
     },
     /**
      * 提交账号密码：走 auth.ssoLogin —— 一次同时完成站内登录 + 教务授权
@@ -129,9 +137,10 @@ export const useJwxtStore = defineStore("jwxt", {
       password: string,
       captcha: string | undefined,
       remember: boolean,
+      options?: { silent?: boolean },
     ): Promise<boolean> {
       const auth = useAuthStore();
-      const ok = await auth.ssoLogin(username, password, captcha, remember);
+      const ok = await auth.ssoLogin(username, password, captcha, remember, { silent: options?.silent });
       if (ok) {
         // auth.ssoLogin 已建立服务端教务会话；这里同步不含秘密的本地状态标记。
         this.token = getJwxtToken();
@@ -144,7 +153,8 @@ export const useJwxtStore = defineStore("jwxt", {
       return false;
     },
     /** 用本地保存的账号悄悄走一遍统一登录 */
-    async tryAutoLogin(options?: { force?: boolean }): Promise<boolean> {
+    async tryAutoLogin(options?: { force?: boolean; silent?: boolean }): Promise<boolean> {
+      if (justLoggedOutThisSession()) return false;
       // Agent 重启后旧会话会返回 401；拦截器会清除内存状态，避免误判为在线。
       if (!getJwxtToken()) {
         this.token = "";
@@ -156,24 +166,24 @@ export const useJwxtStore = defineStore("jwxt", {
       const creds = await loadCreds().catch(() => null);
       if (!creds) return false;
       try {
-        await this.beginLogin();
+        await this.beginLogin({ silent: options?.silent });
         if (this.needCaptcha) {
           // 自动登录无法过验证码，让用户手工补
           return false;
         }
-        return await this.submitLogin(creds.username, creds.password, undefined, true);
+        return await this.submitLogin(creds.username, creds.password, undefined, true, { silent: options?.silent });
       } catch {
         return false;
       }
     },
-    async ensureSession(options?: { refresh?: boolean; forceLogin?: boolean }): Promise<boolean> {
+    async ensureSession(options?: { refresh?: boolean; forceLogin?: boolean; silent?: boolean }): Promise<boolean> {
       this.rememberSaved = hasCreds();
       if (options?.refresh && this.token) {
         await this.refreshStatus().catch(() => undefined);
       }
       if (this.active && this.token && !options?.forceLogin) return true;
       if (!this.rememberSaved) return false;
-      return this.tryAutoLogin({ force: true });
+      return this.tryAutoLogin({ force: true, silent: options?.silent });
     },
     async recoverSession(): Promise<boolean> {
       clearJwxtToken();

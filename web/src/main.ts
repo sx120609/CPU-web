@@ -3,6 +3,7 @@ import { createPinia } from "pinia";
 import App from "./App.vue";
 import { router } from "./router";
 import { useAuthStore } from "./stores/auth";
+import { useJwxtStore } from "./stores/jwxt";
 import { useSiteStore } from "./stores/site";
 import { applyInitialAppearance, useAppearanceStore } from "./stores/appearance";
 import { installIosNativeImageBridge } from "./utils/nativeBridge";
@@ -23,6 +24,10 @@ const SCHEDULE_OFFLINE_STATIC_URLS = [
 ];
 
 let serviceWorkerReady: Promise<ServiceWorkerRegistration | null> | null = null;
+const JWXT_SESSION_BOOTSTRAP_MIN_INTERVAL_MS = 5 * 60 * 1000;
+let jwxtSessionBootstrapScheduled = false;
+let jwxtSessionBootstrapInFlight = false;
+let jwxtSessionBootstrapLastAt = 0;
 
 function installTouchGuards() {
   document.addEventListener("gesturestart", (event) => event.preventDefault());
@@ -178,6 +183,79 @@ function warmScheduleOfflineCache(registration: ServiceWorkerRegistration | null
   });
 }
 
+function shouldSkipJwxtSessionBootstrap() {
+  if (window.location.pathname.replace(/\/+$/, "") === "/login") return true;
+  try {
+    return sessionStorage.getItem("cpu-just-logged-out") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function scheduleJwxtSessionBootstrap(options?: { force?: boolean; immediate?: boolean }) {
+  if (shouldSkipJwxtSessionBootstrap() || jwxtSessionBootstrapScheduled || jwxtSessionBootstrapInFlight) return;
+  const now = Date.now();
+  if (
+    !options?.force &&
+    jwxtSessionBootstrapLastAt > 0 &&
+    now - jwxtSessionBootstrapLastAt < JWXT_SESSION_BOOTSTRAP_MIN_INTERVAL_MS
+  ) {
+    return;
+  }
+  jwxtSessionBootstrapScheduled = true;
+  const run = () => {
+    jwxtSessionBootstrapScheduled = false;
+    void bootstrapJwxtSession();
+  };
+  if (options?.immediate) {
+    globalThis.setTimeout(run, 0);
+    return;
+  }
+  const requestIdleCallback = (window as Window & {
+    requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
+  }).requestIdleCallback;
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(run, { timeout: 2000 });
+  } else {
+    globalThis.setTimeout(run, 300);
+  }
+}
+
+async function bootstrapJwxtSession() {
+  if (shouldSkipJwxtSessionBootstrap()) return;
+  if (jwxtSessionBootstrapInFlight) return;
+  const auth = useAuthStore();
+  const jwxt = useJwxtStore();
+  jwxtSessionBootstrapInFlight = true;
+  jwxtSessionBootstrapLastAt = Date.now();
+  try {
+    if (!auth.ready) {
+      await auth.fetchMe({ probe: true }).catch(() => undefined);
+    }
+    if (shouldSkipJwxtSessionBootstrap()) return;
+    jwxt.hydrate();
+    await jwxt.ensureSession({ refresh: true, silent: true }).catch(() => false);
+  } catch {
+    // Keep background restore quiet; education pages still expose manual captcha/login flow.
+  } finally {
+    jwxtSessionBootstrapInFlight = false;
+  }
+}
+
+function installJwxtSessionBootstrapTriggers() {
+  router.afterEach(() => {
+    scheduleJwxtSessionBootstrap();
+  });
+  window.addEventListener("focus", () => {
+    scheduleJwxtSessionBootstrap();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      scheduleJwxtSessionBootstrap();
+    }
+  });
+}
+
 installTouchGuards();
 installFeedbackLayerGuard();
 installIosNativeImageBridge();
@@ -217,10 +295,13 @@ router.afterEach((to) => {
   void serviceWorkerReady.then((registration) => warmScheduleOfflineCache(registration));
 });
 
+installJwxtSessionBootstrapTriggers();
+
 router.isReady().finally(() => {
   if (serviceWorkerReady) {
     void serviceWorkerReady.then((registration) => warmScheduleOfflineCache(registration));
   }
+  scheduleJwxtSessionBootstrap({ force: true });
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       document.body.dataset.cpuAppReady = "1";

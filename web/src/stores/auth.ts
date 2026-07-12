@@ -163,11 +163,15 @@ export const useAuthStore = defineStore("auth", {
       setToken(authToken); this.token = authToken; this.user = user; this.syncDataAuthAgreement(user); this.ready = true;
     },
 
-    async ssoBegin() {
+    async ssoBegin(options?: { silent?: boolean }) {
       this.ssoLoading = true;
       this.ssoError = "";
       try {
-        const r = await authApi.ssoBegin();
+        const r = await authApi.ssoBegin(options?.silent ? {
+          suppressAuthRedirect: true,
+          suppressAuthMessage: true,
+          suppressErrorMessage: true,
+        } : undefined);
         this.ssoPendingId = r.pendingId;
         this.ssoNeedCaptcha = r.needCaptcha;
         this.ssoCaptchaImage = r.captchaImage ?? "";
@@ -176,19 +180,24 @@ export const useAuthStore = defineStore("auth", {
     },
 
     /** 学校 SSO 登录：同时获得站内 JWT + 教务 jwxt token */
-    async ssoLogin(username: string, password: string, captcha: string | undefined, remember: boolean): Promise<boolean> {
+    async ssoLogin(username: string, password: string, captcha: string | undefined, remember: boolean, options?: { silent?: boolean }): Promise<boolean> {
       this.ssoLoading = true;
       this.ssoError = "";
       try {
         if (this.ssoPendingId.trim().length < 8) {
-          await this.ssoBegin();
+          await this.ssoBegin({ silent: options?.silent });
           this.ssoLoading = true;
           if (this.ssoNeedCaptcha && !captcha) {
             this.ssoError = "登录会话已刷新，请输入验证码";
             return false;
           }
         }
-        const r = await authApi.ssoLogin(this.ssoCredentialPublicKey
+        const loginOptions = options?.silent ? {
+          suppressAuthRedirect: true,
+          suppressAuthMessage: true,
+          suppressErrorMessage: true,
+        } : undefined;
+        const loginPayload = this.ssoCredentialPublicKey
           ? {
               pendingId: this.ssoPendingId,
               credentials: await encryptAgentLoginCredentials(
@@ -197,7 +206,8 @@ export const useAuthStore = defineStore("auth", {
               ),
               remember,
             }
-          : { pendingId: this.ssoPendingId, username, password, captcha, remember });
+          : { pendingId: this.ssoPendingId, username, password, captcha, remember };
+        const r = await authApi.ssoLogin(loginPayload, loginOptions);
         if (!r.ok || (!r.sessionAuthenticated && !r.siteToken) || !r.user) {
           this.ssoError = r.error || "登录失败";
           if (r.needCaptcha && r.captcha) {
