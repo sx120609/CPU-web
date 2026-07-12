@@ -457,19 +457,20 @@ function resetTabData() {
   pyfa.value = null;
 }
 
-function fetchTab(t: DataTab, identity = auth.academicIdentity) {
+function fetchTab(t: DataTab, identity: string = auth.academicIdentity, options?: { silent?: boolean }) {
   const requestId = `${identity}:${t}`;
   if (activeRequests.has(requestId)) return activeRequests.get(requestId)!;
   const request = jwxt.withSessionRetry(async () => {
+    const silentOptions = options?.silent ? { silent: true } : undefined;
     if (identity === "graduate") {
-      if (t === "schedule") return jwxtApi.graduateSchedule();
+      if (t === "schedule") return jwxtApi.graduateSchedule(undefined, silentOptions);
       throw new Error("研究生入口当前先支持课表，请直接查看课表。");
     }
-    if (t === "schedule") return jwxtApi.schedule();
-    if (t === "grades") return jwxtApi.grades();
-    if (t === "midterm") return jwxtApi.midtermGrades();
-    if (t === "progress") return jwxtApi.progress();
-    return jwxtApi.pyfa();
+    if (t === "schedule") return jwxtApi.schedule(undefined, silentOptions);
+    if (t === "grades") return jwxtApi.grades(undefined, silentOptions);
+    if (t === "midterm") return jwxtApi.midtermGrades(undefined, silentOptions);
+    if (t === "progress") return jwxtApi.progress(silentOptions);
+    return jwxtApi.pyfa(silentOptions);
   });
   activeRequests.set(requestId, request);
   request.then(
@@ -477,6 +478,18 @@ function fetchTab(t: DataTab, identity = auth.academicIdentity) {
     () => activeRequests.delete(requestId)
   );
   return request;
+}
+
+async function refreshTabInBackground(t: DataTab, identity: string) {
+  try {
+    const data = await fetchTab(t, identity, { silent: true });
+    writeJwxtTabCache(t, identity, data);
+    if (!disposed && identity === auth.academicIdentity && tab.value === t) {
+      setTabData(t, data);
+    }
+  } catch {
+    /* Keep cached data visible when background refresh fails. */
+  }
 }
 
 async function reloadCaptcha() {
@@ -564,7 +577,10 @@ async function loadCurrentTab(force = false) {
   const current = tab.value as DataTab;
   const identity = auth.academicIdentity;
   const cached = restoreCachedTab(current);
-  if (cached && !force && !isJwxtTabCacheStale(cached.savedAt)) return;
+  if (cached && !force && !isJwxtTabCacheStale(cached.savedAt)) {
+    void refreshTabInBackground(current, identity);
+    return;
+  }
   const seq = ++tabLoadSeq;
   tabLoading.value = force || !getTabData(current);
   try {
