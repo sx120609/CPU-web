@@ -1,6 +1,6 @@
 <template>
   <el-config-provider :locale="zhCn" :z-index="5000">
-    <router-view />
+    <router-view :key="routeViewKey" />
     <el-dialog
       v-model="dataAuthOpen"
       title="数据授权安全协议"
@@ -117,6 +117,7 @@ import { detectInAppBrowser } from "@/utils/inAppBrowser";
 
 const auth = useAuthStore();
 const msg = useMessageStore();
+const routeViewKey = computed(() => `${router.currentRoute.value.fullPath}:${auth.sessionVersion}`);
 const dataAuthOpen = ref(false);
 const dataAuthReadSeconds = ref(0);
 const inAppTipOpen = ref(false);

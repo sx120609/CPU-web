@@ -49,6 +49,7 @@ export const useAuthStore = defineStore("auth", {
     academicIdentityDetecting: false,
     ready: false,
     dataAuthAgreed: false,
+    sessionVersion: 0,
     /** SSO 登录流程的临时状态 */
     ssoPendingId: "",
     ssoNeedCaptcha: false,
@@ -72,6 +73,19 @@ export const useAuthStore = defineStore("auth", {
     academicIdentityLabel: (s) => academicIdentityLabel(s.academicIdentity),
   },
   actions: {
+    applyAuthenticatedSession(authToken: string, user: UserInfo) {
+      const previousUserId = this.user?.id ?? null;
+      const wasLoggedIn = this.isLoggedIn;
+      setToken(authToken);
+      this.token = authToken;
+      this.user = user;
+      this.syncDataAuthAgreement(user);
+      this.ready = true;
+      if (!wasLoggedIn || previousUserId !== user.id) {
+        this.sessionVersion += 1;
+      }
+    },
+
     hydrate() {
       purgeLegacySensitiveJwxtCaches();
       const legacyToken = getToken();
@@ -151,7 +165,7 @@ export const useAuthStore = defineStore("auth", {
       clearJwxtDataCaches();
       this.clearAcademicIdentity();
       const authToken = sessionAuthenticated ? COOKIE_SESSION_MARKER : (token || "");
-      setToken(authToken); this.token = authToken; this.user = user; this.syncDataAuthAgreement(user); this.ready = true;
+      this.applyAuthenticatedSession(authToken, user);
     },
 
     async register(p: RegisterPayload) {
@@ -160,7 +174,7 @@ export const useAuthStore = defineStore("auth", {
       clearJwxtDataCaches();
       this.clearAcademicIdentity();
       const authToken = sessionAuthenticated ? COOKIE_SESSION_MARKER : (token || "");
-      setToken(authToken); this.token = authToken; this.user = user; this.syncDataAuthAgreement(user); this.ready = true;
+      this.applyAuthenticatedSession(authToken, user);
     },
 
     async ssoBegin(options?: { silent?: boolean }) {
@@ -218,11 +232,7 @@ export const useAuthStore = defineStore("auth", {
           return false;
         }
         const authToken = r.sessionAuthenticated ? COOKIE_SESSION_MARKER : (r.siteToken || "");
-        setToken(authToken);
-        this.token = authToken;
-        this.user = r.user;
-        this.syncDataAuthAgreement(r.user);
-        this.ready = true;
+        this.applyAuthenticatedSession(authToken, r.user);
         // Cookie 会话只保留不含秘密的内存标记；兼容响应中的旧 token 也仅留在内存。
         if (r.jwxtAuthenticated || r.jwxtToken) {
           clearJwxtToken();
@@ -254,19 +264,18 @@ export const useAuthStore = defineStore("auth", {
       if (this._pendingFetchMe) return this._pendingFetchMe;
       const task = (async () => {
         try {
-          this.user = await authApi.me(options?.probe ? {
+          const user = await authApi.me(options?.probe ? {
             suppressAuthRedirect: true,
             suppressAuthMessage: true,
             suppressErrorMessage: true,
           } : undefined);
+          this.applyAuthenticatedSession(COOKIE_SESSION_MARKER, user);
         } catch {
+          const wasLoggedIn = this.isLoggedIn;
           this.user = null;
+          if (wasLoggedIn) this.sessionVersion += 1;
         }
         finally {
-          if (this.user) {
-            setToken(COOKIE_SESSION_MARKER);
-            this.token = COOKIE_SESSION_MARKER;
-          }
           this.syncDataAuthAgreement(this.user);
           this.ready = true;
           this._pendingFetchMe = null;
@@ -285,12 +294,15 @@ export const useAuthStore = defineStore("auth", {
     async enableForumAccess(confirmText: string) {
       const user = await authApi.enableForumAccess(confirmText);
       this.user = user;
+      this.sessionVersion += 1;
       return user;
     },
 
     async logout() {
       try { await authApi.logout(); } catch { /* ignore */ }
+      const wasLoggedIn = this.isLoggedIn;
       clearToken(); this.token = ""; this.user = null; this.dataAuthAgreed = false; this.ready = false;
+      if (wasLoggedIn) this.sessionVersion += 1;
       this._pendingIdentityDetection = null;
       this.academicIdentityDetecting = false;
       clearJwxtToken();
@@ -304,11 +316,13 @@ export const useAuthStore = defineStore("auth", {
     },
 
     expireSession() {
+      const wasLoggedIn = this.isLoggedIn;
       clearToken();
       this.token = "";
       this.user = null;
       this.dataAuthAgreed = false;
       this.ready = true;
+      if (wasLoggedIn) this.sessionVersion += 1;
       this._pendingFetchMe = null;
       this._pendingIdentityDetection = null;
       this.academicIdentityDetecting = false;
