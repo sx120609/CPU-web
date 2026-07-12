@@ -190,7 +190,13 @@ import { Lock, User, Refresh, CircleCheckFilled, CircleClose, InfoFilled } from 
 import { useJwxtStore } from "@/stores/jwxt";
 import { useAuthStore } from "@/stores/auth";
 import { jwxtApi } from "@/api/jwxt";
-import { jwxtScopedStorageKey } from "@/utils/jwxtCache";
+import {
+  isJwxtTabCacheStale,
+  normalizeJwxtTabData,
+  readJwxtTabCache,
+  type JwxtDataTab,
+  writeJwxtTabCache,
+} from "@/utils/jwxtTabCache";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import SchedulePane from "@/components/jwxt/SchedulePane.vue";
 import GradesPane from "@/components/jwxt/GradesPane.vue";
@@ -208,7 +214,7 @@ const rules: FormRules = {
   password: [{ required: true, message: "请输入密码" }],
 };
 const isGraduateIdentity = computed(() => auth.academicIdentity === "graduate");
-type DataTab = "schedule" | "grades" | "midterm" | "progress" | "pyfa";
+type DataTab = JwxtDataTab;
 type JwxtTab = DataTab | "debug";
 const isMobileViewport = ref(typeof window !== "undefined" ? window.matchMedia("(max-width: 768px)").matches : false);
 const tab = ref<JwxtTab>(isMobileViewport.value ? "grades" : "schedule");
@@ -218,8 +224,6 @@ const midtermGrades = ref<any>(null);
 const progress = ref<any>(null);
 const pyfa = ref<any>(null);
 const tabLoading = ref(false);
-const CACHE_TTL = 12 * 60 * 60 * 1000;
-const CACHE_PREFIX = "cpu-jwxt-tab-cache-v4";
 const activeRequests = new Map<string, Promise<any>>();
 const captchaLoading = ref(false);
 const logoutBusy = ref(false);
@@ -385,40 +389,6 @@ function ensureVisibleTab() {
   }
 }
 
-function cacheKey(t: DataTab) {
-  return jwxtScopedStorageKey(CACHE_PREFIX, auth.academicIdentity, t);
-}
-
-function readCache(t: DataTab): { savedAt: number; data: any } | null {
-  if (t !== "schedule") return null;
-  try {
-    const key = cacheKey(t);
-    if (!key) return null;
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed.savedAt !== "number") return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-function writeCache(t: DataTab, data: any) {
-  if (t !== "schedule") return;
-  try {
-    const key = cacheKey(t);
-    if (!key) return;
-    localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), data: normalizeTabData(t, data) }));
-  } catch {
-    /* ignore */
-  }
-}
-
-function isStale(savedAt: number) {
-  return !savedAt || Date.now() - savedAt > CACHE_TTL;
-}
-
 function getTabData(t: DataTab) {
   if (t === "schedule") return schedule.value;
   if (t === "grades") return grades.value;
@@ -428,7 +398,7 @@ function getTabData(t: DataTab) {
 }
 
 function setTabData(t: DataTab, data: any) {
-  const normalized = normalizeTabData(t, data);
+  const normalized = normalizeJwxtTabData(t, data);
   if (t === "schedule") schedule.value = normalized;
   else if (t === "grades") grades.value = normalized;
   else if (t === "midterm") midtermGrades.value = normalized;
@@ -437,7 +407,7 @@ function setTabData(t: DataTab, data: any) {
 }
 
 function restoreCachedTab(t: DataTab) {
-  const cached = readCache(t);
+  const cached = readJwxtTabCache(t, auth.academicIdentity);
   if (!cached?.data) return null;
   if (!getTabData(t)) setTabData(t, cached.data);
   return cached;
@@ -594,14 +564,14 @@ async function loadCurrentTab(force = false) {
   const current = tab.value as DataTab;
   const identity = auth.academicIdentity;
   const cached = restoreCachedTab(current);
-  if (cached && !force && !isStale(cached.savedAt)) return;
+  if (cached && !force && !isJwxtTabCacheStale(cached.savedAt)) return;
   const seq = ++tabLoadSeq;
   tabLoading.value = force || !getTabData(current);
   try {
     const data = await fetchTab(current, identity);
     if (disposed || identity !== auth.academicIdentity || current !== tab.value) return;
     setTabData(current, data);
-    writeCache(current, data);
+    writeJwxtTabCache(current, auth.academicIdentity, data);
   } catch {
     // 已有缓存时保留旧数据；错误提示由 API 拦截器统一处理。
   } finally {

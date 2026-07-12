@@ -8,6 +8,7 @@ import { useSiteStore } from "./stores/site";
 import { applyInitialAppearance, useAppearanceStore } from "./stores/appearance";
 import { installIosNativeImageBridge } from "./utils/nativeBridge";
 import { isFlutterNativeShell } from "./utils/clientInfo";
+import { scheduleJwxtDataPrewarm } from "./utils/jwxtPrewarm";
 
 import "element-plus/dist/index.css";
 import "element-plus/theme-chalk/dark/css-vars.css";
@@ -234,7 +235,8 @@ async function bootstrapJwxtSession() {
     }
     if (shouldSkipJwxtSessionBootstrap()) return;
     jwxt.hydrate();
-    await jwxt.ensureSession({ refresh: true, silent: true }).catch(() => false);
+    const ready = await jwxt.ensureSession({ refresh: true, silent: true }).catch(() => false);
+    if (ready) scheduleJwxtDataPrewarm();
   } catch {
     // Keep background restore quiet; education pages still expose manual captcha/login flow.
   } finally {
@@ -252,6 +254,18 @@ function installJwxtSessionBootstrapTriggers() {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
       scheduleJwxtSessionBootstrap();
+    }
+  });
+}
+
+function installJwxtDataPrewarmTriggers() {
+  const auth = useAuthStore();
+  let lastSessionVersion = auth.sessionVersion;
+  auth.$subscribe(() => {
+    if (auth.sessionVersion === lastSessionVersion) return;
+    lastSessionVersion = auth.sessionVersion;
+    if (auth.isLoggedIn) {
+      scheduleJwxtDataPrewarm({ force: true });
     }
   });
 }
@@ -285,6 +299,7 @@ const app = createApp(App);
 app.use(createPinia());
 useAppearanceStore().hydrate();
 useAuthStore().hydrate();
+installJwxtDataPrewarmTriggers();
 // 站点功能开关：尽早拉一次，不阻塞挂载（导航默认乐观显示，拿到结果后自动收敛）
 useSiteStore().fetch();
 app.use(router);

@@ -193,9 +193,15 @@ export const jwxtApi = {
       params,
       ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
     }),
-  progress: () => inst.get<unknown, { parsed: any }>("/progress"),
-  pyfa: () => inst.get<unknown, { parsed: any }>("/pyfa"),
-  calendar: () => inst.get<unknown, { parsed: any }>("/calendar"),
+  progress: (options?: { silent?: boolean }) => inst.get<unknown, { parsed: any }>("/progress", {
+    ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
+  }),
+  pyfa: (options?: { silent?: boolean }) => inst.get<unknown, { parsed: any }>("/pyfa", {
+    ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
+  }),
+  calendar: (options?: { silent?: boolean }) => inst.get<unknown, { parsed: any }>("/calendar", {
+    ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
+  }),
   iapps: (options?: { silent?: boolean }) => inst.get<unknown, { apps: any[] }>("/iapps", {
     ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
   }),
@@ -224,7 +230,9 @@ export const jwxtApi = {
     inst.get<unknown, Array<Omit<ScheduleWidgetTokenResult, "token" | "endpoint">>>("/schedule-widget-tokens"),
   revokeScheduleWidgetToken: (id: number) =>
     inst.delete<unknown, { ok: boolean }>(`/schedule-widget-tokens/${id}`),
-  textbook: () => inst.get<unknown, { parsed: any }>("/textbook"),
+  textbook: (options?: { silent?: boolean }) => inst.get<unknown, { parsed: any }>("/textbook", {
+    ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
+  }),
   debugSnapshot: () => inst.post<unknown, { saved: string[]; errors: string[] }>("/debug/snapshot"),
   graduateSchedule: (params?: { semester?: string; termcode?: string; refresh?: boolean | string }, options?: { silent?: boolean }) =>
     inst.get<unknown, {
