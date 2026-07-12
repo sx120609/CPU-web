@@ -1,7 +1,9 @@
 export type ClientPlatform = "ios" | "android" | "harmony" | "web" | "unknown";
 
-export const ANDROID_APP_LATEST_VERSION_CODE = 25;
-export const ANDROID_APP_LATEST_VERSION_NAME = "3.0.4";
+export const ANDROID_APP_LATEST_VERSION_CODE = 26;
+export const ANDROID_APP_LATEST_VERSION_NAME = "3.0.5";
+export const ANDROID_APP_DOWNLOAD_FILE_NAME = "CPU-Web-Android-V6.apk";
+export const ANDROID_NEW_ARCH_MIN_VERSION_CODE = 21;
 export const HARMONY_APP_LATEST_VERSION_CODE = 17;
 export const HARMONY_APP_LATEST_VERSION_NAME = "2.0.8";
 export const ANDROID_APP_DOWNLOAD_URL = "/api/site/downloads/android-app";
@@ -154,6 +156,16 @@ export function getAndroidNativeVersionName(ua = navigator.userAgent) {
 
 export function isAndroidAppUpdateAvailable(ua = navigator.userAgent) {
   return isAndroidNativeApp(ua) && getAndroidNativeVersionCode(ua) < ANDROID_APP_LATEST_VERSION_CODE;
+}
+
+export function isAndroidLegacyMajorUpgrade(ua = navigator.userAgent) {
+  if (!isAndroidNativeApp(ua)) return false;
+  const versionName = getAndroidNativeVersionName(ua).trim();
+  const major = Number(versionName.split(".")[0]);
+  if (Number.isFinite(major) && major > 0) return major < 3;
+
+  const versionCode = getAndroidNativeVersionCode(ua);
+  return Number.isFinite(versionCode) && versionCode > 0 && versionCode < ANDROID_NEW_ARCH_MIN_VERSION_CODE;
 }
 
 export function supportsAndroidScheduleWidget(ua = navigator.userAgent) {

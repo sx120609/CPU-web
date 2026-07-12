@@ -359,7 +359,7 @@ export const config = {
   redisPrefix: (process.env.REDIS_PREFIX ?? "cpu-web").trim() || "cpu-web",
   androidAppDownloadUrl: (
     process.env.ANDROID_APP_DOWNLOAD_URL
-    ?? "https://download.lizmt.cn/Android/CPU-Web-Android-V5.apk"
+    ?? "https://download.lizmt.cn/Android/CPU-Web-Android-V6.apk"
   ).trim(),
 };
 

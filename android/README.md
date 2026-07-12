@@ -45,11 +45,11 @@ gradle :app:assembleRelease
 | 参数 | 默认值 | 说明 |
 |---|---|---|
 | `appUrl` | `https://cpu.lizmt.cn/schedule` | WebView 首屏地址 |
-| `applicationId` | `cn.lizmt.cpuweb.schedule` | Android 包名 |
+| `applicationId` | `cn.lizmt.cpuweb` | Android 包名 |
 | `appName` | `药大拾间课表` | 桌面显示名称 |
 
 示例：
 
 ```bash
-gradle :app:assembleRelease -PappUrl=https://cpu.lizmt.cn/schedule -PapplicationId=cn.lizmt.cpuweb.schedule -PappName=药大拾间课表
+gradle :app:assembleRelease -PappUrl=https://cpu.lizmt.cn/schedule -PapplicationId=cn.lizmt.cpuweb -PappName=药大拾间
 ```

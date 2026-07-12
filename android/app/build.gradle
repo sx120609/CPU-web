@@ -8,7 +8,7 @@ dependencies {
 
 def defaultAppUrl = "https://cpu.lizmt.cn/schedule"
 def resolvedAppUrl = (project.findProperty("appUrl") ?: defaultAppUrl).toString()
-def resolvedApplicationId = (project.findProperty("applicationId") ?: "cn.lizmt.cpuweb.schedule").toString()
+def resolvedApplicationId = (project.findProperty("applicationId") ?: "cn.lizmt.cpuweb").toString()
 def resolvedAppName = (project.findProperty("appName") ?: "药大拾间").toString()
 def releaseStoreFile = (project.findProperty("releaseStoreFile") ?: "").toString()
 def releaseStorePassword = (project.findProperty("releaseStorePassword") ?: "").toString()
@@ -27,8 +27,8 @@ android {
         applicationId resolvedApplicationId
         minSdk 23
         targetSdk 35
-        versionCode 25
-        versionName "3.0.4"
+        versionCode 26
+        versionName "3.0.5"
 
         buildConfigField "String", "APP_URL", "\"${escapeJavaString(resolvedAppUrl)}\""
         resValue "string", "app_name", resolvedAppName

@@ -32,7 +32,7 @@ siteRouter.get("/downloads/android-app", (_req, res) => {
     return;
   }
 
-  const fileName = resolveLatestAndroidApkFileName() || "CPU-Web-Android-V5.apk";
+  const fileName = resolveLatestAndroidApkFileName() || "CPU-Web-Android-V6.apk";
   res.redirect(302, `/downloads/${encodeURIComponent(fileName)}`);
 });
 

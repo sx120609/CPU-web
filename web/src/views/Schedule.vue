@@ -619,50 +619,6 @@
     </el-dialog>
 
     <el-dialog
-      v-model="androidUpdateOpen"
-      title="更新安卓客户端"
-      :width="420"
-      align-center
-      :show-close="true"
-      append-to-body
-      class="schedule-themed-dialog"
-      :style="pageStyle"
-      @open="startAndroidUpdateCountdown"
-      @closed="stopAndroidUpdateCountdown"
-    >
-      <div class="android-update-panel">
-        <p v-if="androidUpdateKind === 'install'">
-          可下载 <b>药大拾间</b> Android 客户端 {{ androidLatestVersionLabel }}，下次可从桌面图标直接打开。Pad 请求桌面站点时，也可以从这里下载。
-        </p>
-        <p v-else-if="androidUpdateKind === 'app'">
-          当前客户端版本为 {{ androidCurrentVersionLabel }}，最新版本为 {{ androidLatestVersionLabel }}。
-          {{ androidCanInAppUpdate ? "可直接在应用内下载并安装新版客户端。" : "请复制下载链接，到系统浏览器粘贴打开并安装新版客户端。" }}
-        </p>
-        <p v-else>
-          当前安卓客户端版本过低，桌面小组件不可用。
-          {{ androidCanInAppUpdate ? `请先在应用内下载并安装新版客户端 ${androidLatestVersionLabel}。` : `请先复制下载链接，到系统浏览器粘贴打开并安装新版客户端 ${androidLatestVersionLabel}。` }}
-        </p>
-        <p class="android-migration-note">
-          这次新版客户端使用新的包名和签名，系统会把它作为新的客户端安装，不会覆盖最早的旧版。安装新版并确认可用后，请手动卸载旧版客户端；如已安装前一个新版试用包，则会直接覆盖更新。
-        </p>
-        <p class="widget-countdown">
-          {{ androidUpdateCountdown > 0 ? `请先阅读说明，${androidUpdateCountdown} 秒后可继续。` : androidUpdateKind === "install" ? "已可开始下载客户端。" : androidCanInAppUpdate ? "已可开始下载新版。" : "已可复制新版下载链接。" }}
-        </p>
-        <p class="support-note">
-          仍有疑问，建议
-          <button type="button" @click="openUserGroup">加入用户 QQ 群 {{ USER_QQ_GROUP }}</button>
-          咨询。
-        </p>
-      </div>
-      <template #footer>
-        <el-button @click="androidUpdateOpen = false">稍后</el-button>
-        <el-button type="primary" :disabled="androidUpdateCountdown > 0" @click="openAndroidDownload">
-          {{ androidUpdateCountdown > 0 ? `${androidUpdateCountdown}s` : androidUpdateKind === "install" ? "下载客户端" : androidCanInAppUpdate ? "下载新版" : "复制下载链接" }}
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog
       v-model="androidWidgetGuideOpen"
       title="添加安卓小组件"
       :width="420"
@@ -804,20 +760,14 @@ import { useJwxtStore } from "@/stores/jwxt";
 import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 import {
-  ANDROID_APP_DOWNLOAD_URL,
-  ANDROID_APP_LATEST_VERSION_CODE,
-  ANDROID_APP_LATEST_VERSION_NAME,
-  ANDROID_WIDGET_MIN_VERSION_CODE,
   detectClientPlatform,
-  getAndroidNativeVersionCode,
-  getAndroidNativeVersionName,
   isAndroidAppUpdateAvailable,
   isAndroidNativeApp,
   isFlutterNativeShell,
   isIosStandalone,
-  supportsAndroidInAppApkDownload,
   supportsAndroidScheduleWidget,
 } from "@/utils/clientInfo";
+import { requestAndroidUpdatePrompt } from "@/utils/androidUpdatePrompt";
 import { USER_QQ_GROUP, copyText, openUserGroup } from "@/utils/userGroup";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import InstallPromptDialog from "@/components/install/InstallPromptDialog.vue";
@@ -967,7 +917,6 @@ const openBrowserPromptRef = ref<InstanceType<typeof OpenBrowserPromptDialog> | 
 const widgetDialogOpen = ref(false);
 const widgetInstructionOpen = ref(false);
 const widgetInstructionCountdown = ref(6);
-const androidUpdateOpen = ref(false);
 const androidWidgetGuideOpen = ref(false);
 const gradDebugDialogOpen = ref(false);
 const gradDebugLoading = ref(false);
@@ -980,7 +929,6 @@ const graduateSourceMeta = ref<{
   termcode?: string;
 } | null>(null);
 const scheduleSource = ref<"jwxt" | "graduate" | "graduate-debug">("jwxt");
-const androidUpdateCountdown = ref(1);
 const moreMenuOpen = ref(false);
 const moreMenuView = ref<"menu" | "theme" | "background">("menu");
 const widgetConfigCopying = ref(false);
@@ -1027,15 +975,10 @@ const {
   scheduleForWeek,
   allKnownScheduleSources,
 });
-const androidUpdateKind = ref<"app" | "widget" | "install">("widget");
 const scriptableWidgetScript = ref("");
 const widgetCopyMessage = ref("");
-const APK_DOWNLOAD_URL = ANDROID_APP_DOWNLOAD_URL;
 const SCRIPTABLE_ADD_URL = "https://open.scriptable.app/add";
-const ANDROID_APP_UPDATE_PROMPT_KEY = "cpu-android-app-update-prompt-v1";
 let widgetInstructionTimer = 0;
-let androidUpdateTimer = 0;
-let androidAppUpdatePromptTimer = 0;
 const prefersGraduateIdentity = computed(() => auth.academicIdentity === "graduate");
 const scheduleLoginScopeText = computed(() => (
   "登录后会自动识别你当前可用的教务入口。本科生默认显示本科课表，研究生当前显示研究生课表。"
@@ -1239,19 +1182,7 @@ const widgetMenuLabel = computed(() => {
   if (widgetMenuPlatform.value === "android-old") return "更新安卓客户端";
   return "导入 iOS 小组件";
 });
-const androidCurrentVersionCode = computed(() => getAndroidNativeVersionCode());
-const androidCurrentVersionName = computed(() => getAndroidNativeVersionName());
-const androidCurrentVersionLabel = computed(() => {
-  const code = androidCurrentVersionCode.value;
-  const name = androidCurrentVersionName.value;
-  if (name && code) return `${name} (${code})`;
-  if (name) return name;
-  if (code) return `版本 ${code}`;
-  return "未知版本";
-});
-const androidLatestVersionLabel = computed(() => `${ANDROID_APP_LATEST_VERSION_NAME} (${ANDROID_APP_LATEST_VERSION_CODE})`);
 const androidAppUpdateAvailable = computed(() => isAndroidAppUpdateAvailable());
-const androidCanInAppUpdate = computed(() => supportsAndroidInAppApkDownload());
 const androidUpdateMenuLabel = computed(() => (
   androidAppUpdateAvailable.value ? "更新安卓客户端" : "检查客户端更新"
  ));
@@ -1285,8 +1216,7 @@ function openAndroidClientDownload() {
     openBrowserPromptRef.value?.openDialog();
     return;
   }
-  androidUpdateKind.value = "install";
-  androidUpdateOpen.value = true;
+  requestAndroidUpdatePrompt({ kind: "install" });
 }
 
 async function installAndroidWidget() {
@@ -1317,99 +1247,12 @@ async function installAndroidWidget() {
 
 function showAndroidUpdateRequired(kind: "app" | "widget" | "install" = "widget") {
   moreMenuOpen.value = false;
-  androidUpdateKind.value = kind;
-  androidUpdateOpen.value = true;
-}
-
-async function openAndroidDownload() {
-  const absoluteUrl = new URL(APK_DOWNLOAD_URL, window.location.origin).toString();
-  if (androidUpdateKind.value === "install") {
-    openApkDownloadInBrowser(absoluteUrl);
-    androidUpdateOpen.value = false;
-    return;
-  }
-  const bridge = getAndroidWidgetBridge();
-  if (androidCanInAppUpdate.value && typeof bridge?.downloadAndInstallApk === "function") {
-    const started = bridge.downloadAndInstallApk(absoluteUrl, "CPU-Web-Android-V5.apk");
-    if (started !== false) {
-      androidUpdateOpen.value = false;
-      ElMessage.success("已开始应用内下载更新");
-      return;
-    }
-  }
-  if (isFlutterNativeShell()) {
-    window.open(absoluteUrl, "_blank", "noopener,noreferrer");
-    androidUpdateOpen.value = false;
-    return;
-  }
-  let copied = false;
-  try {
-    if (typeof bridge?.copyText === "function") {
-      copied = bridge.copyText(absoluteUrl) !== false;
-    }
-  } catch {
-    copied = false;
-  }
-  if (!copied) {
-    copied = await writeClipboard(absoluteUrl);
-  }
-  if (copied) {
-    androidUpdateOpen.value = false;
-    ElMessage.success("下载链接已复制，请到系统浏览器粘贴打开");
-    return;
-  }
-  ElMessage.warning("复制失败，请再点击一次复制下载链接");
-}
-
-function openApkDownloadInBrowser(url: string) {
-  const link = document.createElement("a");
-  link.href = url;
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
+  requestAndroidUpdatePrompt({ kind });
 }
 
 function checkAndroidAppUpdate() {
   moreMenuOpen.value = false;
-  if (!isAndroidNativeApp()) return;
-  if (androidAppUpdateAvailable.value) {
-    showAndroidUpdateRequired("app");
-    return;
-  }
-  ElMessage.success(`当前已是最新版 ${androidCurrentVersionLabel.value}`);
-}
-
-function autoPromptAndroidAppUpdate() {
-  if (!androidAppUpdateAvailable.value) return;
-  const latestVersion = String(ANDROID_APP_LATEST_VERSION_CODE);
-  try {
-    if (localStorage.getItem(ANDROID_APP_UPDATE_PROMPT_KEY) === latestVersion) return;
-    localStorage.setItem(ANDROID_APP_UPDATE_PROMPT_KEY, latestVersion);
-  } catch {
-    /* localStorage may be blocked in some WebViews */
-  }
-  androidAppUpdatePromptTimer = window.setTimeout(() => {
-    if (!androidUpdateOpen.value && androidAppUpdateAvailable.value) {
-      showAndroidUpdateRequired("app");
-    }
-  }, 1600);
-}
-
-function startAndroidUpdateCountdown() {
-  stopAndroidUpdateCountdown();
-  androidUpdateCountdown.value = 1;
-  androidUpdateTimer = window.setInterval(() => {
-    androidUpdateCountdown.value = Math.max(0, androidUpdateCountdown.value - 1);
-    if (androidUpdateCountdown.value <= 0) stopAndroidUpdateCountdown();
-  }, 1000);
-}
-
-function stopAndroidUpdateCountdown() {
-  if (!androidUpdateTimer) return;
-  window.clearInterval(androidUpdateTimer);
-  androidUpdateTimer = 0;
+  requestAndroidUpdatePrompt({ kind: "app" });
 }
 
 async function copyScriptableWidgetScript() {
@@ -1529,7 +1372,6 @@ onMounted(async () => {
   // 内置浏览器先提示跳外部浏览器；普通移动浏览器再提示安装 / 添加桌面。
   openBrowserPromptRef.value?.autoPromptIfEligible();
   installPromptRef.value?.autoPromptIfEligible();
-  autoPromptAndroidAppUpdate();
 
   if (offlineMode.value) return;
 
@@ -1573,11 +1415,6 @@ onBeforeUnmount(() => {
   clearDragTimers();
   clearStaticWeekAnimation();
   stopWidgetInstructionCountdown();
-  stopAndroidUpdateCountdown();
-  if (androidAppUpdatePromptTimer) {
-    window.clearTimeout(androidAppUpdatePromptTimer);
-    androidAppUpdatePromptTimer = 0;
-  }
   flushScheduleEditsSave();
   clearScheduleBackgroundPreview();
 });

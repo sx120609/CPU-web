@@ -29,7 +29,7 @@
     <!-- Android 普通浏览器：优先提供 APK -->
     <div v-else-if="platform === 'android'" class="content">
       <p>建议安装 <b>药大拾间</b> Android 版，下次可从桌面图标直接打开。</p>
-      <p class="migration-note">新版客户端使用新的包名和签名，系统会把它作为新的客户端安装，不会覆盖最早的旧版。安装新版并确认可用后，请手动卸载旧版客户端。</p>
+      <p class="migration-note">若手机里还保留 2.x 旧版，确认新版可用后可手动卸载旧版。</p>
       <ul class="bullets">
         <li>安装包很小，只是课表页的轻量 App 壳</li>
         <li>网站正常访问时，App 内容会同步更新</li>
@@ -65,7 +65,7 @@
     <!-- 其他情况：保留桌面/PWA 说明，同时给 Android Pad 桌面 UA 一个兜底下载入口 -->
     <div v-else class="content">
       <p>请在浏览器菜单中找到 <b>「安装应用」</b>、<b>「添加到主屏幕」</b> 或 <b>「创建快捷方式」</b>。</p>
-      <p class="migration-note">如果你正在 Android Pad 上使用“请求桌面站点”，也可以直接下载 Android 客户端。</p>
+      <p class="migration-note">Android Pad 使用“请求桌面站点”时，也可以直接下载客户端。</p>
       <p class="muted">部分浏览器（微信/QQ 内置 / 较老 Chrome）不支持安装。</p>
     </div>
 

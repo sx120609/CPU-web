@@ -1,6 +1,7 @@
 <template>
   <el-config-provider :locale="zhCn" :z-index="5000">
     <router-view :key="routeViewKey" />
+    <AndroidUpdateDialog />
     <el-dialog
       v-model="dataAuthOpen"
       title="数据授权安全协议"
@@ -113,6 +114,7 @@ import { useMessageStore } from "@/stores/message";
 import { router } from "@/router";
 import { messageApi } from "@/api/message";
 import { AUTH_EXPIRED_EVENT } from "@/api/request";
+import AndroidUpdateDialog from "@/components/install/AndroidUpdateDialog.vue";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 
 const auth = useAuthStore();

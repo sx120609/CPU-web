@@ -498,27 +498,3 @@
   font-size: 12px;
   line-height: 1.5;
 }
-
-.android-update-panel {
-  color: var(--schedule-text);
-  font-size: 14px;
-  line-height: 1.75;
-}
-
-.android-update-panel p {
-  margin: 0;
-}
-
-.android-update-panel p + p {
-  margin-top: 10px;
-}
-
-.android-migration-note {
-  padding: 10px 12px;
-  border: 1px solid var(--schedule-accent-border);
-  border-radius: 10px;
-  background: var(--schedule-accent-soft);
-  color: var(--schedule-accent-strong);
-  font-size: 12px;
-  line-height: 1.6;
-}
