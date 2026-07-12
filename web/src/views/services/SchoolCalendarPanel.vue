@@ -50,22 +50,51 @@
         <div class="panel-title">
           <h3>校历原图</h3>
           <div class="source-actions">
+            <button type="button" @click="openImageViewer">放大查看</button>
             <a :href="calendarImage" target="_blank" rel="noopener noreferrer">查看大图</a>
             <a :href="calendar.officialPdf" target="_blank" rel="noopener noreferrer">PDF</a>
           </div>
         </div>
-        <div class="calendar-image-frame">
+        <div class="calendar-image-frame" @click="openImageViewer">
           <img :src="calendarImage" :alt="`${calendar.title}${calendar.academicYear}`" loading="lazy" />
         </div>
       </div>
     </section>
+
+    <Teleport to="body">
+      <div v-if="imageViewerOpen" class="calendar-viewer" role="dialog" aria-modal="true" @click.self="closeImageViewer">
+        <div class="viewer-toolbar">
+          <div>
+            <b>校历原图</b>
+            <span>{{ Math.round(viewerZoom * 100) }}%</span>
+          </div>
+          <div class="viewer-actions">
+            <button type="button" @click="setViewerZoom(1)">适屏</button>
+            <button type="button" @click="setViewerZoom(2.2)">清晰</button>
+            <button type="button" aria-label="缩小" @click="zoomViewer(-0.25)">-</button>
+            <button type="button" aria-label="放大" @click="zoomViewer(0.25)">+</button>
+            <button type="button" @click="closeImageViewer">关闭</button>
+          </div>
+        </div>
+        <div class="viewer-scroll">
+          <img
+            :src="calendarImage"
+            :alt="`${calendar.title}${calendar.academicYear}`"
+            :style="{ width: `${viewerZoom * 100}%` }"
+          />
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import calendarImage from "@/assets/school-calendar/cpu-school-calendar-2026-2027.png";
 import { cpuSchoolCalendar as calendar } from "@/data/schoolCalendar";
+
+const imageViewerOpen = ref(false);
+const viewerZoom = ref(1);
 
 const status = computed(() => {
   const today = startOfDay(new Date());
@@ -97,6 +126,27 @@ const status = computed(() => {
     detail: "等待学校发布新学年校历",
   };
 });
+
+function openImageViewer() {
+  viewerZoom.value = window.innerWidth <= 620 ? 2.2 : 1.25;
+  imageViewerOpen.value = true;
+}
+
+function closeImageViewer() {
+  imageViewerOpen.value = false;
+}
+
+function setViewerZoom(value: number) {
+  viewerZoom.value = clampZoom(value);
+}
+
+function zoomViewer(delta: number) {
+  viewerZoom.value = clampZoom(viewerZoom.value + delta);
+}
+
+function clampZoom(value: number) {
+  return Math.min(3.5, Math.max(1, Number(value.toFixed(2))));
+}
 
 function parseYmd(value: string) {
   const [year, month, day] = value.split("-").map(Number);
@@ -275,7 +325,8 @@ function formatRange(start: string, end: string) {
 }
 
 .panel-title a,
-.source-actions a {
+.source-actions a,
+.source-actions button {
   color: var(--cpu-primary);
   font-size: 13px;
   font-weight: 650;
@@ -286,6 +337,15 @@ function formatRange(start: string, end: string) {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+}
+
+.source-actions button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
 }
 
 .event-list {
@@ -366,6 +426,7 @@ function formatRange(start: string, end: string) {
   border: 1px solid var(--cpu-border-soft);
   border-radius: 8px;
   background: #eafdfb;
+  cursor: zoom-in;
 }
 
 .calendar-image-frame img {
@@ -373,6 +434,88 @@ function formatRange(start: string, end: string) {
   width: 100%;
   min-width: 760px;
   height: auto;
+}
+
+.calendar-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  background: rgba(15, 23, 42, 0.86);
+}
+
+.viewer-toolbar {
+  min-height: 58px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #fff;
+  background: rgba(15, 23, 42, 0.92);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.viewer-toolbar > div:first-child {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.viewer-toolbar b {
+  font-size: 15px;
+}
+
+.viewer-toolbar span {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+}
+
+.viewer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.viewer-actions button {
+  min-width: 42px;
+  height: 36px;
+  padding: 0 11px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.viewer-actions button:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.viewer-scroll {
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 14px;
+  text-align: center;
+  -webkit-overflow-scrolling: touch;
+}
+
+.viewer-scroll img {
+  display: block;
+  max-width: none;
+  min-width: 0;
+  height: auto;
+  margin: 0 auto;
+  background: #eafdfb;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
 }
 
 @media (max-width: 980px) {
@@ -414,7 +557,36 @@ function formatRange(start: string, end: string) {
   }
 
   .calendar-image-frame img {
-    min-width: 640px;
+    min-width: 0;
+  }
+
+  .calendar-image-frame {
+    max-height: none;
+    overflow: hidden;
+  }
+
+  .viewer-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .viewer-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .viewer-actions button {
+    min-width: 48px;
+    height: 38px;
+  }
+
+  .viewer-scroll {
+    padding: 10px;
+    text-align: left;
+  }
+
+  .viewer-scroll img {
+    margin: 0;
   }
 }
 </style>
