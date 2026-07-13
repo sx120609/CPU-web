@@ -17,7 +17,7 @@ const CSP_DIRECTIVES = [
   "form-action 'self'",
   "frame-ancestors 'none'",
   "require-trusted-types-for 'script'",
-  "trusted-types default dompurify",
+  "trusted-types default dompurify vue",
   "report-uri /api/security/csp-report",
   ...(!isDev ? ["upgrade-insecure-requests"] : []),
 ];

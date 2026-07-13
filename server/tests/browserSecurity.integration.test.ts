@@ -107,7 +107,9 @@ test("browser auth uses encrypted HttpOnly session and enforces CSRF", async (t)
     },
   });
   assert.equal(accepted.status, 200);
-  assert.match(accepted.headers.get("content-security-policy") || "", /require-trusted-types-for 'script'/);
+  const contentSecurityPolicy = accepted.headers.get("content-security-policy") || "";
+  assert.match(contentSecurityPolicy, /require-trusted-types-for 'script'/);
+  assert.match(contentSecurityPolicy, /trusted-types default dompurify vue/);
 
   const nonPersistentLogin = await fetch(`${origin}/session-login`, {
     method: "POST",

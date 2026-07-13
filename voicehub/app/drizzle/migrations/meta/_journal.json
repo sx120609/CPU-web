@@ -127,6 +127,13 @@
       "when": 1773633736000,
       "tag": "20260316120000_add_user_avatar",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1783915200000,
+      "tag": "20260713120000_repair_user_auth_schema",
+      "breakpoints": true
     }
   ]
 }

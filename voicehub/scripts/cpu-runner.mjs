@@ -51,9 +51,23 @@ const env = {
 }
 
 const drizzleCli = path.join(voiceHubDir, 'node_modules', 'drizzle-kit', 'bin.cjs')
+const schemaValidator = path.join(voiceHubDir, 'scripts', 'validate-cpu-auth-schema.mjs')
 
-function migrateBeforeStart() {
-  if (process.env.VOICEHUB_AUTO_MIGRATE === 'false') return
+function validateCpuAuthSchema() {
+  const validation = spawnSync(process.execPath, [schemaValidator], {
+    cwd: voiceHubDir,
+    env,
+    stdio: 'inherit'
+  })
+  if (validation.error) throw validation.error
+  if (validation.status !== 0) {
+    console.error('[voicehub] 认证表结构不完整，已中止启动。')
+    process.exit(validation.status || 1)
+  }
+}
+
+function migrateBeforeStart(force = false) {
+  if (!force && process.env.VOICEHUB_AUTO_MIGRATE === 'false') return
   console.log('[voicehub] 正在检查独立数据库迁移...')
   const migration = spawnSync(process.execPath, [drizzleCli, 'migrate'], {
     cwd: voiceHubDir,
@@ -65,16 +79,20 @@ function migrateBeforeStart() {
     console.error('[voicehub] 数据库迁移失败，已中止启动，避免以损坏状态提供服务。')
     process.exit(migration.status || 1)
   }
+  validateCpuAuthSchema()
 }
 
 if (action === 'dev' || action === 'start') migrateBeforeStart()
+
+if (action === 'migrate') {
+  migrateBeforeStart(true)
+  process.exit(0)
+}
 
 let executable = process.execPath
 let args = []
 if (action === 'start') {
   args = [path.join(voiceHubDir, '.output', 'server', 'index.mjs')]
-} else if (action === 'migrate') {
-  args = [drizzleCli, 'migrate']
 } else {
   const nuxtCli = path.join(voiceHubDir, 'node_modules', 'nuxt', 'bin', 'nuxt.mjs')
   args = [nuxtCli, action]
