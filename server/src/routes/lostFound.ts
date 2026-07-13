@@ -29,6 +29,7 @@ lostFoundRouter.use((_req, res, next) => {
 });
 
 const KINDS = ["found", "lost"] as const;
+const CAMPUSES = ["江宁校区", "玄武门校区"] as const;
 const PUBLIC_STATUSES = ["active", "claimed"] as const;
 const ITEM_STATUSES = ["reviewing", "active", "claimed", "closed", "hidden"] as const;
 const CLAIM_STATUSES = ["pending", "accepted", "rejected", "withdrawn"] as const;
@@ -43,7 +44,7 @@ const itemInputSchema = z.object({
   kind: z.enum(KINDS),
   itemName: z.string().trim().min(2).max(80),
   description: z.string().trim().max(3000).optional().default(""),
-  campus: z.string().trim().min(1).max(40),
+  campus: z.enum(CAMPUSES),
   location: z.string().trim().min(2).max(100),
   happenedAt: z.coerce.date(),
   contact: z.string().trim().min(2).max(120),
@@ -206,7 +207,8 @@ lostFoundRouter.get("/meta", async (_req, res, next) => {
       select: { campus: true },
       orderBy: { campus: "asc" },
     });
-    ok(res, { campuses: campuses.map((item) => item.campus).filter(Boolean), kinds: KINDS, statuses: PUBLIC_STATUSES });
+    const campusOptions = Array.from(new Set([...CAMPUSES, ...campuses.map((item) => item.campus).filter(Boolean)]));
+    ok(res, { campuses: campusOptions, kinds: KINDS, statuses: PUBLIC_STATUSES });
   } catch (error) { next(error); }
 });
 

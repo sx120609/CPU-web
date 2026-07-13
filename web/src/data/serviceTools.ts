@@ -19,19 +19,6 @@ export interface ServiceTool {
 
 export const serviceTools: ServiceTool[] = [
   {
-    slug: "lost_found",
-    name: "失物招领",
-    summary: "公开找物与招领信息，登录后私下提交认领",
-    description: "按校区、地点、时间和认领状态查找信息，并与论坛讨论和站内消息联动。",
-    icon: "🧭",
-    status: "ready",
-    category: "校园互助",
-    routeName: "lost-found",
-    componentKey: "lost_found",
-    accent: "#0f8f7b",
-    iconComponent: Compass,
-  },
-  {
     slug: "feedback",
     name: "需求反馈",
     summary: "先把校园服务里的工具想法集中收集起来",
@@ -108,6 +95,19 @@ export const serviceTools: ServiceTool[] = [
     componentKey: "school_calendar",
     accent: "#7c3aed",
     iconComponent: Calendar,
+  },
+  {
+    slug: "lost_found",
+    name: "失物招领",
+    summary: "公开找物与招领信息，登录后私下提交认领",
+    description: "按校区、地点、时间和认领状态查找信息，并与论坛讨论和站内消息联动。",
+    icon: "🧭",
+    status: "ready",
+    category: "校园互助",
+    routeName: "lost-found",
+    componentKey: "lost_found",
+    accent: "#0f8f7b",
+    iconComponent: Compass,
   },
 ];
 
