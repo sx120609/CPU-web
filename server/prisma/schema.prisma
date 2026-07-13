@@ -1298,7 +1298,7 @@ model QqBotConfig {
   allowPrivatePost    Boolean  @default(true)
   allowGroupPost      Boolean  @default(false)
   notificationEnabled Boolean  @default(true)
-  notifyCategories    String   @default("[\"reply\",\"mention\",\"like\",\"system\",\"service-tool\",\"school-feed\"]")
+  notifyCategories    String   @default("[\"reply\",\"mention\",\"like\",\"system\",\"service-tool\",\"lost-found\",\"school-feed\"]")
   superAdminQqIds     String   @default("[]")
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt

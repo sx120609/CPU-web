@@ -196,9 +196,9 @@ type QqMessageTarget = {
 const qqBotCooldowns = new Map<string, { cancelledAt?: number }>();
 
 const CONFIG_ID = 1;
-const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "like", "system", "service-tool", "school-feed"];
+const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "like", "system", "service-tool", "lost-found", "school-feed"];
 const LEGACY_PERSONAL_NOTIFY_CORE = ["reply", "mention", "like", "system"];
-const REQUIRED_PERSONAL_NOTIFY_CATEGORIES = ["service-tool", "school-feed"];
+const REQUIRED_PERSONAL_NOTIFY_CATEGORIES = ["service-tool", "lost-found", "school-feed"];
 const GROUP_NOTIFY_CATEGORY_OPTIONS = ["system", "school-feed"] as const;
 const GROUP_NOTIFY_AUDIENCE_OPTIONS = ["public", "staff"] as const;
 const DEFAULT_GROUP_NOTIFY_CATEGORIES = ["system", "school-feed"];

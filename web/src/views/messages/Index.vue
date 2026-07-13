@@ -30,6 +30,9 @@
       <el-tab-pane label="小工具" name="service-tool">
         <MessageList :list="filteredMessages('service-tool')" @read="onRead" @open="openNotification" />
       </el-tab-pane>
+      <el-tab-pane label="失物招领" name="lost-found">
+        <MessageList :list="filteredMessages('lost-found')" @read="onRead" @open="openNotification" />
+      </el-tab-pane>
       <el-tab-pane label="设置" name="settings">
         <div v-if="settings" class="settings">
           <h4>通知渠道</h4>
@@ -233,7 +236,7 @@ const router = useRouter();
 const msg = useMessageStore();
 const auth = useAuthStore();
 
-const messageTabs = new Set(["all", "reply", "like", "system", "service-tool", "settings"]);
+const messageTabs = new Set(["all", "reply", "like", "system", "service-tool", "lost-found", "settings"]);
 const tab = ref(normalizeMessageTab(route.query.tab));
 const list = ref<any[]>([]);
 const settings = ref<any>(null);
