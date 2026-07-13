@@ -8,7 +8,7 @@ import { router } from "./routes";
 import { shareRouter } from "./routes/share";
 import { isDev } from "./config";
 import { getDatabaseMaintenanceMessage, isDatabaseMaintenanceActive } from "./services/maintenance";
-import { filestoreProxy } from "./services/filestore";
+import { filestoreHandler } from "./services/filestore";
 import { startForumImageModerationPoller } from "./services/imageModeration";
 import { startForumVideoModerationPoller } from "./services/videoModeration";
 import { uploadAssetHandler } from "./services/mediaStorage";
@@ -42,7 +42,7 @@ export function createApp() {
       if (req.path.startsWith("/api/")) res.setHeader("Cache-Control", "no-store");
       next();
     },
-    filestoreProxy,
+    filestoreHandler,
   );
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: false }));

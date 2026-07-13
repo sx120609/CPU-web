@@ -1,9 +1,9 @@
 import { COOKIE_SESSION_MARKER, getCsrfToken, getToken } from "@/api/request";
 import type { QuestionnaireField } from "@/api/tools";
 
-export type FilestoreBetaStatus = "open" | "closed";
+export type FilestoreStatus = "open" | "closed";
 
-export interface FilestoreBetaField {
+export interface FilestoreField {
   id: string;
   key: string;
   label: string;
@@ -12,22 +12,22 @@ export interface FilestoreBetaField {
   placeholder: string;
 }
 
-export type FilestoreBetaSurveyField = QuestionnaireField;
-export type FilestoreBetaSurveyAnswer = string | string[];
+export type FilestoreSurveyField = QuestionnaireField;
+export type FilestoreSurveyAnswer = string | string[];
 
-export interface FilestoreBetaRules {
+export interface FilestoreRules {
   allowedTypes: string[];
   maxSizeMb: number;
   maxCount: number;
 }
 
-export interface FilestoreBetaTemplate {
+export interface FilestoreTemplate {
   id?: number;
   name: string;
   description: string;
-  fields: FilestoreBetaField[];
-  surveyFields: FilestoreBetaSurveyField[];
-  fileRules: FilestoreBetaRules;
+  fields: FilestoreField[];
+  surveyFields: FilestoreSurveyField[];
+  fileRules: FilestoreRules;
   renameTemplate: string;
   folderTemplate: string;
   expectedEntries: string;
@@ -35,13 +35,13 @@ export interface FilestoreBetaTemplate {
   updatedAt?: string;
 }
 
-export interface FilestoreBetaSettings {
+export interface FilestoreSettings {
   siteUrl: string;
   siteTitle: string;
-  taskTemplates: FilestoreBetaTemplate[];
+  taskTemplates: FilestoreTemplate[];
 }
 
-export interface FilestoreBetaViewer {
+export interface FilestoreViewer {
   ok: true;
   role: string;
   isSuperAdmin: boolean;
@@ -51,17 +51,17 @@ export interface FilestoreBetaViewer {
     username: string;
     displayName: string;
   };
-  settings: FilestoreBetaSettings;
+  settings: FilestoreSettings;
 }
 
-export interface FilestoreBetaCreator {
+export interface FilestoreCreator {
   userId: number;
   username: string;
   displayName: string;
   role: string;
 }
 
-export interface FilestoreBetaFile {
+export interface FilestoreFile {
   id: number;
   originalName: string;
   storedName: string;
@@ -70,17 +70,17 @@ export interface FilestoreBetaFile {
   createdAt: string;
 }
 
-export interface FilestoreBetaSubmission {
+export interface FilestoreSubmission {
   id: number;
   data: Record<string, string>;
-  answers: Record<string, FilestoreBetaSurveyAnswer>;
+  answers: Record<string, FilestoreSurveyAnswer>;
   ip: string;
   status: string;
   createdAt: string;
-  files: FilestoreBetaFile[];
+  files: FilestoreFile[];
 }
 
-export interface FilestoreBetaStats {
+export interface FilestoreStats {
   submitted: number;
   inListSubmitted: number;
   expected: number;
@@ -93,26 +93,26 @@ export interface FilestoreBetaStats {
   }>;
 }
 
-export interface FilestoreBetaTask {
+export interface FilestoreTask {
   id: number;
   slug: string;
   token: string;
   title: string;
   description: string;
   deadline: string;
-  fields: FilestoreBetaField[];
-  surveyFields: FilestoreBetaSurveyField[];
-  fileRules: FilestoreBetaRules;
+  fields: FilestoreField[];
+  surveyFields: FilestoreSurveyField[];
+  fileRules: FilestoreRules;
   renameTemplate: string;
   folderTemplate: string;
   expectedEntries: string;
-  status: FilestoreBetaStatus;
+  status: FilestoreStatus;
   createdAt: string;
   updatedAt: string;
   submitUrl: string;
-  createdBy?: FilestoreBetaCreator | null;
-  submissions?: FilestoreBetaSubmission[];
-  stats?: FilestoreBetaStats;
+  createdBy?: FilestoreCreator | null;
+  submissions?: FilestoreSubmission[];
+  stats?: FilestoreStats;
   renameResult?: {
     renamed: number;
     unchanged: number;
@@ -120,21 +120,21 @@ export interface FilestoreBetaTask {
   };
 }
 
-export interface FilestoreBetaTaskPayload {
+export interface FilestoreTaskPayload {
   title: string;
   description: string;
   deadline: string | null;
-  status: FilestoreBetaStatus;
-  fields: FilestoreBetaField[];
-  surveyFields: FilestoreBetaSurveyField[];
-  fileRules: FilestoreBetaRules;
+  status: FilestoreStatus;
+  fields: FilestoreField[];
+  surveyFields: FilestoreSurveyField[];
+  fileRules: FilestoreRules;
   renameTemplate: string;
   folderTemplate: string;
   expectedEntries: string;
   renameExistingFiles?: boolean;
 }
 
-export interface FilestoreBetaPublicTask extends FilestoreBetaTask {
+export interface FilestorePublicTask extends FilestoreTask {
   siteTitle: string;
   remoteUpload?: {
     enabled: boolean;
@@ -144,10 +144,10 @@ export interface FilestoreBetaPublicTask extends FilestoreBetaTask {
   };
 }
 
-export interface FilestoreBetaPublicStatus {
+export interface FilestorePublicStatus {
   title: string;
   deadline: string;
-  status: FilestoreBetaStatus;
+  status: FilestoreStatus;
   siteTitle: string;
   stats: {
     submitted: number;
@@ -166,7 +166,7 @@ export interface FilestoreBetaPublicStatus {
   }>;
 }
 
-export interface FilestoreBetaDuplicatePayload {
+export interface FilestoreDuplicatePayload {
   ok: true;
   exists: boolean;
   identity: string;
@@ -179,7 +179,7 @@ export interface FilestoreBetaDuplicatePayload {
   };
 }
 
-export interface FilestoreBetaPreparedRemoteFile {
+export interface FilestorePreparedRemoteFile {
   id: number;
   index: number;
   originalName: string;
@@ -190,7 +190,7 @@ export interface FilestoreBetaPreparedRemoteFile {
   expiresAt: string;
 }
 
-export interface FilestoreBetaPreparedLocalFile {
+export interface FilestorePreparedLocalFile {
   id: number;
   index: number;
   originalName: string;
@@ -199,15 +199,15 @@ export interface FilestoreBetaPreparedLocalFile {
   mimeType: string;
 }
 
-export interface FilestoreBetaPrepareRemoteResult {
+export interface FilestorePrepareRemoteResult {
   ok: true;
   directUpload: true;
   submissionId: number;
-  files: FilestoreBetaPreparedRemoteFile[];
-  localFiles: FilestoreBetaPreparedLocalFile[];
+  files: FilestorePreparedRemoteFile[];
+  localFiles: FilestorePreparedLocalFile[];
 }
 
-export interface FilestoreBetaSubmitResult {
+export interface FilestoreSubmitResult {
   ok: true;
   id: number;
   submissionId: number;
@@ -215,7 +215,7 @@ export interface FilestoreBetaSubmitResult {
   files: string[];
 }
 
-export interface FilestoreBetaFileAccess {
+export interface FilestoreFileAccess {
   ok: true;
   id: number;
   action: "download" | "preview";
@@ -227,20 +227,20 @@ export interface FilestoreBetaFileAccess {
   mimeType: string;
 }
 
-export interface FilestoreBetaAssignableUser {
+export interface FilestoreAssignableUser {
   userId: number;
   username: string;
   displayName: string;
   role: string;
 }
 
-export interface FilestoreBetaRegexResult {
+export interface FilestoreRegexResult {
   regex: string;
   description: string;
   placeholder: string;
 }
 
-export interface FilestoreBetaFilenameRepairResult {
+export interface FilestoreFilenameRepairResult {
   total: number;
   updated: number;
   unchanged: number;
@@ -254,7 +254,7 @@ export interface FilestoreBetaFilenameRepairResult {
   }>;
 }
 
-export interface FilestoreBetaRemoteFilenameRepairResult {
+export interface FilestoreRemoteFilenameRepairResult {
   scanned: number;
   repaired: number;
   synced: number;
@@ -277,13 +277,13 @@ type JsonRequestInit = Omit<RequestInit, "body"> & {
   body?: BodyInit | null;
 };
 
-export class FilestoreBetaApiError extends Error {
+export class FilestoreApiError extends Error {
   constructor(public status: number, message: string, public payload: Record<string, unknown> = {}) {
     super(message);
   }
 }
 
-export function filestoreBetaUrl(path: string) {
+export function filestoreUrl(path: string) {
   return `/filestore${path.startsWith("/") ? path : `/${path}`}`;
 }
 
@@ -310,8 +310,8 @@ async function parseJsonPayload(response: Response) {
   }
 }
 
-export async function filestoreBetaFetch<T>(path: string, init: JsonRequestInit = {}) {
-  const response = await fetch(filestoreBetaUrl(path), {
+export async function filestoreFetch<T>(path: string, init: JsonRequestInit = {}) {
+  const response = await fetch(filestoreUrl(path), {
     ...init,
     credentials: "same-origin",
     headers: headers(init),
@@ -320,13 +320,13 @@ export async function filestoreBetaFetch<T>(path: string, init: JsonRequestInit 
   const payload = await parseJsonPayload(response);
   if (!response.ok) {
     const message = String(payload.message || payload.error || response.statusText || "请求失败");
-    throw new FilestoreBetaApiError(response.status, message, payload);
+    throw new FilestoreApiError(response.status, message, payload);
   }
   return payload as T;
 }
 
-export async function filestoreBetaBlob(path: string, init: RequestInit = {}) {
-  const response = await fetch(filestoreBetaUrl(path), {
+export async function filestoreBlob(path: string, init: RequestInit = {}) {
+  const response = await fetch(filestoreUrl(path), {
     ...init,
     credentials: "same-origin",
     headers: headers(init),
@@ -334,7 +334,7 @@ export async function filestoreBetaBlob(path: string, init: RequestInit = {}) {
   if (!response.ok) {
     const payload = await parseJsonPayload(response);
     const message = String(payload.message || payload.error || response.statusText || "下载失败");
-    throw new FilestoreBetaApiError(response.status, message, payload);
+    throw new FilestoreApiError(response.status, message, payload);
   }
   return {
     blob: await response.blob(),
@@ -356,63 +356,63 @@ function filenameFromDisposition(disposition: string) {
   return basicMatch ? basicMatch[1] : "";
 }
 
-export const filestoreBetaApi = {
-  me: () => filestoreBetaFetch<FilestoreBetaViewer>("/api/admin/me"),
-  settings: () => filestoreBetaFetch<FilestoreBetaSettings>("/api/settings"),
-  saveSettings: (payload: Partial<FilestoreBetaSettings>) =>
-    filestoreBetaFetch<FilestoreBetaSettings>("/api/settings", { method: "POST", json: payload }),
+export const filestoreApi = {
+  me: () => filestoreFetch<FilestoreViewer>("/api/admin/me"),
+  settings: () => filestoreFetch<FilestoreSettings>("/api/settings"),
+  saveSettings: (payload: Partial<FilestoreSettings>) =>
+    filestoreFetch<FilestoreSettings>("/api/settings", { method: "POST", json: payload }),
 
-  tasks: () => filestoreBetaFetch<FilestoreBetaTask[]>("/api/tasks"),
-  createTask: (payload: FilestoreBetaTaskPayload) =>
-    filestoreBetaFetch<FilestoreBetaTask>("/api/tasks", { method: "POST", json: payload }),
-  task: (id: number) => filestoreBetaFetch<FilestoreBetaTask>(`/api/tasks/${id}`),
-  updateTask: (id: number, payload: FilestoreBetaTaskPayload) =>
-    filestoreBetaFetch<FilestoreBetaTask>(`/api/tasks/${id}`, { method: "PATCH", json: payload }),
+  tasks: () => filestoreFetch<FilestoreTask[]>("/api/tasks"),
+  createTask: (payload: FilestoreTaskPayload) =>
+    filestoreFetch<FilestoreTask>("/api/tasks", { method: "POST", json: payload }),
+  task: (id: number) => filestoreFetch<FilestoreTask>(`/api/tasks/${id}`),
+  updateTask: (id: number, payload: FilestoreTaskPayload) =>
+    filestoreFetch<FilestoreTask>(`/api/tasks/${id}`, { method: "PATCH", json: payload }),
   deleteTask: (id: number) =>
-    filestoreBetaFetch<{ ok: true }>(`/api/tasks/${id}`, { method: "DELETE" }),
+    filestoreFetch<{ ok: true }>(`/api/tasks/${id}`, { method: "DELETE" }),
   repairFilenames: (id: number) =>
-    filestoreBetaFetch<FilestoreBetaFilenameRepairResult>(`/api/tasks/${id}/repair-filenames`, { method: "POST" }),
+    filestoreFetch<FilestoreFilenameRepairResult>(`/api/tasks/${id}/repair-filenames`, { method: "POST" }),
   repairRemoteFilenames: (id: number) =>
-    filestoreBetaFetch<FilestoreBetaRemoteFilenameRepairResult>(`/api/tasks/${id}/repair-remote-filenames`, { method: "POST" }),
+    filestoreFetch<FilestoreRemoteFilenameRepairResult>(`/api/tasks/${id}/repair-remote-filenames`, { method: "POST" }),
   bindOwner: (id: number, userId: number) =>
-    filestoreBetaFetch<FilestoreBetaTask>(`/api/tasks/${id}/owner`, { method: "PATCH", json: { userId } }),
+    filestoreFetch<FilestoreTask>(`/api/tasks/${id}/owner`, { method: "PATCH", json: { userId } }),
 
   searchUsers: (q: string, size = 8) =>
-    filestoreBetaFetch<FilestoreBetaAssignableUser[]>(`/api/platform/users?${new URLSearchParams({ q, size: String(size) })}`),
+    filestoreFetch<FilestoreAssignableUser[]>(`/api/platform/users?${new URLSearchParams({ q, size: String(size) })}`),
   generateRegex: (prompt: string) =>
-    filestoreBetaFetch<FilestoreBetaRegexResult>("/api/platform/ai/regex", { method: "POST", json: { prompt } }),
+    filestoreFetch<FilestoreRegexResult>("/api/platform/ai/regex", { method: "POST", json: { prompt } }),
 
   publicTask: (slug: string) =>
-    filestoreBetaFetch<FilestoreBetaPublicTask>(`/api/public/tasks/${encodeURIComponent(slug)}`),
+    filestoreFetch<FilestorePublicTask>(`/api/public/tasks/${encodeURIComponent(slug)}`),
   publicStatus: (slug: string) =>
-    filestoreBetaFetch<FilestoreBetaPublicStatus>(`/api/public/status/${encodeURIComponent(slug)}`),
+    filestoreFetch<FilestorePublicStatus>(`/api/public/status/${encodeURIComponent(slug)}`),
   checkDuplicate: (slug: string, data: Record<string, string>) =>
-    filestoreBetaFetch<FilestoreBetaDuplicatePayload>(`/api/submit/${encodeURIComponent(slug)}/check-duplicate`, {
+    filestoreFetch<FilestoreDuplicatePayload>(`/api/submit/${encodeURIComponent(slug)}/check-duplicate`, {
       method: "POST",
       json: { data },
     }),
-  prepareRemote: (slug: string, payload: { data: Record<string, string>; answers?: Record<string, FilestoreBetaSurveyAnswer>; overwrite: boolean; files: Array<{ name: string; size: number; type: string }> }) =>
-    filestoreBetaFetch<FilestoreBetaPrepareRemoteResult>(`/api/submit/${encodeURIComponent(slug)}/prepare-remote`, {
+  prepareRemote: (slug: string, payload: { data: Record<string, string>; answers?: Record<string, FilestoreSurveyAnswer>; overwrite: boolean; files: Array<{ name: string; size: number; type: string }> }) =>
+    filestoreFetch<FilestorePrepareRemoteResult>(`/api/submit/${encodeURIComponent(slug)}/prepare-remote`, {
       method: "POST",
       json: payload,
     }),
   completeRemote: (slug: string, payload: { submissionId: number; remoteFileIds: number[]; overwrite: boolean }) =>
-    filestoreBetaFetch<FilestoreBetaSubmitResult>(`/api/submit/${encodeURIComponent(slug)}/complete-remote`, {
+    filestoreFetch<FilestoreSubmitResult>(`/api/submit/${encodeURIComponent(slug)}/complete-remote`, {
       method: "POST",
       json: payload,
     }),
   completeRemoteMultipart: (slug: string, form: FormData) =>
-    filestoreBetaFetch<FilestoreBetaSubmitResult>(`/api/submit/${encodeURIComponent(slug)}/complete-remote`, {
+    filestoreFetch<FilestoreSubmitResult>(`/api/submit/${encodeURIComponent(slug)}/complete-remote`, {
       method: "POST",
       body: form,
     }),
 
   fileAccess: (id: number, action: "download" | "preview") =>
-    filestoreBetaFetch<FilestoreBetaFileAccess>(`/api/files/${id}/access?action=${encodeURIComponent(action)}`),
+    filestoreFetch<FilestoreFileAccess>(`/api/files/${id}/access?action=${encodeURIComponent(action)}`),
   fileBlob: (id: number, action: "download" | "preview") =>
-    filestoreBetaBlob(`/api/files/${id}/${action}`),
+    filestoreBlob(`/api/files/${id}/${action}`),
   deleteFile: (id: number) =>
-    filestoreBetaFetch<{ ok: true }>(`/api/files/${id}`, { method: "DELETE" }),
+    filestoreFetch<{ ok: true }>(`/api/files/${id}`, { method: "DELETE" }),
   deleteSubmission: (id: number) =>
-    filestoreBetaFetch<{ ok: true }>(`/api/submissions/${id}`, { method: "DELETE" }),
+    filestoreFetch<{ ok: true }>(`/api/submissions/${id}`, { method: "DELETE" }),
 };

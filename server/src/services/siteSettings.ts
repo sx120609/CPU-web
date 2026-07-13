@@ -11,6 +11,22 @@ import { broadcastSiteSettingsReload } from "./runtimeBroadcast";
 import { normalizeFallbackModelList } from "./modelFallback";
 
 export type FeatureKey = "forum" | "market" | "coursereview" | "electric" | "sponsor";
+export type TopNavigationAudience = "all" | "guest" | "logged-in" | "staff";
+export type TopNavigationIcon = "home" | "forum" | "lost-found" | "announcement" | "academic" | "schedule" | "service" | "course" | "market" | "search" | "link";
+export type TopNavigationItem = {
+  id: string;
+  label: string;
+  fullLabel: string;
+  to: string;
+  icon: TopNavigationIcon;
+  enabled: boolean;
+  primary: boolean;
+  showInDrawer: boolean;
+  audience: TopNavigationAudience;
+  feature: FeatureKey | "";
+  requireForumAccess: boolean;
+  openInNewTab: boolean;
+};
 export type AnonymousTierConfig = {
   reputation: number;
   quota: number;
@@ -94,6 +110,17 @@ export type SitePromptDefaults = Pick<
 >;
 
 export const ALL_FEATURES: FeatureKey[] = ["forum", "market", "coursereview", "electric", "sponsor"];
+export const DEFAULT_TOP_NAVIGATION: TopNavigationItem[] = [
+  { id: "home", label: "首页", fullLabel: "首页", to: "/home", icon: "home", enabled: true, primary: true, showInDrawer: false, audience: "all", feature: "", requireForumAccess: false, openInNewTab: false },
+  { id: "forum", label: "论坛", fullLabel: "校园论坛", to: "/forum", icon: "forum", enabled: true, primary: true, showInDrawer: true, audience: "all", feature: "forum", requireForumAccess: false, openInNewTab: false },
+  { id: "lost-found", label: "失物", fullLabel: "失物招领", to: "/lost-found", icon: "lost-found", enabled: true, primary: false, showInDrawer: true, audience: "all", feature: "", requireForumAccess: false, openInNewTab: false },
+  { id: "announcements", label: "公告", fullLabel: "校园公告", to: "/announcements", icon: "announcement", enabled: true, primary: true, showInDrawer: true, audience: "all", feature: "", requireForumAccess: false, openInNewTab: false },
+  { id: "jwxt", label: "教务", fullLabel: "教务数据", to: "/jwxt", icon: "academic", enabled: true, primary: true, showInDrawer: true, audience: "all", feature: "", requireForumAccess: false, openInNewTab: false },
+  { id: "schedule", label: "课表", fullLabel: "课表", to: "/schedule", icon: "schedule", enabled: true, primary: true, showInDrawer: true, audience: "all", feature: "", requireForumAccess: false, openInNewTab: false },
+  { id: "services", label: "服务", fullLabel: "校园服务", to: "/services", icon: "service", enabled: true, primary: true, showInDrawer: true, audience: "all", feature: "", requireForumAccess: false, openInNewTab: false },
+  { id: "coursereview", label: "课评", fullLabel: "课程点评", to: "/coursereview", icon: "course", enabled: true, primary: false, showInDrawer: true, audience: "all", feature: "coursereview", requireForumAccess: true, openInNewTab: false },
+  { id: "market", label: "商城", fullLabel: "校园商城", to: "/market", icon: "market", enabled: true, primary: false, showInDrawer: true, audience: "all", feature: "market", requireForumAccess: true, openInNewTab: false },
+];
 export const DEFAULT_ANONYMOUS_TIERS: AnonymousTierConfig[] = [
   { reputation: 30, quota: 1 },
   { reputation: 60, quota: 2 },
@@ -111,6 +138,7 @@ export const DEFAULT_REPUTATION_LEVELS: ReputationLevelConfig[] = [
 const GLOBAL_PINNED_TOPICS_KEY = "forum.globalPinnedTopics";
 const SITE_ORIGIN_KEY = "site.origin";
 const SITE_FILING_NUMBER_KEY = "site.filingNumber";
+const TOP_NAVIGATION_KEY = "site.topNavigation";
 const AI_REVIEW_ENABLED_KEY = "ai.review.enabled";
 const AI_REVIEW_PROVIDER_KEY = "ai.review.provider";
 const AI_REVIEW_API_URL_KEY = "ai.review.apiUrl";
@@ -296,6 +324,7 @@ const cache: Record<FeatureKey, boolean> = {
   sponsor: true,
 };
 let globalPinnedTopicIdsCache: number[] = [];
+let topNavigationCache: TopNavigationItem[] = DEFAULT_TOP_NAVIGATION.map((item) => ({ ...item }));
 
 const configCache: SiteConfig = {
   siteOrigin: "",
@@ -384,6 +413,57 @@ export function normalizeSiteFilingNumber(input: string | null | undefined): str
     .slice(0, 120);
 }
 
+function normalizeNavigationTarget(value: unknown): string {
+  const target = String(value ?? "").trim().slice(0, 500);
+  if (/^\/(?!\/)/.test(target) || /^#[A-Za-z0-9_.:-]+$/.test(target) || /^mailto:[^\s]+$/i.test(target)) return target;
+  if (/^https?:\/\//i.test(target)) {
+    try {
+      const url = new URL(target);
+      if (url.protocol === "http:" || url.protocol === "https:") return url.toString();
+    } catch {
+      /* invalid URL */
+    }
+  }
+  throw new Error("导航链接仅支持站内路径、http(s)、mailto 或页内锚点");
+}
+
+function normalizeTopNavigation(value: unknown, fallback = DEFAULT_TOP_NAVIGATION): TopNavigationItem[] {
+  if (!Array.isArray(value)) return fallback.map((item) => ({ ...item }));
+  const seen = new Set<string>();
+  const result: TopNavigationItem[] = [];
+  for (const [index, raw] of value.slice(0, 30).entries()) {
+    if (!raw || typeof raw !== "object") continue;
+    const item = raw as Record<string, unknown>;
+    const baseId = String(item.id ?? `nav-${index + 1}`).trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || `nav-${index + 1}`;
+    let id = baseId;
+    let suffix = 2;
+    while (seen.has(id)) id = `${baseId.slice(0, 42)}-${suffix++}`;
+    seen.add(id);
+    const label = String(item.label ?? "").trim().slice(0, 12);
+    if (!label) continue;
+    const audience = ["all", "guest", "logged-in", "staff"].includes(String(item.audience)) ? item.audience as TopNavigationAudience : "all";
+    const feature = ALL_FEATURES.includes(item.feature as FeatureKey) ? item.feature as FeatureKey : "";
+    const icon = ["home", "forum", "lost-found", "announcement", "academic", "schedule", "service", "course", "market", "search", "link"].includes(String(item.icon))
+      ? item.icon as TopNavigationIcon
+      : "link";
+    result.push({
+      id,
+      label,
+      fullLabel: String(item.fullLabel ?? label).trim().slice(0, 30) || label,
+      to: normalizeNavigationTarget(item.to),
+      icon,
+      enabled: item.enabled !== false,
+      primary: item.primary === true,
+      showInDrawer: item.showInDrawer !== false,
+      audience,
+      feature,
+      requireForumAccess: item.requireForumAccess === true,
+      openInNewTab: item.openInNewTab === true,
+    });
+  }
+  return result;
+}
+
 /** 服务启动时加载一次；之后每次写入会同步更新缓存 */
 export async function loadFeatures(): Promise<void> {
   let hasAiReviewThreshold = false;
@@ -397,6 +477,7 @@ export async function loadFeatures(): Promise<void> {
           GLOBAL_PINNED_TOPICS_KEY,
           SITE_ORIGIN_KEY,
           SITE_FILING_NUMBER_KEY,
+          TOP_NAVIGATION_KEY,
           AI_REVIEW_ENABLED_KEY,
           AI_REVIEW_PROVIDER_KEY,
           AI_REVIEW_API_URL_KEY,
@@ -471,6 +552,14 @@ export async function loadFeatures(): Promise<void> {
     }
     if (r.key === SITE_FILING_NUMBER_KEY) {
       configCache.siteFilingNumber = normalizeSiteFilingNumber(r.value);
+      continue;
+    }
+    if (r.key === TOP_NAVIGATION_KEY) {
+      try {
+        topNavigationCache = normalizeTopNavigation(JSON.parse(r.value));
+      } catch {
+        topNavigationCache = DEFAULT_TOP_NAVIGATION.map((item) => ({ ...item }));
+      }
       continue;
     }
     if (r.key === AI_REVIEW_ENABLED_KEY) {
@@ -730,6 +819,14 @@ export function getFeatures(): Record<FeatureKey, boolean> {
   return { ...cache };
 }
 
+export function getTopNavigation(): TopNavigationItem[] {
+  return topNavigationCache.map((item) => ({ ...item }));
+}
+
+export function getDefaultTopNavigation(): TopNavigationItem[] {
+  return DEFAULT_TOP_NAVIGATION.map((item) => ({ ...item }));
+}
+
 export function getGlobalPinnedTopicIds(): number[] {
   return [...globalPinnedTopicIdsCache];
 }
@@ -834,6 +931,18 @@ export async function setTopicGlobalPinned(topicId: number, pinned: boolean): Pr
 
 export async function removeTopicFromGlobalPins(topicId: number): Promise<number[]> {
   return setGlobalPinnedTopicIds(globalPinnedTopicIdsCache.filter((id) => id !== topicId));
+}
+
+export async function setTopNavigation(input: unknown): Promise<TopNavigationItem[]> {
+  const navigation = normalizeTopNavigation(input, []);
+  await prisma.siteSetting.upsert({
+    where: { key: TOP_NAVIGATION_KEY },
+    update: { value: JSON.stringify(navigation) },
+    create: { key: TOP_NAVIGATION_KEY, value: JSON.stringify(navigation) },
+  });
+  topNavigationCache = navigation;
+  await broadcastSiteSettingsReload();
+  return getTopNavigation();
 }
 
 export async function setSiteOrigin(input: string | null | undefined): Promise<SiteConfig> {

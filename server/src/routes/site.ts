@@ -4,7 +4,7 @@ import path from "node:path";
 import { config } from "../config";
 import { ok } from "../utils/response";
 import { withCache } from "../services/cache";
-import { getFeatures, getSiteFilingNumber, getSiteOrigin } from "../services/siteSettings";
+import { getFeatures, getSiteFilingNumber, getSiteOrigin, getTopNavigation } from "../services/siteSettings";
 
 export const siteRouter = Router();
 
@@ -34,6 +34,13 @@ siteRouter.get("/downloads/android-app", (_req, res) => {
 
   const fileName = resolveLatestAndroidApkFileName() || "CPU-Web-Android-V6.apk";
   res.redirect(302, `/downloads/${encodeURIComponent(fileName)}`);
+});
+
+/** 公开：顶部导航配置，仅包含展示字段。 */
+siteRouter.get("/navigation", async (_req, res, next) => {
+  try {
+    ok(res, await withCache("site", ["navigation"], 60_000, async () => getTopNavigation()));
+  } catch (e) { next(e); }
 });
 
 function normalizeAndroidDownloadUrl(value: string) {

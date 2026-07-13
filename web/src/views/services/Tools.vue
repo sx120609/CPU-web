@@ -101,7 +101,9 @@ function isLoginRequired(slug: string) {
 }
 
 function openTool(tool: ServiceTool) {
-  router.push({ name: tool.routeName, params: { slug: tool.slug } });
+  router.push(tool.routeName === "service-tool-detail"
+    ? { name: tool.routeName, params: { slug: tool.slug } }
+    : { name: tool.routeName });
 }
 
 function openManage() {

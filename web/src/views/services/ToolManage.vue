@@ -1914,7 +1914,7 @@ function resetFileCollectForm() {
 }
 
 function copyFileCollectLink(row: FileCollectTask) {
-  const link = `${window.location.origin}/filestore/submit/${row.slug}`;
+  const link = `${window.location.origin}/services/tools/filestore/submit/${row.slug}`;
   navigator.clipboard?.writeText(link).then(
     () => ElMessage.success("链接已复制"),
     () => ElMessage.info(link)

@@ -17,6 +17,8 @@ import {
   isGlobalPinnedTopic,
   getSiteConfig,
   getSitePromptDefaults,
+  getTopNavigation,
+  getDefaultTopNavigation,
   removeTopicFromGlobalPins,
   setFeature,
   setSiteFilingNumber,
@@ -24,6 +26,7 @@ import {
   setAiReviewConfig,
   setCommunityTrustConfig,
   setSiteOrigin,
+  setTopNavigation,
   ALL_FEATURES,
   type FeatureKey,
 } from "../../services/siteSettings";
@@ -1725,6 +1728,61 @@ adminRouter.get("/site-config", adminOnly, (_req, res) => {
 
 adminRouter.get("/site-config/prompt-defaults", adminOnly, (_req, res) => {
   ok(res, getSitePromptDefaults());
+});
+
+const topNavigationItemSchema = z.object({
+  id: z.string().trim().min(1).max(48).regex(/^[a-z0-9][a-z0-9_-]*$/, "标识仅支持小写字母、数字、横线和下划线"),
+  label: z.string().trim().min(1).max(12),
+  fullLabel: z.string().trim().min(1).max(30),
+  to: z.string().trim().min(1).max(500).refine((value) => (
+    /^\/(?!\/)/.test(value)
+    || /^#[A-Za-z0-9_.:-]+$/.test(value)
+    || /^mailto:[^\s]+$/i.test(value)
+    || /^https?:\/\/[^\s]+$/i.test(value)
+  ), "导航链接仅支持站内路径、http(s)、mailto 或页内锚点"),
+  icon: z.enum(["home", "forum", "lost-found", "announcement", "academic", "schedule", "service", "course", "market", "search", "link"]),
+  enabled: z.boolean(),
+  primary: z.boolean(),
+  showInDrawer: z.boolean(),
+  audience: z.enum(["all", "guest", "logged-in", "staff"]),
+  feature: z.enum(["", "forum", "market", "coursereview", "electric", "sponsor"]),
+  requireForumAccess: z.boolean(),
+  openInNewTab: z.boolean(),
+});
+const topNavigationSchema = z.object({
+  items: z.array(topNavigationItemSchema).max(30),
+}).superRefine((value, ctx) => {
+  const seen = new Set<string>();
+  for (const [index, item] of value.items.entries()) {
+    if (seen.has(item.id)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["items", index, "id"], message: "导航标识不能重复" });
+    seen.add(item.id);
+  }
+});
+
+adminRouter.get("/top-navigation", adminOnly, (_req, res) => {
+  ok(res, { items: getTopNavigation(), defaults: getDefaultTopNavigation() });
+});
+
+adminRouter.patch("/top-navigation", adminOnly, validate(topNavigationSchema), async (req, res, next) => {
+  try {
+    const items = await setTopNavigation(req.body.items);
+    await invalidateSiteSettingCaches();
+    ok(res, { items, defaults: getDefaultTopNavigation() });
+  } catch (e: any) {
+    if (String(e?.message || "").startsWith("导航链接仅支持")) {
+      next(Errors.badRequest(e.message));
+      return;
+    }
+    next(e);
+  }
+});
+
+adminRouter.post("/top-navigation/reset", adminOnly, async (_req, res, next) => {
+  try {
+    const items = await setTopNavigation(getDefaultTopNavigation());
+    await invalidateSiteSettingCaches();
+    ok(res, { items, defaults: getDefaultTopNavigation() });
+  } catch (e) { next(e); }
 });
 
 adminRouter.get("/media-storage", adminOnly, async (_req, res, next) => {

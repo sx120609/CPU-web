@@ -522,7 +522,7 @@ function normalizeFileCollectReminderItem(row: any) {
     eventOptions: reminderEvents.file_collect.map((event) => ({ value: event, label: reminderEventLabels[event] })),
     eventLabel: "收到新提交",
     metricLabel: `${Number(row.submissionCount ?? 0)} 次提交`,
-    link: `/filestore/submit/${row.slug}`,
+    link: `/services/tools/filestore/submit/${row.slug}`,
     manageLink: "/services/tools/filestore",
     deadlineAt: row.deadline,
     createdAt: row.createdAt,

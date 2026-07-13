@@ -1,10 +1,8 @@
 import express, { type Request, type RequestHandler, type Response } from "express";
 import multer from "multer";
-import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { readFile, rm, unlink } from "node:fs/promises";
-import http from "node:http";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import QRCode from "qrcode";
@@ -45,8 +43,7 @@ import {
 import { normalizeMulterOriginalNames, normalizeUploadOriginalName } from "../utils/uploadFilename";
 
 const MOUNT_PATH = "/filestore";
-const TEXT_RESPONSE_RE = /^(text\/|application\/json\b|application\/javascript\b|text\/javascript\b)/i;
-const TRUSTED_PROXY_TOKEN = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+const APP_PATH = "/services/tools/filestore";
 const FILESTORE_SITE_TITLE_DEFAULT = "药大拾间文件收集";
 const FILESTORE_SITE_TITLE_KEY = "filestore.siteTitle";
 const FILESTORE_SITE_URL_KEY = "filestore.siteUrl";
@@ -67,9 +64,6 @@ const filestoreUpload = multer({
   },
 });
 
-let filestoreProcess: ChildProcess | null = null;
-let startupPromise: Promise<void> | null = null;
-
 type PlatformFilestoreUser = {
   userId: number;
   username: string;
@@ -82,95 +76,6 @@ type PlatformFilestoreUser = {
 type FilestoreAccessUser = PlatformFilestoreUser & {
   isToolManager: boolean;
 };
-
-function filestoreRoot() {
-  const candidates = [
-    path.resolve(process.cwd(), "filestore"),
-    path.resolve(process.cwd(), "server", "filestore"),
-    path.resolve(__dirname, "../../filestore"),
-  ];
-  const root = candidates.find((candidate) => existsSync(path.join(candidate, "app.py")));
-  if (!root) throw new Error("未找到 server/filestore/app.py");
-  return root;
-}
-
-function pythonCommand() {
-  if (config.filestorePython) return { command: config.filestorePython, args: [] as string[] };
-  if (process.platform === "win32") return { command: "python", args: [] as string[] };
-  return { command: "python3", args: [] as string[] };
-}
-
-function requestStatus(targetPath: string, headers: Record<string, string> = {}) {
-  return new Promise<number>((resolve) => {
-    const req = http.request({
-      hostname: "127.0.0.1",
-      port: config.filestorePort,
-      path: targetPath,
-      method: "GET",
-      headers,
-      timeout: 800,
-    }, (resp) => {
-      resp.resume();
-      resolve(resp.statusCode ?? 0);
-    });
-    req.on("timeout", () => {
-      req.destroy();
-      resolve(0);
-    });
-    req.on("error", () => resolve(0));
-    req.end();
-  });
-}
-
-async function healthCheck() {
-  const status = await requestStatus("/api/health");
-  return status >= 200 && status < 500;
-}
-
-async function waitForHealth(timeoutMs = 7000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    if (await healthCheck()) return;
-    await new Promise((resolve) => setTimeout(resolve, 150));
-  }
-  throw new Error(`Filestore 未能在 ${timeoutMs}ms 内启动`);
-}
-
-async function ensureFilestoreStarted() {
-  if (!config.filestoreEnabled) throw new Error("Filestore 已通过 FILESTORE_ENABLED=false 禁用");
-  if (await healthCheck()) return;
-  if (startupPromise) return startupPromise;
-
-  startupPromise = (async () => {
-    const root = filestoreRoot();
-    const python = pythonCommand();
-    filestoreProcess = spawn(python.command, [...python.args, "app.py"], {
-      cwd: root,
-      env: {
-        ...process.env,
-        PORT: String(config.filestorePort),
-        FILESTORE_TRUSTED_PROXY_TOKEN: TRUSTED_PROXY_TOKEN,
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    filestoreProcess.stdout?.on("data", (data) => {
-      String(data).trim().split(/\r?\n/).filter(Boolean).forEach((line) => console.log(`[filestore] ${line}`));
-    });
-    filestoreProcess.stderr?.on("data", (data) => {
-      String(data).trim().split(/\r?\n/).filter(Boolean).forEach((line) => console.warn(`[filestore] ${line}`));
-    });
-    filestoreProcess.on("exit", (code, signal) => {
-      filestoreProcess = null;
-      startupPromise = null;
-      if (code !== 0 && signal !== "SIGTERM") console.warn(`Filestore 已退出: code=${code} signal=${signal ?? ""}`);
-    });
-
-    await waitForHealth();
-  })();
-
-  return startupPromise;
-}
 
 function upstreamPath(req: Request) {
   const original = req.originalUrl || req.url || "/";
@@ -227,39 +132,6 @@ async function assertFilestoreAccess(req: Request, res: Response): Promise<Files
     return false;
   }
   return { ...user, isToolManager };
-}
-
-function encodeFilestoreHeaderValue(value?: string | null) {
-  return encodeURIComponent(String(value ?? ""));
-}
-
-function rewriteText(body: string) {
-  return body
-    .replace(/((?:href|src)=["'])\/(styles\.css|admin\.js|submit\.js|status\.js)(["'])/g, `$1${MOUNT_PATH}/$2$3`)
-    .replace(/(["'`])\/api\//g, `$1${MOUNT_PATH}/api/`)
-    .replace(/(["'`])\/submit\//g, `$1${MOUNT_PATH}/submit/`)
-    .replace(/(["'`])\/status\//g, `$1${MOUNT_PATH}/status/`)
-    .replace(/\$\{base\}\/status\//g, `\${base}${MOUNT_PATH}/status/`)
-    .replace(/\$\{base\}\/submit\//g, `\${base}${MOUNT_PATH}/submit/`);
-}
-
-function rewriteHeaderValue(name: string, value: number | string | string[]): string | string[] {
-  if (Array.isArray(value)) return value.map((item) => String(rewriteHeaderValue(name, item)));
-  const text = String(value);
-  if (name.toLowerCase() === "set-cookie") return text.replace(/;\s*Path=\//i, `; Path=${MOUNT_PATH}`);
-  if (name.toLowerCase() === "location" && text.startsWith("/")) return `${MOUNT_PATH}${text}`;
-  return text;
-}
-
-function writeHeaders(res: Response, upstream: http.IncomingMessage, rewrittenBody?: Buffer) {
-  res.status(upstream.statusCode ?? 502);
-  for (const [name, value] of Object.entries(upstream.headers)) {
-    if (value === undefined) continue;
-    if (name.toLowerCase() === "connection") continue;
-    if (rewrittenBody && name.toLowerCase() === "content-length") continue;
-    res.setHeader(name, rewriteHeaderValue(name, value));
-  }
-  if (rewrittenBody) res.setHeader("content-length", String(rewrittenBody.byteLength));
 }
 
 function queryStringValue(value: unknown) {
@@ -840,7 +712,7 @@ function normalizeFilestoreTask(row: any, options: { includeCreator?: boolean; i
     status: normalizeStatus(row.status),
     createdAt: isoDate(row.createdAt),
     updatedAt: isoDate(row.updatedAt),
-    submitUrl: `${MOUNT_PATH}/submit/${row.slug}`,
+    submitUrl: `${APP_PATH}/submit/${row.slug}`,
   };
   if (options.includeCreator) task.createdBy = filestoreCreatedBy(row);
   if (submissions) {
@@ -2287,7 +2159,7 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       res.status(401).json({ error: "请先登录平台账号" });
       return true;
     }
-    // Parse JSON body on demand since express.json() is registered after filestoreProxy
+    // Parse JSON body on demand since express.json() is registered after filestoreHandler.
     await new Promise<void>((resolve, reject) => {
       express.json()(req, res, (err) => {
         if (err) reject(err);
@@ -2334,55 +2206,24 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
   return false;
 }
 
-function proxyToFilestore(req: Request, res: Response, user: FilestoreAccessUser | null) {
-  const headers = {
-    ...req.headers,
-    host: `127.0.0.1:${config.filestorePort}`,
-    "x-cpu-filestore-admin": TRUSTED_PROXY_TOKEN,
-    ...(user ? {
-      "x-cpu-filestore-user-id": String(user.userId),
-      "x-cpu-filestore-username": encodeFilestoreHeaderValue(user.username),
-      "x-cpu-filestore-display-name": encodeFilestoreHeaderValue(user.nickname || user.username),
-      "x-cpu-filestore-role": user.role,
-      "x-cpu-filestore-is-manager": user.isToolManager ? "1" : "0",
-    } : {}),
-  };
-  const upstream = http.request({
-    hostname: "127.0.0.1",
-    port: config.filestorePort,
-    path: upstreamPath(req),
-    method: req.method,
-    headers,
-  }, (upstreamRes) => {
-    const contentType = String(upstreamRes.headers["content-type"] ?? "");
-    const shouldRewrite = TEXT_RESPONSE_RE.test(contentType);
-    if (!shouldRewrite) {
-      writeHeaders(res, upstreamRes);
-      upstreamRes.pipe(res);
-      return;
-    }
-
-    const chunks: Buffer[] = [];
-    upstreamRes.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
-    upstreamRes.on("end", () => {
-      const source = Buffer.concat(chunks).toString("utf8");
-      const body = Buffer.from(rewriteText(source), "utf8");
-      writeHeaders(res, upstreamRes, body);
-      res.end(body);
-    });
-  });
-
-  upstream.on("error", (error) => {
-    if (!res.headersSent) {
-      res.status(502).send(`Filestore 代理失败：${error.message}`);
-    } else {
-      res.end();
-    }
-  });
-  req.pipe(upstream);
+function redirectLegacyFilestorePage(req: Request, res: Response) {
+  if (req.method !== "GET" && req.method !== "HEAD") return false;
+  const target = upstreamPath(req).split("?")[0];
+  const submit = target.match(/^\/submit\/([A-Za-z0-9_-]+)$/);
+  const status = target.match(/^\/status\/([A-Za-z0-9_-]+)$/);
+  const destination = submit
+    ? `${APP_PATH}/submit/${submit[1]}`
+    : status
+      ? `${APP_PATH}/status/${status[1]}`
+      : target === "/" || target === "/admin" || target === "/admin.html"
+        ? APP_PATH
+        : "";
+  if (!destination) return false;
+  res.redirect(308, destination);
+  return true;
 }
 
-export const filestoreProxy: RequestHandler = async (req, res) => {
+export const filestoreHandler: RequestHandler = async (req, res) => {
   try {
     const user = await assertFilestoreAccess(req, res);
     if (user === false) return;
@@ -2392,13 +2233,13 @@ export const filestoreProxy: RequestHandler = async (req, res) => {
       sendFilestoreApiError(res, error);
       return;
     }
+    if (redirectLegacyFilestorePage(req, res)) return;
     if (upstreamPath(req).split("?")[0].startsWith("/api/")) {
       res.status(404).json({ error: "接口不存在" });
       return;
     }
-    await ensureFilestoreStarted();
-    proxyToFilestore(req, res, user);
+    res.status(404).send("Filestore 页面不存在");
   } catch (error) {
-    res.status(503).send(error instanceof Error ? error.message : "Filestore 暂不可用");
+    sendFilestoreApiError(res, error);
   }
 };

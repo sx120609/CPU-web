@@ -6,6 +6,9 @@
         <h1>药大拾间</h1>
         <p>{{ heroIntro }}</p>
         <div class="hero-actions">
+          <el-button size="large" @click="$router.push('/lost-found')">
+            <span>🧭</span> 失物招领
+          </el-button>
           <el-button v-if="site.features.forum" type="primary" size="large" @click="$router.push('/forum')">
             <el-icon><ChatLineRound /></el-icon> {{ forumActionLabel }}
           </el-button>

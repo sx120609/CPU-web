@@ -1,5 +1,5 @@
 <template>
-  <div class="filestore-beta-legacy">
+  <div class="filestore-app">
     <main class="submit-shell">
       <section class="submit-card">
         <div class="submit-brandbar">
@@ -220,24 +220,24 @@
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import {
-  filestoreBetaApi,
-  filestoreBetaUrl,
-  type FilestoreBetaDuplicatePayload,
-  type FilestoreBetaPreparedLocalFile,
-  type FilestoreBetaPreparedRemoteFile,
-  type FilestoreBetaPublicTask,
-  type FilestoreBetaSurveyAnswer,
-  type FilestoreBetaSurveyField,
-  type FilestoreBetaSubmitResult,
-} from "@/api/filestoreBeta";
+  filestoreApi,
+  filestoreUrl,
+  type FilestoreDuplicatePayload,
+  type FilestorePreparedLocalFile,
+  type FilestorePreparedRemoteFile,
+  type FilestorePublicTask,
+  type FilestoreSurveyAnswer,
+  type FilestoreSurveyField,
+  type FilestoreSubmitResult,
+} from "@/api/filestore";
 import {
   formatDateTime,
   normalizeAllowedTypes,
   previewStoredFileName,
-  renderFilestoreBetaTemplate,
+  renderFilestoreTemplate,
   requestErrorMessage,
-  useScopedLegacyFilestoreCss,
-} from "@/views/services/filestoreBetaShared";
+  useScopedFilestoreCss,
+} from "@/views/services/filestoreShared";
 import { formatBytes } from "@/views/services/fileCollectExport";
 
 type MessageType = "" | "ok" | "error" | "warn";
@@ -251,16 +251,16 @@ const route = useRoute();
 const loading = ref(false);
 const submitting = ref(false);
 const progress = ref(0);
-const task = ref<FilestoreBetaPublicTask | null>(null);
+const task = ref<FilestorePublicTask | null>(null);
 const error = ref("");
 const answers = reactive<Record<string, string>>({});
-const surveyAnswers = reactive<Record<string, FilestoreBetaSurveyAnswer>>({});
+const surveyAnswers = reactive<Record<string, FilestoreSurveyAnswer>>({});
 const fileEntries = ref<FileEntry[]>([]);
 const fileInput = ref<HTMLInputElement | null>(null);
 const draggedFileId = ref("");
 const submitMessage = ref("");
 const messageType = ref<MessageType>("");
-const successPayload = ref<FilestoreBetaSubmitResult | null>(null);
+const successPayload = ref<FilestoreSubmitResult | null>(null);
 const successDialog = ref<HTMLDialogElement | null>(null);
 const overwriteDialog = ref<HTMLDialogElement | null>(null);
 const overwriteSummary = ref("");
@@ -268,10 +268,10 @@ const overwriteFiles = ref<string[]>([]);
 let overwriteResolve: ((value: boolean | null) => void) | null = null;
 let loadSeq = 0;
 
-useScopedLegacyFilestoreCss();
+useScopedFilestoreCss();
 
 const slug = computed(() => String(route.params.slug || "").trim());
-const statusPath = computed(() => `/services/tools/filestore-beta/status/${slug.value}`);
+const statusPath = computed(() => `/services/tools/filestore/status/${slug.value}`);
 const normalizedAllowedTypes = computed(() => normalizeAllowedTypes(task.value?.fileRules.allowedTypes ?? []));
 const acceptTypes = computed(() => normalizedAllowedTypes.value.map((item) => `.${item}`).join(","));
 const fileRulesText = computed(() => {
@@ -305,7 +305,7 @@ async function load() {
     return;
   }
   try {
-    const next = await filestoreBetaApi.publicTask(slug.value);
+    const next = await filestoreApi.publicTask(slug.value);
     if (seq !== loadSeq) return;
     task.value = next;
     document.title = `${next.siteTitle || "药大拾间文件收集"} - ${next.title}`;
@@ -405,7 +405,7 @@ function currentData() {
 }
 
 function currentSurveyAnswers() {
-  const result: Record<string, FilestoreBetaSurveyAnswer> = {};
+  const result: Record<string, FilestoreSurveyAnswer> = {};
   for (const field of visibleSurveyFields.value) {
     const value = surveyAnswers[field.id];
     result[field.id] = Array.isArray(value) ? value.map(String).filter(Boolean) : String(value ?? "").trim();
@@ -426,18 +426,18 @@ function toggleMulti(fieldId: string, option: string, event: Event) {
   surveyAnswers[fieldId] = Array.from(values);
 }
 
-function hasSurveyAnswer(value: FilestoreBetaSurveyAnswer | undefined) {
+function hasSurveyAnswer(value: FilestoreSurveyAnswer | undefined) {
   return Array.isArray(value) ? value.length > 0 : Boolean(String(value ?? "").trim());
 }
 
-function ratingRange(field: FilestoreBetaSurveyField) {
+function ratingRange(field: FilestoreSurveyField) {
   const min = Math.max(0, Math.round(Number(field.min ?? 1)));
   const max = Math.min(10, Math.round(Number(field.max ?? 5)));
   return Array.from({ length: Math.max(0, max - min + 1) }, (_, index) => min + index);
 }
 
-function resolveVisibleSurveyFields(fields: FilestoreBetaSurveyField[]) {
-  const result: FilestoreBetaSurveyField[] = [];
+function resolveVisibleSurveyFields(fields: FilestoreSurveyField[]) {
+  const result: FilestoreSurveyField[] = [];
   const indexById = new Map(fields.map((field, index) => [field.id, index]));
   for (let index = 0; index < fields.length;) {
     const field = fields[index];
@@ -536,7 +536,7 @@ function savedPathPreview(file: File, index: number) {
   const data = Object.fromEntries(Object.entries(currentData()).map(([key, value]) => [key, value || key]));
   const name = previewStoredFileName(task.value.renameTemplate, data, file.name, index, fileEntries.value.length);
   if (fileEntries.value.length <= 1) return name;
-  return `${renderFilestoreBetaTemplate(task.value.folderTemplate, data)}/${name}`;
+  return `${renderFilestoreTemplate(task.value.folderTemplate, data)}/${name}`;
 }
 
 function shouldDirectUpload(file: File) {
@@ -551,7 +551,7 @@ function shouldUseRemoteUpload(files: File[]) {
 
 async function confirmOverwriteIfNeeded() {
   message("正在检查是否已有提交...");
-  const duplicate = await filestoreBetaApi.checkDuplicate(slug.value, currentData());
+  const duplicate = await filestoreApi.checkDuplicate(slug.value, currentData());
   if (!duplicate.exists) {
     message("");
     return false;
@@ -564,7 +564,7 @@ async function confirmOverwriteIfNeeded() {
   return true;
 }
 
-function askOverwriteSubmission(payload: FilestoreBetaDuplicatePayload) {
+function askOverwriteSubmission(payload: FilestoreDuplicatePayload) {
   overwriteSummary.value = `${payload.identityLabel || "身份信息"}“${payload.identity}”已经提交过${payload.submission?.createdAt ? `，提交时间 ${formatDateTime(payload.submission.createdAt)}` : ""}。`;
   overwriteFiles.value = payload.submission?.files || [];
   overwriteDialog.value?.showModal();
@@ -616,7 +616,7 @@ async function submit() {
 async function submitRemote(files: File[], overwrite: boolean) {
   progress.value = 0;
   message("正在创建世纪互联直传会话...");
-  const prepared = await filestoreBetaApi.prepareRemote(slug.value, {
+  const prepared = await filestoreApi.prepareRemote(slug.value, {
     data: currentData(),
     answers: currentSurveyAnswers(),
     overwrite,
@@ -630,10 +630,10 @@ async function submitRemote(files: File[], overwrite: boolean) {
   const localByIndex = new Map(prepared.localFiles.map((file) => [Number(file.index), file]));
   const remoteEntries = files
     .map((file, index) => ({ file, preparedFile: remoteByIndex.get(index) }))
-    .filter((entry): entry is { file: File; preparedFile: FilestoreBetaPreparedRemoteFile } => Boolean(entry.preparedFile));
+    .filter((entry): entry is { file: File; preparedFile: FilestorePreparedRemoteFile } => Boolean(entry.preparedFile));
   const localEntries = files
     .map((file, index) => ({ file, preparedFile: localByIndex.get(index) }))
-    .filter((entry): entry is { file: File; preparedFile: FilestoreBetaPreparedLocalFile } => Boolean(entry.preparedFile));
+    .filter((entry): entry is { file: File; preparedFile: FilestorePreparedLocalFile } => Boolean(entry.preparedFile));
   if (remoteEntries.length + localEntries.length !== files.length) throw new Error("上传会话缺少部分文件，请刷新后重试");
 
   let uploadedBytes = 0;
@@ -657,19 +657,19 @@ async function submitRemote(files: File[], overwrite: boolean) {
     form.append("localFileIds", JSON.stringify(localEntries.map((entry) => entry.preparedFile.id)));
     form.append("overwrite", overwrite ? "true" : "false");
     localEntries.forEach((entry) => form.append("files", entry.file, entry.file.name));
-    return xhrJson<FilestoreBetaSubmitResult>(filestoreBetaUrl(`/api/submit/${slug.value}/complete-remote`), form, (loaded) => {
+    return xhrJson<FilestoreSubmitResult>(filestoreUrl(`/api/submit/${slug.value}/complete-remote`), form, (loaded) => {
       localUploadedBytes = loaded;
       progress.value = totalBytes ? Math.min(99, Math.round(((uploadedBytes + localUploadedBytes) / totalBytes) * 100)) : 0;
     });
   }
-  return filestoreBetaApi.completeRemote(slug.value, {
+  return filestoreApi.completeRemote(slug.value, {
     submissionId: prepared.submissionId,
     remoteFileIds: remoteEntries.map((entry) => entry.preparedFile.id),
     overwrite,
   });
 }
 
-async function uploadFileToSession(file: File, uploadFile: FilestoreBetaPreparedRemoteFile, onProgress: (bytes: number) => void) {
+async function uploadFileToSession(file: File, uploadFile: FilestorePreparedRemoteFile, onProgress: (bytes: number) => void) {
   const chunkSize = 5 * 1024 * 1024;
   let start = 0;
   while (start < file.size) {
@@ -699,7 +699,7 @@ function submitMultipart(files: File[], overwrite: boolean) {
   form.append("overwrite", overwrite ? "true" : "false");
   files.forEach((file) => form.append("files", file, file.name));
   message("正在上传...");
-  return xhrJson<FilestoreBetaSubmitResult>(filestoreBetaUrl(`/api/submit/${slug.value}`), form, (loaded, total) => {
+  return xhrJson<FilestoreSubmitResult>(filestoreUrl(`/api/submit/${slug.value}`), form, (loaded, total) => {
     progress.value = total ? Math.round((loaded / total) * 100) : 0;
   });
 }
@@ -721,7 +721,7 @@ function xhrJson<T>(url: string, form: FormData, onProgress: (loaded: number, to
   });
 }
 
-function applySuccess(result: FilestoreBetaSubmitResult) {
+function applySuccess(result: FilestoreSubmitResult) {
   progress.value = 100;
   successPayload.value = result;
   message(`提交成功，编号 ${result.submissionId}。文件：${result.files.join("、")}`, "ok");

@@ -1,5 +1,5 @@
 <template>
-  <div class="filestore-beta-legacy">
+  <div class="filestore-app">
     <main class="submit-shell status-shell">
       <section class="submit-card status-card">
         <div class="submit-brandbar">
@@ -68,23 +68,23 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { filestoreBetaApi, type FilestoreBetaPublicStatus } from "@/api/filestoreBeta";
+import { filestoreApi, type FilestorePublicStatus } from "@/api/filestore";
 import {
   formatDateTime,
   requestErrorMessage,
-  useScopedLegacyFilestoreCss,
-} from "@/views/services/filestoreBetaShared";
+  useScopedFilestoreCss,
+} from "@/views/services/filestoreShared";
 import { formatBytes } from "@/views/services/fileCollectExport";
 
 const route = useRoute();
 const router = useRouter();
 const loading = ref(false);
 const error = ref("");
-const statusData = ref<FilestoreBetaPublicStatus | null>(null);
+const statusData = ref<FilestorePublicStatus | null>(null);
 const query = ref("");
 let loadSeq = 0;
 
-useScopedLegacyFilestoreCss();
+useScopedFilestoreCss();
 
 const slug = computed(() => String(route.params.slug || "").trim());
 const filteredRows = computed(() => {
@@ -108,7 +108,7 @@ async function load() {
     return;
   }
   try {
-    const next = await filestoreBetaApi.publicStatus(slug.value);
+    const next = await filestoreApi.publicStatus(slug.value);
     if (seq !== loadSeq) return;
     statusData.value = next;
     document.title = `${next.siteTitle || "药大拾间文件收集"} - 提交成功名单`;
@@ -121,6 +121,6 @@ async function load() {
 }
 
 function goSubmit() {
-  router.push(`/services/tools/filestore-beta/submit/${slug.value}`);
+  router.push(`/services/tools/filestore/submit/${slug.value}`);
 }
 </script>

@@ -1,4 +1,4 @@
-import { Calendar, ChatDotRound, DataLine, Document, DocumentChecked, FolderOpened, Tools } from "@element-plus/icons-vue";
+import { Calendar, ChatDotRound, Compass, DataLine, Document, DocumentChecked, FolderOpened, Tools } from "@element-plus/icons-vue";
 import type { Component } from "vue";
 
 export type ServiceToolStatus = "ready" | "planned";
@@ -12,12 +12,25 @@ export interface ServiceTool {
   status: ServiceToolStatus;
   category: string;
   routeName: string;
-  componentKey: "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar";
+  componentKey: "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "lost_found";
   accent: string;
   iconComponent: Component;
 }
 
 export const serviceTools: ServiceTool[] = [
+  {
+    slug: "lost_found",
+    name: "失物招领",
+    summary: "公开找物与招领信息，登录后私下提交认领",
+    description: "按校区、地点、时间和认领状态查找信息，并与论坛讨论和站内消息联动。",
+    icon: "🧭",
+    status: "ready",
+    category: "校园互助",
+    routeName: "lost-found",
+    componentKey: "lost_found",
+    accent: "#0f8f7b",
+    iconComponent: Compass,
+  },
   {
     slug: "feedback",
     name: "需求反馈",

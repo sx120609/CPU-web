@@ -32,14 +32,19 @@
         </div>
 
         <nav class="top-nav" aria-label="主导航">
-          <router-link
+          <template
             v-for="item in desktopPrimaryNavItems"
-            :key="item.to"
-            :to="item.to"
-            :title="item.fullLabel || item.label"
+            :key="item.id"
           >
-            {{ item.label }}
-          </router-link>
+            <a
+              v-if="isExternalNav(item.to) || item.openInNewTab"
+              :href="item.to"
+              :target="item.openInNewTab ? '_blank' : undefined"
+              :rel="item.openInNewTab ? 'noopener noreferrer' : undefined"
+              :title="item.fullLabel || item.label"
+            >{{ item.label }}</a>
+            <router-link v-else :to="item.to" :title="item.fullLabel || item.label">{{ item.label }}</router-link>
+          </template>
           <el-dropdown
             v-if="desktopOverflowNavItems.length"
             class="top-nav-more"
@@ -54,8 +59,8 @@
               <el-dropdown-menu>
                 <el-dropdown-item
                   v-for="item in desktopOverflowNavItems"
-                  :key="item.to"
-                  :command="item.to"
+                  :key="item.id"
+                  :command="item.id"
                 >
                   {{ item.fullLabel || item.label }}
                 </el-dropdown-item>
@@ -188,10 +193,10 @@
       <div class="drawer-grid">
         <button
           v-for="item in drawerItems"
-          :key="item.to"
+          :key="item.id"
           type="button"
           class="drawer-link"
-          @click="goDrawer(item.to)"
+          @click="goDrawer(item)"
         >
           <el-icon><component :is="item.icon" /></el-icon>
           <span>{{ item.label }}</span>
@@ -223,7 +228,7 @@
           <UserAvatar :size="34" class="user-avatar" :src="auth.user?.avatar" :name="auth.user?.nickname" alt="用户头像" />
           <div class="drawer-user">
             <div>{{ auth.user?.nickname }}</div>
-            <button type="button" @click="goDrawer('/profile')">个人中心</button>
+            <button type="button" @click="goDrawer({ id: 'system-profile', to: '/profile', label: '个人中心', icon: UserFilled })">个人中心</button>
           </div>
           <el-button text type="danger" @click="onMobileLogout">退出</el-button>
         </template>
@@ -288,7 +293,10 @@ import {
   Sunny,
   Moon,
   Monitor,
+  Compass,
+  Link,
 } from "@element-plus/icons-vue";
+import type { TopNavigationIcon, TopNavigationItem } from "@/api/site";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
@@ -343,13 +351,29 @@ const layoutStyle = computed(() => (
 const searchPlaceholder = computed(() => {
   const scopes: string[] = [];
   if (site.features.forum && auth.canAccessForum) scopes.push("帖子");
+  scopes.push("失物");
   if (site.features.coursereview && auth.canAccessForum) scopes.push("课程");
   scopes.push("公告");
   scopes.push("服务");
   return `搜索${scopes.join(" / ")}`;
 });
 
-type DesktopNavItem = { to: string; label: string; fullLabel?: string };
+type DesktopNavItem = TopNavigationItem;
+type DrawerNavItem = { id: string; to: string; label: string; icon: unknown; openInNewTab?: boolean };
+
+const navigationIconMap: Record<TopNavigationIcon, unknown> = {
+  home: House,
+  forum: ChatLineRound,
+  "lost-found": Compass,
+  announcement: Bell,
+  academic: Reading,
+  schedule: Calendar,
+  service: Service,
+  course: Reading,
+  market: Goods,
+  search: Search,
+  link: Link,
+};
 
 const nicknameHint = computed(() => {
   const actions: string[] = [];
@@ -364,26 +388,15 @@ function reloadPage() {
 }
 
 const desktopNavItems = computed(() => {
-  const items: DesktopNavItem[] = [];
-  items.push({ to: "/home", label: "首页" });
-  if (site.features.forum) items.push({ to: "/forum", label: "论坛" });
-  items.push({ to: "/announcements", label: "公告" });
-  items.push({ to: "/jwxt", label: "教务", fullLabel: "教务数据" });
-  items.push({ to: "/schedule", label: "课表" });
-  items.push({ to: "/services", label: "服务", fullLabel: "校园服务" });
-  if (site.features.coursereview && auth.canAccessForum) items.push({ to: "/coursereview", label: "课评", fullLabel: "课程点评" });
-  if (site.features.market && auth.canAccessForum) items.push({ to: "/market", label: "商城", fullLabel: "校园商城" });
-  return items;
+  return site.topNavigation.filter(navigationItemVisible);
 });
 
 const desktopPrimaryNavItems = computed(() => {
-  const primary = new Set(["/home", "/forum", "/announcements", "/jwxt", "/schedule", "/services"]);
-  return desktopNavItems.value.filter((item) => primary.has(item.to));
+  return desktopNavItems.value.filter((item) => item.primary);
 });
 
 const desktopOverflowNavItems = computed(() => {
-  const primary = new Set(desktopPrimaryNavItems.value.map((item) => item.to));
-  return desktopNavItems.value.filter((item) => !primary.has(item.to));
+  return desktopNavItems.value.filter((item) => !item.primary);
 });
 
 const mobileNavItems = computed(() => {
@@ -398,20 +411,30 @@ const mobileNavItems = computed(() => {
 });
 
 const drawerItems = computed(() => {
-  const items: { to: string; label: string; icon: any }[] = [];
-  if (auth.canAccessForum && site.features.forum) items.push({ to: "/post", label: "发帖", icon: Edit });
-  items.push({ to: "/messages", label: "消息", icon: Message });
-  if (auth.isMod) items.push({ to: "/admin", label: "管理后台", icon: Tools });
-  if (site.features.forum) items.push({ to: "/forum", label: "论坛", icon: ChatLineRound });
-  items.push({ to: "/announcements", label: "校园公告", icon: Bell });
-  items.push({ to: "/jwxt", label: "教务数据", icon: Calendar });
-  items.push({ to: "/schedule", label: "课表", icon: Calendar });
-  if (site.features.coursereview && auth.canAccessForum) items.push({ to: "/coursereview", label: "课评", icon: Reading });
-  if (site.features.market && auth.canAccessForum) items.push({ to: "/market", label: "校园商城", icon: Goods });
-  items.push({ to: "/services", label: "校园服务", icon: Service });
-  items.push({ to: "/search", label: "搜索", icon: Search });
+  const items: DrawerNavItem[] = [];
+  if (auth.canAccessForum && site.features.forum) items.push({ id: "system-post", to: "/post", label: "发帖", icon: Edit });
+  items.push({ id: "system-messages", to: "/messages", label: "消息", icon: Message });
+  if (auth.isMod) items.push({ id: "system-admin", to: "/admin", label: "管理后台", icon: Tools });
+  for (const item of site.topNavigation.filter((candidate) => candidate.showInDrawer && navigationItemVisible(candidate))) {
+    items.push({ id: `configured-${item.id}`, to: item.to, label: item.fullLabel || item.label, icon: navigationIconMap[item.icon], openInNewTab: item.openInNewTab });
+  }
+  if (!items.some((item) => item.to === "/search")) items.push({ id: "system-search", to: "/search", label: "搜索", icon: Search });
   return items;
 });
+
+function navigationItemVisible(item: TopNavigationItem) {
+  if (!item.enabled) return false;
+  if (item.feature && !site.features[item.feature]) return false;
+  if (item.requireForumAccess && !auth.canAccessForum) return false;
+  if (item.audience === "guest" && auth.isLoggedIn) return false;
+  if (item.audience === "logged-in" && !auth.isLoggedIn) return false;
+  if (item.audience === "staff" && !auth.isMod) return false;
+  return true;
+}
+
+function isExternalNav(to: string) {
+  return /^(?:https?:\/\/|mailto:|#)/i.test(to);
+}
 
 // 首次登录设昵称
 const showNicknameDialog = ref(false);
@@ -558,8 +581,9 @@ function goSearch() {
 }
 
 function goDesktopNav(command: string | number | object) {
-  const to = String(command || "");
-  if (to) router.push(to);
+  const id = String(command || "");
+  const item = desktopOverflowNavItems.value.find((candidate) => candidate.id === id);
+  if (item) navigateConfiguredItem(item);
 }
 
 function resolveMobileTo(item: { to: string; auth?: boolean }) {
@@ -574,13 +598,27 @@ function isMobileRouteActive(item: { match: string[]; auth?: boolean }) {
   return item.match.some((prefix) => route.path === prefix || route.path.startsWith(`${prefix}/`));
 }
 
-function goDrawer(to: string) {
+function goDrawer(item: DrawerNavItem) {
   mobileMenuOpen.value = false;
+  const to = item.to;
   if ((to === "/post" || to === "/messages") && !auth.isLoggedIn) {
     router.push({ name: "login", query: { redirect: to } });
     return;
   }
-  router.push(to);
+  navigateConfiguredItem(item);
+}
+
+function navigateConfiguredItem(item: { to: string; openInNewTab?: boolean }) {
+  if (isExternalNav(item.to)) {
+    if (item.openInNewTab) window.open(item.to, "_blank", "noopener,noreferrer");
+    else window.location.href = item.to;
+    return;
+  }
+  if (item.openInNewTab) {
+    window.open(router.resolve(item.to).href, "_blank", "noopener,noreferrer");
+    return;
+  }
+  router.push(item.to);
 }
 
 function authRedirectTarget() {

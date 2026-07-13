@@ -301,8 +301,7 @@ const FileCollectPanel = defineComponent({
         ]),
         canManageFileCollect.value
           ? h("div", { class: "file-collect-entry-actions" }, [
-            h("button", { class: "plain-action", type: "button", onClick: () => router.push("/services/tools/filestore") }, "旧版 Filestore"),
-            h("button", { class: "plain-action beta-action", type: "button", onClick: () => router.push("/services/tools/filestore-beta") }, "Beta 工作台"),
+            h("button", { class: "plain-action", type: "button", onClick: () => router.push("/services/tools/filestore") }, "打开 Filestore"),
           ])
           : null,
       ]),
@@ -631,10 +630,6 @@ function uniqueToolCodes(items: ServiceToolCode[]) {
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
-}
-.beta-action {
-  color: #fff;
-  background: var(--cpu-primary);
 }
 .loading-card,
 .empty-panel {

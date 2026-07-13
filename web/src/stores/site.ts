@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { siteApi, type FeatureMap, type PublicSiteConfig } from "@/api/site";
+import { DEFAULT_TOP_NAVIGATION, siteApi, type FeatureMap, type PublicSiteConfig, type TopNavigationItem } from "@/api/site";
 
 /**
  * 站点级开关：默认关闭可选功能，拉到后台真实开关后再展示入口。
@@ -10,6 +10,7 @@ export const useSiteStore = defineStore("site", {
     features: { forum: false, market: false, coursereview: false, electric: false, sponsor: false } as FeatureMap,
     siteOrigin: "",
     siteFilingNumber: "",
+    topNavigation: DEFAULT_TOP_NAVIGATION.map((item) => ({ ...item })) as TopNavigationItem[],
     loaded: false,
     loading: false,
     _pendingFetch: null as Promise<void> | null,
@@ -21,9 +22,10 @@ export const useSiteStore = defineStore("site", {
       this.loading = true;
       const task = (async () => {
         try {
-          const [featureResult, configResult] = await Promise.allSettled([
+          const [featureResult, configResult, navigationResult] = await Promise.allSettled([
             siteApi.features(),
             siteApi.config(),
+            siteApi.navigation(),
           ]);
           if (featureResult.status === "fulfilled") {
             this.features = featureResult.value;
@@ -31,6 +33,9 @@ export const useSiteStore = defineStore("site", {
           if (configResult.status === "fulfilled") {
             this.siteOrigin = configResult.value.siteOrigin || "";
             this.siteFilingNumber = configResult.value.siteFilingNumber || "";
+          }
+          if (navigationResult.status === "fulfilled") {
+            this.topNavigation = navigationResult.value.map((item) => ({ ...item }));
           }
         } catch {
           // 接口失败：维持默认关闭可选功能，避免误展示后台未开放入口。
@@ -50,6 +55,9 @@ export const useSiteStore = defineStore("site", {
     applyConfig(config: Partial<PublicSiteConfig>) {
       if (config.siteOrigin !== undefined) this.siteOrigin = config.siteOrigin || "";
       if (config.siteFilingNumber !== undefined) this.siteFilingNumber = config.siteFilingNumber || "";
+    },
+    applyTopNavigation(items: TopNavigationItem[]) {
+      this.topNavigation = items.map((item) => ({ ...item }));
     },
   },
 });

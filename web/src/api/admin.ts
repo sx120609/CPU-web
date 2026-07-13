@@ -1,4 +1,5 @@
 import { request, type RequestOptions } from "./request";
+import type { TopNavigationItem } from "./site";
 
 export type SiteConfig = {
   siteOrigin: string;
@@ -515,6 +516,11 @@ export type JwxtAgentConnection = {
   crawlEnabled: boolean;
 };
 
+export type TopNavigationAdminPayload = {
+  items: TopNavigationItem[];
+  defaults: TopNavigationItem[];
+};
+
 export type JwxtAgentAdminItem = {
   id: string;
   name: string;
@@ -644,6 +650,9 @@ export const adminApi = {
     request.delete<{ deletedUserId: number; deletedTopics: number; deletedReplies: number }>(`/admin/users/${id}`),
   // 站点功能开关
   siteConfig: (options?: RequestOptions) => request.get<SiteConfig>("/admin/site-config", undefined, options),
+  topNavigation: (options?: RequestOptions) => request.get<TopNavigationAdminPayload>("/admin/top-navigation", undefined, options),
+  updateTopNavigation: (items: TopNavigationItem[]) => request.patch<TopNavigationAdminPayload>("/admin/top-navigation", { items }),
+  resetTopNavigation: () => request.post<TopNavigationAdminPayload>("/admin/top-navigation/reset", {}),
   sitePromptDefaults: (options?: RequestOptions) => request.get<SitePromptDefaults>("/admin/site-config/prompt-defaults", undefined, options),
   filestoreStorageConfig: (options?: RequestOptions) => request.get<FilestoreStorageConfig>("/admin/filestore-settings", undefined, options),
   updateFilestoreStorageConfig: (patch: { enabled?: boolean; minSizeMb?: number }) =>

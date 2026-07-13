@@ -93,6 +93,8 @@ model User {
   marketRefundRequests        MarketRefund[]          @relation("MarketRefundRequester")
   marketSettlements           MarketSettlement[]      @relation("MarketSettlementSeller")
   marketPayoutProfile         MarketPayoutProfile?
+  lostFoundItems              LostFoundItem[]         @relation("LostFoundPublisher")
+  lostFoundClaims             LostFoundClaim[]        @relation("LostFoundClaimant")
 }
 
 // ============ 论坛核心 ============
@@ -172,6 +174,7 @@ model Topic {
   manualReviewedBy User?            @relation("ManualReviewedTopics", fields: [manualReviewedById], references: [id])
   weiwallMap       WeiwallTopicMap?
   marketItem       MarketItem?
+  lostFoundItem    LostFoundItem?
 
   @@index([boardId, lastReplyAt])
   @@index([boardId, hidden, createdAt])
@@ -1162,6 +1165,68 @@ model MarketCategory {
   updatedAt       DateTime @updatedAt
 
   @@index([enabled, sort])
+}
+
+// ============ 小工具：失物招领（结构化信息 + 论坛帖子联动） ============
+
+model LostFoundItem {
+  id          Int       @id @default(autoincrement())
+  topicId     Int       @unique
+  publisherId Int
+  kind        String // found / lost
+  itemName    String
+  description String    @default("")
+  campus      String    @default("")
+  location    String
+  happenedAt  DateTime
+  contact     String
+  status      String    @default("active") // reviewing / active / claimed / closed / hidden
+  pinned      Boolean   @default(false)
+  claimedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  topic     Topic            @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  publisher User             @relation("LostFoundPublisher", fields: [publisherId], references: [id], onDelete: Cascade)
+  images    LostFoundImage[]
+  claims    LostFoundClaim[]
+
+  @@index([status, pinned, createdAt])
+  @@index([kind, status, happenedAt])
+  @@index([campus, status, happenedAt])
+  @@index([publisherId, updatedAt])
+}
+
+model LostFoundImage {
+  id        Int      @id @default(autoincrement())
+  itemId    Int
+  url       String
+  sort      Int      @default(0)
+  createdAt DateTime @default(now())
+
+  item LostFoundItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId, sort])
+}
+
+model LostFoundClaim {
+  id         Int       @id @default(autoincrement())
+  itemId     Int
+  claimantId Int
+  message    String
+  evidence   String    @default("")
+  contact    String
+  status     String    @default("pending") // pending / accepted / rejected / withdrawn
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  item     LostFoundItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  claimant User          @relation("LostFoundClaimant", fields: [claimantId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, claimantId])
+  @@index([itemId, status, createdAt])
+  @@index([claimantId, updatedAt])
 }
 
 // ============ 通知与待办（保留，但语义改为论坛事件） ============

@@ -1,5 +1,5 @@
 <template>
-  <div class="filestore-beta-legacy">
+  <div class="filestore-app">
     <div class="admin-body">
       <div :class="['sidebar-scrim', { open: sidebarOpen }]" @click="sidebarOpen = false"></div>
       <div class="mobile-nav">
@@ -93,7 +93,7 @@
           <div>
             <span class="empty-icon">!</span>
             <h2>暂时不能进入工作台</h2>
-            <p>当前账号没有文件收集管理权限。旧版和 beta 提交链接仍可正常访问。</p>
+            <p>当前账号没有文件收集管理权限。公开提交链接仍可正常访问。</p>
             <button type="button" class="primary" @click="$router.push('/services/tools')">返回小工具</button>
           </div>
         </section>
@@ -428,7 +428,7 @@
                     </label>
                     <label>题型
                       <select v-model="field.type" @change="normalizeSurveyField(field)">
-                        <option v-for="type in filestoreBetaSurveyFieldTypes" :key="type.value" :value="type.value">{{ type.label }}</option>
+                        <option v-for="type in filestoreSurveyFieldTypes" :key="type.value" :value="type.value">{{ type.label }}</option>
                       </select>
                     </label>
                     <label class="checkline survey-required">
@@ -616,49 +616,49 @@
 import { computed, nextTick, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import {
-  filestoreBetaApi,
-  filestoreBetaBlob,
-  filestoreBetaUrl,
-  type FilestoreBetaCreator,
-  type FilestoreBetaField,
-  type FilestoreBetaFile,
-  type FilestoreBetaSettings,
-  type FilestoreBetaSubmission,
-  type FilestoreBetaSurveyField,
-  type FilestoreBetaTask,
-  type FilestoreBetaTemplate,
-  type FilestoreBetaViewer,
-} from "@/api/filestoreBeta";
+  filestoreApi,
+  filestoreBlob,
+  filestoreUrl,
+  type FilestoreCreator,
+  type FilestoreField,
+  type FilestoreFile,
+  type FilestoreSettings,
+  type FilestoreSubmission,
+  type FilestoreSurveyField,
+  type FilestoreTask,
+  type FilestoreTemplate,
+  type FilestoreViewer,
+} from "@/api/filestore";
 import {
   applyTemplateToDraft,
-  builtInFilestoreBetaTemplates,
-  buildFilestoreBetaPayload,
+  builtInFilestoreTemplates,
+  buildFilestorePayload,
   cloneFields,
   cloneSurveyFields,
   copyText,
-  createFilestoreBetaDraft,
-  filestoreBetaSurveyFieldTypes,
+  createFilestoreDraft,
+  filestoreSurveyFieldTypes,
   formatDateForInput,
   formatDateTime,
-  makeFilestoreBetaField,
-  makeFilestoreBetaSurveyField,
+  makeFilestoreField,
+  makeFilestoreSurveyField,
   normalizeFieldKey,
   normalizeSurveyFieldId,
   openDirectUrl,
   previewStoredFileName,
-  renderFilestoreBetaTemplate,
+  renderFilestoreTemplate,
   requestErrorMessage,
   saveBlob,
-  useScopedLegacyFilestoreCss,
-  validateFilestoreBetaDraft,
-  type FilestoreBetaDraft,
-} from "@/views/services/filestoreBetaShared";
+  useScopedFilestoreCss,
+  validateFilestoreDraft,
+  type FilestoreDraft,
+} from "@/views/services/filestoreShared";
 import { buildZip, formatBytes, uniqueZipPath, zipSafePathSegment } from "@/views/services/fileCollectExport";
 
 type ToastType = "" | "ok" | "error";
 type FileRow = {
-  submission: FilestoreBetaSubmission;
-  file: FilestoreBetaFile;
+  submission: FilestoreSubmission;
+  file: FilestoreFile;
   owner: string;
   identifier: string;
 };
@@ -679,11 +679,11 @@ const submissionQuery = ref("");
 const fileQuery = ref("");
 const templateKey = ref("builtin:0");
 const qrData = ref("");
-const viewer = ref<FilestoreBetaViewer | null>(null);
-const settings = ref<FilestoreBetaSettings>({ siteUrl: "", siteTitle: "", taskTemplates: [] });
-const tasks = ref<FilestoreBetaTask[]>([]);
-const detail = ref<FilestoreBetaTask | null>(null);
-const draft = reactive<FilestoreBetaDraft>(createFilestoreBetaDraft());
+const viewer = ref<FilestoreViewer | null>(null);
+const settings = ref<FilestoreSettings>({ siteUrl: "", siteTitle: "", taskTemplates: [] });
+const tasks = ref<FilestoreTask[]>([]);
+const detail = ref<FilestoreTask | null>(null);
+const draft = reactive<FilestoreDraft>(createFilestoreDraft());
 const qrDialog = ref<HTMLDialogElement | null>(null);
 const fileDialog = ref<HTMLDialogElement | null>(null);
 const confirmDialog = ref<HTMLDialogElement | null>(null);
@@ -706,7 +706,7 @@ let confirmResolver: ((value: boolean) => void) | null = null;
 let promptResolver: ((value: string | null) => void) | null = null;
 let toastId = 0;
 
-useScopedLegacyFilestoreCss();
+useScopedFilestoreCss();
 
 const steps = [
   { value: 1, label: "基本信息" },
@@ -748,7 +748,7 @@ const activeMeta = computed(() => {
   return parts.join(" · ");
 });
 const templateOptions = computed(() => [
-  ...builtInFilestoreBetaTemplates.map((template, index) => ({ key: `builtin:${index}`, label: template.name, template })),
+  ...builtInFilestoreTemplates.map((template, index) => ({ key: `builtin:${index}`, label: template.name, template })),
   ...settings.value.taskTemplates.map((template) => ({ key: `custom:${template.id}`, label: template.name, template })),
 ]);
 const renamePreview = computed(() => {
@@ -757,8 +757,8 @@ const renamePreview = computed(() => {
   const second = previewStoredFileName(draft.renameTemplate, data, "材料.jpg", 2, 3);
   return `预览：${first} / ${second}`;
 });
-const folderPreview = computed(() => `预览：${renderFilestoreBetaTemplate(draft.folderTemplate, sampleData())}`);
-const qrImageUrl = computed(() => filestoreBetaUrl(`/api/qrcode?${new URLSearchParams({ data: qrData.value, size: "260" })}`));
+const folderPreview = computed(() => `预览：${renderFilestoreTemplate(draft.folderTemplate, sampleData())}`);
+const qrImageUrl = computed(() => filestoreUrl(`/api/qrcode?${new URLSearchParams({ data: qrData.value, size: "260" })}`));
 const allFiles = computed<FileRow[]>(() => {
   const rows: FileRow[] = [];
   for (const submission of detail.value?.submissions || []) {
@@ -895,13 +895,13 @@ async function load() {
   loading.value = true;
   denied.value = false;
   try {
-    const me = await filestoreBetaApi.me();
+    const me = await filestoreApi.me();
     viewer.value = me;
     settings.value = me.settings;
     await loadTasks();
   } catch (error) {
     if ((error as { status?: number }).status === 401) {
-      router.push({ name: "login", query: { redirect: "/services/tools/filestore-beta" } });
+      router.push({ name: "login", query: { redirect: "/services/tools/filestore" } });
       return;
     }
     if ((error as { status?: number }).status === 403) {
@@ -915,7 +915,7 @@ async function load() {
 }
 
 async function loadTasks() {
-  tasks.value = await filestoreBetaApi.tasks();
+  tasks.value = await filestoreApi.tasks();
   if (!tasks.value.length) {
     detail.value = null;
     return;
@@ -926,7 +926,7 @@ async function loadTasks() {
 
 async function selectTask(id: number) {
   try {
-    detail.value = await filestoreBetaApi.task(id);
+    detail.value = await filestoreApi.task(id);
     sidebarOpen.value = false;
   } catch (error) {
     toast(requestErrorMessage(error, "任务详情加载失败"), "error");
@@ -934,10 +934,10 @@ async function selectTask(id: number) {
 }
 
 function resetDraft() {
-  Object.assign(draft, createFilestoreBetaDraft());
+  Object.assign(draft, createFilestoreDraft());
 }
 
-function openEditor(task?: FilestoreBetaTask | null) {
+function openEditor(task?: FilestoreTask | null) {
   resetDraft();
   currentStep.value = 1;
   if (task) {
@@ -978,11 +978,11 @@ function applySelectedTemplate() {
 }
 
 function addDraftField() {
-  draft.fields.push(makeFilestoreBetaField(draft.fields.length));
+  draft.fields.push(makeFilestoreField(draft.fields.length));
 }
 
 function addSurveyField() {
-  draft.surveyFields.push(makeFilestoreBetaSurveyField(draft.surveyFields.length));
+  draft.surveyFields.push(makeFilestoreSurveyField(draft.surveyFields.length));
 }
 
 function duplicateSurveyField(index: number) {
@@ -997,7 +997,7 @@ function duplicateSurveyField(index: number) {
   });
 }
 
-function normalizeSurveyField(field: FilestoreBetaSurveyField) {
+function normalizeSurveyField(field: FilestoreSurveyField) {
   if (field.type === "single" || field.type === "multiple") {
     if (!field.options?.length) field.options = ["选项1", "选项2"];
   } else {
@@ -1017,7 +1017,7 @@ function normalizeSurveyField(field: FilestoreBetaSurveyField) {
   }
 }
 
-function setSurveyOptions(field: FilestoreBetaSurveyField, event: Event) {
+function setSurveyOptions(field: FilestoreSurveyField, event: Event) {
   const value = (event.target as HTMLTextAreaElement).value;
   field.options = value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
 }
@@ -1031,17 +1031,17 @@ function insertToken(target: "renameTemplate" | "folderTemplate", token: string)
 }
 
 async function saveTask() {
-  const message = validateFilestoreBetaDraft(draft);
+  const message = validateFilestoreDraft(draft);
   if (message) {
     toast(message, "error");
     return;
   }
   saving.value = true;
   try {
-    const payload = buildFilestoreBetaPayload(draft);
+    const payload = buildFilestorePayload(draft);
     const saved = editorMode.value === "edit" && editingId.value
-      ? await filestoreBetaApi.updateTask(editingId.value, payload)
-      : await filestoreBetaApi.createTask(payload);
+      ? await filestoreApi.updateTask(editingId.value, payload)
+      : await filestoreApi.createTask(payload);
     closeEditor();
     toast(editorMode.value === "edit" ? "任务已更新" : "任务已创建", "ok");
     await loadTasks();
@@ -1057,7 +1057,7 @@ async function deleteTask() {
   if (!editingId.value) return;
   if (!await confirmInApp({ title: "删除任务", body: `删除任务「${draft.title}」及所有提交文件？此操作不可恢复。`, okText: "删除" })) return;
   try {
-    await filestoreBetaApi.deleteTask(editingId.value);
+    await filestoreApi.deleteTask(editingId.value);
     closeEditor();
     detail.value = null;
     await loadTasks();
@@ -1068,11 +1068,11 @@ async function deleteTask() {
 }
 
 function absoluteSubmitUrl(task = detail.value) {
-  return task ? new URL(`/services/tools/filestore-beta/submit/${task.slug}`, window.location.origin).toString() : "";
+  return task ? new URL(`/services/tools/filestore/submit/${task.slug}`, window.location.origin).toString() : "";
 }
 
 function absoluteStatusUrl(task = detail.value) {
-  return task ? new URL(`/services/tools/filestore-beta/status/${task.slug}`, window.location.origin).toString() : "";
+  return task ? new URL(`/services/tools/filestore/status/${task.slug}`, window.location.origin).toString() : "";
 }
 
 async function copySubmitLink() {
@@ -1098,7 +1098,7 @@ function openFileManager() {
   nextTick(() => fileDialog.value?.showModal());
 }
 
-function fileTotal(task: FilestoreBetaTask) {
+function fileTotal(task: FilestoreTask) {
   return (task.submissions || []).reduce((sum, submission) => sum + submission.files.length, 0);
 }
 
@@ -1106,7 +1106,7 @@ function unexpectedLabel(item: { id: number; name: string; identity: string }) {
   return item.identity || item.name || `#${item.id}`;
 }
 
-function formatCreator(user?: FilestoreBetaCreator | null) {
+function formatCreator(user?: FilestoreCreator | null) {
   if (!user) return "未绑定";
   return `${user.displayName || user.username || "未命名"}（${user.username || user.userId}）`;
 }
@@ -1134,7 +1134,7 @@ async function exportCsv() {
   try {
     const { blob, filename } = await withBusy(
       { title: "正在导出 CSV", message: "正在读取提交记录并生成表格文件。" },
-      () => filestoreBetaBlob(`/api/tasks/${task.id}/export.csv`),
+      () => filestoreBlob(`/api/tasks/${task.id}/export.csv`),
     );
     saveBlob(blob, filename || `${task.title}.csv`);
     toast("CSV 已生成", "ok");
@@ -1168,7 +1168,7 @@ async function downloadZip() {
               current,
               total: fileCount,
             });
-            const { blob } = await filestoreBetaBlob(`/api/files/${file.id}/download`);
+            const { blob } = await filestoreBlob(`/api/files/${file.id}/download`);
             throwIfBusyCanceled();
             entries.push({
               path: uniqueZipPath(zipEntryPath(task, submission, file), usedPaths),
@@ -1193,9 +1193,9 @@ async function downloadZip() {
   }
 }
 
-function zipEntryPath(task: FilestoreBetaTask, submission: FilestoreBetaSubmission, file: FilestoreBetaFile) {
+function zipEntryPath(task: FilestoreTask, submission: FilestoreSubmission, file: FilestoreFile) {
   if (submission.files.length <= 1) return zipSafePathSegment(file.storedName);
-  const folder = renderFilestoreBetaTemplate(task.folderTemplate || "{name}-{student_id}", submission.data);
+  const folder = renderFilestoreTemplate(task.folderTemplate || "{name}-{student_id}", submission.data);
   return `${folder}/${zipSafePathSegment(file.storedName)}`;
 }
 
@@ -1207,7 +1207,7 @@ async function repairFilenames() {
   try {
     const result = await withBusy(
       { title: "正在修复乱码文件名", message: "系统正在扫描历史文件名并更新可恢复项。" },
-      () => filestoreBetaApi.repairFilenames(taskId),
+      () => filestoreApi.repairFilenames(taskId),
     );
     await withBusy(
       { title: "正在刷新任务", message: "正在读取修复后的提交记录。" },
@@ -1229,7 +1229,7 @@ async function repairRemoteFilenames() {
   try {
     const result = await withBusy(
       { title: "正在修复云端文件名", message: "正在检查世纪互联文件路径和远端文件名。" },
-      () => filestoreBetaApi.repairRemoteFilenames(taskId),
+      () => filestoreApi.repairRemoteFilenames(taskId),
     );
     await withBusy(
       { title: "正在刷新任务", message: "正在读取修复后的提交记录。" },
@@ -1252,7 +1252,7 @@ function escapeHtml(value = "") {
     .replace(/'/g, "&#39;");
 }
 
-function openPreviewLoadingWindow(file: FilestoreBetaFile) {
+function openPreviewLoadingWindow(file: FilestoreFile) {
   const previewWindow = window.open("about:blank", "_blank");
   if (!previewWindow) return null;
   previewWindow.opener = null;
@@ -1269,11 +1269,11 @@ function openPreviewLoadingWindow(file: FilestoreBetaFile) {
   return previewWindow;
 }
 
-async function previewFile(file: FilestoreBetaFile) {
+async function previewFile(file: FilestoreFile) {
   const previewWindow = openPreviewLoadingWindow(file);
   try {
     await showBusy({ title: "正在查看文件", message: "正在获取文件预览地址。", detail: file.storedName });
-    const access = await filestoreBetaApi.fileAccess(file.id, "preview");
+    const access = await filestoreApi.fileAccess(file.id, "preview");
     if (access.url) {
       if (previewWindow && !previewWindow.closed) previewWindow.location.replace(access.url);
       else openDirectUrl(access.url, access.filename || file.storedName, "preview");
@@ -1285,7 +1285,7 @@ async function previewFile(file: FilestoreBetaFile) {
       return;
     }
     updateBusy({ message: "正在读取文件内容。", detail: file.storedName });
-    const { blob, type } = await filestoreBetaApi.fileBlob(file.id, "preview");
+    const { blob, type } = await filestoreApi.fileBlob(file.id, "preview");
     const url = URL.createObjectURL(type ? blob.slice(0, blob.size, type) : blob);
     if (previewWindow && !previewWindow.closed) previewWindow.location.replace(url);
     else window.open(url, "_blank", "noopener,noreferrer");
@@ -1298,17 +1298,17 @@ async function previewFile(file: FilestoreBetaFile) {
   }
 }
 
-async function downloadFile(file: FilestoreBetaFile) {
+async function downloadFile(file: FilestoreFile) {
   try {
     await showBusy({ title: "正在下载文件", message: "正在获取下载链接。", detail: file.storedName });
-    const access = await filestoreBetaApi.fileAccess(file.id, "download");
+    const access = await filestoreApi.fileAccess(file.id, "download");
     if (access.url) {
       openDirectUrl(access.url, access.filename || file.storedName, "download");
       toast("已向浏览器发起下载，请查看下载列表", "ok");
       return;
     }
     updateBusy({ message: "正在读取文件内容。", detail: file.storedName });
-    const { blob, filename } = await filestoreBetaApi.fileBlob(file.id, "download");
+    const { blob, filename } = await filestoreApi.fileBlob(file.id, "download");
     saveBlob(blob, filename || file.storedName);
     toast("已向浏览器发起下载，请查看下载列表", "ok");
   } catch (error) {
@@ -1318,13 +1318,13 @@ async function downloadFile(file: FilestoreBetaFile) {
   }
 }
 
-async function deleteFile(file: FilestoreBetaFile) {
+async function deleteFile(file: FilestoreFile) {
   const taskId = detail.value?.id;
   if (!taskId || !await confirmInApp({ title: "删除文件", body: `删除文件「${file.storedName}」？`, okText: "删除" })) return;
   try {
     await withBusy(
       { title: "正在删除文件", message: "正在从服务器移除文件。", detail: file.storedName },
-      () => filestoreBetaApi.deleteFile(file.id),
+      () => filestoreApi.deleteFile(file.id),
     );
     await withBusy(
       { title: "正在刷新任务", message: "正在读取最新提交记录。" },
@@ -1342,7 +1342,7 @@ async function deleteSubmission(id: number) {
   try {
     await withBusy(
       { title: "正在删除提交", message: "正在删除该提交记录及其文件。", detail: `#${id}` },
-      () => filestoreBetaApi.deleteSubmission(id),
+      () => filestoreApi.deleteSubmission(id),
     );
     await withBusy(
       { title: "正在刷新任务", message: "正在读取最新提交记录。" },
@@ -1354,7 +1354,7 @@ async function deleteSubmission(id: number) {
   }
 }
 
-async function generateRegex(field: FilestoreBetaField) {
+async function generateRegex(field: FilestoreField) {
   const prompt = await promptInApp({
     title: "AI 生成正则",
     body: "描述这个字段的校验规则，例如：必须是 10 位数字",
@@ -1364,7 +1364,7 @@ async function generateRegex(field: FilestoreBetaField) {
   });
   if (!prompt?.trim()) return;
   try {
-    const result = await filestoreBetaApi.generateRegex(prompt.trim());
+    const result = await filestoreApi.generateRegex(prompt.trim());
     field.pattern = result.regex || field.pattern;
     field.placeholder = result.placeholder || field.placeholder;
     toast(result.description || "正则已生成", "ok");
@@ -1383,14 +1383,14 @@ async function bindTaskOwner() {
   });
   if (!keyword?.trim()) return;
   try {
-    const users = await filestoreBetaApi.searchUsers(keyword.trim());
+    const users = await filestoreApi.searchUsers(keyword.trim());
     const normalized = keyword.trim().toLowerCase();
     const target = users.find((item) => item.username.toLowerCase() === normalized)
       || users.find((item) => item.displayName.toLowerCase() === normalized)
       || users[0];
     if (!target) throw new Error("未找到可绑定的文件收集管理员");
     if (!await confirmInApp({ title: "确认绑定", body: `确认绑定给 ${target.displayName}（${target.username}）？`, okText: "绑定", danger: false })) return;
-    detail.value = await filestoreBetaApi.bindOwner(detail.value.id, target.userId);
+    detail.value = await filestoreApi.bindOwner(detail.value.id, target.userId);
     await loadTasks();
     toast("创建者已更新", "ok");
   } catch (error) {
@@ -1409,9 +1409,9 @@ async function saveTemplateFromDraft() {
   });
   if (!name) return;
   try {
-    const payload = buildFilestoreBetaPayload({ ...draft, title: name });
+    const payload = buildFilestorePayload({ ...draft, title: name });
     const existing = settings.value.taskTemplates.find((item) => item.name === name);
-    const next: FilestoreBetaTemplate[] = [
+    const next: FilestoreTemplate[] = [
       ...settings.value.taskTemplates.filter((item) => item.name !== name),
       {
         id: existing?.id,
@@ -1425,7 +1425,7 @@ async function saveTemplateFromDraft() {
         expectedEntries: payload.expectedEntries,
       },
     ];
-    settings.value = await filestoreBetaApi.saveSettings({ taskTemplates: next });
+    settings.value = await filestoreApi.saveSettings({ taskTemplates: next });
     toast("模板已保存", "ok");
   } catch (error) {
     toast(requestErrorMessage(error, "模板保存失败"), "error");
@@ -1438,7 +1438,7 @@ async function deleteSelectedTemplate() {
   const target = settings.value.taskTemplates.find((item) => item.id === id);
   if (!target || !await confirmInApp({ title: "删除模板", body: `删除全局模板「${target.name}」？`, okText: "删除" })) return;
   try {
-    settings.value = await filestoreBetaApi.saveSettings({
+    settings.value = await filestoreApi.saveSettings({
       taskTemplates: settings.value.taskTemplates.filter((item) => item.id !== id),
     });
     templateKey.value = "builtin:0";

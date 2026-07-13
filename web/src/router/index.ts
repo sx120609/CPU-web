@@ -84,16 +84,19 @@ export const router = createRouter({
         { path: "market/mine", name: "market-mine", component: () => import("@/views/market/Mine.vue"), meta: { title: "我的交易" } },
         { path: "market/seller", name: "market-seller", component: () => import("@/views/market/Seller.vue"), meta: { title: "卖家中心" } },
         { path: "market/messages", name: "market-messages", component: () => import("@/views/market/Messages.vue"), meta: { title: "交易消息" } },
+        { path: "lost-found", name: "lost-found", component: () => import("@/views/lostFound/Index.vue"), meta: { title: "失物招领", public: true } },
         { path: "coursereview", name: "coursereview", component: () => import("@/views/coursereview/Index.vue"), meta: { title: "课程点评", public: true } },
         { path: "coursereview/:id", name: "course", component: () => import("@/views/coursereview/Course.vue"), meta: { title: "课程", public: true } },
         { path: "services", name: "services", component: () => import("@/views/services/Index.vue"), meta: { title: "校园服务", public: true } },
         { path: "services/tools", name: "service-tools", component: () => import("@/views/services/Tools.vue"), meta: { title: "校园小工具", public: true } },
         { path: "services/tools/manage", name: "service-tools-manage", component: () => import("@/views/services/ToolManage.vue"), meta: { title: "小工具管理" } },
         { path: "services/tools/qqbot-reminders", redirect: "/messages/qqbot-reminders" },
-        { path: "services/tools/filestore", name: "service-filestore", component: () => import("@/views/services/FileStoreEmbed.vue"), meta: { title: "文件收集" } },
-        { path: "services/tools/filestore-beta", name: "service-filestore-beta", component: () => import("@/views/services/FileStoreBeta.vue"), meta: { title: "文件收集 beta", fullWidthContent: true } },
-        { path: "services/tools/filestore-beta/submit/:slug", name: "service-filestore-beta-submit", component: () => import("@/views/services/FileStoreBetaSubmit.vue"), meta: { title: "文件提交 beta", public: true, fullWidthContent: true } },
-        { path: "services/tools/filestore-beta/status/:slug", name: "service-filestore-beta-status", component: () => import("@/views/services/FileStoreBetaStatus.vue"), meta: { title: "成功名单 beta", public: true, fullWidthContent: true } },
+        { path: "services/tools/filestore", name: "service-filestore", component: () => import("@/views/services/FileStore.vue"), meta: { title: "文件收集", fullWidthContent: true } },
+        { path: "services/tools/filestore/submit/:slug", name: "service-filestore-submit", component: () => import("@/views/services/FileStoreSubmit.vue"), meta: { title: "文件提交", public: true, fullWidthContent: true } },
+        { path: "services/tools/filestore/status/:slug", name: "service-filestore-status", component: () => import("@/views/services/FileStoreStatus.vue"), meta: { title: "成功名单", public: true, fullWidthContent: true } },
+        { path: "services/tools/filestore-beta", redirect: "/services/tools/filestore" },
+        { path: "services/tools/filestore-beta/submit/:slug", redirect: (to) => ({ name: "service-filestore-submit", params: { slug: to.params.slug } }) },
+        { path: "services/tools/filestore-beta/status/:slug", redirect: (to) => ({ name: "service-filestore-status", params: { slug: to.params.slug } }) },
         { path: "services/tools/:slug", name: "service-tool-detail", component: () => import("@/views/services/ToolDetail.vue"), meta: { title: "校园小工具", public: true } },
         { path: "services/tools/questionnaires/:slug", name: "questionnaire-fill", component: () => import("@/views/services/QuestionnaireFill.vue"), meta: { title: "填写问卷", public: true } },
         { path: "services/tools/grade-checks/:slug", name: "grade-check-lookup", component: () => import("@/views/services/GradeCheckLookup.vue"), meta: { title: "成绩核对" } },
@@ -129,7 +132,7 @@ router.beforeEach(async (to) => {
 
   if (to.fullPath.startsWith(LEGACY_FILE_COLLECTION_SUBMIT_PREFIX)) {
     const target = to.fullPath.slice(LEGACY_FILE_COLLECTION_SUBMIT_PREFIX.length);
-    window.location.replace(`/filestore/submit/${target}`);
+    window.location.replace(`/services/tools/filestore/submit/${target}`);
     return false;
   }
 

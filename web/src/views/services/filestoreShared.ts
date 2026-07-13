@@ -1,36 +1,36 @@
 import type {
-  FilestoreBetaField,
-  FilestoreBetaRules,
-  FilestoreBetaStatus,
-  FilestoreBetaSurveyField,
-  FilestoreBetaTaskPayload,
-  FilestoreBetaTemplate,
-} from "@/api/filestoreBeta";
+  FilestoreField,
+  FilestoreRules,
+  FilestoreStatus,
+  FilestoreSurveyField,
+  FilestoreTaskPayload,
+  FilestoreTemplate,
+} from "@/api/filestore";
 import type { QuestionnaireFieldType } from "@/api/tools";
 import { onBeforeUnmount, onMounted } from "vue";
-import legacyFilestoreCss from "./filestoreLegacy.css?raw";
+import filestoreCss from "./filestore.css?raw";
 
-const scopedLegacyPageClass = "filestore-beta-page";
-const scopedLegacyGlobalStyleId = "filestore-beta-global-shell-style";
-let scopedLegacyMounts = 0;
+const scopedFilestorePageClass = "filestore-page";
+const scopedFilestoreGlobalStyleId = "filestore-global-shell-style";
+let scopedFilestoreMounts = 0;
 
-export interface FilestoreBetaDraft {
+export interface FilestoreDraft {
   title: string;
   description: string;
   deadline: string;
-  status: FilestoreBetaStatus;
+  status: FilestoreStatus;
   allowedTypes: string;
   maxSizeMb: number;
   maxCount: number;
   renameTemplate: string;
   folderTemplate: string;
   expectedEntries: string;
-  fields: FilestoreBetaField[];
-  surveyFields: FilestoreBetaSurveyField[];
+  fields: FilestoreField[];
+  surveyFields: FilestoreSurveyField[];
   renameExistingFiles: boolean;
 }
 
-export const builtInFilestoreBetaTemplates: FilestoreBetaTemplate[] = [
+export const builtInFilestoreTemplates: FilestoreTemplate[] = [
   {
     name: "学号模板",
     description: "适合按姓名和学号收作业、照片、报名材料。",
@@ -59,7 +59,7 @@ export const builtInFilestoreBetaTemplates: FilestoreBetaTemplate[] = [
   },
 ];
 
-export function createFilestoreBetaDraft(): FilestoreBetaDraft {
+export function createFilestoreDraft(): FilestoreDraft {
   return {
     title: "",
     description: "",
@@ -71,13 +71,13 @@ export function createFilestoreBetaDraft(): FilestoreBetaDraft {
     renameTemplate: "{name}-{student_id}",
     folderTemplate: "{name}-{student_id}",
     expectedEntries: "",
-    fields: cloneFields(builtInFilestoreBetaTemplates[0].fields),
+    fields: cloneFields(builtInFilestoreTemplates[0].fields),
     surveyFields: [],
     renameExistingFiles: false,
   };
 }
 
-export function cloneFields(fields: FilestoreBetaField[]) {
+export function cloneFields(fields: FilestoreField[]) {
   return fields.map((field) => ({
     id: field.key || field.id,
     key: field.key || field.id,
@@ -88,7 +88,7 @@ export function cloneFields(fields: FilestoreBetaField[]) {
   }));
 }
 
-export function makeFilestoreBetaField(index: number): FilestoreBetaField {
+export function makeFilestoreField(index: number): FilestoreField {
   const key = `field_${index + 1}`;
   return {
     id: key,
@@ -100,7 +100,7 @@ export function makeFilestoreBetaField(index: number): FilestoreBetaField {
   };
 }
 
-export const filestoreBetaSurveyFieldTypes: Array<{ value: QuestionnaireFieldType; label: string }> = [
+export const filestoreSurveyFieldTypes: Array<{ value: QuestionnaireFieldType; label: string }> = [
   { value: "text", label: "短文本" },
   { value: "textarea", label: "长文本" },
   { value: "single", label: "单选" },
@@ -110,9 +110,9 @@ export const filestoreBetaSurveyFieldTypes: Array<{ value: QuestionnaireFieldTyp
   { value: "rating", label: "评分" },
 ];
 
-export function makeFilestoreBetaSurveyField(index: number, type: QuestionnaireFieldType = "text"): FilestoreBetaSurveyField {
+export function makeFilestoreSurveyField(index: number, type: QuestionnaireFieldType = "text"): FilestoreSurveyField {
   const id = `q_${index + 1}`;
-  const field: FilestoreBetaSurveyField = {
+  const field: FilestoreSurveyField = {
     id,
     label: "",
     type,
@@ -121,11 +121,11 @@ export function makeFilestoreBetaSurveyField(index: number, type: QuestionnaireF
     description: "",
     maxLength: type === "textarea" ? 2000 : 300,
   };
-  return normalizeFilestoreBetaSurveyField(field, true);
+  return normalizeFilestoreSurveyField(field, true);
 }
 
-export function cloneSurveyFields(fields: FilestoreBetaSurveyField[] = []) {
-  return fields.map((field, index) => normalizeFilestoreBetaSurveyField({
+export function cloneSurveyFields(fields: FilestoreSurveyField[] = []) {
+  return fields.map((field, index) => normalizeFilestoreSurveyField({
     ...field,
     id: normalizeSurveyFieldId(field.id) || `q_${index + 1}`,
     options: [...(field.options || [])],
@@ -142,9 +142,9 @@ export function normalizeSurveyFieldId(value: string) {
     .slice(0, 40);
 }
 
-export function normalizeFilestoreBetaSurveyField(field: FilestoreBetaSurveyField, allowUntitled = false): FilestoreBetaSurveyField {
-  const type = filestoreBetaSurveyFieldTypes.some((item) => item.value === field.type) ? field.type : "text";
-  const normalized: FilestoreBetaSurveyField = {
+export function normalizeFilestoreSurveyField(field: FilestoreSurveyField, allowUntitled = false): FilestoreSurveyField {
+  const type = filestoreSurveyFieldTypes.some((item) => item.value === field.type) ? field.type : "text";
+  const normalized: FilestoreSurveyField = {
     id: normalizeSurveyFieldId(field.id),
     label: field.label?.trim() || (allowUntitled ? "" : "未命名题目"),
     type,
@@ -172,11 +172,11 @@ export function normalizeFilestoreBetaSurveyField(field: FilestoreBetaSurveyFiel
   return normalized;
 }
 
-export function normalizeFilestoreBetaSurveyFields(fields: FilestoreBetaSurveyField[]) {
-  return fields.map((field) => normalizeFilestoreBetaSurveyField(field)).filter((field) => field.id && field.label);
+export function normalizeFilestoreSurveyFields(fields: FilestoreSurveyField[]) {
+  return fields.map((field) => normalizeFilestoreSurveyField(field)).filter((field) => field.id && field.label);
 }
 
-export function applyTemplateToDraft(draft: FilestoreBetaDraft, template: FilestoreBetaTemplate, resetTitle = false) {
+export function applyTemplateToDraft(draft: FilestoreDraft, template: FilestoreTemplate, resetTitle = false) {
   if (resetTitle) {
     draft.title = "";
     draft.description = "";
@@ -195,7 +195,7 @@ export function applyTemplateToDraft(draft: FilestoreBetaDraft, template: Filest
   draft.expectedEntries = template.expectedEntries || "";
 }
 
-export function normalizeFilestoreBetaRules(draft: Pick<FilestoreBetaDraft, "allowedTypes" | "maxSizeMb" | "maxCount">): FilestoreBetaRules {
+export function normalizeFilestoreRules(draft: Pick<FilestoreDraft, "allowedTypes" | "maxSizeMb" | "maxCount">): FilestoreRules {
   return {
     allowedTypes: normalizeAllowedTypes(draft.allowedTypes),
     maxSizeMb: Number(draft.maxSizeMb) || 20,
@@ -212,7 +212,7 @@ export function normalizeAllowedTypes(value: string | string[]) {
   ));
 }
 
-export function normalizeFilestoreBetaFields(fields: FilestoreBetaField[]) {
+export function normalizeFilestoreFields(fields: FilestoreField[]) {
   return fields.map((field) => {
     const key = normalizeFieldKey(field.key || field.id);
     return {
@@ -226,15 +226,15 @@ export function normalizeFilestoreBetaFields(fields: FilestoreBetaField[]) {
   });
 }
 
-export function buildFilestoreBetaPayload(draft: FilestoreBetaDraft): FilestoreBetaTaskPayload {
+export function buildFilestorePayload(draft: FilestoreDraft): FilestoreTaskPayload {
   return {
     title: draft.title.trim(),
     description: draft.description.trim(),
     deadline: draft.deadline ? new Date(draft.deadline).toISOString() : null,
     status: draft.status,
-    fields: normalizeFilestoreBetaFields(draft.fields),
-    surveyFields: normalizeFilestoreBetaSurveyFields(draft.surveyFields),
-    fileRules: normalizeFilestoreBetaRules(draft),
+    fields: normalizeFilestoreFields(draft.fields),
+    surveyFields: normalizeFilestoreSurveyFields(draft.surveyFields),
+    fileRules: normalizeFilestoreRules(draft),
     renameTemplate: draft.renameTemplate.trim() || "{name}-{student_id}",
     folderTemplate: draft.folderTemplate.trim() || "{name}-{student_id}",
     expectedEntries: draft.expectedEntries.trim(),
@@ -242,9 +242,9 @@ export function buildFilestoreBetaPayload(draft: FilestoreBetaDraft): FilestoreB
   };
 }
 
-export function validateFilestoreBetaDraft(draft: FilestoreBetaDraft) {
+export function validateFilestoreDraft(draft: FilestoreDraft) {
   if (!draft.title.trim()) return "请填写任务标题";
-  const fields = normalizeFilestoreBetaFields(draft.fields);
+  const fields = normalizeFilestoreFields(draft.fields);
   if (!fields.length) return "至少需要一个填写字段";
   if (fields.some((field) => !field.key || !field.label)) return "字段变量和名称不能为空";
   if (new Set(fields.map((field) => field.key)).size !== fields.length) return "字段变量不能重复";
@@ -262,7 +262,7 @@ export function validateFilestoreBetaDraft(draft: FilestoreBetaDraft) {
     if (!normalizeSurveyFieldId(field.id)) return "问卷题目 ID 不能为空";
     if (!field.label?.trim()) return "问卷题目标题不能为空";
   }
-  const surveyFields = normalizeFilestoreBetaSurveyFields(draft.surveyFields);
+  const surveyFields = normalizeFilestoreSurveyFields(draft.surveyFields);
   if (new Set(surveyFields.map((field) => field.id)).size !== surveyFields.length) return "问卷题目 ID 不能重复";
   for (const field of surveyFields) {
     if (!/^[a-zA-Z0-9_-]+$/.test(field.id)) return `问卷题目 ID“${field.id}”只能包含英文、数字、下划线和中划线`;
@@ -276,7 +276,7 @@ export function validateFilestoreBetaDraft(draft: FilestoreBetaDraft) {
       return `评分题“${field.label}”的最高分需要大于最低分`;
     }
   }
-  const rules = normalizeFilestoreBetaRules(draft);
+  const rules = normalizeFilestoreRules(draft);
   if (rules.maxSizeMb <= 0 || rules.maxSizeMb > 100) return "单文件大小必须在 0 到 100 MB 之间";
   if (rules.maxCount <= 0 || rules.maxCount > 20) return "文件数量必须在 1 到 20 个之间";
   return "";
@@ -291,11 +291,11 @@ export function normalizeFieldKey(value: string) {
     .slice(0, 40);
 }
 
-export function statusText(status: FilestoreBetaStatus) {
+export function statusText(status: FilestoreStatus) {
   return status === "open" ? "开放中" : "已关闭";
 }
 
-export function statusTagType(status: FilestoreBetaStatus) {
+export function statusTagType(status: FilestoreStatus) {
   return status === "open" ? "success" : "info";
 }
 
@@ -326,7 +326,7 @@ export function cleanRenderedName(value: string) {
   return safeFileName(value).replace(/[-_ ]{2,}/g, "-").replace(/^[\s\-_.]+|[\s\-_.]+$/g, "") || "file";
 }
 
-export function renderFilestoreBetaTemplate(template: string, data: Record<string, string>, originalName = "", index = 1, totalCount = 1) {
+export function renderFilestoreTemplate(template: string, data: Record<string, string>, originalName = "", index = 1, totalCount = 1) {
   const dot = originalName.lastIndexOf(".");
   const original = dot > 0 ? originalName.slice(0, dot) : originalName;
   const values: Record<string, string> = {
@@ -347,7 +347,7 @@ export function renderFilestoreBetaTemplate(template: string, data: Record<strin
 export function previewStoredFileName(template: string, data: Record<string, string>, fileName: string, index: number, totalCount: number) {
   const dot = fileName.lastIndexOf(".");
   const ext = dot > 0 ? fileName.slice(dot).toLowerCase() : "";
-  const base = renderFilestoreBetaTemplate(template, data, fileName, index, totalCount);
+  const base = renderFilestoreTemplate(template, data, fileName, index, totalCount);
   const withIndex = totalCount > 1 && !template.includes("{index}") ? `${base}-${index}` : base;
   return `${withIndex}${ext}`;
 }
@@ -386,46 +386,27 @@ export function requestErrorMessage(error: unknown, fallback = "操作失败") {
   return fallback;
 }
 
-export function useLegacyFilestoreCss(bodyClasses: string[] = []) {
-  const linkId = "filestore-beta-legacy-css";
-  onMounted(() => {
-    if (!document.getElementById(linkId)) {
-      const link = document.createElement("link");
-      link.id = linkId;
-      link.rel = "stylesheet";
-      link.href = "/filestore/styles.css";
-      document.head.appendChild(link);
-    }
-    document.body.classList.add(...bodyClasses);
-  });
-  onBeforeUnmount(() => {
-    document.body.classList.remove(...bodyClasses);
-    const link = document.getElementById(linkId);
-    if (link) link.remove();
-  });
-}
-
-export function useScopedLegacyFilestoreCss(scopeClass = "filestore-beta-legacy") {
+export function useScopedFilestoreCss(scopeClass = "filestore-app") {
   const styleId = `${scopeClass}-style`;
   onMounted(() => {
-    scopedLegacyMounts += 1;
-    document.body.classList.add(scopedLegacyPageClass);
-    if (!document.getElementById(scopedLegacyGlobalStyleId)) {
+    scopedFilestoreMounts += 1;
+    document.body.classList.add(scopedFilestorePageClass);
+    if (!document.getElementById(scopedFilestoreGlobalStyleId)) {
       const globalStyle = document.createElement("style");
-      globalStyle.id = scopedLegacyGlobalStyleId;
+      globalStyle.id = scopedFilestoreGlobalStyleId;
       globalStyle.textContent = `
-body.${scopedLegacyPageClass} .main {
+body.${scopedFilestorePageClass} .main {
   width: 100% !important;
   max-width: none !important;
   margin: 0 !important;
   padding: 0 !important;
 }
-body.${scopedLegacyPageClass} .main > * {
+body.${scopedFilestorePageClass} .main > * {
   width: 100%;
   max-width: none;
   min-width: 0;
 }
-body.${scopedLegacyPageClass} .filestore-beta-legacy {
+body.${scopedFilestorePageClass} .filestore-app {
   width: 100%;
   max-width: none;
   min-width: 0;
@@ -436,20 +417,20 @@ body.${scopedLegacyPageClass} .filestore-beta-legacy {
     if (document.getElementById(styleId)) return;
     const style = document.createElement("style");
     style.id = styleId;
-    style.textContent = scopeLegacyCss(legacyFilestoreCss, scopeClass);
+    style.textContent = scopeFilestoreCss(filestoreCss, scopeClass);
     document.head.appendChild(style);
   });
   onBeforeUnmount(() => {
-    scopedLegacyMounts = Math.max(0, scopedLegacyMounts - 1);
-    if (scopedLegacyMounts === 0) {
-      document.body.classList.remove(scopedLegacyPageClass);
-      document.getElementById(scopedLegacyGlobalStyleId)?.remove();
+    scopedFilestoreMounts = Math.max(0, scopedFilestoreMounts - 1);
+    if (scopedFilestoreMounts === 0) {
+      document.body.classList.remove(scopedFilestorePageClass);
+      document.getElementById(scopedFilestoreGlobalStyleId)?.remove();
     }
     document.getElementById(styleId)?.remove();
   });
 }
 
-function scopeLegacyCss(css: string, scopeClass: string) {
+function scopeFilestoreCss(css: string, scopeClass: string) {
   return scopeCssBlocks(css.replace(/\/\*[\s\S]*?\*\//g, ""), `.${scopeClass}`);
 }
 
@@ -517,19 +498,3 @@ function prefixSelector(selector: string, scope: string) {
   return `${scope} ${selector}`;
 }
 
-export async function applyLegacyFilingFooter() {
-  try {
-    const response = await fetch("/filestore/api/platform/site-config", { credentials: "same-origin" });
-    const payload = await response.json().catch(() => ({}));
-    const filingNumber = String(payload.siteFilingNumber || "").trim();
-    document.querySelectorAll("[data-filing-link]").forEach((node) => {
-      if (!(node instanceof HTMLElement)) return;
-      node.hidden = !filingNumber;
-      node.textContent = filingNumber;
-    });
-  } catch {
-    document.querySelectorAll("[data-filing-link]").forEach((node) => {
-      if (node instanceof HTMLElement) node.hidden = true;
-    });
-  }
-}
