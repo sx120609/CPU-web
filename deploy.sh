@@ -495,7 +495,7 @@ ensure_ffmpeg() {
 }
 
 ensure_env() {
-  local current_jwt current_sync_key
+  local current_jwt current_sync_key current_voicehub_secret
   if [ ! -f "$ENV_FILE" ]; then
     log "首次部署，创建 server/.env"
     cat > "$ENV_FILE" <<EOF
@@ -523,6 +523,11 @@ EOF
   if [ "${#current_sync_key}" -lt 32 ]; then
     env_set JWXT_SESSION_SYNC_KEY "$(openssl rand -hex 32 2>/dev/null || echo "jwxt-session-sync-$(date +%s)-$RANDOM-$RANDOM")"
     log "已生成 JWXT_SESSION_SYNC_KEY"
+  fi
+  current_voicehub_secret="$(env_get VOICEHUB_INTEGRATION_SECRET)"
+  if [ "${#current_voicehub_secret}" -lt 32 ]; then
+    env_set VOICEHUB_INTEGRATION_SECRET "$(openssl rand -hex 32 2>/dev/null || echo "voicehub-integration-$(date +%s)-$RANDOM-$RANDOM")"
+    log "已生成 VOICEHUB_INTEGRATION_SECRET"
   fi
   if [ -z "$(env_get JWXT_LOCAL_AGENT_KEY_FILE)" ]; then
     env_set JWXT_LOCAL_AGENT_KEY_FILE ".jwxt-local-agent-identity.json"
@@ -920,11 +925,13 @@ do_voicehub_start() {
   cd voicehub
   if pm2 describe "$VOICEHUB_SERVICE_NAME" >/dev/null 2>&1; then
     DATABASE_URL="$voice_url" CPU_WEB_ORIGIN="http://127.0.0.1:$PORT" \
+      VOICEHUB_INTEGRATION_SECRET="$(env_get VOICEHUB_INTEGRATION_SECRET)" \
       NUXT_APP_BASE_URL="/voicehub/" NUXT_PUBLIC_API_BASE="/voicehub/api" \
       NITRO_HOST="127.0.0.1" NITRO_PORT="$VOICEHUB_PORT" \
       pm2 restart "$VOICEHUB_SERVICE_NAME" --update-env
   else
     DATABASE_URL="$voice_url" CPU_WEB_ORIGIN="http://127.0.0.1:$PORT" \
+      VOICEHUB_INTEGRATION_SECRET="$(env_get VOICEHUB_INTEGRATION_SECRET)" \
       NUXT_APP_BASE_URL="/voicehub/" NUXT_PUBLIC_API_BASE="/voicehub/api" \
       NUXT_PUBLIC_SITE_TITLE="药苑之声" NITRO_HOST="127.0.0.1" NITRO_PORT="$VOICEHUB_PORT" \
       NODE_ENV=production pm2 start "node .output/server/index.mjs" \

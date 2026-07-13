@@ -47,8 +47,6 @@ export const usePermissions = () => {
           'songs',
           'users',
           'notifications',
-          'smtp-config',
-          'semesters',
           'site-config'
         ]
       case 'ADMIN':

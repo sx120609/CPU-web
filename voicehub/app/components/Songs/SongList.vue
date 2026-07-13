@@ -48,7 +48,7 @@
         </div>
       </div>
 
-      <!-- 桌面端操作区域 (包含搜索和学期选择) -->
+      <!-- 桌面端操作区域 -->
       <div class="desktop-header-content desktop-only">
         <div class="tab-controls">
           <button
@@ -88,41 +88,6 @@
               type="text"
             >
             <span class="search-icon">🔍</span>
-          </div>
-
-          <!-- 学期选择器 -->
-          <div v-if="availableSemesters.length > 1" class="semester-selector-compact">
-            <button
-              :title="'当前学期: ' + selectedSemester"
-              class="semester-toggle-btn"
-              @click="showSemesterDropdown = !showSemesterDropdown"
-            >
-              <svg
-                fill="none"
-                height="16"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                viewBox="0 0 24 24"
-                width="16"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z" />
-              </svg>
-            </button>
-
-            <div v-if="showSemesterDropdown" class="semester-dropdown">
-              <div
-                v-for="semester in availableSemesters"
-                :key="semester"
-                :class="{ active: selectedSemester === semester }"
-                class="semester-option"
-                @click="onSemesterChange(semester)"
-              >
-                {{ semester }}
-              </div>
-            </div>
           </div>
 
           <!-- 添加刷新按钮 - 使用SVG图标 -->
@@ -389,10 +354,9 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import { useAudioPlayer } from '~/composables/useAudioPlayer'
-import { useSemesters } from '~/composables/useSemesters'
 import { useMusicSources } from '~/composables/useMusicSources'
 import { useAudioQuality } from '~/composables/useAudioQuality'
 import { useSongs } from '~/composables/useSongs'
@@ -434,8 +398,7 @@ const emit = defineEmits([
   'withdraw',
   'cancelReplay',
   'requestReplay',
-  'refresh',
-  'semester-change'
+  'refresh'
 ])
 const voteInProgress = ref(false)
 const actionInProgress = ref(false)
@@ -471,16 +434,9 @@ const isSongFocused = (songId) => {
   return focusedSongId.value === songId
 }
 
-// 学期相关
-const { fetchCurrentSemester, currentSemester, semesterUpdateEvent } = useSemesters()
-const availableSemesters = ref([])
-const selectedSemester = ref('')
-const showSemesterDropdown = ref(false)
-
 // 获取完整歌曲数据源
 const songsComposable = useSongs()
 const { playTimeEnabled } = useSongs()
-const allSongsData = computed(() => songsComposable?.visibleSongs?.value || [])
 
 // 音频播放相关
 const audioPlayer = useAudioPlayer()
@@ -489,14 +445,6 @@ const audioPlayer = useAudioPlayer()
 const currentPage = ref(1)
 const pageSize = ref(12) // 每页显示12首歌曲，适合横向布局
 const isMobile = ref(false)
-
-// 组件初始化状态
-const isComponentInitialized = ref(false)
-const isDataLoading = ref(false)
-// 防重复调用标志
-const isFetchingSemesters = ref(false)
-// 用户手动选择学期标志
-const isUserManuallySelected = ref(false)
 
 // 切换活动标签
 const setActiveTab = (tab) => {
@@ -510,63 +458,10 @@ const checkMobile = () => {
   isMobile.value = window.innerWidth < 768
 }
 
-// 处理学期过滤变化事件
-const handleSemesterFilterChange = (event) => {
-  const newSemester = event.detail.semester
-
-  // 更新选中的学期
-  selectedSemester.value = newSemester
-
-  // 重置到第一页
-  currentPage.value = 1
-
-  // 保存到sessionStorage
-  if (newSemester) {
-    sessionStorage.setItem('voicehub_selected_semester', newSemester)
-  } else {
-    sessionStorage.removeItem('voicehub_selected_semester')
-  }
-}
-
 // 组件挂载和卸载时添加/移除窗口大小变化监听
 onMounted(async () => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
-
-  // 添加学期过滤变化事件监听器
-  window.addEventListener('semester-filter-change', handleSemesterFilterChange)
-
-  // 首先从sessionStorage恢复学期选择状态
-  try {
-    const savedSemester = sessionStorage.getItem('voicehub_selected_semester')
-    if (savedSemester && !containsCorruptedText(savedSemester)) {
-      const cleanSavedSemester = cleanCorruptedText(savedSemester)
-      if (cleanSavedSemester) {
-        selectedSemester.value = cleanSavedSemester
-      }
-    }
-  } catch (error) {
-    console.warn('恢复学期选择状态失败:', error)
-  }
-
-  isDataLoading.value = true
-  try {
-    // 首先获取当前学期
-    await fetchCurrentSemester()
-
-    // 然后获取可用学期（初始化期间只设置列表，不执行选择逻辑）
-    await fetchAvailableSemesters()
-
-    // 标记组件初始化完成
-    isComponentInitialized.value = true
-
-    // 初始化完成后，尝试执行一次默认选择，确保正确的初始状态
-    await selectDefaultSemester()
-  } catch (error) {
-    console.error('组件初始化失败:', error)
-  } finally {
-    isDataLoading.value = false
-  }
 
   await fetchSongCommentCounts(displayedSongs.value.map((song) => song.id))
   startCommentCountPolling()
@@ -574,53 +469,14 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', checkMobile)
-  // 移除学期过滤变化事件监听器
-  window.removeEventListener('semester-filter-change', handleSemesterFilterChange)
   stopCommentCountPolling()
   stopCommentsDialogPolling()
-})
-
-// 监听歌曲数据变化，更新学期信息
-watch(
-  () => props.songs,
-  () => {
-    // 只有在组件完全初始化后且不在获取学期信息时才处理数据更新
-    if (isComponentInitialized.value && !isDataLoading.value && !isFetchingSemesters.value) {
-      fetchAvailableSemesters()
-    }
-  },
-  { deep: true }
-)
-
-// 监听学期更新事件
-watch(semesterUpdateEvent, async () => {
-  // 只有在组件完全初始化后且不在获取学期信息时才处理学期更新
-  if (isComponentInitialized.value && !isDataLoading.value && !isFetchingSemesters.value) {
-    fetchAvailableSemesters()
-  }
 })
 
 // 监听搜索查询变化，重置分页
 watch(searchQuery, () => {
   currentPage.value = 1
 })
-
-// 监听allSongsData变化，当数据真正加载完成时重新获取学期信息
-watch(
-  allSongsData,
-  (newData) => {
-    // 只有在组件完全初始化后且数据真正有内容时才处理
-    if (
-      isComponentInitialized.value &&
-      newData &&
-      newData.length > 0 &&
-      !isFetchingSemesters.value
-    ) {
-      fetchAvailableSemesters()
-    }
-  },
-  { deep: true }
-)
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -684,11 +540,6 @@ const displayedSongs = computed(() => {
   if (!props.songs) return []
 
   let result = [...props.songs]
-
-  // 应用学期过滤器
-  if (selectedSemester.value) {
-    result = result.filter((song) => song.semester === selectedSemester.value)
-  }
 
   // 应用标签过滤器
   if (activeTab.value === 'mine') {
@@ -767,11 +618,6 @@ const getVoteButtonTitle = (song) => {
     return '点击取消点赞'
   }
 
-  // 检查学期
-  if (!currentSemester.value || song.semester !== currentSemester.value.name) {
-    return '非活跃学期'
-  }
-
   // 检查状态
   if (song.played) {
     return '已播放的歌曲不能点赞'
@@ -807,23 +653,8 @@ const handleVote = async (song) => {
 
   const isUnvote = !!song.voted
 
-  // 仅“新增点赞”需要校验学期/状态/是否本人投稿；取消点赞允许直接执行
+  // 仅“新增点赞”需要校验状态/是否本人投稿；取消点赞允许直接执行
   if (!isUnvote) {
-    // 检查学期
-    if (!currentSemester.value || !currentSemester.value.name) {
-      if (window.$showNotification) {
-        window.$showNotification('当前未设置活跃学期，暂不可点赞', 'error')
-      }
-      return
-    }
-
-    if (song.semester !== currentSemester.value.name) {
-      if (window.$showNotification) {
-        window.$showNotification(`仅可点赞当前学期歌曲（${currentSemester.value.name}）`, 'error')
-      }
-      return
-    }
-
     // 检查歌曲状态
     if (song.played || song.scheduled) {
       if (window.$showNotification) {
@@ -922,11 +753,6 @@ const getReplayButtonText = (song) => {
   if (actionInProgress.value || props.loading) return '处理中...'
   if (!song) return '申请重播'
 
-  // 检查学期
-  if (currentSemester.value && song.semester !== currentSemester.value.name) {
-    return '非本学期'
-  }
-
   // 检查重播申请状态
   if (song.replayRequestStatus === 'REJECTED') {
     // 如果在冷却期内
@@ -952,11 +778,6 @@ const getReplayButtonText = (song) => {
 const getReplayButtonTitle = (song) => {
   if (!song) return '申请重播'
 
-  // 检查学期
-  if (currentSemester.value && song.semester !== currentSemester.value.name) {
-    return '只能申请重播当前学期的歌曲'
-  }
-
   // 检查重播申请状态
   if (song.replayRequestStatus === 'REJECTED') {
     if (song.replayRequestCooldownRemaining && song.replayRequestCooldownRemaining > 0) {
@@ -979,11 +800,6 @@ const getReplayButtonTitle = (song) => {
 // 检查重播按钮是否应该禁用
 const isReplayButtonDisabled = (song) => {
   if (actionInProgress.value || props.loading || !song) return true
-
-  // 检查学期
-  if (currentSemester.value && song.semester !== currentSemester.value.name) {
-    return true
-  }
 
   // 检查重播申请状态
   if (song.replayRequestStatus === 'REJECTED') {
@@ -1472,6 +1288,7 @@ const isCurrentPlaying = (songId) => {
   return audioPlayer.isCurrentPlaying(songId)
 }
 
+/* Legacy semester filtering removed. Historical records remain visible without term selection.
 // 学期相关状态
 const semesterLoading = ref(false)
 const semesterError = ref('')
@@ -1844,6 +1661,7 @@ function debounce(func, wait) {
     timeout = setTimeout(later, wait)
   }
 }
+*/
 
 // 当组件销毁时不需要特殊处理，音频播放由全局管理
 

@@ -11,6 +11,7 @@ export interface User {
   passwordChangedAt?: Date | null
   avatar?: string | null
   has2FA?: boolean
+  voiceHubOnly?: boolean
 }
 
 export interface Song {

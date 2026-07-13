@@ -156,7 +156,7 @@
           >
             <div>
               <p class="text-xs font-bold text-zinc-200">启用重播申请</p>
-              <p class="text-[10px] text-zinc-500 mt-0.5">允许用户对本学期已播放过的歌曲再次申请</p>
+              <p class="text-[10px] text-zinc-500 mt-0.5">允许用户对历史已播放歌曲再次申请</p>
             </div>
             <input
               v-model="formData.enableReplayRequests"

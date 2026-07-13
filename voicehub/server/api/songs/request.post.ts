@@ -2,7 +2,6 @@ import {
   db,
   playTimes,
   requestTimes,
-  semesters,
   songs,
   systemSettings
 } from '~/drizzle/db'
@@ -44,9 +43,6 @@ export default defineEventHandler(async (event) => {
     const normalizedTitle = normalizeForMatch(body.title)
     const normalizedArtist = normalizeForMatch(body.artist)
 
-    // 获取当前学期
-    const currentSemester = await getCurrentSemesterName()
-
     // 哔哩哔哩平台判定逻辑
     const isBilibili =
       body.musicPlatform === 'bilibili' ||
@@ -76,11 +72,7 @@ export default defineEventHandler(async (event) => {
         })
         .from(songs)
         .where(
-          and(
-            eq(songs.semester, currentSemester),
-            eq(songs.musicPlatform, 'bilibili'),
-            eq(songs.musicId, fullMusicId)
-          )
+          and(eq(songs.musicPlatform, 'bilibili'), eq(songs.musicId, fullMusicId))
         )
 
       if (existingSongs.length > 0) {
@@ -100,11 +92,9 @@ export default defineEventHandler(async (event) => {
           id: songs.id,
           title: songs.title,
           artist: songs.artist,
-          semester: songs.semester,
           played: songs.played
         })
         .from(songs)
-        .where(eq(songs.semester, currentSemester))
 
       const matchingSongs = allSongs.filter((song) => {
         const songTitle = normalizeForMatch(song.title)
@@ -312,7 +302,7 @@ export default defineEventHandler(async (event) => {
           artist: body.artist,
           requesterId: user.id,
           preferredPlayTimeId: preferredPlayTime?.id || null,
-          semester: currentSemester, // 使用外部获取的学期名称
+          semester: null,
           cover: body.cover || null,
           musicPlatform: isBilibili ? 'bilibili' : (body.musicPlatform || null),
           musicId: finalMusicId,
@@ -331,11 +321,6 @@ export default defineEventHandler(async (event) => {
 
     if (error.statusCode) {
       throw error
-    } else if (error.message === '未设置活跃学期') {
-      throw createError({
-        statusCode: 400,
-        message: '系统未设置当前活跃学期，请联系管理员'
-      })
     } else {
       throw createError({
         statusCode: 500,
@@ -344,26 +329,3 @@ export default defineEventHandler(async (event) => {
     }
   }
 })
-
-// 获取当前学期名称
-async function getCurrentSemesterName() {
-  try {
-    // 获取当前活跃的学期
-    const currentSemesterResult = await db
-      .select()
-      .from(semesters)
-      .where(eq(semesters.isActive, true))
-      .limit(1)
-    const currentSemester = currentSemesterResult[0]
-
-    if (currentSemester) {
-      return currentSemester.name
-    }
-
-    // 如果没有活跃学期，抛出错误
-    throw new Error('未设置活跃学期')
-  } catch (error) {
-    console.error('获取当前学期失败:', error)
-    throw error
-  }
-}

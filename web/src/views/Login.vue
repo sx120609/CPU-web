@@ -184,6 +184,7 @@ async function reloadCaptcha() {
 }
 
 function redirectTarget() {
+  if (auth.user?.role === "voicehub_admin") return "/voicehub/dashboard";
   return resolveSafeRedirect(route.query.redirect);
 }
 

@@ -1,9 +1,10 @@
-type CpuWebTarget = 'home' | 'login' | 'profile'
+type CpuWebTarget = 'home' | 'login' | 'profile' | 'messages'
 
 const TARGET_PATHS: Record<CpuWebTarget, string> = {
   home: '/',
   login: '/login',
-  profile: '/profile'
+  profile: '/profile',
+  messages: '/messages'
 }
 
 export function cpuWebRedirectUrl(target: CpuWebTarget, redirect?: string) {

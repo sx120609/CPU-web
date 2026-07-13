@@ -1,5 +1,5 @@
 import { db } from '~/drizzle/db'
-import { schedules, semesters, songs, votes } from '~/drizzle/schema'
+import { schedules, songs, votes } from '~/drizzle/schema'
 import { and, count, eq } from 'drizzle-orm'
 import { createSongVotedNotification } from '../../services/notificationService'
 import { cacheService } from '~~/server/services/cacheService'
@@ -146,22 +146,6 @@ export default defineEventHandler(async (event) => {
         statusCode: 400,
         message: '不允许自己给自己投票'
       })
-    }
-
-    const currentSemesterResult = await db
-      .select()
-      .from(semesters)
-      .where(eq(semesters.isActive, true))
-      .limit(1)
-    const currentSemester = currentSemesterResult[0]
-    if (currentSemester && song.semester !== currentSemester.name) {
-      throw createError({
-        statusCode: 400,
-        message: '非活跃学期，无法进行投票操作'
-      })
-    }
-    if (!currentSemester) {
-      console.warn('[Vote API] 未找到活跃学期，跳过学期限制校验')
     }
 
     if (existingVote) {

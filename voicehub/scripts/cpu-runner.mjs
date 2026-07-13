@@ -42,6 +42,7 @@ const env = {
   ...process.env,
   DATABASE_URL: voiceHubDatabaseUrl || process.env.DATABASE_URL || 'postgresql://build:build@127.0.0.1:5432/build',
   CPU_WEB_ORIGIN: process.env.CPU_WEB_ORIGIN || `http://127.0.0.1:${cpuPort}`,
+  VOICEHUB_INTEGRATION_SECRET: process.env.VOICEHUB_INTEGRATION_SECRET || '',
   NUXT_APP_BASE_URL: '/voicehub/',
   NUXT_PUBLIC_API_BASE: '/voicehub/api',
   NUXT_PUBLIC_SITE_TITLE: process.env.NUXT_PUBLIC_SITE_TITLE || '药苑之声',

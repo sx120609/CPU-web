@@ -90,16 +90,7 @@
             class="w-full bg-zinc-950/50 border border-zinc-800/80 rounded-lg pl-12 pr-4 py-3 text-sm focus:outline-none focus:border-blue-500/30 transition-all placeholder:text-zinc-800 text-zinc-200"
           >
         </div>
-        <div class="grid grid-cols-2 md:grid-cols-3 lg:flex lg:items-center gap-3 w-full lg:w-auto">
-          <CustomSelect
-            v-model="selectedSemester"
-            label="学期"
-            :options="availableSemesters"
-            label-key="name"
-            value-key="name"
-            placeholder="选择学期"
-            class-name="w-full lg:w-40"
-          />
+        <div class="grid grid-cols-2 lg:flex lg:items-center gap-3 w-full lg:w-auto">
           <CustomSelect
             v-model="statusFilter"
             label="状态"
@@ -609,28 +600,6 @@
               </div>
             </div>
 
-            <div class="space-y-2">
-              <label class="text-[10px] font-black text-zinc-600 uppercase tracking-widest px-1"
-                >学期</label
-              >
-              <CustomSelect
-                v-if="showEditModal"
-                v-model="editForm.semester"
-                :options="availableSemesters"
-                label-key="name"
-                value-key="name"
-                placeholder="选择学期"
-              />
-              <CustomSelect
-                v-else
-                v-model="addForm.semester"
-                :options="availableSemesters"
-                label-key="name"
-                value-key="name"
-                placeholder="选择学期"
-              />
-            </div>
-
             <div class="grid grid-cols-1 md:grid-cols-2 gap-5 pt-4 border-t border-zinc-800/50">
               <div class="space-y-2">
                 <label class="text-[10px] font-black text-zinc-600 uppercase tracking-widest px-1"
@@ -815,7 +784,6 @@ import { useSongs } from '~/composables/useSongs'
 import { useAdmin } from '~/composables/useAdmin'
 import { useAuth } from '~/composables/useAuth'
 import { useToast } from '~/composables/useToast'
-import { useSemesters } from '~/composables/useSemesters'
 import { useSongPlayer } from '~/composables/useSongPlayer'
 import { isBilibiliSong } from '~/utils/bilibiliSource'
 import { validateUrl, convertToHttps } from '~/utils/url'
@@ -832,10 +800,6 @@ const pageSize = ref(20)
 
 // 音频播放器
 const { playSong } = useSongPlayer()
-
-// 学期相关
-const selectedSemester = ref('all')
-const availableSemesters = ref([])
 
 // 选项配置
 const statusOptions = [
@@ -955,11 +919,6 @@ const filteredSongs = computed(() => {
     )
   }
 
-  // 学期过滤
-  if (selectedSemester.value && selectedSemester.value !== 'all') {
-    filtered = filtered.filter((song) => song.semester === selectedSemester.value)
-  }
-
   // 状态过滤
   if (statusFilter.value !== 'all') {
     filtered = filtered.filter((song) => {
@@ -1034,8 +993,7 @@ const canSubmitAddForm = computed(() => {
   if (
     !addForm.value.title.trim() ||
     !addForm.value.artist.trim() ||
-    !selectedUser.value ||
-    !addForm.value.semester
+    !selectedUser.value
   ) {
     return false
   }
@@ -1418,7 +1376,7 @@ const openAddSongModal = () => {
     title: '',
     artist: '',
     requester: '',
-    semester: selectedSemester.value !== 'all' ? selectedSemester.value : '',
+    semester: '',
     musicPlatform: '',
     musicId: '',
     cover: ''
@@ -1434,11 +1392,6 @@ const saveAddSong = async () => {
 
   if (!selectedUser.value || !addForm.value.requester) {
     showNotification('请选择投稿人', 'error')
-    return
-  }
-
-  if (!addForm.value.semester) {
-    showNotification('请选择学期', 'error')
     return
   }
 
@@ -1471,7 +1424,7 @@ const saveAddSong = async () => {
       title: addForm.value.title,
       artist: addForm.value.artist,
       requester: addForm.value.requester,
-      semester: addForm.value.semester,
+      semester: null,
       musicPlatform: addForm.value.musicPlatform || null,
       musicId: addForm.value.musicId || null,
       cover: addForm.value.cover || null,
@@ -1645,33 +1598,15 @@ const handleClickOutside = (event) => {
 
 
 // 监听器
-watch([searchQuery, statusFilter, sortOption, selectedSemester], () => {
+watch([searchQuery, statusFilter, sortOption], () => {
   currentPage.value = 1
 })
 
 // 生命周期
-const { semesters, fetchSemesters, semesterUpdateEvent } = useSemesters()
-
-watch(semesterUpdateEvent, async () => {
-  await fetchSemesters()
-  availableSemesters.value = semesters.value || []
-})
-
 onMounted(async () => {
   songsService = useSongs()
   adminService = useAdmin()
   auth = useAuth()
-
-  const { fetchCurrentSemester, currentSemester } = useSemesters()
-  await fetchSemesters()
-  await fetchCurrentSemester()
-
-  availableSemesters.value = semesters.value || []
-  availableSemesters.value.unshift({ id: 'all', name: '全部学期' })
-
-  if (currentSemester.value) {
-    selectedSemester.value = currentSemester.value.name
-  }
 
   document.addEventListener('click', handleClickOutside)
 

@@ -23,6 +23,7 @@ import { weiwallAuthRouter } from "./weiwallAuth";
 import { courseBotRouter } from "./courseBot";
 import { marketRouter } from "./market";
 import { lostFoundRouter } from "./lostFound";
+import { integrationsRouter } from "./integrations";
 
 export const router = Router();
 
@@ -44,6 +45,7 @@ router.use("/weiwall-auth", weiwallAuthRouter);
 router.use("/course-bot", authRequired, courseBotRouter);
 router.use("/market", marketRouter);
 router.use("/lost-found", lostFoundRouter);
+router.use("/integrations", integrationsRouter);
 
 // 教务代登录：begin-login / login 公开，其余 handler 内部验 token
 router.use("/jwxt", jwxtRouter);

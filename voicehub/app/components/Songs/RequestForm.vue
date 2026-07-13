@@ -79,16 +79,6 @@
                 {{ loading || searching ? '处理中...' : '搜索' }}
               </button>
             </div>
-            <button
-              v-if="showImportSemesterBtn"
-              class="import-semester-btn"
-              type="button"
-              title="从往期导入"
-              @click="showImportSongsModal = true"
-            >
-              <Icon :size="16" name="history" />
-              <span class="btn-text">从往期导入</span>
-            </button>
           </div>
         </div>
 
@@ -611,8 +601,7 @@
                 v-if="
                   group.song.played &&
                   enableReplayRequests &&
-                  !isSuperAdmin &&
-                  group.song.semester === currentSemester?.name
+                  !isSuperAdmin
                 "
                 class="song-actions"
               >
@@ -667,13 +656,6 @@
         </div>
       </div>
     </div>
-
-    <!-- 历史学期导入弹窗 -->
-    <ImportSongsModal
-      :show="showImportSongsModal"
-      @close="showImportSongsModal = false"
-      @import-success="handleImportSuccess"
-    />
 
     <!-- 网易云音乐登录弹窗 -->
     <NeteaseLoginModal
@@ -945,7 +927,6 @@ import { useSongs } from '~/composables/useSongs'
 import { useAudioPlayer } from '~/composables/useAudioPlayer'
 import { useSiteConfig } from '~/composables/useSiteConfig'
 import { useAuth } from '~/composables/useAuth'
-import { useSemesters } from '~/composables/useSemesters'
 import { useMusicSources } from '~/composables/useMusicSources'
 import { useAudioQuality } from '~/composables/useAudioQuality'
 import CustomSelect from '~/components/UI/Common/CustomSelect.vue'
@@ -954,7 +935,6 @@ import { convertToHttps, validateUrl } from '~/utils/url'
 import { isBilibiliSong } from '~/utils/bilibiliSource'
 import { getLoginStatus } from '~/utils/neteaseApi'
 
-import ImportSongsModal from './ImportSongsModal.vue'
 import NeteaseLoginModal from './NeteaseLoginModal.vue'
 import PodcastEpisodesModal from './PodcastEpisodesModal.vue'
 import BilibiliEpisodesModal from './BilibiliEpisodesModal.vue'
@@ -979,11 +959,6 @@ const auth = useAuth()
 const user = computed(() => auth.user.value)
 const isSuperAdmin = computed(() => user.value?.role === 'SUPER_ADMIN')
 
-// 学期管理
-const { fetchCurrentSemester, currentSemester, fetchSemesterOptions, semesters } = useSemesters()
-
-// 是否显示“从往期导入”按钮：只有在有多个学期的情况下才显示
-const showImportSemesterBtn = computed(() => semesters.value && semesters.value.length > 1)
 const enableNeteaseAccountFeatures = false
 
 const title = ref('')
@@ -1041,7 +1016,6 @@ const groupedSimilarSongs = computed(() => {
 
   return Array.from(groups.values())
 })
-const showImportSongsModal = ref(false)
 const showLoginModal = ref(false)
 const isNeteaseLoggedIn = ref(false)
 const neteaseUser = ref(null)
@@ -1103,17 +1077,6 @@ const playUrlValidation = ref({ valid: true, error: '', validating: false })
 
 // 网易云音乐登录检查状态
 const checkingNeteaseLogin = ref(false)
-
-const handleImportSuccess = async () => {
-  // 不自动关闭弹窗，等待用户在结果页点击完成
-  // showImportSongsModal.value = false
-  // 刷新歌曲列表以便检查相似歌曲
-  try {
-    await songService.fetchSongs(true, currentSemester.value?.name, false, true)
-  } catch (error) {
-    console.error('刷新歌曲列表失败:', error)
-  }
-}
 
 // 获取播出时段
 const fetchPlayTimes = async () => {
@@ -1310,13 +1273,10 @@ onMounted(async () => {
   fetchPlayTimes()
   initSiteConfig()
   fetchSubmissionStatus()
-  // 获取当前学期和所有学期选项
-  await Promise.all([fetchCurrentSemester(), fetchSemesterOptions()])
   // 只有在用户已登录时才加载歌曲列表以便检查相似歌曲
   if (auth.isAuthenticated.value) {
     try {
-      const currentSemesterName = currentSemester.value?.name
-      await songService.fetchSongs(false, currentSemesterName)
+      await songService.fetchSongs(false, undefined)
     } catch (error) {
       console.error('加载歌曲列表失败:', error)
     }
@@ -1548,21 +1508,12 @@ const getSimilarSong = (result) => {
   const normalizedTitle = normalizeString(title)
   const normalizedArtist = normalizeString(artist)
 
-  // 获取当前学期名称
-  const currentSemesterName = currentSemester.value?.name
-
-  // 检查完全匹配的歌曲（标准化后），只检查当前学期的歌曲
+  // 检查完全匹配的歌曲（标准化后）
   return songService.songs.value.find((song) => {
     const songTitle = normalizeString(song.title)
     const songArtist = normalizeString(song.artist)
     const titleMatch = songTitle === normalizedTitle && songArtist === normalizedArtist
 
-    // 如果有当前学期信息，只检查当前学期的歌曲
-    if (currentSemesterName) {
-      return titleMatch && song.semester === currentSemesterName
-    }
-
-    // 如果没有学期信息，检查所有歌曲（向后兼容）
     return titleMatch
   })
 }
@@ -1732,6 +1683,20 @@ const getAudioUrl = async (result) => {
   try {
     // 根据搜索结果的sourceInfo.source字段判断音源类型
     const sourceType = result.sourceInfo?.source || result.actualSource || ''
+
+    if (sourceType === 'qq-preview' || result.musicPlatform === 'tencent') {
+      const songId = result.sourceInfo?.mid || result.musicId || result.id
+      const urlResult = await musicSources.getSongUrl(songId, 0, 'tencent')
+      if (urlResult?.success && urlResult.url) {
+        result.url = urlResult.url
+        result.hasUrl = true
+        return result
+      }
+      if (window.$showNotification) {
+        window.$showNotification(urlResult?.error || '该歌曲暂无免费试听', 'info')
+      }
+      return result
+    }
 
     // 哔哩哔哩
     if (sourceType === 'bilibili' || isBilibiliSong(result)) {
@@ -2257,7 +2222,6 @@ const isBilibiliMultiP = (result) => {
 const getBilibiliEpisodeStatus = (result) => {
   if (!result || !isBilibiliMultiP(result)) return null
 
-  const currentSemesterName = currentSemester.value?.name
   const bvid = result.id
 
   const submittedEpisodes = songService.songs.value.filter((song) => {
@@ -2267,10 +2231,6 @@ const getBilibiliEpisodeStatus = (result) => {
     const songBvid = song.musicId.includes(':') ? song.musicId.split(':')[0] : song.musicId
 
     const isSameBvid = songBvid === bvid
-
-    if (currentSemesterName) {
-      return isSameBvid && song.semester === currentSemesterName
-    }
 
     return isSameBvid
   })
@@ -2536,11 +2496,6 @@ const getReplayButtonText = (song) => {
   if (requestingReplay.value) return '申请中...'
   if (!song) return '申请重播'
 
-  // 检查学期
-  if (currentSemester.value && song.semester !== currentSemester.value.name) {
-    return '非本学期'
-  }
-
   // 检查重播申请状态
   if (song.replayRequestStatus === 'REJECTED') {
     // 如果在冷却期内
@@ -2566,11 +2521,6 @@ const getReplayButtonText = (song) => {
 const getReplayButtonTitle = (song) => {
   if (!song) return '申请重播'
 
-  // 检查学期
-  if (currentSemester.value && song.semester !== currentSemester.value.name) {
-    return '只能申请重播当前学期的歌曲'
-  }
-
   // 检查重播申请状态
   if (song.replayRequestStatus === 'REJECTED') {
     if (song.replayRequestCooldownRemaining && song.replayRequestCooldownRemaining > 0) {
@@ -2593,11 +2543,6 @@ const getReplayButtonTitle = (song) => {
 // 检查重播按钮是否应该禁用
 const isReplayButtonDisabled = (song) => {
   if (requestingReplay.value || !song) return true
-
-  // 检查学期
-  if (currentSemester.value && song.semester !== currentSemester.value.name) {
-    return true
-  }
 
   // 检查重播申请状态
   if (song.replayRequestStatus === 'REJECTED') {

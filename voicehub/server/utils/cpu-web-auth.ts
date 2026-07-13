@@ -43,6 +43,7 @@ function cpuWebOrigin() {
 
 function voiceHubRole(role?: string | null) {
   if (role === 'admin') return 'SUPER_ADMIN'
+  if (role === 'voicehub_admin') return 'SUPER_ADMIN'
   if (role === 'mod') return 'SONG_ADMIN'
   return 'USER'
 }
@@ -191,6 +192,7 @@ export async function resolveCpuWebAuth(event: H3Event) {
     requirePasswordChange: false,
     passwordChangedAt: null,
     has2FA: false,
-    cpuWebUserId: cpuUser.id
+    cpuWebUserId: cpuUser.id,
+    voiceHubOnly: cpuUser.role === 'voicehub_admin'
   }
 }

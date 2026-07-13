@@ -2,8 +2,8 @@
   <div class="max-w-[1400px] mx-auto space-y-8 pb-20">
     <div class="flex flex-col md:flex-row md:items-end justify-between gap-6">
       <div>
-        <h2 class="text-2xl font-black text-zinc-100 tracking-tight">向用户发送通知</h2>
-        <p class="text-xs text-zinc-500 mt-1">即时推送系统公告、活动信息或重要提醒至指定群体</p>
+        <h2 class="text-2xl font-black text-zinc-100 tracking-tight">发送主站通知</h2>
+        <p class="text-xs text-zinc-500 mt-1">通知将进入药大拾间消息中心，并由用户绑定的 QQBot 即时推送</p>
       </div>
     </div>
 
@@ -70,7 +70,7 @@
                 >
                   <Info class="text-blue-500 shrink-0" :size="18" />
                   <p class="text-[11px] font-bold text-zinc-400">
-                    将向系统中所有已注册的活跃用户发送此通知。
+                    将向已对接主站账号的药苑之声用户发送此通知。
                   </p>
                 </div>
 

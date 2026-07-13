@@ -264,7 +264,7 @@ export const useMusicSources = () => {
         // QQ音乐: songmid 为字符串 MID (e.g. 004MmF3024567)，这对 vkeys 接口更友好
         const mid = item.songmid
         // VoiceHub 内部 ID: 网易云使用数字ID，QQ音乐优先使用数字ID(songId)以便vkeys使用
-        const id = isNetease ? item.songmid : item.songId || item.songmid
+        const id = isNetease ? item.songmid : item.songmid
 
         return {
           id: id?.toString(),
@@ -280,7 +280,7 @@ export const useMusicSources = () => {
           sourceInfo: {
             // 伪装源名称，以便兼容后续的播放逻辑
             // 网易云使用 netease-backup，QQ音乐使用 vkeys
-            source: isNetease ? 'netease-backup' : 'vkeys',
+            source: isNetease ? 'netease-backup' : 'qq-preview',
             originalId: id?.toString(),
             fetchedAt: new Date(),
             mid: mid,
@@ -328,6 +328,26 @@ export const useMusicSources = () => {
     }
 
     isSearching.value = true
+
+    if (params.platform === 'tencent' && params.type !== 1009) {
+      try {
+        const result = await searchNativeMusic(params)
+        currentSource.value = 'qq-preview'
+        lastUsedSource.value = 'qq-preview'
+        return result.length
+          ? { success: true, source: 'qq-preview', data: result, error: undefined }
+          : { success: false, source: 'qq-preview', data: [], error: 'QQ 音乐搜索暂不可用' }
+      } catch (error: any) {
+        return {
+          success: false,
+          source: 'qq-preview',
+          data: [],
+          error: error?.message || 'QQ 音乐搜索暂不可用'
+        }
+      } finally {
+        isSearching.value = false
+      }
+    }
 
     // 确保已检测服务器位置
     if (isServerInChina.value === null) {
@@ -818,6 +838,29 @@ export const useMusicSources = () => {
     url?: string
     error?: string
   }> => {
+    if (platform === 'tencent') {
+      const mid = String(id || '').trim()
+      if (!/^[A-Za-z0-9]{8,32}$/.test(mid)) {
+        return { success: false, error: '该 QQ 音乐记录缺少可试听的歌曲 MID' }
+      }
+      try {
+        await $fetch('/api/music/qq-preview', {
+          params: { mid, resolve: '1' },
+          retry: 0,
+          timeout: 10000
+        })
+        return {
+          success: true,
+          url: `/api/music/qq-preview?mid=${encodeURIComponent(mid)}`
+        }
+      } catch (error: any) {
+        return {
+          success: false,
+          error: error?.data?.message || error?.message || '该歌曲暂无免费试听'
+        }
+      }
+    }
+
     // 特殊处理 netease-podcast 平台：使用网易云逻辑但禁用 unblock
     if (platform === 'netease-podcast') {
       platform = 'netease'

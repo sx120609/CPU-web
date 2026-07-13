@@ -260,14 +260,6 @@
                 </button>
               </div>
               <div class="grid grid-cols-1 gap-2">
-                <CustomSelect
-                  :model-value="selectedSemester"
-                  label="当前学期"
-                  :options="availableSemesters"
-                  label-key="name"
-                  value-key="name"
-                  @update:model-value="handleSemesterSelect"
-                />
                 <div class="grid grid-cols-2 gap-2">
                   <CustomSelect v-model="selectedGrade" label="年级" :options="availableGrades" />
                   <CustomSelect v-model="songSortOption" label="排序" :options="sortOptions" />
@@ -958,10 +950,6 @@ const sortOptions = [
   { label: '热度最低', value: 'votes-asc' }
 ]
 
-// 学期相关
-const availableSemesters = ref([])
-const selectedSemester = ref('')
-
 // 日期范围（用于无限滚动）
 const dateRange = ref({ start: -15, end: 15 })
 
@@ -989,7 +977,6 @@ const pageSize = ref(10)
 let songsService = null
 let adminService = null
 let auth = null
-let semesterService = null
 
 // 生成日期列表（无限滚动模式）
 const availableDates = computed(() => {
@@ -1258,19 +1245,6 @@ const handlePlayTimeSelect = (value) => {
   selectedPlayTime.value = value
 }
 
-// 处理学期选择
-const handleSemesterSelect = async (value) => {
-  if (selectedSemester.value === value) return
-
-  if (hasChanges.value) {
-    if (!window.confirm('您有未保存的排期修改，切换学期将丢失这些修改，确定要继续吗？')) {
-      return
-    }
-  }
-  selectedSemester.value = value
-  await onSemesterChange()
-}
-
 // 初始化
 let unregisterBeforeNavigate = null
 const registerBeforeNavigate = inject('registerBeforeNavigate', null)
@@ -1290,7 +1264,6 @@ onMounted(async () => {
   songsService = useSongs()
   adminService = useAdmin()
   auth = useAuth()
-  semesterService = useSemesters()
 
   // 初始化窗口大小检测
   checkWindowSize()
@@ -1301,8 +1274,6 @@ onMounted(async () => {
     scrollToDateElement('auto')
   })
 
-  // 先加载学期数据，然后加载其他数据
-  await loadSemesters()
   await loadData()
 
   // 添加事件监听器
@@ -1472,16 +1443,10 @@ const rejectReplayRequest = async (songId) => {
 const loadData = async () => {
   loading.value = true
   try {
-    // 使用选中的学期过滤歌曲，如果选择"全部"则不传递学期参数
-    const semester = selectedSemester.value === '全部' ? undefined : selectedSemester.value
-    
-    // 播放列表应该始终显示当前学期的歌曲（或者全部，如果未设置当前学期），不受待排歌曲学期选择的影响
-    const playlistSemester = semesterService?.currentSemester?.value?.name
-
     // 并行加载数据
     await Promise.all([
-      songsService.fetchSongs(false, semester, false, true),
-      songsService.fetchPublicSchedules(false, playlistSemester, false, true),
+      songsService.fetchSongs(false, undefined, false, true),
+      songsService.fetchPublicSchedules(false, undefined, false, true),
       loadPlayTimes(),
       loadDrafts(), // 加载草稿列表
       fetchReplayRequests() // 加载重播申请
@@ -1536,59 +1501,6 @@ const getPlayTimeName = (playTimeId) => {
   if (!playTimeId || !playTimes.value) return ''
   const playTime = playTimes.value.find((pt) => pt.id === playTimeId)
   return playTime ? playTime.name : ''
-}
-
-// 加载学期列表
-const loadSemesters = async () => {
-  try {
-    await semesterService.fetchSemesters()
-    await semesterService.fetchCurrentSemester()
-
-    // 构建学期列表，包含"全部"选项和各个学期
-    const semesterList = [{ id: 'all', name: '全部', isCurrent: false }]
-
-    // 添加当前学期（如果存在）
-    if (semesterService.currentSemester.value) {
-      semesterList.push({
-        id: semesterService.currentSemester.value.id || 'current',
-        name: semesterService.currentSemester.value.name,
-        isCurrent: true
-      })
-    }
-
-    // 添加其他学期
-    if (semesterService.semesters.value) {
-      semesterService.semesters.value.forEach((semester) => {
-        if (
-          !semesterService.currentSemester.value ||
-          semester.name !== semesterService.currentSemester.value.name
-        ) {
-          semesterList.push({
-            id: semester.id,
-            name: semester.name,
-            isCurrent: false
-          })
-        }
-      })
-    }
-
-    availableSemesters.value = semesterList
-
-    // 默认选择当前学期（如果存在），否则选择"全部"
-    if (semesterService.currentSemester.value) {
-      selectedSemester.value = semesterService.currentSemester.value.name
-    } else if (semesterList.length > 0) {
-      selectedSemester.value = semesterList[0].name
-    }
-  } catch (error) {
-    console.error('获取学期列表失败:', error)
-  }
-}
-
-// 学期切换处理
-const onSemesterChange = async () => {
-  // 学期切换后重新加载数据
-  await loadData()
 }
 
 // 更新本地排期数据（包括草稿）

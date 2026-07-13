@@ -38,17 +38,17 @@ export default defineEventHandler(async (event) => {
       const notificationContent = message || content
       const result = await createSystemNotification(userId, title, notificationContent, clientIP)
 
-      if (result) {
+      if (result?.count) {
         return {
           success: true,
           message: '通知发送成功',
-          sentCount: 1,
+          sentCount: result.count,
           totalUsers: 1
         }
       } else {
         throw createError({
-          statusCode: 500,
-          message: '发送通知失败'
+          statusCode: 400,
+          message: '该用户尚未对接主站账号，通知未发送'
         })
       }
     }

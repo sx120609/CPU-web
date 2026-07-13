@@ -361,7 +361,7 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
 
 const userPatchSchema = z.object({
   status: z.enum(["active", "banned", "muted"]).optional(),
-  role: z.enum(["user", "mod", "admin", "bot"]).optional(),
+  role: z.enum(["user", "mod", "admin", "voicehub_admin", "bot"]).optional(),
   nickname: z.string().min(1).max(20).optional(),
   aiReviewWhitelisted: z.boolean().optional(),
   mutedUntil: z.string().trim().max(64).nullable().optional(),
@@ -460,7 +460,7 @@ const userCreateSchema = z.object({
   username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_]+$/, "用户名仅允许英文/数字/下划线"),
   password: z.string().min(6).max(64),
   nickname: z.string().min(1).max(20),
-  role: z.enum(["user", "mod", "admin", "bot"]).optional(),
+  role: z.enum(["user", "mod", "admin", "voicehub_admin", "bot"]).optional(),
   college: z.string().max(40).optional(),
   enrollYear: z.number().int().min(2000).max(2100).optional(),
 });

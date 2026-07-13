@@ -121,9 +121,7 @@ import {
   Music2,
   BarChart3,
   Bell,
-  Mail,
   LogOut,
-  BookOpen,
   Globe,
 } from 'lucide-vue-next'
 import logo from '~~/public/images/logo.png'
@@ -169,9 +167,7 @@ const menuGroups = [
   {
     section: '系统管理',
     items: [
-      { icon: Bell, label: '通知管理', id: 'notifications' },
-      { icon: Mail, label: '邮件配置', id: 'smtp-config' },
-      { icon: BookOpen, label: '学期管理', id: 'semesters' },
+      { icon: Bell, label: '主站通知', id: 'notifications' },
       { icon: Globe, label: '站点配置', id: 'site-config' }
     ]
   }

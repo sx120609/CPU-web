@@ -309,6 +309,7 @@ const jwxtSessionIdleMs = parseIntegerEnv(
 export const config = {
   port: Number(process.env.PORT ?? 3000),
   jwtSecret,
+  voiceHubIntegrationSecret: String(process.env.VOICEHUB_INTEGRATION_SECRET ?? "").trim(),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "7d",
   nodeEnv,
   jwxtProxyUrl: process.env.JWXT_PROXY_URL ?? "",

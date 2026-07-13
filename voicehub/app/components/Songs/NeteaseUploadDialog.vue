@@ -227,37 +227,18 @@ const getNeteaseCookie = () => {
 }
 
 // 获取QQ音乐下载链接
-const getQQMusicUrl = async (strMediaMid: string, quality: number): Promise<string> => {
+const getQQMusicUrl = async (songMid: string, _quality: number): Promise<string> => {
   uploadStatus.value = '获取下载链接'
 
-  if (!strMediaMid) {
-    throw new Error('缺少歌曲ID (strMediaMid)')
+  if (!songMid) {
+    throw new Error('缺少 QQ 音乐歌曲 MID')
   }
-
-  // 使用vkeys API获取QQ音乐链接
-  const apiUrl = `https://api.vkeys.cn/v2/music/tencent?id=${strMediaMid}&quality=${quality}`
-
-  const response = await fetch(apiUrl, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    }
+  await $fetch('/api/music/qq-preview', {
+    params: { mid: songMid, resolve: '1' },
+    retry: 0,
+    timeout: 10000
   })
-
-  if (!response.ok) {
-    throw new Error(`获取链接失败: ${response.status}`)
-  }
-
-  const data = await response.json()
-  if (data.code === 200 && data.data && data.data.url) {
-    let url = data.data.url
-    // 统一改为安全协议链接
-    if (url.startsWith('http://')) {
-      url = url.replace('http://', 'https://')
-    }
-    return url
-  }
-
-  throw new Error('无法获取有效的播放链接')
+  return `/api/music/qq-preview?mid=${encodeURIComponent(songMid)}`
 }
 
 // 通过文件头识别音频格式
@@ -520,10 +501,10 @@ const startUpload = async () => {
   try {
     // 兼容不同来源的歌曲标识字段
     const musicId =
-      props.song.strMediaMid ||
+      props.song.sourceInfo?.mid ||
       props.song.songmid ||
-      props.song.songId ||
       props.song.musicId ||
+      props.song.songId ||
       props.song.id ||
       props.song.mid
 

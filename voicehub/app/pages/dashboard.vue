@@ -103,22 +103,6 @@
               <LazyAdminNotificationSender />
             </div>
 
-            <!-- SMTP邮件配置 -->
-            <div
-              v-if="activeTab === 'smtp-config' && permissions.canAccessPage('smtp-config')"
-              class="animate-in fade-in slide-in-from-bottom-4 duration-500"
-            >
-              <LazyAdminSmtpManager />
-            </div>
-
-            <!-- 学期管理 -->
-            <div
-              v-if="activeTab === 'semesters' && permissions.canAccessPage('semesters')"
-              class="animate-in fade-in slide-in-from-bottom-4 duration-500"
-            >
-              <LazyAdminSemesterManager />
-            </div>
-
             <!-- 站点配置 -->
             <div
               v-if="activeTab === 'site-config' && permissions.canAccessPage('site-config')"
@@ -183,9 +167,7 @@ const getPageTitle = () => {
     songs: '歌曲管理',
     schedule: '排期管理',
     users: '用户管理',
-    notifications: '通知管理',
-    'smtp-config': '邮件配置',
-    semesters: '学期管理',
+    notifications: '主站通知',
     'site-config': '站点配置'
   }
   return titles[activeTab.value] || '管理后台'

@@ -30,6 +30,7 @@
           <NuxtLink class="logo-link" to="/">
             <img alt="VoiceHub Logo" class="logo-image" :src="proxiedSiteLogoUrl" >
           </NuxtLink>
+          <a class="cpu-brand-link" :href="cpuWebHomeUrl">药大拾间 · 药苑之声</a>
           <!-- 横线和学校logo -->
           <div v-if="schoolLogoHomeUrl && schoolLogoHomeUrl.trim()" class="logo-divider-container">
             <div class="logo-divider" />
@@ -65,6 +66,10 @@
                     <Icon name="user" :size="16" />
                     <span>本站账号</span>
                   </a>
+                  <a class="action-item" :href="cpuWebMessagesUrl">
+                    <Icon name="message-circle" :size="16" />
+                    <span>主站消息中心</span>
+                  </a>
                   <NuxtLink v-if="isAdmin" class="action-item" to="/dashboard">
                     <Icon name="settings" :size="16" />
                     <span>管理后台</span>
@@ -92,6 +97,17 @@
           <h2 class="main-title">{{ siteTitle }}</h2>
           <div class="title-divider" />
           <span class="sub-title">中国药科大学广播站</span>
+        </div>
+      </div>
+
+      <div class="main-site-notice" role="status">
+        <div>
+          <span class="main-site-notice-badge">药大拾间联动</span>
+          <p>通知将通过主站发送，建议绑定 QQBot 获取即时通知。</p>
+        </div>
+        <div class="main-site-notice-actions">
+          <a :href="cpuWebMessagesUrl">消息中心与 QQBot</a>
+          <a :href="cpuWebHomeUrl">返回药大拾间</a>
         </div>
       </div>
 
@@ -123,37 +139,10 @@
             <Icon class="tab-icon" name="search" :size="20" />
             <span class="tab-text">投稿歌曲</span>
           </div>
-          <ClientOnly>
-            <div
-              :key="notificationTabKey"
-              ref="notificationTabRef"
-              :class="{ active: activeTab === 'notification', disabled: !isClientAuthenticated }"
-              class="section-tab"
-              data-tab="notification"
-              @click="isClientAuthenticated ? handleTabClick('notification') : showLoginNotice()"
-            >
-              <div class="icon-wrapper">
-                <Icon class="tab-icon" name="message-circle" :size="20" />
-                <span
-                  v-if="isClientAuthenticated && hasUnreadNotifications"
-                  class="notification-badge-tab"
-                />
-              </div>
-              <span class="tab-text">
-                消息
-                <span
-                  v-if="isClientAuthenticated && hasUnreadNotifications"
-                  class="notification-badge-desktop"
-                />
-              </span>
-            </div>
-            <template #fallback>
-              <div class="section-tab disabled" data-tab="notification">
-                <Icon class="tab-icon" name="message-circle" :size="20" />
-                <span class="tab-text">消息</span>
-              </div>
-            </template>
-          </ClientOnly>
+          <a class="section-tab" :href="cpuWebMessagesUrl">
+            <Icon class="tab-icon" name="message-circle" :size="20" />
+            <span class="tab-text">主站消息</span>
+          </a>
         </div>
 
         <!-- 内容区域 -->
@@ -167,7 +156,6 @@
                   :error="error"
                   :loading="loading"
                   :schedules="publicSchedules"
-                  @semester-change="handleSemesterChange"
                 />
               </ClientOnly>
             </div>
@@ -186,7 +174,6 @@
                     @withdraw="handleWithdraw"
                     @cancel-replay="handleCancelReplay"
                     @request-replay="handleRequestReplay"
-                    @semester-change="handleSemesterChange"
                   />
                 </ClientOnly>
               </div>
@@ -625,7 +612,6 @@ import logo from '~~/public/images/logo.png'
 import Icon from '~/components/UI/Icon.vue'
 import ConfirmDialog from '~/components/UI/ConfirmDialog.vue'
 
-import { useNotifications } from '~/composables/useNotifications'
 import { useSiteConfig } from '~/composables/useSiteConfig'
 import CustomSelect from '~/components/UI/Common/CustomSelect.vue'
 import { normalizeApiBase, withApiBase } from '~/utils/baseUrl'
@@ -656,6 +642,8 @@ const isAdmin = computed(() => auth?.isAdmin?.value || false)
 const user = computed(() => auth?.user?.value || null)
 const cpuWebLoginUrl = computed(() => cpuWebRedirectUrl('login', '/voicehub/'))
 const cpuWebProfileUrl = computed(() => cpuWebRedirectUrl('profile'))
+const cpuWebHomeUrl = computed(() => cpuWebRedirectUrl('home'))
+const cpuWebMessagesUrl = computed(() => cpuWebRedirectUrl('messages'))
 
 const roleName = computed(() => {
   const role = user.value?.role
@@ -677,7 +665,7 @@ const userClassInfo = computed(() => {
 
 const songs = useSongs()
 // 立即初始化通知服务，避免时序问题
-const notificationsService = useNotifications()
+const notificationsService = null
 const unreadNotificationCount = ref(0)
 
 // 模拟数据初始值
@@ -729,7 +717,7 @@ onUnmounted(() => {
 // 标签页状态
 const activeTab = ref('schedule') // 默认显示播出排期
 
-const tabOrder = ['schedule', 'songs', 'request', 'notification']
+const tabOrder = ['schedule', 'songs', 'request']
 const activeIndex = computed(() => {
   const index = tabOrder.indexOf(activeTab.value)
   return index === -1 ? 0 : index
@@ -1832,6 +1820,28 @@ if (
   text-decoration: none;
 }
 
+.cpu-brand-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid rgba(47, 125, 79, 0.2);
+  border-radius: 999px;
+  color: #496249;
+  background: rgba(248, 251, 246, 0.78);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.cpu-brand-link:hover {
+  color: #2f7d4f;
+  border-color: rgba(47, 125, 79, 0.4);
+  background: #f8fbf6;
+  transform: translateY(-1px);
+}
+
 .logo-image {
   width: 150px;
   height: auto;
@@ -2084,6 +2094,71 @@ if (
   flex: 1; /* 占据剩余空间 */
   min-height: 0; /* 允许 flex 子元素收缩 */
   width: 100%; /* 确保宽度占满 */
+}
+
+.main-site-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 1.25rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(47, 125, 79, 0.18);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(238, 244, 232, 0.9), rgba(248, 251, 246, 0.94));
+  color: #405540;
+  box-shadow: 0 8px 22px rgba(31, 42, 31, 0.04);
+}
+
+.main-site-notice p {
+  margin: 0.25rem 0 0;
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.main-site-notice-badge {
+  color: #2f7d4f;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.main-site-notice-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-shrink: 0;
+}
+
+.main-site-notice-actions a {
+  padding: 0.48rem 0.72rem;
+  border-radius: 9px;
+  color: #2f7d4f;
+  background: rgba(255, 255, 255, 0.78);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background 0.2s ease;
+}
+
+.main-site-notice-actions a:hover {
+  background: #fff;
+}
+
+@media (max-width: 768px) {
+  .cpu-brand-link {
+    display: none;
+  }
+
+  .main-site-notice {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .main-site-notice-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
 }
 
 /* 选项卡样式 - 桌面端 */

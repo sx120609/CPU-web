@@ -1,4 +1,4 @@
-import { and, db, eq, songs, systemSettings, songReplayRequests, semesters } from '~/drizzle/db'
+import { and, db, eq, songs, systemSettings, songReplayRequests } from '~/drizzle/db'
 import { cacheService } from '~~/server/services/cacheService'
 
 type ReplayAction = 'request' | 'cancel'
@@ -123,19 +123,6 @@ export default defineEventHandler(async (event) => {
   }
   if (!song.played) {
     throw createError({ statusCode: 400, message: '该歌曲尚未播放，无法申请重播' })
-  }
-
-  const currentSemesterResult = await db
-    .select()
-    .from(semesters)
-    .where(eq(semesters.isActive, true))
-    .limit(1)
-  const currentSemester = currentSemesterResult[0]
-  if (currentSemester && song.semester !== currentSemester.name) {
-    throw createError({ statusCode: 400, message: '只能申请重播当前学期的歌曲' })
-  }
-  if (!currentSemester) {
-    console.warn('[Replay API] 未找到活跃学期，跳过学期限制校验')
   }
 
   const existingResult = await db

@@ -396,6 +396,7 @@ const roleOptions = [
   { value: "user", label: "普通用户" },
   { value: "mod", label: "论坛管理员" },
   { value: "admin", label: "超级管理员" },
+  { value: "voicehub_admin", label: "药苑之声管理员" },
   { value: "bot", label: "系统账号" },
 ] as const;
 
@@ -505,9 +506,10 @@ async function submitCreate() {
   } finally { creating.value = false; }
 }
 
-function roleTag(r: string): "danger" | "warning" | "primary" | "info" {
+function roleTag(r: string): "danger" | "warning" | "primary" | "info" | "success" {
   if (r === "admin") return "danger";
   if (r === "mod") return "warning";
+  if (r === "voicehub_admin") return "success";
   if (r === "bot") return "info";
   return "primary";
 }

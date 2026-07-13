@@ -268,11 +268,7 @@ const statusItems = computed(() => [
     value: systemStatus.value.api ? '正常' : '异常',
     active: systemStatus.value.api
   },
-  {
-    label: '当前学期',
-    value: stats.value.currentSemester || '未设置',
-    active: !!stats.value.currentSemester
-  },
+  { label: '排期方式', value: '按日期直接排期', active: true },
   { label: '系统版本', value: `v${systemVersion.value}`, active: true }
 ])
 
