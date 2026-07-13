@@ -1684,7 +1684,7 @@ const getAudioUrl = async (result) => {
     // 根据搜索结果的sourceInfo.source字段判断音源类型
     const sourceType = result.sourceInfo?.source || result.actualSource || ''
 
-    if (sourceType === 'qq-preview' || result.musicPlatform === 'tencent') {
+    if (sourceType === 'native-tx' || result.musicPlatform === 'tencent') {
       const songId = result.sourceInfo?.mid || result.musicId || result.id
       const urlResult = await musicSources.getSongUrl(songId, 0, 'tencent')
       if (urlResult?.success && urlResult.url) {

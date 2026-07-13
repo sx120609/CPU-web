@@ -1,4 +1,4 @@
-import { createTxSearchBody, txRequest } from '../../../utils/native_tx'
+import { createTxSearchBody, txRequest, txSignedRequest } from '../../../utils/native_tx'
 import { decodeName, formatPlayTime, sizeFormate } from '../../../utils/native_common'
 
 const getErrorCode = (error: unknown): string | undefined => {
@@ -35,7 +35,15 @@ export default defineEventHandler(async (event) => {
   const txApiUrl = process.env.TX_API_URL || 'https://u.y.qq.com/cgi-bin/musicu.fcg'
 
   try {
-    const result: any = await txRequest(txApiUrl, body)
+    let result: any
+    try {
+      result = await txSignedRequest(body)
+    } catch (signedError) {
+      console.warn('TX signed search failed, falling back to musicu.fcg:', {
+        message: getErrorMessage(signedError)
+      })
+      result = await txRequest(txApiUrl, body)
+    }
 
     if (result.code !== 0 || result.req?.code !== 0) {
       console.warn('TX search returned non-zero code', {

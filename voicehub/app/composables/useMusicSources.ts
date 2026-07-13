@@ -280,7 +280,7 @@ export const useMusicSources = () => {
           sourceInfo: {
             // 伪装源名称，以便兼容后续的播放逻辑
             // 网易云使用 netease-backup，QQ音乐使用 vkeys
-            source: isNetease ? 'netease-backup' : 'qq-preview',
+            source: isNetease ? 'netease-backup' : 'native-tx',
             originalId: id?.toString(),
             fetchedAt: new Date(),
             mid: mid,
@@ -332,15 +332,15 @@ export const useMusicSources = () => {
     if (params.platform === 'tencent' && params.type !== 1009) {
       try {
         const result = await searchNativeMusic(params)
-        currentSource.value = 'qq-preview'
-        lastUsedSource.value = 'qq-preview'
+        currentSource.value = 'native-tx'
+        lastUsedSource.value = 'native-tx'
         return result.length
-          ? { success: true, source: 'qq-preview', data: result, error: undefined }
-          : { success: false, source: 'qq-preview', data: [], error: 'QQ 音乐搜索暂不可用' }
+          ? { success: true, source: 'native-tx', data: result, error: undefined }
+          : { success: false, source: 'native-tx', data: [], error: 'QQ 音乐搜索暂不可用' }
       } catch (error: any) {
         return {
           success: false,
-          source: 'qq-preview',
+          source: 'native-tx',
           data: [],
           error: error?.message || 'QQ 音乐搜索暂不可用'
         }
@@ -832,26 +832,37 @@ export const useMusicSources = () => {
     options?: {
       unblock?: boolean
       bilibiliCid?: string
+      mediaId?: string
     }
   ): Promise<{
     success: boolean
     url?: string
+    source?: string
     error?: string
   }> => {
     if (platform === 'tencent') {
-      const mid = String(id || '').trim()
-      if (!/^[A-Za-z0-9]{8,32}$/.test(mid)) {
-        return { success: false, error: '该 QQ 音乐记录缺少可试听的歌曲 MID' }
+      const musicId = String(id || '').trim()
+      if (!musicId) {
+        return { success: false, error: '该 QQ 音乐记录缺少歌曲 ID' }
       }
       try {
-        await $fetch('/api/music/qq-preview', {
-          params: { mid, resolve: '1' },
-          retry: 0,
-          timeout: 10000
+        const response: any = await $fetch('/api/music/resolve-url', {
+          method: 'POST',
+          body: {
+            platform: 'tencent',
+            musicId,
+            quality: quality ?? 8,
+            mediaId: options?.mediaId
+          },
+          timeout: 18000
         })
+        if (!response?.success || !response?.url) {
+          throw new Error(response?.message || '未返回播放链接')
+        }
         return {
           success: true,
-          url: `/api/music/qq-preview?mid=${encodeURIComponent(mid)}`
+          url: response.url,
+          source: response.source
         }
       } catch (error: any) {
         return {

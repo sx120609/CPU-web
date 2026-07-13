@@ -30,7 +30,6 @@
           <NuxtLink class="logo-link" to="/">
             <img alt="VoiceHub Logo" class="logo-image" :src="proxiedSiteLogoUrl" >
           </NuxtLink>
-          <a class="cpu-brand-link" :href="cpuWebHomeUrl">药大拾间 · 药苑之声</a>
           <!-- 横线和学校logo -->
           <div v-if="schoolLogoHomeUrl && schoolLogoHomeUrl.trim()" class="logo-divider-container">
             <div class="logo-divider" />
@@ -139,10 +138,6 @@
             <Icon class="tab-icon" name="search" :size="20" />
             <span class="tab-text">投稿歌曲</span>
           </div>
-          <a class="section-tab" :href="cpuWebMessagesUrl">
-            <Icon class="tab-icon" name="message-circle" :size="20" />
-            <span class="tab-text">主站消息</span>
-          </a>
         </div>
 
         <!-- 内容区域 -->
@@ -1820,28 +1815,6 @@ if (
   text-decoration: none;
 }
 
-.cpu-brand-link {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.45rem 0.8rem;
-  border: 1px solid rgba(47, 125, 79, 0.2);
-  border-radius: 999px;
-  color: #496249;
-  background: rgba(248, 251, 246, 0.78);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-decoration: none;
-  transition: all 0.2s ease;
-}
-
-.cpu-brand-link:hover {
-  color: #2f7d4f;
-  border-color: rgba(47, 125, 79, 0.4);
-  background: #f8fbf6;
-  transform: translateY(-1px);
-}
-
 .logo-image {
   width: 150px;
   height: auto;
@@ -2146,10 +2119,6 @@ if (
 }
 
 @media (max-width: 768px) {
-  .cpu-brand-link {
-    display: none;
-  }
-
   .main-site-notice {
     align-items: flex-start;
     flex-direction: column;

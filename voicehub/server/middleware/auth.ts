@@ -35,7 +35,7 @@ const PUBLIC_API_PREFIXES = [
   '/api/music/state',
   '/api/music/websocket',
   '/api/music/proxy',
-  '/api/music/qq-preview'
+  '/api/music/resolve-url'
 ]
 
 const isPublicApiRoute = (routePath: string, method: string) => {

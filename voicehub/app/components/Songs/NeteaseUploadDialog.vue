@@ -227,18 +227,25 @@ const getNeteaseCookie = () => {
 }
 
 // 获取QQ音乐下载链接
-const getQQMusicUrl = async (songMid: string, _quality: number): Promise<string> => {
+const getQQMusicUrl = async (songMid: string, quality: number): Promise<string> => {
   uploadStatus.value = '获取下载链接'
 
   if (!songMid) {
     throw new Error('缺少 QQ 音乐歌曲 MID')
   }
-  await $fetch('/api/music/qq-preview', {
-    params: { mid: songMid, resolve: '1' },
-    retry: 0,
-    timeout: 10000
+  const response: any = await $fetch('/api/music/resolve-url', {
+    method: 'POST',
+    body: {
+      platform: 'tencent',
+      musicId: songMid,
+      quality
+    },
+    timeout: 18000
   })
-  return `/api/music/qq-preview?mid=${encodeURIComponent(songMid)}`
+  if (!response?.success || !response?.url) {
+    throw new Error(response?.message || '未获取到 QQ 音乐试听链接')
+  }
+  return response.url
 }
 
 // 通过文件头识别音频格式
