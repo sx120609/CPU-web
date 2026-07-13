@@ -84,7 +84,7 @@
             <div v-else class="login-options">
               <a class="login-btn" :href="cpuWebLoginUrl">
                 <Icon name="user" :size="16" />
-                <span>使用本站账号登录</span>
+                <span>使用药大拾间账号登录</span>
               </a>
             </div>
           </ClientOnly>
