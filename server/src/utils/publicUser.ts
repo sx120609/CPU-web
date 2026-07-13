@@ -30,6 +30,8 @@ export function buildSelfUser(u: any) {
     college: u.college,
     enrollYear: u.enrollYear,
     role: u.role,
+    voiceHubRole: u.voiceHubRole ?? null,
+    lostFoundRole: u.lostFoundRole ?? null,
     studentSso: u.studentSso,
     dataAuthAgreedAt: u.dataAuthAgreedAt,
     postCount: u.postCount,

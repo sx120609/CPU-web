@@ -80,8 +80,11 @@ const itemInclude = {
   _count: { select: { claims: true } },
 } satisfies Prisma.LostFoundItemInclude;
 
-function isStaff(role?: string | null) {
-  return role === "admin" || role === "mod";
+function isStaff(role?: string | null, lostFoundRole?: string | null) {
+  return role === "admin"
+    || role === "mod"
+    || lostFoundRole === "admin"
+    || lostFoundRole === "super_admin";
 }
 
 function itemContent(input: z.infer<typeof itemInputSchema>) {
@@ -124,8 +127,15 @@ async function ensureBoard() {
   });
 }
 
-async function visibleImageUrls(items: any[], viewerId?: number, viewerRole?: string) {
-  const protectedItems = items.filter((item) => !isStaff(viewerRole) && item.publisherId !== viewerId);
+async function visibleImageUrls(
+  items: any[],
+  viewerId?: number,
+  viewerRole?: string,
+  viewerLostFoundRole?: string | null,
+) {
+  const protectedItems = items.filter(
+    (item) => !isStaff(viewerRole, viewerLostFoundRole) && item.publisherId !== viewerId,
+  );
   const urls = Array.from(new Set(protectedItems.flatMap((item) => item.images.map((image: any) => image.url))));
   if (!urls.length) return new Map<string, boolean>();
   const rows = await prisma.forumImageAsset.findMany({
@@ -137,9 +147,15 @@ async function visibleImageUrls(items: any[], viewerId?: number, viewerRole?: st
   return new Map(urls.map((url) => [url, reviewEnabled ? statusMap.get(url) === "approved" : statusMap.get(url) !== "rejected"]));
 }
 
-function serializeItem(item: any, viewerId?: number, viewerRole?: string, visibility?: Map<string, boolean>) {
+function serializeItem(
+  item: any,
+  viewerId?: number,
+  viewerRole?: string,
+  visibility?: Map<string, boolean>,
+  viewerLostFoundRole?: string | null,
+) {
   const mine = Boolean(viewerId && item.publisherId === viewerId);
-  const staff = isStaff(viewerRole);
+  const staff = isStaff(viewerRole, viewerLostFoundRole);
   const images = mine || staff
     ? item.images
     : item.images.filter((image: any) => visibility?.get(image.url) !== false);
@@ -168,8 +184,16 @@ function serializeItem(item: any, viewerId?: number, viewerRole?: string, visibi
   };
 }
 
-function serializeClaim(claim: any, viewerId?: number, viewerRole?: string, publisherId?: number) {
-  const canInspect = isStaff(viewerRole) || viewerId === claim.claimantId || viewerId === publisherId;
+function serializeClaim(
+  claim: any,
+  viewerId?: number,
+  viewerRole?: string,
+  publisherId?: number,
+  viewerLostFoundRole?: string | null,
+) {
+  const canInspect = isStaff(viewerRole, viewerLostFoundRole)
+    || viewerId === claim.claimantId
+    || viewerId === publisherId;
   return {
     id: claim.id,
     itemId: claim.itemId,
@@ -240,8 +264,24 @@ lostFoundRouter.get("/items", async (req, res, next) => {
       prisma.lostFoundItem.findMany({ where, include: itemInclude, orderBy: [{ pinned: "desc" }, { status: "asc" }, { happenedAt: "desc" }], skip: (page - 1) * size, take: size }),
       prisma.lostFoundItem.count({ where }),
     ]);
-    const visibility = await visibleImageUrls(list, req.user?.userId, req.user?.role);
-    ok(res, { page, size, total, list: list.map((item) => serializeItem(item, req.user?.userId, req.user?.role, visibility)) });
+    const visibility = await visibleImageUrls(
+      list,
+      req.user?.userId,
+      req.user?.role,
+      req.user?.lostFoundRole,
+    );
+    ok(res, {
+      page,
+      size,
+      total,
+      list: list.map((item) => serializeItem(
+        item,
+        req.user?.userId,
+        req.user?.role,
+        visibility,
+        req.user?.lostFoundRole,
+      )),
+    });
   } catch (error) { next(error); }
 });
 
@@ -250,23 +290,49 @@ lostFoundRouter.get("/items/:id", async (req, res, next) => {
     const id = Number(req.params.id);
     const item = await prisma.lostFoundItem.findUnique({ where: { id }, include: itemInclude });
     if (!item) throw Errors.notFound("失物信息不存在");
-    const canInspect = item.publisherId === req.user?.userId || isStaff(req.user?.role);
+    const canInspect = item.publisherId === req.user?.userId
+      || isStaff(req.user?.role, req.user?.lostFoundRole);
     if ((!PUBLIC_STATUSES.includes(item.status as any) || item.topic.hidden) && !canInspect) throw Errors.notFound("失物信息不存在");
-    const visibility = await visibleImageUrls([item], req.user?.userId, req.user?.role);
-    const data: any = serializeItem(item, req.user?.userId, req.user?.role, visibility);
+    const visibility = await visibleImageUrls(
+      [item],
+      req.user?.userId,
+      req.user?.role,
+      req.user?.lostFoundRole,
+    );
+    const data: any = serializeItem(
+      item,
+      req.user?.userId,
+      req.user?.role,
+      visibility,
+      req.user?.lostFoundRole,
+    );
     if (canInspect) {
       const claims = await prisma.lostFoundClaim.findMany({
         where: { itemId: id },
         include: { claimant: { select: publisherSelect } },
         orderBy: { createdAt: "desc" },
       });
-      data.claims = claims.map((claim) => serializeClaim(claim, req.user?.userId, req.user?.role, item.publisherId));
+      data.claims = claims.map((claim) => serializeClaim(
+        claim,
+        req.user?.userId,
+        req.user?.role,
+        item.publisherId,
+        req.user?.lostFoundRole,
+      ));
     } else if (req.user?.userId) {
       const claim = await prisma.lostFoundClaim.findUnique({
         where: { itemId_claimantId: { itemId: id, claimantId: req.user.userId } },
         include: { claimant: { select: publisherSelect } },
       });
-      data.myClaim = claim ? serializeClaim(claim, req.user.userId, req.user.role, item.publisherId) : null;
+      data.myClaim = claim
+        ? serializeClaim(
+            claim,
+            req.user.userId,
+            req.user.role,
+            item.publisherId,
+            req.user.lostFoundRole,
+          )
+        : null;
     }
     ok(res, data);
   } catch (error) { next(error); }
@@ -334,7 +400,10 @@ lostFoundRouter.post("/items", authRequired, validate(itemInputSchema), async (r
       await notifyTopicAiBlocked({ topicId: item.topicId, userId, title: item.itemName, reason: review.reason, riskScore: review.riskScore });
     }
     await invalidateForumCaches();
-    ok(res, { ...serializeItem(item, userId, req.user!.role), review: review ? { status: review.status, reason: review.reason } : null });
+    ok(res, {
+      ...serializeItem(item, userId, req.user!.role, undefined, req.user!.lostFoundRole),
+      review: review ? { status: review.status, reason: review.reason } : null,
+    });
   } catch (error) { next(error); }
 });
 
@@ -343,16 +412,23 @@ lostFoundRouter.patch("/items/:id/status", authRequired, validate(ownerStatusSch
     const id = Number(req.params.id);
     const item = await prisma.lostFoundItem.findUnique({ where: { id }, include: { topic: true } });
     if (!item) throw Errors.notFound("失物信息不存在");
-    if (item.publisherId !== req.user!.userId && !isStaff(req.user!.role)) throw Errors.forbidden("无权修改这条信息");
+    if (
+      item.publisherId !== req.user!.userId
+      && !isStaff(req.user!.role, req.user!.lostFoundRole)
+    ) throw Errors.forbidden("无权修改这条信息");
     const status = req.body.status as "active" | "claimed" | "closed";
-    if (!isStaff(req.user!.role) && ["reviewing", "hidden"].includes(item.status) && status !== "closed") {
+    if (
+      !isStaff(req.user!.role, req.user!.lostFoundRole)
+      && ["reviewing", "hidden"].includes(item.status)
+      && status !== "closed"
+    ) {
       throw Errors.forbidden("审核中或已下架的信息不能自行重新开放");
     }
     const updated = await prisma.$transaction(async (tx) => {
       await tx.topic.update({ where: { id: item.topicId }, data: { locked: status !== "active" } });
       return tx.lostFoundItem.update({ where: { id }, data: { status, claimedAt: status === "claimed" ? item.claimedAt || new Date() : null }, include: itemInclude });
     });
-    ok(res, serializeItem(updated, req.user!.userId, req.user!.role));
+    ok(res, serializeItem(updated, req.user!.userId, req.user!.role, undefined, req.user!.lostFoundRole));
   } catch (error) { next(error); }
 });
 
@@ -371,7 +447,7 @@ lostFoundRouter.post("/items/:id/claims", authRequired, validate(claimInputSchem
       include: { claimant: { select: publisherSelect } },
     });
     await notify(item.publisherId, "收到新的认领申请", `「${item.itemName}」收到一条站内认领信息，请核对物品特征后处理。`, `/lost-found?item=${item.id}`, { type: "lost-found-claim", itemId, claimId: claim.id });
-    ok(res, serializeClaim(claim, claimantId, req.user!.role, item.publisherId));
+    ok(res, serializeClaim(claim, claimantId, req.user!.role, item.publisherId, req.user!.lostFoundRole));
   } catch (error) { next(error); }
 });
 
@@ -381,7 +457,7 @@ lostFoundRouter.patch("/claims/:id", authRequired, validate(claimStatusSchema), 
     const claim = await prisma.lostFoundClaim.findUnique({ where: { id }, include: { item: { include: { topic: true } }, claimant: { select: publisherSelect } } });
     if (!claim) throw Errors.notFound("认领申请不存在");
     const status = req.body.status as typeof CLAIM_STATUSES[number];
-    const staff = isStaff(req.user!.role);
+    const staff = isStaff(req.user!.role, req.user!.lostFoundRole);
     if (status === "withdrawn") {
       if (claim.claimantId !== req.user!.userId) throw Errors.forbidden("无权撤回该申请");
     } else if (claim.item.publisherId !== req.user!.userId && !staff) {
@@ -399,7 +475,13 @@ lostFoundRouter.patch("/claims/:id", authRequired, validate(claimStatusSchema), 
     if (status !== "withdrawn") {
       await notify(claim.claimantId, status === "accepted" ? "认领申请已通过" : "认领申请未通过", `你对「${claim.item.itemName}」提交的认领申请已${status === "accepted" ? "通过，请按联系方式与发布者核实交接" : "被发布者拒绝"}。`, `/lost-found?item=${claim.itemId}`, { type: "lost-found-claim-result", itemId: claim.itemId, claimId: id, status });
     }
-    ok(res, serializeClaim(updated, req.user!.userId, req.user!.role, claim.item.publisherId));
+    ok(res, serializeClaim(
+      updated,
+      req.user!.userId,
+      req.user!.role,
+      claim.item.publisherId,
+      req.user!.lostFoundRole,
+    ));
   } catch (error) { next(error); }
 });
 
@@ -411,15 +493,36 @@ lostFoundRouter.get("/mine", authRequired, async (req, res, next) => {
       prisma.lostFoundClaim.findMany({ where: { claimantId: userId }, include: { item: { include: itemInclude }, claimant: { select: publisherSelect } }, orderBy: { updatedAt: "desc" } }),
     ]);
     ok(res, {
-      published: published.map((item) => serializeItem(item, userId, req.user!.role)),
-      claims: claims.map((claim) => ({ ...serializeClaim(claim, userId, req.user!.role, claim.item.publisherId), item: serializeItem(claim.item, userId, req.user!.role) })),
+      published: published.map((item) => serializeItem(
+        item,
+        userId,
+        req.user!.role,
+        undefined,
+        req.user!.lostFoundRole,
+      )),
+      claims: claims.map((claim) => ({
+        ...serializeClaim(
+          claim,
+          userId,
+          req.user!.role,
+          claim.item.publisherId,
+          req.user!.lostFoundRole,
+        ),
+        item: serializeItem(
+          claim.item,
+          userId,
+          req.user!.role,
+          undefined,
+          req.user!.lostFoundRole,
+        ),
+      })),
     });
   } catch (error) { next(error); }
 });
 
 lostFoundRouter.get("/admin/items", authRequired, async (req, res, next) => {
   try {
-    if (!isStaff(req.user!.role)) throw Errors.forbidden("需要管理权限");
+    if (!isStaff(req.user!.role, req.user!.lostFoundRole)) throw Errors.forbidden("需要失物招领管理权限");
     const q = String(req.query.q || "").trim().slice(0, 100);
     const status = ITEM_STATUSES.includes(req.query.status as any) ? String(req.query.status) : "";
     const where: any = {};
@@ -430,13 +533,19 @@ lostFoundRouter.get("/admin/items", authRequired, async (req, res, next) => {
       { publisher: { nickname: { contains: q, mode: "insensitive" } } },
     ];
     const list = await prisma.lostFoundItem.findMany({ where, include: itemInclude, orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }], take: 200 });
-    ok(res, list.map((item) => serializeItem(item, req.user!.userId, req.user!.role)));
+    ok(res, list.map((item) => serializeItem(
+      item,
+      req.user!.userId,
+      req.user!.role,
+      undefined,
+      req.user!.lostFoundRole,
+    )));
   } catch (error) { next(error); }
 });
 
 lostFoundRouter.patch("/admin/items/:id", authRequired, validate(adminItemSchema), async (req, res, next) => {
   try {
-    if (!isStaff(req.user!.role)) throw Errors.forbidden("需要管理权限");
+    if (!isStaff(req.user!.role, req.user!.lostFoundRole)) throw Errors.forbidden("需要失物招领管理权限");
     const id = Number(req.params.id);
     const current = await prisma.lostFoundItem.findUnique({ where: { id }, include: { topic: true } });
     if (!current) throw Errors.notFound("失物信息不存在");
@@ -465,6 +574,6 @@ lostFoundRouter.patch("/admin/items/:id", authRequired, validate(adminItemSchema
     });
     await notify(current.publisherId, "失物信息状态已更新", `「${current.itemName}」已由管理人员调整为 ${status}${req.body.note ? `：${req.body.note}` : ""}`, `/lost-found?item=${id}`, { type: "lost-found-admin", itemId: id, status });
     await invalidateForumCaches();
-    ok(res, serializeItem(updated, req.user!.userId, req.user!.role));
+    ok(res, serializeItem(updated, req.user!.userId, req.user!.role, undefined, req.user!.lostFoundRole));
   } catch (error) { next(error); }
 });

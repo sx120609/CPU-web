@@ -106,7 +106,7 @@
         </div>
         <div class="main-site-notice-actions">
           <a :href="cpuWebMessagesUrl">消息中心与 QQBot</a>
-          <a :href="cpuWebHomeUrl">返回药大拾间</a>
+          <a :href="cpuWebHomeUrl">返回主站</a>
         </div>
       </div>
 
@@ -4057,13 +4057,17 @@ if (
 
   .main-site-notice-actions {
     width: auto;
+    flex-direction: column;
     flex-wrap: nowrap;
+    gap: 0.25rem;
   }
 
   .main-site-notice-actions a {
+    min-width: 72px;
     min-height: 40px;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     padding: 0 0.65rem;
     white-space: nowrap;
   }
@@ -4075,10 +4079,6 @@ if (
   .main-site-notice-actions a:first-child::after {
     content: '去绑定';
     font-size: 0.72rem;
-  }
-
-  .main-site-notice-actions a:last-child {
-    display: none;
   }
 
   .tabs-row {
@@ -4140,7 +4140,10 @@ if (
   }
 
   .main-site-notice-actions {
-    display: none;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    gap: 0.4rem;
   }
 }
 </style>

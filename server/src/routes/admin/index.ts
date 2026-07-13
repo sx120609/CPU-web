@@ -9,8 +9,9 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "../../prisma";
 import { Errors, ok } from "../../utils/response";
-import { adminOnly, modOrAbove } from "../../middleware/admin";
+import { adminOnly, modOrAbove, userDirectoryAccess } from "../../middleware/admin";
 import { validate } from "../../middleware/validate";
+import { isModuleSuperAdmin } from "../../utils/moduleRoles";
 import { resetSourceAndRun, runAllOnce } from "../../services/schoolCrawler";
 import {
   getFeatures,
@@ -265,7 +266,7 @@ adminRouter.post("/database/restore", adminOnly, (req, res, next) => {
 
 // ============ 用户管理 ============
 
-adminRouter.get("/users", modOrAbove, async (req, res, next) => {
+adminRouter.get("/users", userDirectoryAccess, async (req, res, next) => {
   try {
     await releaseExpiredMutes();
     const q = String(req.query.q ?? "").trim();
@@ -289,7 +290,11 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
       { nickname: { contains: q } },
       { email: { contains: q } },
     ];
-    if (role) where.role = role;
+    if (role === "voicehub_admin") where.voiceHubRole = "admin";
+    else if (role === "voicehub_super_admin") where.voiceHubRole = "super_admin";
+    else if (role === "lostfound_admin") where.lostFoundRole = "admin";
+    else if (role === "lostfound_super_admin") where.lostFoundRole = "super_admin";
+    else if (role) where.role = role;
     if (status) where.status = status;
     if (loginClient && loginClient !== "all") {
       if (loginClient === "none") where.lastLoginAt = null;
@@ -329,7 +334,9 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
         take: size,
         select: {
           id: true, username: true, nickname: true, email: true, avatar: true,
-          college: true, enrollYear: true, role: true, studentSso: true, status: true,
+          college: true, enrollYear: true, role: true,
+          voiceHubRole: true, lostFoundRole: true,
+          studentSso: true, status: true,
           mutedUntil: true,
           postCount: true, replyCount: true, reputation: true,
           forumEnabled: true, forumEnabledAt: true,
@@ -362,6 +369,8 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
 const userPatchSchema = z.object({
   status: z.enum(["active", "banned", "muted"]).optional(),
   role: z.enum(["user", "mod", "admin", "voicehub_admin", "bot"]).optional(),
+  voiceHubRole: z.enum(["admin", "super_admin"]).nullable().optional(),
+  lostFoundRole: z.enum(["admin", "super_admin"]).nullable().optional(),
   nickname: z.string().min(1).max(20).optional(),
   aiReviewWhitelisted: z.boolean().optional(),
   mutedUntil: z.string().trim().max(64).nullable().optional(),
@@ -379,6 +388,12 @@ adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (re
     // 改角色仅 admin 可做
     if (req.body.role !== undefined && req.user!.role !== "admin") {
       throw Errors.forbidden("仅管理员可修改角色");
+    }
+    if (
+      (req.body.voiceHubRole !== undefined || req.body.lostFoundRole !== undefined)
+      && req.user!.role !== "admin"
+    ) {
+      throw Errors.forbidden("仅站点超级管理员可直接设置模块超级管理员");
     }
     if (req.body.aiReviewWhitelisted !== undefined && req.user!.role !== "admin") {
       throw Errors.forbidden("仅管理员可修改 AI 审核白名单");
@@ -405,7 +420,14 @@ adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (re
     if (!current) throw Errors.notFound("用户不存在");
 
     const data: any = {};
-    if (req.body.role !== undefined) data.role = req.body.role;
+    if (req.body.role === "voicehub_admin") {
+      data.role = "user";
+      data.voiceHubRole = "admin";
+    } else if (req.body.role !== undefined) {
+      data.role = req.body.role;
+    }
+    if (req.body.voiceHubRole !== undefined) data.voiceHubRole = req.body.voiceHubRole;
+    if (req.body.lostFoundRole !== undefined) data.lostFoundRole = req.body.lostFoundRole;
     if (req.body.nickname !== undefined) data.nickname = req.body.nickname;
     if (req.body.aiReviewWhitelisted !== undefined) data.aiReviewWhitelisted = req.body.aiReviewWhitelisted;
     if (req.body.anonymousCredits !== undefined) {
@@ -442,6 +464,8 @@ adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (re
     ok(res, {
       id: u.id,
       role: u.role,
+      voiceHubRole: u.voiceHubRole,
+      lostFoundRole: u.lostFoundRole,
       status: u.status,
       mutedUntil: u.mutedUntil,
       nickname: u.nickname,
@@ -455,26 +479,97 @@ adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (re
   } catch (e) { next(e); }
 });
 
+const moduleRolePatchSchema = z.object({
+  voiceHubRole: z.enum(["admin", "super_admin"]).nullable().optional(),
+  lostFoundRole: z.enum(["admin", "super_admin"]).nullable().optional(),
+}).refine(
+  (value) => value.voiceHubRole !== undefined || value.lostFoundRole !== undefined,
+  "请至少提交一个模块权限",
+);
+
+// 模块超级管理员只能授予或撤销本模块的普通管理员；超级管理员本身由站点 admin 设置。
+adminRouter.patch(
+  "/users/:id/module-roles",
+  userDirectoryAccess,
+  validate(moduleRolePatchSchema),
+  async (req, res, next) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) throw Errors.badRequest("用户 ID 不合法");
+
+      const target = await prisma.user.findUnique({
+        where: { id },
+        select: { id: true, voiceHubRole: true, lostFoundRole: true },
+      });
+      if (!target) throw Errors.notFound("用户不存在");
+
+      const data: { voiceHubRole?: string | null; lostFoundRole?: string | null } = {};
+      const siteAdmin = req.user!.role === "admin";
+
+      if (req.body.voiceHubRole !== undefined) {
+        if (!siteAdmin && !isModuleSuperAdmin(req.user, "voiceHubRole")) {
+          throw Errors.forbidden("只能管理药苑之声权限");
+        }
+        if (!siteAdmin && (req.body.voiceHubRole === "super_admin" || target.voiceHubRole === "super_admin")) {
+          throw Errors.forbidden("药苑之声超级管理员只能授予或撤销普通管理员");
+        }
+        data.voiceHubRole = req.body.voiceHubRole;
+      }
+
+      if (req.body.lostFoundRole !== undefined) {
+        if (!siteAdmin && !isModuleSuperAdmin(req.user, "lostFoundRole")) {
+          throw Errors.forbidden("只能管理失物招领权限");
+        }
+        if (!siteAdmin && (req.body.lostFoundRole === "super_admin" || target.lostFoundRole === "super_admin")) {
+          throw Errors.forbidden("失物招领超级管理员只能授予或撤销普通管理员");
+        }
+        data.lostFoundRole = req.body.lostFoundRole;
+      }
+
+      const updated = await prisma.user.update({ where: { id }, data });
+      ok(res, {
+        id: updated.id,
+        role: updated.role,
+        voiceHubRole: updated.voiceHubRole,
+        lostFoundRole: updated.lostFoundRole,
+      });
+    } catch (error) { next(error); }
+  },
+);
+
 // 新建用户（仅 admin）—— 用于给新生 / 毕业生 / 站务 等无法走 SSO 的用户开站内账号
 const userCreateSchema = z.object({
   username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_]+$/, "用户名仅允许英文/数字/下划线"),
   password: z.string().min(6).max(64),
   nickname: z.string().min(1).max(20),
   role: z.enum(["user", "mod", "admin", "voicehub_admin", "bot"]).optional(),
+  voiceHubRole: z.enum(["admin", "super_admin"]).nullable().optional(),
+  lostFoundRole: z.enum(["admin", "super_admin"]).nullable().optional(),
   college: z.string().max(40).optional(),
   enrollYear: z.number().int().min(2000).max(2100).optional(),
 });
 
 adminRouter.post("/users", adminOnly, validate(userCreateSchema), async (req, res, next) => {
   try {
-    const { username, password, nickname, role, college, enrollYear } = req.body;
+    const {
+      username,
+      password,
+      nickname,
+      role,
+      voiceHubRole,
+      lostFoundRole,
+      college,
+      enrollYear,
+    } = req.body;
     const exists = await prisma.user.findUnique({ where: { username } });
     if (exists) throw Errors.conflict("该用户名已被占用");
     const passwordHash = await bcrypt.hash(password, 10);
     const u = await prisma.user.create({
       data: {
         username, passwordHash, nickname,
-        role: role ?? "user",
+        role: role === "voicehub_admin" ? "user" : role ?? "user",
+        voiceHubRole: role === "voicehub_admin" ? "admin" : voiceHubRole ?? null,
+        lostFoundRole: lostFoundRole ?? null,
         college, enrollYear,
         // studentSso 留 false：让该用户走站内独立账号密码登录
       },
@@ -482,6 +577,7 @@ adminRouter.post("/users", adminOnly, validate(userCreateSchema), async (req, re
     await prisma.messageSetting.create({ data: { userId: u.id } }).catch(() => {});
     ok(res, {
       id: u.id, username: u.username, nickname: u.nickname, role: u.role,
+      voiceHubRole: u.voiceHubRole, lostFoundRole: u.lostFoundRole,
       college: u.college, enrollYear: u.enrollYear, createdAt: u.createdAt,
     });
   } catch (e) { next(e); }

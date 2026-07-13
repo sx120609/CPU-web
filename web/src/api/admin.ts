@@ -633,6 +633,8 @@ export const adminApi = {
   updateUser: (id: number, patch: {
     status?: string;
     role?: string;
+    voiceHubRole?: "admin" | "super_admin" | null;
+    lostFoundRole?: "admin" | "super_admin" | null;
     nickname?: string;
     aiReviewWhitelisted?: boolean;
     mutedUntil?: string | null;
@@ -640,9 +642,16 @@ export const adminApi = {
     anonymousCreditsFrozen?: boolean;
   }) =>
     request.patch<any>(`/admin/users/${id}`, patch),
+  updateUserModuleRoles: (id: number, patch: {
+    voiceHubRole?: "admin" | "super_admin" | null;
+    lostFoundRole?: "admin" | "super_admin" | null;
+  }) => request.patch<any>(`/admin/users/${id}/module-roles`, patch),
   createUser: (data: {
     username: string; password: string; nickname: string;
-    role?: string; college?: string; enrollYear?: number;
+    role?: string;
+    voiceHubRole?: "admin" | "super_admin" | null;
+    lostFoundRole?: "admin" | "super_admin" | null;
+    college?: string; enrollYear?: number;
   }) => request.post<any>("/admin/users", data),
   resetUserPassword: (id: number, newPassword: string) =>
     request.patch<{ ok: true }>(`/admin/users/${id}/password`, { newPassword }),

@@ -15,7 +15,14 @@ async function hydrateUserFromToken(token: string, allowExpiredSessionToken = fa
   const payload = allowExpiredSessionToken ? verifySessionTokenSignature(token) : verifyToken(token);
   const user = await prisma.user.findUnique({
     where: { id: payload.userId },
-    select: { id: true, username: true, role: true, status: true },
+    select: {
+      id: true,
+      username: true,
+      role: true,
+      voiceHubRole: true,
+      lostFoundRole: true,
+      status: true,
+    },
   });
   if (!user) throw Errors.unauthorized("账号不存在或已失效，请重新登录");
   if (user.status === "banned") throw Errors.forbidden("账号已被封禁");
@@ -23,6 +30,8 @@ async function hydrateUserFromToken(token: string, allowExpiredSessionToken = fa
     ...payload,
     studentId: user.username,
     role: user.role,
+    voiceHubRole: user.voiceHubRole,
+    lostFoundRole: user.lostFoundRole,
   };
 }
 
@@ -37,6 +46,8 @@ async function hydrateBrowserSessionUser(req: Request, res: Response, token: str
       studentId: user.studentId,
       role: user.role,
       campus: user.campus || "",
+      voiceHubRole: user.voiceHubRole,
+      lostFoundRole: user.lostFoundRole,
     });
     await updateBrowserSession(req, res, { siteToken: renewedToken });
     return user;

@@ -185,6 +185,11 @@ async function reloadCaptcha() {
 
 function redirectTarget() {
   if (auth.user?.role === "voicehub_admin") return "/voicehub/dashboard";
+  if (auth.user?.voiceHubRole === "super_admin" || auth.user?.lostFoundRole === "super_admin") {
+    return "/admin?tab=users";
+  }
+  if (auth.user?.lostFoundRole) return "/admin?tab=lost-found";
+  if (auth.user?.voiceHubRole === "admin") return "/voicehub/dashboard";
   return resolveSafeRedirect(route.query.redirect);
 }
 

@@ -15,6 +15,8 @@ interface CpuWebUser {
   college?: string | null
   enrollYear?: number | null
   role?: string | null
+  voiceHubRole?: 'admin' | 'super_admin' | null
+  lostFoundRole?: 'admin' | 'super_admin' | null
   studentSso?: boolean
 }
 
@@ -41,10 +43,10 @@ function cpuWebOrigin() {
   return parsed.toString().replace(/\/$/, '')
 }
 
-function voiceHubRole(role?: string | null) {
-  if (role === 'admin') return 'SUPER_ADMIN'
-  if (role === 'voicehub_admin') return 'SUPER_ADMIN'
-  if (role === 'mod') return 'SONG_ADMIN'
+function voiceHubRole(user: Pick<CpuWebUser, 'role' | 'voiceHubRole'>) {
+  if (user.role === 'admin' || user.voiceHubRole === 'super_admin') return 'SUPER_ADMIN'
+  if (user.role === 'voicehub_admin' || user.voiceHubRole === 'admin') return 'ADMIN'
+  if (user.role === 'mod') return 'SONG_ADMIN'
   return 'USER'
 }
 
@@ -108,7 +110,7 @@ async function findShadowUser(cpuUser: CpuWebUser, database: any = db) {
       grade: cpuUser.enrollYear ? `${cpuUser.enrollYear}级` : null,
       class: cpuUser.college || null,
       avatar: cpuUser.avatar || null,
-      role: voiceHubRole(cpuUser.role),
+      role: voiceHubRole(cpuUser),
       password: `$cpu-web-session:${cpuUser.id}`,
       email: cpuUser.email || null,
       emailVerified: Boolean(cpuUser.studentSso || cpuUser.email),
@@ -160,7 +162,7 @@ async function syncShadowUser(cpuUser: CpuWebUser) {
         grade: cpuUser.enrollYear ? `${cpuUser.enrollYear}级` : null,
         class: cpuUser.college || null,
         avatar: cpuUser.avatar || null,
-        role: voiceHubRole(cpuUser.role),
+        role: voiceHubRole(cpuUser),
         email: cpuUser.email || null,
         emailVerified: Boolean(cpuUser.studentSso || cpuUser.email),
         forcePasswordChange: false,
@@ -187,12 +189,16 @@ export async function resolveCpuWebAuth(event: H3Event) {
     class: shadow.class,
     avatar: shadow.avatar,
     email: shadow.email,
-    role: normalizeRoleOrDefault(voiceHubRole(cpuUser.role), 'USER'),
+    role: normalizeRoleOrDefault(voiceHubRole(cpuUser), 'USER'),
     forcePasswordChange: false,
     requirePasswordChange: false,
     passwordChangedAt: null,
     has2FA: false,
     cpuWebUserId: cpuUser.id,
-    voiceHubOnly: cpuUser.role === 'voicehub_admin'
+    voiceHubOnly: cpuUser.role === 'voicehub_admin' || (
+      cpuUser.role === 'user'
+      && cpuUser.voiceHubRole === 'admin'
+      && !cpuUser.lostFoundRole
+    )
   }
 }

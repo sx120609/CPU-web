@@ -12,6 +12,8 @@ export interface UserInfo {
   college?: string | null;
   enrollYear?: number | null;
   role: string;
+  voiceHubRole?: "admin" | "super_admin" | null;
+  lostFoundRole?: "admin" | "super_admin" | null;
   studentSso?: boolean;
   dataAuthAgreedAt?: string | null;
   forumEnabled?: boolean;

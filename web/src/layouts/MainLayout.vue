@@ -115,8 +115,8 @@
                 <el-dropdown-menu>
                   <el-dropdown-item command="profile">个人中心</el-dropdown-item>
                   <el-dropdown-item command="settings">消息设置</el-dropdown-item>
-                  <el-dropdown-item v-if="auth.isMod" command="admin" divided>🛠 管理后台</el-dropdown-item>
-                  <el-dropdown-item command="logout" :divided="!auth.isMod">退出登录</el-dropdown-item>
+                  <el-dropdown-item v-if="auth.canAccessModuleAdmin" command="admin" divided>🛠 管理后台</el-dropdown-item>
+                  <el-dropdown-item command="logout" :divided="!auth.canAccessModuleAdmin">退出登录</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -414,7 +414,7 @@ const drawerItems = computed(() => {
   const items: DrawerNavItem[] = [];
   if (auth.canAccessForum && site.features.forum) items.push({ id: "system-post", to: "/post", label: "发帖", icon: Edit });
   items.push({ id: "system-messages", to: "/messages", label: "消息", icon: Message });
-  if (auth.isMod) items.push({ id: "system-admin", to: "/admin", label: "管理后台", icon: Tools });
+  if (auth.canAccessModuleAdmin) items.push({ id: "system-admin", to: "/admin", label: "管理后台", icon: Tools });
   for (const item of site.topNavigation.filter((candidate) => candidate.showInDrawer && navigationItemVisible(candidate))) {
     items.push({ id: `configured-${item.id}`, to: item.to, label: item.fullLabel || item.label, icon: navigationIconMap[item.icon], openInNewTab: item.openInNewTab });
   }

@@ -66,6 +66,14 @@ export const useAuthStore = defineStore("auth", {
     nickname: (s) => s.user?.nickname ?? "",
     isAdmin: (s) => s.user?.role === "admin",
     isMod: (s) => s.user?.role === "admin" || s.user?.role === "mod",
+    isVoiceHubAdmin: (s) => s.user?.role === "admin" || s.user?.role === "mod" || !!s.user?.voiceHubRole,
+    isVoiceHubSuperAdmin: (s) => s.user?.role === "admin" || s.user?.voiceHubRole === "super_admin",
+    isLostFoundAdmin: (s) => s.user?.role === "admin" || s.user?.role === "mod" || !!s.user?.lostFoundRole,
+    isLostFoundSuperAdmin: (s) => s.user?.role === "admin" || s.user?.lostFoundRole === "super_admin",
+    canAccessModuleAdmin: (s) => s.user?.role === "admin"
+      || s.user?.role === "mod"
+      || s.user?.voiceHubRole === "super_admin"
+      || !!s.user?.lostFoundRole,
     canAccessForum: (s) => !!s.user && (s.user.role === "admin" || s.user.role === "mod" || s.user.role === "bot" || !!s.user.forumEnabled),
     needSetupNickname: (s) => !!s.user && (!s.user.nickname || s.user.nickname.trim() === ""),
     needDataAuthAgreement: (s) => !!s.user?.studentSso && !s.dataAuthAgreed,

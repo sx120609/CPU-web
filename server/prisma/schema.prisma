@@ -24,6 +24,8 @@ model User {
   college                String? // 自报院系（可选，仅展示用）
   enrollYear             Int? // 自报入学年份（可选）
   role                   String    @default("user") // user / mod / admin / bot
+  voiceHubRole           String?   // admin / super_admin；与主站身份独立，可和其他模块权限并存
+  lostFoundRole          String?   // admin / super_admin；与主站身份独立，可和其他模块权限并存
   // 是否通过学校 SSO 登录认证（学号身份已验证）。alice 等示例账号为 false
   studentSso             Boolean   @default(false)
   status                 String    @default("active") // active / banned / muted

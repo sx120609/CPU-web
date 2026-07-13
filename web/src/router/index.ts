@@ -124,7 +124,14 @@ router.beforeEach(async (to) => {
   // HttpOnly Cookie 无法由前端直接读取；首次导航静默探测一次真实会话。
   // 游客的 401 不提示、不跳转，避免公开页面被错误抢到登录页。
   if (!auth.ready) await auth.fetchMe({ probe: true });
-  if (auth.user?.role === "voicehub_admin") {
+  if (
+    auth.user?.role === "voicehub_admin"
+    || (
+      auth.user?.role === "user"
+      && auth.user?.voiceHubRole === "admin"
+      && !auth.user?.lostFoundRole
+    )
+  ) {
     window.location.replace("/voicehub/dashboard");
     return false;
   }
@@ -173,9 +180,9 @@ router.beforeEach(async (to) => {
     await auth.fetchMe();
     if (!auth.user) return { name: "login", query: { redirect: to.fullPath } };
   }
-  // 管理后台：仅 mod / admin 可进
+  // 管理后台：主站管理人员、模块超级管理员，以及失物招领管理员可进对应分区。
   if (to.meta.requireMod) {
-    if (auth.user?.role !== "admin" && auth.user?.role !== "mod") {
+    if (!auth.canAccessModuleAdmin) {
       return { name: "home" };
     }
   }

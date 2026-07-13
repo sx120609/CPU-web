@@ -6,7 +6,7 @@
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
         <el-select v-model="role" clearable placeholder="角色" class="filter-select" @change="applyFilters">
-          <el-option v-for="item in roleOptions" :key="item.value" :label="item.label" :value="item.value" />
+          <el-option v-for="item in filterRoleOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
         <el-select v-model="status" clearable placeholder="状态" class="filter-select" @change="applyFilters">
           <el-option label="active" value="active" />
@@ -74,10 +74,16 @@
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="身份" width="170">
+      <el-table-column label="身份" width="230">
         <template #default="{ row }">
           <div class="tag-stack">
             <el-tag :type="roleTag(row.role)" size="small">{{ roleLabel(row.role) }}</el-tag>
+            <el-tag v-if="row.voiceHubRole" :type="moduleRoleTag(row.voiceHubRole)" size="small" effect="plain">
+              {{ moduleRoleLabel("药苑之声", row.voiceHubRole) }}
+            </el-tag>
+            <el-tag v-if="row.lostFoundRole" :type="moduleRoleTag(row.lostFoundRole)" size="small" effect="plain">
+              {{ moduleRoleLabel("失物招领", row.lostFoundRole) }}
+            </el-tag>
             <el-tag :type="row.status === 'active' ? 'success' : row.status === 'banned' ? 'danger' : 'warning'" size="small" effect="plain">
               {{ row.status }}
             </el-tag>
@@ -141,14 +147,16 @@
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="rename" :disabled="isUserBusy(row)">改名</el-dropdown-item>
-                <el-dropdown-item v-if="row.status !== 'banned'" command="ban" :disabled="isUserBusy(row)">封禁</el-dropdown-item>
-                <el-dropdown-item v-else command="unban" :disabled="isUserBusy(row)">解禁</el-dropdown-item>
-                <el-dropdown-item v-if="row.status !== 'banned'" command="mute" :disabled="isUserBusy(row)">
+                <el-dropdown-item v-if="canModerateUsers" command="rename" :disabled="isUserBusy(row)">改名</el-dropdown-item>
+                <el-dropdown-item v-if="canModerateUsers && row.status !== 'banned'" command="ban" :disabled="isUserBusy(row)">封禁</el-dropdown-item>
+                <el-dropdown-item v-else-if="canModerateUsers" command="unban" :disabled="isUserBusy(row)">解禁</el-dropdown-item>
+                <el-dropdown-item v-if="canModerateUsers && row.status !== 'banned'" command="mute" :disabled="isUserBusy(row)">
                   {{ row.status === "muted" ? "调整禁言" : "禁言" }}
                 </el-dropdown-item>
-                <el-dropdown-item v-if="row.status === 'muted'" command="unmute" :disabled="isUserBusy(row)">取消禁言</el-dropdown-item>
-                <el-dropdown-item v-if="auth.isAdmin" command="role" divided :disabled="isUserBusy(row)">改身份</el-dropdown-item>
+                <el-dropdown-item v-if="canModerateUsers && row.status === 'muted'" command="unmute" :disabled="isUserBusy(row)">取消禁言</el-dropdown-item>
+                <el-dropdown-item v-if="auth.isAdmin || canManageAnyModuleRole" command="role" divided :disabled="isUserBusy(row)">
+                  {{ auth.isAdmin ? "身份与模块权限" : "模块权限" }}
+                </el-dropdown-item>
                 <el-dropdown-item v-if="auth.isAdmin" command="whitelist" :disabled="isUserBusy(row)">
                   {{ row.aiReviewWhitelisted ? "取消 AI 白名单" : "设为 AI 白名单" }}
                 </el-dropdown-item>
@@ -175,6 +183,12 @@
         </div>
         <div class="tag-stack">
           <el-tag :type="roleTag(row.role)" size="small">{{ roleLabel(row.role) }}</el-tag>
+          <el-tag v-if="row.voiceHubRole" :type="moduleRoleTag(row.voiceHubRole)" size="small" effect="plain">
+            {{ moduleRoleLabel("药苑之声", row.voiceHubRole) }}
+          </el-tag>
+          <el-tag v-if="row.lostFoundRole" :type="moduleRoleTag(row.lostFoundRole)" size="small" effect="plain">
+            {{ moduleRoleLabel("失物招领", row.lostFoundRole) }}
+          </el-tag>
           <el-tag v-if="row.studentSso" type="primary" size="small" effect="plain">统一认证</el-tag>
           <el-tag v-if="row.aiReviewWhitelisted" type="success" size="small" effect="plain">AI 白名单</el-tag>
           <el-tag v-if="row.status === 'muted' && row.mutedUntil" type="warning" size="small" effect="plain">
@@ -205,14 +219,16 @@
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="rename" :disabled="isUserBusy(row)">改名</el-dropdown-item>
-                <el-dropdown-item v-if="row.status !== 'banned'" command="ban" :disabled="isUserBusy(row)">封禁</el-dropdown-item>
-                <el-dropdown-item v-else command="unban" :disabled="isUserBusy(row)">解禁</el-dropdown-item>
-                <el-dropdown-item v-if="row.status !== 'banned'" command="mute" :disabled="isUserBusy(row)">
+                <el-dropdown-item v-if="canModerateUsers" command="rename" :disabled="isUserBusy(row)">改名</el-dropdown-item>
+                <el-dropdown-item v-if="canModerateUsers && row.status !== 'banned'" command="ban" :disabled="isUserBusy(row)">封禁</el-dropdown-item>
+                <el-dropdown-item v-else-if="canModerateUsers" command="unban" :disabled="isUserBusy(row)">解禁</el-dropdown-item>
+                <el-dropdown-item v-if="canModerateUsers && row.status !== 'banned'" command="mute" :disabled="isUserBusy(row)">
                   {{ row.status === "muted" ? "调整禁言" : "禁言" }}
                 </el-dropdown-item>
-                <el-dropdown-item v-if="row.status === 'muted'" command="unmute" :disabled="isUserBusy(row)">取消禁言</el-dropdown-item>
-                <el-dropdown-item v-if="auth.isAdmin" command="role" divided :disabled="isUserBusy(row)">改身份</el-dropdown-item>
+                <el-dropdown-item v-if="canModerateUsers && row.status === 'muted'" command="unmute" :disabled="isUserBusy(row)">取消禁言</el-dropdown-item>
+                <el-dropdown-item v-if="auth.isAdmin || canManageAnyModuleRole" command="role" divided :disabled="isUserBusy(row)">
+                  {{ auth.isAdmin ? "身份与模块权限" : "模块权限" }}
+                </el-dropdown-item>
                 <el-dropdown-item v-if="auth.isAdmin" command="whitelist" :disabled="isUserBusy(row)">
                   {{ row.aiReviewWhitelisted ? "取消 AI 白名单" : "设为 AI 白名单" }}
                 </el-dropdown-item>
@@ -255,6 +271,17 @@
             <el-option v-for="item in createRoleOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
+        <el-form-item label="药苑之声身份">
+          <el-select v-model="createForm.voiceHubRole" style="width:100%">
+            <el-option v-for="item in moduleRoleOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="失物招领身份">
+          <el-select v-model="createForm.lostFoundRole" style="width:100%">
+            <el-option v-for="item in moduleRoleOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+        <p class="dlg-tip">两个模块身份可同时设置，互不覆盖。</p>
         <el-form-item label="院系（选填）">
           <el-input v-model="createForm.college" maxlength="40" />
         </el-form-item>
@@ -268,16 +295,29 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="roleDialogOpen" title="修改身份" width="420" append-to-body>
+    <el-dialog v-model="roleDialogOpen" title="修改身份与模块权限" width="460" append-to-body>
       <el-form label-position="top">
         <el-form-item label="用户">
           <div class="dlg-tip">{{ roleDialogTarget?.nickname }}（{{ roleDialogTarget?.username }}）</div>
         </el-form-item>
-        <el-form-item label="身份">
+        <el-form-item v-if="auth.isAdmin" label="主站身份">
           <el-select v-model="selectedRole" style="width:100%">
             <el-option v-for="item in roleOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
+        <el-form-item v-if="canManageVoiceHubRole" label="药苑之声身份">
+          <el-select v-model="selectedVoiceHubRole" :disabled="voiceHubTargetLocked" style="width:100%">
+            <el-option v-for="item in availableModuleRoleOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+          <div v-if="voiceHubTargetLocked" class="dlg-tip">药苑之声超级管理员只能由主站超级管理员调整。</div>
+        </el-form-item>
+        <el-form-item v-if="canManageLostFoundRole" label="失物招领身份">
+          <el-select v-model="selectedLostFoundRole" :disabled="lostFoundTargetLocked" style="width:100%">
+            <el-option v-for="item in availableModuleRoleOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+          <div v-if="lostFoundTargetLocked" class="dlg-tip">失物招领超级管理员只能由主站超级管理员调整。</div>
+        </el-form-item>
+        <p class="dlg-tip">模块身份可同时选择；模块超级管理员只能授予或撤销本模块的普通管理员。</p>
       </el-form>
       <template #footer>
         <el-button :disabled="roleSaving" @click="roleDialogOpen = false">取消</el-button>
@@ -342,7 +382,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from "vue";
+import { computed, ref, reactive, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Search, Plus, MoreFilled } from "@element-plus/icons-vue";
 import { adminApi } from "@/api/admin";
@@ -373,6 +413,8 @@ const roleDialogOpen = ref(false);
 const roleSaving = ref(false);
 const roleDialogTarget = ref<any | null>(null);
 const selectedRole = ref<"user" | "mod" | "admin" | "bot">("user");
+const selectedVoiceHubRole = ref<"" | "admin" | "super_admin">("");
+const selectedLostFoundRole = ref<"" | "admin" | "super_admin">("");
 const muteDialogOpen = ref(false);
 const muteSaving = ref(false);
 const muteTarget = ref<any | null>(null);
@@ -388,6 +430,8 @@ const createForm = reactive({
   password: "",
   nickname: "",
   role: "user",
+  voiceHubRole: "" as "" | "admin" | "super_admin",
+  lostFoundRole: "" as "" | "admin" | "super_admin",
   college: "",
   enrollYear: undefined as number | undefined,
 });
@@ -395,12 +439,31 @@ const createForm = reactive({
 const roleOptions = [
   { value: "user", label: "普通用户" },
   { value: "mod", label: "论坛管理员" },
-  { value: "admin", label: "超级管理员" },
-  { value: "voicehub_admin", label: "药苑之声管理员" },
+  { value: "admin", label: "主站超级管理员" },
   { value: "bot", label: "系统账号" },
 ] as const;
 
 const createRoleOptions = roleOptions;
+const filterRoleOptions = [
+  ...roleOptions,
+  { value: "voicehub_admin", label: "药苑之声管理员" },
+  { value: "voicehub_super_admin", label: "药苑之声超级管理员" },
+  { value: "lostfound_admin", label: "失物招领管理员" },
+  { value: "lostfound_super_admin", label: "失物招领超级管理员" },
+] as const;
+const moduleRoleOptions = [
+  { value: "", label: "无" },
+  { value: "admin", label: "管理员" },
+  { value: "super_admin", label: "超级管理员" },
+] as const;
+const delegatedModuleRoleOptions = moduleRoleOptions.filter((item) => item.value !== "super_admin");
+const canModerateUsers = computed(() => auth.isMod);
+const canManageVoiceHubRole = computed(() => auth.isAdmin || auth.user?.voiceHubRole === "super_admin");
+const canManageLostFoundRole = computed(() => auth.isAdmin || auth.user?.lostFoundRole === "super_admin");
+const canManageAnyModuleRole = computed(() => canManageVoiceHubRole.value || canManageLostFoundRole.value);
+const availableModuleRoleOptions = computed(() => auth.isAdmin ? moduleRoleOptions : delegatedModuleRoleOptions);
+const voiceHubTargetLocked = computed(() => !auth.isAdmin && roleDialogTarget.value?.voiceHubRole === "super_admin");
+const lostFoundTargetLocked = computed(() => !auth.isAdmin && roleDialogTarget.value?.lostFoundRole === "super_admin");
 const muteDurationOptions = [
   { value: "1h", label: "1 小时" },
   { value: "6h", label: "6 小时" },
@@ -479,7 +542,7 @@ function openCreate() {
   if (creating.value) return;
   Object.assign(createForm, {
     username: "", password: "", nickname: "",
-    role: "user", college: "", enrollYear: undefined,
+    role: "user", voiceHubRole: "", lostFoundRole: "", college: "", enrollYear: undefined,
   });
   createOpen.value = true;
 }
@@ -497,6 +560,8 @@ async function submitCreate() {
       password: createForm.password,
       nickname: createForm.nickname.trim(),
       role: createForm.role,
+      voiceHubRole: createForm.voiceHubRole || null,
+      lostFoundRole: createForm.lostFoundRole || null,
       college: createForm.college.trim() || undefined,
       enrollYear: createForm.enrollYear,
     });
@@ -509,9 +574,16 @@ async function submitCreate() {
 function roleTag(r: string): "danger" | "warning" | "primary" | "info" | "success" {
   if (r === "admin") return "danger";
   if (r === "mod") return "warning";
-  if (r === "voicehub_admin") return "success";
   if (r === "bot") return "info";
   return "primary";
+}
+
+function moduleRoleTag(role: string): "danger" | "success" {
+  return role === "super_admin" ? "danger" : "success";
+}
+
+function moduleRoleLabel(moduleName: string, role: string) {
+  return `${moduleName}${role === "super_admin" ? "超级管理员" : "管理员"}`;
 }
 
 function roleLabel(r: string) {
@@ -683,6 +755,8 @@ async function changeRole(row: any) {
   if (userBusyId.value !== null) return;
   roleDialogTarget.value = row;
   selectedRole.value = row.role;
+  selectedVoiceHubRole.value = row.voiceHubRole || "";
+  selectedLostFoundRole.value = row.lostFoundRole || "";
   roleDialogOpen.value = true;
 }
 
@@ -699,8 +773,30 @@ async function submitRoleChange() {
   roleSaving.value = true;
   userBusyId.value = roleDialogTarget.value.id;
   try {
-    await adminApi.updateUser(roleDialogTarget.value.id, { role: selectedRole.value });
-    ElMessage.success("已修改身份");
+    if (auth.isAdmin) {
+      await adminApi.updateUser(roleDialogTarget.value.id, {
+        role: selectedRole.value,
+        voiceHubRole: selectedVoiceHubRole.value || null,
+        lostFoundRole: selectedLostFoundRole.value || null,
+      });
+    } else {
+      const patch: {
+        voiceHubRole?: "admin" | null;
+        lostFoundRole?: "admin" | null;
+      } = {};
+      if (canManageVoiceHubRole.value && !voiceHubTargetLocked.value) {
+        patch.voiceHubRole = selectedVoiceHubRole.value === "admin" ? "admin" : null;
+      }
+      if (canManageLostFoundRole.value && !lostFoundTargetLocked.value) {
+        patch.lostFoundRole = selectedLostFoundRole.value === "admin" ? "admin" : null;
+      }
+      if (!Object.keys(patch).length) {
+        ElMessage.warning("没有可修改的模块权限");
+        return;
+      }
+      await adminApi.updateUserModuleRoles(roleDialogTarget.value.id, patch);
+    }
+    ElMessage.success("已更新身份与模块权限");
     roleDialogOpen.value = false;
     await reload();
   } finally {

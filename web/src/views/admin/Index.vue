@@ -3,15 +3,18 @@
     <div class="admin-head">
       <h1 class="title">🛠 管理后台</h1>
       <div class="user-tag">
+        <el-button v-if="canOpenVoiceHub" size="small" @click="openVoiceHubDashboard">
+          药苑之声控制台
+        </el-button>
         <el-tag :type="auth.user?.role === 'admin' ? 'danger' : 'warning'" size="small">
-          {{ auth.user?.role === 'admin' ? '超级管理员' : '论坛管理员' }}
+          {{ adminIdentityLabel }}
         </el-tag>
         <span class="me">{{ auth.user?.nickname }}</span>
       </div>
     </div>
 
     <el-alert
-      v-if="overviewError"
+      v-if="isCoreStaff && overviewError"
       type="warning"
       :closable="false"
       show-icon
@@ -24,7 +27,7 @@
     </el-alert>
 
     <!-- 概览数据 -->
-    <div class="overview" v-if="overview" v-loading="overviewLoading">
+    <div class="overview" v-if="isCoreStaff && overview" v-loading="overviewLoading">
       <div class="ov-card">
         <div class="ov-num">{{ overview.users }}</div>
         <div class="ov-lbl">用户</div>
@@ -70,10 +73,10 @@
     </div>
 
     <el-tabs v-model="tab" class="cpu-card">
-      <el-tab-pane label="👥 用户" name="users"><UsersPane v-if="tab === 'users'" /></el-tab-pane>
+      <el-tab-pane v-if="canManageUsers" label="👥 用户与模块权限" name="users"><UsersPane v-if="tab === 'users'" /></el-tab-pane>
       <el-tab-pane label="🧩 板块" name="boards" v-if="auth.isAdmin"><BoardsPane v-if="tab === 'boards'" /></el-tab-pane>
-      <el-tab-pane label="📝 帖子" name="topics"><TopicsPane v-if="tab === 'topics'" /></el-tab-pane>
-      <el-tab-pane label="🧭 失物招领" name="lost-found"><LostFoundPane v-if="tab === 'lost-found'" /></el-tab-pane>
+      <el-tab-pane v-if="isCoreStaff" label="📝 帖子" name="topics"><TopicsPane v-if="tab === 'topics'" /></el-tab-pane>
+      <el-tab-pane v-if="canManageLostFound" label="🧭 失物招领" name="lost-found"><LostFoundPane v-if="tab === 'lost-found'" /></el-tab-pane>
       <el-tab-pane label="🧭 顶部导航" name="navigation" v-if="auth.isAdmin"><NavigationPane v-if="tab === 'navigation'" /></el-tab-pane>
       <el-tab-pane label="🔄 同步源" name="feeds" v-if="auth.isAdmin"><FeedsPane v-if="tab === 'feeds'" /></el-tab-pane>
       <el-tab-pane label="🌐 教务节点" name="jwxt-agents" v-if="auth.isAdmin"><JwxtAgentsPane v-if="tab === 'jwxt-agents'" /></el-tab-pane>
@@ -122,7 +125,38 @@ const FeaturesPane = defineAsyncComponent(() => import("./FeaturesPane.vue"));
 const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
-const tab = ref(typeof route.query.tab === "string" ? route.query.tab : "users");
+const isCoreStaff = computed(() => auth.user?.role === "admin" || auth.user?.role === "mod");
+const canManageUsers = computed(() => isCoreStaff.value
+  || auth.user?.voiceHubRole === "super_admin"
+  || auth.user?.lostFoundRole === "super_admin");
+const canManageLostFound = computed(() => isCoreStaff.value || !!auth.user?.lostFoundRole);
+const canOpenVoiceHub = computed(() => auth.isMod || !!auth.user?.voiceHubRole);
+const adminIdentityLabel = computed(() => {
+  const labels: string[] = [];
+  if (auth.user?.role === "admin") labels.push("站点超级管理员");
+  else if (auth.user?.role === "mod") labels.push("论坛管理员");
+  if (auth.user?.voiceHubRole === "super_admin") labels.push("药苑之声超级管理员");
+  else if (auth.user?.voiceHubRole === "admin") labels.push("药苑之声管理员");
+  if (auth.user?.lostFoundRole === "super_admin") labels.push("失物招领超级管理员");
+  else if (auth.user?.lostFoundRole === "admin") labels.push("失物招领管理员");
+  return labels.join(" / ") || "模块管理员";
+});
+
+function allowedAdminTab(value: string) {
+  if (value === "users") return canManageUsers.value;
+  if (value === "lost-found") return canManageLostFound.value;
+  return isCoreStaff.value;
+}
+
+function defaultAdminTab() {
+  const requested = typeof route.query.tab === "string" ? route.query.tab : "";
+  if (requested && allowedAdminTab(requested)) return requested;
+  if (canManageUsers.value) return "users";
+  if (canManageLostFound.value) return "lost-found";
+  return "topics";
+}
+
+const tab = ref(defaultAdminTab());
 const overview = ref<AdminOverview | null>(null);
 const overviewLoading = ref(false);
 const overviewError = ref("");
@@ -242,9 +276,16 @@ const dailyActiveChartOption = computed<EChartsOption>(() => {
   };
 });
 
-onMounted(loadOverview);
+onMounted(() => {
+  if (isCoreStaff.value) loadOverview();
+});
+
+function openVoiceHubDashboard() {
+  window.location.href = "/voicehub/dashboard";
+}
 
 async function loadOverview() {
+  if (!isCoreStaff.value) return;
   overviewLoading.value = true;
   overviewError.value = "";
   try {
@@ -265,7 +306,9 @@ function requestMessage(error: unknown) {
 }
 
 watch(() => route.query.tab, (next) => {
-  if (typeof next === "string" && next && next !== tab.value) tab.value = next;
+  if (typeof next === "string" && next && next !== tab.value && allowedAdminTab(next)) {
+    tab.value = next;
+  }
 });
 
 watch(tab, (next) => {
