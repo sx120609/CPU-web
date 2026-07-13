@@ -1,0 +1,124 @@
+name: 🐛 问题反馈
+description: 报告VoiceHub系统中的问题或错误
+title: '[Bug]: '
+labels: ['bug', '需要确认']
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢您报告问题！请详细描述遇到的问题，这将帮助我们更快地定位和解决问题。
+
+  - type: dropdown
+    id: bug-type
+    attributes:
+      label: 问题类型
+      description: 请选择最符合的问题类型
+      options:
+        - 音乐播放相关
+        - 用户登录/注册
+        - 点歌功能
+        - 通知系统
+        - 管理员功能
+        - 界面显示
+        - 性能问题
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: 问题描述
+      description: 请详细描述遇到的问题
+      placeholder: 请清楚地描述问题的具体表现...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: 复现步骤
+      description: 请提供详细的复现步骤
+      placeholder: |
+        1. 进入...
+        2. 点击...
+        3. 看到错误...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: 期望行为
+      description: 描述您期望发生的正确行为
+      placeholder: 应该显示/执行...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: 实际行为
+      description: 描述实际发生的错误行为
+      placeholder: 实际显示/执行了...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: browser
+    attributes:
+      label: 浏览器
+      description: 使用的浏览器类型
+      options:
+        - Chrome
+        - Firefox
+        - Safari
+        - Edge
+        - 其他
+    validations:
+      required: false
+
+  - type: input
+    id: browser-version
+    attributes:
+      label: 浏览器版本
+      description: 浏览器的具体版本号
+      placeholder: 例如：Chrome 120.0.0.0
+    validations:
+      required: false
+
+  - type: dropdown
+    id: device-type
+    attributes:
+      label: 设备类型
+      description: 使用的设备类型
+      options:
+        - 桌面电脑
+        - 笔记本电脑
+        - 平板电脑
+        - 手机
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 附加信息
+      description: 任何其他有助于理解问题的信息
+      placeholder: 截图、错误日志、相关配置等...
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: 确认事项
+      description: 请确认以下事项
+      options:
+        - label: 我已经搜索了现有的Issues，确认这不是重复问题
+          required: true
+        - label: 我已经尝试刷新页面或重新登录
+          required: false
+        - label: 问题可以稳定复现
+          required: false

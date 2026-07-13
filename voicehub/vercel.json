@@ -1,0 +1,15 @@
+{
+  "buildCommand": "node scripts/deploy.js",
+  "installCommand": "npm ci || npm install",
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
+    }
+  ]
+}

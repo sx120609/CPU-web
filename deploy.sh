@@ -12,6 +12,7 @@
 #   ./deploy.sh reset-db         # 重置 PostgreSQL schema 并重新写入种子数据
 #   ./deploy.sh postgres-init [db] [user]            # 安装 PostgreSQL、创建应用库和账号，并写入 server/.env
 #   ./deploy.sh postgres-config "postgresql://..."   # 手动写入 PostgreSQL 连接串并刷新后端环境
+#   ./deploy.sh voicehub-postgres-config "postgresql://..." # 配置药苑之声独立数据库
 #   ./deploy.sh redis-init [db-index]                # 安装 Redis 并写入 REDIS_URL
 #   ./deploy.sh redis-config "redis://..."           # 手动写入 Redis 连接串并刷新后端环境
 #   ./deploy.sh proxy-init       # 代理端首次部署：装依赖 + 构建后端 + 启动教务代理
@@ -28,6 +29,7 @@
 # 默认监听端口：23333（避开 3000 / 8000 / 8080 等常见端口冲突）
 # 自定义端口：PORT=12345 ./deploy.sh
 # 代理默认端口：23334；自定义端口：PROXY_PORT=12345 ./deploy.sh proxy-init
+# 药苑之声默认仅监听本机 23335；自定义端口：VOICEHUB_PORT=12345 ./deploy.sh
 # 后台进程：pm2 管理；开机自启需要再跑一次 `pm2 startup` + `pm2 save`
 
 set -euo pipefail
@@ -45,10 +47,12 @@ err()  { echo "${R}[deploy]${N} $*" >&2; exit 1; }
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 SERVICE_NAME="cpu-web"
+VOICEHUB_SERVICE_NAME="cpu-voicehub"
 PROXY_SERVICE_NAME="cpu-jwxt-proxy"
 AGENT_SERVICE_NAME="cpu-jwxt-agent"
 PORT="${PORT:-23333}"
 PROXY_PORT="${PROXY_PORT:-23334}"
+VOICEHUB_PORT="${VOICEHUB_PORT:-23335}"
 ENV_FILE="server/.env"
 CMD_ARG_1="${2:-}"
 CMD_ARG_2="${3:-}"
@@ -192,6 +196,29 @@ postgres_url_field() {
       process.exit(1);
     }
   ' "$url" "$field" 2>/dev/null || true
+}
+
+postgres_url_with_database() {
+  local url="$1"
+  local database="$2"
+  node -e '
+    try {
+      const parsed = new URL(process.argv[1]);
+      parsed.pathname = `/${encodeURIComponent(process.argv[2])}`;
+      parsed.searchParams.delete("schema");
+      process.stdout.write(parsed.toString());
+    } catch {
+      process.exit(1);
+    }
+  ' "$url" "$database" 2>/dev/null || true
+}
+
+postgres_urls_same_database() {
+  local left="$1"
+  local right="$2"
+  [ "$(postgres_url_field "$left" host)" = "$(postgres_url_field "$right" host)" ] \
+    && [ "$(postgres_url_field "$left" port)" = "$(postgres_url_field "$right" port)" ] \
+    && [ "$(postgres_url_field "$left" database)" = "$(postgres_url_field "$right" database)" ]
 }
 
 postgres_url_is_local() {
@@ -594,9 +621,19 @@ ensure_agent_env() {
   fi
 }
 
+configured_voicehub_database_url() {
+  local from_file
+  from_file="$(env_get VOICEHUB_DATABASE_URL)"
+  if [ -n "$from_file" ]; then
+    printf '%s' "$from_file"
+  else
+    printf '%s' "${VOICEHUB_DATABASE_URL:-}"
+  fi
+}
+
 # ---------- 子步骤 ----------
 do_install() {
-  log "安装依赖（root + server + web）..."
+  log "安装依赖（root + server + web + voicehub）..."
   npm install --no-audit --no-fund
   log "生成 Prisma Client"
   npm run prisma:generate --prefix server || err "Prisma Client 生成失败，请检查 Prisma 环境"
@@ -609,6 +646,54 @@ do_build() {
   npm run build --prefix server
   log "构建前端 Vite → web/dist"
   npm run build --prefix web
+  log "构建药苑之声 Nuxt/Nitro → voicehub/.output"
+  npm run build:cpu --prefix voicehub
+}
+
+ensure_voicehub_database_url() {
+  local voice_url base_url base_db voice_db app_user db_exists
+  voice_url="$(configured_voicehub_database_url)"
+  if [ -n "$voice_url" ]; then
+    is_postgres_url "$voice_url" || err "VOICEHUB_DATABASE_URL 必须是 PostgreSQL 连接串"
+    base_url="$(configured_database_url)"
+    if is_postgres_url "$base_url" && postgres_urls_same_database "$voice_url" "$base_url"; then
+      err "VOICEHUB_DATABASE_URL 不能和 DATABASE_URL 指向同一个数据库"
+    fi
+    return
+  fi
+
+  base_url="$(configured_database_url)"
+  is_postgres_url "$base_url" || err "请先配置 DATABASE_URL"
+  if ! postgres_url_is_local "$base_url"; then
+    err "远程 PostgreSQL 需要单独配置药苑之声数据库：./deploy.sh voicehub-postgres-config 'postgresql://...'"
+  fi
+
+  ensure_postgres
+  base_db="$(postgres_url_field "$base_url" database)"
+  app_user="$(postgres_url_field "$base_url" username)"
+  voice_db="${base_db}_voicehub"
+  [[ "$voice_db" =~ ^[a-zA-Z0-9_]+$ ]] || err "自动生成的药苑之声数据库名不合法：$voice_db"
+  [[ "$app_user" =~ ^[a-zA-Z0-9_]+$ ]] || err "DATABASE_URL 中的数据库用户不合法：$app_user"
+
+  db_exists="$(postgres_psql "SELECT 1 FROM pg_database WHERE datname = $(sql_literal "$voice_db")" | tr -d '[:space:]')"
+  if [ "$db_exists" = "1" ]; then
+    log "药苑之声数据库已存在：$voice_db"
+  else
+    log "创建药苑之声独立数据库：$voice_db"
+    postgres_psql "CREATE DATABASE $(sql_ident "$voice_db") OWNER $(sql_ident "$app_user")"
+  fi
+  voice_url="$(postgres_url_with_database "$base_url" "$voice_db")"
+  [ -n "$voice_url" ] || err "无法生成 VOICEHUB_DATABASE_URL"
+  env_set VOICEHUB_DATABASE_URL "$voice_url"
+  log "已写入 VOICEHUB_DATABASE_URL：$(mask_postgres_url "$voice_url")"
+}
+
+do_voicehub_db_init() {
+  local voice_url
+  ensure_voicehub_database_url
+  voice_url="$(configured_voicehub_database_url)"
+  log "同步药苑之声数据库 schema"
+  VOICEHUB_DATABASE_URL="$voice_url" npm run db:migrate:cpu --prefix voicehub
 }
 
 do_build_proxy() {
@@ -643,6 +728,7 @@ do_db_init() {
   fi
   log "数据库初始化完成后再次生成 Prisma Client"
   npm run prisma:generate --prefix server
+  do_voicehub_db_init
 }
 
 do_db_reset() {
@@ -674,6 +760,22 @@ do_postgres_config() {
   echo "     ./deploy.sh postgres-config 'postgresql://user:password@127.0.0.1:5432/cpu_web?schema=public'"
   echo "   或者："
   echo "     POSTGRES_DATABASE_URL='postgresql://user:password@127.0.0.1:5432/cpu_web?schema=public' ./deploy.sh postgres-config"
+}
+
+do_voicehub_postgres_config() {
+  ensure_env
+  local input_url="${VOICEHUB_DATABASE_URL:-${CMD_ARG_1:-}}"
+  is_postgres_url "$input_url" || err "请提供有效的 PostgreSQL 连接串"
+  local base_url="$(configured_database_url)"
+  if is_postgres_url "$base_url" && postgres_urls_same_database "$input_url" "$base_url"; then
+    err "药苑之声必须使用独立数据库，不能和 DATABASE_URL 指向同一个库"
+  fi
+  env_set VOICEHUB_DATABASE_URL "$input_url"
+  log "已写入 VOICEHUB_DATABASE_URL：$(mask_postgres_url "$input_url")"
+  if command -v pm2 >/dev/null 2>&1 && pm2 describe "$VOICEHUB_SERVICE_NAME" >/dev/null 2>&1; then
+    do_voicehub_start
+    pm2 save >/dev/null
+  fi
 }
 
 do_postgres_init() {
@@ -714,6 +816,7 @@ do_postgres_init() {
   env_set POSTGRES_DATABASE_URL "$url"
   env_set POSTGRES_DB_NAME "$db_name"
   env_set POSTGRES_APP_USER "$app_user"
+  ensure_voicehub_database_url
 
   log "已写入 DATABASE_URL / POSTGRES_DATABASE_URL：$(mask_postgres_url "$url")"
   log "数据库账号：$app_user"
@@ -774,9 +877,9 @@ do_start() {
   # 用 ecosystem-less 模式：直接 start 命令
   cd server
   if pm2 describe "$SERVICE_NAME" >/dev/null 2>&1; then
-    pm2 restart "$SERVICE_NAME" --update-env
+    VOICEHUB_ORIGIN="http://127.0.0.1:$VOICEHUB_PORT" pm2 restart "$SERVICE_NAME" --update-env
   else
-    NODE_ENV=production PORT=$PORT pm2 start "node dist/index.js" \
+    NODE_ENV=production PORT=$PORT VOICEHUB_ORIGIN="http://127.0.0.1:$VOICEHUB_PORT" pm2 start "node dist/index.js" \
       --name "$SERVICE_NAME" \
       --time \
       --max-memory-restart 600M \
@@ -784,6 +887,7 @@ do_start() {
       --merge-logs
   fi
   cd ..
+  do_voicehub_start
   pm2 save >/dev/null
   echo ""
   log "✅ 部署完成"
@@ -801,6 +905,34 @@ do_start() {
   echo "     pm2 startup        # 按提示执行返回的 sudo 命令"
   echo "     pm2 save           # 保存当前进程列表"
   echo ""
+}
+
+do_voicehub_start() {
+  ensure_node
+  ensure_pm2
+  local voice_url
+  voice_url="$(configured_voicehub_database_url)"
+  is_postgres_url "$voice_url" || err "缺少 VOICEHUB_DATABASE_URL，请先运行数据库初始化"
+  [ -f voicehub/.output/server/index.mjs ] || err "缺少 voicehub/.output，请先执行 ./deploy.sh update"
+  log "通过 pm2 启动药苑之声（本机端口 $VOICEHUB_PORT）"
+  cd voicehub
+  if pm2 describe "$VOICEHUB_SERVICE_NAME" >/dev/null 2>&1; then
+    DATABASE_URL="$voice_url" CPU_WEB_ORIGIN="http://127.0.0.1:$PORT" \
+      NUXT_APP_BASE_URL="/voicehub/" NUXT_PUBLIC_API_BASE="/voicehub/api" \
+      NITRO_HOST="127.0.0.1" NITRO_PORT="$VOICEHUB_PORT" \
+      pm2 restart "$VOICEHUB_SERVICE_NAME" --update-env
+  else
+    DATABASE_URL="$voice_url" CPU_WEB_ORIGIN="http://127.0.0.1:$PORT" \
+      NUXT_APP_BASE_URL="/voicehub/" NUXT_PUBLIC_API_BASE="/voicehub/api" \
+      NUXT_PUBLIC_SITE_TITLE="药苑之声" NITRO_HOST="127.0.0.1" NITRO_PORT="$VOICEHUB_PORT" \
+      NODE_ENV=production pm2 start "node .output/server/index.mjs" \
+        --name "$VOICEHUB_SERVICE_NAME" \
+        --time \
+        --max-memory-restart 900M \
+        --log-date-format "YYYY-MM-DD HH:mm:ss" \
+        --merge-logs
+  fi
+  cd ..
 }
 
 do_proxy_start() {
@@ -866,9 +998,25 @@ do_agent_start() {
   echo ""
 }
 
-do_stop()    { ensure_pm2; pm2 stop "$SERVICE_NAME"; }
-do_restart() { ensure_node; ensure_pm2; pm2 restart "$SERVICE_NAME" --update-env; }
+do_stop() {
+  ensure_pm2
+  pm2 describe "$SERVICE_NAME" >/dev/null 2>&1 && pm2 stop "$SERVICE_NAME" || true
+  pm2 describe "$VOICEHUB_SERVICE_NAME" >/dev/null 2>&1 && pm2 stop "$VOICEHUB_SERVICE_NAME" || true
+}
+do_restart() {
+  ensure_node
+  ensure_pm2
+  if pm2 describe "$SERVICE_NAME" >/dev/null 2>&1; then
+    VOICEHUB_ORIGIN="http://127.0.0.1:$VOICEHUB_PORT" pm2 restart "$SERVICE_NAME" --update-env
+  else
+    do_start
+    return
+  fi
+  do_voicehub_start
+  pm2 save >/dev/null
+}
 do_logs()    { ensure_pm2; pm2 logs "$SERVICE_NAME"; }
+do_voicehub_logs() { ensure_pm2; pm2 logs "$VOICEHUB_SERVICE_NAME"; }
 do_status()  { ensure_pm2; pm2 status; }
 
 do_proxy_stop()    { ensure_pm2; pm2 stop "$PROXY_SERVICE_NAME"; }
@@ -996,6 +1144,10 @@ case "$CMD" in
     log "=== 配置 PostgreSQL 目标连接串 ==="
     do_postgres_config
     ;;
+  voicehub-postgres-config)
+    log "=== 配置药苑之声 PostgreSQL 目标连接串 ==="
+    do_voicehub_postgres_config
+    ;;
   redis-init)
     log "=== 安装并初始化 Redis ==="
     do_redis_init
@@ -1008,6 +1160,7 @@ case "$CMD" in
   stop)         do_stop ;;
   restart)      do_restart ;;
   logs)         do_logs ;;
+  voicehub-logs) do_voicehub_logs ;;
   status)       do_status ;;
   proxy-start)   do_proxy_start ;;
   proxy-stop)    do_proxy_stop ;;

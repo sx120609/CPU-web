@@ -89,6 +89,7 @@ export const router = createRouter({
         { path: "coursereview/:id", name: "course", component: () => import("@/views/coursereview/Course.vue"), meta: { title: "课程", public: true } },
         { path: "services", name: "services", component: () => import("@/views/services/Index.vue"), meta: { title: "校园服务", public: true } },
         { path: "services/tools", name: "service-tools", component: () => import("@/views/services/Tools.vue"), meta: { title: "校园小工具", public: true } },
+        { path: "services/tools/voicehub", name: "service-voicehub", component: () => import("@/views/services/VoiceHubLaunch.vue"), meta: { title: "药苑之声", public: true, fullWidthContent: true } },
         { path: "services/tools/manage", name: "service-tools-manage", component: () => import("@/views/services/ToolManage.vue"), meta: { title: "小工具管理" } },
         { path: "services/tools/qqbot-reminders", redirect: "/messages/qqbot-reminders" },
         { path: "services/tools/filestore", name: "service-filestore", component: () => import("@/views/services/FileStore.vue"), meta: { title: "文件收集", fullWidthContent: true } },

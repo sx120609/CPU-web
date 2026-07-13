@@ -1,0 +1,387 @@
+<template>
+  <div class="min-h-screen bg-[#f6f8f2] text-[#1f2a1f] font-sans relative overflow-hidden flex flex-col items-center">
+    <!-- Subtle background decorations -->
+    <div class="fixed top-[-10%] left-[-10%] w-[50%] h-[50%] bg-[#2f7d4f]/5 blur-[120px] rounded-full pointer-events-none"></div>
+    <div class="fixed bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-[#c28a26]/5 blur-[150px] rounded-full pointer-events-none"></div>
+
+    <div class="w-full max-w-6xl px-4 sm:px-6 lg:px-8 py-6 flex flex-col min-h-screen relative z-10">
+      <!-- Top Bar -->
+      <header class="flex items-center justify-between py-4 mb-8">
+        <div class="flex items-center gap-4">
+          <NuxtLink to="/" class="hover:opacity-80 transition-opacity">
+            <img alt="VoiceHub Logo" class="h-10 w-auto" :src="logo" />
+          </NuxtLink>
+          <div v-if="schoolLogoHomeUrl && schoolLogoHomeUrl.trim()" class="hidden sm:flex items-center gap-4">
+            <div class="w-px h-6 bg-zinc-300"></div>
+            <img :src="proxiedSchoolLogoUrl" alt="学校Logo" class="h-8 w-auto object-contain" />
+          </div>
+        </div>
+
+        <!-- User Section -->
+        <div class="relative z-50">
+          <ClientOnly>
+            <!-- 登录后 -->
+            <div v-if="isClientAuthenticated" class="flex items-center gap-4">
+              <div class="hidden md:flex flex-col items-end">
+                <span class="text-sm font-bold text-zinc-800">{{ user?.name || '用户' }}</span>
+                <span v-if="isAdmin" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{{ roleName }}</span>
+                <span v-else class="text-xs font-medium text-zinc-500">{{ userClassInfo }}</span>
+              </div>
+              
+              <div class="relative">
+                <button @click="toggleUserActions" class="flex items-center justify-center w-10 h-10 rounded-full bg-white shadow-sm border border-zinc-200 overflow-hidden hover:shadow-md transition-shadow focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                  <img v-if="user?.avatar && !avatarError" :src="user.avatar" class="w-full h-full object-cover" @error="avatarError = true" />
+                  <span v-else class="text-lg font-bold text-zinc-500">{{ user?.name?.[0] || 'U' }}</span>
+                </button>
+
+                <Transition enter-active-class="transition ease-out duration-200" enter-from-class="opacity-0 translate-y-2" enter-to-class="opacity-100 translate-y-0" leave-active-class="transition ease-in duration-150" leave-from-class="opacity-100 translate-y-0" leave-to-class="opacity-0 translate-y-2">
+                  <div v-if="showUserActions" class="absolute right-0 mt-3 w-48 rounded-2xl bg-white shadow-xl border border-zinc-100 py-2 user-actions-dropdown">
+                    <NuxtLink to="/account" class="flex items-center gap-3 px-4 py-2.5 text-sm text-zinc-700 hover:bg-zinc-50 transition-colors">
+                      <Icon name="user" :size="16" class="text-zinc-400" />
+                      <span class="font-medium">账号管理</span>
+                    </NuxtLink>
+                    <NuxtLink v-if="isAdmin" to="/dashboard" class="flex items-center gap-3 px-4 py-2.5 text-sm text-zinc-700 hover:bg-zinc-50 transition-colors">
+                      <Icon name="settings" :size="16" class="text-zinc-400" />
+                      <span class="font-medium">管理后台</span>
+                    </NuxtLink>
+                    <div class="h-px bg-zinc-100 my-1"></div>
+                    <button @click="handleLogout" class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors text-left">
+                      <Icon name="logout" :size="16" class="text-red-400" />
+                      <span class="font-medium">退出登录</span>
+                    </button>
+                  </div>
+                </Transition>
+              </div>
+            </div>
+
+            <!-- 未登录 -->
+            <div v-else>
+              <NuxtLink to="/login" class="flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#2f7d4f] text-white font-bold shadow-sm border border-[#246a41] hover:shadow-md hover:bg-[#246a41] transition-all active:scale-95">
+                <Icon name="user" :size="16" />
+                <span>登录</span>
+              </NuxtLink>
+            </div>
+          </ClientOnly>
+        </div>
+      </header>
+
+      <!-- Hero Section -->
+      <div v-if="siteTitle" class="text-center mb-12 animate-fade-in-up">
+        <h2 class="text-4xl md:text-5xl font-black text-zinc-900 tracking-tight mb-3">
+          {{ siteTitle }}
+        </h2>
+        <div class="w-16 h-1.5 bg-[#2f7d4f] rounded-full mx-auto mb-4"></div>
+        <span class="text-zinc-500 font-medium tracking-wide">VoiceHub 校园广播系统</span>
+      </div>
+
+      <!-- Main Content Area -->
+      <main class="flex-1 w-full bg-white/60 backdrop-blur-xl border border-white rounded-[2rem] shadow-xl shadow-[#2f7d4f]/5 flex flex-col overflow-hidden mb-8">
+        
+        <!-- Tabs Row -->
+        <div class="flex overflow-x-auto hide-scrollbar border-b border-zinc-100/80 bg-white/40 px-4 sm:px-8 py-4 gap-2 sm:gap-4 relative z-20">
+          <button @click="handleTabClick('schedule')" :class="['flex items-center gap-2 px-5 py-3 rounded-2xl font-bold transition-all whitespace-nowrap', activeTab === 'schedule' ? 'bg-white text-[#2f7d4f] shadow-sm border border-zinc-100' : 'text-zinc-500 hover:bg-white/60 hover:text-zinc-800']">
+            <Icon name="calendar" :size="20" :class="activeTab === 'schedule' ? 'text-[#2f7d4f]' : 'text-zinc-400'" />
+            <span>播出排期</span>
+          </button>
+          
+          <button @click="handleTabClick('songs')" :class="['flex items-center gap-2 px-5 py-3 rounded-2xl font-bold transition-all whitespace-nowrap', activeTab === 'songs' ? 'bg-white text-[#2f7d4f] shadow-sm border border-zinc-100' : 'text-zinc-500 hover:bg-white/60 hover:text-zinc-800']">
+            <Icon name="music" :size="20" :class="activeTab === 'songs' ? 'text-[#2f7d4f]' : 'text-zinc-400'" />
+            <span>歌曲列表</span>
+          </button>
+
+          <button @click="handleTabClick('request')" :class="['flex items-center gap-2 px-5 py-3 rounded-2xl font-bold transition-all whitespace-nowrap', activeTab === 'request' ? 'bg-white text-[#2f7d4f] shadow-sm border border-zinc-100' : 'text-zinc-500 hover:bg-white/60 hover:text-zinc-800']">
+            <Icon name="search" :size="20" :class="activeTab === 'request' ? 'text-[#2f7d4f]' : 'text-zinc-400'" />
+            <span>投稿歌曲</span>
+          </button>
+
+          <ClientOnly>
+            <button :key="notificationTabKey" ref="notificationTabRef" data-tab="notification" @click="isClientAuthenticated ? handleTabClick('notification') : showLoginNotice()" :class="['flex items-center gap-2 px-5 py-3 rounded-2xl font-bold transition-all whitespace-nowrap relative', activeTab === 'notification' ? 'bg-white text-[#2f7d4f] shadow-sm border border-zinc-100' : 'text-zinc-500 hover:bg-white/60 hover:text-zinc-800', !isClientAuthenticated && 'opacity-70']">
+              <div class="relative">
+                <Icon name="message-circle" :size="20" :class="activeTab === 'notification' ? 'text-[#2f7d4f]' : 'text-zinc-400'" />
+                <span v-if="isClientAuthenticated && hasUnreadNotifications" class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
+              </div>
+              <span class="flex items-center gap-1.5">
+                消息
+                <span v-if="isClientAuthenticated && hasUnreadNotifications" class="px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 text-[10px] font-black leading-none">{{ (notificationsService?.unreadCount?.value > 99) ? '99+' : (notificationsService?.unreadCount?.value || 0) }}</span>
+              </span>
+            </button>
+            <template #fallback>
+              <button class="flex items-center gap-2 px-5 py-3 rounded-2xl font-bold text-zinc-500 opacity-70 whitespace-nowrap">
+                <Icon name="message-circle" :size="20" class="text-zinc-400" />
+                <span>消息</span>
+              </button>
+            </template>
+          </ClientOnly>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="flex-1 overflow-hidden relative min-h-[500px] p-4 sm:p-8 bg-white/20">
+          <Transition enter-active-class="transition-all duration-300 ease-out absolute inset-0 p-4 sm:p-8" enter-from-class="opacity-0 translate-y-4" enter-to-class="opacity-100 translate-y-0" leave-active-class="transition-all duration-200 ease-in absolute inset-0 p-4 sm:p-8" leave-from-class="opacity-100 translate-y-0" leave-to-class="opacity-0 -translate-y-4">
+            
+            <!-- Schedule -->
+            <div v-if="activeTab === 'schedule'" key="schedule" class="h-full w-full">
+              <ClientOnly>
+                <LazySongsScheduleList :error="error" :loading="loading" :schedules="publicSchedules" @semester-change="handleSemesterChange" />
+              </ClientOnly>
+            </div>
+
+            <!-- Songs -->
+            <div v-else-if="activeTab === 'songs'" key="songs" class="h-full w-full">
+              <ClientOnly>
+                <LazySongsSongList :error="error" :is-admin="isAdmin" :loading="loading" :songs="filteredSongs" @refresh="refreshSongs" @vote="handleVote" @withdraw="handleWithdraw" @cancel-replay="handleCancelReplay" @request-replay="handleRequestReplay" @semester-change="handleSemesterChange" />
+              </ClientOnly>
+            </div>
+
+            <!-- Request -->
+            <div v-else-if="activeTab === 'request'" key="request" class="h-full w-full">
+              <LazySongsRequestForm ref="requestFormRef" :loading="loading" @request="handleRequest" @vote="handleVote" />
+            </div>
+
+            <!-- Notifications -->
+            <div v-else-if="activeTab === 'notification'" key="notification" class="h-full w-full overflow-y-auto hide-scrollbar">
+              <div v-if="!isClientAuthenticated" class="flex flex-col items-center justify-center h-full text-center p-8 bg-white rounded-3xl border border-zinc-100 shadow-sm max-w-md mx-auto my-12">
+                <div class="w-16 h-16 bg-zinc-50 rounded-full flex items-center justify-center text-3xl mb-4 shadow-inner ring-1 ring-zinc-100">🔒</div>
+                <h3 class="text-xl font-black text-zinc-800 mb-2">需要登录</h3>
+                <p class="text-zinc-500 font-medium mb-8">您需要登录才能查看通知</p>
+                <button @click="navigateToLogin" class="px-8 py-3.5 bg-[#2f7d4f] hover:bg-[#246a41] text-white font-bold rounded-2xl shadow-lg shadow-[#2f7d4f]/20 transition-all active:scale-95 w-full">
+                  立即登录
+                </button>
+              </div>
+
+              <div v-else class="flex flex-col h-full bg-white rounded-3xl border border-zinc-100 shadow-sm overflow-hidden">
+                <!-- Notifications Header -->
+                <div class="flex items-center justify-between p-6 border-b border-zinc-100 bg-zinc-50/50">
+                  <h2 class="text-xl font-black text-zinc-800 flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-xl bg-[#2f7d4f]/10 flex items-center justify-center text-[#2f7d4f]">
+                      <Icon name="bell" :size="16" />
+                    </div>
+                    通知中心
+                  </h2>
+                  <button @click="toggleNotificationSettings" class="p-2.5 rounded-xl hover:bg-zinc-100 text-zinc-500 hover:text-zinc-800 transition-colors">
+                    <Icon name="settings" :size="20" />
+                  </button>
+                </div>
+
+                <!-- Notifications List -->
+                <div class="flex-1 overflow-y-auto p-2 sm:p-6 space-y-3">
+                  <div v-if="notificationsLoading" class="flex flex-col items-center justify-center py-20 text-zinc-400 gap-3">
+                    <div class="w-8 h-8 rounded-full border-2 border-zinc-200 border-t-[#2f7d4f] animate-spin"></div>
+                    <span class="font-medium text-sm">加载中...</span>
+                  </div>
+
+                  <div v-else-if="userNotifications.length === 0" class="flex flex-col items-center justify-center py-24 text-center">
+                    <div class="w-20 h-20 bg-zinc-50 rounded-3xl flex items-center justify-center text-zinc-300 mb-4 ring-1 ring-zinc-100 shadow-inner">
+                      <Icon name="bell-off" :size="32" />
+                    </div>
+                    <p class="font-bold text-zinc-600 text-lg">暂无通知</p>
+                    <p class="text-sm text-zinc-400 mt-1">这里很安静</p>
+                  </div>
+
+                  <TransitionGroup name="list" tag="div" class="space-y-3 relative">
+                    <div v-for="(notification, index) in userNotifications" :key="notification.id" @click="viewNotification(notification)" :class="[
+                      'bg-white rounded-2xl border transition-all cursor-pointer overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5',
+                      !notification.read ? 'border-[#2f7d4f]/30 bg-[#2f7d4f]/5' : 'border-zinc-100'
+                    ]">
+                      <div class="p-4 sm:p-5 flex gap-4">
+                        <!-- Icon -->
+                        <div :class="[
+                          'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0',
+                          notification.type === 'SONG_SELECTED' ? 'bg-[#2f7d4f]/10 text-[#2f7d4f]' :
+                          notification.type === 'SONG_PLAYED' ? 'bg-emerald-100 text-emerald-600' :
+                          notification.type === 'SONG_VOTED' ? 'bg-[#c28a26]/10 text-[#c28a26]' :
+                          notification.type === 'SONG_REJECTED' ? 'bg-red-100 text-red-600' :
+                          notification.type === 'COLLABORATION_INVITE' ? 'bg-[#2f7d4f]/10 text-[#2f7d4f]' :
+                          notification.type === 'COLLABORATION_RESPONSE' ? 'bg-purple-100 text-purple-600' :
+                          'bg-zinc-100 text-zinc-600'
+                        ]">
+                          <Icon v-if="notification.type === 'SONG_SELECTED'" name="check" :size="20" />
+                          <Icon v-else-if="notification.type === 'SONG_PLAYED'" name="play" :size="20" />
+                          <Icon v-else-if="notification.type === 'SONG_VOTED'" name="thumbs-up" :size="20" />
+                          <Icon v-else-if="notification.type === 'SONG_REJECTED'" name="x-circle" :size="20" />
+                          <Icon v-else-if="notification.type === 'COLLABORATION_INVITE'" name="users" :size="20" />
+                          <Icon v-else-if="notification.type === 'COLLABORATION_RESPONSE'" name="message-circle" :size="20" />
+                          <Icon v-else name="bell" :size="20" />
+                        </div>
+
+                        <!-- Content -->
+                        <div class="flex-1 min-w-0">
+                          <div class="flex items-start justify-between gap-2 mb-1">
+                            <h4 class="font-bold text-zinc-800 truncate flex items-center gap-2">
+                              <span v-if="notification.type === 'SONG_SELECTED'">歌曲已选中</span>
+                              <span v-else-if="notification.type === 'SONG_PLAYED'">歌曲已播放</span>
+                              <span v-else-if="notification.type === 'SONG_VOTED'">收到新投票</span>
+                              <span v-else-if="notification.type === 'SONG_REJECTED'">歌曲被驳回</span>
+                              <span v-else-if="notification.type === 'COLLABORATION_INVITE'">联合投稿邀请</span>
+                              <span v-else-if="notification.type === 'COLLABORATION_RESPONSE'">联合投稿回复</span>
+                              <span v-else>系统通知</span>
+
+                              <span v-if="notification.type === 'COLLABORATION_INVITE' && notification.handled" :class="[
+                                'text-[10px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider',
+                                notification.status === 'ACCEPTED' ? 'bg-emerald-100 text-emerald-700' :
+                                notification.status === 'INVALID' ? 'bg-zinc-100 text-zinc-600' :
+                                'bg-red-100 text-red-700'
+                              ]">
+                                {{ notification.status === 'ACCEPTED' ? '已接受' : notification.status === 'INVALID' ? '已失效' : '已拒绝' }}
+                              </span>
+
+                              <span v-if="!notification.read" class="w-2 h-2 rounded-full bg-[#2f7d4f]"></span>
+                            </h4>
+                            <span class="text-xs font-medium text-zinc-400 whitespace-nowrap">{{ formatNotificationTime(notification.createdAt) }}</span>
+                          </div>
+                          
+                          <p class="text-sm text-zinc-600 leading-relaxed">{{ notification.message }}</p>
+
+                          <!-- Invite Actions -->
+                          <div v-if="notification.type === 'COLLABORATION_INVITE' && !notification.handled" class="mt-4 flex gap-3">
+                            <button @click.stop="handleCollaborationReply(notification, true)" :disabled="notification.processing" class="px-4 py-2 bg-[#2f7d4f] hover:bg-[#246a41] text-white text-sm font-bold rounded-xl shadow-sm transition-colors disabled:opacity-50">
+                              {{ notification.processing ? '处理中...' : '接受邀请' }}
+                            </button>
+                            <button @click.stop="handleCollaborationReply(notification, false)" :disabled="notification.processing" class="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-sm font-bold rounded-xl transition-colors disabled:opacity-50">
+                              拒绝
+                            </button>
+                          </div>
+                        </div>
+
+                        <!-- Delete button -->
+                        <button @click.stop="deleteNotification(notification.id)" class="opacity-0 group-hover:opacity-100 p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all self-center ml-2 hidden sm:block">
+                          <Icon name="trash-2" :size="18" />
+                        </button>
+                      </div>
+                    </div>
+                  </TransitionGroup>
+                </div>
+
+                <!-- Footer / Pagination -->
+                <div class="border-t border-zinc-100 bg-zinc-50/50 p-4 shrink-0 space-y-4">
+                  <!-- Pagination -->
+                  <div v-if="notificationsService.totalCount.value > 0" class="flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <span class="text-xs font-medium text-zinc-500">共 {{ notificationsService.totalCount.value }} 条通知， 每页
+                      <select v-model="notificationsService.pageSize.value" @change="handlePageSizeChange($event.target.value)" class="bg-white border-zinc-200 rounded px-1 py-0.5 mx-1 outline-none text-xs">
+                        <option v-for="opt in pageSizeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                      </select>
+                    </span>
+                    
+                    <div class="flex items-center gap-2">
+                      <button @click="notificationsService.prevPage()" :disabled="!notificationsService.hasPrevPage.value || notificationsService.isPaginationLoading.value" class="w-8 h-8 flex items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 disabled:opacity-50 bg-white hover:bg-zinc-50">
+                        <Icon name="chevron-left" :size="16" />
+                      </button>
+                      
+                      <div class="flex gap-1">
+                         <template v-for="page in getVisiblePages()" :key="page">
+                          <button v-if="page !== '...'" @click="notificationsService.goToPage(page)" :disabled="notificationsService.isPaginationLoading.value" :class="[
+                            'w-8 h-8 flex items-center justify-center rounded-lg text-sm font-bold transition-colors',
+                            page === notificationsService.currentPage.value ? 'bg-[#2f7d4f] text-white' : 'border border-zinc-200 text-zinc-600 bg-white hover:bg-zinc-50'
+                          ]">
+                            {{ page }}
+                          </button>
+                          <span v-else class="w-8 h-8 flex items-center justify-center text-zinc-400">...</span>
+                        </template>
+                      </div>
+
+                      <button @click="notificationsService.nextPage()" :disabled="!notificationsService.hasNextPage.value || notificationsService.isPaginationLoading.value" class="w-8 h-8 flex items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 disabled:opacity-50 bg-white hover:bg-zinc-50">
+                        <Icon name="chevron-right" :size="16" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Actions -->
+                  <div v-if="userNotifications.length > 0" class="flex gap-3">
+                    <button @click="markAllNotificationsAsRead" :disabled="!hasUnreadNotifications" :class="[
+                      'flex-1 py-2.5 rounded-xl font-bold text-sm transition-all',
+                      hasUnreadNotifications ? 'bg-white border border-zinc-200 text-zinc-700 hover:bg-zinc-50 shadow-sm' : 'bg-zinc-50 text-zinc-400 cursor-not-allowed'
+                    ]">
+                      全部标记为已读
+                    </button>
+                    <button @click="clearAllNotifications" class="px-6 py-2.5 rounded-xl font-bold text-sm bg-red-50 text-red-600 hover:bg-red-100 transition-colors">
+                      清空所有
+                    </button>
+                  </div>
+                </div>
+
+                <ConfirmDialog v-model:show="showConfirmDialog" :cancel-text="confirmDialogConfig.cancelText" :confirm-text="confirmDialogConfig.confirmText" :message="confirmDialogConfig.message" :title="confirmDialogConfig.title" :type="confirmDialogConfig.type" @cancel="handleCancelAction" @confirm="handleConfirmAction" />
+              </div>
+            </div>
+          </Transition>
+        </div>
+      </main>
+
+      <SiteFooter />
+    </div>
+
+    <!-- Rules Modal (Redesigned) -->
+    <Teleport to="body">
+      <Transition enter-active-class="transition duration-300 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100" leave-active-class="transition duration-200 ease-in" leave-from-class="opacity-100 scale-100" leave-to-class="opacity-0 scale-95">
+        <div v-if="showRules" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-900/40 backdrop-blur-md" @click.self="showRules = false">
+          <div class="bg-white w-full max-w-lg rounded-[2rem] overflow-hidden shadow-2xl flex flex-col border border-zinc-100">
+            <div class="p-8 pb-6 flex items-center justify-between bg-zinc-50/50 border-b border-zinc-100">
+              <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-2xl bg-[#2f7d4f]/10 flex items-center justify-center text-[#2f7d4f] shadow-sm border border-[#2f7d4f]/20">
+                  <Icon name="book" :size="24" />
+                </div>
+                <div>
+                  <h3 class="text-xl font-black text-zinc-800 tracking-tight">点歌规则</h3>
+                  <p class="text-xs font-semibold text-zinc-500 mt-0.5">投稿前请仔细阅读</p>
+                </div>
+              </div>
+              <button class="w-10 h-10 flex items-center justify-center bg-white hover:bg-zinc-100 text-zinc-400 hover:text-zinc-600 border border-zinc-200 rounded-xl transition-all shadow-sm" @click="showRules = false">
+                <Icon name="x" :size="20" />
+              </button>
+            </div>
+
+            <div class="p-8 space-y-8">
+              <div class="space-y-4">
+                <h4 class="text-xs font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                  <Icon name="message-square" :size="14" />
+                  投稿须知
+                </h4>
+                <div v-if="submissionGuidelines" class="text-sm text-zinc-600 leading-relaxed font-medium bg-zinc-50 p-6 rounded-3xl border border-zinc-100" v-html="submissionGuidelines.replace(/\n/g, '<br>')" />
+                <div v-else class="space-y-4 bg-zinc-50 p-6 rounded-3xl border border-zinc-100">
+                  <div class="flex items-start gap-4 text-sm text-zinc-600 font-medium">
+                    <div class="w-6 h-6 rounded-full bg-[#2f7d4f]/10 text-[#2f7d4f] flex items-center justify-center flex-shrink-0 font-black text-xs">1</div>
+                    <p class="pt-0.5">投稿时无需加入书名号</p>
+                  </div>
+                  <div class="flex items-start gap-4 text-sm text-zinc-600 font-medium">
+                    <div class="w-6 h-6 rounded-full bg-[#2f7d4f]/10 text-[#2f7d4f] flex items-center justify-center flex-shrink-0 font-black text-xs">2</div>
+                    <p class="pt-0.5">除DJ外，其他类型歌曲均接收（包括小语种）</p>
+                  </div>
+                  <div class="flex items-start gap-4 text-sm text-zinc-600 font-medium">
+                    <div class="w-6 h-6 rounded-full bg-[#2f7d4f]/10 text-[#2f7d4f] flex items-center justify-center flex-shrink-0 font-black text-xs">3</div>
+                    <p class="pt-0.5">禁止投递含有违规内容的歌曲</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="space-y-4">
+                <h4 class="text-xs font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                  <Icon name="clock" :size="14" />
+                  播放时间
+                </h4>
+                <div class="bg-gradient-to-br from-[#2f7d4f]/5 to-[#246a41]/10 border border-[#2f7d4f]/10 p-6 rounded-3xl flex items-center gap-5 relative overflow-hidden">
+                  <div class="absolute -right-4 -bottom-4 text-[#2f7d4f]/10">
+                    <Icon name="headphones" :size="100" />
+                  </div>
+                  <div class="w-14 h-14 rounded-2xl bg-white flex items-center justify-center text-[#2f7d4f] shadow-sm border border-[#2f7d4f]/20 relative z-10">
+                    <Icon name="play-circle" :size="28" />
+                  </div>
+                  <div class="relative z-10">
+                    <p class="text-lg font-black text-[#1f2a1f] leading-tight">每天夜自修静班前</p>
+                    <p class="text-xs text-[#2f7d4f] font-bold uppercase tracking-widest mt-1">
+                      PLAYBACK TIME
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="p-8 pt-0">
+              <button class="w-full px-6 py-4 bg-[#2f7d4f] hover:bg-[#246a41] text-white text-sm font-black rounded-2xl transition-all shadow-lg shadow-[#2f7d4f]/20 active:scale-95 flex items-center justify-center gap-2" @click="showRules = false">
+                <Icon name="check-circle" :size="18" />
+                我已了解并同意
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+  </div>
+</template>

@@ -1,0 +1,171 @@
+import { createError, defineEventHandler, getQuery } from 'h3'
+import { db } from '~/drizzle/db'
+import { users } from '~/drizzle/schema'
+import { and, asc, desc, count, eq, ilike, or, sql } from 'drizzle-orm'
+import { normalizeRole } from '~~/server/utils/role'
+import { sanitizeStoredClientIP } from '~~/server/utils/ip-utils'
+import { resolveQQDisplayProfile } from '~~/server/utils/qq-profile'
+import { resolvePreferredAvatar } from '~~/server/utils/user-avatar'
+
+export default defineEventHandler(async (event) => {
+  try {
+    // 获取查询参数
+    const query = getQuery(event)
+    const { grade, class: className, search, page = '1', limit = '50', role, status, sortBy = 'id', sortOrder = 'asc' } = query
+
+    // 构建筛选条件
+    const whereConditions = []
+
+    // 年级筛选
+    if (grade && typeof grade === 'string' && grade.trim()) {
+      whereConditions.push(eq(users.grade, grade.trim()))
+    }
+
+    // 班级筛选
+    if (className && typeof className === 'string' && className.trim()) {
+      whereConditions.push(eq(users.class, className.trim()))
+    }
+
+    // 角色筛选
+    if (role && typeof role === 'string' && role.trim()) {
+      const normalizedRole = normalizeRole(role.trim())
+      if (normalizedRole) {
+        whereConditions.push(eq(users.role, normalizedRole))
+      }
+    }
+
+    // 状态筛选
+    if (status && typeof status === 'string' && status.trim()) {
+      whereConditions.push(eq(users.status, status.trim()))
+    }
+
+    // 搜索功能（姓名、用户名或IP地址）
+    if (search && typeof search === 'string' && search.trim()) {
+      const searchTerm = search.trim()
+      whereConditions.push(
+        or(
+          ilike(users.name, `%${searchTerm}%`),
+          ilike(users.username, `%${searchTerm}%`),
+          ilike(users.email, `%${searchTerm}%`),
+          ilike(users.lastLoginIp, `%${searchTerm}%`)
+        )
+      )
+    }
+
+    const whereClause = whereConditions.length > 0 ? and(...whereConditions) : undefined
+
+    // 分页参数
+    const pageNum = Math.max(1, parseInt(page as string) || 1)
+    const limitNum = Math.max(1, parseInt(limit as string) || 50)
+    const skip = (pageNum - 1) * limitNum
+
+    // 获取总数
+    const totalResult = await db.select({ count: count() }).from(users).where(whereClause)
+    const total = totalResult[0].count
+
+    // 排序逻辑
+    let orderByClause
+    if (sortBy === 'name') {
+      // 对中文名进行拼音排序 (使用 GBK 编码转换 hack，适用于大多数常见汉字)
+      orderByClause = sortOrder === 'desc' 
+        ? sql`convert_to(${users.name}, 'GBK') DESC` 
+        : sql`convert_to(${users.name}, 'GBK') ASC`
+    } else if (sortBy === 'lastLogin') {
+      // 确保未登录用户（NULL）排在最后
+      orderByClause = sortOrder === 'desc' 
+        ? sql`${users.lastLogin} DESC NULLS LAST` 
+        : asc(users.lastLogin)
+    } else if (sortBy === 'createdAt') {
+      orderByClause = sortOrder === 'desc' ? desc(users.createdAt) : asc(users.createdAt)
+    } else {
+      // 默认按 id 排序
+      orderByClause = sortOrder === 'desc' ? desc(users.id) : asc(users.id)
+    }
+
+    // 获取用户列表
+    const usersList = await db.query.users.findMany({
+      where: whereClause,
+      orderBy: orderByClause,
+      limit: limitNum,
+      offset: skip,
+      columns: {
+        id: true,
+        name: true,
+        username: true,
+        email: true,
+        emailVerified: true,
+        role: true,
+        grade: true,
+        class: true,
+        avatar: true,
+        status: true,
+        statusChangedAt: true,
+        lastLogin: true,
+        lastLoginIp: true,
+        passwordChangedAt: true,
+        forcePasswordChange: true,
+        meowNickname: true,
+        meowBoundAt: true,
+        createdAt: true,
+        updatedAt: true
+      },
+      with: {
+        identities: {
+          columns: {
+            provider: true,
+            providerUsername: true
+          },
+          where: (identities, { eq }) => eq(identities.provider, 'github')
+        }
+      }
+    })
+
+    // 处理用户列表，添加头像字段
+    const formattedUsers = await Promise.all(
+      usersList.map(async (user) => {
+        const qqProfile = await resolveQQDisplayProfile(user.username, user.email)
+        return {
+          ...user,
+          lastLoginIp: sanitizeStoredClientIP(user.lastLoginIp),
+          role: normalizeRole(user.role) || user.role,
+          avatar: resolvePreferredAvatar({
+            customAvatar: user.avatar,
+            qqAvatar: qqProfile?.avatar,
+            githubUsername: user.identities?.[0]?.providerUsername
+          })
+        }
+      })
+    )
+
+    // 计算分页信息
+    const totalPages = Math.ceil(total / limitNum)
+    const hasNextPage = pageNum < totalPages
+    const hasPrevPage = pageNum > 1
+
+    return {
+      success: true,
+      users: formattedUsers,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages,
+        hasNextPage,
+        hasPrevPage
+      },
+      filters: {
+        grade: grade || null,
+        class: className || null,
+        role: role || null,
+        status: status || null,
+        search: search || null
+      }
+    }
+  } catch (error) {
+    console.error('获取用户列表失败:', error)
+    throw createError({
+      statusCode: 500,
+      statusMessage: '获取用户列表失败: ' + error.message
+    })
+  }
+})

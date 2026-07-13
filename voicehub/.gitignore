@@ -1,0 +1,42 @@
+# Nuxt dev/build outputs
+.output
+.data
+.nuxt
+.nitro
+.cache
+dist
+docs
+
+# Node dependencies
+node_modules
+
+# Logs
+logs
+*.log
+
+# Backups
+backups/
+*.backup
+
+# Misc
+.DS_Store
+.fleet
+.idea
+.kiro
+.cursor
+.vercel
+.netlify
+.vscode
+.trae
+.qoder
+.figma
+scripts/package-lock.json
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+# Tencent Cloud EdgeOne
+.edgeone/*
+.tef_dist/*

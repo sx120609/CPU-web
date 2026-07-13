@@ -19,9 +19,13 @@ import { fail } from "./utils/response";
 import { browserSessionMiddleware, requestOriginAndCsrfProtection } from "./middleware/browserSession";
 import { receiveCspReport, securityHeaders } from "./middleware/securityHeaders";
 import { securityRateLimit } from "./middleware/securityRateLimit";
+import { voiceHubProxyMiddleware } from "./services/voiceHubProxy";
 
 export function createApp() {
   const app = express();
+
+  // VoiceHub 需要保留原始请求体（音乐导入、上传等），因此必须在 JSON 解析器之前转发。
+  app.use(voiceHubProxyMiddleware);
 
   // 部署脚本的反向代理位于本机/私网；不要信任公网客户端伪造的 X-Forwarded-For。
   app.set("trust proxy", "loopback, linklocal, uniquelocal");

@@ -1,0 +1,79 @@
+/* 温和的浏览器主题保护样式 */
+/* 只保护关键元素，不干扰正常的CSS */
+
+/* 全局颜色方案声明 */
+:root {
+  color-scheme: light;
+}
+
+/* 只保护表单元素的外观 */
+input[type='text'],
+input[type='email'],
+input[type='password'],
+input[type='search'],
+input[type='url'],
+input[type='tel'],
+input[type='number'],
+input[type='date'],
+input[type='time'],
+input[type='datetime-local'],
+textarea,
+select {
+  /* 禁用浏览器默认样式 */
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+
+  /* 禁用浏览器的颜色方案自动调整 */
+  color-scheme: none;
+  -webkit-color-scheme: none;
+}
+
+/* 保护按钮外观 */
+button {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+/* 保护选中文本颜色 */
+::selection {
+  background-color: rgba(47, 125, 79, 0.25);
+  color: inherit;
+}
+
+::-moz-selection {
+  background-color: rgba(47, 125, 79, 0.25);
+  color: inherit;
+}
+
+/* 保护占位符颜色 */
+::placeholder {
+  opacity: 0.6;
+}
+
+/* 在深色模式偏好下保护表单元素 */
+@media (prefers-color-scheme: dark) {
+  input[type='text'],
+  input[type='email'],
+  input[type='password'],
+  input[type='search'],
+  input[type='url'],
+  input[type='tel'],
+  input[type='number'],
+  textarea,
+  select {
+    color-scheme: none;
+    -webkit-color-scheme: none;
+  }
+}
+
+/* 高对比度模式下的调整 */
+@media (prefers-contrast: high) {
+  input,
+  textarea,
+  select,
+  button {
+    border-width: 2px;
+  }
+}

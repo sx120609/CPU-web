@@ -4,6 +4,7 @@
 
 - `web/`：Vue 3 前端站点与 `/schedule` PWA 课表页
 - `server/`：Express + Prisma + PostgreSQL 后端
+- `voicehub/`：药苑之声 Nuxt 全栈子应用（完整保留 VoiceHub 点歌系统）
 - `android/`：Android WebView 壳与桌面课表小组件
 - `harmony/`：HarmonyOS WebView 壳与 JS Bridge
 
@@ -28,6 +29,7 @@
 | 教务页壳 | `/jwxt` `/schedule` | 页面可公开访问 | 真正拉取课表、成绩、考试等数据时需要学校 SSO 授权得到 `jwxtToken` |
 | 校园服务导航 | `/services` | 公开 | 聚合校内外常用入口与说明 |
 | 校园小工具入口 | `/services/tools` `/services/tools/:slug` | 公开 | 具体工具是否要求登录由工具配置决定 |
+| 药苑之声 | `/voicehub/` | 排期与歌曲公开，投稿/投票/后台需登录 | 复用本站会话，无需在 VoiceHub 二次注册或登录 |
 | 问卷填写 / 文件提交 | `/services/tools/questionnaires/:slug` `/services/tools/filestore/submit/:slug` | 通常公开 | 支持按工具设置切换是否要求登录 |
 | 成绩核对查询 | `/services/tools/grade-checks/:slug` | 默认需登录 | 登录后只看自己的学号记录 |
 | 个人中心 / 赞助 / QQBot 绑定 | `/profile` `/u/:id` `/sponsor-wall` | 部分公开、部分登录 | 鸣谢墙公开；个人资料、赞助订单、QQBot 绑定需登录 |
@@ -42,7 +44,8 @@
 - 教务系统：支持学校统一认证登录、课表、成绩、期中成绩、考试、培养方案、教务应用聚合。
 - 课表增强：支持周/日视图、PWA 离线打开、本地背景定制、客户端云同步编辑、iOS Scriptable / Android 小组件。
 - 校园服务：聚合教务、就业、图书馆、心理、信息化等常用入口，并内置宿舍电费查询代理。
-- 校园小工具：当前内置需求反馈、在线问卷、成绩表核对、文件收集。
+- 校园小工具：当前内置药苑之声、需求反馈、在线问卷、成绩表核对、文件收集。
+- 药苑之声：完整保留 VoiceHub 的点歌、投票、播出排期、重播申请、评论、通知、歌词播放器和广播站管理后台；原账号系统已替换为本站会话桥接。
 - 文件收集：Vue 正式工作台与 Express API 集成在主站，任务、提交、模板与文件记录统一写入 PostgreSQL。
 - 支付与赞助：支持易支付配置、赞助下单、订单状态管理、鸣谢墙展示、过期订单自动关闭。
 - QQBot：支持绑定 QQ、私聊/群投稿、Webhook 接入、通知派发、审核提醒。
@@ -58,6 +61,7 @@
 | 文件与表格 | multer、xlsx、viewerjs、html-to-image |
 | 鉴权与安全 | JWT、bcryptjs、学校统一认证会话、Zod |
 | 辅助子系统 | Filestore 文件收集、Android WebView、HarmonyOS ArkUI Web 容器 |
+| 药苑之声 | Nuxt 4、Nitro、Drizzle ORM、独立 PostgreSQL、WebSocket 音乐状态同步 |
 
 ## 目录结构
 
@@ -73,6 +77,7 @@ CPU-web/
 │       ├── services/        # 公告抓取、教务、QQBot、赞助、AI 审核、Filestore 等服务
 │       ├── middleware/      # 鉴权、参数校验、错误处理
 │       └── utils/           # JWT、密码、响应格式、客户端识别等工具
+├── voicehub/                # 药苑之声：原 VoiceHub 全量源码 + CPU-web 用户桥接
 ├── web/
 │   ├── public/              # PWA manifest、图标、离线缓存脚本、静态资源
 │   └── src/
@@ -107,7 +112,7 @@ CPU-web/
 npm install
 ```
 
-根目录 `postinstall` 会自动安装 `server/` 和 `web/` 的依赖；如需手动执行：
+根目录 `postinstall` 会自动安装 `server/`、`web/` 和 `voicehub/` 的依赖；如需手动执行：
 
 ```bash
 npm run install:all
@@ -127,6 +132,9 @@ cp server/.env.example server/.env
 PORT=3000
 NODE_ENV=development
 DATABASE_URL="postgresql://user:password@127.0.0.1:5432/cpu_web?schema=public"
+VOICEHUB_DATABASE_URL="postgresql://user:password@127.0.0.1:5432/cpu_web_voicehub"
+VOICEHUB_ORIGIN="http://127.0.0.1:3001"
+VOICEHUB_PORT=3001
 JWT_SECRET="please-change-this-in-production"
 JWT_EXPIRES_IN="7d"
 
@@ -160,6 +168,9 @@ npm run db:setup
 
 - 执行 `prisma db push`
 - 写入种子数据
+- 在 `VOICEHUB_DATABASE_URL` 指向的独立数据库中执行 VoiceHub 原始 Drizzle 迁移
+
+`VOICEHUB_DATABASE_URL` 不能和 `DATABASE_URL` 指向同一个数据库。VoiceHub 保留了自己的业务表；用户进入药苑之声时，服务端会用 CPU-web 的 HttpOnly 会话确认身份，再在独立库中自动建立/更新不可登录的映射资料。原 VoiceHub 注册、密码登录和 OAuth 接口已停用。
 
 如需清空并重建：
 
@@ -177,6 +188,7 @@ npm run dev
 
 - 前端：<http://localhost:5173>
 - 后端：<http://localhost:3000>
+- 药苑之声：<http://localhost:5173/voicehub/>（Nuxt 本机端口为 `3001`）
 - 健康检查：<http://localhost:3000/api/health>
 - Filestore 工作台：<http://localhost:5173/services/tools/filestore>
 
@@ -414,8 +426,12 @@ chmod +x deploy.sh
 
 ```bash
 ./deploy.sh postgres-config "postgresql://user:password@127.0.0.1:5432/cpu_web?schema=public"
+# 远程数据库需显式提供第二个独立数据库；本机 PostgreSQL 会自动创建 cpu_web_voicehub
+./deploy.sh voicehub-postgres-config "postgresql://user:password@127.0.0.1:5432/cpu_web_voicehub"
 ./deploy.sh update
 ```
+
+部署脚本会同时构建并由 PM2 管理 `cpu-web` 与 `cpu-voicehub`。主站把 `/voicehub/`（含 WebSocket）反向代理到仅监听 `127.0.0.1:23335` 的 Nuxt/Nitro 进程；可用 `./deploy.sh voicehub-logs` 单独查看日志。
 
 ### 教务代理部署
 
@@ -430,6 +446,7 @@ chmod +x deploy.sh
 
 - 主服务端口：`23333`
 - 教务代理端口：`23334`
+- 药苑之声内部端口：`23335`（仅本机）
 - Node 版本：按 Node 22+ 处理
 - 进程管理：`pm2`
 

@@ -1,0 +1,1 @@
+ALTER TABLE "SystemSettings" ADD COLUMN "enableRegistrationEmailVerification" boolean DEFAULT false NOT NULL;

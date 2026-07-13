@@ -1,0 +1,676 @@
+import { ref } from 'vue'
+import { useAudioPlayer } from '~/composables/useAudioPlayer'
+import { useAudioPlayerControl } from '~/composables/useAudioPlayerControl'
+import { useMusicSources } from '~/composables/useMusicSources'
+import { useMusicWebSocket } from '~/composables/useMusicWebSocket'
+import { useAuth } from '~/composables/useAuth'
+import { useLyrics } from '~/composables/useLyrics'
+
+export const useAudioPlayerSync = () => {
+  const globalAudioPlayer = useAudioPlayer()
+  const control = useAudioPlayerControl()
+  const { getSongUrl } = useMusicSources()
+  const musicWebSocket = useMusicWebSocket()
+  const lyrics = useLyrics()
+
+  // 节流控制
+  const lastWebSocketUpdate = ref(0)
+  const lastHarmonyUpdate = ref(0)
+  const lastProgressDiff = ref(0)
+
+  // HarmonyOS 事件处理器引用
+  let harmonyOSHandlers: Record<string, Function> | null = null
+
+  // 检测是否在鸿蒙环境
+  const isHarmonyOS = () => {
+    if (typeof window === 'undefined') return false
+    
+    // 1. UA 检测（最可靠的初始检测）
+    if (window.navigator.userAgent.includes('HarmonyOS')) return true
+    
+    // 2. 桥接对象检测
+    if (window.harmonyOSBridge) return true
+    
+    // 3. 播放器对象检测（确保是原生注入的，即包含特定的原生方法）
+    if (window.voiceHubPlayer && typeof window.voiceHubPlayer.onPlayStateChanged === 'function') {
+      return true
+    }
+    
+    return false
+  }
+
+  // 通知鸿蒙应用播放状态变化（改进事件驱动机制）
+  const notifyHarmonyOS = (
+    action: string,
+    extraData: Record<string, any> = {},
+    song?: any,
+    lyrics?: string
+  ) => {
+    if (typeof window !== 'undefined' && song) {
+      // 处理封面URL，确保是完整的URL
+      let coverUrl = song.cover || ''
+
+      if (coverUrl && !coverUrl.startsWith('http')) {
+        if (coverUrl.startsWith('/')) {
+          coverUrl = window.location.origin + coverUrl
+        } else {
+          coverUrl = window.location.origin + '/' + coverUrl
+        }
+      }
+
+      // 映射播放模式
+      // HarmonyOS: 0=SEQUENCE, 1=SINGLE, 2=LIST, 3=SHUFFLE
+      let loopMode = 0; // SEQUENCE ('off')
+      if (control.playMode.value === 'loopOne') {
+        loopMode = 1; // SINGLE
+      } else if (control.playMode.value === 'order') {
+        loopMode = 2; // LIST
+      }
+
+      const songInfo = {
+        title: extraData.title || song.title || '',
+        artist: extraData.artist || song.artist || '',
+        album: extraData.album || song.album || '',
+        cover: extraData.artwork || coverUrl,
+        duration: extraData.duration !== undefined ? extraData.duration : 0,
+        position: extraData.position !== undefined ? extraData.position : 0,
+        lyrics: lyrics || '',
+        loopMode: loopMode
+      }
+
+      // 只有在鸿蒙环境中才调用相关API
+      if (window.voiceHubPlayer) {
+        if (action === 'play') {
+          window.voiceHubPlayer.onPlayStateChanged(true, {
+            position: songInfo.position,
+            duration: songInfo.duration,
+            loopMode: songInfo.loopMode
+          })
+        } else if (action === 'pause') {
+          window.voiceHubPlayer.onPlayStateChanged(false, {
+            position: songInfo.position,
+            duration: songInfo.duration,
+            loopMode: songInfo.loopMode
+          })
+        } else if (action === 'stop') {
+          window.voiceHubPlayer.onPlayStateChanged(false, {
+            position: 0,
+            duration: songInfo.duration,
+            loopMode: songInfo.loopMode
+          })
+        } else if (action === 'progress') {
+          // 进度更新时，只更新位置，不改变播放状态
+          if (window.voiceHubPlayer.updatePosition) {
+            window.voiceHubPlayer.updatePosition(songInfo.position)
+          } else {
+            window.voiceHubPlayer.onPlayStateChanged(true, {
+              position: songInfo.position,
+              duration: songInfo.duration,
+              loopMode: songInfo.loopMode
+            })
+          }
+        } else if (action === 'metadata') {
+          // 元数据更新时，只更新歌曲信息，不改变播放状态和位置
+          window.voiceHubPlayer.onSongChanged(songInfo)
+          // 延迟同步播放列表状态，但不更新播放状态
+          setTimeout(() => {
+            notifyPlaylistState()
+          }, 100)
+        } else if (action === 'seek') {
+          window.voiceHubPlayer.onPlayStateChanged(true, {
+            position: songInfo.position,
+            duration: songInfo.duration,
+            loopMode: songInfo.loopMode
+          })
+        }
+      }
+    }
+  }
+
+  // 通知播放列表状态变化
+  const notifyPlaylistState = () => {
+    if (
+      typeof window !== 'undefined' &&
+      window.voiceHubPlayer &&
+      window.voiceHubPlayer.updatePlaylistState
+    ) {
+      const currentIndex = globalAudioPlayer.getCurrentPlaylistIndex().value
+      const playlist = globalAudioPlayer.getCurrentPlaylist().value
+      const hasNext = globalAudioPlayer.hasNext.value
+      const hasPrevious = globalAudioPlayer.hasPrevious.value
+
+      // 映射播放模式
+      // HarmonyOS: 0=SEQUENCE, 1=SINGLE, 2=LIST, 3=SHUFFLE
+      let loopMode = 0; // SEQUENCE ('off')
+      
+      if (control.playMode.value === 'loopOne') {
+        loopMode = 1; // SINGLE
+      } else if (control.playMode.value === 'order') {
+        // 为了区分，把 'order' 映射为 2 (LIST)，显示列表循环图标。
+        loopMode = 2; // LIST
+      }
+
+      const playlistState = {
+        currentIndex: currentIndex,
+        playlistLength: playlist ? playlist.length : 0,
+        hasNext: hasNext,
+        hasPrevious: hasPrevious,
+        loopMode: loopMode
+      }
+
+      // 播放列表状态更新（减少日志输出）
+      window.voiceHubPlayer.updatePlaylistState(playlistState)
+
+      // 备用方案：直接通过HarmonyOS接口发送
+      if (window.HarmonyOS && window.HarmonyOS.callNative) {
+        window.HarmonyOS.callNative('updatePlaylistState', playlistState)
+      }
+    }
+  }
+
+  // 节流的进度更新
+  const throttledProgressUpdate = (
+    currentTime: number,
+    duration: number,
+    isPlaying: boolean,
+    song?: any
+  ) => {
+    if (!isHarmonyOS()) return
+
+    // 只在播放状态下发送进度更新，避免暂停时发送错误的位置信息
+    if (!isPlaying) return
+
+    const now = Date.now()
+    const progressDiff = Math.abs(currentTime - lastProgressDiff.value)
+
+    // WebSocket状态更新（每2秒最多一次）
+    if (now - lastWebSocketUpdate.value > 2000) {
+      lastWebSocketUpdate.value = now
+
+      musicWebSocket.sendStateUpdate({
+        songId: song?.id,
+        isPlaying: isPlaying,
+        position: currentTime,
+        duration: duration,
+        volume: 1,
+        playlistIndex: globalAudioPlayer.getCurrentPlaylistIndex().value
+      })
+    }
+
+    // 鸿蒙应用进度更新（每1秒最多一次，或进度差值超过0.5秒）
+    if (now - lastHarmonyUpdate.value > 1000 || progressDiff > 0.5) {
+      lastHarmonyUpdate.value = now
+      lastProgressDiff.value = currentTime
+
+      // 只更新播放状态和进度，不传递歌曲信息（避免覆盖元数据）
+      if (
+        typeof window !== 'undefined' &&
+        window.voiceHubPlayer &&
+        window.voiceHubPlayer.onPlayStateChanged
+      ) {
+        // 获取当前循环模式
+        let loopMode = 0;
+        if (control.playMode.value === 'loopOne') {
+          loopMode = 1;
+        } else if (control.playMode.value === 'order') {
+          loopMode = 2;
+        }
+
+        window.voiceHubPlayer.onPlayStateChanged(isPlaying, {
+          position: currentTime,
+          duration: duration,
+          loopMode: loopMode
+        })
+      }
+    }
+  }
+
+  // WebSocket 状态更新
+  const sendWebSocketUpdate = (data: any) => {
+    if (isHarmonyOS()) {
+      musicWebSocket.sendStateUpdate(data)
+    }
+  }
+
+  // 播放上一首歌曲
+  const playPrevious = async (song?: any) => {
+    try {
+      // 检查是否有上一首歌曲
+      if (!globalAudioPlayer.hasPrevious.value) {
+        if (window.$showNotification) {
+          window.$showNotification('没有上一首歌曲', 'warning')
+        }
+        return { success: false, newSong: null }
+      }
+
+      // 记录当前播放状态 - 优先检查鸿蒙侧状态
+      let wasPlaying = globalAudioPlayer.getPlayingStatus().value
+
+      // 如果在鸿蒙环境，尝试获取鸿蒙侧的播放状态
+      if (isHarmonyOS() && window.voiceHubPlayer && window.voiceHubPlayer.getPlayState) {
+        try {
+          wasPlaying = window.voiceHubPlayer.getPlayState()
+        } catch (e) {
+          console.warn('无法获取鸿蒙侧播放状态，使用Web端状态')
+        }
+      }
+
+      const success = await globalAudioPlayer.playPrevious()
+
+      if (success) {
+        const newSong = globalAudioPlayer.getCurrentSong().value
+        if (newSong) {
+          // 只在鸿蒙环境下发送WebSocket消息
+          if (isHarmonyOS()) {
+            await musicWebSocket.sendSongChange({
+              songId: newSong.id,
+              title: newSong.title,
+              artist: newSong.artist,
+              cover: newSong.cover || '',
+              duration: 0,
+              playlistIndex: globalAudioPlayer.getCurrentPlaylistIndex().value
+            })
+
+            // 获取新歌曲的歌词（但不立即设置元数据，让AudioPlayer的handleLoaded处理）
+            if (newSong.musicPlatform && newSong.musicId) {
+              await lyrics.fetchLyrics(newSong.musicPlatform, newSong.musicId)
+            }
+
+            // 如果之前是播放状态，切换歌曲后自动开始播放
+            // 不在这里传递歌词，让AudioPlayer的handleLoaded方法负责歌词传递
+            if (wasPlaying) {
+              setTimeout(() => {
+                notifyHarmonyOS(
+                  'play',
+                  {
+                    position: 0,
+                    duration: newSong.duration || 0
+                  },
+                  newSong
+                ) // 移除歌词参数，避免与handleLoaded竞争
+              }, 500) // 延迟确保handleLoaded完成元数据设置
+            }
+
+            // 通知播放列表状态变化
+            setTimeout(() => {
+              notifyPlaylistState()
+            }, 100)
+          }
+
+          return { success: true, newSong }
+        }
+      } else {
+        if (window.$showNotification) {
+          window.$showNotification('播放上一首歌曲失败', 'error')
+        }
+      }
+    } catch (error) {
+      console.error('播放上一首歌曲失败:', error)
+      if (window.$showNotification) {
+        window.$showNotification('播放上一首歌曲失败', 'error')
+      }
+    }
+
+    return { success: false, newSong: null }
+  }
+
+  // 获取音乐链接
+  const getMusicUrl = async (platform, musicId, quality) => {
+    try {
+      const result = await getSongUrl(musicId, quality, platform)
+      if (result?.success && result.url) {
+        return { success: true, url: result.url }
+      }
+      return { success: false, error: result?.error || '无法通过服务端音源代理获取播放链接' }
+    } catch (error) {
+      console.error('获取音乐链接失败:', error)
+      return { success: false, error: error.message || '网络错误' }
+    }
+  }
+
+  // 播放下一首歌曲
+  const playNext = async (song?: any) => {
+    try {
+      // 检查是否有下一首歌曲
+      if (!globalAudioPlayer.hasNext.value) {
+        if (window.$showNotification) {
+          window.$showNotification('没有下一首歌曲', 'warning')
+        }
+        return { success: false, newSong: null }
+      }
+
+      // 记录当前播放状态 - 优先检查鸿蒙侧状态
+      let wasPlaying = globalAudioPlayer.getPlayingStatus().value
+
+      // 如果在鸿蒙环境，尝试获取鸿蒙侧的播放状态
+      if (isHarmonyOS() && window.voiceHubPlayer && window.voiceHubPlayer.getPlayState) {
+        try {
+          wasPlaying = window.voiceHubPlayer.getPlayState()
+        } catch (e) {
+          console.warn('无法获取鸿蒙侧播放状态，使用Web端状态')
+        }
+      }
+
+      const success = await globalAudioPlayer.playNext()
+
+      if (success) {
+        const newSong = globalAudioPlayer.getCurrentSong().value
+        if (newSong) {
+          // 只在鸿蒙环境下发送WebSocket消息
+          if (isHarmonyOS()) {
+            await musicWebSocket.sendSongChange({
+              songId: newSong.id,
+              title: newSong.title,
+              artist: newSong.artist,
+              cover: newSong.cover || '',
+              duration: 0,
+              playlistIndex: globalAudioPlayer.getCurrentPlaylistIndex().value
+            })
+
+            // 获取新歌曲的歌词（但不立即设置元数据，让AudioPlayer的handleLoaded处理）
+            if (newSong.musicPlatform && newSong.musicId) {
+              await lyrics.fetchLyrics(newSong.musicPlatform, newSong.musicId)
+            }
+
+            // 如果之前是播放状态，切换歌曲后自动开始播放
+            // 不在这里传递歌词，让AudioPlayer的handleLoaded方法负责歌词传递
+            if (wasPlaying) {
+              setTimeout(() => {
+                notifyHarmonyOS(
+                  'play',
+                  {
+                    position: 0,
+                    duration: newSong.duration || 0
+                  },
+                  newSong
+                ) // 移除歌词参数，避免与handleLoaded竞争
+              }, 500) // 延迟确保handleLoaded完成元数据设置
+            }
+
+            // 通知播放列表状态变化
+            setTimeout(() => {
+              notifyPlaylistState()
+            }, 100)
+          }
+
+          return { success: true, newSong }
+        }
+      } else {
+        if (window.$showNotification) {
+          window.$showNotification('播放下一首歌曲失败', 'error')
+        }
+      }
+    } catch (error) {
+      console.error('播放下一首歌曲失败:', error)
+      if (window.$showNotification) {
+        window.$showNotification('播放下一首歌曲失败', 'error')
+      }
+    }
+
+    return { success: false, newSong: null }
+  }
+
+  // 同步播放状态到全局
+  const syncPlayStateToGlobal = (isPlaying: boolean, song?: any) => {
+    if (isPlaying && song) {
+      globalAudioPlayer.playSong(song)
+    } else {
+      globalAudioPlayer.pauseSong()
+    }
+  }
+
+  // 同步停止状态到全局
+  const syncStopToGlobal = () => {
+    globalAudioPlayer.stopSong()
+  }
+
+  // 更新全局播放位置
+  const updateGlobalPosition = (position: number, duration?: number) => {
+    globalAudioPlayer.updatePosition(position)
+    if (duration !== undefined) {
+      globalAudioPlayer.setDuration(duration)
+    }
+  }
+
+  // 设置全局播放列表
+  const setGlobalPlaylist = (song: any, playlist: any[]) => {
+    if (song && playlist && playlist.length > 0) {
+      globalAudioPlayer.playSong(song, playlist)
+    }
+  }
+
+  // 初始化 WebSocket 连接
+  const initializeWebSocket = () => {
+    if (isHarmonyOS()) {
+      const { getToken } = useAuth()
+      const token = getToken()
+      musicWebSocket.connect(token || undefined)
+
+      // 设置WebSocket事件监听器
+      musicWebSocket.setStateUpdateListener((state) => {
+        // 处理来自其他客户端的状态更新
+      })
+
+      musicWebSocket.setSongChangeListener((songInfo) => {
+        // 处理歌曲切换通知
+        console.log('Received song change notification:', songInfo)
+      })
+    }
+  }
+
+  // 初始化鸿蒙系统控制事件
+  const initializeHarmonyOSControls = (callbacks: {
+    onPlay: () => void
+    onPause: () => void
+    onStop: () => void
+    onNext: () => void
+    onPrevious: () => void
+    onSeek: (time: number) => void
+    onPositionUpdate?: (time: number) => void
+  }) => {
+    // 只有在检测到鸿蒙环境时才初始化
+    if (!isHarmonyOS()) return
+
+    const handleHarmonyOSPlay = () => {
+      callbacks.onPlay()
+    }
+
+    const handleHarmonyOSPause = () => {
+      callbacks.onPause()
+    }
+
+    const handleHarmonyOSStop = () => {
+      callbacks.onStop()
+    }
+
+    const handleHarmonyOSNext = () => {
+      callbacks.onNext()
+    }
+
+    const handleHarmonyOSPrevious = () => {
+      callbacks.onPrevious()
+    }
+
+    const handleHarmonyOSSeek = (event: CustomEvent) => {
+      const time = event.detail?.time || event.time
+      if (typeof time === 'number') {
+        callbacks.onSeek(time)
+      }
+    }
+
+    const handleHarmonyOSPositionUpdate = (event: CustomEvent) => {
+      const time = event.detail?.time || event.time
+      if (typeof time === 'number' && callbacks.onPositionUpdate) {
+        callbacks.onPositionUpdate(time)
+      }
+    }
+
+    const handleHarmonyOSSetLoopMode = (event: CustomEvent) => {
+      const mode = event.detail?.mode;
+      
+      // 处理数字模式（HarmonyOS原生值）或字符串模式
+      // HarmonyOS: 0=SEQUENCE, 1=SINGLE, 2=LIST, 3=SHUFFLE
+      // Web: 'off', 'loopOne', 'order'
+      let targetMode: 'off' | 'order' | 'loopOne' | null = null;
+      
+      if (typeof mode === 'number') {
+         if (mode === 1) { // SINGLE
+           targetMode = 'loopOne';
+         } else if (mode === 2) { // LIST
+           // 映射为列表模式
+           targetMode = 'order';
+         } else if (mode === 0) { // SEQUENCE
+           targetMode = 'off';
+         } else if (mode === 3) { // SHUFFLE
+           targetMode = 'order';
+         }
+       } else if (typeof mode === 'string') {
+         if (['off', 'order', 'loopOne'].includes(mode)) {
+           targetMode = mode as 'off' | 'order' | 'loopOne';
+         } else if (mode === 'shuffle') {
+           targetMode = 'order';
+         }
+       }
+      
+      if (targetMode) {
+        control.setPlayMode(targetMode);
+        // 立即通知状态更新
+        notifyPlaylistState();
+      }
+    }
+
+    // 保存处理函数引用以便清理
+    harmonyOSHandlers = {
+      handleHarmonyOSPlay,
+      handleHarmonyOSPause,
+      handleHarmonyOSStop,
+      handleHarmonyOSNext,
+      handleHarmonyOSPrevious,
+      handleHarmonyOSSeek,
+      handleHarmonyOSPositionUpdate,
+      handleHarmonyOSSetLoopMode
+    }
+
+    // 添加事件监听器
+    window.addEventListener('harmonyos-play', handleHarmonyOSPlay)
+    window.addEventListener('harmonyos-pause', handleHarmonyOSPause)
+    window.addEventListener('harmonyos-stop', handleHarmonyOSStop)
+    window.addEventListener('harmonyos-next', handleHarmonyOSNext)
+    window.addEventListener('harmonyos-previous', handleHarmonyOSPrevious)
+    window.addEventListener('harmonyos-seek', handleHarmonyOSSeek as EventListener)
+    window.addEventListener('harmonyos-position-update',
+      handleHarmonyOSPositionUpdate as EventListener
+    )
+    window.addEventListener('harmonyos-set-loop-mode', handleHarmonyOSSetLoopMode as EventListener)
+
+    // 增强：直接暴露方法给 window.voiceHubPlayer，确保 Index.ets 可以直接调用
+    if (typeof window !== 'undefined') {
+      // 确保对象存在
+      window.voiceHubPlayer = window.voiceHubPlayer || {};
+      
+      // 添加/覆盖控制方法
+      // 注意：我们不覆盖 onPlayStateChanged 和 onSongChanged，因为它们可能是由 Index.ets 注入的
+      // 我们只添加控制方法，这样 Index.ets 可以直接调用它们
+      const methodsToAdd = {
+        play: handleHarmonyOSPlay,
+        pause: handleHarmonyOSPause,
+        stop: handleHarmonyOSStop,
+        next: handleHarmonyOSNext, // Index.ets 使用 next()
+        playNext: handleHarmonyOSNext, // 兼容性
+        previous: handleHarmonyOSPrevious, // Index.ets 使用 previous()
+        playPrevious: handleHarmonyOSPrevious, // 兼容性
+        seek: (time: number) => callbacks.onSeek(time),
+        setLoopMode: (mode: number | string) => {
+          // 模拟事件对象调用处理函数
+          const event = { detail: { mode } } as CustomEvent;
+          handleHarmonyOSSetLoopMode(event);
+        }
+      };
+
+      Object.assign(window.voiceHubPlayer, methodsToAdd);
+      
+      // 同时也尝试暴露给 voiceHubPlayerInstance (Index.ets 的备用方案)
+      if (window.voiceHubPlayerInstance) {
+         Object.assign(window.voiceHubPlayerInstance, {
+           setPlayMode: (mode: number | string) => {
+              const event = { detail: { mode } } as CustomEvent;
+              handleHarmonyOSSetLoopMode(event);
+           }
+         });
+      }
+      
+      console.log('VoiceHub: HarmonyOS direct control methods attached');
+    }
+  }
+
+  // 清理鸿蒙系统控制事件
+  const cleanupHarmonyOSControls = () => {
+    if (harmonyOSHandlers) {
+      window.removeEventListener(
+        'harmonyos-play',
+        harmonyOSHandlers.handleHarmonyOSPlay as EventListener
+      )
+      window.removeEventListener(
+        'harmonyos-pause',
+        harmonyOSHandlers.handleHarmonyOSPause as EventListener
+      )
+      window.removeEventListener(
+        'harmonyos-stop',
+        harmonyOSHandlers.handleHarmonyOSStop as EventListener
+      )
+      window.removeEventListener(
+        'harmonyos-next',
+        harmonyOSHandlers.handleHarmonyOSNext as EventListener
+      )
+      window.removeEventListener(
+        'harmonyos-previous',
+        harmonyOSHandlers.handleHarmonyOSPrevious as EventListener
+      )
+      window.removeEventListener(
+        'harmonyos-seek',
+        harmonyOSHandlers.handleHarmonyOSSeek as EventListener
+      )
+      window.removeEventListener(
+        'harmonyos-position-update',
+        harmonyOSHandlers.handleHarmonyOSPositionUpdate as EventListener
+      )
+      window.removeEventListener(
+        'harmonyos-set-loop-mode',
+        harmonyOSHandlers.handleHarmonyOSSetLoopMode as EventListener
+      )
+      harmonyOSHandlers = null
+    }
+  }
+
+  return {
+    // 状态
+    globalAudioPlayer,
+    lyrics,
+
+    // 鸿蒙通知
+    notifyHarmonyOS,
+    notifyPlaylistState,
+
+    // 节流更新
+    throttledProgressUpdate,
+    sendWebSocketUpdate,
+
+    // 播放控制
+    playPrevious,
+    playNext,
+
+    // 全局状态同步
+    syncPlayStateToGlobal,
+    syncStopToGlobal,
+    updateGlobalPosition,
+    setGlobalPlaylist,
+
+    // 初始化和清理
+    initializeWebSocket,
+    initializeHarmonyOSControls,
+    cleanupHarmonyOSControls,
+
+    // 工具函数
+    isHarmonyOS
+  }
+}

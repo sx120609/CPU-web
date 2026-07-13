@@ -1,0 +1,132 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1756291495622,
+      "tag": "0000_friendly_garia",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1756299330141,
+      "tag": "20250827125530_little_james_howlett",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1756368610365,
+      "tag": "20250828081010_careful_shinobi_shaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1757772919975,
+      "tag": "20250913141519_clumsy_maria_hill",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1757819341115,
+      "tag": "20250914030901_majestic_black_widow",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1759395147253,
+      "tag": "20251002085227_deep_silver_sable",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1767777840967,
+      "tag": "20260107092400_add_collaboration_and_request_time",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1768042908810,
+      "tag": "20260110000001_add_replay_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1769766215307,
+      "tag": "20260130094335_add_replay_request_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1770895837437,
+      "tag": "20260212113037_add_user_identities_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1772187630689,
+      "tag": "20260227102030_add_monthly_submission_limit",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1772889825480,
+      "tag": "20260307132345_add_gongan_filing",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1772890398452,
+      "tag": "20260307133318_remove_gongan_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1773055479744,
+      "tag": "20260309112439_auto-migration",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1773143400000,
+      "tag": "20260310195000_add_song_comments",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1773152100000,
+      "tag": "20260310221500_add_song_comment_replies",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1773156000000,
+      "tag": "20260310232000_add_comment_notification_setting",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1773633736000,
+      "tag": "20260316120000_add_user_avatar",
+      "breakpoints": true
+    }
+  ]
+}

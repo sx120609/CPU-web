@@ -1,4 +1,4 @@
-import { Calendar, ChatDotRound, Compass, DataLine, Document, DocumentChecked, FolderOpened, Tools } from "@element-plus/icons-vue";
+import { Calendar, ChatDotRound, Compass, DataLine, Document, DocumentChecked, FolderOpened, Microphone, Tools } from "@element-plus/icons-vue";
 import type { Component } from "vue";
 
 export type ServiceToolStatus = "ready" | "planned";
@@ -12,12 +12,25 @@ export interface ServiceTool {
   status: ServiceToolStatus;
   category: string;
   routeName: string;
-  componentKey: "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "lost_found";
+  componentKey: "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "lost_found" | "voicehub";
   accent: string;
   iconComponent: Component;
 }
 
 export const serviceTools: ServiceTool[] = [
+  {
+    slug: "voicehub",
+    name: "药苑之声",
+    summary: "校园广播站点歌、投票、播出排期与沉浸式歌词播放",
+    description: "完整接入广播站点歌系统，可查看播出排期、提交歌曲、参与投票，并由广播站统一审核与安排播放。",
+    icon: "声",
+    status: "ready",
+    category: "校园广播",
+    routeName: "service-voicehub",
+    componentKey: "voicehub",
+    accent: "#dc2626",
+    iconComponent: Microphone,
+  },
   {
     slug: "feedback",
     name: "需求反馈",

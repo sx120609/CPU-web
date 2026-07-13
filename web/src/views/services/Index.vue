@@ -31,7 +31,7 @@
           type="button"
           class="tool-entry"
           :class="{ planned: tool.status === 'planned' }"
-          @click="$router.push({ name: tool.routeName, params: { slug: tool.slug } })"
+          @click="openTool(tool)"
         >
           <span class="tool-entry-icon" :style="{ color: tool.accent }">
             <el-icon><component :is="tool.iconComponent" /></el-icon>
@@ -140,16 +140,18 @@
 import { computed, ref, onBeforeUnmount, onMounted } from "vue";
 import { Lock, Loading, Picture, Refresh, Right, Tools } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
+import { useRouter } from "vue-router";
 import { useJwxtStore } from "@/stores/jwxt";
 import { useSiteStore } from "@/stores/site";
 import { loadCreds, hasCreds as hasSavedCreds } from "@/utils/credCrypto";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import IServicePane from "@/components/jwxt/IServicePane.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
-import { serviceTools } from "@/data/serviceTools";
+import { serviceTools, type ServiceTool } from "@/data/serviceTools";
 import { toolsApi, type ToolMeta } from "@/api/tools";
 
 const jwxt = useJwxtStore();
+const router = useRouter();
 const site = useSiteStore();
 const autoLoading = ref(false);
 const hasCreds = ref(false);
@@ -213,6 +215,12 @@ async function loadToolMetas() {
 
 function isLoginRequired(slug: string) {
   return Boolean(toolAccessMap.value[slug]?.requireLogin);
+}
+
+function openTool(tool: ServiceTool) {
+  router.push(tool.routeName === "service-tool-detail"
+    ? { name: tool.routeName, params: { slug: tool.slug } }
+    : { name: tool.routeName });
 }
 
 async function reloadCaptcha() {

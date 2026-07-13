@@ -1,0 +1,74 @@
+import { useAudioQuality } from '~/composables/useAudioQuality'
+import { useMusicSources } from '~/composables/useMusicSources'
+import { parseBilibiliId } from '~/utils/bilibiliSource'
+
+/**
+ * 动态获取音乐播放URL
+ * @param platform 音乐平台 ('netease' | 'tencent')
+ * @param musicId 音乐ID
+ * @param playUrl 用户提供的播放链接（可选）
+ * @param options 额外选项，例如 { unblock: boolean, quality: number }
+ * @returns Promise<string | null> 返回播放URL或null
+ */
+export async function getMusicUrl(
+  platform: string,
+  musicId: string | number,
+  playUrl?: string,
+  options?: { unblock?: boolean; quality?: number }
+): Promise<string | null> {
+  // 如果用户提供了播放链接，优先使用
+  if (playUrl && playUrl.trim()) {
+    return playUrl.trim()
+  }
+
+  // 如果没有playUrl，但platform或musicId为空或无效，则无法获取播放链接
+  if (
+    !platform ||
+    !musicId ||
+    platform === 'unknown' ||
+    platform === '' ||
+    musicId === null ||
+    musicId === ''
+  ) {
+    throw new Error('缺少音乐平台或音乐ID信息')
+  }
+
+  const { getQuality } = useAudioQuality()
+  const { getSongUrl } = useMusicSources()
+
+  // 优先使用 options 中的 quality，否则使用全局设置
+  const quality =
+    options?.quality !== undefined ? options.quality : getQuality(platform)
+
+  let finalMusicId = musicId
+  let bilibiliCid: string | undefined
+
+  if (platform === 'bilibili') {
+    const parsed = parseBilibiliId(musicId)
+    finalMusicId = parsed.bvid
+    bilibiliCid = parsed.cid
+  }
+
+  const extendedOptions = {
+    ...options,
+    bilibiliCid
+  }
+
+  // 先使用统一组件的音源选择逻辑
+  const backupResult = await getSongUrl(
+    finalMusicId,
+    quality,
+    platform,
+    undefined,
+    extendedOptions
+  )
+  if (backupResult.success && backupResult.url) {
+    return backupResult.url
+  }
+
+  // 如果是 Bilibili 平台，且 getSongUrl 失败，则直接抛出错误
+  if (platform === 'bilibili') {
+    throw new Error(backupResult.error || '获取哔哩哔哩播放链接失败')
+  }
+  throw new Error(backupResult.error || '无法通过服务端音源代理获取播放链接')
+}

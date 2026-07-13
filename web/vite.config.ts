@@ -71,6 +71,11 @@ export default defineConfig({
         target: "http://localhost:3000",
         changeOrigin: true,
       },
+      "/voicehub": {
+        target: "http://localhost:3001",
+        changeOrigin: true,
+        ws: true,
+      },
     },
   },
 });
