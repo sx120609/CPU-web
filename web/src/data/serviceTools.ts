@@ -19,19 +19,6 @@ export interface ServiceTool {
 
 export const serviceTools: ServiceTool[] = [
   {
-    slug: "voicehub",
-    name: "药苑之声",
-    summary: "校园广播站点歌、投票、播出排期与沉浸式歌词播放",
-    description: "完整接入广播站点歌系统，可查看播出排期、提交歌曲、参与投票，并由广播站统一审核与安排播放。",
-    icon: "声",
-    status: "ready",
-    category: "校园广播",
-    routeName: "service-voicehub",
-    componentKey: "voicehub",
-    accent: "#dc2626",
-    iconComponent: Microphone,
-  },
-  {
     slug: "feedback",
     name: "需求反馈",
     summary: "先把校园服务里的工具想法集中收集起来",
@@ -121,6 +108,19 @@ export const serviceTools: ServiceTool[] = [
     componentKey: "lost_found",
     accent: "#0f8f7b",
     iconComponent: Compass,
+  },
+  {
+    slug: "voicehub",
+    name: "药苑之声",
+    summary: "校园广播站点歌、投票、播出排期与沉浸式歌词播放",
+    description: "完整接入广播站点歌系统，可查看播出排期、提交歌曲、参与投票，并由广播站统一审核与安排播放。",
+    icon: "声",
+    status: "ready",
+    category: "校园广播",
+    routeName: "service-voicehub",
+    componentKey: "voicehub",
+    accent: "#dc2626",
+    iconComponent: Microphone,
   },
 ];
 
