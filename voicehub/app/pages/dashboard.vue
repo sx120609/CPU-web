@@ -87,14 +87,6 @@
               <LazyAdminDataAnalysisPanel />
             </div>
 
-            <!-- 用户管理 -->
-            <div
-              v-if="activeTab === 'users' && permissions.canAccessPage('users')"
-              class="animate-in fade-in slide-in-from-bottom-4 duration-500"
-            >
-              <AdminUserManager />
-            </div>
-
             <!-- 消息管理 -->
             <div
               v-if="activeTab === 'notifications' && permissions.canAccessPage('notifications')"
@@ -122,7 +114,6 @@
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { Menu, ChevronUp } from 'lucide-vue-next'
 import { useAuth } from '~/composables/useAuth'
-import logo from '~~/public/images/logo.png'
 import { navigateToCpuWeb } from '~/utils/cpuWebNavigation'
 import { usePermissions } from '~/composables/usePermissions'
 import { useSiteConfig } from '~/composables/useSiteConfig'
@@ -166,7 +157,6 @@ const getPageTitle = () => {
     overview: '数据概览',
     songs: '歌曲管理',
     schedule: '排期管理',
-    users: '用户管理',
     notifications: '主站通知',
     'site-config': '站点配置'
   }
@@ -203,22 +193,17 @@ watch(
   }
 )
 
-const getRoleDisplayName = (role) => {
-  const roleNames = {
-    USER: '普通用户',
-    SONG_ADMIN: '歌曲管理员',
-    ADMIN: '超级管理员',
-    SUPER_ADMIN: '超级管理员'
-  }
-  return roleNames[role] || role
-}
-
 const handleLogout = async () => {
   window.location.assign('/')
 }
 
 // 导航方法
 const handleNavigate = async (tab) => {
+  if (tab === 'module-permissions') {
+    navigateToCpuWeb('module-permissions')
+    return
+  }
+
   if (activeTab.value === tab) return
 
   // 检查是否有拦截
@@ -335,7 +320,7 @@ onMounted(async () => {
   window.addEventListener('scroll', handleScroll)
 
   // 添加双击关闭侧边栏事件
-  document.addEventListener('dblclick', (e) => {
+  document.addEventListener('dblclick', () => {
     if (window.innerWidth <= 768 && sidebarOpen.value) {
       closeSidebar()
     }

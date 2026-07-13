@@ -15,6 +15,9 @@ export const usePermissions = () => {
   const canAccessPage = (page: string): boolean => {
     if (!auth.user.value) return false
 
+    // 账号和模块身份统一由药大拾间管理，VoiceHub 不再提供本地用户管理页。
+    if (page === 'users') return false
+
     const role = auth.user.value.role
 
     // 超级管理员可以访问所有页面
@@ -22,7 +25,7 @@ export const usePermissions = () => {
 
     // 管理员可以访问的页面
     if (role === 'ADMIN') {
-      return ['overview', 'schedule', 'songs', 'users', 'data-analysis'].includes(page)
+      return ['overview', 'schedule', 'songs', 'data-analysis'].includes(page)
     }
 
     // 歌曲管理员可以访问的页面
@@ -45,12 +48,11 @@ export const usePermissions = () => {
           'overview',
           'schedule',
           'songs',
-          'users',
           'notifications',
           'site-config'
         ]
       case 'ADMIN':
-        return ['overview', 'schedule', 'songs', 'users', 'data-analysis']
+        return ['overview', 'schedule', 'songs', 'data-analysis']
       case 'SONG_ADMIN':
         return ['schedule', 'songs']
       default:

@@ -172,7 +172,7 @@
           >
             <component :is="action.icon" :size="18" />
             {{ action.label }}
-            <ExternalLink v-if="action.primary" :size="14" class="ml-auto opacity-50" />
+            <ExternalLink v-if="action.external" :size="14" class="ml-auto opacity-50" />
           </button>
         </div>
       </div>
@@ -201,6 +201,7 @@ import {
 import packageJson from '~~/package.json'
 
 const emit = defineEmits(['navigate'])
+const auth = useAuth()
 
 const systemVersion = ref(packageJson.version)
 const stats = ref({
@@ -273,11 +274,23 @@ const statusItems = computed(() => [
 ])
 
 // 快速操作
-const quickActions = [
-  { label: '管理排期', icon: Calendar, id: 'schedule', primary: true },
-  { label: '用户管理', icon: Users, id: 'users' },
-  { label: '发送通知', icon: Bell, id: 'notifications' }
-]
+const quickActions = computed(() => {
+  const actions = [{ label: '管理排期', icon: Calendar, id: 'schedule', primary: true }]
+
+  if (auth.user.value?.role === 'SUPER_ADMIN') {
+    actions.push(
+      {
+        label: '主站权限管理',
+        icon: Users,
+        id: 'module-permissions',
+        external: true
+      },
+      { label: '发送通知', icon: Bell, id: 'notifications' }
+    )
+  }
+
+  return actions
+})
 
 const formatNumber = (num) => {
   if (num >= 1000) return (num / 1000).toFixed(1) + 'K'

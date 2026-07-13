@@ -22,7 +22,6 @@ const ROLES = {
       'overview', // 数据概览
       'schedule', // 排期管理
       'songs', // 歌曲管理
-      'users', // 用户管理
       'data-analysis' // 数据分析
     ],
     canAccessAdmin: true
@@ -34,7 +33,6 @@ const ROLES = {
       'overview', // 数据概览
       'schedule', // 排期管理
       'songs', // 歌曲管理
-      'users', // 用户管理
       'notifications', // 通知管理
       'semesters', // 学期管理
       'site-config', // 站点配置
@@ -57,6 +55,9 @@ function canAccessAdmin(user) {
 // 检查用户是否可以访问指定页面
 function canAccessPage(user, page) {
   if (!user || !user.role) return false
+
+  // 用户与模块身份已迁移到药大拾间统一管理。
+  if (page === 'users') return false
 
   // 超级管理员可以访问所有页面
   if (user.role === 'SUPER_ADMIN') return true
