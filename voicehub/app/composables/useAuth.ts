@@ -1,6 +1,7 @@
 import { navigateTo, useState } from '#app'
 import type { User } from '~/types'
 import { extractDisplayErrorMessage } from '~/utils/errorMessage'
+import { navigateToCpuWeb } from '~/utils/cpuWebNavigation'
 
 interface LoginResponse {
   success: boolean
@@ -125,7 +126,7 @@ export const useAuth = () => {
         if (hadAuth && error.statusCode === 401) {
           clearAuthState()
           // Token失效，重定向到登录页
-          await navigateTo(`/login?redirect=${encodeURIComponent('/voicehub/')}`, { external: true })
+          navigateToCpuWeb('login', '/voicehub/')
         } else if (!hadAuth && error.statusCode === 401) {
           // 未登录状态下的 401，仅确保状态清理，不跳转，并启用冷却
           clearAuthState()
@@ -218,7 +219,7 @@ export const useAuth = () => {
     invalidateSessionLocally()
 
     if (import.meta.client && redirect) {
-      await navigateTo('/', { external: true })
+      navigateToCpuWeb('home')
     }
   }
 

@@ -1,4 +1,4 @@
-import { computed, ref, readonly } from 'vue'
+import { computed, readonly } from 'vue'
 import { normalizeApiBase, normalizeAppBase, withApiBase } from '~/utils/baseUrl'
 
 const SITE_CONFIG_CACHE_KEY = 'voicehub:site-config:v1'
@@ -12,23 +12,22 @@ const defaultSubmissionGuidelines = `1. 投稿时无需加入书名号
 7. 本系统仅提供音乐搜索和播放管理功能，不存储任何音乐文件。所有音乐内容均来自第三方音乐平台，版权归原平台及版权方所有。用户点歌时请确保遵守相关音乐平台的服务条款，尊重音乐作品版权。我们鼓励用户支持正版音乐，在官方平台购买和收听喜爱的音乐作品。
 8. 最终解释权归广播站所有`
 
-// 站点配置状态
-const siteConfig = ref({
-  siteTitle: '',
-  siteLogoUrl: '',
-  schoolLogoHomeUrl: '',
-  schoolLogoPrintUrl: '',
-  siteDescription: '',
-  submissionGuidelines: '',
-  icpNumber: '',
-  gonganNumber: '',
-  enableRegistrationEmailVerification: false
-})
-
-const isLoaded = ref(false)
-const isLoading = ref(false)
-
 export const useSiteConfig = () => {
+  // useState 会把 SSR 读取到的配置写入 Nuxt payload，避免客户端首帧
+  // 重新从空 ref 开始而产生文字、Logo 的 hydration mismatch。
+  const siteConfig = useState('voicehub-site-config', () => ({
+    siteTitle: '',
+    siteLogoUrl: '',
+    schoolLogoHomeUrl: '',
+    schoolLogoPrintUrl: '',
+    siteDescription: '',
+    submissionGuidelines: '',
+    icpNumber: '',
+    gonganNumber: '',
+    enableRegistrationEmailVerification: false
+  }))
+  const isLoaded = useState('voicehub-site-config-loaded', () => false)
+  const isLoading = useState('voicehub-site-config-loading', () => false)
   const runtimeConfig = useRuntimeConfig()
   const appBaseURL = normalizeAppBase(runtimeConfig.app?.baseURL)
   const apiBase = normalizeApiBase(runtimeConfig.public?.apiBase, runtimeConfig.app?.baseURL)
@@ -45,6 +44,16 @@ export const useSiteConfig = () => {
     }
   }
 
+  const withAppBasePath = (path) => {
+    if (!path || typeof path !== 'string') return path
+    if (!path.startsWith('/') || path.startsWith('//')) return path
+    const appBasePrefix = appBaseURL === '/' ? '' : appBaseURL.slice(0, -1)
+    if (appBasePrefix && path.startsWith(`${appBasePrefix}/`)) {
+      return path
+    }
+    return `${appBasePrefix}${path}`
+  }
+
   const writeSiteConfigCache = (data) => {
     if (typeof window === 'undefined') return
     try {
@@ -56,23 +65,17 @@ export const useSiteConfig = () => {
 
   const applySiteConfig = (data) => {
     if (!data || typeof data !== 'object') return false
+    const normalizedData = { ...data }
+    for (const key of ['siteLogoUrl', 'schoolLogoHomeUrl', 'schoolLogoPrintUrl']) {
+      normalizedData[key] = withAppBasePath(normalizedData[key])
+    }
     siteConfig.value = {
       ...siteConfig.value,
-      ...data
+      ...normalizedData
     }
     isLoaded.value = true
     writeSiteConfigCache(siteConfig.value)
     return true
-  }
-
-  const withAppBasePath = (path) => {
-    if (!path || typeof path !== 'string') return path
-    if (!path.startsWith('/')) return path
-    const appBasePrefix = appBaseURL === '/' ? '' : appBaseURL.slice(0, -1)
-    if (appBasePrefix && path.startsWith(`${appBasePrefix}/`)) {
-      return path
-    }
-    return `${appBasePrefix}${path}`
   }
 
   const buildDefaultSiteConfig = () => ({

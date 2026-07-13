@@ -61,7 +61,7 @@
 
               <Transition name="dropdown-fade">
                 <div v-if="showUserActions" class="user-actions-dropdown">
-                  <a class="action-item" href="/profile">
+                  <a class="action-item" :href="cpuWebProfileUrl">
                     <Icon name="user" :size="16" />
                     <span>本站账号</span>
                   </a>
@@ -78,7 +78,7 @@
             </div>
 
             <div v-else class="login-options">
-              <a class="login-btn" href="/login?redirect=/voicehub/">
+              <a class="login-btn" :href="cpuWebLoginUrl">
                 <Icon name="user" :size="16" />
                 <span>使用本站账号登录</span>
               </a>
@@ -621,7 +621,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
-import logo from '~~/public/images/logo.svg'
+import logo from '~~/public/images/logo.png'
 import Icon from '~/components/UI/Icon.vue'
 import ConfirmDialog from '~/components/UI/ConfirmDialog.vue'
 
@@ -629,6 +629,7 @@ import { useNotifications } from '~/composables/useNotifications'
 import { useSiteConfig } from '~/composables/useSiteConfig'
 import CustomSelect from '~/components/UI/Common/CustomSelect.vue'
 import { normalizeApiBase, withApiBase } from '~/utils/baseUrl'
+import { cpuWebRedirectUrl, navigateToCpuWeb } from '~/utils/cpuWebNavigation'
 
 // 获取运行时配置
 const config = useRuntimeConfig()
@@ -653,6 +654,8 @@ const auth = useAuth()
 const isClientAuthenticated = computed(() => auth?.isAuthenticated?.value || false)
 const isAdmin = computed(() => auth?.isAdmin?.value || false)
 const user = computed(() => auth?.user?.value || null)
+const cpuWebLoginUrl = computed(() => cpuWebRedirectUrl('login', '/voicehub/'))
+const cpuWebProfileUrl = computed(() => cpuWebRedirectUrl('profile'))
 
 const roleName = computed(() => {
   const role = user.value?.role
@@ -1558,7 +1561,7 @@ const updateNotificationCount = async () => {
 
 // 处理登出
 const handleLogout = () => {
-  window.location.assign('/')
+  navigateToCpuWeb('home')
 }
 
 // 处理进入后台的点击动画
@@ -1624,7 +1627,7 @@ const handleTabClick = (tab) => {
 
 // 添加导航到登录页面的方法
 const navigateToLogin = () => {
-  window.location.assign('/login?redirect=/voicehub/')
+  navigateToCpuWeb('login', '/voicehub/')
 }
 
 // 显示登录提示

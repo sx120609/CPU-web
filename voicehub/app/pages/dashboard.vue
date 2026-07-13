@@ -138,7 +138,8 @@
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { Menu, ChevronUp } from 'lucide-vue-next'
 import { useAuth } from '~/composables/useAuth'
-import logo from '~~/public/images/logo.svg'
+import logo from '~~/public/images/logo.png'
+import { navigateToCpuWeb } from '~/utils/cpuWebNavigation'
 import { usePermissions } from '~/composables/usePermissions'
 import { useSiteConfig } from '~/composables/useSiteConfig'
 
@@ -324,7 +325,7 @@ onMounted(async () => {
   // 检查认证状态（plugin已经初始化过了）
 
   if (!auth.isAuthenticated.value) {
-    await navigateTo('/login')
+    navigateToCpuWeb('login', '/voicehub/dashboard')
     return
   }
 

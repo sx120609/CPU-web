@@ -1,6 +1,7 @@
 import { useAuth } from './useAuth'
 import { normalizeAppBase, stripAppBaseFromPath } from '~/utils/baseUrl'
 import { extractDisplayErrorMessage } from '~/utils/errorMessage'
+import { navigateToCpuWeb } from '~/utils/cpuWebNavigation'
 
 // 防抖机制
 let isHandling401 = false
@@ -80,7 +81,7 @@ export const useErrorHandler = () => {
 
         // 跳转到登录页
         if (import.meta.client) {
-          await navigateTo('/login')
+          navigateToCpuWeb('login', '/voicehub/')
         }
       }
     } finally {

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -50,13 +50,31 @@ const env = {
   NITRO_PORT: port
 }
 
+const drizzleCli = path.join(voiceHubDir, 'node_modules', 'drizzle-kit', 'bin.cjs')
+
+function migrateBeforeStart() {
+  if (process.env.VOICEHUB_AUTO_MIGRATE === 'false') return
+  console.log('[voicehub] 正在检查独立数据库迁移...')
+  const migration = spawnSync(process.execPath, [drizzleCli, 'migrate'], {
+    cwd: voiceHubDir,
+    env,
+    stdio: 'inherit'
+  })
+  if (migration.error) throw migration.error
+  if (migration.status !== 0) {
+    console.error('[voicehub] 数据库迁移失败，已中止启动，避免以损坏状态提供服务。')
+    process.exit(migration.status || 1)
+  }
+}
+
+if (action === 'dev' || action === 'start') migrateBeforeStart()
+
 let executable = process.execPath
 let args = []
 if (action === 'start') {
   args = [path.join(voiceHubDir, '.output', 'server', 'index.mjs')]
 } else if (action === 'migrate') {
-  const cli = path.join(voiceHubDir, 'node_modules', 'drizzle-kit', 'bin.cjs')
-  args = [cli, 'migrate']
+  args = [drizzleCli, 'migrate']
 } else {
   const nuxtCli = path.join(voiceHubDir, 'node_modules', 'nuxt', 'bin', 'nuxt.mjs')
   args = [nuxtCli, action]

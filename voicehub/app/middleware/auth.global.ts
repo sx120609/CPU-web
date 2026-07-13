@@ -1,4 +1,5 @@
 import { useAuth } from '~/composables/useAuth'
+import { navigateToCpuWeb } from '~/utils/cpuWebNavigation'
 
 export default defineNuxtRouteMiddleware(async (to, from) => {
   const { isAuthenticated, initAuth } = useAuth()
@@ -6,10 +7,11 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
   const publicRoutes = ['/', '/auth/error']
 
   if (import.meta.client && cpuManagedAccountRoutes.includes(to.path)) {
-    const target = to.path === '/account' || to.path === '/change-password'
-      ? '/profile'
-      : `/login?redirect=${encodeURIComponent('/voicehub/')}`
-    return navigateTo(target, { external: true })
+    navigateToCpuWeb(
+      to.path === '/account' || to.path === '/change-password' ? 'profile' : 'login',
+      '/voicehub/'
+    )
+    return abortNavigation()
   }
 
   // 公共页面跳过认证
@@ -31,6 +33,7 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
   if (!isAuthenticated.value && to.path !== '/login') {
     // 保存目标路径用于登录后重定向
     const redirect = to.fullPath
-    return navigateTo(`/login?redirect=${encodeURIComponent(`/voicehub${redirect}`)}`, { external: true })
+    navigateToCpuWeb('login', `/voicehub${redirect}`)
+    return abortNavigation()
   }
 })

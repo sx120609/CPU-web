@@ -18,6 +18,8 @@ const stripBaseFromPath = (path: string, baseURL: string) => {
 const PUBLIC_API_PREFIXES = [
   '/api/healthz',
   '/api/auth/verify',
+  '/api/bootstrap/home',
+  '/api/cpu-web/redirect',
   '/api/semesters/current',
   '/api/play-times',
   '/api/schedules/public',
@@ -36,6 +38,12 @@ const PUBLIC_API_PREFIXES = [
   '/api/music/proxy'
 ]
 
+const isPublicApiRoute = (routePath: string, method: string) => {
+  return PUBLIC_API_PREFIXES.some((path) => routePath.startsWith(path))
+    || (method === 'GET' && routePath === '/api/songs')
+    || (method === 'GET' && routePath.startsWith('/api/songs/comments/'))
+}
+
 export default defineEventHandler(async (event) => {
   if (event.context.user) delete event.context.user
 
@@ -48,6 +56,7 @@ export default defineEventHandler(async (event) => {
   const routePath = stripBaseFromPath(getRequestURL(event).pathname, baseURL)
   if (!routePath.startsWith('/api/')) return
   const method = getMethod(event).toUpperCase()
+  const isPublic = isPublicApiRoute(routePath, method)
 
   // VoiceHub 原账号、密码、OAuth 与注册入口全部停用，唯一身份源为 CPU-web 会话。
   if (routePath.startsWith('/api/auth/') && routePath !== '/api/auth/verify') {
@@ -70,17 +79,18 @@ export default defineEventHandler(async (event) => {
     }))
   }
 
+  // This endpoint only performs a validated redirect to CPU-web and must not
+  // depend on either application's database or session state.
+  if (routePath === '/api/cpu-web/redirect') return
+
   try {
     event.context.user = await resolveCpuWebAuth(event)
   } catch (error) {
-    const isPublic = PUBLIC_API_PREFIXES.some((path) => routePath.startsWith(path))
-    if (!isPublic) throw error
+    // 登录探测需要暴露用户桥接或数据库故障；其余公开读取即使映射
+    // 暂时不可用，也应继续按访客返回业务数据。
+    if (!isPublic || routePath === '/api/auth/verify') throw error
     console.warn('[cpu-auth] 公开请求未能同步本站用户，将按访客继续', error)
   }
-
-  const isPublic = PUBLIC_API_PREFIXES.some((path) => routePath.startsWith(path))
-    || (method === 'GET' && routePath === '/api/songs')
-    || (method === 'GET' && routePath.startsWith('/api/songs/comments/'))
 
   if (!event.context.user && !isPublic) {
     return sendError(event, createError({

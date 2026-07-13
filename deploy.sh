@@ -914,6 +914,8 @@ do_voicehub_start() {
   voice_url="$(configured_voicehub_database_url)"
   is_postgres_url "$voice_url" || err "缺少 VOICEHUB_DATABASE_URL，请先运行数据库初始化"
   [ -f voicehub/.output/server/index.mjs ] || err "缺少 voicehub/.output，请先执行 ./deploy.sh update"
+  log "启动前检查药苑之声数据库迁移"
+  VOICEHUB_DATABASE_URL="$voice_url" npm run db:migrate:cpu --prefix voicehub
   log "通过 pm2 启动药苑之声（本机端口 $VOICEHUB_PORT）"
   cd voicehub
   if pm2 describe "$VOICEHUB_SERVICE_NAME" >/dev/null 2>&1; then
