@@ -2350,4 +2350,47 @@ const getFirstChar = (text) => {
     background: rgba(128, 128, 128, 0.8);
   }
 }
+
+/* Keep the compact player aligned above the mobile navigation at every breakpoint. */
+@media (max-width: 768px) {
+  .music-widget.mobile-player-bar {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    left: 8px;
+    right: 8px;
+    width: calc(100% - 16px);
+    height: 60px;
+    max-width: none;
+    margin: 0;
+    padding: 0 6px 0 10px;
+    border-radius: 15px;
+  }
+
+  .music-widget.mobile-player-bar .title {
+    column-gap: 9px;
+  }
+
+  .music-widget.mobile-player-bar .cover-container {
+    width: 42px;
+    height: 42px;
+  }
+
+  .music-widget.mobile-player-bar .song-title {
+    font-size: 14px;
+  }
+
+  .mobile-controls {
+    gap: 2px;
+  }
+
+  .mobile-control-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    border-radius: 13px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
 </style>

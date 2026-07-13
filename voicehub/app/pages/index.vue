@@ -3991,4 +3991,156 @@ if (
 .home :deep(.schedule-list .empty-dates) {
   color: #5f715f !important;
 }
+
+/* Mobile experience pass: compact header, notice and reachable bottom navigation. */
+@media (max-width: 768px) {
+  .main-content {
+    gap: 0 !important;
+  }
+
+  .top-bar {
+    min-height: 68px;
+    padding: 7px 12px;
+    gap: 10px;
+  }
+
+  .logo-section {
+    min-width: 0;
+    gap: 6px;
+  }
+
+  .logo-image {
+    width: 56px;
+  }
+
+  .logo-divider-container {
+    min-width: 0;
+    gap: 6px;
+  }
+
+  .logo-divider {
+    height: 24px;
+  }
+
+  .school-logo {
+    max-width: 92px;
+    max-height: 28px;
+  }
+
+  .login-options .login-btn {
+    min-height: 44px;
+    padding: 8px 11px;
+    font-size: 12px;
+    white-space: nowrap;
+    box-shadow: 0 3px 10px rgba(31, 42, 31, 0.08);
+  }
+
+  .main-site-notice {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.65rem;
+    margin: 0 10px 12px;
+    padding: 0.65rem 0.75rem;
+    border-radius: 13px;
+  }
+
+  .main-site-notice p {
+    margin-top: 0.15rem;
+    font-size: 0.74rem;
+    line-height: 1.45;
+  }
+
+  .main-site-notice-badge {
+    font-size: 0.64rem;
+  }
+
+  .main-site-notice-actions {
+    width: auto;
+    flex-wrap: nowrap;
+  }
+
+  .main-site-notice-actions a {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 0.65rem;
+    white-space: nowrap;
+  }
+
+  .main-site-notice-actions a:first-child {
+    font-size: 0;
+  }
+
+  .main-site-notice-actions a:first-child::after {
+    content: '去绑定';
+    font-size: 0.72rem;
+  }
+
+  .main-site-notice-actions a:last-child {
+    display: none;
+  }
+
+  .tabs-row {
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
+    right: 12px;
+    height: 60px;
+    padding: 4px;
+    border-radius: 22px;
+  }
+
+  .section-tab {
+    min-height: 48px;
+    border-radius: 17px;
+    gap: 2px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .section-tab .tab-icon {
+    margin-bottom: 0;
+  }
+
+  .section-tab .tab-text {
+    font-size: 10px;
+  }
+
+  .tabs-row .section-tab.active,
+  .tabs-row .section-tab.active:hover {
+    background: #e8f1e2 !important;
+    border-radius: 17px;
+  }
+
+  .tab-content-container {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
+
+  :deep(.site-footer) {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (max-width: 360px) {
+  .logo-image {
+    width: 50px;
+  }
+
+  .school-logo {
+    max-width: 76px;
+  }
+
+  .login-options .login-btn {
+    padding-inline: 9px;
+    font-size: 11px;
+  }
+
+  .main-site-notice {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .main-site-notice-actions {
+    display: none;
+  }
+}
 </style>

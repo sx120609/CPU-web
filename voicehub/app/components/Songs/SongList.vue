@@ -3508,4 +3508,107 @@ button:disabled {
 .page-move {
   transition: transform 0.4s ease;
 }
+
+/* Final mobile sizing overrides: all primary controls remain comfortably tappable. */
+@media (max-width: 768px) {
+  .song-list .song-list-header {
+    margin-bottom: 12px;
+  }
+
+  .song-list .mobile-search-container {
+    gap: 8px !important;
+    padding: 0 4px;
+  }
+
+  .song-list .mobile-search-input {
+    min-height: 46px;
+  }
+
+  .song-list .mobile-tabs {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid #d2deca;
+    border-radius: 13px;
+    background: #eef4e8;
+  }
+
+  .song-list .mobile-tab-btn {
+    min-height: 40px;
+    padding: 0 8px;
+    border-radius: 9px;
+    color: #5f715f !important;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .song-list .mobile-tab-btn.active {
+    color: #1f2a1f !important;
+    background: #ffffff;
+    box-shadow: 0 2px 8px rgba(47, 125, 79, 0.1);
+  }
+
+  .song-list .active-indicator {
+    display: none;
+  }
+
+  .song-list .song-cards {
+    gap: 10px;
+    padding: 4px;
+  }
+
+  .song-list .song-card-main {
+    min-height: 76px;
+    padding: 12px !important;
+    gap: 10px;
+  }
+
+  .song-list .song-cover {
+    width: 52px;
+    height: 52px;
+    border-radius: 10px;
+  }
+
+  .song-list .song-title {
+    font-size: 14px;
+    line-height: 1.35;
+  }
+
+  .song-list .action-area {
+    gap: 6px;
+    padding-right: 0;
+  }
+
+  .song-list .like-button,
+  .song-list .comment-button {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 13px;
+    touch-action: manipulation;
+  }
+
+  .song-list .like-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .song-list .withdraw-button {
+    min-height: 44px !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .song-list .vote-count {
+    display: none;
+  }
+
+  .song-list .song-cover {
+    width: 48px;
+    height: 48px;
+  }
+}
 </style>

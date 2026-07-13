@@ -3719,4 +3719,61 @@ const vRipple = {
     opacity: 1;
   }
 }
+
+/* Final mobile sizing overrides for one-handed date navigation and schedule browsing. */
+@media (max-width: 768px) {
+  .schedule-list .mobile-date-nav {
+    gap: 8px;
+    margin-bottom: 8px;
+    padding: 8px 4px !important;
+  }
+
+  .schedule-list .nav-capsule {
+    min-height: 52px;
+    padding: 4px;
+    border-radius: 16px;
+  }
+
+  .schedule-list .nav-btn,
+  .schedule-list .mobile-action-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 13px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .schedule-list .current-date-display {
+    min-height: 44px;
+  }
+
+  .schedule-list .song-cards {
+    gap: 10px;
+    padding: 4px;
+  }
+
+  .schedule-list .song-card-main {
+    min-height: 76px;
+    padding: 12px !important;
+    gap: 10px;
+  }
+
+  .schedule-list .song-cover {
+    width: 52px;
+    height: 52px;
+    border-radius: 10px;
+  }
+
+  .schedule-list .song-title {
+    font-size: 14px !important;
+    line-height: 1.35;
+  }
+
+  .schedule-list .date-picker-item,
+  .schedule-list .close-btn {
+    min-height: 44px;
+  }
+}
 </style>

@@ -24,12 +24,15 @@
       </div>
     </div>
 
-    <!-- Mobile Rules Section (Original RequestForm.vue style) -->
-    <div class="rules-section mobile-only-rules">
-      <h3 class="rules-title">
-        <Icon :size="16" class="rules-icon" name="bell" />
-        投稿须知
-      </h3>
+    <!-- 移动端默认收起投稿须知，避免遮住核心搜索操作 -->
+    <details class="rules-section mobile-only-rules">
+      <summary class="rules-title">
+        <span class="rules-title-content">
+          <Icon :size="16" class="rules-icon" name="bell" />
+          投稿须知
+        </span>
+        <span aria-hidden="true" class="rules-toggle-hint" />
+      </summary>
       <div class="rules-content">
         <div
           v-if="submissionGuidelines"
@@ -52,7 +55,7 @@
           <div class="rule-item"><span>8.</span> 最终解释权归广播站所有</div>
         </div>
       </div>
-    </div>
+    </details>
 
     <div class="form-container">
       <form class="song-request-form" @submit.prevent="handleSearch">
@@ -5163,5 +5166,106 @@ defineExpose({
 .initial-hint,
 .empty-hint {
   color: #5f715f !important;
+}
+
+/* Mobile interaction pass: keep the primary search flow above the fold. */
+@media (max-width: 768px) {
+  .request-form {
+    gap: 0.75rem;
+  }
+
+  .rules-section.mobile-only-rules {
+    min-width: 0;
+    margin-bottom: 0;
+    padding: 0.25rem 0.75rem;
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  .rules-title {
+    min-height: 44px;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    color: #1f2a1f;
+    cursor: pointer;
+    list-style: none;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .rules-title::-webkit-details-marker {
+    display: none;
+  }
+
+  .rules-title-content {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .rules-toggle-hint::before {
+    content: '查看';
+    color: #2f7d4f;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .mobile-only-rules[open] .rules-toggle-hint::before {
+    content: '收起';
+  }
+
+  .mobile-only-rules[open] .rules-content {
+    margin-top: 0.25rem;
+    padding: 0.5rem 0 0.25rem;
+    border-top: 1px solid #dbe7d3;
+  }
+
+  .rule-item {
+    margin-bottom: 0.5rem;
+    line-height: 1.65;
+  }
+
+  .song-request-form {
+    gap: 0.75rem;
+  }
+
+  .search-section {
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .search-input,
+  .search-button,
+  .platform-btn,
+  .login-btn,
+  .import-btn {
+    min-height: 44px;
+  }
+
+  .search-results-container {
+    margin-bottom: 0;
+    padding: 0.625rem;
+    border-radius: 16px;
+  }
+
+  .platform-selection {
+    margin-bottom: 0.75rem;
+  }
+
+  .results-grid {
+    max-height: none;
+    overflow: visible;
+    overscroll-behavior: auto;
+    padding-bottom: 0.75rem;
+  }
+
+  .initial-state,
+  .empty-state,
+  .loading-state {
+    min-height: 180px;
+  }
 }
 </style>
