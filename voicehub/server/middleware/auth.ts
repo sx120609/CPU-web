@@ -19,7 +19,6 @@ const PUBLIC_API_PREFIXES = [
   '/api/healthz',
   '/api/auth/verify',
   '/api/bootstrap/home',
-  '/api/cpu-web/redirect',
   '/api/semesters/current',
   '/api/play-times',
   '/api/schedules/public',
@@ -78,10 +77,6 @@ export default defineEventHandler(async (event) => {
       message: '用户资料与账号权限请在药大拾间管理'
     }))
   }
-
-  // This endpoint only performs a validated redirect to CPU-web and must not
-  // depend on either application's database or session state.
-  if (routePath === '/api/cpu-web/redirect') return
 
   try {
     event.context.user = await resolveCpuWebAuth(event)
