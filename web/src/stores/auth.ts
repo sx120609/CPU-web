@@ -15,6 +15,23 @@ import {
 } from "@/utils/academicIdentity";
 
 const DATA_AUTH_KEY_PREFIX = "cpu-data-auth-agreement-v1";
+const AUTO_SSO_RETRY_COOLDOWN_MS = 10 * 60 * 1000;
+const AUTO_SSO_LAST_ATTEMPT_KEY = "cpu-auto-sso-last-at";
+
+let autoSsoLoginInFlight: Promise<boolean> | null = null;
+
+function autoSsoRetryCoolingDown() {
+  try {
+    const lastAttemptAt = Number(localStorage.getItem(AUTO_SSO_LAST_ATTEMPT_KEY) || 0);
+    return Number.isFinite(lastAttemptAt) && Date.now() - lastAttemptAt < AUTO_SSO_RETRY_COOLDOWN_MS;
+  } catch {
+    return false;
+  }
+}
+
+function markAutoSsoAttempt() {
+  try { localStorage.setItem(AUTO_SSO_LAST_ATTEMPT_KEY, String(Date.now())); } catch { /* ignore */ }
+}
 
 function dataAuthKey(username: string) {
   return `${DATA_AUTH_KEY_PREFIX}:${username}`;
@@ -57,6 +74,8 @@ export const useAuthStore = defineStore("auth", {
     ssoCredentialPublicKey: "",
     ssoError: "",
     ssoLoading: false,
+    _pendingSsoBegin: null as Promise<void> | null,
+    _pendingSsoLogin: null as Promise<boolean> | null,
     _pendingFetchMe: null as Promise<void> | null,
     _pendingIdentityDetection: null as Promise<AcademicIdentity> | null,
   });
@@ -186,26 +205,37 @@ export const useAuthStore = defineStore("auth", {
     },
 
     async ssoBegin(options?: { silent?: boolean }) {
-      this.ssoLoading = true;
-      this.ssoError = "";
+      if (this._pendingSsoBegin) return this._pendingSsoBegin;
+      const task = (async () => {
+        this.ssoLoading = true;
+        this.ssoError = "";
+        try {
+          const r = await authApi.ssoBegin(options?.silent ? {
+            suppressAuthRedirect: true,
+            suppressAuthMessage: true,
+            suppressErrorMessage: true,
+          } : undefined);
+          this.ssoPendingId = r.pendingId;
+          this.ssoNeedCaptcha = r.needCaptcha;
+          this.ssoCaptchaImage = r.captchaImage ?? "";
+          this.ssoCredentialPublicKey = r.credentialPublicKey ?? "";
+        } finally { this.ssoLoading = false; }
+      })();
+      this._pendingSsoBegin = task;
       try {
-        const r = await authApi.ssoBegin(options?.silent ? {
-          suppressAuthRedirect: true,
-          suppressAuthMessage: true,
-          suppressErrorMessage: true,
-        } : undefined);
-        this.ssoPendingId = r.pendingId;
-        this.ssoNeedCaptcha = r.needCaptcha;
-        this.ssoCaptchaImage = r.captchaImage ?? "";
-        this.ssoCredentialPublicKey = r.credentialPublicKey ?? "";
-      } finally { this.ssoLoading = false; }
+        await task;
+      } finally {
+        if (this._pendingSsoBegin === task) this._pendingSsoBegin = null;
+      }
     },
 
     /** 学校 SSO 登录：同时获得站内 JWT + 教务 jwxt token */
     async ssoLogin(username: string, password: string, captcha: string | undefined, remember: boolean, options?: { silent?: boolean }): Promise<boolean> {
-      this.ssoLoading = true;
-      this.ssoError = "";
-      try {
+      if (this._pendingSsoLogin) return this._pendingSsoLogin;
+      const task = (async () => {
+        this.ssoLoading = true;
+        this.ssoError = "";
+        try {
         if (this.ssoPendingId.trim().length < 8) {
           await this.ssoBegin({ silent: options?.silent });
           this.ssoLoading = true;
@@ -263,8 +293,39 @@ export const useAuthStore = defineStore("auth", {
           silent: true,
           fallback: this.academicIdentity,
         });
-        return true;
-      } finally { this.ssoLoading = false; }
+          return true;
+        } finally { this.ssoLoading = false; }
+      })();
+      this._pendingSsoLogin = task;
+      try {
+        return await task;
+      } finally {
+        if (this._pendingSsoLogin === task) this._pendingSsoLogin = null;
+      }
+    },
+
+    /**
+     * Background recovery shares one school SSO submission and permits at most
+     * one automatic credential submission per ten minutes. Explicit login is unaffected.
+     */
+    async tryAutoSsoLogin(options?: { silent?: boolean }): Promise<boolean> {
+      if (autoSsoLoginInFlight) return autoSsoLoginInFlight;
+      if (autoSsoRetryCoolingDown()) return false;
+      const task = (async () => {
+        const { loadCreds } = await import("@/utils/credCrypto");
+        const creds = await loadCreds().catch(() => null);
+        if (!creds) return false;
+        markAutoSsoAttempt();
+        if (this.ssoPendingId.trim().length < 8) await this.ssoBegin({ silent: options?.silent });
+        if (this.ssoNeedCaptcha) return false;
+        return this.ssoLogin(creds.username, creds.password, undefined, true, options);
+      })();
+      autoSsoLoginInFlight = task;
+      try {
+        return await task;
+      } finally {
+        if (autoSsoLoginInFlight === task) autoSsoLoginInFlight = null;
+      }
     },
 
     async fetchMe(options?: { probe?: boolean }) {

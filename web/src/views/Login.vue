@@ -161,7 +161,7 @@ onMounted(async () => {
     const creds = await loadCreds().catch(() => null);
     if (creds && !auth.ssoNeedCaptcha) {
       ElMessage.info("正在尝试自动登录…");
-      const ok = await auth.ssoLogin(creds.username, creds.password, undefined, true);
+      const ok = await auth.tryAutoSsoLogin();
       if (ok) {
         ElMessage.success(`欢迎，${auth.user?.nickname || creds.username}`);
         router.replace(redirectTarget());

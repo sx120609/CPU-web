@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { jwxtApi, getJwxtToken, setJwxtToken, clearJwxtToken, JWXT_AUTH_EXPIRED_EVENT, JWXT_COOKIE_SESSION_MARKER } from "@/api/jwxt";
-import { clearCreds, hasCreds, loadCreds } from "@/utils/credCrypto";
+import { clearCreds, hasCreds } from "@/utils/credCrypto";
 import { useAuthStore } from "@/stores/auth";
 import { clearJwxtDataCaches } from "@/utils/jwxtCache";
 
@@ -41,7 +41,6 @@ export const useJwxtStore = defineStore("jwxt", {
   state: () => ({
     token: "",
     active: false,
-    autoLoginTried: false,
     rememberSaved: false,
   }),
   getters: {
@@ -81,7 +80,6 @@ export const useJwxtStore = defineStore("jwxt", {
           const store = useJwxtStore();
           store.token = "";
           store.active = false;
-          store.autoLoginTried = false;
         });
       }
     },
@@ -121,7 +119,6 @@ export const useJwxtStore = defineStore("jwxt", {
         this.active = false;
         if (!getJwxtToken()) {
           this.token = "";
-          this.autoLoginTried = false;
         }
       }
     },
@@ -153,25 +150,21 @@ export const useJwxtStore = defineStore("jwxt", {
       return false;
     },
     /** 用本地保存的账号悄悄走一遍统一登录 */
-    async tryAutoLogin(options?: { force?: boolean; silent?: boolean }): Promise<boolean> {
+    async tryAutoLogin(options?: { silent?: boolean }): Promise<boolean> {
       if (justLoggedOutThisSession()) return false;
       // Agent 重启后旧会话会返回 401；拦截器会清除内存状态，避免误判为在线。
       if (!getJwxtToken()) {
         this.token = "";
         this.active = false;
       }
-      if (this.autoLoginTried && !options?.force) return false;
-      this.autoLoginTried = true;
-      if (this.active && useAuthStore().isLoggedIn && !options?.force) return true;
-      const creds = await loadCreds().catch(() => null);
-      if (!creds) return false;
+      if (this.active && useAuthStore().isLoggedIn) return true;
       try {
-        await this.beginLogin({ silent: options?.silent });
-        if (this.needCaptcha) {
-          // 自动登录无法过验证码，让用户手工补
-          return false;
-        }
-        return await this.submitLogin(creds.username, creds.password, undefined, true, { silent: options?.silent });
+        const ok = await useAuthStore().tryAutoSsoLogin({ silent: options?.silent });
+        if (!ok) return false;
+        this.token = getJwxtToken();
+        this.active = !!this.token;
+        if (this.active) void this.refreshWidgetTokens();
+        return this.active;
       } catch {
         return false;
       }
@@ -183,17 +176,16 @@ export const useJwxtStore = defineStore("jwxt", {
       }
       if (this.active && this.token && !options?.forceLogin) return true;
       if (!this.rememberSaved) return false;
-      return this.tryAutoLogin({ force: true, silent: options?.silent });
+      return this.tryAutoLogin({ silent: options?.silent });
     },
     async recoverSession(): Promise<boolean> {
       clearJwxtToken();
       clearJwxtDataCaches();
       this.token = "";
       this.active = false;
-      this.autoLoginTried = false;
       this.rememberSaved = hasCreds();
       if (!this.rememberSaved) return false;
-      return this.tryAutoLogin({ force: true });
+      return this.tryAutoLogin();
     },
     async withSessionRetry<T>(task: () => Promise<T>): Promise<T> {
       const ready = await this.ensureSession();
