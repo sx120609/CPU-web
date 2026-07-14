@@ -10,7 +10,7 @@
     <el-table v-loading="loading" :data="items" stripe>
       <el-table-column label="信息" min-width="240"><template #default="{ row }"><div class="item-cell"><img v-if="row.cover" :src="row.cover" alt="" /><span v-else>{{ row.kind === 'found' ? '拾' : '寻' }}</span><div><strong>{{ row.itemName }}</strong><small>{{ row.kind === 'found' ? '我捡到了' : '我丢了' }} · {{ row.campus }} / {{ row.location }}</small></div></div></template></el-table-column>
       <el-table-column label="发布者" width="120"><template #default="{ row }">{{ row.publisher.nickname }}</template></el-table-column>
-      <el-table-column label="时间" width="150"><template #default="{ row }">{{ dayjs(row.happenedAt).format('YYYY-MM-DD HH:mm') }}</template></el-table-column>
+      <el-table-column label="时间" width="150"><template #default="{ row }">{{ row.happenedAt ? dayjs(row.happenedAt).format('YYYY-MM-DD HH:mm') : '待补充' }}</template></el-table-column>
       <el-table-column label="认领" width="80"><template #default="{ row }">{{ row.claimCount }}</template></el-table-column>
       <el-table-column label="状态" width="120"><template #default="{ row }"><el-select :model-value="row.status" size="small" @change="(status) => update(row, { status })"><el-option v-for="option in statusOptions" :key="option.value" :label="option.label" :value="option.value" /></el-select></template></el-table-column>
       <el-table-column label="置顶" width="80"><template #default="{ row }"><el-switch :model-value="row.pinned" @change="(pinned) => update(row, { pinned: Boolean(pinned) })" /></template></el-table-column>
@@ -64,7 +64,7 @@ type ImportRow = LostFoundInput & { status: "active" | "claimed" | "closed"; row
 const importRows = ref<ImportRow[]>([]);
 const importErrors = ref<string[]>([]);
 
-const REQUIRED_HEADERS = ["信息发布类型", "物品名称", "校区", "丢失具体地点", "丢失/捡到时间", "联系方式", "信息发布日期", "认领状态"];
+const REQUIRED_HEADERS = ["信息发布类型", "物品名称"];
 
 function valueAt(row: Record<string, unknown>, header: string) {
   return String(row[header] ?? "").trim();
@@ -106,20 +106,17 @@ async function readImportFile(event: Event) {
       const kindLabel = valueAt(record, "信息发布类型");
       const statusLabel = valueAt(record, "认领状态");
       const kind = kindLabel === "我捡到了" ? "found" : kindLabel === "我丢了" ? "lost" : null;
-      const status = statusLabel === "未认领" ? "active" : statusLabel === "已认领" ? "claimed" : statusLabel === "已过期" ? "closed" : null;
-      const happenedAt = normalizeDate(valueAt(record, "丢失/捡到时间"), "丢失/捡到时间", true);
-      const publishedAt = normalizeDate(valueAt(record, "信息发布日期"), "信息发布日期", true);
+      const status = !statusLabel || statusLabel === "未认领" ? "active" : statusLabel === "已认领" ? "claimed" : statusLabel === "已过期" ? "closed" : null;
+      const happenedAt = normalizeDate(valueAt(record, "丢失/捡到时间"), "丢失/捡到时间", false);
+      const publishedAt = normalizeDate(valueAt(record, "信息发布日期"), "信息发布日期", false);
       const claimDeadline = normalizeDate(valueAt(record, "认领期限"), "认领期限", false);
       const required = [
         ["物品名称", valueAt(record, "物品名称")],
-        ["校区", valueAt(record, "校区")],
-        ["丢失具体地点", valueAt(record, "丢失具体地点")],
-        ["联系方式", valueAt(record, "联系方式")],
       ].filter(([, value]) => !value).map(([field]) => `${field}不能为空`);
       if (!kind) required.push("信息发布类型应为“我捡到了”或“我丢了”");
       if (!status) required.push("认领状态应为“未认领”“已认领”或“已过期”");
-      if (happenedAt.includes("无效") || happenedAt.includes("不能为空")) required.push(happenedAt);
-      if (publishedAt.includes("无效") || publishedAt.includes("不能为空")) required.push(publishedAt);
+      if (happenedAt.includes("无效")) required.push(happenedAt);
+      if (publishedAt.includes("无效")) required.push(publishedAt);
       if (claimDeadline.includes("无效")) required.push(claimDeadline);
       if (required.length) {
         errors.push(`第 ${rowNumber} 行：${required.join("；")}`);
@@ -131,12 +128,12 @@ async function readImportFile(event: Event) {
         itemName: valueAt(record, "物品名称"),
         campus: valueAt(record, "校区"),
         location: valueAt(record, "丢失具体地点"),
-        happenedAt,
+        happenedAt: happenedAt || null,
         storageLocation: valueAt(record, "失物存放点位"),
         description: valueAt(record, "物品详细描述"),
         contact: valueAt(record, "联系方式"),
         publisherDepartment: valueAt(record, "信息发布部门"),
-        publishedAt,
+        publishedAt: publishedAt || undefined,
         claimDeadline: claimDeadline || null,
         status: status!,
         remark: valueAt(record, "备注"),

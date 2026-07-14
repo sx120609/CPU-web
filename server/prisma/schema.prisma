@@ -1180,7 +1180,7 @@ model LostFoundItem {
   description         String    @default("")
   campus              String    @default("")
   location            String
-  happenedAt          DateTime
+  happenedAt          DateTime?
   storageLocation     String    @default("")
   publisherDepartment String    @default("")
   publishedAt         DateTime  @default(now())

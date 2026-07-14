@@ -59,7 +59,7 @@
           <h2>{{ item.itemName }}</h2>
           <p v-if="item.description">{{ item.description }}</p>
           <div class="facts">
-            <span><el-icon><Location /></el-icon>{{ item.campus }} · {{ item.location }}</span>
+            <span><el-icon><Location /></el-icon>{{ item.campus || '校区待补充' }} · {{ item.location || '地点待补充' }}</span>
             <span><el-icon><Clock /></el-icon>{{ formatDate(item.happenedAt) }}</span>
           </div>
           <footer>
@@ -94,6 +94,10 @@
           <el-form-item label="具体地点" required><el-input v-model="publishForm.location" maxlength="100" placeholder="教学楼、食堂、操场等" /></el-form-item>
           <el-form-item label="丢失 / 捡到时间" required><el-date-picker v-model="publishForm.happenedAt" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" placeholder="选择时间" /></el-form-item>
         </div>
+        <el-form-item v-if="publishForm.kind === 'found'" label="放到哪里了" required>
+          <el-input v-model="publishForm.storageLocation" maxlength="160" placeholder="例如：7.1 宿管值班室、教学楼前台、保卫处失物招领柜" />
+          <p class="field-note">请填写物品实际移交或暂存的位置，方便失主线下领取。</p>
+        </el-form-item>
         <el-form-item label="补充说明"><el-input v-model="publishForm.description" type="textarea" :rows="4" maxlength="3000" show-word-limit placeholder="可描述颜色、外观或发现经过；用于核验的关键特征建议不要全部公开。" /></el-form-item>
         <el-form-item label="联系方式" required>
           <el-input v-model="publishForm.contact" maxlength="120" placeholder="QQ / 微信 / 手机号，仅发布者本人、管理员和认领流程相关人员可见" />
@@ -119,7 +123,7 @@
         <el-carousel v-if="detail.images.length" :autoplay="false" height="320px" indicator-position="outside"><el-carousel-item v-for="image in detail.images" :key="image.id"><img :src="image.url" :alt="detail.itemName" /></el-carousel-item></el-carousel>
         <div class="detail-tags"><el-tag :type="detail.kind === 'found' ? 'success' : 'warning'">{{ detail.kind === 'found' ? '我捡到了' : '我丢了' }}</el-tag><el-tag v-if="detail.status === 'claimed'" type="info">已认领</el-tag><el-tag v-if="detail.status === 'reviewing'" type="warning">审核中</el-tag><el-tag v-if="detail.pinned" type="danger">置顶</el-tag></div>
         <h2>{{ detail.itemName }}</h2>
-        <dl><div><dt>校区地点</dt><dd>{{ detail.campus }} · {{ detail.location }}</dd></div><div><dt>发生时间</dt><dd>{{ formatDate(detail.happenedAt, true) }}</dd></div><div><dt>发布同学</dt><dd>{{ detail.publisher.nickname }}</dd></div></dl>
+        <dl><div><dt>校区地点</dt><dd>{{ detail.campus || '校区待补充' }} · {{ detail.location || '地点待补充' }}</dd></div><div><dt>发生时间</dt><dd>{{ formatDate(detail.happenedAt, true) }}</dd></div><div><dt>发布同学</dt><dd>{{ detail.publisherDepartment || detail.publisher.nickname }}</dd></div></dl>
         <div v-if="detail.storageLocation || detail.publisherDepartment || detail.claimDeadline || detail.remark" class="import-details">
           <div v-if="detail.storageLocation"><small>失物存放点位</small><strong>{{ detail.storageLocation }}</strong></div>
           <div v-if="detail.publisherDepartment"><small>信息发布部门</small><strong>{{ detail.publisherDepartment }}</strong></div>
@@ -181,7 +185,7 @@ const publishOpen = ref(false);
 const submitting = ref(false);
 const uploading = ref(false);
 const uploadProgress = ref(0);
-const publishForm = reactive({ kind: "found" as LostFoundKind, itemName: "", description: "", campus: "江宁校区" as CampusOption, location: "", happenedAt: "", contact: "", images: [] as string[] });
+const publishForm = reactive({ kind: "found" as LostFoundKind, itemName: "", description: "", campus: "江宁校区" as CampusOption, location: "", storageLocation: "", happenedAt: "", contact: "", images: [] as string[] });
 const detailOpen = ref(false);
 const detailLoading = ref(false);
 const detail = ref<LostFoundItem | null>(null);
@@ -202,10 +206,10 @@ async function loadMeta() { try { campuses.value = (await lostFoundApi.meta({ su
 async function loadItems() { loading.value = true; try { const result = await lostFoundApi.items({ q: filters.q || undefined, kind: filters.kind || undefined, campus: filters.campus || undefined, location: filters.location || undefined, status: filters.status || undefined, from: filters.dates?.[0], to: filters.dates?.[1] ? `${filters.dates[1]}T23:59:59` : undefined, page: page.value, size: pageSize }, { suppressErrorMessage: true }); items.value = result.list; total.value = result.total; } catch { items.value = []; total.value = 0; } finally { loading.value = false; } }
 function applyFilters() { page.value = 1; void loadItems(); }
 function ensureLogin() { if (auth.isLoggedIn) return true; router.push({ name: "login", query: { redirect: route.fullPath } }); return false; }
-function openPublish(kind: LostFoundKind) { if (!ensureLogin()) return; const campus = campusOptions.includes(filters.campus as CampusOption) ? filters.campus as CampusOption : "江宁校区"; Object.assign(publishForm, { kind, itemName: "", description: "", campus, location: "", happenedAt: dayjs().format("YYYY-MM-DDTHH:mm:ss"), contact: "", images: [] }); publishOpen.value = true; }
+function openPublish(kind: LostFoundKind) { if (!ensureLogin()) return; const campus = campusOptions.includes(filters.campus as CampusOption) ? filters.campus as CampusOption : "江宁校区"; Object.assign(publishForm, { kind, itemName: "", description: "", campus, location: "", storageLocation: "", happenedAt: dayjs().format("YYYY-MM-DDTHH:mm:ss"), contact: "", images: [] }); publishOpen.value = true; }
 
 async function uploadImages(event: Event) { const input = event.target as HTMLInputElement; const files = Array.from(input.files || []).slice(0, 6 - publishForm.images.length); if (!files.length) return; uploading.value = true; try { for (let i = 0; i < files.length; i++) { const result = await uploadApi.media(files[i], files[i].name, { forceProxy: isAndroidNativeApp(), onProgress: (state) => { uploadProgress.value = Math.round(((i + state.percent / 100) / files.length) * 100); } }); publishForm.images.push(result.url); } } finally { uploading.value = false; uploadProgress.value = 0; input.value = ""; } }
-function validPublish() { if (publishForm.itemName.trim().length < 2) return ElMessage.warning("请填写物品名称"), false; if (!publishForm.campus.trim()) return ElMessage.warning("请填写校区"), false; if (publishForm.location.trim().length < 2) return ElMessage.warning("请填写具体地点"), false; if (!publishForm.happenedAt) return ElMessage.warning("请选择时间"), false; if (publishForm.contact.trim().length < 2) return ElMessage.warning("请填写联系方式"), false; return true; }
+function validPublish() { if (publishForm.itemName.trim().length < 2) return ElMessage.warning("请填写物品名称"), false; if (!publishForm.campus.trim()) return ElMessage.warning("请填写校区"), false; if (publishForm.location.trim().length < 2) return ElMessage.warning("请填写具体地点"), false; if (publishForm.kind === "found" && publishForm.storageLocation.trim().length < 2) return ElMessage.warning("请填写物品放到哪里了"), false; if (!publishForm.happenedAt) return ElMessage.warning("请选择时间"), false; if (publishForm.contact.trim().length < 2) return ElMessage.warning("请填写联系方式"), false; return true; }
 async function submitItem() { if (!validPublish() || submitting.value) return; submitting.value = true; try { const item = await lostFoundApi.create({ ...publishForm }); publishOpen.value = false; ElMessage.success(item.status === "reviewing" ? "已提交审核，通过后会公开展示" : "已发布，并同步到论坛讨论区"); await Promise.all([loadItems(), loadMeta()]); await openDetail(item.id); } finally { submitting.value = false; } }
 async function openDetail(id: number) { detailOpen.value = true; detailLoading.value = true; try { detail.value = await lostFoundApi.item(id, { suppressErrorMessage: true }); router.replace({ query: { ...route.query, item: String(id) } }).catch(() => null); } catch { detailOpen.value = false; ElMessage.error("信息加载失败或已下架"); } finally { detailLoading.value = false; } }
 function openClaim() { if (!ensureLogin()) return; Object.assign(claimForm, { message: "", evidence: "", contact: "" }); claimOpen.value = true; }
@@ -214,7 +218,7 @@ async function setItemStatus(status: "active" | "claimed" | "closed") { if (!det
 async function resolveClaim(id: number, status: "accepted" | "rejected") { if (!detail.value) return; if (status === "accepted") await ElMessageBox.confirm("通过后该信息会自动标记为已认领，其他待处理申请将关闭。请确认已核对关键特征。", "确认认领", { type: "warning" }); await lostFoundApi.updateClaim(id, status); ElMessage.success(status === "accepted" ? "已通过认领" : "已标记为不匹配"); await Promise.all([openDetail(detail.value.id), loadItems()]); }
 async function withdrawClaim(id: number) { if (!detail.value) return; await lostFoundApi.updateClaim(id, "withdrawn"); ElMessage.success("已撤回申请"); await openDetail(detail.value.id); }
 async function loadMine() { if (!auth.isLoggedIn) return; try { Object.assign(mine, await lostFoundApi.mine({ suppressErrorMessage: true })); } catch { Object.assign(mine, { published: [], claims: [] }); } }
-function formatDate(value: string, full = false) { return dayjs(value).format(full ? "YYYY年M月D日 HH:mm" : "M月D日 HH:mm"); }
+function formatDate(value?: string | null, full = false) { return value ? dayjs(value).format(full ? "YYYY年M月D日 HH:mm" : "M月D日 HH:mm") : "时间待补充"; }
 function statusText(status: LostFoundStatus) { return ({ reviewing: "审核中", active: "等待认领", claimed: "已认领", closed: "已关闭", hidden: "已下架" } as Record<LostFoundStatus, string>)[status]; }
 function claimStatusText(status: LostFoundClaimStatus) { return ({ pending: "待核验", accepted: "已通过", rejected: "不匹配", withdrawn: "已撤回" } as Record<LostFoundClaimStatus, string>)[status]; }
 function claimTagType(status: LostFoundClaimStatus) { return status === "accepted" ? "success" : status === "pending" ? "warning" : "info"; }

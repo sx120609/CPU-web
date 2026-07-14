@@ -30,7 +30,7 @@ export type LostFoundItem = {
   description: string;
   campus: string;
   location: string;
-  happenedAt: string;
+  happenedAt?: string | null;
   storageLocation: string;
   publisherDepartment: string;
   publishedAt: string;
@@ -58,7 +58,7 @@ export type LostFoundInput = {
   description: string;
   campus: string;
   location: string;
-  happenedAt: string;
+  happenedAt?: string | null;
   storageLocation?: string;
   publisherDepartment?: string;
   publishedAt?: string;

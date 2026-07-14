@@ -10,5 +10,7 @@ ALTER TABLE "LostFoundItem"
   ALTER COLUMN "publishedAt" SET NOT NULL,
   ALTER COLUMN "publishedAt" SET DEFAULT CURRENT_TIMESTAMP;
 
+ALTER TABLE "LostFoundItem" ALTER COLUMN "happenedAt" DROP NOT NULL;
+
 CREATE INDEX "LostFoundItem_publishedAt_idx" ON "LostFoundItem"("publishedAt");
 CREATE INDEX "LostFoundItem_claimDeadline_idx" ON "LostFoundItem"("claimDeadline");

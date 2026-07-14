@@ -54,10 +54,26 @@ const itemInputSchema = z.object({
   remark: z.string().trim().max(500).optional().default(""),
   contact: z.string().trim().min(2).max(120),
   images: z.array(imageUrlSchema).max(6).optional().default([]),
-});
+}).refine(
+  (input) => input.kind !== "found" || input.storageLocation.trim().length >= 2,
+  { message: "请填写物品存放位置", path: ["storageLocation"] },
+);
 
-const importedItemSchema = itemInputSchema.extend({
-  status: z.enum(["active", "claimed", "closed"]),
+const importedItemSchema = z.object({
+  kind: z.enum(KINDS),
+  itemName: z.string().trim().min(2).max(80),
+  description: z.string().trim().max(3000).optional().default(""),
+  campus: z.string().trim().max(40).optional().default(""),
+  location: z.string().trim().max(100).optional().default(""),
+  happenedAt: z.coerce.date().nullable().optional().default(null),
+  storageLocation: z.string().trim().max(160).optional().default(""),
+  publisherDepartment: z.string().trim().max(120).optional().default(""),
+  publishedAt: z.coerce.date().optional().default(() => new Date()),
+  claimDeadline: z.coerce.date().nullable().optional().default(null),
+  remark: z.string().trim().max(500).optional().default(""),
+  contact: z.string().trim().max(120).optional().default(""),
+  images: z.array(imageUrlSchema).max(6).optional().default([]),
+  status: z.enum(["active", "claimed", "closed"]).optional().default("active"),
 });
 const bulkImportSchema = z.object({ items: z.array(importedItemSchema).min(1).max(200) });
 
@@ -97,14 +113,14 @@ function isStaff(role?: string | null, lostFoundRole?: string | null) {
     || lostFoundRole === "super_admin";
 }
 
-function itemContent(input: z.infer<typeof itemInputSchema>) {
+function itemContent(input: z.infer<typeof itemInputSchema> | z.infer<typeof importedItemSchema>) {
   const kindLabel = input.kind === "found" ? "我捡到了" : "我丢了";
   const details = [
     `**${kindLabel}：${input.itemName}**`,
     "",
     `- 校区：${input.campus}`,
     `- 地点：${input.location}`,
-    `- 时间：${input.happenedAt.toLocaleString("zh-CN", { hour12: false })}`,
+    `- 时间：${input.happenedAt ? input.happenedAt.toLocaleString("zh-CN", { hour12: false }) : "待补充"}`,
     input.storageLocation ? `\n存放点位：${input.storageLocation}` : "",
     input.publisherDepartment ? `发布部门：${input.publisherDepartment}` : "",
     input.claimDeadline ? `认领期限：${input.claimDeadline.toLocaleString("zh-CN", { hour12: false })}` : "",
@@ -580,7 +596,7 @@ lostFoundRouter.get("/admin/items", authRequired, async (req, res, next) => {
 });
 
 function importDuplicateKey(input: z.infer<typeof importedItemSchema>) {
-  return [input.kind, input.itemName, input.campus, input.location, input.happenedAt.getTime()]
+  return [input.kind, input.itemName, input.campus, input.location, input.happenedAt?.getTime() || 0]
     .map((value) => String(value).trim().toLowerCase())
     .join("\u0000");
 }
@@ -602,7 +618,7 @@ lostFoundRouter.post("/admin/import", authRequired, validate(bulkImportSchema), 
       },
       select: { kind: true, itemName: true, campus: true, location: true, happenedAt: true },
     });
-    const existingKeys = new Set(candidates.map((item) => [item.kind, item.itemName, item.campus, item.location, item.happenedAt.getTime()]
+    const existingKeys = new Set(candidates.map((item) => [item.kind, item.itemName, item.campus, item.location, item.happenedAt?.getTime() || 0]
       .map((value) => String(value).trim().toLowerCase()).join("\u0000")));
     const seenKeys = new Set<string>();
     const skipped: Array<{ index: number; reason: string }> = [];
@@ -633,7 +649,7 @@ lostFoundRouter.post("/admin/import", authRequired, validate(bulkImportSchema), 
               kind: item.kind,
               campus: item.campus,
               location: item.location,
-              happenedAt: item.happenedAt.toISOString(),
+              happenedAt: item.happenedAt?.toISOString() || null,
               storageLocation: item.storageLocation,
               publisherDepartment: item.publisherDepartment,
               publishedAt: item.publishedAt.toISOString(),
