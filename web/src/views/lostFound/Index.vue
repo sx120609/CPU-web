@@ -63,7 +63,7 @@
             <span><el-icon><Clock /></el-icon>{{ formatDate(item.happenedAt) }}</span>
           </div>
           <footer>
-            <span>{{ item.publisher.nickname }}</span>
+            <span>{{ item.publisherDepartment || item.publisher.nickname }}</span>
             <span>{{ item.topic.replyCount }} 条讨论 · {{ item.claimCount }} 次认领申请</span>
           </footer>
         </div>
@@ -120,6 +120,13 @@
         <div class="detail-tags"><el-tag :type="detail.kind === 'found' ? 'success' : 'warning'">{{ detail.kind === 'found' ? '我捡到了' : '我丢了' }}</el-tag><el-tag v-if="detail.status === 'claimed'" type="info">已认领</el-tag><el-tag v-if="detail.status === 'reviewing'" type="warning">审核中</el-tag><el-tag v-if="detail.pinned" type="danger">置顶</el-tag></div>
         <h2>{{ detail.itemName }}</h2>
         <dl><div><dt>校区地点</dt><dd>{{ detail.campus }} · {{ detail.location }}</dd></div><div><dt>发生时间</dt><dd>{{ formatDate(detail.happenedAt, true) }}</dd></div><div><dt>发布同学</dt><dd>{{ detail.publisher.nickname }}</dd></div></dl>
+        <div v-if="detail.storageLocation || detail.publisherDepartment || detail.claimDeadline || detail.remark" class="import-details">
+          <div v-if="detail.storageLocation"><small>失物存放点位</small><strong>{{ detail.storageLocation }}</strong></div>
+          <div v-if="detail.publisherDepartment"><small>信息发布部门</small><strong>{{ detail.publisherDepartment }}</strong></div>
+          <div v-if="detail.claimDeadline"><small>认领期限</small><strong>{{ formatDate(detail.claimDeadline, true) }}</strong></div>
+          <div v-if="detail.remark"><small>备注</small><strong>{{ detail.remark }}</strong></div>
+          <div><small>信息发布日期</small><strong>{{ formatDate(detail.publishedAt, true) }}</strong></div>
+        </div>
         <p v-if="detail.description" class="description">{{ detail.description }}</p>
         <el-alert v-if="!detail.mine" title="联系方式已保护" description="请通过站内认领表单描述物品特征或持有凭据。发布者核验通过后，再按双方留下的联系方式完成交接。" type="info" :closable="false" show-icon />
         <div v-else class="private-contact"><small>仅你和管理员可见的联系方式</small><strong>{{ detail.contact }}</strong></div>
@@ -219,4 +226,6 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
 @media(max-width:980px){.filters{grid-template-columns:1fr 1fr 1fr}.items-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hero-copy{max-width:none}}
 @media(max-width:820px){.hero-copy{grid-template-columns:1fr;grid-template-areas:"eyebrow" "title" "description" "actions"}.hero-actions{justify-content:flex-start;margin-top:14px}}
 @media(max-width:650px){.lost-found-page{gap:12px}.hero{min-height:auto;padding:20px;border-radius:14px}.hero h1{font-size:28px}.hero-actions{display:grid;grid-template-columns:1fr 1fr}.hero-actions .el-button{margin:0}.hero-actions .el-button:last-child{grid-column:1/-1}.filter-card{padding:12px}.filters{grid-template-columns:1fr 1fr}.filters>*:first-child,.filters :deep(.el-date-editor){grid-column:1/-1;width:100%}.list-head small{display:block;margin:2px 0 0}.items-grid{grid-template-columns:1fr}.cover{height:210px}.two-cols,.three-cols{grid-template-columns:1fr}.image-grid{grid-template-columns:repeat(3,1fr)}.detail dl{grid-template-columns:1fr}.detail h2{font-size:24px}.detail-actions .el-button{margin:0;flex:1 1 calc(50% - 8px)}.mine-list button{grid-template-columns:48px 1fr}.mine-list button small{grid-column:2}}
+.import-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}.import-details div{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:8px;background:var(--cpu-surface-subtle)}.import-details small{color:var(--cpu-text-muted);font-size:10px}.import-details strong{font-size:12px;line-height:1.5;white-space:pre-wrap}
+@media(max-width:600px){.import-details{grid-template-columns:1fr}}
 </style>

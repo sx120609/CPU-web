@@ -31,6 +31,11 @@ export type LostFoundItem = {
   campus: string;
   location: string;
   happenedAt: string;
+  storageLocation: string;
+  publisherDepartment: string;
+  publishedAt: string;
+  claimDeadline?: string | null;
+  remark: string;
   status: LostFoundStatus;
   pinned: boolean;
   claimedAt?: string | null;
@@ -54,6 +59,11 @@ export type LostFoundInput = {
   campus: string;
   location: string;
   happenedAt: string;
+  storageLocation?: string;
+  publisherDepartment?: string;
+  publishedAt?: string;
+  claimDeadline?: string | null;
+  remark?: string;
   contact: string;
   images: string[];
 };
@@ -69,5 +79,6 @@ export const lostFoundApi = {
   updateClaim: (id: number, status: "accepted" | "rejected" | "withdrawn") => request.patch<LostFoundClaim>(`/lost-found/claims/${id}`, { status }),
   mine: (options?: RequestOptions) => request.get<{ published: LostFoundItem[]; claims: LostFoundClaim[] }>("/lost-found/mine", undefined, options),
   adminItems: (params?: { q?: string; status?: string }, options?: RequestOptions) => request.get<LostFoundItem[]>("/lost-found/admin/items", params, options),
+  adminImport: (items: Array<LostFoundInput & { status: "active" | "claimed" | "closed" }>) => request.post<{ imported: LostFoundItem[]; skipped: Array<{ index: number; reason: string }> }>("/lost-found/admin/import", { items }),
   adminUpdate: (id: number, payload: { status?: LostFoundStatus; pinned?: boolean; note?: string }) => request.patch<LostFoundItem>(`/lost-found/admin/items/${id}`, payload),
 };

@@ -44,12 +44,22 @@ const itemInputSchema = z.object({
   kind: z.enum(KINDS),
   itemName: z.string().trim().min(2).max(80),
   description: z.string().trim().max(3000).optional().default(""),
-  campus: z.enum(CAMPUSES),
+  campus: z.string().trim().min(2).max(40),
   location: z.string().trim().min(2).max(100),
   happenedAt: z.coerce.date(),
+  storageLocation: z.string().trim().max(160).optional().default(""),
+  publisherDepartment: z.string().trim().max(120).optional().default(""),
+  publishedAt: z.coerce.date().optional().default(() => new Date()),
+  claimDeadline: z.coerce.date().nullable().optional().default(null),
+  remark: z.string().trim().max(500).optional().default(""),
   contact: z.string().trim().min(2).max(120),
   images: z.array(imageUrlSchema).max(6).optional().default([]),
 });
+
+const importedItemSchema = itemInputSchema.extend({
+  status: z.enum(["active", "claimed", "closed"]),
+});
+const bulkImportSchema = z.object({ items: z.array(importedItemSchema).min(1).max(200) });
 
 const claimInputSchema = z.object({
   message: z.string().trim().min(5).max(1000),
@@ -95,7 +105,11 @@ function itemContent(input: z.infer<typeof itemInputSchema>) {
     `- 校区：${input.campus}`,
     `- 地点：${input.location}`,
     `- 时间：${input.happenedAt.toLocaleString("zh-CN", { hour12: false })}`,
+    input.storageLocation ? `\n存放点位：${input.storageLocation}` : "",
+    input.publisherDepartment ? `发布部门：${input.publisherDepartment}` : "",
+    input.claimDeadline ? `认领期限：${input.claimDeadline.toLocaleString("zh-CN", { hour12: false })}` : "",
     input.description ? `\n${input.description}` : "",
+    input.remark ? `\n备注：${input.remark}` : "",
     input.images.map((url, index) => `![失物图片 ${index + 1}](${url})`).join("\n"),
     "\n> 为保护隐私，联系方式与认领凭据请通过失物招领页的站内认领表单提交。",
   ];
@@ -169,6 +183,11 @@ function serializeItem(
     campus: item.campus,
     location: item.location,
     happenedAt: item.happenedAt,
+    storageLocation: item.storageLocation,
+    publisherDepartment: item.publisherDepartment,
+    publishedAt: item.publishedAt,
+    claimDeadline: item.claimDeadline,
+    remark: item.remark,
     status: item.status,
     pinned: item.pinned,
     claimedAt: item.claimedAt,
@@ -347,7 +366,19 @@ lostFoundRouter.post("/items", authRequired, validate(itemInputSchema), async (r
     const input = req.body as z.infer<typeof itemInputSchema>;
     const board = await ensureBoard();
     const content = itemContent(input);
-    const metadata = { lostFoundItem: true, kind: input.kind, campus: input.campus, location: input.location, happenedAt: input.happenedAt.toISOString(), images: input.images };
+    const metadata = {
+      lostFoundItem: true,
+      kind: input.kind,
+      campus: input.campus,
+      location: input.location,
+      happenedAt: input.happenedAt.toISOString(),
+      storageLocation: input.storageLocation,
+      publisherDepartment: input.publisherDepartment,
+      publishedAt: input.publishedAt.toISOString(),
+      claimDeadline: input.claimDeadline?.toISOString() || null,
+      remark: input.remark,
+      images: input.images,
+    };
     const bypass = await shouldBypassAiReviewForUser(userId, req.user!.role);
     const review = shouldRunAiReview() && !bypass
       ? await reviewTopicContent({ title: `${input.kind === "found" ? "捡到" : "寻找"}｜${input.itemName}`, content, boardName: board.name, boardType: board.type, metadata })
@@ -383,6 +414,11 @@ lostFoundRouter.post("/items", authRequired, validate(itemInputSchema), async (r
           campus: input.campus,
           location: input.location,
           happenedAt: input.happenedAt,
+          storageLocation: input.storageLocation,
+          publisherDepartment: input.publisherDepartment,
+          publishedAt: input.publishedAt,
+          claimDeadline: input.claimDeadline,
+          remark: input.remark,
           contact: input.contact,
           status: hiddenByReview ? "reviewing" : "active",
           images: { create: input.images.map((url, sort) => ({ url, sort })) },
@@ -540,6 +576,116 @@ lostFoundRouter.get("/admin/items", authRequired, async (req, res, next) => {
       undefined,
       req.user!.lostFoundRole,
     )));
+  } catch (error) { next(error); }
+});
+
+function importDuplicateKey(input: z.infer<typeof importedItemSchema>) {
+  return [input.kind, input.itemName, input.campus, input.location, input.happenedAt.getTime()]
+    .map((value) => String(value).trim().toLowerCase())
+    .join("\u0000");
+}
+
+lostFoundRouter.post("/admin/import", authRequired, validate(bulkImportSchema), async (req, res, next) => {
+  try {
+    if (!isStaff(req.user!.role, req.user!.lostFoundRole)) throw Errors.forbidden("需要失物招领管理权限");
+    const input = req.body.items as Array<z.infer<typeof importedItemSchema>>;
+    const board = await ensureBoard();
+    const candidates = await prisma.lostFoundItem.findMany({
+      where: {
+        OR: input.map((item) => ({
+          kind: item.kind,
+          itemName: item.itemName,
+          campus: item.campus,
+          location: item.location,
+          happenedAt: item.happenedAt,
+        })),
+      },
+      select: { kind: true, itemName: true, campus: true, location: true, happenedAt: true },
+    });
+    const existingKeys = new Set(candidates.map((item) => [item.kind, item.itemName, item.campus, item.location, item.happenedAt.getTime()]
+      .map((value) => String(value).trim().toLowerCase()).join("\u0000")));
+    const seenKeys = new Set<string>();
+    const skipped: Array<{ index: number; reason: string }> = [];
+    const imported = await prisma.$transaction(async (tx) => {
+      const created: any[] = [];
+      let visibleCount = 0;
+      for (const [index, item] of input.entries()) {
+        const key = importDuplicateKey(item);
+        if (existingKeys.has(key)) {
+          skipped.push({ index: index + 1, reason: "系统中已存在相同记录" });
+          continue;
+        }
+        if (seenKeys.has(key)) {
+          skipped.push({ index: index + 1, reason: "表格内存在重复记录" });
+          continue;
+        }
+        seenKeys.add(key);
+        const publicStatus = item.status === "active" || item.status === "claimed";
+        const topic = await tx.topic.create({
+          data: {
+            boardId: board.id,
+            authorId: req.user!.userId,
+            title: `${item.kind === "found" ? "捡到" : "寻找"} · ${item.itemName}`,
+            content: itemContent(item),
+            metadata: JSON.stringify({
+              lostFoundItem: true,
+              imported: true,
+              kind: item.kind,
+              campus: item.campus,
+              location: item.location,
+              happenedAt: item.happenedAt.toISOString(),
+              storageLocation: item.storageLocation,
+              publisherDepartment: item.publisherDepartment,
+              publishedAt: item.publishedAt.toISOString(),
+              claimDeadline: item.claimDeadline?.toISOString() || null,
+              remark: item.remark,
+            }),
+            aiReviewStatus: "approved_manual",
+            aiRiskLevel: "low",
+            aiRiskScore: 0,
+            hidden: !publicStatus,
+            locked: item.status !== "active",
+            createdAt: item.publishedAt,
+            lastReplyAt: item.publishedAt,
+            lastReplyById: req.user!.userId,
+          },
+        });
+        const createdItem = await tx.lostFoundItem.create({
+          data: {
+            topicId: topic.id,
+            publisherId: req.user!.userId,
+            kind: item.kind,
+            itemName: item.itemName,
+            description: item.description,
+            campus: item.campus,
+            location: item.location,
+            happenedAt: item.happenedAt,
+            storageLocation: item.storageLocation,
+            publisherDepartment: item.publisherDepartment,
+            publishedAt: item.publishedAt,
+            claimDeadline: item.claimDeadline,
+            remark: item.remark,
+            contact: item.contact,
+            status: item.status,
+            claimedAt: item.status === "claimed" ? item.publishedAt : null,
+            createdAt: item.publishedAt,
+          },
+          include: itemInclude,
+        });
+        created.push(createdItem);
+        if (publicStatus) visibleCount += 1;
+      }
+      if (visibleCount) {
+        await tx.user.update({ where: { id: req.user!.userId }, data: { postCount: { increment: visibleCount } } });
+        await tx.board.update({ where: { id: board.id }, data: { topicCount: { increment: visibleCount } } });
+      }
+      return created;
+    });
+    await invalidateForumCaches();
+    ok(res, {
+      imported: imported.map((item) => serializeItem(item, req.user!.userId, req.user!.role, undefined, req.user!.lostFoundRole)),
+      skipped,
+    });
   } catch (error) { next(error); }
 });
 

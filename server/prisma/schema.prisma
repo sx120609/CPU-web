@@ -1172,21 +1172,26 @@ model MarketCategory {
 // ============ 小工具：失物招领（结构化信息 + 论坛帖子联动） ============
 
 model LostFoundItem {
-  id          Int       @id @default(autoincrement())
-  topicId     Int       @unique
-  publisherId Int
-  kind        String // found / lost
-  itemName    String
-  description String    @default("")
-  campus      String    @default("")
-  location    String
-  happenedAt  DateTime
-  contact     String
-  status      String    @default("active") // reviewing / active / claimed / closed / hidden
-  pinned      Boolean   @default(false)
-  claimedAt   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                  Int       @id @default(autoincrement())
+  topicId             Int       @unique
+  publisherId         Int
+  kind                String // found / lost
+  itemName            String
+  description         String    @default("")
+  campus              String    @default("")
+  location            String
+  happenedAt          DateTime
+  storageLocation     String    @default("")
+  publisherDepartment String    @default("")
+  publishedAt         DateTime  @default(now())
+  claimDeadline       DateTime?
+  remark              String    @default("")
+  contact             String
+  status              String    @default("active") // reviewing / active / claimed / closed / hidden
+  pinned              Boolean   @default(false)
+  claimedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   topic     Topic            @relation(fields: [topicId], references: [id], onDelete: Cascade)
   publisher User             @relation("LostFoundPublisher", fields: [publisherId], references: [id], onDelete: Cascade)
