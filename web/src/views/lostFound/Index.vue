@@ -46,7 +46,8 @@
         :key="item.id"
         class="item-card"
         :class="{ claimed: item.status === 'claimed', pinned: item.pinned }"
-        @click="openDetail(item.id)"
+        @click="openDetail(item)"
+        @pointerenter="prefetchDetail(item.id)"
       >
         <div class="cover">
           <img v-if="item.cover" :src="item.cover" :alt="item.itemName" />
@@ -144,6 +145,9 @@
         <section v-if="detail.myClaim" class="my-claim"><h3>我的认领申请</h3><el-tag :type="claimTagType(detail.myClaim.status)">{{ claimStatusText(detail.myClaim.status) }}</el-tag><p>{{ detail.myClaim.message }}</p><el-button v-if="detail.myClaim.status === 'pending'" text type="danger" @click="withdrawClaim(detail.myClaim.id)">撤回申请</el-button></section>
         <section v-if="detail.mine && detail.claims?.length" class="claims"><h3>认领申请</h3><article v-for="claim in detail.claims" :key="claim.id"><div><strong>{{ claim.claimant?.nickname || '认领同学' }}</strong><el-tag size="small" :type="claimTagType(claim.status)">{{ claimStatusText(claim.status) }}</el-tag></div><p>{{ claim.message }}</p><p v-if="claim.evidence"><b>核验线索：</b>{{ claim.evidence }}</p><p class="claim-contact"><b>联系方式：</b>{{ claim.contact }}</p><footer v-if="claim.status === 'pending'"><el-button size="small" type="success" @click="resolveClaim(claim.id, 'accepted')">核验通过</el-button><el-button size="small" @click="resolveClaim(claim.id, 'rejected')">不匹配</el-button></footer></article></section>
       </div>
+      <div v-else class="detail detail-skeleton" aria-live="polite">
+        <el-skeleton :rows="7" animated />
+      </div>
     </el-drawer>
 
     <el-dialog v-model="claimOpen" width="min(560px, 94vw)" title="提交站内认领信息">
@@ -189,6 +193,9 @@ const publishForm = reactive({ kind: "found" as LostFoundKind, itemName: "", des
 const detailOpen = ref(false);
 const detailLoading = ref(false);
 const detail = ref<LostFoundItem | null>(null);
+const detailCache = new Map<number, LostFoundItem>();
+const detailPrefetching = new Set<number>();
+let detailRequestVersion = 0;
 const claimOpen = ref(false);
 const claimSubmitting = ref(false);
 const claimForm = reactive({ message: "", evidence: "", contact: "" });
@@ -211,7 +218,35 @@ function openPublish(kind: LostFoundKind) { if (!ensureLogin()) return; const ca
 async function uploadImages(event: Event) { const input = event.target as HTMLInputElement; const files = Array.from(input.files || []).slice(0, 6 - publishForm.images.length); if (!files.length) return; uploading.value = true; try { for (let i = 0; i < files.length; i++) { const result = await uploadApi.media(files[i], files[i].name, { forceProxy: isAndroidNativeApp(), onProgress: (state) => { uploadProgress.value = Math.round(((i + state.percent / 100) / files.length) * 100); } }); publishForm.images.push(result.url); } } finally { uploading.value = false; uploadProgress.value = 0; input.value = ""; } }
 function validPublish() { if (publishForm.itemName.trim().length < 2) return ElMessage.warning("请填写物品名称"), false; if (!publishForm.campus.trim()) return ElMessage.warning("请填写校区"), false; if (publishForm.location.trim().length < 2) return ElMessage.warning("请填写具体地点"), false; if (publishForm.kind === "found" && publishForm.storageLocation.trim().length < 2) return ElMessage.warning("请填写物品放到哪里了"), false; if (!publishForm.happenedAt) return ElMessage.warning("请选择时间"), false; if (publishForm.contact.trim().length < 2) return ElMessage.warning("请填写联系方式"), false; return true; }
 async function submitItem() { if (!validPublish() || submitting.value) return; submitting.value = true; try { const item = await lostFoundApi.create({ ...publishForm }); publishOpen.value = false; ElMessage.success(item.status === "reviewing" ? "已提交审核，通过后会公开展示" : "已发布，并同步到论坛讨论区"); await Promise.all([loadItems(), loadMeta()]); await openDetail(item.id); } finally { submitting.value = false; } }
-async function openDetail(id: number) { detailOpen.value = true; detailLoading.value = true; try { detail.value = await lostFoundApi.item(id, { suppressErrorMessage: true }); router.replace({ query: { ...route.query, item: String(id) } }).catch(() => null); } catch { detailOpen.value = false; ElMessage.error("信息加载失败或已下架"); } finally { detailLoading.value = false; } }
+async function prefetchDetail(id: number) {
+  if (detailCache.has(id) || detailPrefetching.has(id)) return;
+  detailPrefetching.add(id);
+  try { detailCache.set(id, await lostFoundApi.item(id, { suppressErrorMessage: true, suppressAuthMessage: true })); }
+  catch { /* 预取失败不影响正常打开 */ }
+  finally { detailPrefetching.delete(id); }
+}
+async function openDetail(source: LostFoundItem | number) {
+  const id = typeof source === "number" ? source : source.id;
+  const requestVersion = ++detailRequestVersion;
+  // 列表卡片本身已经拥有公开详情，先用它渲染，抽屉不会出现空白等待状态。
+  detail.value = typeof source === "number" ? (detailCache.get(id) || null) : source;
+  detailOpen.value = true;
+  router.replace({ query: { ...route.query, item: String(id) } }).catch(() => null);
+  detailLoading.value = !detailCache.has(id);
+  try {
+    // 即使已有预取缓存也刷新一次，避免认领状态、图片审核状态等动态信息滞后。
+    const loaded = await lostFoundApi.item(id, { suppressErrorMessage: true });
+    detailCache.set(id, loaded);
+    if (requestVersion === detailRequestVersion) detail.value = loaded;
+  } catch {
+    if (requestVersion === detailRequestVersion) {
+      detailOpen.value = false;
+      ElMessage.error("信息加载失败或已下架");
+    }
+  } finally {
+    if (requestVersion === detailRequestVersion) detailLoading.value = false;
+  }
+}
 function openClaim() { if (!ensureLogin()) return; Object.assign(claimForm, { message: "", evidence: "", contact: "" }); claimOpen.value = true; }
 async function submitClaim() { if (!detail.value || claimSubmitting.value) return; if (claimForm.message.trim().length < 5) return ElMessage.warning("请至少填写 5 个字的认领说明"); if (claimForm.contact.trim().length < 2) return ElMessage.warning("请填写联系方式"); claimSubmitting.value = true; try { await lostFoundApi.claim(detail.value.id, { ...claimForm }); claimOpen.value = false; ElMessage.success("认领信息已私下提交给发布者"); await openDetail(detail.value.id); } finally { claimSubmitting.value = false; } }
 async function setItemStatus(status: "active" | "claimed" | "closed") { if (!detail.value) return; const label = status === "claimed" ? "标记为已认领" : status === "closed" ? "关闭" : "重新开放"; await ElMessageBox.confirm(`确认${label}这条信息？`, "更新状态", { type: "warning" }); await lostFoundApi.updateStatus(detail.value.id, status); ElMessage.success("状态已更新"); await Promise.all([openDetail(detail.value.id), loadItems()]); }
