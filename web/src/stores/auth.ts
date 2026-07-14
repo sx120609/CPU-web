@@ -16,21 +16,21 @@ import {
 
 const DATA_AUTH_KEY_PREFIX = "cpu-data-auth-agreement-v1";
 const AUTO_SSO_RETRY_COOLDOWN_MS = 10 * 60 * 1000;
-const AUTO_SSO_LAST_ATTEMPT_KEY = "cpu-auto-sso-last-at";
+const AUTO_SSO_LAST_FAILURE_KEY = "cpu-auto-sso-last-failure-at";
 
 let autoSsoLoginInFlight: Promise<boolean> | null = null;
 
 function autoSsoRetryCoolingDown() {
   try {
-    const lastAttemptAt = Number(localStorage.getItem(AUTO_SSO_LAST_ATTEMPT_KEY) || 0);
-    return Number.isFinite(lastAttemptAt) && Date.now() - lastAttemptAt < AUTO_SSO_RETRY_COOLDOWN_MS;
+    const lastFailureAt = Number(localStorage.getItem(AUTO_SSO_LAST_FAILURE_KEY) || 0);
+    return Number.isFinite(lastFailureAt) && Date.now() - lastFailureAt < AUTO_SSO_RETRY_COOLDOWN_MS;
   } catch {
     return false;
   }
 }
 
-function markAutoSsoAttempt() {
-  try { localStorage.setItem(AUTO_SSO_LAST_ATTEMPT_KEY, String(Date.now())); } catch { /* ignore */ }
+function markAutoSsoFailure() {
+  try { localStorage.setItem(AUTO_SSO_LAST_FAILURE_KEY, String(Date.now())); } catch { /* ignore */ }
 }
 
 function dataAuthKey(username: string) {
@@ -305,8 +305,8 @@ export const useAuthStore = defineStore("auth", {
     },
 
     /**
-     * Background recovery shares one school SSO submission and permits at most
-     * one automatic credential submission per ten minutes. Explicit login is unaffected.
+     * Background recovery shares one school SSO submission. Failed automatic
+     * submissions are cooled down for ten minutes; explicit login is unaffected.
      */
     async tryAutoSsoLogin(options?: { silent?: boolean }): Promise<boolean> {
       if (autoSsoLoginInFlight) return autoSsoLoginInFlight;
@@ -315,10 +315,16 @@ export const useAuthStore = defineStore("auth", {
         const { loadCreds } = await import("@/utils/credCrypto");
         const creds = await loadCreds().catch(() => null);
         if (!creds) return false;
-        markAutoSsoAttempt();
-        if (this.ssoPendingId.trim().length < 8) await this.ssoBegin({ silent: options?.silent });
-        if (this.ssoNeedCaptcha) return false;
-        return this.ssoLogin(creds.username, creds.password, undefined, true, options);
+        try {
+          if (this.ssoPendingId.trim().length < 8) await this.ssoBegin({ silent: options?.silent });
+          if (this.ssoNeedCaptcha) return false;
+          const ok = await this.ssoLogin(creds.username, creds.password, undefined, true, options);
+          if (!ok) markAutoSsoFailure();
+          return ok;
+        } catch (error) {
+          markAutoSsoFailure();
+          throw error;
+        }
       })();
       autoSsoLoginInFlight = task;
       try {
