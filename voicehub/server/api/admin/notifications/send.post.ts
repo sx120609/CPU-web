@@ -1,6 +1,5 @@
 import { db } from '~/drizzle/db'
 import { users } from '~/drizzle/schema'
-import { and, eq, or } from 'drizzle-orm'
 import {
   createBatchSystemNotifications,
   createSystemNotification
@@ -31,7 +30,7 @@ export default defineEventHandler(async (event) => {
 
     // 获取请求数据
     const body = await readBody(event)
-    const { title, message, content, scope, filter, userId, type } = body
+    const { title, message, content, scope, filter, userId } = body
 
     // 处理单个用户通知（用于权限变更等系统通知）
     if (userId && title && (message || content)) {
@@ -61,7 +60,7 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    if (!scope || !['ALL', 'GRADE', 'CLASS', 'MULTI_CLASS', 'SPECIFIC_USERS'].includes(scope)) {
+    if (!scope || !['ALL', 'SPECIFIC_USERS'].includes(scope)) {
       throw createError({
         statusCode: 400,
         message: '无效的通知范围'
@@ -75,53 +74,6 @@ export default defineEventHandler(async (event) => {
       // 查询所有用户
       const allUsers = await db.select({ id: users.id }).from(users)
       userIds = allUsers.map((user) => user.id)
-    } else if (scope === 'GRADE') {
-      // 按年级查询
-      if (!filter?.grade) {
-        throw createError({
-          statusCode: 400,
-          message: '年级不能为空'
-        })
-      }
-
-      const gradeUsers = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(eq(users.grade, filter.grade))
-      userIds = gradeUsers.map((user) => user.id)
-    } else if (scope === 'CLASS') {
-      // 按单个班级查询
-      if (!filter?.grade || !filter?.class) {
-        throw createError({
-          statusCode: 400,
-          message: '年级和班级不能为空'
-        })
-      }
-
-      const classUsers = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(and(eq(users.grade, filter.grade), eq(users.class, filter.class)))
-      userIds = classUsers.map((user) => user.id)
-    } else if (scope === 'MULTI_CLASS') {
-      // 按多个班级查询
-      if (!filter?.classes || !Array.isArray(filter.classes) || filter.classes.length === 0) {
-        throw createError({
-          statusCode: 400,
-          message: '未选择任何班级'
-        })
-      }
-
-      // 构建查询条件，使用OR连接多个班级条件
-      const whereConditions = filter.classes.map((cls: { grade: string; class: string }) =>
-        and(eq(users.grade, cls.grade), eq(users.class, cls.class))
-      )
-
-      const multiClassUsers = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(or(...whereConditions))
-      userIds = multiClassUsers.map((user) => user.id)
     } else if (scope === 'SPECIFIC_USERS') {
       // 指定用户
       if (!filter?.userIds || !Array.isArray(filter.userIds) || filter.userIds.length === 0) {
@@ -168,12 +120,18 @@ export default defineEventHandler(async (event) => {
       sentCount,
       totalUsers
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('发送通知失败:', error)
 
+    const statusCode =
+      typeof error === 'object' && error !== null && 'statusCode' in error
+        ? Number(error.statusCode) || 500
+        : 500
+    const message = error instanceof Error ? error.message : '发送通知失败'
+
     throw createError({
-      statusCode: error.statusCode || 500,
-      message: error.message || '发送通知失败'
+      statusCode,
+      message
     })
   }
 })

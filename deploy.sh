@@ -3,7 +3,8 @@
 #
 # 用法：
 #   ./deploy.sh                  # 首次部署：装依赖 + 初始化 DB + 构建前端 + 启动
-#   ./deploy.sh update           # 更新部署：git pull + 重装 + 重建 + 重启
+#   ./deploy.sh update           # 增量更新：仅更新本次变更涉及的子项目
+#   ./deploy.sh update-all       # 强制完整更新主站与药苑之声
 #   ./deploy.sh start            # 仅启动
 #   ./deploy.sh stop             # 停止
 #   ./deploy.sh restart          # 重启
@@ -637,22 +638,50 @@ configured_voicehub_database_url() {
 }
 
 # ---------- 子步骤 ----------
-do_install() {
-  log "安装依赖（root + server + web + voicehub）..."
-  npm install --no-audit --no-fund
-  log "生成 Prisma Client"
-  npm run prisma:generate --prefix server || err "Prisma Client 生成失败，请检查 Prisma 环境"
+install_project_dependencies() {
+  local project="$1"
+  if [ -f "$project/package-lock.json" ]; then
+    log "Installing $project dependencies with npm ci"
+    npm ci --prefix "$project" --no-audit --no-fund
+  else
+    log "Installing $project dependencies with npm install (no lockfile)"
+    npm install --prefix "$project" --no-audit --no-fund
+  fi
 }
 
-do_build() {
-  log "构建前再次生成 Prisma Client"
-  npm run prisma:generate --prefix server || err "构建前 Prisma Client 生成失败"
-  log "构建后端 TypeScript → server/dist"
-  npm run build --prefix server
-  log "构建前端 Vite → web/dist"
+do_install_server() { install_project_dependencies server; }
+do_install_web() { install_project_dependencies web; }
+do_install_voicehub() { install_project_dependencies voicehub; }
+do_install_all() {
+  do_install_server
+  do_install_web
+  do_install_voicehub
+}
+
+do_generate_prisma() {
+  log "Generating Prisma Client"
+  npm run prisma:generate --prefix server || err "Prisma Client generation failed"
+}
+
+do_build_server() {
+  log "Building server TypeScript -> server/dist"
+  npm run build:compile --prefix server
+}
+
+do_build_web() {
+  log "Building web Vite -> web/dist"
   npm run build --prefix web
-  log "构建药苑之声 Nuxt/Nitro → voicehub/.output"
+}
+
+do_build_voicehub() {
+  log "Building VoiceHub Nuxt/Nitro -> voicehub/.output"
   npm run build:cpu --prefix voicehub
+}
+
+do_build_all() {
+  do_build_server
+  do_build_web
+  do_build_voicehub
 }
 
 ensure_voicehub_database_url() {
@@ -698,21 +727,16 @@ do_voicehub_db_init() {
   ensure_voicehub_database_url
   voice_url="$(configured_voicehub_database_url)"
   log "同步药苑之声数据库 schema"
-  VOICEHUB_DATABASE_URL="$voice_url" npm run db:migrate:cpu --prefix voicehub
 }
 
 do_build_proxy() {
-  log "代理构建前再次生成 Prisma Client"
-  npm run prisma:generate --prefix server || err "代理构建前 Prisma Client 生成失败"
-  log "构建代理端后端 TypeScript → server/dist"
-  npm run build --prefix server
+  do_generate_prisma
+  do_build_server
 }
 
 do_build_agent() {
-  log "Agent 构建前再次生成 Prisma Client"
-  npm run prisma:generate --prefix server || err "Agent 构建前 Prisma Client 生成失败"
-  log "构建出站教务 Agent → server/dist/jwxtAgent.js"
-  npm run build --prefix server
+  do_generate_prisma
+  do_build_server
 }
 
 do_db_init() {
@@ -734,6 +758,15 @@ do_db_init() {
   log "数据库初始化完成后再次生成 Prisma Client"
   npm run prisma:generate --prefix server
   do_voicehub_db_init
+}
+
+do_db_migrate() {
+  local db_url
+  db_url="$(configured_database_url)"
+  is_postgres_url "$db_url" || err "PostgreSQL must be configured before updating"
+  ensure_local_postgres_url_ready "$db_url"
+  log "Prisma files changed; applying PostgreSQL schema update"
+  npm run db:migrate --prefix server
 }
 
 do_db_reset() {
@@ -912,6 +945,36 @@ do_start() {
   echo ""
 }
 
+do_main_start() {
+  ensure_node
+  ensure_pm2
+  log "Starting $SERVICE_NAME on port $PORT"
+  cd server
+  if pm2 describe "$SERVICE_NAME" >/dev/null 2>&1; then
+    VOICEHUB_ORIGIN="http://127.0.0.1:$VOICEHUB_PORT" pm2 restart "$SERVICE_NAME" --update-env
+  else
+    NODE_ENV=production PORT=$PORT VOICEHUB_ORIGIN="http://127.0.0.1:$VOICEHUB_PORT" pm2 start "node dist/index.js" \
+      --name "$SERVICE_NAME" \
+      --time \
+      --max-memory-restart 600M \
+      --log-date-format "YYYY-MM-DD HH:mm:ss" \
+      --merge-logs
+  fi
+  cd ..
+  pm2 save >/dev/null
+}
+
+do_main_restart() {
+  ensure_node
+  ensure_pm2
+  if pm2 describe "$SERVICE_NAME" >/dev/null 2>&1; then
+    VOICEHUB_ORIGIN="http://127.0.0.1:$VOICEHUB_PORT" pm2 restart "$SERVICE_NAME" --update-env
+    pm2 save >/dev/null
+  else
+    do_main_start
+  fi
+}
+
 do_voicehub_start() {
   ensure_node
   ensure_pm2
@@ -919,7 +982,6 @@ do_voicehub_start() {
   voice_url="$(configured_voicehub_database_url)"
   is_postgres_url "$voice_url" || err "缺少 VOICEHUB_DATABASE_URL，请先运行数据库初始化"
   [ -f voicehub/.output/server/index.mjs ] || err "缺少 voicehub/.output，请先执行 ./deploy.sh update"
-  log "启动前检查药苑之声数据库迁移"
   VOICEHUB_DATABASE_URL="$voice_url" npm run db:migrate:cpu --prefix voicehub
   log "通过 pm2 启动药苑之声（本机端口 $VOICEHUB_PORT）"
   cd voicehub
@@ -1035,7 +1097,7 @@ do_agent_stop()    { ensure_pm2; pm2 stop "$AGENT_SERVICE_NAME"; }
 do_agent_restart() { ensure_node; ensure_pm2; ensure_agent_env; pm2 restart "$AGENT_SERVICE_NAME" --update-env; }
 do_agent_logs()    { ensure_pm2; pm2 logs "$AGENT_SERVICE_NAME"; }
 
-do_update() {
+do_update_legacy() {
   if [ -d .git ]; then
     log "拉取最新代码"
     git pull --ff-only || warn "git pull 失败，继续部署当前代码"
@@ -1048,6 +1110,85 @@ do_update() {
   do_restart || do_start
 }
 
+DEPLOY_CHANGED_FILES=""
+DEPLOY_FORCE_ALL="${DEPLOY_FORCE_ALL:-0}"
+
+collect_update_changes() {
+  local before after
+  if [ ! -d .git ]; then
+    warn "Not a Git checkout; performing a full update"
+    DEPLOY_FORCE_ALL=1
+    return
+  fi
+
+  before="$(git rev-parse HEAD)"
+  log "Pulling latest code"
+  if ! git pull --ff-only; then
+    warn "git pull failed; considering only detected local changes"
+  fi
+  after="$(git rev-parse HEAD)"
+  DEPLOY_CHANGED_FILES="$(
+    {
+      git diff --name-only "$before" "$after"
+      git diff --name-only
+      git diff --name-only --cached
+    } | sort -u
+  )"
+}
+
+changed_files_match() {
+  local pattern="$1"
+  [ "$DEPLOY_FORCE_ALL" = "1" ] || printf '%s\n' "$DEPLOY_CHANGED_FILES" | grep -Eq "$pattern"
+}
+
+do_update() {
+  collect_update_changes
+
+  local server_changed=0 web_changed=0 voicehub_changed=0
+  local server_dependencies_changed=0 web_dependencies_changed=0 voicehub_dependencies_changed=0
+  local prisma_changed=0
+
+  changed_files_match '^server/' && server_changed=1
+  changed_files_match '^web/' && web_changed=1
+  changed_files_match '^voicehub/' && voicehub_changed=1
+  changed_files_match '^server/(package(-lock)?\.json|npm-shrinkwrap\.json)$' && server_dependencies_changed=1
+  changed_files_match '^web/(package(-lock)?\.json|npm-shrinkwrap\.json)$' && web_dependencies_changed=1
+  changed_files_match '^voicehub/(package(-lock)?\.json|npm-shrinkwrap\.json)$' && voicehub_dependencies_changed=1
+  changed_files_match '^server/prisma/' && prisma_changed=1
+
+  if [ -z "$DEPLOY_CHANGED_FILES" ] && [ "$DEPLOY_FORCE_ALL" != "1" ]; then
+    log "No application changes detected; skipping install, build, migration, and restart"
+    return
+  fi
+
+  if [ "$server_changed" = "1" ]; then
+    [ "$server_dependencies_changed" = "1" ] && do_install_server
+    if [ "$prisma_changed" = "1" ] || [ "$server_dependencies_changed" = "1" ]; then
+      do_db_migrate
+      do_generate_prisma
+    fi
+    do_build_server
+  fi
+
+  if [ "$web_changed" = "1" ]; then
+    [ "$web_dependencies_changed" = "1" ] && do_install_web
+    do_build_web
+  fi
+
+  if [ "$server_changed" = "1" ] || [ "$web_changed" = "1" ]; then
+    do_main_restart
+  fi
+
+  if [ "$voicehub_changed" = "1" ]; then
+    [ "$voicehub_dependencies_changed" = "1" ] && do_install_voicehub
+    do_voicehub_db_init
+    do_build_voicehub
+    do_voicehub_start
+    ensure_pm2
+    pm2 save >/dev/null
+  fi
+}
+
 do_proxy_update() {
   if [ -d .git ]; then
     log "拉取最新代码"
@@ -1056,7 +1197,7 @@ do_proxy_update() {
     warn "非 git 仓库，跳过 git pull"
   fi
   ensure_proxy_env
-  do_install
+  do_install_server
   do_build_proxy
   do_proxy_restart || do_proxy_start
 }
@@ -1069,7 +1210,7 @@ do_agent_update() {
     warn "非 git 仓库，跳过 git pull"
   fi
   ensure_agent_env
-  do_install
+  do_install_server
   do_build_agent
   do_agent_restart || do_agent_start
 }
@@ -1083,7 +1224,7 @@ case "$CMD" in
     if runtime_is_agent && ! runtime_uses_postgres; then
       log "检测到出站教务 Agent 环境，切换为 Agent 首次部署"
       ensure_agent_env
-      do_install
+      do_install_server
       do_build_agent
       do_agent_start
       exit 0
@@ -1096,9 +1237,9 @@ case "$CMD" in
     if ! runtime_uses_redis; then
       do_redis_init
     fi
-    do_install
+    do_install_all
     do_db_init
-    do_build
+    do_build_all
     do_start
     ;;
   update)
@@ -1114,11 +1255,20 @@ case "$CMD" in
     runtime_uses_postgres || err "当前部署脚本已切换为 PostgreSQL-only。请先运行 ./deploy.sh postgres-init 或 ./deploy.sh postgres-config"
     do_update
     ;;
+  update-all)
+    log "=== Full update deployment ==="
+    ensure_node
+    ensure_ffmpeg
+    ensure_env
+    runtime_uses_postgres || err "PostgreSQL must be configured before updating"
+    DEPLOY_FORCE_ALL=1
+    do_update
+    ;;
   proxy-init)
     log "=== 教务代理首次部署模式 ==="
     ensure_node
     ensure_proxy_env
-    do_install
+    do_install_server
     do_build_proxy
     do_proxy_start
     ;;
@@ -1136,7 +1286,7 @@ case "$CMD" in
     log "=== 出站教务 Agent 首次部署 ==="
     ensure_node
     ensure_agent_env
-    do_install
+    do_install_server
     do_build_agent
     do_agent_start
     ;;

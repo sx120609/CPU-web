@@ -74,100 +74,6 @@
                   </p>
                 </div>
 
-                <div v-else-if="form.scope === 'GRADE'" key="grade" class="space-y-4">
-                  <div class="space-y-1.5">
-                    <span class="text-[9px] font-black text-zinc-600 uppercase tracking-widest px-1"
-                      >选择年级</span
-                    >
-                    <CustomSelect
-                      v-model="form.grade"
-                      :options="['高一', '高二', '高三', '教师']"
-                      placeholder="请选择年级"
-                      class="w-full md:w-64"
-                    />
-                  </div>
-                </div>
-
-                <div
-                  v-else-if="form.scope === 'CLASS'"
-                  key="class"
-                  class="grid grid-cols-1 md:grid-cols-2 gap-4"
-                >
-                  <div class="space-y-1.5">
-                    <span class="text-[9px] font-black text-zinc-600 uppercase tracking-widest px-1"
-                      >年级</span
-                    >
-                    <CustomSelect
-                      v-model="form.classGrade"
-                      :options="['高一', '高二', '高三', '教师']"
-                      placeholder="请选择年级"
-                      class="w-full"
-                    />
-                  </div>
-                  <div class="space-y-1.5">
-                    <span class="text-[9px] font-black text-zinc-600 uppercase tracking-widest px-1"
-                      >班级</span
-                    >
-                    <input
-                      v-model="form.className"
-                      type="text"
-                      placeholder="如: 1班、2班"
-                      class="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-xs focus:outline-none focus:border-blue-500/30 text-zinc-200"
-                    >
-                  </div>
-                </div>
-
-                <div v-else-if="form.scope === 'MULTI_CLASS'" key="multi" class="space-y-4">
-                  <div class="p-6 bg-zinc-950/50 border border-zinc-800 border-dashed rounded-2xl">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                      <CustomSelect
-                        v-model="multiClassForm.grade"
-                        :options="['高一', '高二', '高三', '教师']"
-                        placeholder="请选择年级"
-                        class="w-full"
-                      />
-                      <div class="flex gap-2">
-                        <input
-                          v-model="multiClassForm.class"
-                          type="text"
-                          placeholder="输入班级名称"
-                          class="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-xs focus:outline-none text-zinc-200"
-                        >
-                        <button
-                          :disabled="!canAddClass"
-                          class="px-4 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-400 font-bold rounded-xl text-xs transition-all"
-                          @click="addClassToSelection"
-                        >
-                          添加
-                        </button>
-                      </div>
-                    </div>
-
-                    <div v-if="form.selectedClasses.length > 0" class="flex flex-wrap gap-2">
-                      <div
-                        v-for="(cls, index) in form.selectedClasses"
-                        :key="index"
-                        class="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg group"
-                      >
-                        <span class="text-[10px] font-bold text-zinc-400"
-                          >{{ cls.grade }} {{ cls.class }}</span
-                        >
-                        <button
-                          class="text-zinc-600 hover:text-red-400 transition-colors"
-                          @click="removeClassFromSelection(index)"
-                        >
-                          <X :size="12" />
-                        </button>
-                      </div>
-                    </div>
-                    <div v-else class="text-center py-4">
-                      <p class="text-[10px] font-black text-zinc-700 uppercase tracking-widest">
-                        未选择任何班级
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
                 <div v-else-if="form.scope === 'SPECIFIC_USERS'" key="specific" class="space-y-4">
                   <div class="relative flex items-center">
                     <Search
@@ -212,14 +118,7 @@
                           <span class="text-[10px] text-blue-500 font-black"
                             >@{{ user.username }}</span
                           >
-                          <span
-                            v-if="user.grade && user.class"
-                            class="text-[10px] text-zinc-600 font-bold uppercase tracking-widest"
-                            >{{ user.grade }} {{ user.class }}</span
-                          >
-                          <span class="text-[10px] text-zinc-700 font-black">{{
-                            getRoleText(user.role)
-                          }}</span>
+                          <span class="text-[10px] text-zinc-600 font-bold">药大拾间账号</span>
                         </div>
                       </div>
                       <button
@@ -410,21 +309,17 @@ import { computed, ref, onUnmounted } from 'vue'
 import {
   Send,
   Users,
-  GraduationCap,
-  LayoutGrid,
   User,
   Search,
   Bell,
   Info,
   X,
   Check,
-  Plus,
   AlertCircle,
   Eye,
   MessageSquare,
   Loader2
 } from 'lucide-vue-next'
-import CustomSelect from '~/components/UI/Common/CustomSelect.vue'
 import { useAuth } from '~/composables/useAuth'
 import { useAdmin } from '~/composables/useAdmin'
 
@@ -435,18 +330,8 @@ const { sendAdminNotification } = useAdmin()
 const form = ref({
   title: '',
   content: '',
-  scope: 'ALL', // 'ALL', 'GRADE', 'CLASS', 'MULTI_CLASS', 'SPECIFIC_USERS'
-  grade: '',
-  classGrade: '',
-  className: '',
-  selectedClasses: [], // 用于多班级选择
+  scope: 'ALL', // 'ALL', 'SPECIFIC_USERS'
   selectedUsers: [] // 用于指定用户选择
-})
-
-// 多班级选择表单
-const multiClassForm = ref({
-  grade: '',
-  class: ''
 })
 
 const loading = ref(false)
@@ -462,41 +347,8 @@ let userSearchTimeout = null
 
 const targetOptions = [
   { id: 'ALL', label: '全体用户', icon: Users },
-  { id: 'GRADE', label: '按年级选择', icon: GraduationCap },
-  { id: 'CLASS', label: '按班级选择', icon: LayoutGrid },
-  { id: 'MULTI_CLASS', label: '多班级选择', icon: Plus },
   { id: 'SPECIFIC_USERS', label: '指定用户', icon: User }
 ]
-
-// 判断是否可以添加班级
-const canAddClass = computed(() => {
-  return multiClassForm.value.grade && multiClassForm.value.class
-})
-
-// 添加班级到选择列表
-const addClassToSelection = () => {
-  if (!canAddClass.value) return
-
-  // 检查是否已经选择了这个班级
-  const isDuplicate = form.value.selectedClasses.some(
-    (cls) => cls.grade === multiClassForm.value.grade && cls.class === multiClassForm.value.class
-  )
-
-  if (!isDuplicate) {
-    form.value.selectedClasses.push({
-      grade: multiClassForm.value.grade,
-      class: multiClassForm.value.class
-    })
-
-    // 清空输入
-    multiClassForm.value.class = ''
-  }
-}
-
-// 从选择列表中移除班级
-const removeClassFromSelection = (index) => {
-  form.value.selectedClasses.splice(index, 1)
-}
 
 // 用户搜索输入处理（防抖）
 const onUserSearchInput = () => {
@@ -519,11 +371,10 @@ const searchUsers = async (query) => {
 
   try {
     userSearchLoading.value = true
-    const response = await $fetch('/api/admin/users', {
+    const response = await $fetch('/api/users/search', {
       method: 'GET',
       query: {
-        search: query,
-        limit: 20
+        keyword: query
       }
     })
 
@@ -552,10 +403,7 @@ const addUserToSelection = (user) => {
   form.value.selectedUsers.push({
     id: user.id,
     name: user.name,
-    username: user.username,
-    grade: user.grade,
-    class: user.class,
-    role: user.role
+    username: user.username
   })
 
   // 清空搜索
@@ -574,31 +422,9 @@ const clearAllSelectedUsers = () => {
   form.value.selectedUsers = []
 }
 
-// 获取角色文本
-const getRoleText = (role) => {
-  const roleMap = {
-    admin: '管理员',
-    teacher: '教师',
-    student: '学生'
-  }
-  return roleMap[role] || role
-}
-
 // 表单验证
 const isFormValid = computed(() => {
   if (!form.value.title || !form.value.content) {
-    return false
-  }
-
-  if (form.value.scope === 'GRADE' && !form.value.grade) {
-    return false
-  }
-
-  if (form.value.scope === 'CLASS' && (!form.value.classGrade || !form.value.className)) {
-    return false
-  }
-
-  if (form.value.scope === 'MULTI_CLASS' && form.value.selectedClasses.length === 0) {
     return false
   }
 
@@ -614,16 +440,6 @@ const scopeDescription = computed(() => {
   switch (form.value.scope) {
     case 'ALL':
       return '全体用户'
-    case 'GRADE':
-      return form.value.grade ? `${form.value.grade}年级` : '请选择年级'
-    case 'CLASS':
-      return form.value.classGrade && form.value.className
-        ? `${form.value.classGrade}年级${form.value.className}班`
-        : '请选择班级'
-    case 'MULTI_CLASS':
-      return form.value.selectedClasses.length > 0
-        ? `${form.value.selectedClasses.length}个班级`
-        : '请选择班级'
     case 'SPECIFIC_USERS':
       return form.value.selectedUsers.length > 0
         ? `已选择${form.value.selectedUsers.length}个用户`
@@ -659,14 +475,7 @@ const sendNotification = async () => {
     }
 
     // 添加过滤条件
-    if (form.value.scope === 'GRADE') {
-      notificationData.filter.grade = form.value.grade
-    } else if (form.value.scope === 'CLASS') {
-      notificationData.filter.grade = form.value.classGrade
-      notificationData.filter.class = form.value.className
-    } else if (form.value.scope === 'MULTI_CLASS') {
-      notificationData.filter.classes = form.value.selectedClasses
-    } else if (form.value.scope === 'SPECIFIC_USERS') {
+    if (form.value.scope === 'SPECIFIC_USERS') {
       notificationData.filter.userIds = form.value.selectedUsers.map((user) => user.id)
     }
 
@@ -686,15 +495,7 @@ const sendNotification = async () => {
         title: '',
         content: '',
         scope: 'ALL',
-        grade: '',
-        classGrade: '',
-        className: '',
-        selectedClasses: [],
         selectedUsers: []
-      }
-      multiClassForm.value = {
-        grade: '',
-        class: ''
       }
       // 清空用户搜索相关状态
       userSearchQuery.value = ''
