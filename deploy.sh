@@ -1112,24 +1112,66 @@ do_update_legacy() {
 
 DEPLOY_CHANGED_FILES=""
 DEPLOY_FORCE_ALL="${DEPLOY_FORCE_ALL:-0}"
+DEPLOY_TARGET_COMMIT=""
+
+deployment_state_file() {
+  git rev-parse --git-path cpu-web-last-successful-deploy 2>/dev/null
+}
+
+record_successful_deployment() {
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+
+  local commit state_file tmp_file
+  commit="${DEPLOY_TARGET_COMMIT:-$(git rev-parse HEAD)}"
+  state_file="$(deployment_state_file)"
+  [ -n "$state_file" ] || return 0
+  tmp_file="${state_file}.tmp"
+  printf '%s\n' "$commit" > "$tmp_file"
+  mv "$tmp_file" "$state_file"
+  log "Recorded successful deployment commit: ${commit:0:12}"
+}
 
 collect_update_changes() {
-  local before after
-  if [ ! -d .git ]; then
+  local after baseline state_file
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     warn "Not a Git checkout; performing a full update"
     DEPLOY_FORCE_ALL=1
     return
   fi
 
-  before="$(git rev-parse HEAD)"
   log "Pulling latest code"
   if ! git pull --ff-only; then
     warn "git pull failed; considering only detected local changes"
   fi
   after="$(git rev-parse HEAD)"
+  DEPLOY_TARGET_COMMIT="$after"
+
+  baseline=""
+  state_file="$(deployment_state_file)"
+  if [ "$DEPLOY_FORCE_ALL" != "1" ]; then
+    if [ -r "$state_file" ]; then
+      baseline="$(tr -d '\r\n' < "$state_file")"
+    fi
+
+    if [ -z "$baseline" ]; then
+      warn "No successful deployment baseline found; performing a one-time full update"
+      DEPLOY_FORCE_ALL=1
+    elif ! git cat-file -e "${baseline}^{commit}" 2>/dev/null; then
+      warn "Saved deployment baseline is unavailable; performing a full update"
+      DEPLOY_FORCE_ALL=1
+    elif ! git merge-base --is-ancestor "$baseline" "$after"; then
+      warn "Git history no longer contains the deployment baseline; performing a full update"
+      DEPLOY_FORCE_ALL=1
+    else
+      log "Detecting changes since last successful deployment: ${baseline:0:12}"
+    fi
+  fi
+
   DEPLOY_CHANGED_FILES="$(
     {
-      git diff --name-only "$before" "$after"
+      if [ "$DEPLOY_FORCE_ALL" != "1" ] && [ -n "$baseline" ]; then
+        git diff --name-only "$baseline" "$after"
+      fi
       git diff --name-only
       git diff --name-only --cached
     } | sort -u
@@ -1161,6 +1203,12 @@ do_update() {
     return
   fi
 
+  if [ "$server_changed" = "0" ] && [ "$web_changed" = "0" ] && [ "$voicehub_changed" = "0" ]; then
+    log "No deployable application changes detected; recording the new deployment baseline"
+    record_successful_deployment
+    return
+  fi
+
   if [ "$server_changed" = "1" ]; then
     [ "$server_dependencies_changed" = "1" ] && do_install_server
     if [ "$prisma_changed" = "1" ] || [ "$server_dependencies_changed" = "1" ]; then
@@ -1187,6 +1235,8 @@ do_update() {
     ensure_pm2
     pm2 save >/dev/null
   fi
+
+  record_successful_deployment
 }
 
 do_proxy_update() {
@@ -1241,6 +1291,7 @@ case "$CMD" in
     do_db_init
     do_build_all
     do_start
+    record_successful_deployment
     ;;
   update)
     log "=== 更新部署 ==="

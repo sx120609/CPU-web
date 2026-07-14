@@ -432,7 +432,7 @@ chmod +x deploy.sh
 ./deploy.sh update
 ```
 
-部署脚本会同时构建并由 PM2 管理 `cpu-web` 与 `cpu-voicehub`。`./deploy.sh update` 会根据 `git pull` 后的变更路径，只安装、构建和重启受影响的子项目：只改主站不会重装、迁移、构建或重启药苑之声；只改药苑之声也不会重建主站。依赖目录变更才会执行对应项目的 `npm ci`，Prisma 目录变更才会同步主站数据库。需要完整重建时，使用 `./deploy.sh update-all`。主站把 `/voicehub/`（含 WebSocket）反向代理到仅监听 `127.0.0.1:23335` 的 Nuxt/Nitro 进程；可用 `./deploy.sh voicehub-logs` 单独查看日志。
+部署脚本会同时构建并由 PM2 管理 `cpu-web` 与 `cpu-voicehub`。`./deploy.sh update` 会根据上次成功部署以来的变更路径，只安装、构建和重启受影响的子项目：只改主站不会重装、迁移、构建或重启药苑之声；只改药苑之声也不会重建主站。部署基线记录在 Git 元数据中，因此即使先手动执行 `git pull`，随后运行 `update` 也不会漏掉尚未部署的改动；首次启用基线记录时会安全地完整更新一次。依赖目录变更才会执行对应项目的 `npm ci`，Prisma 目录变更才会同步主站数据库。需要完整重建时，使用 `./deploy.sh update-all`。主站把 `/voicehub/`（含 WebSocket）反向代理到仅监听 `127.0.0.1:23335` 的 Nuxt/Nitro 进程；可用 `./deploy.sh voicehub-logs` 单独查看日志。
 
 ### 教务代理部署
 
