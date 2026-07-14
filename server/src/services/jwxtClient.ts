@@ -259,14 +259,14 @@ export type JwxtSessionSnapshot = {
   lastSeenAt: number;
 };
 
-const PENDING_TTL = 5 * 60 * 1000;          // 5 分钟未提交则丢弃
+// This stores only the pre-login cookie jar and CAS form state, never a
+// password. Keep it for a day so ordinary users never hit an arbitrary login
+// expiry; it still bounds cleanup of abandoned server-side state.
+export const PENDING_LOGIN_TTL_MS = 24 * 60 * 60 * 1000;
 const SESSION_IDLE_TTL = config.jwxtSessionIdleMs;
 const HANDOFF_TTL = 5 * 60 * 1000;
 const HANDOFF_FUTURE_SKEW = 30 * 1000;
-const LOGIN_SUBMIT_LOCK_TTL = 5 * 60 * 1000;
 const HANDOFF_CONSUME_LOCK_TTL = 60 * 1000;
-const LOGIN_SUBMIT_CLAIM_PREFIX = `${buildRedisKey("jwxt", "login-submit", "claim")}:`;
-const LOGIN_SUBMIT_RESULT_PREFIX = `${buildRedisKey("jwxt", "login-submit", "result")}:`;
 const HANDOFF_RESULT_PREFIX = `${buildRedisKey("jwxt", "login-handoff", "consumed")}:`;
 
 function genId() {
@@ -283,7 +283,7 @@ async function savePendingLogin(id: string, pending: PendingLogin) {
   await setEphemeralValue(
     jwxtPendingKey(id),
     encryptJwxtSensitiveJson("pending-login", id, payload),
-    PENDING_TTL,
+    PENDING_LOGIN_TTL_MS,
   );
 }
 
@@ -594,7 +594,7 @@ async function submitLoginOnThisNode(args: LoginSubmitArgs): Promise<LoginAttemp
 }
 
 export async function submitLogin(args: LoginSubmitArgs): Promise<LoginAttempt> {
-  return withLoginSubmitClaim("legacy", args, () => submitLoginOnThisNode(args));
+  return submitLoginOnThisNode(args);
 }
 
 /**
@@ -618,57 +618,7 @@ async function submitLoginForHandoffOnThisNode(args: LoginSubmitArgs): Promise<L
 }
 
 export async function submitLoginForHandoff(args: LoginSubmitArgs): Promise<LoginHandoffAttempt> {
-  return withLoginSubmitClaim("handoff", args, () => submitLoginForHandoffOnThisNode(args));
-}
-
-async function withLoginSubmitClaim<T>(
-  mode: "legacy" | "handoff",
-  args: LoginSubmitArgs,
-  task: () => Promise<T>,
-): Promise<T> {
-  const lockId = crypto.createHash("sha256").update(args.pendingId).digest("hex");
-  const fingerprint = crypto
-    .createHmac("sha256", config.jwtSecret)
-    .update(JSON.stringify([mode, args.pendingId, args.username, args.password, args.captcha ?? ""]))
-    .digest("hex");
-  const claimKey = `${LOGIN_SUBMIT_CLAIM_PREFIX}${lockId}`;
-  const resultKey = `${LOGIN_SUBMIT_RESULT_PREFIX}${fingerprint}`;
-  const cached = await getEphemeralValue(resultKey);
-  if (cached) {
-    const decrypted = decryptJwxtSensitiveJson<T>("login-submit-result", fingerprint, cached, { allowLegacyPlaintext: true });
-    if (decrypted.legacyPlaintext) {
-      await setEphemeralValue(resultKey, encryptJwxtSensitiveJson("login-submit-result", fingerprint, decrypted.value), PENDING_TTL);
-    }
-    return decrypted.value;
-  }
-
-  const locked = await runWithDistributedLock(`jwxt-login-submit:${lockId}`, LOGIN_SUBMIT_LOCK_TTL, async () => {
-    const raced = await getEphemeralValue(resultKey);
-    if (raced) {
-      const decrypted = decryptJwxtSensitiveJson<T>("login-submit-result", fingerprint, raced, { allowLegacyPlaintext: true });
-      if (decrypted.legacyPlaintext) {
-        await setEphemeralValue(resultKey, encryptJwxtSensitiveJson("login-submit-result", fingerprint, decrypted.value), PENDING_TTL);
-      }
-      return decrypted.value;
-    }
-    const existingClaim = await getEphemeralValue(claimKey);
-    if (existingClaim) {
-      const message = existingClaim === fingerprint
-        ? "上一次登录提交结果不确定，请刷新页面重新登录"
-        : "登录会话已用另一组凭据提交，请刷新页面重新登录";
-      throw Errors.conflict(message);
-    }
-    await setEphemeralValue(claimKey, fingerprint, PENDING_TTL);
-    const result = await task();
-    await setEphemeralValue(
-      resultKey,
-      encryptJwxtSensitiveJson("login-submit-result", fingerprint, result),
-      PENDING_TTL,
-    );
-    return result;
-  });
-  if (!locked.acquired) throw Errors.conflict("这个登录会话正在处理中，请勿重复提交");
-  return locked.result as T;
+  return submitLoginForHandoffOnThisNode(args);
 }
 
 function getJwxtCookies(jar: CookieJar): Record<string, Record<string, string>> {

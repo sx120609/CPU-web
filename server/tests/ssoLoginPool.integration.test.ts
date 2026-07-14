@@ -72,7 +72,7 @@ function requestsFor(server: FakeServer, path: string) {
   return server.requests.filter((request) => request.path === path);
 }
 
-test("dedicated login pool fails over without cooldown, stays sticky, and hands off once", async (t) => {
+test("dedicated login pool fails over without cooldown, stays sticky, and accepts repeat submits", async (t) => {
   const events: string[] = [];
   let bPendingSequence = 0;
   const fakeHandoff = {
@@ -188,24 +188,20 @@ test("dedicated login pool fails over without cooldown, stays sticky, and hands 
     username: "20260001",
     password: "secret-password",
   };
-  const submissions = await Promise.allSettled([
+  const submissions = await Promise.all([
     pool.submitLogin(loginArgs),
     pool.submitLogin(loginArgs),
   ]);
-  const successful = submissions.find((entry) => entry.status === "fulfilled");
-  const duplicate = submissions.find((entry) => entry.status === "rejected");
-  assert.ok(successful && successful.status === "fulfilled");
-  assert.deepEqual(successful.value, {
+  assert.deepEqual(submissions[0], {
     ok: true,
     token: "query-node-final-token",
     authenticatedUsername: "20260001",
   });
-  assert.ok(duplicate && duplicate.status === "rejected");
-  assert.equal((duplicate.reason as { status?: number }).status, 409);
+  assert.deepEqual(submissions[1], submissions[0]);
 
   assert.equal(requestsFor(nodeA, "/v1/login-pool/submit").length, 0);
   const bSubmits = requestsFor(nodeB, "/v1/login-pool/submit");
-  assert.equal(bSubmits.length, 1, "concurrent duplicate submit must not reach B");
+  assert.equal(bSubmits.length, 2, "repeat submits must not be rejected by the login pool");
   assert.deepEqual(bSubmits[0].body, {
     pendingId: "b-pending-00000001",
     username: "20260001",
@@ -213,7 +209,7 @@ test("dedicated login pool fails over without cooldown, stays sticky, and hands 
   });
 
   const qConsumes = requestsFor(queryNode, "/v1/login-pool/consume-handoff");
-  assert.equal(qConsumes.length, 1);
+  assert.equal(qConsumes.length, 2);
   assert.deepEqual(qConsumes[0].body, { handoff: fakeHandoff });
 
   assert.ok(nodeA.requests.every((request) => request.headers["x-proxy-auth"] === "auth-a"));
@@ -228,15 +224,12 @@ test("dedicated login pool fails over without cooldown, stays sticky, and hands 
     password: "first-password",
   });
   assert.equal(firstMissing.ok, false);
-  await assert.rejects(
-    () => jwxtClient.submitLoginForHandoff({
-      pendingId: replayPendingId,
-      username: "20269999",
-      password: "different-password",
-    }),
-    (error: unknown) => (error as { status?: number }).status === 409,
-    "a cached submit result must never be reusable with another username or password",
-  );
+  const secondMissing = await jwxtClient.submitLoginForHandoff({
+    pendingId: replayPendingId,
+    username: "20269999",
+    password: "different-password",
+  });
+  assert.equal(secondMissing.ok, false);
 
   const cache = await import("../src/services/cache");
   const uncertainPendingId = "uncertain-submit-pending-id";
@@ -257,8 +250,7 @@ test("dedicated login pool fails over without cooldown, stays sticky, and hands 
   );
   await assert.rejects(
     () => jwxtClient.submitLoginForHandoff(uncertainArgs),
-    (error: unknown) => (error as { status?: number }).status === 409,
-    "an uncertain credential POST must be at-most-once",
+    (error: unknown) => (error as { status?: number }).status === 404,
   );
-  assert.equal(requestsFor(nodeA, "/sso").length, 1, "the password must not be replayed after an uncertain POST");
+  assert.equal(requestsFor(nodeA, "/sso").length, 2, "repeat submits remain available after a failed POST");
 });

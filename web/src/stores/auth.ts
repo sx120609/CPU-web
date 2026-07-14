@@ -15,23 +15,8 @@ import {
 } from "@/utils/academicIdentity";
 
 const DATA_AUTH_KEY_PREFIX = "cpu-data-auth-agreement-v1";
-const AUTO_SSO_RETRY_COOLDOWN_MS = 10 * 60 * 1000;
-const AUTO_SSO_LAST_FAILURE_KEY = "cpu-auto-sso-last-failure-at";
 
 let autoSsoLoginInFlight: Promise<boolean> | null = null;
-
-function autoSsoRetryCoolingDown() {
-  try {
-    const lastFailureAt = Number(localStorage.getItem(AUTO_SSO_LAST_FAILURE_KEY) || 0);
-    return Number.isFinite(lastFailureAt) && Date.now() - lastFailureAt < AUTO_SSO_RETRY_COOLDOWN_MS;
-  } catch {
-    return false;
-  }
-}
-
-function markAutoSsoFailure() {
-  try { localStorage.setItem(AUTO_SSO_LAST_FAILURE_KEY, String(Date.now())); } catch { /* ignore */ }
-}
 
 function dataAuthKey(username: string) {
   return `${DATA_AUTH_KEY_PREFIX}:${username}`;
@@ -239,16 +224,19 @@ export const useAuthStore = defineStore("auth", {
         if (this.ssoPendingId.trim().length < 8) {
           await this.ssoBegin({ silent: options?.silent });
           this.ssoLoading = true;
-          if (this.ssoNeedCaptcha && !captcha) {
+          if (this.ssoNeedCaptcha) {
             this.ssoError = "登录会话已刷新，请输入验证码";
             return false;
           }
         }
-        const loginOptions = options?.silent ? {
+        const loginOptions = {
           suppressAuthRedirect: true,
           suppressAuthMessage: true,
           suppressErrorMessage: true,
-        } : undefined;
+          // A school SSO login can need several redirects on a slow mobile
+          // connection. Let the user wait for the actual outcome.
+          timeout: 95_000,
+        };
         const loginPayload = this.ssoCredentialPublicKey
           ? {
               pendingId: this.ssoPendingId,
@@ -294,6 +282,9 @@ export const useAuthStore = defineStore("auth", {
           fallback: this.academicIdentity,
         });
           return true;
+        } catch (error) {
+          this.ssoError = (error instanceof Error ? error.message : "") || "登录暂时失败，请稍后再试。";
+          return false;
         } finally { this.ssoLoading = false; }
       })();
       this._pendingSsoLogin = task;
@@ -304,13 +295,9 @@ export const useAuthStore = defineStore("auth", {
       }
     },
 
-    /**
-     * Background recovery shares one school SSO submission. Failed automatic
-     * submissions are cooled down for ten minutes; explicit login is unaffected.
-     */
+    /** Background recovery shares one school SSO submission. */
     async tryAutoSsoLogin(options?: { silent?: boolean }): Promise<boolean> {
       if (autoSsoLoginInFlight) return autoSsoLoginInFlight;
-      if (autoSsoRetryCoolingDown()) return false;
       const task = (async () => {
         const { loadCreds } = await import("@/utils/credCrypto");
         const creds = await loadCreds().catch(() => null);
@@ -318,12 +305,9 @@ export const useAuthStore = defineStore("auth", {
         try {
           if (this.ssoPendingId.trim().length < 8) await this.ssoBegin({ silent: options?.silent });
           if (this.ssoNeedCaptcha) return false;
-          const ok = await this.ssoLogin(creds.username, creds.password, undefined, true, options);
-          if (!ok) markAutoSsoFailure();
-          return ok;
-        } catch (error) {
-          markAutoSsoFailure();
-          throw error;
+          return await this.ssoLogin(creds.username, creds.password, undefined, true, options);
+        } catch {
+          return false;
         }
       })();
       autoSsoLoginInFlight = task;

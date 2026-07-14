@@ -239,7 +239,9 @@ const ssoLoginPool: SsoLoginPoolConfig = {
   timeoutMs: parseIntegerEnv(
     "SSO_LOGIN_TIMEOUT_MS",
     process.env.SSO_LOGIN_TIMEOUT_MS,
-    Math.min(proxyTimeoutMs, 300_000),
+    // Login includes several cross-school redirects. Do not cut off a normal
+    // user on a slow mobile or campus connection.
+    Math.max(proxyTimeoutMs, 90_000),
     1,
     300_000,
   ),

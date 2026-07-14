@@ -4,7 +4,7 @@ import { Errors, HttpError } from "../utils/response";
 import * as local from "./jwxtFacade";
 import * as queryRemote from "./jwxtRemote";
 import * as queryAgentRemote from "./jwxtAgentRemote";
-import type { LoginAttempt, LoginSessionHandoff } from "./jwxtClient";
+import { PENDING_LOGIN_TTL_MS, type LoginAttempt, type LoginSessionHandoff } from "./jwxtClient";
 import { getJwxtAgentCredentialPublicKey, getJwxtAgentState, isJwxtAgentAvailable, requestJwxtAgent } from "./jwxtAgentGateway";
 import { getJwxtAgentRuntimeConfig } from "./jwxtAgentConfig";
 import type { AgentEncryptedLoginCredentials } from "./jwxtAgentReplicaCrypto";
@@ -69,9 +69,10 @@ type PendingRoute = {
 };
 
 const PENDING_PREFIX = "slp1";
-const MAX_PENDING_AGE_MS = 10 * 60 * 1000;
+// The signed route envelope and its inner pending login must always expire
+// together. Import the value rather than duplicating it.
+const MAX_PENDING_AGE_MS = PENDING_LOGIN_TTL_MS;
 const MAX_INNER_PENDING_ID_LENGTH = 512;
-const activeSubmits = new Set<string>();
 
 const localNode: LocalNode = {
   kind: "local",
@@ -151,12 +152,6 @@ export async function submitLogin(args: SecureLoginArgs): Promise<LoginAttempt> 
     throw Errors.badRequest("该登录节点已被移除，请刷新页面重新登录");
   }
 
-  const submitKey = crypto.createHash("sha256").update(args.pendingId).digest("hex");
-  if (activeSubmits.has(submitKey)) {
-    throw Errors.conflict("这个登录会话正在处理中，请勿重复提交");
-  }
-  activeSubmits.add(submitKey);
-
   runtime.inFlight += 1;
   try {
     let result: LoginNodeAttempt;
@@ -190,7 +185,6 @@ export async function submitLogin(args: SecureLoginArgs): Promise<LoginAttempt> 
     return { ok: true, token, authenticatedUsername: result.handoff.username };
   } finally {
     runtime.inFlight = Math.max(0, runtime.inFlight - 1);
-    activeSubmits.delete(submitKey);
   }
 }
 

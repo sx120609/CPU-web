@@ -18,7 +18,6 @@ import { startRuntimeSync } from "./services/runtimeSync";
 import { fail } from "./utils/response";
 import { browserSessionMiddleware, requestOriginAndCsrfProtection } from "./middleware/browserSession";
 import { receiveCspReport, securityHeaders } from "./middleware/securityHeaders";
-import { securityRateLimit } from "./middleware/securityRateLimit";
 import { voiceHubProxyMiddleware } from "./services/voiceHubProxy";
 
 export function createApp() {
@@ -61,8 +60,6 @@ export function createApp() {
     res.setHeader("Pragma", "no-cache");
     next();
   });
-  app.use(["/api/auth/sso-login", "/api/auth/login", "/api/jwxt/login"], securityRateLimit("login-submit", 10, 10 * 60_000));
-  app.use(["/api/auth/sso-begin", "/api/jwxt/begin-login"], securityRateLimit("login-begin", 30, 10 * 60_000));
   if (isDev) app.use(morgan("dev"));
 
   app.use("/uploads", uploadAssetHandler);
