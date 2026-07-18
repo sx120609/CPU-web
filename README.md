@@ -388,6 +388,7 @@ location /api/internal/jwxt-agent/connect {
 - Agent 首次成功连接时会固定其 RSA-3072 公钥。后续公钥不匹配的连接会被拒绝；合法轮换时应先停止 Agent、备份并移走旧 `JWXT_AGENT_KEY_FILE`，再在后台“解除身份固定”，随后启动 Agent。Linux 部署脚本会设置 `0600`，Windows 脚本会收紧 ACL。
 - 活动 CookieJar 由源 Agent 针对每个目标 Agent 分别使用 RSA-OAEP-SHA256 + AES-256-GCM 加密。主服务与 Redis 只保存目标节点可解密的密文，不能读取远程 Agent 的 CookieJar；空闲期由 `JWXT_SESSION_IDLE_MS` 控制，默认 365 天。
 - 跨节点仅自动重试课表、成绩、日历等幂等查询，不会重放密码提交。若学校按出口 IP 绑定会话，迁移失败时仍会要求用户重新登录。
+- 本科授权会同时建立 `jwxt.cpu.edu.cn/jsxsd` 新版会话和 `jsxsd.cpu.edu.cn/zgykdx` 旧版会话；最新学期课表固定从新版读取，成绩、考试和培养方案等现有能力继续复用旧版会话。两个域的 Cookie 都只保存在加密 CookieJar 中。
 - pending 登录、浏览器会话和本机教务会话在写入 Redis/内存缓存前使用 AES-256-GCM 加密。生产环境建议配置 `JWXT_SESSION_SYNC_KEYS=新密钥,旧密钥`；轮换时先把新密钥放到首位，等待超过最长会话有效期后再删除旧密钥。多主服务实例必须共享同一密钥环。
 - 加密快照与凭据封装使用 Agent v2 协议，v1 Agent 会被明确拒绝。升级时先安排维护窗口，停止旧 Agent，更新主服务和所有 Agent 后再恢复连接，不能混跑 v1/v2。
 - 多个主服务实例必须共享 `JWT_SECRET`。目前 Agent WebSocket 会话属于接收连接的主服务实例，网关层需保证相关教务请求到达同一主实例。

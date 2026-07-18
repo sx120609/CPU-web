@@ -2,11 +2,11 @@
  * 教务系统（jsxsd）代登录客户端
  *
  * 流程：
- *  1) GET http://jsxsd.cpu.edu.cn/zgykdx/tyrz.jsp → 302 → CAS 登录页
- *  2) CAS 登录页含 lt / execution / service / useVCode 等隐藏字段
- *  3) 若 useVCode = true，需要先请求验证码图片，让用户输入
- *  4) POST 凭据 + 隐藏字段到 /sso/login
- *  5) CAS 验证通过 → 302 回 jsxsd 带 ticket → jsxsd 设置 JSESSIONID
+ *  1) 同时初始化新版 jwxt.cpu.edu.cn 登录页与旧版 CAS 表单
+ *  2) 用户输入新版教务验证码，服务端按学校页面算法提交一次性凭据
+ *  3) 继续完成旧版 CAS；若 CAS 也触发验证码，则进入第二阶段
+ *  4) 同一个 CookieJar 最终同时持有 jwxt 与 jsxsd 两个域的会话
+ *  5) 新版提供课表，旧版继续提供成绩、考试、培养方案等能力
  *
  * 安全约定：
  *  - 用户名密码绝不写入磁盘 / 数据库 / 日志
@@ -32,12 +32,24 @@ import { buildRedisKey } from "./redis";
 import { config, isDev } from "../config";
 import { Errors, HttpError } from "../utils/response";
 import { decryptJwxtSensitiveJson, encryptJwxtSensitiveJson } from "./jwxtSessionCrypto";
+import {
+  buildModernJwxtEncodedCredentials,
+  isModernJwxtLoginPage,
+  parseModernJwxtLoginError,
+  parseModernJwxtLoginPage,
+  validateModernJwxtLoginState,
+  type ModernJwxtLoginState,
+} from "./modernJwxtLogin";
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 
 const ENTRY_URL = "http://jsxsd.cpu.edu.cn/zgykdx/tyrz.jsp";
 const JWXT_HOST = "jsxsd.cpu.edu.cn";
+const MODERN_JWXT_HOST = "jwxt.cpu.edu.cn";
+const MODERN_JWXT_ORIGIN = `https://${MODERN_JWXT_HOST}`;
+const MODERN_SCHEDULE_ENTRY_URL = `${MODERN_JWXT_ORIGIN}/jsxsd/xskb/xskb_list.do?viweType=0`;
+const JWXT_SESSION_HOSTS = new Set([JWXT_HOST, MODERN_JWXT_HOST]);
 const DEBUG_DIR = path.join(process.cwd(), ".debug");
 
 /** 简易 cookie jar：按 host 分组存 cookie 名值对 */
@@ -241,6 +253,8 @@ interface PendingLogin {
   jar: CookieJar;
   ssoUrl: string;       // SSO 登录页的最终 URL（POST 目标）
   hidden: Record<string, string>; // lt / execution / service / _eventId 等
+  stage?: "modern" | "sso";
+  modern?: ModernJwxtLoginState;
   createdAt: number;
 }
 
@@ -259,8 +273,8 @@ export type JwxtSessionSnapshot = {
   lastSeenAt: number;
 };
 
-// This stores only the pre-login cookie jar and CAS form state, never a
-// password. Keep it for a day so ordinary users never hit an arbitrary login
+// This stores only the pre-login cookie jar, modern challenge and CAS form
+// state, never a password. Keep it for a day so ordinary users never hit an arbitrary login
 // expiry; it still bounds cleanup of abandoned server-side state.
 export const PENDING_LOGIN_TTL_MS = 24 * 60 * 60 * 1000;
 const SESSION_IDLE_TTL = config.jwxtSessionIdleMs;
@@ -278,6 +292,8 @@ async function savePendingLogin(id: string, pending: PendingLogin) {
     jar: pending.jar.toJson(),
     ssoUrl: pending.ssoUrl,
     hidden: pending.hidden,
+    stage: pending.stage,
+    modern: pending.modern,
     createdAt: pending.createdAt,
   };
   await setEphemeralValue(
@@ -295,6 +311,8 @@ async function getPendingLogin(id: string): Promise<PendingLogin | null> {
       jar?: Record<string, Record<string, string>>;
       ssoUrl?: string;
       hidden?: Record<string, string>;
+      stage?: "modern" | "sso";
+      modern?: ModernJwxtLoginState;
       createdAt?: number;
     }>("pending-login", id, raw, { allowLegacyPlaintext: true });
     const parsed = decrypted.value;
@@ -302,6 +320,8 @@ async function getPendingLogin(id: string): Promise<PendingLogin | null> {
       jar: CookieJar.fromJson(parsed.jar),
       ssoUrl: String(parsed.ssoUrl || ""),
       hidden: parsed.hidden && typeof parsed.hidden === "object" ? parsed.hidden : {},
+      stage: parsed.stage === "modern" || parsed.stage === "sso" ? parsed.stage : undefined,
+      modern: parsed.modern ? validateModernJwxtLoginState(parsed.modern) : undefined,
       createdAt: Number(parsed.createdAt || Date.now()),
     };
     if (decrypted.legacyPlaintext) await savePendingLogin(id, pending);
@@ -393,7 +413,32 @@ async function getActiveSession(token: string | undefined | null): Promise<Activ
   }
 }
 
-/** 第一步：拿到登录页（lt/execution），如果需要验证码则一并返回图片 */
+async function fetchModernCaptcha(jar: CookieJar, refer: string): Promise<string> {
+  const url = `${MODERN_JWXT_ORIGIN}/jsxsd/verifycode.servlet?t=${Date.now()}`;
+  const res = await fetchWithJar(jar, url, { headers: { Referer: refer } });
+  throwForLoginUpstreamStatus(res);
+  const contentType = res.headers.get("content-type") || "";
+  if (!res.ok || !contentType.startsWith("image/")) {
+    throw new Error("新版教务验证码返回非图片");
+  }
+  const buffer = Buffer.from(await res.arrayBuffer());
+  return `data:${contentType};base64,${buffer.toString("base64")}`;
+}
+
+async function prepareModernLogin(jar: CookieJar) {
+  const { res, finalUrl } = await followRedirects(jar, MODERN_SCHEDULE_ENTRY_URL);
+  throwForLoginUpstreamStatus(res);
+  const final = new URL(finalUrl);
+  if (final.hostname.toLowerCase() !== MODERN_JWXT_HOST) {
+    throw new Error("新版教务登录入口跳转到了意外域名");
+  }
+  const html = await res.text();
+  const modern = parseModernJwxtLoginPage(html, finalUrl);
+  const captchaImage = await fetchModernCaptcha(jar, modern.entryUrl);
+  return { modern, captchaImage };
+}
+
+/** 第一步：同时准备新版验证码和旧版 SSO 表单。 */
 export async function beginLogin(): Promise<{
   pendingId: string;
   needCaptcha: boolean;
@@ -415,21 +460,18 @@ export async function beginLogin(): Promise<{
   if (!hidden.execution) {
     throw new Error("无法解析 CAS 登录页（缺少 execution）。学校 SSO 可能已变更，请联系管理员。");
   }
-
-  // 注意：表单里 useVCode（动态运行时是否要验证码）与 isUseVCode（功能总开关）不同。
-  // 只有 useVCode === "true" 才是"本次登录需要验证码"。
-  // isUseVCode = "true" 但 useVCode = "" 时，登录不带验证码也能过；
-  // 一旦密码错几次，下次刷登录页 useVCode 会变 "true"。
-  const useVCode = hidden.useVCode === "true";
+  const { modern, captchaImage } = await prepareModernLogin(jar);
 
   const id = genId();
-  await savePendingLogin(id, { jar, ssoUrl: finalUrl, hidden, createdAt: Date.now() });
-
-  if (useVCode) {
-    const img = await fetchCaptchaOrEmpty(jar, finalUrl);
-    return { pendingId: id, needCaptcha: true, captchaImage: img };
-  }
-  return { pendingId: id, needCaptcha: false };
+  await savePendingLogin(id, {
+    jar,
+    ssoUrl: finalUrl,
+    hidden,
+    stage: "modern",
+    modern,
+    createdAt: Date.now(),
+  });
+  return { pendingId: id, needCaptcha: true, captchaImage };
 }
 
 /** 拉取验证码图片（用同一个 jar 保持 session） */
@@ -488,6 +530,62 @@ type LoginCredentialExchange =
   | { ok: true; jar: CookieJar; username: string; callbackUrl?: string }
   | { ok: false; attempt: LoginHandoffAttempt };
 
+async function restartModernLogin(
+  previousPendingId: string,
+  pending: PendingLogin,
+  error: string,
+): Promise<LoginCredentialExchange> {
+  const { modern, captchaImage } = await prepareModernLogin(pending.jar);
+  const pendingId = genId();
+  await savePendingLogin(pendingId, {
+    ...pending,
+    stage: "modern",
+    modern,
+    createdAt: Date.now(),
+  });
+  await deletePendingLogin(previousPendingId);
+  return {
+    ok: false,
+    attempt: {
+      ok: false,
+      error,
+      needCaptcha: true,
+      captcha: { image: captchaImage, pendingId },
+    },
+  };
+}
+
+async function submitModernLogin(pending: PendingLogin, args: LoginSubmitArgs) {
+  const modern = pending.modern;
+  if (!modern || !args.captcha) {
+    return restartModernLogin(args.pendingId, pending, "请输入新版教务验证码");
+  }
+
+  const body = new URLSearchParams({
+    loginMethod: "LoginToXk",
+    userlanguage: "0",
+    userAccount: args.username,
+    userPassword: "",
+    RANDOMCODE: args.captcha,
+    encoded: buildModernJwxtEncodedCredentials(args.username, args.password, modern),
+  });
+  const { res, finalUrl } = await followRedirects(pending.jar, modern.loginUrl, {
+    method: "POST",
+    body,
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Referer: modern.entryUrl,
+    },
+  });
+  throwForLoginUpstreamStatus(res);
+  const html = await res.text();
+  const finalHost = new URL(finalUrl).hostname.toLowerCase();
+  if (!res.ok || finalHost !== MODERN_JWXT_HOST || isModernJwxtLoginPage(html)) {
+    return restartModernLogin(args.pendingId, pending, parseModernJwxtLoginError(html));
+  }
+  return { ok: true as const };
+}
+
 async function exchangeLoginCredentials(
   args: LoginSubmitArgs,
   stopBeforeCallback: boolean,
@@ -496,18 +594,46 @@ async function exchangeLoginCredentials(
   if (!pending) return { ok: false, attempt: { ok: false, error: "登录会话已过期，请刷新页面重试" } };
   const { jar, ssoUrl, hidden } = pending;
 
+  if (pending.stage === "modern") {
+    const modern = await submitModernLogin(pending, args);
+    if (!modern.ok) return modern;
+
+    // 新版验证码已经消费。旧版 CAS 若也触发验证码，则开启第二阶段，
+    // 继续复用已包含新版 JSESSIONID 的同一个 CookieJar，不保存用户密码。
+    if (hidden.useVCode === "true") {
+      const pendingId = genId();
+      await savePendingLogin(pendingId, {
+        ...pending,
+        stage: "sso",
+        modern: undefined,
+        createdAt: Date.now(),
+      });
+      await deletePendingLogin(args.pendingId);
+      return {
+        ok: false,
+        attempt: {
+          ok: false,
+          error: "新版教务已授权，请继续输入统一认证验证码",
+          needCaptcha: true,
+          captcha: { image: await fetchCaptchaOrEmpty(jar, ssoUrl), pendingId },
+        },
+      };
+    }
+  }
+
   // 组装 POST body：所有 hidden + username + password (+ captcha?)
   const body = new URLSearchParams();
   for (const [k, v] of Object.entries(hidden)) body.set(k, v);
   if (!body.get("_eventId")) body.set("_eventId", "submit");
   body.set("username", args.username);
   body.set("password", args.password);
-  if (args.captcha) {
+  const ssoCaptcha = pending.stage === "modern" ? undefined : args.captcha;
+  if (ssoCaptcha) {
     // 学校 SSO 的验证码字段在 errorCount 触发动态插入，name 实测最可能是 rcode/vCode
-    body.set("rcode", args.captcha);
-    body.set("vCode", args.captcha);
-    body.set("captcha", args.captcha);
-    body.set("authCode", args.captcha);
+    body.set("rcode", ssoCaptcha);
+    body.set("vCode", ssoCaptcha);
+    body.set("captcha", ssoCaptcha);
+    body.set("authCode", ssoCaptcha);
   }
 
   const requestInit: RequestInit = {
@@ -559,7 +685,7 @@ async function exchangeLoginCredentials(
     });
     const newPendingId = genId();
     await savePendingLogin(newPendingId, {
-      jar, ssoUrl: r.finalUrl, hidden: newHidden, createdAt: Date.now(),
+      jar, ssoUrl: r.finalUrl, hidden: newHidden, stage: "sso", createdAt: Date.now(),
     });
     const img = await fetchCaptchaOrEmpty(jar, r.finalUrl);
     return {
@@ -622,8 +748,12 @@ export async function submitLoginForHandoff(args: LoginSubmitArgs): Promise<Logi
 }
 
 function getJwxtCookies(jar: CookieJar): Record<string, Record<string, string>> {
-  const cookies = jar.toJson()[JWXT_HOST];
-  return cookies ? { [JWXT_HOST]: cookies } : {};
+  const all = jar.toJson();
+  const cookies: Record<string, Record<string, string>> = {};
+  for (const host of JWXT_SESSION_HOSTS) {
+    if (all[host]) cookies[host] = all[host];
+  }
+  return cookies;
 }
 
 function validateLoginHandoff(handoff: LoginSessionHandoff) {
@@ -664,7 +794,7 @@ function validateLoginHandoff(handoff: LoginSessionHandoff) {
     throw Errors.badRequest("登录交接 Cookie 无效");
   }
   for (const [host, values] of Object.entries(cookies)) {
-    if (host.toLowerCase() !== JWXT_HOST) {
+    if (!JWXT_SESSION_HOSTS.has(host.toLowerCase())) {
       throw Errors.badRequest("登录交接 Cookie 域名不受信任");
     }
     if (!values || typeof values !== "object" || Array.isArray(values) || Object.keys(values).length > 64) {
@@ -766,6 +896,33 @@ export async function jwxtFetchHtml(token: string, path: string): Promise<string
   }
   await persistActiveSession(token, sess);
   return res.text();
+}
+
+/** 使用同一个服务端 token 访问新版 /jsxsd/ 教务页面。 */
+export async function jwxtFetchModernHtml(token: string, path: string): Promise<string> {
+  const sess = await getSession(token);
+  if (!sess) throw Errors.unauthorized("教务会话已失效，请重新登录");
+  const target = new URL(path, MODERN_JWXT_ORIGIN);
+  if (
+    target.protocol !== "https:"
+    || target.hostname.toLowerCase() !== MODERN_JWXT_HOST
+    || target.username
+    || target.password
+    || target.hash
+    || !target.pathname.startsWith("/jsxsd/")
+  ) throw Errors.badRequest("新版教务请求地址不受信任");
+  const { res, finalUrl } = await followRedirects(sess.jar, target.toString());
+  const finalHost = new URL(finalUrl).hostname.toLowerCase();
+  const html = await res.text();
+  if (finalHost !== MODERN_JWXT_HOST || isModernJwxtLoginPage(html)) {
+    await deleteActiveSession(token);
+    throw Errors.unauthorized("新版教务会话已失效，请重新授权");
+  }
+  if (!res.ok) {
+    throw new HttpError(res.status, 5400 + Math.min(199, Math.max(0, res.status - 400)), `新版教务请求失败 (${res.status})`);
+  }
+  await persistActiveSession(token, sess);
+  return html;
 }
 
 export interface CpuFetchTextResult {

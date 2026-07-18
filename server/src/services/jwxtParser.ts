@@ -74,7 +74,22 @@ export function parseSchedule(html: string): ScheduleResult {
   const weeks = parseSelectOptions($, "zc");
   const currentSemester = semesters.find((s) => s.current)?.value ?? "";
   const currentWeek = weeks.find((s) => s.current)?.value ?? "";
+  const cells = $("table#kbtable").length
+    ? parseLegacyScheduleCells($)
+    : parseModernScheduleCells($);
 
+  return {
+    title,
+    semesters,
+    currentSemester,
+    weeks,
+    currentWeek,
+    cells: normalizeScheduleCells(cells),
+  };
+}
+
+/** 旧版 /zgykdx/ 课表：table#kbtable + div.kbcontent。 */
+function parseLegacyScheduleCells($: cheerio.CheerioAPI): ScheduleCell[] {
   const $tbl = $("table#kbtable");
   const cells: ScheduleCell[] = [];
   let bigSlot = 0;
@@ -131,14 +146,112 @@ export function parseSchedule(html: string): ScheduleResult {
     });
   });
 
-  return {
-    title,
-    semesters,
-    currentSemester,
-    weeks,
-    currentWeek,
-    cells: normalizeScheduleCells(cells),
-  };
+  return cells;
+}
+
+/**
+ * 新版 /jsxsd/ 课表：table.qz-weeklyTable + li.courselists-item。
+ *
+ * 新版用 rowspan 合并跨大节课程，导致后续行的物理 td 下标不再等于星期；
+ * occupiedUntil 负责把物理单元格还原到 1-7 的逻辑星期列。
+ */
+function parseModernScheduleCells($: cheerio.CheerioAPI): ScheduleCell[] {
+  const $tbl = $("table.qz-weeklyTable").filter((_, table) => (
+    $(table).find('td[name="kbDataTd"], td[name="timeTd"]').length > 0
+  )).first();
+  if (!$tbl.length) return [];
+
+  const cells: ScheduleCell[] = [];
+  const occupiedUntil = new Map<number, number>();
+  let bigSlot = 0;
+
+  $tbl.find("> tbody > tr, > tr").each((_, tr) => {
+    const $tr = $(tr);
+    const $firstCell = $tr.find("> th, > td").first();
+    const slotLabel = $firstCell.find(".index-title").first().text().trim() || $firstCell.text().trim();
+    if (!/大节/.test(slotLabel)) return;
+
+    bigSlot++;
+    let logicalColumn = 0;
+
+    $tr.find("> th, > td").each((_, cell) => {
+      while ((occupiedUntil.get(logicalColumn) ?? 0) >= bigSlot) logicalColumn++;
+
+      const $cell = $(cell);
+      const rowSpan = parsePositiveInt($cell.attr("rowspan"));
+      const colSpan = parsePositiveInt($cell.attr("colspan"));
+      for (let offset = 0; offset < colSpan; offset++) {
+        const column = logicalColumn + offset;
+        occupiedUntil.set(column, Math.max(occupiedUntil.get(column) ?? 0, bigSlot + rowSpan - 1));
+      }
+
+      const day = logicalColumn;
+      if ($cell.attr("name") === "kbDataTd" && day >= 1 && day <= 7) {
+        const courses = parseModernScheduleCourses($, $cell);
+        if (courses.length) cells.push({ day, bigSlot, courses });
+      }
+
+      logicalColumn += colSpan;
+    });
+  });
+
+  return cells;
+}
+
+function parseModernScheduleCourses(
+  $: cheerio.CheerioAPI,
+  $cell: cheerio.Cheerio<any>,
+): ScheduleCourse[] {
+  const courses: ScheduleCourse[] = [];
+  $cell.find("ul.courselists > li.courselists-item").each((_, item) => {
+    const $item = $(item);
+    const name = $item.find(".qz-hasCourse-title").first().text().trim();
+    if (!name) return;
+
+    const detail = $item.find(".qz-hasCourse-abbrinfo").first().text().replace(/\s+/g, " ").trim();
+    const rawTeacher = readModernScheduleDetail(detail, "老师");
+    const rawTime = readModernScheduleDetail(detail, "时间");
+    const rawLocation = readModernScheduleDetail(detail, "地点");
+    const timeMatch = rawTime.match(/^(.*?)[\[【]([^\]】]+)[\]】]\s*$/);
+    const weeksText = (timeMatch?.[1] ?? rawTime).trim();
+    const slotNote = timeMatch?.[2]?.trim() || undefined;
+
+    courses.push({
+      name,
+      teacher: normalizeModernTeacher(rawTeacher),
+      weeks: weeksText,
+      weekList: parseWeeks(weeksText),
+      location: normalizeModernLocation(rawLocation),
+      slotNote,
+      ...parseSlotRange(slotNote),
+    });
+  });
+  return courses;
+}
+
+function readModernScheduleDetail(detail: string, label: string) {
+  const match = detail.match(new RegExp(`(?:^|[;；])\\s*${label}\\s*[:：]\\s*([^;；]*)`));
+  return match?.[1]?.trim() ?? "";
+}
+
+function normalizeModernTeacher(value: string): string | undefined {
+  const teacher = value.trim().replace(
+    /(?:其他正高级|其他副高级|正高级|副高级|主任医师|副主任医师|高级实验师|副研究员|实验师|研究员|副教授|教授|讲师|助教|未评级)$/,
+    "",
+  ).trim();
+  return teacher || undefined;
+}
+
+function normalizeModernLocation(value: string): string | undefined {
+  const location = value.trim();
+  if (!location || location === "()" || location === "（）") return undefined;
+  const room = location.match(/[（(]([^()（）]+)[）)]\s*$/)?.[1]?.trim();
+  return room || location.replace(/[（(][）)]\s*$/, "").trim() || undefined;
+}
+
+function parsePositiveInt(value?: string) {
+  const parsed = Number.parseInt(String(value ?? "1"), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
 }
 
 function normalizeScheduleCells(cells: ScheduleCell[]): ScheduleCell[] {

@@ -7,6 +7,7 @@ import {
   getSession,
   sessionStats as clientSessionStats,
   jwxtFetchHtml,
+  jwxtFetchModernHtml,
   jwxtPostForm,
   fetchIServiceApps,
   jwxtDebugSnapshot,
@@ -43,14 +44,11 @@ export async function getStatus(token: string | undefined | null) {
 export async function getSchedule(token: string, args: { semester?: string; week?: string } = {}) {
   const semester = args.semester ?? "";
   const week = args.week ?? "";
-  let path = "/zgykdx/xskb/xskb_list.do";
-  if (semester || week) {
-    const qs = new URLSearchParams();
-    if (semester) qs.set("xnxq01id", semester);
-    if (week) qs.set("zc", week);
-    path += "?" + qs.toString();
-  }
-  return parseSchedule(await jwxtFetchHtml(token, path));
+  const qs = new URLSearchParams({ viweType: "0" });
+  if (semester) qs.set("xnxq01id", semester);
+  if (week) qs.set("zc", week);
+  const path = `/jsxsd/xskb/xskb_list.do?${qs.toString()}`;
+  return parseSchedule(await jwxtFetchModernHtml(token, path));
 }
 
 export async function getGrades(token: string, args: { semester?: string } = {}) {
