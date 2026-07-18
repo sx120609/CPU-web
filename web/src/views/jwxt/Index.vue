@@ -258,7 +258,9 @@ const availableDataTabs = computed<DataTab[]>(() => {
 const hasJwxtTabs = computed(() => availableDataTabs.value.length > 0 || isDev.value);
 const hasCachedData = computed(() => availableDataTabs.value.some((item) => Boolean(getTabData(item))));
 const showDataShell = computed(() => !showLoginOverride.value && (jwxt.isLoggedIn || hasCachedData.value));
-const usingSavedCaptchaRecovery = computed(() => jwxt.needCaptcha && jwxt.rememberSaved);
+const usingSavedCaptchaRecovery = computed(() => (
+  jwxt.needCaptcha && jwxt.rememberSaved && !form.password
+));
 const pageHintText = computed(() => (
   isGraduateIdentity.value
     ? showScheduleTab.value
@@ -519,6 +521,19 @@ async function onSubmit() {
     try { await formRef.value?.validate(); } catch { return; }
   }
   if (jwxt.needCaptcha && !form.captcha) { ElMessage.warning("请输入验证码"); return; }
+  if (!jwxt.needCaptcha) {
+    // 手动提交前始终换一份新的 execution，避免它被后台自动恢复或长时间停留的表单提前消耗。
+    try {
+      await jwxt.beginLogin();
+    } catch {
+      return;
+    }
+    if (jwxt.needCaptcha) {
+      form.captcha = "";
+      ElMessage.info("统一认证要求补充验证码，请输入后继续");
+      return;
+    }
+  }
   const saved = usingSavedCaptchaRecovery.value ? await loadCreds().catch(() => null) : null;
   if (usingSavedCaptchaRecovery.value && !saved) {
     ElMessage.warning("未找到已保存的登录信息，请重新输入账号密码");

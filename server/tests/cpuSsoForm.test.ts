@@ -144,3 +144,52 @@ test("JWXT login submits the official CPU SSO protocol and stops before consumin
     globalThis.fetch = originalFetch;
   }
 });
+
+test("JWXT login refreshes the SSO form and retries one transient 401", async () => {
+  const username = "student-retry-test";
+  const password = "retryCPU}";
+  const loginUrl = `http://id.cpu.edu.cn/sso/login?service=${encodeURIComponent(service)}`;
+  const callbackUrl = "http://jsxsd.cpu.edu.cn/callback?ticket=ST-retry-test";
+  const originalFetch = globalThis.fetch;
+  let beginRequests = 0;
+  let submitRequests = 0;
+
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
+
+    if (url.hostname === "jsxsd.cpu.edu.cn" && url.pathname === "/zgykdx/tyrz.jsp") {
+      return new Response(null, { status: 302, headers: { location: loginUrl } });
+    }
+
+    if (url.hostname === "id.cpu.edu.cn" && url.pathname === "/sso/login" && init?.method !== "POST") {
+      beginRequests += 1;
+      return new Response(loginPage(), {
+        status: 200,
+        headers: { "set-cookie": `SESSION=retry-session-${beginRequests}; Path=/; HttpOnly` },
+      });
+    }
+
+    if (url.hostname === "id.cpu.edu.cn" && url.pathname === "/sso/login" && init?.method === "POST") {
+      submitRequests += 1;
+      const body = init.body as URLSearchParams;
+      assert.equal(decodeCredential(body.get("username") || ""), username);
+      assert.equal(decodeCredential(body.get("password") || ""), password);
+      if (submitRequests === 1) return new Response("Unauthorized", { status: 401 });
+      return new Response(null, { status: 302, headers: { location: callbackUrl } });
+    }
+
+    throw new Error(`unexpected request: ${url.toString()}`);
+  }) as typeof fetch;
+
+  try {
+    const pending = await beginLogin();
+    const result = await submitLoginForHandoff({ pendingId: pending.pendingId, username, password });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.handoff?.callbackUrl, callbackUrl);
+    assert.equal(beginRequests, 2);
+    assert.equal(submitRequests, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

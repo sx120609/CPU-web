@@ -510,6 +510,8 @@ type LoginCredentialExchange =
   | { ok: true; jar: CookieJar; username: string; callbackUrl?: string }
   | { ok: false; attempt: LoginHandoffAttempt };
 
+const CPU_SSO_REJECTED_MESSAGE = "统一认证未接受本次登录。请重新输入账号密码；若官网可登录，请刷新后重试。";
+
 function scrubCpuSsoCredentialCookies(jar: CookieJar) {
   // 官方页用 JavaScript 保存的“记住账号/密码”Cookie 不属于服务端会话材料。
   jar.delete(CPU_ID_SSO_HOST, "bms_sso_username");
@@ -557,10 +559,11 @@ async function exchangeLoginCredentials(
   const html = await r.res.text();
   if (isDev) await saveDebug("login-error.html", html);
   const $ = cheerio.load(html);
-  const errText =
-    $(".alert-danger, .errors, #msg, .login-error, .errorTip").first().text().trim() ||
-    $("title").text().trim() ||
-    "账号或密码错误";
+  const explicitError = $(".alert-danger, .errors, #msg, .login-error, .errorTip").first().text().trim();
+  const pageTitle = $("title").text().trim();
+  const errText = explicitError
+    || (pageTitle && !/^统一身份认证平台$/u.test(pageTitle) ? pageTitle : "")
+    || CPU_SSO_REJECTED_MESSAGE;
 
   // 若密码登录表单仍要求验证码，使用它的新 execution 重启 pending。
   let refreshedForm: ReturnType<typeof parseCpuSsoPasswordForm> | null = null;
@@ -593,6 +596,42 @@ async function exchangeLoginCredentials(
   return { ok: false, attempt: { ok: false, error: errText } };
 }
 
+function isCpuSsoUnauthorized(error: unknown) {
+  return error instanceof HttpError && error.status === 401;
+}
+
+async function submitWithFreshPendingRetry<T extends LoginAttempt | LoginHandoffAttempt>(
+  args: LoginSubmitArgs,
+  submit: (nextArgs: LoginSubmitArgs) => Promise<T>,
+): Promise<T> {
+  try {
+    return await submit(args);
+  } catch (error) {
+    if (!isCpuSsoUnauthorized(error)) throw error;
+  }
+
+  // 学校 SSO 偶尔会拒绝一个已经准备好的 execution。凭据保持原样，只重新拿表单重试一次。
+  await deletePendingLogin(args.pendingId);
+  const fresh = await beginLogin();
+  if (fresh.needCaptcha) {
+    return {
+      ok: false,
+      error: "统一认证要求补充验证码",
+      needCaptcha: true,
+      captcha: { image: fresh.captchaImage || "", pendingId: fresh.pendingId },
+    } as T;
+  }
+
+  try {
+    return await submit({ ...args, pendingId: fresh.pendingId });
+  } catch (error) {
+    if (isCpuSsoUnauthorized(error)) {
+      return { ok: false, error: CPU_SSO_REJECTED_MESSAGE } as T;
+    }
+    throw error;
+  }
+}
+
 /** 第二步：用 pendingId + 凭据完成登录（兼容旧的节点内建会话流程）。 */
 async function submitLoginOnThisNode(args: LoginSubmitArgs): Promise<LoginAttempt> {
   const exchanged = await exchangeLoginCredentials(args, false);
@@ -611,7 +650,7 @@ async function submitLoginOnThisNode(args: LoginSubmitArgs): Promise<LoginAttemp
 }
 
 export async function submitLogin(args: LoginSubmitArgs): Promise<LoginAttempt> {
-  return submitLoginOnThisNode(args);
+  return submitWithFreshPendingRetry(args, submitLoginOnThisNode);
 }
 
 /**
@@ -635,7 +674,7 @@ async function submitLoginForHandoffOnThisNode(args: LoginSubmitArgs): Promise<L
 }
 
 export async function submitLoginForHandoff(args: LoginSubmitArgs): Promise<LoginHandoffAttempt> {
-  return submitLoginForHandoffOnThisNode(args);
+  return submitWithFreshPendingRetry(args, submitLoginForHandoffOnThisNode);
 }
 
 function getJwxtCookies(jar: CookieJar): Record<string, Record<string, string>> {

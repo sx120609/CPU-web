@@ -204,6 +204,18 @@ async function onSubmit() {
     ElMessage.warning("请输入验证码");
     return;
   }
+  if (!auth.ssoNeedCaptcha) {
+    try {
+      await auth.ssoBegin();
+    } catch {
+      return;
+    }
+    if (auth.ssoNeedCaptcha) {
+      form.captcha = "";
+      ElMessage.info("统一认证要求补充验证码，请输入后继续");
+      return;
+    }
+  }
   const ok = await auth.ssoLogin(form.username, form.password, form.captcha || undefined, remember.value);
   if (ok) {
     ElMessage.success(`欢迎，${auth.user?.nickname || form.username}`);

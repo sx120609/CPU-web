@@ -54,6 +54,7 @@ export const useAuthStore = defineStore("auth", {
     sessionVersion: 0,
     /** SSO 登录流程的临时状态 */
     ssoPendingId: "",
+    ssoPendingIssuedAt: 0,
     ssoNeedCaptcha: false,
     ssoCaptchaImage: "",
     ssoCredentialPublicKey: "",
@@ -194,6 +195,11 @@ export const useAuthStore = defineStore("auth", {
       const task = (async () => {
         this.ssoLoading = true;
         this.ssoError = "";
+        this.ssoPendingId = "";
+        this.ssoPendingIssuedAt = 0;
+        this.ssoNeedCaptcha = false;
+        this.ssoCaptchaImage = "";
+        this.ssoCredentialPublicKey = "";
         try {
           const r = await authApi.ssoBegin(options?.silent ? {
             suppressAuthRedirect: true,
@@ -201,6 +207,7 @@ export const useAuthStore = defineStore("auth", {
             suppressErrorMessage: true,
           } : undefined);
           this.ssoPendingId = r.pendingId;
+          this.ssoPendingIssuedAt = Date.now();
           this.ssoNeedCaptcha = r.needCaptcha;
           this.ssoCaptchaImage = r.captchaImage ?? "";
           this.ssoCredentialPublicKey = r.credentialPublicKey ?? "";
@@ -229,6 +236,12 @@ export const useAuthStore = defineStore("auth", {
             return false;
           }
         }
+        // pending/execution 只能提交一次。发出请求前就从共享状态中取走，避免后台恢复和手动登录复用同一个会话。
+        const pendingId = this.ssoPendingId;
+        const credentialPublicKey = this.ssoCredentialPublicKey;
+        this.ssoPendingId = "";
+        this.ssoPendingIssuedAt = 0;
+        this.ssoCredentialPublicKey = "";
         const loginOptions = {
           suppressAuthRedirect: true,
           suppressAuthMessage: true,
@@ -237,21 +250,23 @@ export const useAuthStore = defineStore("auth", {
           // connection. Let the user wait for the actual outcome.
           timeout: 95_000,
         };
-        const loginPayload = this.ssoCredentialPublicKey
+        const loginPayload = credentialPublicKey
           ? {
-              pendingId: this.ssoPendingId,
+              pendingId,
               credentials: await encryptAgentLoginCredentials(
-                this.ssoCredentialPublicKey,
+                credentialPublicKey,
                 { username, password, ...(captcha ? { captcha } : {}) },
               ),
               remember,
             }
-          : { pendingId: this.ssoPendingId, username, password, captcha, remember };
+          : { pendingId, username, password, captcha, remember };
         const r = await authApi.ssoLogin(loginPayload, loginOptions);
         if (!r.ok || (!r.sessionAuthenticated && !r.siteToken) || !r.user) {
           this.ssoError = r.error || "登录失败";
           if (r.needCaptcha && r.captcha) {
             this.ssoPendingId = r.captcha.pendingId;
+            this.ssoPendingIssuedAt = Date.now();
+            this.ssoCredentialPublicKey = credentialPublicKey;
             this.ssoCaptchaImage = r.captcha.image;
             this.ssoNeedCaptcha = true;
           }
@@ -273,6 +288,7 @@ export const useAuthStore = defineStore("auth", {
         this.ssoNeedCaptcha = false;
         this.ssoCaptchaImage = "";
         this.ssoPendingId = "";
+        this.ssoPendingIssuedAt = 0;
         this.ssoCredentialPublicKey = "";
         this.academicIdentityResolved = false;
         await this.detectAcademicIdentity({
@@ -302,7 +318,10 @@ export const useAuthStore = defineStore("auth", {
         const creds = await loadCreds().catch(() => null);
         if (!creds) return false;
         try {
-          if (this.ssoPendingId.trim().length < 8) await this.ssoBegin({ silent: options?.silent });
+          const pendingFresh = this.ssoPendingId.trim().length >= 8
+            && this.ssoPendingIssuedAt > 0
+            && Date.now() - this.ssoPendingIssuedAt < 45_000;
+          if (!pendingFresh) await this.ssoBegin({ silent: options?.silent });
           if (this.ssoNeedCaptcha) return false;
           return await this.ssoLogin(creds.username, creds.password, undefined, true, options);
         } catch {
