@@ -1,6 +1,12 @@
 import { applyScheduleEditsToCells, courseEditKey, type ScheduleEditState } from "@/utils/scheduleEdits";
 import { courseMatchesWeek } from "@/utils/scheduleWeeks";
-import { buildGraduateFallbackCalendar, normalizeCalendarWeekDays, shortDate, todayKey } from "./calendar";
+import {
+  buildGraduateFallbackCalendar,
+  calendarWeekForNumber,
+  normalizeCalendarWeekDays,
+  shortDate,
+  todayKey,
+} from "./calendar";
 import { mergeContinuousCourseBlocks, normalizeSlotRange, normalizeSlotRangeForTablePosition } from "./slots";
 import type {
   CalendarResult,
@@ -28,8 +34,8 @@ export function createScheduleViewModelHelpers(context: ScheduleViewModelContext
     const fallback = buildGraduateFallbackCalendar(context.parsed());
     const target = Number(value || primary?.currentWeek || fallback?.currentWeek || context.parsed()?.currentWeek || 0);
     if (!Number.isFinite(target) || target <= 0) return null;
-    return primary?.weeks.find((w) => w.week === target)
-      ?? fallback?.weeks.find((w) => w.week === target)
+    return calendarWeekForNumber(primary, target)
+      ?? calendarWeekForNumber(fallback, target)
       ?? null;
   }
 

@@ -1,6 +1,7 @@
 import { courseMatchesWeek, normalizedCourseWeekList } from "@/utils/scheduleWeeks";
 import type {
   CalendarResult,
+  CalendarWeek,
   OfficialSemesterCalendar,
   ScheduleResult,
   SemesterDescriptor,
@@ -90,6 +91,33 @@ export function normalizeCalendarWeekDays(days: string[]) {
     if (day >= 1 && day <= 7) normalized[day - 1] = date;
   }
   return normalized.some(Boolean) ? normalized : raw;
+}
+
+export function calendarWeekForNumber(
+  source: CalendarResult | null | undefined,
+  targetWeek: number,
+): CalendarWeek | null {
+  if (!source?.weeks?.length || !Number.isFinite(targetWeek) || targetWeek <= 0) return null;
+  const exact = source.weeks.find((item) => Number(item.week) === targetWeek);
+  if (exact) return exact;
+
+  const anchors = source.weeks
+    .map((item) => ({ week: Number(item.week), days: normalizeCalendarWeekDays(item.days) }))
+    .filter(({ week, days }) => Number.isFinite(week) && week > 0 && days.length >= 7 && Boolean(days[0]));
+  if (!anchors.length) return null;
+  anchors.sort((a, b) => (
+    Math.abs(a.week - targetWeek) - Math.abs(b.week - targetWeek)
+    || b.week - a.week
+  ));
+  const anchor = anchors[0];
+  const dayOffset = (targetWeek - anchor.week) * 7;
+  const days = anchor.days.map((date) => addDaysToCalendarYmd(date, dayOffset));
+  return {
+    week: targetWeek,
+    days,
+    monday: days[0] || "",
+    sunday: days[6] || "",
+  };
 }
 
 export function normalizeSemesterLabel(value: string) {

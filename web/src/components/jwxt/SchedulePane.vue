@@ -376,6 +376,7 @@ import {
 } from "@/views/schedule/cache";
 import {
   buildGraduateFallbackCalendar,
+  calendarWeekForNumber,
   dayOfWeek,
   extendScheduleWeeksToCalendar,
   formatCacheTime,
@@ -1291,8 +1292,8 @@ function weekInfoFor(value: string | number) {
   const fallback = buildGraduateFallbackCalendar(parsed.value);
   const target = Number(value || calendar.value?.currentWeek || fallback?.currentWeek || parsed.value?.currentWeek || 0);
   if (!Number.isFinite(target) || target <= 0) return null;
-  return calendar.value?.weeks.find((w) => w.week === target)
-    ?? fallback?.weeks.find((w) => w.week === target)
+  return calendarWeekForNumber(calendar.value, target)
+    ?? calendarWeekForNumber(fallback, target)
     ?? null;
 }
 
