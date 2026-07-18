@@ -292,8 +292,8 @@
 
     <section v-else-if="jwxt.needCaptcha && hasCreds" class="state-card">
       <el-icon class="big"><Picture /></el-icon>
-      <h2>输入新版教务验证码</h2>
-      <p>{{ parsed ? "当前显示的是旧课表缓存，完成新版教务授权后会自动读取最新学期。" : "本机已保存学校账号，补充验证码后即可查看课表。" }}</p>
+      <h2>输入统一认证验证码</h2>
+      <p>{{ parsed ? "当前显示的是旧课表缓存，完成统一认证后会自动进入新版教务并读取最新学期。" : "统一认证要求补充验证码，完成后即可查看课表。" }}</p>
       <div class="captcha-row">
         <el-input
           v-model="captchaInput"
