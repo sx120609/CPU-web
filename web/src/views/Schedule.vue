@@ -13,7 +13,7 @@
 >
     <header class="top">
       <el-select
-        v-if="parsed"
+        v-if="parsed && jwxt.isLoggedIn"
         v-model="semester"
         size="small"
         class="sem-select"
@@ -34,12 +34,12 @@
           <el-icon><ArrowLeft /></el-icon>
           <span>退出</span>
         </button>
-        <div v-if="parsed" class="view-switch" aria-label="切换课表视图">
+        <div v-if="parsed && jwxt.isLoggedIn" class="view-switch" aria-label="切换课表视图">
           <button type="button" :class="{ active: viewMode === 'day' }" :disabled="loading" @click="setViewMode('day')">日</button>
           <button type="button" :class="{ active: viewMode === 'week' }" :disabled="loading" @click="setViewMode('week')">周</button>
         </div>
         <button
-          v-if="parsed"
+          v-if="parsed && jwxt.isLoggedIn"
           type="button"
           class="icon-btn"
           :class="{ active: isViewingToday }"
@@ -71,7 +71,7 @@
           <el-icon><Tools /></el-icon>
         </button>
         <el-popover
-          v-if="parsed || canShowAndroidClientDownload"
+          v-if="(parsed && jwxt.isLoggedIn) || canShowAndroidClientDownload"
           v-model:visible="moreMenuOpen"
           trigger="click"
           placement="bottom-end"
@@ -250,7 +250,7 @@
       @change="onScheduleBackgroundPicked"
     />
 
-    <section v-if="parsed" class="week-switcher">
+    <section v-if="parsed && jwxt.isLoggedIn" class="week-switcher">
       <button type="button" class="week-btn" :disabled="!canChangeWeek(-1)" @click="changeWeek(-1)">
         <el-icon><ArrowLeft /></el-icon>
         上一周
@@ -270,7 +270,7 @@
       </button>
     </section>
 
-    <section v-if="parsed && viewMode === 'day'" class="week-strip">
+    <section v-if="parsed && jwxt.isLoggedIn && viewMode === 'day'" class="week-strip">
       <button
         v-for="d in dayTabs"
         :key="d.day"
@@ -290,10 +290,10 @@
       <p>正在使用已保存的账号读取课表。</p>
     </section>
 
-    <section v-else-if="jwxt.needCaptcha && hasCreds && !parsed" class="state-card">
+    <section v-else-if="jwxt.needCaptcha && hasCreds" class="state-card">
       <el-icon class="big"><Picture /></el-icon>
-      <h2>输入验证码</h2>
-      <p>本机已保存学校账号，补充验证码后即可查看课表。</p>
+      <h2>输入新版教务验证码</h2>
+      <p>{{ parsed ? "当前显示的是旧课表缓存，完成新版教务授权后会自动读取最新学期。" : "本机已保存学校账号，补充验证码后即可查看课表。" }}</p>
       <div class="captcha-row">
         <el-input
           v-model="captchaInput"
@@ -319,10 +319,10 @@
       <el-button type="primary" size="large" :loading="captchaSubmitting" :disabled="captchaRefreshing" @click="submitCaptcha">完成授权</el-button>
     </section>
 
-    <section v-else-if="!jwxt.isLoggedIn && !parsed" class="state-card">
+    <section v-else-if="!jwxt.isLoggedIn" class="state-card">
       <el-icon class="big"><Lock /></el-icon>
-      <h2>需要先登录教务</h2>
-      <p>登录后可快速查看课表，也可以把这个页面加到桌面方便下次打开。勾选保持登录后会在当前浏览器加密保存账号密码，验证码不会保存。</p>
+      <h2>{{ parsed ? "课表授权已失效" : "需要先登录教务" }}</h2>
+      <p>{{ parsed ? "当前显示的是旧课表缓存，请重新授权新版教务后读取最新学期。" : "登录后可快速查看课表，也可以把这个页面加到桌面方便下次打开。勾选保持登录后会在当前浏览器加密保存账号密码，验证码不会保存。" }}</p>
       <p class="scope-note">{{ scheduleLoginScopeText }}</p>
       <el-button type="primary" size="large" @click="$router.push({ name: 'jwxt', query: { redirect: '/schedule' } })">
         前往登录
