@@ -1,6 +1,36 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseSchedule } from "../src/services/jwxtParser";
+import { normalizeCalendarWeekDays, parseSchedule } from "../src/services/jwxtParser";
+
+test("normalizeCalendarWeekDays fills a partial Sunday-first final week", () => {
+  assert.deepEqual(
+    normalizeCalendarWeekDays(["2026-07-12", "", "", "", "", "", ""]),
+    [
+      "2026-07-13",
+      "2026-07-14",
+      "2026-07-15",
+      "2026-07-16",
+      "2026-07-17",
+      "2026-07-18",
+      "2026-07-19",
+    ],
+  );
+});
+
+test("normalizeCalendarWeekDays fills a partial Sunday-first opening week", () => {
+  assert.deepEqual(
+    normalizeCalendarWeekDays(["", "2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05", "2026-03-06", "2026-03-07"]),
+    [
+      "2026-03-02",
+      "2026-03-03",
+      "2026-03-04",
+      "2026-03-05",
+      "2026-03-06",
+      "2026-03-07",
+      "2026-03-08",
+    ],
+  );
+});
 
 test("parseSchedule keeps supporting the legacy kbtable layout", () => {
   const result = parseSchedule(`

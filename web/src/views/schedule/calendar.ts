@@ -57,10 +57,6 @@ export function addDaysToCalendarYmd(ymd: string, days: number): string {
   return formatYmd(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
 }
 
-export function plusOneDay(ymd: string): string {
-  return addDaysToCalendarYmd(ymd, 1);
-}
-
 export function dayOfWeekForCalendarYmd(ymd: string) {
   const match = String(ymd || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return 0;
@@ -71,8 +67,21 @@ export function dayOfWeekForCalendarYmd(ymd: string) {
 
 export function normalizeCalendarWeekDays(days: string[]) {
   const raw = (days ?? []).map((item) => String(item || "").trim());
-  if (raw.length >= 7 && dayOfWeekForCalendarYmd(raw[0]) === 7 && dayOfWeekForCalendarYmd(raw[1]) === 1) {
-    return [...raw.slice(1, 7), plusOneDay(raw[6])];
+  const anchors = raw
+    .map((date, index) => ({ date, index, day: dayOfWeekForCalendarYmd(date) }))
+    .filter((item) => item.day >= 1 && item.day <= 7);
+  if (!anchors.length) return raw;
+
+  const sundayFirstScore = anchors.filter(({ index, day }) => day === (index === 0 ? 7 : index)).length;
+  const mondayFirstScore = anchors.filter(({ index, day }) => day === index + 1).length;
+  const sundayFirst = sundayFirstScore > mondayFirstScore;
+  const anchor = anchors[0];
+  const offsetFromMonday = sundayFirst
+    ? (anchor.index === 0 ? -1 : anchor.index - 1)
+    : anchor.index;
+  const monday = addDaysToCalendarYmd(anchor.date, -offsetFromMonday);
+  if (monday) {
+    return Array.from({ length: 7 }, (_, index) => addDaysToCalendarYmd(monday, index));
   }
 
   const normalized = Array.from({ length: 7 }, () => "");
