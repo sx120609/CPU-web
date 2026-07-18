@@ -7,7 +7,6 @@
 import axios from "axios";
 import { ElMessage } from "element-plus";
 import { detectClientPlatform } from "@/utils/clientInfo";
-import { clearJwxtDataCaches } from "@/utils/jwxtCache";
 import { COOKIE_SESSION_MARKER, getToken } from "./request";
 
 const JWXT_TOKEN_KEY = "cpu-jwxt-token";
@@ -90,7 +89,6 @@ inst.interceptors.response.use(
     const status = Number(err.response?.status || 0);
     if (status === 401) {
       clearJwxtToken();
-      clearJwxtDataCaches();
       window.dispatchEvent(new Event(JWXT_AUTH_EXPIRED_EVENT));
     }
     if (!shouldSuppressErrorMessage(err.config)) {

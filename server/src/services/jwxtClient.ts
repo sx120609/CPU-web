@@ -33,6 +33,11 @@ import { config, isDev } from "../config";
 import { Errors, HttpError } from "../utils/response";
 import { decryptJwxtSensitiveJson, encryptJwxtSensitiveJson } from "./jwxtSessionCrypto";
 import { extractModernJwxtSsoRedirect, isModernJwxtLoginPage } from "./modernJwxtSso";
+import {
+  buildCpuSsoSubmitBody,
+  buildCpuSsoSubmitHeaders,
+  parseCpuSsoPasswordForm,
+} from "./cpuSsoForm";
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
@@ -101,6 +106,13 @@ export class CookieJar {
     return this.byHost.get(host)?.size ?? 0;
   }
 
+  delete(host: string, name: string) {
+    const map = this.byHost.get(host);
+    if (!map) return;
+    map.delete(name);
+    if (map.size === 0) this.byHost.delete(host);
+  }
+
   toJson(): Record<string, Record<string, string>> {
     const out: Record<string, Record<string, string>> = {};
     for (const [host, m] of this.byHost) out[host] = Object.fromEntries(m);
@@ -157,12 +169,13 @@ async function followRedirects(
     if (res.status >= 300 && res.status < 400) {
       const loc = res.headers.get("location");
       if (!loc) return { res, finalUrl: current, hops };
+      const referer = current;
       current = new URL(loc, current).toString();
       // 重定向后默认走 GET（除非是 307/308 保留方法）
       if (res.status === 307 || res.status === 308) {
         // 保留 method 与 body
       } else {
-        opts = { headers: init.headers };
+        opts = { headers: { Referer: referer } };
       }
       continue;
     }
@@ -194,9 +207,10 @@ async function followUntilJwxtCallback(
       if (next.hostname.toLowerCase() === JWXT_HOST) {
         return { res, finalUrl: current, callbackUrl: next.toString(), hops };
       }
+      const referer = current;
       current = next.toString();
       if (res.status !== 307 && res.status !== 308) {
-        opts = { headers: init.headers };
+        opts = { headers: { Referer: referer } };
       }
       continue;
     }
@@ -250,7 +264,8 @@ export interface LoginHandoffAttempt extends Omit<LoginAttempt, "token"> {
 
 interface PendingLogin {
   jar: CookieJar;
-  ssoUrl: string;       // SSO 登录页的最终 URL（POST 目标）
+  ssoUrl: string;       // SSO 登录页的最终 URL（Referer）
+  submitUrl: string;    // 登录页密码表单的实际 POST 目标
   hidden: Record<string, string>; // lt / execution / service / _eventId 等
   createdAt: number;
 }
@@ -288,6 +303,7 @@ async function savePendingLogin(id: string, pending: PendingLogin) {
   const payload = {
     jar: pending.jar.toJson(),
     ssoUrl: pending.ssoUrl,
+    submitUrl: pending.submitUrl,
     hidden: pending.hidden,
     createdAt: pending.createdAt,
   };
@@ -305,14 +321,19 @@ async function getPendingLogin(id: string): Promise<PendingLogin | null> {
     const decrypted = decryptJwxtSensitiveJson<{
       jar?: Record<string, Record<string, string>>;
       ssoUrl?: string;
+      submitUrl?: string;
       hidden?: Record<string, string>;
       createdAt?: number;
     }>("pending-login", id, raw, { allowLegacyPlaintext: true });
     const parsed = decrypted.value;
+    const ssoUrl = String(parsed.ssoUrl || "");
+    const hidden = parsed.hidden && typeof parsed.hidden === "object" ? parsed.hidden : {};
     const pending = {
       jar: CookieJar.fromJson(parsed.jar),
-      ssoUrl: String(parsed.ssoUrl || ""),
-      hidden: parsed.hidden && typeof parsed.hidden === "object" ? parsed.hidden : {},
+      ssoUrl,
+      // 兼容升级前已经签发、尚未提交的 pending；旧结构中 ssoUrl 同时是 POST 目标。
+      submitUrl: String(parsed.submitUrl || ssoUrl),
+      hidden,
       createdAt: Number(parsed.createdAt || Date.now()),
     };
     if (decrypted.legacyPlaintext) await savePendingLogin(id, pending);
@@ -416,29 +437,18 @@ export async function beginLogin(): Promise<{
   throwForLoginUpstreamStatus(res);
   const html = await res.text();
   if (isDev) await saveDebug("login-page.html", html);
-  const $ = cheerio.load(html);
-  const hidden: Record<string, string> = {};
-  $("input[type='hidden']").each((_, el) => {
-    const name = ($(el).attr("name") || "").trim();
-    const value = ($(el).attr("value") || "").trim();
-    if (name) hidden[name] = value;
-  });
-  if (!hidden.execution) {
-    throw new Error("无法解析 CAS 登录页（缺少 execution）。学校 SSO 可能已变更，请联系管理员。");
-  }
-
-  // useVCode 表示本次统一认证是否真的要求验证码；isUseVCode 只是功能总开关。
-  const useVCode = hidden.useVCode === "true";
+  const form = parseCpuSsoPasswordForm(html, finalUrl);
 
   const id = genId();
   await savePendingLogin(id, {
     jar,
     ssoUrl: finalUrl,
-    hidden,
+    submitUrl: form.submitUrl,
+    hidden: form.hidden,
     createdAt: Date.now(),
   });
 
-  if (useVCode) {
+  if (form.needCaptcha) {
     return { pendingId: id, needCaptcha: true, captchaImage: await fetchCaptchaOrEmpty(jar, finalUrl) };
   }
   return { pendingId: id, needCaptcha: false };
@@ -500,40 +510,32 @@ type LoginCredentialExchange =
   | { ok: true; jar: CookieJar; username: string; callbackUrl?: string }
   | { ok: false; attempt: LoginHandoffAttempt };
 
+function scrubCpuSsoCredentialCookies(jar: CookieJar) {
+  // 官方页用 JavaScript 保存的“记住账号/密码”Cookie 不属于服务端会话材料。
+  jar.delete(CPU_ID_SSO_HOST, "bms_sso_username");
+  jar.delete(CPU_ID_SSO_HOST, "bms_sso_password");
+}
+
 async function exchangeLoginCredentials(
   args: LoginSubmitArgs,
   stopBeforeCallback: boolean,
 ): Promise<LoginCredentialExchange> {
   const pending = await getPendingLogin(args.pendingId);
   if (!pending) return { ok: false, attempt: { ok: false, error: "登录会话已过期，请刷新页面重试" } };
-  const { jar, ssoUrl, hidden } = pending;
+  const { jar, ssoUrl, submitUrl, hidden } = pending;
 
-  // 组装 POST body：所有 hidden + username + password (+ captcha?)
-  const body = new URLSearchParams();
-  for (const [k, v] of Object.entries(hidden)) body.set(k, v);
-  if (!body.get("_eventId")) body.set("_eventId", "submit");
-  body.set("username", args.username);
-  body.set("password", args.password);
-  if (args.captcha) {
-    // 学校 SSO 的验证码字段在 errorCount 触发动态插入，name 实测最可能是 rcode/vCode
-    body.set("rcode", args.captcha);
-    body.set("vCode", args.captcha);
-    body.set("captcha", args.captcha);
-    body.set("authCode", args.captcha);
-  }
+  const body = buildCpuSsoSubmitBody(hidden, args);
 
   const requestInit: RequestInit = {
     method: "POST",
     body,
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Referer: ssoUrl,
-    },
+    headers: buildCpuSsoSubmitHeaders(ssoUrl, submitUrl),
   };
   const r: { res: Response; finalUrl: string; callbackUrl?: string; hops: string[] } = stopBeforeCallback
-    ? await followUntilJwxtCallback(jar, ssoUrl, requestInit)
-    : await followRedirects(jar, ssoUrl, requestInit);
+    ? await followUntilJwxtCallback(jar, submitUrl, requestInit)
+    : await followRedirects(jar, submitUrl, requestInit);
   throwForLoginUpstreamStatus(r.res);
+  scrubCpuSsoCredentialCookies(jar);
 
   // 用完即弃
   await deletePendingLogin(args.pendingId);
@@ -560,18 +562,21 @@ async function exchangeLoginCredentials(
     $("title").text().trim() ||
     "账号或密码错误";
 
-  // 若仍要求验证码，重启 pending
-  const useVCode = $('input[name="useVCode"]').val() === "true" || $('input[name="isUseVCode"]').val() === "true";
-  if (useVCode) {
-    const newHidden: Record<string, string> = {};
-    $("input[type='hidden']").each((_, el) => {
-      const name = ($(el).attr("name") || "").trim();
-      const value = ($(el).attr("value") || "").trim();
-      if (name) newHidden[name] = value;
-    });
+  // 若密码登录表单仍要求验证码，使用它的新 execution 重启 pending。
+  let refreshedForm: ReturnType<typeof parseCpuSsoPasswordForm> | null = null;
+  try {
+    refreshedForm = parseCpuSsoPasswordForm(html, r.finalUrl);
+  } catch {
+    // 非统一认证登录页会在下方按普通登录失败返回，不保留无效表单状态。
+  }
+  if (refreshedForm?.needCaptcha) {
     const newPendingId = genId();
     await savePendingLogin(newPendingId, {
-      jar, ssoUrl: r.finalUrl, hidden: newHidden, createdAt: Date.now(),
+      jar,
+      ssoUrl: r.finalUrl,
+      submitUrl: refreshedForm.submitUrl,
+      hidden: refreshedForm.hidden,
+      createdAt: Date.now(),
     });
     const img = await fetchCaptchaOrEmpty(jar, r.finalUrl);
     return {

@@ -262,7 +262,6 @@ export const useAuthStore = defineStore("auth", {
         // Cookie 会话只保留不含秘密的内存标记；兼容响应中的旧 token 也仅留在内存。
         if (r.jwxtAuthenticated || r.jwxtToken) {
           clearJwxtToken();
-          clearJwxtDataCaches();
           setJwxtToken(r.jwxtAuthenticated ? JWXT_COOKIE_SESSION_MARKER : (r.jwxtToken || ""));
         }
         // 记住凭据（本地加密，下次自动登录）
@@ -386,8 +385,7 @@ export const useAuthStore = defineStore("auth", {
       this._pendingIdentityDetection = null;
       this.academicIdentityDetecting = false;
       clearJwxtToken();
-      clearJwxtDataCaches();
-      this.clearAcademicIdentity();
+      // 临时站内会话过期时保留教务缓存和身份，自动恢复期间仍可正常查看旧数据。
     },
   },
 });

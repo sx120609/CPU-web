@@ -5,6 +5,9 @@ import { useAuthStore } from "@/stores/auth";
 import { clearJwxtDataCaches } from "@/utils/jwxtCache";
 
 let authExpiredListenerInstalled = false;
+let jwxtStatusRefreshInFlight: Promise<void> | null = null;
+let jwxtEnsureSessionInFlight: Promise<boolean> | null = null;
+let jwxtSessionRecoveryInFlight: Promise<boolean> | null = null;
 
 function justLoggedOutThisSession() {
   try {
@@ -84,42 +87,55 @@ export const useJwxtStore = defineStore("jwxt", {
       }
     },
     async refreshStatus() {
-      if (!this.token) {
-        this.active = false;
-        return;
-      }
-      try {
-        const auth = useAuthStore();
-        if (auth.token && !auth.user) await auth.fetchMe();
-        const r = await jwxtApi.status({ silent: true });
-        const currentUsername = auth.user?.username;
-        if (r.username && currentUsername && r.username !== currentUsername) {
-          clearJwxtToken();
-          clearJwxtDataCaches();
-          this.token = "";
+      if (jwxtStatusRefreshInFlight) return jwxtStatusRefreshInFlight;
+      const task = (async () => {
+        if (!this.token) {
           this.active = false;
           return;
         }
-        this.active = r.active;
-        if (!r.active) {
-          clearJwxtToken();
-          clearJwxtDataCaches();
-          this.token = "";
-        } else {
-          setJwxtToken(JWXT_COOKIE_SESSION_MARKER);
-          this.token = JWXT_COOKIE_SESSION_MARKER;
-          await auth.detectAcademicIdentity({
-            force: true,
-            silent: true,
-            fallback: auth.academicIdentity,
-          });
-          void this.refreshWidgetTokens();
+        try {
+          const auth = useAuthStore();
+          if (auth.token && !auth.user) await auth.fetchMe({ probe: true });
+          const r = await jwxtApi.status({ silent: true });
+          const currentUsername = auth.user?.username;
+          if (r.username && currentUsername && r.username !== currentUsername) {
+            clearJwxtToken();
+            clearJwxtDataCaches();
+            this.token = "";
+            this.active = false;
+            return;
+          }
+          this.active = r.active;
+          if (!r.active) {
+            // 会话过期不等于本地数据失效：保留课表/成绩缓存供秒开和离线查看。
+            clearJwxtToken();
+            this.token = "";
+          } else {
+            setJwxtToken(JWXT_COOKIE_SESSION_MARKER);
+            this.token = JWXT_COOKIE_SESSION_MARKER;
+            await auth.detectAcademicIdentity({
+              force: true,
+              silent: true,
+              fallback: auth.academicIdentity,
+            });
+            void this.refreshWidgetTokens();
+          }
+        } catch (error) {
+          if (isJwxtAuthExpired(error) || !getJwxtToken()) {
+            this.active = false;
+            this.token = "";
+          } else {
+            // 网络抖动时继续乐观使用现有会话；真实查询若返回 401 会触发自动恢复。
+            this.token = getJwxtToken();
+            this.active = Boolean(this.token);
+          }
         }
-      } catch {
-        this.active = false;
-        if (!getJwxtToken()) {
-          this.token = "";
-        }
+      })();
+      jwxtStatusRefreshInFlight = task;
+      try {
+        await task;
+      } finally {
+        if (jwxtStatusRefreshInFlight === task) jwxtStatusRefreshInFlight = null;
       }
     },
     async beginLogin(options?: { silent?: boolean }) {
@@ -170,22 +186,47 @@ export const useJwxtStore = defineStore("jwxt", {
       }
     },
     async ensureSession(options?: { refresh?: boolean; forceLogin?: boolean; silent?: boolean }): Promise<boolean> {
-      this.rememberSaved = hasCreds();
-      if (options?.refresh && this.token) {
-        await this.refreshStatus().catch(() => undefined);
+      if (!options?.forceLogin && jwxtEnsureSessionInFlight) return jwxtEnsureSessionInFlight;
+      const task = (async () => {
+        this.rememberSaved = hasCreds();
+        const auth = useAuthStore();
+        // 验活与 SSO 表单准备并行：真过期时可以少等一次 Agent/学校往返。
+        const recoveryPreparation = this.rememberSaved
+          && auth.ssoPendingId.trim().length < 8
+          && !auth.ssoNeedCaptcha
+          ? auth.ssoBegin({ silent: true }).catch(() => undefined)
+          : null;
+        if (options?.refresh && this.token) {
+          await this.refreshStatus().catch(() => undefined);
+        }
+        if (this.active && this.token && !options?.forceLogin) return true;
+        if (!this.rememberSaved) return false;
+        if (recoveryPreparation) await recoveryPreparation;
+        return this.tryAutoLogin({ silent: options?.silent });
+      })();
+      if (!options?.forceLogin) jwxtEnsureSessionInFlight = task;
+      try {
+        return await task;
+      } finally {
+        if (jwxtEnsureSessionInFlight === task) jwxtEnsureSessionInFlight = null;
       }
-      if (this.active && this.token && !options?.forceLogin) return true;
-      if (!this.rememberSaved) return false;
-      return this.tryAutoLogin({ silent: options?.silent });
     },
     async recoverSession(): Promise<boolean> {
-      clearJwxtToken();
-      clearJwxtDataCaches();
-      this.token = "";
-      this.active = false;
-      this.rememberSaved = hasCreds();
-      if (!this.rememberSaved) return false;
-      return this.tryAutoLogin();
+      if (jwxtSessionRecoveryInFlight) return jwxtSessionRecoveryInFlight;
+      const task = (async () => {
+        clearJwxtToken();
+        this.token = "";
+        this.active = false;
+        this.rememberSaved = hasCreds();
+        if (!this.rememberSaved) return false;
+        return this.tryAutoLogin({ silent: true });
+      })();
+      jwxtSessionRecoveryInFlight = task;
+      try {
+        return await task;
+      } finally {
+        if (jwxtSessionRecoveryInFlight === task) jwxtSessionRecoveryInFlight = null;
+      }
     },
     async withSessionRetry<T>(task: () => Promise<T>): Promise<T> {
       const ready = await this.ensureSession();
@@ -211,7 +252,6 @@ export const useJwxtStore = defineStore("jwxt", {
     async logout() {
       try { await jwxtApi.logout(); } catch { /* ignore */ }
       clearJwxtToken();
-      clearJwxtDataCaches();
       this.token = "";
       this.active = false;
       // 注意：默认不删 saved creds，下次还能自动登录

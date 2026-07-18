@@ -5,6 +5,18 @@ import { useSiteStore } from "@/stores/site";
 import type { FeatureKey } from "@/api/site";
 
 const MainLayout = () => import("@/layouts/MainLayout.vue");
+export const loadJwxtView = () => import("@/views/jwxt/Index.vue");
+export const loadScheduleView = () => import("@/views/Schedule.vue");
+
+let educationViewsPreload: Promise<unknown> | null = null;
+export function preloadEducationViews() {
+  if (!educationViewsPreload) {
+    educationViewsPreload = Promise.allSettled([loadJwxtView(), loadScheduleView()]);
+  }
+  return educationViewsPreload;
+}
+
+const CACHE_FIRST_EDUCATION_ROUTES = new Set(["jwxt", "schedule"]);
 
 /**
  * 受功能开关控制的路由名 → feature key。
@@ -103,8 +115,8 @@ export const router = createRouter({
         { path: "services/tools/grade-checks/:slug", name: "grade-check-lookup", component: () => import("@/views/services/GradeCheckLookup.vue"), meta: { title: "成绩核对" } },
         { path: "services/tools/file-collections/:slug", name: "file-collection-submit", component: BlankRouteView, meta: { title: "文件提交", public: true } },
         { path: "announcements", name: "announcements", component: () => import("@/views/announcements/Index.vue"), meta: { title: "校园公告", public: true } },
-        { path: "jwxt", name: "jwxt", component: () => import("@/views/jwxt/Index.vue"), meta: { title: "教务数据", public: true } },
-        { path: "schedule", name: "schedule", component: () => import("@/views/Schedule.vue"), meta: { title: "课表", public: true, hideChrome: true } },
+        { path: "jwxt", name: "jwxt", component: loadJwxtView, meta: { title: "教务数据", public: true } },
+        { path: "schedule", name: "schedule", component: loadScheduleView, meta: { title: "课表", public: true, hideChrome: true } },
         { path: "search", name: "search", component: () => import("@/views/search/Result.vue"), meta: { title: "搜索结果", public: true } },
         { path: "messages", name: "messages", component: () => import("@/views/messages/Index.vue"), meta: { title: "消息中心" } },
         { path: "messages/qqbot-reminders", name: "message-qqbot-reminders", component: () => import("@/views/services/QqBotReminders.vue"), meta: { title: "小工具提醒规则" } },
@@ -121,6 +133,12 @@ export const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
   const site = useSiteStore();
+  if (to.meta.title) document.title = `${to.meta.title} · 药大拾间`;
+  // 课表和教务页必须先渲染本地缓存；站内会话探测放到后台，不能阻塞路由首屏。
+  if (to.name && CACHE_FIRST_EDUCATION_ROUTES.has(String(to.name))) {
+    if (!auth.ready) void auth.fetchMe({ probe: true });
+    return true;
+  }
   // HttpOnly Cookie 无法由前端直接读取；首次导航静默探测一次真实会话。
   // 游客的 401 不提示、不跳转，避免公开页面被错误抢到登录页。
   if (!auth.ready) await auth.fetchMe({ probe: true });
@@ -135,8 +153,6 @@ router.beforeEach(async (to) => {
     window.location.replace("/voicehub/dashboard");
     return false;
   }
-  if (to.meta.title) document.title = `${to.meta.title} · 药大拾间`;
-
   const requestedManageTool = firstRouteValue(to.query.tool);
   if (to.name === "service-tools-manage" && requestedManageTool === "file_collect") {
     return { name: "service-filestore" };

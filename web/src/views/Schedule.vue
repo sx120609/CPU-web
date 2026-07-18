@@ -13,7 +13,7 @@
 >
     <header class="top">
       <el-select
-        v-if="parsed && jwxt.isLoggedIn"
+        v-if="parsed"
         v-model="semester"
         size="small"
         class="sem-select"
@@ -34,12 +34,12 @@
           <el-icon><ArrowLeft /></el-icon>
           <span>退出</span>
         </button>
-        <div v-if="parsed && jwxt.isLoggedIn" class="view-switch" aria-label="切换课表视图">
+        <div v-if="parsed" class="view-switch" aria-label="切换课表视图">
           <button type="button" :class="{ active: viewMode === 'day' }" :disabled="loading" @click="setViewMode('day')">日</button>
           <button type="button" :class="{ active: viewMode === 'week' }" :disabled="loading" @click="setViewMode('week')">周</button>
         </div>
         <button
-          v-if="parsed && jwxt.isLoggedIn"
+          v-if="parsed"
           type="button"
           class="icon-btn"
           :class="{ active: isViewingToday }"
@@ -71,7 +71,7 @@
           <el-icon><Tools /></el-icon>
         </button>
         <el-popover
-          v-if="(parsed && jwxt.isLoggedIn) || canShowAndroidClientDownload"
+          v-if="parsed || canShowAndroidClientDownload"
           v-model:visible="moreMenuOpen"
           trigger="click"
           placement="bottom-end"
@@ -250,7 +250,7 @@
       @change="onScheduleBackgroundPicked"
     />
 
-    <section v-if="parsed && jwxt.isLoggedIn" class="week-switcher">
+    <section v-if="parsed" class="week-switcher">
       <button type="button" class="week-btn" :disabled="!canChangeWeek(-1)" @click="changeWeek(-1)">
         <el-icon><ArrowLeft /></el-icon>
         上一周
@@ -270,7 +270,7 @@
       </button>
     </section>
 
-    <section v-if="parsed && jwxt.isLoggedIn && viewMode === 'day'" class="week-strip">
+    <section v-if="parsed && viewMode === 'day'" class="week-strip">
       <button
         v-for="d in dayTabs"
         :key="d.day"
@@ -284,13 +284,20 @@
       </button>
     </section>
 
+    <section v-if="parsed && !jwxt.isLoggedIn" class="cache-status-strip">
+      <span>{{ autoLoading ? "课表缓存已打开，正在后台恢复教务连接…" : "当前显示上次缓存；恢复连接后会静默更新。" }}</span>
+      <button type="button" @click="$router.push({ name: 'jwxt', query: { redirect: '/schedule' } })">
+        {{ jwxt.needCaptcha ? "补充验证码" : "恢复连接" }}
+      </button>
+    </section>
+
     <section v-if="autoLoading && !parsed" class="state-card">
       <el-icon class="big is-loading"><Loading /></el-icon>
       <h2>正在恢复登录状态</h2>
       <p>正在使用已保存的账号读取课表。</p>
     </section>
 
-    <section v-else-if="jwxt.needCaptcha && hasCreds" class="state-card">
+    <section v-else-if="!parsed && jwxt.needCaptcha && hasCreds" class="state-card">
       <el-icon class="big"><Picture /></el-icon>
       <h2>输入统一认证验证码</h2>
       <p>{{ parsed ? "当前显示的是旧课表缓存，完成统一认证后会自动进入新版教务并读取最新学期。" : "统一认证要求补充验证码，完成后即可查看课表。" }}</p>
@@ -319,7 +326,7 @@
       <el-button type="primary" size="large" :loading="captchaSubmitting" :disabled="captchaRefreshing" @click="submitCaptcha">完成授权</el-button>
     </section>
 
-    <section v-else-if="!jwxt.isLoggedIn" class="state-card">
+    <section v-else-if="!parsed && !jwxt.isLoggedIn" class="state-card">
       <el-icon class="big"><Lock /></el-icon>
       <h2>{{ parsed ? "课表授权已失效" : "需要先登录教务" }}</h2>
       <p>{{ parsed ? "当前显示的是旧课表缓存，请重新授权新版教务后读取最新学期。" : "登录后可快速查看课表，也可以把这个页面加到桌面方便下次打开。勾选保持登录后会在当前浏览器加密保存账号密码，验证码不会保存。" }}</p>
@@ -1029,7 +1036,7 @@ async function copyGradDebugGuide() {
 
 async function loadGraduateSchedule(
   targetSemester?: string,
-  options?: { background?: boolean },
+  options?: { background?: boolean; force?: boolean },
 ) {
   if (disposed) return;
   const background = Boolean(options?.background);
@@ -1045,7 +1052,10 @@ async function loadGraduateSchedule(
   try {
     const requestedSemester = targetSemester?.trim()
       || (scheduleSource.value === "graduate" ? semester.value || undefined : undefined);
-    const result = await jwxt.withSessionRetry(() => jwxtApi.graduateSchedule({ semester: requestedSemester, refresh: "1" }));
+    const result = await jwxt.withSessionRetry(() => jwxtApi.graduateSchedule({
+      semester: requestedSemester,
+      refresh: options?.force ? "1" : undefined,
+    }));
     if (!isCurrentScheduleRequest(requestSeq, requestedSemester || "")) return;
     if (disposed) return;
     const fallbackCalendar = buildGraduateFallbackCalendar(result.parsed);
@@ -1121,7 +1131,7 @@ async function loadGraduateDebugSchedule(
 
 async function refreshScheduleForCurrentSource(options?: { force?: boolean; background?: boolean }) {
   if (scheduleSource.value === "graduate") {
-    await loadGraduateSchedule(undefined, { background: options?.background });
+    await loadGraduateSchedule(undefined, { background: options?.background, force: options?.force });
     return;
   }
   if (scheduleSource.value === "graduate-debug") {
@@ -1345,7 +1355,7 @@ async function writeClipboard(text: string): Promise<boolean> {
   return false;
 }
 
-onMounted(async () => {
+onMounted(() => {
   disposed = false;
   document.documentElement.classList.add("schedule-scroll-lock");
   document.body.classList.add("schedule-scroll-lock");
@@ -1354,20 +1364,20 @@ onMounted(async () => {
   hasCreds.value = hasSavedCreds();
   syncNetworkStatus();
   restoreScheduleTheme();
-  await restoreScheduleBackground();
-  if (disposed) return;
+
+  // 缓存恢复必须发生在图片、会话和网络工作之前，保证课表首帧不被任何异步步骤阻塞。
+  restoreLastState();
+  restoreCachedCalendar();
+  restoreLastScheduleCache();
+  loadScheduleEdits();
+  void restoreScheduleBackground();
+
   updateViewportHeight();
   window.addEventListener("resize", updateViewportHeight);
   window.addEventListener("online", syncNetworkStatus);
   window.addEventListener("offline", syncNetworkStatus);
   window.visualViewport?.addEventListener("resize", updateViewportHeight);
   window.visualViewport?.addEventListener("scroll", updateViewportHeight);
-
-  // 第一时间从 localStorage 还原缓存，让画面"秒开"——不等任何网络请求
-  restoreLastState();
-  restoreCachedCalendar();
-  restoreLastScheduleCache();
-  loadScheduleEdits();
 
   // 内置浏览器先提示跳外部浏览器；普通移动浏览器再提示安装 / 添加桌面。
   openBrowserPromptRef.value?.autoPromptIfEligible();
@@ -1378,16 +1388,19 @@ onMounted(async () => {
   // 后台静默：刷新会话状态 + 自动登录 + 重新拉数据。失败也不影响已显示的缓存。
   void (async () => {
     try {
-      autoLoading.value = !parsed.value && hasCreds.value;
-      await jwxt.ensureSession({ refresh: true });
+      autoLoading.value = hasCreds.value;
+      const ready = await jwxt.ensureSession({ refresh: true, silent: true });
       if (!disposed) autoLoading.value = false;
-      if (disposed) return;
+      if (disposed || !ready) return;
       if (jwxt.isLoggedIn) {
+        const background = Boolean(parsed.value);
         if (prefersGraduateIdentity.value) {
-          await loadGraduateSchedule();
+          await loadGraduateSchedule(undefined, { background });
         } else {
-          await loadCalendar();
-          await loadSchedule(true);
+          await Promise.all([
+            loadCalendar(),
+            loadSchedule(false, background),
+          ]);
         }
       }
     } catch {
@@ -1629,7 +1642,7 @@ async function onScheduleSemesterChange() {
 
 async function refreshCurrentSchedule() {
   if (scheduleSource.value === "graduate") {
-    await loadGraduateSchedule();
+    await loadGraduateSchedule(undefined, { force: true });
     return;
   }
   if (scheduleSource.value === "graduate-debug") {
@@ -1666,7 +1679,7 @@ async function loadSchedule(force = false, background = false) {
   }
   try {
     const r: any = await jwxt.withSessionRetry(() => jwxtApi.schedule(
-      { semester: semester.value, week: week.value, refresh: force || background || hadCache ? "1" : undefined },
+      { semester: semester.value, week: week.value, refresh: force ? "1" : undefined },
       { silent: background || hadCache || (offlineMode.value && canFallbackToVisibleSchedule) },
     ));
     if (disposed) return;

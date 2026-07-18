@@ -108,6 +108,32 @@
   border-color: var(--schedule-accent);
   color: var(--schedule-accent-contrast);
 }
+.cache-status-strip {
+  flex: 0 0 auto;
+  width: min(100%, 720px);
+  margin: -4px auto 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--schedule-accent-border);
+  border-radius: 12px;
+  background: var(--schedule-accent-soft);
+  color: var(--schedule-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+.cache-status-strip button {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: var(--schedule-accent);
+  color: var(--schedule-accent-contrast);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
 .content,
 .state-card {
   max-width: 720px;

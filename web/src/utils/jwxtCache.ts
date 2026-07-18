@@ -1,4 +1,6 @@
 const AUTH_PRESENCE_KEY = "cpu-authenticated";
+const SAVED_CREDENTIALS_KEY = "cpu-jwxt-creds-v1";
+const CACHE_PRESENCE_KEY = "cpu-jwxt-cache-presence-v1";
 
 const DATA_CACHE_PREFIXES = [
   "cpu-jwxt-tab-cache-v3:",
@@ -24,7 +26,11 @@ const DATA_CACHE_KEYS = [
 
 export function jwxtCacheScope() {
   try {
-    return localStorage.getItem(AUTH_PRESENCE_KEY) === "1" ? "browser-session" : "";
+    return (localStorage.getItem(AUTH_PRESENCE_KEY) === "1"
+      || Boolean(localStorage.getItem(SAVED_CREDENTIALS_KEY))
+      || localStorage.getItem(CACHE_PRESENCE_KEY) === "1")
+      ? "browser-session"
+      : "";
   } catch {
     return "";
   }
@@ -33,6 +39,7 @@ export function jwxtCacheScope() {
 export function jwxtScopedStorageKey(base: string, ...parts: Array<string | number | undefined | null>) {
   const scope = jwxtCacheScope();
   if (!scope) return "";
+  try { localStorage.setItem(CACHE_PRESENCE_KEY, "1"); } catch { /* ignore */ }
   const suffix = parts
     .filter((part) => part !== undefined && part !== null && String(part) !== "")
     .map((part) => encodeURIComponent(String(part)));
@@ -48,6 +55,7 @@ export function clearJwxtDataCaches() {
         localStorage.removeItem(key);
       }
     }
+    localStorage.removeItem(CACHE_PRESENCE_KEY);
   } catch {
     /* ignore */
   }

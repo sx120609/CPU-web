@@ -56,16 +56,16 @@ const SMALL_SLOTS = [
 ];
 const MAX_SMALL_SLOT = SMALL_SLOTS[SMALL_SLOTS.length - 1]?.no ?? 11;
 const WIDGET_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const JWXT_STATUS_CACHE_TTL_MS = 15_000;
+const JWXT_STATUS_CACHE_TTL_MS = 60_000;
 const JWXT_IDENTITY_CACHE_TTL_MS = 5 * 60_000;
-const JWXT_SCHEDULE_CACHE_TTL_MS = 60_000;
-const JWXT_GRADES_CACHE_TTL_MS = 5 * 60_000;
-const JWXT_MIDTERM_CACHE_TTL_MS = 5 * 60_000;
-const JWXT_EXAMS_CACHE_TTL_MS = 5 * 60_000;
-const JWXT_CALENDAR_CACHE_TTL_MS = 12 * 60 * 60_000;
-const JWXT_PROGRESS_CACHE_TTL_MS = 5 * 60_000;
-const JWXT_PYFA_CACHE_TTL_MS = 10 * 60_000;
-const JWXT_IAPPS_CACHE_TTL_MS = 10 * 60_000;
+const JWXT_SCHEDULE_CACHE_TTL_MS = 5 * 60_000;
+const JWXT_GRADES_CACHE_TTL_MS = 30 * 60_000;
+const JWXT_MIDTERM_CACHE_TTL_MS = 30 * 60_000;
+const JWXT_EXAMS_CACHE_TTL_MS = 30 * 60_000;
+const JWXT_CALENDAR_CACHE_TTL_MS = 24 * 60 * 60_000;
+const JWXT_PROGRESS_CACHE_TTL_MS = 30 * 60_000;
+const JWXT_PYFA_CACHE_TTL_MS = 6 * 60 * 60_000;
+const JWXT_IAPPS_CACHE_TTL_MS = 60 * 60_000;
 const GRAD_SCHEDULE_DEBUG_BINDTERM_CANDIDATES = [
   path.resolve(process.cwd(), ".debug", "grad-bindterm.json"),
   path.resolve(process.cwd(), "server", ".debug", "grad-bindterm.json"),
@@ -993,7 +993,7 @@ jwxtRouter.get("/status", async (req, res, next) => {
     }
     const cacheId = jwxtTokenCacheId(token);
     const payload = await withCache("jwxt-status", [cacheId], JWXT_STATUS_CACHE_TTL_MS, async () => getStatus(token));
-    res.setHeader("Cache-Control", "private, max-age=15");
+    res.setHeader("Cache-Control", "private, max-age=60");
     ok(res, payload);
   } catch (e) { next(e); }
 });
@@ -1031,7 +1031,7 @@ jwxtRouter.get("/schedule", async (req, res, next) => {
         JWXT_SCHEDULE_CACHE_TTL_MS,
         async () => assertUsableUndergraduateSchedule(await getSchedule(t, { semester, week })),
       ));
-    res.setHeader("Cache-Control", refresh ? "private, no-store" : "private, max-age=60");
+    res.setHeader("Cache-Control", refresh ? "private, no-store" : "private, max-age=300, stale-while-revalidate=86400");
     ok(res, { parsed });
   } catch (e) { next(e); }
 });
@@ -1052,7 +1052,7 @@ jwxtRouter.get("/graduate-schedule", async (req, res, next) => {
         JWXT_SCHEDULE_CACHE_TTL_MS,
         async () => loadGraduateScheduleResponse(t, semester, termcode),
       );
-    res.setHeader("Cache-Control", refresh ? "private, no-store" : "private, max-age=60");
+    res.setHeader("Cache-Control", refresh ? "private, no-store" : "private, max-age=300, stale-while-revalidate=86400");
     ok(res, result);
   } catch (e) { next(e); }
 });
@@ -1070,7 +1070,7 @@ jwxtRouter.get("/grades", async (req, res, next) => {
       JWXT_GRADES_CACHE_TTL_MS,
       async () => assertUsableGrades(await getGrades(t, { semester })),
     ));
-    res.setHeader("Cache-Control", "private, max-age=300");
+    res.setHeader("Cache-Control", "private, max-age=1800, stale-while-revalidate=604800");
     ok(res, { parsed });
   } catch (e) { next(e); }
 });
@@ -1088,7 +1088,7 @@ jwxtRouter.get("/midterm-grades", async (req, res, next) => {
       JWXT_MIDTERM_CACHE_TTL_MS,
       async () => assertUsableGrades(await getMidtermGrades(t, { semester })),
     ));
-    res.setHeader("Cache-Control", "private, max-age=300");
+    res.setHeader("Cache-Control", "private, max-age=1800, stale-while-revalidate=604800");
     ok(res, { parsed });
   } catch (e) { next(e); }
 });
@@ -1102,7 +1102,7 @@ jwxtRouter.get("/exams", async (req, res, next) => {
     const type = req.query.type ? String(req.query.type) : "";
     const cacheId = jwxtTokenCacheId(t);
     const parsed = await withCache("jwxt-exams", [cacheId, semester || "_", type || "_"], JWXT_EXAMS_CACHE_TTL_MS, async () => getExams(t, { semester, type }));
-    res.setHeader("Cache-Control", "private, max-age=300");
+    res.setHeader("Cache-Control", "private, max-age=1800, stale-while-revalidate=604800");
     ok(res, { parsed });
   } catch (e) { next(e); }
 });
@@ -1162,7 +1162,7 @@ jwxtRouter.get("/calendar", async (req, res, next) => {
       JWXT_CALENDAR_CACHE_TTL_MS,
       async () => getCalendar(t, { semester }),
     );
-    res.setHeader("Cache-Control", "private, max-age=43200");
+    res.setHeader("Cache-Control", "private, max-age=86400, stale-while-revalidate=604800");
     ok(res, { parsed });
   } catch (e) { next(e); }
 });
@@ -1174,7 +1174,7 @@ jwxtRouter.get("/iapps", async (req, res, next) => {
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const cacheId = jwxtTokenCacheId(t);
     const apps = await withCache("jwxt-iapps", [cacheId], JWXT_IAPPS_CACHE_TTL_MS, async () => getIApps(t));
-    res.setHeader("Cache-Control", "private, max-age=600");
+    res.setHeader("Cache-Control", "private, max-age=3600, stale-while-revalidate=86400");
     ok(res, { apps });
   } catch (e) { next(e); }
 });
@@ -1191,7 +1191,7 @@ jwxtRouter.get("/progress", async (req, res, next) => {
       JWXT_PROGRESS_CACHE_TTL_MS,
       async () => assertUsableProgress(await getProgress(t)),
     ));
-    res.setHeader("Cache-Control", "private, max-age=300");
+    res.setHeader("Cache-Control", "private, max-age=1800, stale-while-revalidate=604800");
     ok(res, { parsed });
   } catch (e) { next(e); }
 });
@@ -1208,7 +1208,7 @@ jwxtRouter.get("/pyfa", async (req, res, next) => {
       JWXT_PYFA_CACHE_TTL_MS,
       async () => assertUsablePyfa(await getPyfa(t)),
     ));
-    res.setHeader("Cache-Control", "private, max-age=600");
+    res.setHeader("Cache-Control", "private, max-age=21600, stale-while-revalidate=604800");
     ok(res, { parsed });
   } catch (e) { next(e); }
 });

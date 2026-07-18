@@ -1,7 +1,7 @@
 import { createApp } from "vue";
 import { createPinia } from "pinia";
 import App from "./App.vue";
-import { router } from "./router";
+import { preloadEducationViews, router } from "./router";
 import { useAuthStore } from "./stores/auth";
 import { useJwxtStore } from "./stores/jwxt";
 import { useSiteStore } from "./stores/site";
@@ -245,8 +245,9 @@ async function bootstrapJwxtSession() {
 }
 
 function installJwxtSessionBootstrapTriggers() {
-  router.afterEach(() => {
-    scheduleJwxtSessionBootstrap();
+  router.afterEach((to) => {
+    const educationRoute = to.path.startsWith("/schedule") || to.path.startsWith("/jwxt");
+    scheduleJwxtSessionBootstrap({ immediate: educationRoute });
   });
   window.addEventListener("focus", () => {
     scheduleJwxtSessionBootstrap();
@@ -256,6 +257,18 @@ function installJwxtSessionBootstrapTriggers() {
       scheduleJwxtSessionBootstrap();
     }
   });
+}
+
+function scheduleEducationViewPreload() {
+  const run = () => { void preloadEducationViews(); };
+  const requestIdleCallback = (window as Window & {
+    requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
+  }).requestIdleCallback;
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(run, { timeout: 1000 });
+  } else {
+    globalThis.setTimeout(run, 200);
+  }
 }
 
 function installJwxtDataPrewarmTriggers() {
@@ -304,6 +317,7 @@ installJwxtDataPrewarmTriggers();
 useSiteStore().fetch();
 app.use(router);
 app.mount("#app");
+scheduleEducationViewPreload();
 
 router.afterEach((to) => {
   if (!serviceWorkerReady || !to.path.startsWith("/schedule")) return;
@@ -316,7 +330,7 @@ router.isReady().finally(() => {
   if (serviceWorkerReady) {
     void serviceWorkerReady.then((registration) => warmScheduleOfflineCache(registration));
   }
-  scheduleJwxtSessionBootstrap({ force: true });
+  scheduleJwxtSessionBootstrap({ force: true, immediate: true });
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       document.body.dataset.cpuAppReady = "1";

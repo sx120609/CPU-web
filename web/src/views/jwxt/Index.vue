@@ -1,6 +1,6 @@
 <template>
   <div class="jwxt-page">
-    <div class="page-head" :class="{ centered: !jwxt.isLoggedIn }">
+    <div class="page-head" :class="{ centered: !showDataShell }">
       <h2>🎓 教务数据</h2>
       <p class="hint">
         {{ pageHintText }}
@@ -10,7 +10,7 @@
 
     <!-- 适用范围提示（未授权时显示，避免对已登录的本科生造成视觉噪音） -->
     <el-alert
-      v-if="!jwxt.isLoggedIn"
+      v-if="!showDataShell"
       type="info"
       :closable="false"
       show-icon
@@ -22,7 +22,7 @@
     </el-alert>
 
     <!-- 未登录：显示登录卡片 -->
-    <div v-if="!jwxt.isLoggedIn" class="cpu-card login-card">
+    <div v-if="!showDataShell" class="cpu-card login-card">
       <div class="login-head">
         <el-icon class="lock-icon"><Lock /></el-icon>
         <div>
@@ -53,12 +53,12 @@
         size="large"
         class="form"
       >
-        <el-form-item label="学号 / 工号" prop="username">
+        <el-form-item v-if="!usingSavedCaptchaRecovery" label="学号 / 工号" prop="username">
           <el-input v-model="form.username" name="username" placeholder="学号 / 工号" autocomplete="username" :disabled="jwxt.loading">
             <template #prefix><el-icon><User /></el-icon></template>
           </el-input>
         </el-form-item>
-        <el-form-item label="密码" prop="password">
+        <el-form-item v-if="!usingSavedCaptchaRecovery" label="密码" prop="password">
           <el-input v-model="form.password" name="password" type="password" show-password placeholder="统一认证密码" autocomplete="current-password" :disabled="jwxt.loading">
             <template #prefix><el-icon><Lock /></el-icon></template>
           </el-input>
@@ -116,24 +116,27 @@
 
     <!-- 已登录：功能 Tab -->
     <div v-else class="jwxt-shell">
-      <div class="cpu-card session-info">
+      <div class="cpu-card session-info" :class="{ 'is-cache-only': !jwxt.isLoggedIn }">
         <div class="session-main">
           <el-icon class="session-ok"><CircleCheckFilled /></el-icon>
           <div class="session-copy">
-            <div class="session-title">已连接学校教务系统</div>
+            <div class="session-title">{{ sessionTitleText }}</div>
             <div class="session-sub">{{ sessionSubText }}</div>
-            <el-tag class="session-mode" size="small" effect="plain" type="success">{{ identityBadgeText }}</el-tag>
+            <el-tag v-if="jwxt.isLoggedIn" class="session-mode" size="small" effect="plain" type="success">{{ identityBadgeText }}</el-tag>
           </div>
         </div>
         <div class="session-actions">
-          <el-tag v-if="jwxt.rememberSaved" size="small" type="warning" class="remember-tag">
+          <el-tag v-if="jwxt.isLoggedIn && jwxt.rememberSaved" size="small" type="warning" class="remember-tag">
             已保存登录信息
           </el-tag>
-          <el-button v-if="jwxt.rememberSaved" plain type="warning" size="small" :loading="forgetBusy" :disabled="logoutBusy || forgetBusy" @click="onForget">
+          <el-button v-if="jwxt.isLoggedIn && jwxt.rememberSaved" plain type="warning" size="small" :loading="forgetBusy" :disabled="logoutBusy || forgetBusy" @click="onForget">
             清除已保存信息
           </el-button>
-          <el-button plain type="danger" size="small" :loading="logoutBusy" :disabled="logoutBusy || forgetBusy" @click="onLogout">
+          <el-button v-if="jwxt.isLoggedIn" plain type="danger" size="small" :loading="logoutBusy" :disabled="logoutBusy || forgetBusy" @click="onLogout">
             <el-icon><CircleClose /></el-icon> 断开连接
+          </el-button>
+          <el-button v-else type="primary" size="small" @click="showLoginOverride = true">
+            {{ jwxt.needCaptcha ? "补充验证码" : "恢复连接" }}
           </el-button>
         </div>
       </div>
@@ -190,6 +193,7 @@ import { Lock, User, Refresh, CircleCheckFilled, CircleClose, InfoFilled } from 
 import { useJwxtStore } from "@/stores/jwxt";
 import { useAuthStore } from "@/stores/auth";
 import { jwxtApi } from "@/api/jwxt";
+import { loadCreds } from "@/utils/credCrypto";
 import {
   isJwxtTabCacheStale,
   normalizeJwxtTabData,
@@ -228,6 +232,7 @@ const activeRequests = new Map<string, Promise<any>>();
 const captchaLoading = ref(false);
 const logoutBusy = ref(false);
 const forgetBusy = ref(false);
+const showLoginOverride = ref(false);
 let tabLoadSeq = 0;
 let pageInitSeq = 0;
 let disposed = false;
@@ -251,6 +256,9 @@ const availableDataTabs = computed<DataTab[]>(() => {
     : ["grades", "midterm", "progress", "pyfa"];
 });
 const hasJwxtTabs = computed(() => availableDataTabs.value.length > 0 || isDev.value);
+const hasCachedData = computed(() => availableDataTabs.value.some((item) => Boolean(getTabData(item))));
+const showDataShell = computed(() => !showLoginOverride.value && (jwxt.isLoggedIn || hasCachedData.value));
+const usingSavedCaptchaRecovery = computed(() => jwxt.needCaptcha && jwxt.rememberSaved);
 const pageHintText = computed(() => (
   isGraduateIdentity.value
     ? showScheduleTab.value
@@ -283,6 +291,11 @@ const schoolSystemLabel = computed(() => (
     : isGraduateIdentity.value ? "前往研究生管理系统原站" : "前往学校教务系统原站"
 ));
 const sessionSubText = computed(() => {
+  if (!jwxt.isLoggedIn) {
+    if (jwxt.needCaptcha) return "上次缓存仍可查看；补充验证码后会继续静默更新。";
+    if (jwxt.rememberSaved) return "上次缓存仍可查看，系统正在后台恢复教务连接。";
+    return "上次缓存仍可查看；需要时可重新授权更新数据。";
+  }
   if (auth.academicIdentityDetecting && !auth.academicIdentityResolved) {
     return "正在识别当前账号可用的教务入口…";
   }
@@ -293,6 +306,9 @@ const sessionSubText = computed(() => {
     ? "已自动识别到研究生课表入口。"
     : "已自动识别到本科教务入口。";
 });
+const sessionTitleText = computed(() => (
+  jwxt.isLoggedIn ? "已连接学校教务系统" : "已打开上次教务缓存"
+));
 const identityBadgeText = computed(() => (
   isGraduateIdentity.value ? "自动识别：研究生课表" : "自动识别：本科教务"
 ));
@@ -318,27 +334,18 @@ async function initPage() {
   jwxt.hydrate();
   ensureVisibleTab();
   restoreAllTabCaches();
-  await jwxt.refreshStatus();
+  // 缓存和乐观会话先渲染，真实验活与自动登录共享后台恢复任务。
+  if (jwxt.isLoggedIn || hasCachedData.value) void loadCurrentTab(false);
+  const ready = await jwxt.ensureSession({ refresh: true, silent: true });
   if (disposed || seq !== pageInitSeq) return;
   ensureVisibleTab();
-  if (!jwxt.isLoggedIn) {
-    // 1. 先尝试自动登录（用本地保存的账号）
-    if (jwxt.rememberSaved) {
-      ElMessage.info("正在尝试自动登录…");
-      const ok = await jwxt.tryAutoLogin();
-      if (disposed || seq !== pageInitSeq) return;
-      if (ok) {
-        ElMessage.success("已完成登录");
-        loadCurrentTab(true);
-        return;
-      }
-      // 失败：保留 captcha / error 的状态以便用户手动补
-    }
-    // 2. 准备登录页（拿 lt/execution + 可能的验证码）
+  if (!ready) {
+    // 自动恢复不可用时再准备手动表单；旧数据仍留在缓存视图中。
     try { await jwxt.beginLogin(); } catch { /* ignore */ }
     if (disposed || seq !== pageInitSeq) return;
   } else {
-    loadCurrentTab(true);
+    showLoginOverride.value = false;
+    loadCurrentTab(false);
   }
 }
 
@@ -348,7 +355,7 @@ watch(() => auth.academicIdentity, async (next, prev) => {
   resetTabData();
   restoreAllTabCaches();
   if (jwxt.isLoggedIn) {
-    await loadCurrentTab(true);
+    await loadCurrentTab(false);
   }
 });
 
@@ -508,13 +515,21 @@ async function reloadCaptcha() {
 
 async function onSubmit() {
   if (jwxt.loading || captchaLoading.value) return;
-  try { await formRef.value?.validate(); } catch { return; }
+  if (!usingSavedCaptchaRecovery.value) {
+    try { await formRef.value?.validate(); } catch { return; }
+  }
   if (jwxt.needCaptcha && !form.captcha) { ElMessage.warning("请输入验证码"); return; }
+  const saved = usingSavedCaptchaRecovery.value ? await loadCreds().catch(() => null) : null;
+  if (usingSavedCaptchaRecovery.value && !saved) {
+    ElMessage.warning("未找到已保存的登录信息，请重新输入账号密码");
+    jwxt.forgetSavedCreds();
+    return;
+  }
   let ok = false;
   try {
     ok = await jwxt.submitLogin(
-      form.username,
-      form.password,
+      saved?.username || form.username,
+      saved?.password || form.password,
       form.captcha || undefined,
       remember.value,
     );
@@ -526,7 +541,8 @@ async function onSubmit() {
   if (disposed) return;
   if (ok) {
     ElMessage.success("登录成功");
-    loadCurrentTab();
+    showLoginOverride.value = false;
+    loadCurrentTab(false);
   } else if (jwxt.needCaptcha) {
     form.captcha = "";
   }
@@ -749,10 +765,24 @@ async function onProbe() {
   background: #ecfdf5 !important;
   border: 1px solid #cdecdc;
 }
+.session-info.is-cache-only {
+  color: #92400e;
+  background: #fffbeb !important;
+  border-color: #fde68a;
+}
+.session-info.is-cache-only .session-ok,
+.session-info.is-cache-only .session-title {
+  color: #b45309;
+}
 :global(html[data-theme="dark"]) .session-info {
   color: #bbf7d0;
   background: rgba(20, 83, 45, 0.22) !important;
   border-color: rgba(34, 197, 94, 0.28);
+}
+:global(html[data-theme="dark"]) .session-info.is-cache-only {
+  color: #fde68a;
+  background: rgba(120, 53, 15, 0.22) !important;
+  border-color: rgba(245, 158, 11, 0.32);
 }
 .session-main {
   display: flex;
