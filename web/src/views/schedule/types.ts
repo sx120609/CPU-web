@@ -34,6 +34,8 @@ export interface CalendarWeek {
 }
 
 export interface CalendarResult {
+  semesters?: { value: string; label: string; current: boolean }[];
+  currentSemester?: string;
   currentWeek: number;
   semesterStart: string;
   semesterEnd: string;

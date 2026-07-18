@@ -9,6 +9,7 @@ const DATA_CACHE_PREFIXES = [
   "cpu-schedule-cache-v2:",
   "cpu-schedule-cache-v3:",
   "cpu-schedule-calendar-v1:",
+  "cpu-schedule-calendar-v2:",
   "cpu-schedule-last-cache-key-v1:",
   "cpu-jwxt-schedule-view-state-v1:",
   "cpu-schedule-last-state-v1:",

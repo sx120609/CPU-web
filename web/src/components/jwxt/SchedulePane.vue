@@ -697,24 +697,33 @@ const canJumpToCurrentWeek = computed(() => {
   return Boolean(cur && String(cur) !== week.value);
 });
 
-async function loadCalendar() {
+async function loadCalendar(targetSemester = semester.value || parsed.value?.currentSemester || "") {
   if (disposed) return;
-  restoreCachedCalendar();
+  const requestedSemester = String(targetSemester || "").trim();
+  const hadCache = restoreCachedCalendar(requestedSemester);
+  if (!hadCache && requestedSemester && calendar.value?.currentSemester !== requestedSemester) {
+    calendar.value = null;
+  }
   if (isGraduateSource.value) {
     const normalized = normalizeIncomingScheduleData({ parsed: parsed.value, source: graduateSourceMeta.value, calendar: calendar.value }, "graduate");
     if (disposed) return;
     if (normalized.calendar) {
       calendar.value = normalized.calendar;
-      writeCache(calendarCacheKey(), calendar.value);
+      writeCache(calendarCacheKey(parsed.value?.currentSemester), calendar.value);
       if (!week.value) week.value = resolveGraduateInitialWeek(parsed.value, calendar.value);
     }
     return;
   }
   try {
-    const r: any = await jwxt.withSessionRetry(() => jwxtApi.calendar());
+    const r: any = await jwxt.withSessionRetry(() => jwxtApi.calendar(
+      requestedSemester ? { semester: requestedSemester } : undefined,
+    ));
     if (disposed) return;
-    calendar.value = hydrateCalendar(r.parsed);
-    writeCache(calendarCacheKey(), calendar.value);
+    if (requestedSemester && semester.value && semester.value !== requestedSemester) return;
+    const nextCalendar = hydrateCalendar(r.parsed);
+    if (requestedSemester && nextCalendar?.currentSemester && nextCalendar.currentSemester !== requestedSemester) return;
+    calendar.value = nextCalendar;
+    writeCache(calendarCacheKey(nextCalendar?.currentSemester || requestedSemester), calendar.value);
     if (!week.value) week.value = currentWeekValue();
   } catch {
     /* calendar is best effort */
@@ -791,11 +800,14 @@ function isCurrentScheduleLoad(seq: number, requestedSemester: string, requested
 }
 
 async function onSemesterChange() {
-  await loadSchedule(true);
+  await Promise.all([
+    loadCalendar(semester.value),
+    loadSchedule(true),
+  ]);
 }
 
 async function refreshSchedule() {
-  await loadCalendar();
+  await loadCalendar(semester.value);
   if (disposed) return;
   await loadSchedule(true);
 }
@@ -1933,8 +1945,8 @@ function rememberScheduleCache(key: string, envelope: CacheEnvelope<ScheduleResu
   scheduleCacheStore.set(key, envelope);
 }
 
-function calendarCacheKey() {
-  return scheduleCalendarCacheKey(props.source);
+function calendarCacheKey(sem = semester.value || parsed.value?.currentSemester || "") {
+  return scheduleCalendarCacheKey(props.source, sem);
 }
 
 function lastStateCacheKey() {
@@ -1945,9 +1957,11 @@ function lastScheduleCacheKey() {
   return scheduleLastCacheKey(props.source);
 }
 
-function restoreCachedCalendar() {
-  const cached = readCache<CalendarResult>(calendarCacheKey());
-  if (cached?.data) calendar.value = hydrateCalendar(cached.data);
+function restoreCachedCalendar(sem = semester.value || parsed.value?.currentSemester || "") {
+  const cached = readCache<CalendarResult>(calendarCacheKey(sem));
+  if (!cached?.data) return false;
+  calendar.value = hydrateCalendar(cached.data);
+  return true;
 }
 
 function restoreLastState() {

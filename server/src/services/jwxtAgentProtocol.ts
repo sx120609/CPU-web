@@ -68,7 +68,7 @@ export type JwxtAgentActionMap = {
     input: { token: string; semester?: string; type?: string };
     output: Awaited<ReturnType<typeof jwxt.getExams>>;
   };
-  "jwxt.calendar": { input: { token: string }; output: Awaited<ReturnType<typeof jwxt.getCalendar>> };
+  "jwxt.calendar": { input: { token: string; semester?: string }; output: Awaited<ReturnType<typeof jwxt.getCalendar>> };
   "jwxt.progress": { input: { token: string }; output: Awaited<ReturnType<typeof jwxt.getProgress>> };
   "jwxt.pyfa": { input: { token: string }; output: Awaited<ReturnType<typeof jwxt.getPyfa>> };
   "jwxt.iapps": { input: { token: string }; output: Awaited<ReturnType<typeof jwxt.getIApps>> };

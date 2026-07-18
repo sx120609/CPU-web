@@ -99,9 +99,9 @@ export function parseSemesterDescriptor(value: string): SemesterDescriptor | nul
   const normalized = String(value || "").trim();
   const match = normalized.match(/(\d{4})-(\d{4})/);
   if (!match) return null;
-  const season = /第一学期|第1学期|1学期|一学期|秋学期|秋/.test(normalized)
+  const season = /(?:^|-)1$|第一学期|第1学期|1学期|一学期|秋学期|秋/.test(normalized)
     ? "first"
-    : /第二学期|第2学期|2学期|二学期|春学期|春/.test(normalized)
+    : /(?:^|-)2$|第二学期|第2学期|2学期|二学期|春学期|春/.test(normalized)
       ? "second"
       : null;
   if (!season) return null;

@@ -153,11 +153,15 @@ proxyJwxtRouter.post(
   },
 );
 
-proxyJwxtRouter.post("/v1/calendar", validate(tokenSchema), async (req, res, next) => {
-  try {
-    ok(res, { parsed: await getCalendar(req.body.token) });
-  } catch (e) { next(e); }
-});
+proxyJwxtRouter.post(
+  "/v1/calendar",
+  validate(tokenSchema.extend({ semester: z.string().max(64).optional() })),
+  async (req, res, next) => {
+    try {
+      ok(res, { parsed: await getCalendar(req.body.token, { semester: req.body.semester }) });
+    } catch (e) { next(e); }
+  },
+);
 
 proxyJwxtRouter.post("/v1/progress", validate(tokenSchema), async (req, res, next) => {
   try {

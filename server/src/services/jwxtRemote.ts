@@ -107,8 +107,8 @@ export function getExams(token: string, args?: Parameters<typeof local.getExams>
     .then((r) => r.parsed) as ReturnType<typeof local.getExams>;
 }
 
-export function getCalendar(token: string): ReturnType<typeof local.getCalendar> {
-  return call<{ parsed: Awaited<ReturnType<typeof local.getCalendar>> }>("/v1/calendar", { token })
+export function getCalendar(token: string, args: Parameters<typeof local.getCalendar>[1] = {}): ReturnType<typeof local.getCalendar> {
+  return call<{ parsed: Awaited<ReturnType<typeof local.getCalendar>> }>("/v1/calendar", { token, ...args })
     .then((r) => r.parsed) as ReturnType<typeof local.getCalendar>;
 }
 

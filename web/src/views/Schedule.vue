@@ -1577,16 +1577,25 @@ watch(activePageScrollKey, (value, previousValue) => {
   void nextTick(() => resetActiveScheduleBodyScroll());
 });
 
-async function loadCalendar() {
+async function loadCalendar(targetSemester = semester.value || parsed.value?.currentSemester || "") {
   if (disposed) return;
-  restoreCachedCalendar();
+  const requestedSemester = String(targetSemester || "").trim();
+  const hadCache = restoreCachedCalendar(requestedSemester);
+  if (!hadCache && requestedSemester && calendar.value?.currentSemester !== requestedSemester) {
+    calendar.value = null;
+  }
   try {
     const ready = await jwxt.ensureSession();
     if (!ready || disposed) return;
-    const r: any = await jwxt.withSessionRetry(() => jwxtApi.calendar());
+    const r: any = await jwxt.withSessionRetry(() => jwxtApi.calendar(
+      requestedSemester ? { semester: requestedSemester } : undefined,
+    ));
     if (disposed) return;
-    calendar.value = hydrateCalendar(r.parsed);
-    writeCache(calendarCacheKey(), calendar.value);
+    if (requestedSemester && semester.value && semester.value !== requestedSemester) return;
+    const nextCalendar = hydrateCalendar(r.parsed);
+    if (requestedSemester && nextCalendar?.currentSemester && nextCalendar.currentSemester !== requestedSemester) return;
+    calendar.value = nextCalendar;
+    writeCache(calendarCacheKey(nextCalendar?.currentSemester || requestedSemester), calendar.value);
     if (!week.value) week.value = currentWeekValue();
   } catch { /* calendar is best effort */ }
 }
@@ -1612,7 +1621,10 @@ async function onScheduleSemesterChange() {
     }
     return;
   }
-  await loadSchedule(false);
+  await Promise.all([
+    loadCalendar(semester.value),
+    loadSchedule(false),
+  ]);
 }
 
 async function refreshCurrentSchedule() {
@@ -1624,7 +1636,7 @@ async function refreshCurrentSchedule() {
     await loadGraduateDebugSchedule();
     return;
   }
-  await loadCalendar();
+  await loadCalendar(semester.value);
   if (disposed) return;
   await loadSchedule(true);
 }
@@ -2557,8 +2569,8 @@ function rememberScheduleCache(key: string, envelope: CacheEnvelope<ScheduleResu
   scheduleCacheStore.set(key, envelope);
 }
 
-function calendarCacheKey() {
-  return scheduleCalendarCacheKey(scheduleStorageScope());
+function calendarCacheKey(sem = semester.value || parsed.value?.currentSemester || "") {
+  return scheduleCalendarCacheKey(scheduleStorageScope(), sem);
 }
 
 function lastStateCacheKey() {
@@ -2569,9 +2581,11 @@ function lastScheduleCacheKey() {
   return scheduleLastCacheKey(scheduleStorageScope());
 }
 
-function restoreCachedCalendar() {
-  const cached = readCache<CalendarResult>(calendarCacheKey());
-  if (cached?.data) calendar.value = hydrateCalendar(cached.data);
+function restoreCachedCalendar(sem = semester.value || parsed.value?.currentSemester || "") {
+  const cached = readCache<CalendarResult>(calendarCacheKey(sem));
+  if (!cached?.data) return false;
+  calendar.value = hydrateCalendar(cached.data);
+  return true;
 }
 
 function restoreLastState() {

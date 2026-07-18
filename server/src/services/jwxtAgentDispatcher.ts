@@ -73,8 +73,10 @@ export async function dispatchJwxtAgentAction(action: JwxtAgentAction, payload: 
       const input = tokenSchema.extend({ semester: z.string().max(64).optional(), type: z.string().max(32).optional() }).parse(payload);
       return jwxt.getExams(input.token, input);
     }
-    case "jwxt.calendar":
-      return jwxt.getCalendar(tokenSchema.parse(payload).token);
+    case "jwxt.calendar": {
+      const input = tokenSchema.extend({ semester: z.string().max(64).optional() }).strict().parse(payload);
+      return jwxt.getCalendar(input.token, { semester: input.semester });
+    }
     case "jwxt.progress":
       return jwxt.getProgress(tokenSchema.parse(payload).token);
     case "jwxt.pyfa":

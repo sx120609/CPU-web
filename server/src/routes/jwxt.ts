@@ -1155,7 +1155,13 @@ jwxtRouter.get("/calendar", async (req, res, next) => {
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const cacheId = jwxtTokenCacheId(t);
-    const parsed = await withCache("jwxt-calendar", [cacheId], JWXT_CALENDAR_CACHE_TTL_MS, async () => getCalendar(t));
+    const semester = String(req.query.semester ?? "").trim();
+    const parsed = await withCache(
+      "jwxt-calendar",
+      [cacheId, semester || "_"],
+      JWXT_CALENDAR_CACHE_TTL_MS,
+      async () => getCalendar(t, { semester }),
+    );
     res.setHeader("Cache-Control", "private, max-age=43200");
     ok(res, { parsed });
   } catch (e) { next(e); }

@@ -156,7 +156,7 @@ async function prewarmGraduateSchedule(jwxt: ReturnType<typeof useJwxtStore>, id
     const fallbackCalendar = buildGraduateFallbackCalendar(result.parsed);
     const parsed = extendScheduleWeeksToCalendar(result.parsed, fallbackCalendar);
     if (fallbackCalendar) {
-      writeCache(scheduleCalendarCacheKey("graduate"), fallbackCalendar);
+      writeCache(scheduleCalendarCacheKey("graduate", parsed?.currentSemester), fallbackCalendar);
     }
     return { ...result, parsed };
   });
@@ -186,9 +186,9 @@ async function prewarmTab<T = any>(
 
 async function prewarmCalendar(jwxt: ReturnType<typeof useJwxtStore>, scope: string) {
   try {
-    const result = await jwxt.withSessionRetry(() => jwxtApi.calendar({ silent: true }));
+    const result = await jwxt.withSessionRetry(() => jwxtApi.calendar(undefined, { silent: true }));
     const calendar = hydrateCalendar(result.parsed);
-    if (calendar) writeCache(scheduleCalendarCacheKey(scope), calendar);
+    if (calendar) writeCache(scheduleCalendarCacheKey(scope, calendar.currentSemester), calendar);
     return calendar;
   } catch {
     return null;
@@ -213,6 +213,6 @@ function writeScheduleCaches(scopes: string[], parsed: ScheduleResult, calendar:
     if (!key) continue;
     writeCache(key, parsed);
     writeStoredLastScheduleCacheKey(scheduleLastCacheKey(scope), key);
-    if (calendar) writeCache(scheduleCalendarCacheKey(scope), calendar);
+    if (calendar) writeCache(scheduleCalendarCacheKey(scope, parsed.currentSemester), calendar);
   }
 }

@@ -6,7 +6,7 @@ export const DEFAULT_LAST_STATE_CACHE_BASE = "cpu-schedule-last-state-v1";
 export const JWXT_PANE_LAST_STATE_CACHE_BASE = "cpu-jwxt-schedule-view-state-v1";
 
 const SCHEDULE_CACHE_BASE = "cpu-schedule-cache-v3";
-const CALENDAR_CACHE_BASE = "cpu-schedule-calendar-v1";
+const CALENDAR_CACHE_BASE = "cpu-schedule-calendar-v2";
 const LAST_CACHE_BASE = "cpu-schedule-last-cache-key-v1";
 
 export function buildScheduleCacheKey(input: {
@@ -25,8 +25,8 @@ export function buildScheduleCacheKey(input: {
   return jwxtScopedStorageKey(SCHEDULE_CACHE_BASE, input.scope, semester, week);
 }
 
-export function scheduleCalendarCacheKey(scope: string) {
-  return jwxtScopedStorageKey(CALENDAR_CACHE_BASE, scope);
+export function scheduleCalendarCacheKey(scope: string, semester?: string | null) {
+  return jwxtScopedStorageKey(CALENDAR_CACHE_BASE, scope, semester || "current");
 }
 
 export function scheduleLastStateCacheKey(scope: string, base = DEFAULT_LAST_STATE_CACHE_BASE) {

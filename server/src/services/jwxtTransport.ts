@@ -39,7 +39,7 @@ export function getSchedule(token: string, args?: Parameters<typeof local.getSch
 export function getGrades(token: string, args?: Parameters<typeof local.getGrades>[1]) { return queryImpl().getGrades(token, args); }
 export function getMidtermGrades(token: string, args?: Parameters<typeof local.getMidtermGrades>[1]) { return queryImpl().getMidtermGrades(token, args); }
 export function getExams(token: string, args?: Parameters<typeof local.getExams>[1]) { return queryImpl().getExams(token, args); }
-export function getCalendar(token: string) { return queryImpl().getCalendar(token); }
+export function getCalendar(token: string, args?: Parameters<typeof local.getCalendar>[1]) { return queryImpl().getCalendar(token, args); }
 export function getProgress(token: string) { return queryImpl().getProgress(token); }
 export function getPyfa(token: string) { return queryImpl().getPyfa(token); }
 export function getIApps(token: string) { return queryImpl().getIApps(token); }

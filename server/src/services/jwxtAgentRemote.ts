@@ -129,8 +129,8 @@ export function getExams(token: string, args: Parameters<typeof local.getExams>[
   return requestWithToken(token, "jwxt.exams", (innerToken) => ({ token: innerToken, ...args })) as ReturnType<typeof local.getExams>;
 }
 
-export function getCalendar(token: string): ReturnType<typeof local.getCalendar> {
-  return requestWithToken(token, "jwxt.calendar", (innerToken) => ({ token: innerToken })) as ReturnType<typeof local.getCalendar>;
+export function getCalendar(token: string, args: Parameters<typeof local.getCalendar>[1] = {}): ReturnType<typeof local.getCalendar> {
+  return requestWithToken(token, "jwxt.calendar", (innerToken) => ({ token: innerToken, ...args })) as ReturnType<typeof local.getCalendar>;
 }
 
 export function getProgress(token: string): ReturnType<typeof local.getProgress> {

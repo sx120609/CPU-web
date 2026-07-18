@@ -106,8 +106,13 @@ export async function getExams(token: string, args: { semester?: string; type?: 
   return { ...parsed, currentSemester: semester };
 }
 
-export async function getCalendar(token: string) {
-  return parseCalendar(await jwxtFetchHtml(token, "/zgykdx/jxzl/jxzl_query?Ves632DSdyV=NEW_XSD_WDZM"));
+export async function getCalendar(token: string, args: { semester?: string } = {}) {
+  const path = "/zgykdx/jxzl/jxzl_query?Ves632DSdyV=NEW_XSD_WDZM";
+  const semester = String(args.semester ?? "").trim();
+  const html = semester
+    ? await jwxtPostForm(token, path, { xnxq01id: semester })
+    : await jwxtFetchHtml(token, path);
+  return parseCalendar(html);
 }
 
 export async function getProgress(token: string) {

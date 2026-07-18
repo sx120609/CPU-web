@@ -199,7 +199,8 @@ export const jwxtApi = {
   pyfa: (options?: { silent?: boolean }) => inst.get<unknown, { parsed: any }>("/pyfa", {
     ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
   }),
-  calendar: (options?: { silent?: boolean }) => inst.get<unknown, { parsed: any }>("/calendar", {
+  calendar: (params?: { semester?: string }, options?: { silent?: boolean }) => inst.get<unknown, { parsed: any }>("/calendar", {
+    params,
     ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
   }),
   iapps: (options?: { silent?: boolean }) => inst.get<unknown, { apps: any[] }>("/iapps", {
