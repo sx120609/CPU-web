@@ -47,6 +47,10 @@ const MODERN_SCHEDULE_ENTRY_URL = `${MODERN_JWXT_ORIGIN}/jsxsd/xskb/xskb_list.do
 const JWXT_SESSION_HOSTS = new Set([JWXT_HOST, CPU_ID_SSO_HOST, MODERN_JWXT_HOST]);
 const DEBUG_DIR = path.join(process.cwd(), ".debug");
 
+export function isTrustedJwxtSessionCookieHost(host: string) {
+  return JWXT_SESSION_HOSTS.has(host.toLowerCase());
+}
+
 /** 简易 cookie jar：按 host 分组存 cookie 名值对 */
 export class CookieJar {
   private byHost = new Map<string, Map<string, string>>();

@@ -78,7 +78,10 @@ test("dedicated login pool fails over without cooldown, stays sticky, and accept
   const fakeHandoff = {
     id: "a".repeat(32),
     callbackUrl: "http://jsxsd.cpu.edu.cn/zgykdx/tyrz.jsp?ticket=ST-fake",
-    cookies: { "jsxsd.cpu.edu.cn": { JSESSIONID: "fake-cookie" } },
+    cookies: {
+      "jsxsd.cpu.edu.cn": { JSESSIONID: "fake-cookie" },
+      "id.cpu.edu.cn": { SESSION: "unified-auth-session" },
+    },
     username: "20260001",
     issuedAt: Date.now(),
   };

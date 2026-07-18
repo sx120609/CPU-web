@@ -4,7 +4,12 @@ import { Errors, HttpError } from "../utils/response";
 import * as local from "./jwxtFacade";
 import * as queryRemote from "./jwxtRemote";
 import * as queryAgentRemote from "./jwxtAgentRemote";
-import { PENDING_LOGIN_TTL_MS, type LoginAttempt, type LoginSessionHandoff } from "./jwxtClient";
+import {
+  isTrustedJwxtSessionCookieHost,
+  PENDING_LOGIN_TTL_MS,
+  type LoginAttempt,
+  type LoginSessionHandoff,
+} from "./jwxtClient";
 import { getJwxtAgentCredentialPublicKey, getJwxtAgentState, isJwxtAgentAvailable, requestJwxtAgent } from "./jwxtAgentGateway";
 import { getJwxtAgentRuntimeConfig } from "./jwxtAgentConfig";
 import type { AgentEncryptedLoginCredentials } from "./jwxtAgentReplicaCrypto";
@@ -400,7 +405,7 @@ function validateLoginNodeAttempt(value: unknown, expectedUsername: string): Log
       || callback.host.toLowerCase() !== "jsxsd.cpu.edu.cn"
       || !callback.pathname.startsWith("/zgykdx/")
       || !callback.searchParams.get("ticket")
-      || Object.keys(handoff.cookies).some((host) => host.toLowerCase() !== "jsxsd.cpu.edu.cn")
+      || Object.keys(handoff.cookies).some((host) => !isTrustedJwxtSessionCookieHost(host))
     ) {
       throw protocolError();
     }
