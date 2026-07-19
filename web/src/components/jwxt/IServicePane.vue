@@ -53,13 +53,13 @@
       >
         <div class="app-icon">
           <img
-            v-if="a.icon"
-            :src="proxiedIcon(a.icon)"
+            v-if="hasAppIcon(a)"
+            :src="appIconSource(a)"
             :alt="a.name"
             loading="lazy"
             decoding="async"
             fetchpriority="low"
-            @error="onIconError"
+            @error="onIconError(a)"
             referrerpolicy="no-referrer"
           />
           <span v-else class="icon-fallback">{{ a.name.charAt(0) }}</span>
@@ -94,7 +94,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount, onMounted } from "vue";
+import { ref, reactive, computed, onBeforeUnmount, onMounted } from "vue";
 import { Search, Star, StarFilled } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { jwxtApi } from "@/api/jwxt";
@@ -121,6 +121,7 @@ const error = ref("");
 const keyword = ref("");
 const activeCat = ref("");
 const filterFav = ref<"" | "fav">("");
+const iconLoadState = reactive(new Map<string, "proxy" | "failed">());
 const FAVORITES_KEY = "cpu-iservice-favorite-overrides";
 const APPS_CACHE_KEY = "cpu-iservice-apps-cache-v1";
 const CACHE_TTL = 12 * 60 * 60 * 1000;
@@ -138,6 +139,7 @@ onBeforeUnmount(() => {
 
 async function reload(force = true) {
   if (disposed) return;
+  if (force) iconLoadState.clear();
   error.value = "";
   await loadApps(force);
 }
@@ -237,14 +239,35 @@ const filtered = computed(() => {
   });
 });
 
-/** 学校图标走 https，但默认配的 referrer 会让学校 CDN 误判 → 用 referrerpolicy=no-referrer */
-function proxiedIcon(url: string): string {
-  return url; // 直接走原 URL；SSO Cookie 不需要，svg/png 是公开静态资源
+function iconKey(a: IServiceApp) {
+  return String(a.icon || a.id || a.name);
 }
 
-function onIconError(e: Event) {
-  const img = e.target as HTMLImageElement;
-  img.style.display = "none";
+function iconProxyPath(icon: string) {
+  try {
+    const url = new URL(icon, window.location.origin);
+    if (url.protocol !== "https:" || url.hostname !== "i.cpu.edu.cn") return "";
+    return `/api/jwxt/iapps/icon?path=${encodeURIComponent(url.pathname)}`;
+  } catch {
+    return "";
+  }
+}
+
+function hasAppIcon(a: IServiceApp) {
+  return Boolean(a.icon) && iconLoadState.get(iconKey(a)) !== "failed";
+}
+
+function appIconSource(a: IServiceApp) {
+  return iconLoadState.get(iconKey(a)) === "proxy" ? iconProxyPath(a.icon) : a.icon;
+}
+
+function onIconError(a: IServiceApp) {
+  const key = iconKey(a);
+  if (!iconLoadState.has(key) && iconProxyPath(a.icon)) {
+    iconLoadState.set(key, "proxy");
+    return;
+  }
+  iconLoadState.set(key, "failed");
 }
 
 function favoriteKey(a: IServiceApp) {

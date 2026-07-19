@@ -66,6 +66,8 @@ const JWXT_CALENDAR_CACHE_TTL_MS = 24 * 60 * 60_000;
 const JWXT_PROGRESS_CACHE_TTL_MS = 30 * 60_000;
 const JWXT_PYFA_CACHE_TTL_MS = 6 * 60 * 60_000;
 const JWXT_IAPPS_CACHE_TTL_MS = 60 * 60_000;
+const JWXT_IAPP_ICON_MAX_BYTES = 2 * 1024 * 1024;
+const JWXT_IAPP_ICON_PATH = /^\/sopplus\/_upload\/appstore\/[A-Za-z0-9-]+\/res\/icon\/[A-Za-z0-9._-]+\.(?:png|svg|jpe?g|gif|webp)$/i;
 const GRAD_SCHEDULE_DEBUG_BINDTERM_CANDIDATES = [
   path.resolve(process.cwd(), ".debug", "grad-bindterm.json"),
   path.resolve(process.cwd(), "server", ".debug", "grad-bindterm.json"),
@@ -1168,6 +1170,45 @@ jwxtRouter.get("/calendar", async (req, res, next) => {
 });
 
 /** i.cpu.edu.cn 融合门户应用列表 */
+jwxtRouter.get("/iapps/icon", async (req, res, next) => {
+  try {
+    const iconPath = String(req.query.path ?? "").trim();
+    if (!JWXT_IAPP_ICON_PATH.test(iconPath)) {
+      throw Errors.badRequest("无效的应用图标路径");
+    }
+
+    const upstream = await fetch(`https://i.cpu.edu.cn${iconPath}`, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(10_000),
+      headers: {
+        Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        "User-Agent": "CPU-Web/1.0",
+      },
+    });
+    if (!upstream.ok) throw Errors.notFound("应用图标不存在");
+
+    const contentType = (upstream.headers.get("content-type") || "").split(";", 1)[0].trim().toLowerCase();
+    if (!/^image\/(?:png|svg\+xml|jpeg|gif|webp|avif)$/.test(contentType)) {
+      throw Errors.badRequest("应用图标格式不受支持");
+    }
+
+    const declaredSize = Number(upstream.headers.get("content-length") || 0);
+    if (declaredSize > JWXT_IAPP_ICON_MAX_BYTES) {
+      throw Errors.badRequest("应用图标文件过大");
+    }
+    const body = Buffer.from(await upstream.arrayBuffer());
+    if (body.length > JWXT_IAPP_ICON_MAX_BYTES) {
+      throw Errors.badRequest("应用图标文件过大");
+    }
+
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+    res.send(body);
+  } catch (e) { next(e); }
+});
+
 jwxtRouter.get("/iapps", async (req, res, next) => {
   try {
     const t = getToken(req);

@@ -550,6 +550,7 @@ function normalizeToolsError(error: unknown) {
   border: 1px solid transparent;
   border-radius: 12px;
   cursor: pointer;
+  touch-action: manipulation;
   font: inherit;
   text-align: left;
   transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
@@ -559,19 +560,24 @@ function normalizeToolsError(error: unknown) {
   background: linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(251, 191, 36, 0.1) 100%);
   border-color: rgba(245, 158, 11, 0.32);
 }
-.electric-card:hover {
-  border-color: #f59e0b;
-  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.12);
-}
 .network-card {
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.13) 0%, rgba(20, 184, 166, 0.09) 100%);
   border-color: rgba(59, 130, 246, 0.28);
 }
-.network-card:hover {
-  border-color: #3b82f6;
-  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.12);
+
+@media (hover: hover) and (pointer: fine) {
+  .electric-card:hover {
+    border-color: #f59e0b;
+    box-shadow: 0 4px 14px rgba(245, 158, 11, 0.12);
+  }
+
+  .network-card:hover {
+    border-color: #3b82f6;
+    box-shadow: 0 4px 14px rgba(59, 130, 246, 0.12);
+  }
+
+  .quick-card:active { transform: scale(0.99); }
 }
-.quick-card:active { transform: scale(0.99); }
 .quick-icon { font-size: 28px; }
 .quick-body { flex: 1; min-width: 0; }
 .quick-title-row {
