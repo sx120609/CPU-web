@@ -7,6 +7,7 @@ import path from "node:path";
 import { ok, Errors } from "../utils/response";
 import { validate } from "../middleware/validate";
 import { authRequired } from "../middleware/auth";
+import { securityRateLimit } from "../middleware/securityRateLimit";
 import { prisma } from "../prisma";
 import { getCacheVersion, getCachedJson, setCachedJson, withCache } from "../services/cache";
 import { detectLoginClient } from "../utils/loginClient";
@@ -1171,9 +1172,8 @@ jwxtRouter.get("/calendar", async (req, res, next) => {
 });
 
 /** i.cpu.edu.cn 融合门户应用列表 */
-jwxtRouter.get("/iapps/icon", async (req, res, next) => {
+jwxtRouter.get("/iapps/icon", securityRateLimit("jwxt-iapp-icon", 300, 60_000), async (req, res, next) => {
   try {
-    if (!getToken(req)) throw Errors.unauthorized("请先登录教务系统");
     const iconPath = String(req.query.path ?? "").trim();
     if (!I_SERVICE_ICON_PATH_PATTERN.test(iconPath)) throw Errors.badRequest("无效的应用图标路径");
     const icon = await withCache(
