@@ -52,14 +52,27 @@
 
     <!-- 已登录：完整 i 服务面板 -->
     <template v-if="jwxt.isLoggedIn">
-      <!-- 快速查询：站内代理，不外跳。按功能开关显示 -->
-      <div v-if="site.features.electric" class="quick-row">
-        <button type="button" class="quick-card" @click="electricOpen = true">
+      <!-- 常用快捷服务：移动端与桌面端使用同一套入口和提示逻辑 -->
+      <div class="quick-row">
+        <button v-if="site.features.electric" type="button" class="quick-card electric-card" @click="electricOpen = true">
           <span class="quick-icon">💡</span>
           <div class="quick-body">
             <div class="quick-title">宿舍电费查询</div>
             <div class="quick-sub">站内查询本宿舍剩余电量、剩余金额与抄表时间</div>
           </div>
+          <el-icon class="quick-arrow"><Right /></el-icon>
+        </button>
+        <button type="button" class="quick-card network-card" @click="cpuNetOpen = true">
+          <span class="quick-icon">📶</span>
+          <div class="quick-body">
+            <div class="quick-title-row">
+              <div class="quick-title">CPU 网络连接助手</div>
+              <span class="quick-badge">仅限 Windows</span>
+              <span class="quick-version">v4.1.4</span>
+            </div>
+            <div class="quick-sub">药大校园网连接工具，下载安装后在 Windows 电脑上使用</div>
+          </div>
+          <span class="quick-action">查看与下载</span>
           <el-icon class="quick-arrow"><Right /></el-icon>
         </button>
       </div>
@@ -133,6 +146,7 @@
     </div>
 
     <DormElectricDialog v-model="electricOpen" />
+    <CpuNetDownloadDialog v-model="cpuNetOpen" />
   </div>
 </template>
 
@@ -147,6 +161,7 @@ import { loadCreds, hasCreds as hasSavedCreds } from "@/utils/credCrypto";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import IServicePane from "@/components/jwxt/IServicePane.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
+import CpuNetDownloadDialog from "@/components/services/CpuNetDownloadDialog.vue";
 import { serviceTools, type ServiceTool } from "@/data/serviceTools";
 import { toolsApi, type ToolMeta } from "@/api/tools";
 
@@ -160,6 +175,7 @@ const captchaSubmitting = ref(false);
 const captchaRefreshing = ref(false);
 const captchaError = ref("");
 const electricOpen = ref(false);
+const cpuNetOpen = ref(false);
 const toolMetas = ref<ToolMeta[]>([]);
 const toolsLoading = ref(false);
 const toolsError = ref("");
@@ -520,9 +536,9 @@ function normalizeToolsError(error: unknown) {
 }
 
 .quick-row {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 .quick-card {
   display: flex;
@@ -530,24 +546,66 @@ function normalizeToolsError(error: unknown) {
   gap: 14px;
   padding: 14px 18px;
   width: 100%;
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(251, 191, 36, 0.1) 100%);
-  border: 1px solid rgba(245, 158, 11, 0.32);
+  min-height: 84px;
+  border: 1px solid transparent;
   border-radius: 12px;
   cursor: pointer;
   font: inherit;
   text-align: left;
   transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
 }
-.quick-card:hover {
+.quick-card:only-child { grid-column: 1 / -1; }
+.electric-card {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(251, 191, 36, 0.1) 100%);
+  border-color: rgba(245, 158, 11, 0.32);
+}
+.electric-card:hover {
   border-color: #f59e0b;
   box-shadow: 0 4px 14px rgba(245, 158, 11, 0.12);
+}
+.network-card {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.13) 0%, rgba(20, 184, 166, 0.09) 100%);
+  border-color: rgba(59, 130, 246, 0.28);
+}
+.network-card:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.12);
 }
 .quick-card:active { transform: scale(0.99); }
 .quick-icon { font-size: 28px; }
 .quick-body { flex: 1; min-width: 0; }
+.quick-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
 .quick-title { font-size: 15px; font-weight: 600; color: var(--cpu-text); }
 .quick-sub { font-size: 12px; color: var(--cpu-text-secondary); margin-top: 2px; }
+.quick-badge,
+.quick-version {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.quick-badge {
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+}
+.quick-version {
+  background: rgba(20, 184, 166, 0.12);
+  color: #0f766e;
+}
+.quick-action {
+  flex: 0 0 auto;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 600;
+}
 .quick-arrow { color: #92400e; }
+.network-card .quick-arrow { color: #2563eb; }
 
 @media (max-width: 700px) {
   .services-page {
@@ -622,6 +680,10 @@ function normalizeToolsError(error: unknown) {
     padding: 10px;
   }
 
+  .quick-row {
+    grid-template-columns: 1fr;
+  }
+
   .quick-card {
     align-items: flex-start;
     padding: 13px 14px;
@@ -633,6 +695,10 @@ function normalizeToolsError(error: unknown) {
 
   .quick-arrow {
     margin-top: 3px;
+  }
+
+  .quick-action {
+    display: none;
   }
 }
 </style>
