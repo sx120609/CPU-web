@@ -145,6 +145,10 @@ export function getIApps(token: string): ReturnType<typeof local.getIApps> {
   return requestWithToken(token, "jwxt.iapps", (innerToken) => ({ token: innerToken })) as ReturnType<typeof local.getIApps>;
 }
 
+export function getIAppIcon(path: string): ReturnType<typeof local.getIAppIcon> {
+  return requestAnyRemoteQueryAgent("jwxt.iapp-icon", { path }) as ReturnType<typeof local.getIAppIcon>;
+}
+
 export function getGraduateSchedule(
   token: string,
   args: Parameters<typeof local.getGraduateSchedule>[1] = {},
@@ -175,6 +179,27 @@ export async function requestAnyQueryAgent<A extends JwxtAgentAction>(
     } catch (error) {
       lastError = error;
       if (!(error instanceof HttpError) || error.status < 500) throw error;
+    }
+  }
+  if (lastError) throw lastError;
+  throw noQueryAgentError();
+}
+
+async function requestAnyRemoteQueryAgent<A extends JwxtAgentAction>(
+  action: A,
+  payload: JwxtAgentInput<A>,
+): Promise<JwxtAgentOutput<A>> {
+  const excluded = new Set<string>();
+  let lastError: unknown = null;
+  while (true) {
+    const runtime = selectQueryAgent(excluded);
+    if (!runtime) break;
+    excluded.add(runtime.id);
+    if (runtime.kind !== "agent") continue;
+    try {
+      return await callRuntime(runtime, action, payload);
+    } catch (error) {
+      lastError = error;
     }
   }
   if (lastError) throw lastError;

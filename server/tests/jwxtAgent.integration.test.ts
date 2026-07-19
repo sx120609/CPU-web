@@ -127,6 +127,9 @@ test("outbound JWXT Agent handles login pool, handoff, queries, and crawler with
         const active = snapshotsA.has((payload as { token: string }).token);
         return active ? { active: true, since: Date.now(), username: "20260001" } : { active: false };
       }
+      if (action === "jwxt.iapp-icon") {
+        return { contentType: "image/png", dataBase64: "iVBORw0KGgo=", byteLength: 8 };
+      }
       if (action === "school-feed.crawl") return { items: [], pages: [] };
       throw new Error(`unexpected action: ${action}`);
     },
@@ -150,6 +153,9 @@ test("outbound JWXT Agent handles login pool, handoff, queries, and crawler with
         return snapshot ? { active: true, since: snapshot.createdAt, username: snapshot.username } : { active: false };
       }
       if (action === "login.begin") return { pendingId: "agent-b-inner-pending-0001", needCaptcha: false };
+      if (action === "jwxt.iapp-icon") {
+        return { contentType: "image/png", dataBase64: "iVBORw0KGgo=", byteLength: 8 };
+      }
       throw new Error(`unexpected B action: ${action}`);
     },
   });
@@ -197,6 +203,9 @@ test("outbound JWXT Agent handles login pool, handoff, queries, and crawler with
   const transport = await import("../src/services/jwxtTransport");
   const status = await transport.getStatus(login.token);
   assert.equal(status.active, true);
+  const icon = await transport.getIAppIcon("/sopplus/_upload/appstore/abc-123/res/icon/icon.png");
+  assert.deepEqual(icon, { contentType: "image/png", dataBase64: "iVBORw0KGgo=", byteLength: 8 });
+  assert.ok([...actions, ...actionsB].some((item) => item.action === "jwxt.iapp-icon"));
 
   const replica = await import("../src/services/jwxtSessionReplica");
   const cache = await import("../src/services/cache");

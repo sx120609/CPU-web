@@ -43,6 +43,17 @@ export function getCalendar(token: string, args?: Parameters<typeof local.getCal
 export function getProgress(token: string) { return queryImpl().getProgress(token); }
 export function getPyfa(token: string) { return queryImpl().getPyfa(token); }
 export function getIApps(token: string) { return queryImpl().getIApps(token); }
+export async function getIAppIcon(path: string) {
+  if (agentRemote.hasRemoteJwxtAgent()) {
+    try { return await agentRemote.getIAppIcon(path); }
+    catch { /* 继续尝试旧代理或本机兜底 */ }
+  }
+  if (config.jwxtProxyUrl) {
+    try { return await remote.getIAppIcon(path); }
+    catch { /* 继续尝试本机兜底 */ }
+  }
+  return local.getIAppIcon(path);
+}
 export function getGraduateSchedule(token: string, args?: Parameters<typeof local.getGraduateSchedule>[1]) {
   return queryImpl().getGraduateSchedule(token, args);
 }

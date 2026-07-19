@@ -10,6 +10,7 @@ import {
   jwxtFetchModernHtml,
   jwxtPostForm,
   fetchIServiceApps,
+  fetchIServiceIcon,
   jwxtDebugSnapshot,
   exportSessionSnapshot,
   importSessionSnapshot,
@@ -125,6 +126,10 @@ export async function getPyfa(token: string) {
 
 export async function getIApps(token: string) {
   return fetchIServiceApps(token);
+}
+
+export async function getIAppIcon(path: string) {
+  return fetchIServiceIcon(path);
 }
 
 export async function debugSnapshot(token: string) {

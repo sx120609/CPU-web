@@ -3,6 +3,7 @@ import { Errors } from "../utils/response";
 import * as jwxt from "./jwxtFacade";
 import { crawlSchoolFeedSource } from "./schoolCrawlerCore";
 import type { JwxtAgentAction } from "./jwxtAgentProtocol";
+import { I_SERVICE_ICON_PATH_PATTERN } from "./jwxtClient";
 
 const emptySchema = z.object({}).strict();
 const loginSchema = z.object({
@@ -83,6 +84,10 @@ export async function dispatchJwxtAgentAction(action: JwxtAgentAction, payload: 
       return jwxt.getPyfa(tokenSchema.parse(payload).token);
     case "jwxt.iapps":
       return jwxt.getIApps(tokenSchema.parse(payload).token);
+    case "jwxt.iapp-icon": {
+      const input = z.object({ path: z.string().regex(I_SERVICE_ICON_PATH_PATTERN) }).strict().parse(payload);
+      return jwxt.getIAppIcon(input.path);
+    }
     case "jwxt.graduate-schedule": {
       const input = tokenSchema.extend({ semester: z.string().max(64).optional(), termcode: z.string().max(64).optional() }).parse(payload);
       return jwxt.getGraduateSchedule(input.token, input);

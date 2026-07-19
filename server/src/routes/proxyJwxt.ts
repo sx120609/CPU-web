@@ -19,10 +19,12 @@ import {
   getProgress,
   getPyfa,
   getIApps,
+  getIAppIcon,
   getGraduateSchedule,
   debugSnapshot,
 } from "../services/jwxtFacade";
 import { crawlSchoolFeedSource } from "../services/schoolCrawlerCore";
+import { I_SERVICE_ICON_PATH_PATTERN } from "../services/jwxtClient";
 
 export const proxyJwxtRouter = Router();
 
@@ -180,6 +182,16 @@ proxyJwxtRouter.post("/v1/iapps", validate(tokenSchema), async (req, res, next) 
     ok(res, { apps: await getIApps(req.body.token) });
   } catch (e) { next(e); }
 });
+
+proxyJwxtRouter.post(
+  "/v1/iapps/icon",
+  validate(z.object({ path: z.string().regex(I_SERVICE_ICON_PATH_PATTERN) })),
+  async (req, res, next) => {
+    try {
+      ok(res, await getIAppIcon(req.body.path));
+    } catch (e) { next(e); }
+  },
+);
 
 proxyJwxtRouter.post(
   "/v1/graduate-schedule",

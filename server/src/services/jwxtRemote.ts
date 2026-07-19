@@ -127,6 +127,10 @@ export function getIApps(token: string): ReturnType<typeof local.getIApps> {
     .then((r) => r.apps) as ReturnType<typeof local.getIApps>;
 }
 
+export function getIAppIcon(path: string): ReturnType<typeof local.getIAppIcon> {
+  return call<Awaited<ReturnType<typeof local.getIAppIcon>>>("/v1/iapps/icon", { path }) as ReturnType<typeof local.getIAppIcon>;
+}
+
 export function getGraduateSchedule(token: string, args?: Parameters<typeof local.getGraduateSchedule>[1]): ReturnType<typeof local.getGraduateSchedule> {
   return call<Awaited<ReturnType<typeof local.getGraduateSchedule>>>("/v1/graduate-schedule", { token, ...(args ?? {}) }) as ReturnType<typeof local.getGraduateSchedule>;
 }

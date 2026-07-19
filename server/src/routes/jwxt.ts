@@ -20,6 +20,7 @@ import {
   type GraduateTermOption,
 } from "../services/graduateScheduleParser";
 import { normalizeGraduateSemesterLabel, type GraduateScheduleFetchResult } from "../services/graduateScheduleService";
+import { I_SERVICE_ICON_PATH_PATTERN } from "../services/jwxtClient";
 import {
   beginLogin,
   submitLogin,
@@ -33,6 +34,7 @@ import {
   getProgress,
   getPyfa,
   getIApps,
+  getIAppIcon,
   getGraduateSchedule,
   debugSnapshot,
   sessionStats,
@@ -66,8 +68,7 @@ const JWXT_CALENDAR_CACHE_TTL_MS = 24 * 60 * 60_000;
 const JWXT_PROGRESS_CACHE_TTL_MS = 30 * 60_000;
 const JWXT_PYFA_CACHE_TTL_MS = 6 * 60 * 60_000;
 const JWXT_IAPPS_CACHE_TTL_MS = 60 * 60_000;
-const JWXT_IAPP_ICON_MAX_BYTES = 2 * 1024 * 1024;
-const JWXT_IAPP_ICON_PATH = /^\/sopplus\/_upload\/appstore\/[A-Za-z0-9-]+\/res\/icon\/[A-Za-z0-9._-]+\.(?:png|svg|jpe?g|gif|webp)$/i;
+const JWXT_IAPP_ICON_CACHE_TTL_MS = 7 * 24 * 60 * 60_000;
 const GRAD_SCHEDULE_DEBUG_BINDTERM_CANDIDATES = [
   path.resolve(process.cwd(), ".debug", "grad-bindterm.json"),
   path.resolve(process.cwd(), "server", ".debug", "grad-bindterm.json"),
@@ -1172,36 +1173,19 @@ jwxtRouter.get("/calendar", async (req, res, next) => {
 /** i.cpu.edu.cn 融合门户应用列表 */
 jwxtRouter.get("/iapps/icon", async (req, res, next) => {
   try {
+    if (!getToken(req)) throw Errors.unauthorized("请先登录教务系统");
     const iconPath = String(req.query.path ?? "").trim();
-    if (!JWXT_IAPP_ICON_PATH.test(iconPath)) {
-      throw Errors.badRequest("无效的应用图标路径");
-    }
+    if (!I_SERVICE_ICON_PATH_PATTERN.test(iconPath)) throw Errors.badRequest("无效的应用图标路径");
+    const icon = await withCache(
+      "jwxt-iapp-icon",
+      [iconPath],
+      JWXT_IAPP_ICON_CACHE_TTL_MS,
+      async () => getIAppIcon(iconPath),
+    );
+    const body = Buffer.from(icon.dataBase64, "base64");
+    if (body.length !== icon.byteLength) throw Errors.server("应用图标传输不完整");
 
-    const upstream = await fetch(`https://i.cpu.edu.cn${iconPath}`, {
-      redirect: "manual",
-      signal: AbortSignal.timeout(10_000),
-      headers: {
-        Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-        "User-Agent": "CPU-Web/1.0",
-      },
-    });
-    if (!upstream.ok) throw Errors.notFound("应用图标不存在");
-
-    const contentType = (upstream.headers.get("content-type") || "").split(";", 1)[0].trim().toLowerCase();
-    if (!/^image\/(?:png|svg\+xml|jpeg|gif|webp|avif)$/.test(contentType)) {
-      throw Errors.badRequest("应用图标格式不受支持");
-    }
-
-    const declaredSize = Number(upstream.headers.get("content-length") || 0);
-    if (declaredSize > JWXT_IAPP_ICON_MAX_BYTES) {
-      throw Errors.badRequest("应用图标文件过大");
-    }
-    const body = Buffer.from(await upstream.arrayBuffer());
-    if (body.length > JWXT_IAPP_ICON_MAX_BYTES) {
-      throw Errors.badRequest("应用图标文件过大");
-    }
-
-    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Type", icon.contentType);
     res.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cross-Origin-Resource-Policy", "same-origin");

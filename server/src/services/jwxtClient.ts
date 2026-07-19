@@ -998,6 +998,59 @@ export interface IServiceApp {
   detail: string;
 }
 
+export const I_SERVICE_ICON_MAX_BYTES = 512 * 1024;
+export const I_SERVICE_ICON_PATH_PATTERN = /^\/sopplus\/_upload\/appstore\/[A-Za-z0-9-]+\/res\/icon\/[A-Za-z0-9._-]+\.(?:png|svg|jpe?g|gif|webp)$/i;
+
+export interface IServiceIconPayload {
+  contentType: string;
+  dataBase64: string;
+  byteLength: number;
+}
+
+function detectImageContentType(buffer: Buffer): string | null {
+  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))) return "image/png";
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
+  const magic6 = buffer.subarray(0, 6).toString("ascii");
+  if (magic6 === "GIF87a" || magic6 === "GIF89a") return "image/gif";
+  if (
+    buffer.length >= 12
+    && buffer.subarray(0, 4).toString("ascii") === "RIFF"
+    && buffer.subarray(8, 12).toString("ascii") === "WEBP"
+  ) return "image/webp";
+  const prefix = buffer.subarray(0, Math.min(buffer.length, 4096)).toString("utf8").replace(/^\uFEFF/, "").trimStart();
+  if (/^(?:<\?xml[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*<svg(?:\s|>)/i.test(prefix)) return "image/svg+xml";
+  return null;
+}
+
+/** 由所在网络节点读取融合门户静态图标；主服务会优先把该动作调度到校内 Agent。 */
+export async function fetchIServiceIcon(iconPath: string): Promise<IServiceIconPayload> {
+  if (!I_SERVICE_ICON_PATH_PATTERN.test(iconPath)) throw Errors.badRequest("无效的应用图标路径");
+
+  const response = await fetch(`https://i.cpu.edu.cn${iconPath}`, {
+    redirect: "manual",
+    signal: AbortSignal.timeout(10_000),
+    headers: {
+      Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+      Referer: "https://i.cpu.edu.cn/sopplus/",
+      "User-Agent": UA,
+    },
+  });
+  if (!response.ok) throw Errors.notFound("应用图标不存在");
+
+  const declaredSize = Number(response.headers.get("content-length") || 0);
+  if (declaredSize > I_SERVICE_ICON_MAX_BYTES) throw Errors.badRequest("应用图标文件过大");
+  const body = Buffer.from(await response.arrayBuffer());
+  if (body.length > I_SERVICE_ICON_MAX_BYTES) throw Errors.badRequest("应用图标文件过大");
+
+  const contentType = detectImageContentType(body);
+  if (!contentType) throw Errors.badRequest("上游返回的不是有效图片");
+  return {
+    contentType,
+    dataBase64: body.toString("base64"),
+    byteLength: body.length,
+  };
+}
+
 /** 拉取融合门户的所有应用列表 */
 export async function fetchIServiceApps(token: string): Promise<IServiceApp[]> {
   // _p 参数是 base64(as=2&t=5&d=133&p=1&f=44&m=N&) —— 来自首页布局 ID，固定即可

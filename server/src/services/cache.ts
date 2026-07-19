@@ -30,7 +30,8 @@ export type CacheDomain =
   | "jwxt-calendar"
   | "jwxt-progress"
   | "jwxt-pyfa"
-  | "jwxt-iapps";
+  | "jwxt-iapps"
+  | "jwxt-iapp-icon";
 
 const VERSION_PREFIX = "cache-version";
 const VALUE_PREFIX = "cache-value";
