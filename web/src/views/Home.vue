@@ -22,11 +22,8 @@
           <el-button v-else-if="site.features.forum && auth.canAccessForum" size="large" @click="$router.push('/post')">
             <el-icon><Edit /></el-icon> 发布内容
           </el-button>
-          <el-button v-else size="large" @click="$router.push('/services')">
+          <el-button size="large" @click="$router.push('/services')">
             <el-icon><Service /></el-icon> 校园服务
-          </el-button>
-          <el-button size="large" @click="$router.push('/lost-found')">
-            <span>🧭</span> 失物招领
           </el-button>
         </div>
       </div>
