@@ -1,5 +1,13 @@
 import { defineStore } from "pinia";
-import { jwxtApi, getJwxtToken, setJwxtToken, clearJwxtToken, JWXT_AUTH_EXPIRED_EVENT, JWXT_COOKIE_SESSION_MARKER } from "@/api/jwxt";
+import {
+  jwxtApi,
+  getJwxtToken,
+  setJwxtToken,
+  clearJwxtToken,
+  isJwxtAuthExpiredResponse,
+  JWXT_AUTH_EXPIRED_EVENT,
+  JWXT_COOKIE_SESSION_MARKER,
+} from "@/api/jwxt";
 import { clearCreds, hasCreds } from "@/utils/credCrypto";
 import { useAuthStore } from "@/stores/auth";
 import { clearJwxtDataCaches } from "@/utils/jwxtCache";
@@ -25,7 +33,7 @@ function isJwxtAuthExpired(error: unknown) {
   };
   const status = Number(candidate?.status || candidate?.response?.status || 0);
   const message = String(candidate?.message || candidate?.response?.data?.message || "");
-  return status === 401 || /请先登录教务|教务会话已失效|重新登录|重新授权/.test(message);
+  return isJwxtAuthExpiredResponse(status, message);
 }
 
 /**

@@ -22,12 +22,18 @@ let memoryJwxtToken = (() => {
     return "";
   }
 })();
+let authSessionGeneration = 0;
+let authExpiredSignaled = false;
 
 export function getJwxtToken() {
   return memoryJwxtToken;
 }
 export function setJwxtToken(t: string) {
   memoryJwxtToken = t;
+  if (t) {
+    authSessionGeneration += 1;
+    authExpiredSignaled = false;
+  }
   try { sessionStorage.removeItem(JWXT_TOKEN_KEY); } catch { /* ignore */ }
 }
 export function clearJwxtToken() {
@@ -56,7 +62,26 @@ function shouldSuppressErrorMessage(config: unknown) {
   return Boolean((config as { suppressErrorMessage?: boolean } | undefined)?.suppressErrorMessage);
 }
 
+export function isJwxtAuthExpiredResponse(status: number, message = "") {
+  return status === 401 || /请先登录教务|教务会话已失效|重新登录|重新授权/.test(message);
+}
+
+function requestAuthGeneration(config: unknown) {
+  return Number((config as { cpuJwxtAuthGeneration?: number } | undefined)?.cpuJwxtAuthGeneration ?? authSessionGeneration);
+}
+
+function signalJwxtAuthExpired(config: unknown) {
+  // A late 401 from the previous session must not clear a session that has
+  // already been recovered while the old request was still in flight.
+  if (requestAuthGeneration(config) !== authSessionGeneration) return;
+  clearJwxtToken();
+  if (authExpiredSignaled) return;
+  authExpiredSignaled = true;
+  window.dispatchEvent(new Event(JWXT_AUTH_EXPIRED_EVENT));
+}
+
 inst.interceptors.request.use((cfg) => {
+  (cfg as typeof cfg & { cpuJwxtAuthGeneration?: number }).cpuJwxtAuthGeneration = authSessionGeneration;
   const tk = getJwxtToken();
   if (tk && tk !== JWXT_COOKIE_SESSION_MARKER) cfg.headers["X-Jwxt-Token"] = tk;
   cfg.headers["X-CPU-Auth-Mode"] = "cookie";
@@ -75,10 +100,15 @@ inst.interceptors.response.use(
     if (body && typeof body.code === "number") {
       if (body.code !== 0) {
         const message = normalizeJwxtError(body.message || "请求失败");
-        if (!shouldSuppressErrorMessage(resp.config)) {
+        const authExpired = isJwxtAuthExpiredResponse(0, message);
+        if (authExpired) {
+          signalJwxtAuthExpired(resp.config);
+        } else if (!shouldSuppressErrorMessage(resp.config)) {
           ElMessage.error(message);
         }
-        return Promise.reject(new Error(message));
+        const normalized = new Error(message) as Error & { status?: number };
+        normalized.status = authExpired ? 401 : undefined;
+        return Promise.reject(normalized);
       }
       return body.data;
     }
@@ -87,11 +117,13 @@ inst.interceptors.response.use(
   (err) => {
     const msg = normalizeJwxtError(err.response?.data?.message ?? err.message);
     const status = Number(err.response?.status || 0);
-    if (status === 401) {
-      clearJwxtToken();
-      window.dispatchEvent(new Event(JWXT_AUTH_EXPIRED_EVENT));
+    const authExpired = isJwxtAuthExpiredResponse(status, msg);
+    if (authExpired) {
+      // Session expiry is expected control flow: the JWXT store silently
+      // performs one shared recovery and retries callers. Never toast here.
+      signalJwxtAuthExpired(err.config);
     }
-    if (!shouldSuppressErrorMessage(err.config)) {
+    if (!authExpired && !shouldSuppressErrorMessage(err.config)) {
       ElMessage.error(msg);
     }
     const normalized = new Error(msg) as Error & { status?: number; response?: unknown };

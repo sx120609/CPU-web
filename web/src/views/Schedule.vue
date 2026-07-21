@@ -1602,6 +1602,7 @@ async function loadCalendar(targetSemester = semester.value || parsed.value?.cur
     if (!ready || disposed) return;
     const r: any = await jwxt.withSessionRetry(() => jwxtApi.calendar(
       requestedSemester ? { semester: requestedSemester } : undefined,
+      { silent: true },
     ));
     if (disposed) return;
     if (requestedSemester && semester.value && semester.value !== requestedSemester) return;
@@ -2685,7 +2686,10 @@ function prewarmScheduleCacheForWeek(wk: string) {
   }
   if (prewarmingScheduleKeys.has(key)) return;
   prewarmingScheduleKeys.add(key);
-  void jwxt.withSessionRetry(() => jwxtApi.schedule({ semester: semester.value, week: wk }))
+  void jwxt.withSessionRetry(() => jwxtApi.schedule(
+    { semester: semester.value, week: wk },
+    { silent: true },
+  ))
     .then((r: any) => {
       if (r?.parsed) writeScheduleCache(key, r.parsed);
     })
