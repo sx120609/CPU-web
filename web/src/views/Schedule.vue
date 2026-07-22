@@ -284,13 +284,6 @@
       </button>
     </section>
 
-    <section v-if="parsed && !jwxt.isLoggedIn" class="cache-status-strip">
-      <span>{{ autoLoading ? "课表缓存已打开，正在后台恢复教务连接…" : "当前显示上次缓存；恢复连接后会静默更新。" }}</span>
-      <button type="button" @click="$router.push({ name: 'jwxt', query: { redirect: '/schedule' } })">
-        {{ jwxt.needCaptcha ? "补充验证码" : "恢复连接" }}
-      </button>
-    </section>
-
     <section v-if="autoLoading && !parsed" class="state-card">
       <el-icon class="big is-loading"><Loading /></el-icon>
       <h2>正在恢复登录状态</h2>
