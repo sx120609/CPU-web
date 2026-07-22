@@ -15,6 +15,10 @@ import { invalidateJwxtWidgetCaches } from "../services/cacheInvalidation";
 import { buildRedisKey } from "../services/redis";
 import { getSiteOrigin } from "../services/siteSettings";
 import {
+  buildScheduleWidgetPayload,
+  SCHEDULE_WIDGET_PAYLOAD_VERSION,
+} from "../services/scheduleWidget";
+import {
   parseGraduateSchedule,
   parseGraduateSchedulePayload,
   type GraduateSchedulePayload,
@@ -44,20 +48,6 @@ import {
 
 export const jwxtRouter = Router();
 
-const SMALL_SLOTS = [
-  { no: 1, start: "08:00", end: "08:45" },
-  { no: 2, start: "08:55", end: "09:40" },
-  { no: 3, start: "09:55", end: "10:40" },
-  { no: 4, start: "10:50", end: "11:35" },
-  { no: 5, start: "13:30", end: "14:15" },
-  { no: 6, start: "14:25", end: "15:10" },
-  { no: 7, start: "15:25", end: "16:10" },
-  { no: 8, start: "16:20", end: "17:05" },
-  { no: 9, start: "18:30", end: "19:15" },
-  { no: 10, start: "19:25", end: "20:10" },
-  { no: 11, start: "20:20", end: "21:05" },
-];
-const MAX_SMALL_SLOT = SMALL_SLOTS[SMALL_SLOTS.length - 1]?.no ?? 11;
 const WIDGET_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const JWXT_STATUS_CACHE_TTL_MS = 60_000;
 const JWXT_IDENTITY_CACHE_TTL_MS = 5 * 60_000;
@@ -404,7 +394,6 @@ const scheduleEditStateSchema = z.object({
 const scheduleWidgetTokenSchema = z.object({
   name: z.string().trim().max(40).optional(),
 });
-const WIDGET_PAYLOAD_VERSION = 3;
 
 function emptyScheduleEdits() {
   return { hidden: [] as string[], custom: [] as Array<z.infer<typeof scheduleEditItemSchema>> };
@@ -457,21 +446,11 @@ function parseWidgetCache(payload?: string | null) {
     const parsed = JSON.parse(payload);
     if (!parsed || typeof parsed !== "object") return null;
     if ((parsed as any).strictDate !== true) return null;
-    if ((parsed as any).payloadVersion !== WIDGET_PAYLOAD_VERSION) return null;
+    if ((parsed as any).payloadVersion !== SCHEDULE_WIDGET_PAYLOAD_VERSION) return null;
     return parsed;
   } catch {
     return null;
   }
-}
-
-function normalizeSlotRange(bigSlot: number, course: any) {
-  const fallbackStart = Math.max(1, Math.min(MAX_SMALL_SLOT, bigSlot * 2 - 1));
-  const fallbackEnd = Math.max(fallbackStart, Math.min(MAX_SMALL_SLOT, bigSlot * 2));
-  const start = Number.isFinite(course?.startSlot) ? Number(course.startSlot) : fallbackStart;
-  const end = Number.isFinite(course?.endSlot) ? Number(course.endSlot) : fallbackEnd;
-  const safeStart = Math.max(1, Math.min(MAX_SMALL_SLOT, start));
-  const safeEnd = Math.max(safeStart, Math.min(MAX_SMALL_SLOT, end));
-  return { start: safeStart, end: safeEnd };
 }
 
 function normalizeKeyPart(value?: string) {
@@ -524,124 +503,6 @@ function applyScheduleEditsToCells(cells: any[], edits: z.infer<typeof scheduleE
   return merged.filter((cell) => cell.courses.length);
 }
 
-function normalizeWeekText(text?: string | null) {
-  return String(text ?? "")
-    .replace(/[０-９]/g, (char) => String(char.charCodeAt(0) - 0xff10))
-    .replace(/[（]/g, "(")
-    .replace(/[）]/g, ")")
-    .replace(/[－–—~～]/g, "-")
-    .replace(/第/g, "")
-    .replace(/\s+/g, "");
-}
-
-function parseWeekKind(text: string): "all" | "odd" | "even" {
-  if (/单双周/.test(text)) return "all";
-  if (/单周|\(单\)|[^双]单/.test(text)) return "odd";
-  if (/双周|\(双\)|双/.test(text)) return "even";
-  return "all";
-}
-
-function parseWeekText(text?: string | null) {
-  const source = normalizeWeekText(text);
-  if (!source) return [] as number[];
-  const out = new Set<number>();
-  const clauses = source.split(/[,，、;；]+/).map((item) => item.trim()).filter(Boolean);
-
-  for (const clause of clauses.length ? clauses : [source]) {
-    const kind = parseWeekKind(clause);
-    const matches = [...clause.matchAll(/(\d{1,2})\s*(?:[-~至到]\s*(\d{1,2}))?/g)];
-    for (const match of matches) {
-      const start = Number(match[1]);
-      const end = Number(match[2] || match[1]);
-      if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
-      const min = Math.max(1, Math.min(start, end));
-      const max = Math.min(64, Math.max(start, end));
-      for (let i = min; i <= max; i += 1) {
-        if (kind === "odd" && i % 2 === 0) continue;
-        if (kind === "even" && i % 2 === 1) continue;
-        out.add(i);
-      }
-    }
-  }
-  return [...out].sort((a, b) => a - b);
-}
-
-function normalizedCourseWeekList(course: any) {
-  const parsed = parseWeekText(course?.weeks);
-  if (parsed.length) return parsed;
-  return Array.isArray(course?.weekList)
-    ? [...new Set<number>(course.weekList.map(Number).filter((week: number) => Number.isFinite(week) && week > 0))]
-      .sort((a, b) => a - b)
-    : [];
-}
-
-function courseMatchesWeek(course: any, week: number) {
-  if (!week) return true;
-  const list = normalizedCourseWeekList(course);
-  return list.length ? list.includes(week) : true;
-}
-
-function chinaDateParts(date = new Date()) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
-  const year = Number(value("year"));
-  const month = Number(value("month"));
-  const day = Number(value("day"));
-  return { year, month, day, ymd: `${value("year")}-${value("month")}-${value("day")}` };
-}
-
-function chinaDayOfWeek(parts = chinaDateParts()) {
-  const d = new Date(Date.UTC(parts.year, parts.month - 1, parts.day)).getUTCDay();
-  return d === 0 ? 7 : d;
-}
-
-function dayOfWeekForYmd(ymd: string) {
-  const match = String(ymd || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return 0;
-  const d = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
-  const day = d.getUTCDay();
-  return day === 0 ? 7 : day;
-}
-
-function addDaysToYmd(ymd: string, days: number) {
-  const match = String(ymd || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return "";
-  const d = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + days));
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-}
-
-function calendarWeekForDate(calendar: any | null, ymd: string) {
-  for (const item of calendar?.weeks ?? []) {
-    const days = normalizeCalendarDays(Array.isArray(item?.days) ? item.days : []);
-    const index = days.indexOf(ymd);
-    if (index >= 0) return { week: Number(item.week) || 0, day: index + 1 };
-  }
-  return { week: 0, day: 0 };
-}
-
-function dayLabel(day: number) {
-  return ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][day - 1] ?? `周${day}`;
-}
-
-function normalizeCalendarDays(calendarDays: string[]) {
-  const raw = (calendarDays ?? []).map((item) => String(item || "").trim());
-  if (raw.length >= 7 && dayOfWeekForYmd(raw[0]) === 7 && dayOfWeekForYmd(raw[1]) === 1) {
-    return [...raw.slice(1, 7), addDaysToYmd(raw[6], 1)];
-  }
-
-  const normalized = Array.from({ length: 7 }, () => "");
-  for (const date of raw) {
-    const day = dayOfWeekForYmd(date);
-    if (day >= 1 && day <= 7) normalized[day - 1] = date;
-  }
-  return normalized.some(Boolean) ? normalized : raw;
-}
-
 async function readScheduleEditsForWidget(userId: number, semester: string) {
   const row = await prisma.userScheduleEdit.findUnique({
     where: { userId_semester: { userId, semester: semester || "current" } },
@@ -656,111 +517,6 @@ async function readScheduleEditsForWidget(userId: number, semester: string) {
   } catch {
     return emptyScheduleEdits();
   }
-}
-
-function buildWidgetPayload(parsed: any, calendar: any | null, queryWeek?: string) {
-  const today = chinaDateParts();
-  const calendarToday = calendarWeekForDate(calendar, today.ymd);
-  const calendarWeek = calendarToday.week || (calendar?.currentWeek ? Number(calendar.currentWeek) : 0);
-  const week = Number(queryWeek || calendarToday.week || parsed?.currentWeek || calendarWeek || 0);
-  const activeDay = queryWeek && Number(queryWeek) !== calendarToday.week
-    ? 1
-    : (calendarToday.day || chinaDayOfWeek(today));
-  const rawCalendarDays = (calendar?.weeks ?? []).find((item: any) => Number(item.week) === week)?.days ?? [];
-  const calendarDays = normalizeCalendarDays(rawCalendarDays);
-  const cells = dedupeWidgetCourses((parsed?.cells ?? [])
-    .flatMap((cell: any) => (cell.courses ?? [])
-      .filter((course: any) => courseMatchesWeek(course, week))
-      .map((course: any) => {
-        const range = normalizeSlotRange(cell.bigSlot, course);
-        return {
-          day: Number(cell.day),
-          dayLabel: dayLabel(Number(cell.day)),
-          date: calendarDays[Number(cell.day) - 1] || "",
-          startSlot: range.start,
-          endSlot: range.end,
-          startTime: SMALL_SLOTS[range.start - 1]?.start ?? "",
-          endTime: SMALL_SLOTS[range.end - 1]?.end ?? "",
-          name: String(course.name || ""),
-          teacher: course.teacher || "",
-          location: course.location || "",
-          note: course.slotNote || course.weeks || "",
-          custom: Boolean(course.custom),
-        };
-      }))
-    .sort((a: any, b: any) => a.day - b.day || a.startSlot - b.startSlot || a.endSlot - b.endSlot));
-
-  const days = Array.from({ length: 7 }, (_, index) => {
-    const day = index + 1;
-    return {
-      day,
-      label: dayLabel(day),
-      date: calendarDays[index] || "",
-      isToday: day === activeDay && (!calendarWeek || calendarWeek === week) && (!calendarDays[index] || calendarDays[index] === today.ymd),
-      courses: cells.filter((course: any) => course.day === day),
-    };
-  });
-  const nowParts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Shanghai",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(new Date());
-  const hour = Number(nowParts.find((part) => part.type === "hour")?.value ?? 0);
-  const minute = Number(nowParts.find((part) => part.type === "minute")?.value ?? 0);
-  const nowMinutes = hour * 60 + minute;
-  const upcoming = cells.filter((course: any) => {
-    if (course.day !== activeDay) return false;
-    const [h, m] = String(course.endTime || "00:00").split(":").map(Number);
-    return h * 60 + m >= nowMinutes;
-  });
-
-  return {
-    title: "药大课表",
-    generatedAt: new Date().toISOString(),
-    semester: parsed?.currentSemester || "",
-    week,
-    currentWeek: calendarWeek || parsed?.currentWeek || "",
-    today: days[activeDay - 1],
-    days,
-    upcoming: upcoming.slice(0, 6),
-    strictDate: true,
-    payloadVersion: WIDGET_PAYLOAD_VERSION,
-  };
-}
-
-function dedupeWidgetCourses(courses: Array<{
-  day: number;
-  dayLabel: string;
-  date: string;
-  startSlot: number;
-  endSlot: number;
-  startTime: string;
-  endTime: string;
-  name: string;
-  teacher: string;
-  location: string;
-  note: string;
-  custom: boolean;
-}>) {
-  const seen = new Map<string, typeof courses[number]>();
-  for (const course of courses) {
-    const key = [
-      course.day,
-      course.startSlot,
-      course.endSlot,
-      normalizeKeyPart(course.name),
-      normalizeKeyPart(course.teacher),
-      normalizeKeyPart(course.location),
-    ].join("|");
-    const existing = seen.get(key);
-    if (!existing) {
-      seen.set(key, course);
-      continue;
-    }
-    if (!existing.note && course.note) existing.note = course.note;
-  }
-  return [...seen.values()];
 }
 
 jwxtRouter.get("/schedule-widget-tokens", authRequired, async (req: any, res, next) => {
@@ -874,7 +630,14 @@ jwxtRouter.get("/schedule-widget", async (req, res, next) => {
 
     const requestedWeek = req.query.week ? String(req.query.week) : "";
     const widgetCacheVersion = await getCacheVersion("jwxt-widget");
-    const widgetCacheKey = buildRedisKey("jwxt-widget", "payload", `v${widgetCacheVersion}`, hashWidgetToken(token), requestedWeek || "current");
+    const widgetCacheKey = buildRedisKey(
+      "jwxt-widget",
+      "payload",
+      `v${widgetCacheVersion}`,
+      `p${SCHEDULE_WIDGET_PAYLOAD_VERSION}`,
+      hashWidgetToken(token),
+      requestedWeek || "current",
+    );
     const sharedCachedPayload = await getCachedJson<any>(widgetCacheKey);
     if (sharedCachedPayload) {
       await prisma.scheduleWidgetToken.update({
@@ -892,7 +655,7 @@ jwxtRouter.get("/schedule-widget", async (req, res, next) => {
       ]);
       const semester = parsed.currentSemester || "current";
       const edits = await readScheduleEditsForWidget(row.userId, semester);
-      const payload = buildWidgetPayload(
+      const payload = buildScheduleWidgetPayload(
         { ...parsed, cells: applyScheduleEditsToCells(parsed.cells ?? [], edits) },
         calendar,
         requestedWeek,
