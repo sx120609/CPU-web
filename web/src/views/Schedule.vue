@@ -3,6 +3,7 @@
   class="schedule-page"
   :class="{
     'theme-color-glass': scheduleTheme === 'color-glass',
+    'is-dark': appearance.isDark,
     'is-native-app': isNativeScheduleApp,
     'is-android-native-app': isAndroidScheduleApp,
     'is-static-week-swipe': useStaticWeekSwipe,

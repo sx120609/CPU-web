@@ -222,32 +222,32 @@
   border-color: var(--schedule-colorful-control-border);
   color: #3b2f9a;
 }
-:global(html[data-theme="dark"]) .theme-color-glass {
+.schedule-page.is-dark.theme-color-glass {
   --schedule-colorful-control-ring: linear-gradient(135deg, rgba(251, 113, 133, 0.92) 0%, rgba(251, 146, 60, 0.86) 22%, rgba(74, 222, 128, 0.78) 48%, rgba(96, 165, 250, 0.88) 74%, rgba(196, 181, 253, 0.86) 100%);
   --schedule-colorful-control-soft: linear-gradient(135deg, rgba(251, 113, 133, 0.24), rgba(251, 146, 60, 0.20) 24%, rgba(74, 222, 128, 0.18) 48%, rgba(96, 165, 250, 0.24) 74%, rgba(196, 181, 253, 0.22));
   --schedule-colorful-control-border: rgba(196, 181, 253, 0.42);
   --schedule-colorful-control-text: var(--schedule-text);
 }
-:global(html[data-theme="dark"]) .theme-color-glass .view-switch button.active,
-:global(html[data-theme="dark"]) .theme-color-glass .day-pill.active,
-:global(html[data-theme="dark"]) .theme-color-glass .icon-btn.active,
-:global(html[data-theme="dark"]) .theme-color-glass .week-cell.active,
-:global(html[data-theme="dark"]) .theme-color-glass .more-theme-choice.active {
+.schedule-page.is-dark.theme-color-glass .view-switch button.active,
+.schedule-page.is-dark.theme-color-glass .day-pill.active,
+.schedule-page.is-dark.theme-color-glass .icon-btn.active,
+.schedule-page.is-dark.theme-color-glass .week-cell.active,
+.schedule-page.is-dark.theme-color-glass .more-theme-choice.active {
   background:
     linear-gradient(var(--schedule-surface-bg), var(--schedule-surface-bg)) padding-box,
     var(--schedule-colorful-control-ring) border-box;
   color: var(--schedule-text);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
 }
-:global(html[data-theme="dark"]) .theme-color-glass .week-title,
-:global(html[data-theme="dark"]) .theme-color-glass .week-day-head.today,
-:global(html[data-theme="dark"]) .theme-color-glass .day-pill.today,
-:global(html[data-theme="dark"]) .theme-color-glass .week-cell.current {
+.schedule-page.is-dark.theme-color-glass .week-title,
+.schedule-page.is-dark.theme-color-glass .week-day-head.today,
+.schedule-page.is-dark.theme-color-glass .day-pill.today,
+.schedule-page.is-dark.theme-color-glass .week-cell.current {
   color: var(--schedule-text);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.36);
 }
-:global(html[data-theme="dark"]) .theme-color-glass .week-title,
-:global(html[data-theme="dark"]) .theme-color-glass .week-day-head.today {
+.schedule-page.is-dark.theme-color-glass .week-title,
+.schedule-page.is-dark.theme-color-glass .week-day-head.today {
   background: var(--schedule-colorful-control-soft);
   box-shadow:
     inset 0 0 0 1px var(--schedule-colorful-control-border),
