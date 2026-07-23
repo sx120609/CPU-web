@@ -521,20 +521,14 @@ function openRawApp(a: IServiceApp) {
 }
 
 @media (max-width: 700px) {
-  .iservice-pane {
-    gap: 10px;
-  }
-
   .ctrl-bar {
     align-items: stretch;
     flex-direction: column;
-    gap: 8px;
   }
 
   .ctrl-left {
     align-items: stretch;
     flex-direction: column;
-    gap: 8px;
   }
 
   .ctrl-left :deep(.el-input) {
@@ -555,7 +549,7 @@ function openRawApp(a: IServiceApp) {
 
   .ctrl-left :deep(.el-radio-button__inner) {
     width: 100%;
-    min-height: 34px;
+    min-height: 38px;
     justify-content: center;
     border: 1px solid var(--cpu-border-soft);
     border-radius: 10px !important;
@@ -570,7 +564,8 @@ function openRawApp(a: IServiceApp) {
   }
 
   .ctrl-right {
-    display: none;
+    display: flex;
+    justify-content: flex-end;
   }
 
   .error-card {
@@ -585,8 +580,7 @@ function openRawApp(a: IServiceApp) {
   .cats {
     flex-wrap: nowrap;
     overflow-x: auto;
-    gap: 6px;
-    padding: 0 0 2px;
+    padding-bottom: 2px;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
   }
@@ -601,25 +595,24 @@ function openRawApp(a: IServiceApp) {
 
   .app-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
+    gap: 10px;
   }
 
   .app-card {
-    min-height: 100px;
+    min-height: 118px;
     border-radius: 10px;
-    gap: 6px;
-    padding: 10px 6px 8px;
+    padding: 14px 8px 10px;
   }
 
   .app-icon {
-    width: 38px;
-    height: 38px;
-    border-radius: 9px;
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
   }
 
   .app-icon img {
-    width: 30px;
-    height: 30px;
+    width: 34px;
+    height: 34px;
   }
 
   .app-name {
@@ -627,14 +620,10 @@ function openRawApp(a: IServiceApp) {
   }
 
   .fav-btn {
-    top: 5px;
-    right: 5px;
-    width: 28px;
-    height: 28px;
-  }
-
-  .app-types {
-    display: none;
+    top: 6px;
+    right: 6px;
+    width: 32px;
+    height: 32px;
   }
 }
 
