@@ -15,9 +15,10 @@
           <h3>校园小工具</h3>
           <p>反馈、问卷和临时查询这类轻量入口会集中放在这里。</p>
         </div>
-        <el-button type="primary" plain @click="$router.push('/services/tools')">
+        <el-button type="primary" plain size="small" @click="$router.push('/services/tools')">
           <el-icon><Tools /></el-icon>
-          全部工具
+          <span class="all-tools-label desktop">全部工具</span>
+          <span class="all-tools-label mobile">全部</span>
         </el-button>
       </div>
       <div v-if="toolsError" class="tool-error">
@@ -427,6 +428,9 @@ function normalizeToolsError(error: unknown) {
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
+.all-tools-label.mobile {
+  display: none;
+}
 
 .login-hint {
   display: flex;
@@ -615,27 +619,59 @@ function normalizeToolsError(error: unknown) {
 
 @media (max-width: 700px) {
   .services-page {
-    gap: 14px;
+    gap: 10px;
   }
 
   .page-head h2 {
-    font-size: 20px;
+    font-size: 18px;
+  }
+
+  .page-head .hint {
+    display: none;
   }
 
   .cpu-card,
-  .tool-section,
   .fallback {
     border-radius: 10px;
     padding: 14px;
   }
 
+  .tool-section {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
   .tool-section-head {
-    flex-direction: column;
-    align-items: stretch;
+    align-items: center;
+    flex-direction: row;
+    margin-bottom: 8px;
   }
 
   .tool-section-head .el-button {
-    width: 100%;
+    width: auto;
+    min-height: 32px;
+    margin-left: auto;
+    padding-inline: 10px;
+    border-radius: 8px;
+  }
+
+  .tool-section-head h3 {
+    font-size: 15px;
+  }
+
+  .tool-section-head p {
+    display: none;
+  }
+
+  .all-tools-label.desktop {
+    display: none;
+  }
+
+  .all-tools-label.mobile {
+    display: inline;
   }
 
   .tool-error {
@@ -650,6 +686,44 @@ function normalizeToolsError(error: unknown) {
 
   .tool-grid {
     grid-template-columns: 1fr;
+    gap: 7px;
+  }
+
+  .tool-entry {
+    min-height: 62px;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 10px;
+  }
+
+  .tool-entry-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 9px;
+  }
+
+  .tool-entry-icon .el-icon {
+    font-size: 19px;
+  }
+
+  .tool-entry-body {
+    gap: 2px;
+  }
+
+  .tool-entry-title {
+    font-size: 13px;
+  }
+
+  .tool-entry-title em {
+    padding: 1px 6px;
+    font-size: 10px;
+  }
+
+  .tool-entry-sub {
+    overflow: hidden;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .login-hint {
@@ -688,19 +762,35 @@ function normalizeToolsError(error: unknown) {
 
   .quick-row {
     grid-template-columns: 1fr;
+    gap: 7px;
   }
 
   .quick-card {
-    align-items: flex-start;
-    padding: 13px 14px;
+    align-items: center;
+    min-height: 64px;
+    gap: 10px;
+    padding: 9px 11px;
+    border-radius: 10px;
   }
 
   .quick-icon {
-    font-size: 24px;
+    font-size: 22px;
+  }
+
+  .quick-title {
+    font-size: 13px;
+  }
+
+  .quick-sub {
+    overflow: hidden;
+    margin-top: 1px;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .quick-arrow {
-    margin-top: 3px;
+    margin-top: 0;
   }
 
   .quick-action {
