@@ -348,6 +348,10 @@ REDIS_ENABLED=false
 ./deploy.sh agent-update
 # 查看连接日志
 ./deploy.sh agent-logs
+# 开启、查看或关闭 Linux 开机自启
+./deploy.sh agent-autostart
+./deploy.sh agent-autostart-status
+./deploy.sh agent-autostart-off
 ```
 
 Windows Agent 使用仓库根目录的脚本：
@@ -418,6 +422,10 @@ chmod +x deploy.sh
 ./deploy.sh restart
 ./deploy.sh logs
 ./deploy.sh status
+# 开启、查看或关闭主服务 Linux 开机自启
+./deploy.sh autostart
+./deploy.sh autostart-status
+./deploy.sh autostart-off
 ./deploy.sh reset-db
 ```
 
@@ -439,7 +447,9 @@ chmod +x deploy.sh
 ./deploy.sh update
 ```
 
-部署脚本会同时构建并由 PM2 管理 `cpu-web` 与 `cpu-voicehub`。`./deploy.sh update` 会根据上次成功部署以来的变更路径，只安装、构建和重启受影响的子项目：只改主站不会重装、迁移、构建或重启药苑之声；只改药苑之声也不会重建主站。部署基线记录在 Git 元数据中，因此即使先手动执行 `git pull`，随后运行 `update` 也不会漏掉尚未部署的改动；首次启用基线记录时会安全地完整更新一次。依赖目录变更才会执行对应项目的 `npm ci`，Prisma 目录变更才会同步主站数据库。需要完整重建时，使用 `./deploy.sh update-all`。主站把 `/voicehub/`（含 WebSocket）反向代理到仅监听 `127.0.0.1:23335` 的 Nuxt/Nitro 进程；可用 `./deploy.sh voicehub-logs` 单独查看日志。
+部署脚本会同时构建并由 PM2 管理 `cpu-web` 与 `cpu-voicehub`。`./deploy.sh autostart` 会为这两个主服务生成独立的 systemd 启动单元；Agent 机器使用 `./deploy.sh agent-autostart`，两套单元互不代替，也不会通过全局 `pm2 resurrect` 拉起无关进程。请用实际运行对应 PM2 进程的同一个 Linux 账号执行自启命令，脚本会在需要写入 systemd 时自动调用 `sudo`。关闭自启不会停止当前正在运行的进程。
+
+`./deploy.sh update` 会根据上次成功部署以来的变更路径，只安装、构建和重启受影响的子项目：只改主站不会重装、迁移、构建或重启药苑之声；只改药苑之声也不会重建主站。部署基线记录在 Git 元数据中，因此即使先手动执行 `git pull`，随后运行 `update` 也不会漏掉尚未部署的改动；首次启用基线记录时会安全地完整更新一次。依赖目录变更才会执行对应项目的 `npm ci`，Prisma 目录变更才会同步主站数据库。需要完整重建时，使用 `./deploy.sh update-all`。主站把 `/voicehub/`（含 WebSocket）反向代理到仅监听 `127.0.0.1:23335` 的 Nuxt/Nitro 进程；可用 `./deploy.sh voicehub-logs` 单独查看日志。
 
 ### 教务代理部署
 

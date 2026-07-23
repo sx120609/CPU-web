@@ -10,6 +10,9 @@
 #   ./deploy.sh restart          # 重启
 #   ./deploy.sh logs             # 查看日志
 #   ./deploy.sh status           # 查看进程状态
+#   ./deploy.sh autostart        # 开启主服务开机自启（systemd）
+#   ./deploy.sh autostart-status # 查看主服务开机自启状态
+#   ./deploy.sh autostart-off    # 关闭主服务开机自启
 #   ./deploy.sh reset-db         # 重置 PostgreSQL schema 并重新写入种子数据
 #   ./deploy.sh postgres-init [db] [user]            # 安装 PostgreSQL、创建应用库和账号，并写入 server/.env
 #   ./deploy.sh postgres-config "postgresql://..."   # 手动写入 PostgreSQL 连接串并刷新后端环境
@@ -26,12 +29,15 @@
 #   ./deploy.sh agent-start      # 启动出站教务 Agent
 #   ./deploy.sh agent-restart    # 重启出站教务 Agent
 #   ./deploy.sh agent-logs       # 查看出站教务 Agent 日志
+#   ./deploy.sh agent-autostart        # 开启 Agent 开机自启（systemd）
+#   ./deploy.sh agent-autostart-status # 查看 Agent 开机自启状态
+#   ./deploy.sh agent-autostart-off    # 关闭 Agent 开机自启
 #
 # 默认监听端口：23333（避开 3000 / 8000 / 8080 等常见端口冲突）
 # 自定义端口：PORT=12345 ./deploy.sh
 # 代理默认端口：23334；自定义端口：PROXY_PORT=12345 ./deploy.sh proxy-init
 # 药苑之声默认仅监听本机 23335；自定义端口：VOICEHUB_PORT=12345 ./deploy.sh
-# 后台进程：pm2 管理；开机自启需要再跑一次 `pm2 startup` + `pm2 save`
+# 后台进程：pm2 管理；开机自启由本脚本生成项目专用 systemd 单元
 
 set -euo pipefail
 
@@ -51,6 +57,8 @@ SERVICE_NAME="cpu-web"
 VOICEHUB_SERVICE_NAME="cpu-voicehub"
 PROXY_SERVICE_NAME="cpu-jwxt-proxy"
 AGENT_SERVICE_NAME="cpu-jwxt-agent"
+MAIN_AUTOSTART_UNIT="cpu-web-autostart.service"
+AGENT_AUTOSTART_UNIT="cpu-jwxt-agent-autostart.service"
 PORT="${PORT:-23333}"
 PROXY_PORT="${PROXY_PORT:-23334}"
 VOICEHUB_PORT="${VOICEHUB_PORT:-23335}"
@@ -478,6 +486,194 @@ ensure_pm2() {
   if npm install -g pm2 2>/dev/null; then :
   elif command -v sudo >/dev/null 2>&1 && sudo npm install -g pm2; then :
   else err "pm2 安装失败"
+  fi
+}
+
+require_systemd() {
+  command -v systemctl >/dev/null 2>&1 || err "未找到 systemctl；Linux 开机自启仅支持使用 systemd 的发行版"
+  [ -d /run/systemd/system ] || err "当前系统未由 systemd 启动，无法配置开机自启"
+}
+
+run_as_root() {
+  if [ "$(id -u)" -eq 0 ]; then
+    "$@"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+  else
+    err "配置 systemd 需要 root 权限；请安装 sudo，或以 root 运行此命令"
+  fi
+}
+
+systemd_escape_value() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//%/%%}"
+  printf '%s' "$value"
+}
+
+systemd_escape_path() {
+  local value="$1"
+  value="${value//\\/\\x5c}"
+  value="${value// /\\x20}"
+  value="${value//$'\t'/\\x09}"
+  value="${value//%/%%}"
+  printf '%s' "$value"
+}
+
+autostart_unit_name() {
+  case "$1" in
+    main) printf '%s' "$MAIN_AUTOSTART_UNIT" ;;
+    agent) printf '%s' "$AGENT_AUTOSTART_UNIT" ;;
+    *) err "未知的自启动类型: $1" ;;
+  esac
+}
+
+render_autostart_unit() {
+  local kind="$1"
+  local description run_command runtime_user runtime_group runtime_home runtime_pm2_home
+  local bash_bin runtime_path escaped_root escaped_script
+
+  case "$kind" in
+    main)
+      description="CPU Web main services autostart"
+      run_command="_autostart-main-run"
+      ;;
+    agent)
+      description="CPU Web JWXT Agent autostart"
+      run_command="_autostart-agent-run"
+      ;;
+    *)
+      err "未知的自启动类型: $kind"
+      ;;
+  esac
+
+  runtime_user="$(id -un)"
+  runtime_group="$(id -gn)"
+  runtime_home=""
+  if command -v getent >/dev/null 2>&1; then
+    runtime_home="$(getent passwd "$runtime_user" | awk -F: 'NR == 1 { print $6 }')"
+  fi
+  runtime_home="${runtime_home:-${HOME:-/root}}"
+  runtime_pm2_home="${PM2_HOME:-$runtime_home/.pm2}"
+  bash_bin="$(command -v bash)"
+  runtime_path="${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
+  escaped_root="$(systemd_escape_path "$ROOT_DIR")"
+  escaped_script="$(systemd_escape_value "$ROOT_DIR/deploy.sh")"
+
+  cat <<EOF
+[Unit]
+Description=$description
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=$runtime_user
+Group=$runtime_group
+WorkingDirectory=$escaped_root
+Environment="HOME=$(systemd_escape_value "$runtime_home")"
+Environment="PM2_HOME=$(systemd_escape_value "$runtime_pm2_home")"
+Environment="PATH=$(systemd_escape_value "$runtime_path")"
+ExecStart="$(systemd_escape_value "$bash_bin")" "$escaped_script" "$run_command"
+TimeoutStartSec=300
+Restart=on-failure
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+do_autostart_enable() {
+  local kind="$1"
+  local unit unit_path tmp_file label status_command
+  require_systemd
+
+  case "$kind" in
+    main)
+      label="主服务"
+      status_command="autostart-status"
+      do_start
+      ;;
+    agent)
+      label="教务 Agent"
+      status_command="agent-autostart-status"
+      do_agent_start
+      ;;
+    *)
+      err "未知的自启动类型: $kind"
+      ;;
+  esac
+
+  unit="$(autostart_unit_name "$kind")"
+  unit_path="/etc/systemd/system/$unit"
+  tmp_file="$(mktemp)"
+  render_autostart_unit "$kind" > "$tmp_file"
+  run_as_root install -m 0644 "$tmp_file" "$unit_path"
+  rm -f "$tmp_file"
+  run_as_root systemctl daemon-reload
+  run_as_root systemctl enable "$unit" >/dev/null
+  systemctl is-enabled --quiet "$unit" || err "$label 开机自启注册失败"
+
+  log "✅ $label 开机自启已开启：$unit"
+  echo "   查看状态：./deploy.sh $status_command"
+  echo "   当前服务已启动；systemd 会在下次开机时自动拉起对应 PM2 进程"
+}
+
+do_autostart_disable() {
+  local kind="$1"
+  local unit unit_path label
+  require_systemd
+  unit="$(autostart_unit_name "$kind")"
+  unit_path="/etc/systemd/system/$unit"
+  if [ "$kind" = "agent" ]; then
+    label="教务 Agent"
+  else
+    label="主服务"
+  fi
+
+  run_as_root systemctl disable "$unit" >/dev/null 2>&1 || true
+  if [ -f "$unit_path" ]; then
+    run_as_root rm -f "$unit_path"
+  fi
+  run_as_root systemctl daemon-reload
+  run_as_root systemctl reset-failed "$unit" >/dev/null 2>&1 || true
+  log "✅ $label 开机自启已关闭；当前 PM2 进程保持运行"
+}
+
+do_autostart_status() {
+  local kind="$1"
+  local unit label
+  require_systemd
+  unit="$(autostart_unit_name "$kind")"
+  if [ "$kind" = "agent" ]; then
+    label="教务 Agent"
+  else
+    label="主服务"
+  fi
+
+  if systemctl is-enabled --quiet "$unit" 2>/dev/null; then
+    log "$label 开机自启：已开启（$unit）"
+  else
+    warn "$label 开机自启：未开启"
+  fi
+
+  if ! command -v pm2 >/dev/null 2>&1; then
+    warn "pm2 未安装，无法查看当前进程"
+    return
+  fi
+  if [ "$kind" = "agent" ]; then
+    pm2 describe "$AGENT_SERVICE_NAME" >/dev/null 2>&1 \
+      && log "当前进程：$AGENT_SERVICE_NAME 已注册到 PM2" \
+      || warn "当前进程：$AGENT_SERVICE_NAME 未在 PM2 中"
+  else
+    pm2 describe "$SERVICE_NAME" >/dev/null 2>&1 \
+      && log "当前进程：$SERVICE_NAME 已注册到 PM2" \
+      || warn "当前进程：$SERVICE_NAME 未在 PM2 中"
+    pm2 describe "$VOICEHUB_SERVICE_NAME" >/dev/null 2>&1 \
+      && log "当前进程：$VOICEHUB_SERVICE_NAME 已注册到 PM2" \
+      || warn "当前进程：$VOICEHUB_SERVICE_NAME 未在 PM2 中"
   fi
 }
 
@@ -940,8 +1136,7 @@ do_start() {
   echo "     pm2 stop $SERVICE_NAME       停止服务"
   echo ""
   echo "   开机自启（一次性配置）："
-  echo "     pm2 startup        # 按提示执行返回的 sudo 命令"
-  echo "     pm2 save           # 保存当前进程列表"
+  echo "     ./deploy.sh autostart"
   echo ""
 }
 
@@ -982,7 +1177,9 @@ do_voicehub_start() {
   voice_url="$(configured_voicehub_database_url)"
   is_postgres_url "$voice_url" || err "缺少 VOICEHUB_DATABASE_URL，请先运行数据库初始化"
   [ -f voicehub/.output/server/index.mjs ] || err "缺少 voicehub/.output，请先执行 ./deploy.sh update"
-  VOICEHUB_DATABASE_URL="$voice_url" npm run db:migrate:cpu --prefix voicehub
+  if [ "${SKIP_VOICEHUB_MIGRATE:-0}" != "1" ]; then
+    VOICEHUB_DATABASE_URL="$voice_url" npm run db:migrate:cpu --prefix voicehub
+  fi
   log "通过 pm2 启动药苑之声（本机端口 $VOICEHUB_PORT）"
   cd voicehub
   if pm2 describe "$VOICEHUB_SERVICE_NAME" >/dev/null 2>&1; then
@@ -1065,6 +1262,7 @@ do_agent_start() {
   echo ""
   echo "   查看状态：pm2 status"
   echo "   查看日志：pm2 logs $AGENT_SERVICE_NAME"
+  echo "   开机自启：./deploy.sh agent-autostart"
   echo "   后台显示在线后即可参与教务服务负载均衡"
   echo ""
 }
@@ -1266,8 +1464,9 @@ do_agent_update() {
 }
 
 # ---------- 主入口 ----------
-CMD="${1:-init}"
-case "$CMD" in
+main() {
+  local CMD="${1:-init}"
+  case "$CMD" in
   init|"")
     log "=== 首次部署模式 ==="
     ensure_node
@@ -1372,6 +1571,9 @@ case "$CMD" in
   logs)         do_logs ;;
   voicehub-logs) do_voicehub_logs ;;
   status)       do_status ;;
+  autostart|main-autostart) do_autostart_enable main ;;
+  autostart-off|main-autostart-off) do_autostart_disable main ;;
+  autostart-status|main-autostart-status) do_autostart_status main ;;
   proxy-start)   do_proxy_start ;;
   proxy-stop)    do_proxy_stop ;;
   proxy-restart) do_proxy_restart ;;
@@ -1380,11 +1582,21 @@ case "$CMD" in
   agent-stop)    do_agent_stop ;;
   agent-restart) do_agent_restart ;;
   agent-logs)    do_agent_logs ;;
+  agent-autostart) do_autostart_enable agent ;;
+  agent-autostart-off) do_autostart_disable agent ;;
+  agent-autostart-status) do_autostart_status agent ;;
+  _autostart-main-run) SKIP_VOICEHUB_MIGRATE=1 do_start ;;
+  _autostart-agent-run) do_agent_start ;;
   reset-db)     do_db_reset && do_restart ;;
   help|-h|--help)
-    sed -n '2,30p' "$0"
+    sed -n '2,40p' "$0"
     ;;
   *)
     err "未知命令: $CMD（运行 ./deploy.sh help 查看用法）"
     ;;
-esac
+  esac
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
