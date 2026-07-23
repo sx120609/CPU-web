@@ -16,6 +16,7 @@ import {
 } from "../services/topicAiReview";
 import {
   amountCentsToMoney,
+  buildEpayCheckoutPage,
   buildEpaySubmitPayload,
   getEnabledEpayTypes,
   getEpayMerchantKey,
@@ -802,6 +803,26 @@ marketRouter.patch("/offers/:id", authRequired, validate(offerActionSchema), asy
 
 const paySchema = z.object({ payType: z.enum(PAY_TYPES) });
 
+function marketCheckoutUrl(orderId: number) {
+  return `/api/market/orders/${orderId}/checkout`;
+}
+
+async function buildMarketOrderPayment(order: any, req: any) {
+  const origin = resolvePaymentOrigin(requestOrigin(req));
+  if (!origin) throw Errors.badRequest("请先在后台配置站点域名");
+  return buildEpaySubmitPayload({
+    outTradeNo: order.outTradeNo,
+    name: `校园商城 - ${order.item.title}`.slice(0, 120),
+    money: amountCentsToMoney(order.amountCents),
+    type: order.payType,
+    notifyUrl: `${origin}/api/market/payments/notify`,
+    returnUrl: `${origin}/api/market/payments/return`,
+    clientIp: req.ip,
+    device: /Android|iPhone|iPad|Mobile/i.test(String(req.headers["user-agent"] || "")) ? "mobile" : "pc",
+    param: `market:${order.id}`,
+  });
+}
+
 marketRouter.post("/orders/:id/pay", authRequired, validate(paySchema), async (req, res, next) => {
   try {
     await closeExpiredMarketOrders();
@@ -812,23 +833,37 @@ marketRouter.post("/orders/:id/pay", authRequired, validate(paySchema), async (r
     if (order.expiresAt && order.expiresAt <= new Date()) throw Errors.badRequest("订单已超时关闭");
     const enabled = await getEnabledEpayTypes();
     if (!enabled.includes(req.body.payType as EpayPayType)) throw Errors.badRequest("该支付方式暂不可用");
-    const origin = resolvePaymentOrigin(requestOrigin(req));
-    if (!origin) throw Errors.badRequest("请先在后台配置站点域名");
     const updated = await prisma.marketOrder.update({ where: { id }, data: { payType: req.body.payType } });
-    const epay = await buildEpaySubmitPayload({
-      outTradeNo: updated.outTradeNo,
-      name: `校园商城 - ${order.item.title}`.slice(0, 120),
-      money: amountCentsToMoney(updated.amountCents),
-      type: req.body.payType,
-      notifyUrl: `${origin}/api/market/payments/notify`,
-      returnUrl: `${origin}/api/market/payments/return`,
-      clientIp: req.ip,
-      device: "pc",
-      param: `market:${updated.id}`,
+    const epay = await buildMarketOrderPayment({ ...updated, item: order.item }, req);
+    ok(res, {
+      order: serializeOrder(updated, req.user!.userId, req.user!.role),
+      epay,
+      checkoutUrl: marketCheckoutUrl(updated.id),
     });
-    ok(res, { order: serializeOrder(updated, req.user!.userId, req.user!.role), epay });
   } catch (error: any) {
     if (/易支付|支付方式|商户|网关|回调|订单号|商品名称/.test(String(error?.message || ""))) return next(Errors.badRequest(error.message));
+    next(error);
+  }
+});
+
+marketRouter.get("/orders/:id/checkout", authRequired, async (req, res, next) => {
+  try {
+    await closeExpiredMarketOrders();
+    const id = Number(req.params.id);
+    const order = await prisma.marketOrder.findUnique({ where: { id }, include: { item: true } });
+    if (!order || order.buyerId !== req.user!.userId) throw Errors.notFound("订单不存在");
+    if (order.status !== "pending_payment") throw Errors.badRequest("该订单当前不可支付");
+    if (order.expiresAt && order.expiresAt <= new Date()) throw Errors.badRequest("订单已超时关闭");
+    const enabled = await getEnabledEpayTypes();
+    if (!enabled.includes(order.payType as EpayPayType)) throw Errors.badRequest("该支付方式暂不可用");
+    const page = buildEpayCheckoutPage(await buildMarketOrderPayment(order, req), {
+      fallbackUrl: "/market/mine?tab=orders",
+      title: "正在前往订单支付",
+    });
+    res.setHeader("Content-Security-Policy", page.contentSecurityPolicy);
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.status(200).type("html").send(page.html);
+  } catch (error) {
     next(error);
   }
 });

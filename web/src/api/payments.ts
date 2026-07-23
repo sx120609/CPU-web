@@ -41,7 +41,16 @@ export type SponsorOrderResult = {
     status: string;
   };
   epay: EpaySubmit;
+  checkoutUrl: string;
 };
+
+export function navigateToEpayCheckout(result: { checkoutUrl: string }) {
+  const target = new URL(result.checkoutUrl, window.location.origin);
+  if (target.origin !== window.location.origin || !target.pathname.startsWith("/api/")) {
+    throw new Error("支付跳转地址不正确");
+  }
+  window.location.assign(target.href);
+}
 
 export const paymentsApi = {
   sponsorOptions: (options?: RequestOptions) => request.get<SponsorOptions>("/payments/sponsor/options", undefined, options),

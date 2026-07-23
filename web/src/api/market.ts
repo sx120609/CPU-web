@@ -1,5 +1,5 @@
 import { request, type RequestOptions } from "./request";
-import type { EpaySubmit, PayType } from "./payments";
+import { navigateToEpayCheckout, type EpaySubmit, type PayType } from "./payments";
 
 export type MarketCategory = string;
 export type MarketCondition = "new" | "like_new" | "good" | "fair" | "wanted";
@@ -204,7 +204,7 @@ export const marketApi = {
   favorite: (id: number) => request.post<{ favorited: boolean; favoriteCount: number }>(`/market/items/${id}/favorite`),
   createOffer: (id: number, payload: { price: string | number; message?: string }) => request.post<any>(`/market/items/${id}/offers`, payload),
   updateOffer: (id: number, action: "accept" | "reject" | "cancel") => request.patch<any>(`/market/offers/${id}`, { action }),
-  payOrder: (id: number, payType: PayType) => request.post<{ order: MarketOrder; epay: EpaySubmit }>(`/market/orders/${id}/pay`, { payType }),
+  payOrder: (id: number, payType: PayType) => request.post<{ order: MarketOrder; epay: EpaySubmit; checkoutUrl: string }>(`/market/orders/${id}/pay`, { payType }),
   updateOrder: (id: number, payload: { action: string; meetupTime?: string; meetupLocation?: string; note?: string; reason?: string }) => request.patch<any>(`/market/orders/${id}`, payload),
   reviewOrder: (id: number, payload: { rating: number; content?: string }) => request.post<any>(`/market/orders/${id}/reviews`, payload),
   createConversation: (itemId: number, message = "") => request.post<MarketConversation>(`/market/items/${itemId}/conversations`, { message }),
@@ -230,18 +230,6 @@ export const marketApi = {
   adminPayoutProfile: (id: number) => request.get<any>(`/market/admin/settlements/${id}/payout-profile`),
 };
 
-export function submitMarketEpay(result: { epay: EpaySubmit }) {
-  const form = document.createElement("form");
-  form.method = result.epay.method;
-  form.action = result.epay.submitUrl;
-  form.style.display = "none";
-  for (const [key, value] of Object.entries(result.epay.params)) {
-    const input = document.createElement("input");
-    input.type = "hidden";
-    input.name = key;
-    input.value = value;
-    form.appendChild(input);
-  }
-  document.body.appendChild(form);
-  form.submit();
+export function submitMarketEpay(result: { epay: EpaySubmit; checkoutUrl: string }) {
+  navigateToEpayCheckout(result);
 }

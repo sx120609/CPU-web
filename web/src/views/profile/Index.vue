@@ -363,7 +363,7 @@ import { useSiteStore } from "@/stores/site";
 import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
 import { authApi } from "@/api/auth";
 import { boardApi, type Board } from "@/api/board";
-import { paymentsApi, type PayType, type SponsorOptions } from "@/api/payments";
+import { navigateToEpayCheckout, paymentsApi, type PayType, type SponsorOptions } from "@/api/payments";
 import { request } from "@/api/request";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import { fmtDate, fmtRelative } from "@/utils/format";
@@ -563,22 +563,6 @@ function formatMoney(value: number | string | undefined | null) {
   return Number.isFinite(n) ? n.toFixed(2) : "0.00";
 }
 
-function submitEpayForm(result: { epay: { method: "POST"; submitUrl: string; params: Record<string, string> } }) {
-  const form = document.createElement("form");
-  form.method = result.epay.method;
-  form.action = result.epay.submitUrl;
-  form.style.display = "none";
-  for (const [key, value] of Object.entries(result.epay.params)) {
-    const input = document.createElement("input");
-    input.type = "hidden";
-    input.name = key;
-    input.value = value;
-    form.appendChild(input);
-  }
-  document.body.appendChild(form);
-  form.submit();
-}
-
 function validateSponsorAmount() {
   const amount = Number(sponsorAmount.value);
   const min = Number(sponsorOptions.minAmount);
@@ -616,7 +600,7 @@ async function submitSponsor() {
       displayMode: sponsorDisplayMode.value,
     });
     sponsorConfirmOpen.value = false;
-    submitEpayForm(result);
+    navigateToEpayCheckout(result);
   } finally {
     sponsorSubmitting.value = false;
   }

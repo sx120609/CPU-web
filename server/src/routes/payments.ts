@@ -7,6 +7,7 @@ import { Errors, ok } from "../utils/response";
 import { isFeatureOn } from "../services/siteSettings";
 import {
   amountCentsToMoney,
+  buildEpayCheckoutPage,
   buildEpayCallbackUrls,
   buildEpaySubmitPayload,
   getEnabledEpayTypes,
@@ -39,6 +40,10 @@ function nextSponsorTradeNo(userId: number) {
   return `SP${Date.now()}U${userId}${random}`;
 }
 
+function sponsorCheckoutUrl(outTradeNo: string) {
+  return `/api/payments/sponsor/orders/${encodeURIComponent(outTradeNo)}/checkout`;
+}
+
 async function buildSponsorPayment(order: any, req: any) {
   const origin = resolvePaymentOrigin(requestOrigin(req));
   const callbacks = buildEpayCallbackUrls(origin);
@@ -51,9 +56,20 @@ async function buildSponsorPayment(order: any, req: any) {
     notifyUrl: callbacks.notifyUrl,
     returnUrl: callbacks.returnUrl,
     clientIp: req.ip,
-    device: "pc",
+    device: /Android|iPhone|iPad|Mobile/i.test(String(req.headers["user-agent"] || "")) ? "mobile" : "pc",
     param: `sponsor:${order.userId}`,
   });
+}
+
+function sendSponsorCheckoutPage(res: any, epay: Awaited<ReturnType<typeof buildSponsorPayment>>) {
+  const page = buildEpayCheckoutPage(epay, {
+    fallbackUrl: "/profile",
+    title: "正在前往赞助支付",
+  });
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("Content-Security-Policy", page.contentSecurityPolicy);
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.status(200).type("html").send(page.html);
 }
 
 function normalizeParams(input: Record<string, unknown>) {
@@ -119,6 +135,7 @@ paymentsRouter.post("/sponsor/orders", authRequired, validate(sponsorCreateSchem
     ok(res, {
       order: formatSponsorOrder(order),
       epay,
+      checkoutUrl: sponsorCheckoutUrl(order.outTradeNo),
     });
   } catch (e: any) {
     if (
@@ -183,7 +200,11 @@ paymentsRouter.post("/sponsor/orders/:outTradeNo/pay", authRequired, async (req,
       throw Errors.badRequest("该订单不可继续支付");
     }
     const epay = await buildSponsorPayment(order, req);
-    ok(res, { order: formatSponsorOrder(order), epay });
+    ok(res, {
+      order: formatSponsorOrder(order),
+      epay,
+      checkoutUrl: sponsorCheckoutUrl(order.outTradeNo),
+    });
   } catch (e: any) {
     if (
       e?.message === "该支付方式未启用" ||
@@ -195,6 +216,25 @@ paymentsRouter.post("/sponsor/orders/:outTradeNo/pay", authRequired, async (req,
       next(Errors.badRequest(e.message));
       return;
     }
+    next(e);
+  }
+});
+
+paymentsRouter.get("/sponsor/orders/:outTradeNo/checkout", authRequired, async (req, res, next) => {
+  try {
+    const outTradeNo = String(req.params.outTradeNo || "").trim();
+    const current = await prisma.sponsorOrder.findFirst({
+      where: { outTradeNo, userId: req.user!.userId },
+    });
+    if (!current) throw Errors.notFound("订单不存在");
+    const order = await closeExpiredSponsorOrderIfNeeded(current);
+    if (!order) throw Errors.notFound("订单不存在");
+    if (order.status !== "pending") {
+      if (order.status === "closed") throw Errors.badRequest("订单已超时关闭，请重新发起赞助");
+      throw Errors.badRequest("该订单不可继续支付");
+    }
+    sendSponsorCheckoutPage(res, await buildSponsorPayment(order, req));
+  } catch (e) {
     next(e);
   }
 });

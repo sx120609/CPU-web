@@ -29,7 +29,82 @@ export type EpayOrderInput = {
   param?: string;
 };
 
+export type EpaySubmitPayload = {
+  submitUrl: string;
+  method: "POST";
+  params: Record<string, string>;
+};
+
+export type EpayCheckoutPage = {
+  contentSecurityPolicy: string;
+  html: string;
+};
+
 type EpayStoredConfig = Awaited<ReturnType<typeof getStoredEpayConfig>>;
+
+function escapeHtmlAttribute(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+export function buildEpayCheckoutPage(
+  epay: EpaySubmitPayload,
+  options: { fallbackUrl: string; title?: string },
+): EpayCheckoutPage {
+  const submitUrl = new URL(epay.submitUrl);
+  if (!["http:", "https:"].includes(submitUrl.protocol)) {
+    throw new Error("易支付网关地址格式不正确");
+  }
+  const nonce = crypto.randomBytes(18).toString("base64");
+  const inputs = Object.entries(epay.params)
+    .map(([key, value]) => (
+      `<input type="hidden" name="${escapeHtmlAttribute(key)}" value="${escapeHtmlAttribute(value)}">`
+    ))
+    .join("");
+  const title = escapeHtmlAttribute(options.title || "正在前往支付");
+  const fallbackUrl = escapeHtmlAttribute(options.fallbackUrl || "/");
+  const contentSecurityPolicy = [
+    "default-src 'none'",
+    `script-src 'nonce-${nonce}'`,
+    "style-src 'unsafe-inline'",
+    `form-action ${submitUrl.origin}`,
+    "base-uri 'none'",
+    "frame-ancestors 'none'",
+  ].join("; ");
+  const html = `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>${title}</title>
+  <style>
+    :root{color-scheme:light dark;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    body{min-height:100vh;margin:0;display:grid;place-items:center;background:#f4f8f7;color:#172033}
+    main{width:min(88vw,360px);padding:28px;border:1px solid #dce6e2;border-radius:18px;background:#fff;text-align:center;box-shadow:0 18px 50px rgba(22,45,39,.12)}
+    h1{margin:0 0 10px;font-size:20px}p{margin:0 0 20px;color:#667085;font-size:14px;line-height:1.65}
+    form{margin:0 0 14px}button{width:100%;min-height:46px;border:0;border-radius:12px;background:#168776;color:#fff;font:inherit;font-weight:700}
+    a{color:#168776;font-size:13px;text-decoration:none}
+    @media(prefers-color-scheme:dark){body{background:#101c19;color:#eef8f5}main{border-color:#314b44;background:#1a2925}p{color:#abc5be}}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>${title}</h1>
+    <p>正在安全转到支付页面。如果没有自动跳转，请点击下方按钮。</p>
+    <form id="epay-checkout" method="post" action="${escapeHtmlAttribute(epay.submitUrl)}">
+      ${inputs}
+      <button type="submit">继续前往支付</button>
+    </form>
+    <a href="${fallbackUrl}">返回本站</a>
+  </main>
+  <script nonce="${nonce}">document.getElementById("epay-checkout").submit();</script>
+</body>
+</html>`;
+  return { contentSecurityPolicy, html };
+}
 
 function maskSecret(secret: string) {
   if (!secret) return "";
@@ -184,7 +259,7 @@ function ensureReady(config: EpayStoredConfig) {
   if (!config.merchantKey) throw new Error("易支付商户密钥未配置");
 }
 
-export async function buildEpaySubmitPayload(order: EpayOrderInput) {
+export async function buildEpaySubmitPayload(order: EpayOrderInput): Promise<EpaySubmitPayload> {
   const config = await getStoredEpayConfig();
   ensureReady(config);
   const enabledTypes = normalizePayTypes(config.enabledTypes);
