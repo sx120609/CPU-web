@@ -5,6 +5,7 @@ import { withCache } from "../services/cache";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
 import { getFeatures } from "../services/siteSettings";
 import { resolveForumAccess } from "../services/forumAccess";
+import { sanitizeLostFoundTopicFields } from "../services/lostFoundPrivacy";
 
 export const searchRouter = Router();
 
@@ -75,13 +76,16 @@ searchRouter.get("/", async (req, res, next) => {
     });
 
     ok(res, {
-      topics: topics.map((topic: any) => ({
-        ...topic,
-        metadata: safeJson(topic.metadata),
-        tags: Array.isArray(topic.tags)
-          ? topic.tags.map((item: any) => item?.tag ? { id: item.tag.id, name: item.tag.name } : item).filter((item: any) => item?.name)
-          : [],
-      })),
+      topics: topics.map((topic: any) => {
+        const presented = sanitizeLostFoundTopicFields(topic, req.user);
+        return {
+          ...presented,
+          metadata: safeJson(presented.metadata),
+          tags: Array.isArray(presented.tags)
+            ? presented.tags.map((item: any) => item?.tag ? { id: item.tag.id, name: item.tag.name } : item).filter((item: any) => item?.name)
+            : [],
+        };
+      }),
       courses: courses.map((c: any) => ({
         ...c,
         teachers: (c.courseTeachers ?? []).map((ct: any) => ({

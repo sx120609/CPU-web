@@ -20,6 +20,10 @@ import {
 } from "../services/imageModeration";
 import { refreshBoardTopicCounts, refreshUserPostCount } from "../services/forumStats";
 import { invalidateForumCaches } from "../services/cacheInvalidation";
+import {
+  canViewLostFoundRaw,
+  sanitizeLostFoundItemFields,
+} from "../services/lostFoundPrivacy";
 
 export const lostFoundRouter = Router();
 lostFoundRouter.use(authOptional);
@@ -186,6 +190,11 @@ function serializeItem(
 ) {
   const mine = Boolean(viewerId && item.publisherId === viewerId);
   const staff = isStaff(viewerRole, viewerLostFoundRole);
+  const revealRaw = canViewLostFoundRaw(
+    { userId: viewerId, role: viewerRole, lostFoundRole: viewerLostFoundRole },
+    item.publisherId,
+  );
+  const presentedItem = sanitizeLostFoundItemFields(item, revealRaw);
   const images = mine || staff
     ? item.images
     : item.images.filter((image: any) => visibility?.get(image.url) !== false);
@@ -194,16 +203,16 @@ function serializeItem(
     topicId: item.topicId,
     publisherId: item.publisherId,
     kind: item.kind,
-    itemName: item.itemName,
-    description: item.description,
+    itemName: presentedItem.itemName,
+    description: presentedItem.description,
     campus: item.campus,
-    location: item.location,
+    location: presentedItem.location,
     happenedAt: item.happenedAt,
-    storageLocation: item.storageLocation,
-    publisherDepartment: item.publisherDepartment,
+    storageLocation: presentedItem.storageLocation,
+    publisherDepartment: presentedItem.publisherDepartment,
     publishedAt: item.publishedAt,
     claimDeadline: item.claimDeadline,
-    remark: item.remark,
+    remark: presentedItem.remark,
     status: item.status,
     pinned: item.pinned,
     claimedAt: item.claimedAt,

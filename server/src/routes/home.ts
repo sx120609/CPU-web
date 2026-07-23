@@ -84,14 +84,14 @@ homeRouter.get("/summary", async (req, res, next) => {
         forumEnabled: forumAccessEnabled,
         unreadCount,
       } : null,
-      pinnedTopics: forumAccessEnabled ? publicSummary.pinnedTopics.map((item: any) => decodeTopicForViewer(item, { userId, role })) : [],
+      pinnedTopics: forumAccessEnabled ? publicSummary.pinnedTopics.map((item: any) => decodeTopicForViewer(item, req.user)) : [],
       hotTopics: forumAccessEnabled ? publicSummary.hotTopics.map((item: any, index: number) => ({
         rank: index + 1,
         hotScore: computeHotScore(item, isRecentTopic(item)),
-        ...decodeTopicForViewer(item, { userId, role }),
+        ...decodeTopicForViewer(item, req.user),
       })) : [],
-      latestTopics: forumAccessEnabled ? publicSummary.latestTopics.map((item: any) => decodeTopicForViewer(item, { userId, role })) : [],
-      announce: publicSummary.announce.map((item: any) => decodeTopicForViewer(item, { userId, role })),
+      latestTopics: forumAccessEnabled ? publicSummary.latestTopics.map((item: any) => decodeTopicForViewer(item, req.user)) : [],
+      announce: publicSummary.announce.map((item: any) => decodeTopicForViewer(item, req.user)),
       services: publicSummary.services
         .filter((s) => !HOME_HIDDEN_SERVICE_CODES.includes(s.code))
         .map(normalizeServiceCard),
@@ -110,7 +110,7 @@ homeRouter.get("/hot-ranking", async (_req, res, next) => {
     ok(res, list.map((item, index) => ({
       rank: index + 1,
       hotScore: computeHotScore(item, isRecentTopic(item)),
-      ...decodeTopicForViewer(item, { userId, role }),
+      ...decodeTopicForViewer(item, _req.user),
     })));
   } catch (e) { next(e); }
 });
@@ -148,8 +148,8 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
       page,
       size,
       total: cached.total,
-      pins: cached.pins.map((item: any) => decodeTopicForViewer(item, { userId, role })),
-      list: cached.list.map((item: any) => decodeTopicForViewer(item, { userId, role })),
+      pins: cached.pins.map((item: any) => decodeTopicForViewer(item, req.user)),
+      list: cached.list.map((item: any) => decodeTopicForViewer(item, req.user)),
     });
   } catch (e) { next(e); }
 });

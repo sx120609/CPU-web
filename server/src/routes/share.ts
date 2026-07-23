@@ -3,6 +3,7 @@ import QRCode from "qrcode";
 import { Resvg } from "@resvg/resvg-js";
 import { prisma } from "../prisma";
 import { getSiteOrigin, isBoardTypeEnabled } from "../services/siteSettings";
+import { sanitizeLostFoundTopicFields } from "../services/lostFoundPrivacy";
 
 export const shareRouter = Router();
 
@@ -71,7 +72,7 @@ async function loadShareTopic(idParam: string) {
     },
   });
   if (!topic || topic.hidden || !topic.board || !isBoardTypeEnabled(topic.board.type)) return null;
-  return topic;
+  return sanitizeLostFoundTopicFields(topic);
 }
 
 function resolvePublicOrigin(req: Request) {

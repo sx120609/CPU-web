@@ -133,8 +133,8 @@
           <div><small>信息发布日期</small><strong>{{ formatDate(detail.publishedAt, true) }}</strong></div>
         </div>
         <p v-if="detail.description" class="description">{{ detail.description }}</p>
-        <el-alert v-if="!detail.mine" title="联系方式已保护" description="请通过站内认领表单描述物品特征或持有凭据。发布者核验通过后，再按双方留下的联系方式完成交接。" type="info" :closable="false" show-icon />
-        <div v-else class="private-contact"><small>仅你和管理员可见的联系方式</small><strong>{{ detail.contact }}</strong></div>
+        <el-alert v-if="!canViewRawDetail" title="联系方式已保护" description="请通过站内认领表单描述物品特征或持有凭据。发布者核验通过后，再按双方留下的联系方式完成交接。" type="info" :closable="false" show-icon />
+        <div v-else-if="detail.contact" class="private-contact"><small>仅发布者和失物招领管理员可见的原始联系方式</small><strong>{{ detail.contact }}</strong></div>
         <div class="detail-actions">
           <el-button v-if="detail.status === 'active' && !detail.mine" type="primary" @click="openClaim">{{ detail.kind === 'found' ? '这是我的，提交认领' : '我找到了，联系失主' }}</el-button>
           <el-button v-if="detail.mine && detail.status === 'active'" type="success" plain @click="setItemStatus('claimed')">标记已认领</el-button>
@@ -143,7 +143,7 @@
           <el-button @click="router.push(`/forum/topic/${detail.topicId}`)">去论坛讨论（{{ detail.topic.replyCount }}）</el-button>
         </div>
         <section v-if="detail.myClaim" class="my-claim"><h3>我的认领申请</h3><el-tag :type="claimTagType(detail.myClaim.status)">{{ claimStatusText(detail.myClaim.status) }}</el-tag><p>{{ detail.myClaim.message }}</p><el-button v-if="detail.myClaim.status === 'pending'" text type="danger" @click="withdrawClaim(detail.myClaim.id)">撤回申请</el-button></section>
-        <section v-if="detail.mine && detail.claims?.length" class="claims"><h3>认领申请</h3><article v-for="claim in detail.claims" :key="claim.id"><div><strong>{{ claim.claimant?.nickname || '认领同学' }}</strong><el-tag size="small" :type="claimTagType(claim.status)">{{ claimStatusText(claim.status) }}</el-tag></div><p>{{ claim.message }}</p><p v-if="claim.evidence"><b>核验线索：</b>{{ claim.evidence }}</p><p class="claim-contact"><b>联系方式：</b>{{ claim.contact }}</p><footer v-if="claim.status === 'pending'"><el-button size="small" type="success" @click="resolveClaim(claim.id, 'accepted')">核验通过</el-button><el-button size="small" @click="resolveClaim(claim.id, 'rejected')">不匹配</el-button></footer></article></section>
+        <section v-if="canViewRawDetail && detail.claims?.length" class="claims"><h3>认领申请</h3><article v-for="claim in detail.claims" :key="claim.id"><div><strong>{{ claim.claimant?.nickname || '认领同学' }}</strong><el-tag size="small" :type="claimTagType(claim.status)">{{ claimStatusText(claim.status) }}</el-tag></div><p>{{ claim.message }}</p><p v-if="claim.evidence"><b>核验线索：</b>{{ claim.evidence }}</p><p class="claim-contact"><b>联系方式：</b>{{ claim.contact }}</p><footer v-if="claim.status === 'pending'"><el-button size="small" type="success" @click="resolveClaim(claim.id, 'accepted')">核验通过</el-button><el-button size="small" @click="resolveClaim(claim.id, 'rejected')">不匹配</el-button></footer></article></section>
       </div>
       <div v-else class="detail detail-skeleton" aria-live="polite">
         <el-skeleton :rows="7" animated />
@@ -163,7 +163,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Clock, Loading, Location, Plus, Search } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -193,6 +193,7 @@ const publishForm = reactive({ kind: "found" as LostFoundKind, itemName: "", des
 const detailOpen = ref(false);
 const detailLoading = ref(false);
 const detail = ref<LostFoundItem | null>(null);
+const canViewRawDetail = computed(() => Boolean(detail.value && (detail.value.mine || auth.isLostFoundAdmin)));
 const detailCache = new Map<number, LostFoundItem>();
 const detailPrefetching = new Set<number>();
 let detailRequestVersion = 0;

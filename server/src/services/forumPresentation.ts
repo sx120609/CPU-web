@@ -1,11 +1,13 @@
 import { buildUserPreview } from "../utils/publicUser";
 import { renderModeratedContent, summarizeForumImageModerationForContent } from "./imageModeration";
+import { sanitizeLostFoundTopicFields } from "./lostFoundPrivacy";
 import { isGlobalPinnedTopic } from "./siteSettings";
 import { renderModeratedVideoContent, summarizeForumVideoModerationForContent } from "./videoModeration";
 
 type Viewer = {
   userId?: number | null;
   role?: string | null;
+  lostFoundRole?: string | null;
 } | null | undefined;
 
 function safeJson(s: string | null | undefined) {
@@ -47,17 +49,18 @@ function normalizeTags(tags: any) {
 }
 
 export function decodeTopicForViewer(topic: any, viewer?: Viewer) {
-  const rawMetadata = safeJson(topic.metadata);
+  const privacySafeTopic = sanitizeLostFoundTopicFields(topic, viewer);
+  const rawMetadata = safeJson(privacySafeTopic.metadata);
   const baseMetadata = rawMetadata && typeof rawMetadata === "object" ? rawMetadata : {};
   const metadata = baseMetadata;
   const isWeiwall = metadata?.externalPlatform === "weiwall";
   if (isWeiwall) {
-    const externalName = topic?.weiwallMap?.externalAuthorName || metadata?.externalAuthorName || "逛逛同学";
-    const externalAvatar = topic?.weiwallMap?.externalAuthorAvatar || metadata?.externalAuthorAvatar || null;
+    const externalName = privacySafeTopic?.weiwallMap?.externalAuthorName || metadata?.externalAuthorName || "逛逛同学";
+    const externalAvatar = privacySafeTopic?.weiwallMap?.externalAuthorAvatar || metadata?.externalAuthorAvatar || null;
     return {
-      ...topic,
+      ...privacySafeTopic,
       authorId: null,
-      globalPinned: isGlobalPinnedTopic(Number(topic.id)),
+      globalPinned: isGlobalPinnedTopic(Number(privacySafeTopic.id)),
       metadata,
       tags: normalizeTags(topic.tags),
       isAnonymous: false,
@@ -66,18 +69,18 @@ export function decodeTopicForViewer(topic: any, viewer?: Viewer) {
       realAuthor: undefined,
     };
   }
-  const anonymous = Boolean(topic?.isAnonymous);
-  const reveal = anonymous && canRevealAnonymousAuthor(viewer, topic?.authorId);
+  const anonymous = Boolean(privacySafeTopic?.isAnonymous);
+  const reveal = anonymous && canRevealAnonymousAuthor(viewer, privacySafeTopic?.authorId);
   return {
-    ...topic,
-    authorId: anonymous && !reveal ? null : topic.authorId,
-    globalPinned: isGlobalPinnedTopic(Number(topic.id)),
+    ...privacySafeTopic,
+    authorId: anonymous && !reveal ? null : privacySafeTopic.authorId,
+    globalPinned: isGlobalPinnedTopic(Number(privacySafeTopic.id)),
     metadata,
     tags: normalizeTags(topic.tags),
     isAnonymous: anonymous,
-    anonymousAlias: anonymous ? (topic.anonymousAlias || "匿名同学") : null,
-    author: anonymous ? buildAnonymousAuthor(topic.anonymousAlias) : buildUserPreview(topic.author, viewer),
-    realAuthor: anonymous && reveal ? buildUserPreview(topic.author, viewer) : undefined,
+    anonymousAlias: anonymous ? (privacySafeTopic.anonymousAlias || "匿名同学") : null,
+    author: anonymous ? buildAnonymousAuthor(privacySafeTopic.anonymousAlias) : buildUserPreview(privacySafeTopic.author, viewer),
+    realAuthor: anonymous && reveal ? buildUserPreview(privacySafeTopic.author, viewer) : undefined,
   };
 }
 

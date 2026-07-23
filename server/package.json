@@ -26,6 +26,7 @@
     "prisma:generate": "prisma generate",
     "test:login-pool": "node --import tsx --test tests/ssoLoginPool.integration.test.ts tests/jwxtAgent.integration.test.ts tests/browserSecurity.integration.test.ts",
     "test:parser": "node --import tsx --test tests/jwxtParser.test.ts tests/jwxtModernSso.test.ts tests/cpuSsoForm.test.ts tests/scheduleWidget.test.ts",
+    "test:lost-found": "node --import tsx --test tests/lostFoundPrivacy.test.ts",
     "test:market": "node --import tsx --test tests/marketPayment.test.ts"
   },
   "prisma": {
