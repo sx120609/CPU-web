@@ -4,7 +4,16 @@
       <div class="ctrl-left">
         <label class="filter-field compact">
           <span class="lbl">学期</span>
-          <el-select v-model="semester" size="small" clearable placeholder="全部学期" @change="reload">
+          <el-select
+            v-model="semesterFilter"
+            size="small"
+            multiple
+            clearable
+            collapse-tags
+            collapse-tags-tooltip
+            :max-collapse-tags="1"
+            placeholder="全部学期（可多选）"
+          >
             <el-option v-for="s in parsed.semesters" :key="s.value" :value="s.value" :label="s.label" />
           </el-select>
         </label>
@@ -243,7 +252,7 @@ const props = defineProps<{ data: any; loading?: boolean }>();
 const jwxt = useJwxtStore();
 const parsed = ref<any>(props.data?.parsed ?? null);
 const loading = ref(props.loading ?? false);
-const semester = ref<string>("");
+const semesterFilter = ref<string[]>([]);
 const attrFilter = ref<string[]>([]);
 const keyword = ref<string>("");
 const statMode = ref<StatMode>("all");
@@ -377,6 +386,7 @@ const filteredList = computed<GradeRow[]>(() => {
   if (!parsed.value) return [];
   const kw = keyword.value.trim().toLowerCase();
   return (parsed.value.list as GradeRow[]).filter((g) => {
+    if (semesterFilter.value.length && !semesterFilter.value.includes(g.semester ?? "")) return false;
     if (attrFilter.value.length && !attrFilter.value.includes(g.courseAttr ?? "")) return false;
     if (kw) {
       const hit =
@@ -544,7 +554,7 @@ async function reload() {
   loading.value = true;
   loadError.value = "";
   try {
-    const result = await jwxt.withSessionRetry(() => jwxtApi.grades({ semester: semester.value || undefined }, { silent: true }));
+    const result = await jwxt.withSessionRetry(() => jwxtApi.grades(undefined, { silent: true }));
     if (!disposed && seq === loadSeq) parsed.value = normalizeParsedGrades(result.parsed);
   } catch (error) {
     if (!disposed && seq === loadSeq) loadError.value = requestMessage(error) || "成绩加载失败，请稍后重试";
