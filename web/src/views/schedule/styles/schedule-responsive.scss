@@ -156,7 +156,7 @@
   }
 
   .week-grid-body {
-    grid-template-rows: repeat(11, minmax(44px, calc(var(--schedule-vh, 1vh) * 5.5)));
+    grid-template-rows: repeat(11, minmax(44px, 1fr));
   }
 
   .slot-axis b {
@@ -255,7 +255,7 @@
     font-size: 10px;
   }
   .week-grid-body {
-    grid-template-rows: repeat(11, minmax(40px, calc(var(--schedule-vh, 1vh) * 5.2)));
+    grid-template-rows: repeat(11, minmax(40px, 1fr));
   }
   .slot-axis b {
     font-size: 11px;

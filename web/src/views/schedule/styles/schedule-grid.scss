@@ -17,12 +17,6 @@
   padding-bottom: 0;
   scroll-padding-bottom: var(--schedule-scroll-bottom-gap);
 }
-.schedule-body-scroll::after {
-  content: "";
-  display: block;
-  height: var(--schedule-scroll-bottom-gap);
-  min-height: var(--schedule-scroll-bottom-gap);
-}
 .day-grid-body {
   display: grid;
   grid-template-columns: 50px minmax(0, 1fr);
@@ -93,7 +87,10 @@
 .week-overview {
   width: 100%;
   max-width: 720px;
+  min-height: 100%;
   margin: 0 auto;
+  display: flex;
+  flex-direction: column;
   touch-action: pan-y;
 }
 .week-grid-head,
@@ -165,8 +162,9 @@
   color: var(--schedule-accent-strong);
 }
 .week-grid-body {
+  flex: 1 0 auto;
   position: relative;
-  grid-template-rows: repeat(11, minmax(48px, calc(var(--schedule-vh, 1vh) * 5.8)));
+  grid-template-rows: repeat(11, minmax(48px, 1fr));
   align-items: stretch;
 }
 .slot-axis {

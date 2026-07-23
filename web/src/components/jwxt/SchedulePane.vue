@@ -91,6 +91,10 @@
       @pointermove="onSchedulePointerMove"
       @pointerup="onSchedulePointerEnd"
       @pointercancel="onSchedulePointerCancel"
+      @touchstart.passive="onScheduleTouchStart"
+      @touchmove="onScheduleTouchMove"
+      @touchend="onScheduleTouchEnd"
+      @touchcancel="onScheduleTouchCancel"
     >
       <div class="carousel-viewport">
         <div ref="carouselTrackRef" class="carousel-track" @transitionend="onCarouselTrackTransitionEnd">
@@ -388,6 +392,7 @@ import {
   shortDate,
   todayKey,
 } from "@/views/schedule/calendar";
+import { resolveSwipeIntent, type SwipeIntent } from "@/views/schedule/swipeGesture";
 import type {
   CalendarResult,
   CacheEnvelope,
@@ -485,7 +490,21 @@ const dragState = reactive({
   offsetX: 0,
   width: 0,
   suppressClick: false,
+  axis: "pending" as SwipeIntent,
 });
+const touchGesture: {
+  tracking: boolean;
+  identifier: number;
+  startX: number;
+  startY: number;
+  intent: SwipeIntent;
+} = {
+  tracking: false,
+  identifier: -1,
+  startX: 0,
+  startY: 0,
+  intent: "pending",
+};
 let dragOffsetX = 0;
 let dragLastX = 0;
 let dragLastTime = 0;
@@ -984,6 +1003,7 @@ function onSchedulePointerDown(event: PointerEvent) {
   dragState.startX = event.clientX;
   dragState.startY = event.clientY;
   dragState.offsetX = 0;
+  dragState.axis = "pending";
   dragState.width = (event.currentTarget as HTMLElement | null)?.clientWidth || window.innerWidth || 1;
   dragOffsetX = 0;
   dragVelocityX = 0;
@@ -998,20 +1018,18 @@ function onSchedulePointerMove(event: PointerEvent) {
   const now = performance.now();
   const dx = event.clientX - dragState.startX;
   const dy = event.clientY - dragState.startY;
-  const absDx = Math.abs(dx);
-  const absDy = Math.abs(dy);
-  const likelyHorizontal = absDx >= 4 && absDx >= absDy * 0.55;
+  dragState.axis = resolveSwipeIntent(dx, dy, dragState.axis);
   const dt = Math.max(1, now - dragLastTime);
   dragVelocityX = (event.clientX - dragLastX) / dt;
   dragLastX = event.clientX;
   dragLastTime = now;
-  if (likelyHorizontal && event.cancelable) event.preventDefault();
+  if (dragState.axis === "horizontal" && event.cancelable) event.preventDefault();
   if (!dragState.dragging) {
-    if (absDy > 18 && absDy > absDx * 1.8) {
+    if (dragState.axis === "vertical") {
       resetDrag();
       return;
     }
-    if (absDx < 5 || !likelyHorizontal) return;
+    if (dragState.axis !== "horizontal") return;
     dragState.dragging = true;
     dragState.suppressClick = true;
     captureDragPointer(event);
@@ -1057,9 +1075,58 @@ async function onSchedulePointerEnd(event: PointerEvent) {
 
 function onSchedulePointerCancel() {
   if (!dragState.tracking) return;
+  resetTouchGesture();
   releaseDragPointer();
   animateDragTo(0);
   scheduleDragReset();
+}
+
+function onScheduleTouchStart(event: TouchEvent) {
+  if (props.loading || dragState.settling || event.touches.length !== 1) {
+    resetTouchGesture();
+    return;
+  }
+  const touch = event.touches.item(0);
+  if (!touch) return;
+  touchGesture.tracking = true;
+  touchGesture.identifier = touch.identifier;
+  touchGesture.startX = touch.clientX;
+  touchGesture.startY = touch.clientY;
+  touchGesture.intent = "pending";
+}
+
+function onScheduleTouchMove(event: TouchEvent) {
+  if (!touchGesture.tracking) return;
+  const touch = trackedTouch(event.touches);
+  if (!touch) return;
+  touchGesture.intent = resolveSwipeIntent(
+    touch.clientX - touchGesture.startX,
+    touch.clientY - touchGesture.startY,
+    touchGesture.intent,
+  );
+  if (touchGesture.intent === "horizontal" && event.cancelable) event.preventDefault();
+}
+
+function onScheduleTouchEnd(event: TouchEvent) {
+  if (!trackedTouch(event.touches)) resetTouchGesture();
+}
+
+function onScheduleTouchCancel() {
+  resetTouchGesture();
+}
+
+function trackedTouch(touches: TouchList) {
+  for (let index = 0; index < touches.length; index += 1) {
+    const touch = touches.item(index);
+    if (touch?.identifier === touchGesture.identifier) return touch;
+  }
+  return null;
+}
+
+function resetTouchGesture() {
+  touchGesture.tracking = false;
+  touchGesture.identifier = -1;
+  touchGesture.intent = "pending";
 }
 
 function canChangeDay(delta: number) {
@@ -1154,6 +1221,7 @@ function resetDrag() {
   dragState.settling = false;
   dragState.pointerId = -1;
   dragState.offsetX = 0;
+  dragState.axis = "pending";
   dragOffsetX = 0;
   dragVelocityX = 0;
   setDragClasses(false, false);

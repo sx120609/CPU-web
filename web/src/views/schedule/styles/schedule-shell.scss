@@ -36,7 +36,7 @@
   --schedule-cell-border: rgba(218, 227, 239, 0.82);
   --schedule-panel-shadow: 0 10px 24px rgba(24, 34, 51, 0.08);
   --schedule-bottom-obscured-space: 0px;
-  --schedule-scroll-bottom-gap: calc(14px + env(safe-area-inset-bottom) + var(--schedule-bottom-obscured-space));
+  --schedule-scroll-bottom-gap: 14px;
   position: relative;
   isolation: isolate;
   display: flex;
@@ -45,7 +45,7 @@
   min-height: calc(var(--schedule-vh, 1vh) * 100);
   box-sizing: border-box;
   overflow: hidden;
-  padding: calc(env(safe-area-inset-top) + 14px) 14px calc(env(safe-area-inset-bottom) + 18px);
+  padding: calc(env(safe-area-inset-top) + 14px) 14px calc(env(safe-area-inset-bottom) + 18px + var(--schedule-bottom-obscured-space));
   background:
     radial-gradient(circle at 18% 0%, rgba(174, 211, 255, 0.36), transparent 32%),
     radial-gradient(circle at 88% 14%, rgba(183, 232, 219, 0.32), transparent 30%),
