@@ -939,6 +939,8 @@ async function onProbe() {
   }
 
   .jwxt-tabs {
+    position: relative;
+    z-index: 1;
     margin: 0;
     padding: 0 0 10px;
     border: 0;
@@ -1070,6 +1072,7 @@ async function onProbe() {
 
   .session-info {
     position: relative;
+    z-index: 20;
     align-items: center;
     flex-direction: row;
     gap: 8px;
