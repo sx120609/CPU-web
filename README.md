@@ -361,9 +361,15 @@ Windows Agent 使用仓库根目录的脚本：
 .\deploy-agent.cmd logs -Lines 200
 # 查看状态
 .\deploy-agent.cmd status
+# 开启当前用户登录后的自动启动
+.\deploy-agent.cmd autostart
+# 查看自动启动状态
+.\deploy-agent.cmd autostart-status
+# 关闭自动启动
+.\deploy-agent.cmd autostart-off
 ```
 
-Windows 脚本会检查并安装 Node.js 22+ 与 PM2；更新前会停止 Agent，避免运行中的 Prisma DLL 阻止构建，失败时会尝试恢复原进程。`pm2 save` 会保存进程列表，但 Windows 开机自启仍需另行配置 PM2 resurrect 或计划任务。
+Windows 脚本会检查并安装 Node.js 22+ 与 PM2；更新前会停止 Agent，避免运行中的 Prisma DLL 阻止构建，失败时会尝试恢复原进程。执行 `autostart` 后，脚本会为当前 Windows 用户注册登录启动项，并以隐藏窗口启动 Agent，无需管理员权限；启动失败原因会写入 `server\logs\jwxt-agent-autostart.log`。仓库路径变化后重新执行一次 `autostart` 即可更新启动项。
 
 只配置了 `JWXT_AGENT_*` 且没有 `DATABASE_URL` 的 Agent 机器，也可以继续执行 `./deploy.sh update`，脚本会自动识别并切换到 Agent 更新流程。旧部署使用 `proxy-update` 时，如果检测到 `JWXT_AGENT_*`，也会自动迁移到 Agent 流程。
 

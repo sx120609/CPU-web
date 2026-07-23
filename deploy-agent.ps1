@@ -17,6 +17,9 @@
 #   .\deploy-agent.ps1 restart    重启 Agent
 #   .\deploy-agent.ps1 logs       查看实时日志
 #   .\deploy-agent.ps1 status     查看 PM2 状态
+#   .\deploy-agent.ps1 autostart  开启当前用户登录自启动
+#   .\deploy-agent.ps1 autostart-off    关闭登录自启动
+#   .\deploy-agent.ps1 autostart-status 查看登录自启动状态
 #
 # 也可以直接使用 deploy-agent.cmd，避免 PowerShell 执行策略阻止脚本运行。
 
@@ -30,6 +33,9 @@ $AgentEntry = Join-Path $ServerDir "dist\jwxtAgent.js"
 $AgentServiceName = "cpu-jwxt-agent"
 $LegacyProxyServiceName = "cpu-jwxt-proxy"
 $NodeMinMajor = 22
+$AutostartRegistryPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+$AutostartRegistryValueName = "CPUWebJwxtAgent"
+$AutostartLogFile = Join-Path $ServerDir "logs\jwxt-agent-autostart.log"
 
 function Write-DeployLog([string]$Message) {
   Write-Host "[deploy-agent] $Message" -ForegroundColor Green
@@ -41,6 +47,31 @@ function Write-DeployWarning([string]$Message) {
 
 function Fail([string]$Message) {
   throw "[deploy-agent] $Message"
+}
+
+function Get-AutostartCommand {
+  $scriptPath = Join-Path $RootDir "deploy-agent.ps1"
+  if ($scriptPath.Contains('"')) { Fail "脚本路径不能包含双引号：$scriptPath" }
+
+  $powerShellExe = Get-Executable @("powershell.exe", "pwsh.exe", "powershell", "pwsh")
+  if (-not $powerShellExe) { Fail "未找到可用于登录自启动的 PowerShell" }
+  return "`"$powerShellExe`" -NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$scriptPath`" autostart-run"
+}
+
+function Get-AgentAutostartValue {
+  if (-not (Test-Path -LiteralPath $AutostartRegistryPath)) { return "" }
+  $item = Get-ItemProperty -LiteralPath $AutostartRegistryPath -Name $AutostartRegistryValueName -ErrorAction SilentlyContinue
+  if ($null -eq $item) { return "" }
+  return [string]$item.$AutostartRegistryValueName
+}
+
+function Write-AutostartLog([string]$Message) {
+  $logDir = Split-Path -Parent $AutostartLogFile
+  if (-not (Test-Path -LiteralPath $logDir)) {
+    $null = New-Item -ItemType Directory -Path $logDir -Force
+  }
+  $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz"
+  Add-Content -LiteralPath $AutostartLogFile -Encoding UTF8 -Value "[$timestamp] $Message"
 }
 
 function Get-Executable([string[]]$Names) {
@@ -276,7 +307,7 @@ function Pull-LatestCode {
   if ($code -ne 0) { Write-DeployWarning "git pull 失败，继续部署当前代码" }
 }
 
-function Start-Agent {
+function Start-Agent([switch]$SuppressAutostartHint) {
   Ensure-Node
   $pm2 = Ensure-Pm2
   Ensure-AgentEnv
@@ -310,7 +341,9 @@ function Start-Agent {
     Write-DeployWarning "检测到旧代理 $LegacyProxyServiceName；确认不再使用后可执行：pm2 delete $LegacyProxyServiceName"
   }
   Write-DeployLog "Agent 已启动。使用 .\deploy-agent.cmd logs 查看连接日志"
-  Write-Host "Windows 开机自启需另行配置 PM2 resurrect 或计划任务；pm2 save 已保存当前进程列表。"
+  if (-not $SuppressAutostartHint -and -not (Get-AgentAutostartValue)) {
+    Write-Host "可运行 .\deploy-agent.cmd autostart 开启当前用户登录后的自动启动。"
+  }
 }
 
 function Stop-Agent([switch]$IgnoreMissing) {
@@ -366,12 +399,77 @@ function Show-Status {
   if (Test-Pm2Process $AgentServiceName) {
     $null = Invoke-Native $pm2 @("describe", $AgentServiceName)
   }
+  Show-AgentAutostartStatus
 }
 
 function Show-Logs {
   $pm2 = Ensure-Pm2
   if (-not (Test-Pm2Process $AgentServiceName)) { Fail "$AgentServiceName 尚未注册" }
   $null = Invoke-Native $pm2 @("logs", $AgentServiceName, "--lines", [string]$Lines)
+}
+
+function Enable-AgentAutostart {
+  Start-Agent -SuppressAutostartHint
+
+  $commandLine = Get-AutostartCommand
+  if (-not (Test-Path -LiteralPath $AutostartRegistryPath)) {
+    $null = New-Item -Path $AutostartRegistryPath -Force
+  }
+  $null = New-ItemProperty `
+    -LiteralPath $AutostartRegistryPath `
+    -Name $AutostartRegistryValueName `
+    -Value $commandLine `
+    -PropertyType String `
+    -Force
+
+  $savedValue = Get-AgentAutostartValue
+  if ($savedValue -ne $commandLine) {
+    Fail "Windows 自启动项写入后校验失败"
+  }
+  Write-DeployLog "已开启当前 Windows 用户登录后的 Agent 自动启动"
+  Write-Host "启动项：$AutostartRegistryValueName"
+  Write-Host "失败日志：$AutostartLogFile"
+}
+
+function Disable-AgentAutostart {
+  if (Get-AgentAutostartValue) {
+    Remove-ItemProperty `
+      -LiteralPath $AutostartRegistryPath `
+      -Name $AutostartRegistryValueName `
+      -Force
+    if (Get-AgentAutostartValue) {
+      Fail "Windows 自启动项删除后校验失败"
+    }
+    Write-DeployLog "已关闭当前 Windows 用户的 Agent 登录自启动"
+  } else {
+    Write-DeployLog "Agent 登录自启动原本就是关闭状态"
+  }
+}
+
+function Show-AgentAutostartStatus {
+  $currentValue = Get-AgentAutostartValue
+  if (-not $currentValue) {
+    Write-Host "Agent 登录自启动：未开启"
+    return
+  }
+
+  $expectedValue = Get-AutostartCommand
+  if ($currentValue -eq $expectedValue) {
+    Write-Host "Agent 登录自启动：已开启"
+  } else {
+    Write-DeployWarning "Agent 登录自启动已注册，但脚本路径或参数已经变化；请重新运行 autostart 更新启动项"
+  }
+  Write-Host "启动命令：$currentValue"
+}
+
+function Start-AgentFromAutostart {
+  try {
+    Start-Agent
+    Write-AutostartLog "Agent 登录自启动成功"
+  } catch {
+    Write-AutostartLog "Agent 登录自启动失败：$($_.Exception.Message)"
+    throw
+  }
 }
 
 function Show-Help {
@@ -385,6 +483,9 @@ Windows 出站教务 Agent 部署脚本
   .\deploy-agent.cmd restart          重启并刷新环境变量
   .\deploy-agent.cmd logs [-Lines 200] 查看日志
   .\deploy-agent.cmd status           查看状态
+  .\deploy-agent.cmd autostart        开启当前用户登录后的自动启动
+  .\deploy-agent.cmd autostart-off    关闭登录自启动
+  .\deploy-agent.cmd autostart-status 查看登录自启动状态
 
 运行前请把管理后台生成的完整配置写入 server\.env。
 脚本同时接受 agent-init、agent-update 等 Linux 同名命令。
@@ -401,6 +502,10 @@ switch ($normalizedCommand) {
   { $_ -in @("restart", "agent-restart") } { Restart-Agent; break }
   { $_ -in @("logs", "agent-logs") } { Show-Logs; break }
   { $_ -in @("status", "agent-status") } { Show-Status; break }
+  { $_ -in @("autostart", "enable-autostart") } { Enable-AgentAutostart; break }
+  { $_ -in @("autostart-off", "disable-autostart") } { Disable-AgentAutostart; break }
+  { $_ -in @("autostart-status") } { Show-AgentAutostartStatus; break }
+  { $_ -in @("autostart-run") } { Start-AgentFromAutostart; break }
   { $_ -in @("help", "-h", "--help", "/?") } { Show-Help; break }
   default { Fail "未知命令：$Command。运行 .\deploy-agent.cmd help 查看用法" }
 }
