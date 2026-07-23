@@ -247,7 +247,13 @@ function registerAgentSocket(agent: JwxtAgentConfig, socket: any) {
   });
   socket.on("error", () => undefined);
 
-  socket.send(JSON.stringify({
+  sendAgentWelcome(session);
+}
+
+function sendAgentWelcome(session: AgentSession) {
+  if (session.socket.readyState !== WebSocket.OPEN) return;
+  const agent = session.config;
+  session.socket.send(JSON.stringify({
     type: "welcome",
     protocolVersion: JWXT_AGENT_PROTOCOL_VERSION,
     heartbeatMs: config.jwxtAgentHeartbeatMs,
@@ -352,7 +358,12 @@ function reconcileAgentSessions() {
       sessions.delete(agentId);
       continue;
     }
+    const shouldRefreshAgent = next.name !== session.config.name
+      || next.maxConcurrent !== session.config.maxConcurrent
+      || next.jwxtEnabled !== session.config.jwxtEnabled
+      || next.crawlEnabled !== session.config.crawlEnabled;
     session.config = next;
+    if (shouldRefreshAgent) sendAgentWelcome(session);
   }
   broadcastReplicaTargets();
 }
