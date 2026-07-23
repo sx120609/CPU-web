@@ -85,12 +85,38 @@ function Get-Executable([string[]]$Names) {
 function Invoke-Native(
   [string]$FilePath,
   [string[]]$Arguments = @(),
-  [switch]$AllowFailure
+  [switch]$AllowFailure,
+  [switch]$Quiet
 ) {
   # Start-Process 让 npm / pm2 的 stdout 与 stderr 直接进入当前控制台，
   # 避免 Windows PowerShell 5 把原生命令的 stderr 误当成终止性 PowerShell 错误。
-  $process = Start-Process -FilePath $FilePath -ArgumentList $Arguments -NoNewWindow -Wait -PassThru
-  $exitCode = $process.ExitCode
+  $stdoutFile = ""
+  $stderrFile = ""
+  $startOptions = @{
+    FilePath = $FilePath
+    ArgumentList = $Arguments
+    NoNewWindow = $true
+    Wait = $true
+    PassThru = $true
+  }
+  if ($Quiet) {
+    $tempPrefix = Join-Path ([IO.Path]::GetTempPath()) "cpu-web-agent-$([Guid]::NewGuid().ToString('N'))"
+    $stdoutFile = "$tempPrefix.stdout.log"
+    $stderrFile = "$tempPrefix.stderr.log"
+    $startOptions.RedirectStandardOutput = $stdoutFile
+    $startOptions.RedirectStandardError = $stderrFile
+  }
+
+  try {
+    $process = Start-Process @startOptions
+    $exitCode = $process.ExitCode
+  } finally {
+    foreach ($tempFile in @($stdoutFile, $stderrFile)) {
+      if ($tempFile -and (Test-Path -LiteralPath $tempFile)) {
+        Remove-Item -LiteralPath $tempFile -Force -ErrorAction SilentlyContinue
+      }
+    }
+  }
   if ($exitCode -ne 0 -and -not $AllowFailure) {
     Fail "命令执行失败（exit $exitCode）：$FilePath $($Arguments -join ' ')"
   }
@@ -274,8 +300,8 @@ function Protect-AgentIdentityFile {
 
 function Test-Pm2Process([string]$ServiceName) {
   $pm2 = Ensure-Pm2
-  & $pm2 describe $ServiceName *> $null
-  return $LASTEXITCODE -eq 0
+  $exitCode = Invoke-Native $pm2 @("describe", $ServiceName) -AllowFailure -Quiet
+  return $exitCode -eq 0
 }
 
 function Install-AgentDependencies {
@@ -492,20 +518,26 @@ Windows 出站教务 Agent 部署脚本
 "@ | Write-Host
 }
 
-Set-Location $RootDir
-$normalizedCommand = $Command.Trim().ToLowerInvariant()
-switch ($normalizedCommand) {
-  { $_ -in @("init", "agent-init") } { Deploy-Agent; break }
-  { $_ -in @("update", "agent-update") } { Deploy-Agent -Pull; break }
-  { $_ -in @("start", "agent-start") } { Start-Agent; break }
-  { $_ -in @("stop", "agent-stop") } { Stop-Agent; break }
-  { $_ -in @("restart", "agent-restart") } { Restart-Agent; break }
-  { $_ -in @("logs", "agent-logs") } { Show-Logs; break }
-  { $_ -in @("status", "agent-status") } { Show-Status; break }
-  { $_ -in @("autostart", "enable-autostart") } { Enable-AgentAutostart; break }
-  { $_ -in @("autostart-off", "disable-autostart") } { Disable-AgentAutostart; break }
-  { $_ -in @("autostart-status") } { Show-AgentAutostartStatus; break }
-  { $_ -in @("autostart-run") } { Start-AgentFromAutostart; break }
-  { $_ -in @("help", "-h", "--help", "/?") } { Show-Help; break }
-  default { Fail "未知命令：$Command。运行 .\deploy-agent.cmd help 查看用法" }
+function Invoke-DeployAgentCommand {
+  Set-Location $RootDir
+  $normalizedCommand = $Command.Trim().ToLowerInvariant()
+  switch ($normalizedCommand) {
+    { $_ -in @("init", "agent-init") } { Deploy-Agent; break }
+    { $_ -in @("update", "agent-update") } { Deploy-Agent -Pull; break }
+    { $_ -in @("start", "agent-start") } { Start-Agent; break }
+    { $_ -in @("stop", "agent-stop") } { Stop-Agent; break }
+    { $_ -in @("restart", "agent-restart") } { Restart-Agent; break }
+    { $_ -in @("logs", "agent-logs") } { Show-Logs; break }
+    { $_ -in @("status", "agent-status") } { Show-Status; break }
+    { $_ -in @("autostart", "enable-autostart") } { Enable-AgentAutostart; break }
+    { $_ -in @("autostart-off", "disable-autostart") } { Disable-AgentAutostart; break }
+    { $_ -in @("autostart-status") } { Show-AgentAutostartStatus; break }
+    { $_ -in @("autostart-run") } { Start-AgentFromAutostart; break }
+    { $_ -in @("help", "-h", "--help", "/?") } { Show-Help; break }
+    default { Fail "未知命令：$Command。运行 .\deploy-agent.cmd help 查看用法" }
+  }
+}
+
+if ($MyInvocation.InvocationName -ne ".") {
+  Invoke-DeployAgentCommand
 }
