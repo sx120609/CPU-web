@@ -1,6 +1,6 @@
 <template>
   <div class="jwxt-page">
-    <div class="page-head" :class="{ centered: !showDataShell }">
+    <div class="page-head" :class="{ centered: !showDataShell, compact: showDataShell }">
       <h2>🎓 教务数据</h2>
       <p class="hint">
         {{ pageHintText }}
@@ -120,9 +120,11 @@
         <div class="session-main">
           <el-icon class="session-ok"><CircleCheckFilled /></el-icon>
           <div class="session-copy">
-            <div class="session-title">{{ sessionTitleText }}</div>
+            <div class="session-title-row">
+              <div class="session-title">{{ sessionTitleText }}</div>
+              <el-tag v-if="jwxt.isLoggedIn" class="session-mode" size="small" effect="plain" type="success">{{ identityBadgeText }}</el-tag>
+            </div>
             <div class="session-sub">{{ sessionSubText }}</div>
-            <el-tag v-if="jwxt.isLoggedIn" class="session-mode" size="small" effect="plain" type="success">{{ identityBadgeText }}</el-tag>
           </div>
         </div>
         <div class="session-actions">
@@ -139,22 +141,37 @@
             {{ jwxt.needCaptcha ? "补充验证码" : "恢复连接" }}
           </el-button>
         </div>
+        <details v-if="jwxt.isLoggedIn" class="session-mobile-menu">
+          <summary>管理</summary>
+          <div class="session-mobile-menu-panel">
+            <span v-if="jwxt.rememberSaved" class="session-mobile-saved">已保存登录信息</span>
+            <el-button v-if="jwxt.rememberSaved" plain type="warning" size="small" :loading="forgetBusy" :disabled="logoutBusy || forgetBusy" @click="onForget">
+              清除保存
+            </el-button>
+            <el-button plain type="danger" size="small" :loading="logoutBusy" :disabled="logoutBusy || forgetBusy" @click="onLogout">
+              断开连接
+            </el-button>
+          </div>
+        </details>
+        <el-button v-else class="session-mobile-recover" type="primary" size="small" @click="showLoginOverride = true">
+          {{ jwxt.needCaptcha ? "验证" : "恢复" }}
+        </el-button>
       </div>
 
       <el-tabs v-if="hasJwxtTabs" v-model="tab" class="cpu-card jwxt-tabs" @tab-change="onTabChange">
-        <el-tab-pane v-if="showScheduleTab" label="📅 课表" name="schedule">
+        <el-tab-pane v-if="showScheduleTab" :label="isMobileViewport ? '课表' : '📅 课表'" name="schedule">
           <SchedulePane :data="schedule" :loading="tabLoading" :source="isGraduateIdentity ? 'graduate' : 'jwxt'" />
         </el-tab-pane>
-        <el-tab-pane v-if="!isGraduateIdentity" label="📊 成绩" name="grades">
+        <el-tab-pane v-if="!isGraduateIdentity" :label="isMobileViewport ? '成绩' : '📊 成绩'" name="grades">
           <GradesPane :data="grades" :loading="tabLoading" />
         </el-tab-pane>
-        <el-tab-pane v-if="!isGraduateIdentity" label="📝 期中成绩" name="midterm">
+        <el-tab-pane v-if="!isGraduateIdentity" :label="isMobileViewport ? '期中' : '📝 期中成绩'" name="midterm">
           <MidtermGradesPane :data="midtermGrades" :loading="tabLoading" />
         </el-tab-pane>
-        <el-tab-pane v-if="!isGraduateIdentity" label="🎓 学业完成情况" name="progress">
+        <el-tab-pane v-if="!isGraduateIdentity" :label="isMobileViewport ? '学业' : '🎓 学业完成情况'" name="progress">
           <ProgressPane :data="progress" :loading="tabLoading" />
         </el-tab-pane>
-        <el-tab-pane v-if="!isGraduateIdentity" label="📖 培养方案" name="pyfa">
+        <el-tab-pane v-if="!isGraduateIdentity" :label="isMobileViewport ? '培养' : '📖 培养方案'" name="pyfa">
           <PyfaPane :data="pyfa" :loading="tabLoading" />
         </el-tab-pane>
         <el-tab-pane label="🛠 调试" name="debug" v-if="isDev">
@@ -817,6 +834,12 @@ async function onProbe() {
   font-weight: 600;
   color: #14532d;
 }
+.session-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
 :global(html[data-theme="dark"]) .session-title {
   color: #dcfce7;
 }
@@ -827,7 +850,7 @@ async function onProbe() {
   line-height: 1.6;
 }
 .session-mode {
-  margin-top: 10px;
+  flex: 0 0 auto;
 }
 .session-actions {
   display: flex;
@@ -839,6 +862,10 @@ async function onProbe() {
 }
 .remember-tag {
   margin-right: 0;
+}
+.session-mobile-menu,
+.session-mobile-recover {
+  display: none;
 }
 .hint-icon { color: var(--cpu-text-secondary); cursor: help; margin-left: 4px; }
 
@@ -891,11 +918,15 @@ async function onProbe() {
 
 @media (max-width: 700px) {
   .jwxt-page {
-    gap: 14px;
+    gap: 10px;
   }
 
   .page-head h2 {
-    font-size: 20px;
+    font-size: 18px;
+  }
+
+  .page-head.compact .hint {
+    display: none;
   }
 
   .cpu-card {
@@ -904,30 +935,29 @@ async function onProbe() {
   }
 
   .jwxt-shell {
-    gap: 12px;
+    gap: 8px;
   }
 
   .jwxt-tabs {
-    margin: 0 -6px;
-    padding: 10px 8px 12px;
+    margin: 0;
+    padding: 0 0 10px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
   }
 
   .jwxt-tabs :deep(.el-tabs__header) {
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     overflow: visible;
   }
 
   .jwxt-tabs :deep(.el-tabs__nav-wrap) {
-    height: 40px;
-    max-height: 40px;
-    padding: 0 4px 2px;
-    overflow-x: auto;
+    height: 38px;
+    max-height: 38px;
+    padding: 0;
+    overflow-x: visible;
     overflow-y: hidden;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
-    overscroll-behavior-y: none;
-    touch-action: pan-x;
   }
 
   .jwxt-tabs :deep(.el-tabs__nav-wrap::after),
@@ -940,16 +970,11 @@ async function onProbe() {
   }
 
   .jwxt-tabs :deep(.el-tabs__nav-scroll) {
-    height: 40px;
-    max-height: 40px;
-    padding: 0 0 2px;
-    overflow-x: auto;
+    height: 38px;
+    max-height: 38px;
+    padding: 0;
+    overflow-x: visible;
     overflow-y: hidden;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
-    overscroll-behavior-y: none;
-    touch-action: pan-x;
   }
 
   .jwxt-tabs :deep(.el-tabs__nav-scroll::-webkit-scrollbar) {
@@ -957,17 +982,20 @@ async function onProbe() {
   }
 
   .jwxt-tabs :deep(.el-tabs__nav) {
+    display: grid;
     float: none;
-    width: max-content;
-    min-width: max-content;
-    white-space: nowrap;
-    gap: 8px;
-    padding-inline: 4px;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    width: 100%;
+    min-width: 0;
+    gap: 6px;
+    padding: 0;
   }
 
   .jwxt-tabs :deep(.el-tabs__item) {
-    height: 34px;
-    padding: 0 12px;
+    width: 100%;
+    height: 36px;
+    padding: 0 6px;
     font-size: 13px;
     border-radius: 999px;
     border: 1px solid transparent;
@@ -1041,31 +1069,120 @@ async function onProbe() {
   }
 
   .session-info {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 12px;
+    position: relative;
+    align-items: center;
+    flex-direction: row;
+    gap: 8px;
+    min-height: 52px;
+    padding: 9px 10px;
   }
 
   .session-main {
-    width: 100%;
-  }
-
-  .session-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    flex: 1;
     width: 100%;
     gap: 8px;
   }
 
-  .session-actions .remember-tag {
-    grid-column: 1 / -1;
-    justify-self: start;
+  .session-ok {
+    font-size: 18px;
   }
 
-  .session-actions :deep(.el-button) {
+  .session-title-row {
+    gap: 6px;
+  }
+
+  .session-title {
+    overflow: hidden;
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .session-mode {
+    --el-tag-font-size: 10px;
+    height: 22px;
+    padding-inline: 6px;
+  }
+
+  .session-info:not(.is-cache-only) .session-sub {
+    display: none;
+  }
+
+  .session-info.is-cache-only .session-sub {
+    display: -webkit-box;
+    overflow: hidden;
+    margin-top: 1px;
+    font-size: 11px;
+    line-height: 1.35;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+
+  .session-actions {
+    display: none;
+  }
+
+  .session-mobile-menu {
+    position: relative;
+    display: block;
+    flex: 0 0 auto;
+  }
+
+  .session-mobile-menu > summary {
+    display: inline-flex;
+    min-height: 32px;
+    align-items: center;
+    justify-content: center;
+    padding: 0 10px;
+    border: 1px solid currentColor;
+    border-radius: 8px;
+    color: var(--cpu-primary);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+  }
+
+  .session-mobile-menu > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .session-mobile-menu > summary:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--cpu-primary) 38%, transparent);
+    outline-offset: 2px;
+  }
+
+  .session-mobile-menu-panel {
+    position: absolute;
+    z-index: 12;
+    top: calc(100% + 7px);
+    right: 0;
+    display: grid;
+    width: 156px;
+    gap: 7px;
+    padding: 10px;
+    border: 1px solid var(--cpu-border-soft);
+    border-radius: 10px;
+    background: var(--cpu-card);
+    box-shadow: var(--cpu-shadow-md);
+  }
+
+  .session-mobile-menu-panel :deep(.el-button) {
     width: 100%;
+    min-height: 34px;
     margin-left: 0;
-    min-height: 36px;
+  }
+
+  .session-mobile-saved {
+    color: var(--cpu-text-secondary);
+    font-size: 11px;
+    text-align: center;
+  }
+
+  .session-mobile-recover {
+    display: inline-flex;
+    flex: 0 0 auto;
   }
 
   .debug-pane :deep(.el-input__wrapper) {
@@ -1100,10 +1217,6 @@ async function onProbe() {
     max-width: none;
     object-fit: contain;
     background: var(--cpu-card);
-  }
-
-  .session-actions {
-    grid-template-columns: 1fr;
   }
 
   .alt-link a {

@@ -1284,21 +1284,7 @@ function setAppearanceMode(command: string | number | object) {
   }
 
   .top-search {
-    order: 10;
-    width: 100%;
-    flex: 0 0 100%;
-    max-width: none;
-    min-width: 0;
-    display: flex;
-    justify-content: center;
-  }
-
-  .top-search :deep(.el-input) {
-    width: min(100%, 520px);
-  }
-
-  .top-search :deep(.el-input__wrapper) {
-    border-radius: 12px;
+    display: none;
   }
 
   .top-right {

@@ -23,18 +23,19 @@
             <el-option v-for="a in attrOptions" :key="a" :value="a" :label="a" />
           </el-select>
         </label>
-        <label class="filter-field">
+        <label class="filter-field keyword-filter">
           <span class="lbl">关键词</span>
           <el-input v-model="keyword" size="small" placeholder="课程名 / 代码" clearable />
         </label>
       </div>
       <div class="ctrl-right">
-        <span class="stat">📚 显示 {{ filteredList.length }} / {{ parsed.list.length }} 门</span>
-        <span class="stat">· 统计 {{ statList.length }} 门</span>
-        <span class="stat" v-if="statCredits">· {{ statCredits.toFixed(1) }} 学分</span>
-        <span class="stat" v-if="statList.length && statCredits">
+        <span class="stat desktop-stat">📚 显示 {{ filteredList.length }} / {{ parsed.list.length }} 门</span>
+        <span class="stat desktop-stat">· 统计 {{ statList.length }} 门</span>
+        <span class="stat desktop-stat" v-if="statCredits">· {{ statCredits.toFixed(1) }} 学分</span>
+        <span class="stat desktop-stat" v-if="statList.length && statCredits">
           · 加权 GPA <b>{{ statGpa.toFixed(2) }}</b> / 5.0
         </span>
+        <span class="stat mobile-stat">{{ compactStatsText }}</span>
         <el-tooltip placement="top">
           <template #content>
             GPA 基于筛选条件和统计口径计算，并按课程学分加权平均<br/>
@@ -471,6 +472,13 @@ const statCredits = computed(() => {
   return semCredits(statList.value);
 });
 
+const compactStatsText = computed(() => {
+  const parts = [`${filteredList.value.length}/${parsed.value?.list?.length ?? 0} 门`];
+  if (statCredits.value) parts.push(`${statCredits.value.toFixed(1)} 学分`);
+  if (statList.value.length && statCredits.value) parts.push(`GPA ${statGpa.value.toFixed(2)}`);
+  return parts.join(" · ");
+});
+
 function activateSelectionMode() {
   if (selectedCourseKeys.value.length && statMode.value === "all") statMode.value = "only";
   if (!selectedCourseKeys.value.length && statMode.value !== "all") statMode.value = "all";
@@ -596,6 +604,7 @@ function requestMessage(error: unknown) {
 .lbl { font-size: 12px; color: var(--cpu-text-secondary); }
 .stat { font-size: 13px; color: var(--cpu-text-secondary); }
 .stat b { color: var(--cpu-primary); font-size: 15px; }
+.mobile-stat { display: none; }
 .hint-icon { color: var(--cpu-text-secondary); cursor: help; margin-left: 4px; font-size: 14px; }
 code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px; }
 
@@ -880,26 +889,45 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
 
   .ctrl-left {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
   }
 
   .ctrl-left .wide {
-    grid-column: span 2;
+    grid-column: auto;
+  }
+
+  .ctrl-left .keyword-filter {
+    grid-column: 1 / -1;
+  }
+
+  .filter-field {
+    gap: 3px;
   }
 
   .ctrl-right {
     width: 100%;
-    gap: 6px;
-    line-height: 1.6;
-    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px;
+    line-height: 1.4;
   }
 
-  .stat {
+  .desktop-stat {
+    display: none;
+  }
+
+  .mobile-stat {
     display: inline-flex;
     align-items: center;
-    padding: 6px 10px;
-    border-radius: 999px;
-    background: var(--cpu-surface-subtle);
+    min-width: 0;
+    padding: 0;
+    background: transparent;
     white-space: nowrap;
+  }
+
+  .gpa-tool {
+    gap: 8px;
+    padding: 10px;
+    background: var(--cpu-surface-subtle);
   }
 
   .calc-head,
@@ -938,20 +966,36 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
   }
 
   .service-reco {
-    padding: 14px;
-    align-items: stretch;
-    flex-direction: column;
-    border-radius: 12px;
+    padding: 9px 11px;
+    align-items: center;
+    flex-direction: row;
+    border-radius: 10px;
+  }
+
+  .service-reco .reco-kicker,
+  .service-reco p {
+    display: none;
+  }
+
+  .service-reco b {
+    margin: 0;
+    font-size: 13px;
   }
 
   .reco-link {
+    border: 0;
+    padding: 4px 0;
     text-align: center;
   }
 
   .sem-head {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 4px;
+    align-items: baseline;
+    flex-direction: row;
+    gap: 8px;
+  }
+
+  .sem-sum {
+    text-align: right;
   }
 
   .table-scroll { display: none; }
@@ -964,16 +1008,19 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
 }
 
 @media (max-width: 430px) {
-  .ctrl-left {
-    grid-template-columns: 1fr;
-  }
-
-  .ctrl-left .wide {
-    grid-column: auto;
+  .grade-card {
+    padding: 12px;
+    border-radius: 10px;
   }
 }
 
 @media (max-width: 380px) {
+  .ctrl-left {
+    grid-template-columns: 1fr;
+  }
+  .ctrl-left .keyword-filter {
+    grid-column: auto;
+  }
   .score-badges {
     grid-template-columns: 1fr;
   }
