@@ -2,6 +2,7 @@ import { createError, defineEventHandler, getQuery } from 'h3'
 import { db } from '~/drizzle/db'
 import { songs, users, votes } from '~/drizzle/schema'
 import { CacheService } from '../../../services/cacheService'
+import { visibleUserCondition } from '~~/server/utils/ghost-user'
 
 export default defineEventHandler(async (event) => {
   // 检查认证和权限
@@ -33,7 +34,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // 获取活跃用户数据 - 有投稿歌曲的用户
-    const allUsers = await db.select().from(users)
+    const allUsers = await db.select().from(users).where(visibleUserCondition())
     const allSongs = await db.select().from(songs)
     const allVotes = await db.select().from(votes)
 

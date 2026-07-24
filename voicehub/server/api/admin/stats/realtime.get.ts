@@ -2,8 +2,9 @@ import { createError, defineEventHandler } from 'h3'
 import { db } from '~/drizzle/db'
 import { CacheService } from '../../../services/cacheService'
 import { songs, users, votes } from '~/drizzle/schema'
-import { count, eq, gte } from 'drizzle-orm'
+import { and, count, eq, gte } from 'drizzle-orm'
 import { getBeijingHour, getBeijingStartOfDay } from '~/utils/timeUtils'
+import { visibleUserCondition } from '~~/server/utils/ghost-user'
 
 export default defineEventHandler(async (event) => {
   // 检查认证和权限
@@ -44,7 +45,7 @@ export default defineEventHandler(async (event) => {
             })
             .from(songs)
             .innerJoin(users, eq(songs.requesterId, users.id))
-            .where(gte(songs.createdAt, oneHourAgo))
+            .where(and(gte(songs.createdAt, oneHourAgo), visibleUserCondition()))
             .groupBy(songs.requesterId, users.id, users.name, users.username)
 
           // 获取最近1小时内登录的用户
@@ -55,7 +56,7 @@ export default defineEventHandler(async (event) => {
               name: users.name
             })
             .from(users)
-            .where(gte(users.lastLogin, oneHourAgo))
+            .where(and(gte(users.lastLogin, oneHourAgo), visibleUserCondition()))
 
           // 获取最近1小时内点赞过歌曲的用户
           const recentVoteUsers = await db
@@ -67,7 +68,7 @@ export default defineEventHandler(async (event) => {
             })
             .from(votes)
             .innerJoin(users, eq(votes.userId, users.id))
-            .where(gte(votes.createdAt, oneHourAgo))
+            .where(and(gte(votes.createdAt, oneHourAgo), visibleUserCondition()))
             .groupBy(votes.userId, users.id, users.name, users.username)
 
           // 合并并去重用户列表

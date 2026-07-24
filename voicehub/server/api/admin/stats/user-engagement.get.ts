@@ -2,6 +2,7 @@ import { createError, defineEventHandler, getQuery } from 'h3'
 import { db } from '~/drizzle/db'
 import { songs, users } from '~/drizzle/schema'
 import { count } from 'drizzle-orm'
+import { visibleUserCondition } from '~~/server/utils/ghost-user'
 
 export default defineEventHandler(async (event) => {
   // 检查认证和权限
@@ -22,11 +23,14 @@ export default defineEventHandler(async (event) => {
 
     // 获取用户参与度数据
     // 1. 获取总用户数
-    const totalUsersResult = await db.select({ count: count() }).from(users)
+    const totalUsersResult = await db
+      .select({ count: count() })
+      .from(users)
+      .where(visibleUserCondition())
     const totalUsers = totalUsersResult[0].count
 
     // 2. 获取有请求歌曲的用户数
-    const allUsers = await db.select().from(users)
+    const allUsers = await db.select().from(users).where(visibleUserCondition())
     const allSongs = await db.select().from(songs)
 
     const activeUsers = allUsers.filter((user) => {

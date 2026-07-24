@@ -6,6 +6,7 @@ import { cacheService } from '../../services/cacheService'
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc.js'
 import timezone from 'dayjs/plugin/timezone.js'
+import { visibleUserCondition } from '~~/server/utils/ghost-user'
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -78,7 +79,10 @@ export default defineEventHandler(async (event) => {
 
       // 总用户数
       (async () => {
-        const result = await db.select({ count: count() }).from(users)
+        const result = await db
+          .select({ count: count() })
+          .from(users)
+          .where(visibleUserCondition())
         return result[0].count
       })(),
 
@@ -179,7 +183,7 @@ export default defineEventHandler(async (event) => {
         const result = await db
           .select({ count: count() })
           .from(users)
-          .where(gte(users.createdAt, weekAgo))
+          .where(and(visibleUserCondition(), gte(users.createdAt, weekAgo)))
         return result[0].count
       })(),
 
@@ -188,7 +192,13 @@ export default defineEventHandler(async (event) => {
         const result = await db
           .select({ count: count() })
           .from(users)
-          .where(and(gte(users.createdAt, twoWeeksAgo), lt(users.createdAt, weekAgo)))
+          .where(
+            and(
+              visibleUserCondition(),
+              gte(users.createdAt, twoWeeksAgo),
+              lt(users.createdAt, weekAgo)
+            )
+          )
         return result[0].count
       })(),
 
@@ -262,7 +272,13 @@ export default defineEventHandler(async (event) => {
           const result = await db
             .select({ count: count() })
             .from(users)
-            .where(and(gte(users.createdAt, startOfDay), lt(users.createdAt, endOfDay)))
+            .where(
+              and(
+                visibleUserCondition(),
+                gte(users.createdAt, startOfDay),
+                lt(users.createdAt, endOfDay)
+              )
+            )
           const countValue = result[0].count
 
           trends.push({

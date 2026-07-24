@@ -3,6 +3,7 @@ import { db } from '~/drizzle/db'
 import { users } from '~/drizzle/schema'
 import { and, asc, desc, count, eq, ilike, or, sql } from 'drizzle-orm'
 import { normalizeRole } from '~~/server/utils/role'
+import { visibleUserCondition } from '~~/server/utils/ghost-user'
 import { sanitizeStoredClientIP } from '~~/server/utils/ip-utils'
 import { resolveQQDisplayProfile } from '~~/server/utils/qq-profile'
 import { resolvePreferredAvatar } from '~~/server/utils/user-avatar'
@@ -14,7 +15,7 @@ export default defineEventHandler(async (event) => {
     const { grade, class: className, search, page = '1', limit = '50', role, status, sortBy = 'id', sortOrder = 'asc' } = query
 
     // 构建筛选条件
-    const whereConditions = []
+    const whereConditions = [visibleUserCondition()]
 
     // 年级筛选
     if (grade && typeof grade === 'string' && grade.trim()) {

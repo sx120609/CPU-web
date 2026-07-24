@@ -2,6 +2,7 @@ import { createError, defineEventHandler } from 'h3'
 import { db } from '~/drizzle/db'
 import { users } from '~/drizzle/schema'
 import { count, sql } from 'drizzle-orm'
+import { visibleUserCondition } from '~~/server/utils/ghost-user'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -48,7 +49,10 @@ export default defineEventHandler(async (event) => {
     // 如果表存在，获取记录数
     if (status.tables.user) {
       try {
-        const userCountResult = await db.select({ count: count() }).from(users)
+        const userCountResult = await db
+          .select({ count: count() })
+          .from(users)
+          .where(visibleUserCondition())
         status.userCount = userCountResult[0]?.count || 0
       } catch (error) {
         console.error('获取用户数量失败:', error)

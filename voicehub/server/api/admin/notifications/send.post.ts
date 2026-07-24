@@ -5,6 +5,8 @@ import {
   createSystemNotification
 } from '../../../services/notificationService'
 import { getClientIP } from '~~/server/utils/ip-utils'
+import { and, inArray } from 'drizzle-orm'
+import { visibleUserCondition } from '~~/server/utils/ghost-user'
 
 export default defineEventHandler(async (event) => {
   // 检查用户是否为管理员
@@ -72,7 +74,10 @@ export default defineEventHandler(async (event) => {
 
     if (scope === 'ALL') {
       // 查询所有用户
-      const allUsers = await db.select({ id: users.id }).from(users)
+      const allUsers = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(visibleUserCondition())
       userIds = allUsers.map((user) => user.id)
     } else if (scope === 'SPECIFIC_USERS') {
       // 指定用户
@@ -83,7 +88,16 @@ export default defineEventHandler(async (event) => {
         })
       }
 
-      userIds = filter.userIds
+      const requestedIds = filter.userIds
+        .map((id: unknown) => Number(id))
+        .filter((id: number) => Number.isInteger(id) && id > 0)
+      if (requestedIds.length > 0) {
+        const visibleUsers = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(and(inArray(users.id, requestedIds), visibleUserCondition()))
+        userIds = visibleUsers.map((visibleUser) => visibleUser.id)
+      }
     }
 
     if (userIds.length === 0) {

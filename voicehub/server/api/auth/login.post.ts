@@ -7,6 +7,7 @@ import { isRegistrationEmailVerificationEnabled } from '~~/server/utils/registra
 import { resolveQQDisplayProfile } from '~~/server/utils/qq-profile'
 import { normalizeRoleOrDefault } from '~~/server/utils/role'
 import { resolvePreferredAvatar } from '~~/server/utils/user-avatar'
+import { isGhostUserRole } from '~~/server/utils/ghost-user'
 
 export default defineEventHandler(async (event) => {
   const startTime = Date.now()
@@ -86,6 +87,9 @@ export default defineEventHandler(async (event) => {
     const user = userResult[0] || null
 
     if (!user) {
+      throw normalizeLoginFailureError()
+    }
+    if (isGhostUserRole(user.role)) {
       throw normalizeLoginFailureError()
     }
     const normalizedRole = normalizeRoleOrDefault(user.role, 'USER')

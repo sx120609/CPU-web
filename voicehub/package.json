@@ -20,6 +20,7 @@
     "db:studio": "npx drizzle-kit studio",
     "db:drop": "npx drizzle-kit drop",
     "db:check": "npx drizzle-kit check",
+    "import:legacy-songs": "node scripts/import-legacy-songs.mjs",
     "setup": "npm install && npm run db:migrate",
     "create-admin": "npx tsx scripts/create-admin.js",
     "clear-db": "npx tsx scripts/clear-database.js",
