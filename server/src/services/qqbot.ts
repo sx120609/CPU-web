@@ -3117,6 +3117,7 @@ async function maybeHandleQqGroupAdFilter(input: {
         qqId: input.qqId,
         nickname: senderNickname,
         review,
+        hitCount: strike.hitCount,
         verificationPrompt: verification.prompt,
       }),
     ).catch(() => undefined);
@@ -3174,6 +3175,7 @@ function renderQqGroupAdFilterGroupNotice(
     qqId: string;
     nickname?: string | null;
     review: Awaited<ReturnType<typeof reviewQqGroupMessageForAd>>;
+    hitCount: number;
     verificationPrompt: string;
   },
 ) {
@@ -3181,6 +3183,7 @@ function renderQqGroupAdFilterGroupNotice(
   return [
     `刚刚撤回了 ${who} 的一条消息。`,
     `说明：${input.review.reason}`,
+    `累计命中：第 ${input.hitCount} 次。`,
     "如果本意只是普通交流、玩梗或求助，建议改成更日常、更直接的说法后再发一次。",
     `如需申请本群 30 天广告过滤白名单，请在 10 分钟内私聊我或 @我完成趣味验证：${input.verificationPrompt}`,
   ].join("\n");
