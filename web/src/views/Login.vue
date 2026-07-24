@@ -140,7 +140,7 @@ const loginHint = computed(() => {
 
 onMounted(async () => {
   if (auth.isLoggedIn) {
-    router.replace(redirectTarget());
+    finishLoginRedirect();
     return;
   }
   // 准备 CAS 登录页（拿 lt/execution + 验证码）
@@ -164,7 +164,7 @@ onMounted(async () => {
       const ok = await auth.tryAutoSsoLogin();
       if (ok) {
         ElMessage.success(`欢迎，${auth.user?.nickname || creds.username}`);
-        router.replace(redirectTarget());
+        finishLoginRedirect();
       }
     }
   }
@@ -193,6 +193,18 @@ function redirectTarget() {
   return resolveSafeRedirect(route.query.redirect);
 }
 
+function finishLoginRedirect() {
+  const target = redirectTarget();
+  // /voicehub is a separately mounted Nuxt application, not a Vue Router
+  // route. Hand it back to the browser so login never flashes the main
+  // site's 404 page or falls through to /home.
+  if (target === "/voicehub" || target.startsWith("/voicehub/")) {
+    window.location.replace(target);
+    return;
+  }
+  void router.replace(target);
+}
+
 function goHome() {
   router.replace("/home");
 }
@@ -219,7 +231,7 @@ async function onSubmit() {
   const ok = await auth.ssoLogin(form.username, form.password, form.captcha || undefined, remember.value);
   if (ok) {
     ElMessage.success(`欢迎，${auth.user?.nickname || form.username}`);
-    router.replace(redirectTarget());
+    finishLoginRedirect();
   } else if (auth.ssoNeedCaptcha) {
     form.captcha = "";
   }
@@ -240,7 +252,7 @@ async function onDevSubmit() {
   try {
     await auth.login(dev.username, dev.password);
     ElMessage.success(`欢迎，${auth.user?.nickname}`);
-    router.replace(redirectTarget());
+    finishLoginRedirect();
   } catch { /* 拦截器已提示 */ }
   finally { dev.loading = false; }
 }
