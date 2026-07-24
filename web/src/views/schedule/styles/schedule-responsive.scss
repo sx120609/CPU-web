@@ -7,15 +7,15 @@
   /* toolbar 旧的双选择器已经从模板移除，但保险起见仍 hide 类 */
   .toolbar { display: none; }
   .schedule-page {
-    /* 4px visibility buffer prevents the final row border from slipping under the tabbar. */
+    /*
+     * The legacy Android WebView renders the same fixed web tabbar as mobile
+     * browsers. Reserve it once here; the native activity already removes the
+     * system-bar insets from the WebView viewport.
+     */
     --schedule-bottom-obscured-space: 48px;
     padding-top: calc(env(safe-area-inset-top) + 8px);
     padding-left: 8px;
     padding-right: 8px;
-  }
-
-  .schedule-page.is-android-native-app {
-    --schedule-bottom-obscured-space: 118px;
   }
 
   .top {
