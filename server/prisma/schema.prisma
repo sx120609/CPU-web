@@ -1414,6 +1414,35 @@ model QqBotGroupAdStrike {
   @@index([qqId, lastHitAt])
 }
 
+model QqBotGroupAdVerification {
+  id        Int       @id @default(autoincrement())
+  groupId   String
+  qqId      String
+  nickname  String?
+  codeHash  String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([groupId, qqId, expiresAt])
+  @@index([qqId, codeHash])
+  @@index([qqId, expiresAt])
+}
+
+model QqBotGroupAdWhitelist {
+  id        Int      @id @default(autoincrement())
+  groupId   String
+  qqId      String
+  nickname  String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([groupId, qqId])
+  @@index([groupId, expiresAt])
+  @@index([qqId, expiresAt])
+}
+
 model QqBotMessageLog {
   id             Int      @id @default(autoincrement())
   direction      String // inbound / outbound

@@ -204,6 +204,8 @@ const GROUP_NOTIFY_AUDIENCE_OPTIONS = ["public", "staff"] as const;
 const DEFAULT_GROUP_NOTIFY_CATEGORIES = ["system", "school-feed"];
 const DEFAULT_GROUP_NOTIFY_AUDIENCES = ["public"];
 const DEFAULT_MEMBER_WELCOME_MESSAGE = "欢迎加入本群，请先查看群公告了解群内规则和使用说明。\n\n如果想把课表添加到手机桌面，可以先打开站内课表页，再按页面提示完成添加。\n\n也欢迎前往个人中心绑定本 QQBot，绑定后可在 QQ 同步接收站内通知。建议顺手把本 QQBot 添加为好友，消息接收和后续操作体验会更顺畅。后续还会陆续接入更多实用功能，敬请期待。";
+const QQ_GROUP_AD_VERIFICATION_TTL_MS = 10 * 60_000;
+const QQ_GROUP_AD_WHITELIST_TTL_MS = 30 * 24 * 60 * 60_000;
 let pollerStarted = false;
 
 const {
@@ -517,6 +519,15 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await logQqBotMessage({ direction: "inbound", eventType: "message", status: "ignored", qqId, groupId, rawPayload: event });
     return { ignored: true };
   }
+
+  const verificationHandled = await maybeHandleQqGroupAdVerification({
+    event,
+    qqId,
+    groupId,
+    messageText,
+    commandText,
+  });
+  if (verificationHandled) return { ok: true };
 
   const activeConversation = await getActiveConversation(qqId, groupId);
   if (activeConversation) {
@@ -3040,6 +3051,8 @@ async function maybeHandleQqGroupAdFilter(input: {
   const group = await prisma.qqBotGroup.findUnique({ where: { groupId: input.groupId } });
   if (!group?.enabled || !group.adFilterEnabled) return false;
   const senderNickname = input.event.sender?.card || input.event.sender?.nickname || null;
+  const whitelisted = await isQqGroupAdWhitelisted(input.groupId, input.qqId);
+  if (whitelisted) return false;
 
   try {
     const review = await reviewQqGroupMessageForAd({
@@ -3070,6 +3083,11 @@ async function maybeHandleQqGroupAdFilter(input: {
     await callQqBotAction("delete_msg", {
       message_id: Number(input.event.message_id) || input.event.message_id,
     });
+    const verification = await createQqGroupAdVerification({
+      groupId: input.groupId,
+      qqId: input.qqId,
+      nickname: senderNickname,
+    });
     const strike = await recordQqGroupAdStrikeHit({
       groupId: input.groupId,
       qqId: input.qqId,
@@ -3089,6 +3107,7 @@ async function maybeHandleQqGroupAdFilter(input: {
         groupName: group.name || input.groupId,
         review,
         hitCount: strike.hitCount,
+        verificationPrompt: verification.prompt,
         penaltyUserNotice: penalty.userNotice,
       }),
     ).catch(() => undefined);
@@ -3098,6 +3117,7 @@ async function maybeHandleQqGroupAdFilter(input: {
         qqId: input.qqId,
         nickname: senderNickname,
         review,
+        verificationPrompt: verification.prompt,
       }),
     ).catch(() => undefined);
     await logQqBotMessage({
@@ -3109,7 +3129,7 @@ async function maybeHandleQqGroupAdFilter(input: {
       messageId: String(input.event.message_id),
       content: messageText.slice(0, 500),
       result: [
-        `已撤回疑似广告消息（第${strike.hitCount}次，${review.riskScore}分，${review.reason}）`,
+        `已撤回疑似广告消息（第${strike.hitCount}次，${review.riskScore}分，${review.reason}；已生成白名单验证码）`,
         penalty.logSummary,
       ].filter(Boolean).join("；"),
       rawPayload: input.event,
@@ -3135,6 +3155,7 @@ function renderQqGroupAdFilterPrivateNotice(input: {
   groupName: string;
   review: Awaited<ReturnType<typeof reviewQqGroupMessageForAd>>;
   hitCount: number;
+  verificationPrompt: string;
   penaltyUserNotice?: string;
 }) {
   return [
@@ -3142,6 +3163,9 @@ function renderQqGroupAdFilterPrivateNotice(input: {
     `系统说明：${input.review.reason}`,
     "如果你本意只是普通交流、玩梗或求助，换个更直接、没那么像招募导流的说法再发一次就行。",
     `累计命中：第 ${input.hitCount} 次。`,
+    `如需临时免过滤，请在 10 分钟内完成趣味验证：${input.verificationPrompt}`,
+    "把题目的答案直接回复给我即可，也可以发送“验证码 答案”。",
+    "验证成功后，你将在本群获得 30 天广告过滤白名单。",
     ...(input.penaltyUserNotice ? [input.penaltyUserNotice] : []),
   ].join("\n");
 }
@@ -3151,6 +3175,7 @@ function renderQqGroupAdFilterGroupNotice(
     qqId: string;
     nickname?: string | null;
     review: Awaited<ReturnType<typeof reviewQqGroupMessageForAd>>;
+    verificationPrompt: string;
   },
 ) {
   const who = [`[CQ:at,qq=${input.qqId}]`, `（QQ：${input.qqId}${input.nickname ? `，${input.nickname}` : ""}）`].join("");
@@ -3158,7 +3183,142 @@ function renderQqGroupAdFilterGroupNotice(
     `刚刚撤回了 ${who} 的一条消息。`,
     `说明：${input.review.reason}`,
     "如果本意只是普通交流、玩梗或求助，建议改成更日常、更直接的说法后再发一次。",
+    `如需申请本群 30 天广告过滤白名单，请在 10 分钟内私聊我或 @我完成趣味验证：${input.verificationPrompt}`,
+    "把答案直接发给我即可，也可以发送“验证码 答案”。",
   ].join("\n");
+}
+
+function hashQqGroupAdVerificationCode(code: string) {
+  return crypto.createHash("sha256").update(`qqbot-group-ad-verification:${code}`).digest("hex");
+}
+
+function extractQqGroupAdVerificationCode(text: string) {
+  const normalized = String(text || "").trim().toUpperCase();
+  const match = normalized.match(/^(?:验证码|白名单验证)\s*[:：]?\s*([A-Z0-9\u4E00-\u9FFF]{2,12})$/i)
+    || normalized.match(/^([A-Z0-9\u4E00-\u9FFF]{2,12})$/i);
+  return match?.[1] || "";
+}
+
+function createFunQqGroupAdVerificationChallenge() {
+  const words = ["烧麦", "银杏", "晚风", "药大", "奶茶", "实验"];
+  const word = words[crypto.randomInt(words.length)];
+  const suffix = crypto.randomInt(10, 100);
+  const reversed = Array.from(word).reverse().join("");
+  return {
+    code: `${reversed}${suffix}`.toUpperCase(),
+    prompt: `把“${word}”倒过来写，再接上数字 ${suffix}。`,
+  };
+}
+
+async function createQqGroupAdVerification(input: {
+  groupId: string;
+  qqId: string;
+  nickname?: string | null;
+}) {
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + QQ_GROUP_AD_VERIFICATION_TTL_MS);
+  await prisma.qqBotGroupAdVerification.updateMany({
+    where: {
+      groupId: input.groupId,
+      qqId: input.qqId,
+      usedAt: null,
+      expiresAt: { gt: now },
+    },
+    data: { usedAt: now },
+  });
+
+  const challenge = createFunQqGroupAdVerificationChallenge();
+  await prisma.qqBotGroupAdVerification.create({
+    data: {
+      groupId: input.groupId,
+      qqId: input.qqId,
+      nickname: input.nickname || null,
+      codeHash: hashQqGroupAdVerificationCode(challenge.code),
+      expiresAt,
+    },
+  });
+  return { ...challenge, expiresAt };
+}
+
+async function isQqGroupAdWhitelisted(groupId: string, qqId: string) {
+  const whitelist = await prisma.qqBotGroupAdWhitelist.findUnique({
+    where: { groupId_qqId: { groupId, qqId } },
+    select: { expiresAt: true },
+  });
+  return Boolean(whitelist && whitelist.expiresAt.getTime() > Date.now());
+}
+
+async function maybeHandleQqGroupAdVerification(input: {
+  event: OneBotEvent;
+  qqId: string;
+  groupId?: string;
+  messageText: string;
+  commandText: string;
+}) {
+  const isGroup = input.event.message_type === "group";
+  if (isGroup && !isExplicitBotMention(input.event, input.messageText)) return false;
+  const code = extractQqGroupAdVerificationCode(input.commandText);
+  if (!code) return false;
+
+  const now = new Date();
+  const verification = await prisma.qqBotGroupAdVerification.findFirst({
+    where: {
+      qqId: input.qqId,
+      codeHash: hashQqGroupAdVerificationCode(code),
+      usedAt: null,
+      expiresAt: { gt: now },
+      ...(isGroup && input.groupId ? { groupId: input.groupId } : {}),
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!verification) return false;
+
+  const used = await prisma.$transaction(async (tx) => {
+    const claim = await tx.qqBotGroupAdVerification.updateMany({
+      where: { id: verification.id, usedAt: null, expiresAt: { gt: now } },
+      data: { usedAt: now },
+    });
+    if (claim.count !== 1) return false;
+    const expiresAt = new Date(now.getTime() + QQ_GROUP_AD_WHITELIST_TTL_MS);
+    await tx.qqBotGroupAdWhitelist.upsert({
+      where: { groupId_qqId: { groupId: verification.groupId, qqId: input.qqId } },
+      create: {
+        groupId: verification.groupId,
+        qqId: input.qqId,
+        nickname: input.event.sender?.card || input.event.sender?.nickname || verification.nickname,
+        expiresAt,
+      },
+      update: {
+        nickname: input.event.sender?.card || input.event.sender?.nickname || verification.nickname,
+        expiresAt,
+      },
+    });
+    return true;
+  });
+  if (!used) return true;
+
+  const group = await prisma.qqBotGroup.findUnique({
+    where: { groupId: verification.groupId },
+    select: { name: true },
+  });
+  const message = `验证成功：你已加入群 ${group?.name || verification.groupId} 的广告过滤白名单，30 天内不会再被本群广告过滤自动撤回。`;
+  await logQqBotMessage({
+    direction: "inbound",
+    eventType: "group-ad-verification",
+    status: "ok",
+    qqId: input.qqId,
+    groupId: verification.groupId,
+    messageId: input.event.message_id ? String(input.event.message_id) : undefined,
+    content: "已提交广告过滤验证码",
+    result: "广告过滤白名单已生效 30 天",
+    rawPayload: input.event,
+  });
+  await replyToEvent({
+    event: input.event,
+    qqId: input.qqId,
+    groupId: input.groupId,
+  }, message);
+  return true;
 }
 
 async function recordQqGroupAdStrikeHit(input: {
