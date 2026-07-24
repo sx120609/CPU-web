@@ -308,7 +308,7 @@ function Install-AgentDependencies {
   $npm = Get-Executable @("npm.cmd", "npm")
   if (-not $npm) { Fail "未找到 npm" }
   Write-DeployLog "安装 Agent 后端依赖"
-  $null = Invoke-Native $npm @("install", "--prefix", "server", "--no-audit", "--no-fund")
+  $null = Invoke-Native $npm @("install", "--prefix", "server", "--include=dev", "--no-audit", "--no-fund")
 }
 
 function Build-Agent {

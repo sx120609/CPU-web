@@ -838,10 +838,10 @@ install_project_dependencies() {
   local project="$1"
   if [ -f "$project/package-lock.json" ]; then
     log "Installing $project dependencies with npm ci"
-    npm ci --prefix "$project" --no-audit --no-fund
+    npm ci --prefix "$project" --include=dev --no-audit --no-fund
   else
     log "Installing $project dependencies with npm install (no lockfile)"
-    npm install --prefix "$project" --no-audit --no-fund
+    npm install --prefix "$project" --include=dev --no-audit --no-fund
   fi
 }
 
@@ -1240,7 +1240,7 @@ do_agent_start() {
   log "通过 pm2 启动 $AGENT_SERVICE_NAME"
   cd server
   if pm2 describe "$AGENT_SERVICE_NAME" >/dev/null 2>&1; then
-    pm2 restart "$AGENT_SERVICE_NAME" --update-env
+    NODE_ENV=production pm2 restart "$AGENT_SERVICE_NAME" --update-env
   else
     NODE_ENV=production pm2 start "node dist/jwxtAgent.js" \
       --name "$AGENT_SERVICE_NAME" \
@@ -1293,7 +1293,7 @@ do_proxy_stop()    { ensure_pm2; pm2 stop "$PROXY_SERVICE_NAME"; }
 do_proxy_restart() { ensure_node; ensure_pm2; pm2 restart "$PROXY_SERVICE_NAME" --update-env; }
 do_proxy_logs()    { ensure_pm2; pm2 logs "$PROXY_SERVICE_NAME"; }
 do_agent_stop()    { ensure_pm2; pm2 stop "$AGENT_SERVICE_NAME"; }
-do_agent_restart() { ensure_node; ensure_pm2; ensure_agent_env; pm2 restart "$AGENT_SERVICE_NAME" --update-env; }
+do_agent_restart() { ensure_node; ensure_pm2; ensure_agent_env; NODE_ENV=production pm2 restart "$AGENT_SERVICE_NAME" --update-env; }
 do_agent_logs()    { ensure_pm2; pm2 logs "$AGENT_SERVICE_NAME"; }
 
 do_update_legacy() {
