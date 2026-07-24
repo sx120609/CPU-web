@@ -108,7 +108,7 @@
             <el-dropdown @command="onUserCmd">
               <span class="user-info">
                 <UserAvatar :size="30" class="user-avatar" :src="auth.user?.avatar" :name="auth.user?.nickname" alt="用户头像" />
-                <span class="user-name">{{ userDisplayName }}</span>
+                <span class="user-name">{{ auth.user?.nickname }}</span>
                 <el-icon><ArrowDown /></el-icon>
               </span>
               <template #dropdown>
@@ -227,7 +227,7 @@
         <template v-if="auth.isLoggedIn">
           <UserAvatar :size="34" class="user-avatar" :src="auth.user?.avatar" :name="auth.user?.nickname" alt="用户头像" />
           <div class="drawer-user">
-            <div>{{ userDisplayName }}</div>
+            <div>{{ auth.user?.nickname }}</div>
             <button type="button" @click="goDrawer({ id: 'system-profile', to: '/profile', label: '个人中心', icon: UserFilled })">个人中心</button>
           </div>
           <el-button text type="danger" @click="onMobileLogout">退出</el-button>
@@ -331,12 +331,6 @@ const appearanceOptions: Array<{ value: AppearanceMode; label: string; icon: unk
 const appearanceIcon = computed(() => (
   appearance.mode === "system" ? Monitor : appearance.resolved === "dark" ? Moon : Sunny
 ));
-const userDisplayName = computed(() => {
-  const nickname = auth.user?.nickname?.trim() || auth.user?.username || "";
-  return auth.user?.enrollYear
-    ? `${nickname}（${auth.user.enrollYear}级）`
-    : nickname;
-});
 
 /** 某些路由（如 /schedule）希望"裸壳"渲染，没有顶栏/免责声明/footer */
 const hideChrome = computed(() => Boolean(route.meta?.hideChrome));
@@ -894,7 +888,7 @@ function setAppearanceMode(command: string | number | object) {
 .user-name {
   font-size: 13px;
   color: var(--cpu-text-secondary);
-  max-width: 160px;
+  max-width: 96px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
