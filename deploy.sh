@@ -1254,7 +1254,8 @@ do_agent_start() {
     chmod 600 server/.jwxt-agent-identity.json
   fi
   if pm2 describe "$PROXY_SERVICE_NAME" >/dev/null 2>&1; then
-    warn "检测到旧教务代理 $PROXY_SERVICE_NAME 仍在运行；确认不再使用后可执行 pm2 delete $PROXY_SERVICE_NAME"
+    log "移除已由出站 Agent 取代的旧教务代理 $PROXY_SERVICE_NAME"
+    pm2 delete "$PROXY_SERVICE_NAME"
   fi
   pm2 save >/dev/null
   echo ""

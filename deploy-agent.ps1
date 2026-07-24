@@ -364,7 +364,9 @@ function Start-Agent([switch]$SuppressAutostartHint) {
   Protect-AgentIdentityFile
 
   if (Test-Pm2Process $LegacyProxyServiceName) {
-    Write-DeployWarning "检测到旧代理 $LegacyProxyServiceName；确认不再使用后可执行：pm2 delete $LegacyProxyServiceName"
+    Write-DeployLog "移除已由出站 Agent 取代的旧代理 $LegacyProxyServiceName"
+    $null = Invoke-Native $pm2 @("delete", $LegacyProxyServiceName)
+    $null = Invoke-Native $pm2 @("save")
   }
   Write-DeployLog "Agent 已启动。使用 .\deploy-agent.cmd logs 查看连接日志"
   if (-not $SuppressAutostartHint -and -not (Get-AgentAutostartValue)) {
