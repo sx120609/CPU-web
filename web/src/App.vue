@@ -444,7 +444,7 @@ html, body, #app {
 }
 
 .in-app-tip {
-  color: #374151;
+  color: var(--cpu-text);
   font-size: 14px;
   line-height: 1.7;
 
@@ -453,7 +453,7 @@ html, body, #app {
   }
 
   .muted {
-    color: #6b7280;
+    color: var(--cpu-text-secondary);
     font-size: 13px;
   }
 }

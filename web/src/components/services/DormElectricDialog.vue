@@ -41,66 +41,62 @@
       </div>
       <div v-if="(data.balance ?? 100) < 10 && data.balance !== null" class="warn">
         <el-icon><WarningFilled /></el-icon>
-        余额不足，建议尽快充值。充值将跳转到学校官方页面办理。
+        余额不足，建议按缴费流程尽快购电。
       </div>
       <div class="actions">
         <el-button text @click="refresh">
           <el-icon><Refresh /></el-icon> 刷新
         </el-button>
-        <button type="button" class="link-btn" @click="confirmRecharge">前往充值 →</button>
+        <button type="button" class="link-btn" @click="showPaymentGuide">交电费流程 →</button>
       </div>
     </div>
   </el-dialog>
 
   <el-dialog
-    v-model="rechargeConfirmOpen"
-    title="前往官方充值页面"
+    v-model="paymentGuideOpen"
+    title="宿舍电费缴费流程"
     width="420"
     append-to-body
     class="recharge-dialog"
   >
     <div class="recharge-confirm">
-      <div v-if="inAppBrowser.isInApp" class="in-app-warning">
-        检测到当前可能在{{ inAppBrowser.label }}内打开。电费充值页面在内置浏览器中可能无法正常加载，
-        请点击右上角菜单，选择“在浏览器打开”后再继续。
+      <ol class="payment-steps">
+        <li>
+          <strong>先充值校园卡</strong>
+          <span>前往中国建设银行 APP，搜索“校园卡充值”，选择“中国药科大学”，将金额充值到校园卡。</span>
+        </li>
+        <li>
+          <strong>再完成购电</strong>
+          <span>前往企业微信 → 工作台 → 校园卡务，进入电费功能并完成缴费。</span>
+        </li>
+      </ol>
+      <div class="system-note">
+        <strong>注意</strong>
+        <span>“校园卡务”页面加载较慢，请耐心等待；每日 23:30–次日 02:00 为系统盘点时段，无法完成充值、购电操作。</span>
       </div>
-      <p>即将打开中国药科大学官方校园卡 / 电费充值页面。</p>
-      <ul>
-        <li>该电费站点受学校系统影响加载较慢，建议使用外部浏览器打开，并耐心等候。</li>
-        <li>如果页面加载不出来，请尝试连接校园网后再访问。</li>
-        <li>登录用户名通常为学号，默认密码通常为身份证后六位数字。</li>
-        <li>如果身份证末位是 X，请向前多取一位，输入倒数 6 个数字。</li>
-        <li>充值、支付、交易记录等均发生在学校官方页面，所有交易与本站无关。</li>
-        <li>建议不要在该页面修改默认密码，避免后续遗忘影响使用。</li>
-      </ul>
+      <div class="password-tip">
+        <strong>密码提示</strong>
+        <span>登录用户名通常为学号，默认密码通常为身份证后六位数字；如果身份证末位是 X，请向前多取一位，输入倒数 6 个数字。</span>
+      </div>
     </div>
     <template #footer>
-      <el-button @click="rechargeConfirmOpen = false">取消</el-button>
-      <el-button type="primary" :disabled="rechargeReadSeconds > 0" @click="openRecharge">
-        {{ rechargeReadSeconds > 0 ? `请先阅读 ${rechargeReadSeconds}s` : "继续前往充值" }}
-      </el-button>
+      <el-button type="primary" @click="paymentGuideOpen = false">我知道了</el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { onBeforeUnmount, ref, watch } from "vue";
 import { Loading, WarningFilled, Refresh } from "@element-plus/icons-vue";
 import { servicesApi, type DormElectricResult } from "@/api/services";
-import { detectInAppBrowser } from "@/utils/inAppBrowser";
 
 const props = defineProps<{ modelValue: boolean }>();
 defineEmits<{ (e: "update:modelValue", v: boolean): void }>();
 
-const RECHARGE_URL = "https://vcard.cpu.edu.cn/plat/shouyeUser";
-
 const loading = ref(false);
 const error = ref("");
 const data = ref<DormElectricResult | null>(null);
-const rechargeConfirmOpen = ref(false);
-const rechargeReadSeconds = ref(0);
-const inAppBrowser = computed(() => detectInAppBrowser());
-let rechargeReadTimer: number | null = null;
+const paymentGuideOpen = ref(false);
 let disposed = false;
 let refreshSeq = 0;
 
@@ -112,16 +108,10 @@ watch(() => props.modelValue, (v) => {
   }
 });
 
-watch(rechargeConfirmOpen, (open) => {
-  if (open) startRechargeReadTimer();
-  else clearRechargeReadTimer();
-});
-
 onBeforeUnmount(() => {
   disposed = true;
   refreshSeq += 1;
   loading.value = false;
-  clearRechargeReadTimer();
 });
 
 async function refresh() {
@@ -142,33 +132,8 @@ async function refresh() {
   }
 }
 
-function confirmRecharge() {
-  rechargeConfirmOpen.value = true;
-}
-
-function openRecharge() {
-  if (rechargeReadSeconds.value > 0) return;
-  rechargeConfirmOpen.value = false;
-  window.open(RECHARGE_URL, "_blank", "noopener,noreferrer");
-}
-
-function startRechargeReadTimer() {
-  clearRechargeReadTimer();
-  rechargeReadSeconds.value = 5;
-  rechargeReadTimer = window.setInterval(() => {
-    rechargeReadSeconds.value -= 1;
-    if (rechargeReadSeconds.value <= 0) {
-      clearRechargeReadTimer();
-    }
-  }, 1000);
-}
-
-function clearRechargeReadTimer() {
-  if (rechargeReadTimer) {
-    window.clearInterval(rechargeReadTimer);
-    rechargeReadTimer = null;
-  }
-  if (!rechargeConfirmOpen.value) rechargeReadSeconds.value = 0;
+function showPaymentGuide() {
+  paymentGuideOpen.value = true;
 }
 </script>
 
@@ -254,28 +219,49 @@ function clearRechargeReadTimer() {
 .link-btn:hover { text-decoration: underline; }
 
 .recharge-confirm {
-  color: var(--cpu-text-secondary);
+  color: var(--cpu-text);
   font-size: 13px;
   line-height: 1.6;
 }
-.recharge-confirm p {
-  margin: 0 0 8px;
-}
-.recharge-confirm ul {
+.payment-steps {
   margin: 0;
-  padding-left: 18px;
+  padding-left: 22px;
 }
-.recharge-confirm li + li {
-  margin-top: 4px;
+.payment-steps li {
+  padding-left: 4px;
 }
-.in-app-warning {
-  margin-bottom: 10px;
-  padding: 10px 12px;
-  border: 1px solid rgba(245, 158, 11, 0.34);
+.payment-steps li + li {
+  margin-top: 12px;
+}
+.payment-steps strong,
+.payment-steps span,
+.system-note strong,
+.system-note span,
+.password-tip strong,
+.password-tip span {
+  display: block;
+}
+.payment-steps span,
+.system-note span,
+.password-tip span {
+  margin-top: 3px;
+  color: var(--cpu-text-secondary);
+}
+.system-note,
+.password-tip {
+  margin-top: 14px;
+  padding: 11px 12px;
   border-radius: 8px;
+}
+.system-note {
+  border: 1px solid rgba(245, 158, 11, 0.34);
   background: rgba(245, 158, 11, 0.12);
-  color: #92400e;
-  font-size: 13px;
-  line-height: 1.6;
+}
+.system-note strong {
+  color: var(--cpu-warning, #d97706);
+}
+.password-tip {
+  border: 1px solid var(--cpu-border-soft);
+  background: var(--cpu-surface-subtle);
 }
 </style>
