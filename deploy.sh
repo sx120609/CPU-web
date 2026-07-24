@@ -1293,7 +1293,17 @@ do_proxy_stop()    { ensure_pm2; pm2 stop "$PROXY_SERVICE_NAME"; }
 do_proxy_restart() { ensure_node; ensure_pm2; pm2 restart "$PROXY_SERVICE_NAME" --update-env; }
 do_proxy_logs()    { ensure_pm2; pm2 logs "$PROXY_SERVICE_NAME"; }
 do_agent_stop()    { ensure_pm2; pm2 stop "$AGENT_SERVICE_NAME"; }
-do_agent_restart() { ensure_node; ensure_pm2; ensure_agent_env; NODE_ENV=production pm2 restart "$AGENT_SERVICE_NAME" --update-env; }
+do_agent_restart() {
+  ensure_node
+  ensure_pm2
+  ensure_agent_env
+  NODE_ENV=production pm2 restart "$AGENT_SERVICE_NAME" --update-env
+  if pm2 describe "$PROXY_SERVICE_NAME" >/dev/null 2>&1; then
+    log "移除已由出站 Agent 取代的旧教务代理 $PROXY_SERVICE_NAME"
+    pm2 delete "$PROXY_SERVICE_NAME"
+  fi
+  pm2 save >/dev/null
+}
 do_agent_logs()    { ensure_pm2; pm2 logs "$AGENT_SERVICE_NAME"; }
 
 do_update_legacy() {
