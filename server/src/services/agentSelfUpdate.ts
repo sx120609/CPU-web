@@ -48,6 +48,9 @@ export function scheduleAgentSelfUpdate() {
     updateScheduled = false;
     console.error(`[jwxt-agent] 远程更新执行器启动失败: ${error.message}`);
   });
+  child.once("exit", () => {
+    updateScheduled = false;
+  });
   child.unref();
   updateScheduled = true;
 
