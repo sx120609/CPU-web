@@ -17,6 +17,7 @@ import { maskSongsInfo, MaskableSong, MaskableUser } from '~~/server/utils/stude
 import crypto from 'crypto'
 import { autoArchivePastSchedules } from '~~/server/services/scheduleAutoArchiveService'
 import { buildAdjustedVoteCountMap } from '~~/server/utils/vote-offset'
+import { getPublicUserDisplayName } from '~~/server/utils/user-display'
 
 interface SongResponse {
   id: number
@@ -96,7 +97,7 @@ export default defineEventHandler(async (event) => {
       grade: grade || '',
       scope: scope || '',
       userId: scope === 'mine' && hasValidUserId ? userId : undefined, // 如果 scope 为 mine，则将 userId 包含在缓存键中
-      displayNameSchemaVersion: 2,
+      displayNameSchemaVersion: 3,
       sortBy,
       sortOrder
     }
@@ -400,29 +401,6 @@ export default defineEventHandler(async (event) => {
 
     const playTimesMap = new Map(playTimesQuery.map((pt) => [pt.id, pt]))
 
-    // 获取所有用户的姓名列表，用于检测同名用户
-    const allUsers = await db
-      .select({
-        id: users.id,
-        name: users.name,
-        username: users.username,
-        grade: users.grade,
-        class: users.class
-      })
-      .from(users)
-
-    // 创建姓名到用户数组的映射
-    const nameToUsers = new Map()
-    allUsers.forEach((u) => {
-      const key = u.name || u.username
-      if (key) {
-        if (!nameToUsers.has(key)) {
-          nameToUsers.set(key, [])
-        }
-        nameToUsers.get(key).push(u)
-      }
-    })
-
     // 获取当前用户的重播申请
     const userReplayRequestedSongs = new Set()
     const userReplayRequestsMap = new Map() // 存储详细的重播申请信息
@@ -447,36 +425,16 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // 辅助函数：格式化显示名称
-    const formatDisplayName = (userObj: any) => {
-      if (!userObj) return '未知用户'
-      let displayName = userObj.name || userObj.username
-      if (!displayName) return '未知用户'
-
-      const sameNameUsers = nameToUsers.get(displayName)
-      if (sameNameUsers && sameNameUsers.length > 1) {
-        if (userObj.grade) {
-          const sameGradeUsers = sameNameUsers.filter((u: any) => u.grade === userObj.grade)
-          if (sameGradeUsers.length > 1 && userObj.class) {
-            displayName = `${displayName}（${userObj.grade} ${userObj.class}）`
-          } else {
-            displayName = `${displayName}（${userObj.grade}）`
-          }
-        }
-      }
-      return displayName
-    }
-
     // 转换数据格式
     const formattedSongs: SongResponse[] = songsData.map((song) => {
       // 处理投稿人姓名
-      const requesterName = formatDisplayName(song.requester)
+      const requesterName = getPublicUserDisplayName(song.requester)
 
       // 处理重播申请人
       const replayRequesters = (replayRequestersMap.get(song.id) || []) as MaskableUser[]
       const formattedReplayRequesters = replayRequesters.map((r: MaskableUser) => ({
         ...r,
-        displayName: formatDisplayName(r)
+        displayName: getPublicUserDisplayName(r)
       }))
 
       // 创建基本歌曲对象

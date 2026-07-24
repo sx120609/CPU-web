@@ -1,4 +1,4 @@
-import { and, eq, inArray, lt } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '~/drizzle/db'
 import { schedules, songReplayRequests, songs } from '~/drizzle/schema'
 import { getBeijingStartOfDay, getBeijingTime } from '~/utils/timeUtils'
@@ -37,87 +37,143 @@ const runAutoArchive = async (source: string): Promise<AutoArchiveResult> => {
   try {
     const todayStart = getBeijingStartOfDay()
 
-    const overdueSchedules = await db
+    const publishedSchedules = await db
       .select({
         scheduleId: schedules.id,
-        songId: schedules.songId
+        songId: schedules.songId,
+        playDate: schedules.playDate,
+        played: schedules.played
       })
       .from(schedules)
-      .where(
-        and(
-          eq(schedules.isDraft, false),
-          eq(schedules.played, false),
-          lt(schedules.playDate, todayStart)
-        )
-      )
-
-    if (overdueSchedules.length === 0) {
-      return {
-        skipped: false,
-        scheduleCount: 0,
-        updatedSongCount: 0
-      }
-    }
+      .where(eq(schedules.isDraft, false))
 
     const now = getBeijingTime()
+    const overdueSchedules = publishedSchedules.filter(
+      (item) => new Date(item.playDate).getTime() < todayStart.getTime()
+    )
+    const incorrectlyPlayedSchedules = publishedSchedules.filter(
+      (item) => item.played && new Date(item.playDate).getTime() >= todayStart.getTime()
+    )
     const scheduleIds = overdueSchedules.map((item) => item.scheduleId)
     const songIds = [...new Set(overdueSchedules.map((item) => item.songId))]
 
-    await db
-      .update(schedules)
-      .set({
-        played: true,
-        updatedAt: now
-      })
-      .where(and(inArray(schedules.id, scheduleIds), eq(schedules.played, false)))
-
-    let updatedSongs: Array<{ id: number }> = []
-    try {
-      updatedSongs = await db
-        .update(songs)
+    if (scheduleIds.length > 0) {
+      await db
+        .update(schedules)
         .set({
           played: true,
-          playedAt: now,
           updatedAt: now
         })
-        .where(and(inArray(songs.id, songIds), eq(songs.played, false)))
-        .returning({ id: songs.id })
-    } catch (error: any) {
-      if (isMissingColumnError(error, 'playedAt')) {
-        console.warn('[Schedule Auto Archive] playedAt 字段不存在，回退为仅更新 played 字段')
+        .where(and(inArray(schedules.id, scheduleIds), eq(schedules.played, false)))
+    }
+
+    if (incorrectlyPlayedSchedules.length > 0) {
+      await db
+        .update(schedules)
+        .set({
+          played: false,
+          updatedAt: now
+        })
+        .where(inArray(schedules.id, incorrectlyPlayedSchedules.map((item) => item.scheduleId)))
+    }
+
+    const storedSongStates = await db
+      .select({
+        id: songs.id,
+        played: songs.played
+      })
+      .from(songs)
+    const overdueSongIds = new Set(songIds)
+    const songIdsToMark = storedSongStates
+      .filter((song) => overdueSongIds.has(song.id) && !song.played)
+      .map((song) => song.id)
+    const songIdsToReset = storedSongStates
+      .filter((song) => !overdueSongIds.has(song.id) && song.played)
+      .map((song) => song.id)
+
+    let updatedSongs: Array<{ id: number }> = []
+    if (songIdsToMark.length > 0) {
+      try {
         updatedSongs = await db
           .update(songs)
           .set({
             played: true,
+            playedAt: now,
             updatedAt: now
           })
-          .where(and(inArray(songs.id, songIds), eq(songs.played, false)))
+          .where(inArray(songs.id, songIdsToMark))
           .returning({ id: songs.id })
-      } else {
-        throw error
+      } catch (error: any) {
+        if (isMissingColumnError(error, 'playedAt')) {
+          console.warn('[Schedule Auto Archive] playedAt 字段不存在，回退为仅更新 played 字段')
+          updatedSongs = await db
+            .update(songs)
+            .set({
+              played: true,
+              updatedAt: now
+            })
+            .where(inArray(songs.id, songIdsToMark))
+            .returning({ id: songs.id })
+        } else {
+          throw error
+        }
       }
     }
 
-    try {
-      await db
-        .update(songReplayRequests)
-        .set({
-          status: 'FULFILLED',
-          updatedAt: now
-        })
-        .where(
-          and(inArray(songReplayRequests.songId, songIds), eq(songReplayRequests.status, 'PENDING'))
-        )
-    } catch (error: any) {
-      if (isMissingReplayTableError(error)) {
-        console.warn('[Schedule Auto Archive] song_replay_requests 表不存在，跳过重播申请状态联动')
-      } else {
-        throw error
+    if (songIdsToReset.length > 0) {
+      try {
+        await db
+          .update(songs)
+          .set({
+            played: false,
+            playedAt: null,
+            updatedAt: now
+          })
+          .where(inArray(songs.id, songIdsToReset))
+      } catch (error: any) {
+        if (isMissingColumnError(error, 'playedAt')) {
+          await db
+            .update(songs)
+            .set({
+              played: false,
+              updatedAt: now
+            })
+            .where(inArray(songs.id, songIdsToReset))
+        } else {
+          throw error
+        }
       }
     }
 
-    await cacheService.clearSchedulesCache()
-    await cacheService.clearSongsCache()
+    if (songIds.length > 0) {
+      try {
+        await db
+          .update(songReplayRequests)
+          .set({
+            status: 'FULFILLED',
+            updatedAt: now
+          })
+          .where(
+            and(inArray(songReplayRequests.songId, songIds), eq(songReplayRequests.status, 'PENDING'))
+          )
+      } catch (error: any) {
+        if (isMissingReplayTableError(error)) {
+          console.warn('[Schedule Auto Archive] song_replay_requests 表不存在，跳过重播申请状态联动')
+        } else {
+          throw error
+        }
+      }
+    }
+
+    const changed =
+      updatedSongs.length > 0
+      || songIdsToReset.length > 0
+      || incorrectlyPlayedSchedules.length > 0
+      || overdueSchedules.some((item) => !item.played)
+    if (changed) {
+      await cacheService.clearSchedulesCache()
+      await cacheService.clearSongsCache()
+    }
 
     if (updatedSongs.length > 0) {
       const updatedSongIds = updatedSongs.map((song) => song.id)
@@ -139,13 +195,13 @@ const runAutoArchive = async (source: string): Promise<AutoArchiveResult> => {
     }
 
     console.log(
-      `[Schedule Auto Archive] 已自动归档 ${scheduleIds.length} 条过期排期，更新 ${updatedSongs.length} 首歌曲为已播放（来源: ${source}）`
+      `[Schedule Auto Archive] 状态已按排期日期同步：${scheduleIds.length} 条过期排期，${updatedSongs.length} 首歌曲设为已播放，${songIdsToReset.length} 首歌曲纠正为未播放（来源: ${source}）`
     )
 
     return {
       skipped: false,
       scheduleCount: scheduleIds.length,
-      updatedSongCount: updatedSongs.length
+      updatedSongCount: updatedSongs.length + songIdsToReset.length
     }
   } catch (error) {
     console.error('[Schedule Auto Archive] 执行失败:', error)
@@ -184,4 +240,3 @@ export const autoArchivePastSchedules = async (
 
   return runningTask
 }
-

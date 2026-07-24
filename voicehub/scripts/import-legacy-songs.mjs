@@ -37,8 +37,8 @@ function printHelp() {
 导入旧 VoiceHub 的歌曲、评论和历史关系。
 
 默认只执行演练，不写入目标数据库。确认统计后追加 --apply。
-旧系统数据按历史归档导入：幽灵占位账号名下的歌曲会标记为已播放，
-不会影响目标库中正常账号提交的歌曲。
+旧系统数据按历史记录导入；歌曲是否已播放由已发布排期及其日期统一推导，
+不会因为来自幽灵占位账号就直接标记为已播放。
 
 用法：
   node scripts/import-legacy-songs.mjs \\
@@ -273,9 +273,7 @@ async function main() {
             semesters: 0,
             comments: 0
           },
-          updated: {
-            archivedSongs: 0
-          },
+          updated: {},
           skipped: {
             ghostUsers: 0,
             songs: 0,
@@ -298,7 +296,6 @@ async function main() {
             .filter((user) => user.role === GHOST_ROLE)
             .map((user) => [user.username, Number(user.id)])
         )
-        const ghostUserIds = new Set(ghostByUsername.values())
         const legacyUserIdMap = new Map()
         let simulatedUserId = -1
 
@@ -340,12 +337,10 @@ async function main() {
             `
             targetUserId = Number(inserted[0].id)
             ghostByUsername.set(username, targetUserId)
-            ghostUserIds.add(targetUserId)
             stats.inserted.ghostUsers += 1
           } else {
             targetUserId = simulatedUserId--
             ghostByUsername.set(username, targetUserId)
-            ghostUserIds.add(targetUserId)
             stats.inserted.ghostUsers += 1
           }
           legacyUserIdMap.set(Number(legacyUser.id), targetUserId)
@@ -369,19 +364,6 @@ async function main() {
 
           const match = findMatchingSong(legacySong, songIndexes)
           if (match) {
-            if (!match.played && ghostUserIds.has(Number(match.requesterId))) {
-              if (options.apply) {
-                await tx`
-                  update "Song"
-                  set
-                    played = true,
-                    "playedAt" = coalesce("playedAt", "updatedAt", "createdAt")
-                  where id = ${match.id} and played = false
-                `
-              }
-              match.played = true
-              stats.updated.archivedSongs += 1
-            }
             legacySongIdMap.set(Number(legacySong.id), Number(match.id))
             stats.skipped.songs += 1
             continue
@@ -400,8 +382,8 @@ async function main() {
                 ${legacySong.title},
                 ${legacySong.artist},
                 ${requesterId},
-                ${true},
-                ${legacySong.playedAt || legacySong.updatedAt || legacySong.createdAt || new Date()},
+                ${false},
+                ${null},
                 ${legacySong.semester || null},
                 ${null},
                 ${legacySong.cover || null},
@@ -421,7 +403,7 @@ async function main() {
             ...legacySong,
             id: targetSongId,
             requesterId,
-            played: true
+            played: false
           }
           addSongToIndexes(indexedSong, songIndexes)
           legacySongIdMap.set(Number(legacySong.id), targetSongId)

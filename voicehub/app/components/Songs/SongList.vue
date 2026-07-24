@@ -1,5 +1,5 @@
 <template>
-  <div class="song-list">
+  <div ref="songListRoot" class="song-list">
     <div class="song-list-header">
       <!-- 移动端搜索栏 -->
       <div class="mobile-search-container mobile-only">
@@ -319,6 +319,7 @@
           :total-pages="totalPages"
           :total-items="displayedSongs.length"
           item-name="首歌曲"
+          @change="handlePageChange"
         />
 
         <!-- 确认对话框 -->
@@ -445,6 +446,16 @@ const audioPlayer = useAudioPlayer()
 const currentPage = ref(1)
 const pageSize = ref(12) // 每页显示12首歌曲，适合横向布局
 const isMobile = ref(false)
+const songListRoot = ref(null)
+
+const handlePageChange = () => {
+  requestAnimationFrame(() => {
+    songListRoot.value?.scrollIntoView({
+      behavior: 'auto',
+      block: 'start'
+    })
+  })
+}
 
 // 切换活动标签
 const setActiveTab = (tab) => {
@@ -1690,6 +1701,7 @@ const vRipple = {
 
 <style scoped>
 .song-list {
+  scroll-margin-top: 16px;
   width: 100%;
   position: relative;
   z-index: 2;
@@ -1827,18 +1839,18 @@ const vRipple = {
 .tab-switch-enter-active,
 .tab-switch-leave-active {
   transition:
-    opacity 0.5s ease,
-    transform 0.5s ease;
+    opacity 0.16s ease,
+    transform 0.16s ease;
 }
 
 .tab-switch-enter-from {
   opacity: 0;
-  transform: translateY(30px);
+  transform: translateY(10px);
 }
 
 .tab-switch-leave-to {
   opacity: 0;
-  transform: translateY(-30px);
+  transform: translateY(-10px);
 }
 
 /* 标签按钮样式 */
@@ -1853,7 +1865,7 @@ const vRipple = {
   font-size: 16px;
   color: #4a5d4a;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transition: all 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
   border: 1px solid #d2deca;
   border-bottom: 3px solid transparent;
   border-radius: 12px;
@@ -3492,21 +3504,21 @@ button:disabled {
 /* 翻页动画 */
 .page-enter-active,
 .page-leave-active {
-  transition: all 0.4s ease;
+  transition: all 0.16s ease;
 }
 
 .page-enter-from {
   opacity: 0;
-  transform: translateY(30px);
+  transform: translateY(10px);
 }
 
 .page-leave-to {
   opacity: 0;
-  transform: translateY(-30px);
+  transform: translateY(-10px);
 }
 
 .page-move {
-  transition: transform 0.4s ease;
+  transition: transform 0.16s ease;
 }
 
 /* Final mobile sizing overrides: all primary controls remain comfortably tappable. */

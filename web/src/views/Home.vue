@@ -31,11 +31,11 @@
 
     <section v-if="homeError && !loading" class="block home-error">
       <el-empty :description="homeError">
-        <el-button type="primary" @click="loadSummary">重试</el-button>
+        <el-button type="primary" @click="loadSummary()">重试</el-button>
       </el-empty>
     </section>
 
-    <div v-else class="grid" :class="{ 'single-col': !showForumContent }" v-loading="loading">
+    <div v-else class="grid" :class="{ 'single-col': !showForumContent }" v-loading="loading && !summary">
       <!-- 左：热帖 + 最新 -->
       <div class="col-left" v-if="showForumContent">
         <section class="block" v-if="summary?.pinnedTopics?.length">
@@ -223,6 +223,12 @@ import { marketApi, type MarketItem } from "@/api/market";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { fmtRelative } from "@/utils/format";
+import {
+  readHomeMarketCache,
+  readHomeSummaryCache,
+  writeHomeMarketCache,
+  writeHomeSummaryCache,
+} from "@/utils/homeCache";
 
 const auth = useAuthStore();
 const site = useSiteStore();
@@ -236,7 +242,13 @@ const hotPreview = computed(() => (summary.value?.hotTopics ?? []).slice(0, 3));
 const visibleServices = computed(() => summary.value?.services ?? []);
 const showElectricEntry = computed(() => auth.isLoggedIn && site.features.electric);
 const hasServiceEntries = computed(() => showElectricEntry.value || visibleServices.value.length > 0);
+const homeCacheScope = computed(() => {
+  const identity = auth.user?.id ? `user-${auth.user.id}` : "guest";
+  return `${identity}:forum-${auth.canAccessForum ? "on" : "off"}`;
+});
 let loadSeq = 0;
+let marketLoadSeq = 0;
+let mounted = false;
 
 const enabledFeatureLabels = computed(() => {
   const labels = ["公告聚合", "教务数据", "常用校园服务"];
@@ -262,24 +274,51 @@ const heroIntro = computed(() => {
 const loginActionText = computed(() => site.features.forum ? "登录" : "登录使用");
 
 onMounted(() => {
-  void loadSummary();
-  if (site.features.market && auth.canAccessForum) void loadMarketPreview();
+  mounted = true;
+  void loadHomeScope();
 });
 
 watch(() => site.features.market && auth.canAccessForum, (enabled) => {
-  if (enabled && !marketPreview.value.length) void loadMarketPreview();
+  if (enabled && mounted && !marketPreview.value.length) {
+    const cached = readHomeMarketCache(homeCacheScope.value);
+    if (cached) marketPreview.value = cached;
+    void loadMarketPreview();
+  }
 });
 
-async function loadMarketPreview() {
+watch(homeCacheScope, () => {
+  if (mounted) void loadHomeScope();
+});
+
+async function loadHomeScope() {
+  const scope = homeCacheScope.value;
+  const cachedSummary = readHomeSummaryCache(scope);
+  summary.value = cachedSummary;
+  homeError.value = "";
+  void loadSummary({ background: Boolean(cachedSummary), scope });
+
+  marketLoadSeq += 1;
+  marketPreview.value = [];
+  if (site.features.market && auth.canAccessForum) {
+    const cachedMarket = readHomeMarketCache(scope);
+    if (cachedMarket) marketPreview.value = cachedMarket;
+    void loadMarketPreview(scope);
+  }
+}
+
+async function loadMarketPreview(scope = homeCacheScope.value) {
+  const seq = ++marketLoadSeq;
   try {
     const result = await marketApi.items({ page: 1, size: 4, sort: "new" }, {
       suppressErrorMessage: true,
       suppressAuthMessage: true,
       suppressAuthRedirect: true,
     });
+    if (seq !== marketLoadSeq || scope !== homeCacheScope.value) return;
     marketPreview.value = result.list;
+    writeHomeMarketCache(scope, result.list);
   } catch {
-    marketPreview.value = [];
+    if (seq === marketLoadSeq && !marketPreview.value.length) marketPreview.value = [];
   }
 }
 
@@ -297,19 +336,21 @@ function marketCategoryIcon(category: string) {
   } as Record<string, string>)[category] || "🛍️";
 }
 
-async function loadSummary() {
+async function loadSummary(options: { background?: boolean; scope?: string } = {}) {
+  const scope = options.scope ?? homeCacheScope.value;
   const seq = ++loadSeq;
-  loading.value = true;
+  const background = options.background === true && Boolean(summary.value);
+  if (!background) loading.value = true;
   homeError.value = "";
   try {
     // 不区分游客 / 登录态，统一调 home/summary —— 后端按 token 自动决定 identity 是否返回
     const next = await homeApi.summary({ suppressErrorMessage: true });
-    if (seq !== loadSeq) return;
+    if (seq !== loadSeq || scope !== homeCacheScope.value) return;
     summary.value = next;
+    writeHomeSummaryCache(scope, next);
   } catch (e) {
     if (seq !== loadSeq) return;
-    summary.value = { identity: null, pinnedTopics: [], hotTopics: [], latestTopics: [], announce: [], services: [] };
-    homeError.value = normalizeHomeError(e);
+    if (!summary.value) homeError.value = normalizeHomeError(e);
   } finally {
     if (seq === loadSeq) loading.value = false;
   }

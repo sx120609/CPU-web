@@ -9,6 +9,7 @@ import crypto from 'crypto'
 import { formatDateTime } from '~/utils/timeUtils'
 import { autoArchivePastSchedules } from '~~/server/services/scheduleAutoArchiveService'
 import { buildAdjustedVoteCountMap } from '~~/server/utils/vote-offset'
+import { getPublicUserDisplayName } from '~~/server/utils/user-display'
 
 const OPEN_API_DEBUG = process.env.OPEN_API_DEBUG === 'true'
 const debugLog = (...args: any[]) => {
@@ -47,7 +48,7 @@ export default defineEventHandler(async (event) => {
     const queryParams = {
       search: search || '',
       semester: semester || '',
-      displayNameSchemaVersion: 2,
+      displayNameSchemaVersion: 3,
       sortBy,
       sortOrder
     }
@@ -227,55 +228,9 @@ export default defineEventHandler(async (event) => {
 
     const playTimesMap = new Map(playTimesQuery.map((pt) => [pt.id, pt]))
 
-    // 获取所有用户的姓名列表，用于检测同名用户
-    const allUsers = await db
-      .select({
-        id: users.id,
-        name: users.name,
-        username: users.username,
-        grade: users.grade,
-        class: users.class
-      })
-      .from(users)
-
-    // 创建姓名到用户数组的映射
-    const nameToUsers = new Map()
-    allUsers.forEach((u) => {
-      const key = u.name || u.username
-      if (key) {
-        if (!nameToUsers.has(key)) {
-          nameToUsers.set(key, [])
-        }
-        nameToUsers.get(key).push(u)
-      }
-    })
-
     // 转换数据格式
     let formattedSongs = songsData.map((song) => {
-      // 处理投稿人姓名，如果是同名用户则添加后缀
-      let requesterName = song.requester?.name || song.requester?.username || '未知用户'
-
-      // 检查是否有同名用户
-      const sameNameUsers = nameToUsers.get(requesterName)
-      if (sameNameUsers && sameNameUsers.length > 1) {
-        const requesterWithGradeClass = song.requester
-
-        // 如果有年级信息，则添加年级后缀
-        if (requesterWithGradeClass?.grade) {
-          // 检查同一个年级是否有同名
-          const sameGradeUsers = sameNameUsers.filter(
-            (u: { grade?: string; class?: string }) => u.grade === requesterWithGradeClass.grade
-          )
-
-          if (sameGradeUsers.length > 1 && requesterWithGradeClass.class) {
-            // 同一个年级有同名，添加班级后缀
-            requesterName = `${requesterName}（${requesterWithGradeClass.grade} ${requesterWithGradeClass.class}）`
-          } else {
-            // 只添加年级后缀
-            requesterName = `${requesterName}（${requesterWithGradeClass.grade}）`
-          }
-        }
-      }
+      const requesterName = getPublicUserDisplayName(song.requester)
 
       // 创建歌曲对象
       const songObject: any = {

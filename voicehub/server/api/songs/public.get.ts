@@ -17,6 +17,7 @@ import { formatDateTime } from '~/utils/timeUtils'
 import { maskPublicScheduleData, PublicScheduleItem } from '../../utils/studentMask'
 import { autoArchivePastSchedules } from '~~/server/services/scheduleAutoArchiveService'
 import { buildAdjustedVoteCountMap } from '~~/server/utils/vote-offset'
+import { getPublicUserDisplayName } from '~~/server/utils/user-display'
 
 import { verifyUserAuth } from '../../utils/auth'
 
@@ -41,7 +42,7 @@ export default defineEventHandler(async (event) => {
       .limit(1)
       .then((result) => result[0])
     const shouldHideStudentInfo = systemSettingsData?.hideStudentInfo ?? true
-    const CACHE_SCHEMA_VERSION = 'v2'
+    const CACHE_SCHEMA_VERSION = 'v3'
 
     const hasAnonymousName = (schedulesList: any[]) =>
       schedulesList.some((item: any) => {
@@ -58,6 +59,22 @@ export default defineEventHandler(async (event) => {
         })
 
         return names.some((name) => name.includes('匿名') || name === '未知用户')
+      })
+
+    const hasLegacyGradeSuffix = (schedulesList: any[]) =>
+      schedulesList.some((item: any) => {
+        const names = [
+          item?.song?.requester,
+          ...(Array.isArray(item?.song?.replayRequesters)
+            ? item.song.replayRequesters.flatMap((requester: any) => [
+                requester?.name,
+                requester?.displayName
+              ])
+            : [])
+        ]
+        return names.some(
+          (name) => typeof name === 'string' && /（[^）]*级(?:\s+[^）]+)?）$/.test(name)
+        )
       })
 
     // 初始化缓存服务
@@ -114,10 +131,11 @@ export default defineEventHandler(async (event) => {
           Array.isArray(item.song.replayRequesters)
       )
       const cacheContainsAnonymous = hasAnonymousName(cachedSchedules)
+      const cacheContainsLegacyGradeSuffix = hasLegacyGradeSuffix(cachedSchedules)
 
-      if (!cacheShapeValid || cacheContainsAnonymous) {
+      if (!cacheShapeValid || cacheContainsAnonymous || cacheContainsLegacyGradeSuffix) {
         console.log(
-          `[Cache] 跳过旧版/不完整排期缓存，cacheShapeValid=${cacheShapeValid}, cacheContainsAnonymous=${cacheContainsAnonymous}`
+          `[Cache] 跳过旧版/不完整排期缓存，cacheShapeValid=${cacheShapeValid}, cacheContainsAnonymous=${cacheContainsAnonymous}, cacheContainsLegacyGradeSuffix=${cacheContainsLegacyGradeSuffix}`
         )
         cachedSchedules = null
       }
@@ -208,29 +226,6 @@ export default defineEventHandler(async (event) => {
 
     const voteCounts = new Map(voteCountsQuery.map((v) => [v.songId, v.count]))
 
-    // 获取所有用户的姓名列表，用于检测同名用户
-    const allUsers = await db
-      .select({
-        id: users.id,
-        name: users.name,
-        username: users.username,
-        grade: users.grade,
-        class: users.class
-      })
-      .from(users)
-
-    // 创建姓名到用户数组的映射
-    const nameToUsers = new Map()
-    allUsers.forEach((user) => {
-      const key = user.name || user.username
-      if (key) {
-        if (!nameToUsers.has(key)) {
-          nameToUsers.set(key, [])
-        }
-        nameToUsers.get(key).push(user)
-      }
-    })
-
     // 获取重播申请信息
     const songIds = schedulesData.map((s) => s.song.id)
     const adjustedVoteCounts = await buildAdjustedVoteCountMap(songIds, voteCounts)
@@ -301,26 +296,6 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // 辅助函数：格式化显示名称
-    const formatDisplayName = (userObj: any) => {
-      if (!userObj) return '未知用户'
-      let displayName = userObj.name || userObj.username
-      if (!displayName) return '未知用户'
-
-      const sameNameUsers = nameToUsers.get(displayName)
-      if (sameNameUsers && sameNameUsers.length > 1) {
-        if (userObj.grade) {
-          const sameGradeUsers = sameNameUsers.filter((u: any) => u.grade === userObj.grade)
-          if (sameGradeUsers.length > 1 && userObj.class) {
-            displayName = `${displayName}（${userObj.grade} ${userObj.class}）`
-          } else {
-            displayName = `${displayName}（${userObj.grade}）`
-          }
-        }
-      }
-      return displayName
-    }
-
     // 转换数据格式
     const formattedSchedules = schedulesData.map((schedule) => {
       // 获取原始日期，并确保使用UTC时间
@@ -340,7 +315,7 @@ export default defineEventHandler(async (event) => {
       )
 
       // 处理投稿人姓名
-      const requesterName = formatDisplayName(schedule.requester)
+      const requesterName = getPublicUserDisplayName(schedule.requester)
 
       // 获取重播申请信息
       const replayRequestCount = replayRequestCountsMap.get(schedule.song.id) || 0
@@ -348,7 +323,7 @@ export default defineEventHandler(async (event) => {
       const formattedReplayRequesters = replayRequesters.map((r: any) => ({
         id: r.id,
         name: r.name,
-        displayName: formatDisplayName(r),
+        displayName: getPublicUserDisplayName(r),
         grade: r.grade,
         class: r.class,
         status: r.status

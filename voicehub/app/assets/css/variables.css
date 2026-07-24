@@ -88,9 +88,9 @@
   --font-bold: 700;
 
   /* 过渡动画 */
-  --transition-fast: 0.15s ease;
-  --transition-normal: 0.2s ease;
-  --transition-slow: 0.3s ease;
+  --transition-fast: 0.1s ease;
+  --transition-normal: 0.14s ease;
+  --transition-slow: 0.18s ease;
 
   /* Z-index层级 */
   --z-dropdown: 100;

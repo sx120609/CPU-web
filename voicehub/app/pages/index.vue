@@ -2171,34 +2171,34 @@ if (
 .tab-fade-enter-active,
 .tab-fade-leave-active {
   transition:
-    opacity 0.3s ease,
-    transform 0.3s ease;
+    opacity 0.16s ease,
+    transform 0.16s ease;
 }
 
 .tab-fade-enter-from {
   opacity: 0;
-  transform: translateY(20px);
+  transform: translateY(8px);
 }
 
 .tab-fade-leave-to {
   opacity: 0;
-  transform: translateY(-20px);
+  transform: translateY(-8px);
 }
 
 /* 通知列表过渡动画 */
 .notification-list-fade-enter-active,
 .notification-list-fade-leave-active {
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .notification-list-fade-enter-from {
   opacity: 0;
-  transform: translateY(30px) scale(0.95);
+  transform: translateY(10px) scale(0.99);
 }
 
 .notification-list-fade-leave-to {
   opacity: 0;
-  transform: translateY(-20px) scale(1.02);
+  transform: translateY(-8px) scale(1.01);
 }
 
 /* 通知项交错进入动画 */
