@@ -588,6 +588,12 @@ export type JwxtAgentsAdminPatch = {
   }>;
 };
 
+export type JwxtAgentUpdateResult = {
+  accepted: true;
+  alreadyScheduled: boolean;
+  requestedAt: string;
+};
+
 export const adminApi = {
   // 概览
   overview: (options?: RequestOptions) => request.get<AdminOverview>("/admin/overview", undefined, options),
@@ -599,6 +605,8 @@ export const adminApi = {
     request.post<{ token: string }>("/admin/jwxt-agents/generate-token", {}),
   resetJwxtAgentIdentity: (agentId: string) =>
     request.post<JwxtAgentsAdminConfig>(`/admin/jwxt-agents/${encodeURIComponent(agentId)}/reset-identity`, {}),
+  updateJwxtAgent: (agentId: string) =>
+    request.post<JwxtAgentUpdateResult>(`/admin/jwxt-agents/${encodeURIComponent(agentId)}/update`, {}),
   // 数据库备份
   databaseStatus: (options?: RequestOptions) => request.get<DatabaseBackupStatus>("/admin/database/status", undefined, options),
   downloadDatabaseBackup: () =>

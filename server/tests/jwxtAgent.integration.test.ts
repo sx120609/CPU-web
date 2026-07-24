@@ -143,6 +143,9 @@ test("outbound JWXT Agent handles login, queries, dorm electricity, and crawler 
           lastUpdate: "2026-07-24 23:30",
         };
       }
+      if (action === "agent.update") {
+        return { accepted: true, alreadyScheduled: false, requestedAt: "2026-07-24T12:00:00.000Z" };
+      }
       if (action === "school-feed.crawl") return { items: [], pages: [] };
       throw new Error(`unexpected action: ${action}`);
     },
@@ -237,6 +240,13 @@ test("outbound JWXT Agent handles login, queries, dorm electricity, and crawler 
   assert.equal(electric.balance, 23.45);
   assert.equal(electric.room, "0313房间");
   assert.ok([...actions, ...actionsB].some((item) => item.action === "dorm-electric.query"));
+  const update = await gateway.requestJwxtAgent("campus-agent-a", "agent.update", {});
+  assert.deepEqual(update, {
+    accepted: true,
+    alreadyScheduled: false,
+    requestedAt: "2026-07-24T12:00:00.000Z",
+  });
+  assert.ok(actions.some((item) => item.action === "agent.update"));
 
   const replica = await import("../src/services/jwxtSessionReplica");
   const cache = await import("../src/services/cache");

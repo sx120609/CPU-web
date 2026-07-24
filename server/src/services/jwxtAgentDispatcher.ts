@@ -3,6 +3,7 @@ import { Errors } from "../utils/response";
 import * as jwxt from "./jwxtFacade";
 import { crawlSchoolFeedSource } from "./schoolCrawlerCore";
 import { queryDormElectricFromCampus } from "./dormElectricCampus";
+import { scheduleAgentSelfUpdate } from "./agentSelfUpdate";
 import type { JwxtAgentAction } from "./jwxtAgentProtocol";
 import { I_SERVICE_ICON_PATH_PATTERN } from "./jwxtClient";
 
@@ -116,6 +117,9 @@ export async function dispatchJwxtAgentAction(action: JwxtAgentAction, payload: 
       }).strict().parse(payload);
       return queryDormElectricFromCampus(input.studentNo);
     }
+    case "agent.update":
+      emptySchema.parse(payload);
+      return scheduleAgentSelfUpdate();
     default:
       throw Errors.badRequest("Agent 不支持该教务操作");
   }

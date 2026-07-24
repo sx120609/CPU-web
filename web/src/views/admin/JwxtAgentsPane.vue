@@ -112,7 +112,7 @@
           <label class="capability-item">
             <div>
               <strong>教务服务</strong>
-              <span>统一认证登录 + 教务登录 + 后续查询</span>
+              <span>统一认证登录 + 教务查询 + 宿舍电费查询</span>
             </div>
             <el-switch v-model="agent.jwxtEnabled" :disabled="!agent.enabled" />
           </label>
@@ -158,6 +158,13 @@
           </span>
           <span class="token-state">密钥已配置，服务端不会再次返回明文</span>
           <div>
+            <el-button
+              text
+              type="success"
+              :disabled="!agent.connection.ready"
+              :loading="updatingAgentId === agent.id"
+              @click="updateAgent(agent)"
+            >远程更新</el-button>
             <el-button
               v-if="agent.replicaIdentityPinned"
               text
@@ -217,6 +224,7 @@ type EditableAgent = JwxtAgentAdminItem & { pendingToken?: string };
 const loading = ref(false);
 const saving = ref(false);
 const generating = ref(false);
+const updatingAgentId = ref("");
 const source = ref<"environment" | "database">("environment");
 const agentPath = ref("/api/internal/jwxt-agent/connect");
 const localLoginPool = ref<JwxtLoginPoolNode | null>(null);
@@ -354,6 +362,27 @@ async function resetIdentity(agent: EditableAgent) {
   await adminApi.resetJwxtAgentIdentity(agent.id);
   await load();
   ElMessage.success("已解除身份固定，请立即用新的身份文件启动 Agent");
+}
+
+async function updateAgent(agent: EditableAgent) {
+  await ElMessageBox.confirm(
+    `${agent.name} 将在后台拉取最新代码、构建并重启，期间会短暂离线，完成后自动重连。`,
+    "确认远程更新 Agent",
+    {
+      type: "warning",
+      confirmButtonText: "开始更新",
+      cancelButtonText: "取消",
+    },
+  );
+  updatingAgentId.value = agent.id;
+  try {
+    const result = await adminApi.updateJwxtAgent(agent.id);
+    ElMessage.success(result.alreadyScheduled ? "该 Agent 已在更新中" : "更新指令已下发，Agent 将自动重连");
+    window.setTimeout(() => load().catch(() => undefined), 3_000);
+    window.setTimeout(() => load().catch(() => undefined), 15_000);
+  } finally {
+    updatingAgentId.value = "";
+  }
 }
 
 async function removeAgent(agent: EditableAgent) {

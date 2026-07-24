@@ -90,6 +90,14 @@ export type JwxtAgentActionMap = {
     input: { studentNo: string };
     output: DormElectricResult;
   };
+  "agent.update": {
+    input: Record<string, never>;
+    output: {
+      accepted: true;
+      alreadyScheduled: boolean;
+      requestedAt: string;
+    };
+  };
 };
 
 export type JwxtAgentAction = keyof JwxtAgentActionMap;

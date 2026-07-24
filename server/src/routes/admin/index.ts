@@ -106,7 +106,7 @@ import {
   resetJwxtAgentReplicaPublicKey,
   updateJwxtAgentRuntimeConfig,
 } from "../../services/jwxtAgentConfig";
-import { getJwxtAgentState } from "../../services/jwxtAgentGateway";
+import { getJwxtAgentState, requestJwxtAgent } from "../../services/jwxtAgentGateway";
 import { getQueryAgentPoolSnapshot } from "../../services/jwxtAgentRemote";
 import { getSsoLoginPoolSnapshot } from "../../services/ssoLoginPool";
 
@@ -201,6 +201,18 @@ adminRouter.post("/jwxt-agents/:agentId/reset-identity", adminOnly, async (req, 
     ok(res, jwxtAgentAdminSnapshot());
   } catch (error) {
     next(Errors.badRequest(error instanceof Error ? error.message : "Agent 加密身份重置失败"));
+  }
+});
+
+adminRouter.post("/jwxt-agents/:agentId/update", adminOnly, async (req, res, next) => {
+  try {
+    const agentId = String(req.params.agentId || "");
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(agentId)) {
+      throw Errors.badRequest("Agent ID 无效");
+    }
+    ok(res, await requestJwxtAgent(agentId, "agent.update", {}, 10_000));
+  } catch (error) {
+    next(error);
   }
 });
 
