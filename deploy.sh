@@ -1452,9 +1452,20 @@ do_proxy_update() {
 }
 
 do_agent_update() {
+  local before_pull="" after_pull=""
   if [ -d .git ]; then
     log "拉取最新代码"
+    before_pull="$(git rev-parse HEAD 2>/dev/null || true)"
     git pull --ff-only || warn "git pull 失败，继续部署当前代码"
+    after_pull="$(git rev-parse HEAD 2>/dev/null || true)"
+    if [ "${CPU_AGENT_UPDATE_REEXEC:-0}" != "1" ] \
+      && [ -n "$before_pull" ] \
+      && [ -n "$after_pull" ] \
+      && [ "$before_pull" != "$after_pull" ] \
+      && ! git diff --quiet "$before_pull" "$after_pull" -- deploy.sh; then
+      log "检测到 Agent 部署脚本已更新，重新载入新脚本"
+      CPU_AGENT_UPDATE_REEXEC=1 exec bash "$ROOT_DIR/deploy.sh" agent-update
+    fi
   else
     warn "非 git 仓库，跳过 git pull"
   fi
