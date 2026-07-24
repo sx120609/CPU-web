@@ -3164,7 +3164,6 @@ function renderQqGroupAdFilterPrivateNotice(input: {
     "如果你本意只是普通交流、玩梗或求助，换个更直接、没那么像招募导流的说法再发一次就行。",
     `累计命中：第 ${input.hitCount} 次。`,
     `如需临时免过滤，请在 10 分钟内完成趣味验证：${input.verificationPrompt}`,
-    "把题目的答案直接回复给我即可，也可以发送“验证码 答案”。",
     "验证成功后，你将在本群获得 30 天广告过滤白名单。",
     ...(input.penaltyUserNotice ? [input.penaltyUserNotice] : []),
   ].join("\n");
@@ -3184,7 +3183,6 @@ function renderQqGroupAdFilterGroupNotice(
     `说明：${input.review.reason}`,
     "如果本意只是普通交流、玩梗或求助，建议改成更日常、更直接的说法后再发一次。",
     `如需申请本群 30 天广告过滤白名单，请在 10 分钟内私聊我或 @我完成趣味验证：${input.verificationPrompt}`,
-    "把答案直接发给我即可，也可以发送“验证码 答案”。",
   ].join("\n");
 }
 

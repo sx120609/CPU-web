@@ -30,15 +30,13 @@ const QQ_GROUP_AD_KFC_MEME_PATTERNS = [
   /[vV]\s*我\s*(?:50|五十)/u,
   /肯德基|kfc/iu,
 ];
-const QQ_GROUP_AD_KFC_MEME_BLOCKER_PATTERNS = [
+const QQ_GROUP_AD_KFC_MEME_HARD_DIVERSION_PATTERNS = [
   /https?:\/\//iu,
   /www\./iu,
   /二维码|扫码/u,
   /加群|进群|拉群|群号/u,
-  /下单|购买|出售|代购|办理/u,
-  /代理|招代理|推广|合作/u,
-  /兼职|刷单|返利|日结/u,
-  /优惠|套餐|活动价|限时/u,
+  /(?:微信|vx|v信|威信)\s*(?:号|id)?\s*[:：]?\s*[a-z][a-z0-9_-]{5,19}\b/iu,
+  /(?<!\d)1[3-9]\d{9}(?!\d)/u,
 ];
 const localResultCache = new Map<string, { expiresAt: number; value: QqGroupAdReviewResult }>();
 
@@ -208,7 +206,7 @@ export function detectHarmlessQqGroupAdBypassReason(input: string) {
     pattern.test(content) ? count + 1 : count
   ), 0);
   if (memeSignalCount < 2) return null;
-  if (QQ_GROUP_AD_KFC_MEME_BLOCKER_PATTERNS.some((pattern) => pattern.test(normalized))) return null;
+  if (QQ_GROUP_AD_KFC_MEME_HARD_DIVERSION_PATTERNS.some((pattern) => pattern.test(normalized))) return null;
   return "命中疯狂星期四等玩梗文案豁免";
 }
 
@@ -324,6 +322,5 @@ function resolveQqGroupAdReviewAction(input: {
   modelDecision: string;
 }): "allow" | "block" {
   if (input.modelDecision === "manual_review") return "allow";
-  if (input.modelDecision === "block") return "block";
   return input.riskScore >= input.threshold ? "block" : "allow";
 }

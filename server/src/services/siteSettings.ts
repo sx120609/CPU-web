@@ -253,7 +253,7 @@ export const DEFAULT_IMAGE_REVIEW_PROMPTS = {
   ].join("\n"),
 } as const;
 
-export const DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS = {
+const LEGACY_DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS = {
   system: [
     "你是 QQ 群广告过滤助手。",
     "你的任务是判断这条群消息是否属于广告、推广、拉新、招代理、刷单、兼职引流、交易导流、二维码/链接拉群或重复营销。",
@@ -261,6 +261,18 @@ export const DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS = {
     "如果只是模仿广告句式玩梗、抽象整活、转述别人的广告、吐槽或批评广告，而没有真实引流、交易、招募、拉群、导流意图，通常不算广告，优先 auto_pass 或 manual_review，不要直接 block。",
     "像“疯狂星期四”“V我50”“请奶茶”这类熟人玩笑、网络梗、夸张情绪文案，只要没有卖货、招募、拉群、二维码、链接或持续导流安排，通常也不算广告；即便顺手自报微信、手机号或让朋友转一顿饭钱，也不要仅凭这个直接判广告。",
     "不要仅因出现联系方式、群号、二维码、链接或价格数字就直接判广告，要结合整段语义、营销意图、利益承诺、频率和导流倾向综合判断。",
+    "只返回 JSON。",
+  ].join(" "),
+} as const;
+
+export const DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS = {
+  system: [
+    "你是 QQ 群广告过滤助手。",
+    "你的任务是判断这条群消息是否属于广告、推广、拉新、招代理、刷单、兼职引流、交易导流、二维码/链接拉群或重复营销。",
+    "正常的校园交流、功能使用咨询、普通求助、二手闲聊、课程讨论、个人经验分享通常不算广告。",
+    "如果只是模仿广告句式玩梗、抽象整活、转述别人的广告、吐槽或批评广告，而没有真实引流、交易、招募、拉群、导流意图，通常不算广告，优先 auto_pass 或 manual_review，不要直接 block。",
+    "“疯狂星期四”“V我50”“请奶茶”及类似夸张段子默认是玩梗。即使全文模仿“专业团队、承接、服务范围、下单、联络、微信号、包满足”等广告模板，也应当 auto_pass；例如“微信号：V我50即可”不是可用联系方式。除非同时出现真实链接、二维码、拉群/群号、真实可用的外部联系方式，或明确真实的商品交易、收款、招募、推广意图，否则不得 block。",
+    "只有证据充分时才判广告：不能仅因出现联系方式、群号、二维码、链接、价格数字或广告腔文案就直接判定；证据不足时优先 auto_pass 或 manual_review。",
     "只返回 JSON。",
   ].join(" "),
   user: [
@@ -361,7 +373,7 @@ const configCache: SiteConfig = {
   videoReviewUserPrompt: DEFAULT_VIDEO_REVIEW_PROMPTS.user,
   videoReviewConcurrency: 1,
   aiReviewThreshold: 24,
-  qqGroupAdReviewThreshold: 70,
+  qqGroupAdReviewThreshold: 85,
   imageReviewThreshold: 36,
   videoReviewThreshold: 36,
   aiEditSimilarityThreshold: 0,
@@ -692,7 +704,7 @@ export async function loadFeatures(): Promise<void> {
       continue;
     }
     if (r.key === QQ_GROUP_AD_REVIEW_THRESHOLD_KEY) {
-      configCache.qqGroupAdReviewThreshold = normalizeAiScore(r.value, 70);
+      configCache.qqGroupAdReviewThreshold = normalizeAiScore(r.value, 85);
       continue;
     }
     if (r.key === IMAGE_REVIEW_THRESHOLD_KEY) {
@@ -810,6 +822,26 @@ export async function loadFeatures(): Promise<void> {
     }
     const f = r.key.replace(/^feature\./, "") as FeatureKey;
     if (ALL_FEATURES.includes(f)) cache[f] = r.value === "on";
+  }
+  const storedQqGroupAdThreshold = rows.find((row) => row.key === QQ_GROUP_AD_REVIEW_THRESHOLD_KEY);
+  if (storedQqGroupAdThreshold?.value.trim() === "70") {
+    await prisma.siteSetting.update({
+      where: { key: QQ_GROUP_AD_REVIEW_THRESHOLD_KEY },
+      data: { value: "85" },
+    });
+    configCache.qqGroupAdReviewThreshold = 85;
+  }
+  const storedQqGroupAdSystemPrompt = rows.find((row) => row.key === QQ_GROUP_AD_REVIEW_SYSTEM_PROMPT_KEY);
+  if (
+    storedQqGroupAdSystemPrompt
+    && normalizePromptTemplate(storedQqGroupAdSystemPrompt.value, "")
+      === normalizePromptTemplate(LEGACY_DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.system, "")
+  ) {
+    await prisma.siteSetting.update({
+      where: { key: QQ_GROUP_AD_REVIEW_SYSTEM_PROMPT_KEY },
+      data: { value: DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.system },
+    });
+    configCache.qqGroupAdReviewSystemPrompt = DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.system;
   }
   sanitizeAiReviewConfig();
   sanitizeCommunityTrustConfig();
@@ -1066,7 +1098,7 @@ function normalizeReputationLevels(
 
 function sanitizeAiReviewConfig() {
   configCache.aiReviewThreshold = normalizeAiScore(configCache.aiReviewThreshold, 24);
-  configCache.qqGroupAdReviewThreshold = normalizeAiScore(configCache.qqGroupAdReviewThreshold, 70);
+  configCache.qqGroupAdReviewThreshold = normalizeAiScore(configCache.qqGroupAdReviewThreshold, 85);
   configCache.imageReviewThreshold = normalizeAiScore(configCache.imageReviewThreshold, 36);
   configCache.videoReviewThreshold = normalizeAiScore(configCache.videoReviewThreshold, 36);
   configCache.aiEditSimilarityThreshold = normalizeAiRatio(configCache.aiEditSimilarityThreshold, 0);

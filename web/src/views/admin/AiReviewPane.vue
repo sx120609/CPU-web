@@ -540,7 +540,7 @@ const form = reactive<SiteConfig>({
   videoReviewUserPrompt: "",
   videoReviewConcurrency: 1,
   aiReviewThreshold: 24,
-  qqGroupAdReviewThreshold: 70,
+  qqGroupAdReviewThreshold: 85,
   imageReviewThreshold: 36,
   videoReviewThreshold: 36,
   aiEditSimilarityThreshold: 0,
