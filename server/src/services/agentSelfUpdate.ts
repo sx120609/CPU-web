@@ -1,8 +1,8 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
-let updateScheduled = false;
+const UPDATE_LOCK_STALE_MS = 30 * 60_000;
 
 function findRepositoryRoot() {
   const starts = [
@@ -27,17 +27,33 @@ function findRepositoryRoot() {
 
 export function scheduleAgentSelfUpdate() {
   const requestedAt = new Date().toISOString();
-  if (updateScheduled) {
-    return { accepted: true as const, alreadyScheduled: true, requestedAt };
-  }
-
   const repositoryRoot = findRepositoryRoot();
   const runnerPath = path.resolve(__dirname, "..", "agentUpdateRunner.js");
   if (!existsSync(runnerPath)) {
     throw new Error(`缺少 Agent 更新执行器: ${runnerPath}`);
   }
+  const logDirectory = path.join(repositoryRoot, "server", "logs");
+  const lockPath = path.join(logDirectory, "agent-remote-update.lock");
+  mkdirSync(logDirectory, { recursive: true });
 
-  const child = spawn(process.execPath, [runnerPath, repositoryRoot], {
+  if (existsSync(lockPath)) {
+    const ageMs = Date.now() - statSync(lockPath).mtimeMs;
+    if (ageMs < UPDATE_LOCK_STALE_MS) {
+      return { accepted: true as const, alreadyScheduled: true, requestedAt };
+    }
+    unlinkSync(lockPath);
+  }
+
+  try {
+    writeFileSync(lockPath, `${requestedAt}\n`, { encoding: "utf8", flag: "wx" });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "EEXIST") {
+      return { accepted: true as const, alreadyScheduled: true, requestedAt };
+    }
+    throw error;
+  }
+
+  const child = spawn(process.execPath, [runnerPath, repositoryRoot, lockPath], {
     cwd: repositoryRoot,
     detached: true,
     env: process.env,
@@ -45,14 +61,14 @@ export function scheduleAgentSelfUpdate() {
     windowsHide: true,
   });
   child.once("error", (error) => {
-    updateScheduled = false;
+    try {
+      unlinkSync(lockPath);
+    } catch {
+      // 更新 worker 已接管或锁文件已经清理。
+    }
     console.error(`[jwxt-agent] 远程更新执行器启动失败: ${error.message}`);
   });
-  child.once("exit", () => {
-    updateScheduled = false;
-  });
   child.unref();
-  updateScheduled = true;
 
   return { accepted: true as const, alreadyScheduled: false, requestedAt };
 }
