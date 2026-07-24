@@ -264,3 +264,71 @@ test("outbound JWXT Agent handles login pool, handoff, queries, and crawler with
     ),
   );
 });
+
+test("outbound JWXT Agent replaces a half-open socket when server heartbeats disappear", async (t) => {
+  const { WebSocketServer } = require("ws") as {
+    WebSocketServer: new (options: Record<string, unknown>) => any;
+  };
+  const { JWXT_AGENT_PROTOCOL_VERSION } = await import("../src/services/jwxtAgentProtocol");
+  const { startJwxtAgentClient } = await import("../src/services/jwxtAgentClient");
+  const server = createServer();
+  const sockets = new Set<any>();
+  const logs: string[] = [];
+  let connectionCount = 0;
+  let readyCount = 0;
+  const wss = new WebSocketServer({ server });
+
+  wss.on("connection", (socket: any) => {
+    sockets.add(socket);
+    connectionCount += 1;
+    socket.once("close", () => sockets.delete(socket));
+    socket.on("message", (data: Buffer | string) => {
+      try {
+        const message = JSON.parse(Buffer.isBuffer(data) ? data.toString("utf8") : String(data));
+        if (message?.type === "ready") readyCount += 1;
+      } catch {
+        // The client test only needs to observe valid ready messages.
+      }
+    });
+    socket.send(JSON.stringify({
+      type: "welcome",
+      protocolVersion: JWXT_AGENT_PROTOCOL_VERSION,
+      heartbeatMs: 500,
+      agent: {
+        id: "half-open-agent",
+        name: "Half-open Agent",
+        maxConcurrent: 1,
+        jwxtEnabled: true,
+        crawlEnabled: false,
+      },
+    }));
+    // Intentionally do not send WebSocket pings. This leaves the connection
+    // looking OPEN locally, matching a network outage that never delivers FIN.
+  });
+
+  await listen(server);
+  const address = server.address() as AddressInfo;
+  const client = startJwxtAgentClient({
+    serverUrl: `ws://127.0.0.1:${address.port}`,
+    agentId: "half-open-agent",
+    token: "half-open-agent-token-" + "x".repeat(40),
+    reconnectMs: 500,
+    log: (message) => logs.push(message),
+    dispatch: async () => undefined,
+  });
+
+  t.after(async () => {
+    client.stop();
+    for (const socket of sockets) {
+      try { socket.terminate(); } catch { /* already disconnected */ }
+    }
+    await new Promise<void>((resolve) => wss.close(() => resolve()));
+    await closeServer(server);
+  });
+
+  await waitFor(() => readyCount >= 1);
+  await waitFor(() => connectionCount >= 2 && readyCount >= 2, 6_000);
+
+  assert.ok(logs.some((message) => message.includes("未收到主服务心跳")));
+  assert.equal(client.getState().ready, true);
+});

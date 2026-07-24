@@ -50,11 +50,16 @@ export function startJwxtAgentClient(options: JwxtAgentClientOptions): JwxtAgent
   let maxConcurrent = 1;
   let reconnectAttempt = 0;
   let reconnectTimer: NodeJS.Timeout | null = null;
+  let heartbeatTimer: NodeJS.Timeout | null = null;
+  let serverHeartbeatMs = 10_000;
+  let lastServerActivityAt = 0;
   const readyWaiters = new Set<{ resolve: () => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
 
   const connect = () => {
     if (stopped || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
     ready = false;
+    serverHeartbeatMs = 10_000;
+    lastServerActivityAt = Date.now();
     const current = new WebSocket(options.serverUrl, {
       headers: {
         Authorization: `Bearer ${options.token}`,
@@ -68,9 +73,13 @@ export function startJwxtAgentClient(options: JwxtAgentClientOptions): JwxtAgent
 
     current.on("open", () => {
       reconnectAttempt = 0;
+      markServerActivity(current);
       log(`[jwxt-agent] 已连接主服务，等待注册确认: ${options.agentId}`);
     });
+    current.on("ping", () => markServerActivity(current));
+    current.on("pong", () => markServerActivity(current));
     current.on("message", (data: Buffer | string, isBinary: boolean) => {
+      markServerActivity(current);
       if (isBinary) {
         current.close(4002, "仅支持 JSON 文本消息");
         return;
@@ -78,7 +87,10 @@ export function startJwxtAgentClient(options: JwxtAgentClientOptions): JwxtAgent
       handleMessage(current, Buffer.isBuffer(data) ? data.toString("utf8") : String(data)).catch(() => undefined);
     });
     current.on("close", (code: number, reason: Buffer | string) => {
-      if (socket === current) socket = null;
+      if (socket === current) {
+        socket = null;
+        clearHeartbeatWatchdog();
+      }
       ready = false;
       if (stopped) return;
       const detail = Buffer.isBuffer(reason) ? reason.toString("utf8") : String(reason || "");
@@ -104,6 +116,8 @@ export function startJwxtAgentClient(options: JwxtAgentClientOptions): JwxtAgent
         originSocket.close(4003, "Agent 协议或身份不匹配");
         return;
       }
+      serverHeartbeatMs = normalizeHeartbeatMs(message.heartbeatMs);
+      armHeartbeatWatchdog(originSocket);
       maxConcurrent = normalizeConcurrent(message.agent?.maxConcurrent);
       ready = true;
       originSocket.send(JSON.stringify({
@@ -215,6 +229,37 @@ export function startJwxtAgentClient(options: JwxtAgentClientOptions): JwxtAgent
     }, delay);
   };
 
+  const markServerActivity = (originSocket: any) => {
+    if (stopped || originSocket !== socket) return;
+    lastServerActivityAt = Date.now();
+    armHeartbeatWatchdog(originSocket);
+  };
+
+  const armHeartbeatWatchdog = (originSocket: any) => {
+    if (stopped || originSocket !== socket) return;
+    clearHeartbeatWatchdog();
+    const timeoutMs = heartbeatTimeoutMs(serverHeartbeatMs);
+    const elapsedMs = Math.max(0, Date.now() - lastServerActivityAt);
+    heartbeatTimer = setTimeout(() => {
+      heartbeatTimer = null;
+      if (stopped || originSocket !== socket) return;
+      log(`[jwxt-agent] ${timeoutMs}ms 未收到主服务心跳，强制重连`);
+      try {
+        originSocket.terminate();
+      } catch {
+        if (socket === originSocket) socket = null;
+        ready = false;
+        scheduleReconnect();
+      }
+    }, Math.max(100, timeoutMs - elapsedMs));
+    heartbeatTimer.unref?.();
+  };
+
+  const clearHeartbeatWatchdog = () => {
+    if (heartbeatTimer) clearTimeout(heartbeatTimer);
+    heartbeatTimer = null;
+  };
+
   const resolveReadyWaiters = () => {
     for (const waiter of readyWaiters) {
       clearTimeout(waiter.timer);
@@ -231,6 +276,7 @@ export function startJwxtAgentClient(options: JwxtAgentClientOptions): JwxtAgent
       ready = false;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       reconnectTimer = null;
+      clearHeartbeatWatchdog();
       for (const waiter of readyWaiters) {
         clearTimeout(waiter.timer);
         waiter.reject(new Error("Agent 已停止"));
@@ -305,6 +351,15 @@ function serializeError(error: unknown) {
 function normalizeConcurrent(value: unknown) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= 100 ? parsed : 1;
+}
+
+function normalizeHeartbeatMs(value: unknown) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 500 && parsed <= 60_000 ? parsed : 10_000;
+}
+
+function heartbeatTimeoutMs(heartbeatMs: number) {
+  return Math.max(2_000, Math.min(180_000, heartbeatMs * 3));
 }
 
 function validateOptions(options: JwxtAgentClientOptions) {
