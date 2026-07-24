@@ -185,7 +185,7 @@ export async function requestAnyQueryAgent<A extends JwxtAgentAction>(
   throw noQueryAgentError();
 }
 
-async function requestAnyRemoteQueryAgent<A extends JwxtAgentAction>(
+export async function requestAnyRemoteQueryAgent<A extends JwxtAgentAction>(
   action: A,
   payload: JwxtAgentInput<A>,
 ): Promise<JwxtAgentOutput<A>> {

@@ -31,7 +31,7 @@ async function start() {
     console.log(`🚀 CPU-web 后端已启动:  http://localhost:${config.port}`);
     console.log(`   健康检查:           http://localhost:${config.port}/api/health`);
     console.log(`   药苑之声:           http://localhost:${config.port}${voiceHubProxyConfig.path}`);
-    console.log(`   电费 API base:       ${process.env.DORM_ELECTRIC_BASE || "(未设，使用默认 http://sz.weicheng.wang:8899)"}`);
+    console.log("   宿舍电费查询:       远程校园 Agent");
     const createdBoards = await ensureBuiltinBoards().catch((e) => {
       console.warn("ensureBuiltinBoards failed:", e?.message);
       return [];

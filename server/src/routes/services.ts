@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
-import { ok, Errors } from "../utils/response";
+import { ok, Errors, HttpError } from "../utils/response";
 import { withCache } from "../services/cache";
 import { authRequired } from "../middleware/auth";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
@@ -34,6 +34,6 @@ servicesRouter.get("/dorm-electric", authRequired, async (req, res, next) => {
     const result = await queryDormElectric(studentNo);
     ok(res, result);
   } catch (e: any) {
-    next(e?.message ? Errors.badRequest(e.message) : e);
+    next(e instanceof HttpError ? e : e?.message ? Errors.badRequest(e.message) : e);
   }
 });

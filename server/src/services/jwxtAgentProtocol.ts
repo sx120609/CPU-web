@@ -1,6 +1,7 @@
 import type * as jwxt from "./jwxtFacade";
 import type { JwxtSessionSnapshot, LoginHandoffAttempt, LoginSessionHandoff } from "./jwxtClient";
 import type { CrawlSchoolFeedResult, SchoolFeedSourceInput } from "./schoolCrawlerCore";
+import type { DormElectricResult } from "./dormElectricCampus";
 import type { AgentEncryptedLoginCredentials, AgentEncryptedSessionReplica, AgentReplicaRecipient } from "./jwxtAgentReplicaCrypto";
 
 // 会话快照是 v1 上的可选扩展字段，保持协议号不变以支持主服务与 Agent 滚动升级。
@@ -84,6 +85,10 @@ export type JwxtAgentActionMap = {
   "school-feed.crawl": {
     input: { source: SchoolFeedSourceInput; skipExternalIds?: string[]; dryRun?: boolean };
     output: CrawlSchoolFeedResult;
+  };
+  "dorm-electric.query": {
+    input: { studentNo: string };
+    output: DormElectricResult;
   };
 };
 

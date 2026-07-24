@@ -2,6 +2,7 @@ import { z } from "zod";
 import { Errors } from "../utils/response";
 import * as jwxt from "./jwxtFacade";
 import { crawlSchoolFeedSource } from "./schoolCrawlerCore";
+import { queryDormElectricFromCampus } from "./dormElectricCampus";
 import type { JwxtAgentAction } from "./jwxtAgentProtocol";
 import { I_SERVICE_ICON_PATH_PATTERN } from "./jwxtClient";
 
@@ -108,6 +109,12 @@ export async function dispatchJwxtAgentAction(action: JwxtAgentAction, payload: 
         skipExternalIds: input.skipExternalIds,
         dryRun: input.dryRun,
       });
+    }
+    case "dorm-electric.query": {
+      const input = z.object({
+        studentNo: z.string().trim().min(1).max(64).regex(/^[A-Za-z0-9]+$/),
+      }).strict().parse(payload);
+      return queryDormElectricFromCampus(input.studentNo);
     }
     default:
       throw Errors.badRequest("Agent 不支持该教务操作");

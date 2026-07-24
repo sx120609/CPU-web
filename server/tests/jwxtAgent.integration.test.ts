@@ -28,7 +28,7 @@ async function waitFor(check: () => boolean, timeoutMs = 2_000) {
   }
 }
 
-test("outbound JWXT Agent handles login pool, handoff, queries, and crawler without FRP", async (t) => {
+test("outbound JWXT Agent handles login, queries, dorm electricity, and crawler without FRP", async (t) => {
   const token = "agent-token-" + "a".repeat(48);
   const tokenB = "agent-token-" + "b".repeat(48);
   process.env.JWT_SECRET = "jwxt-agent-integration-secret-0123456789abcdef";
@@ -130,6 +130,19 @@ test("outbound JWXT Agent handles login pool, handoff, queries, and crawler with
       if (action === "jwxt.iapp-icon") {
         return { contentType: "image/png", dataBase64: "iVBORw0KGgo=", byteLength: 8 };
       }
+      if (action === "dorm-electric.query") {
+        return {
+          balance: 23.45,
+          remainKwh: 31.2,
+          usedKwh: 102.8,
+          price: 0.75,
+          room: "0313房间",
+          building: "H6",
+          floor: "第3层",
+          area: "江宁校区",
+          lastUpdate: "2026-07-24 23:30",
+        };
+      }
       if (action === "school-feed.crawl") return { items: [], pages: [] };
       throw new Error(`unexpected action: ${action}`);
     },
@@ -155,6 +168,19 @@ test("outbound JWXT Agent handles login pool, handoff, queries, and crawler with
       if (action === "login.begin") return { pendingId: "agent-b-inner-pending-0001", needCaptcha: false };
       if (action === "jwxt.iapp-icon") {
         return { contentType: "image/png", dataBase64: "iVBORw0KGgo=", byteLength: 8 };
+      }
+      if (action === "dorm-electric.query") {
+        return {
+          balance: 23.45,
+          remainKwh: 31.2,
+          usedKwh: 102.8,
+          price: 0.75,
+          room: "0313房间",
+          building: "H6",
+          floor: "第3层",
+          area: "江宁校区",
+          lastUpdate: "2026-07-24 23:30",
+        };
       }
       throw new Error(`unexpected B action: ${action}`);
     },
@@ -206,6 +232,11 @@ test("outbound JWXT Agent handles login pool, handoff, queries, and crawler with
   const icon = await transport.getIAppIcon("/sopplus/_upload/appstore/abc-123/res/icon/icon.png");
   assert.deepEqual(icon, { contentType: "image/png", dataBase64: "iVBORw0KGgo=", byteLength: 8 });
   assert.ok([...actions, ...actionsB].some((item) => item.action === "jwxt.iapp-icon"));
+  const dormElectric = await import("../src/services/dormElectric");
+  const electric = await dormElectric.queryDormElectric("20260001");
+  assert.equal(electric.balance, 23.45);
+  assert.equal(electric.room, "0313房间");
+  assert.ok([...actions, ...actionsB].some((item) => item.action === "dorm-electric.query"));
 
   const replica = await import("../src/services/jwxtSessionReplica");
   const cache = await import("../src/services/cache");
