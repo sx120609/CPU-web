@@ -40,11 +40,29 @@ function printHelp() {
 
 用法：
   node scripts/import-legacy-songs.mjs \\
-    --source-url postgresql:///voicehub_legacy \\
-    --target-url postgresql:///cpu_web_voicehub [--apply]
+    --source-url socket:voicehub_legacy \\
+    --target-url socket:cpu_web_voicehub [--apply]
 
 也可通过 LEGACY_DATABASE_URL 和 VOICEHUB_DATABASE_URL 提供连接地址。
+本机 peer 认证可使用 socket:<数据库名>，脚本会连接 /var/run/postgresql。
 `)
+}
+
+function createDatabaseClient(connection) {
+  if (connection.startsWith('socket:')) {
+    const database = connection.slice('socket:'.length).trim()
+    if (!database || !/^[a-zA-Z0-9_-]+$/.test(database)) {
+      throw new Error(`无效的 Socket 数据库名：${database || '<empty>'}`)
+    }
+    return postgres({
+      host: '/var/run/postgresql',
+      database,
+      username: process.env.PGUSER || 'postgres',
+      max: 1,
+      prepare: false
+    })
+  }
+  return postgres(connection, { max: 1, prepare: false })
 }
 
 function normalizePart(value) {
@@ -148,8 +166,8 @@ async function main() {
     throw new Error('源数据库与目标数据库不能相同')
   }
 
-  const source = postgres(options.sourceUrl, { max: 1, prepare: false })
-  const target = postgres(options.targetUrl, { max: 1, prepare: false })
+  const source = createDatabaseClient(options.sourceUrl)
+  const target = createDatabaseClient(options.targetUrl)
   let finalStats
 
   try {
