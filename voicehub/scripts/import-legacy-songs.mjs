@@ -34,9 +34,11 @@ function parseArgs(argv) {
 
 function printHelp() {
   console.log(`
-导入旧 VoiceHub 的歌曲和历史关系。
+导入旧 VoiceHub 的歌曲、评论和历史关系。
 
 默认只执行演练，不写入目标数据库。确认统计后追加 --apply。
+旧系统数据按历史归档导入：幽灵占位账号名下的歌曲会标记为已播放，
+不会影响目标库中正常账号提交的歌曲。
 
 用法：
   node scripts/import-legacy-songs.mjs \\
@@ -135,12 +137,23 @@ function asTimestampKey(value) {
   return Number.isNaN(date.getTime()) ? String(value) : date.toISOString()
 }
 
+function commentKey(comment) {
+  return [
+    comment.songId,
+    comment.userId,
+    comment.parentCommentId || '<root>',
+    asTimestampKey(comment.createdAt),
+    String(comment.content || '')
+  ].join('\u0000')
+}
+
 function printSummary(mode, stats) {
   console.log(JSON.stringify({
     mode,
     source: stats.source,
     targetBefore: stats.targetBefore,
     inserted: stats.inserted,
+    updated: stats.updated,
     skipped: stats.skipped,
     targetAfter: stats.targetAfter
   }, null, 2))
@@ -176,13 +189,26 @@ async function main() {
       legacySongs,
       legacyVotes,
       legacySchedules,
-      legacySemesters
+      legacySemesters,
+      legacyComments
     ] = await Promise.all([
       source`select * from "User" order by id`,
       source`select * from "Song" order by id`,
       source`select * from "Vote" order by id`,
       source`select * from "Schedule" order by id`,
-      source`select * from "Semester" order by id`
+      source`select * from "Semester" order by id`,
+      source`
+        select
+          id,
+          created_at as "createdAt",
+          updated_at as "updatedAt",
+          song_id as "songId",
+          user_id as "userId",
+          parent_comment_id as "parentCommentId",
+          content
+        from song_comments
+        order by parent_comment_id nulls first, created_at, id
+      `
     ])
 
     const ghostPassword = await bcrypt.hash(randomBytes(48).toString('base64url'), 12)
@@ -194,13 +220,31 @@ async function main() {
           targetSongs,
           targetVotes,
           targetSchedules,
-          targetSemesters
+          targetSemesters,
+          targetComments
         ] = await Promise.all([
           tx`select id, username, role from "User" order by id`,
-          tx`select id, title, artist, semester, "musicPlatform", "musicId" from "Song" order by id`,
+          tx`
+            select
+              id, title, artist, semester, "musicPlatform", "musicId",
+              "requesterId", played
+            from "Song"
+            order by id
+          `,
           tx`select "songId", "userId" from "Vote"`,
           tx`select "songId", "playDate", sequence from "Schedule"`,
-          tx`select id, name from "Semester"`
+          tx`select id, name from "Semester"`,
+          tx`
+            select
+              id,
+              created_at as "createdAt",
+              song_id as "songId",
+              user_id as "userId",
+              parent_comment_id as "parentCommentId",
+              content
+            from song_comments
+            order by id
+          `
         ])
 
         const stats = {
@@ -209,7 +253,8 @@ async function main() {
             songs: legacySongs.length,
             votes: legacyVotes.length,
             schedules: legacySchedules.length,
-            semesters: legacySemesters.length
+            semesters: legacySemesters.length,
+            comments: legacyComments.length
           },
           targetBefore: {
             visibleUsers: targetUsers.filter((user) => user.role !== GHOST_ROLE).length,
@@ -217,14 +262,19 @@ async function main() {
             songs: targetSongs.length,
             votes: targetVotes.length,
             schedules: targetSchedules.length,
-            semesters: targetSemesters.length
+            semesters: targetSemesters.length,
+            comments: targetComments.length
           },
           inserted: {
             ghostUsers: 0,
             songs: 0,
             votes: 0,
             schedules: 0,
-            semesters: 0
+            semesters: 0,
+            comments: 0
+          },
+          updated: {
+            archivedSongs: 0
           },
           skipped: {
             ghostUsers: 0,
@@ -232,9 +282,13 @@ async function main() {
             votes: 0,
             schedules: 0,
             semesters: 0,
+            comments: 0,
             orphanSongs: 0,
             orphanVotes: 0,
-            orphanSchedules: 0
+            orphanSchedules: 0,
+            orphanCommentSongs: 0,
+            orphanCommentUsers: 0,
+            orphanCommentParents: 0
           },
           targetAfter: {}
         }
@@ -244,6 +298,7 @@ async function main() {
             .filter((user) => user.role === GHOST_ROLE)
             .map((user) => [user.username, Number(user.id)])
         )
+        const ghostUserIds = new Set(ghostByUsername.values())
         const legacyUserIdMap = new Map()
         let simulatedUserId = -1
 
@@ -285,10 +340,12 @@ async function main() {
             `
             targetUserId = Number(inserted[0].id)
             ghostByUsername.set(username, targetUserId)
+            ghostUserIds.add(targetUserId)
             stats.inserted.ghostUsers += 1
           } else {
             targetUserId = simulatedUserId--
             ghostByUsername.set(username, targetUserId)
+            ghostUserIds.add(targetUserId)
             stats.inserted.ghostUsers += 1
           }
           legacyUserIdMap.set(Number(legacyUser.id), targetUserId)
@@ -312,6 +369,19 @@ async function main() {
 
           const match = findMatchingSong(legacySong, songIndexes)
           if (match) {
+            if (!match.played && ghostUserIds.has(Number(match.requesterId))) {
+              if (options.apply) {
+                await tx`
+                  update "Song"
+                  set
+                    played = true,
+                    "playedAt" = coalesce("playedAt", "updatedAt", "createdAt")
+                  where id = ${match.id} and played = false
+                `
+              }
+              match.played = true
+              stats.updated.archivedSongs += 1
+            }
             legacySongIdMap.set(Number(legacySong.id), Number(match.id))
             stats.skipped.songs += 1
             continue
@@ -330,8 +400,8 @@ async function main() {
                 ${legacySong.title},
                 ${legacySong.artist},
                 ${requesterId},
-                ${Boolean(legacySong.played)},
-                ${legacySong.playedAt || null},
+                ${true},
+                ${legacySong.playedAt || legacySong.updatedAt || legacySong.createdAt || new Date()},
                 ${legacySong.semester || null},
                 ${null},
                 ${legacySong.cover || null},
@@ -347,7 +417,12 @@ async function main() {
             targetSongId = simulatedSongId--
           }
 
-          const indexedSong = { ...legacySong, id: targetSongId }
+          const indexedSong = {
+            ...legacySong,
+            id: targetSongId,
+            requesterId,
+            played: true
+          }
           addSongToIndexes(indexedSong, songIndexes)
           legacySongIdMap.set(Number(legacySong.id), targetSongId)
           stats.inserted.songs += 1
@@ -424,6 +499,78 @@ async function main() {
           stats.inserted.schedules += 1
         }
 
+        const targetCommentByKey = new Map(
+          targetComments.map((comment) => [commentKey(comment), Number(comment.id)])
+        )
+        const legacyCommentIdMap = new Map()
+        let simulatedCommentId = -1
+
+        const importComment = async (legacyComment) => {
+          const songId = legacySongIdMap.get(Number(legacyComment.songId))
+          if (!songId) {
+            stats.skipped.orphanCommentSongs += 1
+            return
+          }
+
+          const userId = legacyUserIdMap.get(Number(legacyComment.userId))
+          if (!userId) {
+            stats.skipped.orphanCommentUsers += 1
+            return
+          }
+
+          let parentCommentId = null
+          if (legacyComment.parentCommentId) {
+            parentCommentId = legacyCommentIdMap.get(Number(legacyComment.parentCommentId))
+            if (!parentCommentId) {
+              stats.skipped.orphanCommentParents += 1
+              return
+            }
+          }
+
+          const mappedComment = {
+            songId,
+            userId,
+            parentCommentId,
+            createdAt: legacyComment.createdAt,
+            content: legacyComment.content
+          }
+          const key = commentKey(mappedComment)
+          let targetCommentId = targetCommentByKey.get(key)
+          if (targetCommentId) {
+            stats.skipped.comments += 1
+          } else if (options.apply) {
+            const inserted = await tx`
+              insert into song_comments (
+                created_at, updated_at, song_id, user_id, parent_comment_id, content
+              ) values (
+                ${legacyComment.createdAt || new Date()},
+                ${legacyComment.updatedAt || legacyComment.createdAt || new Date()},
+                ${songId},
+                ${userId},
+                ${parentCommentId},
+                ${legacyComment.content}
+              )
+              returning id
+            `
+            targetCommentId = Number(inserted[0].id)
+            targetCommentByKey.set(key, targetCommentId)
+            stats.inserted.comments += 1
+          } else {
+            targetCommentId = simulatedCommentId--
+            targetCommentByKey.set(key, targetCommentId)
+            stats.inserted.comments += 1
+          }
+
+          legacyCommentIdMap.set(Number(legacyComment.id), targetCommentId)
+        }
+
+        for (const legacyComment of legacyComments.filter((comment) => !comment.parentCommentId)) {
+          await importComment(legacyComment)
+        }
+        for (const legacyComment of legacyComments.filter((comment) => comment.parentCommentId)) {
+          await importComment(legacyComment)
+        }
+
         const semesterNames = new Set(targetSemesters.map((semester) => normalizePart(semester.name)))
         for (const legacySemester of legacySemesters) {
           const key = normalizePart(legacySemester.name)
@@ -453,7 +600,8 @@ async function main() {
           songs: stats.targetBefore.songs + stats.inserted.songs,
           votes: stats.targetBefore.votes + stats.inserted.votes,
           schedules: stats.targetBefore.schedules + stats.inserted.schedules,
-          semesters: stats.targetBefore.semesters + stats.inserted.semesters
+          semesters: stats.targetBefore.semesters + stats.inserted.semesters,
+          comments: stats.targetBefore.comments + stats.inserted.comments
         }
 
         if (!options.apply) throw new DryRunRollback(stats)
@@ -467,6 +615,13 @@ async function main() {
             )
           `)
         }
+        await tx.unsafe(`
+          select setval(
+            pg_get_serial_sequence('song_comments', 'id'),
+            coalesce((select max(id) from song_comments), 1),
+            (select max(id) is not null from song_comments)
+          )
+        `)
 
         return stats
       })
