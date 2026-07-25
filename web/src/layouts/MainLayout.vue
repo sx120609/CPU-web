@@ -620,7 +620,7 @@ function isEditableElement(target: HTMLElement | null) {
 
 function syncViewportMetrics() {
   if (typeof window === "undefined") return;
-  const visualHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
+  const visualHeight = getEffectiveViewportHeight();
   const visualWidth = Math.round(window.visualViewport?.width ?? window.innerWidth);
   const orientation = getScreenOrientation();
   if (orientation !== viewportBaselineOrientation) {
@@ -643,6 +643,27 @@ function syncViewportMetrics() {
     mobileViewportBaseHeight.value = stableHeight;
     viewportBaseHeights.set(orientation, Math.max(viewportBaseHeights.get(orientation) || 0, stableHeight));
   }
+}
+
+function getEffectiveViewportHeight() {
+  const visualHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
+  const layoutHeight = Math.round(window.innerHeight);
+  const documentHeight = Math.round(document.documentElement?.clientHeight || 0);
+  const baseHeight = Math.max(
+    mobileViewportBaseHeight.value || 0,
+    visualHeight,
+    layoutHeight,
+    documentHeight,
+  );
+  const keyboardShrunkenHeights = [visualHeight, layoutHeight, documentHeight]
+    .filter((height) => height > 0 && baseHeight - height > KEYBOARD_INSET_THRESHOLD);
+
+  // iOS WebViews can shrink visualViewport once more than their containing view
+  // for the keyboard accessory bar. Use the largest viewport that has actually
+  // shrunk, so the composer lands on the keyboard instead of floating above it.
+  return keyboardShrunkenHeights.length
+    ? Math.max(...keyboardShrunkenHeights)
+    : visualHeight;
 }
 
 function getScreenOrientation() {
@@ -676,7 +697,7 @@ function isTabletTouchViewport(width: number, height: number) {
 
 function updateKeyboardState() {
   if (typeof window === "undefined") return;
-  const currentHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
+  const currentHeight = getEffectiveViewportHeight();
   const baseHeight = Math.max(mobileViewportBaseHeight.value || 0, currentHeight, window.innerHeight);
   const measuredInset = Math.max(
     0,
