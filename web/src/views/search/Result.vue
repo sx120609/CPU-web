@@ -2,7 +2,7 @@
   <div class="assistant-page">
     <section class="assistant-shell cpu-card">
       <div class="assistant-head">
-        <span class="assistant-mark">AI</span>
+        <span class="assistant-mark">拾</span>
         <div>
           <h1>拾间AI</h1>
           <p>问功能、找入口，也可以直接聊天</p>
@@ -94,7 +94,7 @@
       </div>
     </section>
 
-    <template v-if="q">
+    <div v-if="q" class="related-results">
       <div class="related-head">
         <div>
           <h2>相关站内内容</h2>
@@ -162,7 +162,7 @@
           没有更多传统搜索结果，可以继续问拾间AI。
         </div>
       </template>
-    </template>
+    </div>
   </div>
 </template>
 
@@ -363,9 +363,9 @@ function openCourse(id: number) {
   height: 42px;
   border-radius: 13px;
   color: #fff;
-  background: linear-gradient(135deg, #168776, #2563eb);
+  background: linear-gradient(135deg, #0f8f78, #17aa8d);
   box-shadow: 0 7px 18px rgba(22, 135, 118, 0.22);
-  font-size: 14px;
+  font-size: 18px;
   font-weight: 800;
 }
 .assistant-head h1 {
@@ -552,6 +552,9 @@ function openCourse(id: number) {
   justify-content: space-between;
   padding: 2px 4px;
 }
+.related-results {
+  display: contents;
+}
 .related-head h2 {
   display: inline;
   margin: 0 8px 0 0;
@@ -620,51 +623,118 @@ function openCourse(id: number) {
 
 @media (max-width: 640px) {
   .assistant-page {
-    gap: 13px;
-  }
-  .cpu-card {
-    padding: 14px 12px;
-    border-radius: 11px;
+    gap: 0;
+    margin: -2px -4px 0;
   }
   .assistant-shell {
-    min-height: calc(100dvh - 245px);
-    padding: 14px 12px;
+    min-height: calc(100dvh - 176px);
+    padding: 8px 6px 10px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .assistant-head {
+    gap: 9px;
+    padding: 0 2px 6px;
   }
   .assistant-mark {
-    width: 38px;
-    height: 38px;
-    border-radius: 11px;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    box-shadow: 0 5px 13px rgba(22, 135, 118, 0.18);
+    font-size: 16px;
   }
   .assistant-head h1 {
-    font-size: 18px;
+    font-size: 17px;
+  }
+  .assistant-head p {
+    display: none;
   }
   .assistant-welcome {
-    padding: 18px 2px;
+    padding: 30px 4px 18px;
   }
   .assistant-welcome strong {
-    font-size: 18px;
+    font-size: 20px;
+  }
+  .assistant-welcome > span {
+    max-width: 310px;
   }
   .conversation {
     max-height: none;
+    gap: 20px;
+    padding: 12px 2px 18px;
   }
   .message {
-    max-width: 94%;
+    max-width: 88%;
+  }
+  .message--assistant {
+    width: 100%;
+    max-width: 100%;
+  }
+  .message-label {
+    display: none;
+  }
+  .message-bubble {
+    padding: 10px 13px;
+  }
+  .message--assistant .message-bubble {
+    padding: 0 2px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  .message-bubble p {
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  .message--user .message-bubble {
+    border-radius: 15px 15px 4px 15px;
+  }
+  .action-list {
+    margin-top: 12px;
+  }
+  .action-card {
+    padding: 10px 11px;
+    border-radius: 12px;
+    box-shadow: 0 3px 12px rgba(20, 48, 43, 0.04);
+  }
+  .action-icon {
+    font-size: 19px;
+  }
+  .action-copy strong {
+    font-size: 14px;
+  }
+  .suggestions {
+    flex-wrap: nowrap;
+    margin: 12px -4px 0;
+    padding: 0 4px 3px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .suggestions::-webkit-scrollbar {
+    display: none;
+  }
+  .suggestions button {
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
   .assistant-form {
     gap: 8px;
+    padding: 10px 2px 2px;
+    border-top-color: var(--cpu-border-soft);
+  }
+  .assistant-form :deep(.el-input__wrapper) {
+    border-radius: 14px;
+    box-shadow: 0 0 0 1px var(--cpu-border-soft) inset;
   }
   .assistant-form .el-button {
+    min-width: 58px;
+    border-radius: 14px;
     padding-inline: 15px;
   }
-  .course-row,
-  .svc-row {
-    align-items: flex-start;
-    gap: 10px;
-    padding: 12px 2px;
-  }
-  .c-meta,
-  .s-desc {
-    line-height: 1.5;
+  .related-results {
+    display: none;
   }
 }
 </style>

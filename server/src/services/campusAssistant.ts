@@ -338,9 +338,12 @@ export function normalizeAssistantResponse(
   const requestedIds = Array.isArray(value.actionIds)
     ? value.actionIds.map((item) => String(item || "").trim()).filter(Boolean)
     : [];
+  const candidateIds = deterministicActions.length
+    ? deterministicActions.map((item) => item.id)
+    : requestedIds;
   const actions: CampusAssistantAction[] = [];
   const seen = new Set<string>();
-  for (const id of [...requestedIds, ...deterministicActions.map((item) => item.id)]) {
+  for (const id of candidateIds) {
     const action = actionMap.get(id);
     if (!action || seen.has(id)) continue;
     seen.add(id);

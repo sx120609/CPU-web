@@ -51,3 +51,13 @@ test("AI 只能返回服务端白名单中的动作", () => {
   assert.deepEqual(response.actions.map((item) => item.id), ["voicehub"]);
   assert.equal(response.actions[0]?.url, "/services/tools/voicehub");
 });
+
+test("明确匹配到站内入口时不混入 AI 猜测的无关入口", () => {
+  const available = listCampusAssistantActions(context);
+  const deterministic = searchCampusAssistantActions("怎么查宿舍电费？", context, 3);
+  const response = normalizeAssistantResponse({
+    answer: "可以查询宿舍电费。",
+    actionIds: ["profile", "home"],
+  }, available, deterministic);
+  assert.deepEqual(response.actions.map((item) => item.id), ["dorm-electric"]);
+});
