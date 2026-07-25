@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   askCampusAssistant,
+  buildSystemPrompt,
   extractPartialJsonStringValue,
   guardCampusAssistantResponse,
   isCampusAssistantPublicTopicRestricted,
@@ -122,6 +123,13 @@ test("assistant answers allow complete responses up to the new four-thousand-cha
   );
 
   assert.equal(response.answer.length, 4000);
+});
+
+test("拾间AI可以获知并如实告知当前实际调用的模型名称", () => {
+  const prompt = buildSystemPrompt([], false, "example-model-2026");
+
+  assert.match(prompt, /当前处理本次对话的模型名称是“example-model-2026”/);
+  assert.match(prompt, /可以直接、如实告知该名称/);
 });
 
 test("拾间AI在服务端前置拦截不适合国内公开平台展开的敏感话题", () => {

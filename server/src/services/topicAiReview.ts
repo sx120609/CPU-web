@@ -112,13 +112,12 @@ type AiJsonRequestOptions = {
   promptCacheScope?: string;
 };
 
-export async function requestAiJson(messages: AiJsonMessage[], options?: AiJsonRequestOptions) {
+export async function requestAiJson(
+  messages: AiJsonMessage[] | ((model: string) => AiJsonMessage[]),
+  options?: AiJsonRequestOptions,
+) {
   const config = getSiteConfig();
   const endpoint = normalizeAiJsonApiUrl(config.aiReviewApiUrl, DEFAULT_REVIEW_API_URL);
-  const userPrompt = messages
-    .filter((item) => item.role === "user")
-    .map((item) => summarizeAiJsonMessageContent(item.content))
-    .join("\n\n");
   const candidates = resolveModelCandidates(config.aiReviewModel, config.aiReviewFallbackModels);
   const promptCacheKey = buildAiReviewPromptCacheKey({
     configHash: buildAiReviewConfigHash(config),
@@ -127,6 +126,11 @@ export async function requestAiJson(messages: AiJsonMessage[], options?: AiJsonR
   let lastError: Error | null = null;
   for (let index = 0; index < candidates.length; index += 1) {
     const model = candidates[index];
+    const requestMessages = typeof messages === "function" ? messages(model) : messages;
+    const userPrompt = requestMessages
+      .filter((item) => item.role === "user")
+      .map((item) => summarizeAiJsonMessageContent(item.content))
+      .join("\n\n");
     let logId: number | null = null;
     if (options?.logContext) {
       const started = await startAiReviewLog({
@@ -150,7 +154,7 @@ export async function requestAiJson(messages: AiJsonMessage[], options?: AiJsonR
         apiKey: config.aiReviewApiKey,
         model,
         temperature: 0.1,
-        messages,
+        messages: requestMessages,
         promptCacheKey,
         enablePromptCacheRetention: true,
       });
