@@ -351,7 +351,6 @@ const keyboardOpen = ref(false);
 const keyboardGeometryOpen = ref(false);
 const mobileViewportHeight = ref(0);
 const mobileViewportWidth = ref(0);
-const mobileViewportOffsetTop = ref(0);
 const virtualKeyboardInset = ref(0);
 const touchLikeViewport = ref(false);
 const editableFocused = ref(false);
@@ -360,10 +359,12 @@ const mobileViewportBaseHeight = ref(0);
 const isMobileViewport = ref(false);
 const KEYBOARD_INSET_THRESHOLD = 96;
 const KEYBOARD_FOCUS_GRACE_MS = 1200;
+const KEYBOARD_GEOMETRY_CLOSE_DELAY_MS = 240;
 const viewportBaseHeights = new Map<string, number>();
 let viewportBaselineOrientation = "";
 let focusOutTimer = 0;
 let focusKeyboardGraceTimer = 0;
+let keyboardGeometryCloseTimer = 0;
 let focusKeyboardGraceUntil = 0;
 let disposed = false;
 
@@ -403,7 +404,6 @@ const layoutStyle = computed(() => {
   return {
     "--layout-viewport-height": `${mobileViewportHeight.value}px`,
     "--layout-viewport-base-height": `${baseHeight}px`,
-    "--layout-viewport-offset-top": `${mobileViewportOffsetTop.value}px`,
     "--layout-keyboard-inset": `${keyboardInset}px`,
   };
 });
@@ -529,7 +529,6 @@ onMounted(async () => {
   if (typeof window !== "undefined") {
     window.addEventListener("resize", handleViewportMetricsChange, { passive: true });
     window.visualViewport?.addEventListener("resize", handleViewportMetricsChange);
-    window.visualViewport?.addEventListener("scroll", handleViewportMetricsChange);
     getVirtualKeyboard()?.addEventListener("geometrychange", handleViewportMetricsChange);
     document.addEventListener("focusin", handleFocusIn);
     document.addEventListener("focusout", handleFocusOut);
@@ -540,10 +539,10 @@ onBeforeUnmount(() => {
   disposed = true;
   window.clearTimeout(focusOutTimer);
   window.clearTimeout(focusKeyboardGraceTimer);
+  window.clearTimeout(keyboardGeometryCloseTimer);
   if (typeof window !== "undefined") {
     window.removeEventListener("resize", handleViewportMetricsChange);
     window.visualViewport?.removeEventListener("resize", handleViewportMetricsChange);
-    window.visualViewport?.removeEventListener("scroll", handleViewportMetricsChange);
     getVirtualKeyboard()?.removeEventListener("geometrychange", handleViewportMetricsChange);
     document.removeEventListener("focusin", handleFocusIn);
     document.removeEventListener("focusout", handleFocusOut);
@@ -554,6 +553,8 @@ watch(() => route.fullPath, () => {
   assistantWidgetOpen.value = false;
   window.clearTimeout(focusOutTimer);
   window.clearTimeout(focusKeyboardGraceTimer);
+  window.clearTimeout(keyboardGeometryCloseTimer);
+  keyboardGeometryCloseTimer = 0;
   focusKeyboardGraceUntil = 0;
   keyboardOpen.value = false;
   keyboardGeometryOpen.value = false;
@@ -570,6 +571,8 @@ function handleViewportMetricsChange() {
 function handleFocusIn(event: FocusEvent) {
   window.clearTimeout(focusOutTimer);
   window.clearTimeout(focusKeyboardGraceTimer);
+  window.clearTimeout(keyboardGeometryCloseTimer);
+  keyboardGeometryCloseTimer = 0;
   const target = event.target instanceof HTMLElement ? event.target : null;
   editableFocused.value = isEditableElement(target);
   editorFocused.value = Boolean(target?.closest(".rich-editor"));
@@ -631,7 +634,6 @@ function syncViewportMetrics() {
       window.innerHeight,
     );
   }
-  mobileViewportOffsetTop.value = Math.max(0, Math.round(window.visualViewport?.offsetTop ?? 0));
   mobileViewportHeight.value = visualHeight;
   mobileViewportWidth.value = visualWidth;
   virtualKeyboardInset.value = getVirtualKeyboardInset();
@@ -713,8 +715,14 @@ function updateKeyboardState() {
     : KEYBOARD_INSET_THRESHOLD;
   const viewportStillCovered = isMobileViewport.value
     && measuredInset > geometryThreshold;
-  keyboardGeometryOpen.value = viewportStillCovered;
-  const keyboardLikelyOpen = focusedEditableNeedsKeyboard || viewportStillCovered;
+  if (viewportStillCovered) {
+    window.clearTimeout(keyboardGeometryCloseTimer);
+    keyboardGeometryCloseTimer = 0;
+    keyboardGeometryOpen.value = true;
+  } else if (keyboardGeometryOpen.value) {
+    scheduleKeyboardGeometryClose();
+  }
+  const keyboardLikelyOpen = focusedEditableNeedsKeyboard || keyboardGeometryOpen.value;
   keyboardOpen.value = keyboardLikelyOpen;
   if (!keyboardLikelyOpen && !editableFocused.value) {
     const stableHeight = Math.max(mobileViewportBaseHeight.value, currentHeight, window.innerHeight);
@@ -724,6 +732,28 @@ function updateKeyboardState() {
       stableHeight,
     );
   }
+}
+
+function scheduleKeyboardGeometryClose() {
+  if (keyboardGeometryCloseTimer) return;
+  keyboardGeometryCloseTimer = window.setTimeout(() => {
+    keyboardGeometryCloseTimer = 0;
+    const currentHeight = getEffectiveViewportHeight();
+    const baseHeight = Math.max(mobileViewportBaseHeight.value || 0, currentHeight, window.innerHeight);
+    const measuredInset = Math.max(
+      0,
+      baseHeight - currentHeight,
+      getVirtualKeyboardInset(),
+    );
+    if (measuredInset > 56) return;
+    keyboardGeometryOpen.value = false;
+    keyboardOpen.value = Boolean(
+      isMobileViewport.value
+      && editableFocused.value
+      && performance.now() < focusKeyboardGraceUntil
+      && (fullHeightContent.value || editorFocused.value),
+    );
+  }, KEYBOARD_GEOMETRY_CLOSE_DELAY_MS);
 }
 
 function goSearch() {
@@ -821,7 +851,7 @@ function setAppearanceMode(command: string | number | object) {
 
 .layout-root--full-height {
   position: fixed;
-  top: var(--layout-viewport-offset-top, 0);
+  top: 0;
   right: 0;
   bottom: auto;
   left: 0;

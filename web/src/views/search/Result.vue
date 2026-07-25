@@ -325,7 +325,6 @@ onMounted(() => {
     void loadAssistantQuota();
   }
   window.visualViewport?.addEventListener("resize", handleComposerViewportChange);
-  window.visualViewport?.addEventListener("scroll", handleComposerViewportChange);
 });
 
 watch(() => auth.isLoggedIn, (loggedIn) => {
@@ -915,7 +914,6 @@ onBeforeUnmount(() => {
   if (scrollFrame) cancelAnimationFrame(scrollFrame);
   releaseConversationAnchor();
   window.visualViewport?.removeEventListener("resize", handleComposerViewportChange);
-  window.visualViewport?.removeEventListener("scroll", handleComposerViewportChange);
   window.clearTimeout(cloudSyncTimer);
   if (pendingCloudSession) void flushCloudSync();
 });
