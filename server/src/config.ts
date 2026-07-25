@@ -361,6 +361,8 @@ export const config = {
     process.env.ANDROID_APP_DOWNLOAD_URL
     ?? "https://download.lizmt.cn/Android/CPU-Web-Android-V6.apk"
   ).trim(),
+  oauthClientId: String(process.env.OAUTH_CLIENT_ID ?? "cpu-electron").trim(),
+  oauthAllowedRedirectUris: parseCsvEnv(process.env.OAUTH_ALLOWED_REDIRECT_URIS, ["http://127.0.0.1", "http://localhost"]),
 };
 
 export const isDev = config.nodeEnv !== "production";
