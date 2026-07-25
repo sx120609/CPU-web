@@ -283,8 +283,8 @@ const cloudSyncState = ref<"local" | "syncing" | "ready" | "error">(
 const assistantShellRef = ref<HTMLElement | null>(null);
 const conversationRef = ref<HTMLElement | null>(null);
 const assistantStableShellHeight = ref(0);
+const assistantStableShellBottom = ref(0);
 const assistantStableConversationHeight = ref(0);
-const assistantStableViewportHeight = ref(0);
 const assistantKeyboardInset = ref(0);
 const assistantShellStyle = computed<Record<string, string>>(() => {
   const style: Record<string, string> = {};
@@ -468,12 +468,12 @@ function captureAssistantStableGeometry() {
   if (composerFocused.value && assistantStableShellHeight.value > 0) return;
   const shell = assistantShellRef.value;
   if (!shell) return;
-  const shellHeight = Math.round(shell.getBoundingClientRect().height);
+  const shellRect = shell.getBoundingClientRect();
+  const shellHeight = Math.round(shellRect.height);
   const conversationHeight = Math.round(conversationRef.value?.getBoundingClientRect().height || 0);
-  const viewportHeight = Math.round(window.visualViewport?.height || window.innerHeight);
   if (shellHeight > 0) assistantStableShellHeight.value = shellHeight;
+  if (shellRect.bottom > 0) assistantStableShellBottom.value = Math.round(shellRect.bottom);
   if (conversationHeight > 0) assistantStableConversationHeight.value = conversationHeight;
-  if (viewportHeight > 0) assistantStableViewportHeight.value = viewportHeight;
   assistantKeyboardInset.value = 0;
 }
 
@@ -514,9 +514,15 @@ function scheduleAssistantViewportGeometry() {
 
 function syncAssistantViewportGeometry() {
   if (!composerFocused.value || !isMobileComposerViewport()) return;
-  const currentViewportHeight = Math.round(window.visualViewport?.height || window.innerHeight);
-  const stableViewportHeight = assistantStableViewportHeight.value || currentViewportHeight;
-  const nextInset = Math.max(0, stableViewportHeight - currentViewportHeight);
+  const shell = assistantShellRef.value;
+  if (!shell) return;
+  const viewport = window.visualViewport;
+  const viewportBottom = Math.round(
+    (viewport?.offsetTop || 0) + (viewport?.height || window.innerHeight),
+  );
+  const stableShellBottom = assistantStableShellBottom.value
+    || Math.round(shell.getBoundingClientRect().bottom);
+  const nextInset = Math.max(0, stableShellBottom - viewportBottom);
   if (Math.abs(nextInset - assistantKeyboardInset.value) > 1) {
     assistantKeyboardInset.value = nextInset;
   }
@@ -570,8 +576,8 @@ function releaseConversationAnchor() {
   if (assistantViewportFrame) cancelAnimationFrame(assistantViewportFrame);
   assistantViewportFrame = 0;
   assistantStableShellHeight.value = 0;
+  assistantStableShellBottom.value = 0;
   assistantStableConversationHeight.value = 0;
-  assistantStableViewportHeight.value = 0;
   assistantKeyboardInset.value = 0;
 }
 
@@ -1677,10 +1683,6 @@ onBeforeUnmount(() => {
     height: 0;
   }
   .assistant-shell.is-composer-focused {
-    --assistant-effective-keyboard-inset: max(
-      var(--assistant-keyboard-inset, 0px),
-      var(--layout-keyboard-inset, 0px)
-    );
     height: var(--assistant-stable-shell-height, 100%);
     min-height: var(--assistant-stable-shell-height, 0);
     max-height: var(--assistant-stable-shell-height, none);
@@ -1691,14 +1693,14 @@ onBeforeUnmount(() => {
       0px,
       calc(
         var(--assistant-stable-conversation-height, 0px)
-        - var(--assistant-effective-keyboard-inset)
+        - var(--assistant-keyboard-inset, 0px)
       )
     );
     flex: 0 0 max(
       0px,
       calc(
         var(--assistant-stable-conversation-height, 0px)
-        - var(--assistant-effective-keyboard-inset)
+        - var(--assistant-keyboard-inset, 0px)
       )
     );
     padding-bottom: 12px;
@@ -1706,14 +1708,14 @@ onBeforeUnmount(() => {
   .assistant-shell.is-composer-focused:not(.has-stable-conversation)::after {
     content: "";
     display: block;
-    height: calc(var(--assistant-effective-keyboard-inset) + 58px);
-    flex: 0 0 calc(var(--assistant-effective-keyboard-inset) + 58px);
+    height: calc(var(--assistant-keyboard-inset, 0px) + 58px);
+    flex: 0 0 calc(var(--assistant-keyboard-inset, 0px) + 58px);
   }
   .assistant-shell.is-composer-focused .assistant-form {
     position: absolute;
     z-index: 8;
     right: 0;
-    bottom: calc(var(--assistant-effective-keyboard-inset) + 8px);
+    bottom: calc(var(--assistant-keyboard-inset, 0px) + 8px);
     left: 0;
     margin: 0;
   }

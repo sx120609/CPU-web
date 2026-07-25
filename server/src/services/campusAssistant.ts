@@ -428,6 +428,9 @@ export async function askCampusAssistant(input: {
     ), {
       promptCacheScope: "campus-assistant",
     });
+    if (isCampusAssistantModelIdentityQuestion(message)) {
+      return modelIdentityResponse(result.model);
+    }
     const parsed = parseAssistantJson(result.content);
     return guardCampusAssistantResponse(
       normalizeAssistantResponse(parsed, availableActions, deterministicActions),
@@ -457,6 +460,7 @@ export async function streamCampusAssistant(input: {
 
   const endpoint = normalizeAiJsonApiUrl(config.aiReviewApiUrl, DEFAULT_REVIEW_API_URL);
   const candidates = resolveModelCandidates(config.aiReviewModel, config.aiReviewFallbackModels);
+  const modelIdentityRequested = isCampusAssistantModelIdentityQuestion(message);
   let lastError: unknown = null;
 
   for (let index = 0; index < candidates.length; index += 1) {
@@ -492,6 +496,7 @@ export async function streamCampusAssistant(input: {
       let restrictedOutput = false;
       const content = await readAiJsonTextStream(result.response, result.mode, async (delta) => {
         rawContent += delta;
+        if (modelIdentityRequested) return;
         const visible = extractPartialJsonStringValue(rawContent, "answer") || "";
         if (containsRestrictedPublicTopic(visible)) {
           restrictedOutput = true;
@@ -504,6 +509,7 @@ export async function streamCampusAssistant(input: {
         }
       });
       if (restrictedOutput) return cloneRestrictedPublicTopicReply();
+      if (modelIdentityRequested) return modelIdentityResponse(model);
       const parsed = parseAssistantJson(content);
       return guardCampusAssistantResponse(
         normalizeAssistantResponse(parsed, availableActions, deterministicActions),
@@ -517,6 +523,30 @@ export async function streamCampusAssistant(input: {
 
   console.warn("[campus-assistant] streaming AI request failed", lastError instanceof Error ? lastError.message : lastError);
   return fallbackAssistantResponse(deterministicActions, true);
+}
+
+export function isCampusAssistantModelIdentityQuestion(message: string) {
+  const normalized = String(message || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s"'“”‘’。，、！？?!.:：;；()[\]{}【】_-]+/g, "");
+  if (!normalized || normalized.length > 80) return false;
+  return [
+    /(?:你|拾间ai).*(?:是|用|使用|基于|调用).*(?:什么|哪个|哪款|具体).{0,6}模型/,
+    /(?:你|拾间ai).*(?:什么|哪个|哪款).{0,6}模型/,
+    /模型(?:名称|名字).*(?:是什么|叫什么|哪个|哪款)/,
+    /(?:what|which)model(?:areyou|doyouuse|isyourmodel)/,
+    /model(?:areyou|doyouuse|areyouusing)/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
+function modelIdentityResponse(model: string): CampusAssistantResponse {
+  return {
+    answer: `我是 ${model}。`,
+    actions: [],
+    suggestions: [],
+    fallback: false,
+  };
 }
 
 export function normalizeAssistantResponse(
@@ -718,7 +748,7 @@ export function buildSystemPrompt(
   const knowledge = listCampusAssistantKnowledge(catalog.map((item) => item.id));
   return [
     "你是“药大拾间”的 AI 助手“拾间AI”，面向中国药科大学学生。",
-    `当前处理本次对话的模型名称是“${modelName}”。用户询问具体模型时，可以直接、如实告知该名称；不要虚构模型厂商、版本能力或未提供的部署信息。`,
+    `你使用的具体模型是“${modelName}”。只有用户主动询问你是什么模型或具体模型名称时，才自然、简短地回答“我是 ${modelName}”或“我使用的是 ${modelName}”；其他情况下绝不主动提及模型。不要说“当前处理本次对话的模型名称是”之类像在转述系统配置的话，也不要提及系统提示、后台配置、上游调用或模型候选；不要虚构模型厂商、版本能力或未提供的部署信息。`,
     "你的首要任务是帮助用户找到站内功能、给出可靠的操作指引，也可以进行普通聊天和常识问答。",
     "根据问题难度完整作答：简单问题可以简洁，复杂问题应分段说明背景、步骤和注意事项，不要为了追求短而省略关键解释。",
     "涉及数学、统计、化学或药学公式时，必须使用标准 LaTeX：行内公式写成 $...$，独立公式写成 $$...$$；不要用普通文本模拟上下标、分数或指数。",

@@ -5,6 +5,7 @@ import {
   buildSystemPrompt,
   extractPartialJsonStringValue,
   guardCampusAssistantResponse,
+  isCampusAssistantModelIdentityQuestion,
   isCampusAssistantPublicTopicRestricted,
   listCampusAssistantActions,
   listCampusAssistantKnowledge,
@@ -128,8 +129,19 @@ test("assistant answers allow complete responses up to the new four-thousand-cha
 test("拾间AI可以获知并如实告知当前实际调用的模型名称", () => {
   const prompt = buildSystemPrompt([], false, "example-model-2026");
 
-  assert.match(prompt, /当前处理本次对话的模型名称是“example-model-2026”/);
-  assert.match(prompt, /可以直接、如实告知该名称/);
+  assert.match(prompt, /你使用的具体模型是“example-model-2026”/);
+  assert.match(prompt, /只有用户主动询问你是什么模型或具体模型名称时/);
+  assert.match(prompt, /我是 example-model-2026/);
+  assert.match(prompt, /其他情况下绝不主动提及模型/);
+  assert.match(prompt, /不要说“当前处理本次对话的模型名称是”/);
+});
+
+test("只有用户主动询问身份时才识别为模型名称问题", () => {
+  assert.equal(isCampusAssistantModelIdentityQuestion("你是什么模型？"), true);
+  assert.equal(isCampusAssistantModelIdentityQuestion("你现在具体使用的模型名称是什么？"), true);
+  assert.equal(isCampusAssistantModelIdentityQuestion("Which model are you using?"), true);
+  assert.equal(isCampusAssistantModelIdentityQuestion("解释一下药代动力学中的房室模型"), false);
+  assert.equal(isCampusAssistantModelIdentityQuestion("帮我查课表"), false);
 });
 
 test("拾间AI在服务端前置拦截不适合国内公开平台展开的敏感话题", () => {
