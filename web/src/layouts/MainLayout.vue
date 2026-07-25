@@ -1285,12 +1285,12 @@ function setAppearanceMode(command: string | number | object) {
   display: none;
 }
 
-.layout-root--tabbar-fallback.keyboard-geometry-open .main {
+.layout-root--tabbar-fallback.keyboard-open .main {
   padding-bottom: 12px;
 }
 
-.layout-root--tabbar-fallback.keyboard-geometry-open .main--bare,
-.layout-root--tabbar-fallback.keyboard-geometry-open .main--full-width {
+.layout-root--tabbar-fallback.keyboard-open .main--bare,
+.layout-root--tabbar-fallback.keyboard-open .main--full-width {
   padding-bottom: 0 !important;
 }
 
@@ -1556,15 +1556,15 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 @media (max-width: 768px) {
-  .layout-root.keyboard-geometry-open .main {
+  .layout-root.keyboard-open .main {
     padding-bottom: 12px;
   }
 
-  .layout-root.keyboard-geometry-open .main--bare {
+  .layout-root.keyboard-open .main--bare {
     padding-bottom: 0 !important;
   }
 
-  .layout-root.keyboard-geometry-open .main--full-width {
+  .layout-root.keyboard-open .main--full-width {
     padding: 0;
   }
 
@@ -1621,7 +1621,7 @@ function setAppearanceMode(command: string | number | object) {
     padding-bottom: calc(68px + env(safe-area-inset-bottom));
   }
 
-  .layout-root--full-height.keyboard-geometry-open .main--full-height {
+  .layout-root--full-height.keyboard-open .main--full-height {
     padding-bottom: 12px;
   }
 
