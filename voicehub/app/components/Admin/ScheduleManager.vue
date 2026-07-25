@@ -159,7 +159,7 @@
           <span class="flex items-center gap-1.5"
             >待排歌曲
             <span class="px-1.5 py-0.5 bg-zinc-800 text-[10px] rounded text-zinc-400">{{
-              filteredUnscheduledSongs.length
+              allUnscheduledSongs.length
             }}</span></span
           >
         </button>
