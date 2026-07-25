@@ -1715,16 +1715,16 @@ onBeforeUnmount(() => {
     width: 0;
     height: 0;
   }
-  :global(.layout-root.keyboard-geometry-open) .assistant-shell::after {
+  .assistant-shell.is-composer-focused::after {
     content: "";
     display: block;
     height: 50px;
     flex: 0 0 50px;
   }
-  :global(.layout-root.keyboard-geometry-open) .assistant-shell .conversation {
+  .assistant-shell.is-composer-focused .conversation {
     padding-bottom: calc(var(--layout-keyboard-inset, 0px) + 70px);
   }
-  :global(.layout-root.keyboard-geometry-open) .assistant-shell .assistant-form {
+  .assistant-shell.is-composer-focused .assistant-form {
     position: absolute;
     z-index: 8;
     right: 0;
@@ -1807,7 +1807,7 @@ onBeforeUnmount(() => {
     margin: 5px 0 0;
     font-size: 10px;
   }
-  :global(.layout-root.keyboard-geometry-open) .assistant-disclaimer {
+  .assistant-shell.is-composer-focused .assistant-disclaimer {
     display: none;
   }
   .assistant-form:focus-within {
