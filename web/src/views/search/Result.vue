@@ -48,9 +48,9 @@
             <div v-else-if="message.streaming" class="assistant-thinking" aria-label="拾间AI正在回答">
               <i></i><i></i><i></i>
             </div>
-            <div v-if="message.actions?.length" class="action-list">
+            <div v-if="displayActions(message).length" class="action-list">
               <button
-                v-for="action in message.actions"
+                v-for="action in displayActions(message)"
                 :key="action.id"
                 type="button"
                 class="action-card"
@@ -64,6 +64,13 @@
                 <el-icon><Right /></el-icon>
               </button>
             </div>
+            <div
+              v-if="isCurrentAssistantMessage(message) && searchLoading"
+              class="assistant-searching"
+            >
+              <i></i>
+              <span>正在查找站内相关内容</span>
+            </div>
             <div v-if="message.suggestions?.length" class="suggestions">
               <button
                 v-for="suggestion in message.suggestions"
@@ -76,65 +83,6 @@
             </div>
           </div>
         </article>
-
-        <section v-if="q" class="mobile-related-results" aria-label="站内聚合搜索结果">
-          <div class="mobile-related-head">
-            <strong>站内搜索</strong>
-            <span v-if="result">找到 {{ resultCount }} 条</span>
-            <span v-else-if="searchLoading">正在搜索…</span>
-            <button v-else-if="searchError" type="button" @click="reloadSearch">重试</button>
-          </div>
-
-          <div v-if="searchLoading && !result" class="mobile-related-state">正在聚合帖子、课程和服务…</div>
-          <div v-else-if="searchError && !result" class="mobile-related-state">{{ searchError }}</div>
-
-          <template v-else-if="result">
-            <div v-if="result.services.length" class="mobile-result-group">
-              <span class="mobile-result-label">入口与服务</span>
-              <button
-                v-for="service in result.services"
-                :key="`mobile-service-${service.id}`"
-                type="button"
-                class="mobile-result-row"
-                @click="open(service)"
-              >
-                <span class="mobile-result-icon">{{ service.icon || "🔗" }}</span>
-                <span>
-                  <strong>{{ service.name }}</strong>
-                  <small>{{ service.description }}</small>
-                </span>
-                <el-icon><Right /></el-icon>
-              </button>
-            </div>
-
-            <div v-if="result.topics.length" class="mobile-result-group">
-              <span class="mobile-result-label">帖子与公告</span>
-              <TopicListItem v-for="topic in result.topics" :key="`mobile-topic-${topic.id}`" :topic="topic" />
-            </div>
-
-            <div v-if="result.courses.length" class="mobile-result-group">
-              <span class="mobile-result-label">课程</span>
-              <button
-                v-for="course in result.courses"
-                :key="`mobile-course-${course.id}`"
-                type="button"
-                class="mobile-result-row"
-                @click="openCourse(course.id)"
-              >
-                <span class="mobile-result-icon">📚</span>
-                <span>
-                  <strong>{{ course.name }}</strong>
-                  <small>{{ course.code }}</small>
-                </span>
-                <el-icon><Right /></el-icon>
-              </button>
-            </div>
-
-            <div v-if="!resultCount && !searchLoading" class="mobile-related-state">
-              没有找到匹配的站内内容，可以换个关键词再试。
-            </div>
-          </template>
-        </section>
       </div>
 
       <div v-if="assistantError && !assistantLoading" class="assistant-error">
@@ -204,75 +152,6 @@
       </div>
     </el-drawer>
 
-    <div v-if="q" class="related-results">
-      <div class="related-head">
-        <div>
-          <h2>相关站内内容</h2>
-          <span v-if="result">找到 {{ resultCount }} 条</span>
-        </div>
-        <el-button v-if="searchError && !searchLoading" text type="primary" @click="reloadSearch">重新搜索</el-button>
-      </div>
-
-      <div v-if="searchLoading && !result" class="cpu-card related-loading">
-        <el-skeleton :rows="2" animated />
-      </div>
-      <div v-else-if="searchError && !result" class="cpu-card related-empty">{{ searchError }}</div>
-
-      <template v-else-if="result">
-        <section v-if="result.services.length" class="cpu-card">
-          <h3 class="title">🧭 入口与服务（{{ result.services.length }}）</h3>
-          <div
-            v-for="service in result.services"
-            :key="service.id"
-            class="svc-row"
-            role="button"
-            tabindex="0"
-            @click="open(service)"
-            @keydown.enter.prevent="open(service)"
-            @keydown.space.prevent="open(service)"
-          >
-            <span class="icon">{{ service.icon || "🔗" }}</span>
-            <div>
-              <div class="s-name">{{ service.name }}</div>
-              <div class="s-desc">{{ service.owner }} · {{ service.description }}</div>
-            </div>
-            <el-icon><Right /></el-icon>
-          </div>
-        </section>
-
-        <section v-if="result.topics.length" class="cpu-card">
-          <h3 class="title">💬 帖子与公告（{{ result.topics.length }}）</h3>
-          <TopicListItem v-for="topic in result.topics" :key="topic.id" :topic="topic" />
-        </section>
-
-        <section v-if="result.courses.length" class="cpu-card">
-          <h3 class="title">📚 课程（{{ result.courses.length }}）</h3>
-          <div
-            v-for="course in result.courses"
-            :key="course.id"
-            class="course-row"
-            role="button"
-            tabindex="0"
-            @click="openCourse(course.id)"
-            @keydown.enter.prevent="openCourse(course.id)"
-            @keydown.space.prevent="openCourse(course.id)"
-          >
-            <div>
-              <div class="c-name">{{ course.code }} · {{ course.name }}</div>
-              <div class="c-meta">
-                {{ course.teachers?.length ? course.teachers.map((teacher: any) => teacher.name).join("、") : (course.teacher || "—") }}
-                · {{ course.ratingCount }} 评价
-              </div>
-            </div>
-            <el-icon><Right /></el-icon>
-          </div>
-        </section>
-
-        <div v-if="!resultCount && !searchLoading" class="cpu-card related-empty">
-          没有更多传统搜索结果，可以继续问拾间AI。
-        </div>
-      </template>
-    </div>
   </div>
 </template>
 
@@ -289,7 +168,6 @@ import {
   Right,
 } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
-import TopicListItem from "@/components/forum/TopicListItem.vue";
 import {
   searchApi,
   type CampusAssistantAction,
@@ -356,17 +234,80 @@ let conversationAnchorRestoring = false;
 const conversationAnchorTimers: number[] = [];
 
 const welcomePrompts = ["怎么查宿舍电费？", "打开药苑之声", "我的课表在哪里？"];
-const resultCount = computed(() => (
-  (result.value?.topics.length ?? 0)
-  + (result.value?.courses.length ?? 0)
-  + (result.value?.services.length ?? 0)
+const currentAssistantMessageId = computed(() => (
+  [...messages.value].reverse().find((item) => item.role === "assistant")?.id ?? null
 ));
+const aggregateSearchActions = computed<CampusAssistantAction[]>(() => {
+  if (!result.value) return [];
+  const groups: CampusAssistantAction[][] = [
+    result.value.services.map((service: any) => ({
+      id: `search-service-${service.id ?? service.code ?? service.url}`,
+      label: String(service.name || "站内服务"),
+      description: String(service.description || service.owner || "打开站内服务"),
+      url: String(service.url || ""),
+      icon: String(service.icon || "🔗"),
+      owner: String(service.owner || "站内搜索"),
+      requireLogin: Boolean(service.requireLogin || service.needSso),
+    })),
+    result.value.topics.map((topic: any) => ({
+      id: `search-topic-${topic.id}`,
+      label: String(topic.title || "校园帖子"),
+      description: [topic.board?.name, topic.author?.nickname].filter(Boolean).join(" · ") || "查看站内帖子",
+      url: `/forum/topic/${topic.id}`,
+      icon: topic.board?.type === "announce" ? "📢" : "💬",
+      owner: "站内搜索",
+      requireLogin: false,
+    })),
+    result.value.courses.map((course: any) => ({
+      id: `search-course-${course.id}`,
+      label: String(course.name || course.code || "课程"),
+      description: [course.code, course.teachers?.map((teacher: any) => teacher.name).join("、") || course.teacher]
+        .filter(Boolean)
+        .join(" · ") || "查看课程详情",
+      url: `/coursereview/${course.id}`,
+      icon: "📚",
+      owner: "站内搜索",
+      requireLogin: false,
+    })),
+  ];
+  const actions: CampusAssistantAction[] = [];
+  while (actions.length < 3 && groups.some((group) => group.length)) {
+    for (const group of groups) {
+      const action = group.shift();
+      if (action) actions.push(action);
+      if (actions.length >= 3) break;
+    }
+  }
+  return actions;
+});
 const historyCaption = computed(() => {
   if (!auth.isLoggedIn) return "记录保存在当前设备；登录后可同步到账号，最多保留 20 个对话。";
   if (cloudSyncState.value === "syncing") return "正在同步当前账号的历史对话…";
   if (cloudSyncState.value === "error") return "云同步暂时不可用，本机记录已保留。";
   return "已与当前账号同步，最多保留 20 个对话。";
 });
+
+function isCurrentAssistantMessage(message: ConversationMessage) {
+  return message.role === "assistant" && message.id === currentAssistantMessageId.value;
+}
+
+function displayActions(message: ConversationMessage) {
+  const actions = [...(message.actions || [])];
+  if (!isCurrentAssistantMessage(message)) return actions;
+  const seen = new Set(actions.map(actionIdentity));
+  for (const action of aggregateSearchActions.value) {
+    const key = actionIdentity(action);
+    if (!action.url || seen.has(key)) continue;
+    actions.push(action);
+    seen.add(key);
+    if (actions.length >= 4) break;
+  }
+  return actions;
+}
+
+function actionIdentity(action: CampusAssistantAction) {
+  return String(action.url || action.label || action.id).trim().toLowerCase();
+}
 
 onMounted(() => {
   if (auth.isLoggedIn) void hydrateCloudSessions();
@@ -935,10 +876,6 @@ function open(item: any) {
   ElMessage.warning("该入口链接格式暂不支持");
 }
 
-function openCourse(id: number) {
-  router.push(`/coursereview/${id}`);
-}
-
 onBeforeUnmount(() => {
   cancelActiveAssistant();
   if (scrollFrame) cancelAnimationFrame(scrollFrame);
@@ -1176,6 +1113,21 @@ onBeforeUnmount(() => {
   line-height: 1.45;
   font-size: 11px;
 }
+.assistant-searching {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 9px;
+  color: var(--cpu-text-muted);
+  font-size: 11px;
+}
+.assistant-searching i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cpu-primary);
+  animation: thinking 1s infinite ease-in-out;
+}
 .assistant-thinking {
   display: flex;
   gap: 5px;
@@ -1273,84 +1225,6 @@ onBeforeUnmount(() => {
   cursor: default;
   filter: none;
 }
-.related-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 2px 4px;
-}
-.related-results {
-  display: contents;
-}
-.related-head h2 {
-  display: inline;
-  margin: 0 8px 0 0;
-  font-size: 17px;
-}
-.related-head span {
-  color: var(--cpu-text-muted);
-  font-size: 11px;
-}
-.title {
-  margin: 0 0 10px;
-  font-size: 15px;
-}
-.course-row,
-.svc-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  overflow: hidden;
-  padding: 11px 4px;
-  border-bottom: 1px dashed var(--cpu-border-soft);
-  border-radius: 7px;
-  cursor: pointer;
-}
-.course-row:last-child,
-.svc-row:last-child {
-  border-bottom: none;
-}
-.course-row:hover,
-.svc-row:hover {
-  background: var(--cpu-surface-subtle);
-}
-.course-row:focus-visible,
-.svc-row:focus-visible {
-  outline: 2px solid var(--cpu-primary);
-  outline-offset: 2px;
-}
-.course-row > div,
-.svc-row > div {
-  flex: 1;
-  min-width: 0;
-}
-.c-name,
-.s-name {
-  color: var(--cpu-text);
-  overflow-wrap: anywhere;
-  font-size: 14px;
-}
-.c-meta,
-.s-desc {
-  margin-top: 2px;
-  color: var(--cpu-text-secondary);
-  overflow-wrap: anywhere;
-  font-size: 12px;
-}
-.icon {
-  font-size: 20px;
-}
-.related-loading,
-.related-empty {
-  color: var(--cpu-text-secondary);
-  text-align: center;
-  font-size: 13px;
-}
-.mobile-related-results {
-  display: none;
-}
-
 :global(.assistant-history-drawer) {
   color: var(--cpu-text);
   background: var(--cpu-card);
@@ -1600,96 +1474,6 @@ onBeforeUnmount(() => {
     padding: 0;
     overflow: visible;
   }
-  .mobile-related-results {
-    display: flex;
-    width: 100%;
-    flex-direction: column;
-    gap: 12px;
-    margin-top: 3px;
-    padding: 16px 2px 4px;
-    border-top: 1px solid var(--cpu-border-soft);
-  }
-  .mobile-related-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-  }
-  .mobile-related-head strong {
-    font-size: 15px;
-  }
-  .mobile-related-head span,
-  .mobile-related-head button,
-  .mobile-related-state {
-    color: var(--cpu-text-muted);
-    font: inherit;
-    font-size: 11px;
-  }
-  .mobile-related-head button {
-    padding: 0;
-    border: 0;
-    color: var(--cpu-primary);
-    background: transparent;
-  }
-  .mobile-related-state {
-    padding: 12px 4px;
-    text-align: center;
-  }
-  .mobile-result-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .mobile-result-label {
-    color: var(--cpu-text-muted);
-    font-size: 11px;
-  }
-  .mobile-result-row {
-    display: flex;
-    width: 100%;
-    align-items: center;
-    gap: 9px;
-    padding: 10px;
-    border: 1px solid var(--cpu-border-soft);
-    border-radius: 12px;
-    color: var(--cpu-text);
-    background: var(--cpu-card);
-    font: inherit;
-    text-align: left;
-  }
-  .mobile-result-row > span:nth-child(2) {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    min-width: 0;
-  }
-  .mobile-result-row strong {
-    font-size: 13px;
-  }
-  .mobile-result-row small {
-    margin-top: 2px;
-    color: var(--cpu-text-secondary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 11px;
-  }
-  .mobile-result-icon {
-    flex: 0 0 auto;
-    font-size: 18px;
-  }
-  .mobile-result-group :deep(.topic-row) {
-    padding: 10px;
-    border: 1px solid var(--cpu-border-soft);
-    background: var(--cpu-card);
-  }
-  .mobile-result-group :deep(.topic-row .avatar),
-  .mobile-result-group :deep(.topic-row .line2) {
-    display: none;
-  }
-  .mobile-result-group :deep(.topic-row .title) {
-    font-size: 13px;
-  }
   .suggestions button {
     padding: 6px 9px;
     white-space: normal;
@@ -1729,9 +1513,6 @@ onBeforeUnmount(() => {
     font-size: 17px;
   }
   .composer-send span {
-    display: none;
-  }
-  .related-results {
     display: none;
   }
 }
