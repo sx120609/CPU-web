@@ -22,8 +22,8 @@
           <el-button v-else-if="site.features.forum && auth.canAccessForum" size="large" @click="$router.push('/post')">
             <el-icon><Edit /></el-icon> 发布内容
           </el-button>
-          <el-button size="large" @click="$router.push('/services')">
-            <el-icon><Service /></el-icon> 校园服务
+          <el-button size="large" @click="$router.push('/search')">
+            <el-icon><ChatDotRound /></el-icon> 拾间AI
           </el-button>
         </div>
       </div>
@@ -214,7 +214,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
-import { ChatLineRound, Edit, Bell, Service } from "@element-plus/icons-vue";
+import { ChatLineRound, ChatDotRound, Edit, Bell } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";

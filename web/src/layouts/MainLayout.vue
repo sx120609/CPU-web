@@ -128,7 +128,7 @@
             <el-icon><Refresh /></el-icon>
           </el-button>
           <el-button text class="touch-icon-btn assistant-shortcut-touch" aria-label="拾间AI" @click="$router.push('/search')">
-            <span class="assistant-shortcut-mark">拾</span>
+            <el-icon><ChatDotRound /></el-icon>
           </el-button>
           <el-button v-if="auth.isLoggedIn" text class="touch-icon-btn" aria-label="消息" @click="$router.push('/messages')">
             <el-badge :value="msg.unreadCount" :hidden="msg.unreadCount === 0">
@@ -297,6 +297,7 @@ import {
   Menu,
   House,
   ChatLineRound,
+  ChatDotRound,
   Calendar,
   Reading,
   UserFilled,
@@ -428,12 +429,12 @@ const desktopOverflowNavItems = computed(() => {
 });
 
 const mobileNavItems = computed(() => {
-  // 固定 5 项：首页 / 教务 / 课表 / 拾间AI / 我的（校园服务与论坛进 drawer）
+  // 固定 5 项：首页 / 教务 / 课表 / 服务 / 我的
   return [
     { to: "/home", label: "首页", icon: House, match: ["/home"] },
     { to: "/jwxt", label: "教务", icon: Reading, match: ["/jwxt"] },
     { to: "/schedule", label: "课表", icon: Calendar, match: ["/schedule"] },
-    { to: "/search", label: "拾间AI", icon: Search, match: ["/search"] },
+    { to: "/services", label: "服务", icon: Service, match: ["/services"] },
     { to: "/profile", label: "我的", icon: UserFilled, match: ["/profile", "/sponsor-wall", "/messages", "/admin", "/u/"], auth: true },
   ] as { to: string; label: string; icon: any; match: string[]; auth?: boolean }[];
 });
@@ -908,25 +909,8 @@ function setAppearanceMode(command: string | number | object) {
   font-size: 20px;
 }
 
-.assistant-shortcut-mark {
-  display: inline-grid;
-  width: 22px;
-  height: 22px;
-  place-items: center;
-  border-radius: 7px;
-  color: currentColor;
-  background: rgba(255, 255, 255, 0.16);
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 1;
-}
-
 .assistant-shortcut-touch {
-  color: var(--cpu-primary);
-}
-
-.assistant-shortcut-touch .assistant-shortcut-mark {
-  background: rgba(20, 143, 123, 0.11);
+  color: var(--cpu-text-secondary);
 }
 
 .assistant-fab {

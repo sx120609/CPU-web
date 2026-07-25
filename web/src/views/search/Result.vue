@@ -42,9 +42,13 @@
         >
           <div class="message-label">{{ message.role === "user" ? "你" : "拾间AI" }}</div>
           <div class="message-bubble">
-            <p v-if="message.content">
-              {{ message.content }}<span v-if="message.streaming" class="stream-cursor" aria-hidden="true"></span>
-            </p>
+            <template v-if="message.content">
+              <p v-if="message.role === 'user'" class="user-message-content">
+                {{ message.content }}
+              </p>
+              <div v-else class="message-markdown" v-html="renderMarkdown(message.content)"></div>
+              <span v-if="message.streaming" class="stream-cursor" aria-hidden="true"></span>
+            </template>
             <div v-else-if="message.streaming" class="assistant-thinking" aria-label="拾间AI正在回答">
               <i></i><i></i><i></i>
             </div>
@@ -107,6 +111,7 @@
           <span>发送</span>
         </button>
       </div>
+      <p class="assistant-disclaimer">内容由 AI 生成，请注意甄别</p>
     </section>
 
     <el-drawer
@@ -168,6 +173,7 @@ import {
   type CampusAssistantMessage,
 } from "@/api/search";
 import { useAuthStore } from "@/stores/auth";
+import { renderMarkdown } from "@/utils/markdown";
 
 type ConversationMessage = CampusAssistantMessage & {
   id: number;
@@ -935,13 +941,13 @@ onBeforeUnmount(() => {
   padding: 2px 0;
   border: 0;
   border-radius: 0;
-  color: var(--cpu-text);
+  color: var(--cpu-primary);
   background: transparent;
   box-shadow: none;
   text-align: right;
 }
 .message--user .message-bubble p {
-  font-weight: 650;
+  font-weight: 700;
 }
 .message--assistant .message-bubble {
   border-bottom-left-radius: 4px;
@@ -952,6 +958,84 @@ onBeforeUnmount(() => {
   overflow-wrap: anywhere;
   line-height: 1.65;
   font-size: 14px;
+}
+.message-markdown {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+  font-size: 14px;
+}
+.message-markdown :deep(> :first-child) {
+  margin-top: 0;
+}
+.message-markdown :deep(> :last-child) {
+  margin-bottom: 0;
+}
+.message-markdown :deep(p) {
+  margin: 0.65em 0;
+  white-space: normal;
+}
+.message-markdown :deep(h1),
+.message-markdown :deep(h2),
+.message-markdown :deep(h3),
+.message-markdown :deep(h4) {
+  margin: 1em 0 0.45em;
+  line-height: 1.35;
+}
+.message-markdown :deep(h1) { font-size: 1.35em; }
+.message-markdown :deep(h2) { font-size: 1.22em; }
+.message-markdown :deep(h3) { font-size: 1.1em; }
+.message-markdown :deep(ul),
+.message-markdown :deep(ol) {
+  margin: 0.65em 0;
+  padding-left: 1.5em;
+}
+.message-markdown :deep(li + li) {
+  margin-top: 0.3em;
+}
+.message-markdown :deep(blockquote) {
+  margin: 0.75em 0;
+  padding: 0.2em 0 0.2em 0.85em;
+  border-left: 3px solid var(--cpu-primary);
+  color: var(--cpu-text-secondary);
+}
+.message-markdown :deep(a) {
+  color: var(--cpu-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.message-markdown :deep(code) {
+  padding: 0.12em 0.35em;
+  border-radius: 5px;
+  background: var(--cpu-surface);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.92em;
+}
+.message-markdown :deep(pre) {
+  max-width: 100%;
+  margin: 0.75em 0;
+  overflow-x: auto;
+  padding: 11px 12px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 9px;
+  background: var(--cpu-surface);
+}
+.message-markdown :deep(pre code) {
+  padding: 0;
+  background: transparent;
+  white-space: pre;
+}
+.message-markdown :deep(table) {
+  width: 100%;
+  margin: 0.75em 0;
+  border-collapse: collapse;
+}
+.message-markdown :deep(th),
+.message-markdown :deep(td) {
+  padding: 6px 8px;
+  border: 1px solid var(--cpu-border-soft);
+  text-align: left;
 }
 .action-list {
   display: grid;
@@ -1042,6 +1126,13 @@ onBeforeUnmount(() => {
   margin-top: auto;
   padding: 12px 2px 0;
   border-top: 1px solid var(--cpu-border-soft);
+}
+.assistant-disclaimer {
+  margin: -8px 0 0;
+  color: var(--cpu-text-muted);
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.4;
 }
 .assistant-form .el-input {
   flex: 1;
@@ -1311,7 +1402,7 @@ onBeforeUnmount(() => {
     padding: 2px 1px;
     border: 0;
     border-radius: 0;
-    color: var(--cpu-text);
+    color: var(--cpu-primary);
     background: transparent;
     box-shadow: none;
   }
@@ -1354,6 +1445,13 @@ onBeforeUnmount(() => {
     border-radius: 18px;
     background: var(--cpu-surface);
     transition: border-color 0.16s ease, box-shadow 0.16s ease;
+  }
+  .assistant-disclaimer {
+    margin: 5px 0 0;
+    font-size: 10px;
+  }
+  .assistant-shell.is-composer-focused .assistant-disclaimer {
+    display: none;
   }
   .assistant-form:focus-within {
     border-color: var(--cpu-primary);
