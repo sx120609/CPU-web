@@ -623,7 +623,7 @@ function isEditableElement(target: HTMLElement | null) {
 
 function syncViewportMetrics() {
   if (typeof window === "undefined") return;
-  const visualHeight = getEffectiveViewportHeight();
+  const visualHeight = getEffectiveViewportBottom();
   const visualWidth = Math.round(window.visualViewport?.width ?? window.innerWidth);
   const orientation = getScreenOrientation();
   if (orientation !== viewportBaselineOrientation) {
@@ -647,8 +647,9 @@ function syncViewportMetrics() {
   }
 }
 
-function getEffectiveViewportHeight() {
+function getEffectiveViewportBottom() {
   const visualHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
+  const visualOffsetTop = Math.max(0, Math.round(window.visualViewport?.offsetTop ?? 0));
   const layoutHeight = Math.round(window.innerHeight);
   const documentHeight = Math.round(document.documentElement?.clientHeight || 0);
   const baseHeight = Math.max(
@@ -657,15 +658,12 @@ function getEffectiveViewportHeight() {
     layoutHeight,
     documentHeight,
   );
-  const keyboardShrunkenHeights = [visualHeight, layoutHeight, documentHeight]
-    .filter((height) => height > 0 && baseHeight - height > KEYBOARD_INSET_THRESHOLD);
+  const visualBottom = Math.min(baseHeight, visualOffsetTop + visualHeight);
 
-  // iOS WebViews can shrink visualViewport once more than their containing view
-  // for the keyboard accessory bar. Use the largest viewport that has actually
-  // shrunk, so the composer lands on the keyboard instead of floating above it.
-  return keyboardShrunkenHeights.length
-    ? Math.max(...keyboardShrunkenHeights)
-    : visualHeight;
+  // iOS pans visualViewport while keeping the page anchored at y=0. Keyboard
+  // avoidance therefore needs its bottom edge, not height alone; otherwise the
+  // composer is lifted by offsetTop and leaves a large blank band above the keyboard.
+  return visualBottom;
 }
 
 function getScreenOrientation() {
@@ -699,7 +697,7 @@ function isTabletTouchViewport(width: number, height: number) {
 
 function updateKeyboardState() {
   if (typeof window === "undefined") return;
-  const currentHeight = getEffectiveViewportHeight();
+  const currentHeight = getEffectiveViewportBottom();
   const baseHeight = Math.max(mobileViewportBaseHeight.value || 0, currentHeight, window.innerHeight);
   const measuredInset = Math.max(
     0,
@@ -738,7 +736,7 @@ function scheduleKeyboardGeometryClose() {
   if (keyboardGeometryCloseTimer) return;
   keyboardGeometryCloseTimer = window.setTimeout(() => {
     keyboardGeometryCloseTimer = 0;
-    const currentHeight = getEffectiveViewportHeight();
+    const currentHeight = getEffectiveViewportBottom();
     const baseHeight = Math.max(mobileViewportBaseHeight.value || 0, currentHeight, window.innerHeight);
     const measuredInset = Math.max(
       0,
