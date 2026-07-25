@@ -354,9 +354,18 @@ const useTabbarFallback = computed(() => (
 ));
 const layoutStyle = computed(() => {
   if (!mobileViewportHeight.value) return {};
+  const baseHeight = Math.max(
+    mobileViewportBaseHeight.value || 0,
+    mobileViewportHeight.value,
+  );
+  const keyboardInset = keyboardOpen.value
+    ? Math.max(0, baseHeight - mobileViewportHeight.value)
+    : 0;
   return {
     "--layout-viewport-height": `${mobileViewportHeight.value}px`,
+    "--layout-viewport-base-height": `${baseHeight}px`,
     "--layout-viewport-offset-top": `${mobileViewportOffsetTop.value}px`,
+    "--layout-keyboard-inset": `${keyboardInset}px`,
   };
 });
 
@@ -518,6 +527,10 @@ function handleFocusIn(event: FocusEvent) {
   editableFocused.value = isEditableElement(target);
   editorFocused.value = Boolean(target?.closest(".rich-editor"));
   syncViewportMetrics();
+  if (fullHeightContent.value && editableFocused.value && isMobileViewport.value) {
+    keyboardOpen.value = true;
+    return;
+  }
   if (editorFocused.value && isMobileViewport.value) {
     keyboardOpen.value = true;
     requestAnimationFrame(() => {
@@ -576,6 +589,10 @@ function isTabletTouchViewport(width: number, height: number) {
 
 function updateKeyboardState() {
   if (typeof window === "undefined") return;
+  if (fullHeightContent.value && editableFocused.value && isMobileViewport.value) {
+    keyboardOpen.value = true;
+    return;
+  }
   if (editorFocused.value && isMobileViewport.value) {
     keyboardOpen.value = true;
     return;
@@ -930,6 +947,10 @@ function setAppearanceMode(command: string | number | object) {
 .main--full-height {
   min-height: 0;
   overflow: hidden;
+}
+
+.layout-root--full-height.keyboard-open {
+  height: var(--layout-viewport-base-height, var(--layout-viewport-height, 100dvh));
 }
 
 .main--full-height > :deep(*) {

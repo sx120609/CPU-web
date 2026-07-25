@@ -1,6 +1,6 @@
 <template>
   <div class="assistant-page">
-    <section class="assistant-shell cpu-card">
+    <section class="assistant-shell cpu-card" :class="{ 'is-composer-focused': composerFocused }">
       <div class="assistant-head">
         <span class="assistant-mark">拾</span>
         <div class="assistant-head-copy">
@@ -351,7 +351,7 @@ let conversationAnchorScrollTop: number | null = null;
 let conversationAnchorLockUntil = 0;
 let conversationAnchorFrame = 0;
 let conversationAnchorReleaseTimer = 0;
-let composerFocused = false;
+const composerFocused = ref(false);
 let conversationAnchorRestoring = false;
 const conversationAnchorTimers: number[] = [];
 
@@ -530,14 +530,14 @@ function captureConversationAnchor() {
 function handleComposerFocus() {
   if (!isMobileComposerViewport()) return;
   if (conversationAnchorScrollTop === null) captureConversationAnchor();
-  composerFocused = true;
+  composerFocused.value = true;
   conversationAnchorLockUntil = performance.now() + 520;
   window.clearTimeout(conversationAnchorReleaseTimer);
   scheduleConversationAnchorRestore();
 }
 
 function handleComposerBlur() {
-  if (!composerFocused) return;
+  if (!composerFocused.value) return;
   conversationAnchorLockUntil = performance.now() + 420;
   scheduleConversationAnchorRestore();
   window.clearTimeout(conversationAnchorReleaseTimer);
@@ -547,13 +547,13 @@ function handleComposerBlur() {
 }
 
 function handleComposerViewportChange() {
-  if (!composerFocused || conversationAnchorScrollTop === null) return;
+  if (!composerFocused.value || conversationAnchorScrollTop === null) return;
   scheduleConversationAnchorRestore();
 }
 
 function handleConversationScroll() {
   if (
-    !composerFocused
+    !composerFocused.value
     || conversationAnchorRestoring
     || performance.now() < conversationAnchorLockUntil
   ) return;
@@ -587,7 +587,7 @@ function restoreConversationAnchor() {
 }
 
 function releaseConversationAnchor() {
-  composerFocused = false;
+  composerFocused.value = false;
   conversationAnchorScrollTop = null;
   conversationAnchorLockUntil = 0;
   conversationAnchorRestoring = false;
@@ -1477,6 +1477,7 @@ onBeforeUnmount(() => {
     overflow: hidden;
   }
   .assistant-shell {
+    position: relative;
     height: 100%;
     min-height: 0;
     gap: 0;
@@ -1518,7 +1519,30 @@ onBeforeUnmount(() => {
     max-height: none;
     gap: 17px;
     padding: 10px 2px 12px;
+    scrollbar-width: none;
     scrollbar-gutter: auto;
+  }
+  .conversation::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+  .assistant-shell.is-composer-focused::after {
+    content: "";
+    display: block;
+    height: 50px;
+    flex: 0 0 50px;
+  }
+  .assistant-shell.is-composer-focused .conversation {
+    padding-bottom: calc(var(--layout-keyboard-inset, 0px) + 70px);
+  }
+  .assistant-shell.is-composer-focused .assistant-form {
+    position: absolute;
+    z-index: 8;
+    right: 0;
+    bottom: calc(var(--layout-keyboard-inset, 0px) + 8px);
+    left: 0;
+    margin: 0;
   }
   .message {
     max-width: 82%;
