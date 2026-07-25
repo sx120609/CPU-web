@@ -1,6 +1,14 @@
 <template>
   <div class="assistant-page" :class="{ 'assistant-page--embedded': embedded }">
-    <section class="assistant-shell cpu-card" :class="{ 'is-composer-focused': composerFocused }">
+    <section
+      ref="assistantShellRef"
+      class="assistant-shell cpu-card"
+      :class="{
+        'is-composer-focused': composerFocused,
+        'has-stable-conversation': assistantStableConversationHeight > 0,
+      }"
+      :style="assistantShellStyle"
+    >
       <div class="assistant-head">
         <span class="assistant-mark">
           <el-icon v-if="embedded"><ChatDotRound /></el-icon>
@@ -100,7 +108,7 @@
         <el-button text type="primary" @click="retryAssistant">重试</el-button>
       </div>
 
-      <div class="assistant-form" @pointerdown.capture="captureConversationAnchor">
+      <div class="assistant-form" @pointerdown.capture="prepareComposerFocus">
         <el-input
           v-model="keywordInput"
           type="textarea"
@@ -272,7 +280,22 @@ const historyOpen = ref(false);
 const cloudSyncState = ref<"local" | "syncing" | "ready" | "error">(
   auth.isLoggedIn ? "syncing" : "local",
 );
+const assistantShellRef = ref<HTMLElement | null>(null);
 const conversationRef = ref<HTMLElement | null>(null);
+const assistantStableShellHeight = ref(0);
+const assistantStableConversationHeight = ref(0);
+const assistantKeyboardInset = ref(0);
+const assistantShellStyle = computed<Record<string, string>>(() => {
+  const style: Record<string, string> = {};
+  if (assistantStableShellHeight.value > 0) {
+    style["--assistant-stable-shell-height"] = `${assistantStableShellHeight.value}px`;
+  }
+  if (assistantStableConversationHeight.value > 0) {
+    style["--assistant-stable-conversation-height"] = `${assistantStableConversationHeight.value}px`;
+  }
+  style["--assistant-keyboard-inset"] = `${assistantKeyboardInset.value}px`;
+  return style;
+});
 const sessions = ref<ConversationSession[]>(loadSessions());
 const restoredSession = restoreActiveSession(sessions.value);
 const activeSessionId = ref(restoredSession?.id || "");
@@ -288,6 +311,7 @@ let conversationAnchorScrollTop: number | null = null;
 let conversationAnchorLockUntil = 0;
 let conversationAnchorFrame = 0;
 let conversationAnchorReleaseTimer = 0;
+let assistantViewportFrame = 0;
 const composerFocused = ref(false);
 let conversationAnchorRestoring = false;
 const conversationAnchorTimers: number[] = [];
@@ -433,13 +457,32 @@ function captureConversationAnchor() {
   conversationAnchorScrollTop = element.scrollTop;
 }
 
+function prepareComposerFocus() {
+  captureConversationAnchor();
+  captureAssistantStableGeometry();
+}
+
+function captureAssistantStableGeometry() {
+  if (!isMobileComposerViewport()) return;
+  if (composerFocused.value && assistantStableShellHeight.value > 0) return;
+  const shell = assistantShellRef.value;
+  if (!shell) return;
+  const shellHeight = Math.round(shell.getBoundingClientRect().height);
+  const conversationHeight = Math.round(conversationRef.value?.getBoundingClientRect().height || 0);
+  if (shellHeight > 0) assistantStableShellHeight.value = shellHeight;
+  if (conversationHeight > 0) assistantStableConversationHeight.value = conversationHeight;
+  assistantKeyboardInset.value = 0;
+}
+
 function handleComposerFocus() {
   if (!isMobileComposerViewport()) return;
   if (conversationAnchorScrollTop === null) captureConversationAnchor();
+  captureAssistantStableGeometry();
   composerFocused.value = true;
   conversationAnchorLockUntil = performance.now() + 520;
   window.clearTimeout(conversationAnchorReleaseTimer);
   scheduleConversationAnchorRestore();
+  void nextTick(scheduleAssistantViewportGeometry);
 }
 
 function handleComposerBlur() {
@@ -453,8 +496,35 @@ function handleComposerBlur() {
 }
 
 function handleComposerViewportChange() {
-  if (!composerFocused.value || conversationAnchorScrollTop === null) return;
-  scheduleConversationAnchorRestore();
+  if (!composerFocused.value) return;
+  scheduleAssistantViewportGeometry();
+  if (conversationAnchorScrollTop !== null) scheduleConversationAnchorRestore();
+}
+
+function scheduleAssistantViewportGeometry() {
+  if (assistantViewportFrame) cancelAnimationFrame(assistantViewportFrame);
+  assistantViewportFrame = requestAnimationFrame(() => {
+    assistantViewportFrame = 0;
+    syncAssistantViewportGeometry();
+  });
+}
+
+function syncAssistantViewportGeometry() {
+  if (!composerFocused.value || !isMobileComposerViewport()) return;
+  const shell = assistantShellRef.value;
+  if (!shell) return;
+  const viewport = window.visualViewport;
+  const viewportBottom = Math.round(
+    (viewport?.offsetTop || 0) + (viewport?.height || window.innerHeight),
+  );
+  const shellRect = shell.getBoundingClientRect();
+  const shellBottom = Math.round(
+    shellRect.top + (assistantStableShellHeight.value || shellRect.height),
+  );
+  const nextInset = Math.max(0, shellBottom - viewportBottom);
+  if (Math.abs(nextInset - assistantKeyboardInset.value) > 1) {
+    assistantKeyboardInset.value = nextInset;
+  }
 }
 
 function handleConversationScroll() {
@@ -502,6 +572,11 @@ function releaseConversationAnchor() {
   clearConversationAnchorTimers();
   if (conversationAnchorFrame) cancelAnimationFrame(conversationAnchorFrame);
   conversationAnchorFrame = 0;
+  if (assistantViewportFrame) cancelAnimationFrame(assistantViewportFrame);
+  assistantViewportFrame = 0;
+  assistantStableShellHeight.value = 0;
+  assistantStableConversationHeight.value = 0;
+  assistantKeyboardInset.value = 0;
 }
 
 function clearConversationAnchorTimers() {
@@ -1605,20 +1680,40 @@ onBeforeUnmount(() => {
     width: 0;
     height: 0;
   }
-  .assistant-shell.is-composer-focused::after {
+  .assistant-shell.is-composer-focused {
+    height: var(--assistant-stable-shell-height, 100%);
+    min-height: var(--assistant-stable-shell-height, 0);
+    max-height: var(--assistant-stable-shell-height, none);
+    flex: 0 0 var(--assistant-stable-shell-height, 100%);
+  }
+  .assistant-shell.is-composer-focused.has-stable-conversation .conversation {
+    height: max(
+      0px,
+      calc(
+        var(--assistant-stable-conversation-height, 0px)
+        - var(--assistant-keyboard-inset, 0px)
+      )
+    );
+    flex: 0 0 max(
+      0px,
+      calc(
+        var(--assistant-stable-conversation-height, 0px)
+        - var(--assistant-keyboard-inset, 0px)
+      )
+    );
+    padding-bottom: 12px;
+  }
+  .assistant-shell.is-composer-focused:not(.has-stable-conversation)::after {
     content: "";
     display: block;
-    height: 50px;
-    flex: 0 0 50px;
-  }
-  .assistant-shell.is-composer-focused .conversation {
-    padding-bottom: calc(var(--layout-keyboard-inset, 0px) + 70px);
+    height: calc(var(--assistant-keyboard-inset, 0px) + 58px);
+    flex: 0 0 calc(var(--assistant-keyboard-inset, 0px) + 58px);
   }
   .assistant-shell.is-composer-focused .assistant-form {
     position: absolute;
     z-index: 8;
     right: 0;
-    bottom: calc(var(--layout-keyboard-inset, 0px) + 8px);
+    bottom: calc(var(--assistant-keyboard-inset, 0px) + 8px);
     left: 0;
     margin: 0;
   }
