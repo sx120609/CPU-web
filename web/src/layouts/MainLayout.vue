@@ -355,6 +355,9 @@ const editableFocused = ref(false);
 const editorFocused = ref(false);
 const mobileViewportBaseHeight = ref(0);
 const isMobileViewport = ref(false);
+const KEYBOARD_INSET_THRESHOLD = 96;
+const viewportBaseHeights = new Map<string, number>();
+let viewportBaselineOrientation = "";
 let focusOutTimer = 0;
 let disposed = false;
 
@@ -591,14 +594,33 @@ function syncViewportMetrics() {
   if (typeof window === "undefined") return;
   const visualHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
   const visualWidth = Math.round(window.visualViewport?.width ?? window.innerWidth);
+  const orientation = getScreenOrientation();
+  if (orientation !== viewportBaselineOrientation) {
+    viewportBaselineOrientation = orientation;
+    mobileViewportBaseHeight.value = Math.max(
+      viewportBaseHeights.get(orientation) || 0,
+      visualHeight,
+      window.innerHeight,
+    );
+  }
   mobileViewportOffsetTop.value = Math.max(0, Math.round(window.visualViewport?.offsetTop ?? 0));
   mobileViewportHeight.value = visualHeight;
   mobileViewportWidth.value = visualWidth;
   touchLikeViewport.value = isTabletTouchViewport(visualWidth, visualHeight);
   isMobileViewport.value = isTouchNavigationViewport(visualWidth, visualHeight);
-  if (!keyboardOpen.value) {
-    mobileViewportBaseHeight.value = Math.max(mobileViewportBaseHeight.value, visualHeight, window.innerHeight);
+  const measuredInset = Math.max(0, mobileViewportBaseHeight.value - visualHeight);
+  if (!editableFocused.value && measuredInset <= KEYBOARD_INSET_THRESHOLD) {
+    const stableHeight = Math.max(mobileViewportBaseHeight.value, visualHeight, window.innerHeight);
+    mobileViewportBaseHeight.value = stableHeight;
+    viewportBaseHeights.set(orientation, Math.max(viewportBaseHeights.get(orientation) || 0, stableHeight));
   }
+}
+
+function getScreenOrientation() {
+  const type = window.screen.orientation?.type || "";
+  if (type.startsWith("portrait")) return "portrait";
+  if (type.startsWith("landscape")) return "landscape";
+  return window.screen.height >= window.screen.width ? "portrait" : "landscape";
 }
 
 function isTouchNavigationViewport(width: number, height: number) {
@@ -616,20 +638,24 @@ function isTabletTouchViewport(width: number, height: number) {
 
 function updateKeyboardState() {
   if (typeof window === "undefined") return;
-  if (fullHeightContent.value && editableFocused.value && isMobileViewport.value) {
-    keyboardOpen.value = true;
-    return;
-  }
-  if (editorFocused.value && isMobileViewport.value) {
-    keyboardOpen.value = true;
-    return;
-  }
   const currentHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
   const baseHeight = Math.max(mobileViewportBaseHeight.value || 0, currentHeight, window.innerHeight);
-  const keyboardLikelyOpen = isMobileViewport.value && editableFocused.value && baseHeight - currentHeight > 120;
+  const measuredInset = Math.max(0, baseHeight - currentHeight);
+  const focusedEditableNeedsKeyboard = isMobileViewport.value && (
+    (fullHeightContent.value && editableFocused.value)
+    || editorFocused.value
+  );
+  const viewportStillCovered = isMobileViewport.value
+    && measuredInset > KEYBOARD_INSET_THRESHOLD;
+  const keyboardLikelyOpen = focusedEditableNeedsKeyboard || viewportStillCovered;
   keyboardOpen.value = keyboardLikelyOpen;
-  if (!keyboardLikelyOpen) {
-    mobileViewportBaseHeight.value = Math.max(currentHeight, window.innerHeight);
+  if (!keyboardLikelyOpen && !editableFocused.value) {
+    const stableHeight = Math.max(mobileViewportBaseHeight.value, currentHeight, window.innerHeight);
+    mobileViewportBaseHeight.value = stableHeight;
+    viewportBaseHeights.set(
+      viewportBaselineOrientation || getScreenOrientation(),
+      stableHeight,
+    );
   }
 }
 

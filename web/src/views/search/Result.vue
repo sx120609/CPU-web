@@ -615,7 +615,6 @@ function cancelActiveAssistant() {
 }
 
 function scrollConversation() {
-  releaseConversationAnchor();
   if (scrollFrame) cancelAnimationFrame(scrollFrame);
   scrollFrame = requestAnimationFrame(() => {
     scrollFrame = 0;
@@ -626,6 +625,9 @@ function scrollConversation() {
       element.scrollTop = lastMessage
         ? Math.max(0, lastMessage.offsetTop + lastMessage.offsetHeight - element.clientHeight + 12)
         : element.scrollHeight;
+      if (composerFocused.value) {
+        conversationAnchorScrollTop = element.scrollTop;
+      }
     });
   });
 }
