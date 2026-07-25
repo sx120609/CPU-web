@@ -136,7 +136,7 @@
       </div>
       <p v-if="auth.isLoggedIn" class="assistant-disclaimer">
         <span>内容由 AI 生成，请注意甄别</span>
-        <span v-if="assistantQuota">{{ assistantQuota.levelName }} · 今日剩余 {{ assistantQuota.remaining }}/{{ assistantQuota.dailyQuota }}</span>
+        <span v-if="assistantQuota">· Lv.{{ assistantQuota.level }} · 今日 {{ assistantQuota.remaining }}/{{ assistantQuota.dailyQuota }}</span>
       </p>
     </section>
 
@@ -1344,12 +1344,15 @@ onBeforeUnmount(() => {
 }
 .assistant-disclaimer {
   display: flex;
+  flex: 0 0 auto;
   justify-content: center;
-  flex-wrap: wrap;
-  gap: 4px 10px;
+  flex-wrap: nowrap;
+  gap: 4px;
+  min-height: 1.4em;
   margin: -8px 0 0;
   color: var(--cpu-text-muted);
   text-align: center;
+  white-space: nowrap;
   font-size: 11px;
   line-height: 1.4;
 }
