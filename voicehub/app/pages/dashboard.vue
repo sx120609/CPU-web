@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="admin-page">
     <ClientOnly>
       <div class="admin-layout" @touchend="handleTouchEnd" @touchstart="handleTouchStart">
         <!-- 左侧导航栏 -->
@@ -23,10 +23,10 @@
 
         <!-- 主内容区域 -->
         <main
-          class="flex-1 flex flex-col h-screen overflow-hidden lg:ml-64 relative bg-[#f6f8f2] text-[#1f2a1f]"
+          class="admin-main flex-1 flex flex-col min-h-0 overflow-hidden lg:ml-64 relative bg-[#f6f8f2] text-[#1f2a1f]"
         >
           <header
-            class="h-16 shrink-0 flex items-center justify-between px-4 md:px-8 border-b border-[#d5dfcd] bg-[#fbfdf8]/90 backdrop-blur-xl z-30"
+            class="admin-header shrink-0 flex items-center justify-between px-4 md:px-8 border-b border-[#d5dfcd] bg-[#fbfdf8]/90 backdrop-blur-xl z-30"
           >
             <div class="flex items-center gap-3">
               <button
@@ -43,13 +43,15 @@
           </header>
 
           <div
-            class="flex-1 custom-scrollbar p-4 md:p-8 overflow-y-auto"
+            ref="contentScroller"
+            class="admin-content-scroll flex-1 min-h-0 custom-scrollbar p-4 md:p-8 overflow-y-auto"
+            @scroll="handleContentScroll"
           >
             <!-- 移动端返回顶部按钮 -->
             <button
               v-if="showBackToTop"
               aria-label="返回顶部"
-              class="fixed bottom-8 right-8 p-3 bg-[#2f7d4f] text-white rounded-full shadow-lg hover:bg-[#246a41] transition-all z-50"
+              class="admin-back-to-top fixed bottom-8 right-8 p-3 bg-[#2f7d4f] text-white rounded-full shadow-lg hover:bg-[#246a41] transition-all z-50"
               @click="scrollToTop"
             >
               <ChevronUp :size="24" />
@@ -111,7 +113,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { Menu, ChevronUp } from 'lucide-vue-next'
 import { useAuth } from '~/composables/useAuth'
 import { navigateToCpuWeb } from '~/utils/cpuWebNavigation'
@@ -128,11 +130,17 @@ definePageMeta({
   layout: false
 })
 
+useHead({
+  htmlAttrs: { class: 'voicehub-admin-viewport' },
+  bodyAttrs: { class: 'voicehub-admin-viewport' }
+})
+
 // 响应式数据
 const activeTab = ref('overview')
 const currentUser = ref(null)
 const sidebarOpen = ref(false)
 const showBackToTop = ref(false)
+const contentScroller = ref(null)
 const beforeNavigateHooks = ref([])
 
 // 提供注册导航拦截钩子的方法
@@ -212,6 +220,9 @@ const handleNavigate = async (tab) => {
   }
 
   activeTab.value = tab
+  showBackToTop.value = false
+  await nextTick()
+  contentScroller.value?.scrollTo({ top: 0 })
   // 移动端点击导航后关闭侧边栏
   if (window.innerWidth <= 768) {
     closeSidebar()
@@ -236,12 +247,12 @@ const handleResize = () => {
 
 // 返回顶部功能
 const scrollToTop = () => {
-  window.scrollTo({ top: 0, behavior: 'smooth' })
+  contentScroller.value?.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 // 监听滚动事件
-const handleScroll = () => {
-  showBackToTop.value = window.scrollY > 300
+const handleContentScroll = (event) => {
+  showBackToTop.value = event.currentTarget.scrollTop > 300
 }
 
 // 触摸手势支持
@@ -281,6 +292,12 @@ const handleSwipe = () => {
   }
 }
 
+const handleDocumentDoubleClick = () => {
+  if (window.innerWidth <= 768 && sidebarOpen.value) {
+    closeSidebar()
+  }
+}
+
 // 生命周期
 onMounted(async () => {
   // 初始化站点配置
@@ -317,30 +334,80 @@ onMounted(async () => {
 
   // 添加窗口大小监听器
   window.addEventListener('resize', handleResize)
-  window.addEventListener('scroll', handleScroll)
 
   // 添加双击关闭侧边栏事件
-  document.addEventListener('dblclick', () => {
-    if (window.innerWidth <= 768 && sidebarOpen.value) {
-      closeSidebar()
-    }
-  })
+  document.addEventListener('dblclick', handleDocumentDoubleClick)
 })
 
 // 组件卸载时清理事件监听器
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
-  window.removeEventListener('scroll', handleScroll)
+  document.removeEventListener('dblclick', handleDocumentDoubleClick)
 })
 </script>
 
 <style scoped>
+.admin-page {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .admin-layout {
   display: flex;
-  min-height: 100vh;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   background: #f6f8f2;
   color: #1f2a1f;
   position: relative;
+}
+
+.admin-main {
+  height: 100%;
+}
+
+.admin-header {
+  min-height: 4rem;
+}
+
+.admin-content-scroll {
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/*
+ * 管理中心只允许内容区滚动。若 Nuxt 外层保留 100vh 页面滚动，
+ * 移动端地址栏收放时会多出一小段外层滚动，并让内部内容的底部不可达。
+ */
+:global(html.voicehub-admin-viewport),
+:global(body.voicehub-admin-viewport),
+:global(body.voicehub-admin-viewport #__nuxt),
+:global(body.voicehub-admin-viewport .app),
+:global(body.voicehub-admin-viewport .main-content) {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+@media (max-width: 1023px) {
+  .admin-header {
+    min-height: calc(4rem + env(safe-area-inset-top, 0px));
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .admin-content-scroll {
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .admin-back-to-top {
+    right: max(1rem, env(safe-area-inset-right, 0px));
+    bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 /* 自定义滚动条样式 */

@@ -2,7 +2,7 @@
 <template>
   <aside
     :class="[
-      'fixed inset-y-0 left-0 z-50 w-64 bg-[#f8fbf5] border-r border-[#d5dfcd] transform transition-transform duration-300 ease-in-out lg:translate-x-0',
+      'admin-sidebar fixed inset-y-0 left-0 z-50 w-64 bg-[#f8fbf5] border-r border-[#d5dfcd] transform transition-transform duration-300 ease-in-out lg:translate-x-0',
       isOpen ? 'translate-x-0' : '-translate-x-full'
     ]"
   >
@@ -206,6 +206,18 @@ const getRoleDisplayName = (role) => {
 </script>
 
 <style scoped>
+.admin-sidebar {
+  height: 100vh;
+  height: 100dvh;
+}
+
+@media (max-width: 1023px) {
+  .admin-sidebar {
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
 /* 自定义滚动条样式 */
 .custom-scrollbar::-webkit-scrollbar {
   width: 4px;
