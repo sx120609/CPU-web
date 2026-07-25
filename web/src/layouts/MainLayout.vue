@@ -159,15 +159,30 @@
       </router-view>
     </main>
 
+    <transition name="assistant-widget">
+      <aside
+        v-if="assistantWidgetOpen && !hideChrome && !useNativeShell && route.path !== '/search'"
+        class="assistant-widget"
+        role="dialog"
+        aria-label="拾间AI"
+      >
+        <ShijianAssistant embedded @close="assistantWidgetOpen = false" />
+      </aside>
+    </transition>
+
     <button
       v-if="!hideChrome && !useNativeShell && route.path !== '/search'"
       type="button"
       class="assistant-fab"
       aria-label="打开拾间AI"
+      :aria-expanded="assistantWidgetOpen"
       title="拾间AI"
-      @click="$router.push('/search')"
+      @click="assistantWidgetOpen = !assistantWidgetOpen"
     >
-      <span>拾</span>
+      <el-icon>
+        <Close v-if="assistantWidgetOpen" />
+        <ChatDotRound v-else />
+      </el-icon>
     </button>
 
     <footer v-if="!hideChrome && !useNativeShell && !fullHeightContent" class="footer">
@@ -298,6 +313,7 @@ import {
   House,
   ChatLineRound,
   ChatDotRound,
+  Close,
   Calendar,
   Reading,
   UserFilled,
@@ -314,6 +330,7 @@ import {
 } from "@element-plus/icons-vue";
 import type { TopNavigationIcon, TopNavigationItem } from "@/api/site";
 import UserAvatar from "@/components/common/UserAvatar.vue";
+import ShijianAssistant from "@/views/search/Result.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
 import { useSiteStore } from "@/stores/site";
@@ -328,6 +345,7 @@ const router = useRouter();
 const route = useRoute();
 const q = ref("");
 const mobileMenuOpen = ref(false);
+const assistantWidgetOpen = ref(false);
 const keyboardOpen = ref(false);
 const mobileViewportHeight = ref(0);
 const mobileViewportWidth = ref(0);
@@ -517,6 +535,7 @@ onBeforeUnmount(() => {
 });
 
 watch(() => route.fullPath, () => {
+  assistantWidgetOpen.value = false;
   window.clearTimeout(focusOutTimer);
   keyboardOpen.value = false;
   editableFocused.value = false;
@@ -913,40 +932,66 @@ function setAppearanceMode(command: string | number | object) {
   color: var(--cpu-text-secondary);
 }
 
+.assistant-widget {
+  position: fixed;
+  z-index: 1090;
+  right: 26px;
+  bottom: 94px;
+  width: min(410px, calc(100vw - 52px));
+  height: min(650px, calc(100dvh - 120px));
+  overflow: hidden;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 22px;
+  color: var(--cpu-text);
+  background: var(--cpu-card);
+  box-shadow:
+    0 24px 64px rgba(15, 23, 42, 0.2),
+    0 4px 18px rgba(15, 23, 42, 0.1);
+}
+
+.assistant-widget-enter-active,
+.assistant-widget-leave-active {
+  transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-origin: right bottom;
+}
+
+.assistant-widget-enter-from,
+.assistant-widget-leave-to {
+  opacity: 0;
+  transform: translateY(12px) scale(0.96);
+}
+
 .assistant-fab {
   position: fixed;
-  z-index: 110;
+  z-index: 1091;
   right: 26px;
   bottom: 26px;
   display: grid;
-  width: 54px;
-  height: 54px;
+  width: 58px;
+  height: 58px;
   place-items: center;
   padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.38);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 50%;
   color: #fff;
-  background: linear-gradient(145deg, #14947d, #0d7565);
+  background: #171717;
   box-shadow:
-    0 12px 30px rgba(12, 91, 78, 0.28),
-    0 3px 9px rgba(0, 0, 0, 0.12);
+    0 16px 36px rgba(0, 0, 0, 0.22),
+    0 4px 12px rgba(0, 0, 0, 0.14);
   cursor: pointer;
   font: inherit;
   transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
 }
 
-.assistant-fab span {
-  font-size: 20px;
-  font-weight: 800;
-  line-height: 1;
+.assistant-fab .el-icon {
+  font-size: 27px;
 }
 
 .assistant-fab:hover {
   transform: translateY(-2px) scale(1.04);
-  filter: brightness(1.04);
   box-shadow:
-    0 16px 36px rgba(12, 91, 78, 0.34),
-    0 4px 12px rgba(0, 0, 0, 0.14);
+    0 20px 42px rgba(0, 0, 0, 0.26),
+    0 5px 14px rgba(0, 0, 0, 0.16);
 }
 
 .assistant-fab:active {
@@ -954,7 +999,7 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 .assistant-fab:focus-visible {
-  outline: 3px solid rgba(20, 148, 125, 0.28);
+  outline: 3px solid rgba(23, 23, 23, 0.22);
   outline-offset: 3px;
 }
 
@@ -1345,6 +1390,10 @@ function setAppearanceMode(command: string | number | object) {
   .assistant-fab {
     display: none;
   }
+
+  .assistant-widget {
+    display: none;
+  }
 }
 
 @media (max-width: 768px) {
@@ -1407,6 +1456,14 @@ function setAppearanceMode(command: string | number | object) {
   .main {
     padding: 14px 12px calc(88px + env(safe-area-inset-bottom));
     max-width: none;
+  }
+
+  .layout-root--full-height .main--full-height {
+    padding-bottom: calc(68px + env(safe-area-inset-bottom));
+  }
+
+  .layout-root--full-height.keyboard-open .main--full-height {
+    padding-bottom: 12px;
   }
 
   .main--full-width {

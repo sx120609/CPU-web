@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  askCampusAssistant,
   extractPartialJsonStringValue,
+  guardCampusAssistantResponse,
+  isCampusAssistantPublicTopicRestricted,
   listCampusAssistantActions,
   listCampusAssistantKnowledge,
   normalizeAssistantResponse,
   searchCampusAssistantActions,
+  streamCampusAssistant,
 } from "../src/services/campusAssistant";
 import { readAiJsonTextStream } from "../src/services/aiJsonApi";
 
@@ -117,4 +121,50 @@ test("assistant answers allow complete responses up to the new four-thousand-cha
   );
 
   assert.equal(response.answer.length, 4000);
+});
+
+test("拾间AI在服务端前置拦截不适合国内公开平台展开的敏感话题", () => {
+  assert.equal(isCampusAssistantPublicTopicRestricted("六四是什么？"), true);
+  assert.equal(isCampusAssistantPublicTopicRestricted("怎么查六级成绩？"), false);
+  assert.equal(isCampusAssistantPublicTopicRestricted("四六级考试什么时候报名？"), false);
+});
+
+test("敏感话题的上下文追问不会绕过前置拦截", () => {
+  assert.equal(isCampusAssistantPublicTopicRestricted("继续详细说说", [
+    { role: "user", content: "请介绍六四事件" },
+    { role: "assistant", content: "这个话题不适合在本站展开。" },
+  ]), true);
+});
+
+test("敏感问法在调用模型前直接返回安全答复，流式接口也不会泄露增量", async () => {
+  const direct = await askCampusAssistant({
+    message: "六四是什么？",
+    history: [],
+    context,
+  });
+  const deltas: string[] = [];
+  const streamed = await streamCampusAssistant({
+    message: "请介绍六四事件",
+    history: [],
+    context,
+  }, (delta) => {
+    deltas.push(delta);
+  });
+
+  assert.match(direct.answer, /不适合在本站展开/);
+  assert.match(streamed.answer, /不适合在本站展开/);
+  assert.deepEqual(deltas, []);
+  assert.deepEqual(direct.actions, []);
+});
+
+test("模型输出兜底不会把受限内容交给前端", () => {
+  const guarded = guardCampusAssistantResponse({
+    answer: "这里是一段关于六四事件的说明。",
+    actions: [],
+    suggestions: ["继续了解"],
+    fallback: false,
+  });
+
+  assert.match(guarded.answer, /不适合在本站展开/);
+  assert.doesNotMatch(guarded.answer, /事件的说明/);
 });

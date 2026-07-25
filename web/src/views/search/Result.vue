@@ -1,8 +1,11 @@
 <template>
-  <div class="assistant-page">
+  <div class="assistant-page" :class="{ 'assistant-page--embedded': embedded }">
     <section class="assistant-shell cpu-card" :class="{ 'is-composer-focused': composerFocused }">
       <div class="assistant-head">
-        <span class="assistant-mark">拾</span>
+        <span class="assistant-mark">
+          <el-icon v-if="embedded"><ChatDotRound /></el-icon>
+          <template v-else>拾</template>
+        </span>
         <div class="assistant-head-copy">
           <h1>拾间AI</h1>
           <p>问功能、找入口，也可以直接聊天</p>
@@ -13,6 +16,9 @@
           </button>
           <button type="button" aria-label="新建对话" :disabled="!messages.length" @click="startNewConversation">
             <el-icon><Plus /></el-icon>
+          </button>
+          <button v-if="embedded" type="button" aria-label="关闭拾间AI" @click="emit('close')">
+            <el-icon><Close /></el-icon>
           </button>
         </div>
       </div>
@@ -46,8 +52,12 @@
               <p v-if="message.role === 'user'" class="user-message-content">
                 {{ message.content }}
               </p>
-              <div v-else class="message-markdown" v-html="renderMarkdown(message.content)"></div>
-              <span v-if="message.streaming" class="stream-cursor" aria-hidden="true"></span>
+              <div
+                v-else
+                class="message-markdown"
+                :class="{ 'is-streaming': message.streaming }"
+                v-html="renderMarkdown(message.content)"
+              ></div>
             </template>
             <div v-else-if="message.streaming" class="assistant-thinking" aria-label="拾间AI正在回答">
               <i></i><i></i><i></i>
@@ -159,6 +169,7 @@ import { useRoute, useRouter } from "vue-router";
 import {
   ChatDotRound,
   Clock,
+  Close,
   Delete,
   Loading,
   Plus,
@@ -174,6 +185,13 @@ import {
 } from "@/api/search";
 import { useAuthStore } from "@/stores/auth";
 import { renderMarkdown } from "@/utils/markdown";
+
+const { embedded = false } = defineProps<{
+  embedded?: boolean;
+}>();
+const emit = defineEmits<{
+  close: [];
+}>();
 
 type ConversationMessage = CampusAssistantMessage & {
   id: number;
@@ -199,7 +217,7 @@ const MAX_MESSAGES_PER_SESSION = 60;
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
-const q = ref((route.query.q as string) ?? "");
+const q = ref(embedded ? "" : ((route.query.q as string) ?? ""));
 const keywordInput = ref("");
 const assistantLoading = ref(false);
 const assistantError = ref("");
@@ -242,6 +260,7 @@ onMounted(() => {
 });
 
 watch(() => route.query.q, async (value) => {
+  if (embedded) return;
   const keyword = String(value ?? "").trim();
   q.value = keyword;
   keywordInput.value = "";
@@ -446,7 +465,7 @@ async function startNewConversation() {
   q.value = "";
   historyOpen.value = false;
   markNewSession();
-  if (route.query.q) await router.replace({ name: "search" });
+  if (!embedded && route.query.q) await router.replace({ name: "search" });
 }
 
 async function openConversation(sessionId: string) {
@@ -461,7 +480,7 @@ async function openConversation(sessionId: string) {
   historyOpen.value = false;
   rememberActiveSession(session.id);
   scrollConversation();
-  if (route.query.q) await router.replace({ name: "search" });
+  if (!embedded && route.query.q) await router.replace({ name: "search" });
 }
 
 async function deleteConversation(sessionId: string) {
@@ -920,7 +939,9 @@ onBeforeUnmount(() => {
   align-items: flex-end;
 }
 .message--assistant {
-  align-self: flex-start;
+  align-self: stretch;
+  width: 100%;
+  max-width: 100%;
 }
 .message-label {
   color: var(--cpu-text-muted);
@@ -950,7 +971,11 @@ onBeforeUnmount(() => {
   font-weight: 700;
 }
 .message--assistant .message-bubble {
-  border-bottom-left-radius: 4px;
+  min-width: 0;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 .message-bubble p {
   margin: 0;
@@ -1092,7 +1117,15 @@ onBeforeUnmount(() => {
 }
 .assistant-thinking i:nth-child(2) { animation-delay: 0.15s; }
 .assistant-thinking i:nth-child(3) { animation-delay: 0.3s; }
-.stream-cursor {
+.message-markdown.is-streaming :deep(> p:last-child)::after,
+.message-markdown.is-streaming :deep(> h1:last-child)::after,
+.message-markdown.is-streaming :deep(> h2:last-child)::after,
+.message-markdown.is-streaming :deep(> h3:last-child)::after,
+.message-markdown.is-streaming :deep(> h4:last-child)::after,
+.message-markdown.is-streaming :deep(> blockquote:last-child)::after,
+.message-markdown.is-streaming :deep(> ul:last-child > li:last-child)::after,
+.message-markdown.is-streaming :deep(> ol:last-child > li:last-child)::after {
+  content: "";
   display: inline-block;
   width: 2px;
   height: 1em;
@@ -1299,6 +1332,83 @@ onBeforeUnmount(() => {
 }
 .history-empty .el-icon {
   font-size: 32px;
+}
+
+.assistant-page--embedded {
+  max-width: none;
+  overflow: hidden;
+}
+.assistant-page--embedded .assistant-shell {
+  height: 100%;
+  min-height: 0;
+  gap: 12px;
+  padding: 16px 14px 12px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.assistant-page--embedded .assistant-head {
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--cpu-border-soft);
+}
+.assistant-page--embedded .assistant-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: #fff;
+  background: #171717;
+  box-shadow: none;
+}
+.assistant-page--embedded .assistant-mark .el-icon {
+  font-size: 19px;
+}
+.assistant-page--embedded .assistant-head h1 {
+  font-size: 17px;
+}
+.assistant-page--embedded .assistant-head p {
+  margin-top: 1px;
+  font-size: 11px;
+}
+.assistant-page--embedded .assistant-welcome {
+  padding: 20px 2px 12px;
+}
+.assistant-page--embedded .assistant-welcome strong {
+  font-size: 18px;
+}
+.assistant-page--embedded .conversation {
+  min-height: 0;
+  max-height: none;
+  padding-right: 3px;
+  scrollbar-gutter: auto;
+}
+.assistant-page--embedded .message {
+  max-width: 100%;
+}
+.assistant-page--embedded .message-label {
+  display: none;
+}
+.assistant-page--embedded .assistant-form {
+  gap: 6px;
+  padding-top: 10px;
+}
+.assistant-page--embedded .assistant-form :deep(.el-textarea__inner) {
+  min-height: 42px !important;
+  padding: 10px 12px;
+  border-radius: 18px;
+}
+.assistant-page--embedded .composer-send {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 50%;
+  background: #171717;
+}
+.assistant-page--embedded .composer-send span {
+  display: none;
+}
+.assistant-page--embedded .assistant-disclaimer {
+  margin: -5px 0 0;
+  font-size: 10px;
 }
 
 @media (max-width: 640px) {

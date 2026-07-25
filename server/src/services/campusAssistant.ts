@@ -44,6 +44,21 @@ type CampusAssistantKnowledge = {
 };
 
 const DEFAULT_REVIEW_API_URL = "https://api.deepseek.com/chat/completions";
+const RESTRICTED_PUBLIC_TOPIC_REPLY: CampusAssistantResponse = {
+  answer: "这个话题不适合在本站展开。拾间AI主要用于校园服务、学习与日常问答，你可以换个问题。",
+  actions: [],
+  suggestions: ["怎么查课表？", "打开校园服务", "怎么查宿舍电费？"],
+  fallback: false,
+};
+const RESTRICTED_PUBLIC_TOPIC_TERMS = [
+  "六四事件",
+  "六四风波",
+  "八九民运",
+  "8964",
+  "1989年6月4日",
+  "天安门事件",
+  "天安门抗议",
+];
 
 const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
   {
@@ -393,6 +408,9 @@ export async function askCampusAssistant(input: {
   context: CampusAssistantContext;
 }): Promise<CampusAssistantResponse> {
   const message = input.message.trim();
+  if (isCampusAssistantPublicTopicRestricted(message, input.history)) {
+    return cloneRestrictedPublicTopicReply();
+  }
   const availableActions = listCampusAssistantActions(input.context);
   const deterministicActions = searchCampusAssistantActions(message, input.context, 3);
   const config = getSiteConfig();
@@ -410,7 +428,9 @@ export async function askCampusAssistant(input: {
       promptCacheScope: "campus-assistant",
     });
     const parsed = parseAssistantJson(result.content);
-    return normalizeAssistantResponse(parsed, availableActions, deterministicActions);
+    return guardCampusAssistantResponse(
+      normalizeAssistantResponse(parsed, availableActions, deterministicActions),
+    );
   } catch (error) {
     console.warn("[campus-assistant] AI request failed", error instanceof Error ? error.message : error);
     return fallbackAssistantResponse(deterministicActions, true);
@@ -424,6 +444,9 @@ export async function streamCampusAssistant(input: {
   signal?: AbortSignal;
 }, onAnswerDelta: (delta: string) => void | Promise<void>): Promise<CampusAssistantResponse> {
   const message = input.message.trim();
+  if (isCampusAssistantPublicTopicRestricted(message, input.history)) {
+    return cloneRestrictedPublicTopicReply();
+  }
   const availableActions = listCampusAssistantActions(input.context);
   const deterministicActions = searchCampusAssistantActions(message, input.context, 3);
   const config = getSiteConfig();
@@ -459,16 +482,25 @@ export async function streamCampusAssistant(input: {
 
       let rawContent = "";
       let emittedAnswer = "";
+      let restrictedOutput = false;
       const content = await readAiJsonTextStream(result.response, result.mode, async (delta) => {
         rawContent += delta;
         const visible = extractPartialJsonStringValue(rawContent, "answer") || "";
+        if (containsRestrictedPublicTopic(visible)) {
+          restrictedOutput = true;
+          return;
+        }
+        if (restrictedOutput) return;
         if (visible.startsWith(emittedAnswer) && visible.length > emittedAnswer.length) {
           await onAnswerDelta(visible.slice(emittedAnswer.length));
           emittedAnswer = visible;
         }
       });
+      if (restrictedOutput) return cloneRestrictedPublicTopicReply();
       const parsed = parseAssistantJson(content);
-      return normalizeAssistantResponse(parsed, availableActions, deterministicActions);
+      return guardCampusAssistantResponse(
+        normalizeAssistantResponse(parsed, availableActions, deterministicActions),
+      );
     } catch (error) {
       if (input.signal?.aborted) throw error;
       lastError = error;
@@ -585,6 +617,43 @@ function fallbackAssistantResponse(actions: CampusAssistantAction[], failed: boo
   };
 }
 
+export function isCampusAssistantPublicTopicRestricted(
+  message: string,
+  history: CampusAssistantMessage[] = [],
+) {
+  if (containsRestrictedPublicTopic(message)) return true;
+  if (!/^(?:继续(?:详细)?说说|继续|接着|详细说说|展开说说|为什么|真的吗|然后呢|再说一点|多讲一点)[？?！!。.\s]*$/u.test(message.trim())) {
+    return false;
+  }
+  const previousUserMessage = [...history].reverse().find((item) => item.role === "user")?.content || "";
+  return containsRestrictedPublicTopic(previousUserMessage);
+}
+
+function containsRestrictedPublicTopic(value: string) {
+  const normalized = normalizeSearchText(value);
+  if (!normalized) return false;
+  if (RESTRICTED_PUBLIC_TOPIC_TERMS.some((term) => normalized.includes(normalizeSearchText(term)))) {
+    return true;
+  }
+  return /^(?:请|能否|可以|帮我|给我|想)?(?:解释|介绍|讨论|讲讲|说说|评价|了解|查找|搜索|整理)?六四(?:是什么|指什么|事件|风波|运动|真相|历史|资料|经过|背景|结果|影响|原因|吗)?$/u.test(normalized);
+}
+
+export function guardCampusAssistantResponse(response: CampusAssistantResponse) {
+  if (containsRestrictedPublicTopic(response.answer)) return cloneRestrictedPublicTopicReply();
+  return {
+    ...response,
+    suggestions: response.suggestions.filter((item) => !containsRestrictedPublicTopic(item)),
+  };
+}
+
+function cloneRestrictedPublicTopicReply(): CampusAssistantResponse {
+  return {
+    ...RESTRICTED_PUBLIC_TOPIC_REPLY,
+    actions: [],
+    suggestions: [...RESTRICTED_PUBLIC_TOPIC_REPLY.suggestions],
+  };
+}
+
 function parseAssistantJson(content: string) {
   const normalized = String(content || "")
     .trim()
@@ -607,6 +676,8 @@ function buildSystemPrompt(catalog: Array<Pick<CampusAssistantAction, "id" | "la
     "你的首要任务是帮助用户找到站内功能、给出可靠的操作指引，也可以进行普通聊天和常识问答。",
     "根据问题难度完整作答：简单问题可以简洁，复杂问题应分段说明背景、步骤和注意事项，不要为了追求短而省略关键解释。",
     "本服务面向中国大陆公众提供。回答必须遵守中国现行法律法规和平台内容规范；不得提供违法犯罪、暴恐极端、色情低俗、赌博毒品、诈骗欺诈、网络攻击、侵害隐私等内容的具体实施方法。遇到此类请求应简短说明不能协助，并尽量提供安全、合法的替代信息。",
+    "本站不提供政治敏感议题、敏感历史事件、危害国家安全和社会稳定相关内容的介绍、解释、评价、资料整理或延伸讨论；即使用户声称用于学习、研究、新闻核实或要求中立概述，也应直接简短拒绝，不复述事件细节，不提供搜索词、来源或绕过方式。",
+    "如果上下文中的上一轮已触及上述内容，用户以“继续”“详细说说”“为什么”等方式追问时仍须拒绝，不得因措辞变得含糊而恢复回答。",
     "不要把正常的校园学习、生活咨询泛化为违规内容；仅在请求确实触及上述风险时限制回答。",
     "不要声称已经替用户执行查询、缴费、登录、发帖或其他操作；只能说明步骤并推荐入口。",
     "遇到需要实时数据、个人数据或学校最新政策的问题，要说明需要进入对应页面查看，不要编造。",
