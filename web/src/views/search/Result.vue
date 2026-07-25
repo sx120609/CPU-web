@@ -108,7 +108,11 @@
         <el-button text type="primary" @click="retryAssistant">重试</el-button>
       </div>
 
-      <div class="assistant-form" @pointerdown.capture="prepareComposerFocus">
+      <div
+        ref="assistantFormRef"
+        class="assistant-form"
+        @pointerdown.capture="prepareComposerFocus"
+      >
         <el-input
           v-model="keywordInput"
           type="textarea"
@@ -282,8 +286,8 @@ const cloudSyncState = ref<"local" | "syncing" | "ready" | "error">(
 );
 const assistantShellRef = ref<HTMLElement | null>(null);
 const conversationRef = ref<HTMLElement | null>(null);
+const assistantFormRef = ref<HTMLElement | null>(null);
 const assistantStableShellHeight = ref(0);
-const assistantStableShellBottom = ref(0);
 const assistantStableConversationHeight = ref(0);
 const assistantKeyboardInset = ref(0);
 const assistantShellStyle = computed<Record<string, string>>(() => {
@@ -472,7 +476,6 @@ function captureAssistantStableGeometry() {
   const shellHeight = Math.round(shellRect.height);
   const conversationHeight = Math.round(conversationRef.value?.getBoundingClientRect().height || 0);
   if (shellHeight > 0) assistantStableShellHeight.value = shellHeight;
-  if (shellRect.bottom > 0) assistantStableShellBottom.value = Math.round(shellRect.bottom);
   if (conversationHeight > 0) assistantStableConversationHeight.value = conversationHeight;
   assistantKeyboardInset.value = 0;
 }
@@ -514,17 +517,27 @@ function scheduleAssistantViewportGeometry() {
 
 function syncAssistantViewportGeometry() {
   if (!composerFocused.value || !isMobileComposerViewport()) return;
-  const shell = assistantShellRef.value;
-  if (!shell) return;
+  const form = assistantFormRef.value;
+  if (!form) return;
   const viewport = window.visualViewport;
   const viewportBottom = Math.round(
     (viewport?.offsetTop || 0) + (viewport?.height || window.innerHeight),
   );
-  const stableShellBottom = assistantStableShellBottom.value
-    || Math.round(shell.getBoundingClientRect().bottom);
-  const nextInset = Math.max(0, stableShellBottom - viewportBottom);
+  const formBottom = Math.round(form.getBoundingClientRect().bottom);
+  const correction = formBottom - (viewportBottom - 8);
+  const maxInset = Math.max(
+    0,
+    (assistantStableShellHeight.value || window.innerHeight) - 56,
+  );
+  const nextInset = Math.min(
+    maxInset,
+    Math.max(0, assistantKeyboardInset.value + correction),
+  );
   if (Math.abs(nextInset - assistantKeyboardInset.value) > 1) {
     assistantKeyboardInset.value = nextInset;
+    void nextTick(() => {
+      if (composerFocused.value) scheduleAssistantViewportGeometry();
+    });
   }
 }
 
@@ -576,7 +589,6 @@ function releaseConversationAnchor() {
   if (assistantViewportFrame) cancelAnimationFrame(assistantViewportFrame);
   assistantViewportFrame = 0;
   assistantStableShellHeight.value = 0;
-  assistantStableShellBottom.value = 0;
   assistantStableConversationHeight.value = 0;
   assistantKeyboardInset.value = 0;
 }
