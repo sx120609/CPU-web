@@ -350,16 +350,24 @@ const keyboardOpen = ref(false);
 const mobileViewportHeight = ref(0);
 const mobileViewportWidth = ref(0);
 const mobileViewportOffsetTop = ref(0);
+const virtualKeyboardInset = ref(0);
 const touchLikeViewport = ref(false);
 const editableFocused = ref(false);
 const editorFocused = ref(false);
 const mobileViewportBaseHeight = ref(0);
 const isMobileViewport = ref(false);
 const KEYBOARD_INSET_THRESHOLD = 96;
+const KEYBOARD_FOCUS_GRACE_MS = 1200;
 const viewportBaseHeights = new Map<string, number>();
 let viewportBaselineOrientation = "";
 let focusOutTimer = 0;
+let focusKeyboardGraceTimer = 0;
+let focusKeyboardGraceUntil = 0;
 let disposed = false;
+
+type VirtualKeyboardApi = EventTarget & {
+  boundingRect?: { height?: number };
+};
 
 const appearanceOptions: Array<{ value: AppearanceMode; label: string; icon: unknown }> = [
   { value: "system", label: "跟随", icon: Monitor },
@@ -388,7 +396,7 @@ const layoutStyle = computed(() => {
     mobileViewportHeight.value,
   );
   const keyboardInset = keyboardOpen.value
-    ? Math.max(0, baseHeight - mobileViewportHeight.value)
+    ? Math.max(0, baseHeight - mobileViewportHeight.value, virtualKeyboardInset.value)
     : 0;
   return {
     "--layout-viewport-height": `${mobileViewportHeight.value}px`,
@@ -520,6 +528,7 @@ onMounted(async () => {
     window.addEventListener("resize", handleViewportMetricsChange, { passive: true });
     window.visualViewport?.addEventListener("resize", handleViewportMetricsChange);
     window.visualViewport?.addEventListener("scroll", handleViewportMetricsChange);
+    getVirtualKeyboard()?.addEventListener("geometrychange", handleViewportMetricsChange);
     document.addEventListener("focusin", handleFocusIn);
     document.addEventListener("focusout", handleFocusOut);
   }
@@ -528,10 +537,12 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   disposed = true;
   window.clearTimeout(focusOutTimer);
+  window.clearTimeout(focusKeyboardGraceTimer);
   if (typeof window !== "undefined") {
     window.removeEventListener("resize", handleViewportMetricsChange);
     window.visualViewport?.removeEventListener("resize", handleViewportMetricsChange);
     window.visualViewport?.removeEventListener("scroll", handleViewportMetricsChange);
+    getVirtualKeyboard()?.removeEventListener("geometrychange", handleViewportMetricsChange);
     document.removeEventListener("focusin", handleFocusIn);
     document.removeEventListener("focusout", handleFocusOut);
   }
@@ -540,6 +551,8 @@ onBeforeUnmount(() => {
 watch(() => route.fullPath, () => {
   assistantWidgetOpen.value = false;
   window.clearTimeout(focusOutTimer);
+  window.clearTimeout(focusKeyboardGraceTimer);
+  focusKeyboardGraceUntil = 0;
   keyboardOpen.value = false;
   editableFocused.value = false;
   editorFocused.value = false;
@@ -553,9 +566,19 @@ function handleViewportMetricsChange() {
 
 function handleFocusIn(event: FocusEvent) {
   window.clearTimeout(focusOutTimer);
+  window.clearTimeout(focusKeyboardGraceTimer);
   const target = event.target instanceof HTMLElement ? event.target : null;
   editableFocused.value = isEditableElement(target);
   editorFocused.value = Boolean(target?.closest(".rich-editor"));
+  focusKeyboardGraceUntil = editableFocused.value
+    ? performance.now() + KEYBOARD_FOCUS_GRACE_MS
+    : 0;
+  if (focusKeyboardGraceUntil) {
+    focusKeyboardGraceTimer = window.setTimeout(() => {
+      syncViewportMetrics();
+      updateKeyboardState();
+    }, KEYBOARD_FOCUS_GRACE_MS + 50);
+  }
   syncViewportMetrics();
   if (fullHeightContent.value && editableFocused.value && isMobileViewport.value) {
     keyboardOpen.value = true;
@@ -574,6 +597,8 @@ function handleFocusIn(event: FocusEvent) {
 
 function handleFocusOut() {
   window.clearTimeout(focusOutTimer);
+  window.clearTimeout(focusKeyboardGraceTimer);
+  focusKeyboardGraceUntil = 0;
   focusOutTimer = window.setTimeout(() => {
     const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     editableFocused.value = isEditableElement(active);
@@ -606,6 +631,7 @@ function syncViewportMetrics() {
   mobileViewportOffsetTop.value = Math.max(0, Math.round(window.visualViewport?.offsetTop ?? 0));
   mobileViewportHeight.value = visualHeight;
   mobileViewportWidth.value = visualWidth;
+  virtualKeyboardInset.value = getVirtualKeyboardInset();
   touchLikeViewport.value = isTabletTouchViewport(visualWidth, visualHeight);
   isMobileViewport.value = isTouchNavigationViewport(visualWidth, visualHeight);
   const measuredInset = Math.max(0, mobileViewportBaseHeight.value - visualHeight);
@@ -621,6 +647,15 @@ function getScreenOrientation() {
   if (type.startsWith("portrait")) return "portrait";
   if (type.startsWith("landscape")) return "landscape";
   return window.screen.height >= window.screen.width ? "portrait" : "landscape";
+}
+
+function getVirtualKeyboard() {
+  if (typeof navigator === "undefined") return undefined;
+  return (navigator as Navigator & { virtualKeyboard?: VirtualKeyboardApi }).virtualKeyboard;
+}
+
+function getVirtualKeyboardInset() {
+  return Math.max(0, Math.round(getVirtualKeyboard()?.boundingRect?.height || 0));
 }
 
 function isTouchNavigationViewport(width: number, height: number) {
@@ -640,11 +675,15 @@ function updateKeyboardState() {
   if (typeof window === "undefined") return;
   const currentHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
   const baseHeight = Math.max(mobileViewportBaseHeight.value || 0, currentHeight, window.innerHeight);
-  const measuredInset = Math.max(0, baseHeight - currentHeight);
-  const focusedEditableNeedsKeyboard = isMobileViewport.value && (
-    (fullHeightContent.value && editableFocused.value)
-    || editorFocused.value
+  const measuredInset = Math.max(
+    0,
+    baseHeight - currentHeight,
+    virtualKeyboardInset.value,
   );
+  const focusedEditableNeedsKeyboard = isMobileViewport.value
+    && editableFocused.value
+    && performance.now() < focusKeyboardGraceUntil
+    && (fullHeightContent.value || editorFocused.value);
   const viewportStillCovered = isMobileViewport.value
     && measuredInset > KEYBOARD_INSET_THRESHOLD;
   const keyboardLikelyOpen = focusedEditableNeedsKeyboard || viewportStillCovered;
@@ -931,27 +970,64 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 .mobile-actions {
+  --mobile-header-control-size: 42px;
   display: none;
+  height: var(--mobile-header-control-size);
   align-items: center;
   gap: 6px;
   margin-left: auto;
+  flex-wrap: nowrap;
 }
 
 .touch-icon-btn {
-  width: 42px;
-  height: 42px;
-  padding: 0;
+  flex: 0 0 var(--mobile-header-control-size);
+  width: var(--mobile-header-control-size);
+  min-width: var(--mobile-header-control-size);
+  height: var(--mobile-header-control-size);
+  min-height: var(--mobile-header-control-size);
+  margin: 0 !important;
+  padding: 0 !important;
   border-radius: 10px;
   color: var(--cpu-text-secondary);
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
   -webkit-tap-highlight-color: rgba(22, 135, 118, 0.18);
+}
+
+.mobile-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+.touch-icon-btn :deep(> span) {
+  width: 100%;
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 .touch-icon-btn:active {
   background: var(--cpu-surface-subtle);
 }
 
-.touch-icon-btn .el-icon {
-  font-size: 20px;
+.touch-icon-btn :deep(.el-icon) {
+  width: 22px;
+  height: 22px;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.touch-icon-btn :deep(.el-badge) {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 .assistant-shortcut-touch {
@@ -1041,11 +1117,15 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 .mobile-login-btn {
+  flex: 0 0 auto;
   min-width: 60px;
-  height: 42px;
+  height: var(--mobile-header-control-size, 42px);
+  min-height: var(--mobile-header-control-size, 42px);
+  margin: 0 !important;
   padding: 0 12px;
   color: var(--cpu-primary);
   font-weight: 500;
+  box-sizing: border-box;
 }
 
 .user-info {
@@ -1455,7 +1535,7 @@ function setAppearanceMode(command: string | number | object) {
     min-height: 58px;
     padding: 8px 12px 10px;
     gap: 8px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
   }
 
   .brand {
@@ -1713,8 +1793,9 @@ function setAppearanceMode(command: string | number | object) {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  .touch-icon-btn {
-    width: 38px;
+  .mobile-actions {
+    --mobile-header-control-size: 38px;
+    gap: 4px;
   }
 }
 
@@ -1734,11 +1815,8 @@ function setAppearanceMode(command: string | number | object) {
   }
 
   .mobile-actions {
+    --mobile-header-control-size: 36px;
     gap: 2px;
-  }
-
-  .touch-icon-btn {
-    width: 36px;
   }
 
   .drawer-grid {
