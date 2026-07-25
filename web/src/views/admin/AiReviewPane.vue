@@ -561,6 +561,7 @@ const form = reactive<SiteConfig>({
   forumEnabledBonus: 6,
   anonymousTiers: [],
   reputationLevels: [],
+  assistantDailyQuotas: [],
 });
 
 const aiEditSimilarityPercent = computed({

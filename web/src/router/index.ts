@@ -54,22 +54,6 @@ const FEATURE_GATED: Record<string, FeatureKey> = {
   course: "coursereview",
 };
 
-const COMMUNITY_ACCESS_GATED = new Set([
-  "forum-hot",
-  "forum-latest",
-  "market",
-  "market-item",
-  "market-publish",
-  "market-edit",
-  "market-mine",
-  "market-seller",
-  "market-messages",
-  "coursereview",
-  "course",
-  "post",
-  "edit-post",
-]);
-
 const LEGACY_FILE_COLLECTION_SUBMIT_PREFIX = "/services/tools/file-collections/";
 const BlankRouteView = { render: () => null };
 
@@ -193,13 +177,6 @@ router.beforeEach(async (to) => {
     if (!isStaff) {
       ElMessage.info("该功能当前不可用");
       return { name: "home" };
-    }
-  }
-
-  if (to.name && COMMUNITY_ACCESS_GATED.has(String(to.name))) {
-    if (auth.token && !auth.user) await auth.fetchMe();
-    if (!auth.canAccessForum) {
-      return { name: "forum", query: { redirect: to.fullPath } };
     }
   }
 

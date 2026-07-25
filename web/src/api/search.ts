@@ -35,6 +35,16 @@ export interface CampusAssistantResponse {
   fallback: boolean;
 }
 
+export interface CampusAssistantQuota {
+  level: number;
+  levelName: string;
+  dailyQuota: number;
+  used: number;
+  remaining: number;
+  dateKey: string;
+  nextResetAt: string;
+}
+
 export interface CampusAssistantStoredMessage extends CampusAssistantMessage {
   id: number;
   actions?: CampusAssistantAction[];
@@ -58,6 +68,8 @@ export const searchApi = {
   search: (q: string, options?: RequestOptions) => request.get<SearchResult>("/search", { q }, options),
   askAssistant: (message: string, history: CampusAssistantMessage[], options?: RequestOptions) =>
     request.post<CampusAssistantResponse>("/search/assistant", { message, history }, options),
+  assistantQuota: (options?: RequestOptions) =>
+    request.get<CampusAssistantQuota>("/search/assistant/quota", undefined, options),
   listAssistantConversations: (options?: RequestOptions) =>
     request.get<CampusAssistantConversation[]>("/search/assistant/conversations", undefined, options),
   saveAssistantConversation: (

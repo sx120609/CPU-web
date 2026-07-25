@@ -14,6 +14,17 @@ import {
   searchCampusAssistantActions,
   streamCampusAssistant,
 } from "../src/services/campusAssistant";
+import {
+  campusAssistantDateKey,
+  nextCampusAssistantResetAt,
+  resolveCampusAssistantDailyQuota,
+  resolveCampusAssistantQuotaLevel,
+} from "../src/services/campusAssistantQuota";
+import {
+  ensureCanReadBoardType,
+  ensureForumAccessEnabled,
+  resolveForumAccess,
+} from "../src/services/forumAccess";
 import { readAiJsonTextStream } from "../src/services/aiJsonApi";
 
 const enabledFeatures = {
@@ -124,6 +135,26 @@ test("assistant answers allow complete responses up to the new four-thousand-cha
   );
 
   assert.equal(response.answer.length, 4000);
+});
+
+test("assistant quota includes Lv.0 and resets at China midnight", () => {
+  assert.equal(resolveCampusAssistantDailyQuota(0), 5);
+  assert.equal(resolveCampusAssistantDailyQuota(1), 10);
+  assert.equal(resolveCampusAssistantDailyQuota(5), 80);
+  assert.equal(resolveCampusAssistantQuotaLevel(0, 1), 0);
+  assert.equal(resolveCampusAssistantQuotaLevel(1, 1), 1);
+  assert.equal(campusAssistantDateKey(new Date("2026-07-25T15:59:59.000Z")), "2026-07-25");
+  assert.equal(campusAssistantDateKey(new Date("2026-07-25T16:00:01.000Z")), "2026-07-26");
+  assert.equal(
+    nextCampusAssistantResetAt(new Date("2026-07-25T15:59:59.000Z")).toISOString(),
+    "2026-07-25T16:00:00.000Z",
+  );
+});
+
+test("forum access is open to guests and no longer requires manual activation", async () => {
+  assert.equal(await resolveForumAccess(null, null), true);
+  await ensureCanReadBoardType("normal", null, null);
+  await ensureForumAccessEnabled(1, "user");
 });
 
 test("拾间AI可以获知并如实告知当前实际调用的模型名称", () => {

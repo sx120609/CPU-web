@@ -79,7 +79,7 @@ export const useAuthStore = defineStore("auth", {
       || s.user?.role === "mod"
       || s.user?.voiceHubRole === "super_admin"
       || !!s.user?.lostFoundRole,
-    canAccessForum: (s) => !!s.user && (s.user.role === "admin" || s.user.role === "mod" || s.user.role === "bot" || !!s.user.forumEnabled),
+    canAccessForum: () => true,
     needSetupNickname: (s) => !!s.user && (!s.user.nickname || s.user.nickname.trim() === ""),
     needDataAuthAgreement: (s) => !!s.user?.studentSso && !s.dataAuthAgreed,
     isGraduateIdentity: (s) => s.academicIdentity === "graduate",

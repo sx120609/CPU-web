@@ -14,7 +14,7 @@
           <p>问功能、找入口，也可以直接聊天</p>
         </div>
         <div class="assistant-head-actions">
-          <button type="button" aria-label="查看历史对话" @click="historyOpen = true">
+          <button type="button" aria-label="查看历史对话" :disabled="!auth.isLoggedIn" @click="historyOpen = true">
             <el-icon><Clock /></el-icon>
           </button>
           <button type="button" aria-label="新建对话" :disabled="!messages.length" @click="startNewConversation">
@@ -29,7 +29,14 @@
         </div>
       </div>
 
-      <div v-if="!messages.length" class="assistant-welcome">
+      <div v-if="!auth.isLoggedIn" class="assistant-auth-gate">
+        <span class="auth-gate-icon"><el-icon><Lock /></el-icon></span>
+        <strong>登录后使用拾间 AI</strong>
+        <p>登录后即可开始对话；历史记录和每日额度会跟随账号同步。</p>
+        <el-button type="primary" round @click="goLogin">登录并继续</el-button>
+      </div>
+
+      <div v-else-if="!messages.length" class="assistant-welcome">
         <strong>想做什么？直接告诉我。</strong>
         <span>例如查询宿舍电费、打开药苑之声、找课表，或者询问具体操作步骤。</span>
         <div class="welcome-prompts">
@@ -98,19 +105,19 @@
         </article>
       </div>
 
-      <div v-if="assistantError && !assistantLoading" class="assistant-error">
+      <div v-if="auth.isLoggedIn && assistantError && !assistantLoading" class="assistant-error">
         <span>{{ assistantError }}</span>
         <el-button text type="primary" @click="retryAssistant">重试</el-button>
       </div>
 
-      <div class="assistant-form" @pointerdown.capture="captureConversationAnchor">
+      <div v-if="auth.isLoggedIn" class="assistant-form" @pointerdown.capture="captureConversationAnchor">
         <el-input
           v-model="keywordInput"
           type="textarea"
           :autosize="{ minRows: 1, maxRows: 4 }"
           resize="none"
           maxlength="500"
-          placeholder="给拾间AI发消息"
+          :placeholder="assistantQuotaExhausted ? '今日额度已用完，明天恢复' : '给拾间AI发消息'"
           @keydown="handleComposerKeydown"
           @focus="handleComposerFocus"
           @blur="handleComposerBlur"
@@ -119,7 +126,7 @@
           type="button"
           class="composer-send"
           :aria-label="assistantLoading ? '正在回答' : '发送'"
-          :disabled="!keywordInput.trim() || assistantLoading"
+          :disabled="!keywordInput.trim() || assistantLoading || assistantQuotaExhausted"
           @click="submitSearch"
         >
           <el-icon v-if="assistantLoading" class="is-loading"><Loading /></el-icon>
@@ -127,7 +134,10 @@
           <span>发送</span>
         </button>
       </div>
-      <p class="assistant-disclaimer">内容由 AI 生成，请注意甄别</p>
+      <p v-if="auth.isLoggedIn" class="assistant-disclaimer">
+        <span>内容由 AI 生成，请注意甄别</span>
+        <span v-if="assistantQuota">{{ assistantQuota.levelName }} · 今日剩余 {{ assistantQuota.remaining }}/{{ assistantQuota.dailyQuota }}</span>
+      </p>
     </section>
 
     <transition name="embedded-history">
@@ -222,6 +232,7 @@ import {
   Delete,
   FullScreen,
   Loading,
+  Lock,
   Plus,
   Promotion,
   Right,
@@ -232,6 +243,7 @@ import {
   type CampusAssistantAction,
   type CampusAssistantConversation,
   type CampusAssistantMessage,
+  type CampusAssistantQuota,
 } from "@/api/search";
 import { useAuthStore } from "@/stores/auth";
 import { renderMarkdown } from "@/utils/markdown";
@@ -271,6 +283,7 @@ const q = ref(embedded ? "" : ((route.query.q as string) ?? ""));
 const keywordInput = ref("");
 const assistantLoading = ref(false);
 const assistantError = ref("");
+const assistantQuota = ref<CampusAssistantQuota | null>(null);
 const historyOpen = ref(false);
 const cloudSyncState = ref<"local" | "syncing" | "ready" | "error">(
   auth.isLoggedIn ? "syncing" : "local",
@@ -296,6 +309,9 @@ let conversationAnchorRestoring = false;
 const conversationAnchorTimers: number[] = [];
 
 const welcomePrompts = ["怎么查宿舍电费？", "打开药苑之声", "我的课表在哪里？"];
+const assistantQuotaExhausted = computed(() => (
+  assistantQuota.value !== null && assistantQuota.value.remaining <= 0
+));
 const historyCaption = computed(() => {
   if (!auth.isLoggedIn) return "记录保存在当前设备；登录后可同步到账号，最多保留 20 个对话。";
   if (cloudSyncState.value === "syncing") return "正在同步当前账号的历史对话…";
@@ -304,9 +320,23 @@ const historyCaption = computed(() => {
 });
 
 onMounted(() => {
-  if (auth.isLoggedIn) void hydrateCloudSessions();
+  if (auth.isLoggedIn) {
+    void hydrateCloudSessions();
+    void loadAssistantQuota();
+  }
   window.visualViewport?.addEventListener("resize", handleComposerViewportChange);
   window.visualViewport?.addEventListener("scroll", handleComposerViewportChange);
+});
+
+watch(() => auth.isLoggedIn, (loggedIn) => {
+  if (!loggedIn) {
+    assistantQuota.value = null;
+    historyOpen.value = false;
+    cancelActiveAssistant();
+    return;
+  }
+  void hydrateCloudSessions();
+  void loadAssistantQuota();
 });
 
 watch(() => route.query.q, async (value) => {
@@ -330,6 +360,14 @@ watch(() => route.query.q, async (value) => {
 }, { immediate: true });
 
 async function submitSearch() {
+  if (!auth.isLoggedIn) {
+    await goLogin();
+    return;
+  }
+  if (assistantQuotaExhausted.value) {
+    ElMessage.warning("今天的拾间 AI 额度已用完，明天 00:00 自动恢复");
+    return;
+  }
   const keyword = keywordInput.value.trim();
   if (!keyword || assistantLoading.value) return;
   keywordInput.value = "";
@@ -357,6 +395,7 @@ async function openFullPage() {
 }
 
 async function runQuery(keyword: string) {
+  if (!auth.isLoggedIn) return;
   const history = messages.value
     .slice(-12)
     .map(({ role, content }) => ({ role, content }));
@@ -408,11 +447,38 @@ async function askAssistant(keyword: string, history: CampusAssistantMessage[]) 
     if (seq === assistantSeq) {
       assistantLoading.value = false;
       if (assistantController === controller) assistantController = null;
+      void loadAssistantQuota();
     }
   }
 }
 
+async function loadAssistantQuota() {
+  if (!auth.isLoggedIn) {
+    assistantQuota.value = null;
+    return;
+  }
+  try {
+    assistantQuota.value = await searchApi.assistantQuota({
+      suppressErrorMessage: true,
+      suppressAuthMessage: true,
+      suppressAuthRedirect: true,
+    });
+  } catch {
+    assistantQuota.value = null;
+  }
+}
+
+async function goLogin() {
+  const redirect = embedded ? "/search" : route.fullPath;
+  await router.push({ name: "login", query: { redirect } });
+  if (embedded) emit("close");
+}
+
 async function retryAssistant() {
+  if (assistantQuotaExhausted.value) {
+    ElMessage.warning("今天的拾间 AI 额度已用完，明天 00:00 自动恢复");
+    return;
+  }
   const keyword = [...messages.value].reverse().find((item) => item.role === "user")?.content.trim() || q.value.trim();
   if (!keyword || assistantLoading.value) return;
   const history = messages.value
@@ -961,6 +1027,38 @@ onBeforeUnmount(() => {
   font-size: 13px;
   line-height: 1.7;
 }
+.assistant-auth-gate {
+  display: flex;
+  flex: 1;
+  min-height: 300px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  padding: 32px 20px;
+  text-align: center;
+}
+.assistant-auth-gate .auth-gate-icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 16px;
+  color: var(--cpu-primary);
+  background: color-mix(in srgb, var(--cpu-primary) 10%, var(--cpu-card));
+  font-size: 22px;
+}
+.assistant-auth-gate strong {
+  color: var(--cpu-text);
+  font-size: 20px;
+}
+.assistant-auth-gate p {
+  max-width: 360px;
+  margin: 0 0 6px;
+  color: var(--cpu-text-secondary);
+  line-height: 1.65;
+  font-size: 13px;
+}
 .welcome-prompts,
 .suggestions {
   display: flex;
@@ -1245,6 +1343,10 @@ onBeforeUnmount(() => {
   border-top: 1px solid var(--cpu-border-soft);
 }
 .assistant-disclaimer {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
   margin: -8px 0 0;
   color: var(--cpu-text-muted);
   text-align: center;
@@ -1602,6 +1704,10 @@ onBeforeUnmount(() => {
   }
   .assistant-welcome > span {
     max-width: 310px;
+  }
+  .assistant-auth-gate {
+    min-height: 0;
+    padding: 28px 18px;
   }
   .conversation {
     min-height: 0;

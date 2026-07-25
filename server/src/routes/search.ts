@@ -14,12 +14,18 @@ import {
   streamCampusAssistant,
 } from "../services/campusAssistant";
 import { securityRateLimit } from "../middleware/securityRateLimit";
+import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import {
   deleteCampusAssistantConversation,
   listCampusAssistantConversations,
   saveCampusAssistantConversation,
 } from "../services/campusAssistantHistory";
+import {
+  consumeCampusAssistantQuota,
+  getCampusAssistantQuotaStatus,
+  refundCampusAssistantQuota,
+} from "../services/campusAssistantQuota";
 
 export const searchRouter = Router();
 
@@ -154,6 +160,16 @@ searchRouter.get("/", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+searchRouter.use("/assistant", authRequired);
+
+searchRouter.get("/assistant/quota", async (req, res, next) => {
+  try {
+    ok(res, await getCampusAssistantQuotaStatus(req.user!.userId));
+  } catch (error) {
+    next(error);
+  }
+});
+
 searchRouter.get("/assistant/conversations", async (req, res, next) => {
   try {
     const userId = req.user?.userId;
@@ -202,9 +218,11 @@ searchRouter.post(
   securityRateLimit("campus-assistant", 20, 60_000),
   validate(assistantSchema),
   async (req, res, next) => {
+    let reservationDateKey = "";
     try {
-      const userId = req.user?.userId ?? null;
-      const role = req.user?.role ?? null;
+      const userId = req.user!.userId;
+      const role = req.user!.role;
+      reservationDateKey = (await consumeCampusAssistantQuota(userId)).dateKey;
       const forumAccessEnabled = await resolveForumAccess(userId, role);
       ok(res, await askCampusAssistant({
         message: req.body.message,
@@ -212,10 +230,13 @@ searchRouter.post(
         context: {
           features: getFeatures(),
           forumAccessEnabled,
-          loggedIn: Boolean(userId),
+          loggedIn: true,
         },
       }));
     } catch (error) {
+      if (reservationDateKey) {
+        await refundCampusAssistantQuota(req.user!.userId, reservationDateKey).catch(() => {});
+      }
       next(error);
     }
   },
@@ -228,14 +249,16 @@ searchRouter.post(
   async (req, res, next) => {
     let streamStarted = false;
     let streamCompleted = false;
+    let reservationDateKey = "";
     const controller = new AbortController();
     res.on("close", () => {
       if (!streamCompleted) controller.abort();
     });
 
     try {
-      const userId = req.user?.userId ?? null;
-      const role = req.user?.role ?? null;
+      const userId = req.user!.userId;
+      const role = req.user!.role;
+      reservationDateKey = (await consumeCampusAssistantQuota(userId)).dateKey;
       const forumAccessEnabled = await resolveForumAccess(userId, role);
       res.status(200);
       res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
@@ -258,7 +281,7 @@ searchRouter.post(
           context: {
             features: getFeatures(),
             forumAccessEnabled,
-            loggedIn: Boolean(userId),
+            loggedIn: true,
           },
           signal: controller.signal,
         }, (delta) => {
@@ -272,6 +295,9 @@ searchRouter.post(
         clearInterval(heartbeat);
       }
     } catch (error) {
+      if (reservationDateKey) {
+        await refundCampusAssistantQuota(req.user!.userId, reservationDateKey).catch(() => {});
+      }
       if (controller.signal.aborted) return;
       if (!streamStarted) return next(error);
       writeAssistantEvent(res, "error", { message: "拾间AI暂时不可用，请稍后再试" });

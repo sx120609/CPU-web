@@ -36,6 +36,10 @@ export type ReputationLevelConfig = {
   name: string;
   minReputation: number;
 };
+export type AssistantDailyQuotaConfig = {
+  level: number;
+  quota: number;
+};
 export type SiteConfig = {
   siteOrigin: string;
   siteFilingNumber: string;
@@ -92,6 +96,7 @@ export type SiteConfig = {
   forumEnabledBonus: number;
   anonymousTiers: AnonymousTierConfig[];
   reputationLevels: ReputationLevelConfig[];
+  assistantDailyQuotas: AssistantDailyQuotaConfig[];
 };
 export type SitePromptDefaults = Pick<
   SiteConfig,
@@ -133,6 +138,14 @@ export const DEFAULT_REPUTATION_LEVELS: ReputationLevelConfig[] = [
   { level: 3, name: "活跃同学", minReputation: 60 },
   { level: 4, name: "资深成员", minReputation: 90 },
   { level: 5, name: "校园传说", minReputation: 120 },
+];
+export const DEFAULT_ASSISTANT_DAILY_QUOTAS: AssistantDailyQuotaConfig[] = [
+  { level: 0, quota: 5 },
+  { level: 1, quota: 10 },
+  { level: 2, quota: 20 },
+  { level: 3, quota: 30 },
+  { level: 4, quota: 50 },
+  { level: 5, quota: 80 },
 ];
 
 const GLOBAL_PINNED_TOPICS_KEY = "forum.globalPinnedTopics";
@@ -198,6 +211,7 @@ const REPLY_POINTS_CAP_KEY = "forum.reputation.replyPointsCap";
 const FORUM_ENABLED_BONUS_KEY = "forum.reputation.forumEnabledBonus";
 const ANONYMOUS_TIERS_KEY = "forum.anonymous.tiers";
 const REPUTATION_LEVELS_KEY = "forum.reputation.levels";
+const ASSISTANT_DAILY_QUOTAS_KEY = "assistant.dailyQuotas";
 
 export const DEFAULT_AI_PROMPTS = {
   topicReviewSystem: "你是校园社区文字内容安全审核助手。你只根据标题、正文中的文字内容做判断，不要根据图片、图片占位符、图片链接、附件、分享卡片或外链落地页的想象内容加重风险。本站用户均为成年人，因此不需要对普通成人表达、恋爱讨论、两性话题、情绪吐槽采取过严标准；仅在出现违法、露骨色情、骚扰引导、仇恨攻击、性别对立煽动、隐私泄露、联系方式引流、诈骗、诽谤、极端政治动员等明确风险时提高分数。只返回 JSON。",
@@ -394,6 +408,7 @@ const configCache: SiteConfig = {
   forumEnabledBonus: 6,
   anonymousTiers: DEFAULT_ANONYMOUS_TIERS.map((item) => ({ ...item })),
   reputationLevels: DEFAULT_REPUTATION_LEVELS.map((item) => ({ ...item })),
+  assistantDailyQuotas: DEFAULT_ASSISTANT_DAILY_QUOTAS.map((item) => ({ ...item })),
 };
 
 function keyOf(f: FeatureKey) {
@@ -816,6 +831,10 @@ export async function loadFeatures(): Promise<void> {
       configCache.reputationLevels = normalizeReputationLevels(r.value, DEFAULT_REPUTATION_LEVELS);
       continue;
     }
+    if (r.key === ASSISTANT_DAILY_QUOTAS_KEY) {
+      configCache.assistantDailyQuotas = normalizeAssistantDailyQuotas(r.value, DEFAULT_ASSISTANT_DAILY_QUOTAS);
+      continue;
+    }
     if (r.key === GLOBAL_PINNED_TOPICS_KEY) {
       globalPinnedTopicIdsCache = normalizeTopicIdList(r.value);
       continue;
@@ -876,6 +895,7 @@ export function getSiteConfig(): SiteConfig {
     ...configCache,
     anonymousTiers: configCache.anonymousTiers.map((item) => ({ ...item })),
     reputationLevels: configCache.reputationLevels.map((item) => ({ ...item })),
+    assistantDailyQuotas: configCache.assistantDailyQuotas.map((item) => ({ ...item })),
   };
 }
 
@@ -1096,6 +1116,31 @@ function normalizeReputationLevels(
   return normalized;
 }
 
+function normalizeAssistantDailyQuotas(
+  input: string | AssistantDailyQuotaConfig[] | null | undefined,
+  fallback: AssistantDailyQuotaConfig[]
+) {
+  const raw = parseJsonValue<AssistantDailyQuotaConfig[] | unknown>(
+    typeof input === "string" ? input : JSON.stringify(input ?? fallback),
+    fallback
+  );
+  if (!Array.isArray(raw)) return fallback.map((item) => ({ ...item }));
+  const byLevel = new Map<number, string | number | null | undefined>();
+  raw.forEach((item: any) => {
+    const level = Number(item?.level);
+    if (Number.isInteger(level) && level >= 0 && level <= 5) {
+      byLevel.set(level, item?.quota);
+    }
+  });
+  if (![1, 2, 3, 4, 5].every((level) => byLevel.has(level))) {
+    return fallback.map((item) => ({ ...item }));
+  }
+  return fallback.map((item) => ({
+    level: item.level,
+    quota: normalizeSmallInt(byLevel.get(item.level), item.quota, 0, 9999),
+  }));
+}
+
 function sanitizeAiReviewConfig() {
   configCache.aiReviewThreshold = normalizeAiScore(configCache.aiReviewThreshold, 24);
   configCache.qqGroupAdReviewThreshold = normalizeAiScore(configCache.qqGroupAdReviewThreshold, 85);
@@ -1159,6 +1204,10 @@ function sanitizeCommunityTrustConfig() {
   configCache.forumEnabledBonus = normalizeSmallInt(configCache.forumEnabledBonus, 6, 0, 9999);
   configCache.anonymousTiers = normalizeAnonymousTiers(configCache.anonymousTiers, DEFAULT_ANONYMOUS_TIERS);
   configCache.reputationLevels = normalizeReputationLevels(configCache.reputationLevels, DEFAULT_REPUTATION_LEVELS);
+  configCache.assistantDailyQuotas = normalizeAssistantDailyQuotas(
+    configCache.assistantDailyQuotas,
+    DEFAULT_ASSISTANT_DAILY_QUOTAS
+  );
 }
 
 export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<SiteConfig> {
@@ -1488,6 +1537,9 @@ export async function setCommunityTrustConfig(input: Partial<SiteConfig>): Promi
     reputationLevels: input.reputationLevels !== undefined
       ? normalizeReputationLevels(input.reputationLevels, configCache.reputationLevels)
       : configCache.reputationLevels.map((item) => ({ ...item })),
+    assistantDailyQuotas: input.assistantDailyQuotas !== undefined
+      ? normalizeAssistantDailyQuotas(input.assistantDailyQuotas, configCache.assistantDailyQuotas)
+      : configCache.assistantDailyQuotas.map((item) => ({ ...item })),
   };
   sanitizeCommunityTrustConfigFor(next);
   await prisma.$transaction([
@@ -1546,6 +1598,11 @@ export async function setCommunityTrustConfig(input: Partial<SiteConfig>): Promi
       update: { value: JSON.stringify(next.reputationLevels) },
       create: { key: REPUTATION_LEVELS_KEY, value: JSON.stringify(next.reputationLevels) },
     }),
+    prisma.siteSetting.upsert({
+      where: { key: ASSISTANT_DAILY_QUOTAS_KEY },
+      update: { value: JSON.stringify(next.assistantDailyQuotas) },
+      create: { key: ASSISTANT_DAILY_QUOTAS_KEY, value: JSON.stringify(next.assistantDailyQuotas) },
+    }),
   ]);
   Object.assign(configCache, next);
   sanitizeCommunityTrustConfig();
@@ -1565,4 +1622,8 @@ function sanitizeCommunityTrustConfigFor(next: SiteConfig) {
   next.forumEnabledBonus = normalizeSmallInt(next.forumEnabledBonus, 6, 0, 9999);
   next.anonymousTiers = normalizeAnonymousTiers(next.anonymousTiers, DEFAULT_ANONYMOUS_TIERS);
   next.reputationLevels = normalizeReputationLevels(next.reputationLevels, DEFAULT_REPUTATION_LEVELS);
+  next.assistantDailyQuotas = normalizeAssistantDailyQuotas(
+    next.assistantDailyQuotas,
+    DEFAULT_ASSISTANT_DAILY_QUOTAS
+  );
 }

@@ -2138,6 +2138,10 @@ const siteConfigPatchSchema = z.object({
     name: z.string().trim().min(1).max(20),
     minReputation: z.number().int().min(0).max(9999),
   })).length(5).optional(),
+  assistantDailyQuotas: z.array(z.object({
+    level: z.number().int().min(0).max(5),
+    quota: z.number().int().min(0).max(9999),
+  })).length(6).optional(),
 });
 
 adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), async (req, res, next) => {
@@ -2205,7 +2209,8 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       req.body.replyPointsCap !== undefined ||
       req.body.forumEnabledBonus !== undefined ||
       req.body.anonymousTiers !== undefined ||
-      req.body.reputationLevels !== undefined
+      req.body.reputationLevels !== undefined ||
+      req.body.assistantDailyQuotas !== undefined
     ) {
       await setCommunityTrustConfig(req.body);
     }

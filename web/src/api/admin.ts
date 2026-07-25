@@ -57,6 +57,7 @@ export type SiteConfig = {
   forumEnabledBonus: number;
   anonymousTiers: Array<{ reputation: number; quota: number }>;
   reputationLevels: Array<{ level: number; name: string; minReputation: number }>;
+  assistantDailyQuotas: Array<{ level: number; quota: number }>;
 };
 
 export type MediaStorageConfig = {
@@ -767,6 +768,7 @@ export const adminApi = {
     forumEnabledBonus?: number;
     anonymousTiers?: Array<{ reputation: number; quota: number }>;
     reputationLevels?: Array<{ level: number; name: string; minReputation: number }>;
+    assistantDailyQuotas?: Array<{ level: number; quota: number }>;
   }) =>
     request.patch<SiteConfig>("/admin/site-config", patch),
   aiReviewLogs: (params: { kind?: string; status?: string; page?: number; size?: number }, options?: RequestOptions) =>
