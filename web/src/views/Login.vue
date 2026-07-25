@@ -110,7 +110,7 @@ import { User, Lock, Refresh, ArrowLeft } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { loadCreds, hasCreds } from "@/utils/credCrypto";
-import { resolveSafeRedirect } from "@/utils/redirect";
+import { isOAuthAuthorizationRedirect, resolveLoginRedirect } from "@/utils/redirect";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 
 const router = useRouter();
@@ -184,18 +184,12 @@ async function reloadCaptcha() {
 }
 
 function redirectTarget() {
-  if (auth.user?.role === "voicehub_admin") return "/voicehub/dashboard";
-  if (auth.user?.voiceHubRole === "super_admin" || auth.user?.lostFoundRole === "super_admin") {
-    return "/admin?tab=users";
-  }
-  if (auth.user?.lostFoundRole) return "/admin?tab=lost-found";
-  if (auth.user?.voiceHubRole === "admin") return "/voicehub/dashboard";
-  return resolveSafeRedirect(route.query.redirect);
+  return resolveLoginRedirect(route.query.redirect, auth.user);
 }
 
 function finishLoginRedirect() {
   const target = redirectTarget();
-  if (target.startsWith("/api/oauth/authorize?")) {
+  if (isOAuthAuthorizationRedirect(target)) {
     window.location.replace(target);
     return;
   }

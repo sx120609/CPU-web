@@ -5,6 +5,7 @@ import {
   buildSystemPrompt,
   extractPartialJsonStringValue,
   guardCampusAssistantResponse,
+  isCampusAssistantConversationRestricted,
   isCampusAssistantModelIdentityQuestion,
   isCampusAssistantPublicTopicRestricted,
   listCampusAssistantActions,
@@ -186,6 +187,16 @@ test("敏感话题的上下文追问不会绕过前置拦截", () => {
     { role: "user", content: "请介绍六四事件" },
     { role: "assistant", content: "这个话题不适合在本站展开。" },
   ]), true);
+});
+
+test("敏感话题检查使用当前消息之前的历史", () => {
+  const messages = [
+    { role: "user" as const, content: "请介绍六四事件" },
+    { role: "assistant" as const, content: "这个话题不适合在本站展开。" },
+    { role: "user" as const, content: "继续" },
+  ];
+
+  assert.equal(isCampusAssistantConversationRestricted(messages), true);
 });
 
 test("敏感问法在调用模型前直接返回安全答复，流式接口也不会泄露增量", async () => {
