@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma";
-import { ok } from "../utils/response";
+import { Errors, ok } from "../utils/response";
 import { withCache } from "../services/cache";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
 import { getFeatures } from "../services/siteSettings";
@@ -15,6 +15,11 @@ import {
 } from "../services/campusAssistant";
 import { securityRateLimit } from "../middleware/securityRateLimit";
 import { validate } from "../middleware/validate";
+import {
+  deleteCampusAssistantConversation,
+  listCampusAssistantConversations,
+  saveCampusAssistantConversation,
+} from "../services/campusAssistantHistory";
 
 export const searchRouter = Router();
 
@@ -22,9 +27,32 @@ const assistantSchema = z.object({
   message: z.string().trim().min(1).max(500),
   history: z.array(z.object({
     role: z.enum(["user", "assistant"]),
-    content: z.string().trim().min(1).max(1200),
-  })).max(8).default([]),
+    content: z.string().trim().min(1).max(2000),
+  })).max(12).default([]),
 });
+
+const assistantHistoryIdSchema = z.string().trim().regex(/^[A-Za-z0-9_-]{8,80}$/);
+const assistantHistoryActionSchema = z.object({
+  id: z.string().trim().min(1).max(80),
+  label: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(240),
+  url: z.string().trim().min(1).max(500),
+  icon: z.string().trim().max(16),
+  owner: z.string().trim().max(80),
+  requireLogin: z.boolean(),
+}).strict();
+const assistantHistoryMessageSchema = z.object({
+  id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  role: z.enum(["user", "assistant"]),
+  content: z.string().trim().min(1).max(4000),
+  actions: z.array(assistantHistoryActionSchema).max(3).optional(),
+  suggestions: z.array(z.string().trim().min(1).max(60)).max(3).optional(),
+}).strict();
+const assistantHistorySaveSchema = z.object({
+  title: z.string().trim().min(1).max(80),
+  updatedAt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  messages: z.array(assistantHistoryMessageSchema).min(1).max(60),
+}).strict();
 
 /** 全局搜索：帖子标题/正文 + 课程 + 服务卡片 */
 searchRouter.get("/", async (req, res, next) => {
@@ -124,6 +152,49 @@ searchRouter.get("/", async (req, res, next) => {
       ]).slice(0, 10),
     });
   } catch (e) { next(e); }
+});
+
+searchRouter.get("/assistant/conversations", async (req, res, next) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) throw Errors.unauthorized("登录后才能同步拾间AI历史对话");
+    ok(res, await listCampusAssistantConversations(userId));
+  } catch (error) {
+    next(error);
+  }
+});
+
+searchRouter.patch(
+  "/assistant/conversations/:id",
+  securityRateLimit("campus-assistant-history", 120, 60_000),
+  validate(assistantHistorySaveSchema),
+  async (req, res, next) => {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) throw Errors.unauthorized("登录后才能同步拾间AI历史对话");
+      const id = assistantHistoryIdSchema.parse(req.params.id);
+      ok(res, await saveCampusAssistantConversation(userId, {
+        id,
+        title: req.body.title,
+        updatedAt: req.body.updatedAt,
+        messages: req.body.messages,
+      }));
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+searchRouter.delete("/assistant/conversations/:id", async (req, res, next) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) throw Errors.unauthorized("登录后才能同步拾间AI历史对话");
+    const id = assistantHistoryIdSchema.parse(req.params.id);
+    await deleteCampusAssistantConversation(userId, id);
+    ok(res, { ok: true });
+  } catch (error) {
+    next(error);
+  }
 });
 
 searchRouter.post(

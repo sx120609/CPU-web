@@ -10,7 +10,6 @@
         <div class="assistant-head-actions">
           <button type="button" aria-label="查看历史对话" @click="historyOpen = true">
             <el-icon><Clock /></el-icon>
-            <span v-if="sessions.length" class="history-count">{{ sessions.length }}</span>
           </button>
           <button type="button" aria-label="新建对话" :disabled="!messages.length" @click="startNewConversation">
             <el-icon><Plus /></el-icon>
@@ -110,7 +109,7 @@
       title="历史对话"
       append-to-body
     >
-      <div class="history-caption">记录保存在当前设备，最多保留 20 个对话。</div>
+      <div class="history-caption">{{ historyCaption }}</div>
       <button type="button" class="history-new" @click="startNewConversation">
         <el-icon><Plus /></el-icon>
         <span>新对话</span>
@@ -211,7 +210,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   ChatDotRound,
@@ -227,6 +226,7 @@ import TopicListItem from "@/components/forum/TopicListItem.vue";
 import {
   searchApi,
   type CampusAssistantAction,
+  type CampusAssistantConversation,
   type CampusAssistantMessage,
   type SearchResult,
 } from "@/api/search";
@@ -248,6 +248,8 @@ type ConversationSession = {
 
 const HISTORY_KEY = "campus-assistant-history:v1";
 const ACTIVE_HISTORY_KEY = "campus-assistant-active:v1";
+const LEGACY_HISTORY_OWNER_KEY = "campus-assistant-history-owner:v1";
+const NEW_SESSION_SENTINEL = "__new__";
 const MAX_SESSIONS = 20;
 const MAX_MESSAGES_PER_SESSION = 60;
 
@@ -262,6 +264,9 @@ const searchError = ref("");
 const assistantLoading = ref(false);
 const assistantError = ref("");
 const historyOpen = ref(false);
+const cloudSyncState = ref<"local" | "syncing" | "ready" | "error">(
+  auth.isLoggedIn ? "syncing" : "local",
+);
 const conversationRef = ref<HTMLElement | null>(null);
 const sessions = ref<ConversationSession[]>(loadSessions());
 const restoredSession = restoreActiveSession(sessions.value);
@@ -272,6 +277,8 @@ let assistantSeq = 0;
 let messageSeq = messages.value.reduce((max, item) => Math.max(max, item.id), 0);
 let assistantController: AbortController | null = null;
 let scrollFrame = 0;
+let cloudSyncTimer = 0;
+let pendingCloudSession: ConversationSession | null = null;
 let firstRouteSync = true;
 
 const welcomePrompts = ["怎么查宿舍电费？", "打开药苑之声", "我的课表在哪里？"];
@@ -280,6 +287,16 @@ const resultCount = computed(() => (
   + (result.value?.courses.length ?? 0)
   + (result.value?.services.length ?? 0)
 ));
+const historyCaption = computed(() => {
+  if (!auth.isLoggedIn) return "记录保存在当前设备；登录后可同步到账号，最多保留 20 个对话。";
+  if (cloudSyncState.value === "syncing") return "正在同步当前账号的历史对话…";
+  if (cloudSyncState.value === "error") return "云同步暂时不可用，本机记录已保留。";
+  return "已与当前账号同步，最多保留 20 个对话。";
+});
+
+onMounted(() => {
+  if (auth.isLoggedIn) void hydrateCloudSessions();
+});
 
 watch(() => route.query.q, async (value) => {
   const keyword = String(value ?? "").trim();
@@ -322,7 +339,7 @@ async function sendPrompt(prompt: string) {
 
 async function runQuery(keyword: string) {
   const history = messages.value
-    .slice(-8)
+    .slice(-12)
     .map(({ role, content }) => ({ role, content }));
   ensureActiveConversation(keyword);
   messages.value.push({ id: ++messageSeq, role: "user", content: keyword });
@@ -400,7 +417,7 @@ async function retryAssistant() {
   if (!keyword || assistantLoading.value) return;
   const history = messages.value
     .filter((item, index) => !(index === messages.value.length - 1 && item.role === "user"))
-    .slice(-8)
+    .slice(-12)
     .map(({ role, content }) => ({ role, content }));
   await askAssistant(keyword, history);
 }
@@ -420,7 +437,7 @@ async function startNewConversation() {
   result.value = null;
   q.value = "";
   historyOpen.value = false;
-  try { localStorage.removeItem(ACTIVE_HISTORY_KEY); } catch { /* ignore */ }
+  markNewSession();
   if (route.query.q) await router.replace({ name: "search" });
 }
 
@@ -428,7 +445,6 @@ async function openConversation(sessionId: string) {
   const session = sessions.value.find((item) => item.id === sessionId);
   if (!session) return;
   cancelActiveAssistant();
-  if (route.query.q) await router.replace({ name: "search" });
   activeSessionId.value = session.id;
   messages.value = cloneMessages(session.messages);
   messageSeq = messages.value.reduce((max, item) => Math.max(max, item.id), messageSeq);
@@ -438,11 +454,24 @@ async function openConversation(sessionId: string) {
   historyOpen.value = false;
   rememberActiveSession(session.id);
   scrollConversation();
+  if (route.query.q) await router.replace({ name: "search" });
 }
 
 async function deleteConversation(sessionId: string) {
+  if (pendingCloudSession?.id === sessionId) {
+    pendingCloudSession = null;
+    window.clearTimeout(cloudSyncTimer);
+    cloudSyncTimer = 0;
+  }
   sessions.value = sessions.value.filter((item) => item.id !== sessionId);
   writeSessions();
+  if (auth.isLoggedIn) {
+    void searchApi.deleteAssistantConversation(sessionId, {
+      suppressErrorMessage: true,
+    }).catch(() => {
+      cloudSyncState.value = "error";
+    });
+  }
   if (activeSessionId.value === sessionId) await startNewConversation();
 }
 
@@ -489,6 +518,7 @@ function persistActiveConversation() {
   ].slice(0, MAX_SESSIONS);
   writeSessions();
   rememberActiveSession(session.id);
+  queueCloudSync(session);
 }
 
 function cancelActiveAssistant() {
@@ -511,7 +541,8 @@ function scrollConversation() {
 
 function loadSessions(): ConversationSession[] {
   try {
-    const parsed = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+    migrateLegacyHistoryForCurrentUser();
+    const parsed = JSON.parse(localStorage.getItem(currentHistoryKey()) || "[]");
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter((item) => item && typeof item.id === "string" && typeof item.title === "string" && Array.isArray(item.messages))
@@ -530,7 +561,8 @@ function loadSessions(): ConversationSession[] {
 
 function restoreActiveSession(items: ConversationSession[]) {
   let activeId = "";
-  try { activeId = localStorage.getItem(ACTIVE_HISTORY_KEY) || ""; } catch { /* ignore */ }
+  try { activeId = localStorage.getItem(currentActiveHistoryKey()) || ""; } catch { /* ignore */ }
+  if (activeId === NEW_SESSION_SENTINEL) return null;
   return items.find((item) => item.id === activeId) || items[0] || null;
 }
 
@@ -546,18 +578,141 @@ function cloneMessages(items: unknown[]): ConversationMessage[] {
     .map((item) => ({
       id: item.id,
       role: item.role,
-      content: item.content.slice(0, 1600),
+      content: item.content.slice(0, 4000),
       actions: Array.isArray(item.actions) ? item.actions.slice(0, 3).map((action) => ({ ...action })) : undefined,
       suggestions: Array.isArray(item.suggestions) ? item.suggestions.slice(0, 3).map(String) : undefined,
     }));
 }
 
 function writeSessions() {
-  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(sessions.value)); } catch { /* ignore */ }
+  try { localStorage.setItem(currentHistoryKey(), JSON.stringify(sessions.value)); } catch { /* ignore */ }
 }
 
 function rememberActiveSession(sessionId: string) {
-  try { localStorage.setItem(ACTIVE_HISTORY_KEY, sessionId); } catch { /* ignore */ }
+  try { localStorage.setItem(currentActiveHistoryKey(), sessionId); } catch { /* ignore */ }
+}
+
+function markNewSession() {
+  try { localStorage.setItem(currentActiveHistoryKey(), NEW_SESSION_SENTINEL); } catch { /* ignore */ }
+}
+
+async function hydrateCloudSessions() {
+  cloudSyncState.value = "syncing";
+  const localSessions = sessions.value.map(toCloudConversation);
+  try {
+    const cloudSessions = await searchApi.listAssistantConversations({
+      suppressErrorMessage: true,
+    });
+    const merged = new Map<string, ConversationSession>();
+    for (const item of [...cloudSessions, ...localSessions]) {
+      const normalized = normalizeConversationSession(item);
+      if (!normalized) continue;
+      const current = merged.get(normalized.id);
+      if (!current || normalized.updatedAt >= current.updatedAt) merged.set(normalized.id, normalized);
+    }
+    sessions.value = [...merged.values()]
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, MAX_SESSIONS);
+    writeSessions();
+
+    const activeMarker = readActiveSessionMarker();
+    if (!messages.value.length && activeMarker !== NEW_SESSION_SENTINEL) {
+      const restored = restoreActiveSession(sessions.value);
+      if (restored) {
+        activeSessionId.value = restored.id;
+        messages.value = cloneMessages(restored.messages);
+        messageSeq = messages.value.reduce((max, item) => Math.max(max, item.id), messageSeq);
+        rememberActiveSession(restored.id);
+        scrollConversation();
+      }
+    }
+
+    const cloudMap = new Map(cloudSessions.map((item) => [item.id, item.updatedAt]));
+    for (const local of localSessions) {
+      if ((cloudMap.get(local.id) ?? -1) >= local.updatedAt) continue;
+      await searchApi.saveAssistantConversation(local, {
+        suppressErrorMessage: true,
+      });
+    }
+    cloudSyncState.value = "ready";
+  } catch {
+    cloudSyncState.value = "error";
+  }
+}
+
+function queueCloudSync(session: ConversationSession) {
+  if (!auth.isLoggedIn || !session.messages.length) return;
+  pendingCloudSession = normalizeConversationSession(toCloudConversation(session));
+  window.clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = window.setTimeout(() => {
+    cloudSyncTimer = 0;
+    void flushCloudSync();
+  }, 240);
+}
+
+async function flushCloudSync() {
+  if (!auth.isLoggedIn || !pendingCloudSession) return;
+  const pending = pendingCloudSession;
+  pendingCloudSession = null;
+  try {
+    await searchApi.saveAssistantConversation(toCloudConversation(pending), {
+      suppressErrorMessage: true,
+    });
+    cloudSyncState.value = "ready";
+  } catch {
+    cloudSyncState.value = "error";
+  }
+}
+
+function toCloudConversation(session: ConversationSession): CampusAssistantConversation {
+  return {
+    id: session.id,
+    title: session.title.slice(0, 80) || "历史对话",
+    updatedAt: session.updatedAt,
+    messages: cloneMessages(session.messages)
+      .filter((item) => item.content.trim())
+      .slice(-MAX_MESSAGES_PER_SESSION)
+      .map(({ streaming: _streaming, ...item }) => item),
+  };
+}
+
+function normalizeConversationSession(input: CampusAssistantConversation): ConversationSession | null {
+  if (!input || typeof input.id !== "string" || !Array.isArray(input.messages)) return null;
+  const normalizedMessages = cloneMessages(input.messages);
+  if (!normalizedMessages.length) return null;
+  return {
+    id: input.id,
+    title: String(input.title || "").slice(0, 80) || "历史对话",
+    updatedAt: Number(input.updatedAt) || Date.now(),
+    messages: normalizedMessages,
+  };
+}
+
+function readActiveSessionMarker() {
+  try { return localStorage.getItem(currentActiveHistoryKey()) || ""; } catch { return ""; }
+}
+
+function currentHistoryKey() {
+  return auth.user?.id ? `${HISTORY_KEY}:user:${auth.user.id}` : HISTORY_KEY;
+}
+
+function currentActiveHistoryKey() {
+  return auth.user?.id ? `${ACTIVE_HISTORY_KEY}:user:${auth.user.id}` : ACTIVE_HISTORY_KEY;
+}
+
+function migrateLegacyHistoryForCurrentUser() {
+  const userId = auth.user?.id;
+  if (!userId) return;
+  const scopedHistoryKey = currentHistoryKey();
+  if (localStorage.getItem(scopedHistoryKey)) return;
+  const owner = localStorage.getItem(LEGACY_HISTORY_OWNER_KEY);
+  if (owner && owner !== String(userId)) return;
+  const legacyHistory = localStorage.getItem(HISTORY_KEY);
+  if (!legacyHistory) return;
+  localStorage.setItem(scopedHistoryKey, legacyHistory);
+  const legacyActive = localStorage.getItem(ACTIVE_HISTORY_KEY);
+  if (legacyActive) localStorage.setItem(currentActiveHistoryKey(), legacyActive);
+  localStorage.setItem(LEGACY_HISTORY_OWNER_KEY, String(userId));
 }
 
 function createSessionId() {
@@ -603,6 +758,8 @@ function openCourse(id: number) {
 onBeforeUnmount(() => {
   cancelActiveAssistant();
   if (scrollFrame) cancelAnimationFrame(scrollFrame);
+  window.clearTimeout(cloudSyncTimer);
+  if (pendingCloudSession) void flushCloudSync();
 });
 </script>
 
@@ -669,21 +826,6 @@ onBeforeUnmount(() => {
 .assistant-head-actions button:disabled {
   opacity: 0.4;
   cursor: default;
-}
-.history-count {
-  position: absolute;
-  top: -5px;
-  right: -4px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border: 2px solid var(--cpu-card);
-  border-radius: 999px;
-  color: #fff;
-  background: var(--cpu-primary);
-  box-sizing: border-box;
-  font-size: 9px;
-  line-height: 12px;
 }
 .assistant-mark {
   display: grid;
@@ -1137,32 +1279,33 @@ onBeforeUnmount(() => {
   .assistant-shell {
     height: 100%;
     min-height: 0;
-    padding: 4px 2px 0;
+    gap: 0;
+    padding: 0;
     border: 0;
     border-radius: 0;
     background: transparent;
     box-shadow: none;
   }
   .assistant-head {
-    gap: 9px;
+    gap: 8px;
     flex: 0 0 auto;
-    padding: 0 2px 8px;
+    padding: 1px 2px 10px;
   }
   .assistant-mark {
-    width: 34px;
-    height: 34px;
-    border-radius: 10px;
-    box-shadow: 0 5px 13px rgba(22, 135, 118, 0.18);
-    font-size: 16px;
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    box-shadow: none;
+    font-size: 14px;
   }
   .assistant-head h1 {
-    font-size: 17px;
+    font-size: 16px;
   }
   .assistant-head p {
     display: none;
   }
   .assistant-welcome {
-    padding: 30px 4px 18px;
+    padding: 24px 3px 16px;
   }
   .assistant-welcome strong {
     font-size: 20px;
@@ -1173,12 +1316,12 @@ onBeforeUnmount(() => {
   .conversation {
     min-height: 0;
     max-height: none;
-    gap: 20px;
-    padding: 12px 2px 14px;
+    gap: 12px;
+    padding: 8px 2px 10px;
     scrollbar-gutter: auto;
   }
   .message {
-    max-width: 88%;
+    max-width: 82%;
   }
   .message--assistant {
     width: 100%;
@@ -1188,7 +1331,7 @@ onBeforeUnmount(() => {
     display: none;
   }
   .message-bubble {
-    padding: 10px 13px;
+    padding: 9px 12px;
   }
   .message--assistant .message-bubble {
     padding: 0 2px;
@@ -1197,19 +1340,28 @@ onBeforeUnmount(() => {
     background: transparent;
   }
   .message-bubble p {
-    font-size: 15px;
-    line-height: 1.7;
+    font-size: 14px;
+    line-height: 1.62;
   }
   .message--user .message-bubble {
-    border-radius: 15px 15px 4px 15px;
+    padding: 8px 12px;
+    border-color: rgba(20, 143, 123, 0.22);
+    border-radius: 17px 17px 5px 17px;
+    color: var(--cpu-text);
+    background: rgba(20, 143, 123, 0.09);
+    box-shadow: none;
+  }
+  .message--user .message-bubble p {
+    line-height: 1.5;
   }
   .action-list {
-    margin-top: 12px;
+    gap: 6px;
+    margin-top: 9px;
   }
   .action-card {
-    padding: 10px 11px;
-    border-radius: 12px;
-    box-shadow: 0 3px 12px rgba(20, 48, 43, 0.04);
+    padding: 9px 10px;
+    border-radius: 11px;
+    box-shadow: none;
   }
   .action-icon {
     font-size: 19px;
@@ -1218,37 +1370,49 @@ onBeforeUnmount(() => {
     font-size: 14px;
   }
   .suggestions {
-    flex-wrap: nowrap;
-    margin: 12px -4px 0;
-    padding: 0 4px 3px;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .suggestions::-webkit-scrollbar {
-    display: none;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 9px 0 0;
+    padding: 0;
+    overflow: visible;
   }
   .suggestions button {
-    flex: 0 0 auto;
-    white-space: nowrap;
+    padding: 6px 9px;
+    white-space: normal;
+    text-align: left;
   }
   .assistant-form {
-    gap: 8px;
+    gap: 5px;
     flex: 0 0 auto;
-    padding: 9px 2px 2px;
-    border-top-color: var(--cpu-border-soft);
-    background: var(--cpu-bg);
+    margin: 0;
+    padding: 5px 5px 5px 13px;
+    border: 1px solid var(--cpu-border-soft);
+    border-radius: 18px;
+    background: var(--cpu-surface);
+    transition: border-color 0.16s ease, box-shadow 0.16s ease;
+  }
+  .assistant-form:focus-within {
+    border-color: var(--cpu-primary);
+    box-shadow: 0 0 0 3px rgba(20, 143, 123, 0.09);
   }
   .assistant-form :deep(.el-textarea__inner) {
-    min-height: 46px !important;
-    padding: 12px 14px;
-    border-radius: 16px;
+    min-height: 38px !important;
+    max-height: 104px;
+    padding: 9px 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  .assistant-form :deep(.el-textarea__inner:focus) {
+    border-color: transparent;
+    box-shadow: none;
   }
   .composer-send {
-    width: 46px;
-    height: 46px;
+    width: 38px;
+    height: 38px;
     padding: 0;
-    border-radius: 15px;
-    font-size: 19px;
+    border-radius: 13px;
+    font-size: 17px;
   }
   .composer-send span {
     display: none;

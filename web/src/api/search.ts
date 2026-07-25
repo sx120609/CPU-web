@@ -35,6 +35,19 @@ export interface CampusAssistantResponse {
   fallback: boolean;
 }
 
+export interface CampusAssistantStoredMessage extends CampusAssistantMessage {
+  id: number;
+  actions?: CampusAssistantAction[];
+  suggestions?: string[];
+}
+
+export interface CampusAssistantConversation {
+  id: string;
+  title: string;
+  updatedAt: number;
+  messages: CampusAssistantStoredMessage[];
+}
+
 export interface CampusAssistantStreamOptions {
   signal?: AbortSignal;
   onDelta: (delta: string) => void;
@@ -45,6 +58,25 @@ export const searchApi = {
   search: (q: string, options?: RequestOptions) => request.get<SearchResult>("/search", { q }, options),
   askAssistant: (message: string, history: CampusAssistantMessage[], options?: RequestOptions) =>
     request.post<CampusAssistantResponse>("/search/assistant", { message, history }, options),
+  listAssistantConversations: (options?: RequestOptions) =>
+    request.get<CampusAssistantConversation[]>("/search/assistant/conversations", undefined, options),
+  saveAssistantConversation: (
+    conversation: CampusAssistantConversation,
+    options?: RequestOptions,
+  ) => request.patch<CampusAssistantConversation>(
+    `/search/assistant/conversations/${encodeURIComponent(conversation.id)}`,
+    {
+      title: conversation.title,
+      updatedAt: conversation.updatedAt,
+      messages: conversation.messages,
+    },
+    options,
+  ),
+  deleteAssistantConversation: (id: string, options?: RequestOptions) =>
+    request.delete<{ ok: true }>(
+      `/search/assistant/conversations/${encodeURIComponent(id)}`,
+      options,
+    ),
   streamAssistant: (
     message: string,
     history: CampusAssistantMessage[],

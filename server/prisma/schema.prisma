@@ -24,8 +24,8 @@ model User {
   college                String? // 自报院系（可选，仅展示用）
   enrollYear             Int? // 自报入学年份（可选）
   role                   String    @default("user") // user / mod / admin / bot
-  voiceHubRole           String?   // admin / super_admin；与主站身份独立，可和其他模块权限并存
-  lostFoundRole          String?   // admin / super_admin；与主站身份独立，可和其他模块权限并存
+  voiceHubRole           String? // admin / super_admin；与主站身份独立，可和其他模块权限并存
+  lostFoundRole          String? // admin / super_admin；与主站身份独立，可和其他模块权限并存
   // 是否通过学校 SSO 登录认证（学号身份已验证）。alice 等示例账号为 false
   studentSso             Boolean   @default(false)
   status                 String    @default("active") // active / banned / muted
@@ -51,52 +51,68 @@ model User {
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
-  topics                      Topic[]
-  manualReviewedTopics        Topic[]                 @relation("ManualReviewedTopics")
-  manualReviewedImages        ForumImageAsset[]       @relation("ManualReviewedImages")
-  manualReviewedVideos        ForumVideoAsset[]       @relation("ManualReviewedVideos")
-  replies                     Reply[]
-  likes                       Like[]
-  notifications               Notification[]
-  notificationReads           NotificationRead[]
-  messageSetting              MessageSetting?
-  feedSources                 SchoolFeedSource[]      @relation("BotUser")
-  userCourses                 UserCourse[]
-  scheduleEdits               UserScheduleEdit[]
-  scheduleWidgetTokens        ScheduleWidgetToken[]
-  toolPermissions             ToolPermission[]
-  createdQuestionnaires       Questionnaire[]         @relation("QuestionnaireCreatedBy")
-  questionnaireResponses      QuestionnaireResponse[]
-  createdGradeCheckTables     GradeCheckTable[]       @relation("GradeCheckCreatedBy")
-  createdFileCollectTasks     FileCollectTask[]       @relation("FileCollectCreatedBy")
-  createdFileCollectTemplates FileCollectTemplate[]   @relation("FileCollectTemplateCreatedBy")
-  fileCollectSubmissions      FileCollectSubmission[] @relation("FileCollectSubmittedBy")
-  sponsorOrders               SponsorOrder[]
-  qqBotBindings               QqBotBinding[]
-  qqBotBindTokens             QqBotBindToken[]
-  qqBotMessageLogs            QqBotMessageLog[]
-  forumImageAssets            ForumImageAsset[]
-  forumVideoAssets            ForumVideoAsset[]
-  aiReviewLogs                AiReviewLog[]
-  courseBotQuota              CourseBotQuota?
-  courseBotUsageLogs          CourseBotUsageLog[]
-  adminDailyLogins            AdminDailyLogin[]
-  marketItems                 MarketItem[]            @relation("MarketSeller")
-  marketFavorites             MarketFavorite[]
-  marketOffers                MarketOffer[]           @relation("MarketOfferBuyer")
-  marketBuyerOrders           MarketOrder[]           @relation("MarketOrderBuyer")
-  marketSellerOrders          MarketOrder[]           @relation("MarketOrderSeller")
-  marketBuyerConversations    MarketConversation[]    @relation("MarketConversationBuyer")
-  marketSellerConversations   MarketConversation[]    @relation("MarketConversationSeller")
-  marketMessages              MarketMessage[]         @relation("MarketMessageSender")
-  marketReviewsAuthored       MarketReview[]          @relation("MarketReviewAuthor")
-  marketReviewsReceived       MarketReview[]          @relation("MarketReviewTarget")
-  marketReports               MarketReport[]          @relation("MarketReportReporter")
-  marketRefundRequests        MarketRefund[]          @relation("MarketRefundRequester")
-  marketSettlements           MarketSettlement[]      @relation("MarketSettlementSeller")
-  marketPayoutProfile         MarketPayoutProfile?
-  lostFoundItems              LostFoundItem[]         @relation("LostFoundPublisher")
-  lostFoundClaims             LostFoundClaim[]        @relation("LostFoundClaimant")
+  topics                       Topic[]
+  manualReviewedTopics         Topic[]                       @relation("ManualReviewedTopics")
+  manualReviewedImages         ForumImageAsset[]             @relation("ManualReviewedImages")
+  manualReviewedVideos         ForumVideoAsset[]             @relation("ManualReviewedVideos")
+  replies                      Reply[]
+  likes                        Like[]
+  notifications                Notification[]
+  notificationReads            NotificationRead[]
+  messageSetting               MessageSetting?
+  feedSources                  SchoolFeedSource[]            @relation("BotUser")
+  userCourses                  UserCourse[]
+  scheduleEdits                UserScheduleEdit[]
+  scheduleWidgetTokens         ScheduleWidgetToken[]
+  toolPermissions              ToolPermission[]
+  createdQuestionnaires        Questionnaire[]               @relation("QuestionnaireCreatedBy")
+  questionnaireResponses       QuestionnaireResponse[]
+  createdGradeCheckTables      GradeCheckTable[]             @relation("GradeCheckCreatedBy")
+  createdFileCollectTasks      FileCollectTask[]             @relation("FileCollectCreatedBy")
+  createdFileCollectTemplates  FileCollectTemplate[]         @relation("FileCollectTemplateCreatedBy")
+  fileCollectSubmissions       FileCollectSubmission[]       @relation("FileCollectSubmittedBy")
+  sponsorOrders                SponsorOrder[]
+  qqBotBindings                QqBotBinding[]
+  qqBotBindTokens              QqBotBindToken[]
+  qqBotMessageLogs             QqBotMessageLog[]
+  forumImageAssets             ForumImageAsset[]
+  forumVideoAssets             ForumVideoAsset[]
+  aiReviewLogs                 AiReviewLog[]
+  courseBotQuota               CourseBotQuota?
+  courseBotUsageLogs           CourseBotUsageLog[]
+  adminDailyLogins             AdminDailyLogin[]
+  marketItems                  MarketItem[]                  @relation("MarketSeller")
+  marketFavorites              MarketFavorite[]
+  marketOffers                 MarketOffer[]                 @relation("MarketOfferBuyer")
+  marketBuyerOrders            MarketOrder[]                 @relation("MarketOrderBuyer")
+  marketSellerOrders           MarketOrder[]                 @relation("MarketOrderSeller")
+  marketBuyerConversations     MarketConversation[]          @relation("MarketConversationBuyer")
+  marketSellerConversations    MarketConversation[]          @relation("MarketConversationSeller")
+  marketMessages               MarketMessage[]               @relation("MarketMessageSender")
+  marketReviewsAuthored        MarketReview[]                @relation("MarketReviewAuthor")
+  marketReviewsReceived        MarketReview[]                @relation("MarketReviewTarget")
+  marketReports                MarketReport[]                @relation("MarketReportReporter")
+  marketRefundRequests         MarketRefund[]                @relation("MarketRefundRequester")
+  marketSettlements            MarketSettlement[]            @relation("MarketSettlementSeller")
+  marketPayoutProfile          MarketPayoutProfile?
+  lostFoundItems               LostFoundItem[]               @relation("LostFoundPublisher")
+  lostFoundClaims              LostFoundClaim[]              @relation("LostFoundClaimant")
+  campusAssistantConversations CampusAssistantConversation[]
+}
+
+model CampusAssistantConversation {
+  id              String
+  userId          Int
+  title           String
+  messages        String
+  clientUpdatedAt DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, id])
+  @@index([userId, clientUpdatedAt])
 }
 
 // ============ 论坛核心 ============

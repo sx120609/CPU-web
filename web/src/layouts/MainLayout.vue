@@ -323,6 +323,7 @@ const mobileMenuOpen = ref(false);
 const keyboardOpen = ref(false);
 const mobileViewportHeight = ref(0);
 const mobileViewportWidth = ref(0);
+const mobileViewportOffsetTop = ref(0);
 const touchLikeViewport = ref(false);
 const editableFocused = ref(false);
 const editorFocused = ref(false);
@@ -351,11 +352,13 @@ const useTabbarFallback = computed(() => (
   && !useNativeShell.value
   && isPortraitViewport.value
 ));
-const layoutStyle = computed(() => (
-  mobileViewportHeight.value
-    ? { "--layout-viewport-height": `${mobileViewportHeight.value}px` }
-    : {}
-));
+const layoutStyle = computed(() => {
+  if (!mobileViewportHeight.value) return {};
+  return {
+    "--layout-viewport-height": `${mobileViewportHeight.value}px`,
+    "--layout-viewport-offset-top": `${mobileViewportOffsetTop.value}px`,
+  };
+});
 
 const searchPlaceholder = computed(() => {
   const scopes: string[] = [];
@@ -548,6 +551,7 @@ function syncViewportMetrics() {
   if (typeof window === "undefined") return;
   const visualHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
   const visualWidth = Math.round(window.visualViewport?.width ?? window.innerWidth);
+  mobileViewportOffsetTop.value = Math.max(0, Math.round(window.visualViewport?.offsetTop ?? 0));
   mobileViewportHeight.value = visualHeight;
   mobileViewportWidth.value = visualWidth;
   touchLikeViewport.value = isTabletTouchViewport(visualWidth, visualHeight);
@@ -679,7 +683,13 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 .layout-root--full-height {
+  position: fixed;
+  top: var(--layout-viewport-offset-top, 0);
+  right: 0;
+  bottom: auto;
+  left: 0;
   height: var(--layout-viewport-height, 100dvh);
+  width: 100%;
   overflow: hidden;
 }
 

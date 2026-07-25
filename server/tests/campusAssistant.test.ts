@@ -1,8 +1,9 @@
-import test from "node:test";
 import assert from "node:assert/strict";
+import test from "node:test";
 import {
   extractPartialJsonStringValue,
   listCampusAssistantActions,
+  listCampusAssistantKnowledge,
   normalizeAssistantResponse,
   searchCampusAssistantActions,
 } from "../src/services/campusAssistant";
@@ -97,4 +98,23 @@ test("OpenAI 兼容 SSE 能按增量还原完整 JSON", async () => {
   });
   assert.deepEqual(deltas, ['{"answer":"你', '好","actionIds":[]}']);
   assert.equal(content, '{"answer":"你好","actionIds":[]}');
+});
+
+test("VoiceHub knowledge describes the real request form and rejects invented listener messages", () => {
+  const knowledge = listCampusAssistantKnowledge(["voicehub"]);
+  const combined = knowledge.join("\n");
+
+  assert.match(combined, /输入歌曲名称搜索/);
+  assert.match(combined, /没有“对收听者说的话”、留言或寄语字段/);
+  assert.match(combined, /已经排期且排期日期已经过去/);
+  assert.doesNotMatch(combined, /中国建设银行/);
+});
+
+test("assistant answers allow complete responses up to the new four-thousand-character guard", () => {
+  const response = normalizeAssistantResponse(
+    { answer: "答".repeat(5000), actionIds: [], suggestions: [] },
+    [],
+  );
+
+  assert.equal(response.answer.length, 4000);
 });

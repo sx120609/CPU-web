@@ -106,7 +106,7 @@ watch(() => props.modelValue, (v) => {
     refreshSeq += 1;
     loading.value = false;
   }
-});
+}, { immediate: true });
 
 onBeforeUnmount(() => {
   disposed = true;

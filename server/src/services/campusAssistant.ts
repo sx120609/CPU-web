@@ -38,6 +38,11 @@ type CampusAssistantContext = {
   loggedIn: boolean;
 };
 
+type CampusAssistantKnowledge = {
+  relatedActionIds: string[];
+  fact: string;
+};
+
 const DEFAULT_REVIEW_API_URL = "https://api.deepseek.com/chat/completions";
 
 const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
@@ -250,11 +255,105 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
   },
 ];
 
+const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
+  {
+    relatedActionIds: ["home", "profile", "jwxt"],
+    fact: "账号与登录：站内使用学校统一认证登录，登录成功后会创建或关联站内账号。个人中心用于管理账号、QQ 绑定、外观等设置；教务数据应进入“教务数据”页面查看，AI 不能代查个人成绩。",
+  },
+  {
+    relatedActionIds: ["jwxt"],
+    fact: "教务数据：页面提供正式成绩、期中成绩、学业完成情况和培养方案。成绩页可按学期和课程性质筛选，并提供自定义 GPA 选择；具体结果始终以页面实时数据为准。",
+  },
+  {
+    relatedActionIds: ["schedule"],
+    fact: "课表：支持日视图、周视图、学期和周次切换。移动端可按课表页提示安装到桌面；没有自动提示时可使用页面右上角的下载按钮。课程日期按所选学期和周次计算。",
+  },
+  {
+    relatedActionIds: ["dorm-electric"],
+    fact: "宿舍电费：登录后可查询当前账号关联宿舍的剩余金额、估算电量和抄表时间。站内只负责查询，不直接缴费；查不到可能是学号未关联宿舍或校园电费系统暂时不可用。",
+  },
+  {
+    relatedActionIds: ["dorm-electric"],
+    fact: "宿舍购电：先在中国建设银行 APP 搜索“校园卡充值”，选择“中国药科大学”充值校园卡；再到企业微信→工作台→校园卡务完成购电。校园卡务加载可能较慢，每日 23:30 至次日 02:00 系统盘点，无法充值或购电。",
+  },
+  {
+    relatedActionIds: ["voicehub"],
+    fact: "药苑之声点歌：进入药苑之声后打开点歌入口，输入歌曲名称搜索，可在网易云音乐、QQ 音乐或哔哩哔哩结果中选择投稿；启用时还可选择期望播出时段。点歌需要登录，提交后由管理员审核和排期。",
+  },
+  {
+    relatedActionIds: ["voicehub"],
+    fact: "药苑之声点歌表单没有“对收听者说的话”、留言或寄语字段，不要指导用户填写这些内容。若歌曲已在列表且尚未排期或播放，用户通常应为已有歌曲投票；已排期或已播放歌曲不能按普通新歌重复投票。",
+  },
+  {
+    relatedActionIds: ["voicehub"],
+    fact: "药苑之声还提供歌曲列表、播出排期、节目投票和播放信息；歌曲是否已播放取决于它是否已经排期且排期日期已经过去，不应仅因历史导入或歌曲存在就判断为已播放。",
+  },
+  {
+    relatedActionIds: ["announcements"],
+    fact: "校园公告：汇总教务处、学工处、研究生院等学校公开来源的通知，适合查公开公告；发布时间、报名要求和最新政策应以公告详情及学校原始页面为准。",
+  },
+  {
+    relatedActionIds: ["lost-found"],
+    fact: "失物招领：可按校区、地点、时间和认领状态浏览或发布信息。面向普通用户展示时会保护学号等敏感字段；管理员在授权后台仍可查看原始数据以便核验和处理。",
+  },
+  {
+    relatedActionIds: ["forum"],
+    fact: "校园论坛：用于校园讨论、提问和经验分享，支持帖子、回复与站内消息提醒；是否开放以当前账号和功能开关为准。",
+  },
+  {
+    relatedActionIds: ["course-review"],
+    fact: "课程点评：用于查看课程和教师评价，帮助了解修读体验；评价来自用户分享，不等同于学校官方结论。",
+  },
+  {
+    relatedActionIds: ["market"],
+    fact: "校园商城：用于发布和浏览校内二手、求购与交换信息；交易应在确认物品和对方身份后谨慎完成，平台页面展示为准。",
+  },
+  {
+    relatedActionIds: ["school-calendar"],
+    fact: "药大校历：保留学校官方校历原图，并将学期、假期和关键日期整理为便于查看的卡片。具体临时调整仍以学校最新通知为准。",
+  },
+  {
+    relatedActionIds: ["pdf-tools"],
+    fact: "PDF 工具：可在浏览器本地完成 PDF 合并、拆分、压缩、转图片和提取文字，常规处理不需要把文件上传到服务器。",
+  },
+  {
+    relatedActionIds: ["file-collect"],
+    fact: "文件收集：发起者可创建作业、材料或照片收集任务并分享提交链接；系统支持字段校验、文件命名、提交统计和批量下载。",
+  },
+  {
+    relatedActionIds: ["questionnaire"],
+    fact: "在线问卷：用于创建、分享、填写和统计轻量问卷；是否需要登录由问卷发起者的设置决定。",
+  },
+  {
+    relatedActionIds: ["grade-check"],
+    fact: "成绩表核对：发起者上传带学号字段的 Excel 后，学生登录并按本人学号查看对应记录；它与学校教务成绩页面不是同一功能。",
+  },
+  {
+    relatedActionIds: ["cpu-network"],
+    fact: "CPU 网络连接助手：提供 Windows 校园网连接工具的下载与使用入口，不是浏览器内直接修改网络设置。",
+  },
+  {
+    relatedActionIds: ["feedback"],
+    fact: "需求反馈：用于提交功能建议、使用问题和校园工具需求，提交后由站点维护者在后台处理。",
+  },
+  {
+    relatedActionIds: ["messages", "profile"],
+    fact: "通知与 QQ：消息中心查看站内通知、回复提醒和系统消息；个人中心可绑定 QQBot，以便在 QQ 同步接收部分站内通知。绑定入口不在消息列表首页。",
+  },
+];
+
 export function listCampusAssistantActions(context: CampusAssistantContext): CampusAssistantAction[] {
   return CAMPUS_ASSISTANT_ROUTES
     .filter((item) => !item.feature || context.features[item.feature])
     .filter((item) => !item.requireForumAccess || context.forumAccessEnabled)
     .map(({ keywords: _keywords, feature: _feature, requireForumAccess: _requireForumAccess, ...action }) => action);
+}
+
+export function listCampusAssistantKnowledge(actionIds: Iterable<string>) {
+  const availableActionIds = new Set(actionIds);
+  return CAMPUS_ASSISTANT_KNOWLEDGE
+    .filter((item) => item.relatedActionIds.some((id) => availableActionIds.has(id)))
+    .map((item) => item.fact);
 }
 
 export function searchCampusAssistantActions(query: string, context: CampusAssistantContext, limit = 6) {
@@ -403,7 +502,7 @@ export function normalizeAssistantResponse(
     actions.push(action);
     if (actions.length >= 3) break;
   }
-  const answer = String(value.answer || "").trim().slice(0, 1600)
+  const answer = String(value.answer || "").trim().slice(0, 4000)
     || (actions.length ? "我找到了这些相关入口，可以直接打开。" : "我暂时没有找到合适的答案，可以换一种说法再问我。");
   const suggestions = Array.isArray(value.suggestions)
     ? value.suggestions
@@ -502,17 +601,22 @@ function parseAssistantJson(content: string) {
 }
 
 function buildSystemPrompt(catalog: Array<Pick<CampusAssistantAction, "id" | "label" | "description" | "requireLogin">>, loggedIn: boolean) {
+  const knowledge = listCampusAssistantKnowledge(catalog.map((item) => item.id));
   return [
     "你是“药大拾间”的 AI 助手“拾间AI”，面向中国药科大学学生。",
-    "你的首要任务是帮助用户找到站内功能、给出简短可靠的操作指引，也可以进行普通聊天和常识问答。",
+    "你的首要任务是帮助用户找到站内功能、给出可靠的操作指引，也可以进行普通聊天和常识问答。",
+    "根据问题难度完整作答：简单问题可以简洁，复杂问题应分段说明背景、步骤和注意事项，不要为了追求短而省略关键解释。",
+    "本服务面向中国大陆公众提供。回答必须遵守中国现行法律法规和平台内容规范；不得提供违法犯罪、暴恐极端、色情低俗、赌博毒品、诈骗欺诈、网络攻击、侵害隐私等内容的具体实施方法。遇到此类请求应简短说明不能协助，并尽量提供安全、合法的替代信息。",
+    "不要把正常的校园学习、生活咨询泛化为违规内容；仅在请求确实触及上述风险时限制回答。",
     "不要声称已经替用户执行查询、缴费、登录、发帖或其他操作；只能说明步骤并推荐入口。",
     "遇到需要实时数据、个人数据或学校最新政策的问题，要说明需要进入对应页面查看，不要编造。",
-    "涉及宿舍电费时：站内可以查询余额；缴费需先在中国建设银行 APP 搜索校园卡充值并选择中国药科大学充值，再到企业微信→工作台→校园卡务完成购电；23:30 至次日 02:00 系统盘点，无法充值或购电。",
-    "涉及药苑之声时：可查看广播排期、点歌、投票和播放信息。",
+    "仅当用户最新一条消息明确要求查找、打开或使用某项站内功能时才返回 actionIds；对于“好的”“谢谢”等确认语和普通聊天，不要重复推荐上一轮入口。",
+    "回答站内功能、字段和流程时必须以提供的 knowledge 为准；knowledge 没写明的细节要坦率说明不确定，不能按其他产品的常见设计补造。",
     `用户当前${loggedIn ? "已登录" : "未登录"}。带 requireLogin=true 的入口可以推荐，但要提醒未登录用户先登录。`,
     "你只能从下面的 catalog 中选择 actionIds，绝不能生成 catalog 之外的链接或 action id。",
     "只输出 JSON 对象，不要使用 Markdown 代码块。格式：",
-    '{"answer":"简洁中文答复","actionIds":["最多3个catalog id"],"suggestions":["最多3个简短追问建议"]}',
+    '{"answer":"清晰、完整的中文答复","actionIds":["最多3个catalog id"],"suggestions":["最多3个简短追问建议"]}',
+    `knowledge=${JSON.stringify(knowledge)}`,
     `catalog=${JSON.stringify(catalog)}`,
   ].join("\n");
 }
@@ -534,9 +638,9 @@ function buildAssistantMessages(
       role: "system" as const,
       content: buildSystemPrompt(catalog, loggedIn),
     },
-    ...history.slice(-8).map((item) => ({
+    ...history.slice(-12).map((item) => ({
       role: item.role,
-      content: item.content.slice(0, 1200),
+      content: item.content.slice(0, 2000),
     } as const)),
     {
       role: "user" as const,
