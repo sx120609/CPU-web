@@ -16,10 +16,10 @@
 import { cpuWebRedirectUrl } from '~/utils/cpuWebNavigation'
 
 const messagesUrl = cpuWebRedirectUrl('messages')
-const qqBotUrl = `${messagesUrl.replace(/\/messages$/, '')}/messages/qqbot-reminders`
+const qqBotUrl = cpuWebRedirectUrl('qqbot-binding')
 
 onMounted(() => {
-  window.location.replace(messagesUrl)
+  window.location.replace(qqBotUrl)
 })
 </script>
 

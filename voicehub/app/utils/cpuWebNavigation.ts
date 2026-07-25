@@ -1,10 +1,17 @@
-type CpuWebTarget = 'home' | 'login' | 'profile' | 'messages' | 'module-permissions'
+type CpuWebTarget =
+  | 'home'
+  | 'login'
+  | 'profile'
+  | 'messages'
+  | 'qqbot-binding'
+  | 'module-permissions'
 
 const TARGET_PATHS: Record<CpuWebTarget, string> = {
   home: '/',
   login: '/login',
   profile: '/profile',
   messages: '/messages',
+  'qqbot-binding': '/messages?tab=settings',
   'module-permissions': '/admin?tab=users'
 }
 

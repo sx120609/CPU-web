@@ -105,7 +105,7 @@
           <p>通知将通过主站发送，建议绑定 QQBot 获取即时通知。</p>
         </div>
         <div class="main-site-notice-actions">
-          <a :href="cpuWebMessagesUrl">消息中心与 QQBot</a>
+          <a :href="cpuWebQqBotBindingUrl">消息中心与 QQBot</a>
           <a :href="cpuWebHomeUrl">返回主站</a>
         </div>
       </div>
@@ -639,6 +639,7 @@ const cpuWebLoginUrl = computed(() => cpuWebRedirectUrl('login', '/voicehub/'))
 const cpuWebProfileUrl = computed(() => cpuWebRedirectUrl('profile'))
 const cpuWebHomeUrl = computed(() => cpuWebRedirectUrl('home'))
 const cpuWebMessagesUrl = computed(() => cpuWebRedirectUrl('messages'))
+const cpuWebQqBotBindingUrl = computed(() => cpuWebRedirectUrl('qqbot-binding'))
 
 const roleName = computed(() => {
   const role = user.value?.role
