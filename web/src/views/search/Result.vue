@@ -48,9 +48,9 @@
             <div v-else-if="message.streaming" class="assistant-thinking" aria-label="拾间AI正在回答">
               <i></i><i></i><i></i>
             </div>
-            <div v-if="displayActions(message).length" class="action-list">
+            <div v-if="message.actions?.length" class="action-list">
               <button
-                v-for="action in displayActions(message)"
+                v-for="action in message.actions"
                 :key="action.id"
                 type="button"
                 class="action-card"
@@ -63,13 +63,6 @@
                 </span>
                 <el-icon><Right /></el-icon>
               </button>
-            </div>
-            <div
-              v-if="isCurrentAssistantMessage(message) && searchLoading"
-              class="assistant-searching"
-            >
-              <i></i>
-              <span>正在查找站内相关内容</span>
             </div>
             <div v-if="message.suggestions?.length" class="suggestions">
               <button
@@ -173,7 +166,6 @@ import {
   type CampusAssistantAction,
   type CampusAssistantConversation,
   type CampusAssistantMessage,
-  type SearchResult,
 } from "@/api/search";
 import { useAuthStore } from "@/stores/auth";
 
@@ -203,9 +195,6 @@ const router = useRouter();
 const auth = useAuthStore();
 const q = ref((route.query.q as string) ?? "");
 const keywordInput = ref("");
-const result = ref<SearchResult | null>(null);
-const searchLoading = ref(false);
-const searchError = ref("");
 const assistantLoading = ref(false);
 const assistantError = ref("");
 const historyOpen = ref(false);
@@ -217,7 +206,6 @@ const sessions = ref<ConversationSession[]>(loadSessions());
 const restoredSession = restoreActiveSession(sessions.value);
 const activeSessionId = ref(restoredSession?.id || "");
 const messages = ref<ConversationMessage[]>(cloneMessages(restoredSession?.messages || []));
-let searchSeq = 0;
 let assistantSeq = 0;
 let messageSeq = messages.value.reduce((max, item) => Math.max(max, item.id), 0);
 let assistantController: AbortController | null = null;
@@ -234,80 +222,12 @@ let conversationAnchorRestoring = false;
 const conversationAnchorTimers: number[] = [];
 
 const welcomePrompts = ["怎么查宿舍电费？", "打开药苑之声", "我的课表在哪里？"];
-const currentAssistantMessageId = computed(() => (
-  [...messages.value].reverse().find((item) => item.role === "assistant")?.id ?? null
-));
-const aggregateSearchActions = computed<CampusAssistantAction[]>(() => {
-  if (!result.value) return [];
-  const groups: CampusAssistantAction[][] = [
-    result.value.services.map((service: any) => ({
-      id: `search-service-${service.id ?? service.code ?? service.url}`,
-      label: String(service.name || "站内服务"),
-      description: String(service.description || service.owner || "打开站内服务"),
-      url: String(service.url || ""),
-      icon: String(service.icon || "🔗"),
-      owner: String(service.owner || "站内搜索"),
-      requireLogin: Boolean(service.requireLogin || service.needSso),
-    })),
-    result.value.topics.map((topic: any) => ({
-      id: `search-topic-${topic.id}`,
-      label: String(topic.title || "校园帖子"),
-      description: [topic.board?.name, topic.author?.nickname].filter(Boolean).join(" · ") || "查看站内帖子",
-      url: `/forum/topic/${topic.id}`,
-      icon: topic.board?.type === "announce" ? "📢" : "💬",
-      owner: "站内搜索",
-      requireLogin: false,
-    })),
-    result.value.courses.map((course: any) => ({
-      id: `search-course-${course.id}`,
-      label: String(course.name || course.code || "课程"),
-      description: [course.code, course.teachers?.map((teacher: any) => teacher.name).join("、") || course.teacher]
-        .filter(Boolean)
-        .join(" · ") || "查看课程详情",
-      url: `/coursereview/${course.id}`,
-      icon: "📚",
-      owner: "站内搜索",
-      requireLogin: false,
-    })),
-  ];
-  const actions: CampusAssistantAction[] = [];
-  while (actions.length < 3 && groups.some((group) => group.length)) {
-    for (const group of groups) {
-      const action = group.shift();
-      if (action) actions.push(action);
-      if (actions.length >= 3) break;
-    }
-  }
-  return actions;
-});
 const historyCaption = computed(() => {
   if (!auth.isLoggedIn) return "记录保存在当前设备；登录后可同步到账号，最多保留 20 个对话。";
   if (cloudSyncState.value === "syncing") return "正在同步当前账号的历史对话…";
   if (cloudSyncState.value === "error") return "云同步暂时不可用，本机记录已保留。";
   return "已与当前账号同步，最多保留 20 个对话。";
 });
-
-function isCurrentAssistantMessage(message: ConversationMessage) {
-  return message.role === "assistant" && message.id === currentAssistantMessageId.value;
-}
-
-function displayActions(message: ConversationMessage) {
-  const actions = [...(message.actions || [])];
-  if (!isCurrentAssistantMessage(message)) return actions;
-  const seen = new Set(actions.map(actionIdentity));
-  for (const action of aggregateSearchActions.value) {
-    const key = actionIdentity(action);
-    if (!action.url || seen.has(key)) continue;
-    actions.push(action);
-    seen.add(key);
-    if (actions.length >= 4) break;
-  }
-  return actions;
-}
-
-function actionIdentity(action: CampusAssistantAction) {
-  return String(action.url || action.label || action.id).trim().toLowerCase();
-}
 
 onMounted(() => {
   if (auth.isLoggedIn) void hydrateCloudSessions();
@@ -324,13 +244,10 @@ watch(() => route.query.q, async (value) => {
     && [...messages.value].reverse().find((item) => item.role === "user")?.content === keyword;
   firstRouteSync = false;
   if (!keyword) {
-    result.value = null;
-    searchError.value = "";
     scrollConversation();
     return;
   }
   if (isRestoredQuery) {
-    await reloadSearch();
     scrollConversation();
     return;
   }
@@ -358,45 +275,11 @@ async function runQuery(keyword: string) {
   const history = messages.value
     .slice(-12)
     .map(({ role, content }) => ({ role, content }));
-  result.value = null;
-  searchError.value = "";
   ensureActiveConversation(keyword);
   messages.value.push({ id: ++messageSeq, role: "user", content: keyword });
   persistActiveConversation();
   scrollConversation();
-  await Promise.allSettled([
-    reloadSearch(),
-    askAssistant(keyword, history),
-  ]);
-}
-
-async function reloadSearch() {
-  const keyword = normalizeAggregateSearchQuery(q.value);
-  if (!keyword) return;
-  const seq = ++searchSeq;
-  searchLoading.value = true;
-  searchError.value = "";
-  try {
-    const next = await searchApi.search(keyword, { suppressErrorMessage: true });
-    if (seq === searchSeq) result.value = next;
-  } catch (error) {
-    if (seq === searchSeq) searchError.value = normalizeRequestError(error, "相关内容搜索失败");
-  } finally {
-    if (seq === searchSeq) searchLoading.value = false;
-  }
-}
-
-function normalizeAggregateSearchQuery(input: string) {
-  const original = input.trim().slice(0, 100);
-  if (!original) return "";
-  let keyword = original
-    .replace(/^(?:我想|我要|请|麻烦)?(?:帮我)?(?:找|搜索|查找|看看)(?:一些|一下)?/u, "")
-    .replace(/^(?:和|与|关于)/u, "")
-    .replace(/(?:有关|相关)(?:的)?(?:帖子|内容|信息)?[。！？?!]*$/u, "")
-    .replace(/(?:的)?(?:帖子|内容|信息)[。！？?!]*$/u, "")
-    .trim();
-  if (!keyword || keyword.length > 30) keyword = original;
-  return keyword;
+  await askAssistant(keyword, history);
 }
 
 async function askAssistant(keyword: string, history: CampusAssistantMessage[]) {
@@ -554,7 +437,6 @@ async function startNewConversation() {
   messages.value = [];
   activeSessionId.value = "";
   assistantError.value = "";
-  result.value = null;
   q.value = "";
   historyOpen.value = false;
   markNewSession();
@@ -569,7 +451,6 @@ async function openConversation(sessionId: string) {
   messages.value = cloneMessages(session.messages);
   messageSeq = messages.value.reduce((max, item) => Math.max(max, item.id), messageSeq);
   assistantError.value = "";
-  result.value = null;
   q.value = "";
   historyOpen.value = false;
   rememberActiveSession(session.id);
@@ -1113,21 +994,6 @@ onBeforeUnmount(() => {
   line-height: 1.45;
   font-size: 11px;
 }
-.assistant-searching {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-top: 9px;
-  color: var(--cpu-text-muted);
-  font-size: 11px;
-}
-.assistant-searching i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--cpu-primary);
-  animation: thinking 1s infinite ease-in-out;
-}
 .assistant-thinking {
   display: flex;
   gap: 5px;
@@ -1482,7 +1348,7 @@ onBeforeUnmount(() => {
   .assistant-form {
     gap: 5px;
     flex: 0 0 auto;
-    margin: 0;
+    margin: auto 0 0;
     padding: 5px 5px 5px 13px;
     border: 1px solid var(--cpu-border-soft);
     border-radius: 18px;

@@ -95,10 +95,6 @@
                 <el-icon size="20"><Refresh /></el-icon>
               </el-button>
             </el-tooltip>
-            <el-button v-if="auth.canAccessForum && site.features.forum" class="post-btn" type="primary" size="default" @click="$router.push('/post')">
-              <el-icon><Edit /></el-icon>
-              <span class="post-label">发帖</span>
-            </el-button>
             <el-tooltip content="消息">
               <el-button text @click="$router.push('/messages')">
                 <el-badge :value="msg.unreadCount" :hidden="msg.unreadCount === 0">
@@ -131,8 +127,8 @@
           <el-button text class="touch-icon-btn" aria-label="刷新页面" @click="reloadPage">
             <el-icon><Refresh /></el-icon>
           </el-button>
-          <el-button v-if="auth.canAccessForum && site.features.forum" text class="touch-icon-btn" aria-label="发帖" @click="$router.push('/post')">
-            <el-icon><Edit /></el-icon>
+          <el-button text class="touch-icon-btn assistant-shortcut-touch" aria-label="拾间AI" @click="$router.push('/search')">
+            <span class="assistant-shortcut-mark">拾</span>
           </el-button>
           <el-button v-if="auth.isLoggedIn" text class="touch-icon-btn" aria-label="消息" @click="$router.push('/messages')">
             <el-badge :value="msg.unreadCount" :hidden="msg.unreadCount === 0">
@@ -162,6 +158,17 @@
         </transition>
       </router-view>
     </main>
+
+    <button
+      v-if="!hideChrome && !useNativeShell && route.path !== '/search'"
+      type="button"
+      class="assistant-fab"
+      aria-label="打开拾间AI"
+      title="拾间AI"
+      @click="$router.push('/search')"
+    >
+      <span>拾</span>
+    </button>
 
     <footer v-if="!hideChrome && !useNativeShell && !fullHeightContent" class="footer">
       <span class="footer-item">© 2026 药大拾间 · 校园互助与服务平台</span>
@@ -421,12 +428,12 @@ const desktopOverflowNavItems = computed(() => {
 });
 
 const mobileNavItems = computed(() => {
-  // 固定 5 项：首页 / 教务 / 课表 / 服务 / 我的（论坛进 drawer）
+  // 固定 5 项：首页 / 教务 / 课表 / 拾间AI / 我的（校园服务与论坛进 drawer）
   return [
     { to: "/home", label: "首页", icon: House, match: ["/home"] },
     { to: "/jwxt", label: "教务", icon: Reading, match: ["/jwxt"] },
     { to: "/schedule", label: "课表", icon: Calendar, match: ["/schedule"] },
-    { to: "/services", label: "服务", icon: Service, match: ["/services"] },
+    { to: "/search", label: "拾间AI", icon: Search, match: ["/search"] },
     { to: "/profile", label: "我的", icon: UserFilled, match: ["/profile", "/sponsor-wall", "/messages", "/admin", "/u/"], auth: true },
   ] as { to: string; label: string; icon: any; match: string[]; auth?: boolean }[];
 });
@@ -901,6 +908,72 @@ function setAppearanceMode(command: string | number | object) {
   font-size: 20px;
 }
 
+.assistant-shortcut-mark {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 7px;
+  color: currentColor;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.assistant-shortcut-touch {
+  color: var(--cpu-primary);
+}
+
+.assistant-shortcut-touch .assistant-shortcut-mark {
+  background: rgba(20, 143, 123, 0.11);
+}
+
+.assistant-fab {
+  position: fixed;
+  z-index: 110;
+  right: 26px;
+  bottom: 26px;
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  border-radius: 50%;
+  color: #fff;
+  background: linear-gradient(145deg, #14947d, #0d7565);
+  box-shadow:
+    0 12px 30px rgba(12, 91, 78, 0.28),
+    0 3px 9px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  font: inherit;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+.assistant-fab span {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.assistant-fab:hover {
+  transform: translateY(-2px) scale(1.04);
+  filter: brightness(1.04);
+  box-shadow:
+    0 16px 36px rgba(12, 91, 78, 0.34),
+    0 4px 12px rgba(0, 0, 0, 0.14);
+}
+
+.assistant-fab:active {
+  transform: scale(0.96);
+}
+
+.assistant-fab:focus-visible {
+  outline: 3px solid rgba(20, 148, 125, 0.28);
+  outline-offset: 3px;
+}
+
 .mobile-login-btn {
   min-width: 60px;
   height: 42px;
@@ -1274,14 +1347,6 @@ function setAppearanceMode(command: string | number | object) {
     min-width: 160px;
   }
 
-  .post-btn {
-    width: 38px;
-    padding: 0;
-  }
-
-  .post-label {
-    display: none;
-  }
 }
 
 @media (max-width: 960px) {
@@ -1291,6 +1356,10 @@ function setAppearanceMode(command: string | number | object) {
   .mobile-actions {
     display: flex;
     flex: 0 0 auto;
+  }
+
+  .assistant-fab {
+    display: none;
   }
 }
 
