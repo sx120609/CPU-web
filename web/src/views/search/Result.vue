@@ -1702,7 +1702,7 @@ onBeforeUnmount(() => {
     margin: 5px 0 0;
     font-size: 10px;
   }
-  .assistant-shell.is-composer-focused .assistant-disclaimer {
+  :global(.layout-root.keyboard-open) .assistant-disclaimer {
     display: none;
   }
   .assistant-form:focus-within {

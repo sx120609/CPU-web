@@ -974,7 +974,7 @@ function setAppearanceMode(command: string | number | object) {
   display: none;
   height: var(--mobile-header-control-size);
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   margin-left: auto;
   flex-wrap: nowrap;
 }
@@ -1795,7 +1795,7 @@ function setAppearanceMode(command: string | number | object) {
 
   .mobile-actions {
     --mobile-header-control-size: 38px;
-    gap: 4px;
+    gap: 6px;
   }
 }
 
@@ -1816,7 +1816,7 @@ function setAppearanceMode(command: string | number | object) {
 
   .mobile-actions {
     --mobile-header-control-size: 36px;
-    gap: 2px;
+    gap: 4px;
   }
 
   .drawer-grid {
