@@ -19,6 +19,7 @@
     "element-plus": "^2.8.7",
     "html-to-image": "^1.11.13",
     "jszip": "^3.10.1",
+    "katex": "^0.16.47",
     "marked": "^14.1.4",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38",

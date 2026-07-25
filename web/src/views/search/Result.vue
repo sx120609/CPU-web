@@ -17,6 +17,9 @@
           <button type="button" aria-label="新建对话" :disabled="!messages.length" @click="startNewConversation">
             <el-icon><Plus /></el-icon>
           </button>
+          <button v-if="embedded" type="button" aria-label="在完整页面打开拾间AI" @click="openFullPage">
+            <el-icon><FullScreen /></el-icon>
+          </button>
           <button v-if="embedded" type="button" aria-label="关闭拾间AI" @click="emit('close')">
             <el-icon><Close /></el-icon>
           </button>
@@ -124,7 +127,50 @@
       <p class="assistant-disclaimer">内容由 AI 生成，请注意甄别</p>
     </section>
 
+    <transition name="embedded-history">
+      <aside
+        v-if="embedded && historyOpen"
+        class="embedded-history-panel"
+        role="dialog"
+        aria-label="历史对话"
+      >
+        <div class="embedded-history-head">
+          <strong>历史对话</strong>
+          <button type="button" aria-label="关闭历史对话" @click="historyOpen = false">
+            <el-icon><Close /></el-icon>
+          </button>
+        </div>
+        <div class="history-caption">{{ historyCaption }}</div>
+        <button type="button" class="history-new" @click="startNewConversation">
+          <el-icon><Plus /></el-icon>
+          <span>新对话</span>
+        </button>
+        <div v-if="sessions.length" class="history-list">
+          <div
+            v-for="session in sessions"
+            :key="session.id"
+            class="history-item"
+            :class="{ active: session.id === activeSessionId }"
+          >
+            <button type="button" class="history-open" @click="openConversation(session.id)">
+              <strong>{{ session.title }}</strong>
+              <span>{{ sessionPreview(session) }}</span>
+              <time>{{ formatSessionTime(session.updatedAt) }}</time>
+            </button>
+            <button type="button" class="history-delete" aria-label="删除此对话" @click="deleteConversation(session.id)">
+              <el-icon><Delete /></el-icon>
+            </button>
+          </div>
+        </div>
+        <div v-else class="history-empty">
+          <el-icon><ChatDotRound /></el-icon>
+          <span>还没有历史对话</span>
+        </div>
+      </aside>
+    </transition>
+
     <el-drawer
+      v-if="!embedded"
       v-model="historyOpen"
       class="assistant-history-drawer"
       direction="ltr"
@@ -171,6 +217,7 @@ import {
   Clock,
   Close,
   Delete,
+  FullScreen,
   Loading,
   Plus,
   Promotion,
@@ -283,6 +330,11 @@ async function submitSearch() {
   const keyword = keywordInput.value.trim();
   if (!keyword || assistantLoading.value) return;
   keywordInput.value = "";
+  if (embedded) {
+    q.value = keyword;
+    await runQuery(keyword);
+    return;
+  }
   if (keyword === q.value) {
     await runQuery(keyword);
     return;
@@ -294,6 +346,11 @@ async function sendPrompt(prompt: string) {
   if (assistantLoading.value) return;
   keywordInput.value = prompt;
   await submitSearch();
+}
+
+async function openFullPage() {
+  await router.push({ name: "search" });
+  emit("close");
 }
 
 async function runQuery(keyword: string) {
@@ -1062,6 +1119,22 @@ onBeforeUnmount(() => {
   border: 1px solid var(--cpu-border-soft);
   text-align: left;
 }
+.message-markdown :deep(.katex-display) {
+  max-width: 100%;
+  margin: 0.85em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25em 0;
+  color: var(--cpu-text);
+  text-align: left;
+}
+.message-markdown :deep(.katex-display > .katex) {
+  text-align: left;
+}
+.message-markdown :deep(.katex) {
+  color: inherit;
+  font-size: 1.02em;
+}
 .action-list {
   display: grid;
   gap: 8px;
@@ -1335,6 +1408,7 @@ onBeforeUnmount(() => {
 }
 
 .assistant-page--embedded {
+  position: relative;
   max-width: none;
   overflow: hidden;
 }
@@ -1420,6 +1494,58 @@ onBeforeUnmount(() => {
 
 :global(html[data-theme="dark"]) .assistant-page--embedded .assistant-form :deep(.el-textarea__inner) {
   background: color-mix(in srgb, var(--cpu-primary) 5%, var(--cpu-surface));
+}
+
+.embedded-history-panel {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 18px 16px 16px;
+  color: var(--cpu-text);
+  background:
+    linear-gradient(155deg, color-mix(in srgb, var(--cpu-primary) 7%, var(--cpu-card)) 0%, var(--cpu-card) 38%);
+}
+.embedded-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 13px;
+  border-bottom: 1px solid color-mix(in srgb, var(--cpu-primary) 20%, var(--cpu-border-soft));
+}
+.embedded-history-head strong {
+  font-size: 18px;
+}
+.embedded-history-head button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 11px;
+  color: var(--cpu-text-secondary);
+  background: var(--cpu-surface);
+  cursor: pointer;
+}
+.embedded-history-panel .history-list {
+  min-height: 0;
+  overflow-y: auto;
+}
+.embedded-history-panel .history-empty {
+  min-height: 0;
+}
+.embedded-history-enter-active,
+.embedded-history-leave-active {
+  transition: opacity 0.16s ease, transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.embedded-history-enter-from,
+.embedded-history-leave-to {
+  opacity: 0;
+  transform: translateX(-14px);
 }
 
 @media (max-width: 640px) {
