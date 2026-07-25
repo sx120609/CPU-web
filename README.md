@@ -226,7 +226,7 @@ OAUTH_CLIENT_ID=cpu-electron
 OAUTH_ALLOWED_REDIRECT_URIS=http://127.0.0.1,http://localhost
 ```
 
-`OAUTH_ALLOWED_REDIRECT_URIS` 使用逗号分隔。服务端按 origin 校验回调地址，因此 Electron 可以使用随机本机端口，例如 `http://127.0.0.1:43127/callback`。生产环境应只配置实际需要的回调 origin。
+`OAUTH_ALLOWED_REDIRECT_URIS` 使用逗号分隔。对于 `http://127.0.0.1` 和 `http://localhost`，服务端允许 Electron 使用随机本机端口，例如 `http://127.0.0.1:43127/callback`。其他地址应配置完整且固定的 origin，生产环境应只配置实际需要的回调 origin。
 
 AI 接口复用站点设置中的 `ai.review.apiUrl`、`ai.review.apiKey` 和 `ai.review.model`，不新增单独的 OAuth AI 密钥配置。AI API 密钥始终只保存在服务端，不能下发给 Electron。
 
@@ -304,9 +304,22 @@ Authorization: Bearer <access_token>
 
 需要 `profile` scope。返回用户基础信息、用户等级、AI 每日额度、今日已用次数和剩余次数。`aiBalance` 表示当前自然日剩余的校园 AI 请求次数，不是金额余额，也不是 Token 余额。
 
+### `POST /api/oauth/revoke`
+
+Electron 可以主动撤销 access token：
+
+```json
+{
+  "token": "需要撤销的 access_token",
+  "client_id": "cpu-electron"
+}
+```
+
+接口始终返回 HTTP 200，避免通过响应差异泄露 token 是否存在。撤销后的 token 不能继续调用 OAuth 接口。
+
 ### `POST /api/oauth/v1/chat/completions`
 
-这是面向外部客户端新增的 OpenAI Chat Completions 兼容代理接口，不是 `/api/search/assistant` 的直接复用。它复用站点 AI 上游配置和校园 AI 每日额度系统。
+这是面向外部客户端新增的 OpenAI Chat Completions 兼容代理接口，不是 `/api/search/assistant` 的直接复用。它复用站点 AI 上游配置和校园 AI 每日额度系统，但只接受 `user` 和 `assistant` 消息，不允许客户端提交 `system`、`developer` 或未知扩展字段；服务端仍会执行敏感话题拦截。
 
 请求头：
 
@@ -319,7 +332,7 @@ Content-Type: application/json
 
 ```json
 {
-  "model": "由站点配置决定的模型",
+  "model": "客户端可传入，但服务端始终使用站点配置中的模型",
   "messages": [
     { "role": "user", "content": "你好" }
   ],

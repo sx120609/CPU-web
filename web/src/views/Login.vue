@@ -195,6 +195,10 @@ function redirectTarget() {
 
 function finishLoginRedirect() {
   const target = redirectTarget();
+  if (target.startsWith("/api/oauth/authorize?")) {
+    window.location.replace(target);
+    return;
+  }
   // /voicehub is a separately mounted Nuxt application, not a Vue Router
   // route. Hand it back to the browser so login never flashes the main
   // site's 404 page or falls through to /home.

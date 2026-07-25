@@ -3,12 +3,13 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Request } from "express";
 import { z } from "zod";
 import { config } from "../config";
-import { authRequired } from "../middleware/auth";
+import { authOptional } from "../middleware/auth";
 import { prisma } from "../prisma";
 import { consumeCampusAssistantQuota, getCampusAssistantQuotaStatus, refundCampusAssistantQuota } from "../services/campusAssistantQuota";
 import { getSiteConfig } from "../services/siteSettings";
+import { isCampusAssistantPublicTopicRestricted } from "../services/campusAssistant";
+import { securityRateLimit } from "../middleware/securityRateLimit";
 import { Errors, ok } from "../utils/response";
-import { buildSelfUser } from "../utils/publicUser";
 
 export const oauthRouter = Router();
 
@@ -30,15 +31,20 @@ const tokenBodySchema = z.object({
   code_verifier: z.string().min(43).max(128),
 });
 
+const revokeBodySchema = z.object({
+  token: z.string().min(32).max(512),
+  client_id: z.string().min(1).max(100),
+}).strict();
+
 const chatBodySchema = z.object({
   model: z.string().min(1).max(200),
   messages: z.array(z.object({
-    role: z.enum(["system", "user", "assistant", "developer"]),
-    content: z.unknown(),
+    role: z.enum(["user", "assistant"]),
+    content: z.string().max(32_000),
   })).min(1).max(100),
   temperature: z.number().min(0).max(2).optional(),
   stream: z.boolean().optional(),
-}).passthrough();
+}).strict();
 
 function hashToken(value: string) {
   return createHash("sha256").update(value).digest("hex");
@@ -54,7 +60,12 @@ function clientIsValid(clientId: string, redirectUri: string) {
   }
   return config.oauthAllowedRedirectUris.some((allowed) => {
     try {
-      return new URL(allowed).origin === url.origin;
+      const allowedUrl = new URL(allowed);
+      if (allowedUrl.origin === url.origin) return true;
+      return allowedUrl.protocol === "http:"
+        && (allowedUrl.hostname === "127.0.0.1" || allowedUrl.hostname === "localhost")
+        && url.protocol === "http:"
+        && (url.hostname === "127.0.0.1" || url.hostname === "localhost");
     } catch {
       return false;
     }
@@ -94,7 +105,7 @@ async function loadAccessToken(req: Request) {
   return token;
 }
 
-oauthRouter.get("/authorize", authRequired, async (req, res, next) => {
+oauthRouter.get("/authorize", authOptional, async (req, res, next) => {
   try {
     const input = authorizationQuerySchema.parse(req.query);
     if (!clientIsValid(input.client_id, input.redirect_uri)) {
@@ -105,13 +116,14 @@ oauthRouter.get("/authorize", authRequired, async (req, res, next) => {
     if ([...requestedScopes].some((scope) => !allowedScopes.has(scope))) {
       return res.redirect(redirectWithError(input.redirect_uri, input.state, "invalid_scope"));
     }
+    if (!req.user) return res.redirect(`/login?redirect=${encodeURIComponent(req.originalUrl)}`);
     const code = randomBytes(48).toString("base64url");
     await prisma.oAuthAuthorizationCode.create({
       data: {
         codeHash: hashToken(code),
         clientId: input.client_id,
         redirectUri: input.redirect_uri,
-        userId: req.user!.userId,
+        userId: req.user.userId,
         scope: [...requestedScopes].join(" "),
         codeChallenge: input.code_challenge,
         codeChallengeMethod: input.code_challenge_method,
@@ -163,6 +175,20 @@ oauthRouter.post("/token", async (req, res, next) => {
   }
 });
 
+oauthRouter.post("/revoke", async (req, res, next) => {
+  try {
+    const input = revokeBodySchema.parse(req.body);
+    if (input.client_id !== config.oauthClientId) throw Errors.badRequest("客户端参数无效");
+    await prisma.oAuthAccessToken.updateMany({
+      where: { tokenHash: hashToken(input.token), clientId: input.client_id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    return res.status(200).json({});
+  } catch (error) {
+    next(error);
+  }
+});
+
 oauthRouter.get("/userinfo", async (req, res, next) => {
   try {
     const token = await loadAccessToken(req);
@@ -170,7 +196,13 @@ oauthRouter.get("/userinfo", async (req, res, next) => {
     const quota = await getCampusAssistantQuotaStatus(token.userId);
     return ok(res, {
       sub: String(token.userId),
-      user: buildSelfUser(token.user),
+      user: {
+        id: token.user.id,
+        nickname: token.user.nickname,
+        avatar: token.user.avatar,
+        reputation: token.user.reputation,
+        reputationLevel: resolveReputationLevel(token.user.reputation),
+      },
       level: quota.level,
       levelName: quota.levelName,
       aiBalance: quota.remaining,
@@ -182,27 +214,49 @@ oauthRouter.get("/userinfo", async (req, res, next) => {
   }
 });
 
-oauthRouter.post("/v1/chat/completions", async (req, res, next) => {
+function resolveReputationLevel(reputation: number) {
+  if (reputation >= 120) return { level: 5, name: "校园传说" };
+  if (reputation >= 90) return { level: 4, name: "资深成员" };
+  if (reputation >= 60) return { level: 3, name: "活跃同学" };
+  if (reputation >= 30) return { level: 2, name: "渐入佳境" };
+  return { level: 1, name: "初来乍到" };
+}
+
+oauthRouter.post("/v1/chat/completions", securityRateLimit("oauth-ai", 20, 60_000), async (req, res, next) => {
   let reservationDateKey = "";
   let userId = 0;
   let quotaRefunded = false;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     const token = await loadAccessToken(req);
     userId = token.userId;
     if (!token.scope.split(/\s+/).includes("ai")) throw Errors.forbidden("token 没有 ai scope");
     const body = chatBodySchema.parse(req.body);
+    const lastUserMessage = [...body.messages].reverse().find((message) => message.role === "user")?.content || "";
+    if (isCampusAssistantPublicTopicRestricted(String(lastUserMessage))) {
+      throw Errors.forbidden("这个话题不适合在本站展开");
+    }
     const siteConfig = getSiteConfig();
     const endpoint = siteConfig.aiReviewApiUrl;
     const apiKey = siteConfig.aiReviewApiKey;
-    const model = siteConfig.aiReviewModel || body.model;
+    const model = siteConfig.aiReviewModel;
     if (!endpoint || !apiKey) throw Errors.server("AI 服务尚未配置");
     const consumedQuota = await consumeCampusAssistantQuota(token.userId);
     reservationDateKey = consumedQuota.dateKey;
+    const controller = new AbortController();
+    timeout = setTimeout(() => controller.abort(), 120_000);
+    let responseCompleted = false;
+    res.on("close", () => {
+      if (!responseCompleted) controller.abort();
+    });
     const upstream = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({ ...body, model }),
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
+    timeout = undefined;
     res.status(upstream.status);
     const contentType = upstream.headers.get("content-type");
     if (contentType) res.setHeader("Content-Type", contentType);
@@ -210,8 +264,25 @@ oauthRouter.post("/v1/chat/completions", async (req, res, next) => {
       await refundCampusAssistantQuota(token.userId, reservationDateKey);
       quotaRefunded = true;
     }
+    if (body.stream && upstream.body) {
+      const reader = upstream.body.getReader();
+      try {
+        while (true) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          if (!res.writableEnded) res.write(Buffer.from(chunk.value));
+        }
+      } finally {
+        responseCompleted = true;
+        reader.releaseLock();
+        if (!res.writableEnded) res.end();
+      }
+      return;
+    }
+    responseCompleted = true;
     return res.send(Buffer.from(await upstream.arrayBuffer()));
   } catch (error) {
+    if (timeout) clearTimeout(timeout);
     if (reservationDateKey && !quotaRefunded) {
       await refundCampusAssistantQuota(userId, reservationDateKey).catch(() => {});
     }
