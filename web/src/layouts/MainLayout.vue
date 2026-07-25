@@ -937,16 +937,18 @@ function setAppearanceMode(command: string | number | object) {
   z-index: 1090;
   right: 26px;
   bottom: 94px;
-  width: min(410px, calc(100vw - 52px));
-  height: min(650px, calc(100dvh - 120px));
+  width: min(clamp(440px, 32vw, 560px), calc(100vw - 52px));
+  height: min(clamp(640px, 78dvh, 820px), calc(100dvh - 118px));
   overflow: hidden;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 22px;
+  border: 1px solid color-mix(in srgb, var(--cpu-primary) 30%, var(--cpu-border-soft));
+  border-radius: 24px;
   color: var(--cpu-text);
-  background: var(--cpu-card);
+  background:
+    linear-gradient(155deg, color-mix(in srgb, var(--cpu-primary) 6%, var(--cpu-card)) 0%, var(--cpu-card) 32%);
   box-shadow:
-    0 24px 64px rgba(15, 23, 42, 0.2),
-    0 4px 18px rgba(15, 23, 42, 0.1);
+    0 28px 72px color-mix(in srgb, var(--cpu-primary-dark) 22%, transparent),
+    0 5px 20px rgba(15, 23, 42, 0.1);
+  isolation: isolate;
 }
 
 .assistant-widget-enter-active,
@@ -974,10 +976,10 @@ function setAppearanceMode(command: string | number | object) {
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 50%;
   color: #fff;
-  background: #171717;
+  background: linear-gradient(145deg, var(--cpu-primary), var(--cpu-primary-dark));
   box-shadow:
-    0 16px 36px rgba(0, 0, 0, 0.22),
-    0 4px 12px rgba(0, 0, 0, 0.14);
+    0 16px 36px color-mix(in srgb, var(--cpu-primary-dark) 34%, transparent),
+    0 4px 12px rgba(0, 0, 0, 0.12);
   cursor: pointer;
   font: inherit;
   transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
@@ -990,8 +992,8 @@ function setAppearanceMode(command: string | number | object) {
 .assistant-fab:hover {
   transform: translateY(-2px) scale(1.04);
   box-shadow:
-    0 20px 42px rgba(0, 0, 0, 0.26),
-    0 5px 14px rgba(0, 0, 0, 0.16);
+    0 20px 42px color-mix(in srgb, var(--cpu-primary-dark) 42%, transparent),
+    0 5px 14px rgba(0, 0, 0, 0.14);
 }
 
 .assistant-fab:active {
@@ -999,8 +1001,17 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 .assistant-fab:focus-visible {
-  outline: 3px solid rgba(23, 23, 23, 0.22);
+  outline: 3px solid color-mix(in srgb, var(--cpu-primary) 30%, transparent);
   outline-offset: 3px;
+}
+
+:global(html[data-theme="dark"]) .assistant-widget {
+  border-color: color-mix(in srgb, var(--cpu-primary) 34%, var(--cpu-border-soft));
+  background:
+    linear-gradient(155deg, color-mix(in srgb, var(--cpu-primary) 9%, var(--cpu-card)) 0%, var(--cpu-card) 38%);
+  box-shadow:
+    0 30px 78px rgba(0, 0, 0, 0.48),
+    0 0 0 1px rgba(54, 208, 183, 0.05);
 }
 
 .mobile-login-btn {

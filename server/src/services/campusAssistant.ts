@@ -646,6 +646,40 @@ export function guardCampusAssistantResponse(response: CampusAssistantResponse) 
   };
 }
 
+export function sanitizeCampusAssistantStoredMessages(messages: unknown[]) {
+  const originalHistory: CampusAssistantMessage[] = [];
+  let sanitizeNextAssistant = false;
+
+  return messages.map((message) => {
+    if (!message || typeof message !== "object") return message;
+    const record = message as Record<string, unknown>;
+    const role = record.role;
+    const content = record.content;
+    if ((role !== "user" && role !== "assistant") || typeof content !== "string") return message;
+
+    const restricted = isCampusAssistantPublicTopicRestricted(content, originalHistory);
+    originalHistory.push({ role, content });
+
+    if (role === "user") {
+      sanitizeNextAssistant = restricted;
+      return restricted
+        ? { ...record, content: "该问题不适合在本站展开。" }
+        : message;
+    }
+
+    const shouldSanitize = restricted || sanitizeNextAssistant;
+    sanitizeNextAssistant = false;
+    return shouldSanitize
+      ? {
+          ...record,
+          content: RESTRICTED_PUBLIC_TOPIC_REPLY.answer,
+          actions: [],
+          suggestions: [...RESTRICTED_PUBLIC_TOPIC_REPLY.suggestions],
+        }
+      : message;
+  });
+}
+
 function cloneRestrictedPublicTopicReply(): CampusAssistantResponse {
   return {
     ...RESTRICTED_PUBLIC_TOPIC_REPLY,

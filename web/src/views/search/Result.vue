@@ -1342,35 +1342,37 @@ onBeforeUnmount(() => {
   height: 100%;
   min-height: 0;
   gap: 12px;
-  padding: 16px 14px 12px;
+  padding: 18px 16px 13px;
   border: 0;
   border-radius: 0;
+  background: transparent;
   box-shadow: none;
 }
 .assistant-page--embedded .assistant-head {
-  padding-bottom: 11px;
-  border-bottom: 1px solid var(--cpu-border-soft);
+  padding-bottom: 13px;
+  border-bottom: 1px solid color-mix(in srgb, var(--cpu-primary) 20%, var(--cpu-border-soft));
 }
 .assistant-page--embedded .assistant-mark {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   color: #fff;
-  background: #171717;
-  box-shadow: none;
+  background: linear-gradient(145deg, var(--cpu-primary), var(--cpu-primary-dark));
+  box-shadow: 0 7px 18px color-mix(in srgb, var(--cpu-primary-dark) 25%, transparent);
 }
 .assistant-page--embedded .assistant-mark .el-icon {
   font-size: 19px;
 }
 .assistant-page--embedded .assistant-head h1 {
-  font-size: 17px;
+  color: var(--cpu-text);
+  font-size: 18px;
 }
 .assistant-page--embedded .assistant-head p {
   margin-top: 1px;
   font-size: 11px;
 }
 .assistant-page--embedded .assistant-welcome {
-  padding: 20px 2px 12px;
+  padding: 24px 4px 14px;
 }
 .assistant-page--embedded .assistant-welcome strong {
   font-size: 18px;
@@ -1390,18 +1392,23 @@ onBeforeUnmount(() => {
 .assistant-page--embedded .assistant-form {
   gap: 6px;
   padding-top: 10px;
+  border-top-color: color-mix(in srgb, var(--cpu-primary) 18%, var(--cpu-border-soft));
 }
 .assistant-page--embedded .assistant-form :deep(.el-textarea__inner) {
-  min-height: 42px !important;
-  padding: 10px 12px;
-  border-radius: 18px;
+  min-height: 46px !important;
+  padding: 12px 14px;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--cpu-primary) 3%, var(--cpu-surface));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--cpu-primary) 18%, var(--cpu-border-soft)) inset;
 }
 .assistant-page--embedded .composer-send {
-  width: 42px;
-  height: 42px;
+  width: 46px;
+  height: 46px;
   padding: 0;
   border-radius: 50%;
-  background: #171717;
+  color: #fff;
+  background: linear-gradient(145deg, var(--cpu-primary), var(--cpu-primary-dark));
+  box-shadow: 0 7px 18px color-mix(in srgb, var(--cpu-primary-dark) 22%, transparent);
 }
 .assistant-page--embedded .composer-send span {
   display: none;
@@ -1409,6 +1416,10 @@ onBeforeUnmount(() => {
 .assistant-page--embedded .assistant-disclaimer {
   margin: -5px 0 0;
   font-size: 10px;
+}
+
+:global(html[data-theme="dark"]) .assistant-page--embedded .assistant-form :deep(.el-textarea__inner) {
+  background: color-mix(in srgb, var(--cpu-primary) 5%, var(--cpu-surface));
 }
 
 @media (max-width: 640px) {

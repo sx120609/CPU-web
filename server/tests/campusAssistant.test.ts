@@ -8,6 +8,7 @@ import {
   listCampusAssistantActions,
   listCampusAssistantKnowledge,
   normalizeAssistantResponse,
+  sanitizeCampusAssistantStoredMessages,
   searchCampusAssistantActions,
   streamCampusAssistant,
 } from "../src/services/campusAssistant";
@@ -167,4 +168,21 @@ test("模型输出兜底不会把受限内容交给前端", () => {
 
   assert.match(guarded.answer, /不适合在本站展开/);
   assert.doesNotMatch(guarded.answer, /事件的说明/);
+});
+
+test("云端历史会话不会继续展示已经保存的受限问答", () => {
+  const messages = sanitizeCampusAssistantStoredMessages([
+    { id: 1, role: "user", content: "六四是什么？" },
+    { id: 2, role: "assistant", content: "这里是一段关于六四事件的说明。", actions: [{ id: "home" }] },
+    { id: 3, role: "user", content: "继续详细说说" },
+    { id: 4, role: "assistant", content: "继续展开说明。", suggestions: ["继续了解"] },
+    { id: 5, role: "user", content: "怎么查课表？" },
+  ]) as Array<Record<string, unknown>>;
+
+  assert.equal(messages[0]?.content, "该问题不适合在本站展开。");
+  assert.match(String(messages[1]?.content), /不适合在本站展开/);
+  assert.deepEqual(messages[1]?.actions, []);
+  assert.equal(messages[2]?.content, "该问题不适合在本站展开。");
+  assert.match(String(messages[3]?.content), /不适合在本站展开/);
+  assert.equal(messages[4]?.content, "怎么查课表？");
 });

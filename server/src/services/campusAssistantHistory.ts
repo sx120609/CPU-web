@@ -1,4 +1,8 @@
 import { prisma } from "../prisma";
+import {
+  isCampusAssistantPublicTopicRestricted,
+  sanitizeCampusAssistantStoredMessages,
+} from "./campusAssistant";
 
 export const CAMPUS_ASSISTANT_HISTORY_LIMIT = 20;
 
@@ -24,26 +28,27 @@ export async function saveCampusAssistantConversation(
   userId: number,
   input: SaveCampusAssistantConversationInput,
 ) {
-  const clientUpdatedAt = new Date(input.updatedAt);
+  const sanitizedInput = sanitizeStoredConversation(input);
+  const clientUpdatedAt = new Date(sanitizedInput.updatedAt);
   const saved = await prisma.$transaction(async (tx) => {
     const existing = await tx.campusAssistantConversation.findUnique({
-      where: { userId_id: { userId, id: input.id } },
+      where: { userId_id: { userId, id: sanitizedInput.id } },
     });
     if (existing && existing.clientUpdatedAt.getTime() > clientUpdatedAt.getTime()) {
       return existing;
     }
     return tx.campusAssistantConversation.upsert({
-      where: { userId_id: { userId, id: input.id } },
+      where: { userId_id: { userId, id: sanitizedInput.id } },
       create: {
-        id: input.id,
+        id: sanitizedInput.id,
         userId,
-        title: input.title,
-        messages: JSON.stringify(input.messages),
+        title: sanitizedInput.title,
+        messages: JSON.stringify(sanitizedInput.messages),
         clientUpdatedAt,
       },
       update: {
-        title: input.title,
-        messages: JSON.stringify(input.messages),
+        title: sanitizedInput.title,
+        messages: JSON.stringify(sanitizedInput.messages),
         clientUpdatedAt,
       },
     });
@@ -73,11 +78,23 @@ function toStoredConversation(row: {
   messages: string;
   clientUpdatedAt: Date;
 }): StoredCampusAssistantConversation {
-  return {
+  return sanitizeStoredConversation({
     id: row.id,
     title: row.title,
     updatedAt: row.clientUpdatedAt.getTime(),
     messages: parseMessages(row.messages),
+  });
+}
+
+export function sanitizeStoredConversation(
+  conversation: StoredCampusAssistantConversation,
+): StoredCampusAssistantConversation {
+  return {
+    ...conversation,
+    title: isCampusAssistantPublicTopicRestricted(conversation.title)
+      ? "不适合展示的历史会话"
+      : conversation.title,
+    messages: sanitizeCampusAssistantStoredMessages(conversation.messages),
   };
 }
 
