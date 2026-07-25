@@ -350,8 +350,8 @@ const assistantWidgetOpen = ref(false);
 const keyboardOpen = ref(false);
 const keyboardGeometryOpen = ref(false);
 const mobileViewportHeight = ref(0);
-const mobileViewportBottom = ref(0);
 const mobileViewportWidth = ref(0);
+const mobileViewportOffsetTop = ref(0);
 const virtualKeyboardInset = ref(0);
 const touchLikeViewport = ref(false);
 const editableFocused = ref(false);
@@ -394,17 +394,18 @@ const useTabbarFallback = computed(() => (
   && isPortraitViewport.value
 ));
 const layoutStyle = computed(() => {
-  if (!mobileViewportBottom.value) return {};
+  if (!mobileViewportHeight.value) return {};
   const baseHeight = Math.max(
     mobileViewportBaseHeight.value || 0,
-    mobileViewportBottom.value,
+    mobileViewportHeight.value,
   );
   const keyboardInset = keyboardGeometryOpen.value
-    ? Math.max(0, baseHeight - mobileViewportBottom.value, virtualKeyboardInset.value)
+    ? Math.max(0, baseHeight - mobileViewportHeight.value, virtualKeyboardInset.value)
     : 0;
   return {
-    "--layout-viewport-height": `${mobileViewportBottom.value}px`,
+    "--layout-viewport-height": `${mobileViewportHeight.value}px`,
     "--layout-viewport-base-height": `${baseHeight}px`,
+    "--layout-viewport-offset-top": `${mobileViewportOffsetTop.value}px`,
     "--layout-keyboard-inset": `${keyboardInset}px`,
   };
 });
@@ -530,6 +531,7 @@ onMounted(async () => {
   if (typeof window !== "undefined") {
     window.addEventListener("resize", handleViewportMetricsChange, { passive: true });
     window.visualViewport?.addEventListener("resize", handleViewportMetricsChange);
+    window.visualViewport?.addEventListener("scroll", handleViewportMetricsChange);
     getVirtualKeyboard()?.addEventListener("geometrychange", handleViewportMetricsChange);
     document.addEventListener("focusin", handleFocusIn);
     document.addEventListener("focusout", handleFocusOut);
@@ -544,6 +546,7 @@ onBeforeUnmount(() => {
   if (typeof window !== "undefined") {
     window.removeEventListener("resize", handleViewportMetricsChange);
     window.visualViewport?.removeEventListener("resize", handleViewportMetricsChange);
+    window.visualViewport?.removeEventListener("scroll", handleViewportMetricsChange);
     getVirtualKeyboard()?.removeEventListener("geometrychange", handleViewportMetricsChange);
     document.removeEventListener("focusin", handleFocusIn);
     document.removeEventListener("focusout", handleFocusOut);
@@ -624,21 +627,19 @@ function isEditableElement(target: HTMLElement | null) {
 
 function syncViewportMetrics() {
   if (typeof window === "undefined") return;
-  const visualHeight = getEffectiveViewportHeight();
-  const visualBottom = getEffectiveViewportBottom();
+  const visualHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
   const visualWidth = Math.round(window.visualViewport?.width ?? window.innerWidth);
   const orientation = getScreenOrientation();
   if (orientation !== viewportBaselineOrientation) {
     viewportBaselineOrientation = orientation;
     mobileViewportBaseHeight.value = Math.max(
       viewportBaseHeights.get(orientation) || 0,
-      visualBottom,
       visualHeight,
       window.innerHeight,
     );
   }
+  mobileViewportOffsetTop.value = Math.max(0, Math.round(window.visualViewport?.offsetTop ?? 0));
   mobileViewportHeight.value = visualHeight;
-  mobileViewportBottom.value = visualBottom;
   mobileViewportWidth.value = visualWidth;
   virtualKeyboardInset.value = getVirtualKeyboardInset();
   touchLikeViewport.value = isTabletTouchViewport(visualWidth, visualHeight);
@@ -649,43 +650,6 @@ function syncViewportMetrics() {
     mobileViewportBaseHeight.value = stableHeight;
     viewportBaseHeights.set(orientation, Math.max(viewportBaseHeights.get(orientation) || 0, stableHeight));
   }
-}
-
-function getEffectiveViewportHeight() {
-  const visualHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
-  const layoutHeight = Math.round(window.innerHeight);
-  const documentHeight = Math.round(document.documentElement?.clientHeight || 0);
-  const baseHeight = Math.max(
-    mobileViewportBaseHeight.value || 0,
-    visualHeight,
-    layoutHeight,
-    documentHeight,
-  );
-  const keyboardShrunkenHeights = [visualHeight, layoutHeight, documentHeight]
-    .filter((height) => height > 0 && baseHeight - height > KEYBOARD_INSET_THRESHOLD);
-
-  // Keep keyboard detection based on height only. On iOS, offsetTop can grow
-  // while the keyboard stays open, so using offsetTop + height here can make
-  // the keyboard appear closed and bring the tabbar back above the keyboard.
-  return keyboardShrunkenHeights.length
-    ? Math.max(...keyboardShrunkenHeights)
-    : visualHeight;
-}
-
-function getEffectiveViewportBottom() {
-  const visualHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
-  const visualOffsetTop = Math.max(0, Math.round(window.visualViewport?.offsetTop ?? 0));
-  const baseHeight = Math.max(
-    mobileViewportBaseHeight.value || 0,
-    visualHeight,
-    Math.round(window.innerHeight),
-    Math.round(document.documentElement?.clientHeight || 0),
-  );
-
-  // Position the composer against the actual visible bottom edge. This keeps
-  // the stable height-based keyboard detection while avoiding the old gap
-  // caused by ignoring iOS visualViewport.offsetTop.
-  return Math.min(baseHeight, visualOffsetTop + visualHeight);
 }
 
 function getScreenOrientation() {
@@ -719,7 +683,7 @@ function isTabletTouchViewport(width: number, height: number) {
 
 function updateKeyboardState() {
   if (typeof window === "undefined") return;
-  const currentHeight = getEffectiveViewportHeight();
+  const currentHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
   const baseHeight = Math.max(mobileViewportBaseHeight.value || 0, currentHeight, window.innerHeight);
   const measuredInset = Math.max(
     0,
@@ -758,7 +722,7 @@ function scheduleKeyboardGeometryClose() {
   if (keyboardGeometryCloseTimer) return;
   keyboardGeometryCloseTimer = window.setTimeout(() => {
     keyboardGeometryCloseTimer = 0;
-    const currentHeight = getEffectiveViewportHeight();
+    const currentHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
     const baseHeight = Math.max(mobileViewportBaseHeight.value || 0, currentHeight, window.innerHeight);
     const measuredInset = Math.max(
       0,
@@ -871,7 +835,7 @@ function setAppearanceMode(command: string | number | object) {
 
 .layout-root--full-height {
   position: fixed;
-  top: 0;
+  top: var(--layout-viewport-offset-top, 0);
   right: 0;
   bottom: auto;
   left: 0;
