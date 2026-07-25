@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  extractPartialJsonStringValue,
   listCampusAssistantActions,
   normalizeAssistantResponse,
   searchCampusAssistantActions,
 } from "../src/services/campusAssistant";
+import { readAiJsonTextStream } from "../src/services/aiJsonApi";
 
 const enabledFeatures = {
   forum: true,
@@ -60,4 +62,39 @@ test("明确匹配到站内入口时不混入 AI 猜测的无关入口", () => {
     actionIds: ["profile", "home"],
   }, available, deterministic);
   assert.deepEqual(response.actions.map((item) => item.id), ["dorm-electric"]);
+});
+
+test("流式 JSON 只提取 answer 的完整可见前缀", () => {
+  assert.equal(
+    extractPartialJsonStringValue('{"answer":"宿舍电费可在站内查', "answer"),
+    "宿舍电费可在站内查",
+  );
+  assert.equal(
+    extractPartialJsonStringValue('{"answer":"第一行\\n第二行\\u4e2d\\u6587","actionIds":[]}', "answer"),
+    "第一行\n第二行中文",
+  );
+  assert.equal(
+    extractPartialJsonStringValue('{"answer":"表情\\ud83d', "answer"),
+    "表情",
+  );
+  assert.equal(
+    extractPartialJsonStringValue('{"answer":"表情\\ud83d\\ude0a","actionIds":[]}', "answer"),
+    "表情😊",
+  );
+});
+
+test("OpenAI 兼容 SSE 能按增量还原完整 JSON", async () => {
+  const response = new Response([
+    'data: {"choices":[{"delta":{"content":"{\\"answer\\":\\"你"}}]}\n\n',
+    'data: {"choices":[{"delta":{"content":"好\\",\\"actionIds\\":[]}"}}]}\n\n',
+    "data: [DONE]\n\n",
+  ].join(""), {
+    headers: { "Content-Type": "text/event-stream" },
+  });
+  const deltas: string[] = [];
+  const content = await readAiJsonTextStream(response, "chat_completions", (delta) => {
+    deltas.push(delta);
+  });
+  assert.deepEqual(deltas, ['{"answer":"你', '好","actionIds":[]}']);
+  assert.equal(content, '{"answer":"你好","actionIds":[]}');
 });

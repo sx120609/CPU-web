@@ -1,6 +1,8 @@
 import type { FeatureKey } from "./siteSettings";
 import { getSiteConfig } from "./siteSettings";
 import { requestAiJson } from "./topicAiReview";
+import { normalizeAiJsonApiUrl, readAiJsonTextStream, sendAiJsonRequest } from "./aiJsonApi";
+import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 
 export type CampusAssistantAction = {
   id: string;
@@ -35,6 +37,8 @@ type CampusAssistantContext = {
   forumAccessEnabled: boolean;
   loggedIn: boolean;
 };
+
+const DEFAULT_REVIEW_API_URL = "https://api.deepseek.com/chat/completions";
 
 const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
   {
@@ -298,26 +302,12 @@ export async function askCampusAssistant(input: {
   }
 
   try {
-    const catalog = availableActions.map((item) => ({
-      id: item.id,
-      label: item.label,
-      description: item.description,
-      requireLogin: item.requireLogin,
-    }));
-    const result = await requestAiJson([
-      {
-        role: "system",
-        content: buildSystemPrompt(catalog, input.context.loggedIn),
-      },
-      ...input.history.slice(-8).map((item) => ({
-        role: item.role,
-        content: item.content.slice(0, 1200),
-      } as const)),
-      {
-        role: "user",
-        content: message,
-      },
-    ], {
+    const result = await requestAiJson(buildAssistantMessages(
+      message,
+      input.history,
+      availableActions,
+      input.context.loggedIn,
+    ), {
       promptCacheScope: "campus-assistant",
     });
     const parsed = parseAssistantJson(result.content);
@@ -326,6 +316,69 @@ export async function askCampusAssistant(input: {
     console.warn("[campus-assistant] AI request failed", error instanceof Error ? error.message : error);
     return fallbackAssistantResponse(deterministicActions, true);
   }
+}
+
+export async function streamCampusAssistant(input: {
+  message: string;
+  history: CampusAssistantMessage[];
+  context: CampusAssistantContext;
+  signal?: AbortSignal;
+}, onAnswerDelta: (delta: string) => void | Promise<void>): Promise<CampusAssistantResponse> {
+  const message = input.message.trim();
+  const availableActions = listCampusAssistantActions(input.context);
+  const deterministicActions = searchCampusAssistantActions(message, input.context, 3);
+  const config = getSiteConfig();
+  if (!config.aiReviewEnabled || !config.aiReviewApiKey.trim()) {
+    return fallbackAssistantResponse(deterministicActions, false);
+  }
+
+  const endpoint = normalizeAiJsonApiUrl(config.aiReviewApiUrl, DEFAULT_REVIEW_API_URL);
+  const candidates = resolveModelCandidates(config.aiReviewModel, config.aiReviewFallbackModels);
+  const messages = buildAssistantMessages(message, input.history, availableActions, input.context.loggedIn);
+  let lastError: unknown = null;
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    const model = candidates[index];
+    try {
+      const result = await sendAiJsonRequest({
+        endpoint,
+        apiKey: config.aiReviewApiKey,
+        model,
+        temperature: 0.1,
+        messages,
+        stream: true,
+        signal: input.signal,
+      });
+      if (!result.response.ok) {
+        const errorText = result.errorText || await result.response.text().catch(() => "");
+        if (index < candidates.length - 1 && shouldFallbackToNextModel(result.response.status, errorText)) {
+          lastError = new Error(`模型 ${model} 暂时不可用`);
+          continue;
+        }
+        throw new Error(`AI 请求失败：${result.response.status}${errorText ? ` ${errorText.slice(0, 120)}` : ""}`);
+      }
+
+      let rawContent = "";
+      let emittedAnswer = "";
+      const content = await readAiJsonTextStream(result.response, result.mode, async (delta) => {
+        rawContent += delta;
+        const visible = extractPartialJsonStringValue(rawContent, "answer") || "";
+        if (visible.startsWith(emittedAnswer) && visible.length > emittedAnswer.length) {
+          await onAnswerDelta(visible.slice(emittedAnswer.length));
+          emittedAnswer = visible;
+        }
+      });
+      const parsed = parseAssistantJson(content);
+      return normalizeAssistantResponse(parsed, availableActions, deterministicActions);
+    } catch (error) {
+      if (input.signal?.aborted) throw error;
+      lastError = error;
+      if (index < candidates.length - 1) continue;
+    }
+  }
+
+  console.warn("[campus-assistant] streaming AI request failed", lastError instanceof Error ? lastError.message : lastError);
+  return fallbackAssistantResponse(deterministicActions, true);
 }
 
 export function normalizeAssistantResponse(
@@ -359,6 +412,57 @@ export function normalizeAssistantResponse(
       .slice(0, 3)
     : [];
   return { answer, actions, suggestions, fallback: false };
+}
+
+export function extractPartialJsonStringValue(source: string, key: string) {
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(`"${escapedKey}"\\s*:\\s*"`).exec(source);
+  if (!match) return null;
+  let output = "";
+  let index = match.index + match[0].length;
+  while (index < source.length) {
+    const char = source[index];
+    if (char === '"') return output;
+    if (char !== "\\") {
+      output += char;
+      index += 1;
+      continue;
+    }
+    if (index + 1 >= source.length) break;
+    const escape = source[index + 1];
+    const simpleEscapes: Record<string, string> = {
+      '"': '"',
+      "\\": "\\",
+      "/": "/",
+      b: "\b",
+      f: "\f",
+      n: "\n",
+      r: "\r",
+      t: "\t",
+    };
+    if (escape !== "u") {
+      if (!(escape in simpleEscapes)) break;
+      output += simpleEscapes[escape];
+      index += 2;
+      continue;
+    }
+    const hex = source.slice(index + 2, index + 6);
+    if (!/^[0-9a-fA-F]{4}$/.test(hex)) break;
+    const code = Number.parseInt(hex, 16);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const nextEscape = source.slice(index + 6, index + 8);
+      const lowHex = source.slice(index + 8, index + 12);
+      if (nextEscape !== "\\u" || !/^[0-9a-fA-F]{4}$/.test(lowHex)) break;
+      const lowCode = Number.parseInt(lowHex, 16);
+      if (lowCode < 0xdc00 || lowCode > 0xdfff) break;
+      output += String.fromCodePoint(((code - 0xd800) * 0x400) + lowCode - 0xdc00 + 0x10000);
+      index += 12;
+      continue;
+    }
+    output += String.fromCharCode(code);
+    index += 6;
+  }
+  return output;
 }
 
 function fallbackAssistantResponse(actions: CampusAssistantAction[], failed: boolean): CampusAssistantResponse {
@@ -411,6 +515,34 @@ function buildSystemPrompt(catalog: Array<Pick<CampusAssistantAction, "id" | "la
     '{"answer":"简洁中文答复","actionIds":["最多3个catalog id"],"suggestions":["最多3个简短追问建议"]}',
     `catalog=${JSON.stringify(catalog)}`,
   ].join("\n");
+}
+
+function buildAssistantMessages(
+  message: string,
+  history: CampusAssistantMessage[],
+  availableActions: CampusAssistantAction[],
+  loggedIn: boolean,
+) {
+  const catalog = availableActions.map((item) => ({
+    id: item.id,
+    label: item.label,
+    description: item.description,
+    requireLogin: item.requireLogin,
+  }));
+  return [
+    {
+      role: "system" as const,
+      content: buildSystemPrompt(catalog, loggedIn),
+    },
+    ...history.slice(-8).map((item) => ({
+      role: item.role,
+      content: item.content.slice(0, 1200),
+    } as const)),
+    {
+      role: "user" as const,
+      content: message,
+    },
+  ];
 }
 
 function normalizeSearchText(value: string) {

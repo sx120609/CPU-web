@@ -21,14 +21,19 @@
 
       <div v-else class="conversation" aria-live="polite">
         <article
-          v-for="(message, index) in messages"
-          :key="`${message.role}-${index}-${message.content.slice(0, 12)}`"
+          v-for="message in messages"
+          :key="message.id"
           class="message"
           :class="`message--${message.role}`"
         >
           <div class="message-label">{{ message.role === "user" ? "你" : "拾间AI" }}</div>
           <div class="message-bubble">
-            <p>{{ message.content }}</p>
+            <p v-if="message.content">
+              {{ message.content }}<span v-if="message.streaming" class="stream-cursor" aria-hidden="true"></span>
+            </p>
+            <div v-else-if="message.streaming" class="assistant-thinking" aria-label="拾间AI正在回答">
+              <i></i><i></i><i></i>
+            </div>
             <div v-if="message.actions?.length" class="action-list">
               <button
                 v-for="action in message.actions"
@@ -55,13 +60,6 @@
                 {{ suggestion }}
               </button>
             </div>
-          </div>
-        </article>
-
-        <article v-if="assistantLoading" class="message message--assistant">
-          <div class="message-label">拾间AI</div>
-          <div class="message-bubble assistant-thinking">
-            <i></i><i></i><i></i>
           </div>
         </article>
       </div>
@@ -181,8 +179,10 @@ import {
 import { useAuthStore } from "@/stores/auth";
 
 type ConversationMessage = CampusAssistantMessage & {
+  id: number;
   actions?: CampusAssistantAction[];
   suggestions?: string[];
+  streaming?: boolean;
 };
 
 const route = useRoute();
@@ -198,6 +198,8 @@ const assistantError = ref("");
 const messages = ref<ConversationMessage[]>([]);
 let searchSeq = 0;
 let assistantSeq = 0;
+let messageSeq = 0;
+let assistantController: AbortController | null = null;
 
 const welcomePrompts = ["怎么查宿舍电费？", "打开药苑之声", "我的课表在哪里？"];
 const resultCount = computed(() => (
@@ -239,7 +241,7 @@ async function runQuery(keyword: string) {
   const history = messages.value
     .slice(-8)
     .map(({ role, content }) => ({ role, content }));
-  messages.value.push({ role: "user", content: keyword });
+  messages.value.push({ id: ++messageSeq, role: "user", content: keyword });
   await Promise.allSettled([
     reloadSearch(),
     askAssistant(keyword, history),
@@ -264,21 +266,44 @@ async function reloadSearch() {
 
 async function askAssistant(keyword: string, history: CampusAssistantMessage[]) {
   const seq = ++assistantSeq;
+  assistantController?.abort();
+  assistantController = new AbortController();
+  const controller = assistantController;
+  const assistantMessageId = ++messageSeq;
+  messages.value.push({
+    id: assistantMessageId,
+    role: "assistant",
+    content: "",
+    streaming: true,
+  });
+  const assistantMessage = messages.value.find((item) => item.id === assistantMessageId)!;
   assistantLoading.value = true;
   assistantError.value = "";
   try {
-    const next = await searchApi.askAssistant(keyword, history, { suppressErrorMessage: true });
-    if (seq !== assistantSeq) return;
-    messages.value.push({
-      role: "assistant",
-      content: next.answer,
-      actions: next.actions,
-      suggestions: next.suggestions,
+    const next = await searchApi.streamAssistant(keyword, history, {
+      signal: controller.signal,
+      onDelta: (delta) => {
+        if (seq !== assistantSeq) return;
+        assistantMessage.content += delta;
+      },
     });
+    if (seq !== assistantSeq) return;
+    assistantMessage.content = next.answer;
+    assistantMessage.actions = next.actions;
+    assistantMessage.suggestions = next.suggestions;
+    assistantMessage.streaming = false;
   } catch (error) {
-    if (seq === assistantSeq) assistantError.value = normalizeRequestError(error, "拾间AI暂时不可用");
+    if (seq !== assistantSeq || controller.signal.aborted) return;
+    assistantMessage.streaming = false;
+    if (!assistantMessage.content) {
+      messages.value = messages.value.filter((item) => item.id !== assistantMessage.id);
+    }
+    assistantError.value = normalizeRequestError(error, "拾间AI暂时不可用");
   } finally {
-    if (seq === assistantSeq) assistantLoading.value = false;
+    if (seq === assistantSeq) {
+      assistantLoading.value = false;
+      if (assistantController === controller) assistantController = null;
+    }
   }
 }
 
@@ -295,6 +320,7 @@ async function retryAssistant() {
 function normalizeRequestError(error: unknown, fallback: string) {
   const response = (error as { response?: { status?: number; data?: { message?: string } } })?.response;
   if (response?.status && response.status < 500) return response.data?.message || fallback;
+  if (error instanceof Error && error.message) return error.message;
   return fallback;
 }
 
@@ -519,9 +545,21 @@ function openCourse(id: number) {
 }
 .assistant-thinking i:nth-child(2) { animation-delay: 0.15s; }
 .assistant-thinking i:nth-child(3) { animation-delay: 0.3s; }
+.stream-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.1em;
+  background: currentColor;
+  animation: cursor-blink 0.8s steps(2, start) infinite;
+}
 @keyframes thinking {
   0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
   30% { opacity: 1; transform: translateY(-3px); }
+}
+@keyframes cursor-blink {
+  50% { opacity: 0; }
 }
 .assistant-error {
   display: flex;

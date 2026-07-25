@@ -52,6 +52,8 @@ export async function sendAiJsonRequest(input: {
   messages: AiJsonMessage[];
   promptCacheKey?: string | null;
   enablePromptCacheRetention?: boolean;
+  stream?: boolean;
+  signal?: AbortSignal;
 }): Promise<SendAiJsonRequestResult> {
   const mode = detectAiJsonApiMode(input.endpoint);
   const supportKey = `${mode}:${input.endpoint}`;
@@ -68,6 +70,7 @@ export async function sendAiJsonRequest(input: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${input.apiKey}`,
     },
+    signal: input.signal,
     body: JSON.stringify(buildAiJsonRequestBody({
       mode,
       model: input.model,
@@ -75,6 +78,7 @@ export async function sendAiJsonRequest(input: {
       messages: input.messages,
       promptCacheKey: promptCacheKeyApplied ? promptCacheKey : "",
       promptCacheRetentionApplied,
+      stream: input.stream,
     })),
   });
   let errorText = response.ok ? "" : await response.clone().text().catch(() => "");
@@ -88,6 +92,7 @@ export async function sendAiJsonRequest(input: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${input.apiKey}`,
       },
+      signal: input.signal,
       body: JSON.stringify(buildAiJsonRequestBody({
         mode,
         model: input.model,
@@ -95,6 +100,7 @@ export async function sendAiJsonRequest(input: {
         messages: input.messages,
         promptCacheKey: promptCacheKeyApplied ? promptCacheKey : "",
         promptCacheRetentionApplied,
+        stream: input.stream,
       })),
     });
     errorText = response.ok ? "" : await response.clone().text().catch(() => "");
@@ -111,6 +117,7 @@ export async function sendAiJsonRequest(input: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${input.apiKey}`,
       },
+      signal: input.signal,
       body: JSON.stringify(buildAiJsonRequestBody({
         mode,
         model: input.model,
@@ -118,6 +125,7 @@ export async function sendAiJsonRequest(input: {
         messages: input.messages,
         promptCacheKey: "",
         promptCacheRetentionApplied: false,
+        stream: input.stream,
       })),
     });
     errorText = response.ok ? "" : await response.clone().text().catch(() => "");
@@ -158,11 +166,13 @@ function buildAiJsonRequestBody(input: {
   messages: AiJsonMessage[];
   promptCacheKey: string;
   promptCacheRetentionApplied: boolean;
+  stream?: boolean;
 }) {
   const body: Record<string, unknown> = {
     model: input.model,
   };
   if (input.temperature !== undefined) body.temperature = input.temperature;
+  if (input.stream) body.stream = true;
   if (input.mode === "responses") {
     body.input = input.messages.map(toResponsesInputMessage);
     body.text = { format: { type: "json_object" } };
@@ -177,6 +187,76 @@ function buildAiJsonRequestBody(input: {
     }
   }
   return body;
+}
+
+export async function readAiJsonTextStream(
+  response: Response,
+  mode: AiJsonApiMode,
+  onDelta: (delta: string) => void | Promise<void>,
+) {
+  const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+  if (!response.body || contentType.includes("application/json")) {
+    const json = await response.json();
+    const content = extractAiJsonTextResponse(json, mode);
+    if (content) await onDelta(content);
+    return content;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+
+  const consumeEvent = async (block: string) => {
+    const data = block
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n")
+      .trim();
+    if (!data || data === "[DONE]") return;
+    let payload: any;
+    try {
+      payload = JSON.parse(data);
+    } catch {
+      return;
+    }
+    const delta = extractAiJsonStreamDelta(payload, mode);
+    if (!delta) return;
+    content += delta;
+    await onDelta(delta);
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const blocks = buffer.split(/\r?\n\r?\n/);
+    buffer = blocks.pop() || "";
+    for (const block of blocks) await consumeEvent(block);
+    if (done) break;
+  }
+  if (buffer.trim()) await consumeEvent(buffer);
+  return content;
+}
+
+function extractAiJsonStreamDelta(payload: any, mode: AiJsonApiMode) {
+  if (mode === "responses") {
+    if (
+      (payload?.type === "response.output_text.delta" || payload?.type === "response.refusal.delta")
+      && typeof payload?.delta === "string"
+    ) {
+      return payload.delta;
+    }
+    if (typeof payload?.delta?.text === "string") return payload.delta.text;
+    return "";
+  }
+
+  const content = payload?.choices?.[0]?.delta?.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((item: any) => typeof item?.text === "string" ? item.text : "")
+    .join("");
 }
 
 function toResponsesInputMessage(message: AiJsonMessage) {

@@ -11,6 +11,7 @@ import {
   askCampusAssistant,
   campusActionToSearchService,
   searchCampusAssistantActions,
+  streamCampusAssistant,
 } from "../services/campusAssistant";
 import { securityRateLimit } from "../middleware/securityRateLimit";
 import { validate } from "../middleware/validate";
@@ -149,9 +150,74 @@ searchRouter.post(
   },
 );
 
+searchRouter.post(
+  "/assistant/stream",
+  securityRateLimit("campus-assistant", 20, 60_000),
+  validate(assistantSchema),
+  async (req, res, next) => {
+    let streamStarted = false;
+    let streamCompleted = false;
+    const controller = new AbortController();
+    res.on("close", () => {
+      if (!streamCompleted) controller.abort();
+    });
+
+    try {
+      const userId = req.user?.userId ?? null;
+      const role = req.user?.role ?? null;
+      const forumAccessEnabled = await resolveForumAccess(userId, role);
+      res.status(200);
+      res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Accel-Buffering", "no");
+      res.flushHeaders();
+      streamStarted = true;
+
+      const heartbeat = setInterval(() => {
+        if (!res.writableEnded) {
+          res.write(": ping\n\n");
+          (res as any).flush?.();
+        }
+      }, 15_000);
+      try {
+        const response = await streamCampusAssistant({
+          message: req.body.message,
+          history: req.body.history,
+          context: {
+            features: getFeatures(),
+            forumAccessEnabled,
+            loggedIn: Boolean(userId),
+          },
+          signal: controller.signal,
+        }, (delta) => {
+          if (!delta || res.writableEnded) return;
+          writeAssistantEvent(res, "delta", { delta });
+        });
+        if (!res.writableEnded) writeAssistantEvent(res, "done", response);
+        streamCompleted = true;
+        res.end();
+      } finally {
+        clearInterval(heartbeat);
+      }
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      if (!streamStarted) return next(error);
+      writeAssistantEvent(res, "error", { message: "拾间AI暂时不可用，请稍后再试" });
+      streamCompleted = true;
+      res.end();
+    }
+  },
+);
+
 function safeJson(s: string | null | undefined) {
   if (!s) return {};
   try { return JSON.parse(s); } catch { return {}; }
+}
+
+function writeAssistantEvent(res: any, event: string, payload: unknown) {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
+  res.flush?.();
 }
 
 function mergeSearchServices(services: any[]) {
