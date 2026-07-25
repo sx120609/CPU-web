@@ -666,6 +666,20 @@ export function isCampusAssistantPublicTopicRestricted(
   return containsRestrictedPublicTopic(previousUserMessage);
 }
 
+export function isCampusAssistantConversationRestricted(messages: CampusAssistantMessage[]) {
+  let currentMessageIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index].role !== "user") continue;
+    currentMessageIndex = index;
+    break;
+  }
+  if (currentMessageIndex < 0) return false;
+  return isCampusAssistantPublicTopicRestricted(
+    messages[currentMessageIndex].content,
+    messages.slice(0, currentMessageIndex),
+  );
+}
+
 function containsRestrictedPublicTopic(value: string) {
   const normalized = normalizeSearchText(value);
   if (!normalized) return false;

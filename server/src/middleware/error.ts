@@ -5,6 +5,7 @@ import { isDev } from "../config";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
+  if (res.headersSent) return _next(err);
   const anyErr = err as { type?: string; status?: number; statusCode?: number; message?: string } | undefined;
   if (
     anyErr?.type === "entity.too.large" ||
