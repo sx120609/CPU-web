@@ -4,6 +4,7 @@
     :class="{
       'keyboard-open': keyboardOpen,
       'layout-root--full-width': fullWidthContent && !hideChrome,
+      'layout-root--full-height': fullHeightContent && !hideChrome,
       'layout-root--native-shell': useNativeShell,
       'layout-root--tabbar-fallback': useTabbarFallback,
     }"
@@ -147,7 +148,14 @@
     </header>
 
     <!-- 主内容 -->
-    <main class="main" :class="{ 'main--bare': hideChrome, 'main--full-width': fullWidthContent && !hideChrome }">
+    <main
+      class="main"
+      :class="{
+        'main--bare': hideChrome,
+        'main--full-width': fullWidthContent && !hideChrome,
+        'main--full-height': fullHeightContent && !hideChrome,
+      }"
+    >
       <router-view v-slot="{ Component }">
         <transition name="fade" mode="out-in">
           <component :is="Component" />
@@ -155,7 +163,7 @@
       </router-view>
     </main>
 
-    <footer v-if="!hideChrome && !useNativeShell" class="footer">
+    <footer v-if="!hideChrome && !useNativeShell && !fullHeightContent" class="footer">
       <span class="footer-item">© 2026 药大拾间 · 校园互助与服务平台</span>
       <a class="footer-item" href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener noreferrer">GitHub</a>
       <span class="footer-item">非学校官方站点</span>
@@ -335,6 +343,7 @@ const appearanceIcon = computed(() => (
 /** 某些路由（如 /schedule）希望"裸壳"渲染，没有顶栏/免责声明/footer */
 const hideChrome = computed(() => Boolean(route.meta?.hideChrome));
 const fullWidthContent = computed(() => Boolean(route.meta?.fullWidthContent));
+const fullHeightContent = computed(() => Boolean(route.meta?.fullHeightContent));
 const useNativeShell = computed(() => isFlutterNativeShell());
 const isPortraitViewport = computed(() => mobileViewportHeight.value >= mobileViewportWidth.value);
 const useTabbarFallback = computed(() => (
@@ -669,6 +678,11 @@ function setAppearanceMode(command: string | number | object) {
   overscroll-behavior-y: none;
 }
 
+.layout-root--full-height {
+  height: var(--layout-viewport-height, 100dvh);
+  overflow: hidden;
+}
+
 .topbar {
   background: var(--cpu-glass-bg);
   backdrop-filter: var(--cpu-glass-blur);
@@ -901,6 +915,16 @@ function setAppearanceMode(command: string | number | object) {
   max-width: 1280px;
   margin: 0 auto;
   box-sizing: border-box;
+}
+
+.main--full-height {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.main--full-height > :deep(*) {
+  height: 100%;
+  min-height: 0;
 }
 
 /* hideChrome 模式：内容页（如课表）自己管 padding；这里只为 mobile tabbar 留底部空间 */

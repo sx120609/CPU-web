@@ -132,7 +132,12 @@ export const router = createRouter({
         { path: "announcements", name: "announcements", component: () => import("@/views/announcements/Index.vue"), meta: { title: "校园公告", public: true } },
         { path: "jwxt", name: "jwxt", component: loadJwxtView, meta: { title: "教务数据", public: true } },
         { path: "schedule", name: "schedule", component: loadScheduleView, meta: { title: "课表", public: true, hideChrome: true } },
-        { path: "search", name: "search", component: () => import("@/views/search/Result.vue"), meta: { title: "拾间AI", public: true } },
+        {
+          path: "search",
+          name: "search",
+          component: () => import("@/views/search/Result.vue"),
+          meta: { title: "拾间AI", public: true, fullHeightContent: true },
+        },
         { path: "messages", name: "messages", component: () => import("@/views/messages/Index.vue"), meta: { title: "消息中心" } },
         { path: "messages/qqbot-reminders", name: "message-qqbot-reminders", component: () => import("@/views/services/QqBotReminders.vue"), meta: { title: "小工具提醒规则" } },
         { path: "profile", name: "profile", component: loadProfileView, meta: { title: "我的" } },

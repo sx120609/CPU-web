@@ -3,9 +3,18 @@
     <section class="assistant-shell cpu-card">
       <div class="assistant-head">
         <span class="assistant-mark">拾</span>
-        <div>
+        <div class="assistant-head-copy">
           <h1>拾间AI</h1>
           <p>问功能、找入口，也可以直接聊天</p>
+        </div>
+        <div class="assistant-head-actions">
+          <button type="button" aria-label="查看历史对话" @click="historyOpen = true">
+            <el-icon><Clock /></el-icon>
+            <span v-if="sessions.length" class="history-count">{{ sessions.length }}</span>
+          </button>
+          <button type="button" aria-label="新建对话" :disabled="!messages.length" @click="startNewConversation">
+            <el-icon><Plus /></el-icon>
+          </button>
         </div>
       </div>
 
@@ -19,7 +28,7 @@
         </div>
       </div>
 
-      <div v-else class="conversation" aria-live="polite">
+      <div v-else ref="conversationRef" class="conversation" aria-live="polite">
         <article
           v-for="message in messages"
           :key="message.id"
@@ -72,25 +81,62 @@
       <div class="assistant-form">
         <el-input
           v-model="keywordInput"
-          clearable
+          type="textarea"
+          :autosize="{ minRows: 1, maxRows: 4 }"
+          resize="none"
           maxlength="500"
-          placeholder="问我：怎么查电费、药苑之声怎么用……"
-          size="large"
-          @keyup.enter="submitSearch"
-        >
-          <template #prefix><el-icon><Search /></el-icon></template>
-        </el-input>
-        <el-button
-          type="primary"
-          size="large"
-          :loading="assistantLoading"
+          placeholder="给拾间AI发消息"
+          @keydown="handleComposerKeydown"
+        />
+        <button
+          type="button"
+          class="composer-send"
+          :aria-label="assistantLoading ? '正在回答' : '发送'"
           :disabled="!keywordInput.trim() || assistantLoading"
           @click="submitSearch"
         >
-          发送
-        </el-button>
+          <el-icon v-if="assistantLoading" class="is-loading"><Loading /></el-icon>
+          <el-icon v-else><Promotion /></el-icon>
+          <span>发送</span>
+        </button>
       </div>
     </section>
+
+    <el-drawer
+      v-model="historyOpen"
+      class="assistant-history-drawer"
+      direction="ltr"
+      size="min(86vw, 360px)"
+      title="历史对话"
+      append-to-body
+    >
+      <div class="history-caption">记录保存在当前设备，最多保留 20 个对话。</div>
+      <button type="button" class="history-new" @click="startNewConversation">
+        <el-icon><Plus /></el-icon>
+        <span>新对话</span>
+      </button>
+      <div v-if="sessions.length" class="history-list">
+        <div
+          v-for="session in sessions"
+          :key="session.id"
+          class="history-item"
+          :class="{ active: session.id === activeSessionId }"
+        >
+          <button type="button" class="history-open" @click="openConversation(session.id)">
+            <strong>{{ session.title }}</strong>
+            <span>{{ sessionPreview(session) }}</span>
+            <time>{{ formatSessionTime(session.updatedAt) }}</time>
+          </button>
+          <button type="button" class="history-delete" aria-label="删除此对话" @click="deleteConversation(session.id)">
+            <el-icon><Delete /></el-icon>
+          </button>
+        </div>
+      </div>
+      <div v-else class="history-empty">
+        <el-icon><ChatDotRound /></el-icon>
+        <span>还没有历史对话</span>
+      </div>
+    </el-drawer>
 
     <div v-if="q" class="related-results">
       <div class="related-head">
@@ -165,9 +211,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { Right, Search } from "@element-plus/icons-vue";
+import {
+  ChatDotRound,
+  Clock,
+  Delete,
+  Loading,
+  Plus,
+  Promotion,
+  Right,
+} from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import {
@@ -185,21 +239,40 @@ type ConversationMessage = CampusAssistantMessage & {
   streaming?: boolean;
 };
 
+type ConversationSession = {
+  id: string;
+  title: string;
+  updatedAt: number;
+  messages: ConversationMessage[];
+};
+
+const HISTORY_KEY = "campus-assistant-history:v1";
+const ACTIVE_HISTORY_KEY = "campus-assistant-active:v1";
+const MAX_SESSIONS = 20;
+const MAX_MESSAGES_PER_SESSION = 60;
+
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const q = ref((route.query.q as string) ?? "");
-const keywordInput = ref(q.value);
+const keywordInput = ref("");
 const result = ref<SearchResult | null>(null);
 const searchLoading = ref(false);
 const searchError = ref("");
 const assistantLoading = ref(false);
 const assistantError = ref("");
-const messages = ref<ConversationMessage[]>([]);
+const historyOpen = ref(false);
+const conversationRef = ref<HTMLElement | null>(null);
+const sessions = ref<ConversationSession[]>(loadSessions());
+const restoredSession = restoreActiveSession(sessions.value);
+const activeSessionId = ref(restoredSession?.id || "");
+const messages = ref<ConversationMessage[]>(cloneMessages(restoredSession?.messages || []));
 let searchSeq = 0;
 let assistantSeq = 0;
-let messageSeq = 0;
+let messageSeq = messages.value.reduce((max, item) => Math.max(max, item.id), 0);
 let assistantController: AbortController | null = null;
+let scrollFrame = 0;
+let firstRouteSync = true;
 
 const welcomePrompts = ["怎么查宿舍电费？", "打开药苑之声", "我的课表在哪里？"];
 const resultCount = computed(() => (
@@ -212,9 +285,19 @@ watch(() => route.query.q, async (value) => {
   const keyword = String(value ?? "").trim();
   q.value = keyword;
   keywordInput.value = "";
+  const isRestoredQuery = firstRouteSync
+    && keyword
+    && [...messages.value].reverse().find((item) => item.role === "user")?.content === keyword;
+  firstRouteSync = false;
   if (!keyword) {
     result.value = null;
     searchError.value = "";
+    scrollConversation();
+    return;
+  }
+  if (isRestoredQuery) {
+    await reloadSearch();
+    scrollConversation();
     return;
   }
   await runQuery(keyword);
@@ -241,7 +324,10 @@ async function runQuery(keyword: string) {
   const history = messages.value
     .slice(-8)
     .map(({ role, content }) => ({ role, content }));
+  ensureActiveConversation(keyword);
   messages.value.push({ id: ++messageSeq, role: "user", content: keyword });
+  persistActiveConversation();
+  scrollConversation();
   await Promise.allSettled([
     reloadSearch(),
     askAssistant(keyword, history),
@@ -277,6 +363,7 @@ async function askAssistant(keyword: string, history: CampusAssistantMessage[]) 
     streaming: true,
   });
   const assistantMessage = messages.value.find((item) => item.id === assistantMessageId)!;
+  scrollConversation();
   assistantLoading.value = true;
   assistantError.value = "";
   try {
@@ -285,6 +372,7 @@ async function askAssistant(keyword: string, history: CampusAssistantMessage[]) 
       onDelta: (delta) => {
         if (seq !== assistantSeq) return;
         assistantMessage.content += delta;
+        scrollConversation();
       },
     });
     if (seq !== assistantSeq) return;
@@ -292,12 +380,12 @@ async function askAssistant(keyword: string, history: CampusAssistantMessage[]) 
     assistantMessage.actions = next.actions;
     assistantMessage.suggestions = next.suggestions;
     assistantMessage.streaming = false;
+    persistActiveConversation();
+    scrollConversation();
   } catch (error) {
     if (seq !== assistantSeq || controller.signal.aborted) return;
-    assistantMessage.streaming = false;
-    if (!assistantMessage.content) {
-      messages.value = messages.value.filter((item) => item.id !== assistantMessage.id);
-    }
+    messages.value = messages.value.filter((item) => item.id !== assistantMessage.id);
+    persistActiveConversation();
     assistantError.value = normalizeRequestError(error, "拾间AI暂时不可用");
   } finally {
     if (seq === assistantSeq) {
@@ -308,13 +396,172 @@ async function askAssistant(keyword: string, history: CampusAssistantMessage[]) 
 }
 
 async function retryAssistant() {
-  const keyword = q.value.trim();
+  const keyword = [...messages.value].reverse().find((item) => item.role === "user")?.content.trim() || q.value.trim();
   if (!keyword || assistantLoading.value) return;
   const history = messages.value
     .filter((item, index) => !(index === messages.value.length - 1 && item.role === "user"))
     .slice(-8)
     .map(({ role, content }) => ({ role, content }));
   await askAssistant(keyword, history);
+}
+
+function handleComposerKeydown(event: Event | KeyboardEvent) {
+  if (!(event instanceof KeyboardEvent)) return;
+  if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+  event.preventDefault();
+  void submitSearch();
+}
+
+async function startNewConversation() {
+  cancelActiveAssistant();
+  messages.value = [];
+  activeSessionId.value = "";
+  assistantError.value = "";
+  result.value = null;
+  q.value = "";
+  historyOpen.value = false;
+  try { localStorage.removeItem(ACTIVE_HISTORY_KEY); } catch { /* ignore */ }
+  if (route.query.q) await router.replace({ name: "search" });
+}
+
+async function openConversation(sessionId: string) {
+  const session = sessions.value.find((item) => item.id === sessionId);
+  if (!session) return;
+  cancelActiveAssistant();
+  if (route.query.q) await router.replace({ name: "search" });
+  activeSessionId.value = session.id;
+  messages.value = cloneMessages(session.messages);
+  messageSeq = messages.value.reduce((max, item) => Math.max(max, item.id), messageSeq);
+  assistantError.value = "";
+  result.value = null;
+  q.value = "";
+  historyOpen.value = false;
+  rememberActiveSession(session.id);
+  scrollConversation();
+}
+
+async function deleteConversation(sessionId: string) {
+  sessions.value = sessions.value.filter((item) => item.id !== sessionId);
+  writeSessions();
+  if (activeSessionId.value === sessionId) await startNewConversation();
+}
+
+function sessionPreview(session: ConversationSession) {
+  return [...session.messages].reverse().find((item) => item.content.trim())?.content.trim() || "空对话";
+}
+
+function formatSessionTime(timestamp: number) {
+  const date = new Date(timestamp);
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) {
+    return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+  }
+  return date.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
+}
+
+function ensureActiveConversation(firstMessage: string) {
+  if (activeSessionId.value && sessions.value.some((item) => item.id === activeSessionId.value)) return;
+  const id = createSessionId();
+  const session: ConversationSession = {
+    id,
+    title: firstMessage.trim().slice(0, 28) || "新对话",
+    updatedAt: Date.now(),
+    messages: [],
+  };
+  sessions.value.unshift(session);
+  activeSessionId.value = id;
+  rememberActiveSession(id);
+}
+
+function persistActiveConversation() {
+  const session = sessions.value.find((item) => item.id === activeSessionId.value);
+  if (!session) return;
+  const storedMessages = messages.value
+    .filter((item) => item.content.trim())
+    .slice(-MAX_MESSAGES_PER_SESSION)
+    .map(({ streaming: _streaming, ...item }) => ({ ...item }));
+  session.messages = cloneMessages(storedMessages);
+  session.updatedAt = Date.now();
+  session.title = storedMessages.find((item) => item.role === "user")?.content.trim().slice(0, 28) || session.title;
+  sessions.value = [
+    session,
+    ...sessions.value.filter((item) => item.id !== session.id),
+  ].slice(0, MAX_SESSIONS);
+  writeSessions();
+  rememberActiveSession(session.id);
+}
+
+function cancelActiveAssistant() {
+  assistantSeq += 1;
+  assistantController?.abort();
+  assistantController = null;
+  assistantLoading.value = false;
+}
+
+function scrollConversation() {
+  if (scrollFrame) cancelAnimationFrame(scrollFrame);
+  scrollFrame = requestAnimationFrame(() => {
+    scrollFrame = 0;
+    void nextTick(() => {
+      const element = conversationRef.value;
+      if (element) element.scrollTop = element.scrollHeight;
+    });
+  });
+}
+
+function loadSessions(): ConversationSession[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item) => item && typeof item.id === "string" && typeof item.title === "string" && Array.isArray(item.messages))
+      .map((item) => ({
+        id: item.id,
+        title: item.title.slice(0, 28) || "历史对话",
+        updatedAt: Number(item.updatedAt) || 0,
+        messages: cloneMessages(item.messages),
+      }))
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, MAX_SESSIONS);
+  } catch {
+    return [];
+  }
+}
+
+function restoreActiveSession(items: ConversationSession[]) {
+  let activeId = "";
+  try { activeId = localStorage.getItem(ACTIVE_HISTORY_KEY) || ""; } catch { /* ignore */ }
+  return items.find((item) => item.id === activeId) || items[0] || null;
+}
+
+function cloneMessages(items: unknown[]): ConversationMessage[] {
+  if (!Array.isArray(items)) return [];
+  return items
+    .filter((item): item is ConversationMessage => (
+      Boolean(item)
+      && typeof (item as ConversationMessage).id === "number"
+      && ["user", "assistant"].includes((item as ConversationMessage).role)
+      && typeof (item as ConversationMessage).content === "string"
+    ))
+    .map((item) => ({
+      id: item.id,
+      role: item.role,
+      content: item.content.slice(0, 1600),
+      actions: Array.isArray(item.actions) ? item.actions.slice(0, 3).map((action) => ({ ...action })) : undefined,
+      suggestions: Array.isArray(item.suggestions) ? item.suggestions.slice(0, 3).map(String) : undefined,
+    }));
+}
+
+function writeSessions() {
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(sessions.value)); } catch { /* ignore */ }
+}
+
+function rememberActiveSession(sessionId: string) {
+  try { localStorage.setItem(ACTIVE_HISTORY_KEY, sessionId); } catch { /* ignore */ }
+}
+
+function createSessionId() {
+  return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function normalizeRequestError(error: unknown, fallback: string) {
@@ -352,6 +599,11 @@ function open(item: any) {
 function openCourse(id: number) {
   router.push(`/coursereview/${id}`);
 }
+
+onBeforeUnmount(() => {
+  cancelActiveAssistant();
+  if (scrollFrame) cancelAnimationFrame(scrollFrame);
+});
 </script>
 
 <style scoped>
@@ -359,8 +611,12 @@ function openCourse(id: number) {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
   max-width: 920px;
   margin: 0 auto;
+  overflow-y: auto;
 }
 .cpu-card {
   color: var(--cpu-text);
@@ -372,15 +628,62 @@ function openCourse(id: number) {
 }
 .assistant-shell {
   display: flex;
+  flex: 1 0 auto;
   flex-direction: column;
   gap: 16px;
-  min-height: 360px;
+  min-height: min(560px, 100%);
   padding: 20px;
 }
 .assistant-head {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+.assistant-head-copy {
+  flex: 1;
+  min-width: 0;
+}
+.assistant-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.assistant-head-actions button {
+  position: relative;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 11px;
+  color: var(--cpu-text-secondary);
+  background: var(--cpu-surface);
+  cursor: pointer;
+  font: inherit;
+}
+.assistant-head-actions button:hover {
+  color: var(--cpu-primary);
+  border-color: var(--cpu-primary);
+}
+.assistant-head-actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.history-count {
+  position: absolute;
+  top: -5px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border: 2px solid var(--cpu-card);
+  border-radius: 999px;
+  color: #fff;
+  background: var(--cpu-primary);
+  box-sizing: border-box;
+  font-size: 9px;
+  line-height: 12px;
 }
 .assistant-mark {
   display: grid;
@@ -446,9 +749,12 @@ function openCourse(id: number) {
   flex: 1;
   flex-direction: column;
   gap: 14px;
+  min-height: 160px;
   max-height: min(56vh, 560px);
   overflow-y: auto;
   padding: 2px 4px 8px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 .message {
   display: flex;
@@ -574,15 +880,59 @@ function openCourse(id: number) {
 }
 .assistant-form {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 10px;
   margin-top: auto;
-  padding-top: 14px;
+  padding: 12px 2px 0;
   border-top: 1px solid var(--cpu-border-soft);
 }
 .assistant-form .el-input {
   flex: 1;
   min-width: 0;
+}
+.assistant-form :deep(.el-textarea) {
+  flex: 1;
+  min-width: 0;
+}
+.assistant-form :deep(.el-textarea__inner) {
+  min-height: 44px !important;
+  max-height: 112px;
+  padding: 11px 14px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 15px;
+  color: var(--cpu-text);
+  background: var(--cpu-surface);
+  box-shadow: none;
+  line-height: 20px;
+}
+.assistant-form :deep(.el-textarea__inner:focus) {
+  border-color: var(--cpu-primary);
+  box-shadow: 0 0 0 3px rgba(20, 143, 123, 0.1);
+}
+.composer-send {
+  display: inline-flex;
+  height: 44px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 17px;
+  border: 0;
+  border-radius: 14px;
+  color: #fff;
+  background: var(--cpu-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+}
+.composer-send:hover {
+  filter: brightness(1.05);
+}
+.composer-send:disabled {
+  opacity: 0.45;
+  cursor: default;
+  filter: none;
 }
 .related-head {
   display: flex;
@@ -659,14 +1009,135 @@ function openCourse(id: number) {
   font-size: 13px;
 }
 
+:global(.assistant-history-drawer) {
+  color: var(--cpu-text);
+  background: var(--cpu-card);
+}
+:global(.assistant-history-drawer .el-drawer__header) {
+  margin-bottom: 0;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--cpu-border-soft);
+  color: var(--cpu-text);
+  font-weight: 700;
+}
+:global(.assistant-history-drawer .el-drawer__body) {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+}
+.history-caption {
+  color: var(--cpu-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.history-new {
+  display: flex;
+  width: 100%;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid rgba(20, 143, 123, 0.35);
+  border-radius: 12px;
+  color: var(--cpu-primary);
+  background: rgba(20, 143, 123, 0.08);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+}
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-height: 0;
+  overflow-y: auto;
+}
+.history-item {
+  display: flex;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--cpu-surface-subtle);
+}
+.history-item.active {
+  border-color: rgba(20, 143, 123, 0.35);
+  background: rgba(20, 143, 123, 0.09);
+}
+.history-open {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  padding: 11px 6px 11px 12px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.history-open strong,
+.history-open span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-open strong {
+  font-size: 13px;
+}
+.history-open span {
+  margin-top: 3px;
+  color: var(--cpu-text-secondary);
+  font-size: 11px;
+}
+.history-open time {
+  margin-top: 5px;
+  color: var(--cpu-text-muted);
+  font-size: 10px;
+}
+.history-delete {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  place-items: center;
+  margin-right: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  color: var(--cpu-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+.history-delete:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.09);
+}
+.history-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--cpu-text-muted);
+  font-size: 12px;
+}
+.history-empty .el-icon {
+  font-size: 32px;
+}
+
 @media (max-width: 640px) {
   .assistant-page {
     gap: 0;
-    margin: -2px -4px 0;
+    margin: 0;
+    overflow: hidden;
   }
   .assistant-shell {
-    min-height: calc(100dvh - 176px);
-    padding: 8px 6px 10px;
+    height: 100%;
+    min-height: 0;
+    padding: 4px 2px 0;
     border: 0;
     border-radius: 0;
     background: transparent;
@@ -674,7 +1145,8 @@ function openCourse(id: number) {
   }
   .assistant-head {
     gap: 9px;
-    padding: 0 2px 6px;
+    flex: 0 0 auto;
+    padding: 0 2px 8px;
   }
   .assistant-mark {
     width: 34px;
@@ -699,9 +1171,11 @@ function openCourse(id: number) {
     max-width: 310px;
   }
   .conversation {
+    min-height: 0;
     max-height: none;
     gap: 20px;
-    padding: 12px 2px 18px;
+    padding: 12px 2px 14px;
+    scrollbar-gutter: auto;
   }
   .message {
     max-width: 88%;
@@ -759,17 +1233,25 @@ function openCourse(id: number) {
   }
   .assistant-form {
     gap: 8px;
-    padding: 10px 2px 2px;
+    flex: 0 0 auto;
+    padding: 9px 2px 2px;
     border-top-color: var(--cpu-border-soft);
+    background: var(--cpu-bg);
   }
-  .assistant-form :deep(.el-input__wrapper) {
-    border-radius: 14px;
-    box-shadow: 0 0 0 1px var(--cpu-border-soft) inset;
+  .assistant-form :deep(.el-textarea__inner) {
+    min-height: 46px !important;
+    padding: 12px 14px;
+    border-radius: 16px;
   }
-  .assistant-form .el-button {
-    min-width: 58px;
-    border-radius: 14px;
-    padding-inline: 15px;
+  .composer-send {
+    width: 46px;
+    height: 46px;
+    padding: 0;
+    border-radius: 15px;
+    font-size: 19px;
+  }
+  .composer-send span {
+    display: none;
   }
   .related-results {
     display: none;
