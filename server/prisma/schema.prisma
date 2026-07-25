@@ -99,6 +99,8 @@ model User {
   lostFoundItems               LostFoundItem[]               @relation("LostFoundPublisher")
   lostFoundClaims              LostFoundClaim[]              @relation("LostFoundClaimant")
   campusAssistantConversations CampusAssistantConversation[]
+  oauthAuthorizationCodes     OAuthAuthorizationCode[]
+  oauthAccessTokens           OAuthAccessToken[]
 }
 
 model CampusAssistantConversation {
@@ -1588,4 +1590,40 @@ model AdminDailyLogin {
   @@index([dateKey])
   @@index([dateKey, userId])
   @@index([userId, lastLoginAt])
+}
+
+model OAuthAuthorizationCode {
+  id                  String    @id @default(cuid())
+  codeHash            String    @unique
+  clientId            String
+  redirectUri         String
+  userId              Int
+  scope               String
+  codeChallenge       String
+  codeChallengeMethod String    @default("S256")
+  expiresAt            DateTime
+  usedAt              DateTime?
+  createdAt            DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([clientId, expiresAt])
+}
+
+model OAuthAccessToken {
+  id         String    @id @default(cuid())
+  tokenHash  String    @unique
+  clientId   String
+  userId     Int
+  scope      String
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([clientId, expiresAt])
 }

@@ -213,6 +213,157 @@ Vite 已代理以下路径到后端：
 - 生产环境默认关闭公开注册；`/api/auth/register` 仅在开发模式开放。
 - 学校统一认证登录走 `/api/auth/sso-begin` 与 `/api/auth/sso-login`。
 
+## Electron OAuth2 接口
+
+主站为 Electron 等公开客户端提供 Authorization Code + PKCE（S256）认证流程。Electron 不需要保存 `client_secret`，应使用系统浏览器打开授权地址，并使用本机回调地址接收授权结果。
+
+### 配置
+
+OAuth 客户端配置位于服务端环境变量：
+
+```env
+OAUTH_CLIENT_ID=cpu-electron
+OAUTH_ALLOWED_REDIRECT_URIS=http://127.0.0.1,http://localhost
+```
+
+`OAUTH_ALLOWED_REDIRECT_URIS` 使用逗号分隔。对于 `http://127.0.0.1` 和 `http://localhost`，服务端允许 Electron 使用随机本机端口，例如 `http://127.0.0.1:43127/callback`。其他地址应配置完整且固定的 origin，生产环境应只配置实际需要的回调 origin。
+
+AI 接口复用站点设置中的 `ai.review.apiUrl`、`ai.review.apiKey` 和 `ai.review.model`，不新增单独的 OAuth AI 密钥配置。AI API 密钥始终只保存在服务端，不能下发给 Electron。
+
+### 授权流程
+
+1. Electron 使用密码学安全随机数生成 `state` 和 `code_verifier`。
+2. 使用 SHA-256 和 Base64URL 编码生成 `code_challenge`。
+3. 通过系统浏览器打开 `/api/oauth/authorize`。
+4. 用户在主站完成登录后，服务端将 `code` 和原始 `state` 重定向到 Electron 回调地址。
+5. Electron 校验 `state`，然后调用 `/api/oauth/token` 并提交 `code_verifier`。
+6. 服务端返回 OAuth2 access token，Electron 使用 `Authorization: Bearer <access_token>` 调用其他接口。
+
+授权码有效期为 60 秒且只能使用一次。access token 当前有效期为 30 天。Electron 应使用系统安全存储，例如 Electron `safeStorage`，不要将 token 写入渲染进程的 `localStorage`。
+
+### `GET /api/oauth/authorize`
+
+授权端点要求用户已经登录。请求参数：
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `response_type` | 是 | 固定为 `code` |
+| `client_id` | 是 | 默认 `cpu-electron` |
+| `redirect_uri` | 是 | 已配置的回调 origin 下的地址 |
+| `scope` | 是 | 空格分隔，支持 `openid profile ai` |
+| `state` | 是 | Electron 生成的随机状态值 |
+| `code_challenge` | 是 | PKCE S256 challenge |
+| `code_challenge_method` | 是 | 固定为 `S256` |
+
+示例：
+
+```text
+GET /api/oauth/authorize?response_type=code&client_id=cpu-electron&redirect_uri=http%3A%2F%2F127.0.0.1%3A43127%2Fcallback&scope=openid%20profile%20ai&state=...&code_challenge=...&code_challenge_method=S256
+```
+
+授权成功后回调：
+
+```text
+http://127.0.0.1:43127/callback?code=...&state=...
+```
+
+失败时回调会携带 `error` 和 `state` 参数。Electron 必须先校验 `state`，再处理 `code`。
+
+### `POST /api/oauth/token`
+
+使用 `application/x-www-form-urlencoded` 或 JSON 提交：
+
+```json
+{
+  "grant_type": "authorization_code",
+  "code": "授权回调中的 code",
+  "redirect_uri": "http://127.0.0.1:43127/callback",
+  "client_id": "cpu-electron",
+  "code_verifier": "发起授权时生成的原始 verifier"
+}
+```
+
+成功响应遵循 OAuth2 标准格式，不使用站内通用响应包装：
+
+```json
+{
+  "access_token": "...",
+  "token_type": "Bearer",
+  "expires_in": 2592000,
+  "scope": "openid profile ai"
+}
+```
+
+### `GET /api/oauth/userinfo`
+
+请求头：
+
+```http
+Authorization: Bearer <access_token>
+```
+
+需要 `profile` scope。返回用户基础信息、用户等级、AI 每日额度、今日已用次数和剩余次数。`aiBalance` 表示当前自然日剩余的校园 AI 请求次数，不是金额余额，也不是 Token 余额。
+
+### `POST /api/oauth/revoke`
+
+Electron 可以主动撤销 access token：
+
+```json
+{
+  "token": "需要撤销的 access_token",
+  "client_id": "cpu-electron"
+}
+```
+
+接口始终返回 HTTP 200，避免通过响应差异泄露 token 是否存在。撤销后的 token 不能继续调用 OAuth 接口。
+
+### `POST /api/oauth/v1/chat/completions`
+
+这是面向外部客户端新增的 OpenAI Chat Completions 兼容代理接口，不是 `/api/search/assistant` 的直接复用。它复用站点 AI 上游配置和校园 AI 每日额度系统，但只接受 `user` 和 `assistant` 消息，不允许客户端提交 `system`、`developer` 或未知扩展字段；服务端仍会执行敏感话题拦截。
+
+当站点 AI URL 配置为 `/v1/responses` 时，服务端会自动将请求转换为 Responses API 的 `input` 格式；配置为 `/v1/chat/completions` 时使用 Chat Completions 的 `messages` 格式。服务端始终使用后台配置的模型和 API Key，并检查 `ai.review.enabled`。
+
+请求头：
+
+```http
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+请求体兼容常用 Chat Completions 字段：
+
+```json
+{
+  "model": "客户端可传入，但服务端始终使用站点配置中的模型",
+  "messages": [
+    { "role": "user", "content": "你好" }
+  ],
+  "temperature": 0.7,
+  "stream": false
+}
+```
+
+需要 `ai` scope。每次请求最多消耗 1 次当日额度，当前按请求次数计费，不按 Token 数量、字符数或响应长度计费：
+
+- 参数校验失败、令牌无效、scope 不足或额度不足：不扣额度。
+- 请求已扣额度后，上游 AI 返回失败或网络异常：退还本次额度。
+- 上游 AI 返回成功：保留本次扣减。
+- 流式请求当前同样按 1 次请求计算。
+
+流式响应会逐块转发，并设置 `X-Accel-Buffering: no` 与 `Cache-Control: no-cache, no-transform`，以避免常见反向代理缓存整段响应。
+
+每日额度由站点设置中的 `assistant.dailyQuotas` 根据用户等级决定。上游响应状态码、响应类型和响应内容会转发给 Electron；服务端不会把上游 API Key 返回给客户端。
+
+### Scope
+
+| Scope | 权限 |
+|---|---|
+| `openid` | 表示使用本站 OAuth2 身份 |
+| `profile` | 调用 `/api/oauth/userinfo` 获取用户等级、额度等信息 |
+| `ai` | 调用 `/api/oauth/v1/chat/completions` |
+
+建议 Electron 默认申请 `openid profile ai`，并在本地明确保存授权 scope。
+
 ## 常用脚本
 
 ### 根目录
