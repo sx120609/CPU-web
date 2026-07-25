@@ -5,8 +5,23 @@ import { useSiteStore } from "@/stores/site";
 import type { FeatureKey } from "@/api/site";
 
 const MainLayout = () => import("@/layouts/MainLayout.vue");
+export const loadHomeView = () => import("@/views/Home.vue");
+export const loadServicesView = () => import("@/views/services/Index.vue");
+export const loadProfileView = () => import("@/views/profile/Index.vue");
 export const loadJwxtView = () => import("@/views/jwxt/Index.vue");
 export const loadScheduleView = () => import("@/views/Schedule.vue");
+
+let primaryViewsPreload: Promise<unknown> | null = null;
+export function preloadPrimaryViews() {
+  if (!primaryViewsPreload) {
+    primaryViewsPreload = Promise.allSettled([
+      loadHomeView(),
+      loadServicesView(),
+      loadProfileView(),
+    ]);
+  }
+  return primaryViewsPreload;
+}
 
 let educationViewsPreload: Promise<unknown> | null = null;
 export function preloadEducationViews() {
@@ -80,7 +95,7 @@ export const router = createRouter({
       component: MainLayout,
       redirect: "/home",
       children: [
-        { path: "home", name: "home", component: () => import("@/views/Home.vue"), meta: { title: "首页", public: true } },
+        { path: "home", name: "home", component: loadHomeView, meta: { title: "首页", public: true } },
         { path: "forum", name: "forum", component: () => import("@/views/forum/Index.vue"), meta: { title: "论坛", public: true } },
         { path: "forum/hot", name: "forum-hot", component: () => import("@/views/forum/Feed.vue"), meta: { title: "热榜", public: true } },
         { path: "forum/latest", name: "forum-latest", component: () => import("@/views/forum/Feed.vue"), meta: { title: "最新内容", public: true } },
@@ -99,7 +114,7 @@ export const router = createRouter({
         { path: "lost-found", name: "lost-found", component: () => import("@/views/lostFound/Index.vue"), meta: { title: "失物招领", public: true } },
         { path: "coursereview", name: "coursereview", component: () => import("@/views/coursereview/Index.vue"), meta: { title: "课程点评", public: true } },
         { path: "coursereview/:id", name: "course", component: () => import("@/views/coursereview/Course.vue"), meta: { title: "课程", public: true } },
-        { path: "services", name: "services", component: () => import("@/views/services/Index.vue"), meta: { title: "校园服务", public: true } },
+        { path: "services", name: "services", component: loadServicesView, meta: { title: "校园服务", public: true } },
         { path: "services/tools", name: "service-tools", component: () => import("@/views/services/Tools.vue"), meta: { title: "校园小工具", public: true } },
         { path: "services/tools/voicehub", name: "service-voicehub", component: () => import("@/views/services/VoiceHubLaunch.vue"), meta: { title: "药苑之声", public: true, fullWidthContent: true } },
         { path: "services/tools/manage", name: "service-tools-manage", component: () => import("@/views/services/ToolManage.vue"), meta: { title: "小工具管理" } },
@@ -120,7 +135,7 @@ export const router = createRouter({
         { path: "search", name: "search", component: () => import("@/views/search/Result.vue"), meta: { title: "搜索结果", public: true } },
         { path: "messages", name: "messages", component: () => import("@/views/messages/Index.vue"), meta: { title: "消息中心" } },
         { path: "messages/qqbot-reminders", name: "message-qqbot-reminders", component: () => import("@/views/services/QqBotReminders.vue"), meta: { title: "小工具提醒规则" } },
-        { path: "profile", name: "profile", component: () => import("@/views/profile/Index.vue"), meta: { title: "我的" } },
+        { path: "profile", name: "profile", component: loadProfileView, meta: { title: "我的" } },
         { path: "sponsor-wall", name: "sponsor-wall", component: () => import("@/views/profile/SponsorWall.vue"), meta: { title: "鸣谢墙", public: true } },
         { path: "u/:id", name: "user", component: () => import("@/views/profile/User.vue"), meta: { title: "用户", public: true } },
         { path: "admin", name: "admin", component: () => import("@/views/admin/Index.vue"), meta: { title: "管理后台", requireMod: true } },

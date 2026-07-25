@@ -151,13 +151,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onBeforeUnmount, onMounted } from "vue";
+import { computed, ref, onBeforeUnmount, onMounted, watch } from "vue";
 import { Lock, Loading, Picture, Refresh, Right, Tools } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { useRouter } from "vue-router";
+import { useAuthStore } from "@/stores/auth";
 import { useJwxtStore } from "@/stores/jwxt";
 import { useSiteStore } from "@/stores/site";
 import { loadCreds, hasCreds as hasSavedCreds } from "@/utils/credCrypto";
+import { readViewCache, writeViewCache } from "@/utils/viewCache";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import IServicePane from "@/components/jwxt/IServicePane.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
@@ -166,6 +168,7 @@ import { serviceTools, type ServiceTool } from "@/data/serviceTools";
 import { toolsApi, type ToolMeta } from "@/api/tools";
 
 const jwxt = useJwxtStore();
+const auth = useAuthStore();
 const router = useRouter();
 const site = useSiteStore();
 const autoLoading = ref(false);
@@ -181,11 +184,13 @@ const toolsLoading = ref(false);
 const toolsError = ref("");
 let toolsLoadSeq = 0;
 let disposed = false;
+const toolsCacheKey = computed(() => `cpu-services-tools-v1:${auth.user?.id ? `user-${auth.user.id}` : "guest"}`);
 const toolAccessMap = computed(() => Object.fromEntries(toolMetas.value.map((item) => [item.code, item])));
 const visibleTools = computed(() => serviceTools.filter((tool) => toolAccessMap.value[tool.slug]?.isVisible !== false));
 
 onMounted(async () => {
   disposed = false;
+  restoreToolMetasCache();
   void loadToolMetas();
   jwxt.hydrate();
   hasCreds.value = hasSavedCreds();
@@ -212,21 +217,39 @@ onBeforeUnmount(() => {
   toolsLoadSeq += 1;
 });
 
+watch(toolsCacheKey, (next, previous) => {
+  if (disposed || next === previous) return;
+  toolsLoadSeq += 1;
+  toolMetas.value = [];
+  restoreToolMetasCache();
+  void loadToolMetas();
+});
+
 async function loadToolMetas() {
   const seq = ++toolsLoadSeq;
-  toolsLoading.value = true;
+  toolsLoading.value = !toolMetas.value.length;
   toolsError.value = "";
   try {
     const next = await toolsApi.tools({ suppressErrorMessage: true });
     if (seq !== toolsLoadSeq) return;
     toolMetas.value = next;
+    writeViewCache(toolsCacheKey.value, next);
   } catch (error) {
     if (seq !== toolsLoadSeq) return;
-    toolMetas.value = [];
-    toolsError.value = normalizeToolsError(error);
+    if (!toolMetas.value.length) toolsError.value = normalizeToolsError(error);
   } finally {
     if (seq === toolsLoadSeq) toolsLoading.value = false;
   }
+}
+
+function restoreToolMetasCache() {
+  const cached = readViewCache<ToolMeta[]>(
+    toolsCacheKey.value,
+    (value): value is ToolMeta[] => Array.isArray(value)
+      && value.every((item) => Boolean(item) && typeof item === "object" && typeof (item as ToolMeta).code === "string"),
+  );
+  if (cached) toolMetas.value = cached;
+  return cached;
 }
 
 function isLoginRequired(slug: string) {

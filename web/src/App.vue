@@ -443,6 +443,21 @@ html, body, #app {
   margin: 0;
 }
 
+/*
+ * Element Plus locks page scrolling for dialogs, drawers, image previews and
+ * message boxes by subtracting its measured scrollbar width from <body>.
+ * Android WebView uses overlay scrollbars, so that desktop compensation makes
+ * the page visibly narrower even though no layout space needs to be reserved.
+ */
+@media (max-width: 768px) {
+  body.el-popup-parent--hidden,
+  body.el-message-box-parent--hidden,
+  body.el-image-viewer-parent--hidden,
+  body.el-tour-parent--hidden {
+    width: 100% !important;
+  }
+}
+
 .in-app-tip {
   color: var(--cpu-text);
   font-size: 14px;

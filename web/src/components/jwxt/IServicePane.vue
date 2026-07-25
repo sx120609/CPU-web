@@ -124,7 +124,6 @@ const filterFav = ref<"" | "fav">("");
 const iconLoadState = reactive(new Map<string, "proxy" | "failed">());
 const FAVORITES_KEY = "cpu-iservice-favorite-overrides";
 const APPS_CACHE_KEY = "cpu-iservice-apps-cache-v1";
-const CACHE_TTL = 12 * 60 * 60 * 1000;
 let activeRequest: Promise<any> | null = null;
 let disposed = false;
 
@@ -146,8 +145,7 @@ async function reload(force = true) {
 
 async function loadApps(force = false) {
   if (disposed) return;
-  const cached = restoreAppsCache();
-  if (cached && !force && !isStale(cached.savedAt)) return;
+  restoreAppsCache();
   loading.value = force || !apps.value.length;
   try {
     const r: any = await fetchApps();
@@ -162,7 +160,7 @@ async function loadApps(force = false) {
     error.value = "";
   } catch (e: any) {
     if (disposed) return;
-    error.value = e?.message || "i 服务暂时不可用";
+    if (!apps.value.length) error.value = e?.message || "i 服务暂时不可用";
   } finally {
     if (!disposed) loading.value = false;
   }
@@ -177,10 +175,6 @@ function fetchApps() {
     () => { activeRequest = null; }
   );
   return activeRequest;
-}
-
-function isStale(savedAt: number) {
-  return !savedAt || Date.now() - savedAt > CACHE_TTL;
 }
 
 function readAppsCache(): { savedAt: number; apps: IServiceApp[] } | null {

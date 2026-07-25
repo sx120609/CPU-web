@@ -1,7 +1,7 @@
 import { createApp } from "vue";
 import { createPinia } from "pinia";
 import App from "./App.vue";
-import { preloadEducationViews, router } from "./router";
+import { preloadEducationViews, preloadPrimaryViews, router } from "./router";
 import { useAuthStore } from "./stores/auth";
 import { useJwxtStore } from "./stores/jwxt";
 import { useSiteStore } from "./stores/site";
@@ -260,7 +260,10 @@ function installJwxtSessionBootstrapTriggers() {
 }
 
 function scheduleEducationViewPreload() {
-  const run = () => { void preloadEducationViews(); };
+  const run = () => {
+    void preloadEducationViews();
+    void preloadPrimaryViews();
+  };
   const requestIdleCallback = (window as Window & {
     requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
   }).requestIdleCallback;

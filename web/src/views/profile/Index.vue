@@ -1,5 +1,5 @@
 <template>
-  <div class="profile" v-loading="profileLoading">
+  <div class="profile" v-loading="profileLoading && !user">
     <div v-if="profileLoadError" class="cpu-card profile-load-error">
       <el-empty :description="profileLoadError">
         <el-button type="primary" :loading="profileLoading" @click="loadProfilePage">重试</el-button>
@@ -55,6 +55,28 @@
           <el-icon><component :is="item.icon" /></el-icon>
           <span>{{ item.label }}</span>
         </button>
+      </div>
+    </div>
+
+    <div class="cpu-card user-group-card">
+      <div>
+        <h3 class="cpu-section-title">加入用户 QQ 群</h3>
+        <p>遇到课表显示问题，或想反馈建议，可以加入用户群。</p>
+        <strong>{{ USER_QQ_GROUP }}</strong>
+      </div>
+      <div class="user-group-actions">
+        <el-button type="primary" @click="joinUserGroup">
+          <el-icon><ChatDotRound /></el-icon>
+          加入群聊
+        </el-button>
+        <el-button plain @click="openQqBotManage">
+          <el-icon><Bell /></el-icon>
+          QQBot 管理
+        </el-button>
+        <el-button plain @click="copyUserGroup">
+          <el-icon><CopyDocument /></el-icon>
+          复制群号
+        </el-button>
       </div>
     </div>
 
@@ -261,46 +283,27 @@
       </div>
     </div>
 
-    <div class="cpu-card user-group-card">
-      <div>
-        <h3 class="cpu-section-title">加入用户 QQ 群</h3>
-        <p>遇到课表显示问题，或想反馈建议，可以加入用户群。</p>
-        <strong>{{ USER_QQ_GROUP }}</strong>
-      </div>
-      <div class="user-group-actions">
-        <el-button type="primary" @click="joinUserGroup">
-          <el-icon><ChatDotRound /></el-icon>
-          加入群聊
-        </el-button>
-        <el-button plain @click="openQqBotManage">
-          <el-icon><Bell /></el-icon>
-          QQBot 管理
-        </el-button>
-        <el-button plain @click="copyUserGroup">
-          <el-icon><CopyDocument /></el-icon>
-          复制群号
-        </el-button>
-      </div>
-    </div>
-
     <div class="cpu-card">
       <h3 class="cpu-section-title">我发布的帖子</h3>
-      <el-empty v-if="!myTopics.length" description="还没有发过帖子" />
-      <div
-        v-for="t in myTopics"
-        :key="t.id"
-        class="topic-line"
-        role="button"
-        tabindex="0"
-        @click="openMyTopic(t.id)"
-        @keydown.enter.prevent="openMyTopic(t.id)"
-        @keydown.space.prevent="openMyTopic(t.id)"
-      >
-        <span class="tag" :style="{ background: t.board?.color || '#168776' }">{{ t.board?.name }}</span>
-        <span v-if="t.isAnonymous" class="anon-tag">匿名</span>
-        <span class="title">{{ t.title }}</span>
-        <span class="meta">{{ fmtRelative(t.createdAt) }}</span>
-      </div>
+      <el-skeleton v-if="!profileSnapshotReady" :rows="2" animated />
+      <el-empty v-else-if="!myTopics.length" description="还没有发过帖子" />
+      <template v-else>
+        <div
+          v-for="t in myTopics"
+          :key="t.id"
+          class="topic-line"
+          role="button"
+          tabindex="0"
+          @click="openMyTopic(t.id)"
+          @keydown.enter.prevent="openMyTopic(t.id)"
+          @keydown.space.prevent="openMyTopic(t.id)"
+        >
+          <span class="tag" :style="{ background: t.board?.color || '#168776' }">{{ t.board?.name }}</span>
+          <span v-if="t.isAnonymous" class="anon-tag">匿名</span>
+          <span class="title">{{ t.title }}</span>
+          <span class="meta">{{ fmtRelative(t.createdAt) }}</span>
+        </div>
+      </template>
     </div>
 
     <el-dialog v-model="editing" title="编辑资料" width="420" :close-on-click-modal="!saving" :close-on-press-escape="!saving" :show-close="!saving">
@@ -369,6 +372,13 @@ import UserAvatar from "@/components/common/UserAvatar.vue";
 import { fmtDate, fmtRelative } from "@/utils/format";
 import { compressImageFile, normalizeImageUploadError } from "@/utils/imageUpload";
 import { copyText, openUserGroup, USER_QQ_GROUP } from "@/utils/userGroup";
+import { readViewCache, writeViewCache } from "@/utils/viewCache";
+
+interface ProfileViewCache {
+  topics: any[];
+  boards: Board[];
+  sponsorOptions: SponsorOptions;
+}
 
 const auth = useAuthStore();
 const site = useSiteStore();
@@ -394,6 +404,8 @@ const sponsorConfirmOpen = ref(false);
 const sponsorOrders = ref<any[]>([]);
 const profileLoading = ref(false);
 const profileLoadError = ref("");
+const profileSnapshotReady = ref(false);
+const sponsorOptionsCached = ref(false);
 const sponsorOptions = reactive<SponsorOptions>({
   enabled: false,
   payTypes: [],
@@ -415,6 +427,7 @@ const passwordDialog = ref(false);
 const savingPw = ref(false);
 const pwForm = reactive({ oldPassword: "", newPassword: "", confirm: "" });
 const anonymousBoards = computed(() => boards.value.filter((board) => board.anonymousEnabled));
+const profileCacheKey = computed(() => user.value?.id ? `cpu-profile-view-v1:user-${user.value.id}` : "");
 const anonymousStatusText = computed(() => {
   const state = user.value?.anonymousState;
   if (!state) return "—";
@@ -468,15 +481,18 @@ watch(editing, (v) => {
 
 async function loadProfilePage() {
   const seq = ++profileLoadSeq;
-  profileLoading.value = true;
+  profileLoading.value = !auth.user;
   profileLoadError.value = "";
+  let restoredFromCache = false;
   try {
     if (!auth.user) await auth.fetchMe();
     if (seq !== profileLoadSeq) return;
     if (!auth.user) {
       profileLoadError.value = "登录状态已失效，请重新登录";
+      profileSnapshotReady.value = true;
       return;
     }
+    restoredFromCache = restoreProfileCache();
     if (!site.loaded) await site.fetch();
     if (seq !== profileLoadSeq) return;
     await handleSponsorReturnFromQuery();
@@ -486,9 +502,10 @@ async function loadProfilePage() {
       boardApi.list({ suppressErrorMessage: true }),
     ]);
     if (seq !== profileLoadSeq) return;
-    myTopics.value = topicResult.status === "fulfilled" ? topicResult.value : [];
-    boards.value = boardResult.status === "fulfilled" ? boardResult.value : [];
-    if (topicResult.status === "rejected" || boardResult.status === "rejected") {
+    if (topicResult.status === "fulfilled") myTopics.value = topicResult.value;
+    if (boardResult.status === "fulfilled") boards.value = boardResult.value;
+    profileSnapshotReady.value = true;
+    if (!restoredFromCache && (topicResult.status === "rejected" || boardResult.status === "rejected")) {
       profileLoadError.value = "部分个人资料加载失败，已显示可用内容";
     }
 
@@ -496,9 +513,11 @@ async function loadProfilePage() {
       (site.features.sponsor || (user.value?.sponsorAmount ?? 0) > 0) ? loadSponsorOptions() : Promise.resolve(),
       loadSponsorOrders(),
     ]);
+    if (seq === profileLoadSeq) writeProfileCache();
   } catch (error) {
     if (seq !== profileLoadSeq) return;
-    profileLoadError.value = normalizeProfileLoadError(error);
+    profileSnapshotReady.value = true;
+    if (!restoredFromCache) profileLoadError.value = normalizeProfileLoadError(error);
   } finally {
     if (seq === profileLoadSeq) profileLoading.value = false;
   }
@@ -528,10 +547,11 @@ async function saveEdit() {
 async function loadSponsorOptions() {
   try {
     Object.assign(sponsorOptions, await paymentsApi.sponsorOptions({ suppressErrorMessage: true }));
+    sponsorOptionsCached.value = true;
     if (sponsorOptions.amounts.length) sponsorAmount.value = String(sponsorOptions.amounts[1] ?? sponsorOptions.amounts[0]);
     if (sponsorOptions.payTypes.length) sponsorPayType.value = sponsorOptions.payTypes[0];
   } catch {
-    sponsorOptions.enabled = false;
+    if (!sponsorOptionsCached.value) sponsorOptions.enabled = false;
   }
 }
 
@@ -539,8 +559,42 @@ async function loadSponsorOrders() {
   try {
     sponsorOrders.value = (await paymentsApi.sponsorOrders({ page: 1, size: 10, status: "paid" }, { suppressErrorMessage: true })).list;
   } catch {
-    sponsorOrders.value = [];
+    /* 赞助记录是补充内容；失败时保留当前页面，避免后台刷新造成闪烁。 */
   }
+}
+
+function isProfileViewCache(value: unknown): value is ProfileViewCache {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<ProfileViewCache>;
+  return Array.isArray(candidate.topics)
+    && Array.isArray(candidate.boards)
+    && Boolean(candidate.sponsorOptions)
+    && typeof candidate.sponsorOptions === "object"
+    && Array.isArray(candidate.sponsorOptions.amounts)
+    && Array.isArray(candidate.sponsorOptions.payTypes);
+}
+
+function restoreProfileCache() {
+  if (!profileCacheKey.value) return false;
+  const cached = readViewCache(profileCacheKey.value, isProfileViewCache);
+  if (!cached) return false;
+  myTopics.value = cached.topics;
+  boards.value = cached.boards;
+  Object.assign(sponsorOptions, cached.sponsorOptions);
+  sponsorOptionsCached.value = true;
+  profileSnapshotReady.value = true;
+  if (sponsorOptions.amounts.length) sponsorAmount.value = String(sponsorOptions.amounts[1] ?? sponsorOptions.amounts[0]);
+  if (sponsorOptions.payTypes.length) sponsorPayType.value = sponsorOptions.payTypes[0];
+  return true;
+}
+
+function writeProfileCache() {
+  if (!profileCacheKey.value) return;
+  writeViewCache(profileCacheKey.value, {
+    topics: myTopics.value,
+    boards: boards.value,
+    sponsorOptions: { ...sponsorOptions },
+  } satisfies ProfileViewCache);
 }
 
 async function handleSponsorReturnFromQuery() {
@@ -1287,12 +1341,26 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
     gap: 6px;
   }
 
-  .trust-head {
-    flex-direction: column;
+  .trust-card {
+    gap: 10px;
   }
 
+  .trust-head {
+    align-items: center;
+    gap: 10px;
+  }
+
+  .trust-sub,
   .trust-inline-summary {
-    gap: 6px;
+    display: none;
+  }
+
+  .trust-score {
+    width: auto;
+    min-width: 58px;
+    padding: 7px 10px;
+    border-radius: 10px;
+    font-size: 20px;
   }
 
   .sponsor-main {
@@ -1352,28 +1420,90 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
     font-size: 12px;
   }
 
-  .trust-score {
-    min-width: 0;
-    width: 100%;
+  .trust-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
   }
 
-  .trust-grid,
-  .trust-breakdown {
-    grid-template-columns: 1fr;
+  .trust-item {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 8px 9px;
+    border-radius: 9px;
+  }
+
+  .trust-item span {
+    margin-bottom: 0;
+    white-space: nowrap;
+  }
+
+  .trust-item b {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .trust-section {
+    padding: 9px 10px;
+    border-radius: 10px;
   }
 
   .trust-section-head {
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
+    gap: 8px;
+  }
+
+  .trust-section-tip {
+    display: none;
+  }
+
+  .trust-section-head .el-button {
+    min-height: 30px;
+    margin-left: auto;
+    padding: 4px 2px;
+  }
+
+  .trust-section-body {
+    margin-top: 8px;
+  }
+
+  .trust-breakdown {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .trust-row {
+    padding-bottom: 7px;
   }
 
   .user-group-card {
     align-items: stretch;
     flex-direction: column;
+    gap: 10px;
   }
 
   .user-group-actions {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .user-group-actions .el-button {
+    min-width: 0;
+    padding-inline: 6px;
+    font-size: 12px;
+  }
+
+  .user-group-actions .el-button :deep(span) {
+    min-width: 0;
+    gap: 3px;
+    white-space: nowrap;
   }
 
   .topic-line {
