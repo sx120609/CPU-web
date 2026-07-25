@@ -209,7 +209,7 @@ const resultCount = computed(() => (
 watch(() => route.query.q, async (value) => {
   const keyword = String(value ?? "").trim();
   q.value = keyword;
-  keywordInput.value = keyword;
+  keywordInput.value = "";
   if (!keyword) {
     result.value = null;
     searchError.value = "";
