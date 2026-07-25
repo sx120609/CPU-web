@@ -186,7 +186,7 @@
     <el-drawer
       v-model="mobileMenuOpen"
       direction="btt"
-      size="min(92dvh, 640px)"
+      size="auto"
       class="mobile-drawer"
       title="快捷入口"
     >
@@ -1356,7 +1356,8 @@ function setAppearanceMode(command: string | number | object) {
 
   :deep(.mobile-drawer) {
     border-radius: 18px 18px 0 0;
-    height: min(92dvh, 640px) !important;
+    height: auto !important;
+    max-height: min(92dvh, 640px);
     padding-bottom: env(safe-area-inset-bottom);
   }
 
@@ -1404,7 +1405,8 @@ function setAppearanceMode(command: string | number | object) {
   :deep(.mobile-drawer .el-drawer__body) {
     display: flex;
     flex-direction: column;
-    overflow: visible;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .dlg-tip {
