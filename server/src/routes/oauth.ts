@@ -9,6 +9,8 @@ import { consumeCampusAssistantQuota, getCampusAssistantQuotaStatus, refundCampu
 import { getSiteConfig } from "../services/siteSettings";
 import { isCampusAssistantPublicTopicRestricted } from "../services/campusAssistant";
 import { securityRateLimit } from "../middleware/securityRateLimit";
+import { buildUserTrustSnapshot } from "../services/userTrust";
+import { detectAiJsonApiMode, normalizeAiJsonApiUrl } from "../services/aiJsonApi";
 import { Errors, ok } from "../utils/response";
 
 export const oauthRouter = Router();
@@ -200,8 +202,7 @@ oauthRouter.get("/userinfo", async (req, res, next) => {
         id: token.user.id,
         nickname: token.user.nickname,
         avatar: token.user.avatar,
-        reputation: token.user.reputation,
-        reputationLevel: resolveReputationLevel(token.user.reputation),
+        ...buildUserTrustSnapshot(token.user),
       },
       level: quota.level,
       levelName: quota.levelName,
@@ -214,33 +215,26 @@ oauthRouter.get("/userinfo", async (req, res, next) => {
   }
 });
 
-function resolveReputationLevel(reputation: number) {
-  if (reputation >= 120) return { level: 5, name: "校园传说" };
-  if (reputation >= 90) return { level: 4, name: "资深成员" };
-  if (reputation >= 60) return { level: 3, name: "活跃同学" };
-  if (reputation >= 30) return { level: 2, name: "渐入佳境" };
-  return { level: 1, name: "初来乍到" };
-}
-
 oauthRouter.post("/v1/chat/completions", securityRateLimit("oauth-ai", 20, 60_000), async (req, res, next) => {
   let reservationDateKey = "";
   let userId = 0;
   let quotaRefunded = false;
   let timeout: ReturnType<typeof setTimeout> | undefined;
+  let upstreamStarted = false;
   try {
     const token = await loadAccessToken(req);
     userId = token.userId;
     if (!token.scope.split(/\s+/).includes("ai")) throw Errors.forbidden("token 没有 ai scope");
     const body = chatBodySchema.parse(req.body);
     const lastUserMessage = [...body.messages].reverse().find((message) => message.role === "user")?.content || "";
-    if (isCampusAssistantPublicTopicRestricted(String(lastUserMessage))) {
+    if (isCampusAssistantPublicTopicRestricted(String(lastUserMessage), body.messages)) {
       throw Errors.forbidden("这个话题不适合在本站展开");
     }
     const siteConfig = getSiteConfig();
-    const endpoint = siteConfig.aiReviewApiUrl;
+    const endpoint = normalizeAiJsonApiUrl(siteConfig.aiReviewApiUrl, "https://api.openai.com/v1/chat/completions");
     const apiKey = siteConfig.aiReviewApiKey;
     const model = siteConfig.aiReviewModel;
-    if (!endpoint || !apiKey) throw Errors.server("AI 服务尚未配置");
+    if (!siteConfig.aiReviewEnabled || !endpoint || !apiKey || !model) throw Errors.server("AI 服务尚未配置或已关闭");
     const consumedQuota = await consumeCampusAssistantQuota(token.userId);
     reservationDateKey = consumedQuota.dateKey;
     const controller = new AbortController();
@@ -252,14 +246,16 @@ oauthRouter.post("/v1/chat/completions", securityRateLimit("oauth-ai", 20, 60_00
     const upstream = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ ...body, model }),
+      body: JSON.stringify(buildOAuthAiRequestBody(body, model, endpoint)),
       signal: controller.signal,
     });
-    clearTimeout(timeout);
-    timeout = undefined;
+    upstreamStarted = true;
     res.status(upstream.status);
     const contentType = upstream.headers.get("content-type");
     if (contentType) res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("X-Accel-Buffering", "no");
+    if (body.stream) res.flushHeaders();
     if (!upstream.ok) {
       await refundCampusAssistantQuota(token.userId, reservationDateKey);
       quotaRefunded = true;
@@ -274,18 +270,34 @@ oauthRouter.post("/v1/chat/completions", securityRateLimit("oauth-ai", 20, 60_00
         }
       } finally {
         responseCompleted = true;
+        if (timeout) clearTimeout(timeout);
+        timeout = undefined;
         reader.releaseLock();
         if (!res.writableEnded) res.end();
       }
       return;
     }
     responseCompleted = true;
+    if (timeout) clearTimeout(timeout);
+    timeout = undefined;
     return res.send(Buffer.from(await upstream.arrayBuffer()));
   } catch (error) {
     if (timeout) clearTimeout(timeout);
-    if (reservationDateKey && !quotaRefunded) {
+    if (reservationDateKey && !quotaRefunded && !upstreamStarted) {
       await refundCampusAssistantQuota(userId, reservationDateKey).catch(() => {});
     }
     next(error);
   }
 });
+
+function buildOAuthAiRequestBody(body: z.infer<typeof chatBodySchema>, model: string, endpoint: string) {
+  if (detectAiJsonApiMode(endpoint) === "responses") {
+    return {
+      model,
+      input: body.messages.map((message) => ({ role: message.role, content: message.content })),
+      ...(body.temperature === undefined ? {} : { temperature: body.temperature }),
+      ...(body.stream === undefined ? {} : { stream: body.stream }),
+    };
+  }
+  return { ...body, model };
+}

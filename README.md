@@ -321,6 +321,8 @@ Electron 可以主动撤销 access token：
 
 这是面向外部客户端新增的 OpenAI Chat Completions 兼容代理接口，不是 `/api/search/assistant` 的直接复用。它复用站点 AI 上游配置和校园 AI 每日额度系统，但只接受 `user` 和 `assistant` 消息，不允许客户端提交 `system`、`developer` 或未知扩展字段；服务端仍会执行敏感话题拦截。
 
+当站点 AI URL 配置为 `/v1/responses` 时，服务端会自动将请求转换为 Responses API 的 `input` 格式；配置为 `/v1/chat/completions` 时使用 Chat Completions 的 `messages` 格式。服务端始终使用后台配置的模型和 API Key，并检查 `ai.review.enabled`。
+
 请求头：
 
 ```http
@@ -347,6 +349,8 @@ Content-Type: application/json
 - 请求已扣额度后，上游 AI 返回失败或网络异常：退还本次额度。
 - 上游 AI 返回成功：保留本次扣减。
 - 流式请求当前同样按 1 次请求计算。
+
+流式响应会逐块转发，并设置 `X-Accel-Buffering: no` 与 `Cache-Control: no-cache, no-transform`，以避免常见反向代理缓存整段响应。
 
 每日额度由站点设置中的 `assistant.dailyQuotas` 根据用户等级决定。上游响应状态码、响应类型和响应内容会转发给 Electron；服务端不会把上游 API Key 返回给客户端。
 
