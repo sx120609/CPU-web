@@ -27,7 +27,13 @@
         </div>
       </div>
 
-      <div v-else ref="conversationRef" class="conversation" aria-live="polite">
+      <div
+        v-else
+        ref="conversationRef"
+        class="conversation"
+        aria-live="polite"
+        @scroll.passive="handleConversationScroll"
+      >
         <article
           v-for="message in messages"
           :key="message.id"
@@ -70,6 +76,65 @@
             </div>
           </div>
         </article>
+
+        <section v-if="q" class="mobile-related-results" aria-label="站内聚合搜索结果">
+          <div class="mobile-related-head">
+            <strong>站内搜索</strong>
+            <span v-if="result">找到 {{ resultCount }} 条</span>
+            <span v-else-if="searchLoading">正在搜索…</span>
+            <button v-else-if="searchError" type="button" @click="reloadSearch">重试</button>
+          </div>
+
+          <div v-if="searchLoading && !result" class="mobile-related-state">正在聚合帖子、课程和服务…</div>
+          <div v-else-if="searchError && !result" class="mobile-related-state">{{ searchError }}</div>
+
+          <template v-else-if="result">
+            <div v-if="result.services.length" class="mobile-result-group">
+              <span class="mobile-result-label">入口与服务</span>
+              <button
+                v-for="service in result.services"
+                :key="`mobile-service-${service.id}`"
+                type="button"
+                class="mobile-result-row"
+                @click="open(service)"
+              >
+                <span class="mobile-result-icon">{{ service.icon || "🔗" }}</span>
+                <span>
+                  <strong>{{ service.name }}</strong>
+                  <small>{{ service.description }}</small>
+                </span>
+                <el-icon><Right /></el-icon>
+              </button>
+            </div>
+
+            <div v-if="result.topics.length" class="mobile-result-group">
+              <span class="mobile-result-label">帖子与公告</span>
+              <TopicListItem v-for="topic in result.topics" :key="`mobile-topic-${topic.id}`" :topic="topic" />
+            </div>
+
+            <div v-if="result.courses.length" class="mobile-result-group">
+              <span class="mobile-result-label">课程</span>
+              <button
+                v-for="course in result.courses"
+                :key="`mobile-course-${course.id}`"
+                type="button"
+                class="mobile-result-row"
+                @click="openCourse(course.id)"
+              >
+                <span class="mobile-result-icon">📚</span>
+                <span>
+                  <strong>{{ course.name }}</strong>
+                  <small>{{ course.code }}</small>
+                </span>
+                <el-icon><Right /></el-icon>
+              </button>
+            </div>
+
+            <div v-if="!resultCount && !searchLoading" class="mobile-related-state">
+              没有找到匹配的站内内容，可以换个关键词再试。
+            </div>
+          </template>
+        </section>
       </div>
 
       <div v-if="assistantError && !assistantLoading" class="assistant-error">
@@ -77,7 +142,7 @@
         <el-button text type="primary" @click="retryAssistant">重试</el-button>
       </div>
 
-      <div class="assistant-form">
+      <div class="assistant-form" @pointerdown.capture="captureConversationAnchor">
         <el-input
           v-model="keywordInput"
           type="textarea"
@@ -86,6 +151,8 @@
           maxlength="500"
           placeholder="给拾间AI发消息"
           @keydown="handleComposerKeydown"
+          @focus="handleComposerFocus"
+          @blur="handleComposerBlur"
         />
         <button
           type="button"
@@ -280,6 +347,13 @@ let scrollFrame = 0;
 let cloudSyncTimer = 0;
 let pendingCloudSession: ConversationSession | null = null;
 let firstRouteSync = true;
+let conversationAnchorScrollTop: number | null = null;
+let conversationAnchorLockUntil = 0;
+let conversationAnchorFrame = 0;
+let conversationAnchorReleaseTimer = 0;
+let composerFocused = false;
+let conversationAnchorRestoring = false;
+const conversationAnchorTimers: number[] = [];
 
 const welcomePrompts = ["怎么查宿舍电费？", "打开药苑之声", "我的课表在哪里？"];
 const resultCount = computed(() => (
@@ -296,6 +370,8 @@ const historyCaption = computed(() => {
 
 onMounted(() => {
   if (auth.isLoggedIn) void hydrateCloudSessions();
+  window.visualViewport?.addEventListener("resize", handleComposerViewportChange);
+  window.visualViewport?.addEventListener("scroll", handleComposerViewportChange);
 });
 
 watch(() => route.query.q, async (value) => {
@@ -341,6 +417,8 @@ async function runQuery(keyword: string) {
   const history = messages.value
     .slice(-12)
     .map(({ role, content }) => ({ role, content }));
+  result.value = null;
+  searchError.value = "";
   ensureActiveConversation(keyword);
   messages.value.push({ id: ++messageSeq, role: "user", content: keyword });
   persistActiveConversation();
@@ -352,7 +430,7 @@ async function runQuery(keyword: string) {
 }
 
 async function reloadSearch() {
-  const keyword = q.value.trim();
+  const keyword = normalizeAggregateSearchQuery(q.value);
   if (!keyword) return;
   const seq = ++searchSeq;
   searchLoading.value = true;
@@ -365,6 +443,19 @@ async function reloadSearch() {
   } finally {
     if (seq === searchSeq) searchLoading.value = false;
   }
+}
+
+function normalizeAggregateSearchQuery(input: string) {
+  const original = input.trim().slice(0, 100);
+  if (!original) return "";
+  let keyword = original
+    .replace(/^(?:我想|我要|请|麻烦)?(?:帮我)?(?:找|搜索|查找|看看)(?:一些|一下)?/u, "")
+    .replace(/^(?:和|与|关于)/u, "")
+    .replace(/(?:有关|相关)(?:的)?(?:帖子|内容|信息)?[。！？?!]*$/u, "")
+    .replace(/(?:的)?(?:帖子|内容|信息)[。！？?!]*$/u, "")
+    .trim();
+  if (!keyword || keyword.length > 30) keyword = original;
+  return keyword;
 }
 
 async function askAssistant(keyword: string, history: CampusAssistantMessage[]) {
@@ -427,6 +518,94 @@ function handleComposerKeydown(event: Event | KeyboardEvent) {
   if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
   event.preventDefault();
   void submitSearch();
+}
+
+function captureConversationAnchor() {
+  if (!isMobileComposerViewport()) return;
+  const element = conversationRef.value;
+  if (!element) return;
+  conversationAnchorScrollTop = element.scrollTop;
+}
+
+function handleComposerFocus() {
+  if (!isMobileComposerViewport()) return;
+  if (conversationAnchorScrollTop === null) captureConversationAnchor();
+  composerFocused = true;
+  conversationAnchorLockUntil = performance.now() + 520;
+  window.clearTimeout(conversationAnchorReleaseTimer);
+  scheduleConversationAnchorRestore();
+}
+
+function handleComposerBlur() {
+  if (!composerFocused) return;
+  conversationAnchorLockUntil = performance.now() + 420;
+  scheduleConversationAnchorRestore();
+  window.clearTimeout(conversationAnchorReleaseTimer);
+  conversationAnchorReleaseTimer = window.setTimeout(() => {
+    releaseConversationAnchor();
+  }, 460);
+}
+
+function handleComposerViewportChange() {
+  if (!composerFocused || conversationAnchorScrollTop === null) return;
+  scheduleConversationAnchorRestore();
+}
+
+function handleConversationScroll() {
+  if (
+    !composerFocused
+    || conversationAnchorRestoring
+    || performance.now() < conversationAnchorLockUntil
+  ) return;
+  const element = conversationRef.value;
+  if (element) conversationAnchorScrollTop = element.scrollTop;
+}
+
+function scheduleConversationAnchorRestore() {
+  clearConversationAnchorTimers();
+  for (const delay of [0, 90, 220, 380]) {
+    conversationAnchorTimers.push(window.setTimeout(restoreConversationAnchor, delay));
+  }
+}
+
+function restoreConversationAnchor() {
+  if (conversationAnchorScrollTop === null) return;
+  if (conversationAnchorFrame) cancelAnimationFrame(conversationAnchorFrame);
+  conversationAnchorFrame = requestAnimationFrame(() => {
+    conversationAnchorFrame = 0;
+    void nextTick(() => {
+      const element = conversationRef.value;
+      if (!element || conversationAnchorScrollTop === null) return;
+      conversationAnchorRestoring = true;
+      const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+      element.scrollTop = Math.min(conversationAnchorScrollTop, maxScrollTop);
+      requestAnimationFrame(() => {
+        conversationAnchorRestoring = false;
+      });
+    });
+  });
+}
+
+function releaseConversationAnchor() {
+  composerFocused = false;
+  conversationAnchorScrollTop = null;
+  conversationAnchorLockUntil = 0;
+  conversationAnchorRestoring = false;
+  window.clearTimeout(conversationAnchorReleaseTimer);
+  conversationAnchorReleaseTimer = 0;
+  clearConversationAnchorTimers();
+  if (conversationAnchorFrame) cancelAnimationFrame(conversationAnchorFrame);
+  conversationAnchorFrame = 0;
+}
+
+function clearConversationAnchorTimers() {
+  while (conversationAnchorTimers.length) {
+    window.clearTimeout(conversationAnchorTimers.pop());
+  }
+}
+
+function isMobileComposerViewport() {
+  return window.matchMedia("(max-width: 768px)").matches;
 }
 
 async function startNewConversation() {
@@ -529,12 +708,17 @@ function cancelActiveAssistant() {
 }
 
 function scrollConversation() {
+  releaseConversationAnchor();
   if (scrollFrame) cancelAnimationFrame(scrollFrame);
   scrollFrame = requestAnimationFrame(() => {
     scrollFrame = 0;
     void nextTick(() => {
       const element = conversationRef.value;
-      if (element) element.scrollTop = element.scrollHeight;
+      if (!element) return;
+      const lastMessage = element.querySelector<HTMLElement>(".message:last-of-type");
+      element.scrollTop = lastMessage
+        ? Math.max(0, lastMessage.offsetTop + lastMessage.offsetHeight - element.clientHeight + 12)
+        : element.scrollHeight;
     });
   });
 }
@@ -758,6 +942,9 @@ function openCourse(id: number) {
 onBeforeUnmount(() => {
   cancelActiveAssistant();
   if (scrollFrame) cancelAnimationFrame(scrollFrame);
+  releaseConversationAnchor();
+  window.visualViewport?.removeEventListener("resize", handleComposerViewportChange);
+  window.visualViewport?.removeEventListener("scroll", handleComposerViewportChange);
   window.clearTimeout(cloudSyncTimer);
   if (pendingCloudSession) void flushCloudSync();
 });
@@ -922,11 +1109,21 @@ onBeforeUnmount(() => {
   background: var(--cpu-surface-subtle);
   border: 1px solid var(--cpu-border-soft);
 }
+.message--user .message-label {
+  display: none;
+}
 .message--user .message-bubble {
-  color: #fff;
-  background: var(--cpu-primary);
-  border-color: var(--cpu-primary);
-  border-bottom-right-radius: 4px;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--cpu-text);
+  background: transparent;
+  box-shadow: none;
+  text-align: right;
+}
+.message--user .message-bubble p {
+  font-weight: 650;
 }
 .message--assistant .message-bubble {
   border-bottom-left-radius: 4px;
@@ -1150,6 +1347,9 @@ onBeforeUnmount(() => {
   text-align: center;
   font-size: 13px;
 }
+.mobile-related-results {
+  display: none;
+}
 
 :global(.assistant-history-drawer) {
   color: var(--cpu-text);
@@ -1316,8 +1516,8 @@ onBeforeUnmount(() => {
   .conversation {
     min-height: 0;
     max-height: none;
-    gap: 12px;
-    padding: 8px 2px 10px;
+    gap: 17px;
+    padding: 10px 2px 12px;
     scrollbar-gutter: auto;
   }
   .message {
@@ -1341,14 +1541,14 @@ onBeforeUnmount(() => {
   }
   .message-bubble p {
     font-size: 14px;
-    line-height: 1.62;
+    line-height: 1.7;
   }
   .message--user .message-bubble {
-    padding: 8px 12px;
-    border-color: rgba(20, 143, 123, 0.22);
-    border-radius: 17px 17px 5px 17px;
+    padding: 2px 1px;
+    border: 0;
+    border-radius: 0;
     color: var(--cpu-text);
-    background: rgba(20, 143, 123, 0.09);
+    background: transparent;
     box-shadow: none;
   }
   .message--user .message-bubble p {
@@ -1356,7 +1556,7 @@ onBeforeUnmount(() => {
   }
   .action-list {
     gap: 6px;
-    margin-top: 9px;
+    margin-top: 12px;
   }
   .action-card {
     padding: 9px 10px;
@@ -1372,9 +1572,99 @@ onBeforeUnmount(() => {
   .suggestions {
     flex-wrap: wrap;
     gap: 6px;
-    margin: 9px 0 0;
+    margin: 11px 0 0;
     padding: 0;
     overflow: visible;
+  }
+  .mobile-related-results {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 3px;
+    padding: 16px 2px 4px;
+    border-top: 1px solid var(--cpu-border-soft);
+  }
+  .mobile-related-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .mobile-related-head strong {
+    font-size: 15px;
+  }
+  .mobile-related-head span,
+  .mobile-related-head button,
+  .mobile-related-state {
+    color: var(--cpu-text-muted);
+    font: inherit;
+    font-size: 11px;
+  }
+  .mobile-related-head button {
+    padding: 0;
+    border: 0;
+    color: var(--cpu-primary);
+    background: transparent;
+  }
+  .mobile-related-state {
+    padding: 12px 4px;
+    text-align: center;
+  }
+  .mobile-result-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .mobile-result-label {
+    color: var(--cpu-text-muted);
+    font-size: 11px;
+  }
+  .mobile-result-row {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 9px;
+    padding: 10px;
+    border: 1px solid var(--cpu-border-soft);
+    border-radius: 12px;
+    color: var(--cpu-text);
+    background: var(--cpu-card);
+    font: inherit;
+    text-align: left;
+  }
+  .mobile-result-row > span:nth-child(2) {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .mobile-result-row strong {
+    font-size: 13px;
+  }
+  .mobile-result-row small {
+    margin-top: 2px;
+    color: var(--cpu-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+  }
+  .mobile-result-icon {
+    flex: 0 0 auto;
+    font-size: 18px;
+  }
+  .mobile-result-group :deep(.topic-row) {
+    padding: 10px;
+    border: 1px solid var(--cpu-border-soft);
+    background: var(--cpu-card);
+  }
+  .mobile-result-group :deep(.topic-row .avatar),
+  .mobile-result-group :deep(.topic-row .line2) {
+    display: none;
+  }
+  .mobile-result-group :deep(.topic-row .title) {
+    font-size: 13px;
   }
   .suggestions button {
     padding: 6px 9px;
