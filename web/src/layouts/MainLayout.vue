@@ -3,6 +3,7 @@
     class="layout-root"
     :class="{
       'keyboard-open': keyboardOpen,
+      'keyboard-geometry-open': keyboardGeometryOpen,
       'layout-root--full-width': fullWidthContent && !hideChrome,
       'layout-root--full-height': fullHeightContent && !hideChrome,
       'layout-root--native-shell': useNativeShell,
@@ -347,6 +348,7 @@ const q = ref("");
 const mobileMenuOpen = ref(false);
 const assistantWidgetOpen = ref(false);
 const keyboardOpen = ref(false);
+const keyboardGeometryOpen = ref(false);
 const mobileViewportHeight = ref(0);
 const mobileViewportWidth = ref(0);
 const mobileViewportOffsetTop = ref(0);
@@ -395,7 +397,7 @@ const layoutStyle = computed(() => {
     mobileViewportBaseHeight.value || 0,
     mobileViewportHeight.value,
   );
-  const keyboardInset = keyboardOpen.value
+  const keyboardInset = keyboardGeometryOpen.value
     ? Math.max(0, baseHeight - mobileViewportHeight.value, virtualKeyboardInset.value)
     : 0;
   return {
@@ -554,6 +556,7 @@ watch(() => route.fullPath, () => {
   window.clearTimeout(focusKeyboardGraceTimer);
   focusKeyboardGraceUntil = 0;
   keyboardOpen.value = false;
+  keyboardGeometryOpen.value = false;
   editableFocused.value = false;
   editorFocused.value = false;
   syncViewportMetrics();
@@ -684,8 +687,12 @@ function updateKeyboardState() {
     && editableFocused.value
     && performance.now() < focusKeyboardGraceUntil
     && (fullHeightContent.value || editorFocused.value);
+  const geometryThreshold = keyboardGeometryOpen.value
+    ? 56
+    : KEYBOARD_INSET_THRESHOLD;
   const viewportStillCovered = isMobileViewport.value
-    && measuredInset > KEYBOARD_INSET_THRESHOLD;
+    && measuredInset > geometryThreshold;
+  keyboardGeometryOpen.value = viewportStillCovered;
   const keyboardLikelyOpen = focusedEditableNeedsKeyboard || viewportStillCovered;
   keyboardOpen.value = keyboardLikelyOpen;
   if (!keyboardLikelyOpen && !editableFocused.value) {
@@ -1168,7 +1175,7 @@ function setAppearanceMode(command: string | number | object) {
   overflow: hidden;
 }
 
-.layout-root--full-height.keyboard-open {
+.layout-root--full-height.keyboard-geometry-open {
   height: var(--layout-viewport-base-height, var(--layout-viewport-height, 100dvh));
 }
 
@@ -1243,12 +1250,12 @@ function setAppearanceMode(command: string | number | object) {
   display: none;
 }
 
-.layout-root--tabbar-fallback.keyboard-open .main {
+.layout-root--tabbar-fallback.keyboard-geometry-open .main {
   padding-bottom: 12px;
 }
 
-.layout-root--tabbar-fallback.keyboard-open .main--bare,
-.layout-root--tabbar-fallback.keyboard-open .main--full-width {
+.layout-root--tabbar-fallback.keyboard-geometry-open .main--bare,
+.layout-root--tabbar-fallback.keyboard-geometry-open .main--full-width {
   padding-bottom: 0 !important;
 }
 
@@ -1514,15 +1521,15 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 @media (max-width: 768px) {
-  .layout-root.keyboard-open .main {
+  .layout-root.keyboard-geometry-open .main {
     padding-bottom: 12px;
   }
 
-  .layout-root.keyboard-open .main--bare {
+  .layout-root.keyboard-geometry-open .main--bare {
     padding-bottom: 0 !important;
   }
 
-  .layout-root.keyboard-open .main--full-width {
+  .layout-root.keyboard-geometry-open .main--full-width {
     padding: 0;
   }
 
@@ -1579,7 +1586,7 @@ function setAppearanceMode(command: string | number | object) {
     padding-bottom: calc(68px + env(safe-area-inset-bottom));
   }
 
-  .layout-root--full-height.keyboard-open .main--full-height {
+  .layout-root--full-height.keyboard-geometry-open .main--full-height {
     padding-bottom: 12px;
   }
 

@@ -882,6 +882,12 @@ onBeforeUnmount(() => {
   gap: 16px;
   min-height: min(560px, 100%);
   padding: 20px;
+  transform: none;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+.assistant-shell:hover {
+  transform: none;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 .assistant-head {
   display: flex;
@@ -1610,16 +1616,16 @@ onBeforeUnmount(() => {
     width: 0;
     height: 0;
   }
-  .assistant-shell.is-composer-focused::after {
+  :global(.layout-root.keyboard-geometry-open) .assistant-shell::after {
     content: "";
     display: block;
     height: 50px;
     flex: 0 0 50px;
   }
-  .assistant-shell.is-composer-focused .conversation {
+  :global(.layout-root.keyboard-geometry-open) .assistant-shell .conversation {
     padding-bottom: calc(var(--layout-keyboard-inset, 0px) + 70px);
   }
-  .assistant-shell.is-composer-focused .assistant-form {
+  :global(.layout-root.keyboard-geometry-open) .assistant-shell .assistant-form {
     position: absolute;
     z-index: 8;
     right: 0;
@@ -1702,7 +1708,7 @@ onBeforeUnmount(() => {
     margin: 5px 0 0;
     font-size: 10px;
   }
-  :global(.layout-root.keyboard-open) .assistant-disclaimer {
+  :global(.layout-root.keyboard-geometry-open) .assistant-disclaimer {
     display: none;
   }
   .assistant-form:focus-within {
