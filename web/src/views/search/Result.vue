@@ -1,7 +1,28 @@
 <template>
   <div class="search-page" v-loading="loading">
+    <div class="search-form">
+      <el-input
+        v-model="keywordInput"
+        clearable
+        placeholder="搜索帖子、课程和校园服务"
+        size="large"
+        @keyup.enter="submitSearch"
+      >
+        <template #prefix><el-icon><Search /></el-icon></template>
+      </el-input>
+      <el-button
+        type="primary"
+        size="large"
+        :disabled="!keywordInput.trim()"
+        @click="submitSearch"
+      >
+        搜索
+      </el-button>
+    </div>
+
     <div class="head">
-      <h2>搜索 "{{ q }}"</h2>
+      <h2 v-if="q">搜索“{{ q }}”</h2>
+      <h2 v-else>站内搜索</h2>
       <div class="counts" v-if="result">
         共找到 {{ result.topics.length + result.courses.length + result.services.length }} 条结果
       </div>
@@ -71,7 +92,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { Right } from "@element-plus/icons-vue";
+import { Right, Search } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import { searchApi, type SearchResult } from "@/api/search";
@@ -79,6 +100,7 @@ import { searchApi, type SearchResult } from "@/api/search";
 const route = useRoute();
 const router = useRouter();
 const q = ref((route.query.q as string) ?? "");
+const keywordInput = ref(q.value);
 const result = ref<SearchResult | null>(null);
 const loading = ref(false);
 const error = ref("");
@@ -90,8 +112,19 @@ const hasResult = computed(() =>
 
 watch(() => route.query.q, async (v) => {
   q.value = (v as string) ?? "";
+  keywordInput.value = q.value;
   await reload();
 }, { immediate: true });
+
+async function submitSearch() {
+  const keyword = keywordInput.value.trim();
+  if (!keyword) return;
+  if (keyword === q.value) {
+    await reload();
+    return;
+  }
+  await router.push({ name: "search", query: { q: keyword } });
+}
 
 async function reload() {
   const keyword = q.value.trim();
@@ -154,6 +187,13 @@ function openCourse(id: number) {
 
 <style scoped>
 .search-page { display: flex; flex-direction: column; gap: 16px; }
+.search-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.search-form .el-input { flex: 1; min-width: 0; }
+.search-form .el-button { flex: 0 0 auto; }
 .head h2 { margin: 0; font-size: 20px; }
 .counts { font-size: 12px; color: var(--cpu-text-muted); margin-top: 4px; }
 .cpu-card {
@@ -192,6 +232,10 @@ function openCourse(id: number) {
 .empty { text-align: center; }
 
 @media (max-width: 640px) {
+  .search-form {
+    gap: 8px;
+  }
+
   .head h2 {
     font-size: 18px;
     line-height: 1.4;
