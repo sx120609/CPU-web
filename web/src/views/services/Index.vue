@@ -154,7 +154,7 @@
 import { computed, ref, onBeforeUnmount, onMounted, watch } from "vue";
 import { Lock, Loading, Picture, Refresh, Right, Tools } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { useJwxtStore } from "@/stores/jwxt";
 import { useSiteStore } from "@/stores/site";
@@ -170,6 +170,7 @@ import { toolsApi, type ToolMeta } from "@/api/tools";
 const jwxt = useJwxtStore();
 const auth = useAuthStore();
 const router = useRouter();
+const route = useRoute();
 const site = useSiteStore();
 const autoLoading = ref(false);
 const hasCreds = ref(false);
@@ -187,6 +188,15 @@ let disposed = false;
 const toolsCacheKey = computed(() => `cpu-services-tools-v1:${auth.user?.id ? `user-${auth.user.id}` : "guest"}`);
 const toolAccessMap = computed(() => Object.fromEntries(toolMetas.value.map((item) => [item.code, item])));
 const visibleTools = computed(() => serviceTools.filter((tool) => toolAccessMap.value[tool.slug]?.isVisible !== false));
+
+watch(
+  [() => route.query.open, () => site.features.electric],
+  ([quickOpen, electricEnabled]) => {
+    if (quickOpen === "electric" && electricEnabled) electricOpen.value = true;
+    if (quickOpen === "network") cpuNetOpen.value = true;
+  },
+  { immediate: true },
+);
 
 onMounted(async () => {
   disposed = false;

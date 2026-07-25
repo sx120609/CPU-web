@@ -260,8 +260,11 @@ function installJwxtSessionBootstrapTriggers() {
 }
 
 function scheduleEducationViewPreload() {
-  const run = () => {
+  // 教务页组件较大；首屏挂载后的下一帧立即预取，避免用户点击底栏后才开始下载解析。
+  window.requestAnimationFrame(() => {
     void preloadEducationViews();
+  });
+  const run = () => {
     void preloadPrimaryViews();
   };
   const requestIdleCallback = (window as Window & {

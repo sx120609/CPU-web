@@ -355,7 +355,7 @@ const searchPlaceholder = computed(() => {
   if (site.features.coursereview && auth.canAccessForum) scopes.push("课程");
   scopes.push("公告");
   scopes.push("服务");
-  return `搜索${scopes.join(" / ")}`;
+  return `问拾间AI：${scopes.join(" / ")}`;
 });
 
 type DesktopNavItem = TopNavigationItem;
@@ -418,7 +418,7 @@ const drawerItems = computed(() => {
   for (const item of site.topNavigation.filter((candidate) => candidate.showInDrawer && navigationItemVisible(candidate))) {
     items.push({ id: `configured-${item.id}`, to: item.to, label: item.fullLabel || item.label, icon: navigationIconMap[item.icon], openInNewTab: item.openInNewTab });
   }
-  if (!items.some((item) => item.to === "/search")) items.push({ id: "system-search", to: "/search", label: "搜索", icon: Search });
+  if (!items.some((item) => item.to === "/search")) items.push({ id: "system-search", to: "/search", label: "拾间AI", icon: Search });
   return items;
 });
 

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import { prisma } from "../prisma";
 import { ok } from "../utils/response";
 import { withCache } from "../services/cache";
@@ -6,18 +7,38 @@ import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCa
 import { getFeatures } from "../services/siteSettings";
 import { resolveForumAccess } from "../services/forumAccess";
 import { sanitizeLostFoundTopicFields } from "../services/lostFoundPrivacy";
+import {
+  askCampusAssistant,
+  campusActionToSearchService,
+  searchCampusAssistantActions,
+} from "../services/campusAssistant";
+import { securityRateLimit } from "../middleware/securityRateLimit";
+import { validate } from "../middleware/validate";
 
 export const searchRouter = Router();
+
+const assistantSchema = z.object({
+  message: z.string().trim().min(1).max(500),
+  history: z.array(z.object({
+    role: z.enum(["user", "assistant"]),
+    content: z.string().trim().min(1).max(1200),
+  })).max(8).default([]),
+});
 
 /** 全局搜索：帖子标题/正文 + 课程 + 服务卡片 */
 searchRouter.get("/", async (req, res, next) => {
   try {
-    const q = String(req.query.q ?? "").trim();
+    const q = String(req.query.q ?? "").trim().slice(0, 100);
     if (!q) return ok(res, { topics: [], courses: [], services: [] });
     const userId = req.user?.userId ?? null;
     const role = req.user?.role ?? null;
     const forumAccessEnabled = await resolveForumAccess(userId, role);
     const features = getFeatures();
+    const assistantContext = {
+      features,
+      forumAccessEnabled,
+      loggedIn: Boolean(userId),
+    };
     const searchableBoardTypes = ["announce"];
     if (forumAccessEnabled && features.forum) searchableBoardTypes.push("normal", "question");
     if (forumAccessEnabled && features.market) searchableBoardTypes.push("market");
@@ -29,6 +50,7 @@ searchRouter.get("/", async (req, res, next) => {
       features.forum ? "forum-on" : "forum-off",
       features.market ? "market-on" : "market-off",
       features.coursereview ? "course-on" : "course-off",
+      features.electric ? "electric-on" : "electric-off",
     ];
     const { topics, courses, services } = await withCache("search", cacheParts, 60_000, async () => {
       const [topics, courses, services] = await Promise.all([
@@ -95,12 +117,49 @@ searchRouter.get("/", async (req, res, next) => {
         })),
         courseTeachers: undefined,
       })),
-      services: services.map(normalizeServiceCard),
+      services: mergeSearchServices([
+        ...searchCampusAssistantActions(q, assistantContext).map(campusActionToSearchService),
+        ...services.map(normalizeServiceCard),
+      ]).slice(0, 10),
     });
   } catch (e) { next(e); }
 });
 
+searchRouter.post(
+  "/assistant",
+  securityRateLimit("campus-assistant", 20, 60_000),
+  validate(assistantSchema),
+  async (req, res, next) => {
+    try {
+      const userId = req.user?.userId ?? null;
+      const role = req.user?.role ?? null;
+      const forumAccessEnabled = await resolveForumAccess(userId, role);
+      ok(res, await askCampusAssistant({
+        message: req.body.message,
+        history: req.body.history,
+        context: {
+          features: getFeatures(),
+          forumAccessEnabled,
+          loggedIn: Boolean(userId),
+        },
+      }));
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 function safeJson(s: string | null | undefined) {
   if (!s) return {};
   try { return JSON.parse(s); } catch { return {}; }
+}
+
+function mergeSearchServices(services: any[]) {
+  const seen = new Set<string>();
+  return services.filter((service) => {
+    const key = String(service?.url || service?.code || service?.name || "").trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
