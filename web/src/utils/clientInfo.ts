@@ -1,4 +1,4 @@
-export type ClientPlatform = "ios" | "android" | "harmony" | "web" | "unknown";
+export type ClientPlatform = "ios" | "android" | "harmony" | "desktop" | "web" | "unknown";
 
 export const ANDROID_APP_LATEST_VERSION_CODE = 26;
 export const ANDROID_APP_LATEST_VERSION_NAME = "3.0.5";
@@ -19,6 +19,7 @@ export function detectClientPlatform(ua = navigator.userAgent): ClientPlatform {
 
   if (isHarmonyNativeApp(ua)) return "harmony";
   if (isAndroidNativeApp(ua)) return "android";
+  if (isDesktopNativeApp(ua)) return "desktop";
   if (isFlutterNativeShell(ua)) {
     if (source.includes("android")) return "android";
     if (looksLikeIosUserAgent(source)) return "ios";
@@ -65,6 +66,38 @@ export function isAndroidNativeApp(ua = navigator.userAgent) {
 export function isHarmonyNativeApp(ua = navigator.userAgent) {
   const source = (ua || "").toLowerCase();
   return source.includes("cpuwebharmonyapp") || resolveClientOverride() === "harmony";
+}
+
+// Windows / macOS 的 Electron 桌面端。以原生桥是否注入为准，UA 只是兜底：
+// 桥在就意味着 PC 小工具那些能力真的可用。
+export function isDesktopNativeApp(ua = navigator.userAgent) {
+  const source = (ua || "").toLowerCase();
+  return Boolean((window as any).CPUDesktop)
+    || source.includes("cpuwebdesktopapp")
+    || resolveClientOverride() === "desktop";
+}
+
+export type DesktopBridge = {
+  platform?: string;
+  getVersionName?: () => string;
+  openLearning?: () => Promise<void>;
+  campusNet?: {
+    getState: () => Promise<any>;
+    getSettings: () => Promise<any>;
+    saveCredential: (studentId: string, password: string) => Promise<any>;
+    clearCredential: () => Promise<any>;
+    updateSettings: (patch: Record<string, unknown>) => Promise<any>;
+    loginNow: () => Promise<any>;
+    checkNow: () => Promise<any>;
+    getLogs: (limit?: number) => Promise<any[]>;
+    onState: (callback: (state: any) => void) => void;
+    onLog: (callback: (entry: any) => void) => void;
+  };
+};
+
+export function getDesktopBridge(): DesktopBridge | null {
+  if (typeof window === "undefined") return null;
+  return ((window as any).CPUDesktop ?? null) as DesktopBridge | null;
 }
 
 export function isFlutterNativeShell(ua = navigator.userAgent) {
@@ -186,6 +219,7 @@ export function clientPlatformLabel(platform: ClientPlatform) {
   if (platform === "ios") return "iOS";
   if (platform === "android") return "安卓";
   if (platform === "harmony") return "鸿蒙";
+  if (platform === "desktop") return "桌面端";
   if (platform === "web") return "网页";
   return "未知";
 }
@@ -206,6 +240,7 @@ function normalizeClientParam(value?: string | null): ClientPlatform | null {
   if (["ios", "ios-app", "iphone", "ipad"].includes(client)) return "ios";
   if (["android", "android-app", "flutter-android"].includes(client)) return "android";
   if (["harmony", "harmony-app", "harmonyos", "ohos"].includes(client)) return "harmony";
+  if (["desktop", "electron", "pc"].includes(client)) return "desktop";
   if (["web", "browser"].includes(client)) return "web";
   if (client === "unknown") return "unknown";
   return null;

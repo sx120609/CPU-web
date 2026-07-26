@@ -478,6 +478,8 @@ Content-Type: application/json
 | `ONEDRIVE_CN_CLIENT_SECRET` | 空 | 世纪互联应用注册的客户端密钥 |
 | `ONEDRIVE_CN_DRIVE_ID` | 空 | SharePoint 文档库或 OneDrive 对应的 Drive ID |
 | `ONEDRIVE_CN_ROOT_PATH` | 空 | 远端根目录下的存储子路径，例如 `cpu-web-media` |
+| `DESKTOP_APP_DOWNLOAD_URL` | 空 | 桌面端安装包下载地址，必须是 https。留空时站内「PC 小工具」面板显示"正在打包中"，不给死链接 |
+| `DESKTOP_APP_VERSION` | 空 | 桌面端安装包版本号，仅用于展示 |
 | `PG_DUMP_BIN` | `pg_dump` | 后台数据库备份使用的命令路径 |
 
 补充说明：

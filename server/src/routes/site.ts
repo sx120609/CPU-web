@@ -36,6 +36,25 @@ siteRouter.get("/downloads/android-app", (_req, res) => {
   res.redirect(302, `/downloads/${encodeURIComponent(fileName)}`);
 });
 
+/**
+ * 公开：桌面端安装包信息。
+ * 没配置下载地址时返回 available:false，前端据此显示"正在打包中"，
+ * 而不是给用户一个点了打不开的按钮。
+ */
+siteRouter.get("/downloads/desktop", (_req, res) => {
+  const url = normalizeHttpsUrl(config.desktopAppDownloadUrl);
+  ok(res, { available: Boolean(url), url, version: config.desktopAppVersion });
+});
+
+siteRouter.get("/downloads/desktop-app", (_req, res) => {
+  const url = normalizeHttpsUrl(config.desktopAppDownloadUrl);
+  if (!url) {
+    res.status(404).json({ code: 404, message: "桌面端安装包尚未发布" });
+    return;
+  }
+  res.redirect(302, url);
+});
+
 /** 公开：顶部导航配置，仅包含展示字段。 */
 siteRouter.get("/navigation", async (_req, res, next) => {
   try {
@@ -44,6 +63,10 @@ siteRouter.get("/navigation", async (_req, res, next) => {
 });
 
 function normalizeAndroidDownloadUrl(value: string) {
+  return normalizeHttpsUrl(value);
+}
+
+function normalizeHttpsUrl(value: string) {
   const raw = value.trim();
   if (!raw) return "";
   try {

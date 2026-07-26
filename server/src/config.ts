@@ -361,6 +361,9 @@ export const config = {
     process.env.ANDROID_APP_DOWNLOAD_URL
     ?? "https://download.lizmt.cn/Android/CPU-Web-Android-V6.apk"
   ).trim(),
+  // 桌面端安装包。留空表示尚未发布，前端会显示"正在打包中"而不是给一个死链接。
+  desktopAppDownloadUrl: (process.env.DESKTOP_APP_DOWNLOAD_URL ?? "").trim(),
+  desktopAppVersion: (process.env.DESKTOP_APP_VERSION ?? "").trim(),
   oauthClientId: String(process.env.OAUTH_CLIENT_ID ?? "cpu-electron").trim(),
   oauthAllowedRedirectUris: parseCsvEnv(process.env.OAUTH_ALLOWED_REDIRECT_URIS, ["http://127.0.0.1", "http://localhost"]),
 };

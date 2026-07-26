@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "vendor:deps": "node scripts/vendor-deps.mjs",
     "vendor:verify": "node scripts/vendor-deps.mjs --verify",
-    "test": "npm run build && node scripts/policy-test.cjs && node scripts/vendor-deps.mjs --verify",
+    "test": "npm run build && node scripts/policy-test.cjs && node scripts/campus-net-test.cjs && node scripts/vendor-deps.mjs --verify",
     "test:smoke": "npm run build && node scripts/smoke-test.mjs",
     "test:package": "node scripts/package-check.cjs",
     "start": "npm run build && electron .",
@@ -27,7 +27,7 @@
     "files": [
       "dist/**",
       "assets/**",
-      "src/home/**",
+      "src/launcher/**",
       "package.json"
     ],
     "directories": {

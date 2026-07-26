@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self'" />
+    <title>药大拾间桌面端</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="masthead">
+        <img class="logo" src="./logo.png" alt="" />
+        <div class="masthead-text">
+          <h1>药大拾间</h1>
+          <p class="subtitle">桌面端</p>
+        </div>
+      </header>
+
+      <section class="card hero">
+        <div class="hero-status">
+          <span class="dot" id="status-dot"></span>
+          <h2 id="hero-title">正在连接药大拾间…</h2>
+        </div>
+        <p class="hero-detail" id="hero-detail">如果长时间没有反应，可能是校园网尚未认证，或者当前没有网络。</p>
+        <div class="actions">
+          <button id="retry" type="button" class="primary">重新连接</button>
+          <button id="open-learning" type="button" class="ghost">打开学习平台</button>
+        </div>
+        <p class="inline-status" id="inline-status" role="status"></p>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h3>账号</h3>
+          <span class="pill" id="auth-pill">检查中</span>
+        </div>
+        <dl class="fields" id="account-fields" hidden>
+          <div><dt>用户</dt><dd id="auth-name">—</dd></div>
+          <div><dt>今日剩余 AI 次数</dt><dd id="auth-balance">—</dd></div>
+          <div><dt>授权有效期至</dt><dd id="auth-expires">—</dd></div>
+        </dl>
+        <p class="muted" id="auth-hint">登录后即可使用学习平台与校园 AI 解答。</p>
+        <div class="actions">
+          <button id="login" type="button" class="primary" hidden>登录</button>
+          <button id="logout" type="button" class="ghost" hidden>退出登录</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h3>校园网</h3>
+          <span class="pill" id="campus-pill">未启用</span>
+        </div>
+
+        <label class="switch">
+          <input type="checkbox" id="campus-enabled" />
+          <span class="track"><span class="thumb"></span></span>
+          <span class="switch-text"><strong>后台自动连接校园网</strong><small>掉线时自动重新认证</small></span>
+        </label>
+
+        <div id="campus-body" hidden>
+          <div class="field-row">
+            <label class="field">
+              <span>接入方式</span>
+              <select id="campus-mode">
+                <option value="auto">自动判断</option>
+                <option value="campus">校园网</option>
+                <option value="pppoe">宽带（运营商）</option>
+              </select>
+            </label>
+            <label class="field" id="campus-carrier-field">
+              <span>运营商</span>
+              <select id="campus-carrier">
+                <option value="">请选择</option>
+                <option value="telecom">中国电信</option>
+                <option value="unicom">中国联通</option>
+                <option value="cmcc">中国移动</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>检测间隔（秒）</span>
+              <input type="number" id="campus-interval" min="5" max="600" step="5" />
+            </label>
+          </div>
+
+          <div class="field-row">
+            <label class="field">
+              <span>学号</span>
+              <input type="text" id="campus-student" autocomplete="off" spellcheck="false" placeholder="仅字母与数字" />
+            </label>
+            <label class="field">
+              <span>校园网密码</span>
+              <input type="password" id="campus-password" autocomplete="off" placeholder="保存后不再回显" />
+            </label>
+          </div>
+
+          <p class="muted small" id="campus-credential-hint">密码用系统安全存储加密，只在发起认证时于后台解密，不会回传到界面。</p>
+
+          <div class="actions">
+            <button id="campus-save" type="button" class="primary">保存凭据</button>
+            <button id="campus-login" type="button" class="ghost">立即连接</button>
+            <button id="campus-clear" type="button" class="ghost">清除凭据</button>
+          </div>
+
+          <details class="logs">
+            <summary>连接日志</summary>
+            <pre id="campus-logs"></pre>
+          </details>
+        </div>
+      </section>
+
+      <section class="card">
+        <h3>启动与后台</h3>
+        <label class="switch">
+          <input type="checkbox" id="launch-on-login" />
+          <span class="track"><span class="thumb"></span></span>
+          <span class="switch-text"><strong>开机自动启动</strong><small>登录系统后自动运行</small></span>
+        </label>
+        <label class="switch">
+          <input type="checkbox" id="start-minimized" />
+          <span class="track"><span class="thumb"></span></span>
+          <span class="switch-text"><strong>启动时收进托盘</strong><small>开机自启时不弹出窗口</small></span>
+        </label>
+        <label class="switch">
+          <input type="checkbox" id="close-to-tray" />
+          <span class="track"><span class="thumb"></span></span>
+          <span class="switch-text"><strong>关闭窗口时收进托盘</strong><small>长时任务不会因为关窗中断</small></span>
+        </label>
+      </section>
+
+      <section class="card notice">
+        <h3>使用须知</h3>
+        <ul>
+          <li>本应用<strong>不是通用浏览器</strong>。窗口内只打开药大拾间、学习平台及其登录所需的站点，其余链接一律交给系统默认浏览器。</li>
+          <li>内置的学习辅助脚本为第三方作品，答题时会向第三方题库接口发送<strong>题目文本</strong>；AI 解答走药大拾间的校园 AI 通道并消耗每日额度。</li>
+          <li>不保存学校密码，也不保存学习平台账号密码。退出登录会撤销授权并清除本地会话。</li>
+          <li>请自行判断使用边界并遵守所在学校的学术规范。</li>
+        </ul>
+      </section>
+
+      <footer id="app-meta"></footer>
+    </main>
+    <script src="./renderer.js"></script>
+  </body>
+</html>

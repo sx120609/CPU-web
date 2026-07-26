@@ -35,8 +35,25 @@ export const DEFAULT_TOP_NAVIGATION: TopNavigationItem[] = [
   { id: "market", label: "商城", fullLabel: "校园商城", to: "/market", icon: "market", enabled: true, primary: false, showInDrawer: true, audience: "all", feature: "market", requireForumAccess: true, openInNewTab: false },
 ];
 
+export type DesktopDownloadInfo = {
+  available: boolean;
+  url: string;
+  version: string;
+};
+
 export const siteApi = {
   features: () => request.get<FeatureMap>("/site/features"),
   config: () => request.get<PublicSiteConfig>("/site/config"),
   navigation: () => request.get<TopNavigationItem[]>("/site/navigation", undefined, { suppressErrorMessage: true }),
+  desktopDownload: () => request.get<DesktopDownloadInfo>("/site/downloads/desktop", undefined, { suppressErrorMessage: true }),
 };
+
+/** 桌面端安装包地址。尚未发布时返回空串，调用方据此显示"正在打包中"。 */
+export async function getDesktopDownloadUrl(): Promise<string> {
+  try {
+    const info = await siteApi.desktopDownload();
+    return info.available ? info.url : "";
+  } catch {
+    return "";
+  }
+}

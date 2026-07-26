@@ -10,6 +10,7 @@ declare module 'vue' {
     AcademicIdentityPicker: typeof import('./src/components/auth/AcademicIdentityPicker.vue')['default']
     AndroidUpdateDialog: typeof import('./src/components/install/AndroidUpdateDialog.vue')['default']
     CpuNetDownloadDialog: typeof import('./src/components/services/CpuNetDownloadDialog.vue')['default']
+    DesktopToolsPanel: typeof import('./src/components/common/DesktopToolsPanel.vue')['default']
     DormElectricDialog: typeof import('./src/components/services/DormElectricDialog.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
     ElAvatar: typeof import('element-plus/es')['ElAvatar']

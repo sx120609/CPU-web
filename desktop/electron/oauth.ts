@@ -1,8 +1,13 @@
-import { session as electronSession, shell } from "electron";
+import { session as electronSession } from "electron";
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, Server } from "node:http";
 import { clearOAuthSession, OAuthSession, OAuthUser, peekOAuthSession, writeOAuthSession } from "./oauth-store";
 import { branding, oauthConfig } from "./config";
+
+// 授权页由调用方负责打开：主进程会开一个与主站共用会话的应用内窗口，
+// 这样用户在主站已经登录过就不必再登录一次。close() 用于登录结束后收拾窗口。
+export type AuthorizeWindow = { close: () => void };
+export type AuthorizeOpener = (authorizeUrl: string, callbackOrigin: string) => Promise<AuthorizeWindow>;
 
 type PendingLogin = {
   server: Server;
@@ -11,6 +16,7 @@ type PendingLogin = {
   redirectUri: string;
   timer: NodeJS.Timeout;
   reject: (error: Error) => void;
+  window?: AuthorizeWindow;
 };
 
 export type OAuthStatus = {
@@ -35,6 +41,7 @@ const responsePage = (message: string): string =>
 const finishPending = (pending: PendingLogin): void => {
   clearTimeout(pending.timer);
   pending.server.close();
+  pending.window?.close();
   if (pendingLogin === pending) pendingLogin = undefined;
 };
 
@@ -137,7 +144,7 @@ const stopPending = (reason: string): void => {
   pending.reject(new Error(reason));
 };
 
-export const startOAuthLogin = async (): Promise<OAuthSession> => {
+export const startOAuthLogin = async (openAuthorize: AuthorizeOpener): Promise<OAuthSession> => {
   ensureOrigin();
   stopPending("已开始新的登录流程");
   const state = randomBytes(32).toString("base64url");
@@ -203,13 +210,19 @@ export const startOAuthLogin = async (): Promise<OAuthSession> => {
     code_challenge_method: "S256"
   }).toString();
   try {
-    await shell.openExternal(authorizeUrl.toString());
+    const authWindow = await openAuthorize(authorizeUrl.toString(), `http://${oauthConfig.callbackHost}:${address.port}`);
+    // 授权可能在窗口创建返回前就已经回调完成，那时 pending 已经结束了
+    if (pendingLogin === pending) pending.window = authWindow;
+    else authWindow.close();
   } catch (error) {
     finishPending(pending);
-    rejectLogin(error instanceof Error ? error : new Error("无法打开系统浏览器"));
+    rejectLogin(error instanceof Error ? error : new Error("无法打开授权页面"));
   }
   return result;
 };
+
+// 用户手动关掉授权窗口时调用，否则调用方的 Promise 会一直挂到 5 分钟超时
+export const abortOAuthLogin = (): void => stopPending("授权已取消");
 
 export const getOAuthStatus = async (): Promise<OAuthStatus> => {
   const session = await peekOAuthSession();

@@ -22,7 +22,7 @@ try {
   process.exit(1);
 }
 
-const { asNavigableUrl, asInjectableUrl, scriptMatchesUrl } = policy;
+const { asNavigableUrl, asInjectableUrl, asSiteUrl, scriptMatchesUrl, createAuthNavigationRule } = policy;
 const { isUrlMatched } = shared;
 
 let passed = 0;
@@ -50,11 +50,16 @@ check("学校统一认证放行（机构账号登录要跳）", () => {
   assert.ok(asNavigableUrl("https://id.cpu.edu.cn/authserver/login"));
 });
 
+check("主站放行（主窗口就是它）", () => {
+  assert.ok(asSiteUrl("https://cpu.lizmt.cn/"));
+  assert.ok(asNavigableUrl("https://cpu.lizmt.cn/forum"));
+});
+
 check("站外地址一律不放行", () => {
   for (const url of [
     "https://www.google.com/",
     "https://github.com/",
-    "https://cpu.lizmt.cn/",          // 主站也不在窗口里开，OAuth 走系统浏览器
+    "https://lizmt.cn/",               // 主站的父域不算主站
     "https://example.com/chaoxing.com" // 路径里带白名单域名不算数
   ]) {
     assert.equal(asNavigableUrl(url), undefined, `不该放行 ${url}`);
@@ -104,8 +109,28 @@ check("可注入范围比可导航范围窄", () => {
   assert.equal(asInjectableUrl(sso), undefined, "统一认证不该被注入脚本，更不该拿到特权桥");
 });
 
+check("主站可导航但绝不可注入", () => {
+  const site = "https://cpu.lizmt.cn/forum";
+  assert.ok(asNavigableUrl(site));
+  // 刷课脚本没有任何理由跑在自己的站点上，跑了就等于把脚本特权桥递给主站页面
+  assert.equal(asInjectableUrl(site), undefined);
+});
+
 check("超星域名可注入", () => {
   assert.ok(asInjectableUrl("https://mooc1.chaoxing.com/mycourse"));
+});
+
+/* ------------------------------------------------- OAuth 授权窗口放行规则 */
+
+check("授权窗口只放行主站与本次回环回调", () => {
+  const rule = createAuthNavigationRule("http://127.0.0.1:43127");
+  assert.equal(rule("https://cpu.lizmt.cn/api/oauth/authorize?x=1"), true);
+  assert.equal(rule("http://127.0.0.1:43127/oauth/callback?code=x"), true);
+  // 换个端口就不是本次登录的回调了
+  assert.equal(rule("http://127.0.0.1:43128/oauth/callback"), false);
+  assert.equal(rule("http://localhost:43127/oauth/callback"), false);
+  assert.equal(rule("https://evil.tld/oauth/callback"), false);
+  assert.equal(rule("https://i.chaoxing.com/"), false);
 });
 
 /* ------------------------------------------------------------ @match */

@@ -1,8 +1,10 @@
 export const branding = {
   productName: "药大拾间桌面端",
-  homeTitle: "药大拾间桌面端",
+  windowTitle: "药大拾间",
   learningTitle: "学习平台",
-  storagePrefix: "cpu-desktop-userscript"
+  storagePrefix: "cpu-desktop-userscript",
+  // 与 web/src/utils/clientInfo.ts 的识别约定对齐（CPUWebScheduleApp / CPUWebHarmonyApp）
+  userAgentTag: "CPUWebDesktopApp"
 } as const;
 
 export const oauthConfig = {
@@ -16,10 +18,14 @@ export const oauthConfig = {
   loginTimeoutMs: 300000
 } as const;
 
+export const siteHost = new URL(oauthConfig.origin).hostname;
+
 export const learningUrl = "https://i.chaoxing.com/";
 
 // 应用窗口内允许打开的站点。不在表内的地址一律交给系统浏览器 —— 本应用不是通用浏览器。
 export const navigableHosts = [
+  // 主站本身：主窗口就是它
+  siteHost,
   "chaoxing.com",
   "nbdlib.cn",
   "hnsyu.net",
@@ -30,6 +36,7 @@ export const navigableHosts = [
 
 // 用户脚本的注入范围由脚本自己的 @match 决定，这张表只做额外收口：
 // 即使脚本声明了更宽的 @match，也不会注入到表外的站点。
+// 主站不在表内 —— 刷课脚本没有任何理由跑在自己的站点上。
 export const injectableHosts = [
   "chaoxing.com",
   "nbdlib.cn",
@@ -42,5 +49,7 @@ export const limits = {
   fetchMaxBytes: 8 * 1024 * 1024,
   redirectHops: 3,
   aiInputItems: 32,
-  aiTextLength: 32000
+  aiTextLength: 32000,
+  // 主站加载失败多久后落到本地启动台
+  siteLoadTimeoutMs: 15000
 } as const;

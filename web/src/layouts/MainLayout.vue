@@ -162,7 +162,7 @@
 
     <transition name="assistant-widget">
       <aside
-        v-if="assistantWidgetOpen && !hideChrome && !useNativeShell && route.path !== '/search'"
+        v-if="assistantWidgetOpen && showFloatingActions"
         class="assistant-widget"
         role="dialog"
         aria-label="拾间AI"
@@ -171,14 +171,40 @@
       </aside>
     </transition>
 
+    <transition name="assistant-widget">
+      <aside
+        v-if="toolsWidgetOpen && showFloatingActions"
+        class="tools-widget"
+        role="dialog"
+        aria-label="PC 小工具"
+      >
+        <DesktopToolsPanel @close="toolsWidgetOpen = false" />
+      </aside>
+    </transition>
+
     <button
-      v-if="!hideChrome && !useNativeShell && route.path !== '/search'"
+      v-if="showFloatingActions"
+      type="button"
+      class="tools-fab"
+      aria-label="打开 PC 小工具"
+      :aria-expanded="toolsWidgetOpen"
+      title="PC 小工具"
+      @click="toggleToolsWidget"
+    >
+      <el-icon>
+        <Close v-if="toolsWidgetOpen" />
+        <Monitor v-else />
+      </el-icon>
+    </button>
+
+    <button
+      v-if="showFloatingActions"
       type="button"
       class="assistant-fab"
       aria-label="打开拾间AI"
       :aria-expanded="assistantWidgetOpen"
       title="拾间AI"
-      @click="assistantWidgetOpen = !assistantWidgetOpen"
+      @click="toggleAssistantWidget"
     >
       <el-icon>
         <Close v-if="assistantWidgetOpen" />
@@ -332,6 +358,7 @@ import {
 import type { TopNavigationIcon, TopNavigationItem } from "@/api/site";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import ShijianAssistant from "@/views/search/Result.vue";
+import DesktopToolsPanel from "@/components/common/DesktopToolsPanel.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
 import { useSiteStore } from "@/stores/site";
@@ -347,6 +374,7 @@ const route = useRoute();
 const q = ref("");
 const mobileMenuOpen = ref(false);
 const assistantWidgetOpen = ref(false);
+const toolsWidgetOpen = ref(false);
 const keyboardOpen = ref(false);
 const keyboardGeometryOpen = ref(false);
 const mobileViewportHeight = ref(0);
@@ -387,6 +415,19 @@ const hideChrome = computed(() => Boolean(route.meta?.hideChrome));
 const fullWidthContent = computed(() => Boolean(route.meta?.fullWidthContent));
 const fullHeightContent = computed(() => Boolean(route.meta?.fullHeightContent));
 const useNativeShell = computed(() => isFlutterNativeShell());
+// 两个悬浮球共用同一套显示条件
+const showFloatingActions = computed(() => !hideChrome.value && !useNativeShell.value && route.path !== "/search");
+
+// 两个面板占同一块位置，只能开一个
+const toggleAssistantWidget = () => {
+  if (!assistantWidgetOpen.value) toolsWidgetOpen.value = false;
+  assistantWidgetOpen.value = !assistantWidgetOpen.value;
+};
+
+const toggleToolsWidget = () => {
+  if (!toolsWidgetOpen.value) assistantWidgetOpen.value = false;
+  toolsWidgetOpen.value = !toolsWidgetOpen.value;
+};
 const isPortraitViewport = computed(() => mobileViewportHeight.value >= mobileViewportWidth.value);
 const useTabbarFallback = computed(() => (
   touchLikeViewport.value
@@ -555,6 +596,7 @@ onBeforeUnmount(() => {
 
 watch(() => route.fullPath, () => {
   assistantWidgetOpen.value = false;
+  toolsWidgetOpen.value = false;
   window.clearTimeout(focusOutTimer);
   window.clearTimeout(focusKeyboardGraceTimer);
   window.clearTimeout(keyboardGeometryCloseTimer);
@@ -1108,6 +1150,60 @@ function setAppearanceMode(command: string | number | object) {
   transform: translateY(12px) scale(0.96);
 }
 
+/* PC 小工具面板与 AI 面板占同一块位置，两者互斥打开 */
+.tools-widget {
+  position: fixed;
+  z-index: 1090;
+  right: 26px;
+  bottom: 94px;
+  width: min(clamp(360px, 26vw, 420px), calc(100vw - 52px));
+  max-height: min(600px, calc(100dvh - 118px));
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--cpu-primary) 30%, var(--cpu-border-soft));
+  border-radius: 20px;
+  color: var(--cpu-text);
+  background:
+    linear-gradient(155deg, color-mix(in srgb, var(--cpu-primary) 6%, var(--cpu-card)) 0%, var(--cpu-card) 32%);
+  box-shadow:
+    0 28px 72px color-mix(in srgb, var(--cpu-primary-dark) 22%, transparent),
+    0 5px 20px rgba(15, 23, 42, 0.1);
+  isolation: isolate;
+}
+
+/* 叠在 AI 悬浮球正上方：26 底距 + 58 球高 + 12 间距 */
+.tools-fab {
+  position: fixed;
+  z-index: 1091;
+  right: 26px;
+  bottom: 96px;
+  display: grid;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--cpu-primary) 26%, var(--cpu-border));
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--cpu-primary);
+  background: var(--cpu-card);
+  box-shadow:
+    0 14px 32px color-mix(in srgb, var(--cpu-primary-dark) 16%, transparent),
+    0 3px 10px rgba(15, 23, 42, 0.08);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
+
+  .el-icon {
+    font-size: 24px;
+  }
+
+  &:hover {
+    transform: translateY(-2px);
+    color: var(--cpu-primary-dark);
+    box-shadow:
+      0 18px 40px color-mix(in srgb, var(--cpu-primary-dark) 22%, transparent),
+      0 4px 12px rgba(15, 23, 42, 0.1);
+  }
+}
+
 .assistant-fab {
   position: fixed;
   z-index: 1091;
@@ -1547,11 +1643,13 @@ function setAppearanceMode(command: string | number | object) {
     flex: 0 0 auto;
   }
 
-  .assistant-fab {
+  .assistant-fab,
+  .tools-fab {
     display: none;
   }
 
-  .assistant-widget {
+  .assistant-widget,
+  .tools-widget {
     display: none;
   }
 }

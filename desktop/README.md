@@ -1,6 +1,12 @@
 # 药大拾间桌面端
 
-面向 Windows 与 macOS 的 Electron 客户端。用药大拾间账号完成 OAuth2 授权后，在一个受控的 Chromium 会话中打开学习平台，并注入学习辅助脚本。
+面向 Windows 与 macOS 的 Electron 客户端。**主窗口直接就是药大拾间主站**，在此之上提供三样网页做不到的能力：
+
+1. **校园网自动认证** —— 后台探测连通性，掉线自动重连，开机自启，常驻托盘
+2. **学习平台窗口** —— 独立的受控 Chromium 会话，内置学习辅助脚本
+3. **原生桥** —— 主站可通过 `window.CPUDesktop` 调用桌面端能力
+
+主站加载不出来时（校园网未认证、断网、站点故障）会落到本地启动台 —— 这一页必须存在，因为校园网登录恰恰要在主站不可达的时候用。
 
 ## 这不是通用浏览器
 
@@ -10,10 +16,15 @@
 
 | 白名单 | 作用 | 当前成员 |
 |---|---|---|
-| `navigableHosts` | 允许在应用窗口内打开 | `chaoxing.com`、`nbdlib.cn`、`hnsyu.net`、`gdhkmooc.com`、`cpu.edu.cn` |
-| `injectableHosts` | 允许注入用户脚本、允许持有特权桥 | 上表去掉 `cpu.edu.cn` |
+| `navigableHosts` | 允许在应用窗口内打开 | 主站、`chaoxing.com`、`nbdlib.cn`、`hnsyu.net`、`gdhkmooc.com`、`cpu.edu.cn` |
+| `injectableHosts` | 允许注入用户脚本、允许持有脚本特权桥 | 只有 `chaoxing.com`、`nbdlib.cn`、`hnsyu.net`、`gdhkmooc.com` |
 
-`cpu.edu.cn` 只出现在第一张表里：超星机构账号登录会跳转学校统一认证，不放行会导致登录中断；但统一认证页面不该被注入脚本，更不该拿到特权桥。
+两处收窄是有意的：
+
+- `cpu.edu.cn` 只可导航不可注入。超星机构账号登录会跳转学校统一认证，不放行会导致登录中断；但统一认证页面不该被注入脚本，更不该拿到特权桥。
+- **主站也只可导航不可注入。** 刷课脚本没有任何理由跑在自己的站点上，跑了就等于把脚本特权桥递给主站页面。主站拿到的是另一个桥（见下）。
+
+两个 preload 互不可见：主站窗口挂 `site-preload.ts`（`window.CPUDesktop`），学习平台窗口挂 `learning-preload.ts`（`window.cpuDesktopBridge`）。主站拿不到脚本代理，学习平台也拿不到桌面端能力。
 
 配套约束：
 

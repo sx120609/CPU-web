@@ -1,16 +1,22 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, session, shell, Tray } from "electron";
+import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell, Tray } from "electron";
 import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { FetchTextResult, isHostAllowed, parseHttpsUrl, UserScript } from "./shared";
-import { asInjectableUrl, asNavigableUrl, scriptMatchesUrl } from "./policy";
-import { getOAuthStatus, logoutOAuth, startOAuthLogin } from "./oauth";
+import { asInjectableUrl, asNavigableUrl, asSiteUrl, createAuthNavigationRule, scriptMatchesUrl } from "./policy";
+import { abortOAuthLogin, AuthorizeOpener, getOAuthStatus, logoutOAuth, startOAuthLogin } from "./oauth";
 import { readOAuthSession } from "./oauth-store";
+import { applyLaunchOnLogin, readPreferences, writePreferences } from "./preferences";
+import { CampusNetService, CampusState } from "./campus-net/service";
+import { onCampusLog, pruneCampusLogs, readCampusLogs } from "./campus-net/log";
 import { branding, injectableHosts, learningUrl, limits, oauthConfig } from "./config";
 
-let homeWindow: BrowserWindow | undefined;
+let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let quitting = false;
+let siteLoaded = false;
+let closeToTray = true;
+let campusNet: CampusNetService | undefined;
 const learningWindows = new Set<BrowserWindow>();
 
 // 一次性授权票据：主进程在注入脚本时下发 nonce，脚本每次调用特权桥都要带上。
@@ -18,7 +24,16 @@ const learningWindows = new Set<BrowserWindow>();
 type ScriptGrant = { scriptId: string; webContentsId: number };
 const grants = new Map<string, ScriptGrant>();
 
+// 按 webContents 的临时导航放行规则。目前只有 OAuth 授权窗口用到：
+// 它需要访问本机回环回调地址，那个地址不在任何站点白名单里。
+const navigationOverrides = new Map<number, (url: string) => boolean>();
+
 const resolveAsset = (...segments: string[]): string => path.join(app.getAppPath(), ...segments);
+
+// 状态推送只发给主窗口：学习平台窗口是第三方页面，不该收到应用内部事件。
+const broadcast = (channel: string, payload: unknown): void => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
+};
 
 const revokeGrants = (webContentsId: number): void => {
   for (const [nonce, grant] of grants) if (grant.webContentsId === webContentsId) grants.delete(nonce);
@@ -36,7 +51,15 @@ const openExternally = (value: string): void => {
   }
 };
 
+// 主站链接留在主窗口，学习平台开独立窗口，其余交给系统浏览器。
 const routeUrl = (value: string): void => {
+  if (asSiteUrl(value)) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      void mainWindow.loadURL(value);
+      return;
+    }
+  }
   const target = asNavigableUrl(value);
   if (target) void openLearningWindow(target.href);
   else openExternally(value);
@@ -333,20 +356,75 @@ async function openLearningWindow(url: string): Promise<void> {
   await page.loadURL(target.href);
 }
 
-const openHomePage = async (): Promise<void> => {
-  if (homeWindow && !homeWindow.isDestroyed()) {
-    homeWindow.show();
-    homeWindow.focus();
+// 主窗口就是主站本身。加载不出来（没联网、校园网未认证、站点故障）时
+// 落到本地启动台 —— 校园网登录恰恰要在主站不可达的时候用。
+const loadSiteOrLauncher = async (window: BrowserWindow, reason?: string): Promise<void> => {
+  try {
+    await window.loadURL(oauthConfig.origin);
+    siteLoaded = true;
+  } catch (error) {
+    siteLoaded = false;
+    const detail = reason || (error instanceof Error ? error.message : String(error));
+    console.error(`主站加载失败，回退到本地启动台：${detail}`);
+    await window.loadFile(resolveAsset("src", "launcher", "index.html"), { query: { reason: detail } });
+  }
+};
+
+const openMainWindow = async (options: { show?: boolean } = {}): Promise<void> => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
     return;
   }
-  homeWindow = new BrowserWindow({
-    width: 900,
-    height: 760,
-    minWidth: 640,
-    minHeight: 520,
-    title: branding.homeTitle,
+  mainWindow = new BrowserWindow({
+    width: 1180,
+    height: 820,
+    minWidth: 720,
+    minHeight: 560,
+    title: branding.windowTitle,
+    backgroundColor: "#f8fafc",
+    show: options.show !== false,
+    autoHideMenuBar: true,
     webPreferences: {
-      preload: path.join(__dirname, "home-preload.js"),
+      preload: path.join(__dirname, "site-preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      webviewTag: false,
+      additionalArguments: [`--cpu-desktop-version=${app.getVersion()}`]
+    }
+  });
+  const window = mainWindow;
+  window.on("close", (event) => {
+    if (quitting || !tray || !closeToTray) return;
+    event.preventDefault();
+    window.hide();
+  });
+  window.once("closed", () => {
+    mainWindow = undefined;
+  });
+  enableClipboardMenu(window);
+  await loadSiteOrLauncher(window);
+};
+
+const openLearningPage = async (): Promise<void> => {
+  const auth = await getOAuthStatus();
+  if (!auth.loggedIn) throw new Error("请先完成登录");
+  await openLearningWindow(learningUrl);
+};
+
+// 授权页开在应用内窗口，与主站共用会话：用户在主站已登录的话这里直接过。
+const openAuthorizeWindow: AuthorizeOpener = async (authorizeUrl, callbackOrigin) => {
+  const window = new BrowserWindow({
+    width: 520,
+    height: 720,
+    parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
+    modal: false,
+    title: "授权登录",
+    backgroundColor: "#f8fafc",
+    autoHideMenuBar: true,
+    webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -354,24 +432,21 @@ const openHomePage = async (): Promise<void> => {
       webviewTag: false
     }
   });
-  const window = homeWindow;
-  window.on("close", (event) => {
-    // 刷课是长时任务，关窗默认收进托盘而不是退出
-    if (quitting || !tray) return;
-    event.preventDefault();
-    window.hide();
-  });
+  // 回环回调是 http 且不在任何白名单里，只对这一个窗口、这一次登录放行
+  navigationOverrides.set(window.webContents.id, createAuthNavigationRule(callbackOrigin));
+  let settled = false;
   window.once("closed", () => {
-    homeWindow = undefined;
+    navigationOverrides.delete(window.webContents.id);
+    // 用户手动关窗时要把等待中的登录 Promise 结掉，否则要挂到 5 分钟超时
+    if (!settled) abortOAuthLogin();
   });
-  enableClipboardMenu(window);
-  await window.loadFile(resolveAsset("src", "home", "index.html"));
-};
-
-const openLearningPage = async (): Promise<void> => {
-  const auth = await getOAuthStatus();
-  if (!auth.loggedIn) throw new Error("请先完成 OAuth2 登录");
-  await openLearningWindow(learningUrl);
+  await window.loadURL(authorizeUrl);
+  return {
+    close: () => {
+      settled = true;
+      if (!window.isDestroyed()) window.destroy();
+    }
+  };
 };
 
 const createTray = (): void => {
@@ -380,13 +455,29 @@ const createTray = (): void => {
   // 托盘图源是 512×512 的品牌图，直接交给系统会被拉伸得很糊
   const icon = source.resize({ width: 16, height: 16, quality: "best" });
   tray = new Tray(icon);
-  tray.setToolTip(branding.productName);
+  refreshTray();
+  tray.on("double-click", () => void openMainWindow());
+};
+
+// 托盘常驻，所以它得随时反映校园网状态 —— 不然用户看不出后台在干什么
+const refreshTray = (state?: CampusState): void => {
+  if (!tray) return;
+  const campus = state ?? campusNet?.getState();
+  const summary = campus && campus.status !== "disabled" ? `校园网：${campus.message}` : "校园网自动连接未启用";
+  tray.setToolTip(`${branding.productName}\n${summary}`);
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: "显示主窗口", click: () => void openHomePage() },
+    { label: summary, enabled: false },
+    { type: "separator" },
+    { label: "打开药大拾间", click: () => void openMainWindow() },
+    { label: "打开学习平台", click: () => void openLearningPage().catch((error) => console.error("打开学习平台失败", error)) },
+    {
+      label: "立即连接校园网",
+      enabled: Boolean(campus?.hasCredential),
+      click: () => void campusNet?.loginNow().catch((error) => console.error("校园网登录失败", error))
+    },
     { type: "separator" },
     { label: "退出", click: () => { quitting = true; app.quit(); } }
   ]));
-  tray.on("double-click", () => void openHomePage());
 };
 
 const buildApplicationMenu = (): void => {
@@ -466,8 +557,9 @@ const sanitizeAiBody = (raw: string): Record<string, unknown> => {
 
 const applyNavigationPolicy = (contents: Electron.WebContents): void => {
   const guard = (event: Electron.Event, url: string): void => {
-    // 本地首页用 file:// 加载，不受站点白名单约束
+    // 本地启动台用 file:// 加载，不受站点白名单约束
     if (url.startsWith("file://")) return;
+    if (navigationOverrides.get(contents.id)?.(url)) return;
     if (asNavigableUrl(url)) return;
     event.preventDefault();
     openExternally(url);
@@ -475,6 +567,8 @@ const applyNavigationPolicy = (contents: Electron.WebContents): void => {
   contents.on("will-navigate", guard);
   contents.on("will-redirect", guard);
   contents.setWindowOpenHandler(({ url }) => {
+    // 授权窗口里的跳转按自己的规则留在原窗口，不另开
+    if (navigationOverrides.get(contents.id)?.(url)) return { action: "allow" };
     routeUrl(url);
     return { action: "deny" };
   });
@@ -490,24 +584,90 @@ const singleInstance = app.requestSingleInstanceLock();
 if (!singleInstance) {
   app.quit();
 } else {
-  app.on("second-instance", () => void openHomePage());
+  app.on("second-instance", () => {
+    // 窗口收在托盘里且处于最小化时，只 show 是不够的
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore();
+    void openMainWindow();
+  });
 
   app.on("web-contents-created", (_event, contents) => applyNavigationPolicy(contents));
 
   app.whenReady().then(async () => {
     buildApplicationMenu();
 
+    // 让主站能识别出这是桌面端，与 CPUWebScheduleApp / CPUWebHarmonyApp 同一套约定
+    session.defaultSession.setUserAgent(
+      `${session.defaultSession.getUserAgent()} ${branding.userAgentTag}/${app.getVersion()}`
+    );
+
     // 默认拒绝所有权限请求，只放行视频全屏
     const allowPermission = (permission: string): boolean => permission === "fullscreen";
     session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => callback(allowPermission(permission)));
     session.defaultSession.setPermissionCheckHandler((_contents, permission) => allowPermission(permission));
 
+    const preferences = await readPreferences();
+    closeToTray = preferences.closeToTray;
+    applyLaunchOnLogin(preferences.launchOnLogin, preferences.startMinimized);
+
     ipcMain.handle("app:info", () => ({
       productName: branding.productName,
       version: app.getVersion(),
       origin: oauthConfig.origin,
-      learningUrl
+      learningUrl,
+      siteLoaded,
+      platform: process.platform
     }));
+    ipcMain.handle("app:get-preferences", () => readPreferences());
+    ipcMain.handle("app:set-preferences", async (_event, patch: unknown) => {
+      const next = await writePreferences((patch ?? {}) as Record<string, never>);
+      closeToTray = next.closeToTray;
+      applyLaunchOnLogin(next.launchOnLogin, next.startMinimized);
+      return next;
+    });
+    ipcMain.handle("site:open-external", (_event, url: unknown) => {
+      if (typeof url === "string") openExternally(url);
+    });
+    ipcMain.handle("site:copy-text", (_event, text: unknown) => {
+      if (typeof text === "string") clipboard.writeText(text);
+    });
+    ipcMain.handle("site:reload", async () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return { siteLoaded: false };
+      await loadSiteOrLauncher(mainWindow);
+      return { siteLoaded };
+    });
+
+    /* -------------------------------------------------------------- 校园网 */
+    // 密码只单向进主进程：campus:state 永不返回密码，只回 hasCredential 与学号。
+    const service = new CampusNetService(preferences.campusNet);
+    campusNet = service;
+    service.onChange((state) => {
+      broadcast("campus:state-changed", state);
+      refreshTray(state);
+    });
+    onCampusLog((entry) => broadcast("campus:log", entry));
+
+    ipcMain.handle("campus:state", () => service.getState());
+    ipcMain.handle("campus:settings", () => readPreferences().then((value) => value.campusNet));
+    ipcMain.handle("campus:save-credential", (_event, studentId: unknown, password: unknown) =>
+      service.saveCredential(studentId, password));
+    ipcMain.handle("campus:clear-credential", () => service.clearCredential());
+    ipcMain.handle("campus:update-settings", async (_event, patch: unknown) => {
+      const saved = await writePreferences({ campusNet: (patch ?? {}) as never });
+      service.updateSettings(saved.campusNet);
+      return saved.campusNet;
+    });
+    ipcMain.handle("campus:login-now", () => service.loginNow());
+    ipcMain.handle("campus:check-now", () => service.checkNow());
+    ipcMain.handle("campus:logs", (_event, limit: unknown) =>
+      readCampusLogs(typeof limit === "number" ? limit : 200));
+
+    void pruneCampusLogs();
+    await service.start();
+
+    // 合盖唤醒、锁屏解锁之后立刻探一次，不干等下一个轮询周期
+    const checkNow = (): void => void service.checkNow();
+    powerMonitor.on("resume", checkNow);
+    powerMonitor.on("unlock-screen", checkNow);
 
     ipcMain.handle("userscript:fetch-text", async (event, nonce: unknown, url: unknown, options?: unknown): Promise<FetchTextResult> => {
       const script = await authorize(event, nonce);
@@ -574,7 +734,7 @@ if (!singleInstance) {
       return { status: response.status, statusText: response.statusText, text: await response.text() };
     });
 
-    ipcMain.handle("oauth:login", () => startOAuthLogin().then((session) => ({
+    ipcMain.handle("oauth:login", () => startOAuthLogin(openAuthorizeWindow).then((session) => ({
       loggedIn: true,
       expiresAt: session.expiresAt,
       scope: session.scope,
@@ -589,14 +749,21 @@ if (!singleInstance) {
     ipcMain.handle("learning:open", () => openLearningPage());
 
     createTray();
-    await openHomePage();
+    // 开机自启且勾了静默启动时，只把托盘挂上，不弹窗
+    const silentStart = preferences.startMinimized && process.argv.includes("--startup") && tray !== undefined;
+    await openMainWindow({ show: !silentStart });
     const scripts = await getScripts();
-    console.log(`${branding.productName} v${app.getVersion()} 已启动 · 主站 ${oauthConfig.origin} · 已载入 ${scripts.length} 个用户脚本`);
-    app.on("activate", () => void openHomePage());
+    console.log(
+      `${branding.productName} v${app.getVersion()} 已启动 · 主站 ${oauthConfig.origin}`
+      + ` · ${siteLoaded ? "主站已加载" : "主站不可达，已回退启动台"}`
+      + ` · 已载入 ${scripts.length} 个用户脚本`
+    );
+    app.on("activate", () => void openMainWindow());
   });
 
   app.on("before-quit", () => {
     quitting = true;
+    campusNet?.stop();
   });
 
   app.on("window-all-closed", () => {
