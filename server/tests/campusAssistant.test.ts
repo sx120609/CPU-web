@@ -18,15 +18,28 @@ import {
 import {
   campusAssistantDateKey,
   nextCampusAssistantResetAt,
+  resetCampusAssistantDailyUsage,
   resolveCampusAssistantDailyQuota,
   resolveCampusAssistantQuotaLevel,
 } from "../src/services/campusAssistantQuota";
+import {
+  DEFAULT_ASSISTANT_DAILY_QUOTAS,
+  DEFAULT_CAMPUS_ASSISTANT_MODEL,
+  getSiteConfig,
+  loadFeatures,
+} from "../src/services/siteSettings";
+import { prisma } from "../src/prisma";
 import {
   ensureCanReadBoardType,
   ensureForumAccessEnabled,
   resolveForumAccess,
 } from "../src/services/forumAccess";
-import { readAiJsonTextStream } from "../src/services/aiJsonApi";
+import {
+  buildAiPromptCacheKey,
+  readAiJsonTextStream,
+  sendAiUpstreamRequest,
+} from "../src/services/aiJsonApi";
+import { calculateSponsorAssistantPoints } from "../src/services/campusAssistantPoints";
 
 const enabledFeatures = {
   forum: true,
@@ -119,6 +132,92 @@ test("OpenAI 兼容 SSE 能按增量还原完整 JSON", async () => {
   assert.equal(content, '{"answer":"你好","actionIds":[]}');
 });
 
+test("AI prompt cache keys are stable within a feature and isolated across features", () => {
+  const first = buildAiPromptCacheKey("oauth-chat", ["cpu-electron", "example-model"]);
+  const second = buildAiPromptCacheKey("oauth-chat", ["cpu-electron", "example-model"]);
+  const otherFeature = buildAiPromptCacheKey("course-bot-ai-answer", ["cpu-electron", "example-model"]);
+
+  assert.equal(first, second);
+  assert.notEqual(first, otherFeature);
+  assert.match(first, /^cpu:oauth-chat:[a-f0-9]{24}$/);
+});
+
+test("AI upstream requests apply explicit prompt cache key and 24-hour retention", async () => {
+  const originalFetch = globalThis.fetch;
+  const requestBodies: Array<Record<string, unknown>> = [];
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    requestBodies.push(JSON.parse(String(init?.body || "{}")));
+    return new Response('{"ok":true}', {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const result = await sendAiUpstreamRequest({
+      endpoint: "https://cache-test.example/v1/chat/completions",
+      apiKey: "test-key",
+      body: {
+        model: "example-model",
+        messages: [{ role: "user", content: "hello" }],
+        stream: true,
+      },
+      promptCacheKey: "cpu:test:123",
+      enablePromptCacheRetention: true,
+    });
+
+    assert.equal(result.response.ok, true);
+    assert.equal(result.promptCacheKeyApplied, true);
+    assert.equal(result.promptCacheRetentionApplied, true);
+    assert.equal(requestBodies.length, 1);
+    assert.equal(requestBodies[0]?.prompt_cache_key, "cpu:test:123");
+    assert.equal(requestBodies[0]?.prompt_cache_retention, "24h");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("AI upstream cache compatibility retries without unsupported retention", async () => {
+  const originalFetch = globalThis.fetch;
+  const requestBodies: Array<Record<string, unknown>> = [];
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    requestBodies.push(JSON.parse(String(init?.body || "{}")));
+    if (requestBodies.length === 1) {
+      return new Response('{"error":"unsupported prompt_cache_retention"}', {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response('{"ok":true}', {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const result = await sendAiUpstreamRequest({
+      endpoint: "https://cache-retention-fallback.example/v1/chat/completions",
+      apiKey: "test-key",
+      body: {
+        model: "example-model",
+        messages: [{ role: "user", content: "hello" }],
+      },
+      promptCacheKey: "cpu:test:456",
+      enablePromptCacheRetention: true,
+    });
+
+    assert.equal(result.response.ok, true);
+    assert.equal(result.promptCacheKeyApplied, true);
+    assert.equal(result.promptCacheRetentionApplied, false);
+    assert.equal(requestBodies.length, 2);
+    assert.equal(requestBodies[0]?.prompt_cache_retention, "24h");
+    assert.equal(requestBodies[1]?.prompt_cache_key, "cpu:test:456");
+    assert.equal("prompt_cache_retention" in requestBodies[1]!, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("VoiceHub knowledge describes the real request form and rejects invented listener messages", () => {
   const knowledge = listCampusAssistantKnowledge(["voicehub"]);
   const combined = knowledge.join("\n");
@@ -150,6 +249,90 @@ test("assistant quota includes Lv.0 and resets at China midnight", () => {
     nextCampusAssistantResetAt(new Date("2026-07-25T15:59:59.000Z")).toISOString(),
     "2026-07-25T16:00:00.000Z",
   );
+});
+
+test("assistant quota and model settings are restored from the database after a service reload", async () => {
+  const siteSetting = prisma.siteSetting;
+  const originalFindMany = siteSetting.findMany;
+  const storedModel = "assistant-model-test";
+  const storedQuotas = DEFAULT_ASSISTANT_DAILY_QUOTAS.map((item) => ({
+    ...item,
+    quota: item.quota + 7,
+  }));
+  let requestedKeys: string[] = [];
+
+  try {
+    siteSetting.findMany = (async (args: {
+      where?: { key?: { in?: string[] } };
+    }) => {
+      requestedKeys = args.where?.key?.in ?? [];
+      return [
+        {
+          key: "assistant.model",
+          value: storedModel,
+        },
+        {
+          key: "assistant.dailyQuotas",
+          value: JSON.stringify(storedQuotas),
+        },
+      ];
+    }) as typeof siteSetting.findMany;
+
+    await loadFeatures();
+
+    assert.equal(requestedKeys.includes("assistant.model"), true);
+    assert.equal(requestedKeys.includes("assistant.dailyQuotas"), true);
+    assert.equal(getSiteConfig().assistantModel, storedModel);
+    assert.deepEqual(getSiteConfig().assistantDailyQuotas, storedQuotas);
+  } finally {
+    siteSetting.findMany = (async () => [
+      {
+        key: "assistant.model",
+        value: DEFAULT_CAMPUS_ASSISTANT_MODEL,
+      },
+      {
+        key: "assistant.dailyQuotas",
+        value: JSON.stringify(DEFAULT_ASSISTANT_DAILY_QUOTAS),
+      },
+    ]) as typeof siteSetting.findMany;
+    await loadFeatures();
+    siteSetting.findMany = originalFindMany;
+  }
+});
+
+test("sponsor points use the configured per-yuan ratio and round down", () => {
+  assert.equal(calculateSponsorAssistantPoints(500, 3), 15);
+  assert.equal(calculateSponsorAssistantPoints(199, 2), 3);
+  assert.equal(calculateSponsorAssistantPoints(9999, 0), 0);
+});
+
+test("resetting assistant quota clears only today's used counts", async () => {
+  const dailyUsage = prisma.campusAssistantDailyUsage;
+  const originalUpdateMany = dailyUsage.updateMany;
+  let updateArgs: unknown;
+
+  try {
+    dailyUsage.updateMany = (async (args: unknown) => {
+      updateArgs = args;
+      return { count: 4 };
+    }) as typeof dailyUsage.updateMany;
+
+    const result = await resetCampusAssistantDailyUsage(new Date("2026-07-25T16:00:01.000Z"));
+
+    assert.deepEqual(updateArgs, {
+      where: {
+        dateKey: "2026-07-26",
+        used: { gt: 0 },
+      },
+      data: { used: 0 },
+    });
+    assert.deepEqual(result, {
+      dateKey: "2026-07-26",
+      resetUsers: 4,
+    });
+  } finally {
+    dailyUsage.updateMany = originalUpdateMany;
+  }
 });
 
 test("forum access is open to guests and no longer requires manual activation", async () => {

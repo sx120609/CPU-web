@@ -41,6 +41,8 @@ export interface CampusAssistantQuota {
   dailyQuota: number;
   used: number;
   remaining: number;
+  points: number;
+  totalRemaining: number;
   dateKey: string;
   nextResetAt: string;
 }

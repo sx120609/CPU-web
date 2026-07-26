@@ -26,6 +26,7 @@ import {
   getSponsorConfig,
   sponsorConfigToCents,
 } from "../services/sponsor";
+import { awardSponsorAssistantPoints } from "../services/campusAssistantPoints";
 
 export const paymentsRouter = Router();
 
@@ -95,6 +96,7 @@ paymentsRouter.get("/sponsor/options", authRequired, async (_req, res, next) => 
       description: config.description,
       wallEnabled: config.wallEnabled,
       allowMessage: config.allowMessage,
+      assistantPointsPerYuan: config.assistantPointsPerYuan,
     });
   } catch (e) { next(e); }
 });
@@ -310,8 +312,10 @@ paymentsRouter.all("/epay/notify", async (req, res, next) => {
       return;
     }
     const paidCents = moneyToAmountCents(params.money || "0");
+    const sponsorConfig = await getSponsorConfig();
     let paidOrder: any = null;
     let newlyPaid = false;
+    let awardedPoints = 0;
     await prisma.$transaction(async (tx) => {
       const order = await tx.sponsorOrder.findUnique({ where: { outTradeNo } });
       if (!order) throw new Error("订单不存在");
@@ -320,18 +324,30 @@ paymentsRouter.all("/epay/notify", async (req, res, next) => {
         return;
       }
       if (order.amountCents !== paidCents) throw new Error("支付金额与订单不一致");
-      paidOrder = await tx.sponsorOrder.update({
-        where: { id: order.id },
+      const claimed = await tx.sponsorOrder.updateMany({
+        where: { id: order.id, status: { not: "paid" } },
         data: {
           status: "paid",
           tradeNo: params.trade_no || null,
           paidAt: new Date(),
         },
       });
+      if (claimed.count !== 1) {
+        paidOrder = await tx.sponsorOrder.findUnique({ where: { id: order.id } });
+        return;
+      }
+      paidOrder = await tx.sponsorOrder.findUnique({ where: { id: order.id } });
       await tx.user.update({
         where: { id: order.userId },
         data: { sponsorTotalCents: { increment: order.amountCents } },
       });
+      awardedPoints = await awardSponsorAssistantPoints(tx, {
+        orderId: order.id,
+        userId: order.userId,
+        amountCents: order.amountCents,
+        pointsPerYuan: sponsorConfig.assistantPointsPerYuan,
+      });
+      if (paidOrder) paidOrder.assistantPointsAwarded = awardedPoints;
       newlyPaid = true;
     });
     if (newlyPaid && paidOrder && paidOrder.status === "paid") {
@@ -341,10 +357,15 @@ paymentsRouter.all("/epay/notify", async (req, res, next) => {
           category: "system",
           level: "normal",
           title: "赞助已到账",
-          content: `感谢赞助 ¥${amountCentsToMoney(paidOrder.amountCents)}，你的支持已经记录在个人资料中。`,
+          content: `感谢赞助 ¥${amountCentsToMoney(paidOrder.amountCents)}，你的支持已经记录在个人资料中${awardedPoints > 0 ? `，并获得 ${awardedPoints} 个 AI 点数` : ""}。`,
           link: "/profile",
           source: "赞助",
-          payload: JSON.stringify({ type: "sponsor-paid", outTradeNo: paidOrder.outTradeNo, amount: amountCentsToMoney(paidOrder.amountCents) }),
+          payload: JSON.stringify({
+            type: "sponsor-paid",
+            outTradeNo: paidOrder.outTradeNo,
+            amount: amountCentsToMoney(paidOrder.amountCents),
+            assistantPoints: awardedPoints,
+          }),
         },
       }).catch(() => {});
       const admins = await prisma.user.findMany({ where: { role: "admin" }, select: { id: true } });

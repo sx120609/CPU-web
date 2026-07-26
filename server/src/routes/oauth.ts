@@ -5,12 +5,23 @@ import { z } from "zod";
 import { config } from "../config";
 import { authOptional } from "../middleware/auth";
 import { prisma } from "../prisma";
-import { consumeCampusAssistantQuota, getCampusAssistantQuotaStatus, refundCampusAssistantQuota } from "../services/campusAssistantQuota";
+import {
+  consumeCampusAssistantQuota,
+  getCampusAssistantQuotaStatus,
+  refundCampusAssistantQuota,
+  type CampusAssistantQuotaReservation,
+} from "../services/campusAssistantQuota";
 import { getSiteConfig } from "../services/siteSettings";
 import { isCampusAssistantConversationRestricted } from "../services/campusAssistant";
 import { securityRateLimit } from "../middleware/securityRateLimit";
 import { buildUserTrustSnapshot } from "../services/userTrust";
 import { detectAiJsonApiMode, extractAiJsonTextResponse, normalizeAiJsonApiUrl } from "../services/aiJsonApi";
+import {
+  buildAiPromptCacheKey,
+  detectAiJsonApiMode,
+  normalizeAiJsonApiUrl,
+  sendAiUpstreamRequest,
+} from "../services/aiJsonApi";
 import { Errors, ok } from "../utils/response";
 
 export const oauthRouter = Router();
@@ -206,9 +217,11 @@ oauthRouter.get("/userinfo", async (req, res, next) => {
       },
       level: quota.level,
       levelName: quota.levelName,
-      aiBalance: quota.remaining,
+      aiBalance: quota.totalRemaining,
       dailyQuota: quota.dailyQuota,
       usedToday: quota.used,
+      dailyRemaining: quota.remaining,
+      assistantPoints: quota.points,
     });
   } catch (error) {
     next(error);
@@ -216,7 +229,7 @@ oauthRouter.get("/userinfo", async (req, res, next) => {
 });
 
 oauthRouter.post("/v1/chat/completions", securityRateLimit("oauth-ai", 20, 60_000), async (req, res, next) => {
-  let reservationDateKey = "";
+  let quotaReservation: CampusAssistantQuotaReservation | null = null;
   let userId = 0;
   let quotaRefunded = false;
   let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -232,28 +245,31 @@ oauthRouter.post("/v1/chat/completions", securityRateLimit("oauth-ai", 20, 60_00
     const siteConfig = getSiteConfig();
     const endpoint = normalizeAiJsonApiUrl(siteConfig.aiReviewApiUrl, "https://api.openai.com/v1/chat/completions");
     const apiKey = siteConfig.aiReviewApiKey;
-    const model = siteConfig.aiReviewModel;
+    const model = siteConfig.assistantModel;
     if (!siteConfig.aiReviewEnabled || !endpoint || !apiKey || !model) throw Errors.server("AI 服务尚未配置或已关闭");
     const consumedQuota = await consumeCampusAssistantQuota(token.userId);
-    reservationDateKey = consumedQuota.dateKey;
+    quotaReservation = consumedQuota.reservation;
     const controller = new AbortController();
     timeout = setTimeout(() => controller.abort(), 120_000);
     res.on("close", () => {
       if (!responseCompleted) controller.abort();
     });
-    const upstream = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify(buildOAuthAiRequestBody(body, model, endpoint)),
+    const upstreamResult = await sendAiUpstreamRequest({
+      endpoint,
+      apiKey,
+      body: buildOAuthAiRequestBody(body, model, endpoint),
+      promptCacheKey: buildAiPromptCacheKey("oauth-chat", [token.clientId, model]),
+      enablePromptCacheRetention: true,
       signal: controller.signal,
     });
+    const upstream = upstreamResult.response;
     res.status(upstream.status);
     const contentType = upstream.headers.get("content-type");
     if (contentType) res.setHeader("Content-Type", contentType);
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("X-Accel-Buffering", "no");
     if (!upstream.ok) {
-      await refundCampusAssistantQuota(token.userId, reservationDateKey);
+      await refundCampusAssistantQuota(token.userId, quotaReservation);
       quotaRefunded = true;
     }
     if (!upstream.ok) {
@@ -272,8 +288,8 @@ oauthRouter.post("/v1/chat/completions", securityRateLimit("oauth-ai", 20, 60_00
     return result;
   } catch (error) {
     if (timeout) clearTimeout(timeout);
-    if (reservationDateKey && !quotaRefunded && !responseCompleted) {
-      await refundCampusAssistantQuota(userId, reservationDateKey).catch(() => {});
+    if (quotaReservation && !quotaRefunded && !responseCompleted) {
+      await refundCampusAssistantQuota(userId, quotaReservation).catch(() => {});
     }
     next(error);
   }

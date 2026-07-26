@@ -25,6 +25,7 @@ import {
   setSiteFilingNumber,
   setTopicGlobalPinned,
   setAiReviewConfig,
+  setCampusAssistantModel,
   setCommunityTrustConfig,
   setSiteOrigin,
   setTopNavigation,
@@ -56,6 +57,11 @@ import {
   getSponsorConfig,
   updateSponsorConfig,
 } from "../../services/sponsor";
+import {
+  awardSponsorAssistantPoints,
+  backfillSponsorAssistantPoints,
+  grantAssistantPointsBatch,
+} from "../../services/campusAssistantPoints";
 import { applyManualForumImageReview, backfillForumImageAssetsAndTriggerModeration, listForumImageAssetsForContent } from "../../services/imageModeration";
 import {
   applyManualForumVideoReview,
@@ -109,6 +115,7 @@ import {
 import { getJwxtAgentState, requestJwxtAgent } from "../../services/jwxtAgentGateway";
 import { getQueryAgentPoolSnapshot } from "../../services/jwxtAgentRemote";
 import { getSsoLoginPoolSnapshot } from "../../services/ssoLoginPool";
+import { resetCampusAssistantDailyUsage } from "../../services/campusAssistantQuota";
 
 export const adminRouter = Router();
 const DATABASE_RESTORE_UPLOAD_DIR = path.join(tmpdir(), "cpu-web-db-restore-upload");
@@ -289,7 +296,6 @@ adminRouter.get("/users", userDirectoryAccess, async (req, res, next) => {
     const usedIosClient = req.query.usedIosClient === "1" ? true : req.query.usedIosClient === "0" ? false : undefined;
     const usedAndroidClient = req.query.usedAndroidClient === "1" ? true : req.query.usedAndroidClient === "0" ? false : undefined;
     const usedHarmonyClient = req.query.usedHarmonyClient === "1" ? true : req.query.usedHarmonyClient === "0" ? false : undefined;
-    const forumEnabled = req.query.forumEnabled === "1" ? true : req.query.forumEnabled === "0" ? false : undefined;
     const loginFrom = String(req.query.loginFrom ?? "").trim();
     const loginTo = String(req.query.loginTo ?? "").trim();
     const sort = String(req.query.sort ?? "login-desc");
@@ -318,7 +324,6 @@ adminRouter.get("/users", userDirectoryAccess, async (req, res, next) => {
     if (typeof usedIosClient === "boolean") where.usedIosClient = usedIosClient;
     if (typeof usedAndroidClient === "boolean") where.usedAndroidClient = usedAndroidClient;
     if (typeof usedHarmonyClient === "boolean") where.usedHarmonyClient = usedHarmonyClient;
-    if (typeof forumEnabled === "boolean") where.forumEnabled = forumEnabled;
     if (loginFrom || loginTo) {
       const loginAtFilter: any = where.lastLoginAt && typeof where.lastLoginAt === "object" ? where.lastLoginAt : {};
       if (loginFrom) {
@@ -353,6 +358,7 @@ adminRouter.get("/users", userDirectoryAccess, async (req, res, next) => {
           postCount: true, replyCount: true, reputation: true,
           forumEnabled: true, forumEnabledAt: true,
           anonymousCredits: true, anonymousWeekKey: true, anonymousCreditsFrozen: true,
+          assistantPoints: true,
           aiReviewWhitelisted: true,
           lastSeenAt: true, lastLoginAt: true, lastLoginClient: true, usedIosClient: true, usedAndroidClient: true, usedHarmonyClient: true,
           createdAt: true,
@@ -1597,6 +1603,7 @@ const sponsorConfigPatchSchema = z.object({
   maxAmount: z.union([z.string(), z.number()]).optional(),
   wallEnabled: z.boolean().optional(),
   allowMessage: z.boolean().optional(),
+  assistantPointsPerYuan: z.number().int().min(0).max(10000).optional(),
 });
 
 adminRouter.patch("/sponsor-config", adminOnly, validate(sponsorConfigPatchSchema), async (req, res, next) => {
@@ -1706,11 +1713,19 @@ adminRouter.patch("/sponsor-orders/:id", adminOnly, validate(sponsorOrderPatchSc
         data.expiresAt = calcSponsorOrderExpiresAt();
       }
     }
+    const sponsorConfig = await getSponsorConfig();
+    let awardedPoints = current.assistantPointsAwarded;
     const updated = await prisma.$transaction(async (tx) => {
       const row = await tx.sponsorOrder.update({ where: { id }, data, include: { user: true } });
       if (req.body.status && req.body.status !== current.status) {
         if (current.status !== "paid" && req.body.status === "paid") {
           await tx.user.update({ where: { id: current.userId }, data: { sponsorTotalCents: { increment: current.amountCents } } });
+          awardedPoints = await awardSponsorAssistantPoints(tx, {
+            orderId: current.id,
+            userId: current.userId,
+            amountCents: current.amountCents,
+            pointsPerYuan: sponsorConfig.assistantPointsPerYuan,
+          });
         }
         if (current.status === "paid" && req.body.status !== "paid") {
           await tx.user.update({
@@ -1719,7 +1734,7 @@ adminRouter.patch("/sponsor-orders/:id", adminOnly, validate(sponsorOrderPatchSc
           });
         }
       }
-      return row;
+      return { ...row, assistantPointsAwarded: awardedPoints };
     });
     ok(res, formatSponsorOrder(updated));
   } catch (e) { next(e); }
@@ -1753,7 +1768,6 @@ adminRouter.get("/sponsor-logs", adminOnly, async (req, res, next) => {
 adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
   try {
     const { start: todayStart, end: todayEnd } = getChinaDayRange();
-    const regularUserWhere = { role: "user" as const };
     await backfillAdminDailyLoginsFromLastLogin(30).catch((error) => {
       console.warn("[admin-stats] failed to backfill daily logins", error);
     });
@@ -1771,9 +1785,6 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       androidClients,
       harmonyClients,
       todayLogins,
-      forumEligibleUsers,
-      forumEnabledUsers,
-      forumEnabledToday,
       dailyActiveSeries,
     ] = await Promise.all([
       prisma.user.count(),
@@ -1790,18 +1801,8 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       prisma.user.count({ where: { usedAndroidClient: true } }),
       prisma.user.count({ where: { usedHarmonyClient: true } }),
       prisma.user.count({ where: { lastLoginAt: { gte: todayStart, lt: todayEnd } } }),
-      prisma.user.count({ where: regularUserWhere }),
-      prisma.user.count({ where: { ...regularUserWhere, forumEnabled: true } }),
-      prisma.user.count({
-        where: {
-          ...regularUserWhere,
-          forumEnabled: true,
-          forumEnabledAt: { gte: todayStart, lt: todayEnd },
-        },
-      }),
       listAdminDailyLoginSeries(30),
     ]);
-    const forumPendingUsers = Math.max(0, forumEligibleUsers - forumEnabledUsers);
     const dailyActiveToday = dailyActiveSeries[dailyActiveSeries.length - 1];
     if (dailyActiveToday) {
       dailyActiveToday.count = Math.max(dailyActiveToday.count, todayLogins);
@@ -1819,10 +1820,6 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       androidClients,
       harmonyClients,
       todayLogins,
-      forumEligibleUsers,
-      forumEnabledUsers,
-      forumPendingUsers,
-      forumEnabledToday,
       dailyActiveSeries,
     });
   } catch (e) { next(e); }
@@ -2072,6 +2069,7 @@ adminRouter.post("/media-storage/cleanup-local", adminOnly, async (_req, res, ne
 const siteConfigPatchSchema = z.object({
   siteOrigin: z.string().trim().max(240).optional(),
   siteFilingNumber: z.string().trim().max(120).optional(),
+  assistantModel: z.string().trim().min(1).max(80).optional(),
   aiReviewEnabled: z.boolean().optional(),
   aiReviewProvider: z.string().trim().max(40).optional(),
   aiReviewApiUrl: z.string().trim().max(240).optional(),
@@ -2214,6 +2212,9 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
     ) {
       await setCommunityTrustConfig(req.body);
     }
+    if (req.body.assistantModel !== undefined) {
+      await setCampusAssistantModel(req.body.assistantModel);
+    }
     if (req.body.siteOrigin !== undefined) {
       await setSiteOrigin(req.body.siteOrigin ?? "");
     }
@@ -2231,6 +2232,169 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       next(Errors.badRequest(e.message));
       return;
     }
+    next(e);
+  }
+});
+
+adminRouter.post("/campus-assistant/quota/reset-today", adminOnly, async (_req, res, next) => {
+  try {
+    ok(res, await resetCampusAssistantDailyUsage());
+  } catch (e) {
+    next(e);
+  }
+});
+
+adminRouter.get("/campus-assistant/points/users", adminOnly, async (req, res, next) => {
+  try {
+    const q = String(req.query.q ?? "").trim();
+    const size = Math.min(100, Math.max(10, Number(req.query.size ?? 30)));
+    const where = q
+      ? {
+          OR: [
+            { username: { contains: q, mode: "insensitive" as const } },
+            { nickname: { contains: q, mode: "insensitive" as const } },
+            { email: { contains: q, mode: "insensitive" as const } },
+          ],
+        }
+      : {};
+    const list = await prisma.user.findMany({
+      where,
+      orderBy: q ? [{ id: "desc" }] : [{ assistantPoints: "desc" }, { id: "desc" }],
+      take: size,
+      select: {
+        id: true,
+        username: true,
+        nickname: true,
+        avatar: true,
+        assistantPoints: true,
+      },
+    });
+    ok(res, list);
+  } catch (e) {
+    next(e);
+  }
+});
+
+adminRouter.get("/campus-assistant/points/overview", adminOnly, async (_req, res, next) => {
+  try {
+    const [balance, eligibleUserCount, transactionCount, recent] = await Promise.all([
+      prisma.user.aggregate({
+        where: { assistantPoints: { gt: 0 } },
+        _sum: { assistantPoints: true },
+        _count: { assistantPoints: true },
+      }),
+      prisma.user.count({
+        where: {
+          role: { not: "bot" },
+          status: { not: "banned" },
+        },
+      }),
+      prisma.campusAssistantPointLedger.count(),
+      prisma.campusAssistantPointLedger.findMany({
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 50,
+        include: {
+          user: { select: { id: true, username: true, nickname: true, avatar: true } },
+          operator: { select: { id: true, username: true, nickname: true } },
+        },
+      }),
+    ]);
+    ok(res, {
+      totalPoints: balance._sum.assistantPoints ?? 0,
+      holderCount: balance._count.assistantPoints,
+      eligibleUserCount,
+      transactionCount,
+      recent,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+const assistantPointGrantSchema = z.object({
+  allUsers: z.boolean().optional().default(false),
+  userIds: z.array(z.number().int().positive()).max(200).optional().default([]),
+  points: z.number().int().min(1).max(1000000),
+  reason: z.string().trim().min(1).max(80),
+}).refine((input) => input.allUsers || input.userIds.length > 0, {
+  message: "请选择接收用户",
+  path: ["userIds"],
+});
+
+adminRouter.post(
+  "/campus-assistant/points/grant",
+  adminOnly,
+  validate(assistantPointGrantSchema),
+  async (req, res, next) => {
+    try {
+      const recipients = await grantAssistantPointsBatch({
+        userIds: req.body.userIds,
+        allUsers: req.body.allUsers,
+        points: req.body.points,
+        reason: req.body.reason,
+        operatorId: req.user!.userId,
+      });
+      await prisma.notification.createMany({
+        data: recipients.map((user) => ({
+          userId: user.id,
+          category: "system",
+          level: "normal",
+          title: "AI 点数已到账",
+          content: `你获得了 ${req.body.points} 个 AI 点数：${req.body.reason}`,
+          link: "/search",
+          source: "拾间 AI",
+          payload: JSON.stringify({
+            type: "assistant-points-grant",
+            points: req.body.points,
+            reason: req.body.reason,
+          }),
+        })),
+      }).catch(() => {});
+      ok(res, {
+        points: req.body.points,
+        recipientCount: recipients.length,
+      });
+    } catch (e: any) {
+      if (e?.message === "POINT_USERS_NOT_FOUND") {
+        next(Errors.notFound("部分用户不存在，请刷新后重试"));
+        return;
+      }
+      next(e);
+    }
+  },
+);
+
+adminRouter.post("/campus-assistant/points/backfill-sponsors", adminOnly, async (_req, res, next) => {
+  try {
+    const sponsorConfig = await getSponsorConfig();
+    if (sponsorConfig.assistantPointsPerYuan <= 0) {
+      throw Errors.badRequest("请先设置并保存大于 0 的赞助点数比例");
+    }
+    const result = await backfillSponsorAssistantPoints(sponsorConfig.assistantPointsPerYuan);
+    if (result.userAwards.length) {
+      await prisma.notification.createMany({
+        data: result.userAwards.map((award) => ({
+          userId: award.userId,
+          category: "system",
+          level: "normal",
+          title: "历史赞助点数已补发",
+          content: `已按当前赞助规则为你的 ${award.orderCount} 笔历史赞助补发 ${award.points} 个 AI 点数。`,
+          link: "/search",
+          source: "赞助",
+          payload: JSON.stringify({
+            type: "sponsor-points-backfill",
+            points: award.points,
+            orderCount: award.orderCount,
+          }),
+        })),
+      }).catch(() => {});
+    }
+    ok(res, {
+      orderCount: result.orderCount,
+      userCount: result.userCount,
+      totalPoints: result.totalPoints,
+    });
+  } catch (e) {
     next(e);
   }
 });

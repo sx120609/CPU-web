@@ -323,6 +323,8 @@ Electron 可以主动撤销 access token：
 
 当站点 AI URL 配置为 `/v1/responses` 时，服务端会自动将请求转换为 Responses API 的 `input` 格式；配置为 `/v1/chat/completions` 时使用 Chat Completions 的 `messages` 格式。服务端始终使用后台配置的模型和 API Key，并检查 `ai.review.enabled`。
 
+流式与非流式调用都会按 OAuth 客户端和服务端模型生成稳定的 `prompt_cache_key`，并在上游支持时请求 24 小时提示缓存保留。若兼容上游拒绝缓存保留参数或缓存键，服务端会自动降级并重试；接入本代理的聊天与后续 AI 解答功能无需在客户端保存或传递上游缓存参数。
+
 请求头：
 
 ```http

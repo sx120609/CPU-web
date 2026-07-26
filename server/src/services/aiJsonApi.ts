@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export type AiJsonApiMode = "chat_completions" | "responses";
 
 export type AiJsonImageDetail = "low" | "high" | "auto" | "original";
@@ -31,6 +33,20 @@ export type SendAiJsonRequestResult = {
 const promptCacheKeySupport = new Map<string, boolean>();
 const promptCacheRetentionSupport = new Map<string, boolean>();
 
+export function buildAiPromptCacheKey(scope: string, parts: Array<string | number | boolean | null | undefined> = []) {
+  const normalizedScope = String(scope || "generic")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32) || "generic";
+  const digest = createHash("sha256")
+    .update(parts.map((item) => String(item ?? "")).join("\n"))
+    .digest("hex")
+    .slice(0, 24);
+  return `cpu:${normalizedScope}:${digest}`;
+}
+
 export function detectAiJsonApiMode(endpoint: string): AiJsonApiMode {
   const normalized = String(endpoint || "").trim().replace(/[?#].*$/, "").replace(/\/+$/, "");
   return /\/responses$/i.test(normalized) ? "responses" : "chat_completions";
@@ -56,53 +72,60 @@ export async function sendAiJsonRequest(input: {
   signal?: AbortSignal;
 }): Promise<SendAiJsonRequestResult> {
   const mode = detectAiJsonApiMode(input.endpoint);
+  const body = buildAiJsonRequestBody({
+    mode,
+    model: input.model,
+    temperature: input.temperature,
+    messages: input.messages,
+    stream: input.stream,
+  });
+  return sendAiUpstreamRequest({
+    endpoint: input.endpoint,
+    apiKey: input.apiKey,
+    body,
+    promptCacheKey: input.promptCacheKey,
+    enablePromptCacheRetention: input.enablePromptCacheRetention,
+    signal: input.signal,
+  });
+}
+
+export async function sendAiUpstreamRequest(input: {
+  endpoint: string;
+  apiKey: string;
+  body: Record<string, unknown>;
+  promptCacheKey?: string | null;
+  enablePromptCacheRetention?: boolean;
+  signal?: AbortSignal;
+}): Promise<SendAiJsonRequestResult> {
+  const mode = detectAiJsonApiMode(input.endpoint);
   const supportKey = `${mode}:${input.endpoint}`;
   const promptCacheKey = String(input.promptCacheKey || "").trim();
   let promptCacheKeyApplied = Boolean(promptCacheKey) && (promptCacheKeySupport.get(supportKey) ?? true);
-  let promptCacheRetentionApplied = mode === "responses"
-    && promptCacheKeyApplied
+  let promptCacheRetentionApplied = promptCacheKeyApplied
     && input.enablePromptCacheRetention !== false
     && (promptCacheRetentionSupport.get(supportKey) ?? true);
 
-  let response = await fetch(input.endpoint, {
+  const execute = () => fetch(input.endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${input.apiKey}`,
     },
     signal: input.signal,
-    body: JSON.stringify(buildAiJsonRequestBody({
-      mode,
-      model: input.model,
-      temperature: input.temperature,
-      messages: input.messages,
-      promptCacheKey: promptCacheKeyApplied ? promptCacheKey : "",
+    body: JSON.stringify(withPromptCacheOptions(
+      input.body,
+      promptCacheKeyApplied ? promptCacheKey : "",
       promptCacheRetentionApplied,
-      stream: input.stream,
-    })),
+    )),
   });
+
+  let response = await execute();
   let errorText = response.ok ? "" : await response.clone().text().catch(() => "");
 
   if (!response.ok && promptCacheRetentionApplied && shouldDisablePromptCacheRetention(response.status, errorText)) {
     promptCacheRetentionSupport.set(supportKey, false);
     promptCacheRetentionApplied = false;
-    response = await fetch(input.endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${input.apiKey}`,
-      },
-      signal: input.signal,
-      body: JSON.stringify(buildAiJsonRequestBody({
-        mode,
-        model: input.model,
-        temperature: input.temperature,
-        messages: input.messages,
-        promptCacheKey: promptCacheKeyApplied ? promptCacheKey : "",
-        promptCacheRetentionApplied,
-        stream: input.stream,
-      })),
-    });
+    response = await execute();
     errorText = response.ok ? "" : await response.clone().text().catch(() => "");
   }
 
@@ -111,23 +134,7 @@ export async function sendAiJsonRequest(input: {
     promptCacheRetentionSupport.set(supportKey, false);
     promptCacheKeyApplied = false;
     promptCacheRetentionApplied = false;
-    response = await fetch(input.endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${input.apiKey}`,
-      },
-      signal: input.signal,
-      body: JSON.stringify(buildAiJsonRequestBody({
-        mode,
-        model: input.model,
-        temperature: input.temperature,
-        messages: input.messages,
-        promptCacheKey: "",
-        promptCacheRetentionApplied: false,
-        stream: input.stream,
-      })),
-    });
+    response = await execute();
     errorText = response.ok ? "" : await response.clone().text().catch(() => "");
   }
 
@@ -164,8 +171,6 @@ function buildAiJsonRequestBody(input: {
   model: string;
   temperature?: number;
   messages: AiJsonMessage[];
-  promptCacheKey: string;
-  promptCacheRetentionApplied: boolean;
   stream?: boolean;
 }) {
   const body: Record<string, unknown> = {
@@ -180,11 +185,20 @@ function buildAiJsonRequestBody(input: {
     body.messages = input.messages.map(toChatCompletionsMessage);
     body.response_format = { type: "json_object" };
   }
-  if (input.promptCacheKey) {
-    body.prompt_cache_key = input.promptCacheKey;
-    if (input.mode === "responses" && input.promptCacheRetentionApplied) {
-      body.prompt_cache_retention = "24h";
-    }
+  return body;
+}
+
+function withPromptCacheOptions(
+  input: Record<string, unknown>,
+  promptCacheKey: string,
+  promptCacheRetentionApplied: boolean,
+) {
+  const body = { ...input };
+  delete body.prompt_cache_key;
+  delete body.prompt_cache_retention;
+  if (promptCacheKey) {
+    body.prompt_cache_key = promptCacheKey;
+    if (promptCacheRetentionApplied) body.prompt_cache_retention = "24h";
   }
   return body;
 }

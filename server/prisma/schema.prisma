@@ -48,6 +48,7 @@ model User {
   anonymousWeekKey       String?
   anonymousCreditsFrozen Boolean   @default(false)
   sponsorTotalCents      Int       @default(0)
+  assistantPoints        Int       @default(0)
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
@@ -79,6 +80,8 @@ model User {
   forumVideoAssets             ForumVideoAsset[]
   aiReviewLogs                 AiReviewLog[]
   campusAssistantDailyUsages   CampusAssistantDailyUsage[]
+  campusAssistantPointEntries  CampusAssistantPointLedger[]  @relation("CampusAssistantPointOwner")
+  campusAssistantPointActions  CampusAssistantPointLedger[]  @relation("CampusAssistantPointOperator")
   courseBotQuota               CourseBotQuota?
   courseBotUsageLogs           CourseBotUsageLog[]
   adminDailyLogins             AdminDailyLogin[]
@@ -99,8 +102,8 @@ model User {
   lostFoundItems               LostFoundItem[]               @relation("LostFoundPublisher")
   lostFoundClaims              LostFoundClaim[]              @relation("LostFoundClaimant")
   campusAssistantConversations CampusAssistantConversation[]
-  oauthAuthorizationCodes     OAuthAuthorizationCode[]
-  oauthAccessTokens           OAuthAccessToken[]
+  oauthAuthorizationCodes      OAuthAuthorizationCode[]
+  oauthAccessTokens            OAuthAccessToken[]
 }
 
 model CampusAssistantConversation {
@@ -131,6 +134,27 @@ model CampusAssistantDailyUsage {
   @@unique([userId, dateKey])
   @@index([dateKey])
   @@index([userId, updatedAt])
+}
+
+model CampusAssistantPointLedger {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  delta         Int
+  balanceAfter  Int
+  source        String
+  reason        String   @default("")
+  referenceType String?
+  referenceId   String?
+  operatorId    Int?
+  createdAt     DateTime @default(now())
+
+  user     User  @relation("CampusAssistantPointOwner", fields: [userId], references: [id], onDelete: Cascade)
+  operator User? @relation("CampusAssistantPointOperator", fields: [operatorId], references: [id], onDelete: SetNull)
+
+  @@unique([source, referenceType, referenceId, userId])
+  @@index([userId, createdAt])
+  @@index([source, createdAt])
+  @@index([operatorId, createdAt])
 }
 
 // ============ 论坛核心 ============
@@ -862,20 +886,21 @@ model EpayConfig {
 }
 
 model SponsorOrder {
-  id          Int       @id @default(autoincrement())
-  userId      Int
-  outTradeNo  String    @unique
-  tradeNo     String?
-  payType     String
-  amountCents Int
-  message     String    @default("")
-  displayMode String    @default("public") // public / anonymous / hidden
-  status      String    @default("pending") // pending / paid / closed
-  expiresAt   DateTime?
-  paidAt      DateTime?
-  closedAt    DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                     Int       @id @default(autoincrement())
+  userId                 Int
+  outTradeNo             String    @unique
+  tradeNo                String?
+  payType                String
+  amountCents            Int
+  assistantPointsAwarded Int       @default(0)
+  message                String    @default("")
+  displayMode            String    @default("public") // public / anonymous / hidden
+  status                 String    @default("pending") // pending / paid / closed
+  expiresAt              DateTime?
+  paidAt                 DateTime?
+  closedAt               DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   paymentLogs SponsorPaymentLog[]
@@ -1601,9 +1626,9 @@ model OAuthAuthorizationCode {
   scope               String
   codeChallenge       String
   codeChallengeMethod String    @default("S256")
-  expiresAt            DateTime
+  expiresAt           DateTime
   usedAt              DateTime?
-  createdAt            DateTime  @default(now())
+  createdAt           DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

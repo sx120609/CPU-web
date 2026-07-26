@@ -117,7 +117,7 @@
           :autosize="{ minRows: 1, maxRows: 4 }"
           resize="none"
           maxlength="500"
-          :placeholder="assistantQuotaExhausted ? '今日额度已用完，明天恢复' : '给拾间AI发消息'"
+          :placeholder="assistantQuotaExhausted ? '今日额度和点数都已用完' : '给拾间AI发消息'"
           @keydown="handleComposerKeydown"
           @focus="handleComposerFocus"
           @blur="handleComposerBlur"
@@ -135,8 +135,7 @@
         </button>
       </div>
       <p v-if="auth.isLoggedIn" class="assistant-disclaimer">
-        <span>内容由 AI 生成，请注意甄别</span>
-        <span v-if="assistantQuota">{{ assistantQuota.levelName }} · 今日剩余 {{ assistantQuota.remaining }}/{{ assistantQuota.dailyQuota }}</span>
+        内容由 AI 生成，请注意甄别<span v-if="assistantQuota"> · Lv.{{ assistantQuota.level }} · 今日 {{ assistantQuota.remaining }}/{{ assistantQuota.dailyQuota }} · 点数 {{ assistantQuota.points }}</span>
       </p>
     </section>
 
@@ -301,16 +300,18 @@ let cloudSyncTimer = 0;
 let pendingCloudSession: ConversationSession | null = null;
 let firstRouteSync = true;
 let conversationAnchorScrollTop: number | null = null;
+let conversationAnchorBottomGap: number | null = null;
 let conversationAnchorLockUntil = 0;
 let conversationAnchorFrame = 0;
 let conversationAnchorReleaseTimer = 0;
 const composerFocused = ref(false);
 let conversationAnchorRestoring = false;
 const conversationAnchorTimers: number[] = [];
+const CONVERSATION_BOTTOM_ANCHOR_THRESHOLD = 36;
 
 const welcomePrompts = ["怎么查宿舍电费？", "打开药苑之声", "我的课表在哪里？"];
 const assistantQuotaExhausted = computed(() => (
-  assistantQuota.value !== null && assistantQuota.value.remaining <= 0
+  assistantQuota.value !== null && assistantQuota.value.totalRemaining <= 0
 ));
 const historyCaption = computed(() => {
   if (!auth.isLoggedIn) return "记录保存在当前设备；登录后可同步到账号，最多保留 20 个对话。";
@@ -325,7 +326,6 @@ onMounted(() => {
     void loadAssistantQuota();
   }
   window.visualViewport?.addEventListener("resize", handleComposerViewportChange);
-  window.visualViewport?.addEventListener("scroll", handleComposerViewportChange);
 });
 
 watch(() => auth.isLoggedIn, (loggedIn) => {
@@ -365,7 +365,7 @@ async function submitSearch() {
     return;
   }
   if (assistantQuotaExhausted.value) {
-    ElMessage.warning("今天的拾间 AI 额度已用完，明天 00:00 自动恢复");
+    ElMessage.warning("今天的拾间 AI 额度和点数都已用完，日额度会在明天 00:00 自动恢复");
     return;
   }
   const keyword = keywordInput.value.trim();
@@ -476,7 +476,7 @@ async function goLogin() {
 
 async function retryAssistant() {
   if (assistantQuotaExhausted.value) {
-    ElMessage.warning("今天的拾间 AI 额度已用完，明天 00:00 自动恢复");
+    ElMessage.warning("今天的拾间 AI 额度和点数都已用完，日额度会在明天 00:00 自动恢复");
     return;
   }
   const keyword = [...messages.value].reverse().find((item) => item.role === "user")?.content.trim() || q.value.trim();
@@ -499,7 +499,7 @@ function captureConversationAnchor() {
   if (!isMobileComposerViewport()) return;
   const element = conversationRef.value;
   if (!element) return;
-  conversationAnchorScrollTop = element.scrollTop;
+  rememberConversationAnchor(element);
 }
 
 function handleComposerFocus() {
@@ -533,7 +533,17 @@ function handleConversationScroll() {
     || performance.now() < conversationAnchorLockUntil
   ) return;
   const element = conversationRef.value;
-  if (element) conversationAnchorScrollTop = element.scrollTop;
+  if (element) rememberConversationAnchor(element);
+}
+
+function rememberConversationAnchor(element: HTMLElement) {
+  const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+  const scrollTop = Math.max(0, Math.min(element.scrollTop, maxScrollTop));
+  const bottomGap = Math.max(0, maxScrollTop - scrollTop);
+  conversationAnchorScrollTop = scrollTop;
+  conversationAnchorBottomGap = bottomGap <= CONVERSATION_BOTTOM_ANCHOR_THRESHOLD
+    ? bottomGap
+    : null;
 }
 
 function scheduleConversationAnchorRestore() {
@@ -553,7 +563,13 @@ function restoreConversationAnchor() {
       if (!element || conversationAnchorScrollTop === null) return;
       conversationAnchorRestoring = true;
       const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
-      element.scrollTop = Math.min(conversationAnchorScrollTop, maxScrollTop);
+      const targetScrollTop = conversationAnchorBottomGap === null
+        ? Math.min(conversationAnchorScrollTop, maxScrollTop)
+        : Math.max(0, maxScrollTop - conversationAnchorBottomGap);
+      element.scrollTop = targetScrollTop;
+      if (conversationAnchorBottomGap !== null) {
+        conversationAnchorScrollTop = targetScrollTop;
+      }
       requestAnimationFrame(() => {
         conversationAnchorRestoring = false;
       });
@@ -564,6 +580,7 @@ function restoreConversationAnchor() {
 function releaseConversationAnchor() {
   composerFocused.value = false;
   conversationAnchorScrollTop = null;
+  conversationAnchorBottomGap = null;
   conversationAnchorLockUntil = 0;
   conversationAnchorRestoring = false;
   window.clearTimeout(conversationAnchorReleaseTimer);
@@ -688,11 +705,15 @@ function scrollConversation() {
       const element = conversationRef.value;
       if (!element) return;
       const lastMessage = element.querySelector<HTMLElement>(".message:last-of-type");
-      element.scrollTop = lastMessage
+      const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+      const lastMessageScrollTop = lastMessage
         ? Math.max(0, lastMessage.offsetTop + lastMessage.offsetHeight - element.clientHeight + 12)
         : element.scrollHeight;
+      element.scrollTop = composerFocused.value && conversationAnchorBottomGap !== null
+        ? Math.max(0, maxScrollTop - conversationAnchorBottomGap)
+        : lastMessageScrollTop;
       if (composerFocused.value) {
-        conversationAnchorScrollTop = element.scrollTop;
+        rememberConversationAnchor(element);
       }
     });
   });
@@ -915,7 +936,6 @@ onBeforeUnmount(() => {
   if (scrollFrame) cancelAnimationFrame(scrollFrame);
   releaseConversationAnchor();
   window.visualViewport?.removeEventListener("resize", handleComposerViewportChange);
-  window.visualViewport?.removeEventListener("scroll", handleComposerViewportChange);
   window.clearTimeout(cloudSyncTimer);
   if (pendingCloudSession) void flushCloudSync();
 });
@@ -1343,10 +1363,6 @@ onBeforeUnmount(() => {
   border-top: 1px solid var(--cpu-border-soft);
 }
 .assistant-disclaimer {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 4px 10px;
   margin: -8px 0 0;
   color: var(--cpu-text-muted);
   text-align: center;
@@ -1722,20 +1738,34 @@ onBeforeUnmount(() => {
     width: 0;
     height: 0;
   }
-  :global(.layout-root.keyboard-geometry-open) .assistant-shell::after {
+  .assistant-shell.is-composer-focused::after {
     content: "";
     display: block;
     height: 50px;
     flex: 0 0 50px;
   }
-  :global(.layout-root.keyboard-geometry-open) .assistant-shell .conversation {
-    padding-bottom: calc(var(--layout-keyboard-inset, 0px) + 70px);
+  .assistant-shell.is-composer-focused .conversation {
+    padding-bottom: max(
+      70px,
+      calc(
+        var(--layout-keyboard-inset, 0px)
+        - var(--layout-mobile-tabbar-reserve, 0px)
+        + 70px
+      )
+    );
   }
-  :global(.layout-root.keyboard-geometry-open) .assistant-shell .assistant-form {
+  .assistant-shell.is-composer-focused .assistant-form {
     position: absolute;
     z-index: 8;
     right: 0;
-    bottom: calc(var(--layout-keyboard-inset, 0px) + 8px);
+    bottom: max(
+      8px,
+      calc(
+        var(--layout-keyboard-inset, 0px)
+        - var(--layout-mobile-tabbar-reserve, 0px)
+        + 8px
+      )
+    );
     left: 0;
     margin: 0;
   }
@@ -1814,7 +1844,7 @@ onBeforeUnmount(() => {
     margin: 5px 0 0;
     font-size: 10px;
   }
-  :global(.layout-root.keyboard-geometry-open) .assistant-disclaimer {
+  .assistant-shell.is-composer-focused .assistant-disclaimer {
     display: none;
   }
   .assistant-form:focus-within {

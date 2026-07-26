@@ -128,7 +128,6 @@ export const authApi = {
   logout: () => request.post<{ ok: true }>("/auth/logout"),
   me: (options?: RequestOptions) => request.get<UserInfo>("/user/me", undefined, options),
   updateMe: (payload: Partial<UserInfo>) => request.patch<UserInfo>("/user/me", payload),
-  enableForumAccess: (confirmText: string) => request.post<UserInfo>("/user/forum-access/enable", { confirmText }),
   changePassword: (oldPassword: string, newPassword: string) =>
     request.patch<{ ok: true }>("/user/password", { oldPassword, newPassword }),
   qqBotProfile: (options?: RequestOptions) => request.get<QqBotProfile>("/qqbot/me", undefined, options),

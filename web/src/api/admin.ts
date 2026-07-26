@@ -4,6 +4,7 @@ import type { TopNavigationItem } from "./site";
 export type SiteConfig = {
   siteOrigin: string;
   siteFilingNumber: string;
+  assistantModel: string;
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
   aiReviewApiUrl: string;
@@ -58,6 +59,41 @@ export type SiteConfig = {
   anonymousTiers: Array<{ reputation: number; quota: number }>;
   reputationLevels: Array<{ level: number; name: string; minReputation: number }>;
   assistantDailyQuotas: Array<{ level: number; quota: number }>;
+};
+
+export type CampusAssistantQuotaResetResult = {
+  dateKey: string;
+  resetUsers: number;
+};
+
+export type AssistantPointUser = {
+  id: number;
+  username: string;
+  nickname: string;
+  avatar?: string | null;
+  assistantPoints: number;
+};
+
+export type AssistantPointLedgerRow = {
+  id: number;
+  userId: number;
+  delta: number;
+  balanceAfter: number;
+  source: "admin_grant" | "sponsor_reward" | "ai_usage" | "ai_refund";
+  reason: string;
+  referenceType?: string | null;
+  referenceId?: string | null;
+  createdAt: string;
+  user: Pick<AssistantPointUser, "id" | "username" | "nickname" | "avatar">;
+  operator?: { id: number; username: string; nickname: string } | null;
+};
+
+export type AssistantPointOverview = {
+  totalPoints: number;
+  holderCount: number;
+  eligibleUserCount: number;
+  transactionCount: number;
+  recent: AssistantPointLedgerRow[];
 };
 
 export type MediaStorageConfig = {
@@ -315,10 +351,6 @@ export type AdminOverview = {
   harmonyClients: number;
   feeds: number;
   boards: number;
-  forumEligibleUsers: number;
-  forumEnabledUsers: number;
-  forumPendingUsers: number;
-  forumEnabledToday: number;
   dailyActiveSeries: Array<{
     date: string;
     count: number;
@@ -460,6 +492,7 @@ export type SponsorConfig = {
   maxAmount: string;
   wallEnabled: boolean;
   allowMessage: boolean;
+  assistantPointsPerYuan: number;
 };
 
 export type QqBotConfig = {
@@ -624,7 +657,6 @@ export const adminApi = {
       q?: string;
       role?: string;
       status?: string;
-      forumEnabled?: string;
       loginClient?: string;
       usedClient?: string;
       usedIosClient?: string;
@@ -715,6 +747,7 @@ export const adminApi = {
   updateSiteConfig: (patch: {
     siteOrigin?: string;
     siteFilingNumber?: string;
+    assistantModel?: string;
     aiReviewEnabled?: boolean;
     aiReviewProvider?: string;
     aiReviewApiUrl?: string;
@@ -771,6 +804,23 @@ export const adminApi = {
     assistantDailyQuotas?: Array<{ level: number; quota: number }>;
   }) =>
     request.patch<SiteConfig>("/admin/site-config", patch),
+  resetCampusAssistantDailyQuota: () =>
+    request.post<CampusAssistantQuotaResetResult>("/admin/campus-assistant/quota/reset-today", {}),
+  assistantPointUsers: (params: { q?: string; size?: number }, options?: RequestOptions) =>
+    request.get<AssistantPointUser[]>("/admin/campus-assistant/points/users", params, options),
+  assistantPointOverview: (options?: RequestOptions) =>
+    request.get<AssistantPointOverview>("/admin/campus-assistant/points/overview", undefined, options),
+  grantAssistantPoints: (payload: { userIds?: number[]; allUsers?: boolean; points: number; reason: string }) =>
+    request.post<{
+      points: number;
+      recipientCount: number;
+    }>("/admin/campus-assistant/points/grant", payload),
+  backfillSponsorAssistantPoints: () =>
+    request.post<{
+      orderCount: number;
+      userCount: number;
+      totalPoints: number;
+    }>("/admin/campus-assistant/points/backfill-sponsors", {}),
   aiReviewLogs: (params: { kind?: string; status?: string; page?: number; size?: number }, options?: RequestOptions) =>
     request.get<{ page: number; size: number; total: number; list: AiReviewLogRow[] }>("/admin/ai-review/logs", params, options),
   sweepForumImages: () =>

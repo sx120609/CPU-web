@@ -360,10 +360,12 @@ const mobileViewportBaseHeight = ref(0);
 const isMobileViewport = ref(false);
 const KEYBOARD_INSET_THRESHOLD = 96;
 const KEYBOARD_FOCUS_GRACE_MS = 1200;
+const KEYBOARD_GEOMETRY_CLOSE_DELAY_MS = 240;
 const viewportBaseHeights = new Map<string, number>();
 let viewportBaselineOrientation = "";
 let focusOutTimer = 0;
 let focusKeyboardGraceTimer = 0;
+let keyboardGeometryCloseTimer = 0;
 let focusKeyboardGraceUntil = 0;
 let disposed = false;
 
@@ -540,6 +542,7 @@ onBeforeUnmount(() => {
   disposed = true;
   window.clearTimeout(focusOutTimer);
   window.clearTimeout(focusKeyboardGraceTimer);
+  window.clearTimeout(keyboardGeometryCloseTimer);
   if (typeof window !== "undefined") {
     window.removeEventListener("resize", handleViewportMetricsChange);
     window.visualViewport?.removeEventListener("resize", handleViewportMetricsChange);
@@ -554,6 +557,8 @@ watch(() => route.fullPath, () => {
   assistantWidgetOpen.value = false;
   window.clearTimeout(focusOutTimer);
   window.clearTimeout(focusKeyboardGraceTimer);
+  window.clearTimeout(keyboardGeometryCloseTimer);
+  keyboardGeometryCloseTimer = 0;
   focusKeyboardGraceUntil = 0;
   keyboardOpen.value = false;
   keyboardGeometryOpen.value = false;
@@ -570,6 +575,8 @@ function handleViewportMetricsChange() {
 function handleFocusIn(event: FocusEvent) {
   window.clearTimeout(focusOutTimer);
   window.clearTimeout(focusKeyboardGraceTimer);
+  window.clearTimeout(keyboardGeometryCloseTimer);
+  keyboardGeometryCloseTimer = 0;
   const target = event.target instanceof HTMLElement ? event.target : null;
   editableFocused.value = isEditableElement(target);
   editorFocused.value = Boolean(target?.closest(".rich-editor"));
@@ -692,8 +699,14 @@ function updateKeyboardState() {
     : KEYBOARD_INSET_THRESHOLD;
   const viewportStillCovered = isMobileViewport.value
     && measuredInset > geometryThreshold;
-  keyboardGeometryOpen.value = viewportStillCovered;
-  const keyboardLikelyOpen = focusedEditableNeedsKeyboard || viewportStillCovered;
+  if (viewportStillCovered) {
+    window.clearTimeout(keyboardGeometryCloseTimer);
+    keyboardGeometryCloseTimer = 0;
+    keyboardGeometryOpen.value = true;
+  } else if (keyboardGeometryOpen.value) {
+    scheduleKeyboardGeometryClose();
+  }
+  const keyboardLikelyOpen = focusedEditableNeedsKeyboard || keyboardGeometryOpen.value;
   keyboardOpen.value = keyboardLikelyOpen;
   if (!keyboardLikelyOpen && !editableFocused.value) {
     const stableHeight = Math.max(mobileViewportBaseHeight.value, currentHeight, window.innerHeight);
@@ -703,6 +716,28 @@ function updateKeyboardState() {
       stableHeight,
     );
   }
+}
+
+function scheduleKeyboardGeometryClose() {
+  if (keyboardGeometryCloseTimer) return;
+  keyboardGeometryCloseTimer = window.setTimeout(() => {
+    keyboardGeometryCloseTimer = 0;
+    const currentHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
+    const baseHeight = Math.max(mobileViewportBaseHeight.value || 0, currentHeight, window.innerHeight);
+    const measuredInset = Math.max(
+      0,
+      baseHeight - currentHeight,
+      getVirtualKeyboardInset(),
+    );
+    if (measuredInset > 56) return;
+    keyboardGeometryOpen.value = false;
+    keyboardOpen.value = Boolean(
+      isMobileViewport.value
+      && editableFocused.value
+      && performance.now() < focusKeyboardGraceUntil
+      && (fullHeightContent.value || editorFocused.value),
+    );
+  }, KEYBOARD_GEOMETRY_CLOSE_DELAY_MS);
 }
 
 function goSearch() {
@@ -789,6 +824,7 @@ function setAppearanceMode(command: string | number | object) {
 
 <style scoped lang="scss">
 .layout-root {
+  --layout-mobile-tabbar-reserve: 0px;
   min-height: 100dvh;
   min-height: var(--layout-viewport-height, 100dvh);
   display: flex;
@@ -1250,12 +1286,12 @@ function setAppearanceMode(command: string | number | object) {
   display: none;
 }
 
-.layout-root--tabbar-fallback.keyboard-geometry-open .main {
+.layout-root--tabbar-fallback.keyboard-open .main {
   padding-bottom: 12px;
 }
 
-.layout-root--tabbar-fallback.keyboard-geometry-open .main--bare,
-.layout-root--tabbar-fallback.keyboard-geometry-open .main--full-width {
+.layout-root--tabbar-fallback.keyboard-open .main--bare,
+.layout-root--tabbar-fallback.keyboard-open .main--full-width {
   padding-bottom: 0 !important;
 }
 
@@ -1289,7 +1325,7 @@ function setAppearanceMode(command: string | number | object) {
   -webkit-backdrop-filter: var(--cpu-glass-blur);
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.06);
   pointer-events: auto;
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease, visibility 0.3s ease;
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.16s ease, visibility 0.2s linear;
 }
 
 .layout-root--tabbar-fallback .mobile-tabbar.is-hidden {
@@ -1521,15 +1557,19 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 @media (max-width: 768px) {
-  .layout-root.keyboard-geometry-open .main {
+  .layout-root:not(.layout-root--native-shell) {
+    --layout-mobile-tabbar-reserve: calc(68px + env(safe-area-inset-bottom));
+  }
+
+  .layout-root.keyboard-open .main {
     padding-bottom: 12px;
   }
 
-  .layout-root.keyboard-geometry-open .main--bare {
+  .layout-root.keyboard-open .main--bare {
     padding-bottom: 0 !important;
   }
 
-  .layout-root.keyboard-geometry-open .main--full-width {
+  .layout-root.keyboard-open .main--full-width {
     padding: 0;
   }
 
@@ -1586,8 +1626,8 @@ function setAppearanceMode(command: string | number | object) {
     padding-bottom: calc(68px + env(safe-area-inset-bottom));
   }
 
-  .layout-root--full-height.keyboard-geometry-open .main--full-height {
-    padding-bottom: 12px;
+  .layout-root--full-height.keyboard-open .main--full-height {
+    padding-bottom: calc(68px + env(safe-area-inset-bottom));
   }
 
   .main--full-width {
@@ -1634,7 +1674,7 @@ function setAppearanceMode(command: string | number | object) {
     -webkit-backdrop-filter: var(--cpu-glass-blur);
     box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.06);
     pointer-events: auto;
-    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease, visibility 0.3s ease;
+    transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.16s ease, visibility 0.2s linear;
   }
 
   .mobile-tab.active {
@@ -1748,7 +1788,7 @@ function setAppearanceMode(command: string | number | object) {
     -webkit-backdrop-filter: var(--cpu-glass-blur);
     box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.06);
     pointer-events: auto;
-    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease, visibility 0.3s ease;
+    transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.16s ease, visibility 0.2s linear;
   }
 
   .mobile-tabbar.is-hidden {
