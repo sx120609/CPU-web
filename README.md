@@ -338,12 +338,19 @@ Content-Type: application/json
 {
   "model": "客户端可传入，但服务端始终使用站点配置中的模型",
   "input": [
-    { "role": "user", "content": "你好" }
+    {
+      "role": "user",
+      "content": [
+        { "type": "input_text", "text": "你好" }
+      ]
+    }
   ],
   "temperature": 0.7,
   "stream": false
 }
 ```
+
+纯文本也支持简写形式：`"content": "你好"`，服务端会在发送到 Responses API 前自动转换为 `input_text` 内容项。
 
 需要 `ai` scope。每次请求最多消耗 1 次当日额度，当前按请求次数计费，不按 Token 数量、字符数或响应长度计费：
 

@@ -51,11 +51,19 @@ const revokeBodySchema = z.object({
 
 const OAUTH_AI_INSTRUCTIONS = "";
 
+const responsesInputContentSchema = z.union([
+  z.string().max(32_000),
+  z.array(z.object({
+    type: z.literal("input_text"),
+    text: z.string().max(32_000),
+  }).strict()).min(1).max(100),
+]);
+
 const responsesBodySchema = z.object({
   model: z.string().min(1).max(200),
   input: z.array(z.object({
     role: z.enum(["user", "assistant"]),
-    content: z.string().max(32_000),
+    content: responsesInputContentSchema,
   })).min(1).max(100),
   temperature: z.number().min(0).max(2).optional(),
   stream: z.literal(false).optional(),
@@ -241,7 +249,13 @@ oauthRouter.post("/v1/responses", securityRateLimit("oauth-ai", 20, 60_000), asy
     userId = token.userId;
     if (!token.scope.split(/\s+/).includes("ai")) throw Errors.forbidden("token 没有 ai scope");
     const body = responsesBodySchema.parse(req.body);
-    if (isCampusAssistantConversationRestricted(body.input)) {
+    const messages = body.input.map((message) => ({
+      role: message.role,
+      content: typeof message.content === "string"
+        ? message.content
+        : message.content.map((part) => part.text).join(""),
+    }));
+    if (isCampusAssistantConversationRestricted(messages)) {
       throw Errors.forbidden("这个话题不适合在本站展开");
     }
     const siteConfig = getSiteConfig();
@@ -309,7 +323,12 @@ function buildOAuthAiRequestBody(body: z.infer<typeof responsesBodySchema>, mode
     return {
       model,
       instructions: OAUTH_AI_INSTRUCTIONS,
-      input: body.input.map((message) => ({ role: message.role, content: message.content })),
+      input: body.input.map((message) => ({
+        role: message.role,
+        content: typeof message.content === "string"
+          ? [{ type: "input_text", text: message.content }]
+          : message.content,
+      })),
       ...(body.temperature === undefined ? {} : { temperature: body.temperature }),
     };
   }
@@ -317,7 +336,12 @@ function buildOAuthAiRequestBody(body: z.infer<typeof responsesBodySchema>, mode
     model,
     messages: [
       { role: "system", content: OAUTH_AI_INSTRUCTIONS },
-      ...body.input,
+      ...body.input.map((message) => ({
+        role: message.role,
+        content: typeof message.content === "string"
+          ? message.content
+          : message.content.map((part) => part.text).join(""),
+      })),
     ],
     ...(body.temperature === undefined ? {} : { temperature: body.temperature }),
   };
