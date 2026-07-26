@@ -9,5 +9,9 @@ contextBridge.exposeInMainWorld("cpuInstaller", {
   close: () => ipcRenderer.invoke("install:close"),
   onProgress: (callback: (payload: unknown) => void) => {
     ipcRenderer.on("install:progress", (_event, payload) => callback(payload));
+  },
+  // 自动更新调起时主进程会发这个，界面直接开始装，不等用户点按钮
+  onAutoStart: (callback: () => void) => {
+    ipcRenderer.on("install:auto-start", () => callback());
   }
 });

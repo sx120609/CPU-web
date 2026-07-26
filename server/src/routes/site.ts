@@ -58,6 +58,11 @@ siteRouter.get("/downloads/desktop", async (req, res) => {
         direct: true,
         fileName: file.name,
         size: file.size,
+        // 安装包没有代码签名，客户端自动更新靠这个校验下载到的字节。
+        // 哈希走我们自己的 HTTPS 接口，安装包走阿里云的地址 —— 两条路都被
+        // 篡改才可能骗过去。
+        contentHash: file.contentHash,
+        contentHashName: file.contentHashName,
       });
       return;
     } catch (error) {

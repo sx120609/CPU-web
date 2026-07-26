@@ -50,6 +50,11 @@ const boot = async () => {
   el("retry").addEventListener("click", () => void install());
 
   bridge.onProgress(renderProgress);
+  // 自动更新拉起来的：用户在旧版里已经点过更新，这里不该再等一次点击
+  bridge.onAutoStart?.(() => {
+    el("lead").innerHTML = "正在更新药大拾间，<br />装好会自动重新打开。";
+    void install();
+  });
 
   try {
     const info = await bridge.getInfo();

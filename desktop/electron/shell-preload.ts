@@ -64,7 +64,12 @@ contextBridge.exposeInMainWorld("cpuShell", {
   update: {
     check: () => ipcRenderer.invoke("app:check-update"),
     open: (url: string) => ipcRenderer.invoke("app:open-update", url),
-    onAvailable: (callback: (info: any) => void) => on("app:update-available", callback)
+    onAvailable: (callback: (info: any) => void) => on("app:update-available", callback),
+    // 自动更新：静默下载的状态与"立即重启更新"
+    getState: () => ipcRenderer.invoke("update:state"),
+    checkNow: () => ipcRenderer.invoke("update:check-now"),
+    installNow: () => ipcRenderer.invoke("update:install-now"),
+    onState: (callback: (state: any) => void) => on("update:state", callback)
   },
 
   openExternal: (url: string) => ipcRenderer.invoke("site:open-external", url),

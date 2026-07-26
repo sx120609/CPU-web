@@ -347,4 +347,11 @@ export const openInstallerWindow = async (): Promise<void> => {
 
   await window.loadFile(path.join(app.getAppPath(), "src", "installer", "index.html"));
   window.show();
+
+  // 自动更新调进来时不该再等用户点一次「立即安装」—— 用户在旧版里已经同意过了。
+  // 窗口照常显示：装的过程有个进度条，比什么都不显示地闷头替换文件更让人安心。
+  // portable.nsi 用 StdUtils.GetAllParameters 把参数透传给应用，所以这个标记
+  // 能从外层解压壳一路传到这里。
+  // loadFile 已经 await 过，did-finish-load 不会再触发，直接发即可
+  if (process.argv.includes("--auto-update")) window.webContents.send("install:auto-start");
 };

@@ -350,6 +350,20 @@ button[hidden] { display: none; }
 .switch-text strong { font-weight: 600; }
 .switch-text small { color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.5; }
 
+/* 自动更新的下载进度条 */
+.track {
+  margin-top: 12px;
+  height: 5px; border-radius: 999px;
+  background: var(--cpu-surface-subtle);
+  overflow: hidden;
+}
+.fill {
+  display: block; height: 100%; width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--cpu-primary-light), var(--cpu-primary));
+  transition: width .3s ease;
+}
+
 .notice-inline {
   margin-top: 4px;
   padding: 8px 10px;

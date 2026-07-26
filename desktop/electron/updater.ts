@@ -18,7 +18,7 @@ export type UpdateInfo = {
 };
 
 // "1.10.2" 要比 "1.9.0" 新，所以必须按段做数值比较，不能字符串比大小
-const compareVersions = (left: string, right: string): number => {
+export const compareVersions = (left: string, right: string): number => {
   const parse = (value: string): number[] =>
     value.trim().replace(/^v/i, "").split(/[.-]/).map((part) => Number.parseInt(part, 10) || 0);
   const a = parse(left);

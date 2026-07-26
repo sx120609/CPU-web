@@ -499,7 +499,9 @@ const afterOnboarding = async () => {
     renderChaoxing(await shell.chaoxing.getState());
   } catch { /* 忽略 */ }
   try {
-    showUpdate(await shell.update.check());
+    // 先看自动更新走到哪了；它已经在下或已下好，就不必再显示"去下载"
+    renderUpdateState(await shell.update.getState());
+    if (updateStage === "idle" || updateStage === "error") showUpdate(await shell.update.check());
   } catch { /* 忽略 */ }
 };
 
@@ -519,6 +521,7 @@ const boot = async () => {
   shell.campusNet.onLog(() => void shell.campusNet.getLogs(120).then(renderCampusLogs));
   shell.script.onActivity(() => void shell.script.getActivity(80).then(renderScriptActivity));
   shell.update.onAvailable(showUpdate);
+  shell.update.onState?.(renderUpdateState);
 
   let info;
   try {
@@ -539,9 +542,66 @@ const boot = async () => {
 
 function showUpdate(info) {
   if (!info?.hasUpdate) return;
+  // 自动更新接管后这条只在"没能自动下载"时才有意义，所以给手动下载的入口
+  if (updateStage === "downloading" || updateStage === "ready") return;
   el("update-card").hidden = false;
-  el("update-latest").textContent = `v${info.latest}`;
+  el("update-title").textContent = `有新版本 v${info.latest}`;
+  el("update-note").textContent = "超星改版后旧版脚本可能失效，建议更新。";
+  el("update-go").hidden = false;
   el("update-go").onclick = () => void shell.update.open(info.url);
+}
+
+// 自动更新：下载全程静默，界面只在这里如实反映它到哪一步了
+let updateStage = "idle";
+
+const formatMB = (bytes) => `${(bytes / 1048576).toFixed(1)} MB`;
+
+function renderUpdateState(state) {
+  if (!state) return;
+  updateStage = state.stage;
+  const card = el("update-card");
+  const track = el("update-track");
+
+  if (state.stage === "downloading") {
+    card.hidden = false;
+    el("update-title").textContent = `正在下载 v${state.latest}`;
+    el("update-note").textContent = state.totalBytes
+      ? `${formatMB(state.receivedBytes)} / ${formatMB(state.totalBytes)}，下好后重启即可更新`
+      : "下好后重启即可更新";
+    el("update-go").hidden = true;
+    el("update-restart").hidden = true;
+    track.hidden = false;
+    el("update-fill").style.width = `${state.percent}%`;
+    return;
+  }
+
+  if (state.stage === "ready") {
+    card.hidden = false;
+    el("update-title").textContent = `v${state.latest} 已下载完成`;
+    el("update-note").textContent = "退出应用时会自动装上，也可以现在就重启更新。";
+    el("update-go").hidden = true;
+    el("update-restart").hidden = false;
+    track.hidden = true;
+    el("update-restart").onclick = async () => {
+      el("update-restart").disabled = true;
+      say("正在重启并更新…");
+      try {
+        await shell.update.installNow();
+      } catch (error) {
+        el("update-restart").disabled = false;
+        say(errorText(error, "更新启动失败。"), true);
+      }
+    };
+    return;
+  }
+
+  if (state.stage === "error") {
+    // 更新失败不该把卡片一直挂在那里吓人，下一轮会自己重试
+    track.hidden = true;
+    return;
+  }
+
+  track.hidden = true;
 }
 
 if (!shell) {

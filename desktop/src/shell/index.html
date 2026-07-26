@@ -74,11 +74,13 @@
         <section class="card" id="update-card" hidden>
           <div class="card-row">
             <div>
-              <strong>有新版本 <span id="update-latest"></span></strong>
-              <small>超星改版后旧版脚本可能失效，建议更新。</small>
+              <strong id="update-title">有新版本</strong>
+              <small id="update-note">超星改版后旧版脚本可能失效，建议更新。</small>
             </div>
-            <button class="primary" id="update-go" type="button">去下载</button>
+            <button class="primary" id="update-go" type="button" hidden>去下载</button>
+            <button class="primary" id="update-restart" type="button" hidden>立即重启更新</button>
           </div>
+          <div class="track" id="update-track" hidden><i class="fill" id="update-fill"></i></div>
         </section>
 
         <section class="card">

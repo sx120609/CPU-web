@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell, Tray } from "electron";
+import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, net, Notification, powerMonitor, session, shell, Tray } from "electron";
 import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -11,7 +11,8 @@ import { buildScriptConfig } from "./script-config";
 import { CampusNetService, CampusState } from "./campus-net/service";
 import { clearChaoxingCredential, maskChaoxingAccount, readChaoxingCredential, writeChaoxingCredential } from "./chaoxing-credentials";
 import { onCampusLog, pruneCampusLogs, readCampusLogs } from "./campus-net/log";
-import { checkForUpdate, notifyUpdate, openUpdateDownload } from "./updater";
+import { checkForUpdate, openUpdateDownload } from "./updater";
+import { checkAndDownload, getUpdateState, hasPendingUpdate, onUpdateState, runPendingUpdate, UpdateState } from "./auto-update";
 import { CHROME_HEIGHT, TabKind, TabManager } from "./tabs";
 import { isInstallLaunch, openInstallerWindow, runUninstall, sweepReplacedFiles } from "./self-install";
 import { branding, chaoxingLoginHost, injectableHosts, learningUrl, limits, oauthConfig } from "./config";
@@ -706,6 +707,36 @@ if (installMode || uninstallMode) {
       if (info.hasUpdate) broadcast("app:update-available", info);
       return info;
     });
+
+    /* ---------------------------------------------------------- 自动更新 */
+    onUpdateState((value: UpdateState) => {
+      broadcast("update:state", value);
+      // 只在"下好了"这一刻提示一次。下载全程静默 —— 用户没要求过这次更新，
+      // 中途弹窗只会打断他，而下载失败也不值得惊动他，下次开机再试。
+      if (value.stage === "ready") {
+        try {
+          if (Notification.isSupported()) {
+            const notification = new Notification({
+              title: "药大拾间已准备好更新",
+              body: `v${value.latest} 已下载完成，下次启动时自动安装。`
+            });
+            notification.on("click", () => void openMainWindow());
+            notification.show();
+          }
+        } catch {
+          // 通知失败不影响更新本身
+        }
+      }
+    });
+    ipcMain.handle("update:state", () => getUpdateState());
+    ipcMain.handle("update:check-now", () => checkAndDownload());
+    // 用户点"立即重启更新"：安装器会自己关掉旧版并在装完后拉起新版
+    ipcMain.handle("update:install-now", () => {
+      if (!runPendingUpdate()) return false;
+      quitting = true;
+      setTimeout(() => app.exit(0), 400);
+      return true;
+    });
     ipcMain.handle("app:open-update", (_event, url: unknown) => {
       if (typeof url === "string") openUpdateDownload(url);
     });
@@ -979,14 +1010,10 @@ if (installMode || uninstallMode) {
 
     // 启动后延后查一次更新：这批用户不会主动去看有没有新版，
     // 而超星一改版脚本就失效，得让他们知道。
-    setTimeout(() => {
-      void checkForUpdate().then((info) => {
-        if (!info.hasUpdate) return;
-        console.log(`发现新版本 v${info.latest}（当前 v${info.current}）`);
-        notifyUpdate(info);
-        broadcast("app:update-available", info);
-      });
-    }, 8000).unref?.();
+    // 静默下载在后台跑，下好了才提示；失败就等下一轮，不打扰。
+    setTimeout(() => void checkAndDownload(), 8000).unref?.();
+    // 长期开着的实例（这个应用常驻托盘）也要能拿到更新，每 6 小时再探一次
+    setInterval(() => void checkAndDownload(), 6 * 60 * 60 * 1000).unref?.();
   }).catch((error) => {
     // 没有这个 catch 的话，启动期任何异常都会变成被吞掉的 unhandled rejection，
     // 表现为"进程静默退出、没有任何输出"，完全无从排查。
@@ -996,6 +1023,9 @@ if (installMode || uninstallMode) {
   app.on("before-quit", () => {
     quitting = true;
     campusNet?.stop();
+    // 退出即更新 —— 这是"重启后自动安装"落地的地方。安装器会先关掉旧版
+    // 再覆盖文件，所以必须在这里启动它，等进程真退出了就没机会了。
+    if (hasPendingUpdate()) runPendingUpdate();
   });
 
   app.on("window-all-closed", () => {
