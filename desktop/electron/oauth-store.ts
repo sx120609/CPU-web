@@ -18,9 +18,24 @@ export type OAuthUser = {
   username?: string;
   level?: string;
   levelName?: string;
+  /** = 今日剩余 + AI 点数。服务端叫 totalRemaining，不是单纯的日剩余 */
   aiBalance?: number;
   dailyQuota?: number;
   usedToday?: number;
+  /** 只算日额度的剩余，不含点数 */
+  dailyRemaining?: number;
+  /** AI 点数：日额度用完后 1 点抵 1 次，不过期 */
+  assistantPoints?: number;
+  /** 信誉分 —— 等级由它决定，等级又决定每日免费次数 */
+  reputation?: number;
+  /** 距下一级还差多少分；已满级时没有这个值 */
+  nextLevelNeed?: number;
+  nextLevelName?: string;
+  /** 信誉分的构成，用来告诉用户哪一项还有涨的空间 */
+  agePoints?: number;
+  postPoints?: number;
+  replyPoints?: number;
+  forumPoints?: number;
 };
 
 const sessionPath = (): string => path.join(app.getPath("userData"), "oauth.bin");

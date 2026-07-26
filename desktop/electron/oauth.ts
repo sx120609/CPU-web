@@ -94,6 +94,12 @@ const normalizeUser = (payload: unknown): OAuthUser | undefined => {
   const name = firstValue(records, NAME_KEYS) ?? firstValue(nested, NAME_KEYS);
   const sub = firstValue(records, ["sub", "id", "userId"]) ?? firstValue(nested, ["id"]);
   if (name === undefined && sub === undefined) return undefined;
+  // 信誉相关的结构挂在 data.user 下面：
+  //   user.reputationBreakdown = { agePoints, postPoints, replyPoints, forumPoints, caps }
+  //   user.reputationLevel     = { level, name, nextLevel: { name, need } | null }
+  const breakdown = asRecord(userObject?.reputationBreakdown);
+  const nextLevel = asRecord(asRecord(userObject?.reputationLevel).nextLevel);
+
   return {
     sub: asOptionalText(sub),
     user: asOptionalText(name),
@@ -104,7 +110,16 @@ const normalizeUser = (payload: unknown): OAuthUser | undefined => {
     levelName: asOptionalText(firstValue(records, ["levelName", "level_name"])),
     aiBalance: asOptionalNumber(firstValue(records, ["aiBalance", "ai_balance"])),
     dailyQuota: asOptionalNumber(firstValue(records, ["dailyQuota", "daily_quota"])),
-    usedToday: asOptionalNumber(firstValue(records, ["usedToday", "used_today"]))
+    usedToday: asOptionalNumber(firstValue(records, ["usedToday", "used_today"])),
+    dailyRemaining: asOptionalNumber(firstValue(records, ["dailyRemaining", "daily_remaining"])),
+    assistantPoints: asOptionalNumber(firstValue(records, ["assistantPoints", "assistant_points"])),
+    reputation: asOptionalNumber(userObject?.reputation),
+    nextLevelNeed: asOptionalNumber(nextLevel.need),
+    nextLevelName: asOptionalText(nextLevel.name),
+    agePoints: asOptionalNumber(breakdown.agePoints),
+    postPoints: asOptionalNumber(breakdown.postPoints),
+    replyPoints: asOptionalNumber(breakdown.replyPoints),
+    forumPoints: asOptionalNumber(breakdown.forumPoints)
   };
 };
 

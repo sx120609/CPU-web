@@ -1047,6 +1047,21 @@ if (installMode || uninstallMode) {
       user: session.user
     })));
     ipcMain.handle("oauth:status", () => getOAuthStatus());
+    // 额度规则由服务端下发：档位与系数都能被后台改，写死在客户端就会变成误导
+    ipcMain.handle("oauth:quota-rules", async () => {
+      try {
+        const response = await fetch(new URL("/api/site/ai-quota-rules", oauthConfig.origin).toString(), {
+          headers: { accept: "application/json" },
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!response.ok) return null;
+        const payload = await response.json() as { data?: unknown };
+        return payload.data ?? null;
+      } catch {
+        // 拿不到就不显示"怎么提升"那一段，不影响其余信息
+        return null;
+      }
+    });
     ipcMain.handle("oauth:logout", async () => {
       await logoutOAuth();
       tabs?.closeAllLearningTabs();

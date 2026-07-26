@@ -115,14 +115,88 @@ const renderAuth = (session) => {
     return;
   }
   el("auth-name").textContent = user.user || user.nickname || user.name || user.username || user.sub || "已登录用户";
-  // 额度为 0 是有效信息，不能显示成"—"
-  const balance = typeof user.aiBalance === "number" ? String(user.aiBalance) : "—";
-  el("auth-balance").textContent = balance;
-  el("auth-usage").textContent = typeof user.dailyQuota === "number"
-    ? `${user.usedToday || 0} / ${user.dailyQuota}`
+
+  // 数值为 0 是有效信息，不能显示成"—"，所以一律判类型而不是判真值
+  const num = (value) => (typeof value === "number" ? value : null);
+  const show = (id, value, suffix = "") => {
+    el(id).textContent = value === null ? "—" : `${value}${suffix}`;
+  };
+
+  el("auth-level").textContent = user.levelName
+    ? `Lv.${user.level ?? "?"} ${user.levelName}`
     : "—";
+
+  const reputation = num(user.reputation);
+  el("auth-reputation").textContent = reputation === null
+    ? "—"
+    : num(user.nextLevelNeed) !== null && user.nextLevelName
+      ? `${reputation} 分 · 再得 ${user.nextLevelNeed} 分升到「${user.nextLevelName}」`
+      : `${reputation} 分`;
+
+  // 日额度与点数是两回事：日额度每天重置，点数不过期，日额度用完才动点数
+  const quota = num(user.dailyQuota);
+  const dailyRemaining = num(user.dailyRemaining);
+  el("auth-usage").textContent = quota === null
+    ? "—"
+    : dailyRemaining === null
+      ? `已用 ${user.usedToday || 0} / ${quota}`
+      : `剩 ${dailyRemaining} / ${quota} 次`;
+
+  show("auth-points", num(user.assistantPoints), " 点");
+
+  const balance = num(user.aiBalance);
+  el("auth-balance").textContent = balance === null ? "—" : `${balance} 次`;
   el("auth-expires").textContent = formatDate(session.expiresAt);
-  el("quota-text").textContent = `剩 ${balance}`;
+  el("quota-text").textContent = balance === null ? "—" : `剩 ${balance}`;
+
+  renderHowTo(user);
+};
+
+/* -------------------------------------------------- 怎么提升免费额度 */
+// 档位与系数都能被站点后台改，所以一个数字都不写死在这里 ——
+// 全部来自 /api/site/ai-quota-rules 下发的当前配置。
+
+let quotaRules = null;
+
+const renderHowTo = (user) => {
+  const box = el("auth-howto");
+  if (!quotaRules) { box.hidden = true; return; }
+  box.hidden = false;
+
+  const rep = quotaRules.reputation;
+  el("howto-intro").textContent =
+    "每天的免费次数由等级决定，等级由信誉值决定。信誉值这样累积（括号内是这一项的上限）：";
+
+  const gained = {
+    post: typeof user.postPoints === "number" ? user.postPoints : null,
+    reply: typeof user.replyPoints === "number" ? user.replyPoints : null,
+    age: typeof user.agePoints === "number" ? user.agePoints : null,
+    forum: typeof user.forumPoints === "number" ? user.forumPoints : null
+  };
+  const got = (value, cap) => (value === null ? `上限 ${cap}` : `已得 ${value} / ${cap}`);
+
+  const items = [
+    `发主题帖：每篇 +${rep.postPointsPerTopic} 分（${got(gained.post, rep.postPointsCap)}）`,
+    `发回复：每条 +${rep.replyPointsPerReply} 分（${got(gained.reply, rep.replyPointsCap)}）`,
+    `注册时长：每满 ${rep.accountAgeDaysPerStep} 天 +${rep.accountAgePointsPerStep} 分（${got(gained.age, rep.accountAgePointsCap)}）`,
+    `开通论坛：一次性 +${rep.forumEnabledBonus} 分（${gained.forum ? "已获得" : "未获得"}）`
+  ];
+  const list = el("howto-list");
+  list.textContent = "";
+  for (const text of items) {
+    const li = document.createElement("li");
+    li.textContent = text;
+    list.append(li);
+  }
+
+  el("howto-tiers").textContent = `各等级每日免费次数：${
+    quotaRules.dailyQuotas.map((t) => `Lv.${t.level} ${t.quota} 次`).join(" · ")
+  }。日额度北京时间 00:00 重置，不累积到第二天。`;
+
+  // 点赞和浏览量不加分 —— 这点必须说，否则用户会去刷没用的东西
+  el("howto-points").textContent = quotaRules.assistantPointsPerYuan > 0
+    ? `注意：点赞与浏览量不计入信誉值，帖子被删除或隐藏会扣回对应分数。日额度用完后可消耗 AI 点数，1 点抵 1 次；点数不过期，赞助每 1 元可得 ${quotaRules.assistantPointsPerYuan} 点。`
+    : "注意：点赞与浏览量不计入信誉值，帖子被删除或隐藏会扣回对应分数。日额度用完后可消耗 AI 点数，1 点抵 1 次，点数不过期。";
 };
 
 const refreshAuth = async () => {
@@ -484,6 +558,10 @@ const afterOnboarding = async () => {
     tabState = await shell.tabs.getState();
     renderTabs();
   } catch { /* 忽略 */ }
+  // 规则先拿：renderAuth 里要用它渲染"怎么提升"，晚了那一段就是空的
+  try {
+    quotaRules = await shell.auth.getQuotaRules();
+  } catch { /* 拿不到就不显示那一段 */ }
   void refreshAuth();
   void bindPreferences();
   try {

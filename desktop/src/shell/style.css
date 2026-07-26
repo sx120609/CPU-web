@@ -350,6 +350,33 @@ button[hidden] { display: none; }
 .switch-text strong { font-weight: 600; }
 .switch-text small { color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.5; }
 
+/* 「怎么提升免费额度」折叠区 */
+.howto { margin-top: 12px; }
+.howto summary {
+  cursor: pointer;
+  font-size: 12.5px; font-weight: 600;
+  color: var(--cpu-primary-dark);
+}
+@media (prefers-color-scheme: dark) { .howto summary { color: var(--cpu-primary-light); } }
+.howto-body {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--cpu-surface-subtle);
+}
+.howto-list { list-style: none; margin: 9px 0; }
+.howto-list li {
+  position: relative;
+  padding: 4px 0 4px 15px;
+  font-size: 12px; line-height: 1.6;
+  color: var(--cpu-text-secondary);
+}
+.howto-list li::before {
+  content: ""; position: absolute; left: 0; top: 11px;
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--cpu-gold);
+}
+
 /* 自动更新的下载进度条 */
 .track {
   margin-top: 12px;

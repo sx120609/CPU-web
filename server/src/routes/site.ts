@@ -6,6 +6,7 @@ import { ok } from "../utils/response";
 import { withCache } from "../services/cache";
 import { getFeatures, getSiteFilingNumber, getSiteOrigin, getTopNavigation } from "../services/siteSettings";
 import { hasPdsShare, resolveDesktopDownload } from "../services/pdsShare";
+import { getAiQuotaRules } from "../services/aiQuotaRules";
 
 export const siteRouter = Router();
 
@@ -106,6 +107,18 @@ siteRouter.get("/downloads/desktop-app", async (_req, res) => {
     return;
   }
   res.redirect(302, url);
+});
+
+/**
+ * 公开：拾间 AI 额度规则。只有规则本身，不含任何用户数据。
+ *
+ * 前端拿它来渲染"怎么提升免费额度"，而不是把数字写死在文案里 ——
+ * 档位表、每帖多少分、赞助兑换比例都能被管理员改，写死就会变成误导。
+ */
+siteRouter.get("/ai-quota-rules", async (_req, res, next) => {
+  try {
+    ok(res, await withCache("site", ["ai-quota-rules"], 60_000, async () => getAiQuotaRules()));
+  } catch (e) { next(e); }
 });
 
 /** 公开：顶部导航配置，仅包含展示字段。 */

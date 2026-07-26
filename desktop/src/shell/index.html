@@ -90,10 +90,25 @@
           </div>
           <dl class="fields" id="auth-fields" hidden>
             <div><dt>用户</dt><dd id="auth-name">—</dd></div>
-            <div><dt>今日剩余 AI 次数</dt><dd id="auth-balance">—</dd></div>
-            <div><dt>今日已用 / 每日额度</dt><dd id="auth-usage">—</dd></div>
+            <div><dt>等级</dt><dd id="auth-level">—</dd></div>
+            <div><dt>信誉值</dt><dd id="auth-reputation">—</dd></div>
+            <div><dt>今日免费额度</dt><dd id="auth-usage">—</dd></div>
+            <div><dt>AI 点数</dt><dd id="auth-points">—</dd></div>
+            <div><dt>合计可用</dt><dd id="auth-balance">—</dd></div>
             <div><dt>授权有效期至</dt><dd id="auth-expires">—</dd></div>
           </dl>
+
+          <!-- 怎么涨额度。数字全部来自服务端下发的实时规则，不写死 -->
+          <details class="howto" id="auth-howto" hidden>
+            <summary>怎么提升免费额度？</summary>
+            <div class="howto-body">
+              <p class="muted small" id="howto-intro"></p>
+              <ul class="howto-list" id="howto-list"></ul>
+              <p class="muted small" id="howto-tiers"></p>
+              <p class="muted small" id="howto-points"></p>
+            </div>
+          </details>
+
           <p class="muted" id="auth-hint">登录后即可使用学习通与校园 AI 解答。</p>
           <div class="actions">
             <button class="primary" id="auth-login" type="button" hidden>登录</button>

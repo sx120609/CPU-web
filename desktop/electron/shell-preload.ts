@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld("cpuShell", {
     getStatus: () => ipcRenderer.invoke("oauth:status"),
     login: () => ipcRenderer.invoke("oauth:login"),
     logout: () => ipcRenderer.invoke("oauth:logout"),
+    getQuotaRules: () => ipcRenderer.invoke("oauth:quota-rules"),
     // 静默授权换到新 token 时主进程会推过来，界面据此自己更新
     onChange: (callback: (status: any) => void) => on("oauth:changed", callback)
   },
