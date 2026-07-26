@@ -425,6 +425,14 @@ const openMainWindow = async (options: { show?: boolean } = {}): Promise<void> =
   enableClipboardMenu(window);
   await window.loadFile(resolveAsset("src", "shell", "index.html"));
 
+  // 首启引导还没走完时先不建标签：内容视图永远盖在外壳页面之上，
+  // 建了就会把引导页压住。走完引导再补建。
+  const { onboarded } = await readPreferences();
+  if (onboarded) await createTabs(window);
+};
+
+const createTabs = async (window: BrowserWindow): Promise<void> => {
+  if (tabs) return;
   tabs = createTabManager(window);
   tabs.openToolsTab();
   await tabs.openSiteTab(loadSite);
@@ -687,8 +695,25 @@ if (!singleInstance) {
       origin: oauthConfig.origin,
       siteLoaded,
       siteError,
-      chromeHeight: CHROME_HEIGHT
+      chromeHeight: CHROME_HEIGHT,
+      onboarded: preferences.onboarded
     }));
+    ipcMain.handle("app:complete-onboarding", async (_event, patch: unknown) => {
+      const settings = (patch ?? {}) as { launchOnLogin?: boolean; campusNetEnabled?: boolean };
+      const saved = await writePreferences({
+        onboarded: true,
+        ...(typeof settings.launchOnLogin === "boolean" ? { launchOnLogin: settings.launchOnLogin } : {}),
+        ...(typeof settings.campusNetEnabled === "boolean"
+          ? { campusNet: { enabled: settings.campusNetEnabled } as never }
+          : {})
+      });
+      closeToTray = saved.closeToTray;
+      applyLaunchOnLogin(saved.launchOnLogin, saved.startMinimized);
+      campusNet?.updateSettings(saved.campusNet);
+      if (mainWindow && !mainWindow.isDestroyed()) await createTabs(mainWindow);
+      return { onboarded: true };
+    });
+
     ipcMain.handle("tabs:state", () => tabs?.getState() ?? { tabs: [], activeId: "" });
     ipcMain.handle("tabs:activate", (_event, id: unknown) => { if (typeof id === "string") tabs?.activate(id); });
     ipcMain.handle("tabs:close", (_event, id: unknown) => { if (typeof id === "string") tabs?.close(id); });
@@ -861,7 +886,7 @@ if (!singleInstance) {
     const scripts = await getScripts();
     console.log(
       `${branding.productName} v${app.getVersion()} 已启动 · 主站 ${oauthConfig.origin}`
-      + ` · ${siteLoaded ? "主站已加载" : "主站不可达，已回退启动台"}`
+      + ` · ${tabs ? (siteLoaded ? "主站已加载" : "主站不可达，已显示离线提示") : "等待首启引导完成"}`
       + ` · 已载入 ${scripts.length} 个用户脚本`
     );
     app.on("activate", () => void openMainWindow());

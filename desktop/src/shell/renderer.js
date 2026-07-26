@@ -388,36 +388,68 @@ const bindOffline = () => {
   el("offline-tools").addEventListener("click", () => openTools());
 };
 
-/* --------------------------------------------------------------- 启动 */
+/* ------------------------------------------------------------- 首启引导 */
 
-const boot = async () => {
-  bindChrome();
-  bindAuth();
-  bindCampus();
-  bindScript();
-  bindOffline();
-  void bindPreferences();
+const OB_STEPS = 3;
+let obStep = 0;
 
-  shell.tabs.onChange((state) => { tabState = state; renderTabs(); });
-  shell.campusNet.onState(renderCampusState);
-  shell.campusNet.onLog(() => void shell.campusNet.getLogs(120).then(renderCampusLogs));
-  shell.script.onActivity(() => void shell.script.getActivity(80).then(renderScriptActivity));
-  shell.update.onAvailable(showUpdate);
+const renderOnboarding = () => {
+  for (const step of document.querySelectorAll(".ob-step")) {
+    if (Number(step.dataset.step) === obStep) step.setAttribute("data-active", "");
+    else step.removeAttribute("data-active");
+  }
+  const pager = el("ob-pager");
+  pager.textContent = "";
+  for (let index = 0; index < OB_STEPS; index += 1) {
+    const dot = document.createElement("i");
+    if (index === obStep) dot.setAttribute("data-active", "");
+    pager.append(dot);
+  }
+};
 
+const startOnboarding = () => {
+  document.body.dataset.onboarding = "1";
+  el("onboard").hidden = false;
+  renderOnboarding();
+
+  for (const button of document.querySelectorAll("[data-next]")) {
+    button.addEventListener("click", () => {
+      obStep = Math.min(obStep + 1, OB_STEPS - 1);
+      renderOnboarding();
+    });
+  }
+
+  el("ob-done").addEventListener("click", async () => {
+    const button = el("ob-done");
+    button.disabled = true;
+    try {
+      await shell.completeOnboarding({
+        launchOnLogin: el("ob-launch").checked,
+        campusNetEnabled: el("ob-campus").checked
+      });
+      // 主进程这时才创建标签，退场动画放完再撤掉引导层
+      el("onboard").style.transition = "opacity .34s ease";
+      el("onboard").style.opacity = "0";
+      window.setTimeout(() => {
+        el("onboard").hidden = true;
+        delete document.body.dataset.onboarding;
+      }, 340);
+      await afterOnboarding();
+    } catch (error) {
+      button.disabled = false;
+      say(errorText(error, "初始化失败，请重试。"), true);
+    }
+  });
+};
+
+// 引导走完才需要拉这些：之前拉了也没地方显示
+const afterOnboarding = async () => {
   try {
     tabState = await shell.tabs.getState();
     renderTabs();
-  } catch { /* 主进程还没就绪 */ }
-
-  try {
-    const info = await shell.getBootInfo();
-    el("app-meta").textContent = `${info.productName} v${info.version} · ${new URL(info.origin).host}`;
-    offline.dataset.armed = info.siteLoaded ? "0" : "1";
-    if (!info.siteLoaded && info.siteError) el("offline-reason").textContent = `无法加载主站：${info.siteError}`;
-    renderTabs();
   } catch { /* 忽略 */ }
-
   void refreshAuth();
+  void bindPreferences();
   try {
     renderCampusSettings(await shell.campusNet.getSettings());
     renderCampusState(await shell.campusNet.getState());
@@ -431,6 +463,38 @@ const boot = async () => {
   try {
     showUpdate(await shell.update.check());
   } catch { /* 忽略 */ }
+};
+
+/* --------------------------------------------------------------- 启动 */
+
+const boot = async () => {
+  bindChrome();
+  bindAuth();
+  bindCampus();
+  bindScript();
+  bindOffline();
+
+  shell.tabs.onChange((state) => { tabState = state; renderTabs(); });
+  shell.campusNet.onState(renderCampusState);
+  shell.campusNet.onLog(() => void shell.campusNet.getLogs(120).then(renderCampusLogs));
+  shell.script.onActivity(() => void shell.script.getActivity(80).then(renderScriptActivity));
+  shell.update.onAvailable(showUpdate);
+
+  let info;
+  try {
+    info = await shell.getBootInfo();
+    el("app-meta").textContent = `${info.productName} v${info.version} · ${new URL(info.origin).host}`;
+    offline.dataset.armed = info.siteLoaded ? "0" : "1";
+    if (!info.siteLoaded && info.siteError) el("offline-reason").textContent = `无法加载主站：${info.siteError}`;
+  } catch { /* 主进程还没就绪 */ }
+
+  // 首次运行先走引导。主进程在引导完成前不会创建任何内容视图，
+  // 所以引导页不会被压住；剩下的初始化留到引导结束后再做。
+  if (info && !info.onboarded) {
+    startOnboarding();
+    return;
+  }
+  await afterOnboarding();
 };
 
 function showUpdate(info) {

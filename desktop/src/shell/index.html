@@ -7,6 +7,51 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
+    <!-- 首启引导。主进程在引导走完前不创建任何内容视图，所以这一页不会被压住 -->
+    <section class="onboard" id="onboard" hidden>
+      <div class="ob-bg"><span class="ob-orb ob-orb-a"></span><span class="ob-orb ob-orb-b"></span><span class="ob-grain"></span></div>
+
+      <div class="ob-stage" id="ob-stage">
+        <!-- 第一屏 -->
+        <div class="ob-step" data-step="0">
+          <img class="ob-logo" src="./logo.png" alt="" />
+          <h1 class="ob-title">药大拾间<span>桌面端</span></h1>
+          <p class="ob-lead">把校园服务装进一个窗口，再加两件网页做不到的事。</p>
+          <button class="ob-primary" data-next>开始<span class="ob-arrow">→</span></button>
+        </div>
+
+        <!-- 第二屏 -->
+        <div class="ob-step" data-step="1">
+          <h2 class="ob-heading">它能替你做什么</h2>
+          <ul class="ob-features">
+            <li><span class="ob-dot"></span><div><strong>校园网自动连接</strong><small>掉线自动重认证；判断出你不在校园网时不会瞎试</small></div></li>
+            <li><span class="ob-dot"></span><div><strong>学习通标签页</strong><small>在客户端里打开，答题辅助自动接管，进度直接看得到</small></div></li>
+            <li><span class="ob-dot"></span><div><strong>常驻后台</strong><small>关掉窗口收进托盘，可开机自启</small></div></li>
+          </ul>
+          <button class="ob-primary" data-next>下一步<span class="ob-arrow">→</span></button>
+        </div>
+
+        <!-- 第三屏 -->
+        <div class="ob-step" data-step="2">
+          <h2 class="ob-heading">两个开关，之后也能改</h2>
+          <label class="ob-switch">
+            <input type="checkbox" id="ob-launch" />
+            <span class="track"><span class="thumb"></span></span>
+            <span class="switch-text"><strong>开机自动启动</strong><small>登录系统后自动运行并收进托盘</small></span>
+          </label>
+          <label class="ob-switch">
+            <input type="checkbox" id="ob-campus" />
+            <span class="track"><span class="thumb"></span></span>
+            <span class="switch-text"><strong>后台自动连接校园网</strong><small>稍后在工具页填学号密码才会真正生效</small></span>
+          </label>
+          <p class="ob-fine">答案全部来自药大拾间后台配置的校园 AI，会消耗你的每日额度。请自行判断使用边界并遵守学校的学术规范。</p>
+          <button class="ob-primary" id="ob-done">进入药大拾间<span class="ob-arrow">→</span></button>
+        </div>
+      </div>
+
+      <div class="ob-pager" id="ob-pager"></div>
+    </section>
+
     <!-- 标签栏。高度必须与 electron/tabs.ts 的 CHROME_HEIGHT 一致 -->
     <header class="chrome">
       <img class="brand" src="./logo.png" alt="" />

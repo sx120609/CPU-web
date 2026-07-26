@@ -11,6 +11,7 @@ const on = (channel: string, callback: (payload: any) => void) => {
 
 contextBridge.exposeInMainWorld("cpuShell", {
   getBootInfo: () => ipcRenderer.invoke("shell:boot"),
+  completeOnboarding: (patch: Record<string, unknown>) => ipcRenderer.invoke("app:complete-onboarding", patch),
 
   tabs: {
     getState: () => ipcRenderer.invoke("tabs:state"),

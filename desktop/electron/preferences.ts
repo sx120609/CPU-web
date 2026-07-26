@@ -16,6 +16,8 @@ import type { CampusNetSettings } from "./campus-net/service";
 // 非敏感的应用设置。凭据一律不放这里 —— 那些走 safeStorage
 // （OAuth 会话在 oauth-store.ts，校园网学号密码在 campus-net/credential-store.ts）。
 export type Preferences = {
+  /** 首启引导是否已走完。未走完时主进程不创建任何标签，好让引导页不被内容视图压住。 */
+  onboarded: boolean;
   launchOnLogin: boolean;
   startMinimized: boolean;
   closeToTray: boolean;
@@ -27,6 +29,7 @@ export type Preferences = {
 };
 
 const DEFAULTS: Preferences = {
+  onboarded: false,
   launchOnLogin: false,
   startMinimized: false,
   closeToTray: true,
@@ -92,6 +95,7 @@ export const readPreferences = async (): Promise<Preferences> => {
   try {
     const raw = JSON.parse(await readFile(filePath(), "utf8")) as Partial<Preferences>;
     cache = {
+      onboarded: asBoolean(raw.onboarded, DEFAULTS.onboarded),
       launchOnLogin: asBoolean(raw.launchOnLogin, DEFAULTS.launchOnLogin),
       startMinimized: asBoolean(raw.startMinimized, DEFAULTS.startMinimized),
       closeToTray: asBoolean(raw.closeToTray, DEFAULTS.closeToTray),
@@ -109,6 +113,7 @@ export const readPreferences = async (): Promise<Preferences> => {
 export const writePreferences = async (patch: Partial<Preferences>): Promise<Preferences> => {
   const current = await readPreferences();
   const next: Preferences = {
+    onboarded: asBoolean(patch.onboarded, current.onboarded),
     launchOnLogin: asBoolean(patch.launchOnLogin, current.launchOnLogin),
     startMinimized: asBoolean(patch.startMinimized, current.startMinimized),
     closeToTray: asBoolean(patch.closeToTray, current.closeToTray),

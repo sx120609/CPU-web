@@ -391,3 +391,224 @@ footer { color: var(--cpu-text-muted); font-size: 11.5px; text-align: center; }
 .offline-inner h2 { font-size: 18px; margin-bottom: 10px; }
 .offline-inner p { color: var(--cpu-text-secondary); line-height: 1.7; }
 .offline-inner .actions { justify-content: center; margin-top: 18px; }
+
+/* ======================================================= 首启引导 */
+/* 这一页是整个客户端唯一"演出"的地方：NSIS 那边改成静默安装了，
+   装的过程不再有向导界面，第一印象全靠这里。 */
+
+.onboard {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: linear-gradient(163deg, #3cbda7 0%, #189a84 30%, #148f7b 58%, #0b6353 100%);
+  color: #fff;
+  -webkit-app-region: drag;
+}
+
+.ob-bg { position: absolute; inset: 0; pointer-events: none; }
+
+/* 两团缓慢游动的光，让静态渐变有呼吸感 */
+.ob-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(2px);
+}
+
+.ob-orb-a {
+  top: -18%; right: -12%;
+  width: 46vw; height: 46vw;
+  background: radial-gradient(circle, rgba(245,158,11,.34) 0%, rgba(245,158,11,.08) 46%, rgba(245,158,11,0) 70%);
+  animation: ob-drift-a 18s ease-in-out infinite alternate;
+}
+
+.ob-orb-b {
+  bottom: -24%; left: -14%;
+  width: 52vw; height: 52vw;
+  background: radial-gradient(circle, rgba(94,228,204,.26) 0%, rgba(94,228,204,0) 66%);
+  animation: ob-drift-b 22s ease-in-out infinite alternate;
+}
+
+@keyframes ob-drift-a {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(-4vw, 5vh, 0) scale(1.12); }
+}
+
+@keyframes ob-drift-b {
+  from { transform: translate3d(0, 0, 0) scale(1.06); }
+  to   { transform: translate3d(5vw, -4vh, 0) scale(1); }
+}
+
+.ob-grain {
+  position: absolute; inset: 0; opacity: .045;
+  background-image:
+    radial-gradient(rgba(255,255,255,.9) .5px, transparent .5px),
+    radial-gradient(rgba(0,0,0,.9) .5px, transparent .5px);
+  background-size: 3px 3px, 4px 4px;
+  background-position: 0 0, 1px 2px;
+}
+
+.ob-stage {
+  position: relative;
+  width: min(520px, calc(100% - 72px));
+  -webkit-app-region: no-drag;
+}
+
+/* 每屏都在原位淡入上移，只有当前那屏参与布局 */
+.ob-step { display: none; }
+.ob-step[data-active] { display: block; animation: ob-in .52s cubic-bezier(.2, .8, .2, 1) both; }
+
+@keyframes ob-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* 子元素依次入场，靠 nth-child 排延迟，不写 JS */
+.ob-step[data-active] > * { animation: ob-in .5s cubic-bezier(.2, .8, .2, 1) both; }
+.ob-step[data-active] > *:nth-child(1) { animation-delay: .04s; }
+.ob-step[data-active] > *:nth-child(2) { animation-delay: .10s; }
+.ob-step[data-active] > *:nth-child(3) { animation-delay: .16s; }
+.ob-step[data-active] > *:nth-child(4) { animation-delay: .22s; }
+.ob-step[data-active] > *:nth-child(5) { animation-delay: .28s; }
+
+.ob-logo {
+  width: 74px; height: 74px;
+  border-radius: 19px;
+  background: rgba(255,255,255,.10);
+  box-shadow: 0 12px 30px rgba(3,34,28,.36), inset 0 1px 0 rgba(255,255,255,.30);
+  animation: ob-float 5.5s ease-in-out infinite;
+}
+
+@keyframes ob-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-7px); }
+}
+
+.ob-title {
+  margin-top: 26px;
+  font-size: 34px; font-weight: 700; letter-spacing: 2px;
+  text-shadow: 0 3px 16px rgba(3,34,28,.32);
+}
+
+.ob-title span {
+  display: block;
+  margin-top: 8px;
+  font-size: 13px; font-weight: 500;
+  letter-spacing: 7px;
+  color: rgba(255,255,255,.72);
+}
+
+.ob-lead {
+  margin-top: 20px;
+  max-width: 380px;
+  font-size: 14px; line-height: 1.85;
+  color: rgba(255,255,255,.86);
+}
+
+.ob-heading {
+  font-size: 23px; font-weight: 700; letter-spacing: 1px;
+  text-shadow: 0 3px 16px rgba(3,34,28,.32);
+}
+
+.ob-features { list-style: none; margin-top: 24px; }
+
+.ob-features li {
+  display: flex; gap: 13px; align-items: flex-start;
+  padding: 13px 0;
+  border-bottom: 1px solid rgba(255,255,255,.14);
+}
+
+.ob-features li:last-child { border-bottom: 0; }
+.ob-features div { display: flex; flex-direction: column; gap: 3px; }
+.ob-features strong { font-size: 14.5px; font-weight: 650; }
+.ob-features small { font-size: 12.5px; line-height: 1.6; color: rgba(255,255,255,.70); }
+
+.ob-dot {
+  flex: none;
+  width: 7px; height: 7px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: #fcd34d;
+  box-shadow: 0 0 0 4px rgba(252,211,77,.18);
+}
+
+.ob-switch {
+  display: flex; align-items: center; gap: 13px;
+  margin-top: 18px;
+  cursor: pointer;
+}
+
+.ob-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.ob-switch .track { background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.28); }
+.ob-switch .thumb { background: #fff; }
+.ob-switch input:checked + .track { background: #fcd34d; border-color: #fcd34d; }
+.ob-switch input:checked + .track .thumb { background: #0b6353; }
+.ob-switch .switch-text strong { font-size: 14px; }
+.ob-switch .switch-text small { color: rgba(255,255,255,.68); }
+
+.ob-fine {
+  margin-top: 26px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255,255,255,.14);
+  font-size: 11.5px; line-height: 1.75;
+  color: rgba(255,255,255,.60);
+}
+
+.ob-primary {
+  display: inline-flex; align-items: center; gap: 9px;
+  margin-top: 32px;
+  padding: 12px 26px;
+  border: 0; border-radius: 999px;
+  background: #fff;
+  color: #0b6353;
+  font: inherit; font-size: 14px; font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 10px 26px rgba(3,34,28,.28);
+  transition: transform .16s ease, box-shadow .16s ease;
+}
+
+.ob-primary:hover { transform: translateY(-2px); box-shadow: 0 14px 32px rgba(3,34,28,.34); }
+.ob-primary:active { transform: none; }
+.ob-primary:disabled { opacity: .7; cursor: wait; }
+
+/* 箭头轻微来回，暗示"往下走" */
+.ob-arrow { animation: ob-nudge 1.6s ease-in-out infinite; }
+
+@keyframes ob-nudge {
+  0%, 100% { transform: translateX(0); }
+  50%      { transform: translateX(4px); }
+}
+
+.ob-pager {
+  position: absolute; bottom: 34px;
+  display: flex; gap: 7px;
+  -webkit-app-region: no-drag;
+}
+
+.ob-pager i {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.30);
+  transition: width .22s ease, background-color .22s ease;
+}
+
+.ob-pager i[data-active] { width: 20px; border-radius: 4px; background: #fcd34d; }
+
+/* 引导期间外壳的其它部分不该出现 */
+body[data-onboarding="1"] .chrome,
+body[data-onboarding="1"] .workspace,
+body[data-onboarding="1"] .offline { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ob-orb, .ob-logo, .ob-arrow { animation: none; }
+  .ob-step[data-active], .ob-step[data-active] > * { animation-duration: .01s; }
+}
+
+/* 首屏是纯展示，居中才不会在宽窗口里显得偏左；后两屏是列表与开关，仍靠左读着顺 */
+.ob-step[data-step="0"] { text-align: center; }
+.ob-step[data-step="0"] .ob-logo { display: block; margin: 0 auto; }
+.ob-step[data-step="0"] .ob-lead { margin-left: auto; margin-right: auto; }
