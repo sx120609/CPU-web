@@ -80,7 +80,6 @@ declare module 'vue' {
     ScheduleCustomizePicker: typeof import('./src/components/jwxt/ScheduleCustomizePicker.vue')['default']
     SchedulePane: typeof import('./src/components/jwxt/SchedulePane.vue')['default']
     ScheduleThemePicker: typeof import('./src/components/jwxt/ScheduleThemePicker.vue')['default']
-    ScriptSettingsDialog: typeof import('./src/components/common/ScriptSettingsDialog.vue')['default']
     TopicListItem: typeof import('./src/components/forum/TopicListItem.vue')['default']
     UserAvatar: typeof import('./src/components/common/UserAvatar.vue')['default']
     UserModerationActions: typeof import('./src/components/common/UserModerationActions.vue')['default']
