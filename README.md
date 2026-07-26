@@ -330,7 +330,7 @@ Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
 
-请求体兼容常用 Chat Completions 字段：
+请求体接受常用 Chat Completions 字段，仅支持非流式请求，`stream` 只能为 `false` 或省略：
 
 ```json
 {
@@ -348,11 +348,23 @@ Content-Type: application/json
 - 参数校验失败、令牌无效、scope 不足或额度不足：不扣额度。
 - 请求已扣额度后，上游 AI 返回失败或网络异常：退还本次额度。
 - 上游 AI 返回成功：保留本次扣减。
-- 流式请求当前同样按 1 次请求计算。
+- `stream: true` 不受支持。
 
-流式响应会逐块转发，并设置 `X-Accel-Buffering: no` 与 `Cache-Control: no-cache, no-transform`，以避免常见反向代理缓存整段响应。
+非流式成功响应只返回模型文本：
 
-每日额度由站点设置中的 `assistant.dailyQuotas` 根据用户等级决定。上游响应状态码、响应类型和响应内容会转发给 Electron；服务端不会把上游 API Key 返回给客户端。
+```json
+{
+  "choices": [
+    {
+      "message": {
+        "content": "回答内容"
+      }
+    }
+  ]
+}
+```
+
+每日额度由站点设置中的 `assistant.dailyQuotas` 根据用户等级决定。上游失败状态码和错误内容会转发给 Electron；成功响应会裁剪为上述格式，服务端不会把上游 API Key 返回给客户端。
 
 ### Scope
 
