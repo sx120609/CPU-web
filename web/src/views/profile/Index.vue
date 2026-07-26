@@ -37,44 +37,6 @@
       </div>
     </div>
 
-    <div class="cpu-card assistant-quota-card">
-      <div class="assistant-quota-head">
-        <div class="assistant-quota-title">
-          <span class="assistant-quota-mark">拾</span>
-          <div>
-            <h3 class="cpu-section-title">拾间 AI 额度</h3>
-            <p v-if="assistantQuota">Lv.{{ assistantQuota.level }} {{ assistantQuota.levelName }} · 每日 00:00 重置</p>
-            <p v-else>查看今日对话额度与 AI 点数</p>
-          </div>
-        </div>
-        <el-button text type="primary" @click="router.push('/search')">打开拾间 AI</el-button>
-      </div>
-
-      <el-skeleton v-if="assistantQuotaLoading && !assistantQuota" :rows="1" animated />
-      <div v-else-if="assistantQuota" class="assistant-quota-grid">
-        <div class="assistant-quota-item">
-          <span>今日剩余</span>
-          <b>{{ assistantQuota.remaining }}<small>/{{ assistantQuota.dailyQuota }}</small></b>
-        </div>
-        <div class="assistant-quota-item">
-          <span>今日已用</span>
-          <b>{{ assistantQuota.used }}</b>
-        </div>
-        <div class="assistant-quota-item">
-          <span>AI 点数</span>
-          <b>{{ assistantQuota.points }}</b>
-        </div>
-        <div class="assistant-quota-item assistant-quota-item--total">
-          <span>合计可用</span>
-          <b>{{ assistantQuota.totalRemaining }}</b>
-        </div>
-      </div>
-      <div v-else class="assistant-quota-error">
-        <span>{{ assistantQuotaError || "额度暂时无法加载" }}</span>
-        <el-button text type="primary" :loading="assistantQuotaLoading" @click="loadAssistantQuota">重试</el-button>
-      </div>
-    </div>
-
     <div class="cpu-card appearance-card">
       <div class="appearance-copy">
         <h3 class="cpu-section-title">外观偏好</h3>
@@ -116,6 +78,38 @@
           复制群号
         </el-button>
       </div>
+    </div>
+
+    <div class="cpu-card assistant-quota-card">
+      <div class="assistant-quota-title">
+        <span class="assistant-quota-mark">拾</span>
+        <div>
+          <h3 class="cpu-section-title">拾间 AI 额度</h3>
+          <p v-if="assistantQuota">Lv.{{ assistantQuota.level }} {{ assistantQuota.levelName }} · 每日重置</p>
+          <p v-else>今日对话额度与 AI 点数</p>
+        </div>
+      </div>
+
+      <el-skeleton v-if="assistantQuotaLoading && !assistantQuota" class="assistant-quota-loading" :rows="0" animated />
+      <div v-else-if="assistantQuota" class="assistant-quota-stats">
+        <div class="assistant-quota-stat assistant-quota-stat--primary">
+          <span>今日额度</span>
+          <b>{{ assistantQuota.remaining }}<small>/{{ assistantQuota.dailyQuota }}</small></b>
+        </div>
+        <div class="assistant-quota-stat">
+          <span>AI 点数</span>
+          <b>{{ assistantQuota.points }}</b>
+        </div>
+      </div>
+      <div v-else class="assistant-quota-error">
+        <span>{{ assistantQuotaError || "暂时无法加载" }}</span>
+        <el-button text type="primary" :loading="assistantQuotaLoading" @click="loadAssistantQuota">重试</el-button>
+      </div>
+
+      <el-button class="assistant-quota-open" text type="primary" aria-label="打开拾间 AI" @click="router.push('/search')">
+        <span class="assistant-quota-open-label">打开</span>
+        <el-icon><ArrowRight /></el-icon>
+      </el-button>
     </div>
 
     <div v-if="site.features.sponsor || (user?.sponsorAmount ?? 0) > 0" class="cpu-card sponsor-card">
@@ -401,7 +395,7 @@
 import { ref, reactive, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Bell, ChatDotRound, CopyDocument, Monitor, Moon, Sunny } from "@element-plus/icons-vue";
+import { ArrowRight, Bell, ChatDotRound, CopyDocument, Monitor, Moon, Sunny } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
@@ -897,15 +891,16 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 .profile-actions .el-button { flex: 1 1 auto; min-width: 100px; margin-left: 0 !important; }
 
 .assistant-quota-card {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.assistant-quota-head {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 14px;
+  gap: 16px;
+  padding-top: 14px;
+  padding-bottom: 14px;
+  border-color: color-mix(in srgb, var(--cpu-primary) 18%, var(--cpu-border-soft));
+  background:
+    linear-gradient(110deg, color-mix(in srgb, var(--cpu-primary) 7%, transparent), transparent 48%),
+    var(--cpu-card);
 }
 .assistant-quota-title {
   display: flex;
@@ -915,14 +910,15 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 }
 .assistant-quota-mark {
   display: grid;
-  width: 38px;
-  height: 38px;
-  flex: 0 0 38px;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
   place-items: center;
-  border-radius: 12px;
+  border-radius: 11px;
   color: #fff;
   background: linear-gradient(135deg, var(--cpu-primary), var(--cpu-primary-dark));
-  font-size: 17px;
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--cpu-primary) 18%, transparent);
+  font-size: 16px;
   font-weight: 800;
 }
 .assistant-quota-title .cpu-section-title {
@@ -933,51 +929,64 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   color: var(--cpu-text-secondary);
   font-size: 12px;
 }
-.assistant-quota-head .el-button {
-  flex: 0 0 auto;
-  margin: 0;
-}
-.assistant-quota-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-}
-.assistant-quota-item {
-  min-width: 0;
-  padding: 11px 13px;
+.assistant-quota-stats {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
   border: 1px solid var(--cpu-border-soft);
   border-radius: 10px;
-  background: var(--cpu-surface-soft);
+  background: color-mix(in srgb, var(--cpu-surface-soft) 82%, transparent);
 }
-.assistant-quota-item span {
+.assistant-quota-stat {
+  min-width: 82px;
+  padding: 7px 13px;
+  text-align: center;
+}
+.assistant-quota-stat + .assistant-quota-stat {
+  border-left: 1px solid var(--cpu-border-soft);
+}
+.assistant-quota-stat span {
   display: block;
-  margin-bottom: 4px;
-  color: var(--cpu-text-secondary);
-  font-size: 11px;
+  color: var(--cpu-text-muted);
+  font-size: 10px;
+  line-height: 1.2;
 }
-.assistant-quota-item b {
+.assistant-quota-stat b {
+  display: block;
+  margin-top: 2px;
   color: var(--cpu-text);
-  font-size: 19px;
+  font-size: 16px;
+  line-height: 1.15;
 }
-.assistant-quota-item b small {
+.assistant-quota-stat--primary b {
+  color: var(--cpu-primary);
+}
+.assistant-quota-stat b small {
   margin-left: 2px;
   color: var(--cpu-text-muted);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
 }
-.assistant-quota-item--total {
-  border-color: color-mix(in srgb, var(--cpu-primary) 24%, var(--cpu-border-soft));
-  background: color-mix(in srgb, var(--cpu-primary) 8%, var(--cpu-card));
+.assistant-quota-open {
+  min-width: 58px;
+  margin: 0 !important;
+  padding-right: 4px;
+  padding-left: 4px;
 }
-.assistant-quota-item--total b {
-  color: var(--cpu-primary);
+.assistant-quota-open :deep(span) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.assistant-quota-loading {
+  width: 176px;
 }
 .assistant-quota-error {
   display: flex;
-  min-height: 42px;
+  min-width: 150px;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 4px;
   color: var(--cpu-text-secondary);
   font-size: 12px;
 }
@@ -1469,11 +1478,10 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   }
 
   .assistant-quota-card {
-    gap: 11px;
-  }
-
-  .assistant-quota-head {
+    grid-template-columns: minmax(0, 1fr) auto auto;
     gap: 8px;
+    padding-top: 12px;
+    padding-bottom: 12px;
   }
 
   .assistant-quota-title {
@@ -1489,38 +1497,40 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   }
 
   .assistant-quota-title p {
-    max-width: 210px;
+    max-width: 120px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .assistant-quota-head .el-button {
-    padding-right: 0;
-    padding-left: 4px;
-    font-size: 12px;
+  .assistant-quota-stats {
+    width: auto;
   }
 
-  .assistant-quota-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px;
+  .assistant-quota-stat {
+    min-width: 58px;
+    padding: 5px 7px;
   }
 
-  .assistant-quota-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 9px 10px;
+  .assistant-quota-stat b {
+    margin-top: 1px;
+    font-size: 13px;
   }
 
-  .assistant-quota-item span {
-    margin: 0;
-    white-space: nowrap;
+  .assistant-quota-loading,
+  .assistant-quota-error {
+    min-width: 112px;
+    width: auto;
   }
 
-  .assistant-quota-item b {
-    font-size: 15px;
+  .assistant-quota-open {
+    justify-self: end;
+    min-width: 30px;
+    padding: 6px;
+  }
+
+  .assistant-quota-open-label {
+    display: none;
   }
 
   .appearance-card {
