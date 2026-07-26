@@ -33,6 +33,7 @@
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
 // @grant        GM_cpuAIRequest
+// @grant        GM_cpuReport
 // @run-at       document-end
 // @antifeature  ads      脚本可能包含第三方接口广告
 // @antifeature  payment  脚本存在第三方答题接口付费功能
@@ -42,7 +43,20 @@
 
 (t=>{if(typeof GM_addStyle=="function"){GM_addStyle(t);return}const i=document.createElement("style");i.textContent=t,document.head.append(i)})(" .dialog-footer button[data-v-6ed29f7f]:first-child{margin-right:10px}#csbutton[data-v-6ed29f7f]{display:none!important}#zeokdjg[data-v-c3c6b09f]{position:fixed;left:10px;bottom:50vh;z-index:9999}.question_btn[data-v-c3c6b09f]{width:40px;height:40px;border-radius:5px;margin:5px}.question_div[data-v-c3c6b09f]{height:200px}.question_ti[data-v-c3c6b09f]{margin:10px 0 20px}.cx_log[data-v-c3c6b09f]{margin:2px 0}.status_log[data-v-c3c6b09f]{margin-top:10px}.dialog-footer button[data-v-c3c6b09f]:first-child{margin-right:10px} ");
 
-const hideConfigControls = () => { document.querySelector("#csbutton")?.remove(); document.querySelectorAll("button, .el-text").forEach((element) => { if (element.textContent?.includes("打开配置") || element.textContent?.includes("题库秘钥配置请点击这个按钮")) element.remove(); }); };
+// 脚本自带的配置入口由客户端界面接管，这里只把它藏起来。
+// 注意用 CSS 隐藏而不是 remove()：这些节点由 Vue 管理，直接摘掉 DOM 但虚拟 DOM 里
+// 还留着对应 vnode，下次重渲染（每条日志、每道题都会触发）Vue 会在已 detach 的节点上
+// patch，报 "Cannot read properties of null (reading 'insertBefore')" 之类的错。
+const hideConfigControls = () => {
+  document.querySelectorAll("#csbutton, button, .el-text").forEach((element) => {
+    if (element.dataset.cpuHidden) return;
+    const text = element.textContent || "";
+    if (element.id === "csbutton" || text.includes("打开配置") || text.includes("题库秘钥配置请点击这个按钮")) {
+      element.dataset.cpuHidden = "1";
+      element.style.setProperty("display", "none", "important");
+    }
+  });
+};
 new MutationObserver(hideConfigControls).observe(document.documentElement, { childList: true, subtree: true });
 hideConfigControls();
 
@@ -61,6 +75,9 @@ hideConfigControls();
   })("element-plus");
   var _GM_getResourceText = (() => "undefined" != typeof GM_getResourceText ? GM_getResourceText : void 0)(), _GM_getValue = (() => "undefined" != typeof GM_getValue ? GM_getValue : void 0)(), _GM_info = (() => "undefined" != typeof GM_info ? GM_info : void 0)(), _GM_setValue = (() => "undefined" != typeof GM_setValue ? GM_setValue : void 0)(), _GM_xmlhttpRequest = (() => "undefined" != typeof GM_xmlhttpRequest ? GM_xmlhttpRequest : void 0)(), _GM_cpuAIRequest = (() => "undefined" != typeof GM_cpuAIRequest ? GM_cpuAIRequest : void 0)(), _unsafeWindow = (() => "undefined" != typeof unsafeWindow ? unsafeWindow : void 0)();
   if (!_GM_cpuAIRequest) throw new Error("AI 桥接未注入：请通过药大拾间桌面端运行本脚本");
+  // 状态上报是可选能力，宿主没提供就静默跳过，不影响刷课
+  var _GM_cpuReport = (() => "undefined" != typeof GM_cpuReport ? GM_cpuReport : void 0)();
+  const reportToHost = (kind, text) => { try { _GM_cpuReport && _GM_cpuReport(kind, text); } catch { } };
   const getConfig = () => {
     let config = _GM_getValue("config");
     if (!config) return defaultConfig$1;
@@ -1852,9 +1869,9 @@ hideConfigControls();
   }, update(index, question) {
     this.task.work.questionList[index] = question;
   }, log(msg, level = "info") {
-    this.task.log.length > 20 && this.task.log.shift(), this.task.log.push({ time: (/* @__PURE__ */ new Date()).toLocaleTimeString(), msg, type: level });
+    this.task.log.length > 20 && this.task.log.shift(), this.task.log.push({ time: (/* @__PURE__ */ new Date()).toLocaleTimeString(), msg, type: level }), reportToHost("log", msg);
   }, msg(msg) {
-    this.task.status = msg;
+    this.task.status = msg, reportToHost("status", msg);
   } } }), _sfc_main = vue.defineComponent({ setup() {
     const askstore = useAskStore(), { dialogVisible, count, questionList, task } = pinia$1.storeToRefs(askstore), askActiveName = vue.ref("first"), askActiveNames = vue.ref(["1"]), msg = vue.ref("<h3>本脚本仅用于学习交流，请24h内删除</h3><br><p style='color:red;'>禁止用于各种非法用途，否则后果自负</p><br><p>本脚本题库接口均来源于网络以及用户反馈添加，不对题库准确率以及可用性负责，请自行判断、评估是否使用。</p>"), formstoreObj = useformStore(), { forminput, dialogV, activeName } = pinia$1.storeToRefs(formstoreObj), ruleFormRef = vue.ref(), rules = vue.reactive({ interval: [{ required: true, message: "间隔时间不能为空" }, { type: "number", message: "间隔时间必须为数字" }, { validator: (rule, value) => value >= 1 ? Promise.resolve() : Promise.reject("间隔时间必须大于等于1") }], answerInterval: [{ required: true, message: "答题间隔不能为空" }, { type: "number", message: "答题间隔必须为数字" }, { validator: (rule, value) => value >= 1 ? Promise.resolve() : Promise.reject("答题间隔必须大于等于1") }], token: [{ validator: (rule, value) => {
       if (value) {

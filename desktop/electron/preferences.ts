@@ -20,6 +20,10 @@ export type Preferences = {
   startMinimized: boolean;
   closeToTray: boolean;
   campusNet: CampusNetSettings;
+  // 学习辅助脚本的运行配置。客户端是唯一的真相来源：注入时喂给脚本，
+  // 脚本改了再回传存这里。脚本自带的配置面板已被隐藏，用户改不到，
+  // 配置必须由客户端界面接管，否则那些开关等于不存在。
+  scriptConfig: Record<string, unknown>;
 };
 
 const DEFAULTS: Preferences = {
@@ -34,7 +38,10 @@ const DEFAULTS: Preferences = {
     intervalSec: DEFAULT_INTERVAL_SEC,
     testUrl: DEFAULT_TEST_URL,
     testCode: DEFAULT_TEST_CODE
-  }
+  },
+  // 空对象表示"沿用脚本自己的默认值"。客户端界面只覆盖用户显式改过的项，
+  // 不把脚本的整套默认值抄一份过来 —— 抄了就得跟着脚本升级同步维护。
+  scriptConfig: {}
 };
 
 const MODES: CampusMode[] = ["pppoe", "campus", "auto"];
@@ -76,6 +83,10 @@ let cache: Preferences | undefined;
 const asBoolean = (value: unknown, fallback: boolean): boolean =>
   typeof value === "boolean" ? value : fallback;
 
+// 脚本配置的形状由脚本决定，这里不校验字段，只保证是个普通对象
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value) ? { ...value as Record<string, unknown> } : {};
+
 export const readPreferences = async (): Promise<Preferences> => {
   if (cache) return cache;
   try {
@@ -84,10 +95,11 @@ export const readPreferences = async (): Promise<Preferences> => {
       launchOnLogin: asBoolean(raw.launchOnLogin, DEFAULTS.launchOnLogin),
       startMinimized: asBoolean(raw.startMinimized, DEFAULTS.startMinimized),
       closeToTray: asBoolean(raw.closeToTray, DEFAULTS.closeToTray),
-      campusNet: mergeCampusNet(raw.campusNet, DEFAULTS.campusNet)
+      campusNet: mergeCampusNet(raw.campusNet, DEFAULTS.campusNet),
+      scriptConfig: asRecord(raw.scriptConfig)
     };
   } catch {
-    cache = { ...DEFAULTS, campusNet: { ...DEFAULTS.campusNet } };
+    cache = { ...DEFAULTS, campusNet: { ...DEFAULTS.campusNet }, scriptConfig: {} };
   }
   return cache;
 };
@@ -100,7 +112,11 @@ export const writePreferences = async (patch: Partial<Preferences>): Promise<Pre
     launchOnLogin: asBoolean(patch.launchOnLogin, current.launchOnLogin),
     startMinimized: asBoolean(patch.startMinimized, current.startMinimized),
     closeToTray: asBoolean(patch.closeToTray, current.closeToTray),
-    campusNet: patch.campusNet === undefined ? current.campusNet : mergeCampusNet(patch.campusNet, current.campusNet)
+    campusNet: patch.campusNet === undefined ? current.campusNet : mergeCampusNet(patch.campusNet, current.campusNet),
+    // 逐键合并：客户端界面只提交它改动的那几项，不该把没提交的项抹成默认
+    scriptConfig: patch.scriptConfig === undefined
+      ? current.scriptConfig
+      : { ...current.scriptConfig, ...asRecord(patch.scriptConfig) }
   };
   cache = next;
   await mkdir(app.getPath("userData"), { recursive: true });

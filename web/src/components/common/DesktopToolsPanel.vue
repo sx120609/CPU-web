@@ -94,17 +94,34 @@
             <el-icon><Notebook /></el-icon>
             <strong>刷题小工具</strong>
           </div>
+          <el-tag v-if="activity.running" type="success" size="small" effect="light">窗口已打开</el-tag>
         </header>
-        <p class="tool-hint">在独立窗口中打开学习平台，并注入学习辅助脚本。</p>
+
+        <p v-if="activity.status" class="tool-status">{{ activity.status }}</p>
+        <p v-else class="tool-hint">在独立窗口中打开学习平台，并注入学习辅助脚本。</p>
+
         <div class="tool-actions">
           <el-button type="primary" size="small" :loading="learningBusy" @click="openLearning">
             打开学习平台
           </el-button>
+          <el-button size="small" @click="settingsOpen = true">设置</el-button>
         </div>
+
+        <!-- 脚本自己的面板只留 20 条日志、关掉面板就看不见，这里留一份 -->
+        <details v-if="activity.entries.length" class="activity">
+          <summary>运行日志（{{ activity.entries.length }}）</summary>
+          <ul>
+            <li v-for="(entry, index) in recentEntries" :key="index">
+              <span>{{ formatTime(entry.at) }}</span>{{ entry.text }}
+            </li>
+          </ul>
+        </details>
       </article>
 
       <p v-if="actionMessage" class="tool-message" :data-error="actionError">{{ actionMessage }}</p>
     </div>
+
+    <ScriptSettingsDialog v-model="settingsOpen" />
   </section>
 </template>
 
@@ -113,6 +130,7 @@ import { computed, onMounted, ref } from "vue";
 import { Close, Connection, Download, Monitor, Notebook } from "@element-plus/icons-vue";
 import { getDesktopBridge, isDesktopNativeApp } from "@/utils/clientInfo";
 import { getDesktopDownloadUrl } from "@/api/site";
+import ScriptSettingsDialog from "./ScriptSettingsDialog.vue";
 
 const emit = defineEmits<{ (event: "close"): void }>();
 
@@ -127,6 +145,12 @@ const campusBusy = ref(false);
 const learningBusy = ref(false);
 const actionMessage = ref("");
 const actionError = ref(false);
+const settingsOpen = ref(false);
+const activity = ref<{ status: string; running: boolean; entries: any[] }>({ status: "", running: false, entries: [] });
+
+const recentEntries = computed(() => activity.value.entries.slice(-30).reverse());
+
+const formatTime = (at: number) => new Date(at).toLocaleTimeString("zh-CN", { hour12: false });
 
 const campusMessage = computed(() => campusState.value?.message || "未启用");
 const campusTagType = computed(() => {
@@ -211,6 +235,15 @@ onMounted(async () => {
       });
     } catch {
       /* 查不到更新就不提示 */
+    }
+    try {
+      activity.value = await bridge!.script!.getActivity(80);
+      bridge?.script?.onActivity((entry) => {
+        if (entry.kind === "status") activity.value.status = entry.text;
+        activity.value.entries = [...activity.value.entries, entry].slice(-200);
+      });
+    } catch {
+      /* 拿不到运行状态就只显示静态说明 */
     }
     return;
   }
@@ -409,6 +442,49 @@ onMounted(async () => {
 
   &[data-error="true"] {
     color: var(--cpu-danger);
+  }
+}
+
+.tool-status {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--cpu-primary-soft);
+  color: var(--cpu-text);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.activity {
+  margin-top: 12px;
+
+  summary {
+    cursor: pointer;
+    color: var(--cpu-text-secondary);
+    font-size: 12.5px;
+  }
+
+  ul {
+    margin: 8px 0 0;
+    padding: 0;
+    max-height: 160px;
+    overflow-y: auto;
+    list-style: none;
+  }
+
+  li {
+    display: flex;
+    gap: 8px;
+    padding: 3px 0;
+    color: var(--cpu-text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  span {
+    flex: none;
+    color: var(--cpu-text-muted);
+    font-variant-numeric: tabular-nums;
   }
 }
 </style>

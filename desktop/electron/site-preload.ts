@@ -46,6 +46,19 @@ contextBridge.exposeInMainWorld("CPUDesktop", {
     ipcRenderer.on("app:update-available", (_event, info) => callback(info));
   },
 
+  // 学习辅助脚本：配置由客户端接管（脚本自带的配置面板已隐藏），运行状态回传显示
+  script: {
+    getConfig: () => ipcRenderer.invoke("script:get-config"),
+    setConfig: (patch: Record<string, unknown>) => ipcRenderer.invoke("script:set-config", patch),
+    getActivity: (limit?: number) => ipcRenderer.invoke("script:get-activity", limit),
+    onActivity: (callback: (entry: unknown) => void) => {
+      ipcRenderer.on("script:activity", (_event, entry) => callback(entry));
+    },
+    onConfigChanged: (callback: (config: unknown) => void) => {
+      ipcRenderer.on("script:config-changed", (_event, config) => callback(config));
+    }
+  },
+
   // 校园网自动认证。密码只单向进主进程 —— getState 永远不会把它带回来。
   campusNet: {
     getState: () => ipcRenderer.invoke("campus:state"),

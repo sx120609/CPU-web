@@ -7,6 +7,7 @@ import { asInjectableUrl, asNavigableUrl, asSiteUrl, createAuthNavigationRule, s
 import { abortOAuthLogin, AuthorizeOpener, getOAuthStatus, logoutOAuth, startOAuthLogin } from "./oauth";
 import { readOAuthSession } from "./oauth-store";
 import { applyLaunchOnLogin, readPreferences, writePreferences } from "./preferences";
+import { buildScriptConfig } from "./script-config";
 import { CampusNetService, CampusState } from "./campus-net/service";
 import { onCampusLog, pruneCampusLogs, readCampusLogs } from "./campus-net/log";
 import { checkForUpdate, notifyUpdate, openUpdateDownload } from "./updater";
@@ -28,6 +29,19 @@ const grants = new Map<string, ScriptGrant>();
 // 按 webContents 的临时导航放行规则。目前只有 OAuth 授权窗口用到：
 // 它需要访问本机回环回调地址，那个地址不在任何站点白名单里。
 const navigationOverrides = new Map<number, (url: string) => boolean>();
+
+// 脚本回传的运行状态。脚本自己的面板只留 20 条日志且关掉面板就看不见，
+// 这里存一份好让客户端界面显示。
+type ScriptActivity = { at: number; kind: "status" | "log"; text: string };
+const scriptActivity: ScriptActivity[] = [];
+let latestScriptStatus = "";
+
+const recordScriptActivity = (entry: ScriptActivity): void => {
+  scriptActivity.push(entry);
+  if (scriptActivity.length > 200) scriptActivity.splice(0, scriptActivity.length - 200);
+  if (entry.kind === "status") latestScriptStatus = entry.text;
+  broadcast("script:activity", entry);
+};
 
 const resolveAsset = (...segments: string[]): string => path.join(app.getAppPath(), ...segments);
 
@@ -113,11 +127,14 @@ const vendoredDependency = async (url: string): Promise<string | undefined> => {
   }
 };
 
-const createInjection = (script: UserScript, nonce: string): string => `(() => {
+const createInjection = (script: UserScript, nonce: string, seededValues: Record<string, unknown>): string => `(() => {
   const definition = ${JSON.stringify(script)};
   const nonce = ${JSON.stringify(nonce)};
   const storagePrefix = ${JSON.stringify(`${branding.storagePrefix}:${script.id}:`)};
   const scriptHandler = ${JSON.stringify(branding.productName)};
+  // 客户端下发的脚本配置。脚本自带的配置面板被隐藏了，用户只能从客户端界面改，
+  // 所以这里的值必须优先于页面 localStorage 里可能残留的旧值。
+  const seeded = ${JSON.stringify(seededValues)};
   const bridge = window.cpuDesktopBridge;
   if (!bridge) { console.error("脚本桥接未注入，用户脚本无法运行"); return; }
   const resourceTexts = new Map();
@@ -142,8 +159,23 @@ const createInjection = (script: UserScript, nonce: string): string => `(() => {
   const gm = {
     GM_addStyle: (css) => { const style = document.createElement("style"); style.textContent = String(css); document.head.append(style); return style; },
     GM_getResourceText: (name) => resourceTexts.get(name) ?? "",
-    GM_getValue: (key, fallback) => { try { const value = localStorage.getItem(storagePrefix + key); return value === null ? fallback : JSON.parse(value); } catch { return fallback; } },
-    GM_setValue: (key, value) => { try { localStorage.setItem(storagePrefix + key, JSON.stringify(value)); } catch (error) { console.error("用户脚本配置保存失败", error); } },
+    // 客户端下发的值优先；没下发过的键才回落到页面 localStorage。
+    GM_getValue: (key, fallback) => {
+      if (Object.prototype.hasOwnProperty.call(seeded, key)) return seeded[key];
+      try {
+        const value = localStorage.getItem(storagePrefix + key);
+        return value === null ? fallback : JSON.parse(value);
+      } catch {
+        return fallback;
+      }
+    },
+    // 脚本是同步调用它的，紧接着可能就 GM_getValue 读回来，所以必须先同步写内存副本，
+    // 持久化再异步回传给主进程。
+    GM_setValue: (key, value) => {
+      seeded[key] = value;
+      try { localStorage.setItem(storagePrefix + key, JSON.stringify(value)); } catch { /* 存不下不影响本次运行 */ }
+      try { bridge.setValue(nonce, key, JSON.stringify(value)); } catch (error) { console.error("配置回传失败", error); }
+    },
     GM_info: { script: { name: definition.name, matches: definition.matches }, scriptHandler },
     GM_xmlhttpRequest: (details) => {
       // 失败必须走回调：脚本大量使用 new Promise(resolve => GM_xmlhttpRequest({ onload: resolve }))，
@@ -167,6 +199,11 @@ const createInjection = (script: UserScript, nonce: string): string => `(() => {
         .catch((error) => settle(error instanceof Error ? error.message : String(error)));
     },
     GM_cpuAIRequest: async (body) => bridge.requestAi(nonce, JSON.stringify(body)),
+    // 脚本把运行状态喊出来，客户端界面才能显示。脚本自己的面板只留 20 条日志，
+    // 而且关掉面板就什么都看不见。
+    GM_cpuReport: (kind, text) => {
+      try { bridge.report(nonce, JSON.stringify({ kind, text: String(text ?? "") })); } catch { /* 上报失败不影响刷课 */ }
+    },
     unsafeWindow: window
   };
   loadDependencies()
@@ -182,12 +219,15 @@ const injectMatchingScripts = (page: BrowserWindow): void => {
       const currentUrl = contents.getURL();
       // 上一页发放的票据在这里作废
       revokeGrants(contents.id);
+      // 配置必须在注入前就绪：脚本在构造时对配置做快照，之后再改对一半的项无效
+      const { scriptConfig } = await readPreferences();
+      const seeded = { config: buildScriptConfig(scriptConfig) };
       for (const script of await getScripts()) {
         if (!scriptMatchesUrl(script, currentUrl)) continue;
         const nonce = randomBytes(32).toString("base64url");
         grants.set(nonce, { scriptId: script.id, webContentsId: contents.id });
         try {
-          await contents.executeJavaScript(createInjection(script, nonce), false);
+          await contents.executeJavaScript(createInjection(script, nonce, seeded), false);
         } catch (error) {
           grants.delete(nonce);
           console.error(`用户脚本注入失败：${script.name}`, error);
@@ -727,6 +767,49 @@ if (!singleInstance) {
         url: response.url
       };
     });
+
+    ipcMain.handle("userscript:set-value", async (event, nonce: unknown, key: unknown, json: unknown) => {
+      await authorize(event, nonce);
+      if (typeof key !== "string" || !key || key.length > 64) throw new Error("配置键无效");
+      if (typeof json !== "string" || json.length > 64 * 1024) throw new Error("配置内容无效");
+      let value: unknown;
+      try {
+        value = JSON.parse(json);
+      } catch {
+        throw new Error("配置内容无法解析");
+      }
+      const saved = await writePreferences({ scriptConfig: { [key]: value } });
+      broadcast("script:config-changed", saved.scriptConfig);
+    });
+
+    ipcMain.handle("userscript:report", async (event, nonce: unknown, payload: unknown) => {
+      await authorize(event, nonce);
+      if (typeof payload !== "string" || payload.length > 8192) return;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(payload);
+      } catch {
+        return;
+      }
+      // 页面里的内容不可信，只放行已知形状，再转给渲染进程显示
+      const entry = (parsed ?? {}) as { kind?: unknown; text?: unknown };
+      const kind = entry.kind === "status" ? "status" : "log";
+      const text = typeof entry.text === "string" ? entry.text.slice(0, 500) : "";
+      if (!text) return;
+      recordScriptActivity({ at: Date.now(), kind, text });
+    });
+
+    ipcMain.handle("script:get-config", () => readPreferences().then((value) => value.scriptConfig));
+    ipcMain.handle("script:set-config", async (_event, patch: unknown) => {
+      const saved = await writePreferences({ scriptConfig: (patch ?? {}) as Record<string, unknown> });
+      broadcast("script:config-changed", saved.scriptConfig);
+      return saved.scriptConfig;
+    });
+    ipcMain.handle("script:get-activity", (_event, limit: unknown) => ({
+      status: latestScriptStatus,
+      running: learningWindows.size > 0,
+      entries: scriptActivity.slice(-(typeof limit === "number" ? Math.min(Math.max(limit, 1), 200) : 80))
+    }));
 
     ipcMain.handle("userscript:request-ai", async (event, nonce: unknown, body: unknown) => {
       await authorize(event, nonce);

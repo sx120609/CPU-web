@@ -84,6 +84,13 @@ export type DesktopBridge = {
   checkUpdate?: () => Promise<any>;
   openUpdate?: (url: string) => Promise<void>;
   onUpdateAvailable?: (callback: (info: any) => void) => void;
+  script?: {
+    getConfig: () => Promise<Record<string, any>>;
+    setConfig: (patch: Record<string, unknown>) => Promise<Record<string, any>>;
+    getActivity: (limit?: number) => Promise<{ status: string; running: boolean; entries: any[] }>;
+    onActivity: (callback: (entry: any) => void) => void;
+    onConfigChanged: (callback: (config: any) => void) => void;
+  };
   campusNet?: {
     getState: () => Promise<any>;
     getSettings: () => Promise<any>;
