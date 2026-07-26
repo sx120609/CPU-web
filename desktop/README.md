@@ -160,6 +160,29 @@ npm run dist:win
 | `installerLanguages` / `electronLanguages` | 仅 `zh_CN` | 安装包体积小一些，界面不会串英文 |
 | `deleteAppDataOnUninstall` | `true` | 本地存着校园网密码与登录凭据，卸载就该一并清掉 |
 
+### 拿到证书后怎么接
+
+**不要用自签证书。** Windows 判断的是证书链能否追到系统内置的根证书颁发机构，自签的链不到，结果是 SmartScreen 照样弹、部分对话框还会显示「此发布者不受信任」——比不签更可疑。要让它生效得把你的根证书装进每台用户机器的受信任根存储，需要管理员权限逐台操作，分发场景不成立。自签唯一的正当用途是验证签名流水线通不通，不该发给用户。
+
+electron-builder 会自动读这两个环境变量，**代码与配置都不用改**：
+
+```bash
+CSC_LINK=/绝对路径/cert.pfx      # 也接受 base64 内容或 https 地址
+CSC_KEY_PASSWORD=证书密码
+```
+
+设了就签，没设就出未签名包（现在的状态）。硬件令牌或云签名服务走各自的 CSP/KSP，届时改用 `win.signtoolOptions` 或 `win.azureSignOptions`。
+
+三条现实可行的路，按适合本项目排序：
+
+| 路子 | 价格 | 说明 |
+|---|---|---|
+| [SignPath 开源计划](https://signpath.io/solutions/open-source-community) | 免费 | 本项目是 AGPL 开源，符合目标人群。给 OV 级签名，走它托管的流水线。优先试这条 |
+| [Certum 开源证书](https://certum.store/open-source-code-signing-code.html) | 约 ¥200–800/年 + USB 令牌 | 个人可申请，需身份验证，令牌需邮寄 |
+| [Azure Trusted Signing](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/code-signing-options) | $9.99/月 | 已对个人开放，但仅限美/加/欧盟/英国的企业与自雇个人 |
+
+传统 OV/EV 证书（¥1000–3000+/年）要营业执照，个人开发者一般卡在这一步。另外 2023 年起 CA/B 论坛强制代码签名私钥必须存放在 FIPS 硬件令牌或云签名服务中，"买个 pfx 文件直接用"已不再可行。
+
 ### 没有代码签名的后果
 
 安装包未签名，用户首次运行会看到「Windows 已保护你的电脑 / 未知发布者」，需要点「更多信息 → 仍要运行」。这一步无法通过配置绕过，只能靠说明 —— 站内「PC 小工具」面板的下载区已经写了这段提示。
