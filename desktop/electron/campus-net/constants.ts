@@ -50,10 +50,20 @@ export const DEFAULT_TEST_CODE = "Microsoft Connect Test";
 export const REQUEST_TIMEOUT_MS = 5000;
 export const LOCAL_IP_TIMEOUT_MS = 2000;
 
+// 网关探测要快：它只用来回答"人在不在校园网里"，不在的时候连不上是常态，
+// 不该让用户等 5 秒。
+export const GATEWAY_PROBE_TIMEOUT_MS = 1500;
+
 // 原版是 5 秒轮询且不防重入，弱网下请求会叠在一起。15 秒足够，下限 5 秒。
 export const DEFAULT_INTERVAL_SEC = 15;
 export const MIN_INTERVAL_SEC = 5;
 export const MAX_INTERVAL_SEC = 600;
+
+// 判定为不在校园网之后的轮询间隔。在家用的人不该每 15 秒被探一次，
+// 真正把人带回校园网的是换网络这件事，那个由网卡签名变化即时触发。
+export const OFF_CAMPUS_INTERVAL_SEC = 120;
+// 网卡地址变化的检查间隔。纯本地读取，不产生任何网络请求。
+export const NETWORK_WATCH_INTERVAL_MS = 4000;
 
 // 退避与熔断。原版掉线后每 5 秒无限重试、密码错也照撞，有被学校侧封锁的实际风险。
 export const MAX_BACKOFF_MS = 300_000;

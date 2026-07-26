@@ -196,6 +196,7 @@ const campusLogs = el("campus-logs");
 const PILL_STATE = {
   online: "online",
   offline: "offline",
+  "off-campus": "off",
   authenticating: "busy",
   paused: "paused",
   unknown: "busy",

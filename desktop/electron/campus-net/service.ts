@@ -6,11 +6,14 @@ import {
   MAX_BACKOFF_MS,
   MIN_INTERVAL_SEC,
   MAX_INTERVAL_SEC,
+  NETWORK_WATCH_INTERVAL_MS,
+  OFF_CAMPUS_INTERVAL_SEC,
   REQUEST_TIMEOUT_MS
 } from "./constants";
 import { clearCampusCredential, readCampusCredential, writeCampusCredential } from "./credential-store";
+import { CampusEnvironment, detectEnvironment } from "./environment";
 import { campusLog } from "./log";
-import { httpGetText } from "./net";
+import { httpGetText, networkSignature } from "./net";
 import { performLogin } from "./login";
 import { isValidStudentId, ResolvedMode } from "./protocol";
 
@@ -24,7 +27,14 @@ export type CampusNetSettings = {
   testCode: string;
 };
 
-export type CampusStatus = "unknown" | "online" | "offline" | "authenticating" | "paused" | "disabled";
+export type CampusStatus =
+  | "unknown"
+  | "online"
+  | "offline"        // 在校园网里，但没认证
+  | "off-campus"     // 不在校园网环境，不该尝试认证
+  | "authenticating"
+  | "paused"
+  | "disabled";
 
 export type CampusState = {
   status: CampusStatus;
@@ -40,7 +50,8 @@ export type CampusState = {
 const STATUS_LABEL: Record<CampusStatus, string> = {
   unknown: "尚未检测",
   online: "已连接",
-  offline: "未认证",
+  offline: "校园网未认证",
+  "off-campus": "不在校园网环境",
   authenticating: "正在认证",
   paused: "已暂停自动重连",
   disabled: "未启用"
@@ -50,6 +61,8 @@ export class CampusNetService {
   private settings: CampusNetSettings;
   private state: CampusState = { status: "disabled", message: STATUS_LABEL.disabled, hasCredential: false, studentId: "", consecutiveFailures: 0 };
   private timer: NodeJS.Timeout | undefined;
+  private watcher: NodeJS.Timeout | undefined;
+  private lastSignature = "";
   private inFlight = false;
   private stopped = true;
   private listener: ((state: CampusState) => void) | undefined;
@@ -155,30 +168,68 @@ export class CampusNetService {
     if (this.inFlight || this.stopped) return;
     this.inFlight = true;
     try {
+      this.lastSignature = networkSignature();
       const online = await this.probeOnline();
       this.emit({ lastCheckedAt: Date.now() });
+
       if (online) {
         if (this.state.status !== "online") campusLog("info", "网络已连通");
         this.emit({ status: "online", message: STATUS_LABEL.online, consecutiveFailures: 0 });
         this.reschedule(this.intervalMs());
         return;
       }
-      this.emit({ status: "offline", message: STATUS_LABEL.offline });
+
+      // 上不了网不等于"校园网掉了"。先确认人确实在校园网里，再谈认证 ——
+      // 否则在家断一下网也会去撞校园网网关，然后一路退避到熔断报错。
+      const environment = await detectEnvironment(this.settings.mode);
+      if (!environment.onCampus) {
+        if (this.state.status !== "off-campus") {
+          campusLog("info", "当前不在校园网环境，暂不尝试认证");
+        }
+        this.emit({
+          status: "off-campus",
+          message: STATUS_LABEL["off-campus"],
+          mode: undefined,
+          localIp: environment.localIp,
+          consecutiveFailures: 0
+        });
+        this.reschedule(OFF_CAMPUS_INTERVAL_SEC * 1000);
+        return;
+      }
+
+      this.emit({ status: "offline", message: STATUS_LABEL.offline, mode: environment.mode, localIp: environment.localIp });
       if (!this.settings.autoReconnect || !this.state.hasCredential) {
         this.reschedule(this.intervalMs());
         return;
       }
-      await this.attemptLogin(true);
+      await this.attemptLogin(true, environment);
     } finally {
       this.inFlight = false;
     }
   }
 
-  private async attemptLogin(scheduleNext: boolean): Promise<CampusState> {
+  // 换 WiFi / 插拔网线 / 连断 VPN 都会改变网卡地址。这比等下一个轮询周期灵敏得多，
+  // 尤其是从校外走进校园的那一刻。
+  private watchNetworkChanges(): void {
+    if (this.watcher) clearInterval(this.watcher);
+    this.watcher = setInterval(() => {
+      if (this.stopped || this.inFlight) return;
+      const signature = networkSignature();
+      if (signature === this.lastSignature) return;
+      this.lastSignature = signature;
+      campusLog("info", "检测到网络环境变化，立即重新检测");
+      this.reschedule(0);
+    }, NETWORK_WATCH_INTERVAL_MS);
+    this.watcher.unref?.();
+  }
+
+  private async attemptLogin(scheduleNext: boolean, environment?: CampusEnvironment): Promise<CampusState> {
     this.emit({ status: "authenticating", message: STATUS_LABEL.authenticating });
     const result = await performLogin({
       mode: this.settings.mode,
-      carrier: this.settings.carrier
+      carrier: this.settings.carrier,
+      resolvedMode: environment?.mode,
+      localIp: environment?.localIp
     });
 
     if (result.ok) {
@@ -214,14 +265,25 @@ export class CampusNetService {
     return this.getState();
   }
 
-  // 用户手动点"立即登录"：清掉熔断计数，无论当前是不是 paused
+  // 用户手动点"立即连接"：清掉熔断计数，无论当前是不是 paused。
+  // 仍然先确认在不在校园网 —— 不在的时候直说，比让用户等一次注定失败的认证要好。
   async loginNow(): Promise<CampusState> {
     if (this.inFlight) throw new Error("正在处理上一次请求，请稍候");
     this.inFlight = true;
     try {
-      this.emit({ consecutiveFailures: 0 });
-      const state = await this.attemptLogin(this.settings.enabled);
-      return state;
+      this.emit({ consecutiveFailures: 0, status: "authenticating", message: STATUS_LABEL.authenticating });
+      const environment = await detectEnvironment(this.settings.mode);
+      if (!environment.onCampus) {
+        campusLog("warn", "手动认证被跳过：当前不在校园网环境");
+        this.emit({
+          status: "off-campus",
+          message: "当前不在校园网环境，无需认证",
+          localIp: environment.localIp
+        });
+        if (this.settings.enabled) this.reschedule(OFF_CAMPUS_INTERVAL_SEC * 1000);
+        return this.getState();
+      }
+      return await this.attemptLogin(this.settings.enabled, environment);
     } finally {
       this.inFlight = false;
     }
@@ -241,14 +303,18 @@ export class CampusNetService {
       return;
     }
     this.stopped = false;
+    this.lastSignature = networkSignature();
     campusLog("info", "校园网自动连接已启动");
     this.emit({ status: "unknown", message: STATUS_LABEL.unknown });
+    this.watchNetworkChanges();
     this.reschedule(0);
   }
 
   stop(): void {
     this.stopped = true;
     if (this.timer) clearTimeout(this.timer);
+    if (this.watcher) clearInterval(this.watcher);
     this.timer = undefined;
+    this.watcher = undefined;
   }
 }

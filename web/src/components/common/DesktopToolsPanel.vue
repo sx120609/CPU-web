@@ -51,7 +51,10 @@
           </div>
           <el-tag :type="campusTagType" size="small" effect="light">{{ campusMessage }}</el-tag>
         </header>
-        <p v-if="!campusState?.hasCredential" class="tool-hint">
+        <p v-if="!onCampus" class="tool-hint">
+          当前不在校园网环境，无需认证。连上校园网后会自动识别并接管。
+        </p>
+        <p v-else-if="!campusState?.hasCredential" class="tool-hint">
           还没保存校园网学号密码。在客户端设置里填一次，之后掉线会自动重连。
         </p>
         <p v-else class="tool-hint">
@@ -62,7 +65,7 @@
             type="primary"
             size="small"
             :loading="campusBusy"
-            :disabled="!campusState?.hasCredential"
+            :disabled="!campusState?.hasCredential || !onCampus"
             @click="connectCampus"
           >
             立即连接
@@ -114,11 +117,13 @@ const campusMessage = computed(() => campusState.value?.message || "未启用");
 const campusTagType = computed(() => {
   const status = campusState.value?.status;
   if (status === "online") return "success";
-  if (status === "authenticating" || status === "unknown") return "info";
   if (status === "paused") return "danger";
   if (status === "offline") return "warning";
+  // off-campus 是正常状态，不是错误：人就是不在学校
   return "info";
 });
+
+const onCampus = computed(() => campusState.value?.status !== "off-campus");
 
 const say = (message: string, error = false) => {
   actionMessage.value = message;

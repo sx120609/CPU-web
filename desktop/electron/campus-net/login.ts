@@ -24,6 +24,9 @@ export type LoginOptions = {
   carrier: Carrier;
   wlanAcIp?: string;
   wlanAcName?: string;
+  // 环境探测已经确定了接入方式与本机地址时传进来，省一轮重复探测
+  resolvedMode?: ResolvedMode;
+  localIp?: string;
 };
 
 export type LoginOutcome = LoginResult & { mode?: ResolvedMode; localIp?: string };
@@ -51,12 +54,12 @@ export const performLogin = async (options: LoginOptions): Promise<LoginOutcome>
     return { ok: false, alreadyOnline: false, fatal: true, message: "学号格式不正确" };
   }
 
-  const localIp = await detectLocalIp();
+  const localIp = options.localIp ?? await detectLocalIp();
   if (!localIp) {
     return { ok: false, alreadyOnline: false, fatal: false, message: "取不到本机地址，请检查网络连接后重试" };
   }
 
-  const mode = resolveMode(options.mode, localIp);
+  const mode = options.resolvedMode ?? resolveMode(options.mode, localIp);
   if (mode === "pppoe" && !options.carrier) {
     return { ok: false, alreadyOnline: false, fatal: true, message: "宽带模式需要先选择运营商", mode, localIp };
   }

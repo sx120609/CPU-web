@@ -1,6 +1,7 @@
 import dgram from "node:dgram";
 import http from "node:http";
 import https from "node:https";
+import os from "node:os";
 import { LOCAL_IP_TIMEOUT_MS, PROBE_HOST, PROBE_PORT, REQUEST_TIMEOUT_MS } from "./constants";
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -30,6 +31,19 @@ export const detectLocalIp = (timeoutMs = LOCAL_IP_TIMEOUT_MS): Promise<string |
       done(undefined);
     }
   });
+
+// 当前所有非回环 IPv4 地址的指纹。换 WiFi、插拔网线、连断 VPN 都会让它变，
+// 是"用户可能换网络了"的廉价信号 —— 纯本地读取，不发任何请求。
+export const networkSignature = (): string => {
+  const addresses: string[] = [];
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces).sort()) {
+    for (const entry of interfaces[name] ?? []) {
+      if (entry.family === "IPv4" && !entry.internal) addresses.push(`${name}:${entry.address}`);
+    }
+  }
+  return addresses.join("|");
+};
 
 export type TextResponse = { status: number; body: string };
 
