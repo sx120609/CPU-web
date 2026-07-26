@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { FetchTextResult, isHostAllowed, parseHttpsUrl, parseWebUrl, UserScript } from "./shared";
 import { asInjectableUrl, asNavigableUrl, asSiteUrl, createAuthNavigationRule, scriptMatchesUrl } from "./policy";
-import { abortOAuthLogin, AuthorizeOpener, getOAuthStatus, logoutOAuth, startOAuthLogin } from "./oauth";
+import { abortOAuthLogin, AuthorizeOpener, ensureOAuthSession, getOAuthStatus, logoutOAuth, startOAuthLogin } from "./oauth";
 import { readOAuthSession } from "./oauth-store";
 import { applyLaunchOnLogin, readPreferences, writePreferences } from "./preferences";
 import { buildScriptConfig } from "./script-config";
@@ -376,6 +376,42 @@ const loadSite = async (contents: Electron.WebContents): Promise<void> => {
     console.error(`主站加载失败：${siteError}`);
   }
   broadcast("shell:site-state", { siteLoaded, siteError });
+  // 主站这一刻的 cookie 是最新的，正是静默换 token 的时机
+  if (siteLoaded) void syncAuth();
+};
+
+// 让工具面板的登录状态跟着主站走：没有 token、已过期、或快到期，都在这里
+// 静默补一个。失败就保持原样，界面上还有手动登录按钮。
+const syncAuth = async (options: { force?: boolean } = {}): Promise<void> => {
+  try {
+    const before = await getOAuthStatus();
+    const after = await ensureOAuthSession(openAuthorizeWindow, options);
+    // 状态没变就不必惊动界面
+    if (before.loggedIn !== after.loggedIn || before.expiresAt !== after.expiresAt) {
+      broadcast("oauth:changed", after);
+    }
+  } catch (error) {
+    console.error("同步登录状态失败", error);
+  }
+};
+
+// 主站标签上一次停在哪。用来识别"用户刚登录完"这一个瞬间：
+// 从 /login 走到别处，就是登录成功了。
+let lastSitePath = "";
+
+const noteSiteNavigation = (contents: Electron.WebContents): void => {
+  if (contentsKind.get(contents.id) !== "site") return;
+  let pathname = "";
+  try {
+    pathname = new URL(contents.getURL()).pathname;
+  } catch {
+    return;
+  }
+  const cameFromLogin = lastSitePath.startsWith("/login") && !pathname.startsWith("/login");
+  lastSitePath = pathname;
+  // 这是个确定性信号，值得跳过冷却立刻换 token —— 用户登完就会去点工具页，
+  // 让他等一个冷却周期等于这个机制白做了。
+  if (cameFromLogin) void syncAuth({ force: true });
 };
 
 const createTabManager = (window: BrowserWindow): TabManager => new TabManager(window, {
@@ -383,7 +419,10 @@ const createTabManager = (window: BrowserWindow): TabManager => new TabManager(w
   isNavigable: (url) => asNavigableUrl(url) !== undefined,
   registerKind: (webContentsId, kind) => contentsKind.set(webContentsId, kind),
   openExternally,
-  onDidFinishLoad: (contents) => void injectMatchingScripts(contents),
+  onDidFinishLoad: (contents) => {
+    noteSiteNavigation(contents);
+    void injectMatchingScripts(contents);
+  },
   onChange: (tabsState, activeId) => broadcast("tabs:changed", { tabs: tabsState, activeId })
 });
 
@@ -447,12 +486,15 @@ const openLearningPage = async (): Promise<void> => {
 };
 
 // 授权页开在应用内窗口，与主站共用会话：用户在主站已登录的话这里直接过。
-const openAuthorizeWindow: AuthorizeOpener = async (authorizeUrl, callbackOrigin) => {
+// silent 时窗口不显示 —— 服务端认得出 cookie 就会直接签发 code 并跳回本机回调，
+// 整个过程用户看不见；认不出来会跳登录页，那时候立刻收手。
+const openAuthorizeWindow: AuthorizeOpener = async (authorizeUrl, callbackOrigin, options) => {
   const window = new BrowserWindow({
     width: 520,
     height: 720,
     parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
     modal: false,
+    show: !options.silent,
     title: "授权登录",
     backgroundColor: "#f8fafc",
     autoHideMenuBar: true,
@@ -470,6 +512,22 @@ const openAuthorizeWindow: AuthorizeOpener = async (authorizeUrl, callbackOrigin
   const authContentsId = window.webContents.id;
   navigationOverrides.set(authContentsId, createAuthNavigationRule(callbackOrigin));
   let settled = false;
+
+  // 静默授权只有"服务端凭 cookie 当场放行"这一种成功路径。一旦跳到登录页，
+  // 说明主站会话也没了 —— 必须立刻结束，否则这个看不见的窗口会挂到超时，
+  // 期间用户点"登录"会被"已开始新的登录流程"顶掉。
+  if (options.silent) {
+    const bail = (_event: Electron.Event, url: string): void => {
+      try {
+        if (new URL(url).pathname.startsWith("/login")) abortOAuthLogin();
+      } catch {
+        // 地址解析不了就不管，交给超时兜底
+      }
+    };
+    window.webContents.on("will-navigate", bail);
+    window.webContents.on("will-redirect", bail);
+    window.webContents.on("did-navigate", bail);
+  }
   window.once("closed", () => {
     navigationOverrides.delete(authContentsId);
     // 用户手动关窗时要把等待中的登录 Promise 结掉，否则要挂到 5 分钟超时

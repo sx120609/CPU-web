@@ -107,9 +107,10 @@ const renderAuth = (session) => {
   el("auth-logout").hidden = !loggedIn;
   el("auth-hint").hidden = loggedIn;
   if (!loggedIn) {
+    // 到期本来会自动续（主站还登着就静默换新的），走到这里说明主站也退了
     el("auth-hint").textContent = session?.expired
-      ? "上次的授权已过期（有效期 30 天），请重新登录。"
-      : "登录后即可使用学习通与校园 AI 解答。";
+      ? "登录状态已失效。在「首页 · 药大拾间」里登录一次即可，这里会自动同步。"
+      : "在「首页 · 药大拾间」登录后，这里会自动同步，无需再登录一次。";
     el("quota-text").textContent = "未登录";
     return;
   }
@@ -517,6 +518,8 @@ const boot = async () => {
 
   shell.tabs.onChange((state) => { tabState = state; renderTabs(); });
   shell.campusNet.onState(renderCampusState);
+  // 主站登录后会静默换到新 token，这里不用轮询，等推送即可
+  shell.auth.onChange?.(renderAuth);
   shell.chaoxing.onState(renderChaoxing);
   shell.campusNet.onLog(() => void shell.campusNet.getLogs(120).then(renderCampusLogs));
   shell.script.onActivity(() => void shell.script.getActivity(80).then(renderScriptActivity));

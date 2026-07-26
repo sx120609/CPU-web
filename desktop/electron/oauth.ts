@@ -7,7 +7,12 @@ import { branding, oauthConfig } from "./config";
 // 授权页由调用方负责打开：主进程会开一个与主站共用会话的应用内窗口，
 // 这样用户在主站已经登录过就不必再登录一次。close() 用于登录结束后收拾窗口。
 export type AuthorizeWindow = { close: () => void };
-export type AuthorizeOpener = (authorizeUrl: string, callbackOrigin: string) => Promise<AuthorizeWindow>;
+export type AuthorizeOptions = { silent: boolean };
+export type AuthorizeOpener = (
+  authorizeUrl: string,
+  callbackOrigin: string,
+  options: AuthorizeOptions
+) => Promise<AuthorizeWindow>;
 
 type PendingLogin = {
   server: Server;
@@ -144,7 +149,10 @@ const stopPending = (reason: string): void => {
   pending.reject(new Error(reason));
 };
 
-export const startOAuthLogin = async (openAuthorize: AuthorizeOpener): Promise<OAuthSession> => {
+export const startOAuthLogin = async (
+  openAuthorize: AuthorizeOpener,
+  options: { silent?: boolean; timeoutMs?: number } = {}
+): Promise<OAuthSession> => {
   ensureOrigin();
   stopPending("已开始新的登录流程");
   const state = randomBytes(32).toString("base64url");
@@ -193,10 +201,12 @@ export const startOAuthLogin = async (openAuthorize: AuthorizeOpener): Promise<O
     codeVerifier,
     redirectUri,
     reject: rejectLogin,
+    // 静默授权不该等满 5 分钟：它要么被服务端当场放行，要么就是主站会话也没了。
+    // 挂着等超时会让用户随后点"登录"时被"已有登录流程"顶掉。
     timer: setTimeout(() => {
       finishPending(pending);
-      rejectLogin(new Error("登录等待超时"));
-    }, oauthConfig.loginTimeoutMs)
+      rejectLogin(new Error(options.silent ? "静默授权未完成" : "登录等待超时"));
+    }, options.timeoutMs ?? oauthConfig.loginTimeoutMs)
   };
   pendingLogin = pending;
   const authorizeUrl = new URL(baseUrl("/api/oauth/authorize"));
@@ -210,7 +220,11 @@ export const startOAuthLogin = async (openAuthorize: AuthorizeOpener): Promise<O
     code_challenge_method: "S256"
   }).toString();
   try {
-    const authWindow = await openAuthorize(authorizeUrl.toString(), `http://${oauthConfig.callbackHost}:${address.port}`);
+    const authWindow = await openAuthorize(
+      authorizeUrl.toString(),
+      `http://${oauthConfig.callbackHost}:${address.port}`,
+      { silent: options.silent === true }
+    );
     // 授权可能在窗口创建返回前就已经回调完成，那时 pending 已经结束了
     if (pendingLogin === pending) pending.window = authWindow;
     else authWindow.close();
@@ -223,6 +237,67 @@ export const startOAuthLogin = async (openAuthorize: AuthorizeOpener): Promise<O
 
 // 用户手动关掉授权窗口时调用，否则调用方的 Promise 会一直挂到 5 分钟超时
 export const abortOAuthLogin = (): void => stopPending("授权已取消");
+
+/* ------------------------------------------------------------ 静默授权 */
+// 主站标签用的是 cookie 会话，工具面板用的是独立的 access token，两者本来各登各的。
+// 但服务端的 /api/oauth/authorize 在 cookie 认得出用户时会直接签发 code 并跳转，
+// 没有同意页也不需要点击 —— 所以只要主站已登录，我们就能在一个隐藏窗口里把整套
+// 授权流程跑完，用户什么都看不见。
+//
+// 这一个机制同时解决两件事：
+//   1. 主站登录后工具面板自动生效，不用再点一次"登录"
+//   2. token 到期自动续 —— 服务端只支持 authorization_code、不发 refresh_token，
+//      重跑一遍授权就是唯一不改服务端的续期办法
+//
+// 可行的前提是主站会话活得比 token 长：浏览器会话绝对有效期 1 年、空闲 24 小时
+// 且滑动续期，而 access token 只有 30 天。
+
+const SILENT_COOLDOWN_MS = 5 * 60 * 1000;
+const SILENT_TIMEOUT_MS = 25_000;
+
+let lastSilentAttempt = 0;
+
+/**
+ * 尝试静默拿一个新 token。拿不到就安静返回 null —— 这是后台行为，
+ * 任何失败都不该冒泡成用户可见的错误，界面上还有手动登录按钮兜底。
+ */
+export const trySilentOAuthLogin = async (
+  openAuthorize: AuthorizeOpener,
+  options: { force?: boolean } = {}
+): Promise<OAuthSession | null> => {
+  // 用户正在手动登录时不插队：startOAuthLogin 开头会 stopPending，插进去会把人家顶掉
+  if (pendingLogin) return null;
+  // force 用于"刚在主站登录完"这种确定性信号：上一次尝试多半是在未登录时失败的，
+  // 让用户干等一个冷却周期才生效，就白费了这个机制。
+  if (!options.force && Date.now() - lastSilentAttempt < SILENT_COOLDOWN_MS) return null;
+  lastSilentAttempt = Date.now();
+  try {
+    return await startOAuthLogin(openAuthorize, { silent: true, timeoutMs: SILENT_TIMEOUT_MS });
+  } catch {
+    // 主站也没登录、网络不通、被跳到登录页 —— 都走这里，安静收手
+    return null;
+  }
+};
+
+/** token 剩这么久以内就提前续，别等真过期那天用户正在用 */
+const RENEW_BEFORE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * 保证有一个可用 token：没有、已过期、或快过期，都试着静默续一次。
+ * 返回续期后的状态，调用方据此刷新界面。
+ */
+export const ensureOAuthSession = async (
+  openAuthorize: AuthorizeOpener,
+  options: { force?: boolean } = {}
+): Promise<OAuthStatus> => {
+  const session = await peekOAuthSession();
+  const healthy = session
+    && session.expiresAt > Date.now() + RENEW_BEFORE_MS
+    && Boolean(session.user);
+  if (healthy) return getOAuthStatus();
+  await trySilentOAuthLogin(openAuthorize, options);
+  return getOAuthStatus();
+};
 
 export const getOAuthStatus = async (): Promise<OAuthStatus> => {
   const session = await peekOAuthSession();
