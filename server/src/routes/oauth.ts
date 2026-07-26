@@ -49,9 +49,11 @@ const revokeBodySchema = z.object({
   client_id: z.string().min(1).max(100),
 }).strict();
 
-const chatBodySchema = z.object({
+const OAUTH_AI_INSTRUCTIONS = "";
+
+const responsesBodySchema = z.object({
   model: z.string().min(1).max(200),
-  messages: z.array(z.object({
+  input: z.array(z.object({
     role: z.enum(["user", "assistant"]),
     content: z.string().max(32_000),
   })).min(1).max(100),
@@ -228,7 +230,7 @@ oauthRouter.get("/userinfo", async (req, res, next) => {
   }
 });
 
-oauthRouter.post("/v1/chat/completions", securityRateLimit("oauth-ai", 20, 60_000), async (req, res, next) => {
+oauthRouter.post("/v1/responses", securityRateLimit("oauth-ai", 20, 60_000), async (req, res, next) => {
   let quotaReservation: CampusAssistantQuotaReservation | null = null;
   let userId = 0;
   let quotaRefunded = false;
@@ -238,8 +240,8 @@ oauthRouter.post("/v1/chat/completions", securityRateLimit("oauth-ai", 20, 60_00
     const token = await loadAccessToken(req);
     userId = token.userId;
     if (!token.scope.split(/\s+/).includes("ai")) throw Errors.forbidden("token 没有 ai scope");
-    const body = chatBodySchema.parse(req.body);
-    if (isCampusAssistantConversationRestricted(body.messages)) {
+    const body = responsesBodySchema.parse(req.body);
+    if (isCampusAssistantConversationRestricted(body.input)) {
       throw Errors.forbidden("这个话题不适合在本站展开");
     }
     const siteConfig = getSiteConfig();
@@ -283,7 +285,14 @@ oauthRouter.post("/v1/chat/completions", securityRateLimit("oauth-ai", 20, 60_00
     const content = extractAiJsonTextResponse(payload, detectAiJsonApiMode(endpoint));
     if (timeout) clearTimeout(timeout);
     timeout = undefined;
-    const result = res.json({ choices: [{ message: { content } }] });
+    const result = res.json({
+      output_text: content,
+      output: [{
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: content, annotations: [] }],
+      }],
+    });
     responseCompleted = true;
     return result;
   } catch (error) {
@@ -295,13 +304,21 @@ oauthRouter.post("/v1/chat/completions", securityRateLimit("oauth-ai", 20, 60_00
   }
 });
 
-function buildOAuthAiRequestBody(body: z.infer<typeof chatBodySchema>, model: string, endpoint: string) {
+function buildOAuthAiRequestBody(body: z.infer<typeof responsesBodySchema>, model: string, endpoint: string) {
   if (detectAiJsonApiMode(endpoint) === "responses") {
     return {
       model,
-      input: body.messages.map((message) => ({ role: message.role, content: message.content })),
+      instructions: OAUTH_AI_INSTRUCTIONS,
+      input: body.input.map((message) => ({ role: message.role, content: message.content })),
       ...(body.temperature === undefined ? {} : { temperature: body.temperature }),
     };
   }
-  return { ...body, model };
+  return {
+    model,
+    messages: [
+      { role: "system", content: OAUTH_AI_INSTRUCTIONS },
+      ...body.input,
+    ],
+    ...(body.temperature === undefined ? {} : { temperature: body.temperature }),
+  };
 }

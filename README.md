@@ -317,11 +317,11 @@ Electron 可以主动撤销 access token：
 
 接口始终返回 HTTP 200，避免通过响应差异泄露 token 是否存在。撤销后的 token 不能继续调用 OAuth 接口。
 
-### `POST /api/oauth/v1/chat/completions`
+### `POST /api/oauth/v1/responses`
 
-这是面向外部客户端新增的 OpenAI Chat Completions 兼容代理接口，不是 `/api/search/assistant` 的直接复用。它复用站点 AI 上游配置和校园 AI 每日额度系统，但只接受 `user` 和 `assistant` 消息，不允许客户端提交 `system`、`developer` 或未知扩展字段；服务端仍会执行敏感话题拦截。
+这是面向外部客户端新增的 OpenAI Responses 兼容代理接口，不是 `/api/search/assistant` 的直接复用。它复用站点 AI 上游配置和校园 AI 每日额度系统，但只接受 `user` 和 `assistant` 输入，不允许客户端提交 `system`、`developer` 或未知扩展字段；服务端仍会执行敏感话题拦截。
 
-当站点 AI URL 配置为 `/v1/responses` 时，服务端会自动将请求转换为 Responses API 的 `input` 格式；配置为 `/v1/chat/completions` 时使用 Chat Completions 的 `messages` 格式。服务端始终使用后台配置的模型和 API Key，并检查 `ai.review.enabled`。
+当站点 AI URL 配置为 `/v1/responses` 时，服务端使用 Responses API 的 `input` 格式；配置为 `/v1/chat/completions` 时，会将 Responses 请求转换为 Chat Completions 的 `messages` 格式。服务端始终使用后台配置的模型和 API Key，并检查 `ai.review.enabled`。
 
 流式与非流式调用都会按 OAuth 客户端和服务端模型生成稳定的 `prompt_cache_key`，并在上游支持时请求 24 小时提示缓存保留。若兼容上游拒绝缓存保留参数或缓存键，服务端会自动降级并重试；接入本代理的聊天与后续 AI 解答功能无需在客户端保存或传递上游缓存参数。
 
@@ -332,12 +332,12 @@ Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
 
-请求体接受常用 Chat Completions 字段，仅支持非流式请求，`stream` 只能为 `false` 或省略：
+请求体接受常用 Responses 字段，仅支持非流式请求，`stream` 只能为 `false` 或省略：
 
 ```json
 {
   "model": "客户端可传入，但服务端始终使用站点配置中的模型",
-  "messages": [
+  "input": [
     { "role": "user", "content": "你好" }
   ],
   "temperature": 0.7,
@@ -352,15 +352,18 @@ Content-Type: application/json
 - 上游 AI 返回成功：保留本次扣减。
 - `stream: true` 不受支持。
 
-非流式成功响应只返回模型文本：
+非流式成功响应使用 Responses 格式，并只保留模型文本：
 
 ```json
 {
-  "choices": [
+  "output_text": "回答内容",
+  "output": [
     {
-      "message": {
-        "content": "回答内容"
-      }
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        { "type": "output_text", "text": "回答内容", "annotations": [] }
+      ]
     }
   ]
 }
@@ -374,7 +377,7 @@ Content-Type: application/json
 |---|---|
 | `openid` | 表示使用本站 OAuth2 身份 |
 | `profile` | 调用 `/api/oauth/userinfo` 获取用户等级、额度等信息 |
-| `ai` | 调用 `/api/oauth/v1/chat/completions` |
+| `ai` | 调用 `/api/oauth/v1/responses` |
 
 建议 Electron 默认申请 `openid profile ai`，并在本地明确保存授权 scope。
 
