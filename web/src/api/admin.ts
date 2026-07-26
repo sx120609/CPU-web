@@ -90,6 +90,7 @@ export type AssistantPointLedgerRow = {
 export type AssistantPointOverview = {
   totalPoints: number;
   holderCount: number;
+  eligibleUserCount: number;
   transactionCount: number;
   recent: AssistantPointLedgerRow[];
 };
@@ -807,17 +808,17 @@ export const adminApi = {
     request.get<AssistantPointUser[]>("/admin/campus-assistant/points/users", params, options),
   assistantPointOverview: (options?: RequestOptions) =>
     request.get<AssistantPointOverview>("/admin/campus-assistant/points/overview", undefined, options),
-  grantAssistantPoints: (payload: { userIds: number[]; points: number; reason: string }) =>
+  grantAssistantPoints: (payload: { userIds?: number[]; allUsers?: boolean; points: number; reason: string }) =>
     request.post<{
       points: number;
       recipientCount: number;
-      recipients: Array<{
-        id: number;
-        username: string;
-        nickname: string;
-        balance: number;
-      }>;
     }>("/admin/campus-assistant/points/grant", payload),
+  backfillSponsorAssistantPoints: () =>
+    request.post<{
+      orderCount: number;
+      userCount: number;
+      totalPoints: number;
+    }>("/admin/campus-assistant/points/backfill-sponsors", {}),
   aiReviewLogs: (params: { kind?: string; status?: string; page?: number; size?: number }, options?: RequestOptions) =>
     request.get<{ page: number; size: number; total: number; list: AiReviewLogRow[] }>("/admin/ai-review/logs", params, options),
   sweepForumImages: () =>

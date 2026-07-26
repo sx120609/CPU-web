@@ -58,6 +58,7 @@ import {
 } from "../../services/sponsor";
 import {
   awardSponsorAssistantPoints,
+  backfillSponsorAssistantPoints,
   grantAssistantPointsBatch,
 } from "../../services/campusAssistantPoints";
 import { applyManualForumImageReview, backfillForumImageAssetsAndTriggerModeration, listForumImageAssetsForContent } from "../../services/imageModeration";
@@ -2271,11 +2272,17 @@ adminRouter.get("/campus-assistant/points/users", adminOnly, async (req, res, ne
 
 adminRouter.get("/campus-assistant/points/overview", adminOnly, async (_req, res, next) => {
   try {
-    const [balance, transactionCount, recent] = await Promise.all([
+    const [balance, eligibleUserCount, transactionCount, recent] = await Promise.all([
       prisma.user.aggregate({
         where: { assistantPoints: { gt: 0 } },
         _sum: { assistantPoints: true },
         _count: { assistantPoints: true },
+      }),
+      prisma.user.count({
+        where: {
+          role: { not: "bot" },
+          status: { not: "banned" },
+        },
       }),
       prisma.campusAssistantPointLedger.count(),
       prisma.campusAssistantPointLedger.findMany({
@@ -2290,6 +2297,7 @@ adminRouter.get("/campus-assistant/points/overview", adminOnly, async (_req, res
     ok(res, {
       totalPoints: balance._sum.assistantPoints ?? 0,
       holderCount: balance._count.assistantPoints,
+      eligibleUserCount,
       transactionCount,
       recent,
     });
@@ -2299,9 +2307,13 @@ adminRouter.get("/campus-assistant/points/overview", adminOnly, async (_req, res
 });
 
 const assistantPointGrantSchema = z.object({
-  userIds: z.array(z.number().int().positive()).min(1).max(200),
+  allUsers: z.boolean().optional().default(false),
+  userIds: z.array(z.number().int().positive()).max(200).optional().default([]),
   points: z.number().int().min(1).max(1000000),
   reason: z.string().trim().min(1).max(80),
+}).refine((input) => input.allUsers || input.userIds.length > 0, {
+  message: "请选择接收用户",
+  path: ["userIds"],
 });
 
 adminRouter.post(
@@ -2312,6 +2324,7 @@ adminRouter.post(
     try {
       const recipients = await grantAssistantPointsBatch({
         userIds: req.body.userIds,
+        allUsers: req.body.allUsers,
         points: req.body.points,
         reason: req.body.reason,
         operatorId: req.user!.userId,
@@ -2335,7 +2348,6 @@ adminRouter.post(
       ok(res, {
         points: req.body.points,
         recipientCount: recipients.length,
-        recipients,
       });
     } catch (e: any) {
       if (e?.message === "POINT_USERS_NOT_FOUND") {
@@ -2346,6 +2358,41 @@ adminRouter.post(
     }
   },
 );
+
+adminRouter.post("/campus-assistant/points/backfill-sponsors", adminOnly, async (_req, res, next) => {
+  try {
+    const sponsorConfig = await getSponsorConfig();
+    if (sponsorConfig.assistantPointsPerYuan <= 0) {
+      throw Errors.badRequest("请先设置并保存大于 0 的赞助点数比例");
+    }
+    const result = await backfillSponsorAssistantPoints(sponsorConfig.assistantPointsPerYuan);
+    if (result.userAwards.length) {
+      await prisma.notification.createMany({
+        data: result.userAwards.map((award) => ({
+          userId: award.userId,
+          category: "system",
+          level: "normal",
+          title: "历史赞助点数已补发",
+          content: `已按当前赞助规则为你的 ${award.orderCount} 笔历史赞助补发 ${award.points} 个 AI 点数。`,
+          link: "/search",
+          source: "赞助",
+          payload: JSON.stringify({
+            type: "sponsor-points-backfill",
+            points: award.points,
+            orderCount: award.orderCount,
+          }),
+        })),
+      }).catch(() => {});
+    }
+    ok(res, {
+      orderCount: result.orderCount,
+      userCount: result.userCount,
+      totalPoints: result.totalPoints,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
 
 adminRouter.post("/ai-review/images/sweep", adminOnly, async (_req, res, next) => {
   try {

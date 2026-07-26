@@ -77,20 +77,37 @@
           <span>每赞助 ¥1 发放</span>
           <el-input-number v-model="sponsorPointsPerYuan" :min="0" :max="10000" />
           <span>点</span>
-          <el-button type="primary" :loading="savingSponsorRate" @click="saveSponsorRate">保存比例</el-button>
+          <div class="rate-actions">
+            <el-button type="primary" :loading="savingSponsorRate" @click="saveSponsorRate">保存比例</el-button>
+            <el-button
+              type="warning"
+              plain
+              :loading="backfillingSponsors"
+              :disabled="savingSponsorRate || savedSponsorPointsPerYuan <= 0 || sponsorRateDirty"
+              @click="backfillSponsors"
+            >
+              补发历史赞助
+            </el-button>
+          </div>
         </div>
-        <p class="tip">设为 0 即关闭赞助点数奖励。不足 1 点的计算结果向下取整。</p>
+        <p class="tip">设为 0 即关闭赞助点数奖励。不足 1 点的计算结果向下取整。补发使用已保存的比例，修改比例后请先保存；只处理尚未发过点数的已支付订单。</p>
       </section>
 
       <section class="settings-card">
         <div class="section-head compact">
           <div>
             <h3>活动 / 人工发放</h3>
-            <p>可选择一名用户，也可同时选择多名用户批量发放（单批最多 200 人）；每位用户都会收到站内通知。</p>
+            <p>可指定一名或多名用户，也可以直接给全体可用账号发放；每位用户都会收到站内通知。</p>
           </div>
         </div>
         <el-form label-position="top" class="grant-form">
-          <el-form-item label="接收用户">
+          <el-form-item label="发放范围">
+            <el-radio-group v-model="grantScope">
+              <el-radio-button value="selected">指定用户</el-radio-button>
+              <el-radio-button value="all">全体用户（{{ overview.eligibleUserCount }} 人）</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item v-if="grantScope === 'selected'" label="接收用户">
             <el-select
               v-model="grantUserIds"
               multiple
@@ -117,6 +134,15 @@
               </el-option>
             </el-select>
           </el-form-item>
+          <el-alert
+            v-else
+            type="warning"
+            :closable="false"
+            show-icon
+            title="将发放给全部正常账号"
+            :description="`当前共 ${overview.eligibleUserCount} 人，已封禁账号和 bot 账号不会收到点数。`"
+            class="all-users-alert"
+          />
           <div class="grant-row">
             <el-form-item label="每人发放点数">
               <el-input-number v-model="grantPoints" :min="1" :max="1000000" />
@@ -128,10 +154,10 @@
           <el-button
             type="success"
             :loading="granting"
-            :disabled="!grantUserIds.length || !grantReason.trim()"
+            :disabled="(grantScope === 'selected' && !grantUserIds.length) || (grantScope === 'all' && overview.eligibleUserCount <= 0) || !grantReason.trim()"
             @click="grantPointsToUsers"
           >
-            给 {{ grantUserIds.length || 0 }} 人发放
+            给 {{ grantRecipientCount }} 人发放
           </el-button>
         </el-form>
       </section>
@@ -178,7 +204,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
   adminApi,
@@ -192,6 +218,7 @@ const overviewLoading = ref(false);
 const usersLoading = ref(false);
 const savingQuotas = ref(false);
 const savingSponsorRate = ref(false);
+const backfillingSponsors = ref(false);
 const resetting = ref(false);
 const granting = ref(false);
 const loadError = ref("");
@@ -205,16 +232,25 @@ const dailyQuotas = ref([
   { level: 5, quota: 80 },
 ]);
 const sponsorPointsPerYuan = ref(1);
+const savedSponsorPointsPerYuan = ref(1);
 const grantUserIds = ref<number[]>([]);
+const grantScope = ref<"selected" | "all">("selected");
 const grantPoints = ref(10);
 const grantReason = ref("活动奖励");
 const pointUsers = ref<AssistantPointUser[]>([]);
 const overview = reactive<AssistantPointOverview>({
   totalPoints: 0,
   holderCount: 0,
+  eligibleUserCount: 0,
   transactionCount: 0,
   recent: [],
 });
+const grantRecipientCount = computed(() => (
+  grantScope.value === "all" ? overview.eligibleUserCount : grantUserIds.value.length
+));
+const sponsorRateDirty = computed(() => (
+  Number(sponsorPointsPerYuan.value || 0) !== savedSponsorPointsPerYuan.value
+));
 let userSearchSeq = 0;
 
 onMounted(reload);
@@ -231,6 +267,7 @@ async function reload() {
     reputationLevels.value = (siteConfig.reputationLevels ?? []).map((item) => ({ ...item }));
     dailyQuotas.value = (siteConfig.assistantDailyQuotas ?? []).map((item) => ({ ...item }));
     sponsorPointsPerYuan.value = sponsorConfig.assistantPointsPerYuan ?? 0;
+    savedSponsorPointsPerYuan.value = sponsorPointsPerYuan.value;
     Object.assign(overview, overviewResult);
     await searchUsers("");
   } catch {
@@ -292,9 +329,39 @@ async function saveSponsorRate() {
       assistantPointsPerYuan: Number(sponsorPointsPerYuan.value || 0),
     });
     sponsorPointsPerYuan.value = result.assistantPointsPerYuan;
+    savedSponsorPointsPerYuan.value = result.assistantPointsPerYuan;
     ElMessage.success("赞助点数比例已保存");
   } finally {
     savingSponsorRate.value = false;
+  }
+}
+
+async function backfillSponsors() {
+  if (backfillingSponsors.value || savedSponsorPointsPerYuan.value <= 0 || sponsorRateDirty.value) return;
+  const confirmed = await ElMessageBox.confirm(
+    `将按已保存的“每 ¥1 发放 ${savedSponsorPointsPerYuan.value} 点”规则，为所有尚未获得点数的历史已支付赞助订单补发。已发过的订单会自动跳过。`,
+    "补发历史赞助点数",
+    {
+      type: "warning",
+      confirmButtonText: "确认补发",
+      cancelButtonText: "取消",
+    },
+  ).then(() => true).catch(() => false);
+  if (!confirmed) return;
+
+  backfillingSponsors.value = true;
+  try {
+    const result = await adminApi.backfillSponsorAssistantPoints();
+    if (result.orderCount <= 0) {
+      ElMessage.info("没有需要补发的历史赞助订单");
+    } else {
+      ElMessage.success(
+        `已为 ${result.userCount} 名用户的 ${result.orderCount} 笔赞助补发 ${result.totalPoints} 点`,
+      );
+    }
+    await Promise.all([loadOverview(), searchUsers("")]);
+  } finally {
+    backfillingSponsors.value = false;
   }
 }
 
@@ -318,9 +385,10 @@ async function searchUsers(query: string) {
 }
 
 async function grantPointsToUsers() {
-  if (granting.value || !grantUserIds.value.length || !grantReason.value.trim()) return;
+  const recipientCount = grantRecipientCount.value;
+  if (granting.value || recipientCount <= 0 || !grantReason.value.trim()) return;
   const confirmed = await ElMessageBox.confirm(
-    `将给 ${grantUserIds.value.length} 名用户每人发放 ${grantPoints.value} 个 AI 点数，共发放 ${grantUserIds.value.length * grantPoints.value} 点。`,
+    `将给 ${recipientCount} 名用户每人发放 ${grantPoints.value} 个 AI 点数，共发放 ${recipientCount * grantPoints.value} 点。${grantScope.value === "all" ? "已封禁账号和 bot 账号会被排除。" : ""}`,
     "确认发放 AI 点数",
     {
       type: "warning",
@@ -333,7 +401,8 @@ async function grantPointsToUsers() {
   granting.value = true;
   try {
     const result = await adminApi.grantAssistantPoints({
-      userIds: grantUserIds.value,
+      allUsers: grantScope.value === "all",
+      userIds: grantScope.value === "selected" ? grantUserIds.value : undefined,
       points: Number(grantPoints.value),
       reason: grantReason.value.trim(),
     });
@@ -490,6 +559,14 @@ function sourceType(source: string) {
 .rate-form {
   flex-wrap: wrap;
   margin: 18px 0 8px;
+}
+.rate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.all-users-alert {
+  margin-bottom: 18px;
 }
 .grant-form :deep(.el-select) {
   width: 100%;
