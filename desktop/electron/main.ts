@@ -11,6 +11,7 @@ import { buildScriptConfig } from "./script-config";
 import { CampusNetService, CampusState } from "./campus-net/service";
 import { onCampusLog, pruneCampusLogs, readCampusLogs } from "./campus-net/log";
 import { checkForUpdate, notifyUpdate, openUpdateDownload } from "./updater";
+import { CHROME_HEIGHT, TabManager } from "./tabs";
 import { branding, injectableHosts, learningUrl, limits, oauthConfig } from "./config";
 
 let mainWindow: BrowserWindow | undefined;
@@ -19,7 +20,8 @@ let quitting = false;
 let siteLoaded = false;
 let closeToTray = true;
 let campusNet: CampusNetService | undefined;
-const learningWindows = new Set<BrowserWindow>();
+let tabs: TabManager | undefined;
+let siteError = "";
 
 // 一次性授权票据：主进程在注入脚本时下发 nonce，脚本每次调用特权桥都要带上。
 // 页面导航或窗口销毁即回收，避免票据长期有效。
@@ -76,7 +78,7 @@ const routeUrl = (value: string): void => {
     }
   }
   const target = asNavigableUrl(value);
-  if (target) void openLearningWindow(target.href);
+  if (target) void tabs?.openLearningTab(target.href);
   else openExternally(value);
 };
 
@@ -211,30 +213,26 @@ const createInjection = (script: UserScript, nonce: string, seededValues: Record
     .catch((error) => console.error("用户脚本加载失败: " + definition.name, error));
 })()`;
 
-const injectMatchingScripts = (page: BrowserWindow): void => {
-  page.webContents.on("did-finish-load", () => {
-    void (async () => {
-      const contents = page.webContents;
-      if (contents.isDestroyed()) return;
-      const currentUrl = contents.getURL();
-      // 上一页发放的票据在这里作废
-      revokeGrants(contents.id);
-      // 配置必须在注入前就绪：脚本在构造时对配置做快照，之后再改对一半的项无效
-      const { scriptConfig } = await readPreferences();
-      const seeded = { config: buildScriptConfig(scriptConfig) };
-      for (const script of await getScripts()) {
-        if (!scriptMatchesUrl(script, currentUrl)) continue;
-        const nonce = randomBytes(32).toString("base64url");
-        grants.set(nonce, { scriptId: script.id, webContentsId: contents.id });
-        try {
-          await contents.executeJavaScript(createInjection(script, nonce, seeded), false);
-        } catch (error) {
-          grants.delete(nonce);
-          console.error(`用户脚本注入失败：${script.name}`, error);
-        }
-      }
-    })();
-  });
+// 每次页面加载完成后调用。标签管理器负责在合适的时机把 contents 交过来。
+const injectMatchingScripts = async (contents: Electron.WebContents): Promise<void> => {
+  if (contents.isDestroyed()) return;
+  const currentUrl = contents.getURL();
+  // 上一页发放的票据在这里作废
+  revokeGrants(contents.id);
+  // 配置必须在注入前就绪：脚本在构造时对配置做快照，之后再改对一半的项无效
+  const { scriptConfig } = await readPreferences();
+  const seeded = { config: buildScriptConfig(scriptConfig) };
+  for (const script of await getScripts()) {
+    if (!scriptMatchesUrl(script, currentUrl)) continue;
+    const nonce = randomBytes(32).toString("base64url");
+    grants.set(nonce, { scriptId: script.id, webContentsId: contents.id });
+    try {
+      await contents.executeJavaScript(createInjection(script, nonce, seeded), false);
+    } catch (error) {
+      grants.delete(nonce);
+      console.error(`用户脚本注入失败：${script.name}`, error);
+    }
+  }
 };
 
 /* ------------------------------------------------------------ 特权桥校验 */
@@ -360,59 +358,32 @@ const enableClipboardMenu = (window: BrowserWindow): void => {
   });
 };
 
-const trackWindow = (window: BrowserWindow, onClosed: () => void): void => {
-  window.on("close", () => {
-    if (!window.isDestroyed()) window.destroy();
-  });
-  window.once("closed", onClosed);
-};
-
-async function openLearningWindow(url: string): Promise<void> {
-  const target = asNavigableUrl(url);
-  if (!target) {
-    openExternally(url);
-    return;
-  }
-  const page = new BrowserWindow({
-    width: 1280,
-    height: 860,
-    minWidth: 980,
-    minHeight: 680,
-    title: branding.learningTitle,
-    webPreferences: {
-      preload: path.join(__dirname, "learning-preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-      webSecurity: true,
-      webviewTag: false
-    }
-  });
-  learningWindows.add(page);
-  trackWindow(page, () => {
-    learningWindows.delete(page);
-  });
-  enableClipboardMenu(page);
-  injectMatchingScripts(page);
-  await page.loadURL(target.href);
-}
-
-// 主窗口就是主站本身。加载不出来（没联网、校园网未认证、站点故障）时
-// 落到本地启动台 —— 校园网登录恰恰要在主站不可达的时候用。
-const loadSiteOrLauncher = async (window: BrowserWindow, reason?: string): Promise<void> => {
+// 主站内容跑在标签里。加载不出来（没联网、校园网未认证、站点故障）时不换页面，
+// 而是让外壳显示离线提示 —— 校园网登录恰恰要在主站不可达的时候用。
+const loadSite = async (contents: Electron.WebContents): Promise<void> => {
   try {
-    await window.loadURL(oauthConfig.origin);
+    await contents.loadURL(oauthConfig.origin);
     siteLoaded = true;
+    siteError = "";
   } catch (error) {
     siteLoaded = false;
-    const detail = reason || (error instanceof Error ? error.message : String(error));
-    console.error(`主站加载失败，回退到本地启动台：${detail}`);
-    await window.loadFile(resolveAsset("src", "launcher", "index.html"), { query: { reason: detail } });
+    siteError = error instanceof Error ? error.message : String(error);
+    console.error(`主站加载失败：${siteError}`);
   }
+  broadcast("shell:site-state", { siteLoaded, siteError });
 };
+
+const createTabManager = (window: BrowserWindow): TabManager => new TabManager(window, {
+  appVersion: app.getVersion(),
+  isNavigable: (url) => asNavigableUrl(url) !== undefined,
+  openExternally,
+  onDidFinishLoad: (contents) => void injectMatchingScripts(contents),
+  onChange: (tabsState, activeId) => broadcast("tabs:changed", { tabs: tabsState, activeId })
+});
 
 const openMainWindow = async (options: { show?: boolean } = {}): Promise<void> => {
   if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
     mainWindow.focus();
     return;
@@ -420,20 +391,19 @@ const openMainWindow = async (options: { show?: boolean } = {}): Promise<void> =
   mainWindow = new BrowserWindow({
     width: 1180,
     height: 820,
-    minWidth: 720,
-    minHeight: 560,
+    minWidth: 860,
+    minHeight: 600,
     title: branding.windowTitle,
     backgroundColor: "#f8fafc",
     show: options.show !== false,
     autoHideMenuBar: true,
     webPreferences: {
-      preload: path.join(__dirname, "site-preload.js"),
+      preload: path.join(__dirname, "shell-preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
       webSecurity: true,
-      webviewTag: false,
-      additionalArguments: [`--cpu-desktop-version=${app.getVersion()}`]
+      webviewTag: false
     }
   });
   const window = mainWindow;
@@ -443,16 +413,23 @@ const openMainWindow = async (options: { show?: boolean } = {}): Promise<void> =
     window.hide();
   });
   window.once("closed", () => {
+    tabs?.destroy();
+    tabs = undefined;
     mainWindow = undefined;
   });
   enableClipboardMenu(window);
-  await loadSiteOrLauncher(window);
+  await window.loadFile(resolveAsset("src", "shell", "index.html"));
+
+  tabs = createTabManager(window);
+  tabs.openToolsTab();
+  await tabs.openSiteTab(loadSite);
 };
 
 const openLearningPage = async (): Promise<void> => {
   const auth = await getOAuthStatus();
   if (!auth.loggedIn) throw new Error("请先完成登录");
-  await openLearningWindow(learningUrl);
+  await openMainWindow();
+  await tabs?.openLearningTab(learningUrl);
 };
 
 // 授权页开在应用内窗口，与主站共用会话：用户在主站已登录的话这里直接过。
@@ -680,10 +657,27 @@ if (!singleInstance) {
       if (typeof url === "string") openUpdateDownload(url);
     });
     ipcMain.handle("site:reload", async () => {
-      if (!mainWindow || mainWindow.isDestroyed()) return { siteLoaded: false };
-      await loadSiteOrLauncher(mainWindow);
-      return { siteLoaded };
+      const contents = tabs?.contentsOfKind("site")[0];
+      if (!contents) return { siteLoaded: false, siteError: "" };
+      await loadSite(contents);
+      return { siteLoaded, siteError };
     });
+
+    /* ---------------------------------------------------------------- 标签 */
+    ipcMain.handle("shell:boot", () => ({
+      productName: branding.productName,
+      version: app.getVersion(),
+      origin: oauthConfig.origin,
+      siteLoaded,
+      siteError,
+      chromeHeight: CHROME_HEIGHT
+    }));
+    ipcMain.handle("tabs:state", () => tabs?.getState() ?? { tabs: [], activeId: "" });
+    ipcMain.handle("tabs:activate", (_event, id: unknown) => { if (typeof id === "string") tabs?.activate(id); });
+    ipcMain.handle("tabs:close", (_event, id: unknown) => { if (typeof id === "string") tabs?.close(id); });
+    ipcMain.handle("tabs:reload", (_event, id: unknown) => { if (typeof id === "string") tabs?.reload(id); });
+    ipcMain.handle("tabs:go-back", (_event, id: unknown) => { if (typeof id === "string") tabs?.goBack(id); });
+    ipcMain.handle("tabs:open-learning", () => openLearningPage());
 
     /* -------------------------------------------------------------- 校园网 */
     // 密码只单向进主进程：campus:state 永不返回密码，只回 hasCredential 与学号。
@@ -810,7 +804,7 @@ if (!singleInstance) {
     });
     ipcMain.handle("script:get-activity", (_event, limit: unknown) => ({
       status: latestScriptStatus,
-      running: learningWindows.size > 0,
+      running: (tabs?.contentsOfKind("learning").length ?? 0) > 0,
       entries: scriptActivity.slice(-(typeof limit === "number" ? Math.min(Math.max(limit, 1), 200) : 80))
     }));
 
@@ -838,7 +832,7 @@ if (!singleInstance) {
     ipcMain.handle("oauth:status", () => getOAuthStatus());
     ipcMain.handle("oauth:logout", async () => {
       await logoutOAuth();
-      for (const window of [...learningWindows]) if (!window.isDestroyed()) window.destroy();
+      tabs?.closeAllLearningTabs();
       grants.clear();
     });
     ipcMain.handle("learning:open", () => openLearningPage());
@@ -865,6 +859,10 @@ if (!singleInstance) {
         broadcast("app:update-available", info);
       });
     }, 8000).unref?.();
+  }).catch((error) => {
+    // 没有这个 catch 的话，启动期任何异常都会变成被吞掉的 unhandled rejection，
+    // 表现为"进程静默退出、没有任何输出"，完全无从排查。
+    console.error("启动失败：", error);
   });
 
   app.on("before-quit", () => {

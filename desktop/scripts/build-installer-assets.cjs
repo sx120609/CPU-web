@@ -88,28 +88,76 @@ const buildPage = (logoUri) => `<!doctype html>
     -webkit-font-smoothing: antialiased;
   }
 
-  /* 侧边图：欢迎页与完成页左侧整条 */
+  /* 侧边图：欢迎页与完成页左侧整条。
+     只有 164×314，所以层次全靠光影而不是元素数量：
+     底色斜向渐变 → 右上暖光（主站 hero 的招牌）→ 左下冷光补深度
+     → 一道极淡的斜向高光 → 顶边一条内发光细线 → 全局细颗粒压掉渐变的色带。 */
   .sidebar {
     position: absolute; top: 0; left: 0;
     width: ${SIDEBAR.width}px; height: ${SIDEBAR.height}px;
-    padding: 26px 20px;
-    background: linear-gradient(158deg, #34b39e 0%, #148f7b 46%, #0d6e5e 100%);
+    padding: 28px 20px;
+    background: linear-gradient(163deg, #3cbda7 0%, #189a84 30%, #148f7b 58%, #0b6353 100%);
     color: #fff; overflow: hidden;
+    isolation: isolate;
   }
-  .glow {
-    position: absolute; top: -72px; right: -80px; width: 196px; height: 196px;
+  .glow-warm {
+    position: absolute; top: -86px; right: -92px; width: 224px; height: 224px;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(245,158,11,.32) 0%, rgba(245,158,11,0) 68%);
+    background: radial-gradient(circle, rgba(245,158,11,.30) 0%, rgba(245,158,11,.10) 44%, rgba(245,158,11,0) 70%);
   }
-  .logo {
-    position: relative; width: 52px; height: 52px; border-radius: 13px;
-    box-shadow: 0 6px 16px rgba(4,40,33,.34);
+  .glow-cool {
+    position: absolute; bottom: -104px; left: -78px; width: 216px; height: 216px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(94,228,204,.24) 0%, rgba(94,228,204,0) 66%);
   }
-  .name { position: relative; margin-top: 20px; font-size: 21px; font-weight: 700; letter-spacing: .5px; }
-  .sub { position: relative; margin-top: 4px; font-size: 12px; color: rgba(255,255,255,.74); letter-spacing: 2px; }
+  .sheen {
+    position: absolute; inset: 0;
+    background: linear-gradient(112deg, rgba(255,255,255,0) 34%, rgba(255,255,255,.085) 50%, rgba(255,255,255,0) 64%);
+  }
+  .topline {
+    position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.42) 42%, rgba(255,255,255,0) 100%);
+  }
+  /* 细颗粒：渐变在 24 位 BMP 上容易出色带，加一点噪点能压住 */
+  .grain {
+    position: absolute; inset: 0; opacity: .05;
+    background-image:
+      radial-gradient(rgba(255,255,255,.9) .5px, transparent .5px),
+      radial-gradient(rgba(0,0,0,.9) .5px, transparent .5px);
+    background-size: 3px 3px, 4px 4px;
+    background-position: 0 0, 1px 2px;
+  }
+
+  .logo-tile {
+    position: relative; width: 54px; height: 54px; border-radius: 14px;
+    background: rgba(255,255,255,.10);
+    box-shadow:
+      0 8px 20px rgba(3,34,28,.36),
+      inset 0 1px 0 rgba(255,255,255,.34);
+    display: grid; place-items: center;
+  }
+  .logo { width: 40px; height: 40px; border-radius: 10px; }
+
+  .name {
+    position: relative; margin-top: 22px;
+    font-size: 22px; font-weight: 700; letter-spacing: 1.5px;
+    text-shadow: 0 2px 10px rgba(3,34,28,.34);
+  }
+  .name-rule {
+    position: relative; margin-top: 12px; width: 30px; height: 3px; border-radius: 3px;
+    background: linear-gradient(90deg, #fcd34d, #f59e0b 62%, rgba(245,158,11,.20));
+    box-shadow: 0 1px 6px rgba(245,158,11,.45);
+  }
+  .sub {
+    position: relative; margin-top: 11px;
+    font-size: 11px; color: rgba(255,255,255,.80); letter-spacing: 4px;
+  }
   .foot { position: absolute; left: 20px; right: 20px; bottom: 22px; }
-  .rule { height: 1px; background: rgba(255,255,255,.24); }
-  .tag { margin-top: 9px; font-size: 10px; color: rgba(255,255,255,.62); letter-spacing: .6px; }
+  .rule {
+    height: 1px;
+    background: linear-gradient(90deg, rgba(255,255,255,.42), rgba(255,255,255,.05));
+  }
+  .tag { margin-top: 10px; font-size: 9.5px; color: rgba(255,255,255,.60); letter-spacing: 1.1px; }
 
   /* 页眉图：内页右上角，NSIS 那块底色是白的 */
   .header {
@@ -125,11 +173,16 @@ const buildPage = (logoUri) => `<!doctype html>
 </style></head>
 <body>
   <div class="sidebar">
-    <div class="glow"></div>
-    <img class="logo" src="${logoUri}" alt="">
+    <div class="glow-warm"></div>
+    <div class="glow-cool"></div>
+    <div class="sheen"></div>
+    <div class="grain"></div>
+    <div class="topline"></div>
+    <div class="logo-tile"><img class="logo" src="${logoUri}" alt=""></div>
     <div class="name">药大拾间</div>
+    <div class="name-rule"></div>
     <div class="sub">桌面端</div>
-    <div class="foot"><div class="rule"></div><div class="tag">CPU 校园互助服务</div></div>
+    <div class="foot"><div class="rule"></div><div class="tag">CPU · 校园互助服务</div></div>
   </div>
   <div class="header">
     <img class="logo" src="${logoUri}" alt="">

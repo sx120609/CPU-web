@@ -5,33 +5,31 @@
         <el-icon><Monitor /></el-icon>
         <div>
           <strong>PC 小工具</strong>
-          <small>{{ inDesktop ? `桌面端 v${desktopVersion}` : "需要在桌面端中使用" }}</small>
+          <small>需要在桌面端中使用</small>
         </div>
       </div>
       <el-button link :icon="Close" aria-label="关闭" @click="emit('close')" />
     </header>
 
-    <!-- 网页端：这些能力做不到，只能引导下载 -->
-    <div v-if="!inDesktop" class="tools-body">
-      <div class="promo">
-        <p class="promo-lead">这些小工具需要访问本机网络与后台进程，浏览器里做不到，得用桌面端。</p>
-        <ul class="promo-list">
-          <li>
-            <span class="promo-icon"><el-icon><Connection /></el-icon></span>
-            <div>
-              <strong>联网小工具</strong>
-              <small>校园网自动认证，掉线自动重连，开机自启后台常驻</small>
-            </div>
-          </li>
-          <li>
-            <span class="promo-icon"><el-icon><Notebook /></el-icon></span>
-            <div>
-              <strong>刷题小工具</strong>
-              <small>在受控窗口中打开学习平台，内置学习辅助脚本与校园 AI 解答</small>
-            </div>
-          </li>
-        </ul>
-      </div>
+    <div class="tools-body">
+      <p class="promo-lead">这些小工具要访问本机网络与后台进程，浏览器里做不到，得用桌面端。</p>
+
+      <ul class="promo-list">
+        <li>
+          <span class="promo-icon"><el-icon><Connection /></el-icon></span>
+          <div>
+            <strong>联网小工具</strong>
+            <small>校园网自动认证，掉线自动重连；不在校园网时不会瞎试。可开机自启并常驻托盘</small>
+          </div>
+        </li>
+        <li>
+          <span class="promo-icon"><el-icon><Notebook /></el-icon></span>
+          <div>
+            <strong>刷题小工具</strong>
+            <small>在客户端标签页中打开学习平台，答题辅助自动接管，进度与日志在客户端里直接看</small>
+          </div>
+        </li>
+      </ul>
 
       <div v-if="downloadUrl" class="tools-actions">
         <el-button type="primary" :icon="Download" @click="openDownload">下载 Windows 客户端</el-button>
@@ -44,215 +42,29 @@
         <p>这是因为安装包没有购买代码签名证书，不是安全问题。点提示框里的「更多信息」，再点「仍要运行」即可。</p>
       </div>
 
-      <p class="tools-foot">支持 Windows 10 / 11（64 位）。双击安装、装完自动打开，用当前账号授权登录即可。</p>
+      <p class="tools-foot">支持 Windows 10 / 11（64 位）。安装后用当前账号授权登录即可。</p>
     </div>
-
-    <!-- 桌面端：直接操作真实能力 -->
-    <div v-else class="tools-body">
-      <div v-if="update?.hasUpdate" class="update-banner">
-        <div>
-          <strong>有新版本 v{{ update.latest }}</strong>
-          <small>当前 v{{ update.current }}。超星改版后旧版脚本可能失效，建议更新。</small>
-        </div>
-        <el-button type="primary" size="small" @click="bridge?.openUpdate?.(update.url)">去下载</el-button>
-      </div>
-
-      <article class="tool-card">
-        <header>
-          <div class="tool-name">
-            <el-icon><Connection /></el-icon>
-            <strong>联网小工具</strong>
-          </div>
-          <el-tag :type="campusTagType" size="small" effect="light">{{ campusMessage }}</el-tag>
-        </header>
-        <p v-if="!onCampus" class="tool-hint">
-          当前不在校园网环境，无需认证。连上校园网后会自动识别并接管。
-        </p>
-        <p v-else-if="!campusState?.hasCredential" class="tool-hint">
-          还没保存校园网学号密码。在客户端设置里填一次，之后掉线会自动重连。
-        </p>
-        <p v-else class="tool-hint">
-          已保存学号 {{ campusState.studentId }}<span v-if="campusState.localIp"> · 本机 {{ campusState.localIp }}</span>
-        </p>
-        <div class="tool-actions">
-          <el-button
-            type="primary"
-            size="small"
-            :loading="campusBusy"
-            :disabled="!campusState?.hasCredential || !onCampus"
-            @click="connectCampus"
-          >
-            立即连接
-          </el-button>
-          <el-button size="small" :disabled="campusBusy" @click="recheckCampus">重新检测</el-button>
-        </div>
-      </article>
-
-      <article class="tool-card">
-        <header>
-          <div class="tool-name">
-            <el-icon><Notebook /></el-icon>
-            <strong>刷题小工具</strong>
-          </div>
-          <el-tag v-if="activity.running" type="success" size="small" effect="light">窗口已打开</el-tag>
-        </header>
-
-        <p v-if="activity.status" class="tool-status">{{ activity.status }}</p>
-        <p v-else class="tool-hint">在独立窗口中打开学习平台，并注入学习辅助脚本。</p>
-
-        <div class="tool-actions">
-          <el-button type="primary" size="small" :loading="learningBusy" @click="openLearning">
-            打开学习平台
-          </el-button>
-          <el-button size="small" @click="settingsOpen = true">设置</el-button>
-        </div>
-
-        <!-- 脚本自己的面板只留 20 条日志、关掉面板就看不见，这里留一份 -->
-        <details v-if="activity.entries.length" class="activity">
-          <summary>运行日志（{{ activity.entries.length }}）</summary>
-          <ul>
-            <li v-for="(entry, index) in recentEntries" :key="index">
-              <span>{{ formatTime(entry.at) }}</span>{{ entry.text }}
-            </li>
-          </ul>
-        </details>
-      </article>
-
-      <p v-if="actionMessage" class="tool-message" :data-error="actionError">{{ actionMessage }}</p>
-    </div>
-
-    <ScriptSettingsDialog v-model="settingsOpen" />
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { onMounted, ref } from "vue";
 import { Close, Connection, Download, Monitor, Notebook } from "@element-plus/icons-vue";
-import { getDesktopBridge, isDesktopNativeApp } from "@/utils/clientInfo";
 import { getDesktopDownloadUrl } from "@/api/site";
-import ScriptSettingsDialog from "./ScriptSettingsDialog.vue";
 
 const emit = defineEmits<{ (event: "close"): void }>();
 
-const bridge = getDesktopBridge();
-const inDesktop = isDesktopNativeApp();
-const desktopVersion = ref(bridge?.getVersionName?.() || "");
-
+// 只在网页里出现：桌面端把这些工具做成了应用自己的标签页，
+// MainLayout 那边已经把这个悬浮球关掉了。
 const downloadUrl = ref("");
-const update = ref<any>(null);
-const campusState = ref<any>(null);
-const campusBusy = ref(false);
-const learningBusy = ref(false);
-const actionMessage = ref("");
-const actionError = ref(false);
-const settingsOpen = ref(false);
-const activity = ref<{ status: string; running: boolean; entries: any[] }>({ status: "", running: false, entries: [] });
-
-const recentEntries = computed(() => activity.value.entries.slice(-30).reverse());
-
-const formatTime = (at: number) => new Date(at).toLocaleTimeString("zh-CN", { hour12: false });
-
-const campusMessage = computed(() => campusState.value?.message || "未启用");
-const campusTagType = computed(() => {
-  const status = campusState.value?.status;
-  if (status === "online") return "success";
-  if (status === "paused") return "danger";
-  if (status === "offline") return "warning";
-  // off-campus 是正常状态，不是错误：人就是不在学校
-  return "info";
-});
-
-const onCampus = computed(() => campusState.value?.status !== "off-campus");
-
-const say = (message: string, error = false) => {
-  actionMessage.value = message;
-  actionError.value = error;
-};
-
-const errorText = (error: unknown, fallback: string) =>
-  error instanceof Error && error.message ? error.message : fallback;
-
-async function connectCampus() {
-  if (!bridge?.campusNet) return;
-  campusBusy.value = true;
-  say("正在认证校园网…");
-  try {
-    const state = await bridge.campusNet.loginNow();
-    campusState.value = state;
-    say(state.message, state.status !== "online");
-  } catch (error) {
-    say(errorText(error, "认证失败。"), true);
-  } finally {
-    campusBusy.value = false;
-  }
-}
-
-async function recheckCampus() {
-  if (!bridge?.campusNet) return;
-  campusBusy.value = true;
-  try {
-    campusState.value = await bridge.campusNet.checkNow();
-    say("已触发检测。");
-  } catch (error) {
-    say(errorText(error, "检测失败。"), true);
-  } finally {
-    campusBusy.value = false;
-  }
-}
-
-async function openLearning() {
-  if (!bridge?.openLearning) return;
-  learningBusy.value = true;
-  try {
-    await bridge.openLearning();
-    say("学习平台已在新窗口打开。");
-  } catch (error) {
-    say(errorText(error, "无法打开学习平台。"), true);
-  } finally {
-    learningBusy.value = false;
-  }
-}
 
 function openDownload() {
-  if (!downloadUrl.value) return;
-  window.open(downloadUrl.value, "_blank", "noopener");
+  if (downloadUrl.value) window.open(downloadUrl.value, "_blank", "noopener");
 }
 
 onMounted(async () => {
-  if (inDesktop) {
-    try {
-      campusState.value = await bridge?.campusNet?.getState();
-      bridge?.campusNet?.onState((state) => {
-        campusState.value = state;
-      });
-    } catch {
-      /* 桥不可用时保持默认展示 */
-    }
-    try {
-      update.value = await bridge?.checkUpdate?.();
-      bridge?.onUpdateAvailable?.((info) => {
-        update.value = info;
-      });
-    } catch {
-      /* 查不到更新就不提示 */
-    }
-    try {
-      activity.value = await bridge!.script!.getActivity(80);
-      bridge?.script?.onActivity((entry) => {
-        if (entry.kind === "status") activity.value.status = entry.text;
-        activity.value.entries = [...activity.value.entries, entry].slice(-200);
-      });
-    } catch {
-      /* 拿不到运行状态就只显示静态说明 */
-    }
-    return;
-  }
-  // 下载地址由站点设置下发，没配置就显示"正在打包中"
-  try {
-    downloadUrl.value = await getDesktopDownloadUrl();
-  } catch {
-    downloadUrl.value = "";
-  }
+  // 下载地址由站点设置下发，没配置就显示"正在打包中"，不给死链接
+  downloadUrl.value = await getDesktopDownloadUrl();
 });
 </script>
 
@@ -304,7 +116,7 @@ onMounted(async () => {
 }
 
 .promo-lead {
-  margin: 0 0 14px;
+  margin: 0;
   color: var(--cpu-text-secondary);
   line-height: 1.7;
 }
@@ -351,12 +163,6 @@ onMounted(async () => {
   gap: 10px;
 }
 
-.tools-foot {
-  margin: 0;
-  color: var(--cpu-text-muted);
-  font-size: 12px;
-}
-
 .install-tip {
   padding: 12px 14px;
   border: 1px solid color-mix(in srgb, var(--cpu-gold) 34%, var(--cpu-border-soft));
@@ -375,116 +181,9 @@ onMounted(async () => {
   }
 }
 
-.update-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  border: 1px solid color-mix(in srgb, var(--cpu-primary) 32%, var(--cpu-border-soft));
-  border-radius: 12px;
-  background: var(--cpu-primary-soft);
-
-  div {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  small {
-    color: var(--cpu-text-secondary);
-    font-size: 12px;
-    line-height: 1.55;
-  }
-}
-
-.tool-card {
-  padding: 14px 16px;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 14px;
-  background: var(--cpu-surface-soft);
-
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    margin-bottom: 8px;
-  }
-}
-
-.tool-name {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-
-  .el-icon {
-    color: var(--cpu-primary);
-  }
-}
-
-.tool-hint {
-  margin: 0 0 12px;
-  color: var(--cpu-text-secondary);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.tool-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.tool-message {
+.tools-foot {
   margin: 0;
-  font-size: 13px;
-  color: var(--cpu-primary-dark);
-
-  &[data-error="true"] {
-    color: var(--cpu-danger);
-  }
-}
-
-.tool-status {
-  margin: 0 0 12px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--cpu-primary-soft);
-  color: var(--cpu-text);
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.activity {
-  margin-top: 12px;
-
-  summary {
-    cursor: pointer;
-    color: var(--cpu-text-secondary);
-    font-size: 12.5px;
-  }
-
-  ul {
-    margin: 8px 0 0;
-    padding: 0;
-    max-height: 160px;
-    overflow-y: auto;
-    list-style: none;
-  }
-
-  li {
-    display: flex;
-    gap: 8px;
-    padding: 3px 0;
-    color: var(--cpu-text-secondary);
-    font-size: 12px;
-    line-height: 1.5;
-  }
-
-  span {
-    flex: none;
-    color: var(--cpu-text-muted);
-    font-variant-numeric: tabular-nums;
-  }
+  color: var(--cpu-text-muted);
+  font-size: 12px;
 }
 </style>

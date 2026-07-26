@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self'" />
+    <title>药大拾间</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <!-- 标签栏。高度必须与 electron/tabs.ts 的 CHROME_HEIGHT 一致 -->
+    <header class="chrome">
+      <img class="brand" src="./logo.png" alt="" />
+      <nav class="tabs" id="tabs"></nav>
+      <div class="chips">
+        <button class="chip" id="chip-campus" type="button" title="校园网状态">
+          <span class="dot" id="campus-dot"></span><span id="campus-text">校园网</span>
+        </button>
+        <button class="chip" id="chip-quota" type="button" title="校园 AI 今日剩余额度">
+          <span class="chip-icon">AI</span><span id="quota-text">—</span>
+        </button>
+        <button class="chip icon-only" id="chip-back" type="button" title="返回">‹</button>
+        <button class="chip icon-only" id="chip-reload" type="button" title="重新加载">⟳</button>
+      </div>
+    </header>
+
+    <!-- 工具页。它不是浮层：切到工具标签时主进程会把内容视图藏起来，露出这一页 -->
+    <main class="workspace" id="workspace" hidden>
+      <div class="sheet">
+        <section class="card" id="update-card" hidden>
+          <div class="card-row">
+            <div>
+              <strong>有新版本 <span id="update-latest"></span></strong>
+              <small>超星改版后旧版脚本可能失效，建议更新。</small>
+            </div>
+            <button class="primary" id="update-go" type="button">去下载</button>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>账号</h2>
+            <span class="pill" id="auth-pill">检查中</span>
+          </div>
+          <dl class="fields" id="auth-fields" hidden>
+            <div><dt>用户</dt><dd id="auth-name">—</dd></div>
+            <div><dt>今日剩余 AI 次数</dt><dd id="auth-balance">—</dd></div>
+            <div><dt>今日已用 / 每日额度</dt><dd id="auth-usage">—</dd></div>
+            <div><dt>授权有效期至</dt><dd id="auth-expires">—</dd></div>
+          </dl>
+          <p class="muted" id="auth-hint">登录后即可使用学习平台与校园 AI 解答。</p>
+          <div class="actions">
+            <button class="primary" id="auth-login" type="button" hidden>登录</button>
+            <button class="ghost" id="auth-logout" type="button" hidden>退出登录</button>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>校园网</h2>
+            <span class="pill" id="campus-pill">未启用</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="campus-enabled" />
+            <span class="track"><span class="thumb"></span></span>
+            <span class="switch-text"><strong>后台自动连接</strong><small>掉线时自动重新认证；不在校园网时不会尝试</small></span>
+          </label>
+          <div id="campus-body" hidden>
+            <div class="grid">
+              <label class="field">
+                <span>接入方式</span>
+                <select id="campus-mode">
+                  <option value="auto">自动判断</option>
+                  <option value="campus">校园网</option>
+                  <option value="pppoe">宽带（运营商）</option>
+                </select>
+              </label>
+              <label class="field" id="campus-carrier-field">
+                <span>运营商</span>
+                <select id="campus-carrier">
+                  <option value="">请选择</option>
+                  <option value="telecom">中国电信</option>
+                  <option value="unicom">中国联通</option>
+                  <option value="cmcc">中国移动</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>检测间隔（秒）</span>
+                <input type="number" id="campus-interval" min="5" max="600" step="5" />
+              </label>
+            </div>
+            <div class="grid">
+              <label class="field">
+                <span>学号</span>
+                <input type="text" id="campus-student" autocomplete="off" spellcheck="false" placeholder="仅字母与数字" />
+              </label>
+              <label class="field">
+                <span>校园网密码</span>
+                <input type="password" id="campus-password" autocomplete="off" placeholder="保存后不再回显" />
+              </label>
+            </div>
+            <p class="muted small" id="campus-hint"></p>
+            <div class="actions">
+              <button class="primary" id="campus-save" type="button">保存凭据</button>
+              <button class="ghost" id="campus-login" type="button">立即连接</button>
+              <button class="ghost" id="campus-clear" type="button">清除凭据</button>
+            </div>
+            <details class="logs">
+              <summary>连接日志</summary>
+              <pre id="campus-logs"></pre>
+            </details>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>刷题</h2>
+            <span class="pill" id="script-pill" hidden>运行中</span>
+          </div>
+          <p class="muted" id="script-status">在标签页中打开学习平台，答题辅助会自动接管。</p>
+          <div class="actions">
+            <button class="primary" id="script-open" type="button">打开学习平台</button>
+          </div>
+
+          <div class="subsection">
+            <h3>自动化</h3>
+            <div id="script-switches"></div>
+          </div>
+
+          <div class="subsection">
+            <h3>节奏</h3>
+            <p class="muted small">间隔越短越省时间，但行为特征越明显。默认值是相对稳妥的取值。</p>
+            <div class="grid">
+              <label class="field"><span>换章等待（秒）</span><input type="number" id="cfg-interval" min="1" max="120" /></label>
+              <label class="field"><span>低于此正确率不自动提交</span><input type="number" id="cfg-minAccuracy" min="0" max="1" step="0.05" /></label>
+            </div>
+            <div class="grid">
+              <label class="field"><span>每题间隔最小（秒）</span><input type="number" id="cfg-answerIntervalMin" min="1" max="300" /></label>
+              <label class="field"><span>每题间隔最大（秒）</span><input type="number" id="cfg-answerIntervalMax" min="1" max="300" /></label>
+            </div>
+            <div class="grid">
+              <label class="field"><span>提交前等待最小（秒）</span><input type="number" id="cfg-submitDelayMin" min="1" max="600" /></label>
+              <label class="field"><span>提交前等待最大（秒）</span><input type="number" id="cfg-submitDelayMax" min="1" max="600" /></label>
+            </div>
+            <p class="notice-inline" id="reload-hint" hidden>以上改动要重新打开学习平台标签才生效。</p>
+          </div>
+
+          <div class="subsection">
+            <h3>AI 解答</h3>
+            <label class="switch">
+              <input type="checkbox" id="cfg-aiEnabled" />
+              <span class="track"><span class="thumb"></span></span>
+              <span class="switch-text"><strong>用校园 AI 作答</strong><small>题库查不到时才会用，消耗你的每日额度</small></span>
+            </label>
+            <label class="field" id="ai-model-field"><span>模型名称</span><input type="text" id="cfg-aiModel" placeholder="deepseek-reasoner" /></label>
+          </div>
+
+          <details class="logs">
+            <summary>运行日志</summary>
+            <pre id="script-logs"></pre>
+          </details>
+        </section>
+
+        <section class="card">
+          <h2>启动与后台</h2>
+          <label class="switch">
+            <input type="checkbox" id="pref-launchOnLogin" />
+            <span class="track"><span class="thumb"></span></span>
+            <span class="switch-text"><strong>开机自动启动</strong><small>登录系统后自动运行</small></span>
+          </label>
+          <label class="switch">
+            <input type="checkbox" id="pref-startMinimized" />
+            <span class="track"><span class="thumb"></span></span>
+            <span class="switch-text"><strong>启动时收进托盘</strong><small>开机自启时不弹出窗口</small></span>
+          </label>
+          <label class="switch">
+            <input type="checkbox" id="pref-closeToTray" />
+            <span class="track"><span class="thumb"></span></span>
+            <span class="switch-text"><strong>关闭窗口时收进托盘</strong><small>后台继续保持校园网连接与刷题</small></span>
+          </label>
+        </section>
+
+        <p class="status-line" id="status-line" role="status"></p>
+        <footer id="app-meta"></footer>
+      </div>
+    </main>
+
+    <!-- 主站连不上时顶到内容区 -->
+    <section class="offline" id="offline" hidden>
+      <div class="offline-inner">
+        <h2>暂时连不上药大拾间</h2>
+        <p id="offline-reason">常见原因是校园网尚未认证，或者当前没有网络。</p>
+        <div class="actions">
+          <button class="primary" id="offline-retry" type="button">重新连接</button>
+          <button class="ghost" id="offline-tools" type="button">去连校园网</button>
+        </div>
+      </div>
+    </section>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>

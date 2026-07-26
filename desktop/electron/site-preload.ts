@@ -1,11 +1,12 @@
 import { contextBridge, ipcRenderer } from "electron";
 
-// 主站窗口的原生桥，全局名 CPUDesktop。
+// 主站内容视图的原生桥，全局名 CPUDesktop。
 // 沿用 web/src/utils/nativeBridge.ts 对 CPUAndroid / CPUHarmony 的约定：
-// 同步方法用 additionalArguments 传进来的值，不走 IPC；异步能力才用 invoke。
+// 同步方法用 additionalArguments 传进来的值，不走 IPC。
 //
-// 注意：这个桥只挂在主站窗口上。学习平台窗口用的是 learning-preload.ts 的
-// cpuDesktopBridge，两者互不可见 —— 主站拿不到脚本代理，学习平台也拿不到这里的能力。
+// 这里刻意只暴露"站点自己需要知道的事"。校园网、刷题设置、运行日志这些
+// 都归应用外壳（shell-preload.ts）管，站点页面拿不到 —— 那些是客户端的能力，
+// 不该从一个网页里操作。
 
 const argumentValue = (name: string): string => {
   const prefix = `--${name}=`;
@@ -30,50 +31,7 @@ contextBridge.exposeInMainWorld("CPUDesktop", {
     return true;
   },
 
-  // 桌面端独有能力
+  // 站点可以请求打开学习平台标签，但不能读写客户端设置
   openLearning: () => ipcRenderer.invoke("learning:open"),
-  reloadSite: () => ipcRenderer.invoke("site:reload"),
-  getAuthStatus: () => ipcRenderer.invoke("oauth:status"),
-  login: () => ipcRenderer.invoke("oauth:login"),
-  logout: () => ipcRenderer.invoke("oauth:logout"),
-  getAppInfo: () => ipcRenderer.invoke("app:info"),
-  getPreferences: () => ipcRenderer.invoke("app:get-preferences"),
-  setPreferences: (patch: Record<string, unknown>) => ipcRenderer.invoke("app:set-preferences", patch),
-
-  checkUpdate: () => ipcRenderer.invoke("app:check-update"),
-  openUpdate: (url: string) => ipcRenderer.invoke("app:open-update", url),
-  onUpdateAvailable: (callback: (info: unknown) => void) => {
-    ipcRenderer.on("app:update-available", (_event, info) => callback(info));
-  },
-
-  // 学习辅助脚本：配置由客户端接管（脚本自带的配置面板已隐藏），运行状态回传显示
-  script: {
-    getConfig: () => ipcRenderer.invoke("script:get-config"),
-    setConfig: (patch: Record<string, unknown>) => ipcRenderer.invoke("script:set-config", patch),
-    getActivity: (limit?: number) => ipcRenderer.invoke("script:get-activity", limit),
-    onActivity: (callback: (entry: unknown) => void) => {
-      ipcRenderer.on("script:activity", (_event, entry) => callback(entry));
-    },
-    onConfigChanged: (callback: (config: unknown) => void) => {
-      ipcRenderer.on("script:config-changed", (_event, config) => callback(config));
-    }
-  },
-
-  // 校园网自动认证。密码只单向进主进程 —— getState 永远不会把它带回来。
-  campusNet: {
-    getState: () => ipcRenderer.invoke("campus:state"),
-    getSettings: () => ipcRenderer.invoke("campus:settings"),
-    saveCredential: (studentId: string, password: string) => ipcRenderer.invoke("campus:save-credential", studentId, password),
-    clearCredential: () => ipcRenderer.invoke("campus:clear-credential"),
-    updateSettings: (patch: Record<string, unknown>) => ipcRenderer.invoke("campus:update-settings", patch),
-    loginNow: () => ipcRenderer.invoke("campus:login-now"),
-    checkNow: () => ipcRenderer.invoke("campus:check-now"),
-    getLogs: (limit?: number) => ipcRenderer.invoke("campus:logs", limit),
-    onState: (callback: (state: unknown) => void) => {
-      ipcRenderer.on("campus:state-changed", (_event, state) => callback(state));
-    },
-    onLog: (callback: (entry: unknown) => void) => {
-      ipcRenderer.on("campus:log", (_event, entry) => callback(entry));
-    }
-  }
+  getAuthStatus: () => ipcRenderer.invoke("oauth:status")
 });

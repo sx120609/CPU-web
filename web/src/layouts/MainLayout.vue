@@ -173,7 +173,7 @@
 
     <transition name="assistant-widget">
       <aside
-        v-if="toolsWidgetOpen && showFloatingActions"
+        v-if="toolsWidgetOpen && showToolsFab"
         class="tools-widget"
         role="dialog"
         aria-label="PC 小工具"
@@ -183,7 +183,7 @@
     </transition>
 
     <button
-      v-if="showFloatingActions"
+      v-if="showToolsFab"
       type="button"
       class="tools-fab"
       aria-label="打开 PC 小工具"
@@ -363,7 +363,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
 import { useSiteStore } from "@/stores/site";
 import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
-import { isFlutterNativeShell } from "@/utils/clientInfo";
+import { isDesktopNativeApp, isFlutterNativeShell } from "@/utils/clientInfo";
 
 const auth = useAuthStore();
 const msg = useMessageStore();
@@ -417,6 +417,8 @@ const fullHeightContent = computed(() => Boolean(route.meta?.fullHeightContent))
 const useNativeShell = computed(() => isFlutterNativeShell());
 // 两个悬浮球共用同一套显示条件
 const showFloatingActions = computed(() => !hideChrome.value && !useNativeShell.value && route.path !== "/search");
+// 桌面客户端把这些工具做成了应用自己的标签页，站内再挂一个悬浮球就是重复入口
+const showToolsFab = computed(() => showFloatingActions.value && !isDesktopNativeApp());
 
 // 两个面板占同一块位置，只能开一个
 const toggleAssistantWidget = () => {
