@@ -2,7 +2,7 @@ import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, net, powerMo
 import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { FetchTextResult, isHostAllowed, parseHttpsUrl, UserScript } from "./shared";
+import { FetchTextResult, isHostAllowed, parseHttpsUrl, parseWebUrl, UserScript } from "./shared";
 import { asInjectableUrl, asNavigableUrl, asSiteUrl, createAuthNavigationRule, scriptMatchesUrl } from "./policy";
 import { abortOAuthLogin, AuthorizeOpener, getOAuthStatus, logoutOAuth, startOAuthLogin } from "./oauth";
 import { readOAuthSession } from "./oauth-store";
@@ -72,7 +72,7 @@ const openExternally = (value: string): void => {
   }
 };
 
-// 主站链接留在主窗口，学习通开独立窗口，其余交给系统浏览器。
+// 主站链接留在主窗口，其余网页地址一律开成应用内标签。
 const routeUrl = (value: string): void => {
   if (asSiteUrl(value)) {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -81,9 +81,7 @@ const routeUrl = (value: string): void => {
       return;
     }
   }
-  const target = asNavigableUrl(value);
-  if (target) void tabs?.openLearningTab(target.href);
-  else openExternally(value);
+  if (parseWebUrl(value)) void tabs?.openLearningTab(value, { trusted: true });
 };
 
 /* --------------------------------------------------------------- 用户脚本 */
@@ -600,10 +598,18 @@ const applyNavigationPolicy = (contents: Electron.WebContents): void => {
     // 学习通标签里页面自身的跳转全部放行：超星登录会连跳好几个白名单外的域名，
     // 把它踢去外部浏览器会直接把会话断在半路。
     // 脚本注入与特权桥不受影响 —— 那两件事始终只看 injectableHosts。
-    if (contentsKind.get(contents.id) === "learning" && parseHttpsUrl(url)) return;
+    // 明文 http 也放行：超星登录链路中间有一跳是 http，只认 https 会把登录踢去系统浏览器。
+    if (contentsKind.get(contents.id) === "learning" && parseWebUrl(url)) return;
     if (asNavigableUrl(url)) return;
     event.preventDefault();
-    openExternally(url);
+    // 页面里点出来的链接一律留在应用内开新标签，不丢给系统浏览器。
+    // "不是通用浏览器"的边界靠没有地址栏来守：用户没有任何入口主动输网址。
+    if (parseWebUrl(url)) {
+      void tabs?.openLearningTab(url, { trusted: true });
+      return;
+    }
+    // 剩下的是 mailto: 之类的非网页协议，直接丢弃
+    console.warn(`忽略非网页协议地址：${url}（来源标签 ${contentsKind.get(contents.id) ?? "未知"}）`);
   };
   contents.on("will-navigate", guard);
   contents.on("will-redirect", guard);

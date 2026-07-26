@@ -10,9 +10,12 @@ import { branding } from "./config";
 
 export const CHROME_HEIGHT = 46;
 
-const isHttps = (value: string): boolean => {
+// 学习通标签里的地址判断。允许 http 是因为超星登录链路中间有一跳是明文的；
+// 这只影响要不要留在标签里显示，注入与特权桥另有更严的判断。
+const isWebUrl = (value: string): boolean => {
   try {
-    return new URL(value).protocol === "https:";
+    const protocol = new URL(value).protocol;
+    return protocol === "https:" || protocol === "http:";
   } catch {
     return false;
   }
@@ -168,14 +171,10 @@ export class TabManager {
       if (items.length > 0) Menu.buildFromTemplate(items).popup({ window: this.window });
     });
 
-    // 一律开新标签而不是新窗口。
-    // 学习通标签里弹出的窗口通常是它自己的文档预览、答题页之类，域名可能在白名单外，
-    // 但仍属于同一次学习流程，踢去外部浏览器等于把会话丢在那边 —— 留在应用里。
-    // 主站标签只放行白名单，站点本身不该把用户带去别处。
+    // 一律开新标签而不是新窗口，也不丢给系统浏览器 —— 学习通的文档预览、
+    // 主站里的外部链接都留在应用里。"不是通用浏览器"的边界靠没有地址栏来守。
     contents.setWindowOpenHandler(({ url }) => {
-      const stayInApp = tab.kind === "learning" ? isHttps(url) : this.hooks.isNavigable(url);
-      if (stayInApp) void this.openLearningTab(url, { trusted: tab.kind === "learning" });
-      else this.hooks.openExternally(url);
+      if (isWebUrl(url)) void this.openLearningTab(url, { trusted: true });
       return { action: "deny" };
     });
   }
@@ -236,7 +235,7 @@ export class TabManager {
    * 脚本注入与特权桥不受影响，那两件事始终只看 injectableHosts。
    */
   async openLearningTab(url: string, options: { trusted?: boolean } = {}): Promise<void> {
-    const allowed = options.trusted ? isHttps(url) : this.hooks.isNavigable(url);
+    const allowed = options.trusted ? isWebUrl(url) : this.hooks.isNavigable(url);
     if (!allowed) {
       this.hooks.openExternally(url);
       return;

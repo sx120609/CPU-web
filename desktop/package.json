@@ -16,7 +16,7 @@
     "test:smoke": "npm run build && node scripts/smoke-test.mjs",
     "test:package": "node scripts/package-check.cjs",
     "start": "npm run build && electron .",
-    "dist:win": "npm run build && node scripts/prepare-license.cjs && electron-builder --win --publish never"
+    "dist:win": "npm run build && node scripts/prepare-nsis.cjs && electron-builder --win --publish never"
   },
   "build": {
     "appId": "cn.lizmt.cpuweb.desktop",
@@ -44,7 +44,7 @@
       "icon": "build/icon.ico"
     },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
       "allowElevation": false,
       "runAfterFinish": true,
@@ -54,11 +54,14 @@
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",
-      "installerLanguages": ["zh_CN"],
+      "installerLanguages": [
+        "zh_CN"
+      ],
       "multiLanguageInstaller": true,
       "displayLanguageSelector": false,
       "deleteAppDataOnUninstall": true,
-      "uninstallDisplayName": "药大拾间桌面端"
+      "uninstallDisplayName": "药大拾间桌面端",
+      "allowToChangeInstallationDirectory": false
     }
   },
   "devDependencies": {

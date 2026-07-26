@@ -20,7 +20,10 @@ const LOGO = path.join(OUT, "icon.png");
 const SCALE = 2;
 const SIDEBAR = { width: 164, height: 314 };
 const HEADER = { width: 150, height: 57 };
+// 整窗欢迎图：MUI 对话框内页区宽 499，隐藏页眉后高约 317
+const WELCOME = { width: 499, height: 317 };
 const GAP = 20;
+const PAGE = { width: (SIDEBAR.width + GAP + WELCOME.width), height: Math.max(SIDEBAR.height + GAP + HEADER.height, WELCOME.height) };
 
 const scaled = (box) => ({ width: box.width * SCALE, height: box.height * SCALE });
 
@@ -83,15 +86,15 @@ const buildPage = (logoUri) => `<!doctype html>
 <html><head><meta charset="utf-8"><style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
-    width: ${SIDEBAR.width * SCALE}px;
-    height: ${(SIDEBAR.height + GAP + HEADER.height) * SCALE}px;
+    width: ${PAGE.width * SCALE}px;
+    height: ${PAGE.height * SCALE}px;
     overflow: hidden;
     background: #ffffff;
   }
   /* 内部按 1x 排版，整体放大交给 transform，文字仍按放大后分辨率光栅化 */
   .scale {
-    width: ${SIDEBAR.width}px;
-    height: ${SIDEBAR.height + GAP + HEADER.height}px;
+    width: ${PAGE.width}px;
+    height: ${PAGE.height}px;
     transform: scale(${SCALE});
     transform-origin: top left;
     position: relative;
@@ -183,6 +186,61 @@ const buildPage = (logoUri) => `<!doctype html>
   .header .text { text-align: left; }
   .header .hname { font-size: 12px; font-weight: 700; color: #0d6e5e; line-height: 1.25; }
   .header .hsub { font-size: 9px; color: #64748b; letter-spacing: 1px; }
+
+  /* 整窗欢迎图：铺满 MUI 内页区（页眉在 .nsh 里隐藏掉），
+     取代那条 164px 侧边条 —— 这是安装包"不像模板"的关键。 */
+  .welcome {
+    position: absolute; top: 0; left: ${SIDEBAR.width + GAP}px;
+    width: ${WELCOME.width}px; height: ${WELCOME.height}px;
+    padding: 40px 44px; overflow: hidden; isolation: isolate;
+    background: linear-gradient(118deg, #0b6353 0%, #12836f 34%, #189a84 62%, #34b7a1 100%);
+    color: #fff;
+  }
+  .w-warm {
+    position: absolute; top: -150px; right: -130px; width: 420px; height: 420px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(245,158,11,.30) 0%, rgba(245,158,11,.09) 46%, rgba(245,158,11,0) 70%);
+  }
+  .w-cool {
+    position: absolute; bottom: -190px; left: -120px; width: 400px; height: 400px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(94,228,204,.26) 0%, rgba(94,228,204,0) 66%);
+  }
+  /* 右侧的巨型水印字，给整幅图一个视觉重心 */
+  .w-mark {
+    position: absolute; right: -18px; bottom: -66px;
+    font-size: 250px; font-weight: 700; line-height: 1;
+    color: rgba(255,255,255,.055); letter-spacing: -10px;
+  }
+  .w-sheen {
+    position: absolute; inset: 0;
+    background: linear-gradient(106deg, rgba(255,255,255,0) 30%, rgba(255,255,255,.07) 48%, rgba(255,255,255,0) 62%);
+  }
+  .w-top { position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.40) 38%, rgba(255,255,255,0)); }
+
+  .w-brand { position: relative; display: flex; align-items: center; gap: 15px; }
+  .w-tile {
+    width: 58px; height: 58px; border-radius: 16px; display: grid; place-items: center;
+    background: rgba(255,255,255,.11);
+    box-shadow: 0 10px 26px rgba(3,34,28,.34), inset 0 1px 0 rgba(255,255,255,.34);
+  }
+  .w-tile img { width: 42px; height: 42px; border-radius: 11px; }
+  .w-name { font-size: 27px; font-weight: 700; letter-spacing: 2px; text-shadow: 0 2px 12px rgba(3,34,28,.32); }
+  .w-kind { margin-top: 4px; font-size: 11px; letter-spacing: 5px; color: rgba(255,255,255,.76); }
+
+  .w-rule { position: relative; margin: 26px 0 0; width: 40px; height: 3px; border-radius: 3px;
+    background: linear-gradient(90deg, #fcd34d, #f59e0b 60%, rgba(245,158,11,.18));
+    box-shadow: 0 1px 7px rgba(245,158,11,.45); }
+  .w-lead { position: relative; margin-top: 15px; font-size: 13.5px; line-height: 1.85;
+    color: rgba(255,255,255,.94); max-width: 320px; }
+
+  .w-chips { position: absolute; left: 44px; bottom: 38px; display: flex; gap: 8px; }
+  .w-chip {
+    padding: 6px 12px; border-radius: 999px; font-size: 10.5px; letter-spacing: .4px;
+    background: rgba(255,255,255,.13); border: 1px solid rgba(255,255,255,.20);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.18);
+  }
+  .w-hint { position: absolute; right: 44px; bottom: 41px; font-size: 10px;
+    color: rgba(255,255,255,.62); letter-spacing: .6px; }
 </style></head>
 <body>
   <div class="scale">
@@ -202,6 +260,28 @@ const buildPage = (logoUri) => `<!doctype html>
     <img class="logo" src="${logoUri}" alt="">
     <div class="text"><div class="hname">药大拾间</div><div class="hsub">桌面端</div></div>
   </div>
+  <div class="welcome">
+    <div class="w-warm"></div>
+    <div class="w-cool"></div>
+    <div class="w-mark">拾</div>
+    <div class="w-sheen"></div>
+    <div class="w-top"></div>
+    <div class="w-brand">
+      <div class="w-tile"><img src="${logoUri}" alt=""></div>
+      <div>
+        <div class="w-name">药大拾间</div>
+        <div class="w-kind">桌面端</div>
+      </div>
+    </div>
+    <div class="w-rule"></div>
+    <div class="w-lead">把校园网、学习通和答题辅助收进一个窗口。<br>安装只需十几秒，装好会自动打开。</div>
+    <div class="w-chips">
+      <div class="w-chip">校园网自动连接</div>
+      <div class="w-chip">学习通标签页</div>
+      <div class="w-chip">答题辅助</div>
+    </div>
+    <div class="w-hint">Windows 10 / 11 · 64 位</div>
+  </div>
   </div>
 </body></html>`;
 
@@ -220,8 +300,8 @@ app.whenReady().then(async () => {
   fs.writeFileSync(htmlFile, buildPage(logoUri), "utf8");
 
   const window = new BrowserWindow({
-    width: SIDEBAR.width * SCALE,
-    height: (SIDEBAR.height + GAP + HEADER.height) * SCALE,
+    width: PAGE.width * SCALE,
+    height: PAGE.height * SCALE,
     useContentSize: true,
     show: false,
     frame: false,
@@ -240,6 +320,14 @@ app.whenReady().then(async () => {
 
     writeBmp(path.join(OUT, "installerHeader.bmp"),
       await captureRegion(window.webContents, { x: 0, y: (SIDEBAR.height + GAP) * SCALE, ...scaled(HEADER) }));
+
+    // 欢迎图必须落成 1x：MUI 拉伸位图用的是 StretchBlt 最近邻，2x 图被它硬砍一半
+    // 会把汉字细笔画抽没。这里先按 2x 渲染再用高质量算法降到 1x（等于超采样），
+    // 100% DPI 下控件与图 1:1，一个像素都不经 NSIS 缩放。
+    const welcomeShot = await captureRegion(window.webContents,
+      { x: (SIDEBAR.width + GAP) * SCALE, y: 0, ...scaled(WELCOME) });
+    writeBmp(path.join(OUT, "installerWelcome.bmp"),
+      welcomeShot.resize({ width: WELCOME.width, height: WELCOME.height, quality: "best" }));
 
     writeIco(path.join(OUT, "icon.ico"), source.resize({ width: 256, height: 256, quality: "best" }).toPNG());
   } catch (error) {

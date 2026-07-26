@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-// 从 build/*.source 生成 NSIS 真正读取的两个文件，编码由脚本负责。
+// 从 build/*.source 生成 NSIS 真正读取的文件，编码由脚本负责。
 //
-//   build/license.source.txt   （UTF-8）→ build/license.txt    UTF-16LE + BOM
 //   build/installer.nsh.source （UTF-8）→ build/installer.nsh  UTF-8 + BOM
 //
 // NSIS 的 Unicode 安装器读不带 BOM 的 UTF-8 会把中文按系统代码页解读，全变乱码。
 // 放进打包流程而不是手转一次 —— 手转的话，谁下次用 UTF-8 编辑一下就又坏了。
+//
+// 许可页已经去掉：使用边界改在首启引导里讲，向导只留"欢迎 → 装 → 完成"三步。
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -13,7 +14,6 @@ const path = require("node:path");
 const dir = path.resolve(__dirname, "..", "build");
 
 const jobs = [
-  { source: "license.source.txt", target: "license.txt", encoding: "utf16le", bom: [0xff, 0xfe] },
   { source: "installer.nsh.source", target: "installer.nsh", encoding: "utf8", bom: [0xef, 0xbb, 0xbf] }
 ];
 

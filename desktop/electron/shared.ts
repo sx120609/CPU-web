@@ -36,6 +36,18 @@ export const parseHttpsUrl = (value: string): URL | undefined => {
   }
 };
 
+// 只用于"这个跳转要不要留在学习通标签里"这一个判断。
+// 超星登录链路中间会经过明文 http 的一跳，只认 https 会把整个登录踢去系统浏览器。
+// 放宽的仅仅是"在标签里显示"；注入脚本与特权桥始终走 parseHttpsUrl + injectableHosts。
+export const parseWebUrl = (value: string): URL | undefined => {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" ? url : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 export const isUrlMatched = (pattern: string, target: string): boolean => {
   const match = /^(\*|https?):\/\/([^/]+)(\/.*)$/.exec(pattern.trim());
   const url = parseHttpsUrl(target);

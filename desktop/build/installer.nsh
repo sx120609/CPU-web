@@ -1,0 +1,56 @@
+﻿# electron-builder 的 NSIS 自定义片段。
+#
+# 这个文件是源文件（UTF-8），由 scripts/prepare-nsis.cjs 生成带 BOM 的
+# build/installer.nsh —— NSIS 的 Unicode 安装器读不带 BOM 的 UTF-8 会把中文变乱码。
+#
+# 默认向导长得像所有别的向导：左边一条 164px 窄图，右边一片白底和两行系统字。
+# 这里把欢迎页换成整窗铺满的品牌图 —— 标题、正文、特性标签都已经画进图里
+# （见 scripts/build-installer-assets.cjs），所以页面上那两个文字控件要隐藏掉。
+#
+# 完成页仍用窄侧边图：那页上有"立即运行"复选框，铺满图会把它压在图上，
+# 复选框自带的灰底很难看。两页用不同的图，中间把 define 换回来即可。
+#
+# 注意：这个文件被 !include 得很靠前，LogicLib/WinMessages/MUI 的变量声明
+# 都还没出现。所以函数定义必须放在 !insertmacro MUI_PAGE_WELCOME 之后
+# （那一步才声明 $mui.WelcomePage.* 这些变量），宏也一律用数值字面量。
+
+!macro customWelcomePage
+  # 欢迎页和完成页共用同一个 define，但两页是分别插入的，
+  # 所以这里换掉、插完欢迎页再换回去，完成页拿到的还是窄图。
+  !undef MUI_WELCOMEFINISHPAGE_BITMAP
+  !define MUI_WELCOMEFINISHPAGE_BITMAP "${BUILD_RESOURCES_DIR}\installerWelcome.bmp"
+
+  # MUI_PAGE_WELCOME 会自己消费并清除这个 define，插完不必再 !undef
+  !define MUI_PAGE_CUSTOMFUNCTION_SHOW cpuWelcomeShow
+  !insertmacro MUI_PAGE_WELCOME
+
+  !undef MUI_WELCOMEFINISHPAGE_BITMAP
+  !define MUI_WELCOMEFINISHPAGE_BITMAP "${BUILD_RESOURCES_DIR}\installerSidebar.bmp"
+
+Function cpuWelcomeShow
+  # 文字已经画进图里，MUI 自带的标题和正文控件留着会叠在图上。0 = SW_HIDE
+  ShowWindow $mui.WelcomePage.Title 0
+  ShowWindow $mui.WelcomePage.Text 0
+
+  # 内页对话框的实际客户区尺寸。不写死 499×317：高 DPI 下对话框会被系统放大
+  System::Call "*(i,i,i,i) p .R2"
+  System::Call "user32::GetClientRect(p $mui.WelcomePage, p $R2)"
+  System::Call "*$R2(i,i,i .R3,i .R4)"
+  System::Free $R2
+
+  # 把图控件从侧边条尺寸放大到整个内页。0x0014 = SWP_NOZORDER | SWP_NOACTIVATE
+  System::Call "user32::SetWindowPos(p $mui.WelcomePage.Image, p 0, i 0, i 0, i $R3, i $R4, i 0x0014)"
+
+  # 关键一步：MUI 在建页时已经把位图压到侧边条尺寸（NSD_SetStretchedImage），
+  # 直接放大控件等于把压烂的小图再拉回来，汉字笔画全花。
+  # 这里按控件的新尺寸从磁盘重新加载原图，源尺寸与目标几乎 1:1，不损画质。
+  # 0x0010 = LR_LOADFROMFILE；0x0172 = STM_SETIMAGE；wParam 0 = IMAGE_BITMAP
+  StrCpy $R5 "$PLUGINSDIR\modern-wizard.bmp"
+  System::Call "user32::LoadImage(p 0, t R5, i 0, i R3, i R4, i 0x0010) p .R6"
+  IntCmp $R6 0 cpuWelcomeDone
+  SendMessage $mui.WelcomePage.Image 0x0172 0 $R6
+  # 旧图句柄仍由 MUI 在页面销毁时释放；新句柄随安装器进程退出回收
+
+  cpuWelcomeDone:
+FunctionEnd
+!macroend

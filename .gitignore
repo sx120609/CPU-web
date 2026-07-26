@@ -12,6 +12,11 @@ android/**/build/
 !web/public/downloads/
 !web/public/downloads/CPU-Web.apk
 !web/public/downloads/CPU-Web-V*.apk
+
+# desktop/build 不是构建产物，是打包用的输入：图标源图、NSIS 脚本、向导美术资源。
+# 被上面的 build/ 一并挡掉过，结果是克隆下来根本打不出安装包。
+!desktop/build/
+desktop/release/
 !web/public/downloads/CPU-Web-Android-V*.apk
 *.aab
 
@@ -66,3 +71,8 @@ coverage/
 .nyc_output/
 desktop/release/药大刷课助手 Setup 0.1.0.exe
 desktop/release/win-unpacked/药大刷课助手.exe
+
+# 生成物用 npm run assets:installer 重建，但也提交一份，
+# 保证打包不依赖能不能跑起离屏渲染器。
+desktop/build/.installer-assets.tmp.html
+desktop/build/.header.tmp.html

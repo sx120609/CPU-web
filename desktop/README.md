@@ -28,8 +28,9 @@
 
 配套约束：
 
-- 全应用只接受 `https`。`http`、`file`、`data`、`javascript` 等一律拒绝。
-- 白名单以外的地址交给系统默认浏览器，不在应用内打开。
+- 注入与特权桥只接受 `https`。`file`、`data`、`javascript` 等一律拒绝。
+- **边界靠"没有地址栏"守，不靠拦截跳转。** 用户没有任何主动输网址的入口，只能顺着白名单站点上的链接走；因此页面点出来的链接一律留在应用里开新标签，不再踢去系统浏览器。早先那版会踢，结果是超星登录链路中间有一跳是明文 `http`，整个登录被弹到系统 Chrome 里，会话断在半路。
+- 留在应用里只决定"在哪儿渲染"，不放宽任何能力：`injectableHosts` 之外拿不到用户脚本，也拿不到特权桥。
 - `will-navigate`、`will-redirect`、`setWindowOpenHandler` 三处都走同一套判定，并通过 `web-contents-created` 对每一个 webContents 生效，不依赖逐窗口挂载。
 - 特权 preload 只挂在应用自己创建的学习窗口上。
 - `webview` 标签禁用，权限请求默认全部拒绝（只放行视频全屏）。
@@ -150,11 +151,18 @@ npm run dist:win
 
 只产出一个 Windows x64 安装包，写入 `release/`。不做 portable、不做 macOS —— 用户群是校内学生，多给一种格式只会增加"该下哪个"的困惑。
 
-安装器按非技术用户配置：
+欢迎页不是 MUI 的默认样子。默认向导是左边一条 164px 窄图、右边一片白底加两行系统字 —— 和所有别的向导长得一样。[build/installer.nsh.source](build/installer.nsh.source) 把图控件放大到整个内页对话框，隐藏 MUI 自带的标题与正文控件（文案已经画进图里），再按控件的新尺寸从磁盘重新 `LoadImage` 一次。
+
+最后这一步是必需的：MUI 建页时已经用 `NSD_SetStretchedImage` 把位图压到侧边条尺寸，直接放大控件等于把压烂的小图再拉回来，汉字笔画会糊成一团。同理 [scripts/build-installer-assets.cjs](scripts/build-installer-assets.cjs) 里欢迎图落盘时降到 1x —— NSIS 拉伸走的是最近邻，2x 图被它硬砍一半会把细笔画直接抽掉。
+
+许可页去掉了：使用边界改在首启引导里讲，那里能好好排版，而不是塞进一个滚动文本框。
+
+安装器其余部分按非技术用户配置：
 
 | 配置 | 值 | 理由 |
 |---|---|---|
-| `oneClick` | `true` | 双击即装，不问装到哪、不显示向导 |
+| `oneClick` | `false` | 要有向导才谈得上"好看"——`true` 是全程无界面，装完什么都没看见 |
+| `allowToChangeInstallationDirectory` | `false` | 保留向导但不问装到哪，三步走完：欢迎 → 装 → 完成 |
 | `perMachine` + `allowElevation` | `false` | 装到当前用户目录，全程不弹 UAC |
 | `runAfterFinish` | `true` | 装完直接打开，省一步 |
 | `installerLanguages` / `electronLanguages` | 仅 `zh_CN` | 安装包体积小一些，界面不会串英文 |

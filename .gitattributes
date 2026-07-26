@@ -1,3 +1,7 @@
 # Auto detect text files and perform LF normalization
 * text=auto
 *.sh text eol=lf
+
+# 随包分发的用户脚本依赖：内容哈希要逐字节对得上，
+# 不能让 text=auto 在检出时把 LF 换成 CRLF（换了 vendor:verify 必然失败）。
+desktop/assets/vendor/** -text
