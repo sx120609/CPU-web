@@ -320,10 +320,6 @@ export type AdminOverview = {
   harmonyClients: number;
   feeds: number;
   boards: number;
-  forumEligibleUsers: number;
-  forumEnabledUsers: number;
-  forumPendingUsers: number;
-  forumEnabledToday: number;
   dailyActiveSeries: Array<{
     date: string;
     count: number;
@@ -629,7 +625,6 @@ export const adminApi = {
       q?: string;
       role?: string;
       status?: string;
-      forumEnabled?: string;
       loginClient?: string;
       usedClient?: string;
       usedIosClient?: string;

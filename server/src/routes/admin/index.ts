@@ -290,7 +290,6 @@ adminRouter.get("/users", userDirectoryAccess, async (req, res, next) => {
     const usedIosClient = req.query.usedIosClient === "1" ? true : req.query.usedIosClient === "0" ? false : undefined;
     const usedAndroidClient = req.query.usedAndroidClient === "1" ? true : req.query.usedAndroidClient === "0" ? false : undefined;
     const usedHarmonyClient = req.query.usedHarmonyClient === "1" ? true : req.query.usedHarmonyClient === "0" ? false : undefined;
-    const forumEnabled = req.query.forumEnabled === "1" ? true : req.query.forumEnabled === "0" ? false : undefined;
     const loginFrom = String(req.query.loginFrom ?? "").trim();
     const loginTo = String(req.query.loginTo ?? "").trim();
     const sort = String(req.query.sort ?? "login-desc");
@@ -319,7 +318,6 @@ adminRouter.get("/users", userDirectoryAccess, async (req, res, next) => {
     if (typeof usedIosClient === "boolean") where.usedIosClient = usedIosClient;
     if (typeof usedAndroidClient === "boolean") where.usedAndroidClient = usedAndroidClient;
     if (typeof usedHarmonyClient === "boolean") where.usedHarmonyClient = usedHarmonyClient;
-    if (typeof forumEnabled === "boolean") where.forumEnabled = forumEnabled;
     if (loginFrom || loginTo) {
       const loginAtFilter: any = where.lastLoginAt && typeof where.lastLoginAt === "object" ? where.lastLoginAt : {};
       if (loginFrom) {
@@ -1754,7 +1752,6 @@ adminRouter.get("/sponsor-logs", adminOnly, async (req, res, next) => {
 adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
   try {
     const { start: todayStart, end: todayEnd } = getChinaDayRange();
-    const regularUserWhere = { role: "user" as const };
     await backfillAdminDailyLoginsFromLastLogin(30).catch((error) => {
       console.warn("[admin-stats] failed to backfill daily logins", error);
     });
@@ -1772,9 +1769,6 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       androidClients,
       harmonyClients,
       todayLogins,
-      forumEligibleUsers,
-      forumEnabledUsers,
-      forumEnabledToday,
       dailyActiveSeries,
     ] = await Promise.all([
       prisma.user.count(),
@@ -1791,18 +1785,8 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       prisma.user.count({ where: { usedAndroidClient: true } }),
       prisma.user.count({ where: { usedHarmonyClient: true } }),
       prisma.user.count({ where: { lastLoginAt: { gte: todayStart, lt: todayEnd } } }),
-      prisma.user.count({ where: regularUserWhere }),
-      prisma.user.count({ where: { ...regularUserWhere, forumEnabled: true } }),
-      prisma.user.count({
-        where: {
-          ...regularUserWhere,
-          forumEnabled: true,
-          forumEnabledAt: { gte: todayStart, lt: todayEnd },
-        },
-      }),
       listAdminDailyLoginSeries(30),
     ]);
-    const forumPendingUsers = Math.max(0, forumEligibleUsers - forumEnabledUsers);
     const dailyActiveToday = dailyActiveSeries[dailyActiveSeries.length - 1];
     if (dailyActiveToday) {
       dailyActiveToday.count = Math.max(dailyActiveToday.count, todayLogins);
@@ -1820,10 +1804,6 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       androidClients,
       harmonyClients,
       todayLogins,
-      forumEligibleUsers,
-      forumEnabledUsers,
-      forumPendingUsers,
-      forumEnabledToday,
       dailyActiveSeries,
     });
   } catch (e) { next(e); }

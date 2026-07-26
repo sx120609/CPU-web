@@ -368,13 +368,6 @@ export const useAuthStore = defineStore("auth", {
       return u;
     },
 
-    async enableForumAccess(confirmText: string) {
-      const user = await authApi.enableForumAccess(confirmText);
-      this.user = user;
-      this.sessionVersion += 1;
-      return user;
-    },
-
     async logout() {
       try { await authApi.logout(); } catch { /* ignore */ }
       const wasLoggedIn = this.isLoggedIn;

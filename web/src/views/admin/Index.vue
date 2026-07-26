@@ -34,11 +34,6 @@
         <div class="ov-sub">{{ overview.banned || 0 }} 封禁 · {{ overview.todayLogins || 0 }} 今日登录</div>
       </div>
       <div class="ov-card">
-        <div class="ov-num">{{ overview.forumEnabledUsers }} / {{ overview.forumEligibleUsers }}</div>
-        <div class="ov-lbl">论坛已开启</div>
-        <div class="ov-sub">{{ overview.forumPendingUsers || 0 }} 未开启 · {{ overview.forumEnabledToday || 0 }} 今日新开</div>
-      </div>
-      <div class="ov-card">
         <div class="ov-num">{{ overview.topics }}</div>
         <div class="ov-lbl">帖子</div>
         <div class="ov-sub">{{ overview.todayTopics }} 今日新帖 · {{ overview.hiddenTopics || 0 }} 已隐</div>

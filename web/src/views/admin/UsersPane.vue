@@ -13,10 +13,6 @@
           <el-option label="banned" value="banned" />
           <el-option label="muted" value="muted" />
         </el-select>
-        <el-select v-model="forumEnabled" clearable placeholder="论坛开启" class="filter-select" @change="applyFilters">
-          <el-option label="已开启" value="1" />
-          <el-option label="未开启" value="0" />
-        </el-select>
         <el-select v-model="usedClient" clearable placeholder="客户端" class="filter-select" @change="applyFilters">
           <el-option label="iOS 客户端" value="ios" />
           <el-option label="安卓客户端" value="android" />
@@ -126,16 +122,6 @@
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="论坛开启" width="160">
-        <template #default="{ row }">
-          <div class="forum-info">
-            <el-tag :type="row.forumEnabled ? 'success' : 'info'" size="small" effect="plain">
-              {{ row.forumEnabled ? "已开启" : "未开启" }}
-            </el-tag>
-            <span class="forum-time">{{ row.forumEnabledAt ? fmtDate(row.forumEnabledAt) : "未确认须知" }}</span>
-          </div>
-        </template>
-      </el-table-column>
       <el-table-column label="注册时间" width="150">
         <template #default="{ row }"><span class="muted-date">{{ fmtDate(row.createdAt) }}</span></template>
       </el-table-column>
@@ -194,9 +180,6 @@
           <el-tag v-if="row.status === 'muted' && row.mutedUntil" type="warning" size="small" effect="plain">
             至 {{ fmtDate(row.mutedUntil, "MM-DD HH:mm") }}
           </el-tag>
-          <el-tag :type="row.forumEnabled ? 'success' : 'info'" size="small" effect="plain">
-            {{ row.forumEnabled ? "论坛已开启" : "论坛未开启" }}
-          </el-tag>
           <el-tag :type="clientTagType(row.lastLoginClient)" size="small" effect="plain">
             {{ clientLabel(row.lastLoginClient) }}
           </el-tag>
@@ -206,7 +189,6 @@
         </div>
         <div class="mobile-meta">
           <span>登录：{{ row.lastLoginAt ? fmtDate(row.lastLoginAt) : "未登录" }}</span>
-          <span>论坛：{{ row.forumEnabledAt ? fmtDate(row.forumEnabledAt) : row.forumEnabled ? "已开启" : "未确认须知" }}</span>
           <span>注册：{{ fmtDate(row.createdAt) }}</span>
           <span>信誉：{{ row.reputation }} · {{ row.reputationLevel?.name || "Lv.1" }}</span>
           <span>{{ row.postCount }} 帖 / {{ row.replyCount }} 回</span>
@@ -402,7 +384,6 @@ let userLoadSeq = 0;
 const q = ref("");
 const role = ref("");
 const status = ref("");
-const forumEnabled = ref("");
 const usedClient = ref("");
 const sort = ref("login-desc");
 const loginRange = ref<[string, string] | [] | null>([]);
@@ -485,7 +466,6 @@ async function reload() {
       q: q.value,
       role: role.value,
       status: status.value,
-      forumEnabled: forumEnabled.value || undefined,
       usedClient: usedClient.value || undefined,
       loginFrom: Array.isArray(loginRange.value) && loginRange.value.length === 2 ? loginRange.value[0] : undefined,
       loginTo: Array.isArray(loginRange.value) && loginRange.value.length === 2 ? loginRange.value[1] : undefined,
@@ -523,7 +503,6 @@ function resetFilters() {
   q.value = "";
   role.value = "";
   status.value = "";
-  forumEnabled.value = "";
   usedClient.value = "";
   sort.value = "login-desc";
   loginRange.value = [];
@@ -913,8 +892,6 @@ async function deleteUser(row: any) {
 .anon-sub { font-size: 12px; color: var(--cpu-text-secondary); }
 .content-count,
 .muted-date { font-size: 12px; color: var(--cpu-text-secondary); }
-.forum-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.forum-time { font-size: 12px; color: var(--cpu-text-secondary); }
 .action-trigger { justify-content: center; }
 .more-icon { margin-left: 2px; transform: rotate(90deg); }
 .admin-table { display: block; }
