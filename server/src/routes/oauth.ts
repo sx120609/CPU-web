@@ -51,12 +51,29 @@ const revokeBodySchema = z.object({
 
 const OAUTH_AI_INSTRUCTIONS = "";
 
+const inputImageSchema = z.object({
+  type: z.literal("input_image"),
+  image_url: z.string().max(8 * 1024 * 1024).refine((value) => {
+    if (/^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/.test(value)) return true;
+    try {
+      const url = new URL(value);
+      return url.protocol === "http:" || url.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, "必须是图片 Data URL 或 http(s) URL"),
+  detail: z.enum(["low", "high", "auto", "original"]).optional(),
+}).strict();
+
 const responsesInputContentSchema = z.union([
   z.string().max(32_000),
-  z.array(z.object({
-    type: z.literal("input_text"),
-    text: z.string().max(32_000),
-  }).strict()).min(1).max(100),
+  z.array(z.union([
+    z.object({
+      type: z.literal("input_text"),
+      text: z.string().max(32_000),
+    }).strict(),
+    inputImageSchema,
+  ])).min(1).max(100),
 ]);
 
 const responsesBodySchema = z.object({
@@ -253,7 +270,10 @@ oauthRouter.post("/v1/responses", securityRateLimit("oauth-ai", 20, 60_000), asy
       role: message.role,
       content: typeof message.content === "string"
         ? message.content
-        : message.content.map((part) => part.text).join(""),
+        : message.content
+          .filter((part) => part.type === "input_text")
+          .map((part) => part.text)
+          .join(""),
     }));
     if (isCampusAssistantConversationRestricted(messages)) {
       throw Errors.forbidden("这个话题不适合在本站展开");
@@ -340,7 +360,15 @@ function buildOAuthAiRequestBody(body: z.infer<typeof responsesBodySchema>, mode
         role: message.role,
         content: typeof message.content === "string"
           ? message.content
-          : message.content.map((part) => part.text).join(""),
+          : message.content.map((part) => part.type === "input_text"
+            ? { type: "text", text: part.text }
+            : {
+                type: "image_url",
+                image_url: {
+                  url: part.image_url,
+                  ...(part.detail ? { detail: part.detail } : {}),
+                },
+              }),
       })),
     ],
     ...(body.temperature === undefined ? {} : { temperature: body.temperature }),
