@@ -355,7 +355,7 @@ Content-Type: application/json
 }
 ```
 
-纯文本也支持简写形式：`"content": "你好"`，服务端会在发送到 Responses API 前自动转换为 `input_text` 内容项。图片支持 `data:image/jpeg|png|webp|gif;base64,...`、`http://` 和 `https://` URL。
+纯文本也支持简写形式：`"content": "你好"`，服务端会在发送到 Responses API 前自动转换为 `input_text` 内容项。图片支持 `data:image/jpeg|png|webp|gif;base64,...`、`http://` 和 `https://` URL；HTTP URL 会在转发前自动规范化编码。
 
 需要 `ai` scope。每次请求最多消耗 1 次当日额度，当前按请求次数计费，不按 Token 数量、字符数或响应长度计费：
 

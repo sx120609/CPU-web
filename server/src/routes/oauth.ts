@@ -51,17 +51,25 @@ const revokeBodySchema = z.object({
 
 const OAUTH_AI_INSTRUCTIONS = "";
 
+function normalizeOAuthImageUrl(value: string) {
+  if (/^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/.test(value)) return value;
+  const url = new URL(value.trim());
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("必须是图片 Data URL 或 http(s) URL");
+  }
+  return url.href;
+}
+
 const inputImageSchema = z.object({
   type: z.literal("input_image"),
-  image_url: z.string().max(8 * 1024 * 1024).refine((value) => {
-    if (/^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/.test(value)) return true;
+  image_url: z.string().max(8 * 1024 * 1024).transform((value, ctx) => {
     try {
-      const url = new URL(value);
-      return url.protocol === "http:" || url.protocol === "https:";
+      return normalizeOAuthImageUrl(value);
     } catch {
-      return false;
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "必须是图片 Data URL 或 http(s) URL" });
+      return z.NEVER;
     }
-  }, "必须是图片 Data URL 或 http(s) URL"),
+  }),
   detail: z.enum(["low", "high", "auto", "original"]).optional(),
 }).strict();
 
