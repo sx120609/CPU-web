@@ -1,0 +1,56 @@
+{
+  "note": "由 npm run vendor:deps 生成。sha256 是文件内容的哈希，文件名是依赖 URL 的哈希前 40 位。",
+  "generatedFrom": "assets/userscripts/monkey.js",
+  "dependencies": {
+    "https://cdn.staticfile.org/vue/3.3.4/vue.global.prod.js": {
+      "file": "4103b0b3f7d6f8d5a52ab581f91fb602f474df05.txt",
+      "sha256": "628497cb69df7b1d31236479cad68c9bb3f265060afd5506a0c004b394dfa47e",
+      "bytes": 131294
+    },
+    "https://cdn.staticfile.org/vue-demi/0.14.0/index.iife.min.js": {
+      "file": "4667a4a96b5a4b3554e936cad67274406d0caa57.txt",
+      "sha256": "02016d6e5f8f78eaf3d3acd20fe050441d31778f879c830791929f4590cdde0f",
+      "bytes": 1636
+    },
+    "https://cdn.staticfile.org/element-plus-icons-vue/2.1.0/global.iife.min.js": {
+      "file": "b414f6adcfb4e6aa706b53821f242bfba1bb8fec.txt",
+      "sha256": "f623e282cdeec446336d967da80899fbeb81b717d0fd7b8b502768795c7434e4",
+      "bytes": 228811
+    },
+    "https://cdn.staticfile.org/pinia/2.1.6/pinia.iife.prod.js": {
+      "file": "4c089ce0c8d2460afe44305c9ce0bf54ff9e273f.txt",
+      "sha256": "f63344f2c4d2d1c5b180396ce2a824d9c2ed4c142282b6909285ee4511594db3",
+      "bytes": 5823
+    },
+    "https://cdn.staticfile.org/element-plus/2.3.12/index.full.min.js": {
+      "file": "1f2d2be78d3bd629467ebea9f649a6ebdc7e3ee8.txt",
+      "sha256": "341af6a49d02ddb68ae5365e79e02392720d76c41f13098c5dd2d47fc482ab1d",
+      "bytes": 926427
+    },
+    "https://cdn.staticfile.org/blueimp-md5/2.19.0/js/md5.min.js": {
+      "file": "386c8b88bea45f229900e91f19e9959b226901f6.txt",
+      "sha256": "64d7ded388c562e4bde9e58ce205e5fa01b9734fcd434d496eb7b4fbfe9b927d",
+      "bytes": 3750
+    },
+    "https://cdn.staticfile.org/jquery/3.7.1/jquery.min.js": {
+      "file": "ec2f04249bd5de50e450bbdd5df79780e67e7d96.txt",
+      "sha256": "fc9a93dd241f6b045cbff0481cf4e1901becd0e12fb45166a8f17f95823f0b1a",
+      "bytes": 87533
+    },
+    "https://cdn.jsdelivr.net/npm/jquery.nicescroll@3.7.6/jquery.nicescroll.min.js": {
+      "file": "248e20067209f2cc661f8fb924724d0ce8897be3.txt",
+      "sha256": "c1718514644910aa6d1334dd106ebbbaed2c955677b4ec2a88944c05a398ed51",
+      "bytes": 60335
+    },
+    "https://cdn.staticfile.org/element-plus/2.3.12/index.css": {
+      "file": "0c35ceb6961e636c3e4b8c66a510fe071821698b.txt",
+      "sha256": "27e508fc57b5446b205572b622f98dd1bff8c871919e74727f3061a5755db8de",
+      "bytes": 324795
+    },
+    "https://www.forestpolice.org/ttf/2.0/table.json": {
+      "file": "7ca7baa134a89728b3574d70a00feddc77a603db.txt",
+      "sha256": "fbc6ae3c795a46ca2bd0994e68e7cb90ca4d9a046f335512657760d9a4fdf875",
+      "bytes": 355427
+    }
+  }
+}

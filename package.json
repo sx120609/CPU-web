@@ -17,7 +17,12 @@
     "typecheck": "npm run build --prefix server && npm run type-check --prefix web",
     "start": "concurrently -k -n server,voicehub -c blue,magenta \"npm run start --prefix server\" \"npm run start:cpu --prefix voicehub\"",
     "start:server": "npm run start --prefix server",
-    "weiwall": "npm run weiwall --prefix server --"
+    "weiwall": "npm run weiwall --prefix server --",
+    "desktop:install": "npm install --prefix desktop",
+    "desktop:dev": "npm run start --prefix desktop",
+    "desktop:build": "npm run build --prefix desktop",
+    "desktop:test": "npm run test --prefix desktop",
+    "desktop:dist:win": "npm run dist:win --prefix desktop"
   },
   "devDependencies": {
     "concurrently": "^9.0.1"

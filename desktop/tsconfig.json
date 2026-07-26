@@ -1,18 +1,14 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": "dist",
+    "rootDir": ".",
     "strict": true,
-    "jsx": "preserve",
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "resolveJsonModule": true,
-    "useDefineForClassFields": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["node"],
-    "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] }
+    "types": ["node", "electron"]
   },
-  "include": ["src/**/*", "electron/**/*", "env.d.ts"]
+  "include": ["electron/**/*.ts"]
 }

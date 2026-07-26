@@ -7,6 +7,7 @@
 - `voicehub/`：药苑之声 Nuxt 全栈子应用（完整保留 VoiceHub 点歌系统）
 - `android/`：Android WebView 壳与桌面课表小组件
 - `harmony/`：HarmonyOS WebView 壳与 JS Bridge
+- `desktop/`：Windows / macOS 桌面端（Electron，OAuth2 登录 + 受控学习平台窗口）
 
 仓库地址：[https://github.com/sx120609/CPU-web](https://github.com/sx120609/CPU-web)
 
@@ -69,6 +70,7 @@
 CPU-web/
 ├── android/                 # Android WebView 壳 + 课表桌面小组件
 ├── harmony/                 # HarmonyOS Stage 工程 + JS Bridge
+├── desktop/                 # Electron 桌面端（不参与主站部署链路，单独构建）
 ├── server/
 │   ├── prisma/              # Prisma schema、迁移、种子数据
 │   ├── scripts/             # 调试脚本与数据修复脚本
