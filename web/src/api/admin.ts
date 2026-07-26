@@ -60,6 +60,11 @@ export type SiteConfig = {
   assistantDailyQuotas: Array<{ level: number; quota: number }>;
 };
 
+export type CampusAssistantQuotaResetResult = {
+  dateKey: string;
+  resetUsers: number;
+};
+
 export type MediaStorageConfig = {
   mediaStorageProvider: "local" | "onedrive-cn";
   mediaStorageImageProvider: "local" | "onedrive-cn";
@@ -771,6 +776,8 @@ export const adminApi = {
     assistantDailyQuotas?: Array<{ level: number; quota: number }>;
   }) =>
     request.patch<SiteConfig>("/admin/site-config", patch),
+  resetCampusAssistantDailyQuota: () =>
+    request.post<CampusAssistantQuotaResetResult>("/admin/campus-assistant/quota/reset-today", {}),
   aiReviewLogs: (params: { kind?: string; status?: string; page?: number; size?: number }, options?: RequestOptions) =>
     request.get<{ page: number; size: number; total: number; list: AiReviewLogRow[] }>("/admin/ai-review/logs", params, options),
   sweepForumImages: () =>

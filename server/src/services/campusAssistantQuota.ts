@@ -118,3 +118,18 @@ export async function refundCampusAssistantQuota(userId: number, dateKey: string
     data: { used: { decrement: 1 } },
   });
 }
+
+export async function resetCampusAssistantDailyUsage(date = new Date()) {
+  const dateKey = campusAssistantDateKey(date);
+  const result = await prisma.campusAssistantDailyUsage.updateMany({
+    where: {
+      dateKey,
+      used: { gt: 0 },
+    },
+    data: { used: 0 },
+  });
+  return {
+    dateKey,
+    resetUsers: result.count,
+  };
+}

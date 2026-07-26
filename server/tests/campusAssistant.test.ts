@@ -18,6 +18,7 @@ import {
 import {
   campusAssistantDateKey,
   nextCampusAssistantResetAt,
+  resetCampusAssistantDailyUsage,
   resolveCampusAssistantDailyQuota,
   resolveCampusAssistantQuotaLevel,
 } from "../src/services/campusAssistantQuota";
@@ -189,6 +190,35 @@ test("assistant quota settings are restored from the database after a service re
     }]) as typeof siteSetting.findMany;
     await loadFeatures();
     siteSetting.findMany = originalFindMany;
+  }
+});
+
+test("resetting assistant quota clears only today's used counts", async () => {
+  const dailyUsage = prisma.campusAssistantDailyUsage;
+  const originalUpdateMany = dailyUsage.updateMany;
+  let updateArgs: unknown;
+
+  try {
+    dailyUsage.updateMany = (async (args: unknown) => {
+      updateArgs = args;
+      return { count: 4 };
+    }) as typeof dailyUsage.updateMany;
+
+    const result = await resetCampusAssistantDailyUsage(new Date("2026-07-25T16:00:01.000Z"));
+
+    assert.deepEqual(updateArgs, {
+      where: {
+        dateKey: "2026-07-26",
+        used: { gt: 0 },
+      },
+      data: { used: 0 },
+    });
+    assert.deepEqual(result, {
+      dateKey: "2026-07-26",
+      resetUsers: 4,
+    });
+  } finally {
+    dailyUsage.updateMany = originalUpdateMany;
   }
 });
 

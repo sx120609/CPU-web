@@ -109,6 +109,7 @@ import {
 import { getJwxtAgentState, requestJwxtAgent } from "../../services/jwxtAgentGateway";
 import { getQueryAgentPoolSnapshot } from "../../services/jwxtAgentRemote";
 import { getSsoLoginPoolSnapshot } from "../../services/ssoLoginPool";
+import { resetCampusAssistantDailyUsage } from "../../services/campusAssistantQuota";
 
 export const adminRouter = Router();
 const DATABASE_RESTORE_UPLOAD_DIR = path.join(tmpdir(), "cpu-web-db-restore-upload");
@@ -2231,6 +2232,14 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       next(Errors.badRequest(e.message));
       return;
     }
+    next(e);
+  }
+});
+
+adminRouter.post("/campus-assistant/quota/reset-today", adminOnly, async (_req, res, next) => {
+  try {
+    ok(res, await resetCampusAssistantDailyUsage());
+  } catch (e) {
     next(e);
   }
 });

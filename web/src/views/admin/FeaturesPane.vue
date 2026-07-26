@@ -166,6 +166,21 @@
                 <el-input-number v-model="tier.quota" :min="0" :max="9999" />
               </div>
             </div>
+            <div class="quota-reset-row">
+              <div>
+                <strong>重置今日已用额度</strong>
+                <span>清零所有用户今天已使用的次数，不会修改上方各等级的每日额度。</span>
+              </div>
+              <el-button
+                type="danger"
+                plain
+                :loading="resettingAssistantQuotas"
+                :disabled="resettingAssistantQuotas || configLoading"
+                @click="resetAssistantDailyUsage"
+              >
+                重置所有人今日额度
+              </el-button>
+            </div>
           </div>
 
           <div class="actions-row">
@@ -278,6 +293,7 @@ const assistantDailyQuotas = ref([
   { level: 4, quota: 50 },
   { level: 5, quota: 80 },
 ]);
+const resettingAssistantQuotas = ref(false);
 const features = reactive<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>({
   forum: true, market: true, coursereview: true, electric: true, sponsor: true,
 });
@@ -485,6 +501,32 @@ async function saveTrustConfig() {
   }
 }
 
+async function resetAssistantDailyUsage() {
+  if (resettingAssistantQuotas.value) return;
+  const confirmed = await ElMessageBox.confirm(
+    "这会把所有用户今天已使用的拾间 AI 次数清零，用户会立即恢复完整额度。此操作不可撤销。",
+    "重置今日 AI 额度",
+    {
+      type: "warning",
+      confirmButtonText: "确认重置",
+      cancelButtonText: "取消",
+    },
+  ).then(() => true).catch(() => false);
+  if (!confirmed) return;
+
+  resettingAssistantQuotas.value = true;
+  try {
+    const result = await adminApi.resetCampusAssistantDailyQuota();
+    ElMessage.success(
+      result.resetUsers > 0
+        ? `已重置 ${result.resetUsers} 名用户的今日额度`
+        : "今天暂无已使用的额度",
+    );
+  } finally {
+    resettingAssistantQuotas.value = false;
+  }
+}
+
 async function toggle(key: FKey, on: boolean) {
   if (pendingKey.value !== null || loading.value || loadError.value) {
     features[key] = !on;
@@ -656,6 +698,31 @@ function requestMessage(error: unknown) {
   color: var(--cpu-text);
   font-size: 13px;
 }
+.quota-reset-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--cpu-border-soft);
+}
+.quota-reset-row > div {
+  min-width: 0;
+}
+.quota-reset-row strong,
+.quota-reset-row span {
+  display: block;
+}
+.quota-reset-row strong {
+  color: var(--cpu-text);
+  font-size: 13px;
+}
+.quota-reset-row span {
+  margin-top: 4px;
+  color: var(--cpu-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
 .section-toggle,
 .sub-toggle {
   width: 100%;
@@ -825,6 +892,13 @@ function requestMessage(error: unknown) {
   .level-row {
     align-items: stretch;
     flex-direction: column;
+  }
+  .quota-reset-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .quota-reset-row :deep(.el-button) {
+    width: 100%;
   }
   .feature-head :deep(.el-switch),
   .ai-row--switch :deep(.el-switch),
