@@ -300,12 +300,14 @@ let cloudSyncTimer = 0;
 let pendingCloudSession: ConversationSession | null = null;
 let firstRouteSync = true;
 let conversationAnchorScrollTop: number | null = null;
+let conversationAnchorBottomGap: number | null = null;
 let conversationAnchorLockUntil = 0;
 let conversationAnchorFrame = 0;
 let conversationAnchorReleaseTimer = 0;
 const composerFocused = ref(false);
 let conversationAnchorRestoring = false;
 const conversationAnchorTimers: number[] = [];
+const CONVERSATION_BOTTOM_ANCHOR_THRESHOLD = 36;
 
 const welcomePrompts = ["怎么查宿舍电费？", "打开药苑之声", "我的课表在哪里？"];
 const assistantQuotaExhausted = computed(() => (
@@ -497,7 +499,7 @@ function captureConversationAnchor() {
   if (!isMobileComposerViewport()) return;
   const element = conversationRef.value;
   if (!element) return;
-  conversationAnchorScrollTop = element.scrollTop;
+  rememberConversationAnchor(element);
 }
 
 function handleComposerFocus() {
@@ -531,7 +533,17 @@ function handleConversationScroll() {
     || performance.now() < conversationAnchorLockUntil
   ) return;
   const element = conversationRef.value;
-  if (element) conversationAnchorScrollTop = element.scrollTop;
+  if (element) rememberConversationAnchor(element);
+}
+
+function rememberConversationAnchor(element: HTMLElement) {
+  const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+  const scrollTop = Math.max(0, Math.min(element.scrollTop, maxScrollTop));
+  const bottomGap = Math.max(0, maxScrollTop - scrollTop);
+  conversationAnchorScrollTop = scrollTop;
+  conversationAnchorBottomGap = bottomGap <= CONVERSATION_BOTTOM_ANCHOR_THRESHOLD
+    ? bottomGap
+    : null;
 }
 
 function scheduleConversationAnchorRestore() {
@@ -551,7 +563,13 @@ function restoreConversationAnchor() {
       if (!element || conversationAnchorScrollTop === null) return;
       conversationAnchorRestoring = true;
       const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
-      element.scrollTop = Math.min(conversationAnchorScrollTop, maxScrollTop);
+      const targetScrollTop = conversationAnchorBottomGap === null
+        ? Math.min(conversationAnchorScrollTop, maxScrollTop)
+        : Math.max(0, maxScrollTop - conversationAnchorBottomGap);
+      element.scrollTop = targetScrollTop;
+      if (conversationAnchorBottomGap !== null) {
+        conversationAnchorScrollTop = targetScrollTop;
+      }
       requestAnimationFrame(() => {
         conversationAnchorRestoring = false;
       });
@@ -562,6 +580,7 @@ function restoreConversationAnchor() {
 function releaseConversationAnchor() {
   composerFocused.value = false;
   conversationAnchorScrollTop = null;
+  conversationAnchorBottomGap = null;
   conversationAnchorLockUntil = 0;
   conversationAnchorRestoring = false;
   window.clearTimeout(conversationAnchorReleaseTimer);
@@ -686,11 +705,15 @@ function scrollConversation() {
       const element = conversationRef.value;
       if (!element) return;
       const lastMessage = element.querySelector<HTMLElement>(".message:last-of-type");
-      element.scrollTop = lastMessage
+      const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+      const lastMessageScrollTop = lastMessage
         ? Math.max(0, lastMessage.offsetTop + lastMessage.offsetHeight - element.clientHeight + 12)
         : element.scrollHeight;
+      element.scrollTop = composerFocused.value && conversationAnchorBottomGap !== null
+        ? Math.max(0, maxScrollTop - conversationAnchorBottomGap)
+        : lastMessageScrollTop;
       if (composerFocused.value) {
-        conversationAnchorScrollTop = element.scrollTop;
+        rememberConversationAnchor(element);
       }
     });
   });
