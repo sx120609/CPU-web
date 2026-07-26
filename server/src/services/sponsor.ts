@@ -15,6 +15,7 @@ export type SponsorConfig = {
   maxAmount: string;
   wallEnabled: boolean;
   allowMessage: boolean;
+  assistantPointsPerYuan: number;
 };
 
 const DEFAULT_CONFIG: SponsorConfig = {
@@ -25,6 +26,7 @@ const DEFAULT_CONFIG: SponsorConfig = {
   maxAmount: "9999.00",
   wallEnabled: true,
   allowMessage: true,
+  assistantPointsPerYuan: 1,
 };
 
 function clampCents(value: number, min: number, max: number) {
@@ -63,6 +65,10 @@ function normalizeConfig(input: Partial<SponsorConfig> | null | undefined): Spon
     maxAmount: amountCentsToMoney(maxCents),
     wallEnabled: raw.wallEnabled ?? DEFAULT_CONFIG.wallEnabled,
     allowMessage: raw.allowMessage ?? DEFAULT_CONFIG.allowMessage,
+    assistantPointsPerYuan: Math.max(
+      0,
+      Math.min(10000, Math.floor(Number(raw.assistantPointsPerYuan ?? DEFAULT_CONFIG.assistantPointsPerYuan) || 0)),
+    ),
   };
 }
 
@@ -165,6 +171,7 @@ export function formatSponsorOrder(order: any) {
     payType: order.payType,
     amount: amountCentsToMoney(order.amountCents),
     amountCents: order.amountCents,
+    assistantPointsAwarded: order.assistantPointsAwarded ?? 0,
     message: order.message ?? "",
     displayMode: order.displayMode ?? "public",
     status: order.status,

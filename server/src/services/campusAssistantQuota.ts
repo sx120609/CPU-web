@@ -1,5 +1,6 @@
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
+import { refundAssistantPoint, spendAssistantPoint } from "./campusAssistantPoints";
 import { getSiteConfig } from "./siteSettings";
 import { buildUserTrustSnapshot } from "./userTrust";
 
@@ -11,8 +12,16 @@ export type CampusAssistantQuotaStatus = {
   dailyQuota: number;
   used: number;
   remaining: number;
+  points: number;
+  totalRemaining: number;
   dateKey: string;
   nextResetAt: string;
+};
+
+export type CampusAssistantQuotaReservation = {
+  source: "daily" | "points";
+  dateKey: string;
+  transactionId?: number;
 };
 
 export function campusAssistantDateKey(date = new Date()) {
@@ -42,6 +51,7 @@ async function resolveUserQuota(userId: number) {
       replyCount: true,
       forumEnabled: true,
       forumEnabledAt: true,
+      assistantPoints: true,
     },
   });
   if (!user) throw Errors.unauthorized("账号不存在或已失效，请重新登录");
@@ -51,6 +61,7 @@ async function resolveUserQuota(userId: number) {
     level,
     levelName: level === 0 ? "新账号" : trust.reputationLevel.name,
     dailyQuota: resolveCampusAssistantDailyQuota(level),
+    points: user.assistantPoints,
   };
 }
 
@@ -61,9 +72,13 @@ function buildQuotaStatus(
 ): CampusAssistantQuotaStatus {
   const normalizedUsed = Math.max(0, used);
   return {
-    ...quota,
+    level: quota.level,
+    levelName: quota.levelName,
+    dailyQuota: quota.dailyQuota,
     used: normalizedUsed,
     remaining: Math.max(0, quota.dailyQuota - normalizedUsed),
+    points: Math.max(0, quota.points),
+    totalRemaining: Math.max(0, quota.dailyQuota - normalizedUsed) + Math.max(0, quota.points),
     dateKey: campusAssistantDateKey(date),
     nextResetAt: nextCampusAssistantResetAt(date).toISOString(),
   };
@@ -81,38 +96,65 @@ export async function getCampusAssistantQuotaStatus(userId: number, date = new D
 
 export async function consumeCampusAssistantQuota(userId: number, date = new Date()) {
   const quota = await resolveUserQuota(userId);
-  if (quota.dailyQuota <= 0) {
-    throw Errors.forbidden("你当前等级暂时没有拾间 AI 额度，请联系管理员");
-  }
   const dateKey = campusAssistantDateKey(date);
-  await prisma.campusAssistantDailyUsage.upsert({
-    where: { userId_dateKey: { userId, dateKey } },
-    update: {},
-    create: { userId, dateKey, used: 0 },
-  });
-  const consumed = await prisma.campusAssistantDailyUsage.updateMany({
-    where: {
-      userId,
-      dateKey,
-      used: { lt: quota.dailyQuota },
-    },
-    data: { used: { increment: 1 } },
-  });
-  if (consumed.count !== 1) {
-    throw Errors.forbidden("今天的拾间 AI 额度已用完，明天 00:00 自动恢复");
+  if (quota.dailyQuota > 0) {
+    await prisma.campusAssistantDailyUsage.upsert({
+      where: { userId_dateKey: { userId, dateKey } },
+      update: {},
+      create: { userId, dateKey, used: 0 },
+    });
+    const consumed = await prisma.campusAssistantDailyUsage.updateMany({
+      where: {
+        userId,
+        dateKey,
+        used: { lt: quota.dailyQuota },
+      },
+      data: { used: { increment: 1 } },
+    });
+    if (consumed.count === 1) {
+      const usage = await prisma.campusAssistantDailyUsage.findUnique({
+        where: { userId_dateKey: { userId, dateKey } },
+        select: { used: true },
+      });
+      return {
+        ...buildQuotaStatus(quota, usage?.used ?? quota.dailyQuota, date),
+        reservation: { source: "daily", dateKey } satisfies CampusAssistantQuotaReservation,
+      };
+    }
   }
-  const usage = await prisma.campusAssistantDailyUsage.findUnique({
-    where: { userId_dateKey: { userId, dateKey } },
-    select: { used: true },
-  });
-  return buildQuotaStatus(quota, usage?.used ?? quota.dailyQuota, date);
+
+  const pointSpend = await spendAssistantPoint(userId);
+  if (!pointSpend) {
+    throw Errors.forbidden("今天的拾间 AI 额度和点数都已用完，日额度会在明天 00:00 自动恢复");
+  }
+  const usage = quota.dailyQuota > 0
+    ? await prisma.campusAssistantDailyUsage.findUnique({
+        where: { userId_dateKey: { userId, dateKey } },
+        select: { used: true },
+      })
+    : null;
+  return {
+    ...buildQuotaStatus({ ...quota, points: pointSpend.balance }, usage?.used ?? 0, date),
+    reservation: {
+      source: "points",
+      dateKey,
+      transactionId: pointSpend.transactionId,
+    } satisfies CampusAssistantQuotaReservation,
+  };
 }
 
-export async function refundCampusAssistantQuota(userId: number, dateKey: string) {
+export async function refundCampusAssistantQuota(
+  userId: number,
+  reservation: CampusAssistantQuotaReservation,
+) {
+  if (reservation.source === "points" && reservation.transactionId) {
+    await refundAssistantPoint(userId, reservation.transactionId);
+    return;
+  }
   await prisma.campusAssistantDailyUsage.updateMany({
     where: {
       userId,
-      dateKey,
+      dateKey: reservation.dateKey,
       used: { gt: 0 },
     },
     data: { used: { decrement: 1 } },

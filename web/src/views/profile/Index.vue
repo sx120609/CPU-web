@@ -85,6 +85,9 @@
         <div class="sponsor-copy">
           <h3 class="cpu-section-title">{{ sponsorOptions.title || "赞助本站" }}</h3>
           <p>{{ sponsorOptions.description || "赞助会通过易支付完成，成功后金额会展示在你的个人资料里。" }}</p>
+          <p v-if="sponsorOptions.assistantPointsPerYuan > 0" class="sponsor-points-hint">
+            每赞助 ¥1 可获得 {{ sponsorOptions.assistantPointsPerYuan }} 个 AI 点数。
+          </p>
           <strong>已赞助 ¥{{ formatMoney(user?.sponsorAmount) }}</strong>
           <div class="sponsor-actions">
             <el-button v-if="sponsorOptions.wallEnabled" plain @click="router.push('/sponsor-wall')">查看鸣谢墙</el-button>
@@ -416,6 +419,7 @@ const sponsorOptions = reactive<SponsorOptions>({
   description: "赞助会通过易支付完成，成功后金额会展示在你的个人资料里。",
   wallEnabled: true,
   allowMessage: true,
+  assistantPointsPerYuan: 1,
 });
 let profileLoadSeq = 0;
 let handledSponsorReturnKey = "";

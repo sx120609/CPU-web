@@ -65,6 +65,35 @@ export type CampusAssistantQuotaResetResult = {
   resetUsers: number;
 };
 
+export type AssistantPointUser = {
+  id: number;
+  username: string;
+  nickname: string;
+  avatar?: string | null;
+  assistantPoints: number;
+};
+
+export type AssistantPointLedgerRow = {
+  id: number;
+  userId: number;
+  delta: number;
+  balanceAfter: number;
+  source: "admin_grant" | "sponsor_reward" | "ai_usage" | "ai_refund";
+  reason: string;
+  referenceType?: string | null;
+  referenceId?: string | null;
+  createdAt: string;
+  user: Pick<AssistantPointUser, "id" | "username" | "nickname" | "avatar">;
+  operator?: { id: number; username: string; nickname: string } | null;
+};
+
+export type AssistantPointOverview = {
+  totalPoints: number;
+  holderCount: number;
+  transactionCount: number;
+  recent: AssistantPointLedgerRow[];
+};
+
 export type MediaStorageConfig = {
   mediaStorageProvider: "local" | "onedrive-cn";
   mediaStorageImageProvider: "local" | "onedrive-cn";
@@ -461,6 +490,7 @@ export type SponsorConfig = {
   maxAmount: string;
   wallEnabled: boolean;
   allowMessage: boolean;
+  assistantPointsPerYuan: number;
 };
 
 export type QqBotConfig = {
@@ -773,6 +803,21 @@ export const adminApi = {
     request.patch<SiteConfig>("/admin/site-config", patch),
   resetCampusAssistantDailyQuota: () =>
     request.post<CampusAssistantQuotaResetResult>("/admin/campus-assistant/quota/reset-today", {}),
+  assistantPointUsers: (params: { q?: string; size?: number }, options?: RequestOptions) =>
+    request.get<AssistantPointUser[]>("/admin/campus-assistant/points/users", params, options),
+  assistantPointOverview: (options?: RequestOptions) =>
+    request.get<AssistantPointOverview>("/admin/campus-assistant/points/overview", undefined, options),
+  grantAssistantPoints: (payload: { userIds: number[]; points: number; reason: string }) =>
+    request.post<{
+      points: number;
+      recipientCount: number;
+      recipients: Array<{
+        id: number;
+        username: string;
+        nickname: string;
+        balance: number;
+      }>;
+    }>("/admin/campus-assistant/points/grant", payload),
   aiReviewLogs: (params: { kind?: string; status?: string; page?: number; size?: number }, options?: RequestOptions) =>
     request.get<{ page: number; size: number; total: number; list: AiReviewLogRow[] }>("/admin/ai-review/logs", params, options),
   sweepForumImages: () =>

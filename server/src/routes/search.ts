@@ -25,6 +25,7 @@ import {
   consumeCampusAssistantQuota,
   getCampusAssistantQuotaStatus,
   refundCampusAssistantQuota,
+  type CampusAssistantQuotaReservation,
 } from "../services/campusAssistantQuota";
 
 export const searchRouter = Router();
@@ -218,11 +219,11 @@ searchRouter.post(
   securityRateLimit("campus-assistant", 20, 60_000),
   validate(assistantSchema),
   async (req, res, next) => {
-    let reservationDateKey = "";
+    let quotaReservation: CampusAssistantQuotaReservation | null = null;
     try {
       const userId = req.user!.userId;
       const role = req.user!.role;
-      reservationDateKey = (await consumeCampusAssistantQuota(userId)).dateKey;
+      quotaReservation = (await consumeCampusAssistantQuota(userId)).reservation;
       const forumAccessEnabled = await resolveForumAccess(userId, role);
       ok(res, await askCampusAssistant({
         message: req.body.message,
@@ -234,8 +235,8 @@ searchRouter.post(
         },
       }));
     } catch (error) {
-      if (reservationDateKey) {
-        await refundCampusAssistantQuota(req.user!.userId, reservationDateKey).catch(() => {});
+      if (quotaReservation) {
+        await refundCampusAssistantQuota(req.user!.userId, quotaReservation).catch(() => {});
       }
       next(error);
     }
@@ -249,7 +250,7 @@ searchRouter.post(
   async (req, res, next) => {
     let streamStarted = false;
     let streamCompleted = false;
-    let reservationDateKey = "";
+    let quotaReservation: CampusAssistantQuotaReservation | null = null;
     const controller = new AbortController();
     res.on("close", () => {
       if (!streamCompleted) controller.abort();
@@ -258,7 +259,7 @@ searchRouter.post(
     try {
       const userId = req.user!.userId;
       const role = req.user!.role;
-      reservationDateKey = (await consumeCampusAssistantQuota(userId)).dateKey;
+      quotaReservation = (await consumeCampusAssistantQuota(userId)).reservation;
       const forumAccessEnabled = await resolveForumAccess(userId, role);
       res.status(200);
       res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
@@ -295,8 +296,8 @@ searchRouter.post(
         clearInterval(heartbeat);
       }
     } catch (error) {
-      if (reservationDateKey) {
-        await refundCampusAssistantQuota(req.user!.userId, reservationDateKey).catch(() => {});
+      if (quotaReservation) {
+        await refundCampusAssistantQuota(req.user!.userId, quotaReservation).catch(() => {});
       }
       if (controller.signal.aborted) return;
       if (!streamStarted) return next(error);

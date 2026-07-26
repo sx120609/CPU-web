@@ -77,7 +77,6 @@
           <p class="section-desc">默认收起。需要时再展开调整匿名门槛、周额度、信誉积分公式和等级门槛，避免基础配置区太长。</p>
           <div class="summary-row">
             <span class="summary-pill">匿名门槛 {{ anonymousMinReputation }}</span>
-            <span class="summary-pill">AI Lv.0 {{ assistantDailyQuotas[0]?.quota ?? 0 }} 次/天</span>
             <span class="summary-pill">Lv.5 {{ reputationLevels[4]?.minReputation ?? 0 }}</span>
           </div>
         </div>
@@ -150,36 +149,6 @@
                 <span class="field-inline-label">门槛</span>
                 <el-input-number v-model="level.minReputation" :min="0" :max="9999" />
               </div>
-            </div>
-          </div>
-
-          <div class="trust-subcard">
-            <div class="subcard-title">拾间 AI 每日额度</div>
-            <div class="desc">0 信誉的新账号按 Lv.0 发放，其他用户跟随信誉等级；北京时间每天 00:00 重置。设置为 0 可停用对应等级。</div>
-            <div class="level-grid">
-              <div v-for="(tier, index) in assistantDailyQuotas" :key="`assistant-tier-${index}`" class="level-row">
-                <span class="field-label">Lv.{{ tier.level }}</span>
-                <span class="quota-level-name">
-                  {{ tier.level === 0 ? "新账号（0 信誉）" : (reputationLevels[tier.level - 1]?.name || `等级 ${tier.level}`) }}
-                </span>
-                <span class="field-inline-label">次/天</span>
-                <el-input-number v-model="tier.quota" :min="0" :max="9999" />
-              </div>
-            </div>
-            <div class="quota-reset-row">
-              <div>
-                <strong>重置今日已用额度</strong>
-                <span>清零所有用户今天已使用的次数，不会修改上方各等级的每日额度。</span>
-              </div>
-              <el-button
-                type="danger"
-                plain
-                :loading="resettingAssistantQuotas"
-                :disabled="resettingAssistantQuotas || configLoading"
-                @click="resetAssistantDailyUsage"
-              >
-                重置所有人今日额度
-              </el-button>
             </div>
           </div>
 
@@ -285,15 +254,6 @@ const reputationLevels = ref([
   { level: 4, name: "资深成员", minReputation: 90 },
   { level: 5, name: "校园传说", minReputation: 120 },
 ]);
-const assistantDailyQuotas = ref([
-  { level: 0, quota: 5 },
-  { level: 1, quota: 10 },
-  { level: 2, quota: 20 },
-  { level: 3, quota: 30 },
-  { level: 4, quota: 50 },
-  { level: 5, quota: 80 },
-]);
-const resettingAssistantQuotas = ref(false);
 const features = reactive<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>({
   forum: true, market: true, coursereview: true, electric: true, sponsor: true,
 });
@@ -374,7 +334,6 @@ async function reload() {
     forumEnabledBonus.value = config.forumEnabledBonus;
     anonymousTiers.value = (config.anonymousTiers ?? []).map((item) => ({ ...item }));
     reputationLevels.value = (config.reputationLevels ?? []).map((item) => ({ ...item }));
-    assistantDailyQuotas.value = (config.assistantDailyQuotas ?? []).map((item) => ({ ...item }));
   } catch (error) {
     if (seq === featureLoadSeq) {
       loadError.value = requestMessage(error) || "功能开关配置加载失败，请稍后重试";
@@ -478,10 +437,6 @@ async function saveTrustConfig() {
         name: item.name,
         minReputation: Number(item.minReputation || 0),
       })),
-      assistantDailyQuotas: assistantDailyQuotas.value.map((item) => ({
-        level: item.level,
-        quota: Number(item.quota || 0),
-      })),
     });
     anonymousMinReputation.value = config.anonymousMinReputation;
     accountAgeDaysPerStep.value = config.accountAgeDaysPerStep;
@@ -494,36 +449,9 @@ async function saveTrustConfig() {
     forumEnabledBonus.value = config.forumEnabledBonus;
     anonymousTiers.value = (config.anonymousTiers ?? []).map((item) => ({ ...item }));
     reputationLevels.value = (config.reputationLevels ?? []).map((item) => ({ ...item }));
-    assistantDailyQuotas.value = (config.assistantDailyQuotas ?? []).map((item) => ({ ...item }));
     ElMessage.success("匿名与信誉规则已保存");
   } finally {
     savingConfig.value = false;
-  }
-}
-
-async function resetAssistantDailyUsage() {
-  if (resettingAssistantQuotas.value) return;
-  const confirmed = await ElMessageBox.confirm(
-    "这会把所有用户今天已使用的拾间 AI 次数清零，用户会立即恢复完整额度。此操作不可撤销。",
-    "重置今日 AI 额度",
-    {
-      type: "warning",
-      confirmButtonText: "确认重置",
-      cancelButtonText: "取消",
-    },
-  ).then(() => true).catch(() => false);
-  if (!confirmed) return;
-
-  resettingAssistantQuotas.value = true;
-  try {
-    const result = await adminApi.resetCampusAssistantDailyQuota();
-    ElMessage.success(
-      result.resetUsers > 0
-        ? `已重置 ${result.resetUsers} 名用户的今日额度`
-        : "今天暂无已使用的额度",
-    );
-  } finally {
-    resettingAssistantQuotas.value = false;
   }
 }
 
@@ -691,37 +619,6 @@ function requestMessage(error: unknown) {
 .field-inline-label {
   font-size: 12px;
   color: var(--cpu-text-muted);
-}
-.quota-level-name {
-  flex: 1;
-  min-width: 0;
-  color: var(--cpu-text);
-  font-size: 13px;
-}
-.quota-reset-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--cpu-border-soft);
-}
-.quota-reset-row > div {
-  min-width: 0;
-}
-.quota-reset-row strong,
-.quota-reset-row span {
-  display: block;
-}
-.quota-reset-row strong {
-  color: var(--cpu-text);
-  font-size: 13px;
-}
-.quota-reset-row span {
-  margin-top: 4px;
-  color: var(--cpu-text-muted);
-  font-size: 12px;
-  line-height: 1.5;
 }
 .section-toggle,
 .sub-toggle {
@@ -892,13 +789,6 @@ function requestMessage(error: unknown) {
   .level-row {
     align-items: stretch;
     flex-direction: column;
-  }
-  .quota-reset-row {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .quota-reset-row :deep(.el-button) {
-    width: 100%;
   }
   .feature-head :deep(.el-switch),
   .ai-row--switch :deep(.el-switch),

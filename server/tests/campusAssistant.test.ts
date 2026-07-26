@@ -34,6 +34,7 @@ import {
   resolveForumAccess,
 } from "../src/services/forumAccess";
 import { readAiJsonTextStream } from "../src/services/aiJsonApi";
+import { calculateSponsorAssistantPoints } from "../src/services/campusAssistantPoints";
 
 const enabledFeatures = {
   forum: true,
@@ -191,6 +192,12 @@ test("assistant quota settings are restored from the database after a service re
     await loadFeatures();
     siteSetting.findMany = originalFindMany;
   }
+});
+
+test("sponsor points use the configured per-yuan ratio and round down", () => {
+  assert.equal(calculateSponsorAssistantPoints(500, 3), 15);
+  assert.equal(calculateSponsorAssistantPoints(199, 2), 3);
+  assert.equal(calculateSponsorAssistantPoints(9999, 0), 0);
 });
 
 test("resetting assistant quota clears only today's used counts", async () => {

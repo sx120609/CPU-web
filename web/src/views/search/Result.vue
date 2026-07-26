@@ -117,7 +117,7 @@
           :autosize="{ minRows: 1, maxRows: 4 }"
           resize="none"
           maxlength="500"
-          :placeholder="assistantQuotaExhausted ? '今日额度已用完，明天恢复' : '给拾间AI发消息'"
+          :placeholder="assistantQuotaExhausted ? '今日额度和点数都已用完' : '给拾间AI发消息'"
           @keydown="handleComposerKeydown"
           @focus="handleComposerFocus"
           @blur="handleComposerBlur"
@@ -135,7 +135,7 @@
         </button>
       </div>
       <p v-if="auth.isLoggedIn" class="assistant-disclaimer">
-        内容由 AI 生成，请注意甄别<span v-if="assistantQuota"> · Lv.{{ assistantQuota.level }} · 今日 {{ assistantQuota.remaining }}/{{ assistantQuota.dailyQuota }}</span>
+        内容由 AI 生成，请注意甄别<span v-if="assistantQuota"> · Lv.{{ assistantQuota.level }} · 今日 {{ assistantQuota.remaining }}/{{ assistantQuota.dailyQuota }} · 点数 {{ assistantQuota.points }}</span>
       </p>
     </section>
 
@@ -309,7 +309,7 @@ const conversationAnchorTimers: number[] = [];
 
 const welcomePrompts = ["怎么查宿舍电费？", "打开药苑之声", "我的课表在哪里？"];
 const assistantQuotaExhausted = computed(() => (
-  assistantQuota.value !== null && assistantQuota.value.remaining <= 0
+  assistantQuota.value !== null && assistantQuota.value.totalRemaining <= 0
 ));
 const historyCaption = computed(() => {
   if (!auth.isLoggedIn) return "记录保存在当前设备；登录后可同步到账号，最多保留 20 个对话。";
@@ -363,7 +363,7 @@ async function submitSearch() {
     return;
   }
   if (assistantQuotaExhausted.value) {
-    ElMessage.warning("今天的拾间 AI 额度已用完，明天 00:00 自动恢复");
+    ElMessage.warning("今天的拾间 AI 额度和点数都已用完，日额度会在明天 00:00 自动恢复");
     return;
   }
   const keyword = keywordInput.value.trim();
@@ -474,7 +474,7 @@ async function goLogin() {
 
 async function retryAssistant() {
   if (assistantQuotaExhausted.value) {
-    ElMessage.warning("今天的拾间 AI 额度已用完，明天 00:00 自动恢复");
+    ElMessage.warning("今天的拾间 AI 额度和点数都已用完，日额度会在明天 00:00 自动恢复");
     return;
   }
   const keyword = [...messages.value].reverse().find((item) => item.role === "user")?.content.trim() || q.value.trim();

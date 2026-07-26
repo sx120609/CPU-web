@@ -5,7 +5,12 @@ import { z } from "zod";
 import { config } from "../config";
 import { authOptional } from "../middleware/auth";
 import { prisma } from "../prisma";
-import { consumeCampusAssistantQuota, getCampusAssistantQuotaStatus, refundCampusAssistantQuota } from "../services/campusAssistantQuota";
+import {
+  consumeCampusAssistantQuota,
+  getCampusAssistantQuotaStatus,
+  refundCampusAssistantQuota,
+  type CampusAssistantQuotaReservation,
+} from "../services/campusAssistantQuota";
 import { getSiteConfig } from "../services/siteSettings";
 import { isCampusAssistantConversationRestricted } from "../services/campusAssistant";
 import { securityRateLimit } from "../middleware/securityRateLimit";
@@ -206,9 +211,11 @@ oauthRouter.get("/userinfo", async (req, res, next) => {
       },
       level: quota.level,
       levelName: quota.levelName,
-      aiBalance: quota.remaining,
+      aiBalance: quota.totalRemaining,
       dailyQuota: quota.dailyQuota,
       usedToday: quota.used,
+      dailyRemaining: quota.remaining,
+      assistantPoints: quota.points,
     });
   } catch (error) {
     next(error);
@@ -216,7 +223,7 @@ oauthRouter.get("/userinfo", async (req, res, next) => {
 });
 
 oauthRouter.post("/v1/chat/completions", securityRateLimit("oauth-ai", 20, 60_000), async (req, res, next) => {
-  let reservationDateKey = "";
+  let quotaReservation: CampusAssistantQuotaReservation | null = null;
   let userId = 0;
   let quotaRefunded = false;
   let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -236,7 +243,7 @@ oauthRouter.post("/v1/chat/completions", securityRateLimit("oauth-ai", 20, 60_00
     const model = siteConfig.aiReviewModel;
     if (!siteConfig.aiReviewEnabled || !endpoint || !apiKey || !model) throw Errors.server("AI 服务尚未配置或已关闭");
     const consumedQuota = await consumeCampusAssistantQuota(token.userId);
-    reservationDateKey = consumedQuota.dateKey;
+    quotaReservation = consumedQuota.reservation;
     const controller = new AbortController();
     timeout = setTimeout(() => controller.abort(), 120_000);
     res.on("close", () => {
@@ -258,7 +265,7 @@ oauthRouter.post("/v1/chat/completions", securityRateLimit("oauth-ai", 20, 60_00
       responseStarted = true;
     }
     if (!upstream.ok) {
-      await refundCampusAssistantQuota(token.userId, reservationDateKey);
+      await refundCampusAssistantQuota(token.userId, quotaReservation);
       quotaRefunded = true;
     }
     if (body.stream && upstream.body) {
@@ -286,8 +293,8 @@ oauthRouter.post("/v1/chat/completions", securityRateLimit("oauth-ai", 20, 60_00
     return result;
   } catch (error) {
     if (timeout) clearTimeout(timeout);
-    if (reservationDateKey && !quotaRefunded && !responseCompleted) {
-      await refundCampusAssistantQuota(userId, reservationDateKey).catch(() => {});
+    if (quotaReservation && !quotaRefunded && !responseCompleted) {
+      await refundCampusAssistantQuota(userId, quotaReservation).catch(() => {});
     }
     if (responseStarted) return;
     next(error);

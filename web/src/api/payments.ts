@@ -12,6 +12,7 @@ export type SponsorOptions = {
   description: string;
   wallEnabled: boolean;
   allowMessage: boolean;
+  assistantPointsPerYuan: number;
 };
 
 export type SponsorWallItem = {

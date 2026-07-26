@@ -191,6 +191,7 @@ const config = reactive<SponsorConfig>({
   maxAmount: "9999.00",
   wallEnabled: true,
   allowMessage: true,
+  assistantPointsPerYuan: 1,
 });
 const filters = reactive({ q: "", status: "all", page: 1, size: 20 });
 let sponsorOrdersSeq = 0;
