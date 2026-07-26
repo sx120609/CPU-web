@@ -81,6 +81,9 @@ export type DesktopBridge = {
   platform?: string;
   getVersionName?: () => string;
   openLearning?: () => Promise<void>;
+  checkUpdate?: () => Promise<any>;
+  openUpdate?: (url: string) => Promise<void>;
+  onUpdateAvailable?: (callback: (info: any) => void) => void;
   campusNet?: {
     getState: () => Promise<any>;
     getSettings: () => Promise<any>;

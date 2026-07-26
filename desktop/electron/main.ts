@@ -9,6 +9,7 @@ import { readOAuthSession } from "./oauth-store";
 import { applyLaunchOnLogin, readPreferences, writePreferences } from "./preferences";
 import { CampusNetService, CampusState } from "./campus-net/service";
 import { onCampusLog, pruneCampusLogs, readCampusLogs } from "./campus-net/log";
+import { checkForUpdate, notifyUpdate, openUpdateDownload } from "./updater";
 import { branding, injectableHosts, learningUrl, limits, oauthConfig } from "./config";
 
 let mainWindow: BrowserWindow | undefined;
@@ -630,6 +631,14 @@ if (!singleInstance) {
     ipcMain.handle("site:copy-text", (_event, text: unknown) => {
       if (typeof text === "string") clipboard.writeText(text);
     });
+    ipcMain.handle("app:check-update", async () => {
+      const info = await checkForUpdate();
+      if (info.hasUpdate) broadcast("app:update-available", info);
+      return info;
+    });
+    ipcMain.handle("app:open-update", (_event, url: unknown) => {
+      if (typeof url === "string") openUpdateDownload(url);
+    });
     ipcMain.handle("site:reload", async () => {
       if (!mainWindow || mainWindow.isDestroyed()) return { siteLoaded: false };
       await loadSiteOrLauncher(mainWindow);
@@ -759,6 +768,17 @@ if (!singleInstance) {
       + ` · 已载入 ${scripts.length} 个用户脚本`
     );
     app.on("activate", () => void openMainWindow());
+
+    // 启动后延后查一次更新：这批用户不会主动去看有没有新版，
+    // 而超星一改版脚本就失效，得让他们知道。
+    setTimeout(() => {
+      void checkForUpdate().then((info) => {
+        if (!info.hasUpdate) return;
+        console.log(`发现新版本 v${info.latest}（当前 v${info.current}）`);
+        notifyUpdate(info);
+        broadcast("app:update-available", info);
+      });
+    }, 8000).unref?.();
   });
 
   app.on("before-quit", () => {

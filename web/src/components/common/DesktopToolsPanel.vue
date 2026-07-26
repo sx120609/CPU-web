@@ -38,11 +38,25 @@
       </div>
       <el-alert v-else type="info" :closable="false" show-icon title="客户端正在打包中，稍后开放下载" />
 
-      <p class="tools-foot">仅支持 Windows 与 macOS。安装后用当前账号授权登录即可。</p>
+      <!-- 安装包没有代码签名，所有人都会撞到这个提示，先讲清楚免得以为是病毒 -->
+      <div class="install-tip">
+        <strong>安装时 Windows 会提示「未知发布者」</strong>
+        <p>这是因为安装包没有购买代码签名证书，不是安全问题。点提示框里的「更多信息」，再点「仍要运行」即可。</p>
+      </div>
+
+      <p class="tools-foot">支持 Windows 10 / 11（64 位）。双击安装、装完自动打开，用当前账号授权登录即可。</p>
     </div>
 
     <!-- 桌面端：直接操作真实能力 -->
     <div v-else class="tools-body">
+      <div v-if="update?.hasUpdate" class="update-banner">
+        <div>
+          <strong>有新版本 v{{ update.latest }}</strong>
+          <small>当前 v{{ update.current }}。超星改版后旧版脚本可能失效，建议更新。</small>
+        </div>
+        <el-button type="primary" size="small" @click="bridge?.openUpdate?.(update.url)">去下载</el-button>
+      </div>
+
       <article class="tool-card">
         <header>
           <div class="tool-name">
@@ -107,6 +121,7 @@ const inDesktop = isDesktopNativeApp();
 const desktopVersion = ref(bridge?.getVersionName?.() || "");
 
 const downloadUrl = ref("");
+const update = ref<any>(null);
 const campusState = ref<any>(null);
 const campusBusy = ref(false);
 const learningBusy = ref(false);
@@ -180,14 +195,22 @@ function openDownload() {
 }
 
 onMounted(async () => {
-  if (inDesktop && bridge?.campusNet) {
+  if (inDesktop) {
     try {
-      campusState.value = await bridge.campusNet.getState();
-      bridge.campusNet.onState((state) => {
+      campusState.value = await bridge?.campusNet?.getState();
+      bridge?.campusNet?.onState((state) => {
         campusState.value = state;
       });
     } catch {
       /* 桥不可用时保持默认展示 */
+    }
+    try {
+      update.value = await bridge?.checkUpdate?.();
+      bridge?.onUpdateAvailable?.((info) => {
+        update.value = info;
+      });
+    } catch {
+      /* 查不到更新就不提示 */
     }
     return;
   }
@@ -299,6 +322,47 @@ onMounted(async () => {
   margin: 0;
   color: var(--cpu-text-muted);
   font-size: 12px;
+}
+
+.install-tip {
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--cpu-gold) 34%, var(--cpu-border-soft));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--cpu-gold) 8%, var(--cpu-surface));
+
+  strong {
+    font-size: 13px;
+  }
+
+  p {
+    margin: 5px 0 0;
+    color: var(--cpu-text-secondary);
+    font-size: 12.5px;
+    line-height: 1.65;
+  }
+}
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--cpu-primary) 32%, var(--cpu-border-soft));
+  border-radius: 12px;
+  background: var(--cpu-primary-soft);
+
+  div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  small {
+    color: var(--cpu-text-secondary);
+    font-size: 12px;
+    line-height: 1.55;
+  }
 }
 
 .tool-card {

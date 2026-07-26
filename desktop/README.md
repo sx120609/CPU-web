@@ -110,15 +110,40 @@ npm run test:smoke   # 真实启动一次 Electron，确认主进程不崩、资
 
 ```bash
 npm run dist:win
-npm run dist:mac
 ```
 
-产物写入 `release/`。
+只产出一个 Windows x64 安装包，写入 `release/`。不做 portable、不做 macOS —— 用户群是校内学生，多给一种格式只会增加"该下哪个"的困惑。
 
-尚未配置代码签名 —— Windows 未签名安装包会触发 SmartScreen，macOS 未公证的包默认无法打开。正式分发前需要准备：
+安装器按非技术用户配置：
 
-- Windows：OV/EV 代码签名证书，或 Azure Trusted Signing
-- macOS：Apple Developer ID 证书，且必须在 macOS 构建机上完成签名与公证（`build/entitlements.mac.plist` 已备好）
+| 配置 | 值 | 理由 |
+|---|---|---|
+| `oneClick` | `true` | 双击即装，不问装到哪、不显示向导 |
+| `perMachine` + `allowElevation` | `false` | 装到当前用户目录，全程不弹 UAC |
+| `runAfterFinish` | `true` | 装完直接打开，省一步 |
+| `installerLanguages` / `electronLanguages` | 仅 `zh_CN` | 安装包体积小一些，界面不会串英文 |
+| `deleteAppDataOnUninstall` | `true` | 本地存着校园网密码与登录凭据，卸载就该一并清掉 |
+
+### 没有代码签名的后果
+
+安装包未签名，用户首次运行会看到「Windows 已保护你的电脑 / 未知发布者」，需要点「更多信息 → 仍要运行」。这一步无法通过配置绕过，只能靠说明 —— 站内「PC 小工具」面板的下载区已经写了这段提示。
+
+想消掉这个提示需要代码签名证书。除传统 OV/EV 证书外，个人开发者可考虑 Azure Trusted Signing（按月计费，需要可验证的开发历史）或 SignPath 的开源项目免费计划。
+
+## 更新提示
+
+客户端启动 8 秒后向主站查一次 `GET /api/site/downloads/desktop`，把返回的 `version` 与本地版本按段做数值比较，发现新版就发系统通知，并在「PC 小工具」面板顶部显示一条提示，点「去下载」用系统浏览器打开下载地址。
+
+**刻意不做静默下载替换**：electron-updater 在 Windows 上靠签名里的发布者信息验证更新包，未签名就只能关掉校验，那等于在所有用户机器上装了一条不可验真的代码执行通道。现在的做法里，用户仍然自己决定运行安装包，信任锚点是主站的 HTTPS 证书。拿到签名证书后可以换成 electron-updater 做真正的自动更新。
+
+发新版时服务端要同时更新两个环境变量：
+
+```env
+DESKTOP_APP_DOWNLOAD_URL=https://你的云盘直链/药大拾间桌面端-x.y.z-win-x64-安装版.exe
+DESKTOP_APP_VERSION=x.y.z
+```
+
+`DESKTOP_APP_VERSION` 留空时不会提示更新（无从比较），只会让下载按钮可用。
 
 ## 配置
 
@@ -169,7 +194,7 @@ npm run desktop:dist:win
 
 ## 边界与免责
 
-- 本客户端内置的学习辅助脚本为第三方作品，授权状态尚未解决，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+- 内置学习辅助脚本的来源与授权见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 - 脚本答题会向第三方题库接口发送题目文本；AI 解答走药大拾间的校园 AI 通道并消耗用户的每日额度。
 - 本客户端不保存学校密码，也不保存学习平台的账号密码。退出登录会向服务端撤销 access token 并清除本地会话数据。
 - 使用者应自行判断使用边界并遵守所在学校的学术规范。

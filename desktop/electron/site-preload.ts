@@ -40,6 +40,12 @@ contextBridge.exposeInMainWorld("CPUDesktop", {
   getPreferences: () => ipcRenderer.invoke("app:get-preferences"),
   setPreferences: (patch: Record<string, unknown>) => ipcRenderer.invoke("app:set-preferences", patch),
 
+  checkUpdate: () => ipcRenderer.invoke("app:check-update"),
+  openUpdate: (url: string) => ipcRenderer.invoke("app:open-update", url),
+  onUpdateAvailable: (callback: (info: unknown) => void) => {
+    ipcRenderer.on("app:update-available", (_event, info) => callback(info));
+  },
+
   // 校园网自动认证。密码只单向进主进程 —— getState 永远不会把它带回来。
   campusNet: {
     getState: () => ipcRenderer.invoke("campus:state"),

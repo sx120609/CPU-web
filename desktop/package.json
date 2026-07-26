@@ -15,9 +15,7 @@
     "test:smoke": "npm run build && node scripts/smoke-test.mjs",
     "test:package": "node scripts/package-check.cjs",
     "start": "npm run build && electron .",
-    "dist": "npm run build && electron-builder --publish never",
-    "dist:win": "npm run build && electron-builder --win --publish never",
-    "dist:mac": "npm run build && electron-builder --mac --publish never"
+    "dist:win": "npm run build && electron-builder --win --publish never"
   },
   "build": {
     "appId": "cn.lizmt.cpuweb.desktop",
@@ -34,39 +32,26 @@
       "output": "release",
       "buildResources": "build"
     },
-    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
-    "portable": {
-      "artifactName": "${productName}-${version}-${os}-${arch}-portable.${ext}"
-    },
+    "artifactName": "${productName}-${version}-win-${arch}-安装版.${ext}",
     "electronLanguages": [
-      "zh-CN",
-      "en-US"
+      "zh-CN"
     ],
     "win": {
       "target": [
-        "nsis",
-        "portable"
+        "nsis"
       ],
       "icon": "build/icon.png"
     },
-    "mac": {
-      "target": [
-        "dmg",
-        "zip"
-      ],
-      "icon": "build/icon.png",
-      "category": "public.app-category.education",
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
-    },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
       "perMachine": false,
-      "shortcutName": "药大拾间桌面端",
-      "artifactName": "${productName}-${version}-${os}-${arch}-setup.${ext}"
+      "allowElevation": false,
+      "runAfterFinish": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "药大拾间",
+      "installerLanguages": ["zh_CN"],
+      "deleteAppDataOnUninstall": true
     }
   },
   "devDependencies": {

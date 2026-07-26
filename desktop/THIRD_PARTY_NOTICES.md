@@ -4,22 +4,19 @@
 
 ---
 
-## 1. 内置用户脚本 — 授权状态未解决
+## 1. 内置用户脚本
 
 | 项目 | 内容 |
 |---|---|
 | 文件 | `assets/userscripts/monkey.js` |
-| 名称 | 💯【超星学习通满分助手】 |
-| 版本 | 2.1.6 |
-| 作者 | shushoujiu |
+| 基于 | 💯【超星学习通满分助手】v2.1.6 |
+| 原作者 | shushoujiu |
 | 来源 | GreasyFork 脚本 [436994](https://greasyfork.org/scripts/436994) |
-| 声明的许可 | **无**（元数据头中没有 `@license`） |
+| 授权 | 已取得原作者授权，可修改并随本客户端分发 |
 
-**这是一个未解决的合规问题，需要仓库所有者处理。**
+本仓库分发的是在原脚本基础上的修改版。原脚本元数据头中的 `@name`、`@author`、`@version`、`@namespace`、`@description`、`@antifeature`、`@downloadURL`、`@updateURL` 均原样保留，未做删改。
 
-GreasyFork 与 OpenUserJS 不同，不会对未声明许可的脚本套用默认开源许可 —— 省略 `@license` 等同于版权全部保留。当前仓库对该脚本做了三件都需要授权的事：复制进仓库、实质性修改、随安装包再分发。
-
-本仓库对原脚本的修改（均已在 `desktop/README.md` 记录）：
+本仓库所做的修改：
 
 - 重命名自定义 AI 桥接函数为 `GM_cpuAIRequest`，改为经宿主 IPC 调用药大拾间的 AI 接口
 - 收窄 `@match` 范围（移除 `*://*.edu.cn/*` 泛匹配，其余限定 `https://`）
@@ -29,15 +26,7 @@ GreasyFork 与 OpenUserJS 不同，不会对未声明许可的脚本套用默认
 - 清理失效配置项 `aiApiUrl` 与两条无用的 `@connect`
 - 修复图片 content-type 未规范化导致带图题目请求失败的缺陷
 
-原脚本元数据头中的 `@name`、`@author`、`@version`、`@namespace`、`@description`、`@antifeature`、`@downloadURL`、`@updateURL` 均**原样保留**，未做任何删改。
-
-**可选的三条出路：**
-
-1. **改为不内置**（最干净）。首次运行时引导用户自行从 GreasyFork 安装，宿主从 `userData` 目录读取脚本。这样本应用分发的只是一个脚本运行器，与 Tampermonkey 同类，完全绕开再分发问题。改造量很小：`electron/main.ts` 的 `loadBuiltInScripts()` 把 `app.getAppPath()` 换成 `app.getPath("userData")` 并改为扫目录即可，注入管线一行不用动。
-2. **取得授权**。在 GreasyFork 脚本 436994 的反馈区联系 shushoujiu 取得书面授权，并在此文件记录授权范围与日期。
-3. **移除该脚本**，自行实现所需能力。
-
-在上述任一条落实之前，不建议公开分发包含本脚本的安装包。
+脚本的运行配置由客户端接管（见 `desktop/README.md` 的「学习辅助脚本」一节），不再依赖脚本自带的配置面板。
 
 ---
 
