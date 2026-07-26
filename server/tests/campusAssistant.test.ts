@@ -22,6 +22,12 @@ import {
   resolveCampusAssistantQuotaLevel,
 } from "../src/services/campusAssistantQuota";
 import {
+  DEFAULT_ASSISTANT_DAILY_QUOTAS,
+  getSiteConfig,
+  loadFeatures,
+} from "../src/services/siteSettings";
+import { prisma } from "../src/prisma";
+import {
   ensureCanReadBoardType,
   ensureForumAccessEnabled,
   resolveForumAccess,
@@ -150,6 +156,40 @@ test("assistant quota includes Lv.0 and resets at China midnight", () => {
     nextCampusAssistantResetAt(new Date("2026-07-25T15:59:59.000Z")).toISOString(),
     "2026-07-25T16:00:00.000Z",
   );
+});
+
+test("assistant quota settings are restored from the database after a service reload", async () => {
+  const siteSetting = prisma.siteSetting;
+  const originalFindMany = siteSetting.findMany;
+  const storedQuotas = DEFAULT_ASSISTANT_DAILY_QUOTAS.map((item) => ({
+    ...item,
+    quota: item.quota + 7,
+  }));
+  let requestedKeys: string[] = [];
+
+  try {
+    siteSetting.findMany = (async (args: {
+      where?: { key?: { in?: string[] } };
+    }) => {
+      requestedKeys = args.where?.key?.in ?? [];
+      return [{
+        key: "assistant.dailyQuotas",
+        value: JSON.stringify(storedQuotas),
+      }];
+    }) as typeof siteSetting.findMany;
+
+    await loadFeatures();
+
+    assert.equal(requestedKeys.includes("assistant.dailyQuotas"), true);
+    assert.deepEqual(getSiteConfig().assistantDailyQuotas, storedQuotas);
+  } finally {
+    siteSetting.findMany = (async () => [{
+      key: "assistant.dailyQuotas",
+      value: JSON.stringify(DEFAULT_ASSISTANT_DAILY_QUOTAS),
+    }]) as typeof siteSetting.findMany;
+    await loadFeatures();
+    siteSetting.findMany = originalFindMany;
+  }
 });
 
 test("forum access is open to guests and no longer requires manual activation", async () => {

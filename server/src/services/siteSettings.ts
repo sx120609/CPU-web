@@ -564,6 +564,7 @@ export async function loadFeatures(): Promise<void> {
           FORUM_ENABLED_BONUS_KEY,
           ANONYMOUS_TIERS_KEY,
           REPUTATION_LEVELS_KEY,
+          ASSISTANT_DAILY_QUOTAS_KEY,
         ],
       },
     },
