@@ -15,10 +15,10 @@ import { getSiteConfig } from "../services/siteSettings";
 import { isCampusAssistantConversationRestricted } from "../services/campusAssistant";
 import { securityRateLimit } from "../middleware/securityRateLimit";
 import { buildUserTrustSnapshot } from "../services/userTrust";
-import { detectAiJsonApiMode, extractAiJsonTextResponse, normalizeAiJsonApiUrl } from "../services/aiJsonApi";
 import {
   buildAiPromptCacheKey,
   detectAiJsonApiMode,
+  extractAiJsonTextResponse,
   normalizeAiJsonApiUrl,
   sendAiUpstreamRequest,
 } from "../services/aiJsonApi";
