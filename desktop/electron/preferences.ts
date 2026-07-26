@@ -13,14 +13,17 @@ import {
 } from "./campus-net/constants";
 import type { CampusNetSettings } from "./campus-net/service";
 
-// 非敏感的应用设置。凭据一律不放这里 —— 那些走 safeStorage
-// （OAuth 会话在 oauth-store.ts，校园网学号密码在 campus-net/credential-store.ts）。
+// 非敏感的应用设置。凭据一律不放这里 —— 那些走 safeStorage（OAuth 会话在
+// oauth-store.ts，校园网学号密码在 campus-net/credential-store.ts，
+// 学习通账号密码在 chaoxing-credentials.ts）。
 export type Preferences = {
   /** 首启引导是否已走完。未走完时主进程不创建任何标签，好让引导页不被内容视图压住。 */
   onboarded: boolean;
   launchOnLogin: boolean;
   startMinimized: boolean;
   closeToTray: boolean;
+  /** 学习通「记住密码」开关。这里只存开关；凭据本体在 chaoxing-credentials.ts，关掉即删。 */
+  rememberChaoxing: boolean;
   campusNet: CampusNetSettings;
   // 学习辅助脚本的运行配置。客户端是唯一的真相来源：注入时喂给脚本，
   // 脚本改了再回传存这里。脚本自带的配置面板已被隐藏，用户改不到，
@@ -33,6 +36,7 @@ const DEFAULTS: Preferences = {
   launchOnLogin: false,
   startMinimized: false,
   closeToTray: true,
+  rememberChaoxing: false,
   campusNet: {
     enabled: false,
     autoReconnect: true,
@@ -99,6 +103,7 @@ export const readPreferences = async (): Promise<Preferences> => {
       launchOnLogin: asBoolean(raw.launchOnLogin, DEFAULTS.launchOnLogin),
       startMinimized: asBoolean(raw.startMinimized, DEFAULTS.startMinimized),
       closeToTray: asBoolean(raw.closeToTray, DEFAULTS.closeToTray),
+      rememberChaoxing: asBoolean(raw.rememberChaoxing, DEFAULTS.rememberChaoxing),
       campusNet: mergeCampusNet(raw.campusNet, DEFAULTS.campusNet),
       scriptConfig: asRecord(raw.scriptConfig)
     };
@@ -117,6 +122,7 @@ export const writePreferences = async (patch: Partial<Preferences>): Promise<Pre
     launchOnLogin: asBoolean(patch.launchOnLogin, current.launchOnLogin),
     startMinimized: asBoolean(patch.startMinimized, current.startMinimized),
     closeToTray: asBoolean(patch.closeToTray, current.closeToTray),
+    rememberChaoxing: asBoolean(patch.rememberChaoxing, current.rememberChaoxing),
     campusNet: patch.campusNet === undefined ? current.campusNet : mergeCampusNet(patch.campusNet, current.campusNet),
     // 逐键合并：客户端界面只提交它改动的那几项，不该把没提交的项抹成默认
     scriptConfig: patch.scriptConfig === undefined

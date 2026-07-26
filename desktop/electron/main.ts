@@ -9,10 +9,11 @@ import { readOAuthSession } from "./oauth-store";
 import { applyLaunchOnLogin, readPreferences, writePreferences } from "./preferences";
 import { buildScriptConfig } from "./script-config";
 import { CampusNetService, CampusState } from "./campus-net/service";
+import { clearChaoxingCredential, maskChaoxingAccount, readChaoxingCredential, writeChaoxingCredential } from "./chaoxing-credentials";
 import { onCampusLog, pruneCampusLogs, readCampusLogs } from "./campus-net/log";
 import { checkForUpdate, notifyUpdate, openUpdateDownload } from "./updater";
 import { CHROME_HEIGHT, TabKind, TabManager } from "./tabs";
-import { branding, injectableHosts, learningUrl, limits, oauthConfig } from "./config";
+import { branding, chaoxingLoginHost, injectableHosts, learningUrl, limits, oauthConfig } from "./config";
 
 let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
@@ -759,6 +760,64 @@ if (!singleInstance) {
     const checkNow = (): void => void service.checkNow();
     powerMonitor.on("resume", checkNow);
     powerMonitor.on("unlock-screen", checkNow);
+
+    /* ------------------------------------------------ 学习通「记住密码」 */
+    // 密码只有一个去处：学习通登录页的输入框。工具页拿到的账号是打码的、
+    // 永远拿不到密码；下发明文凭据的 chaoxing:credential 只回应真的停在
+    // 超星登录页上的学习通标签，其余来源一律回 null。
+
+    const chaoxingState = async (): Promise<{ remember: boolean; hasCredential: boolean; account: string }> => {
+      const { rememberChaoxing } = await readPreferences();
+      const credential = await readChaoxingCredential();
+      return {
+        remember: rememberChaoxing,
+        hasCredential: Boolean(credential),
+        account: credential ? maskChaoxingAccount(credential.account) : ""
+      };
+    };
+
+    const isChaoxingLoginSender = (event: Electron.IpcMainInvokeEvent): boolean => {
+      if (contentsKind.get(event.sender.id) !== "learning") return false;
+      const frameUrl = senderFrameUrl(event);
+      if (!frameUrl) return false;
+      try {
+        const url = new URL(frameUrl);
+        return url.protocol === "https:" && url.hostname === chaoxingLoginHost;
+      } catch {
+        return false;
+      }
+    };
+
+    ipcMain.handle("chaoxing:state", () => chaoxingState());
+    ipcMain.handle("chaoxing:set-remember", async (_event, value: unknown) => {
+      const remember = value === true;
+      await writePreferences({ rememberChaoxing: remember });
+      // 开关的语义是"要不要存"，不只是"要不要填"：关掉就删，不留死数据
+      if (!remember) await clearChaoxingCredential();
+      return chaoxingState();
+    });
+    ipcMain.handle("chaoxing:clear-credential", async () => {
+      await clearChaoxingCredential();
+      return chaoxingState();
+    });
+    // 登录页 preload 开页时调用：开关关着直接回 null，那边连输入框都不会碰
+    ipcMain.handle("chaoxing:credential", async (event) => {
+      if (!isChaoxingLoginSender(event)) return null;
+      const { rememberChaoxing } = await readPreferences();
+      if (!rememberChaoxing) return null;
+      return { credential: await readChaoxingCredential() };
+    });
+    ipcMain.handle("chaoxing:offer-credential", async (event, account: unknown, password: unknown) => {
+      if (!isChaoxingLoginSender(event)) return;
+      const { rememberChaoxing } = await readPreferences();
+      if (!rememberChaoxing) return;
+      if (typeof account !== "string" || typeof password !== "string") return;
+      const trimmed = account.trim();
+      if (!trimmed || !password || trimmed.length > 128 || password.length > 256) return;
+      await writeChaoxingCredential({ account: trimmed, password });
+      // 工具页可能正开着，提示得跟着从"还没保存过"变成"已保存"
+      broadcast("chaoxing:state-changed", await chaoxingState());
+    });
 
     ipcMain.handle("userscript:fetch-text", async (event, nonce: unknown, url: unknown, options?: unknown): Promise<FetchTextResult> => {
       const script = await authorize(event, nonce);

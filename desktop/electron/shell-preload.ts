@@ -42,6 +42,13 @@ contextBridge.exposeInMainWorld("cpuShell", {
     onLog: (callback: (entry: any) => void) => on("campus:log", callback)
   },
 
+  chaoxing: {
+    getState: () => ipcRenderer.invoke("chaoxing:state"),
+    setRemember: (value: boolean) => ipcRenderer.invoke("chaoxing:set-remember", value),
+    clearCredential: () => ipcRenderer.invoke("chaoxing:clear-credential"),
+    onState: (callback: (state: any) => void) => on("chaoxing:state-changed", callback)
+  },
+
   script: {
     getConfig: () => ipcRenderer.invoke("script:get-config"),
     setConfig: (patch: Record<string, unknown>) => ipcRenderer.invoke("script:set-config", patch),

@@ -177,6 +177,41 @@ const renderCampusLogs = (entries) => {
     : "还没有记录。开启后台自动连接后，这里会显示每次检测与认证的结果。";
 };
 
+/* --------------------------------------------------- 学习通记住密码 */
+
+const renderChaoxing = (state) => {
+  if (!state) return;
+  el("cx-remember").checked = Boolean(state.remember);
+  el("cx-hint").hidden = !state.remember;
+  el("cx-actions").hidden = !state.remember || !state.hasCredential;
+  if (!state.remember) return;
+  el("cx-hint").textContent = state.hasCredential
+    ? `已保存账号 ${state.account}。密码经系统安全存储加密，只在打开学习通登录页时自动填充，不会回传到界面。`
+    : "还没有保存过。下次在学习通登录页用账号密码登录时会自动记下来。";
+};
+
+const bindChaoxing = () => {
+  el("cx-remember").addEventListener("change", async () => {
+    const input = el("cx-remember");
+    const previous = !input.checked;
+    try {
+      renderChaoxing(await shell.chaoxing.setRemember(input.checked));
+      say(input.checked ? "已开启记住学习通账号密码。" : "已关闭，之前存的账号密码已删除。");
+    } catch (error) {
+      input.checked = previous;
+      say(errorText(error, "设置保存失败。"), true);
+    }
+  });
+  el("cx-clear").addEventListener("click", async () => {
+    try {
+      renderChaoxing(await shell.chaoxing.clearCredential());
+      say("已删除保存的学习通账号密码。");
+    } catch (error) {
+      say(errorText(error, "删除失败。"), true);
+    }
+  });
+};
+
 /* --------------------------------------------------------------- 刷题 */
 
 const renderScriptSwitches = () => {
@@ -461,6 +496,9 @@ const afterOnboarding = async () => {
     renderScriptActivity(await shell.script.getActivity(80));
   } catch { /* 忽略 */ }
   try {
+    renderChaoxing(await shell.chaoxing.getState());
+  } catch { /* 忽略 */ }
+  try {
     showUpdate(await shell.update.check());
   } catch { /* 忽略 */ }
 };
@@ -471,11 +509,13 @@ const boot = async () => {
   bindChrome();
   bindAuth();
   bindCampus();
+  bindChaoxing();
   bindScript();
   bindOffline();
 
   shell.tabs.onChange((state) => { tabState = state; renderTabs(); });
   shell.campusNet.onState(renderCampusState);
+  shell.chaoxing.onState(renderChaoxing);
   shell.campusNet.onLog(() => void shell.campusNet.getLogs(120).then(renderCampusLogs));
   shell.script.onActivity(() => void shell.script.getActivity(80).then(renderScriptActivity));
   shell.update.onAvailable(showUpdate);

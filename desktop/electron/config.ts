@@ -22,6 +22,10 @@ export const siteHost = new URL(oauthConfig.origin).hostname;
 
 export const learningUrl = "https://i.chaoxing.com/";
 
+// 超星账号密码登录页。「记住密码」的自动填充与捕获只认这个域 ——
+// learning-preload.ts 里有同一个字面量（sandbox preload 不能 require 本地模块）。
+export const chaoxingLoginHost = "passport2.chaoxing.com";
+
 // 应用窗口内允许打开的站点。不在表内的地址一律交给系统浏览器 —— 本应用不是通用浏览器。
 export const navigableHosts = [
   // 主站本身：主窗口就是它

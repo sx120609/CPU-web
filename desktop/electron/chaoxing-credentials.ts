@@ -1,0 +1,40 @@
+import { app, safeStorage } from "electron";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+// 学习通账号密码的加密存储，与校园网凭据（campus-net/credential-store.ts）同一套
+// 约定：safeStorage 加密、独立文件、默认不存在。密码唯一的去处是学习通登录页的
+// 输入框（learning-preload 自动填充），应用外壳只能拿到打码后的账号。
+// 只有「记住学习通账号密码」开关（preferences.ts 的 rememberChaoxing）打开时才会写盘。
+
+export type ChaoxingCredential = { account: string; password: string };
+
+const credentialPath = (): string => path.join(app.getPath("userData"), "chaoxing-login.bin");
+
+export const readChaoxingCredential = async (): Promise<ChaoxingCredential | null> => {
+  try {
+    if (!safeStorage.isEncryptionAvailable()) return null;
+    const payload = await readFile(credentialPath());
+    const credential = JSON.parse(safeStorage.decryptString(payload)) as ChaoxingCredential;
+    return credential.account && credential.password ? credential : null;
+  } catch {
+    return null;
+  }
+};
+
+export const writeChaoxingCredential = async (credential: ChaoxingCredential): Promise<void> => {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error("当前系统无法提供安全存储服务");
+  await mkdir(app.getPath("userData"), { recursive: true });
+  await writeFile(credentialPath(), safeStorage.encryptString(JSON.stringify(credential)), { mode: 0o600 });
+};
+
+export const clearChaoxingCredential = async (): Promise<void> => {
+  await rm(credentialPath(), { force: true });
+};
+
+// 工具页显示用。手机号是 11 位，展示成 138****5678；更短的账号只留首尾。
+export const maskChaoxingAccount = (account: string): string => {
+  if (account.length <= 3) return "***";
+  if (account.length <= 7) return `${account.slice(0, 1)}***${account.slice(-1)}`;
+  return `${account.slice(0, 3)}****${account.slice(-4)}`;
+};
