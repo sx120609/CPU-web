@@ -1738,12 +1738,6 @@ onBeforeUnmount(() => {
     width: 0;
     height: 0;
   }
-  .assistant-shell.is-composer-focused::after {
-    content: "";
-    display: block;
-    height: 50px;
-    flex: 0 0 50px;
-  }
   .assistant-shell.is-composer-focused .conversation {
     padding-bottom: max(
       70px,
@@ -1852,6 +1846,13 @@ onBeforeUnmount(() => {
     white-space: nowrap;
   }
   .assistant-shell.is-composer-focused .assistant-disclaimer {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    min-height: 0;
+    margin: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
     visibility: hidden;
     opacity: 0;
   }
