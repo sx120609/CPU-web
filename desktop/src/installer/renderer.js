@@ -19,9 +19,11 @@ const renderProgress = (p) => {
   if (p.detail) el("busy-sub").textContent = p.detail;
 };
 
-const fail = (message) => {
+const fail = (message, detail) => {
   show("oops");
   el("oops-text").textContent = message || "安装失败，请重试。";
+  el("oops-more").hidden = !detail;
+  el("oops-detail").textContent = detail || "";
 };
 
 const install = async () => {
@@ -31,13 +33,14 @@ const install = async () => {
   try {
     const result = await bridge.install();
     if (!result?.ok) {
-      fail(result?.message);
+      fail(result?.message, result?.detail);
       return;
     }
     show("done");
     // 主进程会在启动正式版后自己退出，这里不用做别的
   } catch (error) {
-    fail(error instanceof Error && error.message ? error.message : "安装失败，请重试。");
+    // 走到这里说明 IPC 本身炸了，不是安装逻辑返回的失败
+    fail("安装程序出错了。", error instanceof Error ? error.message : String(error));
   }
 };
 
@@ -52,7 +55,10 @@ const boot = async () => {
     const info = await bridge.getInfo();
     el("where").textContent = info.targetLabel || "当前用户目录";
     if (info.upgrade) {
-      el("lead").innerHTML = "检测到已安装的旧版本，将就地升级。<br />你的登录状态与设置都会保留。";
+      // 旧版正开着时先说清楚会关掉它 —— 否则窗口突然消失会被当成崩溃
+      el("lead").innerHTML = info.running
+        ? "检测到药大拾间正在运行，更新前会先关闭它。<br />你的登录状态与设置都会保留。"
+        : "检测到已安装的旧版本，将就地升级。<br />你的登录状态与设置都会保留。";
       el("go").textContent = "立即更新";
     }
   } catch {

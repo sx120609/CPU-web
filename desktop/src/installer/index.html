@@ -49,7 +49,14 @@
         </div>
 
         <div class="oops" id="oops" hidden>
-          <p class="oops-text" id="oops-text"></p>
+          <div class="oops-row">
+            <span class="bang">!</span>
+            <div class="oops-body">
+              <strong id="oops-text">安装失败</strong>
+              <!-- 技术细节默认折起来：正常用户看不懂，但排查时又必须留着 -->
+              <details id="oops-more" hidden><summary>详细信息</summary><p id="oops-detail"></p></details>
+            </div>
+          </div>
           <button class="retry" id="retry" type="button">重试</button>
         </div>
       </section>

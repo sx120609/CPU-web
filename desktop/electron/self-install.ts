@@ -45,30 +45,73 @@ const collect = async (from: string, to: string, out: Entry[]): Promise<void> =>
 
 // 覆盖安装时旧版可能正开着。Windows 允许改名正在运行的文件，但不允许删除 ——
 // 所以覆盖失败就把旧文件改名让路，残留的 .old- 由下次正常启动清理。
+//
+// 不按错误码筛：被内存映射的文件（icudtl.dat、*.dll 这些）复制失败时
+// Windows 给的是 UNKNOWN，按 EBUSY/EPERM 判断会直接漏掉，正是这个兜底最该
+// 生效的场合。所以只要目标已存在就一律试一次改名，改名再失败才算真失败。
 const placeFile = async (entry: Entry): Promise<void> => {
   try {
     await copyFile(entry.from, entry.to);
     return;
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code !== "EBUSY" && code !== "EPERM" && code !== "EACCES") throw error;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") throw error;
   }
   const parked = `${entry.to}.old-${Date.now().toString(36)}`;
   await rename(entry.to, parked);
   await copyFile(entry.from, entry.to);
 };
 
+const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+const psQuote = (value: string): string => `'${value.replace(/'/g, "''")}'`;
+
+const powershell = (script: string): Promise<string> => new Promise((resolve) => {
+  const child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { windowsHide: true });
+  let out = "";
+  child.stdout.on("data", (chunk) => { out += chunk.toString(); });
+  child.on("error", () => resolve(""));
+  child.on("close", () => resolve(out.trim()));
+});
+
+// 按可执行文件的完整路径匹配，不按进程名 —— 安装态自己跑的是临时目录里的同名 exe，
+// 用 taskkill /IM 会把自己一起杀掉。
+const countRunning = async (exePath: string): Promise<number> => {
+  const out = await powershell(
+    `@(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq ${psQuote(exePath)} }).Count`
+  );
+  return Number.parseInt(out, 10) || 0;
+};
+
+// 升级前必须真的关掉旧版，光靠改名让路不够：旧进程还活着就还占着单实例锁，
+// 装完启动新版只会把旧窗口顶到前面，看起来像"更新了个寂寞"。
+const closeRunning = async (exePath: string): Promise<void> => {
+  if ((await countRunning(exePath)) === 0) return;
+  await powershell(
+    `Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq ${psQuote(exePath)} }`
+    + ` | Stop-Process -Force -ErrorAction SilentlyContinue`
+  );
+  // 进程退出后系统还要一会儿才真正释放文件映射
+  await delay(800);
+};
+
 /** 正常启动时调用：清掉上次覆盖安装留下的、当时删不掉的旧文件 */
 export const sweepReplacedFiles = async (): Promise<void> => {
   const dir = sourceDir();
+  // 让路的文件里会有 app.asar.old-xxx，路径含 .asar 就可能被 Electron 的
+  // fs 补丁拦去包内解析。清理期间同样把补丁关掉。
+  process.noAsar = true;
   try {
-    for (const item of await readdir(dir, { withFileTypes: true })) {
-      if (item.isFile() && /\.old-[a-z0-9]+$/.test(item.name)) {
-        await rm(path.join(dir, item.name), { force: true }).catch(() => undefined);
+    for (const base of [dir, path.join(dir, "resources")]) {
+      for (const item of await readdir(base, { withFileTypes: true }).catch(() => [])) {
+        if (item.isFile() && /\.old-[a-z0-9]+$/.test(item.name)) {
+          await rm(path.join(base, item.name), { force: true }).catch(() => undefined);
+        }
       }
     }
   } catch {
     // 清理失败无所谓，下次再来
+  } finally {
+    process.noAsar = false;
   }
 };
 
@@ -118,6 +161,26 @@ const writeUninstallEntry = async (exePath: string, dir: string, bytes: number):
   }
 };
 
+// 从旧 NSIS 版升级过来的机器，注册表里还留着 electron-builder 生成的那条卸载项
+// （键名是一串 GUID），不清掉就会在「程序和功能」里看到两个同名的药大拾间桌面端。
+// 按 InstallLocation 指向同一个目录来认，避免误删别人的东西。
+const removeLegacyUninstallEntry = async (dir: string): Promise<void> => {
+  await powershell(
+    `$root='HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall';`
+    + ` Get-ChildItem $root -ErrorAction SilentlyContinue | ForEach-Object {`
+    + ` $p = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue;`
+    + ` if ($_.PSChildName -ne ${psQuote(INSTALL_DIR_NAME)} -and $p.InstallLocation -and`
+    + ` $p.InstallLocation.TrimEnd('\\') -eq ${psQuote(dir)})`
+    + ` { Remove-Item $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue } }`
+  );
+  // 旧向导的卸载器本体也一并删掉：留着只会让人点到一个已经不对应任何东西的入口
+  for (const item of await readdir(dir).catch(() => [])) {
+    if (/^Uninstall .+\.exe$/i.test(item)) {
+      await rm(path.join(dir, item), { force: true }).catch(() => undefined);
+    }
+  }
+};
+
 /** 启动装好的正式版。必须剥掉便携环境变量，否则它会以为自己也是安装态，无限套娃。 */
 const launchInstalled = (exePath: string): void => {
   const env = { ...process.env };
@@ -135,46 +198,74 @@ const launchInstalled = (exePath: string): void => {
 
 type Progress = { percent: number; text?: string; detail?: string };
 
-const runInstall = async (report: (p: Progress) => void): Promise<{ ok: true } | { ok: false; message: string }> => {
-  const from = sourceDir();
-  const to = targetDir();
+type InstallResult = { ok: true; bytes?: number } | { ok: false; message: string; detail?: string };
 
-  report({ percent: 0, text: "正在清点文件" });
+const copyTree = async (from: string, to: string, report: (p: Progress) => void): Promise<InstallResult> => {
+  report({ percent: 1, text: "正在清点文件" });
   const entries: Entry[] = [];
   await collect(from, to, entries);
   const total = entries.reduce((sum, entry) => sum + entry.size, 0);
-  if (total === 0) return { ok: false, message: "没有找到要安装的文件，安装包可能已损坏。" };
+  if (total === 0) {
+    return { ok: false, message: "安装包里没有找到应用文件。", detail: "请重新下载安装包后再试。" };
+  }
 
   // 目录一次性建好，省得每个文件都试一次
   const dirs = new Set(entries.map((entry) => path.dirname(entry.to)));
   for (const dir of dirs) await mkdir(dir, { recursive: true });
 
-  report({ percent: 2, text: "正在写入文件", detail: "正在写入文件，请不要关闭这个窗口。" });
+  report({ percent: 3, text: "正在写入文件", detail: "正在写入文件，请不要关闭这个窗口。" });
   let done = 0;
   let lastTick = 0;
   for (const entry of entries) {
     try {
       await placeFile(entry);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return { ok: false, message: `写入 ${path.basename(entry.to)} 失败：${message}\n如果药大拾间正在运行，请先退出后重试。` };
+      return {
+        ok: false,
+        message: "有文件正在被占用，写不进去。",
+        detail: `${path.basename(entry.to)} · ${error instanceof Error ? error.message : String(error)}`
+      };
     }
     done += entry.size;
     // 每个文件都推一次 IPC 会把渲染进程刷爆，限流到 ~25 次/秒
     const now = Date.now();
     if (now - lastTick > 40) {
       lastTick = now;
-      // 复制只占到 92%，剩下留给快捷方式与注册表，避免卡在 100% 上不动
-      report({ percent: 2 + (done / total) * 90, text: "正在写入文件" });
+      // 复制只占到 90%，剩下留给快捷方式与注册表，避免卡在 100% 上不动
+      report({ percent: 3 + (done / total) * 87, text: "正在写入文件" });
     }
   }
+  return { ok: true, bytes: total };
+};
 
+const runInstall = async (report: (p: Progress) => void): Promise<InstallResult> => {
+  const from = sourceDir();
+  const to = targetDir();
   const exePath = path.join(to, exeName());
-  report({ percent: 94, text: "正在创建快捷方式" });
+
+  report({ percent: 0, text: "正在准备" });
+  await closeRunning(exePath);
+
+  // 整个复制过程必须关掉 asar 补丁。Electron 给 fs 打过补丁：路径里只要含
+  // ".asar" 就被当成"压缩包内的路径"去解析，于是 resources/app.asar 这个文件
+  // 本身既复制不了（补丁跑去包内找一个空路径，必然 ENOENT），readdir 还会
+  // 把它当目录递归进去。noAsar 期间 fs 恢复成普通行为。
+  //
+  // 只包住复制：安装页自己是从 app.asar 里加载的，长期关掉会影响别处。
+  process.noAsar = true;
+  let result: InstallResult;
+  try {
+    result = await copyTree(from, to, report);
+  } finally {
+    process.noAsar = false;
+  }
+  if (!result.ok) return result;
+
+  report({ percent: 92, text: "正在创建快捷方式" });
   writeShortcuts(exePath);
 
-  report({ percent: 97, text: "正在注册卸载信息" });
-  await writeUninstallEntry(exePath, to, total);
+  report({ percent: 96, text: "正在注册卸载信息" });
+  await writeUninstallEntry(exePath, to, result.bytes ?? 0);
 
   report({ percent: 100, text: "安装完成" });
   launchInstalled(exePath);
@@ -231,13 +322,16 @@ export const openInstallerWindow = async (): Promise<void> => {
   };
 
   ipcMain.handle("install:info", async () => {
+    const exePath = path.join(targetDir(), exeName());
     let upgrade = false;
     try {
-      upgrade = (await stat(path.join(targetDir(), exeName()))).isFile();
+      upgrade = (await stat(exePath)).isFile();
     } catch {
       upgrade = false;
     }
-    return { targetLabel: targetDir(), upgrade };
+    // 旧版正开着时提前说清楚会关掉它，别让用户以为是崩了
+    const running = upgrade ? (await countRunning(exePath)) > 0 : false;
+    return { targetLabel: targetDir(), upgrade, running };
   });
 
   ipcMain.handle("install:run", async () => {
