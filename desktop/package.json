@@ -35,6 +35,9 @@
       "buildResources": "build"
     },
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "portable": {
+      "artifactName": "${productName}-${version}-${os}-${arch}-portable.${ext}"
+    },
     "electronLanguages": [
       "zh-CN",
       "en-US"
@@ -62,7 +65,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "perMachine": false,
-      "shortcutName": "药大拾间桌面端"
+      "shortcutName": "药大拾间桌面端",
+      "artifactName": "${productName}-${version}-${os}-${arch}-setup.${ext}"
     }
   },
   "devDependencies": {
