@@ -2,13 +2,21 @@ import { BrowserWindow, Menu, WebContentsView } from "electron";
 import path from "node:path";
 import { branding } from "./config";
 
-// 单窗口标签页。整个应用只有一个窗口，学习平台不再另开窗口。
+// 单窗口标签页。整个应用只有一个窗口，学习通不再另开窗口。
 //
 // 有一条硬约束决定了整体设计：WebContentsView 永远盖在窗口自身页面内容之上，
 // 外壳页面画的浮层会被内容视图压住。所以"工具"不做浮层，而是做成一个常驻标签 ——
 // 切到它时把所有内容视图藏起来，露出外壳自己的页面。顺带它也就不像个外挂插件了。
 
 export const CHROME_HEIGHT = 46;
+
+const isHttps = (value: string): boolean => {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+};
 
 export type TabKind = "site" | "tools" | "learning";
 
@@ -37,6 +45,8 @@ export type TabHooks = {
   appVersion: string;
   /** 决定一个地址该不该留在应用里；返回 false 表示交给系统浏览器 */
   isNavigable: (url: string) => boolean;
+  /** 记录 webContents 属于哪种标签，供导航策略区分对待 */
+  registerKind: (webContentsId: number, kind: TabKind) => void;
   /** 交给系统浏览器 */
   openExternally: (url: string) => void;
   /** 页面加载完成，用于注入用户脚本 */
@@ -135,9 +145,10 @@ export class TabManager {
 
   private wire(tab: Tab): void {
     const contents = tab.view!.webContents;
+    this.hooks.registerKind(contents.id, tab.kind);
 
     contents.on("page-title-updated", (_event, title) => {
-      // 学习平台的标题很长，截短好放进标签
+      // 学习通的标题很长，截短好放进标签
       tab.title = title.trim().slice(0, 40) || tab.title;
       this.emit();
     });
@@ -157,9 +168,13 @@ export class TabManager {
       if (items.length > 0) Menu.buildFromTemplate(items).popup({ window: this.window });
     });
 
-    // 站外链接一律交给系统浏览器；站内链接开新标签，而不是新窗口
+    // 一律开新标签而不是新窗口。
+    // 学习通标签里弹出的窗口通常是它自己的文档预览、答题页之类，域名可能在白名单外，
+    // 但仍属于同一次学习流程，踢去外部浏览器等于把会话丢在那边 —— 留在应用里。
+    // 主站标签只放行白名单，站点本身不该把用户带去别处。
     contents.setWindowOpenHandler(({ url }) => {
-      if (this.hooks.isNavigable(url)) void this.openLearningTab(url);
+      const stayInApp = tab.kind === "learning" ? isHttps(url) : this.hooks.isNavigable(url);
+      if (stayInApp) void this.openLearningTab(url, { trusted: tab.kind === "learning" });
       else this.hooks.openExternally(url);
       return { action: "deny" };
     });
@@ -214,8 +229,15 @@ export class TabManager {
     this.activate(tab.id);
   }
 
-  async openLearningTab(url: string): Promise<void> {
-    if (!this.hooks.isNavigable(url)) {
+  /**
+   * trusted 表示这个地址来自已经在学习通标签里的页面（它自己的跳转或弹窗）。
+   * 这类地址不再要求命中站点白名单 —— 超星登录与文档预览会跳到白名单外的域名，
+   * 把它们踢去外部浏览器会直接把会话断在半路。
+   * 脚本注入与特权桥不受影响，那两件事始终只看 injectableHosts。
+   */
+  async openLearningTab(url: string, options: { trusted?: boolean } = {}): Promise<void> {
+    const allowed = options.trusted ? isHttps(url) : this.hooks.isNavigable(url);
+    if (!allowed) {
       this.hooks.openExternally(url);
       return;
     }
@@ -282,10 +304,17 @@ export class TabManager {
   }
 
   destroy(): void {
+    // 这个方法会在主窗口 closed 之后被调用，那时 window 已经销毁，
+    // 再碰 contentView 会抛 "Object has been destroyed"。
+    const windowAlive = !this.window.isDestroyed();
     for (const tab of this.tabs) {
       if (!tab.view) continue;
-      this.window.contentView.removeChildView(tab.view);
-      if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
+      try {
+        if (windowAlive) this.window.contentView.removeChildView(tab.view);
+        if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
+      } catch {
+        // 窗口连带视图一起销毁的情况，忽略即可
+      }
     }
     this.tabs = [];
   }

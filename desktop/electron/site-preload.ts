@@ -31,7 +31,7 @@ contextBridge.exposeInMainWorld("CPUDesktop", {
     return true;
   },
 
-  // 站点可以请求打开学习平台标签，但不能读写客户端设置
+  // 站点可以请求打开学习通标签，但不能读写客户端设置
   openLearning: () => ipcRenderer.invoke("learning:open"),
   getAuthStatus: () => ipcRenderer.invoke("oauth:status")
 });

@@ -1,7 +1,7 @@
 {
   "name": "cpu-web-desktop",
   "version": "0.1.0",
-  "description": "药大拾间桌面端 —— 授权登录后在受控窗口中打开学习平台并启用学习辅助脚本",
+  "description": "药大拾间桌面端 —— 授权登录后在受控标签页中打开学习通并启用答题辅助",
   "main": "dist/electron/main.js",
   "private": true,
   "license": "AGPL-3.0-or-later",

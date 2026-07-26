@@ -261,7 +261,7 @@ export const logoutOAuth = async (): Promise<void> => {
       console.error("撤销 access token 失败，可到主站会话管理中手动处理", error);
     }
   }
-  // 学习平台的登录态留在默认会话里，不清掉相当于没退出
+  // 学习通的登录态留在默认会话里，不清掉相当于没退出
   try {
     await electronSession.defaultSession.clearStorageData({ storages: ["cookies", "localstorage", "indexdb"] });
   } catch (error) {

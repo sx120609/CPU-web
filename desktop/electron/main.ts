@@ -11,7 +11,7 @@ import { buildScriptConfig } from "./script-config";
 import { CampusNetService, CampusState } from "./campus-net/service";
 import { onCampusLog, pruneCampusLogs, readCampusLogs } from "./campus-net/log";
 import { checkForUpdate, notifyUpdate, openUpdateDownload } from "./updater";
-import { CHROME_HEIGHT, TabManager } from "./tabs";
+import { CHROME_HEIGHT, TabKind, TabManager } from "./tabs";
 import { branding, injectableHosts, learningUrl, limits, oauthConfig } from "./config";
 
 let mainWindow: BrowserWindow | undefined;
@@ -32,6 +32,10 @@ const grants = new Map<string, ScriptGrant>();
 // 它需要访问本机回环回调地址，那个地址不在任何站点白名单里。
 const navigationOverrides = new Map<number, (url: string) => boolean>();
 
+// 每个内容视图属于哪种标签。导航策略要按这个区分：学习通标签里页面自身的跳转
+// 不能拦（超星登录会连跳好几个白名单外的域名），主站标签则必须锁在白名单内。
+const contentsKind = new Map<number, TabKind>();
+
 // 脚本回传的运行状态。脚本自己的面板只留 20 条日志且关掉面板就看不见，
 // 这里存一份好让客户端界面显示。
 type ScriptActivity = { at: number; kind: "status" | "log"; text: string };
@@ -47,7 +51,7 @@ const recordScriptActivity = (entry: ScriptActivity): void => {
 
 const resolveAsset = (...segments: string[]): string => path.join(app.getAppPath(), ...segments);
 
-// 状态推送只发给主窗口：学习平台窗口是第三方页面，不该收到应用内部事件。
+// 状态推送只发给主窗口：学习通窗口是第三方页面，不该收到应用内部事件。
 const broadcast = (channel: string, payload: unknown): void => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
 };
@@ -68,7 +72,7 @@ const openExternally = (value: string): void => {
   }
 };
 
-// 主站链接留在主窗口，学习平台开独立窗口，其余交给系统浏览器。
+// 主站链接留在主窗口，学习通开独立窗口，其余交给系统浏览器。
 const routeUrl = (value: string): void => {
   if (asSiteUrl(value)) {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -376,6 +380,7 @@ const loadSite = async (contents: Electron.WebContents): Promise<void> => {
 const createTabManager = (window: BrowserWindow): TabManager => new TabManager(window, {
   appVersion: app.getVersion(),
   isNavigable: (url) => asNavigableUrl(url) !== undefined,
+  registerKind: (webContentsId, kind) => contentsKind.set(webContentsId, kind),
   openExternally,
   onDidFinishLoad: (contents) => void injectMatchingScripts(contents),
   onChange: (tabsState, activeId) => broadcast("tabs:changed", { tabs: tabsState, activeId })
@@ -450,15 +455,21 @@ const openAuthorizeWindow: AuthorizeOpener = async (authorizeUrl, callbackOrigin
       webviewTag: false
     }
   });
-  // 回环回调是 http 且不在任何白名单里，只对这一个窗口、这一次登录放行
-  navigationOverrides.set(window.webContents.id, createAuthNavigationRule(callbackOrigin));
+  // 回环回调是 http 且不在任何白名单里，只对这一个窗口、这一次登录放行。
+  // id 必须现在就取下来：closed 回调触发时窗口已经销毁，那时再读
+  // window.webContents 会抛 "Object has been destroyed"。
+  const authContentsId = window.webContents.id;
+  navigationOverrides.set(authContentsId, createAuthNavigationRule(callbackOrigin));
   let settled = false;
   window.once("closed", () => {
-    navigationOverrides.delete(window.webContents.id);
+    navigationOverrides.delete(authContentsId);
     // 用户手动关窗时要把等待中的登录 Promise 结掉，否则要挂到 5 分钟超时
     if (!settled) abortOAuthLogin();
   });
-  await window.loadURL(authorizeUrl);
+  // 不能 await：授权页会自己一路跳到本机回调地址，登录一成功这个窗口就被销毁，
+  // 于是这次导航必然以 ERR_ABORTED 收尾。那是预期结果 ——
+  // 之前 await 它，等于把"登录成功"报成了"登录失败"。
+  window.loadURL(authorizeUrl).catch(() => undefined);
   return {
     close: () => {
       settled = true;
@@ -487,7 +498,7 @@ const refreshTray = (state?: CampusState): void => {
     { label: summary, enabled: false },
     { type: "separator" },
     { label: "打开药大拾间", click: () => void openMainWindow() },
-    { label: "打开学习平台", click: () => void openLearningPage().catch((error) => console.error("打开学习平台失败", error)) },
+    { label: "打开学习通", click: () => void openLearningPage().catch((error) => console.error("打开学习通失败", error)) },
     {
       label: "立即连接校园网",
       enabled: Boolean(campus?.hasCredential),
@@ -575,9 +586,13 @@ const sanitizeAiBody = (raw: string): Record<string, unknown> => {
 
 const applyNavigationPolicy = (contents: Electron.WebContents): void => {
   const guard = (event: Electron.Event, url: string): void => {
-    // 本地启动台用 file:// 加载，不受站点白名单约束
+    // 外壳自己用 file:// 加载，不受站点白名单约束
     if (url.startsWith("file://")) return;
     if (navigationOverrides.get(contents.id)?.(url)) return;
+    // 学习通标签里页面自身的跳转全部放行：超星登录会连跳好几个白名单外的域名，
+    // 把它踢去外部浏览器会直接把会话断在半路。
+    // 脚本注入与特权桥不受影响 —— 那两件事始终只看 injectableHosts。
+    if (contentsKind.get(contents.id) === "learning" && parseHttpsUrl(url)) return;
     if (asNavigableUrl(url)) return;
     event.preventDefault();
     openExternally(url);
@@ -591,7 +606,7 @@ const applyNavigationPolicy = (contents: Electron.WebContents): void => {
     return { action: "deny" };
   });
   contents.on("will-attach-webview", (event) => event.preventDefault());
-  contents.on("destroyed", () => revokeGrants(contents.id));
+  contents.on("destroyed", () => { revokeGrants(contents.id); contentsKind.delete(contents.id); });
   // 页面加载失败本来是完全静默的，表现为"窗口开着但一片空白"
   contents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     if (isMainFrame) console.error(`页面加载失败：${validatedURL} (${errorCode} ${errorDescription})`);
@@ -600,6 +615,8 @@ const applyNavigationPolicy = (contents: Electron.WebContents): void => {
 
 const singleInstance = app.requestSingleInstanceLock();
 if (!singleInstance) {
+  // 不说一声就退的话，表现是"双击没反应、日志空白"，很难判断到底是崩了还是被锁住了
+  console.log("已有一个实例在运行，本次启动退出并把窗口交给它");
   app.quit();
 } else {
   app.on("second-instance", () => {

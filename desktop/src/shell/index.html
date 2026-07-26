@@ -47,7 +47,7 @@
             <div><dt>今日已用 / 每日额度</dt><dd id="auth-usage">—</dd></div>
             <div><dt>授权有效期至</dt><dd id="auth-expires">—</dd></div>
           </dl>
-          <p class="muted" id="auth-hint">登录后即可使用学习平台与校园 AI 解答。</p>
+          <p class="muted" id="auth-hint">登录后即可使用学习通与校园 AI 解答。</p>
           <div class="actions">
             <button class="primary" id="auth-login" type="button" hidden>登录</button>
             <button class="ghost" id="auth-logout" type="button" hidden>退出登录</button>
@@ -116,9 +116,9 @@
             <h2>刷题</h2>
             <span class="pill" id="script-pill" hidden>运行中</span>
           </div>
-          <p class="muted" id="script-status">在标签页中打开学习平台，答题辅助会自动接管。</p>
+          <p class="muted" id="script-status">在标签页中打开学习通，答题辅助会自动接管。</p>
           <div class="actions">
-            <button class="primary" id="script-open" type="button">打开学习平台</button>
+            <button class="primary" id="script-open" type="button">打开学习通</button>
           </div>
 
           <div class="subsection">
@@ -141,7 +141,7 @@
               <label class="field"><span>提交前等待最小（秒）</span><input type="number" id="cfg-submitDelayMin" min="1" max="600" /></label>
               <label class="field"><span>提交前等待最大（秒）</span><input type="number" id="cfg-submitDelayMax" min="1" max="600" /></label>
             </div>
-            <p class="notice-inline" id="reload-hint" hidden>以上改动要重新打开学习平台标签才生效。</p>
+            <p class="notice-inline" id="reload-hint" hidden>以上改动要重新打开学习通标签才生效。</p>
           </div>
 
           <div class="subsection">
@@ -149,9 +149,9 @@
             <label class="switch">
               <input type="checkbox" id="cfg-aiEnabled" />
               <span class="track"><span class="thumb"></span></span>
-              <span class="switch-text"><strong>用校园 AI 作答</strong><small>题库查不到时才会用，消耗你的每日额度</small></span>
+              <span class="switch-text"><strong>用校园 AI 作答</strong><small>答案全部来自药大拾间的校园 AI，消耗你的每日额度；关掉就只做视频任务点</small></span>
             </label>
-            <label class="field" id="ai-model-field"><span>模型名称</span><input type="text" id="cfg-aiModel" placeholder="deepseek-reasoner" /></label>
+            <p class="muted small">模型由站点后台统一设定，客户端不参与选择。</p>
           </div>
 
           <details class="logs">

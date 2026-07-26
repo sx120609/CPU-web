@@ -1,7 +1,7 @@
 export const branding = {
   productName: "药大拾间桌面端",
   windowTitle: "药大拾间",
-  learningTitle: "学习平台",
+  learningTitle: "学习通",
   storagePrefix: "cpu-desktop-userscript",
   // 与 web/src/utils/clientInfo.ts 的识别约定对齐（CPUWebScheduleApp / CPUWebHarmonyApp）
   userAgentTag: "CPUWebDesktopApp"

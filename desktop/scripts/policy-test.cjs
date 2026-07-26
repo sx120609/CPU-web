@@ -40,7 +40,7 @@ const check = (name, fn) => {
 
 /* ---------------------------------------------------------- 可导航地址 */
 
-check("学习平台放行", () => {
+check("学习通放行", () => {
   assert.ok(asNavigableUrl("https://i.chaoxing.com/"));
   assert.ok(asNavigableUrl("https://passport2.chaoxing.com/login"));
   assert.ok(asNavigableUrl("https://mooc1.chaoxing.com/mycourse"));

@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 
 // 应用外壳（标签栏 + 工具页）的桥。全局名同时出现在 src/shell/renderer.js。
 //
-// 这个桥只挂在窗口自身的外壳页面上。站点内容与学习平台各自跑在 WebContentsView 里，
+// 这个桥只挂在窗口自身的外壳页面上。站点内容与学习通各自跑在 WebContentsView 里，
 // 用的是 site-preload / learning-preload，拿不到这里的任何东西。
 
 const on = (channel: string, callback: (payload: any) => void) => {

@@ -26,7 +26,7 @@
           <span class="promo-icon"><el-icon><Notebook /></el-icon></span>
           <div>
             <strong>刷题小工具</strong>
-            <small>在客户端标签页中打开学习平台，答题辅助自动接管，进度与日志在客户端里直接看</small>
+            <small>在客户端标签页中打开学习通，答题辅助自动接管，进度与日志在客户端里直接看</small>
           </div>
         </li>
       </ul>

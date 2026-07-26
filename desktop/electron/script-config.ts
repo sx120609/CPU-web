@@ -13,16 +13,22 @@
 export type ScriptConfig = Record<string, unknown>;
 
 // 用户可以在客户端界面里改的项。其余键只是为了"给全"而存在。
+//
+// 刻意不含 aiModel：服务端 routes/oauth.ts 的 /v1/responses 里
+// `const model = siteConfig.assistantModel`，客户端传什么都被丢弃，
+// 放个输入框只会让人以为改了有用。
+//
+// 也不含 customApi*：本站的答案全部来自后台配置的 AI，没有题库这条路。
+// 脚本里那几个题库函数（题库海/一之/言溪）连调用点都没有。
 export type EditableKey =
   | "autoVideo" | "autoJump" | "autoSubmit" | "autoExam"
   | "interval" | "answerIntervalMin" | "answerIntervalMax"
   | "submitDelayMin" | "submitDelayMax" | "minAccuracy"
-  | "aiEnabled" | "aiModel"
-  | "customApiEnabled" | "customApiUrl" | "customApiKey";
+  | "aiEnabled";
 
 // 改动后是否需要重新打开学习窗口才生效。
 // 脚本在构造时对配置做了快照（this.defaultConfig），这些项读的是快照；
-// 而 AI 与自定义题库那几项是每道题现读现用，所以能热改。
+// 而 AI 开关是每道题现读现用，所以能热改。
 export const NEEDS_RELOAD: readonly EditableKey[] = [
   "autoVideo", "autoJump", "autoSubmit", "autoExam",
   "interval", "answerIntervalMin", "answerIntervalMax",
@@ -42,7 +48,10 @@ export const DEFAULT_SCRIPT_CONFIG: ScriptConfig = {
   submitDelayMax: 40,
   minAccuracy: 0.8,
   aiEnabled: true,
+  // 服务端会用站点配置里的模型覆盖它，这里填什么都不影响结果；
+  // 给个值只是因为脚本要求配置项齐全。
   aiModel: "deepseek-reasoner",
+  // 本站没有题库，答案全部走后台配置的 AI，这条路始终关闭
   customApiEnabled: false,
   customApiUrl: "",
   customApiKey: "",

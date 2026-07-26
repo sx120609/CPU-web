@@ -1,5 +1,5 @@
 // 应用外壳：标签栏 + 工具页 + 离线页。
-// 站点内容与学习平台跑在各自的 WebContentsView 里，永远盖在本页之上，
+// 站点内容与学习通跑在各自的 WebContentsView 里，永远盖在本页之上，
 // 所以工具页不是浮层 —— 切到工具标签时主进程会把视图藏起来，本页才露出来。
 
 const shell = window.cpuShell;
@@ -109,7 +109,7 @@ const renderAuth = (session) => {
   if (!loggedIn) {
     el("auth-hint").textContent = session?.expired
       ? "上次的授权已过期（有效期 30 天），请重新登录。"
-      : "登录后即可使用学习平台与校园 AI 解答。";
+      : "登录后即可使用学习通与校园 AI 解答。";
     el("quota-text").textContent = "未登录";
     return;
   }
@@ -210,8 +210,6 @@ const renderScriptConfig = () => {
     if (input) input.value = String(scriptConfig[key] ?? "");
   }
   el("cfg-aiEnabled").checked = Boolean(scriptConfig.aiEnabled);
-  el("cfg-aiModel").value = String(scriptConfig.aiModel ?? "");
-  el("ai-model-field").hidden = !scriptConfig.aiEnabled;
   el("reload-hint").hidden = !pendingReload;
 };
 
@@ -330,7 +328,7 @@ const bindScript = () => {
       pendingReload = false;
       renderScriptConfig();
     } catch (error) {
-      say(errorText(error, "无法打开学习平台。"), true);
+      say(errorText(error, "无法打开学习通。"), true);
       void refreshAuth();
     }
   });
@@ -338,7 +336,6 @@ const bindScript = () => {
     el(`cfg-${key}`)?.addEventListener("change", (event) => void pushScriptConfig(key, Number(event.target.value)));
   }
   el("cfg-aiEnabled").addEventListener("change", (event) => void pushScriptConfig("aiEnabled", event.target.checked));
-  el("cfg-aiModel").addEventListener("change", (event) => void pushScriptConfig("aiModel", event.target.value));
 };
 
 const bindPreferences = async () => {
