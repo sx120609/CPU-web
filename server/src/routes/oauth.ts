@@ -15,6 +15,7 @@ import { getSiteConfig } from "../services/siteSettings";
 import { isCampusAssistantConversationRestricted } from "../services/campusAssistant";
 import { securityRateLimit } from "../middleware/securityRateLimit";
 import { buildUserTrustSnapshot } from "../services/userTrust";
+import { detectAiJsonApiMode, extractAiJsonTextResponse, normalizeAiJsonApiUrl } from "../services/aiJsonApi";
 import {
   buildAiPromptCacheKey,
   detectAiJsonApiMode,
@@ -55,7 +56,7 @@ const chatBodySchema = z.object({
     content: z.string().max(32_000),
   })).min(1).max(100),
   temperature: z.number().min(0).max(2).optional(),
-  stream: z.boolean().optional(),
+  stream: z.literal(false).optional(),
 }).strict();
 
 function hashToken(value: string) {
@@ -232,7 +233,6 @@ oauthRouter.post("/v1/chat/completions", securityRateLimit("oauth-ai", 20, 60_00
   let userId = 0;
   let quotaRefunded = false;
   let timeout: ReturnType<typeof setTimeout> | undefined;
-  let responseStarted = false;
   let responseCompleted = false;
   try {
     const token = await loadAccessToken(req);
@@ -268,35 +268,22 @@ oauthRouter.post("/v1/chat/completions", securityRateLimit("oauth-ai", 20, 60_00
     if (contentType) res.setHeader("Content-Type", contentType);
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("X-Accel-Buffering", "no");
-    if (body.stream) {
-      res.flushHeaders();
-      responseStarted = true;
-    }
     if (!upstream.ok) {
       await refundCampusAssistantQuota(token.userId, quotaReservation);
       quotaRefunded = true;
     }
-    if (body.stream && upstream.body) {
-      const reader = upstream.body.getReader();
-      try {
-        while (true) {
-          const chunk = await reader.read();
-          if (chunk.done) break;
-          if (!res.writableEnded) res.write(Buffer.from(chunk.value));
-        }
-        responseCompleted = true;
-      } finally {
-        if (timeout) clearTimeout(timeout);
-        timeout = undefined;
-        reader.releaseLock();
-        if (!res.writableEnded) res.end();
-      }
-      return;
+    if (!upstream.ok) {
+      const errorBody = Buffer.from(await upstream.arrayBuffer());
+      if (timeout) clearTimeout(timeout);
+      timeout = undefined;
+      responseCompleted = true;
+      return res.send(errorBody);
     }
-    const responseBody = Buffer.from(await upstream.arrayBuffer());
+    const payload = await upstream.json();
+    const content = extractAiJsonTextResponse(payload, detectAiJsonApiMode(endpoint));
     if (timeout) clearTimeout(timeout);
     timeout = undefined;
-    const result = res.send(responseBody);
+    const result = res.json({ choices: [{ message: { content } }] });
     responseCompleted = true;
     return result;
   } catch (error) {
@@ -304,7 +291,6 @@ oauthRouter.post("/v1/chat/completions", securityRateLimit("oauth-ai", 20, 60_00
     if (quotaReservation && !quotaRefunded && !responseCompleted) {
       await refundCampusAssistantQuota(userId, quotaReservation).catch(() => {});
     }
-    if (responseStarted) return;
     next(error);
   }
 });
@@ -315,7 +301,6 @@ function buildOAuthAiRequestBody(body: z.infer<typeof chatBodySchema>, model: st
       model,
       input: body.messages.map((message) => ({ role: message.role, content: message.content })),
       ...(body.temperature === undefined ? {} : { temperature: body.temperature }),
-      ...(body.stream === undefined ? {} : { stream: body.stream }),
     };
   }
   return { ...body, model };
