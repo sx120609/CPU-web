@@ -22,3 +22,6 @@ pnpm-debug.log*
 !.vscode/settings.json
 
 *.tsbuildinfo
+
+# 由 scripts/prepare-license.cjs 从 license.source.txt 生成
+build/license.txt

@@ -9,13 +9,14 @@
     "clean": "rimraf dist release",
     "build": "rimraf dist && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "assets:installer": "electron scripts/build-installer-assets.cjs",
     "vendor:deps": "node scripts/vendor-deps.mjs",
     "vendor:verify": "node scripts/vendor-deps.mjs --verify",
     "test": "npm run build && node scripts/policy-test.cjs && node scripts/campus-net-test.cjs && node scripts/vendor-deps.mjs --verify",
     "test:smoke": "npm run build && node scripts/smoke-test.mjs",
     "test:package": "node scripts/package-check.cjs",
     "start": "npm run build && electron .",
-    "dist:win": "npm run build && electron-builder --win --publish never"
+    "dist:win": "npm run build && node scripts/prepare-license.cjs && electron-builder --win --publish never"
   },
   "build": {
     "appId": "cn.lizmt.cpuweb.desktop",
@@ -40,18 +41,30 @@
       "target": [
         "nsis"
       ],
-      "icon": "build/icon.png"
+      "icon": "build/icon.ico"
     },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
       "perMachine": false,
       "allowElevation": false,
       "runAfterFinish": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "药大拾间",
+      "license": "build/license.txt",
+      "include": "build/installer.nsh",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "installerSidebar": "build/installerSidebar.bmp",
+      "uninstallerSidebar": "build/uninstallerSidebar.bmp",
+      "installerHeader": "build/installerHeader.bmp",
       "installerLanguages": ["zh_CN"],
-      "deleteAppDataOnUninstall": true
+      "multiLanguageInstaller": true,
+      "displayLanguageSelector": false,
+      "deleteAppDataOnUninstall": true,
+      "uninstallDisplayName": "药大拾间桌面端"
     }
   },
   "devDependencies": {

@@ -799,11 +799,14 @@ if (!singleInstance) {
       recordScriptActivity({ at: Date.now(), kind, text });
     });
 
-    ipcMain.handle("script:get-config", () => readPreferences().then((value) => value.scriptConfig));
+    // 返回生效后的完整配置，不是用户覆盖项。存的只有覆盖项，全新安装时是空对象，
+    // 直接抛给界面会让所有开关显示成关、数字框显示成空 —— 而脚本那边其实按默认值在跑。
+    ipcMain.handle("script:get-config", async () => buildScriptConfig((await readPreferences()).scriptConfig));
     ipcMain.handle("script:set-config", async (_event, patch: unknown) => {
       const saved = await writePreferences({ scriptConfig: (patch ?? {}) as Record<string, unknown> });
-      broadcast("script:config-changed", saved.scriptConfig);
-      return saved.scriptConfig;
+      const effective = buildScriptConfig(saved.scriptConfig);
+      broadcast("script:config-changed", effective);
+      return effective;
     });
     ipcMain.handle("script:get-activity", (_event, limit: unknown) => ({
       status: latestScriptStatus,
