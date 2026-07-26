@@ -147,11 +147,21 @@ const download = async (remote: Remote): Promise<string> => {
     throw error;
   }
 
-  // 大小对不上说明传输被截断了，这种文件跑起来只会是个损坏的安装包
   const written = (await stat(target)).size;
+
+  // 传输完整性：响应头说多少就该收到多少，对不上说明被截断了
   if (total > 0 && written !== total) {
     await rm(target, { force: true }).catch(() => undefined);
     throw new Error(`下载不完整（${written}/${total} 字节）`);
+  }
+
+  // 一致性：还必须与我们自己接口声明的大小一致。content-length 跟下载响应来自
+  // 同一个来源 —— 对面换个文件它就跟着变，只对它做校验等于什么都没验。
+  // 唯一可信的锚点是主站 HTTPS 接口给的 size。
+  const declared = Number(remote.size) || 0;
+  if (declared > 0 && written !== declared) {
+    await rm(target, { force: true }).catch(() => undefined);
+    throw new Error(`安装包大小与服务端声明不符（${written}/${declared} 字节），已丢弃`);
   }
 
   const expected = (remote.contentHash || "").toLowerCase();
