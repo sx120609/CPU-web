@@ -368,6 +368,11 @@ export const config = {
   ).trim(),
   // 网盘分享页的提取码。不是直链时必须下发，否则用户点过去只能卡在输码页面。
   desktopAppDownloadPassword: (process.env.DESKTOP_APP_DOWNLOAD_PASSWORD ?? "afqr").trim(),
+  // 阿里云盘企业版（PDS）的分享链接。配了就走直链：服务端每次现取一个临时地址再
+  // 302 过去，用户看到的是我们自己域名下的稳定链接，不用输提取码。
+  // 留空则回落到上面那套网盘分享页 + 提取码。
+  desktopPdsShareUrl: (process.env.DESKTOP_PDS_SHARE_URL ?? "").trim(),
+  desktopPdsSharePassword: (process.env.DESKTOP_PDS_SHARE_PASSWORD ?? "").trim(),
   desktopAppVersion: (process.env.DESKTOP_APP_VERSION ?? "").trim(),
   oauthClientId: String(process.env.OAUTH_CLIENT_ID ?? "cpu-electron").trim(),
   oauthAllowedRedirectUris: parseCsvEnv(process.env.OAUTH_ALLOWED_REDIRECT_URIS, ["http://127.0.0.1", "http://localhost"]),

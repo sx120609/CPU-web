@@ -53,7 +53,9 @@ export const checkForUpdate = async (): Promise<UpdateInfo> => {
 
 export const openUpdateDownload = (url: string): void => {
   try {
-    const target = new URL(url);
+    // 服务端可能给相对路径（下载走我们自己的跳转端点时），按主站地址补全。
+    // 不补的话 new URL 直接抛错，表现为"点了去下载什么都没发生"。
+    const target = new URL(url, oauthConfig.origin);
     if (target.protocol === "https:") void shell.openExternal(target.href);
   } catch {
     // 地址不合法就什么都不做
