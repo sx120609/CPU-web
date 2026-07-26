@@ -1121,13 +1121,15 @@ function setAppearanceMode(command: string | number | object) {
   color: var(--cpu-text-secondary);
 }
 
+/* 面板放在悬浮球那一列的左边：右偏移 = 26 底距 + 58 球宽 + 12 间距。
+   两颗球竖着占住右边一列，面板就不必为了让开它们而往上抬，高度也拿得回来。 */
 .assistant-widget {
   position: fixed;
   z-index: 1090;
-  right: 26px;
-  bottom: 94px;
-  width: min(clamp(440px, 32vw, 560px), calc(100vw - 52px));
-  height: min(clamp(640px, 78dvh, 820px), calc(100dvh - 118px));
+  right: 96px;
+  bottom: 26px;
+  width: min(clamp(440px, 32vw, 560px), calc(100vw - 122px));
+  height: min(clamp(560px, 82dvh, 860px), calc(100dvh - 52px));
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--cpu-primary) 30%, var(--cpu-border-soft));
   border-radius: 24px;
@@ -1156,10 +1158,10 @@ function setAppearanceMode(command: string | number | object) {
 .tools-widget {
   position: fixed;
   z-index: 1090;
-  right: 26px;
-  bottom: 94px;
-  width: min(clamp(360px, 26vw, 420px), calc(100vw - 52px));
-  max-height: min(600px, calc(100dvh - 118px));
+  right: 96px;
+  bottom: 26px;
+  width: min(clamp(360px, 26vw, 420px), calc(100vw - 122px));
+  max-height: min(660px, calc(100dvh - 52px));
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--cpu-primary) 30%, var(--cpu-border-soft));
   border-radius: 20px;
@@ -1172,7 +1174,8 @@ function setAppearanceMode(command: string | number | object) {
   isolation: isolate;
 }
 
-/* 叠在 AI 悬浮球正上方：26 底距 + 58 球高 + 12 间距 */
+/* 竖着叠在 AI 悬浮球正上方：26 底距 + 58 球高 + 12 间距。
+   注意两个面板的 bottom 必须让开这颗球的上沿（154px），否则球会压进面板右下角。 */
 .tools-fab {
   position: fixed;
   z-index: 1091;
