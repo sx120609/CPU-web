@@ -171,7 +171,10 @@ const pushCampusSettings = async (patch) => {
 };
 
 const renderCampusLogs = (entries) => {
-  el("campus-logs").textContent = entries.map((entry) => `${formatTime(entry.at)}  ${entry.message}`).join("\n");
+  // 空着不写字的话，一条空灰条看起来就像功能坏了
+  el("campus-logs").textContent = entries.length
+    ? entries.map((entry) => `${formatTime(entry.at)}  ${entry.message}`).join("\n")
+    : "还没有记录。开启后台自动连接后，这里会显示每次检测与认证的结果。";
 };
 
 /* --------------------------------------------------------------- 刷题 */
@@ -228,10 +231,10 @@ const renderScriptActivity = (activity) => {
   if (!activity) return;
   el("script-pill").hidden = !activity.running;
   if (activity.status) el("script-status").textContent = activity.status;
-  el("script-logs").textContent = (activity.entries || [])
-    .slice(-60)
-    .map((entry) => `${formatTime(entry.at)}  ${entry.text}`)
-    .join("\n");
+  const entries = activity.entries || [];
+  el("script-logs").textContent = entries.length
+    ? entries.slice(-60).map((entry) => `${formatTime(entry.at)}  ${entry.text}`).join("\n")
+    : "还没有记录。在学习通标签里开始做任务后，这里会实时显示进度与答题结果。";
 };
 
 /* --------------------------------------------------------------- 绑定 */
