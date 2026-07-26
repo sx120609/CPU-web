@@ -1841,11 +1841,19 @@ onBeforeUnmount(() => {
     transition: border-color 0.16s ease, box-shadow 0.16s ease;
   }
   .assistant-disclaimer {
+    height: 14px;
+    min-height: 14px;
+    flex: 0 0 14px;
+    overflow: hidden;
     margin: 5px 0 0;
     font-size: 10px;
+    line-height: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .assistant-shell.is-composer-focused .assistant-disclaimer {
-    display: none;
+    visibility: hidden;
+    opacity: 0;
   }
   .assistant-form:focus-within {
     border-color: var(--cpu-primary);
