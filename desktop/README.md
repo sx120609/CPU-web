@@ -160,24 +160,24 @@ npm run test:smoke   # 真实启动一次 Electron，确认主进程不崩、资
 npm run dist:win
 ```
 
-只产出一个 Windows x64 安装包，写入 `release/`。不做 portable、不做 macOS —— 用户群是校内学生，多给一种格式只会增加"该下哪个"的困惑。
+只产出一个 Windows x64 安装包，写入 `release/`。不做 macOS —— 用户群是校内学生，多给一种格式只会增加"该下哪个"的困惑。
 
-欢迎页不是 MUI 的默认样子。默认向导是左边一条 164px 窄图、右边一片白底加两行系统字 —— 和所有别的向导长得一样。[build/installer.nsh.source](build/installer.nsh.source) 把图控件放大到整个内页对话框，隐藏 MUI 自带的标题与正文控件（文案已经画进图里），再按控件的新尺寸从磁盘重新 `LoadImage` 一次。
+### 安装界面不用 NSIS 画
 
-最后这一步是必需的：MUI 建页时已经用 `NSD_SetStretchedImage` 把位图压到侧边条尺寸，直接放大控件等于把压烂的小图再拉回来，汉字笔画会糊成一团。同理 [scripts/build-installer-assets.cjs](scripts/build-installer-assets.cjs) 里欢迎图落盘时降到 1x —— NSIS 拉伸走的是最近邻，2x 图被它硬砍一半会把细笔画直接抽掉。
+NSIS 的向导界面本质是 Win32 对话框资源：按钮、进度条都是系统控件，能改的只有贴图和显隐。无论怎么换图，底下那条「上一步 / 下一步 / 取消」的灰色按钮栏都还在，一眼就是 1999 年的东西。这是框架的天花板，不是配置问题。
 
-许可页去掉了：使用边界改在首启引导里讲，那里能好好排版，而不是塞进一个滚动文本框。
+所以安装界面**完全不经 NSIS**。打包目标换成 `portable`，它在不给 `splashImage` 时走 `SetSilent silent`（见 `app-builder-lib/templates/nsis/portable.nsi`）——**全程没有任何窗口**，只是把应用静默解压到临时目录再运行。NSIS 在这里退化成一个看不见的解压器。
 
-安装器其余部分按非技术用户配置：
+用户看到的第一个界面是 [src/installer/](src/installer/)：一个无边框、圆角、可拖动的 Electron 窗口，HTML/CSS 写的，视觉语言与首启引导一致。一个「立即安装」按钮，点了原地变进度条，装完自动启动正式版。**打开不会自动开始安装**，这是刻意的。
 
-| 配置 | 值 | 理由 |
-|---|---|---|
-| `oneClick` | `false` | 要有向导才谈得上"好看"——`true` 是全程无界面，装完什么都没看见 |
-| `allowToChangeInstallationDirectory` | `false` | 保留向导但不问装到哪，三步走完：欢迎 → 装 → 完成 |
-| `perMachine` + `allowElevation` | `false` | 装到当前用户目录，全程不弹 UAC |
-| `runAfterFinish` | `true` | 装完直接打开，省一步 |
-| `installerLanguages` / `electronLanguages` | 仅 `zh_CN` | 安装包体积小一些，界面不会串英文 |
-| `deleteAppDataOnUninstall` | `true` | 本地存着校园网密码与登录凭据，卸载就该一并清掉 |
+复制文件、建快捷方式、写卸载项都在 [electron/self-install.ts](electron/self-install.ts)。几个必须处理对的点：
+
+- **环境变量要剥干净。** 便携壳用 `ExecWait` 运行我们，`spawn` 默认继承环境；不显式删掉 `PORTABLE_EXECUTABLE_FILE`，装完启动的正式版会以为自己也是安装态，无限套娃。
+- **不参与单实例锁。** 覆盖安装时正式版往往正开着，安装态若去抢锁会直接退出，表现为"双击没反应"。
+- **覆盖正在运行的旧版靠改名而不是删除。** Windows 允许重命名正在运行的可执行文件，不允许删除。覆盖失败就把旧文件挪成 `.old-xxx`，下次正常启动时由 `sweepReplacedFiles()` 清掉。
+- **卸载是自己删自己。** 进程活着时删不掉自身目录，所以交给一个脱离的 `cmd` 等两秒再 `rmdir`。
+
+卸载项写在 `HKCU\...\Uninstall\cpu-web-desktop`，不需要管理员权限，`UninstallString` 指向正式版 exe 加 `--uninstall`。安装落点沿用旧 NSIS 版的 `%LOCALAPPDATA%\Programs\cpu-web-desktop`，让老用户就地升级而不是并存两份。
 
 ### 拿到证书后怎么接
 

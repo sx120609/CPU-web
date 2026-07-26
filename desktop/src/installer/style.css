@@ -1,0 +1,195 @@
+/* 安装页。视觉语言与首启引导（src/shell/style.css 的 .onboard 一段）保持一致，
+   让"安装 → 首启引导 → 应用"看起来是同一个产品的三个连续画面。 */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+:root { color-scheme: dark; }
+
+html, body { width: 100%; height: 100%; overflow: hidden; }
+
+body {
+  /* 圆角靠 CSS 画，窗口本身是 transparent + frameless。
+     背景色不能给 body —— 给了圆角外的四个直角就会露出来。 */
+  background: transparent;
+  color: #fff;
+  font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", -apple-system, sans-serif;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.bg {
+  position: fixed;
+  inset: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  /* 与首启引导同一条渐变。方向按窗口比例调平了一点 —— 引导页是竖长窗，这里是横窗 */
+  background: linear-gradient(148deg, #3cbda7 0%, #189a84 28%, #148f7b 56%, #0b6353 100%);
+}
+
+/* 光晕是点缀不是底色：铺太大会把绿洗成橄榄灰，整幅画面就脏了 */
+.orb { position: absolute; border-radius: 50%; }
+.orb-a {
+  top: -170px; right: -120px; width: 340px; height: 340px;
+  background: radial-gradient(circle, rgba(245,158,11,.26) 0%, rgba(245,158,11,.07) 44%, rgba(245,158,11,0) 68%);
+  animation: drift-a 18s ease-in-out infinite alternate;
+}
+.orb-b {
+  bottom: -190px; left: -110px; width: 330px; height: 330px;
+  background: radial-gradient(circle, rgba(94,228,204,.22) 0%, rgba(94,228,204,0) 64%);
+  animation: drift-b 22s ease-in-out infinite alternate;
+}
+
+@keyframes drift-a {
+  from { transform: translate3d(0,0,0) scale(1); }
+  to   { transform: translate3d(-3%, 4%, 0) scale(1.1); }
+}
+@keyframes drift-b {
+  from { transform: translate3d(0,0,0) scale(1.05); }
+  to   { transform: translate3d(4%, -3%, 0) scale(1); }
+}
+
+/* 右侧的巨型水印字。压得很淡，只用来给右半边一点重量，不该被读成一个图形 */
+.mark {
+  position: absolute; right: -26px; bottom: -58px;
+  font-size: 210px; font-weight: 700; line-height: 1;
+  color: rgba(255,255,255,.045); letter-spacing: -8px;
+}
+
+/* 24 位渲染下大面积渐变容易出色带，一点噪点能压住 */
+.grain {
+  position: absolute; inset: 0; opacity: .05;
+  background-image:
+    radial-gradient(rgba(255,255,255,.9) .5px, transparent .5px),
+    radial-gradient(rgba(0,0,0,.9) .5px, transparent .5px);
+  background-size: 3px 3px, 4px 4px;
+  background-position: 0 0, 1px 2px;
+}
+
+.close {
+  position: fixed; top: 10px; right: 12px; z-index: 3;
+  -webkit-app-region: no-drag;
+  width: 28px; height: 28px;
+  border: 0; border-radius: 8px;
+  background: transparent;
+  color: rgba(255,255,255,.62);
+  font: inherit; font-size: 19px; line-height: 1;
+  cursor: pointer;
+  transition: background-color .16s ease, color .16s ease;
+}
+.close:hover { background: rgba(255,255,255,.14); color: #fff; }
+
+.stage {
+  position: relative; z-index: 2;
+  height: 100%;
+  padding: 34px 40px;
+  display: flex; flex-direction: column;
+}
+
+.brand { display: flex; align-items: center; gap: 14px; }
+.tile {
+  width: 52px; height: 52px; border-radius: 15px;
+  background: rgba(255,255,255,.11);
+  box-shadow: 0 10px 26px rgba(3,34,28,.34), inset 0 1px 0 rgba(255,255,255,.34);
+}
+.who { display: flex; flex-direction: column; gap: 3px; }
+.who strong { font-size: 25px; font-weight: 700; letter-spacing: 2px; text-shadow: 0 2px 12px rgba(3,34,28,.32); }
+.who small { font-size: 10.5px; letter-spacing: 5px; color: rgba(255,255,255,.76); }
+
+.lead {
+  margin-top: 22px;
+  font-size: 13px; line-height: 1.8;
+  color: rgba(255,255,255,.93);
+  max-width: 340px;
+}
+
+/* 中段列三件事。既是把中间那块空白填上，也让用户在点安装前就知道装的是什么 */
+.feats { list-style: none; margin-top: 17px; }
+.feats li {
+  display: flex; align-items: center; gap: 9px;
+  padding: 4.5px 0;
+  font-size: 12px; color: rgba(255,255,255,.80);
+}
+.feats .d {
+  flex: none; width: 5px; height: 5px; border-radius: 50%;
+  background: #fcd34d; box-shadow: 0 0 0 3px rgba(252,211,77,.16);
+}
+
+/* 三个状态共用的底部区域。用 margin-top:auto 顶到底，
+   切状态时高度变化不会让上面的品牌区跳动。 */
+.dock { margin-top: auto; -webkit-app-region: no-drag; }
+
+.go {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 152px; height: 42px;
+  border: 0; border-radius: 999px;
+  background: #fff; color: #0b6353;
+  font: inherit; font-size: 14.5px; font-weight: 700; letter-spacing: 1px;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(3,34,28,.30);
+  transition: transform .16s ease, box-shadow .16s ease;
+}
+.go:hover { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(3,34,28,.36); }
+.go:active { transform: none; }
+.go:disabled { opacity: .7; cursor: wait; transform: none; }
+
+.where { margin-top: 13px; font-size: 10.5px; color: rgba(255,255,255,.62); letter-spacing: .4px; }
+.where span { color: rgba(255,255,255,.82); }
+
+/* ------------------------------------------------------------- 进行中 */
+
+.busy-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 11px; }
+.busy-head span:first-child { font-size: 13px; font-weight: 600; letter-spacing: .5px; }
+.pct { font-size: 12px; color: rgba(255,255,255,.72); font-variant-numeric: tabular-nums; }
+
+.track { height: 6px; border-radius: 999px; background: rgba(255,255,255,.18); overflow: hidden; }
+.fill {
+  display: block; height: 100%; width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #fcd34d, #f59e0b);
+  transition: width .25s ease;
+}
+
+.sub { margin-top: 12px; font-size: 10.5px; color: rgba(255,255,255,.58); }
+
+/* --------------------------------------------------------------- 完成 */
+
+.done { display: flex; align-items: center; gap: 13px; }
+.tick {
+  flex: none;
+  width: 38px; height: 38px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: rgba(252,211,77,.18);
+  border: 1px solid rgba(252,211,77,.45);
+  color: #fcd34d; font-size: 19px; font-weight: 700;
+}
+.done-text { display: flex; flex-direction: column; gap: 3px; }
+.done-text strong { font-size: 15px; font-weight: 700; }
+.done-text small { font-size: 11.5px; color: rgba(255,255,255,.66); }
+
+/* --------------------------------------------------------------- 出错 */
+
+.oops-text {
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: rgba(0,0,0,.20);
+  border: 1px solid rgba(255,255,255,.16);
+  font-size: 11.5px; line-height: 1.7;
+  color: rgba(255,255,255,.88);
+}
+.retry {
+  margin-top: 11px;
+  padding: 8px 20px;
+  border: 1px solid rgba(255,255,255,.34); border-radius: 999px;
+  background: transparent; color: #fff;
+  font: inherit; font-weight: 600;
+  cursor: pointer;
+}
+.retry:hover { background: rgba(255,255,255,.12); }
+
+@media (prefers-reduced-motion: reduce) {
+  .orb { animation: none; }
+  .fill { transition: none; }
+}

@@ -37,6 +37,13 @@ const required = [
   "/src/shell/renderer.js",
   "/src/shell/style.css",
   "/src/shell/logo.png",
+  // 自装界面。漏了不会报错，只会让安装器开出一个空白窗口 —— 正是这个脚本要防的那种失败
+  "/dist/electron/self-install.js",
+  "/dist/electron/installer-preload.js",
+  "/src/installer/index.html",
+  "/src/installer/renderer.js",
+  "/src/installer/style.css",
+  "/src/installer/logo.png",
   "/assets/userscripts/monkey.js",
   "/assets/tray-icon.png",
   "/assets/vendor/manifest.json"

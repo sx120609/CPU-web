@@ -23,10 +23,12 @@
     "productName": "药大拾间桌面端",
     "copyright": "Copyright © 2026 药大拾间",
     "asar": true,
+    "compression": "maximum",
     "files": [
       "dist/**",
       "assets/**",
       "src/shell/**",
+      "src/installer/**",
       "package.json"
     ],
     "directories": {
@@ -39,29 +41,14 @@
     ],
     "win": {
       "target": [
-        "nsis"
+        "portable"
       ],
       "icon": "build/icon.ico"
     },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowElevation": false,
-      "runAfterFinish": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "药大拾间",
-      "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico",
-      "installerHeaderIcon": "build/icon.ico",
-      "installerLanguages": [
-        "zh_CN"
-      ],
-      "multiLanguageInstaller": true,
-      "displayLanguageSelector": false,
-      "deleteAppDataOnUninstall": true,
-      "uninstallDisplayName": "药大拾间桌面端",
-      "allowToChangeInstallationDirectory": false
+    "portable": {
+      "requestExecutionLevel": "user",
+      "unpackDirName": "cpu-web-desktop-setup",
+      "artifactName": "${productName}-${version}-win-${arch}-安装版.${ext}"
     }
   },
   "devDependencies": {

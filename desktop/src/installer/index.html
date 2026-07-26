@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self'" />
+    <title>安装药大拾间</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <!-- 整窗就是一张我们自己画的页面：无边框、无系统按钮。
+         关闭键是下面这个 ×，拖动靠 -webkit-app-region。 -->
+    <div class="bg"><span class="orb orb-a"></span><span class="orb orb-b"></span><span class="mark">拾</span><span class="grain"></span></div>
+
+    <button class="close" id="close" type="button" title="关闭">×</button>
+
+    <main class="stage">
+      <header class="brand">
+        <img class="tile" src="./logo.png" alt="" />
+        <div class="who"><strong>药大拾间</strong><small>桌面端</small></div>
+      </header>
+
+      <p class="lead" id="lead">把药大拾间装进一个窗口，<br />再加两件网页做不到的事。</p>
+
+      <ul class="feats" id="feats">
+        <li><span class="d"></span>药大拾间的全部校园服务，开箱即用</li>
+        <li><span class="d"></span>校园网掉线自动重连，常驻后台</li>
+        <li><span class="d"></span>学习通开在应用内，答题辅助自动接管</li>
+      </ul>
+
+      <!-- 三个状态共用这块底部区域，切换时位置不跳 -->
+      <section class="dock">
+        <div class="ready" id="ready">
+          <button class="go" id="go" type="button">立即安装</button>
+          <p class="where">安装到 <span id="where">当前用户目录</span> · 无需管理员权限</p>
+        </div>
+
+        <div class="busy" id="busy" hidden>
+          <div class="busy-head">
+            <span id="busy-text">正在准备</span>
+            <span class="pct" id="busy-pct">0%</span>
+          </div>
+          <div class="track"><i class="fill" id="fill"></i></div>
+          <p class="sub" id="busy-sub">正在写入文件，请不要关闭这个窗口。</p>
+        </div>
+
+        <div class="done" id="done" hidden>
+          <div class="tick">✓</div>
+          <div class="done-text"><strong id="done-title">安装完成</strong><small id="done-sub">正在启动药大拾间…</small></div>
+        </div>
+
+        <div class="oops" id="oops" hidden>
+          <p class="oops-text" id="oops-text"></p>
+          <button class="retry" id="retry" type="button">重试</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>

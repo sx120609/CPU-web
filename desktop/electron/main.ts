@@ -13,6 +13,7 @@ import { clearChaoxingCredential, maskChaoxingAccount, readChaoxingCredential, w
 import { onCampusLog, pruneCampusLogs, readCampusLogs } from "./campus-net/log";
 import { checkForUpdate, notifyUpdate, openUpdateDownload } from "./updater";
 import { CHROME_HEIGHT, TabKind, TabManager } from "./tabs";
+import { isInstallLaunch, openInstallerWindow, runUninstall, sweepReplacedFiles } from "./self-install";
 import { branding, chaoxingLoginHost, injectableHosts, learningUrl, limits, oauthConfig } from "./config";
 
 let mainWindow: BrowserWindow | undefined;
@@ -628,8 +629,25 @@ const applyNavigationPolicy = (contents: Electron.WebContents): void => {
   });
 };
 
-const singleInstance = app.requestSingleInstanceLock();
-if (!singleInstance) {
+// 安装态与卸载态刻意不参与单实例锁：两者都可能在正式版正开着的时候运行，
+// 抢不到锁会让安装器"双击没反应"。它们也不碰托盘、标签、校园网那一整套。
+const installMode = isInstallLaunch();
+const uninstallMode = process.argv.includes("--uninstall");
+
+if (installMode || uninstallMode) {
+  app.whenReady().then(async () => {
+    if (uninstallMode) {
+      await runUninstall();
+      app.exit(0);
+      return;
+    }
+    await openInstallerWindow();
+  }).catch((error) => {
+    console.error("安装程序启动失败：", error);
+    app.exit(1);
+  });
+  app.on("window-all-closed", () => app.exit(0));
+} else if (!app.requestSingleInstanceLock()) {
   // 不说一声就退的话，表现是"双击没反应、日志空白"，很难判断到底是崩了还是被锁住了
   console.log("已有一个实例在运行，本次启动退出并把窗口交给它");
   app.quit();
@@ -644,6 +662,9 @@ if (!singleInstance) {
 
   app.whenReady().then(async () => {
     buildApplicationMenu();
+
+    // 上次覆盖安装时旧版正开着，那些文件当时只能改名不能删，现在收拾掉
+    void sweepReplacedFiles();
 
     // 让主站能识别出这是桌面端，与 CPUWebScheduleApp / CPUWebHarmonyApp 同一套约定
     session.defaultSession.setUserAgent(
