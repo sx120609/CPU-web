@@ -824,6 +824,7 @@ function setAppearanceMode(command: string | number | object) {
 
 <style scoped lang="scss">
 .layout-root {
+  --layout-mobile-tabbar-reserve: 0px;
   min-height: 100dvh;
   min-height: var(--layout-viewport-height, 100dvh);
   display: flex;
@@ -1324,7 +1325,7 @@ function setAppearanceMode(command: string | number | object) {
   -webkit-backdrop-filter: var(--cpu-glass-blur);
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.06);
   pointer-events: auto;
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease, visibility 0.3s ease;
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.16s ease, visibility 0.2s linear;
 }
 
 .layout-root--tabbar-fallback .mobile-tabbar.is-hidden {
@@ -1556,6 +1557,10 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 @media (max-width: 768px) {
+  .layout-root:not(.layout-root--native-shell) {
+    --layout-mobile-tabbar-reserve: calc(68px + env(safe-area-inset-bottom));
+  }
+
   .layout-root.keyboard-open .main {
     padding-bottom: 12px;
   }
@@ -1622,7 +1627,7 @@ function setAppearanceMode(command: string | number | object) {
   }
 
   .layout-root--full-height.keyboard-open .main--full-height {
-    padding-bottom: 12px;
+    padding-bottom: calc(68px + env(safe-area-inset-bottom));
   }
 
   .main--full-width {
@@ -1669,7 +1674,7 @@ function setAppearanceMode(command: string | number | object) {
     -webkit-backdrop-filter: var(--cpu-glass-blur);
     box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.06);
     pointer-events: auto;
-    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease, visibility 0.3s ease;
+    transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.16s ease, visibility 0.2s linear;
   }
 
   .mobile-tab.active {
@@ -1783,7 +1788,7 @@ function setAppearanceMode(command: string | number | object) {
     -webkit-backdrop-filter: var(--cpu-glass-blur);
     box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.06);
     pointer-events: auto;
-    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease, visibility 0.3s ease;
+    transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.16s ease, visibility 0.2s linear;
   }
 
   .mobile-tabbar.is-hidden {

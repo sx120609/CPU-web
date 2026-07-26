@@ -1745,13 +1745,27 @@ onBeforeUnmount(() => {
     flex: 0 0 50px;
   }
   .assistant-shell.is-composer-focused .conversation {
-    padding-bottom: calc(var(--layout-keyboard-inset, 0px) + 70px);
+    padding-bottom: max(
+      70px,
+      calc(
+        var(--layout-keyboard-inset, 0px)
+        - var(--layout-mobile-tabbar-reserve, 0px)
+        + 70px
+      )
+    );
   }
   .assistant-shell.is-composer-focused .assistant-form {
     position: absolute;
     z-index: 8;
     right: 0;
-    bottom: calc(var(--layout-keyboard-inset, 0px) + 8px);
+    bottom: max(
+      8px,
+      calc(
+        var(--layout-keyboard-inset, 0px)
+        - var(--layout-mobile-tabbar-reserve, 0px)
+        + 8px
+      )
+    );
     left: 0;
     margin: 0;
   }
