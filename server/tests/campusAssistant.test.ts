@@ -34,7 +34,11 @@ import {
   ensureForumAccessEnabled,
   resolveForumAccess,
 } from "../src/services/forumAccess";
-import { readAiJsonTextStream } from "../src/services/aiJsonApi";
+import {
+  buildAiPromptCacheKey,
+  readAiJsonTextStream,
+  sendAiUpstreamRequest,
+} from "../src/services/aiJsonApi";
 import { calculateSponsorAssistantPoints } from "../src/services/campusAssistantPoints";
 
 const enabledFeatures = {
@@ -126,6 +130,92 @@ test("OpenAI 兼容 SSE 能按增量还原完整 JSON", async () => {
   });
   assert.deepEqual(deltas, ['{"answer":"你', '好","actionIds":[]}']);
   assert.equal(content, '{"answer":"你好","actionIds":[]}');
+});
+
+test("AI prompt cache keys are stable within a feature and isolated across features", () => {
+  const first = buildAiPromptCacheKey("oauth-chat", ["cpu-electron", "example-model"]);
+  const second = buildAiPromptCacheKey("oauth-chat", ["cpu-electron", "example-model"]);
+  const otherFeature = buildAiPromptCacheKey("course-bot-ai-answer", ["cpu-electron", "example-model"]);
+
+  assert.equal(first, second);
+  assert.notEqual(first, otherFeature);
+  assert.match(first, /^cpu:oauth-chat:[a-f0-9]{24}$/);
+});
+
+test("AI upstream requests apply explicit prompt cache key and 24-hour retention", async () => {
+  const originalFetch = globalThis.fetch;
+  const requestBodies: Array<Record<string, unknown>> = [];
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    requestBodies.push(JSON.parse(String(init?.body || "{}")));
+    return new Response('{"ok":true}', {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const result = await sendAiUpstreamRequest({
+      endpoint: "https://cache-test.example/v1/chat/completions",
+      apiKey: "test-key",
+      body: {
+        model: "example-model",
+        messages: [{ role: "user", content: "hello" }],
+        stream: true,
+      },
+      promptCacheKey: "cpu:test:123",
+      enablePromptCacheRetention: true,
+    });
+
+    assert.equal(result.response.ok, true);
+    assert.equal(result.promptCacheKeyApplied, true);
+    assert.equal(result.promptCacheRetentionApplied, true);
+    assert.equal(requestBodies.length, 1);
+    assert.equal(requestBodies[0]?.prompt_cache_key, "cpu:test:123");
+    assert.equal(requestBodies[0]?.prompt_cache_retention, "24h");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("AI upstream cache compatibility retries without unsupported retention", async () => {
+  const originalFetch = globalThis.fetch;
+  const requestBodies: Array<Record<string, unknown>> = [];
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    requestBodies.push(JSON.parse(String(init?.body || "{}")));
+    if (requestBodies.length === 1) {
+      return new Response('{"error":"unsupported prompt_cache_retention"}', {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response('{"ok":true}', {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const result = await sendAiUpstreamRequest({
+      endpoint: "https://cache-retention-fallback.example/v1/chat/completions",
+      apiKey: "test-key",
+      body: {
+        model: "example-model",
+        messages: [{ role: "user", content: "hello" }],
+      },
+      promptCacheKey: "cpu:test:456",
+      enablePromptCacheRetention: true,
+    });
+
+    assert.equal(result.response.ok, true);
+    assert.equal(result.promptCacheKeyApplied, true);
+    assert.equal(result.promptCacheRetentionApplied, false);
+    assert.equal(requestBodies.length, 2);
+    assert.equal(requestBodies[0]?.prompt_cache_retention, "24h");
+    assert.equal(requestBodies[1]?.prompt_cache_key, "cpu:test:456");
+    assert.equal("prompt_cache_retention" in requestBodies[1]!, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("VoiceHub knowledge describes the real request form and rejects invented listener messages", () => {

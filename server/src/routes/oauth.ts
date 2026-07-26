@@ -15,7 +15,12 @@ import { getSiteConfig } from "../services/siteSettings";
 import { isCampusAssistantConversationRestricted } from "../services/campusAssistant";
 import { securityRateLimit } from "../middleware/securityRateLimit";
 import { buildUserTrustSnapshot } from "../services/userTrust";
-import { detectAiJsonApiMode, normalizeAiJsonApiUrl } from "../services/aiJsonApi";
+import {
+  buildAiPromptCacheKey,
+  detectAiJsonApiMode,
+  normalizeAiJsonApiUrl,
+  sendAiUpstreamRequest,
+} from "../services/aiJsonApi";
 import { Errors, ok } from "../utils/response";
 
 export const oauthRouter = Router();
@@ -249,12 +254,15 @@ oauthRouter.post("/v1/chat/completions", securityRateLimit("oauth-ai", 20, 60_00
     res.on("close", () => {
       if (!responseCompleted) controller.abort();
     });
-    const upstream = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify(buildOAuthAiRequestBody(body, model, endpoint)),
+    const upstreamResult = await sendAiUpstreamRequest({
+      endpoint,
+      apiKey,
+      body: buildOAuthAiRequestBody(body, model, endpoint),
+      promptCacheKey: buildAiPromptCacheKey("oauth-chat", [token.clientId, model]),
+      enablePromptCacheRetention: true,
       signal: controller.signal,
     });
+    const upstream = upstreamResult.response;
     res.status(upstream.status);
     const contentType = upstream.headers.get("content-type");
     if (contentType) res.setHeader("Content-Type", contentType);

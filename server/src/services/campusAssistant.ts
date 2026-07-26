@@ -1,7 +1,12 @@
 import type { FeatureKey } from "./siteSettings";
 import { getSiteConfig } from "./siteSettings";
 import { requestAiJson } from "./topicAiReview";
-import { normalizeAiJsonApiUrl, readAiJsonTextStream, sendAiJsonRequest } from "./aiJsonApi";
+import {
+  buildAiPromptCacheKey,
+  normalizeAiJsonApiUrl,
+  readAiJsonTextStream,
+  sendAiJsonRequest,
+} from "./aiJsonApi";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 
 export type CampusAssistantAction = {
@@ -474,6 +479,7 @@ export async function streamCampusAssistant(input: {
       input.context.loggedIn,
       model,
     );
+    const systemPrompt = typeof messages[0]?.content === "string" ? messages[0].content : "";
     try {
       const result = await sendAiJsonRequest({
         endpoint,
@@ -481,6 +487,8 @@ export async function streamCampusAssistant(input: {
         model,
         temperature: 0.1,
         messages,
+        promptCacheKey: buildAiPromptCacheKey("campus-assistant", [model, systemPrompt]),
+        enablePromptCacheRetention: true,
         stream: true,
         signal: input.signal,
       });
