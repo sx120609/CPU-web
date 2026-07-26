@@ -35,6 +35,41 @@
     <section class="settings-card" v-loading="loading">
       <div class="section-head">
         <div>
+          <h3>AI 功能模型</h3>
+          <p>拾问 AI 和通过本站授权接入的 AI 讲解统一使用这里的模型，不再跟随“文字 AI”审核模型变化。</p>
+        </div>
+        <el-button
+          type="primary"
+          :loading="savingAssistantModel"
+          :disabled="Boolean(loadError) || !assistantModel.trim() || !assistantModelDirty"
+          @click="saveAssistantModel"
+        >
+          保存模型
+        </el-button>
+      </div>
+      <div class="model-form">
+        <span>当前调用模型</span>
+        <el-select
+          v-model="assistantModel"
+          filterable
+          allow-create
+          default-first-option
+          placeholder="选择或输入模型 ID"
+        >
+          <el-option
+            v-for="model in assistantModelOptions"
+            :key="model"
+            :label="model"
+            :value="model"
+          />
+        </el-select>
+      </div>
+      <p class="tip">可选择已有模型，也可以直接输入上游支持的新模型 ID。接口地址、密钥和总开关仍复用“文字 AI”配置。</p>
+    </section>
+
+    <section class="settings-card" v-loading="loading">
+      <div class="section-head">
+        <div>
           <h3>等级日额度</h3>
           <p>先消耗等级对应的每日次数；当天次数用完后，每次调用再消耗 1 个点数。每日次数按北京时间 00:00 重置，点数不会自动过期。</p>
         </div>
@@ -217,12 +252,16 @@ const loading = ref(false);
 const overviewLoading = ref(false);
 const usersLoading = ref(false);
 const savingQuotas = ref(false);
+const savingAssistantModel = ref(false);
 const savingSponsorRate = ref(false);
 const backfillingSponsors = ref(false);
 const resetting = ref(false);
 const granting = ref(false);
 const loadError = ref("");
 const reputationLevels = ref<Array<{ level: number; name: string; minReputation: number }>>([]);
+const assistantModel = ref("gpt-5.6-terra");
+const savedAssistantModel = ref("gpt-5.6-terra");
+const assistantModelOptions = ref<string[]>(["gpt-5.6-terra"]);
 const dailyQuotas = ref([
   { level: 0, quota: 5 },
   { level: 1, quota: 10 },
@@ -251,6 +290,7 @@ const grantRecipientCount = computed(() => (
 const sponsorRateDirty = computed(() => (
   Number(sponsorPointsPerYuan.value || 0) !== savedSponsorPointsPerYuan.value
 ));
+const assistantModelDirty = computed(() => assistantModel.value.trim() !== savedAssistantModel.value);
 let userSearchSeq = 0;
 
 onMounted(reload);
@@ -265,6 +305,13 @@ async function reload() {
       adminApi.assistantPointOverview({ suppressErrorMessage: true }),
     ]);
     reputationLevels.value = (siteConfig.reputationLevels ?? []).map((item) => ({ ...item }));
+    assistantModel.value = siteConfig.assistantModel || "gpt-5.6-terra";
+    savedAssistantModel.value = assistantModel.value;
+    assistantModelOptions.value = Array.from(new Set([
+      assistantModel.value,
+      siteConfig.aiReviewModel,
+      ...(siteConfig.aiReviewFallbackModels || "").split(/[\s,]+/),
+    ].map((model) => model.trim()).filter(Boolean)));
     dailyQuotas.value = (siteConfig.assistantDailyQuotas ?? []).map((item) => ({ ...item }));
     sponsorPointsPerYuan.value = sponsorConfig.assistantPointsPerYuan ?? 0;
     savedSponsorPointsPerYuan.value = sponsorPointsPerYuan.value;
@@ -280,6 +327,23 @@ async function reload() {
 function levelName(level: number) {
   if (level === 0) return "新账号（0 信誉）";
   return reputationLevels.value[level - 1]?.name || `等级 ${level}`;
+}
+
+async function saveAssistantModel() {
+  const model = assistantModel.value.trim();
+  if (savingAssistantModel.value || !model || model === savedAssistantModel.value) return;
+  savingAssistantModel.value = true;
+  try {
+    const config = await adminApi.updateSiteConfig({ assistantModel: model });
+    assistantModel.value = config.assistantModel;
+    savedAssistantModel.value = config.assistantModel;
+    if (!assistantModelOptions.value.includes(config.assistantModel)) {
+      assistantModelOptions.value.unshift(config.assistantModel);
+    }
+    ElMessage.success(`AI 功能模型已切换为 ${config.assistantModel}`);
+  } finally {
+    savingAssistantModel.value = false;
+  }
 }
 
 async function saveQuotas() {
@@ -551,10 +615,20 @@ function sourceType(source: string) {
   gap: 18px;
 }
 .rate-form,
+.model-form,
 .grant-row {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+.model-form {
+  margin-bottom: 10px;
+}
+.model-form > span {
+  flex: 0 0 auto;
+}
+.model-form :deep(.el-select) {
+  width: min(460px, 100%);
 }
 .rate-form {
   flex-wrap: wrap;
@@ -615,6 +689,7 @@ function sourceType(source: string) {
   }
   .section-head,
   .danger-row,
+  .model-form,
   .grant-row {
     align-items: stretch;
     flex-direction: column;

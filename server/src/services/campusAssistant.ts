@@ -427,6 +427,8 @@ export async function askCampusAssistant(input: {
       model,
     ), {
       promptCacheScope: "campus-assistant",
+      model: config.assistantModel,
+      fallbackModels: "",
     });
     if (isCampusAssistantModelIdentityQuestion(message)) {
       return modelIdentityResponse(result.model);
@@ -459,7 +461,7 @@ export async function streamCampusAssistant(input: {
   }
 
   const endpoint = normalizeAiJsonApiUrl(config.aiReviewApiUrl, DEFAULT_REVIEW_API_URL);
-  const candidates = resolveModelCandidates(config.aiReviewModel, config.aiReviewFallbackModels);
+  const candidates = resolveModelCandidates(config.assistantModel, "");
   const modelIdentityRequested = isCampusAssistantModelIdentityQuestion(message);
   let lastError: unknown = null;
 

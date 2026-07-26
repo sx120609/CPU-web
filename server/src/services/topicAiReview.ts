@@ -110,6 +110,8 @@ type AiReviewLogContext = {
 type AiJsonRequestOptions = {
   logContext?: AiReviewLogContext;
   promptCacheScope?: string;
+  model?: string;
+  fallbackModels?: string;
 };
 
 export async function requestAiJson(
@@ -118,9 +120,15 @@ export async function requestAiJson(
 ) {
   const config = getSiteConfig();
   const endpoint = normalizeAiJsonApiUrl(config.aiReviewApiUrl, DEFAULT_REVIEW_API_URL);
-  const candidates = resolveModelCandidates(config.aiReviewModel, config.aiReviewFallbackModels);
+  const primaryModel = options?.model ?? config.aiReviewModel;
+  const fallbackModels = options?.fallbackModels ?? config.aiReviewFallbackModels;
+  const candidates = resolveModelCandidates(primaryModel, fallbackModels);
   const promptCacheKey = buildAiReviewPromptCacheKey({
-    configHash: buildAiReviewConfigHash(config),
+    configHash: [
+      buildAiReviewConfigHash(config),
+      primaryModel,
+      fallbackModels,
+    ].join("\n"),
     scope: options?.promptCacheScope || options?.logContext?.kind || "generic",
   });
   let lastError: Error | null = null;

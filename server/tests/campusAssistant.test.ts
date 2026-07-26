@@ -24,6 +24,7 @@ import {
 } from "../src/services/campusAssistantQuota";
 import {
   DEFAULT_ASSISTANT_DAILY_QUOTAS,
+  DEFAULT_CAMPUS_ASSISTANT_MODEL,
   getSiteConfig,
   loadFeatures,
 } from "../src/services/siteSettings";
@@ -160,9 +161,10 @@ test("assistant quota includes Lv.0 and resets at China midnight", () => {
   );
 });
 
-test("assistant quota settings are restored from the database after a service reload", async () => {
+test("assistant quota and model settings are restored from the database after a service reload", async () => {
   const siteSetting = prisma.siteSetting;
   const originalFindMany = siteSetting.findMany;
+  const storedModel = "assistant-model-test";
   const storedQuotas = DEFAULT_ASSISTANT_DAILY_QUOTAS.map((item) => ({
     ...item,
     quota: item.quota + 7,
@@ -174,21 +176,35 @@ test("assistant quota settings are restored from the database after a service re
       where?: { key?: { in?: string[] } };
     }) => {
       requestedKeys = args.where?.key?.in ?? [];
-      return [{
-        key: "assistant.dailyQuotas",
-        value: JSON.stringify(storedQuotas),
-      }];
+      return [
+        {
+          key: "assistant.model",
+          value: storedModel,
+        },
+        {
+          key: "assistant.dailyQuotas",
+          value: JSON.stringify(storedQuotas),
+        },
+      ];
     }) as typeof siteSetting.findMany;
 
     await loadFeatures();
 
+    assert.equal(requestedKeys.includes("assistant.model"), true);
     assert.equal(requestedKeys.includes("assistant.dailyQuotas"), true);
+    assert.equal(getSiteConfig().assistantModel, storedModel);
     assert.deepEqual(getSiteConfig().assistantDailyQuotas, storedQuotas);
   } finally {
-    siteSetting.findMany = (async () => [{
-      key: "assistant.dailyQuotas",
-      value: JSON.stringify(DEFAULT_ASSISTANT_DAILY_QUOTAS),
-    }]) as typeof siteSetting.findMany;
+    siteSetting.findMany = (async () => [
+      {
+        key: "assistant.model",
+        value: DEFAULT_CAMPUS_ASSISTANT_MODEL,
+      },
+      {
+        key: "assistant.dailyQuotas",
+        value: JSON.stringify(DEFAULT_ASSISTANT_DAILY_QUOTAS),
+      },
+    ]) as typeof siteSetting.findMany;
     await loadFeatures();
     siteSetting.findMany = originalFindMany;
   }

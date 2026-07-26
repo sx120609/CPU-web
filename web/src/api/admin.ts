@@ -4,6 +4,7 @@ import type { TopNavigationItem } from "./site";
 export type SiteConfig = {
   siteOrigin: string;
   siteFilingNumber: string;
+  assistantModel: string;
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
   aiReviewApiUrl: string;
@@ -746,6 +747,7 @@ export const adminApi = {
   updateSiteConfig: (patch: {
     siteOrigin?: string;
     siteFilingNumber?: string;
+    assistantModel?: string;
     aiReviewEnabled?: boolean;
     aiReviewProvider?: string;
     aiReviewApiUrl?: string;

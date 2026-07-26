@@ -240,7 +240,7 @@ oauthRouter.post("/v1/chat/completions", securityRateLimit("oauth-ai", 20, 60_00
     const siteConfig = getSiteConfig();
     const endpoint = normalizeAiJsonApiUrl(siteConfig.aiReviewApiUrl, "https://api.openai.com/v1/chat/completions");
     const apiKey = siteConfig.aiReviewApiKey;
-    const model = siteConfig.aiReviewModel;
+    const model = siteConfig.assistantModel;
     if (!siteConfig.aiReviewEnabled || !endpoint || !apiKey || !model) throw Errors.server("AI 服务尚未配置或已关闭");
     const consumedQuota = await consumeCampusAssistantQuota(token.userId);
     quotaReservation = consumedQuota.reservation;

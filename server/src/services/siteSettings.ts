@@ -43,6 +43,7 @@ export type AssistantDailyQuotaConfig = {
 export type SiteConfig = {
   siteOrigin: string;
   siteFilingNumber: string;
+  assistantModel: string;
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
   aiReviewApiUrl: string;
@@ -147,6 +148,7 @@ export const DEFAULT_ASSISTANT_DAILY_QUOTAS: AssistantDailyQuotaConfig[] = [
   { level: 4, quota: 50 },
   { level: 5, quota: 80 },
 ];
+export const DEFAULT_CAMPUS_ASSISTANT_MODEL = "gpt-5.6-terra";
 
 const GLOBAL_PINNED_TOPICS_KEY = "forum.globalPinnedTopics";
 const SITE_ORIGIN_KEY = "site.origin";
@@ -211,6 +213,7 @@ const REPLY_POINTS_CAP_KEY = "forum.reputation.replyPointsCap";
 const FORUM_ENABLED_BONUS_KEY = "forum.reputation.forumEnabledBonus";
 const ANONYMOUS_TIERS_KEY = "forum.anonymous.tiers";
 const REPUTATION_LEVELS_KEY = "forum.reputation.levels";
+const ASSISTANT_MODEL_KEY = "assistant.model";
 const ASSISTANT_DAILY_QUOTAS_KEY = "assistant.dailyQuotas";
 
 export const DEFAULT_AI_PROMPTS = {
@@ -355,6 +358,7 @@ let topNavigationCache: TopNavigationItem[] = DEFAULT_TOP_NAVIGATION.map((item) 
 const configCache: SiteConfig = {
   siteOrigin: "",
   siteFilingNumber: "",
+  assistantModel: DEFAULT_CAMPUS_ASSISTANT_MODEL,
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
   aiReviewApiUrl: "https://api.deepseek.com/chat/completions",
@@ -564,6 +568,7 @@ export async function loadFeatures(): Promise<void> {
           FORUM_ENABLED_BONUS_KEY,
           ANONYMOUS_TIERS_KEY,
           REPUTATION_LEVELS_KEY,
+          ASSISTANT_MODEL_KEY,
           ASSISTANT_DAILY_QUOTAS_KEY,
         ],
       },
@@ -832,6 +837,11 @@ export async function loadFeatures(): Promise<void> {
       configCache.reputationLevels = normalizeReputationLevels(r.value, DEFAULT_REPUTATION_LEVELS);
       continue;
     }
+    if (r.key === ASSISTANT_MODEL_KEY) {
+      configCache.assistantModel = String(r.value || DEFAULT_CAMPUS_ASSISTANT_MODEL).trim()
+        || DEFAULT_CAMPUS_ASSISTANT_MODEL;
+      continue;
+    }
     if (r.key === ASSISTANT_DAILY_QUOTAS_KEY) {
       configCache.assistantDailyQuotas = normalizeAssistantDailyQuotas(r.value, DEFAULT_ASSISTANT_DAILY_QUOTAS);
       continue;
@@ -864,6 +874,7 @@ export async function loadFeatures(): Promise<void> {
     configCache.qqGroupAdReviewSystemPrompt = DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.system;
   }
   sanitizeAiReviewConfig();
+  sanitizeCampusAssistantConfig();
   sanitizeCommunityTrustConfig();
 }
 
@@ -1178,6 +1189,11 @@ function sanitizeAiReviewConfig() {
   configCache.videoReviewConcurrency = normalizeSmallInt(configCache.videoReviewConcurrency, 1, 1, 2);
   configCache.videoReviewSystemPrompt = normalizePromptTemplate(configCache.videoReviewSystemPrompt, DEFAULT_VIDEO_REVIEW_PROMPTS.system);
   configCache.videoReviewUserPrompt = normalizePromptTemplate(configCache.videoReviewUserPrompt, DEFAULT_VIDEO_REVIEW_PROMPTS.user);
+}
+
+function sanitizeCampusAssistantConfig() {
+  configCache.assistantModel = String(configCache.assistantModel || DEFAULT_CAMPUS_ASSISTANT_MODEL).trim()
+    || DEFAULT_CAMPUS_ASSISTANT_MODEL;
 }
 
 function upgradeLegacyImageReviewPrompts() {
@@ -1516,6 +1532,20 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
   ]);
   Object.assign(configCache, next);
   sanitizeAiReviewConfig();
+  await broadcastSiteSettingsReload();
+  return getSiteConfig();
+}
+
+export async function setCampusAssistantModel(input: string | null | undefined): Promise<SiteConfig> {
+  const assistantModel = String(input || DEFAULT_CAMPUS_ASSISTANT_MODEL).trim()
+    || DEFAULT_CAMPUS_ASSISTANT_MODEL;
+  await prisma.siteSetting.upsert({
+    where: { key: ASSISTANT_MODEL_KEY },
+    update: { value: assistantModel },
+    create: { key: ASSISTANT_MODEL_KEY, value: assistantModel },
+  });
+  configCache.assistantModel = assistantModel;
+  sanitizeCampusAssistantConfig();
   await broadcastSiteSettingsReload();
   return getSiteConfig();
 }

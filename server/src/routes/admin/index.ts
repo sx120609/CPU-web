@@ -25,6 +25,7 @@ import {
   setSiteFilingNumber,
   setTopicGlobalPinned,
   setAiReviewConfig,
+  setCampusAssistantModel,
   setCommunityTrustConfig,
   setSiteOrigin,
   setTopNavigation,
@@ -2068,6 +2069,7 @@ adminRouter.post("/media-storage/cleanup-local", adminOnly, async (_req, res, ne
 const siteConfigPatchSchema = z.object({
   siteOrigin: z.string().trim().max(240).optional(),
   siteFilingNumber: z.string().trim().max(120).optional(),
+  assistantModel: z.string().trim().min(1).max(80).optional(),
   aiReviewEnabled: z.boolean().optional(),
   aiReviewProvider: z.string().trim().max(40).optional(),
   aiReviewApiUrl: z.string().trim().max(240).optional(),
@@ -2209,6 +2211,9 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       req.body.assistantDailyQuotas !== undefined
     ) {
       await setCommunityTrustConfig(req.body);
+    }
+    if (req.body.assistantModel !== undefined) {
+      await setCampusAssistantModel(req.body.assistantModel);
     }
     if (req.body.siteOrigin !== undefined) {
       await setSiteOrigin(req.body.siteOrigin ?? "");
