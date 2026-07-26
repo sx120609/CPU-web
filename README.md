@@ -7,7 +7,7 @@
 - `voicehub/`：药苑之声 Nuxt 全栈子应用（完整保留 VoiceHub 点歌系统）
 - `android/`：Android WebView 壳与桌面课表小组件
 - `harmony/`：HarmonyOS WebView 壳与 JS Bridge
-- `desktop/`：Windows / macOS 桌面端（Electron，OAuth2 登录 + 受控学习平台窗口）
+- `desktop/`：Windows 桌面端（Electron 单窗口标签页，OAuth2 登录 + 校园网自动连接 + 学习通标签页）
 
 仓库地址：[https://github.com/sx120609/CPU-web](https://github.com/sx120609/CPU-web)
 
@@ -478,7 +478,8 @@ Content-Type: application/json
 | `ONEDRIVE_CN_CLIENT_SECRET` | 空 | 世纪互联应用注册的客户端密钥 |
 | `ONEDRIVE_CN_DRIVE_ID` | 空 | SharePoint 文档库或 OneDrive 对应的 Drive ID |
 | `ONEDRIVE_CN_ROOT_PATH` | 空 | 远端根目录下的存储子路径，例如 `cpu-web-media` |
-| `DESKTOP_APP_DOWNLOAD_URL` | 空 | 桌面端安装包下载地址，必须是 https。留空时站内「PC 小工具」面板显示"正在打包中"，不给死链接 |
+| `DESKTOP_APP_DOWNLOAD_URL` | 蓝奏云分享页 | 桌面端安装包下载地址，必须是 https。可以是网盘分享页而不必是直链。留空时站内「PC 小工具」面板显示"正在打包中"，不给死链接 |
+| `DESKTOP_APP_DOWNLOAD_PASSWORD` | `afqr` | 网盘分享页的提取码。前端会显示并提供一键复制；用直链时留空 |
 | `DESKTOP_APP_VERSION` | 空 | 桌面端安装包版本号，仅用于展示 |
 | `PG_DUMP_BIN` | `pg_dump` | 后台数据库备份使用的命令路径 |
 

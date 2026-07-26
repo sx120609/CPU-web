@@ -14,10 +14,15 @@ const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "build");
 const LOGO = path.join(OUT, "icon.png");
 
-// NSIS 规定的尺寸，不能改
+// NSIS 的经典尺寸。但 NSIS 会把图拉伸到控件实际大小，
+// 在缩放显示器上 1x 资源会被放大到 1.5~2 倍，字和图都发虚。
+// 所以按 SCALE 倍渲染再交给它缩小 —— 缩小的画质远好过放大。
+const SCALE = 2;
 const SIDEBAR = { width: 164, height: 314 };
 const HEADER = { width: 150, height: 57 };
 const GAP = 20;
+
+const scaled = (box) => ({ width: box.width * SCALE, height: box.height * SCALE });
 
 /** 24 位未压缩 BMP，自底向上，每行 4 字节对齐；输入是 nativeImage 的 BGRA */
 const writeBmp = (file, image) => {
@@ -78,10 +83,18 @@ const buildPage = (logoUri) => `<!doctype html>
 <html><head><meta charset="utf-8"><style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
-    width: ${SIDEBAR.width}px;
-    height: ${SIDEBAR.height + GAP + HEADER.height}px;
+    width: ${SIDEBAR.width * SCALE}px;
+    height: ${(SIDEBAR.height + GAP + HEADER.height) * SCALE}px;
     overflow: hidden;
     background: #ffffff;
+  }
+  /* 内部按 1x 排版，整体放大交给 transform，文字仍按放大后分辨率光栅化 */
+  .scale {
+    width: ${SIDEBAR.width}px;
+    height: ${SIDEBAR.height + GAP + HEADER.height}px;
+    transform: scale(${SCALE});
+    transform-origin: top left;
+    position: relative;
   }
   body {
     font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
@@ -172,6 +185,7 @@ const buildPage = (logoUri) => `<!doctype html>
   .header .hsub { font-size: 9px; color: #64748b; letter-spacing: 1px; }
 </style></head>
 <body>
+  <div class="scale">
   <div class="sidebar">
     <div class="glow-warm"></div>
     <div class="glow-cool"></div>
@@ -187,6 +201,7 @@ const buildPage = (logoUri) => `<!doctype html>
   <div class="header">
     <img class="logo" src="${logoUri}" alt="">
     <div class="text"><div class="hname">药大拾间</div><div class="hsub">桌面端</div></div>
+  </div>
   </div>
 </body></html>`;
 
@@ -205,8 +220,8 @@ app.whenReady().then(async () => {
   fs.writeFileSync(htmlFile, buildPage(logoUri), "utf8");
 
   const window = new BrowserWindow({
-    width: SIDEBAR.width,
-    height: SIDEBAR.height + GAP + HEADER.height,
+    width: SIDEBAR.width * SCALE,
+    height: (SIDEBAR.height + GAP + HEADER.height) * SCALE,
     useContentSize: true,
     show: false,
     frame: false,
@@ -219,12 +234,12 @@ app.whenReady().then(async () => {
     await wait(1200);                 // 等字体上屏，否则截到换字体前的一帧
 
     writeBmp(path.join(OUT, "installerSidebar.bmp"),
-      await captureRegion(window.webContents, { x: 0, y: 0, ...SIDEBAR }));
+      await captureRegion(window.webContents, { x: 0, y: 0, ...scaled(SIDEBAR) }));
     fs.copyFileSync(path.join(OUT, "installerSidebar.bmp"), path.join(OUT, "uninstallerSidebar.bmp"));
     console.log("uninstallerSidebar.bmp  （复用安装侧边图）");
 
     writeBmp(path.join(OUT, "installerHeader.bmp"),
-      await captureRegion(window.webContents, { x: 0, y: SIDEBAR.height + GAP, ...HEADER }));
+      await captureRegion(window.webContents, { x: 0, y: (SIDEBAR.height + GAP) * SCALE, ...scaled(HEADER) }));
 
     writeIco(path.join(OUT, "icon.ico"), source.resize({ width: 256, height: 256, quality: "best" }).toPNG());
   } catch (error) {

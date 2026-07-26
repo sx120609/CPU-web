@@ -31,9 +31,21 @@
         </li>
       </ul>
 
-      <div v-if="downloadUrl" class="tools-actions">
-        <el-button type="primary" :icon="Download" @click="openDownload">下载 Windows 客户端</el-button>
-      </div>
+      <template v-if="download.available">
+        <div class="tools-actions">
+          <el-button type="primary" :icon="Download" @click="openDownload">
+            {{ download.password ? "前往网盘下载" : "下载 Windows 客户端" }}
+          </el-button>
+        </div>
+        <!-- 网盘分享页要先输提取码，不给出来用户就卡在那一步 -->
+        <div v-if="download.password" class="pass-row">
+          <span>提取码</span>
+          <code>{{ download.password }}</code>
+          <el-button link type="primary" :icon="CopyDocument" @click="copyPassword">
+            {{ copied ? "已复制" : "复制" }}
+          </el-button>
+        </div>
+      </template>
       <el-alert v-else type="info" :closable="false" show-icon title="客户端正在打包中，稍后开放下载" />
 
       <!-- 安装包没有代码签名，所有人都会撞到这个提示，先讲清楚免得以为是病毒 -->
@@ -49,22 +61,33 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { Close, Connection, Download, Monitor, Notebook } from "@element-plus/icons-vue";
-import { getDesktopDownloadUrl } from "@/api/site";
+import { Close, Connection, CopyDocument, Download, Monitor, Notebook } from "@element-plus/icons-vue";
+import { getDesktopDownload, type DesktopDownloadInfo } from "@/api/site";
 
 const emit = defineEmits<{ (event: "close"): void }>();
 
 // 只在网页里出现：桌面端把这些工具做成了应用自己的标签页，
 // MainLayout 那边已经把这个悬浮球关掉了。
-const downloadUrl = ref("");
+const download = ref<DesktopDownloadInfo>({ available: false, url: "", version: "", password: "" });
+const copied = ref(false);
 
 function openDownload() {
-  if (downloadUrl.value) window.open(downloadUrl.value, "_blank", "noopener");
+  if (download.value.url) window.open(download.value.url, "_blank", "noopener");
+}
+
+async function copyPassword() {
+  try {
+    await navigator.clipboard.writeText(download.value.password);
+    copied.value = true;
+    window.setTimeout(() => { copied.value = false; }, 2000);
+  } catch {
+    // 剪贴板不可用时提取码本身就显示在旁边，用户可以手抄
+  }
 }
 
 onMounted(async () => {
-  // 下载地址由站点设置下发，没配置就显示"正在打包中"，不给死链接
-  downloadUrl.value = await getDesktopDownloadUrl();
+  // 下载信息由站点设置下发，没配置就显示"正在打包中"，不给死链接
+  download.value = await getDesktopDownload();
 });
 </script>
 
@@ -161,6 +184,29 @@ onMounted(async () => {
 .tools-actions {
   display: flex;
   gap: 10px;
+}
+
+.pass-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px dashed var(--cpu-border);
+  border-radius: 10px;
+  background: var(--cpu-surface-soft);
+  font-size: 13px;
+
+  > span {
+    color: var(--cpu-text-secondary);
+  }
+
+  code {
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--cpu-primary-dark);
+  }
 }
 
 .install-tip {

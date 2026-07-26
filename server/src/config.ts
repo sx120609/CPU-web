@@ -362,7 +362,12 @@ export const config = {
     ?? "https://download.lizmt.cn/Android/CPU-Web-Android-V6.apk"
   ).trim(),
   // 桌面端安装包。留空表示尚未发布，前端会显示"正在打包中"而不是给一个死链接。
-  desktopAppDownloadUrl: (process.env.DESKTOP_APP_DOWNLOAD_URL ?? "").trim(),
+  desktopAppDownloadUrl: (
+    process.env.DESKTOP_APP_DOWNLOAD_URL
+    ?? "https://carbene.lanzoue.com/b0kp5dooh"
+  ).trim(),
+  // 网盘分享页的提取码。不是直链时必须下发，否则用户点过去只能卡在输码页面。
+  desktopAppDownloadPassword: (process.env.DESKTOP_APP_DOWNLOAD_PASSWORD ?? "afqr").trim(),
   desktopAppVersion: (process.env.DESKTOP_APP_VERSION ?? "").trim(),
   oauthClientId: String(process.env.OAUTH_CLIENT_ID ?? "cpu-electron").trim(),
   oauthAllowedRedirectUris: parseCsvEnv(process.env.OAUTH_ALLOWED_REDIRECT_URIS, ["http://127.0.0.1", "http://localhost"]),

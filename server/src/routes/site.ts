@@ -43,7 +43,13 @@ siteRouter.get("/downloads/android-app", (_req, res) => {
  */
 siteRouter.get("/downloads/desktop", (_req, res) => {
   const url = normalizeHttpsUrl(config.desktopAppDownloadUrl);
-  ok(res, { available: Boolean(url), url, version: config.desktopAppVersion });
+  ok(res, {
+    available: Boolean(url),
+    url,
+    version: config.desktopAppVersion,
+    // 网盘分享页需要提取码；前端要显示出来，否则用户点过去卡在输码页
+    password: url ? config.desktopAppDownloadPassword : "",
+  });
 });
 
 siteRouter.get("/downloads/desktop-app", (_req, res) => {

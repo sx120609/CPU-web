@@ -39,6 +39,8 @@ export type DesktopDownloadInfo = {
   available: boolean;
   url: string;
   version: string;
+  /** 网盘分享页的提取码；直链时为空 */
+  password: string;
 };
 
 export const siteApi = {
@@ -48,12 +50,13 @@ export const siteApi = {
   desktopDownload: () => request.get<DesktopDownloadInfo>("/site/downloads/desktop", undefined, { suppressErrorMessage: true }),
 };
 
-/** 桌面端安装包地址。尚未发布时返回空串，调用方据此显示"正在打包中"。 */
-export async function getDesktopDownloadUrl(): Promise<string> {
+/** 桌面端安装包信息。尚未发布时 available 为 false，调用方据此显示"正在打包中"。 */
+export async function getDesktopDownload(): Promise<DesktopDownloadInfo> {
+  const empty: DesktopDownloadInfo = { available: false, url: "", version: "", password: "" };
   try {
     const info = await siteApi.desktopDownload();
-    return info.available ? info.url : "";
+    return info.available ? info : empty;
   } catch {
-    return "";
+    return empty;
   }
 }
