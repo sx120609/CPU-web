@@ -907,7 +907,7 @@ function sourceType(source: string) {
 .ledger-filter-actions :deep(.el-button) {
   margin-left: 0;
 }
-.ledger-date-range {
+.ledger-filters :deep(.ledger-date-range) {
   width: 100% !important;
   min-width: 0;
 }
@@ -1033,9 +1033,6 @@ function sourceType(source: string) {
   .ledger-filters {
     grid-template-columns: minmax(220px, 1fr) 150px auto;
   }
-  .ledger-date-range {
-    width: 100%;
-  }
   .ledger-filter-actions {
     justify-content: flex-end;
   }
@@ -1070,7 +1067,6 @@ function sourceType(source: string) {
   }
   .ledger-search,
   .ledger-source,
-  .ledger-date-range,
   .ledger-direction,
   .ledger-filter-actions {
     width: 100%;
