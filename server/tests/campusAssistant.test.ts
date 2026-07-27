@@ -61,7 +61,7 @@ const context = {
 test("云端学习通助手脚本提供可校验的版本与正文", async () => {
   const release = await readDesktopUserScriptRelease();
   assert.equal(release.name, "药大拾间·学习通助手");
-  assert.equal(release.version, "2.2.0");
+  assert.equal(release.version, "2.2.1");
   assert.match(release.sha256, /^[a-f0-9]{64}$/);
   assert.equal(release.size, Buffer.byteLength(release.source, "utf8"));
   assert.match(release.source, /cpu-learning-personal-center-guide-v2/);

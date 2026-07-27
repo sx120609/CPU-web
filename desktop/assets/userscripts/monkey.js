@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         药大拾间·学习通助手
 // @namespace    askAuto
-// @version      2.2.0
+// @version      2.2.1
 // @author       shushoujiu
-// @description  药大拾间桌面端的学习通助手：自动完成任务点，章节测验与考试由独立答题 AI 作答。运行参数由客户端「工具 → 刷题」下发。
+// @description  药大拾间桌面端的学习通助手：自动完成任务点，章节测验与考试由独立答题 AI 作答。
 // @icon         https://vitejs.dev/logo.svg
 // @match        https://*.chaoxing.com/*
 // @match        https://*.nbdlib.cn/*
@@ -1823,7 +1823,7 @@ hideConfigControls();
   }, msg(msg) {
     this.task.status = msg, reportToHost("status", msg);
   } } }), _sfc_main = vue.defineComponent({ setup() {
-    const askstore = useAskStore(), { dialogVisible, count, questionList, task } = pinia$1.storeToRefs(askstore), askActiveName = vue.ref("first"), askActiveNames = vue.ref(["1"]), msg = vue.ref("<h3>药大拾间·学习通助手</h3><br><p>答案来自独立答题 AI，只发送当前题干、选项和题目图片，不携带站内知识库或用户资料；每次作答都会消耗你的每日额度。</p><br><p style='color:#c2410c;'>请自行判断使用边界，并遵守学校的学术规范。</p><br><p>运行参数请在客户端的「工具 → 刷题」里调整，这里改了不会生效。</p>"), formstoreObj = useformStore(), { forminput, dialogV, activeName } = pinia$1.storeToRefs(formstoreObj), ruleFormRef = vue.ref(), rules = vue.reactive({ interval: [{ required: true, message: "间隔时间不能为空" }, { type: "number", message: "间隔时间必须为数字" }, { validator: (rule, value) => value >= 1 ? Promise.resolve() : Promise.reject("间隔时间必须大于等于1") }], answerInterval: [{ required: true, message: "答题间隔不能为空" }, { type: "number", message: "答题间隔必须为数字" }, { validator: (rule, value) => value >= 1 ? Promise.resolve() : Promise.reject("答题间隔必须大于等于1") }], token: [{ validator: (rule, value) => {
+    const askstore = useAskStore(), { dialogVisible, count, questionList, task } = pinia$1.storeToRefs(askstore), askActiveName = vue.ref("first"), askActiveNames = vue.ref(["1"]), msg = vue.ref("<h3>药大拾间·学习通助手</h3><br><p>答案来自独立答题 AI，只发送当前题干、选项和题目图片，不携带站内知识库或用户资料；每次作答都会消耗你的每日额度。</p><br><p style='color:#c2410c;'>请自行判断使用边界，并遵守学校的学术规范。</p><br><p>请先进入具体课程和章节；运行状态与处理进度可在本窗口的「运行框」和「运行日志」中查看。</p>"), formstoreObj = useformStore(), { forminput, dialogV, activeName } = pinia$1.storeToRefs(formstoreObj), ruleFormRef = vue.ref(), rules = vue.reactive({ interval: [{ required: true, message: "间隔时间不能为空" }, { type: "number", message: "间隔时间必须为数字" }, { validator: (rule, value) => value >= 1 ? Promise.resolve() : Promise.reject("间隔时间必须大于等于1") }], answerInterval: [{ required: true, message: "答题间隔不能为空" }, { type: "number", message: "答题间隔必须为数字" }, { validator: (rule, value) => value >= 1 ? Promise.resolve() : Promise.reject("答题间隔必须大于等于1") }], token: [{ validator: (rule, value) => {
       if (value) {
         return /^[a-zA-Z0-9]{6,}$/.test(value) ? Promise.resolve() : Promise.reject("token格式错误");
       }

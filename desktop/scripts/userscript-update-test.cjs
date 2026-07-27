@@ -26,7 +26,7 @@ async function main() {
     size: Buffer.byteLength(source, "utf8"),
     sourceUrl: USER_SCRIPT_SOURCE_PATH,
   };
-  assert.deepEqual(identity, { name: "药大拾间·学习通助手", version: "2.2.0" });
+  assert.deepEqual(identity, { name: "药大拾间·学习通助手", version: "2.2.1" });
   assert.doesNotThrow(() => validateUserScriptRelease(source, manifest));
   assert.throws(
     () => validateUserScriptRelease(`${source}\n// tampered`, manifest),
@@ -56,7 +56,7 @@ async function main() {
       return new Response("", { status: 404 });
     };
 
-    const olderSource = source.replace("// @version      2.2.0", "// @version      2.1.9");
+    const olderSource = source.replace("// @version      2.2.1", "// @version      2.1.9");
     const updated = await checkUserScriptUpdate({
       origin: "https://cpu.lizmt.cn",
       cacheDirectory,
@@ -68,7 +68,7 @@ async function main() {
     assert.equal(requests.length, 2);
 
     const cached = await readCachedUserScript(cacheDirectory, () => undefined);
-    assert.equal(cached?.manifest.version, "2.2.0");
+    assert.equal(cached?.manifest.version, "2.2.1");
     assert.equal(cached?.source, source);
 
     requests.length = 0;
