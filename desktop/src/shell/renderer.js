@@ -106,6 +106,7 @@ const renderAuthSyncing = () => {
   el("auth-pill").dataset.state = "";
   el("auth-fields").hidden = true;
   el("auth-howto").hidden = true;
+  el("auth-sponsor").hidden = true;
   el("auth-login").hidden = true;
   el("auth-logout").hidden = true;
   el("auth-hint").hidden = false;
@@ -125,6 +126,7 @@ const renderAuth = (session) => {
   el("auth-hint").hidden = loggedIn;
   if (!loggedIn) {
     el("auth-howto").hidden = true;
+    el("auth-sponsor").hidden = true;
     // 到期本来会自动续（主站还登着就静默换新的），走到这里说明主站也退了
     el("auth-hint").textContent = session?.expired
       ? "登录状态已失效。在「首页 · 药大拾间」里登录一次即可，这里会自动同步。"
@@ -168,6 +170,7 @@ const renderAuth = (session) => {
   el("quota-text").textContent = balance === null ? "—" : `剩 ${balance}`;
 
   renderHowTo(user);
+  renderSponsorEntry();
 };
 
 /* -------------------------------------------------- 怎么提升免费额度 */
@@ -213,6 +216,15 @@ const renderHowTo = (user) => {
   el("howto-points").textContent = quotaRules.assistantPointsPerYuan > 0
     ? `注意：点赞与浏览量不计入信誉值，帖子被删除或隐藏会扣回对应分数。日额度用完后可消耗 AI 点数，1 点抵 1 次；点数不过期，赞助每 1 元可得 ${quotaRules.assistantPointsPerYuan} 点。`
     : "注意：点赞与浏览量不计入信誉值，帖子被删除或隐藏会扣回对应分数。日额度用完后可消耗 AI 点数，1 点抵 1 次，点数不过期。";
+};
+
+const renderSponsorEntry = () => {
+  const rate = Number(quotaRules?.assistantPointsPerYuan);
+  const visible = Number.isFinite(rate) && rate > 0;
+  el("auth-sponsor").hidden = !visible;
+  if (visible) {
+    el("auth-sponsor-rate").textContent = `每赞助 ¥1 可获得 ${rate} 个 AI 点数，支付到账后自动加入当前账号`;
+  }
 };
 
 const refreshAuth = (options = {}) => {
@@ -444,6 +456,18 @@ const bindAuth = () => {
       say("已退出登录，授权已撤销。");
     } catch (error) {
       say(errorText(error, "退出登录失败。"), true);
+    }
+  });
+  el("auth-sponsor-go").addEventListener("click", async () => {
+    const button = el("auth-sponsor-go");
+    button.disabled = true;
+    try {
+      await shell.tabs.openSponsor();
+      say("已打开赞助页面，支付到账后返回工具页即可看到新点数。");
+    } catch (error) {
+      say(errorText(error, "无法打开赞助页面。"), true);
+    } finally {
+      button.disabled = false;
     }
   });
 };

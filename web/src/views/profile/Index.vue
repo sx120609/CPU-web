@@ -111,7 +111,7 @@
       </el-button>
     </div>
 
-    <div v-if="site.features.sponsor || (user?.sponsorAmount ?? 0) > 0" class="cpu-card sponsor-card">
+    <div id="sponsor" v-if="site.features.sponsor || (user?.sponsorAmount ?? 0) > 0" class="cpu-card sponsor-card">
       <div class="sponsor-main">
         <div class="sponsor-copy">
           <h3 class="cpu-section-title">{{ sponsorOptions.title || "赞助本站" }}</h3>

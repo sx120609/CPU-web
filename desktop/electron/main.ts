@@ -1000,6 +1000,7 @@ if (installMode || uninstallMode) {
     ipcMain.handle("tabs:reload", (_event, id: unknown) => { if (typeof id === "string") tabs?.reload(id); });
     ipcMain.handle("tabs:go-back", (_event, id: unknown) => { if (typeof id === "string") tabs?.goBack(id); });
     ipcMain.handle("tabs:open-learning", () => openLearningPage());
+    ipcMain.handle("tabs:open-sponsor", () => tabs?.navigateSite(new URL("/profile#sponsor", oauthConfig.origin).href) ?? false);
 
     /* -------------------------------------------------------------- 校园网 */
     // 密码只单向进主进程：campus:state 永不返回密码，只回 hasCredential 与学号。

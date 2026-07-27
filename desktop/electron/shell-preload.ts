@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld("cpuShell", {
     reload: (id: string) => ipcRenderer.invoke("tabs:reload", id),
     goBack: (id: string) => ipcRenderer.invoke("tabs:go-back", id),
     openLearning: () => ipcRenderer.invoke("tabs:open-learning"),
+    openSponsor: () => ipcRenderer.invoke("tabs:open-sponsor"),
     onChange: (callback: (state: any) => void) => on("tabs:changed", callback)
   },
 

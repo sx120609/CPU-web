@@ -377,6 +377,42 @@ button[hidden] { display: none; }
   background: var(--cpu-gold);
 }
 
+.sponsor-entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 13px 14px;
+  border: 1px solid color-mix(in srgb, var(--cpu-primary) 25%, var(--cpu-border));
+  border-radius: 12px;
+  background: linear-gradient(115deg, var(--cpu-primary-soft), var(--cpu-surface));
+}
+
+.sponsor-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: var(--cpu-primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+
+.sponsor-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.sponsor-copy strong { font-size: 13px; }
+.sponsor-copy small { color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.5; }
+.sponsor-button { flex: none; white-space: nowrap; }
+
 /* 自动更新的下载进度条 */
 .update-track {
   margin-top: 12px;

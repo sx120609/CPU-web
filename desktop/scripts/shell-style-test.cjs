@@ -31,6 +31,9 @@ assert.doesNotMatch(css, /\.about-product\s*\{[\s\S]*?margin-top:\s*-\d+px/, "�
 assert.match(main, /process\.platform !== "darwin"[\s\S]*?Menu\.setApplicationMenu\(null\);[\s\S]*?return;/, "Windows 必须彻底移除会被 Alt 唤出的传统菜单栏");
 assert.match(html, /id="auth-login"[^>]*>去首页登录</, "未登录入口应回到首页这一套登录状态");
 assert.match(renderer, /shell\.auth\.sync\(/, "账号卡片应先静默同步首页登录状态");
+assert.match(html, /id="auth-sponsor-go"[^>]*>前往赞助</, "账号卡片应提供赞助获取 AI 点数入口");
+assert.match(renderer, /assistantPointsPerYuan[\s\S]*auth-sponsor-rate/, "赞助入口应展示服务端下发的实时兑换比例");
+assert.match(renderer, /shell\.tabs\.openSponsor\(\)/, "赞助入口应在客户端主站标签中打开赞助页面");
 assert.match(html, /id="script-version"/, "学习通助手区域应展示独立脚本版本与更新状态");
 assert.match(renderer, /shell\.script\.getUpdateState\(\)/, "学习通助手区域应读取云端更新状态");
 assert.match(html, /id="script-check-update"/, "学习通助手区域应提供手动检查更新按钮");

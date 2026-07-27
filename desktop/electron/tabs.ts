@@ -308,6 +308,19 @@ export class TabManager {
     if (contents?.navigationHistory.canGoBack()) contents.navigationHistory.goBack();
   }
 
+  async navigateSite(url: string): Promise<boolean> {
+    const tab = this.tabs.find((item) => item.kind === "site" && item.view);
+    if (!tab?.view) return false;
+    this.activate(tab.id);
+    try {
+      await tab.view.webContents.loadURL(url);
+      return true;
+    } catch (error) {
+      console.error(`主站导航失败：${url}`, error);
+      return false;
+    }
+  }
+
   closeAllLearningTabs(): void {
     for (const tab of [...this.tabs]) if (tab.kind === "learning") this.close(tab.id);
   }
