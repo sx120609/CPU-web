@@ -30,6 +30,10 @@ assert.match(html, /id="script-version"/, "学习通助手区域应展示独立�
 assert.match(renderer, /shell\.script\.getUpdateState\(\)/, "学习通助手区域应读取云端更新状态");
 assert.match(html, /id="script-check-update"/, "学习通助手区域应提供手动检查更新按钮");
 assert.match(renderer, /shell\.script\.checkUpdate\(\)/, "手动检查助手更新应调用独立云端检查");
+const scriptBinding = renderer.slice(renderer.indexOf("const bindScript"), renderer.indexOf("const setAboutUpdateStatus"));
+const scriptUpdateBinding = scriptBinding.match(/el\("script-check-update"\)[\s\S]*?\n  \}\);/)?.[0] ?? "";
+assert.ok(scriptUpdateBinding, "应找到助手手动更新事件");
+assert.doesNotMatch(scriptUpdateBinding, /\bsay\(/, "助手更新状态必须留在助手卡片内，不应写到页面底部通用状态栏");
 assert.match(html, /id="about-check-update"/, "关于区域应提供手动检查客户端更新按钮");
 assert.match(renderer, /shell\.update\.check\(\)/, "手动检查客户端更新应调用跨平台版本检查");
 assert.match(renderer, /runtimePlatform === "darwin"[\s\S]*新版 DMG/, "macOS 手动检查发现新版后应引导下载 DMG");

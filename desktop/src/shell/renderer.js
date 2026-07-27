@@ -513,13 +513,12 @@ const bindScript = () => {
   el("script-check-update").addEventListener("click", async () => {
     const button = el("script-check-update");
     button.disabled = true;
-    say("正在检查学习通助手更新…");
+    el("script-version").textContent = "正在检查学习通助手云端更新…";
     try {
       const state = await shell.script.checkUpdate();
       renderScriptUpdateState(state);
-      say(state?.message || "学习通助手更新检查完成。", state?.stage === "error");
     } catch (error) {
-      say(errorText(error, "无法检查学习通助手更新。"), true);
+      el("script-version").textContent = errorText(error, "无法检查学习通助手更新。");
     } finally {
       button.disabled = false;
     }

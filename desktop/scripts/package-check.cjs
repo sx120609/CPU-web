@@ -43,6 +43,7 @@ const required = [
   "/dist/electron/installer-preload.js",
   "/dist/electron/auto-update.js",
   "/dist/electron/userscript-update.js",
+  "/dist/electron/session-persistence.js",
   "/src/installer/index.html",
   "/src/installer/renderer.js",
   "/src/installer/style.css",

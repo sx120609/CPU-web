@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·学习通助手
 // @namespace    askAuto
-// @version      2.2.1
+// @version      2.2.2
 // @author       shushoujiu
 // @description  药大拾间桌面端的学习通助手：自动完成任务点，章节测验与考试由独立答题 AI 作答。
 // @icon         https://vitejs.dev/logo.svg
@@ -1823,7 +1823,7 @@ hideConfigControls();
   }, msg(msg) {
     this.task.status = msg, reportToHost("status", msg);
   } } }), _sfc_main = vue.defineComponent({ setup() {
-    const askstore = useAskStore(), { dialogVisible, count, questionList, task } = pinia$1.storeToRefs(askstore), askActiveName = vue.ref("first"), askActiveNames = vue.ref(["1"]), msg = vue.ref("<h3>药大拾间·学习通助手</h3><br><p>答案来自独立答题 AI，只发送当前题干、选项和题目图片，不携带站内知识库或用户资料；每次作答都会消耗你的每日额度。</p><br><p style='color:#c2410c;'>请自行判断使用边界，并遵守学校的学术规范。</p><br><p>请先进入具体课程和章节；运行状态与处理进度可在本窗口的「运行框」和「运行日志」中查看。</p>"), formstoreObj = useformStore(), { forminput, dialogV, activeName } = pinia$1.storeToRefs(formstoreObj), ruleFormRef = vue.ref(), rules = vue.reactive({ interval: [{ required: true, message: "间隔时间不能为空" }, { type: "number", message: "间隔时间必须为数字" }, { validator: (rule, value) => value >= 1 ? Promise.resolve() : Promise.reject("间隔时间必须大于等于1") }], answerInterval: [{ required: true, message: "答题间隔不能为空" }, { type: "number", message: "答题间隔必须为数字" }, { validator: (rule, value) => value >= 1 ? Promise.resolve() : Promise.reject("答题间隔必须大于等于1") }], token: [{ validator: (rule, value) => {
+    const askstore = useAskStore(), { dialogVisible, count, questionList, task } = pinia$1.storeToRefs(askstore), askActiveName = vue.ref("first"), askActiveNames = vue.ref(["1"]), msg = vue.ref("<h3>药大拾间·学习通助手</h3><br><p>答案来自独立答题 AI，只发送当前题干、选项和题目图片，不携带站内知识库或用户资料；每次作答都会消耗你的每日额度。</p><br><p style='color:#c2410c;'>请自行判断使用边界，并遵守学校的学术规范。</p><br><p>进入具体课程后，可打开章节、作业或考试页面；助手会自动开始，运行状态与处理进度可在本窗口的「运行框」和「运行日志」中查看。</p>"), formstoreObj = useformStore(), { forminput, dialogV, activeName } = pinia$1.storeToRefs(formstoreObj), ruleFormRef = vue.ref(), rules = vue.reactive({ interval: [{ required: true, message: "间隔时间不能为空" }, { type: "number", message: "间隔时间必须为数字" }, { validator: (rule, value) => value >= 1 ? Promise.resolve() : Promise.reject("间隔时间必须大于等于1") }], answerInterval: [{ required: true, message: "答题间隔不能为空" }, { type: "number", message: "答题间隔必须为数字" }, { validator: (rule, value) => value >= 1 ? Promise.resolve() : Promise.reject("答题间隔必须大于等于1") }], token: [{ validator: (rule, value) => {
       if (value) {
         return /^[a-zA-Z0-9]{6,}$/.test(value) ? Promise.resolve() : Promise.reject("token格式错误");
       }
@@ -2078,6 +2078,24 @@ hideConfigControls();
   }
   const pinia = pinia$1.createPinia(), app = vue.createApp(App).use(ElementPlus).use(pinia), _self = _unsafeWindow, top = _self.top, formStore = useformStore();
   const assistantName = "药大拾间·学习通助手";
+  const ensureGuideStyle = () => {
+    const id = "cpu-learning-guide-style";
+    if (_self.document.getElementById(id)) return;
+    const style = _self.document.createElement("style");
+    style.id = id;
+    style.textContent = `
+      .el-notification.cpu-learning-guide {
+        z-index: 2147483000 !important;
+        width: min(420px, calc(100vw - 32px)) !important;
+        max-width: calc(100vw - 32px) !important;
+      }
+      .el-notification.cpu-learning-guide .el-notification__content {
+        text-align: left !important;
+        line-height: 1.65 !important;
+      }
+    `;
+    _self.document.head.appendChild(style);
+  };
   const notifyGuide = (key, message, type = "info") => {
     if (_self !== top) return;
     try {
@@ -2086,7 +2104,16 @@ hideConfigControls();
     } catch {
       // 禁用会话存储时仍显示引导，不影响助手运行。
     }
-    ElementPlus.ElNotification({ title: assistantName, message, type, duration: 9e3 });
+    ensureGuideStyle();
+    ElementPlus.ElNotification({
+      title: assistantName,
+      message,
+      type,
+      duration: 12e3,
+      position: "top-right",
+      offset: 96,
+      customClass: "cpu-learning-guide"
+    });
   };
   var iframeCom = null;
   switch (app.mount((() => {
@@ -2181,8 +2208,8 @@ hideConfigControls();
     case "/mooc-ans/mycourse/stu":
     case "/mycourse/stu":
       notifyGuide(
-        "cpu-learning-course-guide-v2",
-        "课程已经打开。请在章节目录中选择一个具体章节；进入章节内容页后，助手会自动识别任务点并开始工作。"
+        "cpu-learning-course-guide-v3",
+        "课程已经打开。你可以从课程目录进入具体章节、作业或考试；打开对应内容页后，助手会自动识别并开始工作。"
       );
       break;
     case "/work/selectWorkQuestionYiPiYue":
@@ -2201,8 +2228,8 @@ hideConfigControls();
     default:
       if (_self.location.hostname === "i.chaoxing.com") {
         notifyGuide(
-          "cpu-learning-personal-center-guide-v2",
-          "请先从“课程”或“我学的课”进入一门具体课程，再选择要学习的章节。进入章节内容页后，助手会自动开始。"
+          "cpu-learning-personal-center-guide-v3",
+          "请先从“课程”或“我学的课”进入一门具体课程。进入课程后，可打开要学习的章节、作业或考试页面；助手会在对应内容页自动开始。"
         );
       }
   }

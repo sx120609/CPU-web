@@ -22,16 +22,27 @@ import {
   USER_SCRIPT_CHECK_INTERVAL_MS,
   UserScriptUpdateResult,
 } from "./userscript-update";
+import { flushPersistentSession } from "./session-persistence";
 
 let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let quitting = false;
+let exitPreparationStarted = false;
 let siteLoaded = false;
 let closeToTray = true;
 let campusNet: CampusNetService | undefined;
 let tabs: TabManager | undefined;
 let siteError = "";
 const supportsAutomaticInstallerUpdates = process.platform === "win32";
+
+const flushBrowserSession = async (): Promise<void> => {
+  try {
+    await flushPersistentSession(session.defaultSession);
+  } catch (error) {
+    // 落盘失败不应把用户困在应用里，但必须留下证据，便于定位系统级存储异常。
+    console.error("保存网站登录状态失败：", error);
+  }
+};
 
 // 一次性授权票据：主进程在注入脚本时下发 nonce，脚本每次调用特权桥都要带上。
 // 页面导航或窗口销毁即回收，避免票据长期有效。
@@ -931,11 +942,13 @@ if (installMode || uninstallMode) {
       supportsAutomaticInstallerUpdates ? checkAndDownload() : getUpdateState()
     );
     // 用户点"立即重启更新"：安装器会自己关掉旧版并在装完后拉起新版
-    ipcMain.handle("update:install-now", () => {
+    ipcMain.handle("update:install-now", async () => {
       if (!supportsAutomaticInstallerUpdates) return false;
+      await flushBrowserSession();
       if (!runPendingUpdate()) return false;
       quitting = true;
-      setTimeout(() => app.exit(0), 400);
+      // Cookie 和站点存储已经显式刷盘；再留一点时间让安装器完成解压启动。
+      setTimeout(() => app.exit(0), 500);
       return true;
     });
     ipcMain.handle("app:open-update", (_event, url: unknown) => {
@@ -1260,12 +1273,19 @@ if (installMode || uninstallMode) {
     console.error("启动失败：", error);
   });
 
-  app.on("before-quit", () => {
+  app.on("before-quit", (event) => {
     quitting = true;
     campusNet?.stop();
-    // 退出即更新 —— 这是"重启后自动安装"落地的地方。安装器会先关掉旧版
-    // 再覆盖文件，所以必须在这里启动它，等进程真退出了就没机会了。
-    if (supportsAutomaticInstallerUpdates && hasPendingUpdate()) runPendingUpdate();
+    if (exitPreparationStarted) return;
+
+    // Chromium 会延迟写 Cookie 与 localStorage。这里先拦住退出，完成落盘后再启动
+    // 更新器，避免安装器强制关闭旧进程时只丢主站会话、却保留独立 OAuth 文件。
+    event.preventDefault();
+    exitPreparationStarted = true;
+    void flushBrowserSession().finally(() => {
+      if (supportsAutomaticInstallerUpdates && hasPendingUpdate()) runPendingUpdate();
+      app.exit(0);
+    });
   });
 
   app.on("window-all-closed", () => {
