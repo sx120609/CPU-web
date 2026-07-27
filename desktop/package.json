@@ -1,7 +1,7 @@
 {
   "name": "cpu-web-desktop",
-  "version": "0.1.3",
-  "description": "药大拾间桌面端 —— 授权登录后在受控标签页中使用药大拾间·学习通助手",
+  "version": "0.1.4",
+  "description": "药大拾间桌面客户端",
   "main": "dist/electron/main.js",
   "private": true,
   "license": "AGPL-3.0-or-later",
