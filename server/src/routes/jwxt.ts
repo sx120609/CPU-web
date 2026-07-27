@@ -25,6 +25,7 @@ import {
   type GraduateTermOption,
 } from "../services/graduateScheduleParser";
 import { normalizeGraduateSemesterLabel, type GraduateScheduleFetchResult } from "../services/graduateScheduleService";
+import { detectAcademicIdentityFromProbes } from "../services/academicIdentityDetection";
 import { I_SERVICE_ICON_PATH_PATTERN } from "../services/jwxtClient";
 import {
   beginLogin,
@@ -279,10 +280,6 @@ function staleJwxtSessionError() {
   return Errors.unauthorized("教务会话已失效，请重新授权");
 }
 
-function isUnauthorizedReason(reason: any) {
-  return Number(reason?.status || 0) === 401 || Number(reason?.code || 0) === 4001;
-}
-
 function assertUsableUndergraduateSchedule<T>(parsed: T): T {
   if (!hasUsableUndergraduateSchedule(parsed)) throw staleJwxtSessionError();
   return parsed;
@@ -331,40 +328,14 @@ function hasUsableGraduateSchedule(result: any) {
 }
 
 async function detectAcademicIdentity(token: string) {
-  // 两个入口共享同一份 CookieJar。串行探测可避免并发请求各自写回旧 Cookie
-  // 快照，同时确保可选的研究生入口失败不会破坏本科教务会话。
-  const undergraduate = await getSchedule(token, {})
-    .then((value) => assertUsableUndergraduateSchedule(value))
-    .then((value) => ({ status: "fulfilled" as const, value }))
-    .catch((reason) => ({ status: "rejected" as const, reason }));
-  const graduate = await getGraduateSchedule(token, {})
-    .then((value) => ({ status: "fulfilled" as const, value }))
-    .catch((reason) => ({ status: "rejected" as const, reason }));
-
-  const undergraduateAvailable = undergraduate.status === "fulfilled"
-    && hasUsableUndergraduateSchedule(undergraduate.value);
-  const graduateAvailable = graduate.status === "fulfilled"
-    && hasUsableGraduateSchedule(graduate.value);
-  const graduateReachable = graduate.status === "fulfilled";
-
-  if (!undergraduateAvailable && !graduateAvailable && undergraduate.status === "rejected" && isUnauthorizedReason(undergraduate.reason)) {
-    throw undergraduate.reason;
-  }
-
-  const identity = undergraduateAvailable
-    ? "undergraduate"
-    : graduateReachable
-      ? "graduate"
-      : "undergraduate";
-
-  return {
-    identity,
-    source: undergraduateAvailable || graduateAvailable ? "detected" as const : "fallback" as const,
-    capabilities: {
-      undergraduate: undergraduateAvailable,
-      graduate: graduateAvailable,
-    },
-  };
+  return detectAcademicIdentityFromProbes({
+    // 研究生账号可能没有本科教务权限，本科探测失败会清理共享会话；
+    // 因此先确认研究生入口，成功后不再触碰本科入口。
+    probeGraduate: () => getGraduateSchedule(token, {}),
+    probeUndergraduate: () => getSchedule(token, {}).then(assertUsableUndergraduateSchedule),
+    isGraduateUsable: hasUsableGraduateSchedule,
+    isUndergraduateUsable: hasUsableUndergraduateSchedule,
+  });
 }
 
 const scheduleEditCourseSchema = z.object({
