@@ -889,6 +889,7 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 .assistant-quota-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "title stats open";
   align-items: center;
   gap: 16px;
   padding-top: 14px;
@@ -899,6 +900,7 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
     var(--cpu-card);
 }
 .assistant-quota-title {
+  grid-area: title;
   display: flex;
   min-width: 0;
   align-items: center;
@@ -926,7 +928,9 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   font-size: 12px;
 }
 .assistant-quota-stats {
-  display: flex;
+  grid-area: stats;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
   overflow: hidden;
   border: 1px solid var(--cpu-border-soft);
@@ -964,6 +968,7 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   font-weight: 600;
 }
 .assistant-quota-open {
+  grid-area: open;
   min-width: 58px;
   margin: 0 !important;
   padding-right: 4px;
@@ -975,9 +980,11 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   gap: 4px;
 }
 .assistant-quota-loading {
+  grid-area: stats;
   width: 176px;
 }
 .assistant-quota-error {
+  grid-area: stats;
   display: flex;
   min-width: 150px;
   align-items: center;
@@ -1474,8 +1481,11 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   }
 
   .assistant-quota-card {
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "title open"
+      "stats stats";
+    gap: 12px 8px;
     padding-top: 12px;
     padding-bottom: 12px;
   }
@@ -1493,19 +1503,16 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   }
 
   .assistant-quota-title p {
-    max-width: 120px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    line-height: 1.4;
   }
 
   .assistant-quota-stats {
-    width: auto;
+    width: 100%;
   }
 
   .assistant-quota-stat {
-    min-width: 58px;
-    padding: 5px 7px;
+    min-width: 0;
+    padding: 7px 9px;
   }
 
   .assistant-quota-stat b {
@@ -1515,8 +1522,8 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 
   .assistant-quota-loading,
   .assistant-quota-error {
-    min-width: 112px;
-    width: auto;
+    min-width: 0;
+    width: 100%;
   }
 
   .assistant-quota-open {
