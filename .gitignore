@@ -17,6 +17,7 @@ android/**/build/
 # 被上面的 build/ 一并挡掉过，结果是克隆下来根本打不出安装包。
 !desktop/build/
 desktop/release/
+desktop/release-*/
 !web/public/downloads/CPU-Web-Android-V*.apk
 *.aab
 

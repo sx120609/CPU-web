@@ -10,6 +10,7 @@ import {
   isCampusAssistantPublicTopicRestricted,
   listCampusAssistantActions,
   listCampusAssistantKnowledge,
+  listCampusAssistantKnowledgeEntries,
   normalizeAssistantResponse,
   sanitizeCampusAssistantStoredMessages,
   searchCampusAssistantActions,
@@ -40,6 +41,8 @@ import {
   sendAiUpstreamRequest,
 } from "../src/services/aiJsonApi";
 import { calculateSponsorAssistantPoints } from "../src/services/campusAssistantPoints";
+import { buildOAuthAiRequestBody, OAUTH_AI_INSTRUCTIONS } from "../src/routes/oauth";
+import { readDesktopUserScriptRelease } from "../src/services/desktopUserScript";
 
 const enabledFeatures = {
   forum: true,
@@ -54,6 +57,16 @@ const context = {
   forumAccessEnabled: true,
   loggedIn: false,
 };
+
+test("云端学习通助手脚本提供可校验的版本与正文", async () => {
+  const release = await readDesktopUserScriptRelease();
+  assert.equal(release.name, "药大拾间·学习通助手");
+  assert.equal(release.version, "2.2.0");
+  assert.match(release.sha256, /^[a-f0-9]{64}$/);
+  assert.equal(release.size, Buffer.byteLength(release.source, "utf8"));
+  assert.match(release.source, /cpu-learning-personal-center-guide-v2/);
+  assert.doesNotMatch(release.source, /Auto Ask/);
+});
 
 test("电费问题能稳定匹配宿舍电费直达入口", () => {
   const results = searchCampusAssistantActions("现在怎么查宿舍电费？", context);
@@ -132,6 +145,13 @@ test("OpenAI 兼容 SSE 能按增量还原完整 JSON", async () => {
   assert.equal(content, '{"answer":"你好","actionIds":[]}');
 });
 
+test("旧网络助手相关搜索统一引导到药大拾间桌面客户端", () => {
+  const results = searchCampusAssistantActions("CPU 网络连接助手和校园网工具在哪里下载", context);
+  assert.equal(results[0]?.id, "desktop-client");
+  assert.equal(results[0]?.url, "/services?open=desktop");
+  assert.match(results[0]?.description || "", /Windows.*Apple Silicon/);
+});
+
 test("AI prompt cache keys are stable within a feature and isolated across features", () => {
   const first = buildAiPromptCacheKey("oauth-chat", ["cpu-electron", "example-model"]);
   const second = buildAiPromptCacheKey("oauth-chat", ["cpu-electron", "example-model"]);
@@ -140,6 +160,35 @@ test("AI prompt cache keys are stable within a feature and isolated across featu
   assert.equal(first, second);
   assert.notEqual(first, otherFeature);
   assert.match(first, /^cpu:oauth-chat:[a-f0-9]{24}$/);
+});
+
+test("学习通 AI 请求只携带题目上下文与独立合规边界", () => {
+  const input = {
+    model: "client-supplied-model",
+    input: [{
+      role: "user" as const,
+      content: [{ type: "input_text" as const, text: "判断题：水的化学式是 H2O。" }],
+    }],
+  };
+  const chatBody = buildOAuthAiRequestBody(
+    input,
+    "server-selected-model",
+    "https://api.example.com/v1/chat/completions",
+  ) as { model: string; messages: Array<{ role: string; content: unknown }> };
+  const responsesBody = buildOAuthAiRequestBody(
+    input,
+    "server-selected-model",
+    "https://api.example.com/v1/responses",
+  ) as { model: string; instructions: string; input: unknown[] };
+  const serialized = JSON.stringify({ chatBody, responsesBody });
+
+  assert.equal(chatBody.model, "server-selected-model");
+  assert.equal(chatBody.messages[0]?.role, "system");
+  assert.equal(chatBody.messages[0]?.content, OAUTH_AI_INSTRUCTIONS);
+  assert.equal(responsesBody.instructions, OAUTH_AI_INSTRUCTIONS);
+  assert.match(OAUTH_AI_INSTRUCTIONS, /只依据本次请求中明确给出的题干、选项、图片和通用学科知识/);
+  assert.match(OAUTH_AI_INSTRUCTIONS, /中华人民共和国现行法律法规/);
+  assert.doesNotMatch(serialized, /knowledge=|玄武门校区|assistantPoints|DATABASE_URL|nickname/);
 });
 
 test("AI upstream requests apply explicit prompt cache key and 24-hour retention", async () => {
@@ -298,6 +347,26 @@ test("assistant quota and model settings are restored from the database after a 
     await loadFeatures();
     siteSetting.findMany = originalFindMany;
   }
+});
+
+test("campus assistant knowledge covers every active action and carries freshness metadata", () => {
+  const actions = listCampusAssistantActions(context);
+  const entries = listCampusAssistantKnowledgeEntries(actions.map((item) => item.id));
+  const combined = entries.map((item) => item.fact).join("\n");
+
+  assert.ok(entries.length >= 30);
+  assert.equal(entries.every((item) => Boolean(item.id && item.source && item.sourceRef && item.verifiedAt)), true);
+  assert.equal(new Set(entries.map((item) => item.id)).size, entries.length);
+  for (const action of actions) {
+    assert.ok(
+      listCampusAssistantKnowledge([action.id]).length > 0,
+      `missing knowledge for action ${action.id}`,
+    );
+  }
+  assert.match(combined, /2026-2027 学年校历/);
+  assert.match(combined, /玄武门校区位于南京市鼓楼区童家巷 24 号/);
+  assert.match(combined, /旧的“CPU 网络连接助手”已停止作为独立产品宣传/);
+  assert.doesNotMatch(combined, /先在中国建设银行 APP/);
 });
 
 test("sponsor points use the configured per-yuan ratio and round down", () => {

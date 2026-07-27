@@ -25,7 +25,7 @@
           <h2 class="ob-heading">它能替你做什么</h2>
           <ul class="ob-features">
             <li><span class="ob-dot"></span><div><strong>校园网自动连接</strong><small>掉线自动重认证；判断出你不在校园网时不会瞎试</small></div></li>
-            <li><span class="ob-dot"></span><div><strong>学习通标签页</strong><small>在客户端里打开，答题辅助自动接管，进度直接看得到</small></div></li>
+            <li><span class="ob-dot"></span><div><strong>学习通标签页</strong><small>在客户端里打开，学习通助手自动接管，进度直接看得到</small></div></li>
             <li><span class="ob-dot"></span><div><strong>常驻后台</strong><small>关掉窗口收进托盘，可开机自启</small></div></li>
           </ul>
           <button class="ob-primary" data-next>下一步<span class="ob-arrow">→</span></button>
@@ -44,7 +44,7 @@
             <span class="switch-track"><span class="switch-thumb"></span></span>
             <span class="switch-text"><strong>后台自动连接校园网</strong><small>稍后在工具页填学号密码才会真正生效</small></span>
           </label>
-          <p class="ob-fine">答案全部来自药大拾间后台配置的校园 AI，会消耗你的每日额度。请自行判断使用边界并遵守学校的学术规范。</p>
+          <p class="ob-fine">答案来自独立答题 AI，只发送当前题目内容，不携带站内知识库或用户资料；会消耗你的每日额度。</p>
           <button class="ob-primary" id="ob-done">进入药大拾间<span class="ob-arrow">→</span></button>
         </div>
       </div>
@@ -60,7 +60,7 @@
         <button class="chip" id="chip-campus" type="button" title="校园网状态">
           <span class="dot" id="campus-dot"></span><span id="campus-text">校园网</span>
         </button>
-        <button class="chip" id="chip-quota" type="button" title="校园 AI 今日剩余额度">
+        <button class="chip" id="chip-quota" type="button" title="答题 AI 今日剩余额度">
           <span class="chip-icon">AI</span><span id="quota-text">—</span>
         </button>
         <button class="chip icon-only" id="chip-back" type="button" title="返回">‹</button>
@@ -109,7 +109,7 @@
             </div>
           </details>
 
-          <p class="muted" id="auth-hint">登录后即可使用学习通与校园 AI 解答。</p>
+          <p class="muted" id="auth-hint">登录后即可使用学习通 AI 解答。</p>
           <div class="actions">
             <button class="primary" id="auth-login" type="button" hidden>去首页登录</button>
             <button class="ghost" id="auth-logout" type="button" hidden>退出登录</button>
@@ -179,7 +179,8 @@
             <h2>刷题</h2>
             <span class="pill" id="script-pill" hidden>运行中</span>
           </div>
-          <p class="muted" id="script-status">在标签页中打开学习通，答题辅助会自动接管。</p>
+          <p class="muted" id="script-status">在标签页中打开学习通，学习通助手会自动接管。</p>
+          <p class="muted" id="script-version">正在读取助手脚本版本…</p>
           <div class="actions">
             <button class="primary" id="script-open" type="button">打开学习通</button>
           </div>
@@ -225,7 +226,7 @@
             <label class="switch">
               <input type="checkbox" id="cfg-aiEnabled" />
               <span class="switch-track"><span class="switch-thumb"></span></span>
-              <span class="switch-text"><strong>用校园 AI 作答</strong><small>答案全部来自药大拾间的校园 AI，消耗你的每日额度；关掉就只做视频任务点</small></span>
+              <span class="switch-text"><strong>用独立 AI 作答</strong><small>只发送当前题干、选项与题目图片，不携带站内知识库或用户资料；消耗你的每日额度</small></span>
             </label>
             <p class="muted small">模型由站点后台统一设定，客户端不参与选择。</p>
           </div>
@@ -270,8 +271,8 @@
               <span>由 <b>Mom0ka27</b> 贡献开发</span>
             </div>
             <div>
-              <strong>CPU 网络连接助手</strong>
-              <span>基于真红（SoraNoNeko）的 <a href="https://github.com/SoraNoNeko/cpu_net" data-external>cpu_net</a> 项目修改</span>
+              <strong>校园网连接模块</strong>
+              <span>基于真红（SoraNoNeko）的 <a href="https://github.com/SoraNoNeko/cpu_net" data-external>cpu_net</a> 项目修改，并整合进桌面客户端</span>
             </div>
             <div>
               <strong>学习通辅助脚本</strong>

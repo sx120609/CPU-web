@@ -12,6 +12,7 @@ import {
   resolveMacDesktopDownload,
 } from "../services/pdsShare";
 import { getAiQuotaRules } from "../services/aiQuotaRules";
+import { readDesktopUserScriptRelease } from "../services/desktopUserScript";
 
 export const siteRouter = Router();
 
@@ -30,6 +31,47 @@ siteRouter.get("/config", async (_req, res, next) => {
       siteFilingNumber: getSiteFilingNumber(),
     })));
   } catch (e) { next(e); }
+});
+
+/**
+ * 桌面端学习通助手脚本的公开版本清单。
+ * 客户端只从固定同源接口拉取，并在落盘前核对版本、大小、SHA-256 与权限声明。
+ */
+siteRouter.get("/userscripts/chaoxing-helper", async (_req, res, next) => {
+  try {
+    const release = await readDesktopUserScriptRelease();
+    res.setHeader("Cache-Control", "no-store");
+    ok(res, {
+      name: release.name,
+      version: release.version,
+      sha256: release.sha256,
+      size: release.size,
+      sourceUrl: "/api/site/userscripts/chaoxing-helper/source",
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** 脚本正文由服务器本地文件提供；ETag 允许客户端/CDN 在内容未变时不重复传输。 */
+siteRouter.get("/userscripts/chaoxing-helper/source", async (req, res, next) => {
+  try {
+    const release = await readDesktopUserScriptRelease();
+    const etag = `"sha256-${release.sha256}"`;
+    res.setHeader("Cache-Control", "public, max-age=300, must-revalidate");
+    res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("ETag", etag);
+    res.setHeader("X-Userscript-Version", release.version);
+    res.setHeader("X-Content-SHA256", release.sha256);
+    if (req.get("if-none-match") === etag) {
+      res.status(304).end();
+      return;
+    }
+    res.send(release.source);
+  } catch (error) {
+    next(error);
+  }
 });
 
 siteRouter.get("/downloads/android-app", (_req, res) => {

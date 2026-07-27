@@ -1,7 +1,7 @@
 {
   "name": "cpu-web-desktop",
-  "version": "0.1.1",
-  "description": "药大拾间桌面端 —— 授权登录后在受控标签页中打开学习通并启用答题辅助",
+  "version": "0.1.2",
+  "description": "药大拾间桌面端 —— 授权登录后在受控标签页中使用药大拾间·学习通助手",
   "main": "dist/electron/main.js",
   "private": true,
   "license": "AGPL-3.0-or-later",
@@ -12,7 +12,7 @@
     "assets:installer": "electron scripts/build-installer-assets.cjs",
     "vendor:deps": "node scripts/vendor-deps.mjs",
     "vendor:verify": "node scripts/vendor-deps.mjs --verify",
-    "test": "npm run build && node scripts/policy-test.cjs && node scripts/campus-net-test.cjs && node scripts/oauth-user-test.cjs && node scripts/shell-style-test.cjs && node scripts/vendor-deps.mjs --verify",
+    "test": "npm run build && node scripts/policy-test.cjs && node scripts/campus-net-test.cjs && node scripts/oauth-user-test.cjs && node scripts/userscript-update-test.cjs && node scripts/shell-style-test.cjs && node scripts/vendor-deps.mjs --verify",
     "test:smoke": "npm run build && node scripts/smoke-test.mjs",
     "test:package": "node scripts/package-check.cjs",
     "start": "npm run build && electron .",
@@ -24,7 +24,7 @@
     "productName": "药大拾间桌面端",
     "copyright": "Copyright © 2026 药大拾间",
     "asar": true,
-    "compression": "maximum",
+    "compression": "normal",
     "files": [
       "dist/**",
       "assets/**",
@@ -49,6 +49,7 @@
     "portable": {
       "requestExecutionLevel": "user",
       "unpackDirName": "cpu-web-desktop-setup",
+      "splashImage": "build/installerWelcome.bmp",
       "artifactName": "${productName}-${version}-win-${arch}-安装版.${ext}"
     },
     "mac": {

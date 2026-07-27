@@ -62,14 +62,17 @@
       <p class="muted">必须使用 Safari 浏览器；微信/QQ 等内置浏览器不支持。</p>
     </div>
 
-    <!-- 其他情况：保留桌面/PWA 说明，同时给 Android Pad 桌面 UA 一个兜底下载入口 -->
+    <!-- 桌面浏览器：只提供原生桌面客户端，不再展示 PWA，避免用户选错。 -->
     <div v-else class="content">
-      <p>请在浏览器菜单中找到 <b>「安装应用」</b>、<b>「添加到主屏幕」</b> 或 <b>「创建快捷方式」</b>。</p>
-      <p class="migration-note">Android Pad 使用“请求桌面站点”时，也可以直接下载客户端。</p>
-      <p class="muted">部分浏览器（微信/QQ 内置 / 较老 Chrome）不支持安装。</p>
+      <DesktopClientDownloadCard
+        v-if="desktopDownloadPlatform"
+        :platform="desktopDownloadPlatform"
+      />
+      <div v-else class="desktop-unsupported">
+        <strong>当前桌面系统暂未提供客户端</strong>
+        <p>桌面客户端目前支持 Windows 10/11 64 位，以及 Apple Silicon（M 芯片）macOS。</p>
+      </div>
     </div>
-
-    <DesktopClientDownloadCard v-if="!isStandalone && !isNativeApp" />
 
     <p v-if="!isStandalone && !isNativeApp" class="support-note">
       仍有疑问，建议
@@ -88,14 +91,16 @@
           下载 Android 客户端
         </el-button>
         <el-button
-          v-else-if="deferredPrompt"
+          v-else-if="deferredPrompt && platform !== 'desktop'"
           type="primary"
           size="default"
           @click="installNow"
         >
           添加到主屏幕
         </el-button>
-        <el-button size="default" @click="dismissDialog">{{ deferredPrompt ? "稍后" : "我知道了" }}</el-button>
+        <el-button size="default" @click="dismissDialog">
+          {{ deferredPrompt && platform !== "desktop" ? "稍后" : "我知道了" }}
+        </el-button>
       </div>
     </template>
   </el-dialog>
@@ -132,19 +137,28 @@ const platform = computed<"ios" | "android" | "desktop">(() => {
   if (isLikelyAndroidDevice()) return "android";
   return "desktop";
 });
+const desktopDownloadPlatform = computed<"windows" | "macos" | null>(() => {
+  const ua = navigator.userAgent.toLowerCase();
+  const looksLikeDesktopMac = ua.includes("mac") && navigator.maxTouchPoints <= 1;
+  if (looksLikeDesktopMac) return "macos";
+  if (ua.includes("windows")) return "windows";
+  return null;
+});
 
 const title = computed(() => {
   if (inAppBrowser.value.isInApp) return "建议使用外部浏览器打开";
   if (platform.value === "android") return "安装 Android 版课表";
   if (platform.value === "ios") return "添加到主屏幕";
-  return "把课表加到主屏幕";
+  if (desktopDownloadPlatform.value === "macos") return "下载 macOS 桌面客户端";
+  if (desktopDownloadPlatform.value === "windows") return "下载 Windows 桌面客户端";
+  return "桌面客户端";
 });
 
 const dialogWidth = computed(() => {
   return window.innerWidth < 480 ? "92dvw" : "440px";
 });
 const canDownloadAndroidApk = computed(() => {
-  return platform.value !== "ios" && !isNativeApp.value && !inAppBrowser.value.isInApp;
+  return platform.value === "android" && !isNativeApp.value && !inAppBrowser.value.isInApp;
 });
 
 function detectStandalone() {
@@ -248,7 +262,7 @@ async function requestInstall() {
     open.value = true;
     return;
   }
-  if (deferredPrompt.value) {
+  if (platform.value !== "desktop" && deferredPrompt.value) {
     await installNow();
     return;
   }
@@ -289,6 +303,16 @@ defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platfo
 .content p { margin: 0 0 10px; }
 .content .muted { color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.6; }
 .content b { color: var(--cpu-primary); }
+.desktop-unsupported {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 10px;
+  background: var(--cpu-surface-soft);
+}
+.desktop-unsupported strong { color: var(--cpu-text); font-size: 13px; }
+.desktop-unsupported p { margin: 0; color: var(--cpu-text-secondary); font-size: 12px; }
 .migration-note {
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--cpu-primary) 26%, transparent);

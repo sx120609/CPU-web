@@ -1,26 +1,21 @@
 <template>
   <section class="desktop-client-card" aria-label="桌面客户端下载">
     <div class="desktop-client-copy">
-      <strong>桌面版已推出</strong>
-      <span>Windows 与 Apple Silicon（M 芯片）Mac 均可使用，联网助手与学习通工具都在桌面版中。</span>
+      <strong>{{ isMac ? "推荐 macOS 桌面客户端" : "推荐 Windows 桌面客户端" }}</strong>
+      <span>
+        {{ isMac
+          ? "适用于 Apple Silicon（M1 及后续 M 系列）Mac，不支持 Intel 机型。"
+          : "适用于 Windows 10 / 11 的 64 位电脑。" }}
+      </span>
     </div>
 
-    <div v-if="windowsDownload.available || macDownload.available" class="desktop-client-links">
+    <div v-if="download.available" class="desktop-client-links">
       <a
-        v-if="windowsDownload.available"
-        :href="windowsDownload.url"
+        :href="download.url"
         target="_blank"
         rel="noopener noreferrer"
       >
-        下载 Windows 版
-      </a>
-      <a
-        v-if="macDownload.available"
-        :href="macDownload.url"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        下载 Mac M 芯片版
+        {{ isMac ? "下载 macOS 客户端（M 芯片）" : "下载 Windows 客户端" }}
       </a>
     </div>
     <span v-else-if="loading" class="desktop-client-status">正在获取下载链接…</span>
@@ -29,12 +24,16 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import {
   getDesktopDownload,
   getMacDesktopDownload,
   type DesktopDownloadInfo,
 } from "@/api/site";
+
+const props = defineProps<{
+  platform: "windows" | "macos";
+}>();
 
 const emptyDownload = (): DesktopDownloadInfo => ({
   available: false,
@@ -43,16 +42,15 @@ const emptyDownload = (): DesktopDownloadInfo => ({
   password: "",
 });
 
-const windowsDownload = ref<DesktopDownloadInfo>(emptyDownload());
-const macDownload = ref<DesktopDownloadInfo>(emptyDownload());
+const download = ref<DesktopDownloadInfo>(emptyDownload());
 const loading = ref(true);
+const isMac = computed(() => props.platform === "macos");
 
 onMounted(async () => {
   try {
-    [windowsDownload.value, macDownload.value] = await Promise.all([
-      getDesktopDownload(),
-      getMacDesktopDownload(),
-    ]);
+    download.value = isMac.value
+      ? await getMacDesktopDownload()
+      : await getDesktopDownload();
   } finally {
     loading.value = false;
   }
@@ -63,7 +61,6 @@ onMounted(async () => {
 .desktop-client-card {
   display: grid;
   gap: 10px;
-  margin-top: 14px;
   padding: 12px;
   border: 1px solid color-mix(in srgb, var(--cpu-primary) 28%, var(--cpu-border-soft));
   border-radius: 10px;
@@ -109,7 +106,7 @@ onMounted(async () => {
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.desktop-client-links a:first-child {
+.desktop-client-links a {
   background: var(--cpu-primary);
   color: #fff;
 }

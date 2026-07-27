@@ -62,17 +62,17 @@
           </div>
           <el-icon class="quick-arrow"><Right /></el-icon>
         </button>
-        <button type="button" class="quick-card network-card" @click="cpuNetOpen = true">
-          <span class="quick-icon">📶</span>
+        <button type="button" class="quick-card network-card" @click="desktopClientOpen = true">
+          <span class="quick-icon">🖥️</span>
           <div class="quick-body">
             <div class="quick-title-row">
-              <div class="quick-title">CPU 网络连接助手</div>
-              <span class="quick-badge">仅限 Windows</span>
-              <span class="quick-version">v4.1.4</span>
+              <div class="quick-title">药大拾间桌面客户端</div>
+              <span class="quick-badge">Windows</span>
+              <span class="quick-version">macOS M 芯片</span>
             </div>
-            <div class="quick-sub">药大校园网连接工具，下载安装后在 Windows 电脑上使用</div>
+            <div class="quick-sub">校园网自动连接、学习通辅助与桌面常驻能力都在客户端中</div>
           </div>
-          <span class="quick-action">查看与下载</span>
+          <span class="quick-action">选择版本</span>
           <el-icon class="quick-arrow"><Right /></el-icon>
         </button>
       </div>
@@ -146,7 +146,7 @@
     </div>
 
     <DormElectricDialog v-model="electricOpen" />
-    <CpuNetDownloadDialog v-model="cpuNetOpen" />
+    <CpuNetDownloadDialog v-model="desktopClientOpen" />
   </div>
 </template>
 
@@ -179,7 +179,7 @@ const captchaSubmitting = ref(false);
 const captchaRefreshing = ref(false);
 const captchaError = ref("");
 const electricOpen = ref(false);
-const cpuNetOpen = ref(false);
+const desktopClientOpen = ref(false);
 const toolMetas = ref<ToolMeta[]>([]);
 const toolsLoading = ref(false);
 const toolsError = ref("");
@@ -193,7 +193,7 @@ watch(
   [() => route.query.open, () => site.features.electric],
   ([quickOpen, electricEnabled]) => {
     if (quickOpen === "electric" && electricEnabled) electricOpen.value = true;
-    if (quickOpen === "network") cpuNetOpen.value = true;
+    if (quickOpen === "network" || quickOpen === "desktop") desktopClientOpen.value = true;
   },
   { immediate: true },
 );

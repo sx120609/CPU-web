@@ -240,7 +240,7 @@
       </div>
     </header>
 
-    <!-- 内置浏览器打开引导 / PWA 添加到桌面引导 -->
+    <!-- 按设备分流的安装引导：移动端安装/加主屏，桌面端下载原生客户端 -->
     <OpenBrowserPromptDialog ref="openBrowserPromptRef" />
     <InstallPromptDialog ref="installPromptRef" />
     <input

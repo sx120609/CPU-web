@@ -42,6 +42,7 @@ const required = [
   "/dist/electron/self-install.js",
   "/dist/electron/installer-preload.js",
   "/dist/electron/auto-update.js",
+  "/dist/electron/userscript-update.js",
   "/src/installer/index.html",
   "/src/installer/renderer.js",
   "/src/installer/style.css",

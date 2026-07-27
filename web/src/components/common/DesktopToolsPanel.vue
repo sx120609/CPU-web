@@ -26,78 +26,162 @@
           <span class="promo-icon"><el-icon><Notebook /></el-icon></span>
           <div>
             <strong>刷题小工具</strong>
-            <small>在客户端标签页中打开学习通，答题辅助自动接管，进度与日志在客户端里直接看</small>
+            <small>在客户端标签页中打开学习通，学习通助手自动接管，进度与日志在客户端里直接看</small>
           </div>
         </li>
       </ul>
 
-      <div v-if="download.available || macDownload.available" class="tools-actions">
-        <el-button v-if="download.available" type="primary" :icon="Download" @click="openDownload(download)">
-          {{ download.password ? "前往网盘下载" : "下载 Windows 客户端" }}
-        </el-button>
-        <el-button v-if="macDownload.available" plain type="primary" :icon="Download" @click="openDownload(macDownload)">
-          下载 macOS 客户端（M 芯片）
-        </el-button>
+      <div class="platform-tabs" role="tablist" aria-label="选择桌面客户端平台">
+        <button
+          id="desktop-platform-tab-windows"
+          type="button"
+          role="tab"
+          :class="{ active: activePlatform === 'windows' }"
+          :aria-selected="activePlatform === 'windows'"
+          aria-controls="desktop-platform-panel"
+          :tabindex="activePlatform === 'windows' ? 0 : -1"
+          @click="activePlatform = 'windows'"
+          @keydown.right.prevent="activePlatform = 'macos'"
+        >
+          <span class="tab-mark">WIN</span>
+          <span>
+            <strong>Windows</strong>
+            <small>10 / 11 · 64 位</small>
+          </span>
+        </button>
+        <button
+          id="desktop-platform-tab-macos"
+          type="button"
+          role="tab"
+          :class="{ active: activePlatform === 'macos' }"
+          :aria-selected="activePlatform === 'macos'"
+          aria-controls="desktop-platform-panel"
+          :tabindex="activePlatform === 'macos' ? 0 : -1"
+          @click="activePlatform = 'macos'"
+          @keydown.left.prevent="activePlatform = 'windows'"
+        >
+          <span class="tab-mark">M</span>
+          <span>
+            <strong>macOS</strong>
+            <small>Apple Silicon · M 芯片</small>
+          </span>
+        </button>
       </div>
-      <template v-if="download.available">
+
+      <section
+        id="desktop-platform-panel"
+        class="platform-panel"
+        role="tabpanel"
+        :aria-labelledby="`desktop-platform-tab-${activePlatform}`"
+      >
+        <header class="platform-panel-head">
+          <div>
+            <small>{{ activePlatform === "windows" ? "WINDOWS 客户端" : "MACOS 客户端" }}</small>
+            <strong>{{ activePlatform === "windows" ? "Windows 下载安装" : "M 芯片 Mac 下载安装" }}</strong>
+            <span>
+              {{ activePlatform === "windows"
+                ? "适用于 Windows 10 / 11 的 64 位电脑"
+                : "适用于 M1 及后续 M 系列芯片，不支持 Intel Mac" }}
+            </span>
+          </div>
+          <code v-if="activeDownload.version">v{{ activeDownload.version }}</code>
+        </header>
+
+        <el-button
+          v-if="activeDownload.available"
+          class="download-button"
+          type="primary"
+          :icon="Download"
+          @click="openDownload"
+        >
+          {{ activeDownload.password
+            ? "前往网盘下载"
+            : activePlatform === "windows"
+              ? "下载 Windows 客户端"
+              : "下载 macOS 客户端（M 芯片）" }}
+        </el-button>
+        <el-alert
+          v-else
+          type="info"
+          :closable="false"
+          show-icon
+          :title="downloadsLoaded ? '该平台安装包暂时不可用，请稍后再试' : '正在获取下载信息…'"
+        />
+
         <!-- 网盘分享页要先输提取码，不给出来用户就卡在那一步 -->
-        <div v-if="download.password" class="pass-row">
+        <div v-if="activeDownload.available && activeDownload.password" class="pass-row">
           <span>提取码</span>
-          <code>{{ download.password }}</code>
+          <code>{{ activeDownload.password }}</code>
           <el-button link type="primary" :icon="CopyDocument" @click="copyPassword">
             {{ copied ? "已复制" : "复制" }}
           </el-button>
         </div>
-      </template>
-      <el-alert
-        v-if="!download.available && !macDownload.available"
-        type="info"
-        :closable="false"
-        show-icon
-        title="客户端正在打包中，稍后开放下载"
-      />
 
-      <!-- 安装包没有代码签名，所有人都会撞到这个提示，先讲清楚免得以为是病毒 -->
-      <div class="install-tip">
-        <strong>安装时 Windows 会提示「未知发布者」</strong>
-        <p>这是因为安装包没有购买代码签名证书，不是安全问题。点提示框里的「更多信息」，再点「仍要运行」即可。</p>
-      </div>
+        <div v-if="activePlatform === 'windows'" class="install-guide">
+          <div class="guide-title">
+            <span>安装</span>
+            <strong>Windows 出现「未知发布者」怎么办？</strong>
+          </div>
+          <ol>
+            <li>下载完成后双击安装包。</li>
+            <li>若 SmartScreen 拦截，点击提示框里的「更多信息」。</li>
+            <li>点击「仍要运行」，按安装向导完成安装。</li>
+          </ol>
+          <p>这是因为安装包尚未购买代码签名证书，并不代表安装包存在安全问题。</p>
+        </div>
 
-      <div class="install-tip mac-tip">
-        <strong>macOS 首次打开被拦截怎么办？</strong>
-        <ol>
-          <li>打开 DMG，把「药大拾间桌面端」拖入「应用程序」，然后先正常双击一次。</li>
-          <li>若系统提示无法验证开发者，打开「系统设置 → 隐私与安全性」，向下找到刚被阻止的应用。</li>
-          <li>点「仍要打开」，用密码或 Touch ID 确认，再点一次「打开」。这个按钮只有尝试打开后才会出现。</li>
-        </ol>
-        <p>也可在「应用程序」里右键应用，选择「打开」并再次确认。无需关闭系统安全保护，也不需要运行终端绕过命令。</p>
-      </div>
+        <div v-else class="install-guide">
+          <div class="guide-title">
+            <span>安装</span>
+            <strong>macOS 首次打开被拦截怎么办？</strong>
+          </div>
+          <ol>
+            <li>打开 DMG，把「药大拾间桌面端」拖入「应用程序」，然后先正常双击一次。</li>
+            <li>若提示无法验证开发者，打开「系统设置 → 隐私与安全性」。</li>
+            <li>向下找到刚被阻止的应用，点击「仍要打开」，用密码或 Touch ID 确认。</li>
+          </ol>
+          <p>也可在「应用程序」里右键应用并选择「打开」。无需关闭系统安全保护，也不需要运行终端绕过命令。</p>
+        </div>
 
-      <p class="tools-foot">支持 Windows 10 / 11（64 位）与 Apple Silicon（M1 及后续 M 系列）Mac。macOS 暂不支持 Intel 机型。</p>
+        <p class="platform-foot">
+          {{ activePlatform === "windows"
+            ? "支持 Windows 10 / 11（64 位）。"
+            : "仅支持 Apple Silicon（M1 及后续 M 系列）Mac，暂不支持 Intel 机型。" }}
+        </p>
+      </section>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { Close, Connection, CopyDocument, Download, Monitor, Notebook } from "@element-plus/icons-vue";
 import { getDesktopDownload, getMacDesktopDownload, type DesktopDownloadInfo } from "@/api/site";
 
 const emit = defineEmits<{ (event: "close"): void }>();
+type DesktopPlatform = "windows" | "macos";
 
 // 只在网页里出现：桌面端把这些工具做成了应用自己的标签页，
 // MainLayout 那边已经把这个悬浮球关掉了。
 const download = ref<DesktopDownloadInfo>({ available: false, url: "", version: "", password: "" });
 const macDownload = ref<DesktopDownloadInfo>({ available: false, url: "", version: "", password: "" });
+const downloadsLoaded = ref(false);
+const activePlatform = ref<DesktopPlatform>(detectPreferredPlatform());
 const copied = ref(false);
+const activeDownload = computed(() => activePlatform.value === "windows" ? download.value : macDownload.value);
 
-function openDownload(target: DesktopDownloadInfo) {
-  if (target.url) window.open(target.url, "_blank", "noopener");
+function detectPreferredPlatform(): DesktopPlatform {
+  const looksLikeDesktopMac = navigator.platform.toLowerCase().includes("mac") && navigator.maxTouchPoints <= 1;
+  return looksLikeDesktopMac ? "macos" : "windows";
+}
+
+function openDownload() {
+  if (activeDownload.value.url) window.open(activeDownload.value.url, "_blank", "noopener");
 }
 
 async function copyPassword() {
   try {
-    await navigator.clipboard.writeText(download.value.password);
+    await navigator.clipboard.writeText(activeDownload.value.password);
     copied.value = true;
     window.setTimeout(() => { copied.value = false; }, 2000);
   } catch {
@@ -107,10 +191,14 @@ async function copyPassword() {
 
 onMounted(async () => {
   // 下载信息由站点设置下发，没配置就显示"正在打包中"，不给死链接
-  [download.value, macDownload.value] = await Promise.all([
-    getDesktopDownload(),
-    getMacDesktopDownload(),
-  ]);
+  try {
+    [download.value, macDownload.value] = await Promise.all([
+      getDesktopDownload(),
+      getMacDesktopDownload(),
+    ]);
+  } finally {
+    downloadsLoaded.value = true;
+  }
 });
 </script>
 
@@ -204,10 +292,133 @@ onMounted(async () => {
   background: var(--cpu-primary-soft);
 }
 
-.tools-actions {
+.platform-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  padding: 5px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 13px;
+  background: var(--cpu-surface-soft);
+
+  button {
+    appearance: none;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+    min-height: 58px;
+    padding: 9px 10px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--cpu-text-secondary);
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+
+    > span:last-child {
+      display: grid;
+      min-width: 0;
+    }
+
+    strong {
+      color: inherit;
+      font-size: 13.5px;
+    }
+
+    small {
+      overflow: hidden;
+      color: var(--cpu-text-muted);
+      font-size: 10.5px;
+      line-height: 1.35;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    &.active {
+      border-color: color-mix(in srgb, var(--cpu-primary) 22%, var(--cpu-border-soft));
+      background: var(--cpu-surface);
+      color: var(--cpu-primary-dark);
+      box-shadow: 0 3px 10px rgba(29, 55, 49, 0.06);
+    }
+
+    &:focus-visible {
+      outline: 2px solid color-mix(in srgb, var(--cpu-primary) 55%, transparent);
+      outline-offset: 1px;
+    }
+  }
+}
+
+.tab-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+}
+
+.platform-panel {
+  display: grid;
+  gap: 13px;
+  padding: 15px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 14px;
+  background: var(--cpu-surface);
+}
+
+.platform-panel-head {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+
+  > div {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  small {
+    color: var(--cpu-primary);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+  }
+
+  strong {
+    color: var(--cpu-text);
+    font-size: 16px;
+  }
+
+  span {
+    color: var(--cpu-text-secondary);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+
+  > code {
+    flex: none;
+    padding: 4px 7px;
+    border-radius: 999px;
+    background: var(--cpu-primary-soft);
+    color: var(--cpu-primary-dark);
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 10.5px;
+    font-weight: 700;
+  }
+}
+
+.download-button {
+  width: 100%;
+  min-height: 42px;
+  margin: 0;
 }
 
 .pass-row {
@@ -233,40 +444,72 @@ onMounted(async () => {
   }
 }
 
-.install-tip {
-  padding: 12px 14px;
-  border: 1px solid color-mix(in srgb, var(--cpu-gold) 34%, var(--cpu-border-soft));
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--cpu-gold) 8%, var(--cpu-surface));
+.install-guide {
+  padding: 12px 13px;
+  border: 1px solid color-mix(in srgb, var(--cpu-primary) 24%, var(--cpu-border-soft));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--cpu-primary) 5%, var(--cpu-surface));
 
-  strong {
-    font-size: 13px;
-  }
+  .guide-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 
-  p {
-    margin: 5px 0 0;
-    color: var(--cpu-text-secondary);
-    font-size: 12.5px;
-    line-height: 1.65;
+    span {
+      padding: 3px 6px;
+      border-radius: 6px;
+      background: var(--cpu-primary);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    strong {
+      color: var(--cpu-text);
+      font-size: 13px;
+    }
   }
 
   ol {
-    margin: 7px 0 0;
+    margin: 9px 0 0;
     padding-left: 20px;
     color: var(--cpu-text-secondary);
-    font-size: 12.5px;
-    line-height: 1.7;
+    font-size: 12px;
+    line-height: 1.65;
+  }
+
+  p {
+    margin: 7px 0 0;
+    color: var(--cpu-text-muted);
+    font-size: 11.5px;
+    line-height: 1.6;
   }
 }
 
-.mac-tip {
-  border-color: color-mix(in srgb, var(--cpu-primary) 30%, var(--cpu-border-soft));
-  background: color-mix(in srgb, var(--cpu-primary) 6%, var(--cpu-surface));
-}
-
-.tools-foot {
+.platform-foot {
   margin: 0;
   color: var(--cpu-text-muted);
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+@media (max-width: 420px) {
+  .tools-body {
+    padding: 15px;
+  }
+
+  .platform-tabs button {
+    gap: 7px;
+    padding: 8px;
+  }
+
+  .tab-mark {
+    width: 29px;
+    height: 29px;
+  }
+
+  .platform-panel {
+    padding: 13px;
+  }
 }
 </style>

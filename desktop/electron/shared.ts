@@ -1,6 +1,7 @@
 export type UserScript = {
   id: string;
   name: string;
+  version: string;
   source: string;
   matches: string[];
   requires: string[];

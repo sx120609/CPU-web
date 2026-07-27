@@ -16,6 +16,12 @@ import { checkAndDownload, getUpdateState, hasPendingUpdate, onUpdateState, runP
 import { CHROME_HEIGHT, TabKind, TabManager } from "./tabs";
 import { isInstallLaunch, openInstallerWindow, runUninstall, sweepReplacedFiles } from "./self-install";
 import { branding, chaoxingLoginHost, injectableHosts, learningUrl, limits, oauthConfig } from "./config";
+import {
+  checkUserScriptUpdate,
+  readCachedUserScript,
+  USER_SCRIPT_CHECK_INTERVAL_MS,
+  UserScriptUpdateResult,
+} from "./userscript-update";
 
 let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
@@ -45,6 +51,19 @@ const contentsKind = new Map<number, TabKind>();
 type ScriptActivity = { at: number; kind: "status" | "log"; text: string };
 const scriptActivity: ScriptActivity[] = [];
 let latestScriptStatus = "";
+type ScriptUpdateState = {
+  stage: "loading" | "checking" | "current" | "updated" | "error";
+  activeVersion: string;
+  source: "builtin" | "cache" | "cloud";
+  checkedAt?: number;
+  message: string;
+};
+let scriptUpdateState: ScriptUpdateState = {
+  stage: "loading",
+  activeVersion: "",
+  source: "builtin",
+  message: "正在载入学习通助手脚本",
+};
 
 const recordScriptActivity = (entry: ScriptActivity): void => {
   scriptActivity.push(entry);
@@ -99,6 +118,7 @@ const parseUserScript = (source: string): Omit<UserScript, "id" | "values"> => {
   if (matches.length === 0) throw new Error("用户脚本必须声明至少一个 @match 规则");
   return {
     name: values("name")[0] ?? "未命名用户脚本",
+    version: values("version")[0] ?? "0.0.0",
     source,
     matches,
     requires: values("require"),
@@ -108,12 +128,46 @@ const parseUserScript = (source: string): Omit<UserScript, "id" | "values"> => {
 };
 
 let scriptCache: Promise<UserScript[]> | undefined;
+const userScriptCacheDirectory = () => path.join(app.getPath("userData"), "userscripts");
+
+const capabilityFingerprint = (script: Omit<UserScript, "id" | "values" | "source" | "name" | "version">): string =>
+  JSON.stringify({
+    matches: script.matches,
+    requires: script.requires,
+    resources: script.resources,
+    connects: script.connects,
+  });
+
+const validateCloudScriptCapabilities = (source: string, builtInSource: string): void => {
+  const cloud = parseUserScript(source);
+  const builtIn = parseUserScript(builtInSource);
+  if (capabilityFingerprint(cloud) !== capabilityFingerprint(builtIn)) {
+    throw new Error("云端脚本请求的页面、网络域名或依赖已变化，必须随客户端版本审核发布");
+  }
+};
+
+const setScriptUpdateState = (patch: Partial<ScriptUpdateState>): void => {
+  scriptUpdateState = { ...scriptUpdateState, ...patch };
+  broadcast("script:update-state", scriptUpdateState);
+};
 
 const loadBuiltInScripts = async (): Promise<UserScript[]> => {
   const filePath = resolveAsset("assets", "userscripts", "monkey.js");
   try {
-    const source = await readFile(filePath, "utf8");
-    return [{ ...parseUserScript(source), id: "builtin-chaoxing-helper", values: {} }];
+    const builtInSource = await readFile(filePath, "utf8");
+    const cached = await readCachedUserScript(
+      userScriptCacheDirectory(),
+      (source) => validateCloudScriptCapabilities(source, builtInSource),
+    );
+    const source = cached?.source ?? builtInSource;
+    const script = { ...parseUserScript(source), id: "builtin-chaoxing-helper", values: {} };
+    setScriptUpdateState({
+      stage: "current",
+      activeVersion: script.version,
+      source: cached ? "cache" : "builtin",
+      message: cached ? `正在使用云端缓存脚本 v${script.version}` : `正在使用内置脚本 v${script.version}`,
+    });
+    return [script];
   } catch (error) {
     // 静默失败会表现为"界面正常但脚本毫无动静"，必须留下痕迹
     console.error(`内置用户脚本加载失败：${filePath}`, error);
@@ -122,6 +176,43 @@ const loadBuiltInScripts = async (): Promise<UserScript[]> => {
 };
 
 const getScripts = (): Promise<UserScript[]> => (scriptCache ??= loadBuiltInScripts());
+
+const applyUserScriptUpdate = (result: UserScriptUpdateResult): void => {
+  const script = { ...parseUserScript(result.source), id: "builtin-chaoxing-helper", values: {} };
+  scriptCache = Promise.resolve([script]);
+  setScriptUpdateState({
+    stage: result.status,
+    activeVersion: script.version,
+    source: result.status === "updated" ? "cloud" : scriptUpdateState.source,
+    checkedAt: Date.now(),
+    message: result.status === "updated"
+      ? `学习通助手脚本已更新到 v${script.version}，下次进入页面生效`
+      : `学习通助手脚本 v${script.version} 已是最新`,
+  });
+};
+
+const checkCloudUserScript = async (): Promise<void> => {
+  setScriptUpdateState({ stage: "checking", message: "正在检查学习通助手脚本更新" });
+  try {
+    const builtInSource = await readFile(resolveAsset("assets", "userscripts", "monkey.js"), "utf8");
+    const current = (await getScripts())[0];
+    if (!current) throw new Error("本地学习通助手脚本不可用");
+    const result = await checkUserScriptUpdate({
+      origin: oauthConfig.origin,
+      cacheDirectory: userScriptCacheDirectory(),
+      currentSource: current.source,
+      validateSource: (source) => validateCloudScriptCapabilities(source, builtInSource),
+    });
+    applyUserScriptUpdate(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setScriptUpdateState({
+      stage: "error",
+      checkedAt: Date.now(),
+      message: `云端脚本检查失败，继续使用 v${scriptUpdateState.activeVersion || "内置版本"}：${message}`,
+    });
+  }
+};
 
 // @require / @resource 依赖优先走随包分发的本地副本，避免每次启动都从 CDN 取
 // 可执行代码（校园网不通即不可用，且 CDN 被投毒等于在超星会话里执行任意代码）。
@@ -184,7 +275,7 @@ const createInjection = (script: UserScript, nonce: string, seededValues: Record
       try { localStorage.setItem(storagePrefix + key, JSON.stringify(value)); } catch { /* 存不下不影响本次运行 */ }
       try { bridge.setValue(nonce, key, JSON.stringify(value)); } catch (error) { console.error("配置回传失败", error); }
     },
-    GM_info: { script: { name: definition.name, matches: definition.matches }, scriptHandler },
+    GM_info: { script: { name: definition.name, version: definition.version, matches: definition.matches }, scriptHandler },
     GM_xmlhttpRequest: (details) => {
       // 失败必须走回调：脚本大量使用 new Promise(resolve => GM_xmlhttpRequest({ onload: resolve }))，
       // 只 throw 不回调会让外层 await 永久悬挂。
@@ -1068,6 +1159,7 @@ if (installMode || uninstallMode) {
       running: (tabs?.contentsOfKind("learning").length ?? 0) > 0,
       entries: scriptActivity.slice(-(typeof limit === "number" ? Math.min(Math.max(limit, 1), 200) : 80))
     }));
+    ipcMain.handle("script:get-update-state", () => scriptUpdateState);
 
     ipcMain.handle("userscript:request-ai", async (event, nonce: unknown, body: unknown) => {
       await authorize(event, nonce);
@@ -1150,6 +1242,9 @@ if (installMode || uninstallMode) {
       // 长期开着的实例（这个应用常驻托盘）也要能拿到更新，每 6 小时再探一次
       setInterval(() => void checkAndDownload(), 6 * 60 * 60 * 1000).unref?.();
     }
+    // 学习通助手脚本独立热更新，Windows 与 macOS 都可用。失败时保留已校验缓存或内置脚本。
+    setTimeout(() => void checkCloudUserScript(), 4000).unref?.();
+    setInterval(() => void checkCloudUserScript(), USER_SCRIPT_CHECK_INTERVAL_MS).unref?.();
   }).catch((error) => {
     // 没有这个 catch 的话，启动期任何异常都会变成被吞掉的 unhandled rejection，
     // 表现为"进程静默退出、没有任何输出"，完全无从排查。

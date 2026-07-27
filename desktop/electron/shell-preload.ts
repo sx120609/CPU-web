@@ -59,7 +59,9 @@ contextBridge.exposeInMainWorld("cpuShell", {
     getConfig: () => ipcRenderer.invoke("script:get-config"),
     setConfig: (patch: Record<string, unknown>) => ipcRenderer.invoke("script:set-config", patch),
     getActivity: (limit?: number) => ipcRenderer.invoke("script:get-activity", limit),
-    onActivity: (callback: (entry: any) => void) => on("script:activity", callback)
+    getUpdateState: () => ipcRenderer.invoke("script:get-update-state"),
+    onActivity: (callback: (entry: any) => void) => on("script:activity", callback),
+    onUpdateState: (callback: (state: any) => void) => on("script:update-state", callback)
   },
 
   preferences: {

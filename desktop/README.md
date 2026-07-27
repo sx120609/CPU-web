@@ -3,7 +3,7 @@
 面向 Windows 与 macOS 的 Electron 客户端。**主窗口直接就是药大拾间主站**，在此之上提供三样网页做不到的能力：
 
 1. **校园网自动认证** —— 后台探测连通性，掉线自动重连，开机自启，常驻托盘
-2. **学习通窗口** —— 独立的受控 Chromium 会话，内置学习辅助脚本
+2. **学习通窗口** —— 独立的受控 Chromium 会话，内置“药大拾间·学习通助手”
 3. **原生桥** —— 主站可通过 `window.CPUDesktop` 调用桌面端能力
 
 主站加载不出来时（校园网未认证、断网、站点故障）会落到本地启动台 —— 这一页必须存在，因为校园网登录恰恰要在主站不可达的时候用。
@@ -80,12 +80,12 @@ AI 请求体按服务端 `/api/oauth/v1/responses` 接受的字段做严格白�
 ## 贡献与上游
 
 - 学习通助手集成与客户端初版由 **Mom0ka27** 贡献开发。
-- CPU 网络连接助手基于真红（SoraNoNeko）的 [cpu_net](https://github.com/SoraNoNeko/cpu_net) 项目修改，并针对 Electron、安全存储、日志脱敏与自动重连做了适配。
+- 桌面客户端的校园网连接模块基于真红（SoraNoNeko）的 [cpu_net](https://github.com/SoraNoNeko/cpu_net) 项目修改，并针对 Electron、安全存储、日志脱敏与自动重连做了适配。
 - 内置学习通辅助脚本基于 shushoujiu 的满分助手修改并获授权；完整来源、修改内容和运行时依赖见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 客户端工具页的“关于”区域会同步展示当前版本、上述贡献来源、开源许可和非学校官方声明。
 
-## 学习辅助脚本
+## 药大拾间·学习通助手
 
 脚本本身见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。这里说的是客户端怎么驾驭它。
 
@@ -120,6 +120,22 @@ AI 请求体按服务端 `/api/oauth/v1/responses` 接受的字段做严格白�
 ### 运行状态回传
 
 脚本自己的面板只保留 20 条日志，且关掉面板就什么都看不见。客户端在脚本的日志与状态出口各加了一行上报（`GM_cpuReport`），把消息转发到主进程存一份，「PC 小工具」面板里能直接看到当前进度与最近日志，不用去学习通窗口里找那个悬浮球。
+
+### 云端脚本更新
+
+从客户端 0.1.2 起，学习通助手不再必须跟随安装包升级。服务端从仓库内的
+`desktop/assets/userscripts/monkey.js` 提供版本清单与脚本正文：
+
+- `GET /api/site/userscripts/chaoxing-helper`：名称、版本、大小、SHA-256 与固定正文路径
+- `GET /api/site/userscripts/chaoxing-helper/source`：服务器本地脚本正文
+
+客户端启动 4 秒后检查一次，常驻期间每 6 小时检查一次。新正文会先校验名称、版本、大小与
+SHA-256，再与安装包内脚本比较 `@match`、`@require`、`@resource`、`@connect` 权限声明。
+只有权限边界完全相同才会写入本机缓存；任何一步失败都继续使用上次已校验缓存或内置脚本。
+脚本刚更新时不强行重载正在做题的页面，下次进入课程/章节时生效。
+
+这意味着正文逻辑和文案可以随主站部署更新；一旦需要新增可注入页面、联网域名或依赖，仍必须
+提升客户端版本并走完整审核、打包与发布流程。
 
 ## 学习通「记住密码」
 
@@ -170,13 +186,18 @@ npm run test:smoke   # 真实启动一次 Electron，确认主进程不崩、资
 npm run dist:win
 ```
 
-只产出一个 Windows x64 安装包，写入 `release/`。不做 macOS —— 用户群是校内学生，多给一种格式只会增加"该下哪个"的困惑。
+Windows x64 安装包写入 `release/`。Apple Silicon macOS 产物由
+`.github/workflows/desktop-release.yml` 在 macOS runner 上构建；推送 `desktop-v*` 标签时，
+Windows 与 macOS 先分别通过测试和打包校验，再合并发布到同一个 GitHub Release。
 
 ### 安装界面不用 NSIS 画
 
 NSIS 的向导界面本质是 Win32 对话框资源：按钮、进度条都是系统控件，能改的只有贴图和显隐。无论怎么换图，底下那条「上一步 / 下一步 / 取消」的灰色按钮栏都还在，一眼就是 1999 年的东西。这是框架的天花板，不是配置问题。
 
-所以安装界面**完全不经 NSIS**。打包目标换成 `portable`，它在不给 `splashImage` 时走 `SetSilent silent`（见 `app-builder-lib/templates/nsis/portable.nsi`）——**全程没有任何窗口**，只是把应用静默解压到临时目录再运行。NSIS 在这里退化成一个看不见的解压器。
+所以真正的安装交互**不经 NSIS**。打包目标使用 `portable`：它先把应用解压到临时目录，
+随后启动自定义安装窗口。解压阶段会立即显示 `installerWelcome.bmp` 品牌启动页，明确提示
+“正在启动安装程序，请勿重复点击”；压缩级别采用 `normal`，在安装包体积和首次启动速度之间取平衡，避免
+`maximum` 高压缩导致数秒无反馈。NSIS 在这里只负责解压和启动，不负责安装流程。
 
 用户看到的第一个界面是 [src/installer/](src/installer/)：一个无边框、圆角、可拖动的 Electron 窗口，HTML/CSS 写的，视觉语言与首启引导一致。一个「立即安装」按钮，点了原地变进度条，装完自动启动正式版。**打开不会自动开始安装**，这是刻意的。
 
@@ -259,7 +280,7 @@ DESKTOP_PDS_SHARE_PASSWORD=
 DESKTOP_APP_VERSION=
 ```
 
-PDS 模式会从标准文件名（如 `药大拾间桌面端-0.1.1-win-x64-安装版.exe`、`药大拾间桌面端-0.1.1-mac-arm64.dmg`）自动提取版本号；`DESKTOP_APP_VERSION` 仅在需要覆盖文件名版本时填写。未配置 PDS 时 Windows 仍会回落到 `DESKTOP_APP_DOWNLOAD_URL` 与 `DESKTOP_APP_DOWNLOAD_PASSWORD`，macOS 则保持“尚未发布”，避免错发 Windows 安装包。
+PDS 模式会从标准文件名（如 `药大拾间桌面端-0.1.2-win-x64-安装版.exe`、`药大拾间桌面端-0.1.2-mac-arm64.dmg`）自动提取版本号；`DESKTOP_APP_VERSION` 仅在需要覆盖文件名版本时填写。未配置 PDS 时 Windows 仍会回落到 `DESKTOP_APP_DOWNLOAD_URL` 与 `DESKTOP_APP_DOWNLOAD_PASSWORD`，macOS 则保持“尚未发布”，避免错发 Windows 安装包。
 
 ## 配置
 
@@ -311,6 +332,6 @@ npm run desktop:dist:win
 ## 边界与免责
 
 - 内置学习辅助脚本的来源与授权见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
-- 答案全部来自药大拾间后台配置的校园 AI 通道，消耗用户的每日额度；模型由站点后台设定，客户端不参与选择。
+- 答案来自独立的答题 AI 通道，只发送当前题干、选项与题目图片，不注入站内知识库、历史会话或用户资料；调用会消耗用户的每日额度，模型由站点后台设定，客户端不参与选择。
 - 本客户端默认不保存任何密码。校园网密码在用户点「保存凭据」后、学习通账号密码在用户打开「记住密码」开关后，才经系统安全存储（`safeStorage`）加密保存在本机；清除或关闭即删除，密码从不上传。退出登录会向服务端撤销 access token 并清除本地会话数据。
 - 使用者应自行判断使用边界并遵守所在学校的学术规范。

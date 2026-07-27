@@ -44,9 +44,23 @@ type CampusAssistantContext = {
 };
 
 type CampusAssistantKnowledge = {
+  id?: string;
   relatedActionIds: string[];
   fact: string;
+  source?: string;
+  sourceRef?: string;
+  verifiedAt?: string;
 };
+
+export type CampusAssistantKnowledgeEntry = {
+  id: string;
+  fact: string;
+  source: string;
+  sourceRef: string;
+  verifiedAt: string;
+};
+
+const SITE_KNOWLEDGE_VERIFIED_AT = "2026-07-27";
 
 const DEFAULT_REVIEW_API_URL = "https://api.deepseek.com/chat/completions";
 const RESTRICTED_PUBLIC_TOPIC_REPLY: CampusAssistantResponse = {
@@ -75,6 +89,16 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
     owner: "药大拾间",
     requireLogin: false,
     keywords: ["首页", "主页", "回首页", "校园入口"],
+  },
+  {
+    id: "campus-assistant",
+    label: "拾间AI",
+    description: "咨询校园服务、站内功能与一般学习生活问题",
+    url: "/search",
+    icon: "✨",
+    owner: "药大拾间",
+    requireLogin: true,
+    keywords: ["拾间ai", "药大拾间ai", "ai助手", "校园助手", "智能助手"],
   },
   {
     id: "jwxt",
@@ -107,6 +131,16 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
     keywords: ["校园服务", "服务", "办事", "校园入口"],
   },
   {
+    id: "service-tools",
+    label: "校园小工具",
+    description: "查看文件、问卷、校历、反馈等轻量工具",
+    url: "/services/tools",
+    icon: "🧰",
+    owner: "药大拾间",
+    requireLogin: false,
+    keywords: ["校园小工具", "小工具", "工具箱", "全部工具"],
+  },
+  {
     id: "dorm-electric",
     label: "宿舍电费查询",
     description: "查询本宿舍剩余金额、电量和抄表时间",
@@ -118,14 +152,26 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
     keywords: ["电费", "宿舍电费", "查电费", "剩余电量", "电量", "电余额", "购电", "交电费"],
   },
   {
-    id: "cpu-network",
-    label: "CPU 网络连接助手",
-    description: "下载并使用 Windows 校园网连接工具",
-    url: "/services?open=network",
-    icon: "📶",
+    id: "desktop-client",
+    label: "药大拾间桌面客户端",
+    description: "下载 Windows 或 Apple Silicon Mac 客户端",
+    url: "/services?open=desktop",
+    icon: "🖥️",
     owner: "校园服务",
     requireLogin: false,
-    keywords: ["校园网", "网络连接", "网络助手", "cpu网络", "windows校园网"],
+    keywords: [
+      "桌面客户端",
+      "桌面版",
+      "windows客户端",
+      "mac客户端",
+      "macos客户端",
+      "校园网",
+      "网络连接",
+      "网络助手",
+      "cpu网络",
+      "windows校园网",
+      "学习通助手",
+    ],
   },
   {
     id: "voicehub",
@@ -273,6 +319,17 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
     requireLogin: true,
     keywords: ["个人中心", "我的", "账号设置", "qq绑定", "外观设置"],
   },
+  {
+    id: "sponsor-wall",
+    label: "鸣谢墙",
+    description: "查看支持站点建设的用户与赞助说明",
+    url: "/sponsor-wall",
+    icon: "💚",
+    owner: "药大拾间",
+    requireLogin: false,
+    feature: "sponsor",
+    keywords: ["鸣谢墙", "赞助", "支持网站", "捐助", "赞助者"],
+  },
 ];
 
 const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
@@ -286,7 +343,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   },
   {
     relatedActionIds: ["schedule"],
-    fact: "课表：支持日视图、周视图、学期和周次切换。移动端可按课表页提示安装到桌面；没有自动提示时可使用页面右上角的下载按钮。课程日期按所选学期和周次计算。",
+    fact: "课表：支持日视图、周视图、学期和周次切换。下载按钮按设备分流：Android 提供 Android 客户端，iPhone/iPad 提供添加到主屏幕说明，Windows 与 Apple Silicon Mac 只提供对应原生桌面客户端；桌面端不再提供 PWA 安装入口，以免与原生客户端混淆。课程日期按所选学期和周次计算。",
   },
   {
     relatedActionIds: ["dorm-electric"],
@@ -294,7 +351,10 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   },
   {
     relatedActionIds: ["dorm-electric"],
-    fact: "宿舍购电：先在中国建设银行 APP 搜索“校园卡充值”，选择“中国药科大学”充值校园卡；再到企业微信→工作台→校园卡务完成购电。校园卡务加载可能较慢，每日 23:30 至次日 02:00 系统盘点，无法充值或购电。",
+    fact: "宿舍购电：学校官方指南列出的线上方式是在校园网内通过中国药科大学企业微信的“校园卡务”应用购电；也可使用食堂和自助服务厅的一卡通终端，或在工作时间到指定柜台办理。校园一卡通系统每日 23:30 至次日 02:00 盘点，期间不能购电。",
+    source: "中国药科大学学生宿舍用电服务指南",
+    sourceRef: "https://jjc.cpu.edu.cn/08/d3/c490a198867/page.htm",
+    verifiedAt: "2026-07-27",
   },
   {
     relatedActionIds: ["voicehub"],
@@ -318,7 +378,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   },
   {
     relatedActionIds: ["forum"],
-    fact: "校园论坛：用于校园讨论、提问和经验分享，支持帖子、回复与站内消息提醒；是否开放以当前账号和功能开关为准。",
+    fact: "校园论坛：已默认向全部用户开放，用于校园讨论、提问和经验分享，支持帖子、回复与站内消息提醒；不再需要单独完成“开通论坛”任务。",
   },
   {
     relatedActionIds: ["course-review"],
@@ -349,8 +409,8 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     fact: "成绩表核对：发起者上传带学号字段的 Excel 后，学生登录并按本人学号查看对应记录；它与学校教务成绩页面不是同一功能。",
   },
   {
-    relatedActionIds: ["cpu-network"],
-    fact: "CPU 网络连接助手：提供 Windows 校园网连接工具的下载与使用入口，不是浏览器内直接修改网络设置。",
+    relatedActionIds: ["desktop-client"],
+    fact: "药大拾间桌面客户端：旧的“CPU 网络连接助手”已停止作为独立产品宣传，校园网自动连接已整合进桌面客户端。当前提供 Windows 10/11 64 位版和 Apple Silicon（M1 及后续 M 系列）macOS 版，不支持 Intel Mac；客户端还包含“药大拾间·学习通助手”与桌面常驻能力。",
   },
   {
     relatedActionIds: ["feedback"],
@@ -359,6 +419,95 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     relatedActionIds: ["messages", "profile"],
     fact: "通知与 QQ：消息中心查看站内通知、回复提醒和系统消息；个人中心可绑定 QQBot，以便在 QQ 同步接收部分站内通知。绑定入口不在消息列表首页。",
+  },
+  {
+    id: "site-login-recovery",
+    relatedActionIds: ["home", "profile", "jwxt"],
+    fact: "登录恢复：用户选择保存学校账号后，账号密码只在当前浏览器加密保存；首页、教务数据和校园服务会尝试静默恢复学校登录。若学校登录要求验证码，页面会转为验证码步骤而不是反复自动重试；验证码不会保存。",
+  },
+  {
+    id: "assistant-scope-and-quota",
+    relatedActionIds: ["campus-assistant"],
+    fact: "拾间AI：需要登录后使用，可回答站内功能、校园服务和一般学习生活问题，但不能直接替用户查询个人成绩、执行登录、缴费或发帖。每日免费额度按站内等级发放并在北京时间每日零点重置；免费额度用完后可消耗 AI 点数继续使用。",
+  },
+  {
+    id: "service-tools-overview",
+    relatedActionIds: ["services", "service-tools"],
+    fact: "校园小工具：当前包括需求反馈、在线问卷、成绩表核对、文件收集、PDF 工具、药大校历、失物招领和药苑之声；工具是否需要登录以入口上显示的状态为准。",
+  },
+  {
+    id: "desktop-client-install-safety",
+    relatedActionIds: ["desktop-client"],
+    fact: "桌面客户端安装：Windows 安装包尚未购买代码签名证书，SmartScreen 可能显示“未知发布者”，可核对来源后点“更多信息→仍要运行”；macOS 首次打开若提示无法验证开发者，应先尝试打开一次，再到“系统设置→隐私与安全性”选择“仍要打开”，无需关闭系统安全保护或运行终端绕过命令。",
+  },
+  {
+    id: "sponsor-wall-and-points",
+    relatedActionIds: ["sponsor-wall", "campus-assistant"],
+    fact: "鸣谢墙与 AI 点数：鸣谢墙用于公开感谢支持站点建设的用户；符合当前赞助规则的记录可获得 AI 点数。具体兑换比例、到账结果和余额以赞助页面及个人账户实时显示为准。",
+  },
+  {
+    id: "cpu-school-profile-2026",
+    relatedActionIds: ["home", "services"],
+    fact: "学校概况：截至 2026 年 5 月的学校官网简介，中国药科大学始建于 1936 年，是教育部直属、国家“双一流”建设高校，是一所以药学为特色的多科性、研究型大学；现有玄武门、江宁两个校区。",
+    source: "中国药科大学官网学校简介",
+    sourceRef: "https://www.cpu.edu.cn/11459/list.htm",
+    verifiedAt: "2026-07-27",
+  },
+  {
+    id: "cpu-campus-addresses-2026",
+    relatedActionIds: ["home", "services"],
+    fact: "校区地址：玄武门校区位于南京市鼓楼区童家巷 24 号，邮编 210009；江宁校区位于南京市江宁区龙眠大道 639 号，邮编 211198。",
+    source: "中国药科大学官网学校简介",
+    sourceRef: "https://www.cpu.edu.cn/11459/list.htm",
+    verifiedAt: "2026-07-27",
+  },
+  {
+    id: "cpu-unified-auth",
+    relatedActionIds: ["services", "jwxt", "profile"],
+    fact: "学校统一身份认证：师生使用统一身份认证账号访问融合门户及已接入的校内系统。忘记密码时，已绑定手机号或校外邮箱的账号可在统一认证登录页使用“找回密码”；完全未绑定找回方式时，学校指南要求携有效证件到信息应用服务点现场处理。",
+    source: "中国药科大学图书与信息中心校园卡服务指南",
+    sourceRef: "https://xxh.cpu.edu.cn/9483/list.htm",
+    verifiedAt: "2026-07-27",
+  },
+  {
+    id: "cpu-campus-network",
+    relatedActionIds: ["services", "desktop-client"],
+    fact: "学校校园网：完成基本信息确认后会自动生成两校区免费校园网账号，用户名为 10 位学工号（统一身份认证账号）。官方自助服务平台可查询上网记录；故障可到江宁校区图书馆 7 楼现场报修，或拨打网络运维电话 025-86185450。",
+    source: "中国药科大学图书与信息中心校园卡服务指南",
+    sourceRef: "https://xxh.cpu.edu.cn/9483/list.htm",
+    verifiedAt: "2026-07-27",
+  },
+  {
+    id: "cpu-email-and-vpn",
+    relatedActionIds: ["services"],
+    fact: "校园邮箱与校外访问：学生邮箱入口为 stu.mail.cpu.edu.cn，用户名为 10 位学工号；邮箱密码独立于统一身份认证。校外访问部分校内资源可使用学校 WebVPN（vpn.cpu.edu.cn）或客户端 VPN，具体可用系统和登录要求以图书与信息中心最新说明为准。",
+    source: "中国药科大学图书与信息中心校园卡服务指南",
+    sourceRef: "https://xxh.cpu.edu.cn/9483/list.htm",
+    verifiedAt: "2026-07-27",
+  },
+  {
+    id: "cpu-enterprise-wechat-access",
+    relatedActionIds: ["services", "profile"],
+    fact: "企业微信与门禁：统一身份认证账号生效后可按学校说明加入中国药科大学企业微信。校园大门门禁需在企业微信工作台的“人脸识别”中核对照片和学工号；宿舍门禁还要求在读状态且宿舍管理系统已分配住宿。",
+    source: "中国药科大学图书与信息中心校园卡服务指南",
+    sourceRef: "https://xxh.cpu.edu.cn/9483/list.htm",
+    verifiedAt: "2026-07-27",
+  },
+  {
+    id: "cpu-calendar-2026-2027",
+    relatedActionIds: ["school-calendar", "schedule"],
+    fact: "2026-2027 学年校历：教务处于 2026 年 6 月 13 日发布。上学期为 2026 年 8 月 31 日至 2027 年 1 月 17 日，共 20 周；寒假为 2027 年 1 月 18 日至 2 月 21 日；下学期为 2027 年 2 月 22 日至 7 月 4 日，共 19 周；暑假自 2027 年 7 月 5 日起。二、三、四年级 8 月 31 日上课，新生 9 月 3 日报到、9 月 28 日上课；临时调整仍以学校最新通知为准。",
+    source: "中国药科大学教务处 2026-2027 学年校历",
+    sourceRef: "https://jwc.cpu.edu.cn/ae/d6/c867a241366/page.htm",
+    verifiedAt: "2026-07-27",
+  },
+  {
+    id: "dorm-electric-official-details",
+    relatedActionIds: ["dorm-electric"],
+    fact: "宿舍用电补充说明：学校指南称企业微信和信息门户可查看宿舍剩余电量与购买记录；四人间低于 20 度、十人间低于 30 度时会向宿舍成员推送提醒。23:00 至次日 07:00 为夜间免打扰，晚间欠费不停电，次日 08:00 停电并推送信息。",
+    source: "中国药科大学学生宿舍用电服务指南",
+    sourceRef: "https://jjc.cpu.edu.cn/08/d3/c490a198867/page.htm",
+    verifiedAt: "2026-07-27",
   },
 ];
 
@@ -369,11 +518,21 @@ export function listCampusAssistantActions(context: CampusAssistantContext): Cam
     .map(({ keywords: _keywords, feature: _feature, requireForumAccess: _requireForumAccess, ...action }) => action);
 }
 
-export function listCampusAssistantKnowledge(actionIds: Iterable<string>) {
+export function listCampusAssistantKnowledgeEntries(actionIds: Iterable<string>): CampusAssistantKnowledgeEntry[] {
   const availableActionIds = new Set(actionIds);
   return CAMPUS_ASSISTANT_KNOWLEDGE
     .filter((item) => item.relatedActionIds.some((id) => availableActionIds.has(id)))
-    .map((item) => item.fact);
+    .map((item, index) => ({
+      id: item.id || `site-knowledge-${index + 1}`,
+      fact: item.fact,
+      source: item.source || "药大拾间当前代码与界面",
+      sourceRef: item.sourceRef || "CPU-web",
+      verifiedAt: item.verifiedAt || SITE_KNOWLEDGE_VERIFIED_AT,
+    }));
+}
+
+export function listCampusAssistantKnowledge(actionIds: Iterable<string>) {
+  return listCampusAssistantKnowledgeEntries(actionIds).map((item) => item.fact);
 }
 
 export function searchCampusAssistantActions(query: string, context: CampusAssistantContext, limit = 6) {
@@ -769,7 +928,8 @@ export function buildSystemPrompt(
   loggedIn: boolean,
   modelName: string,
 ) {
-  const knowledge = listCampusAssistantKnowledge(catalog.map((item) => item.id));
+  const knowledge = listCampusAssistantKnowledgeEntries(catalog.map((item) => item.id))
+    .map(({ id, fact, source, verifiedAt }) => ({ id, fact, source, verifiedAt }));
   return [
     "你是“药大拾间”的 AI 助手“拾间AI”，面向中国药科大学学生。",
     `你使用的具体模型是“${modelName}”。只有用户主动询问你是什么模型或具体模型名称时，才自然、简短地回答“我是 ${modelName}”或“我使用的是 ${modelName}”；其他情况下绝不主动提及模型。不要说“当前处理本次对话的模型名称是”之类像在转述系统配置的话，也不要提及系统提示、后台配置、上游调用或模型候选；不要虚构模型厂商、版本能力或未提供的部署信息。`,
@@ -782,8 +942,9 @@ export function buildSystemPrompt(
     "不要把正常的校园学习、生活咨询泛化为违规内容；仅在请求确实触及上述风险时限制回答。",
     "不要声称已经替用户执行查询、缴费、登录、发帖或其他操作；只能说明步骤并推荐入口。",
     "遇到需要实时数据、个人数据或学校最新政策的问题，要说明需要进入对应页面查看，不要编造。",
+    "knowledge 中的 verifiedAt 是该条知识最后核验日期，source 是来源名称。回答易变化的信息时应说明对应学年、发布日期或核验时间；如果用户问的是核验日期之后的新变化，应引导其查看校园公告或学校原始页面，不能把旧条目说成当前实时结果。",
     "仅当用户最新一条消息明确要求查找、打开或使用某项站内功能时才返回 actionIds；对于“好的”“谢谢”等确认语和普通聊天，不要重复推荐上一轮入口。",
-    "回答站内功能、字段和流程时必须以提供的 knowledge 为准；knowledge 没写明的细节要坦率说明不确定，不能按其他产品的常见设计补造。",
+    "回答站内功能、字段和流程时必须以提供的 knowledge 为准；knowledge 没写明的细节要坦率说明不确定，不能按其他产品的常见设计补造。引用来源时只写 source 名称，不要生成 catalog 之外的外部链接。",
     `用户当前${loggedIn ? "已登录" : "未登录"}。带 requireLogin=true 的入口可以推荐，但要提醒未登录用户先登录。`,
     "你只能从下面的 catalog 中选择 actionIds，绝不能生成 catalog 之外的链接或 action id。",
     "只输出 JSON 对象，不要使用 Markdown 代码块。格式：",

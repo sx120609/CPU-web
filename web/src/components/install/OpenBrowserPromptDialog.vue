@@ -78,8 +78,6 @@
         <p class="muted">iOS 必须使用 Safari；微信 / QQ 内置浏览器不支持添加到主屏幕。</p>
       </template>
 
-      <DesktopClientDownloadCard />
-
       <p class="support-note">
         仍有疑问，建议
         <button type="button" @click="openUserGroup">加入用户 QQ 群 {{ USER_QQ_GROUP }}</button>
@@ -98,7 +96,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from "vue";
 import { ElMessage } from "element-plus";
-import DesktopClientDownloadCard from "@/components/install/DesktopClientDownloadCard.vue";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 import { ANDROID_APP_DOWNLOAD_URL, isFlutterNativeShell } from "@/utils/clientInfo";
 import { USER_QQ_GROUP, copyText, openUserGroup } from "@/utils/userGroup";

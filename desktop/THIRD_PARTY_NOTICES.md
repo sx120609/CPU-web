@@ -16,7 +16,7 @@
 
 本仓库分发的是在原脚本基础上的修改版，并按上述授权长期自行维护，不再跟随上游更新。
 
-**署名与版本溯源原样保留**：元数据头中的 `@author`（shushoujiu）、`@version`（2.1.6）、`@namespace`（askAuto）未做任何改动，原脚本地址见上表。
+**署名与上游版本可追溯**：元数据头中的 `@author`（shushoujiu）与 `@namespace`（askAuto）保持不变；上游基线为 2.1.6。本项目因品牌、独立 AI、安全边界、课程引导及云端热更新适配，将发行版本提升为 2.2.0，原脚本地址见上表。
 
 `@name`、`@description` 已改为药大拾间的产品名称（面向本客户端用户，不再是上游的推广文案）；`@antifeature`、`@downloadURL`、`@updateURL` 已移除，原因见下。
 
@@ -32,13 +32,15 @@
 - 界面文案改为药大拾间口径：面板标题、公告、`notice` 默认值
 - **移除四个第三方题库**（题库海 / 一之 / 言溪 / muketool）的 `ServerApi.getAnswer`~`getAnswer4`
   方法、接口地址与对应的四条 `@connect`。这些方法是上游留下的**死分支** —— 实际的
-  `getAnswers()` 只走「自定义题库 → 校园 AI」两条路，从不调用它们。但宿主正是按
+  `getAnswers()` 只走「自定义题库 → 独立答题 AI」两条路，从不调用它们。但宿主正是按
   `@connect` 决定脚本可以访问哪些域名（见 `electron/main.ts` 的 `userscript:fetch-text`），
   留着等于「死代码配活权限」，一旦有路径被走到就会把题面发给第三方。
 - 随之移除两条 `@antifeature`（第三方接口广告、第三方题库付费）：对应功能已不存在，
   留着反而是对本分支行为的错误描述
-- 移除指向 GreasyFork 原脚本的 `@downloadURL` / `@updateURL`：本分支由客户端分发并自行
-  维护，留着会让脚本管理器把改动更新回上游版本
+- 移除指向 GreasyFork 原脚本的 `@downloadURL` / `@updateURL`：本分支只从药大拾间主站
+  的固定同源接口检查更新。客户端会校验名称、版本、大小、SHA-256，以及 `@match`、
+  `@require`、`@resource`、`@connect` 权限声明；权限范围变化必须重新发布客户端审核，
+  不会被远端脚本静默扩大
 
 脚本的运行配置由客户端接管（见 `desktop/README.md` 的「学习辅助脚本」一节），不再依赖脚本自带的配置面板。
 
@@ -49,7 +51,7 @@
 | 项目 | 内容 |
 |---|---|
 | 目录 | `electron/campus-net/` |
-| 来源 | [SoraNoNeko/cpu_net](https://github.com/SoraNoNeko/cpu_net) —— CPU 网络连接助手 |
+| 来源 | [SoraNoNeko/cpu_net](https://github.com/SoraNoNeko/cpu_net) —— 桌面客户端校园网连接模块的上游项目 |
 | 原实现 | C# / WPF / .NET |
 | 许可 | **GPL-3.0** |
 

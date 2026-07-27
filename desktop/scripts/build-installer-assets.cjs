@@ -274,13 +274,13 @@ const buildPage = (logoUri) => `<!doctype html>
       </div>
     </div>
     <div class="w-rule"></div>
-    <div class="w-lead">把校园网、学习通和答题辅助收进一个窗口。<br>安装只需十几秒，装好会自动打开。</div>
+    <div class="w-lead">正在启动安装程序，请稍候…<br>首次打开需要解压应用文件。</div>
     <div class="w-chips">
       <div class="w-chip">校园网自动连接</div>
       <div class="w-chip">学习通标签页</div>
-      <div class="w-chip">答题辅助</div>
+      <div class="w-chip">学习通助手</div>
     </div>
-    <div class="w-hint">Windows 10 / 11 · 64 位</div>
+    <div class="w-hint">正在准备 · 请勿重复点击</div>
   </div>
   </div>
 </body></html>`;

@@ -403,6 +403,19 @@ const bindChrome = () => {
   });
 };
 
+const renderScriptUpdateState = (state) => {
+  if (!state) return;
+  const version = state.activeVersion ? `v${state.activeVersion}` : "内置版本";
+  const source = state.source === "cloud"
+    ? "刚从云端更新"
+    : state.source === "cache"
+      ? "云端缓存"
+      : "安装包内置";
+  el("script-version").textContent = state.stage === "checking"
+    ? `${version} · 正在检查云端更新…`
+    : `${version} · ${source} · ${state.message || "可用"}`;
+};
+
 // 点状态芯片就切到工具标签
 const openTools = () => {
   const tools = tabState.tabs.find((tab) => tab.kind === "tools");
@@ -621,6 +634,7 @@ const afterOnboarding = async () => {
     scriptConfig = await shell.script.getConfig();
     renderScriptConfig();
     renderScriptActivity(await shell.script.getActivity(80));
+    renderScriptUpdateState(await shell.script.getUpdateState());
   } catch { /* 忽略 */ }
   try {
     renderChaoxing(await shell.chaoxing.getState());
@@ -657,6 +671,7 @@ const boot = async () => {
   shell.chaoxing.onState(renderChaoxing);
   shell.campusNet.onLog(() => void shell.campusNet.getLogs(120).then(renderCampusLogs));
   shell.script.onActivity(() => void shell.script.getActivity(80).then(renderScriptActivity));
+  shell.script.onUpdateState?.(renderScriptUpdateState);
   shell.update.onAvailable(showUpdate);
   shell.update.onState?.(renderUpdateState);
 
