@@ -69,6 +69,8 @@
       <p class="muted">部分浏览器（微信/QQ 内置 / 较老 Chrome）不支持安装。</p>
     </div>
 
+    <DesktopClientDownloadCard v-if="!isStandalone && !isNativeApp" />
+
     <p v-if="!isStandalone && !isNativeApp" class="support-note">
       仍有疑问，建议
       <button type="button" @click="openUserGroup">加入用户 QQ 群 {{ USER_QQ_GROUP }}</button>
@@ -101,6 +103,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import DesktopClientDownloadCard from "@/components/install/DesktopClientDownloadCard.vue";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 import { USER_QQ_GROUP, openUserGroup } from "@/utils/userGroup";
 import { ANDROID_APP_DOWNLOAD_URL, isFlutterNativeShell, isLikelyAndroidDevice } from "@/utils/clientInfo";
@@ -138,7 +141,7 @@ const title = computed(() => {
 });
 
 const dialogWidth = computed(() => {
-  return window.innerWidth < 480 ? "92dvw" : "360px";
+  return window.innerWidth < 480 ? "92dvw" : "440px";
 });
 const canDownloadAndroidApk = computed(() => {
   return platform.value !== "ios" && !isNativeApp.value && !inAppBrowser.value.isInApp;
