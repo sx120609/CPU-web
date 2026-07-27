@@ -53,11 +53,20 @@ export async function getSchedule(token: string, args: { semester?: string; week
 }
 
 export async function getGrades(token: string, args: { semester?: string } = {}) {
-  return parseGrades(await jwxtPostForm(token, "/zgykdx/kscj/cjcx_list", {
+  let semesters = [] as ReturnType<typeof parseGrades>["semesters"];
+  try {
+    semesters = parseGrades(
+      await jwxtFetchHtml(token, "/zgykdx/kscj/cjcx_query?Ves632DSdyV=NEW_XSD_CJGL"),
+    ).semesters;
+  } catch {
+    // 查询页失败时继续使用列表页或成绩行中聚合出的学期。
+  }
+  const parsed = parseGrades(await jwxtPostForm(token, "/zgykdx/kscj/cjcx_list", {
     kksj: args.semester ?? "",
     kcxz: "",
     kcmc: "",
   }));
+  return parsed.semesters.length ? parsed : { ...parsed, semesters };
 }
 
 export async function getMidtermGrades(token: string, args: { semester?: string } = {}) {

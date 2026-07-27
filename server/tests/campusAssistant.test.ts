@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   askCampusAssistant,
+  buildAssistantMessages,
   buildSystemPrompt,
   extractPartialJsonStringValue,
+  filterUnavailableDataSuggestions,
   guardCampusAssistantResponse,
   isCampusAssistantConversationRestricted,
   isCampusAssistantModelIdentityQuestion,
@@ -47,6 +49,7 @@ import {
   buildCampusAssistantAcademicFallback,
   detectCampusAssistantAcademicIntents,
   loadCampusAssistantAcademicContext,
+  prepareCampusAssistantGradeData,
 } from "../src/services/campusAssistantAcademic";
 import {
   buildCampusAssistantSiteFallback,
@@ -86,6 +89,59 @@ test("教务查询支持基于最近用户问题的自然追问", () => {
     { role: "user", content: "查一下我今天的课表" },
     { role: "assistant", content: "今天有两门课。" },
   ]), ["schedule"]);
+  assert.deepEqual(detectCampusAssistantAcademicIntents("这不是我这学期的数据啊", [
+    { role: "user", content: "查询我的最新成绩" },
+    { role: "assistant", content: "2024-2025-1 查到 21 门成绩。" },
+  ]), ["grades"]);
+});
+
+test("最新成绩按真实学期值排序而不是取接口第一行", () => {
+  const data = prepareCampusAssistantGradeData({
+    semesters: [
+      { value: "2024-2025-1", label: "2024-2025-1", current: false },
+      { value: "2025-2026-2", label: "2025-2026-2", current: false },
+    ],
+    list: [
+      { semester: "2024-2025-1", courseName: "高等数学", score: "84", scoreNum: 84 },
+      { semester: "2025-2026-2", courseName: "微生物学", score: "91", scoreNum: 91 },
+      { semester: "2025-2026-2", courseName: "药理学", score: "88", scoreNum: 88 },
+    ],
+  }, "查询我的最新成绩", [], new Date("2026-07-28T00:00:00.000Z"));
+
+  assert.equal(data.scope.mode, "latest_available");
+  assert.equal(data.scope.selectedSemester, "2025-2026-2");
+  assert.deepEqual(data.grades.map((item) => item.courseName), ["微生物学", "药理学"]);
+});
+
+test("用户纠正学期时查询当前教学学期且不拿旧成绩冒充", () => {
+  const data = prepareCampusAssistantGradeData({
+    semesters: [
+      { value: "2024-2025-1", label: "2024-2025-1", current: false },
+    ],
+    list: [
+      { semester: "2024-2025-1", courseName: "高等数学", score: "84", scoreNum: 84 },
+    ],
+  }, "这不是我这学期的数据啊", [
+    { role: "user", content: "查询我的最新成绩" },
+    { role: "assistant", content: "2024-2025-1 查到成绩。" },
+  ], new Date("2026-07-28T00:00:00.000Z"));
+
+  assert.equal(data.scope.mode, "current_semester");
+  assert.equal(data.scope.currentSemester, "2025-2026-2");
+  assert.equal(data.scope.selectedSemester, "2025-2026-2");
+  assert.equal(data.scope.newestAvailableSemester, "2024-2025-1");
+  assert.deepEqual(data.grades, []);
+  assert.match(
+    buildCampusAssistantAcademicFallback({
+      mode: "ready",
+      intents: ["grades"],
+      queriedAt: "2026-07-28T00:00:00.000Z",
+      timeZone: "Asia/Shanghai",
+      notice: "只读",
+      tools: { grades: { status: "ready", data } },
+    }, "这不是我这学期的数据啊") || "",
+    /当前教学学期是 2025-2026-2.*最近有成绩的学期是 2024-2025-1/u,
+  );
 });
 
 test("未连接教务时返回只读安全上下文而不包含任何凭据", async () => {
@@ -172,6 +228,69 @@ test("本人教务数据查询直接回答且不再附带个人中心卡片", as
   assert.match(response.answer, /微生物学/);
   assert.match(response.answer, /91/);
   assert.deepEqual(response.actions, []);
+});
+
+test("没有真实考试数据时移除考试、考场和座位类追问建议", () => {
+  const response = filterUnavailableDataSuggestions({
+    answer: "今天有两门课。",
+    actions: [],
+    suggestions: ["那明天呢？", "查看我的考试安排", "考场在哪里？", "座位号是多少？"],
+    fallback: false,
+  }, {
+    mode: "ready",
+    intents: ["schedule"],
+    queriedAt: "2026-07-28T00:00:00.000Z",
+    timeZone: "Asia/Shanghai",
+    notice: "只读",
+    tools: {
+      schedule: { status: "ready", data: { courses: [] } },
+    },
+  });
+  assert.deepEqual(response.suggestions, ["那明天呢？"]);
+});
+
+test("真实教务接口结果会作为私有工具上下文交给拾间AI", () => {
+  const messages = buildAssistantMessages(
+    "我最高的成绩是什么？",
+    [
+      { role: "user", content: "查询我的最新成绩" },
+      { role: "assistant", content: "上一轮学期识别有误。" },
+    ],
+    [],
+    true,
+    "assistant-test-model",
+    {
+      mode: "ready",
+      intents: ["grades"],
+      queriedAt: "2026-07-28T00:00:00.000Z",
+      timeZone: "Asia/Shanghai",
+      notice: "只读",
+      tools: {
+        grades: {
+          status: "ready",
+          data: {
+            source: "jwxt.grades",
+            sourceEndpoint: "/zgykdx/kscj/cjcx_list",
+            scope: {
+              mode: "current_semester",
+              currentSemester: "2025-2026-2",
+              newestAvailableSemester: "2025-2026-2",
+              selectedSemester: "2025-2026-2",
+            },
+            grades: [
+              { semester: "2025-2026-2", courseName: "微生物学", score: "91", scoreNum: 91 },
+            ],
+          },
+        },
+      },
+    },
+  );
+  const serialized = JSON.stringify(messages);
+  assert.match(serialized, /实时只读教务接口/u);
+  assert.match(serialized, /jwxt\.grades/u);
+  assert.match(serialized, /微生物学/u);
+  assert.match(serialized, /2025-2026-2/u);
+  assert.doesNotMatch(serialized, /password|cookie|token/iu);
 });
 
 test("站点数据意图只在用户询问实时结果时触发", () => {

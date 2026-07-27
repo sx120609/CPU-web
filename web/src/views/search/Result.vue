@@ -316,7 +316,7 @@ let conversationAnchorRestoring = false;
 const conversationAnchorTimers: number[] = [];
 const CONVERSATION_BOTTOM_ANCHOR_THRESHOLD = 36;
 
-const welcomePrompts = ["查一下我今天的课表", "查询我的最新成绩", "看看我的考试安排"];
+const welcomePrompts = ["查一下我今天的课表", "查询我的最新成绩", "我还有多少 AI 额度？"];
 const assistantQuotaExhausted = computed(() => (
   assistantQuota.value !== null && assistantQuota.value.totalRemaining <= 0
 ));

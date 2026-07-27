@@ -240,7 +240,7 @@ searchRouter.post(
           client: detectLoginClient(req).client,
         }),
       ]);
-      // Deterministic read-only data tools do not spend an AI quota call.
+      // 用户明确请求的只读数据辅助回答不扣减其拾间AI额度。
       if (!academicContext && !siteContext) {
         quotaReservation = (await consumeCampusAssistantQuota(userId)).reservation;
       }
@@ -294,7 +294,7 @@ searchRouter.post(
           client: detectLoginClient(req).client,
         }),
       ]);
-      // Deterministic read-only data tools do not spend an AI quota call.
+      // 用户明确请求的只读数据辅助回答不扣减其拾间AI额度。
       if (!academicContext && !siteContext) {
         quotaReservation = (await consumeCampusAssistantQuota(userId)).reservation;
       }
