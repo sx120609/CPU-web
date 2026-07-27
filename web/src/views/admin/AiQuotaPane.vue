@@ -908,7 +908,7 @@ function sourceType(source: string) {
   margin-left: 0;
 }
 .ledger-date-range {
-  width: 100%;
+  width: 100% !important;
   min-width: 0;
 }
 .ledger-alert {
