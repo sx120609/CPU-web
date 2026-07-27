@@ -9,7 +9,7 @@
   >
     <template #header>
       <div class="dialog-heading">
-        <span class="dialog-icon">🖥️</span>
+        <el-icon class="dialog-icon" aria-hidden="true"><Monitor /></el-icon>
         <div>
           <strong>药大拾间桌面客户端</strong>
           <div class="dialog-badges">
@@ -47,7 +47,7 @@
       </div>
 
       <div class="package-card">
-        <span class="package-icon">{{ activePlatform === "windows" ? "⊞" : "M" }}</span>
+        <el-icon class="package-icon" aria-hidden="true"><Monitor /></el-icon>
         <div>
           <strong>{{ activePlatform === "windows" ? "Windows 客户端" : "macOS 客户端" }}</strong>
           <small v-if="currentDownload.available">
@@ -81,7 +81,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { Download } from "@element-plus/icons-vue";
+import { Download, Monitor } from "@element-plus/icons-vue";
 import { getDesktopDownload, getMacDesktopDownload, type DesktopDownloadInfo } from "@/api/site";
 
 defineProps<{ modelValue: boolean }>();
@@ -242,8 +242,7 @@ onMounted(async () => {
   border-radius: 10px;
   background: var(--cpu-primary-soft);
   color: var(--cpu-primary-dark);
-  font-size: 15px;
-  font-weight: 800;
+  font-size: 20px;
 }
 
 .package-card div {
