@@ -712,6 +712,13 @@ const refreshTray = (state?: CampusState): void => {
 };
 
 const buildApplicationMenu = (): void => {
+  // Windows 的传统菜单栏平时虽被隐藏，单按 Alt 仍会突然把它唤出来，
+  // 与客户端自己绘制的导航重复。macOS 需要系统级应用菜单，只有非 Mac
+  // 平台彻底移除默认菜单；剪切、复制、粘贴仍由 Chromium 与右键菜单处理。
+  if (process.platform !== "darwin") {
+    Menu.setApplicationMenu(null);
+    return;
+  }
   const windowSubmenu: Electron.MenuItemConstructorOptions[] = [{ role: "reload", label: "重新加载" }];
   // 开发者工具只在开发期开放：打包版留着它等于给任意页面一个提权入口
   if (!app.isPackaged) windowSubmenu.push({ role: "toggleDevTools", label: "开发者工具" });

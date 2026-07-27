@@ -10,6 +10,7 @@ const root = path.join(__dirname, "..");
 const html = fs.readFileSync(path.join(root, "src", "shell", "index.html"), "utf8");
 const renderer = fs.readFileSync(path.join(root, "src", "shell", "renderer.js"), "utf8");
 const css = fs.readFileSync(path.join(root, "src", "shell", "style.css"), "utf8");
+const main = fs.readFileSync(path.join(root, "electron", "main.ts"), "utf8");
 
 assert.doesNotMatch(renderer, /\u5f00\u901a\u8bba\u575b/, "论坛默认开放后不应再显示开通论坛信誉奖励");
 
@@ -27,6 +28,7 @@ assert.match(renderer, /about-product[\s\S]*info\?\.platform === "darwin"/, "关
 assert.match(css, /\.about-card \.card-head > div\s*\{[\s\S]*?display:\s*grid;[\s\S]*?gap:\s*3px/, "关于标题与客户端名称必须纵向分行");
 assert.match(css, /\.about-product\s*\{[\s\S]*?margin:\s*0;/, "关于副标题不得再用负边距挤进标题");
 assert.doesNotMatch(css, /\.about-product\s*\{[\s\S]*?margin-top:\s*-\d+px/, "关于副标题不得通过负边距与标题重叠");
+assert.match(main, /process\.platform !== "darwin"[\s\S]*?Menu\.setApplicationMenu\(null\);[\s\S]*?return;/, "Windows 必须彻底移除会被 Alt 唤出的传统菜单栏");
 assert.match(html, /id="auth-login"[^>]*>去首页登录</, "未登录入口应回到首页这一套登录状态");
 assert.match(renderer, /shell\.auth\.sync\(/, "账号卡片应先静默同步首页登录状态");
 assert.match(html, /id="script-version"/, "学习通助手区域应展示独立脚本版本与更新状态");
