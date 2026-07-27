@@ -1,0 +1,174 @@
+name: Desktop release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "desktop-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Build Windows x64
+    runs-on: windows-2025
+    defaults:
+      run:
+        working-directory: desktop
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit and policy tests
+        run: npm test
+
+      - name: Build Windows installer
+        run: npm run dist:win
+
+      - name: Verify packaged resources and checksum
+        shell: pwsh
+        run: |
+          node scripts/package-check.cjs
+          $installer = Get-ChildItem release -Filter *.exe | Select-Object -First 1
+          if (-not $installer) { throw "Windows installer not found" }
+          $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $installer.FullName
+          "$($hash.Hash.ToLower()) *$($installer.Name)" |
+            Set-Content -Encoding utf8 release/SHA256SUMS-windows.txt
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows-x64
+          path: |
+            desktop/release/*.exe
+            desktop/release/SHA256SUMS-windows.txt
+          compression-level: 0
+          if-no-files-found: error
+
+  macos:
+    name: Build Apple Silicon macOS
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: desktop
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit and policy tests
+        run: npm test
+
+      - name: Apple Silicon runtime smoke test
+        run: npm run test:smoke
+
+      - name: Build arm64 DMG and ZIP
+        run: npm run dist:mac:arm64
+
+      - name: Verify architecture, signature, and packaged resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_path="$(find release/mac-arm64 -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$app_path"
+          executable="$app_path/Contents/MacOS/药大拾间桌面端"
+          file "$executable" | tee release/mac-arm64-architecture.txt
+          file "$executable" | grep -q "arm64"
+          if file "$executable" | grep -q "x86_64"; then
+            echo "产物意外包含 Intel 架构" >&2
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          node scripts/package-check.cjs "$app_path/Contents/Resources/app.asar"
+          shasum -a 256 release/*.dmg release/*.zip | tee release/SHA256SUMS-macos.txt
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos-arm64
+          path: |
+            desktop/release/*.dmg
+            desktop/release/*.zip
+            desktop/release/SHA256SUMS-macos.txt
+            desktop/release/mac-arm64-architecture.txt
+          compression-level: 0
+          if-no-files-found: error
+
+  publish:
+    name: Publish unified GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-windows-x64
+          path: artifacts/windows
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-macos-arm64
+          path: artifacts/macos
+
+      - name: Write release notes
+        shell: bash
+        run: |
+          cat > release-notes.md <<'EOF'
+          ## 药大拾间桌面端 0.1.2
+
+          ### 本次更新
+
+          - 学习通脚本更名为「药大拾间·学习通助手」，并在个人中心、课程首页增加课程与章节引导。
+          - 新增学习通助手脚本云端更新：校验版本、大小、SHA-256 与权限声明，失败自动回退到已校验缓存或安装包内置版本。
+          - 桌面客户端下载界面改为 Windows / macOS 分页，按平台给出对应安装包和教程。
+          - 桌面浏览器不再提供 PWA 安装入口，Windows 与 macOS 用户只会看到对应原生客户端，避免误下。
+          - 校园网连接模块优化环境检测与重连节奏，并完善“关于”、贡献者和开源来源说明。
+          - 学习通独立答题 AI 只接收当前题目、选项与图片，不携带站内知识库、用户资料或历史业务数据。
+
+          ### 下载
+
+          - **Windows 10/11 64 位**：下载文件名带 `win-x64-安装版.exe` 的安装包。
+          - **Apple Silicon Mac**：下载文件名带 `mac-arm64.dmg` 的安装包，仅支持 M1/M2/M3/M4 及后续 M 系列，不支持 Intel Mac。
+
+          ### 首次安装提示
+
+          Windows 若提示“未知发布者”，点「更多信息」→「仍要运行」。macOS 当前未使用 Apple Developer ID 公证；首次打开被拦截时，请到「系统设置 → 隐私与安全性」找到本应用，点「仍要打开」，再用密码或 Touch ID 确认。
+
+          两个平台的 SHA-256 校验文件与 macOS 架构验证记录一并附上。
+          EOF
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            artifacts/windows/* \
+            artifacts/macos/* \
+            --title "药大拾间桌面端 ${GITHUB_REF_NAME#desktop-v}" \
+            --notes-file release-notes.md
