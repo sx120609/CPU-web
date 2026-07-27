@@ -907,6 +907,10 @@ function sourceType(source: string) {
 .ledger-filter-actions :deep(.el-button) {
   margin-left: 0;
 }
+.ledger-date-range {
+  width: 100%;
+  min-width: 0;
+}
 .ledger-alert {
   margin-top: 12px;
 }
