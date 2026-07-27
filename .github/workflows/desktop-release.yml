@@ -170,5 +170,6 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             artifacts/windows/* \
             artifacts/macos/* \
+            --repo "$GITHUB_REPOSITORY" \
             --title "药大拾间桌面端 ${GITHUB_REF_NAME#desktop-v}" \
             --notes-file release-notes.md
