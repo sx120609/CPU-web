@@ -91,6 +91,8 @@ siteRouter.get("/downloads/android-app", (_req, res) => {
  * 而不是给用户一个点了打不开的按钮。
  */
 siteRouter.get("/downloads/desktop", async (req, res) => {
+  // 这是客户端版本检查接口，不能让浏览器、代理或 CDN 复用上传前的旧版本结果。
+  res.setHeader("Cache-Control", "no-store");
   // 配了 PDS 分享就是直链：给前端我们自己的跳转地址，不再有提取码。
   if (hasPdsShare()) {
     try {
@@ -134,6 +136,7 @@ siteRouter.get("/downloads/desktop", async (req, res) => {
 
 /** Apple Silicon 专用 macOS 客户端；未上传 DMG 时独立返回 unavailable，不影响 Windows。 */
 siteRouter.get("/downloads/desktop-mac", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
   if (hasPdsShare()) {
     try {
       const file = await resolveMacDesktopDownload();

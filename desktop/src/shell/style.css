@@ -422,13 +422,19 @@ button[hidden] { display: none; }
 .campus-schedule-note { margin: -2px 0 12px; }
 
 .about-card .card-head { align-items: flex-start; }
+.about-card .card-head > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
 .about-update-actions { align-items: center; margin: 10px 0 14px; }
 #about-update-status { font-size: 12px; }
 #about-update-status[data-error="true"] { color: var(--cpu-danger); }
 .about-product {
-  margin-top: -7px;
+  margin: 0;
   color: var(--cpu-text-secondary);
   font-size: 12px;
+  line-height: 1.45;
 }
 .about-version { flex: none; }
 .about-intro { margin-bottom: 12px; }

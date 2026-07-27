@@ -367,6 +367,8 @@ test("campus assistant knowledge covers every active action and carries freshnes
   assert.match(combined, /2026-2027 学年校历/);
   assert.match(combined, /玄武门校区位于南京市鼓楼区童家巷 24 号/);
   assert.match(combined, /旧的“CPU 网络连接助手”已停止作为独立产品宣传/);
+  assert.match(combined, /有原生客户端的平台应优先推荐客户端/);
+  assert.match(combined, /桌面设备不推荐 PWA/);
   assert.doesNotMatch(combined, /先在中国建设银行 APP/);
 });
 
@@ -419,6 +421,14 @@ test("拾间AI可以获知并如实告知当前实际调用的模型名称", () 
   assert.match(prompt, /我是 example-model-2026/);
   assert.match(prompt, /其他情况下绝不主动提及模型/);
   assert.match(prompt, /不要说“当前处理本次对话的模型名称是”/);
+});
+
+test("拾间AI优先推荐可用的原生客户端，不用网页版弱化客户端", () => {
+  const prompt = buildSystemPrompt([], false, "example-model-2026");
+
+  assert.match(prompt, /有原生客户端的平台必须优先推荐对应客户端/);
+  assert.match(prompt, /不能以“无需安装客户端”/);
+  assert.match(prompt, /只有没有原生客户端的平台才把网页版或添加到主屏幕作为替代方案/);
 });
 
 test("只有用户主动询问身份时才识别为模型名称问题", () => {

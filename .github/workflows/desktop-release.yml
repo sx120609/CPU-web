@@ -93,7 +93,8 @@ jobs:
           set -euo pipefail
           app_path="$(find release/mac-arm64 -maxdepth 1 -name '*.app' -print -quit)"
           test -n "$app_path"
-          executable="$app_path/Contents/MacOS/药大拾间桌面端"
+          executable="$(find "$app_path/Contents/MacOS" -maxdepth 1 -type f -perm -111 -print -quit)"
+          test -n "$executable"
           file "$executable" | tee release/mac-arm64-architecture.txt
           file "$executable" | grep -q "arm64"
           if file "$executable" | grep -q "x86_64"; then
@@ -167,11 +168,11 @@ jobs:
 
           ### 本次更新
 
-          - 修复客户端更新后首页登录状态与“记住登录”可能丢失的问题；退出或安装更新前会先把网站 Cookie 与存储落盘。
-          - 修复“关于”页中学习通助手更新结果跑到卡片外、挤在页面底部的问题。
-          - 学习通个人中心和课程页引导补充章节、作业、考试三类入口，不再只提示章节。
-          - 学习通引导通知使用独立高层级并避开顶部导航，修复内容被超星导航栏遮挡的问题。
-          - 学习通助手脚本更新至 v2.2.2；云端脚本更新仍可独立于客户端版本下发。
+          - 修复“关于”卡片标题与“药大拾间 Windows 客户端”副标题重叠的问题。
+          - 优化客户端更新检测：缩短云盘文件缓存时间，并始终按最高版本选择安装包，避免旧文件重新上传后覆盖新版。
+          - 修复网页端“桌面小工具”下载窗口在较低分辨率下内容显示不全的问题，窗口内容现在可独立滚动。
+          - 拾间 AI 会优先引导 Windows、macOS 和 Android 用户使用对应的原生客户端，不再用网页版弱化客户端。
+          - 保留上一版的登录状态持久化、学习通章节/作业/考试引导与云端脚本热更新能力。
 
           ### 下载
 
@@ -180,7 +181,7 @@ jobs:
 
           ### 首次安装提示
 
-          Windows 若提示“未知发布者”，点「更多信息」→「仍要运行」。macOS 当前未使用 Apple Developer ID 公证；首次打开被拦截时，请到「系统设置 → 隐私与安全性」找到本应用，点「仍要打开」，再用密码或 Touch ID 确认。
+          Windows 若提示“未知发布者”，点“更多信息”→“仍要运行”。macOS 当前未使用 Apple Developer ID 公证；首次打开被拦截时，请到“系统设置 → 隐私与安全性”找到本应用，点“仍要打开”，再用密码或 Touch ID 确认。
 
           两个平台的 SHA-256 校验文件与 macOS 架构验证记录一并附上。
           EOF

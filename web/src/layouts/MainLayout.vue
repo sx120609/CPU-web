@@ -1160,8 +1160,11 @@ function setAppearanceMode(command: string | number | object) {
   z-index: 1090;
   right: 96px;
   bottom: 26px;
+  display: flex;
+  flex-direction: column;
   width: min(clamp(360px, 26vw, 420px), calc(100vw - 122px));
-  max-height: min(660px, calc(100dvh - 52px));
+  height: min(760px, calc(100dvh - 52px));
+  max-height: calc(100dvh - 52px);
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--cpu-primary) 30%, var(--cpu-border-soft));
   border-radius: 20px;

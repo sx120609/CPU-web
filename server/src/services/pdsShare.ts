@@ -129,6 +129,30 @@ export function parseDesktopVersionFromFileName(fileName: string): string {
   return /-([0-9]+(?:\.[0-9]+){1,3})-(?:win|mac(?:os)?)(?:-|_)/i.exec(fileName)?.[1] ?? "";
 }
 
+const compareDesktopVersions = (left: string, right: string): number => {
+  const a = left.split(".").map((part) => Number.parseInt(part, 10) || 0);
+  const b = right.split(".").map((part) => Number.parseInt(part, 10) || 0);
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    const diff = (a[index] ?? 0) - (b[index] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+};
+
+const compareInstallerCandidates = (left: PdsFile, right: PdsFile): number => {
+  const leftVersion = parseDesktopVersionFromFileName(left.name);
+  const rightVersion = parseDesktopVersionFromFileName(right.name);
+  if (leftVersion && rightVersion) {
+    const versionDiff = compareDesktopVersions(rightVersion, leftVersion);
+    if (versionDiff !== 0) return versionDiff;
+  } else if (leftVersion !== rightVersion) {
+    return leftVersion ? -1 : 1;
+  }
+
+  const updatedDiff = (right.updatedAt || "").localeCompare(left.updatedAt || "");
+  return updatedDiff || left.name.localeCompare(right.name);
+};
+
 type ListResponse = {
   items?: PdsEntry[];
   next_marker?: string;
@@ -232,7 +256,7 @@ const getDownloadUrl = async (ref: ShareRef, password: string, file: PdsFile): P
 export const pickInstaller = (files: PdsFile[]): PdsFile | null => {
   const candidates = files.filter((file) => /\.exe$/i.test(file.name));
   if (candidates.length === 0) return null;
-  return candidates.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))[0];
+  return candidates.sort(compareInstallerCandidates)[0];
 };
 
 /** macOS 只发布 Apple Silicon 版；优先 DMG，不把通用 ZIP 误当成给小白的主下载。 */
@@ -242,7 +266,7 @@ export const pickMacInstaller = (files: PdsFile[]): PdsFile | null => {
     || /\.dmg$/i.test(file.name)
   );
   if (candidates.length === 0) return null;
-  return candidates.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))[0];
+  return candidates.sort(compareInstallerCandidates)[0];
 };
 
 // 解析结果整体缓存一小段时间：下载页与下载跳转是连着点的，没必要为同一次
@@ -251,7 +275,9 @@ type DesktopPlatform = "windows" | "mac";
 const downloadCache = new Map<DesktopPlatform, { value: PdsDownload; expiresAt: number }>();
 const inFlight = new Map<DesktopPlatform, Promise<PdsDownload>>();
 
-const CACHE_MS = 10 * 60 * 1000;
+// 安装包上传后应尽快被旧客户端发现。这里只做短暂的并发削峰；
+// 临时下载地址本身仍有一小时有效期，无需为了它把“最新版文件”缓存十分钟。
+const CACHE_MS = 30 * 1000;
 
 /**
  * 取对应平台安装包的当前下载地址。失败时抛错，调用方决定怎么降级。

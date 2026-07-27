@@ -24,6 +24,9 @@ assert.match(html, /SoraNoNeko\/cpu_net/, "关于区域应保留校园网连接�
 assert.match(html, /shushoujiu/, "关于区域应保留学习通辅助脚本原作者署名");
 assert.match(renderer, /about-version[\s\S]*info\.version/, "关于区域应展示当前客户端版本");
 assert.match(renderer, /about-product[\s\S]*info\?\.platform === "darwin"/, "关于区域应按平台展示客户端名称");
+assert.match(css, /\.about-card \.card-head > div\s*\{[\s\S]*?display:\s*grid;[\s\S]*?gap:\s*3px/, "关于标题与客户端名称必须纵向分行");
+assert.match(css, /\.about-product\s*\{[\s\S]*?margin:\s*0;/, "关于副标题不得再用负边距挤进标题");
+assert.doesNotMatch(css, /\.about-product\s*\{[\s\S]*?margin-top:\s*-\d+px/, "关于副标题不得通过负边距与标题重叠");
 assert.match(html, /id="auth-login"[^>]*>去首页登录</, "未登录入口应回到首页这一套登录状态");
 assert.match(renderer, /shell\.auth\.sync\(/, "账号卡片应先静默同步首页登录状态");
 assert.match(html, /id="script-version"/, "学习通助手区域应展示独立脚本版本与更新状态");

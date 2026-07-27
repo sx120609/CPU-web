@@ -244,9 +244,13 @@ onMounted(async () => {
 .tools-body {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   gap: 14px;
+  min-height: 0;
   padding: 18px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .promo-lead {

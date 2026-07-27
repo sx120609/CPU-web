@@ -37,6 +37,18 @@ test("PDS 文件夹同时包含 Windows 与 macOS 时会分别选择正确安装
   assert.equal(pickMacInstaller(files)?.fileId, "mac-new");
 });
 
+test("PDS 安装包优先选择最高版本，不受旧文件重新上传时间影响", () => {
+  const files = [
+    { fileId: "win-new", name: "CPU-Web-Desktop-0.1.6-win-x64-installer.exe", size: 82, updatedAt: "2026-07-27T08:00:00Z" },
+    { fileId: "win-old-reuploaded", name: "药大拾间桌面端-0.1.5-win-x64-安装版.exe", size: 81, updatedAt: "2026-07-27T09:00:00Z" },
+    { fileId: "mac-new", name: "CPU-Web-Desktop-0.1.6-mac-arm64.dmg", size: 108, updatedAt: "2026-07-27T08:00:00Z" },
+    { fileId: "mac-old-reuploaded", name: "CPU-Web-Desktop-0.1.5-mac-arm64.dmg", size: 107, updatedAt: "2026-07-27T09:00:00Z" },
+  ];
+
+  assert.equal(pickInstaller(files)?.fileId, "win-new");
+  assert.equal(pickMacInstaller(files)?.fileId, "mac-new");
+});
+
 test("新的企业版文件夹分享链接能解析 domain 与 share id", () => {
   assert.deepEqual(
     parseShareUrl("https://bj37249.apps.aliyunfile.com/disk/s/TunDZWtpXk5?domainId=bj37249"),
