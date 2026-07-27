@@ -82,7 +82,6 @@
 
     <div class="cpu-card assistant-quota-card">
       <div class="assistant-quota-title">
-        <span class="assistant-quota-mark">拾</span>
         <div>
           <h3 class="cpu-section-title">拾间 AI 额度</h3>
           <p v-if="assistantQuota">Lv.{{ assistantQuota.level }} {{ assistantQuota.levelName }} · 每日重置</p>
@@ -888,36 +887,16 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 
 .assistant-quota-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  grid-template-areas: "title stats open";
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "title open"
+    "stats stats";
   align-items: center;
-  gap: 16px;
-  padding-top: 14px;
-  padding-bottom: 14px;
-  border-color: color-mix(in srgb, var(--cpu-primary) 18%, var(--cpu-border-soft));
-  background:
-    linear-gradient(110deg, color-mix(in srgb, var(--cpu-primary) 7%, transparent), transparent 48%),
-    var(--cpu-card);
+  gap: 12px 16px;
 }
 .assistant-quota-title {
   grid-area: title;
-  display: flex;
   min-width: 0;
-  align-items: center;
-  gap: 11px;
-}
-.assistant-quota-mark {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  flex: 0 0 36px;
-  place-items: center;
-  border-radius: 11px;
-  color: #fff;
-  background: linear-gradient(135deg, var(--cpu-primary), var(--cpu-primary-dark));
-  box-shadow: 0 6px 16px color-mix(in srgb, var(--cpu-primary) 18%, transparent);
-  font-size: 16px;
-  font-weight: 800;
 }
 .assistant-quota-title .cpu-section-title {
   margin: 0;
@@ -932,17 +911,16 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
-  overflow: hidden;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--cpu-surface-soft) 82%, transparent);
+  padding-top: 12px;
+  border-top: 1px solid var(--cpu-border-soft);
 }
 .assistant-quota-stat {
   min-width: 82px;
-  padding: 7px 13px;
-  text-align: center;
+  padding: 0 13px 0 0;
+  text-align: left;
 }
 .assistant-quota-stat + .assistant-quota-stat {
+  padding-left: 18px;
   border-left: 1px solid var(--cpu-border-soft);
 }
 .assistant-quota-stat span {
@@ -971,8 +949,6 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   grid-area: open;
   min-width: 58px;
   margin: 0 !important;
-  padding-right: 4px;
-  padding-left: 4px;
 }
 .assistant-quota-open :deep(span) {
   display: inline-flex;
@@ -1481,25 +1457,7 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   }
 
   .assistant-quota-card {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      "title open"
-      "stats stats";
-    gap: 12px 8px;
-    padding-top: 12px;
-    padding-bottom: 12px;
-  }
-
-  .assistant-quota-title {
-    gap: 9px;
-  }
-
-  .assistant-quota-mark {
-    width: 34px;
-    height: 34px;
-    flex-basis: 34px;
-    border-radius: 10px;
-    font-size: 15px;
+    gap: 10px 8px;
   }
 
   .assistant-quota-title p {
@@ -1512,7 +1470,11 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 
   .assistant-quota-stat {
     min-width: 0;
-    padding: 7px 9px;
+    padding: 0 9px 0 0;
+  }
+
+  .assistant-quota-stat + .assistant-quota-stat {
+    padding-left: 14px;
   }
 
   .assistant-quota-stat b {
