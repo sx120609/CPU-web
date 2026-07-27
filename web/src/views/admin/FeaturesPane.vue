@@ -95,10 +95,6 @@
               <el-input-number v-model="anonymousMinReputation" :min="0" :max="9999" />
             </div>
             <div class="trust-field">
-              <span class="field-label">论坛资历加成</span>
-              <el-input-number v-model="forumEnabledBonus" :min="0" :max="9999" />
-            </div>
-            <div class="trust-field">
               <span class="field-label">注册步长（天）</span>
               <el-input-number v-model="accountAgeDaysPerStep" :min="1" :max="3650" />
             </div>
@@ -240,7 +236,6 @@ const postPointsPerTopic = ref(4);
 const postPointsCap = ref(48);
 const replyPointsPerReply = ref(2);
 const replyPointsCap = ref(48);
-const forumEnabledBonus = ref(6);
 const anonymousTiers = ref([
   { reputation: 30, quota: 1 },
   { reputation: 60, quota: 2 },
@@ -331,7 +326,6 @@ async function reload() {
     postPointsCap.value = config.postPointsCap;
     replyPointsPerReply.value = config.replyPointsPerReply;
     replyPointsCap.value = config.replyPointsCap;
-    forumEnabledBonus.value = config.forumEnabledBonus;
     anonymousTiers.value = (config.anonymousTiers ?? []).map((item) => ({ ...item }));
     reputationLevels.value = (config.reputationLevels ?? []).map((item) => ({ ...item }));
   } catch (error) {
@@ -427,7 +421,7 @@ async function saveTrustConfig() {
       postPointsCap: postPointsCap.value,
       replyPointsPerReply: replyPointsPerReply.value,
       replyPointsCap: replyPointsCap.value,
-      forumEnabledBonus: forumEnabledBonus.value,
+      forumEnabledBonus: 0,
       anonymousTiers: anonymousTiers.value.map((item) => ({
         reputation: Number(item.reputation || 0),
         quota: Number(item.quota || 0),
@@ -446,7 +440,6 @@ async function saveTrustConfig() {
     postPointsCap.value = config.postPointsCap;
     replyPointsPerReply.value = config.replyPointsPerReply;
     replyPointsCap.value = config.replyPointsCap;
-    forumEnabledBonus.value = config.forumEnabledBonus;
     anonymousTiers.value = (config.anonymousTiers ?? []).map((item) => ({ ...item }));
     reputationLevels.value = (config.reputationLevels ?? []).map((item) => ({ ...item }));
     ElMessage.success("匿名与信誉规则已保存");

@@ -36,12 +36,12 @@
           <h2 class="ob-heading">两个开关，之后也能改</h2>
           <label class="ob-switch">
             <input type="checkbox" id="ob-launch" />
-            <span class="track"><span class="thumb"></span></span>
+            <span class="switch-track"><span class="switch-thumb"></span></span>
             <span class="switch-text"><strong>开机自动启动</strong><small>登录系统后自动运行并收进托盘</small></span>
           </label>
           <label class="ob-switch">
             <input type="checkbox" id="ob-campus" />
-            <span class="track"><span class="thumb"></span></span>
+            <span class="switch-track"><span class="switch-thumb"></span></span>
             <span class="switch-text"><strong>后台自动连接校园网</strong><small>稍后在工具页填学号密码才会真正生效</small></span>
           </label>
           <p class="ob-fine">答案全部来自药大拾间后台配置的校园 AI，会消耗你的每日额度。请自行判断使用边界并遵守学校的学术规范。</p>
@@ -80,7 +80,7 @@
             <button class="primary" id="update-go" type="button" hidden>去下载</button>
             <button class="primary" id="update-restart" type="button" hidden>立即重启更新</button>
           </div>
-          <div class="track" id="update-track" hidden><i class="fill" id="update-fill"></i></div>
+          <div class="update-track" id="update-track" hidden><i class="update-fill" id="update-fill"></i></div>
         </section>
 
         <section class="card">
@@ -111,7 +111,7 @@
 
           <p class="muted" id="auth-hint">登录后即可使用学习通与校园 AI 解答。</p>
           <div class="actions">
-            <button class="primary" id="auth-login" type="button" hidden>登录</button>
+            <button class="primary" id="auth-login" type="button" hidden>去首页登录</button>
             <button class="ghost" id="auth-logout" type="button" hidden>退出登录</button>
           </div>
         </section>
@@ -123,7 +123,7 @@
           </div>
           <label class="switch">
             <input type="checkbox" id="campus-enabled" />
-            <span class="track"><span class="thumb"></span></span>
+            <span class="switch-track"><span class="switch-thumb"></span></span>
             <span class="switch-text"><strong>后台自动连接</strong><small>掉线时自动重新认证；不在校园网时不会尝试</small></span>
           </label>
           <div id="campus-body" hidden>
@@ -187,7 +187,7 @@
             <h3>登录</h3>
             <label class="switch">
               <input type="checkbox" id="cx-remember" />
-              <span class="track"><span class="thumb"></span></span>
+              <span class="switch-track"><span class="switch-thumb"></span></span>
               <span class="switch-text"><strong>记住学习通账号密码</strong><small>登录时自动保存，下次打开登录页自动填好；密码经系统安全存储加密，关掉即删除</small></span>
             </label>
             <p class="muted small" id="cx-hint" hidden></p>
@@ -223,7 +223,7 @@
             <h3>AI 解答</h3>
             <label class="switch">
               <input type="checkbox" id="cfg-aiEnabled" />
-              <span class="track"><span class="thumb"></span></span>
+              <span class="switch-track"><span class="switch-thumb"></span></span>
               <span class="switch-text"><strong>用校园 AI 作答</strong><small>答案全部来自药大拾间的校园 AI，消耗你的每日额度；关掉就只做视频任务点</small></span>
             </label>
             <p class="muted small">模型由站点后台统一设定，客户端不参与选择。</p>
@@ -239,23 +239,28 @@
           <h2>启动与后台</h2>
           <label class="switch">
             <input type="checkbox" id="pref-launchOnLogin" />
-            <span class="track"><span class="thumb"></span></span>
+            <span class="switch-track"><span class="switch-thumb"></span></span>
             <span class="switch-text"><strong>开机自动启动</strong><small>登录系统后自动运行</small></span>
           </label>
           <label class="switch">
             <input type="checkbox" id="pref-startMinimized" />
-            <span class="track"><span class="thumb"></span></span>
+            <span class="switch-track"><span class="switch-thumb"></span></span>
             <span class="switch-text"><strong>启动时收进托盘</strong><small>开机自启时不弹出窗口</small></span>
           </label>
           <label class="switch">
             <input type="checkbox" id="pref-closeToTray" />
-            <span class="track"><span class="thumb"></span></span>
+            <span class="switch-track"><span class="switch-thumb"></span></span>
             <span class="switch-text"><strong>关闭窗口时收进托盘</strong><small>后台继续保持校园网连接与刷题</small></span>
           </label>
         </section>
 
         <p class="status-line" id="status-line" role="status"></p>
-        <footer id="app-meta"></footer>
+        <footer class="app-footer">
+          <span class="app-footer-item">© 2026 药大拾间客户端 · 校园互助与服务平台</span>
+          <a class="app-footer-item" href="https://github.com/sx120609/CPU-web" data-external>GitHub</a>
+          <span class="app-footer-item">非学校官方站点</span>
+          <a class="app-footer-item" id="site-filing" href="https://beian.miit.gov.cn/" data-external hidden></a>
+        </footer>
       </div>
     </main>
 

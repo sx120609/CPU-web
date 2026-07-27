@@ -478,8 +478,10 @@ Content-Type: application/json
 | `ONEDRIVE_CN_CLIENT_SECRET` | 空 | 世纪互联应用注册的客户端密钥 |
 | `ONEDRIVE_CN_DRIVE_ID` | 空 | SharePoint 文档库或 OneDrive 对应的 Drive ID |
 | `ONEDRIVE_CN_ROOT_PATH` | 空 | 远端根目录下的存储子路径，例如 `cpu-web-media` |
-| `DESKTOP_APP_DOWNLOAD_URL` | 蓝奏云分享页 | 桌面端安装包下载地址，必须是 https。可以是网盘分享页而不必是直链。留空时站内「PC 小工具」面板显示"正在打包中"，不给死链接 |
-| `DESKTOP_APP_DOWNLOAD_PASSWORD` | `afqr` | 网盘分享页的提取码。前端会显示并提供一键复制；用直链时留空 |
+| `DESKTOP_APP_DOWNLOAD_URL` | 空 | PDS 解析失败时的可选备用下载页，必须是 https。留空时不会再回落到旧蓝奏云链接 |
+| `DESKTOP_APP_DOWNLOAD_PASSWORD` | 空 | 备用网盘分享页的提取码；PDS 直链模式下不显示 |
+| `DESKTOP_PDS_SHARE_URL` | Windows 文件夹分享 | 阿里云盘企业版（PDS）文件或文件夹分享链接。默认使用固定文件夹；服务端递归选择最后更新的 `.exe`，每次请求临时换取直链并由本站稳定地址 302 跳转 |
+| `DESKTOP_PDS_SHARE_PASSWORD` | 空 | PDS 分享提取码；无提取码时留空 |
 | `DESKTOP_APP_VERSION` | 空 | 桌面端安装包版本号，仅用于展示 |
 | `PG_DUMP_BIN` | `pg_dump` | 后台数据库备份使用的命令路径 |
 

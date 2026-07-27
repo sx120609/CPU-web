@@ -116,26 +116,83 @@ const getShareToken = async (ref: ShareRef, password: string): Promise<string> =
   return result.share_token;
 };
 
+export type PdsEntry = {
+  file_id: string;
+  name: string;
+  type: string;
+  size?: number;
+  updated_at?: string;
+};
+
 type ListResponse = {
-  items?: { file_id: string; name: string; type: string; size?: number; updated_at?: string }[];
+  items?: PdsEntry[];
+  next_marker?: string;
+};
+
+const MAX_SHARE_FOLDERS = 100;
+const MAX_SHARE_ENTRIES = 1000;
+
+/**
+ * 分享根目录可以直接放文件，也可以只分享一个长期不变的文件夹。
+ * 队列遍历带数量上限与去重，避免异常目录结构把一次下载请求拖成无界扫描。
+ */
+export const walkShareTree = async (
+  listChildren: (parentFileId: string) => Promise<PdsEntry[]>,
+): Promise<PdsFile[]> => {
+  const queue = ["root"];
+  const visited = new Set<string>();
+  const files: PdsFile[] = [];
+  let seenEntries = 0;
+
+  while (queue.length > 0) {
+    const parentFileId = queue.shift()!;
+    if (visited.has(parentFileId)) continue;
+    visited.add(parentFileId);
+    if (visited.size > MAX_SHARE_FOLDERS) throw new Error("PDS 分享文件夹数量过多");
+
+    const entries = await listChildren(parentFileId);
+    seenEntries += entries.length;
+    if (seenEntries > MAX_SHARE_ENTRIES) throw new Error("PDS 分享内容过多");
+
+    for (const item of entries) {
+      if (item.type === "folder") {
+        if (item.file_id && !visited.has(item.file_id)) queue.push(item.file_id);
+        continue;
+      }
+      if (item.type !== "file") continue;
+      files.push({
+        fileId: item.file_id,
+        name: item.name,
+        size: Number(item.size) || 0,
+        updatedAt: item.updated_at ?? "",
+      });
+    }
+  }
+  return files;
 };
 
 export const listShareFiles = async (ref: ShareRef, password: string): Promise<PdsFile[]> => {
   const token = await getShareToken(ref, password);
-  const result = await callPds<ListResponse>(
-    ref.apiBase,
-    "/v2/file/list",
-    { share_id: ref.shareId, parent_file_id: "root", limit: 100 },
-    token,
-  );
-  return (result.items ?? [])
-    .filter((item) => item.type === "file")
-    .map((item) => ({
-      fileId: item.file_id,
-      name: item.name,
-      size: Number(item.size) || 0,
-      updatedAt: item.updated_at ?? "",
-    }));
+  return walkShareTree(async (parentFileId) => {
+    const entries: PdsEntry[] = [];
+    let marker = "";
+    do {
+      const result = await callPds<ListResponse>(
+        ref.apiBase,
+        "/v2/file/list",
+        {
+          share_id: ref.shareId,
+          parent_file_id: parentFileId,
+          limit: 100,
+          ...(marker ? { marker } : {}),
+        },
+        token,
+      );
+      entries.push(...(result.items ?? []));
+      marker = String(result.next_marker ?? "").trim();
+    } while (marker);
+    return entries;
+  });
 };
 
 const getDownloadUrl = async (ref: ShareRef, password: string, file: PdsFile): Promise<PdsDownload> => {

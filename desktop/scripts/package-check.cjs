@@ -28,6 +28,7 @@ const required = [
   "/dist/electron/config.js",
   "/dist/electron/shared.js",
   "/dist/electron/oauth.js",
+  "/dist/electron/oauth-user.js",
   "/dist/electron/oauth-store.js",
   "/dist/electron/site-preload.js",
   "/dist/electron/shell-preload.js",

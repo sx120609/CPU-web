@@ -325,7 +325,7 @@ button[hidden] { display: none; }
 .switch:last-of-type { border-bottom: 0; }
 .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
 
-.track {
+.switch-track {
   flex: none;
   width: 38px; height: 22px;
   border-radius: 999px;
@@ -334,7 +334,7 @@ button[hidden] { display: none; }
   position: relative;
   transition: background-color .18s ease, border-color .18s ease;
 }
-.thumb {
+.switch-thumb {
   position: absolute; top: 2px; left: 2px;
   width: 16px; height: 16px;
   border-radius: 50%;
@@ -342,9 +342,9 @@ button[hidden] { display: none; }
   box-shadow: var(--cpu-shadow-sm);
   transition: transform .18s ease;
 }
-.switch input:checked + .track { background: var(--cpu-primary); border-color: var(--cpu-primary); }
-.switch input:checked + .track .thumb { transform: translateX(16px); }
-.switch input:focus-visible + .track { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
+.switch input:checked + .switch-track { background: var(--cpu-primary); border-color: var(--cpu-primary); }
+.switch input:checked + .switch-track .switch-thumb { transform: translateX(16px); }
+.switch input:focus-visible + .switch-track { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
 
 .switch-text { display: flex; flex-direction: column; gap: 1px; }
 .switch-text strong { font-weight: 600; }
@@ -378,13 +378,13 @@ button[hidden] { display: none; }
 }
 
 /* 自动更新的下载进度条 */
-.track {
+.update-track {
   margin-top: 12px;
   height: 5px; border-radius: 999px;
   background: var(--cpu-surface-subtle);
   overflow: hidden;
 }
-.fill {
+.update-fill {
   display: block; height: 100%; width: 0;
   border-radius: 999px;
   background: linear-gradient(90deg, var(--cpu-primary-light), var(--cpu-primary));
@@ -423,7 +423,20 @@ button[hidden] { display: none; }
 .status-line[data-error="true"] { color: var(--cpu-danger); }
 @media (prefers-color-scheme: dark) { .status-line { color: var(--cpu-primary-light); } }
 
-footer { color: var(--cpu-text-muted); font-size: 11.5px; text-align: center; }
+.app-footer {
+  padding: 16px 20px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 14px;
+  color: var(--cpu-text-muted);
+  font-size: 12px;
+}
+
+.app-footer-item { color: inherit; line-height: 1.6; }
+.app-footer a.app-footer-item { color: var(--cpu-primary); text-decoration: none; }
+.app-footer a.app-footer-item:hover { text-decoration: underline; }
 
 /* --------------------------------------------------------------- 离线 */
 
@@ -584,10 +597,10 @@ footer { color: var(--cpu-text-muted); font-size: 11.5px; text-align: center; }
 }
 
 .ob-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
-.ob-switch .track { background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.28); }
-.ob-switch .thumb { background: #fff; }
-.ob-switch input:checked + .track { background: #fcd34d; border-color: #fcd34d; }
-.ob-switch input:checked + .track .thumb { background: #0b6353; }
+.ob-switch .switch-track { background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.28); }
+.ob-switch .switch-thumb { background: #fff; }
+.ob-switch input:checked + .switch-track { background: #fcd34d; border-color: #fcd34d; }
+.ob-switch input:checked + .switch-track .switch-thumb { background: #0b6353; }
 .ob-switch .switch-text strong { font-size: 14px; }
 .ob-switch .switch-text small { color: rgba(255,255,255,.68); }
 

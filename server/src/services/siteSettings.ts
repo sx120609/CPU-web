@@ -409,7 +409,7 @@ const configCache: SiteConfig = {
   postPointsCap: 48,
   replyPointsPerReply: 2,
   replyPointsCap: 48,
-  forumEnabledBonus: 6,
+  forumEnabledBonus: 0,
   anonymousTiers: DEFAULT_ANONYMOUS_TIERS.map((item) => ({ ...item })),
   reputationLevels: DEFAULT_REPUTATION_LEVELS.map((item) => ({ ...item })),
   assistantDailyQuotas: DEFAULT_ASSISTANT_DAILY_QUOTAS.map((item) => ({ ...item })),
@@ -826,7 +826,8 @@ export async function loadFeatures(): Promise<void> {
       continue;
     }
     if (r.key === FORUM_ENABLED_BONUS_KEY) {
-      configCache.forumEnabledBonus = normalizeSmallInt(r.value, 6, 0, 9999);
+      // 论坛已默认开放：忽略数据库里的历史加成值。
+      configCache.forumEnabledBonus = 0;
       continue;
     }
     if (r.key === ANONYMOUS_TIERS_KEY) {
@@ -1218,7 +1219,7 @@ function sanitizeCommunityTrustConfig() {
   configCache.postPointsCap = normalizeSmallInt(configCache.postPointsCap, 48, 0, 9999);
   configCache.replyPointsPerReply = normalizeSmallInt(configCache.replyPointsPerReply, 2, 0, 999);
   configCache.replyPointsCap = normalizeSmallInt(configCache.replyPointsCap, 48, 0, 9999);
-  configCache.forumEnabledBonus = normalizeSmallInt(configCache.forumEnabledBonus, 6, 0, 9999);
+  configCache.forumEnabledBonus = 0;
   configCache.anonymousTiers = normalizeAnonymousTiers(configCache.anonymousTiers, DEFAULT_ANONYMOUS_TIERS);
   configCache.reputationLevels = normalizeReputationLevels(configCache.reputationLevels, DEFAULT_REPUTATION_LEVELS);
   configCache.assistantDailyQuotas = normalizeAssistantDailyQuotas(
@@ -1561,7 +1562,7 @@ export async function setCommunityTrustConfig(input: Partial<SiteConfig>): Promi
     postPointsCap: normalizeSmallInt(input.postPointsCap, configCache.postPointsCap, 0, 9999),
     replyPointsPerReply: normalizeSmallInt(input.replyPointsPerReply, configCache.replyPointsPerReply, 0, 999),
     replyPointsCap: normalizeSmallInt(input.replyPointsCap, configCache.replyPointsCap, 0, 9999),
-    forumEnabledBonus: normalizeSmallInt(input.forumEnabledBonus, configCache.forumEnabledBonus, 0, 9999),
+    forumEnabledBonus: 0,
     anonymousTiers: input.anonymousTiers !== undefined
       ? normalizeAnonymousTiers(input.anonymousTiers, configCache.anonymousTiers)
       : configCache.anonymousTiers.map((item) => ({ ...item })),
@@ -1650,7 +1651,7 @@ function sanitizeCommunityTrustConfigFor(next: SiteConfig) {
   next.postPointsCap = normalizeSmallInt(next.postPointsCap, 48, 0, 9999);
   next.replyPointsPerReply = normalizeSmallInt(next.replyPointsPerReply, 2, 0, 999);
   next.replyPointsCap = normalizeSmallInt(next.replyPointsCap, 48, 0, 9999);
-  next.forumEnabledBonus = normalizeSmallInt(next.forumEnabledBonus, 6, 0, 9999);
+  next.forumEnabledBonus = 0;
   next.anonymousTiers = normalizeAnonymousTiers(next.anonymousTiers, DEFAULT_ANONYMOUS_TIERS);
   next.reputationLevels = normalizeReputationLevels(next.reputationLevels, DEFAULT_REPUTATION_LEVELS);
   next.assistantDailyQuotas = normalizeAssistantDailyQuotas(

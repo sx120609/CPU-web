@@ -210,18 +210,17 @@ CSC_KEY_PASSWORD=证书密码
 
 ## 更新提示
 
-客户端启动 8 秒后向主站查一次 `GET /api/site/downloads/desktop`，把返回的 `version` 与本地版本按段做数值比较，发现新版就发系统通知，并在「PC 小工具」面板顶部显示一条提示，点「去下载」用系统浏览器打开下载地址。
+客户端启动 8 秒后向主站查一次 `GET /api/site/downloads/desktop`，把返回的 `version` 与本地版本按段做数值比较。配置 PDS 分享后，客户端会在后台静默下载，按服务端下发的内容哈希验真，下载完成后提示；退出应用时自动安装，也可在工具页立即重启更新。
 
-**刻意不做静默下载替换**：electron-updater 在 Windows 上靠签名里的发布者信息验证更新包，未签名就只能关掉校验，那等于在所有用户机器上装了一条不可验真的代码执行通道。现在的做法里，用户仍然自己决定运行安装包，信任锚点是主站的 HTTPS 证书。拿到签名证书后可以换成 electron-updater 做真正的自动更新。
-
-发新版时服务端要同时更新两个环境变量：
+推荐长期分享一个固定文件夹，发新版时只需把新安装包上传到文件夹内。服务端会递归目录、选择最后更新的 `.exe`，每次下载请求再临时换取直链，因此 PDS 临时地址变化不会影响站点入口。
 
 ```env
-DESKTOP_APP_DOWNLOAD_URL=https://你的云盘直链/药大拾间桌面端-x.y.z-win-x64-安装版.exe
+DESKTOP_PDS_SHARE_URL=https://你的企业版域名.apps.aliyunfile.com/disk/s/分享ID?domainId=你的企业版域名
+DESKTOP_PDS_SHARE_PASSWORD=
 DESKTOP_APP_VERSION=x.y.z
 ```
 
-`DESKTOP_APP_VERSION` 留空时不会提示更新（无从比较），只会让下载按钮可用。
+未配置 PDS 时仍会回落到 `DESKTOP_APP_DOWNLOAD_URL` 与 `DESKTOP_APP_DOWNLOAD_PASSWORD`。`DESKTOP_APP_VERSION` 留空时不会提示更新（无从比较），只会让下载按钮可用。
 
 ## 配置
 

@@ -54,6 +54,8 @@ export type TabHooks = {
   openExternally: (url: string) => void;
   /** 页面加载完成，用于注入用户脚本 */
   onDidFinishLoad: (contents: Electron.WebContents) => void;
+  /** 主框架地址变化（含 SPA 路由），用于识别主站刚完成登录 */
+  onNavigation: (contents: Electron.WebContents) => void;
   /** 标签状态变化，推给外壳渲染 */
   onChange: (tabs: TabState[], activeId: string) => void;
 };
@@ -157,9 +159,17 @@ export class TabManager {
     });
     contents.on("did-start-loading", () => { tab.loading = true; this.emit(); });
     contents.on("did-stop-loading", () => { tab.loading = false; this.emit(); });
-    contents.on("did-navigate", (_event, url) => { tab.url = url; this.emit(); });
+    contents.on("did-navigate", (_event, url) => {
+      tab.url = url;
+      this.hooks.onNavigation(contents);
+      this.emit();
+    });
     contents.on("did-navigate-in-page", (_event, url, isMainFrame) => {
-      if (isMainFrame) { tab.url = url; this.emit(); }
+      if (isMainFrame) {
+        tab.url = url;
+        this.hooks.onNavigation(contents);
+        this.emit();
+      }
     });
     contents.on("did-finish-load", () => this.hooks.onDidFinishLoad(contents));
 

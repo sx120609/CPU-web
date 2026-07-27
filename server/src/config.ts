@@ -362,16 +362,18 @@ export const config = {
     ?? "https://download.lizmt.cn/Android/CPU-Web-Android-V6.apk"
   ).trim(),
   // 桌面端安装包。留空表示尚未发布，前端会显示"正在打包中"而不是给一个死链接。
-  desktopAppDownloadUrl: (
-    process.env.DESKTOP_APP_DOWNLOAD_URL
-    ?? "https://carbene.lanzoue.com/b0kp5dooh"
-  ).trim(),
+  // 仅作为 PDS 不可用时的可选回退；不再内置旧蓝奏云地址。
+  desktopAppDownloadUrl: (process.env.DESKTOP_APP_DOWNLOAD_URL ?? "").trim(),
   // 网盘分享页的提取码。不是直链时必须下发，否则用户点过去只能卡在输码页面。
-  desktopAppDownloadPassword: (process.env.DESKTOP_APP_DOWNLOAD_PASSWORD ?? "afqr").trim(),
+  desktopAppDownloadPassword: (process.env.DESKTOP_APP_DOWNLOAD_PASSWORD ?? "").trim(),
   // 阿里云盘企业版（PDS）的分享链接。配了就走直链：服务端每次现取一个临时地址再
   // 302 过去，用户看到的是我们自己域名下的稳定链接，不用输提取码。
-  // 留空则回落到上面那套网盘分享页 + 提取码。
-  desktopPdsShareUrl: (process.env.DESKTOP_PDS_SHARE_URL ?? "").trim(),
+  // 默认使用长期不变的 Windows 文件夹分享；以后只需替换文件夹内的安装包。
+  // 显式配置环境变量仍可覆盖，留空则回落到上面那套可选网盘地址。
+  desktopPdsShareUrl: (
+    process.env.DESKTOP_PDS_SHARE_URL?.trim()
+    || "https://bj37249.apps.aliyunfile.com/disk/s/TunDZWtpXk5?domainId=bj37249"
+  ).trim(),
   desktopPdsSharePassword: (process.env.DESKTOP_PDS_SHARE_PASSWORD ?? "").trim(),
   desktopAppVersion: (process.env.DESKTOP_APP_VERSION ?? "").trim(),
   oauthClientId: String(process.env.OAUTH_CLIENT_ID ?? "cpu-electron").trim(),

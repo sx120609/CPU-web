@@ -280,10 +280,6 @@
               <span>回复贡献</span>
               <b>{{ user.reputationBreakdown?.replyPoints ?? 0 }}</b>
             </div>
-            <div class="trust-row">
-              <span>论坛资历加成</span>
-              <b>{{ user.reputationBreakdown?.forumPoints ?? 0 }}</b>
-            </div>
           </div>
 
           <div class="trust-progress-list">

@@ -2,6 +2,7 @@ import { session as electronSession } from "electron";
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, Server } from "node:http";
 import { clearOAuthSession, OAuthSession, OAuthUser, peekOAuthSession, writeOAuthSession } from "./oauth-store";
+import { normalizeOAuthUser, refreshOAuthUser } from "./oauth-user";
 import { branding, oauthConfig } from "./config";
 
 // 授权页由调用方负责打开：主进程会开一个与主站共用会话的应用内窗口，
@@ -57,77 +58,11 @@ const fetchJson = async <T>(url: string, init: RequestInit): Promise<T> => {
   return payload as T;
 };
 
-const asRecord = (value: unknown): Record<string, unknown> =>
-  value && typeof value === "object" ? value as Record<string, unknown> : {};
-
-const firstValue = (records: Record<string, unknown>[], keys: string[]): unknown => {
-  for (const record of records) {
-    for (const key of keys) {
-      const value = record[key];
-      if (value !== undefined && value !== null && value !== "") return value;
-    }
-  }
-  return undefined;
-};
-
-const asOptionalText = (value: unknown): string | undefined => {
-  if (value === undefined || value === null || typeof value === "object") return undefined;
-  const text = String(value);
-  return text === "" ? undefined : text;
-};
-
-// Number(x) || undefined 会把 0 吞成"无数据"，额度用尽的用户会以为接口挂了
-const asOptionalNumber = (value: unknown): number | undefined => {
-  if (value === undefined || value === null || value === "") return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-};
-
-const NAME_KEYS = ["username", "preferred_username", "name", "nickname", "login"];
-
-const normalizeUser = (payload: unknown): OAuthUser | undefined => {
-  const root = asRecord(payload);
-  // 服务端统一响应是 { code, data, message }，用户信息在 data 里
-  const records = [asRecord(root.data), asRecord(root.user), asRecord(root.profile), root];
-  const userObject = records.map((record) => asRecord(record.user)).find((record) => Object.keys(record).length > 0);
-  const nested = userObject ? [userObject] : [];
-  const name = firstValue(records, NAME_KEYS) ?? firstValue(nested, NAME_KEYS);
-  const sub = firstValue(records, ["sub", "id", "userId"]) ?? firstValue(nested, ["id"]);
-  if (name === undefined && sub === undefined) return undefined;
-  // 信誉相关的结构挂在 data.user 下面：
-  //   user.reputationBreakdown = { agePoints, postPoints, replyPoints, forumPoints, caps }
-  //   user.reputationLevel     = { level, name, nextLevel: { name, need } | null }
-  const breakdown = asRecord(userObject?.reputationBreakdown);
-  const nextLevel = asRecord(asRecord(userObject?.reputationLevel).nextLevel);
-
-  return {
-    sub: asOptionalText(sub),
-    user: asOptionalText(name),
-    nickname: asOptionalText(userObject?.nickname),
-    name: asOptionalText(userObject?.name),
-    username: asOptionalText(userObject?.username),
-    level: asOptionalText(firstValue(records, ["level"])),
-    levelName: asOptionalText(firstValue(records, ["levelName", "level_name"])),
-    aiBalance: asOptionalNumber(firstValue(records, ["aiBalance", "ai_balance"])),
-    dailyQuota: asOptionalNumber(firstValue(records, ["dailyQuota", "daily_quota"])),
-    usedToday: asOptionalNumber(firstValue(records, ["usedToday", "used_today"])),
-    dailyRemaining: asOptionalNumber(firstValue(records, ["dailyRemaining", "daily_remaining"])),
-    assistantPoints: asOptionalNumber(firstValue(records, ["assistantPoints", "assistant_points"])),
-    reputation: asOptionalNumber(userObject?.reputation),
-    nextLevelNeed: asOptionalNumber(nextLevel.need),
-    nextLevelName: asOptionalText(nextLevel.name),
-    agePoints: asOptionalNumber(breakdown.agePoints),
-    postPoints: asOptionalNumber(breakdown.postPoints),
-    replyPoints: asOptionalNumber(breakdown.replyPoints),
-    forumPoints: asOptionalNumber(breakdown.forumPoints)
-  };
-};
-
 const getUser = async (session: OAuthSession): Promise<OAuthUser | undefined> => {
   const payload = await fetchJson<unknown>(baseUrl("/api/oauth/userinfo"), {
     headers: { Authorization: `${session.tokenType} ${session.accessToken}` }
   });
-  return normalizeUser(payload);
+  return normalizeOAuthUser(payload);
 };
 
 const exchangeCode = async (pending: PendingLogin, code: string): Promise<OAuthSession> => {
@@ -311,23 +246,35 @@ export const ensureOAuthSession = async (
     && Boolean(session.user);
   if (healthy) return getOAuthStatus();
   await trySilentOAuthLogin(openAuthorize, options);
-  return getOAuthStatus();
+  // 新登录已经在 exchangeCode 中取过一次资料，不重复请求
+  return getOAuthStatus({ refreshUser: false });
 };
 
-export const getOAuthStatus = async (): Promise<OAuthStatus> => {
+export const getOAuthStatus = async (
+  options: { refreshUser?: boolean } = {}
+): Promise<OAuthStatus> => {
   const session = await peekOAuthSession();
   if (!session) return { loggedIn: false };
   if (session.expiresAt <= Date.now()) {
     await clearOAuthSession();
     return { loggedIn: false, expired: true };
   }
-  if (!session.user) {
+  // access token 的有效期是 30 天，但信誉、点数与每日额度随时会变。旧实现把
+  // user 快照也缓存 30 天，导致升级客户端后新增字段一直显示"—"。
+  if (options.refreshUser !== false || !session.user) {
     try {
-      session.user = await getUser(session);
-      if (session.user) await writeOAuthSession(session);
-    } catch {
-      await clearOAuthSession();
-      return { loggedIn: false };
+      const refreshed = await refreshOAuthUser(session, getUser, writeOAuthSession);
+      if (!refreshed && !session.user) {
+        await clearOAuthSession();
+        return { loggedIn: false };
+      }
+    } catch (error) {
+      // 断网时保留上次成功快照；只有从来没有可用资料时才判成未登录
+      if (!session.user) {
+        await clearOAuthSession();
+        return { loggedIn: false };
+      }
+      console.warn("刷新 OAuth 用户资料失败，暂用本地快照", error);
     }
   }
   return { loggedIn: true, expiresAt: session.expiresAt, scope: session.scope, user: session.user };

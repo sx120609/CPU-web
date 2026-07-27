@@ -97,7 +97,23 @@ const renderTabs = () => {
 
 /* --------------------------------------------------------------- 账号 */
 
+let currentAuthStatus = null;
+let authRefreshInFlight = null;
+
+const renderAuthSyncing = () => {
+  el("auth-pill").textContent = "同步中";
+  el("auth-pill").dataset.state = "";
+  el("auth-fields").hidden = true;
+  el("auth-howto").hidden = true;
+  el("auth-login").hidden = true;
+  el("auth-logout").hidden = true;
+  el("auth-hint").hidden = false;
+  el("auth-hint").textContent = "正在同步「首页 · 药大拾间」的登录状态…";
+  el("quota-text").textContent = "同步中";
+};
+
 const renderAuth = (session) => {
+  currentAuthStatus = session;
   const loggedIn = Boolean(session?.loggedIn);
   const user = session?.user || {};
   el("auth-pill").textContent = loggedIn ? "已登录" : session?.expired ? "已过期" : "未登录";
@@ -107,6 +123,7 @@ const renderAuth = (session) => {
   el("auth-logout").hidden = !loggedIn;
   el("auth-hint").hidden = loggedIn;
   if (!loggedIn) {
+    el("auth-howto").hidden = true;
     // 到期本来会自动续（主站还登着就静默换新的），走到这里说明主站也退了
     el("auth-hint").textContent = session?.expired
       ? "登录状态已失效。在「首页 · 药大拾间」里登录一次即可，这里会自动同步。"
@@ -170,16 +187,14 @@ const renderHowTo = (user) => {
   const gained = {
     post: typeof user.postPoints === "number" ? user.postPoints : null,
     reply: typeof user.replyPoints === "number" ? user.replyPoints : null,
-    age: typeof user.agePoints === "number" ? user.agePoints : null,
-    forum: typeof user.forumPoints === "number" ? user.forumPoints : null
+    age: typeof user.agePoints === "number" ? user.agePoints : null
   };
   const got = (value, cap) => (value === null ? `上限 ${cap}` : `已得 ${value} / ${cap}`);
 
   const items = [
     `发主题帖：每篇 +${rep.postPointsPerTopic} 分（${got(gained.post, rep.postPointsCap)}）`,
     `发回复：每条 +${rep.replyPointsPerReply} 分（${got(gained.reply, rep.replyPointsCap)}）`,
-    `注册时长：每满 ${rep.accountAgeDaysPerStep} 天 +${rep.accountAgePointsPerStep} 分（${got(gained.age, rep.accountAgePointsCap)}）`,
-    `开通论坛：一次性 +${rep.forumEnabledBonus} 分（${gained.forum ? "已获得" : "未获得"}）`
+    `注册时长：每满 ${rep.accountAgeDaysPerStep} 天 +${rep.accountAgePointsPerStep} 分（${got(gained.age, rep.accountAgePointsCap)}）`
   ];
   const list = el("howto-list");
   list.textContent = "";
@@ -199,11 +214,37 @@ const renderHowTo = (user) => {
     : "注意：点赞与浏览量不计入信誉值，帖子被删除或隐藏会扣回对应分数。日额度用完后可消耗 AI 点数，1 点抵 1 次，点数不过期。";
 };
 
-const refreshAuth = async () => {
+const refreshAuth = (options = {}) => {
+  if (authRefreshInFlight) return authRefreshInFlight;
+  const syncing = options.sync === true;
+  if (syncing && !currentAuthStatus?.loggedIn) renderAuthSyncing();
+  const request = syncing ? shell.auth.sync(options.force === true) : shell.auth.getStatus();
+  const task = request
+    .then((status) => {
+      renderAuth(status);
+      return status;
+    })
+    .catch(() => {
+      const status = { loggedIn: false };
+      renderAuth(status);
+      return status;
+    })
+    .finally(() => {
+      if (authRefreshInFlight === task) authRefreshInFlight = null;
+    });
+  authRefreshInFlight = task;
+  return task;
+};
+
+const renderSiteFooter = async () => {
   try {
-    renderAuth(await shell.auth.getStatus());
+    const config = await shell.getSiteConfig();
+    const filing = el("site-filing");
+    const text = typeof config?.siteFilingNumber === "string" ? config.siteFilingNumber.trim() : "";
+    filing.textContent = text;
+    filing.hidden = !text;
   } catch {
-    renderAuth({ loggedIn: false });
+    el("site-filing").hidden = true;
   }
 };
 
@@ -300,9 +341,9 @@ const renderScriptSwitches = () => {
     input.checked = Boolean(scriptConfig[key]);
     input.addEventListener("change", () => void pushScriptConfig(key, input.checked));
     const track = document.createElement("span");
-    track.className = "track";
+    track.className = "switch-track";
     const thumb = document.createElement("span");
-    thumb.className = "thumb";
+    thumb.className = "switch-thumb";
     track.append(thumb);
     const text = document.createElement("span");
     text.className = "switch-text";
@@ -354,6 +395,12 @@ const bindChrome = () => {
   el("chip-quota").addEventListener("click", () => openTools());
   el("chip-reload").addEventListener("click", () => void shell.tabs.reload(tabState.activeId));
   el("chip-back").addEventListener("click", () => void shell.tabs.goBack(tabState.activeId));
+  document.querySelectorAll("[data-external]").forEach((link) => {
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      void shell.openExternal(link.href);
+    });
+  });
 };
 
 // 点状态芯片就切到工具标签
@@ -366,16 +413,15 @@ const bindAuth = () => {
   el("auth-login").addEventListener("click", async () => {
     const button = el("auth-login");
     button.disabled = true;
-    say("已打开授权窗口，请完成登录。");
-    try {
-      renderAuth(await shell.auth.login());
-      say("登录成功。");
-    } catch (error) {
-      await refreshAuth();
-      say(errorText(error, "登录失败。"), true);
-    } finally {
-      button.disabled = false;
+    const status = await refreshAuth({ sync: true, force: true });
+    if (status.loggedIn) {
+      say("已从首页同步登录状态。");
+    } else {
+      const site = tabState.tabs.find((tab) => tab.kind === "site");
+      if (site) void shell.tabs.activate(site.id);
+      say("请在首页登录，完成后客户端会自动同步。");
     }
+    button.disabled = false;
   });
   el("auth-logout").addEventListener("click", async () => {
     try {
@@ -562,7 +608,9 @@ const afterOnboarding = async () => {
   try {
     quotaRules = await shell.auth.getQuotaRules();
   } catch { /* 拿不到就不显示那一段 */ }
-  void refreshAuth();
+  void renderSiteFooter();
+  // 不先画一个假的“未登录”：让隐藏授权跑完后直接落到最终状态
+  void refreshAuth({ sync: true });
   void bindPreferences();
   try {
     renderCampusSettings(await shell.campusNet.getSettings());
@@ -594,7 +642,15 @@ const boot = async () => {
   bindScript();
   bindOffline();
 
-  shell.tabs.onChange((state) => { tabState = state; renderTabs(); });
+  shell.tabs.onChange((state) => {
+    const previousActive = tabState.activeId;
+    tabState = state;
+    renderTabs();
+    const active = tabState.tabs.find((tab) => tab.id === tabState.activeId);
+    if (active?.kind === "tools" && previousActive !== tabState.activeId) {
+      void refreshAuth({ sync: true });
+    }
+  });
   shell.campusNet.onState(renderCampusState);
   // 主站登录后会静默换到新 token，这里不用轮询，等推送即可
   shell.auth.onChange?.(renderAuth);
@@ -607,7 +663,6 @@ const boot = async () => {
   let info;
   try {
     info = await shell.getBootInfo();
-    el("app-meta").textContent = `${info.productName} v${info.version} · ${new URL(info.origin).host}`;
     offline.dataset.armed = info.siteLoaded ? "0" : "1";
     if (!info.siteLoaded && info.siteError) el("offline-reason").textContent = `无法加载主站：${info.siteError}`;
   } catch { /* 主进程还没就绪 */ }

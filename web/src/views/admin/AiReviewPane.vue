@@ -559,7 +559,7 @@ const form = reactive<SiteConfig>({
   postPointsCap: 48,
   replyPointsPerReply: 2,
   replyPointsCap: 48,
-  forumEnabledBonus: 6,
+  forumEnabledBonus: 0,
   anonymousTiers: [],
   reputationLevels: [],
   assistantDailyQuotas: [],

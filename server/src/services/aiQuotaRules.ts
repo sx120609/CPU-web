@@ -26,6 +26,7 @@ export type AiQuotaRules = {
     postPointsCap: number;
     replyPointsPerReply: number;
     replyPointsCap: number;
+    /** @deprecated 论坛已默认开放；固定为 0 仅兼容旧客户端。 */
     forumEnabledBonus: number;
     /** 各项上限相加得到的理论最高分 */
     maxReputation: number;
@@ -55,9 +56,9 @@ export async function getAiQuotaRules(): Promise<AiQuotaRules> {
       postPointsCap: site.postPointsCap,
       replyPointsPerReply: site.replyPointsPerReply,
       replyPointsCap: site.replyPointsCap,
-      forumEnabledBonus: site.forumEnabledBonus,
+      forumEnabledBonus: 0,
       maxReputation:
-        site.accountAgePointsCap + site.postPointsCap + site.replyPointsCap + site.forumEnabledBonus,
+        site.accountAgePointsCap + site.postPointsCap + site.replyPointsCap,
     },
     assistantPointsPerYuan: sponsor.assistantPointsPerYuan,
     nextResetAt: nextCampusAssistantResetAt().toISOString(),

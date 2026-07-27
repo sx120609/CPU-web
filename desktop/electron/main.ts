@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { FetchTextResult, isHostAllowed, parseHttpsUrl, parseWebUrl, UserScript } from "./shared";
 import { asInjectableUrl, asNavigableUrl, asSiteUrl, createAuthNavigationRule, scriptMatchesUrl } from "./policy";
-import { abortOAuthLogin, AuthorizeOpener, ensureOAuthSession, getOAuthStatus, logoutOAuth, startOAuthLogin } from "./oauth";
+import { abortOAuthLogin, AuthorizeOpener, ensureOAuthSession, getOAuthStatus, logoutOAuth, OAuthStatus, startOAuthLogin } from "./oauth";
 import { readOAuthSession } from "./oauth-store";
 import { applyLaunchOnLogin, readPreferences, writePreferences } from "./preferences";
 import { buildScriptConfig } from "./script-config";
@@ -381,17 +381,40 @@ const loadSite = async (contents: Electron.WebContents): Promise<void> => {
 };
 
 // 让工具面板的登录状态跟着主站走：没有 token、已过期、或快到期，都在这里
-// 静默补一个。失败就保持原样，界面上还有手动登录按钮。
-const syncAuth = async (options: { force?: boolean } = {}): Promise<void> => {
+// 静默补一个。并发触发（首页加载 + 工具页打开）共用同一次隐藏授权，避免互相顶掉。
+let authSyncInFlight: Promise<OAuthStatus> | undefined;
+
+const requestAuthSync = async (options: { force?: boolean } = {}): Promise<OAuthStatus> => {
+  if (authSyncInFlight) {
+    const current = await authSyncInFlight;
+    // “刚在首页登录完”是确定性信号。若之前那轮在未登录时失败了，立刻重试，
+    // 不让 5 分钟冷却拖住刚完成登录的用户。
+    if (!options.force || current.loggedIn) return current;
+  }
+  const task = ensureOAuthSession(openAuthorizeWindow, options);
+  authSyncInFlight = task;
   try {
-    const before = await getOAuthStatus();
-    const after = await ensureOAuthSession(openAuthorizeWindow, options);
-    // 状态没变就不必惊动界面
-    if (before.loggedIn !== after.loggedIn || before.expiresAt !== after.expiresAt) {
-      broadcast("oauth:changed", after);
-    }
+    return await task;
+  } finally {
+    if (authSyncInFlight === task) authSyncInFlight = undefined;
+  }
+};
+
+const authStatusChanged = (before: OAuthStatus, after: OAuthStatus): boolean =>
+  before.loggedIn !== after.loggedIn
+  || before.expiresAt !== after.expiresAt
+  || JSON.stringify(before.user) !== JSON.stringify(after.user);
+
+const syncAuth = async (options: { force?: boolean } = {}): Promise<OAuthStatus> => {
+  try {
+    // before 只做差异比较，不触发 userinfo；真正的刷新由 requestAuthSync 完成
+    const before = await getOAuthStatus({ refreshUser: false });
+    const after = await requestAuthSync(options);
+    if (authStatusChanged(before, after)) broadcast("oauth:changed", after);
+    return after;
   } catch (error) {
     console.error("同步登录状态失败", error);
+    return getOAuthStatus({ refreshUser: false });
   }
 };
 
@@ -419,8 +442,8 @@ const createTabManager = (window: BrowserWindow): TabManager => new TabManager(w
   isNavigable: (url) => asNavigableUrl(url) !== undefined,
   registerKind: (webContentsId, kind) => contentsKind.set(webContentsId, kind),
   openExternally,
+  onNavigation: noteSiteNavigation,
   onDidFinishLoad: (contents) => {
-    noteSiteNavigation(contents);
     void injectMatchingScripts(contents);
   },
   onChange: (tabsState, activeId) => broadcast("tabs:changed", { tabs: tabsState, activeId })
@@ -479,7 +502,8 @@ const createTabs = async (window: BrowserWindow): Promise<void> => {
 };
 
 const openLearningPage = async (): Promise<void> => {
-  const auth = await getOAuthStatus();
+  // 这里只判断 token，没必要为了开标签再拉一次资料
+  const auth = await getOAuthStatus({ refreshUser: false });
   if (!auth.loggedIn) throw new Error("请先完成登录");
   await openMainWindow();
   await tabs?.openLearningTab(learningUrl);
@@ -1047,6 +1071,7 @@ if (installMode || uninstallMode) {
       user: session.user
     })));
     ipcMain.handle("oauth:status", () => getOAuthStatus());
+    ipcMain.handle("oauth:sync", (_event, force: unknown) => syncAuth({ force: force === true }));
     // 额度规则由服务端下发：档位与系数都能被后台改，写死在客户端就会变成误导
     ipcMain.handle("oauth:quota-rules", async () => {
       try {
@@ -1059,6 +1084,19 @@ if (installMode || uninstallMode) {
         return payload.data ?? null;
       } catch {
         // 拿不到就不显示"怎么提升"那一段，不影响其余信息
+        return null;
+      }
+    });
+    ipcMain.handle("site:config", async () => {
+      try {
+        const response = await fetch(new URL("/api/site/config", oauthConfig.origin).toString(), {
+          headers: { accept: "application/json" },
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!response.ok) return null;
+        const payload = await response.json() as { data?: unknown };
+        return payload.data ?? null;
+      } catch {
         return null;
       }
     });

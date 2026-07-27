@@ -25,6 +25,7 @@ type TrustConfig = {
   postPointsCap: number;
   replyPointsPerReply: number;
   replyPointsCap: number;
+  /** @deprecated 论坛已默认开放，保留字段只为兼容旧配置与旧客户端。 */
   forumEnabledBonus: number;
   anonymousTiers: AnonymousTierConfig[];
   reputationLevels: ReputationLevelConfig[];
@@ -95,7 +96,9 @@ export function computeUserReputationBreakdown(
   );
   const postPoints = Math.min(config.postPointsCap, Math.max(0, user.postCount || 0) * config.postPointsPerTopic);
   const replyPoints = Math.min(config.replyPointsCap, Math.max(0, user.replyCount || 0) * config.replyPointsPerReply);
-  const forumPoints = user.forumEnabled || user.forumEnabledAt ? config.forumEnabledBonus : 0;
+  // 论坛已对所有用户默认开放，不再把“开通论坛”当成可获取信誉值的行为。
+  // forumPoints 继续返回 0，避免旧客户端读取缺失字段时显示异常。
+  const forumPoints = 0;
   const total = agePoints + postPoints + replyPoints + forumPoints;
   return {
     total,
