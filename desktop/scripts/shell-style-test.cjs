@@ -28,6 +28,11 @@ assert.match(html, /id="auth-login"[^>]*>去首页登录</, "未登录入口应�
 assert.match(renderer, /shell\.auth\.sync\(/, "账号卡片应先静默同步首页登录状态");
 assert.match(html, /id="script-version"/, "学习通助手区域应展示独立脚本版本与更新状态");
 assert.match(renderer, /shell\.script\.getUpdateState\(\)/, "学习通助手区域应读取云端更新状态");
+assert.match(html, /id="script-check-update"/, "学习通助手区域应提供手动检查更新按钮");
+assert.match(renderer, /shell\.script\.checkUpdate\(\)/, "手动检查助手更新应调用独立云端检查");
+assert.match(html, /id="about-check-update"/, "关于区域应提供手动检查客户端更新按钮");
+assert.match(renderer, /shell\.update\.check\(\)/, "手动检查客户端更新应调用跨平台版本检查");
+assert.match(renderer, /runtimePlatform === "darwin"[\s\S]*新版 DMG/, "macOS 手动检查发现新版后应引导下载 DMG");
 
 const htmlClassNames = [...html.matchAll(/\bclass=["']([^"']*)["']/g)]
   .flatMap((match) => match[1].split(/\s+/))

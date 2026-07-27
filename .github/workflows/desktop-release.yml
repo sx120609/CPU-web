@@ -135,25 +135,48 @@ jobs:
           name: desktop-macos-arm64
           path: artifacts/macos
 
+      - name: Prepare stable release asset names
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#desktop-v}"
+          windows_installer="$(find artifacts/windows -maxdepth 1 -name '*.exe' -print -quit)"
+          mac_dmg="$(find artifacts/macos -maxdepth 1 -name '*.dmg' -print -quit)"
+          mac_zip="$(find artifacts/macos -maxdepth 1 -name '*.zip' -print -quit)"
+          mac_architecture="$(find artifacts/macos -maxdepth 1 -name 'mac-arm64-architecture.txt' -print -quit)"
+          test -n "$windows_installer"
+          test -n "$mac_dmg"
+          test -n "$mac_zip"
+          test -n "$mac_architecture"
+          mkdir -p release-assets
+          cp "$windows_installer" "release-assets/CPU-Web-Desktop-${version}-win-x64-installer.exe"
+          cp "$mac_dmg" "release-assets/CPU-Web-Desktop-${version}-mac-arm64.dmg"
+          cp "$mac_zip" "release-assets/CPU-Web-Desktop-${version}-mac-arm64.zip"
+          cp "$mac_architecture" release-assets/mac-arm64-architecture.txt
+          (
+            cd release-assets
+            sha256sum CPU-Web-Desktop-* > SHA256SUMS.txt
+          )
+
       - name: Write release notes
         shell: bash
         run: |
+          version="${GITHUB_REF_NAME#desktop-v}"
           cat > release-notes.md <<'EOF'
-          ## 药大拾间桌面端 0.1.2
+          ## 药大拾间桌面端 __VERSION__
 
           ### 本次更新
 
-          - 学习通脚本更名为「药大拾间·学习通助手」，并在个人中心、课程首页增加课程与章节引导。
-          - 新增学习通助手脚本云端更新：校验版本、大小、SHA-256 与权限声明，失败自动回退到已校验缓存或安装包内置版本。
-          - 桌面客户端下载界面改为 Windows / macOS 分页，按平台给出对应安装包和教程。
-          - 桌面浏览器不再提供 PWA 安装入口，Windows 与 macOS 用户只会看到对应原生客户端，避免误下。
-          - 校园网连接模块优化环境检测与重连节奏，并完善“关于”、贡献者和开源来源说明。
-          - 学习通独立答题 AI 只接收当前题目、选项与图片，不携带站内知识库、用户资料或历史业务数据。
+          - “关于”中新增「检查客户端更新」，不必再等待自动检查。
+          - Windows 发现新版后会直接开始后台下载，下载完成后提示重启安装。
+          - macOS 发现新版后会提供新版 DMG 下载入口，避免误以为未签名客户端可以静默安装。
+          - 学习通助手新增独立的「检查助手更新」，可立即获取服务器上的最新脚本。
+          - 保留启动后及每 6 小时的低频自动检查；手动检查不会改变既有自动更新节奏。
 
           ### 下载
 
-          - **Windows 10/11 64 位**：下载文件名带 `win-x64-安装版.exe` 的安装包。
-          - **Apple Silicon Mac**：下载文件名带 `mac-arm64.dmg` 的安装包，仅支持 M1/M2/M3/M4 及后续 M 系列，不支持 Intel Mac。
+          - **Windows 10/11 64 位**：下载 `CPU-Web-Desktop-__VERSION__-win-x64-installer.exe`。
+          - **Apple Silicon Mac**：下载 `CPU-Web-Desktop-__VERSION__-mac-arm64.dmg`，仅支持 M1/M2/M3/M4 及后续 M 系列，不支持 Intel Mac。
 
           ### 首次安装提示
 
@@ -161,6 +184,7 @@ jobs:
 
           两个平台的 SHA-256 校验文件与 macOS 架构验证记录一并附上。
           EOF
+          sed -i "s/__VERSION__/$version/g" release-notes.md
 
       - name: Create GitHub Release
         env:
@@ -168,8 +192,7 @@ jobs:
         shell: bash
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            artifacts/windows/* \
-            artifacts/macos/* \
+            release-assets/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "药大拾间桌面端 ${GITHUB_REF_NAME#desktop-v}" \
             --notes-file release-notes.md

@@ -422,6 +422,9 @@ button[hidden] { display: none; }
 .campus-schedule-note { margin: -2px 0 12px; }
 
 .about-card .card-head { align-items: flex-start; }
+.about-update-actions { align-items: center; margin: 10px 0 14px; }
+#about-update-status { font-size: 12px; }
+#about-update-status[data-error="true"] { color: var(--cpu-danger); }
 .about-product {
   margin-top: -7px;
   color: var(--cpu-text-secondary);

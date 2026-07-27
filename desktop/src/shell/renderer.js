@@ -13,6 +13,7 @@ const statusLine = el("status-line");
 let tabState = { tabs: [], activeId: "" };
 let scriptConfig = {};
 let pendingReload = false;
+let runtimePlatform = "";
 
 const AUTOMATION = [
   ["autoVideo", "自动播放视频与音频", "视频任务点自动播放并等待完成"],
@@ -508,6 +509,76 @@ const bindScript = () => {
     el(`cfg-${key}`)?.addEventListener("change", (event) => void pushScriptConfig(key, Number(event.target.value)));
   }
   el("cfg-aiEnabled").addEventListener("change", (event) => void pushScriptConfig("aiEnabled", event.target.checked));
+
+  el("script-check-update").addEventListener("click", async () => {
+    const button = el("script-check-update");
+    button.disabled = true;
+    say("正在检查学习通助手更新…");
+    try {
+      const state = await shell.script.checkUpdate();
+      renderScriptUpdateState(state);
+      say(state?.message || "学习通助手更新检查完成。", state?.stage === "error");
+    } catch (error) {
+      say(errorText(error, "无法检查学习通助手更新。"), true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+};
+
+const setAboutUpdateStatus = (message, error = false) => {
+  const status = el("about-update-status");
+  status.textContent = message;
+  status.dataset.error = String(error);
+};
+
+const bindManualUpdate = () => {
+  el("about-check-update").addEventListener("click", async () => {
+    const button = el("about-check-update");
+    button.disabled = true;
+    setAboutUpdateStatus("正在检查客户端更新…");
+    try {
+      const existing = await shell.update.getState();
+      renderUpdateState(existing);
+      if (existing?.stage === "downloading") {
+        setAboutUpdateStatus(`正在下载 v${existing.latest}，无需重复检查`);
+        return;
+      }
+      if (existing?.stage === "ready") {
+        setAboutUpdateStatus(`v${existing.latest} 已下载，重启即可更新`);
+        return;
+      }
+
+      const info = await shell.update.check();
+      if (!info?.latest) {
+        setAboutUpdateStatus("暂时无法取得最新版本信息，请稍后重试", true);
+        return;
+      }
+      if (!info.hasUpdate) {
+        setAboutUpdateStatus(`当前 v${info.current} 已是最新版本`);
+        return;
+      }
+
+      showUpdate(info);
+      if (runtimePlatform === "darwin") {
+        setAboutUpdateStatus(`发现 v${info.latest}，请点击上方“去下载”获取新版 DMG`);
+        return;
+      }
+
+      const state = await shell.update.checkNow();
+      renderUpdateState(state);
+      setAboutUpdateStatus(
+        state?.stage === "error"
+          ? `发现 v${info.latest}，自动下载失败，可点击上方“去下载”`
+          : `发现 v${info.latest}，${state?.message || "已开始后台下载"}`,
+        state?.stage === "error",
+      );
+    } catch (error) {
+      setAboutUpdateStatus(errorText(error, "检查更新失败，请稍后重试"), true);
+    } finally {
+      button.disabled = false;
+    }
+  });
 };
 
 const bindPreferences = async () => {
@@ -654,6 +725,7 @@ const boot = async () => {
   bindCampus();
   bindChaoxing();
   bindScript();
+  bindManualUpdate();
   bindOffline();
 
   shell.tabs.onChange((state) => {
@@ -678,6 +750,7 @@ const boot = async () => {
   let info;
   try {
     info = await shell.getBootInfo();
+    runtimePlatform = info?.platform || "";
     if (info?.version) el("about-version").textContent = `v${info.version}`;
     el("about-product").textContent = info?.platform === "darwin"
       ? "药大拾间 macOS 客户端"

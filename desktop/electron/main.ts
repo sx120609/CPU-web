@@ -191,27 +191,35 @@ const applyUserScriptUpdate = (result: UserScriptUpdateResult): void => {
   });
 };
 
-const checkCloudUserScript = async (): Promise<void> => {
-  setScriptUpdateState({ stage: "checking", message: "正在检查学习通助手脚本更新" });
-  try {
-    const builtInSource = await readFile(resolveAsset("assets", "userscripts", "monkey.js"), "utf8");
-    const current = (await getScripts())[0];
-    if (!current) throw new Error("本地学习通助手脚本不可用");
-    const result = await checkUserScriptUpdate({
-      origin: oauthConfig.origin,
-      cacheDirectory: userScriptCacheDirectory(),
-      currentSource: current.source,
-      validateSource: (source) => validateCloudScriptCapabilities(source, builtInSource),
-    });
-    applyUserScriptUpdate(result);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    setScriptUpdateState({
-      stage: "error",
-      checkedAt: Date.now(),
-      message: `云端脚本检查失败，继续使用 v${scriptUpdateState.activeVersion || "内置版本"}：${message}`,
-    });
-  }
+let cloudScriptUpdateCheck: Promise<ScriptUpdateState> | undefined;
+const checkCloudUserScript = (): Promise<ScriptUpdateState> => {
+  if (cloudScriptUpdateCheck) return cloudScriptUpdateCheck;
+  cloudScriptUpdateCheck = (async () => {
+    setScriptUpdateState({ stage: "checking", message: "正在检查学习通助手脚本更新" });
+    try {
+      const builtInSource = await readFile(resolveAsset("assets", "userscripts", "monkey.js"), "utf8");
+      const current = (await getScripts())[0];
+      if (!current) throw new Error("本地学习通助手脚本不可用");
+      const result = await checkUserScriptUpdate({
+        origin: oauthConfig.origin,
+        cacheDirectory: userScriptCacheDirectory(),
+        currentSource: current.source,
+        validateSource: (source) => validateCloudScriptCapabilities(source, builtInSource),
+      });
+      applyUserScriptUpdate(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setScriptUpdateState({
+        stage: "error",
+        checkedAt: Date.now(),
+        message: `云端脚本检查失败，继续使用 v${scriptUpdateState.activeVersion || "内置版本"}：${message}`,
+      });
+    }
+    return scriptUpdateState;
+  })().finally(() => {
+    cloudScriptUpdateCheck = undefined;
+  });
+  return cloudScriptUpdateCheck;
 };
 
 // @require / @resource 依赖优先走随包分发的本地副本，避免每次启动都从 CDN 取
@@ -1160,6 +1168,7 @@ if (installMode || uninstallMode) {
       entries: scriptActivity.slice(-(typeof limit === "number" ? Math.min(Math.max(limit, 1), 200) : 80))
     }));
     ipcMain.handle("script:get-update-state", () => scriptUpdateState);
+    ipcMain.handle("script:check-update", () => checkCloudUserScript());
 
     ipcMain.handle("userscript:request-ai", async (event, nonce: unknown, body: unknown) => {
       await authorize(event, nonce);
