@@ -1,6 +1,6 @@
 {
   "name": "cpu-web-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "药大拾间桌面端 —— 授权登录后在受控标签页中打开学习通并启用答题辅助",
   "main": "dist/electron/main.js",
   "private": true,
@@ -16,7 +16,8 @@
     "test:smoke": "npm run build && node scripts/smoke-test.mjs",
     "test:package": "node scripts/package-check.cjs",
     "start": "npm run build && electron .",
-    "dist:win": "npm run build && node scripts/prepare-nsis.cjs && electron-builder --win --publish never"
+    "dist:win": "npm run build && node scripts/prepare-nsis.cjs && electron-builder --win --publish never",
+    "dist:mac:arm64": "bash scripts/prepare-macos-icon.sh && npm run build && electron-builder --mac --arm64 --publish never"
   },
   "build": {
     "appId": "cn.lizmt.cpuweb.desktop",
@@ -49,7 +50,34 @@
       "requestExecutionLevel": "user",
       "unpackDirName": "cpu-web-desktop-setup",
       "artifactName": "${productName}-${version}-win-${arch}-安装版.${ext}"
-    }
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.education",
+      "icon": "build/icon.icns",
+      "identity": null,
+      "hardenedRuntime": false,
+      "artifactName": "${productName}-${version}-mac-arm64.${ext}"
+    },
+    "dmg": {
+      "title": "${productName} ${version}",
+      "backgroundColor": "#f4f8f7",
+      "sign": false
+    },
+    "afterPack": "scripts/after-pack.cjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

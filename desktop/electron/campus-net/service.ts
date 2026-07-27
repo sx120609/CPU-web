@@ -4,8 +4,6 @@ import {
   Carrier,
   FAILURES_BEFORE_PAUSE,
   MAX_BACKOFF_MS,
-  MIN_INTERVAL_SEC,
-  MAX_INTERVAL_SEC,
   NETWORK_WATCH_INTERVAL_MS,
   OFF_CAMPUS_INTERVAL_SEC,
   REQUEST_TIMEOUT_MS
@@ -16,6 +14,7 @@ import { campusLog } from "./log";
 import { httpGetText, networkSignature } from "./net";
 import { performLogin } from "./login";
 import { isValidStudentId, ResolvedMode } from "./protocol";
+import { configuredIntervalMs, healthyProbeDelayMs } from "./schedule";
 
 export type CampusNetSettings = {
   enabled: boolean;
@@ -145,8 +144,7 @@ export class CampusNetService {
   }
 
   private intervalMs(): number {
-    const seconds = Math.min(Math.max(this.settings.intervalSec, MIN_INTERVAL_SEC), MAX_INTERVAL_SEC);
-    return seconds * 1000;
+    return configuredIntervalMs(this.settings.intervalSec);
   }
 
   private reschedule(delayMs: number): void {
@@ -175,7 +173,7 @@ export class CampusNetService {
       if (online) {
         if (this.state.status !== "online") campusLog("info", "网络已连通");
         this.emit({ status: "online", message: STATUS_LABEL.online, consecutiveFailures: 0 });
-        this.reschedule(this.intervalMs());
+        this.reschedule(healthyProbeDelayMs(this.settings.intervalSec));
         return;
       }
 

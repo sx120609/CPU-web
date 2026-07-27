@@ -25,6 +25,7 @@ let closeToTray = true;
 let campusNet: CampusNetService | undefined;
 let tabs: TabManager | undefined;
 let siteError = "";
+const supportsAutomaticInstallerUpdates = process.platform === "win32";
 
 // 一次性授权票据：主进程在注入脚本时下发 nonce，脚本每次调用特权桥都要带上。
 // 页面导航或窗口销毁即回收，避免票据长期有效。
@@ -604,8 +605,21 @@ const buildApplicationMenu = (): void => {
   const windowSubmenu: Electron.MenuItemConstructorOptions[] = [{ role: "reload", label: "重新加载" }];
   // 开发者工具只在开发期开放：打包版留着它等于给任意页面一个提权入口
   if (!app.isPackaged) windowSubmenu.push({ role: "toggleDevTools", label: "开发者工具" });
-  Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { label: "应用", submenu: [{ role: "quit", label: "退出" }] },
+  const template: Electron.MenuItemConstructorOptions[] = [
+    ...(process.platform === "darwin"
+      ? [{
+          label: branding.productName,
+          submenu: [
+            { role: "about" as const, label: `关于${branding.productName}` },
+            { type: "separator" as const },
+            { role: "hide" as const, label: "隐藏" },
+            { role: "hideOthers" as const, label: "隐藏其他" },
+            { role: "unhide" as const, label: "全部显示" },
+            { type: "separator" as const },
+            { role: "quit" as const, label: `退出${branding.productName}` }
+          ]
+        }]
+      : [{ label: "应用", submenu: [{ role: "quit" as const, label: "退出" }] }]),
     {
       label: "编辑",
       submenu: [
@@ -619,7 +633,8 @@ const buildApplicationMenu = (): void => {
       ]
     },
     { label: "窗口", submenu: windowSubmenu }
-  ]));
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 };
 
 /* ------------------------------------------------------------- AI 请求体 */
@@ -714,8 +729,10 @@ const applyNavigationPolicy = (contents: Electron.WebContents): void => {
 
 // 安装态与卸载态刻意不参与单实例锁：两者都可能在正式版正开着的时候运行，
 // 抢不到锁会让安装器"双击没反应"。它们也不碰托盘、标签、校园网那一整套。
-const installMode = isInstallLaunch();
-const uninstallMode = process.argv.includes("--uninstall");
+// 自安装器、卸载器与覆盖更新都是 Windows 专属。macOS 的 DMG 由系统负责拖拽安装，
+// 绝不能因为碰巧带了同名参数而走到 PowerShell / 注册表代码。
+const installMode = process.platform === "win32" && isInstallLaunch();
+const uninstallMode = process.platform === "win32" && process.argv.includes("--uninstall");
 
 if (installMode || uninstallMode) {
   app.whenReady().then(async () => {
@@ -747,7 +764,7 @@ if (installMode || uninstallMode) {
     buildApplicationMenu();
 
     // 上次覆盖安装时旧版正开着，那些文件当时只能改名不能删，现在收拾掉
-    void sweepReplacedFiles();
+    if (process.platform === "win32") void sweepReplacedFiles();
 
     // 让主站能识别出这是桌面端，与 CPUWebScheduleApp / CPUWebHarmonyApp 同一套约定
     session.defaultSession.setUserAgent(
@@ -811,9 +828,12 @@ if (installMode || uninstallMode) {
       }
     });
     ipcMain.handle("update:state", () => getUpdateState());
-    ipcMain.handle("update:check-now", () => checkAndDownload());
+    ipcMain.handle("update:check-now", () =>
+      supportsAutomaticInstallerUpdates ? checkAndDownload() : getUpdateState()
+    );
     // 用户点"立即重启更新"：安装器会自己关掉旧版并在装完后拉起新版
     ipcMain.handle("update:install-now", () => {
+      if (!supportsAutomaticInstallerUpdates) return false;
       if (!runPendingUpdate()) return false;
       quitting = true;
       setTimeout(() => app.exit(0), 400);
@@ -1109,7 +1129,10 @@ if (installMode || uninstallMode) {
 
     createTray();
     // 开机自启且勾了静默启动时，只把托盘挂上，不弹窗
-    const silentStart = preferences.startMinimized && process.argv.includes("--startup") && tray !== undefined;
+    const loginSettings = app.getLoginItemSettings();
+    const launchedAtLogin = process.argv.includes("--startup")
+      || (process.platform === "darwin" && loginSettings.wasOpenedAtLogin);
+    const silentStart = preferences.startMinimized && launchedAtLogin && tray !== undefined;
     await openMainWindow({ show: !silentStart });
     const scripts = await getScripts();
     console.log(
@@ -1122,9 +1145,11 @@ if (installMode || uninstallMode) {
     // 启动后延后查一次更新：这批用户不会主动去看有没有新版，
     // 而超星一改版脚本就失效，得让他们知道。
     // 静默下载在后台跑，下好了才提示；失败就等下一轮，不打扰。
-    setTimeout(() => void checkAndDownload(), 8000).unref?.();
-    // 长期开着的实例（这个应用常驻托盘）也要能拿到更新，每 6 小时再探一次
-    setInterval(() => void checkAndDownload(), 6 * 60 * 60 * 1000).unref?.();
+    if (supportsAutomaticInstallerUpdates) {
+      setTimeout(() => void checkAndDownload(), 8000).unref?.();
+      // 长期开着的实例（这个应用常驻托盘）也要能拿到更新，每 6 小时再探一次
+      setInterval(() => void checkAndDownload(), 6 * 60 * 60 * 1000).unref?.();
+    }
   }).catch((error) => {
     // 没有这个 catch 的话，启动期任何异常都会变成被吞掉的 unhandled rejection，
     // 表现为"进程静默退出、没有任何输出"，完全无从排查。
@@ -1136,7 +1161,7 @@ if (installMode || uninstallMode) {
     campusNet?.stop();
     // 退出即更新 —— 这是"重启后自动安装"落地的地方。安装器会先关掉旧版
     // 再覆盖文件，所以必须在这里启动它，等进程真退出了就没机会了。
-    if (hasPendingUpdate()) runPendingUpdate();
+    if (supportsAutomaticInstallerUpdates && hasPendingUpdate()) runPendingUpdate();
   });
 
   app.on("window-all-closed", () => {

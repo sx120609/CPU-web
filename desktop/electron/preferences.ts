@@ -141,6 +141,9 @@ export const applyLaunchOnLogin = (enabled: boolean, startMinimized: boolean): v
   if (!app.isPackaged) return;
   app.setLoginItemSettings({
     openAtLogin: enabled,
-    args: startMinimized ? ["--startup", "--minimized"] : ["--startup"]
+    // args 只在 Windows 登录项中生效；macOS 由 Launch Services 记录隐藏启动意图。
+    ...(process.platform === "darwin"
+      ? { openAsHidden: startMinimized }
+      : { args: startMinimized ? ["--startup", "--minimized"] : ["--startup"] })
   });
 };

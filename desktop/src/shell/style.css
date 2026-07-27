@@ -419,6 +419,60 @@ button[hidden] { display: none; }
   word-break: break-all;
 }
 
+.campus-schedule-note { margin: -2px 0 12px; }
+
+.about-card .card-head { align-items: flex-start; }
+.about-product {
+  margin-top: -7px;
+  color: var(--cpu-text-secondary);
+  font-size: 12px;
+}
+.about-version { flex: none; }
+.about-intro { margin-bottom: 12px; }
+.about-credits {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--cpu-border-soft);
+  border-bottom: 1px solid var(--cpu-border-soft);
+}
+.about-credits > div {
+  display: grid;
+  grid-template-columns: minmax(150px, .72fr) minmax(260px, 1.5fr);
+  gap: 18px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--cpu-border-soft);
+}
+.about-credits > div:last-child { border-bottom: 0; }
+.about-credits strong { font-size: 12.5px; font-weight: 600; }
+.about-credits span {
+  color: var(--cpu-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.about-credits b { color: var(--cpu-text); font-weight: 600; }
+.about-credits a,
+.about-links a { color: var(--cpu-primary); text-decoration: none; }
+.about-credits a:hover,
+.about-links a:hover { text-decoration: underline; }
+.about-note {
+  margin-top: 12px;
+  color: var(--cpu-text-muted);
+  font-size: 11.5px;
+  line-height: 1.65;
+}
+.about-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .about-credits > div { grid-template-columns: 1fr; gap: 3px; }
+}
+
 .status-line { min-height: 20px; font-size: 12.5px; color: var(--cpu-primary-dark); }
 .status-line[data-error="true"] { color: var(--cpu-danger); }
 @media (prefers-color-scheme: dark) { .status-line { color: var(--cpu-primary-light); } }

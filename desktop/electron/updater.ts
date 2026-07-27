@@ -34,7 +34,10 @@ export const checkForUpdate = async (): Promise<UpdateInfo> => {
   const current = app.getVersion();
   const empty: UpdateInfo = { current, latest: "", url: "", hasUpdate: false };
   try {
-    const response = await fetch(new URL("/api/site/downloads/desktop", oauthConfig.origin).toString(), {
+    const endpoint = process.platform === "darwin"
+      ? "/api/site/downloads/desktop-mac"
+      : "/api/site/downloads/desktop";
+    const response = await fetch(new URL(endpoint, oauthConfig.origin).toString(), {
       headers: { accept: "application/json" },
       signal: AbortSignal.timeout(10000)
     });

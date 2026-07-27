@@ -1,0 +1,84 @@
+name: Desktop macOS arm64
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "desktop-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build on Apple Silicon
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: desktop
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit and policy tests
+        run: npm test
+
+      - name: Apple Silicon runtime smoke test
+        run: npm run test:smoke
+
+      - name: Build arm64 DMG and ZIP
+        run: npm run dist:mac:arm64
+
+      - name: Verify architecture, signature, and packaged resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_path="$(find release/mac-arm64 -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$app_path"
+          executable="$app_path/Contents/MacOS/药大拾间桌面端"
+          file "$executable" | tee release/mac-arm64-architecture.txt
+          file "$executable" | grep -q "arm64"
+          if file "$executable" | grep -q "x86_64"; then
+            echo "产物意外包含 Intel 架构" >&2
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          node scripts/package-check.cjs "$app_path/Contents/Resources/app.asar"
+          shasum -a 256 release/*.dmg release/*.zip | tee release/SHA256SUMS.txt
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos-arm64
+          path: |
+            desktop/release/*.dmg
+            desktop/release/*.zip
+            desktop/release/SHA256SUMS.txt
+            desktop/release/mac-arm64-architecture.txt
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Publish tagged build to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: desktop
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            release/*.dmg \
+            release/*.zip \
+            release/SHA256SUMS.txt \
+            release/mac-arm64-architecture.txt \
+            --title "药大拾间桌面端 ${GITHUB_REF_NAME#desktop-v}" \
+            --notes "Apple Silicon（M1/M2/M3/M4 及后续 M 系列）专用。当前未使用 Apple Developer ID 公证，首次打开请按站点教程在“隐私与安全性”中选择“仍要打开”。"

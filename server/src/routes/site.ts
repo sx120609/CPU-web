@@ -5,7 +5,12 @@ import { config } from "../config";
 import { ok } from "../utils/response";
 import { withCache } from "../services/cache";
 import { getFeatures, getSiteFilingNumber, getSiteOrigin, getTopNavigation } from "../services/siteSettings";
-import { hasPdsShare, resolveDesktopDownload } from "../services/pdsShare";
+import {
+  hasPdsShare,
+  parseDesktopVersionFromFileName,
+  resolveDesktopDownload,
+  resolveMacDesktopDownload,
+} from "../services/pdsShare";
 import { getAiQuotaRules } from "../services/aiQuotaRules";
 
 export const siteRouter = Router();
@@ -54,7 +59,9 @@ siteRouter.get("/downloads/desktop", async (req, res) => {
       ok(res, {
         available: true,
         url: new URL("/api/site/downloads/desktop-app", origin).toString(),
-        version: config.desktopAppVersion,
+        // PDS 固定文件夹会随着上传自动选择最新安装包，版本也应跟着文件名走；
+        // 环境变量只作为需要手工覆盖文件名时的最高优先级配置。
+        version: config.desktopAppVersion || parseDesktopVersionFromFileName(file.name),
         password: "",
         direct: true,
         fileName: file.name,
@@ -83,6 +90,38 @@ siteRouter.get("/downloads/desktop", async (req, res) => {
   });
 });
 
+/** Apple Silicon 专用 macOS 客户端；未上传 DMG 时独立返回 unavailable，不影响 Windows。 */
+siteRouter.get("/downloads/desktop-mac", async (req, res) => {
+  if (hasPdsShare()) {
+    try {
+      const file = await resolveMacDesktopDownload();
+      const origin = getSiteOrigin() || `${req.protocol}://${req.get("host") ?? ""}`;
+      ok(res, {
+        available: true,
+        url: new URL("/api/site/downloads/desktop-mac-app", origin).toString(),
+        version: config.desktopAppVersion || parseDesktopVersionFromFileName(file.name),
+        password: "",
+        direct: true,
+        fileName: file.name,
+        size: file.size,
+        contentHash: file.contentHash,
+        contentHashName: file.contentHashName,
+      });
+      return;
+    } catch (error) {
+      console.error("PDS 分享里的 macOS 安装包解析失败", error);
+    }
+  }
+
+  ok(res, {
+    available: false,
+    url: "",
+    version: "",
+    password: "",
+    direct: false,
+  });
+});
+
 /**
  * 下载跳转。PDS 给的地址最长只有 32 小时，所以不能把它写死在任何地方 ——
  * 每次点击都在这里现换一个再 302 过去，对外始终是这一条稳定链接。
@@ -107,6 +146,22 @@ siteRouter.get("/downloads/desktop-app", async (_req, res) => {
     return;
   }
   res.redirect(302, url);
+});
+
+/** macOS DMG 的稳定跳转入口；临时 PDS 地址只在请求时生成。 */
+siteRouter.get("/downloads/desktop-mac-app", async (_req, res) => {
+  if (hasPdsShare()) {
+    try {
+      const file = await resolveMacDesktopDownload();
+      res.setHeader("Cache-Control", "no-store");
+      res.redirect(302, file.url);
+      return;
+    } catch (error) {
+      console.error("PDS 分享里的 macOS 安装包解析失败", error);
+    }
+  }
+
+  res.status(404).json({ code: 404, message: "macOS 客户端尚未发布" });
 });
 
 /**

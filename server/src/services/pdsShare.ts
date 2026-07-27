@@ -124,6 +124,11 @@ export type PdsEntry = {
   updated_at?: string;
 };
 
+/** 从标准桌面安装包文件名中提取版本号，供更新接口自动下发。 */
+export function parseDesktopVersionFromFileName(fileName: string): string {
+  return /-([0-9]+(?:\.[0-9]+){1,3})-(?:win|mac(?:os)?)(?:-|_)/i.exec(fileName)?.[1] ?? "";
+}
+
 type ListResponse = {
   items?: PdsEntry[];
   next_marker?: string;
@@ -223,50 +228,71 @@ const getDownloadUrl = async (ref: ShareRef, password: string, file: PdsFile): P
   };
 };
 
-/** 从分享里挑出桌面端安装包：只认 .exe，同名多个时取最后更新的那个 */
+/** 从分享里挑出 Windows 安装包：只认 .exe，同名多个时取最后更新的那个 */
 export const pickInstaller = (files: PdsFile[]): PdsFile | null => {
   const candidates = files.filter((file) => /\.exe$/i.test(file.name));
   if (candidates.length === 0) return null;
   return candidates.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))[0];
 };
 
+/** macOS 只发布 Apple Silicon 版；优先 DMG，不把通用 ZIP 误当成给小白的主下载。 */
+export const pickMacInstaller = (files: PdsFile[]): PdsFile | null => {
+  const candidates = files.filter((file) =>
+    /(?:mac|macos)[-_]?arm64.*\.dmg$/i.test(file.name)
+    || /\.dmg$/i.test(file.name)
+  );
+  if (candidates.length === 0) return null;
+  return candidates.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))[0];
+};
+
 // 解析结果整体缓存一小段时间：下载页与下载跳转是连着点的，没必要为同一次
 // 用户操作把三个 PDS 接口各打一遍。缓存必须短于地址本身的有效期。
-let downloadCache: { value: PdsDownload; expiresAt: number } | null = null;
-let inFlight: Promise<PdsDownload> | null = null;
+type DesktopPlatform = "windows" | "mac";
+const downloadCache = new Map<DesktopPlatform, { value: PdsDownload; expiresAt: number }>();
+const inFlight = new Map<DesktopPlatform, Promise<PdsDownload>>();
 
 const CACHE_MS = 10 * 60 * 1000;
 
 /**
- * 取桌面端安装包的当前下载地址。失败时抛错，调用方决定怎么降级。
+ * 取对应平台安装包的当前下载地址。失败时抛错，调用方决定怎么降级。
  * 并发请求共用同一次解析（inFlight），避免下载高峰把 PDS 打满。
  */
-export const resolveDesktopDownload = async (): Promise<PdsDownload> => {
-  if (downloadCache && downloadCache.expiresAt > Date.now()) return downloadCache.value;
-  if (inFlight) return inFlight;
+const resolvePlatformDownload = async (platform: DesktopPlatform): Promise<PdsDownload> => {
+  const cached = downloadCache.get(platform);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const pending = inFlight.get(platform);
+  if (pending) return pending;
 
   const ref = parseShareUrl(config.desktopPdsShareUrl);
   if (!ref) throw new Error("未配置有效的 PDS 分享链接");
 
-  inFlight = (async () => {
+  const task = (async () => {
     const files = await listShareFiles(ref, config.desktopPdsSharePassword);
-    const installer = pickInstaller(files);
-    if (!installer) throw new Error("PDS 分享里没有找到 .exe 安装包");
+    const installer = platform === "mac" ? pickMacInstaller(files) : pickInstaller(files);
+    if (!installer) {
+      throw new Error(platform === "mac"
+        ? "PDS 分享里没有找到 Apple Silicon DMG"
+        : "PDS 分享里没有找到 .exe 安装包");
+    }
     const download = await getDownloadUrl(ref, config.desktopPdsSharePassword, installer);
-    downloadCache = {
+    downloadCache.set(platform, {
       value: download,
       // 地址快过期时不再复用缓存
       expiresAt: Math.min(Date.now() + CACHE_MS, download.expiresAt - 60_000),
-    };
+    });
     return download;
   })();
+  inFlight.set(platform, task);
 
   try {
-    return await inFlight;
+    return await task;
   } finally {
-    inFlight = null;
+    if (inFlight.get(platform) === task) inFlight.delete(platform);
   }
 };
+
+export const resolveDesktopDownload = (): Promise<PdsDownload> => resolvePlatformDownload("windows");
+export const resolveMacDesktopDownload = (): Promise<PdsDownload> => resolvePlatformDownload("mac");
 
 /** 配置了 PDS 分享就返回 true，站点据此决定是走直链还是老的网盘提取码 */
 export const hasPdsShare = (): boolean => parseShareUrl(config.desktopPdsShareUrl) !== null;

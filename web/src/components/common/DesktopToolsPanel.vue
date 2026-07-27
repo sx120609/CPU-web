@@ -4,7 +4,7 @@
       <div class="tools-title">
         <el-icon><Monitor /></el-icon>
         <div>
-          <strong>PC 小工具</strong>
+          <strong>桌面小工具</strong>
           <small>需要在桌面端中使用</small>
         </div>
       </div>
@@ -31,12 +31,15 @@
         </li>
       </ul>
 
+      <div v-if="download.available || macDownload.available" class="tools-actions">
+        <el-button v-if="download.available" type="primary" :icon="Download" @click="openDownload(download)">
+          {{ download.password ? "前往网盘下载" : "下载 Windows 客户端" }}
+        </el-button>
+        <el-button v-if="macDownload.available" plain type="primary" :icon="Download" @click="openDownload(macDownload)">
+          下载 macOS 客户端（M 芯片）
+        </el-button>
+      </div>
       <template v-if="download.available">
-        <div class="tools-actions">
-          <el-button type="primary" :icon="Download" @click="openDownload">
-            {{ download.password ? "前往网盘下载" : "下载 Windows 客户端" }}
-          </el-button>
-        </div>
         <!-- 网盘分享页要先输提取码，不给出来用户就卡在那一步 -->
         <div v-if="download.password" class="pass-row">
           <span>提取码</span>
@@ -46,7 +49,13 @@
           </el-button>
         </div>
       </template>
-      <el-alert v-else type="info" :closable="false" show-icon title="客户端正在打包中，稍后开放下载" />
+      <el-alert
+        v-if="!download.available && !macDownload.available"
+        type="info"
+        :closable="false"
+        show-icon
+        title="客户端正在打包中，稍后开放下载"
+      />
 
       <!-- 安装包没有代码签名，所有人都会撞到这个提示，先讲清楚免得以为是病毒 -->
       <div class="install-tip">
@@ -54,7 +63,17 @@
         <p>这是因为安装包没有购买代码签名证书，不是安全问题。点提示框里的「更多信息」，再点「仍要运行」即可。</p>
       </div>
 
-      <p class="tools-foot">支持 Windows 10 / 11（64 位）。安装后用当前账号授权登录即可。</p>
+      <div class="install-tip mac-tip">
+        <strong>macOS 首次打开被拦截怎么办？</strong>
+        <ol>
+          <li>打开 DMG，把「药大拾间桌面端」拖入「应用程序」，然后先正常双击一次。</li>
+          <li>若系统提示无法验证开发者，打开「系统设置 → 隐私与安全性」，向下找到刚被阻止的应用。</li>
+          <li>点「仍要打开」，用密码或 Touch ID 确认，再点一次「打开」。这个按钮只有尝试打开后才会出现。</li>
+        </ol>
+        <p>也可在「应用程序」里右键应用，选择「打开」并再次确认。无需关闭系统安全保护，也不需要运行终端绕过命令。</p>
+      </div>
+
+      <p class="tools-foot">支持 Windows 10 / 11（64 位）与 Apple Silicon（M1 及后续 M 系列）Mac。macOS 暂不支持 Intel 机型。</p>
     </div>
   </section>
 </template>
@@ -62,17 +81,18 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { Close, Connection, CopyDocument, Download, Monitor, Notebook } from "@element-plus/icons-vue";
-import { getDesktopDownload, type DesktopDownloadInfo } from "@/api/site";
+import { getDesktopDownload, getMacDesktopDownload, type DesktopDownloadInfo } from "@/api/site";
 
 const emit = defineEmits<{ (event: "close"): void }>();
 
 // 只在网页里出现：桌面端把这些工具做成了应用自己的标签页，
 // MainLayout 那边已经把这个悬浮球关掉了。
 const download = ref<DesktopDownloadInfo>({ available: false, url: "", version: "", password: "" });
+const macDownload = ref<DesktopDownloadInfo>({ available: false, url: "", version: "", password: "" });
 const copied = ref(false);
 
-function openDownload() {
-  if (download.value.url) window.open(download.value.url, "_blank", "noopener");
+function openDownload(target: DesktopDownloadInfo) {
+  if (target.url) window.open(target.url, "_blank", "noopener");
 }
 
 async function copyPassword() {
@@ -87,7 +107,10 @@ async function copyPassword() {
 
 onMounted(async () => {
   // 下载信息由站点设置下发，没配置就显示"正在打包中"，不给死链接
-  download.value = await getDesktopDownload();
+  [download.value, macDownload.value] = await Promise.all([
+    getDesktopDownload(),
+    getMacDesktopDownload(),
+  ]);
 });
 </script>
 
@@ -183,6 +206,7 @@ onMounted(async () => {
 
 .tools-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
@@ -225,6 +249,19 @@ onMounted(async () => {
     font-size: 12.5px;
     line-height: 1.65;
   }
+
+  ol {
+    margin: 7px 0 0;
+    padding-left: 20px;
+    color: var(--cpu-text-secondary);
+    font-size: 12.5px;
+    line-height: 1.7;
+  }
+}
+
+.mac-tip {
+  border-color: color-mix(in srgb, var(--cpu-primary) 30%, var(--cpu-border-soft));
+  background: color-mix(in srgb, var(--cpu-primary) 6%, var(--cpu-surface));
 }
 
 .tools-foot {

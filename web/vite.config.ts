@@ -5,17 +5,18 @@ import Components from "unplugin-vue-components/vite";
 import { ElementPlusResolver } from "unplugin-vue-components/resolvers";
 import path from "node:path";
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [
     vue(),
     AutoImport({
       imports: ["vue", "vue-router", "pinia"],
       resolvers: [ElementPlusResolver()],
-      dts: "auto-imports.d.ts",
+      // 只在开发服务器维护声明文件；生产构建并行运行时不应和 dev server 抢写同一文件。
+      dts: command === "serve" ? "auto-imports.d.ts" : false,
     }),
     Components({
       resolvers: [ElementPlusResolver()],
-      dts: "components.d.ts",
+      dts: command === "serve" ? "components.d.ts" : false,
     }),
   ],
   resolve: {
@@ -78,4 +79,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

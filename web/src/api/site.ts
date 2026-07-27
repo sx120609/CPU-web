@@ -48,6 +48,7 @@ export const siteApi = {
   config: () => request.get<PublicSiteConfig>("/site/config"),
   navigation: () => request.get<TopNavigationItem[]>("/site/navigation", undefined, { suppressErrorMessage: true }),
   desktopDownload: () => request.get<DesktopDownloadInfo>("/site/downloads/desktop", undefined, { suppressErrorMessage: true }),
+  macDesktopDownload: () => request.get<DesktopDownloadInfo>("/site/downloads/desktop-mac", undefined, { suppressErrorMessage: true }),
 };
 
 /** 桌面端安装包信息。尚未发布时 available 为 false，调用方据此显示"正在打包中"。 */
@@ -55,6 +56,17 @@ export async function getDesktopDownload(): Promise<DesktopDownloadInfo> {
   const empty: DesktopDownloadInfo = { available: false, url: "", version: "", password: "" };
   try {
     const info = await siteApi.desktopDownload();
+    return info.available ? info : empty;
+  } catch {
+    return empty;
+  }
+}
+
+/** Apple Silicon（M 系列）macOS 客户端安装包信息。 */
+export async function getMacDesktopDownload(): Promise<DesktopDownloadInfo> {
+  const empty: DesktopDownloadInfo = { available: false, url: "", version: "", password: "" };
+  try {
+    const info = await siteApi.macDesktopDownload();
     return info.available ? info : empty;
   } catch {
     return empty;

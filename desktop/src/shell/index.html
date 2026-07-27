@@ -146,10 +146,11 @@
                 </select>
               </label>
               <label class="field">
-                <span>检测间隔（秒）</span>
+                <span>重连基础间隔（秒）</span>
                 <input type="number" id="campus-interval" min="5" max="600" step="5" />
               </label>
             </div>
+            <p class="muted small campus-schedule-note">稳定在线时每 30 秒轻量检测；掉线后按基础间隔恢复，换网、唤醒或解锁会立即重检。</p>
             <div class="grid">
               <label class="field">
                 <span>学号</span>
@@ -252,6 +253,36 @@
             <span class="switch-track"><span class="switch-thumb"></span></span>
             <span class="switch-text"><strong>关闭窗口时收进托盘</strong><small>后台继续保持校园网连接与刷题</small></span>
           </label>
+        </section>
+
+        <section class="card about-card">
+          <div class="card-head">
+            <div>
+              <h2>关于</h2>
+              <p class="about-product" id="about-product">药大拾间桌面客户端</p>
+            </div>
+            <span class="pill about-version" id="about-version">v—</span>
+          </div>
+          <p class="muted about-intro">把校园服务、校园网连接和学习通辅助收进一个窗口，由药大拾间持续维护。</p>
+          <div class="about-credits">
+            <div>
+              <strong>学习通助手与客户端初版</strong>
+              <span>由 <b>Mom0ka27</b> 贡献开发</span>
+            </div>
+            <div>
+              <strong>CPU 网络连接助手</strong>
+              <span>基于真红（SoraNoNeko）的 <a href="https://github.com/SoraNoNeko/cpu_net" data-external>cpu_net</a> 项目修改</span>
+            </div>
+            <div>
+              <strong>学习通辅助脚本</strong>
+              <span>基于 shushoujiu 的满分助手修改并获授权，第三方组件保留各自署名与许可</span>
+            </div>
+          </div>
+          <p class="about-note">本客户端并非学校官方产品。代码以 AGPL-3.0-or-later 开源，账号密码仅按功能需要在本机系统安全存储中加密保存。</p>
+          <div class="about-links">
+            <a href="https://github.com/sx120609/CPU-web" data-external>查看源代码</a>
+            <a href="https://github.com/sx120609/CPU-web/blob/main/desktop/THIRD_PARTY_NOTICES.md" data-external>第三方组件声明</a>
+          </div>
         </section>
 
         <p class="status-line" id="status-line" role="status"></p>

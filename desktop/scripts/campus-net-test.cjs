@@ -11,8 +11,10 @@ const path = require("node:path");
 
 const dist = path.join(__dirname, "..", "dist", "electron", "campus-net");
 let protocol;
+let schedule;
 try {
   protocol = require(path.join(dist, "protocol.js"));
+  schedule = require(path.join(dist, "schedule.js"));
 } catch (error) {
   console.error("找不到编译产物，请先执行 npm run build。");
   console.error(error.message);
@@ -20,6 +22,7 @@ try {
 }
 
 const { buildLoginUrl, parseJsonp, parseLoginResponse, redactUrl, resolveMode, isValidStudentId } = protocol;
+const { configuredIntervalMs, healthyProbeDelayMs } = schedule;
 const HINTS = ["密码", "账号", "欠费"];
 
 let passed = 0;
@@ -177,6 +180,20 @@ check("IP 启发式本身判不出「不在校园网」——所以必须有网�
   for (const ip of ["198.18.0.1", "172.20.10.3", "100.64.1.2"]) {
     assert.ok(["campus", "pppoe"].includes(resolveMode("auto", ip)), `${ip} 仍被判成某种校内接入`);
   }
+});
+
+/* -------------------------------------------------------- 检测调度 */
+
+check("稳定在线后至少 30 秒再探测，降低后台网络唤醒", () => {
+  assert.equal(healthyProbeDelayMs(5), 30_000);
+  assert.equal(healthyProbeDelayMs(15), 30_000);
+  assert.equal(healthyProbeDelayMs(45), 45_000, "用户主动设置的更长间隔应当保留");
+});
+
+check("掉线重连仍按用户基础间隔执行并限制在安全范围内", () => {
+  assert.equal(configuredIntervalMs(1), 5_000);
+  assert.equal(configuredIntervalMs(15), 15_000);
+  assert.equal(configuredIntervalMs(900), 600_000);
 });
 
 /* -------------------------------------------------------- 学号校验 */

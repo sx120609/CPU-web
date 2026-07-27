@@ -69,11 +69,21 @@ AI 请求体按服务端 `/api/oauth/v1/responses` 接受的字段做严格白�
 
 轮询之外还有两个即时信号：`powerMonitor` 的 `resume` / `unlock-screen`，以及网卡地址指纹变化（纯本地读取 `os.networkInterfaces()`，不发请求）。从校外走进校园、切换 WiFi、插拔网线都会立刻触发一次检测，不用等下一个周期。
 
+轮询本身采用分级调度：网络稳定连通后至少间隔 30 秒再做一次轻量探测；认证成功后先按用户设置的基础间隔快速复核；认证失败继续指数退避；确认在校外则放宽到 2 分钟。这样不会让常驻后台的客户端每几秒持续唤醒网络，同时保留校园网掉线后的恢复速度。
+
 ### 凭据与退避
 
 学号密码走 `safeStorage`，存在与设置分开的独立文件，只在发起认证时解密，从不进渲染进程 —— `campus:state` 只返回 `hasCredential` 与学号。日志脱敏无条件生效。
 
 连续认证失败会指数退避（带抖动），达到上限后进入暂停状态等待人工处理。服务端返回的消息若指向账号/密码/欠费，**立即**暂停而不等计数 —— 用错误密码每隔几秒撞一次学校的认证服务器，有被封锁的实际风险。
+
+## 贡献与上游
+
+- 学习通助手集成与客户端初版由 **Mom0ka27** 贡献开发。
+- CPU 网络连接助手基于真红（SoraNoNeko）的 [cpu_net](https://github.com/SoraNoNeko/cpu_net) 项目修改，并针对 Electron、安全存储、日志脱敏与自动重连做了适配。
+- 内置学习通辅助脚本基于 shushoujiu 的满分助手修改并获授权；完整来源、修改内容和运行时依赖见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+客户端工具页的“关于”区域会同步展示当前版本、上述贡献来源、开源许可和非学校官方声明。
 
 ## 学习辅助脚本
 
@@ -208,19 +218,48 @@ CSC_KEY_PASSWORD=证书密码
 
 想消掉这个提示需要代码签名证书。除传统 OV/EV 证书外，个人开发者可考虑 Azure Trusted Signing（按月计费，需要可验证的开发历史）或 SignPath 的开源项目免费计划。
 
+## macOS（仅 Apple Silicon）
+
+macOS 只构建 `arm64`，支持 M1/M2/M3/M4 及后续 M 系列芯片，不提供 Intel 或 universal 包。Windows 上无法可靠地产出并验证 Mac 应用，因此发布流水线固定使用 GitHub Actions 的 Apple Silicon `macos-15` runner：
+
+```bash
+npm ci
+npm test
+npm run test:smoke
+npm run dist:mac:arm64
+```
+
+流水线会生成 ICNS 图标、构建 DMG 与 ZIP、检查主可执行文件只有 `arm64`、验证 ad-hoc 签名、检查 ASAR 必需资源，并输出 SHA-256 校验文件。校园网协议本身使用跨平台的 Node `http` / `dgram` / `os.networkInterfaces()`；Windows 自安装器、卸载器、注册表与 EXE 静默更新则在主进程入口被平台判断隔离。由于目前没有校园网内的实体 Mac，CI 能证明应用在 M 芯片机器上可以启动和打包，但不能代替真实 Wi-Fi、睡眠唤醒、切网与校园网认证测试。
+
+### 没有 Apple Developer ID 时首次打开
+
+当前产物只有 ad-hoc 完整性签名，没有 Apple Developer ID 签名与 Apple 公证，因此从浏览器下载后会被 Gatekeeper 标记为“无法验证开发者”。小白用户按下面做即可：
+
+1. 打开 DMG，把“药大拾间桌面端”拖入“应用程序”。
+2. 先正常双击应用一次；看到拦截提示后关闭提示。
+3. 打开“系统设置 → 隐私与安全性”，向下滚动到“安全性”区域。
+4. 找到“已阻止使用‘药大拾间桌面端’”一项，点击“仍要打开”。
+5. 使用登录密码或 Touch ID 确认，再点一次“打开”。后续启动不会重复这套流程。
+
+“仍要打开”只会在刚刚尝试过启动后出现。另一条更短的路径是：在“应用程序”里右键应用 → “打开” → 再确认“打开”。**不要关闭 Gatekeeper，也不需要运行 `xattr`、`spctl` 等终端绕过命令。**
+
+要彻底消除这一步，需要加入 Apple Developer Program，使用 Developer ID Application 证书签名，再提交 Apple notarization；ad-hoc 签名不能替代它。
+
 ## 更新提示
 
-客户端启动 8 秒后向主站查一次 `GET /api/site/downloads/desktop`，把返回的 `version` 与本地版本按段做数值比较。配置 PDS 分享后，客户端会在后台静默下载，按服务端下发的内容哈希验真，下载完成后提示；退出应用时自动安装，也可在工具页立即重启更新。
+Windows 客户端启动 8 秒后向主站查一次 `GET /api/site/downloads/desktop`，把返回的 `version` 与本地版本按段做数值比较。配置 PDS 分享后，客户端会在后台静默下载，按服务端下发的内容哈希验真，下载完成后提示；退出应用时自动安装，也可在工具页立即重启更新。
 
-推荐长期分享一个固定文件夹，发新版时只需把新安装包上传到文件夹内。服务端会递归目录、选择最后更新的 `.exe`，每次下载请求再临时换取直链，因此 PDS 临时地址变化不会影响站点入口。
+macOS 客户端向 `GET /api/site/downloads/desktop-mac` 检查版本，但当前只提示并打开 DMG 下载页，不在后台替换应用。没有 Developer ID 与公证时做静默自更新会把 Gatekeeper、完整性验证和应用退出时机混在一起，故意不启用。
+
+推荐长期分享一个固定文件夹，内部按 `Windows` / `macOS` 分目录。发新版时只需上传新包：服务端会递归目录，为 Windows 选择最后更新的 `.exe`，为 Mac 选择最后更新的 Apple Silicon `.dmg`；每次下载请求再临时换取直链，因此 PDS 临时地址变化不会影响站点入口。
 
 ```env
 DESKTOP_PDS_SHARE_URL=https://你的企业版域名.apps.aliyunfile.com/disk/s/分享ID?domainId=你的企业版域名
 DESKTOP_PDS_SHARE_PASSWORD=
-DESKTOP_APP_VERSION=x.y.z
+DESKTOP_APP_VERSION=
 ```
 
-未配置 PDS 时仍会回落到 `DESKTOP_APP_DOWNLOAD_URL` 与 `DESKTOP_APP_DOWNLOAD_PASSWORD`。`DESKTOP_APP_VERSION` 留空时不会提示更新（无从比较），只会让下载按钮可用。
+PDS 模式会从标准文件名（如 `药大拾间桌面端-0.1.1-win-x64-安装版.exe`、`药大拾间桌面端-0.1.1-mac-arm64.dmg`）自动提取版本号；`DESKTOP_APP_VERSION` 仅在需要覆盖文件名版本时填写。未配置 PDS 时 Windows 仍会回落到 `DESKTOP_APP_DOWNLOAD_URL` 与 `DESKTOP_APP_DOWNLOAD_PASSWORD`，macOS 则保持“尚未发布”，避免错发 Windows 安装包。
 
 ## 配置
 

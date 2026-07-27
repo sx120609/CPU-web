@@ -59,6 +59,10 @@ export const DEFAULT_INTERVAL_SEC = 15;
 export const MIN_INTERVAL_SEC = 5;
 export const MAX_INTERVAL_SEC = 600;
 
+// 网络已经稳定连通时不需要继续按重连频率探测。网卡变化、系统唤醒和解锁都会
+// 立即触发检测，所以 30 秒足以兼顾校园网会话掉线后的恢复速度与后台资源占用。
+export const HEALTHY_PROBE_INTERVAL_SEC = 30;
+
 // 判定为不在校园网之后的轮询间隔。在家用的人不该每 15 秒被探一次，
 // 真正把人带回校园网的是换网络这件事，那个由网卡签名变化即时触发。
 export const OFF_CAMPUS_INTERVAL_SEC = 120;

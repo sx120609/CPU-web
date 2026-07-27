@@ -19,6 +19,11 @@ assert.match(html, /class="update-track"/, "更新进度条必须使用专属 up
 assert.match(css, /\.switch-track\s*\{[\s\S]*?height:\s*22px/, "开关轨道高度应保持为 22px");
 assert.match(css, /\.update-track\s*\{[\s\S]*?height:\s*5px/, "更新进度条高度应保持为 5px");
 assert.match(html, /© 2026 药大拾间客户端 · 校园互助与服务平台/, "客户端页脚应复用主站版权文案");
+assert.match(html, /Mom0ka27/, "关于区域应标注客户端初版贡献者");
+assert.match(html, /SoraNoNeko\/cpu_net/, "关于区域应保留 CPU 网络连接助手上游来源");
+assert.match(html, /shushoujiu/, "关于区域应保留学习通辅助脚本原作者署名");
+assert.match(renderer, /about-version[\s\S]*info\.version/, "关于区域应展示当前客户端版本");
+assert.match(renderer, /about-product[\s\S]*info\?\.platform === "darwin"/, "关于区域应按平台展示客户端名称");
 assert.match(html, /id="auth-login"[^>]*>去首页登录</, "未登录入口应回到首页这一套登录状态");
 assert.match(renderer, /shell\.auth\.sync\(/, "账号卡片应先静默同步首页登录状态");
 

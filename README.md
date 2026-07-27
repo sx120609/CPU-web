@@ -7,7 +7,7 @@
 - `voicehub/`：药苑之声 Nuxt 全栈子应用（完整保留 VoiceHub 点歌系统）
 - `android/`：Android WebView 壳与桌面课表小组件
 - `harmony/`：HarmonyOS WebView 壳与 JS Bridge
-- `desktop/`：Windows 桌面端（Electron 单窗口标签页，OAuth2 登录 + 校园网自动连接 + 学习通标签页）
+- `desktop/`：Windows / Apple Silicon macOS 桌面端（Electron 单窗口标签页，OAuth2 登录 + 校园网自动连接 + 学习通标签页）
 
 仓库地址：[https://github.com/sx120609/CPU-web](https://github.com/sx120609/CPU-web)
 
@@ -480,9 +480,9 @@ Content-Type: application/json
 | `ONEDRIVE_CN_ROOT_PATH` | 空 | 远端根目录下的存储子路径，例如 `cpu-web-media` |
 | `DESKTOP_APP_DOWNLOAD_URL` | 空 | PDS 解析失败时的可选备用下载页，必须是 https。留空时不会再回落到旧蓝奏云链接 |
 | `DESKTOP_APP_DOWNLOAD_PASSWORD` | 空 | 备用网盘分享页的提取码；PDS 直链模式下不显示 |
-| `DESKTOP_PDS_SHARE_URL` | Windows 文件夹分享 | 阿里云盘企业版（PDS）文件或文件夹分享链接。默认使用固定文件夹；服务端递归选择最后更新的 `.exe`，每次请求临时换取直链并由本站稳定地址 302 跳转 |
+| `DESKTOP_PDS_SHARE_URL` | 桌面端固定文件夹分享 | 阿里云盘企业版（PDS）文件夹分享链接。建议内含 `Windows` / `macOS` 子目录；服务端递归选择最后更新的 `.exe` 与 Apple Silicon `.dmg`，每次请求临时换取直链并由本站稳定地址 302 跳转 |
 | `DESKTOP_PDS_SHARE_PASSWORD` | 空 | PDS 分享提取码；无提取码时留空 |
-| `DESKTOP_APP_VERSION` | 空 | 桌面端安装包版本号，仅用于展示 |
+| `DESKTOP_APP_VERSION` | 空 | 桌面端安装包版本号的可选显式覆盖；Windows 与 macOS 的 PDS 标准文件名会自动提取版本 |
 | `PG_DUMP_BIN` | `pg_dump` | 后台数据库备份使用的命令路径 |
 
 补充说明：

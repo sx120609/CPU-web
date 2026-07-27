@@ -663,6 +663,10 @@ const boot = async () => {
   let info;
   try {
     info = await shell.getBootInfo();
+    if (info?.version) el("about-version").textContent = `v${info.version}`;
+    el("about-product").textContent = info?.platform === "darwin"
+      ? "药大拾间 macOS 客户端"
+      : "药大拾间 Windows 客户端";
     offline.dataset.armed = info.siteLoaded ? "0" : "1";
     if (!info.siteLoaded && info.siteError) el("offline-reason").textContent = `无法加载主站：${info.siteError}`;
   } catch { /* 主进程还没就绪 */ }
