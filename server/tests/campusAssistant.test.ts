@@ -48,6 +48,11 @@ import {
   detectCampusAssistantAcademicIntents,
   loadCampusAssistantAcademicContext,
 } from "../src/services/campusAssistantAcademic";
+import {
+  buildCampusAssistantSiteFallback,
+  detectCampusAssistantSiteIntents,
+} from "../src/services/campusAssistantSiteData";
+import { mergeAssistantHistorySessions } from "../../web/src/utils/assistantHistorySync";
 
 const enabledFeatures = {
   forum: true,
@@ -67,6 +72,8 @@ test("拾间 AI 只在用户明确查询本人数据时调用教务工具", () =
   assert.deepEqual(detectCampusAssistantAcademicIntents("查一下我今天的课表"), ["schedule"]);
   assert.deepEqual(detectCampusAssistantAcademicIntents("查询我的最新成绩"), ["grades"]);
   assert.deepEqual(detectCampusAssistantAcademicIntents("查成绩"), ["grades"]);
+  assert.deepEqual(detectCampusAssistantAcademicIntents("我的微生物多少分"), ["grades"]);
+  assert.deepEqual(detectCampusAssistantAcademicIntents("药理学考了多少分？"), ["grades"]);
   assert.deepEqual(detectCampusAssistantAcademicIntents("看看我的考试安排"), ["exams"]);
   assert.deepEqual(detectCampusAssistantAcademicIntents("我还差多少学分"), ["progress"]);
   assert.deepEqual(detectCampusAssistantAcademicIntents("成绩在哪里查？"), []);
@@ -113,6 +120,107 @@ test("AI 不可用时仍能用已读取成绩生成可用答复", () => {
   }, "我最高的成绩是什么");
   assert.match(answer || "", /药理学/);
   assert.match(answer || "", /92/);
+});
+
+test("按课程名称询问时只返回匹配的本人课程成绩", () => {
+  const answer = buildCampusAssistantAcademicFallback({
+    mode: "ready",
+    intents: ["grades"],
+    queriedAt: "2026-07-27T00:00:00.000Z",
+    timeZone: "Asia/Shanghai",
+    notice: "只读",
+    tools: {
+      grades: {
+        status: "ready",
+        data: {
+          grades: [
+            { semester: "2025-2026-2", courseName: "微生物学", score: "91", scoreNum: 91, gpa: 4.1 },
+            { semester: "2025-2026-2", courseName: "药理学", score: "84", scoreNum: 84, gpa: 3.4 },
+          ],
+        },
+      },
+    },
+  }, "我的微生物多少分");
+  assert.match(answer || "", /微生物学/);
+  assert.match(answer || "", /91/);
+  assert.doesNotMatch(answer || "", /药理学/);
+});
+
+test("本人教务数据查询直接回答且不再附带个人中心卡片", async () => {
+  const response = await askCampusAssistant({
+    message: "我的微生物多少分",
+    history: [],
+    context,
+    academicContext: {
+      mode: "ready",
+      intents: ["grades"],
+      queriedAt: "2026-07-27T00:00:00.000Z",
+      timeZone: "Asia/Shanghai",
+      notice: "只读",
+      tools: {
+        grades: {
+          status: "ready",
+          data: {
+            grades: [
+              { semester: "2025-2026-2", courseName: "微生物学", score: "91", scoreNum: 91 },
+            ],
+          },
+        },
+      },
+    },
+  });
+  assert.match(response.answer, /微生物学/);
+  assert.match(response.answer, /91/);
+  assert.deepEqual(response.actions, []);
+});
+
+test("站点数据意图只在用户询问实时结果时触发", () => {
+  assert.deepEqual(detectCampusAssistantSiteIntents("最近有什么校园公告？"), ["announcements"]);
+  assert.deepEqual(detectCampusAssistantSiteIntents("我有未读消息吗？"), ["messages"]);
+  assert.deepEqual(detectCampusAssistantSiteIntents("我的 AI 点数还有多少？"), ["quota"]);
+  assert.deepEqual(detectCampusAssistantSiteIntents("我的信誉值是多少？"), ["account"]);
+  assert.deepEqual(detectCampusAssistantSiteIntents("消息中心在哪里？"), []);
+  assert.deepEqual(detectCampusAssistantSiteIntents("公告入口在哪？"), []);
+});
+
+test("站点额度数据可以生成直接答复", () => {
+  const answer = buildCampusAssistantSiteFallback({
+    intents: ["quota"],
+    queriedAt: "2026-07-28T00:00:00.000Z",
+    notice: "只读",
+    tools: {
+      quota: {
+        status: "ready",
+        data: {
+          level: 5,
+          levelName: "校园传说",
+          dailyQuota: 200,
+          used: 12,
+          remaining: 188,
+          points: 6100,
+          totalRemaining: 6288,
+        },
+      },
+    },
+  });
+  assert.match(answer || "", /剩余 188 次/);
+  assert.match(answer || "", /6100 点/);
+});
+
+test("删除标记会阻止旧本地或云端快照复活会话", () => {
+  const merged = mergeAssistantHistorySessions(
+    [
+      { id: "keep-local", updatedAt: 30 },
+      { id: "deleted", updatedAt: 40 },
+    ],
+    [
+      { id: "keep-cloud", updatedAt: 20 },
+      { id: "deleted", updatedAt: 50 },
+    ],
+    ["deleted"],
+    20,
+  );
+  assert.deepEqual(merged.map((item) => item.id), ["keep-local", "keep-cloud"]);
 });
 
 test("云端学习通助手脚本提供可校验的版本与正文", async () => {
@@ -201,6 +309,11 @@ test("OpenAI 兼容 SSE 能按增量还原完整 JSON", async () => {
   });
   assert.deepEqual(deltas, ['{"answer":"你', '好","actionIds":[]}']);
   assert.equal(content, '{"answer":"你好","actionIds":[]}');
+});
+
+test("课程成绩问法不会误命中个人中心入口", () => {
+  const results = searchCampusAssistantActions("我的微生物多少分", context);
+  assert.equal(results.some((item) => item.id === "profile"), false);
 });
 
 test("旧网络助手相关搜索统一引导到药大拾间桌面客户端", () => {

@@ -28,6 +28,8 @@ import {
   type CampusAssistantQuotaReservation,
 } from "../services/campusAssistantQuota";
 import { loadCampusAssistantAcademicContext } from "../services/campusAssistantAcademic";
+import { loadCampusAssistantSiteContext } from "../services/campusAssistantSiteData";
+import { detectLoginClient } from "../utils/loginClient";
 
 export const searchRouter = Router();
 
@@ -208,8 +210,8 @@ searchRouter.delete("/assistant/conversations/:id", async (req, res, next) => {
     const userId = req.user?.userId;
     if (!userId) throw Errors.unauthorized("登录后才能同步拾间AI历史对话");
     const id = assistantHistoryIdSchema.parse(req.params.id);
-    await deleteCampusAssistantConversation(userId, id);
-    ok(res, { ok: true });
+    const deleted = await deleteCampusAssistantConversation(userId, id);
+    ok(res, { ok: true, deletedAt: deleted.deletedAt });
   } catch (error) {
     next(error);
   }
@@ -224,13 +226,24 @@ searchRouter.post(
     try {
       const userId = req.user!.userId;
       const role = req.user!.role;
-      quotaReservation = (await consumeCampusAssistantQuota(userId)).reservation;
       const forumAccessEnabled = await resolveForumAccess(userId, role);
-      const academicContext = await loadCampusAssistantAcademicContext({
-        message: req.body.message,
-        history: req.body.history,
-        jwxtToken: getAssistantJwxtToken(req),
-      });
+      const [academicContext, siteContext] = await Promise.all([
+        loadCampusAssistantAcademicContext({
+          message: req.body.message,
+          history: req.body.history,
+          jwxtToken: getAssistantJwxtToken(req),
+        }),
+        loadCampusAssistantSiteContext({
+          userId,
+          message: req.body.message,
+          history: req.body.history,
+          client: detectLoginClient(req).client,
+        }),
+      ]);
+      // Deterministic read-only data tools do not spend an AI quota call.
+      if (!academicContext && !siteContext) {
+        quotaReservation = (await consumeCampusAssistantQuota(userId)).reservation;
+      }
       ok(res, await askCampusAssistant({
         message: req.body.message,
         history: req.body.history,
@@ -240,6 +253,7 @@ searchRouter.post(
           loggedIn: true,
         },
         academicContext,
+        siteContext,
       }));
     } catch (error) {
       if (quotaReservation) {
@@ -266,8 +280,24 @@ searchRouter.post(
     try {
       const userId = req.user!.userId;
       const role = req.user!.role;
-      quotaReservation = (await consumeCampusAssistantQuota(userId)).reservation;
       const forumAccessEnabled = await resolveForumAccess(userId, role);
+      const [academicContext, siteContext] = await Promise.all([
+        loadCampusAssistantAcademicContext({
+          message: req.body.message,
+          history: req.body.history,
+          jwxtToken: getAssistantJwxtToken(req),
+        }),
+        loadCampusAssistantSiteContext({
+          userId,
+          message: req.body.message,
+          history: req.body.history,
+          client: detectLoginClient(req).client,
+        }),
+      ]);
+      // Deterministic read-only data tools do not spend an AI quota call.
+      if (!academicContext && !siteContext) {
+        quotaReservation = (await consumeCampusAssistantQuota(userId)).reservation;
+      }
       res.status(200);
       res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
       res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -283,11 +313,6 @@ searchRouter.post(
         }
       }, 15_000);
       try {
-        const academicContext = await loadCampusAssistantAcademicContext({
-          message: req.body.message,
-          history: req.body.history,
-          jwxtToken: getAssistantJwxtToken(req),
-        });
         const response = await streamCampusAssistant({
           message: req.body.message,
           history: req.body.history,
@@ -297,6 +322,7 @@ searchRouter.post(
             loggedIn: true,
           },
           academicContext,
+          siteContext,
           signal: controller.signal,
         }, (delta) => {
           if (!delta || res.writableEnded) return;

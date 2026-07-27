@@ -6,6 +6,7 @@ import {
   type RequestOptions,
 } from "./request";
 import { detectClientPlatform } from "@/utils/clientInfo";
+import { getJwxtToken, JWXT_COOKIE_SESSION_MARKER } from "./jwxt";
 
 export interface SearchResult {
   topics: any[];
@@ -58,6 +59,7 @@ export interface CampusAssistantConversation {
   title: string;
   updatedAt: number;
   messages: CampusAssistantStoredMessage[];
+  deletedAt?: number;
 }
 
 export interface CampusAssistantStreamOptions {
@@ -87,7 +89,7 @@ export const searchApi = {
     options,
   ),
   deleteAssistantConversation: (id: string, options?: RequestOptions) =>
-    request.delete<{ ok: true }>(
+    request.delete<{ ok: true; deletedAt?: number }>(
       `/search/assistant/conversations/${encodeURIComponent(id)}`,
       options,
     ),
@@ -111,6 +113,8 @@ async function streamAssistant(
   };
   const token = getToken();
   if (token && token !== COOKIE_SESSION_MARKER) headers.Authorization = `Bearer ${token}`;
+  const jwxtToken = getJwxtToken();
+  if (jwxtToken && jwxtToken !== JWXT_COOKIE_SESSION_MARKER) headers["X-Jwxt-Token"] = jwxtToken;
   const csrf = getCsrfToken();
   if (csrf) headers["X-CSRF-Token"] = csrf;
 

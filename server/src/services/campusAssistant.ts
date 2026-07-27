@@ -12,6 +12,10 @@ import {
   buildCampusAssistantAcademicFallback,
   type CampusAssistantAcademicContext,
 } from "./campusAssistantAcademic";
+import {
+  buildCampusAssistantSiteFallback,
+  type CampusAssistantSiteContext,
+} from "./campusAssistantSiteData";
 
 export type CampusAssistantAction = {
   id: string;
@@ -321,7 +325,7 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
     icon: "👤",
     owner: "药大拾间",
     requireLogin: true,
-    keywords: ["个人中心", "我的", "账号设置", "qq绑定", "外观设置"],
+    keywords: ["个人中心", "账号设置", "qq绑定", "外观设置"],
   },
   {
     id: "sponsor-wall",
@@ -339,7 +343,7 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
 const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     relatedActionIds: ["home", "profile", "jwxt"],
-    fact: "账号与登录：站内使用学校统一认证登录，登录成功后会创建或关联站内账号。个人中心用于管理账号、QQ 绑定、外观等设置；教务数据应进入“教务数据”页面查看，AI 不能代查个人成绩。",
+    fact: "账号与登录：站内使用学校统一认证登录，登录成功后会创建或关联站内账号。个人中心用于管理账号、QQ 绑定、外观等设置。用户明确询问本人的课表、成绩、考试或学业进度时，拾间AI会按需读取当前教务会话中的最小必要只读数据并直接回答；若教务会话未连接或已失效，才引导用户重新连接教务系统。",
   },
   {
     relatedActionIds: ["jwxt"],
@@ -580,6 +584,7 @@ export async function askCampusAssistant(input: {
   history: CampusAssistantMessage[];
   context: CampusAssistantContext;
   academicContext?: CampusAssistantAcademicContext | null;
+  siteContext?: CampusAssistantSiteContext | null;
 }): Promise<CampusAssistantResponse> {
   const message = input.message.trim();
   if (isCampusAssistantPublicTopicRestricted(message, input.history)) {
@@ -587,6 +592,13 @@ export async function askCampusAssistant(input: {
   }
   const availableActions = listCampusAssistantActions(input.context);
   const deterministicActions = searchCampusAssistantActions(message, input.context, 3);
+  const dataResponse = buildDirectDataResponse(
+    input.academicContext,
+    input.siteContext,
+    message,
+    availableActions,
+  );
+  if (dataResponse) return dataResponse;
   const config = getSiteConfig();
   if (!config.aiReviewEnabled || !config.aiReviewApiKey.trim()) {
     return fallbackAssistantResponse(deterministicActions, false, input.academicContext, message);
@@ -625,6 +637,7 @@ export async function streamCampusAssistant(input: {
   history: CampusAssistantMessage[];
   context: CampusAssistantContext;
   academicContext?: CampusAssistantAcademicContext | null;
+  siteContext?: CampusAssistantSiteContext | null;
   signal?: AbortSignal;
 }, onAnswerDelta: (delta: string) => void | Promise<void>): Promise<CampusAssistantResponse> {
   const message = input.message.trim();
@@ -633,6 +646,16 @@ export async function streamCampusAssistant(input: {
   }
   const availableActions = listCampusAssistantActions(input.context);
   const deterministicActions = searchCampusAssistantActions(message, input.context, 3);
+  const dataResponse = buildDirectDataResponse(
+    input.academicContext,
+    input.siteContext,
+    message,
+    availableActions,
+  );
+  if (dataResponse) {
+    await onAnswerDelta(dataResponse.answer);
+    return dataResponse;
+  }
   const config = getSiteConfig();
   if (!config.aiReviewEnabled || !config.aiReviewApiKey.trim()) {
     return fallbackAssistantResponse(deterministicActions, false, input.academicContext, message);
@@ -852,6 +875,63 @@ function fallbackAssistantResponse(
     suggestions: ["怎么查宿舍电费？", "打开药苑之声", "课表在哪里？"],
     fallback: true,
   };
+}
+
+function buildDirectDataResponse(
+  academicContext: CampusAssistantAcademicContext | null | undefined,
+  siteContext: CampusAssistantSiteContext | null | undefined,
+  message: string,
+  availableActions: CampusAssistantAction[],
+): CampusAssistantResponse | null {
+  const academicAnswer = buildCampusAssistantAcademicFallback(academicContext, message);
+  const siteAnswer = buildCampusAssistantSiteFallback(siteContext);
+  const answer = [academicAnswer, siteAnswer].filter(Boolean).join("\n\n");
+  if (!answer || (!academicContext && !siteContext)) return null;
+  const hasAcademicReadyData = Object.values(academicContext?.tools ?? {})
+    .some((tool) => tool?.status === "ready");
+  const hasSiteReadyData = Object.values(siteContext?.tools ?? {})
+    .some((tool) => tool?.status === "ready");
+  const actions: CampusAssistantAction[] = [];
+  if (academicContext && !hasAcademicReadyData) {
+    const jwxtAction = availableActions.find((item) => item.id === "jwxt");
+    if (jwxtAction) actions.push(jwxtAction);
+  }
+  if (siteContext && !hasSiteReadyData) {
+    const actionIds = siteContext.intents.includes("messages")
+      ? ["messages"]
+      : siteContext.intents.includes("announcements")
+        ? ["announcements"]
+        : ["profile"];
+    for (const id of actionIds) {
+      const action = availableActions.find((item) => item.id === id);
+      if (action && !actions.some((item) => item.id === action.id)) actions.push(action);
+    }
+  }
+  return {
+    answer,
+    actions: actions.slice(0, 3),
+    suggestions: [
+      ...academicSuggestions(academicContext?.intents ?? []),
+      ...siteSuggestions(siteContext?.intents ?? []),
+    ].slice(0, 3),
+    fallback: false,
+  };
+}
+
+function academicSuggestions(intents: CampusAssistantAcademicContext["intents"]) {
+  if (intents.includes("grades")) return ["我最高的成绩是什么？", "我最低的成绩是什么？", "查询我的学业进度"];
+  if (intents.includes("schedule")) return ["那明天呢？", "周五有什么课？", "看看我的考试安排"];
+  if (intents.includes("exams")) return ["考场在哪里？", "座位号是多少？", "查询我的最新成绩"];
+  if (intents.includes("progress")) return ["还差哪些课程？", "还差多少学分？", "查询我的最新成绩"];
+  return [];
+}
+
+function siteSuggestions(intents: CampusAssistantSiteContext["intents"]) {
+  if (intents.includes("announcements")) return ["我有未读消息吗？", "我还有多少 AI 额度？"];
+  if (intents.includes("messages")) return ["最近有什么校园公告？", "我还有多少 AI 额度？"];
+  if (intents.includes("quota")) return ["我的账号等级是多少？", "最近有什么校园公告？"];
+  if (intents.includes("account")) return ["我还有多少 AI 额度？", "我有未读消息吗？"];
+  return [];
 }
 
 export function isCampusAssistantPublicTopicRestricted(

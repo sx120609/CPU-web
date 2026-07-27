@@ -307,8 +307,19 @@ function formatScheduleFallback(data: unknown, message: string) {
 function formatGradesFallback(data: unknown, message: string) {
   const grades = (data as { grades?: ReturnType<typeof compactGrade>[] })?.grades ?? [];
   if (!grades.length) return "没有查到可显示的成绩记录。";
+  const courseQuery = extractGradeCourseQuery(message);
+  const matchedCourses = courseQuery
+    ? grades.filter((item) => gradeCourseMatches(item.courseName, courseQuery))
+    : [];
+  if (courseQuery && !matchedCourses.length) {
+    return `我查了当前可用的成绩记录，没有找到课程名称包含“${courseQuery}”的成绩。`;
+  }
   const semester = grades.find((item) => item.semester)?.semester;
-  const scoped = semester ? grades.filter((item) => item.semester === semester) : grades;
+  const scoped = matchedCourses.length
+    ? matchedCourses
+    : semester
+      ? grades.filter((item) => item.semester === semester)
+      : grades;
   const numeric = scoped.filter((item) => typeof item.scoreNum === "number");
   if (/最高/u.test(message) && numeric.length) {
     const highest = [...numeric].sort((a, b) => Number(b.scoreNum) - Number(a.scoreNum))[0];
@@ -321,6 +332,9 @@ function formatGradesFallback(data: unknown, message: string) {
   const lines = scoped.slice(0, 10).map((item) => (
     `- ${item.courseName}：${item.score}${typeof item.gpa === "number" ? `（绩点 ${item.gpa}）` : ""}`
   ));
+  if (matchedCourses.length) {
+    return `我查到与“${courseQuery}”匹配的 ${matchedCourses.length} 条成绩：\n${lines.join("\n")}`;
+  }
   return `${semester ? `${semester} ` : ""}查到 ${scoped.length} 门成绩：\n${lines.join("\n")}`;
 }
 
@@ -371,7 +385,43 @@ function isDirectGradesQuery(text: string) {
   return /(?:我的|本人|帮我|给我|替我|直接|查一下|查查|查询|看看).{0,10}(?:成绩|分数|绩点|gpa)/iu.test(text)
     || /^(?:查|看)(?:一下)?(?:我的)?(?:成绩|分数|绩点|gpa)[？?。.\s]*$/iu.test(text)
     || /^(?:我的)?(?:成绩|绩点|gpa)[？?。.\s]*$/iu.test(text)
-    || /(?:我).{0,8}(?:考了多少|成绩怎么样|绩点多少)/u.test(text);
+    || /(?:我).{0,20}(?:考了多少|成绩怎么样|绩点多少|多少分)/u.test(text)
+    || /(?:我的)?[\p{Script=Han}A-Za-z0-9·（）()_-]{2,30}(?:考了)?多少分[？?。.\s]*$/u
+      .test(text);
+}
+
+function extractGradeCourseQuery(message: string) {
+  if (/(?:最高|最低|全部|所有|最新|本学期|这学期|上学期).{0,8}(?:成绩|分数|绩点)/u.test(message)) {
+    return "";
+  }
+  const normalized = normalizeText(message)
+    .replace(/[？?。！!，,]/g, "")
+    .replace(/^(?:请|麻烦)?(?:帮我|给我|替我)?(?:查一下|查查|查询|看看|看一下|查|看)?/u, "")
+    .replace(/^(?:我想知道|想知道)/u, "")
+    .replace(/^(?:我的|我这门|我)/u, "")
+    .replace(/(?:这门课|课程)?(?:的)?(?:成绩|分数|绩点|gpa|GPA|考了多少分|考了多少|多少分|是多少|怎么样|如何|呢)$/u, "")
+    .trim();
+  if (!normalized || /^(?:最新|全部|所有|本学期|这学期|上学期|最高|最低)$/u.test(normalized)) return "";
+  return normalized.slice(0, 40);
+}
+
+function gradeCourseMatches(courseName: string, query: string) {
+  const course = normalizeCourseName(courseName);
+  const target = normalizeCourseName(query);
+  if (!course || !target) return false;
+  if (course.includes(target) || target.includes(course)) return true;
+  const relaxedCourse = course.replace(/[学课程实验实践导论概论]+$/u, "");
+  const relaxedTarget = target.replace(/[学课程实验实践导论概论]+$/u, "");
+  return relaxedCourse.length >= 2
+    && relaxedTarget.length >= 2
+    && (relaxedCourse.includes(relaxedTarget) || relaxedTarget.includes(relaxedCourse));
+}
+
+function normalizeCourseName(value: string) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[（(][^）)]*[）)]/gu, "")
+    .replace(/[\s"'“”‘’。，、！？?!.:：;；()[\]{}【】_-]+/g, "");
 }
 
 function isDirectExamsQuery(text: string) {

@@ -249,6 +249,7 @@ import {
   type CampusAssistantQuota,
 } from "@/api/search";
 import { useAuthStore } from "@/stores/auth";
+import { mergeAssistantHistorySessions } from "@/utils/assistantHistorySync";
 import { renderMarkdown } from "@/utils/markdown";
 
 const { embedded = false } = defineProps<{
@@ -274,10 +275,12 @@ type ConversationSession = {
 
 const HISTORY_KEY = "campus-assistant-history:v1";
 const ACTIVE_HISTORY_KEY = "campus-assistant-active:v1";
+const DELETED_HISTORY_KEY = "campus-assistant-deleted:v1";
 const LEGACY_HISTORY_OWNER_KEY = "campus-assistant-history-owner:v1";
 const NEW_SESSION_SENTINEL = "__new__";
 const MAX_SESSIONS = 20;
 const MAX_MESSAGES_PER_SESSION = 60;
+const MAX_LOCAL_TOMBSTONES = 500;
 
 const route = useRoute();
 const router = useRouter();
@@ -631,6 +634,7 @@ async function openConversation(sessionId: string) {
 }
 
 async function deleteConversation(sessionId: string) {
+  recordConversationDeletion(sessionId);
   if (pendingCloudSession?.id === sessionId) {
     pendingCloudSession = null;
     window.clearTimeout(cloudSyncTimer);
@@ -638,14 +642,10 @@ async function deleteConversation(sessionId: string) {
   }
   sessions.value = sessions.value.filter((item) => item.id !== sessionId);
   writeSessions();
-  if (auth.isLoggedIn) {
-    void searchApi.deleteAssistantConversation(sessionId, {
-      suppressErrorMessage: true,
-    }).catch(() => {
-      cloudSyncState.value = "error";
-    });
-  }
   if (activeSessionId.value === sessionId) await startNewConversation();
+  if (auth.isLoggedIn) {
+    void syncConversationDeletion(sessionId).catch(() => {});
+  }
 }
 
 function sessionPreview(session: ConversationSession) {
@@ -726,10 +726,12 @@ function scrollConversation() {
 function loadSessions(): ConversationSession[] {
   try {
     migrateLegacyHistoryForCurrentUser();
+    const deletedIds = new Set(Object.keys(readConversationDeletions()));
     const parsed = JSON.parse(localStorage.getItem(currentHistoryKey()) || "[]");
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter((item) => item && typeof item.id === "string" && typeof item.title === "string" && Array.isArray(item.messages))
+      .filter((item) => !deletedIds.has(item.id))
       .map((item) => ({
         id: item.id,
         title: item.title.slice(0, 28) || "历史对话",
@@ -782,21 +784,31 @@ function markNewSession() {
 
 async function hydrateCloudSessions() {
   cloudSyncState.value = "syncing";
-  const localSessions = sessions.value.map(toCloudConversation);
   try {
     const cloudSessions = await searchApi.listAssistantConversations({
       suppressErrorMessage: true,
     });
-    const merged = new Map<string, ConversationSession>();
-    for (const item of [...cloudSessions, ...localSessions]) {
-      const normalized = normalizeConversationSession(item);
-      if (!normalized) continue;
-      const current = merged.get(normalized.id);
-      if (!current || normalized.updatedAt >= current.updatedAt) merged.set(normalized.id, normalized);
+
+    for (const item of cloudSessions) {
+      if (item.deletedAt) recordConversationDeletion(item.id, item.deletedAt);
     }
-    sessions.value = [...merged.values()]
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-      .slice(0, MAX_SESSIONS);
+    const deletedIds = new Set(Object.keys(readConversationDeletions()));
+    // Re-read current state after the request. A conversation may have been
+    // deleted while the cloud list was in flight, so the pre-request snapshot
+    // must never be merged back in.
+    const localSessions = sessions.value
+      .filter((item) => !deletedIds.has(item.id))
+      .map(toCloudConversation);
+    const liveCloudSessions = cloudSessions
+      .filter((item) => !item.deletedAt && !deletedIds.has(item.id))
+      .map(normalizeConversationSession)
+      .filter((item): item is ConversationSession => Boolean(item));
+    sessions.value = mergeAssistantHistorySessions(
+      localSessions.map(normalizeConversationSession).filter((item): item is ConversationSession => Boolean(item)),
+      liveCloudSessions,
+      deletedIds,
+      MAX_SESSIONS,
+    );
     writeSessions();
 
     const activeMarker = readActiveSessionMarker();
@@ -811,12 +823,23 @@ async function hydrateCloudSessions() {
       }
     }
 
-    const cloudMap = new Map(cloudSessions.map((item) => [item.id, item.updatedAt]));
+    const cloudMap = new Map(
+      cloudSessions
+        .filter((item) => !item.deletedAt)
+        .map((item) => [item.id, item.updatedAt]),
+    );
     for (const local of localSessions) {
       if ((cloudMap.get(local.id) ?? -1) >= local.updatedAt) continue;
-      await searchApi.saveAssistantConversation(local, {
+      const saved = await searchApi.saveAssistantConversation(local, {
         suppressErrorMessage: true,
       });
+      applyCloudSaveResult(saved);
+    }
+    const staleCloudIds = cloudSessions
+      .filter((item) => !item.deletedAt && deletedIds.has(item.id))
+      .map((item) => item.id);
+    if (staleCloudIds.length) {
+      await Promise.allSettled(staleCloudIds.map((id) => syncConversationDeletion(id)));
     }
     cloudSyncState.value = "ready";
   } catch {
@@ -825,7 +848,7 @@ async function hydrateCloudSessions() {
 }
 
 function queueCloudSync(session: ConversationSession) {
-  if (!auth.isLoggedIn || !session.messages.length) return;
+  if (!auth.isLoggedIn || !session.messages.length || isConversationDeleted(session.id)) return;
   pendingCloudSession = normalizeConversationSession(toCloudConversation(session));
   window.clearTimeout(cloudSyncTimer);
   cloudSyncTimer = window.setTimeout(() => {
@@ -838,10 +861,12 @@ async function flushCloudSync() {
   if (!auth.isLoggedIn || !pendingCloudSession) return;
   const pending = pendingCloudSession;
   pendingCloudSession = null;
+  if (isConversationDeleted(pending.id)) return;
   try {
-    await searchApi.saveAssistantConversation(toCloudConversation(pending), {
+    const saved = await searchApi.saveAssistantConversation(toCloudConversation(pending), {
       suppressErrorMessage: true,
     });
+    applyCloudSaveResult(saved);
     cloudSyncState.value = "ready";
   } catch {
     cloudSyncState.value = "error";
@@ -861,7 +886,7 @@ function toCloudConversation(session: ConversationSession): CampusAssistantConve
 }
 
 function normalizeConversationSession(input: CampusAssistantConversation): ConversationSession | null {
-  if (!input || typeof input.id !== "string" || !Array.isArray(input.messages)) return null;
+  if (!input || input.deletedAt || typeof input.id !== "string" || !Array.isArray(input.messages)) return null;
   const normalizedMessages = cloneMessages(input.messages);
   if (!normalizedMessages.length) return null;
   return {
@@ -882,6 +907,62 @@ function currentHistoryKey() {
 
 function currentActiveHistoryKey() {
   return auth.user?.id ? `${ACTIVE_HISTORY_KEY}:user:${auth.user.id}` : ACTIVE_HISTORY_KEY;
+}
+
+function currentDeletedHistoryKey() {
+  return auth.user?.id ? `${DELETED_HISTORY_KEY}:user:${auth.user.id}` : DELETED_HISTORY_KEY;
+}
+
+function readConversationDeletions(): Record<string, number> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(currentDeletedHistoryKey()) || "{}");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .filter(([id, timestamp]) => id && Number.isFinite(Number(timestamp)))
+        .map(([id, timestamp]) => [id, Number(timestamp)]),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function recordConversationDeletion(sessionId: string, deletedAt = Date.now()) {
+  const current = readConversationDeletions();
+  current[sessionId] = Math.max(current[sessionId] || 0, deletedAt);
+  const entries = Object.entries(current)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, MAX_LOCAL_TOMBSTONES);
+  try {
+    localStorage.setItem(currentDeletedHistoryKey(), JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    // A failed persistence write must not block the optimistic local removal.
+  }
+}
+
+function isConversationDeleted(sessionId: string) {
+  return Boolean(readConversationDeletions()[sessionId]);
+}
+
+async function syncConversationDeletion(sessionId: string) {
+  try {
+    const result = await searchApi.deleteAssistantConversation(sessionId, {
+      suppressErrorMessage: true,
+    });
+    recordConversationDeletion(sessionId, result.deletedAt || Date.now());
+    cloudSyncState.value = "ready";
+  } catch {
+    cloudSyncState.value = "error";
+    throw new Error("history deletion sync failed");
+  }
+}
+
+function applyCloudSaveResult(saved: CampusAssistantConversation) {
+  if (!saved.deletedAt) return;
+  recordConversationDeletion(saved.id, saved.deletedAt);
+  sessions.value = sessions.value.filter((item) => item.id !== saved.id);
+  writeSessions();
+  if (activeSessionId.value === saved.id) void startNewConversation();
 }
 
 function migrateLegacyHistoryForCurrentUser() {

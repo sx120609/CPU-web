@@ -112,6 +112,7 @@ model CampusAssistantConversation {
   title           String
   messages        String
   clientUpdatedAt DateTime
+  deletedAt       DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -119,6 +120,7 @@ model CampusAssistantConversation {
 
   @@id([userId, id])
   @@index([userId, clientUpdatedAt])
+  @@index([userId, deletedAt])
 }
 
 model CampusAssistantDailyUsage {
