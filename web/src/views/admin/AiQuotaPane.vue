@@ -198,42 +198,159 @@
       </section>
     </div>
 
-    <section class="settings-card">
-      <div class="section-head">
+    <section class="settings-card ledger-card">
+      <div class="section-head ledger-head">
         <div>
-          <h3>最近点数流水</h3>
-          <p>记录后台发放、赞助奖励、AI 消耗和失败返还，便于核对每一次余额变化。</p>
+          <div class="ledger-title-row">
+            <h3>点数流水</h3>
+            <span>{{ ledgerTotal }} 笔</span>
+          </div>
+          <p>按用户、收支类型和日期快速定位记录，筛选汇总会同步计算。</p>
         </div>
-        <el-button :loading="overviewLoading" @click="loadOverview">刷新流水</el-button>
+        <el-button :loading="ledgerLoading" @click="loadLedger">
+          <el-icon><Refresh /></el-icon>
+          刷新
+        </el-button>
       </div>
-      <el-table :data="overview.recent" v-loading="overviewLoading" stripe>
-        <el-table-column label="时间" min-width="155">
-          <template #default="{ row }">{{ fmtDate(row.createdAt) }}</template>
-        </el-table-column>
-        <el-table-column label="用户" min-width="170">
+
+      <div class="ledger-filters">
+        <el-input
+          v-model="ledgerFilters.q"
+          clearable
+          placeholder="搜用户、说明、订单号"
+          class="ledger-search"
+          @keyup.enter="applyLedgerFilters"
+          @clear="applyLedgerFilters"
+        >
+          <template #prefix><el-icon><Search /></el-icon></template>
+        </el-input>
+        <el-select v-model="ledgerFilters.source" placeholder="全部来源" class="ledger-source" @change="applyLedgerFilters">
+          <el-option label="全部来源" value="" />
+          <el-option label="后台发放" value="admin_grant" />
+          <el-option label="赞助奖励" value="sponsor_reward" />
+          <el-option label="AI 消耗" value="ai_usage" />
+          <el-option label="失败返还" value="ai_refund" />
+        </el-select>
+        <el-radio-group v-model="ledgerFilters.direction" class="ledger-direction" @change="applyLedgerFilters">
+          <el-radio-button value="">全部</el-radio-button>
+          <el-radio-button value="income">收入</el-radio-button>
+          <el-radio-button value="expense">支出</el-radio-button>
+        </el-radio-group>
+        <el-date-picker
+          v-model="ledgerDateRange"
+          type="daterange"
+          range-separator="至"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          value-format="YYYY-MM-DD"
+          format="YYYY-MM-DD"
+          class="ledger-date-range"
+          @change="applyLedgerFilters"
+        />
+        <div class="ledger-filter-actions">
+          <el-button type="primary" :loading="ledgerLoading" @click="applyLedgerFilters">查询</el-button>
+          <el-button :disabled="ledgerLoading || !ledgerFiltersActive" @click="resetLedgerFilters">重置</el-button>
+        </div>
+      </div>
+
+      <el-alert
+        v-if="ledgerError"
+        :title="ledgerError"
+        type="error"
+        :closable="false"
+        show-icon
+        class="ledger-alert"
+      />
+
+      <div class="ledger-summary">
+        <div>
+          <span>筛选结果</span>
+          <strong>{{ ledgerSummary.transactions }}</strong>
+          <small>笔</small>
+        </div>
+        <div class="summary-income">
+          <span>收入</span>
+          <strong>+{{ ledgerSummary.income }}</strong>
+          <small>点</small>
+        </div>
+        <div class="summary-expense">
+          <span>支出</span>
+          <strong>-{{ ledgerSummary.expense }}</strong>
+          <small>点</small>
+        </div>
+        <div :class="ledgerSummary.net >= 0 ? 'summary-income' : 'summary-expense'">
+          <span>净变化</span>
+          <strong>{{ ledgerSummary.net > 0 ? "+" : "" }}{{ ledgerSummary.net }}</strong>
+          <small>点</small>
+        </div>
+      </div>
+
+      <el-table
+        :data="ledgerRows"
+        v-loading="ledgerLoading"
+        class="ledger-table"
+        empty-text="没有符合条件的流水"
+        max-height="620"
+      >
+        <el-table-column label="时间" width="164">
           <template #default="{ row }">
-            <div class="user-cell">
-              <b>{{ row.user?.nickname || row.user?.username || `用户 ${row.userId}` }}</b>
-              <span v-if="row.user?.username">@{{ row.user.username }}</span>
+            <span class="ledger-time">{{ fmtDate(row.createdAt) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="用户" min-width="210">
+          <template #default="{ row }">
+            <div class="ledger-user">
+              <el-avatar :size="34" :src="row.user?.avatar || undefined">
+                {{ userInitial(row) }}
+              </el-avatar>
+              <div class="user-cell">
+                <b>{{ row.user?.nickname || row.user?.username || `用户 ${row.userId}` }}</b>
+                <span v-if="row.user?.username">@{{ row.user.username }}</span>
+              </div>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="变动" width="90" align="right">
+        <el-table-column label="变动" width="112" align="center">
           <template #default="{ row }">
-            <b :class="row.delta > 0 ? 'delta-plus' : 'delta-minus'">{{ row.delta > 0 ? "+" : "" }}{{ row.delta }}</b>
+            <b :class="['delta-pill', row.delta > 0 ? 'delta-plus' : 'delta-minus']">
+              {{ row.delta > 0 ? "+" : "" }}{{ row.delta }}
+            </b>
           </template>
         </el-table-column>
-        <el-table-column prop="balanceAfter" label="余额" width="90" align="right" />
-        <el-table-column label="来源" width="110">
+        <el-table-column label="余额" width="105" align="right">
+          <template #default="{ row }"><b class="ledger-balance">{{ row.balanceAfter }}</b> 点</template>
+        </el-table-column>
+        <el-table-column label="来源" width="116">
           <template #default="{ row }">
-            <el-tag size="small" :type="sourceType(row.source)">{{ sourceLabel(row.source) }}</el-tag>
+            <el-tag size="small" effect="light" :type="sourceType(row.source)">{{ sourceLabel(row.source) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="reason" label="说明" min-width="170" show-overflow-tooltip />
-        <el-table-column label="操作人" min-width="140">
+        <el-table-column label="说明" min-width="220">
+          <template #default="{ row }">
+            <div class="ledger-reason">
+              <span>{{ row.reason || "—" }}</span>
+              <small v-if="row.referenceId">{{ row.referenceType || "关联记录" }} · {{ row.referenceId }}</small>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作人" min-width="130">
           <template #default="{ row }">{{ row.operator?.nickname || row.operator?.username || "系统" }}</template>
         </el-table-column>
       </el-table>
+
+      <div class="ledger-footer">
+        <span>第 {{ ledgerPage }} / {{ ledgerPageCount }} 页</span>
+        <el-pagination
+          v-model:current-page="ledgerPage"
+          v-model:page-size="ledgerSize"
+          :total="ledgerTotal"
+          :page-sizes="[20, 50, 100]"
+          layout="total, sizes, prev, pager, next, jumper"
+          background
+          @current-change="loadLedger"
+          @size-change="changeLedgerSize"
+        />
+      </div>
     </section>
   </div>
 </template>
@@ -241,8 +358,10 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { Refresh, Search } from "@element-plus/icons-vue";
 import {
   adminApi,
+  type AssistantPointLedgerRow,
   type AssistantPointOverview,
   type AssistantPointUser,
 } from "@/api/admin";
@@ -250,6 +369,7 @@ import { fmtDate } from "@/utils/format";
 
 const loading = ref(false);
 const overviewLoading = ref(false);
+const ledgerLoading = ref(false);
 const usersLoading = ref(false);
 const savingQuotas = ref(false);
 const savingAssistantModel = ref(false);
@@ -284,6 +404,23 @@ const overview = reactive<AssistantPointOverview>({
   transactionCount: 0,
   recent: [],
 });
+const ledgerRows = ref<AssistantPointLedgerRow[]>([]);
+const ledgerTotal = ref(0);
+const ledgerPage = ref(1);
+const ledgerSize = ref(20);
+const ledgerDateRange = ref<[string, string] | [] | null>([]);
+const ledgerError = ref("");
+const ledgerFilters = reactive({
+  q: "",
+  source: "" as "" | AssistantPointLedgerRow["source"],
+  direction: "" as "" | "income" | "expense",
+});
+const ledgerSummary = reactive({
+  transactions: 0,
+  income: 0,
+  expense: 0,
+  net: 0,
+});
 const grantRecipientCount = computed(() => (
   grantScope.value === "all" ? overview.eligibleUserCount : grantUserIds.value.length
 ));
@@ -291,7 +428,15 @@ const sponsorRateDirty = computed(() => (
   Number(sponsorPointsPerYuan.value || 0) !== savedSponsorPointsPerYuan.value
 ));
 const assistantModelDirty = computed(() => assistantModel.value.trim() !== savedAssistantModel.value);
+const ledgerPageCount = computed(() => Math.max(1, Math.ceil(ledgerTotal.value / ledgerSize.value)));
+const ledgerFiltersActive = computed(() => Boolean(
+  ledgerFilters.q.trim()
+  || ledgerFilters.source
+  || ledgerFilters.direction
+  || (Array.isArray(ledgerDateRange.value) && ledgerDateRange.value.length === 2),
+));
 let userSearchSeq = 0;
+let ledgerLoadSeq = 0;
 
 onMounted(reload);
 
@@ -316,7 +461,7 @@ async function reload() {
     sponsorPointsPerYuan.value = sponsorConfig.assistantPointsPerYuan ?? 0;
     savedSponsorPointsPerYuan.value = sponsorPointsPerYuan.value;
     Object.assign(overview, overviewResult);
-    await searchUsers("");
+    await Promise.all([searchUsers(""), loadLedger()]);
   } catch {
     loadError.value = "AI 额度管理数据加载失败，请稍后重试";
   } finally {
@@ -423,7 +568,7 @@ async function backfillSponsors() {
         `已为 ${result.userCount} 名用户的 ${result.orderCount} 笔赞助补发 ${result.totalPoints} 点`,
       );
     }
-    await Promise.all([loadOverview(), searchUsers("")]);
+    await Promise.all([loadOverview(), loadLedger(), searchUsers("")]);
   } finally {
     backfillingSponsors.value = false;
   }
@@ -472,7 +617,7 @@ async function grantPointsToUsers() {
     });
     ElMessage.success(`已给 ${result.recipientCount} 名用户发放 ${result.points} 点`);
     grantUserIds.value = [];
-    await Promise.all([loadOverview(), searchUsers("")]);
+    await Promise.all([loadOverview(), loadLedger(), searchUsers("")]);
   } finally {
     granting.value = false;
   }
@@ -485,6 +630,65 @@ async function loadOverview() {
   } finally {
     overviewLoading.value = false;
   }
+}
+
+async function loadLedger() {
+  const seq = ++ledgerLoadSeq;
+  ledgerLoading.value = true;
+  ledgerError.value = "";
+  try {
+    const range = Array.isArray(ledgerDateRange.value) && ledgerDateRange.value.length === 2
+      ? ledgerDateRange.value
+      : [];
+    const result = await adminApi.assistantPointLedger({
+      q: ledgerFilters.q.trim() || undefined,
+      source: ledgerFilters.source || undefined,
+      direction: ledgerFilters.direction || undefined,
+      from: range[0],
+      to: range[1],
+      page: ledgerPage.value,
+      size: ledgerSize.value,
+    }, { suppressErrorMessage: true });
+    if (seq !== ledgerLoadSeq) return;
+    ledgerRows.value = result.list;
+    ledgerTotal.value = result.total;
+    ledgerPage.value = result.page;
+    ledgerSize.value = result.size;
+    Object.assign(ledgerSummary, result.summary);
+  } catch {
+    if (seq !== ledgerLoadSeq) return;
+    ledgerRows.value = [];
+    ledgerTotal.value = 0;
+    Object.assign(ledgerSummary, { transactions: 0, income: 0, expense: 0, net: 0 });
+    ledgerError.value = "流水加载失败，请稍后重试";
+  } finally {
+    if (seq === ledgerLoadSeq) ledgerLoading.value = false;
+  }
+}
+
+function applyLedgerFilters() {
+  ledgerPage.value = 1;
+  loadLedger();
+}
+
+function resetLedgerFilters() {
+  if (ledgerLoading.value) return;
+  ledgerFilters.q = "";
+  ledgerFilters.source = "";
+  ledgerFilters.direction = "";
+  ledgerDateRange.value = [];
+  ledgerPage.value = 1;
+  loadLedger();
+}
+
+function changeLedgerSize() {
+  ledgerPage.value = 1;
+  loadLedger();
+}
+
+function userInitial(row: AssistantPointLedgerRow) {
+  const name = row.user?.nickname || row.user?.username || String(row.userId);
+  return name.slice(0, 1).toUpperCase();
 }
 
 function sourceLabel(source: string) {
@@ -664,11 +868,155 @@ function sourceType(source: string) {
   display: grid;
   gap: 2px;
 }
+.ledger-card {
+  overflow: hidden;
+}
+.ledger-head {
+  align-items: center;
+}
+.ledger-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ledger-title-row h3 {
+  margin-bottom: 0;
+}
+.ledger-title-row span {
+  padding: 3px 9px;
+  border-radius: 999px;
+  color: var(--cpu-primary);
+  background: color-mix(in srgb, var(--cpu-primary) 10%, transparent);
+  font-size: 12px;
+  font-weight: 700;
+}
+.ledger-filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) 150px auto minmax(260px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 12px;
+  background: var(--cpu-surface-subtle);
+}
+.ledger-filter-actions {
+  display: flex;
+  gap: 8px;
+}
+.ledger-filter-actions :deep(.el-button) {
+  margin-left: 0;
+}
+.ledger-alert {
+  margin-top: 12px;
+}
+.ledger-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 14px 0;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 12px;
+  background: var(--cpu-card);
+  overflow: hidden;
+}
+.ledger-summary > div {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 13px 16px;
+}
+.ledger-summary > div + div {
+  border-left: 1px solid var(--cpu-border-soft);
+}
+.ledger-summary span {
+  margin-right: auto;
+  color: var(--cpu-text-muted);
+  font-size: 12px;
+}
+.ledger-summary strong {
+  color: var(--cpu-text);
+  font-size: 20px;
+}
+.ledger-summary small {
+  color: var(--cpu-text-muted);
+}
+.ledger-summary .summary-income strong {
+  color: var(--el-color-success);
+}
+.ledger-summary .summary-expense strong {
+  color: var(--el-color-danger);
+}
+.ledger-table {
+  width: 100%;
+  border-top: 1px solid var(--cpu-border-soft);
+}
+.ledger-table :deep(.el-table__row:hover > td.el-table__cell) {
+  background: color-mix(in srgb, var(--cpu-primary) 5%, var(--cpu-card));
+}
+.ledger-time {
+  color: var(--cpu-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ledger-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.ledger-user :deep(.el-avatar) {
+  flex: 0 0 auto;
+  color: var(--cpu-primary);
+  background: color-mix(in srgb, var(--cpu-primary) 12%, var(--cpu-card));
+  font-size: 13px;
+  font-weight: 700;
+}
+.delta-pill {
+  display: inline-flex;
+  justify-content: center;
+  min-width: 64px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
 .delta-plus {
   color: var(--el-color-success);
+  background: color-mix(in srgb, var(--el-color-success) 10%, transparent);
 }
 .delta-minus {
   color: var(--el-color-danger);
+  background: color-mix(in srgb, var(--el-color-danger) 9%, transparent);
+}
+.ledger-balance {
+  color: var(--cpu-text);
+  font-variant-numeric: tabular-nums;
+}
+.ledger-reason {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.ledger-reason > span,
+.ledger-reason > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ledger-reason > small {
+  color: var(--cpu-text-muted);
+  font-size: 11px;
+}
+.ledger-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 16px;
+}
+.ledger-footer > span {
+  color: var(--cpu-text-muted);
+  font-size: 12px;
+  white-space: nowrap;
 }
 @media (max-width: 980px) {
   .overview-grid,
@@ -677,6 +1025,15 @@ function sourceType(source: string) {
   }
   .two-column {
     grid-template-columns: 1fr;
+  }
+  .ledger-filters {
+    grid-template-columns: minmax(220px, 1fr) 150px auto;
+  }
+  .ledger-date-range {
+    width: 100%;
+  }
+  .ledger-filter-actions {
+    justify-content: flex-end;
   }
 }
 @media (max-width: 640px) {
@@ -703,6 +1060,43 @@ function sourceType(source: string) {
   }
   .quota-item small {
     display: none;
+  }
+  .ledger-filters {
+    grid-template-columns: 1fr;
+  }
+  .ledger-search,
+  .ledger-source,
+  .ledger-date-range,
+  .ledger-direction,
+  .ledger-filter-actions {
+    width: 100%;
+  }
+  .ledger-direction {
+    display: flex;
+  }
+  .ledger-direction :deep(.el-radio-button) {
+    flex: 1;
+  }
+  .ledger-direction :deep(.el-radio-button__inner) {
+    width: 100%;
+  }
+  .ledger-filter-actions :deep(.el-button) {
+    flex: 1;
+  }
+  .ledger-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ledger-summary > div:nth-child(3) {
+    border-top: 1px solid var(--cpu-border-soft);
+    border-left: 0;
+  }
+  .ledger-summary > div:nth-child(4) {
+    border-top: 1px solid var(--cpu-border-soft);
+  }
+  .ledger-footer {
+    align-items: flex-start;
+    flex-direction: column;
+    overflow-x: auto;
   }
 }
 </style>

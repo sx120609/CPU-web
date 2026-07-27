@@ -96,6 +96,29 @@ export type AssistantPointOverview = {
   recent: AssistantPointLedgerRow[];
 };
 
+export type AssistantPointLedgerPage = {
+  page: number;
+  size: number;
+  total: number;
+  list: AssistantPointLedgerRow[];
+  summary: {
+    transactions: number;
+    income: number;
+    expense: number;
+    net: number;
+  };
+};
+
+export type AssistantPointLedgerParams = {
+  q?: string;
+  source?: "" | AssistantPointLedgerRow["source"];
+  direction?: "" | "income" | "expense";
+  from?: string;
+  to?: string;
+  page?: number;
+  size?: number;
+};
+
 export type MediaStorageConfig = {
   mediaStorageProvider: "local" | "onedrive-cn";
   mediaStorageImageProvider: "local" | "onedrive-cn";
@@ -810,6 +833,8 @@ export const adminApi = {
     request.get<AssistantPointUser[]>("/admin/campus-assistant/points/users", params, options),
   assistantPointOverview: (options?: RequestOptions) =>
     request.get<AssistantPointOverview>("/admin/campus-assistant/points/overview", undefined, options),
+  assistantPointLedger: (params: AssistantPointLedgerParams, options?: RequestOptions) =>
+    request.get<AssistantPointLedgerPage>("/admin/campus-assistant/points/ledger", params, options),
   grantAssistantPoints: (payload: { userIds?: number[]; allUsers?: boolean; points: number; reason: string }) =>
     request.post<{
       points: number;

@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../../prisma";
 import { Errors, ok } from "../../utils/response";
 import { adminOnly, modOrAbove, userDirectoryAccess } from "../../middleware/admin";
@@ -2270,6 +2271,123 @@ adminRouter.get("/campus-assistant/points/users", adminOnly, async (req, res, ne
       },
     });
     ok(res, list);
+  } catch (e) {
+    next(e);
+  }
+});
+
+adminRouter.get("/campus-assistant/points/ledger", adminOnly, async (req, res, next) => {
+  try {
+    const q = String(req.query.q ?? "").trim();
+    const source = String(req.query.source ?? "").trim();
+    const direction = String(req.query.direction ?? "").trim();
+    const from = String(req.query.from ?? "").trim();
+    const to = String(req.query.to ?? "").trim();
+    const rawPage = Number(req.query.page ?? 1);
+    const rawSize = Number(req.query.size ?? 20);
+    const page = Number.isFinite(rawPage) ? Math.max(1, Math.floor(rawPage)) : 1;
+    const size = Number.isFinite(rawSize) ? Math.min(100, Math.max(10, Math.floor(rawSize))) : 20;
+    const sources = new Set(["admin_grant", "sponsor_reward", "ai_usage", "ai_refund"]);
+    const directions = new Set(["income", "expense"]);
+
+    if (q.length > 100) throw Errors.badRequest("搜索内容不能超过 100 个字符");
+    if (source && !sources.has(source)) throw Errors.badRequest("流水来源不合法");
+    if (direction && !directions.has(direction)) throw Errors.badRequest("收支类型不合法");
+    if ((from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) || (to && !/^\d{4}-\d{2}-\d{2}$/.test(to))) {
+      throw Errors.badRequest("日期格式不合法");
+    }
+
+    const fromDate = from ? new Date(`${from}T00:00:00.000+08:00`) : undefined;
+    const toDate = to ? new Date(`${to}T23:59:59.999+08:00`) : undefined;
+    if (
+      (fromDate && Number.isNaN(fromDate.getTime()))
+      || (toDate && Number.isNaN(toDate.getTime()))
+      || (fromDate && toDate && fromDate > toDate)
+    ) {
+      throw Errors.badRequest("日期范围不合法");
+    }
+    const dateRange: Prisma.DateTimeFilter = {};
+    if (fromDate) dateRange.gte = fromDate;
+    if (toDate) dateRange.lte = toDate;
+
+    const filters: Prisma.CampusAssistantPointLedgerWhereInput[] = [];
+    if (source) filters.push({ source });
+    if (direction === "income") filters.push({ delta: { gt: 0 } });
+    if (direction === "expense") filters.push({ delta: { lt: 0 } });
+    if (dateRange.gte || dateRange.lte) filters.push({ createdAt: dateRange });
+    if (q) {
+      filters.push({
+        OR: [
+          { reason: { contains: q, mode: "insensitive" } },
+          { referenceId: { contains: q, mode: "insensitive" } },
+          {
+            user: {
+              is: {
+                OR: [
+                  { username: { contains: q, mode: "insensitive" } },
+                  { nickname: { contains: q, mode: "insensitive" } },
+                  { email: { contains: q, mode: "insensitive" } },
+                ],
+              },
+            },
+          },
+          {
+            operator: {
+              is: {
+                OR: [
+                  { username: { contains: q, mode: "insensitive" } },
+                  { nickname: { contains: q, mode: "insensitive" } },
+                ],
+              },
+            },
+          },
+        ],
+      });
+    }
+
+    const where: Prisma.CampusAssistantPointLedgerWhereInput = filters.length ? { AND: filters } : {};
+    const incomeWhere: Prisma.CampusAssistantPointLedgerWhereInput = {
+      AND: [...filters, { delta: { gt: 0 } }],
+    };
+    const expenseWhere: Prisma.CampusAssistantPointLedgerWhereInput = {
+      AND: [...filters, { delta: { lt: 0 } }],
+    };
+    const [total, list, incomeAggregate, expenseAggregate] = await Promise.all([
+      prisma.campusAssistantPointLedger.count({ where }),
+      prisma.campusAssistantPointLedger.findMany({
+        where,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: (page - 1) * size,
+        take: size,
+        include: {
+          user: { select: { id: true, username: true, nickname: true, avatar: true } },
+          operator: { select: { id: true, username: true, nickname: true } },
+        },
+      }),
+      prisma.campusAssistantPointLedger.aggregate({
+        where: incomeWhere,
+        _sum: { delta: true },
+      }),
+      prisma.campusAssistantPointLedger.aggregate({
+        where: expenseWhere,
+        _sum: { delta: true },
+      }),
+    ]);
+    const income = incomeAggregate._sum.delta ?? 0;
+    const expense = Math.abs(expenseAggregate._sum.delta ?? 0);
+
+    ok(res, {
+      page,
+      size,
+      total,
+      list,
+      summary: {
+        transactions: total,
+        income,
+        expense,
+        net: income - expense,
+      },
+    });
   } catch (e) {
     next(e);
   }
