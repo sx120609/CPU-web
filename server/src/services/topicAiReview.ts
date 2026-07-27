@@ -112,6 +112,8 @@ type AiJsonRequestOptions = {
   promptCacheScope?: string;
   model?: string;
   fallbackModels?: string;
+  enablePromptCache?: boolean;
+  enablePromptCacheRetention?: boolean;
 };
 
 export async function requestAiJson(
@@ -123,14 +125,17 @@ export async function requestAiJson(
   const primaryModel = options?.model ?? config.aiReviewModel;
   const fallbackModels = options?.fallbackModels ?? config.aiReviewFallbackModels;
   const candidates = resolveModelCandidates(primaryModel, fallbackModels);
-  const promptCacheKey = buildAiReviewPromptCacheKey({
-    configHash: [
-      buildAiReviewConfigHash(config),
-      primaryModel,
-      fallbackModels,
-    ].join("\n"),
-    scope: options?.promptCacheScope || options?.logContext?.kind || "generic",
-  });
+  const promptCacheEnabled = options?.enablePromptCache !== false;
+  const promptCacheKey = promptCacheEnabled
+    ? buildAiReviewPromptCacheKey({
+        configHash: [
+          buildAiReviewConfigHash(config),
+          primaryModel,
+          fallbackModels,
+        ].join("\n"),
+        scope: options?.promptCacheScope || options?.logContext?.kind || "generic",
+      })
+    : null;
   let lastError: Error | null = null;
   for (let index = 0; index < candidates.length; index += 1) {
     const model = candidates[index];
@@ -164,7 +169,7 @@ export async function requestAiJson(
         temperature: 0.1,
         messages: requestMessages,
         promptCacheKey,
-        enablePromptCacheRetention: true,
+        enablePromptCacheRetention: promptCacheEnabled && options?.enablePromptCacheRetention !== false,
       });
       response = result.response;
       responseMode = result.mode;

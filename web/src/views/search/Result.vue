@@ -11,7 +11,7 @@
         </span>
         <div class="assistant-head-copy">
           <h1>拾间AI</h1>
-          <p>问功能、找入口，也可以直接聊天</p>
+          <p>问功能、查课表成绩，也可以直接聊天</p>
         </div>
         <div class="assistant-head-actions">
           <button type="button" aria-label="查看历史对话" :disabled="!auth.isLoggedIn" @click="historyOpen = true">
@@ -38,7 +38,11 @@
 
       <div v-else-if="!messages.length" class="assistant-welcome">
         <strong>想做什么？直接告诉我。</strong>
-        <span>例如查询宿舍电费、打开药苑之声、找课表，或者询问具体操作步骤。</span>
+        <span>可以查询你本人的课表、成绩、考试和学业进度，也能查校园服务或询问操作步骤。</span>
+        <small>
+          只有你明确发起查询时才会按需读取对应教务数据；全程只读，不会替你修改或提交任何内容。
+          <a href="/privacy.html" target="_blank" rel="noopener noreferrer">查看隐私说明</a>
+        </small>
         <div class="welcome-prompts">
           <button v-for="prompt in welcomePrompts" :key="prompt" type="button" @click="sendPrompt(prompt)">
             {{ prompt }}
@@ -309,7 +313,7 @@ let conversationAnchorRestoring = false;
 const conversationAnchorTimers: number[] = [];
 const CONVERSATION_BOTTOM_ANCHOR_THRESHOLD = 36;
 
-const welcomePrompts = ["怎么查宿舍电费？", "打开药苑之声", "我的课表在哪里？"];
+const welcomePrompts = ["查一下我今天的课表", "查询我的最新成绩", "看看我的考试安排"];
 const assistantQuotaExhausted = computed(() => (
   assistantQuota.value !== null && assistantQuota.value.totalRemaining <= 0
 ));
@@ -1046,6 +1050,16 @@ onBeforeUnmount(() => {
   color: var(--cpu-text-secondary);
   font-size: 13px;
   line-height: 1.7;
+}
+.assistant-welcome > small {
+  max-width: 680px;
+  color: var(--cpu-text-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.assistant-welcome > small a {
+  color: var(--cpu-primary);
+  text-decoration: none;
 }
 .assistant-auth-gate {
   display: flex;

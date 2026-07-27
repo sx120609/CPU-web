@@ -43,6 +43,11 @@ import {
 import { calculateSponsorAssistantPoints } from "../src/services/campusAssistantPoints";
 import { buildOAuthAiRequestBody, OAUTH_AI_INSTRUCTIONS } from "../src/routes/oauth";
 import { readDesktopUserScriptRelease } from "../src/services/desktopUserScript";
+import {
+  buildCampusAssistantAcademicFallback,
+  detectCampusAssistantAcademicIntents,
+  loadCampusAssistantAcademicContext,
+} from "../src/services/campusAssistantAcademic";
 
 const enabledFeatures = {
   forum: true,
@@ -57,6 +62,58 @@ const context = {
   forumAccessEnabled: true,
   loggedIn: false,
 };
+
+test("拾间 AI 只在用户明确查询本人数据时调用教务工具", () => {
+  assert.deepEqual(detectCampusAssistantAcademicIntents("查一下我今天的课表"), ["schedule"]);
+  assert.deepEqual(detectCampusAssistantAcademicIntents("查询我的最新成绩"), ["grades"]);
+  assert.deepEqual(detectCampusAssistantAcademicIntents("查成绩"), ["grades"]);
+  assert.deepEqual(detectCampusAssistantAcademicIntents("看看我的考试安排"), ["exams"]);
+  assert.deepEqual(detectCampusAssistantAcademicIntents("我还差多少学分"), ["progress"]);
+  assert.deepEqual(detectCampusAssistantAcademicIntents("成绩在哪里查？"), []);
+  assert.deepEqual(detectCampusAssistantAcademicIntents("我的课表在哪里？"), []);
+  assert.deepEqual(detectCampusAssistantAcademicIntents("怎么查六级成绩？"), []);
+});
+
+test("教务查询支持基于最近用户问题的自然追问", () => {
+  assert.deepEqual(detectCampusAssistantAcademicIntents("那明天呢？", [
+    { role: "user", content: "查一下我今天的课表" },
+    { role: "assistant", content: "今天有两门课。" },
+  ]), ["schedule"]);
+});
+
+test("未连接教务时返回只读安全上下文而不包含任何凭据", async () => {
+  const academic = await loadCampusAssistantAcademicContext({
+    message: "查询我的最新成绩",
+    jwxtToken: null,
+  });
+  assert.equal(academic?.mode, "not_connected");
+  assert.equal(academic?.tools.grades?.status, "unavailable");
+  assert.match(JSON.stringify(academic), /只读|重新连接|统一认证/);
+  assert.doesNotMatch(JSON.stringify(academic), /token|cookie|password|学号/iu);
+});
+
+test("AI 不可用时仍能用已读取成绩生成可用答复", () => {
+  const answer = buildCampusAssistantAcademicFallback({
+    mode: "ready",
+    intents: ["grades"],
+    queriedAt: "2026-07-27T00:00:00.000Z",
+    timeZone: "Asia/Shanghai",
+    notice: "只读",
+    tools: {
+      grades: {
+        status: "ready",
+        data: {
+          grades: [
+            { semester: "2025-2026-2", courseName: "药理学", score: "92", scoreNum: 92, gpa: 4.2 },
+            { semester: "2025-2026-2", courseName: "药剂学", score: "86", scoreNum: 86, gpa: 3.6 },
+          ],
+        },
+      },
+    },
+  }, "我最高的成绩是什么");
+  assert.match(answer || "", /药理学/);
+  assert.match(answer || "", /92/);
+});
 
 test("云端学习通助手脚本提供可校验的版本与正文", async () => {
   const release = await readDesktopUserScriptRelease();

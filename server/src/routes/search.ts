@@ -27,6 +27,7 @@ import {
   refundCampusAssistantQuota,
   type CampusAssistantQuotaReservation,
 } from "../services/campusAssistantQuota";
+import { loadCampusAssistantAcademicContext } from "../services/campusAssistantAcademic";
 
 export const searchRouter = Router();
 
@@ -225,6 +226,11 @@ searchRouter.post(
       const role = req.user!.role;
       quotaReservation = (await consumeCampusAssistantQuota(userId)).reservation;
       const forumAccessEnabled = await resolveForumAccess(userId, role);
+      const academicContext = await loadCampusAssistantAcademicContext({
+        message: req.body.message,
+        history: req.body.history,
+        jwxtToken: getAssistantJwxtToken(req),
+      });
       ok(res, await askCampusAssistant({
         message: req.body.message,
         history: req.body.history,
@@ -233,6 +239,7 @@ searchRouter.post(
           forumAccessEnabled,
           loggedIn: true,
         },
+        academicContext,
       }));
     } catch (error) {
       if (quotaReservation) {
@@ -276,6 +283,11 @@ searchRouter.post(
         }
       }, 15_000);
       try {
+        const academicContext = await loadCampusAssistantAcademicContext({
+          message: req.body.message,
+          history: req.body.history,
+          jwxtToken: getAssistantJwxtToken(req),
+        });
         const response = await streamCampusAssistant({
           message: req.body.message,
           history: req.body.history,
@@ -284,6 +296,7 @@ searchRouter.post(
             forumAccessEnabled,
             loggedIn: true,
           },
+          academicContext,
           signal: controller.signal,
         }, (delta) => {
           if (!delta || res.writableEnded) return;
@@ -311,6 +324,12 @@ searchRouter.post(
 function safeJson(s: string | null | undefined) {
   if (!s) return {};
   try { return JSON.parse(s); } catch { return {}; }
+}
+
+function getAssistantJwxtToken(req: any) {
+  const header = req.headers?.["x-jwxt-token"];
+  const legacyToken = Array.isArray(header) ? header[0] : header;
+  return req.browserSession?.jwxtToken || legacyToken || null;
 }
 
 function writeAssistantEvent(res: any, event: string, payload: unknown) {
