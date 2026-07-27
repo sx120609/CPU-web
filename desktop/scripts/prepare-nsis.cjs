@@ -14,12 +14,19 @@ const path = require("node:path");
 const dir = path.resolve(__dirname, "..", "build");
 
 const jobs = [
-  { source: "installer.nsh.source", target: "installer.nsh", encoding: "utf8", bom: [0xef, 0xbb, 0xbf] }
+  { source: "installer.nsh.source", target: "installer.nsh", encoding: "utf8", bom: [0xef, 0xbb, 0xbf] },
+  {
+    source: "portable-preheat.nsi",
+    target: path.join("..", "node_modules", "app-builder-lib", "templates", "nsis", "portable.nsi"),
+    encoding: "utf8",
+    bom: []
+  }
 ];
 
 let failed = false;
 for (const job of jobs) {
   const source = path.join(dir, job.source);
+  const target = path.resolve(dir, job.target);
   if (!fs.existsSync(source)) {
     console.error(`找不到 ${source}`);
     failed = true;
@@ -28,9 +35,9 @@ for (const job of jobs) {
   // NSIS 的许可框与脚本都按 CRLF 断行
   const text = fs.readFileSync(source, "utf8").replace(/\r?\n/g, "\r\n");
   fs.writeFileSync(
-    path.join(dir, job.target),
+    target,
     Buffer.concat([Buffer.from(job.bom), Buffer.from(text, job.encoding)])
   );
-  console.log(`${job.target}  ${text.length} 字符  ${job.encoding === "utf16le" ? "UTF-16LE" : "UTF-8"} + BOM`);
+  console.log(`${path.relative(dir, target)}  ${text.length} 字符  ${job.bom.length > 0 ? "UTF-8 + BOM" : "UTF-8"}`);
 }
 if (failed) process.exitCode = 1;

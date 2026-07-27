@@ -1,6 +1,6 @@
 {
   "name": "cpu-web-desktop",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "药大拾间桌面客户端",
   "main": "dist/electron/main.js",
   "private": true,
@@ -12,7 +12,7 @@
     "assets:installer": "electron scripts/build-installer-assets.cjs",
     "vendor:deps": "node scripts/vendor-deps.mjs",
     "vendor:verify": "node scripts/vendor-deps.mjs --verify",
-    "test": "npm run build && node scripts/policy-test.cjs && node scripts/campus-net-test.cjs && node scripts/oauth-user-test.cjs && node scripts/userscript-update-test.cjs && node scripts/shell-style-test.cjs && node scripts/vendor-deps.mjs --verify",
+    "test": "npm run build && node scripts/policy-test.cjs && node scripts/campus-net-test.cjs && node scripts/oauth-user-test.cjs && node scripts/userscript-update-test.cjs && node scripts/shell-style-test.cjs && node scripts/portable-ui-test.cjs && node scripts/vendor-deps.mjs --verify",
     "test:smoke": "npm run build && node scripts/smoke-test.mjs",
     "test:package": "node scripts/package-check.cjs",
     "start": "npm run build && electron .",
@@ -49,7 +49,6 @@
     "portable": {
       "requestExecutionLevel": "user",
       "unpackDirName": "cpu-web-desktop-setup",
-      "splashImage": "build/installerWelcome.bmp",
       "artifactName": "${productName}-${version}-win-${arch}-安装版.${ext}"
     },
     "mac": {
