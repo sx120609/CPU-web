@@ -27,8 +27,6 @@ import {
   refundCampusAssistantQuota,
   type CampusAssistantQuotaReservation,
 } from "../services/campusAssistantQuota";
-import { loadCampusAssistantAcademicContext } from "../services/campusAssistantAcademic";
-import { loadCampusAssistantSiteContext } from "../services/campusAssistantSiteData";
 import { detectLoginClient } from "../utils/loginClient";
 
 export const searchRouter = Router();
@@ -223,28 +221,12 @@ searchRouter.post(
   validate(assistantSchema),
   async (req, res, next) => {
     let quotaReservation: CampusAssistantQuotaReservation | null = null;
+    let usedReadTools = false;
     try {
       const userId = req.user!.userId;
       const role = req.user!.role;
       const forumAccessEnabled = await resolveForumAccess(userId, role);
-      const [academicContext, siteContext] = await Promise.all([
-        loadCampusAssistantAcademicContext({
-          message: req.body.message,
-          history: req.body.history,
-          jwxtToken: getAssistantJwxtToken(req),
-        }),
-        loadCampusAssistantSiteContext({
-          userId,
-          message: req.body.message,
-          history: req.body.history,
-          client: detectLoginClient(req).client,
-        }),
-      ]);
-      // 用户明确请求的只读数据辅助回答不扣减其拾间AI额度。
-      if (!academicContext && !siteContext) {
-        quotaReservation = (await consumeCampusAssistantQuota(userId)).reservation;
-      }
-      ok(res, await askCampusAssistant({
+      const response = await askCampusAssistant({
         message: req.body.message,
         history: req.body.history,
         context: {
@@ -252,9 +234,21 @@ searchRouter.post(
           forumAccessEnabled,
           loggedIn: true,
         },
-        academicContext,
-        siteContext,
-      }));
+        toolRuntime: {
+          userId,
+          studentId: req.user!.studentId,
+          jwxtToken: getAssistantJwxtToken(req),
+          client: detectLoginClient(req).client,
+        },
+        onToolUse: () => {
+          usedReadTools = true;
+        },
+      });
+      // 先让 Agent 判断是否需要本人只读数据：工具查询免费，纯聊天才在返回前结算。
+      if (!usedReadTools) {
+        quotaReservation = (await consumeCampusAssistantQuota(userId)).reservation;
+      }
+      ok(res, response);
     } catch (error) {
       if (quotaReservation) {
         await refundCampusAssistantQuota(req.user!.userId, quotaReservation).catch(() => {});
@@ -272,6 +266,7 @@ searchRouter.post(
     let streamStarted = false;
     let streamCompleted = false;
     let quotaReservation: CampusAssistantQuotaReservation | null = null;
+    let usedReadTools = false;
     const controller = new AbortController();
     res.on("close", () => {
       if (!streamCompleted) controller.abort();
@@ -281,23 +276,6 @@ searchRouter.post(
       const userId = req.user!.userId;
       const role = req.user!.role;
       const forumAccessEnabled = await resolveForumAccess(userId, role);
-      const [academicContext, siteContext] = await Promise.all([
-        loadCampusAssistantAcademicContext({
-          message: req.body.message,
-          history: req.body.history,
-          jwxtToken: getAssistantJwxtToken(req),
-        }),
-        loadCampusAssistantSiteContext({
-          userId,
-          message: req.body.message,
-          history: req.body.history,
-          client: detectLoginClient(req).client,
-        }),
-      ]);
-      // 用户明确请求的只读数据辅助回答不扣减其拾间AI额度。
-      if (!academicContext && !siteContext) {
-        quotaReservation = (await consumeCampusAssistantQuota(userId)).reservation;
-      }
       res.status(200);
       res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
       res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -321,8 +299,20 @@ searchRouter.post(
             forumAccessEnabled,
             loggedIn: true,
           },
-          academicContext,
-          siteContext,
+          toolRuntime: {
+            userId,
+            studentId: req.user!.studentId,
+            jwxtToken: getAssistantJwxtToken(req),
+            client: detectLoginClient(req).client,
+          },
+          onToolUse: () => {
+            usedReadTools = true;
+          },
+          onBeforeAnswer: async () => {
+            if (!usedReadTools && !quotaReservation) {
+              quotaReservation = (await consumeCampusAssistantQuota(userId)).reservation;
+            }
+          },
           signal: controller.signal,
         }, (delta) => {
           if (!delta || res.writableEnded) return;
@@ -340,7 +330,11 @@ searchRouter.post(
       }
       if (controller.signal.aborted) return;
       if (!streamStarted) return next(error);
-      writeAssistantEvent(res, "error", { message: "拾间AI暂时不可用，请稍后再试" });
+      writeAssistantEvent(res, "error", {
+        message: error instanceof Error && error.message
+          ? error.message
+          : "拾间AI暂时不可用，请稍后再试",
+      });
       streamCompleted = true;
       res.end();
     }

@@ -189,6 +189,28 @@ async function loadSiteTool(intent: CampusAssistantSiteIntent, userId: number, c
   };
 }
 
+export async function queryCampusAssistantSiteTool(input: {
+  tool: CampusAssistantSiteIntent;
+  userId: number;
+  client?: LoginClient;
+}) {
+  try {
+    return {
+      status: "ready" as const,
+      data: await loadSiteTool(input.tool, input.userId, input.client ?? "web"),
+    };
+  } catch (error) {
+    console.warn(
+      `[campus-assistant] site tool ${input.tool} failed`,
+      error instanceof Error ? error.message : error,
+    );
+    return {
+      status: "unavailable" as const,
+      message: "站点数据暂时无法读取，请稍后再试。",
+    };
+  }
+}
+
 function formatAnnouncements(data: unknown) {
   const announcements = (data as {
     announcements?: Array<{ title: string; board: string; createdAt: string }>;

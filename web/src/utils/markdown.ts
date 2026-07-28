@@ -2,6 +2,7 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import katex from "katex";
 import "katex/dist/katex.min.css";
+import { normalizeAdjacentStrongDelimiters } from "./markdownNormalize";
 
 marked.setOptions({ breaks: true, gfm: true });
 marked.use({
@@ -40,7 +41,8 @@ marked.use({
 } as any);
 
 export function renderMarkdown(md: string): string {
-  const raw = marked.parse(autoFormatBareFormulaLines(md), { async: false }) as string;
+  const normalizedMarkdown = normalizeAdjacentStrongDelimiters(md);
+  const raw = marked.parse(autoFormatBareFormulaLines(normalizedMarkdown), { async: false }) as string;
   const sanitized = DOMPurify.sanitize(raw, {
     ADD_ATTR: [
       "class",
