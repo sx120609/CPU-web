@@ -27,9 +27,6 @@ import {
   refundCampusAssistantQuota,
   type CampusAssistantQuotaReservation,
 } from "../services/campusAssistantQuota";
-import { loadCampusAssistantAcademicContext } from "../services/campusAssistantAcademic";
-import { loadCampusAssistantSiteContext } from "../services/campusAssistantSiteData";
-import { detectLoginClient } from "../utils/loginClient";
 
 export const searchRouter = Router();
 
@@ -227,23 +224,7 @@ searchRouter.post(
       const userId = req.user!.userId;
       const role = req.user!.role;
       const forumAccessEnabled = await resolveForumAccess(userId, role);
-      const [academicContext, siteContext] = await Promise.all([
-        loadCampusAssistantAcademicContext({
-          message: req.body.message,
-          history: req.body.history,
-          jwxtToken: getAssistantJwxtToken(req),
-        }),
-        loadCampusAssistantSiteContext({
-          userId,
-          message: req.body.message,
-          history: req.body.history,
-          client: detectLoginClient(req).client,
-        }),
-      ]);
-      // 用户明确请求的只读数据辅助回答不扣减其拾间AI额度。
-      if (!academicContext && !siteContext) {
-        quotaReservation = (await consumeCampusAssistantQuota(userId)).reservation;
-      }
+      quotaReservation = (await consumeCampusAssistantQuota(userId)).reservation;
       ok(res, await askCampusAssistant({
         message: req.body.message,
         history: req.body.history,
@@ -252,8 +233,6 @@ searchRouter.post(
           forumAccessEnabled,
           loggedIn: true,
         },
-        academicContext,
-        siteContext,
       }));
     } catch (error) {
       if (quotaReservation) {
@@ -281,23 +260,7 @@ searchRouter.post(
       const userId = req.user!.userId;
       const role = req.user!.role;
       const forumAccessEnabled = await resolveForumAccess(userId, role);
-      const [academicContext, siteContext] = await Promise.all([
-        loadCampusAssistantAcademicContext({
-          message: req.body.message,
-          history: req.body.history,
-          jwxtToken: getAssistantJwxtToken(req),
-        }),
-        loadCampusAssistantSiteContext({
-          userId,
-          message: req.body.message,
-          history: req.body.history,
-          client: detectLoginClient(req).client,
-        }),
-      ]);
-      // 用户明确请求的只读数据辅助回答不扣减其拾间AI额度。
-      if (!academicContext && !siteContext) {
-        quotaReservation = (await consumeCampusAssistantQuota(userId)).reservation;
-      }
+      quotaReservation = (await consumeCampusAssistantQuota(userId)).reservation;
       res.status(200);
       res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
       res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -321,8 +284,6 @@ searchRouter.post(
             forumAccessEnabled,
             loggedIn: true,
           },
-          academicContext,
-          siteContext,
           signal: controller.signal,
         }, (delta) => {
           if (!delta || res.writableEnded) return;
@@ -350,12 +311,6 @@ searchRouter.post(
 function safeJson(s: string | null | undefined) {
   if (!s) return {};
   try { return JSON.parse(s); } catch { return {}; }
-}
-
-function getAssistantJwxtToken(req: any) {
-  const header = req.headers?.["x-jwxt-token"];
-  const legacyToken = Array.isArray(header) ? header[0] : header;
-  return req.browserSession?.jwxtToken || legacyToken || null;
 }
 
 function writeAssistantEvent(res: any, event: string, payload: unknown) {

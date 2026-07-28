@@ -45,16 +45,6 @@ import {
 import { calculateSponsorAssistantPoints } from "../src/services/campusAssistantPoints";
 import { buildOAuthAiRequestBody, OAUTH_AI_INSTRUCTIONS } from "../src/routes/oauth";
 import { readDesktopUserScriptRelease } from "../src/services/desktopUserScript";
-import {
-  buildCampusAssistantAcademicFallback,
-  detectCampusAssistantAcademicIntents,
-  loadCampusAssistantAcademicContext,
-  prepareCampusAssistantGradeData,
-} from "../src/services/campusAssistantAcademic";
-import {
-  buildCampusAssistantSiteFallback,
-  detectCampusAssistantSiteIntents,
-} from "../src/services/campusAssistantSiteData";
 import { mergeAssistantHistorySessions } from "../../web/src/utils/assistantHistorySync";
 import { normalizeAdjacentStrongDelimiters } from "../../web/src/utils/markdownNormalize";
 
@@ -87,259 +77,30 @@ test("拾间AI相邻中文粗体标记不会原样泄露到界面", () => {
   );
 });
 
-test("拾间 AI 只在用户明确查询本人数据时调用教务工具", () => {
-  assert.deepEqual(detectCampusAssistantAcademicIntents("查一下我今天的课表"), ["schedule"]);
-  assert.deepEqual(detectCampusAssistantAcademicIntents("查询我的最新成绩"), ["grades"]);
-  assert.deepEqual(detectCampusAssistantAcademicIntents("查成绩"), ["grades"]);
-  assert.deepEqual(detectCampusAssistantAcademicIntents("我的微生物多少分"), ["grades"]);
-  assert.deepEqual(detectCampusAssistantAcademicIntents("药理学考了多少分？"), ["grades"]);
-  assert.deepEqual(detectCampusAssistantAcademicIntents("看看我的考试安排"), ["exams"]);
-  assert.deepEqual(detectCampusAssistantAcademicIntents("我还差多少学分"), ["progress"]);
-  assert.deepEqual(detectCampusAssistantAcademicIntents("成绩在哪里查？"), []);
-  assert.deepEqual(detectCampusAssistantAcademicIntents("我的课表在哪里？"), []);
-  assert.deepEqual(detectCampusAssistantAcademicIntents("怎么查六级成绩？"), []);
-});
-
-test("教务查询支持基于最近用户问题的自然追问", () => {
-  assert.deepEqual(detectCampusAssistantAcademicIntents("那明天呢？", [
-    { role: "user", content: "查一下我今天的课表" },
-    { role: "assistant", content: "今天有两门课。" },
-  ]), ["schedule"]);
-  assert.deepEqual(detectCampusAssistantAcademicIntents("这不是我这学期的数据啊", [
-    { role: "user", content: "查询我的最新成绩" },
-    { role: "assistant", content: "2024-2025-1 查到 21 门成绩。" },
-  ]), ["grades"]);
-});
-
-test("最新成绩按真实学期值排序而不是取接口第一行", () => {
-  const data = prepareCampusAssistantGradeData({
-    semesters: [
-      { value: "2024-2025-1", label: "2024-2025-1", current: false },
-      { value: "2025-2026-2", label: "2025-2026-2", current: false },
-    ],
-    list: [
-      { semester: "2024-2025-1", courseName: "高等数学", score: "84", scoreNum: 84 },
-      { semester: "2025-2026-2", courseName: "微生物学", score: "91", scoreNum: 91 },
-      { semester: "2025-2026-2", courseName: "药理学", score: "88", scoreNum: 88 },
-    ],
-  }, "查询我的最新成绩", [], new Date("2026-07-28T00:00:00.000Z"));
-
-  assert.equal(data.scope.mode, "latest_available");
-  assert.equal(data.scope.selectedSemester, "2025-2026-2");
-  assert.deepEqual(data.grades.map((item) => item.courseName), ["微生物学", "药理学"]);
-});
-
-test("用户纠正学期时查询当前教学学期且不拿旧成绩冒充", () => {
-  const data = prepareCampusAssistantGradeData({
-    semesters: [
-      { value: "2024-2025-1", label: "2024-2025-1", current: false },
-    ],
-    list: [
-      { semester: "2024-2025-1", courseName: "高等数学", score: "84", scoreNum: 84 },
-    ],
-  }, "这不是我这学期的数据啊", [
-    { role: "user", content: "查询我的最新成绩" },
-    { role: "assistant", content: "2024-2025-1 查到成绩。" },
-  ], new Date("2026-07-28T00:00:00.000Z"));
-
-  assert.equal(data.scope.mode, "current_semester");
-  assert.equal(data.scope.currentSemester, "2025-2026-2");
-  assert.equal(data.scope.selectedSemester, "2025-2026-2");
-  assert.equal(data.scope.newestAvailableSemester, "2024-2025-1");
-  assert.deepEqual(data.grades, []);
-  assert.match(
-    buildCampusAssistantAcademicFallback({
-      mode: "ready",
-      intents: ["grades"],
-      queriedAt: "2026-07-28T00:00:00.000Z",
-      timeZone: "Asia/Shanghai",
-      notice: "只读",
-      tools: { grades: { status: "ready", data } },
-    }, "这不是我这学期的数据啊") || "",
-    /当前教学学期是 2025-2026-2.*最近有成绩的学期是 2024-2025-1/u,
-  );
-});
-
-test("未连接教务时返回只读安全上下文而不包含任何凭据", async () => {
-  const academic = await loadCampusAssistantAcademicContext({
-    message: "查询我的最新成绩",
-    jwxtToken: null,
-  });
-  assert.equal(academic?.mode, "not_connected");
-  assert.equal(academic?.tools.grades?.status, "unavailable");
-  assert.match(JSON.stringify(academic), /只读|重新连接|统一认证/);
-  assert.doesNotMatch(JSON.stringify(academic), /token|cookie|password|学号/iu);
-});
-
-test("AI 不可用时仍能用已读取成绩生成可用答复", () => {
-  const answer = buildCampusAssistantAcademicFallback({
-    mode: "ready",
-    intents: ["grades"],
-    queriedAt: "2026-07-27T00:00:00.000Z",
-    timeZone: "Asia/Shanghai",
-    notice: "只读",
-    tools: {
-      grades: {
-        status: "ready",
-        data: {
-          grades: [
-            { semester: "2025-2026-2", courseName: "药理学", score: "92", scoreNum: 92, gpa: 4.2 },
-            { semester: "2025-2026-2", courseName: "药剂学", score: "86", scoreNum: 86, gpa: 3.6 },
-          ],
-        },
-      },
-    },
-  }, "我最高的成绩是什么");
-  assert.match(answer || "", /药理学/);
-  assert.match(answer || "", /92/);
-});
-
-test("按课程名称询问时只返回匹配的本人课程成绩", () => {
-  const answer = buildCampusAssistantAcademicFallback({
-    mode: "ready",
-    intents: ["grades"],
-    queriedAt: "2026-07-27T00:00:00.000Z",
-    timeZone: "Asia/Shanghai",
-    notice: "只读",
-    tools: {
-      grades: {
-        status: "ready",
-        data: {
-          grades: [
-            { semester: "2025-2026-2", courseName: "微生物学", score: "91", scoreNum: 91, gpa: 4.1 },
-            { semester: "2025-2026-2", courseName: "药理学", score: "84", scoreNum: 84, gpa: 3.4 },
-          ],
-        },
-      },
-    },
-  }, "我的微生物多少分");
-  assert.match(answer || "", /微生物学/);
-  assert.match(answer || "", /91/);
-  assert.doesNotMatch(answer || "", /药理学/);
-});
-
-test("本人教务数据查询直接回答且不再附带个人中心卡片", async () => {
-  const response = await askCampusAssistant({
-    message: "我的微生物多少分",
-    history: [],
-    context,
-    academicContext: {
-      mode: "ready",
-      intents: ["grades"],
-      queriedAt: "2026-07-27T00:00:00.000Z",
-      timeZone: "Asia/Shanghai",
-      notice: "只读",
-      tools: {
-        grades: {
-          status: "ready",
-          data: {
-            grades: [
-              { semester: "2025-2026-2", courseName: "微生物学", score: "91", scoreNum: 91 },
-            ],
-          },
-        },
-      },
-    },
-  });
-  assert.match(response.answer, /微生物学/);
-  assert.match(response.answer, /91/);
-  assert.deepEqual(response.actions, []);
-});
-
 test("没有真实考试数据时移除考试、考场和座位类追问建议", () => {
   const response = filterUnavailableDataSuggestions({
     answer: "今天有两门课。",
     actions: [],
     suggestions: ["那明天呢？", "查看我的考试安排", "考场在哪里？", "座位号是多少？"],
     fallback: false,
-  }, {
-    mode: "ready",
-    intents: ["schedule"],
-    queriedAt: "2026-07-28T00:00:00.000Z",
-    timeZone: "Asia/Shanghai",
-    notice: "只读",
-    tools: {
-      schedule: { status: "ready", data: { courses: [] } },
-    },
   });
   assert.deepEqual(response.suggestions, ["那明天呢？"]);
 });
 
-test("真实教务接口结果会作为私有工具上下文交给拾间AI", () => {
+test("拾间AI请求不携带任何本人教务或站点数据", () => {
   const messages = buildAssistantMessages(
-    "我最高的成绩是什么？",
+    "怎么查看本学期 GPA？",
     [
-      { role: "user", content: "查询我的最新成绩" },
-      { role: "assistant", content: "上一轮学期识别有误。" },
+      { role: "user", content: "我的成绩在哪里看？" },
+      { role: "assistant", content: "请进入教务数据页面自行查看。" },
     ],
     [],
     true,
     "assistant-test-model",
-    {
-      mode: "ready",
-      intents: ["grades"],
-      queriedAt: "2026-07-28T00:00:00.000Z",
-      timeZone: "Asia/Shanghai",
-      notice: "只读",
-      tools: {
-        grades: {
-          status: "ready",
-          data: {
-            source: "jwxt.grades",
-            sourceEndpoint: "/zgykdx/kscj/cjcx_list",
-            scope: {
-              mode: "current_semester",
-              currentSemester: "2025-2026-2",
-              newestAvailableSemester: "2025-2026-2",
-              selectedSemester: "2025-2026-2",
-            },
-            grades: [
-              { semester: "2025-2026-2", courseName: "微生物学", score: "91", scoreNum: 91 },
-            ],
-          },
-        },
-      },
-    },
   );
   const serialized = JSON.stringify(messages);
-  assert.match(serialized, /实时只读教务接口/u);
-  assert.match(serialized, /jwxt\.grades/u);
-  assert.match(serialized, /微生物学/u);
-  assert.match(serialized, /2025-2026-2/u);
-  assert.doesNotMatch(serialized, /password|cookie|token/iu);
-});
-
-test("站点数据意图只在用户询问实时结果时触发", () => {
-  assert.deepEqual(detectCampusAssistantSiteIntents("最近有什么校园公告？"), ["announcements"]);
-  assert.deepEqual(detectCampusAssistantSiteIntents("我有未读消息吗？"), ["messages"]);
-  assert.deepEqual(detectCampusAssistantSiteIntents("我的 AI 点数还有多少？"), ["quota"]);
-  assert.deepEqual(detectCampusAssistantSiteIntents("我的信誉值是多少？"), ["account"]);
-  assert.deepEqual(detectCampusAssistantSiteIntents("消息中心在哪里？"), []);
-  assert.deepEqual(detectCampusAssistantSiteIntents("公告入口在哪？"), []);
-});
-
-test("站点额度数据可以生成直接答复", () => {
-  const answer = buildCampusAssistantSiteFallback({
-    intents: ["quota"],
-    queriedAt: "2026-07-28T00:00:00.000Z",
-    notice: "只读",
-    tools: {
-      quota: {
-        status: "ready",
-        data: {
-          level: 5,
-          levelName: "校园传说",
-          dailyQuota: 200,
-          used: 12,
-          remaining: 188,
-          points: 6100,
-          totalRemaining: 6288,
-        },
-      },
-    },
-  });
-  assert.match(answer || "", /剩余 188 次/);
-  assert.match(answer || "", /6100 点/);
+  assert.match(serialized, /无法读取或代查用户的课表、成绩、GPA/u);
+  assert.doesNotMatch(serialized, /academicData|siteData|jwxt\.grades|sourceEndpoint/u);
 });
 
 test("删除标记会阻止旧本地或云端快照复活会话", () => {

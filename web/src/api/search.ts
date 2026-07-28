@@ -6,7 +6,6 @@ import {
   type RequestOptions,
 } from "./request";
 import { detectClientPlatform } from "@/utils/clientInfo";
-import { getJwxtToken, JWXT_COOKIE_SESSION_MARKER } from "./jwxt";
 
 export interface SearchResult {
   topics: any[];
@@ -113,8 +112,6 @@ async function streamAssistant(
   };
   const token = getToken();
   if (token && token !== COOKIE_SESSION_MARKER) headers.Authorization = `Bearer ${token}`;
-  const jwxtToken = getJwxtToken();
-  if (jwxtToken && jwxtToken !== JWXT_COOKIE_SESSION_MARKER) headers["X-Jwxt-Token"] = jwxtToken;
   const csrf = getCsrfToken();
   if (csrf) headers["X-CSRF-Token"] = csrf;
 
