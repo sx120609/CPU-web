@@ -38,9 +38,9 @@
 
       <div v-else-if="!messages.length" class="assistant-welcome">
         <strong>想做什么？直接告诉我。</strong>
-        <span>可以直接查询你本人的课表、正式与期中成绩、学业进度、教学周历、培养方案、站内消息和宿舍电费，也能继续追问分析。</span>
+        <span>可以查询你本人的课表、成绩、考试和学业进度，也能查校园服务或询问操作步骤。</span>
         <small>
-          拾间AI会按问题自主组合站内只读工具；涉及修改、提交或支付的操作不会擅自执行。
+          只有你明确发起查询时才会按需读取对应教务数据；全程只读，不会替你修改或提交任何内容。
           <a href="/privacy.html" target="_blank" rel="noopener noreferrer">查看隐私说明</a>
         </small>
         <div class="welcome-prompts">
@@ -121,7 +121,7 @@
           :autosize="{ minRows: 1, maxRows: 4 }"
           resize="none"
           maxlength="500"
-          :placeholder="assistantQuotaExhausted ? '普通聊天额度已用完，仍可查询本人数据' : '给拾间AI发消息'"
+          :placeholder="assistantQuotaExhausted ? '今日额度和点数都已用完' : '给拾间AI发消息'"
           @keydown="handleComposerKeydown"
           @focus="handleComposerFocus"
           @blur="handleComposerBlur"
@@ -130,7 +130,7 @@
           type="button"
           class="composer-send"
           :aria-label="assistantLoading ? '正在回答' : '发送'"
-          :disabled="!keywordInput.trim() || assistantLoading"
+          :disabled="!keywordInput.trim() || assistantLoading || assistantQuotaExhausted"
           @click="submitSearch"
         >
           <el-icon v-if="assistantLoading" class="is-loading"><Loading /></el-icon>
@@ -371,6 +371,10 @@ async function submitSearch() {
     await goLogin();
     return;
   }
+  if (assistantQuotaExhausted.value) {
+    ElMessage.warning("今天的拾间 AI 额度和点数都已用完，日额度会在明天 00:00 自动恢复");
+    return;
+  }
   const keyword = keywordInput.value.trim();
   if (!keyword || assistantLoading.value) return;
   keywordInput.value = "";
@@ -478,6 +482,10 @@ async function goLogin() {
 }
 
 async function retryAssistant() {
+  if (assistantQuotaExhausted.value) {
+    ElMessage.warning("今天的拾间 AI 额度和点数都已用完，日额度会在明天 00:00 自动恢复");
+    return;
+  }
   const keyword = [...messages.value].reverse().find((item) => item.role === "user")?.content.trim() || q.value.trim();
   if (!keyword || assistantLoading.value) return;
   const history = messages.value

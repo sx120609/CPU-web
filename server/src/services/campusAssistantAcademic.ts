@@ -8,34 +8,16 @@ import type {
   ScheduleResult,
 } from "./jwxtParser";
 import {
-  getCalendar,
   getExams,
   getGrades,
   getGraduateSchedule,
-  getMidtermGrades,
   getProgress,
-  getPyfa,
   getSchedule,
 } from "./jwxtTransport";
 import { withCache } from "./cache";
 import { detectAcademicIdentityFromProbes } from "./academicIdentityDetection";
 
 export type CampusAssistantAcademicIntent = "schedule" | "grades" | "exams" | "progress";
-
-export type CampusAssistantAcademicAgentTool =
-  | "academic_schedule"
-  | "academic_grades"
-  | "academic_midterm_grades"
-  | "academic_progress"
-  | "academic_calendar"
-  | "academic_training_plan";
-
-export type CampusAssistantAcademicAgentArgs = {
-  semester?: string;
-  week?: string;
-  scope?: "latest" | "current" | "previous" | "all";
-  course?: string;
-};
 
 export type CampusAssistantAcademicToolResult = {
   status: "ready" | "unavailable";
@@ -176,20 +158,17 @@ async function loadAcademicTool(
   tokenKey: string,
   message: string,
   history: AssistantHistoryMessage[],
-  args: CampusAssistantAcademicAgentArgs = {},
 ) {
   if (intent === "schedule") {
-    const semester = String(args.semester || "").trim();
-    const week = String(args.week || "").trim();
-    return withCache("assistant-jwxt-schedule", [tokenKey, semester, week], 5 * 60_000, async () => {
+    return withCache("assistant-jwxt-schedule", [tokenKey], 5 * 60_000, async () => {
       try {
-        const graduate = await getGraduateSchedule(token, { semester });
+        const graduate = await getGraduateSchedule(token, {});
         const parsed = (graduate as { parsed?: ScheduleResult })?.parsed;
         if (hasUsableSchedule(parsed)) return compactSchedule(parsed!, "graduate", false);
       } catch {
         // 研究生入口不可用时再尝试本科教务；研究生账号成功后不会触碰本科入口。
       }
-      const undergraduate = await getSchedule(token, { semester, week });
+      const undergraduate = await getSchedule(token, {});
       if (!hasUsableSchedule(undergraduate)) throw new Error("JWXT_SESSION_EXPIRED");
       return compactSchedule(undergraduate, "undergraduate", true);
     });
@@ -254,137 +233,6 @@ async function loadAcademicTool(
     if (!hasUsableProgress(result)) throw new Error("JWXT_SESSION_EXPIRED");
     return compactProgress(result);
   });
-}
-
-export async function queryCampusAssistantAcademicTool(input: {
-  tool: CampusAssistantAcademicAgentTool;
-  jwxtToken?: string | null;
-  args?: CampusAssistantAcademicAgentArgs;
-  history?: AssistantHistoryMessage[];
-}) {
-  const token = String(input.jwxtToken || "").trim();
-  if (!token) {
-    return {
-      status: "unavailable" as const,
-      message: "当前没有可用的教务会话，请先重新连接教务系统。",
-    };
-  }
-  const args = input.args ?? {};
-  const tokenKey = createHash("sha256").update(token).digest("hex").slice(0, 24);
-  try {
-    if (input.tool === "academic_schedule") {
-      const data = await loadAcademicTool(
-        "schedule",
-        token,
-        tokenKey,
-        buildAcademicAgentQuery("schedule", args),
-        input.history ?? [],
-        args,
-      );
-      return { status: "ready" as const, data };
-    }
-    if (input.tool === "academic_grades") {
-      const data = await loadAcademicTool(
-        "grades",
-        token,
-        tokenKey,
-        buildAcademicAgentQuery("grades", args),
-        input.history ?? [],
-        args,
-      );
-      return { status: "ready" as const, data };
-    }
-
-    await assertUndergraduateIdentity(token, tokenKey);
-    if (input.tool === "academic_midterm_grades") {
-      const semester = String(args.semester || "").trim();
-      const result = await withCache(
-        "assistant-jwxt-midterm-grades",
-        [tokenKey, semester],
-        5 * 60_000,
-        () => getMidtermGrades(token, { semester }),
-      );
-      return {
-        status: "ready" as const,
-        data: {
-          currentSemester: result.semesters.find((item) => item.current)?.value || semester,
-          availableSemesters: result.semesters,
-          grades: result.list.slice(0, 80).map(compactGrade),
-        },
-      };
-    }
-    if (input.tool === "academic_calendar") {
-      const semester = String(args.semester || "").trim();
-      const result = await withCache(
-        "assistant-jwxt-calendar",
-        [tokenKey, semester],
-        30 * 60_000,
-        () => getCalendar(token, { semester }),
-      );
-      return {
-        status: "ready" as const,
-        data: {
-          currentSemester: result.currentSemester,
-          availableSemesters: result.semesters,
-          semesterStart: result.semesterStart,
-          semesterEnd: result.semesterEnd,
-          currentWeek: result.currentWeek,
-          today: result.today,
-          weeks: result.weeks.slice(0, 30),
-        },
-      };
-    }
-    if (input.tool === "academic_training_plan") {
-      const result = await withCache(
-        "assistant-jwxt-training-plan",
-        [tokenKey],
-        30 * 60_000,
-        () => getPyfa(token),
-      );
-      const semester = String(args.semester || "").trim();
-      const course = String(args.course || "").trim().toLowerCase();
-      const rows = result.list.filter((item) => (
-        (!semester || String(item.semester || "").includes(semester))
-        && (!course || item.courseName.toLowerCase().includes(course))
-      ));
-      return {
-        status: "ready" as const,
-        data: {
-          bySemester: result.bySemester,
-          totalCount: rows.length,
-          courses: rows.slice(0, 120),
-        },
-      };
-    }
-
-    const result = await withCache("assistant-jwxt-progress", [tokenKey], 30 * 60_000, async () => {
-      const progress = await getProgress(token);
-      if (!hasUsableProgress(progress)) throw new Error("JWXT_SESSION_EXPIRED");
-      return compactProgress(progress);
-    });
-    return { status: "ready" as const, data: result };
-  } catch (error) {
-    return {
-      status: "unavailable" as const,
-      message: describeAcademicError(error),
-    };
-  }
-}
-
-function buildAcademicAgentQuery(
-  kind: "schedule" | "grades",
-  args: CampusAssistantAcademicAgentArgs,
-) {
-  const parts: string[] = [];
-  if (args.semester) parts.push(args.semester);
-  if (args.scope === "current") parts.push("当前学期");
-  if (args.scope === "previous") parts.push("上学期");
-  if (args.scope === "all") parts.push("全部");
-  if (args.scope === "latest") parts.push("最新");
-  if (args.course) parts.push(args.course);
-  if (args.week) parts.push(`第${args.week}周`);
-  parts.push(kind === "schedule" ? "课表" : "成绩");
-  return parts.join(" ");
 }
 
 async function assertUndergraduateIdentity(token: string, tokenKey: string) {

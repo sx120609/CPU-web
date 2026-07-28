@@ -57,11 +57,6 @@ import {
 } from "../src/services/campusAssistantSiteData";
 import { mergeAssistantHistorySessions } from "../../web/src/utils/assistantHistorySync";
 import { normalizeAdjacentStrongDelimiters } from "../../web/src/utils/markdownNormalize";
-import {
-  CAMPUS_ASSISTANT_TOOL_CATALOG,
-  parseCampusAssistantAgentDecision,
-  runCampusAssistantAgent,
-} from "../src/services/campusAssistantAgent";
 
 const enabledFeatures = {
   forum: true,
@@ -77,16 +72,6 @@ const context = {
   loggedIn: false,
 };
 
-test("拾间AI工具目录提供真实只读数据能力且不虚构考试安排", () => {
-  const names = CAMPUS_ASSISTANT_TOOL_CATALOG.map((item) => item.name);
-  assert.ok(names.includes("academic_schedule"));
-  assert.ok(names.includes("academic_grades"));
-  assert.ok(names.includes("academic_calendar"));
-  assert.ok(names.includes("academic_training_plan"));
-  assert.ok(names.includes("dorm_electricity"));
-  assert.equal(names.some((name) => /exam/i.test(name)), false);
-});
-
 test("拾间AI相邻中文粗体标记不会原样泄露到界面", () => {
   assert.equal(
     normalizeAdjacentStrongDelimiters("**需要重点关注：**木材学 30 分"),
@@ -100,68 +85,6 @@ test("拾间AI相邻中文粗体标记不会原样泄露到界面", () => {
     normalizeAdjacentStrongDelimiters("这里是 **正常粗体** 文本"),
     "这里是 **正常粗体** 文本",
   );
-});
-
-test("拾间AI可解析工具调用与最终回答协议", () => {
-  assert.deepEqual(parseCampusAssistantAgentDecision(JSON.stringify({
-    type: "tool_calls",
-    toolCalls: [{
-      id: "call_1",
-      name: "academic_schedule",
-      arguments: { semester: "2025-2026-2", week: 3 },
-    }],
-  })), {
-    type: "tool_calls",
-    toolCalls: [{
-      id: "call_1",
-      name: "academic_schedule",
-      arguments: { semester: "2025-2026-2", week: 3 },
-    }],
-  });
-  assert.deepEqual(parseCampusAssistantAgentDecision(JSON.stringify({
-    type: "final",
-    response: { answer: "已查到。", actionIds: [], suggestions: [] },
-  })), {
-    type: "final",
-    payload: { answer: "已查到。", actionIds: [], suggestions: [] },
-  });
-});
-
-test("拾间AI会执行模型选择的工具并把结果交回模型继续回答", async () => {
-  const requests: string[][] = [];
-  const responses = [
-    {
-      model: "test-model",
-      content: JSON.stringify({
-        type: "tool_calls",
-        toolCalls: [{ id: "call_1", name: "academic_schedule", arguments: {} }],
-      }),
-    },
-    {
-      model: "test-model",
-      content: JSON.stringify({
-        type: "final",
-        response: { answer: "教务会话当前不可用。", actionIds: [], suggestions: [] },
-      }),
-    },
-  ];
-  const used: string[] = [];
-  const result = await runCampusAssistantAgent({
-    message: "查我的课表",
-    history: [],
-    runtime: { userId: 1, studentId: "20260001", jwxtToken: null },
-    buildSystemPrompt: () => "system",
-    onToolUse: (names) => used.push(...names),
-    request: (async (messages: any) => {
-      const resolved = typeof messages === "function" ? messages("test-model") : messages;
-      requests.push(resolved.map((item: any) => String(item.content)));
-      return responses.shift()!;
-    }) as any,
-  });
-  assert.deepEqual(used, ["academic_schedule"]);
-  assert.deepEqual(result.usedTools, ["academic_schedule"]);
-  assert.equal((result.payload as { answer: string }).answer, "教务会话当前不可用。");
-  assert.match(requests[1].join("\n"), /toolResults=/);
 });
 
 test("拾间 AI 只在用户明确查询本人数据时调用教务工具", () => {
