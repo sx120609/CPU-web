@@ -7,7 +7,7 @@ import { useJwxtStore } from "./stores/jwxt";
 import { useSiteStore } from "./stores/site";
 import { applyInitialAppearance, useAppearanceStore } from "./stores/appearance";
 import { installIosNativeImageBridge } from "./utils/nativeBridge";
-import { isFlutterNativeShell } from "./utils/clientInfo";
+import { isDesktopNativeApp, isFlutterNativeShell } from "./utils/clientInfo";
 import { scheduleJwxtDataPrewarm } from "./utils/jwxtPrewarm";
 
 import "element-plus/dist/index.css";
@@ -26,9 +26,88 @@ const SCHEDULE_OFFLINE_STATIC_URLS = [
 
 let serviceWorkerReady: Promise<ServiceWorkerRegistration | null> | null = null;
 const JWXT_SESSION_BOOTSTRAP_MIN_INTERVAL_MS = 5 * 60 * 1000;
+const DESKTOP_RELEASE_CHECK_MIN_INTERVAL_MS = 5 * 60 * 1000;
 let jwxtSessionBootstrapScheduled = false;
 let jwxtSessionBootstrapInFlight = false;
 let jwxtSessionBootstrapLastAt = 0;
+let desktopReleaseCheckInFlight = false;
+let desktopReleaseCheckLastAt = 0;
+
+function getEntryModuleSignature(root: ParentNode) {
+  return Array.from(root.querySelectorAll<HTMLScriptElement>('script[type="module"][src]'))
+    .map((script) => {
+      const src = script.getAttribute("src");
+      if (!src) return "";
+      try {
+        const url = new URL(src, window.location.origin);
+        return url.origin === window.location.origin ? url.pathname : "";
+      } catch {
+        return "";
+      }
+    })
+    .filter(Boolean)
+    .sort()
+    .join("|");
+}
+
+function isEditingText() {
+  const active = document.activeElement as HTMLElement | null;
+  if (!active) return false;
+  return active.matches("input, textarea, [contenteditable='true']")
+    || Boolean(active.closest("[contenteditable='true']"));
+}
+
+async function checkDesktopWebRelease(options?: { force?: boolean }) {
+  if (!isDesktopNativeApp() || document.visibilityState !== "visible" || desktopReleaseCheckInFlight) return;
+  const now = Date.now();
+  if (
+    !options?.force
+    && desktopReleaseCheckLastAt > 0
+    && now - desktopReleaseCheckLastAt < DESKTOP_RELEASE_CHECK_MIN_INTERVAL_MS
+  ) {
+    return;
+  }
+
+  desktopReleaseCheckInFlight = true;
+  desktopReleaseCheckLastAt = now;
+  try {
+    const response = await fetch(`/?__cpu_release_check=${now}`, {
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { Accept: "text/html" },
+    });
+    if (!response.ok) return;
+
+    const latestDocument = new DOMParser().parseFromString(await response.text(), "text/html");
+    const currentSignature = getEntryModuleSignature(document);
+    const latestSignature = getEntryModuleSignature(latestDocument);
+    if (currentSignature && latestSignature && currentSignature !== latestSignature && !isEditingText()) {
+      window.location.reload();
+    }
+  } catch {
+    // Release checks are best-effort and must never interrupt normal client use.
+  } finally {
+    desktopReleaseCheckInFlight = false;
+  }
+}
+
+function installDesktopWebReleaseRefresh() {
+  if (!isDesktopNativeApp()) return;
+  globalThis.setTimeout(() => {
+    void checkDesktopWebRelease({ force: true });
+  }, 5000);
+  globalThis.setInterval(() => {
+    void checkDesktopWebRelease();
+  }, DESKTOP_RELEASE_CHECK_MIN_INTERVAL_MS);
+  window.addEventListener("focus", () => {
+    void checkDesktopWebRelease();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      void checkDesktopWebRelease();
+    }
+  });
+}
 
 function installTouchGuards() {
   document.addEventListener("gesturestart", (event) => event.preventDefault());
@@ -293,6 +372,7 @@ installTouchGuards();
 installFeedbackLayerGuard();
 installIosNativeImageBridge();
 installNativeAppMarker();
+installDesktopWebReleaseRefresh();
 applyInitialAppearance();
 
 // 注册 Service Worker —— Chrome PWA "installable" 条件之一（manifest + SW + HTTPS）

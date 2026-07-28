@@ -37,6 +37,7 @@ export interface UserInfo {
   usedIosClient?: boolean;
   usedAndroidClient?: boolean;
   usedHarmonyClient?: boolean;
+  usedDesktopClient?: boolean;
   topicSubmissionLocked?: boolean;
   aiReviewWhitelisted?: boolean;
   anonymousState?: {

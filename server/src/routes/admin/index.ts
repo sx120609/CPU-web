@@ -297,6 +297,7 @@ adminRouter.get("/users", userDirectoryAccess, async (req, res, next) => {
     const usedIosClient = req.query.usedIosClient === "1" ? true : req.query.usedIosClient === "0" ? false : undefined;
     const usedAndroidClient = req.query.usedAndroidClient === "1" ? true : req.query.usedAndroidClient === "0" ? false : undefined;
     const usedHarmonyClient = req.query.usedHarmonyClient === "1" ? true : req.query.usedHarmonyClient === "0" ? false : undefined;
+    const usedDesktopClient = req.query.usedDesktopClient === "1" ? true : req.query.usedDesktopClient === "0" ? false : undefined;
     const loginFrom = String(req.query.loginFrom ?? "").trim();
     const loginTo = String(req.query.loginTo ?? "").trim();
     const sort = String(req.query.sort ?? "login-desc");
@@ -317,14 +318,16 @@ adminRouter.get("/users", userDirectoryAccess, async (req, res, next) => {
     if (status) where.status = status;
     if (loginClient && loginClient !== "all") {
       if (loginClient === "none") where.lastLoginAt = null;
-      else if (["ios", "android", "harmony", "web", "unknown"].includes(loginClient)) where.lastLoginClient = loginClient;
+      else if (["ios", "android", "harmony", "desktop", "web", "unknown"].includes(loginClient)) where.lastLoginClient = loginClient;
     }
     if (usedClient === "ios") where.usedIosClient = true;
     if (usedClient === "android") where.usedAndroidClient = true;
     if (usedClient === "harmony") where.usedHarmonyClient = true;
+    if (usedClient === "desktop") where.usedDesktopClient = true;
     if (typeof usedIosClient === "boolean") where.usedIosClient = usedIosClient;
     if (typeof usedAndroidClient === "boolean") where.usedAndroidClient = usedAndroidClient;
     if (typeof usedHarmonyClient === "boolean") where.usedHarmonyClient = usedHarmonyClient;
+    if (typeof usedDesktopClient === "boolean") where.usedDesktopClient = usedDesktopClient;
     if (loginFrom || loginTo) {
       const loginAtFilter: any = where.lastLoginAt && typeof where.lastLoginAt === "object" ? where.lastLoginAt : {};
       if (loginFrom) {
@@ -361,7 +364,8 @@ adminRouter.get("/users", userDirectoryAccess, async (req, res, next) => {
           anonymousCredits: true, anonymousWeekKey: true, anonymousCreditsFrozen: true,
           assistantPoints: true,
           aiReviewWhitelisted: true,
-          lastSeenAt: true, lastLoginAt: true, lastLoginClient: true, usedIosClient: true, usedAndroidClient: true, usedHarmonyClient: true,
+          lastSeenAt: true, lastLoginAt: true, lastLoginClient: true,
+          usedIosClient: true, usedAndroidClient: true, usedHarmonyClient: true, usedDesktopClient: true,
           createdAt: true,
         },
       }),
@@ -1768,7 +1772,7 @@ adminRouter.get("/sponsor-logs", adminOnly, async (req, res, next) => {
 
 adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
   try {
-    const { start: todayStart, end: todayEnd } = getChinaDayRange();
+    const { dateKey: todayDateKey, start: todayStart, end: todayEnd } = getChinaDayRange();
     await backfillAdminDailyLoginsFromLastLogin(30).catch((error) => {
       console.warn("[admin-stats] failed to backfill daily logins", error);
     });
@@ -1785,6 +1789,8 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       iosClients,
       androidClients,
       harmonyClients,
+      desktopClients,
+      todayDesktopLogins,
       todayLogins,
       dailyActiveSeries,
     ] = await Promise.all([
@@ -1801,6 +1807,8 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       prisma.user.count({ where: { usedIosClient: true } }),
       prisma.user.count({ where: { usedAndroidClient: true } }),
       prisma.user.count({ where: { usedHarmonyClient: true } }),
+      prisma.user.count({ where: { usedDesktopClient: true } }),
+      prisma.adminDailyLogin.count({ where: { dateKey: todayDateKey, client: "desktop" } }),
       prisma.user.count({ where: { lastLoginAt: { gte: todayStart, lt: todayEnd } } }),
       listAdminDailyLoginSeries(30),
     ]);
@@ -1820,6 +1828,8 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       iosClients,
       androidClients,
       harmonyClients,
+      desktopClients,
+      todayDesktopLogins,
       todayLogins,
       dailyActiveSeries,
     });

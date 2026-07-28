@@ -17,6 +17,7 @@
           <el-option label="iOS 客户端" value="ios" />
           <el-option label="安卓客户端" value="android" />
           <el-option label="鸿蒙客户端" value="harmony" />
+          <el-option label="PC 客户端" value="desktop" />
         </el-select>
         <el-select v-model="sort" placeholder="排序" class="sort-select" @change="applyFilters">
           <el-option label="最近登录优先" value="login-desc" />
@@ -104,7 +105,8 @@
               <el-tag v-if="row.usedIosClient" type="info" size="small" effect="plain">iOS</el-tag>
               <el-tag v-if="row.usedAndroidClient" type="success" size="small" effect="plain">安卓</el-tag>
               <el-tag v-if="row.usedHarmonyClient" type="warning" size="small" effect="plain">鸿蒙</el-tag>
-              <span v-if="!row.usedIosClient && !row.usedAndroidClient && !row.usedHarmonyClient" class="login-empty">暂无足迹</span>
+              <el-tag v-if="row.usedDesktopClient" type="primary" size="small" effect="plain">PC</el-tag>
+              <span v-if="!row.usedIosClient && !row.usedAndroidClient && !row.usedHarmonyClient && !row.usedDesktopClient" class="login-empty">暂无足迹</span>
             </div>
           </div>
         </template>
@@ -186,6 +188,7 @@
           <el-tag v-if="row.usedIosClient" type="info" size="small" effect="plain">iOS</el-tag>
           <el-tag v-if="row.usedAndroidClient" type="success" size="small" effect="plain">安卓</el-tag>
           <el-tag v-if="row.usedHarmonyClient" type="warning" size="small" effect="plain">鸿蒙</el-tag>
+          <el-tag v-if="row.usedDesktopClient" type="primary" size="small" effect="plain">PC</el-tag>
         </div>
         <div class="mobile-meta">
           <span>登录：{{ row.lastLoginAt ? fmtDate(row.lastLoginAt) : "未登录" }}</span>
@@ -573,6 +576,7 @@ function clientLabel(client?: string | null) {
   if (client === "ios") return "iOS 客户端";
   if (client === "android") return "安卓客户端";
   if (client === "harmony") return "鸿蒙客户端";
+  if (client === "desktop") return "PC 客户端";
   if (client === "web") return "网页";
   if (client === "unknown") return "未知";
   return "未登录";
@@ -582,6 +586,7 @@ function clientTagType(client?: string | null): "success" | "warning" | "info" |
   if (client === "ios") return "success";
   if (client === "android") return "warning";
   if (client === "harmony") return "success";
+  if (client === "desktop") return "primary";
   if (client === "web") return "primary";
   if (client === "unknown") return "info";
   return "info";

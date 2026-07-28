@@ -47,6 +47,11 @@
         <div class="ov-lbl">iOS / 安卓 / 鸿蒙</div>
       </div>
       <div class="ov-card">
+        <div class="ov-num">{{ overview.desktopClients }}</div>
+        <div class="ov-lbl">PC 客户端</div>
+        <div class="ov-sub">{{ overview.todayDesktopLogins }} 今日登录 · Windows / macOS</div>
+      </div>
+      <div class="ov-card">
         <div class="ov-num">{{ overview.feeds }} / {{ overview.boards }}</div>
         <div class="ov-lbl">同步源 / 板块</div>
       </div>

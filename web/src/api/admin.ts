@@ -372,6 +372,8 @@ export type AdminOverview = {
   iosClients: number;
   androidClients: number;
   harmonyClients: number;
+  desktopClients: number;
+  todayDesktopLogins: number;
   feeds: number;
   boards: number;
   dailyActiveSeries: Array<{
@@ -685,6 +687,7 @@ export const adminApi = {
       usedIosClient?: string;
       usedAndroidClient?: string;
       usedHarmonyClient?: string;
+      usedDesktopClient?: string;
       loginFrom?: string;
       loginTo?: string;
       sort?: string;
