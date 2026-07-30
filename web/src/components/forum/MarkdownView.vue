@@ -2,7 +2,13 @@
   <div
     v-bind="rootAttrs"
     class="md"
-    :class="[attrs.class, { 'md-clickable-images': clickableImages }]"
+    :class="[
+      attrs.class,
+      {
+        'md-clickable-images': clickableImages,
+        'md-compact-quotes': compactQuotes,
+      },
+    ]"
     :style="attrs.style"
     ref="el"
     v-html="renderedHtml"
@@ -60,9 +66,11 @@ import { fileNameFromUrl, getNativeBridge, hasNativeImagePreviewBridge, previewN
 const props = withDefaults(defineProps<{
   content: string;
   clickableImages?: boolean;
+  compactQuotes?: boolean;
   mediaLoading?: "lazy" | "eager";
 }>(), {
   clickableImages: false,
+  compactQuotes: false,
   mediaLoading: "lazy",
 });
 defineOptions({ inheritAttrs: false });
@@ -715,6 +723,26 @@ onMounted(() => {
   padding: 6px 12px;
   color: var(--cpu-text-secondary);
   margin: 0.6em 0;
+}
+.md.md-compact-quotes :deep(blockquote) {
+  position: relative;
+  max-height: 6.7em;
+  overflow: hidden;
+  margin-block: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 0.92em;
+  line-height: 1.55;
+}
+.md.md-compact-quotes :deep(blockquote::after) {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1.8em;
+  pointer-events: none;
+  background: linear-gradient(transparent, var(--cpu-card));
 }
 .md :deep(code) {
   background: var(--cpu-surface-subtle);

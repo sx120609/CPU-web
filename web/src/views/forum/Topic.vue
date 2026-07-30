@@ -276,7 +276,13 @@
               <span class="dot">·</span>
               <span>{{ fmtRelative(entry.item.createdAt) }}</span>
             </div>
-            <MarkdownView :content="entry.item.content" class="reply-content topic-markdown reply-markdown" clickable-images media-loading="eager" />
+            <MarkdownView
+              :content="entry.item.content"
+              class="reply-content topic-markdown reply-markdown"
+              clickable-images
+              compact-quotes
+              media-loading="eager"
+            />
             <div class="reply-actions">
               <el-button text size="small" @click="replyTo(entry.item)">回复</el-button>
               <el-button v-if="canEditReply(entry.item)" text size="small" @click="editReply(entry.item)">编辑</el-button>
