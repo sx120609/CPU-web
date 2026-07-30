@@ -12,7 +12,7 @@
 仓库地址：[https://github.com/sx120609/CPU-web](https://github.com/sx120609/CPU-web)
 
 想先用不那么专业的方式了解整个项目，可以阅读：
-[《药大拾间是怎么工作的？——简明技术路线》](./docs/technical-overview.md)。
+[《药大拾间完整技术路线》](./docs/technical-overview.md)，也可以直接下载[排版好的 PDF 版本](./output/pdf/yaoda-shijian-complete-technical-route.pdf)。
 
 > 说明
 >
