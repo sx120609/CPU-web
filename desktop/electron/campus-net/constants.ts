@@ -69,9 +69,9 @@ export const OFF_CAMPUS_INTERVAL_SEC = 120;
 // 网卡地址变化的检查间隔。纯本地读取，不产生任何网络请求。
 export const NETWORK_WATCH_INTERVAL_MS = 4000;
 
-// 退避与熔断。原版掉线后每 5 秒无限重试、密码错也照撞，有被学校侧封锁的实际风险。
+// 退避与熔断。临时故障会持续低频重试，只有明确的凭据类错误才暂停；
+// 这样学校维护或时间策略限制解除后，客户端能够自行恢复。
 export const MAX_BACKOFF_MS = 300_000;
-export const FAILURES_BEFORE_PAUSE = 5;
 
 // 服务端 msg 没有错误码枚举，只能软判定。命中即认为是凭据类不可恢复错误，
 // 立刻暂停自动重连，不等失败计数攒到上限。

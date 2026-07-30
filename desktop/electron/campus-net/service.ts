@@ -2,8 +2,6 @@ import { Notification } from "electron";
 import {
   CampusMode,
   Carrier,
-  FAILURES_BEFORE_PAUSE,
-  MAX_BACKOFF_MS,
   NETWORK_WATCH_INTERVAL_MS,
   OFF_CAMPUS_INTERVAL_SEC,
   REQUEST_TIMEOUT_MS
@@ -14,7 +12,7 @@ import { campusLog } from "./log";
 import { httpGetText, networkSignature } from "./net";
 import { performLogin } from "./login";
 import { isValidStudentId, ResolvedMode } from "./protocol";
-import { configuredIntervalMs, healthyProbeDelayMs } from "./schedule";
+import { configuredIntervalMs, healthyProbeDelayMs, retryBackoffDelayMs } from "./schedule";
 
 export type CampusNetSettings = {
   enabled: boolean;
@@ -251,14 +249,16 @@ export class CampusNetService {
       this.pause(result.message);
       return this.getState();
     }
-    if (failures >= FAILURES_BEFORE_PAUSE) {
-      this.pause(`连续 ${failures} 次认证失败：${result.message}`);
-      return this.getState();
-    }
     if (scheduleNext) {
-      // 指数退避 + 抖动，避免一栋楼的客户端同时重试
-      const backoff = Math.min(this.intervalMs() * 2 ** failures, MAX_BACKOFF_MS);
-      this.reschedule(backoff + Math.floor(Math.random() * 3000));
+      // 非凭据类错误可能来自学校维护、时间策略或认证服务器临时故障。
+      // 不按失败次数永久熔断；退避到上限后继续低频探测，恢复后自动上线。
+      const backoff = retryBackoffDelayMs(this.settings.intervalSec, failures);
+      const jitter = Math.floor(Math.random() * 3000);
+      campusLog(
+        "info",
+        `认证暂未成功，将在约 ${Math.ceil((backoff + jitter) / 1000)} 秒后自动重试（连续失败 ${failures} 次）`
+      );
+      this.reschedule(backoff + jitter);
     }
     return this.getState();
   }

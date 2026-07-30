@@ -22,7 +22,7 @@ try {
 }
 
 const { buildLoginUrl, parseJsonp, parseLoginResponse, redactUrl, resolveMode, isValidStudentId } = protocol;
-const { configuredIntervalMs, healthyProbeDelayMs } = schedule;
+const { configuredIntervalMs, healthyProbeDelayMs, retryBackoffDelayMs } = schedule;
 const HINTS = ["密码", "账号", "欠费"];
 
 let passed = 0;
@@ -194,6 +194,13 @@ check("掉线重连仍按用户基础间隔执行并限制在安全范围内", (
   assert.equal(configuredIntervalMs(1), 5_000);
   assert.equal(configuredIntervalMs(15), 15_000);
   assert.equal(configuredIntervalMs(900), 600_000);
+});
+
+check("临时认证失败持续退避重试，不会在第 5 次后永久停止", () => {
+  assert.equal(retryBackoffDelayMs(15, 1), 30_000);
+  assert.equal(retryBackoffDelayMs(15, 4), 240_000);
+  assert.equal(retryBackoffDelayMs(15, 5), 300_000, "第 5 次失败后应进入低频重试");
+  assert.equal(retryBackoffDelayMs(15, 100), 300_000, "长期维护期间仍应每 5 分钟探测");
 });
 
 /* -------------------------------------------------------- 学号校验 */
