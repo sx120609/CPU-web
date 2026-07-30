@@ -898,7 +898,7 @@ function setAppearanceMode(command: string | number | object) {
   position: sticky;
   top: 0;
   z-index: 100;
-  padding-top: env(safe-area-inset-top);
+  padding-top: var(--cpu-safe-area-inset-top, 0px);
   transition: all 0.3s ease;
 }
 

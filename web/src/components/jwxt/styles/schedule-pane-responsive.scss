@@ -24,8 +24,8 @@
     inset: auto 0 0 0;
     width: 100% !important;
     max-width: 100%;
-    height: min(82dvh, calc(100dvh - env(safe-area-inset-top) - 18px));
-    max-height: min(82dvh, calc(100dvh - env(safe-area-inset-top) - 18px));
+    height: min(82dvh, calc(100dvh - var(--cpu-safe-area-inset-top, 0px) - 18px));
+    max-height: min(82dvh, calc(100dvh - var(--cpu-safe-area-inset-top, 0px) - 18px));
     margin: 0 !important;
     border-radius: 18px 18px 0 0;
     overflow: hidden;

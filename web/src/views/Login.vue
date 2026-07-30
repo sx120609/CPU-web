@@ -426,7 +426,7 @@ async function onDevSubmit() {
   .auth-wrap {
     min-height: 100dvh;
     align-items: start;
-    padding: calc(18px + env(safe-area-inset-top)) 12px 18px;
+    padding: calc(18px + var(--cpu-safe-area-inset-top, 0px)) 12px 18px;
   }
 
   .auth-card {

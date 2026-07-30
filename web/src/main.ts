@@ -7,7 +7,11 @@ import { useJwxtStore } from "./stores/jwxt";
 import { useSiteStore } from "./stores/site";
 import { applyInitialAppearance, useAppearanceStore } from "./stores/appearance";
 import { installIosNativeImageBridge } from "./utils/nativeBridge";
-import { isDesktopNativeApp, isFlutterNativeShell } from "./utils/clientInfo";
+import {
+  isDesktopNativeApp,
+  isFlutterNativeShell,
+  isLikelyIosDevice,
+} from "./utils/clientInfo";
 import { scheduleJwxtDataPrewarm } from "./utils/jwxtPrewarm";
 
 import "element-plus/dist/index.css";
@@ -190,12 +194,20 @@ function installFeedbackLayerGuard() {
 
 function installNativeAppMarker() {
   const ua = navigator.userAgent;
-  const platform = /cpuwebscheduleapp|cpuwebharmonyapp/i.test(ua)
+  const nativeOrStandalone = /cpuwebscheduleapp|cpuwebharmonyapp/i.test(ua)
     || isFlutterNativeShell(ua)
     || window.matchMedia?.("(display-mode: standalone)").matches
     || (navigator as any).standalone === true;
-  if (!platform) return;
-  document.body.dataset.cpuNativeApp = "1";
+  if (nativeOrStandalone) {
+    document.body.dataset.cpuNativeApp = "1";
+  }
+
+  // 普通 Android 浏览器已经把网页视口放在状态栏/浏览器工具栏下方，
+  // 部分厂商浏览器却仍返回非零 safe-area-inset-top。无条件使用会重复留白。
+  // 仅 iOS、PWA 和真正的原生壳需要在网页内部再次预留顶部安全区。
+  if (nativeOrStandalone || isLikelyIosDevice(ua)) {
+    document.body.dataset.cpuTopSafeArea = "1";
+  }
 }
 
 function shouldWarmScheduleOfflinePath(pathname: string) {
