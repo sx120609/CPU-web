@@ -854,22 +854,45 @@ do_install_all() {
   do_install_voicehub
 }
 
+project_bin_available() {
+  local project="$1"
+  local binary="$2"
+  [ -x "$project/node_modules/.bin/$binary" ] \
+    || [ -f "$project/node_modules/.bin/${binary}.cmd" ]
+}
+
+ensure_project_build_dependencies() {
+  local project="$1"
+  shift
+  local binary
+  for binary in "$@"; do
+    if ! project_bin_available "$project" "$binary"; then
+      warn "$project build tool '$binary' is missing; restoring project dependencies"
+      install_project_dependencies "$project"
+      return
+    fi
+  done
+}
+
 do_generate_prisma() {
   log "Generating Prisma Client"
   npm run prisma:generate --prefix server || err "Prisma Client generation failed"
 }
 
 do_build_server() {
+  ensure_project_build_dependencies server tsc
   log "Building server TypeScript -> server/dist"
   npm run build:compile --prefix server
 }
 
 do_build_web() {
+  ensure_project_build_dependencies web vue-tsc vite
   log "Building web Vite -> web/dist"
   npm run build --prefix web
 }
 
 do_build_voicehub() {
+  ensure_project_build_dependencies voicehub nuxt
   log "Building VoiceHub Nuxt/Nitro -> voicehub/.output"
   npm run build:cpu --prefix voicehub
 }
