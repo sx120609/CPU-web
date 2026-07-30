@@ -11,6 +11,9 @@
 
 仓库地址：[https://github.com/sx120609/CPU-web](https://github.com/sx120609/CPU-web)
 
+想先用不那么专业的方式了解整个项目，可以阅读：
+[《药大拾间是怎么工作的？——简明技术路线》](./docs/technical-overview.md)。
+
 > 说明
 >
 > - 本项目为学生自发聚合站，非中国药科大学官方平台。
