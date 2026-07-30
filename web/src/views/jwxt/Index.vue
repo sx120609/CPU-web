@@ -200,6 +200,7 @@
         <RouterLink class="mobile-schedule-link" to="/schedule">打开课表</RouterLink>
       </div>
     </div>
+    <FreshmanAccountNotice v-model="freshmanNoticeVisible" />
   </div>
 </template>
 
@@ -219,11 +220,13 @@ import {
   writeJwxtTabCache,
 } from "@/utils/jwxtTabCache";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
+import FreshmanAccountNotice from "@/components/common/FreshmanAccountNotice.vue";
 import SchedulePane from "@/components/jwxt/SchedulePane.vue";
 import GradesPane from "@/components/jwxt/GradesPane.vue";
 import MidtermGradesPane from "@/components/jwxt/MidtermGradesPane.vue";
 import ProgressPane from "@/components/jwxt/ProgressPane.vue";
 import PyfaPane from "@/components/jwxt/PyfaPane.vue";
+import { shouldShowFreshmanNotice } from "@/utils/freshmanNotice";
 
 const jwxt = useJwxtStore();
 const auth = useAuthStore();
@@ -250,6 +253,7 @@ const captchaLoading = ref(false);
 const logoutBusy = ref(false);
 const forgetBusy = ref(false);
 const showLoginOverride = ref(false);
+const freshmanNoticeVisible = ref(false);
 let tabLoadSeq = 0;
 let pageInitSeq = 0;
 let disposed = false;
@@ -335,6 +339,7 @@ const identityBadgeText = computed(() => (
 onMounted(() => {
   disposed = false;
   setupMobileViewportWatcher();
+  freshmanNoticeVisible.value = shouldShowFreshmanNotice();
   void initPage();
 });
 

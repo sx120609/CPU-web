@@ -127,6 +127,13 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
+    .post-foot :deep(.el-button) {
+      width: 100%;
+      min-width: 0;
+      margin-left: 0;
+      padding-inline: 6px;
+    }
+
     .weiwall-contact-row,
     .weiwall-contact-row-action {
       align-items: flex-start;
@@ -142,11 +149,34 @@
     .reply {
       gap: 10px;
       padding: 12px 0;
+      margin-left: 0 !important;
+      max-width: 100%;
+    }
+
+    .reply.nested {
+      padding-left: 8px;
     }
 
     .reply-meta {
       flex-wrap: wrap;
       line-height: 1.5;
+    }
+
+    .reply-content {
+      max-width: 100%;
+      overflow-x: hidden;
+    }
+
+    .reply-actions {
+      width: 100%;
+      gap: 2px 6px;
+    }
+
+    .reply-actions :deep(.el-button) {
+      flex: 0 0 auto;
+      max-width: 100%;
+      margin-left: 0;
+      padding-inline: 6px;
     }
   }
 

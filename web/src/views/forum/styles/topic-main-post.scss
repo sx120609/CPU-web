@@ -504,5 +504,10 @@
   .post-foot-entry {
     justify-content: flex-start;
   }
+
+  .post-foot :deep(.el-button) {
+    min-width: 0;
+    margin-left: 0;
+  }
 }
 

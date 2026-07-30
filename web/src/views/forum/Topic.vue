@@ -278,7 +278,7 @@
             </div>
             <MarkdownView :content="entry.item.content" class="reply-content topic-markdown reply-markdown" clickable-images media-loading="eager" />
             <div class="reply-actions">
-              <el-button text size="small" @click="quoteReply(entry.item)">引用</el-button>
+              <el-button text size="small" @click="replyTo(entry.item)">回复</el-button>
               <el-button v-if="canEditReply(entry.item)" text size="small" @click="editReply(entry.item)">编辑</el-button>
               <el-button v-if="canEditReply(entry.item)" text size="small" type="danger" :loading="replyActionBusyId === entry.item.id" :disabled="replyActionBusyId !== null" @click="removeReply(entry.item)">删除</el-button>
               <el-button text size="small" :loading="replyLikeBusyId === entry.item.id" :disabled="replyLikeBusyId !== null" @click="onLikeReply(entry.item)">👍 {{ entry.item.likeCount }}</el-button>
@@ -1183,11 +1183,9 @@ async function onLikeReply(reply: any) {
   }
 }
 
-function quoteReply(r: Reply) {
+function replyTo(r: Reply) {
   if (!openReplyDialog()) return;
   replyParentId.value = r.id;
-  const quoted = `<blockquote><p>@${escapeHtml(r.author?.nickname || "同学")} 在 #${r.floor} 楼：</p>${r.content}</blockquote><p><br></p>`;
-  replyText.value = `${replyText.value || ""}${quoted}`;
 }
 
 function clearReplyParent() {
@@ -1596,10 +1594,6 @@ function formatTranscriptStatus(status?: string | null) {
   if (status === "error") return "转写失败";
   if (status === "processing") return "转写中";
   return status || "未知";
-}
-
-function escapeHtml(value: string) {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function stripTextForShare(value: string) {
