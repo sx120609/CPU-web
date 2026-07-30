@@ -26,10 +26,13 @@ async function main() {
     size: Buffer.byteLength(source, "utf8"),
     sourceUrl: USER_SCRIPT_SOURCE_PATH,
   };
-  assert.deepEqual(identity, { name: "药大拾间·学习通助手", version: "2.2.3" });
+  assert.deepEqual(identity, { name: "药大拾间·学习通助手", version: "2.2.4" });
   assert.match(source, /章节、作业或考试/, "个人中心与课程引导应覆盖章节、作业和考试入口");
   assert.match(source, /customClass:\s*"cpu-learning-guide"/, "学习通引导应使用独立高层级样式");
   assert.match(source, /offset:\s*96/, "学习通引导应避开超星顶部导航");
+  assert.match(source, /AI 答题额度已用完/, "额度耗尽时应向用户显示明确提示");
+  assert.match(source, /助手已停止继续请求/, "额度耗尽后应停止当前页面继续请求");
+  assert.match(source, /response\.status === 429/, "异常频率限制应提供独立处理");
   assert.doesNotThrow(() => validateUserScriptRelease(source, manifest));
   assert.throws(
     () => validateUserScriptRelease(`${source}\n// tampered`, manifest),
@@ -59,7 +62,7 @@ async function main() {
       return new Response("", { status: 404 });
     };
 
-    const olderSource = source.replace("// @version      2.2.3", "// @version      2.1.9");
+    const olderSource = source.replace("// @version      2.2.4", "// @version      2.1.9");
     const updated = await checkUserScriptUpdate({
       origin: "https://cpu.lizmt.cn",
       cacheDirectory,
@@ -71,7 +74,7 @@ async function main() {
     assert.equal(requests.length, 2);
 
     const cached = await readCachedUserScript(cacheDirectory, () => undefined);
-    assert.equal(cached?.manifest.version, "2.2.3");
+    assert.equal(cached?.manifest.version, "2.2.4");
     assert.equal(cached?.source, source);
 
     requests.length = 0;

@@ -187,10 +187,13 @@ check("学习通助手品牌、版本和进入课程引导已写入内置回退�
   const fs = require("node:fs");
   const source = fs.readFileSync(path.join(__dirname, "..", "assets", "userscripts", "monkey.js"), "utf8");
   assert.match(source, /^\/\/ @name\s+药大拾间·学习通助手$/m);
-  assert.match(source, /^\/\/ @version\s+2\.2\.3$/m);
+  assert.match(source, /^\/\/ @version\s+2\.2\.4$/m);
   assert.match(source, /cpu-learning-personal-center-guide-v3/);
   assert.match(source, /cpu-learning-course-guide-v3/);
   assert.match(source, /章节、作业或考试/);
+  assert.match(source, /AI 答题额度已用完/);
+  assert.match(source, /助手已停止继续请求/);
+  assert.match(source, /response\.status === 429/);
   assert.doesNotMatch(source, /Auto Ask/);
   assert.doesNotMatch(source, /工具\s*→\s*刷题|这里改了不会生效/);
 });

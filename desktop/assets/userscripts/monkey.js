@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·学习通助手
 // @namespace    askAuto
-// @version      2.2.3
+// @version      2.2.4
 // @author       shushoujiu
 // @description  药大拾间桌面端的学习通助手：自动完成任务点，章节测验与考试由独立答题 AI 作答。
 // @icon         https://vitejs.dev/logo.svg
@@ -78,6 +78,65 @@ hideConfigControls();
   // 状态上报是可选能力，宿主没提供就静默跳过，不影响刷课
   var _GM_cpuReport = (() => "undefined" != typeof GM_cpuReport ? GM_cpuReport : void 0)();
   const reportToHost = (kind, text) => { try { _GM_cpuReport && _GM_cpuReport(kind, text); } catch { } };
+  let cpuAiRequestBlockedMessage = "";
+  let cpuAiRequestPausedUntil = 0;
+  let cpuAiLastNotice = { message: "", time: 0 };
+  const cpuAiResponseErrorMessage = (response) => {
+    try {
+      const payload = JSON.parse(response.responseText || "");
+      return String(payload?.message || payload?.error?.message || payload?.error || "").trim();
+    } catch {
+      return "";
+    }
+  };
+  const cpuNotifyAiRequestIssue = (title, message) => {
+    const now = Date.now();
+    reportToHost("status", message);
+    reportToHost("log", message);
+    if (cpuAiLastNotice.message === message && now - cpuAiLastNotice.time < 15e3) return;
+    cpuAiLastNotice = { message, time: now };
+    ElementPlus.ElNotification({
+      title,
+      message,
+      type: "warning",
+      duration: 8e3,
+      position: "top-right"
+    });
+  };
+  const cpuHandleAiHttpFailure = (response) => {
+    if (response.status >= 200 && response.status < 300) return false;
+    const serverMessage = cpuAiResponseErrorMessage(response);
+    if (response.status === 403 && /额度|点数|用完|不足/.test(serverMessage)) {
+      cpuAiRequestBlockedMessage = serverMessage || "今天的 AI 答题额度和点数都已用完";
+      cpuNotifyAiRequestIssue(
+        "AI 答题额度已用完",
+        `${cpuAiRequestBlockedMessage}。助手已停止继续请求；额度恢复或补充点数后，请刷新学习通页面再继续。`
+      );
+      return true;
+    }
+    if (response.status === 401 || response.status === 403) {
+      cpuAiRequestBlockedMessage = serverMessage || "当前登录或授权状态不可用";
+      cpuNotifyAiRequestIssue(
+        "AI 答题需要重新登录",
+        `${cpuAiRequestBlockedMessage}。请回到药大拾间客户端完成登录，再刷新学习通页面。`
+      );
+      return true;
+    }
+    if (response.status === 429) {
+      cpuAiRequestPausedUntil = Date.now() + 60e3;
+      cpuNotifyAiRequestIssue(
+        "AI 请求过于频繁",
+        serverMessage || "请求速度过快，助手已暂停 1 分钟后再试。"
+      );
+      return true;
+    }
+    if (response.status >= 500) cpuAiRequestPausedUntil = Date.now() + 30e3;
+    cpuNotifyAiRequestIssue(
+      "AI 答题暂时不可用",
+      serverMessage || `服务请求失败（HTTP ${response.status}），请稍后再试。`
+    );
+    return true;
+  };
   const getConfig = () => {
     let config = _GM_getValue("config");
     if (!config) return defaultConfig$1;
@@ -206,6 +265,16 @@ hideConfigControls();
       return new Promise(async (resolve) => {
         const config = getConfig();
         if (!config.aiEnabled) {
+          resolve({ form: "AI", answer: "" });
+          return;
+        }
+        if (cpuAiRequestBlockedMessage) {
+          console.log("AI答题已暂停:", cpuAiRequestBlockedMessage);
+          resolve({ form: "AI", answer: "" });
+          return;
+        }
+        if (Date.now() < cpuAiRequestPausedUntil) {
+          console.log("AI答题暂时冷却中，请稍后再试");
           resolve({ form: "AI", answer: "" });
           return;
         }
@@ -346,6 +415,10 @@ hideConfigControls();
         _GM_cpuAIRequest(requestData).then((response) => {
           const res = { responseText: response.text, status: response.status, statusText: response.statusText };
           try {
+              if (cpuHandleAiHttpFailure(res)) {
+                resolve({ form: "AI", answer: "" });
+                return;
+              }
               console.log("AI返回结果:", res.responseText);
               const data = JSON.parse(res.responseText);
               const content = (data.output_text || data.output?.flatMap(item => item.content || []).filter(item => item.type === "output_text").map(item => item.text).join("") || data.choices?.[0]?.message?.content || "").trim();
@@ -423,6 +496,9 @@ hideConfigControls();
               resolve({ form: "AI", answer: "" });
             }
         }).catch((error) => {
+          const message = String(error?.message || error || "AI 请求失败");
+          cpuAiRequestPausedUntil = Date.now() + 30e3;
+          cpuNotifyAiRequestIssue("AI 答题请求失败", `${message}。助手已暂停 30 秒，请稍后再试。`);
           console.log("AI请求错误:", error);
           resolve({ form: "AI", answer: "" });
         });
